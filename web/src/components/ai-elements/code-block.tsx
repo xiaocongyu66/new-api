@@ -264,7 +264,9 @@ function getCodeBlockMaxHeight(
 
 function getCodeMirrorExtensions(options: {
   language: string
-  onKeyDown?: (event: globalThis.KeyboardEvent) => void
+  onKeyDownRef: {
+    current: ((event: globalThis.KeyboardEvent) => void) | undefined
+  }
   readOnly: boolean
   showLineNumbers: boolean
 }): Extension[] {
@@ -275,21 +277,16 @@ function getCodeMirrorExtensions(options: {
     EditorState.tabSize.of(2),
     EditorState.readOnly.of(options.readOnly),
     EditorView.editable.of(!options.readOnly),
+    EditorView.domEventHandlers({
+      keydown(event) {
+        options.onKeyDownRef.current?.(event)
+        return event.defaultPrevented
+      },
+    }),
   ]
 
   if (options.showLineNumbers) {
     extensions.unshift(lineNumbers())
-  }
-
-  if (options.onKeyDown) {
-    extensions.push(
-      EditorView.domEventHandlers({
-        keydown(event) {
-          options.onKeyDown?.(event)
-          return event.defaultPrevented
-        },
-      })
-    )
   }
 
   return extensions
@@ -310,21 +307,26 @@ function CodeMirrorCodeView({
   const editorViewRef = useRef<EditorView | null>(null)
   const initialValueRef = useRef(value)
   const onChangeRef = useRef(onChange)
+  const onKeyDownRef = useRef(onKeyDown)
   const editorMinHeight = `${Math.max(4, rows) * 1.5 + 2}rem`
   const editorExtensions = useMemo(
     () =>
       getCodeMirrorExtensions({
         language,
-        onKeyDown,
+        onKeyDownRef,
         readOnly,
         showLineNumbers,
       }),
-    [language, onKeyDown, readOnly, showLineNumbers]
+    [language, onKeyDownRef, readOnly, showLineNumbers]
   )
 
   useEffect(() => {
     onChangeRef.current = onChange
   }, [onChange])
+
+  useEffect(() => {
+    onKeyDownRef.current = onKeyDown
+  }, [onKeyDown])
 
   useEffect(() => {
     const editorHost = editorHostRef.current
