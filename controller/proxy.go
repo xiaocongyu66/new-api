@@ -23,22 +23,22 @@ type ProxyConfigRequest struct {
 // OutboundConfig mirrors service.OutboundConfig so the controller can
 // accept and marshal proxy configuration without importing service.
 type OutboundConfig struct {
-	Type           string            `json:"type"`
-	Server         string            `json:"server"`
-	ServerPort     int               `json:"server_port"`
-	UUID           string            `json:"uuid,omitempty"`
-	Password       string            `json:"password,omitempty"`
-	Flow           string            `json:"flow,omitempty"`
-	Encryption     string            `json:"encryption,omitempty"`
-	Method         string            `json:"method,omitempty"`
-	Network        string            `json:"network,omitempty"`
-	PacketEncoding string            `json:"packet_encoding,omitempty"`
-	Masquerade     string            `json:"masquerade,omitempty"`
-	Obfs           string            `json:"obfs,omitempty"`
-	ObfsPassword   string            `json:"obfs_password,omitempty"`
-	HopPorts       string            `json:"hop_ports,omitempty"`
-	TLSEnabled     bool              `json:"tls_enabled,omitempty"`
-	TLSServerName  string            `json:"tls_server_name,omitempty"`
+	Type           string `json:"type"`
+	Server         string `json:"server"`
+	ServerPort     int    `json:"server_port"`
+	UUID           string `json:"uuid,omitempty"`
+	Password       string `json:"password,omitempty"`
+	Flow           string `json:"flow,omitempty"`
+	Encryption     string `json:"encryption,omitempty"`
+	Method         string `json:"method,omitempty"`
+	Network        string `json:"network,omitempty"`
+	PacketEncoding string `json:"packet_encoding,omitempty"`
+	Masquerade     string `json:"masquerade,omitempty"`
+	Obfs           string `json:"obfs,omitempty"`
+	ObfsPassword   string `json:"obfs_password,omitempty"`
+	HopPorts       string `json:"hop_ports,omitempty"`
+	TLSEnabled     bool   `json:"tls_enabled,omitempty"`
+	TLSServerName  string `json:"tls_server_name,omitempty"`
 	// Flat transport fields (frontend form) mapped to the nested Transport
 	// struct on save.
 	TransportType    string            `json:"transport_type,omitempty"`
