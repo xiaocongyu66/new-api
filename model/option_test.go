@@ -54,3 +54,21 @@ func TestUpdateOptionProxyConfig(t *testing.T) {
 	assert.Equal(t, secondConfig, mapValue)
 	assert.Equal(t, "system notice", requireOptionValue(t, db, "Notice"))
 }
+
+func TestUpdateOptionValidationFailure(t *testing.T) {
+	db := useFrontendOptionMigrationDB(t)
+	optionMapSnapshot(t)
+
+	err := UpdateOption("MaxTokenAutoGroups", "not-a-positive-integer")
+	require.Error(t, err)
+	requireOptionMissing(t, db, "MaxTokenAutoGroups")
+}
+
+func TestUpdateOptionUnknownKeySucceeds(t *testing.T) {
+	db := useFrontendOptionMigrationDB(t)
+	optionMapSnapshot(t)
+
+	err := UpdateOption("nonexistent_key", "any value")
+	require.NoError(t, err)
+	assert.Equal(t, "any value", requireOptionValue(t, db, "nonexistent_key"))
+}

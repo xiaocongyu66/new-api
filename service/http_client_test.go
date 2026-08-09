@@ -71,4 +71,23 @@ func TestGetHttpClientWithProxySettings(t *testing.T) {
 		assert.NotSame(t, GetHttpClient(), client, "non-empty channel proxy must not return the direct client")
 		assertSocks5Proxied(t, client)
 	})
+
+	t.Run("invalid proxy URL returns an error", func(t *testing.T) {
+		useProxyConfigTestDB(t) // no global proxy
+
+		client, err := GetHttpClientWithProxySettings("ftp://proxy:1080", dto.ChannelSettings{})
+		require.Error(t, err)
+		assert.Nil(t, client)
+	})
+
+	t.Run("http proxy uses the http proxy client", func(t *testing.T) {
+		useProxyConfigTestDB(t) // no global proxy
+
+		client, err := GetHttpClientWithProxySettings("http://proxy.example:3128", dto.ChannelSettings{})
+		require.NoError(t, err)
+		assert.NotSame(t, GetHttpClient(), client, "http channel proxy must not return the direct client")
+		transport, ok := client.Transport.(*http.Transport)
+		require.True(t, ok, "expected a single *http.Transport for the default policy")
+		assert.NotNil(t, transport.Proxy, "http proxy client must use the http.Proxy function")
+	})
 }

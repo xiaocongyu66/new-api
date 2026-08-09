@@ -84,6 +84,16 @@ func TestGenerateProxyConfigDisabled(t *testing.T) {
 	assert.Equal(t, "proxy is disabled", resp.Message)
 }
 
+func TestGenerateProxyConfigInvalidJSON(t *testing.T) {
+	setupProxyConfigControllerTest(t)
+	require.NoError(t, model.DB.Create(&model.Option{Key: "proxy_config", Value: "not valid json"}).Error)
+
+	resp, _ := callGenerateProxyConfig(t)
+
+	assert.False(t, resp.Success)
+	assert.Equal(t, "invalid proxy config", resp.Message)
+}
+
 func TestGenerateProxyConfigVLESS(t *testing.T) {
 	setupProxyConfigControllerTest(t)
 	seedProxyConfig(t, ProxyConfigRequest{
@@ -120,6 +130,32 @@ func TestGenerateProxyConfigVLESS(t *testing.T) {
 	assert.Equal(t, "direct", config.Outbounds[1].Type)
 	assert.Equal(t, "proxy", config.Route.Final)
 	assert.Equal(t, 1080, config.Inbounds[0].ListenPort)
+}
+
+func TestGenerateProxyConfigVmess(t *testing.T) {
+	setupProxyConfigControllerTest(t)
+	seedProxyConfig(t, ProxyConfigRequest{
+		Outbound: OutboundConfig{
+			Type:       "vmess",
+			Server:     "vmess.example.com",
+			ServerPort: 443,
+			UUID:       "6f8b7c9a-1a2b-3c4d-5e6f-7a8b9c0d1e2f",
+			Network:    "tcp",
+		},
+		Enabled: true,
+	})
+
+	resp, _ := callGenerateProxyConfig(t)
+
+	require.True(t, resp.Success)
+	var config singBoxConfig
+	require.NoError(t, json.Unmarshal([]byte(resp.Data.ConfigJSON), &config))
+	require.Len(t, config.Outbounds, 2)
+	outbound := config.Outbounds[0]
+	assert.Equal(t, "vmess", outbound.Type)
+	assert.Equal(t, "vmess.example.com", outbound.Server)
+	assert.Equal(t, 443, outbound.ServerPort)
+	assert.Equal(t, "6f8b7c9a-1a2b-3c4d-5e6f-7a8b9c0d1e2f", outbound.UUID)
 }
 
 func TestGenerateProxyConfigTrojan(t *testing.T) {
@@ -173,4 +209,114 @@ func TestGenerateProxyConfigShadowsocks(t *testing.T) {
 	assert.Equal(t, 8388, outbound.ServerPort)
 	assert.Equal(t, "2022-blake3-aes-128-gcm", outbound.Method)
 	assert.Equal(t, "ss-password-456", outbound.Password)
+}
+
+func TestGenerateProxyConfigHysteria2(t *testing.T) {
+	setupProxyConfigControllerTest(t)
+	seedProxyConfig(t, ProxyConfigRequest{
+		Outbound: OutboundConfig{
+			Type:         "hysteria2",
+			Server:       "hysteria2.example.com",
+			ServerPort:   8443,
+			Password:     "hy2-password-789",
+			Masquerade:   "https://example.com",
+			Obfs:         "salamander",
+			ObfsPassword: "obfs-secret",
+			HopPorts:     "50000-60000",
+		},
+		Enabled: true,
+	})
+
+	resp, _ := callGenerateProxyConfig(t)
+
+	require.True(t, resp.Success)
+	var config singBoxConfig
+	require.NoError(t, json.Unmarshal([]byte(resp.Data.ConfigJSON), &config))
+	require.Len(t, config.Outbounds, 2)
+	outbound := config.Outbounds[0]
+	assert.Equal(t, "hysteria2", outbound.Type)
+	assert.Equal(t, "hysteria2.example.com", outbound.Server)
+	assert.Equal(t, 8443, outbound.ServerPort)
+	assert.Equal(t, "hy2-password-789", outbound.Password)
+	assert.Equal(t, "https://example.com", outbound.Masquerade)
+	assert.Equal(t, "salamander", outbound.Obfs)
+	assert.Equal(t, "obfs-secret", outbound.ObfsPassword)
+	assert.Equal(t, "50000-60000", outbound.HopPorts)
+}
+
+func TestGenerateProxyConfigTuic(t *testing.T) {
+	setupProxyConfigControllerTest(t)
+	seedProxyConfig(t, ProxyConfigRequest{
+		Outbound: OutboundConfig{
+			Type:       "tuic",
+			Server:     "tuic.example.com",
+			ServerPort: 443,
+			UUID:       "7f8b7c9a-1a2b-3c4d-5e6f-7a8b9c0d1e2f",
+			Password:   "tuic-password-123",
+		},
+		Enabled: true,
+	})
+
+	resp, _ := callGenerateProxyConfig(t)
+
+	require.True(t, resp.Success)
+	var config singBoxConfig
+	require.NoError(t, json.Unmarshal([]byte(resp.Data.ConfigJSON), &config))
+	require.Len(t, config.Outbounds, 2)
+	outbound := config.Outbounds[0]
+	assert.Equal(t, "tuic", outbound.Type)
+	assert.Equal(t, "tuic.example.com", outbound.Server)
+	assert.Equal(t, 443, outbound.ServerPort)
+	assert.Equal(t, "7f8b7c9a-1a2b-3c4d-5e6f-7a8b9c0d1e2f", outbound.UUID)
+	assert.Equal(t, "tuic-password-123", outbound.Password)
+}
+
+func TestGenerateProxyConfigSocks5(t *testing.T) {
+	setupProxyConfigControllerTest(t)
+	seedProxyConfig(t, ProxyConfigRequest{
+		Outbound: OutboundConfig{
+			Type:       "socks5",
+			Server:     "socks5.example.com",
+			ServerPort: 1080,
+			Password:   "socks5-password",
+		},
+		Enabled: true,
+	})
+
+	resp, _ := callGenerateProxyConfig(t)
+
+	require.True(t, resp.Success)
+	var config singBoxConfig
+	require.NoError(t, json.Unmarshal([]byte(resp.Data.ConfigJSON), &config))
+	require.Len(t, config.Outbounds, 2)
+	outbound := config.Outbounds[0]
+	assert.Equal(t, "socks5", outbound.Type)
+	assert.Equal(t, "socks5.example.com", outbound.Server)
+	assert.Equal(t, 1080, outbound.ServerPort)
+	assert.Equal(t, "socks5-password", outbound.Password)
+}
+
+func TestGenerateProxyConfigHTTP(t *testing.T) {
+	setupProxyConfigControllerTest(t)
+	seedProxyConfig(t, ProxyConfigRequest{
+		Outbound: OutboundConfig{
+			Type:       "http",
+			Server:     "http.example.com",
+			ServerPort: 3128,
+			Password:   "http-password",
+		},
+		Enabled: true,
+	})
+
+	resp, _ := callGenerateProxyConfig(t)
+
+	require.True(t, resp.Success)
+	var config singBoxConfig
+	require.NoError(t, json.Unmarshal([]byte(resp.Data.ConfigJSON), &config))
+	require.Len(t, config.Outbounds, 2)
+	outbound := config.Outbounds[0]
+	assert.Equal(t, "http", outbound.Type)
+	assert.Equal(t, "http.example.com", outbound.Server)
+	assert.Equal(t, 3128, outbound.ServerPort)
+	assert.Equal(t, "http-password", outbound.Password)
 }

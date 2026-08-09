@@ -63,4 +63,10 @@ func TestGetGlobalProxyURL(t *testing.T) {
 
 		assert.Empty(t, getGlobalProxyURL())
 	})
+	t.Run("returns empty string when proxy config is invalid JSON", func(t *testing.T) {
+		db := useProxyConfigTestDB(t)
+		require.NoError(t, db.Create(&model.Option{Key: "proxy_config", Value: "not valid json"}).Error)
+
+		assert.Empty(t, getGlobalProxyURL())
+	})
 }
