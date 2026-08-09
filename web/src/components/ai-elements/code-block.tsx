@@ -44,7 +44,6 @@ import {
   useState,
 } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { BundledLanguage } from 'shiki'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -60,7 +59,7 @@ type CodeBlockProps = HTMLAttributes<HTMLDivElement> & {
   defaultCollapsed?: boolean
   enableCollapse?: boolean
   filename?: string
-  language: BundledLanguage | string
+  language: string
   maxExpandedLines?: number
   /** @deprecated use collapsedLines for collapsed preview height. */
   maxCollapsedLines?: number
@@ -75,7 +74,7 @@ type CodeBlockEditorProps = Omit<
 > & {
   actions?: ReactNode
   ariaLabel: string
-  language: BundledLanguage | string
+  language: string
   onChange: (value: string) => void
   onKeyDown?: (event: globalThis.KeyboardEvent) => void
   rows?: number
@@ -86,7 +85,7 @@ type CodeBlockEditorProps = Omit<
 type CodeMirrorCodeViewProps = {
   ariaLabel: string
   autoFocus?: boolean
-  language: BundledLanguage | string
+  language: string
   onChange?: (value: string) => void
   onKeyDown?: (event: globalThis.KeyboardEvent) => void
   readOnly?: boolean
@@ -115,7 +114,7 @@ const CodeBlockContext = createContext<CodeBlockContextType>({
   language: 'plaintext',
 })
 
-const LANGUAGE_ALIASES: Record<string, BundledLanguage> = {
+const LANGUAGE_ALIASES: Record<string, string> = {
   csharp: 'c#',
   golang: 'go',
   js: 'javascript',
@@ -213,7 +212,7 @@ function getRequestedCodeLanguage(language?: string) {
   return LANGUAGE_ALIASES[normalized] ?? normalized
 }
 
-function getCodeMirrorLanguageExtension(language: BundledLanguage | string) {
+function getCodeMirrorLanguageExtension(language: string) {
   const requestedLanguage = getRequestedCodeLanguage(language)
   if (
     requestedLanguage === 'markdown' ||
@@ -264,7 +263,7 @@ function getCodeBlockMaxHeight(
 }
 
 function getCodeMirrorExtensions(options: {
-  language: BundledLanguage | string
+  language: string
   onKeyDown?: (event: globalThis.KeyboardEvent) => void
   readOnly: boolean
   showLineNumbers: boolean
