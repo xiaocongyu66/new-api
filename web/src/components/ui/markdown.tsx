@@ -17,11 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import DOMPurify from 'dompurify'
-import * as katex from 'katex'
-
-import 'katex/dist/katex.min.css'
+import type * as katex from 'katex'
 import { Marked, Renderer, type MarkedExtension, type Tokens } from 'marked'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { cn } from '@/lib/utils'
 
@@ -29,6 +27,42 @@ interface MarkdownProps {
   breaks?: boolean
   children: string
   className?: string
+}
+
+type KatexModule = typeof katex
+
+let loadedKatex: KatexModule | undefined
+let katexImportPromise: Promise<KatexModule> | undefined
+let activeKatex: KatexModule | undefined
+
+function hasMathSyntax(markdown: string): boolean {
+  return (
+    markdown.includes('$$') ||
+    /(?:^|\n) {0,3}(?:`{3,}|~{3,})[^\S\n]*(?:math|katex|latex)[^\S\n]*(?:\n|$)/i.test(
+      markdown
+    )
+  )
+}
+
+function loadKatex(): Promise<KatexModule> {
+  if (loadedKatex) {
+    return Promise.resolve(loadedKatex)
+  }
+
+  katexImportPromise ??= Promise.all([
+    import('katex'),
+    import('katex/dist/katex.min.css'),
+  ])
+    .then(([katex]) => {
+      loadedKatex = katex
+      return katex
+    })
+    .catch((error: unknown) => {
+      katexImportPromise = undefined
+      throw error
+    })
+
+  return katexImportPromise
 }
 
 const markdownOptions = {
@@ -181,6 +215,12 @@ function normalizeMathSource(source: string): string {
 }
 
 function renderMath(source: string, displayMode: boolean): string {
+  const katex = activeKatex
+
+  if (!katex) {
+    return escapeHtml(normalizeMathSource(source))
+  }
+
   return katex.renderToString(normalizeMathSource(source), {
     displayMode,
     output: 'htmlAndMathml',
@@ -734,21 +774,56 @@ function addExternalLinkAttributes(html: string): string {
   return template.innerHTML
 }
 
-function renderMarkdown(markdown: string, breaks = false): string {
-  const parsedHtml = markdownParser.parse(markdown, {
-    ...markdownOptions,
-    breaks,
-  })
-  const html = DOMPurify.sanitize(parsedHtml, sanitizeOptions)
+function renderMarkdown(
+  markdown: string,
+  breaks = false,
+  katex?: KatexModule
+): string {
+  const previousKatex = activeKatex
+  activeKatex = katex
 
-  return addExternalLinkAttributes(html)
+  try {
+    const parsedHtml = markdownParser.parse(markdown, {
+      ...markdownOptions,
+      breaks,
+    })
+    const html = DOMPurify.sanitize(parsedHtml, sanitizeOptions)
+
+    return addExternalLinkAttributes(html)
+  } finally {
+    activeKatex = previousKatex
+  }
 }
 
 export function Markdown(props: MarkdownProps) {
-  const html = useMemo(
-    () => renderMarkdown(props.children, props.breaks),
-    [props.breaks, props.children]
-  )
+  const needsMath = hasMathSyntax(props.children)
+  const [katex, setKatex] = useState<KatexModule | undefined>(loadedKatex)
+
+  useEffect(() => {
+    if (!needsMath || katex) {
+      return
+    }
+
+    let cancelled = false
+
+    void loadKatex().then((loadedKatexModule) => {
+      if (!cancelled) {
+        setKatex(loadedKatexModule)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [katex, needsMath])
+
+  const html = useMemo(() => {
+    if (needsMath && !katex) {
+      return ''
+    }
+
+    return renderMarkdown(props.children, props.breaks, needsMath ? katex : undefined)
+  }, [katex, needsMath, props.breaks, props.children])
 
   return (
     <div
