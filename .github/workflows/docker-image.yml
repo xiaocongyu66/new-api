@@ -1,18 +1,38 @@
 name: Docker Image CI
 
-于:
+on:
   push:
-    分支: [ "main" ]
+    branches: [ "main" ]
   pull_request:
-    分支: [ "main" ]
+    branches: [ "main" ]
+
+env:
+  DOCKER_BUILD_PLATFORM: linux/amd64
 
 jobs:
-
   build:
-
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v4
-    - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag my-image-name:$(date +%s)
+      - uses: actions/checkout@v4
+
+      - name: Pre-pull base images with retry
+        run: |
+          for img in $(grep '^FROM ' Dockerfile | awk '{print $2}'); do
+            for i in 1 2 3; do
+              echo "Pulling $img (attempt $i)..."
+              docker pull "$img" && break || {
+                echo "Attempt $i failed, retrying in 10s..."
+                sleep 10
+              }
+            done
+          done
+
+      - name: Build the Docker image
+        run: |
+          for i in 1 2 3; do
+            echo "Building (attempt $i)..."
+            docker build . --file Dockerfile --tag my-image-name:$(date +%s) && break || {
+              echo "Attempt $i failed, retrying in 10s..."
+              sleep 10
+            }
+          done
