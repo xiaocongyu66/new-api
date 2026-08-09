@@ -798,32 +798,39 @@ function renderMarkdown(
 export function Markdown(props: MarkdownProps) {
   const needsMath = hasMathSyntax(props.children)
   const [katex, setKatex] = useState<KatexModule | undefined>(loadedKatex)
+  const [katexLoadFailed, setKatexLoadFailed] = useState(false)
 
   useEffect(() => {
-    if (!needsMath || katex) {
+    if (!needsMath || katex || katexLoadFailed) {
       return
     }
 
     let cancelled = false
 
-    void loadKatex().then((loadedKatexModule) => {
-      if (!cancelled) {
-        setKatex(loadedKatexModule)
-      }
-    })
+    void loadKatex()
+      .then((loadedKatexModule) => {
+        if (!cancelled) {
+          setKatex(loadedKatexModule)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setKatexLoadFailed(true)
+        }
+      })
 
     return () => {
       cancelled = true
     }
-  }, [katex, needsMath])
+  }, [katex, katexLoadFailed, needsMath])
 
   const html = useMemo(() => {
-    if (needsMath && !katex) {
+    if (needsMath && !katex && !katexLoadFailed) {
       return ''
     }
 
     return renderMarkdown(props.children, props.breaks, needsMath ? katex : undefined)
-  }, [katex, needsMath, props.breaks, props.children])
+  }, [katex, katexLoadFailed, needsMath, props.breaks, props.children])
 
   return (
     <div
