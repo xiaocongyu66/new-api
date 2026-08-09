@@ -6,9 +6,6 @@ on:
   pull_request:
     branches: [ "main" ]
 
-env:
-  DOCKER_BUILD_PLATFORM: linux/amd64
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,21 +15,35 @@ jobs:
       - name: Pre-pull base images with retry
         run: |
           for img in $(grep '^FROM ' Dockerfile | awk '{print $2}'); do
+            ok=0
             for i in 1 2 3; do
               echo "Pulling $img (attempt $i)..."
-              docker pull "$img" && break || {
-                echo "Attempt $i failed, retrying in 10s..."
-                sleep 10
-              }
+              if docker pull "$img"; then
+                ok=1
+                break
+              fi
+              echo "Attempt $i failed, retrying in 10s..."
+              sleep 10
             done
+            if [ "$ok" -ne 1 ]; then
+              echo "Failed to pull $img after 3 attempts"
+              exit 1
+            fi
           done
 
       - name: Build the Docker image
         run: |
+          ok=0
           for i in 1 2 3; do
             echo "Building (attempt $i)..."
-            docker build . --file Dockerfile --tag my-image-name:$(date +%s) && break || {
-              echo "Attempt $i failed, retrying in 10s..."
-              sleep 10
-            }
+            if docker build . --file Dockerfile --tag my-image-name:$(date +%s); then
+              ok=1
+              break
+            fi
+            echo "Attempt $i failed, retrying in 10s..."
+            sleep 10
           done
+          if [ "$ok" -ne 1 ]; then
+            echo "Docker build failed after 3 attempts"
+            exit 1
+          fi
