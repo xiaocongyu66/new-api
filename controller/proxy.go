@@ -61,9 +61,9 @@ type logConfig struct {
 }
 
 type inboundConfig struct {
-	Type          string `json:"type"`
-	Tag           string `json:"tag"`
-	ListenOptions `json:",inline"`
+	Type string       `json:"type"`
+	Tag  string       `json:"tag"`
+	ListenOptions     `json:",inline"`
 }
 
 type ListenOptions struct {
@@ -72,9 +72,9 @@ type ListenOptions struct {
 }
 
 type outboundCfg struct {
-	Type    string `json:"type"`
-	Tag     string `json:"tag"`
-	Options `json:",inline,omitempty"`
+	Type string      `json:"type"`
+	Tag  string      `json:"tag"`
+	Options          `json:",inline,omitempty"`
 }
 
 type Options struct {
