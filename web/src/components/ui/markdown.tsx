@@ -824,13 +824,10 @@ export function Markdown(props: MarkdownProps) {
     }
   }, [katex, katexLoadFailed, needsMath])
 
-  const html = useMemo(() => {
-    if (needsMath && !katex && !katexLoadFailed) {
-      return ''
-    }
-
-    return renderMarkdown(props.children, props.breaks, needsMath ? katex : undefined)
-  }, [katex, katexLoadFailed, needsMath, props.breaks, props.children])
+  const html = useMemo(
+    () => renderMarkdown(props.children, props.breaks, needsMath ? katex : undefined),
+    [katex, needsMath, props.breaks, props.children]
+  )
 
   return (
     <div
