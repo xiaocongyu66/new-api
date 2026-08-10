@@ -97,7 +97,5 @@ export function renderKatex(
 }
 
 export function sanitizeKatexHtml(html: string): string {
-  // DOMPurify drops the root element's attributes; the wrapper div is
-  // consumed as the root so the KaTeX span keeps its `katex` class.
-  return DOMPurify.sanitize(`<div>${html}</div>`, sanitizeOptions)
+  return DOMPurify.sanitize(html, sanitizeOptions)
 }

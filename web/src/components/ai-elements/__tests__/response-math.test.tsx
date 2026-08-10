@@ -84,7 +84,7 @@ describe('Response math rendering', () => {
     const rendered = await renderResponse(
       'Inline $x^2$\n\n$$\nE = mc^2\n$$\n\n```math\nf(x) = x^2\n```'
     )
-    assert.ok(rendered.container.querySelectorAll('.katex').length >= 3)
+    assert.ok(rendered.container.querySelectorAll('.katex-html').length >= 3)
 
     await act(async () => rendered.root.unmount())
     rendered.container.remove()
