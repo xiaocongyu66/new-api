@@ -17,11 +17,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import DOMPurify from 'dompurify'
-import type * as katex from 'katex'
 import { Marked, Renderer, type MarkedExtension, type Tokens } from 'marked'
 import { useEffect, useMemo, useState } from 'react'
 
 import { cn } from '@/lib/utils'
+
+import {
+  getLoadedKatex,
+  loadKatex,
+  renderKatex,
+  sanitizeKatexHtml,
+  type KatexModule,
+} from './katex'
 
 interface MarkdownProps {
   breaks?: boolean
@@ -29,10 +36,6 @@ interface MarkdownProps {
   className?: string
 }
 
-type KatexModule = typeof katex
-
-let loadedKatex: KatexModule | undefined
-let katexImportPromise: Promise<KatexModule> | undefined
 let activeKatex: KatexModule | undefined
 
 function hasMathSyntax(markdown: string): boolean {
@@ -42,27 +45,6 @@ function hasMathSyntax(markdown: string): boolean {
       markdown
     )
   )
-}
-
-function loadKatex(): Promise<KatexModule> {
-  if (loadedKatex) {
-    return Promise.resolve(loadedKatex)
-  }
-
-  katexImportPromise ??= Promise.all([
-    import('katex'),
-    import('katex/dist/katex.min.css'),
-  ])
-    .then(([katex]) => {
-      loadedKatex = katex
-      return katex
-    })
-    .catch((error: unknown) => {
-      katexImportPromise = undefined
-      throw error
-    })
-
-  return katexImportPromise
 }
 
 const markdownOptions = {
@@ -221,11 +203,9 @@ function renderMath(source: string, displayMode: boolean): string {
     return escapeHtml(normalizeMathSource(source))
   }
 
-  return katex.renderToString(normalizeMathSource(source), {
-    displayMode,
-    output: 'htmlAndMathml',
-    throwOnError: false,
-  })
+  return sanitizeKatexHtml(
+    renderKatex(normalizeMathSource(source), displayMode, katex)
+  )
 }
 
 function replaceEmojiShortcodes(value: string): string {
@@ -797,7 +777,7 @@ function renderMarkdown(
 
 export function Markdown(props: MarkdownProps) {
   const needsMath = hasMathSyntax(props.children)
-  const [katex, setKatex] = useState<KatexModule | undefined>(loadedKatex)
+  const [katex, setKatex] = useState<KatexModule | undefined>(getLoadedKatex)
   const [katexLoadFailed, setKatexLoadFailed] = useState(false)
 
   useEffect(() => {
@@ -825,7 +805,12 @@ export function Markdown(props: MarkdownProps) {
   }, [katex, katexLoadFailed, needsMath])
 
   const html = useMemo(
-    () => renderMarkdown(props.children, props.breaks, needsMath ? katex : undefined),
+    () =>
+      renderMarkdown(
+        props.children,
+        props.breaks,
+        needsMath ? katex : undefined
+      ),
     [katex, needsMath, props.breaks, props.children]
   )
 
