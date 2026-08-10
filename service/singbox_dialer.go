@@ -300,19 +300,24 @@ func outboundFingerprint() (string, json.RawMessage) {
 	if err := model.DB.Where("key = ?", "proxy_config").First(&opt).Error; err != nil {
 		return "", nil
 	}
-	var cfg ProxyConfig
-	if err := common.Unmarshal([]byte(opt.Value), &cfg); err != nil {
+	// Extract the outbound field as raw JSON directly from the persisted
+	// Option value. The controller stores transport headers under
+	// "transport.headers"; round-tripping through the service's OutboundConfig
+	// struct would drop them (it only models a flat Host), silently losing
+	// WebSocket/gRPC transport settings when the dialer rebuilds.
+	var enabled bool
+	var outboundRaw json.RawMessage
+	if err := common.Unmarshal([]byte(opt.Value), &struct {
+		Enabled  bool            `json:"enabled"`
+		Outbound json.RawMessage `json:"outbound"`
+	}{Enabled: enabled, Outbound: outboundRaw}); err != nil {
 		return "", nil
 	}
-	if !cfg.Enabled {
+	if !enabled {
 		return "", nil
 	}
-	raw, err := common.Marshal(cfg.Outbound)
-	if err != nil {
-		return "", nil
-	}
-	h := sha256.Sum256(raw)
-	return fmt.Sprintf("%x", h[:16]), raw
+	h := sha256.Sum256(outboundRaw)
+	return fmt.Sprintf("%x", h[:16]), outboundRaw
 }
 
 type singBoxDialerCache struct {
