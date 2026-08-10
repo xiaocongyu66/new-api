@@ -28,7 +28,6 @@ import (
 )
 
 func newProxyBoxContext(ctx context.Context) context.Context {
-	registerUTLS()
 	return box.Context(
 		ctx,
 		inbound.NewRegistry(),
