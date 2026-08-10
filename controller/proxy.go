@@ -62,9 +62,9 @@ type logConfig struct {
 }
 
 type inboundConfig struct {
-	Type string       `json:"type"`
-	Tag  string       `json:"tag"`
-	ListenOptions     `json:",inline"`
+	Type          string `json:"type"`
+	Tag           string `json:"tag"`
+	ListenOptions `json:",inline"`
 }
 
 type ListenOptions struct {
@@ -73,9 +73,9 @@ type ListenOptions struct {
 }
 
 type outboundCfg struct {
-	Type string      `json:"type"`
-	Tag  string      `json:"tag"`
-	Options          `json:",inline,omitempty"`
+	Type    string `json:"type"`
+	Tag     string `json:"tag"`
+	Options `json:",inline,omitempty"`
 }
 
 type Options struct {
@@ -151,7 +151,7 @@ func UpdateProxyConfig(c *gin.Context) {
 			Path:        req.Outbound.TransportPath,
 			Headers:     headers,
 			ServiceName: req.Outbound.TransportService,
-	}
+		}
 	}
 	// Validate the outbound against an in-process sing-box build before
 	// persisting. A failed validation prevents the Option update.

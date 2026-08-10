@@ -93,27 +93,27 @@ func (d *SingBoxDialer) Close() error {
 }
 
 type outboundConfigFields struct {
-	Type           string `json:"type"`
-	Server         string `json:"server"`
-	ServerPort     int    `json:"server_port"`
-	UUID           string `json:"uuid,omitempty"`
-	Password       string `json:"password,omitempty"`
-	Flow           string `json:"flow,omitempty"`
-	Encryption     string `json:"encryption,omitempty"`
-	Method         string `json:"method,omitempty"`
-	Network        string `json:"network,omitempty"`
-	PacketEncoding string `json:"packet_encoding,omitempty"`
-	Masquerade     string `json:"masquerade,omitempty"`
-	Obfs           string `json:"obfs,omitempty"`
-	ObfsPassword   string `json:"obfs_password,omitempty"`
-	HopPorts       string `json:"hop_ports,omitempty"`
-	TLSEnabled     bool   `json:"tls_enabled,omitempty"`
-	TLSServerName  string `json:"tls_server_name,omitempty"`
-	TransportType  string `json:"transport_type,omitempty"`
-	TransportPath  string `json:"transport_path,omitempty"`
-	TransportHost  string `json:"transport_host,omitempty"`
+	Type             string `json:"type"`
+	Server           string `json:"server"`
+	ServerPort       int    `json:"server_port"`
+	UUID             string `json:"uuid,omitempty"`
+	Password         string `json:"password,omitempty"`
+	Flow             string `json:"flow,omitempty"`
+	Encryption       string `json:"encryption,omitempty"`
+	Method           string `json:"method,omitempty"`
+	Network          string `json:"network,omitempty"`
+	PacketEncoding   string `json:"packet_encoding,omitempty"`
+	Masquerade       string `json:"masquerade,omitempty"`
+	Obfs             string `json:"obfs,omitempty"`
+	ObfsPassword     string `json:"obfs_password,omitempty"`
+	HopPorts         string `json:"hop_ports,omitempty"`
+	TLSEnabled       bool   `json:"tls_enabled,omitempty"`
+	TLSServerName    string `json:"tls_server_name,omitempty"`
+	TransportType    string `json:"transport_type,omitempty"`
+	TransportPath    string `json:"transport_path,omitempty"`
+	TransportHost    string `json:"transport_host,omitempty"`
 	TransportService string `json:"transport_service_name,omitempty"`
-	Transport      *struct {
+	Transport        *struct {
 		Type        string            `json:"type,omitempty"`
 		Path        string            `json:"path,omitempty"`
 		Headers     map[string]string `json:"headers,omitempty"`
