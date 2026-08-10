@@ -1144,21 +1144,33 @@ func ManageUser(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgUserAdminCannotPromote)
 			return
 		}
-		if user.Role >= common.RoleAdminUser {
-			common.ApiErrorI18n(c, i18n.MsgUserAlreadyAdmin)
+		switch user.Role {
+		case common.RoleCommonUser:
+			user.Role = common.RoleAdminUser
+		case common.RoleAdminUser:
+			user.Role = common.RoleRootUser
+		default:
+			common.ApiErrorI18n(c, i18n.MsgUserAlreadyRoot)
 			return
 		}
-		user.Role = common.RoleAdminUser
 	case "demote":
-		if user.Role == common.RoleRootUser {
-			common.ApiErrorI18n(c, i18n.MsgUserCannotDemoteRootUser)
+		if myRole != common.RoleRootUser {
+			common.ApiErrorI18n(c, i18n.MsgUserAdminCannotPromote)
 			return
 		}
-		if user.Role == common.RoleCommonUser {
+		if user.Role == common.RoleRootUser && user.Id == c.GetInt("id") {
+			common.ApiErrorI18n(c, i18n.MsgUserCannotDemoteSelf)
+			return
+		}
+		switch user.Role {
+		case common.RoleRootUser:
+			user.Role = common.RoleAdminUser
+		case common.RoleAdminUser:
+			user.Role = common.RoleCommonUser
+		default:
 			common.ApiErrorI18n(c, i18n.MsgUserAlreadyCommon)
 			return
 		}
-		user.Role = common.RoleCommonUser
 	case "add_quota":
 		switch req.Mode {
 		case "add":
