@@ -89,3 +89,34 @@ func (node ProxyNode) Public() ProxyNodePublic {
 		UpdatedAt:       node.UpdatedAt,
 	}
 }
+
+func GetProxyNodesForChannel(channel *Channel) ([]*ProxyNode, error) {
+	if channel == nil {
+		return nil, fmt.Errorf("channel is nil")
+	}
+	var nodes []*ProxyNode
+	query := DB.Where("enabled = ?", true)
+	if err := query.Where("scope_type = ? AND scope_value = ?", ProxyNodeScopeChannel, strconv.Itoa(channel.Id)).Find(&nodes).Error; err != nil {
+		return nil, err
+	}
+	if len(nodes) > 0 {
+		return nodes, nil
+	}
+	for _, group := range strings.Split(channel.Group, ",") {
+		group = strings.TrimSpace(group)
+		if group == "" {
+			continue
+		}
+		nodes = nil
+		if err := query.Where("scope_type = ? AND scope_value = ?", ProxyNodeScopeGroup, group).Find(&nodes).Error; err != nil {
+			return nil, err
+		}
+		if len(nodes) > 0 {
+			return nodes, nil
+		}
+	}
+	if err := query.Where("scope_type = ? AND scope_value = ?", ProxyNodeScopeAll, "").Find(&nodes).Error; err != nil {
+		return nil, err
+	}
+	return nodes, nil
+}

@@ -5,8 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestProxyNodeScopeNormalization(t *testing.T) {
@@ -74,4 +76,35 @@ func TestProxyNodePersistenceFields(t *testing.T) {
 	node := ProxyNode{LastProbeAt: &lastProbe, CooldownUntil: &lastProbe}
 	assert.Equal(t, &lastProbe, node.LastProbeAt)
 	assert.Equal(t, &lastProbe, node.CooldownUntil)
+}
+
+func TestGetProxyNodesForChannelUsesChannelGroupAllPriority(t *testing.T) {
+	previousDB := DB
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&ProxyNode{}))
+	DB = db
+	t.Cleanup(func() { DB = previousDB })
+
+	require.NoError(t, db.Create(&ProxyNode{Name: "all", Enabled: true, ScopeType: ProxyNodeScopeAll}).Error)
+	require.NoError(t, db.Create(&ProxyNode{Name: "group", Enabled: true, ScopeType: ProxyNodeScopeGroup, ScopeValue: "premium"}).Error)
+	require.NoError(t, db.Create(&ProxyNode{Name: "channel", Enabled: true, ScopeType: ProxyNodeScopeChannel, ScopeValue: "42"}).Error)
+
+	channel := &Channel{Id: 42, Group: "premium,beta"}
+	nodes, err := GetProxyNodesForChannel(channel)
+	require.NoError(t, err)
+	require.Len(t, nodes, 1)
+	assert.Equal(t, "channel", nodes[0].Name)
+
+	require.NoError(t, db.Where("name = ?", "channel").Delete(&ProxyNode{}).Error)
+	nodes, err = GetProxyNodesForChannel(channel)
+	require.NoError(t, err)
+	require.Len(t, nodes, 1)
+	assert.Equal(t, "group", nodes[0].Name)
+
+	require.NoError(t, db.Where("name = ?", "group").Delete(&ProxyNode{}).Error)
+	nodes, err = GetProxyNodesForChannel(channel)
+	require.NoError(t, err)
+	require.Len(t, nodes, 1)
+	assert.Equal(t, "all", nodes[0].Name)
 }
