@@ -10,9 +10,9 @@
 
 | Secret 名称 | 用途 | 示例占位格式 |
 |---|---|---|
-| `KUBE_CONFIG_B64` | base64 编码的 kubeconfig，供 runner 访问集群 API server | `base64 -w0 < ~/.kube/config` 的输出 |
-| `SQL_DSN` | 主数据库连接串（PostgreSQL/MySQL） | `postgresql://<user>:<pass>@<db-host>:5432/<db>` |
-| `REDIS_CONN_STRING` | Redis 端点连接串 | `redis://:<pass>@<redis-host>:6379` |
+| `KUBE_CONFIG_B64` | base64 编码的 kubeconfig，供 runner 访问集群 API server | `base64 -w0 < ~/.kube/config` 的输出；k3s 在 `/etc/rancher/k3s/k3s.yaml` |
+| `SQL_DSN` | 主数据库连接串。PG/Redis 跑在集群内时用集群 DNS 名，不用公网 IP | `postgresql://<user>:<pass>@postgres:5432/<db>` |
+| `REDIS_CONN_STRING` | Redis 端点连接串。集群内用 `redis` 这个 DNS 名 | `redis://:<pass>@redis:6379/0` |
 | `SESSION_SECRET` | 会话与 Token 摘要密钥，所有 Pod 必须一致 | 高强度随机字符串 |
 | `CRYPTO_SECRET` | 缓存键 HMAC 密钥，共享 Redis 时所有 Pod 一致 | 高强度随机字符串 |
 | `POSTGRES_DB` | 自建 PG 数据库名 | `<db-name>` |
@@ -79,19 +79,83 @@ kubectl rollout restart deployment/new-api-worker
 
 轮换 `SESSION_SECRET` 会使所有已登录会话失效，属预期行为。
 
-## 4. runner 可达集群的两种方式
+## 4. runner 部署（k3s 实操）
 
-workflow 通过 `KUBE_CONFIG_B64` 里的 kubeconfig 连接集群 API server。runner 必须能网络到达该 API server，二选一：
+`deploy.yml` 固定使用 **self-hosted runner**（`runs-on: [self-hosted, k8s]`），因为自建集群的 API server 在内网，GitHub 托管 runner 无法直连。runner 是**装在你服务器上的代理程序**，主动连出去到 GitHub 拉任务——GitHub 不反向连你的服务器，因此**不需要把服务器 IP/账号/密码放进 GitHub**。
 
-| 方式 | 适用场景 | 代价 | 注意 |
-|---|---|---|---|
-| GitHub 托管 runner（`runs-on: ubuntu-latest`） | 集群 API server 有公网可达入口 | 无需自建机器 | API server 需暴露公网端点，应配合 IP 白名单 / mTLS；kubeconfig 里的 server 地址必须是公网可达的 |
-| self-hosted runner | 集群在内网、API server 不公网暴露 | 需在能访问集群的机器上部署 runner | 把 `runs-on` 换成自托管标签（如 `runs-on: [self-hosted, k8s]`）；runner 机器与集群同内网即可，kubeconfig 用内网地址 |
+### 4.1 安装 k3s 集群
 
-对于「全是内网从属服务器、不想暴露 API server」的部署，推荐 **self-hosted runner**：在其中一台能 `kubectl` 到集群的服务器上注册 runner，workflow 就地执行，凭证不出内网。
+选一台配置较好的服务器做 k3s server，其余做 agent：
 
-## 5. 安全边界
+```bash
+# server 节点（如 136.0.34.25）
+curl -sfL https://get.k3s.io | sh -s - --disable traefik
+# --disable traefik：入口用 Nginx Ingress Controller，避免两套入口冲突
+
+# 记下 node token，供 agent 节点加入用
+sudo cat /var/lib/rancher/k3s/server/node-token
+
+# agent 节点（如 156.254.6.210）
+curl -sfL https://get.k3s.io | K3S_URL=https://<server-ip>:6443 \
+  K3S_TOKEN=<node-token> sh -
+```
+
+验证：
+
+```bash
+kubectl get nodes   # 所有节点 Ready
+```
+
+### 4.2 注册 self-hosted runner
+
+在**能 kubectl 到集群的节点**（通常是 k3s server 节点）上注册 runner：
+
+1. 打开仓库 `Settings → Actions → Runners → New self-hosted runner`
+2. 选 Linux，按页面提示在服务器上执行下载、配置、启动
+3. 注册时标签填 `k8s`（与 `deploy.yml` 的 `runs-on: [self-hosted, k8s]` 匹配）
+
+runner 运行后，在 `Settings → Actions → Runners` 页面能看到它处于 Idle 状态。
+
+### 4.3 生成 KUBE_CONFIG_B64
+
+在 runner 所在节点执行：
+
+```bash
+base64 -w0 < /etc/rancher/k3s/k3s.yaml
+```
+
+把输出整段粘贴为 `KUBE_CONFIG_B64` 的值。k3s 的 kubeconfig 里 server 地址是 `https://127.0.0.1:6443`，runner 与 API server 同机时可直接使用；若 runner 与集群不同机，需把 server 地址改成集群可达的 IP 后再 base64。
+
+### 4.4 数据层连接串用集群 DNS 名
+
+PG/Redis 由 `deploy/k8s/postgres.yaml` / `redis.yaml` 部署在集群内时，Pod 之间通过集群 DNS 名互访，`SQL_DSN` 与 `REDIS_CONN_STRING` 必须写成：
+
+| Secret | 值 |
+|---|---|
+| `SQL_DSN` | `postgresql://<POSTGRES_USER>:<POSTGRES_PASSWORD>@postgres:5432/<POSTGRES_DB>` |
+| `REDIS_CONN_STRING` | `redis://:<REDIS_PASSWORD>@redis:6379/0` |
+
+`postgres` 和 `redis` 是 StatefulSet 的集群内 DNS 名，不要填节点 IP 或公网地址。
+
+## 5. CI/CD 链路：发布镜像后自动部署
+
+两条 workflow 配合成全自动链路：
+
+```
+git tag v0.11.0 && git push --tags
+  → docker-build.yml（GitHub 托管 runner）
+      → 构建 amd64/arm64 镜像 → 推送到 ghcr.io/xiaocongyu66/new-api:v0.11.0
+      → 创建多架构 manifest → 签名
+      → gh workflow run deploy.yml（最后一步）
+  → deploy.yml（self-hosted runner）
+      → 注入 Secret → apply 数据层/应用层 → kubectl set image 切到 v0.11.0
+```
+
+`deploy.yml` 的 `image_tag` 输入用于指定部署哪个镜像 tag（默认 `latest`）。手动触发时也可直接填 tag 部署指定版本。
+
+## 6. 安全边界
 
 - 不要把 kubeconfig、连接串、密码提交进仓库任何文件（包括示例文件、注释、测试夹具）。
 - 不要在 workflow 里 `echo` 或 `cat` 出 Secret 值用于调试；如需排查，改用 `kubectl get secret new-api-secrets -o jsonpath=...` 在集群侧本地查看。
 - `KUBE_CONFIG_B64` 等价于集群管理员凭证，泄露即集群失守；应使用最小权限的 ServiceAccount kubeconfig 而非 admin kubeconfig（后续可在 #76 runbook 细化 RBAC）。
+
