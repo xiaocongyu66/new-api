@@ -8,13 +8,15 @@ name: Setup k3s cluster and self-hosted runner
 #   SERVER1_USER       SSH 用户名（root 或具有 sudo 的用户）
 #   SERVER2_IP         k3s agent 节点 IP（如 156.254.6.210）
 #   SERVER2_USER       SSH 用户名
-#   SSH_PASSWORD       服务器 SSH 登录密码（workflow 自动装公钥后不再需要）
+#   SERVER_SSH_KEY     SSH 私钥内容（ed25519，用户本地生成）
+#   SERVER_SSH_PUB     SSH 公钥内容（与私钥配对）
+#   SSH1_PASSWORD      服务器1 SSH 登录密码（仅当密钥连不上时用于装公钥）
+#   SSH2_PASSWORD      服务器2 SSH 登录密码（同上）
 #
-# 流程：
-#   1. 在 GitHub 托管 runner 上生成 ed25519 密钥对
-#   2. 用 sshpass + 密码登录两台服务器，安装公钥到 authorized_keys
-#   3. 后续用私钥自动登录，无需密码
-#   4. 装 k3s server / agent / nginx ingress / self-hosted runner
+# 连接逻辑：
+#   1. 优先用密钥认证（SERVER_SSH_KEY）直接连接
+#   2. 连不上才用对应密码（SSH1/SSH2_PASSWORD）安装公钥，之后走密钥认证
+#   3. 全部步骤完成后，密码不再需要
 
 on:
   workflow_dispatch:
@@ -35,37 +37,61 @@ jobs:
   setup:
     runs-on: ubuntu-latest
     steps:
-      - name: Install sshpass
-        run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
-
-      - name: Generate SSH key pair
+      - name: Prepare SSH keys from secrets
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519
-          echo "ed25519 key pair generated"
-
-      - name: Install public key on server1 (via password)
-        run: |
+          echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo "${{ secrets.SERVER_SSH_PUB }}" > ~/.ssh/id_ed25519.pub
+          chmod 644 ~/.ssh/id_ed25519.pub
           ssh-keyscan -H ${{ inputs.server1_ip }} >> ~/.ssh/known_hosts 2>/dev/null
-          sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh \
-            -o StrictHostKeyChecking=no \
+          ssh-keyscan -H ${{ inputs.server2_ip }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Check SSH key auth (server1)
+        id: auth1
+        run: |
+          if ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+            ${{ secrets.SERVER1_USER }}@${{ inputs.server1_ip }} 'true' 2>/dev/null; then
+            echo "ok=true" >> $GITHUB_OUTPUT
+            echo "server1: key auth OK"
+          else
+            echo "ok=false" >> $GITHUB_OUTPUT
+            echo "server1: key auth FAILED, will use password"
+          fi
+
+      - name: Check SSH key auth (server2)
+        id: auth2
+        run: |
+          if ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+            ${{ secrets.SERVER2_USER }}@${{ inputs.server2_ip }} 'true' 2>/dev/null; then
+            echo "ok=true" >> $GITHUB_OUTPUT
+            echo "server2: key auth OK"
+          else
+            echo "ok=false" >> $GITHUB_OUTPUT
+            echo "server2: key auth FAILED, will use password"
+          fi
+
+      - name: Install public key on server1 (password fallback)
+        if: steps.auth1.outputs.ok == 'false'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+          sshpass -p "${{ secrets.SSH1_PASSWORD }}" ssh -o StrictHostKeyChecking=no \
             ${{ secrets.SERVER1_USER }}@${{ inputs.server1_ip }} \
             "mkdir -p ~/.ssh && chmod 700 ~/.ssh"
-          cat ~/.ssh/id_ed25519.pub | sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh \
+          cat ~/.ssh/id_ed25519.pub | sshpass -p "${{ secrets.SSH1_PASSWORD }}" ssh \
             -o StrictHostKeyChecking=no \
             ${{ secrets.SERVER1_USER }}@${{ inputs.server1_ip }} \
             "cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
           echo "public key installed on server1"
 
-      - name: Install public key on server2 (via password)
+      - name: Install public key on server2 (password fallback)
+        if: steps.auth2.outputs.ok == 'false'
         run: |
-          ssh-keyscan -H ${{ inputs.server2_ip }} >> ~/.ssh/known_hosts 2>/dev/null
-          sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh \
-            -o StrictHostKeyChecking=no \
+          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+          sshpass -p "${{ secrets.SSH2_PASSWORD }}" ssh -o StrictHostKeyChecking=no \
             ${{ secrets.SERVER2_USER }}@${{ inputs.server2_ip }} \
             "mkdir -p ~/.ssh && chmod 700 ~/.ssh"
-          cat ~/.ssh/id_ed25519.pub | sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh \
+          cat ~/.ssh/id_ed25519.pub | sshpass -p "${{ secrets.SSH2_PASSWORD }}" ssh \
             -o StrictHostKeyChecking=no \
             ${{ secrets.SERVER2_USER }}@${{ inputs.server2_ip }} \
             "cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
