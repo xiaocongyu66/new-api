@@ -83,30 +83,15 @@ kubectl rollout restart deployment/new-api-worker
 
 `setup-k3s.yml` workflow（`Setup k3s cluster and self-hosted runner`）通过 GitHub 托管 runner 自动 SSH 到你的服务器，完成 k3s 安装、Nginx Ingress Controller 部署、self-hosted runner 注册。你需要做的是：
 
-### 4.1 生成 SSH 密钥（一次性的，在你自己电脑上）
+### 4.1 配置 SSH 密码 Secret（仅 1 个）
 
-```bash
-ssh-keygen -t ed25519 -N "" -f ~/.ssh/k3s_deploy
-ssh-copy-id -i ~/.ssh/k3s_deploy.pub root@<服务器1_IP>
-ssh-copy-id -i ~/.ssh/k3s_deploy.pub root@<服务器2_IP>
-```
-
-如果你不用 root 用户，把 `root@` 换成你的用户名，确保该用户有 `sudo` 免密权限。
-
-### 4.2 配置 SSH 相关 GitHub Secrets（6 个）
-
-在仓库 `Settings → Secrets and variables → Actions` 添加：
+在仓库 `Settings → Secrets and variables → Actions → New repository secret` 添加：
 
 | Secret | 值 |
 |--------|-----|
-| `SERVER1_IP` | `136.0.34.25`（k3s server 节点） |
-| `SERVER1_USER` | `root`（或你的用户名） |
-| `SERVER1_SSH_KEY` | `~/.ssh/k3s_deploy` 文件内容（`cat ~/.ssh/k3s_deploy`） |
-| `SERVER2_IP` | `156.254.6.210`（k3s agent 节点） |
-| `SERVER2_USER` | `root`（或你的用户名） |
-| `SERVER2_SSH_KEY` | 同上（或不同密钥，但必须能 SSH 登录） |
+| `SSH_PASSWORD` | 你的服务器 SSH 登录密码（workflow 装完公钥后不再需要） |
 
-### 4.3 触发 Setup k3s cluster workflow
+### 4.2 触发 Setup k3s cluster workflow
 
 1. 在 Actions 页面找到 `Setup k3s cluster and self-hosted runner`
 2. 点 Run workflow，确认两台服务器 IP 正确
@@ -115,16 +100,33 @@ ssh-copy-id -i ~/.ssh/k3s_deploy.pub root@<服务器2_IP>
 workflow 自动完成：
 
 ```
-SSH 到 136.0.34.25 → 安装 k3s server（--disable traefik）
-  → 读取 node token → SSH 到 156.254.6.210 → 安装 k3s agent
+生成 ed25519 密钥对
+  → sshpass + 密码登录服务器1 → 安装公钥到 authorized_keys
+  → sshpass + 密码登录服务器2 → 安装公钥到 authorized_keys
+  → 验证密钥登录成功（不再需要密码）
+  → 安装 k3s server（--disable traefik）
+  → 读取 node token → 安装 k3s agent
   → 安装 Nginx Ingress Controller（baremetal NodePort 模式）
-  → 注册 self-hosted runner（标签 k8s，部署在 k3s server 节点）
+  → 注册 self-hosted runner（标签 k8s）
+  → 导出 KUBE_CONFIG_B64 到 artifact
   → kubectl get nodes 验证两台 Ready
+```
+
+**注意**：密码仅用于第一步装公钥，之后 workflow 用密钥自动登录，密码不会泄露到日志（GitHub 自动脱敏 `${{ secrets.SSH_PASSWORD }}`）。
+
+### 4.3 补 KUBE_CONFIG_B64
+
+workflow 跑完后，在 Actions 页面找到该次运行的 Summary，下方有 `kubeconfig-b64` artifact。下载后打开 `kubeconfig_b64.txt`，内容粘贴为 `KUBE_CONFIG_B64` secret。
+
+或者手动在服务器上获取：
+
+```bash
+base64 -w0 < /etc/rancher/k3s/k3s.yaml
 ```
 
 ### 4.4 手动安装（备选）
 
-如果自动安装不适用，跳过 `SERVER1_*` / `SERVER2_*` secrets，按以下步骤手动操作：
+如果自动安装不适用，手动操作：
 
 ```bash
 # server 节点（136.0.34.25）
@@ -142,17 +144,7 @@ kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main
 # 标签填 k8s
 ```
 
-### 4.5 生成 KUBE_CONFIG_B64
-
-安装完成后，在 runner 所在节点（k3s server）执行：
-
-```bash
-base64 -w0 < /etc/rancher/k3s/k3s.yaml
-```
-
-把输出整段粘贴为 `KUBE_CONFIG_B64` 的值。
-
-### 4.6 数据层连接串用集群 DNS 名
+### 4.5 数据层连接串用集群 DNS 名
 
 PG/Redis 由 `deploy/k8s/postgres.yaml` / `redis.yaml` 部署在集群内时，`SQL_DSN` 与 `REDIS_CONN_STRING` 必须写成：
 
@@ -163,7 +155,7 @@ PG/Redis 由 `deploy/k8s/postgres.yaml` / `redis.yaml` 部署在集群内时，`
 
 `postgres` 和 `redis` 是 StatefulSet 的集群内 DNS 名，不要填节点 IP 或公网地址。
 
-### 4.7 临时测试：不用域名，直接用 IP + NodePort
+### 4.6 临时测试：不用域名，直接用 IP + NodePort
 
 部署成功后，不需要立即配置域名。Nginx Ingress Controller 的 baremetal 模式默认暴露 NodePort 端口：
 
