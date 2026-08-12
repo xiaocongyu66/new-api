@@ -38,6 +38,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 import {
   clearProxyNodeErrors,
@@ -351,6 +352,7 @@ export function ProxyNodeView() {
                     </th>
                     {[
                       "Name",
+                      "Enabled",
                       "Scope",
                       "Protocol",
                       "Health",
@@ -490,7 +492,7 @@ function ProxyNodeRow(props: {
     scope = t("Group: {{name}}", { name: node.scope_value });
   }
   return (
-    <tr className="border-b last:border-0">
+    <tr className={cn("border-b last:border-0", !node.enabled && "opacity-50")}>
       <td className="p-2">
         <Checkbox
           checked={props.selected}
@@ -510,6 +512,22 @@ function ProxyNodeRow(props: {
               : ""}
           </div>
         )}
+      </td>
+      <td className="p-2">
+        <span
+          className={cn(
+            "inline-flex items-center gap-1 text-xs",
+            node.enabled ? "text-primary" : "text-muted-foreground",
+          )}
+        >
+          <span
+            className={cn(
+              "inline-block size-2 rounded-full",
+              node.enabled ? "bg-primary" : "bg-muted-foreground/40",
+            )}
+          />
+          {node.enabled ? t("Enabled") : t("Disabled")}
+        </span>
       </td>
       <td className="p-2">{scope}</td>
       <td className="p-2">{node.protocol}</td>
