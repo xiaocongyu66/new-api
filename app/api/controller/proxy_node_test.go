@@ -168,3 +168,25 @@ func TestGetProxyNodeReportCountsHealthyNodesRegardlessOfEnabled(t *testing.T) {
 	assert.Equal(t, int64(1), report.Enabled)
 	assert.Equal(t, int64(1), report.Healthy, "healthy must include disabled nodes above the threshold")
 }
+
+func TestGetProxyNodeReturnsEditableLinkOnlyFromDetailEndpoint(t *testing.T) {
+	setupProxyNodeControllerTest(t)
+	node, err := service.CreateProxyNode(service.ProxyNodeInput{
+		Name: "edge", Enabled: true, Proxy: "http://user:pass@example.com:8080", ScopeType: model.ProxyNodeScopeAll,
+	})
+	require.NoError(t, err)
+
+	ctx, recorder := proxyNodeContext(t, http.MethodGet, "/api/proxy/nodes/1", "")
+	ctx.Params = gin.Params{{Key: "id", Value: fmt.Sprint(node.ID)}}
+	GetProxyNode(ctx)
+
+	response := decodeProxyNodeResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	var detail struct {
+		Node  model.ProxyNodePublic `json:"node"`
+		Proxy string                `json:"proxy"`
+	}
+	require.NoError(t, common.Unmarshal(response.Data, &detail))
+	assert.Equal(t, "http://user:pass@example.com:8080", detail.Proxy)
+	assert.True(t, detail.Node.ProxyConfigured)
+}
