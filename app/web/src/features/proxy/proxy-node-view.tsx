@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, RefreshCw, Trash2, TestTube2 } from "lucide-react";
+import { Loader2, Plus, RefreshCw, Trash2, TestTube2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getChannels } from "@/features/channels/api";
@@ -228,7 +228,11 @@ export function ProxyNodeView() {
           onClick={() => testAllMutation.mutate()}
           disabled={nodes.length === 0 || testAllMutation.isPending}
         >
-          <TestTube2 className="size-4" />
+          {testAllMutation.isPending ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <TestTube2 className="size-4" />
+          )}
           {t("Test All Nodes")}
         </Button>
       </div>
@@ -389,6 +393,10 @@ export function ProxyNodeView() {
                         })
                       }
                       onTest={() => testMutation.mutate(node.id)}
+                      testing={
+                        testMutation.isPending &&
+                        testMutation.variables === node.id
+                      }
                       onDelete={() => setDeleteTarget(node)}
                     />
                   ))}
@@ -471,6 +479,7 @@ function NodeMetric(props: { label: string; value: string; detail: string }) {
 function ProxyNodeRow(props: {
   node: ProxyNode;
   selected: boolean;
+  testing: boolean;
   onSelectedChange: (selected: boolean) => void;
   onEdit: () => void;
   onTest: () => void;
@@ -525,7 +534,13 @@ function ProxyNodeRow(props: {
       </td>
       <td className="p-2">
         <div className="flex gap-1">
-          <Button size="sm" variant="outline" onClick={props.onTest}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={props.onTest}
+            disabled={props.testing}
+          >
+            {props.testing && <Loader2 className="size-4 animate-spin" />}
             {t("Test")}
           </Button>
           <Button size="sm" variant="outline" onClick={props.onEdit}>
