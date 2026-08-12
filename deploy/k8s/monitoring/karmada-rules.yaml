@@ -1,0 +1,324 @@
+# Karmada 监控规则（alerting + recording）。
+#
+# 内容全部来自官方可观测性指南：
+#   https://karmada.io/docs/administrator/monitoring/karmada-observability
+# （"Example Prometheus Recording Rules" 与 "Alerting Rules" 两个 section）。
+# PromQL 保持与指南一致，未做改写；命名遵循 Karmada 官方约定。
+# ConfigMap 由 Prometheus StatefulSet 挂载到 /etc/prometheus/rules/，
+# Prometheus 通过 rule_files: /etc/prometheus/rules/*.yml 自动加载。
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+  namespace: monitoring
+  labels:
+    app: prometheus
+data:
+  karmada-recording-rules.yml: |
+    groups:
+      - name: karmada_cluster_health
+        interval: 30s
+        rules:
+          - record: karmada:cluster:ready:count
+            expr: sum(cluster_ready_state)
+
+          - record: karmada:cluster:cpu:utilization
+            expr: |
+              (cluster_cpu_allocated_number / cluster_cpu_allocatable_number) * 100
+
+          - record: karmada:cluster:memory:utilization
+            expr: |
+              (cluster_memory_allocated_bytes / cluster_memory_allocatable_bytes) * 100
+
+          - record: karmada:cluster:pod:utilization
+            expr: |
+              (cluster_pod_allocated_number / cluster_pod_allocatable_number) * 100
+
+          - record: karmada:cluster:node:ready:ratio
+            expr: |
+              cluster_ready_node_number / cluster_node_number
+
+      - name: karmada_scheduling
+        interval: 30s
+        rules:
+          - record: karmada:scheduler:success:rate
+            expr: |
+              rate(karmada_scheduler_schedule_attempts_total{result="success"}[5m])
+              /
+              rate(karmada_scheduler_schedule_attempts_total[5m])
+
+          - record: karmada:scheduler:latency:p95
+            expr: |
+              histogram_quantile(0.95,
+                rate(karmada_scheduler_e2e_scheduling_duration_seconds_bucket[5m]))
+
+          - record: karmada:scheduler:latency:p99
+            expr: |
+              histogram_quantile(0.99,
+                rate(karmada_scheduler_e2e_scheduling_duration_seconds_bucket[5m]))
+
+      - name: karmada_propagation
+        interval: 30s
+        rules:
+          - record: karmada:propagation:binding_sync:p95
+            expr: |
+              histogram_quantile(0.95,
+                rate(karmada_binding_sync_work_duration_seconds_bucket[5m]))
+
+          - record: karmada:propagation:workload_sync:p95
+            expr: |
+              histogram_quantile(0.95,
+                rate(karmada_work_sync_workload_duration_seconds_bucket[5m]))
+
+          - record: karmada:propagation:policy_match:p95
+            expr: |
+              histogram_quantile(0.95,
+                rate(resource_match_policy_duration_seconds_bucket[5m]))
+
+          - record: karmada:propagation:error:rate
+            expr: |
+              sum(rate(create_resource_to_cluster{result="error"}[5m]))
+              +
+              sum(rate(update_resource_to_cluster{result="error"}[5m]))
+              +
+              sum(rate(delete_resource_from_cluster{result="error"}[5m]))
+
+      - name: karmada_controller_health
+        interval: 30s
+        rules:
+          - record: karmada:workqueue:depth
+            expr: workqueue_depth
+
+          - record: karmada:workqueue:queue_duration:p95
+            expr: |
+              histogram_quantile(0.95,
+                rate(workqueue_queue_duration_seconds_bucket[5m]))
+
+          - record: karmada:workqueue:retry:rate
+            expr: |
+              rate(workqueue_retries_total[5m])
+              /
+              rate(workqueue_adds_total[5m])
+
+          - record: karmada:cluster_sync:latency:p95
+            expr: |
+              histogram_quantile(0.95,
+                rate(cluster_sync_status_duration_seconds_bucket[5m]))
+  karmada-alerting-rules.yml: |
+    groups:
+      - name: karmada_critical_alerts
+        rules:
+          - alert: KarmadaClusterDown
+            expr: cluster_ready_state == 0
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Member cluster {{ $labels.member_cluster }} is not ready"
+              description: "Cluster has been NotReady for >2 minutes. Workloads cannot be scheduled."
+
+          - alert: KarmadaSchedulingFailureRate
+            expr: |
+              rate(karmada_scheduler_schedule_attempts_total{result="error"}[5m])
+              /
+              rate(karmada_scheduler_schedule_attempts_total[5m]) > 0.05
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "High scheduling failure rate: {{ $value | humanizePercentage }}"
+              description: "Workloads may not be deploying correctly."
+
+          - alert: KarmadaSchedulingLatencyHigh
+            expr: |
+              histogram_quantile(0.95,
+                rate(karmada_scheduler_e2e_scheduling_duration_seconds_bucket[5m])) > 5
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Karmada scheduler latency is high"
+              description: "P95 scheduling latency is {{ $value | humanizeDuration }}. Deployments may be delayed."
+
+          - alert: KarmadaClusterHighCPUUtilization
+            expr: |
+              (cluster_cpu_allocated_number / cluster_cpu_allocatable_number) > 0.85
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Cluster {{ $labels.member_cluster }} has high CPU utilization"
+              description: "CPU utilization is {{ $value | humanizePercentage }}. Consider scaling."
+
+          - alert: KarmadaClusterHighMemoryUtilization
+            expr: |
+              (cluster_memory_allocated_bytes / cluster_memory_allocatable_bytes) > 0.85
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Cluster {{ $labels.member_cluster }} has high memory utilization"
+              description: "Memory utilization is {{ $value | humanizePercentage }}. Consider scaling."
+
+          - alert: KarmadaWebhookFailures
+            expr: |
+              sum(rate(controller_runtime_webhook_requests_total{code!~"2.."}[5m]))
+              /
+              sum(rate(controller_runtime_webhook_requests_total[5m])) > 0.01
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Webhook failure rate: {{ $value | humanizePercentage }}"
+              description: "API operations may be blocked."
+
+          - alert: KarmadaPropagationErrors
+            expr: |
+              sum(rate(create_resource_to_cluster{result="error"}[5m]))
+              + sum(rate(update_resource_to_cluster{result="error"}[5m]))
+              + sum(rate(delete_resource_from_cluster{result="error"}[5m])) > 1
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "High propagation error rate"
+              description: "Check member cluster connectivity and permissions."
+
+          - alert: KarmadaWorkqueueDepthHigh
+            expr: workqueue_depth > 100
+            for: 15m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Controller {{ $labels.name }} has high queue depth: {{ $value }}"
+              description: "Controller may be overloaded or stuck."
+
+          - alert: KarmadaUnschedulableBindings
+            expr: scheduler_pending_bindings{queue="unschedulable"} > 0
+            for: 15m
+            labels:
+              severity: warning
+            annotations:
+              summary: "{{ $value }} bindings stuck in unschedulable queue"
+              description: "Check cluster capacity and scheduling constraints."
+
+          - alert: KarmadaPolicyMatchingLatencyHigh
+            expr: |
+              histogram_quantile(0.95,
+                rate(resource_match_policy_duration_seconds_bucket[5m])) > 1
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Policy matching latency is high"
+              description: "P95 policy matching latency is {{ $value | humanizeDuration }}. This delays the propagation pipeline."
+
+          - alert: KarmadaEvictionQueueGrowing
+            expr: deriv(karmada_eviction_queue_depth[10m]) > 0
+            for: 15m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Eviction queue is continuously growing"
+              description: "Eviction queue is growing. Failover processing may be delayed."
+
+          - alert: KarmadaEvictionProcessingLatencyHigh
+            expr: |
+              histogram_quantile(0.95,
+                rate(karmada_eviction_processing_latency_seconds_bucket[5m])) > 10
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Eviction processing latency is high"
+              description: "P95 eviction latency is {{ $value | humanizeDuration }}. Failover may be delayed."
+
+          - alert: KarmadaEstimatorFailureRate
+            expr: |
+              rate(karmada_scheduler_estimator_estimating_request_total{result="error"}[5m])
+              /
+              rate(karmada_scheduler_estimator_estimating_request_total[5m]) > 0.05
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Scheduler estimator has high failure rate"
+              description: "Estimator failure rate is {{ $value | humanizePercentage }}. Scheduling accuracy may be impacted."
+
+          - alert: KarmadaWorkqueueRetryRateHigh
+            expr: |
+              rate(workqueue_retries_total[5m])
+              /
+              rate(workqueue_adds_total[5m]) > 0.1
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Controller {{ $labels.name }} has high retry rate"
+              description: "Retry rate is {{ $value | humanizePercentage }}. Check for transient failures."
+
+          - alert: KarmadaClusterSyncLatencyHigh
+            expr: |
+              histogram_quantile(0.95,
+                rate(cluster_sync_status_duration_seconds_bucket[5m])) > 10
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Cluster status sync latency is high"
+              description: "P95 cluster sync latency for {{ $labels.member_cluster }} is {{ $value | humanizeDuration }}."
+
+          - alert: KarmadaHPAReconciliationErrors
+            expr: |
+              sum(rate(horizontal_pod_autoscaler_controller_reconciliations_total{error!="none"}[5m]))
+              /
+              sum(rate(horizontal_pod_autoscaler_controller_reconciliations_total[5m])) > 0.05
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "HPA controller has high error rate"
+              description: "HPA reconciliation error rate is {{ $value | humanizePercentage }}. Check FederatedHPA configurations."
+
+      - name: karmada_capacity_alerts
+        rules:
+          - alert: KarmadaClusterApproachingCPUCapacity
+            expr: |
+              (cluster_cpu_allocated_number / cluster_cpu_allocatable_number) > 0.95
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Cluster {{ $labels.member_cluster }} approaching CPU capacity"
+              description: "CPU utilization is {{ $value | humanizePercentage }}. Immediate action required."
+
+          - alert: KarmadaClusterApproachingMemoryCapacity
+            expr: |
+              (cluster_memory_allocated_bytes / cluster_memory_allocatable_bytes) > 0.95
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Cluster {{ $labels.member_cluster }} approaching memory capacity"
+              description: "Memory utilization is {{ $value | humanizePercentage }}. Immediate action required."
+
+          - alert: KarmadaClusterApproachingPodCapacity
+            expr: |
+              (cluster_pod_allocated_number / cluster_pod_allocatable_number) > 0.95
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Cluster {{ $labels.member_cluster }} approaching pod capacity"
+              description: "Pod utilization is {{ $value | humanizePercentage }}. Immediate action required."
+
+          - alert: KarmadaClusterNodeUnhealthy
+            expr: |
+              (cluster_ready_node_number / cluster_node_number) < 0.8
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Cluster {{ $labels.member_cluster }} has unhealthy nodes"
+              description: "Only {{ $value | humanizePercentage }} of nodes are ready. Investigate node health."

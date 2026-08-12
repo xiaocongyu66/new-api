@@ -1,0 +1,366 @@
+# Prometheus 监控栈：采集 Karmada 控制面与宿主集群相关指标。
+#
+# 设计要点：
+#   - 与 postgres/redis 同样固定到 control-plane 节点（数据卷 + 节点稳定性）
+#   - StatefulSet + PVC：TSDB 持久化到本地 PV，保留 15 天历史指标
+#   - scrape 配置全部走 Kubernetes pod/endpoints SD 自动发现 Karmada 组件，
+#     新增 Karmada 组件实例会自动加入目标，无需改清单
+#   - karmada-apiserver（https://karmada-apiserver.karmada-system.svc:5443）需 Bearer Token。
+#     token 来源：karmada-apiserver 集群中 prometheus ServiceAccount 的 Secret，
+#     以 Secret karmada-prometheus-token 形式注入 monitoring 命名空间（值由运维填写，见 README）。
+#
+# 参考：
+#   - https://karmada.io/docs/administrator/monitoring/working-with-prometheus-in-control-plane
+#   - https://karmada.io/docs/administrator/monitoring/karmada-observability
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+rules:
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - nodes/proxy
+      - nodes/metrics
+      - services
+      - endpoints
+      - pods
+    verbs: ["get", "list", "watch"]
+  - apiGroups:
+      - networking.k8s.io
+    resources:
+      - ingresses
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: monitoring
+---
+# Prometheus 主配置：scrape 目标全部走 Kubernetes SD。
+# 6 个 Karmada 控制面组件均在 karmada-system 命名空间、metrics 端口 8080、http；
+# apiserver 与 aggregated-apiserver 在同命名空间、https、需 Bearer Token。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+  labels:
+    app: prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 30s
+      evaluation_interval: 30s
+      external_labels:
+        cluster: karmada-host
+        monitor: prometheus
+    rule_files:
+      - /etc/prometheus/rules/*.yml
+    alerting: {}
+    scrape_configs:
+      # karmada-scheduler：app=karmada-scheduler，端口 8080
+      - job_name: karmada-scheduler
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [karmada-system]
+        scheme: http
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: karmada-scheduler
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: '${1}:8080'
+            action: replace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+
+      # karmada-controller-manager：app=karmada-controller-manager，端口 8080
+      - job_name: karmada-controller-manager
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [karmada-system]
+        scheme: http
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: karmada-controller-manager
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: '${1}:8080'
+            action: replace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+
+      # karmada-scheduler-estimator：app=karmada-scheduler-estimator，端口 8080
+      - job_name: karmada-scheduler-estimator
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [karmada-system]
+        scheme: http
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: karmada-scheduler-estimator
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: '${1}:8080'
+            action: replace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+
+      # karmada-agent：app=karmada-agent，端口 8080
+      - job_name: karmada-agent
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [karmada-system]
+        scheme: http
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: karmada-agent
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: '${1}:8080'
+            action: replace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+
+      # karmada-webhook：app=karmada-webhook，端口 8080
+      - job_name: karmada-webhook
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [karmada-system]
+        scheme: http
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: karmada-webhook
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: '${1}:8080'
+            action: replace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+
+      # karmada-descheduler：app=karmada-descheduler，端口 8080
+      - job_name: karmada-descheduler
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [karmada-system]
+        scheme: http
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: karmada-descheduler
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: '${1}:8080'
+            action: replace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+
+      # karmada-apiserver：https 端口 5443，需 Bearer Token
+      - job_name: karmada-apiserver
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names: [karmada-system]
+        scheme: https
+        tls_config:
+          insecure_skip_verify: true
+        bearer_token_file: /etc/prometheus/secrets/karmada-prometheus-token/token
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            action: keep
+            regex: karmada-apiserver
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: https
+          - target_label: __address__
+            replacement: karmada-apiserver.karmada-system.svc:5443
+
+      # karmada-aggregated-apiserver：https 端口 443，需 Bearer Token
+      - job_name: karmada-aggregated-apiserver
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names: [karmada-system]
+        scheme: https
+        tls_config:
+          insecure_skip_verify: true
+        bearer_token_file: /etc/prometheus/secrets/karmada-prometheus-token/token
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoints_name]
+            action: keep
+            regex: karmada-aggregated-apiserver;karmada-aggregated-apiserver
+          - target_label: __address__
+            replacement: karmada-aggregated-apiserver.karmada-system.svc:443
+
+      # 宿主 K8s API Server：SLO 视角下 etcd / apiserver 健康
+      - job_name: kubernetes-apiserver
+        kubernetes_sd_configs:
+          - role: endpoints
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: default;kubernetes;https
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app: prometheus
+spec:
+  serviceName: prometheus
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccountName: prometheus
+      # 数据 + 长生命周期服务固定在 control-plane（与 postgres/redis 同节点）。
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+      containers:
+        - name: prometheus
+          image: quay.io/prometheus/prometheus:v2.55.1
+          args:
+            - --config.file=/etc/prometheus/config/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time=15d
+            - --storage.tsdb.min-block-duration=2h
+            - --storage.tsdb.max-block-duration=2h
+            - --web.console.libraries=/usr/share/prometheus/console_libraries
+            - --web.console.templates=/usr/share/prometheus/consoles
+            - --web.enable-lifecycle
+          ports:
+            - name: http
+              containerPort: 9090
+          volumeMounts:
+            - name: prometheus-config
+              mountPath: /etc/prometheus/config
+            - name: prometheus-rules
+              mountPath: /etc/prometheus/rules
+            - name: karmada-prometheus-token
+              mountPath: /etc/prometheus/secrets/karmada-prometheus-token
+              readOnly: true
+            - name: prometheus-data
+              mountPath: /prometheus
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: prometheus-config
+          configMap:
+            name: prometheus-config
+        - name: prometheus-rules
+          configMap:
+            name: prometheus-rules
+        - name: karmada-prometheus-token
+          secret:
+            secretName: karmada-prometheus-token
+  volumeClaimTemplates:
+    - metadata:
+        name: prometheus-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app: prometheus
+spec:
+  type: ClusterIP
+  selector:
+    app: prometheus
+  ports:
+    - name: http
+      port: 9090
+      targetPort: http

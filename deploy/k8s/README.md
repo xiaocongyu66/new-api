@@ -90,6 +90,64 @@ kubectl apply -f k8s/service.yaml
 kubectl apply -f k8s/ingress.yaml
 ```
 
+## 监控（Prometheus + Grafana，采集 Karmada 指标）
+
+`k8s/monitoring/` 部署一个单实例 Prometheus + Grafana，用于采集 Karmada 控制面（apiserver / controller-manager / scheduler / scheduler-estimator / agent / webhook / descheduler）与宿主集群指标，并预导入 Karmada 官方 5 个 Grafana Dashboard。二者固定在 control-plane 节点，仅暴露集群内 ClusterIP，**不会**暴露到公网，非高可用部署。
+
+文件：
+
+| 文件 | 内容 |
+|---|---|
+| `k8s/monitoring/prometheus.yaml` | Namespace、RBAC、scrape 配置、Prometheus StatefulSet、Service |
+| `k8s/monitoring/karmada-rules.yaml` | Karmada 官方 recording + alerting 规则（PromQL 与指南一致） |
+| `k8s/monitoring/grafana.yaml` | Grafana Deployment + provisioning（数据源 + Dashboard provider）+ ConfigMaps |
+| `k8s/monitoring/dashboards-configmap.yaml` | 5 个官方 Dashboard 的 ConfigMap（由 `dashboards/*.json` 生成） |
+| `k8s/monitoring/dashboards/*.json` | 官方 Dashboard JSON 源文件（下载自 karmada.io） |
+
+### 前提：两个 Secret
+
+清单不含任何明文凭证。应用前需注入两个 Secret：
+
+```bash
+# 1) Grafana 管理员口令（必填）
+kubectl -n monitoring create secret generic grafana-admin \
+  --from-literal=admin-user=admin \
+  --from-literal=admin-password='<强口令>'
+
+# 2) karmada-apiserver 抓取用 Bearer Token（抓取 /metrics 需要）
+#    在 karmada-apiserver 集群中（karmada-system 命名空间下若已有 prometheus SA，可简化为）：
+kubectl -n karmada-system create token prometheus --duration=87600h
+```
+
+将上一步打印的 token 值写入：
+
+```bash
+kubectl -n monitoring create secret generic karmada-prometheus-token \
+  --from-literal=token='<上面打印的 token>'
+```
+
+### 部署
+
+```bash
+kubectl apply -f k8s/monitoring/prometheus.yaml
+kubectl apply -f k8s/monitoring/karmada-rules.yaml
+kubectl apply -f k8s/monitoring/grafana.yaml
+kubectl apply -f k8s/monitoring/dashboards-configmap.yaml
+```
+
+### 访问
+
+```bash
+# Prometheus
+kubectl -n monitoring port-forward svc/prometheus 9090:9090
+# Grafana（admin 口令来自 grafana-admin Secret）
+kubectl -n monitoring port-forward svc/grafana 3000:3000
+```
+
+Grafana 启动后会自动出现 Prometheus 数据源和 `Karmada` 文件夹下的 5 个官方 Dashboard（API Server Insights / Controller Manager Insights / Member Cluster Insights / Scheduler Insights / Resource Propagation Insights）。
+
+获取本集群 karmada-apiserver 的指标前，请确认 `karmada-prometheus-token` Secret 已注入真实 token；该 job 抓不到会导致该组件 `up=0`，其余组件不受影响。
+
 ## 入口层（自建集群无云负载均衡器）
 
 `k8s/ingress.yaml` 需要集群已安装 Nginx Ingress Controller：
