@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/QuantumNous/new-api/controller"
+	"github.com/QuantumNous/new-api/controller/karmada"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/service/authz"
 
@@ -211,7 +212,18 @@ func SetApiRouter(router *gin.Engine) {
 			proxyRoute.GET("/config/generate", controller.GenerateProxyConfig)
 			proxyRoute.GET("/status", controller.GetProxyStatus)
 			proxyRoute.POST("/reload", controller.ReloadProxy)
-		}
+	}
+	// Karmada admin proxy (kubeconfig config, member clusters, API forwarding)
+	karmadaRoute := apiRouter.Group("/karmada")
+	karmadaRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.SystemSettings))
+	{
+		karmadaRoute.POST("/config", karmada.PostKarmadaConfig)
+		karmadaRoute.GET("/config", karmada.GetKarmadaConfig)
+		karmadaRoute.DELETE("/config", karmada.DeleteKarmadaConfig)
+		karmadaRoute.GET("/clusters", karmada.ListKarmadaClusters)
+		karmadaRoute.GET("/clusters/:name", karmada.GetKarmadaCluster)
+		karmadaRoute.Any("/proxy/*path", karmada.ProxyKarmada)
+	}
 
 
 	// Custom OAuth provider management (admin with system.settings permission)
