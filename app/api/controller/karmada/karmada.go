@@ -207,7 +207,7 @@ func forward(client *Client, method, path string) ([]byte, error) {
 
 func copyHeaders(dst, src http.Header, stripAuth bool) {
 	for k, vs := range src {
-		if isHopByHop(k) {
+		if isHopByHop(k) || strings.EqualFold(k, "Cookie") || strings.EqualFold(k, "Set-Cookie") {
 			continue
 		}
 		if stripAuth && strings.EqualFold(k, "Authorization") {

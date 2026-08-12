@@ -309,6 +309,8 @@ func TestProxyForwardsRawResponseAndQuery(t *testing.T) {
 		assert.Equal(t, "/apis/v1/node/summary", r.URL.Path)
 		assert.Equal(t, "resourceVersion=1&limit=2", r.URL.RawQuery)
 		assert.Equal(t, "Bearer tok1", r.Header.Get("Authorization"))
+		assert.Empty(t, r.Header.Get("Cookie"))
+		w.Header().Set("Set-Cookie", "upstream-session=leak; Path=/")
 		w.Header().Set("X-Karmada", "yes")
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{"raw":"value"}`))
@@ -321,10 +323,12 @@ func TestProxyForwardsRawResponseAndQuery(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/karmada/proxy/apis/v1/node/summary?resourceVersion=1&limit=2", nil)
+	c.Request.Header.Set("Cookie", "new_api_refresh=secret")
 	c.Params = gin.Params{{Key: "path", Value: "/apis/v1/node/summary"}}
 	ProxyKarmada(c)
 
 	assert.Equal(t, http.StatusCreated, recorder.Code)
+	assert.Empty(t, recorder.Header().Get("Set-Cookie"))
 	assert.Equal(t, "yes", recorder.Header().Get("X-Karmada"))
 	assert.Equal(t, `{"raw":"value"}`, recorder.Body.String())
 }
