@@ -132,6 +132,7 @@ export function ProxyNodeView() {
     mutationFn: createProxyNodesBatch,
     onSuccess: (result) => {
       setBatchResult(result);
+      setBatch(null);
       invalidate();
       toast.success(
         t("Created {{created}}, failed {{failed}}", {
