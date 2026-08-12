@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { createFileRoute, redirect } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 
 import { useTheme } from '@/context/theme-provider'
 import { useThemeCustomization } from '@/context/theme-customization-provider'
@@ -41,6 +42,7 @@ export const Route = createFileRoute('/_authenticated/karmada')({
 
 function KarmadaPage() {
   const { resolvedTheme } = useTheme()
+  const { t } = useTranslation()
   const { customization } = useThemeCustomization()
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
@@ -67,7 +69,7 @@ function KarmadaPage() {
   return (
     <iframe
       ref={iframeRef}
-      title='Karmada Panel'
+      title={t('Karmada Panel')}
       src={`/dioxus/?theme=${resolvedTheme}`}
       onLoad={syncTheme}
       className='h-[calc(100svh-3rem)] w-full border-0'

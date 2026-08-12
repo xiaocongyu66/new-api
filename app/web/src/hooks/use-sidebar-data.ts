@@ -161,7 +161,7 @@ export function useSidebarData(): SidebarData {
             icon: CreditCard,
           },
           {
-            title: 'Karmada',
+            title: t('Karmada'),
             url: '/karmada',
             icon: Workflow,
             requiredRole: ROLE.SUPER_ADMIN,
