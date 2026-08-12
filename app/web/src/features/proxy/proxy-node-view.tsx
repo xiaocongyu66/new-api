@@ -45,6 +45,7 @@ import {
   createProxyNode,
   createProxyNodesBatch,
   deleteProxyNode,
+  fetchProxyNodeDetail,
   fetchProxyNodeReport,
   fetchProxyNodes,
   setProxyNodesEnabled,
@@ -387,13 +388,14 @@ export function ProxyNodeView() {
                           return next;
                         });
                       }}
-                      onEdit={() =>
+                      onEdit={async () => {
+                        const detail = await fetchProxyNodeDetail(node.id);
                         setEditor({
                           ...node,
-                          proxy: "",
+                          proxy: detail.proxy,
                           scope_value: node.scope_value ?? "",
-                        })
-                      }
+                        });
+                      }}
                       onTest={() => testMutation.mutate(node.id)}
                       testing={
                         testMutation.isPending &&
@@ -719,11 +721,9 @@ function ProxyNodeEditor(props: {
           <div className="space-y-1.5">
             <Label>{t("Proxy Link")}</Label>
             <Input
-              type="password"
+              type="text"
               value={editor.proxy}
-              placeholder={
-                editor.id ? t("Leave empty to keep unchanged") : "vless://…"
-              }
+              placeholder={editor.id ? "" : "vless://…"}
               onChange={(event) =>
                 props.onChange({ ...editor, proxy: event.target.value })
               }

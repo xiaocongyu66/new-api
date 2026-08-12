@@ -65,6 +65,16 @@ export async function deleteProxyNode(id: number): Promise<void> {
   await unwrap(api.delete<ApiResponse<null>>(`/api/proxy/nodes/${id}`));
 }
 
+export async function fetchProxyNodeDetail(
+  id: number,
+): Promise<{ node: ProxyNode; proxy: string }> {
+  return unwrap(
+    api.get<ApiResponse<{ node: ProxyNode; proxy: string }>>(
+      `/api/proxy/nodes/${id}`,
+    ),
+  );
+}
+
 export async function testProxyNode(id: number): Promise<void> {
   await unwrap(api.post<ApiResponse<unknown>>(`/api/proxy/nodes/${id}/test`));
 }

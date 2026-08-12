@@ -561,6 +561,27 @@ func GetProxyNodeReport(c *gin.Context) {
 	})
 }
 
+func GetProxyNode(c *gin.Context) {
+	id, err := parseProxyNodeID(c)
+	if err != nil {
+		common.ApiErrorMsg(c, "invalid proxy node id")
+		return
+	}
+	var node model.ProxyNode
+	if err := model.DB.First(&node, id).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	parsed, err := service.DecryptProxyNodeConfig(&node)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"node":  node.Public(),
+		"proxy": parsed.CanonicalInput,
+	})
+}
 func CreateProxyNode(c *gin.Context) {
 	var req proxyNodeRequest
 	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
