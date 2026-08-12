@@ -38,11 +38,14 @@ type ProxyNodePublic struct {
 	Protocol        string     `json:"protocol"`
 	ScopeType       string     `json:"scope_type"`
 	ScopeValue      string     `json:"scope_value,omitempty"`
+	ScopeName       string     `json:"scope_name,omitempty"`
 	Health          float64    `json:"health"`
 	FailureCount    int        `json:"failure_count"`
 	CooldownUntil   *time.Time `json:"cooldown_until,omitempty"`
 	LastError       string     `json:"last_error,omitempty"`
 	LastProbeAt     *time.Time `json:"last_probe_at,omitempty"`
+	ProbeTotal      int64      `json:"probe_total"`
+	ProbeSuccess    int64      `json:"probe_success"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
 }
@@ -94,9 +97,15 @@ func GetProxyNodesForChannel(channel *Channel) ([]*ProxyNode, error) {
 	if channel == nil {
 		return nil, fmt.Errorf("channel is nil")
 	}
-	var nodes []*ProxyNode
-	query := DB.Where("enabled = ?", true)
-	if err := query.Where("scope_type = ? AND scope_value = ?", ProxyNodeScopeChannel, strconv.Itoa(channel.Id)).Find(&nodes).Error; err != nil {
+	findScope := func(scopeType, scopeValue string) ([]*ProxyNode, error) {
+		var nodes []*ProxyNode
+		err := DB.Where("enabled = ?", true).
+			Where("scope_type = ? AND scope_value = ?", scopeType, scopeValue).
+			Find(&nodes).Error
+		return nodes, err
+	}
+	nodes, err := findScope(ProxyNodeScopeChannel, strconv.Itoa(channel.Id))
+	if err != nil {
 		return nil, err
 	}
 	if len(nodes) > 0 {
@@ -107,16 +116,13 @@ func GetProxyNodesForChannel(channel *Channel) ([]*ProxyNode, error) {
 		if group == "" {
 			continue
 		}
-		nodes = nil
-		if err := query.Where("scope_type = ? AND scope_value = ?", ProxyNodeScopeGroup, group).Find(&nodes).Error; err != nil {
+		groupNodes, err := findScope(ProxyNodeScopeGroup, group)
+		if err != nil {
 			return nil, err
 		}
-		if len(nodes) > 0 {
-			return nodes, nil
+		if len(groupNodes) > 0 {
+			return groupNodes, nil
 		}
 	}
-	if err := query.Where("scope_type = ? AND scope_value = ?", ProxyNodeScopeAll, "").Find(&nodes).Error; err != nil {
-		return nil, err
-	}
-	return nodes, nil
+	return findScope(ProxyNodeScopeAll, "")
 }
