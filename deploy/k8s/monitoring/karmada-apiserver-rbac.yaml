@@ -1,0 +1,47 @@
+# Apply this manifest to the Karmada API-server context before deploying
+# Prometheus to the host cluster. It creates the credential used only for
+# /metrics scraping by the two Karmada API-server targets.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: karmada-prometheus
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: karmada-prometheus-metrics
+rules:
+  - nonResourceURLs: ["/metrics"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: karmada-prometheus-metrics
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: karmada-prometheus-metrics
+subjects:
+  - kind: ServiceAccount
+    name: karmada-prometheus
+    namespace: monitoring
+---
+# Kubernetes v1.24+ does not create ServiceAccount token Secrets automatically.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: karmada-prometheus-token
+  namespace: monitoring
+  annotations:
+    kubernetes.io/service-account.name: karmada-prometheus
+type: kubernetes.io/service-account-token

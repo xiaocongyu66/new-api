@@ -98,33 +98,37 @@ kubectl apply -f k8s/ingress.yaml
 
 | 文件 | 内容 |
 |---|---|
-| `k8s/monitoring/prometheus.yaml` | Namespace、RBAC、scrape 配置、Prometheus StatefulSet、Service |
+| `k8s/monitoring/prometheus.yaml` | 宿主集群的 Namespace、RBAC、scrape 配置、Prometheus StatefulSet、Service |
+| `k8s/monitoring/karmada-apiserver-rbac.yaml` | Karmada API-server 集群的监控 ServiceAccount、`/metrics` 最小 RBAC 和 token Secret |
 | `k8s/monitoring/karmada-rules.yaml` | Karmada 官方 recording + alerting 规则（PromQL 与指南一致） |
 | `k8s/monitoring/grafana.yaml` | Grafana Deployment + provisioning（数据源 + Dashboard provider）+ ConfigMaps |
 | `k8s/monitoring/dashboards-configmap.yaml` | 5 个官方 Dashboard 的 ConfigMap（由 `dashboards/*.json` 生成） |
 | `k8s/monitoring/dashboards/*.json` | 官方 Dashboard JSON 源文件（下载自 karmada.io） |
 
-### 前提：两个 Secret
+### 前提：Grafana Secret 与 Karmada token
 
-清单不含任何明文凭证。应用前需注入两个 Secret：
+清单不含任何明文凭证。先在宿主集群创建 Grafana 管理员 Secret：
 
 ```bash
-# 1) Grafana 管理员口令（必填）
 kubectl -n monitoring create secret generic grafana-admin \
   --from-literal=admin-user=admin \
   --from-literal=admin-password='<强口令>'
-
-# 2) karmada-apiserver 抓取用 Bearer Token（抓取 /metrics 需要）
-#    在 karmada-apiserver 集群中（karmada-system 命名空间下若已有 prometheus SA，可简化为）：
-kubectl -n karmada-system create token prometheus --duration=87600h
 ```
 
-将上一步打印的 token 值写入：
+然后在 **Karmada API-server context** 创建最小权限的抓取身份，等 token Secret 被填充后将该 token 复制到宿主集群：
 
 ```bash
+kubectl --context karmada-apiserver apply -f k8s/monitoring/karmada-apiserver-rbac.yaml
+
+KARMADA_PROMETHEUS_TOKEN="$(kubectl --context karmada-apiserver -n monitoring \
+  get secret karmada-prometheus-token -o jsonpath='{.data.token}' | base64 --decode)"
+test -n "$KARMADA_PROMETHEUS_TOKEN"
+
 kubectl -n monitoring create secret generic karmada-prometheus-token \
-  --from-literal=token='<上面打印的 token>'
+  --from-literal=token="$KARMADA_PROMETHEUS_TOKEN"
 ```
+
+`karmada-apiserver` 是环境中该 context 的名称；如果不同，替换为实际 kubeconfig context。
 
 ### 部署
 
