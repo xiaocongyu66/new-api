@@ -36,10 +36,15 @@ jobs:
             app/api/go.sum
             modules/relaykit/go.sum
 
-      - name: Create frontend embed placeholder
+      - name: Create React embed placeholder
         run: |
           mkdir -p app/api/web/dist
           touch app/api/web/dist/index.html
+      - name: Build embedded Dioxus panel
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo install dioxus-cli --version 0.7.9 --locked
+          ./scripts/build-dioxus-web.sh
 
       - name: Vet api module
         working-directory: app/api

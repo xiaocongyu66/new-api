@@ -27,6 +27,7 @@ import { Route as errors404RouteImport } from './routes/(errors)/404'
 import { Route as errors500RouteImport } from './routes/(errors)/500'
 import { Route as errors503RouteImport } from './routes/(errors)/503'
 import { Route as AuthenticatedChat2linkRouteImport } from './routes/_authenticated/chat2link'
+import { Route as AuthenticatedKarmadaRouteImport } from './routes/_authenticated/karmada'
 import { Route as AuthenticatedProxyRouteImport } from './routes/_authenticated/proxy'
 import { Route as AuthenticatedSystemSettingsRouteRouteImport } from './routes/_authenticated/system-settings/route'
 import { Route as AboutIndexRouteImport } from './routes/about/index'
@@ -155,6 +156,11 @@ const errors503Route = errors503RouteImport.update({
 const AuthenticatedChat2linkRoute = AuthenticatedChat2linkRouteImport.update({
   id: '/chat2link',
   path: '/chat2link',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedKarmadaRoute = AuthenticatedKarmadaRouteImport.update({
+  id: '/karmada',
+  path: '/karmada',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedProxyRoute = AuthenticatedProxyRouteImport.update({
@@ -411,6 +417,7 @@ export interface FileRoutesByFullPath {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/chat2link': typeof AuthenticatedChat2linkRoute
+  '/karmada': typeof AuthenticatedKarmadaRoute
   '/proxy': typeof AuthenticatedProxyRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about/': typeof AboutIndexRoute
@@ -469,6 +476,7 @@ export interface FileRoutesByTo {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/chat2link': typeof AuthenticatedChat2linkRoute
+  '/karmada': typeof AuthenticatedKarmadaRoute
   '/proxy': typeof AuthenticatedProxyRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about': typeof AboutIndexRoute
@@ -531,6 +539,7 @@ export interface FileRoutesById {
   '/(errors)/500': typeof errors500Route
   '/(errors)/503': typeof errors503Route
   '/_authenticated/chat2link': typeof AuthenticatedChat2linkRoute
+  '/_authenticated/karmada': typeof AuthenticatedKarmadaRoute
   '/_authenticated/proxy': typeof AuthenticatedProxyRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about/': typeof AboutIndexRoute
@@ -592,6 +601,7 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/chat2link'
+    | '/karmada'
     | '/proxy'
     | '/oauth/$provider'
     | '/about/'
@@ -650,6 +660,7 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/chat2link'
+    | '/karmada'
     | '/proxy'
     | '/oauth/$provider'
     | '/about'
@@ -711,6 +722,7 @@ export interface FileRouteTypes {
     | '/(errors)/500'
     | '/(errors)/503'
     | '/_authenticated/chat2link'
+    | '/_authenticated/karmada'
     | '/_authenticated/proxy'
     | '/oauth/$provider'
     | '/about/'
@@ -898,6 +910,13 @@ declare module '@tanstack/react-router' {
       path: '/chat2link'
       fullPath: '/chat2link'
       preLoaderRoute: typeof AuthenticatedChat2linkRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/karmada': {
+      id: '/_authenticated/karmada'
+      path: '/karmada'
+      fullPath: '/karmada'
+      preLoaderRoute: typeof AuthenticatedKarmadaRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/proxy': {
@@ -1276,6 +1295,7 @@ const AuthenticatedSystemSettingsRouteRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedSystemSettingsRouteRoute: typeof AuthenticatedSystemSettingsRouteRouteWithChildren
   AuthenticatedChat2linkRoute: typeof AuthenticatedChat2linkRoute
+  AuthenticatedKarmadaRoute: typeof AuthenticatedKarmadaRoute
   AuthenticatedProxyRoute: typeof AuthenticatedProxyRoute
   AuthenticatedChatChatIdRoute: typeof AuthenticatedChatChatIdRoute
   AuthenticatedDashboardSectionRoute: typeof AuthenticatedDashboardSectionRoute
@@ -1300,6 +1320,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSystemSettingsRouteRoute:
     AuthenticatedSystemSettingsRouteRouteWithChildren,
   AuthenticatedChat2linkRoute: AuthenticatedChat2linkRoute,
+  AuthenticatedKarmadaRoute: AuthenticatedKarmadaRoute,
   AuthenticatedProxyRoute: AuthenticatedProxyRoute,
   AuthenticatedChatChatIdRoute: AuthenticatedChatChatIdRoute,
   AuthenticatedDashboardSectionRoute: AuthenticatedDashboardSectionRoute,

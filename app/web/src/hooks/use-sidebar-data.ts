@@ -35,6 +35,7 @@ import {
   User,
   Users,
   Wallet,
+  Workflow,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -158,6 +159,12 @@ export function useSidebarData(): SidebarData {
             title: t('Subscriptions'),
             url: '/subscriptions',
             icon: CreditCard,
+          },
+          {
+            title: 'Karmada',
+            url: '/karmada',
+            icon: Workflow,
+            requiredRole: ROLE.SUPER_ADMIN,
           },
           {
             title: t('Proxy Config'),

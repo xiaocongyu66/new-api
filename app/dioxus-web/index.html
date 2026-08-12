@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Karmada Panel</title>
+    <script>
+      (function () {
+        var params = new URLSearchParams(location.search)
+        var root = document.documentElement
+        var apply = function (message) {
+          if (!message || message.type !== 'theme') return
+          if (message.theme) root.dataset.theme = message.theme
+          Object.keys(message.tokens || {}).forEach(function (name) {
+            root.style.setProperty(name, message.tokens[name])
+          })
+        }
+        root.dataset.theme = params.get('theme') || 'dark'
+        window.addEventListener('message', function (event) {
+          if (event.origin === location.origin) apply(event.data)
+        })
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="main"></div>
+  </body>
+</html>

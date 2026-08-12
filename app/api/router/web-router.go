@@ -2,6 +2,7 @@ package router
 
 import (
 	"embed"
+	"io/fs"
 	"net/http"
 	"strings"
 
@@ -17,6 +18,20 @@ import (
 type WebAssets struct {
 	BuildFS   embed.FS
 	IndexPage []byte
+}
+
+// DioxusAssets holds the embedded Dioxus panel files.
+type DioxusAssets struct {
+	BuildFS embed.FS
+}
+
+func SetDioxusRouter(router *gin.Engine, assets DioxusAssets) {
+	dioxusFS, err := fs.Sub(assets.BuildFS, "web/dist/dioxus")
+	if err != nil {
+		panic(err)
+	}
+	fileServer := http.StripPrefix("/dioxus", http.FileServer(http.FS(dioxusFS)))
+	router.GET("/dioxus/*filepath", gin.WrapH(fileServer))
 }
 
 func SetWebRouter(router *gin.Engine, assets WebAssets) {

@@ -45,6 +45,9 @@ var buildFS embed.FS
 //go:embed web/dist/index.html
 var indexPage []byte
 
+//go:embed web/dist/dioxus
+var dioxusFS embed.FS
+
 func main() {
 	startTime := time.Now()
 	kitutil.SetLogging(common.SysLog, func(message string) {
@@ -201,6 +204,7 @@ func main() {
 		BuildFS:   buildFS,
 		IndexPage: indexPage,
 	})
+	router.SetDioxusRouter(server, router.DioxusAssets{BuildFS: dioxusFS})
 	var port = os.Getenv("PORT")
 	if port == "" {
 		port = strconv.Itoa(*common.Port)

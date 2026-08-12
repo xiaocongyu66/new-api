@@ -1,0 +1,10 @@
+[application]
+name = "karmada-panel"
+asset_dir = "assets"
+
+
+[web.resource]
+style = ["style.css"]
+
+[web.resource.dev]
+style = ["style.css"]

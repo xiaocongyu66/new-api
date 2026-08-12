@@ -11,6 +11,7 @@ logs
 app/web/dist
 app/api/web/dist
 app/web/node_modules
+app/dioxus-web/target
 .env
 one-api
 new-api
