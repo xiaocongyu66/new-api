@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Plus, RefreshCw, Trash2, TestTube2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getChannels } from "@/features/channels/api";
 import { getGroups } from "@/features/users/api";
@@ -53,6 +53,7 @@ import {
   testProxyNode,
   updateProxyNode,
 } from "./proxy-node-api";
+import { proxyNodeDefaultScopeValue } from "./proxy-node-scope";
 
 import type {
   ProxyNode,
@@ -592,6 +593,17 @@ function ProxyNodeEditor(props: {
   const { t } = useTranslation();
   const editor = props.editor;
   const isAll = editor.scope_type === "all";
+
+  useEffect(() => {
+    if (isAll || editor.scope_value) return;
+    const scopeValue = proxyNodeDefaultScopeValue(
+      editor.scope_type,
+      props.channels,
+      props.groups,
+    );
+    if (scopeValue) props.onChange({ ...editor, scope_value: scopeValue });
+  }, [editor, isAll, props.channels, props.groups, props.onChange]);
+
   return (
     <Dialog
       open
@@ -620,7 +632,7 @@ function ProxyNodeEditor(props: {
               checked={editor.enabled}
               onCheckedChange={(enabled) =>
                 props.onChange({ ...editor, enabled })
-              }
+            }
             />
             <Label>{t("Enabled")}</Label>
           </div>
@@ -637,7 +649,11 @@ function ProxyNodeEditor(props: {
                   props.onChange({
                     ...editor,
                     scope_type: value,
-                    scope_value: value === "all" ? "" : editor.scope_value,
+                    scope_value: proxyNodeDefaultScopeValue(
+                      value,
+                      props.channels,
+                      props.groups,
+                    ),
                   });
                 }
               }}
@@ -667,10 +683,7 @@ function ProxyNodeEditor(props: {
                 <Select
                   value={editor.scope_value ?? ""}
                   onValueChange={(scope_value) =>
-                    props.onChange({
-                      ...editor,
-                      scope_value: scope_value || undefined,
-                    })
+                    props.onChange({ ...editor, scope_value: scope_value || undefined })
                   }
                 >
                   <SelectTrigger className="w-full">
@@ -688,10 +701,7 @@ function ProxyNodeEditor(props: {
                 <Select
                   value={editor.scope_value ?? ""}
                   onValueChange={(scope_value) =>
-                    props.onChange({
-                      ...editor,
-                      scope_value: scope_value || undefined,
-                    })
+                    props.onChange({ ...editor, scope_value: scope_value || undefined })
                   }
                 >
                   <SelectTrigger className="w-full">
@@ -707,7 +717,7 @@ function ProxyNodeEditor(props: {
                 </Select>
               ) : (
                 <Input
-                  value={editor.scope_value}
+                  value={editor.scope_value ?? ""}
                   onChange={(event) =>
                     props.onChange({
                       ...editor,
@@ -760,6 +770,7 @@ function ProxyNodeBatchEditor(props: {
 }) {
   const { t } = useTranslation();
   const batch = props.batch;
+  const isAll = batch.scope_type === "all";
   const lines = batch.proxy_text
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -767,7 +778,17 @@ function ProxyNodeBatchEditor(props: {
       (line, index, all) =>
         line && !line.startsWith("#") && all.indexOf(line) === index,
     );
-  const isAll = batch.scope_type === "all";
+
+  useEffect(() => {
+    if (isAll || batch.scope_value) return;
+    const scopeValue = proxyNodeDefaultScopeValue(
+      batch.scope_type,
+      props.channels,
+      props.groups,
+    );
+    if (scopeValue) props.onChange({ ...batch, scope_value: scopeValue });
+  }, [batch, isAll, props.channels, props.groups, props.onChange]);
+
   return (
     <Dialog
       open
@@ -812,7 +833,11 @@ function ProxyNodeBatchEditor(props: {
                   props.onChange({
                     ...batch,
                     scope_type: value,
-                    scope_value: value === "all" ? "" : batch.scope_value,
+                    scope_value: proxyNodeDefaultScopeValue(
+                      value,
+                      props.channels,
+                      props.groups,
+                    ),
                   });
                 }
               }}
@@ -882,7 +907,7 @@ function ProxyNodeBatchEditor(props: {
                 </Select>
               ) : (
                 <Input
-                  value={batch.scope_value}
+                  value={batch.scope_value ?? ""}
                   onChange={(event) =>
                     props.onChange({
                       ...batch,
