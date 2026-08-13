@@ -23,7 +23,6 @@ tiktoken_cache
 .cache
 
 /data/
-.gomodcache/
 .gocache-temp
 .gopath
 .test
