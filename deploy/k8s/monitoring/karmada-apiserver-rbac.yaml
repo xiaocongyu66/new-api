@@ -1,0 +1,55 @@
+# ⚠️ 此文件 apply 到 Karmada API-server context（karmada-apiserver context），
+# 而不是宿主集群（host cluster）。Karmada API-server 是独立集群，不在宿主集群的
+# karmada-system 命名空间中；它的 /metrics 端点需要独立认证。
+#
+# 操作步骤：
+#   1. kubectl --context karmada-apiserver apply -f deploy/k8s/monitoring/karmada-apiserver-rbac.yaml
+#   2. 等待 token Secret 被填充（kubectl --context karmada-apiserver -n monitoring get secret karmada-prometheus-token -o jsonpath='{.data.token}' | base64 --decode）
+#   3. 把 token 复制到宿主集群 monitoring 命名空间（见 README）
+#
+# 此文件创建的 ServiceAccount 仅具备 /metrics 资源的 get 权限，
+# 是最小权限设计，不用于其他用途。
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: karmada-prometheus
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: karmada-prometheus-metrics
+rules:
+  - nonResourceURLs: ["/metrics"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: karmada-prometheus-metrics
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: karmada-prometheus-metrics
+subjects:
+  - kind: ServiceAccount
+    name: karmada-prometheus
+    namespace: monitoring
+---
+# Kubernetes v1.24+ does not create ServiceAccount token Secrets automatically.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: karmada-prometheus-token
+  namespace: monitoring
+  annotations:
+    kubernetes.io/service-account.name: karmada-prometheus
+type: kubernetes.io/service-account-token

@@ -1,0 +1,135 @@
+# Alertmanager：接收 Prometheus alerting 规则触发的告警，支持路由、静默、通知。
+#
+# 设计要点：
+#   - 最小配置，不含通知 receiver（由运维根据实际通知渠道配置）
+#   - 与 Prometheus 同样固定到 control-plane 节点
+#   - ClusterIP，不对外暴露
+#   - 数据持久化到 PVC（告警静默状态）
+#
+# 参考：
+#   - https://prometheus.io/docs/alerting/latest/alertmanager/
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: monitoring
+  labels:
+    app: alertmanager
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: 'default'
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+    receivers:
+      - name: 'default'
+        # 默认 receiver 只记录告警到 Alertmanager 日志。
+        # 添加通知渠道（email/slack/pagerduty 等）时在此配置。
+        # 参考: https://prometheus.io/docs/alerting/latest/configuration/#receiver
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager
+  namespace: monitoring
+  labels:
+    app: alertmanager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alertmanager
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+    spec:
+      serviceAccountName: prometheus
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+      containers:
+        - name: alertmanager
+          image: quay.io/prometheus/alertmanager:v0.27.0
+          args:
+            - --config.file=/etc/alertmanager/alertmanager.yml
+            - --storage.path=/alertmanager
+            - --data.retention=120h
+            - --web.listen-address=:9093
+          ports:
+            - name: http
+              containerPort: 9093
+          volumeMounts:
+            - name: alertmanager-config
+              mountPath: /etc/alertmanager
+              readOnly: true
+            - name: alertmanager-data
+              mountPath: /alertmanager
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: alertmanager-config
+          configMap:
+            name: alertmanager-config
+        - name: alertmanager-data
+          persistentVolumeClaim:
+            claimName: alertmanager-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: alertmanager-data
+  namespace: monitoring
+  labels:
+    app: alertmanager
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: monitoring
+  labels:
+    app: alertmanager
+spec:
+  type: ClusterIP
+  selector:
+    app: alertmanager
+  ports:
+    - name: http
+      port: 9093
+      targetPort: http
