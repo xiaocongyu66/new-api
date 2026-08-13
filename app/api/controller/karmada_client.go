@@ -1,4 +1,4 @@
-package karmada
+package controller
 
 import (
 	"crypto/tls"
@@ -22,15 +22,15 @@ import (
 // token-based auth is supported, which is the default Karmada kubeconfig
 // layout. Values can be inline (base64) or, for the CA, raw PEM.
 type kubeconfig struct {
-	CurrentContext string               `yaml:"current-context"`
-	Clusters       []kubeconfigCluster  `yaml:"clusters"`
-	Users          []kubeconfigUser     `yaml:"users"`
-	Contexts       []kubeconfigContext  `yaml:"contexts"`
+	CurrentContext string              `yaml:"current-context"`
+	Clusters       []kubeconfigCluster `yaml:"clusters"`
+	Users          []kubeconfigUser    `yaml:"users"`
+	Contexts       []kubeconfigContext `yaml:"contexts"`
 }
 
 type kubeconfigCluster struct {
-	Name    string                 `yaml:"name"`
-	Cluster kubeconfigClusterData  `yaml:"cluster"`
+	Name    string                `yaml:"name"`
+	Cluster kubeconfigClusterData `yaml:"cluster"`
 }
 
 type kubeconfigClusterData struct {
@@ -41,7 +41,7 @@ type kubeconfigClusterData struct {
 }
 
 type kubeconfigUser struct {
-	Name string         `yaml:"name"`
+	Name string             `yaml:"name"`
 	User kubeconfigUserData `yaml:"user"`
 }
 
@@ -50,7 +50,7 @@ type kubeconfigUserData struct {
 }
 
 type kubeconfigContext struct {
-	Name    string            `yaml:"name"`
+	Name    string                `yaml:"name"`
 	Context kubeconfigContextData `yaml:"context"`
 }
 
@@ -162,7 +162,7 @@ func newClientFromKubeconfig(raw string) (*Client, error) {
 		tlsConfig.RootCAs = pool
 	}
 	httpClient := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout:   30 * time.Second,
 		Transport: &http.Transport{TLSClientConfig: tlsConfig},
 	}
 	return &Client{

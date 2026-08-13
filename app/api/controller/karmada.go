@@ -1,4 +1,4 @@
-package karmada
+package controller
 
 import (
 	"fmt"
@@ -150,7 +150,9 @@ func GetKarmadaCluster(c *gin.Context) {
 // ProxyKarmada forwards any request under /api/karmada/proxy/* to the Karmada
 // API server with the admin-set credentials, preserving the method, body,
 // status and response headers. It is a raw passthrough, not a wrapped JSON
-// response.
+// response. The path prefix is restricted to the Kubernetes/Karmada API
+// surface (/apis, /api, /version) so the proxy cannot reach unrelated or
+// sensitive server endpoints.
 func ProxyKarmada(c *gin.Context) {
 	client, err := Get()
 	if err != nil {
@@ -164,6 +166,10 @@ func ProxyKarmada(c *gin.Context) {
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}
+	if !allowedKarmadaProxyPath(path) {
+		common.ApiErrorMsg(c, "karmada proxy: path not allowed")
+		return
+	}
 	target := strings.TrimRight(client.Server, "/") + path
 	if query := c.Request.URL.RawQuery; query != "" {
 		target += "?" + query
@@ -175,7 +181,6 @@ func ProxyKarmada(c *gin.Context) {
 	}
 	copyHeaders(req.Header, c.Request.Header, true)
 	req.Header.Set("Authorization", client.authHeader)
-
 	resp, err := client.HTTPClient.Do(req)
 	if err != nil {
 		common.ApiErrorMsg(c, "karmada proxy: "+err.Error())
@@ -291,4 +296,11 @@ func (it clusterItem) toMemberCluster() MemberCluster {
 		NodeCount: it.Status.NodeSummary.ReadyNodes,
 		Version:   it.Status.KubernetesVersion,
 	}
+}
+
+// allowedKarmadaProxyPath restricts the proxy to the Kubernetes/Karmada API
+// surface so the proxy cannot reach unrelated server endpoints such as /healthz,
+// /metrics, or raw /api/v1/secrets outside the Karmada namespace scope.
+func allowedKarmadaProxyPath(path string) bool {
+	return strings.HasPrefix(path, "/apis/") || strings.HasPrefix(path, "/api/v1") || path == "/version" || path == "/"
 }

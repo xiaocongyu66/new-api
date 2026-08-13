@@ -1,4 +1,4 @@
-package karmada
+package controller
 
 import (
 	"encoding/json"

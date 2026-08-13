@@ -293,7 +293,7 @@ func migrateDB() error {
 		&CasbinRule{},
 		&AuthzRole{},
 		&KarmadaConfig{},
-)
+	)
 	if err != nil {
 		return err
 	}
