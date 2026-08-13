@@ -93,6 +93,14 @@ docker run --name new-api -d --restart always \
   -e TZ=Asia/Shanghai \
   -v ./data:/data \
   calciumion/new-api:latest
+
+# Using PostgreSQL
+docker run --name new-api -d --restart always \
+  -p 3000:3000 \
+  -e SQL_DSN="postgres://root:123456@localhost:5432/oneapi" \
+  -e TZ=Asia/Shanghai \
+  -v ./data:/data \
+  calciumion/new-api:latest
 ```
 
 > **💡 Tip:** `-v ./data:/data` will save data in the `data` folder of the current directory, you can also change it to an absolute path like `-v /your/custom/path:/data`
@@ -335,6 +343,16 @@ docker run --name new-api -d --restart always \
   calciumion/new-api:latest
 ```
 
+**Using PostgreSQL:**
+```bash
+docker run --name new-api -d --restart always \
+  -p 3000:3000 \
+  -e SQL_DSN="postgres://root:123456@localhost:5432/oneapi" \
+  -e TZ=Asia/Shanghai \
+  -v ./data:/data \
+  calciumion/new-api:latest
+```
+
 > **💡 Path explanation:**
 > - `./data:/data` - Relative path, data saved in the data folder of the current directory
 > - You can also use absolute path, e.g.: `/your/custom/path:/data`
@@ -433,27 +451,3 @@ link to the original project: <https://github.com/QuantumNous/new-api>.
 This is an open-source project developed based on [One API](https://github.com/songquanpeng/one-api) (MIT License).
 
 If your organization's policies do not permit the use of AGPLv3-licensed software, or if you wish to avoid the open-source obligations of AGPLv3, please contact us at: [support@quantumnous.com](mailto:support@quantumnous.com)
-
----
-
-## 🌟 Star History
-
-<div align="center">
-
-[![Star History Chart](https://api.star-history.com/svg?repos=Calcium-Ion/new-api&type=Date)](https://star-history.com/#Calcium-Ion/new-api&Date)
-
-</div>
-
----
-
-<div align="center">
-
-### 💖 Thank you for using New API
-
-If this project is helpful to you, welcome to give us a ⭐️ Star！
-
-**[Official Documentation](https://docs.newapi.pro/en/docs)** • **[Issue Feedback](https://github.com/Calcium-Ion/new-api/issues)** • **[Latest Release](https://github.com/Calcium-Ion/new-api/releases)**
-
-<sub>Built with ❤️ by QuantumNous</sub>
-
-</div>
