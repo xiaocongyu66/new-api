@@ -202,6 +202,7 @@ func main() {
 		BuildFS:   buildFS,
 		IndexPage: indexPage,
 	})
+	router.SetDioxusRouter(server, router.DioxusAssets{BuildFS: buildFS})
 	var port = os.Getenv("PORT")
 	if port == "" {
 		port = strconv.Itoa(*common.Port)
