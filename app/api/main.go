@@ -325,6 +325,10 @@ func InitResources() error {
 		}
 	}
 	model.InitOptionMap()
+	// Initialize Karmada proxy client from stored config (best-effort; admin can reconfigure via /api/karmada/config)
+	if err := controller.Init(); err != nil {
+		common.SysError("failed to initialize karmada client: " + err.Error())
+	}
 
 	// 清理旧的磁盘缓存文件
 	common.CleanupOldCacheFiles()

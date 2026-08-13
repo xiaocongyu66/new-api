@@ -203,8 +203,8 @@ func SetApiRouter(router *gin.Engine) {
 			optionRoute.POST("/waffo-pancake/subscription-product", controller.CreateWaffoPancakeSubscriptionProduct)
 			optionRoute.GET("/waffo-pancake/subscription-product-options", controller.ListWaffoPancakeSubscriptionProductOptions)
 		}
-	proxyRoute := apiRouter.Group("/proxy")
-	proxyRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.SystemSettings))
+		proxyRoute := apiRouter.Group("/proxy")
+		proxyRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.SystemSettings))
 		{
 			proxyRoute.GET("/config", controller.GetProxyConfig)
 			proxyRoute.PUT("/config", controller.UpdateProxyConfig)
@@ -212,11 +212,21 @@ func SetApiRouter(router *gin.Engine) {
 			proxyRoute.GET("/status", controller.GetProxyStatus)
 			proxyRoute.POST("/reload", controller.ReloadProxy)
 		}
+		// Karmada admin proxy (kubeconfig config, member clusters, API forwarding)
+		karmadaRoute := apiRouter.Group("/karmada")
+		karmadaRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.SystemSettings))
+		{
+			karmadaRoute.POST("/config", controller.PostKarmadaConfig)
+			karmadaRoute.GET("/config", controller.GetKarmadaConfig)
+			karmadaRoute.DELETE("/config", controller.DeleteKarmadaConfig)
+			karmadaRoute.GET("/clusters", controller.ListKarmadaClusters)
+			karmadaRoute.GET("/clusters/:name", controller.GetKarmadaCluster)
+			karmadaRoute.Any("/proxy/*path", controller.ProxyKarmada)
+		}
 
-
-	// Custom OAuth provider management (admin with system.settings permission)
-	customOAuthRoute := apiRouter.Group("/custom-oauth-provider")
-	customOAuthRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.SystemSettings))
+		// Custom OAuth provider management (admin with system.settings permission)
+		customOAuthRoute := apiRouter.Group("/custom-oauth-provider")
+		customOAuthRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.SystemSettings))
 		{
 			customOAuthRoute.POST("/discovery", controller.FetchCustomOAuthDiscovery)
 			customOAuthRoute.GET("/", controller.GetCustomOAuthProviders)
@@ -224,18 +234,18 @@ func SetApiRouter(router *gin.Engine) {
 			customOAuthRoute.POST("/", controller.CreateCustomOAuthProvider)
 			customOAuthRoute.PUT("/:id", controller.UpdateCustomOAuthProvider)
 			customOAuthRoute.DELETE("/:id", controller.DeleteCustomOAuthProvider)
-		performanceRoute := apiRouter.Group("/performance")
-		performanceRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.SystemSettings))
-		{
-			performanceRoute.GET("/stats", controller.GetPerformanceStats)
-			performanceRoute.DELETE("/disk_cache", controller.ClearDiskCache)
-			performanceRoute.POST("/reset_stats", controller.ResetPerformanceStats)
-			performanceRoute.POST("/gc", controller.ForceGC)
-			performanceRoute.GET("/logs", controller.GetLogFiles)
-			performanceRoute.DELETE("/logs", controller.CleanupLogFiles)
-		}
-		ratioSyncRoute := apiRouter.Group("/ratio_sync")
-		ratioSyncRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.SystemSettings))
+			performanceRoute := apiRouter.Group("/performance")
+			performanceRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.SystemSettings))
+			{
+				performanceRoute.GET("/stats", controller.GetPerformanceStats)
+				performanceRoute.DELETE("/disk_cache", controller.ClearDiskCache)
+				performanceRoute.POST("/reset_stats", controller.ResetPerformanceStats)
+				performanceRoute.POST("/gc", controller.ForceGC)
+				performanceRoute.GET("/logs", controller.GetLogFiles)
+				performanceRoute.DELETE("/logs", controller.CleanupLogFiles)
+			}
+			ratioSyncRoute := apiRouter.Group("/ratio_sync")
+			ratioSyncRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.SystemSettings))
 			ratioSyncRoute.GET("/channels", controller.GetSyncableChannels)
 			ratioSyncRoute.POST("/fetch", controller.FetchUpstreamRatios)
 		}

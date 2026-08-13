@@ -292,6 +292,7 @@ func migrateDB() error {
 		&SystemTaskLock{},
 		&CasbinRule{},
 		&AuthzRole{},
+		&KarmadaConfig{},
 	)
 	if err != nil {
 		return err
