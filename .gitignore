@@ -21,6 +21,10 @@ tiktoken_cache
 .gocache
 .gomodcache/
 .cache
+*.log
+app/web/.tanstack/
+app/web/dist-ssr
+*.local
 
 /data/
 .gocache-temp
