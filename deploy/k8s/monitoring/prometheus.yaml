@@ -5,9 +5,12 @@
 #   - StatefulSet + PVC：TSDB 持久化到本地 PV，保留 15 天历史指标
 #   - scrape 配置全部走 Kubernetes pod/endpoints SD 自动发现 Karmada 组件，
 #     新增 Karmada 组件实例会自动加入目标，无需改清单
-#   - karmada-apiserver（https://karmada-apiserver.karmada-system.svc:5443）需 Bearer Token。
+#   - karmada-apiserver（https://karmada-apiserver.karmada-system.svc:5443）需 Bearer Token 与 CA 证书。
 #     token 来源：karmada-apiserver 集群中 prometheus ServiceAccount 的 Secret，
 #     以 Secret karmada-prometheus-token 形式注入 monitoring 命名空间（值由运维填写，见 README）。
+#     CA 证书来源：karmada-apiserver 集群的 apiserver 证书签发 CA，
+#     以 Secret karmada-ca-cert 的 ca.crt key 注入 monitoring 命名空间（见 README），
+#     两个 karmada-apiserver job 用 tls_config.ca_file 校验服务端证书，不再 insecure_skip_verify。
 #
 # 参考：
 #   - https://karmada.io/docs/administrator/monitoring/working-with-prometheus-in-control-plane
@@ -81,7 +84,10 @@ data:
         monitor: prometheus
     rule_files:
       - /etc/prometheus/rules/*.yml
-    alerting: {}
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets: ['alertmanager.monitoring.svc:9093']
     scrape_configs:
       # karmada-scheduler：app=karmada-scheduler，端口 8080
       - job_name: karmada-scheduler
@@ -207,11 +213,9 @@ data:
       - job_name: karmada-apiserver
         kubernetes_sd_configs:
           - role: endpoints
-            namespaces:
-              names: [karmada-system]
         scheme: https
         tls_config:
-          insecure_skip_verify: true
+          ca_file: /etc/prometheus/secrets/karmada-ca-cert/ca.crt
         bearer_token_file: /etc/prometheus/secrets/karmada-prometheus-token/token
         relabel_configs:
           - source_labels: [__meta_kubernetes_service_name]
@@ -227,11 +231,9 @@ data:
       - job_name: karmada-aggregated-apiserver
         kubernetes_sd_configs:
           - role: endpoints
-            namespaces:
-              names: [karmada-system]
         scheme: https
         tls_config:
-          insecure_skip_verify: true
+          ca_file: /etc/prometheus/secrets/karmada-ca-cert/ca.crt
         bearer_token_file: /etc/prometheus/secrets/karmada-prometheus-token/token
         relabel_configs:
           - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoints_name]
@@ -309,6 +311,9 @@ spec:
             - name: karmada-prometheus-token
               mountPath: /etc/prometheus/secrets/karmada-prometheus-token
               readOnly: true
+            - name: karmada-ca-cert
+              mountPath: /etc/prometheus/secrets/karmada-ca-cert
+              readOnly: true
             - name: prometheus-data
               mountPath: /prometheus
           resources:
@@ -340,6 +345,9 @@ spec:
         - name: karmada-prometheus-token
           secret:
             secretName: karmada-prometheus-token
+        - name: karmada-ca-cert
+          secret:
+            secretName: karmada-ca-cert
   volumeClaimTemplates:
     - metadata:
         name: prometheus-data

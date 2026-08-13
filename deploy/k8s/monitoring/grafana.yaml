@@ -6,6 +6,7 @@
 #   - 5 个官方 Dashboard 由 ConfigMap karmada-dashboards 挂载，
 #     dashboard provisioning 自动导入；Dashboard 内 $DS_PROMETHEUS 变量绑定到数据源 Prometheus
 #   - 固定在 control-plane 节点
+#   - 数据持久化到 PVC（与 Prometheus 一致，避免 hostPath 在节点漂移时丢数据）
 #   - 无对外暴露（ClusterIP Service，仅集群内访问）
 #
 # 参考：
@@ -150,9 +151,22 @@ spec:
           configMap:
             name: karmada-dashboards
         - name: grafana-data
-          hostPath:
-            path: /var/lib/grafana-karmada
-            type: DirectoryOrCreate
+          persistentVolumeClaim:
+            claimName: grafana-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data
+  namespace: monitoring
+  labels:
+    app: grafana
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
 ---
 apiVersion: v1
 kind: Service

@@ -92,7 +92,7 @@ kubectl apply -f k8s/ingress.yaml
 
 ## 监控（Prometheus + Grafana，采集 Karmada 指标）
 
-`k8s/monitoring/` 部署一个单实例 Prometheus + Grafana，用于采集 Karmada 控制面（apiserver / controller-manager / scheduler / scheduler-estimator / agent / webhook / descheduler）与宿主集群指标，并预导入 Karmada 官方 5 个 Grafana Dashboard。二者固定在 control-plane 节点，仅暴露集群内 ClusterIP，**不会**暴露到公网，非高可用部署。
+`k8s/monitoring/` 部署一个单实例 Prometheus + Grafana + Alertmanager，用于采集 Karmada 控制面（apiserver / controller-manager / scheduler / scheduler-estimator / agent / webhook / descheduler）与宿主集群指标，并预导入 Karmada 官方 5 个 Grafana Dashboard。三者固定在 control-plane 节点，仅暴露集群内 ClusterIP，**不会**暴露到公网，非高可用部署。
 
 文件：
 
@@ -104,6 +104,7 @@ kubectl apply -f k8s/ingress.yaml
 | `k8s/monitoring/grafana.yaml` | Grafana Deployment + provisioning（数据源 + Dashboard provider）+ ConfigMaps |
 | `k8s/monitoring/dashboards-configmap.yaml` | 5 个官方 Dashboard 的 ConfigMap（由 `dashboards/*.json` 生成） |
 | `k8s/monitoring/dashboards/*.json` | 官方 Dashboard JSON 源文件（下载自 karmada.io） |
+| `k8s/monitoring/alertmanager.yaml` | Alertmanager Deployment + Service + PVC（接收 Prometheus 告警，路由/静默/通知） |
 
 ### 前提：Grafana Secret 与 Karmada token
 
@@ -128,6 +129,19 @@ kubectl -n monitoring create secret generic karmada-prometheus-token \
   --from-literal=token="$KARMADA_PROMETHEUS_TOKEN"
 ```
 
+然后从 Karmada API-server 集群提取 apiserver 证书的签发 CA，注入宿主集群（Prometheus 两个 Karmada API-server job 用 `tls_config.ca_file` 校验服务端证书，不再跳过 TLS 验证）：
+
+```bash
+# karmadactl init 默认把 apiserver 证书放在 karmada-system/karmada-apiserver-cert 的 ca.crt；
+# 自建 CA 时替换为实际 secret/key。
+KARMADA_CA_CERT="$(kubectl --context karmada-apiserver -n karmada-system \
+  get secret karmada-apiserver-cert -o jsonpath='{.data.ca\.crt}' | base64 --decode)"
+test -n "$KARMADA_CA_CERT"
+
+kubectl -n monitoring create secret generic karmada-ca-cert \
+  --from-literal=ca.crt="$KARMADA_CA_CERT"
+```
+
 `karmada-apiserver` 是环境中该 context 的名称；如果不同，替换为实际 kubeconfig context。
 
 ### 部署
@@ -136,6 +150,7 @@ kubectl -n monitoring create secret generic karmada-prometheus-token \
 kubectl apply -f k8s/monitoring/prometheus.yaml
 kubectl apply -f k8s/monitoring/karmada-rules.yaml
 kubectl apply -f k8s/monitoring/grafana.yaml
+kubectl apply -f k8s/monitoring/alertmanager.yaml
 kubectl apply -f k8s/monitoring/dashboards-configmap.yaml
 ```
 
@@ -146,6 +161,8 @@ kubectl apply -f k8s/monitoring/dashboards-configmap.yaml
 kubectl -n monitoring port-forward svc/prometheus 9090:9090
 # Grafana（admin 口令来自 grafana-admin Secret）
 kubectl -n monitoring port-forward svc/grafana 3000:3000
+# Alertmanager（Prometheus 告警路由，默认 receiver 只记录到日志）
+kubectl -n monitoring port-forward svc/alertmanager 9093:9093
 ```
 
 Grafana 启动后会自动出现 Prometheus 数据源和 `Karmada` 文件夹下的 5 个官方 Dashboard（API Server Insights / Controller Manager Insights / Member Cluster Insights / Scheduler Insights / Resource Propagation Insights）。
