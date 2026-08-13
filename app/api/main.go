@@ -45,6 +45,7 @@ var buildFS embed.FS
 //go:embed web/dist/index.html
 var indexPage []byte
 
+
 func main() {
 	startTime := time.Now()
 	kitutil.SetLogging(common.SysLog, func(message string) {

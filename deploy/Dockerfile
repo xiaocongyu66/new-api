@@ -7,6 +7,17 @@ COPY ./app/web ./
 COPY ./VERSION /build/VERSION
 RUN DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$(cat /build/VERSION) bun run build
 
+FROM rust:1.89-alpine AS dioxus-builder
+
+WORKDIR /build/app/dioxus-web
+RUN apk add --no-cache musl-dev
+RUN cargo install dioxus-cli --version 0.7.9 --locked
+COPY app/dioxus-web/Cargo.toml app/dioxus-web/Cargo.lock ./
+COPY app/dioxus-web ./
+RUN dx build --release --web --debug-symbols false \
+    && cp assets/style.css target/dx/karmada-panel/release/web/public/style.css \
+    && sed -Ei 's|<title>[^<]*</title>|<title>Karmada Panel</title>|' target/dx/karmada-panel/release/web/public/index.html target/dx/karmada-panel/release/web/public/assets/karmada-panel-*.js
+
 FROM golang:1.26.1-alpine@sha256:2389ebfa5b7f43eeafbd6be0c3700cc46690ef842ad962f6c5bd6be49ed82039 AS builder2
 ENV GO111MODULE=on CGO_ENABLED=0 GOWORK=off
 
@@ -26,6 +37,7 @@ RUN cd app/api && go mod download
 COPY . .
 # 方案 A：go:embed 只能引用包内路径，前端产物必须拷进 app/api 包内。
 COPY --from=builder /build/web/dist ./app/api/web/dist
+COPY --from=dioxus-builder /build/app/dioxus-web/target/dx/karmada-panel/release/web/public ./app/api/web/dist/dioxus
 RUN cd app/api && go build -tags "${SINGBOX_TAGS}" -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat /build/VERSION)'" -o /build/new-api
 
 FROM debian:bookworm-slim@sha256:f06537653ac770703bc45b4b113475bd402f451e85223f0f2837acbf89ab020a

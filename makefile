@@ -10,7 +10,7 @@ DEV_POSTGRES_DB = new-api
 DEV_POSTGRES_USER = root
 DEV_SQLITE_PATH ?= one-api.db
 
-.PHONY: all build-web build-all-web start-api dev dev-api dev-api-rebuild dev-web reset-setup test
+.PHONY: all build-web build-dioxus-web build-all-web start-api dev dev-api dev-api-rebuild dev-web reset-setup test
 
 all: build-all-web start-api
 
@@ -22,6 +22,10 @@ build-web:
 	@rm -rf $(API_EMBED_DIR)
 	@mkdir -p $(API_EMBED_DIR)
 	@cp -r $(WEB_DIR)/dist/. $(API_EMBED_DIR)/
+	@$(MAKE) build-dioxus-web
+
+build-dioxus-web:
+	@./scripts/build-dioxus-web.sh
 
 build-all-web: build-web
 
