@@ -104,6 +104,15 @@ export function useSidebarData(): SidebarData {
             configUrls: ['/usage-logs/drawing', '/usage-logs/task'],
             icon: ListTodo,
           },
+          ...(pricingEnabled
+            ? [
+                {
+                  title: t('Model Square'),
+                  url: '/pricing',
+                  icon: Store,
+                },
+              ]
+            : []),
         ],
       },
       {
@@ -120,15 +129,6 @@ export function useSidebarData(): SidebarData {
             url: '/profile',
             icon: User,
           },
-          ...(pricingEnabled
-            ? [
-                {
-                  title: t('Model Square'),
-                  url: '/pricing',
-                  icon: Store,
-                },
-              ]
-            : []),
         ],
       },
       {

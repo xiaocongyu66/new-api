@@ -293,6 +293,7 @@ func migrateDB() error {
 		&CasbinRule{},
 		&AuthzRole{},
 		&KarmadaConfig{},
+		&ProxyNode{},
 	)
 	if err != nil {
 		return err
@@ -318,7 +319,6 @@ func migrateDB() error {
 func migrateDBFast() error {
 
 	var wg sync.WaitGroup
-
 	migrations := []struct {
 		model interface{}
 		name  string
@@ -354,6 +354,7 @@ func migrateDBFast() error {
 		{&SystemInstance{}, "SystemInstance"},
 		{&SystemTask{}, "SystemTask"},
 		{&SystemTaskLock{}, "SystemTaskLock"},
+		{&ProxyNode{}, "ProxyNode"},
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
 	errChan := make(chan error, len(migrations))
