@@ -8,7 +8,7 @@ BUILD_DIR="$PROJECT_DIR/target/dx/karmada-panel/release/web/public"
 
 cd "$PROJECT_DIR"
 dx build --release --web --debug-symbols false
-gio trash "$OUTPUT_DIR" 2>/dev/null || true
+rm -rf "$OUTPUT_DIR" 2>/dev/null || true
 mkdir -p "$OUTPUT_DIR"
 cp -R "$BUILD_DIR"/. "$OUTPUT_DIR"/
 # Dioxus CLI 不会把 assets/style.css 放入构建产物，而 index.html 引用了它
