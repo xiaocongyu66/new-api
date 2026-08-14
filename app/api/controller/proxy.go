@@ -17,6 +17,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// maskedSecret is the sentinel value substituted for sensitive fields in
+// API responses. UpdateProxyConfig restores the original value when it sees
+// this sentinel so a round-trip doesn't overwrite real secrets.
+const maskedSecret = "********"
+
 // ProxyConfigRequest is the JSON shape for saving proxy configuration.
 type ProxyConfigRequest struct {
 	Outbound       OutboundConfig `json:"outbound"`
@@ -147,7 +152,7 @@ func maskSecret(s string) string {
 	if s == "" {
 		return ""
 	}
-	return "********"
+	return maskedSecret
 }
 
 // UpdateProxyConfig saves the proxy configuration to the Option table.
@@ -168,6 +173,27 @@ func UpdateProxyConfig(c *gin.Context) {
 			Path:        req.Outbound.TransportPath,
 			Headers:     headers,
 			ServiceName: req.Outbound.TransportService,
+		}
+	}
+	// If sensitive fields arrive as the mask sentinel ("********"), restore
+	// the original values from the stored config so a round-trip
+	// GetProxyConfig → edit unrelated fields → UpdateProxyConfig doesn't
+	// overwrite real secrets with the sentinel.
+	// Sentinel value match — maskedSecret is defined at package level.
+	if req.Outbound.Password == maskedSecret || req.Outbound.UUID == maskedSecret || req.Outbound.ObfsPassword == maskedSecret {
+		if stored, loadErr := service.LoadProxyConfigJSON(); loadErr == nil {
+			var prev ProxyConfigRequest
+			if unmarshalErr := common.Unmarshal([]byte(stored), &prev); unmarshalErr == nil {
+				if req.Outbound.Password == maskedSecret {
+					req.Outbound.Password = prev.Outbound.Password
+				}
+				if req.Outbound.UUID == maskedSecret {
+					req.Outbound.UUID = prev.Outbound.UUID
+				}
+				if req.Outbound.ObfsPassword == maskedSecret {
+					req.Outbound.ObfsPassword = prev.Outbound.ObfsPassword
+				}
+			}
 		}
 	}
 	// Validate the outbound against an in-process sing-box build before
