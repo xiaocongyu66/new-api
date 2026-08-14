@@ -232,6 +232,11 @@ func SetApiRouter(router *gin.Engine) {
 			karmadaRoute.GET("/clusters", controller.ListKarmadaClusters)
 			karmadaRoute.GET("/clusters/:name", controller.GetKarmadaCluster)
 			karmadaRoute.Any("/proxy/*path", controller.ProxyKarmada)
+			// Phase 2: resource management (#111)
+			karmadaRoute.GET("/resources/:kind", controller.ListKarmadaResources)
+			karmadaRoute.GET("/resources/:kind/:namespace/:name", controller.GetKarmadaResource)
+			karmadaRoute.PUT("/resources/:kind/:namespace/:name/scale", controller.ScaleKarmadaResource)
+			karmadaRoute.DELETE("/resources/:kind/:namespace/:name", controller.DeleteKarmadaResource)
 		}
 
 		// Custom OAuth provider management (admin with system.settings permission)
