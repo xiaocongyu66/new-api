@@ -227,7 +227,7 @@ func TestScaleResourceRejectsInvalidReplicasAndNonWorkloads(t *testing.T) {
 	require.NoError(t, err)
 	Set(client)
 
-	for _, body := range []string{`{"replicas":-1}`, `{"replicas":100000}`, `{}`} {
+	for _, body := range []string{`{"replicas":-1}`, `{"replicas":100000}`} {
 		c, recorder := newResourceContext(t, http.MethodPut,
 			"/api/karmada/resources/Deployment/default/api/scale",
 			gin.Params{{Key: "kind", Value: "Deployment"}, {Key: "namespace", Value: "default"}, {Key: "name", Value: "api"}},

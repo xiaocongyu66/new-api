@@ -126,8 +126,8 @@ func ListKarmadaResources(c *gin.Context) {
 		return
 	}
 
-	if info.namespaced && namespace == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "namespace required for namespaced resources"})
+	if info.namespaced && namespace == "" && cluster == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "namespace required for control-plane namespaced resources"})
 		return
 	}
 
