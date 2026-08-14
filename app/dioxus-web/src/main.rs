@@ -21,8 +21,7 @@ fn main() {
 fn App() -> Element {
     let mut active_tab = use_signal(|| "clusters");
     let active_title = || {
-        TABS
-            .iter()
+        TABS.iter()
             .find(|(id, _)| *id == active_tab())
             .map(|(_, title)| *title)
             .unwrap_or("Clusters")

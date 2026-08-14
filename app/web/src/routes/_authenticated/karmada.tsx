@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { useTheme } from '@/context/theme-provider'
 import { useThemeCustomization } from '@/context/theme-customization-provider'
+import { getFreshAuthHeaders } from '@/lib/auth-session'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -61,17 +62,52 @@ function KarmadaPage() {
     )
   }, [customization, resolvedTheme])
 
+  const pushAuthToken = useCallback(async () => {
+    const frame = iframeRef.current
+    if (!frame?.contentWindow) return
+    try {
+      // getFreshAuthHeaders refreshes the short-lived access token when needed.
+      const headers = await getFreshAuthHeaders()
+      const authorization = headers.Authorization
+      const token = authorization?.startsWith('Bearer ')
+        ? authorization.slice('Bearer '.length)
+        : undefined
+      if (!token) return
+      frame.contentWindow.postMessage(
+        { type: 'karmada-auth', token },
+        window.location.origin
+      )
+    } catch {
+      // Session expired or refresh failed; the panel surfaces the 401 itself.
+    }
+  }, [])
+
   useEffect(() => {
     const frame = requestAnimationFrame(syncTheme)
     return () => cancelAnimationFrame(frame)
   }, [syncTheme])
+
+  useEffect(() => {
+    // The Dioxus panel requests a token on load and again after any 401.
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return
+      if (event.data?.type === 'karmada-auth-request') {
+        void pushAuthToken()
+      }
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [pushAuthToken])
 
   return (
     <iframe
       ref={iframeRef}
       title={t('Karmada Panel')}
       src={`/dioxus/?theme=${resolvedTheme}`}
-      onLoad={syncTheme}
+      onLoad={() => {
+        syncTheme()
+        void pushAuthToken()
+      }}
       className='h-[calc(100svh-3rem)] w-full border-0'
     />
   )

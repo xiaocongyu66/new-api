@@ -20,16 +20,37 @@ pub async fn request(method: &str, path: &str, body: Option<Value>) -> Result<Va
     let eval = document::eval(
         r#"
         const req = await dioxus.recv();
-        const init = { method: req.method, headers: { 'Accept': 'application/json' }, credentials: 'same-origin' };
-        if (req.body !== null) {
-            init.headers['Content-Type'] = 'application/json';
-            init.body = JSON.stringify(req.body);
+        async function doFetch() {
+            const token = window.__karmadaToken;
+            const init = { method: req.method, headers: { 'Accept': 'application/json' }, credentials: 'same-origin' };
+            if (token) { init.headers['Authorization'] = 'Bearer ' + token; }
+            if (req.body !== null) {
+                init.headers['Content-Type'] = 'application/json';
+                init.body = JSON.stringify(req.body);
+            }
+            return await fetch(req.path, init);
         }
         let response;
         try {
-            response = await fetch(req.path, init);
+            response = await doFetch();
         } catch (err) {
             return { ok: false, message: String(err) };
+        }
+        // The dashboard access token is a short-lived bearer token held by the
+        // parent React app. On 401 ask the parent for a fresh token and retry once.
+        if (response.status === 401 && window.parent && window.parent !== window) {
+            const prev = window.__karmadaToken;
+            window.parent.postMessage({ type: 'karmada-auth-request' }, location.origin);
+            const start = Date.now();
+            while (Date.now() - start < 3000) {
+                await new Promise(function (r) { setTimeout(r, 100); });
+                if (window.__karmadaToken && window.__karmadaToken !== prev) break;
+            }
+            try {
+                response = await doFetch();
+            } catch (err) {
+                return { ok: false, message: String(err) };
+            }
         }
         const text = await response.text();
         let parsed = null;
