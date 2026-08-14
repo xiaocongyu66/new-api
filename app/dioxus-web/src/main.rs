@@ -14,7 +14,33 @@ const TABS: &[(&str, &str)] = &[
 ];
 
 fn main() {
+    setup_theme_listener();
     dioxus::launch(App);
+}
+
+fn setup_theme_listener() {
+    let script = r#"
+        var ALLOWED = ['--font-body','--background','--foreground','--card','--card-foreground','--muted','--muted-foreground','--accent','--accent-foreground','--border','--sidebar','--sidebar-foreground','--sidebar-accent','--sidebar-accent-foreground','--sidebar-border','--sidebar-ring','--radius'];
+        window.addEventListener('message', function(e) {
+            if (e.origin !== window.location.origin) return;
+            var d = e.data;
+            if (!d || d.type !== 'theme') return;
+            var root = document.documentElement;
+            root.setAttribute('data-theme', d.theme || 'dark');
+            if (d.tokens) {
+                Object.keys(d.tokens).forEach(function(k) {
+                    if (ALLOWED.indexOf(k) !== -1) {
+                        root.style.setProperty(k, d.tokens[k]);
+                    }
+                });
+            }
+        });
+        var params = new URLSearchParams(window.location.search);
+        var initial = params.get('theme');
+        if (initial) {
+            document.documentElement.setAttribute('data-theme', initial);
+        }
+    "#;
 }
 
 #[component]
