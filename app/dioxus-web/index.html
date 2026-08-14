@@ -9,7 +9,12 @@
         var params = new URLSearchParams(location.search)
         var root = document.documentElement
         var apply = function (message) {
-          if (!message || message.type !== 'theme') return
+          if (!message) return
+          if (message.type === 'karmada-auth' && typeof message.token === 'string') {
+            window.__karmadaToken = message.token
+            return
+          }
+          if (message.type !== 'theme') return
           if (message.theme) root.dataset.theme = message.theme
           Object.keys(message.tokens || {}).forEach(function (name) {
             root.style.setProperty(name, message.tokens[name])
@@ -19,6 +24,10 @@
         window.addEventListener('message', function (event) {
           if (event.origin === location.origin) apply(event.data)
         })
+        // Ask the parent dashboard for the current access token on load.
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: 'karmada-auth-request' }, location.origin)
+        }
       })()
     </script>
   </head>

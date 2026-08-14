@@ -1,3 +1,6 @@
+mod api;
+mod clusters;
+
 use dioxus::prelude::*;
 
 const TABS: &[(&str, &str)] = &[
@@ -18,8 +21,7 @@ fn main() {
 fn App() -> Element {
     let mut active_tab = use_signal(|| "clusters");
     let active_title = || {
-        TABS
-            .iter()
+        TABS.iter()
             .find(|(id, _)| *id == active_tab())
             .map(|(_, title)| *title)
             .unwrap_or("Clusters")
@@ -40,10 +42,13 @@ fn App() -> Element {
             }
             main { class: "content",
                 h1 { "{active_title()}" }
-                div { class: "card",
-                    h2 { "Karmada Panel" }
-                    p { "The {active_title()} view is ready for Karmada integration." }
-                    p { "This Dioxus page is the first step of the gradual React-to-Dioxus migration." }
+                if active_tab() == "clusters" {
+                    clusters::ClustersView {}
+                } else {
+                    div { class: "card",
+                        h2 { "Karmada Panel" }
+                        p { "The {active_title()} view is ready for Karmada integration." }
+                    }
                 }
             }
         }

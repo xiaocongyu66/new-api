@@ -1589,6 +1589,7 @@ name = "karmada-panel"
 version = "0.1.0"
 dependencies = [
  "dioxus",
+ "serde_json",
 ]
 
 [[package]]

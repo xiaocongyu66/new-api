@@ -27,12 +27,16 @@ type ConfigResponse struct {
 }
 
 // MemberCluster is the simplified view of a Karmada member cluster returned by
-// the /api/karmada/clusters endpoints.
+// the /api/karmada/clusters endpoints. Prometheus-derived numbers are embedded
+// and stay null when metrics are unavailable.
 type MemberCluster struct {
-	Name      string `json:"name"`
-	Status    string `json:"status"`
-	NodeCount int    `json:"node_count"`
-	Version   string `json:"version"`
+	Name        string `json:"name"`
+	Status      string `json:"status"`
+	APIEndpoint string `json:"api_endpoint"`
+	ReadyNodes  int    `json:"ready_nodes"`
+	TotalNodes  int    `json:"total_nodes"`
+	Version     string `json:"version"`
+	ClusterMetrics
 }
 
 // PostKarmadaConfig validates and encrypts an uploaded kubeconfig, persists it
@@ -101,8 +105,8 @@ func DeleteKarmadaConfig(c *gin.Context) {
 	common.ApiSuccess(c, nil)
 }
 
-// ListKarmadaClusters returns a simplified view of every Karmada member
-// cluster.
+// ListKarmadaClusters returns every Karmada member cluster with its node counts
+// and, when Prometheus is configured, its utilization and sync latency.
 func ListKarmadaClusters(c *gin.Context) {
 	client, err := Get()
 	if err != nil {
@@ -114,14 +118,16 @@ func ListKarmadaClusters(c *gin.Context) {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
+	metrics := fetchClusterMetrics(prometheusBaseURL())
 	members := make([]MemberCluster, 0, len(items))
 	for _, it := range items {
-		members = append(members, it.toMemberCluster())
+		members = append(members, it.toMemberCluster(metrics[it.Metadata.Name]))
 	}
 	common.ApiSuccess(c, gin.H{"clusters": members})
 }
 
-// GetKarmadaCluster returns details of a single Karmada member cluster.
+// GetKarmadaCluster returns one member cluster plus its resource counts, node
+// list and recent events, read on demand through the aggregated API proxy.
 func GetKarmadaCluster(c *gin.Context) {
 	name := strings.TrimSpace(c.Param("name"))
 	if name == "" {
@@ -134,17 +140,17 @@ func GetKarmadaCluster(c *gin.Context) {
 		return
 	}
 	body, err := forward(client, http.MethodGet,
-		fmt.Sprintf("/apis/cluster.karmada.io/v1alpha1/namespaces/karmada-cluster/clusters/%s", url.PathEscape(name)))
+		fmt.Sprintf("/apis/cluster.karmada.io/v1alpha1/clusters/%s", url.PathEscape(name)))
 	if err != nil {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
-	var cluster map[string]any
+	var cluster clusterItem
 	if err := common.Unmarshal(body, &cluster); err != nil {
 		common.ApiErrorMsg(c, "invalid cluster response")
 		return
 	}
-	common.ApiSuccess(c, cluster)
+	common.ApiSuccess(c, fetchClusterDetail(client, cluster, fetchClusterMetrics(prometheusBaseURL())))
 }
 
 // ProxyKarmada forwards any request under /api/karmada/proxy/* to the Karmada
@@ -240,7 +246,8 @@ func truncate(s string, n int) string {
 	return s[:n]
 }
 
-// cluster wire shapes.
+// cluster wire shapes, following the documented Cluster v1alpha1 schema:
+// spec.apiEndpoint / spec.syncMode and status.nodeSummary.readyNum/totalNum.
 type clusterList struct {
 	Items []clusterItem `json:"items"`
 }
@@ -249,7 +256,13 @@ type clusterItem struct {
 	Metadata struct {
 		Name string `json:"name"`
 	} `json:"metadata"`
+	Spec   clusterSpec   `json:"spec"`
 	Status clusterStatus `json:"status"`
+}
+
+type clusterSpec struct {
+	APIEndpoint string `json:"apiEndpoint"`
+	SyncMode    string `json:"syncMode"`
 }
 
 type clusterStatus struct {
@@ -264,12 +277,13 @@ type clusterCondition struct {
 }
 
 type clusterNodeSummary struct {
-	ReadyNodes int `json:"readyNodes"`
+	ReadyNum int `json:"readyNum"`
+	TotalNum int `json:"totalNum"`
 }
 
 func fetchClusterItems(client *Client) ([]clusterItem, error) {
 	body, err := forward(client, http.MethodGet,
-		"/apis/cluster.karmada.io/v1alpha1/namespaces/karmada-cluster/clusters")
+		"/apis/cluster.karmada.io/v1alpha1/clusters")
 	if err != nil {
 		return nil, err
 	}
@@ -280,21 +294,35 @@ func fetchClusterItems(client *Client) ([]clusterItem, error) {
 	return list.Items, nil
 }
 
-func (it clusterItem) toMemberCluster() MemberCluster {
-	status := "Unknown"
-	for _, cond := range it.Status.Conditions {
-		if cond.Type == "Ready" {
-			if cond.Status != "" {
-				status = cond.Status
-			}
-			break
+// readyConditionStatus normalizes a Ready condition into the Ready / NotReady /
+// Unknown vocabulary the panel renders. Kubernetes reports True/False/Unknown,
+// while Karmada clusters may carry "Ready" verbatim.
+func readyConditionStatus(conditions []clusterCondition) string {
+	for _, cond := range conditions {
+		if cond.Type != "Ready" {
+			continue
+		}
+		switch cond.Status {
+		case "True", "Ready":
+			return "Ready"
+		case "False", "NotReady":
+			return "NotReady"
+		default:
+			return "Unknown"
 		}
 	}
+	return "Unknown"
+}
+
+func (it clusterItem) toMemberCluster(metrics ClusterMetrics) MemberCluster {
 	return MemberCluster{
-		Name:      it.Metadata.Name,
-		Status:    status,
-		NodeCount: it.Status.NodeSummary.ReadyNodes,
-		Version:   it.Status.KubernetesVersion,
+		Name:           it.Metadata.Name,
+		Status:         readyConditionStatus(it.Status.Conditions),
+		APIEndpoint:    it.Spec.APIEndpoint,
+		ReadyNodes:     it.Status.NodeSummary.ReadyNum,
+		TotalNodes:     it.Status.NodeSummary.TotalNum,
+		Version:        it.Status.KubernetesVersion,
+		ClusterMetrics: metrics,
 	}
 }
 

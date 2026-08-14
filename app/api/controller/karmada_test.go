@@ -230,9 +230,10 @@ func TestPostKarmadaConfigRejectsInvalidReplacementWithoutOverwritingActiveConfi
 
 func TestListClustersMapsMemberClusters(t *testing.T) {
 	setupKarmadaTest(t)
+	t.Setenv("PROMETHEUS_URL", "")
 	upstreamBody := `{"items":[
-		{"metadata":{"name":"member-a"},"status":{"conditions":[{"type":"Ready","status":"Ready"}],"nodeSummary":{"readyNodes":3},"kubernetesVersion":"v1.27.0"}},
-		{"metadata":{"name":"member-b"},"status":{"conditions":[{"type":"Ready","status":"True"}],"nodeSummary":{"readyNodes":1},"kubernetesVersion":"v1.26.3"}}
+		{"metadata":{"name":"member-a"},"status":{"conditions":[{"type":"Ready","status":"Ready"}],"nodeSummary":{"readyNum":3,"totalNum":3},"kubernetesVersion":"v1.27.0"}},
+		{"metadata":{"name":"member-b"},"status":{"conditions":[{"type":"Ready","status":"True"}],"nodeSummary":{"readyNum":1,"totalNum":1},"kubernetesVersion":"v1.26.3"}}
 	]}`
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer tok1" {
@@ -263,16 +264,23 @@ func TestListClustersMapsMemberClusters(t *testing.T) {
 	require.Len(t, resp.Data.Clusters, 2)
 	assert.Equal(t, "member-a", resp.Data.Clusters[0].Name)
 	assert.Equal(t, "Ready", resp.Data.Clusters[0].Status)
-	assert.Equal(t, 3, resp.Data.Clusters[0].NodeCount)
+	assert.Equal(t, 3, resp.Data.Clusters[0].ReadyNodes)
+	assert.Equal(t, 3, resp.Data.Clusters[0].TotalNodes)
 	assert.Equal(t, "v1.27.0", resp.Data.Clusters[0].Version)
 	assert.Equal(t, "member-b", resp.Data.Clusters[1].Name)
 }
 
 func TestGetKarmadaClusterEscapesName(t *testing.T) {
 	setupKarmadaTest(t)
+	t.Setenv("PROMETHEUS_URL", "")
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/apis/cluster.karmada.io/v1alpha1/namespaces/karmada-cluster/clusters/member%2Fcluster", r.URL.EscapedPath())
-		_, _ = w.Write([]byte(`{}`))
+		if r.URL.EscapedPath() == "/apis/cluster.karmada.io/v1alpha1/clusters/member%2Fcluster" {
+			_, _ = w.Write([]byte(`{"metadata":{"name":"member/cluster"}}`))
+			return
+		}
+		// Member-cluster proxy queries keep the escaped cluster name in the path.
+		assert.Contains(t, r.URL.EscapedPath(), "/clusters/member%2Fcluster/proxy/")
+		_, _ = w.Write([]byte(`{"items":[]}`))
 	}))
 	defer upstream.Close()
 	client, err := newClientFromKubeconfig(makeKubeconfig(upstream.URL, "tok1"))
