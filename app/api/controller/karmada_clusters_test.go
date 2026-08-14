@@ -12,10 +12,10 @@ import (
 )
 
 // promInstantPayload builds a Prometheus instant-query response for one series
-// keyed by the member_cluster label.
+// keyed by the cluster_name label (as karmada-controller-manager emits).
 func promInstantPayload(cluster, value string) string {
 	return `{"status":"success","data":{"resultType":"vector","result":[` +
-		`{"metric":{"member_cluster":"` + cluster + `"},"value":[1755100000,"` + value + `"]}]}}`
+		`{"metric":{"cluster_name":"` + cluster + `"},"value":[1755100000,"` + value + `"]}]}}`
 }
 
 func newPrometheusStub(t *testing.T, values map[string]string) *httptest.Server {
@@ -61,11 +61,11 @@ func TestFetchClusterMetricsSkipsUnusableSeries(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Query().Get("query") {
 		case metricClusterCPUUtilization:
-			// Series without the member_cluster label cannot be attributed.
+			// Series without the cluster_name label cannot be attributed.
 			_, _ = w.Write([]byte(`{"status":"success","data":{"result":[{"metric":{},"value":[1,"5"]}]}}`))
 		case metricClusterMemoryUtilization:
 			// Non-numeric sample value.
-			_, _ = w.Write([]byte(`{"status":"success","data":{"result":[{"metric":{"member_cluster":"member-a"},"value":[1,"NaN%"]}]}}`))
+			_, _ = w.Write([]byte(`{"status":"success","data":{"result":[{"metric":{"cluster_name":"member-a"},"value":[1,"NaN%"]}]}}`))
 		default:
 			w.WriteHeader(http.StatusInternalServerError)
 		}

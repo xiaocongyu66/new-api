@@ -20,8 +20,10 @@ const (
 	metricClusterSyncLatencyP95    = "karmada:cluster_sync:latency:p95"
 )
 
-// clusterMetricLabel is the label Karmada attaches to per-member-cluster series.
-const clusterMetricLabel = "member_cluster"
+// clusterMetricLabel is the label Karmada attaches to per-member-cluster
+// series. karmada-controller-manager emits cluster_cpu_* / cluster_memory_* /
+// cluster_sync_status_* keyed by cluster_name, and recording rules preserve it.
+const clusterMetricLabel = "cluster_name"
 
 // clusterDetailEventLimit bounds the event list pulled from a member cluster.
 const clusterDetailEventLimit = 20
