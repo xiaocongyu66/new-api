@@ -340,3 +340,32 @@ func TestProxyForwardsRawResponseAndQuery(t *testing.T) {
 	assert.Equal(t, "yes", recorder.Header().Get("X-Karmada"))
 	assert.Equal(t, `{"raw":"value"}`, recorder.Body.String())
 }
+
+func TestProxyRejectsDisallowedPath(t *testing.T) {
+	setupKarmadaTest(t)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("upstream should not be called for disallowed path")
+	}))
+	defer upstream.Close()
+	client, err := newClientFromKubeconfig(makeKubeconfig(upstream.URL, "tok1"))
+	require.NoError(t, err)
+	Set(client)
+
+	disallowed := []string{
+		"/metrics",
+		"/debug/pprof",
+		"/healthz",
+		"/api/v2/secrets",
+		"/apisix",
+	}
+	for _, p := range disallowed {
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodGet, "/api/karmada/proxy"+p, nil)
+		c.Params = gin.Params{{Key: "path", Value: p}}
+		ProxyKarmada(c)
+		var resp map[string]any
+		require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp), "path %s", p)
+		assert.False(t, resp["success"].(bool), "path %s should be rejected", p)
+	}
+}
