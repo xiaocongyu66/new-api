@@ -2,10 +2,11 @@ package controller
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"sort"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -17,7 +18,8 @@ type resourceKind struct {
 	apiRoot    string
 	plural     string
 	namespaced bool
-	workload   bool // supports scale subresource
+	workload   bool // has workload status/distribution data
+	scalable   bool // supports this panel's scale operation
 }
 
 // Only kinds from issue #111 are exposed; no path-injection allowed.
@@ -27,6 +29,7 @@ var allowedResourceKinds = map[string]resourceKind{
 		plural:     "deployments",
 		namespaced: true,
 		workload:   true,
+		scalable:   true,
 	},
 	"StatefulSet": {
 		apiRoot:    "/apis/apps/v1",
@@ -110,7 +113,6 @@ type ResourcePod struct {
 	Phase    string `json:"phase"`
 	Ready    string `json:"ready"`
 	Restarts int    `json:"restarts"`
-	Age      string `json:"age"`
 }
 
 // ListKarmadaResources returns a list of resources of a given kind.
@@ -162,6 +164,7 @@ func ListKarmadaResources(c *gin.Context) {
 
 // GetKarmadaResource returns detail for a single resource.
 // GET /api/karmada/resources/:kind/:namespace/:name?cluster=<cluster>&selector=<label>
+// GET /api/karmada/resources/:kind/:name for cluster-scoped resources.
 func GetKarmadaResource(c *gin.Context) {
 	kind := c.Param("kind")
 	namespace := c.Param("namespace")
@@ -172,6 +175,22 @@ func GetKarmadaResource(c *gin.Context) {
 	info, err := resolveResourceKind(kind)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	if name == "" && !info.namespaced {
+		name = namespace
+		namespace = ""
+	}
+	if name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "name required"})
+		return
+	}
+	if info.namespaced && namespace == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "namespace required for namespaced resources"})
+		return
+	}
+	if !info.namespaced && namespace != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "namespace must be empty for cluster-scoped resources"})
 		return
 	}
 
@@ -195,16 +214,23 @@ func GetKarmadaResource(c *gin.Context) {
 	}
 
 	detail := parseResourceDetail(raw, kind, cluster)
+	if selector == "" {
+		selector = selectorFromSpec(getMap(raw, "spec"))
+	}
 
 	// For control-plane workloads, fetch distribution and pods.
 	if cluster == "" && info.workload {
 		distribution, err := fetchDistribution(client, namespace, name, kind)
-		if err == nil {
+		if err != nil {
+			common.SysError(fmt.Sprintf("karmada: fetch distribution %s/%s/%s: %v", kind, namespace, name, err))
+		} else {
 			detail.Distribution = distribution
 		}
 		if selector != "" {
 			pods, err := fetchDistributedPods(client, namespace, selector, distribution)
-			if err == nil {
+			if err != nil {
+				common.SysError(fmt.Sprintf("karmada: fetch distributed pods %s/%s/%s: %v", kind, namespace, name, err))
+			} else {
 				detail.Pods = pods
 			}
 		}
@@ -225,8 +251,8 @@ func ScaleKarmadaResource(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
 		return
 	}
-	if !info.workload {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "resource kind does not support scaling"})
+	if !info.scalable {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "only Deployment resources support scaling"})
 		return
 	}
 
@@ -244,9 +270,13 @@ func ScaleKarmadaResource(c *gin.Context) {
 		return
 	}
 
-	scalePath := fmt.Sprintf("%s/namespaces/%s/%s/%s/scale", info.apiRoot, namespace, info.plural, name)
+	scalePath := fmt.Sprintf("%s/namespaces/%s/%s/%s/scale", info.apiRoot, escapePathSegment(namespace), info.plural, escapePathSegment(name))
 	patch := map[string]any{"spec": map[string]any{"replicas": req.Replicas}}
-	patchBody, _ := json.Marshal(patch)
+	patchBody, err := common.Marshal(patch)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
+		return
+	}
 
 	body, err := forwardWithBody(client, http.MethodPatch, scalePath, patchBody)
 	if err != nil {
@@ -268,21 +298,36 @@ func ScaleKarmadaResource(c *gin.Context) {
 }
 
 // DeleteKarmadaResource deletes a resource at the control plane after confirmation.
-// DELETE /api/karmada/resources/:kind/:namespace/:name?confirm=true
+// DELETE /api/karmada/resources/:kind/:namespace/:name?confirm=<name>
+// DELETE /api/karmada/resources/:kind/:name?confirm=<name> for cluster-scoped resources.
 func DeleteKarmadaResource(c *gin.Context) {
 	kind := c.Param("kind")
 	namespace := c.Param("namespace")
 	name := c.Param("name")
-	confirm := c.Query("confirm") == "true"
-
-	if !confirm {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "deletion requires explicit confirm=true query parameter"})
-		return
-	}
 
 	info, err := resolveResourceKind(kind)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	if name == "" && !info.namespaced {
+		name = namespace
+		namespace = ""
+	}
+	if name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "name required"})
+		return
+	}
+	if info.namespaced && namespace == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "namespace required for namespaced resources"})
+		return
+	}
+	if !info.namespaced && namespace != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "namespace must be empty for cluster-scoped resources"})
+		return
+	}
+	if c.Query("confirm") != name {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "deletion requires confirm=<resource name>"})
 		return
 	}
 
@@ -306,21 +351,25 @@ func buildResourcePath(info resourceKind, namespace, name, cluster string) strin
 	var path strings.Builder
 	if cluster != "" {
 		path.WriteString("/apis/cluster.karmada.io/v1alpha1/clusters/")
-		path.WriteString(cluster)
+		path.WriteString(escapePathSegment(cluster))
 		path.WriteString("/proxy")
 	}
 	path.WriteString(info.apiRoot)
 	if info.namespaced && namespace != "" {
 		path.WriteString("/namespaces/")
-		path.WriteString(namespace)
+		path.WriteString(escapePathSegment(namespace))
 	}
 	path.WriteString("/")
 	path.WriteString(info.plural)
 	if name != "" {
 		path.WriteString("/")
-		path.WriteString(name)
+		path.WriteString(escapePathSegment(name))
 	}
 	return path.String()
+}
+
+func escapePathSegment(value string) string {
+	return url.PathEscape(value)
 }
 
 func parseResourceItem(item map[string]any, kind, cluster string) KarmadaResource {
@@ -383,6 +432,7 @@ func parseResourceDetail(item map[string]any, kind, cluster string) ResourceDeta
 		delete(item, "data")
 		delete(item, "stringData")
 		detail.Spec = nil
+		detail.Annotations = nil
 	}
 
 	replicas := getIntPtr(spec, "replicas")
@@ -403,7 +453,7 @@ func parseResourceDetail(item map[string]any, kind, cluster string) ResourceDeta
 }
 
 func fetchDistribution(client *Client, namespace, name, kind string) ([]ClusterDistribution, error) {
-	path := fmt.Sprintf("/apis/work.karmada.io/v1alpha2/namespaces/%s/resourcebindings", namespace)
+	path := fmt.Sprintf("/apis/work.karmada.io/v1alpha2/namespaces/%s/resourcebindings", escapePathSegment(namespace))
 	body, err := forward(client, http.MethodGet, path)
 	if err != nil {
 		return nil, err
@@ -445,32 +495,61 @@ func fetchDistribution(client *Client, namespace, name, kind string) ([]ClusterD
 
 func fetchDistributedPods(client *Client, namespace, selector string, distribution []ClusterDistribution) ([]ResourcePod, error) {
 	var pods []ResourcePod
+	var lastErr error
 	for _, dist := range distribution {
 		path := fmt.Sprintf("/apis/cluster.karmada.io/v1alpha1/clusters/%s/proxy/api/v1/namespaces/%s/pods?labelSelector=%s",
-			dist.Cluster, namespace, selector)
+			escapePathSegment(dist.Cluster), escapePathSegment(namespace), url.QueryEscape(selector))
 		body, err := forward(client, http.MethodGet, path)
 		if err != nil {
+			common.SysError(fmt.Sprintf("karmada: fetch pods from cluster %s: %v", dist.Cluster, err))
+			lastErr = err
 			continue
 		}
 		var list struct {
 			Items []map[string]any `json:"items"`
 		}
 		if err := common.Unmarshal(body, &list); err != nil {
+			common.SysError(fmt.Sprintf("karmada: parse pods from cluster %s: %v", dist.Cluster, err))
+			lastErr = err
 			continue
 		}
 		for _, item := range list.Items {
 			meta := getMap(item, "metadata")
 			status := getMap(item, "status")
+			ready, restarts := podReadiness(status)
 			pods = append(pods, ResourcePod{
-				Name:    getString(meta, "name"),
-				Cluster: dist.Cluster,
-				Phase:   getString(status, "phase"),
-				Ready:   "—", // container readiness would need deeper status parsing
-				Age:     "—",
+				Name:     getString(meta, "name"),
+				Cluster:  dist.Cluster,
+				Phase:    getString(status, "phase"),
+				Ready:    ready,
+				Restarts: restarts,
 			})
 		}
 	}
+	if len(pods) == 0 && lastErr != nil {
+		return nil, lastErr
+	}
 	return pods, nil
+}
+
+func podReadiness(status map[string]any) (string, int) {
+	containerStatuses, _ := status["containerStatuses"].([]any)
+	if len(containerStatuses) == 0 {
+		return "—", 0
+	}
+	ready := 0
+	restarts := 0
+	for _, item := range containerStatuses {
+		container, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if value, ok := container["ready"].(bool); ok && value {
+			ready++
+		}
+		restarts += getInt(container, "restartCount")
+	}
+	return fmt.Sprintf("%d/%d", ready, len(containerStatuses)), restarts
 }
 
 func forwardWithBody(client *Client, method, path string, body []byte) ([]byte, error) {
@@ -533,13 +612,52 @@ func getStringMap(m map[string]any, key string) map[string]string {
 	return result
 }
 
-func karmadaAuditAction(method, route string) string {
-	switch {
-	case method == http.MethodPut && strings.HasSuffix(route, "/scale"):
-		return "karmada.resource_scale"
-	case method == http.MethodDelete && strings.Contains(route, "/resources/"):
-		return "karmada.resource_delete"
-	default:
-		return "generic"
+func selectorFromSpec(spec map[string]any) string {
+	selector := getMap(spec, "selector")
+	matchLabels := getMap(selector, "matchLabels")
+	keys := make([]string, 0, len(matchLabels))
+	values := make(map[string]string, len(matchLabels))
+	for key, value := range matchLabels {
+		if s, ok := value.(string); ok {
+			keys = append(keys, key)
+			values[key] = s
+		}
 	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, key+"="+values[key])
+	}
+
+	matchExpressions, _ := selector["matchExpressions"].([]any)
+	for _, item := range matchExpressions {
+		expr, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		key := getString(expr, "key")
+		switch getString(expr, "operator") {
+		case "In", "NotIn":
+			rawValues, _ := expr["values"].([]any)
+			items := make([]string, 0, len(rawValues))
+			for _, raw := range rawValues {
+				if value, ok := raw.(string); ok {
+					items = append(items, value)
+				}
+			}
+			if key != "" && len(items) > 0 {
+				operator := strings.ToLower(getString(expr, "operator"))
+				parts = append(parts, fmt.Sprintf("%s %s (%s)", key, operator, strings.Join(items, ",")))
+			}
+		case "Exists":
+			if key != "" {
+				parts = append(parts, key)
+			}
+		case "DoesNotExist":
+			if key != "" {
+				parts = append(parts, "!"+key)
+			}
+		}
+	}
+	return strings.Join(parts, ",")
 }

@@ -1,5 +1,6 @@
 mod api;
 mod clusters;
+mod resources;
 
 use dioxus::prelude::*;
 
@@ -44,6 +45,8 @@ fn App() -> Element {
                 h1 { "{active_title()}" }
                 if active_tab() == "clusters" {
                     clusters::ClustersView {}
+                } else if active_tab() == "resources" {
+                    resources::ResourcesView {}
                 } else {
                     div { class: "card",
                         h2 { "Karmada Panel" }

@@ -19,6 +19,8 @@
   --sidebar-accent-foreground: oklch(0.9 0.05 250);
   --sidebar-border: oklch(1 0 0 / 11%);
   --sidebar-ring: oklch(0.7 0.17 250);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
   --font-body: system-ui, sans-serif;
   --radius: 0.5rem;
   font-family: var(--font-body);
@@ -43,6 +45,8 @@
   --sidebar-accent: oklch(0.93 0 0);
   --sidebar-accent-foreground: oklch(0.145 0 0);
   --sidebar-border: oklch(0.93 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
 }
 
 html,
@@ -252,6 +256,93 @@ table.grid th {
 
 .events li {
   margin-bottom: 10px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 16px;
+}
+
+.field {
+  display: flex;
+  min-width: 180px;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: 0.85rem;
+}
+
+.field select,
+.text-input {
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+}
+
+.button {
+  min-height: 38px;
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-foreground);
+  font-weight: 600;
+  text-align: center;
+}
+
+.button:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--accent), var(--foreground) 6%);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.field select:focus-visible,
+.text-input:focus-visible,
+.button:focus-visible {
+  outline: 2px solid var(--sidebar-ring);
+  outline-offset: 2px;
+}
+
+.button.danger {
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+}
+
+.summary-grid,
+.detail-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.action-card {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in oklch, var(--card), var(--background) 18%);
+}
+
+.danger-zone {
+  border-color: color-mix(in oklch, var(--destructive) 45%, transparent);
+  background: color-mix(in oklch, var(--card), var(--destructive) 6%);
+}
+
+.confirm-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.confirm-row .text-input {
+  flex: 1 1 180px;
 }
 
 @media (max-width: 720px) {

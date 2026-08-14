@@ -234,8 +234,10 @@ func SetApiRouter(router *gin.Engine) {
 			karmadaRoute.Any("/proxy/*path", controller.ProxyKarmada)
 			// Phase 2: resource management (#111)
 			karmadaRoute.GET("/resources/:kind", controller.ListKarmadaResources)
+			karmadaRoute.GET("/resources/:kind/:namespace", controller.GetKarmadaResource)
 			karmadaRoute.GET("/resources/:kind/:namespace/:name", controller.GetKarmadaResource)
 			karmadaRoute.PUT("/resources/:kind/:namespace/:name/scale", controller.ScaleKarmadaResource)
+			karmadaRoute.DELETE("/resources/:kind/:namespace", controller.DeleteKarmadaResource)
 			karmadaRoute.DELETE("/resources/:kind/:namespace/:name", controller.DeleteKarmadaResource)
 		}
 

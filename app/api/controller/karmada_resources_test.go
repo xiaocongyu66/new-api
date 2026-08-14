@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -46,6 +45,15 @@ func TestResourceKindAllowlistRejectsUnknownKind(t *testing.T) {
 	ns, err := resolveResourceKind("Namespace")
 	require.NoError(t, err)
 	assert.False(t, ns.namespaced, "Namespace is cluster scoped")
+}
+
+func TestResourcePathsEscapeSegments(t *testing.T) {
+	info, err := resolveResourceKind("Deployment")
+	require.NoError(t, err)
+
+	assert.Equal(t,
+		"/apis/cluster.karmada.io/v1alpha1/clusters/member%2Fa/proxy/apis/apps/v1/namespaces/team%2Fa/deployments/api%2Fv1",
+		buildResourcePath(info, "team/a", "api/v1", "member/a"))
 }
 
 func TestListResourcesFiltersNamespaceAndRedactsSecrets(t *testing.T) {
@@ -129,7 +137,7 @@ func TestGetResourceDetailReportsClusterDistribution(t *testing.T) {
 		switch r.URL.Path {
 		case "/apis/apps/v1/namespaces/default/deployments/api":
 			_, _ = w.Write([]byte(`{"metadata":{"name":"api","namespace":"default"},
-				"spec":{"replicas":5},"status":{"replicas":5,"readyReplicas":5}}`))
+				"spec":{"replicas":5,"selector":{"matchLabels":{"app":"api"},"matchExpressions":[{"key":"tier","operator":"In","values":["edge","worker"]},{"key":"debug","operator":"DoesNotExist"}]}},"status":{"replicas":5,"readyReplicas":5}}`))
 		case "/apis/work.karmada.io/v1alpha2/namespaces/default/resourcebindings":
 			_, _ = w.Write([]byte(`{"items":[
 				{"spec":{"resource":{"kind":"Deployment","name":"api","namespace":"default"},
@@ -138,10 +146,10 @@ func TestGetResourceDetailReportsClusterDistribution(t *testing.T) {
 				 "clusters":[{"name":"member-c","replicas":9}]}}
 			]}`))
 		case "/apis/cluster.karmada.io/v1alpha1/clusters/member-a/proxy/api/v1/namespaces/default/pods":
-			assert.Equal(t, "labelSelector=app%3Dapi", r.URL.RawQuery)
-			_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"api-1"},"status":{"phase":"Running"}}]}`))
+			assert.Equal(t, "labelSelector=app%3Dapi%2Ctier+in+%28edge%2Cworker%29%2C%21debug", r.URL.RawQuery)
+			_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"api-1"},"status":{"phase":"Running","containerStatuses":[{"ready":true,"restartCount":1},{"ready":false,"restartCount":2}]}}]}`))
 		case "/apis/cluster.karmada.io/v1alpha1/clusters/member-b/proxy/api/v1/namespaces/default/pods":
-			_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"api-2"},"status":{"phase":"Pending"}}]}`))
+			_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"api-2"},"status":{"phase":"Pending","containerStatuses":[{"ready":false,"restartCount":3}]}}]}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -152,7 +160,7 @@ func TestGetResourceDetailReportsClusterDistribution(t *testing.T) {
 	Set(client)
 
 	c, recorder := newResourceContext(t, http.MethodGet,
-		"/api/karmada/resources/Deployment/default/api?selector=app%3Dapi",
+		"/api/karmada/resources/Deployment/default/api",
 		gin.Params{{Key: "kind", Value: "Deployment"}, {Key: "namespace", Value: "default"}, {Key: "name", Value: "api"}}, "")
 	GetKarmadaResource(c)
 
@@ -174,6 +182,8 @@ func TestGetResourceDetailReportsClusterDistribution(t *testing.T) {
 	assert.Equal(t, "api-1", resp.Data.Pods[0].Name)
 	assert.Equal(t, "member-a", resp.Data.Pods[0].Cluster)
 	assert.Equal(t, "Running", resp.Data.Pods[0].Phase)
+	assert.Equal(t, "1/2", resp.Data.Pods[0].Ready)
+	assert.Equal(t, 3, resp.Data.Pods[0].Restarts)
 	assert.Equal(t, "Pending", resp.Data.Pods[1].Phase)
 }
 
@@ -211,7 +221,7 @@ func TestScaleResourceUpdatesControlPlaneScaleSubresource(t *testing.T) {
 	assert.Equal(t, "/apis/apps/v1/namespaces/default/deployments/api/scale", seenPath)
 
 	var patch map[string]any
-	require.NoError(t, json.Unmarshal([]byte(seenBody), &patch))
+	require.NoError(t, common.Unmarshal([]byte(seenBody), &patch))
 	spec, ok := patch["spec"].(map[string]any)
 	require.True(t, ok)
 	assert.EqualValues(t, 4, spec["replicas"])
@@ -266,7 +276,7 @@ func TestDeleteResourceRequiresConfirmationAndRecordsAudit(t *testing.T) {
 	require.NoError(t, err)
 	Set(client)
 
-	// Without the explicit confirm flag the deletion must not reach Karmada.
+	// Without typing the resource name, deletion must not reach Karmada.
 	c, recorder := newResourceContext(t, http.MethodDelete,
 		"/api/karmada/resources/Deployment/default/api",
 		gin.Params{{Key: "kind", Value: "Deployment"}, {Key: "namespace", Value: "default"}, {Key: "name", Value: "api"}}, "")
@@ -280,7 +290,15 @@ func TestDeleteResourceRequiresConfirmationAndRecordsAudit(t *testing.T) {
 	assert.False(t, called, "unconfirmed delete must not call Karmada")
 
 	c, recorder = newResourceContext(t, http.MethodDelete,
-		"/api/karmada/resources/Deployment/default/api?confirm=true",
+		"/api/karmada/resources/Deployment/default/api?confirm=wrong",
+		gin.Params{{Key: "kind", Value: "Deployment"}, {Key: "namespace", Value: "default"}, {Key: "name", Value: "api"}}, "")
+	DeleteKarmadaResource(c)
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &unconfirmed))
+	assert.False(t, unconfirmed.Success)
+	assert.False(t, called, "wrong confirmation must not call Karmada")
+
+	c, recorder = newResourceContext(t, http.MethodDelete,
+		"/api/karmada/resources/Deployment/default/api?confirm=api",
 		gin.Params{{Key: "kind", Value: "Deployment"}, {Key: "namespace", Value: "default"}, {Key: "name", Value: "api"}}, "")
 	DeleteKarmadaResource(c)
 	var confirmed struct {
@@ -292,11 +310,39 @@ func TestDeleteResourceRequiresConfirmationAndRecordsAudit(t *testing.T) {
 	assert.True(t, called)
 }
 
-func TestResourceWriteActionsAreRegisteredForAudit(t *testing.T) {
-	// The generic admin-audit fallback keys on "METHOD route"; the two Karmada
-	// write routes must resolve to stable action identifiers instead of "generic".
-	assert.Equal(t, "karmada.resource_scale",
-		karmadaAuditAction(http.MethodPut, "/api/karmada/resources/:kind/:namespace/:name/scale"))
-	assert.Equal(t, "karmada.resource_delete",
-		karmadaAuditAction(http.MethodDelete, "/api/karmada/resources/:kind/:namespace/:name"))
+func TestClusterScopedResourceUsesNameOnlyRoute(t *testing.T) {
+	setupKarmadaTest(t)
+	var seen []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Method+" "+r.URL.Path)
+		_, _ = w.Write([]byte(`{"metadata":{"name":"team-a"},"status":{"phase":"Active"}}`))
+	}))
+	defer upstream.Close()
+	client, err := newClientFromKubeconfig(makeKubeconfig(upstream.URL, "tok1"))
+	require.NoError(t, err)
+	Set(client)
+
+	c, recorder := newResourceContext(t, http.MethodGet,
+		"/api/karmada/resources/Namespace/team-a",
+		gin.Params{{Key: "kind", Value: "Namespace"}, {Key: "namespace", Value: "team-a"}}, "")
+	GetKarmadaResource(c)
+	var detail struct {
+		Success bool           `json:"success"`
+		Data    ResourceDetail `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &detail))
+	require.True(t, detail.Success)
+	assert.Equal(t, "team-a", detail.Data.Name)
+
+	c, recorder = newResourceContext(t, http.MethodDelete,
+		"/api/karmada/resources/Namespace/team-a?confirm=team-a",
+		gin.Params{{Key: "kind", Value: "Namespace"}, {Key: "namespace", Value: "team-a"}}, "")
+	DeleteKarmadaResource(c)
+	var deleted struct {
+		Success bool `json:"success"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &deleted))
+	require.True(t, deleted.Success)
+
+	assert.Equal(t, []string{"GET /api/v1/namespaces/team-a", "DELETE /api/v1/namespaces/team-a"}, seen)
 }
