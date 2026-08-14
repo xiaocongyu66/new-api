@@ -112,3 +112,16 @@ pub fn metric(value: &Value, key: &str, suffix: &str) -> String {
         None => "—".to_string(),
     }
 }
+/// Formats a latency metric without rounding sub-100ms values to `0.0s`.
+pub fn duration_metric(value: &Value, key: &str) -> String {
+    let Some(number) = value.get(key).and_then(Value::as_f64) else {
+        return "—".to_string();
+    };
+    if !number.is_finite() || number < 0.0 {
+        return "—".to_string();
+    }
+    if number < 1.0 {
+        return format!("{:.0}ms", number * 1000.0);
+    }
+    format!("{number:.1}s")
+}

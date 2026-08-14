@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -141,7 +142,7 @@ func queryPrometheusByCluster(client *http.Client, baseURL, query string) map[st
 			continue
 		}
 		value, err := strconv.ParseFloat(raw, 64)
-		if err != nil {
+		if err != nil || math.IsNaN(value) || math.IsInf(value, 0) {
 			continue
 		}
 		samples[cluster] = value
@@ -196,18 +197,36 @@ type nodeList struct {
 	} `json:"items"`
 }
 
-// eventList is the member-cluster event shape the panel renders.
+// eventList is the member-cluster event shape the panel renders. EventTime is
+// preferred by newer Kubernetes APIs; LastTimestamp remains the compatibility
+// fallback for older event versions.
 type eventList struct {
-	Items []struct {
-		Type           string `json:"type"`
-		Reason         string `json:"reason"`
-		Message        string `json:"message"`
-		LastTimestamp  string `json:"lastTimestamp"`
-		InvolvedObject struct {
-			Kind string `json:"kind"`
-			Name string `json:"name"`
-		} `json:"involvedObject"`
-	} `json:"items"`
+	Items []eventItem `json:"items"`
+}
+
+type eventItem struct {
+	Type          string `json:"type"`
+	Reason        string `json:"reason"`
+	Message       string `json:"message"`
+	EventTime     string `json:"eventTime"`
+	LastTimestamp string `json:"lastTimestamp"`
+	Series        struct {
+		LastObservedTime string `json:"lastObservedTime"`
+	} `json:"series"`
+	InvolvedObject struct {
+		Kind string `json:"kind"`
+		Name string `json:"name"`
+	} `json:"involvedObject"`
+}
+
+func eventTimestamp(event eventItem) string {
+	if event.EventTime != "" {
+		return event.EventTime
+	}
+	if event.Series.LastObservedTime != "" {
+		return event.Series.LastObservedTime
+	}
+	return event.LastTimestamp
 }
 
 // fetchClusterDetail enriches a member cluster with the resource counts, node
@@ -272,7 +291,7 @@ func fetchClusterDetail(client *Client, cluster clusterItem, metrics map[string]
 					Reason:    event.Reason,
 					Object:    strings.Trim(event.InvolvedObject.Kind+"/"+event.InvolvedObject.Name, "/"),
 					Message:   event.Message,
-					Timestamp: event.LastTimestamp,
+					Timestamp: eventTimestamp(event),
 				})
 			}
 		}

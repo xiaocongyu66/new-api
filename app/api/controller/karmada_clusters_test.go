@@ -64,8 +64,11 @@ func TestFetchClusterMetricsSkipsUnusableSeries(t *testing.T) {
 			// Series without the cluster_name label cannot be attributed.
 			_, _ = w.Write([]byte(`{"status":"success","data":{"result":[{"metric":{},"value":[1,"5"]}]}}`))
 		case metricClusterMemoryUtilization:
-			// Non-numeric sample value.
-			_, _ = w.Write([]byte(`{"status":"success","data":{"result":[{"metric":{"cluster_name":"member-a"},"value":[1,"NaN%"]}]}}`))
+			// NaN is a valid Prometheus sample spelling but not valid JSON output.
+			_, _ = w.Write([]byte(`{"status":"success","data":{"result":[{"metric":{"cluster_name":"member-a"},"value":[1,"NaN"]}]}}`))
+		case metricClusterSyncLatencyP95:
+			// Infinity must be discarded for the same reason.
+			_, _ = w.Write([]byte(`{"status":"success","data":{"result":[{"metric":{"cluster_name":"member-a"},"value":[1,"+Inf"]}]}}`))
 		default:
 			w.WriteHeader(http.StatusInternalServerError)
 		}
@@ -73,6 +76,19 @@ func TestFetchClusterMetricsSkipsUnusableSeries(t *testing.T) {
 	defer upstream.Close()
 
 	assert.Nil(t, fetchClusterMetrics(upstream.URL))
+}
+
+func TestEventTimestampPrefersCurrentFields(t *testing.T) {
+	event := eventItem{
+		EventTime:     "2026-08-14T06:00:00Z",
+		LastTimestamp: "2026-08-14T05:00:00Z",
+	}
+	assert.Equal(t, event.EventTime, eventTimestamp(event))
+	event.EventTime = ""
+	event.Series.LastObservedTime = "2026-08-14T05:30:00Z"
+	assert.Equal(t, event.Series.LastObservedTime, eventTimestamp(event))
+	event.Series.LastObservedTime = ""
+	assert.Equal(t, event.LastTimestamp, eventTimestamp(event))
 }
 
 func TestListClustersUsesClusterScopedPathAndMergesMetrics(t *testing.T) {

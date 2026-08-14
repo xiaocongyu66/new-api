@@ -66,11 +66,15 @@ pub fn ClustersView() -> Element {
                 }
             }
 
-            if selected().is_some() {
-                match &*detail.read_unchecked() {
-                    None | Some(None) => rsx! { p { class: "muted", "Loading cluster detail…" } },
-                    Some(Some(Err(message))) => rsx! { p { class: "error", "{message}" } },
-                    Some(Some(Ok(data))) => rsx! { ClusterDetailPanel { detail: data.clone() } },
+            match (detail.pending(), &*detail.read_unchecked()) {
+                (true, _) | (false, None) | (false, Some(None)) => {
+                    rsx! { p { class: "muted", "Loading cluster detail…" } }
+                }
+                (false, Some(Some(Err(message)))) => {
+                    rsx! { p { class: "error", "{message}" } }
+                }
+                (false, Some(Some(Ok(data)))) => {
+                    rsx! { ClusterDetailPanel { detail: data.clone() } }
                 }
             }
         }
@@ -101,7 +105,7 @@ fn ClusterRow(cluster: Value, on_select: EventHandler<String>) -> Element {
             td { "{api::int(&cluster, \"ready_nodes\")} / {api::int(&cluster, \"total_nodes\")}" }
             td { "{api::metric(&cluster, \"cpu_percent\", \"%\")}" }
             td { "{api::metric(&cluster, \"memory_percent\", \"%\")}" }
-            td { "{api::metric(&cluster, \"sync_p95_seconds\", \"s\")}" }
+            td { "{api::duration_metric(&cluster, \"sync_p95_seconds\")}" }
         }
     }
 }
