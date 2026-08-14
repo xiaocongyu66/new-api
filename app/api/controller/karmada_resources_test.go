@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -345,4 +346,38 @@ func TestClusterScopedResourceUsesNameOnlyRoute(t *testing.T) {
 	require.True(t, deleted.Success)
 
 	assert.Equal(t, []string{"GET /api/v1/namespaces/team-a", "DELETE /api/v1/namespaces/team-a"}, seen)
+}
+
+func TestDeleteResourceDryRunValidatesWithoutDeleting(t *testing.T) {
+	setupKarmadaTest(t)
+	var seenPaths []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenPaths = append(seenPaths, r.Method+" "+r.URL.Path+"?"+r.URL.RawQuery)
+		_, _ = w.Write([]byte(`{"kind":"Deployment","apiVersion":"apps/v1","metadata":{"name":"api","namespace":"default"}}`))
+	}))
+	defer upstream.Close()
+	client, err := newClientFromKubeconfig(makeKubeconfig(upstream.URL, "tok1"))
+	require.NoError(t, err)
+	Set(client)
+
+	c, recorder := newResourceContext(t, http.MethodDelete,
+		"/api/karmada/resources/Deployment/default/api?confirm=api&dryRun=All",
+		gin.Params{{Key: "kind", Value: "Deployment"}, {Key: "namespace", Value: "default"}, {Key: "name", Value: "api"}}, "")
+	DeleteKarmadaResource(c)
+
+	var resp struct {
+		Success bool   `json:"success"`
+		DryRun  bool   `json:"dryRun"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.True(t, resp.Success, resp.Message)
+	assert.True(t, resp.DryRun, "dryRun=true must be reflected in the response")
+
+	require.Len(t, seenPaths, 1)
+	assert.Contains(t, seenPaths[0], "dryRun=All",
+		"upstream DELETE must carry dryRun=All query, got %s", seenPaths[0])
+
+	assert.True(t, common.GetContextKeyBool(c, constant.ContextKeyAuditLogged),
+		"dry-run must mark audit_logged so the middleware fallback does not record a duplicate karmada.resource_delete")
 }

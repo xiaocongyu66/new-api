@@ -298,8 +298,17 @@ func ScaleKarmadaResource(c *gin.Context) {
 }
 
 // DeleteKarmadaResource deletes a resource at the control plane after confirmation.
-// DELETE /api/karmada/resources/:kind/:namespace/:name?confirm=<name>
-// DELETE /api/karmada/resources/:kind/:name?confirm=<name> for cluster-scoped resources.
+//
+// Query parameters:
+//   confirm=<name>  Required: must match the resource name before any upstream
+//                   request is sent. Prevents accidental deletion.
+//   dryRun=All      Optional: when set, the Karmada API validates the delete
+//                   (admission webhooks, finalizers) without actually removing
+//                   the resource. The response carries dryRun=true so the panel
+//                   can distinguish a preview from a real deletion.
+//
+// DELETE /api/karmada/resources/:kind/:namespace/:name?confirm=<name>[&dryRun=All]
+// DELETE /api/karmada/resources/:kind/:name?confirm=<name>[&dryRun=All]  (cluster-scoped)
 func DeleteKarmadaResource(c *gin.Context) {
 	kind := c.Param("kind")
 	namespace := c.Param("namespace")
@@ -338,12 +347,27 @@ func DeleteKarmadaResource(c *gin.Context) {
 	}
 
 	path := buildResourcePath(info, namespace, name, "")
-	_, err = forward(client, http.MethodDelete, path)
+	dryRun := c.Query("dryRun") == "All"
+	if dryRun {
+		path += "?dryRun=All"
+	}
+	body, err := forward(client, http.MethodDelete, path)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
 		return
 	}
 
+	if dryRun {
+		var preview map[string]any
+		_ = common.Unmarshal(body, &preview)
+		// Record a distinct audit action so dry-run previews are never confused
+		// with actual deletions in the audit trail.
+		recordManageAudit(c, "karmada.resource_dryrun", map[string]interface{}{
+			"kind": kind, "namespace": namespace, "name": name,
+		})
+		c.JSON(http.StatusOK, gin.H{"success": true, "dryRun": true, "data": preview, "message": "dry-run validation passed"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "resource deleted"})
 }
 

@@ -263,6 +263,7 @@ fn ResourceDetailPanel(
     };
     let scale_target = target.clone();
     let delete_target = target.clone();
+    let dry_run_target = target.clone();
     let detail_status = api::text(&detail, "status");
 
     rsx! {
@@ -397,6 +398,28 @@ fn ResourceDetailPanel(
                                     });
                                 },
                                 "Delete"
+                            }
+                            button {
+                                class: "button",
+                                disabled: delete_confirm() != expected_confirm,
+                                aria_label: "Dry-run delete {expected_confirm}; validates without removing",
+                                onclick: move |_| {
+                                    let target = dry_run_target.clone();
+                                    spawn(async move {
+                                        action_error.set(String::new());
+                                        let base_path = detail_path(&target);
+                                        let separator = if base_path.contains('?') { "&" } else { "?" };
+                                        let path = format!(
+                                            "{base_path}{separator}confirm={}&dryRun=All",
+                                            urlencode(&target.name),
+                                        );
+                                        match api::request("DELETE", &path, None).await {
+                                            Ok(_) => action_error.set("Dry-run validation passed.".to_string()),
+                                            Err(message) => action_error.set(message),
+                                        }
+                                    });
+                                },
+                                "Dry run"
                             }
                         }
                     } else {
