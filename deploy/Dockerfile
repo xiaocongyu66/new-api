@@ -10,7 +10,7 @@ RUN DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$(cat /build/VERSION) bu
 FROM rust:1.89-alpine AS dioxus-builder
 
 WORKDIR /build/app/dioxus-web
-RUN apk add --no-cache musl-dev
+RUN apk add --no-cache musl-dev openssl-dev openssl-libs-static
 RUN cargo install dioxus-cli --version 0.7.9 --locked
 COPY app/dioxus-web/Cargo.toml app/dioxus-web/Cargo.lock ./
 COPY app/dioxus-web ./
