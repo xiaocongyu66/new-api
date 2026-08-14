@@ -239,6 +239,8 @@ func SetApiRouter(router *gin.Engine) {
 			karmadaRoute.PUT("/resources/:kind/:namespace/:name/scale", controller.ScaleKarmadaResource)
 			karmadaRoute.DELETE("/resources/:kind/:namespace", controller.DeleteKarmadaResource)
 			karmadaRoute.DELETE("/resources/:kind/:namespace/:name", controller.DeleteKarmadaResource)
+			// Phase 3: monitoring (#110)
+			karmadaRoute.GET("/monitoring/config", controller.GetKarmadaMonitoringConfig)
 		}
 
 		// Custom OAuth provider management (admin with system.settings permission)

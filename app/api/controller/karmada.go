@@ -105,6 +105,23 @@ func DeleteKarmadaConfig(c *gin.Context) {
 	common.ApiSuccess(c, nil)
 }
 
+// GetKarmadaMonitoringConfig returns the Grafana base URL so the Dioxus panel
+// can construct iframe embed URLs. The dashboard list is hardcoded in the
+// frontend (monitoring.rs DASHBOARDS constant) to avoid a redundant source of
+// truth. When GRAFANA_URL is unset, configured=false and the panel shows a
+// placeholder instead of broken iframes.
+func GetKarmadaMonitoringConfig(c *gin.Context) {
+	base := grafanaBaseURL()
+	if base == "" {
+		common.ApiSuccess(c, gin.H{"configured": false})
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"configured": true,
+		"grafanaUrl": base,
+	})
+}
+
 // ListKarmadaClusters returns every Karmada member cluster with its node counts
 // and, when Prometheus is configured, its utilization and sync latency.
 func ListKarmadaClusters(c *gin.Context) {

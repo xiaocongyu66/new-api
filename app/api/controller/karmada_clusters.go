@@ -73,6 +73,12 @@ func prometheusBaseURL() string {
 	return strings.TrimRight(strings.TrimSpace(common.GetEnvOrDefaultString("PROMETHEUS_URL", "")), "/")
 }
 
+// grafanaBaseURL returns the configured Grafana endpoint for iframe embedding,
+// or "" when not wired up. In-cluster this is the monitoring Service.
+func grafanaBaseURL() string {
+	return strings.TrimRight(strings.TrimSpace(common.GetEnvOrDefaultString("GRAFANA_URL", "")), "/")
+}
+
 // promInstantResponse is the subset of the Prometheus instant-query response
 // that the panel consumes.
 type promInstantResponse struct {
