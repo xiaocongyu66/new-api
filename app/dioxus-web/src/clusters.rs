@@ -66,15 +66,17 @@ pub fn ClustersView() -> Element {
                 }
             }
 
-            match (detail.pending(), &*detail.read_unchecked()) {
-                (true, _) | (false, None) | (false, Some(None)) => {
-                    rsx! { p { class: "muted", "Loading cluster detail…" } }
-                }
-                (false, Some(Some(Err(message)))) => {
-                    rsx! { p { class: "error", "{message}" } }
-                }
-                (false, Some(Some(Ok(data)))) => {
-                    rsx! { ClusterDetailPanel { detail: data.clone() } }
+            if selected().is_some() {
+                match (detail.pending(), &*detail.read_unchecked()) {
+                    (true, _) | (false, None) | (false, Some(None)) => {
+                        rsx! { p { class: "muted", "Loading cluster detail…" } }
+                    }
+                    (false, Some(Some(Err(message)))) => {
+                        rsx! { p { class: "error", "{message}" } }
+                    }
+                    (false, Some(Some(Ok(data)))) => {
+                        rsx! { ClusterDetailPanel { detail: data.clone() } }
+                    }
                 }
             }
         }
