@@ -529,47 +529,44 @@ func (channel *Channel) GetStatusCodeMapping() string {
 	return *channel.StatusCodeMapping
 }
 
-func (channel *Channel) Insert() error {
-	var err error
-	err = DB.Create(channel).Error
-	if err != nil {
+func (channel *Channel) insertWithTx(tx *gorm.DB) error {
+	if err := tx.Create(channel).Error; err != nil {
 		return err
 	}
-	err = channel.AddAbilities(nil)
+	return channel.AddAbilities(tx)
+}
+
+func (channel *Channel) Insert() error {
+	_, err := MutateGatewayRouting(func(tx *gorm.DB) error {
+		return channel.insertWithTx(tx)
+	})
 	return err
 }
 
-func (channel *Channel) Update() error {
-	// If this is a multi-key channel, recalculate MultiKeySize based on the current key list to avoid inconsistency after editing keys
+func (channel *Channel) updateWithTx(tx *gorm.DB) error {
 	if channel.ChannelInfo.IsMultiKey {
-		var keyStr string
-		if channel.Key != "" {
-			keyStr = channel.Key
-		} else {
-			// If key is not provided, read the existing key from the database
-			if existing, err := GetChannelById(channel.Id, true); err == nil {
+		keyStr := channel.Key
+		if keyStr == "" {
+			var existing Channel
+			if err := tx.First(&existing, "id = ?", channel.Id).Error; err == nil {
 				keyStr = existing.Key
 			}
 		}
-		// Parse the key list (supports newline separation or JSON array)
+		trimmed := strings.TrimSpace(keyStr)
 		keys := []string{}
-		if keyStr != "" {
-			trimmed := strings.TrimSpace(keyStr)
+		if trimmed != "" {
+			keys = strings.Split(strings.Trim(keyStr, "\n"), "\n")
 			if strings.HasPrefix(trimmed, "[") {
 				var arr []json.RawMessage
 				if err := common.Unmarshal([]byte(trimmed), &arr); err == nil {
 					keys = make([]string, len(arr))
-					for i, v := range arr {
-						keys[i] = string(v)
+					for i, value := range arr {
+						keys[i] = string(value)
 					}
 				}
 			}
-			if len(keys) == 0 { // fallback to newline split
-				keys = strings.Split(strings.Trim(keyStr, "\n"), "\n")
-			}
 		}
 		channel.ChannelInfo.MultiKeySize = len(keys)
-		// Clean up status data that exceeds the new key count to prevent index out of range
 		if channel.ChannelInfo.MultiKeyStatusList != nil {
 			for idx := range channel.ChannelInfo.MultiKeyStatusList {
 				if idx >= channel.ChannelInfo.MultiKeySize {
@@ -578,13 +575,19 @@ func (channel *Channel) Update() error {
 			}
 		}
 	}
-	var err error
-	err = DB.Model(channel).Updates(channel).Error
-	if err != nil {
+	if err := tx.Model(channel).Updates(channel).Error; err != nil {
 		return err
 	}
-	DB.Model(channel).First(channel, "id = ?", channel.Id)
-	err = channel.UpdateAbilities(nil)
+	if err := tx.First(channel, "id = ?", channel.Id).Error; err != nil {
+		return err
+	}
+	return channel.UpdateAbilities(tx)
+}
+
+func (channel *Channel) Update() error {
+	_, err := MutateGatewayRouting(func(tx *gorm.DB) error {
+		return channel.updateWithTx(tx)
+	})
 	return err
 }
 
@@ -608,13 +611,17 @@ func (channel *Channel) UpdateBalance(balance float64) {
 	}
 }
 
-func (channel *Channel) Delete() error {
-	var err error
-	err = DB.Delete(channel).Error
-	if err != nil {
+func (channel *Channel) deleteWithTx(tx *gorm.DB) error {
+	if err := tx.Delete(channel).Error; err != nil {
 		return err
 	}
-	err = channel.DeleteAbilities()
+	return deleteAbilitiesWithTx(tx, channel.Id)
+}
+
+func (channel *Channel) Delete() error {
+	_, err := MutateGatewayRouting(func(tx *gorm.DB) error {
+		return channel.deleteWithTx(tx)
+	})
 	return err
 }
 

@@ -238,6 +238,13 @@ func (channel *Channel) DeleteAbilities() error {
 	return DB.Where("channel_id = ?", channel.Id).Delete(&Ability{}).Error
 }
 
+func deleteAbilitiesWithTx(tx *gorm.DB, channelID int) error {
+	if tx == nil {
+		return errors.New("ability deletion requires a transaction")
+	}
+	return tx.Where("channel_id = ?", channelID).Delete(&Ability{}).Error
+}
+
 // UpdateAbilities updates abilities of this channel.
 // Make sure the channel is completed before calling this function.
 func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
