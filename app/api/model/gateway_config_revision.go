@@ -44,14 +44,23 @@ type GatewayConfigOutbox struct {
 	LastPublishErrorClass string     `json:"last_publish_error_class" gorm:"type:varchar(64)"`
 }
 
-// InitializeGatewayConfigRevision creates the singleton row when it is missing.
-// It runs after AutoMigrate on both empty and upgraded databases and never
-// resets an existing watermark, because consumers would otherwise see the
-// revision move backwards.
+// InitializeGatewayConfigRevision creates the singleton row when the table is
+// empty. It runs after AutoMigrate on both empty and upgraded databases and
+// never resets or duplicates an existing watermark, because consumers would
+// otherwise see the revision move backwards.
+//
+// The emptiness check covers the whole table rather than id=1 alone: inserting
+// id=1 next to an existing row would leave two watermarks, and the bump path
+// would then advance only one of them.
 func InitializeGatewayConfigRevision() error {
-	return DB.Where(GatewayConfigRevision{ID: gatewayConfigRevisionID}).
-		Attrs(GatewayConfigRevision{RoutingRevision: 1}).
-		FirstOrCreate(&GatewayConfigRevision{}).Error
+	var existing int64
+	if err := DB.Model(&GatewayConfigRevision{}).Count(&existing).Error; err != nil {
+		return err
+	}
+	if existing > 0 {
+		return nil
+	}
+	return DB.Create(&GatewayConfigRevision{ID: gatewayConfigRevisionID, RoutingRevision: 1}).Error
 }
 
 // BumpGatewayRoutingRevision advances the singleton watermark inside tx, reads

@@ -61,6 +61,23 @@ func TestGatewayConfigRevisionInitializeKeepsExistingWatermark(t *testing.T) {
 	assert.Equal(t, int64(1), rows, "revision table stays a singleton")
 }
 
+func TestGatewayConfigRevisionInitializeDoesNotDuplicateNonCanonicalRow(t *testing.T) {
+	require.NoError(t, DB.Exec("DELETE FROM gateway_config_outboxes").Error)
+	require.NoError(t, DB.Exec("DELETE FROM gateway_config_revisions").Error)
+	t.Cleanup(func() {
+		DB.Exec("DELETE FROM gateway_config_outboxes")
+		DB.Exec("DELETE FROM gateway_config_revisions")
+	})
+	require.NoError(t, DB.Create(&GatewayConfigRevision{ID: 9, RoutingRevision: 42}).Error)
+
+	require.NoError(t, InitializeGatewayConfigRevision())
+
+	var rows []GatewayConfigRevision
+	require.NoError(t, DB.Order("id asc").Find(&rows).Error)
+	require.Len(t, rows, 1, "initialisation must not add a second watermark next to an existing row")
+	assert.Equal(t, int64(42), rows[0].RoutingRevision)
+}
+
 func TestGatewayConfigRevisionCommitsDomainRowRevisionAndOutboxTogether(t *testing.T) {
 	resetGatewayRevision(t, 7)
 
