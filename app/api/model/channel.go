@@ -440,58 +440,69 @@ func GetChannelById(id int, selectAll bool) (*Channel, error) {
 	return channel, nil
 }
 
-func BatchInsertChannels(channels []Channel) error {
-	if len(channels) == 0 {
-		return nil
-	}
-	tx := DB.Begin()
-	if tx.Error != nil {
-		return tx.Error
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-		}
-	}()
-
+// batchInsertWithTx creates every channel row and its derived ability rows
+// inside the given transaction. MutateGatewayRouting owns the outer
+// transaction, so a failure in any chunk rolls back all prior channel and
+// ability rows together with the routing revision bump.
+func batchInsertWithTx(tx *gorm.DB, channels []Channel) error {
 	for _, chunk := range lo.Chunk(channels, 50) {
 		if err := tx.Create(&chunk).Error; err != nil {
-			tx.Rollback()
 			return err
 		}
 		for _, channel_ := range chunk {
 			if err := channel_.AddAbilities(tx); err != nil {
-				tx.Rollback()
 				return err
 			}
 		}
 	}
-	return tx.Commit().Error
+	return nil
 }
 
-func BatchDeleteChannels(ids []int) (int64, error) {
-	if len(ids) == 0 {
-		return 0, nil
+// BatchInsertChannels creates channels and their derived abilities under one
+// MutateGatewayRouting revision so candidate-visible changes commit atomically.
+// The caller must refresh the channel cache only after this returns nil.
+func BatchInsertChannels(channels []Channel) error {
+	if len(channels) == 0 {
+		return nil
 	}
-	// 使用事务 分批删除channel表和abilities表
-	tx := DB.Begin()
-	if tx.Error != nil {
-		return 0, tx.Error
-	}
+	_, err := MutateGatewayRouting(func(tx *gorm.DB) error {
+		return batchInsertWithTx(tx, channels)
+	})
+	return err
+}
+
+// batchDeleteWithTx deletes channel rows and their ability rows inside the
+// given transaction. MutateGatewayRouting owns the outer transaction so the
+// deletes and the routing revision bump commit together.
+func batchDeleteWithTx(tx *gorm.DB, ids []int) (int64, error) {
 	var deletedCount int64
 	for _, chunk := range lo.Chunk(ids, 200) {
 		result := tx.Where("id in (?)", chunk).Delete(&Channel{})
 		if result.Error != nil {
-			tx.Rollback()
 			return 0, result.Error
 		}
 		deletedCount += result.RowsAffected
-		if err := tx.Where("channel_id in (?)", chunk).Delete(&Ability{}).Error; err != nil {
-			tx.Rollback()
+		if err := deleteAbilitiesByChannelIDsWithTx(tx, chunk); err != nil {
 			return 0, err
 		}
 	}
-	if err := tx.Commit().Error; err != nil {
+	return deletedCount, nil
+}
+
+// BatchDeleteChannels removes channels and their abilities under one
+// MutateGatewayRouting revision. The caller must refresh the channel cache
+// only after this returns nil.
+func BatchDeleteChannels(ids []int) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	var deletedCount int64
+	_, err := MutateGatewayRouting(func(tx *gorm.DB) error {
+		var dErr error
+		deletedCount, dErr = batchDeleteWithTx(tx, ids)
+		return dErr
+	})
+	if err != nil {
 		return 0, err
 	}
 	return deletedCount, nil
@@ -826,29 +837,42 @@ func updateChannelStatusWithTx(_ *gorm.DB, channelId int, usingKey string, statu
 	return true, nil
 }
 
+// EnableChannelByTag flips the status of every channel carrying tag to enabled
+// and updates the derived abilities inside one MutateGatewayRouting revision, so
+// the channel rows, ability rows and routing revision commit together. The
+// caller must refresh the channel cache only after this returns nil.
 func EnableChannelByTag(tag string) error {
-	err := DB.Model(&Channel{}).Where("tag = ?", tag).Update("status", common.ChannelStatusEnabled).Error
-	if err != nil {
-		return err
-	}
-	err = UpdateAbilityStatusByTag(tag, true)
+	_, err := MutateGatewayRouting(func(tx *gorm.DB) error {
+		if err := tx.Model(&Channel{}).Where("tag = ?", tag).Update("status", common.ChannelStatusEnabled).Error; err != nil {
+			return err
+		}
+		return updateAbilityStatusByTagWithTx(tx, tag, true)
+	})
 	return err
 }
 
+// DisableChannelByTag flips the status of every channel carrying tag to
+// manually disabled and updates the derived abilities inside one
+// MutateGatewayRouting revision. The caller must refresh the channel cache
+// only after this returns nil.
 func DisableChannelByTag(tag string) error {
-	err := DB.Model(&Channel{}).Where("tag = ?", tag).Update("status", common.ChannelStatusManuallyDisabled).Error
-	if err != nil {
-		return err
-	}
-	err = UpdateAbilityStatusByTag(tag, false)
+	_, err := MutateGatewayRouting(func(tx *gorm.DB) error {
+		if err := tx.Model(&Channel{}).Where("tag = ?", tag).Update("status", common.ChannelStatusManuallyDisabled).Error; err != nil {
+			return err
+		}
+		return updateAbilityStatusByTagWithTx(tx, tag, false)
+	})
 	return err
 }
 
+// EditChannelByTag applies route-visible mutations to every channel carrying
+// tag inside one MutateGatewayRouting revision. Channel row updates and derived
+// ability updates commit together with the routing revision bump. The caller
+// must refresh the channel cache only after this returns nil.
 func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *string, group *string, priority *int64, weight *uint, paramOverride *string, headerOverride *string) error {
 	updateData := Channel{}
 	shouldReCreateAbilities := false
 	updatedTag := tag
-	// 如果 newTag 不为空且不等于 tag，则更新 tag
 	if newTag != nil && *newTag != tag {
 		updateData.Tag = newTag
 		updatedTag = *newTag
@@ -877,27 +901,28 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 		updateData.HeaderOverride = headerOverride
 	}
 
-	err := DB.Model(&Channel{}).Where("tag = ?", tag).Updates(updateData).Error
-	if err != nil {
-		return err
-	}
-	if shouldReCreateAbilities {
-		channels, err := GetChannelsByTag(updatedTag, false, false)
-		if err == nil {
-			for _, channel := range channels {
-				err = channel.UpdateAbilities(nil)
-				if err != nil {
-					common.SysLog(fmt.Sprintf("failed to update abilities: channel_id=%d, tag=%s, error=%v", channel.Id, channel.GetTag(), err))
-				}
-			}
-		}
-	} else {
-		err := UpdateAbilityByTag(tag, newTag, priority, weight)
-		if err != nil {
+	_, err := MutateGatewayRouting(func(tx *gorm.DB) error {
+		if err := tx.Model(&Channel{}).Where("tag = ?", tag).Updates(updateData).Error; err != nil {
 			return err
 		}
-	}
-	return nil
+		if shouldReCreateAbilities {
+			channels, err := GetChannelsByTag(updatedTag, false, false)
+			if err != nil {
+				return err
+			}
+			for _, channel := range channels {
+				if err := channel.UpdateAbilities(tx); err != nil {
+					return fmt.Errorf("failed to update abilities: channel_id=%d, tag=%s, error=%w", channel.Id, channel.GetTag(), err)
+				}
+			}
+		} else {
+			if err := updateAbilityByTagWithTx(tx, tag, newTag, priority, weight); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return err
 }
 
 func UpdateChannelUsedQuota(id int, quota int) {
@@ -915,13 +940,65 @@ func updateChannelUsedQuota(id int, quota int) {
 	}
 }
 
-func DeleteChannelByStatus(status int64) (int64, error) {
-	result := DB.Where("status = ?", status).Delete(&Channel{})
+// deleteChannelByStatusWithTx deletes abilities before channel rows so the
+// post-delete channel subquery cannot lose the IDs it needs to match.
+func deleteChannelByStatusWithTx(tx *gorm.DB, status int64) (int64, error) {
+	var ids []int
+	if err := tx.Model(&Channel{}).Where("status = ?", status).Pluck("id", &ids).Error; err != nil {
+		return 0, err
+	}
+	if err := deleteAbilitiesByChannelIDsWithTx(tx, ids); err != nil {
+		return 0, err
+	}
+	result := tx.Where("status = ?", status).Delete(&Channel{})
 	return result.RowsAffected, result.Error
 }
 
+// DeleteChannelByStatus removes channels and their abilities matching status
+// under one MutateGatewayRouting revision. The caller must refresh the channel
+// cache only after this returns nil.
+func DeleteChannelByStatus(status int64) (int64, error) {
+	var deletedCount int64
+	_, err := MutateGatewayRouting(func(tx *gorm.DB) error {
+		var dErr error
+		deletedCount, dErr = deleteChannelByStatusWithTx(tx, status)
+		return dErr
+	})
+	if err != nil {
+		return 0, err
+	}
+	return deletedCount, nil
+}
+
+// DeleteDisabledChannel removes auto-disabled and manually-disabled channels
+// and their abilities under one MutateGatewayRouting revision. The caller must
+// refresh the channel cache only after this returns nil.
 func DeleteDisabledChannel() (int64, error) {
-	result := DB.Where("status = ? or status = ?", common.ChannelStatusAutoDisabled, common.ChannelStatusManuallyDisabled).Delete(&Channel{})
+	var deletedCount int64
+	_, err := MutateGatewayRouting(func(tx *gorm.DB) error {
+		var dErr error
+		deletedCount, dErr = deleteDisabledChannelWithTx(tx)
+		return dErr
+	})
+	if err != nil {
+		return 0, err
+	}
+	return deletedCount, nil
+}
+
+// deleteDisabledChannelWithTx deletes abilities before channel rows so both
+// disabled statuses are removed atomically.
+func deleteDisabledChannelWithTx(tx *gorm.DB) (int64, error) {
+	var ids []int
+	if err := tx.Model(&Channel{}).
+		Where("status = ? or status = ?", common.ChannelStatusAutoDisabled, common.ChannelStatusManuallyDisabled).
+		Pluck("id", &ids).Error; err != nil {
+		return 0, err
+	}
+	if err := deleteAbilitiesByChannelIDsWithTx(tx, ids); err != nil {
+		return 0, err
+	}
+	result := tx.Where("status = ? or status = ?", common.ChannelStatusAutoDisabled, common.ChannelStatusManuallyDisabled).Delete(&Channel{})
 	return result.RowsAffected, result.Error
 }
 
