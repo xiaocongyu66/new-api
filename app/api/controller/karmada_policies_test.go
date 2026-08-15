@@ -1,20 +1,20 @@
 package controller
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// newResourceContext builds a gin test context for a Karmada admin route.
-func newResourceContext(t *testing.T, method, path string, params gin.Params, body string) (*gin.Context, *httptest.ResponseRecorder) {
+// newPolicyContext builds a Gin context for policy handlers.
+func newPolicyContext(t *testing.T, method, path string, params gin.Params, body string) (*gin.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
@@ -35,8 +35,7 @@ func TestListPoliciesSupportsTypeAndNamespaceFilters(t *testing.T) {
 	setupKarmadaTest(t)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Contains(t, r.URL.Path, "/policy.karmada.io/v1alpha1/")
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		writePolicyResponse(t, w, map[string]any{
 			"items": []map[string]any{
 				{"metadata": map[string]any{"name": "deploy-prod", "namespace": "default", "creationTimestamp": "2026-08-14T00:00:00Z"}},
 			},
@@ -47,7 +46,7 @@ func TestListPoliciesSupportsTypeAndNamespaceFilters(t *testing.T) {
 	require.NoError(t, err)
 	Set(client)
 
-	c, recorder := newResourceContext(t, http.MethodGet,
+	c, recorder := newPolicyContext(t, http.MethodGet,
 		"/api/karmada/policies?type=PropagationPolicy&namespace=default",
 		nil, "")
 	c.Request.URL.RawQuery = "type=PropagationPolicy&namespace=default"
@@ -60,7 +59,7 @@ func TestListPoliciesSupportsTypeAndNamespaceFilters(t *testing.T) {
 			Items []map[string]any `json:"items"`
 		} `json:"data"`
 	}
-	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &resp))
 	assert.True(t, resp.Success)
 	assert.Len(t, resp.Data.Items, 1)
 }
@@ -74,8 +73,7 @@ func TestCreatePolicyValidatesYAMLAndCallsKarmadaAPI(t *testing.T) {
 		buf := new(strings.Builder)
 		_, _ = io.Copy(buf, r.Body)
 		seenBody = buf.String()
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"metadata": map[string]any{"name": "new-policy"}})
+		writePolicyResponse(t, w, map[string]any{"metadata": map[string]any{"name": "new-policy"}})
 	}))
 	defer upstream.Close()
 	client, err := newClientFromKubeconfig(makeKubeconfig(upstream.URL, "tok1"))
@@ -83,7 +81,7 @@ func TestCreatePolicyValidatesYAMLAndCallsKarmadaAPI(t *testing.T) {
 	Set(client)
 
 	payload := `{"type":"PropagationPolicy","namespace":"default","name":"new-policy","spec":{"placement":{"clusterAffinity":{"clusterNames":["member-a"]}}}}`
-	c, recorder := newResourceContext(t, http.MethodPost,
+	c, recorder := newPolicyContext(t, http.MethodPost,
 		"/api/karmada/policies",
 		nil, payload)
 	CreateKarmadaPolicy(c)
@@ -92,7 +90,7 @@ func TestCreatePolicyValidatesYAMLAndCallsKarmadaAPI(t *testing.T) {
 	var resp struct {
 		Success bool `json:"success"`
 	}
-	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &resp))
 	assert.True(t, resp.Success)
 	assert.Contains(t, seenBody, "clusterNames")
 }
@@ -106,8 +104,7 @@ func TestUpdatePolicyMergesSpecAndPreservesMetadata(t *testing.T) {
 		buf := new(strings.Builder)
 		_, _ = io.Copy(buf, r.Body)
 		seenBody = buf.String()
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"metadata": map[string]any{"name": "deploy-prod"}})
+		writePolicyResponse(t, w, map[string]any{"metadata": map[string]any{"name": "deploy-prod"}})
 	}))
 	defer upstream.Close()
 	client, err := newClientFromKubeconfig(makeKubeconfig(upstream.URL, "tok1"))
@@ -115,7 +112,7 @@ func TestUpdatePolicyMergesSpecAndPreservesMetadata(t *testing.T) {
 	Set(client)
 
 	payload := `{"spec":{"placement":{"clusterAffinity":{"clusterNames":["member-b"]}}}}`
-	c, recorder := newResourceContext(t, http.MethodPut,
+	c, recorder := newPolicyContext(t, http.MethodPut,
 		"/api/karmada/policies/PropagationPolicy/default/deploy-prod",
 		gin.Params{{Key: "type", Value: "PropagationPolicy"}, {Key: "namespace", Value: "default"}, {Key: "name", Value: "deploy-prod"}},
 		payload)
@@ -140,11 +137,11 @@ func TestDeletePolicyRequiresConfirmationAndRecordsAudit(t *testing.T) {
 	require.NoError(t, err)
 	Set(client)
 
-	c, recorder := newResourceContext(t, http.MethodDelete,
-		"/api/karmada/policies/OverridePolicy/default/env-override?confirm=true",
+	c, recorder := newPolicyContext(t, http.MethodDelete,
+		"/api/karmada/policies/OverridePolicy/default/env-override?confirm=env-override",
 		gin.Params{{Key: "type", Value: "OverridePolicy"}, {Key: "namespace", Value: "default"}, {Key: "name", Value: "env-override"}},
 		"")
-	c.Request.URL.RawQuery = "confirm=true"
+	c.Request.URL.RawQuery = "confirm=env-override"
 	DeleteKarmadaPolicy(c)
 
 	assert.Equal(t, http.StatusOK, recorder.Code)
@@ -154,7 +151,7 @@ func TestDeletePolicyRequiresConfirmationAndRecordsAudit(t *testing.T) {
 
 func TestPolicyTypeAllowlistRejectsUnknownTypes(t *testing.T) {
 	setupKarmadaTest(t)
-	c, recorder := newResourceContext(t, http.MethodGet,
+	c, recorder := newPolicyContext(t, http.MethodGet,
 		"/api/karmada/policies?type=UnknownPolicy",
 		nil, "")
 	c.Request.URL.RawQuery = "type=UnknownPolicy"
@@ -164,6 +161,6 @@ func TestPolicyTypeAllowlistRejectsUnknownTypes(t *testing.T) {
 	var resp struct {
 		Success bool `json:"success"`
 	}
-	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &resp))
 	assert.False(t, resp.Success)
 }

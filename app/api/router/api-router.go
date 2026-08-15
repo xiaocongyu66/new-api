@@ -244,8 +244,12 @@ func SetApiRouter(router *gin.Engine) {
 			// Phase 2: policy management (#113)
 			karmadaRoute.GET("/policies", controller.ListKarmadaPolicies)
 			karmadaRoute.POST("/policies", controller.CreateKarmadaPolicy)
-			karmadaRoute.PUT("/policies/:type/:namespace/:name", controller.UpdateKarmadaPolicy)
-			karmadaRoute.DELETE("/policies/:type/:namespace/:name", controller.DeleteKarmadaPolicy)
+			karmadaRoute.GET("/policies/:type/namespaces/:namespace/:name", controller.GetKarmadaPolicy)
+			karmadaRoute.GET("/policies/:type/:name", controller.GetKarmadaPolicy)
+			karmadaRoute.PUT("/policies/:type/namespaces/:namespace/:name", controller.UpdateKarmadaPolicy)
+			karmadaRoute.PUT("/policies/:type/:name", controller.UpdateKarmadaPolicy)
+			karmadaRoute.DELETE("/policies/:type/namespaces/:namespace/:name", controller.DeleteKarmadaPolicy)
+			karmadaRoute.DELETE("/policies/:type/:name", controller.DeleteKarmadaPolicy)
 		}
 
 		// Custom OAuth provider management (admin with system.settings permission)
