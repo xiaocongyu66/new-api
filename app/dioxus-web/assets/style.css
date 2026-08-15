@@ -714,3 +714,205 @@ table.grid th {
     padding: 20px;
   }
 }
+
+/* --- Resource topology tab (#117) --- */
+.topology-shell {
+  max-width: 1240px;
+}
+
+.topology-intro h2,
+.topology-intro p {
+  margin: 0;
+}
+
+.topology-filters {
+  align-items: end;
+}
+
+.topology-card {
+  max-width: none;
+  padding: 18px;
+}
+
+.topology-toolbar,
+.topology-controls,
+.topology-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.topology-toolbar {
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.topology-legend {
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.legend-dot.healthy,
+.topology-node.healthy rect,
+.topology-detail-status.healthy {
+  background: oklch(0.68 0.17 150);
+  fill: color-mix(in oklch, oklch(0.68 0.17 150) 25%, var(--card));
+  stroke: oklch(0.68 0.17 150);
+}
+
+.legend-dot.syncing,
+.topology-node.syncing rect,
+.topology-detail-status.syncing {
+  background: oklch(0.78 0.14 90);
+  fill: color-mix(in oklch, oklch(0.78 0.14 90) 22%, var(--card));
+  stroke: oklch(0.78 0.14 90);
+}
+
+.legend-dot.failed,
+.topology-node.failed rect,
+.topology-detail-status.failed {
+  background: var(--destructive);
+  fill: color-mix(in oklch, var(--destructive) 20%, var(--card));
+  stroke: var(--destructive);
+}
+
+.zoom-value {
+  min-width: 44px;
+  color: var(--muted-foreground);
+  font-feature-settings: "tnum";
+  text-align: center;
+}
+
+.topology-canvas {
+  overflow: auto;
+  min-height: 520px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: radial-gradient(circle at 1px 1px, color-mix(in oklch, var(--border) 65%, transparent) 1px, transparent 0) 0 0 / 22px 22px, var(--background);
+  cursor: grab;
+  touch-action: pan-x pan-y;
+}
+
+.topology-canvas:active {
+  cursor: grabbing;
+}
+
+.topology-graph {
+  display: block;
+  width: 100%;
+  min-height: 520px;
+}
+
+.topology-graph-mobile {
+  display: none;
+}
+
+.topology-edge {
+  stroke: color-mix(in oklch, var(--muted-foreground) 60%, var(--border));
+  stroke-width: 2;
+}
+
+.topology-arrow {
+  fill: var(--muted-foreground);
+}
+
+.topology-node {
+  cursor: pointer;
+  outline: none;
+}
+
+.topology-node rect {
+  stroke-width: 1.5;
+  transition: filter 120ms ease, stroke-width 120ms ease;
+}
+
+.topology-node:hover rect,
+.topology-node:focus-visible rect {
+  stroke-width: 2.5;
+  filter: brightness(1.22);
+}
+
+.topology-node-type {
+  fill: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.topology-node-name {
+  fill: var(--foreground);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.topology-node-scope {
+  fill: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.topology-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.topology-detail-status {
+  width: fit-content;
+  padding: 5px 10px;
+  border-radius: 999px;
+  color: var(--foreground);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.topology-metadata {
+  overflow: auto;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in oklch, var(--background) 90%, black);
+  color: var(--foreground);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 720px) {
+  .topology-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .topology-canvas {
+    min-height: 430px;
+  }
+
+  .topology-graph-desktop {
+    display: none;
+  }
+
+  .topology-graph-mobile {
+    display: block;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    max-width: none;
+  }
+}

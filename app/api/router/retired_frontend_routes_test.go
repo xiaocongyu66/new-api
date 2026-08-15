@@ -39,3 +39,16 @@ func TestKarmadaPolicyRoutesRegisterNamespacedAndClusterScopedPaths(t *testing.T
 	assert.True(t, hasNamespaced)
 	assert.True(t, hasClusterScoped)
 }
+
+func TestKarmadaTopologyRouteRegisters(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	SetApiRouter(engine)
+
+	for _, route := range engine.Routes() {
+		if route.Method == http.MethodGet && route.Path == "/api/karmada/topology" {
+			return
+		}
+	}
+	t.Fatal("GET /api/karmada/topology must be registered")
+}
