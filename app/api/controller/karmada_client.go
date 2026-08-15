@@ -46,7 +46,9 @@ type kubeconfigUser struct {
 }
 
 type kubeconfigUserData struct {
-	Token string `yaml:"token"`
+	Token                 string `yaml:"token"`
+	ClientCertificateData string `yaml:"client-certificate-data"`
+	ClientKeyData         string `yaml:"client-key-data"`
 }
 
 type kubeconfigContext struct {
@@ -141,7 +143,7 @@ func newClientFromKubeconfig(raw string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	token, err := resolveToken(&kc, ctxName)
+	token, cert, err := resolveAuth(&kc, ctxName)
 	if err != nil {
 		return nil, err
 	}
@@ -161,6 +163,13 @@ func newClientFromKubeconfig(raw string) (*Client, error) {
 		}
 		tlsConfig.RootCAs = pool
 	}
+	if cert != nil {
+		tlsConfig.Certificates = []tls.Certificate{*cert}
+	}
+	authHeader := ""
+	if token != "" {
+		authHeader = "Bearer " + token
+	}
 	httpClient := &http.Client{
 		Timeout:   30 * time.Second,
 		Transport: &http.Transport{TLSClientConfig: tlsConfig},
@@ -168,10 +177,9 @@ func newClientFromKubeconfig(raw string) (*Client, error) {
 	return &Client{
 		Server:     strings.TrimRight(server, "/"),
 		HTTPClient: httpClient,
-		authHeader: "Bearer " + token,
+		authHeader: authHeader,
 	}, nil
 }
-
 // resolveContext returns the current context name and its cluster server.
 func resolveContext(kc *kubeconfig) (string, string, error) {
 	name := kc.CurrentContext
@@ -198,7 +206,11 @@ func resolveContext(kc *kubeconfig) (string, string, error) {
 	return name, "", errors.New("kubeconfig has no matching context")
 }
 
-func resolveToken(kc *kubeconfig, ctxName string) (string, error) {
+// resolveAuth extracts the authentication credential from the kubeconfig
+// user referenced by the current context. Both token-based and client-certificate-
+// based auth are supported. If a token is present it takes precedence; otherwise
+// a TLS client certificate is loaded from client-certificate-data/client-key-data.
+func resolveAuth(kc *kubeconfig, ctxName string) (string, *tls.Certificate, error) {
 	var userName string
 	for _, c := range kc.Contexts {
 		if c.Name == ctxName {
@@ -207,16 +219,36 @@ func resolveToken(kc *kubeconfig, ctxName string) (string, error) {
 		}
 	}
 	for _, u := range kc.Users {
-		if u.Name == userName {
-			if strings.TrimSpace(u.User.Token) == "" {
-				return "", errors.New("kubeconfig user has no token")
-			}
-			return strings.TrimSpace(u.User.Token), nil
+		if u.Name != userName {
+			continue
 		}
+		// Token auth takes precedence when present.
+		if t := strings.TrimSpace(u.User.Token); t != "" {
+			return t, nil, nil
+		}
+		// Fall back to client certificate auth.
+		certPEM := strings.TrimSpace(u.User.ClientCertificateData)
+		keyPEM := strings.TrimSpace(u.User.ClientKeyData)
+		if certPEM == "" || keyPEM == "" {
+			return "", nil, errors.New("kubeconfig user has neither token nor client certificate")
+		}
+		// kubeconfig stores cert/key as base64; decode if needed.
+		certBytes, err := base64.StdEncoding.DecodeString(certPEM)
+		if err != nil {
+			certBytes = []byte(certPEM)
+		}
+		keyBytes, err := base64.StdEncoding.DecodeString(keyPEM)
+		if err != nil {
+			keyBytes = []byte(keyPEM)
+		}
+		cert, err := tls.X509KeyPair(certBytes, keyBytes)
+		if err != nil {
+			return "", nil, fmt.Errorf("kubeconfig has invalid client certificate: %w", err)
+		}
+		return "", &cert, nil
 	}
-	return "", errors.New("kubeconfig context references unknown user")
+	return "", nil, errors.New("kubeconfig context references unknown user")
 }
-
 func (kc *kubeconfig) caDataFor(ctxName string) string {
 	for _, c := range kc.Contexts {
 		if c.Name != ctxName {
