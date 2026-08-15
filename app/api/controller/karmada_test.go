@@ -1,11 +1,19 @@
 package controller
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -48,6 +56,84 @@ contexts:
     cluster: karmada
     user: karmada-user
 `
+}
+
+func makeCertKubeconfig(server, certPEM, keyPEM string) string {
+	return `apiVersion: v1
+kind: Config
+current-context: karmada
+clusters:
+- name: karmada
+  cluster:
+    server: ` + server + `
+users:
+- name: karmada-user
+  user:
+    client-certificate-data: ` + certPEM + `
+    client-key-data: ` + keyPEM + `
+contexts:
+- name: karmada
+  context:
+    cluster: karmada
+    user: karmada-user
+`
+}
+
+// TestResolveAuthClientCert verifies that a kubeconfig with client-certificate
+// auth (no token) builds a client with a TLS client cert, not a bearer header.
+func TestResolveAuthClientCert(t *testing.T) {
+	certPEM, keyPEM := generateTestCertPEM(t)
+	client, err := newClientFromKubeconfig(makeCertKubeconfig("https://127.0.0.1:6443", certPEM, keyPEM))
+	require.NoError(t, err)
+	require.NotNil(t, client)
+	assert.Equal(t, "", client.authHeader, "cert auth must not set a bearer header")
+	transport := client.HTTPClient.Transport.(*http.Transport)
+	require.Len(t, transport.TLSClientConfig.Certificates, 1, "cert auth must attach a TLS client certificate")
+}
+
+// TestResolveAuthTokenPrecedence verifies token-based auth still takes
+// precedence over a client certificate when both are present.
+func TestResolveAuthTokenPrecedence(t *testing.T) {
+	certPEM, keyPEM := generateTestCertPEM(t)
+	raw := makeCertKubeconfig("https://127.0.0.1:6443", certPEM, keyPEM)
+	// Inject a token into the user block.
+	raw = strings.Replace(raw, "client-certificate-data:", "token: tok-abc\n    client-certificate-data:", 1)
+	client, err := newClientFromKubeconfig(raw)
+	require.NoError(t, err)
+	require.NotNil(t, client)
+	assert.Equal(t, "Bearer tok-abc", client.authHeader, "token auth must take precedence")
+	transport := client.HTTPClient.Transport.(*http.Transport)
+	assert.Len(t, transport.TLSClientConfig.Certificates, 0, "no client cert when token present")
+}
+
+// TestResolveAuthMissingCredential verifies a kubeconfig user with neither a
+// token nor a client certificate is rejected.
+func TestResolveAuthMissingCredential(t *testing.T) {
+	raw := strings.Replace(makeCertKubeconfig("https://127.0.0.1:6443", "", ""),
+		"client-certificate-data: \n    client-key-data: ",
+		"client-key-data: ", 1)
+	_, err := newClientFromKubeconfig(raw)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "neither token nor client certificate")
+}
+
+// generateTestCertPEM returns a self-signed certificate/key pair encoded in
+// base64 (the kubeconfig inline format).
+func generateTestCertPEM(t *testing.T) (string, string) {
+	t.Helper()
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	tmpl := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "test-client"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+	der, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, &priv.PublicKey, priv)
+	require.NoError(t, err)
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
+	return base64.StdEncoding.EncodeToString(certPEM), base64.StdEncoding.EncodeToString(keyPEM)
 }
 
 func marshalConfigRequest(t *testing.T, body string) string {

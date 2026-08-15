@@ -108,6 +108,20 @@ spec:
               value: http://localhost:3000
             - name: GF_USERS_ALLOW_SIGN_UP
               value: "false"
+            # --- iframe embedding (#110): allow_embedding removes X-Frame-Options: DENY
+            # so the Karmada panel can embed Grafana dashboards. Anonymous access is
+            # granted a read-only Viewer role. Operators should set GF_SECURITY_FRAME_ANCESTORS
+            # to the admin-panel origin in production to restrict which sites can embed
+            # Grafana. cookie_samesite=lax allows cookie-bearing requests in same-site
+            # iframes while blocking cross-site credential leakage.
+            - name: GF_SECURITY_ALLOW_EMBEDDING
+              value: "true"
+            - name: GF_AUTH_ANONYMOUS
+              value: "true"
+            - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+              value: "Viewer"
+            - name: GF_SECURITY_COOKIE_SAMESITE
+              value: "lax"
           volumeMounts:
             - name: grafana-datasources
               mountPath: /etc/grafana/provisioning/datasources

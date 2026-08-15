@@ -82,6 +82,10 @@ var auditRouteActions = map[string]string{
 	"DELETE /api/models/:id":         "model.delete",
 	"POST /api/models/sync_upstream": "model.sync_upstream",
 
+	// Karmada
+	"PUT /api/karmada/resources/:kind/:namespace/:name/scale": "karmada.resource_scale",
+	"DELETE /api/karmada/resources/:kind/:namespace/:name":    "karmada.resource_delete",
+	"DELETE /api/karmada/resources/:kind/:namespace":          "karmada.resource_delete",
 
 	// 订阅（管理员）
 	"POST /api/subscription/admin/plans":    "subscription.plan_create",
