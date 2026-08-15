@@ -54,5 +54,6 @@ fn main() -> Result<()> {
         TopLevel::Pricing(cmd) => cmd::pricing::run(&client, &cmd),
         TopLevel::Device(cmd) => cmd::device::run(&client, &cmd),
         TopLevel::System(cmd) => cmd::system::run(&client, &cmd),
+        TopLevel::Admin(cmd) => cmd::admin::run(&client, &cmd),
     }
 }
