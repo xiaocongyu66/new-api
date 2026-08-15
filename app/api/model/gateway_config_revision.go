@@ -48,19 +48,25 @@ type GatewayConfigOutbox struct {
 // empty. It runs after AutoMigrate on both empty and upgraded databases and
 // never resets or duplicates an existing watermark, because consumers would
 // otherwise see the revision move backwards.
-//
-// The emptiness check covers the whole table rather than id=1 alone: inserting
-// id=1 next to an existing row would leave two watermarks, and the bump path
-// would then advance only one of them.
 func InitializeGatewayConfigRevision() error {
 	var existing int64
 	if err := DB.Model(&GatewayConfigRevision{}).Count(&existing).Error; err != nil {
 		return err
 	}
-	if existing > 0 {
-		return nil
+	if existing == 0 {
+		return DB.Create(&GatewayConfigRevision{ID: gatewayConfigRevisionID, RoutingRevision: 1}).Error
 	}
-	return DB.Create(&GatewayConfigRevision{ID: gatewayConfigRevisionID, RoutingRevision: 1}).Error
+	var row GatewayConfigRevision
+	if err := DB.Where("id = ?", gatewayConfigRevisionID).Take(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("%w: singleton id %d is absent from non-empty table", ErrGatewayRevisionMissing, gatewayConfigRevisionID)
+		}
+		return err
+	}
+	if row.RoutingRevision <= 0 {
+		return fmt.Errorf("%w: got %d", ErrGatewayRevisionInvalid, row.RoutingRevision)
+	}
+	return nil
 }
 
 // BumpGatewayRoutingRevision advances the singleton watermark inside tx, reads
@@ -118,4 +124,47 @@ func MutateGatewayRouting(mutator func(tx *gorm.DB) error) (int64, error) {
 		return 0, err
 	}
 	return revision, nil
+}
+
+// ListPendingGatewayConfigOutbox returns the oldest unpublished revisions. It
+// exposes only the metadata needed by the dispatcher.
+func ListPendingGatewayConfigOutbox(limit int) ([]GatewayConfigOutbox, error) {
+	if limit <= 0 {
+		return nil, errors.New("outbox limit must be positive")
+	}
+	var rows []GatewayConfigOutbox
+	err := DB.Where("published_at IS NULL").
+		Order("routing_revision ASC").
+		Limit(limit).
+		Find(&rows).Error
+	return rows, err
+}
+
+// RecordGatewayConfigOutboxAttempt increments the attempt count once and
+// stores only a bounded error class, never provider error text.
+func RecordGatewayConfigOutboxAttempt(id int, errorClass string) error {
+	if id <= 0 || errorClass == "" || len(errorClass) > 64 {
+		return errors.New("invalid outbox publish attempt")
+	}
+	return DB.Model(&GatewayConfigOutbox{}).Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"publish_attempts":         gorm.Expr("publish_attempts + ?", 1),
+			"last_publish_error_class": errorClass,
+		}).Error
+}
+
+func IncrementGatewayConfigOutboxAttempt(id int, errorClass string) error {
+	return RecordGatewayConfigOutboxAttempt(id, errorClass)
+}
+
+// MarkGatewayConfigOutboxPublished is idempotent and never overwrites the
+// first successful publication timestamp, so a duplicate publisher only causes
+// a duplicate notice instead of rewriting history.
+func MarkGatewayConfigOutboxPublished(id int, publishedAt time.Time) error {
+	if id <= 0 || publishedAt.IsZero() {
+		return errors.New("invalid outbox published marker")
+	}
+	return DB.Model(&GatewayConfigOutbox{}).
+		Where("id = ? AND published_at IS NULL", id).
+		Update("published_at", publishedAt).Error
 }
