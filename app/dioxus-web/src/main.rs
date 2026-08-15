@@ -3,6 +3,7 @@ mod clusters;
 mod monitoring;
 mod policies;
 mod resources;
+mod topology;
 
 use dioxus::prelude::*;
 
@@ -79,6 +80,8 @@ fn App() -> Element {
                     policies::PoliciesView {}
                 } else if active_tab() == "monitoring" {
                     monitoring::MonitoringView {}
+                } else if active_tab() == "topology" {
+                    topology::TopologyView {}
                 } else {
                     div { class: "card",
                         h2 { "Karmada Panel" }

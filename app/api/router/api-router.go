@@ -250,6 +250,8 @@ func SetApiRouter(router *gin.Engine) {
 			karmadaRoute.PUT("/policies/:type/:name", controller.UpdateKarmadaPolicy)
 			karmadaRoute.DELETE("/policies/:type/namespaces/:namespace/:name", controller.DeleteKarmadaPolicy)
 			karmadaRoute.DELETE("/policies/:type/:name", controller.DeleteKarmadaPolicy)
+			// Phase 3: topology visualization (#117)
+			karmadaRoute.GET("/topology", controller.GetKarmadaTopology)
 		}
 
 		// Custom OAuth provider management (admin with system.settings permission)
