@@ -24,3 +24,18 @@ func TestRetiredFrontendAPIRoutes(t *testing.T) {
 	assert.False(t, hasDirectDelete)
 	assert.False(t, hasConsoleMigration)
 }
+
+func TestKarmadaPolicyRoutesRegisterNamespacedAndClusterScopedPaths(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	SetApiRouter(engine)
+
+	routes := make(map[string]struct{}, len(engine.Routes()))
+	for _, route := range engine.Routes() {
+		routes[route.Method+" "+route.Path] = struct{}{}
+	}
+	_, hasNamespaced := routes[http.MethodGet+" /api/karmada/policies/:type/namespaces/:namespace/:name"]
+	_, hasClusterScoped := routes[http.MethodGet+" /api/karmada/policies/:type/:name"]
+	assert.True(t, hasNamespaced)
+	assert.True(t, hasClusterScoped)
+}

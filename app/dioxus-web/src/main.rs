@@ -1,6 +1,7 @@
 mod api;
 mod clusters;
 mod monitoring;
+mod policies;
 mod resources;
 
 use dioxus::prelude::*;
@@ -74,6 +75,8 @@ fn App() -> Element {
                     clusters::ClustersView {}
                 } else if active_tab() == "resources" {
                     resources::ResourcesView {}
+                } else if active_tab() == "policies" {
+                    policies::PoliciesView {}
                 } else if active_tab() == "monitoring" {
                     monitoring::MonitoringView {}
                 } else {
