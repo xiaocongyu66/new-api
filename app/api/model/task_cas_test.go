@@ -57,6 +57,8 @@ func TestMain(m *testing.M) {
 		&SystemInstance{},
 		&SystemTask{},
 		&SystemTaskLock{},
+		&GatewayConfigRevision{},
+		&GatewayConfigOutbox{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
