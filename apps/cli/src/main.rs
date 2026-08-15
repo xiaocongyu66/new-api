@@ -40,6 +40,12 @@ enum TopLevel {
     /// Manage admin performance, system tasks, and admin log (P1)
     #[command(subcommand)]
     System(cmd::system::SystemCommand),
+    /// Manage admin user, redemption, subscription, group, and non-pricing settings (P2)
+    #[command(subcommand)]
+    Admin(cmd::admin::AdminCommand),
+    /// Manage user API tokens (P2)
+    #[command(subcommand)]
+    Token(cmd::token::TokenCommand),
 }
 
 fn main() -> Result<()> {
@@ -55,5 +61,6 @@ fn main() -> Result<()> {
         TopLevel::Device(cmd) => cmd::device::run(&client, &cmd),
         TopLevel::System(cmd) => cmd::system::run(&client, &cmd),
         TopLevel::Admin(cmd) => cmd::admin::run(&client, &cmd),
+        TopLevel::Token(cmd) => cmd::token::run(&client, &cmd),
     }
 }
