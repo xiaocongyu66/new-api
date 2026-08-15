@@ -62,6 +62,9 @@ func TestMain(m *testing.M) {
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
+	if err := InitializeGatewayConfigRevision(); err != nil {
+		panic("failed to initialize gateway revision: " + err.Error())
+	}
 
 	os.Exit(m.Run())
 }

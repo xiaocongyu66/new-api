@@ -318,7 +318,15 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 }
 
 func UpdateAbilityStatus(channelId int, status bool) error {
-	return DB.Model(&Ability{}).Where("channel_id = ?", channelId).Select("enabled").Update("enabled", status).Error
+	return updateAbilityStatusWithTx(DB, channelId, status)
+}
+
+// updateAbilityStatusWithTx is the tx-aware form of UpdateAbilityStatus. It
+// writes the enabled column for every ability row of the channel through the
+// given transaction so callers can commit it together with the channel status
+// and the gateway routing revision bump.
+func updateAbilityStatusWithTx(tx *gorm.DB, channelId int, status bool) error {
+	return tx.Model(&Ability{}).Where("channel_id = ?", channelId).Select("enabled").Update("enabled", status).Error
 }
 
 func UpdateAbilityStatusByTag(tag string, status bool) error {

@@ -350,6 +350,13 @@ func (channel *Channel) Save() error {
 // Keeping this allowlist here prevents a stale channel snapshot from
 // overwriting credentials, accounting counters, or channel configuration.
 func (channel *Channel) saveStatusState() error {
+	return channel.saveStatusStateWithTx(DB)
+}
+
+// saveStatusStateWithTx is the tx-aware form of saveStatusState. It writes the
+// same status-owned columns through the given transaction so callers can
+// commit the channel row together with the gateway routing revision bump.
+func (channel *Channel) saveStatusStateWithTx(tx *gorm.DB) error {
 	if channel.Id == 0 {
 		return errors.New("channel ID is 0")
 	}
@@ -360,7 +367,7 @@ func (channel *Channel) saveStatusState() error {
 	if channel.ChannelInfo.IsMultiKey {
 		updates["channel_info"] = channel.ChannelInfo
 	}
-	return DB.Model(&Channel{}).Where("id = ?", channel.Id).Updates(updates).Error
+	return tx.Model(&Channel{}).Where("id = ?", channel.Id).Updates(updates).Error
 }
 
 func GetAllChannels(startIdx int, num int, selectAll bool, idSort bool, sortOptions ...ChannelSortOptions) ([]*Channel, error) {
@@ -739,67 +746,84 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 	pollingLock.Lock()
 	defer pollingLock.Unlock()
 
-	if common.MemoryCacheEnabled {
-		channelCache, _ := CacheGetChannel(channelId)
-		if channelCache == nil {
-			return false
-		}
-		if channelCache.ChannelInfo.IsMultiKey {
-			beforeStatus := channelCache.Status
-			// 如果是多Key模式，更新缓存中的状态
-			handlerMultiKeyUpdate(channelCache, usingKey, status, reason)
-			if beforeStatus != channelCache.Status {
-				CacheUpdateChannelStatus(channelId, channelCache.Status)
-			}
-			//CacheUpdateChannel(channelCache)
-			//return true
-		} else {
-			// 如果缓存渠道存在，且状态已是目标状态，直接返回
-			if channelCache.Status == status {
-				return false
-			}
-			CacheUpdateChannelStatus(channelId, status)
-		}
+	ok, err := updateChannelStatusWithTx(DB, channelId, usingKey, status, reason)
+	if err != nil || !ok {
+		return false
 	}
 
-	shouldUpdateAbilities := false
-	defer func() {
-		if shouldUpdateAbilities {
-			err := UpdateAbilityStatus(channelId, status == common.ChannelStatusEnabled)
-			if err != nil {
-				common.SysLog(fmt.Sprintf("failed to update ability status: channel_id=%d, error=%v", channelId, err))
-			}
+	// Refresh cache only after the mutation has committed. Use the committed
+	// channel row as the source of truth so a rolled-back transaction never
+	// poisons the in-memory status.
+	if common.MemoryCacheEnabled {
+		committed, loadErr := GetChannelById(channelId, true)
+		if loadErr != nil || committed == nil {
+			return true
 		}
-	}()
-	channel, err := GetChannelById(channelId, true)
-	if err != nil {
-		return false
-	} else {
-		if channel.Status == status {
-			return false
-		}
-
-		if channel.ChannelInfo.IsMultiKey {
-			beforeStatus := channel.Status
-			handlerMultiKeyUpdate(channel, usingKey, status, reason)
-			if beforeStatus != channel.Status {
-				shouldUpdateAbilities = true
-			}
+		if committed.ChannelInfo.IsMultiKey {
+			CacheUpdateChannelStatus(channelId, committed.Status)
 		} else {
-			info := channel.GetOtherInfo()
-			info["status_reason"] = reason
-			info["status_time"] = common.GetTimestamp()
-			channel.SetOtherInfo(info)
-			channel.Status = status
-			shouldUpdateAbilities = true
-		}
-		err = channel.saveStatusState()
-		if err != nil {
-			common.SysLog(fmt.Sprintf("failed to update channel status: channel_id=%d, status=%d, error=%v", channel.Id, status, err))
-			return false
+			if committed.Status == status {
+				// Non-multi-key path requested a specific status; reflect it.
+				CacheUpdateChannelStatus(channelId, status)
+			} else {
+				CacheUpdateChannelStatus(channelId, committed.Status)
+			}
 		}
 	}
 	return true
+}
+
+// updateChannelStatusWithTx performs the DB channel status mutation plus the
+// ability enabled-state mutation inside one MutateGatewayRouting transaction.
+// It returns (false, nil) without writing when the stored status already equals
+// the requested status (no-op), and (true, nil) after a successful commit. The
+// caller owns cache refresh.
+func updateChannelStatusWithTx(_ *gorm.DB, channelId int, usingKey string, status int, reason string) (bool, error) {
+	channel, err := GetChannelById(channelId, true)
+	if err != nil || channel == nil {
+		return false, err
+	}
+	if channel.Status == status {
+		return false, nil
+	}
+
+	// Mutate the in-memory channel the same way the legacy flow did, then
+	// decide whether the ability enabled-state must move with it. MutateGatewayRouting
+	// owns the outer transaction so the channel row, the ability rows and the
+	// routing revision bump commit together.
+	shouldUpdateAbilities := false
+	if channel.ChannelInfo.IsMultiKey {
+		beforeStatus := channel.Status
+		handlerMultiKeyUpdate(channel, usingKey, status, reason)
+		if beforeStatus != channel.Status {
+			shouldUpdateAbilities = true
+		}
+	} else {
+		info := channel.GetOtherInfo()
+		info["status_reason"] = reason
+		info["status_time"] = common.GetTimestamp()
+		channel.SetOtherInfo(info)
+		channel.Status = status
+		shouldUpdateAbilities = true
+	}
+
+	_, mutateErr := MutateGatewayRouting(func(tx *gorm.DB) error {
+		if err := channel.saveStatusStateWithTx(tx); err != nil {
+			return err
+		}
+		if shouldUpdateAbilities {
+			enabled := channel.Status == common.ChannelStatusEnabled
+			if err := updateAbilityStatusWithTx(tx, channelId, enabled); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if mutateErr != nil {
+		common.SysLog(fmt.Sprintf("failed to update channel status: channel_id=%d, status=%d, error=%v", channel.Id, status, mutateErr))
+		return false, mutateErr
+	}
+	return true, nil
 }
 
 func EnableChannelByTag(tag string) error {
