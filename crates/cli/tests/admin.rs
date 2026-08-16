@@ -51,7 +51,7 @@ fn user_delete_with_yes_hits_endpoint() {
 #[test]
 fn user_manage_preserves_mode_and_value() {
     let server = MockServer::start();
-    let m = server.mock(|when, then| {
+    let _m = server.mock(|when, then| {
         when.method(POST).path("/api/user/manage").json_body(json!({
             "id": 1,
             "action": "add_quota",

@@ -307,7 +307,7 @@ fn log_list_omits_unset_filters() {
     let m = server.mock(|when, then| {
         when.method(GET).path("/api/log").matches(|req| {
             // only path, no query params at all
-            req.query_params.as_ref().map_or(true, Vec::is_empty)
+            req.query_params.as_ref().is_none_or(Vec::is_empty)
         });
         then.status(200)
             .json_body(json!({"success": true, "data": {"items": [], "total": 0}}));

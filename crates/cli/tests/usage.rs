@@ -51,10 +51,10 @@ fn log_list_forwards_filters() {
 #[test]
 fn log_list_omits_unset() {
     let server = MockServer::start();
-    let m = server.mock(|when, then| {
+    let _m = server.mock(|when, then| {
         when.method(GET)
             .path("/api/log/self")
-            .matches(|req| req.query_params.as_ref().map_or(true, Vec::is_empty));
+            .matches(|req| req.query_params.as_ref().is_none_or(Vec::is_empty));
         then.status(200)
             .json_body(json!({"success": true, "data": {"items": []}}));
     });
@@ -72,7 +72,7 @@ fn log_list_omits_unset() {
             upstream_request_id: None,
         },
     );
-    m.assert();
+    _m.assert();
 }
 
 #[test]
