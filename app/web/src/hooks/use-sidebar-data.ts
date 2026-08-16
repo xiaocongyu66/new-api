@@ -29,7 +29,6 @@ import {
   Network,
   Radio,
   ServerCog,
-  Settings,
   Store,
   Ticket,
   User,
@@ -38,6 +37,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import { getSystemSettingsThemeNavItems } from '@/components/layout/config/system-settings.config'
 import { type SidebarData } from '@/components/layout/types'
 import { useStatus } from '@/hooks/use-status'
 import { isPricingModuleEnabled } from '@/lib/nav-modules'
@@ -171,12 +171,7 @@ export function useSidebarData(): SidebarData {
             icon: ServerCog,
             requiredRole: ROLE.SUPER_ADMIN,
           },
-          {
-            title: t('System Settings'),
-            url: '/system-settings/site',
-            activeUrls: ['/system-settings'],
-            icon: Settings,
-          },
+          ...getSystemSettingsThemeNavItems(t),
         ],
       },
     ],

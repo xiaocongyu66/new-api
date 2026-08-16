@@ -18,8 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { type TFunction } from 'i18next'
 
-import { SYSTEM_SETTINGS_VIEW } from '../config/system-settings.config'
-import type { NavGroup, SidebarView } from '../types'
+import type { NavGroup } from '../types'
 
 /**
  * Registered nested sidebar views.
@@ -29,8 +28,11 @@ import type { NavGroup, SidebarView } from '../types'
  * "drill-in" pattern). Add new entries here to register a new view.
  *
  * Match priority is array order; the first matching `pathPattern` wins.
+ *
+ * Note: `/system-settings/*` was previously a drill-in view; it is now
+ * a collapsible entry under the Admin Tab in the root sidebar, so it
+ * is intentionally absent from this registry.
  */
-const SIDEBAR_VIEWS: readonly SidebarView[] = [SYSTEM_SETTINGS_VIEW]
 
 /**
  * Resolve the active nested view for the given path.
@@ -38,8 +40,8 @@ const SIDEBAR_VIEWS: readonly SidebarView[] = [SYSTEM_SETTINGS_VIEW]
  * @returns Matching {@link SidebarView}, or `null` when the root
  *          navigation should be displayed.
  */
-export function resolveSidebarView(pathname: string): SidebarView | null {
-  return SIDEBAR_VIEWS.find((view) => view.pathPattern.test(pathname)) ?? null
+export function resolveSidebarView(_pathname: string): null {
+  return null
 }
 
 /**
@@ -51,9 +53,8 @@ export function resolveSidebarView(pathname: string): SidebarView | null {
  *          matches (callers should then fall back to root nav groups).
  */
 export function getNavGroupsForPath(
-  pathname: string,
-  t: TFunction
+  _pathname: string,
+  _t: TFunction
 ): NavGroup[] | null {
-  const view = resolveSidebarView(pathname)
-  return view ? view.getNavGroups(t) : null
+  return null
 }

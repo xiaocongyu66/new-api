@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useLocation } from '@tanstack/react-router'
 import { useMemo } from 'react'
-import { useTranslation } from 'react-i18next'
 
 import { resolveSidebarView } from '@/components/layout/lib/sidebar-view-registry'
 import type { NavGroup, ResolvedSidebarView } from '@/components/layout/types'
@@ -36,6 +35,9 @@ const ROOT_VIEW_KEY = '__root'
  *
  * - Returns the matching nested {@link SidebarView} (with its nav
  *   groups) when the URL belongs to a registered drill-in workspace.
+ *   Currently no drill-in views are registered (System Settings was
+ *   promoted to an in-Admin collapsible); `resolveSidebarView` always
+ *   returns `null`.
  * - Otherwise returns the root navigation, narrowed by:
  *     · admin-only group visibility (role-based);
  *     · `useSidebarConfig` (admin × user `sidebar_modules` overlay).
@@ -45,7 +47,6 @@ const ROOT_VIEW_KEY = '__root'
  * already enforced at the route level (`beforeLoad` redirects).
  */
 export function useSidebarView(): ResolvedSidebarView {
-  const { t } = useTranslation()
   const pathname = useLocation({ select: (l) => l.pathname })
   const userRole = useAuthStore((s) => s.auth.user?.role)
   const rootSidebarData = useSidebarData()
@@ -64,15 +65,10 @@ export function useSidebarView(): ResolvedSidebarView {
       })
   }, [configFilteredRoot, userRole])
 
-  const view = resolveSidebarView(pathname)
-
-  if (view) {
-    return {
-      key: view.id,
-      view,
-      navGroups: view.getNavGroups(t),
-    }
-  }
+  // Reserved for future drill-in views. Today this is always null;
+  // keep the call so adding a new nested view does not require touching
+  // this hook.
+  resolveSidebarView(pathname)
 
   return {
     key: ROOT_VIEW_KEY,
