@@ -48,12 +48,7 @@ export type SidebarTabMode = 'user' | 'admin'
  * Admin/SuperAdmin/Root, a top Tab switcher toggles between the User
  * workspace (Chat, General, Personal) and the Admin workspace
  * (Channels, Models, Users, Redemption, Subscriptions, Proxy,
- * System Info, System Settings).
- *
- * Nested "drill-in" sidebar views (Vercel / Cloudflare pattern) are
- * no longer rendered here — System Settings is now an in-Admin
- * collapsible. The registry hooks are kept so future nested views can
- * be added without touching this component.
+ * System Info, System Settings theme collapsibles).
  */
 export function AppSidebar() {
   const { t } = useTranslation()

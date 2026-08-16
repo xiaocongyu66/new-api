@@ -46,8 +46,8 @@ import { ROLE } from '@/lib/roles'
 /**
  * Root navigation groups for the application sidebar.
  *
- * These are shown when the URL does not match any nested sidebar view
- * registered in `layout/lib/sidebar-view-registry.ts`.
+ * The `admin` group is shown under the Admin workspace Tab; all other
+ * groups belong to the User workspace Tab (see `app-sidebar.tsx`).
  */
 export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
