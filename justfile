@@ -1,6 +1,7 @@
 WEB_DIR := "./apps/web"
 API_DIR := "./apps/api"
 API_EMBED_DIR := "./apps/api/web/dist"
+GO_BIN_CACHE := env_var_or_default("GO_BIN_CACHE", env_var("HOME") + "/.cache/new-api-bin")
 DEV_WEB_PORT := env_var_or_default("DEV_WEB_PORT", "5173")
 DEV_COMPOSE_FILE := "deploy/docker-compose.dev.yml"
 DEV_POSTGRES_SERVICE := "postgres"
@@ -33,6 +34,16 @@ clean-web:
 # Start api dev server (background)
 start-api:
     cd "{{ API_DIR }}" && go run main.go &
+
+# Start api dev server with incremental build cache
+run-api:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    branch="$(git branch --show-current 2>/dev/null || echo 'detached')"
+    bin_name="new-api-$(echo "$branch" | tr '/' '-')"
+    mkdir -p "{{ GO_BIN_CACHE }}"
+    cd "{{ API_DIR }}" && GOWORK=off go build -o "{{ GO_BIN_CACHE }}/$bin_name" .
+    "{{ GO_BIN_CACHE }}/$bin_name"
 
 # Start docker dev api services (postgres, etc.)
 dev-api:
