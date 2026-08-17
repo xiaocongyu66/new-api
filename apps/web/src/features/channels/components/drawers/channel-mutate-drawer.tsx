@@ -615,6 +615,7 @@ export function ChannelMutateDrawer({
   presentation,
   formId,
 }: ChannelMutateDrawerProps) {
+  if (!open) return null
   const { t } = useTranslation()
   const isInline = presentation === 'inline'
   const isPresented = isInline || Boolean(open)
@@ -705,14 +706,7 @@ export function ChannelMutateDrawer({
     switchMethod: switchVerificationMethod,
   } = useSecureVerification()
 
-  useEffect(() => {
-    if (!isPresented) {
-      setChannelKey(null)
-      setIsChannelKeyLoading(false)
-    } else if (channelId) {
-      setChannelKey(null)
-    }
-  }, [channelId, isPresented])
+
 
   // Check if this is a multi-key channel
   const isMultiKeyChannel =
@@ -792,7 +786,6 @@ export function ChannelMutateDrawer({
   const {
     unlocked: doubaoApiEditUnlocked,
     handleClick: handleApiConfigSecretClick,
-    reset: resetDoubaoApiUnlock,
   } = useHiddenClickUnlock({
     requiredClicks: 10,
     disabled: currentType !== 45 || sensitiveLocked,
@@ -801,11 +794,6 @@ export function ChannelMutateDrawer({
     },
   })
 
-  useEffect(() => {
-    if (!isPresented) {
-      resetDoubaoApiUnlock()
-    }
-  }, [isPresented, resetDoubaoApiUnlock])
 
   const applyConnectionInfo = useCallback(
     (connectionInfo: ChannelConnectionInfo) => {
