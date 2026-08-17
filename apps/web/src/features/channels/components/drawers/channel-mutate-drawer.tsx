@@ -609,6 +609,7 @@ export function ChannelMutateDrawer({
   onOpenChange,
   currentRow,
 }: ChannelMutateDrawerProps) {
+  if (!open) return null
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { setOpen } = useChannels()
@@ -696,14 +697,6 @@ export function ChannelMutateDrawer({
     switchMethod: switchVerificationMethod,
   } = useSecureVerification()
 
-  useEffect(() => {
-    if (!open) {
-      setChannelKey(null)
-      setIsChannelKeyLoading(false)
-    } else if (channelId) {
-      setChannelKey(null)
-    }
-  }, [open, channelId])
 
   // Check if this is a multi-key channel
   const isMultiKeyChannel =
@@ -774,7 +767,6 @@ export function ChannelMutateDrawer({
   const {
     unlocked: doubaoApiEditUnlocked,
     handleClick: handleApiConfigSecretClick,
-    reset: resetDoubaoApiUnlock,
   } = useHiddenClickUnlock({
     requiredClicks: 10,
     disabled: currentType !== 45 || sensitiveLocked,
@@ -782,12 +774,6 @@ export function ChannelMutateDrawer({
       toast.info(t('Doubao custom API address editing unlocked'))
     },
   })
-
-  useEffect(() => {
-    if (!open) {
-      resetDoubaoApiUnlock()
-    }
-  }, [open, resetDoubaoApiUnlock])
 
   const applyConnectionInfo = useCallback(
     (connectionInfo: ChannelConnectionInfo) => {
