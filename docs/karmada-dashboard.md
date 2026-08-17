@@ -39,7 +39,7 @@ just karmada-dashboard-token
 
 The overlay uses three single-replica official Dashboard roles: the public Web proxy, the Karmada API, and the member-cluster API. It explicitly disables metrics scraping to avoid a fourth workload. These roles cannot safely be collapsed into two Pods because the Web proxy and both API servers are independently addressable processes with separate lifecycle and security boundaries. A real Karmada control plane and member cluster are prerequisites; plain K3s/Kubernetes is not a compatible substitute.
 
-`karmada-dashboard-forward` exposes the official Web UI at `http://localhost:18000/karmada-dashboard/`. Set that value in `VITE_KARMADA_DASHBOARD_URL` when running the New API Web development server. `karmada-dashboard-clean` removes only the local Dashboard resources and its credentials, not the Karmada control plane.
+`karmada-dashboard-forward` 只作为临时调试命令保留，正常访问不需要它。固定 NodePort 部署后，BFF 直接访问配置的 Dashboard Web 地址，用户只需打开 New API 的 `/karmada` 页面。
 
 For a same-origin path deployment, configure the official Dashboard `path_prefix` to `/karmada-dashboard` and route all of these paths to its web service:
 
@@ -58,10 +58,12 @@ The New API route and sidebar entry are restricted to `ROLE.SUPER_ADMIN`. This p
 
 ## Development
 
-For local development, set the URL when starting the Web app, for example:
+For local development, the Dashboard Web service is exposed through the fixed NodePort configured by `deploy/k8s/karmada-dashboard/local.yaml`. The BFF should use that reachable NodePort URL; `karmada-dashboard-forward` is only a temporary debugging fallback and is not required for normal New API access.
 
 ```bash
-VITE_KARMADA_DASHBOARD_URL=http://localhost:18000/karmada-dashboard/ bun run dev -- --host 0.0.0.0 --port 5173
+KARMADA_DASHBOARD_URL=http://172.25.0.2:32000/karmada-dashboard/ \
+KARMADA_DASHBOARD_TOKEN=<server-held-credential> \
+bun run dev -- --host 0.0.0.0 --port 5173
 ```
 
 The official Dashboard still requires its own API/web process and a valid Karmada kubeconfig. A Vite static preview without the official Dashboard web proxy is not sufficient for authenticated API access.

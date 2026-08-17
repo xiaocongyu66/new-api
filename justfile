@@ -73,6 +73,7 @@ KARMADA_DASHBOARD_MANIFEST := "deploy/k8s/karmada-dashboard/local.yaml"
 KARMADA_DASHBOARD_RBAC := "deploy/k8s/karmada-dashboard/rbac.yaml"
 KARMADA_CONFIG_SECRET := env_var_or_default("KARMADA_CONFIG_SECRET", "karmada-controller-manager-config")
 KARMADA_API_SERVER := env_var("KARMADA_API_SERVER")
+KARMADA_DASHBOARD_NODE_URL := env_var_or_default("KARMADA_DASHBOARD_NODE_URL", "http://172.25.0.2:32000/karmada-dashboard/")
 
 karmada-dashboard-local:
     #!/usr/bin/env bash
@@ -95,6 +96,11 @@ karmada-dashboard-local:
     kubectl --context "$context" -n "$namespace" rollout status deploy/karmada-dashboard-api --timeout=5m
     kubectl --context "$context" -n "$namespace" rollout status deploy/kubernetes-dashboard-api --timeout=5m
     kubectl --context "$context" -n "$namespace" rollout status deploy/karmada-dashboard-web --timeout=5m
+    kubectl --context "$context" -n "$namespace" get svc karmada-dashboard-web >/dev/null
+    dashboard_url="{{ KARMADA_DASHBOARD_NODE_URL }}"
+    curl --fail --silent --show-error "$dashboard_url" >/dev/null
+    echo "Karmada Dashboard NodePort: $dashboard_url"
+    echo "Start New API with KARMADA_DASHBOARD_URL=$dashboard_url and KARMADA_DASHBOARD_TOKEN set server-side."
     just karmada-dashboard-status
 
 # Forward the official Dashboard web service for the New API iframe.
