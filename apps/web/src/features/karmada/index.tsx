@@ -212,12 +212,14 @@ export function KarmadaDashboard() {
   }
 
   return (
-    <iframe
-      ref={iframeRef}
-      src={dashboardUrl.toString()}
-      className='h-full w-full border-0'
-      title={t('Karmada Dashboard')}
-      onLoad={() => setDashboardNonce(null)}
-    />
+    <div className='flex min-h-0 flex-1 overflow-hidden'>
+      <iframe
+        ref={iframeRef}
+        src={dashboardUrl.toString()}
+        className='block h-full min-h-0 w-full border-0'
+        title={t('Karmada Dashboard')}
+        onLoad={() => setDashboardNonce(null)}
+      />
+    </div>
   )
 }

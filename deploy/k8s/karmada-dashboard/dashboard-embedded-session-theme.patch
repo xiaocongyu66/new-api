@@ -144,3 +144,41 @@ index cbdc9b6..ca8b38e 100644
      },
    });
    const ctxValue = useMemo(() => {
+diff --git a/ui/apps/dashboard/src/components/panel/index.tsx b/ui/apps/dashboard/src/components/panel/index.tsx
+index 7160375..124f78f 100644
+--- a/ui/apps/dashboard/src/components/panel/index.tsx
++++ b/ui/apps/dashboard/src/components/panel/index.tsx
+@@ -55,7 +55,7 @@ const Panel: FC<IPanelProps> = (props) => {
+   }, [matches]);
+   return (
+     <div className="w-full h-full px-[30px] py-[20px] box-border bg-[#FAFBFC]">
+-      <div className="w-full h-full bg-white box-border p-[12px] overflow-y-scroll">
++      <div className="w-full h-full bg-white box-border p-[12px] overflow-y-auto">
+         <Breadcrumb className="mb-4" items={breadcrumbs} />
+         {children}
+       </div>
+diff --git a/ui/apps/dashboard/src/layout/index.tsx b/ui/apps/dashboard/src/layout/index.tsx
+index 3cd191a..b8ee636 100644
+--- a/ui/apps/dashboard/src/layout/index.tsx
++++ b/ui/apps/dashboard/src/layout/index.tsx
+@@ -53,7 +53,7 @@ export const MainLayout: FC = () => {
+     <>
+       <Header onTerminalClick={toggleKarmadaTerminal} user={user} onLogout={logout} />
+       <AntdLayout
+-        className={cn('h-[calc(100vh-48px)]', 'overflow-hidden', 'flex')}
++        className={cn('h-[calc(100dvh-48px)]', 'min-h-0', 'overflow-hidden', 'flex')}
+       >
+         <AntdSider
+           width={getSidebarWidth()}
+@@ -64,8 +64,10 @@ export const MainLayout: FC = () => {
+         >
+           <Sidebar collapsed={isSmallScreen} />
+         </AntdSider>
+-        <AntdContent>
+-          <Outlet />
++        <AntdContent className={cn('min-h-0', 'min-w-0', 'overflow-hidden')}>
++          <div className={cn('h-full', 'min-h-0', 'overflow-y-auto')}>
++            <Outlet />
++          </div>
+         </AntdContent>
+       </AntdLayout>
