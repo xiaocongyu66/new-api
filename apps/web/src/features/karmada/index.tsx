@@ -28,25 +28,80 @@ import { useAuthStore } from '@/stores/auth-store'
 import { KARMADA_DASHBOARD_URL } from './config'
 
 const messageChannel = 'new-api:karmada-dashboard'
-const messageVersion = 1
+const messageVersion = 2
 
-type DashboardReadyMessage = {
-  channel: typeof messageChannel
-  version: number
-  type: 'ready'
-  nonce: string
+const themeTokenNames = [
+  'background',
+  'foreground',
+  'card',
+  'card-foreground',
+  'popover',
+  'popover-foreground',
+  'primary',
+  'primary-foreground',
+  'secondary',
+  'secondary-foreground',
+  'muted',
+  'muted-foreground',
+  'accent',
+  'accent-foreground',
+  'destructive',
+  'destructive-foreground',
+  'success',
+  'success-foreground',
+  'warning',
+  'warning-foreground',
+  'info',
+  'info-foreground',
+  'neutral',
+  'neutral-foreground',
+  'border',
+  'input',
+  'ring',
+  'sidebar',
+  'sidebar-foreground',
+  'sidebar-primary',
+  'sidebar-primary-foreground',
+  'sidebar-accent',
+  'sidebar-accent-foreground',
+  'sidebar-border',
+  'sidebar-ring',
+  'chart-1',
+  'chart-2',
+  'chart-3',
+  'chart-4',
+  'chart-5',
+  'radius',
+  'font-body',
+] as const
+
+type ThemeTokens = Record<(typeof themeTokenNames)[number], string>
+
+function readThemeTokens(): ThemeTokens {
+  const styles = getComputedStyle(document.documentElement)
+  return Object.fromEntries(
+    themeTokenNames.map((name) => [name, styles.getPropertyValue(`--${name}`).trim()])
+  ) as ThemeTokens
 }
 
-function isDashboardReadyMessage(value: unknown): value is DashboardReadyMessage {
-  if (!value || typeof value !== 'object') return false
-  const message = value as Record<string, unknown>
-  return (
-    message.channel === messageChannel &&
-    message.version === messageVersion &&
-    message.type === 'ready' &&
-    typeof message.nonce === 'string' &&
-    message.nonce.length >= 16
-  )
+function createThemeMessage(nonce: string, revision: number, values: {
+  theme: string
+  resolvedTheme: string
+  customization: Record<string, string>
+  language: string
+}) {
+  return {
+    channel: messageChannel,
+    version: messageVersion,
+    type: 'theme:update',
+    nonce,
+    revision,
+    theme: values.theme,
+    resolvedTheme: values.resolvedTheme,
+    customization: values.customization,
+    language: values.language,
+    tokens: readThemeTokens(),
+  }
 }
 
 export function KarmadaDashboard() {
@@ -55,6 +110,8 @@ export function KarmadaDashboard() {
   const { customization } = useThemeCustomization()
   const accessToken = useAuthStore((state) => state.auth.accessToken)
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const [dashboardNonce, setDashboardNonce] = useState<string | null>(null)
+  const [themeRevision, setThemeRevision] = useState(0)
   const [sessionReady, setSessionReady] = useState(false)
   const [sessionError, setSessionError] = useState(false)
 
@@ -62,18 +119,14 @@ export function KarmadaDashboard() {
   const dashboardOrigin = dashboardUrl.origin
 
   const syncTheme = useCallback(
-    (nonce: string) => {
+    (nonce: string, revision: number) => {
       iframeRef.current?.contentWindow?.postMessage(
-        {
-          channel: messageChannel,
-          version: messageVersion,
-          type: 'theme',
-          nonce,
+        createThemeMessage(nonce, revision, {
           theme,
           resolvedTheme,
           customization,
           language: i18n.language,
-        },
+        }),
         dashboardOrigin
       )
     },
@@ -109,16 +162,37 @@ export function KarmadaDashboard() {
   }, [accessToken])
 
   useEffect(() => {
+    if (dashboardNonce) {
+      setThemeRevision((revision) => revision + 1)
+    }
+  }, [customization, dashboardNonce, i18n.language, resolvedTheme, theme])
+
+  useEffect(() => {
+    if (dashboardNonce) syncTheme(dashboardNonce, themeRevision)
+  }, [dashboardNonce, syncTheme, themeRevision])
+
+  useEffect(() => {
     const onMessage = (event: MessageEvent<unknown>) => {
       if (event.origin !== dashboardOrigin) return
       if (event.source !== iframeRef.current?.contentWindow) return
-      if (!isDashboardReadyMessage(event.data)) return
-      syncTheme(event.data.nonce)
+      const data = event.data as Record<string, unknown> | null
+      if (
+        !data ||
+        data.channel !== messageChannel ||
+        data.version !== messageVersion ||
+        data.type !== 'theme:ready' ||
+        typeof data.nonce !== 'string' ||
+        data.nonce.length < 16
+      ) {
+        return
+      }
+      setDashboardNonce(data.nonce)
+      setThemeRevision(0)
     }
 
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [dashboardOrigin, syncTheme])
+  }, [dashboardOrigin])
 
   if (sessionError) {
     return (
@@ -143,6 +217,7 @@ export function KarmadaDashboard() {
       src={dashboardUrl.toString()}
       className='h-full w-full border-0'
       title={t('Karmada Dashboard')}
+      onLoad={() => setDashboardNonce(null)}
     />
   )
 }
