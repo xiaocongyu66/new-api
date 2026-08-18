@@ -1870,7 +1870,7 @@ function ChannelMutateDrawerContent({
           inline={isInline}
           className={cn(
             isInline
-              ? 'bg-background text-foreground flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border shadow-none'
+              ? 'bg-background text-foreground flex min-h-0 flex-1 flex-col overflow-visible rounded-lg border shadow-none'
               : sideDrawerContentClassName('sm:max-w-5xl')
           )}
         >
@@ -1925,17 +1925,45 @@ function ChannelMutateDrawerContent({
                   </>
                 )}
               </div>
-              {!isEditing && (
-                <Button
-                  type='button'
-                  variant='outline'
-                  size='sm'
-                  className='shrink-0'
-                  onClick={pasteConnectionInfoFromClipboard}
-                >
-                  <ClipboardPaste className='size-4' />
-                  <span>{t('Paste Connection Info')}</span>
-                </Button>
+              {(!isEditing || isInline) && (
+                <div className='flex flex-wrap gap-2 sm:justify-end'>
+                  {!isEditing && (
+                    <Button
+                      type='button'
+                      variant='outline'
+                      size='sm'
+                      className='shrink-0'
+                      onClick={pasteConnectionInfoFromClipboard}
+                    >
+                      <ClipboardPaste className='size-4' />
+                      <span>{t('Paste Connection Info')}</span>
+                    </Button>
+                  )}
+                  {isInline && (
+                    <>
+                      <Button
+                        type='button'
+                        variant='outline'
+                        size='sm'
+                        disabled={isSubmitting}
+                        onClick={() => handleOpenChange(false)}
+                      >
+                        {t('Cancel')}
+                      </Button>
+                      <Button
+                        form={editorFormId}
+                        type='submit'
+                        size='sm'
+                        disabled={isSubmitting}
+                      >
+                        {isSubmitting && (
+                          <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                        )}
+                        {isEditing ? t('Update Channel') : t('Save changes')}
+                      </Button>
+                    </>
+                  )}
+                </div>
               )}
             </div>
           </SheetHeader>
@@ -1983,7 +2011,11 @@ function ChannelMutateDrawerContent({
               id={editorFormId}
               ref={channelFormRef}
               onSubmit={form.handleSubmit(onSubmit, onInvalid)}
-              className={sideDrawerFormClassName('gap-5')}
+              className={
+                isInline
+                  ? cn('flex flex-col gap-5 px-4 py-4 sm:px-6 sm:py-5')
+                  : sideDrawerFormClassName('gap-5')
+              }
             >
               {isChannelDetailLoading ? (
                 <ChannelEditorLoadingState />
@@ -4831,30 +4863,21 @@ function ChannelMutateDrawerContent({
             </form>
           </Form>
 
-          <SheetFooter className={sideDrawerFooterClassName()}>
-            {isInline ? (
-              <Button
-                type='button'
-                variant='outline'
-                disabled={isSubmitting}
-                onClick={() => handleOpenChange(false)}
-              >
-                {t('Cancel')}
-              </Button>
-            ) : (
+          {!isInline && (
+            <SheetFooter className={sideDrawerFooterClassName()}>
               <SheetClose
                 render={<Button variant='outline' disabled={isSubmitting} />}
               >
                 {t('Cancel')}
               </SheetClose>
-            )}
-            <Button form={editorFormId} type='submit' disabled={isSubmitting}>
-              {isSubmitting && (
-                <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-              )}
-              {isEditing ? t('Update Channel') : t('Save changes')}
-            </Button>
-          </SheetFooter>
+              <Button form={editorFormId} type='submit' disabled={isSubmitting}>
+                {isSubmitting && (
+                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                )}
+                {isEditing ? t('Update Channel') : t('Save changes')}
+              </Button>
+            </SheetFooter>
+          )}
         </SheetContent>
       </Sheet>
 

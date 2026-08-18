@@ -16,19 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Plus } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Main } from '@/components/layout'
 import { PageFooterProvider } from '@/components/layout/components/page-footer'
-import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import {
   hasPermission,
   ADMIN_PERMISSION_ACTIONS,
@@ -55,10 +48,6 @@ function ChannelsContent() {
     null
   )
 
-  const switchToCreateTab = () => {
-    setCurrentRow(null)
-    setPageTab('create')
-  }
 
   return (
     <>
@@ -78,26 +67,6 @@ function ChannelsContent() {
                 <h2 className='truncate text-base font-bold tracking-tight sm:text-lg'>
                   {t('Channels')}
                 </h2>
-                <Tooltip>
-                  <TooltipTrigger render={<span className='inline-flex' />}>
-                    <Button
-                      onClick={switchToCreateTab}
-                      size='sm'
-                      disabled={!canCreateChannel}
-                    >
-                      <Plus className='h-4 w-4' />
-                      <span className='max-sm:hidden'>
-                        {t('Create Channel')}
-                      </span>
-                      <span className='sm:hidden'>{t('Create')}</span>
-                    </Button>
-                  </TooltipTrigger>
-                  {!canCreateChannel && (
-                    <TooltipContent>
-                      {t('No permission to perform this action')}
-                    </TooltipContent>
-                  )}
-                </Tooltip>
               </div>
               <TabsList className='grid w-full grid-cols-2 bg-muted/60 p-1 sm:w-fit'>
                 <TabsTrigger
@@ -118,11 +87,17 @@ function ChannelsContent() {
               </TabsList>
             </div>
 
-            <div className='min-h-0 flex-1 overflow-hidden px-3 pt-1 pb-3 sm:px-4 sm:pt-1.5 sm:pb-4'>
+            <div
+              className={
+                pageTab === 'create'
+                  ? 'min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pt-1 pb-3 sm:px-4 sm:pt-1.5 sm:pb-4'
+                  : 'min-h-0 flex-1 overflow-hidden px-3 pt-1 pb-3 sm:px-4 sm:pt-1.5 sm:pb-4'
+              }
+            >
               <TabsContent
                 value='create'
                 keepMounted
-                className='m-0 flex h-full min-h-0 flex-col overflow-hidden data-hidden:hidden'
+                className='m-0 flex min-h-full flex-col data-hidden:hidden'
               >
                 <ChannelCreateTab />
               </TabsContent>
