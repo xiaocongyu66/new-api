@@ -1973,15 +1973,15 @@ export function ChannelMutateDrawer({
               </AlertDescription>
             </Alert>
           )}
-
-          <Form {...form}>
-            <form
-              id={editorFormId}
-              ref={channelFormRef}
-              onSubmit={form.handleSubmit(onSubmit, onInvalid)}
-              className={sideDrawerFormClassName('gap-5')}
-            >
-              {isChannelDetailLoading ? (
+          <div className="flex-1 overflow-y-auto overscroll-contain">
+            <Form {...form}>
+              <form
+                id={editorFormId}
+                ref={channelFormRef}
+                onSubmit={form.handleSubmit(onSubmit, onInvalid)}
+                className={sideDrawerFormClassName('gap-5')}
+              >
+                {isChannelDetailLoading ? (
                 <ChannelEditorLoadingState />
               ) : (
                 <div className='grid gap-5 lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start'>
@@ -4826,6 +4826,7 @@ export function ChannelMutateDrawer({
               )}
             </form>
           </Form>
+          </div>
 
           <SheetFooter className={sideDrawerFooterClassName()}>
             {isInline ? (
