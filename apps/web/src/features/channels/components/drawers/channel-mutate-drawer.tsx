@@ -608,14 +608,18 @@ function ChannelEditorNav(props: {
   )
 }
 
-export function ChannelMutateDrawer({
+export function ChannelMutateDrawer(props: ChannelMutateDrawerProps) {
+  if (props.presentation !== 'inline' && !props.open) return null
+  return <ChannelMutateDrawerContent {...props} />
+}
+
+function ChannelMutateDrawerContent({
   open,
   onOpenChange,
   currentRow,
   presentation,
   formId,
 }: ChannelMutateDrawerProps) {
-  if (!open) return null
   const { t } = useTranslation()
   const isInline = presentation === 'inline'
   const isPresented = isInline || Boolean(open)
