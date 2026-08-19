@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Loader2 } from 'lucide-react'
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { cn } from '@/lib/utils'
@@ -135,7 +135,6 @@ interface SectionFallbackProps {
    * details. All blocks read theme tokens via `SkeletonBlock`.
    */
   variant: 'stat-cards' | 'chart' | 'metrics'
-  children?: ReactNode
 }
 
 /**

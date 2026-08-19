@@ -96,6 +96,9 @@ const queryClient = new QueryClient({
 })
 
 // Create a new router instance
+// pending timing must stay in sync with `showDelayMs` in
+// navigation-progress-scheduler.ts so the top bar and the route-level
+// fallback appear together rather than racing.
 const router = createRouter({
   routeTree,
   context: { queryClient },

@@ -103,10 +103,16 @@ export function createPendingProgressScheduler(
       showTimer = setTimeout(() => {
         showTimer = null
         if (disposed || visible) return
+        // The ref can be null on the very first frame after mount
+        // (the DOM ref is assigned by React after render). Bail before
+        // flipping `visible`, otherwise `notifyIdle` would later call
+        // `complete()` on a bar that was never shown.
+        const loadingRef = getRef()
+        if (!loadingRef) return
         visible = true
         // Static bar at `initialProgress` so the user sees immediate
         // progress without the slowly-creeping indeterminate animation.
-        getRef()?.start('static', initialProgress)
+        loadingRef.start('static', initialProgress)
       }, showDelayMs)
     },
     notifyIdle: hide,
