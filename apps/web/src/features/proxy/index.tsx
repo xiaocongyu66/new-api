@@ -23,7 +23,8 @@ import { useTranslation } from 'react-i18next'
 import { fetchProxyNodes, testAllProxyNodes } from './proxy-node-api'
 import { ProxyNodeView } from './proxy-node-view'
 
-import { SectionPageLayout } from '@/components/layout'
+import { Main } from '@/components/layout'
+import { PageFooterProvider } from '@/components/layout/components/page-footer'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -264,6 +265,8 @@ export function ProxyPage() {
   const { copyToClipboard } = useCopyToClipboard()
   const [form, setForm] = useState<ProxyConfig>(DEFAULT_CONFIG)
   const [activeTab, setActiveTab] = useState('nodes')
+  const [footerContainer, setFooterContainer] =
+    useState<HTMLDivElement | null>(null)
 
   const nodesQuery = useQuery({
     queryKey: ['proxy-nodes'],
@@ -361,24 +364,36 @@ export function ProxyPage() {
   }, [configJson, copyToClipboard])
 
   return (
-    <SectionPageLayout fixedContent>
-      <SectionPageLayout.Title>
-        <span className='truncate'>{t('Proxy Config')}</span>
-      </SectionPageLayout.Title>
-      <SectionPageLayout.Content>
+    <PageFooterProvider container={footerContainer}>
+      <Main>
         <Tabs
           value={activeTab}
           onValueChange={setActiveTab}
-          className='flex min-h-0 flex-1 flex-col'
+          className='flex h-full min-h-0 flex-col'
         >
-          <TabsContent value='nodes'>
-            <div className='bg-background sticky top-0 z-10 -mx-3 flex flex-col gap-2 px-3 pt-1 pb-3 sm:-mx-4 sm:flex-row sm:flex-wrap sm:items-center sm:px-4 sm:pt-1.5 sm:pb-3'>
-              <TabsList>
-                <TabsTrigger value='nodes'>{t('Proxy Nodes')}</TabsTrigger>
-                <TabsTrigger value='config'>
-                  {t('sing-box Config')}
+          <div className='flex shrink-0 flex-col gap-2 px-3 pt-3 pb-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-3 sm:gap-y-2 sm:px-4 sm:pt-5 sm:pb-3'>
+            <div className='flex min-w-0 items-center gap-2 sm:gap-3'>
+              <h2 className='truncate text-base font-bold tracking-tight sm:text-lg'>
+                {t('Proxy Config')}
+              </h2>
+              <TabsList className='grid w-full grid-cols-2 bg-muted/60 p-1 sm:w-fit'>
+                <TabsTrigger
+                  value='nodes'
+                  className='h-7 px-3 text-xs font-medium data-active:bg-background data-active:shadow-sm'
+                >
+                  <span className='sm:hidden'>{t('Nodes')}</span>
+                  <span className='hidden sm:inline'>{t('Proxy Nodes')}</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value='config'
+                  className='h-7 px-3 text-xs font-medium data-active:bg-background data-active:shadow-sm'
+                >
+                  <span className='sm:hidden'>{t('Config')}</span>
+                  <span className='hidden sm:inline'>{t('sing-box Config')}</span>
                 </TabsTrigger>
               </TabsList>
+            </div>
+            {activeTab === 'nodes' && (
               <div className='flex flex-wrap items-center gap-2'>
                 <Button
                   variant='outline'
@@ -425,10 +440,21 @@ export function ProxyPage() {
                   {t('Test All Nodes')}
                 </Button>
               </div>
-            </div>
-            <ProxyNodeView />
-          </TabsContent>
-          <TabsContent value='config'>
+            )}
+          </div>
+          <div className='min-h-0 flex-1 overflow-hidden px-3 pt-1 pb-3 sm:px-4 sm:pt-1.5 sm:pb-4'>
+            <TabsContent
+              value='nodes'
+              keepMounted
+              className='m-0 flex h-full min-h-0 flex-col overflow-y-auto data-hidden:hidden'
+            >
+              <ProxyNodeView />
+            </TabsContent>
+            <TabsContent
+              value='config'
+              keepMounted
+              className='m-0 h-full min-h-0 overflow-y-auto data-hidden:hidden'
+            >
             <div className='space-y-4'>
               <Card>
             <CardHeader>
@@ -950,9 +976,15 @@ export function ProxyPage() {
             </CardContent>
           </Card>
             </div>
-          </TabsContent>
+            </TabsContent>
+          </div>
+          <div
+            ref={setFooterContainer}
+            className='bg-background shrink-0 border-t px-3 py-2.5 empty:hidden sm:px-4 sm:py-3'
+            hidden={activeTab !== 'nodes'}
+          />
         </Tabs>
-      </SectionPageLayout.Content>
-    </SectionPageLayout>
+      </Main>
+    </PageFooterProvider>
   )
 }
