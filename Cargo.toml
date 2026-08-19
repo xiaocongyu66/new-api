@@ -1,7 +1,8 @@
 [workspace]
 resolver = "2"
 edition = "2021"
-members = ["apps/cli", "apps/gateway", "crates/cli"]
+members = ["apps/cli", "apps/gateway", "crates/cli", "apps/web-rs", "crates/web"]
+
 
 [workspace.package]
 version = "0.1.0"
@@ -10,6 +11,12 @@ rust-version = "1.85"
 publish = false
 
 [workspace.dependencies]
+dioxus = { version = "=0.7.9", features = ["router"] }
+gloo-net = { version = "0.6", features = ["json"] }
+chrono = { version = "0.4", features = ["serde"] }
+pulldown-cmark = "0.12"
+ammonia = "4"
+qrcode = "0.14"
 clap = { version = "4", features = ["derive"] }
 reqwest = { version = "0.12", features = ["blocking", "json"] }
 serde = { version = "1", features = ["derive"] }
