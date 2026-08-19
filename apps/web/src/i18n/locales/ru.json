@@ -5353,6 +5353,9 @@
     "{{count}} probes": "Проверок: {{count}}",
     "{{count}} selected": "Выбрано: {{count}}",
     "{{count}} unique entries will be created": "Будет создано уникальных записей: {{count}}",
-    "Last Probe": "Последняя проверка"
+    "Last Probe": "Последняя проверка",
+    "Quick Add Proxy Node": "Быстрое добавление прокси-узла",
+    "Channel picker coming soon": "Выбор канала скоро появится",
+    "Model picker coming soon": "Выбор модели скоро появится"
   }
 }

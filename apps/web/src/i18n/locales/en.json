@@ -5353,6 +5353,9 @@
     "{{count}} probes": "{{count}} probes",
     "{{count}} selected": "{{count}} selected",
     "{{count}} unique entries will be created": "{{count}} unique entries will be created",
-    "Last Probe": "Last Probe"
+    "Last Probe": "Last Probe",
+    "Quick Add Proxy Node": "Quick Add Proxy Node",
+    "Channel picker coming soon": "Channel picker coming soon",
+    "Model picker coming soon": "Model picker coming soon"
   }
 }

@@ -54,6 +54,7 @@ import {
   updateProxyNode,
 } from "./proxy-node-api";
 import { proxyNodeDefaultScopeValue } from "./proxy-node-scope";
+import { ProxyNodeQuickAdd } from "./proxy-node-quick-add";
 
 import type {
   ProxyNode,
@@ -303,6 +304,12 @@ export function ProxyNodeView() {
           detail={t("Process-local statistics reset on restart")}
         />
       </div>
+
+      <ProxyNodeQuickAdd
+        channels={channelsQuery.data ?? []}
+        groups={groupsQuery.data?.data ?? []}
+        onAdded={invalidate}
+      />
 
       <Card>
         <CardHeader className="flex-row items-center justify-between gap-2">

@@ -5353,6 +5353,9 @@
     "{{count}} probes": "{{count}} lần thăm dò",
     "{{count}} selected": "Đã chọn {{count}}",
     "{{count}} unique entries will be created": "Sẽ tạo {{count}} mục duy nhất",
-    "Last Probe": "Lần thăm dò cuối"
+    "Last Probe": "Lần thăm dò cuối",
+    "Quick Add Proxy Node": "Thêm nhanh proxy node",
+    "Channel picker coming soon": "Trình chọn kênh sắp ra mắt",
+    "Model picker coming soon": "Trình chọn mô hình sắp ra mắt"
   }
 }

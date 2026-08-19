@@ -5353,6 +5353,9 @@
     "{{count}} probes": "{{count}} 次探测",
     "{{count}} selected": "已选择 {{count}} 个",
     "{{count}} unique entries will be created": "将创建 {{count}} 个不重复条目",
-    "Last Probe": "最后探测"
+    "Last Probe": "最后探测",
+    "Quick Add Proxy Node": "快速添加代理节点",
+    "Channel picker coming soon": "渠道选择器即将推出",
+    "Model picker coming soon": "模型选择器即将推出"
   }
 }

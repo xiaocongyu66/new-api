@@ -5353,6 +5353,9 @@
     "{{count}} probes": "{{count}} 回のプローブ",
     "{{count}} selected": "{{count}} 件選択",
     "{{count}} unique entries will be created": "{{count}} 件の一意のエントリーが作成されます",
-    "Last Probe": "最終プローブ"
+    "Last Probe": "最終プローブ",
+    "Quick Add Proxy Node": "プロキシノードを素早く追加",
+    "Channel picker coming soon": "チャンネルピッカー近日公開",
+    "Model picker coming soon": "モデルピッカー近日公開"
   }
 }
