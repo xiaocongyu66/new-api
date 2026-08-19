@@ -16,7 +16,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -80,7 +80,15 @@ const emptyBatch = (): ProxyNodeBatchRequest => ({
   scope_value: "",
 });
 
-export function ProxyNodeView() {
+export function ProxyNodeView(props: {
+  nodesCount: number;
+  nodesRefreshing: boolean;
+  onRefresh: () => void;
+  onOpenAdd: () => void;
+  onOpenBatch: () => void;
+  onTestAll: () => void;
+  testingAll: boolean;
+}) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [editor, setEditor] = useState<EditorState | null>(null);
@@ -273,36 +281,47 @@ export function ProxyNodeView() {
         />
       </div>
 
-      <ProxyNodeQuickAdd onAdded={invalidate} />
+      <ProxyNodeQuickAdd
+        onAdded={invalidate}
+        nodesCount={props.nodesCount}
+        nodesRefreshing={props.nodesRefreshing}
+        onRefresh={props.onRefresh}
+        onOpenAdd={props.onOpenAdd}
+        onOpenBatch={props.onOpenBatch}
+        onTestAll={props.onTestAll}
+        testingAll={props.testingAll}
+      />
 
       <Card>
-        <CardHeader className="flex-row flex-wrap items-center gap-3">
+        <CardHeader>
           <CardTitle className="text-base">{t("Proxy Nodes")}</CardTitle>
-          <Select
-            value={sortField}
-            onValueChange={(value) => {
-              if (
-                value === "name" ||
-                value === "health" ||
-                value === "probe_count"
-              ) {
-                setSortField(value);
-              }
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem value="name">{t("Sort by Name")}</SelectItem>
-                <SelectItem value="health">{t("Sort by Health")}</SelectItem>
-                <SelectItem value="probe_count">
-                  {t("Sort by Probe Count")}
-                </SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+          <CardAction>
+            <Select
+              value={sortField}
+              onValueChange={(value) => {
+                if (
+                  value === "name" ||
+                  value === "health" ||
+                  value === "probe_count"
+                ) {
+                  setSortField(value);
+                }
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="name">{t("Sort by Name")}</SelectItem>
+                  <SelectItem value="health">{t("Sort by Health")}</SelectItem>
+                  <SelectItem value="probe_count">
+                    {t("Sort by Probe Count")}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </CardAction>
         </CardHeader>
         <CardContent>
           {nodesQuery.isLoading && (
