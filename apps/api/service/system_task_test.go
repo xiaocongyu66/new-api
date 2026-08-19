@@ -6,10 +6,11 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	opsmodel "github.com/QuantumNous/new-api/internal/ops/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 // withSystemTaskRegistry swaps the package registry for the given handlers for
@@ -34,7 +35,7 @@ type stubScheduledHandler struct {
 	taskType string
 	enabled  bool
 	interval time.Duration
-	onRun    func(ctx context.Context, task *model.SystemTask, runnerID string)
+	onRun    func(ctx context.Context, task *opsmodel.SystemTask, runnerID string)
 }
 
 type stubSystemTaskRunResult struct {
@@ -45,7 +46,7 @@ type stubSystemTaskRunResult struct {
 
 func (h *stubScheduledHandler) Type() string { return h.taskType }
 
-func (h *stubScheduledHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
+func (h *stubScheduledHandler) Run(ctx context.Context, task *opsmodel.SystemTask, runnerID string) {
 	if h.onRun != nil {
 		h.onRun(ctx, task, runnerID)
 	}
@@ -58,7 +59,7 @@ func (h *stubScheduledHandler) NewPayload() any         { return nil }
 func countSystemTasks(t *testing.T, taskType string) int64 {
 	t.Helper()
 	var count int64
-	require.NoError(t, model.DB.Model(&model.SystemTask{}).Where("type = ?", taskType).Count(&count).Error)
+	require.NoError(t, rootmodel.DB.Model(&opsmodel.SystemTask{}).Where("type = ?", taskType).Count(&count).Error)
 	return count
 }
 
@@ -77,19 +78,19 @@ func TestSystemTaskSchedulerCreatesWhenDueAndDedups(t *testing.T) {
 	require.Equal(t, int64(1), countSystemTasks(t, handler.taskType))
 
 	// Finish the run; with a fresh updated_at the next run is not due yet.
-	latest, err := model.GetLatestSystemTask(handler.taskType)
+	latest, err := opsmodel.GetLatestSystemTask(handler.taskType)
 	require.NoError(t, err)
 	require.NotNil(t, latest)
-	_, claimed, err := model.ClaimSystemTask(latest.ID, handler.taskType, "runner-a", common.GetTimestamp()+60)
+	_, claimed, err := opsmodel.ClaimSystemTask(latest.ID, handler.taskType, "runner-a", common.GetTimestamp()+60)
 	require.NoError(t, err)
 	require.True(t, claimed)
-	require.NoError(t, model.FinishSystemTask(latest.TaskID, "runner-a", model.SystemTaskStatusSucceeded, nil, ""))
+	require.NoError(t, opsmodel.FinishSystemTask(latest.TaskID, "runner-a", opsmodel.SystemTaskStatusSucceeded, nil, ""))
 
 	runSystemTaskScheduler()
 	require.Equal(t, int64(1), countSystemTasks(t, handler.taskType))
 
 	// Backdate the finished row beyond the interval -> the job becomes due again.
-	require.NoError(t, model.DB.Model(&model.SystemTask{}).
+	require.NoError(t, rootmodel.DB.Model(&opsmodel.SystemTask{}).
 		Where("task_id = ?", latest.TaskID).
 		Update("updated_at", common.GetTimestamp()-120).Error)
 
@@ -115,16 +116,16 @@ func TestSystemTaskClaimPassDispatchesByType(t *testing.T) {
 		taskType: "test_dispatch",
 		enabled:  true,
 		interval: time.Minute,
-		onRun: func(_ context.Context, task *model.SystemTask, runnerID string) {
+		onRun: func(_ context.Context, task *opsmodel.SystemTask, runnerID string) {
 			ran <- stubSystemTaskRunResult{
 				taskType: task.Type,
-				err:      model.FinishSystemTask(task.TaskID, runnerID, model.SystemTaskStatusSucceeded, nil, ""),
+				err:      opsmodel.FinishSystemTask(task.TaskID, runnerID, opsmodel.SystemTaskStatusSucceeded, nil, ""),
 			}
 		},
 	}
 	withSystemTaskRegistry(t, handler)
 
-	_, err := model.CreateSystemTask(handler.taskType, nil, nil)
+	_, err := opsmodel.CreateSystemTask(handler.taskType, nil, nil)
 	require.NoError(t, err)
 
 	runSystemTaskClaimPass("runner-dispatch")
@@ -138,8 +139,8 @@ func TestSystemTaskClaimPassDispatchesByType(t *testing.T) {
 	}
 
 	require.Eventually(t, func() bool {
-		latest, err := model.GetLatestSystemTask(handler.taskType)
-		return err == nil && latest != nil && latest.Status == model.SystemTaskStatusSucceeded
+		latest, err := opsmodel.GetLatestSystemTask(handler.taskType)
+		return err == nil && latest != nil && latest.Status == opsmodel.SystemTaskStatusSucceeded
 	}, 2*time.Second, 20*time.Millisecond)
 }
 
@@ -151,10 +152,10 @@ func TestSystemTaskClaimPassDispatchesEarliestPendingByType(t *testing.T) {
 		taskType: "test_dispatch_a",
 		enabled:  true,
 		interval: time.Minute,
-		onRun: func(_ context.Context, task *model.SystemTask, runnerID string) {
+		onRun: func(_ context.Context, task *opsmodel.SystemTask, runnerID string) {
 			ran <- stubSystemTaskRunResult{
 				taskID: task.TaskID,
-				err:    model.FinishSystemTask(task.TaskID, runnerID, model.SystemTaskStatusSucceeded, nil, ""),
+				err:    opsmodel.FinishSystemTask(task.TaskID, runnerID, opsmodel.SystemTaskStatusSucceeded, nil, ""),
 			}
 		},
 	}
@@ -162,26 +163,26 @@ func TestSystemTaskClaimPassDispatchesEarliestPendingByType(t *testing.T) {
 		taskType: "test_dispatch_b",
 		enabled:  true,
 		interval: time.Minute,
-		onRun: func(_ context.Context, task *model.SystemTask, runnerID string) {
+		onRun: func(_ context.Context, task *opsmodel.SystemTask, runnerID string) {
 			ran <- stubSystemTaskRunResult{
 				taskID: task.TaskID,
-				err:    model.FinishSystemTask(task.TaskID, runnerID, model.SystemTaskStatusSucceeded, nil, ""),
+				err:    opsmodel.FinishSystemTask(task.TaskID, runnerID, opsmodel.SystemTaskStatusSucceeded, nil, ""),
 			}
 		},
 	}
 	withSystemTaskRegistry(t, handlerA, handlerB)
 
-	firstA, err := model.CreateSystemTask(handlerA.taskType, nil, nil)
+	firstA, err := opsmodel.CreateSystemTask(handlerA.taskType, nil, nil)
 	require.NoError(t, err)
-	secondTaskID, err := model.GenerateSystemTaskID()
+	secondTaskID, err := opsmodel.GenerateSystemTaskID()
 	require.NoError(t, err)
-	secondA := &model.SystemTask{
+	secondA := &opsmodel.SystemTask{
 		TaskID: secondTaskID,
 		Type:   handlerA.taskType,
-		Status: model.SystemTaskStatusPending,
+		Status: opsmodel.SystemTaskStatusPending,
 	}
-	require.NoError(t, model.DB.Create(secondA).Error)
-	firstB, err := model.CreateSystemTask(handlerB.taskType, nil, nil)
+	require.NoError(t, rootmodel.DB.Create(secondA).Error)
+	firstB, err := opsmodel.CreateSystemTask(handlerB.taskType, nil, nil)
 	require.NoError(t, err)
 
 	runSystemTaskClaimPass("runner-dispatch")
@@ -202,8 +203,8 @@ func TestSystemTaskClaimPassDispatchesEarliestPendingByType(t *testing.T) {
 	assert.False(t, got[secondA.TaskID])
 
 	require.Eventually(t, func() bool {
-		reloaded, err := model.GetSystemTaskByTaskID(secondA.TaskID)
-		return err == nil && reloaded != nil && reloaded.Status == model.SystemTaskStatusPending
+		reloaded, err := opsmodel.GetSystemTaskByTaskID(secondA.TaskID)
+		return err == nil && reloaded != nil && reloaded.Status == opsmodel.SystemTaskStatusPending
 	}, 2*time.Second, 20*time.Millisecond)
 }
 
@@ -221,10 +222,10 @@ func TestEnqueueSystemTaskReportsCreatedAndExistingActive(t *testing.T) {
 	require.NotNil(t, existing)
 	assert.Equal(t, first.TaskID, existing.TaskID)
 
-	_, claimed, err := model.ClaimSystemTask(first.ID, first.Type, "runner-a", common.GetTimestamp()+60)
+	_, claimed, err := opsmodel.ClaimSystemTask(first.ID, first.Type, "runner-a", common.GetTimestamp()+60)
 	require.NoError(t, err)
 	require.True(t, claimed)
-	require.NoError(t, model.FinishSystemTask(first.TaskID, "runner-a", model.SystemTaskStatusSucceeded, nil, ""))
+	require.NoError(t, opsmodel.FinishSystemTask(first.TaskID, "runner-a", opsmodel.SystemTaskStatusSucceeded, nil, ""))
 
 	second, created, err := EnqueueSystemTask("test_enqueue", nil)
 	require.NoError(t, err)

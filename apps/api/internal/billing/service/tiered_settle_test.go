@@ -1024,3 +1024,21 @@ func BenchmarkRatioBilling_Parallel(b *testing.B) {
 		}
 	})
 }
+
+func truncate(t *testing.T) {
+	var tables []string
+	db, _ := rootmodel.DB.DB()
+	rows, err := db.Query("SELECT name FROM sqlite_master WHERE type='table'")
+	require.NoError(t, err)
+	for rows.Next() {
+		var name string
+		require.NoError(t, rows.Scan(&name))
+		if name != "sqlite_sequence" {
+			tables = append(tables, name)
+		}
+	}
+	require.NoError(t, rows.Close())
+	for _, name := range tables {
+		rootmodel.DB.Exec("DELETE FROM " + name)
+	}
+}

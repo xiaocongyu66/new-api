@@ -14,8 +14,8 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	constant2 "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/relaykit/types"
 
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/gin-gonic/gin"
 )
 
@@ -404,8 +404,8 @@ func CountTextToken(text string, model string) int {
 		return 0
 	}
 	if common.IsOpenAITextModel(model) {
-		tokenEncoder := getTokenEncoder(model)
-		return getTokenNum(tokenEncoder, text)
+		tokenEncoder := GetTokenEncoder(model)
+		return GetTokenNum(tokenEncoder, text)
 	} else {
 		// 非openai模型，使用tiktoken-go计算没有意义，使用估算节省资源
 		return EstimateTokenByModel(model, text)

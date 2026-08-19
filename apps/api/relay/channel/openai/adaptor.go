@@ -28,12 +28,12 @@ import (
 	"github.com/QuantumNous/new-api/relay/common_handler"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/reasoning"
 	"github.com/samber/lo"
 
 	"github.com/gin-gonic/gin"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service"
 )
 
 type Adaptor struct {
@@ -42,7 +42,7 @@ type Adaptor struct {
 }
 
 func (a *Adaptor) ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeminiChatRequest) (any, error) {
-	result, err := service.ConvertRequest(c, info, types.RelayFormatOpenAI, request)
+	result, err := egressservice.ConvertRequest(c, info, types.RelayFormatOpenAI, request)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayIn
 	//		println(fmt.Sprintf("failed to save request body to file: %v", err))
 	//	}
 	//}
-	result, err := service.ConvertRequest(c, info, types.RelayFormatOpenAI, request)
+	result, err := egressservice.ConvertRequest(c, info, types.RelayFormatOpenAI, request)
 	if err != nil {
 		return nil, err
 	}

@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"github.com/QuantumNous/new-api/model"
 )
 
 const (
@@ -99,7 +100,7 @@ func GetProxyNodesForChannel(channel *Channel) ([]*ProxyNode, error) {
 	}
 	findScope := func(scopeType, scopeValue string) ([]*ProxyNode, error) {
 		var nodes []*ProxyNode
-		err := DB.Where("enabled = ?", true).
+		err := model.DB.Where("enabled = ?", true).
 			Where("scope_type = ? AND scope_value = ?", scopeType, scopeValue).
 			Find(&nodes).Error
 		return nodes, err

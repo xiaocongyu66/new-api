@@ -19,10 +19,10 @@ const (
 	SecurityProofTTL      = 5 * time.Minute
 	LoginSessionTTL       = 30 * 24 * time.Hour
 	RefreshReplayWindow   = 30 * time.Second
-	accessTokenUse        = "access"
-	securityProofTokenUse = "security_proof"
-	authTokenIssuer       = "new-api"
-	authTokenAudience     = "new-api-dashboard"
+	AuthTokenUseAccess  = "access"
+	AuthTokenUseSecurityProof = "security_proof"
+	AuthTokenIssuer     = "new-api"
+	AuthTokenAudience   = "new-api-dashboard"
 )
 
 var (
@@ -51,7 +51,7 @@ type authClaims struct {
 	jwt.RegisteredClaims
 }
 
-func authSigningKey(purpose string) []byte {
+func AuthSigningKey(purpose string) []byte {
 	mac := hmac.New(sha256.New, []byte(common.SessionSecret))
 	_, _ = mac.Write([]byte("new-api/auth/" + purpose + "/v1"))
 	return mac.Sum(nil)
@@ -64,26 +64,26 @@ func IssueAccessToken(identity AuthIdentity) (string, int64, error) {
 	now := time.Now()
 	expiresAt := now.Add(AccessTokenTTL)
 	claims := authClaims{
-		TokenUse:        accessTokenUse,
+		TokenUse:        AuthTokenUseAccess,
 		SessionID:       identity.SessionID,
 		UserAuthVersion: identity.UserAuthVersion,
 		SessionVersion:  identity.SessionVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    authTokenIssuer,
+			Issuer:    AuthTokenIssuer,
 			Subject:   strconv.Itoa(identity.UserID),
-			Audience:  jwt.ClaimStrings{authTokenAudience},
+			Audience:  jwt.ClaimStrings{AuthTokenAudience},
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 			NotBefore: jwt.NewNumericDate(now.Add(-5 * time.Second)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			ID:        uuid.NewString(),
 		},
 	}
-	signed, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(authSigningKey(accessTokenUse))
+	signed, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(AuthSigningKey(AuthTokenUseAccess))
 	return signed, expiresAt.Unix(), err
 }
 
 func ParseAccessToken(raw string) (AuthIdentity, error) {
-	claims, err := parseAuthClaims(raw, accessTokenUse, authSigningKey(accessTokenUse))
+	claims, err := parseAuthClaims(raw, AuthTokenUseAccess, AuthSigningKey(AuthTokenUseAccess))
 	if err != nil {
 		return AuthIdentity{}, err
 	}
@@ -116,13 +116,13 @@ func ParseDashboardAccessToken(raw string) (identity AuthIdentity, internal bool
 	}
 	audienceMatches := false
 	for _, audience := range claims.Audience {
-		if audience == authTokenAudience {
+		if audience == AuthTokenAudience {
 			audienceMatches = true
 			break
 		}
 	}
-	knownTokenUse := claims.TokenUse == accessTokenUse || claims.TokenUse == securityProofTokenUse
-	if claims.Issuer != authTokenIssuer || !audienceMatches || !knownTokenUse {
+	knownTokenUse := claims.TokenUse == AuthTokenUseAccess || claims.TokenUse == AuthTokenUseSecurityProof
+	if claims.Issuer != AuthTokenIssuer || !audienceMatches || !knownTokenUse {
 		return AuthIdentity{}, false, nil
 	}
 	identity, err = ParseAccessToken(raw)
@@ -137,28 +137,28 @@ func IssueSecurityProof(identity AuthIdentity, method string, scopes []string) (
 	now := time.Now()
 	expiresAt := now.Add(SecurityProofTTL)
 	claims := authClaims{
-		TokenUse:        securityProofTokenUse,
+		TokenUse:        AuthTokenUseSecurityProof,
 		SessionID:       identity.SessionID,
 		UserAuthVersion: identity.UserAuthVersion,
 		SessionVersion:  identity.SessionVersion,
 		Method:          method,
 		Scopes:          append([]string(nil), scopes...),
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    authTokenIssuer,
+			Issuer:    AuthTokenIssuer,
 			Subject:   strconv.Itoa(identity.UserID),
-			Audience:  jwt.ClaimStrings{authTokenAudience},
+			Audience:  jwt.ClaimStrings{AuthTokenAudience},
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 			NotBefore: jwt.NewNumericDate(now.Add(-5 * time.Second)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			ID:        uuid.NewString(),
 		},
 	}
-	signed, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(authSigningKey(securityProofTokenUse))
+	signed, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(AuthSigningKey(AuthTokenUseSecurityProof))
 	return signed, expiresAt.Unix(), err
 }
 
 func VerifySecurityProof(raw string, identity AuthIdentity, requiredScope string, allowedMethods []string) (string, error) {
-	claims, err := parseAuthClaims(raw, securityProofTokenUse, authSigningKey(securityProofTokenUse))
+	claims, err := parseAuthClaims(raw, AuthTokenUseSecurityProof, AuthSigningKey(AuthTokenUseSecurityProof))
 	if err != nil {
 		return "", err
 	}
@@ -202,7 +202,7 @@ func parseAuthClaims(raw, expectedUse string, key []byte) (*authClaims, error) {
 			return nil, fmt.Errorf("%w: unexpected signing method", ErrAuthTokenInvalid)
 		}
 		return key, nil
-	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithIssuer(authTokenIssuer), jwt.WithAudience(authTokenAudience), jwt.WithExpirationRequired(), jwt.WithIssuedAt(), jwt.WithLeeway(5*time.Second))
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithIssuer(AuthTokenIssuer), jwt.WithAudience(AuthTokenAudience), jwt.WithExpirationRequired(), jwt.WithIssuedAt(), jwt.WithLeeway(5*time.Second))
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
 			return nil, ErrAuthTokenExpired

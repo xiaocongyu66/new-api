@@ -2,8 +2,8 @@ package middleware
 
 import (
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service"
 )
 
 // BodyStorageCleanup 请求体存储清理中间件
@@ -17,6 +17,6 @@ func BodyStorageCleanup() gin.HandlerFunc {
 		common.CleanupBodyStorage(c)
 
 		// 清理文件缓存（URL 下载的文件等）
-		service.CleanupFileSources(c)
+		egressservice.CleanupFileSources(c)
 	}
 }

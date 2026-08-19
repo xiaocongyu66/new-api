@@ -17,11 +17,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
-func setupAuthSessionTestDB(t *testing.T) *model.User {
+func setupAuthSessionTestDB(t *testing.T) *identitymodel.User {
 	t.Helper()
-	previousDB, previousRedis := model.DB, common.RedisEnabled
+	previousDB, previousRedis := rootmodel.DB, common.RedisEnabled
 	previousActiveLimit := common.UserSessionActiveLimit
 	previousIssuanceLimit := common.UserSessionIssuanceLimit
 	previousIssuanceWindow := common.UserSessionIssuanceWindowSeconds
@@ -32,8 +34,8 @@ func setupAuthSessionTestDB(t *testing.T) *model.User {
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.AuthFlow{}))
-	model.DB = db
+	require.NoError(t, db.AutoMigrate(&identitymodel.User{}, &identitymodel.UserSession{}, &identitymodel.AuthFlow{}))
+	rootmodel.DB = db
 	common.RedisEnabled = false
 	common.UserSessionActiveLimit = common.DefaultUserSessionActiveLimit
 	common.UserSessionIssuanceLimit = common.DefaultUserSessionIssuanceLimit
@@ -41,7 +43,7 @@ func setupAuthSessionTestDB(t *testing.T) *model.User {
 	common.UserSessionRevokedRetentionDays = common.DefaultUserSessionRevokedRetentionDays
 	common.UserSessionHourlyAlertThreshold = common.DefaultUserSessionHourlyAlertThreshold
 	t.Cleanup(func() {
-		model.DB = previousDB
+		rootmodel.DB = previousDB
 		common.RedisEnabled = previousRedis
 		common.UserSessionActiveLimit = previousActiveLimit
 		common.UserSessionIssuanceLimit = previousIssuanceLimit
@@ -50,7 +52,7 @@ func setupAuthSessionTestDB(t *testing.T) *model.User {
 		common.UserSessionHourlyAlertThreshold = previousAlertThreshold
 		_ = sqlDB.Close()
 	})
-	user := &model.User{
+	user := &identitymodel.User{
 		Username:    "session-user",
 		Password:    "unused-password-hash",
 		Role:        common.RoleCommonUser,
@@ -101,18 +103,18 @@ func TestCreateLoginSessionEnforcesActiveLimitAcrossAuthVersions(t *testing.T) {
 	common.UserSessionActiveLimit = 50
 	common.UserSessionIssuanceLimit = 100
 	now := time.Now().Unix()
-	rows := make([]model.UserSession, 0, 49)
+	rows := make([]identitymodel.UserSession, 0, 49)
 	for i := 0; i < 49; i++ {
 		authVersion := user.AuthVersion
 		if i == 0 {
 			authVersion++
 		}
-		rows = append(rows, model.UserSession{
+		rows = append(rows, identitymodel.UserSession{
 			SID:             fmt.Sprintf("active-limit-%02d", i),
 			UserID:          user.Id,
 			Version:         1,
 			UserAuthVersion: authVersion,
-			Status:          model.UserSessionStatusActive,
+			Status:          identitymodel.UserSessionStatusActive,
 			RefreshHash:     fmt.Sprintf("hash-%02d", i),
 			LoginMethod:     "password",
 			CreatedAt:       now - int64(i),
@@ -120,15 +122,15 @@ func TestCreateLoginSessionEnforcesActiveLimitAcrossAuthVersions(t *testing.T) {
 			ExpiresAt:       now + 3600,
 		})
 	}
-	require.NoError(t, model.DB.Create(&rows).Error)
+	require.NoError(t, rootmodel.DB.Create(&rows).Error)
 
 	_, err := CreateLoginSession(user.Id, "password", "127.0.0.1", "test-agent")
 	require.NoError(t, err, "49 active sessions must allow creation of the 50th")
 
 	_, err = CreateLoginSession(user.Id, "password", "127.0.0.1", "test-agent")
-	assert.ErrorIs(t, err, model.ErrUserSessionLimit)
+	assert.ErrorIs(t, err, identitymodel.ErrUserSessionLimit)
 	var count int64
-	require.NoError(t, model.DB.Model(&model.UserSession{}).Count(&count).Error)
+	require.NoError(t, rootmodel.DB.Model(&identitymodel.UserSession{}).Count(&count).Error)
 	assert.Equal(t, int64(50), count)
 }
 
@@ -139,32 +141,32 @@ func TestCreateLoginSessionEnforcesIssuanceLimitAcrossAllStatuses(t *testing.T) 
 	common.UserSessionIssuanceLimit = 3
 	common.UserSessionIssuanceWindowSeconds = 60
 	now := time.Now().Unix()
-	rows := []model.UserSession{
+	rows := []identitymodel.UserSession{
 		{
 			SID: "issuance-limit-revoked", UserID: user.Id, Version: 1, UserAuthVersion: user.AuthVersion + 1,
-			Status: model.UserSessionStatusRevoked, RefreshHash: "hash-revoked", LoginMethod: "password",
+			Status: identitymodel.UserSessionStatusRevoked, RefreshHash: "hash-revoked", LoginMethod: "password",
 			CreatedAt: now - 2, LastActiveAt: now - 2, ExpiresAt: now + 3600, RevokedAt: now - 1,
 		},
 		{
 			SID: "issuance-limit-expired", UserID: user.Id, Version: 1, UserAuthVersion: user.AuthVersion,
-			Status: model.UserSessionStatusActive, RefreshHash: "hash-expired", LoginMethod: "password",
+			Status: identitymodel.UserSessionStatusActive, RefreshHash: "hash-expired", LoginMethod: "password",
 			CreatedAt: now - 1, LastActiveAt: now - 1, ExpiresAt: now - 1,
 		},
 		{
 			SID: "issuance-outside-effective-window", UserID: user.Id, Version: 1, UserAuthVersion: user.AuthVersion,
-			Status: model.UserSessionStatusRevoked, RefreshHash: "hash-outside", LoginMethod: "password",
+			Status: identitymodel.UserSessionStatusRevoked, RefreshHash: "hash-outside", LoginMethod: "password",
 			CreatedAt: now - 61, LastActiveAt: now - 61, ExpiresAt: now + 3600, RevokedAt: now - 60,
 		},
 	}
-	require.NoError(t, model.DB.Create(&rows).Error)
+	require.NoError(t, rootmodel.DB.Create(&rows).Error)
 
 	_, err := CreateLoginSession(user.Id, "password", "127.0.0.1", "test-agent")
 	require.NoError(t, err, "rows outside the effective issuance window must not consume the limit")
 
 	_, err = CreateLoginSession(user.Id, "password", "127.0.0.1", "test-agent")
-	assert.ErrorIs(t, err, model.ErrUserSessionIssuanceLimit)
+	assert.ErrorIs(t, err, identitymodel.ErrUserSessionIssuanceLimit)
 	var count int64
-	require.NoError(t, model.DB.Model(&model.UserSession{}).Count(&count).Error)
+	require.NoError(t, rootmodel.DB.Model(&identitymodel.UserSession{}).Count(&count).Error)
 	assert.Equal(t, int64(4), count)
 }
 
@@ -174,14 +176,14 @@ func TestPasswordResetDoesNotClearSessionIssuanceHistory(t *testing.T) {
 	common.UserSessionActiveLimit = 50
 	common.UserSessionIssuanceLimit = 1
 	email := "session-reset@example.com"
-	require.NoError(t, model.DB.Model(user).Update("email", email).Error)
+	require.NoError(t, rootmodel.DB.Model(user).Update("email", email).Error)
 
 	_, err := CreateLoginSession(user.Id, "password", "127.0.0.1", "test-agent")
 	require.NoError(t, err)
 	require.NoError(t, model.ResetUserPasswordByEmail(email, "new-password"))
 
 	_, err = CreateLoginSession(user.Id, "password", "127.0.0.1", "test-agent")
-	assert.ErrorIs(t, err, model.ErrUserSessionIssuanceLimit)
+	assert.ErrorIs(t, err, identitymodel.ErrUserSessionIssuanceLimit)
 }
 
 func TestCreateLoginSessionFailsClosedWhenLimitCountFails(t *testing.T) {
@@ -190,23 +192,23 @@ func TestCreateLoginSessionFailsClosedWhenLimitCountFails(t *testing.T) {
 	forcedErr := errors.New("forced session count failure")
 	callbackName := "test:fail_user_session_limit_count"
 	callbackRegistered := true
-	require.NoError(t, model.DB.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+	require.NoError(t, rootmodel.DB.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
 		if tx.Statement != nil && tx.Statement.Table == "user_sessions" {
 			tx.AddError(forcedErr)
 		}
 	}))
 	t.Cleanup(func() {
 		if callbackRegistered {
-			_ = model.DB.Callback().Query().Remove(callbackName)
+			_ = rootmodel.DB.Callback().Query().Remove(callbackName)
 		}
 	})
 
 	_, err := CreateLoginSession(user.Id, "password", "127.0.0.1", "test-agent")
 	assert.ErrorIs(t, err, forcedErr)
-	require.NoError(t, model.DB.Callback().Query().Remove(callbackName))
+	require.NoError(t, rootmodel.DB.Callback().Query().Remove(callbackName))
 	callbackRegistered = false
 	var count int64
-	require.NoError(t, model.DB.Model(&model.UserSession{}).Count(&count).Error)
+	require.NoError(t, rootmodel.DB.Model(&identitymodel.UserSession{}).Count(&count).Error)
 	assert.Zero(t, count)
 }
 
@@ -215,15 +217,15 @@ func TestCleanupAuthArtifactsAlertsBeforeDeletingHourlyIssuance(t *testing.T) {
 	common.UserSessionHourlyAlertThreshold = 2
 	common.UserSessionIssuanceWindowSeconds = 1
 	now := time.Now()
-	boundaryRows := make([]model.UserSession, 0, 2)
+	boundaryRows := make([]identitymodel.UserSession, 0, 2)
 	for i := 0; i < 2; i++ {
-		boundaryRows = append(boundaryRows, model.UserSession{
+		boundaryRows = append(boundaryRows, identitymodel.UserSession{
 			SID: "hourly-boundary-" + string(rune('a'+i)), UserID: 1, Version: 1, UserAuthVersion: 1,
-			Status: model.UserSessionStatusActive, RefreshHash: "hash", LoginMethod: "password",
+			Status: identitymodel.UserSessionStatusActive, RefreshHash: "hash", LoginMethod: "password",
 			CreatedAt: now.Add(-2 * time.Second).Unix(), LastActiveAt: now.Add(-time.Hour).Unix(), ExpiresAt: now.Add(-time.Minute).Unix(),
 		})
 	}
-	require.NoError(t, model.DB.Create(&boundaryRows).Error)
+	require.NoError(t, rootmodel.DB.Create(&boundaryRows).Error)
 
 	var logBuffer bytes.Buffer
 	common.LogWriterMu.Lock()
@@ -239,22 +241,22 @@ func TestCleanupAuthArtifactsAlertsBeforeDeletingHourlyIssuance(t *testing.T) {
 	cleanupAuthArtifacts()
 	assert.Empty(t, logBuffer.String(), "the hourly alert uses a strict greater-than threshold")
 	var count int64
-	require.NoError(t, model.DB.Model(&model.UserSession{}).Count(&count).Error)
+	require.NoError(t, rootmodel.DB.Model(&identitymodel.UserSession{}).Count(&count).Error)
 	assert.Zero(t, count)
 
-	exceededRows := make([]model.UserSession, 0, 3)
+	exceededRows := make([]identitymodel.UserSession, 0, 3)
 	for i := 0; i < 3; i++ {
-		exceededRows = append(exceededRows, model.UserSession{
+		exceededRows = append(exceededRows, identitymodel.UserSession{
 			SID: "hourly-exceeded-" + string(rune('a'+i)), UserID: 1, Version: 1, UserAuthVersion: 1,
-			Status: model.UserSessionStatusActive, RefreshHash: "hash", LoginMethod: "password",
+			Status: identitymodel.UserSessionStatusActive, RefreshHash: "hash", LoginMethod: "password",
 			CreatedAt: now.Add(-2 * time.Second).Unix(), LastActiveAt: now.Add(-time.Hour).Unix(), ExpiresAt: now.Add(-time.Minute).Unix(),
 		})
 	}
-	require.NoError(t, model.DB.Create(&exceededRows).Error)
+	require.NoError(t, rootmodel.DB.Create(&exceededRows).Error)
 	logBuffer.Reset()
 	cleanupAuthArtifacts()
 	assert.Contains(t, logBuffer.String(), "hourly user session issuance exceeded alert threshold")
-	require.NoError(t, model.DB.Model(&model.UserSession{}).Count(&count).Error)
+	require.NoError(t, rootmodel.DB.Model(&identitymodel.UserSession{}).Count(&count).Error)
 	assert.Zero(t, count, "alerting must happen before expired rows are deleted")
 }
 
@@ -262,16 +264,16 @@ func TestCleanupAuthArtifactsRemovesOnlyExpiredRecords(t *testing.T) {
 	setupAuthSessionTestDB(t)
 	now := time.Now()
 	oldExpiry := now.Add(-25 * time.Hour)
-	require.NoError(t, model.DB.Create(&model.UserSession{
+	require.NoError(t, rootmodel.DB.Create(&identitymodel.UserSession{
 		SID: "expired-session", UserID: 1, Version: 1, UserAuthVersion: 1,
-		Status: model.UserSessionStatusActive, RefreshHash: "hash", LoginMethod: "password",
+		Status: identitymodel.UserSessionStatusActive, RefreshHash: "hash", LoginMethod: "password",
 		CreatedAt: oldExpiry.Unix(), LastActiveAt: oldExpiry.Unix(), ExpiresAt: oldExpiry.Unix(),
 	}).Error)
-	require.NoError(t, model.DB.Create(&model.AuthFlow{
+	require.NoError(t, rootmodel.DB.Create(&identitymodel.AuthFlow{
 		TokenHash: "expired-flow", Purpose: model.AuthFlowPurposeTwoFALogin,
 		ExpiresAt: oldExpiry,
 	}).Error)
-	require.NoError(t, model.DB.Create(&model.AuthFlow{
+	require.NoError(t, rootmodel.DB.Create(&identitymodel.AuthFlow{
 		TokenHash: "recent-flow", Purpose: model.AuthFlowPurposeTwoFALogin,
 		ExpiresAt: now.Add(time.Minute),
 	}).Error)
@@ -279,10 +281,10 @@ func TestCleanupAuthArtifactsRemovesOnlyExpiredRecords(t *testing.T) {
 	cleanupAuthArtifacts()
 
 	var sessionCount int64
-	require.NoError(t, model.DB.Model(&model.UserSession{}).Count(&sessionCount).Error)
+	require.NoError(t, rootmodel.DB.Model(&identitymodel.UserSession{}).Count(&sessionCount).Error)
 	assert.Zero(t, sessionCount)
-	var flows []model.AuthFlow
-	require.NoError(t, model.DB.Find(&flows).Error)
+	var flows []identitymodel.AuthFlow
+	require.NoError(t, rootmodel.DB.Find(&flows).Error)
 	require.Len(t, flows, 1)
 	assert.Equal(t, "recent-flow", flows[0].TokenHash)
 }
@@ -291,15 +293,15 @@ func TestCleanupAuthArtifactsContinuesWithRevokedCleanupAfterExpiredBatchFailure
 	setupAuthSessionTestDB(t)
 	now := time.Now()
 	oldCreatedAt := now.Add(-8 * 24 * time.Hour).Unix()
-	require.NoError(t, model.DB.Create(&[]model.UserSession{
+	require.NoError(t, rootmodel.DB.Create(&[]identitymodel.UserSession{
 		{
 			SID: "failed-expired-cleanup", UserID: 1, Version: 1, UserAuthVersion: 1,
-			Status: model.UserSessionStatusActive, RefreshHash: "hash-expired", LoginMethod: "password",
+			Status: identitymodel.UserSessionStatusActive, RefreshHash: "hash-expired", LoginMethod: "password",
 			CreatedAt: oldCreatedAt, LastActiveAt: oldCreatedAt, ExpiresAt: now.Add(-time.Minute).Unix(),
 		},
 		{
 			SID: "independent-revoked-cleanup", UserID: 1, Version: 1, UserAuthVersion: 1,
-			Status: model.UserSessionStatusRevoked, RefreshHash: "hash-revoked", LoginMethod: "password",
+			Status: identitymodel.UserSessionStatusRevoked, RefreshHash: "hash-revoked", LoginMethod: "password",
 			CreatedAt: oldCreatedAt, LastActiveAt: oldCreatedAt, ExpiresAt: now.Add(time.Hour).Unix(),
 			RevokedAt: now.Add(-8 * 24 * time.Hour).Unix(),
 		},
@@ -308,20 +310,20 @@ func TestCleanupAuthArtifactsContinuesWithRevokedCleanupAfterExpiredBatchFailure
 	forcedErr := errors.New("forced expired cleanup failure")
 	callbackName := "test:fail_first_user_session_cleanup_batch"
 	failedFirstDelete := false
-	require.NoError(t, model.DB.Callback().Delete().Before("gorm:delete").Register(callbackName, func(tx *gorm.DB) {
+	require.NoError(t, rootmodel.DB.Callback().Delete().Before("gorm:delete").Register(callbackName, func(tx *gorm.DB) {
 		if tx.Statement != nil && tx.Statement.Table == "user_sessions" && !failedFirstDelete {
 			failedFirstDelete = true
 			tx.AddError(forcedErr)
 		}
 	}))
-	t.Cleanup(func() { _ = model.DB.Callback().Delete().Remove(callbackName) })
+	t.Cleanup(func() { _ = rootmodel.DB.Callback().Delete().Remove(callbackName) })
 
 	cleanupAuthArtifacts()
 
-	var expired model.UserSession
-	require.NoError(t, model.DB.First(&expired, "sid = ?", "failed-expired-cleanup").Error)
-	var revoked model.UserSession
-	assert.ErrorIs(t, model.DB.First(&revoked, "sid = ?", "independent-revoked-cleanup").Error, gorm.ErrRecordNotFound)
+	var expired identitymodel.UserSession
+	require.NoError(t, rootmodel.DB.First(&expired, "sid = ?", "failed-expired-cleanup").Error)
+	var revoked identitymodel.UserSession
+	assert.ErrorIs(t, rootmodel.DB.First(&revoked, "sid = ?", "independent-revoked-cleanup").Error, gorm.ErrRecordNotFound)
 }
 
 func TestLoginSessionCreateRefreshAndRevoke(t *testing.T) {

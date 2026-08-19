@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	pancake "github.com/waffo-com/waffo-pancake-sdk-go"
+	billingmodel "github.com/QuantumNous/new-api/internal/billing/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 // WaffoPancakePriceSnapshot is the per-session price override sent with checkout.
@@ -204,8 +205,8 @@ func ResolveWaffoPancakeTradeNo(event *WaffoPancakeWebhookEvent) (string, error)
 	if tradeNo == "" {
 		return "", fmt.Errorf("missing webhook orderMerchantExternalId")
 	}
-	topUp := model.GetTopUpByTradeNo(tradeNo)
-	if topUp == nil || topUp.PaymentProvider != model.PaymentProviderWaffoPancake {
+	topUp := billingmodel.GetTopUpByTradeNo(tradeNo)
+	if topUp == nil || topUp.PaymentProvider != billingmodel.PaymentProviderWaffoPancake {
 		return "", fmt.Errorf("waffo pancake order not found for tradeNo=%s", tradeNo)
 	}
 	expectedIdentity := WaffoPancakeBuyerIdentityFromUserID(topUp.UserId)
@@ -231,8 +232,8 @@ func ResolveWaffoPancakeSubscriptionTradeNo(event *WaffoPancakeWebhookEvent) (st
 	if tradeNo == "" {
 		return "", fmt.Errorf("missing webhook orderMerchantExternalId")
 	}
-	order := model.GetSubscriptionOrderByTradeNo(tradeNo)
-	if order == nil || order.PaymentProvider != model.PaymentProviderWaffoPancake {
+	order := billingmodel.GetSubscriptionOrderByTradeNo(tradeNo)
+	if order == nil || order.PaymentProvider != billingmodel.PaymentProviderWaffoPancake {
 		return "", fmt.Errorf("waffo pancake subscription order not found for tradeNo=%s", tradeNo)
 	}
 	expectedIdentity := WaffoPancakeBuyerIdentityFromUserID(order.UserId)
@@ -404,7 +405,7 @@ func SaveWaffoPancakeConfig(ctx context.Context, merchantID, privateKey, returnU
 	if pk := strings.TrimSpace(privateKey); pk != "" {
 		values["WaffoPancakePrivateKey"] = pk
 	}
-	if err := model.UpdateOptionsBulk(values); err != nil {
+	if err := rootmodel.UpdateOptionsBulk(values); err != nil {
 		return fmt.Errorf("persist Waffo Pancake config: %w", err)
 	}
 	return nil

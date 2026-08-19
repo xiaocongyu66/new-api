@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
+	billingservice "github.com/QuantumNous/new-api/internal/billing/service"
 )
 
 func AlphaSearchHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
@@ -115,7 +116,7 @@ func AlphaSearchHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError
 	}
 
 	usage := &dto.Usage{}
-	service.PostTextConsumeQuota(c, info, usage, nil)
+	billingservice.PostTextConsumeQuota(c, info, usage, nil)
 	return nil
 }
 

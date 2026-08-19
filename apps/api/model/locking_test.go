@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"gorm.io/gorm/utils/tests"
+	billingmodel "github.com/QuantumNous/new-api/internal/billing/model"
 )
 
 // lockForUpdate must emit FOR UPDATE on databases that support it and skip
@@ -19,7 +20,7 @@ func TestLockForUpdateEmitsRowLock(t *testing.T) {
 	dummyDB, err := gorm.Open(tests.DummyDialector{}, &gorm.Config{DryRun: true})
 	require.NoError(t, err)
 	buildSQL := func() string {
-		var rows []Redemption
+		var rows []billingmodel.Redemption
 		return lockForUpdate(dummyDB).Where("id = ?", 1).Find(&rows).Statement.SQL.String()
 	}
 

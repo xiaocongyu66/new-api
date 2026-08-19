@@ -5,20 +5,20 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
+	opsmodel "github.com/QuantumNous/new-api/internal/ops/model"
 )
 
 func ListSystemInstances(c *gin.Context) {
-	instances, err := model.ListSystemInstances()
+	instances, err := opsmodel.ListSystemInstances()
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 
 	now := common.GetTimestamp()
-	responses := make([]model.SystemInstanceResponse, 0, len(instances))
+	responses := make([]opsmodel.SystemInstanceResponse, 0, len(instances))
 	for _, instance := range instances {
 		responses = append(responses, instance.ToResponse(now))
 	}
@@ -31,7 +31,7 @@ func ListSystemInstances(c *gin.Context) {
 }
 
 func DeleteStaleSystemInstances(c *gin.Context) {
-	deletedCount, err := model.DeleteStaleSystemInstances(common.GetTimestamp())
+	deletedCount, err := opsmodel.DeleteStaleSystemInstances(common.GetTimestamp())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -49,7 +49,7 @@ func DeleteStaleSystemInstance(c *gin.Context) {
 		return
 	}
 
-	deleted, err := model.DeleteStaleSystemInstance(nodeName, common.GetTimestamp())
+	deleted, err := opsmodel.DeleteStaleSystemInstance(nodeName, common.GetTimestamp())
 	if err != nil {
 		common.ApiError(c, err)
 		return

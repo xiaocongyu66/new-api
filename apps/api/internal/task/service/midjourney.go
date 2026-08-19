@@ -15,12 +15,18 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/model"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	billingservice "github.com/QuantumNous/new-api/internal/billing/service"
+	taskmodel "github.com/QuantumNous/new-api/internal/task/model"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/gin-gonic/gin"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	usagemodel "github.com/QuantumNous/new-api/internal/usage/model"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service"
+	taskdto "github.com/QuantumNous/new-api/dto"
 )
 
 func CovertMjpActionToModelName(mjAction string) string {
@@ -32,7 +38,7 @@ func CovertMjpActionToModelName(mjAction string) string {
 }
 
 // PrepareMidjourneyTaskBilling sets the durable refund marker before the task is inserted.
-func PrepareMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.Midjourney, quota int, shouldBill bool) (bool, error) {
+func PrepareMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *taskmodel.Midjourney, quota int, shouldBill bool) (bool, error) {
 	if task == nil {
 		return false, errors.New("Midjourney task is nil")
 	}
@@ -48,7 +54,7 @@ func PrepareMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.
 	if quota < 0 {
 		return false, errors.New("quota cannot be negative")
 	}
-	if relayInfo.BillingSource == BillingSourceSubscription {
+	if relayInfo.BillingSource == billingservice.BillingSourceSubscription {
 		return false, errors.New("legacy Midjourney billing does not support subscriptions")
 	}
 
@@ -61,7 +67,7 @@ func PrepareMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.
 }
 
 // SettleMidjourneyTaskBilling charges a persisted legacy task and records the applied stages.
-func SettleMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.Midjourney, prepared bool) (bool, error) {
+func SettleMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *taskmodel.Midjourney, prepared bool) (bool, error) {
 	if !prepared {
 		return false, nil
 	}
@@ -72,7 +78,7 @@ func SettleMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.M
 		return false, errors.New("Midjourney task must be persisted before billing")
 	}
 
-	result, billingErr := postConsumeQuotaWithResult(relayInfo, task.Quota, 0, true)
+	result, billingErr := billingservice.PostConsumeQuotaWithResult(relayInfo, task.Quota, 0, true)
 	if !result.FundingApplied {
 		task.Quota = 0
 		task.TokenId = 0
@@ -94,32 +100,32 @@ func SettleMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.M
 }
 
 // RefundMidjourneyQuota reverses every accounting element recorded for a billed legacy task.
-func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason string) bool {
+func RefundMidjourneyQuota(ctx context.Context, task *taskmodel.Midjourney, reason string) bool {
 	quota := task.Quota
 	if quota == 0 {
 		return true
 	}
 
-	if err := model.IncreaseUserQuota(task.UserId, quota, false); err != nil {
+	if err := identitymodel.IncreaseUserQuota(task.UserId, quota, false); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("退还 Midjourney 用户额度失败 task %s: %s", task.MjId, err.Error()))
 		return false
 	}
 
 	if task.TokenId > 0 {
-		tokenKey := resolveTokenKey(ctx, task.TokenId, task.MjId)
+		tokenKey := ResolveTokenKey(ctx, task.TokenId, task.MjId)
 		if tokenKey != "" {
-			if err := model.IncreaseTokenQuota(task.TokenId, tokenKey, quota); err != nil {
+			if err := identitymodel.IncreaseTokenQuota(task.TokenId, tokenKey, quota); err != nil {
 				logger.LogWarn(ctx, fmt.Sprintf("退还 Midjourney 令牌额度失败 task %s: %s", task.MjId, err.Error()))
 			}
 		}
 	}
 
 	billingChannelId := task.GetBillingChannelId()
-	model.UpdateUserUsedQuota(task.UserId, -quota)
-	model.UpdateChannelUsedQuota(billingChannelId, -quota)
-	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
+	identitymodel.UpdateUserUsedQuota(task.UserId, -quota)
+	catalogmodel.UpdateChannelUsedQuota(billingChannelId, -quota)
+	usagemodel.RecordTaskBillingLog(usagemodel.RecordTaskBillingLogParams{
 		UserId:    task.UserId,
-		LogType:   model.LogTypeRefund,
+		LogType:   usagemodel.LogTypeRefund,
 		Content:   "",
 		ChannelId: billingChannelId,
 		ModelName: CovertMjpActionToModelName(task.Action),
@@ -322,7 +328,7 @@ func DoMidjourneyHttpRequest(c *gin.Context, timeout time.Duration, fullRequestU
 		req.Header.Set("mj-api-secret", auth)
 	}
 	defer cancel()
-	resp, err := GetHttpClient().Do(req)
+	resp, err := egressservice.GetHttpClient().Do(req)
 	if err != nil {
 		common.SysLog("do request failed: " + err.Error())
 		return MidjourneyErrorWithStatusCodeWrapper(constant.MjErrorUnknown, "do_request_failed", http.StatusInternalServerError), nullBytes, err
@@ -345,7 +351,7 @@ func DoMidjourneyHttpRequest(c *gin.Context, timeout time.Duration, fullRequestU
 	if err != nil {
 		return MidjourneyErrorWithStatusCodeWrapper(constant.MjErrorUnknown, "read_response_body_failed", statusCode), nullBytes, err
 	}
-	CloseResponseBodyGracefully(resp)
+	egressservice.CloseResponseBodyGracefully(resp)
 	logger.LogDebug(c, "midjourney response body: %s", responseBody)
 	if len(responseBody) == 0 {
 		return MidjourneyErrorWithStatusCodeWrapper(constant.MjErrorUnknown, "empty_response_body", statusCode), responseBody, nil
@@ -359,10 +365,38 @@ func DoMidjourneyHttpRequest(c *gin.Context, timeout time.Duration, fullRequestU
 		}
 	}
 	//for k, v := range resp.Header {
-	//	c.Writer.Header().Set(k, v[0])
+	//	c.Writer.Header(
+
+
 	//}
 	return &dto.MidjourneyResponseWithStatusCode{
 		StatusCode: statusCode,
 		Response:   midjResponse,
 	}, responseBody, nil
 }
+
+// MidjourneyErrorWrapper wraps a task error into a MidjourneyResponse.
+func MidjourneyErrorWrapper(code int, desc string) *taskdto.MidjourneyResponse {
+	return &taskdto.MidjourneyResponse{
+		Code:        code,
+		Description: desc,
+	}
+}
+
+// MidjourneyErrorWithStatusCodeWrapper wraps a task error with a status code.
+func MidjourneyErrorWithStatusCodeWrapper(code int, desc string, statusCode int) *taskdto.MidjourneyResponseWithStatusCode {
+	return &taskdto.MidjourneyResponseWithStatusCode{
+		StatusCode: statusCode,
+		Response:   *MidjourneyErrorWrapper(code, desc),
+	}
+}
+
+func ResolveTokenKey(ctx context.Context, tokenId int, taskID string) string {
+	token, err := identitymodel.GetTokenById(tokenId)
+	if err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("获取令牌 key 失败 (tokenId=%d, task=%s): %s", tokenId, taskID, err.Error()))
+		return ""
+	}
+	return token.Key
+}
+

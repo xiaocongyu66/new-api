@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 // ProxyConfig holds the sing-box global proxy configuration stored in the
@@ -50,12 +50,12 @@ type transportOptions struct {
 // global proxying is not configured or disabled. It reads the Option table
 // directly (bypassing the in-memory OptionMap cache) so every new-api instance
 // observes configuration changes on the next request.
-func getGlobalProxyURL() string {
-	if model.DB == nil {
+func GetGlobalProxyURL() string {
+	if rootmodel.DB == nil {
 		return ""
 	}
-	var option model.Option
-	if err := model.DB.Where("key = ?", "proxy_config").First(&option).Error; err != nil {
+	var option rootmodel.Option
+	if err := rootmodel.DB.Where("key = ?", "proxy_config").First(&option).Error; err != nil {
 		return ""
 	}
 	// Decrypt if encrypted; fall back to plaintext for backward compatibility.
@@ -78,11 +78,11 @@ func getGlobalProxyURL() string {
 // decryption fails the raw value is returned as-is (legacy plaintext stored
 // before #141 introduced encryption).
 func LoadProxyConfigJSON() (string, error) {
-	if model.DB == nil {
+	if rootmodel.DB == nil {
 		return "", fmt.Errorf("database not initialised")
 	}
-	var option model.Option
-	if err := model.DB.Where("key = ?", "proxy_config").First(&option).Error; err != nil {
+	var option rootmodel.Option
+	if err := rootmodel.DB.Where("key = ?", "proxy_config").First(&option).Error; err != nil {
 		return "", err
 	}
 	plain, err := common.DecryptAESGCM(option.Value, "proxy-config")
@@ -100,5 +100,5 @@ func SaveProxyConfigJSON(plaintext string) error {
 	if err != nil {
 		return fmt.Errorf("encrypt proxy config: %w", err)
 	}
-	return model.UpdateOption("proxy_config", encrypted)
+	return rootmodel.UpdateOption("proxy_config", encrypted)
 }

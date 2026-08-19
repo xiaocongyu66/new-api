@@ -5,11 +5,12 @@ import (
 	"fmt"
 
 	"github.com/QuantumNous/new-api/middleware"
-	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
 	"github.com/gin-gonic/gin"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	topcontroller "github.com/QuantumNous/new-api/controller"
 )
 
 func Playground(c *gin.Context) {
@@ -38,19 +39,19 @@ func Playground(c *gin.Context) {
 	userId := c.GetInt("id")
 
 	// Write user context to ensure acceptUnsetRatio is available
-	userCache, err := model.GetUserCache(userId)
+	userCache, err := identitymodel.GetUserCache(userId)
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 		return
 	}
 	userCache.WriteContext(c)
 
-	tempToken := &model.Token{
+	tempToken := &identitymodel.Token{
 		UserId: userId,
 		Name:   fmt.Sprintf("playground-%s", relayInfo.UsingGroup),
 		Group:  relayInfo.UsingGroup,
 	}
 	_ = middleware.SetupContextForToken(c, tempToken)
 
-	Relay(c, types.RelayFormatOpenAI)
+	topcontroller.Relay(c, types.RelayFormatOpenAI)
 }

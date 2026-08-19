@@ -18,9 +18,9 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service"
 )
 
 const ChannelName = "advanced_custom"
@@ -57,7 +57,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	case relayconvert.ConverterOpenAIChatToClaudeMessages,
 		relayconvert.ConverterOpenAIChatToOpenAIResponses,
 		relayconvert.ConverterOpenAIChatToGeminiContent:
-		result, err := service.ConvertRequestByID(c, info, converter, request)
+		result, err := egressservice.ConvertRequestByID(c, info, converter, request)
 		if err != nil {
 			return nil, err
 		}
@@ -77,7 +77,7 @@ func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayIn
 	case relayconvert.ConverterNone:
 		return a.claudeAdaptor.ConvertClaudeRequest(c, info, request)
 	case relayconvert.ConverterClaudeMessagesToOpenAIChat:
-		result, err := service.ConvertRequestByID(c, info, converter, request)
+		result, err := egressservice.ConvertRequestByID(c, info, converter, request)
 		if err != nil {
 			return nil, err
 		}
@@ -101,7 +101,7 @@ func (a *Adaptor) ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayIn
 	case relayconvert.ConverterNone:
 		return a.geminiAdaptor.ConvertGeminiRequest(c, info, request)
 	case relayconvert.ConverterGeminiContentToOpenAIChat:
-		result, err := service.ConvertRequestByID(c, info, converter, request)
+		result, err := egressservice.ConvertRequestByID(c, info, converter, request)
 		if err != nil {
 			return nil, err
 		}
@@ -124,7 +124,7 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	case relayconvert.ConverterNone:
 		return a.convertOpenAICompatibleResponsesRequest(c, info, request)
 	case relayconvert.ConverterOpenAIResponsesToOpenAIChat:
-		result, err := service.ConvertRequestByID(c, info, converter, request)
+		result, err := egressservice.ConvertRequestByID(c, info, converter, request)
 		if err != nil {
 			return nil, err
 		}
@@ -134,7 +134,7 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 		}
 		return a.convertOpenAICompatibleRequest(c, info, chatRequest)
 	case relayconvert.ConverterOpenAIResponsesToGemini:
-		result, err := service.ConvertRequestByID(c, info, converter, request)
+		result, err := egressservice.ConvertRequestByID(c, info, converter, request)
 		if err != nil {
 			return nil, err
 		}

@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"gorm.io/gorm"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 func applyExplicitLogTextFilter(tx *gorm.DB, column string, value string) (*gorm.DB, error) {
@@ -39,7 +40,7 @@ func buildLogLikeCondition(column string, value string) (string, string, error) 
 		return column + " LIKE ?", pattern, nil
 	}
 
-	pattern, err := sanitizeLikePattern(value)
+	pattern, err := common.SanitizeLikePattern(value)
 	if err != nil {
 		return "", "", err
 	}
@@ -50,7 +51,7 @@ func sanitizeClickHouseLikePattern(input string) (string, error) {
 	input = strings.ReplaceAll(input, `\`, `\\`)
 	input = strings.ReplaceAll(input, `_`, `\_`)
 
-	if err := validateLikePattern(input); err != nil {
+	if err := common.ValidateLikePattern(input); err != nil {
 		return "", err
 	}
 	return input, nil
@@ -100,7 +101,7 @@ func ensureLogRequestId(log *Log) {
 
 func createLog(log *Log) error {
 	ensureLogRequestId(log)
-	return LOG_DB.Create(log).Error
+	return rootmodel.LOG_DB.Create(log).Error
 }
 
 func clickHouseLogOrder(prefix string) string {
@@ -136,7 +137,7 @@ func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		order = clickHouseLogOrder("")
 	}
-	err = LOG_DB.Model(&Log{}).Where("token_id = ?", tokenId).Order(order).Limit(common.MaxRecentItems).Find(&logs).Error
+	err = rootmodel.LOG_DB.Model(&Log{}).Where("token_id = ?", tokenId).Order(order).Limit(common.MaxRecentItems).Find(&logs).Error
 	formatUserLogs(logs, 0)
 	return logs, err
 }
@@ -145,16 +146,13 @@ func RecordLog(userId int, logType int, content string) {
 	if logType == LogTypeConsume && !common.LogConsumeEnabled {
 		return
 	}
-	username, _ := GetUsernameById(userId, false)
 	log := &Log{
 		UserId:    userId,
-		Username:  username,
 		CreatedAt: common.GetTimestamp(),
 		Type:      logType,
 		Content:   content,
 	}
-	err := createLog(log)
-	if err != nil {
+	if err := createLog(log); err != nil {
 		common.SysLog("failed to record log: " + err.Error())
 	}
 }
@@ -164,10 +162,8 @@ func RecordLogWithAdminInfo(userId int, logType int, content string, adminInfo m
 	if logType == LogTypeConsume && !common.LogConsumeEnabled {
 		return
 	}
-	username, _ := GetUsernameById(userId, false)
 	log := &Log{
 		UserId:    userId,
-		Username:  username,
 		CreatedAt: common.GetTimestamp(),
 		Type:      logType,
 		Content:   content,
@@ -182,9 +178,6 @@ func RecordLogWithAdminInfo(userId int, logType int, content string, adminInfo m
 		common.SysLog("failed to record log: " + err.Error())
 	}
 }
-
-// buildOpField 构建语言无关的操作描述（写入 Other.op）。
-// 前端依据 action(稳定操作标识) + params(结构化参数) 在渲染期用 i18n 本地化展示，
 // 因此不在数据库中存储自然语言句子。
 func buildOpField(action string, params map[string]interface{}) map[string]interface{} {
 	op := map[string]interface{}{
@@ -227,7 +220,7 @@ func RecordLoginLog(userId int, username string, content string, ip string, acti
 // adminInfo 存放操作者身份（写入 Other.admin_info，普通用户查询时剥离）；
 // auditInfo 存放路由/方法/结果等中间件兜底信息（写入 Other.audit_info，普通用户查询时剥离）。
 func RecordOperationAuditLog(logUserId int, content string, ip string, action string, params map[string]interface{}, adminInfo map[string]interface{}, auditInfo map[string]interface{}) {
-	username, _ := GetUsernameById(logUserId, false)
+	username, _ := rootmodel.UserResolverOf().GetUsernameById(logUserId, false)
 	other := map[string]interface{}{
 		"op": buildOpField(action, params),
 	}
@@ -252,7 +245,7 @@ func RecordOperationAuditLog(logUserId int, content string, ip string, action st
 }
 
 func RecordTopupLog(userId int, content string, callerIp string, paymentMethod string, callbackPaymentMethod string) {
-	username, _ := GetUsernameById(userId, false)
+	username, _ := rootmodel.UserResolverOf().GetUsernameById(userId, false)
 	adminInfo := map[string]interface{}{
 		"server_ip":               common.GetIp(),
 		"node_name":               common.NodeName,
@@ -288,8 +281,8 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 	otherStr := common.MapToJsonStr(other)
 	// 判断是否需要记录 IP
 	needRecordIp := false
-	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		if settingMap.RecordIpLog {
+	if settingMap, err := rootmodel.UserResolverOf().GetUserSetting(userId, false); err == nil {
+		if settingMap["record_ip_log"].(bool) {
 			needRecordIp = true
 		}
 	}
@@ -352,8 +345,8 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	otherStr := common.MapToJsonStr(params.Other)
 	// 判断是否需要记录 IP
 	needRecordIp := false
-	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		if settingMap.RecordIpLog {
+	if settingMap, err := rootmodel.UserResolverOf().GetUserSetting(userId, false); err == nil {
+		if settingMap["record_ip_log"].(bool) {
 			needRecordIp = true
 		}
 	}
@@ -420,11 +413,11 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	if params.LogType == LogTypeConsume && !common.LogConsumeEnabled {
 		return
 	}
-	username, _ := GetUsernameById(params.UserId, false)
+	username, _ := rootmodel.UserResolverOf().GetUsernameById(params.UserId, false)
 	tokenName := ""
 	if params.TokenId > 0 {
-		if token, err := GetTokenById(params.TokenId); err == nil {
-			tokenName = token.Name
+		if name, ok := rootmodel.TokenResolverOf().GetTokenById(params.TokenId); ok {
+			tokenName = name
 		}
 	}
 	createdAt := common.GetTimestamp()
@@ -468,9 +461,9 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
-		tx = LOG_DB
+		tx = rootmodel.LOG_DB
 	} else {
-		tx = LOG_DB.Where("logs.type = ?", logType)
+		tx = rootmodel.LOG_DB.Where("logs.type = ?", logType)
 	}
 
 	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
@@ -498,7 +491,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 		tx = tx.Where("logs.channel_id = ?", channel)
 	}
 	if group != "" {
-		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+		tx = tx.Where("logs."+common.LogGroupCol+" = ?", group)
 	}
 	err = tx.Model(&Log{}).Count(&total).Error
 	if err != nil {
@@ -530,23 +523,22 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 		}
 		if common.MemoryCacheEnabled {
 			// Cache get channel
-			for _, channelId := range channelIds.Items() {
-				if cacheChannel, err := CacheGetChannel(channelId); err == nil {
-					channels = append(channels, struct {
-						Id   int    `gorm:"column:id"`
-						Name string `gorm:"column:name"`
-					}{
-						Id:   channelId,
-						Name: cacheChannel.Name,
-					})
-				}
-			}
-		} else {
-			// Bulk query channels from DB
-			if err = DB.Table("channels").Select("id, name").Where("id IN ?", channelIds.Items()).Find(&channels).Error; err != nil {
-				return logs, total, err
+		for _, channelId := range channelIds.Items() {
+			if name, ok := rootmodel.ChannelResolverOf().CacheGetChannel(channelId); ok {
+				channels = append(channels, struct {
+					Id   int    `gorm:"column:id"`
+					Name string `gorm:"column:name"`
+				}{
+					Id:   channelId,
+					Name: name,
+				})
 			}
 		}
+	} else {
+		if err = rootmodel.DB.Table("channels").Select("id, name").Where("id IN ?", channelIds.Items()).Find(&channels).Error; err != nil {
+			return logs, total, err
+		}
+	}
 		channelMap := make(map[int]string, len(channels))
 		for _, channel := range channels {
 			channelMap[channel.Id] = channel.Name
@@ -564,9 +556,9 @@ const logSearchCountLimit = 10000
 func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
-		tx = LOG_DB.Where("logs.user_id = ?", userId)
+		tx = rootmodel.LOG_DB.Where("logs.user_id = ?", userId)
 	} else {
-		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
+		tx = rootmodel.LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
 	}
 
 	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
@@ -588,7 +580,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 		tx = tx.Where("logs.created_at <= ?", endTimestamp)
 	}
 	if group != "" {
-		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+		tx = tx.Where("logs."+common.LogGroupCol+" = ?", group)
 	}
 	err = tx.Model(&Log{}).Limit(logSearchCountLimit).Count(&total).Error
 	if err != nil {
@@ -616,10 +608,10 @@ type Stat struct {
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
-	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
+	tx := rootmodel.LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
 
 	// 为rpm和tpm创建单独的查询
-	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm")
+	rpmTpmQuery := rootmodel.LOG_DB.Table("logs").Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm")
 
 	if tx, err = applyExplicitLogTextFilter(tx, "username", username); err != nil {
 		return stat, err
@@ -648,8 +640,8 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 		rpmTpmQuery = rpmTpmQuery.Where("channel_id = ?", channel)
 	}
 	if group != "" {
-		tx = tx.Where(logGroupCol+" = ?", group)
-		rpmTpmQuery = rpmTpmQuery.Where(logGroupCol+" = ?", group)
+		tx = tx.Where(common.LogGroupCol+" = ?", group)
+		rpmTpmQuery = rpmTpmQuery.Where(common.LogGroupCol+" = ?", group)
 	}
 
 	tx = tx.Where("type = ?", LogTypeConsume)
@@ -672,7 +664,7 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 }
 
 func SumUsedToken(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string) (token int) {
-	tx := LOG_DB.Table("logs").Select("COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0)")
+	tx := rootmodel.LOG_DB.Table("logs").Select("COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0)")
 	if username != "" {
 		tx = tx.Where("username = ?", username)
 	}
@@ -694,7 +686,7 @@ func SumUsedToken(logType int, startTimestamp int64, endTimestamp int64, modelNa
 
 func CountOldLog(ctx context.Context, targetTimestamp int64) (int64, error) {
 	var total int64
-	if err := LOG_DB.WithContext(ctx).Model(&Log{}).Where("created_at < ?", targetTimestamp).Count(&total).Error; err != nil {
+	if err := rootmodel.LOG_DB.WithContext(ctx).Model(&Log{}).Where("created_at < ?", targetTimestamp).Count(&total).Error; err != nil {
 		return 0, err
 	}
 	return total, nil
@@ -720,7 +712,7 @@ func DeleteOldLogBatch(ctx context.Context, targetTimestamp int64, limit int) (i
 		if total == 0 {
 			return 0, nil
 		}
-		if err := LOG_DB.WithContext(ctx).Exec(
+		if err := rootmodel.LOG_DB.WithContext(ctx).Exec(
 			"ALTER TABLE logs DELETE WHERE created_at < ? SETTINGS mutations_sync = 1",
 			targetTimestamp,
 		).Error; err != nil {
@@ -729,7 +721,7 @@ func DeleteOldLogBatch(ctx context.Context, targetTimestamp int64, limit int) (i
 		return total, nil
 	}
 
-	result := LOG_DB.WithContext(ctx).Where("created_at < ?", targetTimestamp).Limit(limit).Delete(&Log{})
+	result := rootmodel.LOG_DB.WithContext(ctx).Where("created_at < ?", targetTimestamp).Limit(limit).Delete(&Log{})
 	if nil != result.Error {
 		return 0, result.Error
 	}

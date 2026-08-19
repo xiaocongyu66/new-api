@@ -19,30 +19,33 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	identityservice "github.com/QuantumNous/new-api/internal/identity/service"
+	rootmodel "github.com/QuantumNous/new-api/model"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
 )
 
 func setupDashboardAuthMiddlewareTest(t *testing.T) {
 	t.Helper()
-	previousDB := model.DB
+	previousDB := rootmodel.DB
 	previousType := common.MainDatabaseType()
 	previousRedis := common.RedisEnabled
 	previousSecret := common.SessionSecret
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}))
-	model.DB = db
+	require.NoError(t, db.AutoMigrate(&identitymodel.User{}, &identitymodel.UserSession{}))
+	rootmodel.DB = db
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	common.SessionSecret = "middleware-auth-test-secret"
 	t.Cleanup(func() {
-		model.DB = previousDB
+		rootmodel.DB = previousDB
 		common.SetMainDatabaseType(previousType)
 		common.RedisEnabled = previousRedis
 		common.SessionSecret = previousSecret
 	})
 }
 
-func issueExpiredDashboardAccessToken(t *testing.T, identity service.AuthIdentity) string {
+func issueExpiredDashboardAccessToken(t *testing.T, identity identityservice.AuthIdentity) string {
 	t.Helper()
 	claims := jwt.MapClaims{
 		"iss":       "new-api",
@@ -73,14 +76,14 @@ func tamperDashboardToken(token string) string {
 	return token[:tamperAt] + replacement + token[tamperAt+1:]
 }
 
-func createMiddlewarePATUser(t *testing.T, username, token string) *model.User {
+func createMiddlewarePATUser(t *testing.T, username, token string) *identitymodel.User {
 	t.Helper()
-	user := &model.User{
+	user := &identitymodel.User{
 		Username: username, Password: "password-placeholder", Role: common.RoleCommonUser,
 		Status: common.UserStatusEnabled, Group: "default", AccessToken: &token, AuthVersion: 1,
 		AffCode: "middleware-aff-" + username,
 	}
-	require.NoError(t, model.DB.Create(user).Error)
+	require.NoError(t, rootmodel.DB.Create(user).Error)
 	return user
 }
 
@@ -107,7 +110,7 @@ func TestUserAuthAllowsOpaqueDottedPAT(t *testing.T) {
 
 func TestUserAuthNeverFallsBackForRecognizedInvalidInternalJWT(t *testing.T) {
 	setupDashboardAuthMiddlewareTest(t)
-	identity := service.AuthIdentity{UserID: 42, SessionID: "session-42", UserAuthVersion: 1, SessionVersion: 1}
+	identity := identityservice.AuthIdentity{UserID: 42, SessionID: "session-42", UserAuthVersion: 1, SessionVersion: 1}
 	token, _, err := service.IssueAccessToken(identity)
 	require.NoError(t, err)
 	tampered := tamperDashboardToken(token)
@@ -133,19 +136,19 @@ func TestTryUserAuthCredentialClassification(t *testing.T) {
 	patUser := createMiddlewarePATUser(t, "optional-pat-user", "optional.pat.with-dots")
 	internalUser := createMiddlewarePATUser(t, "optional-session-user", "unrelated-pat")
 	now := time.Now().Unix()
-	session := &model.UserSession{
+	session := &identitymodel.UserSession{
 		SID:             "optional-auth-session",
 		UserID:          internalUser.Id,
 		Version:         1,
 		UserAuthVersion: internalUser.AuthVersion,
-		Status:          model.UserSessionStatusActive,
+		Status:          rootmodel.UserSessionStatusActive,
 		RefreshHash:     "refresh-hash",
 		LoginMethod:     "password",
 		LastActiveAt:    now,
 		ExpiresAt:       now + 3600,
 	}
 	require.NoError(t, model.CreateUserSession(session))
-	identity := service.AuthIdentity{
+	identity := identityservice.AuthIdentity{
 		UserID:          internalUser.Id,
 		SessionID:       session.SID,
 		UserAuthVersion: session.UserAuthVersion,
@@ -222,7 +225,7 @@ func TestTryUserAuthCredentialClassification(t *testing.T) {
 	var patUserQueries int
 	forcedCacheError := errors.New("forced PAT user cache lookup failure")
 	const callbackName = "test:optional-auth-pat-user-cache-failure"
-	require.NoError(t, model.DB.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+	require.NoError(t, rootmodel.DB.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
 		if tx.Statement.Table != "users" {
 			return
 		}
@@ -235,11 +238,11 @@ func TestTryUserAuthCredentialClassification(t *testing.T) {
 	cacheFailureRequest.Header.Set("Authorization", "Bearer optional.pat.with-dots")
 	cacheFailureResponse := httptest.NewRecorder()
 	router.ServeHTTP(cacheFailureResponse, cacheFailureRequest)
-	model.DB.Callback().Query().Remove(callbackName)
+	rootmodel.DB.Callback().Query().Remove(callbackName)
 	assert.Equal(t, http.StatusInternalServerError, cacheFailureResponse.Code)
 	assert.Contains(t, cacheFailureResponse.Body.String(), "AUTH_INTERNAL_ERROR")
 
-	sqlDB, err := model.DB.DB()
+	sqlDB, err := rootmodel.DB.DB()
 	require.NoError(t, err)
 	require.NoError(t, sqlDB.Close())
 	databaseFailureRequest := httptest.NewRequest(http.MethodGet, "/optional", nil)

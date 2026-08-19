@@ -12,7 +12,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	taskdto "github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -21,7 +20,9 @@ import (
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
-)
+	"github.com/QuantumNous/new-api/modelapi"
+	taskmodel "github.com/QuantumNous/new-api/internal/task/model"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service")
 
 // ============================
 // Adaptor implementation
@@ -202,7 +203,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("x-goog-api-key", key)
 
-	client, err := service.GetHttpClientWithProxy(proxy)
+	client, err := egressservice.GetHttpClientWithProxy(proxy)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
 	}
@@ -218,19 +219,19 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	ti := &relaycommon.TaskInfo{}
 
 	if op.Error.Message != "" {
-		ti.Status = model.TaskStatusFailure
+		ti.Status = taskmodel.TaskStatusFailure
 		ti.Reason = op.Error.Message
 		ti.Progress = "100%"
 		return ti, nil
 	}
 
 	if !op.Done {
-		ti.Status = model.TaskStatusInProgress
+		ti.Status = taskmodel.TaskStatusInProgress
 		ti.Progress = "50%"
 		return ti, nil
 	}
 
-	ti.Status = model.TaskStatusSuccess
+	ti.Status = taskmodel.TaskStatusSuccess
 	ti.Progress = "100%"
 
 	ti.TaskID = taskcommon.EncodeLocalTaskID(op.Name)
@@ -244,7 +245,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	return ti, nil
 }
 
-func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
+func (a *TaskAdaptor) ConvertToOpenAIVideo(task *modelapi.Task) ([]byte, error) {
 	upstreamTaskID := task.GetUpstreamTaskID()
 	upstreamName, err := taskcommon.DecodeLocalTaskID(upstreamTaskID)
 	if err != nil {

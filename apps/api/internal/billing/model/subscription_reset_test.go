@@ -7,22 +7,24 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/QuantumNous/new-api/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 func seedSubscriptionResetPlan(t *testing.T, plan *SubscriptionPlan) {
 	t.Helper()
-	require.NoError(t, DB.Create(plan).Error)
+	require.NoError(t, rootmodel.DB.Create(plan).Error)
 }
 
 func seedSubscriptionResetSub(t *testing.T, sub *UserSubscription) {
 	t.Helper()
-	require.NoError(t, DB.Create(sub).Error)
+	require.NoError(t, rootmodel.DB.Create(sub).Error)
 }
 
 func getSubscriptionResetSub(t *testing.T, id int) UserSubscription {
 	t.Helper()
 	var sub UserSubscription
-	require.NoError(t, DB.Where("id = ?", id).First(&sub).Error)
+	require.NoError(t, rootmodel.DB.Where("id = ?", id).First(&sub).Error)
 	return sub
 }
 

@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
 )
 
 func newTokenAutoGroupsContext() *gin.Context {
@@ -20,7 +21,7 @@ func newTokenAutoGroupsContext() *gin.Context {
 
 func TestSetupContextForTokenPreservesCustomAutoGroupsOrder(t *testing.T) {
 	ctx := newTokenAutoGroupsContext()
-	token := &model.Token{Id: 1, UserId: 2, AutoGroups: `["vip","default"]`}
+	token := &identitymodel.Token{Id: 1, UserId: 2, AutoGroups: `["vip","default"]`}
 
 	require.NoError(t, SetupContextForToken(ctx, token))
 	value, ok := common.GetContextKey(ctx, constant.ContextKeyTokenAutoGroups)
@@ -30,7 +31,7 @@ func TestSetupContextForTokenPreservesCustomAutoGroupsOrder(t *testing.T) {
 
 func TestSetupContextForTokenTreatsStoredEmptyArrayAsInheritance(t *testing.T) {
 	ctx := newTokenAutoGroupsContext()
-	token := &model.Token{Id: 1, UserId: 2, AutoGroups: `[]`}
+	token := &identitymodel.Token{Id: 1, UserId: 2, AutoGroups: `[]`}
 
 	require.NoError(t, SetupContextForToken(ctx, token))
 	_, ok := common.GetContextKey(ctx, constant.ContextKeyTokenAutoGroups)
@@ -39,7 +40,7 @@ func TestSetupContextForTokenTreatsStoredEmptyArrayAsInheritance(t *testing.T) {
 
 func TestSetupContextForTokenMalformedAutoGroupsFailsClosed(t *testing.T) {
 	ctx := newTokenAutoGroupsContext()
-	token := &model.Token{Id: 1, UserId: 2, AutoGroups: `not-json`}
+	token := &identitymodel.Token{Id: 1, UserId: 2, AutoGroups: `not-json`}
 
 	require.NoError(t, SetupContextForToken(ctx, token))
 	value, ok := common.GetContextKey(ctx, constant.ContextKeyTokenAutoGroups)

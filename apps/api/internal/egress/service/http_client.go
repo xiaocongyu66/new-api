@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	rootmodel "github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/system_setting"
@@ -383,7 +384,7 @@ func GetHttpClientWithProxySettings(rawProxyURL string, settings dto.ChannelSett
 		trimmedProxyURL = ""
 	} else if trimmedProxyURL == "" {
 		// Empty channel proxy falls back to the global sing-box proxy.
-		trimmedProxyURL = strings.TrimSpace(getGlobalProxyURL())
+trimmedProxyURL = strings.TrimSpace(GetGlobalProxyURL())
 	}
 
 	if trimmedProxyURL == "" {
@@ -462,4 +463,37 @@ func ResetProxyClientCache() {
 // Deprecated: use GetHttpClientWithProxy.
 func NewProxyHttpClient(proxyURL string) (*http.Client, error) {
 	return GetHttpClientWithProxy(proxyURL)
+}
+
+// GetGlobalProxyURL returns the global proxy URL from the database, or "" when
+// global proxying is not configured or disabled. It reads the Option table
+// directly (bypassing the in-memory OptionMap cache) so every new-api instance
+// observes configuration changes on the next request.
+func GetGlobalProxyURL() string {
+	if rootmodel.DB == nil {
+		return ""
+	}
+	var option rootmodel.Option
+	// rootmodel is imported as model package alias; use the actual model package
+	if err := rootmodel.DB.Where("key = ?", "proxy_config").First(&option).Error; err != nil {
+		return ""
+	}
+	// Decrypt if encrypted; fall back to plaintext for backward compatibility.
+	raw := option.Value
+	if plain, err := common.DecryptAESGCM(raw, "proxy-config"); err == nil {
+		raw = plain
+	}
+	type proxyConfig struct {
+		Outbound       interface{} `json:"outbound"`
+		GlobalProxyURL string      `json:"global_proxy_url"`
+		Enabled        bool        `json:"enabled"`
+	}
+	var cfg proxyConfig
+	if err := common.Unmarshal([]byte(raw), &cfg); err != nil {
+		return ""
+	}
+	if !cfg.Enabled {
+		return ""
+	}
+	return cfg.GlobalProxyURL
 }

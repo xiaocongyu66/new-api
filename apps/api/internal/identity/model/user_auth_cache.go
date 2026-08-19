@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 
 	"gorm.io/gorm"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 // User auth cache fencing uses three Redis keys per user: the cached user
@@ -49,7 +50,7 @@ func writeUserCache(user *UserBase, includeQuota bool) error {
 	if user == nil || user.Id <= 0 || !common.RedisEnabled {
 		return nil
 	}
-	user.CacheSchema = userCacheSchemaVersion
+	user.CacheSchema = UserCacheSchemaVersion
 	if user.AuthVersion <= 0 {
 		return fmt.Errorf("invalid user auth version")
 	}
@@ -85,7 +86,7 @@ end
 redis.call('EXPIRE', KEYS[1], ARGV[12])
 return 1`
 	result, err := common.RDB.Eval(context.Background(), script,
-		[]string{getUserCacheKey(user.Id), getUserAuthFenceKey(user.Id), getUserAuthVersionKey(user.Id)},
+		[]string{GetUserCacheKey(user.Id), getUserAuthFenceKey(user.Id), getUserAuthVersionKey(user.Id)},
 		user.AuthVersion, user.Id, user.Group, user.Email, user.Status, user.Role,
 		user.Username, user.Setting, user.CacheSchema, includeQuotaArg, user.Quota, ttl,
 	).Int()
@@ -183,7 +184,7 @@ func IncrementUserAuthVersionWithTx(tx *gorm.DB, userId int) (int64, error) {
 	}
 	for range 3 {
 		var user User
-		if err := lockForUpdate(tx.Unscoped()).Select("id", "auth_version").Where("id = ?", userId).First(&user).Error; err != nil {
+		if err := rootmodel.LockForUpdate(tx.Unscoped()).Select("id", "auth_version").Where("id = ?", userId).First(&user).Error; err != nil {
 			return 0, err
 		}
 		current := user.AuthVersion
@@ -211,7 +212,7 @@ func IncrementUserAuthVersionWithTx(tx *gorm.DB, userId int) (int64, error) {
 // role, status and security-factor changes outside another transaction.
 func BumpUserAuthVersion(userId int) (int64, error) {
 	var next int64
-	if err := DB.Transaction(func(tx *gorm.DB) error {
+	if err := rootmodel.DB.Transaction(func(tx *gorm.DB) error {
 		var err error
 		next, err = IncrementUserAuthVersionWithTx(tx, userId)
 		return err
@@ -237,7 +238,7 @@ func PublishUserAuthCache(userId int) error {
 // InitializeUserAuthVersions must run after AutoMigrate when upgrading an
 // existing database. It is idempotent and portable across all supported DBs.
 func InitializeUserAuthVersions() error {
-	return DB.Model(&User{}).Where("auth_version IS NULL OR auth_version < ?", 1).Update("auth_version", 1).Error
+	return rootmodel.DB.Model(&User{}).Where("auth_version IS NULL OR auth_version < ?", 1).Update("auth_version", 1).Error
 }
 
 func updateUserCacheFieldAtVersion(userId int, field string, value interface{}, authVersion int64) error {
@@ -270,8 +271,8 @@ end
 redis.call('HSET', KEYS[1], ARGV[2], ARGV[3], 'CacheSchema', ARGV[4])
 return 1`
 	result, err := common.RDB.Eval(context.Background(), script,
-		[]string{getUserCacheKey(userId), getUserAuthFenceKey(userId), getUserAuthVersionKey(userId)},
-		authVersion, field, value, userCacheSchemaVersion,
+		[]string{GetUserCacheKey(userId), getUserAuthFenceKey(userId), getUserAuthVersionKey(userId)},
+		authVersion, field, value, UserCacheSchemaVersion,
 	).Int()
 	if err != nil {
 		return err

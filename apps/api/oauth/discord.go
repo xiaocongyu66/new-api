@@ -11,9 +11,11 @@ import (
 
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting/system_setting"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
 	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/setting/system_setting"
+
+	"github.com/QuantumNous/new-api/modelapi"
 )
 
 func init() {
@@ -155,15 +157,15 @@ func (p *DiscordProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*
 }
 
 func (p *DiscordProvider) IsUserIDTaken(providerUserID string) bool {
-	return model.IsDiscordIdAlreadyTaken(providerUserID)
+	return identitymodel.IsDiscordIdAlreadyTaken(providerUserID)
 }
 
-func (p *DiscordProvider) FillUserByProviderID(user *model.User, providerUserID string) error {
+func (p *DiscordProvider) FillUserByProviderID(user *modelapi.User, providerUserID string) error {
 	user.DiscordId = providerUserID
 	return user.FillUserByDiscordId()
 }
 
-func (p *DiscordProvider) SetProviderUserID(user *model.User, providerUserID string) {
+func (p *DiscordProvider) SetProviderUserID(user *modelapi.User, providerUserID string) {
 	user.DiscordId = providerUserID
 }
 

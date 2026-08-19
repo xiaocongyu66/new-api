@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/samber/lo"
 
 	"github.com/gin-gonic/gin"
@@ -28,7 +27,9 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
-)
+	"github.com/QuantumNous/new-api/modelapi"
+	taskmodel "github.com/QuantumNous/new-api/internal/task/model"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service")
 
 // ============================
 // Request / Response structures
@@ -72,7 +73,6 @@ const (
 	// 即梦限制单个文件最大4.7MB https://www.volcengine.com/docs/85621/1747301
 	MaxFileSize int64 = 4*1024*1024 + 700*1024 // 4.7MB (4MB + 724KB)
 )
-
 // ============================
 // Adaptor implementation
 // ============================
@@ -254,7 +254,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 			return nil, errors.Wrap(err, "sign request failed")
 		}
 	}
-	client, err := service.GetHttpClientWithProxy(proxy)
+	client, err := egressservice.GetHttpClientWithProxy(proxy)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
 	}
@@ -437,22 +437,22 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	} else {
 		taskResult.Code = resTask.Code // todo uni code
 		taskResult.Reason = resTask.Message
-		taskResult.Status = model.TaskStatusFailure
+		taskResult.Status = taskmodel.TaskStatusFailure
 		taskResult.Progress = "100%"
 	}
 	switch resTask.Data.Status {
 	case "in_queue":
-		taskResult.Status = model.TaskStatusQueued
+		taskResult.Status = taskmodel.TaskStatusQueued
 		taskResult.Progress = "10%"
 	case "done":
-		taskResult.Status = model.TaskStatusSuccess
+		taskResult.Status = taskmodel.TaskStatusSuccess
 		taskResult.Progress = "100%"
 	}
 	taskResult.Url = resTask.Data.VideoUrl
 	return &taskResult, nil
 }
 
-func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error) {
+func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *modelapi.Task) ([]byte, error) {
 	var jimengResp responseTask
 	if err := common.Unmarshal(originTask.Data, &jimengResp); err != nil {
 		return nil, errors.Wrap(err, "unmarshal jimeng task data failed")

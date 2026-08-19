@@ -11,8 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/model"
-
+	opsmodel "github.com/QuantumNous/new-api/internal/ops/model"
 	"github.com/bytedance/gopkg/util/gopool"
 )
 
@@ -120,7 +119,7 @@ func ReportCurrentSystemInstance() error {
 			},
 		},
 	}
-	return model.UpsertSystemInstance(identity.Name, info, common.StartTime, common.GetTimestamp())
+	return opsmodel.UpsertSystemInstance(identity.Name, info, common.StartTime, common.GetTimestamp())
 }
 
 func reportSystemInstanceWithLog() {

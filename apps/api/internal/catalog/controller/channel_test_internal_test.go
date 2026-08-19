@@ -19,6 +19,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
+	usagemodel "github.com/QuantumNous/new-api/internal/usage/model"
+	opsmodel "github.com/QuantumNous/new-api/internal/ops/model"
 )
 
 func TestValidateChannelProxy(t *testing.T) {
@@ -40,7 +43,7 @@ func TestValidateChannelProxy(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			setting, err := common.Marshal(dto.ChannelSettings{Proxy: test.proxy})
 			require.NoError(t, err)
-			channel := &model.Channel{
+			channel := &catalogmodel.Channel{
 				Type:    constant.ChannelTypeOpenAI,
 				Setting: common.GetPointer(string(setting)),
 			}
@@ -69,7 +72,7 @@ func TestValidateChannelRequiresNewAPIBaseURL(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			channel := &model.Channel{
+			channel := &catalogmodel.Channel{
 				Type:    constant.ChannelTypeNewAPI,
 				BaseURL: test.baseURL,
 			}
@@ -137,7 +140,7 @@ func TestCopyChannelRejectsInvalidLegacyProxySettings(t *testing.T) {
 	})
 	require.NoError(t, err)
 	setting := string(settingBytes)
-	origin := &model.Channel{
+	origin := &catalogmodel.Channel{
 		Type:    constant.ChannelTypeOpenAI,
 		Name:    "legacy proxy channel",
 		Key:     "test-key",
@@ -156,13 +159,13 @@ func TestCopyChannelRejectsInvalidLegacyProxySettings(t *testing.T) {
 
 	assert.Contains(t, recorder.Body.String(), "invalid channel settings")
 	var channelCount int64
-	require.NoError(t, db.Model(&model.Channel{}).Count(&channelCount).Error)
+	require.NoError(t, db.Model(&catalogmodel.Channel{}).Count(&channelCount).Error)
 	assert.Equal(t, int64(1), channelCount)
 }
 
 func TestDeleteChannelResetsProxyCacheWhenPreReadFails(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
-	require.NoError(t, db.AutoMigrate(&model.Log{}))
+	require.NoError(t, db.AutoMigrate(&usagemodel.Log{}))
 	service.ResetProxyClientCache()
 	t.Cleanup(service.ResetProxyClientCache)
 
@@ -185,8 +188,8 @@ func TestDeleteChannelResetsProxyCacheWhenPreReadFails(t *testing.T) {
 
 func TestDeleteChannelBatchReportsAndAuditsActualDeletedCount(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
-	require.NoError(t, db.AutoMigrate(&model.Log{}))
-	channel := &model.Channel{Name: "existing", Key: "test-key"}
+	require.NoError(t, db.AutoMigrate(&usagemodel.Log{}))
+	channel := &catalogmodel.Channel{Name: "existing", Key: "test-key"}
 	require.NoError(t, db.Create(channel).Error)
 
 	requestBody, err := common.Marshal(ChannelBatch{Ids: []int{channel.Id, 999999}})
@@ -206,7 +209,7 @@ func TestDeleteChannelBatchReportsAndAuditsActualDeletedCount(t *testing.T) {
 	assert.True(t, response.Success)
 	assert.Equal(t, int64(1), response.Data)
 
-	var auditLog model.Log
+	var auditLog usagemodel.Log
 	require.NoError(t, db.Order("id desc").First(&auditLog).Error)
 	var auditData struct {
 		Operation struct {
@@ -293,7 +296,7 @@ func TestResolveChannelTestUserIDUsesRequestUser(t *testing.T) {
 }
 
 func TestSelectChannelsForAutomaticTestPassiveRecoveryOnlyUsesAutoDisabled(t *testing.T) {
-	channels := []*model.Channel{
+	channels := []*catalogmodel.Channel{
 		{Id: 1, Status: common.ChannelStatusEnabled},
 		{Id: 2, Status: common.ChannelStatusAutoDisabled},
 		{Id: 3, Status: common.ChannelStatusManuallyDisabled},
@@ -306,7 +309,7 @@ func TestSelectChannelsForAutomaticTestPassiveRecoveryOnlyUsesAutoDisabled(t *te
 }
 
 func TestSelectChannelsForAutomaticTestScheduledSkipsManualDisabled(t *testing.T) {
-	channels := []*model.Channel{
+	channels := []*catalogmodel.Channel{
 		{Id: 1, Status: common.ChannelStatusEnabled},
 		{Id: 2, Status: common.ChannelStatusAutoDisabled},
 		{Id: 3, Status: common.ChannelStatusManuallyDisabled},
@@ -322,7 +325,7 @@ func TestSelectChannelsForAutomaticTestScheduledSkipsManualDisabled(t *testing.T
 func TestSelectChannelsForAutomaticTestAutoBanOnlyUsesEligibleChannels(t *testing.T) {
 	autoBanEnabled := 1
 	autoBanDisabled := 0
-	channels := []*model.Channel{
+	channels := []*catalogmodel.Channel{
 		{Id: 1, Status: common.ChannelStatusEnabled, AutoBan: &autoBanEnabled},
 		{Id: 2, Status: common.ChannelStatusEnabled, AutoBan: &autoBanDisabled},
 		{Id: 3, Status: common.ChannelStatusAutoDisabled, AutoBan: &autoBanEnabled},
@@ -339,7 +342,7 @@ func TestSelectChannelsForAutomaticTestAutoBanOnlyUsesEligibleChannels(t *testin
 
 func TestTestAllChannelsRejectsExistingActiveTask(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
-	require.NoError(t, db.AutoMigrate(&model.SystemTask{}, &model.SystemTaskLock{}))
+	require.NoError(t, db.AutoMigrate(&opsmodel.SystemTask{}, &opsmodel.SystemTaskLock{}))
 
 	existing, err := model.CreateSystemTask(model.SystemTaskTypeChannelTest, nil, nil)
 	require.NoError(t, err)

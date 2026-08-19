@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 
 	"gorm.io/gorm"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 const (
@@ -151,7 +152,7 @@ func CreateUserSession(session *UserSession) error {
 		session.CreatedAt = now
 	}
 	cacheDeadline := userSessionCacheDeadline()
-	if err := DB.Create(session).Error; err != nil {
+	if err := rootmodel.DB.Create(session).Error; err != nil {
 		return err
 	}
 	if err := writeUserSessionCache(session.cacheEntry(), cacheDeadline); err != nil {
@@ -174,7 +175,7 @@ func CountActiveUserSessions(userID int, now int64) (int64, error) {
 		now = time.Now().Unix()
 	}
 	var count int64
-	err := DB.Model(&UserSession{}).
+	err := rootmodel.DB.Model(&UserSession{}).
 		Where("user_id = ? AND status = ? AND expires_at > ?", userID, UserSessionStatusActive, now).
 		Count(&count).Error
 	return count, err
@@ -186,7 +187,7 @@ func CountUserSessionsCreatedSince(userID int, createdAfter int64) (int64, error
 	if userID < 0 || createdAfter <= 0 {
 		return 0, ErrUserSessionInvalid
 	}
-	query := DB.Model(&UserSession{}).Where("created_at > ?", createdAfter)
+	query := rootmodel.DB.Model(&UserSession{}).Where("created_at > ?", createdAfter)
 	if userID > 0 {
 		query = query.Where("user_id = ?", userID)
 	}
@@ -200,7 +201,7 @@ func GetUserSessionBySID(sid string) (*UserSession, error) {
 		return nil, ErrUserSessionInvalid
 	}
 	var session UserSession
-	if err := DB.Where("sid = ?", sid).First(&session).Error; err != nil {
+	if err := rootmodel.DB.Where("sid = ?", sid).First(&session).Error; err != nil {
 		return nil, err
 	}
 	return &session, nil
@@ -360,7 +361,7 @@ func confirmUserSessionActiveSnapshot(session *UserSession) error {
 		return ErrUserSessionInvalid
 	}
 	var count int64
-	err := DB.Model(&UserSession{}).
+	err := rootmodel.DB.Model(&UserSession{}).
 		Where(
 			"sid = ? AND user_id = ? AND status = ? AND revoked_at = ? AND expires_at > ? AND version = ? AND user_auth_version = ?",
 			session.SID,
@@ -400,7 +401,7 @@ func ListActiveUserSessions(userID int, currentSID string, now int64) ([]UserSes
 		now = time.Now().Unix()
 	}
 	var authVersion int64
-	if err := DB.Model(&User{}).Where("id = ?", userID).Select("auth_version").Find(&authVersion).Error; err != nil {
+	if err := rootmodel.DB.Model(&User{}).Where("id = ?", userID).Select("auth_version").Find(&authVersion).Error; err != nil {
 		return nil, err
 	}
 	if authVersion <= 0 {
@@ -409,7 +410,7 @@ func ListActiveUserSessions(userID int, currentSID string, now int64) ([]UserSes
 	sessions := make([]UserSession, 0, userSessionListLimit)
 	if currentSID != "" {
 		var current []UserSession
-		if err := DB.Where(
+		if err := rootmodel.DB.Where(
 			"user_id = ? AND user_auth_version = ? AND status = ? AND expires_at > ? AND sid = ?",
 			userID,
 			authVersion,
@@ -425,7 +426,7 @@ func ListActiveUserSessions(userID int, currentSID string, now int64) ([]UserSes
 	}
 	remainingLimit := userSessionListLimit - len(sessions)
 
-	otherQuery := DB.Where(
+	otherQuery := rootmodel.DB.Where(
 		"user_id = ? AND user_auth_version = ? AND status = ? AND expires_at > ?",
 		userID,
 		authVersion,
@@ -462,7 +463,7 @@ func RotateUserSessionRefresh(userID int, sid, presentedHash, nextHash string, n
 	for range 3 {
 		cacheDeadline := userSessionCacheDeadline()
 		var session UserSession
-		if err := DB.Where("sid = ? AND user_id = ?", sid, userID).First(&session).Error; err != nil {
+		if err := rootmodel.DB.Where("sid = ? AND user_id = ?", sid, userID).First(&session).Error; err != nil {
 			return nil, err
 		}
 		if session.Status != UserSessionStatusActive || session.RevokedAt != 0 || session.ExpiresAt <= now {
@@ -470,7 +471,7 @@ func RotateUserSessionRefresh(userID int, sid, presentedHash, nextHash string, n
 		}
 
 		if hmac.Equal([]byte(session.RefreshHash), []byte(presentedHash)) {
-			result := DB.Model(&UserSession{}).
+			result := rootmodel.DB.Model(&UserSession{}).
 				Where("sid = ? AND user_id = ? AND status = ? AND revoked_at = ? AND expires_at > ? AND refresh_hash = ?",
 					sid, userID, UserSessionStatusActive, 0, now, presentedHash).
 				Updates(map[string]interface{}{
@@ -516,7 +517,7 @@ func RotateUserSessionRefresh(userID int, sid, presentedHash, nextHash string, n
 		if err := writeUserSessionDenyFence(&session, UserSessionStatusRevoking, now, "refresh_reuse"); err != nil {
 			return nil, err
 		}
-		result := DB.Model(&UserSession{}).
+		result := rootmodel.DB.Model(&UserSession{}).
 			Where("sid = ? AND user_id = ? AND status = ? AND revoked_at = ? AND expires_at > ?",
 				sid, userID, UserSessionStatusActive, 0, now).
 			Updates(map[string]interface{}{
@@ -547,7 +548,7 @@ func RevokeUserSession(userID int, sid, reason string) (bool, error) {
 	}
 	now := time.Now().Unix()
 	var candidate UserSession
-	if err := DB.Where("sid = ? AND user_id = ?", sid, userID).First(&candidate).Error; err != nil {
+	if err := rootmodel.DB.Where("sid = ? AND user_id = ?", sid, userID).First(&candidate).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return false, nil
 		}
@@ -561,9 +562,9 @@ func RevokeUserSession(userID int, sid, reason string) (bool, error) {
 	}
 
 	var revoked bool
-	err := DB.Transaction(func(tx *gorm.DB) error {
+	err := rootmodel.DB.Transaction(func(tx *gorm.DB) error {
 		var current UserSession
-		if err := lockForUpdate(tx).Where("sid = ? AND user_id = ?", sid, userID).First(&current).Error; err != nil {
+		if err := rootmodel.LockForUpdate(tx).Where("sid = ? AND user_id = ?", sid, userID).First(&current).Error; err != nil {
 			return err
 		}
 		if current.Status != UserSessionStatusActive || current.RevokedAt != 0 || current.ExpiresAt <= now {
@@ -604,8 +605,8 @@ func RevokeUserSessionByRefreshHash(sid, presentedHash, reason string) (bool, er
 	now := time.Now().Unix()
 	var session UserSession
 	var revoked bool
-	err := DB.Transaction(func(tx *gorm.DB) error {
-		if err := lockForUpdate(tx).Where("sid = ?", sid).First(&session).Error; err != nil {
+	err := rootmodel.DB.Transaction(func(tx *gorm.DB) error {
+		if err := rootmodel.LockForUpdate(tx).Where("sid = ?", sid).First(&session).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil
 			}
@@ -660,8 +661,8 @@ func AdvanceUserSessionAuthVersion(userID int, sid string, expectedSessionVersio
 	cacheDeadline := userSessionCacheDeadline()
 	now := time.Now().Unix()
 	var session UserSession
-	err := DB.Transaction(func(tx *gorm.DB) error {
-		if err := lockForUpdate(tx).Where("sid = ? AND user_id = ?", sid, userID).First(&session).Error; err != nil {
+	err := rootmodel.DB.Transaction(func(tx *gorm.DB) error {
+		if err := rootmodel.LockForUpdate(tx).Where("sid = ? AND user_id = ?", sid, userID).First(&session).Error; err != nil {
 			return err
 		}
 		if session.Status != UserSessionStatusActive || session.ExpiresAt <= now ||
@@ -716,7 +717,7 @@ func revokeUserSessions(userID int, excludedSID, reason string) (int64, error) {
 	now := time.Now().Unix()
 	var totalAffected int64
 	for {
-		query := DB.Where("user_id = ? AND status = ? AND expires_at > ?", userID, UserSessionStatusActive, now)
+		query := rootmodel.DB.Where("user_id = ? AND status = ? AND expires_at > ?", userID, UserSessionStatusActive, now)
 		if excludedSID != "" {
 			query = query.Where("sid <> ?", excludedSID)
 		}
@@ -739,8 +740,8 @@ func revokeUserSessions(userID int, excludedSID, reason string) (int64, error) {
 		}
 		var affected int64
 		var revoked []UserSession
-		err := DB.Transaction(func(tx *gorm.DB) error {
-			if err := lockForUpdate(tx).Where("sid IN ? AND status = ?", sids, UserSessionStatusActive).Find(&revoked).Error; err != nil {
+		err := rootmodel.DB.Transaction(func(tx *gorm.DB) error {
+			if err := rootmodel.LockForUpdate(tx).Where("sid IN ? AND status = ?", sids, UserSessionStatusActive).Find(&revoked).Error; err != nil {
 				return err
 			}
 			if len(revoked) == 0 {
@@ -800,7 +801,7 @@ func DeleteOldRevokedUserSessions(now int64) error {
 func deleteExpiredUserSessionsBefore(expiredBefore, issuanceCutoff, revokedBefore int64) error {
 	for {
 		var sids []string
-		if err := DB.Model(&UserSession{}).
+		if err := rootmodel.DB.Model(&UserSession{}).
 			Where(
 				"expires_at < ? AND created_at <= ? AND (status <> ? OR revoked_at <= 0 OR revoked_at < ?)",
 				expiredBefore,
@@ -819,7 +820,7 @@ func deleteExpiredUserSessionsBefore(expiredBefore, issuanceCutoff, revokedBefor
 			if end > len(sids) {
 				end = len(sids)
 			}
-			if err := DB.Where("sid IN ?", sids[start:end]).
+			if err := rootmodel.DB.Where("sid IN ?", sids[start:end]).
 				Where(
 					"expires_at < ? AND created_at <= ? AND (status <> ? OR revoked_at <= 0 OR revoked_at < ?)",
 					expiredBefore,
@@ -837,7 +838,7 @@ func deleteExpiredUserSessionsBefore(expiredBefore, issuanceCutoff, revokedBefor
 func deleteRevokedUserSessionsBefore(revokedBefore, issuanceCutoff int64) error {
 	for {
 		var sids []string
-		if err := DB.Model(&UserSession{}).
+		if err := rootmodel.DB.Model(&UserSession{}).
 			Where(
 				"status = ? AND revoked_at > 0 AND revoked_at < ? AND created_at <= ?",
 				UserSessionStatusRevoked,
@@ -855,7 +856,7 @@ func deleteRevokedUserSessionsBefore(revokedBefore, issuanceCutoff int64) error 
 			if end > len(sids) {
 				end = len(sids)
 			}
-			if err := DB.Where("sid IN ?", sids[start:end]).
+			if err := rootmodel.DB.Where("sid IN ?", sids[start:end]).
 				Where(
 					"status = ? AND revoked_at > 0 AND revoked_at < ? AND created_at <= ?",
 					UserSessionStatusRevoked,

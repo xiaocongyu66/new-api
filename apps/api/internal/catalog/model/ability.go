@@ -13,6 +13,7 @@ import (
 	"github.com/samber/lo"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 type Ability struct {
@@ -32,7 +33,7 @@ type AbilityWithChannel struct {
 
 func GetAllEnableAbilityWithChannels() ([]AbilityWithChannel, error) {
 	var abilities []AbilityWithChannel
-	err := DB.Table("abilities").
+	err := rootmodel.DB.Table("abilities").
 		Select("abilities.*, channels.type as channel_type").
 		Joins("left join channels on abilities.channel_id = channels.id").
 		Where("abilities.enabled = ?", true).
@@ -43,29 +44,29 @@ func GetAllEnableAbilityWithChannels() ([]AbilityWithChannel, error) {
 func GetGroupEnabledModels(group string) []string {
 	var models []string
 	// Find distinct models
-	DB.Table("abilities").Where(commonGroupCol+" = ? and enabled = ?", group, true).Distinct("model").Pluck("model", &models)
+	rootmodel.DB.Table("abilities").Where(common.CommonGroupCol+" = ? and enabled = ?", group, true).Distinct("model").Pluck("model", &models)
 	return models
 }
 
 func GetEnabledModels() []string {
 	var models []string
 	// Find distinct models
-	DB.Table("abilities").Where("enabled = ?", true).Distinct("model").Pluck("model", &models)
+	rootmodel.DB.Table("abilities").Where("enabled = ?", true).Distinct("model").Pluck("model", &models)
 	return models
 }
 
 func GetAllEnableAbilities() []Ability {
 	var abilities []Ability
-	DB.Find(&abilities, "enabled = ?", true)
+	rootmodel.DB.Find(&abilities, "enabled = ?", true)
 	return abilities
 }
 
 func getPriority(group string, model string, retry int) (int, error) {
 
 	var priorities []int
-	err := DB.Model(&Ability{}).
+	err := rootmodel.DB.Model(&Ability{}).
 		Select("DISTINCT(priority)").
-		Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true).
+		Where(common.CommonGroupCol+" = ? and model = ? and enabled = ?", group, model, true).
 		Order("priority DESC").              // 按优先级降序排序
 		Pluck("priority", &priorities).Error // Pluck用于将查询的结果直接扫描到一个切片中
 
@@ -91,14 +92,14 @@ func getPriority(group string, model string, retry int) (int, error) {
 }
 
 func getChannelQuery(group string, model string, retry int) (*gorm.DB, error) {
-	maxPrioritySubQuery := DB.Model(&Ability{}).Select("MAX(priority)").Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true)
-	channelQuery := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ? and priority = (?)", group, model, true, maxPrioritySubQuery)
+	maxPrioritySubQuery := rootmodel.DB.Model(&Ability{}).Select("MAX(priority)").Where(common.CommonGroupCol+" = ? and model = ? and enabled = ?", group, model, true)
+	channelQuery := rootmodel.DB.Where(common.CommonGroupCol+" = ? and model = ? and enabled = ? and priority = (?)", group, model, true, maxPrioritySubQuery)
 	if retry != 0 {
 		priority, err := getPriority(group, model, retry)
 		if err != nil {
 			return nil, err
 		} else {
-			channelQuery = DB.Where(commonGroupCol+" = ? and model = ? and enabled = ? and priority = ?", group, model, true, priority)
+			channelQuery = rootmodel.DB.Where(common.CommonGroupCol+" = ? and model = ? and enabled = ? and priority = ?", group, model, true, priority)
 		}
 	}
 
@@ -142,12 +143,12 @@ func GetChannel(group string, model string, retry int, requestPath string) (*Cha
 	} else {
 		return nil, nil
 	}
-	err = DB.First(&channel, "id = ?", channel.Id).Error
+	err = rootmodel.DB.First(&channel, "id = ?", channel.Id).Error
 	return &channel, err
 }
 
 // filterAbilitiesByRequestPathAndModel restricts candidates by request path and
-// model for the DB (non-memory-cache) selection path. Only Advanced Custom
+// model for the rootmodel.DB (non-memory-cache) selection path. Only Advanced Custom
 // (type 58) channels are path-checked: kept only when one of their routes matches
 // requestPath and model; all other channel types always pass. When requestPath is
 // empty, filtering is skipped.
@@ -167,7 +168,7 @@ func filterAbilitiesByRequestPathAndModel(abilities []Ability, requestPath strin
 	}
 
 	var channels []*Channel
-	if err := DB.Where("id IN ?", channelIds).Find(&channels).Error; err != nil {
+	if err := rootmodel.DB.Where("id IN ?", channelIds).Find(&channels).Error; err != nil {
 		// On error, fall back to unfiltered candidates to avoid blocking selection
 		return abilities
 	}
@@ -220,8 +221,8 @@ func (channel *Channel) AddAbilities(tx *gorm.DB) error {
 	if len(abilities) == 0 {
 		return nil
 	}
-	// choose DB or provided tx
-	useDB := DB
+	// choose rootmodel.DB or provided tx
+	useDB := rootmodel.DB
 	if tx != nil {
 		useDB = tx
 	}
@@ -235,7 +236,7 @@ func (channel *Channel) AddAbilities(tx *gorm.DB) error {
 }
 
 func (channel *Channel) DeleteAbilities() error {
-	return DB.Where("channel_id = ?", channel.Id).Delete(&Ability{}).Error
+	return rootmodel.DB.Where("channel_id = ?", channel.Id).Delete(&Ability{}).Error
 }
 
 func deleteAbilitiesWithTx(tx *gorm.DB, channelID int) error {
@@ -251,7 +252,7 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 	isNewTx := false
 	// 如果没有传入事务，创建新的事务
 	if tx == nil {
-		tx = DB.Begin()
+		tx = rootmodel.DB.Begin()
 		if tx.Error != nil {
 			return tx.Error
 		}
@@ -318,7 +319,7 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 }
 
 func UpdateAbilityStatus(channelId int, status bool) error {
-	return updateAbilityStatusWithTx(DB, channelId, status)
+	return updateAbilityStatusWithTx(rootmodel.DB, channelId, status)
 }
 
 // updateAbilityStatusWithTx is the tx-aware form of UpdateAbilityStatus. It
@@ -338,10 +339,10 @@ func updateAbilityStatusByTagWithTx(tx *gorm.DB, tag string, status bool) error 
 }
 
 // UpdateAbilityStatusByTag remains the public convenience wrapper. It
-// delegates to the tx-aware form with the shared DB handle so callers that
+// delegates to the tx-aware form with the shared rootmodel.DB handle so callers that
 // are not inside a MutateGatewayRouting transaction keep working.
 func UpdateAbilityStatusByTag(tag string, status bool) error {
-	return updateAbilityStatusByTagWithTx(DB, tag, status)
+	return updateAbilityStatusByTagWithTx(rootmodel.DB, tag, status)
 }
 
 // updateAbilityByTagWithTx is the tx-aware form of UpdateAbilityByTag. It
@@ -362,9 +363,9 @@ func updateAbilityByTagWithTx(tx *gorm.DB, tag string, newTag *string, priority 
 }
 
 // UpdateAbilityByTag remains the public convenience wrapper. It delegates to
-// the tx-aware form with the shared DB handle.
+// the tx-aware form with the shared rootmodel.DB handle.
 func UpdateAbilityByTag(tag string, newTag *string, priority *int64, weight *uint) error {
-	return updateAbilityByTagWithTx(DB, tag, newTag, priority, weight)
+	return updateAbilityByTagWithTx(rootmodel.DB, tag, newTag, priority, weight)
 }
 
 // deleteAbilitiesByChannelIDsWithTx deletes every ability row whose
@@ -400,13 +401,13 @@ func FixAbility() (int, int, error) {
 
 	// truncate abilities table
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
-		err := DB.Exec("DELETE FROM abilities").Error
+		err := rootmodel.DB.Exec("DELETE FROM abilities").Error
 		if err != nil {
 			common.SysLog(fmt.Sprintf("Delete abilities failed: %s", err.Error()))
 			return 0, 0, err
 		}
 	} else {
-		err := DB.Exec("TRUNCATE TABLE abilities").Error
+		err := rootmodel.DB.Exec("TRUNCATE TABLE abilities").Error
 		if err != nil {
 			common.SysLog(fmt.Sprintf("Truncate abilities failed: %s", err.Error()))
 			return 0, 0, err
@@ -414,7 +415,7 @@ func FixAbility() (int, int, error) {
 	}
 	var channels []*Channel
 	// Find all channels
-	err := DB.Model(&Channel{}).Find(&channels).Error
+	err := rootmodel.DB.Model(&Channel{}).Find(&channels).Error
 	if err != nil {
 		return 0, 0, err
 	}
@@ -426,7 +427,7 @@ func FixAbility() (int, int, error) {
 	for _, chunk := range lo.Chunk(channels, 50) {
 		ids := lo.Map(chunk, func(c *Channel, _ int) int { return c.Id })
 		// Delete all abilities of this channel
-		err = DB.Where("channel_id IN ?", ids).Delete(&Ability{}).Error
+		err = rootmodel.DB.Where("channel_id IN ?", ids).Delete(&Ability{}).Error
 		if err != nil {
 			common.SysLog(fmt.Sprintf("Delete abilities failed: %s", err.Error()))
 			failCount += len(chunk)

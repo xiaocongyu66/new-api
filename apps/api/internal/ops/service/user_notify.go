@@ -2,19 +2,25 @@ package service
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service"
+	"github.com/QuantumNous/new-api/common"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 )
 
 func NotifyRootUser(t string, subject string, content string) {
-	user := model.GetRootUser().ToBaseUser()
+	user := identitymodel.GetRootUser().ToBaseUser()
 	err := NotifyUser(user.Id, user.Email, user.GetSetting(), dto.NewNotify(t, subject, content, nil))
 	if err != nil {
 		common.SysLog(fmt.Sprintf("failed to notify root user: %s", err.Error()))
@@ -22,8 +28,8 @@ func NotifyRootUser(t string, subject string, content string) {
 }
 
 func NotifyUpstreamModelUpdateWatchers(subject string, content string) {
-	var users []model.User
-	if err := model.DB.
+	var users []identitymodel.User
+	if err := rootmodel.DB.
 		Select("id", "email", "role", "status", "setting").
 		Where("status = ? AND role >= ?", common.UserStatusEnabled, common.RoleAdminUser).
 		Find(&users).Error; err != nil {
@@ -84,7 +90,7 @@ func NotifyUser(userId int, userEmail string, userSetting dto.UserSetting, data 
 
 		// 获取 webhook secret
 		webhookSecret := userSetting.WebhookSecret
-		return SendWebhookNotify(webhookURLStr, webhookSecret, data)
+return SendWebhookNotify(webhookURLStr, webhookSecret, data)
 	case dto.NotifyTypeBark:
 		barkURL := userSetting.BarkUrl
 		if barkURL == "" {
@@ -132,7 +138,7 @@ func sendBarkNotify(barkURL string, data dto.Notify) error {
 
 	if system_setting.EnableWorker() {
 		// 使用worker发送请求
-		workerReq := &WorkerRequest{
+		workerReq := &egressservice.WorkerRequest{
 			URL:    finalURL,
 			Key:    system_setting.WorkerValidKey,
 			Method: http.MethodGet,
@@ -141,7 +147,7 @@ func sendBarkNotify(barkURL string, data dto.Notify) error {
 			},
 		}
 
-		resp, err = DoWorkerRequest(workerReq)
+		resp, err = egressservice.DoWorkerRequest(workerReq)
 		if err != nil {
 			return fmt.Errorf("failed to send bark request through worker: %v", err)
 		}
@@ -153,7 +159,7 @@ func sendBarkNotify(barkURL string, data dto.Notify) error {
 		}
 	} else {
 		// SSRF防护：验证Bark URL（非Worker模式）
-		if err := ValidateSSRFProtectedFetchURL(finalURL); err != nil {
+		if err := egressservice.ValidateSSRFProtectedFetchURL(finalURL); err != nil {
 			return fmt.Errorf("request reject: %v", err)
 		}
 
@@ -167,7 +173,7 @@ func sendBarkNotify(barkURL string, data dto.Notify) error {
 		req.Header.Set("User-Agent", "OneAPI-Bark-Notify/1.0")
 
 		// 发送请求
-		client := GetSSRFProtectedHTTPClient()
+		client := egressservice.GetSSRFProtectedHTTPClient()
 		resp, err = client.Do(req)
 		if err != nil {
 			return fmt.Errorf("failed to send bark request: %v", err)
@@ -223,7 +229,7 @@ func sendGotifyNotify(gotifyUrl string, gotifyToken string, priority int, data d
 
 	if system_setting.EnableWorker() {
 		// 使用worker发送请求
-		workerReq := &WorkerRequest{
+		workerReq := &egressservice.WorkerRequest{
 			URL:    finalURL,
 			Key:    system_setting.WorkerValidKey,
 			Method: http.MethodPost,
@@ -234,7 +240,7 @@ func sendGotifyNotify(gotifyUrl string, gotifyToken string, priority int, data d
 			Body: payloadBytes,
 		}
 
-		resp, err = DoWorkerRequest(workerReq)
+		resp, err = egressservice.DoWorkerRequest(workerReq)
 		if err != nil {
 			return fmt.Errorf("failed to send gotify request through worker: %v", err)
 		}
@@ -246,7 +252,7 @@ func sendGotifyNotify(gotifyUrl string, gotifyToken string, priority int, data d
 		}
 	} else {
 		// SSRF防护：验证Gotify URL（非Worker模式）
-		if err := ValidateSSRFProtectedFetchURL(finalURL); err != nil {
+		if err := egressservice.ValidateSSRFProtectedFetchURL(finalURL); err != nil {
 			return fmt.Errorf("request reject: %v", err)
 		}
 
@@ -261,7 +267,7 @@ func sendGotifyNotify(gotifyUrl string, gotifyToken string, priority int, data d
 		req.Header.Set("User-Agent", "NewAPI-Gotify-Notify/1.0")
 
 		// 发送请求
-		client := GetSSRFProtectedHTTPClient()
+		client := egressservice.GetSSRFProtectedHTTPClient()
 		resp, err = client.Do(req)
 		if err != nil {
 			return fmt.Errorf("failed to send gotify request: %v", err)
@@ -270,7 +276,90 @@ func sendGotifyNotify(gotifyUrl string, gotifyToken string, priority int, data d
 
 		// 检查响应状态
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return fmt.Errorf("gotify request failed with status code: %d", resp.StatusCode)
+		return fmt.Errorf("gotify request failed with status code: %d", resp.StatusCode)
+		}
+	}
+
+	return nil
+}
+// WebhookPayload webhook 通知的负载数据
+type WebhookPayload struct {
+	Type      string        `json:"type"`
+	Title     string        `json:"title"`
+	Content   string        `json:"content"`
+	Values    []interface{} `json:"values,omitempty"`
+	Timestamp int64         `json:"timestamp"`
+}
+
+// generateSignature 生成 webhook 签名
+func generateSignature(secret string, payload []byte) string {
+	h := hmac.New(sha256.New, []byte(secret))
+	h.Write(payload)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// SendWebhookNotify 发送 webhook 通知
+func SendWebhookNotify(webhookURL string, secret string, data dto.Notify) error {
+	// 处理占位符
+	content := data.Content
+	for _, value := range data.Values {
+		content = fmt.Sprintf(content, value)
+	}
+
+	// 构建 webhook 负载
+	payload := WebhookPayload{
+		Type:      data.Type,
+		Title:     data.Title,
+		Content:   content,
+		Values:    data.Values,
+		Timestamp: time.Now().Unix(),
+	}
+
+	// 序列化负载
+	payloadBytes, err := common.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal webhook payload: %v", err)
+	}
+
+	// 创建 HTTP 请求
+	var req *http.Request
+	var resp *http.Response
+
+	if system_setting.EnableWorker() {
+		// Worker 模式：使用 Worker 发送
+		workerReq := &egressservice.WorkerRequest{
+			URL:    webhookURL,
+			Key:    system_setting.WorkerValidKey,
+			Method: http.MethodPost,
+		}
+		resp, err = egressservice.DoWorkerRequest(workerReq)
+		if err != nil {
+			return fmt.Errorf("failed to send webhook through worker: %v", err)
+		}
+	} else {
+		// 直接模式：创建 HTTP 请求
+		req, err = http.NewRequest(http.MethodPost, webhookURL, bytes.NewBuffer(payloadBytes))
+		if err != nil {
+			return fmt.Errorf("failed to create webhook request: %v", err)
+		}
+
+		// 设置签名
+		if secret != "" {
+			signature := generateSignature(secret, payloadBytes)
+			req.Header.Set("X-Webhook-Signature", signature)
+		}
+
+		// 发送请求
+		client := egressservice.GetSSRFProtectedHTTPClient()
+		resp, err = client.Do(req)
+		if err != nil {
+			return fmt.Errorf("failed to send webhook: %v", err)
+		}
+		defer resp.Body.Close()
+
+		// 检查响应状态
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return fmt.Errorf("webhook request failed with status code: %d", resp.StatusCode)
 		}
 	}
 

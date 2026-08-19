@@ -7,6 +7,8 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 type cacheQuotaResult int
@@ -81,25 +83,25 @@ func quotaResultFromLua(result int, err error) (cacheQuotaResult, error) {
 
 func cacheTryReserveUserQuota(userID int, amount int64) (cacheQuotaResult, error) {
 	result, err := common.RDB.Eval(context.Background(), userQuotaReserveScript,
-		[]string{getUserCacheKey(userID)}, amount, userID, userCacheSchemaVersion).Int()
+		[]string{identitymodel.GetUserCacheKey(userID)}, amount, userID, identitymodel.UserCacheSchemaVersion).Int()
 	return quotaResultFromLua(result, err)
 }
 
 func cacheApplyUserQuotaDelta(userID int, delta int64) (cacheQuotaResult, error) {
 	result, err := common.RDB.Eval(context.Background(), userQuotaDeltaScript,
-		[]string{getUserCacheKey(userID)}, delta, userID, userCacheSchemaVersion).Int()
+		[]string{identitymodel.GetUserCacheKey(userID)}, delta, userID, identitymodel.UserCacheSchemaVersion).Int()
 	return quotaResultFromLua(result, err)
 }
 
 func cacheTryReserveTokenQuota(id int, key string, amount int64) (cacheQuotaResult, error) {
 	result, err := common.RDB.Eval(context.Background(), tokenQuotaReserveScript,
-		[]string{getTokenCacheKey(key)}, amount, id, common.GetTimestamp()).Int()
+		[]string{identitymodel.GetTokenCacheKey(key)}, amount, id, common.GetTimestamp()).Int()
 	return quotaResultFromLua(result, err)
 }
 
 func cacheApplyTokenQuotaDelta(id int, key string, delta int64) (cacheQuotaResult, error) {
 	result, err := common.RDB.Eval(context.Background(), tokenQuotaDeltaScript,
-		[]string{getTokenCacheKey(key)}, delta, id, common.GetTimestamp()).Int()
+		[]string{identitymodel.GetTokenCacheKey(key)}, delta, id, common.GetTimestamp()).Int()
 	return quotaResultFromLua(result, err)
 }
 
@@ -107,10 +109,10 @@ func cacheApplyTokenQuotaDelta(id int, key string, delta int64) (cacheQuotaResul
 // 直写模式下要求行存在（用户已删除时报错，交由调用方补偿缓存）。
 func persistUserQuotaDelta(id int, delta int) error {
 	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUserQuota, id, delta)
+		rootmodel.AddNewRecord(rootmodel.BatchUpdateTypeUserQuota, id, delta)
 		return nil
 	}
-	result := DB.Model(&User{}).Where("id = ?", id).Update("quota", gorm.Expr("quota + ?", delta))
+	result := rootmodel.DB.Model(&identitymodel.User{}).Where("id = ?", id).Update("quota", gorm.Expr("quota + ?", delta))
 	if result.Error != nil {
 		return result.Error
 	}
@@ -122,10 +124,10 @@ func persistUserQuotaDelta(id int, delta int) error {
 
 func persistTokenQuotaDelta(id int, delta int) error {
 	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeTokenQuota, id, delta)
+		rootmodel.AddNewRecord(rootmodel.BatchUpdateTypeTokenQuota, id, delta)
 		return nil
 	}
-	result := DB.Model(&Token{}).Where("id = ?", id).Updates(
+	result := rootmodel.DB.Model(&identitymodel.Token{}).Where("id = ?", id).Updates(
 		map[string]interface{}{
 			"remain_quota":  gorm.Expr("remain_quota + ?", delta),
 			"used_quota":    gorm.Expr("used_quota - ?", delta),
@@ -142,14 +144,14 @@ func persistTokenQuotaDelta(id int, delta int) error {
 }
 
 func reserveUserQuotaDB(id int, quota int) (bool, error) {
-	result := DB.Model(&User{}).
+	result := rootmodel.DB.Model(&identitymodel.User{}).
 		Where("id = ? AND quota >= ?", id, quota).
 		Update("quota", gorm.Expr("quota - ?", quota))
 	return result.RowsAffected == 1, result.Error
 }
 
 func reserveTokenQuotaDB(id int, quota int) (bool, error) {
-	result := DB.Model(&Token{}).
+	result := rootmodel.DB.Model(&identitymodel.Token{}).
 		Where("id = ? AND remain_quota >= ?", id, quota).
 		Updates(map[string]interface{}{
 			"remain_quota":  gorm.Expr("remain_quota - ?", quota),
@@ -175,7 +177,7 @@ func TryReserveUserQuota(id int, quota int) (bool, error) {
 
 	result, err := cacheTryReserveUserQuota(id, int64(quota))
 	if err == nil && result == cacheQuotaMiss {
-		if _, hydrateErr := GetUserCache(id); hydrateErr == nil {
+		if _, hydrateErr := identitymodel.GetUserCache(id); hydrateErr == nil {
 			result, err = cacheTryReserveUserQuota(id, int64(quota))
 		}
 	}
@@ -189,9 +191,9 @@ func TryReserveUserQuota(id int, quota int) (bool, error) {
 		return false, nil
 	}
 	if err = persistUserQuotaDelta(id, -quota); err != nil {
-		compensated, compensateErr := cacheApplyUserQuotaDelta(id, int64(quota))
-		if compensateErr != nil || compensated != cacheQuotaOK {
-			common.SysError(fmt.Sprintf("failed to compensate reserved user quota: result=%d error=%v", compensated, compensateErr))
+		ok, compensateErr := common.ApplyUserQuotaDeltaInCache(id, int64(quota), identitymodel.GetUserCacheKey(id), identitymodel.UserCacheSchemaVersion)
+		if compensateErr != nil || !ok {
+			common.SysError(fmt.Sprintf("failed to compensate reserved user quota: ok=%v error=%v", ok, compensateErr))
 		}
 		return false, err
 	}
@@ -208,7 +210,7 @@ func TryReserveTokenQuota(id int, key string, quota int, unlimited bool) (bool, 
 		return true, nil
 	}
 	if unlimited {
-		return true, DecreaseTokenQuota(id, key, quota)
+		return true, identitymodel.DecreaseTokenQuota(id, key, quota)
 	}
 	if !common.RedisEnabled {
 		return reserveTokenQuotaDB(id, quota)
@@ -216,7 +218,7 @@ func TryReserveTokenQuota(id int, key string, quota int, unlimited bool) (bool, 
 
 	result, err := cacheTryReserveTokenQuota(id, key, int64(quota))
 	if err == nil && result == cacheQuotaMiss {
-		if _, hydrateErr := GetTokenByKey(key, true); hydrateErr == nil {
+		if _, hydrateErr := identitymodel.GetTokenByKey(key, true); hydrateErr == nil {
 			result, err = cacheTryReserveTokenQuota(id, key, int64(quota))
 		}
 	}

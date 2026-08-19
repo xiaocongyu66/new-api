@@ -6,8 +6,10 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
+
 	"github.com/QuantumNous/new-api/setting/perf_metrics_setting"
+	usagemodel "github.com/QuantumNous/new-api/internal/usage/model"
+	"github.com/QuantumNous/new-api/modelapi"
 )
 
 func flushLoop() {
@@ -38,7 +40,7 @@ func flushCompletedBuckets() {
 			return true
 		}
 
-		err := model.UpsertPerfMetric(&model.PerfMetric{
+		err := usagemodel.UpsertPerfMetric(&modelapi.PerfMetric{
 			ModelName:      k.model,
 			Group:          k.group,
 			BucketTs:       k.bucketTs,
@@ -72,7 +74,7 @@ func cleanupExpiredMetrics(retentionDays int) {
 		return
 	}
 	cutoff := time.Now().Add(-time.Duration(retentionDays) * 24 * time.Hour).Unix()
-	if err := model.DeletePerfMetricsBefore(cutoff); err != nil {
+	if err := usagemodel.DeletePerfMetricsBefore(cutoff); err != nil {
 		common.SysError("failed to cleanup expired perf metrics: " + err.Error())
 	}
 }

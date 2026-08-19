@@ -5,20 +5,22 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/stretchr/testify/require"
+	"github.com/QuantumNous/new-api/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 func seedFlowQuotaData(t *testing.T, quotaData QuotaData) {
 	t.Helper()
-	require.NoError(t, DB.Create(&quotaData).Error)
+	require.NoError(t, rootmodel.DB.Create(&quotaData).Error)
 }
 
 func seedFlowLookupData(t *testing.T) {
 	t.Helper()
-	require.NoError(t, DB.Create(&Channel{Id: 1, Name: "east"}).Error)
-	require.NoError(t, DB.Create(&Channel{Id: 2, Name: "west"}).Error)
-	require.NoError(t, DB.Create(&Token{Id: 11, UserId: 1, Key: "sk-primary", Name: "primary"}).Error)
-	require.NoError(t, DB.Create(&Token{Id: 22, UserId: 2, Key: "sk-backup", Name: "backup"}).Error)
-	require.NoError(t, DB.Delete(&Token{Id: 11}).Error)
+	require.NoError(t, rootmodel.DB.Create(&Channel{Id: 1, Name: "east"}).Error)
+	require.NoError(t, rootmodel.DB.Create(&Channel{Id: 2, Name: "west"}).Error)
+	require.NoError(t, rootmodel.DB.Create(&Token{Id: 11, UserId: 1, Key: "sk-primary", Name: "primary"}).Error)
+	require.NoError(t, rootmodel.DB.Create(&Token{Id: 22, UserId: 2, Key: "sk-backup", Name: "backup"}).Error)
+	require.NoError(t, rootmodel.DB.Delete(&Token{Id: 11}).Error)
 }
 
 func TestGetFlowQuotaDataUsesQuotaDataRoleSpecificDimensions(t *testing.T) {
@@ -178,7 +180,7 @@ func TestLogQuotaDataSplitsRowsByUseGroupTokenChannelAndNode(t *testing.T) {
 	SaveQuotaDataCache()
 
 	var rows []QuotaData
-	require.NoError(t, DB.Order("quota DESC").Find(&rows).Error)
+	require.NoError(t, rootmodel.DB.Order("quota DESC").Find(&rows).Error)
 	require.Len(t, rows, 2)
 	require.Equal(t, int64(3600), rows[0].CreatedAt)
 	require.Equal(t, "vip", rows[0].UseGroup)

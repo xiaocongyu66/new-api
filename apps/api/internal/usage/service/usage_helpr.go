@@ -5,6 +5,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/gin-gonic/gin"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service"
 )
 
 //func GetPromptTokens(textRequest dto.GeneralOpenAIRequest, relayMode int) (int, error) {
@@ -23,7 +24,7 @@ func ResponseText2Usage(c *gin.Context, responseText string, modeName string, pr
 	common.SetContextKey(c, constant.ContextKeyLocalCountTokens, true)
 	usage := &dto.Usage{}
 	usage.PromptTokens = promptTokens
-	usage.CompletionTokens = EstimateTokenByModel(modeName, responseText)
+	usage.CompletionTokens = egressservice.EstimateTokenByModel(modeName, responseText)
 	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	return usage
 }

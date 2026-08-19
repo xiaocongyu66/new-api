@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 func TestUpdateOptionRejectsRetiredFrontendTheme(t *testing.T) {
@@ -21,7 +22,7 @@ func TestUpdateOptionRejectsRetiredFrontendTheme(t *testing.T) {
 		strings.NewReader(`{"key":"theme.frontend","value":"classic"}`),
 	)
 
-	UpdateOption(context)
+	rootmodel.UpdateOption(context)
 
 	assert.Equal(t, http.StatusOK, response.Code)
 	assert.JSONEq(t, `{"success":false,"message":"Classic 前端已移除，主题只能设置为 default"}`, response.Body.String())

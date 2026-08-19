@@ -5,6 +5,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 type FlowQuotaData struct {
@@ -34,7 +35,7 @@ func GetFlowQuotaData(startTime int64, endTime int64, username string, userID in
 }
 
 func flowQuotaBaseQuery(startTime int64, endTime int64) *gorm.DB {
-	query := DB.Table("quota_data").
+	query := rootmodel.DB.Table("quota_data").
 		Where("use_group <> ''").
 		Where("created_at >= ? and created_at <= ?", startTime, endTime)
 	return query
@@ -112,7 +113,7 @@ func fillFlowTokenNames(rows []*FlowQuotaData) error {
 		Id   int    `gorm:"column:id"`
 		Name string `gorm:"column:name"`
 	}
-	if err := DB.Model(&Token{}).Select("id, name").Where("id IN ?", tokenIDs).Find(&tokens).Error; err != nil {
+	if err := rootmodel.DB.Table("tokens").Select("id, name").Where("id IN ?", tokenIDs).Find(&tokens).Error; err != nil {
 		return err
 	}
 	tokenNameByID := make(map[int]string, len(tokens))
@@ -149,8 +150,8 @@ func fillFlowChannelNames(rows []*FlowQuotaData) error {
 	channelNameByID := make(map[int]string, len(channelIDs))
 	if common.MemoryCacheEnabled {
 		for _, channelID := range channelIDs {
-			if channel, err := CacheGetChannel(channelID); err == nil {
-				channelNameByID[channelID] = channel.Name
+			if name, ok := rootmodel.ChannelResolverOf().CacheGetChannel(channelID); ok {
+				channelNameByID[channelID] = name
 			}
 		}
 	} else {
@@ -158,7 +159,7 @@ func fillFlowChannelNames(rows []*FlowQuotaData) error {
 			Id   int    `gorm:"column:id"`
 			Name string `gorm:"column:name"`
 		}
-		if err := DB.Table("channels").Select("id, name").Where("id IN ?", channelIDs).Find(&channels).Error; err != nil {
+		if err := rootmodel.DB.Table("channels").Select("id, name").Where("id IN ?", channelIDs).Find(&channels).Error; err != nil {
 			return err
 		}
 		for _, channel := range channels {

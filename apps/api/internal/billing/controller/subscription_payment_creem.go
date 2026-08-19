@@ -9,11 +9,12 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/thanhpk/randstr"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	billingmodel "github.com/QuantumNous/new-api/internal/billing/model"
 )
 
 type SubscriptionCreemPayRequest struct {
@@ -21,7 +22,7 @@ type SubscriptionCreemPayRequest struct {
 }
 
 func SubscriptionRequestCreemPay(c *gin.Context) {
-	if !requirePaymentCompliance(c) {
+	if !RequirePaymentCompliance(c) {
 		return
 	}
 
@@ -41,7 +42,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		return
 	}
 
-	plan, err := model.GetSubscriptionPlanById(req.PlanId)
+	plan, err := billingmodel.GetSubscriptionPlanById(req.PlanId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -60,7 +61,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 	}
 
 	userId := c.GetInt("id")
-	user, err := model.GetUserById(userId, false)
+	user, err := identitymodel.GetUserById(userId, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -71,7 +72,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 	}
 
 	if plan.MaxPurchasePerUser > 0 {
-		count, err := model.CountUserSubscriptionsByPlan(userId, plan.Id)
+		count, err := billingmodel.CountUserSubscriptionsByPlan(userId, plan.Id)
 		if err != nil {
 			common.ApiError(c, err)
 			return
@@ -86,13 +87,13 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 	referenceId := "sub_ref_" + common.Sha1([]byte(reference+time.Now().String()+user.Username))
 
 	// create pending order first
-	order := &model.SubscriptionOrder{
+	order := &billingmodel.SubscriptionOrder{
 		UserId:          userId,
 		PlanId:          plan.Id,
 		Money:           plan.PriceAmount,
 		TradeNo:         referenceId,
-		PaymentMethod:   model.PaymentMethodCreem,
-		PaymentProvider: model.PaymentProviderCreem,
+		PaymentMethod:   billingmodel.PaymentMethodCreem,
+		PaymentProvider: billingmodel.PaymentProviderCreem,
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}

@@ -13,7 +13,6 @@ import (
 
 	"github.com/QuantumNous/new-api/constant"
 	taskdto "github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -21,7 +20,9 @@ import (
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/pkg/errors"
-)
+	"github.com/QuantumNous/new-api/modelapi"
+	taskmodel "github.com/QuantumNous/new-api/internal/task/model"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service")
 
 // ============================
 // Request / Response structures
@@ -206,7 +207,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Token "+key)
 
-	client, err := service.GetHttpClientWithProxy(proxy)
+	client, err := egressservice.GetHttpClientWithProxy(proxy)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
 	}
@@ -253,16 +254,16 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	state := taskResp.State
 	switch state {
 	case "created", "queueing":
-		taskInfo.Status = model.TaskStatusSubmitted
+		taskInfo.Status = taskmodel.TaskStatusSubmitted
 	case "processing":
-		taskInfo.Status = model.TaskStatusInProgress
+		taskInfo.Status = taskmodel.TaskStatusInProgress
 	case "success":
-		taskInfo.Status = model.TaskStatusSuccess
+		taskInfo.Status = taskmodel.TaskStatusSuccess
 		if len(taskResp.Creations) > 0 {
 			taskInfo.Url = taskResp.Creations[0].URL
 		}
 	case "failed":
-		taskInfo.Status = model.TaskStatusFailure
+		taskInfo.Status = taskmodel.TaskStatusFailure
 		if taskResp.ErrCode != "" {
 			taskInfo.Reason = taskResp.ErrCode
 		}
@@ -273,7 +274,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	return taskInfo, nil
 }
 
-func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error) {
+func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *modelapi.Task) ([]byte, error) {
 	var viduResp taskResultResponse
 	if err := common.Unmarshal(originTask.Data, &viduResp); err != nil {
 		return nil, errors.Wrap(err, "unmarshal vidu task data failed")

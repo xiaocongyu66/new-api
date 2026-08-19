@@ -9,15 +9,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 func TestOutboundFingerprintDisabledReturnsEmpty(t *testing.T) {
-	previousDB := model.DB
+	previousDB := rootmodel.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.Option{}))
-	model.DB = db
-	t.Cleanup(func() { model.DB = previousDB })
+	rootmodel.DB = db
+	t.Cleanup(func() { rootmodel.DB = previousDB })
 
 	configJSON := `{"enabled": false, "outbound": {"type": "socks5", "tag": "out"}}`
 	require.NoError(t, db.Create(&model.Option{Key: "proxy_config", Value: configJSON}).Error)
@@ -28,12 +29,12 @@ func TestOutboundFingerprintDisabledReturnsEmpty(t *testing.T) {
 }
 
 func TestOutboundFingerprintEnabledReturnsNonEmpty(t *testing.T) {
-	previousDB := model.DB
+	previousDB := rootmodel.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.Option{}))
-	model.DB = db
-	t.Cleanup(func() { model.DB = previousDB })
+	rootmodel.DB = db
+	t.Cleanup(func() { rootmodel.DB = previousDB })
 
 	outboundJSON := `{"type":"socks5","tag":"out","socks5":{"server":"127.0.0.1","server_port":1080}}`
 	configJSON := `{"enabled": true, "outbound": ` + outboundJSON + `}`
@@ -46,12 +47,12 @@ func TestOutboundFingerprintEnabledReturnsNonEmpty(t *testing.T) {
 }
 
 func TestOutboundFingerprintNoConfigReturnsEmpty(t *testing.T) {
-	previousDB := model.DB
+	previousDB := rootmodel.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.Option{}))
-	model.DB = db
-	t.Cleanup(func() { model.DB = previousDB })
+	rootmodel.DB = db
+	t.Cleanup(func() { rootmodel.DB = previousDB })
 
 	// No proxy_config row in DB
 	fp, raw := outboundFingerprint()
@@ -60,9 +61,9 @@ func TestOutboundFingerprintNoConfigReturnsEmpty(t *testing.T) {
 }
 
 func TestOutboundFingerprintNilDBReturnsEmpty(t *testing.T) {
-	previousDB := model.DB
-	model.DB = nil
-	t.Cleanup(func() { model.DB = previousDB })
+	previousDB := rootmodel.DB
+	rootmodel.DB = nil
+	t.Cleanup(func() { rootmodel.DB = previousDB })
 
 	fp, raw := outboundFingerprint()
 	assert.Empty(t, fp, "fingerprint should be empty when DB is nil")
@@ -70,12 +71,12 @@ func TestOutboundFingerprintNilDBReturnsEmpty(t *testing.T) {
 }
 
 func TestOutboundFingerprintConsistentHash(t *testing.T) {
-	previousDB := model.DB
+	previousDB := rootmodel.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.Option{}))
-	model.DB = db
-	t.Cleanup(func() { model.DB = previousDB })
+	rootmodel.DB = db
+	t.Cleanup(func() { rootmodel.DB = previousDB })
 
 	outboundJSON := `{"type":"vless","tag":"out"}`
 	configJSON := `{"enabled": true, "outbound": ` + outboundJSON + `}`
@@ -89,12 +90,12 @@ func TestOutboundFingerprintConsistentHash(t *testing.T) {
 }
 
 func TestOutboundFingerprintInvalidJSONReturnsEmpty(t *testing.T) {
-	previousDB := model.DB
+	previousDB := rootmodel.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.Option{}))
-	model.DB = db
-	t.Cleanup(func() { model.DB = previousDB })
+	rootmodel.DB = db
+	t.Cleanup(func() { rootmodel.DB = previousDB })
 
 	require.NoError(t, db.Create(&model.Option{Key: "proxy_config", Value: "not-valid-json"}).Error)
 
@@ -103,12 +104,12 @@ func TestOutboundFingerprintInvalidJSONReturnsEmpty(t *testing.T) {
 	assert.Nil(t, raw, "raw should be nil for invalid JSON")
 }
 func TestOutboundFingerprintEncryptedValueReturnsNonEmpty(t *testing.T) {
-	previousDB := model.DB
+	previousDB := rootmodel.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.Option{}))
-	model.DB = db
-	t.Cleanup(func() { model.DB = previousDB })
+	rootmodel.DB = db
+	t.Cleanup(func() { rootmodel.DB = previousDB })
 
 	// Simulate the encrypted storage path: SaveProxyConfigJSON encrypts with AESGCM key "proxy-config".
 	plaintext := `{"enabled": true, "outbound": {"type": "socks5", "server": "127.0.0.1", "server_port": 1080}}`

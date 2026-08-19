@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
 
 	"github.com/samber/lo"
 
@@ -26,7 +25,9 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
-)
+	"github.com/QuantumNous/new-api/modelapi"
+	taskmodel "github.com/QuantumNous/new-api/internal/task/model"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service")
 
 // ============================
 // Request / Response structures
@@ -245,7 +246,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("User-Agent", "kling-sdk/1.0")
 
-	client, err := service.GetHttpClientWithProxy(proxy)
+	client, err := egressservice.GetHttpClientWithProxy(proxy)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
 	}
@@ -349,11 +350,11 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	status := resPayload.Data.TaskStatus
 	switch status {
 	case "submitted":
-		taskInfo.Status = model.TaskStatusSubmitted
+		taskInfo.Status = taskmodel.TaskStatusSubmitted
 	case "processing":
-		taskInfo.Status = model.TaskStatusInProgress
+		taskInfo.Status = taskmodel.TaskStatusInProgress
 	case "succeed":
-		taskInfo.Status = model.TaskStatusSuccess
+		taskInfo.Status = taskmodel.TaskStatusSuccess
 		if videos := resPayload.Data.TaskResult.Videos; len(videos) > 0 {
 			video := videos[0]
 			taskInfo.Url = video.Url
@@ -367,7 +368,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 			}
 		}
 	case "failed":
-		taskInfo.Status = model.TaskStatusFailure
+		taskInfo.Status = taskmodel.TaskStatusFailure
 	default:
 		return nil, fmt.Errorf("unknown task status: %s", status)
 	}
@@ -378,7 +379,7 @@ func isNewAPIRelay(apiKey string) bool {
 	return strings.HasPrefix(apiKey, "sk-")
 }
 
-func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error) {
+func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *modelapi.Task) ([]byte, error) {
 	var klingResp responsePayload
 	if err := common.Unmarshal(originTask.Data, &klingResp); err != nil {
 		return nil, errors.Wrap(err, "unmarshal kling task data failed")

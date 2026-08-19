@@ -1,5 +1,4 @@
 package service
-
 import (
 	"context"
 	"encoding/json"
@@ -10,10 +9,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/QuantumNous/new-api/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
 )
-
 const (
 	ProxyNodeHealthFloor       = 0.05
 	// ProxyNodeHealthyThreshold is the minimum health for a node to count as
@@ -26,36 +24,30 @@ const (
 	ProxyNodeProbeCooldownMax  = 16 * time.Second
 	proxyNodeProbeTimeout      = 15 * time.Second
 )
-
 type ProxyNodeProbeResult struct {
-	Node       model.ProxyNodePublic `json:"node"`
+	Node       catalogmodel.ProxyNodePublic `json:"node"`
 	Success    bool                  `json:"success"`
 	DurationMS int64                 `json:"duration_ms"`
 	Error      string                `json:"error,omitempty"`
 }
-
 type ProxyNodeProbeStats struct {
 	Total   int64 `json:"total"`
 	Success int64 `json:"success"`
 	Active  int64 `json:"active"`
 }
-
 var proxyNodeProbeStats struct {
 	total   atomic.Int64
 	success atomic.Int64
 	active  atomic.Int64
 }
-
 type proxyNodeProbeCounter struct {
 	total   atomic.Int64
 	success atomic.Int64
 }
-
 var (
 	proxyNodeProbeCountersMu sync.RWMutex
 	proxyNodeProbeCounters   = make(map[uint]*proxyNodeProbeCounter)
 )
-
 func getProxyNodeProbeCounter(id uint) *proxyNodeProbeCounter {
 	proxyNodeProbeCountersMu.RLock()
 	counter := proxyNodeProbeCounters[id]
@@ -71,12 +63,10 @@ func getProxyNodeProbeCounter(id uint) *proxyNodeProbeCounter {
 	}
 	return counter
 }
-
 func GetProxyNodeProbeStatsFor(id uint) ProxyNodeProbeStats {
 	counter := getProxyNodeProbeCounter(id)
 	return ProxyNodeProbeStats{Total: counter.total.Load(), Success: counter.success.Load()}
 }
-
 func ResetProxyNodeProbeStatsFor(id uint) {
 	proxyNodeProbeCountersMu.Lock()
 	delete(proxyNodeProbeCounters, id)
@@ -89,34 +79,29 @@ func GetProxyNodeProbeStats() ProxyNodeProbeStats {
 		Active:  proxyNodeProbeStats.active.Load(),
 	}
 }
-
 func ResetProxyNodeProbeStats() {
 	proxyNodeProbeStats.total.Store(0)
 	proxyNodeProbeStats.success.Store(0)
 	proxyNodeProbeStats.active.Store(0)
 }
-
 func beginProxyNodeProbe() {
 	proxyNodeProbeStats.total.Add(1)
 	proxyNodeProbeStats.active.Add(1)
 }
-
 func recordProxyNodeProbeResult(success bool) {
 	if success {
 		proxyNodeProbeStats.success.Add(1)
 	}
 	proxyNodeProbeStats.active.Add(-1)
 }
-
-func ApplyProxyNodeProbeSuccess(node *model.ProxyNode, now time.Time) {
+func ApplyProxyNodeProbeSuccess(node *catalogmodel.ProxyNode, now time.Time) {
 	node.Health = min(1, node.Health+proxyNodeHealthStep)
 	node.FailureCount = 0
 	node.CooldownUntil = nil
 	node.LastError = ""
 	node.LastProbeAt = &now
 }
-
-func ApplyProxyNodeProbeFailure(node *model.ProxyNode, now time.Time, probeError string) {
+func ApplyProxyNodeProbeFailure(node *catalogmodel.ProxyNode, now time.Time, probeError string) {
 	node.Health = max(ProxyNodeHealthFloor, node.Health*proxyNodeHealthDecay)
 	node.FailureCount++
 	cooldown := now.Add(proxyNodeProbeCooldown(node.FailureCount))
@@ -124,22 +109,19 @@ func ApplyProxyNodeProbeFailure(node *model.ProxyNode, now time.Time, probeError
 	node.LastError = redactProxyNodeProbeError(probeError)
 	node.LastProbeAt = &now
 }
-
 func proxyNodeProbeCooldown(failureCount int) time.Duration {
 	if failureCount < 1 {
 		return 0
 	}
 	return min(ProxyNodeProbeCooldownMax, proxyNodeProbeCooldownBase<<min(failureCount-1, 4))
 }
-
-func ProbeProxyNode(ctx context.Context, node *model.ProxyNode) (*ProxyNodeProbeResult, error) {
+func ProbeProxyNode(ctx context.Context, node *catalogmodel.ProxyNode) (*ProxyNodeProbeResult, error) {
 	if node == nil {
 		return nil, fmt.Errorf("proxy node is nil")
 	}
-	if model.DB == nil {
+	if rootmodel.DB == nil {
 		return nil, fmt.Errorf("proxy node database is unavailable")
 	}
-
 	beginProxyNodeProbe()
 	probeSucceeded := false
 	counter := getProxyNodeProbeCounter(node.ID)
@@ -150,7 +132,6 @@ func ProbeProxyNode(ctx context.Context, node *model.ProxyNode) (*ProxyNodeProbe
 			counter.success.Add(1)
 		}
 	}()
-
 	startedAt := time.Now()
 	now := startedAt.UTC()
 	result := &ProxyNodeProbeResult{Node: node.Public()}
@@ -158,13 +139,11 @@ func ProbeProxyNode(ctx context.Context, node *model.ProxyNode) (*ProxyNodeProbe
 	if err != nil {
 		return persistProxyNodeProbeFailure(node, now, startedAt, result, err)
 	}
-
 	dialer, err := BuildSingBoxDialer(json.RawMessage(parsed.OutboundJSON))
 	if err != nil {
 		return persistProxyNodeProbeFailure(node, now, startedAt, result, err)
 	}
 	defer dialer.Close()
-
 	probeCtx, cancel := context.WithTimeout(ctx, proxyNodeProbeTimeout)
 	defer cancel()
 	transport := &http.Transport{
@@ -174,7 +153,6 @@ func ProbeProxyNode(ctx context.Context, node *model.ProxyNode) (*ProxyNodeProbe
 	}
 	client := &http.Client{Transport: transport}
 	defer transport.CloseIdleConnections()
-
 	request, err := http.NewRequestWithContext(probeCtx, http.MethodHead, "https://www.gstatic.com/generate_204", nil)
 	if err == nil {
 		response, requestErr := client.Do(request)
@@ -187,9 +165,8 @@ func ProbeProxyNode(ctx context.Context, node *model.ProxyNode) (*ProxyNodeProbe
 	if err != nil {
 		return persistProxyNodeProbeFailure(node, now, startedAt, result, err)
 	}
-
 	ApplyProxyNodeProbeSuccess(node, now)
-	if err := model.DB.Save(node).Error; err != nil {
+	if err := rootmodel.DB.Save(node).Error; err != nil {
 		return nil, fmt.Errorf("persist proxy node probe success: %w", err)
 	}
 	result.Node = node.Public()
@@ -198,10 +175,9 @@ func ProbeProxyNode(ctx context.Context, node *model.ProxyNode) (*ProxyNodeProbe
 	probeSucceeded = true
 	return result, nil
 }
-
-func persistProxyNodeProbeFailure(node *model.ProxyNode, now, startedAt time.Time, result *ProxyNodeProbeResult, probeErr error) (*ProxyNodeProbeResult, error) {
+func persistProxyNodeProbeFailure(node *catalogmodel.ProxyNode, now, startedAt time.Time, result *ProxyNodeProbeResult, probeErr error) (*ProxyNodeProbeResult, error) {
 	ApplyProxyNodeProbeFailure(node, now, probeErr.Error())
-	if err := model.DB.Save(node).Error; err != nil {
+	if err := rootmodel.DB.Save(node).Error; err != nil {
 		return nil, fmt.Errorf("persist proxy node probe failure: %w", err)
 	}
 	result.Node = node.Public()
@@ -209,7 +185,6 @@ func persistProxyNodeProbeFailure(node *model.ProxyNode, now, startedAt time.Tim
 	result.Error = node.LastError
 	return result, nil
 }
-
 func redactProxyNodeProbeError(probeError string) string {
 	lower := strings.ToLower(probeError)
 	switch {

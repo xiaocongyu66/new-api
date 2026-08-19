@@ -7,10 +7,13 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	identityservice "github.com/QuantumNous/new-api/internal/identity/service"
+	opscontroller "github.com/QuantumNous/new-api/internal/ops/controller"
+	usagemodel "github.com/QuantumNous/new-api/internal/usage/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 // Setup2FARequest 设置2FA请求结构
@@ -40,7 +43,7 @@ func Setup2FA(c *gin.Context) {
 	userId := c.GetInt("id")
 
 	// 检查用户是否已经启用2FA
-	existing, err := model.GetTwoFAByUserId(userId)
+	existing, err := identitymodel.GetTwoFAByUserId(userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -63,7 +66,7 @@ func Setup2FA(c *gin.Context) {
 	}
 
 	// 获取用户信息
-	user, err := model.GetUserById(userId, false)
+	user, err := identitymodel.GetUserById(userId, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -95,7 +98,7 @@ func Setup2FA(c *gin.Context) {
 	qrCodeData := common.GenerateQRCodeData(key.Secret(), user.Username)
 
 	// 创建或更新2FA记录（暂未启用）
-	twoFA := &model.TwoFA{
+	twoFA := &identitymodel.TwoFA{
 		UserId:    userId,
 		Secret:    key.Secret(),
 		IsEnabled: false,
@@ -107,7 +110,7 @@ func Setup2FA(c *gin.Context) {
 	}
 
 	// 创建备用码记录
-	if err := model.CreatePendingTwoFASetupBackupCodes(userId, backupCodes); err != nil {
+	if err := identitymodel.CreatePendingTwoFASetupBackupCodes(userId, backupCodes); err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "保存备用码失败",
@@ -117,7 +120,7 @@ func Setup2FA(c *gin.Context) {
 	}
 
 	// 记录操作日志
-	model.RecordLog(userId, model.LogTypeSystem, "开始设置两步验证")
+	usagemodel.RecordLog(userId, usagemodel.LogTypeSystem, "开始设置两步验证")
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -144,7 +147,7 @@ func Enable2FA(c *gin.Context) {
 	userId := c.GetInt("id")
 
 	// 获取2FA记录
-	twoFA, err := model.GetTwoFAByUserId(userId)
+	twoFA, err := identitymodel.GetTwoFAByUserId(userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -192,14 +195,14 @@ func Enable2FA(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	bundle, err := service.AdvanceCurrentSessionToUserVersion(identity, "twofa_enabled")
+	bundle, err := identityservice.AdvanceCurrentSessionToUserVersion(identity, "twofa_enabled")
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 
 	// 记录操作日志
-	model.RecordLog(userId, model.LogTypeSystem, "成功启用两步验证")
+	usagemodel.RecordLog(userId, usagemodel.LogTypeSystem, "成功启用两步验证")
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -222,7 +225,7 @@ func Disable2FA(c *gin.Context) {
 	userId := c.GetInt("id")
 
 	// 获取2FA记录
-	twoFA, err := model.GetTwoFAByUserId(userId)
+	twoFA, err := identitymodel.GetTwoFAByUserId(userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -271,18 +274,18 @@ func Disable2FA(c *gin.Context) {
 		return
 	}
 	// 禁用2FA并原子推进用户鉴权版本
-	if err := model.DisableTwoFAWithAuthVersion(userId); err != nil {
+	if err := identitymodel.DisableTwoFAWithAuthVersion(userId); err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	bundle, err := service.AdvanceCurrentSessionToUserVersion(identity, "twofa_disabled")
+	bundle, err := identityservice.AdvanceCurrentSessionToUserVersion(identity, "twofa_disabled")
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 
 	// 记录操作日志
-	model.RecordLog(userId, model.LogTypeSystem, "禁用两步验证")
+	usagemodel.RecordLog(userId, usagemodel.LogTypeSystem, "禁用两步验证")
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -295,7 +298,7 @@ func Disable2FA(c *gin.Context) {
 func Get2FAStatus(c *gin.Context) {
 	userId := c.GetInt("id")
 
-	twoFA, err := model.GetTwoFAByUserId(userId)
+	twoFA, err := identitymodel.GetTwoFAByUserId(userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -311,7 +314,7 @@ func Get2FAStatus(c *gin.Context) {
 		status["locked"] = twoFA.IsLocked()
 		if twoFA.IsEnabled {
 			// 获取剩余备用码数量
-			backupCount, err := model.GetUnusedBackupCodeCount(userId)
+			backupCount, err := identitymodel.GetUnusedBackupCodeCount(userId)
 			if err != nil {
 				common.SysLog("获取备用码数量失败: " + err.Error())
 			} else {
@@ -341,7 +344,7 @@ func RegenerateBackupCodes(c *gin.Context) {
 	userId := c.GetInt("id")
 
 	// 获取2FA记录
-	twoFA, err := model.GetTwoFAByUserId(userId)
+	twoFA, err := identitymodel.GetTwoFAByUserId(userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -397,7 +400,7 @@ func RegenerateBackupCodes(c *gin.Context) {
 		return
 	}
 	// 保存新的备用码并原子推进用户鉴权版本
-	if err := model.ReplaceBackupCodesWithAuthVersion(userId, backupCodes); err != nil {
+	if err := identitymodel.ReplaceBackupCodesWithAuthVersion(userId, backupCodes); err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "保存备用码失败",
@@ -405,14 +408,14 @@ func RegenerateBackupCodes(c *gin.Context) {
 		common.SysLog("保存备用码失败: " + err.Error())
 		return
 	}
-	bundle, err := service.AdvanceCurrentSessionToUserVersion(identity, "twofa_backup_codes_regenerated")
+	bundle, err := identityservice.AdvanceCurrentSessionToUserVersion(identity, "twofa_backup_codes_regenerated")
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 
 	// 记录操作日志
-	model.RecordLog(userId, model.LogTypeSystem, "重新生成两步验证备用码")
+	usagemodel.RecordLog(userId, usagemodel.LogTypeSystem, "重新生成两步验证备用码")
 
 	data := authRotationData(bundle)
 	data["backup_codes"] = backupCodes
@@ -434,7 +437,7 @@ func Verify2FALogin(c *gin.Context) {
 		return
 	}
 
-	flow, err := model.GetAuthFlow(req.FlowToken, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeTwoFALogin})
+	flow, err := identitymodel.GetAuthFlow(req.FlowToken, identitymodel.AuthFlowMatch{Purpose: identitymodel.AuthFlowPurposeTwoFALogin})
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -443,7 +446,7 @@ func Verify2FALogin(c *gin.Context) {
 		return
 	}
 	// 获取用户信息
-	user, err := model.GetUserById(flow.UserId, false)
+	user, err := identitymodel.GetUserById(flow.UserId, false)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -468,7 +471,7 @@ func Verify2FALogin(c *gin.Context) {
 	}
 
 	// 获取2FA记录
-	twoFA, err := model.GetTwoFAByUserId(user.Id)
+	twoFA, err := identitymodel.GetTwoFAByUserId(user.Id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -511,8 +514,8 @@ func Verify2FALogin(c *gin.Context) {
 		return
 	}
 
-	if _, err := model.ConsumeAuthFlow(req.FlowToken, model.AuthFlowMatch{
-		Purpose: model.AuthFlowPurposeTwoFALogin,
+	if _, err := identitymodel.ConsumeAuthFlow(req.FlowToken, identitymodel.AuthFlowMatch{
+		Purpose: identitymodel.AuthFlowPurposeTwoFALogin,
 		UserId:  user.Id,
 	}); err != nil {
 		c.JSON(http.StatusOK, gin.H{
@@ -527,7 +530,7 @@ func Verify2FALogin(c *gin.Context) {
 
 // Admin2FAStats 管理员获取2FA统计信息
 func Admin2FAStats(c *gin.Context) {
-	stats, err := model.GetTwoFAStats()
+	stats, err := identitymodel.GetTwoFAStats()
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -553,7 +556,7 @@ func AdminDisable2FA(c *gin.Context) {
 	}
 
 	// 检查目标用户权限
-	targetUser, err := model.GetUserById(userId, false)
+	targetUser, err := identitymodel.GetUserById(userId, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -569,8 +572,8 @@ func AdminDisable2FA(c *gin.Context) {
 	}
 
 	// 禁用2FA
-	if err := model.DisableTwoFAWithAuthVersion(userId); err != nil {
-		if errors.Is(err, model.ErrTwoFANotEnabled) {
+	if err := identitymodel.DisableTwoFAWithAuthVersion(userId); err != nil {
+		if errors.Is(err, rootmodel.ErrTwoFANotEnabled) {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
 				"message": "用户未启用2FA",
@@ -580,12 +583,12 @@ func AdminDisable2FA(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	if _, err := model.RevokeAllUserSessions(userId, "admin_twofa_disabled"); err != nil {
+	if _, err := identitymodel.RevokeAllUserSessions(userId, "admin_twofa_disabled"); err != nil {
 		common.ApiError(c, err)
 		return
 	}
 
-	recordManageAuditFor(c, userId, "user.2fa_disable", nil)
+	opscontroller.RecordManageAuditFor(c, userId, "user.2fa_disable", nil)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

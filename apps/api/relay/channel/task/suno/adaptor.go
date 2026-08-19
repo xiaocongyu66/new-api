@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service"
 )
 
 type TaskAdaptor struct {
@@ -24,7 +25,7 @@ type TaskAdaptor struct {
 }
 
 // ParseTaskResult is not used for Suno tasks.
-// Suno polling uses a dedicated batch-fetch path (service.UpdateSunoTasks) that
+// Suno polling uses a dedicated batch-fetch path (taskservice.UpdateSunoTasks) that
 // receives dto.TaskResponse[[]dto.SunoDataResponse] from the upstream /fetch API.
 // This differs from the per-task polling used by video adaptors.
 func (a *TaskAdaptor) ParseTaskResult([]byte) (*relaycommon.TaskInfo, error) {
@@ -142,7 +143,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+key)
-	client, err := service.GetHttpClientWithProxy(proxy)
+	client, err := egressservice.GetHttpClientWithProxy(proxy)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
 	}

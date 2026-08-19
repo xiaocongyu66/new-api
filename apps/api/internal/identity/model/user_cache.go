@@ -7,11 +7,13 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-
 	"github.com/gin-gonic/gin"
+
+
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
-const userCacheSchemaVersion = 2
+const UserCacheSchemaVersion = 2
 
 type UserBase struct {
 	Id          int    `json:"id"`
@@ -47,7 +49,7 @@ func (user *UserBase) GetSetting() dto.UserSetting {
 }
 
 // getUserCacheKey returns the key for user cache
-func getUserCacheKey(userId int) string {
+func GetUserCacheKey(userId int) string {
 	return fmt.Sprintf("user:%d", userId)
 }
 
@@ -64,7 +66,7 @@ func invalidateUserCache(userId int) error {
 	if !common.RedisEnabled {
 		return nil
 	}
-	return common.RedisDelKey(getUserCacheKey(userId))
+	return common.RedisDelKey(GetUserCacheKey(userId))
 }
 
 func populateUserCache(user User) error {
@@ -120,11 +122,11 @@ func cacheGetUserBase(userId int) (*UserBase, error) {
 	}
 	var userCache UserBase
 	// Try getting from Redis first
-	err := common.RedisHGetObj(getUserCacheKey(userId), &userCache)
+	err := common.RedisHGetObj(GetUserCacheKey(userId), &userCache)
 	if err != nil {
 		return nil, err
 	}
-	if userCache.Id != userId || userCache.CacheSchema != userCacheSchemaVersion || userCache.AuthVersion <= 0 {
+	if userCache.Id != userId || userCache.CacheSchema != UserCacheSchemaVersion || userCache.AuthVersion <= 0 {
 		return nil, fmt.Errorf("user cache schema is stale")
 	}
 	floor, err := getUserAuthVersionFloor(userId)
@@ -140,26 +142,23 @@ func cacheGetUserBase(userId int) (*UserBase, error) {
 // Add atomic quota operations using hash fields.
 // 通过守卫式 Lua 脚本执行：哈希不存在时直接跳过（下次读取会从数据库水合），
 // 不会像裸 HINCRBY 那样创建只含 Quota 字段的残缺哈希。
-func cacheIncrUserQuota(userId int, delta int64) error {
-	if !common.RedisEnabled {
-		return nil
-	}
-	_, err := cacheApplyUserQuotaDelta(userId, delta)
+func CacheIncrUserQuota(userId int, delta int64) error {
+	_, err := common.ApplyUserQuotaDeltaInCache(userId, delta, GetUserCacheKey(userId), UserCacheSchemaVersion)
 	return err
 }
 
 func cacheDecrUserQuota(userId int, delta int64) error {
-	return cacheIncrUserQuota(userId, -delta)
+	return CacheIncrUserQuota(userId, -delta)
 }
 
 // syncCreditUserQuotaCache 在授信事务（充值/兑换等）提交后同步把增量补进缓存
 // 余额。预扣以缓存值为准（存在期间），授信不能绕过它，否则新到账的额度在
 // 缓存过期前不可用；缓存未命中无需处理，下次读取会从已提交的数据库余额水合。
-func syncCreditUserQuotaCache(userId int, quota int, operation string) {
+func SyncCreditUserQuotaCache(userId int, quota int, operation string) {
 	if quota <= 0 {
 		return
 	}
-	if err := cacheIncrUserQuota(userId, int64(quota)); err != nil {
+	if err := CacheIncrUserQuota(userId, int64(quota)); err != nil {
 		common.SysLog(fmt.Sprintf("failed to sync %s credit to user quota cache: %s", operation, err.Error()))
 	}
 }
@@ -207,7 +206,7 @@ func RefreshUserGroupCache(userId int) error {
 		return fmt.Errorf("invalid user id")
 	}
 	var authoritative User
-	if err := DB.Select("id", "auth_version", commonGroupCol).Where("id = ?", userId).First(&authoritative).Error; err != nil {
+	if err := rootmodel.DB.Select("id", "auth_version", common.CommonGroupCol).Where("id = ?", userId).First(&authoritative).Error; err != nil {
 		return err
 	}
 	// Group transitions intentionally keep the same authentication version. A
@@ -220,7 +219,7 @@ func RefreshUserGroupCache(userId int) error {
 		}
 
 		var verified User
-		if err := DB.Select("id", "auth_version", commonGroupCol).Where("id = ?", userId).First(&verified).Error; err != nil {
+		if err := rootmodel.DB.Select("id", "auth_version", common.CommonGroupCol).Where("id = ?", userId).First(&verified).Error; err != nil {
 			return err
 		}
 		if verified.AuthVersion == authoritative.AuthVersion && verified.Group == authoritative.Group {
@@ -258,7 +257,7 @@ func updateUserCacheField(userId int, field string, value interface{}) error {
 		return nil
 	}
 	var user User
-	if err := DB.Select("id", "auth_version").Where("id = ?", userId).First(&user).Error; err != nil {
+	if err := rootmodel.DB.Select("id", "auth_version").Where("id = ?", userId).First(&user).Error; err != nil {
 		return err
 	}
 	if user.AuthVersion <= 0 {

@@ -19,13 +19,13 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/samber/lo"
 
 	"github.com/gin-gonic/gin"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
 )
 
 const (
@@ -168,7 +168,7 @@ func FetchUpstreamRatios(c *gin.Context) {
 		for _, id64 := range req.ChannelIDs {
 			intIds = append(intIds, int(id64))
 		}
-		dbChannels, err := model.GetChannelsByIds(intIds)
+		dbChannels, err := catalogmodel.GetChannelsByIds(intIds)
 		if err != nil {
 			logger.LogError(c.Request.Context(), "failed to query channels: "+err.Error())
 			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "查询渠道失败"})
@@ -260,7 +260,7 @@ func FetchUpstreamRatios(c *gin.Context) {
 
 			// OpenRouter requires Bearer token auth
 			if isOpenRouter && chItem.ID != 0 {
-				dbCh, err := model.GetChannelById(chItem.ID, true)
+				dbCh, err := catalogmodel.GetChannelById(chItem.ID, true)
 				if err != nil {
 					ch <- upstreamResult{Name: uniqueName, Err: "failed to get channel key: " + err.Error()}
 					return
@@ -985,7 +985,7 @@ func convertModelsDevToRatioData(reader io.Reader) (map[string]any, error) {
 }
 
 func GetSyncableChannels(c *gin.Context) {
-	channels, err := model.GetAllChannels(0, 0, true, false)
+	channels, err := catalogmodel.GetAllChannels(0, 0, true, false)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,

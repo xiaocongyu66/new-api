@@ -11,13 +11,13 @@ import (
 	"strings"
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/bytedance/gopkg/cache/asynccache"
 	"github.com/golang-jwt/jwt/v5"
 
 	"fmt"
 	"time"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service"
 )
 
 type Credentials struct {
@@ -111,7 +111,7 @@ func exchangeJwtForAccessToken(signedJWT string, info *relaycommon.RelayInfo) (s
 	data.Set("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
 	data.Set("assertion", signedJWT)
 
-	client, err := service.GetHttpClientWithProxySettings(info.ChannelSetting.Proxy, info.ChannelSetting)
+	client, err := egressservice.GetHttpClientWithProxySettings(info.ChannelSetting.Proxy, info.ChannelSetting)
 	if err != nil {
 		return "", fmt.Errorf("new proxy http client failed: %w", err)
 	}
@@ -151,12 +151,12 @@ func exchangeJwtForAccessTokenWithProxy(signedJWT string, proxy string) (string,
 	var client *http.Client
 	var err error
 	if proxy != "" {
-		client, err = service.GetHttpClientWithProxy(proxy)
+		client, err = egressservice.GetHttpClientWithProxy(proxy)
 		if err != nil {
 			return "", fmt.Errorf("new proxy http client failed: %w", err)
 		}
 	} else {
-		client = service.GetHttpClient()
+		client = egressservice.GetHttpClient()
 	}
 
 	resp, err := client.PostForm(authURL, data)

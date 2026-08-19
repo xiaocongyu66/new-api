@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
 )
 
 const GatewayRoutingRevisionChannel = "new-api:gateway:routing-revision:v1"
@@ -39,21 +39,21 @@ func PublishGatewayRoutingRevision(ctx context.Context, revision int64) error {
 }
 
 func PublishPendingGatewayRevisions(ctx context.Context, limit int) error {
-	rows, err := model.ListPendingGatewayConfigOutbox(limit)
+	rows, err := catalogmodel.ListPendingGatewayConfigOutbox(limit)
 	if err != nil {
 		return err
 	}
 	for _, row := range rows {
 		if err := PublishGatewayRoutingRevision(ctx, row.RoutingRevision); err != nil {
-			if recordErr := model.RecordGatewayConfigOutboxAttempt(row.ID, classifyGatewayOutboxError(err)); recordErr != nil {
+			if recordErr := catalogmodel.RecordGatewayConfigOutboxAttempt(row.ID, classifyGatewayOutboxError(err)); recordErr != nil {
 				return recordErr
 			}
 			continue
 		}
-		if err := model.RecordGatewayConfigOutboxAttempt(row.ID, "published"); err != nil {
+		if err := catalogmodel.RecordGatewayConfigOutboxAttempt(row.ID, "published"); err != nil {
 			return err
 		}
-		if err := model.MarkGatewayConfigOutboxPublished(row.ID, time.Now()); err != nil {
+		if err := catalogmodel.MarkGatewayConfigOutboxPublished(row.ID, time.Now()); err != nil {
 			return err
 		}
 	}

@@ -5,9 +5,10 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 type Setup struct {
@@ -35,7 +36,7 @@ func GetSetup(c *gin.Context) {
 		})
 		return
 	}
-	setup.RootInit = model.RootUserExists()
+	setup.RootInit = identitymodel.RootUserExists()
 	setup.DatabaseType = string(common.MainDatabaseType())
 	c.JSON(200, gin.H{
 		"success": true,
@@ -54,7 +55,7 @@ func PostSetup(c *gin.Context) {
 	}
 
 	// Check if root user already exists
-	rootExists := model.RootUserExists()
+	rootExists := identitymodel.RootUserExists()
 
 	var req SetupRequest
 	err := c.ShouldBindJSON(&req)
@@ -68,7 +69,7 @@ func PostSetup(c *gin.Context) {
 
 	// If root doesn't exist, validate and create admin account
 	if !rootExists {
-		// Validate username length: max 12 characters to align with model.User validation
+		// Validate username length: max 12 characters to align with identitymodel.User validation
 		if len(req.Username) > 12 {
 			c.JSON(200, gin.H{
 				"success": false,
@@ -102,7 +103,7 @@ func PostSetup(c *gin.Context) {
 			})
 			return
 		}
-		rootUser := model.User{
+		rootUser := identitymodel.User{
 			Username:    req.Username,
 			Password:    hashedPassword,
 			Role:        common.RoleRootUser,
@@ -111,7 +112,7 @@ func PostSetup(c *gin.Context) {
 			AccessToken: nil,
 			Quota:       100000000,
 		}
-		err = model.DB.Create(&rootUser).Error
+		err = rootmodel.DB.Create(&rootUser).Error
 		if err != nil {
 			c.JSON(200, gin.H{
 				"success": false,
@@ -126,7 +127,7 @@ func PostSetup(c *gin.Context) {
 	operation_setting.DemoSiteEnabled = req.DemoSiteEnabled
 
 	// Save operation modes to database for persistence
-	err = model.UpdateOption("SelfUseModeEnabled", boolToString(req.SelfUseModeEnabled))
+	err = rootmodel.UpdateOption("SelfUseModeEnabled", boolToString(req.SelfUseModeEnabled))
 	if err != nil {
 		c.JSON(200, gin.H{
 			"success": false,
@@ -135,7 +136,7 @@ func PostSetup(c *gin.Context) {
 		return
 	}
 
-	err = model.UpdateOption("DemoSiteEnabled", boolToString(req.DemoSiteEnabled))
+	err = rootmodel.UpdateOption("DemoSiteEnabled", boolToString(req.DemoSiteEnabled))
 	if err != nil {
 		c.JSON(200, gin.H{
 			"success": false,
@@ -147,11 +148,11 @@ func PostSetup(c *gin.Context) {
 	// Update setup status
 	constant.Setup = true
 
-	setup := model.Setup{
+	setup := rootmodel.Setup{
 		Version:       common.Version,
 		InitializedAt: time.Now().Unix(),
 	}
-	err = model.DB.Create(&setup).Error
+	err = rootmodel.DB.Create(&setup).Error
 	if err != nil {
 		c.JSON(200, gin.H{
 			"success": false,

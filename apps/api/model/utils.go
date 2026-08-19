@@ -20,13 +20,13 @@ const (
 	BatchUpdateTypeCount // if you add a new type, you need to add a new map and a new lock
 )
 
-var batchUpdateStores []map[int]int
-var batchUpdateLocks []sync.Mutex
+var BatchUpdateStores []map[int]int
+var BatchUpdateLocks []sync.Mutex
 
 func init() {
 	for i := 0; i < BatchUpdateTypeCount; i++ {
-		batchUpdateStores = append(batchUpdateStores, make(map[int]int))
-		batchUpdateLocks = append(batchUpdateLocks, sync.Mutex{})
+		BatchUpdateStores = append(BatchUpdateStores, make(map[int]int))
+		BatchUpdateLocks = append(BatchUpdateLocks, sync.Mutex{})
 	}
 }
 
@@ -34,32 +34,32 @@ func InitBatchUpdater() {
 	gopool.Go(func() {
 		for {
 			time.Sleep(time.Duration(common.BatchUpdateInterval) * time.Second)
-			batchUpdate()
+			BatchUpdate()
 		}
 	})
 }
 
-func addNewRecord(type_ int, id int, value int) {
-	batchUpdateLocks[type_].Lock()
-	defer batchUpdateLocks[type_].Unlock()
-	if _, ok := batchUpdateStores[type_][id]; !ok {
-		batchUpdateStores[type_][id] = value
+func AddNewRecord(type_ int, id int, value int) {
+	BatchUpdateLocks[type_].Lock()
+	defer BatchUpdateLocks[type_].Unlock()
+	if _, ok := BatchUpdateStores[type_][id]; !ok {
+		BatchUpdateStores[type_][id] = value
 	} else {
-		batchUpdateStores[type_][id] += value
+		BatchUpdateStores[type_][id] += value
 	}
 }
 
-func batchUpdate() {
+func BatchUpdate() {
 	// check if there's any data to update
 	hasData := false
 	for i := 0; i < BatchUpdateTypeCount; i++ {
-		batchUpdateLocks[i].Lock()
-		if len(batchUpdateStores[i]) > 0 {
+		BatchUpdateLocks[i].Lock()
+		if len(BatchUpdateStores[i]) > 0 {
 			hasData = true
-			batchUpdateLocks[i].Unlock()
+			BatchUpdateLocks[i].Unlock()
 			break
 		}
-		batchUpdateLocks[i].Unlock()
+		BatchUpdateLocks[i].Unlock()
 	}
 
 	if !hasData {
@@ -69,45 +69,51 @@ func batchUpdate() {
 	common.SysLog("batch update started")
 	stores := make([]map[int]int, BatchUpdateTypeCount)
 	for i := 0; i < BatchUpdateTypeCount; i++ {
-		batchUpdateLocks[i].Lock()
-		stores[i] = batchUpdateStores[i]
-		batchUpdateStores[i] = make(map[int]int)
-		batchUpdateLocks[i].Unlock()
+		BatchUpdateLocks[i].Lock()
+		stores[i] = BatchUpdateStores[i]
+		BatchUpdateStores[i] = make(map[int]int)
+		BatchUpdateLocks[i].Unlock()
 	}
 
-	for i, store := range stores {
-		if i == BatchUpdateTypeUserQuota || i == BatchUpdateTypeUsedQuota || i == BatchUpdateTypeRequestCount {
-			continue
-		}
-		for key, value := range store {
-			switch i {
-			case BatchUpdateTypeTokenQuota:
-				err := increaseTokenQuota(key, value)
-				if err != nil {
-					common.SysLog("failed to batch update token quota: " + err.Error())
+	updater := BatchUpdaterOf()
+	if updater == nil {
+		common.SysLog("batch update skipped: no BatchUpdater registered")
+	} else {
+		for i, store := range stores {
+			if i == BatchUpdateTypeUserQuota || i == BatchUpdateTypeUsedQuota || i == BatchUpdateTypeRequestCount {
+				continue
+			}
+			for key, value := range store {
+				switch i {
+				case BatchUpdateTypeTokenQuota:
+					if err := updater.IncreaseTokenQuota(key, value); err != nil {
+						common.SysLog("failed to batch update token quota: " + err.Error())
+					}
+				case BatchUpdateTypeChannelUsedQuota:
+					updater.UpdateChannelUsedQuota(key, value)
 				}
-			case BatchUpdateTypeChannelUsedQuota:
-				updateChannelUsedQuota(key, value)
 			}
 		}
-	}
 
-	userQuotaStore := stores[BatchUpdateTypeUserQuota]
-	usedQuotaStore := stores[BatchUpdateTypeUsedQuota]
-	requestCountStore := stores[BatchUpdateTypeRequestCount]
+		userQuotaStore := stores[BatchUpdateTypeUserQuota]
+		usedQuotaStore := stores[BatchUpdateTypeUsedQuota]
+		requestCountStore := stores[BatchUpdateTypeRequestCount]
 
-	userIDs := make(map[int]struct{}, len(userQuotaStore)+len(usedQuotaStore)+len(requestCountStore))
-	for key := range userQuotaStore {
-		userIDs[key] = struct{}{}
-	}
-	for key := range usedQuotaStore {
-		userIDs[key] = struct{}{}
-	}
-	for key := range requestCountStore {
-		userIDs[key] = struct{}{}
-	}
-	for key := range userIDs {
-		updateUserQuotaUsedQuotaAndRequestCount(key, userQuotaStore[key], usedQuotaStore[key], requestCountStore[key])
+		userIDs := make(map[int]struct{}, len(userQuotaStore)+len(usedQuotaStore)+len(requestCountStore))
+		for key := range userQuotaStore {
+			userIDs[key] = struct{}{}
+		}
+		for key := range usedQuotaStore {
+			userIDs[key] = struct{}{}
+		}
+		for key := range requestCountStore {
+			userIDs[key] = struct{}{}
+		}
+		for key := range userIDs {
+			if err := updater.UpdateUserQuotaUsedQuotaAndRequestCount(key, userQuotaStore[key], usedQuotaStore[key], requestCountStore[key]); err != nil {
+				common.SysLog("failed to batch update user quota: " + err.Error())
+			}
+		}
 	}
 	common.SysLog("batch update finished")
 }
@@ -122,6 +128,6 @@ func RecordExist(err error) (bool, error) {
 	return false, err
 }
 
-func shouldUpdateRedis(fromDB bool, err error) bool {
+func ShouldUpdateRedis(fromDB bool, err error) bool {
 	return common.RedisEnabled && fromDB && err == nil
 }

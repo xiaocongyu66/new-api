@@ -13,8 +13,8 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/bytedance/gopkg/util/gopool"
@@ -53,7 +53,7 @@ func copyCodexSSEHeaders(c *gin.Context, resp *http.Response) {
 	// codex
 	for _, name := range []string{"X-Reasoning-Included", "X-Codex-Turn-State"} {
 		values := resp.Header.Values(name)
-		if !service.ShouldCopyUpstreamHeader(c, name, values) {
+		if !egressservice.ShouldCopyUpstreamHeader(c, name, values) {
 			continue
 		}
 		for _, value := range values {

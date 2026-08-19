@@ -13,12 +13,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
 )
 
 func TestChannelHasSensitiveChanges(t *testing.T) {
 	baseURL := "https://api.example.com"
 	headerOverride := `{"Authorization":"Bearer {api_key}"}`
-	origin := &model.Channel{
+	origin := &catalogmodel.Channel{
 		Type:           1,
 		Key:            "old-key",
 		BaseURL:        &baseURL,
@@ -97,7 +98,7 @@ func TestChannelHasSensitiveChanges(t *testing.T) {
 }
 
 func TestClearChannelReadOnlyFields(t *testing.T) {
-	channel := PatchChannel{Channel: model.Channel{
+	channel := PatchChannel{Channel: catalogmodel.Channel{
 		CreatedTime:        11,
 		TestTime:           22,
 		ResponseTime:       33,
@@ -159,7 +160,7 @@ func TestChannelStatusValidation(t *testing.T) {
 }
 
 // TestChannelFieldsAreClassified guards the fail-closed sensitivity check: every
-// JSON field of PatchChannel (including the embedded model.Channel) must be listed
+// JSON field of PatchChannel (including the embedded catalogmodel.Channel) must be listed
 // in channelSensitiveFields, channelNonSensitiveFields, or
 // channelOperationalFields. A newly added field that is left unclassified will
 // fail this test, forcing a conscious permission decision instead of silently

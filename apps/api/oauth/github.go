@@ -13,8 +13,9 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/model"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
 	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/modelapi"
 )
 
 func init() {
@@ -161,15 +162,15 @@ func (p *GitHubProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*O
 }
 
 func (p *GitHubProvider) IsUserIDTaken(providerUserID string) bool {
-	return model.IsGitHubIdAlreadyTaken(providerUserID)
+	return identitymodel.IsGitHubIdAlreadyTaken(providerUserID)
 }
 
-func (p *GitHubProvider) FillUserByProviderID(user *model.User, providerUserID string) error {
+func (p *GitHubProvider) FillUserByProviderID(user *modelapi.User, providerUserID string) error {
 	user.GitHubId = providerUserID
 	return user.FillUserByGitHubId()
 }
 
-func (p *GitHubProvider) SetProviderUserID(user *model.User, providerUserID string) {
+func (p *GitHubProvider) SetProviderUserID(user *modelapi.User, providerUserID string) {
 	user.GitHubId = providerUserID
 }
 
@@ -178,6 +179,7 @@ func (p *GitHubProvider) GetProviderPrefix() string {
 }
 
 // ProviderUserIDColumn returns the users-table column storing this provider's user ID.
-func (p *GitHubProvider) ProviderUserIDColumn() string {
+func (p *GitHubProvider) ProviderUserIDColumn(
+) string {
 	return "github_id"
 }

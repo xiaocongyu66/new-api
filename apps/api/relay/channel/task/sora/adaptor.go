@@ -13,7 +13,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -22,7 +21,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
 	"github.com/tidwall/sjson"
-)
+	"github.com/QuantumNous/new-api/modelapi"
+	taskmodel "github.com/QuantumNous/new-api/internal/task/model"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service")
 
 // ============================
 // Request / Response structures
@@ -272,7 +273,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 
 	req.Header.Set("Authorization", "Bearer "+key)
 
-	client, err := service.GetHttpClientWithProxy(proxy)
+	client, err := egressservice.GetHttpClientWithProxy(proxy)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
 	}
@@ -299,14 +300,14 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 
 	switch resTask.Status {
 	case "queued", "pending":
-		taskResult.Status = model.TaskStatusQueued
+		taskResult.Status = taskmodel.TaskStatusQueued
 	case "processing", "in_progress":
-		taskResult.Status = model.TaskStatusInProgress
+		taskResult.Status = taskmodel.TaskStatusInProgress
 	case "completed":
-		taskResult.Status = model.TaskStatusSuccess
+		taskResult.Status = taskmodel.TaskStatusSuccess
 		// Url intentionally left empty — the caller constructs the proxy URL using the public task ID
 	case "failed", "cancelled":
-		taskResult.Status = model.TaskStatusFailure
+		taskResult.Status = taskmodel.TaskStatusFailure
 		if resTask.Error != nil {
 			taskResult.Reason = resTask.Error.Message
 		} else {
@@ -321,7 +322,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	return &taskResult, nil
 }
 
-func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
+func (a *TaskAdaptor) ConvertToOpenAIVideo(task *modelapi.Task) ([]byte, error) {
 	data := task.Data
 	var err error
 	if data, err = sjson.SetBytes(data, "id", task.TaskID); err != nil {

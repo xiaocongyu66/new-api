@@ -15,23 +15,24 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 func setupProxyConfigControllerTest(t *testing.T) *gorm.DB {
 	t.Helper()
-	previousDB := model.DB
+	previousDB := rootmodel.DB
 	previousSecret := common.CryptoSecret
 	dsn := "file:proxy-config-controller-test?mode=memory&cache=private"
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.Option{}))
-	model.DB = db
+	rootmodel.DB = db
 	common.CryptoSecret = "proxy-config-controller-test-secret"
 	if common.OptionMap == nil {
 		common.OptionMap = make(map[string]string)
 	}
 	t.Cleanup(func() {
-		model.DB = previousDB
+		rootmodel.DB = previousDB
 		common.CryptoSecret = previousSecret
 	})
 	return db

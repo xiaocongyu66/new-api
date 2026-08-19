@@ -14,8 +14,9 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/model"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
 	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/modelapi"
 )
 
 func init() {
@@ -168,15 +169,15 @@ func (p *LinuxDOProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*
 }
 
 func (p *LinuxDOProvider) IsUserIDTaken(providerUserID string) bool {
-	return model.IsLinuxDOIdAlreadyTaken(providerUserID)
+	return identitymodel.IsLinuxDOIdAlreadyTaken(providerUserID)
 }
 
-func (p *LinuxDOProvider) FillUserByProviderID(user *model.User, providerUserID string) error {
+func (p *LinuxDOProvider) FillUserByProviderID(user *modelapi.User, providerUserID string) error {
 	user.LinuxDOId = providerUserID
 	return user.FillUserByLinuxDOId()
 }
 
-func (p *LinuxDOProvider) SetProviderUserID(user *model.User, providerUserID string) {
+func (p *LinuxDOProvider) SetProviderUserID(user *modelapi.User, providerUserID string) {
 	user.LinuxDOId = providerUserID
 }
 
@@ -195,6 +196,7 @@ type TrustLevelError struct {
 	Current  int
 }
 
-func (e *TrustLevelError) Error() string {
+func (e *TrustLevelError) Error(
+) string {
 	return "trust level too low"
 }

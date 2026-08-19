@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 
 	"gorm.io/gorm"
+	"github.com/QuantumNous/new-api/model"
 )
 
 // PrefillGroup 用于存储可复用的“组”信息，例如模型组、标签组、端点组等。
@@ -89,7 +90,7 @@ func (g *PrefillGroup) Insert() error {
 	now := common.GetTimestamp()
 	g.CreatedTime = now
 	g.UpdatedTime = now
-	return DB.Create(g).Error
+	return model.DB.Create(g).Error
 }
 
 // IsPrefillGroupNameDuplicated 检查组名称是否重复（排除自身 ID）
@@ -98,25 +99,25 @@ func IsPrefillGroupNameDuplicated(id int, name string) (bool, error) {
 		return false, nil
 	}
 	var cnt int64
-	err := DB.Model(&PrefillGroup{}).Where("name = ? AND id <> ?", name, id).Count(&cnt).Error
+	err := model.DB.Model(&PrefillGroup{}).Where("name = ? AND id <> ?", name, id).Count(&cnt).Error
 	return cnt > 0, err
 }
 
 // Update 更新组
 func (g *PrefillGroup) Update() error {
 	g.UpdatedTime = common.GetTimestamp()
-	return DB.Save(g).Error
+	return model.DB.Save(g).Error
 }
 
 // DeleteByID 根据 ID 删除组
 func DeletePrefillGroupByID(id int) error {
-	return DB.Delete(&PrefillGroup{}, id).Error
+	return model.DB.Delete(&PrefillGroup{}, id).Error
 }
 
 // GetAllPrefillGroups 获取全部组，可按类型过滤（为空则返回全部）
 func GetAllPrefillGroups(groupType string) ([]*PrefillGroup, error) {
 	var groups []*PrefillGroup
-	query := DB.Model(&PrefillGroup{})
+	query := model.DB.Model(&PrefillGroup{})
 	if groupType != "" {
 		query = query.Where("type = ?", groupType)
 	}

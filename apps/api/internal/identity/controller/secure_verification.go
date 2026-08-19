@@ -8,9 +8,11 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
+	identityservice "github.com/QuantumNous/new-api/internal/identity/service"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	catalogcontroller "github.com/QuantumNous/new-api/internal/catalog/controller"
+	usagemodel "github.com/QuantumNous/new-api/internal/usage/model"
 )
 
 const (
@@ -47,7 +49,7 @@ func UniversalVerify(c *gin.Context) {
 		common.ApiError(c, errors.New("验证码不能为空"))
 		return
 	}
-	twoFA, err := model.GetTwoFAByUserId(identity.UserID)
+	twoFA, err := identitymodel.GetTwoFAByUserId(identity.UserID)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -56,16 +58,16 @@ func UniversalVerify(c *gin.Context) {
 		common.ApiError(c, errors.New("用户未启用2FA"))
 		return
 	}
-	if !validateTwoFactorAuth(twoFA, request.Code) {
+	if !catalogcontroller.ValidateTwoFactorAuth(twoFA, request.Code) {
 		common.ApiError(c, errors.New("验证失败，请检查验证码"))
 		return
 	}
-	proofToken, expiresAt, err := service.IssueSecurityProof(identity, request.Method, []string{request.Scope})
+	proofToken, expiresAt, err := identityservice.IssueSecurityProof(identity, request.Method, []string{request.Scope})
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	model.RecordLog(identity.UserID, model.LogTypeSystem, "通用安全验证成功 (验证方式: 2FA)")
+	usagemodel.RecordLog(identity.UserID, usagemodel.LogTypeSystem, "通用安全验证成功 (验证方式: 2FA)")
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "验证成功",

@@ -12,9 +12,10 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	hosttypes "github.com/QuantumNous/new-api/types"
+	catalogservice "github.com/QuantumNous/new-api/internal/catalog/service"
 
 	"github.com/gin-gonic/gin"
+	hosttypes "github.com/QuantumNous/new-api/types"
 )
 
 // attachQuotaSaturationToOther nests a quota saturation marker under
@@ -22,7 +23,7 @@ import (
 // admin-only for free, since model.formatUserLogs strips the whole admin_info
 // object for non-admin viewers. Creates admin_info if absent. No-op when the
 // clamp is nil (the common case: no saturation happened).
-func attachQuotaSaturationToOther(other map[string]interface{}, clamp *common.QuotaClamp) {
+func AttachQuotaSaturationToOther(other map[string]interface{}, clamp *common.QuotaClamp) {
 	if clamp == nil || other == nil {
 		return
 	}
@@ -37,7 +38,7 @@ func attachQuotaSaturationToOther(other map[string]interface{}, clamp *common.Qu
 // attachQuotaSaturation records the request's quota clamp (if any) onto the
 // consume log's other.admin_info and emits a request-correlated backend audit
 // line. Called right before RecordConsumeLog on the text/audio/wss paths.
-func attachQuotaSaturation(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
+func AttachQuotaSaturation(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
 	if relayInfo == nil {
 		return
 	}
@@ -45,7 +46,7 @@ func attachQuotaSaturation(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, o
 	if clamp == nil {
 		return
 	}
-	attachQuotaSaturationToOther(other, clamp)
+	AttachQuotaSaturationToOther(other, clamp)
 	logger.LogWarn(ctx, fmt.Sprintf("quota saturation on consume log: op=%s kind=%s original=%g clamped=%d user=%d model=%s",
 		clamp.Op, clamp.Kind, clamp.Original, clamp.Clamped, relayInfo.UserId, relayInfo.OriginModelName))
 }
@@ -106,7 +107,7 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 		adminInfo["local_count_tokens"] = isLocalCountTokens
 	}
 
-	AppendChannelAffinityAdminInfo(ctx, adminInfo)
+	catalogservice.AppendChannelAffinityAdminInfo(ctx, adminInfo)
 
 	other["admin_info"] = adminInfo
 	appendRequestPath(ctx, relayInfo, other)

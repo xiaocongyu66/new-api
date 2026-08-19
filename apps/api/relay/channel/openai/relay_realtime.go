@@ -14,6 +14,7 @@ import (
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service"
 )
 
 func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.NewAPIError, *dto.RealtimeUsage) {
@@ -70,7 +71,7 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 					}
 				}
 
-				textToken, audioToken, err := service.CountTokenRealtime(info, *realtimeEvent, info.UpstreamModelName)
+				textToken, audioToken, err := egressservice.CountTokenRealtime(info, *realtimeEvent, info.UpstreamModelName)
 				if err != nil {
 					errChan <- fmt.Errorf("error counting text token: %v", err)
 					return
@@ -143,7 +144,7 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 
 						localUsage = &dto.RealtimeUsage{}
 					} else {
-						textToken, audioToken, err := service.CountTokenRealtime(info, *realtimeEvent, info.UpstreamModelName)
+						textToken, audioToken, err := egressservice.CountTokenRealtime(info, *realtimeEvent, info.UpstreamModelName)
 						if err != nil {
 							errChan <- fmt.Errorf("error counting text token: %v", err)
 							return
@@ -175,7 +176,7 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 						info.OutputAudioFormat = common.GetStringIfEmpty(realtimeSession.OutputAudioFormat, info.OutputAudioFormat)
 					}
 				} else {
-					textToken, audioToken, err := service.CountTokenRealtime(info, *realtimeEvent, info.UpstreamModelName)
+					textToken, audioToken, err := egressservice.CountTokenRealtime(info, *realtimeEvent, info.UpstreamModelName)
 					if err != nil {
 						errChan <- fmt.Errorf("error counting text token: %v", err)
 						return

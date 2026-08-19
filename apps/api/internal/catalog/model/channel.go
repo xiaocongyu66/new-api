@@ -18,6 +18,7 @@ import (
 	"github.com/samber/lo"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 type Channel struct {
@@ -139,9 +140,9 @@ func NormalizeChannelGroupFilter(group string) string {
 
 func channelGroupFilterCondition() string {
 	if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
-		return `CONCAT(',', ` + commonGroupCol + `, ',') LIKE ? ESCAPE '!'`
+		return `CONCAT(',', ` + common.CommonGroupCol + `, ',') LIKE ? ESCAPE '!'`
 	}
-	return `(',' || ` + commonGroupCol + ` || ',') LIKE ? ESCAPE '!'`
+	return `(',' || ` + common.CommonGroupCol + ` || ',') LIKE ? ESCAPE '!'`
 }
 
 func channelGroupFilterPattern(group string) string {
@@ -283,7 +284,7 @@ func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
 }
 
 func (channel *Channel) SaveChannelInfo() error {
-	return DB.Model(channel).Update("channel_info", channel.ChannelInfo).Error
+	return rootmodel.DB.Model(channel).Update("channel_info", channel.ChannelInfo).Error
 }
 
 func (channel *Channel) GetModels() []string {
@@ -343,14 +344,14 @@ func (channel *Channel) GetAutoBan() bool {
 }
 
 func (channel *Channel) Save() error {
-	return DB.Save(channel).Error
+	return rootmodel.DB.Save(channel).Error
 }
 
 // saveStatusState persists only the fields owned by the channel status flow.
 // Keeping this allowlist here prevents a stale channel snapshot from
 // overwriting credentials, accounting counters, or channel configuration.
 func (channel *Channel) saveStatusState() error {
-	return channel.saveStatusStateWithTx(DB)
+	return channel.saveStatusStateWithTx(rootmodel.DB)
 }
 
 // saveStatusStateWithTx is the tx-aware form of saveStatusState. It writes the
@@ -375,9 +376,9 @@ func GetAllChannels(startIdx int, num int, selectAll bool, idSort bool, sortOpti
 	var err error
 	order := resolveChannelSortOptions(idSort, sortOptions)
 	if selectAll {
-		err = order.Apply(DB).Find(&channels).Error
+		err = order.Apply(rootmodel.DB).Find(&channels).Error
 	} else {
-		err = order.Apply(DB).Limit(num).Offset(startIdx).Omit("key").Find(&channels).Error
+		err = order.Apply(rootmodel.DB).Limit(num).Offset(startIdx).Omit("key").Find(&channels).Error
 	}
 	return channels, err
 }
@@ -385,7 +386,7 @@ func GetAllChannels(startIdx int, num int, selectAll bool, idSort bool, sortOpti
 func GetChannelsByTag(tag string, idSort bool, selectAll bool, sortOptions ...ChannelSortOptions) ([]*Channel, error) {
 	var channels []*Channel
 	order := resolveChannelSortOptions(idSort, sortOptions)
-	query := order.Apply(DB.Where("tag = ?", tag))
+	query := order.Apply(rootmodel.DB.Where("tag = ?", tag))
 	if !selectAll {
 		query = query.Omit("key")
 	}
@@ -411,10 +412,10 @@ func SearchChannels(keyword string, group string, model string, idSort bool, sor
 	order := resolveChannelSortOptions(idSort, sortOptions)
 
 	// 构造基础查询
-	baseQuery := DB.Model(&Channel{}).Omit("key")
+	baseQuery := rootmodel.DB.Model(&Channel{}).Omit("key")
 
 	// 构造WHERE子句
-	whereClause := "(id = ? OR name LIKE ? OR " + commonKeyCol + " = ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + " LIKE ?"
+	whereClause := "(id = ? OR name LIKE ? OR " + common.CommonKeyCol + " = ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + " LIKE ?"
 	args := []any{common.String2Int(keyword), "%" + keyword + "%", keyword, "%" + keyword + "%", "%" + model + "%"}
 	baseQuery = ApplyChannelGroupFilter(baseQuery.Where(whereClause, args...), group)
 
@@ -430,9 +431,9 @@ func GetChannelById(id int, selectAll bool) (*Channel, error) {
 	channel := &Channel{Id: id}
 	var err error = nil
 	if selectAll {
-		err = DB.First(channel, "id = ?", id).Error
+		err = rootmodel.DB.First(channel, "id = ?", id).Error
 	} else {
-		err = DB.Omit("key").First(channel, "id = ?", id).Error
+		err = rootmodel.DB.Omit("key").First(channel, "id = ?", id).Error
 	}
 	if err != nil {
 		return nil, err
@@ -610,7 +611,7 @@ func (channel *Channel) Update() error {
 }
 
 func (channel *Channel) UpdateResponseTime(responseTime int64) {
-	err := DB.Model(channel).Select("response_time", "test_time").Updates(Channel{
+	err := rootmodel.DB.Model(channel).Select("response_time", "test_time").Updates(Channel{
 		TestTime:     common.GetTimestamp(),
 		ResponseTime: int(responseTime),
 	}).Error
@@ -620,7 +621,7 @@ func (channel *Channel) UpdateResponseTime(responseTime int64) {
 }
 
 func (channel *Channel) UpdateBalance(balance float64) {
-	err := DB.Model(channel).Select("balance_updated_time", "balance").Updates(Channel{
+	err := rootmodel.DB.Model(channel).Select("balance_updated_time", "balance").Updates(Channel{
 		BalanceUpdatedTime: common.GetTimestamp(),
 		Balance:            balance,
 	}).Error
@@ -663,7 +664,7 @@ func GetChannelPollingLock(channelId int) *sync.Mutex {
 // This is optional and can be called periodically to prevent memory leaks
 func CleanupChannelPollingLocks() {
 	var activeChannelIds []int
-	DB.Model(&Channel{}).Pluck("id", &activeChannelIds)
+	rootmodel.DB.Model(&Channel{}).Pluck("id", &activeChannelIds)
 
 	activeChannelSet := make(map[int]bool)
 	for _, id := range activeChannelIds {
@@ -757,7 +758,7 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 	pollingLock.Lock()
 	defer pollingLock.Unlock()
 
-	ok, err := updateChannelStatusWithTx(DB, channelId, usingKey, status, reason)
+	ok, err := updateChannelStatusWithTx(rootmodel.DB, channelId, usingKey, status, reason)
 	if err != nil || !ok {
 		return false
 	}
@@ -784,7 +785,7 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 	return true
 }
 
-// updateChannelStatusWithTx performs the DB channel status mutation plus the
+// updateChannelStatusWithTx performs the rootmodel.DB channel status mutation plus the
 // ability enabled-state mutation inside one MutateGatewayRouting transaction.
 // It returns (false, nil) without writing when the stored status already equals
 // the requested status (no-op), and (true, nil) after a successful commit. The
@@ -927,14 +928,14 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 
 func UpdateChannelUsedQuota(id int, quota int) {
 	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeChannelUsedQuota, id, quota)
+		rootmodel.AddNewRecord(rootmodel.BatchUpdateTypeChannelUsedQuota, id, quota)
 		return
 	}
 	updateChannelUsedQuota(id, quota)
 }
 
 func updateChannelUsedQuota(id int, quota int) {
-	err := DB.Model(&Channel{}).Where("id = ?", id).Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error
+	err := rootmodel.DB.Model(&Channel{}).Where("id = ?", id).Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error
 	if err != nil {
 		common.SysLog(fmt.Sprintf("failed to update channel used quota: channel_id=%d, delta_quota=%d, error=%v", id, quota, err))
 	}
@@ -1003,7 +1004,7 @@ func deleteDisabledChannelWithTx(tx *gorm.DB) (int64, error) {
 }
 
 func GetPaginatedTags(offset int, limit int) ([]*string, error) {
-	return GetPaginatedChannelTags(DB.Model(&Channel{}), offset, limit)
+	return GetPaginatedChannelTags(rootmodel.DB.Model(&Channel{}), offset, limit)
 }
 
 func GetPaginatedChannelTags(query *gorm.DB, offset int, limit int) ([]*string, error) {
@@ -1039,10 +1040,10 @@ func SearchTags(keyword string, group string, model string, idSort bool) ([]*str
 	}
 
 	// 构造基础查询
-	baseQuery := DB.Model(&Channel{}).Omit("key")
+	baseQuery := rootmodel.DB.Model(&Channel{}).Omit("key")
 
 	// 构造WHERE子句
-	whereClause := "(id = ? OR name LIKE ? OR " + commonKeyCol + " = ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + " LIKE ?"
+	whereClause := "(id = ? OR name LIKE ? OR " + common.CommonKeyCol + " = ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + " LIKE ?"
 	args := []any{common.String2Int(keyword), "%" + keyword + "%", keyword, "%" + keyword + "%", "%" + model + "%"}
 	baseQuery = ApplyChannelGroupFilter(baseQuery.Where(whereClause, args...), group)
 
@@ -1051,7 +1052,7 @@ func SearchTags(keyword string, group string, model string, idSort bool) ([]*str
 		Where("tag != ''").
 		Order(order)
 
-	err := DB.Table("(?) as sub", subQuery).
+	err := rootmodel.DB.Table("(?) as sub", subQuery).
 		Select("DISTINCT tag").
 		Find(&tags).Error
 
@@ -1169,13 +1170,13 @@ func (channel *Channel) GetHeaderOverride() map[string]interface{} {
 
 func GetChannelsByIds(ids []int) ([]*Channel, error) {
 	var channels []*Channel
-	err := DB.Where("id in (?)", ids).Find(&channels).Error
+	err := rootmodel.DB.Where("id in (?)", ids).Find(&channels).Error
 	return channels, err
 }
 
 func BatchSetChannelTag(ids []int, tag *string) error {
 	// 开启事务
-	tx := DB.Begin()
+	tx := rootmodel.DB.Begin()
 	if tx.Error != nil {
 		return tx.Error
 	}
@@ -1206,16 +1207,16 @@ func BatchSetChannelTag(ids []int, tag *string) error {
 	return tx.Commit().Error
 }
 
-// CountAllChannels returns total channels in DB
+// CountAllChannels returns total channels in rootmodel.DB
 func CountAllChannels() (int64, error) {
 	var total int64
-	err := DB.Model(&Channel{}).Count(&total).Error
+	err := rootmodel.DB.Model(&Channel{}).Count(&total).Error
 	return total, err
 }
 
 // CountAllTags returns number of non-empty distinct tags
 func CountAllTags() (int64, error) {
-	return CountChannelTags(DB.Model(&Channel{}))
+	return CountChannelTags(rootmodel.DB.Model(&Channel{}))
 }
 
 func CountChannelTags(query *gorm.DB) (int64, error) {
@@ -1231,14 +1232,14 @@ func GetChannelsByType(startIdx int, num int, idSort bool, channelType int) ([]*
 	if idSort {
 		order = "id desc"
 	}
-	err := DB.Where("type = ?", channelType).Order(order).Limit(num).Offset(startIdx).Omit("key").Find(&channels).Error
+	err := rootmodel.DB.Where("type = ?", channelType).Order(order).Limit(num).Offset(startIdx).Omit("key").Find(&channels).Error
 	return channels, err
 }
 
 // Count channels of specific type
 func CountChannelsByType(channelType int) (int64, error) {
 	var count int64
-	err := DB.Model(&Channel{}).Where("type = ?", channelType).Count(&count).Error
+	err := rootmodel.DB.Model(&Channel{}).Where("type = ?", channelType).Count(&count).Error
 	return count, err
 }
 
@@ -1249,7 +1250,7 @@ func CountChannelsGroupByType() (map[int64]int64, error) {
 		Count int64 `gorm:"column:count"`
 	}
 	var results []result
-	err := DB.Model(&Channel{}).Select("type, count(*) as count").Group("type").Find(&results).Error
+	err := rootmodel.DB.Model(&Channel{}).Select("type, count(*) as count").Group("type").Find(&results).Error
 	if err != nil {
 		return nil, err
 	}

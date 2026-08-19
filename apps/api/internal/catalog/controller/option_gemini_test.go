@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 func TestUpdateOptionRejectsInvalidGeminiSafetyThreshold(t *testing.T) {
@@ -21,7 +22,7 @@ func TestUpdateOptionRejectsInvalidGeminiSafetyThreshold(t *testing.T) {
 		strings.NewReader(`{"key":"gemini.safety_settings","value":"{\"default\":\"BLOCK_SOME\"}"}`),
 	)
 
-	UpdateOption(context)
+	rootmodel.UpdateOption(context)
 
 	assert.Equal(t, http.StatusOK, response.Code)
 	var payload struct {

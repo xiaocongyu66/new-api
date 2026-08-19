@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 func insertUsersForPaginationTest(t *testing.T, total int) {
@@ -23,7 +24,7 @@ func insertUsersForPaginationTest(t *testing.T, total int) {
 			Group:       "default",
 			AffCode:     fmt.Sprintf("aff%02d", id),
 		}
-		require.NoError(t, DB.Create(user).Error)
+		require.NoError(t, rootmodel.DB.Create(user).Error)
 	}
 }
 

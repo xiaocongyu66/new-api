@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	"github.com/QuantumNous/new-api/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 func TestGatewayRoutingOptionAllowlistIsExplicit(t *testing.T) {
@@ -16,24 +18,24 @@ func TestGatewayRoutingOptionAllowlistIsExplicit(t *testing.T) {
 		"CreateCacheRatio", "GroupGroupRatio", "GroupRatio", "ImageRatio", "MaxTokenAutoGroups",
 		"ModelPrice", "ModelRatio", "UserUsableGroups",
 	}
-	assert.Equal(t, expected, GatewayRoutingOptionKeyList())
-	assert.True(t, IsGatewayRoutingOptionKey("ModelRatio"))
-	assert.False(t, IsGatewayRoutingOptionKey("ModelRatioSecret"))
-	assert.False(t, IsGatewayRoutingOptionKey("proxy_config"))
+	assert.Equal(t, expected, rootmodel.GatewayRoutingOptionKeyList())
+	assert.True(t, rootmodel.IsGatewayRoutingOptionKey("ModelRatio"))
+	assert.False(t, rootmodel.IsGatewayRoutingOptionKey("ModelRatioSecret"))
+	assert.False(t, rootmodel.IsGatewayRoutingOptionKey("proxy_config"))
 }
 
 func TestGatewayRoutingOptionUpdateCommitsOneRevision(t *testing.T) {
-	previousDB := DB
+	previousDB := rootmodel.DB
 	previousOptionMap := common.OptionMap
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&Option{}, &GatewayConfigRevision{}, &GatewayConfigOutbox{}))
-	DB = db
+	rootmodel.DB = db
 	common.OptionMap = make(map[string]string)
-	t.Cleanup(func() { DB, common.OptionMap = previousDB, previousOptionMap })
+	t.Cleanup(func() { rootmodel.DB, common.OptionMap = previousDB, previousOptionMap })
 	require.NoError(t, InitializeGatewayConfigRevision())
 
-	require.NoError(t, UpdateOption("ModelPrice", "{}"))
+	require.NoError(t, rootmodel.UpdateOption("ModelPrice", "{}"))
 	assert.Equal(t, int64(2), currentGatewayRevision(t))
 	assert.Equal(t, []int64{2}, outboxRevisions(t))
 	assert.Equal(t, "{}", requireOptionValue(t, db, "ModelPrice"))
@@ -41,14 +43,14 @@ func TestGatewayRoutingOptionUpdateCommitsOneRevision(t *testing.T) {
 }
 
 func TestGatewayRoutingOptionBulkCommitsOneRevision(t *testing.T) {
-	previousDB := DB
+	previousDB := rootmodel.DB
 	previousOptionMap := common.OptionMap
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&Option{}, &GatewayConfigRevision{}, &GatewayConfigOutbox{}))
-	DB = db
+	rootmodel.DB = db
 	common.OptionMap = make(map[string]string)
-	t.Cleanup(func() { DB, common.OptionMap = previousDB, previousOptionMap })
+	t.Cleanup(func() { rootmodel.DB, common.OptionMap = previousDB, previousOptionMap })
 	require.NoError(t, InitializeGatewayConfigRevision())
 
 	require.NoError(t, UpdateOptionsBulk(map[string]string{"ModelRatio": "{}", "SMTPToken": "synthetic"}))

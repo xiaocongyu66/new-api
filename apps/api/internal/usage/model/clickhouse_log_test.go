@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 func TestIsClickHouseDSN(t *testing.T) {
@@ -27,25 +28,25 @@ func TestIsClickHouseDSN(t *testing.T) {
 		{"", false},
 	}
 	for _, c := range cases {
-		assert.Equalf(t, c.want, isClickHouseDSN(c.dsn), "dsn=%q", c.dsn)
+		assert.Equalf(t, c.want, rootmodel.IsClickHouseDSN(c.dsn), "dsn=%q", c.dsn)
 	}
 }
 
 func TestNormalizeClickHouseDSN(t *testing.T) {
 	// https without secure gets secure=true appended
-	normalized := normalizeClickHouseDSN("https://default:pass@localhost:8443/logs")
+	normalized := rootmodel.NormalizeClickHouseDSN("https://default:pass@localhost:8443/logs")
 	assert.Contains(t, normalized, "secure=true")
 	assert.True(t, strings.HasPrefix(normalized, "https://"))
 
 	// https that already specifies secure is left untouched
 	assert.Equal(t,
 		"https://localhost:8443/logs?secure=false",
-		normalizeClickHouseDSN("https://localhost:8443/logs?secure=false"),
+		rootmodel.NormalizeClickHouseDSN("https://localhost:8443/logs?secure=false"),
 	)
 
 	// non-https schemes are returned verbatim
-	assert.Equal(t, "clickhouse://localhost:9000/logs", normalizeClickHouseDSN("clickhouse://localhost:9000/logs"))
-	assert.Equal(t, "tcp://localhost:9000/logs", normalizeClickHouseDSN("tcp://localhost:9000/logs"))
+	assert.Equal(t, "clickhouse://localhost:9000/logs", rootmodel.NormalizeClickHouseDSN("clickhouse://localhost:9000/logs"))
+	assert.Equal(t, "tcp://localhost:9000/logs", rootmodel.NormalizeClickHouseDSN("tcp://localhost:9000/logs"))
 }
 
 func TestChooseDBRejectsClickHouseForMainDatabase(t *testing.T) {

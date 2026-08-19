@@ -8,15 +8,16 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
+	billingmodel "github.com/QuantumNous/new-api/internal/billing/model"
+	opscontroller "github.com/QuantumNous/new-api/internal/ops/controller"
 )
 
 func GetAllRedemptions(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
-	redemptions, total, err := model.GetAllRedemptions(pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	redemptions, total, err := billingmodel.GetAllRedemptions(pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -31,7 +32,7 @@ func SearchRedemptions(c *gin.Context) {
 	keyword := c.Query("keyword")
 	status := c.Query("status")
 	pageInfo := common.GetPageQuery(c)
-	redemptions, total, err := model.SearchRedemptions(keyword, status, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	redemptions, total, err := billingmodel.SearchRedemptions(keyword, status, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -48,7 +49,7 @@ func GetRedemption(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	redemption, err := model.GetRedemptionById(id)
+	redemption, err := billingmodel.GetRedemptionById(id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -67,7 +68,7 @@ func AddRedemption(c *gin.Context) {
 		return
 	}
 
-	redemption := model.Redemption{}
+	redemption := billingmodel.Redemption{}
 	err := c.ShouldBindJSON(&redemption)
 	if err != nil {
 		common.ApiError(c, err)
@@ -92,7 +93,7 @@ func AddRedemption(c *gin.Context) {
 	var keys []string
 	for i := 0; i < redemption.Count; i++ {
 		key := common.GetUUID()
-		cleanRedemption := model.Redemption{
+		cleanRedemption := billingmodel.Redemption{
 			UserId:      c.GetInt("id"),
 			Name:        redemption.Name,
 			Key:         key,
@@ -112,7 +113,7 @@ func AddRedemption(c *gin.Context) {
 		}
 		keys = append(keys, key)
 	}
-	recordManageAudit(c, "redemption.create", map[string]interface{}{
+	opscontroller.RecordManageAudit(c, "redemption.create", map[string]interface{}{
 		"name":  redemption.Name,
 		"count": redemption.Count,
 		"quota": logger.LogQuota(redemption.Quota),
@@ -127,7 +128,7 @@ func AddRedemption(c *gin.Context) {
 
 func DeleteRedemption(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
-	err := model.DeleteRedemptionById(id)
+	err := billingmodel.DeleteRedemptionById(id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -141,13 +142,13 @@ func DeleteRedemption(c *gin.Context) {
 
 func UpdateRedemption(c *gin.Context) {
 	statusOnly := c.Query("status_only")
-	redemption := model.Redemption{}
+	redemption := billingmodel.Redemption{}
 	err := c.ShouldBindJSON(&redemption)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	cleanRedemption, err := model.GetRedemptionById(redemption.Id)
+	cleanRedemption, err := billingmodel.GetRedemptionById(redemption.Id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -179,7 +180,7 @@ func UpdateRedemption(c *gin.Context) {
 }
 
 func DeleteInvalidRedemption(c *gin.Context) {
-	rows, err := model.DeleteInvalidRedemptions()
+	rows, err := billingmodel.DeleteInvalidRedemptions()
 	if err != nil {
 		common.ApiError(c, err)
 		return

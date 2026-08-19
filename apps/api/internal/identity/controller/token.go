@@ -9,12 +9,12 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/i18n"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	catalogservice "github.com/QuantumNous/new-api/internal/catalog/service"
 )
 
 type tokenAutoGroupsInput struct {
@@ -32,16 +32,16 @@ func (input *tokenAutoGroupsInput) UnmarshalJSON(data []byte) error {
 }
 
 type tokenRequest struct {
-	model.Token
+	identitymodel.Token
 	AutoGroups tokenAutoGroupsInput `json:"auto_groups"`
 }
 
 type tokenResponse struct {
-	*model.Token
+	*identitymodel.Token
 	AutoGroups []string `json:"auto_groups"`
 }
 
-func buildMaskedTokenResponse(token *model.Token) *tokenResponse {
+func buildMaskedTokenResponse(token *identitymodel.Token) *tokenResponse {
 	if token == nil {
 		return nil
 	}
@@ -58,7 +58,7 @@ func buildMaskedTokenResponse(token *model.Token) *tokenResponse {
 	return &tokenResponse{Token: &maskedToken, AutoGroups: autoGroups}
 }
 
-func buildMaskedTokenResponses(tokens []*model.Token) []*tokenResponse {
+func buildMaskedTokenResponses(tokens []*identitymodel.Token) []*tokenResponse {
 	maskedTokens := make([]*tokenResponse, 0, len(tokens))
 	for _, token := range tokens {
 		maskedTokens = append(maskedTokens, buildMaskedTokenResponse(token))
@@ -73,10 +73,10 @@ func getTokenRequestUserGroup(c *gin.Context) (string, error) {
 	if userGroup := c.GetString("group"); userGroup != "" {
 		return userGroup, nil
 	}
-	return model.GetUserGroup(c.GetInt("id"), false)
+	return identitymodel.GetUserGroup(c.GetInt("id"), false)
 }
 
-func setTokenAutoGroups(c *gin.Context, token *model.Token, groups []string) bool {
+func setTokenAutoGroups(c *gin.Context, token *identitymodel.Token, groups []string) bool {
 	if len(groups) == 0 {
 		if err := token.SetAutoGroups(nil); err != nil {
 			common.ApiError(c, err)
@@ -103,7 +103,7 @@ func setTokenAutoGroups(c *gin.Context, token *model.Token, groups []string) boo
 			return false
 		}
 		seen[group] = struct{}{}
-		if !service.IsUserSelectableGroup(userGroup, group) {
+		if !catalogservice.IsUserSelectableGroup(userGroup, group) {
 			common.ApiErrorI18n(c, i18n.MsgTokenAutoGroupsInvalid, map[string]any{"Group": group})
 			return false
 		}
@@ -119,12 +119,12 @@ func setTokenAutoGroups(c *gin.Context, token *model.Token, groups []string) boo
 func GetAllTokens(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
-	tokens, err := model.GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	tokens, err := identitymodel.GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	total, _ := model.CountUserTokens(userId)
+	total, _ := identitymodel.CountUserTokens(userId)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
 	common.ApiSuccess(c, pageInfo)
@@ -137,7 +137,7 @@ func SearchTokens(c *gin.Context) {
 
 	pageInfo := common.GetPageQuery(c)
 
-	tokens, total, err := model.SearchUserTokens(userId, keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	tokens, total, err := identitymodel.SearchUserTokens(userId, keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -154,7 +154,7 @@ func GetToken(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	token, err := model.GetTokenByIds(id, userId)
+	token, err := identitymodel.GetTokenByIds(id, userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -169,7 +169,7 @@ func GetTokenAutoGroups(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, gin.H{
-		"groups":    service.GetUserAutoGroup(userGroup),
+		"groups":    catalogservice.GetUserAutoGroup(userGroup),
 		"max_count": setting.GetMaxTokenAutoGroups(),
 	})
 }
@@ -181,7 +181,7 @@ func GetTokenKey(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	token, err := model.GetTokenByIds(id, userId)
+	token, err := identitymodel.GetTokenByIds(id, userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -194,7 +194,7 @@ func GetTokenKey(c *gin.Context) {
 func GetTokenStatus(c *gin.Context) {
 	tokenId := c.GetInt("token_id")
 	userId := c.GetInt("id")
-	token, err := model.GetTokenByIds(tokenId, userId)
+	token, err := identitymodel.GetTokenByIds(tokenId, userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -232,7 +232,7 @@ func GetTokenUsage(c *gin.Context) {
 	}
 	tokenKey := parts[1]
 
-	token, err := model.GetTokenByKey(strings.TrimPrefix(tokenKey, "sk-"), false)
+	token, err := identitymodel.GetTokenByKey(strings.TrimPrefix(tokenKey, "sk-"), false)
 	if err != nil {
 		common.SysError("failed to get token by key: " + err.Error())
 		common.ApiErrorI18n(c, i18n.MsgTokenGetInfoFailed)
@@ -287,7 +287,7 @@ func AddToken(c *gin.Context) {
 	}
 	// 检查用户令牌数量是否已达上限
 	maxTokens := operation_setting.GetMaxUserTokens()
-	count, err := model.CountUserTokens(c.GetInt("id"))
+	count, err := identitymodel.CountUserTokens(c.GetInt("id"))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -313,7 +313,7 @@ func AddToken(c *gin.Context) {
 		common.SysLog("failed to generate token key: " + err.Error())
 		return
 	}
-	cleanToken := model.Token{
+	cleanToken := identitymodel.Token{
 		UserId:             c.GetInt("id"),
 		Name:               token.Name,
 		Key:                key,
@@ -343,7 +343,7 @@ func AddToken(c *gin.Context) {
 func DeleteToken(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	userId := c.GetInt("id")
-	err := model.DeleteTokenById(id, userId)
+	err := identitymodel.DeleteTokenById(id, userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -379,7 +379,7 @@ func UpdateToken(c *gin.Context) {
 			return
 		}
 	}
-	cleanToken, err := model.GetTokenByIds(token.Id, userId)
+	cleanToken, err := identitymodel.GetTokenByIds(token.Id, userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -439,7 +439,7 @@ func DeleteTokenBatch(c *gin.Context) {
 		return
 	}
 	userId := c.GetInt("id")
-	count, err := model.BatchDeleteTokens(tokenBatch.Ids, userId)
+	count, err := identitymodel.BatchDeleteTokens(tokenBatch.Ids, userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -462,7 +462,7 @@ func GetTokenKeysBatch(c *gin.Context) {
 		return
 	}
 	userId := c.GetInt("id")
-	tokens, err := model.GetTokenKeysByIds(tokenBatch.Ids, userId)
+	tokens, err := identitymodel.GetTokenKeysByIds(tokenBatch.Ids, userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return

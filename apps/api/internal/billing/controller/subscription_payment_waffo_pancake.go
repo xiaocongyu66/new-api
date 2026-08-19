@@ -8,12 +8,13 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 	"github.com/thanhpk/randstr"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	billingmodel "github.com/QuantumNous/new-api/internal/billing/model"
+	billingservice "github.com/QuantumNous/new-api/internal/billing/service"
 )
 
 type SubscriptionWaffoPancakePayRequest struct {
@@ -21,7 +22,7 @@ type SubscriptionWaffoPancakePayRequest struct {
 }
 
 func SubscriptionRequestWaffoPancakePay(c *gin.Context) {
-	if !requirePaymentCompliance(c) {
+	if !RequirePaymentCompliance(c) {
 		return
 	}
 
@@ -31,7 +32,7 @@ func SubscriptionRequestWaffoPancakePay(c *gin.Context) {
 		return
 	}
 
-	plan, err := model.GetSubscriptionPlanById(req.PlanId)
+	plan, err := billingmodel.GetSubscriptionPlanById(req.PlanId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -53,7 +54,7 @@ func SubscriptionRequestWaffoPancakePay(c *gin.Context) {
 	}
 
 	userId := c.GetInt("id")
-	user, err := model.GetUserById(userId, false)
+	user, err := identitymodel.GetUserById(userId, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -64,7 +65,7 @@ func SubscriptionRequestWaffoPancakePay(c *gin.Context) {
 	}
 
 	if plan.MaxPurchasePerUser > 0 {
-		count, err := model.CountUserSubscriptionsByPlan(userId, plan.Id)
+		count, err := billingmodel.CountUserSubscriptionsByPlan(userId, plan.Id)
 		if err != nil {
 			common.ApiError(c, err)
 			return
@@ -79,13 +80,13 @@ func SubscriptionRequestWaffoPancakePay(c *gin.Context) {
 	// dispatch in WaffoPancakeWebhook.
 	tradeNo := fmt.Sprintf("WAFFO_PANCAKE_SUB-%d-%d-%s", userId, time.Now().UnixMilli(), randstr.String(6))
 
-	order := &model.SubscriptionOrder{
+	order := &billingmodel.SubscriptionOrder{
 		UserId:          userId,
 		PlanId:          plan.Id,
 		Money:           plan.PriceAmount,
 		TradeNo:         tradeNo,
-		PaymentMethod:   model.PaymentMethodWaffoPancake,
-		PaymentProvider: model.PaymentProviderWaffoPancake,
+		PaymentMethod:   billingmodel.PaymentMethodWaffoPancake,
+		PaymentProvider: billingmodel.PaymentProviderWaffoPancake,
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}
@@ -96,10 +97,10 @@ func SubscriptionRequestWaffoPancakePay(c *gin.Context) {
 	}
 
 	expiresInSeconds := 45 * 60
-	session, err := service.CreateWaffoPancakeCheckoutSession(c.Request.Context(), &service.WaffoPancakeCreateSessionParams{
+	session, err := billingservice.CreateWaffoPancakeCheckoutSession(c.Request.Context(), &billingservice.WaffoPancakeCreateSessionParams{
 		ProductID:     plan.WaffoPancakeProductId,
-		BuyerIdentity: service.WaffoPancakeBuyerIdentityFromUserID(user.Id),
-		PriceSnapshot: &service.WaffoPancakePriceSnapshot{
+		BuyerIdentity: billingservice.WaffoPancakeBuyerIdentityFromUserID(user.Id),
+		PriceSnapshot: &billingservice.WaffoPancakePriceSnapshot{
 			Amount:      decimal.NewFromFloat(plan.PriceAmount).StringFixed(2),
 			TaxCategory: "saas",
 		},

@@ -1,5 +1,8 @@
 package model
 
+import (
+	rootmodel "github.com/QuantumNous/new-api/model"
+)
 type Midjourney struct {
 	Id          int    `json:"id"`
 	Code        int    `json:"code"`
@@ -41,7 +44,7 @@ func GetAllUserTask(userId int, startIdx int, num int, queryParams TaskQueryPara
 	var err error
 
 	// 初始化查询构建器
-	query := DB.Where("user_id = ?", userId)
+	query := rootmodel.DB.Where("user_id = ?", userId)
 
 	if queryParams.MjID != "" {
 		query = query.Where("mj_id = ?", queryParams.MjID)
@@ -68,7 +71,7 @@ func GetAllTasks(startIdx int, num int, queryParams TaskQueryParams) []*Midjourn
 	var err error
 
 	// 初始化查询构建器
-	query := DB
+	query := rootmodel.DB
 
 	// 添加过滤条件
 	if queryParams.ChannelID != "" {
@@ -97,7 +100,7 @@ func GetAllUnFinishTasks() []*Midjourney {
 	var tasks []*Midjourney
 	var err error
 	// get all tasks progress is not 100%
-	err = DB.Where("progress != ?", "100%").Find(&tasks).Error
+	err = rootmodel.DB.Where("progress != ?", "100%").Find(&tasks).Error
 	if err != nil {
 		return nil
 	}
@@ -110,7 +113,7 @@ func GetAllUnFinishTasks() []*Midjourney {
 // the scheduler skips creating a row entirely.
 func HasUnfinishedMidjourneyTasks() bool {
 	var id int
-	err := DB.Model(&Midjourney{}).
+	err := rootmodel.DB.Model(&Midjourney{}).
 		Where("progress != ?", "100%").
 		Limit(1).
 		Pluck("id", &id).Error
@@ -120,7 +123,7 @@ func HasUnfinishedMidjourneyTasks() bool {
 func GetByOnlyMJId(mjId string) *Midjourney {
 	var mj *Midjourney
 	var err error
-	err = DB.Where("mj_id = ?", mjId).First(&mj).Error
+	err = rootmodel.DB.Where("mj_id = ?", mjId).First(&mj).Error
 	if err != nil {
 		return nil
 	}
@@ -130,7 +133,7 @@ func GetByOnlyMJId(mjId string) *Midjourney {
 func GetByMJId(userId int, mjId string) *Midjourney {
 	var mj *Midjourney
 	var err error
-	err = DB.Where("user_id = ? and mj_id = ?", userId, mjId).First(&mj).Error
+	err = rootmodel.DB.Where("user_id = ? and mj_id = ?", userId, mjId).First(&mj).Error
 	if err != nil {
 		return nil
 	}
@@ -140,7 +143,7 @@ func GetByMJId(userId int, mjId string) *Midjourney {
 func GetByMJIds(userId int, mjIds []string) []*Midjourney {
 	var mj []*Midjourney
 	var err error
-	err = DB.Where("user_id = ? and mj_id in (?)", userId, mjIds).Find(&mj).Error
+	err = rootmodel.DB.Where("user_id = ? and mj_id in (?)", userId, mjIds).Find(&mj).Error
 	if err != nil {
 		return nil
 	}
@@ -150,7 +153,7 @@ func GetByMJIds(userId int, mjIds []string) []*Midjourney {
 func GetMjByuId(id int) *Midjourney {
 	var mj *Midjourney
 	var err error
-	err = DB.Where("id = ?", id).First(&mj).Error
+	err = rootmodel.DB.Where("id = ?", id).First(&mj).Error
 	if err != nil {
 		return nil
 	}
@@ -158,23 +161,23 @@ func GetMjByuId(id int) *Midjourney {
 }
 
 func UpdateProgress(id int, progress string) error {
-	return DB.Model(&Midjourney{}).Where("id = ?", id).Update("progress", progress).Error
+	return rootmodel.DB.Model(&Midjourney{}).Where("id = ?", id).Update("progress", progress).Error
 }
 
 func (midjourney *Midjourney) Insert() error {
 	var err error
-	err = DB.Create(midjourney).Error
+	err = rootmodel.DB.Create(midjourney).Error
 	return err
 }
 
 func (midjourney *Midjourney) Update() error {
 	var err error
-	err = DB.Save(midjourney).Error
+	err = rootmodel.DB.Save(midjourney).Error
 	return err
 }
 
 func (midjourney *Midjourney) UpdateBillingState() error {
-	return DB.Model(midjourney).
+	return rootmodel.DB.Model(midjourney).
 		Select("quota", "token_id", "billing_channel_id").
 		Updates(midjourney).Error
 }
@@ -192,7 +195,7 @@ func (midjourney *Midjourney) GetBillingChannelId() int {
 // UpdateWithStatus performs a conditional UPDATE guarded by fromStatus (CAS).
 // Uses Model().Select("*").Updates() to avoid GORM Save()'s INSERT fallback.
 func (midjourney *Midjourney) UpdateWithStatus(fromStatus string) (bool, error) {
-	result := DB.Model(midjourney).Where("status = ?", fromStatus).Select("*").Updates(midjourney)
+	result := rootmodel.DB.Model(midjourney).Where("status = ?", fromStatus).Select("*").Updates(midjourney)
 	if result.Error != nil {
 		return false, result.Error
 	}
@@ -200,13 +203,13 @@ func (midjourney *Midjourney) UpdateWithStatus(fromStatus string) (bool, error) 
 }
 
 func MjBulkUpdate(mjIds []string, params map[string]any) error {
-	return DB.Model(&Midjourney{}).
+	return rootmodel.DB.Model(&Midjourney{}).
 		Where("mj_id in (?)", mjIds).
 		Updates(params).Error
 }
 
 func MjBulkUpdateByTaskIds(taskIDs []int, params map[string]any) error {
-	return DB.Model(&Midjourney{}).
+	return rootmodel.DB.Model(&Midjourney{}).
 		Where("id in (?)", taskIDs).
 		Updates(params).Error
 }
@@ -214,7 +217,7 @@ func MjBulkUpdateByTaskIds(taskIDs []int, params map[string]any) error {
 // CountAllTasks returns total midjourney tasks for admin query
 func CountAllTasks(queryParams TaskQueryParams) int64 {
 	var total int64
-	query := DB.Model(&Midjourney{})
+	query := rootmodel.DB.Model(&Midjourney{})
 	if queryParams.ChannelID != "" {
 		query = query.Where("channel_id = ?", queryParams.ChannelID)
 	}
@@ -234,7 +237,7 @@ func CountAllTasks(queryParams TaskQueryParams) int64 {
 // CountAllUserTask returns total midjourney tasks for user
 func CountAllUserTask(userId int, queryParams TaskQueryParams) int64 {
 	var total int64
-	query := DB.Model(&Midjourney{}).Where("user_id = ?", userId)
+	query := rootmodel.DB.Model(&Midjourney{}).Where("user_id = ?", userId)
 	if queryParams.MjID != "" {
 		query = query.Where("mj_id = ?", queryParams.MjID)
 	}

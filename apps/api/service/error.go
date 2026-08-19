@@ -12,25 +12,12 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	taskdto "github.com/QuantumNous/new-api/dto"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	dto "github.com/QuantumNous/new-api/relaykit/dto"
+	taskdto "github.com/QuantumNous/new-api/dto"
 )
-
-func MidjourneyErrorWrapper(code int, desc string) *taskdto.MidjourneyResponse {
-	return &taskdto.MidjourneyResponse{
-		Code:        code,
-		Description: desc,
-	}
-}
-
-func MidjourneyErrorWithStatusCodeWrapper(code int, desc string, statusCode int) *taskdto.MidjourneyResponseWithStatusCode {
-	return &taskdto.MidjourneyResponseWithStatusCode{
-		StatusCode: statusCode,
-		Response:   *MidjourneyErrorWrapper(code, desc),
-	}
-}
 
 //// OpenAIErrorWrapper wraps an error into an OpenAIErrorWithStatusCode
 //func OpenAIErrorWrapper(err error, code string, statusCode int) *dto.OpenAIErrorWithStatusCode {
@@ -91,7 +78,7 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 	if err != nil {
 		return
 	}
-	CloseResponseBodyGracefully(resp)
+	egressservice.CloseResponseBodyGracefully(resp)
 	var errResponse dto.GeneralErrorResponse
 	responseBodyText := string(responseBody)
 	responseBodyPreview := common.LocalLogPreview(responseBodyText)

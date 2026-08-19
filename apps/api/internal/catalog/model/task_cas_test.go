@@ -12,6 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	"github.com/QuantumNous/new-api/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
+	taskmodel "github.com/QuantumNous/new-api/internal/task/model"
 )
 
 func TestMain(m *testing.M) {
@@ -19,7 +22,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("failed to open test db: " + err.Error())
 	}
-	DB = db
+	rootmodel.DB = db
 	LOG_DB = db
 
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
@@ -35,7 +38,7 @@ func TestMain(m *testing.M) {
 	sqlDB.SetMaxOpenConns(1)
 
 	if err := db.AutoMigrate(
-		&Task{},
+		&taskmodel.Task{},
 		&User{},
 		&UserSession{},
 		&AuthFlow{},
@@ -72,40 +75,40 @@ func TestMain(m *testing.M) {
 func truncateTables(t *testing.T) {
 	t.Helper()
 	t.Cleanup(func() {
-		DB.Exec("DELETE FROM tasks")
-		DB.Exec("DELETE FROM auth_flows")
-		DB.Exec("DELETE FROM external_identity_claims")
-		DB.Exec("DELETE FROM user_sessions")
-		DB.Exec("DELETE FROM passkey_credentials")
-		DB.Exec("DELETE FROM two_fa_backup_codes")
-		DB.Exec("DELETE FROM two_fas")
-		DB.Exec("DELETE FROM tokens")
-		DB.Exec("DELETE FROM user_oauth_bindings")
-		DB.Exec("DELETE FROM users")
-		DB.Exec("DELETE FROM logs")
-		DB.Exec("DELETE FROM channels")
-		DB.Exec("DELETE FROM quota_data")
-		DB.Exec("DELETE FROM abilities")
-		DB.Exec("DELETE FROM top_ups")
-		DB.Exec("DELETE FROM subscription_orders")
-		DB.Exec("DELETE FROM subscription_plans")
-		DB.Exec("DELETE FROM user_subscriptions")
-		DB.Exec("DELETE FROM perf_metrics")
-		DB.Exec("DELETE FROM system_instances")
-		DB.Exec("DELETE FROM system_task_locks")
-		DB.Exec("DELETE FROM system_tasks")
+		rootmodel.DB.Exec("DELETE FROM tasks")
+		rootmodel.DB.Exec("DELETE FROM auth_flows")
+		rootmodel.DB.Exec("DELETE FROM external_identity_claims")
+		rootmodel.DB.Exec("DELETE FROM user_sessions")
+		rootmodel.DB.Exec("DELETE FROM passkey_credentials")
+		rootmodel.DB.Exec("DELETE FROM two_fa_backup_codes")
+		rootmodel.DB.Exec("DELETE FROM two_fas")
+		rootmodel.DB.Exec("DELETE FROM tokens")
+		rootmodel.DB.Exec("DELETE FROM user_oauth_bindings")
+		rootmodel.DB.Exec("DELETE FROM users")
+		rootmodel.DB.Exec("DELETE FROM logs")
+		rootmodel.DB.Exec("DELETE FROM channels")
+		rootmodel.DB.Exec("DELETE FROM quota_data")
+		rootmodel.DB.Exec("DELETE FROM abilities")
+		rootmodel.DB.Exec("DELETE FROM top_ups")
+		rootmodel.DB.Exec("DELETE FROM subscription_orders")
+		rootmodel.DB.Exec("DELETE FROM subscription_plans")
+		rootmodel.DB.Exec("DELETE FROM user_subscriptions")
+		rootmodel.DB.Exec("DELETE FROM perf_metrics")
+		rootmodel.DB.Exec("DELETE FROM system_instances")
+		rootmodel.DB.Exec("DELETE FROM system_task_locks")
+		rootmodel.DB.Exec("DELETE FROM system_tasks")
 	})
 }
 
-func insertTask(t *testing.T, task *Task) {
+func insertTask(t *testing.T, task *taskmodel.Task) {
 	t.Helper()
 	task.CreatedAt = time.Now().Unix()
 	task.UpdatedAt = time.Now().Unix()
-	require.NoError(t, DB.Create(task).Error)
+	require.NoError(t, rootmodel.DB.Create(task).Error)
 }
 
 // ---------------------------------------------------------------------------
-// Snapshot / Equal — pure logic tests (no DB)
+// Snapshot / Equal — pure logic tests (no rootmodel.DB)
 // ---------------------------------------------------------------------------
 
 func TestSnapshotEqual_Same(t *testing.T) {
@@ -147,7 +150,7 @@ func TestSnapshotEqual_NilVsEmpty(t *testing.T) {
 }
 
 func TestSnapshot_Roundtrip(t *testing.T) {
-	task := &Task{
+	task := &taskmodel.Task{
 		Status:     TaskStatusInProgress,
 		Progress:   "42%",
 		StartTime:  1234,
@@ -169,13 +172,13 @@ func TestSnapshot_Roundtrip(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// UpdateWithStatus CAS — DB integration tests
+// UpdateWithStatus CAS — rootmodel.DB integration tests
 // ---------------------------------------------------------------------------
 
 func TestUpdateWithStatus_Win(t *testing.T) {
 	truncateTables(t)
 
-	task := &Task{
+	task := &taskmodel.Task{
 		TaskID:   "task_cas_win",
 		Status:   TaskStatusInProgress,
 		Progress: "50%",
@@ -189,8 +192,8 @@ func TestUpdateWithStatus_Win(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, won)
 
-	var reloaded Task
-	require.NoError(t, DB.First(&reloaded, task.ID).Error)
+	var reloaded taskmodel.Task
+	require.NoError(t, rootmodel.DB.First(&reloaded, task.ID).Error)
 	assert.EqualValues(t, TaskStatusSuccess, reloaded.Status)
 	assert.Equal(t, "100%", reloaded.Progress)
 }
@@ -198,7 +201,7 @@ func TestUpdateWithStatus_Win(t *testing.T) {
 func TestUpdateWithStatus_Lose(t *testing.T) {
 	truncateTables(t)
 
-	task := &Task{
+	task := &taskmodel.Task{
 		TaskID: "task_cas_lose",
 		Status: TaskStatusFailure,
 		Data:   json.RawMessage(`{}`),
@@ -210,15 +213,15 @@ func TestUpdateWithStatus_Lose(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, won)
 
-	var reloaded Task
-	require.NoError(t, DB.First(&reloaded, task.ID).Error)
+	var reloaded taskmodel.Task
+	require.NoError(t, rootmodel.DB.First(&reloaded, task.ID).Error)
 	assert.EqualValues(t, TaskStatusFailure, reloaded.Status) // unchanged
 }
 
 func TestUpdateWithStatus_ConcurrentWinner(t *testing.T) {
 	truncateTables(t)
 
-	task := &Task{
+	task := &taskmodel.Task{
 		TaskID: "task_cas_race",
 		Status: TaskStatusInProgress,
 		Quota:  1000,
@@ -234,8 +237,8 @@ func TestUpdateWithStatus_ConcurrentWinner(t *testing.T) {
 	for i := 0; i < goroutines; i++ {
 		go func(idx int) {
 			defer wg.Done()
-			t := &Task{}
-			*t = Task{
+			t := &taskmodel.Task{}
+			*t = taskmodel.Task{
 				ID:       task.ID,
 				TaskID:   task.TaskID,
 				Status:   TaskStatusSuccess,

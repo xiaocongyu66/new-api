@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 
 	"gorm.io/gorm"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 // TwoFA 用户2FA设置表
@@ -42,7 +43,7 @@ func GetTwoFAByUserId(userId int) (*TwoFA, error) {
 	}
 
 	var twoFA TwoFA
-	err := DB.Where("user_id = ?", userId).First(&twoFA).Error
+	err := rootmodel.DB.Where("user_id = ?", userId).First(&twoFA).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil // 返回nil表示未设置2FA
@@ -79,21 +80,21 @@ func (t *TwoFA) CreatePendingTwoFASetup() error {
 
 	// 验证用户存在
 	var user User
-	if err := DB.First(&user, t.UserId).Error; err != nil {
+	if err := rootmodel.DB.First(&user, t.UserId).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return errors.New("用户不存在")
 		}
 		return err
 	}
 
-	return DB.Create(t).Error
+	return rootmodel.DB.Create(t).Error
 }
 
 func (t *TwoFA) updateUsageState() error {
 	if t.Id == 0 {
 		return errors.New("2FA记录ID不能为空")
 	}
-	return DB.Model(&TwoFA{}).Where("id = ?", t.Id).Updates(map[string]interface{}{
+	return rootmodel.DB.Model(&TwoFA{}).Where("id = ?", t.Id).Updates(map[string]interface{}{
 		"failed_attempts": t.FailedAttempts,
 		"locked_until":    t.LockedUntil,
 		"last_used_at":    t.LastUsedAt,
@@ -107,9 +108,9 @@ func (t *TwoFA) DeletePendingTwoFASetup() error {
 		return errors.New("2FA记录ID不能为空")
 	}
 
-	return DB.Transaction(func(tx *gorm.DB) error {
+	return rootmodel.DB.Transaction(func(tx *gorm.DB) error {
 		var pending TwoFA
-		if err := lockForUpdate(tx).
+		if err := rootmodel.LockForUpdate(tx).
 			Where("id = ? AND user_id = ? AND is_enabled = ?", t.Id, t.UserId, false).
 			First(&pending).Error; err != nil {
 			return err
@@ -137,7 +138,7 @@ func (t *TwoFA) IncrementFailedAttempts() error {
 	const maxUpdateRetries = 5
 	for range maxUpdateRetries {
 		var current TwoFA
-		if err := DB.Select("id", "failed_attempts", "locked_until").First(&current, t.Id).Error; err != nil {
+		if err := rootmodel.DB.Select("id", "failed_attempts", "locked_until").First(&current, t.Id).Error; err != nil {
 			return err
 		}
 
@@ -155,7 +156,7 @@ func (t *TwoFA) IncrementFailedAttempts() error {
 			nextLockedUntil = &lockUntil
 		}
 
-		result := DB.Model(&TwoFA{}).
+		result := rootmodel.DB.Model(&TwoFA{}).
 			Where("id = ? AND failed_attempts = ? AND (locked_until IS NULL OR locked_until <= ?)", current.Id, current.FailedAttempts, now).
 			Updates(map[string]interface{}{
 				"failed_attempts": nextFailedAttempts,
@@ -187,9 +188,9 @@ func (t *TwoFA) IsLocked() bool {
 // CreatePendingTwoFASetupBackupCodes stores recovery codes for an unverified
 // setup. Regeneration for an enabled factor must advance auth_version.
 func CreatePendingTwoFASetupBackupCodes(userId int, codes []string) error {
-	return DB.Transaction(func(tx *gorm.DB) error {
+	return rootmodel.DB.Transaction(func(tx *gorm.DB) error {
 		var pending TwoFA
-		if err := lockForUpdate(tx).Where("user_id = ? AND is_enabled = ?", userId, false).First(&pending).Error; err != nil {
+		if err := rootmodel.LockForUpdate(tx).Where("user_id = ? AND is_enabled = ?", userId, false).First(&pending).Error; err != nil {
 			return err
 		}
 		return replaceBackupCodesWithTx(tx, userId, codes)
@@ -215,11 +216,11 @@ func replaceBackupCodesWithTx(tx *gorm.DB, userId int, codes []string) error {
 // ReplaceBackupCodesWithAuthVersion atomically replaces the factor's recovery
 // credentials and advances the user's authentication version.
 func ReplaceBackupCodesWithAuthVersion(userId int, codes []string) error {
-	if err := DB.Transaction(func(tx *gorm.DB) error {
+	if err := rootmodel.DB.Transaction(func(tx *gorm.DB) error {
 		var enabled TwoFA
-		if err := lockForUpdate(tx).Where("user_id = ? AND is_enabled = ?", userId, true).First(&enabled).Error; err != nil {
+		if err := rootmodel.LockForUpdate(tx).Where("user_id = ? AND is_enabled = ?", userId, true).First(&enabled).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return ErrTwoFANotEnabled
+				return rootmodel.ErrTwoFANotEnabled
 			}
 			return err
 		}
@@ -243,7 +244,7 @@ func ValidateBackupCode(userId int, code string) (bool, error) {
 
 	// 查找未使用的备用码
 	var backupCodes []TwoFABackupCode
-	if err := DB.Where("user_id = ? AND is_used = false", userId).Find(&backupCodes).Error; err != nil {
+	if err := rootmodel.DB.Where("user_id = ? AND is_used = false", userId).Find(&backupCodes).Error; err != nil {
 		return false, err
 	}
 
@@ -251,7 +252,7 @@ func ValidateBackupCode(userId int, code string) (bool, error) {
 	for _, bc := range backupCodes {
 		if common.ValidatePasswordAndHash(normalizedCode, bc.CodeHash) {
 			now := time.Now()
-			result := DB.Model(&TwoFABackupCode{}).
+			result := rootmodel.DB.Model(&TwoFABackupCode{}).
 				Where("id = ? AND is_used = ?", bc.Id, false).
 				Updates(map[string]interface{}{
 					"is_used": true,
@@ -270,18 +271,18 @@ func ValidateBackupCode(userId int, code string) (bool, error) {
 // GetUnusedBackupCodeCount 获取未使用的备用码数量
 func GetUnusedBackupCodeCount(userId int) (int, error) {
 	var count int64
-	err := DB.Model(&TwoFABackupCode{}).Where("user_id = ? AND is_used = false", userId).Count(&count).Error
+	err := rootmodel.DB.Model(&TwoFABackupCode{}).Where("user_id = ? AND is_used = false", userId).Count(&count).Error
 	return int(count), err
 }
 
 // DisableTwoFAWithAuthVersion atomically removes the factor and invalidates
 // every access token issued against the previous security configuration.
 func DisableTwoFAWithAuthVersion(userId int) error {
-	if err := DB.Transaction(func(tx *gorm.DB) error {
+	if err := rootmodel.DB.Transaction(func(tx *gorm.DB) error {
 		var twoFA TwoFA
-		if err := lockForUpdate(tx).Where("user_id = ? AND is_enabled = ?", userId, true).First(&twoFA).Error; err != nil {
+		if err := rootmodel.LockForUpdate(tx).Where("user_id = ? AND is_enabled = ?", userId, true).First(&twoFA).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return ErrTwoFANotEnabled
+				return rootmodel.ErrTwoFANotEnabled
 			}
 			return err
 		}
@@ -304,11 +305,11 @@ func (t *TwoFA) EnableWithAuthVersion() error {
 	if t == nil || t.Id == 0 || t.UserId == 0 {
 		return errors.New("2FA记录ID不能为空")
 	}
-	if err := DB.Transaction(func(tx *gorm.DB) error {
+	if err := rootmodel.DB.Transaction(func(tx *gorm.DB) error {
 		var pending TwoFA
-		if err := lockForUpdate(tx).Where("id = ? AND user_id = ? AND is_enabled = ?", t.Id, t.UserId, false).First(&pending).Error; err != nil {
+		if err := rootmodel.LockForUpdate(tx).Where("id = ? AND user_id = ? AND is_enabled = ?", t.Id, t.UserId, false).First(&pending).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return ErrTwoFAAlreadyEnabled
+				return rootmodel.ErrTwoFAAlreadyEnabled
 			}
 			return err
 		}
@@ -321,7 +322,7 @@ func (t *TwoFA) EnableWithAuthVersion() error {
 			return result.Error
 		}
 		if result.RowsAffected != 1 {
-			return ErrTwoFAAlreadyEnabled
+			return rootmodel.ErrTwoFAAlreadyEnabled
 		}
 		return nil
 	}); err != nil {
@@ -401,12 +402,12 @@ func GetTwoFAStats() (map[string]interface{}, error) {
 	var totalUsers, enabledUsers int64
 
 	// 总用户数
-	if err := DB.Model(&User{}).Count(&totalUsers).Error; err != nil {
+	if err := rootmodel.DB.Model(&User{}).Count(&totalUsers).Error; err != nil {
 		return nil, err
 	}
 
 	// 启用2FA的用户数
-	if err := DB.Model(&TwoFA{}).Where("is_enabled = true").Count(&enabledUsers).Error; err != nil {
+	if err := rootmodel.DB.Model(&TwoFA{}).Where("is_enabled = true").Count(&enabledUsers).Error; err != nil {
 		return nil, err
 	}
 

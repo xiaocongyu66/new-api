@@ -39,3 +39,9 @@ func TestKarmadaDashboardSessionRejectsTampering(t *testing.T) {
 	_, err = ValidateKarmadaDashboardSession(tampered)
 	assert.ErrorIs(t, err, ErrKarmadaDashboardSessionInvalid)
 }
+
+func useTestSessionSecret(t *testing.T) {
+	old := common.SessionSecret
+	common.SessionSecret = "karmada-test-secret"
+	t.Cleanup(func() { common.SessionSecret = old })
+}

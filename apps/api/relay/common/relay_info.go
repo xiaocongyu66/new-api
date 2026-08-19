@@ -21,6 +21,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/tidwall/gjson"
+
 )
 
 type ThinkingContentInfo struct {
@@ -861,7 +862,7 @@ type TaskRelayInfo struct {
 
 	// LockedChannel holds the full channel object when the request is bound to
 	// a specific channel (e.g., remix on origin task's channel). Stored as any
-	// to avoid an import cycle with model; callers type-assert to *model.Channel.
+	// to avoid an import cycle with model; callers type-assert to *modelapi.Channel.
 	LockedChannel any
 }
 

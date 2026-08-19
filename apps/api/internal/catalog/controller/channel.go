@@ -12,16 +12,20 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/i18n"
-	"github.com/QuantumNous/new-api/model"
 	relaychannel "github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/ollama"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
+	catalogservice "github.com/QuantumNous/new-api/internal/catalog/service"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service"
+	opscontroller "github.com/QuantumNous/new-api/internal/ops/controller"
 )
 
 type OpenAIModel struct {
@@ -64,7 +68,7 @@ func parseStatusFilter(statusParam string) int {
 	}
 }
 
-func clearChannelInfo(channel *model.Channel) {
+func clearChannelInfo(channel *catalogmodel.Channel) {
 	if channel.ChannelInfo.IsMultiKey {
 		channel.ChannelInfo.MultiKeyDisabledReason = nil
 		channel.ChannelInfo.MultiKeyDisabledTime = nil
@@ -82,8 +86,8 @@ func applyChannelStatusFilter(query *gorm.DB, statusFilter int) *gorm.DB {
 }
 
 func buildChannelListQuery(group string, statusFilter int, typeFilter int) *gorm.DB {
-	query := model.DB.Model(&model.Channel{})
-	query = model.ApplyChannelGroupFilter(query, group)
+	query := rootmodel.DB.Model(&catalogmodel.Channel{})
+	query = catalogmodel.ApplyChannelGroupFilter(query, group)
 	query = applyChannelStatusFilter(query, statusFilter)
 	if typeFilter >= 0 {
 		query = query.Where("type = ?", typeFilter)
@@ -99,11 +103,11 @@ func GetChannelOps(c *gin.Context) {
 
 func GetAllChannels(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
-	channelData := make([]*model.Channel, 0)
+	channelData := make([]*catalogmodel.Channel, 0)
 	idSort, _ := strconv.ParseBool(c.Query("id_sort"))
-	sortOptions := model.NewChannelSortOptions(c.Query("sort_by"), c.Query("sort_order"), idSort)
+	sortOptions := catalogmodel.NewChannelSortOptions(c.Query("sort_by"), c.Query("sort_order"), idSort)
 	enableTagMode, _ := strconv.ParseBool(c.Query("tag_mode"))
-	groupFilter := model.NormalizeChannelGroupFilter(c.Query("group"))
+	groupFilter := catalogmodel.NormalizeChannelGroupFilter(c.Query("group"))
 	statusParam := c.Query("status")
 	// statusFilter: -1 all, 1 enabled, 0 disabled (include auto & manual)
 	statusFilter := parseStatusFilter(statusParam)
@@ -119,13 +123,13 @@ func GetAllChannels(c *gin.Context) {
 	var total int64
 
 	if enableTagMode {
-		tags, err := model.GetPaginatedChannelTags(buildChannelListQuery(groupFilter, statusFilter, typeFilter), pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+		tags, err := catalogmodel.GetPaginatedChannelTags(buildChannelListQuery(groupFilter, statusFilter, typeFilter), pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 		if err != nil {
 			common.SysError("failed to get paginated tags: " + err.Error())
 			c.JSON(http.StatusOK, gin.H{"success": false, "message": "获取标签失败，请稍后重试"})
 			return
 		}
-		total, err = model.CountChannelTags(buildChannelListQuery(groupFilter, statusFilter, typeFilter))
+		total, err = catalogmodel.CountChannelTags(buildChannelListQuery(groupFilter, statusFilter, typeFilter))
 		if err != nil {
 			common.SysError("failed to count tags: " + err.Error())
 			c.JSON(http.StatusOK, gin.H{"success": false, "message": "获取标签数量失败，请稍后重试"})
@@ -135,7 +139,7 @@ func GetAllChannels(c *gin.Context) {
 			if tag == nil || *tag == "" {
 				continue
 			}
-			var tagChannels []*model.Channel
+			var tagChannels []*catalogmodel.Channel
 			err := sortOptions.Apply(buildChannelListQuery(groupFilter, statusFilter, typeFilter).Where("tag = ?", *tag)).
 				Omit("key").
 				Find(&tagChannels).Error
@@ -193,7 +197,7 @@ func GetAllChannels(c *gin.Context) {
 	return
 }
 
-func buildFetchModelsHeaders(channel *model.Channel, key string) (http.Header, error) {
+func buildFetchModelsHeaders(channel *catalogmodel.Channel, key string) (http.Header, error) {
 	var headers http.Header
 	switch channel.Type {
 	case constant.ChannelTypeAnthropic:
@@ -208,7 +212,7 @@ func buildFetchModelsHeaders(channel *model.Channel, key string) (http.Header, e
 	return headers, nil
 }
 
-func applyFetchModelsHeaderOverrides(channel *model.Channel, key string, headers http.Header) error {
+func applyFetchModelsHeaderOverrides(channel *catalogmodel.Channel, key string, headers http.Header) error {
 	info := &relaycommon.RelayInfo{
 		IsChannelTest: true,
 		ChannelMeta: &relaycommon.ChannelMeta{
@@ -234,7 +238,7 @@ func FetchUpstreamModels(c *gin.Context) {
 		return
 	}
 
-	channel, err := model.GetChannelById(id, true)
+	channel, err := catalogmodel.GetChannelById(id, true)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -257,7 +261,7 @@ func FetchUpstreamModels(c *gin.Context) {
 }
 
 func FixChannelsAbilities(c *gin.Context) {
-	success, fails, err := model.FixAbility()
+	success, fails, err := catalogmodel.FixAbility()
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -279,11 +283,11 @@ func SearchChannels(c *gin.Context) {
 	statusParam := c.Query("status")
 	statusFilter := parseStatusFilter(statusParam)
 	idSort, _ := strconv.ParseBool(c.Query("id_sort"))
-	sortOptions := model.NewChannelSortOptions(c.Query("sort_by"), c.Query("sort_order"), idSort)
+	sortOptions := catalogmodel.NewChannelSortOptions(c.Query("sort_by"), c.Query("sort_order"), idSort)
 	enableTagMode, _ := strconv.ParseBool(c.Query("tag_mode"))
-	channelData := make([]*model.Channel, 0)
+	channelData := make([]*catalogmodel.Channel, 0)
 	if enableTagMode {
-		tags, err := model.SearchTags(keyword, group, modelKeyword, idSort)
+		tags, err := catalogmodel.SearchTags(keyword, group, modelKeyword, idSort)
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -293,7 +297,7 @@ func SearchChannels(c *gin.Context) {
 		}
 		for _, tag := range tags {
 			if tag != nil && *tag != "" {
-				var tagChannels []*model.Channel
+				var tagChannels []*catalogmodel.Channel
 				err := sortOptions.Apply(buildChannelListQuery(group, -1, -1).Where("tag = ?", *tag)).
 					Omit("key").
 					Find(&tagChannels).Error
@@ -308,7 +312,7 @@ func SearchChannels(c *gin.Context) {
 			}
 		}
 	} else {
-		channels, err := model.SearchChannels(keyword, group, modelKeyword, idSort, sortOptions)
+		channels, err := catalogmodel.SearchChannels(keyword, group, modelKeyword, idSort, sortOptions)
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -320,7 +324,7 @@ func SearchChannels(c *gin.Context) {
 	}
 
 	if statusFilter == common.ChannelStatusEnabled || statusFilter == 0 {
-		filtered := make([]*model.Channel, 0, len(channelData))
+		filtered := make([]*catalogmodel.Channel, 0, len(channelData))
 		for _, ch := range channelData {
 			if statusFilter == common.ChannelStatusEnabled && ch.Status != common.ChannelStatusEnabled {
 				continue
@@ -348,7 +352,7 @@ func SearchChannels(c *gin.Context) {
 	}
 
 	if typeFilter >= 0 {
-		filtered := make([]*model.Channel, 0, len(channelData))
+		filtered := make([]*catalogmodel.Channel, 0, len(channelData))
 		for _, ch := range channelData {
 			if ch.Type == typeFilter {
 				filtered = append(filtered, ch)
@@ -400,7 +404,7 @@ func GetChannel(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	channel, err := model.GetChannelById(id, false)
+	channel, err := catalogmodel.GetChannelById(id, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -426,7 +430,7 @@ func GetChannelKey(c *gin.Context) {
 	}
 
 	// 获取渠道信息（包含密钥）
-	channel, err := model.GetChannelById(channelId, true)
+	channel, err := catalogmodel.GetChannelById(channelId, true)
 	if err != nil {
 		common.ApiError(c, fmt.Errorf("获取渠道信息失败: %v", err))
 		return
@@ -438,7 +442,7 @@ func GetChannelKey(c *gin.Context) {
 	}
 
 	// 记录操作审计日志（高危：查看渠道密钥）
-	recordManageAudit(c, "channel.key_view", map[string]interface{}{
+	opscontroller.RecordManageAudit(c, "channel.key_view", map[string]interface{}{
 		"id":   channelId,
 		"name": channel.Name,
 	})
@@ -454,7 +458,7 @@ func GetChannelKey(c *gin.Context) {
 }
 
 // validateTwoFactorAuth 统一的2FA验证函数
-func validateTwoFactorAuth(twoFA *model.TwoFA, code string) bool {
+func ValidateTwoFactorAuth(twoFA *identitymodel.TwoFA, code string) bool {
 	// 尝试验证TOTP
 	if cleanCode, err := common.ValidateNumericCode(code); err == nil {
 		if isValid, _ := twoFA.ValidateTOTPAndUpdateUsage(cleanCode); isValid {
@@ -471,7 +475,7 @@ func validateTwoFactorAuth(twoFA *model.TwoFA, code string) bool {
 }
 
 // validateChannel 通用的渠道校验函数
-func validateChannel(channel *model.Channel, isAdd bool) error {
+func validateChannel(channel *catalogmodel.Channel, isAdd bool) error {
 	if channel == nil {
 		return fmt.Errorf("channel cannot be empty")
 	}
@@ -548,7 +552,7 @@ func RefreshCodexChannelCredential(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
-	oauthKey, ch, err := service.RefreshCodexChannelCredential(ctx, channelId, service.CodexCredentialRefreshOptions{ResetCaches: true})
+	oauthKey, ch, err := catalogservice.RefreshCodexChannelCredential(ctx, channelId, catalogservice.CodexCredentialRefreshOptions{ResetCaches: true})
 	if err != nil {
 		common.SysError("failed to refresh codex channel credential: " + err.Error())
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "刷新凭证失败，请稍后重试"})
@@ -574,7 +578,7 @@ type AddChannelRequest struct {
 	Mode                      string                `json:"mode"`
 	MultiKeyMode              constant.MultiKeyMode `json:"multi_key_mode"`
 	BatchAddSetKeyPrefix2Name bool                  `json:"batch_add_set_key_prefix_2_name"`
-	Channel                   *model.Channel        `json:"channel"`
+	Channel                   *catalogmodel.Channel        `json:"channel"`
 }
 
 func getVertexArrayKeys(keys string) ([]string, error) {
@@ -680,7 +684,7 @@ func AddChannel(c *gin.Context) {
 		return
 	}
 
-	channels := make([]model.Channel, 0, len(keys))
+	channels := make([]catalogmodel.Channel, 0, len(keys))
 	for _, key := range keys {
 		if key == "" {
 			continue
@@ -696,12 +700,12 @@ func AddChannel(c *gin.Context) {
 		}
 		channels = append(channels, *localChannel)
 	}
-	err = model.BatchInsertChannels(channels)
+	err = catalogmodel.BatchInsertChannels(channels)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	recordManageAudit(c, "channel.create", map[string]interface{}{
+	opscontroller.RecordManageAudit(c, "channel.create", map[string]interface{}{
 		"name":  addChannelRequest.Channel.Name,
 		"type":  addChannelRequest.Channel.Type,
 		"count": len(channels),
@@ -718,25 +722,25 @@ func DeleteChannel(c *gin.Context) {
 	channelName := ""
 	channelProxy := ""
 	channelLookupFailed := false
-	if existing, err := model.GetChannelById(id, false); err == nil && existing != nil {
+	if existing, err := catalogmodel.GetChannelById(id, false); err == nil && existing != nil {
 		channelName = existing.Name
 		channelProxy = existing.GetSetting().Proxy
 	} else {
 		channelLookupFailed = true
 	}
-	channel := model.Channel{Id: id}
+	channel := catalogmodel.Channel{Id: id}
 	err := channel.Delete()
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	model.InitChannelCache()
+	catalogmodel.InitChannelCache()
 	if channelLookupFailed {
-		service.ResetProxyClientCache()
+		egressservice.ResetProxyClientCache()
 	} else {
-		service.InvalidateProxyClient(channelProxy)
+		egressservice.InvalidateProxyClient(channelProxy)
 	}
-	recordManageAudit(c, "channel.delete", map[string]interface{}{
+	opscontroller.RecordManageAudit(c, "channel.delete", map[string]interface{}{
 		"id":   id,
 		"name": channelName,
 	})
@@ -748,16 +752,16 @@ func DeleteChannel(c *gin.Context) {
 }
 
 func DeleteDisabledChannel(c *gin.Context) {
-	rows, err := model.DeleteDisabledChannel()
+	rows, err := catalogmodel.DeleteDisabledChannel()
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	model.InitChannelCache()
+	catalogmodel.InitChannelCache()
 	if rows > 0 {
-		service.ResetProxyClientCache()
+		egressservice.ResetProxyClientCache()
 	}
-	recordManageAudit(c, "channel.delete_disabled", map[string]interface{}{
+	opscontroller.RecordManageAudit(c, "channel.delete_disabled", map[string]interface{}{
 		"count": rows,
 	})
 	c.JSON(http.StatusOK, gin.H{
@@ -790,13 +794,13 @@ func DisableTagChannels(c *gin.Context) {
 		})
 		return
 	}
-	err = model.DisableChannelByTag(channelTag.Tag)
+	err = catalogmodel.DisableChannelByTag(channelTag.Tag)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	model.InitChannelCache()
-	recordManageAudit(c, "channel.tag_disable", map[string]interface{}{
+	catalogmodel.InitChannelCache()
+	opscontroller.RecordManageAudit(c, "channel.tag_disable", map[string]interface{}{
 		"tag": channelTag.Tag,
 	})
 	c.JSON(http.StatusOK, gin.H{
@@ -816,13 +820,13 @@ func EnableTagChannels(c *gin.Context) {
 		})
 		return
 	}
-	err = model.EnableChannelByTag(channelTag.Tag)
+	err = catalogmodel.EnableChannelByTag(channelTag.Tag)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	model.InitChannelCache()
-	recordManageAudit(c, "channel.tag_enable", map[string]interface{}{
+	catalogmodel.InitChannelCache()
+	opscontroller.RecordManageAudit(c, "channel.tag_enable", map[string]interface{}{
 		"tag": channelTag.Tag,
 	})
 	c.JSON(http.StatusOK, gin.H{
@@ -876,13 +880,13 @@ func EditTagChannels(c *gin.Context) {
 		}
 		channelTag.HeaderOverride = common.GetPointer[string](trimmed)
 	}
-	err = model.EditChannelByTag(channelTag.Tag, channelTag.NewTag, channelTag.ModelMapping, channelTag.Models, channelTag.Groups, channelTag.Priority, channelTag.Weight, channelTag.ParamOverride, channelTag.HeaderOverride)
+	err = catalogmodel.EditChannelByTag(channelTag.Tag, channelTag.NewTag, channelTag.ModelMapping, channelTag.Models, channelTag.Groups, channelTag.Priority, channelTag.Weight, channelTag.ParamOverride, channelTag.HeaderOverride)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	model.InitChannelCache()
-	recordManageAudit(c, "channel.tag_edit", map[string]interface{}{
+	catalogmodel.InitChannelCache()
+	opscontroller.RecordManageAudit(c, "channel.tag_edit", map[string]interface{}{
 		"tag": channelTag.Tag,
 	})
 	c.JSON(http.StatusOK, gin.H{
@@ -907,16 +911,16 @@ func DeleteChannelBatch(c *gin.Context) {
 		})
 		return
 	}
-	deletedCount, err := model.BatchDeleteChannels(channelBatch.Ids)
+	deletedCount, err := catalogmodel.BatchDeleteChannels(channelBatch.Ids)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	model.InitChannelCache()
+	catalogmodel.InitChannelCache()
 	if deletedCount > 0 {
-		service.ResetProxyClientCache()
+		egressservice.ResetProxyClientCache()
 	}
-	recordManageAudit(c, "channel.delete_batch", map[string]interface{}{
+	opscontroller.RecordManageAudit(c, "channel.delete_batch", map[string]interface{}{
 		"count": deletedCount,
 	})
 	c.JSON(http.StatusOK, gin.H{
@@ -928,7 +932,7 @@ func DeleteChannelBatch(c *gin.Context) {
 }
 
 type PatchChannel struct {
-	model.Channel
+	catalogmodel.Channel
 	MultiKeyMode *string `json:"multi_key_mode"`
 	KeyMode      *string `json:"key_mode"` // 多key模式下密钥覆盖或者追加
 }
@@ -973,7 +977,7 @@ func UpdateChannel(c *gin.Context) {
 		return
 	}
 	// Preserve existing ChannelInfo to ensure multi-key channels keep correct state even if the client does not send ChannelInfo in the request.
-	originChannel, err := model.GetChannelById(channel.Id, true)
+	originChannel, err := catalogmodel.GetChannelById(channel.Id, true)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -984,8 +988,8 @@ func UpdateChannel(c *gin.Context) {
 	originProxy := originChannel.GetSetting().Proxy
 	proxyChanged := false
 	if _, settingProvided := requestData["setting"]; settingProvided {
-		newProxy, _ := service.NormalizeProxyURL(channel.GetSetting().Proxy)
-		normalizedOriginProxy, originProxyErr := service.NormalizeProxyURL(originProxy)
+		newProxy, _ := egressservice.NormalizeProxyURL(channel.GetSetting().Proxy)
+		normalizedOriginProxy, originProxyErr := egressservice.NormalizeProxyURL(originProxy)
 		proxyChanged = originProxyErr != nil || normalizedOriginProxy != newProxy
 	}
 
@@ -1088,9 +1092,9 @@ func UpdateChannel(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	model.InitChannelCache()
+	catalogmodel.InitChannelCache()
 	if proxyChanged {
-		service.InvalidateProxyClient(originProxy)
+		egressservice.InvalidateProxyClient(originProxy)
 	}
 	// 记录变更的字段名（语言无关的字段标识），密钥仅记录"已更换"绝不记录内容。
 	changedFields := make([]string, 0)
@@ -1109,7 +1113,7 @@ func UpdateChannel(c *gin.Context) {
 	if channel.Key != "" && channel.Key != originChannel.Key {
 		changedFields = append(changedFields, "key")
 	}
-	recordManageAudit(c, "channel.update", map[string]interface{}{
+	opscontroller.RecordManageAudit(c, "channel.update", map[string]interface{}{
 		"id":             channel.Id,
 		"name":           channel.Name,
 		"changed_fields": changedFields,
@@ -1135,11 +1139,11 @@ func UpdateChannelStatus(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	changed := model.UpdateChannelStatus(id, "", req.Status, "manual operation")
+	changed := catalogmodel.UpdateChannelStatus(id, "", req.Status, "manual operation")
 	if changed {
-		model.InitChannelCache()
+		catalogmodel.InitChannelCache()
 	}
-	recordManageAudit(c, "channel.status_update", map[string]interface{}{
+	opscontroller.RecordManageAudit(c, "channel.status_update", map[string]interface{}{
 		"id":      id,
 		"status":  req.Status,
 		"changed": changed,
@@ -1159,14 +1163,14 @@ func BatchUpdateChannelStatus(c *gin.Context) {
 	}
 	changedCount := 0
 	for _, id := range req.Ids {
-		if model.UpdateChannelStatus(id, "", req.Status, "manual batch operation") {
+		if catalogmodel.UpdateChannelStatus(id, "", req.Status, "manual batch operation") {
 			changedCount++
 		}
 	}
 	if changedCount > 0 {
-		model.InitChannelCache()
+		catalogmodel.InitChannelCache()
 	}
-	recordManageAudit(c, "channel.status_update_batch", map[string]interface{}{
+	opscontroller.RecordManageAudit(c, "channel.status_update_batch", map[string]interface{}{
 		"count":  changedCount,
 		"total":  len(req.Ids),
 		"status": req.Status,
@@ -1203,10 +1207,10 @@ type fetchModelsRequest struct {
 	Proxy          *string `json:"proxy"`
 }
 
-func buildAdvancedCustomModelPreviewChannel(req fetchModelsRequest) (*model.Channel, error) {
-	var channel *model.Channel
+func buildAdvancedCustomModelPreviewChannel(req fetchModelsRequest) (*catalogmodel.Channel, error) {
+	var channel *catalogmodel.Channel
 	if req.ChannelID > 0 {
-		savedChannel, err := model.GetChannelById(req.ChannelID, true)
+		savedChannel, err := catalogmodel.GetChannelById(req.ChannelID, true)
 		if err != nil {
 			return nil, err
 		}
@@ -1219,7 +1223,7 @@ func buildAdvancedCustomModelPreviewChannel(req fetchModelsRequest) (*model.Chan
 		if key != "" {
 			key = strings.Split(key, "\n")[0]
 		}
-		channel = &model.Channel{
+		channel = &catalogmodel.Channel{
 			Type: req.Type,
 			Key:  key,
 		}
@@ -1282,7 +1286,7 @@ func FetchModels(c *gin.Context) {
 		return
 	}
 
-	var channel *model.Channel
+	var channel *catalogmodel.Channel
 	if req.Type == constant.ChannelTypeAdvancedCustom || req.ChannelID > 0 {
 		var err error
 		channel, err = buildAdvancedCustomModelPreviewChannel(req)
@@ -1306,7 +1310,7 @@ func FetchModels(c *gin.Context) {
 		if req.Type != constant.ChannelTypeCodex {
 			key = strings.Split(key, "\n")[0]
 		}
-		channel = &model.Channel{
+		channel = &catalogmodel.Channel{
 			Type:    req.Type,
 			Key:     key,
 			BaseURL: &baseURL,
@@ -1338,13 +1342,13 @@ func BatchSetChannelTag(c *gin.Context) {
 		})
 		return
 	}
-	err = model.BatchSetChannelTag(channelBatch.Ids, channelBatch.Tag)
+	err = catalogmodel.BatchSetChannelTag(channelBatch.Ids, channelBatch.Tag)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	model.InitChannelCache()
-	recordManageAudit(c, "channel.tag_batch_set", map[string]interface{}{
+	catalogmodel.InitChannelCache()
+	opscontroller.RecordManageAudit(c, "channel.tag_batch_set", map[string]interface{}{
 		"count": len(channelBatch.Ids),
 	})
 	c.JSON(http.StatusOK, gin.H{
@@ -1365,7 +1369,7 @@ func GetTagModels(c *gin.Context) {
 		return
 	}
 
-	channels, err := model.GetChannelsByTag(tag, false, false) // idSort=false, selectAll=false
+	channels, err := catalogmodel.GetChannelsByTag(tag, false, false) // idSort=false, selectAll=false
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
@@ -1418,7 +1422,7 @@ func CopyChannel(c *gin.Context) {
 	}
 
 	// fetch original channel with key
-	origin, err := model.GetChannelById(id, true)
+	origin, err := catalogmodel.GetChannelById(id, true)
 	if err != nil {
 		common.SysError("failed to get channel by id: " + err.Error())
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "获取渠道信息失败，请稍后重试"})
@@ -1449,8 +1453,8 @@ func CopyChannel(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "复制渠道失败，请稍后重试"})
 		return
 	}
-	model.InitChannelCache()
-	recordManageAudit(c, "channel.copy", map[string]interface{}{
+	catalogmodel.InitChannelCache()
+	opscontroller.RecordManageAudit(c, "channel.copy", map[string]interface{}{
 		"sourceId": id,
 		"id":       clone.Id,
 		"name":     clone.Name,
@@ -1499,7 +1503,7 @@ func ManageMultiKeys(c *gin.Context) {
 		return
 	}
 
-	channel, err := model.GetChannelById(request.ChannelId, true)
+	channel, err := catalogmodel.GetChannelById(request.ChannelId, true)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -1523,15 +1527,15 @@ func ManageMultiKeys(c *gin.Context) {
 
 	// get_key_status 为只读查询，不记录审计；其余为修改操作，记录审计并跳过中间件兜底。
 	if request.Action == "get_key_status" {
-		markAuditLogged(c)
+		opscontroller.MarkAuditLogged(c)
 	} else {
-		recordManageAudit(c, "channel.multi_key_manage", map[string]interface{}{
+		opscontroller.RecordManageAudit(c, "channel.multi_key_manage", map[string]interface{}{
 			"action": request.Action,
 			"id":     channel.Id,
 		})
 	}
 
-	lock := model.GetChannelPollingLock(channel.Id)
+	lock := catalogmodel.GetChannelPollingLock(channel.Id)
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -1686,7 +1690,7 @@ func ManageMultiKeys(c *gin.Context) {
 			return
 		}
 
-		model.InitChannelCache()
+		catalogmodel.InitChannelCache()
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"message": "密钥已禁用",
@@ -1728,7 +1732,7 @@ func ManageMultiKeys(c *gin.Context) {
 			return
 		}
 
-		model.InitChannelCache()
+		catalogmodel.InitChannelCache()
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"message": "密钥已启用",
@@ -1752,7 +1756,7 @@ func ManageMultiKeys(c *gin.Context) {
 			return
 		}
 
-		model.InitChannelCache()
+		catalogmodel.InitChannelCache()
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"message": fmt.Sprintf("已启用 %d 个密钥", enabledCount),
@@ -1799,7 +1803,7 @@ func ManageMultiKeys(c *gin.Context) {
 			return
 		}
 
-		model.InitChannelCache()
+		catalogmodel.InitChannelCache()
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"message": fmt.Sprintf("已禁用 %d 个密钥", disabledCount),
@@ -1879,7 +1883,7 @@ func ManageMultiKeys(c *gin.Context) {
 			return
 		}
 
-		model.InitChannelCache()
+		catalogmodel.InitChannelCache()
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"message": "密钥已删除",
@@ -1947,7 +1951,7 @@ func ManageMultiKeys(c *gin.Context) {
 			return
 		}
 
-		model.InitChannelCache()
+		catalogmodel.InitChannelCache()
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"message": fmt.Sprintf("已删除 %d 个自动禁用的密钥", deletedCount),
@@ -1992,7 +1996,7 @@ func OllamaPullModel(c *gin.Context) {
 	}
 
 	// 获取渠道信息
-	channel, err := model.GetChannelById(req.ChannelID, true)
+	channel, err := catalogmodel.GetChannelById(req.ChannelID, true)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
@@ -2055,7 +2059,7 @@ func OllamaPullModelStream(c *gin.Context) {
 	}
 
 	// 获取渠道信息
-	channel, err := model.GetChannelById(req.ChannelID, true)
+	channel, err := catalogmodel.GetChannelById(req.ChannelID, true)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
@@ -2137,7 +2141,7 @@ func OllamaDeleteModel(c *gin.Context) {
 	}
 
 	// 获取渠道信息
-	channel, err := model.GetChannelById(req.ChannelID, true)
+	channel, err := catalogmodel.GetChannelById(req.ChannelID, true)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
@@ -2187,7 +2191,7 @@ func OllamaVersion(c *gin.Context) {
 		return
 	}
 
-	channel, err := model.GetChannelById(id, true)
+	channel, err := catalogmodel.GetChannelById(id, true)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,

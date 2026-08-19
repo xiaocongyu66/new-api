@@ -8,11 +8,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	"github.com/QuantumNous/new-api/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
-func createReserveTestUser(t *testing.T, quota int) User {
+func createReserveTestUser(t *testing.T, quota int) identitymodel.User {
 	t.Helper()
-	user := User{
+	user := identitymodel.User{
 		Username:    "reserve-user-" + common.GetRandomString(6),
 		Password:    "unused-password-hash",
 		Role:        common.RoleCommonUser,
@@ -22,13 +25,13 @@ func createReserveTestUser(t *testing.T, quota int) User {
 		Quota:       quota,
 		AffCode:     "reserve-aff-" + common.GetRandomString(8),
 	}
-	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, rootmodel.DB.Create(&user).Error)
 	return user
 }
 
-func createReserveTestToken(t *testing.T, remainQuota int) Token {
+func createReserveTestToken(t *testing.T, remainQuota int) identitymodel.Token {
 	t.Helper()
-	token := Token{
+	token := identitymodel.Token{
 		UserId:      1,
 		Key:         "reserve-token-" + common.GetRandomString(8),
 		Name:        "reserve-test",
@@ -42,15 +45,15 @@ func createReserveTestToken(t *testing.T, remainQuota int) Token {
 
 func getUserQuotaFromDB(t *testing.T, id int) int {
 	t.Helper()
-	var user User
-	require.NoError(t, DB.Select("quota").First(&user, id).Error)
+	var user identitymodel.User
+	require.NoError(t, rootmodel.DB.Select("quota").First(&user, id).Error)
 	return user.Quota
 }
 
-func getTokenFromDB(t *testing.T, id int) Token {
+func getTokenFromDB(t *testing.T, id int) identitymodel.Token {
 	t.Helper()
-	var token Token
-	require.NoError(t, DB.First(&token, id).Error)
+	var token identitymodel.Token
+	require.NoError(t, rootmodel.DB.First(&token, id).Error)
 	return token
 }
 
@@ -58,17 +61,17 @@ func resetBatchUpdateTestState(t *testing.T) {
 	t.Helper()
 	oldBatchEnabled := common.BatchUpdateEnabled
 	common.BatchUpdateEnabled = false
-	for i := 0; i < BatchUpdateTypeCount; i++ {
-		batchUpdateLocks[i].Lock()
-		batchUpdateStores[i] = make(map[int]int)
-		batchUpdateLocks[i].Unlock()
+	for i := 0; i < rootmodel.BatchUpdateTypeCount; i++ {
+		rootmodel.BatchUpdateLocks[i].Lock()
+		rootmodel.BatchUpdateStores[i] = make(map[int]int)
+		rootmodel.BatchUpdateLocks[i].Unlock()
 	}
 	t.Cleanup(func() {
 		common.BatchUpdateEnabled = oldBatchEnabled
-		for i := 0; i < BatchUpdateTypeCount; i++ {
-			batchUpdateLocks[i].Lock()
-			batchUpdateStores[i] = make(map[int]int)
-			batchUpdateLocks[i].Unlock()
+		for i := 0; i < rootmodel.BatchUpdateTypeCount; i++ {
+			rootmodel.BatchUpdateLocks[i].Lock()
+			rootmodel.BatchUpdateStores[i] = make(map[int]int)
+			rootmodel.BatchUpdateLocks[i].Unlock()
 		}
 	})
 }
@@ -116,8 +119,8 @@ func TestRedisBatchReserveNeverFallsBackToStaleDatabaseBalance(t *testing.T) {
 
 	reserved, err = TryReserveUserQuota(user.Id, 3)
 	require.NoError(t, err)
-	assert.False(t, reserved, "stale DB balance must not authorize a second spend")
-	cachedUser, err := GetUserCache(user.Id)
+	assert.False(t, reserved, "stale rootmodel.DB balance must not authorize a second spend")
+	cachedUser, err := identitymodel.GetUserCache(user.Id)
 	require.NoError(t, err)
 	assert.Equal(t, 2, cachedUser.Quota)
 
@@ -130,7 +133,7 @@ func TestRedisBatchReserveNeverFallsBackToStaleDatabaseBalance(t *testing.T) {
 	assert.False(t, reserved)
 	assert.Equal(t, 9, getTokenFromDB(t, token.Id).RemainQuota)
 
-	batchUpdate()
+	rootmodel.BatchUpdate()
 	assert.Equal(t, 2, getUserQuotaFromDB(t, user.Id))
 	reloadedToken := getTokenFromDB(t, token.Id)
 	assert.Equal(t, 2, reloadedToken.RemainQuota)
@@ -165,7 +168,7 @@ func TestSynchronousReserveCompensatesCacheWhenPersistenceFails(t *testing.T) {
 
 	user := createReserveTestUser(t, 10)
 	require.NoError(t, populateUserCache(user))
-	require.NoError(t, DB.Delete(&user).Error)
+	require.NoError(t, rootmodel.DB.Delete(&user).Error)
 
 	reserved, err := TryReserveUserQuota(user.Id, 6)
 	assert.False(t, reserved)
@@ -177,7 +180,7 @@ func TestSynchronousReserveCompensatesCacheWhenPersistenceFails(t *testing.T) {
 	token := createReserveTestToken(t, 12)
 	_, err = GetTokenByKey(token.Key, true)
 	require.NoError(t, err)
-	require.NoError(t, DB.Delete(&token).Error)
+	require.NoError(t, rootmodel.DB.Delete(&token).Error)
 	reserved, err = TryReserveTokenQuota(token.Id, token.Key, 7, false)
 	assert.False(t, reserved)
 	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)

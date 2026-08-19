@@ -5,17 +5,17 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/QuantumNous/new-api/model"
 
 	webauthn "github.com/go-webauthn/webauthn/webauthn"
+	"github.com/QuantumNous/new-api/modelapi"
 )
 
 type WebAuthnUser struct {
-	user       *model.User
-	credential *model.PasskeyCredential
+	user       *modelapi.User
+	credential *modelapi.PasskeyCredential
 }
 
-func NewWebAuthnUser(user *model.User, credential *model.PasskeyCredential) *WebAuthnUser {
+func NewWebAuthnUser(user *modelapi.User, credential *modelapi.PasskeyCredential) *WebAuthnUser {
 	return &WebAuthnUser{user: user, credential: credential}
 }
 
@@ -56,14 +56,14 @@ func (u *WebAuthnUser) WebAuthnCredentials() []webauthn.Credential {
 	return []webauthn.Credential{cred}
 }
 
-func (u *WebAuthnUser) ModelUser() *model.User {
+func (u *WebAuthnUser) ModelUser() *modelapi.User {
 	if u == nil {
 		return nil
 	}
 	return u.user
 }
 
-func (u *WebAuthnUser) PasskeyCredential() *model.PasskeyCredential {
+func (u *WebAuthnUser) PasskeyCredential() *modelapi.PasskeyCredential {
 	if u == nil {
 		return nil
 	}

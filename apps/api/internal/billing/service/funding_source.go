@@ -4,7 +4,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/QuantumNous/new-api/model"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	billingmodel "github.com/QuantumNous/new-api/internal/billing/model"
 )
 
 // ---------------------------------------------------------------------------
@@ -43,7 +44,7 @@ func (w *WalletFunding) PreConsume(amount int) error {
 	if amount <= 0 {
 		return nil
 	}
-	reserved, err := model.TryReserveUserQuota(w.userId, amount)
+	reserved, err := billingmodel.TryReserveUserQuota(w.userId, amount)
 	if err != nil {
 		return err
 	}
@@ -59,9 +60,9 @@ func (w *WalletFunding) Settle(delta int) error {
 		return nil
 	}
 	if delta > 0 {
-		return model.DecreaseUserQuota(w.userId, delta, false)
+		return identitymodel.DecreaseUserQuota(w.userId, delta, false)
 	}
-	return model.IncreaseUserQuota(w.userId, -delta, false)
+	return identitymodel.IncreaseUserQuota(w.userId, -delta, false)
 }
 
 func (w *WalletFunding) Refund() error {
@@ -70,7 +71,7 @@ func (w *WalletFunding) Refund() error {
 	}
 	// IncreaseUserQuota 是 quota += N 的非幂等操作，不能重试，否则会多退额度。
 	// 订阅的 RefundSubscriptionPreConsume 有 requestId 幂等保护所以可以重试。
-	return model.IncreaseUserQuota(w.userId, w.consumed, false)
+	return identitymodel.IncreaseUserQuota(w.userId, w.consumed, false)
 }
 
 // ---------------------------------------------------------------------------
@@ -95,7 +96,7 @@ func (s *SubscriptionFunding) Source() string { return BillingSourceSubscription
 
 func (s *SubscriptionFunding) PreConsume(_ int) error {
 	// amount 参数被忽略，使用内部 s.amount（已在构造时根据 preConsumedQuota 计算）
-	res, err := model.PreConsumeUserSubscription(s.requestId, s.userId, s.modelName, 0, s.amount)
+	res, err := billingmodel.PreConsumeUserSubscription(s.requestId, s.userId, s.modelName, 0, s.amount)
 	if err != nil {
 		return err
 	}
@@ -104,7 +105,7 @@ func (s *SubscriptionFunding) PreConsume(_ int) error {
 	s.AmountTotal = res.AmountTotal
 	s.AmountUsedAfter = res.AmountUsedAfter
 	// 获取订阅计划信息
-	if planInfo, err := model.GetSubscriptionPlanInfoByUserSubscriptionId(res.UserSubscriptionId); err == nil && planInfo != nil {
+	if planInfo, err := billingmodel.GetSubscriptionPlanInfoByUserSubscriptionId(res.UserSubscriptionId); err == nil && planInfo != nil {
 		s.PlanId = planInfo.PlanId
 		s.PlanTitle = planInfo.PlanTitle
 	}
@@ -115,7 +116,7 @@ func (s *SubscriptionFunding) Settle(delta int) error {
 	if delta == 0 {
 		return nil
 	}
-	return model.PostConsumeUserSubscriptionDelta(s.subscriptionId, int64(delta))
+	return billingmodel.PostConsumeUserSubscriptionDelta(s.subscriptionId, int64(delta))
 }
 
 func (s *SubscriptionFunding) Refund() error {
@@ -123,7 +124,7 @@ func (s *SubscriptionFunding) Refund() error {
 		return nil
 	}
 	return refundWithRetry(func() error {
-		return model.RefundSubscriptionPreConsume(s.requestId)
+		return billingmodel.RefundSubscriptionPreConsume(s.requestId)
 	})
 }
 

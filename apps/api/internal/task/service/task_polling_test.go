@@ -12,12 +12,14 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	taskdto "github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/model"
+	taskmodel "github.com/QuantumNous/new-api/internal/task/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 type taskPollingFetchAdaptor struct {
@@ -42,7 +44,7 @@ func (a *sunoFailurePollingAdaptor) FetchTask(_ string, _ string, body map[strin
 	for _, taskID := range taskIDs {
 		items = append(items, taskdto.SunoDataResponse{
 			TaskID:     taskID,
-			Status:     string(model.TaskStatusFailure),
+			Status:     string(taskmodel.TaskStatusFailure),
 			FailReason: a.failReason,
 			FinishTime: time.Now().Unix(),
 		})
@@ -65,7 +67,7 @@ func (a *sunoFailurePollingAdaptor) ParseTaskResult([]byte) (*relaycommon.TaskIn
 	return nil, nil
 }
 
-func (a *sunoFailurePollingAdaptor) AdjustBillingOnComplete(_ *model.Task, _ *relaycommon.TaskInfo) int {
+func (a *sunoFailurePollingAdaptor) AdjustBillingOnComplete(_ *taskmodel.Task, _ *relaycommon.TaskInfo) int {
 	return 0
 }
 
@@ -92,11 +94,11 @@ func (a *taskPollingFetchAdaptor) FetchTask(_ string, _ string, body map[string]
 		}
 	}
 
-	response := taskdto.TaskResponse[model.Task]{
+	response := taskdto.TaskResponse[taskmodel.Task]{
 		Code: taskdto.TaskSuccessCode,
-		Data: model.Task{
+		Data: taskmodel.Task{
 			TaskID:   taskID,
-			Status:   model.TaskStatusInProgress,
+			Status:   taskmodel.TaskStatusInProgress,
 			Progress: "30%",
 		},
 	}
@@ -111,10 +113,10 @@ func (a *taskPollingFetchAdaptor) FetchTask(_ string, _ string, body map[string]
 }
 
 func (a *taskPollingFetchAdaptor) ParseTaskResult([]byte) (*relaycommon.TaskInfo, error) {
-	return &relaycommon.TaskInfo{Status: model.TaskStatusInProgress}, nil
+	return &relaycommon.TaskInfo{Status: taskmodel.TaskStatusInProgress}, nil
 }
 
-func (a *taskPollingFetchAdaptor) AdjustBillingOnComplete(_ *model.Task, _ *relaycommon.TaskInfo) int {
+func (a *taskPollingFetchAdaptor) AdjustBillingOnComplete(_ *taskmodel.Task, _ *relaycommon.TaskInfo) int {
 	return 0
 }
 
@@ -132,7 +134,7 @@ func (a *taskPollingFetchAdaptor) fetchedTaskIDs() []string {
 
 func seedTaskPollingChannel(t *testing.T, id int, disableSleep bool) {
 	t.Helper()
-	ch := &model.Channel{
+	ch := &catalogmodel.Channel{
 		Id:     id,
 		Type:   constant.ChannelTypeKling,
 		Name:   "polling_channel",
@@ -142,18 +144,18 @@ func seedTaskPollingChannel(t *testing.T, id int, disableSleep bool) {
 	if disableSleep {
 		ch.SetOtherSettings(dto.ChannelOtherSettings{DisableTaskPollingSleep: true})
 	}
-	require.NoError(t, model.DB.Create(ch).Error)
+	require.NoError(t, rootmodel.DB.Create(ch).Error)
 }
 
-func seedPollingTask(t *testing.T, channelID int, publicID string, upstreamID string) *model.Task {
+func seedPollingTask(t *testing.T, channelID int, publicID string, upstreamID string) *taskmodel.Task {
 	t.Helper()
-	task := &model.Task{
+	task := &taskmodel.Task{
 		TaskID:    publicID,
 		Platform:  constant.TaskPlatform("kling"),
 		UserId:    1,
 		ChannelId: channelID,
 		Action:    constant.TaskActionGenerate,
-		Status:    model.TaskStatusInProgress,
+		Status:    taskmodel.TaskStatusInProgress,
 		Progress:  "30%",
 		CreatedAt: time.Now().Unix(),
 		UpdatedAt: time.Now().Unix(),
@@ -161,7 +163,7 @@ func seedPollingTask(t *testing.T, channelID int, publicID string, upstreamID st
 			UpstreamTaskID: upstreamID,
 		},
 	}
-	require.NoError(t, model.DB.Create(task).Error)
+	require.NoError(t, rootmodel.DB.Create(task).Error)
 	return task
 }
 
@@ -186,7 +188,7 @@ func TestUpdateVideoTasksDefaultSleepWaitsBetweenTasks(t *testing.T) {
 			first.GetUpstreamTaskID(),
 			second.GetUpstreamTaskID(),
 		},
-	}, map[string]*model.Task{
+	}, map[string]*taskmodel.Task{
 		first.GetUpstreamTaskID():  first,
 		second.GetUpstreamTaskID(): second,
 	})
@@ -216,7 +218,7 @@ func TestUpdateVideoTasksCanSkipPollingSleepPerChannel(t *testing.T) {
 			first.GetUpstreamTaskID(),
 			second.GetUpstreamTaskID(),
 		},
-	}, map[string]*model.Task{
+	}, map[string]*taskmodel.Task{
 		first.GetUpstreamTaskID():  first,
 		second.GetUpstreamTaskID(): second,
 	})
@@ -254,7 +256,7 @@ func TestUpdateVideoTasksDefaultSleepDoesNotBlockOtherChannels(t *testing.T) {
 			secondChannelFirst.GetUpstreamTaskID(),
 			secondChannelSecond.GetUpstreamTaskID(),
 		},
-	}, map[string]*model.Task{
+	}, map[string]*taskmodel.Task{
 		firstChannelFirst.GetUpstreamTaskID():   firstChannelFirst,
 		firstChannelSecond.GetUpstreamTaskID():  firstChannelSecond,
 		secondChannelFirst.GetUpstreamTaskID():  secondChannelFirst,
@@ -303,7 +305,7 @@ func TestUpdateVideoTasksSlowChannelDoesNotBlockOtherChannels(t *testing.T) {
 				fastFirst.GetUpstreamTaskID(),
 				fastSecond.GetUpstreamTaskID(),
 			},
-		}, map[string]*model.Task{
+		}, map[string]*taskmodel.Task{
 			slowTask.GetUpstreamTaskID():   slowTask,
 			fastFirst.GetUpstreamTaskID():  fastFirst,
 			fastSecond.GetUpstreamTaskID(): fastSecond,
@@ -361,7 +363,7 @@ func TestUpdateVideoTasksMixedChannelSleepSettings(t *testing.T) {
 			fastFirst.GetUpstreamTaskID(),
 			fastSecond.GetUpstreamTaskID(),
 		},
-	}, map[string]*model.Task{
+	}, map[string]*taskmodel.Task{
 		sleepyFirst.GetUpstreamTaskID():  sleepyFirst,
 		sleepySecond.GetUpstreamTaskID(): sleepySecond,
 		fastFirst.GetUpstreamTaskID():    fastFirst,
@@ -382,7 +384,7 @@ func TestUpdateSunoTasksStalePollsRefundExactlyOnce(t *testing.T) {
 	seedUser(t, userID, initialUserQuota)
 	seedToken(t, tokenID, userID, "sk-suno-refund-once", initialTokenQuota)
 	baseURL := "https://suno.invalid"
-	require.NoError(t, model.DB.Create(&model.Channel{
+	require.NoError(t, rootmodel.DB.Create(&catalogmodel.Channel{
 		Id:      channelID,
 		Type:    constant.ChannelTypeSunoAPI,
 		Name:    "suno_refund_once",
@@ -394,32 +396,32 @@ func TestUpdateSunoTasksStalePollsRefundExactlyOnce(t *testing.T) {
 	task := makeTask(userID, channelID, taskQuota, tokenID, BillingSourceWallet, 0)
 	task.TaskID = publicTaskID
 	task.Platform = constant.TaskPlatformSuno
-	task.Status = model.TaskStatusInProgress
+	task.Status = taskmodel.TaskStatusInProgress
 	task.Progress = "50%"
 	task.SubmitTime = time.Now().Unix()
 	task.PrivateData.UpstreamTaskID = upstreamTaskID
-	require.NoError(t, model.DB.Create(task).Error)
+	require.NoError(t, rootmodel.DB.Create(task).Error)
 
-	var firstPollTask model.Task
-	var staleSecondPollTask model.Task
-	require.NoError(t, model.DB.First(&firstPollTask, task.ID).Error)
-	require.NoError(t, model.DB.First(&staleSecondPollTask, task.ID).Error)
+	var firstPollTask taskmodel.Task
+	var staleSecondPollTask taskmodel.Task
+	require.NoError(t, rootmodel.DB.First(&firstPollTask, task.ID).Error)
+	require.NoError(t, rootmodel.DB.First(&staleSecondPollTask, task.ID).Error)
 
 	adaptor := &sunoFailurePollingAdaptor{failReason: "upstream failed"}
 	previousFactory := GetTaskAdaptorFunc
 	GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor { return adaptor }
 	t.Cleanup(func() { GetTaskAdaptorFunc = previousFactory })
 
-	require.NoError(t, updateSunoTasks(context.Background(), channelID, []string{upstreamTaskID}, map[string]*model.Task{
+	require.NoError(t, updateSunoTasks(context.Background(), channelID, []string{upstreamTaskID}, map[string]*taskmodel.Task{
 		upstreamTaskID: &firstPollTask,
 	}))
-	require.NoError(t, updateSunoTasks(context.Background(), channelID, []string{upstreamTaskID}, map[string]*model.Task{
+	require.NoError(t, updateSunoTasks(context.Background(), channelID, []string{upstreamTaskID}, map[string]*taskmodel.Task{
 		upstreamTaskID: &staleSecondPollTask,
 	}))
 
-	var reloaded model.Task
-	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
-	assert.EqualValues(t, model.TaskStatusFailure, reloaded.Status)
+	var reloaded taskmodel.Task
+	require.NoError(t, rootmodel.DB.First(&reloaded, task.ID).Error)
+	assert.EqualValues(t, taskmodel.TaskStatusFailure, reloaded.Status)
 	assert.Zero(t, reloaded.Quota)
 	assert.Equal(t, initialUserQuota+taskQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota+taskQuota, getTokenRemainQuota(t, tokenID))
@@ -434,11 +436,11 @@ func TestRunTaskPollingOnceDoesNotRefundHistoricalFailedTask(t *testing.T) {
 
 	task := makeTask(userID, 0, taskQuota, 0, BillingSourceWallet, 0)
 	task.TaskID = "historical_failed_already_refunded"
-	task.Status = model.TaskStatusFailure
+	task.Status = taskmodel.TaskStatusFailure
 	task.Progress = "100%"
 	task.SubmitTime = time.Now().Add(-90 * 24 * time.Hour).Unix()
 	task.UpdatedAt = time.Now().Add(-time.Minute).Unix()
-	require.NoError(t, model.DB.Create(task).Error)
+	require.NoError(t, rootmodel.DB.Create(task).Error)
 
 	previousFactory := GetTaskAdaptorFunc
 	GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor {
@@ -469,13 +471,13 @@ func TestSweepTimedOutTasksHonorsRefundRolloutBoundary(t *testing.T) {
 	legacyTask.TaskID = "legacy_timeout_without_refund"
 	legacyTask.Progress = "50%"
 	legacyTask.SubmitTime = 1771718399 // 2026-02-21 23:59:59 UTC
-	require.NoError(t, model.DB.Create(legacyTask).Error)
+	require.NoError(t, rootmodel.DB.Create(legacyTask).Error)
 
 	modernTask := makeTask(userID, 0, modernTaskQuota, 0, BillingSourceWallet, 0)
 	modernTask.TaskID = "modern_timeout_with_refund"
 	modernTask.Progress = "50%"
 	modernTask.SubmitTime = 1771718400 // 2026-02-22 00:00:00 UTC
-	require.NoError(t, model.DB.Create(modernTask).Error)
+	require.NoError(t, rootmodel.DB.Create(modernTask).Error)
 
 	previousTimeout := constant.TaskTimeoutMinutes
 	constant.TaskTimeoutMinutes = 1
@@ -483,12 +485,12 @@ func TestSweepTimedOutTasksHonorsRefundRolloutBoundary(t *testing.T) {
 
 	sweepTimedOutTasks(context.Background())
 
-	var reloadedLegacy model.Task
-	var reloadedModern model.Task
-	require.NoError(t, model.DB.First(&reloadedLegacy, legacyTask.ID).Error)
-	require.NoError(t, model.DB.First(&reloadedModern, modernTask.ID).Error)
-	assert.EqualValues(t, model.TaskStatusFailure, reloadedLegacy.Status)
-	assert.EqualValues(t, model.TaskStatusFailure, reloadedModern.Status)
+	var reloadedLegacy taskmodel.Task
+	var reloadedModern taskmodel.Task
+	require.NoError(t, rootmodel.DB.First(&reloadedLegacy, legacyTask.ID).Error)
+	require.NoError(t, rootmodel.DB.First(&reloadedModern, modernTask.ID).Error)
+	assert.EqualValues(t, taskmodel.TaskStatusFailure, reloadedLegacy.Status)
+	assert.EqualValues(t, taskmodel.TaskStatusFailure, reloadedModern.Status)
 	assert.Zero(t, reloadedLegacy.Quota)
 	assert.Zero(t, reloadedModern.Quota)
 	assert.Contains(t, reloadedLegacy.FailReason, "旧系统遗留任务")

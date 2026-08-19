@@ -17,17 +17,14 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/relay"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"github.com/QuantumNous/new-api/router"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
 	_ "github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -37,6 +34,18 @@ import (
 	"github.com/joho/godotenv"
 
 	_ "net/http/pprof"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
+	catalogservice "github.com/QuantumNous/new-api/internal/catalog/service"
+	billingservice "github.com/QuantumNous/new-api/internal/billing/service"
+	catalogcontroller "github.com/QuantumNous/new-api/internal/catalog/controller"
+	usagemodel "github.com/QuantumNous/new-api/internal/usage/model"
+	opsservice "github.com/QuantumNous/new-api/internal/ops/service"
+	taskservice "github.com/QuantumNous/new-api/internal/task/service"
+	rootservice "github.com/QuantumNous/new-api/service"
+	identityservice "github.com/QuantumNous/new-api/internal/identity/service"
+	rootmodel "github.com/QuantumNous/new-api/model"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
 )
 
 //go:embed web/dist
@@ -69,13 +78,13 @@ func main() {
 	kitutil.Debug.Store(common.DebugEnabled)
 
 	defer func() {
-		err := model.CloseDB()
+		err := rootmodel.CloseDB()
 		if err != nil {
 			common.FatalLog("failed to close database: " + err.Error())
 		}
 	}()
 	// Close the in-process sing-box dialer on shutdown (Issue #57).
-	defer service.CloseSingBoxDialer()
+	defer egressservice.CloseSingBoxDialer()
 
 	if common.RedisEnabled {
 		// for compatibility with old versions
@@ -91,58 +100,58 @@ func main() {
 				if r := recover(); r != nil {
 					common.SysLog(fmt.Sprintf("InitChannelCache panic: %v, retrying once", r))
 					// Retry once
-					_, _, fixErr := model.FixAbility()
+					_, _, fixErr := catalogmodel.FixAbility()
 					if fixErr != nil {
 						common.FatalLog(fmt.Sprintf("InitChannelCache failed: %s", fixErr.Error()))
 					}
 				}
 			}()
-			model.InitChannelCache()
+			catalogmodel.InitChannelCache()
 		}()
 
-		go model.SyncChannelCache(common.SyncFrequency)
+		go catalogmodel.SyncChannelCache(common.SyncFrequency)
 	}
 
 	// Warm pricing after channel cache initialization so Advanced Custom
 	// endpoint inference can read cached route settings on first request.
-	model.GetPricing()
+	catalogmodel.GetPricing()
 
 	// 热更新配置
 	outboxCtx, stopOutboxPublisher := context.WithCancel(context.Background())
 	defer stopOutboxPublisher()
-	go service.RunGatewayConfigOutboxPublisher(outboxCtx)
+	go catalogservice.RunGatewayConfigOutboxPublisher(outboxCtx)
 
 	// 热更新配置
-	go model.SyncOptions(common.SyncFrequency)
+	go rootmodel.SyncOptions(common.SyncFrequency)
 
 	// 周期性重载授权策略，保证多节点/多 master 部署下权限变更能传播到每个实例
 	go authz.StartPolicySync(common.SyncFrequency)
 
 	// 数据看板
-	go model.UpdateQuotaData()
+	go usagemodel.UpdateQuotaData()
 
 	if os.Getenv("CHANNEL_UPDATE_FREQUENCY") != "" {
 		frequency, err := strconv.Atoi(os.Getenv("CHANNEL_UPDATE_FREQUENCY"))
 		if err != nil {
 			common.FatalLog("failed to parse CHANNEL_UPDATE_FREQUENCY: " + err.Error())
 		}
-		go controller.AutomaticallyUpdateChannels(frequency)
+		go catalogcontroller.AutomaticallyUpdateChannels(frequency)
 	}
 
 	// Codex credential auto-refresh check every 10 minutes, refresh when expires within 1 day
-	service.StartCodexCredentialAutoRefreshTask()
+	catalogservice.StartCodexCredentialAutoRefreshTask()
 
 	// Subscription quota reset task (daily/weekly/monthly/custom)
-	service.StartSubscriptionQuotaResetTask()
+	billingservice.StartSubscriptionQuotaResetTask()
 
 	// Report this process as a system instance so the System Info page can show
 	// all currently alive nodes in multi-instance deployments.
-	service.StartSystemInstanceReporter()
+	opsservice.StartSystemInstanceReporter()
 
 	// Wire task polling adaptor factory (breaks service -> relay import cycle).
 	// Must run before the system task runner starts: the async_task_poll handler
 	// calls service.RunTaskPollingOnce, which needs this factory set.
-	service.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) service.TaskPollingAdaptor {
+	taskservice.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) taskservice.TaskPollingAdaptor {
 		a := relay.GetTaskAdaptor(platform)
 		if a == nil {
 			return nil
@@ -155,13 +164,13 @@ func main() {
 	// (DB-lease dedup across masters + run history), then start the runner that
 	// schedules and executes them. Master-only execution and the UpdateTask
 	// switch are enforced inside the runner and each handler's Enabled().
-	controller.RegisterScheduledSystemTasks()
-	service.StartSystemTaskRunner()
+	catalogcontroller.RegisterScheduledSystemTasks()
+	rootservice.StartSystemTaskRunner()
 
 	if os.Getenv("BATCH_UPDATE_ENABLED") == "true" {
 		common.BatchUpdateEnabled = true
 		common.SysLog("batch update enabled with interval " + strconv.Itoa(common.BatchUpdateInterval) + "s")
-		model.InitBatchUpdater()
+		rootmodel.InitBatchUpdater()
 	}
 
 	if os.Getenv("ENABLE_PPROF") == "true" {
@@ -240,7 +249,7 @@ func main() {
 	}
 	// 内存中的看板数据保存入库，避免重启丢失未落库数据 (issue #5679)
 	if common.DataExportEnabled {
-		model.SaveQuotaDataCache()
+		usagemodel.SaveQuotaDataCache()
 	}
 	common.SysLog("server exited")
 }
@@ -306,36 +315,36 @@ func InitResources() error {
 	// Initialize model settings
 	ratio_setting.InitRatioSettings()
 
-	service.InitHttpClient()
+	egressservice.InitHttpClient()
 
-	service.InitTokenEncoders()
+	egressservice.InitTokenEncoders()
 
 	// Initialize SQL Database
-	err = model.InitDB()
+	err = rootmodel.InitDB()
 	if err != nil {
 		common.FatalLog("failed to initialize database: " + err.Error())
 		return err
 	}
-	if err = authz.Init(model.DB); err != nil {
+	if err = authz.Init(rootmodel.DB); err != nil {
 		common.FatalLog("failed to initialize authorization: " + err.Error())
 		return err
 	}
 
-	model.CheckSetup()
+	rootmodel.CheckSetup()
 
-	// Initialize options, should after model.InitDB()
+	// Initialize options, should after rootmodel.InitDB()
 	if common.IsMasterNode {
-		if err := model.MigrateRetiredFrontendOptions(); err != nil {
+		if err := rootmodel.MigrateRetiredFrontendOptions(); err != nil {
 			common.SysError("failed to migrate retired frontend options: " + err.Error())
 		}
 	}
-	model.InitOptionMap()
+	rootmodel.InitOptionMap()
 
 	// 清理旧的磁盘缓存文件
 	common.CleanupOldCacheFiles()
 
 	// Initialize SQL Database
-	err = model.InitLogDB()
+	err = rootmodel.InitLogDB()
 	if err != nil {
 		return err
 	}
@@ -360,7 +369,7 @@ func InitResources() error {
 		common.SysLog("i18n initialized with languages: " + strings.Join(i18n.SupportedLanguages(), ", "))
 	}
 	// Register user language loader for lazy loading
-	i18n.SetUserLangLoader(model.GetUserLanguage)
+	i18n.SetUserLangLoader(identitymodel.GetUserLanguage)
 
 	// Load custom OAuth providers from database
 	err = oauth.LoadCustomProviders()
@@ -369,7 +378,6 @@ func InitResources() error {
 		// Don't return error, custom OAuth is not critical
 	}
 
-	service.StartAuthArtifactCleanup()
-
+	identityservice.StartAuthArtifactCleanup()
 	return nil
 }

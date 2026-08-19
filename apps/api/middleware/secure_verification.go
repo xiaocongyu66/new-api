@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
+	identityservice "github.com/QuantumNous/new-api/internal/identity/service"
 )
 
 // SecureVerificationRequired protects channel key disclosure. Other sensitive
@@ -34,13 +34,13 @@ func RequireSecurityProof(c *gin.Context, requiredScope string, allowedMethods [
 		securityProofError(c, "SECURITY_PROOF_REQUIRED", "需要安全验证")
 		return false
 	}
-	if _, err := service.VerifySecurityProof(raw, identity, requiredScope, allowedMethods); err != nil {
+	if _, err := identityservice.VerifySecurityProof(raw, identity, requiredScope, allowedMethods); err != nil {
 		switch {
-		case errors.Is(err, service.ErrAuthTokenExpired):
+		case errors.Is(err, identityservice.ErrAuthTokenExpired):
 			securityProofError(c, "SECURITY_PROOF_EXPIRED", "安全验证已过期")
-		case errors.Is(err, service.ErrProofScope):
+		case errors.Is(err, identityservice.ErrProofScope):
 			securityProofError(c, "SECURITY_PROOF_SCOPE_MISMATCH", "安全验证范围不匹配")
-		case errors.Is(err, service.ErrProofMethod):
+		case errors.Is(err, identityservice.ErrProofMethod):
 			securityProofError(c, "SECURITY_PROOF_METHOD_MISMATCH", "安全验证方式不匹配")
 		default:
 			securityProofError(c, "SECURITY_PROOF_INVALID", "安全验证状态无效")

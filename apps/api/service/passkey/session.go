@@ -5,13 +5,12 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
-
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
 	webauthn "github.com/go-webauthn/webauthn/webauthn"
+	"github.com/QuantumNous/new-api/modelapi"
 )
 
 var errSessionNotFound = errors.New("Passkey 会话不存在或已过期")
-
 const passkeyFlowTTL = 5 * time.Minute
 
 type flowPayload struct {
@@ -28,7 +27,7 @@ func CreateSessionDataFlow(purpose string, userID int, sessionID, scope string, 
 		return "", 0, err
 	}
 	expiresAt := time.Now().Add(passkeyFlowTTL)
-	token, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
+	token, _, err := identitymodel.CreateAuthFlow(modelapi.AuthFlowCreate{
 		Purpose:   purpose,
 		UserId:    userID,
 		SessionId: sessionID,
@@ -42,13 +41,13 @@ func CreateSessionDataFlow(purpose string, userID int, sessionID, scope string, 
 }
 
 func PopSessionDataFlow(token, purpose string, userID int, sessionID string) (*webauthn.SessionData, string, error) {
-	flow, err := model.ConsumeAuthFlow(token, model.AuthFlowMatch{
+	flow, err := identitymodel.ConsumeAuthFlow(token, modelapi.AuthFlowMatch{
 		Purpose:   purpose,
 		UserId:    userID,
 		SessionId: sessionID,
 	})
 	if err != nil {
-		if errors.Is(err, model.ErrAuthFlowInvalid) || errors.Is(err, model.ErrAuthFlowExpired) || errors.Is(err, model.ErrAuthFlowConsumed) {
+		if errors.Is(err, identitymodel.ErrAuthFlowInvalid) || errors.Is(err, identitymodel.ErrAuthFlowExpired) || errors.Is(err, identitymodel.ErrAuthFlowConsumed) {
 			return nil, "", errSessionNotFound
 		}
 		return nil, "", err

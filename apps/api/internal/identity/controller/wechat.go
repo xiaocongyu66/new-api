@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
 )
 
 type wechatLoginResponse struct {
@@ -68,10 +68,10 @@ func WeChatAuth(c *gin.Context) {
 		})
 		return
 	}
-	user := model.User{
+	user := identitymodel.User{
 		WeChatId: wechatId,
 	}
-	if model.IsWeChatIdAlreadyTaken(wechatId) {
+	if identitymodel.IsWeChatIdAlreadyTaken(wechatId) {
 		err := user.FillUserByWeChatId()
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
@@ -89,7 +89,7 @@ func WeChatAuth(c *gin.Context) {
 		}
 	} else {
 		if common.RegisterEnabled {
-			user.Username = "wechat_" + strconv.Itoa(model.GetMaxUserId()+1)
+			user.Username = "wechat_" + strconv.Itoa(identitymodel.GetMaxUserId()+1)
 			user.DisplayName = "WeChat User"
 			user.Role = common.RoleCommonUser
 			user.Status = common.UserStatusEnabled
@@ -149,7 +149,7 @@ func WeChatBind(c *gin.Context) {
 		})
 		return
 	}
-	if model.IsWeChatIdAlreadyTaken(wechatId) {
+	if identitymodel.IsWeChatIdAlreadyTaken(wechatId) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "该微信账号已被绑定",
@@ -162,7 +162,7 @@ func WeChatBind(c *gin.Context) {
 		return
 	}
 	// 只更新绑定列，避免完整用户快照覆盖并发的封禁、降权或分组变更。
-	if err := model.UpdateUserBindColumn(userId, "wechat_id", wechatId); err != nil {
+	if err := identitymodel.UpdateUserBindColumn(userId, "wechat_id", wechatId); err != nil {
 		common.ApiError(c, err)
 		return
 	}

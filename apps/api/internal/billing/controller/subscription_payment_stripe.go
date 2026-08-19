@@ -8,12 +8,14 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stripe/stripe-go/v81"
 	"github.com/stripe/stripe-go/v81/checkout/session"
 	"github.com/thanhpk/randstr"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	billingmodel "github.com/QuantumNous/new-api/internal/billing/model"
+	opscontroller "github.com/QuantumNous/new-api/internal/ops/controller"
 )
 
 type SubscriptionStripePayRequest struct {
@@ -21,7 +23,7 @@ type SubscriptionStripePayRequest struct {
 }
 
 func SubscriptionRequestStripePay(c *gin.Context) {
-	if !requirePaymentCompliance(c) {
+	if !RequirePaymentCompliance(c) {
 		return
 	}
 
@@ -31,7 +33,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		return
 	}
 
-	plan, err := model.GetSubscriptionPlanById(req.PlanId)
+	plan, err := billingmodel.GetSubscriptionPlanById(req.PlanId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -54,7 +56,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 	}
 
 	userId := c.GetInt("id")
-	user, err := model.GetUserById(userId, false)
+	user, err := identitymodel.GetUserById(userId, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -65,7 +67,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 	}
 
 	if plan.MaxPurchasePerUser > 0 {
-		count, err := model.CountUserSubscriptionsByPlan(userId, plan.Id)
+		count, err := billingmodel.CountUserSubscriptionsByPlan(userId, plan.Id)
 		if err != nil {
 			common.ApiError(c, err)
 			return
@@ -86,13 +88,13 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		return
 	}
 
-	order := &model.SubscriptionOrder{
+	order := &billingmodel.SubscriptionOrder{
 		UserId:          userId,
 		PlanId:          plan.Id,
 		Money:           plan.PriceAmount,
 		TradeNo:         referenceId,
-		PaymentMethod:   model.PaymentMethodStripe,
-		PaymentProvider: model.PaymentProviderStripe,
+		PaymentMethod:   billingmodel.PaymentMethodStripe,
+		PaymentProvider: billingmodel.PaymentProviderStripe,
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}
@@ -114,8 +116,8 @@ func genStripeSubscriptionLink(referenceId string, customerId string, email stri
 
 	params := &stripe.CheckoutSessionParams{
 		ClientReferenceID: stripe.String(referenceId),
-		SuccessURL:        stripe.String(paymentReturnPath("/wallet")),
-		CancelURL:         stripe.String(paymentReturnPath("/wallet")),
+		SuccessURL:        stripe.String(opscontroller.PaymentReturnPath("/wallet")),
+		CancelURL:         stripe.String(opscontroller.PaymentReturnPath("/wallet")),
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
 			{
 				Price:    stripe.String(priceId),

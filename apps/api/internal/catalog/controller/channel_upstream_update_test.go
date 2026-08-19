@@ -15,9 +15,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
+	opsmodel "github.com/QuantumNous/new-api/internal/ops/model"
 )
 
-func newAdvancedCustomModelListChannel(baseURL string, key string, upstreamPath string, auth *dto.AdvancedCustomRouteAuth) *model.Channel {
+func newAdvancedCustomModelListChannel(baseURL string, key string, upstreamPath string, auth *dto.AdvancedCustomRouteAuth) *catalogmodel.Channel {
 	config := &dto.AdvancedCustomConfig{
 		Routes: []dto.AdvancedCustomRoute{
 			{
@@ -28,7 +30,7 @@ func newAdvancedCustomModelListChannel(baseURL string, key string, upstreamPath 
 			},
 		},
 	}
-	channel := &model.Channel{
+	channel := &catalogmodel.Channel{
 		Type:    constant.ChannelTypeAdvancedCustom,
 		Key:     key,
 		BaseURL: &baseURL,
@@ -177,7 +179,7 @@ func TestFetchOrdinaryOpenAIModelsKeepsExistingEmptyDataBehavior(t *testing.T) {
 	defer server.Close()
 
 	baseURL := server.URL
-	channel := &model.Channel{
+	channel := &catalogmodel.Channel{
 		Type:    constant.ChannelTypeOpenAI,
 		Key:     "ordinary-key",
 		BaseURL: &baseURL,
@@ -343,7 +345,7 @@ func TestFailedAdvancedCustomDetectionDoesNotStageFullRemoval(t *testing.T) {
 	require.Empty(t, settings.UpstreamModelUpdateLastDetectedModels)
 	require.Empty(t, settings.UpstreamModelUpdateLastRemovedModels)
 
-	reloaded, err := model.GetChannelById(channel.Id, true)
+	reloaded, err := catalogmodel.GetChannelById(channel.Id, true)
 	require.NoError(t, err)
 	persistedSettings := reloaded.GetOtherSettings()
 	require.Empty(t, persistedSettings.UpstreamModelUpdateLastDetectedModels)
@@ -396,7 +398,7 @@ func TestFetchNewAPIModelsUsesOpenAIContract(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	baseURL := server.URL
-	channel := &model.Channel{
+	channel := &catalogmodel.Channel{
 		Type:    constant.ChannelTypeNewAPI,
 		Key:     "new-api-key",
 		BaseURL: &baseURL,
@@ -487,7 +489,7 @@ func TestNormalizeChannelModelMapping(t *testing.T) {
 		"": "invalid",
 		"invalid-target": ""
 	}`
-	channel := &model.Channel{
+	channel := &catalogmodel.Channel{
 		ModelMapping: &modelMapping,
 	}
 
@@ -580,7 +582,7 @@ func TestShouldSendUpstreamModelUpdateNotification(t *testing.T) {
 
 func TestDetectAllChannelUpstreamModelUpdatesRejectsExistingActiveTask(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
-	require.NoError(t, db.AutoMigrate(&model.SystemTask{}, &model.SystemTaskLock{}))
+	require.NoError(t, db.AutoMigrate(&opsmodel.SystemTask{}, &opsmodel.SystemTaskLock{}))
 
 	existing, err := model.CreateSystemTask(model.SystemTaskTypeModelUpdate, nil, nil)
 	require.NoError(t, err)

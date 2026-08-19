@@ -9,21 +9,23 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/QuantumNous/new-api/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 func resetPricingEndpointTestTables(t *testing.T) {
 	t.Helper()
 	originalMemoryCacheEnabled := common.MemoryCacheEnabled
 	common.MemoryCacheEnabled = true
-	require.NoError(t, DB.AutoMigrate(&Channel{}, &Ability{}, &Model{}, &Vendor{}))
+	require.NoError(t, rootmodel.DB.AutoMigrate(&Channel{}, &Ability{}, &Model{}, &Vendor{}))
 	for _, table := range []string{"abilities", "channels", "models", "vendors"} {
-		require.NoError(t, DB.Exec("DELETE FROM "+table).Error)
+		require.NoError(t, rootmodel.DB.Exec("DELETE FROM "+table).Error)
 	}
 	InitChannelCache()
 	InvalidatePricingCache()
 	t.Cleanup(func() {
 		for _, table := range []string{"abilities", "channels", "models", "vendors"} {
-			require.NoError(t, DB.Exec("DELETE FROM "+table).Error)
+			require.NoError(t, rootmodel.DB.Exec("DELETE FROM "+table).Error)
 		}
 		InitChannelCache()
 		InvalidatePricingCache()
@@ -43,12 +45,12 @@ func insertPricingEndpointChannel(t *testing.T, channelID int, channelType int, 
 	if settings.AdvancedCustom != nil {
 		channel.SetOtherSettings(settings)
 	}
-	require.NoError(t, DB.Create(channel).Error)
+	require.NoError(t, rootmodel.DB.Create(channel).Error)
 }
 
 func insertPricingEndpointAbility(t *testing.T, channelID int, modelName string) {
 	t.Helper()
-	require.NoError(t, DB.Create(&Ability{
+	require.NoError(t, rootmodel.DB.Create(&Ability{
 		Group:     "default",
 		Model:     modelName,
 		ChannelId: channelID,
@@ -119,7 +121,7 @@ func TestPricingModelMetadataEndpointsMergeWithAdvancedCustomInference(t *testin
 		},
 	))
 	insertPricingEndpointAbility(t, 103, "gemini-2.5-flash")
-	require.NoError(t, DB.Create(&Model{
+	require.NoError(t, rootmodel.DB.Create(&Model{
 		ModelName: "gemini-2.5-flash",
 		Endpoints: `{
 			"openai": "/v1/chat/completions"
@@ -148,7 +150,7 @@ func TestPricingModelMetadataEndpointsCanProvideEndpointWithoutChannelInference(
 		},
 	))
 	insertPricingEndpointAbility(t, 104, "metadata-only-model")
-	require.NoError(t, DB.Create(&Model{
+	require.NoError(t, rootmodel.DB.Create(&Model{
 		ModelName: "metadata-only-model",
 		Endpoints: `{
 			"openai": "/v1/chat/completions"
@@ -206,7 +208,7 @@ func TestInitChannelCacheInvalidatesPricingCache(t *testing.T) {
 	require.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAI}, initial["gemini-3.5-flash"])
 
 	var channel Channel
-	require.NoError(t, DB.First(&channel, "id = ?", 301).Error)
+	require.NoError(t, rootmodel.DB.First(&channel, "id = ?", 301).Error)
 	channel.SetOtherSettings(pricingEndpointAdvancedCustomConfig(
 		dto.AdvancedCustomRoute{
 			IncomingPath: "/v1/chat/completions",
@@ -219,7 +221,7 @@ func TestInitChannelCacheInvalidatesPricingCache(t *testing.T) {
 			Models:       []string{"re:^gemini-"},
 		},
 	))
-	require.NoError(t, DB.Model(&Channel{}).Where("id = ?", 301).Update("settings", channel.OtherSettings).Error)
+	require.NoError(t, rootmodel.DB.Model(&Channel{}).Where("id = ?", 301).Update("settings", channel.OtherSettings).Error)
 	InitChannelCache()
 
 	updated := pricingEndpointTypesByModel(t)

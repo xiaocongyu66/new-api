@@ -5,17 +5,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/QuantumNous/new-api/model"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 func TestProxyNodeHealthSuccessCapsAndClearsFailureState(t *testing.T) {
 	now := time.Date(2026, time.August, 11, 12, 0, 0, 0, time.UTC)
 	cooldown := now.Add(time.Minute)
-	node := &model.ProxyNode{
+	node := &catalogmodel.ProxyNode{
 		Health:        0.96,
 		FailureCount:  3,
 		CooldownUntil: &cooldown,
@@ -34,7 +35,7 @@ func TestProxyNodeHealthSuccessCapsAndClearsFailureState(t *testing.T) {
 
 func TestProxyNodeHealthFailureHasFloorAndExponentialCooldownCap(t *testing.T) {
 	now := time.Date(2026, time.August, 11, 12, 0, 0, 0, time.UTC)
-	node := &model.ProxyNode{Health: 1}
+	node := &catalogmodel.ProxyNode{Health: 1}
 
 	for failure := 1; failure <= 12; failure++ {
 		ApplyProxyNodeProbeFailure(node, now, "request failed")
@@ -50,7 +51,7 @@ func TestProxyNodeHealthFailureHasFloorAndExponentialCooldownCap(t *testing.T) {
 
 func TestProxyNodeHealthFailureDoesNotLeakSensitiveError(t *testing.T) {
 	now := time.Date(2026, time.August, 11, 12, 0, 0, 0, time.UTC)
-	node := &model.ProxyNode{Health: 1}
+	node := &catalogmodel.ProxyNode{Health: 1}
 
 	ApplyProxyNodeProbeFailure(node, now, "request failed for user:pass@example.com")
 
@@ -76,7 +77,7 @@ func TestProxyNodeProbeStatsTrackOnlyProbeOperations(t *testing.T) {
 
 func TestProxyNodeProbeFailurePersistsRedactedState(t *testing.T) {
 	now := time.Date(2026, time.August, 11, 12, 0, 0, 0, time.UTC)
-	node := &model.ProxyNode{Health: 0.1}
+	node := &catalogmodel.ProxyNode{Health: 0.1}
 
 	ApplyProxyNodeProbeFailure(node, now, "https://user:password@example.com:8443/path")
 
@@ -88,14 +89,14 @@ func TestProxyNodeProbeFailurePersistsRedactedState(t *testing.T) {
 }
 
 func TestProbeProxyNodePersistsFailureState(t *testing.T) {
-	previousDB := model.DB
+	previousDB := rootmodel.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.ProxyNode{}))
-	model.DB = db
-	t.Cleanup(func() { model.DB = previousDB })
+	require.NoError(t, db.AutoMigrate(&catalogmodel.ProxyNode{}))
+	rootmodel.DB = db
+	t.Cleanup(func() { rootmodel.DB = previousDB })
 
-	node := &model.ProxyNode{Name: "broken", Enabled: true, EncryptedProxyConfig: "not-valid-ciphertext", Health: 1}
+	node := &catalogmodel.ProxyNode{Name: "broken", Enabled: true, EncryptedProxyConfig: "not-valid-ciphertext", Health: 1}
 	require.NoError(t, db.Create(node).Error)
 
 	result, err := ProbeProxyNode(context.Background(), node)
@@ -104,7 +105,7 @@ func TestProbeProxyNodePersistsFailureState(t *testing.T) {
 	assert.False(t, result.Success)
 	assert.Equal(t, "proxy handshake failed", result.Error)
 
-	var persisted model.ProxyNode
+	var persisted catalogmodel.ProxyNode
 	require.NoError(t, db.First(&persisted, node.ID).Error)
 	assert.Equal(t, 1, persisted.FailureCount)
 	assert.Equal(t, result.Error, persisted.LastError)

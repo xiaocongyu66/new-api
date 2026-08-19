@@ -10,6 +10,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 
+	rootmodel "github.com/QuantumNous/new-api/model"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -112,7 +113,7 @@ func CreateAuthFlow(input AuthFlowCreate) (string, *AuthFlow, error) {
 		Payload:   input.Payload,
 		ExpiresAt: input.ExpiresAt,
 	}
-	if err := DB.Create(flow).Error; err != nil {
+	if err := rootmodel.DB.Create(flow).Error; err != nil {
 		return "", nil, err
 	}
 	return token, flow, nil
@@ -122,7 +123,7 @@ func CreateAuthFlow(input AuthFlowCreate) (string, *AuthFlow, error) {
 // The assertion is HMACed before storage and the unique token_hash index makes
 // replay rejection atomic on SQLite, MySQL and PostgreSQL.
 func ClaimExternalAuthAssertion(purpose, assertion string, expiresAt time.Time) error {
-	return DB.Transaction(func(tx *gorm.DB) error {
+	return rootmodel.DB.Transaction(func(tx *gorm.DB) error {
 		return ClaimExternalAuthAssertionWithTx(tx, purpose, assertion, expiresAt)
 	})
 }
@@ -163,7 +164,7 @@ func GetAuthFlow(token string, match AuthFlowMatch) (*AuthFlow, error) {
 		return nil, ErrAuthFlowInvalid
 	}
 	var flow AuthFlow
-	if err := applyAuthFlowMatch(DB, token, match).First(&flow).Error; err != nil {
+	if err := applyAuthFlowMatch(rootmodel.DB, token, match).First(&flow).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrAuthFlowInvalid
 		}
@@ -191,8 +192,8 @@ func ConsumeAuthFlowWithAction(token string, match AuthFlowMatch, action func(tx
 		return nil, ErrAuthFlowInvalid
 	}
 	var consumed AuthFlow
-	err := DB.Transaction(func(tx *gorm.DB) error {
-		query := applyAuthFlowMatch(lockForUpdate(tx), token, match)
+	err := rootmodel.DB.Transaction(func(tx *gorm.DB) error {
+		query := applyAuthFlowMatch(rootmodel.LockForUpdate(tx), token, match)
 		if err := query.First(&consumed).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrAuthFlowInvalid
@@ -231,6 +232,6 @@ func ConsumeAuthFlowWithAction(token string, match AuthFlowMatch, action func(tx
 
 func DeleteExpiredAuthFlows(now time.Time) error {
 	cutoff := now.Add(-AuthFlowDefaultCleanupRetention)
-	return DB.Where("expires_at < ? OR (consumed_at IS NOT NULL AND consumed_at < ?)", cutoff, cutoff).
+	return rootmodel.DB.Where("expires_at < ? OR (consumed_at IS NOT NULL AND consumed_at < ?)", cutoff, cutoff).
 		Delete(&AuthFlow{}).Error
 }

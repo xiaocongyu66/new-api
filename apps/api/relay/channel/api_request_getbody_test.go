@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/hpack"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service"
 )
 
 func TestApplyUpstreamBodyMetadataSetsReplayableMetadata(t *testing.T) {
@@ -202,7 +203,7 @@ func (s *stubTaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, 
 // body. net/http derives a correct snapshot-based GetBody from the
 // *bytes.Reader bodies the task adaptors pass in, and it must be left intact.
 func TestDoTaskApiRequest_KeepsReplayableGetBody(t *testing.T) {
-	service.InitHttpClient()
+	egressservice.InitHttpClient()
 
 	payload := []byte(`{"model":"test-model","prompt":"hello"}`)
 

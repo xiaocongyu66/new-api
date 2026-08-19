@@ -10,15 +10,18 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/i18n"
+	identityservice "github.com/QuantumNous/new-api/internal/identity/service"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/modelapi"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	catalogservice "github.com/QuantumNous/new-api/internal/catalog/service"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 const authIdentityContextKey = "auth_identity"
@@ -109,21 +112,21 @@ func RootAuth() func(c *gin.Context) {
 
 // GetAuthIdentity returns a dashboard session identity. PAT-authenticated
 // requests intentionally have no SessionID and cannot manage browser sessions.
-func GetAuthIdentity(c *gin.Context) (service.AuthIdentity, bool) {
+func GetAuthIdentity(c *gin.Context) (identityservice.AuthIdentity, bool) {
 	value, ok := c.Get(authIdentityContextKey)
 	if !ok {
-		return service.AuthIdentity{}, false
+		return identityservice.AuthIdentity{}, false
 	}
-	identity, ok := value.(service.AuthIdentity)
+	identity, ok := value.(identityservice.AuthIdentity)
 	return identity, ok
 }
 
 // GetSessionAuthIdentity returns only identities backed by a live dashboard
 // session. PAT-authenticated requests intentionally fail this check.
-func GetSessionAuthIdentity(c *gin.Context) (service.AuthIdentity, bool) {
+func GetSessionAuthIdentity(c *gin.Context) (identityservice.AuthIdentity, bool) {
 	identity, ok := GetAuthIdentity(c)
 	if !ok {
-		identity = service.AuthIdentity{
+		identity = identityservice.AuthIdentity{
 			UserID:          c.GetInt("id"),
 			SessionID:       c.GetString("session_id"),
 			UserAuthVersion: c.GetInt64("auth_version"),
@@ -131,50 +134,50 @@ func GetSessionAuthIdentity(c *gin.Context) (service.AuthIdentity, bool) {
 		}
 	}
 	if identity.UserID <= 0 || identity.SessionID == "" || identity.UserAuthVersion <= 0 || identity.SessionVersion <= 0 {
-		return service.AuthIdentity{}, false
+		return identityservice.AuthIdentity{}, false
 	}
 	return identity, true
 }
 
-func authenticateDashboardRequest(c *gin.Context) (*model.UserBase, service.AuthIdentity, bool, error) {
+func authenticateDashboardRequest(c *gin.Context) (*modelapi.UserBase, identityservice.AuthIdentity, bool, error) {
 	user, identity, credentialKind, err := classifyDashboardCredential(c)
 	if err != nil {
-		return nil, service.AuthIdentity{}, credentialKind == dashboardCredentialPAT, err
+		return nil, identityservice.AuthIdentity{}, credentialKind == dashboardCredentialPAT, err
 	}
 	if credentialKind == dashboardCredentialUnmatched {
-		return nil, service.AuthIdentity{}, false, service.ErrAuthTokenInvalid
+		return nil, identityservice.AuthIdentity{}, false, identityservice.ErrAuthTokenInvalid
 	}
 	return user, identity, credentialKind == dashboardCredentialPAT, nil
 }
 
-func classifyDashboardCredential(c *gin.Context) (*model.UserBase, service.AuthIdentity, dashboardCredentialKind, error) {
+func classifyDashboardCredential(c *gin.Context) (*modelapi.UserBase, identityservice.AuthIdentity, dashboardCredentialKind, error) {
 	raw, ok := authorizationToken(c.GetHeader("Authorization"))
 	if !ok {
-		return nil, service.AuthIdentity{}, dashboardCredentialUnmatched, nil
+		return nil, identityservice.AuthIdentity{}, dashboardCredentialUnmatched, nil
 	}
-	identity, internal, err := service.ParseDashboardAccessToken(raw)
+	identity, internal, err := identityservice.ParseDashboardAccessToken(raw)
 	if internal {
 		if err != nil {
-			return nil, service.AuthIdentity{}, dashboardCredentialInternal, err
+			return nil, identityservice.AuthIdentity{}, dashboardCredentialInternal, err
 		}
-		_, user, err := service.ValidateLoginSession(identity)
+		_, user, err := identityservice.ValidateLoginSession(identity)
 		if err != nil {
-			return nil, service.AuthIdentity{}, dashboardCredentialInternal, err
+			return nil, identityservice.AuthIdentity{}, dashboardCredentialInternal, err
 		}
 		return user, identity, dashboardCredentialInternal, nil
 	}
-	patUser, err := model.ValidateAccessToken(raw)
+	patUser, err := identitymodel.ValidateAccessToken(raw)
 	if err != nil {
-		return nil, service.AuthIdentity{}, dashboardCredentialPAT, err
+		return nil, identityservice.AuthIdentity{}, dashboardCredentialPAT, err
 	}
 	if patUser == nil || patUser.Id <= 0 {
-		return nil, service.AuthIdentity{}, dashboardCredentialUnmatched, nil
+		return nil, identityservice.AuthIdentity{}, dashboardCredentialUnmatched, nil
 	}
-	user, err := model.GetUserCache(patUser.Id)
+	user, err := identitymodel.GetUserCache(patUser.Id)
 	if err != nil {
-		return nil, service.AuthIdentity{}, dashboardCredentialPAT, err
+		return nil, identityservice.AuthIdentity{}, dashboardCredentialPAT, err
 	}
-	return user, service.AuthIdentity{UserID: user.Id, UserAuthVersion: user.AuthVersion}, dashboardCredentialPAT, nil
+	return user, identityservice.AuthIdentity{UserID: user.Id, UserAuthVersion: user.AuthVersion}, dashboardCredentialPAT, nil
 }
 
 func authorizationToken(header string) (string, bool) {
@@ -191,7 +194,7 @@ func authorizationToken(header string) (string, bool) {
 	return header, header != ""
 }
 
-func setDashboardAuthContext(c *gin.Context, user *model.UserBase, identity service.AuthIdentity, useAccessToken bool) {
+func setDashboardAuthContext(c *gin.Context, user *modelapi.UserBase, identity identityservice.AuthIdentity, useAccessToken bool) {
 	c.Header("Auth-Version", "864b7076dbcd0a3c01b5520316720ebf")
 	c.Set("username", user.Username)
 	c.Set("role", user.Role)
@@ -207,15 +210,15 @@ func setDashboardAuthContext(c *gin.Context, user *model.UserBase, identity serv
 }
 
 func writeDashboardAuthError(c *gin.Context, err error) {
-	if errors.Is(err, service.ErrAuthTokenExpired) {
+	if errors.Is(err, identityservice.ErrAuthTokenExpired) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "code": "AUTH_TOKEN_EXPIRED", "message": common.TranslateMessage(c, i18n.MsgAuthNotLoggedIn)})
 		return
 	}
-	if errors.Is(err, service.ErrLoginSessionRevoked) || errors.Is(err, gorm.ErrRecordNotFound) {
+	if errors.Is(err, identityservice.ErrLoginSessionRevoked) || errors.Is(err, gorm.ErrRecordNotFound) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "code": "AUTH_SESSION_REVOKED", "message": common.TranslateMessage(c, i18n.MsgAuthNotLoggedIn)})
 		return
 	}
-	if errors.Is(err, service.ErrAuthTokenInvalid) {
+	if errors.Is(err, identityservice.ErrAuthTokenInvalid) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "code": "AUTH_UNAUTHORIZED", "message": common.TranslateMessage(c, i18n.MsgAuthAccessTokenInvalid)})
 		return
 	}
@@ -249,7 +252,7 @@ func TokenOrUserAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		raw, ok := authorizationToken(c.GetHeader("Authorization"))
 		if ok {
-			identity, internal, err := service.ParseDashboardAccessToken(raw)
+			identity, internal, err := identityservice.ParseDashboardAccessToken(raw)
 			if !internal {
 				TokenAuth()(c)
 				return
@@ -258,7 +261,7 @@ func TokenOrUserAuth() func(c *gin.Context) {
 				writeDashboardAuthError(c, err)
 				return
 			}
-			_, user, err := service.ValidateLoginSession(identity)
+			_, user, err := identityservice.ValidateLoginSession(identity)
 			if err != nil {
 				writeDashboardAuthError(c, err)
 				return
@@ -294,7 +297,7 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 		parts := strings.Split(key, "-")
 		key = parts[0]
 
-		token, err := model.GetTokenByKey(key, false)
+		token, err := identitymodel.GetTokenByKey(key, false)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusUnauthorized, gin.H{
@@ -323,7 +326,7 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 			return
 		}
 
-		userCache, err := model.GetUserCache(token.UserId)
+		userCache, err := identitymodel.GetUserCache(token.UserId)
 		if err != nil {
 			common.SysLog(fmt.Sprintf("TokenAuthReadOnly GetUserCache error for user %d: %v", token.UserId, err))
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -405,7 +408,7 @@ func TokenAuth() func(c *gin.Context) {
 			parts = strings.Split(key, "-")
 			key = parts[0]
 		}
-		token, err := model.ValidateUserToken(key)
+		token, err := identitymodel.ValidateUserToken(key)
 		if token != nil {
 			id := c.GetInt("id")
 			if id == 0 {
@@ -413,7 +416,7 @@ func TokenAuth() func(c *gin.Context) {
 			}
 		}
 		if err != nil {
-			if errors.Is(err, model.ErrDatabase) {
+			if errors.Is(err, rootmodel.ErrDatabase) {
 				common.SysLog("TokenAuth ValidateUserToken database error: " + err.Error())
 				abortWithOpenAiMessage(c, http.StatusInternalServerError,
 					common.TranslateMessage(c, i18n.MsgDatabaseError))
@@ -440,7 +443,7 @@ func TokenAuth() func(c *gin.Context) {
 			logger.LogDebug(c, "Client IP %s passed the token IP restrictions check", clientIp)
 		}
 
-		userCache, err := model.GetUserCache(token.UserId)
+		userCache, err := identitymodel.GetUserCache(token.UserId)
 		if err != nil {
 			common.SysLog(fmt.Sprintf("TokenAuth GetUserCache error for user %d: %v", token.UserId, err))
 			abortWithOpenAiMessage(c, http.StatusInternalServerError,
@@ -459,7 +462,7 @@ func TokenAuth() func(c *gin.Context) {
 		tokenGroup := token.Group
 		if tokenGroup != "" {
 			// check common.UserUsableGroups[userGroup]
-			if _, ok := service.GetUserUsableGroups(userGroup)[tokenGroup]; !ok {
+			if _, ok := catalogservice.GetUserUsableGroups(userGroup)[tokenGroup]; !ok {
 				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("无权访问 %s 分组", tokenGroup))
 				return
 			}
@@ -482,7 +485,7 @@ func TokenAuth() func(c *gin.Context) {
 	}
 }
 
-func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) error {
+func SetupContextForToken(c *gin.Context, token *modelapi.Token, parts ...string) error {
 	if token == nil {
 		return fmt.Errorf("token is nil")
 	}
@@ -513,7 +516,7 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 		}
 	}
 	if len(parts) > 1 {
-		if model.IsAdmin(token.UserId) {
+		if identitymodel.IsAdmin(token.UserId) {
 			c.Set("specific_channel_id", parts[1])
 		} else {
 			c.Header("specific_channel_version", "701e3ae1dc3f7975556d354e0675168d004891c8")

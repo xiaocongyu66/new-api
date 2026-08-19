@@ -14,12 +14,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service"
 )
 
 func TestDoRequestReturnsUpstreamRedirectWithoutFollowing(t *testing.T) {
-	service.InitHttpClient()
+	egressservice.InitHttpClient()
 	gin.SetMode(gin.TestMode)
-	sharedClient := service.GetHttpClient()
+	sharedClient := egressservice.GetHttpClient()
 	require.NotNil(t, sharedClient)
 	require.NotNil(t, sharedClient.CheckRedirect)
 	originalRedirectPolicy := reflect.ValueOf(sharedClient.CheckRedirect).Pointer()

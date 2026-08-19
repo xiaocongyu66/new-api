@@ -10,6 +10,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	usageservice "github.com/QuantumNous/new-api/internal/usage/service"
+	billingservice "github.com/QuantumNous/new-api/internal/billing/service"
 )
 
 // TestAttachQuotaSaturationNestsUnderAdminInfo verifies the saturation marker
@@ -31,7 +33,7 @@ func TestAttachQuotaSaturationNestsUnderAdminInfo(t *testing.T) {
 	}
 
 	other := map[string]interface{}{"model_price": 0.004}
-	attachQuotaSaturation(ctx, relayInfo, other)
+	usageservice.AttachQuotaSaturation(ctx, relayInfo, other)
 
 	adminInfo, ok := other["admin_info"].(map[string]interface{})
 	require.True(t, ok, "admin_info should be created")
@@ -54,7 +56,7 @@ func TestAttachQuotaSaturationPreservesExistingAdminInfo(t *testing.T) {
 	other := map[string]interface{}{
 		"admin_info": map[string]interface{}{"admin_username": "root"},
 	}
-	attachQuotaSaturation(ctx, relayInfo, other)
+	usageservice.AttachQuotaSaturation(ctx, relayInfo, other)
 
 	adminInfo := other["admin_info"].(map[string]interface{})
 	require.Equal(t, "root", adminInfo["admin_username"], "existing admin_info fields preserved")
@@ -69,7 +71,7 @@ func TestAttachQuotaSaturationNoClampNoMarker(t *testing.T) {
 
 	relayInfo := &relaycommon.RelayInfo{QuotaClamp: nil}
 	other := map[string]interface{}{"model_price": 0.004}
-	attachQuotaSaturation(ctx, relayInfo, other)
+	usageservice.AttachQuotaSaturation(ctx, relayInfo, other)
 
 	_, hasAdmin := other["admin_info"]
 	require.False(t, hasAdmin, "no admin_info should be added when there is no clamp")
@@ -87,7 +89,7 @@ func TestPreConsumeBillingRejectsSaturatedQuotaBeforeDeduction(t *testing.T) {
 		},
 	}
 
-	apiErr := PreConsumeBilling(c, common.MaxQuota, info)
+	apiErr := billingservice.PreConsumeBilling(c, common.MaxQuota, info)
 
 	require.NotNil(t, apiErr)
 	require.Equal(t, types.ErrorCodeModelPriceError, apiErr.GetErrorCode())
@@ -104,7 +106,7 @@ func TestPreConsumeBillingRejectsNegativeQuotaBeforeDeduction(t *testing.T) {
 	c, _ := gin.CreateTestContext(nil)
 	info := &relaycommon.RelayInfo{}
 
-	apiErr := PreConsumeBilling(c, -1, info)
+	apiErr := billingservice.PreConsumeBilling(c, -1, info)
 
 	require.NotNil(t, apiErr)
 	require.Equal(t, types.ErrorCodeModelPriceError, apiErr.GetErrorCode())

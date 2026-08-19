@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/common"
 )
 
 func CheckSensitiveMessages(messages []dto.Message) ([]string, error) {
@@ -45,7 +46,7 @@ func SensitiveWordContains(text string) (bool, []string) {
 		return false, nil
 	}
 	checkText := strings.ToLower(text)
-	return AcSearch(checkText, setting.SensitiveWords, true)
+	return common.AcSearch(checkText, setting.SensitiveWords, true)
 }
 
 // SensitiveWordReplace 敏感词替换，返回是否包含敏感词和替换后的文本
@@ -54,7 +55,7 @@ func SensitiveWordReplace(text string, returnImmediately bool) (bool, []string, 
 		return false, nil, text
 	}
 	checkText := strings.ToLower(text)
-	m := getOrBuildAC(setting.SensitiveWords)
+	m := common.GetOrBuildAC(setting.SensitiveWords)
 	hits := m.MultiPatternSearch([]rune(checkText), returnImmediately)
 	if len(hits) > 0 {
 		words := make([]string, 0, len(hits))

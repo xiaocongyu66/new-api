@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	"github.com/QuantumNous/new-api/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 func TestProxyNodeScopeNormalization(t *testing.T) {
@@ -79,12 +81,12 @@ func TestProxyNodePersistenceFields(t *testing.T) {
 }
 
 func TestGetProxyNodesForChannelUsesChannelGroupAllPriority(t *testing.T) {
-	previousDB := DB
+	previousDB := rootmodel.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&ProxyNode{}))
-	DB = db
-	t.Cleanup(func() { DB = previousDB })
+	rootmodel.DB = db
+	t.Cleanup(func() { rootmodel.DB = previousDB })
 
 	require.NoError(t, db.Create(&ProxyNode{Name: "all", Enabled: true, ScopeType: ProxyNodeScopeAll}).Error)
 	require.NoError(t, db.Create(&ProxyNode{Name: "group", Enabled: true, ScopeType: ProxyNodeScopeGroup, ScopeValue: "premium"}).Error)

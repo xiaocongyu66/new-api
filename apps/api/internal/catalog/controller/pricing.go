@@ -2,22 +2,24 @@ package controller
 
 import (
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
+	catalogservice "github.com/QuantumNous/new-api/internal/catalog/service"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
-func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string]string) []model.Pricing {
+func filterPricingByUsableGroups(pricing []catalogmodel.Pricing, usableGroup map[string]string) []catalogmodel.Pricing {
 	if len(pricing) == 0 {
 		return pricing
 	}
 	if len(usableGroup) == 0 {
-		return []model.Pricing{}
+		return []catalogmodel.Pricing{}
 	}
 
-	filtered := make([]model.Pricing, 0, len(pricing))
+	filtered := make([]catalogmodel.Pricing, 0, len(pricing))
 	for _, item := range pricing {
 		if common.StringsContains(item.EnableGroup, "all") {
 			filtered = append(filtered, item)
@@ -34,7 +36,7 @@ func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string
 }
 
 func GetPricing(c *gin.Context) {
-	pricing := model.GetPricing()
+	pricing := catalogmodel.GetPricing()
 	userId, exists := c.Get("id")
 	usableGroup := map[string]string{}
 	groupRatio := map[string]float64{}
@@ -43,7 +45,7 @@ func GetPricing(c *gin.Context) {
 	}
 	var group string
 	if exists {
-		user, err := model.GetUserCache(userId.(int))
+		user, err := identitymodel.GetUserCache(userId.(int))
 		if err == nil {
 			group = user.Group
 			for g := range groupRatio {
@@ -55,7 +57,7 @@ func GetPricing(c *gin.Context) {
 		}
 	}
 
-	usableGroup = service.GetUserUsableGroups(group)
+	usableGroup = catalogservice.GetUserUsableGroups(group)
 	pricing = filterPricingByUsableGroups(pricing, usableGroup)
 	// check groupRatio contains usableGroup
 	for group := range ratio_setting.GetGroupRatioCopy() {
@@ -67,18 +69,18 @@ func GetPricing(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"success":            true,
 		"data":               pricing,
-		"vendors":            model.GetVendors(),
+		"vendors":            catalogmodel.GetVendors(),
 		"group_ratio":        groupRatio,
 		"usable_group":       usableGroup,
-		"supported_endpoint": model.GetSupportedEndpointMap(),
-		"auto_groups":        service.GetUserAutoGroup(group),
+		"supported_endpoint": catalogmodel.GetSupportedEndpointMap(),
+		"auto_groups":        catalogservice.GetUserAutoGroup(group),
 		"pricing_version":    "a42d372ccf0b5dd13ecf71203521f9d2",
 	})
 }
 
 func ResetModelRatio(c *gin.Context) {
 	defaultStr := ratio_setting.DefaultModelRatio2JSONString()
-	err := model.UpdateOption("ModelRatio", defaultStr)
+	err := rootmodel.UpdateOption("ModelRatio", defaultStr)
 	if err != nil {
 		c.JSON(200, gin.H{
 			"success": false,

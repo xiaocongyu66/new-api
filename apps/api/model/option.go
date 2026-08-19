@@ -261,12 +261,14 @@ func UpdateOption(key string, value string) error {
 		return err
 	}
 	if IsGatewayRoutingOptionKey(key) {
-		if _, err := MutateGatewayRouting(func(tx *gorm.DB) error {
-			return UpdateOptionWithTx(tx, key, value)
-		}); err != nil {
-			return err
+		if mutator := gatewayRoutingMutator; mutator != nil {
+			if err := mutator(func(tx *gorm.DB) error {
+				return UpdateOptionWithTx(tx, key, value)
+			}); err != nil {
+				return err
+			}
+			return updateOptionMap(key, value)
 		}
-		return updateOptionMap(key, value)
 	}
 	if err := DB.Transaction(func(tx *gorm.DB) error {
 		return UpdateOptionWithTx(tx, key, value)
@@ -306,8 +308,10 @@ func UpdateOptionsBulk(values map[string]string) error {
 		}
 		return false
 	}(); hasGatewayOption {
-		if _, err := MutateGatewayRouting(mutate); err != nil {
-			return err
+		if mutator := gatewayRoutingMutator; mutator != nil {
+			if err := mutator(mutate); err != nil {
+				return err
+			}
 		}
 	} else if err := DB.Transaction(mutate); err != nil {
 		return err
@@ -678,13 +682,15 @@ func handleConfigUpdate(key, value string) bool {
 	}
 	config.UpdateConfigFromMap(cfg, configMap)
 
-	// 特定配置的后处理
 	if configName == "performance_setting" {
 		performance_setting.UpdateAndSync()
 	} else if configName == "billing_setting" {
-		InvalidatePricingCache()
+		if invalidator := pricingCacheInvalidator; invalidator != nil {
+			invalidator()
+		}
 		ratio_setting.InvalidateExposedDataCache()
 	}
+
 
 	return true // 已处理
 }

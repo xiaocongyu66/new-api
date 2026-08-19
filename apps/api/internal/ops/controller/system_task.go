@@ -5,10 +5,10 @@ import (
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
+	opsmodel "github.com/QuantumNous/new-api/internal/ops/model"
+	rootservice "github.com/QuantumNous/new-api/service"
 )
 
 func CreateLogCleanupSystemTask(c *gin.Context) {
@@ -21,7 +21,7 @@ func CreateLogCleanupSystemTask(c *gin.Context) {
 		return
 	}
 
-	task, err := service.StartLogCleanupTask(targetTimestamp)
+	task, err := rootservice.StartLogCleanupTask(targetTimestamp)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -44,7 +44,7 @@ func GetCurrentSystemTask(c *gin.Context) {
 		return
 	}
 
-	task, err := model.GetActiveSystemTask(taskType)
+	task, err := opsmodel.GetActiveSystemTask(taskType)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -68,13 +68,13 @@ func GetCurrentSystemTask(c *gin.Context) {
 func ListSystemTasks(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.Query("limit"))
 
-	tasks, err := model.ListSystemTasks(limit)
+	tasks, err := opsmodel.ListSystemTasks(limit)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 
-	responses := make([]model.SystemTaskResponse, 0, len(tasks))
+	responses := make([]opsmodel.SystemTaskResponse, 0, len(tasks))
 	for _, task := range tasks {
 		responses = append(responses, task.ToResponse())
 	}
@@ -96,7 +96,7 @@ func GetSystemTask(c *gin.Context) {
 		return
 	}
 
-	task, err := model.GetSystemTaskByTaskID(taskID)
+	task, err := opsmodel.GetSystemTaskByTaskID(taskID)
 	if err != nil {
 		common.ApiError(c, err)
 		return

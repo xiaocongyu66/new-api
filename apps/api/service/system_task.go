@@ -2,16 +2,17 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/model"
+opsmodel "github.com/QuantumNous/new-api/internal/ops/model"
+usagemodel "github.com/QuantumNous/new-api/internal/usage/model"
 
 	"github.com/bytedance/gopkg/util/gopool"
+	"errors"
 )
 
 const (
@@ -29,11 +30,11 @@ const (
 
 // SystemTaskHandler executes a claimed task of a specific type. Run owns the
 // task lifecycle from claim to terminal state: it MUST call
-// model.FinishSystemTask (succeeded/failed) before returning and MUST honor
+// opsmodel.FinishSystemTask (succeeded/failed) before returning and MUST honor
 // ctx cancellation, which the runner triggers if the per-type lock is lost.
 type SystemTaskHandler interface {
 	Type() string
-	Run(ctx context.Context, task *model.SystemTask, runnerID string)
+	Run(ctx context.Context, task *opsmodel.SystemTask, runnerID string)
 }
 
 // ScheduledSystemTaskHandler is a SystemTaskHandler that the scheduler also
@@ -77,9 +78,9 @@ func registeredSystemTaskHandlers() []SystemTaskHandler {
 // registered (non-scheduled) handler. It is created via StartLogCleanupTask.
 type logCleanupHandler struct{}
 
-func (logCleanupHandler) Type() string { return model.SystemTaskTypeLogCleanup }
+func (logCleanupHandler) Type() string { return opsmodel.SystemTaskTypeLogCleanup }
 
-func (logCleanupHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
+func (logCleanupHandler) Run(ctx context.Context, task *opsmodel.SystemTask, runnerID string) {
 	runLogCleanupTask(ctx, task, runnerID)
 }
 
@@ -142,7 +143,7 @@ func StartSystemTaskRunner() {
 				now := time.Now()
 				if now.Sub(lastStaleLockCleanup) >= systemTaskStaleLockInterval {
 					lastStaleLockCleanup = now
-					if err := model.ExpireStaleSystemTaskLocks(common.GetTimestamp()); err != nil {
+					if err := opsmodel.ExpireStaleSystemTaskLocks(common.GetTimestamp()); err != nil {
 						logger.LogWarn(context.Background(), fmt.Sprintf("system task stale lock cleanup failed: %v", err))
 					}
 				}
@@ -165,12 +166,12 @@ func StartSystemTaskRunner() {
 	})
 }
 
-func StartLogCleanupTask(targetTimestamp int64) (*model.SystemTask, error) {
+func StartLogCleanupTask(targetTimestamp int64) (*opsmodel.SystemTask, error) {
 	if targetTimestamp <= 0 {
 		return nil, errors.New("target timestamp is required")
 	}
 
-	activeTask, err := model.GetActiveSystemTask(model.SystemTaskTypeLogCleanup)
+	activeTask, err := opsmodel.GetActiveSystemTask(opsmodel.SystemTaskTypeLogCleanup)
 	if err != nil {
 		return nil, err
 	}
@@ -183,9 +184,9 @@ func StartLogCleanupTask(targetTimestamp int64) (*model.SystemTask, error) {
 		BatchSize:       logCleanupBatchSize,
 	}
 	state := LogCleanupState{}
-	task, err := model.CreateSystemTask(model.SystemTaskTypeLogCleanup, payload, state)
+	task, err := opsmodel.CreateSystemTask(opsmodel.SystemTaskTypeLogCleanup, payload, state)
 	if err != nil {
-		activeTask, activeErr := model.GetActiveSystemTask(model.SystemTaskTypeLogCleanup)
+		activeTask, activeErr := opsmodel.GetActiveSystemTask(opsmodel.SystemTaskTypeLogCleanup)
 		if activeErr == nil && activeTask != nil {
 			return activeTask, nil
 		}
@@ -198,8 +199,8 @@ func StartLogCleanupTask(targetTimestamp int64) (*model.SystemTask, error) {
 // EnqueueSystemTask creates an on-demand task of the given type. The returned
 // bool is true only when a new pending row was created; false means an active
 // task of the same type already exists and was returned.
-func EnqueueSystemTask(taskType string, payload any) (*model.SystemTask, bool, error) {
-	activeTask, err := model.GetActiveSystemTask(taskType)
+func EnqueueSystemTask(taskType string, payload any) (*opsmodel.SystemTask, bool, error) {
+	activeTask, err := opsmodel.GetActiveSystemTask(taskType)
 	if err != nil {
 		return nil, false, err
 	}
@@ -207,9 +208,9 @@ func EnqueueSystemTask(taskType string, payload any) (*model.SystemTask, bool, e
 		return activeTask, false, nil
 	}
 
-	task, err := model.CreateSystemTask(taskType, payload, nil)
+	task, err := opsmodel.CreateSystemTask(taskType, payload, nil)
 	if err != nil {
-		activeTask, activeErr := model.GetActiveSystemTask(taskType)
+		activeTask, activeErr := opsmodel.GetActiveSystemTask(taskType)
 		if activeErr == nil && activeTask != nil {
 			return activeTask, false, nil
 		}
@@ -228,7 +229,7 @@ func runSystemTaskClaimPass(runnerID string) {
 	for _, handler := range handlers {
 		taskTypes = append(taskTypes, handler.Type())
 	}
-	pendingTasks, err := model.FindEarliestPendingSystemTasks(taskTypes)
+	pendingTasks, err := opsmodel.FindEarliestPendingSystemTasks(taskTypes)
 	if err != nil {
 		logger.LogWarn(context.Background(), fmt.Sprintf("system task runner query failed: %v", err))
 		return
@@ -238,7 +239,7 @@ func runSystemTaskClaimPass(runnerID string) {
 		if task == nil {
 			continue
 		}
-		claimedTask, claimed, err := model.ClaimSystemTask(task.ID, handler.Type(), runnerID, systemTaskLockUntil())
+		claimedTask, claimed, err := opsmodel.ClaimSystemTask(task.ID, handler.Type(), runnerID, systemTaskLockUntil())
 		if err != nil {
 			logger.LogWarn(context.Background(), fmt.Sprintf("system task claim failed: %v", err))
 			continue
@@ -273,7 +274,7 @@ func runSystemTaskScheduler() {
 		scheduledHandlers = append(scheduledHandlers, scheduled)
 		taskTypes = append(taskTypes, scheduled.Type())
 	}
-	latestTasks, err := model.GetLatestSystemTasks(taskTypes)
+	latestTasks, err := opsmodel.GetLatestSystemTasks(taskTypes)
 	if err != nil {
 		logger.LogWarn(context.Background(), fmt.Sprintf("system task scheduler query failed: %v", err))
 		return
@@ -281,15 +282,15 @@ func runSystemTaskScheduler() {
 	for _, scheduled := range scheduledHandlers {
 		latest := latestTasks[scheduled.Type()]
 		if latest != nil {
-			if latest.Status == model.SystemTaskStatusPending || latest.Status == model.SystemTaskStatusRunning {
+			if latest.Status == opsmodel.SystemTaskStatusPending || latest.Status == opsmodel.SystemTaskStatusRunning {
 				continue // an active row already exists
 			}
 			if now-latest.UpdatedAt < int64(scheduled.Interval().Seconds()) {
 				continue // not due yet
 			}
 		}
-		if _, err := model.CreateSystemTask(scheduled.Type(), scheduled.NewPayload(), nil); err != nil {
-			activeTask, activeErr := model.GetActiveSystemTask(scheduled.Type())
+		if _, err := opsmodel.CreateSystemTask(scheduled.Type(), scheduled.NewPayload(), nil); err != nil {
+			activeTask, activeErr := opsmodel.GetActiveSystemTask(scheduled.Type())
 			if activeErr == nil && activeTask != nil {
 				continue
 			}
@@ -305,7 +306,7 @@ func runSystemTaskScheduler() {
 // runWithLeaseHeartbeat renews the per-type lock on a background ticker while
 // fn runs. The TTL is a crash-detection window, not a task time limit: an
 // arbitrarily long handler stays alive as long as the heartbeat succeeds.
-func runWithLeaseHeartbeat(task *model.SystemTask, runnerID string, fn func(ctx context.Context)) {
+func runWithLeaseHeartbeat(task *opsmodel.SystemTask, runnerID string, fn func(ctx context.Context)) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -323,7 +324,7 @@ func runWithLeaseHeartbeat(task *model.SystemTask, runnerID string, fn func(ctx 
 			case <-done:
 				return
 			case <-ticker.C:
-				if err := model.RenewSystemTaskLock(task.TaskID, runnerID, systemTaskLockUntil()); err != nil {
+				if err := opsmodel.RenewSystemTaskLock(task.TaskID, runnerID, systemTaskLockUntil()); err != nil {
 					cancel()
 					return
 				}
@@ -335,7 +336,7 @@ func runWithLeaseHeartbeat(task *model.SystemTask, runnerID string, fn func(ctx 
 	close(done)
 }
 
-func runLogCleanupTask(ctx context.Context, task *model.SystemTask, runnerID string) {
+func runLogCleanupTask(ctx context.Context, task *opsmodel.SystemTask, runnerID string) {
 	payload := LogCleanupPayload{}
 	if err := task.DecodePayload(&payload); err != nil {
 		failSystemTask(task, runnerID, err)
@@ -356,13 +357,13 @@ func runLogCleanupTask(ctx context.Context, task *model.SystemTask, runnerID str
 	}
 
 	for {
-		remaining, err := model.CountOldLog(ctx, payload.TargetTimestamp)
+		remaining, err := usagemodel.CountOldLog(ctx, payload.TargetTimestamp)
 		if err != nil {
 			failSystemTask(task, runnerID, err)
 			return
 		}
 		syncLogCleanupStateFromRemaining(&state, remaining)
-		if err := model.UpdateSystemTaskState(task.TaskID, runnerID, state); err != nil {
+		if err := opsmodel.UpdateSystemTaskState(task.TaskID, runnerID, state); err != nil {
 			logSystemTaskLockError(ctx, task, err)
 			return
 		}
@@ -376,7 +377,7 @@ func runLogCleanupTask(ctx context.Context, task *model.SystemTask, runnerID str
 		// rows cannot be removed and we fail instead of busy-looping.
 		progressed := false
 		for state.Remaining > 0 {
-			rowsAffected, err := model.DeleteOldLogBatch(ctx, payload.TargetTimestamp, payload.BatchSize)
+			rowsAffected, err := usagemodel.DeleteOldLogBatch(ctx, payload.TargetTimestamp, payload.BatchSize)
 			if err != nil {
 				failSystemTask(task, runnerID, err)
 				return
@@ -397,7 +398,7 @@ func runLogCleanupTask(ctx context.Context, task *model.SystemTask, runnerID str
 			}
 			state.Progress = logCleanupProgress(state.Processed, state.Total)
 
-			if err := model.UpdateSystemTaskState(task.TaskID, runnerID, state); err != nil {
+			if err := opsmodel.UpdateSystemTaskState(task.TaskID, runnerID, state); err != nil {
 				logSystemTaskLockError(ctx, task, err)
 				return
 			}
@@ -414,13 +415,13 @@ func runLogCleanupTask(ctx context.Context, task *model.SystemTask, runnerID str
 	if state.Total < state.Processed {
 		state.Total = state.Processed
 	}
-	if err := model.UpdateSystemTaskState(task.TaskID, runnerID, state); err != nil {
+	if err := opsmodel.UpdateSystemTaskState(task.TaskID, runnerID, state); err != nil {
 		logSystemTaskLockError(ctx, task, err)
 		return
 	}
 
 	result := LogCleanupResult{DeletedCount: state.Processed}
-	if err := model.FinishSystemTask(task.TaskID, runnerID, model.SystemTaskStatusSucceeded, result, ""); err != nil {
+	if err := opsmodel.FinishSystemTask(task.TaskID, runnerID, opsmodel.SystemTaskStatusSucceeded, result, ""); err != nil {
 		logSystemTaskLockError(ctx, task, err)
 	}
 }
@@ -475,7 +476,7 @@ type SystemTaskProgress struct {
 // Lock-loss errors are ignored: the lease heartbeat cancels the handler ctx on
 // loss, so progress writes are best-effort and never abort the run themselves.
 // The returned func is single-goroutine only (call it from the handler loop).
-func NewSystemTaskProgressReporter(task *model.SystemTask, runnerID string) func(processed, total int) {
+func NewSystemTaskProgressReporter(task *opsmodel.SystemTask, runnerID string) func(processed, total int) {
 	const minWriteInterval = 2 * time.Second
 	var (
 		lastWriteAt  time.Time
@@ -504,19 +505,19 @@ func NewSystemTaskProgressReporter(task *model.SystemTask, runnerID string) func
 		lastWriteAt = time.Now()
 
 		state := SystemTaskProgress{Total: total, Processed: processed, Progress: progress}
-		_ = model.UpdateSystemTaskState(task.TaskID, runnerID, state)
+		_ = opsmodel.UpdateSystemTaskState(task.TaskID, runnerID, state)
 	}
 }
 
-func failSystemTask(task *model.SystemTask, runnerID string, err error) {
+func failSystemTask(task *opsmodel.SystemTask, runnerID string, err error) {
 	logger.LogWarn(context.Background(), fmt.Sprintf("system task %s failed: %v", task.TaskID, err))
-	if finishErr := model.FinishSystemTask(task.TaskID, runnerID, model.SystemTaskStatusFailed, nil, err.Error()); finishErr != nil {
+	if finishErr := opsmodel.FinishSystemTask(task.TaskID, runnerID, opsmodel.SystemTaskStatusFailed, nil, err.Error()); finishErr != nil {
 		logger.LogWarn(context.Background(), fmt.Sprintf("system task %s failed to save failure state: %v", task.TaskID, finishErr))
 	}
 }
 
-func logSystemTaskLockError(ctx context.Context, task *model.SystemTask, err error) {
-	if errors.Is(err, model.ErrSystemTaskLockLost) {
+func logSystemTaskLockError(ctx context.Context, task *opsmodel.SystemTask, err error) {
+	if errors.Is(err, opsmodel.ErrSystemTaskLockLost) {
 		logger.LogWarn(ctx, fmt.Sprintf("system task %s lock lost", task.TaskID))
 		return
 	}

@@ -21,6 +21,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	usagemodel "github.com/QuantumNous/new-api/internal/usage/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 type listModelsResponse struct {
@@ -46,10 +50,10 @@ func setupModelListControllerTestDB(t *testing.T) *gorm.DB {
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	model.DB = db
+	rootmodel.DB = db
 	model.LOG_DB = db
 
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Channel{}, &model.Ability{}, &model.Model{}, &model.Vendor{}, &model.GatewayConfigRevision{}, &model.GatewayConfigOutbox{}))
+	require.NoError(t, db.AutoMigrate(&identitymodel.User{}, &catalogmodel.Channel{}, &catalogmodel.Ability{}, &model.Model{}, &model.Vendor{}, &model.GatewayConfigRevision{}, &model.GatewayConfigOutbox{}))
 	require.NoError(t, model.InitializeGatewayConfigRevision())
 
 	t.Cleanup(func() {
@@ -87,8 +91,8 @@ func initModelListColumnNames(t *testing.T) {
 	require.NoError(t, os.Setenv("SQL_DSN", "local"))
 
 	require.NoError(t, model.InitDB())
-	if model.DB != nil {
-		sqlDB, err := model.DB.DB()
+	if rootmodel.DB != nil {
+		sqlDB, err := rootmodel.DB.DB()
 		if err == nil {
 			_ = sqlDB.Close()
 		}
@@ -184,14 +188,14 @@ func decodeUserModelsResponse(t *testing.T, recorder *httptest.ResponseRecorder)
 
 func TestGetUserModelsFiltersByRequestedGroup(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
-	require.NoError(t, db.Create(&model.User{
+	require.NoError(t, db.Create(&identitymodel.User{
 		Id:       1002,
 		Username: "playground-model-user",
 		Password: "password",
 		Group:    "default",
 		Status:   common.UserStatusEnabled,
 	}).Error)
-	require.NoError(t, db.Create(&[]model.Ability{
+	require.NoError(t, db.Create(&[]catalogmodel.Ability{
 		{Group: "default", Model: "zz-default-only-model", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-disabled-model", ChannelId: 1, Enabled: false},
 	}).Error)
@@ -238,14 +242,14 @@ func TestGetUserModelsExpandsAutoGroupsInConfiguredOrder(t *testing.T) {
 	})
 
 	db := setupModelListControllerTestDB(t)
-	require.NoError(t, db.Create(&model.User{
+	require.NoError(t, db.Create(&identitymodel.User{
 		Id:       1003,
 		Username: "playground-auto-model-user",
 		Password: "password",
 		Group:    "default",
 		Status:   common.UserStatusEnabled,
 	}).Error)
-	require.NoError(t, db.Create(&[]model.Ability{
+	require.NoError(t, db.Create(&[]catalogmodel.Ability{
 		{Group: "vip", Model: "zz-vip-model", ChannelId: 1, Enabled: true},
 		{Group: "vip", Model: "zz-shared-model", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-default-model", ChannelId: 1, Enabled: true},
@@ -278,14 +282,14 @@ func TestListModelsIncludesTieredBillingModel(t *testing.T) {
 	})
 
 	db := setupModelListControllerTestDB(t)
-	require.NoError(t, db.Create(&model.User{
+	require.NoError(t, db.Create(&identitymodel.User{
 		Id:       1001,
 		Username: "model-list-user",
 		Password: "password",
 		Group:    "default",
 		Status:   common.UserStatusEnabled,
 	}).Error)
-	require.NoError(t, db.Create(&[]model.Ability{
+	require.NoError(t, db.Create(&[]catalogmodel.Ability{
 		{Group: "default", Model: "zz-tiered-visible-model", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-tiered-empty-expr-model", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-tiered-missing-expr-model", ChannelId: 1, Enabled: true},
@@ -333,7 +337,7 @@ func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T)
 		model.InvalidatePricingCache()
 	})
 
-	require.NoError(t, db.Create(&model.User{
+	require.NoError(t, db.Create(&identitymodel.User{
 		Id:       1003,
 		Username: "advanced-custom-model-list-user",
 		Password: "password",
@@ -341,7 +345,7 @@ func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T)
 		Status:   common.UserStatusEnabled,
 	}).Error)
 
-	channel := &model.Channel{
+	channel := &catalogmodel.Channel{
 		Id:     701,
 		Type:   constant.ChannelTypeAdvancedCustom,
 		Key:    "advanced-custom-key",
@@ -367,14 +371,14 @@ func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T)
 		},
 	})
 	require.NoError(t, db.Create(channel).Error)
-	require.NoError(t, db.Create(&model.Ability{
+	require.NoError(t, db.Create(&catalogmodel.Ability{
 		Group:     "default",
 		Model:     "gemini-3.5-flash",
 		ChannelId: 701,
 		Enabled:   true,
 	}).Error)
 
-	model.InitChannelCache()
+	catalogmodel.InitChannelCache()
 	model.GetPricing()
 
 	recorder := httptest.NewRecorder()
@@ -404,7 +408,7 @@ func TestListModelsTokenLimitIncludesTieredBillingModel(t *testing.T) {
 		"zz-token-tiered-empty-expr-model": "",
 	})
 	db := setupModelListControllerTestDB(t)
-	require.NoError(t, db.Create(&[]model.Ability{
+	require.NoError(t, db.Create(&[]catalogmodel.Ability{
 		{Group: "default", Model: "zz-token-tiered-visible-model", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-token-tiered-empty-expr-model", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-token-tiered-missing-expr-model", ChannelId: 1, Enabled: true},
@@ -447,7 +451,7 @@ func TestListModelsTokenLimitUsesResolvedCustomAutoGroups(t *testing.T) {
 	})
 
 	db := setupModelListControllerTestDB(t)
-	require.NoError(t, db.Create(&[]model.Ability{
+	require.NoError(t, db.Create(&[]catalogmodel.Ability{
 		{Group: "vip", Model: "zz-vip-allowed", ChannelId: 1, Enabled: true},
 		{Group: "vip", Model: "zz-vip-denied", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-default-outside-snapshot", ChannelId: 1, Enabled: true},
@@ -498,7 +502,7 @@ func TestCheckUpdatePasswordRequiresCurrentPassword(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
 	hashedPassword, err := common.Password2Hash("CurrentPassword123")
 	require.NoError(t, err)
-	user := &model.User{
+	user := &identitymodel.User{
 		Username: "password-user",
 		Password: hashedPassword,
 		Status:   common.UserStatusEnabled,
@@ -521,7 +525,7 @@ func TestCheckUpdatePasswordRequiresCurrentPassword(t *testing.T) {
 
 func TestCheckUpdatePasswordRejectsHistoricalEmptyPassword(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
-	user := &model.User{
+	user := &identitymodel.User{
 		Username: "legacy-passwordless-user",
 		Password: "",
 		Status:   common.UserStatusEnabled,
@@ -536,11 +540,11 @@ func TestCheckUpdatePasswordRejectsHistoricalEmptyPassword(t *testing.T) {
 
 func TestSetupLoginDoesNotTouchPasswordWhenPasswordFieldOmitted(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
-	require.NoError(t, db.AutoMigrate(&model.Log{}, &model.UserSession{}))
+	require.NoError(t, db.AutoMigrate(&usagemodel.Log{}, &identitymodel.UserSession{}))
 
 	hashedPassword, err := common.Password2Hash("CurrentPassword123")
 	require.NoError(t, err)
-	user := &model.User{
+	user := &identitymodel.User{
 		Username: "twofa-user",
 		Password: hashedPassword,
 		Role:     common.RoleCommonUser,
@@ -551,7 +555,7 @@ func TestSetupLoginDoesNotTouchPasswordWhenPasswordFieldOmitted(t *testing.T) {
 
 	router := gin.New()
 	router.GET("/", func(c *gin.Context) {
-		setupLogin(&model.User{
+		setupLogin(&identitymodel.User{
 			Id:       user.Id,
 			Username: user.Username,
 			Role:     user.Role,
@@ -565,7 +569,7 @@ func TestSetupLoginDoesNotTouchPasswordWhenPasswordFieldOmitted(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
-	var stored model.User
+	var stored identitymodel.User
 	require.NoError(t, db.First(&stored, user.Id).Error)
 	assert.Equal(t, hashedPassword, stored.Password)
 }

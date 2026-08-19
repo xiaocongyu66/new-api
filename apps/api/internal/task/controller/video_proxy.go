@@ -13,11 +13,12 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/gin-gonic/gin"
+	taskmodel "github.com/QuantumNous/new-api/internal/task/model"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service"
 )
 
 // videoProxyError returns a standardized OpenAI-style error response.
@@ -38,7 +39,7 @@ func VideoProxy(c *gin.Context) {
 	}
 
 	userID := c.GetInt("id")
-	task, exists, err := model.GetByTaskId(userID, taskID)
+	task, exists, err := taskmodel.GetByTaskId(userID, taskID)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to query task %s: %s", taskID, err.Error()))
 		videoProxyError(c, http.StatusInternalServerError, "server_error", "Failed to query task")
@@ -49,13 +50,13 @@ func VideoProxy(c *gin.Context) {
 		return
 	}
 
-	if task.Status != model.TaskStatusSuccess {
+	if task.Status != taskmodel.TaskStatusSuccess {
 		videoProxyError(c, http.StatusBadRequest, "invalid_request_error",
 			fmt.Sprintf("Task is not completed yet, current status: %s", task.Status))
 		return
 	}
 
-	channel, err := model.CacheGetChannel(task.ChannelId)
+	channel, err := catalogmodel.CacheGetChannel(task.ChannelId)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to get channel for task %s: %s", taskID, err.Error()))
 		videoProxyError(c, http.StatusInternalServerError, "server_error", "Failed to retrieve channel information")
@@ -68,11 +69,11 @@ func VideoProxy(c *gin.Context) {
 
 	var videoURL string
 	proxy := channel.GetSetting().Proxy
-	client := service.GetSSRFProtectedHTTPClient()
+	client := egressservice.GetSSRFProtectedHTTPClient()
 	if proxy != "" {
 		// 渠道代理路径的连接由代理侧建立，无法做拨号时逐 IP 校验，
 		// 因此后面对 videoURL 保留请求前的一次性 SSRF 校验。
-		client, err = service.GetHttpClientWithProxy(proxy)
+		client, err = egressservice.GetHttpClientWithProxy(proxy)
 		if err != nil {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to create proxy client for task %s: %s", taskID, err.Error()))
 			videoProxyError(c, http.StatusInternalServerError, "server_error", "Failed to create proxy client")
@@ -136,7 +137,7 @@ func VideoProxy(c *gin.Context) {
 
 	var validateErr error
 	if proxy == "" {
-		validateErr = service.ValidateSSRFProtectedFetchURL(videoURL)
+		validateErr = egressservice.ValidateSSRFProtectedFetchURL(videoURL)
 	} else {
 		fetchSetting := system_setting.GetFetchSetting()
 		validateErr = common.ValidateURLWithFetchSetting(videoURL, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain)

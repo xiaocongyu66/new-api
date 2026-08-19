@@ -5,10 +5,10 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/model"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
+	usagemodel "github.com/QuantumNous/new-api/internal/usage/model"
 )
 
 // auditResponseWriter 包装 gin.ResponseWriter，捕获响应状态码并将响应体复制一份到
@@ -172,7 +172,7 @@ func finishAdminAudit(c *gin.Context, writer *auditResponseWriter) {
 	}
 
 	gopool.Go(func() {
-		model.RecordOperationAuditLog(operatorId, content, ip, action, opParams, adminInfo, auditInfo)
+		usagemodel.RecordOperationAuditLog(operatorId, content, ip, action, opParams, adminInfo, auditInfo)
 	})
 }
 

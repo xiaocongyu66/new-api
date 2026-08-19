@@ -14,11 +14,12 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	identityservice "github.com/QuantumNous/new-api/internal/identity/service"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 const (
@@ -59,8 +60,8 @@ func TelegramBindStart(c *gin.Context) {
 		return
 	}
 	expiresAt := time.Now().Add(telegramBindFlowTTL)
-	flowToken, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
-		Purpose:   model.AuthFlowPurposeTelegramBind,
+	flowToken, _, err := identitymodel.CreateAuthFlow(identitymodel.AuthFlowCreate{
+		Purpose:   identitymodel.AuthFlowPurposeTelegramBind,
 		UserId:    identity.UserID,
 		SessionId: identity.SessionID,
 		ExpiresAt: expiresAt,
@@ -93,13 +94,13 @@ func TelegramBind(c *gin.Context) {
 		telegramBindFailure(c, telegramBindErrorInvalidRequest)
 		return
 	}
-	pendingFlow, err := model.GetAuthFlow(c.Param("flow_token"), model.AuthFlowMatch{
-		Purpose: model.AuthFlowPurposeTelegramBind,
+	pendingFlow, err := identitymodel.GetAuthFlow(c.Param("flow_token"), identitymodel.AuthFlowMatch{
+		Purpose: identitymodel.AuthFlowPurposeTelegramBind,
 	})
 	if err != nil {
-		if !errors.Is(err, model.ErrAuthFlowInvalid) &&
-			!errors.Is(err, model.ErrAuthFlowExpired) &&
-			!errors.Is(err, model.ErrAuthFlowConsumed) {
+		if !errors.Is(err, identitymodel.ErrAuthFlowInvalid) &&
+			!errors.Is(err, identitymodel.ErrAuthFlowExpired) &&
+			!errors.Is(err, identitymodel.ErrAuthFlowConsumed) {
 			common.SysError("TelegramBind flow lookup failed: " + err.Error())
 			telegramBindFailure(c, telegramBindErrorInternal)
 			return
@@ -107,18 +108,18 @@ func TelegramBind(c *gin.Context) {
 		telegramBindFailure(c, telegramBindErrorFlowInvalid)
 		return
 	}
-	if _, err := service.ValidateSessionReference(pendingFlow.UserId, pendingFlow.SessionId); err != nil {
-		if !errors.Is(err, service.ErrLoginSessionInvalid) &&
-			!errors.Is(err, service.ErrLoginSessionRevoked) &&
-			!errors.Is(err, model.ErrUserSessionInactive) &&
+	if _, err := identityservice.ValidateSessionReference(pendingFlow.UserId, pendingFlow.SessionId); err != nil {
+		if !errors.Is(err, identityservice.ErrLoginSessionInvalid) &&
+			!errors.Is(err, identityservice.ErrLoginSessionRevoked) &&
+			!errors.Is(err, identitymodel.ErrUserSessionInactive) &&
 			!errors.Is(err, gorm.ErrRecordNotFound) {
 			common.SysError("TelegramBind session validation failed: " + err.Error())
 			telegramBindFailure(c, telegramBindErrorInternal)
 			return
 		}
 
-		var user model.User
-		userErr := model.DB.First(&user, pendingFlow.UserId).Error
+		var user identitymodel.User
+		userErr := rootmodel.DB.First(&user, pendingFlow.UserId).Error
 		switch {
 		case errors.Is(userErr, gorm.ErrRecordNotFound):
 			telegramBindFailure(c, telegramBindErrorUserDeleted)
@@ -138,19 +139,19 @@ func TelegramBind(c *gin.Context) {
 		telegramBindFailure(c, telegramBindErrorInvalidRequest)
 		return
 	}
-	_, err = model.ConsumeAuthFlowWithAction(c.Param("flow_token"), model.AuthFlowMatch{
-		Purpose:   model.AuthFlowPurposeTelegramBind,
+	_, err = identitymodel.ConsumeAuthFlowWithAction(c.Param("flow_token"), identitymodel.AuthFlowMatch{
+		Purpose:   identitymodel.AuthFlowPurposeTelegramBind,
 		UserId:    pendingFlow.UserId,
 		SessionId: pendingFlow.SessionId,
-	}, func(tx *gorm.DB, flow *model.AuthFlow) error {
-		if err := model.ClaimExternalAuthAssertionWithTx(tx, model.AuthFlowPurposeTelegramAssertion, assertion, assertionExpiresAt); err != nil {
-			if errors.Is(err, model.ErrAuthFlowInvalid) || errors.Is(err, model.ErrAuthFlowConsumed) {
+	}, func(tx *gorm.DB, flow *identitymodel.AuthFlow) error {
+		if err := identitymodel.ClaimExternalAuthAssertionWithTx(tx, identitymodel.AuthFlowPurposeTelegramAssertion, assertion, assertionExpiresAt); err != nil {
+			if errors.Is(err, identitymodel.ErrAuthFlowInvalid) || errors.Is(err, identitymodel.ErrAuthFlowConsumed) {
 				return errors.Join(errTelegramBindAssertionInvalid, err)
 			}
 			return err
 		}
 
-		var user model.User
+		var user identitymodel.User
 		if err := tx.First(&user, flow.UserId).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errTelegramBindUserDeleted
@@ -161,34 +162,34 @@ func TelegramBind(c *gin.Context) {
 			return errTelegramBindUserDisabled
 		}
 
-		var session model.UserSession
+		var session identitymodel.UserSession
 		if err := tx.Where("sid = ? AND user_id = ?", flow.SessionId, flow.UserId).First(&session).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return service.ErrLoginSessionRevoked
+				return identityservice.ErrLoginSessionRevoked
 			}
 			return err
 		}
-		if session.Status != model.UserSessionStatusActive || session.RevokedAt != 0 || session.ExpiresAt <= time.Now().Unix() {
-			return service.ErrLoginSessionRevoked
+		if session.Status != identitymodel.UserSessionStatusActive || session.RevokedAt != 0 || session.ExpiresAt <= time.Now().Unix() {
+			return identityservice.ErrLoginSessionRevoked
 		}
 		if session.UserAuthVersion != user.AuthVersion {
-			return service.ErrLoginSessionRevoked
+			return identityservice.ErrLoginSessionRevoked
 		}
 		if user.TelegramId != "" {
 			return errTelegramAccountAlreadyBound
 		}
-		if err := model.ClaimExternalIdentityWithTx(
+		if err := identitymodel.ClaimExternalIdentityWithTx(
 			tx,
-			model.ExternalIdentityProviderTelegram,
+			identitymodel.ExternalIdentityProviderTelegram,
 			telegramId,
 			user.Id,
 		); err != nil {
-			if errors.Is(err, model.ErrExternalIdentityAlreadyClaimed) {
+			if errors.Is(err, identitymodel.ErrExternalIdentityAlreadyClaimed) {
 				return errTelegramAccountAlreadyBound
 			}
 			return err
 		}
-		result := tx.Model(&model.User{}).
+		result := tx.Model(&identitymodel.User{}).
 			Where("id = ? AND status = ? AND auth_version = ? AND telegram_id = ?", user.Id, common.UserStatusEnabled, user.AuthVersion, "").
 			Update("telegram_id", telegramId)
 		if result.Error != nil {
@@ -209,9 +210,9 @@ func TelegramBind(c *gin.Context) {
 			telegramBindFailure(c, telegramBindErrorUserDeleted)
 		case errors.Is(err, errTelegramBindUserDisabled):
 			telegramBindFailure(c, telegramBindErrorUserDisabled)
-		case errors.Is(err, service.ErrLoginSessionRevoked):
+		case errors.Is(err, identityservice.ErrLoginSessionRevoked):
 			telegramBindFailure(c, telegramBindErrorSessionInvalid)
-		case errors.Is(err, model.ErrAuthFlowInvalid), errors.Is(err, model.ErrAuthFlowExpired), errors.Is(err, model.ErrAuthFlowConsumed):
+		case errors.Is(err, identitymodel.ErrAuthFlowInvalid), errors.Is(err, identitymodel.ErrAuthFlowExpired), errors.Is(err, identitymodel.ErrAuthFlowConsumed):
 			telegramBindFailure(c, telegramBindErrorFlowInvalid)
 		default:
 			common.SysError("TelegramBind failed: " + err.Error())
@@ -252,7 +253,7 @@ func TelegramLogin(c *gin.Context) {
 		return
 	}
 
-	user := model.User{TelegramId: telegramId}
+	user := identitymodel.User{TelegramId: telegramId}
 	if err := user.FillUserByTelegramId(); err != nil {
 		c.JSON(200, gin.H{
 			"message": err.Error(),
@@ -276,7 +277,7 @@ func claimTelegramAuthorization(params url.Values, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	return model.ClaimExternalAuthAssertion(model.AuthFlowPurposeTelegramAssertion, assertion, expiresAt)
+	return identitymodel.ClaimExternalAuthAssertion(identitymodel.AuthFlowPurposeTelegramAssertion, assertion, expiresAt)
 }
 
 func telegramAuthorizationClaim(params url.Values, now time.Time) (string, time.Time, error) {

@@ -16,6 +16,7 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 type previousRefreshHashMigrationLegacy struct {
@@ -68,7 +69,7 @@ func (recorder *migrationSQLRecorder) schemaMutations() []string {
 }
 
 func TestUserSessionPreviousRefreshHashSchemaUsesNullableVarchar(t *testing.T) {
-	statement := &gorm.Statement{DB: DB}
+	statement := &gorm.Statement{DB: rootmodel.DB}
 	require.NoError(t, statement.Parse(&UserSession{}))
 	field := statement.Schema.LookUpField("PreviousRefreshHash")
 	require.NotNil(t, field)

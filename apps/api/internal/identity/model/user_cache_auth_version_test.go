@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 func useUserCacheMiniRedis(t *testing.T) *miniredis.Miniredis {
@@ -44,10 +45,10 @@ func TestUserAuthFenceRollbackExpiresAndRecovers(t *testing.T) {
 		Group:       "default",
 		AuthVersion: 1,
 	}
-	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, rootmodel.DB.Create(&user).Error)
 	require.NoError(t, populateUserCache(user))
 
-	tx := DB.Begin()
+	tx := rootmodel.DB.Begin()
 	require.NoError(t, tx.Error)
 	next, err := IncrementUserAuthVersionWithTx(tx, user.Id)
 	require.NoError(t, err)
@@ -55,7 +56,7 @@ func TestUserAuthFenceRollbackExpiresAndRecovers(t *testing.T) {
 
 	_, err = cacheGetUserBase(user.Id)
 	assert.ErrorIs(t, err, ErrUserAuthCachePending)
-	cacheTTL, err := common.RDB.TTL(t.Context(), getUserCacheKey(user.Id)).Result()
+	cacheTTL, err := common.RDB.TTL(t.Context(), GetUserCacheKey(user.Id)).Result()
 	require.NoError(t, err)
 	fenceTTL, err := common.RDB.TTL(t.Context(), getUserAuthFenceKey(user.Id)).Result()
 	require.NoError(t, err)
@@ -83,7 +84,7 @@ func TestPendingUserAuthFenceRejectsStaleCacheWrite(t *testing.T) {
 	}, true)
 
 	assert.ErrorIs(t, err, ErrUserAuthCachePending)
-	assert.False(t, server.Exists(getUserCacheKey(userID)))
+	assert.False(t, server.Exists(GetUserCacheKey(userID)))
 }
 
 func TestUserAuthFieldUpdateRejectsVersionMismatch(t *testing.T) {
@@ -96,7 +97,7 @@ func TestUserAuthFieldUpdateRejectsVersionMismatch(t *testing.T) {
 	err := updateUserCacheFieldAtVersion(userID, "Group", "stale", 2)
 
 	assert.ErrorIs(t, err, ErrUserAuthCachePending)
-	group, err := common.RDB.HGet(t.Context(), getUserCacheKey(userID), "Group").Result()
+	group, err := common.RDB.HGet(t.Context(), GetUserCacheKey(userID), "Group").Result()
 	require.NoError(t, err)
 	assert.Equal(t, "current", group)
 }
@@ -113,21 +114,21 @@ func TestRefreshUserGroupCacheRepairsDelayedSameVersionWrite(t *testing.T) {
 		Group:       "default",
 		AuthVersion: 1,
 	}
-	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, rootmodel.DB.Create(&user).Error)
 	require.NoError(t, populateUserCache(user))
 
 	firstSnapshotRead := make(chan struct{})
 	releaseDelayedRefresh := make(chan struct{})
 	var intercepted atomic.Bool
 	const callbackName = "test:block_delayed_group_refresh"
-	require.NoError(t, DB.Callback().Query().After("gorm:query").Register(callbackName, func(*gorm.DB) {
+	require.NoError(t, rootmodel.DB.Callback().Query().After("gorm:query").Register(callbackName, func(*gorm.DB) {
 		if intercepted.CompareAndSwap(false, true) {
 			close(firstSnapshotRead)
 			<-releaseDelayedRefresh
 		}
 	}))
 	t.Cleanup(func() {
-		_ = DB.Callback().Query().Remove(callbackName)
+		_ = rootmodel.DB.Callback().Query().Remove(callbackName)
 	})
 
 	delayedResult := make(chan error, 1)
@@ -136,7 +137,7 @@ func TestRefreshUserGroupCacheRepairsDelayedSameVersionWrite(t *testing.T) {
 	}()
 	<-firstSnapshotRead
 
-	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Update("group", "pro").Error)
+	require.NoError(t, rootmodel.DB.Model(&User{}).Where("id = ?", user.Id).Update("group", "pro").Error)
 	require.NoError(t, RefreshUserGroupCache(user.Id))
 	cached, err := cacheGetUserBase(user.Id)
 	require.NoError(t, err)
@@ -163,11 +164,11 @@ func TestCommittedUserAuthVersionPermanentlyRejectsDelayedCacheFill(t *testing.T
 		Group:       "default",
 		AuthVersion: 1,
 	}
-	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, rootmodel.DB.Create(&user).Error)
 	require.NoError(t, populateUserCache(user))
 	stale := *user.ToBaseUser()
 
-	require.NoError(t, DB.Transaction(func(tx *gorm.DB) error {
+	require.NoError(t, rootmodel.DB.Transaction(func(tx *gorm.DB) error {
 		_, err := IncrementUserAuthVersionWithTx(tx, user.Id)
 		return err
 	}))
@@ -178,7 +179,7 @@ func TestCommittedUserAuthVersionPermanentlyRejectsDelayedCacheFill(t *testing.T
 	assert.Equal(t, "2", committed)
 
 	server.FastForward(time.Duration(userAuthFenceTTLSeconds()+1) * time.Second)
-	require.NoError(t, common.RedisDelKey(getUserCacheKey(user.Id)))
+	require.NoError(t, common.RedisDelKey(GetUserCacheKey(user.Id)))
 	err = writeUserCache(&stale, true)
 	assert.True(t, errors.Is(err, ErrUserAuthCachePending))
 	committed, err = common.RDB.Get(t.Context(), getUserAuthVersionKey(user.Id)).Result()

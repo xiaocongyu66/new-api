@@ -1,10 +1,10 @@
 package router
 
 import (
-	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
 
 	"github.com/gin-gonic/gin"
+	identitycontroller "github.com/QuantumNous/new-api/internal/identity/controller"
 )
 
 // registerAuthzRoutes mounts the authorization API under its own /authz
@@ -14,6 +14,6 @@ func registerAuthzRoutes(apiRouter *gin.RouterGroup) {
 	authzRoute := apiRouter.Group("/authz")
 	authzRoute.Use(middleware.AdminAuth())
 	{
-		authzRoute.GET("/catalog", controller.GetPermissionCatalog)
+		authzRoute.GET("/catalog", identitycontroller.GetPermissionCatalog)
 	}
 }

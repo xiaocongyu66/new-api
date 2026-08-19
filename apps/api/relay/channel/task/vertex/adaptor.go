@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 
 	"github.com/QuantumNous/new-api/constant"
@@ -22,6 +21,9 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/modelapi"
+	taskmodel "github.com/QuantumNous/new-api/internal/task/model"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service"
 )
 
 // ============================
@@ -277,7 +279,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("x-goog-user-project", adc.ProjectID)
-	client, err := service.GetHttpClientWithProxy(proxy)
+	client, err := egressservice.GetHttpClientWithProxy(proxy)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
 	}
@@ -291,17 +293,17 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	}
 	ti := &relaycommon.TaskInfo{}
 	if op.Error.Message != "" {
-		ti.Status = model.TaskStatusFailure
+		ti.Status = taskmodel.TaskStatusFailure
 		ti.Reason = op.Error.Message
 		ti.Progress = "100%"
 		return ti, nil
 	}
 	if !op.Done {
-		ti.Status = model.TaskStatusInProgress
+		ti.Status = taskmodel.TaskStatusInProgress
 		ti.Progress = "50%"
 		return ti, nil
 	}
-	ti.Status = model.TaskStatusSuccess
+	ti.Status = taskmodel.TaskStatusSuccess
 	ti.Progress = "100%"
 	if len(op.Response.Videos) > 0 {
 		v0 := op.Response.Videos[0]
@@ -349,7 +351,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	return ti, nil
 }
 
-func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
+func (a *TaskAdaptor) ConvertToOpenAIVideo(task *modelapi.Task) ([]byte, error) {
 	// Use GetUpstreamTaskID() to get the real upstream operation name for model extraction.
 	// task.TaskID is now a public task_xxxx ID, no longer a base64-encoded upstream name.
 	upstreamTaskID := task.GetUpstreamTaskID()

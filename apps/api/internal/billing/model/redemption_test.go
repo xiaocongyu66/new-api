@@ -8,13 +8,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	"github.com/QuantumNous/new-api/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
-
 func TestSearchRedemptionsFiltersAndPaginates(t *testing.T) {
-	require.NoError(t, DB.AutoMigrate(&Redemption{}))
-	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
+	require.NoError(t, rootmodel.DB.AutoMigrate(&Redemption{}))
+	require.NoError(t, rootmodel.DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
 	t.Cleanup(func() {
-		require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
+		require.NoError(t, rootmodel.DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
 	})
 
 	now := common.GetTimestamp()
@@ -25,7 +27,7 @@ func TestSearchRedemptionsFiltersAndPaginates(t *testing.T) {
 		{Id: 4, Name: "beta-disabled", Key: "00000000000000000000000000000004", Status: common.RedemptionCodeStatusDisabled, ExpiredTime: 0},
 		{Id: 5, Name: "beta-used", Key: "00000000000000000000000000000005", Status: common.RedemptionCodeStatusUsed, ExpiredTime: 0},
 	}
-	require.NoError(t, DB.Create(&redemptions).Error)
+	require.NoError(t, rootmodel.DB.Create(&redemptions).Error)
 
 	tests := []struct {
 		name      string
@@ -102,16 +104,16 @@ func TestSearchRedemptionsFiltersAndPaginates(t *testing.T) {
 
 func setupRedeemFixture(t *testing.T, quota int) (userId int, key string) {
 	t.Helper()
-	require.NoError(t, DB.AutoMigrate(&Redemption{}))
-	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
+	require.NoError(t, rootmodel.DB.AutoMigrate(&Redemption{}))
+	require.NoError(t, rootmodel.DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
 	t.Cleanup(func() {
-		require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
-		DB.Exec("DELETE FROM users")
-		DB.Exec("DELETE FROM logs")
+		require.NoError(t, rootmodel.DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
+		rootmodel.DB.Exec("DELETE FROM users")
+		rootmodel.DB.Exec("DELETE FROM logs")
 	})
 
-	user := &User{Username: "redeem-user", Password: "password", Status: common.UserStatusEnabled, Quota: 0}
-	require.NoError(t, DB.Create(user).Error)
+	user := &identitymodel.User{Username: "redeem-user", Password: "password", Status: common.UserStatusEnabled, Quota: 0}
+	require.NoError(t, rootmodel.DB.Create(user).Error)
 
 	key = "10000000000000000000000000000001"
 	redemption := &Redemption{
@@ -121,7 +123,7 @@ func setupRedeemFixture(t *testing.T, quota int) (userId int, key string) {
 		Quota:       quota,
 		CreatedTime: common.GetTimestamp(),
 	}
-	require.NoError(t, DB.Create(redemption).Error)
+	require.NoError(t, rootmodel.DB.Create(redemption).Error)
 	return user.Id, key
 }
 
@@ -132,19 +134,19 @@ func TestRedeemCreditsQuotaExactlyOnce(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 500, quota)
 
-	var user User
-	require.NoError(t, DB.First(&user, "id = ?", userId).Error)
+	var user identitymodel.User
+	require.NoError(t, rootmodel.DB.First(&user, "id = ?", userId).Error)
 	assert.Equal(t, 500, user.Quota)
 
 	var redemption Redemption
-	require.NoError(t, DB.First(&redemption, "name = ?", "redeem-test").Error)
+	require.NoError(t, rootmodel.DB.First(&redemption, "name = ?", "redeem-test").Error)
 	assert.Equal(t, common.RedemptionCodeStatusUsed, redemption.Status)
 	assert.Equal(t, userId, redemption.UsedUserId)
 
 	// Redeeming the same code again must fail and must not credit quota.
 	_, err = Redeem(key, userId)
 	require.Error(t, err)
-	require.NoError(t, DB.First(&user, "id = ?", userId).Error)
+	require.NoError(t, rootmodel.DB.First(&user, "id = ?", userId).Error)
 	assert.Equal(t, 500, user.Quota)
 }
 
@@ -175,7 +177,7 @@ func TestRedeemConcurrentSingleSuccess(t *testing.T) {
 	}
 	assert.Equal(t, 1, successCount, "exactly one concurrent redeem should succeed")
 
-	var user User
-	require.NoError(t, DB.First(&user, "id = ?", userId).Error)
+	var user identitymodel.User
+	require.NoError(t, rootmodel.DB.First(&user, "id = ?", userId).Error)
 	assert.Equal(t, 300, user.Quota, "quota must be credited exactly once")
 }

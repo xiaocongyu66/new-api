@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 func useFrontendOptionMigrationDB(t *testing.T) *gorm.DB {
@@ -173,7 +174,7 @@ func TestRetiredThemeOptionIsPersistedButNotPublished(t *testing.T) {
 	t.Cleanup(func() { common.OptionMap = previousMap })
 	common.OptionMap = map[string]string{}
 
-	require.NoError(t, UpdateOption(retiredThemeOptionKey, "default"))
+	require.NoError(t, rootmodel.UpdateOption(retiredThemeOptionKey, "default"))
 	assert.Equal(t, "default", requireOptionValue(t, db, retiredThemeOptionKey))
 	_, published := common.OptionMap[retiredThemeOptionKey]
 	assert.False(t, published)

@@ -12,6 +12,8 @@ import (
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 func withHeaderNavModules(t *testing.T, raw string) {
@@ -47,18 +49,18 @@ func performHeaderNavRequest(t *testing.T, handler gin.HandlerFunc, authenticate
 
 	var accessToken string
 	if authenticated {
-		previousDB, previousRedis := model.DB, common.RedisEnabled
+		previousDB, previousRedis := rootmodel.DB, common.RedisEnabled
 		db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 		require.NoError(t, err)
-		require.NoError(t, db.AutoMigrate(&model.User{}))
-		model.DB = db
+		require.NoError(t, db.AutoMigrate(&identitymodel.User{}))
+		rootmodel.DB = db
 		common.RedisEnabled = false
 		t.Cleanup(func() {
-			model.DB = previousDB
+			rootmodel.DB = previousDB
 			common.RedisEnabled = previousRedis
 		})
 		accessToken = "header-nav-pat"
-		user := model.User{
+		user := identitymodel.User{
 			Username:    "tester",
 			Password:    "unused-password-hash",
 			Role:        common.RoleCommonUser,

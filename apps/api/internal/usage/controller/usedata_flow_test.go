@@ -9,22 +9,26 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	usagemodel "github.com/QuantumNous/new-api/internal/usage/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 type flowQuotaResponse struct {
 	Success bool                  `json:"success"`
 	Message string                `json:"message"`
-	Data    []model.FlowQuotaData `json:"data"`
+	Data    []usagemodel.FlowQuotaData `json:"data"`
 }
 
 func setupFlowControllerTestDB(t *testing.T) {
 	t.Helper()
 	db := setupModelListControllerTestDB(t)
-	require.NoError(t, db.AutoMigrate(&model.Token{}, &model.QuotaData{}))
-	require.NoError(t, model.DB.Create(&model.Channel{Id: 1, Name: "east"}).Error)
-	require.NoError(t, model.DB.Create(&model.Token{Id: 11, UserId: 1, Key: "sk-primary", Name: "primary"}).Error)
-	require.NoError(t, model.DB.Create(&model.Token{Id: 22, UserId: 2, Key: "sk-backup", Name: "backup"}).Error)
-	require.NoError(t, model.DB.Create(&model.QuotaData{
+	require.NoError(t, db.AutoMigrate(&identitymodel.Token{}, &model.QuotaData{}))
+	require.NoError(t, rootmodel.DB.Create(&catalogmodel.Channel{Id: 1, Name: "east"}).Error)
+	require.NoError(t, rootmodel.DB.Create(&identitymodel.Token{Id: 11, UserId: 1, Key: "sk-primary", Name: "primary"}).Error)
+	require.NoError(t, rootmodel.DB.Create(&identitymodel.Token{Id: 22, UserId: 2, Key: "sk-backup", Name: "backup"}).Error)
+	require.NoError(t, rootmodel.DB.Create(&model.QuotaData{
 		UserID:    1,
 		Username:  "alice",
 		NodeName:  "node-a",
@@ -37,7 +41,7 @@ func setupFlowControllerTestDB(t *testing.T) {
 		Quota:     100,
 		TokenUsed: 40,
 	}).Error)
-	require.NoError(t, model.DB.Create(&model.QuotaData{
+	require.NoError(t, rootmodel.DB.Create(&model.QuotaData{
 		UserID:    2,
 		Username:  "bob",
 		NodeName:  "node-b",

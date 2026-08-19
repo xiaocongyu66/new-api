@@ -14,6 +14,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 func configureTokenAutoGroupsTest(t *testing.T, maxCount string, autoGroups string) {
@@ -38,11 +40,11 @@ func stringInt(value int) string {
 	return fmt.Sprintf("%d", value)
 }
 
-func setupTokenAutoGroupsControllerTest(t *testing.T) *model.User {
+func setupTokenAutoGroupsControllerTest(t *testing.T) *identitymodel.User {
 	t.Helper()
 	db := setupTokenControllerTestDB(t)
-	require.NoError(t, db.AutoMigrate(&model.User{}))
-	user := &model.User{
+	require.NoError(t, db.AutoMigrate(&identitymodel.User{}))
+	user := &identitymodel.User{
 		Id:       101,
 		Username: "token-auto-user",
 		Password: "password",
@@ -96,8 +98,8 @@ func TestAddTokenEmptyAutoGroupsInheritGlobalAuto(t *testing.T) {
 
 			response := decodeAPIResponse(t, recorder)
 			require.True(t, response.Success, response.Message)
-			var token model.Token
-			require.NoError(t, model.DB.Where("name = ?", request["name"]).First(&token).Error)
+			var token identitymodel.Token
+			require.NoError(t, rootmodel.DB.Where("name = ?", request["name"]).First(&token).Error)
 			assert.Empty(t, token.AutoGroups)
 			assert.True(t, token.CrossGroupRetry)
 			payload, err := common.Marshal(buildMaskedTokenResponse(&token))
@@ -119,8 +121,8 @@ func TestAddTokenPersistsOrderedAutoGroupsSnapshot(t *testing.T) {
 	AddToken(ctx)
 	require.True(t, decodeAPIResponse(t, recorder).Success)
 
-	var token model.Token
-	require.NoError(t, model.DB.Where("name = ?", "ordered-snapshot").First(&token).Error)
+	var token identitymodel.Token
+	require.NoError(t, rootmodel.DB.Where("name = ?", "ordered-snapshot").First(&token).Error)
 	assert.JSONEq(t, `["vip","default"]`, token.AutoGroups)
 
 	getCtx, getRecorder := newTokenAutoGroupsAuthenticatedContext(t, http.MethodGet, "/api/token/"+stringInt(token.Id), nil, user.Id)
@@ -154,11 +156,11 @@ func TestUpdateTokenAutoGroupsTriStateAndNonAutoCleanup(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			configureTokenAutoGroupsTest(t, "5", `["default","vip"]`)
 			user := setupTokenAutoGroupsControllerTest(t)
-			token := seedToken(t, model.DB, user.Id, "update-auto", "update-auto-key")
+			token := seedToken(t, rootmodel.DB, user.Id, "update-auto", "update-auto-key")
 			token.Group = "auto"
 			token.CrossGroupRetry = true
 			require.NoError(t, token.SetAutoGroups([]string{"vip", "default"}))
-			require.NoError(t, model.DB.Save(token).Error)
+			require.NoError(t, rootmodel.DB.Save(token).Error)
 
 			request := baseAutoTokenRequest("updated-auto")
 			request["id"] = token.Id
@@ -172,8 +174,8 @@ func TestUpdateTokenAutoGroupsTriStateAndNonAutoCleanup(t *testing.T) {
 			response := decodeAPIResponse(t, recorder)
 			require.True(t, response.Success, response.Message)
 
-			var updated model.Token
-			require.NoError(t, model.DB.First(&updated, token.Id).Error)
+			var updated identitymodel.Token
+			require.NoError(t, rootmodel.DB.First(&updated, token.Id).Error)
 			if test.expectedAutoGroups == "" {
 				assert.Empty(t, updated.AutoGroups)
 			} else {
@@ -209,7 +211,7 @@ func TestAddTokenRejectsInvalidAutoGroups(t *testing.T) {
 			response := decodeAPIResponse(t, recorder)
 			assert.False(t, response.Success)
 			var count int64
-			require.NoError(t, model.DB.Model(&model.Token{}).Count(&count).Error)
+			require.NoError(t, rootmodel.DB.Model(&identitymodel.Token{}).Count(&count).Error)
 			assert.Zero(t, count)
 		})
 	}

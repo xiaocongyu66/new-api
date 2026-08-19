@@ -11,7 +11,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -21,7 +20,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
-)
+	"github.com/QuantumNous/new-api/modelapi"
+	taskmodel "github.com/QuantumNous/new-api/internal/task/model"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service")
 
 // ============================
 // Request / Response structures
@@ -537,7 +538,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 
 	req.Header.Set("Authorization", "Bearer "+key)
 
-	client, err := service.GetHttpClientWithProxy(proxy)
+	client, err := egressservice.GetHttpClientWithProxy(proxy)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
 	}
@@ -566,15 +567,15 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	// 状态映射
 	switch aliResp.Output.TaskStatus {
 	case "PENDING":
-		taskResult.Status = model.TaskStatusQueued
+		taskResult.Status = taskmodel.TaskStatusQueued
 	case "RUNNING":
-		taskResult.Status = model.TaskStatusInProgress
+		taskResult.Status = taskmodel.TaskStatusInProgress
 	case "SUCCEEDED":
-		taskResult.Status = model.TaskStatusSuccess
+		taskResult.Status = taskmodel.TaskStatusSuccess
 		// 阿里直接返回视频URL，不需要额外的代理端点
 		taskResult.Url = aliResp.Output.VideoURL
 	case "FAILED", "CANCELED", "UNKNOWN":
-		taskResult.Status = model.TaskStatusFailure
+		taskResult.Status = taskmodel.TaskStatusFailure
 		if aliResp.Message != "" {
 			taskResult.Reason = aliResp.Message
 		} else if aliResp.Output.Message != "" {
@@ -583,13 +584,13 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 			taskResult.Reason = "task failed"
 		}
 	default:
-		taskResult.Status = model.TaskStatusQueued
+		taskResult.Status = taskmodel.TaskStatusQueued
 	}
 
 	return &taskResult, nil
 }
 
-func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
+func (a *TaskAdaptor) ConvertToOpenAIVideo(task *modelapi.Task) ([]byte, error) {
 	var aliResp AliVideoResponse
 	if err := common.Unmarshal(task.Data, &aliResp); err != nil {
 		return nil, errors.Wrap(err, "unmarshal ali response failed")

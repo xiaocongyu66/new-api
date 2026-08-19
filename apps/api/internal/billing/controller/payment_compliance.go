@@ -9,17 +9,17 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 type PaymentComplianceRequest struct {
 	Confirmed bool `json:"confirmed"`
 }
 
-func requirePaymentCompliance(c *gin.Context) bool {
+func RequirePaymentCompliance(c *gin.Context) bool {
 	if !operation_setting.IsPaymentComplianceConfirmed() {
 		common.ApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
 		return false
@@ -59,7 +59,7 @@ func ConfirmPaymentCompliance(c *gin.Context) {
 	}
 
 	for key, value := range updates {
-		if err := model.UpdateOption(key, value); err != nil {
+		if err := rootmodel.UpdateOption(key, value); err != nil {
 			common.ApiError(c, err)
 			return
 		}

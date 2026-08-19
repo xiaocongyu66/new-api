@@ -9,8 +9,9 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
+	opsservice "github.com/QuantumNous/new-api/internal/ops/service"
+	identityservice "github.com/QuantumNous/new-api/internal/identity/service"
 )
 
 const karmadaDashboardSessionCookie = "newapi_karmada_session"
@@ -22,7 +23,7 @@ func CreateKarmadaDashboardSession(c *gin.Context) {
 		return
 	}
 
-	sessionToken, expiresAt, err := service.IssueKarmadaDashboardSession(identity)
+	sessionToken, expiresAt, err := opsservice.IssueKarmadaDashboardSession(identity)
 	if err != nil {
 		common.SysError("issue Karmada dashboard session: " + err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "code": "KARMADA_SESSION_ISSUE_FAILED"})
@@ -30,7 +31,7 @@ func CreateKarmadaDashboardSession(c *gin.Context) {
 	}
 
 	c.SetSameSite(http.SameSiteStrictMode)
-	c.SetCookie(karmadaDashboardSessionCookie, sessionToken, int(service.KarmadaDashboardSessionTTL.Seconds()), "/karmada-dashboard", "", common.SessionCookieSecure, true)
+	c.SetCookie(karmadaDashboardSessionCookie, sessionToken, int(opsservice.KarmadaDashboardSessionTTL.Seconds()), "/karmada-dashboard", "", common.SessionCookieSecure, true)
 	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"expires_at": expiresAt}})
 }
@@ -42,14 +43,14 @@ func ProxyKarmadaDashboard(c *gin.Context) {
 		c.Status(http.StatusUnauthorized)
 		return
 	}
-	identity, err := service.ValidateKarmadaDashboardSession(sessionCookie)
+	identity, err := opsservice.ValidateKarmadaDashboardSession(sessionCookie)
 	if err != nil {
 		c.Header("Cache-Control", "no-store")
 		c.Status(http.StatusUnauthorized)
 		return
 	}
 
-	_, user, err := service.ValidateLoginSession(identity)
+	_, user, err := identityservice.ValidateLoginSession(identity)
 	if err != nil || user.Role != common.RoleRootUser || user.Status != common.UserStatusEnabled {
 		c.Header("Cache-Control", "no-store")
 		c.Status(http.StatusForbidden)

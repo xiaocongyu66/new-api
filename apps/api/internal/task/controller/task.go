@@ -6,11 +6,12 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
+	taskmodel "github.com/QuantumNous/new-api/internal/task/model"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
 )
 
 func GetAllTask(c *gin.Context) {
@@ -19,7 +20,7 @@ func GetAllTask(c *gin.Context) {
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 	// 解析其他查询参数
-	queryParams := model.SyncTaskQueryParams{
+	queryParams := taskmodel.SyncTaskQueryParams{
 		Platform:       constant.TaskPlatform(c.Query("platform")),
 		TaskID:         c.Query("task_id"),
 		Status:         c.Query("status"),
@@ -29,8 +30,8 @@ func GetAllTask(c *gin.Context) {
 		ChannelID:      c.Query("channel_id"),
 	}
 
-	items := model.TaskGetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
-	total := model.TaskCountAllTasks(queryParams)
+	items := taskmodel.TaskGetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
+	total := taskmodel.TaskCountAllTasks(queryParams)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(tasksToDto(items, true))
 	common.ApiSuccess(c, pageInfo)
@@ -44,7 +45,7 @@ func GetUserTask(c *gin.Context) {
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 
-	queryParams := model.SyncTaskQueryParams{
+	queryParams := taskmodel.SyncTaskQueryParams{
 		Platform:       constant.TaskPlatform(c.Query("platform")),
 		TaskID:         c.Query("task_id"),
 		Status:         c.Query("status"),
@@ -53,23 +54,23 @@ func GetUserTask(c *gin.Context) {
 		EndTimestamp:   endTimestamp,
 	}
 
-	items := model.TaskGetAllUserTask(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
-	total := model.TaskCountAllUserTask(userId, queryParams)
+	items := taskmodel.TaskGetAllUserTask(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
+	total := taskmodel.TaskCountAllUserTask(userId, queryParams)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(tasksToDto(items, false))
 	common.ApiSuccess(c, pageInfo)
 }
 
-func tasksToDto(tasks []*model.Task, fillUser bool) []*dto.TaskDto {
-	var userIdMap map[int]*model.UserBase
+func tasksToDto(tasks []*taskmodel.Task, fillUser bool) []*dto.TaskDto {
+	var userIdMap map[int]*identitymodel.UserBase
 	if fillUser {
-		userIdMap = make(map[int]*model.UserBase)
+		userIdMap = make(map[int]*identitymodel.UserBase)
 		userIds := types.NewSet[int]()
 		for _, task := range tasks {
 			userIds.Add(task.UserId)
 		}
 		for _, userId := range userIds.Items() {
-			cacheUser, err := model.GetUserCache(userId)
+			cacheUser, err := identitymodel.GetUserCache(userId)
 			if err == nil {
 				userIdMap[userId] = cacheUser
 			}

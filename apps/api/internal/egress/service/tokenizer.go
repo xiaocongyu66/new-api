@@ -23,7 +23,7 @@ func InitTokenEncoders() {
 	common.SysLog("token encoders initialized")
 }
 
-func getTokenEncoder(model string) tokenizer.Codec {
+func GetTokenEncoder(model string) tokenizer.Codec {
 	// First, try to get the encoder from cache with read lock
 	tokenEncoderMutex.RLock()
 	if encoder, exists := tokenEncoderMap[model]; exists {
@@ -54,7 +54,7 @@ func getTokenEncoder(model string) tokenizer.Codec {
 	return modelCodec
 }
 
-func getTokenNum(tokenEncoder tokenizer.Codec, text string) int {
+func GetTokenNum(tokenEncoder tokenizer.Codec, text string) int {
 	if text == "" {
 		return 0
 	}

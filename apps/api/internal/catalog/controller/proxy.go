@@ -13,10 +13,12 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/sync/errgroup"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service"
+	catalogservice "github.com/QuantumNous/new-api/internal/catalog/service"
 )
 
 // maskedSecret is the sentinel value substituted for sensitive fields in
@@ -31,7 +33,7 @@ type ProxyConfigRequest struct {
 	Enabled        bool           `json:"enabled"`
 }
 
-// OutboundConfig mirrors service.OutboundConfig so the controller can
+// OutboundConfig mirrors egressservice.OutboundConfig so the controller can
 // accept and marshal proxy configuration without importing service.
 type OutboundConfig struct {
 	Type           string `json:"type"`
@@ -127,7 +129,7 @@ type routeConfig struct {
 // GetProxyConfig returns the current proxy configuration and global proxy URL.
 // Sensitive fields (Password, UUID, ObfsPassword) are masked in the response.
 func GetProxyConfig(c *gin.Context) {
-	jsonStr, err := service.LoadProxyConfigJSON()
+	jsonStr, err := catalogservice.LoadProxyConfigJSON()
 	if err != nil {
 		common.ApiSuccess(c, gin.H{
 			"enabled":          false,
@@ -183,7 +185,7 @@ func UpdateProxyConfig(c *gin.Context) {
 	// overwrite real secrets with the sentinel.
 	// Sentinel value match — maskedSecret is defined at package level.
 	if req.Outbound.Password == maskedSecret || req.Outbound.UUID == maskedSecret || req.Outbound.ObfsPassword == maskedSecret {
-		if stored, loadErr := service.LoadProxyConfigJSON(); loadErr == nil {
+		if stored, loadErr := catalogservice.LoadProxyConfigJSON(); loadErr == nil {
 			var prev ProxyConfigRequest
 			if unmarshalErr := common.Unmarshal([]byte(stored), &prev); unmarshalErr == nil {
 				if req.Outbound.Password == maskedSecret {
@@ -206,7 +208,7 @@ func UpdateProxyConfig(c *gin.Context) {
 			common.ApiErrorMsg(c, "failed to marshal outbound config")
 			return
 		}
-		validationDialer, err := service.BuildSingBoxDialer(outboundJSON)
+		validationDialer, err := egressservice.BuildSingBoxDialer(outboundJSON)
 		if err != nil {
 			common.ApiErrorMsg(c, "invalid sing-box outbound configuration: "+err.Error())
 			return
@@ -219,7 +221,7 @@ func UpdateProxyConfig(c *gin.Context) {
 		common.ApiErrorMsg(c, "failed to marshal config")
 		return
 	}
-	if err := service.SaveProxyConfigJSON(string(jsonBytes)); err != nil {
+	if err := catalogservice.SaveProxyConfigJSON(string(jsonBytes)); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -229,7 +231,7 @@ func UpdateProxyConfig(c *gin.Context) {
 // GenerateProxyConfig returns a complete sing-box config.json for the current
 // proxy configuration. It uses encoding/json directly (no sing-box dependency).
 func GenerateProxyConfig(c *gin.Context) {
-	jsonStr, err := service.LoadProxyConfigJSON()
+	jsonStr, err := catalogservice.LoadProxyConfigJSON()
 	if err != nil {
 		common.ApiErrorMsg(c, "proxy not configured")
 		return
@@ -449,8 +451,8 @@ type proxyNodeBatchClearErrorsRequest struct {
 }
 
 func ListProxyNodes(c *gin.Context) {
-	var nodes []model.ProxyNode
-	query := model.DB
+	var nodes []catalogmodel.ProxyNode
+	query := rootmodel.DB
 	if scopeType := c.Query("scope_type"); scopeType != "" {
 		query = query.Where("scope_type = ?", scopeType)
 	}
@@ -468,15 +470,15 @@ func ListProxyNodes(c *gin.Context) {
 	channelNames := make(map[int]string)
 	channelIDs := make([]int, 0)
 	for _, node := range nodes {
-		if node.ScopeType == model.ProxyNodeScopeChannel {
+		if node.ScopeType == catalogmodel.ProxyNodeScopeChannel {
 			if id, parseErr := strconv.Atoi(node.ScopeValue); parseErr == nil {
 				channelIDs = append(channelIDs, id)
 			}
 		}
 	}
 	if len(channelIDs) > 0 {
-		var channels []model.Channel
-		if err := model.DB.Select("id, name").Where("id IN ?", channelIDs).Find(&channels).Error; err != nil {
+		var channels []catalogmodel.Channel
+		if err := rootmodel.DB.Select("id, name").Where("id IN ?", channelIDs).Find(&channels).Error; err != nil {
 			common.ApiError(c, err)
 			return
 		}
@@ -484,15 +486,15 @@ func ListProxyNodes(c *gin.Context) {
 			channelNames[channel.Id] = channel.Name
 		}
 	}
-	items := make([]model.ProxyNodePublic, 0, len(nodes))
+	items := make([]catalogmodel.ProxyNodePublic, 0, len(nodes))
 	for _, node := range nodes {
 		public := node.Public()
-		if node.ScopeType == model.ProxyNodeScopeChannel {
+		if node.ScopeType == catalogmodel.ProxyNodeScopeChannel {
 			if id, parseErr := strconv.Atoi(node.ScopeValue); parseErr == nil {
 				public.ScopeName = channelNames[id]
 			}
 		}
-		probeStats := service.GetProxyNodeProbeStatsFor(node.ID)
+		probeStats := egressservice.GetProxyNodeProbeStatsFor(node.ID)
 		public.ProbeTotal = probeStats.Total
 		public.ProbeSuccess = probeStats.Success
 		items = append(items, public)
@@ -532,7 +534,7 @@ func BatchCreateProxyNodes(c *gin.Context) {
 		common.ApiErrorMsg(c, "invalid request body")
 		return
 	}
-	result, err := service.CreateProxyNodesBatch(service.ProxyNodeInput{
+	result, err := egressservice.CreateProxyNodesBatch(egressservice.ProxyNodeInput{
 		Enabled: req.Enabled, ScopeType: req.ScopeType, ScopeValue: req.ScopeValue,
 	}, req.NamePrefix, req.ProxyText, req.ProxyURLs)
 	if err != nil {
@@ -548,7 +550,7 @@ func BatchSetProxyNodesEnabled(c *gin.Context) {
 		common.ApiErrorMsg(c, "invalid request body")
 		return
 	}
-	updated, err := service.SetProxyNodesEnabled(req.IDs, req.Enabled)
+	updated, err := egressservice.SetProxyNodesEnabled(req.IDs, req.Enabled)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -562,7 +564,7 @@ func BatchClearProxyNodeErrors(c *gin.Context) {
 		common.ApiErrorMsg(c, "invalid request body")
 		return
 	}
-	cleared, err := service.ClearProxyNodeErrors(req.IDs)
+	cleared, err := egressservice.ClearProxyNodeErrors(req.IDs)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -572,7 +574,7 @@ func BatchClearProxyNodeErrors(c *gin.Context) {
 
 func GetProxyNodeReport(c *gin.Context) {
 	var total, enabled, healthy int64
-	base := model.DB.Model(&model.ProxyNode{})
+	base := rootmodel.DB.Model(&catalogmodel.ProxyNode{})
 	if err := base.Count(&total).Error; err != nil {
 		common.ApiError(c, err)
 		return
@@ -580,15 +582,15 @@ func GetProxyNodeReport(c *gin.Context) {
 	// Each metric runs on its own fresh query. Reusing one query would
 	// accumulate predicates (enabled leaking into the healthy count), same
 	// class of bug as GetProxyNodesForChannel — see proxy_node_test.go.
-	if err := model.DB.Model(&model.ProxyNode{}).Where("enabled = ?", true).Count(&enabled).Error; err != nil {
+	if err := rootmodel.DB.Model(&catalogmodel.ProxyNode{}).Where("enabled = ?", true).Count(&enabled).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	if err := model.DB.Model(&model.ProxyNode{}).Where("health >= ?", service.ProxyNodeHealthyThreshold).Count(&healthy).Error; err != nil {
+	if err := rootmodel.DB.Model(&catalogmodel.ProxyNode{}).Where("health >= ?", egressservice.ProxyNodeHealthyThreshold).Count(&healthy).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	stats := service.GetProxyNodeProbeStats()
+	stats := egressservice.GetProxyNodeProbeStats()
 	failed := stats.Total - stats.Success
 	common.ApiSuccess(c, gin.H{
 		"total":         total,
@@ -609,12 +611,12 @@ func GetProxyNode(c *gin.Context) {
 		common.ApiErrorMsg(c, "invalid proxy node id")
 		return
 	}
-	var node model.ProxyNode
-	if err := model.DB.First(&node, id).Error; err != nil {
+	var node catalogmodel.ProxyNode
+	if err := rootmodel.DB.First(&node, id).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	parsed, err := service.DecryptProxyNodeConfig(&node)
+	parsed, err := egressservice.DecryptProxyNodeConfig(&node)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -630,7 +632,7 @@ func CreateProxyNode(c *gin.Context) {
 		common.ApiErrorMsg(c, "invalid request body")
 		return
 	}
-	node, err := service.CreateProxyNode(service.ProxyNodeInput{
+	node, err := egressservice.CreateProxyNode(egressservice.ProxyNodeInput{
 		Name: req.Name, Enabled: req.Enabled, Proxy: req.Proxy, ScopeType: req.ScopeType, ScopeValue: req.ScopeValue,
 	})
 	if err != nil {
@@ -651,24 +653,24 @@ func UpdateProxyNode(c *gin.Context) {
 		common.ApiErrorMsg(c, "invalid request body")
 		return
 	}
-	var node model.ProxyNode
-	if err := model.DB.First(&node, id).Error; err != nil {
+	var node catalogmodel.ProxyNode
+	if err := rootmodel.DB.First(&node, id).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	scopeType, scopeValue, err := model.NormalizeProxyNodeScope(req.ScopeType, req.ScopeValue)
+	scopeType, scopeValue, err := catalogmodel.NormalizeProxyNodeScope(req.ScopeType, req.ScopeValue)
 	if err != nil {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
 	node.Name, node.Enabled, node.ScopeType, node.ScopeValue = strings.TrimSpace(req.Name), req.Enabled, scopeType, scopeValue
 	if req.Proxy != nil && strings.TrimSpace(*req.Proxy) != "" {
-		parsed, parseErr := service.ParseProxyNodeShareLink(*req.Proxy)
+		parsed, parseErr := egressservice.ParseProxyNodeShareLink(*req.Proxy)
 		if parseErr != nil {
 			common.ApiErrorMsg(c, parseErr.Error())
 			return
 		}
-		encrypted, encryptErr := service.EncryptProxyNodeConfigForUpdate(parsed.CanonicalInput)
+		encrypted, encryptErr := egressservice.EncryptProxyNodeConfigForUpdate(parsed.CanonicalInput)
 		if encryptErr != nil {
 			common.ApiErrorMsg(c, encryptErr.Error())
 			return
@@ -680,7 +682,7 @@ func UpdateProxyNode(c *gin.Context) {
 		common.ApiErrorMsg(c, "proxy node name must not be empty")
 		return
 	}
-	if err := model.DB.Save(&node).Error; err != nil {
+	if err := rootmodel.DB.Save(&node).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -693,11 +695,11 @@ func DeleteProxyNode(c *gin.Context) {
 		common.ApiErrorMsg(c, "invalid proxy node id")
 		return
 	}
-	if err := model.DB.Delete(&model.ProxyNode{}, id).Error; err != nil {
+	if err := rootmodel.DB.Delete(&catalogmodel.ProxyNode{}, id).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	service.ResetProxyNodeProbeStatsFor(id)
+	egressservice.ResetProxyNodeProbeStatsFor(id)
 	common.ApiSuccess(c, nil)
 }
 
@@ -707,12 +709,12 @@ func TestProxyNode(c *gin.Context) {
 		common.ApiErrorMsg(c, "invalid proxy node id")
 		return
 	}
-	var node model.ProxyNode
-	if err := model.DB.First(&node, id).Error; err != nil {
+	var node catalogmodel.ProxyNode
+	if err := rootmodel.DB.First(&node, id).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	result, probeErr := service.ProbeProxyNode(c.Request.Context(), &node)
+	result, probeErr := egressservice.ProbeProxyNode(c.Request.Context(), &node)
 	if probeErr != nil {
 		common.ApiError(c, probeErr)
 		return
@@ -721,8 +723,8 @@ func TestProxyNode(c *gin.Context) {
 }
 
 func TestAllProxyNodes(c *gin.Context) {
-	var nodes []model.ProxyNode
-	if err := model.DB.Where("enabled = ?", true).Find(&nodes).Error; err != nil {
+	var nodes []catalogmodel.ProxyNode
+	if err := rootmodel.DB.Where("enabled = ?", true).Find(&nodes).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -735,7 +737,7 @@ func TestAllProxyNodes(c *gin.Context) {
 	for index := range nodes {
 		node := &nodes[index]
 		g.Go(func() error {
-			result, err := service.ProbeProxyNode(ctx, node)
+			result, err := egressservice.ProbeProxyNode(ctx, node)
 			if err == nil && result.Success {
 				passedAtomic.Add(1)
 			}

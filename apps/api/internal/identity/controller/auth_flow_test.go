@@ -17,6 +17,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 type authFlowTestOAuthProvider struct {
@@ -43,25 +45,25 @@ func (provider *authFlowTestOAuthProvider) GetUserInfo(context.Context, *oauth.O
 	return &oauth.OAuthUser{ProviderUserID: "external-user"}, nil
 }
 func (*authFlowTestOAuthProvider) IsUserIDTaken(string) bool                      { return false }
-func (*authFlowTestOAuthProvider) FillUserByProviderID(*model.User, string) error { return nil }
-func (*authFlowTestOAuthProvider) SetProviderUserID(*model.User, string)          {}
+func (*authFlowTestOAuthProvider) FillUserByProviderID(*identitymodel.User, string) error { return nil }
+func (*authFlowTestOAuthProvider) SetProviderUserID(*identitymodel.User, string)          {}
 func (*authFlowTestOAuthProvider) GetProviderPrefix() string                      { return "flow_" }
 func (*authFlowTestOAuthProvider) ProviderUserIDColumn() string                   { return "" }
 
 func setupAuthFlowControllerTest(t *testing.T) *authFlowTestOAuthProvider {
 	t.Helper()
-	previousDB := model.DB
+	previousDB := rootmodel.DB
 	previousType := common.MainDatabaseType()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.AuthFlow{}))
-	model.DB = db
+	require.NoError(t, db.AutoMigrate(&identitymodel.AuthFlow{}))
+	rootmodel.DB = db
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	provider := &authFlowTestOAuthProvider{}
 	oauth.Register("auth-flow-test", provider)
 	t.Cleanup(func() {
 		oauth.Unregister("auth-flow-test")
-		model.DB = previousDB
+		rootmodel.DB = previousDB
 		common.SetMainDatabaseType(previousType)
 	})
 	return provider
@@ -85,7 +87,7 @@ func TestGenerateOAuthCodeCarriesAffiliateInLoginFlow(t *testing.T) {
 	}
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	require.True(t, response.Success)
-	flow, err := model.GetAuthFlow(response.Data.FlowToken, model.AuthFlowMatch{
+	flow, err := identitymodel.GetAuthFlow(response.Data.FlowToken, identitymodel.AuthFlowMatch{
 		Purpose: model.AuthFlowPurposeOAuth, Provider: "auth-flow-test", Intent: model.AuthFlowIntentLogin,
 	})
 	require.NoError(t, err)
@@ -118,7 +120,7 @@ func TestGenerateOAuthCodeBindsFlowToAuthenticatedSession(t *testing.T) {
 	}
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	require.True(t, response.Success)
-	flow, err := model.GetAuthFlow(response.Data.FlowToken, model.AuthFlowMatch{
+	flow, err := identitymodel.GetAuthFlow(response.Data.FlowToken, identitymodel.AuthFlowMatch{
 		Purpose: model.AuthFlowPurposeOAuth, Provider: "auth-flow-test", Intent: model.AuthFlowIntentBind,
 		UserId: 42, SessionId: "session-42",
 	})
@@ -142,7 +144,7 @@ func TestOAuthLoginConsumesFlowOnlyAfterProviderIdentity(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			provider.exchangeErr = test.exchangeErr
 			provider.userInfoErr = test.userInfoErr
-			token, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
+			token, _, err := identitymodel.CreateAuthFlow(identitymodel.AuthFlowCreate{
 				Purpose: model.AuthFlowPurposeOAuth, Provider: "auth-flow-test", Intent: model.AuthFlowIntentLogin,
 				Payload: `{}`, ExpiresAt: time.Now().Add(time.Minute),
 			})
@@ -154,7 +156,7 @@ func TestOAuthLoginConsumesFlowOnlyAfterProviderIdentity(t *testing.T) {
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)
 
-			flow, err := model.GetAuthFlow(token, model.AuthFlowMatch{
+			flow, err := identitymodel.GetAuthFlow(token, identitymodel.AuthFlowMatch{
 				Purpose: model.AuthFlowPurposeOAuth, Provider: "auth-flow-test", Intent: model.AuthFlowIntentLogin,
 			})
 			require.NoError(t, err)
@@ -168,7 +170,7 @@ func TestOAuthLoginConsumesFlowAfterProviderIdentityAndOnProviderError(t *testin
 
 	provider.exchangeErr = nil
 	provider.userInfoErr = nil
-	successToken, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
+	successToken, _, err := identitymodel.CreateAuthFlow(identitymodel.AuthFlowCreate{
 		Purpose: model.AuthFlowPurposeOAuth, Provider: "auth-flow-test", Intent: model.AuthFlowIntentLogin,
 		Payload: `{invalid`, ExpiresAt: time.Now().Add(time.Minute),
 	})
@@ -178,12 +180,12 @@ func TestOAuthLoginConsumesFlowAfterProviderIdentityAndOnProviderError(t *testin
 	request := httptest.NewRequest(http.MethodGet, "/api/oauth/auth-flow-test?state="+successToken+"&code=test", nil)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
-	_, err = model.GetAuthFlow(successToken, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeOAuth})
+	_, err = identitymodel.GetAuthFlow(successToken, identitymodel.AuthFlowMatch{Purpose: model.AuthFlowPurposeOAuth})
 	assert.ErrorIs(t, err, model.ErrAuthFlowConsumed)
 	assert.Equal(t, 1, provider.exchangeCalls)
 	assert.Equal(t, 1, provider.userInfoCalls)
 
-	providerErrorToken, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
+	providerErrorToken, _, err := identitymodel.CreateAuthFlow(identitymodel.AuthFlowCreate{
 		Purpose: model.AuthFlowPurposeOAuth, Provider: "auth-flow-test", Intent: model.AuthFlowIntentLogin,
 		Payload: `{}`, ExpiresAt: time.Now().Add(time.Minute),
 	})
@@ -191,7 +193,7 @@ func TestOAuthLoginConsumesFlowAfterProviderIdentityAndOnProviderError(t *testin
 	request = httptest.NewRequest(http.MethodGet, "/api/oauth/auth-flow-test?state="+providerErrorToken+"&error=access_denied", nil)
 	response = httptest.NewRecorder()
 	router.ServeHTTP(response, request)
-	_, err = model.GetAuthFlow(providerErrorToken, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeOAuth})
+	_, err = identitymodel.GetAuthFlow(providerErrorToken, identitymodel.AuthFlowMatch{Purpose: model.AuthFlowPurposeOAuth})
 	assert.ErrorIs(t, err, model.ErrAuthFlowConsumed)
 	assert.Equal(t, 1, provider.exchangeCalls)
 	assert.Equal(t, 1, provider.userInfoCalls)
@@ -199,7 +201,7 @@ func TestOAuthLoginConsumesFlowAfterProviderIdentityAndOnProviderError(t *testin
 
 func TestOAuthBindProviderErrorConsumesSessionBoundFlow(t *testing.T) {
 	provider := setupAuthFlowControllerTest(t)
-	flowToken, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
+	flowToken, _, err := identitymodel.CreateAuthFlow(identitymodel.AuthFlowCreate{
 		Purpose: model.AuthFlowPurposeOAuth, Provider: "auth-flow-test", Intent: model.AuthFlowIntentBind,
 		UserId: 42, SessionId: "session-42", Payload: `{}`, ExpiresAt: time.Now().Add(time.Minute),
 	})
@@ -218,7 +220,7 @@ func TestOAuthBindProviderErrorConsumesSessionBoundFlow(t *testing.T) {
 	router.ServeHTTP(response, request)
 
 	assert.Equal(t, http.StatusOK, response.Code)
-	_, err = model.GetAuthFlow(flowToken, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeOAuth})
+	_, err = identitymodel.GetAuthFlow(flowToken, identitymodel.AuthFlowMatch{Purpose: model.AuthFlowPurposeOAuth})
 	assert.ErrorIs(t, err, model.ErrAuthFlowConsumed)
 	assert.Zero(t, provider.exchangeCalls)
 	assert.Zero(t, provider.userInfoCalls)

@@ -11,9 +11,10 @@ import (
 
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/model"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/modelapi"
 )
 
 func init() {
@@ -160,15 +161,15 @@ func (p *OIDCProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*OAu
 }
 
 func (p *OIDCProvider) IsUserIDTaken(providerUserID string) bool {
-	return model.IsOidcIdAlreadyTaken(providerUserID)
+	return identitymodel.IsOidcIdAlreadyTaken(providerUserID)
 }
 
-func (p *OIDCProvider) FillUserByProviderID(user *model.User, providerUserID string) error {
+func (p *OIDCProvider) FillUserByProviderID(user *modelapi.User, providerUserID string) error {
 	user.OidcId = providerUserID
 	return user.FillUserByOidcId()
 }
 
-func (p *OIDCProvider) SetProviderUserID(user *model.User, providerUserID string) {
+func (p *OIDCProvider) SetProviderUserID(user *modelapi.User, providerUserID string) {
 	user.OidcId = providerUserID
 }
 
@@ -177,6 +178,7 @@ func (p *OIDCProvider) GetProviderPrefix() string {
 }
 
 // ProviderUserIDColumn returns the users-table column storing this provider's user ID.
-func (p *OIDCProvider) ProviderUserIDColumn() string {
+func (p *OIDCProvider) ProviderUserIDColumn(
+) string {
 	return "oidc_id"
 }

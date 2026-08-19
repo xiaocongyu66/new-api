@@ -7,9 +7,10 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+
 )
 
-func getTokenCacheKey(key string) string {
+func GetTokenCacheKey(key string) string {
 	return fmt.Sprintf("token:%s", common.GenerateHMAC(key))
 }
 
@@ -26,7 +27,7 @@ func tokenCacheTTLSeconds() int {
 }
 
 // tokenCacheFenceSeconds must outlive a token mutation's database write plus
-// any in-flight reader's DB-read-to-cache-init gap. The fence is not deleted
+// any in-flight reader's rootmodel.DB-read-to-cache-init gap. The fence is not deleted
 // after commit; it expires naturally so a reader holding a pre-mutation
 // snapshot cannot publish it right after the mutation cleared the cache.
 // While the fence exists readers simply serve the database without caching.
@@ -44,7 +45,7 @@ func invalidateTokenCacheForMutation(key string) error {
 	if err != nil {
 		return err
 	}
-	return common.RDB.Del(ctx, getTokenCacheKey(key)).Err()
+	return common.RDB.Del(ctx, GetTokenCacheKey(key)).Err()
 }
 
 // cacheInitToken publishes a database snapshot only when no mutation fence is
@@ -79,7 +80,7 @@ redis.call('EXPIRE', KEYS[1], ARGV[17])
 return 1`
 
 	return common.RDB.Eval(context.Background(), script, []string{
-		getTokenCacheKey(token.Key), getTokenCacheFenceKey(token.Key),
+		GetTokenCacheKey(token.Key), getTokenCacheFenceKey(token.Key),
 	},
 		token.Id, token.UserId, token.Status, token.Name,
 		token.CreatedTime, token.AccessedTime, token.ExpiredTime,
@@ -96,7 +97,7 @@ func cacheGetTokenByKey(key string) (*Token, error) {
 		return nil, fmt.Errorf("redis is not enabled")
 	}
 	var token Token
-	if err := common.RedisHGetObj(getTokenCacheKey(key), &token); err != nil {
+	if err := common.RedisHGetObj(GetTokenCacheKey(key), &token); err != nil {
 		return nil, err
 	}
 	if token.Id <= 0 {

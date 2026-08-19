@@ -17,6 +17,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 type passkeyTestBody struct {
@@ -44,7 +46,7 @@ func TestParsePasskeyFinishRequestDoesNotRewriteRequestBody(t *testing.T) {
 }
 
 func TestPasskeyRegisterFinishRejectsMissingOrWrongProofWithoutConsumingFlow(t *testing.T) {
-	previousDB := model.DB
+	previousDB := rootmodel.DB
 	previousType := common.MainDatabaseType()
 	previousRedis := common.RedisEnabled
 	previousSecret := common.SessionSecret
@@ -53,14 +55,14 @@ func TestPasskeyRegisterFinishRejectsMissingOrWrongProofWithoutConsumingFlow(t *
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.TwoFA{}, &model.AuthFlow{}))
-	model.DB = db
+	require.NoError(t, db.AutoMigrate(&identitymodel.User{}, &identitymodel.TwoFA{}, &identitymodel.AuthFlow{}))
+	rootmodel.DB = db
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	common.SessionSecret = "passkey-register-proof-test-secret"
 	*settings = system_setting.PasskeySettings{Enabled: true}
 	t.Cleanup(func() {
-		model.DB = previousDB
+		rootmodel.DB = previousDB
 		common.SetMainDatabaseType(previousType)
 		common.RedisEnabled = previousRedis
 		common.SessionSecret = previousSecret
@@ -71,12 +73,12 @@ func TestPasskeyRegisterFinishRejectsMissingOrWrongProofWithoutConsumingFlow(t *
 		}
 	})
 
-	user := &model.User{
+	user := &identitymodel.User{
 		Username: "passkey-proof-user", Password: "password-placeholder", Role: common.RoleCommonUser,
 		Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1,
 	}
 	require.NoError(t, db.Create(user).Error)
-	require.NoError(t, db.Create(&model.TwoFA{UserId: user.Id, Secret: "totp-secret", IsEnabled: true}).Error)
+	require.NoError(t, db.Create(&identitymodel.TwoFA{UserId: user.Id, Secret: "totp-secret", IsEnabled: true}).Error)
 	identity := service.AuthIdentity{
 		UserID: user.Id, SessionID: "passkey-proof-session", UserAuthVersion: 1, SessionVersion: 1,
 	}
@@ -93,7 +95,7 @@ func TestPasskeyRegisterFinishRejectsMissingOrWrongProofWithoutConsumingFlow(t *
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			flowToken, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
+			flowToken, _, err := identitymodel.CreateAuthFlow(identitymodel.AuthFlowCreate{
 				Purpose: model.AuthFlowPurposePasskeyRegister, UserId: user.Id, SessionId: identity.SessionID,
 				Payload: `{}`, ExpiresAt: time.Now().Add(time.Minute),
 			})
@@ -120,7 +122,7 @@ func TestPasskeyRegisterFinishRejectsMissingOrWrongProofWithoutConsumingFlow(t *
 			}
 			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &responseBody))
 			assert.Equal(t, test.expectedCode, responseBody.Code)
-			flow, err := model.GetAuthFlow(flowToken, model.AuthFlowMatch{
+			flow, err := identitymodel.GetAuthFlow(flowToken, identitymodel.AuthFlowMatch{
 				Purpose: model.AuthFlowPurposePasskeyRegister, UserId: user.Id, SessionId: identity.SessionID,
 			})
 			require.NoError(t, err)

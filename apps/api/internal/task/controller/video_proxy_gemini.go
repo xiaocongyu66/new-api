@@ -8,11 +8,12 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
+	taskmodel "github.com/QuantumNous/new-api/internal/task/model"
 )
 
-func getGeminiVideoURL(channel *model.Channel, task *model.Task, apiKey string) (string, error) {
+func getGeminiVideoURL(channel *catalogmodel.Channel, task *taskmodel.Task, apiKey string) (string, error) {
 	if channel == nil || task == nil {
 		return "", fmt.Errorf("invalid channel or task")
 	}
@@ -66,7 +67,7 @@ func getGeminiVideoURL(channel *model.Channel, task *model.Task, apiKey string) 
 	return "", fmt.Errorf("gemini video url not found")
 }
 
-func extractGeminiVideoURLFromTaskData(task *model.Task) string {
+func extractGeminiVideoURLFromTaskData(task *taskmodel.Task) string {
 	if task == nil || len(task.Data) == 0 {
 		return ""
 	}
@@ -145,7 +146,7 @@ func extractGeminiVideoURLFromGeneratedSamples(gvr map[string]any) string {
 	return ""
 }
 
-func getVertexVideoURL(channel *model.Channel, task *model.Task) (string, error) {
+func getVertexVideoURL(channel *catalogmodel.Channel, task *taskmodel.Task) (string, error) {
 	if channel == nil || task == nil {
 		return "", fmt.Errorf("invalid channel or task")
 	}
@@ -205,7 +206,7 @@ func isTaskProxyContentURL(url string, taskID string) bool {
 	return strings.Contains(url, "/v1/videos/"+taskID+"/content")
 }
 
-func getVertexTaskKey(channel *model.Channel, task *model.Task) string {
+func getVertexTaskKey(channel *catalogmodel.Channel, task *taskmodel.Task) string {
 	if task != nil {
 		if key := strings.TrimSpace(task.PrivateData.Key); key != "" {
 			return key
@@ -224,7 +225,7 @@ func getVertexTaskKey(channel *model.Channel, task *model.Task) string {
 	return strings.TrimSpace(channel.Key)
 }
 
-func extractVertexVideoURLFromTaskData(task *model.Task) string {
+func extractVertexVideoURLFromTaskData(task *taskmodel.Task) string {
 	if task == nil || len(task.Data) == 0 {
 		return ""
 	}

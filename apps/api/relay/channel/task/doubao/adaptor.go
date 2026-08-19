@@ -12,7 +12,6 @@ import (
 
 	"github.com/QuantumNous/new-api/constant"
 	taskdto "github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -22,7 +21,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
-)
+	"github.com/QuantumNous/new-api/modelapi"
+	taskmodel "github.com/QuantumNous/new-api/internal/task/model"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service")
 
 // ============================
 // Request / Response structures
@@ -256,7 +257,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+key)
 
-	client, err := service.GetHttpClientWithProxy(proxy)
+	client, err := egressservice.GetHttpClientWithProxy(proxy)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
 	}
@@ -320,32 +321,32 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	// Map Doubao status to internal status
 	switch resTask.Status {
 	case "pending", "queued":
-		taskResult.Status = model.TaskStatusQueued
+		taskResult.Status = taskmodel.TaskStatusQueued
 		taskResult.Progress = "10%"
 	case "processing", "running":
-		taskResult.Status = model.TaskStatusInProgress
+		taskResult.Status = taskmodel.TaskStatusInProgress
 		taskResult.Progress = "50%"
 	case "succeeded":
-		taskResult.Status = model.TaskStatusSuccess
+		taskResult.Status = taskmodel.TaskStatusSuccess
 		taskResult.Progress = "100%"
 		taskResult.Url = resTask.Content.VideoURL
 		// 解析 usage 信息用于按倍率计费
 		taskResult.CompletionTokens = resTask.Usage.CompletionTokens
 		taskResult.TotalTokens = resTask.Usage.TotalTokens
 	case "failed":
-		taskResult.Status = model.TaskStatusFailure
+		taskResult.Status = taskmodel.TaskStatusFailure
 		taskResult.Progress = "100%"
 		taskResult.Reason = resTask.Error.Message
 	default:
 		// Unknown status, treat as processing
-		taskResult.Status = model.TaskStatusInProgress
+		taskResult.Status = taskmodel.TaskStatusInProgress
 		taskResult.Progress = "30%"
 	}
 
 	return &taskResult, nil
 }
 
-func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error) {
+func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *modelapi.Task) ([]byte, error) {
 	var dResp responseTask
 	if err := common.Unmarshal(originTask.Data, &dResp); err != nil {
 		return nil, errors.Wrap(err, "unmarshal doubao task data failed")

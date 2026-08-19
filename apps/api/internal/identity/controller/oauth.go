@@ -11,10 +11,11 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/middleware"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 const oauthAuthFlowTTL = 10 * time.Minute
@@ -45,15 +46,15 @@ func GenerateOAuthCode(c *gin.Context) {
 	request.Intent = strings.TrimSpace(request.Intent)
 	request.Aff = strings.TrimSpace(request.Aff)
 	if oauth.GetProvider(request.Provider) == nil ||
-		(request.Intent != model.AuthFlowIntentLogin && request.Intent != model.AuthFlowIntentBind) ||
+		(request.Intent != identitymodel.AuthFlowIntentLogin && request.Intent != identitymodel.AuthFlowIntentBind) ||
 		len(request.Aff) > 32 ||
-		(request.Intent == model.AuthFlowIntentBind && request.Aff != "") {
+		(request.Intent == identitymodel.AuthFlowIntentBind && request.Aff != "") {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	userID := 0
 	sessionID := ""
-	if request.Intent == model.AuthFlowIntentBind {
+	if request.Intent == identitymodel.AuthFlowIntentBind {
 		identity, ok := middleware.GetSessionAuthIdentity(c)
 		if !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "绑定操作需要登录"})
@@ -68,8 +69,8 @@ func GenerateOAuthCode(c *gin.Context) {
 		return
 	}
 	expiresAt := time.Now().Add(oauthAuthFlowTTL)
-	state, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
-		Purpose:   model.AuthFlowPurposeOAuth,
+	state, _, err := identitymodel.CreateAuthFlow(identitymodel.AuthFlowCreate{
+		Purpose:   identitymodel.AuthFlowPurposeOAuth,
 		Provider:  request.Provider,
 		Intent:    request.Intent,
 		UserId:    userID,
@@ -105,8 +106,8 @@ func HandleOAuth(c *gin.Context) {
 
 	// 1. Validate state (CSRF protection)
 	state := c.Query("state")
-	pendingFlow, err := model.GetAuthFlow(state, model.AuthFlowMatch{
-		Purpose:  model.AuthFlowPurposeOAuth,
+	pendingFlow, err := identitymodel.GetAuthFlow(state, identitymodel.AuthFlowMatch{
+		Purpose:  identitymodel.AuthFlowPurposeOAuth,
 		Provider: providerName,
 	})
 	if err != nil {
@@ -117,13 +118,13 @@ func HandleOAuth(c *gin.Context) {
 		return
 	}
 
-	consumeMatch := model.AuthFlowMatch{
-		Purpose:  model.AuthFlowPurposeOAuth,
+	consumeMatch := identitymodel.AuthFlowMatch{
+		Purpose:  identitymodel.AuthFlowPurposeOAuth,
 		Provider: providerName,
 		Intent:   pendingFlow.Intent,
 	}
 	// 2. Bind flows are bound to the live dashboard Session that created them.
-	if pendingFlow.Intent == model.AuthFlowIntentBind {
+	if pendingFlow.Intent == identitymodel.AuthFlowIntentBind {
 		identity, ok := middleware.GetSessionAuthIdentity(c)
 		if !ok || identity.UserID != pendingFlow.UserId || identity.SessionID != pendingFlow.SessionId {
 			c.JSON(http.StatusForbidden, gin.H{
@@ -134,7 +135,7 @@ func HandleOAuth(c *gin.Context) {
 		}
 		consumeMatch.UserId = identity.UserID
 		consumeMatch.SessionId = identity.SessionID
-	} else if pendingFlow.Intent != model.AuthFlowIntentLogin {
+	} else if pendingFlow.Intent != identitymodel.AuthFlowIntentLogin {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
@@ -148,7 +149,7 @@ func HandleOAuth(c *gin.Context) {
 	// 4. Handle error from provider
 	errorCode := c.Query("error")
 	if errorCode != "" {
-		if _, err := model.ConsumeAuthFlow(state, consumeMatch); err != nil {
+		if _, err := identitymodel.ConsumeAuthFlow(state, consumeMatch); err != nil {
 			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": i18n.T(c, i18n.MsgOAuthStateInvalid)})
 			return
 		}
@@ -162,7 +163,7 @@ func HandleOAuth(c *gin.Context) {
 		})
 		return
 	}
-	if pendingFlow.Intent == model.AuthFlowIntentBind {
+	if pendingFlow.Intent == identitymodel.AuthFlowIntentBind {
 		handleOAuthBind(c, provider, pendingFlow, state)
 		return
 	}
@@ -181,7 +182,7 @@ func HandleOAuth(c *gin.Context) {
 		handleOAuthError(c, err)
 		return
 	}
-	flow, err := model.ConsumeAuthFlow(state, consumeMatch)
+	flow, err := identitymodel.ConsumeAuthFlow(state, consumeMatch)
 	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": i18n.T(c, i18n.MsgOAuthStateInvalid)})
 		return
@@ -195,7 +196,7 @@ func HandleOAuth(c *gin.Context) {
 	}
 	user, err := findOrCreateOAuthUser(c, provider, oauthUser, payload.AffiliateCode)
 	if err != nil {
-		if errors.Is(err, model.ErrEmailAlreadyTaken) {
+		if errors.Is(err, rootmodel.ErrEmailAlreadyTaken) {
 			common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
 			return
 		}
@@ -223,7 +224,7 @@ func HandleOAuth(c *gin.Context) {
 }
 
 // handleOAuthBind handles binding OAuth account to existing user
-func handleOAuthBind(c *gin.Context, provider oauth.Provider, pendingFlow *model.AuthFlow, flowToken string) {
+func handleOAuthBind(c *gin.Context, provider oauth.Provider, pendingFlow *identitymodel.AuthFlow, flowToken string) {
 	// Exchange code for token
 	code := c.Query("code")
 	token, err := provider.ExchangeToken(c.Request.Context(), code, c)
@@ -252,10 +253,10 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider, pendingFlow *model
 		}
 	}
 
-	if _, err := model.ConsumeAuthFlow(flowToken, model.AuthFlowMatch{
-		Purpose:   model.AuthFlowPurposeOAuth,
+	if _, err := identitymodel.ConsumeAuthFlow(flowToken, identitymodel.AuthFlowMatch{
+		Purpose:   identitymodel.AuthFlowPurposeOAuth,
 		Provider:  pendingFlow.Provider,
-		Intent:    model.AuthFlowIntentBind,
+		Intent:    identitymodel.AuthFlowIntentBind,
 		UserId:    pendingFlow.UserId,
 		SessionId: pendingFlow.SessionId,
 	}); err != nil {
@@ -268,7 +269,7 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider, pendingFlow *model
 	// Handle binding based on provider type
 	if genericProvider, ok := provider.(*oauth.GenericOAuthProvider); ok {
 		// Custom provider: use user_oauth_bindings table
-		err = model.UpdateUserOAuthBinding(userId, genericProvider.GetProviderId(), oauthUser.ProviderUserID)
+		err = identitymodel.UpdateUserOAuthBinding(userId, genericProvider.GetProviderId(), oauthUser.ProviderUserID)
 		if err != nil {
 			common.ApiError(c, err)
 			return
@@ -276,7 +277,7 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider, pendingFlow *model
 	} else {
 		// Built-in provider: 只更新绑定列。完整快照的 user.Update 会把读取时刻的
 		// role/status/group 一并写回，覆盖并发发生的封禁、降权或分组变更。
-		err = model.UpdateUserBindColumn(userId, provider.ProviderUserIDColumn(), oauthUser.ProviderUserID)
+		err = identitymodel.UpdateUserBindColumn(userId, provider.ProviderUserIDColumn(), oauthUser.ProviderUserID)
 		if err != nil {
 			common.ApiError(c, err)
 			return
@@ -289,8 +290,8 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider, pendingFlow *model
 }
 
 // findOrCreateOAuthUser finds existing user or creates new user
-func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *oauth.OAuthUser, affiliateCode string) (*model.User, error) {
-	user := &model.User{}
+func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *oauth.OAuthUser, affiliateCode string) (*identitymodel.User, error) {
+	user := &identitymodel.User{}
 
 	// Check if user already exists with new ID
 	if provider.IsUserIDTaken(oauthUser.ProviderUserID) {
@@ -331,12 +332,12 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	}
 
 	// Set up new user
-	user.Username = provider.GetProviderPrefix() + strconv.Itoa(model.GetMaxUserId()+1)
+	user.Username = provider.GetProviderPrefix() + strconv.Itoa(identitymodel.GetMaxUserId()+1)
 
 	if oauthUser.Username != "" {
-		if exists, err := model.CheckUserExistOrDeleted(oauthUser.Username, ""); err == nil && !exists {
+		if exists, err := identitymodel.CheckUserExistOrDeleted(oauthUser.Username, ""); err == nil && !exists {
 			// 防止索引退化
-			if len(oauthUser.Username) <= model.UserNameMaxLength {
+			if len(oauthUser.Username) <= identitymodel.UserNameMaxLength {
 				user.Username = oauthUser.Username
 			}
 		}
@@ -350,9 +351,9 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		user.DisplayName = provider.GetName() + " User"
 	}
 	if oauthUser.Email != "" {
-		user.Email = model.NormalizeEmail(oauthUser.Email)
-		if err := model.EnsureEmailAvailable(user.Email, 0); err != nil {
-			if errors.Is(err, model.ErrEmailAlreadyTaken) {
+		user.Email = identitymodel.NormalizeEmail(oauthUser.Email)
+		if err := identitymodel.EnsureEmailAvailable(user.Email, 0); err != nil {
+			if errors.Is(err, rootmodel.ErrEmailAlreadyTaken) {
 				return nil, &OAuthEmailAlreadyTakenError{}
 			}
 			return nil, err
@@ -364,25 +365,25 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	// Handle affiliate code
 	inviterId := 0
 	if affiliateCode != "" {
-		inviterId, _ = model.GetUserIdByAffCode(affiliateCode)
+		inviterId, _ = identitymodel.GetUserIdByAffCode(affiliateCode)
 	}
 
 	// Use transaction to ensure user creation and OAuth binding are atomic
 	if genericProvider, ok := provider.(*oauth.GenericOAuthProvider); ok {
 		// Custom provider: create user and binding in a transaction
-		err := model.DB.Transaction(func(tx *gorm.DB) error {
+		err := rootmodel.DB.Transaction(func(tx *gorm.DB) error {
 			// Create user
 			if err := user.InsertWithTx(tx, inviterId); err != nil {
 				return err
 			}
 
 			// Create OAuth binding
-			binding := &model.UserOAuthBinding{
+			binding := &identitymodel.UserOAuthBinding{
 				UserId:         user.Id,
 				ProviderId:     genericProvider.GetProviderId(),
 				ProviderUserId: oauthUser.ProviderUserID,
 			}
-			if err := model.CreateUserOAuthBindingWithTx(tx, binding); err != nil {
+			if err := identitymodel.CreateUserOAuthBindingWithTx(tx, binding); err != nil {
 				return err
 			}
 
@@ -396,7 +397,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		user.FinalizeOAuthUserCreation(inviterId)
 	} else {
 		// Built-in provider: create user and update provider ID in a transaction
-		err := model.DB.Transaction(func(tx *gorm.DB) error {
+		err := rootmodel.DB.Transaction(func(tx *gorm.DB) error {
 			// Create user
 			if err := user.InsertWithTx(tx, inviterId); err != nil {
 				return err

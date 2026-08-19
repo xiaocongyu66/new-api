@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
 	"github.com/gin-gonic/gin"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
 )
 
 // CustomOAuthProviderResponse is the response structure for custom OAuth providers
@@ -46,7 +46,7 @@ type UserOAuthBindingResponse struct {
 	ProviderUserId string `json:"provider_user_id"`
 }
 
-func toCustomOAuthProviderResponse(p *model.CustomOAuthProvider) *CustomOAuthProviderResponse {
+func toCustomOAuthProviderResponse(p *identitymodel.CustomOAuthProvider) *CustomOAuthProviderResponse {
 	return &CustomOAuthProviderResponse{
 		Id:                    p.Id,
 		Name:                  p.Name,
@@ -71,7 +71,7 @@ func toCustomOAuthProviderResponse(p *model.CustomOAuthProvider) *CustomOAuthPro
 
 // GetCustomOAuthProviders returns all custom OAuth providers
 func GetCustomOAuthProviders(c *gin.Context) {
-	providers, err := model.GetAllCustomOAuthProviders()
+	providers, err := identitymodel.GetAllCustomOAuthProviders()
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -98,7 +98,7 @@ func GetCustomOAuthProvider(c *gin.Context) {
 		return
 	}
 
-	provider, err := model.GetCustomOAuthProviderById(id)
+	provider, err := identitymodel.GetCustomOAuthProviderById(id)
 	if err != nil {
 		common.ApiErrorMsg(c, "未找到该 OAuth 提供商")
 		return
@@ -219,7 +219,7 @@ func CreateCustomOAuthProvider(c *gin.Context) {
 	}
 
 	// Check if slug is already taken
-	if model.IsSlugTaken(req.Slug, 0) {
+	if identitymodel.IsSlugTaken(req.Slug, 0) {
 		common.ApiErrorMsg(c, "该 Slug 已被使用")
 		return
 	}
@@ -230,7 +230,7 @@ func CreateCustomOAuthProvider(c *gin.Context) {
 		return
 	}
 
-	provider := &model.CustomOAuthProvider{
+	provider := &identitymodel.CustomOAuthProvider{
 		Name:                  req.Name,
 		Slug:                  req.Slug,
 		Icon:                  req.Icon,
@@ -251,7 +251,7 @@ func CreateCustomOAuthProvider(c *gin.Context) {
 		AccessDeniedMessage:   req.AccessDeniedMessage,
 	}
 
-	if err := model.CreateCustomOAuthProvider(provider); err != nil {
+	if err := identitymodel.CreateCustomOAuthProvider(provider); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -304,7 +304,7 @@ func UpdateCustomOAuthProvider(c *gin.Context) {
 	}
 
 	// Get existing provider
-	provider, err := model.GetCustomOAuthProviderById(id)
+	provider, err := identitymodel.GetCustomOAuthProviderById(id)
 	if err != nil {
 		common.ApiErrorMsg(c, "未找到该 OAuth 提供商")
 		return
@@ -314,7 +314,7 @@ func UpdateCustomOAuthProvider(c *gin.Context) {
 
 	// Check if new slug is taken by another provider
 	if req.Slug != "" && req.Slug != provider.Slug {
-		if model.IsSlugTaken(req.Slug, id) {
+		if identitymodel.IsSlugTaken(req.Slug, id) {
 			common.ApiErrorMsg(c, "该 Slug 已被使用")
 			return
 		}
@@ -381,7 +381,7 @@ func UpdateCustomOAuthProvider(c *gin.Context) {
 		provider.AccessDeniedMessage = *req.AccessDeniedMessage
 	}
 
-	if err := model.UpdateCustomOAuthProvider(provider); err != nil {
+	if err := identitymodel.UpdateCustomOAuthProvider(provider); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -409,14 +409,14 @@ func DeleteCustomOAuthProvider(c *gin.Context) {
 	}
 
 	// Get existing provider to get slug
-	provider, err := model.GetCustomOAuthProviderById(id)
+	provider, err := identitymodel.GetCustomOAuthProviderById(id)
 	if err != nil {
 		common.ApiErrorMsg(c, "未找到该 OAuth 提供商")
 		return
 	}
 
 	// Check if there are any user bindings
-	count, err := model.GetBindingCountByProviderId(id)
+	count, err := identitymodel.GetBindingCountByProviderId(id)
 	if err != nil {
 		common.SysError("Failed to get binding count for provider " + strconv.Itoa(id) + ": " + err.Error())
 		common.ApiErrorMsg(c, "检查用户绑定时发生错误，请稍后重试")
@@ -427,7 +427,7 @@ func DeleteCustomOAuthProvider(c *gin.Context) {
 		return
 	}
 
-	if err := model.DeleteCustomOAuthProvider(id); err != nil {
+	if err := identitymodel.DeleteCustomOAuthProvider(id); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -442,14 +442,14 @@ func DeleteCustomOAuthProvider(c *gin.Context) {
 }
 
 func buildUserOAuthBindingsResponse(userId int) ([]UserOAuthBindingResponse, error) {
-	bindings, err := model.GetUserOAuthBindingsByUserId(userId)
+	bindings, err := identitymodel.GetUserOAuthBindingsByUserId(userId)
 	if err != nil {
 		return nil, err
 	}
 
 	response := make([]UserOAuthBindingResponse, 0, len(bindings))
 	for _, binding := range bindings {
-		provider, err := model.GetCustomOAuthProviderById(binding.ProviderId)
+		provider, err := identitymodel.GetCustomOAuthProviderById(binding.ProviderId)
 		if err != nil {
 			continue
 		}
@@ -494,7 +494,7 @@ func GetUserOAuthBindingsByAdmin(c *gin.Context) {
 		return
 	}
 
-	targetUser, err := model.GetUserById(userId, false)
+	targetUser, err := identitymodel.GetUserById(userId, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -534,7 +534,7 @@ func UnbindCustomOAuth(c *gin.Context) {
 		return
 	}
 
-	if err := model.DeleteUserOAuthBinding(userId, providerId); err != nil {
+	if err := identitymodel.DeleteUserOAuthBinding(userId, providerId); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -553,7 +553,7 @@ func UnbindCustomOAuthByAdmin(c *gin.Context) {
 		return
 	}
 
-	targetUser, err := model.GetUserById(userId, false)
+	targetUser, err := identitymodel.GetUserById(userId, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -572,7 +572,7 @@ func UnbindCustomOAuthByAdmin(c *gin.Context) {
 		return
 	}
 
-	if err := model.DeleteUserOAuthBinding(userId, providerId); err != nil {
+	if err := identitymodel.DeleteUserOAuthBinding(userId, providerId); err != nil {
 		common.ApiError(c, err)
 		return
 	}

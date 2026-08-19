@@ -6,17 +6,21 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	billingmodel "github.com/QuantumNous/new-api/internal/billing/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
+	opscontroller "github.com/QuantumNous/new-api/internal/ops/controller"
+	usagemodel "github.com/QuantumNous/new-api/internal/usage/model"
 )
 
 // ---- Shared types ----
 
 type SubscriptionPlanDTO struct {
-	Plan model.SubscriptionPlan `json:"plan"`
+	Plan billingmodel.SubscriptionPlan `json:"plan"`
 }
 
 type BillingPreferenceRequest struct {
@@ -35,8 +39,8 @@ func GetSubscriptionPlans(c *gin.Context) {
 		return
 	}
 
-	var plans []model.SubscriptionPlan
-	if err := model.DB.Where("enabled = ?", true).Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
+	var plans []billingmodel.SubscriptionPlan
+	if err := rootmodel.DB.Where("enabled = ?", true).Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -52,19 +56,19 @@ func GetSubscriptionPlans(c *gin.Context) {
 
 func GetSubscriptionSelf(c *gin.Context) {
 	userId := c.GetInt("id")
-	settingMap, _ := model.GetUserSetting(userId, false)
+	settingMap, _ := identitymodel.GetUserSetting(userId, false)
 	pref := common.NormalizeBillingPreference(settingMap.BillingPreference)
 
 	// Get all subscriptions (including expired)
-	allSubscriptions, err := model.GetAllUserSubscriptions(userId)
+	allSubscriptions, err := billingmodel.GetAllUserSubscriptions(userId)
 	if err != nil {
-		allSubscriptions = []model.SubscriptionSummary{}
+		allSubscriptions = []billingmodel.SubscriptionSummary{}
 	}
 
 	// Get active subscriptions for backward compatibility
-	activeSubscriptions, err := model.GetAllActiveUserSubscriptions(userId)
+	activeSubscriptions, err := billingmodel.GetAllActiveUserSubscriptions(userId)
 	if err != nil {
-		activeSubscriptions = []model.SubscriptionSummary{}
+		activeSubscriptions = []billingmodel.SubscriptionSummary{}
 	}
 
 	common.ApiSuccess(c, gin.H{
@@ -83,14 +87,14 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 	}
 	pref := common.NormalizeBillingPreference(req.BillingPreference)
 
-	user, err := model.GetUserById(userId, true)
+	user, err := identitymodel.GetUserById(userId, true)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	current := user.GetSetting()
 	current.BillingPreference = pref
-	if err := model.UpdateUserSetting(user.Id, current); err != nil {
+	if err := identitymodel.UpdateUserSetting(user.Id, current); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -98,7 +102,7 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 }
 
 func SubscriptionRequestBalancePay(c *gin.Context) {
-	if !requirePaymentCompliance(c) {
+	if !RequirePaymentCompliance(c) {
 		return
 	}
 
@@ -109,7 +113,7 @@ func SubscriptionRequestBalancePay(c *gin.Context) {
 		return
 	}
 
-	if err := model.PurchaseSubscriptionWithBalance(userId, req.PlanId); err != nil {
+	if err := billingmodel.PurchaseSubscriptionWithBalance(userId, req.PlanId); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -119,8 +123,8 @@ func SubscriptionRequestBalancePay(c *gin.Context) {
 // ---- Admin APIs ----
 
 func AdminListSubscriptionPlans(c *gin.Context) {
-	var plans []model.SubscriptionPlan
-	if err := model.DB.Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
+	var plans []billingmodel.SubscriptionPlan
+	if err := rootmodel.DB.Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -135,11 +139,11 @@ func AdminListSubscriptionPlans(c *gin.Context) {
 }
 
 type AdminUpsertSubscriptionPlanRequest struct {
-	Plan model.SubscriptionPlan `json:"plan"`
+	Plan billingmodel.SubscriptionPlan `json:"plan"`
 }
 
 func AdminCreateSubscriptionPlan(c *gin.Context) {
-	if !requirePaymentCompliance(c) {
+	if !RequirePaymentCompliance(c) {
 		return
 	}
 
@@ -172,9 +176,9 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		req.Plan.AllowWalletOverflow = common.GetPointer(true)
 	}
 	if req.Plan.DurationUnit == "" {
-		req.Plan.DurationUnit = model.SubscriptionDurationMonth
+		req.Plan.DurationUnit = billingmodel.SubscriptionDurationMonth
 	}
-	if req.Plan.DurationValue <= 0 && req.Plan.DurationUnit != model.SubscriptionDurationCustom {
+	if req.Plan.DurationValue <= 0 && req.Plan.DurationUnit != billingmodel.SubscriptionDurationCustom {
 		req.Plan.DurationValue = 1
 	}
 	if req.Plan.MaxPurchasePerUser < 0 {
@@ -199,22 +203,22 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 			return
 		}
 	}
-	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
-	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
+	req.Plan.QuotaResetPeriod = billingmodel.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
+	if req.Plan.QuotaResetPeriod == billingmodel.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
 		return
 	}
-	err := model.DB.Create(&req.Plan).Error
+	err := rootmodel.DB.Create(&req.Plan).Error
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	model.InvalidateSubscriptionPlanCache(req.Plan.Id)
+	billingmodel.InvalidateSubscriptionPlanCache(req.Plan.Id)
 	common.ApiSuccess(c, req.Plan)
 }
 
 func AdminUpdateSubscriptionPlan(c *gin.Context) {
-	if !requirePaymentCompliance(c) {
+	if !RequirePaymentCompliance(c) {
 		return
 	}
 
@@ -246,9 +250,9 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 	}
 	req.Plan.Currency = "USD"
 	if req.Plan.DurationUnit == "" {
-		req.Plan.DurationUnit = model.SubscriptionDurationMonth
+		req.Plan.DurationUnit = billingmodel.SubscriptionDurationMonth
 	}
-	if req.Plan.DurationValue <= 0 && req.Plan.DurationUnit != model.SubscriptionDurationCustom {
+	if req.Plan.DurationValue <= 0 && req.Plan.DurationUnit != billingmodel.SubscriptionDurationCustom {
 		req.Plan.DurationValue = 1
 	}
 	if req.Plan.MaxPurchasePerUser < 0 {
@@ -273,13 +277,13 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			return
 		}
 	}
-	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
-	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
+	req.Plan.QuotaResetPeriod = billingmodel.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
+	if req.Plan.QuotaResetPeriod == billingmodel.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
 		return
 	}
 
-	err := model.DB.Transaction(func(tx *gorm.DB) error {
+	err := rootmodel.DB.Transaction(func(tx *gorm.DB) error {
 		// update plan (allow zero values updates with map)
 		updateMap := map[string]interface{}{
 			"title":                      req.Plan.Title,
@@ -308,7 +312,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		if req.Plan.AllowWalletOverflow != nil {
 			updateMap["allow_wallet_overflow"] = *req.Plan.AllowWalletOverflow
 		}
-		if err := tx.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {
+		if err := tx.Model(&billingmodel.SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {
 			return err
 		}
 		return nil
@@ -317,7 +321,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	model.InvalidateSubscriptionPlanCache(id)
+	billingmodel.InvalidateSubscriptionPlanCache(id)
 	common.ApiSuccess(c, nil)
 }
 
@@ -326,7 +330,7 @@ type AdminUpdateSubscriptionPlanStatusRequest struct {
 }
 
 func AdminUpdateSubscriptionPlanStatus(c *gin.Context) {
-	if !requirePaymentCompliance(c) {
+	if !RequirePaymentCompliance(c) {
 		return
 	}
 
@@ -340,11 +344,11 @@ func AdminUpdateSubscriptionPlanStatus(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	if err := model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Update("enabled", *req.Enabled).Error; err != nil {
+	if err := rootmodel.DB.Model(&billingmodel.SubscriptionPlan{}).Where("id = ?", id).Update("enabled", *req.Enabled).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	model.InvalidateSubscriptionPlanCache(id)
+	billingmodel.InvalidateSubscriptionPlanCache(id)
 	common.ApiSuccess(c, nil)
 }
 
@@ -354,7 +358,7 @@ type AdminBindSubscriptionRequest struct {
 }
 
 func AdminBindSubscription(c *gin.Context) {
-	if !requirePaymentCompliance(c) {
+	if !RequirePaymentCompliance(c) {
 		return
 	}
 
@@ -363,7 +367,7 @@ func AdminBindSubscription(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	msg, err := model.AdminBindSubscription(req.UserId, req.PlanId, "")
+	msg, err := billingmodel.AdminBindSubscription(req.UserId, req.PlanId, "")
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -383,7 +387,7 @@ func AdminListUserSubscriptions(c *gin.Context) {
 		common.ApiErrorMsg(c, "无效的用户ID")
 		return
 	}
-	subs, err := model.GetAllUserSubscriptions(userId)
+	subs, err := billingmodel.GetAllUserSubscriptions(userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -407,19 +411,19 @@ func resolveAdvanceResetTime(value *bool) bool {
 	return *value
 }
 
-func recordSubscriptionResetUserLogs(result *model.SubscriptionResetResult, adminInfo map[string]interface{}) {
+func recordSubscriptionResetUserLogs(result *billingmodel.SubscriptionResetResult, adminInfo map[string]interface{}) {
 	if result == nil || result.ResetCount == 0 {
 		return
 	}
 	content := fmt.Sprintf("管理员重置订阅套餐 %s（ID: %d）额度", result.PlanTitle, result.PlanId)
 	for _, userId := range result.AffectedUserIds {
-		model.RecordLogWithAdminInfo(userId, model.LogTypeManage, content, adminInfo)
+		usagemodel.RecordLogWithAdminInfo(userId, usagemodel.LogTypeManage, content, adminInfo)
 	}
 }
 
 // AdminCreateUserSubscription creates a new user subscription from a plan (no payment).
 func AdminCreateUserSubscription(c *gin.Context) {
-	if !requirePaymentCompliance(c) {
+	if !RequirePaymentCompliance(c) {
 		return
 	}
 
@@ -433,7 +437,7 @@ func AdminCreateUserSubscription(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	msg, err := model.AdminBindSubscription(userId, req.PlanId, "")
+	msg, err := billingmodel.AdminBindSubscription(userId, req.PlanId, "")
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -461,13 +465,13 @@ func AdminResetUserSubscriptionsByPlan(c *gin.Context) {
 		return
 	}
 	advanceResetTime := resolveAdvanceResetTime(req.AdvanceResetTime)
-	result, err := model.AdminResetUserSubscriptionsByPlan(userId, req.PlanId, advanceResetTime)
+	result, err := billingmodel.AdminResetUserSubscriptionsByPlan(userId, req.PlanId, advanceResetTime)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	recordSubscriptionResetUserLogs(result, auditOperatorInfo(c))
-	recordManageAuditFor(c, userId, "subscription.user_plan_reset", map[string]interface{}{
+	recordSubscriptionResetUserLogs(result, opscontroller.AuditOperatorInfo(c))
+	opscontroller.RecordManageAuditFor(c, userId, "subscription.user_plan_reset", map[string]interface{}{
 		"target_user_id":     userId,
 		"plan_id":            result.PlanId,
 		"plan_title":         result.PlanTitle,
@@ -490,15 +494,15 @@ func AdminResetPlanSubscriptions(c *gin.Context) {
 		return
 	}
 	advanceResetTime := resolveAdvanceResetTime(req.AdvanceResetTime)
-	result, err := model.AdminResetPlanSubscriptions(planId, advanceResetTime)
+	result, err := billingmodel.AdminResetPlanSubscriptions(planId, advanceResetTime)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	recordSubscriptionResetUserLogs(result, auditOperatorInfo(c))
+	recordSubscriptionResetUserLogs(result, opscontroller.AuditOperatorInfo(c))
 	common.SysLog(fmt.Sprintf("admin reset subscription plan %d quota: reset_count=%d user_count=%d advance_reset_time=%t",
 		result.PlanId, result.ResetCount, result.UserCount, result.AdvanceResetTime))
-	recordManageAudit(c, "subscription.plan_reset", map[string]interface{}{
+	opscontroller.RecordManageAudit(c, "subscription.plan_reset", map[string]interface{}{
 		"plan_id":            result.PlanId,
 		"plan_title":         result.PlanTitle,
 		"reset_count":        result.ResetCount,
@@ -515,7 +519,7 @@ func AdminInvalidateUserSubscription(c *gin.Context) {
 		common.ApiErrorMsg(c, "无效的订阅ID")
 		return
 	}
-	msg, err := model.AdminInvalidateUserSubscription(subId)
+	msg, err := billingmodel.AdminInvalidateUserSubscription(subId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -534,7 +538,7 @@ func AdminDeleteUserSubscription(c *gin.Context) {
 		common.ApiErrorMsg(c, "无效的订阅ID")
 		return
 	}
-	msg, err := model.AdminDeleteUserSubscription(subId)
+	msg, err := billingmodel.AdminDeleteUserSubscription(subId)
 	if err != nil {
 		common.ApiError(c, err)
 		return

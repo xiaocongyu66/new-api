@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
 )
 
 const authArtifactCleanupInterval = time.Hour
@@ -28,7 +28,7 @@ func StartAuthArtifactCleanup() {
 
 func cleanupAuthArtifacts() {
 	now := time.Now()
-	count, err := model.CountUserSessionsCreatedSince(0, now.Add(-time.Hour).Unix())
+	count, err := identitymodel.CountUserSessionsCreatedSince(0, now.Add(-time.Hour).Unix())
 	if err != nil {
 		common.SysError("failed to count hourly user session issuance: " + err.Error())
 	} else if count > int64(common.UserSessionHourlyAlertThreshold) {
@@ -39,13 +39,13 @@ func cleanupAuthArtifacts() {
 			int64(time.Hour/time.Second),
 		))
 	}
-	if err := model.DeleteExpiredUserSessions(now.Unix()); err != nil {
+	if err := identitymodel.DeleteExpiredUserSessions(now.Unix()); err != nil {
 		common.SysError("failed to delete expired user sessions: " + err.Error())
 	}
-	if err := model.DeleteOldRevokedUserSessions(now.Unix()); err != nil {
+	if err := identitymodel.DeleteOldRevokedUserSessions(now.Unix()); err != nil {
 		common.SysError("failed to delete old revoked user sessions: " + err.Error())
 	}
-	if err := model.DeleteExpiredAuthFlows(now); err != nil {
+	if err := identitymodel.DeleteExpiredAuthFlows(now); err != nil {
 		common.SysError("failed to delete expired authentication flows: " + err.Error())
 	}
 }

@@ -8,7 +8,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/console_setting"
 	"github.com/QuantumNous/new-api/setting/model_setting"
@@ -17,6 +16,8 @@ import (
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/gin-gonic/gin"
+	opscontroller "github.com/QuantumNous/new-api/internal/ops/controller"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 var completionRatioMetaOptionKeys = []string{
@@ -77,7 +78,7 @@ func buildCompletionRatioMetaValue(optionValues map[string]string) string {
 }
 
 func GetOptions(c *gin.Context) {
-	var options []*model.Option
+	var options []*rootmodel.Option
 	optionValues := make(map[string]string)
 	common.OptionMapRWMutex.Lock()
 	for k, v := range common.OptionMap {
@@ -93,7 +94,7 @@ func GetOptions(c *gin.Context) {
 		if isSensitiveKey {
 			continue
 		}
-		options = append(options, &model.Option{
+		options = append(options, &rootmodel.Option{
 			Key:   k,
 			Value: value,
 		})
@@ -105,7 +106,7 @@ func GetOptions(c *gin.Context) {
 		}
 	}
 	common.OptionMapRWMutex.Unlock()
-	options = append(options, &model.Option{
+	options = append(options, &rootmodel.Option{
 		Key:   "CompletionRatioMeta",
 		Value: buildCompletionRatioMetaValue(optionValues),
 	})
@@ -363,13 +364,13 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	}
-	err = model.UpdateOption(option.Key, option.Value.(string))
+	err = rootmodel.UpdateOption(option.Key, option.Value.(string))
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	// 出于安全考虑只记录被修改的配置项名称，不记录配置值（可能含密钥等敏感信息）。
-	recordManageAudit(c, "option.update", map[string]interface{}{
+	opscontroller.RecordManageAudit(c, "option.update", map[string]interface{}{
 		"key": option.Key,
 	})
 	c.JSON(http.StatusOK, gin.H{

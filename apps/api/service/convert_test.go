@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service"
 )
 
 func TestResponseConverterFacades(t *testing.T) {
@@ -76,7 +77,7 @@ func TestRequestConverterFacadeAcceptsTypedNilRelayInfo(t *testing.T) {
 				},
 			}
 
-			result, err := ConvertRequest(nil, info, target, request)
+			result, err := egressservice.ConvertRequest(nil, info, target, request)
 
 			require.NoError(t, err)
 			require.NotNil(t, result)

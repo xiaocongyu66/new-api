@@ -4,21 +4,22 @@ import (
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
+	rootmodel "github.com/QuantumNous/new-api/model"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
 )
 
 // GetAllVendors 获取供应商列表（分页）
 func GetAllVendors(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
-	vendors, err := model.GetAllVendors(pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	vendors, err := catalogmodel.GetAllVendors(pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	var total int64
-	model.DB.Model(&model.Vendor{}).Count(&total)
+	rootmodel.DB.Model(&catalogmodel.Vendor{}).Count(&total)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(vendors)
 	common.ApiSuccess(c, pageInfo)
@@ -28,7 +29,7 @@ func GetAllVendors(c *gin.Context) {
 func SearchVendors(c *gin.Context) {
 	keyword := c.Query("keyword")
 	pageInfo := common.GetPageQuery(c)
-	vendors, total, err := model.SearchVendors(keyword, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	vendors, total, err := catalogmodel.SearchVendors(keyword, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -46,7 +47,7 @@ func GetVendorMeta(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	v, err := model.GetVendorByID(id)
+	v, err := catalogmodel.GetVendorByID(id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -56,7 +57,7 @@ func GetVendorMeta(c *gin.Context) {
 
 // CreateVendorMeta 新建供应商
 func CreateVendorMeta(c *gin.Context) {
-	var v model.Vendor
+	var v catalogmodel.Vendor
 	if err := c.ShouldBindJSON(&v); err != nil {
 		common.ApiError(c, err)
 		return
@@ -66,7 +67,7 @@ func CreateVendorMeta(c *gin.Context) {
 		return
 	}
 	// 创建前先检查名称
-	if dup, err := model.IsVendorNameDuplicated(0, v.Name); err != nil {
+	if dup, err := catalogmodel.IsVendorNameDuplicated(0, v.Name); err != nil {
 		common.ApiError(c, err)
 		return
 	} else if dup {
@@ -83,7 +84,7 @@ func CreateVendorMeta(c *gin.Context) {
 
 // UpdateVendorMeta 更新供应商
 func UpdateVendorMeta(c *gin.Context) {
-	var v model.Vendor
+	var v catalogmodel.Vendor
 	if err := c.ShouldBindJSON(&v); err != nil {
 		common.ApiError(c, err)
 		return
@@ -93,7 +94,7 @@ func UpdateVendorMeta(c *gin.Context) {
 		return
 	}
 	// 名称冲突检查
-	if dup, err := model.IsVendorNameDuplicated(v.Id, v.Name); err != nil {
+	if dup, err := catalogmodel.IsVendorNameDuplicated(v.Id, v.Name); err != nil {
 		common.ApiError(c, err)
 		return
 	} else if dup {
@@ -116,8 +117,8 @@ func DeleteVendorMeta(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	var existing model.Vendor
-	if err := model.DB.First(&existing, id).Error; err != nil {
+	var existing catalogmodel.Vendor
+	if err := rootmodel.DB.First(&existing, id).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}

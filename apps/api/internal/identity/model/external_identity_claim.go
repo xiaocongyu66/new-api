@@ -8,6 +8,7 @@ import (
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 const ExternalIdentityProviderTelegram = "telegram"
@@ -88,11 +89,11 @@ func releaseAllExternalIdentitiesWithTx(tx *gorm.DB, userId int) error {
 // than preserving an ambiguous login identity.
 func InitializeExternalIdentityClaims() error {
 	var users []User
-	if err := DB.Unscoped().Select("id", "telegram_id").
+	if err := rootmodel.DB.Unscoped().Select("id", "telegram_id").
 		Where("telegram_id <> ?", "").Find(&users).Error; err != nil {
 		return err
 	}
-	return DB.Transaction(func(tx *gorm.DB) error {
+	return rootmodel.DB.Transaction(func(tx *gorm.DB) error {
 		for _, user := range users {
 			if err := ClaimExternalIdentityWithTx(tx, ExternalIdentityProviderTelegram, user.TelegramId, user.Id); err != nil {
 				return fmt.Errorf("backfill Telegram identity for user %d: %w", user.Id, err)

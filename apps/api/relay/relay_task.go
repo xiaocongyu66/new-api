@@ -12,7 +12,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -20,6 +19,11 @@ import (
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/modelapi"
+	billingservice "github.com/QuantumNous/new-api/internal/billing/service"
+	taskmodel "github.com/QuantumNous/new-api/internal/task/model"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
+	taskservice "github.com/QuantumNous/new-api/internal/task/service"
 )
 
 type TaskSubmitResult struct {
@@ -56,7 +60,7 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 	}
 
 	// 查找原始任务
-	originTask, exist, err := model.GetByTaskId(info.UserId, info.OriginTaskID)
+	originTask, exist, err := taskmodel.GetByTaskId(info.UserId, info.OriginTaskID)
 	if err != nil {
 		return service.TaskErrorWrapper(err, "get_origin_task_failed", http.StatusInternalServerError)
 	}
@@ -80,7 +84,7 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 	}
 
 	// 锁定到原始任务的渠道（重试时复用同一渠道，轮换 key）
-	ch, err := model.GetChannelById(originTask.ChannelId, true)
+	ch, err := catalogmodel.GetChannelById(originTask.ChannelId, true)
 	if err != nil {
 		return service.TaskErrorWrapperLocal(err, "channel_not_found", http.StatusBadRequest)
 	}
@@ -162,7 +166,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	// 2. 确定模型名称
 	modelName := info.OriginModelName
 	if modelName == "" {
-		modelName = service.CoverTaskActionToModelName(platform, info.Action)
+		modelName = taskservice.CoverTaskActionToModelName(platform, info.Action)
 	}
 
 	// 2.5 应用渠道的模型映射（与同步任务对齐）
@@ -174,7 +178,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 
 	// 3. 预生成公开 task ID（仅首次）
 	if info.PublicTaskID == "" {
-		info.PublicTaskID = model.GenerateTaskID()
+		info.PublicTaskID = taskmodel.GenerateTaskID()
 	}
 
 	// 4. 价格计算：基础模型价格
@@ -205,7 +209,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	// 7. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
 	if info.Billing == nil && !info.PriceData.FreeModel {
 		info.ForcePreConsume = true
-		if apiErr := service.PreConsumeBilling(c, info.PriceData.Quota, info); apiErr != nil {
+		if apiErr := billingservice.PreConsumeBilling(c, info.PriceData.Quota, info); apiErr != nil {
 			return nil, service.TaskErrorFromAPIError(apiErr)
 		}
 	}
@@ -329,7 +333,7 @@ func sunoFetchRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *dto.Ta
 	}
 	var tasks []any
 	if len(condition.IDs) > 0 {
-		taskModels, err := model.GetByTaskIds(userId, condition.IDs)
+		taskModels, err := taskmodel.GetByTaskIds(userId, condition.IDs)
 		if err != nil {
 			taskResp = service.TaskErrorWrapper(err, "get_tasks_failed", http.StatusInternalServerError)
 			return
@@ -351,7 +355,7 @@ func sunoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *dt
 	taskId := c.Param("id")
 	userId := c.GetInt("id")
 
-	originTask, exist, err := model.GetByTaskId(userId, taskId)
+	originTask, exist, err := taskmodel.GetByTaskId(userId, taskId)
 	if err != nil {
 		taskResp = service.TaskErrorWrapper(err, "get_task_failed", http.StatusInternalServerError)
 		return
@@ -375,7 +379,7 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 	}
 	userId := c.GetInt("id")
 
-	originTask, exist, err := model.GetByTaskId(userId, taskId)
+	originTask, exist, err := taskmodel.GetByTaskId(userId, taskId)
 	if err != nil {
 		taskResp = service.TaskErrorWrapper(err, "get_task_failed", http.StatusInternalServerError)
 		return
@@ -427,8 +431,8 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 // tryRealtimeFetch 尝试从上游实时拉取 Gemini/Vertex 任务状态。
 // 仅当渠道类型为 Gemini 或 Vertex 时触发；其他渠道或出错时返回 nil。
 // 当非 OpenAI Video API 时，还会构建自定义格式的响应体。
-func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
-	channelModel, err := model.GetChannelById(task.ChannelId, true)
+func tryRealtimeFetch(task *modelapi.Task, isOpenAIVideoAPI bool) []byte {
+	channelModel, err := catalogmodel.GetChannelById(task.ChannelId, true)
 	if err != nil {
 		return nil
 	}
@@ -468,7 +472,7 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 
 	// 将上游最新状态更新到 task
 	if ti.Status != "" {
-		task.Status = model.TaskStatus(ti.Status)
+		task.Status = taskmodel.TaskStatus(ti.Status)
 	}
 	if ti.Progress != "" {
 		task.Progress = ti.Progress
@@ -477,7 +481,7 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 		// data: URI — kept in Data, not ResultURL
 	} else if ti.Url != "" {
 		task.PrivateData.ResultURL = ti.Url
-	} else if task.Status == model.TaskStatusSuccess {
+	} else if task.Status == taskmodel.TaskStatusSuccess {
 		// No URL from adaptor — construct proxy URL using public task ID
 		task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
 	}
@@ -534,20 +538,20 @@ func detectVideoFormat(rawBody []byte) string {
 }
 
 // mapTaskStatusToSimple 将内部 TaskStatus 映射为简化状态字符串
-func mapTaskStatusToSimple(status model.TaskStatus) string {
+func mapTaskStatusToSimple(status taskmodel.TaskStatus) string {
 	switch status {
-	case model.TaskStatusSuccess:
+	case taskmodel.TaskStatusSuccess:
 		return "succeeded"
-	case model.TaskStatusFailure:
+	case taskmodel.TaskStatusFailure:
 		return "failed"
-	case model.TaskStatusQueued, model.TaskStatusSubmitted:
+	case taskmodel.TaskStatusQueued, taskmodel.TaskStatusSubmitted:
 		return "queued"
 	default:
 		return "processing"
 	}
 }
 
-func TaskModel2Dto(task *model.Task) *dto.TaskDto {
+func TaskModel2Dto(task *modelapi.Task) *dto.TaskDto {
 	return &dto.TaskDto{
 		ID:         task.ID,
 		CreatedAt:  task.CreatedAt,
@@ -561,7 +565,8 @@ func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 		Action:     task.Action,
 		Status:     string(task.Status),
 		FailReason: task.FailReason,
-		ResultURL:  task.GetResultURL(),
+		ResultURL:  task.GetResultURL(
+),
 		SubmitTime: task.SubmitTime,
 		StartTime:  task.StartTime,
 		FinishTime: task.FinishTime,

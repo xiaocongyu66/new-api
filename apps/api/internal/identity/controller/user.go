@@ -14,9 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -25,6 +23,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	identityservice "github.com/QuantumNous/new-api/internal/identity/service"
+	rootmodel "github.com/QuantumNous/new-api/model"
+	opscontroller "github.com/QuantumNous/new-api/internal/ops/controller"
+	usagemodel "github.com/QuantumNous/new-api/internal/usage/model"
+	catalogservice "github.com/QuantumNous/new-api/internal/catalog/service"
+	billingcontroller "github.com/QuantumNous/new-api/internal/billing/controller"
+	billingmodel "github.com/QuantumNous/new-api/internal/billing/model"
 )
 
 type LoginRequest struct {
@@ -54,17 +60,17 @@ func Login(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	user := model.User{
+	user := identitymodel.User{
 		Username: username,
 		Password: password,
 	}
 	err = user.ValidateAndFill()
 	if err != nil {
 		switch {
-		case errors.Is(err, model.ErrDatabase):
+		case errors.Is(err, rootmodel.ErrDatabase):
 			common.SysLog(fmt.Sprintf("Login database error for user %s: %v", username, err))
 			common.ApiErrorI18n(c, i18n.MsgDatabaseError)
-		case errors.Is(err, model.ErrUserEmptyCredentials):
+		case errors.Is(err, rootmodel.ErrUserEmptyCredentials):
 			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		default:
 			common.ApiErrorI18n(c, i18n.MsgUserUsernameOrPasswordError)
@@ -73,7 +79,7 @@ func Login(c *gin.Context) {
 	}
 
 	// 检查是否启用2FA
-	twoFAEnabled, err := model.IsTwoFAEnabled(user.Id)
+	twoFAEnabled, err := identitymodel.IsTwoFAEnabled(user.Id)
 	if err != nil {
 		common.SysLog(fmt.Sprintf("Login failed to load 2FA status for user %d: %v", user.Id, err))
 		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
@@ -86,8 +92,8 @@ func Login(c *gin.Context) {
 			common.ApiError(c, err)
 			return
 		}
-		flowToken, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
-			Purpose:   model.AuthFlowPurposeTwoFALogin,
+		flowToken, _, err := identitymodel.CreateAuthFlow(identitymodel.AuthFlowCreate{
+			Purpose:   identitymodel.AuthFlowPurposeTwoFALogin,
 			UserId:    user.Id,
 			Payload:   string(payload),
 			ExpiresAt: expiresAt,
@@ -136,7 +142,7 @@ func loginMethodFromContext(c *gin.Context) string {
 }
 
 // recordLoginAudit 记录登录成功审计日志（对所有用户启用，仅记录成功，不记录失败）。
-func recordLoginAudit(user *model.User, c *gin.Context) {
+func recordLoginAudit(user *identitymodel.User, c *gin.Context) {
 	method := loginMethodFromContext(c)
 	ip := c.ClientIP()
 	extra := map[string]interface{}{
@@ -144,30 +150,30 @@ func recordLoginAudit(user *model.User, c *gin.Context) {
 		"user_agent":   c.Request.UserAgent(),
 	}
 	content := fmt.Sprintf("Logged in successfully via %s", method)
-	model.RecordLoginLog(user.Id, user.Username, content, ip, "login", map[string]interface{}{
+	usagemodel.RecordLoginLog(user.Id, user.Username, content, ip, "login", map[string]interface{}{
 		"method": method,
 	}, extra)
 }
 
 // setupLogin creates a server-controlled login Session and returns the shared
 // authentication bundle used by every login method.
-func setupLogin(user *model.User, c *gin.Context) {
+func setupLogin(user *identitymodel.User, c *gin.Context) {
 	setupLoginAtAuthVersion(user, 0, c)
 }
 
-func setupLoginAtAuthVersion(user *model.User, expectedAuthVersion int64, c *gin.Context) {
+func setupLoginAtAuthVersion(user *identitymodel.User, expectedAuthVersion int64, c *gin.Context) {
 	if user == nil || user.Id <= 0 || user.Status != common.UserStatusEnabled {
 		common.ApiErrorI18n(c, i18n.MsgAuthUserBanned)
 		return
 	}
-	currentUser, err := model.GetUserById(user.Id, false)
+	currentUser, err := identitymodel.GetUserById(user.Id, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	var bundle *service.AuthBundle
+	var bundle *identityservice.AuthBundle
 	if expectedAuthVersion > 0 {
-		bundle, err = service.CreateLoginSessionAtAuthVersion(
+		bundle, err = identityservice.CreateLoginSessionAtAuthVersion(
 			user.Id,
 			expectedAuthVersion,
 			loginMethodFromContext(c),
@@ -175,7 +181,7 @@ func setupLoginAtAuthVersion(user *model.User, expectedAuthVersion int64, c *gin
 			c.Request.UserAgent(),
 		)
 	} else {
-		bundle, err = service.CreateLoginSession(
+		bundle, err = identityservice.CreateLoginSession(
 			user.Id,
 			loginMethodFromContext(c),
 			c.ClientIP(),
@@ -186,8 +192,8 @@ func setupLoginAtAuthVersion(user *model.User, expectedAuthVersion int64, c *gin
 		writeAuthSessionError(c, err)
 		return
 	}
-	model.UpdateUserLastLoginAt(user.Id)
-	service.WriteRefreshCookie(c, bundle.RefreshToken)
+	identitymodel.UpdateUserLastLoginAt(user.Id)
+	identityservice.WriteRefreshCookie(c, bundle.RefreshToken)
 	setAuthNoStore(c)
 	recordLoginAudit(user, c)
 	c.JSON(http.StatusOK, gin.H{
@@ -212,14 +218,14 @@ func Register(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserPasswordRegisterDisabled)
 		return
 	}
-	var user model.User
+	var user identitymodel.User
 	err := common.DecodeJson(c.Request.Body, &user)
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	user.Username = strings.TrimSpace(user.Username)
-	user.Email = model.NormalizeEmail(user.Email)
+	user.Email = identitymodel.NormalizeEmail(user.Email)
 	if user.Username == "" {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
@@ -237,8 +243,8 @@ func Register(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgUserVerificationCodeError)
 			return
 		}
-		if err := model.EnsureEmailAvailable(user.Email, 0); err != nil {
-			if errors.Is(err, model.ErrEmailAlreadyTaken) {
+		if err := identitymodel.EnsureEmailAvailable(user.Email, 0); err != nil {
+			if errors.Is(err, rootmodel.ErrEmailAlreadyTaken) {
 				common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
 				return
 			}
@@ -250,7 +256,7 @@ func Register(c *gin.Context) {
 	if common.EmailVerificationEnabled {
 		emailForExistCheck = user.Email
 	}
-	exist, err := model.CheckUserExistOrDeleted(user.Username, emailForExistCheck)
+	exist, err := identitymodel.CheckUserExistOrDeleted(user.Username, emailForExistCheck)
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
 		common.SysLog(fmt.Sprintf("CheckUserExistOrDeleted error: %v", err))
@@ -261,8 +267,8 @@ func Register(c *gin.Context) {
 		return
 	}
 	affCode := user.AffCode // this code is the inviter's code, not the user's own code
-	inviterId, _ := model.GetUserIdByAffCode(affCode)
-	cleanUser := model.User{
+	inviterId, _ := identitymodel.GetUserIdByAffCode(affCode)
+	cleanUser := identitymodel.User{
 		Username:    user.Username,
 		Password:    user.Password,
 		DisplayName: user.Username,
@@ -273,7 +279,7 @@ func Register(c *gin.Context) {
 		cleanUser.Email = user.Email
 	}
 	if err := cleanUser.Insert(inviterId); err != nil {
-		if errors.Is(err, model.ErrEmailAlreadyTaken) {
+		if errors.Is(err, rootmodel.ErrEmailAlreadyTaken) {
 			common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
 			return
 		}
@@ -282,8 +288,8 @@ func Register(c *gin.Context) {
 	}
 
 	// 获取插入后的用户ID
-	var insertedUser model.User
-	if err := model.DB.Where("username = ?", cleanUser.Username).First(&insertedUser).Error; err != nil {
+	var insertedUser identitymodel.User
+	if err := rootmodel.DB.Where("username = ?", cleanUser.Username).First(&insertedUser).Error; err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserRegisterFailed)
 		return
 	}
@@ -296,7 +302,7 @@ func Register(c *gin.Context) {
 			return
 		}
 		// 生成默认令牌
-		token := model.Token{
+		token := identitymodel.Token{
 			UserId:             insertedUser.Id, // 使用插入后的用户ID
 			Name:               cleanUser.Username + "的初始令牌",
 			Key:                key,
@@ -325,8 +331,8 @@ func Register(c *gin.Context) {
 
 func GetAllUsers(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
-	sortOptions := model.NewUserSortOptions(c.Query("sort_by"), c.Query("sort_order"))
-	users, total, err := model.GetAllUsers(pageInfo, sortOptions)
+	sortOptions := identitymodel.NewUserSortOptions(c.Query("sort_by"), c.Query("sort_order"))
+	users, total, err := identitymodel.GetAllUsers(pageInfo, sortOptions)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -355,8 +361,8 @@ func SearchUsers(c *gin.Context) {
 		}
 	}
 	pageInfo := common.GetPageQuery(c)
-	sortOptions := model.NewUserSortOptions(c.Query("sort_by"), c.Query("sort_order"))
-	users, total, err := model.SearchUsers(keyword, group, role, status, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), sortOptions)
+	sortOptions := identitymodel.NewUserSortOptions(c.Query("sort_by"), c.Query("sort_order"))
+	users, total, err := identitymodel.SearchUsers(keyword, group, role, status, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), sortOptions)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -378,7 +384,7 @@ func GetUser(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	user, err := model.GetUserById(id, false)
+	user, err := identitymodel.GetUserById(id, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -407,12 +413,12 @@ func GenerateAccessToken(c *gin.Context) {
 		common.SysLog("failed to generate key: " + err.Error())
 		return
 	}
-	if model.DB.Where("access_token = ?", key).First(&model.User{}).RowsAffected != 0 {
+	if rootmodel.DB.Where("access_token = ?", key).First(&identitymodel.User{}).RowsAffected != 0 {
 		common.ApiErrorI18n(c, i18n.MsgUuidDuplicate)
 		return
 	}
 
-	if err := model.UpdateUserAccessToken(id, key); err != nil {
+	if err := identitymodel.UpdateUserAccessToken(id, key); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -430,12 +436,12 @@ type TransferAffQuotaRequest struct {
 }
 
 func TransferAffQuota(c *gin.Context) {
-	if !requirePaymentCompliance(c) {
+	if !billingcontroller.RequirePaymentCompliance(c) {
 		return
 	}
 
 	id := c.GetInt("id")
-	user, err := model.GetUserById(id, true)
+	user, err := identitymodel.GetUserById(id, true)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -455,7 +461,7 @@ func TransferAffQuota(c *gin.Context) {
 
 func GetAffCode(c *gin.Context) {
 	id := c.GetInt("id")
-	user, err := model.GetUserById(id, true)
+	user, err := identitymodel.GetUserById(id, true)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -481,7 +487,7 @@ func GetAffCode(c *gin.Context) {
 func GetSelf(c *gin.Context) {
 	id := c.GetInt("id")
 	userRole := c.GetInt("role")
-	user, err := model.GetUserById(id, false)
+	user, err := identitymodel.GetUserById(id, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -504,7 +510,7 @@ func GetSelf(c *gin.Context) {
 // buildSelfUserData is the single safe dashboard-user DTO used by GetSelf,
 // login and refresh. It intentionally excludes password, management PAT and
 // administrator-only remarks.
-func buildSelfUserData(user *model.User) map[string]interface{} {
+func buildSelfUserData(user *identitymodel.User) map[string]interface{} {
 	userSetting := user.GetSetting()
 	permissions := calculateUserPermissions(user.Id, user.Role)
 	permissions["admin_permissions"] = authz.Capabilities(user.Id, user.Role)
@@ -571,12 +577,12 @@ func GetUserModels(c *gin.Context) {
 	if err != nil {
 		id = c.GetInt("id")
 	}
-	user, err := model.GetUserCache(id)
+	user, err := identitymodel.GetUserCache(id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	groups := service.GetUserUsableGroups(user.Group)
+	groups := catalogservice.GetUserUsableGroups(user.Group)
 	group := c.Query("group")
 	var groupsToQuery []string
 	switch {
@@ -586,7 +592,7 @@ func GetUserModels(c *gin.Context) {
 		}
 	case group == "auto":
 		if _, ok := groups[group]; ok {
-			groupsToQuery = service.GetUserAutoGroup(user.Group)
+			groupsToQuery = catalogservice.GetUserAutoGroup(user.Group)
 		}
 	default:
 		if _, ok := groups[group]; ok {
@@ -596,12 +602,12 @@ func GetUserModels(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    service.GetGroupsEnabledModels(groupsToQuery),
+		"data":    catalogservice.GetGroupsEnabledModels(groupsToQuery),
 	})
 }
 
 func UpdateUser(c *gin.Context) {
-	var updatedUser model.User
+	var updatedUser identitymodel.User
 	err := common.DecodeJson(c.Request.Body, &updatedUser)
 	if err != nil || updatedUser.Id == 0 {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
@@ -619,7 +625,7 @@ func UpdateUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
 		return
 	}
-	originUser, err := model.GetUserById(updatedUser.Id, false)
+	originUser, err := identitymodel.GetUserById(updatedUser.Id, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -639,7 +645,7 @@ func UpdateUser(c *gin.Context) {
 	}
 	updatePassword := updatedUser.Password != ""
 	authzTouched := false
-	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+	if err := rootmodel.DB.Transaction(func(tx *gorm.DB) error {
 		if err := updatedUser.EditWithTx(tx, updatePassword); err != nil {
 			return err
 		}
@@ -657,16 +663,16 @@ func UpdateUser(c *gin.Context) {
 		}
 	}
 	if updatedUser.AuthVersion > originUser.AuthVersion {
-		if _, err := model.RevokeAllUserSessions(updatedUser.Id, "admin_user_update"); err != nil {
+		if _, err := identitymodel.RevokeAllUserSessions(updatedUser.Id, "admin_user_update"); err != nil {
 			common.ApiError(c, err)
 			return
 		}
 	}
-	if err := model.PublishUserAuthCache(updatedUser.Id); err != nil {
+	if err := identitymodel.PublishUserAuthCache(updatedUser.Id); err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	recordManageAuditFor(c, updatedUser.Id, "user.update", map[string]interface{}{
+	opscontroller.RecordManageAuditFor(c, updatedUser.Id, "user.update", map[string]interface{}{
 		"username": originUser.Username,
 		"id":       updatedUser.Id,
 	})
@@ -690,7 +696,7 @@ func AdminClearUserBinding(c *gin.Context) {
 		return
 	}
 
-	user, err := model.GetUserById(id, false)
+	user, err := identitymodel.GetUserById(id, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -707,7 +713,7 @@ func AdminClearUserBinding(c *gin.Context) {
 		return
 	}
 
-	recordManageAuditFor(c, user.Id, "user.binding_clear", map[string]interface{}{
+	opscontroller.RecordManageAuditFor(c, user.Id, "user.binding_clear", map[string]interface{}{
 		"bindingType": bindingType,
 		"username":    user.Username,
 	})
@@ -728,7 +734,7 @@ func UpdateSelf(c *gin.Context) {
 	// 检查是否是用户设置更新请求 (sidebar_modules 或 language)
 	if sidebarModules, sidebarExists := requestData["sidebar_modules"]; sidebarExists {
 		userId := c.GetInt("id")
-		user, err := model.GetUserById(userId, false)
+		user, err := identitymodel.GetUserById(userId, false)
 		if err != nil {
 			common.ApiError(c, err)
 			return
@@ -742,7 +748,7 @@ func UpdateSelf(c *gin.Context) {
 			currentSetting.SidebarModules = sidebarModulesStr
 		}
 
-		if err := model.UpdateUserSetting(user.Id, currentSetting); err != nil {
+		if err := identitymodel.UpdateUserSetting(user.Id, currentSetting); err != nil {
 			common.ApiErrorI18n(c, i18n.MsgUpdateFailed)
 			return
 		}
@@ -754,7 +760,7 @@ func UpdateSelf(c *gin.Context) {
 	// 检查是否是语言偏好更新请求
 	if language, langExists := requestData["language"]; langExists {
 		userId := c.GetInt("id")
-		user, err := model.GetUserById(userId, false)
+		user, err := identitymodel.GetUserById(userId, false)
 		if err != nil {
 			common.ApiError(c, err)
 			return
@@ -768,7 +774,7 @@ func UpdateSelf(c *gin.Context) {
 			currentSetting.Language = langStr
 		}
 
-		if err := model.UpdateUserSetting(user.Id, currentSetting); err != nil {
+		if err := identitymodel.UpdateUserSetting(user.Id, currentSetting); err != nil {
 			common.ApiErrorI18n(c, i18n.MsgUpdateFailed)
 			return
 		}
@@ -778,7 +784,7 @@ func UpdateSelf(c *gin.Context) {
 	}
 
 	// 原有的用户信息更新逻辑
-	var user model.User
+	var user identitymodel.User
 	requestDataBytes, err := common.Marshal(requestData)
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
@@ -797,7 +803,7 @@ func UpdateSelf(c *gin.Context) {
 		return
 	}
 
-	cleanUser := model.User{
+	cleanUser := identitymodel.User{
 		Id:          c.GetInt("id"),
 		Username:    user.Username,
 		Password:    user.Password,
@@ -826,17 +832,17 @@ func UpdateSelf(c *gin.Context) {
 			common.ApiError(c, errors.New("当前认证方式不支持安全验证"))
 			return
 		}
-		if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := rootmodel.DB.Transaction(func(tx *gorm.DB) error {
 			return cleanUser.UpdateWithTx(tx, true)
 		}); err != nil {
 			common.ApiError(c, err)
 			return
 		}
-		if err := model.PublishUserAuthCache(cleanUser.Id); err != nil {
+		if err := identitymodel.PublishUserAuthCache(cleanUser.Id); err != nil {
 			common.ApiError(c, err)
 			return
 		}
-		bundle, err := service.AdvanceCurrentSessionToUserVersion(identity, "password_changed")
+		bundle, err := identityservice.AdvanceCurrentSessionToUserVersion(identity, "password_changed")
 		if err != nil {
 			common.ApiError(c, err)
 			return
@@ -866,8 +872,8 @@ func checkUpdatePassword(originalPassword string, newPassword string, userId int
 	if newPassword == "" {
 		return
 	}
-	var currentUser *model.User
-	currentUser, err = model.GetUserById(userId, true)
+	var currentUser *identitymodel.User
+	currentUser, err = identitymodel.GetUserById(userId, true)
 	if err != nil {
 		return
 	}
@@ -891,7 +897,7 @@ func DeleteUser(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	originUser, err := model.GetUserById(id, false)
+	originUser, err := identitymodel.GetUserById(id, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -901,12 +907,12 @@ func DeleteUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return
 	}
-	err = model.HardDeleteUserById(id)
+	err = identitymodel.HardDeleteUserById(id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	recordManageAuditFor(c, originUser.Id, "user.delete", map[string]interface{}{
+	opscontroller.RecordManageAuditFor(c, originUser.Id, "user.delete", map[string]interface{}{
 		"username": originUser.Username,
 		"id":       originUser.Id,
 	})
@@ -919,14 +925,14 @@ func DeleteUser(c *gin.Context) {
 
 func DeleteSelf(c *gin.Context) {
 	id := c.GetInt("id")
-	user, _ := model.GetUserById(id, false)
+	user, _ := identitymodel.GetUserById(id, false)
 
 	if user.Role == common.RoleRootUser {
 		common.ApiErrorI18n(c, i18n.MsgUserCannotDeleteRootUser)
 		return
 	}
 
-	err := model.DeleteUserById(id)
+	err := identitymodel.DeleteUserById(id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -939,7 +945,7 @@ func DeleteSelf(c *gin.Context) {
 }
 
 func CreateUser(c *gin.Context) {
-	var user model.User
+	var user identitymodel.User
 	err := common.DecodeJson(c.Request.Body, &user)
 	user.Username = strings.TrimSpace(user.Username)
 	if err != nil || user.Username == "" || user.Password == "" {
@@ -959,14 +965,14 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 	// Even for admin users, we cannot fully trust them!
-	cleanUser := model.User{
+	cleanUser := identitymodel.User{
 		Username:    user.Username,
 		Password:    user.Password,
 		DisplayName: user.DisplayName,
 		Role:        user.Role, // 保持管理员设置的角色
 	}
 	authzTouched := false
-	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+	if err := rootmodel.DB.Transaction(func(tx *gorm.DB) error {
 		if err := cleanUser.InsertWithTx(tx, 0); err != nil {
 			return err
 		}
@@ -985,7 +991,7 @@ func CreateUser(c *gin.Context) {
 	}
 	cleanUser.FinishInsert(0)
 
-	recordManageAuditFor(c, cleanUser.Id, "user.create", map[string]interface{}{
+	opscontroller.RecordManageAuditFor(c, cleanUser.Id, "user.create", map[string]interface{}{
 		"username": cleanUser.Username,
 		"role":     cleanUser.Role,
 	})
@@ -1028,11 +1034,11 @@ func ManageUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	user := model.User{
+	user := identitymodel.User{
 		Id: req.Id,
 	}
 	// Fill attributes
-	model.DB.Unscoped().Where(&user).First(&user)
+	rootmodel.DB.Unscoped().Where(&user).First(&user)
 	if user.Id == 0 {
 		common.ApiErrorI18n(c, i18n.MsgUserNotExists)
 		return
@@ -1065,10 +1071,10 @@ func ManageUser(c *gin.Context) {
 		}
 		// 删除用户后，强制清理 Redis 中所有该用户令牌的缓存，
 		// 避免已缓存的令牌在 TTL 过期前仍能通过 TokenAuth 校验。
-		if err := model.InvalidateUserTokensCache(user.Id); err != nil {
+		if err := identitymodel.InvalidateUserTokensCache(user.Id); err != nil {
 			common.SysLog(fmt.Sprintf("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
 		}
-		recordManageAuditFor(c, user.Id, "user.manage", map[string]interface{}{
+		opscontroller.RecordManageAuditFor(c, user.Id, "user.manage", map[string]interface{}{
 			"action":   req.Action,
 			"username": user.Username,
 			"id":       user.Id,
@@ -1117,11 +1123,11 @@ func ManageUser(c *gin.Context) {
 				common.ApiErrorI18n(c, i18n.MsgUserQuotaChangeZero)
 				return
 			}
-			if err := model.IncreaseUserQuota(user.Id, req.Value, true); err != nil {
+			if err := identitymodel.IncreaseUserQuota(user.Id, req.Value, true); err != nil {
 				common.ApiError(c, err)
 				return
 			}
-			recordManageAuditFor(c, user.Id, "user.quota_add", map[string]interface{}{
+			opscontroller.RecordManageAuditFor(c, user.Id, "user.quota_add", map[string]interface{}{
 				"quota": logger.LogQuota(req.Value),
 			})
 		case "subtract":
@@ -1129,20 +1135,20 @@ func ManageUser(c *gin.Context) {
 				common.ApiErrorI18n(c, i18n.MsgUserQuotaChangeZero)
 				return
 			}
-			if err := model.DecreaseUserQuota(user.Id, req.Value, true); err != nil {
+			if err := identitymodel.DecreaseUserQuota(user.Id, req.Value, true); err != nil {
 				common.ApiError(c, err)
 				return
 			}
-			recordManageAuditFor(c, user.Id, "user.quota_subtract", map[string]interface{}{
+			opscontroller.RecordManageAuditFor(c, user.Id, "user.quota_subtract", map[string]interface{}{
 				"quota": logger.LogQuota(req.Value),
 			})
 		case "override":
 			oldQuota := user.Quota
-			if err := model.DB.Model(&model.User{}).Where("id = ?", user.Id).Update("quota", req.Value).Error; err != nil {
+			if err := rootmodel.DB.Model(&identitymodel.User{}).Where("id = ?", user.Id).Update("quota", req.Value).Error; err != nil {
 				common.ApiError(c, err)
 				return
 			}
-			recordManageAuditFor(c, user.Id, "user.quota_override", map[string]interface{}{
+			opscontroller.RecordManageAuditFor(c, user.Id, "user.quota_override", map[string]interface{}{
 				"from": logger.LogQuota(oldQuota),
 				"to":   logger.LogQuota(req.Value),
 			})
@@ -1161,7 +1167,7 @@ func ManageUser(c *gin.Context) {
 	}
 
 	if req.Action == "demote" {
-		if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := rootmodel.DB.Transaction(func(tx *gorm.DB) error {
 			if err := user.UpdateWithTx(tx, false); err != nil {
 				return err
 			}
@@ -1174,11 +1180,11 @@ func ManageUser(c *gin.Context) {
 			common.ApiError(c, err)
 			return
 		}
-		if err := model.PublishUserAuthCache(user.Id); err != nil {
+		if err := identitymodel.PublishUserAuthCache(user.Id); err != nil {
 			common.ApiError(c, err)
 			return
 		}
-		if _, err := model.RevokeAllUserSessions(user.Id, "admin_demote"); err != nil {
+		if _, err := identitymodel.RevokeAllUserSessions(user.Id, "admin_demote"); err != nil {
 			common.ApiError(c, err)
 			return
 		}
@@ -1192,15 +1198,15 @@ func ManageUser(c *gin.Context) {
 	// browser sessions exactly once. Only PAT/relay token caches still need an
 	// explicit invalidation; deleting the user hash here would discard the
 	// freshly published auth-version floor.
-	if err := model.InvalidateUserTokensCache(user.Id); err != nil {
+	if err := identitymodel.InvalidateUserTokensCache(user.Id); err != nil {
 		common.SysLog(fmt.Sprintf("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
 	}
-	recordManageAuditFor(c, user.Id, "user.manage", map[string]interface{}{
+	opscontroller.RecordManageAuditFor(c, user.Id, "user.manage", map[string]interface{}{
 		"action":   req.Action,
 		"username": user.Username,
 		"id":       user.Id,
 	})
-	clearUser := model.User{
+	clearUser := identitymodel.User{
 		Role:   user.Role,
 		Status: user.Status,
 	}
@@ -1224,13 +1230,13 @@ func EmailBind(c *gin.Context) {
 		return
 	}
 	email := req.Email
-	email = model.NormalizeEmail(email)
+	email = identitymodel.NormalizeEmail(email)
 	code := req.Code
 	if !common.VerifyCodeWithKey(email, code, common.EmailVerificationPurpose) {
 		common.ApiErrorI18n(c, i18n.MsgUserVerificationCodeError)
 		return
 	}
-	user := model.User{
+	user := identitymodel.User{
 		Id: c.GetInt("id"),
 	}
 	if user.Id == 0 {
@@ -1242,8 +1248,8 @@ func EmailBind(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	if err := model.BindEmailToUser(&user, email); err != nil {
-		if errors.Is(err, model.ErrEmailAlreadyTaken) {
+	if err := identitymodel.BindEmailToUser(&user, email); err != nil {
+		if errors.Is(err, rootmodel.ErrEmailAlreadyTaken) {
 			common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
 			return
 		}
@@ -1321,7 +1327,7 @@ func TopUp(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	quota, err := model.Redeem(req.Key, id)
+	quota, err := billingmodel.Redeem(req.Key, id)
 	if err != nil {
 		// 不向用户暴露兑换失败的细分原因，避免攻击者根据错误类型判断兑换码状态。
 		common.ApiErrorI18n(c, i18n.MsgRedeemFailed)
@@ -1432,7 +1438,7 @@ func UpdateUserSetting(c *gin.Context) {
 	}
 
 	userId := c.GetInt("id")
-	user, err := model.GetUserById(userId, true)
+	user, err := identitymodel.GetUserById(userId, true)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -1483,7 +1489,7 @@ func UpdateUserSetting(c *gin.Context) {
 	}
 
 	// 更新用户设置
-	if err := model.UpdateUserSetting(user.Id, settings); err != nil {
+	if err := identitymodel.UpdateUserSetting(user.Id, settings); err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUpdateFailed)
 		return
 	}

@@ -7,7 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/model"
+	usagemodel "github.com/QuantumNous/new-api/internal/usage/model"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
 )
 
 const (
@@ -180,19 +181,19 @@ func rankingConfig(period string) (rankingPeriodConfig, error) {
 
 func buildRankingsSnapshot(config rankingPeriodConfig, now time.Time) (*RankingsResponse, error) {
 	startTime, endTime := rankingTimeRange(config, now)
-	currentTotals, err := model.GetRankingQuotaTotals(startTime, endTime)
+	currentTotals, err := usagemodel.GetRankingQuotaTotals(startTime, endTime)
 	if err != nil {
 		return nil, err
 	}
-	currentBuckets, err := model.GetRankingQuotaBuckets(startTime, endTime, config.bucketSize)
+	currentBuckets, err := usagemodel.GetRankingQuotaBuckets(startTime, endTime, config.bucketSize)
 	if err != nil {
 		return nil, err
 	}
 
-	var previousTotals []model.RankingQuotaTotal
+	var previousTotals []usagemodel.RankingQuotaTotal
 	if config.hasPrevious {
 		previousStart, previousEnd := previousRankingTimeRange(config, startTime)
-		previousTotals, err = model.GetRankingQuotaTotals(previousStart, previousEnd)
+		previousTotals, err = usagemodel.GetRankingQuotaTotals(previousStart, previousEnd)
 		if err != nil {
 			return nil, err
 		}
@@ -234,13 +235,13 @@ func previousRankingTimeRange(config rankingPeriodConfig, currentStart int64) (i
 }
 
 func buildRankingModelMeta() map[string]rankingModelMeta {
-	vendorByID := make(map[int]model.PricingVendor)
-	for _, vendor := range model.GetVendors() {
+	vendorByID := make(map[int]catalogmodel.PricingVendor)
+	for _, vendor := range catalogmodel.GetVendors() {
 		vendorByID[vendor.ID] = vendor
 	}
 
 	meta := make(map[string]rankingModelMeta)
-	for _, pricing := range model.GetPricing() {
+	for _, pricing := range catalogmodel.GetPricing() {
 		item := rankingModelMeta{vendor: rankingUnknownVendor}
 		if vendor, ok := vendorByID[pricing.VendorID]; ok {
 			item.vendor = vendor.Name
@@ -260,7 +261,7 @@ func modelMeta(modelName string, meta map[string]rankingModelMeta) rankingModelM
 	return rankingModelMeta{vendor: rankingUnknownVendor}
 }
 
-func buildRankedModels(totals []model.RankingQuotaTotal, totalTokens int64, previousRanks map[string]int, previousTokens map[string]int64, meta map[string]rankingModelMeta, showGrowth bool) []RankedModel {
+func buildRankedModels(totals []usagemodel.RankingQuotaTotal, totalTokens int64, previousRanks map[string]int, previousTokens map[string]int64, meta map[string]rankingModelMeta, showGrowth bool) []RankedModel {
 	rows := make([]RankedModel, 0, len(totals))
 	for idx, item := range totals {
 		modelMeta := modelMeta(item.ModelName, meta)
@@ -288,7 +289,7 @@ func buildRankedModels(totals []model.RankingQuotaTotal, totalTokens int64, prev
 	return rows
 }
 
-func buildRankedVendors(currentTotals []model.RankingQuotaTotal, previousTotals []model.RankingQuotaTotal, totalTokens int64, meta map[string]rankingModelMeta, showGrowth bool) []RankedVendor {
+func buildRankedVendors(currentTotals []usagemodel.RankingQuotaTotal, previousTotals []usagemodel.RankingQuotaTotal, totalTokens int64, meta map[string]rankingModelMeta, showGrowth bool) []RankedVendor {
 	aggregates := make(map[string]*vendorAggregate)
 	for _, item := range currentTotals {
 		modelMeta := modelMeta(item.ModelName, meta)
@@ -357,7 +358,7 @@ func ensureVendorAggregate(aggregates map[string]*vendorAggregate, meta rankingM
 	return agg
 }
 
-func buildModelHistory(buckets []model.RankingQuotaBucket, totals []model.RankingQuotaTotal, meta map[string]rankingModelMeta, config rankingPeriodConfig) ModelHistorySeries {
+func buildModelHistory(buckets []usagemodel.RankingQuotaBucket, totals []usagemodel.RankingQuotaTotal, meta map[string]rankingModelMeta, config rankingPeriodConfig) ModelHistorySeries {
 	topModels := make(map[string]struct{})
 	models := make([]ModelHistoryModel, 0, minInt(len(totals), rankingHistoryLimit)+1)
 	otherTotal := int64(0)
@@ -413,7 +414,7 @@ func buildModelHistory(buckets []model.RankingQuotaBucket, totals []model.Rankin
 	}
 }
 
-func buildVendorShareHistory(buckets []model.RankingQuotaBucket, vendors []RankedVendor, totalTokens int64, meta map[string]rankingModelMeta, config rankingPeriodConfig) VendorShareSeries {
+func buildVendorShareHistory(buckets []usagemodel.RankingQuotaBucket, vendors []RankedVendor, totalTokens int64, meta map[string]rankingModelMeta, config rankingPeriodConfig) VendorShareSeries {
 	topVendors := make(map[string]struct{})
 	vendorRows := make([]VendorShareVendor, 0, minInt(len(vendors), rankingVendorLimit)+1)
 	otherTotal := int64(0)
@@ -530,7 +531,7 @@ func rankingBucketLabel(bucket int64, config rankingPeriodConfig) string {
 	return time.Unix(bucket, 0).Format(config.labelLayout)
 }
 
-func rankingRankMap(totals []model.RankingQuotaTotal) map[string]int {
+func rankingRankMap(totals []usagemodel.RankingQuotaTotal) map[string]int {
 	ranks := make(map[string]int, len(totals))
 	for idx, item := range totals {
 		ranks[item.ModelName] = idx + 1
@@ -538,7 +539,7 @@ func rankingRankMap(totals []model.RankingQuotaTotal) map[string]int {
 	return ranks
 }
 
-func rankingTokenMap(totals []model.RankingQuotaTotal) map[string]int64 {
+func rankingTokenMap(totals []usagemodel.RankingQuotaTotal) map[string]int64 {
 	tokens := make(map[string]int64, len(totals))
 	for _, item := range totals {
 		tokens[item.ModelName] = item.TotalTokens
@@ -546,7 +547,7 @@ func rankingTokenMap(totals []model.RankingQuotaTotal) map[string]int64 {
 	return tokens
 }
 
-func sumRankingTokens(totals []model.RankingQuotaTotal) int64 {
+func sumRankingTokens(totals []usagemodel.RankingQuotaTotal) int64 {
 	total := int64(0)
 	for _, item := range totals {
 		total += item.TotalTokens

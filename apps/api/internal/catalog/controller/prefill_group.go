@@ -4,15 +4,15 @@ import (
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
 )
 
 // GetPrefillGroups 获取预填组列表，可通过 ?type=xxx 过滤
 func GetPrefillGroups(c *gin.Context) {
 	groupType := c.Query("type")
-	groups, err := model.GetAllPrefillGroups(groupType)
+	groups, err := catalogmodel.GetAllPrefillGroups(groupType)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -22,7 +22,7 @@ func GetPrefillGroups(c *gin.Context) {
 
 // CreatePrefillGroup 创建新的预填组
 func CreatePrefillGroup(c *gin.Context) {
-	var g model.PrefillGroup
+	var g catalogmodel.PrefillGroup
 	if err := c.ShouldBindJSON(&g); err != nil {
 		common.ApiError(c, err)
 		return
@@ -32,7 +32,7 @@ func CreatePrefillGroup(c *gin.Context) {
 		return
 	}
 	// 创建前检查名称
-	if dup, err := model.IsPrefillGroupNameDuplicated(0, g.Name); err != nil {
+	if dup, err := catalogmodel.IsPrefillGroupNameDuplicated(0, g.Name); err != nil {
 		common.ApiError(c, err)
 		return
 	} else if dup {
@@ -49,7 +49,7 @@ func CreatePrefillGroup(c *gin.Context) {
 
 // UpdatePrefillGroup 更新预填组
 func UpdatePrefillGroup(c *gin.Context) {
-	var g model.PrefillGroup
+	var g catalogmodel.PrefillGroup
 	if err := c.ShouldBindJSON(&g); err != nil {
 		common.ApiError(c, err)
 		return
@@ -59,7 +59,7 @@ func UpdatePrefillGroup(c *gin.Context) {
 		return
 	}
 	// 名称冲突检查
-	if dup, err := model.IsPrefillGroupNameDuplicated(g.Id, g.Name); err != nil {
+	if dup, err := catalogmodel.IsPrefillGroupNameDuplicated(g.Id, g.Name); err != nil {
 		common.ApiError(c, err)
 		return
 	} else if dup {
@@ -82,7 +82,7 @@ func DeletePrefillGroup(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	if err := model.DeletePrefillGroupByID(id); err != nil {
+	if err := catalogmodel.DeletePrefillGroupByID(id); err != nil {
 		common.ApiError(c, err)
 		return
 	}

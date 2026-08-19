@@ -10,17 +10,19 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel/codex"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service"
+	catalogservice "github.com/QuantumNous/new-api/internal/catalog/service"
 )
 
 func GetCodexChannelUsage(c *gin.Context) {
 	fetchCodexChannelWhamData(
 		c,
-		service.FetchCodexWhamUsage,
+		catalogservice.FetchCodexWhamUsage,
 		"failed to fetch codex usage",
 		"获取用量信息失败，请稍后重试",
 	)
@@ -29,7 +31,7 @@ func GetCodexChannelUsage(c *gin.Context) {
 func GetCodexChannelRateLimitResetCredits(c *gin.Context) {
 	fetchCodexChannelWhamData(
 		c,
-		service.FetchCodexWhamRateLimitResetCredits,
+		catalogservice.FetchCodexWhamRateLimitResetCredits,
 		"failed to fetch codex reset credits",
 		"获取重置次数详情失败，请稍后重试",
 	)
@@ -38,7 +40,7 @@ func GetCodexChannelRateLimitResetCredits(c *gin.Context) {
 func ResetCodexChannelUsage(c *gin.Context) {
 	fetchCodexChannelWhamData(
 		c,
-		service.ConsumeCodexWhamRateLimitResetCredit,
+		catalogservice.ConsumeCodexWhamRateLimitResetCredit,
 		"failed to reset codex usage",
 		"重置用量失败，请稍后重试",
 	)
@@ -64,7 +66,7 @@ func fetchCodexChannelWhamData(
 		return
 	}
 
-	ch, err := model.GetChannelById(channelId, true)
+	ch, err := catalogmodel.GetChannelById(channelId, true)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -99,7 +101,7 @@ func fetchCodexChannelWhamData(
 		return
 	}
 
-	client, err := service.GetHttpClientWithProxy(ch.GetSetting().Proxy)
+	client, err := egressservice.GetHttpClientWithProxy(ch.GetSetting().Proxy)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -119,7 +121,7 @@ func fetchCodexChannelWhamData(
 		refreshCtx, refreshCancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 		defer refreshCancel()
 
-		res, refreshErr := service.RefreshCodexOAuthTokenWithProxy(refreshCtx, oauthKey.RefreshToken, ch.GetSetting().Proxy)
+		res, refreshErr := catalogservice.RefreshCodexOAuthTokenWithProxy(refreshCtx, oauthKey.RefreshToken, ch.GetSetting().Proxy)
 		if refreshErr == nil {
 			oauthKey.AccessToken = res.AccessToken
 			oauthKey.RefreshToken = res.RefreshToken
@@ -131,8 +133,8 @@ func fetchCodexChannelWhamData(
 
 			encoded, encErr := common.Marshal(oauthKey)
 			if encErr == nil {
-				_ = model.DB.Model(&model.Channel{}).Where("id = ?", ch.Id).Update("key", string(encoded)).Error
-				model.InitChannelCache()
+				_ = rootmodel.DB.Model(&catalogmodel.Channel{}).Where("id = ?", ch.Id).Update("key", string(encoded)).Error
+				catalogmodel.InitChannelCache()
 			}
 
 			ctx2, cancel2 := context.WithTimeout(c.Request.Context(), 15*time.Second)

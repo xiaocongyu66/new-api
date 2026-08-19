@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 func TestAuthFlowIsBoundAndConsumedOnce(t *testing.T) {
@@ -62,7 +63,7 @@ func TestAuthFlowExpiryIsEnforced(t *testing.T) {
 		ExpiresAt: time.Now().Add(time.Minute),
 	})
 	require.NoError(t, err)
-	require.NoError(t, DB.Model(&AuthFlow{}).Where("id = ?", flow.Id).Update("expires_at", time.Now().Add(-time.Second)).Error)
+	require.NoError(t, rootmodel.DB.Model(&AuthFlow{}).Where("id = ?", flow.Id).Update("expires_at", time.Now().Add(-time.Second)).Error)
 
 	_, err = GetAuthFlow(token, AuthFlowMatch{Purpose: AuthFlowPurposeTwoFALogin})
 	assert.True(t, errors.Is(err, ErrAuthFlowExpired))
@@ -106,4 +107,22 @@ func TestConsumeAuthFlowWithActionRollsBackTogether(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, flow.ConsumedAt)
 	require.NoError(t, ClaimExternalAuthAssertion(AuthFlowPurposeTelegramAssertion, "assertion-a", time.Now().Add(time.Minute)))
+}
+
+func truncateTables(t *testing.T) {
+	var tables []string
+	db, _ := rootmodel.DB.DB()
+	rows, err := db.Query("SELECT name FROM sqlite_master WHERE type='table'")
+	require.NoError(t, err)
+	for rows.Next() {
+		var name string
+		require.NoError(t, rows.Scan(&name))
+		if name != "sqlite_sequence" {
+			tables = append(tables, name)
+		}
+	}
+	require.NoError(t, rows.Close())
+	for _, name := range tables {
+		rootmodel.DB.Exec("DELETE FROM " + name)
+	}
 }

@@ -9,11 +9,12 @@ import (
 
 	"github.com/Calcium-Ion/go-epay/epay"
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
+	billingmodel "github.com/QuantumNous/new-api/internal/billing/model"
+	billingservice "github.com/QuantumNous/new-api/internal/billing/service"
+	opscontroller "github.com/QuantumNous/new-api/internal/ops/controller"
 )
 
 type SubscriptionEpayPayRequest struct {
@@ -22,7 +23,7 @@ type SubscriptionEpayPayRequest struct {
 }
 
 func SubscriptionRequestEpay(c *gin.Context) {
-	if !requirePaymentCompliance(c) {
+	if !RequirePaymentCompliance(c) {
 		return
 	}
 
@@ -32,7 +33,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		return
 	}
 
-	plan, err := model.GetSubscriptionPlanById(req.PlanId)
+	plan, err := billingmodel.GetSubscriptionPlanById(req.PlanId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -52,7 +53,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 
 	userId := c.GetInt("id")
 	if plan.MaxPurchasePerUser > 0 {
-		count, err := model.CountUserSubscriptionsByPlan(userId, plan.Id)
+		count, err := billingmodel.CountUserSubscriptionsByPlan(userId, plan.Id)
 		if err != nil {
 			common.ApiError(c, err)
 			return
@@ -63,7 +64,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		}
 	}
 
-	callBackAddress := service.GetCallbackAddress()
+	callBackAddress := billingservice.GetCallbackAddress()
 	returnUrl, err := url.Parse(callBackAddress + "/api/subscription/epay/return")
 	if err != nil {
 		common.ApiErrorMsg(c, "回调地址配置错误")
@@ -84,13 +85,13 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		return
 	}
 
-	order := &model.SubscriptionOrder{
+	order := &billingmodel.SubscriptionOrder{
 		UserId:          userId,
 		PlanId:          plan.Id,
 		Money:           plan.PriceAmount,
 		TradeNo:         tradeNo,
 		PaymentMethod:   req.PaymentMethod,
-		PaymentProvider: model.PaymentProviderEpay,
+		PaymentProvider: billingmodel.PaymentProviderEpay,
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}
@@ -108,7 +109,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		ReturnUrl:      returnUrl,
 	})
 	if err != nil {
-		_ = model.ExpireSubscriptionOrder(tradeNo, model.PaymentProviderEpay)
+		_ = billingmodel.ExpireSubscriptionOrder(tradeNo, billingmodel.PaymentProviderEpay)
 		common.ApiErrorMsg(c, "拉起支付失败")
 		return
 	}
@@ -160,7 +161,7 @@ func SubscriptionEpayNotify(c *gin.Context) {
 	LockOrder(verifyInfo.ServiceTradeNo)
 	defer UnlockOrder(verifyInfo.ServiceTradeNo)
 
-	if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type); err != nil {
+	if err := billingmodel.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), billingmodel.PaymentProviderEpay, verifyInfo.Type); err != nil {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
@@ -176,7 +177,7 @@ func SubscriptionEpayReturn(c *gin.Context) {
 	if c.Request.Method == "POST" {
 		// POST 请求：从 POST body 解析参数
 		if err := c.Request.ParseForm(); err != nil {
-			c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=fail"))
+			c.Redirect(http.StatusFound, opscontroller.PaymentReturnPath("/wallet?pay=fail"))
 			return
 		}
 		params = lo.Reduce(lo.Keys(c.Request.PostForm), func(r map[string]string, t string, i int) map[string]string {
@@ -192,29 +193,29 @@ func SubscriptionEpayReturn(c *gin.Context) {
 	}
 
 	if len(params) == 0 {
-		c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=fail"))
+		c.Redirect(http.StatusFound, opscontroller.PaymentReturnPath("/wallet?pay=fail"))
 		return
 	}
 
 	client := GetEpayClient()
 	if client == nil {
-		c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=fail"))
+		c.Redirect(http.StatusFound, opscontroller.PaymentReturnPath("/wallet?pay=fail"))
 		return
 	}
 	verifyInfo, err := client.Verify(params)
 	if err != nil || !verifyInfo.VerifyStatus {
-		c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=fail"))
+		c.Redirect(http.StatusFound, opscontroller.PaymentReturnPath("/wallet?pay=fail"))
 		return
 	}
 	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
-		if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type); err != nil {
-			c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=fail"))
+		if err := billingmodel.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), billingmodel.PaymentProviderEpay, verifyInfo.Type); err != nil {
+			c.Redirect(http.StatusFound, opscontroller.PaymentReturnPath("/wallet?pay=fail"))
 			return
 		}
-		c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=success"))
+		c.Redirect(http.StatusFound, opscontroller.PaymentReturnPath("/wallet?pay=success"))
 		return
 	}
-	c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=pending"))
+	c.Redirect(http.StatusFound, opscontroller.PaymentReturnPath("/wallet?pay=pending"))
 }

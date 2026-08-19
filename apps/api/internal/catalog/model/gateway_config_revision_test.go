@@ -7,43 +7,45 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	"github.com/QuantumNous/new-api/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 // resetGatewayRevision restores the singleton watermark and empties the outbox
 // so each case starts from a known committed state.
 func resetGatewayRevision(t *testing.T, revision int64) {
 	t.Helper()
-	require.NoError(t, DB.Exec("DELETE FROM gateway_config_outboxes").Error)
-	require.NoError(t, DB.Exec("DELETE FROM gateway_config_revisions").Error)
-	require.NoError(t, DB.Create(&GatewayConfigRevision{ID: gatewayConfigRevisionID, RoutingRevision: revision}).Error)
+	require.NoError(t, rootmodel.DB.Exec("DELETE FROM gateway_config_outboxes").Error)
+	require.NoError(t, rootmodel.DB.Exec("DELETE FROM gateway_config_revisions").Error)
+	require.NoError(t, rootmodel.DB.Create(&GatewayConfigRevision{ID: gatewayConfigRevisionID, RoutingRevision: revision}).Error)
 	t.Cleanup(func() {
-		DB.Exec("DELETE FROM gateway_config_outboxes")
-		DB.Exec("DELETE FROM gateway_config_revisions")
+		rootmodel.DB.Exec("DELETE FROM gateway_config_outboxes")
+		rootmodel.DB.Exec("DELETE FROM gateway_config_revisions")
 	})
 }
 
 func currentGatewayRevision(t *testing.T) int64 {
 	t.Helper()
 	var row GatewayConfigRevision
-	require.NoError(t, DB.Where("id = ?", gatewayConfigRevisionID).Take(&row).Error)
+	require.NoError(t, rootmodel.DB.Where("id = ?", gatewayConfigRevisionID).Take(&row).Error)
 	return row.RoutingRevision
 }
 
 func outboxRevisions(t *testing.T) []int64 {
 	t.Helper()
 	var revisions []int64
-	require.NoError(t, DB.Model(&GatewayConfigOutbox{}).
+	require.NoError(t, rootmodel.DB.Model(&GatewayConfigOutbox{}).
 		Order("routing_revision asc").
 		Pluck("routing_revision", &revisions).Error)
 	return revisions
 }
 
 func TestGatewayConfigRevisionInitializeKeepsExistingWatermark(t *testing.T) {
-	require.NoError(t, DB.Exec("DELETE FROM gateway_config_outboxes").Error)
-	require.NoError(t, DB.Exec("DELETE FROM gateway_config_revisions").Error)
+	require.NoError(t, rootmodel.DB.Exec("DELETE FROM gateway_config_outboxes").Error)
+	require.NoError(t, rootmodel.DB.Exec("DELETE FROM gateway_config_revisions").Error)
 	t.Cleanup(func() {
-		DB.Exec("DELETE FROM gateway_config_outboxes")
-		DB.Exec("DELETE FROM gateway_config_revisions")
+		rootmodel.DB.Exec("DELETE FROM gateway_config_outboxes")
+		rootmodel.DB.Exec("DELETE FROM gateway_config_revisions")
 	})
 
 	require.NoError(t, InitializeGatewayConfigRevision())
@@ -57,24 +59,24 @@ func TestGatewayConfigRevisionInitializeKeepsExistingWatermark(t *testing.T) {
 	assert.Equal(t, int64(2), currentGatewayRevision(t), "re-initialisation must never reset a live watermark")
 
 	var rows int64
-	require.NoError(t, DB.Model(&GatewayConfigRevision{}).Count(&rows).Error)
+	require.NoError(t, rootmodel.DB.Model(&GatewayConfigRevision{}).Count(&rows).Error)
 	assert.Equal(t, int64(1), rows, "revision table stays a singleton")
 }
 
 func TestGatewayConfigRevisionInitializeRejectsNonCanonicalRow(t *testing.T) {
-	require.NoError(t, DB.Exec("DELETE FROM gateway_config_outboxes").Error)
-	require.NoError(t, DB.Exec("DELETE FROM gateway_config_revisions").Error)
+	require.NoError(t, rootmodel.DB.Exec("DELETE FROM gateway_config_outboxes").Error)
+	require.NoError(t, rootmodel.DB.Exec("DELETE FROM gateway_config_revisions").Error)
 	t.Cleanup(func() {
-		DB.Exec("DELETE FROM gateway_config_outboxes")
-		DB.Exec("DELETE FROM gateway_config_revisions")
+		rootmodel.DB.Exec("DELETE FROM gateway_config_outboxes")
+		rootmodel.DB.Exec("DELETE FROM gateway_config_revisions")
 	})
-	require.NoError(t, DB.Create(&GatewayConfigRevision{ID: 9, RoutingRevision: 42}).Error)
+	require.NoError(t, rootmodel.DB.Create(&GatewayConfigRevision{ID: 9, RoutingRevision: 42}).Error)
 
 	err := InitializeGatewayConfigRevision()
 	require.ErrorIs(t, err, ErrGatewayRevisionMissing)
 
 	var rows []GatewayConfigRevision
-	require.NoError(t, DB.Order("id asc").Find(&rows).Error)
+	require.NoError(t, rootmodel.DB.Order("id asc").Find(&rows).Error)
 	require.Len(t, rows, 1, "initialisation must not add a second watermark next to an existing row")
 	assert.Equal(t, int64(42), rows[0].RoutingRevision)
 }
@@ -86,18 +88,18 @@ func TestGatewayConfigRevisionCommitsDomainRowRevisionAndOutboxTogether(t *testi
 		return tx.Create(&Channel{Key: "gateway-revision-commit-probe", Name: "revision-probe"}).Error
 	})
 	require.NoError(t, err)
-	t.Cleanup(func() { DB.Where("name = ?", "revision-probe").Delete(&Channel{}) })
+	t.Cleanup(func() { rootmodel.DB.Where("name = ?", "revision-probe").Delete(&Channel{}) })
 
 	assert.Equal(t, int64(8), revision)
 	assert.Equal(t, int64(8), currentGatewayRevision(t))
 	assert.Equal(t, []int64{8}, outboxRevisions(t), "one mutation publishes exactly one revision")
 
 	var channel Channel
-	require.NoError(t, DB.Where("name = ?", "revision-probe").Take(&channel).Error)
+	require.NoError(t, rootmodel.DB.Where("name = ?", "revision-probe").Take(&channel).Error)
 	assert.Equal(t, "gateway-revision-commit-probe", channel.Key)
 
 	var outbox GatewayConfigOutbox
-	require.NoError(t, DB.Where("routing_revision = ?", revision).Take(&outbox).Error)
+	require.NoError(t, rootmodel.DB.Where("routing_revision = ?", revision).Take(&outbox).Error)
 	assert.Nil(t, outbox.PublishedAt, "a committed revision is not published yet")
 	assert.Zero(t, outbox.PublishAttempts)
 	assert.Empty(t, outbox.LastPublishErrorClass)
@@ -121,16 +123,16 @@ func TestGatewayConfigRevisionRollsBackEverythingOnMutatorFailure(t *testing.T) 
 	assert.Empty(t, outboxRevisions(t))
 
 	var found int64
-	require.NoError(t, DB.Model(&Channel{}).Where("name = ?", "revision-rollback-probe").Count(&found).Error)
+	require.NoError(t, rootmodel.DB.Model(&Channel{}).Where("name = ?", "revision-rollback-probe").Count(&found).Error)
 	assert.Zero(t, found, "domain write rolls back with the revision")
 }
 
 func TestGatewayConfigRevisionRejectsMissingSingletonRow(t *testing.T) {
-	require.NoError(t, DB.Exec("DELETE FROM gateway_config_outboxes").Error)
-	require.NoError(t, DB.Exec("DELETE FROM gateway_config_revisions").Error)
+	require.NoError(t, rootmodel.DB.Exec("DELETE FROM gateway_config_outboxes").Error)
+	require.NoError(t, rootmodel.DB.Exec("DELETE FROM gateway_config_revisions").Error)
 	t.Cleanup(func() {
-		DB.Exec("DELETE FROM gateway_config_outboxes")
-		DB.Exec("DELETE FROM gateway_config_revisions")
+		rootmodel.DB.Exec("DELETE FROM gateway_config_outboxes")
+		rootmodel.DB.Exec("DELETE FROM gateway_config_revisions")
 	})
 
 	revision, err := MutateGatewayRouting(func(tx *gorm.DB) error { return nil })
@@ -183,7 +185,7 @@ func TestGatewayConfigOutboxRejectsDuplicateRevision(t *testing.T) {
 	revision, err := MutateGatewayRouting(func(tx *gorm.DB) error { return nil })
 	require.NoError(t, err)
 
-	err = DB.Create(&GatewayConfigOutbox{RoutingRevision: revision}).Error
+	err = rootmodel.DB.Create(&GatewayConfigOutbox{RoutingRevision: revision}).Error
 	require.Error(t, err, "routing_revision is unique so a revision cannot be announced twice")
 	assert.Equal(t, []int64{revision}, outboxRevisions(t))
 }

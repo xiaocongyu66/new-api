@@ -8,11 +8,12 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service"
 )
 
-func FetchCodexChannelModels(channel *model.Channel) ([]string, error) {
+func FetchCodexChannelModels(channel *catalogmodel.Channel) ([]string, error) {
 	if channel == nil || channel.Type != constant.ChannelTypeCodex {
 		return nil, fmt.Errorf("channel type is not Codex")
 	}
@@ -20,7 +21,7 @@ func FetchCodexChannelModels(channel *model.Channel) ([]string, error) {
 		return nil, fmt.Errorf("codex channel does not support multi-key model discovery")
 	}
 
-	client, err := NewProxyHttpClient(channel.GetSetting().Proxy)
+	client, err := egressservice.NewProxyHttpClient(channel.GetSetting().Proxy)
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +42,7 @@ func FetchCodexChannelModels(channel *model.Channel) ([]string, error) {
 
 func fetchCodexChannelModels(
 	ctx context.Context,
-	channel *model.Channel,
+	channel *catalogmodel.Channel,
 	baseURL string,
 	client *http.Client,
 	clientVersion string,

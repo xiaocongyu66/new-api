@@ -4,28 +4,29 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 func TestProxyNodeStorageEncryptsAndRoundTrips(t *testing.T) {
-	previousDB := model.DB
+	previousDB := rootmodel.DB
 	previousSecret := common.CryptoSecret
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.ProxyNode{}))
-	model.DB = db
+	require.NoError(t, db.AutoMigrate(&catalogmodel.ProxyNode{}))
+	rootmodel.DB = db
 	common.CryptoSecret = "test-secret"
-	t.Cleanup(func() { model.DB = previousDB; common.CryptoSecret = previousSecret })
+	t.Cleanup(func() { rootmodel.DB = previousDB; common.CryptoSecret = previousSecret })
 
 	node, err := CreateProxyNode(ProxyNodeInput{
 		Name:       "edge",
 		Enabled:    true,
 		Proxy:      "http://user:pass@example.com:8080",
-		ScopeType:  model.ProxyNodeScopeAll,
+		ScopeType:  catalogmodel.ProxyNodeScopeAll,
 		ScopeValue: "",
 	})
 	require.NoError(t, err)

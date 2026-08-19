@@ -9,6 +9,9 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 
 	"gorm.io/gorm"
+	rootmodel "github.com/QuantumNous/new-api/model"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	usagemodel "github.com/QuantumNous/new-api/internal/usage/model"
 )
 
 type Redemption struct {
@@ -28,7 +31,7 @@ type Redemption struct {
 
 func GetAllRedemptions(startIdx int, num int) (redemptions []*Redemption, total int64, err error) {
 	// 开始事务
-	tx := DB.Begin()
+	tx := rootmodel.DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
 	}
@@ -61,7 +64,7 @@ func GetAllRedemptions(startIdx int, num int) (redemptions []*Redemption, total 
 }
 
 func SearchRedemptions(keyword string, status string, startIdx int, num int) (redemptions []*Redemption, total int64, err error) {
-	tx := DB.Begin()
+	tx := rootmodel.DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
 	}
@@ -130,7 +133,7 @@ func GetRedemptionById(id int) (*Redemption, error) {
 	}
 	redemption := Redemption{Id: id}
 	var err error = nil
-	err = DB.First(&redemption, "id = ?", id).Error
+	err = rootmodel.DB.First(&redemption, "id = ?", id).Error
 	return &redemption, err
 }
 
@@ -148,8 +151,8 @@ func Redeem(key string, userId int) (quota int, err error) {
 		keyCol = `"key"`
 	}
 	common.RandomSleep()
-	err = DB.Transaction(func(tx *gorm.DB) error {
-		err := lockForUpdate(tx).Where(keyCol+" = ?", key).First(redemption).Error
+	err = rootmodel.DB.Transaction(func(tx *gorm.DB) error {
+		err := rootmodel.LockForUpdate(tx).Where(keyCol+" = ?", key).First(redemption).Error
 		if err != nil {
 			return errors.New("无效的兑换码")
 		}
@@ -175,38 +178,38 @@ func Redeem(key string, userId int) (quota int, err error) {
 		if result.RowsAffected == 0 {
 			return errors.New("该兑换码已被使用")
 		}
-		return tx.Model(&User{}).Where("id = ?", userId).Update("quota", gorm.Expr("quota + ?", redemption.Quota)).Error
+		return tx.Model(&identitymodel.User{}).Where("id = ?", userId).Update("quota", gorm.Expr("quota + ?", redemption.Quota)).Error
 	})
 	if err != nil {
 		common.SysError("redemption failed: " + err.Error())
-		return 0, ErrRedeemFailed
+		return 0, rootmodel.ErrRedeemFailed
 	}
-	syncCreditUserQuotaCache(userId, redemption.Quota, "redemption")
-	RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id))
+	identitymodel.SyncCreditUserQuotaCache(userId, redemption.Quota, "redemption")
+	usagemodel.RecordLog(userId, usagemodel.LogTypeTopup, fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id))
 	return redemption.Quota, nil
 }
 
 func (redemption *Redemption) Insert() error {
 	var err error
-	err = DB.Create(redemption).Error
+	err = rootmodel.DB.Create(redemption).Error
 	return err
 }
 
 func (redemption *Redemption) SelectUpdate() error {
 	// This can update zero values
-	return DB.Model(redemption).Select("redeemed_time", "status").Updates(redemption).Error
+	return rootmodel.DB.Model(redemption).Select("redeemed_time", "status").Updates(redemption).Error
 }
 
 // Update Make sure your token's fields is completed, because this will update non-zero values
 func (redemption *Redemption) Update() error {
 	var err error
-	err = DB.Model(redemption).Select("name", "status", "quota", "redeemed_time", "expired_time").Updates(redemption).Error
+	err = rootmodel.DB.Model(redemption).Select("name", "status", "quota", "redeemed_time", "expired_time").Updates(redemption).Error
 	return err
 }
 
 func (redemption *Redemption) Delete() error {
 	var err error
-	err = DB.Delete(redemption).Error
+	err = rootmodel.DB.Delete(redemption).Error
 	return err
 }
 
@@ -215,7 +218,7 @@ func DeleteRedemptionById(id int) (err error) {
 		return errors.New("id 为空！")
 	}
 	redemption := Redemption{Id: id}
-	err = DB.Where(redemption).First(&redemption).Error
+	err = rootmodel.DB.Where(redemption).First(&redemption).Error
 	if err != nil {
 		return err
 	}
@@ -224,6 +227,6 @@ func DeleteRedemptionById(id int) (err error) {
 
 func DeleteInvalidRedemptions() (int64, error) {
 	now := common.GetTimestamp()
-	result := DB.Where("status IN ? OR (status = ? AND expired_time != 0 AND expired_time < ?)", []int{common.RedemptionCodeStatusUsed, common.RedemptionCodeStatusDisabled}, common.RedemptionCodeStatusEnabled, now).Delete(&Redemption{})
+	result := rootmodel.DB.Where("status IN ? OR (status = ? AND expired_time != 0 AND expired_time < ?)", []int{common.RedemptionCodeStatusUsed, common.RedemptionCodeStatusDisabled}, common.RedemptionCodeStatusEnabled, now).Delete(&Redemption{})
 	return result.RowsAffected, result.Error
 }

@@ -8,7 +8,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/relay/channel/ai360"
 	"github.com/QuantumNous/new-api/relay/channel/lingyiwanwu"
@@ -18,11 +17,13 @@ import (
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	catalogservice "github.com/QuantumNous/new-api/internal/catalog/service"
 )
 
 // https://platform.openai.com/docs/api-reference/models/list
@@ -130,7 +131,7 @@ func channelOwnerName(channelType int) string {
 }
 
 func getPreferredModelOwners(modelNames []string, groups []string) map[string]string {
-	channelTypes, err := model.GetPreferredModelOwnerChannelTypes(modelNames, groups)
+	channelTypes, err := catalogmodel.GetPreferredModelOwnerChannelTypes(modelNames, groups)
 	if err != nil {
 		common.SysLog(fmt.Sprintf("GetPreferredModelOwnerChannelTypes error: %v", err))
 		return map[string]string{}
@@ -166,7 +167,7 @@ func buildOpenAIModel(modelName string, ownerByModel map[string]string) dto.Open
 	if owner, ok := ownerByModel[modelName]; ok && owner != "" {
 		oaiModel.OwnedBy = owner
 	}
-	oaiModel.SupportedEndpointTypes = model.GetModelSupportEndpointTypes(modelName)
+	oaiModel.SupportedEndpointTypes = catalogmodel.GetModelSupportEndpointTypes(modelName)
 	return oaiModel
 }
 
@@ -181,7 +182,7 @@ func getModelListGroups(c *gin.Context) (modelListGroups, error) {
 	userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 	if userGroup == "" && (tokenGroup == "" || tokenGroup == "auto") {
 		var err error
-		userGroup, err = model.GetUserGroup(c.GetInt("id"), false)
+		userGroup, err = identitymodel.GetUserGroup(c.GetInt("id"), false)
 		if err != nil {
 			return modelListGroups{}, err
 		}
@@ -191,7 +192,7 @@ func getModelListGroups(c *gin.Context) (modelListGroups, error) {
 		return modelListGroups{
 			userGroup:   userGroup,
 			tokenGroup:  tokenGroup,
-			ownerGroups: service.GetRequestAutoGroups(c, userGroup),
+			ownerGroups: catalogservice.GetRequestAutoGroups(c, userGroup),
 		}, nil
 	}
 
@@ -211,7 +212,7 @@ func ListModels(c *gin.Context, modelType int) {
 	if !acceptUnsetRatioModel {
 		userId := c.GetInt("id")
 		if userId > 0 {
-			userSettings, _ := model.GetUserSetting(userId, false)
+			userSettings, _ := identitymodel.GetUserSetting(userId, false)
 			if userSettings.AcceptUnsetRatioModel {
 				acceptUnsetRatioModel = true
 			}
@@ -239,7 +240,7 @@ func ListModels(c *gin.Context, modelType int) {
 			tokenModelLimit = map[string]bool{}
 		}
 	}
-	models := service.GetGroupsEnabledModels(ownerGroups)
+	models := catalogservice.GetGroupsEnabledModels(ownerGroups)
 	for _, modelName := range models {
 		if modelLimitEnable {
 			matchingName := ratio_setting.FormatMatchingModelName(modelName)
@@ -323,7 +324,7 @@ func DashboardListModels(c *gin.Context) {
 func EnabledListModels(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"success": true,
-		"data":    model.GetEnabledModels(),
+		"data":    catalogmodel.GetEnabledModels(),
 	})
 }
 

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
 
@@ -21,7 +20,9 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
-)
+	"github.com/QuantumNous/new-api/modelapi"
+	taskmodel "github.com/QuantumNous/new-api/internal/task/model"
+	egressservice "github.com/QuantumNous/new-api/internal/egress/service")
 
 // https://platform.minimaxi.com/docs/api-reference/video-generation-intro
 type TaskAdaptor struct {
@@ -128,7 +129,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+key)
 
-	client, err := service.GetHttpClientWithProxy(proxy)
+	client, err := egressservice.GetHttpClientWithProxy(proxy)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
 	}
@@ -195,36 +196,36 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	} else {
 		taskResult.Code = resTask.BaseResp.StatusCode
 		taskResult.Reason = resTask.BaseResp.StatusMsg
-		taskResult.Status = model.TaskStatusFailure
+		taskResult.Status = taskmodel.TaskStatusFailure
 		taskResult.Progress = "100%"
 	}
 
 	switch resTask.Status {
 	case TaskStatusPreparing, TaskStatusQueueing, TaskStatusProcessing:
-		taskResult.Status = model.TaskStatusInProgress
+		taskResult.Status = taskmodel.TaskStatusInProgress
 		taskResult.Progress = "30%"
 		if resTask.Status == TaskStatusProcessing {
 			taskResult.Progress = "50%"
 		}
 	case TaskStatusSuccess:
-		taskResult.Status = model.TaskStatusSuccess
+		taskResult.Status = taskmodel.TaskStatusSuccess
 		taskResult.Progress = "100%"
 		taskResult.Url = a.buildVideoURL(resTask.TaskID, resTask.FileID)
 	case TaskStatusFailed:
-		taskResult.Status = model.TaskStatusFailure
+		taskResult.Status = taskmodel.TaskStatusFailure
 		taskResult.Progress = "100%"
 		if taskResult.Reason == "" {
 			taskResult.Reason = "task failed"
 		}
 	default:
-		taskResult.Status = model.TaskStatusInProgress
+		taskResult.Status = taskmodel.TaskStatusInProgress
 		taskResult.Progress = "30%"
 	}
 
 	return &taskResult, nil
 }
 
-func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error) {
+func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *modelapi.Task) ([]byte, error) {
 	var hailuoResp QueryTaskResponse
 	if err := common.Unmarshal(originTask.Data, &hailuoResp); err != nil {
 		return nil, errors.Wrap(err, "unmarshal hailuo task data failed")
@@ -261,7 +262,7 @@ func (a *TaskAdaptor) buildVideoURL(_, fileID string) string {
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+a.apiKey)
 
-	resp, err := service.GetHttpClient().Do(req)
+	resp, err := egressservice.GetHttpClient().Do(req)
 	if err != nil {
 		return ""
 	}

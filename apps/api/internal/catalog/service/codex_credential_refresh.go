@@ -9,7 +9,8 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/model"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 type CodexCredentialRefreshOptions struct {
@@ -39,8 +40,8 @@ func parseCodexOAuthKey(raw string) (*CodexOAuthKey, error) {
 	return &key, nil
 }
 
-func RefreshCodexChannelCredential(ctx context.Context, channelID int, opts CodexCredentialRefreshOptions) (*CodexOAuthKey, *model.Channel, error) {
-	ch, err := model.GetChannelById(channelID, true)
+func RefreshCodexChannelCredential(ctx context.Context, channelID int, opts CodexCredentialRefreshOptions) (*CodexOAuthKey, *catalogmodel.Channel, error) {
+	ch, err := catalogmodel.GetChannelById(channelID, true)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -91,12 +92,13 @@ func RefreshCodexChannelCredential(ctx context.Context, channelID int, opts Code
 		return nil, nil, err
 	}
 
-	if err := model.DB.Model(&model.Channel{}).Where("id = ?", ch.Id).Update("key", string(encoded)).Error; err != nil {
+	if err := rootmodel.DB.Model(&catalogmodel.Channel{}).Where("id = ?", ch.Id).Update("key", string(encoded)).Error; err != nil {
 		return nil, nil, err
 	}
 
 	if opts.ResetCaches {
-		model.InitChannelCache()
+		catalogmodel.InitChannelCache(
+)
 	}
 
 	return oauthKey, ch, nil

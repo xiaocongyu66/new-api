@@ -11,8 +11,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
+	common "github.com/QuantumNous/new-api/common"
 )
 
 type ProxyNodeInput struct {
@@ -23,12 +24,12 @@ type ProxyNodeInput struct {
 	ScopeValue string
 }
 
-func CreateProxyNode(input ProxyNodeInput) (*model.ProxyNode, error) {
+func CreateProxyNode(input ProxyNodeInput) (*catalogmodel.ProxyNode, error) {
 	parsed, err := ParseProxyNodeShareLink(input.Proxy)
 	if err != nil {
 		return nil, err
 	}
-	scopeType, scopeValue, err := model.NormalizeProxyNodeScope(input.ScopeType, input.ScopeValue)
+	scopeType, scopeValue, err := catalogmodel.NormalizeProxyNodeScope(input.ScopeType, input.ScopeValue)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +37,7 @@ func CreateProxyNode(input ProxyNodeInput) (*model.ProxyNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	node := &model.ProxyNode{
+	node := &catalogmodel.ProxyNode{
 		Name:                 strings.TrimSpace(input.Name),
 		Enabled:              input.Enabled,
 		EncryptedProxyConfig: encrypted,
@@ -48,13 +49,13 @@ func CreateProxyNode(input ProxyNodeInput) (*model.ProxyNode, error) {
 	if node.Name == "" {
 		return nil, fmt.Errorf("proxy node name must not be empty")
 	}
-	if err := model.DB.Create(node).Error; err != nil {
+	if err := rootmodel.DB.Create(node).Error; err != nil {
 		return nil, err
 	}
 	return node, nil
 }
 
-func DecryptProxyNodeConfig(node *model.ProxyNode) (*ProxyNodeParsed, error) {
+func DecryptProxyNodeConfig(node *catalogmodel.ProxyNode) (*ProxyNodeParsed, error) {
 	if node == nil {
 		return nil, fmt.Errorf("proxy node is nil")
 	}
@@ -123,7 +124,7 @@ type ProxyNodeBatchResult struct {
 	Failed  int                     `json:"failed"`
 	Skipped int                     `json:"skipped"`
 	Errors  []string                `json:"errors"`
-	Items   []model.ProxyNodePublic `json:"items"`
+	Items   []catalogmodel.ProxyNodePublic `json:"items"`
 }
 
 func CreateProxyNodesBatch(input ProxyNodeInput, namePrefix, proxyText string, proxyURLs []string) (*ProxyNodeBatchResult, error) {
@@ -135,7 +136,7 @@ func CreateProxyNodesBatch(input ProxyNodeInput, namePrefix, proxyText string, p
 	if err != nil {
 		return nil, err
 	}
-	result := &ProxyNodeBatchResult{Skipped: skipped, Errors: []string{}, Items: []model.ProxyNodePublic{}}
+	result := &ProxyNodeBatchResult{Skipped: skipped, Errors: []string{}, Items: []catalogmodel.ProxyNodePublic{}}
 	namePrefix = strings.TrimSpace(namePrefix)
 	if namePrefix == "" {
 		namePrefix = "Proxy Node"
@@ -160,7 +161,7 @@ func SetProxyNodesEnabled(ids []uint, enabled bool) (int64, error) {
 	if len(ids) == 0 {
 		return 0, nil
 	}
-	result := model.DB.Model(&model.ProxyNode{}).Where("id IN ?", ids).Update("enabled", enabled)
+	result := rootmodel.DB.Model(&catalogmodel.ProxyNode{}).Where("id IN ?", ids).Update("enabled", enabled)
 	return result.RowsAffected, result.Error
 }
 
@@ -168,6 +169,6 @@ func ClearProxyNodeErrors(ids []uint) (int64, error) {
 	if len(ids) == 0 {
 		return 0, nil
 	}
-	result := model.DB.Model(&model.ProxyNode{}).Where("id IN ?", ids).Updates(map[string]any{"last_error": "", "failure_count": 0, "cooldown_until": nil})
+	result := rootmodel.DB.Model(&catalogmodel.ProxyNode{}).Where("id IN ?", ids).Updates(map[string]any{"last_error": "", "failure_count": 0, "cooldown_until": nil})
 	return result.RowsAffected, result.Error
 }

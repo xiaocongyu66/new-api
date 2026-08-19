@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	rootmodel "github.com/QuantumNous/new-api/model"
 )
 
 func TestUpdateOptionRejectsNegativeClaudeDefaultMaxTokens(t *testing.T) {
@@ -21,7 +22,7 @@ func TestUpdateOptionRejectsNegativeClaudeDefaultMaxTokens(t *testing.T) {
 		strings.NewReader(`{"key":"claude.default_max_tokens","value":"{\"default\":-1}"}`),
 	)
 
-	UpdateOption(context)
+	rootmodel.UpdateOption(context)
 
 	assert.Equal(t, http.StatusOK, response.Code)
 	var payload struct {

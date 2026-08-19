@@ -2,28 +2,29 @@ package controller
 
 import (
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	catalogcontroller "github.com/QuantumNous/new-api/internal/catalog/controller"
 )
 
 func GetSubscription(c *gin.Context) {
 	var remainQuota int
 	var usedQuota int
 	var err error
-	var token *model.Token
+	var token *identitymodel.Token
 	var expiredTime int64
 	if common.DisplayTokenStatEnabled {
 		tokenId := c.GetInt("token_id")
-		token, err = model.GetTokenById(tokenId)
+		token, err = identitymodel.GetTokenById(tokenId)
 		expiredTime = token.ExpiredTime
 		remainQuota = token.RemainQuota
 		usedQuota = token.UsedQuota
 	} else {
 		userId := c.GetInt("id")
-		remainQuota, err = model.GetUserQuota(userId, false)
-		usedQuota, err = model.GetUserUsedQuota(userId)
+		remainQuota, err = identitymodel.GetUserQuota(userId, false)
+		usedQuota, err = identitymodel.GetUserUsedQuota(userId)
 	}
 	if expiredTime <= 0 {
 		expiredTime = 0
@@ -56,7 +57,7 @@ func GetSubscription(c *gin.Context) {
 	if token != nil && token.UnlimitedQuota {
 		amount = 100000000
 	}
-	subscription := OpenAISubscriptionResponse{
+	subscription := catalogcontroller.OpenAISubscriptionResponse{
 		Object:             "billing_subscription",
 		HasPaymentMethod:   true,
 		SoftLimitUSD:       amount,
@@ -71,14 +72,14 @@ func GetSubscription(c *gin.Context) {
 func GetUsage(c *gin.Context) {
 	var quota int
 	var err error
-	var token *model.Token
+	var token *identitymodel.Token
 	if common.DisplayTokenStatEnabled {
 		tokenId := c.GetInt("token_id")
-		token, err = model.GetTokenById(tokenId)
+		token, err = identitymodel.GetTokenById(tokenId)
 		quota = token.UsedQuota
 	} else {
 		userId := c.GetInt("id")
-		quota, err = model.GetUserUsedQuota(userId)
+		quota, err = identitymodel.GetUserUsedQuota(userId)
 	}
 	if err != nil {
 		openAIError := types.OpenAIError{
@@ -99,7 +100,7 @@ func GetUsage(c *gin.Context) {
 	default:
 		amount = amount / common.QuotaPerUnit
 	}
-	usage := OpenAIUsageResponse{
+	usage := catalogcontroller.OpenAIUsageResponse{
 		Object:     "list",
 		TotalUsage: amount * 100,
 	}

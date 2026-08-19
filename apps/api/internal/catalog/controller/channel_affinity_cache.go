@@ -4,12 +4,12 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
+	catalogservice "github.com/QuantumNous/new-api/internal/catalog/service"
 )
 
 func GetChannelAffinityCacheStats(c *gin.Context) {
-	stats := service.GetChannelAffinityCacheStats()
+	stats := catalogservice.GetChannelAffinityCacheStats()
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -22,7 +22,7 @@ func ClearChannelAffinityCache(c *gin.Context) {
 	ruleName := strings.TrimSpace(c.Query("rule_name"))
 
 	if all == "true" {
-		deleted := service.ClearChannelAffinityCacheAll()
+		deleted := catalogservice.ClearChannelAffinityCacheAll()
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"message": "",
@@ -41,7 +41,7 @@ func ClearChannelAffinityCache(c *gin.Context) {
 		return
 	}
 
-	deleted, err := service.ClearChannelAffinityCacheByRuleName(ruleName)
+	deleted, err := catalogservice.ClearChannelAffinityCacheByRuleName(ruleName)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
@@ -79,7 +79,7 @@ func GetChannelAffinityUsageCacheStats(c *gin.Context) {
 		return
 	}
 
-	stats := service.GetChannelAffinityUsageCacheStats(ruleName, usingGroup, keyFp)
+	stats := catalogservice.GetChannelAffinityUsageCacheStats(ruleName, usingGroup, keyFp)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

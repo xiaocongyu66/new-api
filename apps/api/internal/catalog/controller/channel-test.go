@@ -17,7 +17,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/middleware"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -25,7 +24,6 @@ import (
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	hosttypes "github.com/QuantumNous/new-api/types"
@@ -34,6 +32,17 @@ import (
 	"github.com/tidwall/gjson"
 
 	"github.com/gin-gonic/gin"
+	catalogmodel "github.com/QuantumNous/new-api/internal/catalog/model"
+	identitymodel "github.com/QuantumNous/new-api/internal/identity/model"
+	rootmodel "github.com/QuantumNous/new-api/model"
+	billingservice "github.com/QuantumNous/new-api/internal/billing/service"
+	usageservice "github.com/QuantumNous/new-api/internal/usage/service"
+	catalogservice "github.com/QuantumNous/new-api/internal/catalog/service"
+	usagemodel "github.com/QuantumNous/new-api/internal/usage/model"
+	rootservice "github.com/QuantumNous/new-api/service"
+	topcontroller "github.com/QuantumNous/new-api/controller"
+	opsmodel "github.com/QuantumNous/new-api/internal/ops/model"
+	opsservice "github.com/QuantumNous/new-api/internal/ops/service"
 )
 
 type testResult struct {
@@ -42,7 +51,7 @@ type testResult struct {
 	newAPIError *types.NewAPIError
 }
 
-func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointType string) string {
+func normalizeChannelTestEndpoint(channel *catalogmodel.Channel, modelName, endpointType string) string {
 	normalized := strings.TrimSpace(endpointType)
 	if normalized != "" {
 		return normalized
@@ -63,8 +72,8 @@ func resolveChannelTestUserID(c *gin.Context) (int, error) {
 		}
 	}
 
-	var rootUser model.User
-	if err := model.DB.Select("id").Where("role = ?", common.RoleRootUser).First(&rootUser).Error; err != nil {
+	var rootUser identitymodel.User
+	if err := rootmodel.DB.Select("id").Where("role = ?", common.RoleRootUser).First(&rootUser).Error; err != nil {
 		return 0, fmt.Errorf("failed to resolve channel test user: %w", err)
 	}
 	if rootUser.Id == 0 {
@@ -73,7 +82,7 @@ func resolveChannelTestUserID(c *gin.Context) (int, error) {
 	return rootUser.Id, nil
 }
 
-func testChannel(ctx context.Context, channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool) testResult {
+func testChannel(ctx context.Context, channel *catalogmodel.Channel, testUserID int, testModel string, endpointType string, isStream bool) testResult {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -162,7 +171,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 
 	c.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, requestPath, nil)
 
-	cache, err := model.GetUserCache(testUserID)
+	cache, err := identitymodel.GetUserCache(testUserID)
 	if err != nil {
 		return testResult{
 			localErr:    err,
@@ -176,7 +185,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Set("channel", channel.Type)
 	c.Set("base_url", channel.GetBaseURL())
-	group, _ := model.GetUserGroup(testUserID, false)
+	group, _ := identitymodel.GetUserGroup(testUserID, false)
 	c.Set("group", group)
 
 	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, testModel)
@@ -449,7 +458,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	if resp != nil {
 		httpResp = resp.(*http.Response)
 		if httpResp.StatusCode != http.StatusOK {
-			err := service.RelayErrorHandler(c.Request.Context(), httpResp, true)
+			err := rootservice.RelayErrorHandler(c.Request.Context(), httpResp, true)
 			common.SysError(fmt.Sprintf(
 				"channel test bad response: channel_id=%d name=%s type=%d model=%s endpoint_type=%s status=%d err=%v",
 				channel.Id,
@@ -506,7 +515,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	milliseconds := tok.Sub(tik).Milliseconds()
 	consumedTime := float64(milliseconds) / 1000.0
 	other := buildTestLogOther(c, info, priceData, usage, tieredResult)
-	model.RecordConsumeLog(c, testUserID, model.RecordConsumeLogParams{
+	usagemodel.RecordConsumeLog(c, testUserID, usagemodel.RecordConsumeLogParams{
 		ChannelId:        channel.Id,
 		PromptTokens:     usage.PromptTokens,
 		CompletionTokens: usage.CompletionTokens,
@@ -544,7 +553,7 @@ func settleTestQuota(info *relaycommon.RelayInfo, priceData hosttypes.PriceData,
 	if usage != nil && info != nil && info.TieredBillingSnapshot != nil {
 		isClaudeUsageSemantic := usage.UsageSemantic == "anthropic" || info.GetFinalRequestRelayFormat() == types.RelayFormatClaude
 		usedVars := billingexpr.UsedVars(info.TieredBillingSnapshot.ExprString)
-		if ok, quota, result := service.TryTieredSettle(info, service.BuildTieredTokenParams(usage, isClaudeUsageSemantic, usedVars)); ok {
+		if ok, quota, result := billingservice.TryTieredSettle(info, billingservice.BuildTieredTokenParams(usage, isClaudeUsageSemantic, usedVars)); ok {
 			return quota, result
 		}
 	}
@@ -563,10 +572,10 @@ func settleTestQuota(info *relaycommon.RelayInfo, priceData hosttypes.PriceData,
 }
 
 func buildTestLogOther(c *gin.Context, info *relaycommon.RelayInfo, priceData hosttypes.PriceData, usage *dto.Usage, tieredResult *billingexpr.TieredResult) map[string]interface{} {
-	other := service.GenerateTextOtherInfo(c, info, priceData.ModelRatio, priceData.GroupRatioInfo.GroupRatio, priceData.CompletionRatio,
+	other := usageservice.GenerateTextOtherInfo(c, info, priceData.ModelRatio, priceData.GroupRatioInfo.GroupRatio, priceData.CompletionRatio,
 		usage.PromptTokensDetails.CachedTokens, priceData.CacheRatio, priceData.ModelPrice, priceData.GroupRatioInfo.GroupSpecialRatio)
 	if tieredResult != nil {
-		service.InjectTieredBillingInfo(other, info, tieredResult)
+		usageservice.InjectTieredBillingInfo(other, info, tieredResult)
 	}
 	return other
 }
@@ -668,7 +677,7 @@ func validateTestResponseBody(respBody []byte, isStream bool) error {
 	return nil
 }
 
-func shouldUseStreamForAutomaticChannelTest(channel *model.Channel) bool {
+func shouldUseStreamForAutomaticChannelTest(channel *catalogmodel.Channel) bool {
 	return channel != nil && channel.Type == constant.ChannelTypeCodex
 }
 
@@ -701,7 +710,7 @@ func detectErrorMessageFromJSONBytes(jsonBytes []byte) string {
 	return message
 }
 
-func buildTestRequest(model string, endpointType string, channel *model.Channel, isStream bool) dto.Request {
+func buildTestRequest(model string, endpointType string, channel *catalogmodel.Channel, isStream bool) dto.Request {
 	testResponsesInput := json.RawMessage(`[{"role":"user","content":"hi"}]`)
 
 	// 根据端点类型构建不同的测试请求
@@ -859,9 +868,9 @@ func TestChannel(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	channel, err := model.CacheGetChannel(channelId)
+	channel, err := catalogmodel.CacheGetChannel(channelId)
 	if err != nil {
-		channel, err = model.GetChannelById(channelId, true)
+		channel, err = catalogmodel.GetChannelById(channelId, true)
 		if err != nil {
 			common.ApiError(c, err)
 			return
@@ -918,9 +927,9 @@ func TestChannel(c *gin.Context) {
 	})
 }
 
-// channelTestSummary records the outcome of one channel test cycle so the
+// ChannelTestSummary records the outcome of one channel test cycle so the
 // system task can persist a per-run result for history.
-type channelTestSummary struct {
+type ChannelTestSummary struct {
 	Tested    int `json:"tested"`
 	Succeeded int `json:"succeeded"`
 	Failed    int `json:"failed"`
@@ -932,8 +941,8 @@ type channelTestSummary struct {
 // cancellation so a system-task runner that loses its lease stops promptly. When
 // report is non-nil it is called after each channel with (processed, total) so
 // the system task can surface progress.
-func performChannelTests(ctx context.Context, channels []*model.Channel, testUserID int, allowDisable bool, report func(processed, total int)) channelTestSummary {
-	summary := channelTestSummary{}
+func performChannelTests(ctx context.Context, channels []*catalogmodel.Channel, testUserID int, allowDisable bool, report func(processed, total int)) ChannelTestSummary {
+	summary := ChannelTestSummary{}
 	var disableThreshold = int64(common.ChannelDisableThreshold * 1000)
 	if disableThreshold == 0 {
 		disableThreshold = 10000000 // a impossible value
@@ -965,7 +974,7 @@ func performChannelTests(ctx context.Context, channels []*model.Channel, testUse
 		newAPIError := result.newAPIError
 		// request error disables the channel
 		if newAPIError != nil {
-			shouldBanChannel = service.ShouldDisableChannel(result.newAPIError)
+			shouldBanChannel = catalogservice.ShouldDisableChannel(result.newAPIError)
 		}
 
 		// 当错误检查通过，才检查响应时间
@@ -985,13 +994,13 @@ func performChannelTests(ctx context.Context, channels []*model.Channel, testUse
 
 		// disable channel
 		if allowDisable && isChannelEnabled && shouldBanChannel && channel.GetAutoBan() {
-			processChannelError(result.context, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
+			topcontroller.ProcessChannelError(result.context, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
 			summary.Disabled++
 		}
 
 		// enable channel
-		if result.localErr == nil && !isChannelEnabled && service.ShouldEnableChannel(newAPIError, channel.Status) {
-			service.EnableChannel(channel.Id, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.Name)
+		if result.localErr == nil && !isChannelEnabled && catalogservice.ShouldEnableChannel(newAPIError, channel.Status) {
+			catalogservice.EnableChannel(channel.Id, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.Name)
 			summary.Enabled++
 		}
 
@@ -1022,14 +1031,14 @@ func performChannelTests(ctx context.Context, channels []*model.Channel, testUse
 // trigger passes ChannelTestModeScheduledAll to test every channel. When notify
 // is set the root user is notified on completion. Cross-instance execution is
 // guarded by the system task per-type lock, so no process-local guard is needed.
-func runChannelTestTask(ctx context.Context, mode string, notify bool, report func(processed, total int)) (channelTestSummary, error) {
+func RunChannelTestTask(ctx context.Context, mode string, notify bool, report func(processed, total int)) (ChannelTestSummary, error) {
 	testUserID, err := resolveChannelTestUserID(nil)
 	if err != nil {
-		return channelTestSummary{}, err
+		return ChannelTestSummary{}, err
 	}
-	channels, err := model.GetAllChannels(0, 0, true, false)
+	channels, err := catalogmodel.GetAllChannels(0, 0, true, false)
 	if err != nil {
-		return channelTestSummary{}, err
+		return ChannelTestSummary{}, err
 	}
 	if strings.TrimSpace(mode) == "" {
 		mode = operation_setting.GetMonitorSetting().ChannelTestMode
@@ -1038,13 +1047,13 @@ func runChannelTestTask(ctx context.Context, mode string, notify bool, report fu
 	allowDisable := mode != operation_setting.ChannelTestModePassiveRecovery
 	summary := performChannelTests(ctx, selected, testUserID, allowDisable, report)
 	if notify && (ctx == nil || ctx.Err() == nil) {
-		service.NotifyRootUser(dto.NotifyTypeChannelTest, "通道测试完成", "所有通道测试已完成")
+		opsservice.NotifyRootUser(dto.NotifyTypeChannelTest, "通道测试完成", "所有通道测试已完成")
 	}
 	return summary, nil
 }
 
-func selectChannelsForAutomaticTest(channels []*model.Channel, mode string) []*model.Channel {
-	selected := make([]*model.Channel, 0, len(channels))
+func selectChannelsForAutomaticTest(channels []*catalogmodel.Channel, mode string) []*catalogmodel.Channel {
+	selected := make([]*catalogmodel.Channel, 0, len(channels))
 	for _, channel := range channels {
 		if channel.Status == common.ChannelStatusManuallyDisabled {
 			continue
@@ -1064,7 +1073,7 @@ func selectChannelsForAutomaticTest(channels []*model.Channel, mode string) []*m
 // test loop inline. If any channel_test task is already active, the manual run is
 // rejected so the caller does not mistake a scheduled run for this manual one.
 func TestAllChannels(c *gin.Context) {
-	task, created, err := service.EnqueueSystemTask(model.SystemTaskTypeChannelTest, channelTestTaskPayload{
+	task, created, err := rootservice.EnqueueSystemTask(opsmodel.SystemTaskTypeChannelTest, ChannelTestTaskPayload{
 		Mode:   operation_setting.ChannelTestModeScheduledAll,
 		Notify: true,
 	})
