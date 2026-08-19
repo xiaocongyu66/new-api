@@ -112,21 +112,19 @@ export function RouteLoadingFallback(props: RouteLoadingFallbackProps) {
     <div
       role='status'
       aria-live='polite'
-      className='flex min-h-[60vh] w-full flex-col gap-4 p-6'
+      className='flex w-full flex-col gap-4 p-4 sm:p-6'
     >
       <div className='flex items-center justify-between'>
         <SkeletonBlock
-          className={cn('h-7 w-40', props.titleClassName ?? '')}
+          className={cn('h-8 w-48 rounded-lg', props.titleClassName ?? '')}
         />
-        <SkeletonBlock className='h-8 w-24' />
-     </div>
-      <SkeletonBlock className='h-4 w-1/3' />
-      <div className='grid gap-3'>
-        <SkeletonBlock className='h-32 w-full rounded-xl' />
-        <SkeletonBlock className='h-24 w-full rounded-xl' />
-        <SkeletonBlock className='h-24 w-full rounded-xl' />
-     </div>
-   </div>
+        <SkeletonBlock className='h-8 w-24 rounded-lg' />
+      </div>
+      <div className='grid gap-3 sm:gap-4'>
+        <SkeletonBlock className='h-20 w-full rounded-xl' />
+        <SkeletonBlock className='h-64 w-full rounded-xl' />
+      </div>
+    </div>
   )
 }
 

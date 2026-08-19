@@ -102,8 +102,8 @@ const router = createRouter({
   defaultPreload: 'intent',
   defaultPreloadStaleTime: 0,
   defaultPendingComponent: RouteLoadingFallback,
-  defaultPendingMs: 200,
-  defaultPendingMinMs: 250,
+  defaultPendingMs: 150,
+  defaultPendingMinMs: 200,
 })
 
 // Register the router instance for type safety
