@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { Loader2, Plus, TestTube2 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -10,111 +10,140 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 
-import { createProxyNode } from "./proxy-node-api";
-import type { ProxyNodeRequest } from "./proxy-node-types";
+import { createProxyNodesBatch } from "./proxy-node-api";
+import type { ProxyNodeBatchRequest, ProxyNodeBatchResult } from "./proxy-node-types";
 
-const createDefaultForm = (): ProxyNodeRequest => ({
-  name: "",
+const createDefaultBatch = (): ProxyNodeBatchRequest => ({
+  name_prefix: "",
   enabled: true,
-  proxy: "",
+  proxy_text: "",
   scope_type: "all",
   scope_value: undefined,
 });
 
 export function ProxyNodeQuickAdd(props: { onAdded: () => void }) {
   const { t } = useTranslation();
-  const [form, setForm] = useState<ProxyNodeRequest>(createDefaultForm);
+  const [batch, setBatch] = useState<ProxyNodeBatchRequest>(createDefaultBatch);
 
   const mutation = useMutation({
-    mutationFn: (payload: ProxyNodeRequest) => createProxyNode(payload),
-    onSuccess: () => {
-      setForm(createDefaultForm());
+    mutationFn: (payload: ProxyNodeBatchRequest) =>
+      createProxyNodesBatch(payload),
+    onSuccess: (result: ProxyNodeBatchResult) => {
+      setBatch(createDefaultBatch());
       props.onAdded();
-      toast.success(t("Saved successfully"));
+      const { created, failed, skipped } = result;
+      if (created > 0) {
+        toast.success(
+          t("Created {{created}}, failed {{failed}}, skipped {{skipped}}", {
+            created,
+            failed,
+            skipped,
+          })
+        );
+      } else if (failed > 0 || skipped > 0) {
+        toast.error(
+          t("Failed to create any node ({{failed}} failed, {{skipped}} skipped)", {
+            failed,
+            skipped,
+          })
+        );
+      }
+      if (result.errors.length > 0) {
+        toast.error(result.errors.join("\n"));
+      }
     },
     onError: (error: Error) =>
-      toast.error(error.message || t("Failed to save")),
+      toast.error(error.message || t("Batch import failed")),
   });
 
+  const lines = useMemo(() => {
+    const seen = new Set<string>();
+    return batch.proxy_text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => {
+        if (!line || line.startsWith("#") || seen.has(line)) return false;
+        seen.add(line);
+        return true;
+      });
+  }, [batch.proxy_text]);
   const canSubmit =
-    !mutation.isPending &&
-    form.name.trim() !== "" &&
-    (form.proxy ?? "").trim() !== "";
+    !mutation.isPending && lines.length > 0 && lines.length <= 500;
 
   return (
     <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">{t("Quick Add Proxy Node")}</CardTitle>
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
+        <CardTitle className="text-base">{t("Batch Add")}</CardTitle>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled
+            title={t("Coming soon")}
+          >
+            <TestTube2 className="size-4" />
+            {t("Test")}
+          </Button>
+          <Button
+            type="button"
+            variant={batch.enabled ? "default" : "outline"}
+            size="sm"
+            onClick={() => setBatch({ ...batch, enabled: !batch.enabled })}
+          >
+            {batch.enabled ? t("Enabled") : t("Disabled")}
+          </Button>
+          <Button
+            onClick={() => {
+              mutation.mutate({
+                ...batch,
+                name_prefix: batch.name_prefix.trim(),
+                proxy_text: batch.proxy_text.trim(),
+              });
+            }}
+            disabled={!canSubmit}
+            size="sm"
+          >
+            {mutation.isPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Plus className="size-4" />
+            )}
+            {t("Add")}
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="grid gap-4 lg:grid-cols-12">
-          {/* Left col ≥50% */}
           <div className="space-y-3 lg:col-span-7">
-            {/* Top row: test + enable buttons (left) + Name input (right) */}
-            <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-[auto_auto_1fr] sm:items-center">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  /* ponytail: test-button wiring deferred; reserved slot for upcoming channel/probe integration */
-                }}
-              >
-                <TestTube2 className="size-4" />
-                {t("Test")}
-              </Button>
-              <Button
-                type="button"
-                variant={form.enabled ? "default" : "outline"}
-                size="sm"
-                onClick={() => setForm({ ...form, enabled: !form.enabled })}
-              >
-                {form.enabled ? t("Enabled") : t("Disabled")}
-              </Button>
-              <Input
-                id="quick-add-name"
-                value={form.name}
-                placeholder={t("Proxy node name")}
-                onChange={(event) =>
-                  setForm({ ...form, name: event.target.value })
-                }
-              />
-            </div>
-
-            {/* Socks5 link as Textarea */}
-            <Textarea
-              id="quick-add-proxy"
-              value={form.proxy ?? ""}
-              placeholder="socks5://…"
-              rows={3}
+            <Input
+              id="batch-add-name-prefix"
+              value={batch.name_prefix}
+              placeholder={t("Default: Proxy Node")}
               onChange={(event) =>
-                setForm({ ...form, proxy: event.target.value })
+                setBatch({ ...batch, name_prefix: event.target.value })
               }
             />
-
-            {/* Submit row */}
-            <div className="flex justify-end">
-              <Button
-                onClick={() => {
-                  mutation.mutate({
-                    ...form,
-                    name: form.name.trim(),
-                    proxy: (form.proxy ?? "").trim(),
-                  });
-                }}
-                disabled={!canSubmit}
-              >
-                {mutation.isPending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Plus className="size-4" />
-                )}
-                {t("Add")}
-              </Button>
-            </div>
+            <Textarea
+              id="batch-add-proxy-text"
+              value={batch.proxy_text}
+              placeholder={"socks5://…\nvmess://…"}
+              rows={8}
+              onChange={(event) =>
+                setBatch({ ...batch, proxy_text: event.target.value })
+              }
+            />
+            <p className="text-muted-foreground text-xs">
+              {t("{{count}} unique entries will be created", {
+                count: lines.length,
+              })}
+            </p>
+            {lines.length > 500 && (
+              <p className="text-destructive text-sm">
+                {t("Maximum 500 entries")}
+              </p>
+            )}
           </div>
-
-          {/* Right col ≥40% — Tabs only, no outer Label */}
           <div className="lg:col-span-5">
             <Tabs defaultValue="channel">
               <TabsList>

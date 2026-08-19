@@ -308,7 +308,7 @@ export function ProxyNodeView() {
       <ProxyNodeQuickAdd onAdded={invalidate} />
 
       <Card>
-        <CardHeader className="flex-row items-center justify-between gap-2">
+        <CardHeader className="flex-row flex-wrap items-center gap-3">
           <CardTitle className="text-base">{t("Proxy Nodes")}</CardTitle>
           <Select
             value={sortField}
