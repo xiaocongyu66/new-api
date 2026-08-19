@@ -305,11 +305,7 @@ export function ProxyNodeView() {
         />
       </div>
 
-      <ProxyNodeQuickAdd
-        channels={channelsQuery.data ?? []}
-        groups={groupsQuery.data?.data ?? []}
-        onAdded={invalidate}
-      />
+      <ProxyNodeQuickAdd onAdded={invalidate} />
 
       <Card>
         <CardHeader className="flex-row items-center justify-between gap-2">
