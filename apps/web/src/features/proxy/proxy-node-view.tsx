@@ -80,15 +80,7 @@ const emptyBatch = (): ProxyNodeBatchRequest => ({
   scope_value: "",
 });
 
-export function ProxyNodeView(props: {
-  nodesCount: number;
-  nodesRefreshing: boolean;
-  onRefresh: () => void;
-  onOpenAdd: () => void;
-  onOpenBatch: () => void;
-  onTestAll: () => void;
-  testingAll: boolean;
-}) {
+export function ProxyNodeView() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [editor, setEditor] = useState<EditorState | null>(null);
@@ -281,16 +273,7 @@ export function ProxyNodeView(props: {
         />
       </div>
 
-      <ProxyNodeQuickAdd
-        onAdded={invalidate}
-        nodesCount={props.nodesCount}
-        nodesRefreshing={props.nodesRefreshing}
-        onRefresh={props.onRefresh}
-        onOpenAdd={props.onOpenAdd}
-        onOpenBatch={props.onOpenBatch}
-        onTestAll={props.onTestAll}
-        testingAll={props.testingAll}
-      />
+      <ProxyNodeQuickAdd onAdded={invalidate} />
 
       <Card>
         <CardHeader>

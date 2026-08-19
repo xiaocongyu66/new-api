@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { Loader2, Plus, RefreshCw, TestTube2 } from "lucide-react";
+import { Loader2, Plus, TestTube2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -21,16 +21,7 @@ const createDefaultBatch = (): ProxyNodeBatchRequest => ({
   scope_value: undefined,
 });
 
-export function ProxyNodeQuickAdd(props: {
-  onAdded: () => void;
-  nodesCount: number;
-  nodesRefreshing: boolean;
-  onRefresh: () => void;
-  onOpenAdd: () => void;
-  onOpenBatch: () => void;
-  onTestAll: () => void;
-  testingAll: boolean;
-}) {
+export function ProxyNodeQuickAdd(props: { onAdded: () => void }) {
   const { t } = useTranslation();
   const [batch, setBatch] = useState<ProxyNodeBatchRequest>(createDefaultBatch);
 
@@ -84,43 +75,6 @@ export function ProxyNodeQuickAdd(props: {
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
         <CardTitle className="text-base">{t("Batch Add")}</CardTitle>
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={props.onRefresh}
-            disabled={props.nodesRefreshing}
-          >
-            <RefreshCw className="size-4" />
-            {t("Refresh")}
-          </Button>
-          <Button type="button" size="sm" onClick={props.onOpenAdd}>
-            <Plus className="size-4" />
-            {t("Add Proxy Node")}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={props.onOpenBatch}
-          >
-            <Plus className="size-4" />
-            {t("Batch Import")}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={props.onTestAll}
-            disabled={props.nodesCount === 0 || props.testingAll}
-          >
-            {props.testingAll ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <TestTube2 className="size-4" />
-            )}
-            {t("Test All Nodes")}
-          </Button>
           <Button
             type="button"
             variant="outline"

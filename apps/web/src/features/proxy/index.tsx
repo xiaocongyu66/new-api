@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Copy, Download, RefreshCw, Save } from 'lucide-react'
+import { Copy, Download, Loader2, Plus, RefreshCw, Save, TestTube2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchProxyNodes, testAllProxyNodes } from './proxy-node-api'
@@ -372,22 +372,77 @@ export function ProxyPage() {
           className='flex h-full min-h-0 flex-col'
         >
           <div className='flex shrink-0 flex-col gap-2 px-3 pt-3 pb-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-3 sm:gap-y-2 sm:px-4 sm:pt-5 sm:pb-3'>
-            <TabsList className='grid h-8 w-full grid-cols-2 items-center bg-muted/60 p-1 sm:w-fit'>
-              <TabsTrigger
-                value='nodes'
-                className='h-6 items-center px-3 text-xs font-medium data-active:bg-background data-active:shadow-sm'
-              >
-                <span className='sm:hidden'>{t('Nodes')}</span>
-                <span className='hidden sm:inline'>{t('Proxy Nodes')}</span>
-              </TabsTrigger>
-              <TabsTrigger
-                value='config'
-                className='h-6 items-center px-3 text-xs font-medium data-active:bg-background data-active:shadow-sm'
-              >
-                <span className='sm:hidden'>{t('Config')}</span>
-                <span className='hidden sm:inline'>{t('sing-box Config')}</span>
-              </TabsTrigger>
-            </TabsList>
+            <div className='flex min-w-0 flex-wrap items-center gap-2 sm:gap-3'>
+              <h2 className='truncate text-base font-bold tracking-tight sm:text-lg'>
+                {t('Proxy Config')}
+              </h2>
+              <TabsList className='grid w-full grid-cols-2 bg-muted/60 p-1 sm:w-fit'>
+                <TabsTrigger
+                  value='nodes'
+                  className='h-7 px-3 text-xs font-medium data-active:bg-background data-active:shadow-sm'
+                >
+                  <span className='sm:hidden'>{t('Nodes')}</span>
+                  <span className='hidden sm:inline'>{t('Proxy Nodes')}</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value='config'
+                  className='h-7 px-3 text-xs font-medium data-active:bg-background data-active:shadow-sm'
+                >
+                  <span className='sm:hidden'>{t('Config')}</span>
+                  <span className='hidden sm:inline'>{t('sing-box Config')}</span>
+                </TabsTrigger>
+              </TabsList>
+            </div>
+            {activeTab === 'nodes' && (
+              <div className='flex flex-wrap items-center gap-2'>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={() =>
+                    queryClient.invalidateQueries({ queryKey: ['proxy-nodes'] })
+                  }
+                  disabled={nodesQuery.isFetching}
+                >
+                  <RefreshCw className='size-4' />
+                  {t('Refresh')}
+                </Button>
+                <Button
+                  size='sm'
+                  onClick={() =>
+                    window.dispatchEvent(new CustomEvent('proxy:open-add'))
+                  }
+                >
+                  <Plus className='size-4' />
+                  {t('Add Proxy Node')}
+                </Button>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={() =>
+                    window.dispatchEvent(new CustomEvent('proxy:open-batch'))
+                  }
+                >
+                  <Plus className='size-4' />
+                  {t('Batch Import')}
+                </Button>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={() => testAllMutation.mutate()}
+                  disabled={
+                    (nodesQuery.data?.length ?? 0) === 0 ||
+                    testAllMutation.isPending
+                  }
+                >
+                  {testAllMutation.isPending ? (
+                    <Loader2 className='size-4 animate-spin' />
+                  ) : (
+                    <TestTube2 className='size-4' />
+                  )}
+                  {t('Test All Nodes')}
+                </Button>
+              </div>
+            )}
           </div>
           <div className='min-h-0 flex-1 overflow-hidden px-3 pt-1 pb-3 sm:px-4 sm:pt-1.5 sm:pb-4'>
             <TabsContent
@@ -395,21 +450,7 @@ export function ProxyPage() {
               keepMounted
               className='m-0 flex h-full min-h-0 flex-col overflow-y-auto data-hidden:hidden'
             >
-              <ProxyNodeView
-                nodesCount={nodesQuery.data?.length ?? 0}
-                nodesRefreshing={nodesQuery.isFetching}
-                onRefresh={() =>
-                  queryClient.invalidateQueries({ queryKey: ['proxy-nodes'] })
-                }
-                onOpenAdd={() =>
-                  window.dispatchEvent(new CustomEvent('proxy:open-add'))
-                }
-                onOpenBatch={() =>
-                  window.dispatchEvent(new CustomEvent('proxy:open-batch'))
-                }
-                onTestAll={() => testAllMutation.mutate()}
-                testingAll={testAllMutation.isPending}
-              />
+              <ProxyNodeView />
             </TabsContent>
             <TabsContent
               value='config'
