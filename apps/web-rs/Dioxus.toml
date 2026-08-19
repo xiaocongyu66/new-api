@@ -1,0 +1,18 @@
+[application]
+name = "newapi-web-rs"
+asset_dir = "assets"
+
+[web.app]
+title = "New API"
+
+[web.resource.dev]
+style = ["assets/tailwind.css"]
+
+[[web.proxy]]
+backend = "http://localhost:3000/api"
+
+[[web.proxy]]
+backend = "http://localhost:3000/mj"
+
+[[web.proxy]]
+backend = "http://localhost:3000/pg"
