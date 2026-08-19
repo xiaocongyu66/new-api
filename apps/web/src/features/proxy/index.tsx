@@ -17,9 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Copy, Download, RefreshCw, Save } from 'lucide-react'
+import { Copy, Download, Loader2, Plus, RefreshCw, Save, TestTube2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { fetchProxyNodes, testAllProxyNodes } from './proxy-node-api'
 import { ProxyNodeView } from './proxy-node-view'
 
 import { SectionPageLayout } from '@/components/layout'
@@ -264,6 +265,21 @@ export function ProxyPage() {
   const [form, setForm] = useState<ProxyConfig>(DEFAULT_CONFIG)
   const [activeTab, setActiveTab] = useState('nodes')
 
+  const nodesQuery = useQuery({
+    queryKey: ['proxy-nodes'],
+    queryFn: fetchProxyNodes,
+    retry: false,
+  })
+
+  const testAllMutation = useMutation({
+    mutationFn: testAllProxyNodes,
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['proxy-nodes'] })
+      toast.success(t('Tested {{passed}} of {{total}} nodes', result))
+    },
+    onError: (error: Error) =>
+      toast.error(error.message || t('Test failed')),
+  })
   const configQuery = useQuery({
     queryKey: ['proxy', 'config'],
     queryFn: fetchProxyConfig,
@@ -345,17 +361,71 @@ export function ProxyPage() {
   }, [configJson, copyToClipboard])
 
   return (
-    <SectionPageLayout>
+    <SectionPageLayout fixedContent>
       <SectionPageLayout.Title>
         <span className='truncate'>{t('Proxy Config')}</span>
       </SectionPageLayout.Title>
       <SectionPageLayout.Content>
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
-            <TabsTrigger value='nodes'>{t('Proxy Nodes')}</TabsTrigger>
-            <TabsTrigger value='config'>{t('sing-box Config')}</TabsTrigger>
-          </TabsList>
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className='flex min-h-0 flex-1 flex-col'
+        >
           <TabsContent value='nodes'>
+            <div className='bg-background sticky top-0 z-10 -mx-3 flex flex-col gap-2 px-3 pt-1 pb-3 sm:-mx-4 sm:flex-row sm:flex-wrap sm:items-center sm:px-4 sm:pt-1.5 sm:pb-3'>
+              <TabsList>
+                <TabsTrigger value='nodes'>{t('Proxy Nodes')}</TabsTrigger>
+                <TabsTrigger value='config'>
+                  {t('sing-box Config')}
+                </TabsTrigger>
+              </TabsList>
+              <div className='flex flex-wrap items-center gap-2'>
+                <Button
+                  variant='outline'
+                  onClick={() =>
+                    queryClient.invalidateQueries({
+                      queryKey: ['proxy-nodes'],
+                    })
+                  }
+                  disabled={nodesQuery.isFetching}
+                >
+                  <RefreshCw className='size-4' />
+                  {t('Refresh')}
+                </Button>
+                <Button
+                  onClick={() =>
+                    window.dispatchEvent(new CustomEvent('proxy:open-add'))
+                  }
+                >
+                  <Plus className='size-4' />
+                  {t('Add Proxy Node')}
+                </Button>
+                <Button
+                  variant='outline'
+                  onClick={() =>
+                    window.dispatchEvent(new CustomEvent('proxy:open-batch'))
+                  }
+                >
+                  <Plus className='size-4' />
+                  {t('Batch Import')}
+                </Button>
+                <Button
+                  variant='outline'
+                  onClick={() => testAllMutation.mutate()}
+                  disabled={
+                    (nodesQuery.data?.length ?? 0) === 0 ||
+                    testAllMutation.isPending
+                  }
+                >
+                  {testAllMutation.isPending ? (
+                    <Loader2 className='size-4 animate-spin' />
+                  ) : (
+                    <TestTube2 className='size-4' />
+                  )}
+                  {t('Test All Nodes')}
+                </Button>
+              </div>
+            </div>
             <ProxyNodeView />
           </TabsContent>
           <TabsContent value='config'>

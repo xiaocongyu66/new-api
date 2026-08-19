@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Plus, RefreshCw, Trash2, TestTube2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Loader2, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getChannels } from "@/features/channels/api";
 import { getGroups } from "@/features/users/api";
@@ -49,7 +49,6 @@ import {
   fetchProxyNodeReport,
   fetchProxyNodes,
   setProxyNodesEnabled,
-  testAllProxyNodes,
   testProxyNode,
   updateProxyNode,
 } from "./proxy-node-api";
@@ -162,14 +161,6 @@ export function ProxyNodeView() {
     onSuccess: invalidate,
     onError: (error: Error) => toast.error(error.message || t("Test failed")),
   });
-  const testAllMutation = useMutation({
-    mutationFn: testAllProxyNodes,
-    onSuccess: (result) => {
-      invalidate();
-      toast.success(t("Tested {{passed}} of {{total}} nodes", result));
-    },
-    onError: (error: Error) => toast.error(error.message || t("Test failed")),
-  });
   const enabledMutation = useMutation({
     mutationFn: (enabled: boolean) =>
       setProxyNodesEnabled([...selectedIds], enabled),
@@ -200,47 +191,24 @@ export function ProxyNodeView() {
   }, [nodesQuery.data, sortField]);
   const report = reportQuery.data;
   const selectedCount = selectedIds.size;
-
-  const openBatch = () => {
+  const openAdd = useCallback(() => setEditor(emptyEditor()), []);
+  const openBatch = useCallback(() => {
     setBatchResult(null);
     setBatch(emptyBatch());
-  };
+  }, []);
 
+  useEffect(() => {
+    const handleOpenAdd = openAdd;
+    const handleOpenBatch = openBatch;
+    window.addEventListener("proxy:open-add", handleOpenAdd);
+    window.addEventListener("proxy:open-batch", handleOpenBatch);
+    return () => {
+      window.removeEventListener("proxy:open-add", handleOpenAdd);
+      window.removeEventListener("proxy:open-batch", handleOpenBatch);
+    };
+  }, [openAdd, openBatch]);
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap justify-between gap-2">
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            onClick={invalidate}
-            disabled={nodesQuery.isFetching}
-          >
-            <RefreshCw className="size-4" />
-            {t("Refresh")}
-          </Button>
-          <Button onClick={() => setEditor(emptyEditor())}>
-            <Plus className="size-4" />
-            {t("Add Proxy Node")}
-          </Button>
-          <Button variant="outline" onClick={openBatch}>
-            <Plus className="size-4" />
-            {t("Batch Import")}
-          </Button>
-        </div>
-        <Button
-          variant="outline"
-          onClick={() => testAllMutation.mutate()}
-          disabled={nodes.length === 0 || testAllMutation.isPending}
-        >
-          {testAllMutation.isPending ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <TestTube2 className="size-4" />
-          )}
-          {t("Test All Nodes")}
-        </Button>
-      </div>
-
       {selectedCount > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border p-2">
           <span className="text-muted-foreground text-sm">
