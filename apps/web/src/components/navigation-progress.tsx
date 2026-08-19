@@ -49,6 +49,10 @@ export function NavigationProgress() {
     const scheduler = schedulerRef.current
     return () => {
       scheduler?.dispose()
+      // Strict Mode unmount/remount would otherwise reuse the disposed
+      // scheduler (refs persist across mounts); reset so the next
+      // mount rebuilds a fresh one.
+      schedulerRef.current = null
     }
   }, [])
 
