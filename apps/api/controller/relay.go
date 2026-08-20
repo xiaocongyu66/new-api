@@ -191,6 +191,14 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
+	// Health accounting is deferred until the loop ends: a failure a retry
+	// recovered from is not evidence against the channel. See
+	// model.RecordRequestAttempts.
+	var attempts []model.ChannelAttempt
+	winnerID, requestSucceeded := 0, false
+	defer func() {
+		model.GetChannelHealthManager().RecordRequestAttempts(attempts, winnerID, requestSucceeded)
+	}()
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
 		relayInfo.RetryIndex = retryParam.GetRetry()
@@ -231,7 +239,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		if newAPIError == nil {
 			relayInfo.LastError = nil
-			model.GetChannelHealthManager().RecordChannelOutcome(channel.Id, model.ClassifyChannelOutcome(nil, channel.Id))
+			winnerID, requestSucceeded = channel.Id, true
 			return
 		}
 
@@ -243,9 +251,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		// bodies are the channel's fault, 429 means it is merely throttled, and a
 		// 4xx such as 400 is the caller's problem and must not cost the channel.
 		outcome := model.ClassifyChannelOutcome(newAPIError, channel.Id)
-		if outcome.AffectsHealth() {
-			model.GetChannelHealthManager().RecordChannelOutcome(channel.Id, outcome)
-		}
+		attempts = append(attempts, model.ChannelAttempt{ChannelID: channel.Id, ModelName: relayInfo.OriginModelName, Outcome: outcome})
 		if outcome.ExcludesChannel() && retryParam.ExcludeSet != nil {
 			retryParam.ExcludeSet[channel.Id] = true
 		}
@@ -535,6 +541,14 @@ func RelayTask(c *gin.Context) {
 		ExcludeSet:  make(map[int]bool),
 	}
 
+	// Same deferral as Relay: only a request that exhausted its retries counts
+	// against the channels it tried.
+	var attempts []model.ChannelAttempt
+	winnerID, requestSucceeded := 0, false
+	defer func() {
+		model.GetChannelHealthManager().RecordRequestAttempts(attempts, winnerID, requestSucceeded)
+	}()
+
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
 		var channel *model.Channel
 
@@ -570,7 +584,7 @@ func RelayTask(c *gin.Context) {
 
 		result, taskErr = relay.RelayTaskSubmit(c, relayInfo)
 		if taskErr == nil {
-			model.GetChannelHealthManager().RecordChannelOutcome(channel.Id, model.ClassifyChannelOutcome(nil, channel.Id))
+			winnerID, requestSucceeded = channel.Id, true
 			break
 		}
 
@@ -580,9 +594,7 @@ func RelayTask(c *gin.Context) {
 			// decision and the existing channel-error reporting.
 			taskAPIError := types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode)
 			outcome := model.ClassifyChannelOutcome(taskAPIError, channel.Id)
-			if outcome.AffectsHealth() {
-				model.GetChannelHealthManager().RecordChannelOutcome(channel.Id, outcome)
-			}
+			attempts = append(attempts, model.ChannelAttempt{ChannelID: channel.Id, ModelName: relayInfo.OriginModelName, Outcome: outcome})
 			if outcome.ExcludesChannel() && retryParam.ExcludeSet != nil {
 				retryParam.ExcludeSet[channel.Id] = true
 			}

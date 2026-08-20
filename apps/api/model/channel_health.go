@@ -1,11 +1,13 @@
 package model
 
 import (
+	"fmt"
 	"math"
 	"sort"
 	"sync"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
@@ -43,12 +45,24 @@ type channelHealthState struct {
 	failureStreak  int
 	cooldownStreak int
 	cooldownUntil  time.Time
+
+	// modelCooldowns counts cooldown activations attributed to each model on
+	// this channel. The sliding duration stays channel-level, but the disable
+	// decision must not be: a channel whose gpt-4 is dead may still serve its
+	// other models, so escalation needs to know which model kept failing.
+	// Entries appear only for models that have actually caused a cooldown.
+	modelCooldowns map[string]int
 }
 
 // channelHealthNow is the package clock, injected for deterministic tests.
 // Production code reads it unchanged; tests replace it and restore it via
 // t.Cleanup so no test leaks a frozen clock into another.
 var channelHealthNow = time.Now
+
+// channelModelDisabler disables one model on one channel once its cooldowns
+// saturate. It is a package var so tests can capture the call instead of
+// touching the database, and so the model layer keeps owning the DB write.
+var channelModelDisabler = DisableChannelModel
 
 // Wire the kill-switch cleanup here rather than in operation_setting, which must
 // not import this package. Toggling the switch off now discards accumulated
@@ -221,6 +235,13 @@ const throttledObservation = 0.7
 // exclusion is unaffected because it is driven by ClassifyChannelOutcome and the
 // caller's ExcludeSet, neither of which consults the kill switch.
 func (m *ChannelHealthManager) RecordChannelOutcome(channelID int, outcome ChannelOutcome) {
+	m.recordChannelOutcome(channelID, "", outcome)
+}
+
+// recordChannelOutcome is the model-aware form. An empty modelName records
+// health exactly as before but cannot escalate to a per-model disable, since
+// there is nothing to attribute the failure to.
+func (m *ChannelHealthManager) recordChannelOutcome(channelID int, modelName string, outcome ChannelOutcome) {
 	cfg := operation_setting.GetChannelHealthSetting()
 	if cfg == nil || !cfg.Enabled {
 		return
@@ -298,6 +319,84 @@ func (m *ChannelHealthManager) RecordChannelOutcome(channelID int, outcome Chann
 	// channel failing every request from cold must still be ejected.
 	if (outcome == OutcomeFatal || outcome == OutcomeThrottled) && state.failureStreak >= cfg.CooldownThreshold {
 		startCooldownLocked(state, cfg, now)
+		if modelName != "" {
+			m.escalateModelLocked(state, cfg, channelID, modelName)
+		}
+	}
+}
+
+// escalateModelLocked counts this cooldown against modelName and disables that
+// model on the channel once the count reaches CooldownDisableStreak. Callers
+// must hold m.mu.
+//
+// The DB write runs in a goroutine because m.mu is held and the write path takes
+// its own transaction plus a routing-revision bump; blocking every caller of the
+// health manager on that would serialize request handling behind a disk write.
+// The counter is cleared first, so a slow or failing write cannot re-trigger on
+// the next cooldown.
+func (m *ChannelHealthManager) escalateModelLocked(state *channelHealthState, cfg *operation_setting.ChannelHealthSetting, channelID int, modelName string) {
+	if cfg.CooldownDisableStreak <= 0 {
+		return
+	}
+	if state.modelCooldowns == nil {
+		state.modelCooldowns = make(map[string]int, 1)
+	}
+	state.modelCooldowns[modelName]++
+	if state.modelCooldowns[modelName] < cfg.CooldownDisableStreak {
+		return
+	}
+	delete(state.modelCooldowns, modelName)
+	disable := channelModelDisabler
+	go func() {
+		if err := disable(channelID, modelName); err != nil {
+			common.SysError(fmt.Sprintf("failed to disable model %s on channel %d after repeated cooldowns: %s",
+				modelName, channelID, err.Error()))
+			return
+		}
+		common.SysLog(fmt.Sprintf("model %s disabled on channel %d: cooldown repeated %d times without recovery",
+			modelName, channelID, cfg.CooldownDisableStreak))
+	}()
+}
+
+// ChannelAttempt is one channel try inside a single client request. The relay
+// loop collects these so health accounting can wait until the request's final
+// outcome is known. ModelName is what the attempt asked the channel for, which
+// is what a repeated-cooldown disable is attributed to.
+type ChannelAttempt struct {
+	ChannelID int
+	ModelName string
+	Outcome   ChannelOutcome
+}
+
+// RecordRequestAttempts applies health accounting once for a whole client
+// request, rather than once per failed try.
+//
+// A 429 or 5xx that a retry recovered from cost the caller nothing: another
+// channel served the request. Charging that against the first channel would
+// drive cooldown on channels that are merely busy, which is the opposite of what
+// the caller experienced. A request is only a real failure once every retry is
+// exhausted, and only then do its attempts count against the channels involved.
+//
+// succeeded reports whether the request ultimately returned a result. When it
+// did, winnerID takes the success observation and the earlier failed attempts
+// are discarded. When it did not, every attempt is applied in the order it was
+// made, so the failure streaks and cooldown timers advance exactly as they would
+// have without the deferral.
+//
+// Request-level exclusion is unaffected: the relay loop still classifies each
+// failure immediately and populates its ExcludeSet, so a retry never reselects
+// the channel that just failed.
+func (m *ChannelHealthManager) RecordRequestAttempts(attempts []ChannelAttempt, winnerID int, succeeded bool) {
+	if succeeded {
+		// ClassifyChannelOutcome(nil, ...) also clears any in-flight 401 run,
+		// which a bare OutcomeSuccess would leave standing.
+		m.RecordChannelOutcome(winnerID, ClassifyChannelOutcome(nil, winnerID))
+		return
+	}
+	for _, attempt := range attempts {
+		if attempt.Outcome.AffectsHealth() {
+			m.recordChannelOutcome(attempt.ChannelID, attempt.ModelName, attempt.Outcome)
+		}
 	}
 }
 
