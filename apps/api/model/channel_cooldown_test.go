@@ -86,7 +86,7 @@ func TestChannelHealthCooldownOptionUpdateRejectsInvalidValue(t *testing.T) {
 	// An inverted base/max pair is rejected too: normalization would raise max up
 	// to base, so accepting it would store a duration that never takes effect.
 	assert.Error(t, operation_setting.UpdateChannelHealthSettingValue(
-		"ChannelHealthCooldownMaxSeconds", "10",
+		"ChannelHealthCooldownMaxSeconds", "5",
 	), "max below the configured base must be rejected")
 	require.NoError(t, operation_setting.UpdateChannelHealthSettingValue(
 		"ChannelHealthCooldownMaxSeconds", "90",
@@ -250,4 +250,20 @@ func TestChannelCooldownSelectionSkipsEjectedTierInMemoryAndDB(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, fallback.Id, got.Id)
+}
+
+func TestChannelCooldownDurationSlidesFromBaseTenTowardMaximum(t *testing.T) {
+	cfg := cooldownTestSetting()
+	cfg.CooldownBaseSeconds = 10
+	cfg.CooldownMaxSeconds = 60
+	cfg.CooldownAlpha = 0.3
+
+	// n=0: exactly base
+	assert.Equal(t, 10*time.Second, cooldownDuration(cfg, 0))
+	// n=1: 10 + 50*(1-0.3) = 45.0
+	assert.InDelta(t, 45.0*float64(time.Second), float64(cooldownDuration(cfg, 1)), 1)
+	// n=2: 10 + 50*(1-0.3^2) = 10 + 50*(1-0.09) = 55.5
+	assert.InDelta(t, 55.5*float64(time.Second), float64(cooldownDuration(cfg, 2)), 1)
+	// large n approaches but never exceeds max
+	assert.LessOrEqual(t, cooldownDuration(cfg, 100), 60*time.Second)
 }

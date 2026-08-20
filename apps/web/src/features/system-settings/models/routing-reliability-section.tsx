@@ -249,7 +249,7 @@ function normalizeChannelTestMode(value?: string): ChannelTestMode {
 // these so a drawer default and a settings-form default cannot drift apart.
 const COOLDOWN_DEFAULTS = {
   threshold: 5,
-  baseSeconds: 30,
+  baseSeconds: 10,
   maxSeconds: 60,
   maxEjectionPercent: 50,
   alpha: 0.3,

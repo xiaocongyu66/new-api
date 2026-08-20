@@ -31,6 +31,16 @@ type ChannelHealthSetting struct {
 	CooldownMaxSeconds         int     `json:"cooldown_max_seconds"`
 	CooldownMaxEjectionPercent int     `json:"cooldown_max_ejection_percent"`
 	CooldownAlpha              float64 `json:"cooldown_alpha"`
+
+	// CooldownDisableStreak is how many cooldown activations one channel+model
+	// pair may accumulate before that model is disabled on that channel.
+	// Cooldown alone never terminates: a permanently dead upstream just cycles
+	// "cool, probe once, fail, cool longer" forever, so it keeps consuming a
+	// probe every minute and never leaves the candidate set for good. Once the
+	// sliding duration has saturated and the pair still cannot serve a request,
+	// the model is what is broken, so only that model is disabled; the channel
+	// keeps serving its other models. Zero disables the escalation.
+	CooldownDisableStreak int `json:"cooldown_disable_streak"`
 }
 
 // DefaultChannelHealthSetting returns the recommended defaults.
@@ -41,10 +51,11 @@ func DefaultChannelHealthSetting() *ChannelHealthSetting {
 		MinScore:                   0.05,
 		MinRequests:                5,
 		CooldownThreshold:          5,
-		CooldownBaseSeconds:        30,
+		CooldownBaseSeconds:        10,
 		CooldownMaxSeconds:         60,
 		CooldownMaxEjectionPercent: 50,
 		CooldownAlpha:              0.3,
+		CooldownDisableStreak:      3,
 	}
 }
 
@@ -147,6 +158,9 @@ func normalizeChannelHealthSetting(cfg *ChannelHealthSetting) {
 	if cfg.CooldownAlpha > 1 {
 		cfg.CooldownAlpha = 1
 	}
+	if cfg.CooldownDisableStreak < 0 {
+		cfg.CooldownDisableStreak = 0
+	}
 }
 
 // healthOptionKey is the flat option key for each field.
@@ -157,6 +171,7 @@ const (
 	OptChannelHealthCooldownMaxSeconds     = "ChannelHealthCooldownMaxSeconds"
 	OptChannelHealthCooldownMaxEjectionPct = "ChannelHealthCooldownMaxEjectionPercent"
 	OptChannelHealthCooldownAlpha          = "ChannelHealthCooldownAlpha"
+	OptChannelHealthCooldownDisableStreak  = "ChannelHealthCooldownDisableStreak"
 )
 
 // healthOptionKeys lists the recognized health flat option keys.
@@ -167,6 +182,7 @@ var healthOptionKeys = map[string]bool{
 	OptChannelHealthCooldownMaxSeconds:     true,
 	OptChannelHealthCooldownMaxEjectionPct: true,
 	OptChannelHealthCooldownAlpha:          true,
+	OptChannelHealthCooldownDisableStreak:  true,
 }
 
 // IsChannelHealthOptionKey reports whether key is one of the recognized
@@ -222,6 +238,10 @@ func validateHealthRange(cfg *ChannelHealthSetting, key string) error {
 		if cfg.CooldownMaxSeconds < cfg.CooldownBaseSeconds {
 			return fmt.Errorf("%s must not be below %s (%d)",
 				key, OptChannelHealthCooldownBaseSeconds, cfg.CooldownBaseSeconds)
+		}
+	case OptChannelHealthCooldownDisableStreak:
+		if cfg.CooldownDisableStreak < 0 {
+			return fmt.Errorf("%s must not be negative", key)
 		}
 	case OptChannelHealthCooldownMaxEjectionPct:
 		if cfg.CooldownMaxEjectionPercent < 0 || cfg.CooldownMaxEjectionPercent > 100 {
@@ -301,6 +321,12 @@ func applyHealthOptionValue(cfg *ChannelHealthSetting, key, value string) error 
 			return fmt.Errorf("invalid integer for %s: %w", key, err)
 		}
 		cfg.CooldownMaxSeconds = n
+	case OptChannelHealthCooldownDisableStreak:
+		n, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid integer for %s: %w", key, err)
+		}
+		cfg.CooldownDisableStreak = n
 	case OptChannelHealthCooldownMaxEjectionPct:
 		n, err := strconv.Atoi(value)
 		if err != nil {

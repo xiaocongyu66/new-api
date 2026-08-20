@@ -67,7 +67,7 @@ const defaultModelSettings: ModelSettings = {
   ChannelDisableThreshold: '',
   ChannelHealthEnabled: true,
   ChannelHealthCooldownThreshold: 5,
-  ChannelHealthCooldownBaseSeconds: 30,
+  ChannelHealthCooldownBaseSeconds: 10,
   ChannelHealthCooldownMaxSeconds: 60,
   ChannelHealthCooldownMaxEjectionPercent: 50,
   ChannelHealthCooldownAlpha: 0.3,
