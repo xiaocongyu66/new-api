@@ -375,6 +375,36 @@ func updateAbilityStatusByTagWithTx(tx *gorm.DB, tag string, status bool) error 
 	return tx.Model(&Ability{}).Where("tag = ?", tag).Select("enabled").Update("enabled", status).Error
 }
 
+// updateAbilityStatusByModelWithTx is the tx-aware form of
+// DisableChannelModel. It flips the enabled column for every ability
+// row matching both the given channel_id and model_name inside the outer
+// transaction. It deliberately does NOT filter on group, so a single
+// channel+model pair across all groups has its enabled status flipped —
+// a single dead model on an otherwise healthy channel should not cost the
+// channel its other models.
+func updateAbilityStatusByModelWithTx(tx *gorm.DB, channelID int, modelName string, status bool) error {
+	return tx.Model(&Ability{}).Where("channel_id = ? AND model = ?", channelID, modelName).Select("enabled").Update("enabled", status).Error
+}
+
+// DisableChannelModel flips the enabled status of every ability row matching
+// the given channel_id and model_name inside one MutateGatewayRouting revision,
+// so the ability write and the gateway routing revision bump commit atomically.
+// A single disabled model on an otherwise healthy channel should not cost the
+// channel its other models; this helper spans ALL groups deliberately.
+// Returns an error if modelName is empty, as there is nothing specific to disable.
+func DisableChannelModel(channelID int, modelName string) error {
+	if modelName == "" {
+		return fmt.Errorf("model name must not be empty")
+	}
+	_, err := MutateGatewayRouting(func(tx *gorm.DB) error {
+		if err := updateAbilityStatusByModelWithTx(tx, channelID, modelName, false); err != nil {
+			return err
+		}
+		return nil
+	})
+	return err
+}
+
 // UpdateAbilityStatusByTag remains the public convenience wrapper. It
 // delegates to the tx-aware form with the shared DB handle so callers that
 // are not inside a MutateGatewayRouting transaction keep working.

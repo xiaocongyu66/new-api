@@ -228,6 +228,7 @@ func InitOptionMap() {
 		common.OptionMap["ChannelHealthCooldownMaxSeconds"] = strconv.Itoa(healthCfg.CooldownMaxSeconds)
 		common.OptionMap["ChannelHealthCooldownMaxEjectionPercent"] = strconv.Itoa(healthCfg.CooldownMaxEjectionPercent)
 		common.OptionMap["ChannelHealthCooldownAlpha"] = strconv.FormatFloat(healthCfg.CooldownAlpha, 'f', -1, 64)
+		common.OptionMap["ChannelHealthCooldownDisableStreak"] = strconv.Itoa(healthCfg.CooldownDisableStreak)
 	}
 
 	// 自动添加所有注册的模型配置
