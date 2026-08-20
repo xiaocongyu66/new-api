@@ -332,8 +332,10 @@ func (m *ChannelHealthManager) recordChannelOutcome(channelID int, modelName str
 // The DB write runs in a goroutine because m.mu is held and the write path takes
 // its own transaction plus a routing-revision bump; blocking every caller of the
 // health manager on that would serialize request handling behind a disk write.
-// The counter is cleared first, so a slow or failing write cannot re-trigger on
-// the next cooldown.
+//
+// The counter is cleared before the write so a slow write cannot escalate twice
+// while it is still in flight, and restored if the write fails, so a transient DB
+// error only delays the disable to the next cooldown instead of losing it.
 func (m *ChannelHealthManager) escalateModelLocked(state *channelHealthState, cfg *operation_setting.ChannelHealthSetting, channelID int, modelName string) {
 	if cfg.CooldownDisableStreak <= 0 {
 		return
@@ -345,16 +347,29 @@ func (m *ChannelHealthManager) escalateModelLocked(state *channelHealthState, cf
 	if state.modelCooldowns[modelName] < cfg.CooldownDisableStreak {
 		return
 	}
+	reached := state.modelCooldowns[modelName]
 	delete(state.modelCooldowns, modelName)
 	disable := channelModelDisabler
 	go func() {
 		if err := disable(channelID, modelName); err != nil {
-			common.SysError(fmt.Sprintf("failed to disable model %s on channel %d after repeated cooldowns: %s",
+			common.SysError(fmt.Sprintf("failed to disable model %q on channel %d after repeated cooldowns: %s",
 				modelName, channelID, err.Error()))
+			// Put the count back so the next cooldown retries the disable rather
+			// than starting the streak over.
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			if current, ok := m.states[channelID]; ok {
+				if current.modelCooldowns == nil {
+					current.modelCooldowns = make(map[string]int, 1)
+				}
+				if current.modelCooldowns[modelName] < reached {
+					current.modelCooldowns[modelName] = reached
+				}
+			}
 			return
 		}
-		common.SysLog(fmt.Sprintf("model %s disabled on channel %d: cooldown repeated %d times without recovery",
-			modelName, channelID, cfg.CooldownDisableStreak))
+		common.SysLog(fmt.Sprintf("model %q disabled on channel %d: cooldown repeated %d times without recovery",
+			modelName, channelID, reached))
 	}()
 }
 

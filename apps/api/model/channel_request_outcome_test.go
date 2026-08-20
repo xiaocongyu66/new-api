@@ -231,6 +231,62 @@ func TestCooldownSaturationDisabledByZeroStreak(t *testing.T) {
 		"a zero streak must never escalate to a disable")
 }
 
+// TestCooldownSaturationRetriesAfterFailedDisable covers the transient-DB-error
+// path. The counter is cleared before the write so a slow write cannot escalate
+// twice, which would silently drop the escalation if the write then failed; the
+// count is restored instead, so the next cooldown tries again.
+func TestCooldownSaturationRetriesAfterFailedDisable(t *testing.T) {
+	mgr := resetHealthManager()
+	now := time.Unix(1_700_000_000, 0)
+	cfg := cooldownTestSetting()
+	cfg.MinRequests = 0
+	cfg.CooldownThreshold = 1
+	cfg.CooldownDisableStreak = 1
+	configureCooldownTest(t, cfg, &now)
+
+	var mu sync.Mutex
+	var calls int
+	previous := channelModelDisabler
+	channelModelDisabler = func(int, string) error {
+		mu.Lock()
+		defer mu.Unlock()
+		calls++
+		if calls == 1 {
+			return assert.AnError
+		}
+		return nil
+	}
+	t.Cleanup(func() { channelModelDisabler = previous })
+	attempts := func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		return calls
+	}
+
+	const channelID = 9610
+	mgr.RecordRequestAttempts([]ChannelAttempt{
+		{ChannelID: channelID, ModelName: "m", Outcome: OutcomeFatal},
+	}, 0, false)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for attempts() < 1 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	require.Equal(t, 1, attempts(), "the first disable was attempted and failed")
+
+	// The restored count means the very next cooldown escalates again.
+	now = now.Add(61 * time.Second)
+	mgr.RecordRequestAttempts([]ChannelAttempt{
+		{ChannelID: channelID, ModelName: "m", Outcome: OutcomeFatal},
+	}, 0, false)
+
+	deadline = time.Now().Add(2 * time.Second)
+	for attempts() < 2 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	assert.Equal(t, 2, attempts(), "a failed disable is retried on the next cooldown")
+}
+
 // TestRecordChannelOutcomeNeverEscalates pins that the legacy single-outcome API
 // cannot trigger a disable: it carries no model name, so there is nothing to
 // attribute the failure to.
