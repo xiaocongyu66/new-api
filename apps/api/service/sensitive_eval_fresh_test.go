@@ -117,3 +117,30 @@ func TestSensitiveEvalFreshZeroFalsePositive(t *testing.T) {
 		}
 	}
 }
+
+// TestSensitiveEvalFreshProdPath 生产路径（CheckSensitiveAll，含 target/persona
+// combo 层）评测。硬断言：
+//   - 人格接管破甲 atk-01~06 必须拦（persona-evasion combo）
+//   - gov 攻击 atk-07 必须拦（target-combo）
+//   - 内容请求 atk-08/09/10 必须放行（非破甲、非 gov 攻击，拦截=内容审查越界）
+//   - 18 条 normal/rp 零误伤
+func TestSensitiveEvalFreshProdPath(t *testing.T) {
+	cases := loadFreshEvalCases(t)
+	_, _, words, _, _, _, _ := loadSensitiveTestData(t)
+
+	for _, groups := range [][]string{{"gov", "tech"}, {"gov", "tech", "rp"}} {
+		installTestGroups(t, groups)
+		installTestDict(t, words)
+		for _, c := range cases {
+			got, why := CheckSensitiveAll(c.Text)
+			switch c.ID {
+			case "atk-01", "atk-02", "atk-03", "atk-04", "atk-05", "atk-06", "atk-07":
+				require.Truef(t, got, "%v 应拦截 %s (%s)", groups, c.ID, c.Name)
+			case "atk-08", "atk-09", "atk-10":
+				require.Falsef(t, got, "%v 不应拦截内容请求 %s (%s): %s", groups, c.ID, c.Name, why)
+			default:
+				require.Falsef(t, got, "%v 误伤 %s %s (%s): %s", groups, c.Cat, c.ID, c.Name, why)
+			}
+		}
+	}
+}
