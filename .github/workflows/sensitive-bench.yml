@@ -6,7 +6,7 @@ on:
     types: [opened, synchronize]
     paths:
       - 'apps/api/service/sensitive*.go'
-      - 'apps/api/service/testdata/sensitive_*.json'
+      - 'apps/api/service/testdata/sensitive_*.json*'
       - '.github/workflows/sensitive-bench.yml'
 
 permissions:
@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   compare:
-    name: New engine vs legacy (≤2.5x)
+    name: New engine normal-pool latency (≤400ms)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -38,10 +38,10 @@ jobs:
           mkdir -p web/dist
           touch web/dist/index.html
 
-      - name: Run benchmarks (new engine vs legacy)
+      - name: Run benchmarks (new engine normal pool)
         run: |
           go test ./service/ -run '^$' -count=3 \
-            -bench 'BenchmarkSensitiveNormal$|BenchmarkSensitiveLegacyNormal$' \
+            -bench 'BenchmarkSensitiveNormal$' \
             2>&1 | tee "$RUNNER_TEMP/bench.txt"
 
       - name: Compare and report
