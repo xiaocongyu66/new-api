@@ -108,6 +108,7 @@ func TestSensitiveEvalFreshZeroFalsePositive(t *testing.T) {
 
 	for _, groups := range [][]string{{"gov", "tech"}, {"gov", "tech", "rp"}} {
 		installTestGroups(t, groups)
+		installTestDict(t, words)
 		for _, c := range cases {
 			if c.Cat == "attack" {
 				continue
