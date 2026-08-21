@@ -178,24 +178,105 @@ func init() {
 	}
 }
 
-// checkTargetActionTerms 命中任一个攻击目标动作词即返回命中的词。
-func checkTargetActionTerms(lowered string) string {
-	for _, t := range targetActionLower {
-		if strings.Contains(lowered, t) {
-			return t
+// 匹配前对文本做归一化（同形字/分隔符剥离），覆盖 "ig nore"、"actas" 类变体。
+func checkBreakoutTerms(text string) string {
+	for _, norm := range breakoutNormVariants(text) {
+		normLower := strings.ToLower(norm)
+		for _, t := range breakoutTermsLower {
+			if strings.Contains(normLower, t) {
+				return t
+			}
 		}
 	}
 	return ""
 }
 
-// checkBreakoutTerms 命中任一个破甲术语即返回命中的词。
-func checkBreakoutTerms(lowered string) string {
-	for _, t := range breakoutTermsLower {
-		if strings.Contains(lowered, t) {
-			return t
+// checkTargetActionTerms 命中任一个攻击目标动作词即返回命中的词。
+func checkTargetActionTerms(text string) string {
+	for _, norm := range breakoutNormVariants(text) {
+		normLower := strings.ToLower(norm)
+		for _, t := range targetActionLower {
+			if strings.Contains(normLower, t) {
+				return t
+			}
 		}
 	}
 	return ""
+}
+
+// breakoutNormVariants 生成归一化变体：
+//  1. 剥离分隔符（中文词 "越.狱"→"越狱"、英文词连打 "actasofan"）——覆盖中文分隔符插入
+//  2. 标点→空格（英文短语 "ignore.previous.instructions"→"ignore previous instructions"）
+//
+// 全角→半角、同形字折叠（Cyrillic/Greek 伪 ASCII）在两个变体中都先做。
+func breakoutNormVariants(text string) []string {
+	return []string{normalizeBreakoutText(text), normalizeBreakoutSpaces(text)}
+}
+
+// normalizeBreakoutText 归一化：同形字折叠（Cyrillic/Greek 伪 ASCII）+ 全角→半角 +
+// 分隔符剥离（保留单词空格与换行，避免英文短语连死）。
+// 不引入额外 jar；直接复用 sensitive_data.go 的同形表与分隔符判定。
+func normalizeBreakoutText(text string) string {
+	var b strings.Builder
+	b.Grow(len(text))
+	for _, r := range text {
+		switch r {
+		case ' ', '\t', '\n', '\r', '\v', '\f':
+			b.WriteRune(r)
+			continue
+		}
+		// 全角 ASCII（U+FF01..FF5E）→ 半角
+		if r >= 0xff01 && r <= 0xff5e {
+			b.WriteRune(r - 0xfee0)
+			continue
+		}
+		if mapped, ok := homoglyphMap[r]; ok {
+			b.WriteRune(mapped)
+			continue
+		}
+		if isSepRune(r) {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// normalizeBreakoutSpaces 归一化变体二：同形字折叠 + 全角→半角 +
+// 非空白分隔符替换为空格（保留单词间空格），"ignore.previous.instructions"→
+// "ignore previous instructions"，覆盖英文短语被标点隔断的变体。
+func normalizeBreakoutSpaces(text string) string {
+	var b strings.Builder
+	b.Grow(len(text))
+	prevSpace := false
+	for _, r := range text {
+		if r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == '\v' || r == '\f' {
+			if !prevSpace {
+				b.WriteRune(' ')
+				prevSpace = true
+			}
+			continue
+		}
+		prevSpace = false
+		// 全角 ASCII（U+FF01..FF5E）→ 半角
+		if r >= 0xff01 && r <= 0xff5e {
+			b.WriteRune(r - 0xfee0)
+			continue
+		}
+		if mapped, ok := homoglyphMap[r]; ok {
+			b.WriteRune(mapped)
+			continue
+		}
+		if isSepRune(r) {
+			if !prevSpace {
+				b.WriteRune(' ')
+				prevSpace = true
+			}
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // CheckSensitiveAll 输入/输出统一入口：目标域名 → 攻击目标动作词 → 破甲术语 → 词库/指纹/模板。
@@ -207,11 +288,10 @@ func CheckSensitiveAll(text string) (bool, string) {
 	if d := CheckSensitiveTargets(text); d != "" {
 		return true, "target:" + d
 	}
-	lowered := strings.ToLower(text)
-	if t := checkTargetActionTerms(lowered); t != "" {
+	if t := checkTargetActionTerms(text); t != "" {
 		return true, "target-action:" + t
 	}
-	if t := checkBreakoutTerms(lowered); t != "" {
+	if t := checkBreakoutTerms(text); t != "" {
 		return true, "breakout:" + t
 	}
 	if hit, words := sensitiveCheckHits(text, setting.SensitiveWords); hit {
