@@ -137,9 +137,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 
 	if needSensitiveCheck && meta != nil {
-		contains, words := service.CheckSensitiveText(meta.CombineText)
-		if contains {
-			logger.LogWarn(c, fmt.Sprintf("user sensitive words detected: %s", strings.Join(words, ", ")))
+		// 第一道闸：目标域名硬闸（请求包含攻击目标站点即终止，不再走词库判断）
+		if blocked, label := service.CheckSensitiveAll(meta.CombineText); blocked {
+			logger.LogWarn(c, fmt.Sprintf("input blocked by sensitive filter: %s", label))
 			newAPIError = types.NewError(err, types.ErrorCodeSensitiveWordsDetected, types.ErrOptionWithStatusCode(http.StatusForbidden))
 			return
 		}

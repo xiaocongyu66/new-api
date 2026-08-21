@@ -73,4 +73,7 @@ const (
 	// fallback in authHelper (finishAdminAudit) skips its record to avoid
 	// duplicate entries.
 	ContextKeyAuditLogged ContextKey = "audit_logged"
+
+	// ContextKeySensitiveOutputState 输出侧敏感闸的请求级滚动窗口状态。
+	ContextKeySensitiveOutputState ContextKey = "sensitive_output_state"
 )

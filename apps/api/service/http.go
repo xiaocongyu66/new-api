@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -44,6 +45,18 @@ func ShouldCopyUpstreamHeader(c *gin.Context, k string, v []string) bool {
 func IOCopyBytesGracefully(c *gin.Context, src *http.Response, data []byte) {
 	if c.Writer == nil {
 		return
+	}
+
+	// 输出侧敏感检测（非流式）：命中目标域/敏感词即终止，响应体替换为
+	// content_filter 错误，状态码换 403。用户要求输出默认 block。
+	if setting.ShouldCheckCompletionSensitive() {
+		if hit, label := CheckSensitiveOutput(string(data)); hit {
+			logger.SysError(fmt.Sprintf("non-stream output blocked by sensitive filter: [%s]", label))
+			data = []byte(`{"error":{"message":"output blocked by content filter","type":"content_filter","param":null,"code":"content_filter"}}`)
+			src = &http.Response{StatusCode: http.StatusForbidden, Header: http.Header{}}
+			c.Writer.Header().Del("Content-Type")
+			c.Writer.Header().Set("Content-Type", "application/json")
+		}
 	}
 
 	body := io.NopCloser(bytes.NewBuffer(data))

@@ -5,7 +5,9 @@ import "strings"
 var CheckSensitiveEnabled = true
 var CheckSensitiveOnPromptEnabled = true
 
-//var CheckSensitiveOnCompletionEnabled = true
+// CheckSensitiveOnCompletionEnabled 输出侧敏感检测（用户要求默认 block，
+// 命中即终止响应流并注入 content_filter，不向客户端泄露任何后续内容）。
+var CheckSensitiveOnCompletionEnabled = true
 
 // StopOnSensitiveEnabled 如果检测到敏感词，是否立刻停止生成，否则替换敏感词
 var StopOnSensitiveEnabled = true
@@ -80,6 +82,11 @@ func SensitiveWordsFromString(s string) {
 
 func ShouldCheckPromptSensitive() bool {
 	return CheckSensitiveEnabled && CheckSensitiveOnPromptEnabled
+}
+
+// ShouldCheckCompletionSensitive 输出侧检测总开关（用户要求默认开启、命中即 block）。
+func ShouldCheckCompletionSensitive() bool {
+	return CheckSensitiveEnabled && CheckSensitiveOnCompletionEnabled
 }
 
 //func ShouldCheckCompletionSensitive() bool {
