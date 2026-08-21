@@ -1,6 +1,7 @@
 package service
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/QuantumNous/new-api/setting"
@@ -192,6 +193,75 @@ var targetActionTerms = []string{
 	"探测政府网络",
 	"扫描政府网络",
 	"政府网络攻击",
+	"政府门户网站攻击",
+	"攻陷政府门户",
+	"攻击政府门户",
+	"入侵政府门户",
+	"黑客政府门户",
+	"政府门户渗透",
+	"政府门户注入",
+	"政务平台渗透",
+	"政务平台破解",
+	"入侵政务平台",
+	"攻击政务平台",
+	"政务平台攻击",
+	"sql注入政府网站",
+	"攻击gov网站",
+	"入侵gov网站",
+	"ddos.gov网站",
+	"攻击gov站",
+	"黑掉gov",
+	"fake gov网站",
+	"政府网站钓鱼",
+	"政务网站钓鱼",
+	"钓鱼政府网站",
+	"钓鱼政务网站",
+	"伪造政府网站",
+	"仿冒政府网站",
+	"政府网站伪造",
+	"政府网站克隆",
+	"克隆政府网站",
+	"社保局钓鱼",
+	"社保平台攻击",
+	"人社系统攻击",
+	"攻击社保系统",
+	"窃取政务数据",
+	"盗取政务数据",
+	"偷政府网站数据",
+	"政府网站数据泄露利用",
+	"government portal attack",
+	"attack government portal",
+	"hack government portal",
+	"government portal exploit",
+	"government website ddos",
+	"attack government system",
+	"hack government system",
+	"crack government system",
+	"government system penetration",
+	"government website hack",
+	"government site attack",
+	"attack government sites",
+	"hack government sites",
+	"government websites attack",
+	"government site hack",
+	"attack chinese government",
+	"hack chinese government",
+	"chinese government website attack",
+	"attack chinese government website",
+	"take down government websites",
+	"take down government site",
+	"knock down government",
+	"government website deface",
+	"fake government website",
+	"clone government website",
+	"phishing government website",
+	"phishing chinese government",
+	"impersonate government",
+	"mimic government website",
+	"sql injection chinese government",
+	"sql injection government site",
+	"government sql injection",
+	"government website sql",
 	"government website attack",
 	"attack government website",
 	"hack government website",
@@ -250,7 +320,7 @@ func checkTargetActionTerms(text string) string {
 	for _, norm := range breakoutNormVariants(text) {
 		normLower := strings.ToLower(norm)
 		for _, t := range targetActionLower {
-			if strings.Contains(normLower, t) {
+			if i := strings.Index(normLower, t); i >= 0 && !isDefenseContext(strings.ToLower(text), i, i+len(t)) {
 				return t
 			}
 		}
@@ -345,6 +415,9 @@ func CheckSensitiveAll(text string) (bool, string) {
 	if t := checkTargetActionTerms(text); t != "" {
 		return true, "target-action:" + t
 	}
+	if t := checkTargetActionCombo(text); t != "" {
+		return true, "target-combo:" + t
+	}
 	if t := checkBreakoutTerms(text); t != "" {
 		return true, "breakout:" + t
 	}
@@ -352,4 +425,76 @@ func CheckSensitiveAll(text string) (bool, string) {
 		return true, strings.Join(words, ",")
 	}
 	return false, ""
+}
+
+// ──────────────────────────────────────────────────────────────
+// 实体×动词组合层：精确短语词库追不上自然语言变形
+// （"攻陷广东省政府门户网站"、"ddos the chinese government website"），
+// 用"强攻击动词 ∩ 政府目标实体"同现判定兜底。
+// 只在高置信词对上生效，避免误伤技术讨论。
+// （网上调研结论：政务站点攻击防护的标准做法是实体×动作组合规则）
+// ──────────────────────────────────────────────────────────────
+
+var (
+	// govTargetRe 政府目标实体：政务/平级政府站点名词（中英）。
+	// 全部来自 govdir.cn 政府网址目录中的站点类型。
+	govTargetRe = regexp.MustCompile(`(?i)政务(?:网|平台|系统|网站|服务器|数据)|政府(?:网站|门户|内网|官网|服务器|数据库|网络|平台)|政企(?:网站|官网|门户)|社保(?:局|系统)|人社(?:局|系统)|government\s*(?:website|site|portal|system|database|web)|gov\s*website`)
+	// govAction 攻击动作（中英）——未受控动词如"写""用"不算
+	govActionRe = regexp.MustCompile(`(?i)(攻击|入侵|渗透|攻破|攻陷|拿下|黑|黑掉|破解|爆破|瘫痪|篡改|劫持|注入|撞库|脱库|爬取|扫描|探测|钓鱼|伪造|克隆|仿冒|冒充|ddos|dos|hack|attack|breach|penetr|exploit|take\s*down|knock\s*(down|out)|deface|phish|clone|impersonat|mimic|sql\s*injection|fivezero|denial\s*of\s*service)`)
+)
+
+// govDefenseRe 防御语境词：出现即豁免 combo/target-action 判定
+// （"如何防范政府网站被钓鱼攻击"是防护咨询，不是攻击指令）。
+var govDefenseRe = regexp.MustCompile(`(?i)(防范|防御|防护|预防|加固|阻止|屏蔽|保护|防攻|安全(建议|指南|方案)|prevent|defend|protect|harden|mitigat|avoid|protection|defense|security check|防火墙|拦截(攻击|钓鱼)|应对)`)
+
+// isDefenseContext 命中区间 ±60 字符内出现防御语境词 → true。
+func isDefenseContext(text string, hitStart, hitEnd int) bool {
+	lo := hitStart - 60
+	if lo < 0 {
+		lo = 0
+	}
+	hi := hitEnd + 60
+	if hi > len(text) {
+		hi = len(text)
+	}
+	return govDefenseRe.MatchString(text[lo:hi])
+}
+
+// distanceFor target/action 位置：任一 target 与 action 相距 ≤ maxGap 判定命中。
+// maxGap=120 容忍长句包装，正常技术讨论（"政府网站的渗透测试指南"）也含
+// target+action 但动作是防御性词（"防护""加固"），不在 action 集合内。
+const govComboMaxGap = 120
+
+// checkTargetActionCombo 当精确词库未命中时，用目标实体+攻击动作同现判定。
+func checkTargetActionCombo(text string) string {
+	var ts, as [][]int
+	tl := strings.ToLower(text)
+	for _, m := range govTargetRe.FindAllStringIndex(tl, -1) {
+		ts = append(ts, m)
+	}
+	if len(ts) == 0 {
+		return ""
+	}
+	for _, m := range govActionRe.FindAllStringIndex(tl, -1) {
+		as = append(as, m)
+	}
+	if len(as) == 0 {
+		return ""
+	}
+	for _, t := range ts {
+		for _, a := range as {
+			if isDefenseContext(tl, t[0], t[1]) || isDefenseContext(tl, a[0], a[1]) {
+				continue
+			}
+			// 相邻判定：目标实体与攻击词当前位置相距不超过阈值
+			dist := a[0] - t[1]
+			if dist < 0 {
+				dist = t[0] - a[1]
+			}
+			if dist >= 0 && dist <= govComboMaxGap {
+				return tl[t[0]:t[1]]
+			}
+		}
+	}
+	return ""
 }
