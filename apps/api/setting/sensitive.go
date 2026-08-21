@@ -78,6 +78,9 @@ func SensitiveWordsFromString(s string) {
 			SensitiveWords = append(SensitiveWords, w)
 		}
 	}
+	// 生产入口过滤易误伤短词（2 字泛词剔除、攻击词白名单保留）；
+	// testdata 基线 fixture 不经过此处，回归锚不受影响。
+	SensitiveWords = FilterSensitiveWords(SensitiveWords)
 }
 
 func ShouldCheckPromptSensitive() bool {

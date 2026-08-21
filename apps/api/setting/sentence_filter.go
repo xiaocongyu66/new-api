@@ -37,15 +37,3 @@ func FilterSensitiveWords(words []string) []string {
 	}
 	return out
 }
-
-func SensitiveWordsFromString(s string) {
-	SensitiveWords = []string{}
-	sw := strings.Split(s, "\n")
-	for _, w := range sw {
-		w = strings.TrimSpace(w)
-		if w != "" {
-			SensitiveWords = append(SensitiveWords, w)
-		}
-	}
-	SensitiveWords = FilterSensitiveWords(SensitiveWords)
-}
