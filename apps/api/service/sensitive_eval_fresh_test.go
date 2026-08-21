@@ -12,7 +12,7 @@ package service
 // learnprompt.org、tavernsprite.com（SillyTavern archetype 模板）。
 
 import (
-	"embed"
+	_ "embed"
 	"encoding/json"
 	"testing"
 
