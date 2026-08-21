@@ -51,7 +51,7 @@ func IOCopyBytesGracefully(c *gin.Context, src *http.Response, data []byte) {
 	// content_filter 错误，状态码换 403。用户要求输出默认 block。
 	if setting.ShouldCheckCompletionSensitive() {
 		if hit, label := CheckSensitiveOutput(string(data)); hit {
-			logger.SysError(fmt.Sprintf("non-stream output blocked by sensitive filter: [%s]", label))
+			common.SysError(fmt.Sprintf("non-stream output blocked by sensitive filter: [%s]", label))
 			data = []byte(`{"error":{"message":"output blocked by content filter","type":"content_filter","param":null,"code":"content_filter"}}`)
 			src = &http.Response{StatusCode: http.StatusForbidden, Header: http.Header{}}
 			c.Writer.Header().Del("Content-Type")
