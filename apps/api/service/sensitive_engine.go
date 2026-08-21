@@ -20,7 +20,7 @@ func sensitiveCheckHits(text string, dict []string) (bool, []string) {
 	if text == "" {
 		return false, nil
 	}
-	lowered, hasCJK, hasASCII, cjkStream, asciiStream := scanAndLower(text)
+	lowered, hasCJK, hasASCII, cjkStream, nonCJKStream := scanAndLower(text)
 
 	// L1a：明文 AC
 	if ok, words := acSearchWords(lowered, dict); ok {
@@ -48,8 +48,8 @@ func sensitiveCheckHits(text string, dict []string) (bool, []string) {
 				return true, words
 			}
 		}
-		if asciiStream != "" {
-			if ok, words := acSearchWords(asciiStream, dict); ok {
+		if nonCJKStream != "" {
+			if ok, words := acSearchWords(nonCJKStream, dict); ok {
 				words = append(words, "(ascii-only)")
 				return true, words
 			}
@@ -163,9 +163,9 @@ func templateVerdict(lowered string) (bool, []string) {
 // 替代「ToLower + 两次正则探测 + 两次 ReplaceAllString」的组合（热路径主成本）。
 // 流语义与 Python 一致：
 //
-//	cjkStream = 非 ASCII 字符（ASCII_WORD_RE 摘除后，下句）/ 由分隔符剥离处理
-//	asciiStream = 非 CJK 字符（_CJK_RE 摘除后）
-func scanAndLower(text string) (lowered string, hasCJK, hasASCII bool, cjkStream, asciiStream string) {
+//	cjkStream  = 非 ASCII 词字符流（_ASCII_WORD_RE 摘除后），分隔符已由调用方处理
+//	nonCJKStream = 非 CJK 字符流（_CJK_RE 摘除后）
+func scanAndLower(text string) (lowered string, hasCJK, hasASCII bool, cjkStream, nonCJKStream string) {
 	// ASCII 快路径
 	asciiOnly := true
 	for i := 0; i < len(text); i++ {
@@ -175,7 +175,15 @@ func scanAndLower(text string) (lowered string, hasCJK, hasASCII bool, cjkStream
 		}
 	}
 	if asciiOnly {
-		return strings.ToLower(text), false, false, "", ""
+		hasASCII = true
+		for i := 0; i < len(text); i++ {
+			c := text[i]
+			if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
+				break
+			}
+			hasASCII = false
+		}
+		return strings.ToLower(text), false, hasASCII, "", ""
 	}
 	var lb, cb, ab strings.Builder
 	lb.Grow(len(text))
@@ -234,7 +242,11 @@ func isHexDigit(c byte) bool {
 
 // hasEncodingMarkers 与 Python _ENCODING_MARKERS.search 同义：
 //
-//	20+ 位 b64、%XX、&#N; / &#xN;、\uXXXX / \xNN、U+XXXX
+//	20+ 段 b64、%XX、&#N; / &#xN;、\uXXXX / \xNN、U+XXXX
+//
+// 注意：b64 段按「连续 20 字符」计、空白即截断——Python 原正则
+// [A-Za-z0-9+/]{20,} 同样在空白处断开；短 base64 在 Python 基线中
+// 同样不进入解码层（解码门 base64FullRe 另有 len>=8 限制，两层独立对齐）。
 func hasEncodingMarkers(text string) bool {
 	b64Run := 0
 	for i := 0; i < len(text); i++ {
@@ -343,7 +355,12 @@ func stripSepManualKeep(s string, keepDot bool) string {
 }
 
 // decodeLayers 对编码文本做解码尝试，与 Python try_decode_layers 对齐。
+// 输入为请求方可控且长度无上限，256KB 闸防止超大 base64/实体串的线性解码放大
+// （每层解码均线性，无递归展开；多轮解码不会叠加）。
 func decodeLayers(text string) []string {
+	if len(text) > 1<<18 {
+		return nil
+	}
 	var candidates []string
 	add := func(s string) {
 		if s == "" || s == text {

@@ -10,10 +10,14 @@ import (
 //
 // 语义与 anko MultiPatternSearch 一致：
 //   - 关键字小写 + TrimSpace（raw 变体不裁剪尾空白，模板专用）
-//   - 命中词按关键字原序产出；stopImmediately=true 时首个产出态即返回
+//   - 命中词按文本中结束位置的次输出（左→右）；同一结束位置按关键字下标升序
+//   - stopImmediately=true 时首个产出态即返回
 //   - UTF-8 完整关键字均为有效字节序列，字节级 trie 与 rune 级等价
 //
 // 目标：字典扫描从 ~20ns/字符（anko 的 map 查找）降到 ~1ns/字节（稠密表）。
+// 边界：状态数按 int32 计（~21 亿），受词库规模约束（本仓库敏感词/模板
+// 各数千条）；输入含非法 UTF-8 时，上游 scanAndLower 已把非法字节归一为
+// U+FFFD（合法序列），字节级搜索只会找不到对应路径而回落根节点，不会越界。
 // ──────────────────────────────────────────────────────────────
 
 type byteAC struct {
@@ -90,6 +94,8 @@ func buildByteAC(dict []string, raw bool) *byteAC {
 		s := queue[head]
 		for c := 0; c < 256; c++ {
 			bc := byte(c)
+			// 不变量：m.fail[0] == -1 且 m.next[0][c] 对全部 c 非负（上面根循环已填），
+			// 因此下面 `f = m.fail[f]` 回退循环必然在 f==0 处终止，不会读 m.fail[0]。
 			if ns, ok := nodes[s].next[bc]; ok {
 				// 子节点的 fail = fail[父] 走同字节
 				f := m.fail[s]
@@ -162,21 +168,26 @@ func (m *byteMemo) Get(rawDict []string, raw bool) *byteAC {
 		m.lastKey, m.lastVal = k, km
 		return km.ac
 	}
+	// 全部字空白/空串的词库：acKey 为空就直接返回，不建缓存。
+	// 与 dictMemo 相同的后备约定：调用方必须传「内容稳定」的切片
+	// （setting 每次解析重建）；若底层数组被 GC 复用且首/尾词与长度
+	// 恰好一致，会命中旧机器——与既有营方敏感词缓存的取舍一致，见 str.go。
 	key := acKey(rawDict)
 	if key == "" {
 		return nil
 	}
-	ac := buildByteAC(rawDict, raw)
-	if ac == nil {
+	// buildByteAC 在锁内执行：首次构建偶发拖慢并发请求，但构建只发生一次
+	// （dict 配置变更时）；与 dictMemo 的取舍一致，避免双检锁复杂度。
+	km := &byteKeyed{key: key, ac: buildByteAC(rawDict, raw)}
+	if km.ac == nil {
 		return nil
 	}
-	km := &byteKeyed{key: key, ac: ac}
 	m.by[k] = km
 	if len(m.by) > 16 {
 		m.by = make(map[dictCacheKey]*byteKeyed, 4)
 	}
 	m.lastKey, m.lastVal = k, km
-	return ac
+	return km.ac
 }
 
 var (
