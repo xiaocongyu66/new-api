@@ -79,12 +79,6 @@ func TestCheckBreakoutTerms(t *testing.T) {
 	assert.NotEmpty(t, checkBreakoutTerms("手机越狱教程"), "越狱 should hit")
 }
 
-func TestHasEncodingPayload(t *testing.T) {
-	assert.True(t, hasEncodingPayload("U29tZW9uZSBzZW5kcyB0aGlzIGJhc2U2NCBibG9iIHRvIGZpbmQ="))
-	assert.True(t, hasEncodingPayload(".... .- .-.. .-.. --- .---- .---- .---- .----"))
-	assert.False(t, hasEncodingPayload("hello world"))
-}
-
 func TestCheckSensitiveAllLayering(t *testing.T) {
 	words := setting.FilterSensitiveWords(loadSensitiveTestDataForTarget(t))
 	installTestDict(t, words)

@@ -1,7 +1,6 @@
 package service
 
 import (
-	"regexp"
 	"strings"
 
 	"github.com/QuantumNous/new-api/setting"
@@ -130,24 +129,6 @@ func checkBreakoutTerms(lowered string) string {
 		}
 	}
 	return ""
-}
-
-// ---- 编码混淆正则层（低置信 → 计分而非直接拦）----
-// 编码载荷本身不违规（技术讨论），只有「编码 + 系统提示/指令」组合才算攻击信号，
-// 这里交由指纹层计分，不直接拦截。函数返回是否出现编码特征。
-var (
-	base64BlobRe    = regexp.MustCompile(`(?:[A-Za-z0-9+/]{16,}={0,2})`)
-	morseSequenceRe = regexp.MustCompile(`(?:[.\-]+\s?){8,}`)
-)
-
-// hasEncodingPayload 检测长 base64/摩尔斯连续串（编码载荷特征）。
-func hasEncodingPayload(text string) bool {
-	return rePatternHit(text, base64BlobRe) || rePatternHit(text, morseSequenceRe)
-}
-
-func rePatternHit(text string, re *regexp.Regexp) bool {
-	upper := strings.ToUpper(text)
-	return re.MatchString(upper)
 }
 
 // CheckSensitiveAll 输入/输出统一入口：目标域 → 破甲术语 → 词库/指纹/模板。
