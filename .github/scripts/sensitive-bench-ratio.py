@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Parse `go test -bench` output; fail if new engine > 2.5x legacy.
+"""Parse `go test -bench` output → fail if new engine > 2.5x legacy.
 
-Input: go test output (multiple -count iterations).
-Output: median ns/op each side, ratio, verdict. Exit 1 on regression.
+Usage: sensitive-bench-ratio.py [bench-output-file]
+(reads stdin when no file argument given)
 """
 import re
 import statistics
@@ -15,22 +15,28 @@ line_re = re.compile(
 new_vals: list[float] = []
 legacy_vals: list[float] = []
 
-for line in sys.stdin:
+if len(sys.argv) > 1:
+    src = open(sys.argv[1], encoding="utf-8")
+else:
+    src = sys.stdin
+for line in src:
     m = line_re.match(line.strip())
     if not m:
         continue
     (new_vals if m.group(1) == "Normal" else legacy_vals).append(float(m.group(2)))
+if src is not sys.stdin:
+    src.close()
 
 if not new_vals or not legacy_vals:
-    print("::error::bench output missing one side (new=%d legacy=%d)" % (len(new_vals), len(legacy_vals)))
+    print(f"::error::benchmark output missing one side (new={len(new_vals)} legacy={len(legacy_vals)})")
     sys.exit(2)
 
-def med(vs: list[float]) -> float:
-    vs = sorted(vs)
-    n = len(vs)
-    return vs[n // 2] if n % 2 else (vs[n // 2 - 1] + vs[n // 2]) / 2
+new_m = statistics.median(new_vals)
+legacy_m = statistics.median(legacy_vals)
+if legacy_m <= 0:
+    print(f"::error::legacy median ns/op is {legacy_m}; cannot compute ratio")
+    sys.exit(2)
 
-new_m, legacy_m = med(new_vals), med(legacy_vals)
 ratio = new_m / legacy_m
 
 print(f"new engine : {new_m:12.0f} ns/op  (median of {len(new_vals)} runs)")
@@ -47,5 +53,4 @@ with open("sensitive-bench.md", "w") as f:
     f.write(f"| **ratio** | **{ratio:.2f}x** |\n")
     f.write(f"\nVerdict: **{'PASS' if ok else 'FAIL'}** (limit 2.5x)\n")
 
-if not ok:
-    sys.exit(1)
+sys.exit(0 if ok else 1)

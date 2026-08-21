@@ -32,11 +32,19 @@ func SensitiveGroupsToString() string {
 	return strings.Join(SensitiveBlockGroups, ",")
 }
 
+// knownSensitiveGroups 是 SensitiveBlockGroups 的合法取值。未知值会被
+// SensitiveGroupsFromString 丢弃（含拼写错误/历史遗留），避免静默禁用全部组。
+var knownSensitiveGroups = map[string]struct{}{
+	"gov":  {},
+	"tech": {},
+	"rp":   {},
+}
+
 func SensitiveGroupsFromString(s string) {
 	groups := []string{}
 	for _, g := range strings.Split(s, ",") {
 		g = strings.TrimSpace(g)
-		if g != "" {
+		if _, ok := knownSensitiveGroups[g]; ok {
 			groups = append(groups, g)
 		}
 	}
