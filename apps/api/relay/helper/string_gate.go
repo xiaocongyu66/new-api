@@ -21,13 +21,13 @@ type sensitiveOutputState struct {
 
 // outputFilterState 获取/初始化请求级输出检测状态。
 func outputFilterState(c *gin.Context) *sensitiveOutputState {
-	if v, ok := c.Get(constant.ContextKeySensitiveOutputState); ok {
+	if v, ok := c.Get(string(constant.ContextKeySensitiveOutputState)); ok {
 		if s, ok := v.(*sensitiveOutputState); ok {
 			return s
 		}
 	}
 	s := &sensitiveOutputState{}
-	c.Set(constant.ContextKeySensitiveOutputState, s)
+	c.Set(string(constant.ContextKeySensitiveOutputState), s)
 	return s
 }
 
@@ -59,7 +59,7 @@ func outputChunkBlocked(c *gin.Context, data string) (bool, string) {
 // terminateOutputSSE 输出命中敏感后向客户端写终止帧并标记截断。
 // 写 OpenAI 风格 content_filter 终止事件 + [DONE]，任何格式客户端都会断流。
 func terminateOutputSSE(c *gin.Context) {
-	_ = c.Writer.WriteString("data: " + `{"choices":[{"delta":{},"finish_reason":"content_filter"}]}` + "\n\n")
-	_ = c.Writer.WriteString("data: [DONE]\n\n")
+	_, _ = c.Writer.WriteString("data: " + `{"choices":[{"delta":{},"finish_reason":"content_filter"}]}` + "\n\n")
+	_, _ = c.Writer.WriteString("data: [DONE]\n\n")
 	_ = FlushWriter(c)
 }

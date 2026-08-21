@@ -86,7 +86,7 @@ func TestHasEncodingPayload(t *testing.T) {
 }
 
 func TestCheckSensitiveAllLayering(t *testing.T) {
-	words := FilterSensitiveWords(loadSensitiveTestDataForTarget(t))
+	words := setting.FilterSensitiveWords(loadSensitiveTestDataForTarget(t))
 	installTestDict(t, words)
 
 	blocked := []string{
