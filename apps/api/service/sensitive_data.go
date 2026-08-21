@@ -178,10 +178,16 @@ var fingerprintRaw = []struct {
 		`ignore all (the )?(previous|above|prior|my|your) (instructions|rules|prompts)`,
 		`ignore (my|all|previous|above) instructions`, `忽略所有指令`,
 		`忽略之前`, `无视 (所有|之前)`,
+		// 指令覆盖动词家族（来自公开 instruction-override 模式目录）
+		`(disregard|overlook|forget|skip|drop|dismiss|abandon|reject|void|override|nullify) (all |any |the )?(previous|prior|earlier|above|existing|original|my|your) (instructions?|rules?|directives?|guidelines?|prompts?|safe rules)`,
+		`(disregard|forget|override|ignore) (your|the|all) (system prompt|safety rules|rules)`,
+		`(your|the) (instructions|rules|system prompt) (are|is|were) no longer (valid|applicable|in effect)`,
+		`(your|the) (instructions|rules) (are|is) (invalid|void|stale)`,
 	}},
 	{"dev_mode", []string{
 		`developer mode`, `jailbreak mode`, `DAN mode`, `omega mode`,
 		`unfiltered mode`, `开发者模式`, `越狱模式`,
+		`(dev|jailbreak|dan|unfiltered|god) mode (on|enabled|activated)`,
 	}},
 }
 

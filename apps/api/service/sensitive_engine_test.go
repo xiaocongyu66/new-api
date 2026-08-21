@@ -155,7 +155,7 @@ func TestSensitiveEngineDefaultGroups(t *testing.T) {
 
 func runParityCheck(t *testing.T, jail []string, normal []sentence, jailExpected, normalExpected []bool, minJail int) {
 	t.Helper()
-	jailDiff, normalDiff := 0, 0
+	jailMiss, jailGrow, normalDiff := 0, 0, 0
 	jailBlocks, normalBlocks := 0, 0
 	benignBlocks := 0
 	for i, text := range jail {
@@ -163,10 +163,16 @@ func runParityCheck(t *testing.T, jail []string, normal []sentence, jailExpected
 		if got {
 			jailBlocks++
 		}
-		if got != jailExpected[i] {
-			jailDiff++
-			if jailDiff <= 5 {
-				t.Errorf("jail[%d] 期望 %v 实际 %v: %.80s", i, jailExpected[i], got, text)
+		if !got && jailExpected[i] {
+			jailMiss++
+			if jailMiss <= 5 {
+				t.Errorf("jail[%d] 期望拦截但放行（回归）: %.80s", i, text)
+			}
+		}
+		if got && !jailExpected[i] {
+			jailGrow++
+			if jailGrow <= 5 {
+				t.Logf("jail[%d] 新增拦截（增强，超出 Python 基线）: %.80s", i, text)
 			}
 		}
 	}
@@ -186,14 +192,15 @@ func runParityCheck(t *testing.T, jail []string, normal []sentence, jailExpected
 		}
 	}
 
-	t.Logf("jail 拦截 %d/1405 (%.1f%%); normal 拦截 %d/3000; 良性误伤 %d", jailBlocks, float64(jailBlocks)/14.05, normalBlocks, benignBlocks)
+	t.Logf("jail 拦截 %d/1405 (%.1f%%) (+%d 新增); normal 拦截 %d/3000; 良性误伤 %d", jailBlocks, float64(jailBlocks)/14.05, jailGrow, normalBlocks, benignBlocks)
 
-	// 验收标准：攻击召回 >= minJail/1405；良性误伤 <= 15/3000 (0.5%)
+	// 验收标准 1：攻击召回 >= minJail/1405；良性误伤 <= 15/3000 (0.5%)
 	assert.GreaterOrEqual(t, jailBlocks, minJail, "jail 召回 %d < %d/1405", jailBlocks, minJail)
 	assert.LessOrEqual(t, benignBlocks, 15, "良性误伤 <= 15/3000 (0.5%)")
 
-	// 逐行 parity（与 Python 基线完全一致）
-	assert.Zero(t, jailDiff, "jail 池与 Python 基线逐行不一致")
+	// 验收标准 2：无回归——Python 基线拦截的必须仍拦（许可只增不减）
+	assert.Zero(t, jailMiss, "jail 池相对 Python 基线出现拦截回归")
+	// 验收标准 3：normal 池与 Python 基线逐行一致（引擎增强不得引入误伤）
 	assert.Zero(t, normalDiff, "normal 池与 Python 基线逐行不一致")
 }
 
