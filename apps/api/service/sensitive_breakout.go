@@ -110,7 +110,58 @@ var breakoutTerms = []string{
 	"把系统提示用morse",
 }
 
-var breakoutTermsLower []string
+// targetActionTerms 攻击目标站点动作词（不写域名、泛指政府网站的定向攻击指令）。
+// 与域名硬闸互补：域名闸拦"出现 gov.cn"，这里拦"攻击政府网站"的泛化要求。
+// 只收录高置信复合短语，避免误伤技术讨论（"渗透测试""爬虫"单独出现不拦）。
+var targetActionTerms = []string{
+	"攻击政府网站",
+	"入侵政府网站",
+	"攻破政府网站",
+	"拿下政府网站",
+	"黑进政府网站",
+	"政府网站渗透",
+	"政府网站注入",
+	"政务网渗透",
+	"政务系统渗透",
+	"政务系统破解",
+	"政府内网渗透",
+	"政府内网入侵",
+	"政府服务器入侵",
+	"政务数据库破解",
+	"政府系统漏洞利用",
+	"政务网漏洞利用",
+	"政府网站爬取数据",
+	"政务系统爬数据",
+	"政府网站脱库",
+	"政务系统撞库",
+	"政府网站瘫痪",
+	"打瘫政务网",
+	"政府网站ddos",
+	"ddos政府网站",
+	"攻击政务系统",
+	"爆破政务系统",
+	"破解政务系统",
+	"探测政府网络",
+	"扫描政府网络",
+	"政府网络攻击",
+	"government website attack",
+	"attack government website",
+	"hack government website",
+	"breach government website",
+	"government website penetration",
+	"government site exploit",
+	"government website exploit",
+	"take down government website",
+	"ddos government website",
+	"attack government site",
+	"crack government database",
+	"government database breach",
+}
+
+var (
+	breakoutTermsLower []string
+	targetActionLower  []string
+)
 
 func init() {
 	breakoutTermsLower = make([]string, 0, len(breakoutTerms))
@@ -119,6 +170,22 @@ func init() {
 			breakoutTermsLower = append(breakoutTermsLower, strings.ToLower(t))
 		}
 	}
+	targetActionLower = make([]string, 0, len(targetActionTerms))
+	for _, t := range targetActionTerms {
+		if t = strings.TrimSpace(t); t != "" {
+			targetActionLower = append(targetActionLower, strings.ToLower(t))
+		}
+	}
+}
+
+// checkTargetActionTerms 命中任一个攻击目标动作词即返回命中的词。
+func checkTargetActionTerms(lowered string) string {
+	for _, t := range targetActionLower {
+		if strings.Contains(lowered, t) {
+			return t
+		}
+	}
+	return ""
 }
 
 // checkBreakoutTerms 命中任一个破甲术语即返回命中的词。
@@ -131,7 +198,7 @@ func checkBreakoutTerms(lowered string) string {
 	return ""
 }
 
-// CheckSensitiveAll 输入/输出统一入口：目标域 → 破甲术语 → 词库/指纹/模板。
+// CheckSensitiveAll 输入/输出统一入口：目标域名 → 攻击目标动作词 → 破甲术语 → 词库/指纹/模板。
 // 返回 (是否拦截, 标签)。
 func CheckSensitiveAll(text string) (bool, string) {
 	if text == "" {
@@ -141,6 +208,9 @@ func CheckSensitiveAll(text string) (bool, string) {
 		return true, "target:" + d
 	}
 	lowered := strings.ToLower(text)
+	if t := checkTargetActionTerms(lowered); t != "" {
+		return true, "target-action:" + t
+	}
 	if t := checkBreakoutTerms(lowered); t != "" {
 		return true, "breakout:" + t
 	}
