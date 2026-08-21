@@ -53,7 +53,7 @@ func benchRows(tb testing.TB) []string {
 
 // BenchmarkSensitiveEngine 分层引擎全路径（含词库 AC + 指纹 + 模板）。
 func BenchmarkSensitiveEngine(b *testing.B) {
-	_, _, words, _, _ := loadSensitiveTestData(b)
+	_, _, words, _, _, _, _ := loadSensitiveTestData(b)
 	installTestDict(b, words)
 	rows := benchRows(b)
 	b.ResetTimer()
@@ -71,7 +71,7 @@ func BenchmarkSensitiveEngine(b *testing.B) {
 
 // BenchmarkSensitiveLegacyToLowerAc baseline：strings.ToLower + AC 词库（旧实现路径）。
 func BenchmarkSensitiveLegacyToLowerAC(b *testing.B) {
-	_, _, words, _, _ := loadSensitiveTestData(b)
+	_, _, words, _, _, _, _ := loadSensitiveTestData(b)
 	installTestDict(b, words)
 	rows := benchRows(b)
 	b.ResetTimer()
@@ -89,7 +89,7 @@ func BenchmarkSensitiveLegacyToLowerAC(b *testing.B) {
 
 // BenchmarkSensitiveNormal 纯正常池（Issue 验收口径：正常请求 <=2.5x 现状）。
 func BenchmarkSensitiveNormal(b *testing.B) {
-	_, _, words, _, _ := loadSensitiveTestData(b)
+	_, _, words, _, _, _, _ := loadSensitiveTestData(b)
 	installTestDict(b, words)
 	var rows []string
 	for _, line := range strings.Split(string(normalFixture), "\n") {
@@ -119,7 +119,7 @@ func BenchmarkSensitiveNormal(b *testing.B) {
 
 // BenchmarkSensitiveLegacyNormal 正常池 × 旧实现（ToLower + AC）。
 func BenchmarkSensitiveLegacyNormal(b *testing.B) {
-	_, _, words, _, _ := loadSensitiveTestData(b)
+	_, _, words, _, _, _, _ := loadSensitiveTestData(b)
 	installTestDict(b, words)
 	var rows []string
 	for _, line := range strings.Split(string(normalFixture), "\n") {

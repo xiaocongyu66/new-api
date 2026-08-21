@@ -11,19 +11,22 @@ import (
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting"
 )
 
 //go:embed testdata/sensitive_templates.json
 var sensitiveTemplatesFS embed.FS
 
 var (
-	sensitiveTemplatesOnce sync.Once
-	sensitiveTemplates     []string
+	sensitiveTemplatesOnce  sync.Once
+	sensitiveTemplates      []string
+	sensitiveTemplateGroups []string
+	sensitiveTemplatesTech  []string
 )
 
-// loadSensitiveTemplates L3-模板前缀库：54 条真实攻击载荷前 80 字符（小写、去重），
-// 与 Python 基线 44 条特征完全一致。
-func loadSensitiveTemplates() []string {
+// loadSensitiveTemplates L3-模板前缀库：真实攻击载荷前 80 字符（小写、去重），
+// 与 Python 基线 44 条特征完全一致；groups 同步标注 tech/rp 组。
+func loadSensitiveTemplates() ([]string, []string) {
 	sensitiveTemplatesOnce.Do(func() {
 		data, err := sensitiveTemplatesFS.ReadFile("testdata/sensitive_templates.json")
 		if err != nil {
@@ -32,18 +35,31 @@ func loadSensitiveTemplates() []string {
 		}
 		var payload struct {
 			Prefixes []string `json:"prefixes"`
+			Groups   []string `json:"groups"`
 		}
 		if err := common.Unmarshal(data, &payload); err != nil {
 			common.SysError("sensitive templates parse failed: " + err.Error())
 			return
 		}
+		if len(payload.Groups) != len(payload.Prefixes) {
+			common.SysError("sensitive templates groups length mismatch")
+			return
+		}
 		sensitiveTemplates = payload.Prefixes
+		sensitiveTemplateGroups = payload.Groups
 	})
-	return sensitiveTemplates
+	return sensitiveTemplates, sensitiveTemplateGroups
 }
 
 func init() {
 	loadSensitiveTemplates() // 启动即加载，避免首请求触发解析
+	// tech 组模板子集（rp 组关闭时的快路径机器）
+	sensitiveTemplatesTech = make([]string, 0, len(sensitiveTemplates))
+	for i, g := range sensitiveTemplateGroups {
+		if g == "tech" {
+			sensitiveTemplatesTech = append(sensitiveTemplatesTech, sensitiveTemplates[i])
+		}
+	}
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -119,6 +135,7 @@ var base64FullRe = regexp.MustCompile(`^[A-Za-z0-9+/=\s]+$`)
 
 type fingerprintCategory struct {
 	name  string
+	group string // gov/tech/rp：SensitiveBlockGroups 开关组
 	atoms []fpAtom
 }
 
@@ -345,9 +362,18 @@ func expandAtoms(pattern string) []string {
 	return []string{pattern}
 }
 
+// fpCategoryGroup 指纹 ∈ 开关组：tech（技术破甲）与 rp（角色扮演）。
+// 与 Python FP_GROUPS 对齐；gov 组由词库层承担。
+var fpCategoryGroup = map[string]string{
+	"roleplay":     "rp",
+	"hypothetical": "rp",
+	"amoral":       "tech", "dan": "tech", "unrestricted": "tech",
+	"vm": "tech", "ignore_inst": "tech", "dev_mode": "tech",
+}
+
 func init() {
 	for _, raw := range fingerprintRaw {
-		cat := fingerprintCategory{name: raw.name}
+		cat := fingerprintCategory{name: raw.name, group: fpCategoryGroup[raw.name]}
 		for _, p := range raw.patterns {
 			plain := strings.ReplaceAll(p, `\b`, "")
 			for _, atom := range expandAtoms(plain) {
@@ -367,6 +393,7 @@ func init() {
 }
 
 // fingerprintScore 评分：每类命中计 1（与 Python 相同，类别内短路）。
+// 命中的类别若所在组（tech/rp）未启用则不计分。
 func fingerprintScore(text string) (int, []string) {
 	idx, pos := fpSearchPos(text)
 	if len(idx) == 0 {
@@ -374,7 +401,8 @@ func fingerprintScore(text string) (int, []string) {
 	}
 	catHit := make([]bool, len(fingerprintCategories))
 	for k, atomIdx := range idx {
-		if catHit[fpCatOf[atomIdx]] {
+		ci := fpCatOf[atomIdx]
+		if catHit[ci] {
 			continue
 		}
 		a := &fpFlatAtoms[atomIdx]
@@ -391,13 +419,13 @@ func fingerprintScore(text string) (int, []string) {
 			afterOk = !isUnicodeWordChar(next)
 		}
 		if beforeOk && afterOk {
-			catHit[fpCatOf[atomIdx]] = true
+			catHit[ci] = true
 		}
 	}
 	score := 0
 	hits := make([]string, 0, 4)
 	for ci, cat := range fingerprintCategories {
-		if catHit[ci] {
+		if catHit[ci] && (cat.group == "" || setting.SensitiveGroupEnabled(cat.group)) {
 			score++
 			hits = append(hits, cat.name)
 		}

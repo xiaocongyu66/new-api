@@ -4,6 +4,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/QuantumNous/new-api/setting"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -16,42 +17,47 @@ import (
 //	→ 指纹裁决（≥4 或 DAN+≥2 → block）→ L5 模板前缀子串
 //
 // dict == nil/empty 时跳过 AC 层，指纹与模板层仍生效。
+// 词库黑名单层（L1a/b/c、L2 归一化、L3 解码）受 gov 组开关控制：
+// gov 关闭时只保留指纹（tech/rp）与模板层，直接进 L4。
 func sensitiveCheckHits(text string, dict []string) (bool, []string) {
 	if text == "" {
 		return false, nil
 	}
+	gov := setting.SensitiveGroupEnabled("gov")
 	lowered, hasCJK, hasASCII, cjkStream, nonCJKStream := scanAndLower(text)
 
-	// L1a：明文 AC
-	if ok, words := acSearchWords(lowered, dict); ok {
-		return true, words
-	}
+	// L1a：明文 AC（gov 组）
+	if gov {
+		if ok, words := acSearchWords(lowered, dict); ok {
+			return true, words
+		}
 
-	// L1b：分隔符剥离 + AC
-	if strings.IndexAny(lowered, sepCharSet) >= 0 {
-		stripped := stripSepManual(lowered)
-		if stripped != lowered {
-			if ok, words := acSearchWords(stripped, dict); ok {
-				words = append(words, "(sep-strip)")
-				return true, words
+		// L1b：分隔符剥离 + AC
+		if strings.IndexAny(lowered, sepCharSet) >= 0 {
+			stripped := stripSepManual(lowered)
+			if stripped != lowered {
+				if ok, words := acSearchWords(stripped, dict); ok {
+					words = append(words, "(sep-strip)")
+					return true, words
+				}
 			}
 		}
-	}
 
-	// L1c：语言隔离（仅当 CJK 与 ASCII 混合；流由 scanAndLower 顺带生成）
-	if hasCJK && hasASCII {
-		// 中文流：剥掉 ASCII 后过 AC（与 Python _ASCII_WORD_RE.sub 语义一致：
-		// 保留所有非 ASCII 字符，再由分隔符剥离，不把字族突围成"内网"）
-		if cjkStream != "" {
-			if ok, words := acSearchWords(cjkStream, dict); ok {
-				words = append(words, "(cjk-only)")
-				return true, words
+		// L1c：语言隔离（仅当 CJK 与 ASCII 混合；流由 scanAndLower 顺带生成）
+		if hasCJK && hasASCII {
+			// 中文流：剥掉 ASCII 后过 AC（与 Python _ASCII_WORD_RE.sub 语义一致：
+			// 保留所有非 ASCII 字符，再由分隔符剥离，不把字族突围成"内网"）
+			if cjkStream != "" {
+				if ok, words := acSearchWords(cjkStream, dict); ok {
+					words = append(words, "(cjk-only)")
+					return true, words
+				}
 			}
-		}
-		if nonCJKStream != "" {
-			if ok, words := acSearchWords(nonCJKStream, dict); ok {
-				words = append(words, "(ascii-only)")
-				return true, words
+			if nonCJKStream != "" {
+				if ok, words := acSearchWords(nonCJKStream, dict); ok {
+					words = append(words, "(ascii-only)")
+					return true, words
+				}
 			}
 		}
 	}
@@ -68,32 +74,35 @@ func sensitiveCheckHits(text string, dict []string) (bool, []string) {
 		return templateVerdict(lowered)
 	}
 
-	// L3 归一化（NFKC + 同形字 + 零宽剥离），双趟：
-	//   pass1 keep-dot：域名词（gov.cn）的点是结构字符，不能剥
-	//   pass2 strip-all：标点插入（政.府）需要剥点
-	base := norm.NFKC.String(stripInvisible(lowered))
-	base = applyHomoglyphs(base)
-	keepDot := stripSepManualKeep(base, true)
-	if keepDot != lowered {
-		if ok, words := acSearchWords(keepDot, dict); ok {
-			words = append(words, "(norm-keepdot)")
-			return true, words
-		}
-	}
-	normalized := stripSepManualKeep(base, false)
-	if normalized != lowered {
-		if ok, words := acSearchWords(normalized, dict); ok {
-			words = append(words, "(norm-strip)")
-			return true, words
-		}
-	}
-
-	// L3 解码层
-	if encoded {
-		for _, dec := range decodeLayers(text) {
-			if ok, words := acSearchWords(dec, dict); ok {
-				words = append(words, "(decoded)")
+	// 归一化/解码层（gov 组；L2/L3 只在文本携可疑编码时执行）
+	if gov {
+		// L1d：归一化（NFKC + 同形字 + 零宽剥离），双趟：
+		//   pass1 keep-dot：域名词（gov.cn）的点是结构字符，不能剥
+		//   pass2 strip-all：标点插入（与 府）需要剥点
+		base := norm.NFKC.String(stripInvisible(lowered))
+		base = applyHomoglyphs(base)
+		keepDot := stripSepManualKeep(base, true)
+		if keepDot != lowered {
+			if ok, words := acSearchWords(keepDot, dict); ok {
+				words = append(words, "(norm-keepdot)")
 				return true, words
+			}
+		}
+		normalized := stripSepManualKeep(base, false)
+		if normalized != lowered {
+			if ok, words := acSearchWords(normalized, dict); ok {
+				words = append(words, "(norm-strip)")
+				return true, words
+			}
+		}
+
+		// L3 解码层
+		if encoded {
+			for _, dec := range decodeLayers(text) {
+				if ok, words := acSearchWords(dec, dict); ok {
+					words = append(words, "(decoded)")
+					return true, words
+				}
 			}
 		}
 	}
@@ -141,11 +150,29 @@ func fingerprintHitsDan(hits []string) bool {
 
 // templateVerdict L3-模板前缀子串（44 条真实载荷前 80 字符，小写去重）。
 // 用不裁剪的机器：前缀尾随空白是匹配边界的一部分。
+// 模板按 tech/rp 分组：rp 组未启用时只查 tech 前缀。
 func templateVerdict(lowered string) (bool, []string) {
 	if len(sensitiveTemplates) == 0 {
 		return false, nil
 	}
+	// 快路径：rp 组关闭且文本不含 rp 前缀的先行词时，直接判定 tech 前缀
+	techOnly := !setting.SensitiveGroupEnabled("rp")
+	if techOnly {
+		return templateVerdictTech(lowered)
+	}
 	m := getOrBuildByteACRaw(sensitiveTemplates)
+	if m == nil {
+		return false, nil
+	}
+	if len(m.search(lowered, true)) > 0 {
+		return true, []string{"payload-template"}
+	}
+	return false, nil
+}
+
+// templateVerdictTech 仅匹配 tech 组模板前缀。
+func templateVerdictTech(lowered string) (bool, []string) {
+	m := getOrBuildByteACTech()
 	if m == nil {
 		return false, nil
 	}

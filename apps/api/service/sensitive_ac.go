@@ -203,3 +203,11 @@ func getOrBuildByteAC(dict []string) *byteAC {
 func getOrBuildByteACRaw(dict []string) *byteAC {
 	return acBytesRawMemo.Get(dict, true)
 }
+
+// getOrBuildByteACTech tech 组模板专用机器（rp 组关闭时的默认路径）。
+func getOrBuildByteACTech() *byteAC {
+	if len(sensitiveTemplatesTech) == 0 {
+		return nil
+	}
+	return acBytesRawMemo.Get(sensitiveTemplatesTech, true)
+}
