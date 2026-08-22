@@ -207,7 +207,7 @@ func parseAuthClaims(raw, expectedUse string, key []byte) (*authClaims, error) {
 		if errors.Is(err, jwt.ErrTokenExpired) {
 			return nil, ErrAuthTokenExpired
 		}
-		return nil, fmt.Errorf("%w: %v", ErrAuthTokenInvalid, err)
+		return nil, fmt.Errorf("%w: %w", ErrAuthTokenInvalid, err)
 	}
 	if !parsed.Valid || claims.TokenUse != expectedUse || claims.ID == "" || claims.IssuedAt == nil || claims.NotBefore == nil {
 		return nil, ErrAuthTokenInvalid
