@@ -61,6 +61,11 @@ jobs:
         working-directory: apps/api
         run: GOWORK=off go test -tags "${SINGBOX_TAGS}" ./...
 
+      - name: Fresh-web sensitive eval matrix (verbose)
+        if: always()
+        working-directory: apps/api
+        run: GOWORK=off go test -tags "${SINGBOX_TAGS}" -v -run 'TestSensitiveEvalFresh' ./service/
+
       - name: Test relaykit module
         working-directory: apps/api/modules/relaykit
         run: GOWORK=off go test ./...
