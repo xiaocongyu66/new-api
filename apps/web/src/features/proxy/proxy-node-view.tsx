@@ -1,9 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Activity,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  CheckCircle2,
+  Loader2,
+  Play,
+  Trash2,
+  XCircle,
+  Zap,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { getChannels } from "@/features/channels/api";
-import { getGroups } from "@/features/users/api";
+import { RouteModelPicker } from "./components/route-model-picker";
 
 import {
   AlertDialog,
@@ -16,34 +26,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 import {
   clearProxyNodeErrors,
-  createProxyNode,
-  createProxyNodesBatch,
   deleteProxyNode,
   fetchProxyNodeDetail,
   fetchProxyNodeReport,
@@ -52,48 +42,21 @@ import {
   testProxyNode,
   updateProxyNode,
 } from "./proxy-node-api";
-import { proxyNodeDefaultScopeValue } from "./proxy-node-scope";
 import { ProxyNodeQuickAdd } from "./proxy-node-quick-add";
-
-import type {
-  ProxyNode,
-  ProxyNodeBatchRequest,
-  ProxyNodeBatchResult,
-  ProxyNodeRequest,
-} from "./proxy-node-types";
-
-type EditorState = ProxyNodeRequest & { id?: number };
-
-const emptyEditor = (): EditorState => ({
-  name: "",
-  enabled: true,
-  proxy: "",
-  scope_type: "all",
-  scope_value: "",
-});
-
-const emptyBatch = (): ProxyNodeBatchRequest => ({
-  name_prefix: "",
-  enabled: true,
-  proxy_text: "",
-  scope_type: "all",
-  scope_value: "",
-});
-
+import { type ProxyNodeScopeType } from "./proxy-node-scope";
+import type { ProxyNode } from "./proxy-node-types";
 export function ProxyNodeView() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [editor, setEditor] = useState<EditorState | null>(null);
-  const [batch, setBatch] = useState<ProxyNodeBatchRequest | null>(null);
-  const [batchResult, setBatchResult] = useState<ProxyNodeBatchResult | null>(
-    null,
-  );
   const [deleteTarget, setDeleteTarget] = useState<ProxyNode | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
-  const [sortField, setSortField] = useState<"name" | "health" | "probe_count">(
-    "name",
-  );
-
+  const [sortConfig, setSortConfig] = useState<{
+    key: "name" | "protocol" | "health" | "success" | "failure" | "probe_count";
+    order: "asc" | "desc";
+  }>({
+    key: "name",
+    order: "asc",
+  });
   const nodesQuery = useQuery({
     queryKey: ["proxy-nodes"],
     queryFn: fetchProxyNodes,
@@ -104,49 +67,10 @@ export function ProxyNodeView() {
     queryFn: fetchProxyNodeReport,
     retry: false,
   });
-  const channelsQuery = useQuery({
-    queryKey: ["proxy-node-scope", "channels"],
-    queryFn: async () =>
-      (await getChannels({ p: 1, page_size: 1000 })).data?.items ?? [],
-    staleTime: 5 * 60 * 1000,
-  });
-  const groupsQuery = useQuery({
-    queryKey: ["proxy-node-scope", "groups"],
-    queryFn: getGroups,
-    staleTime: 5 * 60 * 1000,
-  });
-
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ["proxy-nodes"] });
   };
 
-  const saveMutation = useMutation({
-    mutationFn: (value: EditorState) =>
-      value.id ? updateProxyNode(value.id, value) : createProxyNode(value),
-    onSuccess: () => {
-      setEditor(null);
-      invalidate();
-      toast.success(t("Saved successfully"));
-    },
-    onError: (error: Error) =>
-      toast.error(error.message || t("Failed to save")),
-  });
-  const batchMutation = useMutation({
-    mutationFn: createProxyNodesBatch,
-    onSuccess: (result) => {
-      setBatchResult(result);
-      setBatch(null);
-      invalidate();
-      toast.success(
-        t("Created {{created}}, failed {{failed}}", {
-          created: result.created,
-          failed: result.failed,
-        }),
-      );
-    },
-    onError: (error: Error) =>
-      toast.error(error.message || t("Batch import failed")),
-  });
   const deleteMutation = useMutation({
     mutationFn: deleteProxyNode,
     onSuccess: () => {
@@ -183,30 +107,41 @@ export function ProxyNodeView() {
 
   const nodes = useMemo(() => {
     const items = [...(nodesQuery.data ?? [])];
+    const { key, order } = sortConfig;
     return items.sort((left, right) => {
-      if (sortField === "name") return left.name.localeCompare(right.name);
-      if (sortField === "health") return right.health - left.health;
-      return right.probe_total - left.probe_total;
+      let comparison = 0;
+      if (key === "name") {
+        comparison = left.name.localeCompare(right.name);
+      } else if (key === "protocol") {
+        comparison = (left.protocol || "SOCKS5").localeCompare(right.protocol || "SOCKS5");
+      } else if (key === "health") {
+        comparison = left.health - right.health;
+      } else if (key === "success") {
+        const leftRate = left.probe_total ? left.probe_success / left.probe_total : 0;
+        const rightRate = right.probe_total ? right.probe_success / right.probe_total : 0;
+        comparison = leftRate - rightRate;
+      } else if (key === "failure") {
+        const leftRate = left.probe_total ? (left.probe_total - left.probe_success) / left.probe_total : 0;
+        const rightRate = right.probe_total ? (right.probe_total - right.probe_success) / right.probe_total : 0;
+        comparison = leftRate - rightRate;
+      } else if (key === "probe_count") {
+        comparison = left.probe_total - right.probe_total;
+      }
+      return order === "asc" ? comparison : -comparison;
     });
-  }, [nodesQuery.data, sortField]);
+  }, [nodesQuery.data, sortConfig]);
+
+  const handleSort = (
+    key: "name" | "protocol" | "health" | "success" | "failure" | "probe_count"
+  ) => {
+    setSortConfig((prev) => ({
+      key,
+      order: prev.key === key && prev.order === "asc" ? "desc" : "asc",
+    }));
+  };
   const report = reportQuery.data;
   const selectedCount = selectedIds.size;
-  const openAdd = useCallback(() => setEditor(emptyEditor()), []);
-  const openBatch = useCallback(() => {
-    setBatchResult(null);
-    setBatch(emptyBatch());
-  }, []);
 
-  useEffect(() => {
-    const handleOpenAdd = openAdd;
-    const handleOpenBatch = openBatch;
-    window.addEventListener("proxy:open-add", handleOpenAdd);
-    window.addEventListener("proxy:open-batch", handleOpenBatch);
-    return () => {
-      window.removeEventListener("proxy:open-add", handleOpenAdd);
-      window.removeEventListener("proxy:open-batch", handleOpenBatch);
-    };
-  }, [openAdd, openBatch]);
   return (
     <div className="space-y-4">
       {selectedCount > 0 && (
@@ -241,35 +176,43 @@ export function ProxyNodeView() {
         </div>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <NodeMetric
+          icon={<Activity className="size-4 text-sky-500" />}
           label={t("Nodes")}
-          value={String(report?.total ?? 0)}
-          detail={t("{{count}} enabled", { count: report?.enabled ?? 0 })}
+          value={`${report?.enabled ?? 0} / ${report?.total ?? 0}`}
+          detail={t("Proxy {{enabled}} · Healthy {{healthy}}", {
+            enabled: report?.enabled ?? 0,
+            healthy: report?.healthy ?? 0,
+          })}
         />
         <NodeMetric
-          label={t("Healthy Nodes")}
-          value={String(report?.healthy ?? 0)}
-          detail={t("of {{count}} total", { count: report?.total ?? 0 })}
-        />
-        <NodeMetric
-          label={t("Probe Success Rate")}
+          icon={<CheckCircle2 className="size-4 text-emerald-500" />}
+          label={t("Success Rate")}
           value={
             report?.probe_total ? `${report.success_rate.toFixed(1)}%` : "-"
           }
-          detail={t("{{count}} probes", { count: report?.probe_total ?? 0 })}
+          detail={t("Success {{success}} / Total {{total}}", {
+            success: report?.probe_success ?? 0,
+            total: report?.probe_total ?? 0,
+          })}
         />
         <NodeMetric
-          label={t("Probe Failure Rate")}
+          icon={<XCircle className="size-4 text-rose-500" />}
+          label={t("Failure Rate")}
           value={
             report?.probe_total ? `${report.failure_rate.toFixed(1)}%` : "-"
           }
-          detail={t("{{count}} failed", { count: report?.probe_failed ?? 0 })}
+          detail={t("Failed {{failed}} / Total {{total}}", {
+            failed: report?.probe_failed ?? 0,
+            total: report?.probe_total ?? 0,
+          })}
         />
         <NodeMetric
-          label={t("Probe Count")}
+          icon={<Zap className="size-4 text-amber-500" />}
+          label={t("Total Requests")}
           value={String(report?.probe_total ?? 0)}
-          detail={t("Process-local statistics reset on restart")}
+          detail={t("In-memory stats, reset on restart")}
         />
       </div>
 
@@ -278,33 +221,6 @@ export function ProxyNodeView() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">{t("Proxy Nodes")}</CardTitle>
-          <CardAction>
-            <Select
-              value={sortField}
-              onValueChange={(value) => {
-                if (
-                  value === "name" ||
-                  value === "health" ||
-                  value === "probe_count"
-                ) {
-                  setSortField(value);
-                }
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="name">{t("Sort by Name")}</SelectItem>
-                  <SelectItem value="health">{t("Sort by Health")}</SelectItem>
-                  <SelectItem value="probe_count">
-                    {t("Sort by Probe Count")}
-                  </SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </CardAction>
         </CardHeader>
         <CardContent>
           {nodesQuery.isLoading && (
@@ -325,30 +241,71 @@ export function ProxyNodeView() {
           {nodes.length > 0 && (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="text-muted-foreground border-b text-left">
+                <thead className="text-muted-foreground/80 border-b text-xs font-medium text-left bg-muted/20">
                   <tr>
-                    <th className="p-2">
+                    <th className="p-2.5 w-10">
                       <span className="sr-only">{t("Select")}</span>
                     </th>
-                    {[
-                      "Name",
-                      "Enabled",
-                      "Scope",
-                      "Protocol",
-                      "Health",
-                      "Probe Success Rate",
-                      "Probe Failure Rate",
-                      "Probe Count",
-                      "Last Probe",
-                      "Actions",
-                    ].map((key) => (
-                      <th className="p-2" key={key}>
-                        {t(key)}
-                      </th>
-                    ))}
+                    <th className="p-2.5 max-w-[220px]">
+                      <SortHeaderButton
+                        label={t("Name")}
+                        sortKey="name"
+                        activeKey={sortConfig.key}
+                        order={sortConfig.order}
+                        onClick={() => handleSort("name")}
+                      />
+                    </th>
+                    <th className="p-2.5 w-28">
+                      <SortHeaderButton
+                        label={t("Protocol")}
+                        sortKey="protocol"
+                        activeKey={sortConfig.key}
+                        order={sortConfig.order}
+                        onClick={() => handleSort("protocol")}
+                      />
+                    </th>
+                    <th className="p-2.5 w-24">
+                      <SortHeaderButton
+                        label={t("Health")}
+                        sortKey="health"
+                        activeKey={sortConfig.key}
+                        order={sortConfig.order}
+                        onClick={() => handleSort("health")}
+                      />
+                    </th>
+                    <th className="p-2.5 w-28">
+                      <SortHeaderButton
+                        label={t("Success Rate")}
+                        sortKey="success"
+                        activeKey={sortConfig.key}
+                        order={sortConfig.order}
+                        onClick={() => handleSort("success")}
+                      />
+                    </th>
+                    <th className="p-2.5 w-28">
+                      <SortHeaderButton
+                        label={t("Failure Rate")}
+                        sortKey="failure"
+                        activeKey={sortConfig.key}
+                        order={sortConfig.order}
+                        onClick={() => handleSort("failure")}
+                      />
+                    </th>
+                    <th className="p-2.5 w-24">
+                      <SortHeaderButton
+                        label={t("Requests")}
+                        sortKey="probe_count"
+                        activeKey={sortConfig.key}
+                        order={sortConfig.order}
+                        onClick={() => handleSort("probe_count")}
+                      />
+                    </th>
+                    <th className="p-2.5 w-20 text-right">
+                      <span className="sr-only">{t("Actions")}</span>
+                    </th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-border/40">
                   {nodes.map((node) => (
                     <ProxyNodeRow
                       key={node.id}
@@ -360,14 +317,6 @@ export function ProxyNodeView() {
                           if (selected) next.add(node.id);
                           else next.delete(node.id);
                           return next;
-                        });
-                      }}
-                      onEdit={async () => {
-                        const detail = await fetchProxyNodeDetail(node.id);
-                        setEditor({
-                          ...node,
-                          proxy: detail.proxy,
-                          scope_value: node.scope_value ?? "",
                         });
                       }}
                       onTest={() => testMutation.mutate(node.id)}
@@ -385,29 +334,6 @@ export function ProxyNodeView() {
         </CardContent>
       </Card>
 
-      {editor && (
-        <ProxyNodeEditor
-          editor={editor}
-          channels={channelsQuery.data ?? []}
-          groups={groupsQuery.data?.data ?? []}
-          onChange={setEditor}
-          onClose={() => setEditor(null)}
-          onSave={() => saveMutation.mutate(editor)}
-          saving={saveMutation.isPending}
-        />
-      )}
-      {batch && (
-        <ProxyNodeBatchEditor
-          batch={batch}
-          channels={channelsQuery.data ?? []}
-          groups={groupsQuery.data?.data ?? []}
-          result={batchResult}
-          onChange={setBatch}
-          onClose={() => setBatch(null)}
-          onSave={() => batchMutation.mutate(batch)}
-          saving={batchMutation.isPending}
-        />
-      )}
       <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
@@ -440,17 +366,60 @@ export function ProxyNodeView() {
   );
 }
 
-function NodeMetric(props: { label: string; value: string; detail: string }) {
+function NodeMetric(props: {
+  icon?: React.ReactNode;
+  label: string;
+  value: string;
+  detail: string;
+}) {
   return (
-    <Card>
-      <CardHeader className="pb-1">
-        <CardTitle className="text-sm">{props.label}</CardTitle>
+    <Card className="relative overflow-hidden bg-card/60 backdrop-blur-xs">
+      <CardHeader className="flex flex-row items-center justify-between pb-1.5 pt-3.5 px-4 space-y-0">
+        <CardTitle className="text-xs font-medium text-muted-foreground">
+          {props.label}
+        </CardTitle>
+        {props.icon}
       </CardHeader>
-      <CardContent>
-        <p className="text-2xl font-semibold">{props.value}</p>
-        <p className="text-muted-foreground text-xs">{props.detail}</p>
+      <CardContent className="px-4 pb-3.5 pt-0">
+        <p className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
+          {props.value}
+        </p>
+        <p className="text-muted-foreground text-xs mt-1 truncate">
+          {props.detail}
+        </p>
       </CardContent>
     </Card>
+  );
+}
+
+function SortHeaderButton(props: {
+  label: string;
+  sortKey: string;
+  activeKey: string;
+  order: "asc" | "desc";
+  onClick: () => void;
+}) {
+  const isActive = props.sortKey === props.activeKey;
+  return (
+    <button
+      type="button"
+      className={cn(
+        "inline-flex items-center gap-1 font-medium transition-colors cursor-pointer select-none",
+        isActive ? "text-foreground font-semibold" : "text-muted-foreground hover:text-foreground"
+      )}
+      onClick={props.onClick}
+    >
+      <span>{props.label}</span>
+      {isActive ? (
+        props.order === "asc" ? (
+          <ArrowUp className="size-3 text-primary stroke-[2.5]" />
+        ) : (
+          <ArrowDown className="size-3 text-primary stroke-[2.5]" />
+        )
+      ) : (
+        <ArrowUpDown className="size-3 text-muted-foreground/40" />
+      )}
+    </button>
   );
 }
 
@@ -459,493 +428,235 @@ function ProxyNodeRow(props: {
   selected: boolean;
   testing: boolean;
   onSelectedChange: (selected: boolean) => void;
-  onEdit: () => void;
   onTest: () => void;
   onDelete: () => void;
 }) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [expanded, setExpanded] = useState(false);
   const node = props.node;
+
+  // Local state for editing inside expanded accordion
+  const [proxyLink, setProxyLink] = useState("");
+  const [selectedMappingIds, setSelectedMappingIds] = useState<Set<string>>(() => new Set());
+  const [loadedDetail, setLoadedDetail] = useState(false);
+
+  // Fetch full proxy detail once when expanded
+  useEffect(() => {
+    if (expanded && !loadedDetail) {
+      void fetchProxyNodeDetail(node.id).then((detail) => {
+        setProxyLink(detail.proxy);
+        setLoadedDetail(true);
+      });
+    }
+  }, [expanded, loadedDetail, node.id]);
+
+  // Parse node scope to build real active items and selected IDs
+  useEffect(() => {
+    const selSet = new Set<string>();
+    if (node.scope_type === "custom" && node.scope_value) {
+      try {
+        const parsed = JSON.parse(node.scope_value);
+        if (parsed && typeof parsed === "object") {
+          const models: string[] = Array.isArray(parsed.models) ? parsed.models : [];
+          const channels: (number | string)[] = Array.isArray(parsed.channels) ? parsed.channels : [];
+          for (const m of models) selSet.add(`m:${m}`);
+          for (const ch of channels) selSet.add(`c:${ch}`);
+        }
+      } catch {
+        // Ignore JSON error
+      }
+    } else if (node.scope_type === "channel") {
+      selSet.add(`c:${node.scope_value}`);
+    }
+    setSelectedMappingIds(selSet);
+  }, [node]);
+
+  const handleToggleMapping = (id: string) => {
+    setSelectedMappingIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const updateMutation = useMutation({
+    mutationFn: (payload: { proxy: string; scopeType: ProxyNodeScopeType; scopeValue: string }) => {
+      return updateProxyNode(node.id, {
+        name: node.name,
+        enabled: node.enabled,
+        proxy: payload.proxy,
+        scope_type: payload.scopeType,
+        scope_value: payload.scopeValue,
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["proxy-nodes"] });
+      toast.success(t("Saved successfully"));
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || t("Failed to save"));
+    },
+  });
+
+  const handleSave = () => {
+    let scopeType: ProxyNodeScopeType = "all";
+    let scopeValue = "";
+    if (selectedMappingIds.size > 0) {
+      const models: string[] = [];
+      const channels: number[] = [];
+      for (const id of selectedMappingIds) {
+        if (id.startsWith("m:")) models.push(id.slice(2));
+        else if (id.startsWith("c:")) channels.push(Number(id.slice(2)));
+      }
+      scopeType = "custom";
+      scopeValue = JSON.stringify({ models, channels });
+    }
+    updateMutation.mutate({
+      proxy: proxyLink,
+      scopeType,
+      scopeValue,
+    });
+  };
+
   const successRate = node.probe_total
-    ? `${((node.probe_success / node.probe_total) * 100).toFixed(1)}%`
+    ? `${((node.probe_success / node.probe_total) * 100).toFixed(0)}%`
     : "-";
   const failureRate = node.probe_total
-    ? `${(((node.probe_total - node.probe_success) / node.probe_total) * 100).toFixed(1)}%`
+    ? `${(((node.probe_total - node.probe_success) / node.probe_total) * 100).toFixed(0)}%`
     : "-";
-  let scope = t("All Channels");
-  if (node.scope_type === "channel") {
-    scope = node.scope_name || t("Channel #{{id}}", { id: node.scope_value });
-  } else if (node.scope_type === "group") {
-    scope = t("Group: {{name}}", { name: node.scope_value });
-  }
+
   return (
-    <tr className={cn("border-b last:border-0", !node.enabled && "opacity-50")}>
-      <td className="p-2">
-        <Checkbox
-          checked={props.selected}
-          aria-label={t("Select {{name}}", { name: node.name })}
-          onCheckedChange={(checked) =>
-            props.onSelectedChange(checked === true)
-          }
-        />
-      </td>
-      <td className="p-2">
-        <div>{node.name}</div>
-        {node.last_error && (
-          <div className="text-destructive text-xs">
-            {node.last_error}
-            {node.last_probe_at
-              ? ` · ${new Date(node.last_probe_at).toLocaleString()}`
-              : ""}
-          </div>
+    <>
+      <tr
+        onClick={() => setExpanded((prev) => !prev)}
+        className={cn(
+          "cursor-pointer transition-colors hover:bg-muted/30 group",
+          !node.enabled && "opacity-50",
+          expanded && "bg-muted/20"
         )}
-      </td>
-      <td className="p-2">
-        <span
-          className={cn(
-            "inline-flex items-center gap-1 text-xs",
-            node.enabled ? "text-primary" : "text-muted-foreground",
-          )}
+      >
+        <td
+          className="p-2.5 align-middle w-10"
+          onClick={(e) => e.stopPropagation()}
         >
-          <span
-            className={cn(
-              "inline-block size-2 rounded-full",
-              node.enabled ? "bg-primary" : "bg-muted-foreground/40",
-            )}
+          <Checkbox
+            checked={props.selected}
+            aria-label={t("Select {{name}}", { name: node.name })}
+            onCheckedChange={(checked) =>
+              props.onSelectedChange(checked === true)
+            }
           />
-          {node.enabled ? t("Enabled") : t("Disabled")}
-        </span>
-      </td>
-      <td className="p-2">{scope}</td>
-      <td className="p-2">{node.protocol}</td>
-      <td className="p-2">{`${(node.health * 100).toFixed(0)}%`}</td>
-      <td className="p-2">{successRate}</td>
-      <td className="p-2">{failureRate}</td>
-      <td className="p-2">{node.probe_total}</td>
-      <td className="p-2">
-        {node.last_probe_at
-          ? new Date(node.last_probe_at).toLocaleString()
-          : "-"}
-      </td>
-      <td className="p-2">
-        <div className="flex gap-1">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={props.onTest}
-            disabled={props.testing}
-          >
-            {props.testing && <Loader2 className="size-4 animate-spin" />}
-            {t("Test")}
-          </Button>
-          <Button size="sm" variant="outline" onClick={props.onEdit}>
-            {t("Edit")}
-          </Button>
-          <Button
-            size="sm"
-            variant="destructive"
-            aria-label={t("Delete Proxy Node")}
-            onClick={props.onDelete}
-          >
-            <Trash2 className="size-4" />
-          </Button>
-        </div>
-      </td>
-    </tr>
-  );
-}
-
-function ProxyNodeEditor(props: {
-  editor: EditorState;
-  channels: Array<{ id: number; name: string }>;
-  groups: string[];
-  onChange: (value: EditorState) => void;
-  onClose: () => void;
-  onSave: () => void;
-  saving: boolean;
-}) {
-  const { t } = useTranslation();
-  const editor = props.editor;
-  const isAll = editor.scope_type === "all";
-
-  useEffect(() => {
-    if (isAll || editor.scope_value) return;
-    const scopeValue = proxyNodeDefaultScopeValue(
-      editor.scope_type,
-      props.channels,
-      props.groups,
-    );
-    if (scopeValue) props.onChange({ ...editor, scope_value: scopeValue });
-  }, [editor, isAll, props.channels, props.groups, props.onChange]);
-
-  return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) props.onClose();
-      }}
-    >
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
-            {editor.id ? t("Edit Proxy Node") : t("Add Proxy Node")}
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label>{t("Name")}</Label>
-            <Input
-              value={editor.name}
-              onChange={(event) =>
-                props.onChange({ ...editor, name: event.target.value })
-              }
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={editor.enabled}
-              onCheckedChange={(enabled) =>
-                props.onChange({ ...editor, enabled })
-            }
-            />
-            <Label>{t("Enabled")}</Label>
-          </div>
-          <div className="space-y-1.5">
-            <Label>{t("Scope Type")}</Label>
-            <Select
-              value={editor.scope_type}
-              onValueChange={(value) => {
-                if (
-                  value === "all" ||
-                  value === "channel" ||
-                  value === "group"
-                ) {
-                  props.onChange({
-                    ...editor,
-                    scope_type: value,
-                    scope_value: proxyNodeDefaultScopeValue(
-                      value,
-                      props.channels,
-                      props.groups,
-                    ),
-                  });
-                }
-              }}
+        </td>
+        <td className="p-2.5 font-medium text-foreground align-middle max-w-[220px]">
+          <span className="block truncate" title={node.name}>{node.name}</span>
+        </td>
+        <td className="p-2.5 align-middle w-28">
+          <span className="inline-flex items-center rounded-md bg-muted/60 px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase text-foreground/80">
+            {node.protocol || "SOCKS5"}
+          </span>
+        </td>
+        <td className="p-2.5 align-middle font-medium text-muted-foreground w-24">
+          {`${(node.health * 100).toFixed(0)}%`}
+        </td>
+        <td className="p-2.5 align-middle font-medium w-28">
+          <span className={node.probe_total ? "text-emerald-500 font-semibold" : "text-emerald-500/50"}>
+            {successRate === "-" ? "—" : successRate}
+          </span>
+        </td>
+        <td className="p-2.5 align-middle font-medium w-28">
+          <span className={node.probe_total ? "text-rose-500 font-semibold" : "text-rose-500/50"}>
+            {failureRate === "-" ? "—" : failureRate}
+          </span>
+        </td>
+        <td className="p-2.5 align-middle text-muted-foreground font-medium w-24">
+          {node.probe_total}
+        </td>
+        <td
+          className="p-2.5 text-right align-middle w-20"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-end gap-1">
+            <Button
+              size="xs"
+              variant="ghost"
+              className="size-7 p-0 text-muted-foreground hover:text-foreground"
+              title={t("Test")}
+              onClick={props.onTest}
+              disabled={props.testing}
             >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="all">{t("All Channels")}</SelectItem>
-                  <SelectItem value="channel">
-                    {t("Specific Channel")}
-                  </SelectItem>
-                  <SelectItem value="group">{t("By Group")}</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </div>
-          {!isAll && (
-            <div className="space-y-1.5">
-              <Label>
-                {editor.scope_type === "channel"
-                  ? t("Channel ID")
-                  : t("Group Name")}
-              </Label>
-              {editor.scope_type === "channel" && props.channels.length > 0 ? (
-                <Select
-                  value={editor.scope_value ?? ""}
-                  onValueChange={(scope_value) =>
-                    props.onChange({ ...editor, scope_value: scope_value || undefined })
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {props.channels.map((channel) => (
-                      <SelectItem key={channel.id} value={String(channel.id)}>
-                        {channel.name} (#{channel.id})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : editor.scope_type === "group" && props.groups.length > 0 ? (
-                <Select
-                  value={editor.scope_value ?? ""}
-                  onValueChange={(scope_value) =>
-                    props.onChange({ ...editor, scope_value: scope_value || undefined })
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {props.groups.map((group) => (
-                      <SelectItem key={group} value={group}>
-                        {group}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {props.testing ? (
+                <Loader2 className="size-3.5 animate-spin" />
               ) : (
-                <Input
-                  value={editor.scope_value ?? ""}
-                  onChange={(event) =>
-                    props.onChange({
-                      ...editor,
-                      scope_value: event.target.value,
-                    })
-                  }
-                />
+                <Play className="size-3.5" />
               )}
-            </div>
-          )}
-          <div className="space-y-1.5">
-            <Label>{t("Proxy Link")}</Label>
-            <Input
-              type="text"
-              value={editor.proxy}
-              placeholder={editor.id ? "" : "vless://…"}
-              onChange={(event) =>
-                props.onChange({ ...editor, proxy: event.target.value })
-              }
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={props.onClose}>
-            {t("Cancel")}
-          </Button>
-          <Button
-            onClick={props.onSave}
-            disabled={
-              props.saving || !editor.name || (!editor.id && !editor.proxy)
-            }
-          >
-            {props.saving ? t("Saving...") : t("Save")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ProxyNodeBatchEditor(props: {
-  batch: ProxyNodeBatchRequest;
-  channels: Array<{ id: number; name: string }>;
-  groups: string[];
-  result: ProxyNodeBatchResult | null;
-  onChange: (value: ProxyNodeBatchRequest | null) => void;
-  onClose: () => void;
-  onSave: () => void;
-  saving: boolean;
-}) {
-  const { t } = useTranslation();
-  const batch = props.batch;
-  const isAll = batch.scope_type === "all";
-  const lines = batch.proxy_text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(
-      (line, index, all) =>
-        line && !line.startsWith("#") && all.indexOf(line) === index,
-    );
-
-  useEffect(() => {
-    if (isAll || batch.scope_value) return;
-    const scopeValue = proxyNodeDefaultScopeValue(
-      batch.scope_type,
-      props.channels,
-      props.groups,
-    );
-    if (scopeValue) props.onChange({ ...batch, scope_value: scopeValue });
-  }, [batch, isAll, props.channels, props.groups, props.onChange]);
-
-  return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) props.onClose();
-      }}
-    >
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{t("Batch Import")}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label>{t("Name Prefix")}</Label>
-            <Input
-              value={batch.name_prefix}
-              placeholder={t("Default: Proxy Node")}
-              onChange={(event) =>
-                props.onChange({ ...batch, name_prefix: event.target.value })
-              }
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={batch.enabled}
-              onCheckedChange={(enabled) =>
-                props.onChange({ ...batch, enabled })
-              }
-            />
-            <Label>{t("Enabled")}</Label>
-          </div>
-          <div className="space-y-1.5">
-            <Label>{t("Scope Type")}</Label>
-            <Select
-              value={batch.scope_type}
-              onValueChange={(value) => {
-                if (
-                  value === "all" ||
-                  value === "channel" ||
-                  value === "group"
-                ) {
-                  props.onChange({
-                    ...batch,
-                    scope_type: value,
-                    scope_value: proxyNodeDefaultScopeValue(
-                      value,
-                      props.channels,
-                      props.groups,
-                    ),
-                  });
-                }
-              }}
+            </Button>
+            <Button
+              size="xs"
+              variant="ghost"
+              className="size-7 p-0 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+              title={t("Delete")}
+              onClick={props.onDelete}
             >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="all">{t("All Channels")}</SelectItem>
-                  <SelectItem value="channel">
-                    {t("Specific Channel")}
-                  </SelectItem>
-                  <SelectItem value="group">{t("By Group")}</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+              <Trash2 className="size-3.5" />
+            </Button>
           </div>
-          {!isAll && (
-            <div className="space-y-1.5">
-              <Label>
-                {batch.scope_type === "channel"
-                  ? t("Channel ID")
-                  : t("Group Name")}
-              </Label>
-              {batch.scope_type === "channel" && props.channels.length > 0 ? (
-                <Select
-                  value={batch.scope_value ?? ""}
-                  onValueChange={(scope_value) =>
-                    props.onChange({
-                      ...batch,
-                      scope_value: scope_value || undefined,
-                    })
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {props.channels.map((channel) => (
-                      <SelectItem key={channel.id} value={String(channel.id)}>
-                        {channel.name} (#{channel.id})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : batch.scope_type === "group" && props.groups.length > 0 ? (
-                <Select
-                  value={batch.scope_value ?? ""}
-                  onValueChange={(scope_value) =>
-                    props.onChange({
-                      ...batch,
-                      scope_value: scope_value || undefined,
-                    })
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {props.groups.map((group) => (
-                      <SelectItem key={group} value={group}>
-                        {group}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
+        </td>
+      </tr>
+      {expanded && (
+        <tr className="bg-muted/15 border-b" onClick={(e) => e.stopPropagation()}>
+          <td colSpan={8} className="p-3.5">
+            <div className="rounded-lg border bg-background/95 p-3.5 space-y-3 shadow-xs">
+              {/* 第一行：红色错误信息（若有） */}
+              {node.last_error && (
+                <div className="rounded-md border border-destructive/20 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive flex items-center justify-between">
+                  <span className="font-medium">{node.last_error}</span>
+                  {node.last_probe_at && (
+                    <span className="text-[11px] opacity-75 font-mono">
+                      {new Date(node.last_probe_at).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* 第二行：代理链接输入框 */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                  {t("Proxy Link")}
+                </label>
                 <Input
-                  value={batch.scope_value ?? ""}
-                  onChange={(event) =>
-                    props.onChange({
-                      ...batch,
-                      scope_value: event.target.value,
-                    })
-                  }
+                  value={proxyLink}
+                  onChange={(e) => setProxyLink(e.target.value)}
+                  placeholder="socks5://user:pass@host:port"
+                  className="font-mono text-xs h-8 bg-muted/20"
                 />
-              )}
+              </div>
+              {/* 第三行：作用域 (模型别名与渠道选择器) */}
+              <div>
+                <RouteModelPicker
+                  selectedIds={selectedMappingIds}
+                  onToggle={handleToggleMapping}
+                  pageSize={18}
+                />
+              </div>
+
+              {/* 保存操作按钮 */}
+              <div className="flex justify-end pt-1">
+                <Button
+                  size="sm"
+                  onClick={handleSave}
+                  disabled={updateMutation.isPending}
+                >
+                  {updateMutation.isPending ? (
+                    <Loader2 className="size-3.5 animate-spin mr-1.5" />
+                  ) : null}
+                  {t("Save Changes")}
+                </Button>
+              </div>
             </div>
-          )}
-          <div className="space-y-1.5">
-            <Label>{t("Proxy Links")}</Label>
-            <Textarea
-              rows={8}
-              value={batch.proxy_text}
-              onChange={(event) =>
-                props.onChange({ ...batch, proxy_text: event.target.value })
-              }
-              placeholder={"vless://…\nvmess://…"}
-            />
-            <p className="text-muted-foreground text-xs">
-              {t("{{count}} unique entries will be created", {
-                count: lines.length,
-              })}
-            </p>
-          </div>
-          {lines.length > 500 && (
-            <p className="text-destructive text-sm">
-              {t("Maximum 500 entries")}
-            </p>
-          )}
-          {props.result && (
-            <div className="space-y-1 text-sm">
-              <p>
-                {t(
-                  "Created {{created}}, failed {{failed}}, skipped {{skipped}}",
-                  {
-                    created: props.result.created,
-                    failed: props.result.failed,
-                    skipped: props.result.skipped,
-                  },
-                )}
-              </p>
-              {props.result.errors.length > 0 && (
-                <ul className="text-destructive list-disc pl-5">
-                  {props.result.errors.map((error) => (
-                    <li key={error}>{error}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={props.onClose}>
-            {t("Cancel")}
-          </Button>
-          <Button
-            onClick={props.onSave}
-            disabled={props.saving || lines.length === 0 || lines.length > 500}
-          >
-            {props.saving ? t("Saving...") : t("Import")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
