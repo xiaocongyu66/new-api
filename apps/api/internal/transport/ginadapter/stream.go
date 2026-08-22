@@ -10,9 +10,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// eventStreamHeadersKey marks a request whose streaming headers were installed,
+// EventStreamHeadersKey marks a request whose streaming headers were installed,
 // so nested relay helpers can call SetHeaders without emitting them twice.
-const eventStreamHeadersKey = "event_stream_headers_set"
+//
+// It is exported because relay/helper.SetEventStreamHeaders sets the same flag
+// while the migration is in progress; both paths must agree on one key or the
+// headers can be written twice for a single response.
+const EventStreamHeadersKey = "event_stream_headers_set"
 
 // eventStream implements contract.EventStream over a gin response writer.
 type eventStream struct {
@@ -28,17 +32,11 @@ func EventStream(c contract.Context) (contract.EventStream, error) {
 	return &eventStream{gin: ginCtx}, nil
 }
 
-// EventStreamFromGin returns an SSE writer for a gin context directly, for
-// call sites that still hold the concrete type during migration.
-func EventStreamFromGin(c *gin.Context) contract.EventStream {
-	return &eventStream{gin: c}
-}
-
 func (s *eventStream) SetHeaders() {
-	if _, exists := s.gin.Get(eventStreamHeadersKey); exists {
+	if _, exists := s.gin.Get(EventStreamHeadersKey); exists {
 		return
 	}
-	s.gin.Set(eventStreamHeadersKey, true)
+	s.gin.Set(EventStreamHeadersKey, true)
 
 	header := s.gin.Writer.Header()
 	header.Set("Content-Type", "text/event-stream")
