@@ -2,7 +2,6 @@ package model
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -10,10 +9,7 @@ import (
 )
 
 const (
-	ProxyNodeScopeAll     = "all"
-	ProxyNodeScopeChannel = "channel"
-	ProxyNodeScopeGroup   = "group"
-	ProxyNodeScopeCustom  = "custom"
+	ProxyNodeScopeCustom = "custom"
 )
 
 type ProxyNode struct {
@@ -54,33 +50,15 @@ type ProxyNodePublic struct {
 }
 
 func NormalizeProxyNodeScope(scopeType, scopeValue string) (string, string, error) {
-	scopeType = strings.ToLower(strings.TrimSpace(scopeType))
 	scopeValue = strings.TrimSpace(scopeValue)
+	scopeType = strings.ToLower(strings.TrimSpace(scopeType))
 	switch scopeType {
-	case ProxyNodeScopeAll:
-		if scopeValue != "" {
-			return "", "", fmt.Errorf("scope value must be empty for all scope")
-		}
-	case ProxyNodeScopeChannel:
-		id, err := strconv.Atoi(scopeValue)
-		if err != nil || id <= 0 {
-			return "", "", fmt.Errorf("channel scope value must be a positive channel ID")
-		}
-		scopeValue = strconv.Itoa(id)
-	case ProxyNodeScopeGroup:
-		if scopeValue == "" {
-			return "", "", fmt.Errorf("group scope value must not be empty")
-		}
 	case ProxyNodeScopeCustom, "":
-		// Custom JSON mapping or fallback: allow structured JSON string
-		if scopeType == "" {
-			scopeType = ProxyNodeScopeAll
-			scopeValue = ""
-		}
+		// Custom JSON mapping is the only scope; empty type falls back to it.
+		return ProxyNodeScopeCustom, scopeValue, nil
 	default:
 		return "", "", fmt.Errorf("unsupported proxy node scope type %q", scopeType)
 	}
-	return scopeType, scopeValue, nil
 }
 
 func (node ProxyNode) Public() ProxyNodePublic {
@@ -105,86 +83,48 @@ func (node ProxyNode) Public() ProxyNodePublic {
 func GetProxyNodesForChannel(channel *Channel) ([]*ProxyNode, error) {
 	return GetProxyNodesForChannelAndModel(channel, "")
 }
-
 func GetProxyNodesForChannelAndModel(channel *Channel, modelName string) ([]*ProxyNode, error) {
 	if channel == nil {
 		return nil, fmt.Errorf("channel is nil")
 	}
 
 	var enabledNodes []*ProxyNode
-	if err := DB.Where("enabled = ?", true).Find(&enabledNodes).Error; err != nil {
+	if err := DB.Where("enabled = ?", true).
+		Where("scope_type = ?", ProxyNodeScopeCustom).
+		Find(&enabledNodes).Error; err != nil {
 		return nil, err
 	}
 
-	// 1. Direct Channel match
-	channelIDStr := strconv.Itoa(channel.Id)
-	var channelMatched []*ProxyNode
+	var matched []*ProxyNode
 	for _, node := range enabledNodes {
-		if node.ScopeType == ProxyNodeScopeChannel && node.ScopeValue == channelIDStr {
-			channelMatched = append(channelMatched, node)
-		}
-	}
-	if len(channelMatched) > 0 {
-		return channelMatched, nil
-	}
-
-	// 2. Custom JSON scope match (channels or models)
-	var customMatched []*ProxyNode
-	for _, node := range enabledNodes {
-		if node.ScopeType == ProxyNodeScopeCustom && node.ScopeValue != "" {
-			var customScope struct {
-				Channels []int    `json:"channels"`
-				Models   []string `json:"models"`
-			}
-			if err := common.UnmarshalJsonStr(node.ScopeValue, &customScope); err == nil {
-				hit := false
-				for _, chID := range customScope.Channels {
-					if chID == channel.Id {
-						hit = true
-						break
-					}
-				}
-				if !hit && modelName != "" {
-					for _, m := range customScope.Models {
-						if strings.EqualFold(strings.TrimSpace(m), strings.TrimSpace(modelName)) {
-							hit = true
-							break
-						}
-					}
-				}
-				if hit {
-					customMatched = append(customMatched, node)
-				}
-			}
-		}
-	}
-	if len(customMatched) > 0 {
-		return customMatched, nil
-	}
-
-	// 3. Group match
-	for _, group := range strings.Split(channel.Group, ",") {
-		group = strings.TrimSpace(group)
-		if group == "" {
+		if node.ScopeValue == "" {
 			continue
 		}
-		var groupMatched []*ProxyNode
-		for _, node := range enabledNodes {
-			if node.ScopeType == ProxyNodeScopeGroup && node.ScopeValue == group {
-				groupMatched = append(groupMatched, node)
+		var customScope struct {
+			Channels []int    `json:"channels"`
+			Models   []string `json:"models"`
+		}
+		if err := common.UnmarshalJsonStr(node.ScopeValue, &customScope); err != nil {
+			continue
+		}
+		hit := false
+		for _, chID := range customScope.Channels {
+			if chID == channel.Id {
+				hit = true
+				break
 			}
 		}
-		if len(groupMatched) > 0 {
-			return groupMatched, nil
+		if !hit && modelName != "" {
+			for _, m := range customScope.Models {
+				if strings.EqualFold(strings.TrimSpace(m), strings.TrimSpace(modelName)) {
+					hit = true
+					break
+				}
+			}
+		}
+		if hit {
+			matched = append(matched, node)
 		}
 	}
-
-	// 4. All scope fallback
-	var allMatched []*ProxyNode
-	for _, node := range enabledNodes {
-		if node.ScopeType == ProxyNodeScopeAll {
-			allMatched = append(allMatched, node)
-		}
-	}
-	return allMatched, nil
+	return matched, nil
 }

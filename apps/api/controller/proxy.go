@@ -465,33 +465,9 @@ func ListProxyNodes(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	channelNames := make(map[int]string)
-	channelIDs := make([]int, 0)
-	for _, node := range nodes {
-		if node.ScopeType == model.ProxyNodeScopeChannel {
-			if id, parseErr := strconv.Atoi(node.ScopeValue); parseErr == nil {
-				channelIDs = append(channelIDs, id)
-			}
-		}
-	}
-	if len(channelIDs) > 0 {
-		var channels []model.Channel
-		if err := model.DB.Select("id, name").Where("id IN ?", channelIDs).Find(&channels).Error; err != nil {
-			common.ApiError(c, err)
-			return
-		}
-		for _, channel := range channels {
-			channelNames[channel.Id] = channel.Name
-		}
-	}
 	items := make([]model.ProxyNodePublic, 0, len(nodes))
 	for _, node := range nodes {
 		public := node.Public()
-		if node.ScopeType == model.ProxyNodeScopeChannel {
-			if id, parseErr := strconv.Atoi(node.ScopeValue); parseErr == nil {
-				public.ScopeName = channelNames[id]
-			}
-		}
 		probeStats := service.GetProxyNodeProbeStatsFor(node.ID)
 		public.ProbeTotal = probeStats.Total
 		public.ProbeSuccess = probeStats.Success

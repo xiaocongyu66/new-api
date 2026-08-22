@@ -16,7 +16,7 @@ import (
 
 func TestBatchCreateProxyNodesKeepsValidRows(t *testing.T) {
 	db := setupProxyNodeControllerTest(t)
-	ctx, recorder := proxyNodeContext(t, http.MethodPost, "/api/proxy/nodes/batch", `{"name_prefix":"edge","enabled":true,"scope_type":"all","proxy_text":"# ignored\nhttp://one.example:8080\nnot-a-proxy\nhttp://one.example:8080\nhttp://two.example:8080"}`)
+	ctx, recorder := proxyNodeContext(t, http.MethodPost, "/api/proxy/nodes/batch", `{"name_prefix":"edge","enabled":true,"scope_type":"custom","proxy_text":"# ignored\nhttp://one.example:8080\nnot-a-proxy\nhttp://one.example:8080\nhttp://two.example:8080"}`)
 
 	BatchCreateProxyNodes(ctx)
 
@@ -42,9 +42,9 @@ func TestBatchCreateProxyNodesKeepsValidRows(t *testing.T) {
 
 func TestBatchProxyNodeStateOperationsOnlyChangeSelectedRows(t *testing.T) {
 	db := setupProxyNodeControllerTest(t)
-	first, err := service.CreateProxyNode(service.ProxyNodeInput{Name: "first", Enabled: true, Proxy: "http://one.example:8080", ScopeType: model.ProxyNodeScopeAll})
+	first, err := service.CreateProxyNode(service.ProxyNodeInput{Name: "first", Enabled: true, Proxy: "http://one.example:8080", ScopeType: model.ProxyNodeScopeCustom})
 	require.NoError(t, err)
-	second, err := service.CreateProxyNode(service.ProxyNodeInput{Name: "second", Enabled: false, Proxy: "http://two.example:8080", ScopeType: model.ProxyNodeScopeAll})
+	second, err := service.CreateProxyNode(service.ProxyNodeInput{Name: "second", Enabled: false, Proxy: "http://two.example:8080", ScopeType: model.ProxyNodeScopeCustom})
 	require.NoError(t, err)
 
 	ctx, recorder := proxyNodeContext(t, http.MethodPost, "/api/proxy/nodes/batch-enabled", fmt.Sprintf(`{"ids":[%d],"enabled":false}`, first.ID))

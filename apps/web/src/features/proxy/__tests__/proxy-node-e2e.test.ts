@@ -66,7 +66,7 @@ describe("proxy node e2e contract", () => {
         enabled: true,
         proxy_configured: true,
         protocol: "vmess",
-        scope_type: "all",
+        scope_type: "custom",
         health: 1,
         probe_total: 0,
         probe_success: 0,
@@ -99,12 +99,19 @@ describe("proxy node e2e contract", () => {
     assert.ok(restored.has("c:13"));
   });
 
-  test("empty selection saves as scope all (direct behavior unchanged)", () => {
+  test("empty selection saves as custom scope with empty arrays", () => {
+    // ProxyNodeRow.handleSave always serializes custom scope, even when
+    // nothing is selected — empty arrays mean "no restriction hit".
     const selectedMappingIds = new Set<string>();
-    let scopeType: "all" | "custom" = "all";
-    let scopeValue = "";
-    if (selectedMappingIds.size > 0) scopeType = "custom";
-    assert.equal(scopeType, "all");
-    assert.equal(scopeValue, "");
+    const models: string[] = [];
+    const channels: number[] = [];
+    for (const id of selectedMappingIds) {
+      if (id.startsWith("m:")) models.push(id.slice(2));
+      else if (id.startsWith("c:")) channels.push(Number(id.slice(2)));
+    }
+    const scopeType = "custom" as const;
+    const scopeValue = JSON.stringify({ models, channels });
+    assert.equal(scopeType, "custom");
+    assert.deepEqual(JSON.parse(scopeValue), { models: [], channels: [] });
   });
 });

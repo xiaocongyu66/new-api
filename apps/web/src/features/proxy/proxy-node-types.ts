@@ -6,7 +6,7 @@ export type ProxyNode = {
   enabled: boolean;
   proxy_configured: boolean;
   protocol: string;
-  scope_type: "all" | "channel" | "group" | "custom";
+  scope_type: "custom";
   scope_value?: string;
   scope_name?: string;
   health: number;
@@ -59,7 +59,7 @@ const proxyNodeSchema = z.object({
   enabled: z.boolean().catch(false),
   proxy_configured: z.boolean().catch(false),
   protocol: z.string().catch(""),
-  scope_type: z.enum(["all", "channel", "group", "custom"]).catch("all"),
+  scope_type: z.enum(["custom"]).catch("custom"),
   scope_value: z.string().optional(),
   health: z.number().finite().catch(0),
   failure_count: z.number().catch(0),

@@ -454,7 +454,7 @@ function ProxyNodeRow(props: {
   // Parse node scope to build real active items and selected IDs
   useEffect(() => {
     const selSet = new Set<string>();
-    if (node.scope_type === "custom" && node.scope_value) {
+    if (node.scope_value) {
       try {
         const parsed = JSON.parse(node.scope_value);
         if (parsed && typeof parsed === "object") {
@@ -466,8 +466,6 @@ function ProxyNodeRow(props: {
       } catch {
         // Ignore JSON error
       }
-    } else if (node.scope_type === "channel") {
-      selSet.add(`c:${node.scope_value}`);
     }
     setSelectedMappingIds(selSet);
   }, [node]);
@@ -500,22 +498,16 @@ function ProxyNodeRow(props: {
   });
 
   const handleSave = () => {
-    let scopeType: ProxyNodeScopeType = "all";
-    let scopeValue = "";
-    if (selectedMappingIds.size > 0) {
-      const models: string[] = [];
-      const channels: number[] = [];
-      for (const id of selectedMappingIds) {
-        if (id.startsWith("m:")) models.push(id.slice(2));
-        else if (id.startsWith("c:")) channels.push(Number(id.slice(2)));
-      }
-      scopeType = "custom";
-      scopeValue = JSON.stringify({ models, channels });
+    const models: string[] = [];
+    const channels: number[] = [];
+    for (const id of selectedMappingIds) {
+      if (id.startsWith("m:")) models.push(id.slice(2));
+      else if (id.startsWith("c:")) channels.push(Number(id.slice(2)));
     }
     updateMutation.mutate({
       proxy: proxyLink,
-      scopeType,
-      scopeValue,
+      scopeType: "custom",
+      scopeValue: JSON.stringify({ models, channels }),
     });
   };
 

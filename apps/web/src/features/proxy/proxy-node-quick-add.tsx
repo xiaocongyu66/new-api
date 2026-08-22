@@ -20,8 +20,8 @@ const createDefaultBatch = (): ProxyNodeBatchRequest => ({
   name_prefix: '',
   enabled: true,
   proxy_text: '',
-  scope_type: 'all',
-  scope_value: undefined,
+  scope_type: 'custom',
+  scope_value: '',
 })
 
 export function ProxyNodeQuickAdd(props: { onAdded: () => void }) {
@@ -102,29 +102,23 @@ export function ProxyNodeQuickAdd(props: { onAdded: () => void }) {
           </Button>
           <Button
             onClick={() => {
-              // Convert selectedIds to Option A scope JSON
-              let scopeType: ProxyNodeBatchRequest['scope_type'] = 'all'
-              let scopeValue: string | undefined = undefined
-
-              if (selectedIds.size > 0) {
-                const models: string[] = []
-                const channels: number[] = []
-                for (const id of selectedIds) {
-                  if (id.startsWith('m:')) models.push(id.slice(2))
-                  else if (id.startsWith('c:')) channels.push(Number(id.slice(2)))
-                }
-                scopeType = 'custom'
-                scopeValue = JSON.stringify({ models, channels })
+              // Convert selectedIds to custom scope JSON (always custom)
+              const models: string[] = []
+              const channels: number[] = []
+              for (const id of selectedIds) {
+                if (id.startsWith('m:')) models.push(id.slice(2))
+                else if (id.startsWith('c:')) channels.push(Number(id.slice(2)))
               }
 
               mutation.mutate({
                 ...batch,
                 name_prefix: batch.name_prefix.trim(),
                 proxy_text: batch.proxy_text.trim(),
-                scope_type: scopeType,
-                scope_value: scopeValue,
+                scope_type: 'custom',
+                scope_value: JSON.stringify({ models, channels }),
               })
             }}
+
             disabled={!canSubmit}
             size='sm'
           >
