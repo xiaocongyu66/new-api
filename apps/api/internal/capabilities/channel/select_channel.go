@@ -8,11 +8,18 @@ import (
 	"github.com/QuantumNous/new-api/internal/gateway/port"
 )
 
-// ErrNoChannelAvailable reports that no enabled channel satisfies the request.
-//
-// The gateway maps this to an upstream-unavailable response, so it must be a
-// distinct error rather than a zero-valued selection.
-var ErrNoChannelAvailable = errors.New("no channel available for request")
+// Selection failure modes are distinct sentinels so the gateway can tell an
+// upstream-availability problem from a defect on its own side: a missing channel
+// is a runtime condition to retry or report as unavailable, whereas an
+// unconfigured selector is a startup defect and a missing model is a caller bug.
+var (
+	// ErrNoChannelAvailable reports that no enabled channel satisfies the request.
+	ErrNoChannelAvailable = errors.New("no channel available for request")
+	// ErrSelectorNotConfigured reports a selector built without a lookup.
+	ErrSelectorNotConfigured = errors.New("channel selector is not configured")
+	// ErrModelNameRequired reports a selection request with no model.
+	ErrModelNameRequired = errors.New("model name is required to select a channel")
+)
 
 // LookupFunc resolves a channel id for a group, model, attempt, and exclusion set.
 //
@@ -39,10 +46,10 @@ func NewSelector(lookup LookupFunc) *Selector {
 // make the gateway dial a channel that does not exist.
 func (s *Selector) SelectChannel(ctx context.Context, request port.ChannelRequest) (port.ChannelSelection, error) {
 	if s == nil || s.lookup == nil {
-		return port.ChannelSelection{}, errors.New("channel selector is not configured")
+		return port.ChannelSelection{}, ErrSelectorNotConfigured
 	}
 	if request.ModelName == "" {
-		return port.ChannelSelection{}, errors.New("model name is required to select a channel")
+		return port.ChannelSelection{}, ErrModelNameRequired
 	}
 	if err := ctx.Err(); err != nil {
 		return port.ChannelSelection{}, fmt.Errorf("channel selection cancelled: %w", err)

@@ -119,7 +119,8 @@ func TestSelectorPropagatesLookupError(t *testing.T) {
 }
 
 // TestSelectorRequiresModelName asserts a missing model fails before the lookup,
-// since every channel query is model-scoped.
+// since every channel query is model-scoped, and reports a caller-side sentinel
+// distinct from an upstream-availability failure.
 func TestSelectorRequiresModelName(t *testing.T) {
 	lookupCalled := false
 	selector := NewSelector(func(string, string, string, int, ExclusionSet) (int, string, error) {
@@ -130,6 +131,8 @@ func TestSelectorRequiresModelName(t *testing.T) {
 	_, err := selector.SelectChannel(context.Background(), port.ChannelRequest{TokenGroup: "default"})
 
 	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrModelNameRequired)
+	assert.NotErrorIs(t, err, ErrNoChannelAvailable, "a caller bug must not look like an upstream outage")
 	assert.False(t, lookupCalled, "lookup must not run without a model")
 }
 
@@ -163,6 +166,8 @@ func TestSelectorRejectsUnconfiguredLookup(t *testing.T) {
 	})
 
 	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrSelectorNotConfigured)
+	assert.NotErrorIs(t, err, ErrNoChannelAvailable, "a startup defect must not look like an upstream outage")
 }
 
 // TestSelectorFallsBackToRequestedGroup asserts the requested group is reported
