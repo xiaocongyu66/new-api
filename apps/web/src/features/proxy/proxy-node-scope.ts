@@ -1,4 +1,4 @@
-export type ProxyNodeScopeType = "all" | "channel" | "group";
+export type ProxyNodeScopeType = "all" | "channel" | "group" | "custom";
 
 export function proxyNodeDefaultScopeValue(
   scopeType: ProxyNodeScopeType,
