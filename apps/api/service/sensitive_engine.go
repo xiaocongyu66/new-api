@@ -195,20 +195,16 @@ func templateVerdictTech(lowered string) (bool, []string) {
 func scanAndLower(text string) (lowered string, hasCJK, hasASCII bool, cjkStream, nonCJKStream string) {
 	asciiOnly := true
 	for i := range len(text) {
-		if text[i] >= 0x80 {
+		c := text[i]
+		if c >= 0x80 {
 			asciiOnly = false
 			break
 		}
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
+			hasASCII = true
+		}
 	}
 	if asciiOnly {
-		hasASCII = false
-		for i := range len(text) {
-			c := text[i]
-			if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
-				hasASCII = true
-				break
-			}
-		}
 		return strings.ToLower(text), false, hasASCII, "", ""
 	}
 	var lb, cb, ab strings.Builder
@@ -249,6 +245,12 @@ func scanSuspicious(text string) (suspicious, encoded bool) {
 		}
 		if cp >= 0x3000 && cp <= 0x303f {
 			continue
+		}
+		if cp >= 0x3040 && cp <= 0x30ff {
+			continue // 平假名(3040-309F)/片假名(30A0-30FF)：日文正常文本不触发可疑双趟
+		}
+		if cp >= 0xac00 && cp <= 0xd7af {
+			continue // 谚文音节(AC00-D7AF)：韩文正常文本；谚文字母(Jamo)不白名单，保留对자모분리规避的敏感度
 		}
 		if (cp >= 0xff01 && cp <= 0xff0f) || (cp >= 0xff1a && cp <= 0xff20) {
 			continue

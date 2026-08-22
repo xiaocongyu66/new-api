@@ -299,3 +299,49 @@ func TestSensitiveEmptyDict(t *testing.T) {
 	got, _ = CheckSensitiveText("你好，帮我写一封信")
 	assert.False(t, got)
 }
+
+// TestFingerprintAtomsNoDuplicates expandAtoms 可选组展开不得产生重复原子：
+// 重复原子会让 AC 自动机构建冗余路径（issue #380）。
+func TestFingerprintAtomsNoDuplicates(t *testing.T) {
+	total := 0
+	for _, cat := range fingerprintCategories {
+		seen := make(map[string]struct{}, len(cat.atoms))
+		for _, a := range cat.atoms {
+			key := a.s
+			if a.leadWord {
+				key = "1" + key
+			}
+			if a.trailWord {
+				key = key + "1"
+			}
+			_, dup := seen[key]
+			require.False(t, dup, "类别 %s 存在重复原子 %q", cat.name, a.s)
+			seen[key] = struct{}{}
+			total++
+		}
+	}
+	t.Logf("total fingerprint atoms after cleanup: %d", total)
+}
+
+// TestScanSuspiciousJaKoWhitelist 纯日文/韩文正常文本不触发可疑降级；
+// 谚文字母（Jamo，자모분리规避手法）与非白名单文字仍保持可疑。
+func TestScanSuspiciousJaKoWhitelist(t *testing.T) {
+	benign := []string{
+		"こんにちは、今日は良い天気ですね。",  // 平假名 + 片假名长音
+		"カタカナとひらがなのテキスト",       // 片假名 + 中点类
+		"안녕하세요 좋은 아침이에요",        // 谚文音节
+		"hello world 123",             // ASCII 对照
+	}
+	for _, s := range benign {
+		suspicious, _ := scanSuspicious(s)
+		assert.False(t, suspicious, "良性文本不应标记可疑: %q", s)
+	}
+	suspiciousTexts := []string{
+		"привет мир",     // 西里尔：不在白名单
+		"ㅎㅏㄴㄱㅜㄱ 어", // 谚文字母 Jamo 分离：保留敏感度
+	}
+	for _, s := range suspiciousTexts {
+		suspicious, _ := scanSuspicious(s)
+		assert.True(t, suspicious, "应保持可疑标记: %q", s)
+	}
+}

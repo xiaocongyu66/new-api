@@ -54,7 +54,6 @@ func loadSensitiveTemplates() ([]string, []string) {
 func init() {
 	loadSensitiveTemplates() // 启动即加载，避免首请求触发解析
 	loadFingerprintRaw()
-	loadFpPreTokens()
 	for _, fc := range fingerprintRaw {
 		fpCategoryGroup[fc.name] = fc.group
 	}
@@ -284,46 +283,6 @@ func matchFpAtom(a fpAtom, text string) bool {
 	}
 }
 
-// fpPreTokens 廉价预检：Python _FP_PRE 原 token 集（逐字，含大小写敏感的
-// Without/Ignore——与 Python 无 re.I 的行为一致）。text 已小写。
-// 手写 strings.Contains 循环替代正则（每 token ~0.5ns/字符）。
-//go:embed testdata/sensitive_fp_pre_tokens.json
-var fpPreTokensFS embed.FS
-
-var (
-	fpPreTokensOnce sync.Once
-	fpPreTokens     []string
-)
-
-func loadFpPreTokens() []string {
-	fpPreTokensOnce.Do(func() {
-		data, err := fpPreTokensFS.ReadFile("testdata/sensitive_fp_pre_tokens.json")
-		if err != nil {
-			common.SysError("fp pre tokens load failed: " + err.Error())
-			return
-		}
-		var payload struct {
-			Tokens []string `json:"tokens"`
-		}
-		if err := common.Unmarshal(data, &payload); err != nil {
-			common.SysError("fp pre tokens parse failed: " + err.Error())
-			return
-		}
-		fpPreTokens = payload.Tokens
-	})
-	return fpPreTokens
-}
-
-
-func fpPreHit(text string) bool {
-	for _, tok := range fpPreTokens {
-		if strings.Contains(text, tok) {
-			return true
-		}
-	}
-	return false
-}
-
 // expandAtoms 把含 (a|b|c)、(x)? 、s? 的受限指纹模式展开为确定性字面量集合。
 // 仅支持本项目 8 类指纹中出现的形式；不支持时返回含原串的单原子（保守）。
 func expandAtoms(pattern string) []string {
@@ -368,9 +327,6 @@ func expandAtoms(pattern string) []string {
 				alts = append(alts, "")
 			}
 			var out []string
-			if optional {
-				alts = append(alts, "")
-			}
 			for _, a := range alts {
 				for _, expanded := range expandAtoms(a) {
 					for _, tail := range expandAtoms(suffix) {
@@ -404,14 +360,29 @@ var fpCategoryGroup = map[string]string{}
 func init() {
 	for _, raw := range fingerprintRaw {
 		cat := fingerprintCategory{name: raw.name, group: fpCategoryGroup[raw.name]}
+		// 类别内原子去重：跨 pattern 的重叠字面量与可选组展开的重复变体都只保留一份，
+		// 避免 AC 自动机构建冗余路径（issue #380）。
+		seen := make(map[string]struct{}, len(raw.patterns))
 		for _, p := range raw.patterns {
 			plain := strings.ReplaceAll(p, `\b`, "")
 			for _, atom := range expandAtoms(plain) {
 				if atom == "" {
 					continue
 				}
+				s := strings.ToLower(atom)
+				key := s
+				if strings.HasPrefix(p, `\b`) {
+					key = "\x00" + key
+				}
+				if strings.HasSuffix(p, `\b`) {
+					key += "\x00"
+				}
+				if _, dup := seen[key]; dup {
+					continue
+				}
+				seen[key] = struct{}{}
 				cat.atoms = append(cat.atoms, fpAtom{
-					s:         strings.ToLower(atom),
+					s:         s,
 					leadWord:  strings.HasPrefix(p, `\b`),
 					trailWord: strings.HasSuffix(p, `\b`),
 				})
