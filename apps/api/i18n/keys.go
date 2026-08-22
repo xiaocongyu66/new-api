@@ -15,6 +15,7 @@ const (
 	MsgInvalidId         = "common.invalid_id"
 	MsgIdEmpty           = "common.id_empty"
 	MsgFeatureDisabled   = "common.feature_disabled"
+	MsgSensitiveWordsDetected = "common.sensitive_words_detected"
 	MsgOperationSuccess  = "common.operation_success"
 	MsgOperationFailed   = "common.operation_failed"
 	MsgUpdateSuccess     = "common.update_success"
