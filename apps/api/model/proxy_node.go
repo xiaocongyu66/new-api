@@ -2,15 +2,14 @@ package model
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/QuantumNous/new-api/common"
 )
 
 const (
-	ProxyNodeScopeAll     = "all"
-	ProxyNodeScopeChannel = "channel"
-	ProxyNodeScopeGroup   = "group"
+	ProxyNodeScopeCustom = "custom"
 )
 
 type ProxyNode struct {
@@ -51,27 +50,15 @@ type ProxyNodePublic struct {
 }
 
 func NormalizeProxyNodeScope(scopeType, scopeValue string) (string, string, error) {
-	scopeType = strings.ToLower(strings.TrimSpace(scopeType))
 	scopeValue = strings.TrimSpace(scopeValue)
+	scopeType = strings.ToLower(strings.TrimSpace(scopeType))
 	switch scopeType {
-	case ProxyNodeScopeAll:
-		if scopeValue != "" {
-			return "", "", fmt.Errorf("scope value must be empty for all scope")
-		}
-	case ProxyNodeScopeChannel:
-		id, err := strconv.Atoi(scopeValue)
-		if err != nil || id <= 0 {
-			return "", "", fmt.Errorf("channel scope value must be a positive channel ID")
-		}
-		scopeValue = strconv.Itoa(id)
-	case ProxyNodeScopeGroup:
-		if scopeValue == "" {
-			return "", "", fmt.Errorf("group scope value must not be empty")
-		}
+	case ProxyNodeScopeCustom, "":
+		// Custom JSON mapping is the only scope; empty type falls back to it.
+		return ProxyNodeScopeCustom, scopeValue, nil
 	default:
 		return "", "", fmt.Errorf("unsupported proxy node scope type %q", scopeType)
 	}
-	return scopeType, scopeValue, nil
 }
 
 func (node ProxyNode) Public() ProxyNodePublic {
@@ -94,35 +81,50 @@ func (node ProxyNode) Public() ProxyNodePublic {
 }
 
 func GetProxyNodesForChannel(channel *Channel) ([]*ProxyNode, error) {
+	return GetProxyNodesForChannelAndModel(channel, "")
+}
+func GetProxyNodesForChannelAndModel(channel *Channel, modelName string) ([]*ProxyNode, error) {
 	if channel == nil {
 		return nil, fmt.Errorf("channel is nil")
 	}
-	findScope := func(scopeType, scopeValue string) ([]*ProxyNode, error) {
-		var nodes []*ProxyNode
-		err := DB.Where("enabled = ?", true).
-			Where("scope_type = ? AND scope_value = ?", scopeType, scopeValue).
-			Find(&nodes).Error
-		return nodes, err
-	}
-	nodes, err := findScope(ProxyNodeScopeChannel, strconv.Itoa(channel.Id))
-	if err != nil {
+
+	var enabledNodes []*ProxyNode
+	if err := DB.Where("enabled = ?", true).
+		Where("scope_type = ?", ProxyNodeScopeCustom).
+		Find(&enabledNodes).Error; err != nil {
 		return nil, err
 	}
-	if len(nodes) > 0 {
-		return nodes, nil
-	}
-	for _, group := range strings.Split(channel.Group, ",") {
-		group = strings.TrimSpace(group)
-		if group == "" {
+
+	var matched []*ProxyNode
+	for _, node := range enabledNodes {
+		if node.ScopeValue == "" {
 			continue
 		}
-		groupNodes, err := findScope(ProxyNodeScopeGroup, group)
-		if err != nil {
-			return nil, err
+		var customScope struct {
+			Channels []int    `json:"channels"`
+			Models   []string `json:"models"`
 		}
-		if len(groupNodes) > 0 {
-			return groupNodes, nil
+		if err := common.UnmarshalJsonStr(node.ScopeValue, &customScope); err != nil {
+			continue
+		}
+		hit := false
+		for _, chID := range customScope.Channels {
+			if chID == channel.Id {
+				hit = true
+				break
+			}
+		}
+		if !hit && modelName != "" {
+			for _, m := range customScope.Models {
+				if strings.EqualFold(strings.TrimSpace(m), strings.TrimSpace(modelName)) {
+					hit = true
+					break
+				}
+			}
+		}
+		if hit {
+			matched = append(matched, node)
 		}
 	}
-	return findScope(ProxyNodeScopeAll, "")
+	return matched, nil
 }

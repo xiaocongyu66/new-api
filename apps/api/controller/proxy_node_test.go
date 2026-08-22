@@ -60,7 +60,7 @@ func decodeProxyNodeResponse(t *testing.T, recorder *httptest.ResponseRecorder) 
 func TestListProxyNodesRedactsStoredConfiguration(t *testing.T) {
 	db := setupProxyNodeControllerTest(t)
 	_, err := service.CreateProxyNode(service.ProxyNodeInput{
-		Name: "edge", Enabled: true, Proxy: "http://user:pass@example.com:8080", ScopeType: model.ProxyNodeScopeAll,
+		Name: "edge", Enabled: true, Proxy: "http://user:pass@example.com:8080", ScopeType: model.ProxyNodeScopeCustom,
 	})
 	require.NoError(t, err)
 
@@ -81,7 +81,7 @@ func TestListProxyNodesRedactsStoredConfiguration(t *testing.T) {
 
 func TestCreateProxyNodeRejectsInvalidScopeWithoutPersistence(t *testing.T) {
 	db := setupProxyNodeControllerTest(t)
-	ctx, recorder := proxyNodeContext(t, http.MethodPost, "/api/proxy/nodes", `{"name":"bad","enabled":true,"proxy":"http://example.com:8080","scope_type":"all","scope_value":"unexpected"}`)
+	ctx, recorder := proxyNodeContext(t, http.MethodPost, "/api/proxy/nodes", `{"name":"bad","enabled":true,"proxy":"http://example.com:8080","scope_type":"all","scope_value":""}`)
 
 	CreateProxyNode(ctx)
 
@@ -95,12 +95,12 @@ func TestCreateProxyNodeRejectsInvalidScopeWithoutPersistence(t *testing.T) {
 func TestUpdateProxyNodeWithoutProxyPreservesEncryptedConfiguration(t *testing.T) {
 	db := setupProxyNodeControllerTest(t)
 	node, err := service.CreateProxyNode(service.ProxyNodeInput{
-		Name: "before", Enabled: true, Proxy: "http://user:pass@example.com:8080", ScopeType: model.ProxyNodeScopeAll,
+		Name: "before", Enabled: true, Proxy: "http://user:pass@example.com:8080", ScopeType: model.ProxyNodeScopeCustom,
 	})
 	require.NoError(t, err)
 	originalCiphertext := node.EncryptedProxyConfig
 
-	ctx, recorder := proxyNodeContext(t, http.MethodPut, "/api/proxy/nodes/1", `{"name":"after","enabled":false,"scope_type":"all","scope_value":""}`)
+	ctx, recorder := proxyNodeContext(t, http.MethodPut, "/api/proxy/nodes/1", `{"name":"after","enabled":false,"scope_type":"custom","scope_value":""}`)
 	ctx.Params = gin.Params{{Key: "id", Value: "1"}}
 	UpdateProxyNode(ctx)
 
@@ -116,12 +116,12 @@ func TestUpdateProxyNodeWithoutProxyPreservesEncryptedConfiguration(t *testing.T
 func TestUpdateProxyNodeWithEmptyProxyPreservesEncryptedConfiguration(t *testing.T) {
 	db := setupProxyNodeControllerTest(t)
 	node, err := service.CreateProxyNode(service.ProxyNodeInput{
-		Name: "before", Enabled: true, Proxy: "http://user:pass@example.com:8080", ScopeType: model.ProxyNodeScopeAll,
+		Name: "before", Enabled: true, Proxy: "http://user:pass@example.com:8080", ScopeType: model.ProxyNodeScopeCustom,
 	})
 	require.NoError(t, err)
 	originalCiphertext := node.EncryptedProxyConfig
 
-	ctx, recorder := proxyNodeContext(t, http.MethodPut, "/api/proxy/nodes/1", `{"name":"after","enabled":true,"proxy":"","scope_type":"all","scope_value":""}`)
+	ctx, recorder := proxyNodeContext(t, http.MethodPut, "/api/proxy/nodes/1", `{"name":"after","enabled":true,"proxy":"","scope_type":"custom","scope_value":""}`)
 	ctx.Params = gin.Params{{Key: "id", Value: "1"}}
 	UpdateProxyNode(ctx)
 
@@ -138,13 +138,13 @@ func TestGetProxyNodeReportCountsHealthyNodesRegardlessOfEnabled(t *testing.T) {
 	// but not toward `enabled`. Regression guard for the GORM query-chain bug
 	// where the enabled predicate leaked into the healthy count.
 	disabled, err := service.CreateProxyNode(service.ProxyNodeInput{
-		Name: "disabled-healthy", Enabled: false, Proxy: "http://one.example:8080", ScopeType: model.ProxyNodeScopeAll,
+		Name: "disabled-healthy", Enabled: false, Proxy: "http://one.example:8080", ScopeType: model.ProxyNodeScopeCustom,
 	})
 	require.NoError(t, err)
 	require.NoError(t, db.Model(&model.ProxyNode{}).Where("id = ?", disabled.ID).
 		Updates(map[string]any{"health": 0.9}).Error)
 	enabled, err := service.CreateProxyNode(service.ProxyNodeInput{
-		Name: "enabled-unhealthy", Enabled: true, Proxy: "http://two.example:8080", ScopeType: model.ProxyNodeScopeAll,
+		Name: "enabled-unhealthy", Enabled: true, Proxy: "http://two.example:8080", ScopeType: model.ProxyNodeScopeCustom,
 	})
 	require.NoError(t, err)
 	// CreateProxyNode seeds Health=1; drive the enabled node below the healthy
@@ -172,7 +172,7 @@ func TestGetProxyNodeReportCountsHealthyNodesRegardlessOfEnabled(t *testing.T) {
 func TestGetProxyNodeReturnsEditableLinkOnlyFromDetailEndpoint(t *testing.T) {
 	setupProxyNodeControllerTest(t)
 	node, err := service.CreateProxyNode(service.ProxyNodeInput{
-		Name: "edge", Enabled: true, Proxy: "http://user:pass@example.com:8080", ScopeType: model.ProxyNodeScopeAll,
+		Name: "edge", Enabled: true, Proxy: "http://user:pass@example.com:8080", ScopeType: model.ProxyNodeScopeCustom,
 	})
 	require.NoError(t, err)
 
@@ -199,14 +199,14 @@ func TestAllProxyNodesProbesEnabledNodesAndReportsCounts(t *testing.T) {
 	for i := 0; i < enabledCount; i++ {
 		_, err := service.CreateProxyNode(service.ProxyNodeInput{
 			Name: fmt.Sprintf("probe-%d", i), Enabled: true,
-			Proxy: "http://127.0.0.1:9", ScopeType: model.ProxyNodeScopeAll,
+			Proxy: "http://127.0.0.1:9", ScopeType: model.ProxyNodeScopeCustom,
 		})
 		require.NoError(t, err)
 	}
 	// Disabled node must be excluded from the batch.
 	_, err := service.CreateProxyNode(service.ProxyNodeInput{
 		Name: "disabled", Enabled: false,
-		Proxy: "http://127.0.0.1:9", ScopeType: model.ProxyNodeScopeAll,
+		Proxy: "http://127.0.0.1:9", ScopeType: model.ProxyNodeScopeCustom,
 	})
 	require.NoError(t, err)
 

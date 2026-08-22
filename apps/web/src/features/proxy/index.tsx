@@ -16,20 +16,69 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Loader2, RefreshCw, TestTube2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
+import { Button } from '@/components/ui/button'
+import { toast } from '@/hooks/use-toast'
 
+import { fetchProxyNodes, testAllProxyNodes } from './proxy-node-api'
 import { ProxyNodeView } from './proxy-node-view'
 
 export function ProxyPage() {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
+
+  const nodesQuery = useQuery({
+    queryKey: ['proxy-nodes'],
+    queryFn: fetchProxyNodes,
+    retry: false,
+  })
+
+  const testAllMutation = useMutation({
+    mutationFn: testAllProxyNodes,
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['proxy-nodes'] })
+      toast.success(t('Tested {{passed}} of {{total}} nodes', result))
+    },
+    onError: (error: Error) => toast.error(error.message || t('Test failed')),
+  })
 
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>
         <span className='truncate'>{t('Proxy Config')}</span>
       </SectionPageLayout.Title>
+      <SectionPageLayout.Actions>
+        <Button
+          variant='outline'
+          size='sm'
+          onClick={() =>
+            queryClient.invalidateQueries({ queryKey: ['proxy-nodes'] })
+          }
+          disabled={nodesQuery.isFetching}
+        >
+          <RefreshCw className='size-4' />
+          {t('Refresh')}
+        </Button>
+        <Button
+          variant='outline'
+          size='sm'
+          onClick={() => testAllMutation.mutate()}
+          disabled={
+            (nodesQuery.data?.length ?? 0) === 0 || testAllMutation.isPending
+          }
+        >
+          {testAllMutation.isPending ? (
+            <Loader2 className='size-4 animate-spin' />
+          ) : (
+            <TestTube2 className='size-4' />
+          )}
+          {t('Test All Nodes')}
+        </Button>
+      </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
         <ProxyNodeView />
       </SectionPageLayout.Content>

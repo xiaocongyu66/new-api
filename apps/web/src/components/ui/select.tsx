@@ -93,11 +93,19 @@ function SelectContent({
   align = 'center',
   alignOffset = 0,
   alignItemWithTrigger = true,
+  collisionPadding,
+  collisionAvoidance,
   ...props
 }: SelectPrimitive.Popup.Props &
   Pick<
     SelectPrimitive.Positioner.Props,
-    'align' | 'alignOffset' | 'side' | 'sideOffset' | 'alignItemWithTrigger'
+    | 'align'
+    | 'alignOffset'
+    | 'side'
+    | 'sideOffset'
+    | 'alignItemWithTrigger'
+    | 'collisionPadding'
+    | 'collisionAvoidance'
   >) {
   const isMobile = useMediaQuery('(max-width: 640px)')
 
@@ -108,6 +116,8 @@ function SelectContent({
       align={align}
       alignOffset={alignOffset}
       alignItemWithTrigger={alignItemWithTrigger}
+      collisionPadding={collisionPadding}
+      collisionAvoidance={collisionAvoidance}
       className='isolate z-50'
     >
       <SelectPrimitive.Popup
