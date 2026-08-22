@@ -73,7 +73,7 @@ func terminateOutputSSE(c *gin.Context) {
 	if st.terminate {
 		return
 	}
-	st.terminate = true
+	st.terminate = true // 先标记，再写入；partial-write 重入也不会重复写
 	_, _ = c.Writer.WriteString("data: " + `{"choices":[{"delta":{},"finish_reason":"content_filter"}]}` + "\n\n")
 	_, _ = c.Writer.WriteString("data: [DONE]\n\n")
 	_ = FlushWriter(c)

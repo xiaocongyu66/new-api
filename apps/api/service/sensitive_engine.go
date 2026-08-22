@@ -193,22 +193,21 @@ func templateVerdictTech(lowered string) (bool, []string) {
 //	cjkStream  = 非 ASCII 词字符流（_ASCII_WORD_RE 摘除后），分隔符已由调用方处理
 //	nonCJKStream = 非 CJK 字符流（_CJK_RE 摘除后）
 func scanAndLower(text string) (lowered string, hasCJK, hasASCII bool, cjkStream, nonCJKStream string) {
-	// ASCII 快路径
 	asciiOnly := true
-	for i := 0; i < len(text); i++ {
+	for i := range len(text) {
 		if text[i] >= 0x80 {
 			asciiOnly = false
 			break
 		}
 	}
 	if asciiOnly {
-		hasASCII = true
-		for i := 0; i < len(text); i++ {
+		hasASCII = false
+		for i := range len(text) {
 			c := text[i]
 			if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
+				hasASCII = true
 				break
 			}
-			hasASCII = false
 		}
 		return strings.ToLower(text), false, hasASCII, "", ""
 	}

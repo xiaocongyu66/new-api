@@ -53,6 +53,11 @@ func loadSensitiveTemplates() ([]string, []string) {
 
 func init() {
 	loadSensitiveTemplates() // 启动即加载，避免首请求触发解析
+	loadFingerprintRaw()
+	loadFpPreTokens()
+	for _, fc := range fingerprintRaw {
+		fpCategoryGroup[fc.name] = fc.group
+	}
 	// tech 组模板子集（rp 组关闭时的快路径机器）
 	sensitiveTemplatesTech = make([]string, 0, len(sensitiveTemplates))
 	for i, g := range sensitiveTemplateGroups {
@@ -131,7 +136,53 @@ var base64FullRe = regexp.MustCompile(`^[A-Za-z0-9+/=\s]+$`)
 
 // ──────────────────────────────────────────────────────────────
 // L2 指纹：8 类真实载荷特征（Python FINGERPRINTS 原串）
+// 数据由 testdata/sensitive_fingerprints.json 提供。
 // ──────────────────────────────────────────────────────────────
+
+//go:embed testdata/sensitive_fingerprints.json
+var fingerprintFS embed.FS
+
+type fingerprintRawEntry struct {
+	name     string
+	group    string
+	patterns []string
+}
+
+var (
+	fingerprintRawOnce sync.Once
+	fingerprintRaw     []fingerprintRawEntry
+)
+
+func loadFingerprintRaw() []fingerprintRawEntry {
+	fingerprintRawOnce.Do(func() {
+		data, err := fingerprintFS.ReadFile("testdata/sensitive_fingerprints.json")
+		if err != nil {
+			common.SysError("fingerprints load failed: " + err.Error())
+			return
+		}
+		var payload struct {
+			Categories []struct {
+				Name     string   `json:"name"`
+				Group    string   `json:"group"`
+				Patterns []string `json:"patterns"`
+			} `json:"categories"`
+		}
+		if err := common.Unmarshal(data, &payload); err != nil {
+			common.SysError("fingerprints parse failed: " + err.Error())
+			return
+		}
+		for _, c := range payload.Categories {
+			fingerprintRaw = append(fingerprintRaw, fingerprintRawEntry{
+				name:     c.Name,
+				group:    c.Group,
+				patterns: c.Patterns,
+			})
+		}
+	})
+	return fingerprintRaw
+}
+
+
 
 type fingerprintCategory struct {
 	name  string
@@ -148,48 +199,6 @@ type fpAtom struct {
 	trailWord bool
 }
 
-var fingerprintRaw = []struct {
-	name     string
-	patterns []string
-}{
-	{"roleplay", []string{
-		`\bact as\b`, `you are going to (act|pretend)`, `pretend to be`,
-		`play a role`, `\broleplay\b`, `扮演`, `假扮`, `你(将|要)成为`,
-	}},
-	{"amoral", []string{
-		`\bamoral\b`, `\bevil\b`, `\bunethical\b`, `without morality`,
-		`no morality`, `\bimmoral\b`, `无道德`, `没有道德`, `邪恶`,
-	}},
-	{"dan", []string{
-		`\bDAN\b`, `do anything now`, `不受约束`, `为所欲为`,
-	}},
-	{"hypothetical", []string{
-		`hypothetical`, `fictional (character|world|scenario)`,
-		`creative writing`, `story (mode|telling)`, `虚构`, `假设`,
-	}},
-	{"unrestricted", []string{
-		`\bunrestricted\b`, `no (rules|restrictions|filters?|limits|censorship|guidelines)`,
-		`without (rules|restrictions)`, `无限制`, `不受限制`, `没有限制`,
-	}},
-	{"vm", []string{
-		`virtual machine`, `\bsimulator\b`, `\bVM\b`, `虚拟机`, `模拟器`,
-	}},
-	{"ignore_inst", []string{
-		`ignore all (the )?(previous|above|prior|my|your) (instructions|rules|prompts)`,
-		`ignore (my|all|previous|above) instructions`, `忽略所有指令`,
-		`忽略之前`, `无视 (所有|之前)`,
-		// 指令覆盖动词家族（来自公开 instruction-override 模式目录）
-		`(disregard|overlook|forget|skip|drop|dismiss|abandon|reject|void|override|nullify) (all |any |the )?(previous|prior|earlier|above|existing|original|my|your) (instructions?|rules?|directives?|guidelines?|prompts?|safe rules)`,
-		`(disregard|forget|override|ignore) (your|the|all) (system prompt|safety rules|rules)`,
-		`(your|the) (instructions|rules|system prompt) (are|is|were) no longer (valid|applicable|in effect)`,
-		`(your|the) (instructions|rules) (are|is) (invalid|void|stale)`,
-	}},
-	{"dev_mode", []string{
-		`developer mode`, `jailbreak mode`, `DAN mode`, `omega mode`,
-		`unfiltered mode`, `开发者模式`, `越狱模式`,
-		`(dev|jailbreak|dan|unfiltered|god) mode (on|enabled|activated)`,
-	}},
-}
 
 var fingerprintCategories []fingerprintCategory
 
@@ -278,14 +287,33 @@ func matchFpAtom(a fpAtom, text string) bool {
 // fpPreTokens 廉价预检：Python _FP_PRE 原 token 集（逐字，含大小写敏感的
 // Without/Ignore——与 Python 无 re.I 的行为一致）。text 已小写。
 // 手写 strings.Contains 循环替代正则（每 token ~0.5ns/字符）。
-var fpPreTokens = []string{
-	"act as", "pretend", "roleplay", "扮演", "假扮", "amoral", "unethical", "immoral",
-	"Without", "w/o", "no morality", "DAN", "do anything", "hypothetical", "fictional",
-	"creative", "story", "unrestricted", "no rules", "no restrictions", "no filters",
-	"no limits", "no censorship", "no guidelines", "virtual machine", "simulator",
-	"ignore all", "ignore my", "ignore previous", "developer mode", "jailbreak",
-	"omega mode", "unfiltered", "simulate", "Ignore", "BREAK", "evil", "malicuous",
+//go:embed testdata/sensitive_fp_pre_tokens.json
+var fpPreTokensFS embed.FS
+
+var (
+	fpPreTokensOnce sync.Once
+	fpPreTokens     []string
+)
+
+func loadFpPreTokens() []string {
+	fpPreTokensOnce.Do(func() {
+		data, err := fpPreTokensFS.ReadFile("testdata/sensitive_fp_pre_tokens.json")
+		if err != nil {
+			common.SysError("fp pre tokens load failed: " + err.Error())
+			return
+		}
+		var payload struct {
+			Tokens []string `json:"tokens"`
+		}
+		if err := common.Unmarshal(data, &payload); err != nil {
+			common.SysError("fp pre tokens parse failed: " + err.Error())
+			return
+		}
+		fpPreTokens = payload.Tokens
+	})
+	return fpPreTokens
 }
+
 
 func fpPreHit(text string) bool {
 	for _, tok := range fpPreTokens {
@@ -370,12 +398,8 @@ func expandAtoms(pattern string) []string {
 
 // fpCategoryGroup 指纹 ∈ 开关组：tech（技术破甲）与 rp（角色扮演）。
 // 与 Python FP_GROUPS 对齐；gov 组由词库层承担。
-var fpCategoryGroup = map[string]string{
-	"roleplay":     "rp",
-	"hypothetical": "rp",
-	"amoral":       "tech", "dan": "tech", "unrestricted": "tech",
-	"vm": "tech", "ignore_inst": "tech", "dev_mode": "tech",
-}
+// fpCategoryGroup 指纹 → 开关组。由 init() 从 fingerprintRaw 各类别 group 字段填入。
+var fpCategoryGroup = map[string]string{}
 
 func init() {
 	for _, raw := range fingerprintRaw {

@@ -1,8 +1,12 @@
 package service
 
 import (
+	"embed"
 	"regexp"
 	"strings"
+	"sync"
+
+	"github.com/QuantumNous/new-api/common"
 )
 
 // 目标域名黑名单——防攻击目标的硬闸门。
@@ -17,14 +21,37 @@ import (
 //     括号引用（`(gov.cn)`）、路径段中的域名（`www.gov.cn/index`）
 //   - 端口与路径不参与匹配；IDN（punycode）不展开
 
-// defaultTargetDomains 内置目标名单（后缀匹配）。任何包含于文本中的
-// 完整域名（或子域）命中即视为目标。写入顺序不影响结果。
-var defaultTargetDomains = []string{
-	// 中国政府网及政务站点
-	"gov.cn",
-	// 中国军方站点
-	"81.cn",
-	// 政府机关常用缩写（覆盖 1-3 级子域：如 www.xxx.gov.cn 已匹配，无需额外）
+//go:embed testdata/sensitive_target_domains.json
+var defaultTargetDomainsFS embed.FS
+
+var (
+	defaultTargetDomainsOnce sync.Once
+	defaultTargetDomains     []string
+)
+
+// loadDefaultTargetDomains 从 fixture 加载内置目标名单（后缀匹配）。
+// 任何包含于文本中的完整域名（或子域）命中即视为目标。写入顺序不影响结果。
+func loadDefaultTargetDomains() []string {
+	defaultTargetDomainsOnce.Do(func() {
+		data, err := defaultTargetDomainsFS.ReadFile("testdata/sensitive_target_domains.json")
+		if err != nil {
+			common.SysError("target domains load failed: " + err.Error())
+			return
+		}
+		var payload struct {
+			Domains []string `json:"domains"`
+		}
+		if err := common.Unmarshal(data, &payload); err != nil {
+			common.SysError("target domains parse failed: " + err.Error())
+			return
+		}
+		defaultTargetDomains = payload.Domains
+	})
+	return defaultTargetDomains
+}
+
+func init() {
+	loadDefaultTargetDomains() // 启动即加载，避免首请求触发解析
 }
 
 // targetDomainPattern 从文本提取“合法域名候选”。

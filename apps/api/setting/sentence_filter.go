@@ -1,16 +1,46 @@
 package setting
 
-import "strings"
+import (
+	"embed"
+	"strings"
+	"sync"
+
+	"github.com/QuantumNous/new-api/common"
+)
 
 // 短泛词过滤：SensitiveWordsFromString 在生产路径剔除易误伤的 2 字泛词
 // （"政府""中央""军事"等），攻击意图明确的具名词保留（单独白名单）。
 //
 // 测试 fixture（sensitive_words_test.json）是 Python 基线锚，保持原样，
 // 过滤只作用于用户配置的生产词库——基线回归与生产行为解耦。
-var attackShortWords = map[string]struct{}{
-	"破甲": {}, "越狱": {}, "脱狱": {}, "外挂": {}, "黑客": {},
-	"炸弹": {}, "手枪": {}, "步枪": {}, "冰毒": {}, "毒品": {},
-	"弹药": {}, "洗钱": {}, "军火": {}, "枪械": {}, "暴恐": {},
+
+//go:embed sensitive_attack_short_words.json
+var attackShortWordsFS embed.FS
+
+var (
+	attackShortWordsOnce sync.Once
+	attackShortWords     = map[string]struct{}{}
+)
+
+func loadAttackShortWords() map[string]struct{} {
+	attackShortWordsOnce.Do(func() {
+		data, err := attackShortWordsFS.ReadFile("sensitive_attack_short_words.json")
+		if err != nil {
+			common.SysError("attack short words load failed: " + err.Error())
+			return
+		}
+		var payload struct {
+			Words []string `json:"words"`
+		}
+		if err := common.Unmarshal(data, &payload); err != nil {
+			common.SysError("attack short words parse failed: " + err.Error())
+			return
+		}
+		for _, w := range payload.Words {
+			attackShortWords[w] = struct{}{}
+		}
+	})
+	return attackShortWords
 }
 
 // FilterSensitiveWords 过滤易误伤短词（保留攻击词白名单）。
@@ -31,7 +61,7 @@ func FilterSensitiveWords(words []string) []string {
 			out = append(out, w)
 			continue
 		}
-		if _, ok := attackShortWords[w]; ok {
+		if _, ok := loadAttackShortWords()[w]; ok {
 			out = append(out, w)
 		}
 	}
