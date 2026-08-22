@@ -191,7 +191,7 @@ jobs:
           : "${K8S_API_KEY:?K8S_STRESS_API_KEY secret is required}"
           TOKEN_KEY="${K8S_API_KEY#sk-}"
           POSTGRES_POD=$(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
-          kubectl exec "$POSTGRES_POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 <<SQL
+          kubectl exec -i "$POSTGRES_POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 <<SQL
           INSERT INTO tokens (user_id, key, status, name, created_time, accessed_time, expired_time, remain_quota, unlimited_quota, model_limits_enabled, model_limits, allow_ips, used_quota, "group", cross_group_retry, auto_groups)
           VALUES (1, '$TOKEN_KEY', 1, 'gha-k8s-stress-token', EXTRACT(EPOCH FROM now())::bigint, EXTRACT(EPOCH FROM now())::bigint, -1, 2147483647, true, false, '', '', 0, 'default', true, '')
           ON CONFLICT (key) DO UPDATE SET status=1, remain_quota=2147483647, unlimited_quota=true, used_quota=0, "group"='default', model_limits_enabled=false, allow_ips='', expired_time=-1, deleted_at=NULL;
