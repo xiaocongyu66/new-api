@@ -1,0 +1,4 @@
+GET /dashboard/billing/subscription
+GET /dashboard/billing/usage
+GET /v1/dashboard/billing/subscription
+GET /v1/dashboard/billing/usage
