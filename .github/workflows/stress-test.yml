@@ -124,6 +124,34 @@ jobs:
           echo "${{ secrets.KUBE_CONFIG_B64 }}" | base64 -d > ~/.kube/config
           chmod 600 ~/.kube/config
 
+      - name: Capture server hardware specs
+        if: inputs.target_env == 'k8s_cluster'
+        env:
+          SERVERS_LIST_JSON: ${{ secrets.SERVERS_LIST_JSON }}
+        run: |
+          set -euo pipefail
+          mkdir -p runtime/logs
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sshpass jq
+          : > runtime/logs/server-specs.txt
+          echo "$SERVERS_LIST_JSON" | jq -c '.[]' | while read -r s; do
+            IP=$(echo "$s" | jq -r .ip)
+            USER=$(echo "$s" | jq -r .user)
+            PASS=$(echo "$s" | jq -r .password)
+            echo "::add-mask::$PASS"
+            {
+              echo "## $IP"
+              sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 "$USER@$IP" '
+                hostname
+                uname -a
+                lscpu | sed -n "1,25p"
+                free -h
+                df -h /
+              ' || echo "ssh probe failed"
+              echo
+            } >> runtime/logs/server-specs.txt
+          done
+
       - name: Capture k8s baseline and optionally deploy test image
         if: inputs.target_env == 'k8s_cluster'
         run: |
@@ -206,6 +234,18 @@ jobs:
             TARGET_URL="${{ inputs.target_url }}"
             API_KEY="$K8S_API_KEY"
             HOST_HEADER="${{ inputs.host_header }}"
+            STATUS_URL="${TARGET_URL%/v1}/api/status"
+            if ! curl -fsS --connect-timeout 5 -H "Host: $HOST_HEADER" "$STATUS_URL" > runtime/logs/direct-ingress-status.txt 2>&1; then
+              echo "direct ingress failed; using kubectl port-forward to service/new-api" | tee runtime/logs/target-mode.txt
+              kubectl port-forward svc/new-api 18080:80 > runtime/logs/port-forward.log 2>&1 &
+              for i in {1..20}; do
+                curl -fsS http://127.0.0.1:18080/api/status && break || sleep 1
+              done
+              TARGET_URL="http://127.0.0.1:18080/v1"
+              HOST_HEADER=""
+            else
+              echo "direct ingress ok" | tee runtime/logs/target-mode.txt
+            fi
           fi
           python3 scripts/stress_test.py \
             --scenario "${{ inputs.scenario }}" \
@@ -247,7 +287,7 @@ jobs:
           [ -f runtime/logs/report.md ] && cat runtime/logs/report.md >> "$GITHUB_STEP_SUMMARY"
           echo '' >> "$GITHUB_STEP_SUMMARY"
           echo '## Server / K8s Evidence' >> "$GITHUB_STEP_SUMMARY"
-          for f in runtime/logs/nodes.txt runtime/logs/nodes-top-before.txt runtime/logs/nodes-top-after.txt runtime/logs/pods-before.txt runtime/logs/pods-after.txt; do
+          for f in runtime/logs/target-mode.txt runtime/logs/server-specs.txt runtime/logs/nodes.txt runtime/logs/nodes-top-before.txt runtime/logs/nodes-top-after.txt runtime/logs/pods-before.txt runtime/logs/pods-after.txt; do
             [ -f "$f" ] && { echo "### $f" >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"; cat "$f" >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"; }
           done
 
