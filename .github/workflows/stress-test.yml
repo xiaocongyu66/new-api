@@ -178,6 +178,29 @@ jobs:
             kubectl rollout status deployment/new-api-worker --timeout=300s
           fi
 
+
+      - name: Ensure k8s stress token exists
+        if: inputs.target_env == 'k8s_cluster'
+        env:
+          K8S_API_KEY: ${{ secrets.K8S_STRESS_API_KEY }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${K8S_API_KEY:?K8S_STRESS_API_KEY secret is required}"
+          TOKEN_KEY="${K8S_API_KEY#sk-}"
+          POSTGRES_POD=$(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec "$POSTGRES_POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 <<SQL
+          INSERT INTO tokens (user_id, key, status, name, created_time, accessed_time, expired_time, remain_quota, unlimited_quota, model_limits_enabled, model_limits, allow_ips, used_quota, "group", cross_group_retry, auto_groups)
+          VALUES (1, '$TOKEN_KEY', 1, 'gha-k8s-stress-token', EXTRACT(EPOCH FROM now())::bigint, EXTRACT(EPOCH FROM now())::bigint, -1, 2147483647, true, false, '', '', 0, 'default', true, '')
+          ON CONFLICT (key) DO UPDATE SET status=1, remain_quota=2147483647, unlimited_quota=true, used_quota=0, "group"='default', model_limits_enabled=false, allow_ips='', expired_time=-1;
+          UPDATE users SET quota=2147483647, used_quota=0 WHERE id=1;
+          INSERT INTO options (key, value) VALUES ('RetryTimes','5') ON CONFLICT (key) DO UPDATE SET value='5';
+          SQL
+          kubectl rollout restart deployment/new-api-master deployment/new-api-worker
+          kubectl rollout status deployment/new-api-master --timeout=300s
+          kubectl rollout status deployment/new-api-worker --timeout=300s
       - name: Setup Go for local runner target
         if: inputs.target_env == 'local_runner'
         uses: actions/setup-go@v5
