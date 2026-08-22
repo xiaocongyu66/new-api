@@ -81,9 +81,37 @@ func lowerNoWWW(s string) string {
 
 // CheckSensitiveTargets 在文本中查找目标域。命中返回被命中的域名（最长者），
 // 未命中返回空串。
+//
+// 入口先做同形折叠：西里尔 о(U+043E)/希腊 ο(U+03BF)→o、全角 ｇ(U+FF47)→g 等，
+// 防 gоv.cn / ｇοv.cn / ｇov.cn 变体绕过 `[a-z0-9]` 域名正则逃逸硬闸。
+// 折叠保留点号与字母数字（不剥分隔符，域名结构完整）；无折叠字符时零分配原串直通。
 func CheckSensitiveTargets(text string) string {
 	if text == "" {
 		return ""
+	}
+	var folded bool
+	for _, r := range text {
+		if _, ok := homoglyphMap[r]; ok {
+			folded = true
+			break
+		}
+		if r >= 0xff01 && r <= 0xff5e {
+			folded = true
+			break
+		}
+	}
+	if folded {
+		var b strings.Builder
+		b.Grow(len(text))
+		for _, r := range text {
+			if r >= 0xff01 && r <= 0xff5e {
+				r -= 0xfee0 // 全角 ASCII → 半角
+			} else if m, ok := homoglyphMap[r]; ok {
+				r = m
+			}
+			b.WriteRune(r)
+		}
+		text = b.String()
 	}
 	best := ""
 	for _, m := range targetDomainPattern.FindAllStringSubmatch(text, -1) {
