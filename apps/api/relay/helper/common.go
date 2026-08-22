@@ -79,6 +79,12 @@ func ClaudeChunkData(c *gin.Context, resp dto.ClaudeResponse, data string) {
 		return
 	}
 
+	if blocked, label := outputChunkBlocked(c, data); blocked {
+		terminateOutputSSE(c)
+		common.SysLog(fmt.Sprintf("claude output blocked by sensitive filter: [%s]", label))
+		return
+	}
+
 	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)})
 	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("data: %s\n", data)})
 	_ = FlushWriter(c)
@@ -87,6 +93,12 @@ func ClaudeChunkData(c *gin.Context, resp dto.ClaudeResponse, data string) {
 func ResponseChunkData(c *gin.Context, resp dto.ResponsesStreamResponse, data string) error {
 	if requestContextDone(c) {
 		return fmt.Errorf("request context done: %w", c.Request.Context().Err())
+	}
+
+	if blocked, label := outputChunkBlocked(c, data); blocked {
+		terminateOutputSSE(c)
+		common.SysLog(fmt.Sprintf("responses output blocked by sensitive filter: [%s]", label))
+		return fmt.Errorf("output blocked by sensitive filter: %s", label)
 	}
 
 	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)})
@@ -101,6 +113,11 @@ func StringData(c *gin.Context, str string) error {
 
 	if requestContextDone(c) {
 		return fmt.Errorf("request context done: %w", c.Request.Context().Err())
+	}
+
+	if blocked, label := outputChunkBlocked(c, str); blocked {
+		terminateOutputSSE(c)
+		return fmt.Errorf("output blocked by sensitive filter: %s", label)
 	}
 
 	c.Render(-1, common.CustomEvent{Data: "data: " + str})

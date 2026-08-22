@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"unsafe"
 
 	goahocorasick "github.com/anknown/ahocorasick"
 )
@@ -48,29 +49,11 @@ func SundaySearch(text string, pattern string) bool {
 	return false // 如果没有找到匹配，返回-1
 }
 
-func RemoveDuplicate(s []string) []string {
-	result := make([]string, 0, len(s))
-	temp := map[string]struct{}{}
-	for _, item := range s {
-		if _, ok := temp[item]; !ok {
-			temp[item] = struct{}{}
-			result = append(result, item)
-		}
-	}
-	return result
-}
+
 
 func InitAc(dict []string) *goahocorasick.Machine {
-	m := new(goahocorasick.Machine)
-	runes := readRunes(dict)
-	if err := m.Build(runes); err != nil {
-		fmt.Println(err)
-		return nil
-	}
-	return m
+	return buildMachine(dict, false)
 }
-
-var acCache sync.Map
 
 func acKey(dict []string) string {
 	if len(dict) == 0 {
@@ -95,26 +78,86 @@ func acKey(dict []string) string {
 	return fmt.Sprintf("%x", hasher.Sum64())
 }
 
-func getOrBuildAC(dict []string) *goahocorasick.Machine {
-	key := acKey(dict)
+// dictCacheKey 用「切片指针 + 长度 + 首尾抽样」做键：词库仅在配置更新时换新切片，
+// 指针不变即内容不变（setting.SensitiveWords 每次解析都是新分配）。
+// 完整 acKey（小写+trim+排序+全文哈希）只在指针/SliceHeader 变化时重算，
+// 避免热路径上每次调用 O(n log n)。
+type dictCacheKey struct {
+	ptr   uintptr
+	len   int
+	first string
+	last  string
+}
+
+func makeDictCacheKey(dict []string) dictCacheKey {
+	k := dictCacheKey{len: len(dict)}
+	if len(dict) > 0 {
+		k.ptr = uintptr(unsafe.Pointer(&dict[0]))
+		k.first = dict[0]
+		k.last = dict[len(dict)-1]
+	}
+	return k
+}
+
+// keyedMachine 把 dict 引用 → 已构建机器 + 其全文哈希键。同一切片指针复用键。
+type keyedMachine struct {
+	key     string
+	machine *goahocorasick.Machine
+}
+
+// dictKeyMemo 按 (指针, 长度) 记忆 machine；内容变更（同指针重写）由抽样兜底重建。
+type dictMemo struct {
+	mu      sync.Mutex
+	byKey   map[dictCacheKey]*keyedMachine
+	lastKey dictCacheKey
+	lastVal *keyedMachine
+}
+
+func newDictMemo() *dictMemo {
+	return &dictMemo{byKey: make(map[dictCacheKey]*keyedMachine, 4)}
+}
+
+func (m *dictMemo) Get(rawDict []string, raw bool) *goahocorasick.Machine {
+	if len(rawDict) == 0 {
+		return nil
+	}
+	k := makeDictCacheKey(rawDict)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.lastKey == k && m.lastVal != nil {
+		return m.lastVal.machine
+	}
+	if km, ok := m.byKey[k]; ok {
+		m.lastKey, m.lastVal = k, km
+		return km.machine
+	}
+	key := acKey(rawDict)
 	if key == "" {
 		return nil
 	}
-	if v, ok := acCache.Load(key); ok {
-		if m, ok2 := v.(*goahocorasick.Machine); ok2 {
-			return m
-		}
-	}
-	m := InitAc(dict)
-	if m == nil {
+	mach := buildMachine(rawDict, raw)
+	if mach == nil {
 		return nil
 	}
-	if actual, loaded := acCache.LoadOrStore(key, m); loaded {
-		if cached, ok := actual.(*goahocorasick.Machine); ok {
-			return cached
-		}
+	km := &keyedMachine{key: key, machine: mach}
+	m.byKey[k] = km
+	if len(m.byKey) > 16 {
+		m.byKey = make(map[dictCacheKey]*keyedMachine, 4)
 	}
-	return m
+	m.lastKey, m.lastVal = k, km
+	return mach
+}
+
+var acMemo = newDictMemo()
+var acRawMemo = newDictMemo()
+
+func getOrBuildAC(dict []string) *goahocorasick.Machine {
+	return acMemo.Get(dict, false)
+}
+
+// getOrBuildACRaw 构建不裁剪首尾空白的机器（模板前缀专用）。
+func getOrBuildACRaw(dict []string) *goahocorasick.Machine {
+	return acRawMemo.Get(dict, true)
 }
 
 func readRunes(dict []string) [][]rune {
@@ -129,7 +172,57 @@ func readRunes(dict []string) [][]rune {
 	return runes
 }
 
+// readRunesRaw 与 readRunes 相同但不裁剪首尾空白。
+// 模板前缀的尾随空白是模式的一部分（区分 "...ways: " 与 "...ways:\n" 边界），
+// 裁剪会改变匹配语义（见 sensitive_expected 292 行的对齐回归）。
+func readRunesRaw(dict []string) [][]rune {
+	runes := make([][]rune, 0, len(dict))
+	for _, word := range dict {
+		runes = append(runes, []rune(strings.ToLower(word)))
+	}
+	return runes
+}
+
+func buildMachine(dict []string, raw bool) *goahocorasick.Machine {
+	m := new(goahocorasick.Machine)
+	var runes [][]rune
+	if raw {
+		runes = readRunesRaw(dict)
+	} else {
+		runes = readRunes(dict)
+	}
+	if err := m.Build(runes); err != nil {
+		fmt.Println(err)
+		return nil
+	}
+	return m
+}
+
+// AcSearch 字节级 AC 搜索（语义与 anko 旧实现完全一致，热路径用）。
 func AcSearch(findText string, dict []string, stopImmediately bool) (bool, []string) {
+	if len(dict) == 0 {
+		return false, nil
+	}
+	if len(findText) == 0 {
+		return false, nil
+	}
+	m := getOrBuildByteAC(dict)
+	if m == nil {
+		return false, nil
+	}
+	hits := m.search(findText, stopImmediately)
+	if len(hits) > 0 {
+		words := make([]string, 0, len(hits))
+		for _, wi := range hits {
+			words = append(words, m.words[wi])
+		}
+		return true, words
+	}
+	return false, nil
+}
+
+// AcSearchLegacy 旧 anko 双数组机实现（保留供基准对照，勿用于热路径）。
+func AcSearchLegacy(findText string, dict []string, stopImmediately bool) (bool, []string) {
 	if len(dict) == 0 {
 		return false, nil
 	}

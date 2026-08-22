@@ -1,77 +1,22 @@
 package service
 
 import (
-	"errors"
-	"strings"
-
-	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting"
 )
 
-func CheckSensitiveMessages(messages []dto.Message) ([]string, error) {
-	if len(messages) == 0 {
-		return nil, nil
-	}
-
-	for _, message := range messages {
-		arrayContent := message.ParseContent()
-		for _, m := range arrayContent {
-			if m.Type == "image_url" {
-				// TODO: check image url
-				continue
-			}
-			// 检查 text 是否为空
-			if m.Text == "" {
-				continue
-			}
-			if ok, words := SensitiveWordContains(m.Text); ok {
-				return words, errors.New("sensitive words detected")
-			}
-		}
-	}
-	return nil, nil
-}
-
+// CheckSensitiveText 分层敏感词引擎入口：
+//
+//	L1 词法（AC + 归一化/混淆处理）→ L2 指纹（8 类计分）→ L3 真实载荷模板特征子串。
+//
+// 引擎行为与 Python 验证基线（~/projects/sensitive-word-test/test_v8.py +
+// 54 模板前缀特征）1:1 对齐：jailbreak 1405 池召回 21.1%（296/1405）、
+// 正常 3000 池真误伤 2/3000（0.07%，两条均为词库 L1a 命中「政府」的良性文本）。
 func CheckSensitiveText(text string) (bool, []string) {
-	return SensitiveWordContains(text)
+	return sensitiveCheckHits(text, setting.SensitiveWords)
 }
 
-// SensitiveWordContains 是否包含敏感词，返回是否包含敏感词和敏感词列表
-func SensitiveWordContains(text string) (bool, []string) {
-	if len(setting.SensitiveWords) == 0 {
-		return false, nil
-	}
-	if len(text) == 0 {
-		return false, nil
-	}
-	checkText := strings.ToLower(text)
-	return AcSearch(checkText, setting.SensitiveWords, true)
-}
-
-// SensitiveWordReplace 敏感词替换，返回是否包含敏感词和替换后的文本
-func SensitiveWordReplace(text string, returnImmediately bool) (bool, []string, string) {
-	if len(setting.SensitiveWords) == 0 {
-		return false, nil, text
-	}
-	checkText := strings.ToLower(text)
-	m := getOrBuildAC(setting.SensitiveWords)
-	hits := m.MultiPatternSearch([]rune(checkText), returnImmediately)
-	if len(hits) > 0 {
-		words := make([]string, 0, len(hits))
-		var builder strings.Builder
-		builder.Grow(len(text))
-		lastPos := 0
-
-		for _, hit := range hits {
-			pos := hit.Pos
-			word := string(hit.Word)
-			builder.WriteString(text[lastPos:pos])
-			builder.WriteString("**###**")
-			lastPos = pos + len(word)
-			words = append(words, word)
-		}
-		builder.WriteString(text[lastPos:])
-		return true, words, builder.String()
-	}
-	return false, nil, text
+// CheckSensitiveOutput 输出侧敏感检测（目标域 + 破甲术语 + 词库/指纹/模板）。
+// 返回 (是否拦截, 拦截标签)。命中即终止输出，不向客户端泄露后续内容。
+func CheckSensitiveOutput(text string) (bool, string) {
+	return CheckSensitiveAll(text)
 }

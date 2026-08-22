@@ -1,0 +1,118 @@
+{
+  "description": "L2 指纹：8 类真实载荷特征 (Python FINGERPRINTS 原串)，含 group 开关标注",
+  "category_group": {
+    "roleplay": "rp",
+    "hypothetical": "rp",
+    "amoral": "tech",
+    "dan": "tech",
+    "unrestricted": "tech",
+    "vm": "tech",
+    "ignore_inst": "tech",
+    "dev_mode": "tech"
+  },
+  "categories": [
+    {
+      "name": "roleplay",
+      "group": "rp",
+      "patterns": [
+        "\\bact as\\b",
+        "you are going to (act|pretend)",
+        "pretend to be",
+        "play a role",
+        "\\broleplay\\b",
+        "扮演",
+        "假扮",
+        "你(将|要)成为"
+      ]
+    },
+    {
+      "name": "amoral",
+      "group": "tech",
+      "patterns": [
+        "\\bamoral\\b",
+        "\\bevil\\b",
+        "\\bunethical\\b",
+        "without morality",
+        "no morality",
+        "\\bimmoral\\b",
+        "无道德",
+        "没有道德",
+        "邪恶"
+      ]
+    },
+    {
+      "name": "dan",
+      "group": "tech",
+      "patterns": [
+        "\\bDAN\\b",
+        "do anything now",
+        "不受约束",
+        "为所欲为"
+      ]
+    },
+    {
+      "name": "hypothetical",
+      "group": "rp",
+      "patterns": [
+        "hypothetical",
+        "fictional (character|world|scenario)",
+        "creative writing",
+        "story (mode|telling)",
+        "虚构",
+        "假设"
+      ]
+    },
+    {
+      "name": "unrestricted",
+      "group": "tech",
+      "patterns": [
+        "\\bunrestricted\\b",
+        "no (rules|restrictions|filters?|limits|censorship|guidelines)",
+        "without (rules|restrictions)",
+        "无限制",
+        "不受限制",
+        "没有限制"
+      ]
+    },
+    {
+      "name": "vm",
+      "group": "tech",
+      "patterns": [
+        "virtual machine",
+        "\\bsimulator\\b",
+        "\\bVM\\b",
+        "虚拟机",
+        "模拟器"
+      ]
+    },
+    {
+      "name": "ignore_inst",
+      "group": "tech",
+      "patterns": [
+        "ignore all (the )?(previous|above|prior|my|your) (instructions|rules|prompts)",
+        "ignore (my|all|previous|above) instructions",
+        "忽略所有指令",
+        "忽略之前",
+        "无视 (所有|之前)",
+        "(disregard|overlook|forget|skip|drop|dismiss|abandon|reject|void|override|nullify) (all |any |the )?(previous|prior|earlier|above|existing|original|my|your) (instructions?|rules?|directives?|guidelines?|prompts?|safe rules)",
+        "(disregard|forget|override|ignore) (your|the|all) (system prompt|safety rules|rules)",
+        "(your|the) (instructions|rules|system prompt) (are|is|were) no longer (valid|applicable|in effect)",
+        "(your|the) (instructions|rules) (are|is) (invalid|void|stale)"
+      ]
+    },
+    {
+      "name": "dev_mode",
+      "group": "tech",
+      "patterns": [
+        "developer mode",
+        "jailbreak mode",
+        "DAN mode",
+        "omega mode",
+        "unfiltered mode",
+        "开发者模式",
+        "越狱模式",
+        "(dev|jailbreak|dan|unfiltered|god) mode (on|enabled|activated)"
+      ]
+    }
+  ]
+}
