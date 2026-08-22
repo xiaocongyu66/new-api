@@ -1,10 +1,12 @@
 package service
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCheckSensitiveTargets(t *testing.T) {
@@ -28,6 +30,50 @@ func TestCheckSensitiveTargets(t *testing.T) {
 	for _, tc := range cases {
 		assert.Equal(t, tc.want, CheckSensitiveTargets(tc.text), "text=%q", tc.text)
 	}
+}
+
+func TestSensitiveTargetsCyrillicHomoglyph(t *testing.T) {
+	hits := []string{
+		"gоv.cn",                 // 西里尔 о U+043E
+		"gοv.cn",                 // 希腊 ο U+03BF
+		"ｇov.cn",                  // 全角 ｇ U+FF47
+		"https://www.gоv.cn/a/b", // URL 内西里尔同形
+		"ｗｗｗ．８１．ｃｎ",               // 全整角 81.cn
+		"攻击 gоv.cn 的方法",           // 混入句子
+	}
+	for _, s := range hits {
+		require.NotEmpty(t, CheckSensitiveTargets(s), "同形变体必须命中硬闸: %q", s)
+	}
+	// 正常文本不受折叠影响
+	assert.Equal(t, "www.gov.cn", CheckSensitiveTargets("https://www.gov.cn/xx"))
+	assert.Equal(t, "", CheckSensitiveTargets("abc.example.com 正常"))
+}
+
+func TestIsDefenseContextUTF8Boundary(t *testing.T) {
+	attack := "攻击政府网站"
+
+	// hi = hitEnd+60 恰好切进"范"（防御词末字）中间：修复前 范 被截断 → 漏判豁免。
+	// filler 56B（é 2 + 字×18 ×3）把 防范 推到 [190,196)，hi=194 落在 范[193,196) 内；
+	// 对齐后 hi→196，防范 完整入窗。
+	hiText := "😀" + strings.Repeat("字", 18) + "😀" + strings.Repeat("字", 18) +
+		attack + "é" + strings.Repeat("字", 18) + "防范指南"
+	i := strings.Index(hiText, attack)
+	require.Equal(t, 116, i)
+	require.True(t, isDefenseContext(hiText, i, i+len(attack)), "跨 hi 边界的防御词应被识别")
+	require.Equal(t, "", checkTargetActionTerms(hiText), "防御语境应豁免")
+
+	// lo = hitStart-60 切进"防"字中间：同上，从左侧截断。
+	// 防 位于 [55,58)，lo=56 落在其中。
+	loText := "😀" + strings.Repeat("字", 17) + "防范" + "😀" + strings.Repeat("字", 17) +
+		attack + "的教程"
+	j := strings.Index(loText, attack)
+	require.Equal(t, 116, j)
+	require.True(t, isDefenseContext(loText, j, j+len(attack)), "跨 lo 边界的防御词应被识别")
+
+	// 无防御词对照：同一结构必须正常命中
+	plain := "😀" + strings.Repeat("字", 18) + "😀" + strings.Repeat("字", 18) +
+		attack + "😀" + strings.Repeat("字", 18) + "操作步骤"
+	require.NotEqual(t, "", checkTargetActionTerms(plain), "无防御词必须命中")
 }
 
 func TestIsTargetDomain(t *testing.T) {

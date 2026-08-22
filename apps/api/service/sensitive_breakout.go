@@ -3,8 +3,9 @@ package service
 import (
 	"embed"
 	"regexp"
-	"sync"
 	"strings"
+	"sync"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting"
@@ -241,6 +242,8 @@ var (
 var govDefenseRe = regexp.MustCompile(`(?i)(防范|防御|防护|预防|加固|阻止|屏蔽|保护|防攻|安全(建议|指南|方案)|prevent|defend|protect|harden|mitigat|avoid|protection|defense|security check|防火墙|拦截(攻击|钓鱼)|应对)`)
 
 // isDefenseContext 命中区间 ±60 字符内出现防御语境词 → true。
+// ±60 按字节偏移计算，切片前对齐到 UTF-8 rune 边界：CJK/泰文/西里尔等多字节
+// 字形被切成无效序列时 regexp 会匹配失败，防御语境漏判导致误伤。
 func isDefenseContext(text string, hitStart, hitEnd int) bool {
 	lo := hitStart - 60
 	if lo < 0 {
@@ -249,6 +252,12 @@ func isDefenseContext(text string, hitStart, hitEnd int) bool {
 	hi := hitEnd + 60
 	if hi > len(text) {
 		hi = len(text)
+	}
+	for lo > 0 && !utf8.RuneStart(text[lo]) {
+		lo--
+	}
+	for hi < len(text) && !utf8.RuneStart(text[hi]) {
+		hi++
 	}
 	return govDefenseRe.MatchString(text[lo:hi])
 }
