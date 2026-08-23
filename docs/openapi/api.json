@@ -5229,6 +5229,127 @@
           }
         ]
       }
+    },
+    "/api/channel/route_unit/": {
+      "get": {
+        "summary": "查询别名下的路由单元",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）。返回指定 public model alias 下全部 route unit（渠道、key 序号、上游模型、base URL、静态权重、期望份额、启用状态、健康分）。",
+        "tags": [
+          "渠道管理"
+        ],
+        "parameters": [
+          {
+            "name": "alias",
+            "in": "query",
+            "description": "公开模型别名",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/channel/route_unit/aliases": {
+      "get": {
+        "summary": "列出路由单元别名汇总",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）。返回全部别名及路由数与总权重。",
+        "tags": [
+          "渠道管理"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/channel/route_unit/{id}": {
+      "put": {
+        "summary": "更新路由单元配置",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）。更新静态权重（有限非负整数，≤1e9）与启用状态；body 只接受 static_weight / enabled。",
+        "tags": [
+          "渠道管理"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "路由单元 ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "static_weight": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {}
+          },
+          "400": {
+            "description": "参数非法"
+          },
+          "404": {
+            "description": "路由单元不存在"
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
     }
   },
   "components": {
