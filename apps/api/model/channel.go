@@ -453,6 +453,9 @@ func batchInsertWithTx(tx *gorm.DB, channels []Channel) error {
 			if err := channel_.AddAbilities(tx); err != nil {
 				return err
 			}
+			if err := SyncChannelModelRoutesWithTx(tx, channel_.Id); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -483,6 +486,9 @@ func batchDeleteWithTx(tx *gorm.DB, ids []int) (int64, error) {
 		}
 		deletedCount += result.RowsAffected
 		if err := deleteAbilitiesByChannelIDsWithTx(tx, chunk); err != nil {
+			return 0, err
+		}
+		if err := DeleteChannelModelRoutesByChannelIDsWithTx(tx, chunk); err != nil {
 			return 0, err
 		}
 	}
@@ -551,7 +557,10 @@ func (channel *Channel) insertWithTx(tx *gorm.DB) error {
 	if err := tx.Create(channel).Error; err != nil {
 		return err
 	}
-	return channel.AddAbilities(tx)
+	if err := channel.AddAbilities(tx); err != nil {
+		return err
+	}
+	return SyncChannelModelRoutesWithTx(tx, channel.Id)
 }
 
 func (channel *Channel) Insert() error {
@@ -599,7 +608,10 @@ func (channel *Channel) updateWithTx(tx *gorm.DB) error {
 	if err := tx.First(channel, "id = ?", channel.Id).Error; err != nil {
 		return err
 	}
-	return channel.UpdateAbilities(tx)
+	if err := channel.UpdateAbilities(tx); err != nil {
+		return err
+	}
+	return SyncChannelModelRoutesWithTx(tx, channel.Id)
 }
 
 func (channel *Channel) Update() error {
@@ -633,7 +645,10 @@ func (channel *Channel) deleteWithTx(tx *gorm.DB) error {
 	if err := tx.Delete(channel).Error; err != nil {
 		return err
 	}
-	return deleteAbilitiesWithTx(tx, channel.Id)
+	if err := deleteAbilitiesWithTx(tx, channel.Id); err != nil {
+		return err
+	}
+	return SyncChannelModelRoutesWithTx(tx, channel.Id)
 }
 
 func (channel *Channel) Delete() error {
@@ -827,6 +842,9 @@ func updateChannelStatusWithTx(_ *gorm.DB, channelId int, usingKey string, statu
 			if err := updateAbilityStatusWithTx(tx, channelId, enabled); err != nil {
 				return err
 			}
+			if err := SyncChannelModelRoutesWithTx(tx, channelId); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -846,7 +864,19 @@ func EnableChannelByTag(tag string) error {
 		if err := tx.Model(&Channel{}).Where("tag = ?", tag).Update("status", common.ChannelStatusEnabled).Error; err != nil {
 			return err
 		}
-		return updateAbilityStatusByTagWithTx(tx, tag, true)
+		if err := updateAbilityStatusByTagWithTx(tx, tag, true); err != nil {
+			return err
+		}
+		var ids []int
+		if err := tx.Model(&Channel{}).Where("tag = ?", tag).Pluck("id", &ids).Error; err != nil {
+			return err
+		}
+		for _, id := range ids {
+			if err := SyncChannelModelRoutesWithTx(tx, id); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	return err
 }
@@ -860,7 +890,19 @@ func DisableChannelByTag(tag string) error {
 		if err := tx.Model(&Channel{}).Where("tag = ?", tag).Update("status", common.ChannelStatusManuallyDisabled).Error; err != nil {
 			return err
 		}
-		return updateAbilityStatusByTagWithTx(tx, tag, false)
+		if err := updateAbilityStatusByTagWithTx(tx, tag, false); err != nil {
+			return err
+		}
+		var ids []int
+		if err := tx.Model(&Channel{}).Where("tag = ?", tag).Pluck("id", &ids).Error; err != nil {
+			return err
+		}
+		for _, id := range ids {
+			if err := SyncChannelModelRoutesWithTx(tx, id); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	return err
 }
@@ -906,18 +948,30 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 			return err
 		}
 		if shouldReCreateAbilities {
-			channels, err := GetChannelsByTag(updatedTag, false, false)
-			if err != nil {
+			var channels []*Channel
+			if err := tx.Where("tag = ?", updatedTag).Find(&channels).Error; err != nil {
 				return err
 			}
 			for _, channel := range channels {
 				if err := channel.UpdateAbilities(tx); err != nil {
 					return fmt.Errorf("failed to update abilities: channel_id=%d, tag=%s, error=%w", channel.Id, channel.GetTag(), err)
 				}
+				if err := SyncChannelModelRoutesWithTx(tx, channel.Id); err != nil {
+					return err
+				}
 			}
 		} else {
 			if err := updateAbilityByTagWithTx(tx, tag, newTag, priority, weight); err != nil {
 				return err
+			}
+			var ids []int
+			if err := tx.Model(&Channel{}).Where("tag = ?", updatedTag).Pluck("id", &ids).Error; err != nil {
+				return err
+			}
+			for _, id := range ids {
+				if err := SyncChannelModelRoutesWithTx(tx, id); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
@@ -948,6 +1002,9 @@ func deleteChannelByStatusWithTx(tx *gorm.DB, status int64) (int64, error) {
 		return 0, err
 	}
 	if err := deleteAbilitiesByChannelIDsWithTx(tx, ids); err != nil {
+		return 0, err
+	}
+	if err := DeleteChannelModelRoutesByChannelIDsWithTx(tx, ids); err != nil {
 		return 0, err
 	}
 	result := tx.Where("status = ?", status).Delete(&Channel{})
@@ -996,6 +1053,9 @@ func deleteDisabledChannelWithTx(tx *gorm.DB) (int64, error) {
 		return 0, err
 	}
 	if err := deleteAbilitiesByChannelIDsWithTx(tx, ids); err != nil {
+		return 0, err
+	}
+	if err := DeleteChannelModelRoutesByChannelIDsWithTx(tx, ids); err != nil {
 		return 0, err
 	}
 	result := tx.Where("status = ? or status = ?", common.ChannelStatusAutoDisabled, common.ChannelStatusManuallyDisabled).Delete(&Channel{})
@@ -1193,6 +1253,10 @@ func BatchSetChannelTag(ids []int, tag *string) error {
 	for _, channel := range channels {
 		err = channel.UpdateAbilities(tx)
 		if err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := SyncChannelModelRoutesWithTx(tx, channel.Id); err != nil {
 			tx.Rollback()
 			return err
 		}
