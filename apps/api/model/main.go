@@ -269,6 +269,7 @@ func migrateDB() error {
 		&Option{},
 		&Redemption{},
 		&Ability{},
+		&ChannelModelRoute{},
 		&Log{},
 		&Midjourney{},
 		&TopUp{},
@@ -297,6 +298,9 @@ func migrateDB() error {
 		&GatewayConfigOutbox{},
 	)
 	if err != nil {
+		return err
+	}
+	if err := SeedChannelModelRoutes(); err != nil {
 		return err
 	}
 	if err := InitializeUserAuthVersions(); err != nil {
@@ -337,6 +341,7 @@ func migrateDBFast() error {
 		{&Option{}, "Option"},
 		{&Redemption{}, "Redemption"},
 		{&Ability{}, "Ability"},
+		{&ChannelModelRoute{}, "ChannelModelRoute"},
 		{&Log{}, "Log"},
 		{&Midjourney{}, "Midjourney"},
 		{&TopUp{}, "TopUp"},
@@ -384,6 +389,9 @@ func migrateDBFast() error {
 		if err != nil {
 			return err
 		}
+	}
+	if err := SeedChannelModelRoutes(); err != nil {
+		return err
 	}
 	if err := InitializeUserAuthVersions(); err != nil {
 		return err

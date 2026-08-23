@@ -394,6 +394,9 @@ func DisableChannelModel(channelID int, modelName string) error {
 		if err := updateAbilityStatusByModelWithTx(tx, channelID, modelName, false); err != nil {
 			return err
 		}
+		if err := SyncChannelModelRoutesWithTx(tx, channelID); err != nil {
+			return err
+		}
 		return nil
 	})
 	return err
