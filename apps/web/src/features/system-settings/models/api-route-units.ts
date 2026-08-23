@@ -51,17 +51,17 @@ export interface UpdateRouteUnitRequest {
 }
 
 export async function getRouteUnitAliases(): Promise<RouteUnitAliasSummary[]> {
-  const res = await api.get<RouteUnitAliasSummary[]>('/channel/route_unit/aliases')
-  return res.data
+  const res = await api.get('/api/channel/route_unit/aliases')
+  return res.data.data
 }
 
 export async function getRouteUnits(alias: string): Promise<GetRouteUnitsResponse> {
-  const res = await api.get<GetRouteUnitsResponse>('/channel/route_unit/', {
+  const res = await api.get('/api/channel/route_unit/', {
     params: { alias },
   })
-  return res.data
+  return res.data.data
 }
 
 export async function updateRouteUnit(id: number, data: UpdateRouteUnitRequest): Promise<void> {
-  await api.put(`/channel/route_unit/${id}`, data)
+  await api.put(`/api/channel/route_unit/${id}`, data)
 }
