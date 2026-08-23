@@ -51,8 +51,7 @@ func TestBatchProxyNodeStateOperationsOnlyChangeSelectedRows(t *testing.T) {
 	second, err := service.CreateProxyNode(service.ProxyNodeInput{Name: "second", Enabled: false, Proxy: "http://two.example:8080", ScopeType: model.ProxyNodeScopeCustom})
 	require.NoError(t, err)
 
-	ctx, recorder := proxyNodeContext(t, http.MethodPost, "/api/proxy/nodes/batch-enabled", fmt.Sprintf(`{"ids":[%d],"enabled":false}`, first.ID))
-	BatchSetProxyNodesEnabled(ctx)
+	recorder := proxyNodeContext(t, http.MethodPost, "/api/proxy/nodes/batch-enabled", fmt.Sprintf(`{"ids":[%d],"enabled":false}`, first.ID), BatchSetProxyNodesEnabled)
 	assert.True(t, decodeProxyNodeResponse(t, recorder).Success)
 	var updated model.ProxyNode
 	require.NoError(t, db.First(&updated, first.ID).Error)
@@ -62,8 +61,7 @@ func TestBatchProxyNodeStateOperationsOnlyChangeSelectedRows(t *testing.T) {
 	assert.False(t, updated.Enabled)
 
 	require.NoError(t, db.Model(&model.ProxyNode{}).Where("id = ?", first.ID).Updates(map[string]any{"last_error": "failed", "failure_count": 3}).Error)
-	ctx, recorder = proxyNodeContext(t, http.MethodPost, "/api/proxy/nodes/batch-clear-errors", fmt.Sprintf(`{"ids":[%d]}`, first.ID))
-	BatchClearProxyNodeErrors(ctx)
+	recorder = proxyNodeContext(t, http.MethodPost, "/api/proxy/nodes/batch-clear-errors", fmt.Sprintf(`{"ids":[%d]}`, first.ID), BatchClearProxyNodeErrors)
 	updated = model.ProxyNode{}
 	require.NoError(t, db.First(&updated, first.ID).Error)
 	assert.Empty(t, updated.LastError)
@@ -76,9 +74,7 @@ func TestBatchCreateProxyNodesRejectsMoreThan500Entries(t *testing.T) {
 	for index := range lines {
 		lines[index] = fmt.Sprintf("http://node-%d.example:8080", index)
 	}
-	ctx, recorder := proxyNodeContext(t, http.MethodPost, "/api/proxy/nodes/batch", "{\"proxy_text\":"+mustJSON(t, strings.Join(lines, "\n"))+"}")
-
-	BatchCreateProxyNodes(ctx)
+	recorder := proxyNodeContext(t, http.MethodPost, "/api/proxy/nodes/batch", "{\"proxy_text\":"+mustJSON(t, strings.Join(lines, "\n"))+"}", BatchCreateProxyNodes)
 
 	assert.False(t, decodeProxyNodeResponse(t, recorder).Success)
 }

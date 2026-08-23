@@ -23,13 +23,25 @@ func init() {
 }
 
 func ConvertRequest(c *gin.Context, info *relaycommon.RelayInfo, target types.RelayFormat, request any) (*relayconvert.RequestResult, error) {
-	return relayconvert.ConvertRequest(c.Request.Context(), info, target, request)
+	var ctx context.Context
+	if c != nil {
+		ctx = c.Request.Context()
+	}
+	return relayconvert.ConvertRequest(ctx, info, target, request)
 }
 
 func ConvertRequestByID(c *gin.Context, info *relaycommon.RelayInfo, converter string, request any) (*relayconvert.RequestResult, error) {
-	return relayconvert.ConvertRequestByID(c.Request.Context(), info, converter, request)
+	var ctx context.Context
+	if c != nil {
+		ctx = c.Request.Context()
+	}
+	return relayconvert.ConvertRequestByID(ctx, info, converter, request)
 }
 
 func ConvertRequestVia(c contract.Context, info *relaycommon.RelayInfo, request any, path ...types.RelayFormat) (*relayconvert.RequestResult, error) {
-	return relayconvert.ConvertRequestVia(c.Context(), info, request, path...)
+	var ctx context.Context
+	if c != nil {
+		ctx = c.Context()
+	}
+	return relayconvert.ConvertRequestVia(ctx, info, request, path...)
 }
