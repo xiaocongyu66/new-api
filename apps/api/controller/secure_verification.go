@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 )
@@ -25,7 +25,7 @@ type UniversalVerifyRequest struct {
 }
 
 func UniversalVerify(c contract.Context) {
-	identity, ok := middleware.GetSessionAuthIdentity(c)
+	identity, ok := security.GetSessionAuthIdentity(c)
 	if !ok {
 		_ = c.JSON(http.StatusUnauthorized, common.H{"success": false, "message": "当前认证方式不支持安全验证"})
 		return

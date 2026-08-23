@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strings"
@@ -114,11 +115,11 @@ func HeaderNavModuleAuth(module string) contract.Middleware {
 		}
 
 		if access.RequireAuth {
-			UserAuth()(c)
+			security.UserAuth()(c)
 			return
 		}
 
-		TryUserAuth()(c)
+		security.TryUserAuth()(c)
 	}
 }
 
@@ -126,10 +127,10 @@ func HeaderNavModulePublicOrUserAuth(module string) contract.Middleware {
 	return func(c contract.Context) {
 		access := getHeaderNavAccess(module)
 		if !access.Enabled || access.RequireAuth {
-			UserAuth()(c)
+			security.UserAuth()(c)
 			return
 		}
 
-		TryUserAuth()(c)
+		security.TryUserAuth()(c)
 	}
 }

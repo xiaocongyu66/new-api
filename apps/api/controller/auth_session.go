@@ -4,12 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strings"
 
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"gorm.io/gorm"
@@ -150,7 +150,7 @@ func RevokeOtherLoginSessions(c contract.Context) {
 }
 
 func requireBrowserSession(c contract.Context) (service.AuthIdentity, bool) {
-	identity, ok := middleware.GetSessionAuthIdentity(c)
+	identity, ok := security.GetSessionAuthIdentity(c)
 	if !ok {
 		_ = c.JSON(http.StatusForbidden, common.H{
 			"success": false,

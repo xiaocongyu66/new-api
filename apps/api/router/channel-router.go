@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
@@ -20,10 +21,10 @@ type permissionRoute struct {
 
 func registerChannelRoutes(apiRouter *gin.RouterGroup) {
 	channelRoute := apiRouter.Group("/channel")
-	channelRoute.Use(ginadapter.Middleware(middleware.AdminAuth()))
+	channelRoute.Use(ginadapter.Middleware(security.AdminAuth()))
 
 	channelRoute.POST("/:id/key",
-		ginadapter.Middleware(middleware.RootAuth()),
+		ginadapter.Middleware(security.RootAuth()),
 		ginadapter.Middleware(middleware.CriticalRateLimit()),
 		ginadapter.Middleware(middleware.DisableCache()),
 		ginadapter.Middleware(middleware.SecureVerificationRequired()),
@@ -32,7 +33,7 @@ func registerChannelRoutes(apiRouter *gin.RouterGroup) {
 
 	for _, route := range channelPermissionRoutes {
 		channelRoute.Handle(route.method, route.path,
-			ginadapter.Middleware(middleware.RequirePermission(route.permission)),
+			ginadapter.Middleware(security.RequirePermission(route.permission)),
 			ginadapter.Handler(route.handler),
 		)
 	}

@@ -2,8 +2,8 @@ package router
 
 import (
 	"github.com/QuantumNous/new-api/controller"
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/QuantumNous/new-api/middleware"
 
 	"github.com/gin-gonic/gin"
 )
@@ -13,7 +13,7 @@ import (
 // actions, and role baselines) used by the client permission editor.
 func registerAuthzRoutes(apiRouter *gin.RouterGroup) {
 	authzRoute := apiRouter.Group("/authz")
-	authzRoute.Use(ginadapter.Middleware(middleware.AdminAuth()))
+	authzRoute.Use(ginadapter.Middleware(security.AdminAuth()))
 	{
 		authzRoute.GET("/catalog", ginadapter.Handler(controller.GetPermissionCatalog))
 	}

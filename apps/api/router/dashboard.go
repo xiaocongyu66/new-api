@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/QuantumNous/new-api/controller"
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/gin-contrib/gzip"
@@ -13,8 +14,7 @@ func SetDashboardRouter(router *gin.Engine) {
 	apiRouter.Use(middleware.RouteTag("old_api"))
 	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression))
 	apiRouter.Use(ginadapter.Middleware(middleware.GlobalAPIRateLimit()))
-	apiRouter.Use(middleware.CORS())
-	apiRouter.Use(ginadapter.Middleware(middleware.TokenAuth()))
+	apiRouter.Use(ginadapter.Middleware(security.TokenAuth()))
 	{
 		apiRouter.GET("/dashboard/billing/subscription", ginadapter.Handler(controller.GetSubscription))
 		apiRouter.GET("/v1/dashboard/billing/subscription", ginadapter.Handler(controller.GetSubscription))

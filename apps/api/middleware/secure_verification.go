@@ -3,6 +3,7 @@ package middleware
 import (
 	"errors"
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strings"
@@ -25,7 +26,7 @@ func SecureVerificationRequired() contract.Middleware {
 // RequireSecurityProof validates a proof against the authenticated dashboard
 // session and writes the shared proof error contract on failure.
 func RequireSecurityProof(c contract.Context, requiredScope string, allowedMethods []string) bool {
-	identity, ok := GetSessionAuthIdentity(c)
+	identity, ok := security.GetSessionAuthIdentity(c)
 	if !ok {
 		securityProofError(c, "SECURITY_PROOF_INVALID", "安全验证状态无效")
 		return false
