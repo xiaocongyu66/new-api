@@ -48,6 +48,7 @@ func outputChunkBlocked(c *gin.Context, data string) (bool, string) {
 	if d := service.CheckSensitiveTargets(data); d != "" {
 		st.blocked = true
 		common.SysLog(fmt.Sprintf("output blocked by target domain: [%s]", d))
+		service.RecordSensitiveBlock(c, "output", "target:"+d, data)
 		return true, "target:" + d
 	}
 	if !setting.ShouldCheckCompletionSensitive() {
@@ -60,6 +61,7 @@ func outputChunkBlocked(c *gin.Context, data string) (bool, string) {
 	if hit, label := service.CheckSensitiveOutput(st.window); hit {
 		st.blocked = true
 		common.SysLog(fmt.Sprintf("output blocked by sensitive filter: [%s]", label))
+		service.RecordSensitiveBlock(c, "output", label, st.window)
 		return true, label
 	}
 	return false, ""

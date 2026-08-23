@@ -5077,7 +5077,7 @@
     "footer.columns.related.links.oneApi": "Один API",
     "footer.columns.related.title": "Связанные проекты",
     "footer.defaultCopyright": "Все права защищены.",
-    "footer.new\u0061pi.projectAttributionSuffix": "Все права защищены. Разработано участниками проекта.",
+    "footer.newapi.projectAttributionSuffix": "Все права защищены. Разработано участниками проекта.",
     "gpt-3.5-turbo": "gpt-3.5-turbo",
     "gpt-3.5-turbo-0125": "gpt-3.5-turbo-0125",
     "gpt-4": "gpt-4",
@@ -5374,5 +5374,12 @@
     "Max ejection percentage must be between 0 and 100": "Процент исключения должен быть от 0 до 100",
     "Cooldown alpha must be between 0 and 1": "Alpha охлаждения должна быть от 0 до 1",
     "Cooldown max duration must be greater than or equal to the base duration": "Максимальная длительность охлаждения должна быть не меньше базовой длительности"
-  }
+  },
+  "Recent Blocks": "Недавние блокировки",
+  "{{total}} records": "Записей: {{total}}",
+  "Direction": "Направление",
+  "Layer": "Слой",
+  "Matched": "Совпадение",
+  "Snippet": "Фрагмент",
+  "No blocked requests yet": "Пока нет заблокированных запросов"
 }

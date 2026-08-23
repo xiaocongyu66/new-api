@@ -82,14 +82,15 @@ type Log struct {
 
 // don't use iota, avoid change log type value
 const (
-	LogTypeUnknown = 0
-	LogTypeTopup   = 1
-	LogTypeConsume = 2
-	LogTypeManage  = 3
-	LogTypeSystem  = 4
-	LogTypeError   = 5
-	LogTypeRefund  = 6
-	LogTypeLogin   = 7
+	LogTypeUnknown   = 0
+	LogTypeTopup     = 1
+	LogTypeConsume   = 2
+	LogTypeManage    = 3
+	LogTypeSystem    = 4
+	LogTypeError     = 5
+	LogTypeRefund    = 6
+	LogTypeLogin     = 7
+	LogTypeSensitive = 8
 )
 
 func ensureLogRequestId(log *Log) {
@@ -248,6 +249,29 @@ func RecordOperationAuditLog(logUserId int, content string, ip string, action st
 	}
 	if err := createLog(log); err != nil {
 		common.SysLog("failed to record operation audit log: " + err.Error())
+	}
+}
+
+// RecordSensitiveAuditLog 记录敏感词拦截审计（type=LogTypeSensitive）。
+// 归属被拦截请求的用户；layer/matched/snippet 等结构化字段放 action params
+// （写入 Other.op）。命中词与文本片段属管理敏感信息，前端仅 super admin 的
+// 敏感词设置页展示；content 为英文兜底文本（供导出使用）。
+func RecordSensitiveAuditLog(userId int, content string, ip string, params map[string]interface{}) {
+	username, _ := GetUsernameById(userId, false)
+	other := map[string]interface{}{
+		"op": buildOpField("sensitive_block", params),
+	}
+	log := &Log{
+		UserId:    userId,
+		Username:  username,
+		CreatedAt: common.GetTimestamp(),
+		Type:      LogTypeSensitive,
+		Content:   content,
+		Ip:        ip,
+		Other:     common.MapToJsonStr(other),
+	}
+	if err := createLog(log); err != nil {
+		common.SysError("failed to record sensitive audit log: " + err.Error())
 	}
 }
 
@@ -730,6 +754,42 @@ func DeleteOldLogBatch(ctx context.Context, targetTimestamp int64, limit int) (i
 	}
 
 	result := LOG_DB.WithContext(ctx).Where("created_at < ?", targetTimestamp).Limit(limit).Delete(&Log{})
+	if nil != result.Error {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
+}
+
+// DeleteOldSensitiveLogBatch 按 type 过滤批量删除过期敏感审计日志。
+// 与 DeleteOldLogBatch 同构，但仅命中 LogTypeSensitive 行，避免误删其他日志。
+func DeleteOldSensitiveLogBatch(ctx context.Context, targetTimestamp int64, limit int) (int64, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if nil != ctx.Err() {
+		return 0, ctx.Err()
+	}
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		var total int64
+		if err := LOG_DB.WithContext(ctx).Model(&Log{}).
+			Where("type = ? AND created_at < ?", LogTypeSensitive, targetTimestamp).
+			Count(&total).Error; err != nil {
+			return 0, err
+		}
+		if total == 0 {
+			return 0, nil
+		}
+		if err := LOG_DB.WithContext(ctx).Exec(
+			"ALTER TABLE logs DELETE WHERE type = ? AND created_at < ? SETTINGS mutations_sync = 1",
+			LogTypeSensitive, targetTimestamp,
+		).Error; err != nil {
+			return 0, err
+		}
+		return total, nil
+	}
+	result := LOG_DB.WithContext(ctx).
+		Where("type = ? AND created_at < ?", LogTypeSensitive, targetTimestamp).
+		Limit(limit).Delete(&Log{})
 	if nil != result.Error {
 		return 0, result.Error
 	}
