@@ -38,8 +38,7 @@ func TestEpayNotifyRejectsDisabledWebhookWithRawFail(t *testing.T) {
 		operation_setting.EpayId = previousID
 		operation_setting.EpayKey = previousKey
 	})
-	recorder := httptest.NewRecorder()
-	c, _ := ginadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/api/user/epay/notify", nil))
+	c, recorder := ginadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/api/user/epay/notify", nil))
 
 	EpayNotify(c)
 

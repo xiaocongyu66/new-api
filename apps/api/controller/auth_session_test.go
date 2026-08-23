@@ -88,8 +88,7 @@ func TestWriteAuthSessionErrorMapsSessionGrowthLimits(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			recorder := httptest.NewRecorder()
-			c, _ := ginadapter.NewSyntheticContext(nil)
+			c, recorder := ginadapter.NewSyntheticContext(nil)
 			writeAuthSessionError(c, test.err)
 
 			assert.Equal(t, test.expectedStatus, recorder.Code)

@@ -10,6 +10,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -23,8 +24,13 @@ type requestContext struct {
 	gin *gin.Context
 }
 
-// Wrap adapts a gin context to the transport contract.
+// Wrap adapts a gin context to the transport contract. A context without an
+// inbound request (tests built via gin.CreateTestContext) gets a default one
+// so request accessors never nil-panic.
 func Wrap(c *gin.Context) contract.Context {
+	if c.Request == nil {
+		c.Request = httptest.NewRequest("GET", "/", nil)
+	}
 	return &requestContext{gin: c}
 }
 

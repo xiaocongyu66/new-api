@@ -247,8 +247,7 @@ func TestSettleTestQuotaUsesTieredBilling(t *testing.T) {
 }
 
 func TestBuildTestLogOtherInjectsTieredInfo(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx, _ := ginadapter.NewSyntheticContext(nil)
 
 	info := &relaycommon.RelayInfo{
 		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
@@ -271,7 +270,7 @@ func TestBuildTestLogOtherInjectsTieredInfo(t *testing.T) {
 		Multiplier: 2,
 		Matched:    true,
 	}}
-	other := buildTestLogOther(ginadapter.Wrap(ctx), info, priceData, usage, &billingexpr.TieredResult{
+	other := buildTestLogOther(ctx, info, priceData, usage, &billingexpr.TieredResult{
 		MatchedTier:  "base",
 		RequestRules: requestRules,
 	})

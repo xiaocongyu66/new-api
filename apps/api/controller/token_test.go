@@ -197,8 +197,7 @@ func newAuthenticatedContext(t *testing.T, method string, target string, body an
 		requestBody = bytes.NewReader(nil)
 	}
 
-	recorder := httptest.NewRecorder()
-	ctx, _ := ginadapter.NewSyntheticContext(httptest.NewRequest(method, target, requestBody))
+	ctx, recorder := ginadapter.NewSyntheticContext(httptest.NewRequest(method, target, requestBody))
 	if body != nil {
 		ctx.Headers().Set("Content-Type", "application/json")
 	}
