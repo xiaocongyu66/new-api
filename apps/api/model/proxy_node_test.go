@@ -16,14 +16,11 @@ func TestProxyNodeScopeNormalization(t *testing.T) {
 		name, scopeType, scopeValue, wantValue string
 		wantErr                                bool
 	}{
-		{name: "all", scopeType: ProxyNodeScopeAll, wantValue: ""},
-		{name: "channel", scopeType: ProxyNodeScopeChannel, scopeValue: " 42 ", wantValue: "42"},
-		{name: "group", scopeType: ProxyNodeScopeGroup, scopeValue: "  premium ", wantValue: "premium"},
-		{name: "all rejects value", scopeType: ProxyNodeScopeAll, scopeValue: "x", wantErr: true},
-		{name: "channel rejects zero", scopeType: ProxyNodeScopeChannel, scopeValue: "0", wantErr: true},
-		{name: "channel rejects non-number", scopeType: ProxyNodeScopeChannel, scopeValue: "abc", wantErr: true},
-		{name: "group rejects empty", scopeType: ProxyNodeScopeGroup, scopeValue: " ", wantErr: true},
-		{name: "unknown type", scopeType: "tag", scopeValue: "x", wantErr: true},
+		{name: "custom", scopeType: ProxyNodeScopeCustom, scopeValue: `{"models":[],"channels":[1]}`, wantValue: `{"models":[],"channels":[1]}`},
+		{name: "empty type falls back to custom", scopeType: "", scopeValue: "", wantValue: ""},
+		{name: "unknown type rejected", scopeType: "all", wantErr: true},
+		{name: "channel type rejected", scopeType: "channel", scopeValue: "42", wantErr: true},
+		{name: "group type rejected", scopeType: "group", scopeValue: "premium", wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -34,7 +31,7 @@ func TestProxyNodeScopeNormalization(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, tt.scopeType, gotType)
+			assert.Equal(t, ProxyNodeScopeCustom, gotType)
 			assert.Equal(t, tt.wantValue, gotValue)
 		})
 	}
@@ -48,8 +45,8 @@ func TestProxyNodePublicConversionDoesNotExposeConfiguration(t *testing.T) {
 		Enabled:              true,
 		EncryptedProxyConfig: "ciphertext-with-secret",
 		Protocol:             "vless",
-		ScopeType:            ProxyNodeScopeChannel,
-		ScopeValue:           "42",
+		ScopeType:            ProxyNodeScopeCustom,
+		ScopeValue:           `{"models":["gpt-4o"],"channels":[42]}`,
 		Health:               0.8,
 		FailureCount:         2,
 		LastError:            "timeout",
@@ -58,11 +55,9 @@ func TestProxyNodePublicConversionDoesNotExposeConfiguration(t *testing.T) {
 
 	public := node.Public()
 	assert.Equal(t, uint(7), public.ID)
-	assert.Equal(t, "edge", public.Name)
-	assert.True(t, public.ProxyConfigured)
+	assert.Equal(t, ProxyNodeScopeCustom, public.ScopeType)
+	assert.Equal(t, `{"models":["gpt-4o"],"channels":[42]}`, public.ScopeValue)
 	assert.Equal(t, "vless", public.Protocol)
-	assert.Equal(t, ProxyNodeScopeChannel, public.ScopeType)
-	assert.Equal(t, "42", public.ScopeValue)
 	assert.Equal(t, 0.8, public.Health)
 	assert.Equal(t, 2, public.FailureCount)
 	assert.Equal(t, "timeout", public.LastError)
@@ -78,7 +73,7 @@ func TestProxyNodePersistenceFields(t *testing.T) {
 	assert.Equal(t, &lastProbe, node.CooldownUntil)
 }
 
-func TestGetProxyNodesForChannelUsesChannelGroupAllPriority(t *testing.T) {
+func TestGetProxyNodesForChannelMatchesCustomScopeOnly(t *testing.T) {
 	previousDB := DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
@@ -86,25 +81,27 @@ func TestGetProxyNodesForChannelUsesChannelGroupAllPriority(t *testing.T) {
 	DB = db
 	t.Cleanup(func() { DB = previousDB })
 
-	require.NoError(t, db.Create(&ProxyNode{Name: "all", Enabled: true, ScopeType: ProxyNodeScopeAll}).Error)
-	require.NoError(t, db.Create(&ProxyNode{Name: "group", Enabled: true, ScopeType: ProxyNodeScopeGroup, ScopeValue: "premium"}).Error)
-	require.NoError(t, db.Create(&ProxyNode{Name: "channel", Enabled: true, ScopeType: ProxyNodeScopeChannel, ScopeValue: "42"}).Error)
+	require.NoError(t, db.Create(&ProxyNode{Name: "by-channel", Enabled: true, ScopeType: ProxyNodeScopeCustom, ScopeValue: `{"models":[],"channels":[42]}`}).Error)
+	require.NoError(t, db.Create(&ProxyNode{Name: "by-model", Enabled: true, ScopeType: ProxyNodeScopeCustom, ScopeValue: `{"models":["gpt-4o"],"channels":[]}`}).Error)
+	require.NoError(t, db.Create(&ProxyNode{Name: "unrelated", Enabled: true, ScopeType: ProxyNodeScopeCustom, ScopeValue: `{"models":[],"channels":[7]}`}).Error)
+	require.NoError(t, db.Create(&ProxyNode{Name: "disabled-hit", Enabled: false, ScopeType: ProxyNodeScopeCustom, ScopeValue: `{"models":[],"channels":[42]}`}).Error)
 
-	channel := &Channel{Id: 42, Group: "premium,beta"}
+	channel := &Channel{Id: 42, Group: "premium"}
+
+	// Channel-ID match returns only enabled nodes whose custom scope lists channel 42.
 	nodes, err := GetProxyNodesForChannel(channel)
 	require.NoError(t, err)
 	require.Len(t, nodes, 1)
-	assert.Equal(t, "channel", nodes[0].Name)
+	assert.Equal(t, "by-channel", nodes[0].Name)
 
-	require.NoError(t, db.Where("name = ?", "channel").Delete(&ProxyNode{}).Error)
-	nodes, err = GetProxyNodesForChannel(channel)
+	// Model-name match returns nodes whose custom scope lists the model.
+	nodes, err = GetProxyNodesForChannelAndModel(&Channel{Id: 99}, "GPT-4O")
 	require.NoError(t, err)
 	require.Len(t, nodes, 1)
-	assert.Equal(t, "group", nodes[0].Name)
+	assert.Equal(t, "by-model", nodes[0].Name)
 
-	require.NoError(t, db.Where("name = ?", "group").Delete(&ProxyNode{}).Error)
-	nodes, err = GetProxyNodesForChannel(channel)
+	// No match anywhere returns empty.
+	nodes, err = GetProxyNodesForChannelAndModel(&Channel{Id: 1234}, "no-such-model")
 	require.NoError(t, err)
-	require.Len(t, nodes, 1)
-	assert.Equal(t, "all", nodes[0].Name)
+	assert.Empty(t, nodes)
 }

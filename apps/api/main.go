@@ -372,5 +372,7 @@ func InitResources() error {
 
 	service.StartAuthArtifactCleanup()
 
+	service.StartSensitiveAuditCleanup()
+
 	return nil
 }

@@ -1,0 +1,7 @@
+{
+ "source": "TRIM 2026-08-22: 仅保留 破甲(gov.cn 目标域硬闸独立) + 破甲词；攻击性短语由 targetActionTerms/gov combo 层承担",
+ "words": [
+  "gov.cn",
+  "破甲"
+ ]
+}

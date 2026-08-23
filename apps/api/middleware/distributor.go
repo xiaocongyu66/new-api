@@ -450,15 +450,31 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	common.SetContextKey(c, constant.ContextKeyChannelId, channel.Id)
 	common.SetContextKey(c, constant.ContextKeyChannelName, channel.Name)
 	common.SetContextKey(c, constant.ContextKeyChannelType, channel.Type)
+	setting := channel.GetSetting()
+	if setting.Proxy == "" {
+		if nodes, err := model.GetProxyNodesForChannelAndModel(channel, modelName); err == nil && len(nodes) > 0 {
+			// Select the first healthy/highest health node
+			var bestNode *model.ProxyNode
+			for _, n := range nodes {
+				if n.Enabled && (bestNode == nil || n.Health > bestNode.Health) {
+					bestNode = n
+				}
+			}
+			if bestNode != nil {
+				if parsed, err := service.DecryptProxyNodeConfig(bestNode); err == nil && parsed != nil {
+					setting.Proxy = parsed.CanonicalInput
+				}
+			}
+		}
+	}
 	common.SetContextKey(c, constant.ContextKeyChannelCreateTime, channel.CreatedTime)
-	common.SetContextKey(c, constant.ContextKeyChannelSetting, channel.GetSetting())
+	common.SetContextKey(c, constant.ContextKeyChannelSetting, setting)
 	common.SetContextKey(c, constant.ContextKeyChannelOtherSetting, channel.GetOtherSettings())
 	paramOverride := channel.GetParamOverride()
 	headerOverride := channel.GetHeaderOverride()
 	if mergedParam, applied := service.ApplyChannelAffinityOverrideTemplate(c, paramOverride); applied {
 		paramOverride = mergedParam
 	}
-	common.SetContextKey(c, constant.ContextKeyChannelParamOverride, paramOverride)
 	common.SetContextKey(c, constant.ContextKeyChannelHeaderOverride, headerOverride)
 	if nil != channel.OpenAIOrganization && *channel.OpenAIOrganization != "" {
 		common.SetContextKey(c, constant.ContextKeyChannelOrganization, *channel.OpenAIOrganization)

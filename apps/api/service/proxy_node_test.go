@@ -25,7 +25,7 @@ func TestProxyNodeStorageEncryptsAndRoundTrips(t *testing.T) {
 		Name:       "edge",
 		Enabled:    true,
 		Proxy:      "http://user:pass@example.com:8080",
-		ScopeType:  model.ProxyNodeScopeAll,
+		ScopeType:  model.ProxyNodeScopeCustom,
 		ScopeValue: "",
 	})
 	require.NoError(t, err)

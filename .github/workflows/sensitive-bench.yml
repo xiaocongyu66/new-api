@@ -1,0 +1,49 @@
+name: Sensitive Engine Benchmark
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - 'apps/api/service/sensitive*.go'
+      - 'apps/api/service/testdata/sensitive_*.json*'
+      - '.github/workflows/sensitive-bench.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sensitive-bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    name: New engine normal-pool latency (≤400ms)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/api
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: apps/api/go.mod
+          cache-dependency-path: apps/api/go.sum
+
+      - name: Create frontend embed placeholder
+        run: |
+          mkdir -p web/dist
+          touch web/dist/index.html
+
+      - name: Run benchmarks (new engine normal pool)
+        run: |
+          go test ./service/ -run '^$' -count=3 \
+            -bench 'BenchmarkSensitiveNormal$' \
+            2>&1 | tee "$RUNNER_TEMP/bench.txt"
+
+      - name: Compare and report
+        run: python3 .github/scripts/sensitive-bench-ratio.py "$RUNNER_TEMP/bench.txt"
+        working-directory: ${{ github.workspace }}

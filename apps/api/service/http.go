@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -44,6 +45,24 @@ func ShouldCopyUpstreamHeader(c *gin.Context, k string, v []string) bool {
 func IOCopyBytesGracefully(c *gin.Context, src *http.Response, data []byte) {
 	if c.Writer == nil {
 		return
+	}
+
+	// 输出侧敏感检测（非流式）：目标域名无条件终止；其余敏感词按开关（默认开）。
+	// 命中即响应体替换为 content_filter 错误，状态码换 403。用户要求输出默认 block。
+	if d := CheckSensitiveTargets(string(data)); d != "" {
+		common.SysError(fmt.Sprintf("non-stream output blocked by target domain: [%s]", d))
+		RecordSensitiveBlock(c, "output", "target:"+d, string(data))
+		data = []byte(`{"error":{"message":"output blocked by content filter","type":"content_filter","param":null,"code":"content_filter"}}`)
+		src = &http.Response{StatusCode: http.StatusForbidden, Header: http.Header{"Content-Type": []string{"application/json"}}}
+	} else if setting.ShouldCheckCompletionSensitive() {
+		if hit, label := CheckSensitiveOutput(string(data)); hit {
+			common.SysError(fmt.Sprintf("non-stream output blocked by sensitive filter: [%s]", label))
+			RecordSensitiveBlock(c, "output", label, string(data))
+			data = []byte(`{"error":{"message":"output blocked by content filter","type":"content_filter","param":null,"code":"content_filter"}}`)
+			// 显式携带 Content-Type：header 复制循环会从 src.Header 覆盖式设置，
+			// 不带的话上游的 text/plain 等会盖掉 json 声明。
+			src = &http.Response{StatusCode: http.StatusForbidden, Header: http.Header{"Content-Type": []string{"application/json"}}}
+		}
 	}
 
 	body := io.NopCloser(bytes.NewBuffer(data))
