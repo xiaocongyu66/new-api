@@ -218,3 +218,150 @@ func SeedChannelModelRoutes() error {
 		return nil
 	})
 }
+
+// RouteUnitView is a flattened view of a route unit joined with channel info.
+type RouteUnitView struct {
+	Id               int     `json:"id"`
+	Group            string  `json:"group"`
+	PublicModelAlias string  `json:"public_model_alias"`
+	ChannelId        int     `json:"channel_id"`
+	ChannelName      string  `json:"channel_name"`
+	ChannelStatus    int     `json:"channel_status"`
+	BaseURL          string  `json:"base_url"`
+	KeyIndex         int     `json:"key_index"`
+	UpstreamModel    string  `json:"upstream_model"`
+	StaticWeight     int     `json:"static_weight"`
+	Enabled          bool    `json:"enabled"`
+	ExpectedShare    float64 `json:"expected_share"`
+	HealthScore      float64 `json:"health_score"`
+}
+
+// RouteUnitAliasSummary aggregates route units by public model alias.
+type RouteUnitAliasSummary struct {
+	Alias       string `json:"alias"`
+	RouteCount  int    `json:"route_count"`
+	TotalWeight int    `json:"total_weight"`
+}
+
+// GetRouteUnitViewsByAlias returns all route units for a given public model alias,
+// joined with channel information. ExpectedShare is weight/total rounded to 4 decimals.
+func GetRouteUnitViewsByAlias(alias string) ([]RouteUnitView, error) {
+	if alias == "" {
+		return nil, errors.New("alias is required")
+	}
+	var routes []ChannelModelRoute
+	if err := DB.Where("public_model_alias = ?", alias).Find(&routes).Error; err != nil {
+		return nil, err
+	}
+	if len(routes) == 0 {
+		return []RouteUnitView{}, nil
+	}
+	// Collect channel IDs
+	channelIDs := make([]int, 0, len(routes))
+	for _, r := range routes {
+		channelIDs = append(channelIDs, r.ChannelId)
+	}
+	// Fetch channel info
+	var channels []Channel
+	if err := DB.Where("id IN ?", channelIDs).Find(&channels).Error; err != nil {
+		return nil, err
+	}
+	channelMap := make(map[int]Channel, len(channels))
+	for _, ch := range channels {
+		channelMap[ch.Id] = ch
+	}
+	// Compute total weight
+	totalWeight := 0
+	for _, r := range routes {
+		totalWeight += r.StaticWeight
+	}
+	// Build views
+	views := make([]RouteUnitView, 0, len(routes))
+	for _, r := range routes {
+		ch, ok := channelMap[r.ChannelId]
+		var baseURL string
+		if ok && ch.BaseURL != nil {
+			baseURL = *ch.BaseURL
+		}
+		share := 0.0
+		if totalWeight > 0 {
+			share = float64(r.StaticWeight) / float64(totalWeight)
+			// Round to 4 decimal places
+			share = float64(int64(share*10000+0.5)) / 10000
+		}
+		views = append(views, RouteUnitView{
+			Id:               r.Id,
+			Group:            r.Group,
+			PublicModelAlias: r.PublicModelAlias,
+			ChannelId:        r.ChannelId,
+			ChannelName:      ch.Name,
+			ChannelStatus:    ch.Status,
+			BaseURL:          baseURL,
+			KeyIndex:         r.KeyIndex,
+			UpstreamModel:    r.UpstreamModel,
+			StaticWeight:     r.StaticWeight,
+			Enabled:          r.Enabled,
+			ExpectedShare:    share,
+			HealthScore:      GetChannelHealthScore(r.ChannelId),
+		})
+	}
+	return views, nil
+}
+
+// ListRouteUnitAliases returns all distinct public model aliases with their
+// route count and total static weight.
+func ListRouteUnitAliases() ([]RouteUnitAliasSummary, error) {
+	type agg struct {
+		Alias       string
+		RouteCount  int
+		TotalWeight int
+	}
+	var results []agg
+	if err := DB.Model(&ChannelModelRoute{}).
+		Select("public_model_alias as alias, count(*) as route_count, coalesce(sum(static_weight),0) as total_weight").
+		Group("public_model_alias").
+		Scan(&results).Error; err != nil {
+		return nil, err
+	}
+	summaries := make([]RouteUnitAliasSummary, 0, len(results))
+	for _, r := range results {
+		summaries = append(summaries, RouteUnitAliasSummary{
+			Alias:       r.Alias,
+			RouteCount:  r.RouteCount,
+			TotalWeight: r.TotalWeight,
+		})
+	}
+	return summaries, nil
+}
+
+// UpdateRouteUnitConfig updates a single route unit by ID.
+// weight and enabled are optional (nil = no change). Returns gorm.ErrRecordNotFound if row does not exist.
+func UpdateRouteUnitConfig(id int, weight *int, enabled *bool) error {
+	if weight == nil && enabled == nil {
+		return errors.New("no fields to update")
+	}
+	updates := make(map[string]any)
+	if weight != nil {
+		if *weight < 0 {
+			return errors.New("static_weight must be >= 0")
+		}
+		updates["static_weight"] = *weight
+	}
+	if enabled != nil {
+		updates["enabled"] = *enabled
+	}
+	result := DB.Model(&ChannelModelRoute{}).Where("id = ?", id).Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+// GetChannelHealthScore returns the current EWMA health score for a channel.
+// Thin wrapper around GetChannelHealthManager().GetScore.
+func GetChannelHealthScore(channelID int) float64 {
+	return GetChannelHealthManager().GetScore(channelID)
+}

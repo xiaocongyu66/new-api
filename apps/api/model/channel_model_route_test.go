@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -346,4 +347,211 @@ func TestChannelLifecycleSyncsRouteRows(t *testing.T) {
 
 	require.NoError(t, DB.Model(&ChannelModelRoute{}).Where("channel_id = ?", 1).Count(&count).Error)
 	require.Equal(t, int64(0), count, "expected 0 rows after delete")
+}
+
+// TestGetRouteUnitViewsByAlias verifies GetRouteUnitViewsByAlias joins channel info
+// and computes ExpectedShare correctly (weight/total rounded to 4 decimals).
+func TestGetRouteUnitViewsByAlias(t *testing.T) {
+	cleanup := withRouteDB(t)
+	defer cleanup()
+
+	// Create channels
+	ch1 := makeSingleKeyChannel(1, "model-a", "group-1", nil, func() *uint { v := uint(100); return &v }())
+	ch1.Name = "channel-1"
+	ch1.BaseURL = strPtr("https://api.example.com/v1")
+	ch1.Status = 1
+	require.NoError(t, DB.Create(ch1).Error)
+
+	ch2 := makeSingleKeyChannel(2, "model-a", "group-1", nil, func() *uint { v := uint(200); return &v }())
+	ch2.Name = "channel-2"
+	ch2.BaseURL = strPtr("https://api.example.com/v2")
+	ch2.Status = 2
+	require.NoError(t, DB.Create(ch2).Error)
+
+	// Seed routes
+	require.NoError(t, SeedChannelModelRoutes())
+
+	// Test normal case: two channels, weights 100 and 200
+	views, err := GetRouteUnitViewsByAlias("model-a")
+	require.NoError(t, err)
+	require.Len(t, views, 2)
+
+	// Find views by channel ID
+	var v1, v2 RouteUnitView
+	for _, v := range views {
+		if v.ChannelId == 1 {
+			v1 = v
+		} else if v.ChannelId == 2 {
+			v2 = v
+		}
+	}
+
+	// Verify channel 1 (weight 100, total 200 -> share 0.5)
+	assert.Equal(t, 1, v1.Id)
+	assert.Equal(t, "group-1", v1.Group)
+	assert.Equal(t, "model-a", v1.PublicModelAlias)
+	assert.Equal(t, 1, v1.ChannelId)
+	assert.Equal(t, "channel-1", v1.ChannelName)
+	assert.Equal(t, 1, v1.ChannelStatus)
+	assert.Equal(t, "https://api.example.com/v1", v1.BaseURL)
+	assert.Equal(t, 0, v1.KeyIndex)
+	assert.Equal(t, "model-a", v1.UpstreamModel)
+	assert.Equal(t, 100, v1.StaticWeight)
+	assert.True(t, v1.Enabled)
+	// 100/200 = 0.5
+	assert.InDelta(t, 0.5, v1.ExpectedShare, 0.0001)
+	assert.Equal(t, 1.0, v1.HealthScore, "new channel should have default health score 1.0")
+
+	// Verify channel 2 (weight 100, total 200 -> share 0.5)
+	assert.Equal(t, 2, v2.ChannelId)
+	assert.Equal(t, "channel-2", v2.ChannelName)
+	assert.Equal(t, 2, v2.ChannelStatus)
+	assert.Equal(t, "https://api.example.com/v2", v2.BaseURL)
+	assert.Equal(t, 100, v2.StaticWeight)
+	// 100/200 = 0.5
+	assert.InDelta(t, 0.5, v2.ExpectedShare, 0.0001)
+	assert.Equal(t, 1.0, v2.HealthScore)
+
+	// Test total=0 scenario: manually set route weight to 0
+	ch3 := makeSingleKeyChannel(3, "model-zero", "group-1", nil, func() *uint { v := uint(0); return &v }())
+	ch3.Name = "channel-zero"
+	require.NoError(t, DB.Create(ch3).Error)
+	require.NoError(t, SeedChannelModelRoutes())
+	// Force the route weight to 0 so total=0
+	require.NoError(t, DB.Model(&ChannelModelRoute{}).
+		Where("public_model_alias = ?", "model-zero").
+		Update("static_weight", 0).Error)
+
+	zeroViews, err := GetRouteUnitViewsByAlias("model-zero")
+	require.NoError(t, err)
+	require.Len(t, zeroViews, 1)
+	assert.Equal(t, 0.0, zeroViews[0].ExpectedShare, "total=0 should yield share=0")
+	assert.Equal(t, 0, zeroViews[0].StaticWeight)
+
+	// Test alias not found returns empty slice
+	emptyViews, err := GetRouteUnitViewsByAlias("non-existent")
+	require.NoError(t, err)
+	assert.Empty(t, emptyViews)
+
+	// Test empty alias returns error
+	_, err = GetRouteUnitViewsByAlias("")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "alias is required")
+}
+
+// TestListRouteUnitAliases verifies ListRouteUnitAliases aggregates correctly.
+func TestListRouteUnitAliases(t *testing.T) {
+	cleanup := withRouteDB(t)
+	defer cleanup()
+
+	// Create channels with different aliases and weights
+	ch1 := makeSingleKeyChannel(1, "model-a,model-b", "group-1", nil, func() *uint { v := uint(100); return &v }())
+	require.NoError(t, DB.Create(ch1).Error)
+
+	ch2 := makeSingleKeyChannel(2, "model-a", "group-1", nil, func() *uint { v := uint(200); return &v }())
+	require.NoError(t, DB.Create(ch2).Error)
+
+	ch3 := makeSingleKeyChannel(3, "model-c", "group-1", nil, func() *uint { v := uint(50); return &v }())
+	require.NoError(t, DB.Create(ch3).Error)
+
+	require.NoError(t, SeedChannelModelRoutes())
+
+	summaries, err := ListRouteUnitAliases()
+	require.NoError(t, err)
+	require.Len(t, summaries, 3)
+
+	// Find by alias
+	var sModelA, sModelB, sModelC RouteUnitAliasSummary
+	for _, s := range summaries {
+		switch s.Alias {
+		case "model-a":
+			sModelA = s
+		case "model-b":
+			sModelB = s
+		case "model-c":
+			sModelC = s
+		}
+	}
+
+	// model-a: 2 routes (ch1 + ch2), total weight 100 + 100 = 200
+	assert.Equal(t, "model-a", sModelA.Alias)
+	assert.Equal(t, 2, sModelA.RouteCount)
+	assert.Equal(t, 200, sModelA.TotalWeight)
+
+	// model-b: 1 route (ch1), total weight 100
+	assert.Equal(t, "model-b", sModelB.Alias)
+	assert.Equal(t, 1, sModelB.RouteCount)
+	assert.Equal(t, 100, sModelB.TotalWeight)
+
+	// model-c: 1 route (ch3), total weight 100
+	assert.Equal(t, "model-c", sModelC.Alias)
+	assert.Equal(t, 1, sModelC.RouteCount)
+	assert.Equal(t, 100, sModelC.TotalWeight)
+}
+
+// TestUpdateRouteUnitConfig verifies partial updates and error cases.
+func TestUpdateRouteUnitConfig(t *testing.T) {
+	cleanup := withRouteDB(t)
+	defer cleanup()
+
+	ch := makeSingleKeyChannel(1, "model-a", "group-1", nil, func() *uint { v := uint(100); return &v }())
+	require.NoError(t, DB.Create(ch).Error)
+	require.NoError(t, SeedChannelModelRoutes())
+
+	var route ChannelModelRoute
+	require.NoError(t, DB.Where("channel_id = ?", 1).First(&route).Error)
+	routeID := route.Id
+
+	// Test update weight only
+	err := UpdateRouteUnitConfig(routeID, intPtr(250), nil)
+	require.NoError(t, err)
+
+	var updated ChannelModelRoute
+	require.NoError(t, DB.First(&updated, routeID).Error)
+	assert.Equal(t, 250, updated.StaticWeight)
+	assert.True(t, updated.Enabled, "enabled should remain unchanged")
+
+	// Test update enabled only
+	err = UpdateRouteUnitConfig(routeID, nil, boolPtr(false))
+	require.NoError(t, err)
+
+	require.NoError(t, DB.First(&updated, routeID).Error)
+	assert.Equal(t, 250, updated.StaticWeight, "weight should remain unchanged")
+	assert.False(t, updated.Enabled)
+
+	// Test update both
+	err = UpdateRouteUnitConfig(routeID, intPtr(300), boolPtr(true))
+	require.NoError(t, err)
+
+	require.NoError(t, DB.First(&updated, routeID).Error)
+	assert.Equal(t, 300, updated.StaticWeight)
+	assert.True(t, updated.Enabled)
+
+	// Test non-existent ID returns ErrRecordNotFound
+	err = UpdateRouteUnitConfig(99999, intPtr(100), nil)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, gorm.ErrRecordNotFound), "should return ErrRecordNotFound for non-existent ID")
+
+	// Test empty body (no fields) returns error
+	err = UpdateRouteUnitConfig(routeID, nil, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no fields to update")
+
+	// Test negative weight returns error
+	err = UpdateRouteUnitConfig(routeID, intPtr(-10), nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "static_weight must be >= 0")
+}
+
+// Helpers for test pointers
+func strPtr(s string) *string {
+	return &s
+}
+
+func intPtr(i int) *int {
+	return &i
+}
+
+func boolPtr(b bool) *bool {
+	return &b
 }
