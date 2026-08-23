@@ -205,8 +205,8 @@ func TestRouteUnit_Update_ValidWeightAndEnabled(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	var resp struct {
-		Success bool                 `json:"success"`
-		Data    model.RouteUnitView  `json:"data"`
+		Success bool                `json:"success"`
+		Data    model.RouteUnitView `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.True(t, resp.Success)
@@ -231,8 +231,8 @@ func TestRouteUnit_Update_WeightUpperBoundPasses(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	var resp struct {
-		Success bool                 `json:"success"`
-		Data    model.RouteUnitView  `json:"data"`
+		Success bool                `json:"success"`
+		Data    model.RouteUnitView `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.True(t, resp.Success)
@@ -272,8 +272,8 @@ func TestRouteUnit_Update_WeightNegativeZeroValid(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	var resp struct {
-		Success bool                 `json:"success"`
-		Data    model.RouteUnitView  `json:"data"`
+		Success bool                `json:"success"`
+		Data    model.RouteUnitView `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.True(t, resp.Success)

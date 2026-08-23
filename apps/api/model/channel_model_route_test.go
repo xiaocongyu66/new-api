@@ -348,6 +348,7 @@ func TestChannelLifecycleSyncsRouteRows(t *testing.T) {
 	require.NoError(t, DB.Model(&ChannelModelRoute{}).Where("channel_id = ?", 1).Count(&count).Error)
 	require.Equal(t, int64(0), count, "expected 0 rows after delete")
 }
+
 // TestGetRouteUnitViewsByAlias verifies GetRouteUnitViewsByAlias joins channel info
 // and computes ExpectedShare correctly (weight/total rounded to 4 decimals).
 func TestGetRouteUnitViewsByAlias(t *testing.T) {
