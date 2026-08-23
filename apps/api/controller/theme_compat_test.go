@@ -1,13 +1,14 @@
 package controller
 
 import (
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,7 +22,7 @@ func TestUpdateOptionRejectsRetiredFrontendTheme(t *testing.T) {
 		strings.NewReader(`{"key":"theme.frontend","value":"classic"}`),
 	)
 
-	UpdateOption(context)
+	UpdateOption(ginadapter.Wrap(context))
 
 	assert.Equal(t, http.StatusOK, response.Code)
 	assert.JSONEq(t, `{"success":false,"message":"Classic 前端已移除，主题只能设置为 default"}`, response.Body.String())
@@ -35,7 +36,7 @@ func TestGetStatusAdvertisesDefaultDashboard(t *testing.T) {
 	context, _ := gin.CreateTestContext(response)
 	context.Request = httptest.NewRequest(http.MethodGet, "/api/status", nil)
 
-	GetStatus(context)
+	GetStatus(ginadapter.Wrap(context))
 
 	var payload struct {
 		Success bool           `json:"success"`

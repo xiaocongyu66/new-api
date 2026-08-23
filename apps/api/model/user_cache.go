@@ -6,9 +6,8 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-
-	"github.com/gin-gonic/gin"
 )
 
 const userCacheSchemaVersion = 2
@@ -26,13 +25,13 @@ type UserBase struct {
 	CacheSchema int    `json:"-"`
 }
 
-func (user *UserBase) WriteContext(c *gin.Context) {
-	common.SetContextKey(c, constant.ContextKeyUserGroup, user.Group)
-	common.SetContextKey(c, constant.ContextKeyUserQuota, user.Quota)
-	common.SetContextKey(c, constant.ContextKeyUserStatus, user.Status)
-	common.SetContextKey(c, constant.ContextKeyUserEmail, user.Email)
-	common.SetContextKey(c, constant.ContextKeyUserName, user.Username)
-	common.SetContextKey(c, constant.ContextKeyUserSetting, user.GetSetting())
+func (user *UserBase) WriteContext(c contract.Context) {
+	common.SetCtxKey(c, constant.ContextKeyUserGroup, user.Group)
+	common.SetCtxKey(c, constant.ContextKeyUserQuota, user.Quota)
+	common.SetCtxKey(c, constant.ContextKeyUserStatus, user.Status)
+	common.SetCtxKey(c, constant.ContextKeyUserEmail, user.Email)
+	common.SetCtxKey(c, constant.ContextKeyUserName, user.Username)
+	common.SetCtxKey(c, constant.ContextKeyUserSetting, user.GetSetting())
 }
 
 func (user *UserBase) GetSetting() dto.UserSetting {

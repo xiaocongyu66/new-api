@@ -2,6 +2,9 @@ package middleware
 
 import (
 	"context"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -11,7 +14,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/alicebob/miniredis/v2"
-	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -51,9 +53,9 @@ func TestRedisIPRateLimiterThresholdTTLAndNamespace(t *testing.T) {
 
 	router := gin.New()
 	require.NoError(t, router.SetTrustedProxies(nil))
-	router.GET("/limited", rateLimitFactory(2, 37, "TEST"), func(c *gin.Context) {
+	router.GET("/limited", ginadapter.Middleware(rateLimitFactory(2, 37, "TEST")), ginadapter.Handler(func(c contract.Context) {
 		c.Status(http.StatusNoContent)
-	})
+	}))
 
 	remoteAddr := "192.0.2.10:12345"
 	legacyKey := "rateLimit:TEST192.0.2.10"
@@ -80,9 +82,9 @@ func TestRedisUserRateLimiterUsesSharedFixedWindow(t *testing.T) {
 	router := gin.New()
 	router.GET(
 		"/limited",
-		func(c *gin.Context) { c.Set("id", 42) },
-		userRateLimitFactory(1, 23, "USER"),
-		func(c *gin.Context) { c.Status(http.StatusNoContent) },
+		ginadapter.Handler(func(c contract.Context) { c.Set("id", 42) }),
+		ginadapter.Middleware(userRateLimitFactory(1, 23, "USER")),
+		ginadapter.Handler(func(c contract.Context) { c.Status(http.StatusNoContent) }),
 	)
 
 	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/limited", "192.0.2.20:12345").Code)
@@ -99,9 +101,9 @@ func TestRedisEmailVerificationRateLimiterPreservesResponseAndTTL(t *testing.T) 
 
 	router := gin.New()
 	require.NoError(t, router.SetTrustedProxies(nil))
-	router.GET("/verify", EmailVerificationRateLimit(), func(c *gin.Context) {
+	router.GET("/verify", ginadapter.Middleware(EmailVerificationRateLimit()), ginadapter.Handler(func(c contract.Context) {
 		c.Status(http.StatusNoContent)
-	})
+	}))
 
 	remoteAddr := "192.0.2.30:12345"
 	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/verify", remoteAddr).Code)
@@ -202,18 +204,18 @@ func TestRedisFailurePolicies(t *testing.T) {
 
 	router := gin.New()
 	require.NoError(t, router.SetTrustedProxies(nil))
-	router.GET("/ip", rateLimitFactory(1, 30, "FAIL-IP"), func(c *gin.Context) {
+	router.GET("/ip", ginadapter.Middleware(rateLimitFactory(1, 30, "FAIL-IP")), ginadapter.Handler(func(c contract.Context) {
 		c.Status(http.StatusNoContent)
-	})
+	}))
 	router.GET(
 		"/user",
-		func(c *gin.Context) { c.Set("id", 7) },
-		userRateLimitFactory(1, 30, "FAIL-USER"),
-		func(c *gin.Context) { c.Status(http.StatusNoContent) },
+		ginadapter.Handler(func(c contract.Context) { c.Set("id", 7) }),
+		ginadapter.Middleware(userRateLimitFactory(1, 30, "FAIL-USER")),
+		ginadapter.Handler(func(c contract.Context) { c.Status(http.StatusNoContent) }),
 	)
-	router.GET("/email", EmailVerificationRateLimit(), func(c *gin.Context) {
+	router.GET("/email", ginadapter.Middleware(EmailVerificationRateLimit()), ginadapter.Handler(func(c contract.Context) {
 		c.Status(http.StatusNoContent)
-	})
+	}))
 
 	ipResponse := performRateLimitRequest(router, "/ip", "192.0.2.60:12345")
 	assert.Equal(t, http.StatusInternalServerError, ipResponse.Code)

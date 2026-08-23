@@ -2,10 +2,13 @@ package middleware
 
 import (
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
+// CORS wraps gin-contrib/cors, which produces a gin handler directly. It stays
+// gin-typed because a framework swap replaces the CORS library too.
 func CORS() gin.HandlerFunc {
 	config := cors.DefaultConfig()
 	config.AllowAllOrigins = true
@@ -15,9 +18,9 @@ func CORS() gin.HandlerFunc {
 	return cors.New(config)
 }
 
-func Version() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Header("X-New-Api-Version", common.Version)
+func Version() contract.Middleware {
+	return func(c contract.Context) {
+		c.SetHeader("X-New-Api-Version", common.Version)
 		c.Next()
 	}
 }

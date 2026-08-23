@@ -1,24 +1,24 @@
-package common
+package common_test
 
 import (
 	"errors"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/stretchr/testify/assert"
 )
 
 // newAPIRecorder builds a context whose response lands in a recorder so the
 // serialized envelope can be asserted byte-for-byte.
-func newAPIRecorder(t *testing.T) (*gin.Context, *httptest.ResponseRecorder) {
+func newAPIRecorder(t *testing.T) (contract.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	c, recorder := ginadapter.NewSyntheticContext(nil)
+	ginadapter.ReplaceRequest(c, httptest.NewRequest(http.MethodGet, "/api/status", nil))
 	return c, recorder
 }
 
@@ -28,7 +28,7 @@ func newAPIRecorder(t *testing.T) (*gin.Context, *httptest.ResponseRecorder) {
 func TestApiSuccessEnvelope(t *testing.T) {
 	c, recorder := newAPIRecorder(t)
 
-	ApiSuccess(c, map[string]any{"id": 7})
+	common.CtxApiSuccess(c, map[string]any{"id": 7})
 
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	assert.Equal(t, "application/json; charset=utf-8", recorder.Header().Get("Content-Type"))
@@ -41,7 +41,7 @@ func TestApiSuccessEnvelope(t *testing.T) {
 func TestApiErrorEnvelopeUsesHTTP200(t *testing.T) {
 	c, recorder := newAPIRecorder(t)
 
-	ApiError(c, errors.New("channel not found"))
+	common.CtxApiError(c, errors.New("channel not found"))
 
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	assert.JSONEq(t, `{"success":false,"message":"channel not found"}`, recorder.Body.String())
@@ -52,7 +52,7 @@ func TestApiErrorEnvelopeUsesHTTP200(t *testing.T) {
 func TestApiErrorMsgEnvelope(t *testing.T) {
 	c, recorder := newAPIRecorder(t)
 
-	ApiErrorMsg(c, "无效的参数")
+	common.CtxApiErrorMsg(c, "无效的参数")
 
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	assert.JSONEq(t, `{"success":false,"message":"无效的参数"}`, recorder.Body.String())
@@ -63,7 +63,7 @@ func TestApiErrorMsgEnvelope(t *testing.T) {
 func TestApiSuccessEnvelopeWithNilData(t *testing.T) {
 	c, recorder := newAPIRecorder(t)
 
-	ApiSuccess(c, nil)
+	common.CtxApiSuccess(c, nil)
 
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	assert.JSONEq(t, `{"success":true,"message":"","data":null}`, recorder.Body.String())
@@ -85,11 +85,10 @@ func TestGetPageQueryParsesPaginationAliases(t *testing.T) {
 		{name: "page size clamped", query: "?p=1&page_size=9999", expectedPage: 1, expectedPageSize: 100},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			gin.SetMode(gin.TestMode)
-			c, _ := gin.CreateTestContext(httptest.NewRecorder())
-			c.Request = httptest.NewRequest(http.MethodGet, "/api/log/"+tc.query, nil)
+			c, _ := ginadapter.NewSyntheticContext(nil)
+			ginadapter.ReplaceRequest(c, httptest.NewRequest(http.MethodGet, "/api/log/"+tc.query, nil))
 
-			pageInfo := GetPageQuery(c)
+			pageInfo := common.GetPageQuery(c)
 
 			assert.Equal(t, tc.expectedPage, pageInfo.GetPage())
 			assert.Equal(t, tc.expectedPageSize, pageInfo.GetPageSize())

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"sort"
 	"strconv"
 	"strings"
@@ -9,19 +10,17 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
-
-	"github.com/gin-gonic/gin"
 )
 
 // GetAllModelsMeta 获取模型列表（分页）
-func GetAllModelsMeta(c *gin.Context) {
+func GetAllModelsMeta(c contract.Context) {
 
 	pageInfo := common.GetPageQuery(c)
 	status := c.Query("status")
 	syncOfficial := c.Query("sync_official")
 	modelsMeta, total, err := model.SearchModels("", "", status, syncOfficial, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	// 批量填充附加字段，提升列表接口性能
@@ -32,7 +31,7 @@ func GetAllModelsMeta(c *gin.Context) {
 
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(modelsMeta)
-	common.ApiSuccess(c, gin.H{
+	common.CtxApiSuccess(c, common.H{
 		"items":         modelsMeta,
 		"total":         total,
 		"page":          pageInfo.GetPage(),
@@ -42,7 +41,7 @@ func GetAllModelsMeta(c *gin.Context) {
 }
 
 // SearchModelsMeta 搜索模型列表
-func SearchModelsMeta(c *gin.Context) {
+func SearchModelsMeta(c contract.Context) {
 
 	keyword := c.Query("keyword")
 	vendor := c.Query("vendor")
@@ -52,7 +51,7 @@ func SearchModelsMeta(c *gin.Context) {
 
 	modelsMeta, total, err := model.SearchModels(keyword, vendor, status, syncOfficial, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	// 批量填充附加字段，提升列表接口性能
@@ -60,7 +59,7 @@ func SearchModelsMeta(c *gin.Context) {
 	vendorCounts, _ := model.GetVendorModelCounts()
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(modelsMeta)
-	common.ApiSuccess(c, gin.H{
+	common.CtxApiSuccess(c, common.H{
 		"items":         modelsMeta,
 		"total":         total,
 		"page":          pageInfo.GetPage(),
@@ -70,108 +69,108 @@ func SearchModelsMeta(c *gin.Context) {
 }
 
 // GetModelMeta 根据 ID 获取单条模型信息
-func GetModelMeta(c *gin.Context) {
+func GetModelMeta(c contract.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	var m model.Model
 	if err := model.DB.First(&m, id).Error; err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	enrichModels([]*model.Model{&m})
-	common.ApiSuccess(c, &m)
+	common.CtxApiSuccess(c, &m)
 }
 
 // CreateModelMeta 新建模型
-func CreateModelMeta(c *gin.Context) {
+func CreateModelMeta(c contract.Context) {
 	var m model.Model
-	if err := c.ShouldBindJSON(&m); err != nil {
-		common.ApiError(c, err)
+	if err := c.BindJSON(&m); err != nil {
+		common.CtxApiError(c, err)
 		return
 	}
 	if m.ModelName == "" {
-		common.ApiErrorMsg(c, "模型名称不能为空")
+		common.CtxApiErrorMsg(c, "模型名称不能为空")
 		return
 	}
 	// 名称冲突检查
 	if dup, err := model.IsModelNameDuplicated(0, m.ModelName); err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	} else if dup {
-		common.ApiErrorMsg(c, "模型名称已存在")
+		common.CtxApiErrorMsg(c, "模型名称已存在")
 		return
 	}
 
 	if err := m.Insert(); err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	model.RefreshPricing()
-	common.ApiSuccess(c, &m)
+	common.CtxApiSuccess(c, &m)
 }
 
 // UpdateModelMeta 更新模型
-func UpdateModelMeta(c *gin.Context) {
+func UpdateModelMeta(c contract.Context) {
 	statusOnly := c.Query("status_only") == "true"
 
 	var m model.Model
-	if err := c.ShouldBindJSON(&m); err != nil {
-		common.ApiError(c, err)
+	if err := c.BindJSON(&m); err != nil {
+		common.CtxApiError(c, err)
 		return
 	}
 	if m.Id == 0 {
-		common.ApiErrorMsg(c, "缺少模型 ID")
+		common.CtxApiErrorMsg(c, "缺少模型 ID")
 		return
 	}
 
 	if statusOnly {
 		// 只更新状态，防止误清空其他字段
 		if err := model.UpdateModelStatus(m.Id, m.Status); err != nil {
-			common.ApiError(c, err)
+			common.CtxApiError(c, err)
 			return
 		}
 	} else {
 		// 名称冲突检查
 		if dup, err := model.IsModelNameDuplicated(m.Id, m.ModelName); err != nil {
-			common.ApiError(c, err)
+			common.CtxApiError(c, err)
 			return
 		} else if dup {
-			common.ApiErrorMsg(c, "模型名称已存在")
+			common.CtxApiErrorMsg(c, "模型名称已存在")
 			return
 		}
 
 		if err := m.Update(); err != nil {
-			common.ApiError(c, err)
+			common.CtxApiError(c, err)
 			return
 		}
 	}
 	model.RefreshPricing()
-	common.ApiSuccess(c, &m)
+	common.CtxApiSuccess(c, &m)
 }
 
 // DeleteModelMeta 删除模型
-func DeleteModelMeta(c *gin.Context) {
+func DeleteModelMeta(c contract.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	var existing model.Model
 	if err := model.DB.First(&existing, id).Error; err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	if err := existing.Delete(); err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	model.RefreshPricing()
-	common.ApiSuccess(c, nil)
+	common.CtxApiSuccess(c, nil)
 }
 
 // enrichModels 批量填充附加信息：端点、渠道、分组、计费类型，避免 N+1 查询

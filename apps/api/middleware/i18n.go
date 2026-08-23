@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -10,8 +10,8 @@ import (
 )
 
 // I18n middleware detects and sets the language preference for the request
-func I18n() gin.HandlerFunc {
-	return func(c *gin.Context) {
+func I18n() contract.Middleware {
+	return func(c contract.Context) {
 		lang := detectLanguage(c)
 		c.Set(string(constant.ContextKeyLanguage), lang)
 		c.Next()
@@ -20,16 +20,16 @@ func I18n() gin.HandlerFunc {
 
 // detectLanguage determines the language preference for the request
 // Priority: 1. User setting (if logged in) -> 2. Accept-Language header -> 3. Default language
-func detectLanguage(c *gin.Context) string {
+func detectLanguage(c contract.Context) string {
 	// 1. Try to get language from user setting (set by auth middleware)
-	if userSetting, ok := common.GetContextKeyType[dto.UserSetting](c, constant.ContextKeyUserSetting); ok {
+	if userSetting, ok := common.GetCtxKeyType[dto.UserSetting](c, constant.ContextKeyUserSetting); ok {
 		if userSetting.Language != "" && i18n.IsSupported(userSetting.Language) {
 			return userSetting.Language
 		}
 	}
 
 	// 2. Parse Accept-Language header
-	acceptLang := c.GetHeader("Accept-Language")
+	acceptLang := c.Header("Accept-Language")
 	if acceptLang != "" {
 		lang := i18n.ParseAcceptLanguage(acceptLang)
 		if i18n.IsSupported(lang) {
@@ -42,7 +42,7 @@ func detectLanguage(c *gin.Context) string {
 }
 
 // GetLanguage returns the current language from gin context
-func GetLanguage(c *gin.Context) string {
+func GetLanguage(c contract.Context) string {
 	if lang := c.GetString(string(constant.ContextKeyLanguage)); lang != "" {
 		return lang
 	}

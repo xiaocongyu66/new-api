@@ -1,10 +1,8 @@
 package service
 
 import (
-	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/gin-gonic/gin"
 )
 
 //func GetPromptTokens(textRequest dto.GeneralOpenAIRequest, relayMode int) (int, error) {
@@ -19,8 +17,11 @@ import (
 //	return 0, errors.New("unknown relay mode")
 //}
 
-func ResponseText2Usage(c *gin.Context, responseText string, modeName string, promptTokens int) *dto.Usage {
-	common.SetContextKey(c, constant.ContextKeyLocalCountTokens, true)
+// ResponseText2Usage accepts any per-request value store so relay providers
+// (still gin-typed until their own migration phase) and migrated callers share
+// one implementation.
+func ResponseText2Usage(c interface{ Set(key string, value any) }, responseText string, modeName string, promptTokens int) *dto.Usage {
+	c.Set(string(constant.ContextKeyLocalCountTokens), true)
 	usage := &dto.Usage{}
 	usage.PromptTokens = promptTokens
 	usage.CompletionTokens = EstimateTokenByModel(modeName, responseText)

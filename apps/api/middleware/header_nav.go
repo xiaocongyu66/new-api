@@ -2,11 +2,11 @@ package middleware
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/gin-gonic/gin"
 )
 
 type headerNavAccess struct {
@@ -101,11 +101,11 @@ func parseHeaderNavBool(value any, fallback bool) bool {
 	}
 }
 
-func HeaderNavModuleAuth(module string) gin.HandlerFunc {
-	return func(c *gin.Context) {
+func HeaderNavModuleAuth(module string) contract.Middleware {
+	return func(c contract.Context) {
 		access := getHeaderNavAccess(module)
 		if !access.Enabled {
-			c.JSON(http.StatusForbidden, gin.H{
+			_ = c.JSON(http.StatusForbidden, common.H{
 				"success": false,
 				"message": fmt.Sprintf("%s is disabled", module),
 			})
@@ -122,8 +122,8 @@ func HeaderNavModuleAuth(module string) gin.HandlerFunc {
 	}
 }
 
-func HeaderNavModulePublicOrUserAuth(module string) gin.HandlerFunc {
-	return func(c *gin.Context) {
+func HeaderNavModulePublicOrUserAuth(module string) contract.Middleware {
+	return func(c contract.Context) {
 		access := getHeaderNavAccess(module)
 		if !access.Enabled || access.RequireAuth {
 			UserAuth()(c)

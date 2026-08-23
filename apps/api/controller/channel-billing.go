@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"io"
 	"net/http"
 	"strconv"
@@ -17,8 +18,6 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/shopspring/decimal"
-
-	"github.com/gin-gonic/gin"
 )
 
 // https://github.com/songquanpeng/one-api/issues/79
@@ -421,19 +420,19 @@ func updateChannelBalance(channel *model.Channel) (float64, error) {
 	return balance, nil
 }
 
-func UpdateChannelBalance(c *gin.Context) {
+func UpdateChannelBalance(c contract.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	channel, err := model.CacheGetChannel(id)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	if channel.ChannelInfo.IsMultiKey {
-		c.JSON(http.StatusOK, gin.H{
+		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": "多密钥渠道不支持余额查询",
 		})
@@ -441,10 +440,10 @@ func UpdateChannelBalance(c *gin.Context) {
 	}
 	balance, err := updateChannelBalance(channel)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 		"balance": balance,
@@ -481,14 +480,14 @@ func updateAllChannelsBalance() error {
 	return nil
 }
 
-func UpdateAllChannelsBalance(c *gin.Context) {
+func UpdateAllChannelsBalance(c contract.Context) {
 	// TODO: make it async
 	err := updateAllChannelsBalance()
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 	})

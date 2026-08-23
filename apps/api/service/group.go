@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -8,7 +9,6 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
-	"github.com/gin-gonic/gin"
 )
 
 func GetUserUsableGroups(userGroup string) map[string]string {
@@ -94,8 +94,8 @@ func FilterUserTokenAutoGroups(userGroup string, groups []string) []string {
 // GetRequestAutoGroups resolves the ordered Auto groups for the current token.
 // The absence of the context value means that the token inherits the complete
 // global Auto list; a present (even empty) value is an explicit token snapshot.
-func GetRequestAutoGroups(c *gin.Context, userGroup string) []string {
-	value, ok := common.GetContextKey(c, constant.ContextKeyTokenAutoGroups)
+func GetRequestAutoGroups(c contract.Context, userGroup string) []string {
+	value, ok := common.GetCtxKey(c, constant.ContextKeyTokenAutoGroups)
 	if !ok {
 		return GetUserAutoGroup(userGroup)
 	}

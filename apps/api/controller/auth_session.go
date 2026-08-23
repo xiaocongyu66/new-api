@@ -3,6 +3,8 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strings"
 
@@ -10,11 +12,10 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
-func RefreshAuth(c *gin.Context) {
+func RefreshAuth(c contract.Context) {
 	setAuthNoStore(c)
 	rawRefreshToken, err := c.Cookie(service.RefreshCookieName)
 	if err != nil || rawRefreshToken == "" {
@@ -22,7 +23,7 @@ func RefreshAuth(c *gin.Context) {
 		writeAuthSessionError(c, service.ErrRefreshTokenInvalid)
 		return
 	}
-	bundle, user, err := service.RefreshLoginSession(rawRefreshToken, c.GetHeader("X-Auth-Session"), c.ClientIP(), c.Request.UserAgent())
+	bundle, user, err := service.RefreshLoginSession(rawRefreshToken, c.Header("X-Auth-Session"), c.ClientIP(), c.UserAgent())
 	if err != nil {
 		if errors.Is(err, service.ErrRefreshTokenInvalid) || errors.Is(err, service.ErrLoginSessionRevoked) {
 			service.ClearRefreshCookie(c)
@@ -31,10 +32,10 @@ func RefreshAuth(c *gin.Context) {
 		return
 	}
 	service.WriteRefreshCookie(c, bundle.RefreshToken)
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
-		"data": gin.H{
+		"data": common.H{
 			"access_token":      bundle.AccessToken,
 			"token_type":        bundle.TokenType,
 			"access_expires_at": bundle.AccessExpiresAt,
@@ -44,9 +45,9 @@ func RefreshAuth(c *gin.Context) {
 	})
 }
 
-func AuthLogout(c *gin.Context) {
+func AuthLogout(c contract.Context) {
 	setAuthNoStore(c)
-	expectedSID := strings.TrimSpace(c.GetHeader("X-Auth-Session"))
+	expectedSID := strings.TrimSpace(c.Header("X-Auth-Session"))
 	rawRefreshToken, cookieErr := c.Cookie(service.RefreshCookieName)
 	cookieSID, hasCookieSID := service.RefreshTokenSID(rawRefreshToken)
 	if expectedSID != "" && cookieErr == nil && hasCookieSID && cookieSID != expectedSID {
@@ -54,7 +55,7 @@ func AuthLogout(c *gin.Context) {
 		return
 	}
 
-	if rawAccessToken, ok := dashboardBearer(c.GetHeader("Authorization")); ok {
+	if rawAccessToken, ok := dashboardBearer(c.Header("Authorization")); ok {
 		if identity, err := service.ParseAccessToken(rawAccessToken); err == nil {
 			if expectedSID != "" && expectedSID != identity.SessionID {
 				writeAuthSessionError(c, service.ErrLoginSessionMismatch)
@@ -73,17 +74,17 @@ func AuthLogout(c *gin.Context) {
 				service.ClearRefreshCookie(c)
 				cookieCleared = true
 			}
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": true,
 				"message": "",
-				"data":    gin.H{"revoked_sid": identity.SessionID, "cookie_cleared": cookieCleared},
+				"data":    common.H{"revoked_sid": identity.SessionID, "cookie_cleared": cookieCleared},
 			})
 			return
 		}
 	}
 	if cookieErr != nil || rawRefreshToken == "" {
 		service.ClearRefreshCookie(c)
-		c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
+		_ = c.JSON(http.StatusOK, common.H{"success": true, "message": ""})
 		return
 	}
 	if err := service.RevokeByRefreshToken(rawRefreshToken, expectedSID, "logout"); err != nil {
@@ -91,10 +92,10 @@ func AuthLogout(c *gin.Context) {
 		return
 	}
 	service.ClearRefreshCookie(c)
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
+	_ = c.JSON(http.StatusOK, common.H{"success": true, "message": ""})
 }
 
-func GetLoginSessions(c *gin.Context) {
+func GetLoginSessions(c contract.Context) {
 	identity, ok := requireBrowserSession(c)
 	if !ok {
 		return
@@ -104,17 +105,17 @@ func GetLoginSessions(c *gin.Context) {
 		writeAuthSessionError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": sessions})
+	_ = c.JSON(http.StatusOK, common.H{"success": true, "message": "", "data": sessions})
 }
 
-func DeleteLoginSession(c *gin.Context) {
+func DeleteLoginSession(c contract.Context) {
 	identity, ok := requireBrowserSession(c)
 	if !ok {
 		return
 	}
 	sid := strings.TrimSpace(c.Param("sid"))
 	if sid == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "AUTH_SESSION_ID_REQUIRED", "message": "session id is required"})
+		_ = c.JSON(http.StatusBadRequest, common.H{"success": false, "code": "AUTH_SESSION_ID_REQUIRED", "message": "session id is required"})
 		return
 	}
 	revoked, err := model.RevokeUserSession(identity.UserID, sid, "user_revoked")
@@ -123,7 +124,7 @@ func DeleteLoginSession(c *gin.Context) {
 		return
 	}
 	if !revoked {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "code": "AUTH_SESSION_NOT_FOUND", "message": "session not found"})
+		_ = c.JSON(http.StatusNotFound, common.H{"success": false, "code": "AUTH_SESSION_NOT_FOUND", "message": "session not found"})
 		return
 	}
 	if rawRefreshToken, cookieErr := c.Cookie(service.RefreshCookieName); cookieErr == nil {
@@ -132,10 +133,10 @@ func DeleteLoginSession(c *gin.Context) {
 			service.ClearRefreshCookie(c)
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": gin.H{"revoked_sid": sid, "current": sid == identity.SessionID}})
+	_ = c.JSON(http.StatusOK, common.H{"success": true, "message": "", "data": common.H{"revoked_sid": sid, "current": sid == identity.SessionID}})
 }
 
-func RevokeOtherLoginSessions(c *gin.Context) {
+func RevokeOtherLoginSessions(c contract.Context) {
 	identity, ok := requireBrowserSession(c)
 	if !ok {
 		return
@@ -145,13 +146,13 @@ func RevokeOtherLoginSessions(c *gin.Context) {
 		writeAuthSessionError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": gin.H{"revoked_count": count}})
+	_ = c.JSON(http.StatusOK, common.H{"success": true, "message": "", "data": common.H{"revoked_count": count}})
 }
 
-func requireBrowserSession(c *gin.Context) (service.AuthIdentity, bool) {
+func requireBrowserSession(c contract.Context) (service.AuthIdentity, bool) {
 	identity, ok := middleware.GetSessionAuthIdentity(c)
 	if !ok {
-		c.JSON(http.StatusForbidden, gin.H{
+		_ = c.JSON(http.StatusForbidden, common.H{
 			"success": false,
 			"code":    "AUTH_SESSION_REQUIRED",
 			"message": "a dashboard login session is required",
@@ -161,7 +162,7 @@ func requireBrowserSession(c *gin.Context) (service.AuthIdentity, bool) {
 	return identity, true
 }
 
-func writeAuthSessionError(c *gin.Context, err error) {
+func writeAuthSessionError(c contract.Context, err error) {
 	status, code := service.AuthSessionErrorCode(err)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		status, code = http.StatusUnauthorized, "AUTH_UNAUTHORIZED"
@@ -170,17 +171,17 @@ func writeAuthSessionError(c *gin.Context, err error) {
 		// The response body only carries the generic AUTH_INTERNAL_ERROR
 		// code; without this log the underlying Redis/database/session
 		// failure is indistinguishable from the client side.
-		logger.LogError(c.Request.Context(), fmt.Sprintf("auth session internal error (%s %s): %v", c.Request.Method, c.Request.URL.Path, err))
+		logger.LogError(c.Context(), fmt.Sprintf("auth session internal error (%s %s): %v", c.Method(), c.Path(), err))
 	}
-	c.JSON(status, gin.H{"success": false, "code": code, "message": http.StatusText(status)})
+	_ = c.JSON(status, common.H{"success": false, "code": code, "message": http.StatusText(status)})
 }
 
-func setAuthNoStore(c *gin.Context) {
-	c.Header("Cache-Control", "no-store")
+func setAuthNoStore(c contract.Context) {
+	c.SetHeader("Cache-Control", "no-store")
 }
 
-func authRotationData(bundle *service.AuthBundle) gin.H {
-	return gin.H{
+func authRotationData(bundle *service.AuthBundle) common.H {
+	return common.H{
 		"access_token":      bundle.AccessToken,
 		"token_type":        bundle.TokenType,
 		"access_expires_at": bundle.AccessExpiresAt,

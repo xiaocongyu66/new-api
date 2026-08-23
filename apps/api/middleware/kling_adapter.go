@@ -1,20 +1,17 @@
 package middleware
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-
-	"github.com/gin-gonic/gin"
 )
 
-func KlingRequestConvert() func(c *gin.Context) {
-	return func(c *gin.Context) {
+func KlingRequestConvert() func(c contract.Context) {
+	return func(c contract.Context) {
 		var originalReq map[string]interface{}
-		if err := common.UnmarshalBodyReusable(c, &originalReq); err != nil {
+		if err := common.UnmarshalCtxBodyReusable(c, &originalReq); err != nil {
 			c.Next()
 			return
 		}
@@ -39,8 +36,8 @@ func KlingRequestConvert() func(c *gin.Context) {
 		}
 
 		// Rewrite request body and path
-		c.Request.Body = io.NopCloser(bytes.NewBuffer(jsonData))
-		c.Request.URL.Path = "/v1/video/generations"
+		c.ReplaceBody(jsonData)
+		c.SetPath("/v1/video/generations")
 		if image, ok := originalReq["image"]; !ok || image == "" {
 			c.Set("action", constant.TaskActionTextGenerate)
 		}

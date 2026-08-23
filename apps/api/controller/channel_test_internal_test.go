@@ -3,6 +3,8 @@ package controller
 import (
 	"bytes"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -16,7 +18,6 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -152,7 +153,7 @@ func TestCopyChannelRejectsInvalidLegacyProxySettings(t *testing.T) {
 	ctx.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", origin.Id)}}
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/channel/copy", nil)
 
-	CopyChannel(ctx)
+	CopyChannel(ginadapter.Wrap(ctx))
 
 	assert.Contains(t, recorder.Body.String(), "invalid channel settings")
 	var channelCount int64
@@ -175,7 +176,7 @@ func TestDeleteChannelResetsProxyCacheWhenPreReadFails(t *testing.T) {
 	ctx.Params = gin.Params{{Key: "id", Value: "999999"}}
 	ctx.Request = httptest.NewRequest(http.MethodDelete, "/api/channel/999999", nil)
 
-	DeleteChannel(ctx)
+	DeleteChannel(ginadapter.Wrap(ctx))
 
 	assert.Contains(t, recorder.Body.String(), `"success":true`)
 	afterDelete, err := service.GetHttpClientWithProxy(proxyURL)
@@ -196,7 +197,7 @@ func TestDeleteChannelBatchReportsAndAuditsActualDeletedCount(t *testing.T) {
 	ctx.Request = httptest.NewRequest(http.MethodDelete, "/api/channel/batch", bytes.NewReader(requestBody))
 	ctx.Request.Header.Set("Content-Type", "application/json")
 
-	DeleteChannelBatch(ctx)
+	DeleteChannelBatch(ginadapter.Wrap(ctx))
 
 	var response struct {
 		Success bool  `json:"success"`
@@ -270,7 +271,7 @@ func TestBuildTestLogOtherInjectsTieredInfo(t *testing.T) {
 		Multiplier: 2,
 		Matched:    true,
 	}}
-	other := buildTestLogOther(ctx, info, priceData, usage, &billingexpr.TieredResult{
+	other := buildTestLogOther(ginadapter.Wrap(ctx), info, priceData, usage, &billingexpr.TieredResult{
 		MatchedTier:  "base",
 		RequestRules: requestRules,
 	})
@@ -286,7 +287,7 @@ func TestResolveChannelTestUserIDUsesRequestUser(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	ctx.Set("id", 2)
 
-	userID, err := resolveChannelTestUserID(ctx)
+	userID, err := resolveChannelTestUserID(ginadapter.Wrap(ctx))
 
 	require.NoError(t, err)
 	require.Equal(t, 2, userID)
@@ -348,7 +349,7 @@ func TestTestAllChannelsRejectsExistingActiveTask(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/channel/test", nil)
 
-	TestAllChannels(ctx)
+	TestAllChannels(ginadapter.Wrap(ctx))
 
 	require.Equal(t, http.StatusConflict, recorder.Code)
 	require.Contains(t, recorder.Body.String(), existing.TaskID)

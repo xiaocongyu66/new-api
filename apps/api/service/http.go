@@ -90,7 +90,7 @@ func IOCopyBytesGracefully(c *gin.Context, src *http.Response, data []byte) {
 
 	_, err := io.Copy(c.Writer, body)
 	if err != nil {
-		logger.LogError(c, fmt.Sprintf("failed to copy response body: %s", err.Error()))
+		logger.LogError(c.Request.Context(), fmt.Sprintf("failed to copy response body: %s", err.Error()))
 	}
 	c.Writer.Flush()
 }

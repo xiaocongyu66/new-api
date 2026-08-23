@@ -2,14 +2,14 @@ package service
 
 import (
 	"fmt"
-	"net/http/httptest"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,9 +32,8 @@ func configureRequestAutoGroupsTest(t *testing.T) {
 	})
 }
 
-func newRequestAutoGroupsContext() *gin.Context {
-	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+func newRequestAutoGroupsContext() contract.Context {
+	ctx, _ := ginadapter.NewSyntheticContext(nil)
 	return ctx
 }
 
@@ -50,7 +49,7 @@ func TestGetRequestAutoGroupsInheritedListIsNotLimited(t *testing.T) {
 func TestGetRequestAutoGroupsFiltersBeforeApplyingCurrentLimit(t *testing.T) {
 	configureRequestAutoGroupsTest(t)
 	ctx := newRequestAutoGroupsContext()
-	common.SetContextKey(ctx, constant.ContextKeyTokenAutoGroups, []string{"revoked", "vip", "default", "svip"})
+	common.SetCtxKey(ctx, constant.ContextKeyTokenAutoGroups, []string{"revoked", "vip", "default", "svip"})
 	require.NoError(t, setting.UpdateAutoGroupsByJsonString(`[]`))
 
 	groups := GetRequestAutoGroups(ctx, "default")
@@ -63,7 +62,7 @@ func TestGetRequestAutoGroupsFiltersBeforeApplyingCurrentLimit(t *testing.T) {
 func TestGetRequestAutoGroupsDoesNotFallBackAfterPermissionChange(t *testing.T) {
 	configureRequestAutoGroupsTest(t)
 	ctx := newRequestAutoGroupsContext()
-	common.SetContextKey(ctx, constant.ContextKeyTokenAutoGroups, []string{"vip"})
+	common.SetCtxKey(ctx, constant.ContextKeyTokenAutoGroups, []string{"vip"})
 	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"Default"}`))
 
 	groups := GetRequestAutoGroups(ctx, "default")

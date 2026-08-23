@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/gin-gonic/gin"
 )
 
 const redisRateLimitNamespace = "rateLimit:v2"
@@ -37,7 +37,7 @@ return {1, count, ttl}
 
 var inMemoryRateLimiter common.InMemoryRateLimiter
 
-var defNext = func(c *gin.Context) {
+var defNext = func(c contract.Context) {
 	c.Next()
 }
 
@@ -106,15 +106,15 @@ func redisFixedWindowTake(ctx context.Context, key string, maxRequestNum int, du
 	return allowedValue == 1, count, ttlSeconds, nil
 }
 
-func redisRateLimiter(c *gin.Context, maxRequestNum int, duration int64, mark string) {
+func redisRateLimiter(c contract.Context, maxRequestNum int, duration int64, mark string) {
 	allowed, _, ttlSeconds, err := redisFixedWindowTake(
-		c.Request.Context(),
+		c.Context(),
 		redisIPRateLimitKey(mark, c.ClientIP()),
 		maxRequestNum,
 		duration,
 	)
 	if err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("rate limit check failed (mark=%s): %v", mark, err))
+		logger.LogError(c.Context(), fmt.Sprintf("rate limit check failed (mark=%s): %v", mark, err))
 		c.Status(http.StatusInternalServerError)
 		c.Abort()
 		return
@@ -124,7 +124,7 @@ func redisRateLimiter(c *gin.Context, maxRequestNum int, duration int64, mark st
 	}
 }
 
-func memoryRateLimiter(c *gin.Context, maxRequestNum int, duration int64, mark string) {
+func memoryRateLimiter(c contract.Context, maxRequestNum int, duration int64, mark string) {
 	key := mark + c.ClientIP()
 	if !inMemoryRateLimiter.Request(key, maxRequestNum, duration) {
 		writeRateLimited(c, duration)
@@ -136,49 +136,49 @@ func memoryRateLimiter(c *gin.Context, maxRequestNum int, duration int64, mark s
 // clients can back off instead of treating the rejection as a fatal error.
 // The in-memory limiter cannot report the remaining window, so callers
 // without a TTL pass the full window duration as a conservative upper bound.
-func writeRateLimited(c *gin.Context, retryAfterSeconds int64) {
+func writeRateLimited(c contract.Context, retryAfterSeconds int64) {
 	if retryAfterSeconds > 0 {
-		c.Header("Retry-After", strconv.FormatInt(retryAfterSeconds, 10))
+		c.SetHeader("Retry-After", strconv.FormatInt(retryAfterSeconds, 10))
 	}
 	c.Status(http.StatusTooManyRequests)
 	c.Abort()
 }
 
-func rateLimitFactory(maxRequestNum int, duration int64, mark string) func(c *gin.Context) {
+func rateLimitFactory(maxRequestNum int, duration int64, mark string) func(c contract.Context) {
 	if common.RedisEnabled {
-		return func(c *gin.Context) {
+		return func(c contract.Context) {
 			redisRateLimiter(c, maxRequestNum, duration, mark)
 		}
 	}
 	// It's safe to call multi times.
 	inMemoryRateLimiter.Init(common.RateLimitKeyExpirationDuration)
-	return func(c *gin.Context) {
+	return func(c contract.Context) {
 		memoryRateLimiter(c, maxRequestNum, duration, mark)
 	}
 }
 
-func GlobalWebRateLimit() func(c *gin.Context) {
+func GlobalWebRateLimit() func(c contract.Context) {
 	if common.GlobalWebRateLimitEnable {
 		return rateLimitFactory(common.GlobalWebRateLimitNum, common.GlobalWebRateLimitDuration, "GW")
 	}
 	return defNext
 }
 
-func GlobalAPIRateLimit() func(c *gin.Context) {
+func GlobalAPIRateLimit() func(c contract.Context) {
 	if common.GlobalApiRateLimitEnable {
 		return rateLimitFactory(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration, "GA")
 	}
 	return defNext
 }
 
-func CriticalRateLimit() func(c *gin.Context) {
+func CriticalRateLimit() func(c contract.Context) {
 	if common.CriticalRateLimitEnable {
 		return rateLimitFactory(common.CriticalRateLimitNum, common.CriticalRateLimitDuration, "CT")
 	}
 	return defNext
 }
 
-func UserCriticalRateLimit(scope string) func(c *gin.Context) {
+func UserCriticalRateLimit(scope string) func(c contract.Context) {
 	if !common.CriticalRateLimitEnable {
 		return defNext
 	}
@@ -189,20 +189,20 @@ func UserCriticalRateLimit(scope string) func(c *gin.Context) {
 	)
 }
 
-func DownloadRateLimit() func(c *gin.Context) {
+func DownloadRateLimit() func(c contract.Context) {
 	return rateLimitFactory(common.DownloadRateLimitNum, common.DownloadRateLimitDuration, "DW")
 }
 
-func UploadRateLimit() func(c *gin.Context) {
+func UploadRateLimit() func(c contract.Context) {
 	return rateLimitFactory(common.UploadRateLimitNum, common.UploadRateLimitDuration, "UP")
 }
 
 // userRateLimitFactory creates a rate limiter keyed by authenticated user ID
 // instead of client IP, making it resistant to proxy rotation attacks.
 // Must be used AFTER authentication middleware (UserAuth).
-func userRateLimitFactory(maxRequestNum int, duration int64, mark string) func(c *gin.Context) {
+func userRateLimitFactory(maxRequestNum int, duration int64, mark string) func(c contract.Context) {
 	if common.RedisEnabled {
-		return func(c *gin.Context) {
+		return func(c contract.Context) {
 			userID := c.GetInt("id")
 			if userID == 0 {
 				c.Status(http.StatusUnauthorized)
@@ -214,7 +214,7 @@ func userRateLimitFactory(maxRequestNum int, duration int64, mark string) func(c
 	}
 	// It's safe to call multi times.
 	inMemoryRateLimiter.Init(common.RateLimitKeyExpirationDuration)
-	return func(c *gin.Context) {
+	return func(c contract.Context) {
 		userID := c.GetInt("id")
 		if userID == 0 {
 			c.Status(http.StatusUnauthorized)
@@ -231,10 +231,10 @@ func userRateLimitFactory(maxRequestNum int, duration int64, mark string) func(c
 
 // userRedisRateLimiter is like redisRateLimiter but accepts a pre-built key
 // (to support user-ID-based keys).
-func userRedisRateLimiter(c *gin.Context, maxRequestNum int, duration int64, key string) {
-	allowed, _, ttlSeconds, err := redisFixedWindowTake(c.Request.Context(), key, maxRequestNum, duration)
+func userRedisRateLimiter(c contract.Context, maxRequestNum int, duration int64, key string) {
+	allowed, _, ttlSeconds, err := redisFixedWindowTake(c.Context(), key, maxRequestNum, duration)
 	if err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("rate limit check failed (key=%s): %v", key, err))
+		logger.LogError(c.Context(), fmt.Sprintf("rate limit check failed (key=%s): %v", key, err))
 		c.Status(http.StatusInternalServerError)
 		c.Abort()
 		return
@@ -246,7 +246,7 @@ func userRedisRateLimiter(c *gin.Context, maxRequestNum int, duration int64, key
 
 // SearchRateLimit returns a per-user rate limiter for search endpoints.
 // Configurable via SEARCH_RATE_LIMIT_ENABLE / SEARCH_RATE_LIMIT / SEARCH_RATE_LIMIT_DURATION.
-func SearchRateLimit() func(c *gin.Context) {
+func SearchRateLimit() func(c contract.Context) {
 	if !common.SearchRateLimitEnable {
 		return defNext
 	}

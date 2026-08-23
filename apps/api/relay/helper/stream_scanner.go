@@ -115,11 +115,11 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 		pingTicker = time.NewTicker(pingInterval)
 	}
 
-	logger.LogDebug(c, "relay timeout seconds: %d", common.RelayTimeout)
-	logger.LogDebug(c, "relay max idle conns: %d", common.RelayMaxIdleConns)
-	logger.LogDebug(c, "relay max idle conns per host: %d", common.RelayMaxIdleConnsPerHost)
-	logger.LogDebug(c, "streaming timeout seconds: %d", int64(streamingTimeout.Seconds()))
-	logger.LogDebug(c, "ping interval seconds: %d", int64(pingInterval.Seconds()))
+	logger.LogDebug(c.Request.Context(), "relay timeout seconds: %d", common.RelayTimeout)
+	logger.LogDebug(c.Request.Context(), "relay max idle conns: %d", common.RelayMaxIdleConns)
+	logger.LogDebug(c.Request.Context(), "relay max idle conns per host: %d", common.RelayMaxIdleConnsPerHost)
+	logger.LogDebug(c.Request.Context(), "streaming timeout seconds: %d", int64(streamingTimeout.Seconds()))
+	logger.LogDebug(c.Request.Context(), "ping interval seconds: %d", int64(pingInterval.Seconds()))
 
 	cleanup := func() {
 		cleanupOnce.Do(func() {
@@ -152,11 +152,11 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 		gopool.Go(func() {
 			defer func() {
 				if r := recover(); r != nil {
-					logger.LogError(c, fmt.Sprintf("ping goroutine panic: %v", r))
+					logger.LogError(c.Request.Context(), fmt.Sprintf("ping goroutine panic: %v", r))
 					info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonPanic, fmt.Errorf("ping panic: %v", r))
 					stop()
 				}
-				logger.LogDebug(c, "ping goroutine exited")
+				logger.LogDebug(c.Request.Context(), "ping goroutine exited")
 				wg.Done()
 			}()
 
@@ -176,11 +176,11 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 						err = PingData(c)
 					}()
 					if err != nil {
-						logger.LogError(c, "ping data error: "+err.Error())
+						logger.LogError(c.Request.Context(), "ping data error: "+err.Error())
 						info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonPingFail, err)
 						return
 					}
-					logger.LogDebug(c, "ping data sent")
+					logger.LogDebug(c.Request.Context(), "ping data sent")
 				case <-ctx.Done():
 					return
 				case <-stopChan:
@@ -189,7 +189,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 					// 监听客户端断开连接
 					return
 				case <-pingTimeout.C:
-					logger.LogError(c, "ping goroutine max duration reached")
+					logger.LogError(c.Request.Context(), "ping goroutine max duration reached")
 					return
 				}
 			}
@@ -202,7 +202,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	gopool.Go(func() {
 		defer func() {
 			if r := recover(); r != nil {
-				logger.LogError(c, fmt.Sprintf("data handler goroutine panic: %v", r))
+				logger.LogError(c.Request.Context(), fmt.Sprintf("data handler goroutine panic: %v", r))
 				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonPanic, fmt.Errorf("handler panic: %v", r))
 			}
 			stop()
@@ -229,11 +229,11 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 		defer func() {
 			close(dataChan)
 			if r := recover(); r != nil {
-				logger.LogError(c, fmt.Sprintf("scanner goroutine panic: %v", r))
+				logger.LogError(c.Request.Context(), fmt.Sprintf("scanner goroutine panic: %v", r))
 				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonPanic, fmt.Errorf("scanner panic: %v", r))
 			}
 			stop()
-			logger.LogDebug(c, "scanner goroutine exited")
+			logger.LogDebug(c.Request.Context(), "scanner goroutine exited")
 			wg.Done()
 		}()
 
@@ -249,7 +249,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 
 			ticker.Reset(streamingTimeout)
 			data := scanner.Text()
-			logger.LogDebug(c, "stream scanner data: %s", data)
+			logger.LogDebug(c.Request.Context(), "stream scanner data: %s", data)
 
 			if len(data) < 6 {
 				continue
@@ -275,14 +275,14 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 				}
 			} else {
 				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonDone, nil)
-				logger.LogDebug(c, "received [DONE], stopping scanner")
+				logger.LogDebug(c.Request.Context(), "received [DONE], stopping scanner")
 				return
 			}
 		}
 
 		if err := scanner.Err(); err != nil {
 			if err != io.EOF {
-				logger.LogError(c, "scanner error: "+err.Error())
+				logger.LogError(c.Request.Context(), "scanner error: "+err.Error())
 				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonScannerErr, err)
 			}
 		}
@@ -303,8 +303,8 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 
 	cleanup()
 	if info.StreamStatus.IsNormalEnd() && !info.StreamStatus.HasErrors() {
-		logger.LogInfo(c, fmt.Sprintf("stream ended: %s", info.StreamStatus.Summary()))
+		logger.LogInfo(c.Request.Context(), fmt.Sprintf("stream ended: %s", info.StreamStatus.Summary()))
 	} else {
-		logger.LogError(c, fmt.Sprintf("stream ended: %s, received=%d", info.StreamStatus.Summary(), info.ReceivedResponseCount))
+		logger.LogError(c.Request.Context(), fmt.Sprintf("stream ended: %s, received=%d", info.StreamStatus.Summary(), info.ReceivedResponseCount))
 	}
 }

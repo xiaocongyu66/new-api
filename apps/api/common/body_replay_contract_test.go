@@ -1,47 +1,48 @@
-package common
+package common_test
 
 import (
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // newBodyRequestContext builds a context carrying a JSON body, matching how the
 // relay entrypoints receive a client request.
-func newBodyRequestContext(t *testing.T, body string) *gin.Context {
+func newBodyRequestContext(t *testing.T, body string) (contract.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 
-	gin.SetMode(gin.TestMode)
-	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
-	c.Request.Header.Set("Content-Type", "application/json")
-	return c
+	c, rec := ginadapter.NewSyntheticContext(nil)
+	ginadapter.ReplaceRequest(c, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body)))
+	c.Headers().Set("Content-Type", "application/json")
+	return c, rec
 }
 
 // TestUnmarshalBodyReusableAllowsRepeatedDecode pins the multi-read contract the
 // relay pipeline depends on: middleware inspects the body to pick a model, then
 // the adaptor decodes it again. Losing replay would break every relay request.
 func TestUnmarshalBodyReusableAllowsRepeatedDecode(t *testing.T) {
-	c := newBodyRequestContext(t, `{"model":"gpt-4","stream":true}`)
+	c, _ := newBodyRequestContext(t, `{"model":"gpt-4","stream":true}`)
 
 	var first struct {
 		Model  string `json:"model"`
 		Stream bool   `json:"stream"`
 	}
-	require.NoError(t, UnmarshalBodyReusable(c, &first))
+	require.NoError(t, common.UnmarshalCtxBodyReusable(c, &first))
 	assert.Equal(t, "gpt-4", first.Model)
 	assert.True(t, first.Stream)
 
 	var second struct {
 		Model string `json:"model"`
 	}
-	require.NoError(t, UnmarshalBodyReusable(c, &second))
+	require.NoError(t, common.UnmarshalCtxBodyReusable(c, &second))
 	assert.Equal(t, "gpt-4", second.Model)
 }
 
@@ -50,15 +51,17 @@ func TestUnmarshalBodyReusableAllowsRepeatedDecode(t *testing.T) {
 // forwards it to the upstream provider.
 func TestUnmarshalBodyReusableRestoresRequestBodyForDownstreamReader(t *testing.T) {
 	payload := `{"model":"claude-3","messages":[]}`
-	c := newBodyRequestContext(t, payload)
+	c, _ := newBodyRequestContext(t, payload)
 
 	var decoded struct {
 		Model string `json:"model"`
 	}
-	require.NoError(t, UnmarshalBodyReusable(c, &decoded))
+	require.NoError(t, common.UnmarshalCtxBodyReusable(c, &decoded))
 	require.Equal(t, "claude-3", decoded.Model)
 
-	forwarded, err := io.ReadAll(c.Request.Body)
+	reader, err := c.BodyReader()
+	require.NoError(t, err)
+	forwarded, err := io.ReadAll(reader)
 	require.NoError(t, err)
 	assert.JSONEq(t, payload, string(forwarded))
 }
@@ -67,9 +70,9 @@ func TestUnmarshalBodyReusableRestoresRequestBodyForDownstreamReader(t *testing.
 // rewound for each caller instead of returning a drained reader.
 func TestGetRequestBodySeeksToStartOnRepeatedAccess(t *testing.T) {
 	payload := `{"model":"gemini-pro"}`
-	c := newBodyRequestContext(t, payload)
+	c, _ := newBodyRequestContext(t, payload)
 
-	storage, err := GetBodyStorage(c)
+	storage, err := common.GetBodyStorage(ginadapter.MustUnwrap(c))
 	require.NoError(t, err)
 
 	firstReader, err := storage.NewReader()
@@ -90,14 +93,14 @@ func TestGetRequestBodySeeksToStartOnRepeatedAccess(t *testing.T) {
 // TestCleanupBodyStorageReleasesCachedBody asserts the per-request cleanup path
 // clears the cached storage so pooled contexts do not leak a prior body.
 func TestCleanupBodyStorageReleasesCachedBody(t *testing.T) {
-	c := newBodyRequestContext(t, `{"model":"gpt-4"}`)
+	c, _ := newBodyRequestContext(t, `{"model":"gpt-4"}`)
 
-	_, err := GetBodyStorage(c)
+	_, err := common.GetBodyStorage(ginadapter.MustUnwrap(c))
 	require.NoError(t, err)
 
-	CleanupBodyStorage(c)
+	common.CleanupBodyStorage(c)
 
-	cached, exists := c.Get(KeyBodyStorage)
+	cached, exists := c.Get(common.KeyBodyStorage)
 	assert.True(t, exists, "cleanup keeps the key present")
 	assert.Nil(t, cached, "cleanup clears the cached storage value")
 }

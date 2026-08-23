@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strings"
 	"time"
@@ -21,7 +22,6 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
-	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
 )
 
@@ -176,9 +176,9 @@ type modelListGroups struct {
 	ownerGroups []string
 }
 
-func getModelListGroups(c *gin.Context) (modelListGroups, error) {
-	tokenGroup := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
-	userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+func getModelListGroups(c contract.Context) (modelListGroups, error) {
+	tokenGroup := common.GetCtxKeyString(c, constant.ContextKeyTokenGroup)
+	userGroup := common.GetCtxKeyString(c, constant.ContextKeyUserGroup)
 	if userGroup == "" && (tokenGroup == "" || tokenGroup == "auto") {
 		var err error
 		userGroup, err = model.GetUserGroup(c.GetInt("id"), false)
@@ -206,7 +206,7 @@ func getModelListGroups(c *gin.Context) (modelListGroups, error) {
 	}, nil
 }
 
-func ListModels(c *gin.Context, modelType int) {
+func ListModels(c contract.Context, modelType int) {
 	acceptUnsetRatioModel := operation_setting.SelfUseModeEnabled
 	if !acceptUnsetRatioModel {
 		userId := c.GetInt("id")
@@ -221,17 +221,17 @@ func ListModels(c *gin.Context, modelType int) {
 	userModelNames := make([]string, 0)
 	groups, err := getModelListGroups(c)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
+		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": "get user group failed",
 		})
 		return
 	}
 	ownerGroups := groups.ownerGroups
-	modelLimitEnable := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
+	modelLimitEnable := common.GetCtxKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
 	var tokenModelLimit map[string]bool
 	if modelLimitEnable {
-		s, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
+		s, ok := common.GetCtxKey(c, constant.ContextKeyTokenModelLimit)
 		if ok {
 			tokenModelLimit, _ = s.(map[string]bool)
 		}
@@ -279,7 +279,7 @@ func ListModels(c *gin.Context, modelType int) {
 			firstID = useranthropicModels[0].ID
 			lastID = useranthropicModels[len(useranthropicModels)-1].ID
 		}
-		c.JSON(200, gin.H{
+		_ = c.JSON(200, common.H{
 			"data":     useranthropicModels,
 			"first_id": firstID,
 			"has_more": false,
@@ -293,12 +293,12 @@ func ListModels(c *gin.Context, modelType int) {
 				DisplayName: model.Id,
 			}
 		}
-		c.JSON(200, gin.H{
+		_ = c.JSON(200, common.H{
 			"models":        userGeminiModels,
 			"nextPageToken": nil,
 		})
 	default:
-		c.JSON(200, gin.H{
+		_ = c.JSON(200, common.H{
 			"success": true,
 			"data":    userOpenAiModels,
 			"object":  "list",
@@ -306,40 +306,40 @@ func ListModels(c *gin.Context, modelType int) {
 	}
 }
 
-func ChannelListModels(c *gin.Context) {
-	c.JSON(200, gin.H{
+func ChannelListModels(c contract.Context) {
+	_ = c.JSON(200, common.H{
 		"success": true,
 		"data":    openAIModels,
 	})
 }
 
-func DashboardListModels(c *gin.Context) {
-	c.JSON(200, gin.H{
+func DashboardListModels(c contract.Context) {
+	_ = c.JSON(200, common.H{
 		"success": true,
 		"data":    channelId2Models,
 	})
 }
 
-func EnabledListModels(c *gin.Context) {
-	c.JSON(200, gin.H{
+func EnabledListModels(c contract.Context) {
+	_ = c.JSON(200, common.H{
 		"success": true,
 		"data":    model.GetEnabledModels(),
 	})
 }
 
-func RetrieveModel(c *gin.Context, modelType int) {
+func RetrieveModel(c contract.Context, modelType int) {
 	modelId := c.Param("model")
 	if aiModel, ok := openAIModelsMap[modelId]; ok {
 		switch modelType {
 		case constant.ChannelTypeAnthropic:
-			c.JSON(200, dto.AnthropicModel{
+			_ = c.JSON(200, dto.AnthropicModel{
 				ID:          aiModel.Id,
 				CreatedAt:   time.Unix(int64(aiModel.Created), 0).UTC().Format(time.RFC3339),
 				DisplayName: aiModel.Id,
 				Type:        "model",
 			})
 		default:
-			c.JSON(200, aiModel)
+			_ = c.JSON(200, aiModel)
 		}
 	} else {
 		openAIError := types.OpenAIError{
@@ -348,7 +348,7 @@ func RetrieveModel(c *gin.Context, modelType int) {
 			Param:   "model",
 			Code:    "model_not_found",
 		}
-		c.JSON(200, gin.H{
+		_ = c.JSON(200, common.H{
 			"error": openAIError,
 		})
 	}

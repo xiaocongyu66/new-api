@@ -2,19 +2,18 @@ package service
 
 import (
 	"fmt"
-	"net/http/httptest"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"testing"
 	"time"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
-func buildChannelAffinityStatsContextForTest(ruleName, usingGroup, keyFP string) *gin.Context {
-	rec := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(rec)
+func buildChannelAffinityStatsContextForTest(ruleName, usingGroup, keyFP string) contract.Context {
+	ctx, _ := ginadapter.NewSyntheticContext(nil)
 	setChannelAffinityContext(ctx, channelAffinityMeta{
 		CacheKey:       fmt.Sprintf("test:%s:%s:%s", ruleName, usingGroup, keyFP),
 		TTLSeconds:     600,

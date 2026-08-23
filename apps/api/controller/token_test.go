@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,7 +17,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
@@ -181,7 +183,7 @@ func seedToken(t *testing.T, db *gorm.DB, userID int, name string, rawKey string
 	return token
 }
 
-func newAuthenticatedContext(t *testing.T, method string, target string, body any, userID int) (*gin.Context, *httptest.ResponseRecorder) {
+func newAuthenticatedContext(t *testing.T, method string, target string, body any, userID int) (contract.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 
 	var requestBody *bytes.Reader
@@ -196,10 +198,9 @@ func newAuthenticatedContext(t *testing.T, method string, target string, body an
 	}
 
 	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(method, target, requestBody)
+	ctx, _ := ginadapter.NewSyntheticContext(httptest.NewRequest(method, target, requestBody))
 	if body != nil {
-		ctx.Request.Header.Set("Content-Type", "application/json")
+		ctx.Headers().Set("Content-Type", "application/json")
 	}
 	ctx.Set("id", userID)
 	return ctx, recorder
@@ -488,9 +489,7 @@ func TestGetTokenMasksKeyInResponse(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
 	token := seedToken(t, db, 1, "detail-token", "qrst1234uvwx5678")
 
-	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/token/"+strconv.Itoa(token.Id), nil, 1)
-	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(token.Id)}}
-	GetToken(ctx)
+	recorder := newTokenIDRouteContext(t, http.MethodGet, "/api/token/:id", "/api/token/"+strconv.Itoa(token.Id), 1, GetToken)
 
 	response := decodeAPIResponse(t, recorder)
 	if !response.Success {
@@ -549,9 +548,7 @@ func TestGetTokenKeyRequiresOwnershipAndReturnsFullKey(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
 	token := seedToken(t, db, 1, "owned-token", "owner1234token5678")
 
-	authorizedCtx, authorizedRecorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/"+strconv.Itoa(token.Id)+"/key", nil, 1)
-	authorizedCtx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(token.Id)}}
-	GetTokenKey(authorizedCtx)
+	authorizedRecorder := newTokenIDRouteContext(t, http.MethodPost, "/api/token/:id/key", "/api/token/"+strconv.Itoa(token.Id)+"/key", 1, GetTokenKey)
 
 	authorizedResponse := decodeAPIResponse(t, authorizedRecorder)
 	if !authorizedResponse.Success {
@@ -566,9 +563,7 @@ func TestGetTokenKeyRequiresOwnershipAndReturnsFullKey(t *testing.T) {
 		t.Fatalf("expected full key %q, got %q", token.GetFullKey(), keyData.Key)
 	}
 
-	unauthorizedCtx, unauthorizedRecorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/"+strconv.Itoa(token.Id)+"/key", nil, 2)
-	unauthorizedCtx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(token.Id)}}
-	GetTokenKey(unauthorizedCtx)
+	unauthorizedRecorder := newTokenIDRouteContext(t, http.MethodPost, "/api/token/:id/key", "/api/token/"+strconv.Itoa(token.Id)+"/key", 2, GetTokenKey)
 
 	unauthorizedResponse := decodeAPIResponse(t, unauthorizedRecorder)
 	if unauthorizedResponse.Success {
@@ -577,4 +572,20 @@ func TestGetTokenKeyRequiresOwnershipAndReturnsFullKey(t *testing.T) {
 	if strings.Contains(unauthorizedRecorder.Body.String(), token.Key) {
 		t.Fatalf("unauthorized key response leaked raw token key: %s", unauthorizedRecorder.Body.String())
 	}
+}
+
+// newTokenIDRouteContext serves target through a real gin route so :id path
+// params bind exactly as production routing does.
+func newTokenIDRouteContext(t *testing.T, method, pattern, target string, userID int, handler contract.Handler) *httptest.ResponseRecorder {
+	t.Helper()
+
+	recorder := httptest.NewRecorder()
+	engine := gin.New()
+	engine.Use(func(c *gin.Context) {
+		c.Set("id", userID)
+		c.Next()
+	})
+	engine.Handle(method, pattern, ginadapter.Handler(handler))
+	engine.ServeHTTP(recorder, httptest.NewRequest(method, target, nil))
+	return recorder
 }

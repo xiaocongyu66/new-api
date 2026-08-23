@@ -1,22 +1,23 @@
 package middleware
 
 import (
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )
 
 func runOriginGuardRequest(t *testing.T, origin, referer string) *httptest.ResponseRecorder {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.POST("/api/user/auth/refresh", SessionCookieOriginGuard(), func(c *gin.Context) {
+	router.POST("/api/user/auth/refresh", ginadapter.Middleware(SessionCookieOriginGuard()), ginadapter.Handler(func(c contract.Context) {
 		c.Status(http.StatusNoContent)
-	})
+	}))
 	request := httptest.NewRequest(http.MethodPost, "https://panel.example.com/api/user/auth/refresh", nil)
 	request.Host = "panel.example.com"
 	request.Header.Set("Origin", origin)
@@ -90,11 +91,10 @@ func TestSessionCookieOriginGuardDevelopmentCompatibility(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			common.SessionCookieSecure = test.secure
 
-			gin.SetMode(gin.TestMode)
 			router := gin.New()
-			router.POST("/api/user/auth/refresh", SessionCookieOriginGuard(), func(c *gin.Context) {
+			router.POST("/api/user/auth/refresh", ginadapter.Middleware(SessionCookieOriginGuard()), ginadapter.Handler(func(c contract.Context) {
 				c.Status(http.StatusNoContent)
-			})
+			}))
 			request := httptest.NewRequest(http.MethodPost, "http://localhost:3000/api/user/auth/refresh", nil)
 			request.Host = "localhost:3000"
 			if test.origin != "" {
@@ -119,11 +119,10 @@ func TestSessionCookieOriginGuardDoesNotTrustForwardedProtoFromClient(t *testing
 		common.SessionCookieTrustedURLs = previousTrustedURLs
 	})
 
-	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.POST("/api/user/auth/refresh", SessionCookieOriginGuard(), func(c *gin.Context) {
+	router.POST("/api/user/auth/refresh", ginadapter.Middleware(SessionCookieOriginGuard()), ginadapter.Handler(func(c contract.Context) {
 		c.Status(http.StatusNoContent)
-	})
+	}))
 	request := httptest.NewRequest(http.MethodPost, "http://panel.example.com/api/user/auth/refresh", nil)
 	request.Host = "panel.example.com"
 	request.Header.Set("Origin", "https://panel.example.com")

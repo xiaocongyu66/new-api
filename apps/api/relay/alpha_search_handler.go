@@ -3,6 +3,7 @@ package relay
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 
@@ -61,7 +62,7 @@ func AlphaSearchHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError
 		}
 	}
 
-	logger.LogDebug(c, "requestBody: %s", jsonData)
+	logger.LogDebug(c.Request.Context(), "requestBody: %s", jsonData)
 	body, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
@@ -115,7 +116,7 @@ func AlphaSearchHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError
 	}
 
 	usage := &dto.Usage{}
-	service.PostTextConsumeQuota(c, info, usage, nil)
+	service.PostTextConsumeQuota(ginadapter.Wrap(c), info, usage, nil)
 	return nil
 }
 

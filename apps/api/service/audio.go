@@ -29,5 +29,3 @@ func parseAudio(audioBase64 string, format string) (duration float64, err error)
 	duration = float64(samplesCount) / float64(sampleRate)
 	return duration, nil
 }
-
-

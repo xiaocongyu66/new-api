@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"io"
 	"math"
 	"net"
@@ -24,8 +25,6 @@ import (
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/samber/lo"
-
-	"github.com/gin-gonic/gin"
 )
 
 const (
@@ -139,11 +138,11 @@ func getLocalPricingSyncData() map[string]any {
 	return data
 }
 
-func FetchUpstreamRatios(c *gin.Context) {
+func FetchUpstreamRatios(c contract.Context) {
 	var req dto.UpstreamRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.BindJSON(&req); err != nil {
 		common.SysError("failed to bind upstream request: " + err.Error())
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "请求参数格式错误"})
+		_ = c.JSON(http.StatusBadRequest, common.H{"success": false, "message": "请求参数格式错误"})
 		return
 	}
 
@@ -170,8 +169,8 @@ func FetchUpstreamRatios(c *gin.Context) {
 		}
 		dbChannels, err := model.GetChannelsByIds(intIds)
 		if err != nil {
-			logger.LogError(c.Request.Context(), "failed to query channels: "+err.Error())
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "查询渠道失败"})
+			logger.LogError(c.Context(), "failed to query channels: "+err.Error())
+			_ = c.JSON(http.StatusInternalServerError, common.H{"success": false, "message": "查询渠道失败"})
 			return
 		}
 		for _, ch := range dbChannels {
@@ -187,7 +186,7 @@ func FetchUpstreamRatios(c *gin.Context) {
 	}
 
 	if len(upstreams) == 0 {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "无有效上游渠道"})
+		_ = c.JSON(http.StatusOK, common.H{"success": false, "message": "无有效上游渠道"})
 		return
 	}
 
@@ -248,12 +247,12 @@ func FetchUpstreamRatios(c *gin.Context) {
 				uniqueName = fmt.Sprintf("%s(%d)", chItem.Name, chItem.ID)
 			}
 
-			ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(req.Timeout)*time.Second)
+			ctx, cancel := context.WithTimeout(c.Context(), time.Duration(req.Timeout)*time.Second)
 			defer cancel()
 
 			httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
 			if err != nil {
-				logger.LogWarn(c.Request.Context(), "build request failed: "+err.Error())
+				logger.LogWarn(c.Context(), "build request failed: "+err.Error())
 				ch <- upstreamResult{Name: uniqueName, Err: err.Error()}
 				return
 			}
@@ -291,25 +290,25 @@ func FetchUpstreamRatios(c *gin.Context) {
 				time.Sleep(time.Duration(200*(1<<attempt)) * time.Millisecond)
 			}
 			if lastErr != nil {
-				logger.LogWarn(c.Request.Context(), "http error on "+chItem.Name+": "+lastErr.Error())
+				logger.LogWarn(c.Context(), "http error on "+chItem.Name+": "+lastErr.Error())
 				ch <- upstreamResult{Name: uniqueName, Err: lastErr.Error()}
 				return
 			}
 			defer resp.Body.Close()
 			if resp.StatusCode != http.StatusOK {
-				logger.LogWarn(c.Request.Context(), "non-200 from "+chItem.Name+": "+resp.Status)
+				logger.LogWarn(c.Context(), "non-200 from "+chItem.Name+": "+resp.Status)
 				ch <- upstreamResult{Name: uniqueName, Err: resp.Status}
 				return
 			}
 
 			// Content-Type 和响应体大小校验
 			if ct := resp.Header.Get("Content-Type"); ct != "" && !strings.Contains(strings.ToLower(ct), "application/json") {
-				logger.LogWarn(c.Request.Context(), "unexpected content-type from "+chItem.Name+": "+ct)
+				logger.LogWarn(c.Context(), "unexpected content-type from "+chItem.Name+": "+ct)
 			}
 			limited := io.LimitReader(resp.Body, maxRatioConfigBytes)
 			bodyBytes, err := io.ReadAll(limited)
 			if err != nil {
-				logger.LogWarn(c.Request.Context(), "read response failed from "+chItem.Name+": "+err.Error())
+				logger.LogWarn(c.Context(), "read response failed from "+chItem.Name+": "+err.Error())
 				ch <- upstreamResult{Name: uniqueName, Err: err.Error()}
 				return
 			}
@@ -318,7 +317,7 @@ func FetchUpstreamRatios(c *gin.Context) {
 			if isOpenRouter {
 				converted, err := convertOpenRouterToRatioData(bytes.NewReader(bodyBytes))
 				if err != nil {
-					logger.LogWarn(c.Request.Context(), "OpenRouter parse failed from "+chItem.Name+": "+err.Error())
+					logger.LogWarn(c.Context(), "OpenRouter parse failed from "+chItem.Name+": "+err.Error())
 					ch <- upstreamResult{Name: uniqueName, Err: err.Error()}
 					return
 				}
@@ -330,7 +329,7 @@ func FetchUpstreamRatios(c *gin.Context) {
 			if isModelsDev {
 				converted, err := convertModelsDevToRatioData(bytes.NewReader(bodyBytes))
 				if err != nil {
-					logger.LogWarn(c.Request.Context(), "models.dev parse failed from "+chItem.Name+": "+err.Error())
+					logger.LogWarn(c.Context(), "models.dev parse failed from "+chItem.Name+": "+err.Error())
 					ch <- upstreamResult{Name: uniqueName, Err: err.Error()}
 					return
 				}
@@ -348,7 +347,7 @@ func FetchUpstreamRatios(c *gin.Context) {
 			}
 
 			if err := common.DecodeJson(bytes.NewReader(bodyBytes), &body); err != nil {
-				logger.LogWarn(c.Request.Context(), "json decode failed from "+chItem.Name+": "+err.Error())
+				logger.LogWarn(c.Context(), "json decode failed from "+chItem.Name+": "+err.Error())
 				ch <- upstreamResult{Name: uniqueName, Err: err.Error()}
 				return
 			}
@@ -393,7 +392,7 @@ func FetchUpstreamRatios(c *gin.Context) {
 				BillingExpr          string   `json:"billing_expr"`
 			}
 			if err := common.Unmarshal(body.Data, &pricingItems); err != nil {
-				logger.LogWarn(c.Request.Context(), "unrecognized data format from "+chItem.Name+": "+err.Error())
+				logger.LogWarn(c.Context(), "unrecognized data format from "+chItem.Name+": "+err.Error())
 				ch <- upstreamResult{Name: uniqueName, Err: "无法解析上游返回数据"}
 				return
 			}
@@ -524,9 +523,9 @@ func FetchUpstreamRatios(c *gin.Context) {
 
 	differences := buildDifferences(localData, successfulChannels)
 
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
-		"data": gin.H{
+		"data": common.H{
 			"differences":  differences,
 			"test_results": testResults,
 		},
@@ -984,10 +983,10 @@ func convertModelsDevToRatioData(reader io.Reader) (map[string]any, error) {
 	return converted, nil
 }
 
-func GetSyncableChannels(c *gin.Context) {
+func GetSyncableChannels(c contract.Context) {
 	channels, err := model.GetAllChannels(0, 0, true, false)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
+		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": err.Error(),
 		})
@@ -1021,7 +1020,7 @@ func GetSyncableChannels(c *gin.Context) {
 		Status:  1,
 	})
 
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 		"data":    syncableChannels,

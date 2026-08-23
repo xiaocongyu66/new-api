@@ -1,32 +1,33 @@
 package controller
 
 import (
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strings"
 
 	"github.com/QuantumNous/new-api/service"
-	"github.com/gin-gonic/gin"
 )
 
-func GetChannelAffinityCacheStats(c *gin.Context) {
+func GetChannelAffinityCacheStats(c contract.Context) {
 	stats := service.GetChannelAffinityCacheStats()
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 		"data":    stats,
 	})
 }
 
-func ClearChannelAffinityCache(c *gin.Context) {
+func ClearChannelAffinityCache(c contract.Context) {
 	all := strings.TrimSpace(c.Query("all"))
 	ruleName := strings.TrimSpace(c.Query("rule_name"))
 
 	if all == "true" {
 		deleted := service.ClearChannelAffinityCacheAll()
-		c.JSON(http.StatusOK, gin.H{
+		_ = c.JSON(http.StatusOK, common.H{
 			"success": true,
 			"message": "",
-			"data": gin.H{
+			"data": common.H{
 				"deleted": deleted,
 			},
 		})
@@ -34,7 +35,7 @@ func ClearChannelAffinityCache(c *gin.Context) {
 	}
 
 	if ruleName == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
+		_ = c.JSON(http.StatusBadRequest, common.H{
 			"success": false,
 			"message": "缺少参数：rule_name，或使用 all=true 清空全部",
 		})
@@ -43,36 +44,36 @@ func ClearChannelAffinityCache(c *gin.Context) {
 
 	deleted, err := service.ClearChannelAffinityCacheByRuleName(ruleName)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
+		_ = c.JSON(http.StatusBadRequest, common.H{
 			"success": false,
 			"message": err.Error(),
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
-		"data": gin.H{
+		"data": common.H{
 			"deleted": deleted,
 		},
 	})
 }
 
-func GetChannelAffinityUsageCacheStats(c *gin.Context) {
+func GetChannelAffinityUsageCacheStats(c contract.Context) {
 	ruleName := strings.TrimSpace(c.Query("rule_name"))
 	usingGroup := strings.TrimSpace(c.Query("using_group"))
 	keyFp := strings.TrimSpace(c.Query("key_fp"))
 
 	if ruleName == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
+		_ = c.JSON(http.StatusBadRequest, common.H{
 			"success": false,
 			"message": "missing param: rule_name",
 		})
 		return
 	}
 	if keyFp == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
+		_ = c.JSON(http.StatusBadRequest, common.H{
 			"success": false,
 			"message": "missing param: key_fp",
 		})
@@ -80,7 +81,7 @@ func GetChannelAffinityUsageCacheStats(c *gin.Context) {
 	}
 
 	stats := service.GetChannelAffinityUsageCacheStats(ruleName, usingGroup, keyFp)
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 		"data":    stats,

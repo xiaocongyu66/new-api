@@ -1,19 +1,18 @@
 package controller
 
 import (
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-
-	"github.com/gin-gonic/gin"
 )
 
-func ListSystemInstances(c *gin.Context) {
+func ListSystemInstances(c contract.Context) {
 	instances, err := model.ListSystemInstances()
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 
@@ -23,43 +22,43 @@ func ListSystemInstances(c *gin.Context) {
 		responses = append(responses, instance.ToResponse(now))
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 		"data":    responses,
 	})
 }
 
-func DeleteStaleSystemInstances(c *gin.Context) {
+func DeleteStaleSystemInstances(c contract.Context) {
 	deletedCount, err := model.DeleteStaleSystemInstances(common.GetTimestamp())
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 
-	common.ApiSuccess(c, gin.H{
+	common.CtxApiSuccess(c, common.H{
 		"deleted_count": deletedCount,
 	})
 }
 
-func DeleteStaleSystemInstance(c *gin.Context) {
+func DeleteStaleSystemInstance(c contract.Context) {
 	nodeName := c.Param("node_name")
 	if strings.TrimSpace(nodeName) == "" {
-		common.ApiErrorMsg(c, "node name is required")
+		common.CtxApiErrorMsg(c, "node name is required")
 		return
 	}
 
 	deleted, err := model.DeleteStaleSystemInstance(nodeName, common.GetTimestamp())
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	if !deleted {
-		common.ApiErrorMsg(c, "instance is not stale or no longer exists")
+		common.CtxApiErrorMsg(c, "instance is not stale or no longer exists")
 		return
 	}
 
-	common.ApiSuccess(c, gin.H{
+	common.CtxApiSuccess(c, common.H{
 		"deleted_count": 1,
 	})
 }

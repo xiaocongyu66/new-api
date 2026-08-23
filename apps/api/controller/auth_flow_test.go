@@ -3,6 +3,9 @@ package controller
 import (
 	"context"
 	"errors"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,7 +15,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
-	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,7 +30,7 @@ type authFlowTestOAuthProvider struct {
 
 func (*authFlowTestOAuthProvider) GetName() string { return "Auth Flow Test" }
 func (*authFlowTestOAuthProvider) IsEnabled() bool { return true }
-func (provider *authFlowTestOAuthProvider) ExchangeToken(context.Context, string, *gin.Context) (*oauth.OAuthToken, error) {
+func (provider *authFlowTestOAuthProvider) ExchangeToken(context.Context, string, contract.Context) (*oauth.OAuthToken, error) {
 	provider.exchangeCalls++
 	if provider.exchangeErr != nil {
 		return nil, provider.exchangeErr
@@ -69,10 +71,9 @@ func setupAuthFlowControllerTest(t *testing.T) *authFlowTestOAuthProvider {
 
 func TestGenerateOAuthCodeCarriesAffiliateInLoginFlow(t *testing.T) {
 	setupAuthFlowControllerTest(t)
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/api/oauth/state", strings.NewReader(`{"provider":"auth-flow-test","intent":"login","aff":"invite-code"}`))
-	c.Request.Header.Set("Content-Type", "application/json")
+	c, recorder := ginadapter.NewSyntheticContext(nil)
+	ginadapter.ReplaceRequest(c, httptest.NewRequest(http.MethodPost, "/api/oauth/state", strings.NewReader(`{"provider":"auth-flow-test","intent":"login","aff":"invite-code"}`)))
+	c.Headers().Set("Content-Type", "application/json")
 
 	GenerateOAuthCode(c)
 
@@ -98,10 +99,9 @@ func TestGenerateOAuthCodeCarriesAffiliateInLoginFlow(t *testing.T) {
 
 func TestGenerateOAuthCodeBindsFlowToAuthenticatedSession(t *testing.T) {
 	setupAuthFlowControllerTest(t)
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/api/oauth/state", strings.NewReader(`{"provider":"auth-flow-test","intent":"bind"}`))
-	c.Request.Header.Set("Content-Type", "application/json")
+	c, recorder := ginadapter.NewSyntheticContext(nil)
+	ginadapter.ReplaceRequest(c, httptest.NewRequest(http.MethodPost, "/api/oauth/state", strings.NewReader(`{"provider":"auth-flow-test","intent":"bind"}`)))
+	c.Headers().Set("Content-Type", "application/json")
 	c.Set("id", 42)
 	c.Set("session_id", "session-42")
 	c.Set("auth_version", int64(3))
@@ -149,7 +149,7 @@ func TestOAuthLoginConsumesFlowOnlyAfterProviderIdentity(t *testing.T) {
 			require.NoError(t, err)
 
 			router := gin.New()
-			router.GET("/api/oauth/:provider", HandleOAuth)
+			router.GET("/api/oauth/:provider", ginadapter.Handler(HandleOAuth))
 			request := httptest.NewRequest(http.MethodGet, "/api/oauth/auth-flow-test?state="+token+"&code=test", nil)
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)
@@ -174,7 +174,7 @@ func TestOAuthLoginConsumesFlowAfterProviderIdentityAndOnProviderError(t *testin
 	})
 	require.NoError(t, err)
 	router := gin.New()
-	router.GET("/api/oauth/:provider", HandleOAuth)
+	router.GET("/api/oauth/:provider", ginadapter.Handler(HandleOAuth))
 	request := httptest.NewRequest(http.MethodGet, "/api/oauth/auth-flow-test?state="+successToken+"&code=test", nil)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
@@ -205,14 +205,14 @@ func TestOAuthBindProviderErrorConsumesSessionBoundFlow(t *testing.T) {
 	})
 	require.NoError(t, err)
 	router := gin.New()
-	router.Use(func(c *gin.Context) {
+	router.Use(ginadapter.Handler(func(c contract.Context) {
 		c.Set("id", 42)
 		c.Set("session_id", "session-42")
 		c.Set("auth_version", int64(1))
 		c.Set("session_version", int64(1))
 		c.Next()
-	})
-	router.GET("/api/oauth/:provider", HandleOAuth)
+	}))
+	router.GET("/api/oauth/:provider", ginadapter.Handler(HandleOAuth))
 	request := httptest.NewRequest(http.MethodGet, "/api/oauth/auth-flow-test?state="+flowToken+"&error=access_denied&error_description=cancelled", nil)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)

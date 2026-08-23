@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/pkg/errors"
 
 	"github.com/gin-gonic/gin"
@@ -96,7 +97,7 @@ func GetBodyStorage(c *gin.Context) (BodyStorage, error) {
 }
 
 // CleanupBodyStorage 清理请求体存储（应在请求结束时调用）
-func CleanupBodyStorage(c *gin.Context) {
+func CleanupBodyStorage(c contract.Context) {
 	if storage, exists := c.Get(KeyBodyStorage); exists && storage != nil {
 		if bs, ok := storage.(BodyStorage); ok {
 			bs.Close()

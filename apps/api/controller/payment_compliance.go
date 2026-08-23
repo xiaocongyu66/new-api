@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strconv"
 	"time"
@@ -11,25 +12,23 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
-
-	"github.com/gin-gonic/gin"
 )
 
 type PaymentComplianceRequest struct {
 	Confirmed bool `json:"confirmed"`
 }
 
-func requirePaymentCompliance(c *gin.Context) bool {
+func requirePaymentCompliance(c contract.Context) bool {
 	if !operation_setting.IsPaymentComplianceConfirmed() {
-		common.ApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
+		common.CtxApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
 		return false
 	}
 	return true
 }
 
-func ConfirmPaymentCompliance(c *gin.Context) {
+func ConfirmPaymentCompliance(c contract.Context) {
 	if c.GetBool("use_access_token") {
-		c.JSON(http.StatusForbidden, gin.H{
+		_ = c.JSON(http.StatusForbidden, common.H{
 			"success": false,
 			"message": "This operation requires dashboard session authentication. API access token is not allowed.",
 		})
@@ -37,12 +36,12 @@ func ConfirmPaymentCompliance(c *gin.Context) {
 	}
 
 	var req PaymentComplianceRequest
-	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
-		common.ApiErrorMsg(c, "参数错误")
+	if err := c.BindJSON(&req); err != nil {
+		common.CtxApiErrorMsg(c, "参数错误")
 		return
 	}
 	if !req.Confirmed {
-		common.ApiErrorMsg(c, "请确认合规声明")
+		common.CtxApiErrorMsg(c, "请确认合规声明")
 		return
 	}
 
@@ -60,12 +59,12 @@ func ConfirmPaymentCompliance(c *gin.Context) {
 
 	for key, value := range updates {
 		if err := model.UpdateOption(key, value); err != nil {
-			common.ApiError(c, err)
+			common.CtxApiError(c, err)
 			return
 		}
 	}
 
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf(
+	logger.LogInfo(c.Context(), fmt.Sprintf(
 		"payment compliance confirmed user_id=%d ip=%s terms_version=%s confirmed_at=%d",
 		userId,
 		clientIP,
@@ -73,7 +72,7 @@ func ConfirmPaymentCompliance(c *gin.Context) {
 		now,
 	))
 
-	common.ApiSuccess(c, gin.H{
+	common.CtxApiSuccess(c, common.H{
 		"confirmed":     true,
 		"terms_version": operation_setting.CurrentComplianceTermsVersion,
 		"confirmed_at":  now,

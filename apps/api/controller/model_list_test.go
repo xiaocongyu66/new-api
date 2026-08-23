@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -201,7 +202,7 @@ func TestGetUserModelsFiltersByRequestedGroup(t *testing.T) {
 	defaultContext.Request = httptest.NewRequest(http.MethodGet, "/api/user/models?group=default", nil)
 	defaultContext.Set("id", 1002)
 
-	GetUserModels(defaultContext)
+	GetUserModels(ginadapter.Wrap(defaultContext))
 
 	defaultModels := decodeUserModelsResponse(t, defaultRecorder)
 	require.ElementsMatch(t, []string{"zz-default-only-model"}, defaultModels)
@@ -211,7 +212,7 @@ func TestGetUserModelsFiltersByRequestedGroup(t *testing.T) {
 	vipContext.Request = httptest.NewRequest(http.MethodGet, "/api/user/models?group=vip", nil)
 	vipContext.Set("id", 1002)
 
-	GetUserModels(vipContext)
+	GetUserModels(ginadapter.Wrap(vipContext))
 
 	require.Empty(t, decodeUserModelsResponse(t, vipRecorder))
 }
@@ -258,7 +259,7 @@ func TestGetUserModelsExpandsAutoGroupsInConfiguredOrder(t *testing.T) {
 	context.Request = httptest.NewRequest(http.MethodGet, "/api/user/models?group=auto", nil)
 	context.Set("id", 1003)
 
-	GetUserModels(context)
+	GetUserModels(ginadapter.Wrap(context))
 
 	models := decodeUserModelsResponse(t, recorder)
 	require.Len(t, models, 3)
@@ -297,7 +298,7 @@ func TestListModelsIncludesTieredBillingModel(t *testing.T) {
 	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	ctx.Set("id", 1001)
 
-	ListModels(ctx, constant.ChannelTypeOpenAI)
+	ListModels(ginadapter.Wrap(ctx), constant.ChannelTypeOpenAI)
 
 	ids := decodeListModelsResponse(t, recorder)
 	require.Contains(t, ids, "zz-tiered-visible-model")
@@ -382,7 +383,7 @@ func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T)
 	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	ctx.Set("id", 1003)
 
-	ListModels(ctx, constant.ChannelTypeOpenAI)
+	ListModels(ginadapter.Wrap(ctx), constant.ChannelTypeOpenAI)
 
 	payload := decodeListModelsPayload(t, recorder)
 	require.Len(t, payload.Data, 1)
@@ -423,7 +424,7 @@ func TestListModelsTokenLimitIncludesTieredBillingModel(t *testing.T) {
 		"zz-token-unpriced-model":            true,
 	})
 
-	ListModels(ctx, constant.ChannelTypeOpenAI)
+	ListModels(ginadapter.Wrap(ctx), constant.ChannelTypeOpenAI)
 
 	ids := decodeListModelsResponse(t, recorder)
 	require.Contains(t, ids, "zz-token-tiered-visible-model")
@@ -466,7 +467,7 @@ func TestListModelsTokenLimitUsesResolvedCustomAutoGroups(t *testing.T) {
 		"zz-not-enabled":              true,
 	})
 
-	ListModels(ctx, constant.ChannelTypeOpenAI)
+	ListModels(ginadapter.Wrap(ctx), constant.ChannelTypeOpenAI)
 	ids := decodeListModelsResponse(t, recorder)
 	require.Equal(t, map[string]struct{}{"zz-vip-allowed": {}}, ids)
 
@@ -481,7 +482,7 @@ func TestListModelsTokenLimitUsesResolvedCustomAutoGroups(t *testing.T) {
 	common.SetContextKey(emptyCtx, constant.ContextKeyTokenModelLimit, map[string]bool{"zz-vip-allowed": true})
 
 	require.NotPanics(t, func() {
-		ListModels(emptyCtx, constant.ChannelTypeAnthropic)
+		ListModels(ginadapter.Wrap(emptyCtx), constant.ChannelTypeAnthropic)
 	})
 	var anthropicResponse struct {
 		Data    []dto.AnthropicModel `json:"data"`
@@ -557,7 +558,7 @@ func TestSetupLoginDoesNotTouchPasswordWhenPasswordFieldOmitted(t *testing.T) {
 			Role:     user.Role,
 			Status:   user.Status,
 			Group:    user.Group,
-		}, c)
+		}, ginadapter.Wrap(c))
 	})
 
 	recorder := httptest.NewRecorder()

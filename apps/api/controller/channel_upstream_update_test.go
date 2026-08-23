@@ -3,6 +3,8 @@ package controller
 import (
 	"bytes"
 	"errors"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,7 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -219,7 +220,7 @@ func TestFetchModelsAdvancedCustomCreatePreview(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/channel/fetch_models", bytes.NewReader(body))
 	ctx.Request.Header.Set("Content-Type", "application/json")
-	FetchModels(ctx)
+	FetchModels(ginadapter.Wrap(ctx))
 
 	var response struct {
 		Success bool     `json:"success"`
@@ -302,7 +303,7 @@ func TestFetchModelsAdvancedCustomEditPreviewUsesSavedKeyAndExplicitClears(t *te
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/channel/fetch_models", bytes.NewReader(body))
 	ctx.Request.Header.Set("Content-Type", "application/json")
-	FetchModels(ctx)
+	FetchModels(ginadapter.Wrap(ctx))
 
 	var response struct {
 		Success bool     `json:"success"`
@@ -379,7 +380,7 @@ func TestFetchModelsUsesSharedChannelFetchBehavior(t *testing.T) {
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/channel/fetch_models", bytes.NewReader(body))
 	ctx.Request.Header.Set("Content-Type", "application/json")
 
-	FetchModels(ctx)
+	FetchModels(ginadapter.Wrap(ctx))
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.JSONEq(t, `{"success":true,"message":"","data":["claude-sonnet"]}`, recorder.Body.String())
@@ -589,7 +590,7 @@ func TestDetectAllChannelUpstreamModelUpdatesRejectsExistingActiveTask(t *testin
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/channel/upstream-models/detect-all", nil)
 
-	DetectAllChannelUpstreamModelUpdates(ctx)
+	DetectAllChannelUpstreamModelUpdates(ginadapter.Wrap(ctx))
 
 	require.Equal(t, http.StatusConflict, recorder.Code)
 	require.Contains(t, recorder.Body.String(), existing.TaskID)

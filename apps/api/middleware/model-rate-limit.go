@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strconv"
 	"time"
@@ -12,7 +13,6 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/setting"
 
-	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 )
 
@@ -76,8 +76,8 @@ func recordRedisRequest(ctx context.Context, rdb *redis.Client, key string, maxC
 }
 
 // Redis限流处理器
-func redisRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) gin.HandlerFunc {
-	return func(c *gin.Context) {
+func redisRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) contract.Middleware {
+	return func(c contract.Context) {
 		userId := strconv.Itoa(c.GetInt("id"))
 		ctx := context.Background()
 		rdb := common.RDB
@@ -123,17 +123,17 @@ func redisRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) g
 		c.Next()
 
 		// 5. 如果请求成功，记录成功请求
-		if c.Writer.Status() < 400 {
+		if c.ResponseStatus() < 400 {
 			recordRedisRequest(ctx, rdb, successKey, successMaxCount)
 		}
 	}
 }
 
 // 内存限流处理器
-func memoryRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) gin.HandlerFunc {
+func memoryRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) contract.Middleware {
 	inMemoryRateLimiter.Init(time.Duration(setting.ModelRequestRateLimitDurationMinutes) * time.Minute)
 
-	return func(c *gin.Context) {
+	return func(c contract.Context) {
 		userId := strconv.Itoa(c.GetInt("id"))
 		totalKey := ModelRequestRateLimitCountMark + userId
 		successKey := ModelRequestRateLimitSuccessCountMark + userId
@@ -158,15 +158,15 @@ func memoryRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) 
 		c.Next()
 
 		// 4. 如果请求成功，记录到实际的成功请求计数中
-		if c.Writer.Status() < 400 {
+		if c.ResponseStatus() < 400 {
 			inMemoryRateLimiter.Request(successKey, successMaxCount, duration)
 		}
 	}
 }
 
 // ModelRequestRateLimit 模型请求限流中间件
-func ModelRequestRateLimit() func(c *gin.Context) {
-	return func(c *gin.Context) {
+func ModelRequestRateLimit() func(c contract.Context) {
+	return func(c contract.Context) {
 		// 在每个请求时检查是否启用限流
 		if !setting.ModelRequestRateLimitEnabled {
 			c.Next()
@@ -179,9 +179,9 @@ func ModelRequestRateLimit() func(c *gin.Context) {
 		successMaxCount := setting.ModelRequestRateLimitSuccessCount
 
 		// 获取分组
-		group := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
+		group := common.GetCtxKeyString(c, constant.ContextKeyTokenGroup)
 		if group == "" {
-			group = common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+			group = common.GetCtxKeyString(c, constant.ContextKeyUserGroup)
 		}
 
 		//获取分组的限流配置

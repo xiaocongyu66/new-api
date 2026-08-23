@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"io"
 	"net/http"
 	"time"
@@ -15,8 +16,6 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
-
-	"github.com/gin-gonic/gin"
 )
 
 // midjourneyPollSummary is the result recorded on a midjourney_poll system task
@@ -278,7 +277,7 @@ func checkMjTaskNeedUpdate(oldTask *model.Midjourney, newTask dto.MidjourneyDto)
 	return false
 }
 
-func GetAllMidjourney(c *gin.Context) {
+func GetAllMidjourney(c contract.Context) {
 	pageInfo := common.GetPageQuery(c)
 
 	// 解析其他查询参数
@@ -300,10 +299,10 @@ func GetAllMidjourney(c *gin.Context) {
 	}
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(items)
-	common.ApiSuccess(c, pageInfo)
+	common.CtxApiSuccess(c, pageInfo)
 }
 
-func GetUserMidjourney(c *gin.Context) {
+func GetUserMidjourney(c contract.Context) {
 	pageInfo := common.GetPageQuery(c)
 
 	userId := c.GetInt("id")
@@ -325,5 +324,5 @@ func GetUserMidjourney(c *gin.Context) {
 	}
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(items)
-	common.ApiSuccess(c, pageInfo)
+	common.CtxApiSuccess(c, pageInfo)
 }

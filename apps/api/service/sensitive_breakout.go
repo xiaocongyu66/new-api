@@ -40,7 +40,6 @@ func loadBreakoutTerms() []string {
 	return breakoutTerms
 }
 
-
 //go:embed testdata/sensitive_target_action_terms.json
 var targetActionTermsFS embed.FS
 
@@ -67,7 +66,6 @@ func loadTargetActionTerms() []string {
 	})
 	return targetActionTerms
 }
-
 
 var (
 	breakoutTermsLower []string

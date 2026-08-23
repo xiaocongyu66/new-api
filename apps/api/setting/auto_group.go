@@ -22,8 +22,6 @@ func init() {
 	maxTokenAutoGroups.Store(DefaultMaxTokenAutoGroups)
 }
 
-
-
 func UpdateAutoGroupsByJsonString(jsonString string) error {
 	autoGroups = make([]string, 0)
 	return common.Unmarshal([]byte(jsonString), &autoGroups)

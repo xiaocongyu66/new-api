@@ -3,6 +3,7 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net"
 	"os"
 	"os/exec"
@@ -15,7 +16,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/gin-gonic/gin"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -126,10 +126,10 @@ type routeConfig struct {
 
 // GetProxyConfig returns the current proxy configuration and global proxy URL.
 // Sensitive fields (Password, UUID, ObfsPassword) are masked in the response.
-func GetProxyConfig(c *gin.Context) {
+func GetProxyConfig(c contract.Context) {
 	jsonStr, err := service.LoadProxyConfigJSON()
 	if err != nil {
-		common.ApiSuccess(c, gin.H{
+		common.CtxApiSuccess(c, common.H{
 			"enabled":          false,
 			"outbound":         nil,
 			"global_proxy_url": "",
@@ -138,14 +138,14 @@ func GetProxyConfig(c *gin.Context) {
 	}
 	var cfg ProxyConfigRequest
 	if err := common.Unmarshal([]byte(jsonStr), &cfg); err != nil {
-		common.ApiErrorMsg(c, "invalid proxy config in database")
+		common.CtxApiErrorMsg(c, "invalid proxy config in database")
 		return
 	}
 	// Mask sensitive fields before returning to the API caller.
 	cfg.Outbound.Password = maskSecret(cfg.Outbound.Password)
 	cfg.Outbound.UUID = maskSecret(cfg.Outbound.UUID)
 	cfg.Outbound.ObfsPassword = maskSecret(cfg.Outbound.ObfsPassword)
-	common.ApiSuccess(c, cfg)
+	common.CtxApiSuccess(c, cfg)
 }
 
 // maskSecret replaces a secret with a fixed-length mask, or returns empty
@@ -158,10 +158,10 @@ func maskSecret(s string) string {
 }
 
 // UpdateProxyConfig saves the proxy configuration to the Option table.
-func UpdateProxyConfig(c *gin.Context) {
+func UpdateProxyConfig(c contract.Context) {
 	var req ProxyConfigRequest
-	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
-		common.ApiErrorMsg(c, "invalid request body")
+	if err := c.BindJSON(&req); err != nil {
+		common.CtxApiErrorMsg(c, "invalid request body")
 		return
 	}
 	// Map flat transport fields to the nested Transport struct.
@@ -203,12 +203,12 @@ func UpdateProxyConfig(c *gin.Context) {
 	if req.Enabled {
 		outboundJSON, err := common.Marshal(req.Outbound)
 		if err != nil {
-			common.ApiErrorMsg(c, "failed to marshal outbound config")
+			common.CtxApiErrorMsg(c, "failed to marshal outbound config")
 			return
 		}
 		validationDialer, err := service.BuildSingBoxDialer(outboundJSON)
 		if err != nil {
-			common.ApiErrorMsg(c, "invalid sing-box outbound configuration: "+err.Error())
+			common.CtxApiErrorMsg(c, "invalid sing-box outbound configuration: "+err.Error())
 			return
 		}
 		_ = validationDialer.Close()
@@ -216,31 +216,31 @@ func UpdateProxyConfig(c *gin.Context) {
 
 	jsonBytes, err := common.Marshal(req)
 	if err != nil {
-		common.ApiErrorMsg(c, "failed to marshal config")
+		common.CtxApiErrorMsg(c, "failed to marshal config")
 		return
 	}
 	if err := service.SaveProxyConfigJSON(string(jsonBytes)); err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, nil)
+	common.CtxApiSuccess(c, nil)
 }
 
 // GenerateProxyConfig returns a complete sing-box config.json for the current
 // proxy configuration. It uses encoding/json directly (no sing-box dependency).
-func GenerateProxyConfig(c *gin.Context) {
+func GenerateProxyConfig(c contract.Context) {
 	jsonStr, err := service.LoadProxyConfigJSON()
 	if err != nil {
-		common.ApiErrorMsg(c, "proxy not configured")
+		common.CtxApiErrorMsg(c, "proxy not configured")
 		return
 	}
 	var cfg ProxyConfigRequest
 	if err := common.Unmarshal([]byte(jsonStr), &cfg); err != nil {
-		common.ApiErrorMsg(c, "invalid proxy config")
+		common.CtxApiErrorMsg(c, "invalid proxy config")
 		return
 	}
 	if !cfg.Enabled {
-		common.ApiErrorMsg(c, "proxy is disabled")
+		common.CtxApiErrorMsg(c, "proxy is disabled")
 		return
 	}
 
@@ -368,32 +368,32 @@ func GenerateProxyConfig(c *gin.Context) {
 
 	jsonBytes, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
-		common.ApiErrorMsg(c, "failed to generate config")
+		common.CtxApiErrorMsg(c, "failed to generate config")
 		return
 	}
-	common.ApiSuccess(c, gin.H{
+	common.CtxApiSuccess(c, common.H{
 		"config_json": string(jsonBytes),
 	})
 }
 
 // GetProxyStatus checks whether the local proxy port (127.0.0.1:1080) is reachable.
-func GetProxyStatus(c *gin.Context) {
+func GetProxyStatus(c contract.Context) {
 	conn, err := net.DialTimeout("tcp", "127.0.0.1:1080", 3*time.Second)
 	if err != nil {
-		common.ApiSuccess(c, gin.H{
+		common.CtxApiSuccess(c, common.H{
 			"running": false,
 			"error":   err.Error(),
 		})
 		return
 	}
 	conn.Close()
-	common.ApiSuccess(c, gin.H{
+	common.CtxApiSuccess(c, common.H{
 		"running": true,
 	})
 }
 
 // ReloadProxy sends SIGHUP to the sing-box container for hot reload.
-func ReloadProxy(c *gin.Context) {
+func ReloadProxy(c contract.Context) {
 	containerName := os.Getenv("SINGBOX_CONTAINER_NAME")
 	if containerName == "" {
 		containerName = "sing-box-new-api"
@@ -401,14 +401,14 @@ func ReloadProxy(c *gin.Context) {
 	cmd := exec.Command("docker", "kill", "-s", "HUP", containerName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		common.ApiSuccess(c, gin.H{
+		common.CtxApiSuccess(c, common.H{
 			"success": false,
 			"message": fmt.Sprintf("热加载失败（%v），请手动执行：docker kill -s HUP %s", err, containerName),
 			"output":  string(output),
 		})
 		return
 	}
-	common.ApiSuccess(c, gin.H{
+	common.CtxApiSuccess(c, common.H{
 		"success": true,
 		"message": "热加载成功",
 	})
@@ -448,7 +448,7 @@ type proxyNodeBatchClearErrorsRequest struct {
 	IDs []uint `json:"ids"`
 }
 
-func ListProxyNodes(c *gin.Context) {
+func ListProxyNodes(c contract.Context) {
 	var nodes []model.ProxyNode
 	query := model.DB
 	if scopeType := c.Query("scope_type"); scopeType != "" {
@@ -462,7 +462,7 @@ func ListProxyNodes(c *gin.Context) {
 	}
 	order := proxyNodeOrder(c.Query("sort_by"), c.Query("sort_order"))
 	if err := query.Order(order).Find(&nodes).Error; err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	items := make([]model.ProxyNodePublic, 0, len(nodes))
@@ -499,74 +499,74 @@ func ListProxyNodes(c *gin.Context) {
 			return leftValue < rightValue
 		})
 	}
-	common.ApiSuccess(c, items)
+	common.CtxApiSuccess(c, items)
 }
 
-func BatchCreateProxyNodes(c *gin.Context) {
+func BatchCreateProxyNodes(c contract.Context) {
 	var req proxyNodeBatchRequest
-	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
-		common.ApiErrorMsg(c, "invalid request body")
+	if err := c.BindJSON(&req); err != nil {
+		common.CtxApiErrorMsg(c, "invalid request body")
 		return
 	}
 	result, err := service.CreateProxyNodesBatch(service.ProxyNodeInput{
 		Enabled: req.Enabled, ScopeType: req.ScopeType, ScopeValue: req.ScopeValue,
 	}, req.NamePrefix, req.ProxyText, req.ProxyURLs)
 	if err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		common.CtxApiErrorMsg(c, err.Error())
 		return
 	}
-	common.ApiSuccess(c, result)
+	common.CtxApiSuccess(c, result)
 }
 
-func BatchSetProxyNodesEnabled(c *gin.Context) {
+func BatchSetProxyNodesEnabled(c contract.Context) {
 	var req proxyNodeBatchEnabledRequest
-	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
-		common.ApiErrorMsg(c, "invalid request body")
+	if err := c.BindJSON(&req); err != nil {
+		common.CtxApiErrorMsg(c, "invalid request body")
 		return
 	}
 	updated, err := service.SetProxyNodesEnabled(req.IDs, req.Enabled)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, gin.H{"updated": updated})
+	common.CtxApiSuccess(c, common.H{"updated": updated})
 }
 
-func BatchClearProxyNodeErrors(c *gin.Context) {
+func BatchClearProxyNodeErrors(c contract.Context) {
 	var req proxyNodeBatchClearErrorsRequest
-	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
-		common.ApiErrorMsg(c, "invalid request body")
+	if err := c.BindJSON(&req); err != nil {
+		common.CtxApiErrorMsg(c, "invalid request body")
 		return
 	}
 	cleared, err := service.ClearProxyNodeErrors(req.IDs)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, gin.H{"cleared": cleared})
+	common.CtxApiSuccess(c, common.H{"cleared": cleared})
 }
 
-func GetProxyNodeReport(c *gin.Context) {
+func GetProxyNodeReport(c contract.Context) {
 	var total, enabled, healthy int64
 	base := model.DB.Model(&model.ProxyNode{})
 	if err := base.Count(&total).Error; err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	// Each metric runs on its own fresh query. Reusing one query would
 	// accumulate predicates (enabled leaking into the healthy count), same
 	// class of bug as GetProxyNodesForChannel — see proxy_node_test.go.
 	if err := model.DB.Model(&model.ProxyNode{}).Where("enabled = ?", true).Count(&enabled).Error; err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	if err := model.DB.Model(&model.ProxyNode{}).Where("health >= ?", service.ProxyNodeHealthyThreshold).Count(&healthy).Error; err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	stats := service.GetProxyNodeProbeStats()
 	failed := stats.Total - stats.Success
-	common.ApiSuccess(c, gin.H{
+	common.CtxApiSuccess(c, common.H{
 		"total":         total,
 		"enabled":       enabled,
 		"healthy":       healthy,
@@ -579,133 +579,133 @@ func GetProxyNodeReport(c *gin.Context) {
 	})
 }
 
-func GetProxyNode(c *gin.Context) {
+func GetProxyNode(c contract.Context) {
 	id, err := parseProxyNodeID(c)
 	if err != nil {
-		common.ApiErrorMsg(c, "invalid proxy node id")
+		common.CtxApiErrorMsg(c, "invalid proxy node id")
 		return
 	}
 	var node model.ProxyNode
 	if err := model.DB.First(&node, id).Error; err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	parsed, err := service.DecryptProxyNodeConfig(&node)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, gin.H{
+	common.CtxApiSuccess(c, common.H{
 		"node":  node.Public(),
 		"proxy": parsed.CanonicalInput,
 	})
 }
-func CreateProxyNode(c *gin.Context) {
+func CreateProxyNode(c contract.Context) {
 	var req proxyNodeRequest
-	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
-		common.ApiErrorMsg(c, "invalid request body")
+	if err := c.BindJSON(&req); err != nil {
+		common.CtxApiErrorMsg(c, "invalid request body")
 		return
 	}
 	node, err := service.CreateProxyNode(service.ProxyNodeInput{
 		Name: req.Name, Enabled: req.Enabled, Proxy: req.Proxy, ScopeType: req.ScopeType, ScopeValue: req.ScopeValue,
 	})
 	if err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		common.CtxApiErrorMsg(c, err.Error())
 		return
 	}
-	common.ApiSuccess(c, node.Public())
+	common.CtxApiSuccess(c, node.Public())
 }
 
-func UpdateProxyNode(c *gin.Context) {
+func UpdateProxyNode(c contract.Context) {
 	id, err := parseProxyNodeID(c)
 	if err != nil {
-		common.ApiErrorMsg(c, "invalid proxy node id")
+		common.CtxApiErrorMsg(c, "invalid proxy node id")
 		return
 	}
 	var req proxyNodeUpdateRequest
-	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
-		common.ApiErrorMsg(c, "invalid request body")
+	if err := c.BindJSON(&req); err != nil {
+		common.CtxApiErrorMsg(c, "invalid request body")
 		return
 	}
 	var node model.ProxyNode
 	if err := model.DB.First(&node, id).Error; err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	scopeType, scopeValue, err := model.NormalizeProxyNodeScope(req.ScopeType, req.ScopeValue)
 	if err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		common.CtxApiErrorMsg(c, err.Error())
 		return
 	}
 	node.Name, node.Enabled, node.ScopeType, node.ScopeValue = strings.TrimSpace(req.Name), req.Enabled, scopeType, scopeValue
 	if req.Proxy != nil && strings.TrimSpace(*req.Proxy) != "" {
 		parsed, parseErr := service.ParseProxyNodeShareLink(*req.Proxy)
 		if parseErr != nil {
-			common.ApiErrorMsg(c, parseErr.Error())
+			common.CtxApiErrorMsg(c, parseErr.Error())
 			return
 		}
 		encrypted, encryptErr := service.EncryptProxyNodeConfigForUpdate(parsed.CanonicalInput)
 		if encryptErr != nil {
-			common.ApiErrorMsg(c, encryptErr.Error())
+			common.CtxApiErrorMsg(c, encryptErr.Error())
 			return
 		}
 		node.Protocol = parsed.Protocol
 		node.EncryptedProxyConfig = encrypted
 	}
 	if node.Name == "" {
-		common.ApiErrorMsg(c, "proxy node name must not be empty")
+		common.CtxApiErrorMsg(c, "proxy node name must not be empty")
 		return
 	}
 	if err := model.DB.Save(&node).Error; err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, node.Public())
+	common.CtxApiSuccess(c, node.Public())
 }
 
-func DeleteProxyNode(c *gin.Context) {
+func DeleteProxyNode(c contract.Context) {
 	id, err := parseProxyNodeID(c)
 	if err != nil {
-		common.ApiErrorMsg(c, "invalid proxy node id")
+		common.CtxApiErrorMsg(c, "invalid proxy node id")
 		return
 	}
 	if err := model.DB.Delete(&model.ProxyNode{}, id).Error; err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	service.ResetProxyNodeProbeStatsFor(id)
-	common.ApiSuccess(c, nil)
+	common.CtxApiSuccess(c, nil)
 }
 
-func TestProxyNode(c *gin.Context) {
+func TestProxyNode(c contract.Context) {
 	id, err := parseProxyNodeID(c)
 	if err != nil {
-		common.ApiErrorMsg(c, "invalid proxy node id")
+		common.CtxApiErrorMsg(c, "invalid proxy node id")
 		return
 	}
 	var node model.ProxyNode
 	if err := model.DB.First(&node, id).Error; err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
-	result, probeErr := service.ProbeProxyNode(c.Request.Context(), &node)
+	result, probeErr := service.ProbeProxyNode(c.Context(), &node)
 	if probeErr != nil {
-		common.ApiError(c, probeErr)
+		common.CtxApiError(c, probeErr)
 		return
 	}
-	common.ApiSuccess(c, result)
+	common.CtxApiSuccess(c, result)
 }
 
-func TestAllProxyNodes(c *gin.Context) {
+func TestAllProxyNodes(c contract.Context) {
 	var nodes []model.ProxyNode
 	if err := model.DB.Where("enabled = ?", true).Find(&nodes).Error; err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	// ponytail: bounded concurrency — 10 in flight. ProbeProxyNode has its own
 	// 15s timeout; errgroup propagates request cancellation so a disconnected
 	// client stops the remaining probes instead of draining them serially.
-	g, ctx := errgroup.WithContext(c.Request.Context())
+	g, ctx := errgroup.WithContext(c.Context())
 	g.SetLimit(10)
 	var passedAtomic atomic.Int64
 	for index := range nodes {
@@ -720,10 +720,10 @@ func TestAllProxyNodes(c *gin.Context) {
 	}
 	_ = g.Wait()
 	passed := passedAtomic.Load()
-	common.ApiSuccess(c, gin.H{"passed": passed, "failed": int64(len(nodes)) - passed, "total": len(nodes)})
+	common.CtxApiSuccess(c, common.H{"passed": passed, "failed": int64(len(nodes)) - passed, "total": len(nodes)})
 }
 
-func parseProxyNodeID(c *gin.Context) (uint, error) {
+func parseProxyNodeID(c contract.Context) (uint, error) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	return uint(id), err
 }

@@ -312,7 +312,7 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 	if err != nil {
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
-	logger.LogDebug(c, "fullRequestURL: %s", common.SanitizeURLForLog(fullRequestURL))
+	logger.LogDebug(c.Request.Context(), "fullRequestURL: %s", common.SanitizeURLForLog(fullRequestURL))
 	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
@@ -342,7 +342,7 @@ func DoFormRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBod
 	if err != nil {
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
-	logger.LogDebug(c, "fullRequestURL: %s", common.SanitizeURLForLog(fullRequestURL))
+	logger.LogDebug(c.Request.Context(), "fullRequestURL: %s", common.SanitizeURLForLog(fullRequestURL))
 	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
@@ -408,9 +408,9 @@ func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) (context.Can
 		defer func() {
 			// 增加panic恢复处理
 			if r := recover(); r != nil {
-				logger.LogDebug(c, "SSE ping goroutine panic recovered: %v", r)
+				logger.LogDebug(c.Request.Context(), "SSE ping goroutine panic recovered: %v", r)
 			}
-			logger.LogDebug(c, "SSE ping goroutine stopped")
+			logger.LogDebug(c.Request.Context(), "SSE ping goroutine stopped")
 		}()
 
 		if pingInterval <= 0 {
@@ -421,11 +421,11 @@ func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) (context.Can
 		// 确保在任何情况下都清理ticker
 		defer func() {
 			ticker.Stop()
-			logger.LogDebug(c, "SSE ping ticker stopped")
+			logger.LogDebug(c.Request.Context(), "SSE ping ticker stopped")
 		}()
 
 		var pingMutex sync.Mutex
-		logger.LogDebug(c, "SSE ping goroutine started")
+		logger.LogDebug(c.Request.Context(), "SSE ping goroutine started")
 
 		// 增加超时控制，防止goroutine长时间运行
 		maxPingDuration := 120 * time.Minute // 最大ping持续时间
@@ -437,7 +437,7 @@ func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) (context.Can
 			// 发送 ping 数据
 			case <-ticker.C:
 				if err := sendPingData(c, &pingMutex); err != nil {
-					logger.LogDebug(c, "SSE ping error, stopping goroutine: %s", err.Error())
+					logger.LogDebug(c.Request.Context(), "SSE ping error, stopping goroutine: %s", err.Error())
 					return
 				}
 			// 收到退出信号
@@ -448,7 +448,7 @@ func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) (context.Can
 				return
 			// 超时保护，防止goroutine无限运行
 			case <-pingTimeout.C:
-				logger.LogDebug(c, "SSE ping goroutine timeout, stopping")
+				logger.LogDebug(c.Request.Context(), "SSE ping goroutine timeout, stopping")
 				return
 			}
 		}
@@ -466,11 +466,11 @@ func sendPingData(c *gin.Context, mutex *sync.Mutex) error {
 	helper.ExtendWriteDeadline(c)
 	err := helper.PingData(c)
 	if err != nil {
-		logger.LogError(c, "SSE ping error: "+err.Error())
+		logger.LogError(c.Request.Context(), "SSE ping error: "+err.Error())
 		return err
 	}
 
-	logger.LogDebug(c, "SSE ping data sent")
+	logger.LogDebug(c.Request.Context(), "SSE ping data sent")
 	return nil
 }
 
@@ -497,7 +497,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	relayClient.CheckRedirect = keepUpstreamRedirectResponse
 	if common2.DebugEnabled && req != nil && req.URL != nil {
 		policy := service.NormalizeHTTPTransportPolicy(info.ChannelSetting)
-		logger.LogDebug(c, fmt.Sprintf(
+		logger.LogDebug(c.Request.Context(), fmt.Sprintf(
 			"http transport select: host=%s protocol=%s shards=%d policy=%s",
 			req.URL.Host,
 			policy.Protocol,
@@ -520,7 +520,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 				if stopPinger != nil {
 					stopPinger()
 					<-pingerDone
-					logger.LogDebug(c, "SSE ping goroutine stopped by defer")
+					logger.LogDebug(c.Request.Context(), "SSE ping goroutine stopped by defer")
 				}
 			}()
 		}
@@ -528,7 +528,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 
 	resp, err := relayClient.Do(req)
 	if err != nil {
-		logger.LogError(c, "do request failed: "+err.Error())
+		logger.LogError(c.Request.Context(), "do request failed: "+err.Error())
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}
 	if resp == nil {
@@ -536,7 +536,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	}
 	if common2.DebugEnabled {
 		policy := service.NormalizeHTTPTransportPolicy(info.ChannelSetting)
-		logger.LogDebug(c, fmt.Sprintf(
+		logger.LogDebug(c.Request.Context(), fmt.Sprintf(
 			"http transport negotiated: host=%s protocol=%s shards=%d policy=%s negotiated=%s",
 			req.URL.Host,
 			policy.Protocol,

@@ -5,6 +5,7 @@
 package ginadapter
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"mime/multipart"
@@ -64,6 +65,10 @@ func (r *requestContext) GetStringMap(key string) map[string]any {
 	return r.gin.GetStringMap(key)
 }
 
+func (r *requestContext) GetStringSlice(key string) []string {
+	return r.gin.GetStringSlice(key)
+}
+
 func (r *requestContext) GetTime(key string) time.Time { return r.gin.GetTime(key) }
 
 // ---- Request ----
@@ -80,6 +85,18 @@ func (r *requestContext) UserAgent() string { return r.gin.Request.UserAgent() }
 
 func (r *requestContext) ContentType() string { return r.gin.ContentType() }
 
+func (r *requestContext) ContentLength() int64 { return r.gin.Request.ContentLength }
+
+func (r *requestContext) RequestURI() string { return r.gin.Request.RequestURI }
+
+func (r *requestContext) RawQuery() string { return r.gin.Request.URL.RawQuery }
+
+func (r *requestContext) ParseForm() error { return r.gin.Request.ParseForm() }
+
+func (r *requestContext) PostFormValues() map[string][]string {
+	return r.gin.Request.PostForm
+}
+
 func (r *requestContext) Query(key string) string { return r.gin.Query(key) }
 
 func (r *requestContext) DefaultQuery(key, fallback string) string {
@@ -91,6 +108,14 @@ func (r *requestContext) QueryValues() map[string][]string {
 }
 
 func (r *requestContext) Param(key string) string { return r.gin.Param(key) }
+
+func (r *requestContext) Params() map[string]string {
+	params := make(map[string]string, len(r.gin.Params))
+	for _, p := range r.gin.Params {
+		params[p.Key] = p.Value
+	}
+	return params
+}
 
 func (r *requestContext) Header(key string) string { return r.gin.GetHeader(key) }
 
@@ -126,6 +151,34 @@ func (r *requestContext) MultipartForm() (*multipart.Form, error) {
 
 func (r *requestContext) PostForm(key string) string { return r.gin.PostForm(key) }
 
+func (r *requestContext) HTTPRequest() *http.Request { return r.gin.Request }
+
+// ReplaceBody rewrites the inbound body and clears the cached body storage so
+// subsequent reads observe the new payload.
+func (r *requestContext) ReplaceBody(payload []byte) {
+	r.gin.Request.Body = io.NopCloser(bytes.NewReader(payload))
+	r.gin.Request.ContentLength = int64(len(payload))
+	common.CleanupBodyStorage(r)
+}
+
+func (r *requestContext) SetPath(path string) {
+	r.gin.Request.URL.Path = path
+}
+
+func (r *requestContext) ResponseWriter() http.ResponseWriter { return r.gin.Writer }
+
+func (r *requestContext) ResetBody(body io.ReadCloser) {
+	r.gin.Request.Body = body
+}
+
+func (r *requestContext) SetMethod(method string) {
+	r.gin.Request.Method = method
+}
+
+func (r *requestContext) SetContextValue(key, value any) {
+	r.gin.Request = r.gin.Request.WithContext(context.WithValue(r.gin.Request.Context(), key, value))
+}
+
 func (r *requestContext) Context() context.Context { return r.gin.Request.Context() }
 
 // ---- Response ----
@@ -151,6 +204,45 @@ func (r *requestContext) Redirect(status int, location string) {
 
 func (r *requestContext) Status(status int) { r.gin.Status(status) }
 
+func (r *requestContext) ResponseStatus() int { return r.gin.Writer.Status() }
+
+// CaptureResponse swaps in a writer that mirrors the response into a bounded
+// buffer. The framework writer stays in place for the actual response.
+func (r *requestContext) CaptureResponse(maxBytes int) contract.ResponseCapture {
+	capture := &responseCapture{
+		ResponseWriter: r.gin.Writer,
+		body:           bytes.NewBuffer(nil),
+		maxSize:        maxBytes,
+	}
+	r.gin.Writer = capture
+	return capture
+}
+
+// responseCapture mirrors written bytes into a bounded buffer so audit code can
+// inspect the payload without re-reading the response.
+type responseCapture struct {
+	gin.ResponseWriter
+	body    *bytes.Buffer
+	maxSize int
+}
+
+func (w *responseCapture) Write(b []byte) (int, error) {
+	if w.body.Len() < w.maxSize {
+		if remain := w.maxSize - w.body.Len(); remain >= len(b) {
+			w.body.Write(b)
+		} else {
+			w.body.Write(b[:remain])
+		}
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *responseCapture) WriteString(s string) (int, error) {
+	return w.Write([]byte(s))
+}
+
+func (w *responseCapture) Body() []byte { return w.body.Bytes() }
+
 func (r *requestContext) SetHeader(key, value string) { r.gin.Header(key, value) }
 
 func (r *requestContext) SetCookie(cookie *http.Cookie) {
@@ -164,3 +256,9 @@ func (r *requestContext) Next() { r.gin.Next() }
 func (r *requestContext) Abort() { r.gin.Abort() }
 
 func (r *requestContext) IsAborted() bool { return r.gin.IsAborted() }
+
+func (r *requestContext) AbortWithStatus(status int) { r.gin.AbortWithStatus(status) }
+
+func (r *requestContext) AbortWithStatusJSON(status int, payload any) {
+	r.gin.AbortWithStatusJSON(status, payload)
+}

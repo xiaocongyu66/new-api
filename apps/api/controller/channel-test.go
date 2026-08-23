@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"math"
 	"net/http"
@@ -32,12 +34,10 @@ import (
 
 	"github.com/samber/lo"
 	"github.com/tidwall/gjson"
-
-	"github.com/gin-gonic/gin"
 )
 
 type testResult struct {
-	context     *gin.Context
+	context     contract.Context
 	localErr    error
 	newAPIError *types.NewAPIError
 }
@@ -56,7 +56,7 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 	return normalized
 }
 
-func resolveChannelTestUserID(c *gin.Context) (int, error) {
+func resolveChannelTestUserID(c contract.Context) (int, error) {
 	if c != nil {
 		if userID := c.GetInt("id"); userID > 0 {
 			return userID, nil
@@ -93,8 +93,8 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 			localErr: fmt.Errorf("%s channel test is not supported", channelTypeName),
 		}
 	}
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
+	var c contract.Context
+	var w *httptest.ResponseRecorder
 
 	testModel = strings.TrimSpace(testModel)
 	if testModel == "" {
@@ -160,7 +160,10 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 		testModel = ratio_setting.WithCompactModelSuffix(testModel)
 	}
 
-	c.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, requestPath, nil)
+	c, w = ginadapter.NewSyntheticContext(httptest.NewRequestWithContext(ctx, http.MethodPost, requestPath, nil))
+	// Relay provider adaptors are still gin-typed (migrated in a later phase),
+	// so recover the concrete context this synthetic one wraps.
+	ginCtx, _ := ginadapter.Unwrap(c)
 
 	cache, err := model.GetUserCache(testUserID)
 	if err != nil {
@@ -172,8 +175,8 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	cache.WriteContext(c)
 	c.Set("id", testUserID)
 
-	//c.Request.Header.Set("Authorization", "Bearer "+channel.Key)
-	c.Request.Header.Set("Content-Type", "application/json")
+	//c.Headers().Set("Authorization", "Bearer "+channel.Key)
+	c.Headers().Set("Content-Type", "application/json")
 	c.Set("channel", channel.Type)
 	c.Set("base_url", channel.GetBaseURL())
 	group, _ := model.GetUserGroup(testUserID, false)
@@ -215,32 +218,32 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	} else {
 		// 根据请求路径自动检测
 		relayFormat = types.RelayFormatOpenAI
-		if c.Request.URL.Path == "/v1/embeddings" {
+		if c.Path() == "/v1/embeddings" {
 			relayFormat = types.RelayFormatEmbedding
 		}
-		if c.Request.URL.Path == "/v1/images/generations" {
+		if c.Path() == "/v1/images/generations" {
 			relayFormat = types.RelayFormatOpenAIImage
 		}
-		if c.Request.URL.Path == "/v1/messages" {
+		if c.Path() == "/v1/messages" {
 			relayFormat = types.RelayFormatClaude
 		}
-		if strings.Contains(c.Request.URL.Path, "/v1beta/models") {
+		if strings.Contains(c.Path(), "/v1beta/models") {
 			relayFormat = types.RelayFormatGemini
 		}
-		if c.Request.URL.Path == "/v1/rerank" || c.Request.URL.Path == "/rerank" {
+		if c.Path() == "/v1/rerank" || c.Path() == "/rerank" {
 			relayFormat = types.RelayFormatRerank
 		}
-		if c.Request.URL.Path == "/v1/responses" {
+		if c.Path() == "/v1/responses" {
 			relayFormat = types.RelayFormatOpenAIResponses
 		}
-		if strings.HasPrefix(c.Request.URL.Path, "/v1/responses/compact") {
+		if strings.HasPrefix(c.Path(), "/v1/responses/compact") {
 			relayFormat = types.RelayFormatOpenAIResponsesCompaction
 		}
 	}
 
 	request := buildTestRequest(testModel, endpointType, channel, isStream)
 
-	info, err := relaycommon.GenRelayInfo(c, relayFormat, request, nil)
+	info, err := relaycommon.GenRelayInfo(ginCtx, relayFormat, request, nil)
 
 	if err != nil {
 		return testResult{
@@ -251,7 +254,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	}
 
 	info.IsChannelTest = true
-	info.InitChannelMeta(c)
+	info.InitChannelMeta(ginCtx)
 
 	err = attachTestBillingRequestInput(info, request)
 	if err != nil {
@@ -262,7 +265,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 		}
 	}
 
-	err = helper.ModelMappedHelper(c, info, request)
+	err = helper.ModelMappedHelper(ginCtx, info, request)
 	if err != nil {
 		return testResult{
 			context:     c,
@@ -298,7 +301,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	//logInfo.ApiKey = ""
 	common.SysLog(fmt.Sprintf("testing channel %d with model %s , info %+v ", channel.Id, testModel, info.ToString()))
 
-	priceData, err := helper.ModelPriceHelper(c, info, 0, request.GetTokenCountMeta())
+	priceData, err := helper.ModelPriceHelper(ginCtx, info, 0, request.GetTokenCountMeta())
 	if err != nil {
 		return testResult{
 			context:     c,
@@ -315,7 +318,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	case relayconstant.RelayModeEmbeddings:
 		// Embedding 请求 - request 已经是正确的类型
 		if embeddingReq, ok := request.(*dto.EmbeddingRequest); ok {
-			convertedRequest, err = adaptor.ConvertEmbeddingRequest(c, info, *embeddingReq)
+			convertedRequest, err = adaptor.ConvertEmbeddingRequest(ginCtx, info, *embeddingReq)
 		} else {
 			return testResult{
 				context:     c,
@@ -326,7 +329,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	case relayconstant.RelayModeImagesGenerations:
 		// 图像生成请求 - request 已经是正确的类型
 		if imageReq, ok := request.(*dto.ImageRequest); ok {
-			convertedRequest, err = adaptor.ConvertImageRequest(c, info, *imageReq)
+			convertedRequest, err = adaptor.ConvertImageRequest(ginCtx, info, *imageReq)
 		} else {
 			return testResult{
 				context:     c,
@@ -337,7 +340,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	case relayconstant.RelayModeRerank:
 		// Rerank 请求 - request 已经是正确的类型
 		if rerankReq, ok := request.(*dto.RerankRequest); ok {
-			convertedRequest, err = adaptor.ConvertRerankRequest(c, info.RelayMode, *rerankReq)
+			convertedRequest, err = adaptor.ConvertRerankRequest(ginCtx, info.RelayMode, *rerankReq)
 		} else {
 			return testResult{
 				context:     c,
@@ -348,7 +351,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	case relayconstant.RelayModeResponses:
 		// Response 请求 - request 已经是正确的类型
 		if responseReq, ok := request.(*dto.OpenAIResponsesRequest); ok {
-			convertedRequest, err = adaptor.ConvertOpenAIResponsesRequest(c, info, *responseReq)
+			convertedRequest, err = adaptor.ConvertOpenAIResponsesRequest(ginCtx, info, *responseReq)
 		} else {
 			return testResult{
 				context:     c,
@@ -360,14 +363,14 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 		// Response compaction request - convert to OpenAIResponsesRequest before adapting
 		switch req := request.(type) {
 		case *dto.OpenAIResponsesCompactionRequest:
-			convertedRequest, err = adaptor.ConvertOpenAIResponsesRequest(c, info, dto.OpenAIResponsesRequest{
+			convertedRequest, err = adaptor.ConvertOpenAIResponsesRequest(ginCtx, info, dto.OpenAIResponsesRequest{
 				Model:              req.Model,
 				Input:              req.Input,
 				Instructions:       req.Instructions,
 				PreviousResponseID: req.PreviousResponseID,
 			})
 		case *dto.OpenAIResponsesRequest:
-			convertedRequest, err = adaptor.ConvertOpenAIResponsesRequest(c, info, *req)
+			convertedRequest, err = adaptor.ConvertOpenAIResponsesRequest(ginCtx, info, *req)
 		default:
 			return testResult{
 				context:     c,
@@ -378,11 +381,11 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	default:
 		switch req := request.(type) {
 		case *dto.GeneralOpenAIRequest:
-			convertedRequest, err = adaptor.ConvertOpenAIRequest(c, info, req)
+			convertedRequest, err = adaptor.ConvertOpenAIRequest(ginCtx, info, req)
 		case *dto.ClaudeRequest:
-			convertedRequest, err = adaptor.ConvertClaudeRequest(c, info, req)
+			convertedRequest, err = adaptor.ConvertClaudeRequest(ginCtx, info, req)
 		case *dto.GeminiChatRequest:
-			convertedRequest, err = adaptor.ConvertGeminiRequest(c, info, req)
+			convertedRequest, err = adaptor.ConvertGeminiRequest(ginCtx, info, req)
 		default:
 			return testResult{
 				context:     c,
@@ -436,8 +439,8 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	}
 
 	requestBody := bytes.NewBuffer(jsonData)
-	c.Request.Body = io.NopCloser(bytes.NewBuffer(jsonData))
-	resp, err := adaptor.DoRequest(c, info, requestBody)
+	ginCtx.Request.Body = io.NopCloser(bytes.NewBuffer(jsonData))
+	resp, err := adaptor.DoRequest(ginCtx, info, requestBody)
 	if err != nil {
 		return testResult{
 			context:     c,
@@ -449,7 +452,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	if resp != nil {
 		httpResp = resp.(*http.Response)
 		if httpResp.StatusCode != http.StatusOK {
-			err := service.RelayErrorHandler(c.Request.Context(), httpResp, true)
+			err := service.RelayErrorHandler(c.Context(), httpResp, true)
 			common.SysError(fmt.Sprintf(
 				"channel test bad response: channel_id=%d name=%s type=%d model=%s endpoint_type=%s status=%d err=%v",
 				channel.Id,
@@ -467,7 +470,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 			}
 		}
 	}
-	usageA, respErr := adaptor.DoResponse(c, httpResp, info)
+	usageA, respErr := adaptor.DoResponse(ginCtx, httpResp, info)
 	if respErr != nil {
 		return testResult{
 			context:     c,
@@ -562,7 +565,7 @@ func settleTestQuota(info *relaycommon.RelayInfo, priceData hosttypes.PriceData,
 	return int(priceData.ModelPrice * common.QuotaPerUnit), nil
 }
 
-func buildTestLogOther(c *gin.Context, info *relaycommon.RelayInfo, priceData hosttypes.PriceData, usage *dto.Usage, tieredResult *billingexpr.TieredResult) map[string]interface{} {
+func buildTestLogOther(c contract.Context, info *relaycommon.RelayInfo, priceData hosttypes.PriceData, usage *dto.Usage, tieredResult *billingexpr.TieredResult) map[string]interface{} {
 	other := service.GenerateTextOtherInfo(c, info, priceData.ModelRatio, priceData.GroupRatioInfo.GroupRatio, priceData.CompletionRatio,
 		usage.PromptTokensDetails.CachedTokens, priceData.CacheRatio, priceData.ModelPrice, priceData.GroupRatioInfo.GroupSpecialRatio)
 	if tieredResult != nil {
@@ -853,17 +856,17 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 	return testRequest
 }
 
-func TestChannel(c *gin.Context) {
+func TestChannel(c contract.Context) {
 	channelId, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	channel, err := model.CacheGetChannel(channelId)
 	if err != nil {
 		channel, err = model.GetChannelById(channelId, true)
 		if err != nil {
-			common.ApiError(c, err)
+			common.CtxApiError(c, err)
 			return
 		}
 	}
@@ -877,17 +880,17 @@ func TestChannel(c *gin.Context) {
 	isStream, _ := strconv.ParseBool(c.Query("stream"))
 	testUserID, err := resolveChannelTestUserID(c)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	tik := time.Now()
 	requestCtx := context.Background()
-	if c.Request != nil {
-		requestCtx = c.Request.Context()
+	if c.HTTPRequest() != nil {
+		requestCtx = c.Context()
 	}
 	result := testChannel(requestCtx, channel, testUserID, testModel, endpointType, isStream)
 	if result.localErr != nil {
-		resp := gin.H{
+		resp := common.H{
 			"success": false,
 			"message": result.localErr.Error(),
 			"time":    0.0,
@@ -895,7 +898,7 @@ func TestChannel(c *gin.Context) {
 		if result.newAPIError != nil {
 			resp["error_code"] = result.newAPIError.GetErrorCode()
 		}
-		c.JSON(http.StatusOK, resp)
+		_ = c.JSON(http.StatusOK, resp)
 		return
 	}
 	tok := time.Now()
@@ -903,7 +906,7 @@ func TestChannel(c *gin.Context) {
 	go channel.UpdateResponseTime(milliseconds)
 	consumedTime := float64(milliseconds) / 1000.0
 	if result.newAPIError != nil {
-		c.JSON(http.StatusOK, gin.H{
+		_ = c.JSON(http.StatusOK, common.H{
 			"success":    false,
 			"message":    result.newAPIError.Error(),
 			"time":       consumedTime,
@@ -911,7 +914,7 @@ func TestChannel(c *gin.Context) {
 		})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 		"time":    consumedTime,
@@ -985,13 +988,13 @@ func performChannelTests(ctx context.Context, channels []*model.Channel, testUse
 
 		// disable channel
 		if allowDisable && isChannelEnabled && shouldBanChannel && channel.GetAutoBan() {
-			processChannelError(result.context, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
+			processChannelError(result.context, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetCtxKeyString(result.context, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
 			summary.Disabled++
 		}
 
 		// enable channel
 		if result.localErr == nil && !isChannelEnabled && service.ShouldEnableChannel(newAPIError, channel.Status) {
-			service.EnableChannel(channel.Id, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.Name)
+			service.EnableChannel(channel.Id, common.GetCtxKeyString(result.context, constant.ContextKeyChannelKey), channel.Name)
 			summary.Enabled++
 		}
 
@@ -1063,20 +1066,20 @@ func selectChannelsForAutomaticTest(channels []*model.Channel, mode string) []*m
 // TestAllChannels enqueues a channel_test system task instead of running the
 // test loop inline. If any channel_test task is already active, the manual run is
 // rejected so the caller does not mistake a scheduled run for this manual one.
-func TestAllChannels(c *gin.Context) {
+func TestAllChannels(c contract.Context) {
 	task, created, err := service.EnqueueSystemTask(model.SystemTaskTypeChannelTest, channelTestTaskPayload{
 		Mode:   operation_setting.ChannelTestModeScheduledAll,
 		Notify: true,
 	})
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	if !created {
-		c.JSON(http.StatusConflict, gin.H{
+		_ = c.JSON(http.StatusConflict, common.H{
 			"success": false,
 			"message": "已有通道测试任务正在运行或等待中，不能启动本次手动任务",
-			"data": gin.H{
+			"data": common.H{
 				"task_id": task.TaskID,
 				"status":  task.Status,
 				"type":    task.Type,
@@ -1084,10 +1087,10 @@ func TestAllChannels(c *gin.Context) {
 		})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
-		"data": gin.H{
+		"data": common.H{
 			"task_id": task.TaskID,
 			"status":  task.Status,
 		},

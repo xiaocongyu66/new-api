@@ -1,17 +1,18 @@
 package controller
 
 import (
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strconv"
 
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
-	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
 )
 
-func GetPerfMetricsSummary(c *gin.Context) {
+func GetPerfMetricsSummary(c contract.Context) {
 	hours := 24
 	if rawHours := c.Query("hours"); rawHours != "" {
 		if parsed, err := strconv.Atoi(rawHours); err == nil {
@@ -22,23 +23,23 @@ func GetPerfMetricsSummary(c *gin.Context) {
 	activeGroups := append(lo.Keys(ratio_setting.GetGroupRatioCopy()), "auto")
 	result, err := perfmetrics.QuerySummaryAll(hours, activeGroups)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
+		_ = c.JSON(http.StatusInternalServerError, common.H{
 			"success": false,
 			"message": err.Error(),
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"data":    result,
 	})
 }
 
-func GetPerfMetrics(c *gin.Context) {
+func GetPerfMetrics(c contract.Context) {
 	modelName := c.Query("model")
 	if modelName == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
+		_ = c.JSON(http.StatusBadRequest, common.H{
 			"success": false,
 			"message": "model is required",
 		})
@@ -58,7 +59,7 @@ func GetPerfMetrics(c *gin.Context) {
 		Hours: hours,
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
+		_ = c.JSON(http.StatusInternalServerError, common.H{
 			"success": false,
 			"message": err.Error(),
 		})
@@ -67,7 +68,7 @@ func GetPerfMetrics(c *gin.Context) {
 
 	result.Groups = filterActiveGroups(result.Groups)
 
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"data":    result,
 	})

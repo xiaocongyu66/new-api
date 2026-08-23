@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,7 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,14 +42,15 @@ func setupProxyNodeControllerTest(t *testing.T) *gorm.DB {
 	})
 	return db
 }
-func proxyNodeContext(t *testing.T, method, path, body string) (*gin.Context, *httptest.ResponseRecorder) {
+func proxyNodeContext(t *testing.T, method, path, body string) (contract.Context, *httptest.ResponseRecorder) {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(method, path, bytes.NewBufferString(body))
-	ctx.Request.Header.Set("Content-Type", "application/json")
-	return ctx, recorder
+	engine := gin.New()
+	engine.Handle(method, "/api/proxy/nodes/:id", ginadapter.Handler(func(c contract.Context) {
+		UpdateProxyNode(c)
+	}))
+	engine.ServeHTTP(recorder, httptest.NewRequest(method, path, bytes.NewBufferString(body)))
+	return nil, recorder
 }
 
 func decodeProxyNodeResponse(t *testing.T, recorder *httptest.ResponseRecorder) proxyNodeAPIResponse {
@@ -100,9 +103,7 @@ func TestUpdateProxyNodeWithoutProxyPreservesEncryptedConfiguration(t *testing.T
 	require.NoError(t, err)
 	originalCiphertext := node.EncryptedProxyConfig
 
-	ctx, recorder := proxyNodeContext(t, http.MethodPut, "/api/proxy/nodes/1", `{"name":"after","enabled":false,"scope_type":"custom","scope_value":""}`)
-	ctx.Params = gin.Params{{Key: "id", Value: "1"}}
-	UpdateProxyNode(ctx)
+	_, recorder := proxyNodeContext(t, http.MethodPut, "/api/proxy/nodes/1", `{"name":"after","enabled":false,"scope_type":"custom","scope_value":""}`)
 
 	response := decodeProxyNodeResponse(t, recorder)
 	require.True(t, response.Success, response.Message)
@@ -121,9 +122,7 @@ func TestUpdateProxyNodeWithEmptyProxyPreservesEncryptedConfiguration(t *testing
 	require.NoError(t, err)
 	originalCiphertext := node.EncryptedProxyConfig
 
-	ctx, recorder := proxyNodeContext(t, http.MethodPut, "/api/proxy/nodes/1", `{"name":"after","enabled":true,"proxy":"","scope_type":"custom","scope_value":""}`)
-	ctx.Params = gin.Params{{Key: "id", Value: "1"}}
-	UpdateProxyNode(ctx)
+	_, recorder := proxyNodeContext(t, http.MethodPut, "/api/proxy/nodes/1", `{"name":"after","enabled":true,"proxy":"","scope_type":"custom","scope_value":""}`)
 
 	response := decodeProxyNodeResponse(t, recorder)
 	require.True(t, response.Success, response.Message)
@@ -176,9 +175,10 @@ func TestGetProxyNodeReturnsEditableLinkOnlyFromDetailEndpoint(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	ctx, recorder := proxyNodeContext(t, http.MethodGet, "/api/proxy/nodes/1", "")
-	ctx.Params = gin.Params{{Key: "id", Value: fmt.Sprint(node.ID)}}
-	GetProxyNode(ctx)
+	recorder := httptest.NewRecorder()
+	getEngine := gin.New()
+	getEngine.GET("/api/proxy/nodes/:id", ginadapter.Handler(GetProxyNode))
+	getEngine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/proxy/nodes/"+fmt.Sprint(node.ID), nil))
 
 	response := decodeProxyNodeResponse(t, recorder)
 	require.True(t, response.Success, response.Message)

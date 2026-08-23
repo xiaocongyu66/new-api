@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -16,7 +18,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -149,7 +150,7 @@ func TestTelegramBindFailureResponseContract(t *testing.T) {
 			context.Params = gin.Params{{Key: "flow_token", Value: "flow token"}}
 			context.Request = httptest.NewRequest(http.MethodGet, "/api/oauth/telegram/bind/flow-token", nil)
 
-			telegramBindFailure(context, failure.errorCode)
+			telegramBindFailure(ginadapter.Wrap(context), failure.errorCode)
 
 			assertTelegramBindRedirect(t, response, "flow token", failure.errorCode)
 		})
@@ -205,7 +206,7 @@ func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
 	require.NoError(t, err)
 	params := signedTelegramAuthorization(common.TelegramBotToken, now)
 	router := gin.New()
-	router.GET("/api/oauth/telegram/bind/:flow_token", TelegramBind)
+	router.GET("/api/oauth/telegram/bind/:flow_token", ginadapter.Handler(TelegramBind))
 
 	common.TelegramOAuthEnabled = false
 	request := httptest.NewRequest(http.MethodGet, "/api/oauth/telegram/bind/disabled-flow", nil)

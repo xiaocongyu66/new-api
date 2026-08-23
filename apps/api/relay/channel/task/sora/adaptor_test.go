@@ -2,6 +2,7 @@ package sora
 
 import (
 	"bytes"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,7 +20,7 @@ func TestSoraBuildRequestBodyReturnsReplayablePassThroughBody(t *testing.T) {
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewReader(payload))
 	c.Request.Header.Set("Content-Type", "application/octet-stream")
-	defer common.CleanupBodyStorage(c)
+	defer common.CleanupBodyStorage(ginadapter.Wrap(c))
 
 	info := &relaycommon.RelayInfo{}
 	body, err := (&TaskAdaptor{}).BuildRequestBody(c, info)

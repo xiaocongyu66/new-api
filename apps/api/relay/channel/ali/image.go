@@ -235,12 +235,12 @@ func asyncTaskWait(c *gin.Context, info *relaycommon.RelayInfo, taskID string) (
 	time.Sleep(time.Duration(5) * time.Second)
 
 	for {
-		logger.LogDebug(c, "asyncTaskWait step %d/%d, wait %d seconds", step, maxStep, waitSeconds)
+		logger.LogDebug(c.Request.Context(), "asyncTaskWait step %d/%d, wait %d seconds", step, maxStep, waitSeconds)
 		step++
 		rsp, err, body := updateTask(info, taskID)
 		responseBody = body
 		if err != nil {
-			logger.LogWarn(c, "asyncTaskWait UpdateTask err: "+err.Error())
+			logger.LogWarn(c.Request.Context(), "asyncTaskWait UpdateTask err: "+err.Error())
 			time.Sleep(time.Duration(waitSeconds) * time.Second)
 			continue
 		}
@@ -298,7 +298,7 @@ func aliImageHandler(a *Adaptor, c *gin.Context, resp *http.Response, info *rela
 	}
 
 	if aliTaskResponse.Message != "" {
-		logger.LogError(c, "ali_async_task_failed: "+aliTaskResponse.Message)
+		logger.LogError(c.Request.Context(), "ali_async_task_failed: "+aliTaskResponse.Message)
 		return types.NewError(errors.New(aliTaskResponse.Message), types.ErrorCodeBadResponse), nil
 	}
 
@@ -327,9 +327,9 @@ func aliImageHandler(a *Adaptor, c *gin.Context, resp *http.Response, info *rela
 	}
 
 	if a.IsSyncImageModel {
-		logger.LogDebug(c, "ali_sync_image_result: %s", originRespBody)
+		logger.LogDebug(c.Request.Context(), "ali_sync_image_result: %s", originRespBody)
 	} else {
-		logger.LogDebug(c, "ali_async_image_result: %s", originRespBody)
+		logger.LogDebug(c.Request.Context(), "ali_async_image_result: %s", originRespBody)
 	}
 
 	imageResponses := responseAli2OpenAIImage(c, aliResponse, originRespBody, info, responseFormat)

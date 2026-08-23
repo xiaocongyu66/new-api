@@ -344,8 +344,6 @@ func InitRatioSettings() {
 	audioCompletionRatioMap.AddAll(defaultAudioCompletionRatio)
 }
 
-
-
 func ModelPrice2JSONString() string {
 	return modelPriceMap.MarshalJSONString()
 }
@@ -732,5 +730,3 @@ func FormatMatchingModelName(name string) string {
 	}
 	return name
 }
-
-

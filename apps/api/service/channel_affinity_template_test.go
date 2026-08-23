@@ -2,6 +2,8 @@ package service
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,13 +12,11 @@ import (
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
-func buildChannelAffinityTemplateContextForTest(meta channelAffinityMeta) *gin.Context {
-	rec := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(rec)
+func buildChannelAffinityTemplateContextForTest(meta channelAffinityMeta) contract.Context {
+	ctx, _ := ginadapter.NewSyntheticContext(nil)
 	setChannelAffinityContext(ctx, meta)
 	return ctx
 }
@@ -119,19 +119,19 @@ func TestApplyChannelAffinityOverrideTemplate_MergeOperations(t *testing.T) {
 func TestShouldSkipRetryAfterChannelAffinityFailure(t *testing.T) {
 	tests := []struct {
 		name string
-		ctx  func() *gin.Context
+		ctx  func() contract.Context
 		want bool
 	}{
 		{
 			name: "nil context",
-			ctx: func() *gin.Context {
+			ctx: func() contract.Context {
 				return nil
 			},
 			want: false,
 		},
 		{
 			name: "explicit skip retry flag in context",
-			ctx: func() *gin.Context {
+			ctx: func() contract.Context {
 				ctx := buildChannelAffinityTemplateContextForTest(channelAffinityMeta{
 					RuleName:   "rule-explicit-flag",
 					SkipRetry:  false,
@@ -145,7 +145,7 @@ func TestShouldSkipRetryAfterChannelAffinityFailure(t *testing.T) {
 		},
 		{
 			name: "fallback to matched rule meta",
-			ctx: func() *gin.Context {
+			ctx: func() contract.Context {
 				return buildChannelAffinityTemplateContextForTest(channelAffinityMeta{
 					RuleName:   "rule-skip-retry",
 					SkipRetry:  true,
@@ -157,7 +157,7 @@ func TestShouldSkipRetryAfterChannelAffinityFailure(t *testing.T) {
 		},
 		{
 			name: "no flag and no skip retry meta",
-			ctx: func() *gin.Context {
+			ctx: func() contract.Context {
 				return buildChannelAffinityTemplateContextForTest(channelAffinityMeta{
 					RuleName:   "rule-no-skip-retry",
 					SkipRetry:  false,
@@ -177,10 +177,9 @@ func TestShouldSkipRetryAfterChannelAffinityFailure(t *testing.T) {
 }
 
 func TestExtractChannelAffinityValue_RequestHeader(t *testing.T) {
-	rec := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	ctx.Request.Header.Set("X-Affinity-Key", " tenant-123 ")
+	ctx, _ := ginadapter.NewSyntheticContext(nil)
+	ginadapter.ReplaceRequest(ctx, httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+	ctx.Headers().Set("X-Affinity-Key", " tenant-123 ")
 
 	value := extractChannelAffinityValue(ctx, operation_setting.ChannelAffinityKeySource{
 		Type: "request_header",
@@ -191,7 +190,6 @@ func TestExtractChannelAffinityValue_RequestHeader(t *testing.T) {
 }
 
 func TestGetPreferredChannelByAffinity_RequestHeaderKeySource(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	rule := operation_setting.ChannelAffinityRule{
 		Name:       "header-affinity",
@@ -220,10 +218,9 @@ func TestGetPreferredChannelByAffinity_RequestHeaderKeySource(t *testing.T) {
 		setting.Rules = originalRules
 	})
 
-	rec := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	ctx.Request.Header.Set("X-Affinity-Key", affinityValue)
+	ctx, _ := ginadapter.NewSyntheticContext(nil)
+	ginadapter.ReplaceRequest(ctx, httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+	ctx.Headers().Set("X-Affinity-Key", affinityValue)
 
 	channelID, found := GetPreferredChannelByAffinity(ctx, "gpt-5", "default")
 	require.True(t, found)
@@ -237,7 +234,6 @@ func TestGetPreferredChannelByAffinity_RequestHeaderKeySource(t *testing.T) {
 }
 
 func TestClearCurrentChannelAffinityCache(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	cacheKeySuffix := fmt.Sprintf("codex cli trace:default:clear-current-%d", time.Now().UnixNano())
 	cacheKeyFull := channelAffinityCacheNamespace + ":" + cacheKeySuffix
@@ -264,7 +260,6 @@ func TestClearCurrentChannelAffinityCache(t *testing.T) {
 }
 
 func TestChannelAffinityHitCodexTemplatePassHeadersEffective(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	setting := operation_setting.GetChannelAffinitySetting()
 	require.NotNil(t, setting)
@@ -288,10 +283,9 @@ func TestChannelAffinityHitCodexTemplatePassHeadersEffective(t *testing.T) {
 		_, _ = cache.DeleteMany([]string{cacheKeySuffix})
 	})
 
-	rec := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(fmt.Sprintf(`{"prompt_cache_key":"%s"}`, affinityValue)))
-	ctx.Request.Header.Set("Content-Type", "application/json")
+	ctx, _ := ginadapter.NewSyntheticContext(nil)
+	ginadapter.ReplaceRequest(ctx, httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(fmt.Sprintf(`{"prompt_cache_key":"%s"}`, affinityValue))))
+	ctx.Headers().Set("Content-Type", "application/json")
 
 	channelID, found := GetPreferredChannelByAffinity(ctx, "gpt-5", "default")
 	require.True(t, found)

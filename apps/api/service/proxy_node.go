@@ -109,8 +109,6 @@ func proxyNodeEncryptionKey() []byte {
 	return sum[:]
 }
 
-
-
 func EncryptProxyNodeConfigForUpdate(value string) (string, error) {
 	return encryptProxyNodeConfig(value)
 }

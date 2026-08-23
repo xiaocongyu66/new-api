@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"log"
 	"net/http"
@@ -273,7 +274,7 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 		tokenName := c.GetString("token_name")
 		logContent := fmt.Sprintf("模型固定价格 %.2f，分组倍率 %.2f，操作 %s", priceData.ModelPrice, priceData.GroupRatioInfo.GroupRatio, constant.MjActionSwapFace)
 		other := service.GenerateMjOtherInfo(info, priceData)
-		model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
+		model.RecordConsumeLog(ginadapter.Wrap(c), info.UserId, model.RecordConsumeLogParams{
 			ChannelId: billingChannelId,
 			ModelName: modelName,
 			TokenName: tokenName,
@@ -489,7 +490,7 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 			c.Set("base_url", channel.GetBaseURL())
 			c.Set("channel_id", originTask.ChannelId)
 			c.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", channel.Key))
-			logger.LogDebug(c, "Midjourney action uses origin channel: id=%s, base_url=%s", strconv.Itoa(originTask.ChannelId), channel.GetBaseURL())
+			logger.LogDebug(c.Request.Context(), "Midjourney action uses origin channel: id=%s, base_url=%s", strconv.Itoa(originTask.ChannelId), channel.GetBaseURL())
 		}
 		midjRequest.Prompt = originTask.Prompt
 
@@ -638,7 +639,7 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 		tokenName := c.GetString("token_name")
 		logContent := fmt.Sprintf("模型固定价格 %.2f，分组倍率 %.2f，操作 %s，ID %s", priceData.ModelPrice, priceData.GroupRatioInfo.GroupRatio, midjRequest.Action, midjResponse.Result)
 		other := service.GenerateMjOtherInfo(relayInfo, priceData)
-		model.RecordConsumeLog(c, relayInfo.UserId, model.RecordConsumeLogParams{
+		model.RecordConsumeLog(ginadapter.Wrap(c), relayInfo.UserId, model.RecordConsumeLogParams{
 			ChannelId: billingChannelId,
 			ModelName: modelName,
 			TokenName: tokenName,

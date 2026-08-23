@@ -1,6 +1,9 @@
 package service
 
 import (
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/gin-gonic/gin"
 	"math"
 	"math/rand"
 	"testing"
@@ -10,7 +13,6 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/types"
-	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -321,7 +323,7 @@ type recordingBillingSettler struct {
 
 func (*recordingBillingSettler) Settle(int) error { return nil }
 
-func (*recordingBillingSettler) Refund(*gin.Context) {}
+func (*recordingBillingSettler) Refund(contract.Context) {}
 
 func (*recordingBillingSettler) NeedsRefund() bool { return false }
 
@@ -395,7 +397,7 @@ func TestPrepareTieredBillingForSelectedGroupStartsBillingAfterFreeGroup(t *test
 	}
 	ctx, _ := gin.CreateTestContext(nil)
 
-	require.Nil(t, PrepareTieredBillingForSelectedGroup(ctx, relayInfo))
+	require.Nil(t, PrepareTieredBillingForSelectedGroup(ginadapter.Wrap(ctx), relayInfo))
 	require.NotNil(t, relayInfo.Billing)
 	assert.False(t, relayInfo.PriceData.FreeModel, "FreeModel must be cleared after switching to a paid group")
 	assert.Equal(t, 100_000, relayInfo.FinalPreConsumedQuota)

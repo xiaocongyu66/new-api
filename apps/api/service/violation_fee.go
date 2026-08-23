@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"strings"
 	"time"
 
@@ -13,8 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/setting/model_setting"
 
 	"github.com/shopspring/decimal"
-
-	"github.com/gin-gonic/gin"
 )
 
 const (
@@ -101,7 +100,7 @@ func calcViolationFeeQuota(amount, groupRatio float64) int {
 
 // ChargeViolationFeeIfNeeded charges an additional fee after the normal flow finishes (including refund).
 // It uses Grok fee settings as the fee policy.
-func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, apiErr *types.NewAPIError) bool {
+func ChargeViolationFeeIfNeeded(ctx contract.Context, relayInfo *relaycommon.RelayInfo, apiErr *types.NewAPIError) bool {
 	if ctx == nil || relayInfo == nil || apiErr == nil {
 		return false
 	}
@@ -124,7 +123,7 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 	}
 
 	if err := PostConsumeQuota(relayInfo, feeQuota, 0, true); err != nil {
-		logger.LogError(ctx, fmt.Sprintf("failed to charge violation fee: %s", err.Error()))
+		logger.LogError(ctx.Context(), fmt.Sprintf("failed to charge violation fee: %s", err.Error()))
 		return false
 	}
 
