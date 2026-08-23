@@ -257,7 +257,13 @@ func RecordOperationAuditLog(logUserId int, content string, ip string, action st
 // （写入 Other.op）。命中词与文本片段属管理敏感信息，前端仅 super admin 的
 // 敏感词设置页展示；content 为英文兜底文本（供导出使用）。
 func RecordSensitiveAuditLog(userId int, content string, ip string, params map[string]interface{}) {
-	username, _ := GetUsernameById(userId, false)
+	if LOG_DB == nil {
+		return
+	}
+	username := ""
+	if userId > 0 && DB != nil {
+		username, _ = GetUsernameById(userId, true)
+	}
 	other := map[string]interface{}{
 		"op": buildOpField("sensitive_block", params),
 	}
