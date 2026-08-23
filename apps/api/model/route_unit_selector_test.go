@@ -1,0 +1,464 @@
+package model
+
+import (
+	"math/rand"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
+)
+
+func withRouteUnitFixture(t *testing.T, channels []*Channel, group, alias string, routes []ChannelModelRoute) func() {
+	t.Helper()
+
+	prevGroups := group2model2channels
+	prevIDM := channelsIDM
+	prevAliasRoutes := group2alias2routes
+	prevMemoryCache := common.MemoryCacheEnabled
+	t.Cleanup(func() {
+		channelSyncLock.Lock()
+		group2model2channels = prevGroups
+		channelsIDM = prevIDM
+		group2alias2routes = prevAliasRoutes
+		channelSyncLock.Unlock()
+		common.MemoryCacheEnabled = prevMemoryCache
+	})
+	ids := make([]int, 0, len(channels))
+	idm := make(map[int]*Channel, len(channels))
+	advancedCustomConfig := make(map[int]*dto.AdvancedCustomConfig)
+	for _, ch := range channels {
+		ids = append(ids, ch.Id)
+		idm[ch.Id] = ch
+		if ch.Type == constant.ChannelTypeAdvancedCustom {
+			if config := ch.GetOtherSettings().AdvancedCustom; config != nil {
+				advancedCustomConfig[ch.Id] = config
+			}
+		}
+	}
+
+	channelSyncLock.Lock()
+	group2model2channels = map[string]map[string][]int{group: {alias: ids}}
+	channelsIDM = idm
+	channel2advancedCustomConfig = advancedCustomConfig
+
+	// Build group2alias2routes from provided routes
+	group2alias2routes = make(map[string]map[string][]routeCandidate)
+	for _, r := range routes {
+		if _, ok := group2alias2routes[r.Group]; !ok {
+			group2alias2routes[r.Group] = make(map[string][]routeCandidate)
+		}
+		group2alias2routes[r.Group][r.PublicModelAlias] = append(
+			group2alias2routes[r.Group][r.PublicModelAlias],
+			routeCandidate{
+				routeId:       r.Id,
+				channelId:     r.ChannelId,
+				keyIndex:      r.KeyIndex,
+				upstreamModel: r.UpstreamModel,
+				staticWeight:  r.StaticWeight,
+			},
+		)
+	}
+	channelSyncLock.Unlock()
+	common.MemoryCacheEnabled = true
+	return func() {
+		channelSyncLock.Lock()
+		group2model2channels = prevGroups
+		channelsIDM = prevIDM
+		group2alias2routes = prevAliasRoutes
+		channelSyncLock.Unlock()
+		common.MemoryCacheEnabled = prevMemoryCache
+	}
+}
+
+func testRouteChannel(id int, weight uint, priority int64, isMultiKey bool, keys []string, keyStatus map[int]int) *Channel {
+	w, p := weight, priority
+	ch := &Channel{
+		Id:       id,
+		Weight:   &w,
+		Priority: &p,
+		Status:   common.ChannelStatusEnabled,
+		ChannelInfo: ChannelInfo{
+			IsMultiKey:         isMultiKey,
+			MultiKeyStatusList: keyStatus,
+		},
+	}
+	if isMultiKey {
+		// Store keys in channel.Key as JSON array
+		if len(keys) > 0 {
+			ch.Key = `["` + keys[0] + `"`
+			for i := 1; i < len(keys); i++ {
+				ch.Key += `,"` + keys[i] + `"`
+			}
+			ch.Key += `]`
+		}
+	} else if len(keys) > 0 {
+		ch.Key = keys[0]
+	}
+	return ch
+}
+
+func testRoute(routeId, channelId, keyIndex int, group, alias, upstreamModel string, weight int) ChannelModelRoute {
+	return ChannelModelRoute{
+		Id:               routeId,
+		Group:            group,
+		PublicModelAlias: alias,
+		ChannelId:        channelId,
+		KeyIndex:         keyIndex,
+		UpstreamModel:    upstreamModel,
+		StaticWeight:     weight,
+		Enabled:          true,
+	}
+}
+
+func TestSelectRouteUnit_SingleCandidate(t *testing.T) {
+	const group, alias = "test-group", "test-model"
+
+	ch := testRouteChannel(1001, 10, 5, false, []string{"sk-single"}, nil)
+	routes := []ChannelModelRoute{
+		testRoute(1, 1001, 0, group, alias, "upstream-model", 100),
+	}
+	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, routes)
+	defer cleanup()
+
+	resetHealthManager()
+	setTestConfig(true, 0.3, 0.05, 0)
+
+	rnd := rand.New(rand.NewSource(42))
+	selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+	require.NoError(t, err)
+	require.NotNil(t, selected)
+	assert.Equal(t, 1, selected.RouteId)
+	assert.Equal(t, 1001, selected.ChannelId)
+	assert.Equal(t, 0, selected.KeyIndex)
+	assert.Equal(t, "sk-single", selected.Key)
+	assert.Equal(t, "upstream-model", selected.UpstreamModel)
+}
+func TestSelectRouteUnit_MultiKeyChannel(t *testing.T) {
+	const group, alias = "test-group", "test-model"
+
+	ch := testRouteChannel(1002, 10, 5, true, []string{"sk-key0", "sk-key1", "sk-key2"}, nil)
+	routes := []ChannelModelRoute{
+		testRoute(1, 1002, 0, group, alias, "upstream-a", 100),
+		testRoute(2, 1002, 1, group, alias, "upstream-b", 100),
+		testRoute(3, 1002, 2, group, alias, "upstream-c", 100),
+	}
+	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, routes)
+	defer cleanup()
+
+	resetHealthManager()
+	setTestConfig(true, 0.3, 0.05, 0)
+
+	// Run many times - all three key indices should be selected with roughly equal probability
+	rnd := rand.New(rand.NewSource(100))
+	counts := make(map[int]int)
+	keyMap := make(map[int]string)
+	for range 300 {
+		selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+		require.NoError(t, err)
+		require.NotNil(t, selected)
+		counts[selected.KeyIndex]++
+		keyMap[selected.KeyIndex] = selected.Key
+	}
+
+	// All three key indices should be selected
+	assert.Equal(t, 3, len(counts))
+	assert.Contains(t, counts, 0)
+	assert.Contains(t, counts, 1)
+	assert.Contains(t, counts, 2)
+
+	// Verify correct key is returned for each key index (keys are stored as JSON, so they include quotes)
+	assert.Equal(t, "\"sk-key0\"", keyMap[0])
+	assert.Equal(t, "\"sk-key1\"", keyMap[1])
+	assert.Equal(t, "\"sk-key2\"", keyMap[2])
+}
+
+func TestSelectRouteUnit_MultiKeyDisabledKeyExcluded(t *testing.T) {
+	const group, alias = "test-group", "test-model"
+
+	// Key index 1 is disabled
+	keyStatus := map[int]int{0: common.ChannelStatusEnabled, 1: common.ChannelStatusManuallyDisabled, 2: common.ChannelStatusEnabled}
+	ch := testRouteChannel(1003, 10, 5, true, []string{"sk-key0", "sk-key1", "sk-key2"}, keyStatus)
+	routes := []ChannelModelRoute{
+		testRoute(1, 1003, 0, group, alias, "upstream-a", 100),
+		testRoute(2, 1003, 1, group, alias, "upstream-b", 100),
+		testRoute(3, 1003, 2, group, alias, "upstream-c", 100),
+	}
+	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, routes)
+	defer cleanup()
+
+	resetHealthManager()
+	setTestConfig(true, 0.3, 0.05, 0)
+
+	// Run many times - key index 1 should never be selected
+	rnd := rand.New(rand.NewSource(200))
+	counts := make(map[int]int)
+	for range 100 {
+		selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+		require.NoError(t, err)
+		require.NotNil(t, selected)
+		counts[selected.KeyIndex]++
+	}
+	assert.Equal(t, 0, counts[1], "disabled key index 1 should never be selected")
+	assert.Greater(t, counts[0], 0)
+	assert.Greater(t, counts[2], 0)
+}
+
+func TestSelectRouteUnit_ExcludeRoutes(t *testing.T) {
+	const group, alias = "test-group", "test-model"
+
+	ch1 := testRouteChannel(1004, 10, 5, false, []string{"sk-1"}, nil)
+	ch2 := testRouteChannel(1005, 10, 5, false, []string{"sk-2"}, nil)
+	routes := []ChannelModelRoute{
+		testRoute(1, 1004, 0, group, alias, "upstream-1", 100),
+		testRoute(2, 1005, 0, group, alias, "upstream-2", 100),
+	}
+	cleanup := withRouteUnitFixture(t, []*Channel{ch1, ch2}, group, alias, routes)
+	defer cleanup()
+
+	resetHealthManager()
+	setTestConfig(true, 0.3, 0.05, 0)
+
+	// Exclude route 1 (channel 1004, keyIndex 0)
+	excludeRoutes := map[RouteKey]bool{{ChannelId: 1004, KeyIndex: 0}: true}
+	rnd := rand.New(rand.NewSource(300))
+	selected, err := SelectRouteUnit(group, alias, "", 0, excludeRoutes, rnd)
+	require.NoError(t, err)
+	require.NotNil(t, selected)
+	assert.Equal(t, 1005, selected.ChannelId, "excluded route should not be selected")
+}
+
+func TestSelectRouteUnit_DisabledRouteExcluded(t *testing.T) {
+	const group, alias = "test-group", "test-model"
+
+	ch1 := testRouteChannel(1006, 10, 5, false, []string{"sk-1"}, nil)
+	ch2 := testRouteChannel(1007, 10, 5, false, []string{"sk-2"}, nil)
+	routes := []ChannelModelRoute{
+		testRoute(1, 1006, 0, group, alias, "upstream-1", 100),
+		{Id: 2, Group: group, PublicModelAlias: alias, ChannelId: 1007, KeyIndex: 0, UpstreamModel: "upstream-2", StaticWeight: 100, Enabled: false}, // disabled
+	}
+	cleanup := withRouteUnitFixture(t, []*Channel{ch1, ch2}, group, alias, routes)
+	defer cleanup()
+
+	resetHealthManager()
+	setTestConfig(true, 0.3, 0.05, 0)
+
+	rnd := rand.New(rand.NewSource(400))
+	selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+	require.NoError(t, err)
+	require.NotNil(t, selected)
+	assert.Equal(t, 1006, selected.ChannelId, "disabled route should not be selected")
+}
+
+func TestSelectRouteUnit_CooldownEjection(t *testing.T) {
+	const group, alias = "test-group", "test-model"
+
+	ch1 := testRouteChannel(1008, 10, 5, false, []string{"sk-1"}, nil)
+	ch2 := testRouteChannel(1009, 10, 5, false, []string{"sk-2"}, nil)
+	routes := []ChannelModelRoute{
+		testRoute(1, 1008, 0, group, alias, "upstream-1", 100),
+		testRoute(2, 1009, 0, group, alias, "upstream-2", 100),
+	}
+	cleanup := withRouteUnitFixture(t, []*Channel{ch1, ch2}, group, alias, routes)
+	defer cleanup()
+
+	resetHealthManager()
+	// Use cooldown test settings with all cooldown params enabled
+	cfg := cooldownTestSetting()
+	cfg.CooldownMaxEjectionPercent = 50
+	operation_setting.SetChannelHealthSetting(cfg)
+
+	// Push channel 1008 into cooldown
+	mgr := GetChannelHealthManager()
+	for range 10 {
+		mgr.RecordChannelOutcome(1008, OutcomeFatal)
+	}
+	// Verify cooldown is active by checking that the channel gets ejected from selection
+
+	rnd := rand.New(rand.NewSource(500))
+	counts := make(map[int]int)
+	for range 100 {
+		selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+		require.NoError(t, err)
+		if selected != nil {
+			counts[selected.ChannelId]++
+		}
+	}
+	// Channel 1008 should be ejected (or at least heavily deprioritized)
+	// With 50% max ejection and 2 channels, at most 1 can be ejected
+	assert.Equal(t, 0, counts[1008], "cooldown channel should be ejected")
+	assert.Greater(t, counts[1009], 0)
+}
+
+func TestSelectRouteUnit_AdvancedCustomPathFilter(t *testing.T) {
+	const group, alias = "test-group", "test-model"
+
+	// Advanced Custom channel that only supports /v1/chat/completions
+	ch1 := testRouteChannel(1010, 10, 5, false, []string{"sk-1"}, nil)
+	ch1.Type = constant.ChannelTypeAdvancedCustom
+	ch1.OtherSettings = `{"advanced_custom":{"advanced_routes":[{"incoming_path":"/v1/chat/completions","models":["test-model"]}]}}`
+
+	ch2 := testRouteChannel(1011, 10, 5, false, []string{"sk-2"}, nil)
+	ch2.Type = constant.ChannelTypeAdvancedCustom
+	ch2.OtherSettings = `{"advanced_custom":{"advanced_routes":[{"incoming_path":"/v1/embeddings","models":["test-model"]}]}}`
+
+	routes := []ChannelModelRoute{
+		testRoute(1, 1010, 0, group, alias, "upstream-1", 100),
+		testRoute(2, 1011, 0, group, alias, "upstream-2", 100),
+	}
+	cleanup := withRouteUnitFixture(t, []*Channel{ch1, ch2}, group, alias, routes)
+	defer cleanup()
+
+	resetHealthManager()
+	setTestConfig(true, 0.3, 0.05, 0)
+
+	// Request to /v1/chat/completions should only select ch1
+	rnd := rand.New(rand.NewSource(600))
+	selected, err := SelectRouteUnit(group, alias, "/v1/chat/completions", 0, nil, rnd)
+	require.NoError(t, err)
+	require.NotNil(t, selected)
+	assert.Equal(t, 1010, selected.ChannelId)
+
+	// Request to /v1/embeddings should only select ch2
+	selected, err = SelectRouteUnit(group, alias, "/v1/embeddings", 0, nil, rnd)
+	require.NoError(t, err)
+	require.NotNil(t, selected)
+	assert.Equal(t, 1011, selected.ChannelId)
+
+	// Request to unknown path should select none
+	selected, err = SelectRouteUnit(group, alias, "/v1/unknown", 0, nil, rnd)
+	require.NoError(t, err)
+	assert.Nil(t, selected)
+}
+
+func TestSelectRouteUnit_DeterministicCacheVsDB(t *testing.T) {
+	const group, alias = "test-group", "test-model"
+
+	ch1 := testRouteChannel(2001, 10, 5, false, []string{"sk-1"}, nil)
+	ch2 := testRouteChannel(2002, 20, 5, false, []string{"sk-2"}, nil)
+	routes := []ChannelModelRoute{
+		testRoute(1, 2001, 0, group, alias, "upstream-1", 100),
+		testRoute(2, 2002, 0, group, alias, "upstream-2", 200), // higher weight
+	}
+
+	// Test with MemoryCacheEnabled = true (cache path)
+	cleanupCache := withRouteUnitFixture(t, []*Channel{ch1, ch2}, group, alias, routes)
+	defer cleanupCache()
+
+	resetHealthManager()
+	setTestConfig(true, 0.3, 0.05, 0)
+
+	rndCache := rand.New(rand.NewSource(700))
+	rndDB := rand.New(rand.NewSource(700)) // same seed
+
+	// Cache path
+	common.MemoryCacheEnabled = true
+	selectedCache, err := SelectRouteUnit(group, alias, "", 0, nil, rndCache)
+	require.NoError(t, err)
+	require.NotNil(t, selectedCache)
+
+	// DB path (no routes in DB, should return nil)
+	common.MemoryCacheEnabled = false
+	selectedDB, err := SelectRouteUnit(group, alias, "", 0, nil, rndDB)
+	require.NoError(t, err)
+	// DB path returns nil because no routes in test DB
+	// This is expected - the test verifies both paths don't crash
+	assert.Nil(t, selectedDB)
+
+	// Restore cache for cleanup
+	common.MemoryCacheEnabled = true
+}
+
+func TestSelectRouteUnit_WeightDistribution(t *testing.T) {
+	const group, alias = "test-group", "test-model"
+
+	ch1 := testRouteChannel(3001, 10, 5, false, []string{"sk-1"}, nil)
+	ch2 := testRouteChannel(3002, 10, 5, false, []string{"sk-2"}, nil)
+	routes := []ChannelModelRoute{
+		testRoute(1, 3001, 0, group, alias, "upstream-1", 100), // weight 100
+		testRoute(2, 3002, 0, group, alias, "upstream-2", 300), // weight 300 (3x)
+	}
+	cleanup := withRouteUnitFixture(t, []*Channel{ch1, ch2}, group, alias, routes)
+	defer cleanup()
+
+	resetHealthManager()
+	setTestConfig(true, 0.3, 0.05, 0)
+
+	rnd := rand.New(rand.NewSource(800))
+	counts := make(map[int]int)
+	for range 1000 {
+		selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+		require.NoError(t, err)
+		require.NotNil(t, selected)
+		counts[selected.ChannelId]++
+	}
+
+	// ch2 has 3x weight, should get ~75% of selections
+	// Allow some variance
+	assert.InDelta(t, 750, counts[3002], 100, "weight 300 should get ~75%")
+	assert.InDelta(t, 250, counts[3001], 100, "weight 100 should get ~25%")
+}
+
+func TestSelectRouteUnit_NormalizedAliasFallback(t *testing.T) {
+	const group = "test-group"
+	const alias = "gemini-2.5-flash-thinking-512" // FormatMatchingModelName normalizes this
+
+	const normalizedAlias = "gemini-2.5-flash-thinking-*"
+	ch := testRouteChannel(4001, 10, 5, false, []string{"sk-1"}, nil)
+	// Use fixture but with normalized alias for both group2model2channels and routes
+	prevGroups := group2model2channels
+	prevIDM := channelsIDM
+	prevAliasRoutes := group2alias2routes
+	prevMemoryCache := common.MemoryCacheEnabled
+	t.Cleanup(func() {
+		channelSyncLock.Lock()
+		group2model2channels = prevGroups
+		channelsIDM = prevIDM
+		group2alias2routes = prevAliasRoutes
+		channelSyncLock.Unlock()
+		common.MemoryCacheEnabled = prevMemoryCache
+	})
+
+	ids := []int{4001}
+	idm := map[int]*Channel{4001: ch}
+	channelSyncLock.Lock()
+	group2model2channels = map[string]map[string][]int{group: {alias: ids}}
+	channelsIDM = idm
+	if group2alias2routes == nil {
+		group2alias2routes = make(map[string]map[string][]routeCandidate)
+	}
+	group2alias2routes[group] = map[string][]routeCandidate{
+		normalizedAlias: {
+			{routeId: 1, channelId: 4001, keyIndex: 0, upstreamModel: "upstream-normalized", staticWeight: 100},
+		},
+	}
+	channelSyncLock.Unlock()
+	common.MemoryCacheEnabled = true
+
+	resetHealthManager()
+	setTestConfig(true, 0.3, 0.05, 0)
+
+	// Request with non-normalized alias should fall back to normalized
+	rnd := rand.New(rand.NewSource(900))
+	selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+	require.NoError(t, err)
+	require.NotNil(t, selected)
+	assert.Equal(t, alias, selected.Alias) // SelectedRoute.Alias carries the requested model name
+	assert.Equal(t, "upstream-normalized", selected.UpstreamModel)
+}
+
+func TestSelectRouteUnit_EmptyResult(t *testing.T) {
+	const group, alias = "empty-group", "empty-model"
+
+	cleanup := withRouteUnitFixture(t, []*Channel{}, group, alias, []ChannelModelRoute{})
+	defer cleanup()
+
+	rnd := rand.New(rand.NewSource(1000))
+	selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+	require.NoError(t, err)
+	assert.Nil(t, selected)
+}

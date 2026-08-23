@@ -87,6 +87,18 @@ func createChannelSelectAutoGroupsChannel(t *testing.T, db *gorm.DB, id int, gro
 		Priority:  &priority,
 		Weight:    weight,
 	}).Error)
+	// Create ChannelModelRoute entries for the new route-unit selector
+	for keyIndex := 0; keyIndex < 1; keyIndex++ { // single key
+		require.NoError(t, db.Create(&model.ChannelModelRoute{
+			Group:            group,
+			PublicModelAlias: modelName,
+			ChannelId:        id,
+			KeyIndex:         keyIndex,
+			UpstreamModel:    modelName,
+			StaticWeight:     100,
+			Enabled:          true,
+		}).Error)
+	}
 }
 
 func TestCacheGetRandomSatisfiedChannelUsesTokenAutoGroupsWhenGlobalAutoIsEmpty(t *testing.T) {
@@ -114,7 +126,7 @@ func TestCacheGetRandomSatisfiedChannelUsesTokenAutoGroupsWhenGlobalAutoIsEmpty(
 	first, selectedGroup, err := CacheGetRandomSatisfiedChannel(param)
 	require.NoError(t, err)
 	require.NotNil(t, first)
-	assert.Equal(t, 2101, first.Id)
+	assert.Equal(t, 2101, first.ChannelId)
 	assert.Equal(t, "vip", selectedGroup)
 	assert.Equal(t, "vip", common.GetContextKeyString(ctx, constant.ContextKeyAutoGroup))
 	assert.Empty(t, setting.GetAutoGroups(), "the selection must not depend on the global Auto list")
@@ -123,7 +135,7 @@ func TestCacheGetRandomSatisfiedChannelUsesTokenAutoGroupsWhenGlobalAutoIsEmpty(
 	second, selectedGroup, err := CacheGetRandomSatisfiedChannel(param)
 	require.NoError(t, err)
 	require.NotNil(t, second)
-	assert.Equal(t, 2102, second.Id)
+	assert.Equal(t, 2102, second.ChannelId)
 	assert.Equal(t, "default", selectedGroup)
 	assert.Equal(t, "default", common.GetContextKeyString(ctx, constant.ContextKeyAutoGroup))
 }

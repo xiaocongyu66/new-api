@@ -32,7 +32,7 @@ type ModelRequest struct {
 
 func Distribute() func(c *gin.Context) {
 	return func(c *gin.Context) {
-		var channel *model.Channel
+		var route *model.SelectedRoute
 		channelId, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId)
 		modelRequest, shouldSelectChannel, err := getModelRequest(c)
 		if err != nil {
@@ -45,13 +45,19 @@ func Distribute() func(c *gin.Context) {
 				abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidChannelId))
 				return
 			}
-			channel, err = model.GetChannelById(id, true)
+			channel, err := model.GetChannelById(id, true)
 			if err != nil {
 				abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidChannelId))
 				return
 			}
 			if channel.Status != common.ChannelStatusEnabled {
 				abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorChannelDisabled))
+				return
+			}
+			// Build SelectedRoute for specific channel
+			route, err = model.SelectedRouteFromChannel(channel, modelRequest.Model)
+			if err != nil {
+				abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidChannelId))
 				return
 			}
 		} else {
@@ -114,17 +120,26 @@ func Distribute() func(c *gin.Context) {
 								if model.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
 									selectGroup = g
 									common.SetContextKey(c, constant.ContextKeyAutoGroup, g)
-									channel = preferred
-									affinityUsable = true
-									service.MarkChannelAffinityUsed(c, g, preferred.Id)
+									// Build route from affinity channel
+									route, err = model.SelectedRouteFromChannel(preferred, modelRequest.Model)
+									if err != nil {
+										affinityUsable = false
+									} else {
+										affinityUsable = true
+										service.MarkChannelAffinityUsed(c, g, preferred.Id)
+									}
 									break
 								}
 							}
 						} else if model.IsChannelEnabledForGroupModel(usingGroup, modelRequest.Model, preferred.Id) {
-							channel = preferred
-							selectGroup = usingGroup
-							affinityUsable = true
-							service.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
+							route, err = model.SelectedRouteFromChannel(preferred, modelRequest.Model)
+							if err != nil {
+								affinityUsable = false
+							} else {
+								selectGroup = usingGroup
+								affinityUsable = true
+								service.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
+							}
 						}
 					}
 					if !affinityUsable && !service.ShouldKeepChannelAffinityOnChannelDisabled() {
@@ -132,14 +147,14 @@ func Distribute() func(c *gin.Context) {
 					}
 				}
 
-				if channel == nil {
-					channel, selectGroup, err = service.CacheGetRandomSatisfiedChannel(&service.RetryParam{
-						Ctx:         c,
-						ModelName:   modelRequest.Model,
-						TokenGroup:  usingGroup,
-						RequestPath: c.Request.URL.Path,
-						Retry:       common.GetPointer(0),
-						ExcludeSet:  make(map[int]bool),
+				if route == nil {
+					route, selectGroup, err = service.CacheGetRandomSatisfiedChannel(&service.RetryParam{
+						Ctx:           c,
+						ModelName:     modelRequest.Model,
+						TokenGroup:    usingGroup,
+						RequestPath:   c.Request.URL.Path,
+						Retry:         common.GetPointer(0),
+						ExcludeRoutes: make(map[model.RouteKey]bool),
 					})
 					if err != nil {
 						showGroup := usingGroup
@@ -147,15 +162,10 @@ func Distribute() func(c *gin.Context) {
 							showGroup = fmt.Sprintf("auto(%s)", selectGroup)
 						}
 						message := i18n.T(c, i18n.MsgDistributorGetChannelFailed, map[string]any{"Group": showGroup, "Model": modelRequest.Model, "Error": err.Error()})
-						// 如果错误，但是渠道不为空，说明是数据库一致性问题
-						//if channel != nil {
-						//	common.SysError(fmt.Sprintf("渠道不存在：%d", channel.Id))
-						//	message = "数据库一致性已被破坏，请联系管理员"
-						//}
 						abortWithOpenAiMessage(c, http.StatusServiceUnavailable, message, types.ErrorCodeModelNotFound)
 						return
 					}
-					if channel == nil {
+					if route == nil {
 						abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelRequest.Model}), types.ErrorCodeModelNotFound)
 						return
 					}
@@ -163,10 +173,16 @@ func Distribute() func(c *gin.Context) {
 			}
 		}
 		common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
-		SetupContextForSelectedChannel(c, channel, modelRequest.Model)
+		// SetupContextForSelectedChannel now accepts SelectedRoute
+		if route != nil {
+			if err := SetupContextForSelectedChannel(c, route, modelRequest.Model); err != nil {
+				abortWithOpenAiMessage(c, http.StatusServiceUnavailable, err.Error())
+				return
+			}
+		}
 		c.Next()
-		if channel != nil && c.Writer != nil && c.Writer.Status() < http.StatusBadRequest {
-			service.RecordChannelAffinity(c, channel.Id)
+		if route != nil && c.Writer != nil && c.Writer.Status() < http.StatusBadRequest {
+			service.RecordChannelAffinity(c, route.ChannelId)
 		}
 	}
 }
@@ -442,11 +458,12 @@ func getTaskOriginModelName(c *gin.Context) string {
 	return ""
 }
 
-func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, modelName string) *types.NewAPIError {
+func SetupContextForSelectedChannel(c *gin.Context, route *model.SelectedRoute, modelName string) *types.NewAPIError {
 	c.Set("original_model", modelName) // for retry
-	if channel == nil {
-		return types.NewError(errors.New("channel is nil"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+	if route == nil {
+		return types.NewError(errors.New("route is nil"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
+	channel := route.Channel
 	common.SetContextKey(c, constant.ContextKeyChannelId, channel.Id)
 	common.SetContextKey(c, constant.ContextKeyChannelName, channel.Name)
 	common.SetContextKey(c, constant.ContextKeyChannelType, channel.Type)
@@ -483,16 +500,16 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	common.SetContextKey(c, constant.ContextKeyChannelModelMapping, channel.GetModelMapping())
 	common.SetContextKey(c, constant.ContextKeyChannelStatusCodeMapping, channel.GetStatusCodeMapping())
 
-	key, index, newAPIError := channel.GetNextEnabledKey()
-	if newAPIError != nil {
-		return newAPIError
-	}
+	// Key and key index come from the pre-selected route
+	key := route.Key
+	index := route.KeyIndex
 	if channel.ChannelInfo.IsMultiKey {
 		common.SetContextKey(c, constant.ContextKeyChannelIsMultiKey, true)
 		common.SetContextKey(c, constant.ContextKeyChannelMultiKeyIndex, index)
 	} else {
 		// 必须设置为 false，否则在重试到单个 key 的时候会导致日志显示错误
 		common.SetContextKey(c, constant.ContextKeyChannelIsMultiKey, false)
+		common.SetContextKey(c, constant.ContextKeyChannelMultiKeyIndex, 0)
 	}
 	// c.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", key))
 	common.SetContextKey(c, constant.ContextKeyChannelKey, key)
