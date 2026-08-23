@@ -37,11 +37,33 @@ class Metrics:
     chunks: int = 0
     status: dict[int, int] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
+    records: list[dict[str, Any]] = field(default_factory=list)
     started: float = 0.0
     ended: float = 0.0
 
     def record_status(self, code: int) -> None:
         self.status[code] = self.status.get(code, 0) + 1
+
+    def record_request(self, *, stream: bool, status: int, latency: float, ttft: float | None, request_id: str) -> None:
+        t_offset = time.perf_counter() - self.started if self.started else 0.0
+        self.records.append({
+            "t": round(t_offset, 3),
+            "stream": stream,
+            "status": status,
+            "latency": round(latency, 3),
+            "ttft": round(ttft, 3) if ttft is not None else None,
+            "request_id": request_id,
+        })
+
+    def timeline(self, bucket: int = 5) -> list[dict[str, Any]]:
+        buckets: dict[int, list[int]] = {}
+        for r in self.records:
+            b = int(r["t"] // bucket) * bucket
+            buckets.setdefault(b, []).append(r["status"])
+        return [
+            {"t_sec": k, "completed": len(v), "ok": sum(1 for s in v if s == 200)}
+            for k, v in sorted(buckets.items())
+        ]
 
     def sample_error(self, msg: str) -> None:
         if len(self.errors) < 8:
@@ -66,6 +88,8 @@ class Metrics:
             "duration_sec": round(duration, 2),
             "rps": round(total / duration, 2),
             "status": self.status,
+            "lat_avg": round(statistics.mean(self.latencies), 3) if self.latencies else None,
+            "ttft_avg": round(statistics.mean(self.ttfts), 3) if self.ttfts else None,
             "lat_p50": round(self.pct(self.latencies, 50), 3) if self.latencies else None,
             "lat_p90": round(self.pct(self.latencies, 90), 3) if self.latencies else None,
             "lat_p99": round(self.pct(self.latencies, 99), 3) if self.latencies else None,
@@ -76,6 +100,8 @@ class Metrics:
             "chunks": self.chunks,
             "chars_per_sec": round(self.output_chars / duration, 2),
             "errors": self.errors,
+            "timeline": self.timeline(),
+            "records": self.records,
         }
 
 
@@ -88,7 +114,9 @@ class MockUpstream:
         self.runner: web.AppRunner | None = None
 
     async def models(self, request: web.Request) -> web.Response:
-        return web.json_response({"object": "list", "data": [{"id": "mock-fast"}, {"id": "mock-slow"}]})
+        return web.json_response({"object": "list", "data": [
+            {"id": "mock-fast"}, {"id": "mock-slow"}, {"id": "mock-flaky"}, {"id": "mock-bad"},
+        ]})
 
     async def chat(self, request: web.Request) -> web.StreamResponse:
         body = await request.json()
@@ -96,7 +124,12 @@ class MockUpstream:
         stream = bool(body.get("stream"))
         max_tokens = int(body.get("max_tokens") or 16)
         if "bad" in model:
-            return web.json_response({"error": {"message": "mock upstream failure"}}, status=500)
+            # 401 mimics a dead key so the key verification / cascade path gets exercised.
+            return web.json_response({"error": {"message": "invalid mock api key", "type": "invalid_request_error"}}, status=401)
+        if "flaky" in model:
+            import random
+            if random.random() < 0.3:
+                return web.json_response({"error": {"message": "mock transient failure"}}, status=500)
         if "slow" in model:
             await asyncio.sleep(0.8)
         if not stream:
@@ -140,15 +173,19 @@ async def one_non_stream(session: aiohttp.ClientSession, args: argparse.Namespac
             text = await resp.text()
             metrics.record_status(resp.status)
             latency = time.perf_counter() - start
+            rid = resp.headers.get("X-Oneapi-Request-Id", "")
             metrics.latencies.append(latency)
             if resp.status == 200:
                 metrics.ttfts.append(latency)
                 metrics.output_chars += len(text)
             else:
-                metrics.sample_error(f"{resp.status}: {text}")
+                metrics.sample_error(f"[{rid}] {resp.status}: {text[:150]}")
+            metrics.record_request(stream=False, status=resp.status, latency=latency, ttft=latency, request_id=rid)
     except Exception as exc:
+        latency = time.perf_counter() - start
         metrics.record_status(599)
-        metrics.latencies.append(time.perf_counter() - start)
+        metrics.latencies.append(latency)
+        metrics.record_request(stream=False, status=599, latency=latency, ttft=None, request_id="")
         metrics.sample_error(type(exc).__name__ + ": " + str(exc))
 
 
@@ -164,6 +201,7 @@ async def one_stream(session: aiohttp.ClientSession, args: argparse.Namespace, m
             timeout=aiohttp.ClientTimeout(total=args.request_timeout),
         ) as resp:
             metrics.record_status(resp.status)
+            rid = resp.headers.get("X-Oneapi-Request-Id", "")
             async for raw in resp.content:
                 now = time.perf_counter()
                 if first is None:
@@ -176,12 +214,16 @@ async def one_stream(session: aiohttp.ClientSession, args: argparse.Namespace, m
                 metrics.output_chars += len(line)
                 if line.startswith("data:") and "[DONE]" not in line:
                     metrics.chunks += 1
-            metrics.latencies.append(time.perf_counter() - start)
+            latency = time.perf_counter() - start
+            metrics.latencies.append(latency)
             if resp.status != 200:
-                metrics.sample_error(f"stream status {resp.status}")
+                metrics.sample_error(f"[{rid}] stream status {resp.status}")
+            metrics.record_request(stream=True, status=resp.status, latency=latency, ttft=(first - start) if first is not None else None, request_id=rid)
     except Exception as exc:
+        latency = time.perf_counter() - start
         metrics.record_status(599)
-        metrics.latencies.append(time.perf_counter() - start)
+        metrics.latencies.append(latency)
+        metrics.record_request(stream=True, status=599, latency=latency, ttft=None, request_id="")
         metrics.sample_error(type(exc).__name__ + ": " + str(exc))
 
 
@@ -192,6 +234,16 @@ def host_header(args: argparse.Namespace) -> dict[str, str]:
 async def resolve_model(session: aiohttp.ClientSession, args: argparse.Namespace) -> None:
     args.requested_model = args.model
     if args.model != "auto":
+        try:
+            async with session.get(
+                f"{args.target_url.rstrip('/')}/models",
+                headers={"Authorization": f"Bearer {args.api_key}", **host_header(args)},
+                timeout=aiohttp.ClientTimeout(total=args.request_timeout),
+            ) as resp:
+                if resp.status == 200:
+                    args.available_models = [m.get("id", "") for m in (await resp.json()).get("data", []) if isinstance(m, dict)]
+        except Exception:
+            args.available_models = []
         return
     async with session.get(
         f"{args.target_url.rstrip('/')}/models",
@@ -205,6 +257,7 @@ async def resolve_model(session: aiohttp.ClientSession, args: argparse.Namespace
     models = [m.get("id", "") for m in payload.get("data", []) if isinstance(m, dict) and m.get("id")]
     if not models:
         raise RuntimeError("model discovery returned no models")
+    args.available_models = models
     by_name = {m.lower(): m for m in models}
     candidates = ordered_unique(
         [by_name[p] for p in PREFERRED_AUTO_MODELS if p in by_name]
@@ -287,6 +340,11 @@ async def run(args: argparse.Namespace) -> list[dict[str, Any]]:
         connector = aiohttp.TCPConnector(limit=max(args.concurrency, args.stream_concurrency) * 3)
         async with aiohttp.ClientSession(connector=connector) as session:
             await resolve_model(session, args)
+            mixed_model = args.mixed_model
+            if mixed_model == "auto":
+                mixed_model = "mock-flaky" if "mock-flaky" in getattr(args, "available_models", []) else args.model
+            elif not mixed_model:
+                mixed_model = args.model
             for name, concurrency, duration in scenarios:
                 local = argparse.Namespace(**vars(args))
                 local.concurrency = concurrency
@@ -297,11 +355,15 @@ async def run(args: argparse.Namespace) -> list[dict[str, Any]]:
                 elif name == "long_stream":
                     local.stream_ratio = 1.0
                     local.long_ratio = 1.0
+                elif name == "mixed_stream_non_stream":
+                    local.model = mixed_model
                 metrics = Metrics(name=name)
                 metrics.started = time.perf_counter()
                 await asyncio.gather(*(worker(session, local, metrics) for _ in range(concurrency)))
                 metrics.ended = time.perf_counter()
-                results.append(metrics.summary())
+                summary = metrics.summary()
+                summary["model"] = local.model
+                results.append(summary)
         return results
     finally:
         if mock:
@@ -321,19 +383,38 @@ def write_report(results: list[dict[str, Any]], args: argparse.Namespace) -> Non
         f"- stream_ratio: `{args.stream_ratio}` long_ratio: `{args.long_ratio}`",
         f"- short_tokens/long_tokens: `{args.short_tokens}/{args.long_tokens}`",
         "",
-        "| 场景 | 请求 | 成功率 | RPS | Lat P50/P90/P99(s) | TTFT P50/P90/P99(s) | ITL avg(s) | chunks | chars/s | 状态码 |",
-        "|---|---:|---:|---:|---|---|---:|---:|---:|---|",
+        "| 场景 | 模型 | 请求 | 成功率 | RPS | Lat avg/P50/P90/P99(s) | TTFT avg/P50/P90/P99(s) | ITL avg(s) | chunks | chars/s | 状态码 |",
+        "|---|---|---:|---:|---:|---|---|---:|---:|---:|---|",
     ]
     for r in results:
         lines.append(
-            f"| {r['name']} | {r['requests']} | {r['success_rate']}% | {r['rps']} | "
-            f"{r['lat_p50']}/{r['lat_p90']}/{r['lat_p99']} | "
-            f"{r['ttft_p50']}/{r['ttft_p90']}/{r['ttft_p99']} | "
+            f"| {r['name']} | {r.get('model', args.model)} | {r['requests']} | {r['success_rate']}% | {r['rps']} | "
+            f"{r.get('lat_avg')}/{r['lat_p50']}/{r['lat_p90']}/{r['lat_p99']} | "
+            f"{r.get('ttft_avg')}/{r['ttft_p50']}/{r['ttft_p90']}/{r['ttft_p99']} | "
             f"{r['itl_avg']} | {r['chunks']} | {r['chars_per_sec']} | `{r['status']}` |"
         )
+    lines += [
+        "",
+        "## 完成时间线（5s 桶：窗口内完成的请求数/成功数）",
+        "| 场景 | 窗口(s) | 完成 | 成功 |",
+        "|---|---:|---:|---:|",
+    ]
+    for r in results:
+        for t in r.get("timeline", []):
+            lines.append(f"| {r['name']} | {t['t_sec']}-{t['t_sec'] + 5} | {t['completed']} | {t['ok']} |")
     errors = [e for r in results for e in r.get("errors", [])]
     if errors:
         lines += ["", "## Error samples", *[f"- `{e}`" for e in errors[:10]]]
+    if args.requests_file:
+        with open(args.requests_file, "w", encoding="utf-8") as rf:
+            rf.write("scenario,model,t_offset_s,stream,status,latency_s,ttft_s,request_id\n")
+            for r in results:
+                for rec in r.get("records", []):
+                    rf.write(
+                        f"{r['name']},{r.get('model', args.model)},{rec['t']},{rec['stream']},"
+                        f"{rec['status']},{rec['latency']},{rec['ttft']},{rec['request_id']}\n"
+                    )
+        lines += ["", f"- 请求级明细 CSV: `{args.requests_file}`"]
     safe_args = dict(vars(args))
     if safe_args.get("api_key"):
         safe_args["api_key"] = "***"
@@ -368,6 +449,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--json-file", default="metrics.json")
     p.add_argument("--min-success-rate", type=float, default=1.0)
     p.add_argument("--model-probe-limit", type=int, default=80)
+    p.add_argument("--mixed-model", default="auto", help="mixed 场景使用的模型；auto 优先 mock-flaky")
+    p.add_argument("--requests-file", default="", help="请求级明细 CSV 输出路径")
     return p.parse_args()
 
 
