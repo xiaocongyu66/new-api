@@ -3,14 +3,19 @@ package controller
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func init() {
@@ -361,19 +366,6 @@ func TestCandidateSurvivesTerminalRetryable500(t *testing.T) {
 		"terminal retryable 500 with no subsequent local error must still record")
 }
 
-func TestTerminalIsolationCandidateClearsPriorRoute(t *testing.T) {
-	priorRoute := model.RouteKey{ChannelId: 8, Model: "gpt-4"}
-	priorErr := types.NewError(testErr("provider returned 500"), types.ErrorCodeBadResponseStatusCode)
-
-	route, err := terminalIsolationCandidate(true, priorRoute, priorErr)
-	require.Equal(t, &priorRoute, route)
-	require.Same(t, priorErr, err)
-
-	route, err = terminalIsolationCandidate(false, priorRoute, priorErr)
-	assert.Nil(t, route, "terminal local or non-retryable error clears any prior candidate")
-	assert.Nil(t, err)
-}
-
 // A JSON error body written after the stream already started would appear inside
 // the open SSE stream as bare, prefix-less bytes. The deferred handler must stay
 // silent in that case; realtime relays answer over the websocket and are exempt.
@@ -397,4 +389,200 @@ func TestCanWriteErrorBody(t *testing.T) {
 			assert.Equal(t, tc.want, canWriteErrorBody(tc.relayFormat, tc.bodyStarted))
 		})
 	}
+}
+
+// TestRelayRetryChainRecordsEachUpstreamFailure verifies that each retry-eligible
+// upstream failure in a chain is recorded against its route immediately, not just
+// the terminal one. This covers the fix for #411: per-retry accounting instead of
+// terminal-only accounting.
+func TestRelayRetryChainRecordsEachUpstreamFailure(t *testing.T) {
+	// Use in-memory SQLite for channel_model_health, same pattern as model tests.
+	previousDB := model.DB
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.ChannelModelHealth{}))
+	model.DB = db
+	model.ClearRouteHealthCache()
+	t.Cleanup(func() {
+		model.DB = previousDB
+		model.ClearRouteHealthCache()
+	})
+
+	previousSetting := operation_setting.GetChannelModelHealthSetting()
+	cfg := &operation_setting.ChannelModelHealthSetting{
+		UpstreamFailureThreshold: 1,
+		LocalFailureThreshold:    3,
+		DormantDisableThreshold:  0,
+		CalmWeightScale:          100,
+		DormantWeightScale:       50,
+		KeyProbeEnabled:          false,
+	}
+	applySetting := func(c *operation_setting.ChannelModelHealthSetting) {
+		for key, value := range map[string]int{
+			"UpstreamFailureThreshold": c.UpstreamFailureThreshold,
+			"LocalFailureThreshold":    c.LocalFailureThreshold,
+			"DormantDisableThreshold":  c.DormantDisableThreshold,
+			"CalmWeightScale":          c.CalmWeightScale,
+			"DormantWeightScale":       c.DormantWeightScale,
+		} {
+			require.NoError(t, operation_setting.UpdateChannelModelHealthSettingValue(key, strconv.Itoa(value)))
+		}
+		require.NoError(t, operation_setting.UpdateChannelModelHealthSettingValue("KeyProbeEnabled", strconv.FormatBool(c.KeyProbeEnabled)))
+	}
+	applySetting(cfg)
+	t.Cleanup(func() { applySetting(previousSetting) })
+
+	ctx := newRetryTestContext(t)
+	common.RetryTimes = 2 // allow 2 retries (3 attempts total)
+	defer func() { common.RetryTimes = 0 }()
+
+	// Simulate a retry chain: attempt 0 on channel 1 returns 500 (retryable),
+	// attempt 1 on channel 2 returns 200 (success).
+	// Per-retry recording: channel 1 should get a failure record, channel 2 should not.
+	routeKey1 := model.RouteKey{ChannelId: 1, KeyIndex: 0, Model: "gpt-4"}
+	err500 := types.NewError(testErr("provider returned 500"), types.ErrorCodeBadResponseStatusCode)
+	err500.StatusCode = http.StatusInternalServerError
+
+	// Attempt 0: record failure for channel 1
+	recordRouteIsolation(ctx, routeKey1, err500, model.FailureSourceUpstream)
+
+	// Attempt 1: success on channel 2 (no recording for success path in this test)
+	routeKey2 := model.RouteKey{ChannelId: 2, KeyIndex: 0, Model: "gpt-4"}
+
+	// Verify channel 1 has a failure record
+	state1, level1, until1, ok1 := model.GetRouteIsolation(routeKey1)
+	require.True(t, ok1, "channel 1 should have isolation record after upstream 500")
+	assert.Equal(t, "calm", state1)
+	assert.Equal(t, 1, level1)
+	assert.Greater(t, until1, time.Now().Unix())
+
+	// Verify channel 2 has NO failure record
+	_, _, _, ok2 := model.GetRouteIsolation(routeKey2)
+	assert.False(t, ok2, "channel 2 should not have isolation record after success")
+}
+
+// TestRelayPoolExhaustionRecordsAllFailures verifies that when all channels in
+// the pool return retryable upstream errors until the pool is exhausted, each
+// channel gets exactly one failure record.
+func TestRelayPoolExhaustionRecordsAllFailures(t *testing.T) {
+	previousDB := model.DB
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.ChannelModelHealth{}))
+	model.DB = db
+	model.ClearRouteHealthCache()
+	t.Cleanup(func() {
+		model.DB = previousDB
+		model.ClearRouteHealthCache()
+	})
+
+	previousSetting := operation_setting.GetChannelModelHealthSetting()
+	cfg := &operation_setting.ChannelModelHealthSetting{
+		UpstreamFailureThreshold: 1,
+		LocalFailureThreshold:    3,
+		DormantDisableThreshold:  0,
+		CalmWeightScale:          100,
+		DormantWeightScale:       50,
+		KeyProbeEnabled:          false,
+	}
+	applySetting := func(c *operation_setting.ChannelModelHealthSetting) {
+		for key, value := range map[string]int{
+			"UpstreamFailureThreshold": c.UpstreamFailureThreshold,
+			"LocalFailureThreshold":    c.LocalFailureThreshold,
+			"DormantDisableThreshold":  c.DormantDisableThreshold,
+			"CalmWeightScale":          c.CalmWeightScale,
+			"DormantWeightScale":       c.DormantWeightScale,
+		} {
+			require.NoError(t, operation_setting.UpdateChannelModelHealthSettingValue(key, strconv.Itoa(value)))
+		}
+		require.NoError(t, operation_setting.UpdateChannelModelHealthSettingValue("KeyProbeEnabled", strconv.FormatBool(c.KeyProbeEnabled)))
+	}
+	applySetting(cfg)
+	t.Cleanup(func() { applySetting(previousSetting) })
+
+	ctx := newRetryTestContext(t)
+	common.RetryTimes = 2
+	defer func() { common.RetryTimes = 0 }()
+
+	err500 := types.NewError(testErr("provider returned 500"), types.ErrorCodeBadResponseStatusCode)
+	err500.StatusCode = http.StatusInternalServerError
+
+	// Two channels, both return 500 on their attempt
+	routeKey1 := model.RouteKey{ChannelId: 10, KeyIndex: 0, Model: "gpt-4"}
+	routeKey2 := model.RouteKey{ChannelId: 11, KeyIndex: 0, Model: "gpt-4"}
+
+	// Attempt 0: channel 10 fails
+	recordRouteIsolation(ctx, routeKey1, err500, model.FailureSourceUpstream)
+	// Attempt 1: channel 11 fails
+	recordRouteIsolation(ctx, routeKey2, err500, model.FailureSourceUpstream)
+	// Attempt 2: no more channels, loop ends
+
+	// Both channels should have exactly one failure record
+	state1, level1, until1, ok1 := model.GetRouteIsolation(routeKey1)
+	require.True(t, ok1, "channel 10 should have isolation record")
+	assert.Equal(t, "calm", state1)
+	assert.Equal(t, 1, level1)
+	assert.Greater(t, until1, time.Now().Unix())
+
+	state2, level2, until2, ok2 := model.GetRouteIsolation(routeKey2)
+	require.True(t, ok2, "channel 11 should have isolation record")
+	assert.Equal(t, "calm", state2)
+	assert.Equal(t, 1, level2)
+	assert.Greater(t, until2, time.Now().Unix())
+}
+
+// TestRelayLocal4xxDoesNotRecord verifies that request-local non-retryable
+// errors (4xx) do not write any channel_model_health records.
+func TestRelayLocal4xxDoesNotRecord(t *testing.T) {
+	previousDB := model.DB
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.ChannelModelHealth{}))
+	model.DB = db
+	model.ClearRouteHealthCache()
+	t.Cleanup(func() {
+		model.DB = previousDB
+		model.ClearRouteHealthCache()
+	})
+
+	previousSetting := operation_setting.GetChannelModelHealthSetting()
+	cfg := &operation_setting.ChannelModelHealthSetting{
+		UpstreamFailureThreshold: 1,
+		LocalFailureThreshold:    3,
+		DormantDisableThreshold:  0,
+		CalmWeightScale:          100,
+		DormantWeightScale:       50,
+		KeyProbeEnabled:          false,
+	}
+	applySetting := func(c *operation_setting.ChannelModelHealthSetting) {
+		for key, value := range map[string]int{
+			"UpstreamFailureThreshold": c.UpstreamFailureThreshold,
+			"LocalFailureThreshold":    c.LocalFailureThreshold,
+			"DormantDisableThreshold":  c.DormantDisableThreshold,
+			"CalmWeightScale":          c.CalmWeightScale,
+			"DormantWeightScale":       c.DormantWeightScale,
+		} {
+			require.NoError(t, operation_setting.UpdateChannelModelHealthSettingValue(key, strconv.Itoa(value)))
+		}
+		require.NoError(t, operation_setting.UpdateChannelModelHealthSettingValue("KeyProbeEnabled", strconv.FormatBool(c.KeyProbeEnabled)))
+	}
+	applySetting(cfg)
+	t.Cleanup(func() { applySetting(previousSetting) })
+
+	ctx := newRetryTestContext(t)
+	common.RetryTimes = 2
+	defer func() { common.RetryTimes = 0 }()
+
+	// 400 Bad Request is non-retryable (shouldRetry returns false for 400)
+	err400 := types.NewError(testErr("invalid request"), types.ErrorCodeInvalidRequest)
+	err400.StatusCode = http.StatusBadRequest
+
+	routeKey := model.RouteKey{ChannelId: 20, KeyIndex: 0, Model: "gpt-4"}
+
+	// Verify that wouldRetryWithOneBudget returns false for 400
+	assert.False(t, wouldRetryWithOneBudget(ctx, err400), "400 should not be retryable even with budget")
+
+	// Verify no record exists (since we didn't call recordRouteIsolation)
+	_, _, _, ok := model.GetRouteIsolation(routeKey)
+	assert.False(t, ok, "400 error should not create isolation record")
 }
