@@ -373,3 +373,28 @@ func TestTerminalIsolationCandidateClearsPriorRoute(t *testing.T) {
 	assert.Nil(t, route, "terminal local or non-retryable error clears any prior candidate")
 	assert.Nil(t, err)
 }
+
+// A JSON error body written after the stream already started would appear inside
+// the open SSE stream as bare, prefix-less bytes. The deferred handler must stay
+// silent in that case; realtime relays answer over the websocket and are exempt.
+func TestCanWriteErrorBody(t *testing.T) {
+	cases := []struct {
+		name        string
+		relayFormat types.RelayFormat
+		bodyStarted bool
+		want        bool
+	}{
+		{"openai before body", types.RelayFormatOpenAI, false, true},
+		{"openai mid-stream", types.RelayFormatOpenAI, true, false},
+		{"claude before body", types.RelayFormatClaude, false, true},
+		{"claude mid-stream", types.RelayFormatClaude, true, false},
+		{"gemini mid-stream", types.RelayFormatGemini, true, false},
+		{"realtime before body", types.RelayFormatOpenAIRealtime, false, true},
+		{"realtime mid-stream writes over websocket", types.RelayFormatOpenAIRealtime, true, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, canWriteErrorBody(tc.relayFormat, tc.bodyStarted))
+		})
+	}
+}

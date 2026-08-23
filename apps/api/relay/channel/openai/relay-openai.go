@@ -121,13 +121,34 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	var secondLastStreamData string // 存储倒数第二个stream data，用于音频模型
 	seenStreamToolCalls := make(map[string]struct{})
 	var streamFunctionCallNames []string
+	// sawFinishReason records whether any upstream chunk declared the completion
+	// terminated. Combined with the scanner's end reason it separates a complete
+	// stream from an upstream that died mid-answer (#394).
+	var sawFinishReason bool
 
 	// 检查是否为音频模型
 	isAudioModel := strings.Contains(strings.ToLower(model), "audio")
 
+	// Fast path: no format conversion is requested, so the bytes forwarded to the
+	// client are byte-identical to the upstream bytes. Write them through untouched
+	// and read only the fields billing and #394 need, instead of unmarshalling each
+	// chunk into a DTO and serializing it back out.
+	fastPath := canCopyAndObserve(info)
+	var observer *streamObserver
+	if fastPath {
+		observer = newStreamObserver(info.RelayMode)
+	}
+
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+		// One chunk is held back: handleLastResponse may suppress the final chunk,
+		// so it can only be forwarded once the stream is known to continue.
 		if lastStreamData != "" {
-			if err := HandleStreamFormat(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
+			if fastPath {
+				info.SendResponseCount++
+				if err := helper.StringData(c, lastStreamData); err != nil {
+					sr.Error(err)
+				}
+			} else if err := HandleStreamFormat(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
 				common.SysLog("error handling stream format: " + err.Error())
 				sr.Error(err)
 			}
@@ -139,13 +160,28 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 			}
 
 			lastStreamData = data
+			if fastPath {
+				observer.observe(data)
+				return
+			}
 			collectStreamFunctionCallNames(data, seenStreamToolCalls, &streamFunctionCallNames)
-			if err := processTokenData(info.RelayMode, data, &responseTextBuilder, &toolCount); err != nil {
+			finished, err := processTokenData(info.RelayMode, data, &responseTextBuilder, &toolCount)
+			if finished {
+				sawFinishReason = true
+			}
+			if err != nil {
 				logger.LogError(c, "error processing stream token data: "+err.Error())
 				sr.Error(err)
 			}
 		}
 	})
+
+	if fastPath {
+		sawFinishReason = observer.sawFinishReason
+		toolCount = observer.toolCount
+		streamFunctionCallNames = observer.toolNames
+		responseTextBuilder.WriteString(observer.responseText.String())
+	}
 
 	// 对音频模型，从倒数第二个stream data中提取usage信息
 	if isAudioModel && secondLastStreamData != "" {
@@ -165,6 +201,31 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		}
 	}
 
+	// #394: the upstream must declare the completion terminated. Without a
+	// finish_reason chunk and without the terminal [DONE], the connection died
+	// mid-answer. Fabricating the terminal [DONE] below would present a truncated
+	// answer as a complete one, so fail the relay instead.
+	if streamTruncated(info, sawFinishReason) {
+		logger.LogError(c, fmt.Sprintf("incomplete upstream stream: %s, received=%d",
+			info.StreamStatus.Summary(), info.ReceivedResponseCount))
+		apiErr := types.NewOpenAIError(
+			fmt.Errorf("upstream stream closed before a finish_reason was received (%s)", info.StreamStatus.Summary()),
+			types.ErrorCodeBadResponse, http.StatusBadGateway)
+		if info.HasSendResponse() {
+			// Chunks already reached the client on this connection, so the status
+			// line is spent and retrying would append a second answer after the
+			// partial one. Terminate here and tell the client inside the stream:
+			// a `data: {"error":...}` event is valid SSE, unlike the bare JSON the
+			// caller's fallback would otherwise append.
+			apiErr = types.NewOpenAIError(apiErr.Err, types.ErrorCodeBadResponse,
+				http.StatusBadGateway, types.ErrOptionWithSkipRetry())
+			if err := helper.ObjectData(c, gin.H{"error": apiErr.ToOpenAIError()}); err != nil {
+				logger.LogError(c, "failed to send incomplete-stream error event: "+err.Error())
+			}
+		}
+		return nil, apiErr
+	}
+
 	// 处理最后的响应
 	shouldSendLastResp := true
 	if err := handleLastResponse(lastStreamData, &responseId, &createAt, &systemFingerprint, &model, &usage,
@@ -172,10 +233,20 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		logger.LogError(c, fmt.Sprintf("error handling last response: %s, lastStreamData: [%s]", err.Error(), lastStreamData))
 	}
 
-	if info.RelayFormat == types.RelayFormatOpenAI {
-		if shouldSendLastResp {
+	if info.RelayFormat == types.RelayFormatOpenAI && shouldSendLastResp {
+		if fastPath {
+			_ = helper.StringData(c, lastStreamData)
+		} else {
 			_ = sendStreamData(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent)
 		}
+	}
+
+	if !containStreamUsage && fastPath && observer.usage != nil {
+		// handleLastResponse only inspects the final chunk. Providers that report
+		// usage on an earlier chunk and finish on a later one would otherwise fall
+		// back to local estimation even though upstream stated real usage.
+		usage = observer.usage
+		containStreamUsage = true
 	}
 
 	if !containStreamUsage {
@@ -192,6 +263,29 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	HandleFinalResponse(c, info, lastStreamData, responseId, createAt, model, systemFingerprint, usage, containStreamUsage)
 
 	return usage, nil
+}
+
+// streamTruncated reports whether an OpenAI-format stream ended without the
+// upstream declaring the completion terminated (#394).
+//
+// A stream is complete when either a chunk carried a non-empty finish_reason or
+// the upstream sent the terminal `data: [DONE]` sentinel (end reason done).
+// Client disconnects are excluded: the client abandoned the request, so there is
+// nothing left to fail, and charging a route for it would be wrong. Only
+// OpenAI-format relays are gated; Claude/Gemini conversions terminate through
+// their own protocol events in HandleFinalResponse.
+func streamTruncated(info *relaycommon.RelayInfo, sawFinishReason bool) bool {
+	if info == nil || info.RelayFormat != types.RelayFormatOpenAI {
+		return false
+	}
+	if sawFinishReason {
+		return false
+	}
+	switch info.StreamStatus.GetEndReason() {
+	case relaycommon.StreamEndReasonDone, relaycommon.StreamEndReasonClientGone:
+		return false
+	}
+	return true
 }
 
 func collectStreamFunctionCallNames(data string, seen map[string]struct{}, names *[]string) {

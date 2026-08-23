@@ -68,6 +68,19 @@ func geminiRelayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewA
 	return err
 }
 
+// canWriteErrorBody reports whether the deferred error handler may still write a
+// response body. Once the body has started, the status line is spent and a JSON
+// error would land inside the already-open stream as bare, prefix-less bytes that
+// no SSE client can parse; handlers that fail mid-stream report the failure
+// in-band instead (#394). Realtime relays are exempt: they answer over the
+// websocket, not the HTTP body.
+func canWriteErrorBody(relayFormat types.RelayFormat, bodyStarted bool) bool {
+	if relayFormat == types.RelayFormatOpenAIRealtime {
+		return true
+	}
+	return !bodyStarted
+}
+
 func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	requestId := c.GetString(common.RequestIdKey)
@@ -93,6 +106,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if newAPIError != nil {
 			logger.LogError(c, fmt.Sprintf("relay error: %s", common.LocalLogPreview(newAPIError.Error())))
 			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
+			if !canWriteErrorBody(relayFormat, c.Writer.Written()) {
+				return
+			}
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
 				helper.WssError(c, ws, newAPIError.ToOpenAIError())
