@@ -191,12 +191,12 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}()
 
 	retryParam := &service.RetryParam{
-		Ctx:         c,
-		TokenGroup:  relayInfo.TokenGroup,
-		ModelName:   relayInfo.OriginModelName,
-		RequestPath: c.Request.URL.Path,
-		Retry:       common.GetPointer(0),
-		ExcludeSet:  make(map[int]bool),
+		Ctx:           c,
+		TokenGroup:    relayInfo.TokenGroup,
+		ModelName:     relayInfo.OriginModelName,
+		RequestPath:   c.Request.URL.Path,
+		Retry:         common.GetPointer(0),
+		ExcludeRoutes: make(map[model.RouteKey]bool),
 	}
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
@@ -211,12 +211,13 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
 		relayInfo.RetryIndex = retryParam.GetRetry()
-		channel, channelErr := getChannel(c, relayInfo, retryParam)
+		route, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
 			newAPIError = channelErr
 			break
 		}
+		channel := route.Channel
 		addUsedChannel(c, channel.Id)
 		if billingErr := service.PrepareTieredBillingForSelectedGroup(c, relayInfo); billingErr != nil {
 			newAPIError = billingErr
@@ -261,8 +262,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		// 4xx such as 400 is the caller's problem and must not cost the channel.
 		outcome := model.ClassifyChannelOutcome(newAPIError, channel.Id)
 		attempts = append(attempts, model.ChannelAttempt{ChannelID: channel.Id, ModelName: relayInfo.OriginModelName, Outcome: outcome})
-		if outcome.ExcludesChannel() && retryParam.ExcludeSet != nil {
-			retryParam.ExcludeSet[channel.Id] = true
+		if outcome.ExcludesChannel() && retryParam.ExcludeRoutes != nil {
+			// Exclude the exact route unit that failed: (ChannelId, MultiKeyIndex)
+			multiKeyIndex := common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)
+			retryParam.ExcludeRoutes[model.RouteKey{ChannelId: channel.Id, KeyIndex: multiKeyIndex}] = true
 		}
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
 
@@ -325,35 +328,39 @@ func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
 	return meta
 }
 
-func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.Channel, *types.NewAPIError) {
+func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.SelectedRoute, *types.NewAPIError) {
 	if info.ChannelMeta == nil {
 		autoBan := c.GetBool("auto_ban")
 		autoBanInt := 1
 		if !autoBan {
 			autoBanInt = 0
 		}
-		return &model.Channel{
-			Id:      c.GetInt("channel_id"),
-			Type:    c.GetInt("channel_type"),
-			Name:    c.GetString("channel_name"),
-			AutoBan: &autoBanInt,
+		// Build a minimal SelectedRoute from context for specific channel case
+		return &model.SelectedRoute{
+			Channel: &model.Channel{
+				Id:      c.GetInt("channel_id"),
+				Type:    c.GetInt("channel_type"),
+				Name:    c.GetString("channel_name"),
+				AutoBan: &autoBanInt,
+			},
+			ChannelId: c.GetInt("channel_id"),
 		}, nil
 	}
-	channel, selectGroup, err := service.CacheGetRandomSatisfiedChannel(retryParam)
+	route, selectGroup, err := service.CacheGetRandomSatisfiedChannel(retryParam)
 	if err != nil {
 		return nil, types.NewError(fmt.Errorf("获取分组 %s 下模型 %s 的可用渠道失败（retry）: %s", selectGroup, info.OriginModelName, err.Error()), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
-	if channel == nil {
+	if route == nil {
 		return nil, types.NewError(fmt.Errorf("分组 %s 下模型 %s 的可用渠道不存在（retry）", selectGroup, info.OriginModelName), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
 
 	info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
 
-	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName)
+	newAPIError := middleware.SetupContextForSelectedChannel(c, route, info.OriginModelName)
 	if newAPIError != nil {
 		return nil, newAPIError
 	}
-	return channel, nil
+	return route, nil
 }
 
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
@@ -542,12 +549,12 @@ func RelayTask(c *gin.Context) {
 	}()
 
 	retryParam := &service.RetryParam{
-		Ctx:         c,
-		TokenGroup:  relayInfo.TokenGroup,
-		ModelName:   relayInfo.OriginModelName,
-		RequestPath: c.Request.URL.Path,
-		Retry:       common.GetPointer(0),
-		ExcludeSet:  make(map[int]bool),
+		Ctx:           c,
+		TokenGroup:    relayInfo.TokenGroup,
+		ModelName:     relayInfo.OriginModelName,
+		RequestPath:   c.Request.URL.Path,
+		Retry:         common.GetPointer(0),
+		ExcludeRoutes: make(map[model.RouteKey]bool),
 	}
 
 	// Same deferral as Relay: only a request that exhausted its retries counts
@@ -559,25 +566,32 @@ func RelayTask(c *gin.Context) {
 	}()
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
-		var channel *model.Channel
+		var route *model.SelectedRoute
 
 		if lockedCh, ok := relayInfo.LockedChannel.(*model.Channel); ok && lockedCh != nil {
-			channel = lockedCh
+			// Locked channel replay: build SelectedRoute from the channel
+			var err error
+			route, err = model.SelectedRouteFromChannel(lockedCh, relayInfo.OriginModelName)
+			if err != nil {
+				taskErr = service.TaskErrorWrapperLocal(err, "setup_locked_channel_failed", http.StatusInternalServerError)
+				break
+			}
 			if retryParam.GetRetry() > 0 {
-				if setupErr := middleware.SetupContextForSelectedChannel(c, channel, relayInfo.OriginModelName); setupErr != nil {
+				if setupErr := middleware.SetupContextForSelectedChannel(c, route, relayInfo.OriginModelName); setupErr != nil {
 					taskErr = service.TaskErrorWrapperLocal(setupErr.Err, "setup_locked_channel_failed", http.StatusInternalServerError)
 					break
 				}
 			}
 		} else {
 			var channelErr *types.NewAPIError
-			channel, channelErr = getChannel(c, relayInfo, retryParam)
+			route, channelErr = getChannel(c, relayInfo, retryParam)
 			if channelErr != nil {
 				logger.LogError(c, channelErr.Error())
 				taskErr = service.TaskErrorWrapperLocal(channelErr.Err, "get_channel_failed", http.StatusInternalServerError)
 				break
 			}
 		}
+		channel := route.Channel
 
 		addUsedChannel(c, channel.Id)
 		bodyStorage, bodyErr := common.GetBodyStorage(c)
@@ -604,8 +618,10 @@ func RelayTask(c *gin.Context) {
 			taskAPIError := types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode)
 			outcome := model.ClassifyChannelOutcome(taskAPIError, channel.Id)
 			attempts = append(attempts, model.ChannelAttempt{ChannelID: channel.Id, ModelName: relayInfo.OriginModelName, Outcome: outcome})
-			if outcome.ExcludesChannel() && retryParam.ExcludeSet != nil {
-				retryParam.ExcludeSet[channel.Id] = true
+			if outcome.ExcludesChannel() && retryParam.ExcludeRoutes != nil {
+				// Exclude the exact route unit that failed: (ChannelId, MultiKeyIndex)
+				multiKeyIndex := common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)
+				retryParam.ExcludeRoutes[model.RouteKey{ChannelId: channel.Id, KeyIndex: multiKeyIndex}] = true
 			}
 			processChannelError(c,
 				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey,

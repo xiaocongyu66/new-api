@@ -1,8 +1,11 @@
 package model
 
 import (
+	"fmt"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,23 +23,64 @@ func withAbilityDB(t *testing.T, group, modelName string, rows []Ability) {
 	t.Helper()
 
 	previousDB := DB
+	prevIDM := channelsIDM
+	prevAliasRoutes := group2alias2routes
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&Ability{}, &Channel{}))
+	require.NoError(t, db.AutoMigrate(&Ability{}, &Channel{}, &ChannelModelRoute{}))
 	DB = db
-	t.Cleanup(func() { DB = previousDB })
+	t.Cleanup(func() {
+		DB = previousDB
+		channelSyncLock.Lock()
+		channelsIDM = prevIDM
+		group2alias2routes = prevAliasRoutes
+		channelSyncLock.Unlock()
+	})
 
+	idm := make(map[int]*Channel)
+	aliasRoutes := make(map[string]map[string][]routeCandidate)
 	for i := range rows {
-		require.NoError(t, DB.Create(&rows[i]).Error)
-		weight := rows[i].Weight
-		priority := rows[i].Priority
-		require.NoError(t, DB.Create(&Channel{
+		ch := &Channel{
 			Id:       rows[i].ChannelId,
-			Weight:   &weight,
-			Priority: priority,
-			Status:   1,
+			Type:     constant.ChannelTypeOpenAI,
+			Key:      fmt.Sprintf("key-%d", rows[i].ChannelId),
+			Status:   common.ChannelStatusEnabled,
+			Name:     fmt.Sprintf("channel-%d", rows[i].ChannelId),
+			Weight:   &rows[i].Weight,
+			Models:   rows[i].Model,
+			Group:    rows[i].Group,
+			Priority: rows[i].Priority,
+		}
+		require.NoError(t, db.Create(ch).Error)
+		require.NoError(t, db.Create(&rows[i]).Error)
+		idm[ch.Id] = ch
+		// Create ChannelModelRoute entry for the new selector
+		require.NoError(t, db.Create(&ChannelModelRoute{
+			Group:            group,
+			PublicModelAlias: modelName,
+			ChannelId:        rows[i].ChannelId,
+			KeyIndex:         0,
+			UpstreamModel:    modelName,
+			StaticWeight:     int(rows[i].Weight),
+			Enabled:          true,
 		}).Error)
+		// Build memory cache for route candidates
+		if aliasRoutes[group] == nil {
+			aliasRoutes[group] = make(map[string][]routeCandidate)
+		}
+		aliasRoutes[group][modelName] = append(aliasRoutes[group][modelName], routeCandidate{
+			routeId:       ch.Id,
+			channelId:     ch.Id,
+			keyIndex:      0,
+			upstreamModel: modelName,
+			staticWeight:  int(rows[i].Weight),
+		})
 	}
+
+	channelSyncLock.Lock()
+	channelsIDM = idm
+	group2alias2routes = aliasRoutes
+	channelSyncLock.Unlock()
 }
 
 func ability(channelID int, group, modelName string, weight uint, priority int64) Ability {
@@ -70,10 +114,10 @@ func TestGetChannelUsesSharedWeightFormula(t *testing.T) {
 
 	counts := map[int]int{}
 	for range 600 {
-		got, err := GetChannel(group, modelName, 0, "", nil)
+		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil)
 		require.NoError(t, err)
 		require.NotNil(t, got)
-		counts[got.Id]++
+		counts[got.ChannelId]++
 	}
 
 	// routingBaseWeight maps 30 -> 31 and 1 -> 2, so the heavy channel should take
@@ -100,14 +144,14 @@ func TestGetChannelRespectsExcludeSet(t *testing.T) {
 	setTestConfig(true, 0.3, 0.05, 0)
 
 	for range 50 {
-		got, err := GetChannel(group, modelName, 0, "", map[int]bool{9601: true})
+		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", map[RouteKey]bool{{ChannelId: 9601, KeyIndex: 0}: true})
 		require.NoError(t, err)
 		require.NotNil(t, got)
-		assert.Equal(t, 9602, got.Id, "the excluded channel must never be returned")
+		assert.Equal(t, 9602, got.ChannelId, "the excluded channel must never be returned")
 	}
 
 	// Excluding every candidate yields no channel rather than a stale pick.
-	got, err := GetChannel(group, modelName, 0, "", map[int]bool{9601: true, 9602: true})
+	got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", map[RouteKey]bool{{ChannelId: 9601, KeyIndex: 0}: true, {ChannelId: 9602, KeyIndex: 0}: true})
 	require.NoError(t, err)
 	assert.Nil(t, got)
 }
@@ -131,10 +175,10 @@ func TestGetChannelAppliesHealthScore(t *testing.T) {
 
 	counts := map[int]int{}
 	for range 600 {
-		got, err := GetChannel(group, modelName, 0, "", nil)
+		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil)
 		require.NoError(t, err)
 		require.NotNil(t, got)
-		counts[got.Id]++
+		counts[got.ChannelId]++
 	}
 
 	assert.Greater(t, counts[9701], counts[9702]*5,
