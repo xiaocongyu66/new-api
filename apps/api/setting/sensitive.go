@@ -94,3 +94,11 @@ func ShouldCheckCompletionSensitive() bool {
 //func ShouldCheckCompletionSensitive() bool {
 //	return CheckSensitiveEnabled && CheckSensitiveOnCompletionEnabled
 //}
+
+// SensitiveAuditEnabled 敏感拦截审计开关：拦截事件异步写入统一 logs 表
+// （type=LogTypeSensitive），供敏感词设置页"最近拦截"表格查询。默认开启。
+var SensitiveAuditEnabled = true
+
+// SensitiveAuditRetentionDays 敏感审计日志保留天数，超期由后台清理任务
+// 分批删除（仅命中 LogTypeSensitive 行）。<=0 表示永久保留。默认 30 天。
+var SensitiveAuditRetentionDays = 30

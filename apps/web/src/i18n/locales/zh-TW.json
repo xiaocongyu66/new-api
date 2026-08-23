@@ -5388,5 +5388,12 @@
     "Max ejection percentage must be between 0 and 100": "最大驅逐比例必須介於 0 到 100 之間",
     "Cooldown alpha must be between 0 and 1": "冷卻 Alpha 必須介於 0 到 1 之間",
     "Cooldown max duration must be greater than or equal to the base duration": "冷卻最大時長必須大於或等於基礎時長"
-  }
+  },
+  "Recent Blocks": "近期攔截",
+  "{{total}} records": "{{total}} 筆記錄",
+  "Direction": "方向",
+  "Layer": "層級",
+  "Matched": "命中內容",
+  "Snippet": "片段",
+  "No blocked requests yet": "暫無攔截記錄"
 }

@@ -5388,5 +5388,12 @@
     "Max ejection percentage must be between 0 and 100": "Tỷ lệ loại trừ tối đa phải từ 0 đến 100",
     "Cooldown alpha must be between 0 and 1": "Alpha thời gian hồi phải từ 0 đến 1",
     "Cooldown max duration must be greater than or equal to the base duration": "Thời gian hồi tối đa phải lớn hơn hoặc bằng thời gian hồi cơ bản"
-  }
+  },
+  "Recent Blocks": "Chặn gần đây",
+  "{{total}} records": "{{total}} bản ghi",
+  "Direction": "Hướng",
+  "Layer": "Tầng",
+  "Matched": "Nội dung khớp",
+  "Snippet": "Đoạn trích",
+  "No blocked requests yet": "Chưa có yêu cầu nào bị chặn"
 }

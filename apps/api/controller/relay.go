@@ -139,6 +139,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	if needSensitiveCheck && meta != nil {
 		if blocked, label := service.CheckSensitiveAll(meta.CombineText); blocked {
 			logger.LogWarn(c, fmt.Sprintf("input blocked by sensitive filter: %s", label))
+			service.RecordSensitiveBlock(c, "input", label, meta.CombineText)
 			newAPIError = types.NewError(err, types.ErrorCodeSensitiveWordsDetected, types.ErrOptionWithStatusCode(http.StatusForbidden))
 			return
 		}
@@ -149,6 +150,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	if meta != nil {
 		if d := service.CheckSensitiveTargets(meta.CombineText); d != "" {
 			logger.LogWarn(c, fmt.Sprintf("input blocked by target domain: %s", d))
+			service.RecordSensitiveBlock(c, "input", "target:"+d, meta.CombineText)
 			newAPIError = types.NewErrorWithStatusCode(err, types.ErrorCodeSensitiveWordsDetected, http.StatusForbidden)
 			return
 		}

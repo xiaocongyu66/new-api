@@ -5388,5 +5388,12 @@
     "Max ejection percentage must be between 0 and 100": "最大除外割合は 0〜100 の範囲で指定してください",
     "Cooldown alpha must be between 0 and 1": "クールダウン Alpha は 0〜1 の範囲で指定してください",
     "Cooldown max duration must be greater than or equal to the base duration": "クールダウン最大期間は基本期間以上にしてください"
-  }
+  },
+  "Recent Blocks": "最近のブロック",
+  "{{total}} records": "{{total}} 件",
+  "Direction": "方向",
+  "Layer": "レイヤー",
+  "Matched": "マッチ内容",
+  "Snippet": "断片",
+  "No blocked requests yet": "まだブロックされたリクエストはありません"
 }
