@@ -22,7 +22,7 @@ from aiohttp import web
 SHORT_PROMPT = "Reply with OK."
 LONG_PROMPT = "Write a detailed but concise explanation of API gateway retry behavior, streaming behavior, and failure isolation."
 
-PREFERRED_AUTO_MODELS = ("kimi-k3", "agnes-2.5-flash", "deepseek-v4-flash", "fast-l", "good-m")
+PREFERRED_AUTO_MODELS = ("mock-fast", "mock-slow", "kimi-k3", "agnes-2.5-flash", "deepseek-v4-flash", "fast-l", "good-m")
 EXCLUDED_AUTO_MODEL_PREFIXES = ("ox", "gpt", "opus", "gemini")
 EXCLUDED_AUTO_MODEL_KEYWORDS = ("image", "imagine", "edit", "video", "tts", "stt", "speech", "embedding", "rerank", "moderation")
 
