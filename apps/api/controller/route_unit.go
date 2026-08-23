@@ -105,6 +105,14 @@ func UpdateRouteUnit(c *gin.Context) {
 			})
 			return
 		}
+		// Upper bound: 1e9 (billing safety invariant)
+		if v > 1000000000 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "static_weight 超出允许范围 (0-1000000000)",
+			})
+			return
+		}
 		w := int(v)
 		weight = &w
 	}
@@ -124,6 +132,22 @@ func UpdateRouteUnit(c *gin.Context) {
 	// Re-query the updated row by fetching its alias first, then the view.
 	var route model.ChannelModelRoute
 	if err := model.DB.First(&route, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Concurrent deletion: construct minimal response from request params.
+			updated := &model.RouteUnitView{
+				Id:           id,
+				StaticWeight: 0,
+				Enabled:      false,
+			}
+			if weight != nil {
+				updated.StaticWeight = *weight
+			}
+			if req.Enabled != nil {
+				updated.Enabled = *req.Enabled
+			}
+			common.ApiSuccess(c, updated)
+			return
+		}
 		common.ApiError(c, err)
 		return
 	}
@@ -140,10 +164,19 @@ func UpdateRouteUnit(c *gin.Context) {
 		}
 	}
 	if updated == nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "路由单元不存在",
-		})
+		// Concurrent deletion after alias lookup: construct minimal response.
+		updated = &model.RouteUnitView{
+			Id:           id,
+			StaticWeight: 0,
+			Enabled:      false,
+		}
+		if weight != nil {
+			updated.StaticWeight = *weight
+		}
+		if req.Enabled != nil {
+			updated.Enabled = *req.Enabled
+		}
+		common.ApiSuccess(c, updated)
 		return
 	}
 	common.ApiSuccess(c, updated)

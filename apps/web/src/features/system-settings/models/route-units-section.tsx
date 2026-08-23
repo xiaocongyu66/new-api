@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -79,60 +79,84 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
       return
     }
 
+    let cancelled = false
     const loadUnits = async () => {
       setLoadingUnits(true)
       try {
         const data = await getRouteUnits(selectedAlias)
-        setRouteUnits(data.items)
-        setTotalWeight(data.total_weight)
+        if (!cancelled) {
+          setRouteUnits(data.items)
+          setTotalWeight(data.total_weight)
+        }
       } catch (error) {
-        toast.error(t('Failed to load route units'))
-        console.error(error)
+        if (!cancelled) {
+          toast.error(t('Failed to load route units'))
+          console.error(error)
+        }
       } finally {
-        setLoadingUnits(false)
+        if (!cancelled) {
+          setLoadingUnits(false)
+        }
       }
     }
     loadUnits()
+    return () => {
+      cancelled = true
+    }
   }, [selectedAlias, t])
 
   const handleWeightChange = async (id: number, newWeight: number) => {
+    // Capture original weight for potential rollback
     const unit = routeUnits.find(u => u.id === id)
     if (!unit) return
+    const originalWeight = unit.static_weight
 
-    // Optimistic update
-    const previousUnits = [...routeUnits]
+    // Debounce: only send PUT after 500ms of no further changes for this id
+    const existingTimer = debounceTimers.current.get(id)
+    if (existingTimer) {
+      clearTimeout(existingTimer)
+    }
+
+    // Optimistic update immediately
     setRouteUnits(prev =>
       prev.map(u => (u.id === id ? { ...u, static_weight: newWeight } : u))
     )
-    setTotalWeight(prev => prev - unit.static_weight + newWeight)
+    setTotalWeight(prev => prev - originalWeight + newWeight)
 
     // Mark as saving
     setSavingIds(prev => new Set(prev).add(id))
 
-    try {
-      await updateRouteUnit(id, { static_weight: newWeight })
-      toast.success(t('Weight updated successfully'))
-    } catch (error) {
-      // Rollback
-      setRouteUnits(previousUnits)
-      setTotalWeight(prev => prev - newWeight + unit.static_weight)
-      toast.error(t('Failed to update weight'))
-      console.error(error)
-    } finally {
-      setSavingIds(prev => {
-        const next = new Set(prev)
-        next.delete(id)
-        return next
-      })
-    }
+    const timer = setTimeout(async () => {
+      debounceTimers.current.delete(id)
+      try {
+        await updateRouteUnit(id, { static_weight: newWeight })
+        toast.success(t('Weight updated successfully'))
+      } catch (error) {
+        // Rollback only the affected row using captured original weight
+        setRouteUnits(prev =>
+          prev.map(u => (u.id === id ? { ...u, static_weight: originalWeight } : u))
+        )
+        // Recalc totalWeight from rolled-back state
+        setTotalWeight(() => {
+          const rolledBack = routeUnits.map(u => (u.id === id ? { ...u, static_weight: originalWeight } : u))
+          return rolledBack.reduce((sum, u) => sum + u.static_weight, 0)
+        })
+        toast.error(t('Failed to update weight'))
+        console.error(error)
+      } finally {
+        setSavingIds(prev => {
+          const next = new Set(prev)
+          next.delete(id)
+          return next
+        })
+      }
+    }, 500)
+
+    debounceTimers.current.set(id, timer)
   }
 
   const handleEnabledChange = async (id: number, newEnabled: boolean) => {
-    const unit = routeUnits.find(u => u.id === id)
-    if (!unit) return
-
     // Optimistic update
-    const previousUnits = [...routeUnits]
     setRouteUnits(prev => prev.map(u => (u.id === id ? { ...u, enabled: newEnabled } : u)))
 
     // Mark as saving
@@ -142,8 +166,8 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
       await updateRouteUnit(id, { enabled: newEnabled })
       toast.success(t('Status updated successfully'))
     } catch (error) {
-      // Rollback
-      setRouteUnits(previousUnits)
+      // Rollback only the affected row
+      setRouteUnits(prev => prev.map(u => (u.id === id ? { ...u, enabled: u.enabled } : u)))
       toast.error(t('Failed to update status'))
       console.error(error)
     } finally {
@@ -154,6 +178,16 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
       })
     }
   }
+
+  const debounceTimers = useRef<Map<number, NodeJS.Timeout>>(new Map())
+
+  // Flush pending debounced updates on unmount
+  useEffect(() => {
+    return () => {
+      debounceTimers.current.forEach(timer => clearTimeout(timer))
+      debounceTimers.current.clear()
+    }
+  }, [])
 
   const isSaving = (id: number) => savingIds.has(id)
 

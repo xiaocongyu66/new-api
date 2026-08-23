@@ -219,3 +219,63 @@ func TestRouteUnit_Update_ValidWeightAndEnabled(t *testing.T) {
 	assert.Equal(t, 7, route.StaticWeight)
 	assert.False(t, route.Enabled)
 }
+func TestRouteUnit_Update_WeightUpperBoundPasses(t *testing.T) {
+	db := setupRouteUnitTestDB(t)
+	seedRouteUnit(t, db, 1, "gpt-4", 100, 3, true)
+
+	router := newRouteUnitRouter()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/route_unit/1", strings.NewReader(`{"static_weight":1000000000}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp struct {
+		Success bool                 `json:"success"`
+		Data    model.RouteUnitView  `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.True(t, resp.Success)
+	assert.Equal(t, 1000000000, resp.Data.StaticWeight)
+}
+
+func TestRouteUnit_Update_WeightUpperBoundExceeded(t *testing.T) {
+	db := setupRouteUnitTestDB(t)
+	seedRouteUnit(t, db, 1, "gpt-4", 100, 3, true)
+
+	router := newRouteUnitRouter()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/route_unit/1", strings.NewReader(`{"static_weight":1000000001}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	var resp struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.False(t, resp.Success)
+	assert.Contains(t, resp.Message, "1000000000")
+}
+
+func TestRouteUnit_Update_WeightNegativeZeroValid(t *testing.T) {
+	db := setupRouteUnitTestDB(t)
+	seedRouteUnit(t, db, 1, "gpt-4", 100, 3, true)
+
+	router := newRouteUnitRouter()
+	rec := httptest.NewRecorder()
+	// -0 is valid JSON and should be treated as 0
+	req := httptest.NewRequest(http.MethodPut, "/route_unit/1", strings.NewReader(`{"static_weight":-0}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp struct {
+		Success bool                 `json:"success"`
+		Data    model.RouteUnitView  `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.True(t, resp.Success)
+	assert.Equal(t, 0, resp.Data.StaticWeight)
+}
