@@ -42,12 +42,12 @@ func setupProxyNodeControllerTest(t *testing.T) *gorm.DB {
 	})
 	return db
 }
-func proxyNodeContext(t *testing.T, method, path, body string, handler contract.Handler) *httptest.ResponseRecorder {
+func proxyNodeContext(t *testing.T, method, routePattern, requestPath, body string, handler contract.Handler) *httptest.ResponseRecorder {
 	t.Helper()
 	recorder := httptest.NewRecorder()
 	engine := gin.New()
-	engine.Handle(method, path, ginadapter.Handler(handler))
-	engine.ServeHTTP(recorder, httptest.NewRequest(method, path, bytes.NewBufferString(body)))
+	engine.Handle(method, routePattern, ginadapter.Handler(handler))
+	engine.ServeHTTP(recorder, httptest.NewRequest(method, requestPath, bytes.NewBufferString(body)))
 	return recorder
 }
 
@@ -65,7 +65,7 @@ func TestListProxyNodesRedactsStoredConfiguration(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	recorder := proxyNodeContext(t, http.MethodGet, "/api/proxy/nodes", "", ListProxyNodes)
+	recorder := proxyNodeContext(t, http.MethodGet, "/api/proxy/nodes", "/api/proxy/nodes", "", ListProxyNodes)
 
 	response := decodeProxyNodeResponse(t, recorder)
 	require.True(t, response.Success, response.Message)
@@ -81,7 +81,7 @@ func TestListProxyNodesRedactsStoredConfiguration(t *testing.T) {
 
 func TestCreateProxyNodeRejectsInvalidScopeWithoutPersistence(t *testing.T) {
 	db := setupProxyNodeControllerTest(t)
-	recorder := proxyNodeContext(t, http.MethodPost, "/api/proxy/nodes", `{"name":"bad","enabled":true,"proxy":"http://example.com:8080","scope_type":"all","scope_value":""}`, CreateProxyNode)
+	recorder := proxyNodeContext(t, http.MethodPost, "/api/proxy/nodes", "/api/proxy/nodes", `{"name":"bad","enabled":true,"proxy":"http://example.com:8080","scope_type":"all","scope_value":""}`, CreateProxyNode)
 
 	response := decodeProxyNodeResponse(t, recorder)
 	assert.False(t, response.Success)
@@ -98,7 +98,7 @@ func TestUpdateProxyNodeWithoutProxyPreservesEncryptedConfiguration(t *testing.T
 	require.NoError(t, err)
 	originalCiphertext := node.EncryptedProxyConfig
 
-	recorder := proxyNodeContext(t, http.MethodPut, "/api/proxy/nodes/:id", `{"name":"after","enabled":false,"scope_type":"custom","scope_value":""}`, UpdateProxyNode)
+	recorder := proxyNodeContext(t, http.MethodPut, "/api/proxy/nodes/:id", "/api/proxy/nodes/1", `{"name":"after","enabled":false,"scope_type":"custom","scope_value":""}`, UpdateProxyNode)
 
 	response := decodeProxyNodeResponse(t, recorder)
 	require.True(t, response.Success, response.Message)
@@ -117,7 +117,7 @@ func TestUpdateProxyNodeWithEmptyProxyPreservesEncryptedConfiguration(t *testing
 	require.NoError(t, err)
 	originalCiphertext := node.EncryptedProxyConfig
 
-	recorder := proxyNodeContext(t, http.MethodPut, "/api/proxy/nodes/:id", `{"name":"after","enabled":true,"proxy":"","scope_type":"custom","scope_value":""}`, UpdateProxyNode)
+	recorder := proxyNodeContext(t, http.MethodPut, "/api/proxy/nodes/:id", "/api/proxy/nodes/1", `{"name":"after","enabled":true,"proxy":"","scope_type":"custom","scope_value":""}`, UpdateProxyNode)
 
 	response := decodeProxyNodeResponse(t, recorder)
 	require.True(t, response.Success, response.Message)
@@ -147,7 +147,7 @@ func TestGetProxyNodeReportCountsHealthyNodesRegardlessOfEnabled(t *testing.T) {
 	require.NoError(t, db.Model(&model.ProxyNode{}).Where("id = ?", enabled.ID).
 		Updates(map[string]any{"health": 0.1}).Error)
 
-	recorder := proxyNodeContext(t, http.MethodGet, "/api/proxy/nodes/report", "", GetProxyNodeReport)
+	recorder := proxyNodeContext(t, http.MethodGet, "/api/proxy/nodes/report", "/api/proxy/nodes/report", "", GetProxyNodeReport)
 
 	response := decodeProxyNodeResponse(t, recorder)
 	require.True(t, response.Success, response.Message)
@@ -204,7 +204,7 @@ func TestAllProxyNodesProbesEnabledNodesAndReportsCounts(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	recorder := proxyNodeContext(t, http.MethodPost, "/api/proxy/nodes/test-all", "", TestAllProxyNodes)
+	recorder := proxyNodeContext(t, http.MethodPost, "/api/proxy/nodes/test-all", "/api/proxy/nodes/test-all", "", TestAllProxyNodes)
 	response := decodeProxyNodeResponse(t, recorder)
 	require.True(t, response.Success, response.Message)
 	var counts struct {
