@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,7 +14,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/gin-gonic/gin"
 )
 
 // PerformanceStats 性能统计信息
@@ -80,7 +80,7 @@ type PerformanceConfig struct {
 }
 
 // GetPerformanceStats 获取性能统计信息
-func GetPerformanceStats(c *gin.Context) {
+func GetPerformanceStats(c contract.Context) {
 	// 不再每次获取统计都全量扫描磁盘，依赖原子计数器保证性能
 	// 仅在系统启动或显式清理时同步
 	cacheStats := common.GetDiskCacheStats()
@@ -133,43 +133,43 @@ func GetPerformanceStats(c *gin.Context) {
 		Config:        config,
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"data":    stats,
 	})
 }
 
 // ClearDiskCache 清理不活跃的磁盘缓存
-func ClearDiskCache(c *gin.Context) {
+func ClearDiskCache(c contract.Context) {
 	// 清理超过 10 分钟未使用的缓存文件
 	// 10 分钟是一个安全的阈值，确保正在进行的请求不会被误删
 	err := common.CleanupOldDiskCacheFiles(10 * time.Minute)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "不活跃的磁盘缓存已清理",
 	})
 }
 
 // ResetPerformanceStats 重置性能统计
-func ResetPerformanceStats(c *gin.Context) {
+func ResetPerformanceStats(c contract.Context) {
 	common.ResetDiskCacheStats()
 
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "统计信息已重置",
 	})
 }
 
 // ForceGC 强制执行 GC
-func ForceGC(c *gin.Context) {
+func ForceGC(c contract.Context) {
 	runtime.GC()
 
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "GC 已执行",
 	})
@@ -229,14 +229,14 @@ func getLogFiles() ([]LogFileInfo, error) {
 }
 
 // GetLogFiles 获取日志文件列表
-func GetLogFiles(c *gin.Context) {
+func GetLogFiles(c contract.Context) {
 	if *common.LogDir == "" {
-		common.ApiSuccess(c, LogFilesResponse{Enabled: false})
+		common.CtxApiSuccess(c, LogFilesResponse{Enabled: false})
 		return
 	}
 	files, err := getLogFiles()
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	var totalSize int64
@@ -261,30 +261,30 @@ func GetLogFiles(c *gin.Context) {
 		resp.OldestTime = &oldest
 		resp.NewestTime = &newest
 	}
-	common.ApiSuccess(c, resp)
+	common.CtxApiSuccess(c, resp)
 }
 
 // CleanupLogFiles 清理过期日志文件
-func CleanupLogFiles(c *gin.Context) {
+func CleanupLogFiles(c contract.Context) {
 	mode := c.Query("mode")
 	valueStr := c.Query("value")
 	if mode != "by_count" && mode != "by_days" {
-		common.ApiErrorMsg(c, "invalid mode, must be by_count or by_days")
+		common.CtxApiErrorMsg(c, "invalid mode, must be by_count or by_days")
 		return
 	}
 	value, err := strconv.Atoi(valueStr)
 	if err != nil || value < 1 {
-		common.ApiErrorMsg(c, "invalid value, must be a positive integer")
+		common.CtxApiErrorMsg(c, "invalid value, must be a positive integer")
 		return
 	}
 	if *common.LogDir == "" {
-		common.ApiErrorMsg(c, "log directory not configured")
+		common.CtxApiErrorMsg(c, "log directory not configured")
 		return
 	}
 
 	files, err := getLogFiles()
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 
@@ -330,14 +330,14 @@ func CleanupLogFiles(c *gin.Context) {
 		freedBytes += f.Size
 	}
 
-	result := gin.H{
+	result := common.H{
 		"deleted_count": deletedCount,
 		"freed_bytes":   freedBytes,
 		"failed_files":  failedFiles,
 	}
 
 	if len(failedFiles) > 0 {
-		c.JSON(http.StatusOK, gin.H{
+		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": fmt.Sprintf("部分文件删除失败（%d/%d）", len(failedFiles), len(toDelete)),
 			"data":    result,
@@ -345,7 +345,7 @@ func CleanupLogFiles(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 		"data":    result,

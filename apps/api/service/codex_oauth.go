@@ -26,8 +26,6 @@ type CodexOAuthTokenResult struct {
 	ExpiresAt    time.Time
 }
 
-
-
 func RefreshCodexOAuthTokenWithProxy(ctx context.Context, refreshToken string, proxyURL string) (*CodexOAuthTokenResult, error) {
 	client, err := getCodexOAuthHTTPClient(proxyURL)
 	if err != nil {

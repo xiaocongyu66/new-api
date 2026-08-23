@@ -1,9 +1,8 @@
 package common
 
 import (
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"strconv"
-
-	"github.com/gin-gonic/gin"
 )
 
 type PageInfo struct {
@@ -38,7 +37,7 @@ func (p *PageInfo) SetItems(items any) {
 	p.Items = items
 }
 
-func GetPageQuery(c *gin.Context) *PageInfo {
+func GetPageQuery(c contract.Context) *PageInfo {
 	pageInfo := &PageInfo{}
 	// 手动获取并处理每个参数
 	if page, err := strconv.Atoi(c.Query("p")); err == nil {

@@ -60,7 +60,7 @@ func handleClaudeFormat(c *gin.Context, data string, info *relaycommon.RelayInfo
 func handleGeminiFormat(c *gin.Context, data string, info *relaycommon.RelayInfo) error {
 	var streamResponse dto.ChatCompletionsStreamResponse
 	if err := common.Unmarshal(common.StringToByteSlice(data), &streamResponse); err != nil {
-		logger.LogError(c, "failed to unmarshal stream response: "+err.Error())
+		logger.LogError(c.Request.Context(), "failed to unmarshal stream response: "+err.Error())
 		return err
 	}
 
@@ -80,7 +80,7 @@ func handleGeminiFormat(c *gin.Context, data string, info *relaycommon.RelayInfo
 
 	geminiResponseStr, err := common.Marshal(geminiResponse)
 	if err != nil {
-		logger.LogError(c, "failed to marshal gemini response: "+err.Error())
+		logger.LogError(c.Request.Context(), "failed to marshal gemini response: "+err.Error())
 		return err
 	}
 

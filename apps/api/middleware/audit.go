@@ -5,37 +5,11 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/bytedance/gopkg/util/gopool"
-	"github.com/gin-gonic/gin"
 )
-
-// auditResponseWriter 包装 gin.ResponseWriter，捕获响应状态码并将响应体复制一份到
-// 有限大小的缓冲区，用于判断业务是否成功（解析响应 JSON 的 success 字段）。
-// 缓冲区有上限，避免大响应（如密钥导出）占用过多内存；超出上限则不再缓存，
-// 此时仅依据 HTTP 状态码判断成败。
-type auditResponseWriter struct {
-	gin.ResponseWriter
-	body    *bytes.Buffer
-	maxSize int
-}
-
-func (w *auditResponseWriter) Write(b []byte) (int, error) {
-	if w.body.Len() < w.maxSize {
-		remain := w.maxSize - w.body.Len()
-		if remain >= len(b) {
-			w.body.Write(b)
-		} else {
-			w.body.Write(b[:remain])
-		}
-	}
-	return w.ResponseWriter.Write(b)
-}
-
-func (w *auditResponseWriter) WriteString(s string) (int, error) {
-	return w.Write([]byte(s))
-}
 
 // auditRouteActions 将「METHOD + 路由模板」映射为语言无关的操作标识 action。
 // 这些是未被 handler 手动埋点的写操作，由中间件兜底记录；前端依据 action 用 i18n 本地化展示。
@@ -82,7 +56,6 @@ var auditRouteActions = map[string]string{
 	"DELETE /api/models/:id":         "model.delete",
 	"POST /api/models/sync_upstream": "model.sync_upstream",
 
-
 	// 订阅（管理员）
 	"POST /api/subscription/admin/plans":    "subscription.plan_create",
 	"PUT /api/subscription/admin/plans/:id": "subscription.plan_update",
@@ -99,30 +72,24 @@ var auditRouteActions = map[string]string{
 // 该函数由 authHelper 在鉴权通过、c.Next() 之前调用：因为任何管理/root 接口都
 // 必然经过 AdminAuth/RootAuth，将审计兜底内聚到鉴权链路即可保证「新增接口自动留痕」，
 // 无需在路由上再单独挂一层审计中间件（避免漏挂）。
-func beginAdminAudit(c *gin.Context) *auditResponseWriter {
-	method := c.Request.Method
+func beginAdminAudit(c contract.Context) contract.ResponseCapture {
+	method := c.Method()
 	if method != "POST" && method != "PUT" && method != "PATCH" && method != "DELETE" {
 		return nil
 	}
-	writer := &auditResponseWriter{
-		ResponseWriter: c.Writer,
-		body:           bytes.NewBuffer(nil),
-		maxSize:        64 * 1024,
-	}
-	c.Writer = writer
-	return writer
+	return c.CaptureResponse(64 * 1024)
 }
 
 // finishAdminAudit 在 c.Next() 之后对管理/高危写操作做兜底审计记录。
 // 若 handler 内已手动埋点（设置 ContextKeyAuditLogged），则跳过，避免重复。
-func finishAdminAudit(c *gin.Context, writer *auditResponseWriter) {
-	if writer == nil {
+func finishAdminAudit(c contract.Context, capture contract.ResponseCapture) {
+	if capture == nil {
 		return
 	}
-	method := c.Request.Method
+	method := c.Method()
 
 	// handler 已手动记录更精细的审计日志，跳过兜底。
-	if common.GetContextKeyBool(c, constant.ContextKeyAuditLogged) {
+	if common.GetCtxKeyBool(c, constant.ContextKeyAuditLogged) {
 		return
 	}
 
@@ -130,8 +97,8 @@ func finishAdminAudit(c *gin.Context, writer *auditResponseWriter) {
 	operatorName := c.GetString("username")
 	operatorRole := c.GetInt("role")
 	ip := c.ClientIP()
-	status := writer.Status()
-	success := auditResponseSuccess(status, writer.body.Bytes())
+	status := c.ResponseStatus()
+	success := auditResponseSuccess(status, capture.Body())
 
 	route := c.FullPath()
 	action := auditRouteActions[method+" "+route]
@@ -139,10 +106,7 @@ func finishAdminAudit(c *gin.Context, writer *auditResponseWriter) {
 		action = "generic"
 	}
 
-	routeParams := map[string]string{}
-	for _, p := range c.Params {
-		routeParams[p.Key] = p.Value
-	}
+	routeParams := c.Params()
 
 	// op.params 为语言无关参数，供前端 i18n 渲染；generic 时携带 method/route。
 	opParams := map[string]interface{}{}
@@ -163,7 +127,7 @@ func finishAdminAudit(c *gin.Context, writer *auditResponseWriter) {
 	auditInfo := map[string]interface{}{
 		"method":  method,
 		"route":   route,
-		"path":    c.Request.URL.Path,
+		"path":    c.Path(),
 		"status":  status,
 		"success": success,
 	}
@@ -176,7 +140,7 @@ func finishAdminAudit(c *gin.Context, writer *auditResponseWriter) {
 	})
 }
 
-func auditAuthMethod(c *gin.Context) string {
+func auditAuthMethod(c contract.Context) string {
 	if c.GetBool("use_access_token") {
 		return "access_token"
 	}

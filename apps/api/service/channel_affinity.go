@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"hash/fnv"
 	"regexp"
 	"strconv"
@@ -14,7 +15,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
-	"github.com/gin-gonic/gin"
 	"github.com/samber/hot"
 	"github.com/tidwall/gjson"
 )
@@ -286,7 +286,7 @@ func matchAnyIncludeFold(patterns []string, s string) bool {
 	return false
 }
 
-func extractChannelAffinityValue(c *gin.Context, src operation_setting.ChannelAffinityKeySource) string {
+func extractChannelAffinityValue(c contract.Context, src operation_setting.ChannelAffinityKeySource) string {
 	switch src.Type {
 	case "context_int":
 		if src.Key == "" {
@@ -303,19 +303,15 @@ func extractChannelAffinityValue(c *gin.Context, src operation_setting.ChannelAf
 		}
 		return strings.TrimSpace(c.GetString(src.Key))
 	case "request_header":
-		if c == nil || c.Request == nil || src.Key == "" {
+		if c == nil || c.HTTPRequest() == nil || src.Key == "" {
 			return ""
 		}
-		return strings.TrimSpace(c.Request.Header.Get(src.Key))
+		return strings.TrimSpace(c.Headers().Get(src.Key))
 	case "gjson":
 		if src.Path == "" {
 			return ""
 		}
-		storage, err := common.GetBodyStorage(c)
-		if err != nil {
-			return ""
-		}
-		body, err := storage.Bytes()
+		body, err := c.RawBody()
 		if err != nil || len(body) == 0 {
 			return ""
 		}
@@ -349,13 +345,13 @@ func buildChannelAffinityCacheKeySuffix(rule operation_setting.ChannelAffinityRu
 	return strings.Join(parts, ":")
 }
 
-func setChannelAffinityContext(c *gin.Context, meta channelAffinityMeta) {
+func setChannelAffinityContext(c contract.Context, meta channelAffinityMeta) {
 	c.Set(ginKeyChannelAffinityCacheKey, meta.CacheKey)
 	c.Set(ginKeyChannelAffinityTTLSeconds, meta.TTLSeconds)
 	c.Set(ginKeyChannelAffinityMeta, meta)
 }
 
-func getChannelAffinityContext(c *gin.Context) (string, int, bool) {
+func getChannelAffinityContext(c contract.Context) (string, int, bool) {
 	keyAny, ok := c.Get(ginKeyChannelAffinityCacheKey)
 	if !ok {
 		return "", 0, false
@@ -372,7 +368,7 @@ func getChannelAffinityContext(c *gin.Context) (string, int, bool) {
 	return key, ttlSeconds, true
 }
 
-func getChannelAffinityMeta(c *gin.Context) (channelAffinityMeta, bool) {
+func getChannelAffinityMeta(c contract.Context) (channelAffinityMeta, bool) {
 	anyMeta, ok := c.Get(ginKeyChannelAffinityMeta)
 	if !ok {
 		return channelAffinityMeta{}, false
@@ -384,7 +380,7 @@ func getChannelAffinityMeta(c *gin.Context) (channelAffinityMeta, bool) {
 	return meta, true
 }
 
-func GetChannelAffinityStatsContext(c *gin.Context) (ChannelAffinityStatsContext, bool) {
+func GetChannelAffinityStatsContext(c contract.Context) (ChannelAffinityStatsContext, bool) {
 	if c == nil {
 		return ChannelAffinityStatsContext{}, false
 	}
@@ -494,7 +490,7 @@ func extractParamOperations(value interface{}) ([]interface{}, bool) {
 	}
 }
 
-func appendChannelAffinityTemplateAdminInfo(c *gin.Context, meta channelAffinityMeta) {
+func appendChannelAffinityTemplateAdminInfo(c contract.Context, meta channelAffinityMeta) {
 	if c == nil {
 		return
 	}
@@ -530,7 +526,7 @@ func appendChannelAffinityTemplateAdminInfo(c *gin.Context, meta channelAffinity
 }
 
 // ApplyChannelAffinityOverrideTemplate merges per-rule channel override templates onto the selected channel override config.
-func ApplyChannelAffinityOverrideTemplate(c *gin.Context, paramOverride map[string]interface{}) (map[string]interface{}, bool) {
+func ApplyChannelAffinityOverrideTemplate(c contract.Context, paramOverride map[string]interface{}) (map[string]interface{}, bool) {
 	if c == nil {
 		return paramOverride, false
 	}
@@ -547,18 +543,18 @@ func ApplyChannelAffinityOverrideTemplate(c *gin.Context, paramOverride map[stri
 	return mergedParam, true
 }
 
-func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup string) (int, bool) {
+func GetPreferredChannelByAffinity(c contract.Context, modelName string, usingGroup string) (int, bool) {
 	setting := operation_setting.GetChannelAffinitySetting()
 	if setting == nil || !setting.Enabled {
 		return 0, false
 	}
 	path := ""
-	if c != nil && c.Request != nil && c.Request.URL != nil {
-		path = c.Request.URL.Path
+	if c != nil && c.HTTPRequest() != nil {
+		path = c.Path()
 	}
 	userAgent := ""
-	if c != nil && c.Request != nil {
-		userAgent = c.Request.UserAgent()
+	if c != nil && c.HTTPRequest() != nil {
+		userAgent = c.UserAgent()
 	}
 
 	for _, rule := range setting.Rules {
@@ -623,7 +619,7 @@ func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup 
 	return 0, false
 }
 
-func ShouldSkipRetryAfterChannelAffinityFailure(c *gin.Context) bool {
+func ShouldSkipRetryAfterChannelAffinityFailure(c contract.Context) bool {
 	if c == nil {
 		return false
 	}
@@ -641,7 +637,7 @@ func ShouldSkipRetryAfterChannelAffinityFailure(c *gin.Context) bool {
 	return meta.SkipRetry
 }
 
-func ClearCurrentChannelAffinityCache(c *gin.Context) bool {
+func ClearCurrentChannelAffinityCache(c contract.Context) bool {
 	if c == nil {
 		return false
 	}
@@ -673,7 +669,7 @@ func ShouldKeepChannelAffinityOnChannelDisabled() bool {
 	return setting.KeepOnChannelDisabled
 }
 
-func MarkChannelAffinityUsed(c *gin.Context, selectedGroup string, channelID int) {
+func MarkChannelAffinityUsed(c contract.Context, selectedGroup string, channelID int) {
 	if c == nil || channelID <= 0 {
 		return
 	}
@@ -699,7 +695,7 @@ func MarkChannelAffinityUsed(c *gin.Context, selectedGroup string, channelID int
 	c.Set(ginKeyChannelAffinityLogInfo, info)
 }
 
-func AppendChannelAffinityAdminInfo(c *gin.Context, adminInfo map[string]interface{}) {
+func AppendChannelAffinityAdminInfo(c contract.Context, adminInfo map[string]interface{}) {
 	if c == nil || adminInfo == nil {
 		return
 	}
@@ -710,7 +706,7 @@ func AppendChannelAffinityAdminInfo(c *gin.Context, adminInfo map[string]interfa
 	adminInfo["channel_affinity"] = anyInfo
 }
 
-func RecordChannelAffinity(c *gin.Context, channelID int) {
+func RecordChannelAffinity(c contract.Context, channelID int) {
 	if channelID <= 0 {
 		return
 	}
@@ -775,11 +771,11 @@ type ChannelAffinityUsageCacheCounters struct {
 var channelAffinityUsageCacheStatsLocks [64]sync.Mutex
 
 // ObserveChannelAffinityUsageCacheByRelayFormat records usage cache stats with a stable rate mode derived from relay format.
-func ObserveChannelAffinityUsageCacheByRelayFormat(c *gin.Context, usage *dto.Usage, relayFormat types.RelayFormat) {
+func ObserveChannelAffinityUsageCacheByRelayFormat(c contract.Context, usage *dto.Usage, relayFormat types.RelayFormat) {
 	ObserveChannelAffinityUsageCacheFromContext(c, usage, cachedTokenRateModeByRelayFormat(relayFormat))
 }
 
-func ObserveChannelAffinityUsageCacheFromContext(c *gin.Context, usage *dto.Usage, cachedTokenRateMode string) {
+func ObserveChannelAffinityUsageCacheFromContext(c contract.Context, usage *dto.Usage, cachedTokenRateMode string) {
 	statsCtx, ok := GetChannelAffinityStatsContext(c)
 	if !ok {
 		return

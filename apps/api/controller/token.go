@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,8 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
-
-	"github.com/gin-gonic/gin"
 )
 
 type tokenAutoGroupsInput struct {
@@ -66,8 +65,8 @@ func buildMaskedTokenResponses(tokens []*model.Token) []*tokenResponse {
 	return maskedTokens
 }
 
-func getTokenRequestUserGroup(c *gin.Context) (string, error) {
-	if userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup); userGroup != "" {
+func getTokenRequestUserGroup(c contract.Context) (string, error) {
+	if userGroup := common.GetCtxKeyString(c, constant.ContextKeyUserGroup); userGroup != "" {
 		return userGroup, nil
 	}
 	if userGroup := c.GetString("group"); userGroup != "" {
@@ -76,10 +75,10 @@ func getTokenRequestUserGroup(c *gin.Context) (string, error) {
 	return model.GetUserGroup(c.GetInt("id"), false)
 }
 
-func setTokenAutoGroups(c *gin.Context, token *model.Token, groups []string) bool {
+func setTokenAutoGroups(c contract.Context, token *model.Token, groups []string) bool {
 	if len(groups) == 0 {
 		if err := token.SetAutoGroups(nil); err != nil {
-			common.ApiError(c, err)
+			common.CtxApiError(c, err)
 			return false
 		}
 		return true
@@ -87,50 +86,50 @@ func setTokenAutoGroups(c *gin.Context, token *model.Token, groups []string) boo
 
 	maxCount := setting.GetMaxTokenAutoGroups()
 	if len(groups) > maxCount {
-		common.ApiErrorI18n(c, i18n.MsgTokenAutoGroupsTooMany, map[string]any{"Max": maxCount})
+		common.CtxApiErrorI18n(c, i18n.MsgTokenAutoGroupsTooMany, map[string]any{"Max": maxCount})
 		return false
 	}
 
 	userGroup, err := getTokenRequestUserGroup(c)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return false
 	}
 	seen := make(map[string]struct{}, len(groups))
 	for _, group := range groups {
 		if _, ok := seen[group]; ok {
-			common.ApiErrorI18n(c, i18n.MsgTokenAutoGroupsDuplicate, map[string]any{"Group": group})
+			common.CtxApiErrorI18n(c, i18n.MsgTokenAutoGroupsDuplicate, map[string]any{"Group": group})
 			return false
 		}
 		seen[group] = struct{}{}
 		if !service.IsUserSelectableGroup(userGroup, group) {
-			common.ApiErrorI18n(c, i18n.MsgTokenAutoGroupsInvalid, map[string]any{"Group": group})
+			common.CtxApiErrorI18n(c, i18n.MsgTokenAutoGroupsInvalid, map[string]any{"Group": group})
 			return false
 		}
 	}
 
 	if err := token.SetAutoGroups(groups); err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return false
 	}
 	return true
 }
 
-func GetAllTokens(c *gin.Context) {
+func GetAllTokens(c contract.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
 	tokens, err := model.GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	total, _ := model.CountUserTokens(userId)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
-	common.ApiSuccess(c, pageInfo)
+	common.CtxApiSuccess(c, pageInfo)
 }
 
-func SearchTokens(c *gin.Context) {
+func SearchTokens(c contract.Context) {
 	userId := c.GetInt("id")
 	keyword := c.Query("keyword")
 	token := c.Query("token")
@@ -139,71 +138,71 @@ func SearchTokens(c *gin.Context) {
 
 	tokens, total, err := model.SearchUserTokens(userId, keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
-	common.ApiSuccess(c, pageInfo)
+	common.CtxApiSuccess(c, pageInfo)
 }
 
-func GetToken(c *gin.Context) {
+func GetToken(c contract.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	userId := c.GetInt("id")
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	token, err := model.GetTokenByIds(id, userId)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, buildMaskedTokenResponse(token))
+	common.CtxApiSuccess(c, buildMaskedTokenResponse(token))
 }
 
-func GetTokenAutoGroups(c *gin.Context) {
+func GetTokenAutoGroups(c contract.Context) {
 	userGroup, err := getTokenRequestUserGroup(c)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, gin.H{
+	common.CtxApiSuccess(c, common.H{
 		"groups":    service.GetUserAutoGroup(userGroup),
 		"max_count": setting.GetMaxTokenAutoGroups(),
 	})
 }
 
-func GetTokenKey(c *gin.Context) {
+func GetTokenKey(c contract.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	userId := c.GetInt("id")
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	token, err := model.GetTokenByIds(id, userId)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, gin.H{
+	common.CtxApiSuccess(c, common.H{
 		"key": token.GetFullKey(),
 	})
 }
 
-func GetTokenStatus(c *gin.Context) {
+func GetTokenStatus(c contract.Context) {
 	tokenId := c.GetInt("token_id")
 	userId := c.GetInt("id")
 	token, err := model.GetTokenByIds(tokenId, userId)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	expiredAt := token.ExpiredTime
 	if expiredAt == -1 {
 		expiredAt = 0
 	}
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"object":          "credit_summary",
 		"total_granted":   token.RemainQuota,
 		"total_used":      0, // not supported currently
@@ -212,10 +211,10 @@ func GetTokenStatus(c *gin.Context) {
 	})
 }
 
-func GetTokenUsage(c *gin.Context) {
-	authHeader := c.GetHeader("Authorization")
+func GetTokenUsage(c contract.Context) {
+	authHeader := c.Header("Authorization")
 	if authHeader == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{
+		_ = c.JSON(http.StatusUnauthorized, common.H{
 			"success": false,
 			"message": "No Authorization header",
 		})
@@ -224,7 +223,7 @@ func GetTokenUsage(c *gin.Context) {
 
 	parts := strings.Split(authHeader, " ")
 	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-		c.JSON(http.StatusUnauthorized, gin.H{
+		_ = c.JSON(http.StatusUnauthorized, common.H{
 			"success": false,
 			"message": "Invalid Bearer token",
 		})
@@ -235,7 +234,7 @@ func GetTokenUsage(c *gin.Context) {
 	token, err := model.GetTokenByKey(strings.TrimPrefix(tokenKey, "sk-"), false)
 	if err != nil {
 		common.SysError("failed to get token by key: " + err.Error())
-		common.ApiErrorI18n(c, i18n.MsgTokenGetInfoFailed)
+		common.CtxApiErrorI18n(c, i18n.MsgTokenGetInfoFailed)
 		return
 	}
 
@@ -244,10 +243,10 @@ func GetTokenUsage(c *gin.Context) {
 		expiredAt = 0
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"code":    true,
 		"message": "ok",
-		"data": gin.H{
+		"data": common.H{
 			"object":               "token_usage",
 			"name":                 token.Name,
 			"total_granted":        token.RemainQuota + token.UsedQuota,
@@ -261,27 +260,27 @@ func GetTokenUsage(c *gin.Context) {
 	})
 }
 
-func AddToken(c *gin.Context) {
+func AddToken(c contract.Context) {
 	request := tokenRequest{}
-	err := c.ShouldBindJSON(&request)
+	err := c.BindJSON(&request)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	token := request.Token
 	if len(token.Name) > 50 {
-		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
+		common.CtxApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
 	}
 	// 非无限额度时，检查额度值是否超出有效范围
 	if !token.UnlimitedQuota {
 		if token.RemainQuota < 0 {
-			common.ApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
+			common.CtxApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
 			return
 		}
 		maxQuotaValue := common.QuotaFromFloat(1000000000 * common.QuotaPerUnit)
 		if token.RemainQuota > maxQuotaValue {
-			common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
+			common.CtxApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
 			return
 		}
 	}
@@ -289,11 +288,11 @@ func AddToken(c *gin.Context) {
 	maxTokens := operation_setting.GetMaxUserTokens()
 	count, err := model.CountUserTokens(c.GetInt("id"))
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	if int(count) >= maxTokens {
-		c.JSON(http.StatusOK, gin.H{
+		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": fmt.Sprintf("已达到最大令牌数量限制 (%d)", maxTokens),
 		})
@@ -309,7 +308,7 @@ func AddToken(c *gin.Context) {
 	}
 	key, err := common.GenerateKey()
 	if err != nil {
-		common.ApiErrorI18n(c, i18n.MsgTokenGenerateFailed)
+		common.CtxApiErrorI18n(c, i18n.MsgTokenGenerateFailed)
 		common.SysLog("failed to generate token key: " + err.Error())
 		return
 	}
@@ -331,66 +330,66 @@ func AddToken(c *gin.Context) {
 	}
 	err = cleanToken.Insert()
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 	})
 }
 
-func DeleteToken(c *gin.Context) {
+func DeleteToken(c contract.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	userId := c.GetInt("id")
 	err := model.DeleteTokenById(id, userId)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 	})
 }
 
-func UpdateToken(c *gin.Context) {
+func UpdateToken(c contract.Context) {
 	userId := c.GetInt("id")
 	statusOnly := c.Query("status_only")
 	request := tokenRequest{}
-	err := c.ShouldBindJSON(&request)
+	err := c.BindJSON(&request)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	token := request.Token
 	if len(token.Name) > 50 {
-		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
+		common.CtxApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
 	}
 	if !token.UnlimitedQuota {
 		if token.RemainQuota < 0 {
-			common.ApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
+			common.CtxApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
 			return
 		}
 		maxQuotaValue := common.QuotaFromFloat(1000000000 * common.QuotaPerUnit)
 		if token.RemainQuota > maxQuotaValue {
-			common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
+			common.CtxApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
 			return
 		}
 	}
 	cleanToken, err := model.GetTokenByIds(token.Id, userId)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	if token.Status == common.TokenStatusEnabled {
 		if cleanToken.Status == common.TokenStatusExpired && cleanToken.ExpiredTime <= common.GetTimestamp() && cleanToken.ExpiredTime != -1 {
-			common.ApiErrorI18n(c, i18n.MsgTokenExpiredCannotEnable)
+			common.CtxApiErrorI18n(c, i18n.MsgTokenExpiredCannotEnable)
 			return
 		}
 		if cleanToken.Status == common.TokenStatusExhausted && cleanToken.RemainQuota <= 0 && !cleanToken.UnlimitedQuota {
-			common.ApiErrorI18n(c, i18n.MsgTokenExhaustedCannotEable)
+			common.CtxApiErrorI18n(c, i18n.MsgTokenExhaustedCannotEable)
 			return
 		}
 	}
@@ -418,10 +417,10 @@ func UpdateToken(c *gin.Context) {
 	}
 	err = cleanToken.Update()
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 		"data":    buildMaskedTokenResponse(cleanToken),
@@ -432,44 +431,44 @@ type TokenBatch struct {
 	Ids []int `json:"ids"`
 }
 
-func DeleteTokenBatch(c *gin.Context) {
+func DeleteTokenBatch(c contract.Context) {
 	tokenBatch := TokenBatch{}
-	if err := c.ShouldBindJSON(&tokenBatch); err != nil || len(tokenBatch.Ids) == 0 {
-		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+	if err := c.BindJSON(&tokenBatch); err != nil || len(tokenBatch.Ids) == 0 {
+		common.CtxApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	userId := c.GetInt("id")
 	count, err := model.BatchDeleteTokens(tokenBatch.Ids, userId)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 		"data":    count,
 	})
 }
 
-func GetTokenKeysBatch(c *gin.Context) {
+func GetTokenKeysBatch(c contract.Context) {
 	tokenBatch := TokenBatch{}
-	if err := c.ShouldBindJSON(&tokenBatch); err != nil || len(tokenBatch.Ids) == 0 {
-		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+	if err := c.BindJSON(&tokenBatch); err != nil || len(tokenBatch.Ids) == 0 {
+		common.CtxApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	if len(tokenBatch.Ids) > 100 {
-		common.ApiErrorI18n(c, i18n.MsgBatchTooMany, map[string]any{"Max": 100})
+		common.CtxApiErrorI18n(c, i18n.MsgBatchTooMany, map[string]any{"Max": 100})
 		return
 	}
 	userId := c.GetInt("id")
 	tokens, err := model.GetTokenKeysByIds(tokenBatch.Ids, userId)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	keysMap := make(map[int]string)
 	for _, t := range tokens {
 		keysMap[t.Id] = t.GetFullKey()
 	}
-	common.ApiSuccess(c, gin.H{"keys": keysMap})
+	common.CtxApiSuccess(c, common.H{"keys": keysMap})
 }

@@ -2,7 +2,7 @@ package service
 
 import (
 	"fmt"
-	"net/http/httptest"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"strings"
 	"testing"
 
@@ -11,7 +11,6 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
-	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -96,11 +95,10 @@ func TestCacheGetRandomSatisfiedChannelUsesTokenAutoGroupsWhenGlobalAutoIsEmpty(
 	createChannelSelectAutoGroupsChannel(t, db, 2102, "default", modelName)
 	model.InitChannelCache()
 
-	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
-	common.SetContextKey(ctx, constant.ContextKeyTokenAutoGroups, []string{"vip", "default"})
-	common.SetContextKey(ctx, constant.ContextKeyTokenCrossGroupRetry, true)
+	ctx, _ := ginadapter.NewSyntheticContext(nil)
+	common.SetCtxKey(ctx, constant.ContextKeyUserGroup, "default")
+	common.SetCtxKey(ctx, constant.ContextKeyTokenAutoGroups, []string{"vip", "default"})
+	common.SetCtxKey(ctx, constant.ContextKeyTokenCrossGroupRetry, true)
 
 	retry := 0
 	param := &RetryParam{
@@ -116,7 +114,7 @@ func TestCacheGetRandomSatisfiedChannelUsesTokenAutoGroupsWhenGlobalAutoIsEmpty(
 	require.NotNil(t, first)
 	assert.Equal(t, 2101, first.Id)
 	assert.Equal(t, "vip", selectedGroup)
-	assert.Equal(t, "vip", common.GetContextKeyString(ctx, constant.ContextKeyAutoGroup))
+	assert.Equal(t, "vip", common.GetCtxKeyString(ctx, constant.ContextKeyAutoGroup))
 	assert.Empty(t, setting.GetAutoGroups(), "the selection must not depend on the global Auto list")
 
 	param.IncreaseRetry()
@@ -125,5 +123,5 @@ func TestCacheGetRandomSatisfiedChannelUsesTokenAutoGroupsWhenGlobalAutoIsEmpty(
 	require.NotNil(t, second)
 	assert.Equal(t, 2102, second.Id)
 	assert.Equal(t, "default", selectedGroup)
-	assert.Equal(t, "default", common.GetContextKeyString(ctx, constant.ContextKeyAutoGroup))
+	assert.Equal(t, "default", common.GetCtxKeyString(ctx, constant.ContextKeyAutoGroup))
 }

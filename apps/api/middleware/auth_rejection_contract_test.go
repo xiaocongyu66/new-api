@@ -1,12 +1,14 @@
 package middleware
 
 import (
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,13 +18,12 @@ import (
 // object, so its shape and the 401 status must survive the transport refactor.
 func TestTokenAuthRejectsMissingCredential(t *testing.T) {
 	setupDashboardAuthMiddlewareTest(t)
-	gin.SetMode(gin.TestMode)
 
 	engine := gin.New()
-	engine.Use(TokenAuth())
-	engine.POST("/v1/chat/completions", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"reached": true})
-	})
+	engine.Use(ginadapter.Middleware(TokenAuth()))
+	engine.POST("/v1/chat/completions", ginadapter.Handler(func(c contract.Context) {
+		_ = c.JSON(http.StatusOK, common.H{"reached": true})
+	}))
 
 	recorder := httptest.NewRecorder()
 	engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
@@ -49,13 +50,12 @@ func TestTokenAuthRejectsMissingCredential(t *testing.T) {
 // dialect-specific column initialisation that model package tests own.
 func TestTokenAuthRejectsMalformedBearerScheme(t *testing.T) {
 	setupDashboardAuthMiddlewareTest(t)
-	gin.SetMode(gin.TestMode)
 
 	engine := gin.New()
-	engine.Use(TokenAuth())
-	engine.POST("/v1/chat/completions", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"reached": true})
-	})
+	engine.Use(ginadapter.Middleware(TokenAuth()))
+	engine.POST("/v1/chat/completions", ginadapter.Handler(func(c contract.Context) {
+		_ = c.JSON(http.StatusOK, common.H{"reached": true})
+	}))
 
 	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	request.Header.Set("Authorization", "Bearer    ")
@@ -81,13 +81,12 @@ func TestTokenAuthRejectsMalformedBearerScheme(t *testing.T) {
 // envelope, which uses the flat success/message shape instead of the relay one.
 func TestUserAuthRejectsAnonymousDashboardRequest(t *testing.T) {
 	setupDashboardAuthMiddlewareTest(t)
-	gin.SetMode(gin.TestMode)
 
 	engine := gin.New()
-	engine.Use(UserAuth())
-	engine.GET("/api/user/self", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"reached": true})
-	})
+	engine.Use(ginadapter.Middleware(UserAuth()))
+	engine.GET("/api/user/self", ginadapter.Handler(func(c contract.Context) {
+		_ = c.JSON(http.StatusOK, common.H{"reached": true})
+	}))
 
 	recorder := httptest.NewRecorder()
 	engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/user/self", nil))

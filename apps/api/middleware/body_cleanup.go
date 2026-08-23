@@ -2,14 +2,14 @@ package middleware
 
 import (
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/gin-gonic/gin"
 )
 
 // BodyStorageCleanup 请求体存储清理中间件
 // 在请求处理完成后自动清理磁盘/内存缓存
-func BodyStorageCleanup() gin.HandlerFunc {
-	return func(c *gin.Context) {
+func BodyStorageCleanup() contract.Middleware {
+	return func(c contract.Context) {
 		// 处理请求
 		c.Next()
 

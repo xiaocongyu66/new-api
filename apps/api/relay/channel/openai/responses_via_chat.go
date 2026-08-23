@@ -105,7 +105,7 @@ func OaiChatToResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 
 		var chunk dto.ChatCompletionsStreamResponse
 		if err := common.UnmarshalJsonStr(data, &chunk); err != nil {
-			logger.LogError(c, "failed to unmarshal chat stream response: "+err.Error())
+			logger.LogError(c.Request.Context(), "failed to unmarshal chat stream response: "+err.Error())
 			sr.Error(err)
 			return
 		}

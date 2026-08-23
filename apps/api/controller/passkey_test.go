@@ -2,6 +2,8 @@ package controller
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,7 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/system_setting"
-	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -35,7 +36,7 @@ func TestParsePasskeyFinishRequestDoesNotRewriteRequestBody(t *testing.T) {
 	context, _ := gin.CreateTestContext(httptest.NewRecorder())
 	context.Request = request
 
-	parsed, err := parsePasskeyFinishRequest(context)
+	parsed, err := parsePasskeyFinishRequest(ginadapter.Wrap(context))
 	require.NoError(t, err)
 	assert.Equal(t, "flow-1", parsed.FlowToken)
 	assert.JSONEq(t, `{"id":"credential-1"}`, string(parsed.Credential))
@@ -112,7 +113,7 @@ func TestPasskeyRegisterFinishRejectsMissingOrWrongProofWithoutConsumingFlow(t *
 			context.Set("auth_version", identity.UserAuthVersion)
 			context.Set("session_version", identity.SessionVersion)
 
-			PasskeyRegisterFinish(context)
+			PasskeyRegisterFinish(ginadapter.Wrap(context))
 
 			assert.Equal(t, http.StatusForbidden, response.Code)
 			var responseBody struct {

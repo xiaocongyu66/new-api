@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"net/url"
 	"sort"
@@ -17,7 +18,6 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 
-	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -45,9 +45,9 @@ var (
 	errTelegramBindUserDisabled     = errors.New("telegram bind user is disabled")
 )
 
-func TelegramBindStart(c *gin.Context) {
+func TelegramBindStart(c contract.Context) {
 	if !common.TelegramOAuthEnabled {
-		c.JSON(http.StatusOK, gin.H{
+		_ = c.JSON(http.StatusOK, common.H{
 			"message": "管理员未开启通过 Telegram 登录以及注册",
 			"success": false,
 		})
@@ -55,7 +55,7 @@ func TelegramBindStart(c *gin.Context) {
 	}
 	identity, ok := middleware.GetSessionAuthIdentity(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "未登录"})
+		_ = c.JSON(http.StatusUnauthorized, common.H{"success": false, "message": "未登录"})
 		return
 	}
 	expiresAt := time.Now().Add(telegramBindFlowTTL)
@@ -66,14 +66,14 @@ func TelegramBindStart(c *gin.Context) {
 		ExpiresAt: expiresAt,
 	})
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	callbackURL := "/api/oauth/telegram/bind/" + flowToken
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
-		"data": gin.H{
+		"data": common.H{
 			"flow_token":   flowToken,
 			"callback_url": callbackURL,
 			"expires_at":   expiresAt.Unix(),
@@ -81,12 +81,12 @@ func TelegramBindStart(c *gin.Context) {
 	})
 }
 
-func TelegramBind(c *gin.Context) {
+func TelegramBind(c contract.Context) {
 	if !common.TelegramOAuthEnabled {
 		telegramBindFailure(c, telegramBindErrorDisabled)
 		return
 	}
-	params := c.Request.URL.Query()
+	params := c.QueryValues()
 	telegramId, err := verifyTelegramAuthorization(params, common.TelegramBotToken, time.Now())
 	if err != nil {
 		common.SysLog("TelegramBind authorization failed: " + err.Error())
@@ -224,7 +224,7 @@ func TelegramBind(c *gin.Context) {
 	c.Redirect(http.StatusFound, callback)
 }
 
-func telegramBindFailure(c *gin.Context, errorCode string) {
+func telegramBindFailure(c contract.Context, errorCode string) {
 	query := url.Values{
 		"telegram_bind": {"error"},
 		"flow_token":    {c.Param("flow_token")},
@@ -233,19 +233,19 @@ func telegramBindFailure(c *gin.Context, errorCode string) {
 	c.Redirect(http.StatusFound, "/oauth/telegram?"+query.Encode())
 }
 
-func TelegramLogin(c *gin.Context) {
+func TelegramLogin(c contract.Context) {
 	if !common.TelegramOAuthEnabled {
-		c.JSON(200, gin.H{
+		_ = c.JSON(200, common.H{
 			"message": "管理员未开启通过 Telegram 登录以及注册",
 			"success": false,
 		})
 		return
 	}
-	params := c.Request.URL.Query()
+	params := c.QueryValues()
 	telegramId, err := verifyTelegramAuthorization(params, common.TelegramBotToken, time.Now())
 	if err != nil {
 		common.SysLog("TelegramLogin authorization failed: " + err.Error())
-		c.JSON(200, gin.H{
+		_ = c.JSON(200, common.H{
 			"message": "无效的请求",
 			"success": false,
 		})
@@ -254,7 +254,7 @@ func TelegramLogin(c *gin.Context) {
 
 	user := model.User{TelegramId: telegramId}
 	if err := user.FillUserByTelegramId(); err != nil {
-		c.JSON(200, gin.H{
+		_ = c.JSON(200, common.H{
 			"message": err.Error(),
 			"success": false,
 		})
@@ -262,7 +262,7 @@ func TelegramLogin(c *gin.Context) {
 	}
 	if err := claimTelegramAuthorization(params, time.Now()); err != nil {
 		common.SysLog("TelegramLogin assertion replay rejected: " + err.Error())
-		c.JSON(http.StatusForbidden, gin.H{
+		_ = c.JSON(http.StatusForbidden, common.H{
 			"message": "该登录凭据已被使用",
 			"success": false,
 		})

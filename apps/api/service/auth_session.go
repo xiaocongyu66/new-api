@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
@@ -288,7 +288,7 @@ func ListLoginSessions(userID int, currentSID string) ([]LoginSessionView, error
 	return views, nil
 }
 
-func WriteRefreshCookie(c *gin.Context, rawToken string) {
+func WriteRefreshCookie(c contract.Context, rawToken string) {
 	expiresAt := time.Now().Add(LoginSessionTTL)
 	if sid, _, ok := splitRefreshToken(rawToken); ok {
 		if session, err := model.GetUserSessionCached(sid); err == nil && session.ExpiresAt > time.Now().Unix() {
@@ -299,7 +299,7 @@ func WriteRefreshCookie(c *gin.Context, rawToken string) {
 	if maxAge < 1 {
 		maxAge = 1
 	}
-	http.SetCookie(c.Writer, &http.Cookie{
+	c.SetCookie(&http.Cookie{
 		Name:     RefreshCookieName,
 		Value:    rawToken,
 		Path:     "/api/user/auth",
@@ -311,8 +311,8 @@ func WriteRefreshCookie(c *gin.Context, rawToken string) {
 	})
 }
 
-func ClearRefreshCookie(c *gin.Context) {
-	http.SetCookie(c.Writer, &http.Cookie{
+func ClearRefreshCookie(c contract.Context) {
+	c.SetCookie(&http.Cookie{
 		Name:     RefreshCookieName,
 		Value:    "",
 		Path:     "/api/user/auth",
@@ -408,5 +408,3 @@ func authSessionErrorCode(err error) (int, string) {
 func AuthSessionErrorCode(err error) (int, string) {
 	return authSessionErrorCode(err)
 }
-
-

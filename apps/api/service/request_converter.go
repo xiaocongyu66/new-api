@@ -2,11 +2,12 @@ package service
 
 import (
 	"context"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/gin-gonic/gin"
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/gin-gonic/gin"
 )
 
 func init() {
@@ -22,15 +23,25 @@ func init() {
 }
 
 func ConvertRequest(c *gin.Context, info *relaycommon.RelayInfo, target types.RelayFormat, request any) (*relayconvert.RequestResult, error) {
-	return relayconvert.ConvertRequest(c, info, target, request)
+	var ctx context.Context
+	if c != nil {
+		ctx = c.Request.Context()
+	}
+	return relayconvert.ConvertRequest(ctx, info, target, request)
 }
 
 func ConvertRequestByID(c *gin.Context, info *relaycommon.RelayInfo, converter string, request any) (*relayconvert.RequestResult, error) {
-	return relayconvert.ConvertRequestByID(c, info, converter, request)
+	var ctx context.Context
+	if c != nil {
+		ctx = c.Request.Context()
+	}
+	return relayconvert.ConvertRequestByID(ctx, info, converter, request)
 }
 
-func ConvertRequestVia(c *gin.Context, info *relaycommon.RelayInfo, request any, path ...types.RelayFormat) (*relayconvert.RequestResult, error) {
-	return relayconvert.ConvertRequestVia(c, info, request, path...)
+func ConvertRequestVia(c contract.Context, info *relaycommon.RelayInfo, request any, path ...types.RelayFormat) (*relayconvert.RequestResult, error) {
+	var ctx context.Context
+	if c != nil {
+		ctx = c.Context()
+	}
+	return relayconvert.ConvertRequestVia(ctx, info, request, path...)
 }
-
-

@@ -1,6 +1,8 @@
 package service
 
 import (
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/gin-gonic/gin"
 	"math"
 	"net/http/httptest"
 	"testing"
@@ -16,7 +18,6 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	hosttypes "github.com/QuantumNous/new-api/types"
 
-	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -65,8 +66,8 @@ func TestCalculateTextQuotaSummaryUnifiedForClaudeSemantic(t *testing.T) {
 		StartTime:               time.Now(),
 	}
 
-	chatSummary := calculateTextQuotaSummary(ctx, chatRelayInfo, usage)
-	messageSummary := calculateTextQuotaSummary(ctx, messageRelayInfo, usage)
+	chatSummary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), chatRelayInfo, usage)
+	messageSummary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), messageRelayInfo, usage)
 
 	require.Equal(t, messageSummary.Quota, chatSummary.Quota)
 	require.Equal(t, messageSummary.CacheCreationTokens5m, chatSummary.CacheCreationTokens5m)
@@ -108,7 +109,7 @@ func TestCalculateTextQuotaSummaryUsesSplitClaudeCacheCreationRatios(t *testing.
 		ClaudeCacheCreation1hTokens: 3,
 	}
 
-	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
 
 	// 100 + remaining(5)*1 + 2*2 + 3*3 = 118
 	require.Equal(t, 118, summary.Quota)
@@ -148,7 +149,7 @@ func TestCalculateTextQuotaSummaryUsesAnthropicUsageSemanticFromUpstreamUsage(t 
 		ClaudeCacheCreation1hTokens: 20,
 	}
 
-	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
 
 	require.True(t, summary.IsClaudeUsageSemantic)
 	require.Equal(t, "anthropic", summary.UsageSemantic)
@@ -191,7 +192,7 @@ func TestCalculateTextQuotaSummaryUsesClaudeBillingUsageBeforeTopLevelUsage(t *t
 		}),
 	}
 
-	summary := calculateTextQuotaSummary(ctx, relayInfo, effectiveBillingUsage(usage))
+	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, effectiveBillingUsage(usage))
 
 	require.True(t, summary.IsClaudeUsageSemantic)
 	require.Equal(t, dto.BillingUsageSemanticAnthropic, summary.UsageSemantic)
@@ -235,7 +236,7 @@ func TestCalculateTextQuotaSummaryUsesGeminiBillingUsageBeforeTopLevelUsage(t *t
 		}),
 	}
 
-	summary := calculateTextQuotaSummary(ctx, relayInfo, effectiveBillingUsage(usage))
+	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, effectiveBillingUsage(usage))
 
 	require.False(t, summary.IsClaudeUsageSemantic)
 	require.Equal(t, dto.BillingUsageSemanticGemini, summary.UsageSemantic)
@@ -273,7 +274,7 @@ func TestCalculateTextQuotaSummaryUsesOpenAIBillingUsageBeforeTopLevelUsage(t *t
 		}),
 	}
 
-	summary := calculateTextQuotaSummary(ctx, relayInfo, effectiveBillingUsage(usage))
+	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, effectiveBillingUsage(usage))
 
 	require.False(t, summary.IsClaudeUsageSemantic)
 	require.Equal(t, dto.BillingUsageSemanticOpenAI, summary.UsageSemantic)
@@ -383,7 +384,7 @@ func TestCalculateTextQuotaSummaryHandlesLegacyClaudeDerivedOpenAIUsage(t *testi
 		ClaudeCacheCreation5mTokens: 586,
 	}
 
-	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
 
 	// 62 + 3544*0.1 + 586*1.25 + 95*5 = 1624.9 => 1624
 	require.Equal(t, 1624, summary.Quota)
@@ -416,7 +417,7 @@ func TestCalculateTextQuotaSummaryBillsOpenAICacheWriteTokens(t *testing.T) {
 			},
 		}
 
-		summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+		summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
 
 		require.Equal(t, 1470, summary.CacheCreationTokens)
 		// (1473-0-1470) + 1470*1.25 + 19*2 = 3 + 1837.5 + 38 = 1878.5 => 1879
@@ -436,7 +437,7 @@ func TestCalculateTextQuotaSummaryBillsOpenAICacheWriteTokens(t *testing.T) {
 			},
 		}
 
-		summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+		summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
 
 		require.Equal(t, 3619, summary.PromptTokens)
 		require.Equal(t, 3616, summary.CacheCreationTokens)
@@ -473,7 +474,7 @@ func TestCalculateTextQuotaSummarySeparatesOpenRouterCacheReadFromPromptBilling(
 		},
 	}
 
-	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
 
 	// OpenRouter OpenAI-format display keeps prompt_tokens as total input,
 	// but billing still separates normal input from cache read tokens.
@@ -509,7 +510,7 @@ func TestCalculateTextQuotaSummarySeparatesOpenRouterCacheCreationFromPromptBill
 		},
 	}
 
-	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
 
 	// prompt_tokens is still logged as total input, but cache creation is billed separately.
 	// quota = (2604 - 100) + 100*1.25 + 383 = 3012
@@ -546,7 +547,7 @@ func TestCalculateTextQuotaSummaryKeepsPrePRClaudeOpenRouterBilling(t *testing.T
 		},
 	}
 
-	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
 
 	// Pre-PR PostClaudeConsumeQuota behavior for OpenRouter:
 	// prompt = 2604 - 2432 = 172
@@ -601,7 +602,7 @@ func TestComposeTieredTextQuotaKeepsToolCallSurcharges(t *testing.T) {
 		TotalTokens:      150,
 	}
 
-	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
 	quota := composeTieredTextQuota(relayInfo, summary, 1000, &billingexpr.TieredResult{
 		ActualQuotaBeforeGroup: 1000,
 		ActualQuotaAfterGroup:  1000,
@@ -638,7 +639,7 @@ func TestComposeTieredTextQuotaFallbackKeepsToolCallSurcharges(t *testing.T) {
 		TotalTokens:      150,
 	}
 
-	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
 	quota := composeTieredTextQuota(relayInfo, summary, 1250, nil)
 
 	require.Equal(t, int64(12500), summary.ToolCallSurchargeQuota.Round(0).IntPart())
@@ -672,7 +673,7 @@ func TestComposeTieredTextQuotaErrorFallbackUsesPreConsumedQuota(t *testing.T) {
 		TotalTokens:      150,
 	}
 
-	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
 
 	// tieredResult=nil simulates a settlement error where TryTieredSettle
 	// falls back to FinalPreConsumedQuota (2000), which differs from
@@ -751,13 +752,13 @@ func TestCalculateTextQuotaSummaryFixedPriceAppliesImageCountOnceAndAllowsOverri
 	}
 	usage := &dto.Usage{PromptTokens: 1, TotalTokens: 1}
 
-	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
 	require.Equal(t, 180000, summary.Quota)
 
 	// An adaptor-reported actual count replaces the requested count rather
 	// than multiplying it a second time.
 	relayInfo.PriceData.AddOtherRatio("n", 2)
-	summary = calculateTextQuotaSummary(ctx, relayInfo, usage)
+	summary = calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
 	require.Equal(t, 120000, summary.Quota)
 }
 
@@ -785,7 +786,7 @@ func TestCalculateTextToolCallSurchargeGeneralizedBuiltInTools(t *testing.T) {
 		GroupRatio: 1,
 	}
 
-	surcharge := calculateTextToolCallSurcharge(ctx, relayInfo, summary)
+	surcharge := calculateTextToolCallSurcharge(ginadapter.Wrap(ctx), relayInfo, summary)
 	expected := decimal.NewFromFloat((10.0*2 + 5.0*3) / 1000).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
 	assert.True(t, expected.Equal(surcharge), "got %s want %s", surcharge, expected)
 	require.Len(t, summary.ToolSurchargeItems, 2)
@@ -820,7 +821,7 @@ func TestCalculateTextToolCallSurchargeKeepsSearchPreviewFallbackWithCustomFunct
 		GroupRatio: 1,
 	}
 
-	surcharge := calculateTextToolCallSurcharge(ctx, relayInfo, summary)
+	surcharge := calculateTextToolCallSurcharge(ginadapter.Wrap(ctx), relayInfo, summary)
 
 	require.Len(t, summary.ToolSurchargeItems, 2)
 	assert.Equal(t, "my_fn", summary.ToolSurchargeItems[0].Name)
@@ -845,7 +846,7 @@ func TestCalculateTextToolCallSurchargeDoesNotInferSearchForResponses(t *testing
 		GroupRatio: 1,
 	}
 
-	surcharge := calculateTextToolCallSurcharge(ctx, relayInfo, summary)
+	surcharge := calculateTextToolCallSurcharge(ginadapter.Wrap(ctx), relayInfo, summary)
 
 	assert.True(t, surcharge.IsZero())
 	assert.Empty(t, summary.ToolSurchargeItems)
@@ -866,7 +867,7 @@ func TestCalculateTextToolCallSurchargeMergesSameNameAndPrice(t *testing.T) {
 	}
 	summary := &textQuotaSummary{ModelName: relayInfo.OriginModelName, GroupRatio: 1}
 
-	surcharge := calculateTextToolCallSurcharge(ctx, relayInfo, summary)
+	surcharge := calculateTextToolCallSurcharge(ginadapter.Wrap(ctx), relayInfo, summary)
 
 	require.Len(t, summary.ToolSurchargeItems, 1)
 	assert.Equal(t, dto.BuildInToolWebSearch, summary.ToolSurchargeItems[0].Name)
@@ -906,7 +907,7 @@ func TestCalculateTextQuotaSummaryZeroTokensStillBillsToolSurcharge(t *testing.T
 	relayInfo.PriceData.GroupRatioInfo.GroupRatio = 1
 
 	usage := &dto.Usage{} // zero tokens, mirrors alpha search
-	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
 
 	require.Equal(t, 0, summary.TotalTokens)
 	assert.False(t, summary.ToolCallSurchargeQuota.IsZero(), "surcharge should be computed")
@@ -934,7 +935,7 @@ func TestCalculateTextQuotaSummaryDoesNotApplyRequestMultipliersToToolSurcharge(
 	}
 	relayInfo.PriceData.AddOtherRatio("n", 3)
 
-	summary := calculateTextQuotaSummary(ctx, relayInfo, &dto.Usage{})
+	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, &dto.Usage{})
 
 	expected := decimal.NewFromFloat(10.0 / 1000).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
 	assert.True(t, expected.Equal(summary.ToolCallSurchargeQuota))
@@ -949,7 +950,7 @@ func TestCalculateTextToolCallSurchargeGeminiGoogleSearch(t *testing.T) {
 	relayInfo := &relaycommon.RelayInfo{OriginModelName: "gemini-2.5-flash"}
 	summary := &textQuotaSummary{ModelName: "gemini-2.5-flash", GroupRatio: 1}
 
-	surcharge := calculateTextToolCallSurcharge(ctx, relayInfo, summary)
+	surcharge := calculateTextToolCallSurcharge(ginadapter.Wrap(ctx), relayInfo, summary)
 	expected := decimal.NewFromFloat(14.0 / 1000).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
 	assert.True(t, expected.Equal(surcharge), "got %s want %s", surcharge, expected)
 	require.Len(t, summary.ToolSurchargeItems, 1)
@@ -975,7 +976,7 @@ func TestCalculateTextToolCallSurchargeImageGenerationDefaultPrice(t *testing.T)
 	}
 	summary := &textQuotaSummary{ModelName: "gpt-5.1", GroupRatio: 1.5}
 
-	surcharge := calculateTextToolCallSurcharge(ctx, relayInfo, summary)
+	surcharge := calculateTextToolCallSurcharge(ginadapter.Wrap(ctx), relayInfo, summary)
 	expected := decimal.NewFromFloat(150.0).
 		Mul(decimal.NewFromInt(2)).
 		Div(decimal.NewFromInt(1000)).
@@ -1006,7 +1007,7 @@ func TestCalculateTextToolCallSurchargeImageGenerationExplicitZeroDisables(t *te
 	}
 	summary := &textQuotaSummary{ModelName: "gpt-5.1", GroupRatio: 1}
 
-	surcharge := calculateTextToolCallSurcharge(ctx, relayInfo, summary)
+	surcharge := calculateTextToolCallSurcharge(ginadapter.Wrap(ctx), relayInfo, summary)
 	assert.True(t, surcharge.IsZero())
 	assert.Empty(t, summary.ToolSurchargeItems)
 }
@@ -1031,7 +1032,7 @@ func TestCalculateTextQuotaSummaryImageGenerationUsesStructuredSurcharge(t *test
 	relayInfo.PriceData.CompletionRatio = 1
 
 	usage := &dto.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15}
-	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
 
 	require.Len(t, summary.ToolSurchargeItems, 1)
 	assert.Equal(t, dto.BuildInToolImageGeneration, summary.ToolSurchargeItems[0].Name)

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strconv"
 	"unicode/utf8"
@@ -10,50 +11,48 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
-
-	"github.com/gin-gonic/gin"
 )
 
-func GetAllRedemptions(c *gin.Context) {
+func GetAllRedemptions(c contract.Context) {
 	pageInfo := common.GetPageQuery(c)
 	redemptions, total, err := model.GetAllRedemptions(pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(redemptions)
-	common.ApiSuccess(c, pageInfo)
+	common.CtxApiSuccess(c, pageInfo)
 	return
 }
 
-func SearchRedemptions(c *gin.Context) {
+func SearchRedemptions(c contract.Context) {
 	keyword := c.Query("keyword")
 	status := c.Query("status")
 	pageInfo := common.GetPageQuery(c)
 	redemptions, total, err := model.SearchRedemptions(keyword, status, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(redemptions)
-	common.ApiSuccess(c, pageInfo)
+	common.CtxApiSuccess(c, pageInfo)
 	return
 }
 
-func GetRedemption(c *gin.Context) {
+func GetRedemption(c contract.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	redemption, err := model.GetRedemptionById(id)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 		"data":    redemption,
@@ -61,32 +60,32 @@ func GetRedemption(c *gin.Context) {
 	return
 }
 
-func AddRedemption(c *gin.Context) {
+func AddRedemption(c contract.Context) {
 	if !operation_setting.IsPaymentComplianceConfirmed() {
-		common.ApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
+		common.CtxApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
 		return
 	}
 
 	redemption := model.Redemption{}
-	err := c.ShouldBindJSON(&redemption)
+	err := c.BindJSON(&redemption)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	if utf8.RuneCountInString(redemption.Name) == 0 || utf8.RuneCountInString(redemption.Name) > 20 {
-		common.ApiErrorI18n(c, i18n.MsgRedemptionNameLength)
+		common.CtxApiErrorI18n(c, i18n.MsgRedemptionNameLength)
 		return
 	}
 	if redemption.Count <= 0 {
-		common.ApiErrorI18n(c, i18n.MsgRedemptionCountPositive)
+		common.CtxApiErrorI18n(c, i18n.MsgRedemptionCountPositive)
 		return
 	}
 	if redemption.Count > 100 {
-		common.ApiErrorI18n(c, i18n.MsgRedemptionCountMax)
+		common.CtxApiErrorI18n(c, i18n.MsgRedemptionCountMax)
 		return
 	}
 	if valid, msg := validateExpiredTime(c, redemption.ExpiredTime); !valid {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": msg})
+		_ = c.JSON(http.StatusOK, common.H{"success": false, "message": msg})
 		return
 	}
 	var keys []string
@@ -103,9 +102,9 @@ func AddRedemption(c *gin.Context) {
 		err = cleanRedemption.Insert()
 		if err != nil {
 			common.SysError("failed to insert redemption: " + err.Error())
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
-				"message": i18n.T(c, i18n.MsgRedemptionCreateFailed),
+				"message": i18n.TCtx(c, i18n.MsgRedemptionCreateFailed),
 				"data":    keys,
 			})
 			return
@@ -117,7 +116,7 @@ func AddRedemption(c *gin.Context) {
 		"count": redemption.Count,
 		"quota": logger.LogQuota(redemption.Quota),
 	})
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 		"data":    keys,
@@ -125,36 +124,36 @@ func AddRedemption(c *gin.Context) {
 	return
 }
 
-func DeleteRedemption(c *gin.Context) {
+func DeleteRedemption(c contract.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	err := model.DeleteRedemptionById(id)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 	})
 	return
 }
 
-func UpdateRedemption(c *gin.Context) {
+func UpdateRedemption(c contract.Context) {
 	statusOnly := c.Query("status_only")
 	redemption := model.Redemption{}
-	err := c.ShouldBindJSON(&redemption)
+	err := c.BindJSON(&redemption)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	cleanRedemption, err := model.GetRedemptionById(redemption.Id)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	if statusOnly == "" {
 		if valid, msg := validateExpiredTime(c, redemption.ExpiredTime); !valid {
-			c.JSON(http.StatusOK, gin.H{"success": false, "message": msg})
+			_ = c.JSON(http.StatusOK, common.H{"success": false, "message": msg})
 			return
 		}
 		// If you add more fields, please also update redemption.Update()
@@ -167,10 +166,10 @@ func UpdateRedemption(c *gin.Context) {
 	}
 	err = cleanRedemption.Update()
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 		"data":    cleanRedemption,
@@ -178,13 +177,13 @@ func UpdateRedemption(c *gin.Context) {
 	return
 }
 
-func DeleteInvalidRedemption(c *gin.Context) {
+func DeleteInvalidRedemption(c contract.Context) {
 	rows, err := model.DeleteInvalidRedemptions()
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 		"data":    rows,
@@ -192,9 +191,9 @@ func DeleteInvalidRedemption(c *gin.Context) {
 	return
 }
 
-func validateExpiredTime(c *gin.Context, expired int64) (bool, string) {
+func validateExpiredTime(c contract.Context, expired int64) (bool, string) {
 	if expired != 0 && expired < common.GetTimestamp() {
-		return false, i18n.T(c, i18n.MsgRedemptionExpireTimeInvalid)
+		return false, i18n.TCtx(c, i18n.MsgRedemptionExpireTimeInvalid)
 	}
 	return true, ""
 }

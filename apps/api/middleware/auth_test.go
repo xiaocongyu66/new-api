@@ -5,6 +5,9 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,7 +16,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
@@ -88,9 +90,9 @@ func TestUserAuthAllowsOpaqueDottedPAT(t *testing.T) {
 	setupDashboardAuthMiddlewareTest(t)
 	user := createMiddlewarePATUser(t, "dotted-pat-user", "opaque.key.with-dots")
 	router := gin.New()
-	router.GET("/protected", UserAuth(), func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"id": c.GetInt("id")})
-	})
+	router.GET("/protected", ginadapter.Middleware(UserAuth()), ginadapter.Handler(func(c contract.Context) {
+		_ = c.JSON(http.StatusOK, common.H{"id": c.GetInt("id")})
+	}))
 	request := httptest.NewRequest(http.MethodGet, "/protected", nil)
 	request.Header.Set("Authorization", "Bearer opaque.key.with-dots")
 	response := httptest.NewRecorder()
@@ -113,9 +115,9 @@ func TestUserAuthNeverFallsBackForRecognizedInvalidInternalJWT(t *testing.T) {
 	tampered := tamperDashboardToken(token)
 	createMiddlewarePATUser(t, "jwt-fallback-user", tampered)
 	router := gin.New()
-	router.GET("/protected", UserAuth(), func(c *gin.Context) {
+	router.GET("/protected", ginadapter.Middleware(UserAuth()), ginadapter.Handler(func(c contract.Context) {
 		c.Status(http.StatusNoContent)
-	})
+	}))
 	request := httptest.NewRequest(http.MethodGet, "/protected", nil)
 	request.Header.Set("Authorization", "Bearer "+tampered)
 	response := httptest.NewRecorder()
@@ -163,12 +165,12 @@ func TestTryUserAuthCredentialClassification(t *testing.T) {
 	require.NoError(t, err)
 
 	router := gin.New()
-	router.GET("/optional", TryUserAuth(), func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
+	router.GET("/optional", ginadapter.Middleware(TryUserAuth()), ginadapter.Handler(func(c contract.Context) {
+		_ = c.JSON(http.StatusOK, common.H{
 			"id":               c.GetInt("id"),
 			"use_access_token": c.GetBool("use_access_token"),
 		})
-	})
+	}))
 
 	tests := []struct {
 		name          string
@@ -212,7 +214,7 @@ func TestTryUserAuthCredentialClassification(t *testing.T) {
 	}
 
 	requiredRouter := gin.New()
-	requiredRouter.GET("/required", UserAuth(), func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	requiredRouter.GET("/required", ginadapter.Middleware(UserAuth()), ginadapter.Handler(func(c contract.Context) { c.Status(http.StatusNoContent) }))
 	requiredRequest := httptest.NewRequest(http.MethodGet, "/required", nil)
 	requiredRequest.Header.Set("Authorization", "Bearer ordinary-unmatched-key")
 	requiredResponse := httptest.NewRecorder()

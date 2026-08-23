@@ -2,7 +2,7 @@ package controller
 
 import (
 	"fmt"
-	"io"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strings"
 	"time"
@@ -13,7 +13,6 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
-	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 	"github.com/thanhpk/randstr"
 )
@@ -22,15 +21,15 @@ type WaffoPancakePayRequest struct {
 	Amount int64 `json:"amount"`
 }
 
-func RequestWaffoPancakeAmount(c *gin.Context) {
+func RequestWaffoPancakeAmount(c contract.Context) {
 	var req WaffoPancakePayRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "参数错误"})
+	if err := c.BindJSON(&req); err != nil {
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "参数错误"})
 		return
 	}
 
 	if req.Amount < int64(setting.WaffoPancakeMinTopUp) {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", setting.WaffoPancakeMinTopUp)})
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", setting.WaffoPancakeMinTopUp)})
 		return
 	}
 	id := c.GetInt("id")
@@ -40,17 +39,17 @@ func RequestWaffoPancakeAmount(c *gin.Context) {
 
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "获取用户分组失败"})
 		return
 	}
 
 	payMoney := getWaffoPancakePayMoney(req.Amount, group)
 	if payMoney <= 0.01 {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "充值金额过低"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "success", "data": fmt.Sprintf("%.2f", payMoney)})
+	_ = c.JSON(http.StatusOK, common.H{"message": "success", "data": fmt.Sprintf("%.2f", payMoney)})
 }
 
 func getWaffoPancakePayMoney(amount int64, group string) float64 {
@@ -122,30 +121,30 @@ type createWaffoPancakePairRequest struct {
 
 // SaveWaffoPancake atomically persists all five operator-controlled fields.
 // Catalog / pair endpoints are transient — only this one writes the OptionMap.
-func SaveWaffoPancake(c *gin.Context) {
+func SaveWaffoPancake(c contract.Context) {
 	var req saveWaffoPancakeRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "参数错误"})
+	if err := c.BindJSON(&req); err != nil {
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "参数错误"})
 		return
 	}
 	if err := service.SaveWaffoPancakeConfig(
-		c.Request.Context(),
+		c.Context(),
 		req.MerchantID,
 		req.PrivateKey,
 		req.ReturnURL,
 		req.StoreID,
 		req.ProductID,
 	); err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf(
+		logger.LogError(c.Context(), fmt.Sprintf(
 			"Waffo Pancake 保存配置失败 store_id=%q product_id=%q error=%q",
 			req.StoreID, req.ProductID, err.Error(),
 		))
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "保存配置失败"})
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "保存配置失败"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"message": "success",
-		"data": gin.H{
+		"data": common.H{
 			"product_id": setting.WaffoPancakeProductID,
 			"store_id":   setting.WaffoPancakeStoreID,
 		},
@@ -168,25 +167,25 @@ func resolveWaffoPancakeAdminCreds(bodyMerchantID, bodyPrivateKey string) (strin
 // CreateWaffoPancakePair mints a Store + OnetimeProduct pair in one round-
 // trip. Surfaces an orphan-store flag when the product half fails so the
 // frontend can preselect / retry without losing context.
-func CreateWaffoPancakePair(c *gin.Context) {
+func CreateWaffoPancakePair(c contract.Context) {
 	var req createWaffoPancakePairRequest
-	if c.Request.ContentLength > 0 {
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "参数错误"})
+	if c.ContentLength() > 0 {
+		if err := c.BindJSON(&req); err != nil {
+			_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "参数错误"})
 			return
 		}
 	}
 	merchantID, privateKey := resolveWaffoPancakeAdminCreds(req.MerchantID, req.PrivateKey)
 	if merchantID == "" || privateKey == "" {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Waffo Pancake 凭证未配置"})
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "Waffo Pancake 凭证未配置"})
 		return
 	}
 	result, err := service.CreateWaffoPancakePrimaryPair(
-		c.Request.Context(), merchantID, privateKey, req.ReturnURL,
+		c.Context(), merchantID, privateKey, req.ReturnURL,
 	)
 	if err != nil {
 		orphan := result != nil && result.OrphanStore
-		logger.LogError(c.Request.Context(), fmt.Sprintf(
+		logger.LogError(c.Context(), fmt.Sprintf(
 			"Waffo Pancake 创建店铺与产品失败 orphan_store=%t store_id=%q error=%q",
 			orphan, func() string {
 				if result == nil {
@@ -195,18 +194,18 @@ func CreateWaffoPancakePair(c *gin.Context) {
 				return result.StoreID
 			}(), err.Error(),
 		))
-		data := gin.H{"error": err.Error()}
+		data := common.H{"error": err.Error()}
 		if orphan {
 			data["store_id"] = result.StoreID
 			data["store_name"] = result.StoreName
 			data["orphan_store"] = true
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": data})
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": data})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"message": "success",
-		"data": gin.H{
+		"data": common.H{
 			"store_id":     result.StoreID,
 			"store_name":   result.StoreName,
 			"product_id":   result.ProductID,
@@ -218,25 +217,25 @@ func CreateWaffoPancakePair(c *gin.Context) {
 // ListWaffoPancakeCatalog returns the merchant's Stores + OnetimeProducts.
 // Doubles as a credential probe (a successful 200 proves the resolved creds
 // authenticate). See resolveWaffoPancakeAdminCreds for credential resolution.
-func ListWaffoPancakeCatalog(c *gin.Context) {
+func ListWaffoPancakeCatalog(c contract.Context) {
 	// Missing query creds mean "use persisted creds".
 	merchantID, privateKey := resolveWaffoPancakeAdminCreds(
 		strings.TrimSpace(c.Query("merchant_id")),
 		strings.TrimSpace(c.Query("private_key")),
 	)
 	if merchantID == "" || privateKey == "" {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Waffo Pancake 凭证未配置"})
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "Waffo Pancake 凭证未配置"})
 		return
 	}
-	catalog, err := service.ListWaffoPancakeCatalog(c.Request.Context(), merchantID, privateKey)
+	catalog, err := service.ListWaffoPancakeCatalog(c.Context(), merchantID, privateKey)
 	if err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf(
+		logger.LogError(c.Context(), fmt.Sprintf(
 			"Waffo Pancake 拉取店铺与产品目录失败 error=%q", err.Error(),
 		))
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉取目录失败"})
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "拉取目录失败"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "success", "data": catalog})
+	_ = c.JSON(http.StatusOK, common.H{"message": "success", "data": catalog})
 }
 
 type createWaffoPancakeSubscriptionProductRequest struct {
@@ -249,30 +248,30 @@ type createWaffoPancakeSubscriptionProductRequest struct {
 // sized to a plan's `name` + `amount`, using persisted Pancake credentials
 // + StoreID. Reads from the form, not the plan row, so newly-typed unsaved
 // plans can mint a product too.
-func CreateWaffoPancakeSubscriptionProduct(c *gin.Context) {
+func CreateWaffoPancakeSubscriptionProduct(c contract.Context) {
 	var req createWaffoPancakeSubscriptionProductRequest
-	if c.Request.ContentLength > 0 {
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "参数错误"})
+	if c.ContentLength() > 0 {
+		if err := c.BindJSON(&req); err != nil {
+			_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "参数错误"})
 			return
 		}
 	}
 	if strings.TrimSpace(req.Name) == "" {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "套餐名称不能为空"})
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "套餐名称不能为空"})
 		return
 	}
 	if strings.TrimSpace(req.Amount) == "" {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "套餐价格不能为空"})
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "套餐价格不能为空"})
 		return
 	}
 	merchantID, privateKey := resolveWaffoPancakeAdminCreds("", "")
 	storeID := strings.TrimSpace(setting.WaffoPancakeStoreID)
 	if merchantID == "" || privateKey == "" || storeID == "" {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Waffo Pancake 未完成配置，请先在支付设置中完成网关绑定"})
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "Waffo Pancake 未完成配置，请先在支付设置中完成网关绑定"})
 		return
 	}
 	productID, err := service.CreateWaffoPancakeProductForPlan(
-		c.Request.Context(),
+		c.Context(),
 		merchantID,
 		privateKey,
 		storeID,
@@ -281,16 +280,16 @@ func CreateWaffoPancakeSubscriptionProduct(c *gin.Context) {
 		setting.WaffoPancakeReturnURL,
 	)
 	if err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf(
+		logger.LogError(c.Context(), fmt.Sprintf(
 			"Waffo Pancake 创建套餐产品失败 store_id=%q name=%q amount=%q error=%q",
 			storeID, req.Name, req.Amount, err.Error(),
 		))
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "创建套餐产品失败"})
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "创建套餐产品失败"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"message": "success",
-		"data": gin.H{
+		"data": common.H{
 			"product_id":   productID,
 			"product_name": req.Name,
 			"store_id":     storeID,
@@ -301,19 +300,19 @@ func CreateWaffoPancakeSubscriptionProduct(c *gin.Context) {
 // ListWaffoPancakeSubscriptionProductOptions returns the OnetimeProducts
 // in the saved Pancake store, for the subscription-plan dropdown. The name
 // reflects new-api's plan concept; under the hood it's still OnetimeProducts.
-func ListWaffoPancakeSubscriptionProductOptions(c *gin.Context) {
+func ListWaffoPancakeSubscriptionProductOptions(c contract.Context) {
 	merchantID, privateKey := resolveWaffoPancakeAdminCreds("", "")
 	storeID := strings.TrimSpace(setting.WaffoPancakeStoreID)
 	if merchantID == "" || privateKey == "" || storeID == "" {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Waffo Pancake 未完成配置，请先在支付设置中完成网关绑定"})
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "Waffo Pancake 未完成配置，请先在支付设置中完成网关绑定"})
 		return
 	}
-	catalog, err := service.ListWaffoPancakeCatalog(c.Request.Context(), merchantID, privateKey)
+	catalog, err := service.ListWaffoPancakeCatalog(c.Context(), merchantID, privateKey)
 	if err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf(
+		logger.LogError(c.Context(), fmt.Sprintf(
 			"Waffo Pancake 拉取订阅产品列表失败 store_id=%q error=%q", storeID, err.Error(),
 		))
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉取产品列表失败"})
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "拉取产品列表失败"})
 		return
 	}
 	products := []service.WaffoPancakeCatalogProduct{}
@@ -323,9 +322,9 @@ func ListWaffoPancakeSubscriptionProductOptions(c *gin.Context) {
 			break
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"message": "success",
-		"data": gin.H{
+		"data": common.H{
 			"store_id": storeID,
 			"products": products,
 		},
@@ -339,19 +338,19 @@ func getWaffoPancakeBuyerIdentity(user *model.User) string {
 	return service.WaffoPancakeBuyerIdentityFromUserID(user.Id)
 }
 
-func RequestWaffoPancakePay(c *gin.Context) {
+func RequestWaffoPancakePay(c contract.Context) {
 	if !isWaffoPancakeTopUpEnabled() {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Waffo Pancake 配置不完整"})
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "Waffo Pancake 配置不完整"})
 		return
 	}
 
 	var req WaffoPancakePayRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "参数错误"})
+	if err := c.BindJSON(&req); err != nil {
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "参数错误"})
 		return
 	}
 	if req.Amount < int64(setting.WaffoPancakeMinTopUp) {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", setting.WaffoPancakeMinTopUp)})
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", setting.WaffoPancakeMinTopUp)})
 		return
 	}
 	id := c.GetInt("id")
@@ -361,19 +360,19 @@ func RequestWaffoPancakePay(c *gin.Context) {
 
 	user, err := model.GetUserById(id, false)
 	if err != nil || user == nil {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "用户不存在"})
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "用户不存在"})
 		return
 	}
 
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "获取用户分组失败"})
 		return
 	}
 
 	payMoney := getWaffoPancakePayMoney(req.Amount, group)
 	if payMoney < 0.01 {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "充值金额过低"})
 		return
 	}
 
@@ -389,13 +388,13 @@ func RequestWaffoPancakePay(c *gin.Context) {
 		Status:          common.TopUpStatusPending,
 	}
 	if err := topUp.Insert(); err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("Waffo Pancake 创建充值订单失败 user_id=%d trade_no=%s amount=%d error=%q", id, tradeNo, req.Amount, err.Error()))
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "创建订单失败"})
+		logger.LogError(c.Context(), fmt.Sprintf("Waffo Pancake 创建充值订单失败 user_id=%d trade_no=%s amount=%d error=%q", id, tradeNo, req.Amount, err.Error()))
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "创建订单失败"})
 		return
 	}
 
 	expiresInSeconds := 45 * 60
-	session, err := service.CreateWaffoPancakeCheckoutSession(c.Request.Context(), &service.WaffoPancakeCreateSessionParams{
+	session, err := service.CreateWaffoPancakeCheckoutSession(c.Context(), &service.WaffoPancakeCreateSessionParams{
 		ProductID:     setting.WaffoPancakeProductID,
 		BuyerIdentity: getWaffoPancakeBuyerIdentity(user),
 		PriceSnapshot: &service.WaffoPancakePriceSnapshot{
@@ -407,17 +406,17 @@ func RequestWaffoPancakePay(c *gin.Context) {
 		OrderMerchantExternalID: tradeNo,
 	})
 	if err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("Waffo Pancake 创建结账会话失败 user_id=%d trade_no=%s error=%q", id, tradeNo, err.Error()))
+		logger.LogError(c.Context(), fmt.Sprintf("Waffo Pancake 创建结账会话失败 user_id=%d trade_no=%s error=%q", id, tradeNo, err.Error()))
 		topUp.Status = common.TopUpStatusFailed
 		_ = topUp.Update()
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败"})
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "拉起支付失败"})
 		return
 	}
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Waffo Pancake 充值订单创建成功 user_id=%d trade_no=%s session_id=%s amount=%d money=%.2f", id, tradeNo, session.SessionID, req.Amount, payMoney))
+	logger.LogInfo(c.Context(), fmt.Sprintf("Waffo Pancake 充值订单创建成功 user_id=%d trade_no=%s session_id=%s amount=%d money=%.2f", id, tradeNo, session.SessionID, req.Amount, payMoney))
 
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"message": "success",
-		"data": gin.H{
+		"data": common.H{
 			"checkout_url":     session.CheckoutURL,
 			"session_id":       session.SessionID,
 			"expires_at":       session.ExpiresAt,
@@ -428,10 +427,10 @@ func RequestWaffoPancakePay(c *gin.Context) {
 	})
 }
 
-func WaffoPancakeWebhook(c *gin.Context) {
+func WaffoPancakeWebhook(c contract.Context) {
 	if !isWaffoPancakeWebhookEnabled() {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("Waffo Pancake webhook 被拒绝 reason=webhook_disabled path=%q client_ip=%s", c.Request.RequestURI, c.ClientIP()))
-		c.String(http.StatusForbidden, "webhook disabled")
+		logger.LogWarn(c.Context(), fmt.Sprintf("Waffo Pancake webhook 被拒绝 reason=webhook_disabled path=%q client_ip=%s", c.RequestURI(), c.ClientIP()))
+		_ = c.String(http.StatusForbidden, "webhook disabled")
 		return
 	}
 
@@ -440,43 +439,43 @@ func WaffoPancakeWebhook(c *gin.Context) {
 	// We then enforce event.mode == expectedEnv to catch mis-registrations.
 	expectedEnv := strings.TrimSpace(c.Param("env"))
 	if expectedEnv != "test" && expectedEnv != "prod" {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf(
+		logger.LogWarn(c.Context(), fmt.Sprintf(
 			"Waffo Pancake webhook 路径环境段无效 env=%q path=%q client_ip=%s",
-			expectedEnv, c.Request.RequestURI, c.ClientIP(),
+			expectedEnv, c.RequestURI(), c.ClientIP(),
 		))
-		c.String(http.StatusNotFound, "unknown env")
+		_ = c.String(http.StatusNotFound, "unknown env")
 		return
 	}
 
-	bodyBytes, err := io.ReadAll(c.Request.Body)
+	bodyBytes, err := c.RawBody()
 	if err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("Waffo Pancake webhook 读取请求体失败 path=%q client_ip=%s error=%q", c.Request.RequestURI, c.ClientIP(), err.Error()))
-		c.String(http.StatusBadRequest, "bad request")
+		logger.LogError(c.Context(), fmt.Sprintf("Waffo Pancake webhook 读取请求体失败 path=%q client_ip=%s error=%q", c.RequestURI(), c.ClientIP(), err.Error()))
+		_ = c.String(http.StatusBadRequest, "bad request")
 		return
 	}
 
-	signature := c.GetHeader("X-Waffo-Signature")
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Waffo Pancake webhook 收到请求 path=%q client_ip=%s signature=%q body=%q", c.Request.RequestURI, c.ClientIP(), signature, string(bodyBytes)))
+	signature := c.Header("X-Waffo-Signature")
+	logger.LogInfo(c.Context(), fmt.Sprintf("Waffo Pancake webhook 收到请求 path=%q client_ip=%s signature=%q body=%q", c.RequestURI(), c.ClientIP(), signature, string(bodyBytes)))
 
 	event, err := service.VerifyConfiguredWaffoPancakeWebhook(string(bodyBytes), signature)
 	if err != nil {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("Waffo Pancake webhook 验签失败 path=%q client_ip=%s signature=%q body=%q error=%q", c.Request.RequestURI, c.ClientIP(), signature, string(bodyBytes), err.Error()))
-		c.String(http.StatusUnauthorized, "invalid signature")
+		logger.LogWarn(c.Context(), fmt.Sprintf("Waffo Pancake webhook 验签失败 path=%q client_ip=%s signature=%q body=%q error=%q", c.RequestURI(), c.ClientIP(), signature, string(bodyBytes), err.Error()))
+		_ = c.String(http.StatusUnauthorized, "invalid signature")
 		return
 	}
 
 	if !strings.EqualFold(strings.TrimSpace(event.Mode), expectedEnv) {
-		logger.LogError(c.Request.Context(), fmt.Sprintf(
+		logger.LogError(c.Context(), fmt.Sprintf(
 			"Waffo Pancake webhook 环境不匹配 expected=%q actual_mode=%q event_id=%s order_id=%s client_ip=%s",
 			expectedEnv, event.Mode, event.ID, event.Data.OrderID, c.ClientIP(),
 		))
-		c.String(http.StatusOK, "OK")
+		_ = c.String(http.StatusOK, "OK")
 		return
 	}
 
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Waffo Pancake webhook 验签成功 event_type=%s event_id=%s order_id=%s client_ip=%s", event.NormalizedEventType(), event.ID, event.Data.OrderID, c.ClientIP()))
+	logger.LogInfo(c.Context(), fmt.Sprintf("Waffo Pancake webhook 验签成功 event_type=%s event_id=%s order_id=%s client_ip=%s", event.NormalizedEventType(), event.ID, event.Data.OrderID, c.ClientIP()))
 	if event.NormalizedEventType() != "order.completed" {
-		c.String(http.StatusOK, "OK")
+		_ = c.String(http.StatusOK, "OK")
 		return
 	}
 
@@ -488,22 +487,22 @@ func WaffoPancakeWebhook(c *gin.Context) {
 	if isSubscription {
 		tradeNo, err := service.ResolveWaffoPancakeSubscriptionTradeNo(event)
 		if err != nil {
-			logger.LogError(c.Request.Context(), fmt.Sprintf(
+			logger.LogError(c.Context(), fmt.Sprintf(
 				"Waffo Pancake webhook 订阅订单解析失败 event_id=%s order_id=%s buyer_identity=%q client_ip=%s error=%q",
 				event.ID, event.Data.OrderID, event.Data.MerchantProvidedBuyerIdentity, c.ClientIP(), err.Error(),
 			))
-			c.String(http.StatusOK, "OK")
+			_ = c.String(http.StatusOK, "OK")
 			return
 		}
 		LockOrder(tradeNo)
 		defer UnlockOrder(tradeNo)
 		if err := model.CompleteSubscriptionOrder(tradeNo, string(bodyBytes), model.PaymentProviderWaffoPancake, ""); err != nil {
-			logger.LogError(c.Request.Context(), fmt.Sprintf("Waffo Pancake 订阅完成失败 trade_no=%s event_id=%s order_id=%s client_ip=%s error=%q", tradeNo, event.ID, event.Data.OrderID, c.ClientIP(), err.Error()))
-			c.String(http.StatusInternalServerError, "retry")
+			logger.LogError(c.Context(), fmt.Sprintf("Waffo Pancake 订阅完成失败 trade_no=%s event_id=%s order_id=%s client_ip=%s error=%q", tradeNo, event.ID, event.Data.OrderID, c.ClientIP(), err.Error()))
+			_ = c.String(http.StatusInternalServerError, "retry")
 			return
 		}
-		logger.LogInfo(c.Request.Context(), fmt.Sprintf("Waffo Pancake 订阅完成 trade_no=%s event_id=%s order_id=%s client_ip=%s", tradeNo, event.ID, event.Data.OrderID, c.ClientIP()))
-		c.String(http.StatusOK, "OK")
+		logger.LogInfo(c.Context(), fmt.Sprintf("Waffo Pancake 订阅完成 trade_no=%s event_id=%s order_id=%s client_ip=%s", tradeNo, event.ID, event.Data.OrderID, c.ClientIP()))
+		_ = c.String(http.StatusOK, "OK")
 		return
 	}
 
@@ -512,11 +511,11 @@ func WaffoPancakeWebhook(c *gin.Context) {
 		// LogError (not LogWarn): covers order-not-found and buyer-identity
 		// mismatch — both warrant human attention. 200 OK so Waffo doesn't
 		// retry a permanently-unresolvable webhook.
-		logger.LogError(c.Request.Context(), fmt.Sprintf(
+		logger.LogError(c.Context(), fmt.Sprintf(
 			"Waffo Pancake webhook 订单解析失败 event_id=%s order_id=%s buyer_identity=%q client_ip=%s error=%q",
 			event.ID, event.Data.OrderID, event.Data.MerchantProvidedBuyerIdentity, c.ClientIP(), err.Error(),
 		))
-		c.String(http.StatusOK, "OK")
+		_ = c.String(http.StatusOK, "OK")
 		return
 	}
 
@@ -524,11 +523,11 @@ func WaffoPancakeWebhook(c *gin.Context) {
 	defer UnlockOrder(tradeNo)
 
 	if err := model.RechargeWaffoPancake(tradeNo); err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("Waffo Pancake 充值处理失败 trade_no=%s event_id=%s order_id=%s client_ip=%s error=%q", tradeNo, event.ID, event.Data.OrderID, c.ClientIP(), err.Error()))
-		c.String(http.StatusInternalServerError, "retry")
+		logger.LogError(c.Context(), fmt.Sprintf("Waffo Pancake 充值处理失败 trade_no=%s event_id=%s order_id=%s client_ip=%s error=%q", tradeNo, event.ID, event.Data.OrderID, c.ClientIP(), err.Error()))
+		_ = c.String(http.StatusInternalServerError, "retry")
 		return
 	}
 
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Waffo Pancake 充值成功 trade_no=%s event_id=%s order_id=%s client_ip=%s", tradeNo, event.ID, event.Data.OrderID, c.ClientIP()))
-	c.String(http.StatusOK, "OK")
+	logger.LogInfo(c.Context(), fmt.Sprintf("Waffo Pancake 充值成功 trade_no=%s event_id=%s order_id=%s client_ip=%s", tradeNo, event.ID, event.Data.OrderID, c.ClientIP()))
+	_ = c.String(http.StatusOK, "OK")
 }

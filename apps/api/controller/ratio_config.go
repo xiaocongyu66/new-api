@@ -1,23 +1,23 @@
 package controller
 
 import (
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
-
-	"github.com/gin-gonic/gin"
 )
 
-func GetRatioConfig(c *gin.Context) {
+func GetRatioConfig(c contract.Context) {
 	if !ratio_setting.IsExposeRatioEnabled() {
-		c.JSON(http.StatusForbidden, gin.H{
+		_ = c.JSON(http.StatusForbidden, common.H{
 			"success": false,
 			"message": "倍率配置接口未启用",
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 		"data":    ratio_setting.GetExposedData(),

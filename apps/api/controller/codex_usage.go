@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,11 +14,9 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel/codex"
 	"github.com/QuantumNous/new-api/service"
-
-	"github.com/gin-gonic/gin"
 )
 
-func GetCodexChannelUsage(c *gin.Context) {
+func GetCodexChannelUsage(c contract.Context) {
 	fetchCodexChannelWhamData(
 		c,
 		service.FetchCodexWhamUsage,
@@ -26,7 +25,7 @@ func GetCodexChannelUsage(c *gin.Context) {
 	)
 }
 
-func GetCodexChannelRateLimitResetCredits(c *gin.Context) {
+func GetCodexChannelRateLimitResetCredits(c contract.Context) {
 	fetchCodexChannelWhamData(
 		c,
 		service.FetchCodexWhamRateLimitResetCredits,
@@ -35,7 +34,7 @@ func GetCodexChannelRateLimitResetCredits(c *gin.Context) {
 	)
 }
 
-func ResetCodexChannelUsage(c *gin.Context) {
+func ResetCodexChannelUsage(c contract.Context) {
 	fetchCodexChannelWhamData(
 		c,
 		service.ConsumeCodexWhamRateLimitResetCredit,
@@ -53,70 +52,70 @@ type codexWhamFetchFunc func(
 ) (statusCode int, body []byte, err error)
 
 func fetchCodexChannelWhamData(
-	c *gin.Context,
+	c contract.Context,
 	fetch codexWhamFetchFunc,
 	logPrefix string,
 	userMessage string,
 ) {
 	channelId, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		common.ApiError(c, fmt.Errorf("invalid channel id: %w", err))
+		common.CtxApiError(c, fmt.Errorf("invalid channel id: %w", err))
 		return
 	}
 
 	ch, err := model.GetChannelById(channelId, true)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	if ch == nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "channel not found"})
+		_ = c.JSON(http.StatusOK, common.H{"success": false, "message": "channel not found"})
 		return
 	}
 	if ch.Type != constant.ChannelTypeCodex {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "channel type is not Codex"})
+		_ = c.JSON(http.StatusOK, common.H{"success": false, "message": "channel type is not Codex"})
 		return
 	}
 	if ch.ChannelInfo.IsMultiKey {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "multi-key channel is not supported"})
+		_ = c.JSON(http.StatusOK, common.H{"success": false, "message": "multi-key channel is not supported"})
 		return
 	}
 
 	oauthKey, err := codex.ParseOAuthKey(strings.TrimSpace(ch.Key))
 	if err != nil {
 		common.SysError("failed to parse oauth key: " + err.Error())
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "解析凭证失败，请检查渠道配置"})
+		_ = c.JSON(http.StatusOK, common.H{"success": false, "message": "解析凭证失败，请检查渠道配置"})
 		return
 	}
 	accessToken := strings.TrimSpace(oauthKey.AccessToken)
 	accountID := strings.TrimSpace(oauthKey.AccountID)
 	if accessToken == "" {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "codex channel: access_token is required"})
+		_ = c.JSON(http.StatusOK, common.H{"success": false, "message": "codex channel: access_token is required"})
 		return
 	}
 	if accountID == "" {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "codex channel: account_id is required"})
+		_ = c.JSON(http.StatusOK, common.H{"success": false, "message": "codex channel: account_id is required"})
 		return
 	}
 
 	client, err := service.GetHttpClientWithProxy(ch.GetSetting().Proxy)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(c.Context(), 15*time.Second)
 	defer cancel()
 
 	statusCode, body, err := fetch(ctx, client, ch.GetBaseURL(), accessToken, accountID)
 	if err != nil {
 		common.SysError(logPrefix + ": " + err.Error())
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": userMessage})
+		_ = c.JSON(http.StatusOK, common.H{"success": false, "message": userMessage})
 		return
 	}
 
 	if (statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden) && strings.TrimSpace(oauthKey.RefreshToken) != "" {
-		refreshCtx, refreshCancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		refreshCtx, refreshCancel := context.WithTimeout(c.Context(), 10*time.Second)
 		defer refreshCancel()
 
 		res, refreshErr := service.RefreshCodexOAuthTokenWithProxy(refreshCtx, oauthKey.RefreshToken, ch.GetSetting().Proxy)
@@ -135,12 +134,12 @@ func fetchCodexChannelWhamData(
 				model.InitChannelCache()
 			}
 
-			ctx2, cancel2 := context.WithTimeout(c.Request.Context(), 15*time.Second)
+			ctx2, cancel2 := context.WithTimeout(c.Context(), 15*time.Second)
 			defer cancel2()
 			statusCode, body, err = fetch(ctx2, client, ch.GetBaseURL(), oauthKey.AccessToken, accountID)
 			if err != nil {
 				common.SysError(logPrefix + " after refresh: " + err.Error())
-				c.JSON(http.StatusOK, gin.H{"success": false, "message": userMessage})
+				_ = c.JSON(http.StatusOK, common.H{"success": false, "message": userMessage})
 				return
 			}
 		}
@@ -152,7 +151,7 @@ func fetchCodexChannelWhamData(
 	}
 
 	ok := statusCode >= 200 && statusCode < 300
-	resp := gin.H{
+	resp := common.H{
 		"success":         ok,
 		"message":         "",
 		"upstream_status": statusCode,
@@ -161,5 +160,5 @@ func fetchCodexChannelWhamData(
 	if !ok {
 		resp["message"] = fmt.Sprintf("upstream status: %d", statusCode)
 	}
-	c.JSON(http.StatusOK, resp)
+	_ = c.JSON(http.StatusOK, resp)
 }

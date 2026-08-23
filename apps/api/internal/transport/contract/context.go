@@ -25,6 +25,7 @@ type Values interface {
 	GetInt64(key string) int64
 	GetBool(key string) bool
 	GetStringMap(key string) map[string]any
+	GetStringSlice(key string) []string
 	GetTime(key string) time.Time
 }
 
@@ -38,11 +39,22 @@ type Request interface {
 	ClientIP() string
 	UserAgent() string
 	ContentType() string
+	ContentLength() int64
+	// RequestURI is the unmodified request target, including the query string.
+	RequestURI() string
+	// RawQuery is the encoded query string without the leading '?'.
+	RawQuery() string
+	// ParseForm populates the form values from the URL and request body.
+	ParseForm() error
+	// PostFormValues returns the parsed POST form values.
+	PostFormValues() map[string][]string
 
 	Query(key string) string
 	DefaultQuery(key, fallback string) string
 	QueryValues() map[string][]string
 	Param(key string) string
+	// Params returns all matched route parameters.
+	Params() map[string]string
 
 	Header(key string) string
 	Headers() http.Header
@@ -58,6 +70,37 @@ type Request interface {
 	MultipartForm() (*multipart.Form, error)
 	PostForm(key string) string
 
+	// HTTPRequest exposes the standard-library request for third-party
+	// libraries whose APIs accept *http.Request (WebAuthn, OAuth exchanges).
+	// A framework swap must keep this synthesizable; business code should
+	// prefer the accessors above.
+	HTTPRequest() *http.Request
+
+	// ReplaceBody swaps the request body. Protocol adapters that rewrite an
+	// inbound payload before it reaches the relay pipeline use it; the new
+	// body is what downstream BindJSON and RawBody observe.
+	ReplaceBody(payload []byte)
+	// SetPath rewrites the request path so downstream routing and relay code
+	// observe the adapted endpoint rather than the original one.
+	SetPath(path string)
+	// SetMethod rewrites the request method. Protocol adapters that map one
+	// inbound call onto a different upstream verb use it.
+	SetMethod(method string)
+	// SetContextValue attaches a value to the request lifetime context so
+	// downstream code reading Context() observes it.
+	SetContextValue(key, value any)
+
+	// ResponseWriter exposes the standard-library writer for libraries that
+	// hijack or take over the response (WebSocket upgrade, reverse proxy).
+	// A framework swap must keep this synthesizable; ordinary handlers use the
+	// Response methods or the stream helpers instead.
+	ResponseWriter() http.ResponseWriter
+
+	// ResetBody replaces the request body with a re-readable implementation.
+	// Relay code that retries with a fresh upstream connection needs the body
+	// rewound before re-marshalling.
+	ResetBody(body io.ReadCloser)
+
 	// Context is the request lifetime. It is cancelled when the client
 	// disconnects, which streaming code must observe.
 	Context() context.Context
@@ -72,6 +115,20 @@ type Response interface {
 	Status(status int)
 	SetHeader(key, value string)
 	SetCookie(cookie *http.Cookie)
+	// ResponseStatus reports the status code already written, or 0 when the
+	// response has not been started. Middleware uses it to branch after Next.
+	ResponseStatus() int
+	// CaptureResponse starts buffering the response body, up to maxBytes, and
+	// returns the buffer. Audit middleware inspects the payload after the
+	// handler runs to decide whether the operation succeeded. Returns nil when
+	// the transport cannot intercept the response.
+	CaptureResponse(maxBytes int) ResponseCapture
+}
+
+// ResponseCapture exposes a buffered copy of what the handler wrote.
+type ResponseCapture interface {
+	// Body returns the captured bytes, truncated at the configured limit.
+	Body() []byte
 }
 
 // Chain controls middleware continuation.
@@ -79,6 +136,10 @@ type Chain interface {
 	Next()
 	Abort()
 	IsAborted() bool
+	// AbortWithStatus stops the chain and writes only a status code.
+	AbortWithStatus(status int)
+	// AbortWithStatusJSON stops the chain and writes a JSON body.
+	AbortWithStatusJSON(status int, payload any)
 }
 
 // Context is the single value handlers, middleware, and relay code accept in

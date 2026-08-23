@@ -22,4 +22,3 @@ func HmacSha256Raw(message, key []byte) []byte {
 	h.Write(message)
 	return h.Sum(nil)
 }
-

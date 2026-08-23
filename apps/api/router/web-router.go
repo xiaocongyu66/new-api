@@ -2,6 +2,7 @@ package router
 
 import (
 	"embed"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"strings"
 
@@ -23,16 +24,17 @@ func SetWebRouter(router *gin.Engine, assets WebAssets) {
 	frontendFS := common.EmbedFolder(assets.BuildFS, "web/dist")
 
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
-	router.Use(middleware.GlobalWebRateLimit())
-	router.Use(middleware.Cache())
+	router.Use(ginadapter.Middleware(middleware.GlobalWebRateLimit()))
+	router.Use(ginadapter.Middleware(middleware.Cache()))
 	router.Use(static.Serve("/", frontendFS))
-	router.NoRoute(func(c *gin.Context) {
-		c.Set(middleware.RouteTagKey, "web")
-		if strings.HasPrefix(c.Request.RequestURI, "/v1") || strings.HasPrefix(c.Request.RequestURI, "/api") || strings.HasPrefix(c.Request.RequestURI, "/assets") {
-			controller.RelayNotFound(c)
+	router.NoRoute(func(cc *gin.Context) {
+		cc.Set(middleware.RouteTagKey, "web")
+		uri := cc.Request.RequestURI
+		if strings.HasPrefix(uri, "/v1") || strings.HasPrefix(uri, "/api") || strings.HasPrefix(uri, "/assets") {
+			controller.RelayNotFound(ginadapter.Wrap(cc))
 			return
 		}
-		c.Header("Cache-Control", "no-cache")
-		c.Data(http.StatusOK, "text/html; charset=utf-8", assets.IndexPage)
+		cc.Header("Cache-Control", "no-cache")
+		cc.Data(http.StatusOK, "text/html; charset=utf-8", assets.IndexPage)
 	})
 }

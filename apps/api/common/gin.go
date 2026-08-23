@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/pkg/errors"
 
 	"github.com/gin-gonic/gin"
@@ -96,7 +97,7 @@ func GetBodyStorage(c *gin.Context) (BodyStorage, error) {
 }
 
 // CleanupBodyStorage 清理请求体存储（应在请求结束时调用）
-func CleanupBodyStorage(c *gin.Context) {
+func CleanupBodyStorage(c contract.Context) {
 	if storage, exists := c.Get(KeyBodyStorage); exists && storage != nil {
 		if bs, ok := storage.(BodyStorage); ok {
 			bs.Close()
@@ -111,6 +112,12 @@ func UnmarshalBodyReusable(c *gin.Context, v any) error {
 		return err
 	}
 	contentType := c.Request.Header.Get("Content-Type")
+	if contentType == "" {
+		// callers that previously decoded the raw stream (DecodeJson) accepted
+		// bodies regardless of content-type; keep that behaviour for the
+		// replayable path too
+		contentType = "application/json"
+	}
 
 	// disk-backed JSON: stream-decode directly from the file to avoid
 	// materializing the entire payload back into a transient []byte

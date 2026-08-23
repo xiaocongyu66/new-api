@@ -250,7 +250,7 @@ func GeminiChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *
 			}
 		}
 
-		logger.LogDebug(c, "info.SendResponseCount = %d", info.SendResponseCount)
+		logger.LogDebug(c.Request.Context(), "info.SendResponseCount = %d", info.SendResponseCount)
 		if info.SendResponseCount == 0 {
 			// send first response
 			emptyResponse := helper.GenerateStartEmptyResponse(id, createAt, info.UpstreamModelName, nil)
@@ -267,7 +267,7 @@ func GeminiChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *
 				finishReason = constant.FinishReasonToolCalls
 				err := handleStream(c, info, emptyResponse)
 				if err != nil {
-					logger.LogError(c, err.Error())
+					logger.LogError(c.Request.Context(), err.Error())
 				}
 
 				response.ClearToolCalls()
@@ -277,14 +277,14 @@ func GeminiChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *
 			} else {
 				err := handleStream(c, info, emptyResponse)
 				if err != nil {
-					logger.LogError(c, err.Error())
+					logger.LogError(c.Request.Context(), err.Error())
 				}
 			}
 		}
 
 		err := handleStream(c, info, response)
 		if err != nil {
-			logger.LogError(c, err.Error())
+			logger.LogError(c.Request.Context(), err.Error())
 		}
 		if isStop {
 			if info.RelayFormat != types.RelayFormatClaude {
@@ -316,7 +316,7 @@ func GeminiChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.R
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 	service.CloseResponseBodyGracefully(resp)
-	logger.LogDebug(c, "Gemini response body: %s", responseBody)
+	logger.LogDebug(c.Request.Context(), "Gemini response body: %s", responseBody)
 	var geminiResponse dto.GeminiChatResponse
 	err = common.Unmarshal(responseBody, &geminiResponse)
 	if err != nil {

@@ -53,7 +53,7 @@ func cfStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Res
 		var response dto.ChatCompletionsStreamResponse
 		err := json.Unmarshal([]byte(data), &response)
 		if err != nil {
-			logger.LogError(c, "error_unmarshalling_stream_response: "+err.Error())
+			logger.LogError(c.Request.Context(), "error_unmarshalling_stream_response: "+err.Error())
 			continue
 		}
 		for _, choice := range response.Choices {
@@ -68,19 +68,19 @@ func cfStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Res
 			info.FirstResponseTime = time.Now()
 		}
 		if err != nil {
-			logger.LogError(c, "error_rendering_stream_response: "+err.Error())
+			logger.LogError(c.Request.Context(), "error_rendering_stream_response: "+err.Error())
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		logger.LogError(c, "error_scanning_stream_response: "+err.Error())
+		logger.LogError(c.Request.Context(), "error_scanning_stream_response: "+err.Error())
 	}
 	usage := service.ResponseText2Usage(c, responseText, info.UpstreamModelName, info.GetEstimatePromptTokens())
 	if info.ShouldIncludeUsage {
 		response := helper.GenerateFinalUsageResponse(id, info.StartTime.Unix(), info.UpstreamModelName, *usage)
 		err := helper.ObjectData(c, response)
 		if err != nil {
-			logger.LogError(c, "error_rendering_final_usage_response: "+err.Error())
+			logger.LogError(c.Request.Context(), "error_rendering_final_usage_response: "+err.Error())
 		}
 	}
 	helper.Done(c)

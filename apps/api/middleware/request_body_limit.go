@@ -1,23 +1,26 @@
 package middleware
 
 import (
-	"bytes"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"io"
 	"net/http"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/gin-gonic/gin"
 )
 
-func AnonymousRequestBodyLimit() gin.HandlerFunc {
-	return func(c *gin.Context) {
+func AnonymousRequestBodyLimit() contract.Middleware {
+	return func(c contract.Context) {
 		maxBytes := common.GetAnonymousRequestBodyLimitBytes()
-		if maxBytes <= 0 || c.Request.Body == nil {
+		if maxBytes <= 0 || c.ContentLength() == 0 {
 			c.Next()
 			return
 		}
 
-		originalBody := c.Request.Body
+		originalBody, err := c.BodyReader()
+		if err != nil {
+			c.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
 		limitedBody, err := readAnonymousRequestBody(originalBody, maxBytes)
 		_ = originalBody.Close()
 		if err != nil {
@@ -29,8 +32,7 @@ func AnonymousRequestBodyLimit() gin.HandlerFunc {
 			return
 		}
 
-		c.Request.Body = io.NopCloser(bytes.NewReader(limitedBody))
-		c.Request.ContentLength = int64(len(limitedBody))
+		c.ReplaceBody(limitedBody)
 		c.Next()
 	}
 }

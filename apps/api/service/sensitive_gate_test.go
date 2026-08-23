@@ -36,10 +36,10 @@ func TestSensitiveTargetsCyrillicHomoglyph(t *testing.T) {
 	hits := []string{
 		"gоv.cn",                 // 西里尔 о U+043E
 		"gοv.cn",                 // 希腊 ο U+03BF
-		"ｇov.cn",                  // 全角 ｇ U+FF47
+		"ｇov.cn",                 // 全角 ｇ U+FF47
 		"https://www.gоv.cn/a/b", // URL 内西里尔同形
-		"ｗｗｗ．８１．ｃｎ",               // 全整角 81.cn
-		"攻击 gоv.cn 的方法",           // 混入句子
+		"ｗｗｗ．８１．ｃｎ",              // 全整角 81.cn
+		"攻击 gоv.cn 的方法",          // 混入句子
 	}
 	for _, s := range hits {
 		require.NotEmpty(t, CheckSensitiveTargets(s), "同形变体必须命中硬闸: %q", s)

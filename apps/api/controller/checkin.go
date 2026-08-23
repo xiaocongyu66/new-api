@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"time"
 
@@ -9,14 +10,13 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
-	"github.com/gin-gonic/gin"
 )
 
 // GetCheckinStatus 获取用户签到状态和历史记录
-func GetCheckinStatus(c *gin.Context) {
+func GetCheckinStatus(c contract.Context) {
 	setting := operation_setting.GetCheckinSetting()
 	if !setting.Enabled {
-		common.ApiErrorMsg(c, "签到功能未启用")
+		common.CtxApiErrorMsg(c, "签到功能未启用")
 		return
 	}
 	userId := c.GetInt("id")
@@ -25,16 +25,16 @@ func GetCheckinStatus(c *gin.Context) {
 
 	stats, err := model.GetUserCheckinStats(userId, month)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
+		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": err.Error(),
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
-		"data": gin.H{
+		"data": common.H{
 			"enabled":   setting.Enabled,
 			"min_quota": setting.MinQuota,
 			"max_quota": setting.MaxQuota,
@@ -44,10 +44,10 @@ func GetCheckinStatus(c *gin.Context) {
 }
 
 // DoCheckin 执行用户签到
-func DoCheckin(c *gin.Context) {
+func DoCheckin(c contract.Context) {
 	setting := operation_setting.GetCheckinSetting()
 	if !setting.Enabled {
-		common.ApiErrorMsg(c, "签到功能未启用")
+		common.CtxApiErrorMsg(c, "签到功能未启用")
 		return
 	}
 
@@ -55,17 +55,17 @@ func DoCheckin(c *gin.Context) {
 
 	checkin, err := model.UserCheckin(userId)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
+		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": err.Error(),
 		})
 		return
 	}
 	model.RecordLog(userId, model.LogTypeSystem, fmt.Sprintf("用户签到，获得额度 %s", logger.LogQuota(checkin.QuotaAwarded)))
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "签到成功",
-		"data": gin.H{
+		"data": common.H{
 			"quota_awarded": checkin.QuotaAwarded,
 			"checkin_date":  checkin.CheckinDate},
 	})

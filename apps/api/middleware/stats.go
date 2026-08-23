@@ -1,9 +1,8 @@
 package middleware
 
 import (
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"sync/atomic"
-
-	"github.com/gin-gonic/gin"
 )
 
 // HTTPStats 存储HTTP统计信息
@@ -14,8 +13,8 @@ type HTTPStats struct {
 var globalStats = &HTTPStats{}
 
 // StatsMiddleware 统计中间件
-func StatsMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
+func StatsMiddleware() contract.Middleware {
+	return func(c contract.Context) {
 		// 增加活跃连接数
 		atomic.AddInt64(&globalStats.activeConnections, 1)
 

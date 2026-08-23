@@ -2,6 +2,8 @@ package controller
 
 import (
 	"bytes"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -10,7 +12,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -140,7 +141,7 @@ func TestUpdateChannelRejectsStatusField(t *testing.T) {
 	)
 	ctx.Request.Header.Set("Content-Type", "application/json")
 
-	UpdateChannel(ctx)
+	UpdateChannel(ginadapter.Wrap(ctx))
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	var response struct {

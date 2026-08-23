@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"net/url"
 	"strings"
@@ -13,7 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/system_setting"
-	"github.com/gin-gonic/gin"
 )
 
 func init() {
@@ -46,7 +46,7 @@ func (p *DiscordProvider) IsEnabled() bool {
 	return system_setting.GetDiscordSettings().Enabled
 }
 
-func (p *DiscordProvider) ExchangeToken(ctx context.Context, code string, c *gin.Context) (*OAuthToken, error) {
+func (p *DiscordProvider) ExchangeToken(ctx context.Context, code string, c contract.Context) (*OAuthToken, error) {
 	if code == "" {
 		return nil, NewOAuthError(i18n.MsgOAuthInvalidCode, nil)
 	}

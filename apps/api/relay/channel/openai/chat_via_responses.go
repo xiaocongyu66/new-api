@@ -105,7 +105,7 @@ func OaiResponsesToChatBufferedStreamHandler(c *gin.Context, info *relaycommon.R
 
 		var streamResp dto.ResponsesStreamResponse
 		if err := common.UnmarshalJsonStr(data, &streamResp); err != nil {
-			logger.LogError(c, "failed to unmarshal buffered responses stream event: "+err.Error())
+			logger.LogError(c.Request.Context(), "failed to unmarshal buffered responses stream event: "+err.Error())
 			streamErr = types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 			break
 		}
@@ -275,7 +275,7 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 
 		var streamResp dto.ResponsesStreamResponse
 		if err := common.UnmarshalJsonStr(data, &streamResp); err != nil {
-			logger.LogError(c, "failed to unmarshal responses stream event: "+err.Error())
+			logger.LogError(c.Request.Context(), "failed to unmarshal responses stream event: "+err.Error())
 			sr.Error(err)
 			return
 		}

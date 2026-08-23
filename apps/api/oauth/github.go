@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"io"
 	"net/http"
 	"strconv"
@@ -14,7 +15,6 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/gin-gonic/gin"
 )
 
 func init() {
@@ -45,7 +45,7 @@ func (p *GitHubProvider) IsEnabled() bool {
 	return common.GitHubOAuthEnabled
 }
 
-func (p *GitHubProvider) ExchangeToken(ctx context.Context, code string, c *gin.Context) (*OAuthToken, error) {
+func (p *GitHubProvider) ExchangeToken(ctx context.Context, code string, c contract.Context) (*OAuthToken, error) {
 	if code == "" {
 		return nil, NewOAuthError(i18n.MsgOAuthInvalidCode, nil)
 	}

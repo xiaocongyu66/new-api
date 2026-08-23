@@ -1,8 +1,8 @@
 package authz
 
 const (
-	ResourceSystem   = "system"
-	ActionSettings   = "settings"
+	ResourceSystem = "system"
+	ActionSettings = "settings"
 )
 
 var (

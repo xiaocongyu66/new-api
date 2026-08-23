@@ -2,6 +2,7 @@ package relay
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"strings"
@@ -85,9 +86,9 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		var containsAudioRatios = ratio_setting.ContainsAudioRatio(info.OriginModelName) || ratio_setting.ContainsAudioCompletionRatio(info.OriginModelName)
 
 		if containAudioTokens && containsAudioRatios {
-			service.PostAudioConsumeQuota(c, info, usage, "")
+			service.PostAudioConsumeQuota(ginadapter.Wrap(c), info, usage, "")
 		} else {
-			service.PostTextConsumeQuota(c, info, usage, nil)
+			service.PostTextConsumeQuota(ginadapter.Wrap(c), info, usage, nil)
 		}
 		return nil
 	}
@@ -101,7 +102,7 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		}
 		if common.DebugEnabled {
 			if debugBytes, bErr := storage.Bytes(); bErr == nil {
-				logger.LogDebug(c, "requestBody: %s", debugBytes)
+				logger.LogDebug(c.Request.Context(), "requestBody: %s", debugBytes)
 			}
 		}
 		requestBody = common.NewReplayableBodyReader(storage)
@@ -173,7 +174,7 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 			}
 		}
 
-		logger.LogDebug(c, "text request body: %s", jsonData)
+		logger.LogDebug(c.Request.Context(), "text request body: %s", jsonData)
 
 		body, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
 		if err != nil {
@@ -214,9 +215,9 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 	var containsAudioRatios = ratio_setting.ContainsAudioRatio(info.OriginModelName) || ratio_setting.ContainsAudioCompletionRatio(info.OriginModelName)
 
 	if containAudioTokens && containsAudioRatios {
-		service.PostAudioConsumeQuota(c, info, usage.(*dto.Usage), "")
+		service.PostAudioConsumeQuota(ginadapter.Wrap(c), info, usage.(*dto.Usage), "")
 	} else {
-		service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), nil)
+		service.PostTextConsumeQuota(ginadapter.Wrap(c), info, usage.(*dto.Usage), nil)
 	}
 	return nil
 }

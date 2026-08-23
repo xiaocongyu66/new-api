@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -10,48 +11,54 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/gin-gonic/gin"
 )
 
 const karmadaDashboardSessionCookie = "newapi_karmada_session"
 
-func CreateKarmadaDashboardSession(c *gin.Context) {
+func CreateKarmadaDashboardSession(c contract.Context) {
 	identity, ok := middleware.GetSessionAuthIdentity(c)
 	if !ok {
-		c.JSON(http.StatusForbidden, gin.H{"success": false, "code": "AUTH_SESSION_REQUIRED"})
+		_ = c.JSON(http.StatusForbidden, common.H{"success": false, "code": "AUTH_SESSION_REQUIRED"})
 		return
 	}
 
 	sessionToken, expiresAt, err := service.IssueKarmadaDashboardSession(identity)
 	if err != nil {
 		common.SysError("issue Karmada dashboard session: " + err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "code": "KARMADA_SESSION_ISSUE_FAILED"})
+		_ = c.JSON(http.StatusInternalServerError, common.H{"success": false, "code": "KARMADA_SESSION_ISSUE_FAILED"})
 		return
 	}
 
-	c.SetSameSite(http.SameSiteStrictMode)
-	c.SetCookie(karmadaDashboardSessionCookie, sessionToken, int(service.KarmadaDashboardSessionTTL.Seconds()), "/karmada-dashboard", "", common.SessionCookieSecure, true)
-	c.Header("Cache-Control", "no-store")
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"expires_at": expiresAt}})
+	c.SetCookie(&http.Cookie{
+		Name:     karmadaDashboardSessionCookie,
+		Value:    sessionToken,
+		MaxAge:   int(service.KarmadaDashboardSessionTTL.Seconds()),
+		Path:     "/karmada-dashboard",
+		Secure:   common.SessionCookieSecure,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
+	c.SetHeader("Cache-Control", "no-store")
+	_ = c.JSON(http.StatusOK, common.H{"success": true, "data": common.H{"expires_at": expiresAt}})
 }
 
-func ProxyKarmadaDashboard(c *gin.Context) {
+func ProxyKarmadaDashboard(c contract.Context) {
 	sessionCookie, err := c.Cookie(karmadaDashboardSessionCookie)
 	if err != nil {
-		c.Header("Cache-Control", "no-store")
+		c.SetHeader("Cache-Control", "no-store")
 		c.Status(http.StatusUnauthorized)
 		return
 	}
 	identity, err := service.ValidateKarmadaDashboardSession(sessionCookie)
 	if err != nil {
-		c.Header("Cache-Control", "no-store")
+		c.SetHeader("Cache-Control", "no-store")
 		c.Status(http.StatusUnauthorized)
 		return
 	}
 
 	_, user, err := service.ValidateLoginSession(identity)
 	if err != nil || user.Role != common.RoleRootUser || user.Status != common.UserStatusEnabled {
-		c.Header("Cache-Control", "no-store")
+		c.SetHeader("Cache-Control", "no-store")
 		c.Status(http.StatusForbidden)
 		return
 	}
@@ -74,14 +81,14 @@ func ProxyKarmadaDashboard(c *gin.Context) {
 	originalDirector := proxy.Director
 	proxy.Director = func(request *http.Request) {
 		originalDirector(request)
-		request.URL.Path = strings.TrimPrefix(c.Request.URL.Path, "/karmada-dashboard")
+		request.URL.Path = strings.TrimPrefix(c.Path(), "/karmada-dashboard")
 		if request.URL.Path == "" {
 			request.URL.Path = "/"
 		}
 		request.URL.Path = strings.TrimSuffix(upstream.Path, "/") + request.URL.Path
-		request.URL.RawQuery = c.Request.URL.RawQuery
+		request.URL.RawQuery = c.RawQuery()
 		request.Host = upstream.Host
-		request.Header = c.Request.Header.Clone()
+		request.Header = c.Headers().Clone()
 		request.Header.Del("Cookie")
 		request.Header.Del("Authorization")
 		request.Header.Del("Impersonate-User")
@@ -91,7 +98,7 @@ func ProxyKarmadaDashboard(c *gin.Context) {
 				request.Header.Del(key)
 			}
 		}
-		if strings.HasPrefix(c.Request.URL.Path, "/karmada-dashboard/api/") || strings.HasPrefix(c.Request.URL.Path, "/karmada-dashboard/clusterapi/") {
+		if strings.HasPrefix(c.Path(), "/karmada-dashboard/api/") || strings.HasPrefix(c.Path(), "/karmada-dashboard/clusterapi/") {
 			request.Header.Set("Authorization", "Bearer "+credential)
 		}
 	}
@@ -104,5 +111,5 @@ func ProxyKarmadaDashboard(c *gin.Context) {
 		common.SysError("Karmada dashboard proxy error: " + proxyErr.Error())
 		writer.WriteHeader(http.StatusBadGateway)
 	}
-	proxy.ServeHTTP(c.Writer, c.Request)
+	proxy.ServeHTTP(c.ResponseWriter(), c.HTTPRequest())
 }

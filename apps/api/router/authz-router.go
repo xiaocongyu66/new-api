@@ -13,7 +13,7 @@ import (
 // actions, and role baselines) used by the client permission editor.
 func registerAuthzRoutes(apiRouter *gin.RouterGroup) {
 	authzRoute := apiRouter.Group("/authz")
-	authzRoute.Use(middleware.AdminAuth())
+	authzRoute.Use(ginadapter.Middleware(middleware.AdminAuth()))
 	{
 		authzRoute.GET("/catalog", ginadapter.Handler(controller.GetPermissionCatalog))
 	}

@@ -2,12 +2,12 @@ package middleware
 
 import (
 	"crypto/subtle"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"net/url"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/gin-gonic/gin"
 )
 
 // SessionCookieOriginGuard protects cookie-authenticated refresh/logout
@@ -15,15 +15,15 @@ import (
 // mode it preserves the legacy behavior and intentionally performs no Origin
 // validation. It never adds CORS response headers and must not be installed on
 // relay routes.
-func SessionCookieOriginGuard() gin.HandlerFunc {
-	return func(c *gin.Context) {
+func SessionCookieOriginGuard() contract.Middleware {
+	return func(c contract.Context) {
 		if !common.SessionCookieSecure {
 			c.Next()
 			return
 		}
-		origin, ok := requestBrowserOrigin(c.Request)
-		if !ok || !isAllowedSessionOrigin(c.Request, origin) {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+		origin, ok := requestBrowserOrigin(c.HTTPRequest())
+		if !ok || !isAllowedSessionOrigin(c.HTTPRequest(), origin) {
+			c.AbortWithStatusJSON(http.StatusForbidden, common.H{
 				"success": false,
 				"code":    "AUTH_ORIGIN_FORBIDDEN",
 				"message": "request origin is not allowed",

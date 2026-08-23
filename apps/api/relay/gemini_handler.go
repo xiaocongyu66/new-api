@@ -2,6 +2,7 @@ package relay
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"strings"
@@ -162,7 +163,7 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 			}
 		}
 
-		logger.LogDebug(c, "Gemini request body: %s", jsonData)
+		logger.LogDebug(c.Request.Context(), "Gemini request body: %s", jsonData)
 
 		body, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
 		if err != nil {
@@ -175,7 +176,7 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
-		logger.LogError(c, "Do gemini request failed: "+err.Error())
+		logger.LogError(c.Request.Context(), "Do gemini request failed: "+err.Error())
 		return types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
 	}
 
@@ -199,7 +200,7 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		return openaiErr
 	}
 
-	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), nil)
+	service.PostTextConsumeQuota(ginadapter.Wrap(c), info, usage.(*dto.Usage), nil)
 	return nil
 }
 
@@ -267,7 +268,7 @@ func GeminiEmbeddingHandler(c *gin.Context, info *relaycommon.RelayInfo) (newAPI
 			return newAPIErrorFromParamOverride(err)
 		}
 	}
-	logger.LogDebug(c, "Gemini embedding request body: %s", jsonData)
+	logger.LogDebug(c.Request.Context(), "Gemini embedding request body: %s", jsonData)
 	body, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
@@ -278,7 +279,7 @@ func GeminiEmbeddingHandler(c *gin.Context, info *relaycommon.RelayInfo) (newAPI
 
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
-		logger.LogError(c, "Do gemini request failed: "+err.Error())
+		logger.LogError(c.Request.Context(), "Do gemini request failed: "+err.Error())
 		return types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
 	}
 
@@ -299,6 +300,6 @@ func GeminiEmbeddingHandler(c *gin.Context, info *relaycommon.RelayInfo) (newAPI
 		return openaiErr
 	}
 
-	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), nil)
+	service.PostTextConsumeQuota(ginadapter.Wrap(c), info, usage.(*dto.Usage), nil)
 	return nil
 }

@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -10,8 +11,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-
-	"github.com/gin-gonic/gin"
 )
 
 type wechatLoginResponse struct {
@@ -51,9 +50,9 @@ func getWeChatIdByCode(code string) (string, error) {
 	return res.Data, nil
 }
 
-func WeChatAuth(c *gin.Context) {
+func WeChatAuth(c contract.Context) {
 	if !common.WeChatAuthEnabled {
-		c.JSON(http.StatusOK, gin.H{
+		_ = c.JSON(http.StatusOK, common.H{
 			"message": "管理员未开启通过微信登录以及注册",
 			"success": false,
 		})
@@ -62,7 +61,7 @@ func WeChatAuth(c *gin.Context) {
 	code := c.Query("code")
 	wechatId, err := getWeChatIdByCode(code)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
+		_ = c.JSON(http.StatusOK, common.H{
 			"message": err.Error(),
 			"success": false,
 		})
@@ -74,14 +73,14 @@ func WeChatAuth(c *gin.Context) {
 	if model.IsWeChatIdAlreadyTaken(wechatId) {
 		err := user.FillUserByWeChatId()
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": err.Error(),
 			})
 			return
 		}
 		if user.Id == 0 {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "用户已注销",
 			})
@@ -95,14 +94,14 @@ func WeChatAuth(c *gin.Context) {
 			user.Status = common.UserStatusEnabled
 
 			if err := user.Insert(0); err != nil {
-				c.JSON(http.StatusOK, gin.H{
+				_ = c.JSON(http.StatusOK, common.H{
 					"success": false,
 					"message": err.Error(),
 				})
 				return
 			}
 		} else {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "管理员关闭了新用户注册",
 			})
@@ -111,7 +110,7 @@ func WeChatAuth(c *gin.Context) {
 	}
 
 	if user.Status != common.UserStatusEnabled {
-		c.JSON(http.StatusOK, gin.H{
+		_ = c.JSON(http.StatusOK, common.H{
 			"message": "用户已被封禁",
 			"success": false,
 		})
@@ -124,17 +123,17 @@ type wechatBindRequest struct {
 	Code string `json:"code"`
 }
 
-func WeChatBind(c *gin.Context) {
+func WeChatBind(c contract.Context) {
 	if !common.WeChatAuthEnabled {
-		c.JSON(http.StatusOK, gin.H{
+		_ = c.JSON(http.StatusOK, common.H{
 			"message": "管理员未开启通过微信登录以及注册",
 			"success": false,
 		})
 		return
 	}
 	var req wechatBindRequest
-	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
-		c.JSON(http.StatusOK, gin.H{
+	if err := c.BindJSON(&req); err != nil {
+		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": "无效的请求",
 		})
@@ -143,14 +142,14 @@ func WeChatBind(c *gin.Context) {
 	code := req.Code
 	wechatId, err := getWeChatIdByCode(code)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
+		_ = c.JSON(http.StatusOK, common.H{
 			"message": err.Error(),
 			"success": false,
 		})
 		return
 	}
 	if model.IsWeChatIdAlreadyTaken(wechatId) {
-		c.JSON(http.StatusOK, gin.H{
+		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": "该微信账号已被绑定",
 		})
@@ -158,15 +157,15 @@ func WeChatBind(c *gin.Context) {
 	}
 	userId := c.GetInt("id")
 	if userId == 0 {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "未登录"})
+		_ = c.JSON(http.StatusUnauthorized, common.H{"success": false, "message": "未登录"})
 		return
 	}
 	// 只更新绑定列，避免完整用户快照覆盖并发的封禁、降权或分组变更。
 	if err := model.UpdateUserBindColumn(userId, "wechat_id", wechatId); err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 	})

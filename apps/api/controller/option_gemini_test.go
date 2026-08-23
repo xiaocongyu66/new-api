@@ -1,13 +1,14 @@
 package controller
 
 import (
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,7 +22,7 @@ func TestUpdateOptionRejectsInvalidGeminiSafetyThreshold(t *testing.T) {
 		strings.NewReader(`{"key":"gemini.safety_settings","value":"{\"default\":\"BLOCK_SOME\"}"}`),
 	)
 
-	UpdateOption(context)
+	UpdateOption(ginadapter.Wrap(context))
 
 	assert.Equal(t, http.StatusOK, response.Code)
 	var payload struct {

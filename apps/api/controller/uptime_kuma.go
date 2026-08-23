@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strconv"
 	"strings"
@@ -11,7 +13,6 @@ import (
 
 	"github.com/QuantumNous/new-api/setting/console_setting"
 
-	"github.com/gin-gonic/gin"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -128,14 +129,14 @@ func fetchGroupData(ctx context.Context, client *http.Client, groupConfig map[st
 	return result
 }
 
-func GetUptimeKumaStatus(c *gin.Context) {
+func GetUptimeKumaStatus(c contract.Context) {
 	groups := console_setting.GetUptimeKumaGroups()
 	if len(groups) == 0 {
-		c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": []UptimeGroupResult{}})
+		_ = c.JSON(http.StatusOK, common.H{"success": true, "message": "", "data": []UptimeGroupResult{}})
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
+	ctx, cancel := context.WithTimeout(c.Context(), requestTimeout)
 	defer cancel()
 
 	client := &http.Client{Timeout: httpTimeout}
@@ -151,5 +152,5 @@ func GetUptimeKumaStatus(c *gin.Context) {
 	}
 
 	g.Wait()
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": results})
+	_ = c.JSON(http.StatusOK, common.H{"success": true, "message": "", "data": results})
 }

@@ -2,11 +2,10 @@ package controller
 
 import (
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
-
-	"github.com/gin-gonic/gin"
 )
 
 func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string]string) []model.Pricing {
@@ -33,7 +32,7 @@ func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string
 	return filtered
 }
 
-func GetPricing(c *gin.Context) {
+func GetPricing(c contract.Context) {
 	pricing := model.GetPricing()
 	userId, exists := c.Get("id")
 	usableGroup := map[string]string{}
@@ -64,7 +63,7 @@ func GetPricing(c *gin.Context) {
 		}
 	}
 
-	c.JSON(200, gin.H{
+	_ = c.JSON(200, common.H{
 		"success":            true,
 		"data":               pricing,
 		"vendors":            model.GetVendors(),
@@ -76,11 +75,11 @@ func GetPricing(c *gin.Context) {
 	})
 }
 
-func ResetModelRatio(c *gin.Context) {
+func ResetModelRatio(c contract.Context) {
 	defaultStr := ratio_setting.DefaultModelRatio2JSONString()
 	err := model.UpdateOption("ModelRatio", defaultStr)
 	if err != nil {
-		c.JSON(200, gin.H{
+		_ = c.JSON(200, common.H{
 			"success": false,
 			"message": err.Error(),
 		})
@@ -88,13 +87,13 @@ func ResetModelRatio(c *gin.Context) {
 	}
 	err = ratio_setting.UpdateModelRatioByJSONString(defaultStr)
 	if err != nil {
-		c.JSON(200, gin.H{
+		_ = c.JSON(200, common.H{
 			"success": false,
 			"message": err.Error(),
 		})
 		return
 	}
-	c.JSON(200, gin.H{
+	_ = c.JSON(200, common.H{
 		"success": true,
 		"message": "重置模型倍率成功",
 	})

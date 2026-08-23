@@ -2,6 +2,9 @@ package controller
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,7 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -64,10 +66,10 @@ func baseAutoTokenRequest(name string) map[string]any {
 	}
 }
 
-func newTokenAutoGroupsAuthenticatedContext(t *testing.T, method string, target string, body any, userID int) (*gin.Context, *httptest.ResponseRecorder) {
+func newTokenAutoGroupsAuthenticatedContext(t *testing.T, method string, target string, body any, userID int) (contract.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 	ctx, recorder := newAuthenticatedContext(t, method, target, body, userID)
-	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+	common.SetCtxKey(ctx, constant.ContextKeyUserGroup, "default")
 	return ctx, recorder
 }
 
@@ -123,9 +125,15 @@ func TestAddTokenPersistsOrderedAutoGroupsSnapshot(t *testing.T) {
 	require.NoError(t, model.DB.Where("name = ?", "ordered-snapshot").First(&token).Error)
 	assert.JSONEq(t, `["vip","default"]`, token.AutoGroups)
 
-	getCtx, getRecorder := newTokenAutoGroupsAuthenticatedContext(t, http.MethodGet, "/api/token/"+stringInt(token.Id), nil, user.Id)
-	getCtx.Params = append(getCtx.Params, gin.Param{Key: "id", Value: stringInt(token.Id)})
-	GetToken(getCtx)
+	getRecorder := httptest.NewRecorder()
+	getEngine := gin.New()
+	getEngine.Use(func(c *gin.Context) {
+		c.Set("id", user.Id)
+		c.Set(string(constant.ContextKeyUserGroup), "default")
+		c.Next()
+	})
+	getEngine.GET("/api/token/:id", ginadapter.Handler(GetToken))
+	getEngine.ServeHTTP(getRecorder, httptest.NewRequest(http.MethodGet, "/api/token/"+stringInt(token.Id), nil))
 	getResponse := decodeAPIResponse(t, getRecorder)
 	require.True(t, getResponse.Success)
 	var data struct {

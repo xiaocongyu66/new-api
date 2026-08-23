@@ -327,18 +327,18 @@ func TestFingerprintAtomsNoDuplicates(t *testing.T) {
 // 谚文字母（Jamo，자모분리规避手法）与非白名单文字仍保持可疑。
 func TestScanSuspiciousJaKoWhitelist(t *testing.T) {
 	benign := []string{
-		"こんにちは、今日は良い天気ですね。",  // 平假名 + 片假名长音
-		"カタカナとひらがなのテキスト",       // 片假名 + 中点类
-		"안녕하세요 좋은 아침이에요",        // 谚文音节
-		"hello world 123",             // ASCII 对照
+		"こんにちは、今日は良い天気ですね。", // 平假名 + 片假名长音
+		"カタカナとひらがなのテキスト",    // 片假名 + 中点类
+		"안녕하세요 좋은 아침이에요",    // 谚文音节
+		"hello world 123",   // ASCII 对照
 	}
 	for _, s := range benign {
 		suspicious, _ := scanSuspicious(s)
 		assert.False(t, suspicious, "良性文本不应标记可疑: %q", s)
 	}
 	suspiciousTexts := []string{
-		"привет мир",     // 西里尔：不在白名单
-		"ㅎㅏㄴㄱㅜㄱ 어", // 谚文字母 Jamo 分离：保留敏感度
+		"привет мир", // 西里尔：不在白名单
+		"ㅎㅏㄴㄱㅜㄱ 어",   // 谚文字母 Jamo 分离：保留敏感度
 	}
 	for _, s := range suspiciousTexts {
 		suspicious, _ := scanSuspicious(s)

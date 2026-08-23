@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,8 +16,6 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
-
-	"github.com/gin-gonic/gin"
 )
 
 var completionRatioMetaOptionKeys = []string{
@@ -76,7 +75,7 @@ func buildCompletionRatioMetaValue(optionValues map[string]string) string {
 	return string(jsonBytes)
 }
 
-func GetOptions(c *gin.Context) {
+func GetOptions(c contract.Context) {
 	var options []*model.Option
 	optionValues := make(map[string]string)
 	common.OptionMapRWMutex.Lock()
@@ -109,7 +108,7 @@ func GetOptions(c *gin.Context) {
 		Key:   "CompletionRatioMeta",
 		Value: buildCompletionRatioMetaValue(optionValues),
 	})
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 		"data":    options,
@@ -121,11 +120,11 @@ type OptionUpdateRequest struct {
 	Value any    `json:"value"`
 }
 
-func UpdateOption(c *gin.Context) {
+func UpdateOption(c contract.Context) {
 	var option OptionUpdateRequest
-	err := common.DecodeJson(c.Request.Body, &option)
+	err := c.BindJSON(&option)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
+		_ = c.JSON(http.StatusBadRequest, common.H{
 			"success": false,
 			"message": "无效的参数",
 		})
@@ -144,19 +143,19 @@ func UpdateOption(c *gin.Context) {
 	switch option.Key {
 	case "QuotaForInviter", "QuotaForInvitee":
 		if isPositiveOptionValue(option.Value.(string)) && !operation_setting.IsPaymentComplianceConfirmed() {
-			common.ApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
+			common.CtxApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
 			return
 		}
 	default:
 		if isPaymentComplianceOptionKey(option.Key) {
-			common.ApiErrorMsg(c, "合规确认字段不允许通过通用设置接口修改")
+			common.CtxApiErrorMsg(c, "合规确认字段不允许通过通用设置接口修改")
 			return
 		}
 	}
 	switch option.Key {
 	case "GitHubOAuthEnabled":
 		if option.Value == "true" && common.GitHubClientId == "" {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "无法启用 GitHub OAuth，请先填入 GitHub Client Id 以及 GitHub Client Secret！",
 			})
@@ -164,7 +163,7 @@ func UpdateOption(c *gin.Context) {
 		}
 	case "discord.enabled":
 		if option.Value == "true" && system_setting.GetDiscordSettings().ClientId == "" {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "无法启用 Discord OAuth，请先填入 Discord Client Id 以及 Discord Client Secret！",
 			})
@@ -172,7 +171,7 @@ func UpdateOption(c *gin.Context) {
 		}
 	case "oidc.enabled":
 		if option.Value == "true" && system_setting.GetOIDCSettings().ClientId == "" {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "无法启用 OIDC 登录，请先填入 OIDC Client Id 以及 OIDC Client Secret！",
 			})
@@ -180,7 +179,7 @@ func UpdateOption(c *gin.Context) {
 		}
 	case "LinuxDOOAuthEnabled":
 		if option.Value == "true" && common.LinuxDOClientId == "" {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "无法启用 LinuxDO OAuth，请先填入 LinuxDO Client Id 以及 LinuxDO Client Secret！",
 			})
@@ -188,7 +187,7 @@ func UpdateOption(c *gin.Context) {
 		}
 	case "EmailDomainRestrictionEnabled":
 		if option.Value == "true" && len(common.EmailDomainWhitelist) == 0 {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "无法启用邮箱域名限制，请先填入限制的邮箱域名！",
 			})
@@ -196,7 +195,7 @@ func UpdateOption(c *gin.Context) {
 		}
 	case "WeChatAuthEnabled":
 		if option.Value == "true" && common.WeChatServerAddress == "" {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "无法启用微信登录，请先填入微信登录相关配置信息！",
 			})
@@ -204,7 +203,7 @@ func UpdateOption(c *gin.Context) {
 		}
 	case "TurnstileCheckEnabled":
 		if option.Value == "true" && common.TurnstileSiteKey == "" {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "无法启用 Turnstile 校验，请先填入 Turnstile 校验相关配置信息！",
 			})
@@ -213,7 +212,7 @@ func UpdateOption(c *gin.Context) {
 		}
 	case "TelegramOAuthEnabled":
 		if option.Value == "true" && common.TelegramBotToken == "" {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "无法启用 Telegram OAuth，请先填入 Telegram Bot Token！",
 			})
@@ -221,7 +220,7 @@ func UpdateOption(c *gin.Context) {
 		}
 	case "theme.frontend":
 		if option.Value != "default" {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "Classic 前端已移除，主题只能设置为 default",
 			})
@@ -230,7 +229,7 @@ func UpdateOption(c *gin.Context) {
 	case "GroupRatio":
 		err = ratio_setting.CheckGroupRatio(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": err.Error(),
 			})
@@ -239,7 +238,7 @@ func UpdateOption(c *gin.Context) {
 	case "gemini.safety_settings":
 		err = model_setting.ValidateGeminiSafetySettings(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": err.Error(),
 			})
@@ -248,7 +247,7 @@ func UpdateOption(c *gin.Context) {
 	case "claude.default_max_tokens":
 		err = model_setting.ValidateClaudeDefaultMaxTokens(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": err.Error(),
 			})
@@ -257,7 +256,7 @@ func UpdateOption(c *gin.Context) {
 	case operation_setting.ToolPriceOptionKey:
 		err = operation_setting.ValidateToolPricesJSON(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": err.Error(),
 			})
@@ -266,7 +265,7 @@ func UpdateOption(c *gin.Context) {
 	case "ImageRatio":
 		err = ratio_setting.UpdateImageRatioByJSONString(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "图片倍率设置失败: " + err.Error(),
 			})
@@ -275,7 +274,7 @@ func UpdateOption(c *gin.Context) {
 	case "AudioRatio":
 		err = ratio_setting.UpdateAudioRatioByJSONString(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "音频倍率设置失败: " + err.Error(),
 			})
@@ -284,7 +283,7 @@ func UpdateOption(c *gin.Context) {
 	case "AudioCompletionRatio":
 		err = ratio_setting.UpdateAudioCompletionRatioByJSONString(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "音频补全倍率设置失败: " + err.Error(),
 			})
@@ -293,7 +292,7 @@ func UpdateOption(c *gin.Context) {
 	case "CreateCacheRatio":
 		err = ratio_setting.UpdateCreateCacheRatioByJSONString(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "缓存创建倍率设置失败: " + err.Error(),
 			})
@@ -302,7 +301,7 @@ func UpdateOption(c *gin.Context) {
 	case "ModelRequestRateLimitGroup":
 		err = setting.CheckModelRequestRateLimitGroup(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": err.Error(),
 			})
@@ -311,7 +310,7 @@ func UpdateOption(c *gin.Context) {
 	case "AutomaticDisableStatusCodes":
 		_, err = operation_setting.ParseHTTPStatusCodeRanges(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": err.Error(),
 			})
@@ -320,7 +319,7 @@ func UpdateOption(c *gin.Context) {
 	case "AutomaticRetryStatusCodes":
 		_, err = operation_setting.ParseHTTPStatusCodeRanges(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": err.Error(),
 			})
@@ -329,7 +328,7 @@ func UpdateOption(c *gin.Context) {
 	case "console_setting.api_info":
 		err = console_setting.ValidateConsoleSettings(option.Value.(string), "ApiInfo")
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": err.Error(),
 			})
@@ -338,7 +337,7 @@ func UpdateOption(c *gin.Context) {
 	case "console_setting.announcements":
 		err = console_setting.ValidateConsoleSettings(option.Value.(string), "Announcements")
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": err.Error(),
 			})
@@ -347,7 +346,7 @@ func UpdateOption(c *gin.Context) {
 	case "console_setting.faq":
 		err = console_setting.ValidateConsoleSettings(option.Value.(string), "FAQ")
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": err.Error(),
 			})
@@ -356,7 +355,7 @@ func UpdateOption(c *gin.Context) {
 	case "console_setting.uptime_kuma_groups":
 		err = console_setting.ValidateConsoleSettings(option.Value.(string), "UptimeKumaGroups")
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
+			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": err.Error(),
 			})
@@ -365,14 +364,14 @@ func UpdateOption(c *gin.Context) {
 	}
 	err = model.UpdateOption(option.Key, option.Value.(string))
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	// 出于安全考虑只记录被修改的配置项名称，不记录配置值（可能含密钥等敏感信息）。
 	recordManageAudit(c, "option.update", map[string]interface{}{
 		"key": option.Key,
 	})
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 	})

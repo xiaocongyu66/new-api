@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"io"
 	"net/http"
 	"net/url"
@@ -25,7 +26,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 
-	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
 )
 
@@ -816,14 +816,14 @@ scanLoop:
 	return summary
 }
 
-func ApplyChannelUpstreamModelUpdates(c *gin.Context) {
+func ApplyChannelUpstreamModelUpdates(c contract.Context) {
 	var req applyChannelUpstreamModelUpdatesRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ApiError(c, err)
+	if err := c.BindJSON(&req); err != nil {
+		common.CtxApiError(c, err)
 		return
 	}
 	if req.ID <= 0 {
-		c.JSON(http.StatusOK, gin.H{
+		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": "invalid channel id",
 		})
@@ -832,7 +832,7 @@ func ApplyChannelUpstreamModelUpdates(c *gin.Context) {
 
 	channel, err := model.GetChannelById(req.ID, true)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	beforeSettings := channel.GetOtherSettings()
@@ -845,7 +845,7 @@ func ApplyChannelUpstreamModelUpdates(c *gin.Context) {
 		req.RemoveModels,
 	)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 
@@ -856,10 +856,10 @@ func ApplyChannelUpstreamModelUpdates(c *gin.Context) {
 	recordManageAudit(c, "channel.upstream_apply", map[string]interface{}{
 		"id": channel.Id,
 	})
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
-		"data": gin.H{
+		"data": common.H{
 			"id":                      channel.Id,
 			"added_models":            addedModels,
 			"removed_models":          removedModels,
@@ -872,14 +872,14 @@ func ApplyChannelUpstreamModelUpdates(c *gin.Context) {
 	})
 }
 
-func DetectChannelUpstreamModelUpdates(c *gin.Context) {
+func DetectChannelUpstreamModelUpdates(c contract.Context) {
 	var req applyChannelUpstreamModelUpdatesRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ApiError(c, err)
+	if err := c.BindJSON(&req); err != nil {
+		common.CtxApiError(c, err)
 		return
 	}
 	if req.ID <= 0 {
-		c.JSON(http.StatusOK, gin.H{
+		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": "invalid channel id",
 		})
@@ -888,21 +888,21 @@ func DetectChannelUpstreamModelUpdates(c *gin.Context) {
 
 	channel, err := model.GetChannelById(req.ID, true)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 
 	settings := channel.GetOtherSettings()
 	modelsChanged, autoAdded, err := checkAndPersistChannelUpstreamModelUpdates(channel, &settings, true, false)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	if modelsChanged {
 		refreshChannelRuntimeCache()
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 		"data": detectChannelUpstreamModelUpdatesResult{
@@ -983,7 +983,7 @@ func findEnabledChannelsAfterID(lastID int, batchSize int) ([]*model.Channel, er
 	return channels, query.Find(&channels).Error
 }
 
-func ApplyAllChannelUpstreamModelUpdates(c *gin.Context) {
+func ApplyAllChannelUpstreamModelUpdates(c contract.Context) {
 	results := make([]applyAllChannelUpstreamModelUpdatesResult, 0)
 	failed := make([]int, 0)
 	refreshNeeded := false
@@ -994,7 +994,7 @@ func ApplyAllChannelUpstreamModelUpdates(c *gin.Context) {
 	for {
 		channels, err := findEnabledChannelsAfterID(lastID, channelUpstreamModelUpdateTaskBatchSize)
 		if err != nil {
-			common.ApiError(c, err)
+			common.CtxApiError(c, err)
 			return
 		}
 		if len(channels) == 0 {
@@ -1054,10 +1054,10 @@ func ApplyAllChannelUpstreamModelUpdates(c *gin.Context) {
 	recordManageAudit(c, "channel.upstream_apply_all", map[string]interface{}{
 		"count": len(results),
 	})
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
-		"data": gin.H{
+		"data": common.H{
 			"processed_channels": len(results),
 			"added_models":       addedModelCount,
 			"removed_models":     removedModelCount,
@@ -1073,17 +1073,17 @@ func ApplyAllChannelUpstreamModelUpdates(c *gin.Context) {
 // history as the scheduled scan. If any model_update task is already active, the
 // manual run is rejected so the caller does not mistake a scheduled run for this
 // manual one.
-func DetectAllChannelUpstreamModelUpdates(c *gin.Context) {
+func DetectAllChannelUpstreamModelUpdates(c contract.Context) {
 	task, created, err := service.EnqueueSystemTask(model.SystemTaskTypeModelUpdate, modelUpdateTaskPayload{Manual: true})
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	if !created {
-		c.JSON(http.StatusConflict, gin.H{
+		_ = c.JSON(http.StatusConflict, common.H{
 			"success": false,
 			"message": "已有模型更新任务正在运行或等待中，不能启动本次手动任务",
-			"data": gin.H{
+			"data": common.H{
 				"task_id": task.TaskID,
 				"status":  task.Status,
 				"type":    task.Type,
@@ -1095,10 +1095,10 @@ func DetectAllChannelUpstreamModelUpdates(c *gin.Context) {
 	recordManageAudit(c, "channel.upstream_detect_all", map[string]interface{}{
 		"task_id": task.TaskID,
 	})
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
-		"data": gin.H{
+		"data": common.H{
 			"task_id": task.TaskID,
 			"status":  task.Status,
 		},

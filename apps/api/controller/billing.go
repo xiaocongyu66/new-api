@@ -2,13 +2,13 @@ package controller
 
 import (
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
-	"github.com/gin-gonic/gin"
 )
 
-func GetSubscription(c *gin.Context) {
+func GetSubscription(c contract.Context) {
 	var remainQuota int
 	var usedQuota int
 	var err error
@@ -33,7 +33,7 @@ func GetSubscription(c *gin.Context) {
 			Message: err.Error(),
 			Type:    "upstream_error",
 		}
-		c.JSON(200, gin.H{
+		_ = c.JSON(200, common.H{
 			"error": openAIError,
 		})
 		return
@@ -64,11 +64,11 @@ func GetSubscription(c *gin.Context) {
 		SystemHardLimitUSD: amount,
 		AccessUntil:        expiredTime,
 	}
-	c.JSON(200, subscription)
+	_ = c.JSON(200, subscription)
 	return
 }
 
-func GetUsage(c *gin.Context) {
+func GetUsage(c contract.Context) {
 	var quota int
 	var err error
 	var token *model.Token
@@ -85,7 +85,7 @@ func GetUsage(c *gin.Context) {
 			Message: err.Error(),
 			Type:    "new_api_error",
 		}
-		c.JSON(200, gin.H{
+		_ = c.JSON(200, common.H{
 			"error": openAIError,
 		})
 		return
@@ -103,6 +103,6 @@ func GetUsage(c *gin.Context) {
 		Object:     "list",
 		TotalUsage: amount * 100,
 	}
-	c.JSON(200, usage)
+	_ = c.JSON(200, usage)
 	return
 }

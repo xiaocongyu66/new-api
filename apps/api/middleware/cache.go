@@ -1,17 +1,17 @@
 package middleware
 
 import (
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
-func Cache() func(c *gin.Context) {
-	return func(c *gin.Context) {
-		if c.Request.RequestURI == "/" {
-			c.Header("Cache-Control", "no-cache")
+func Cache() func(c contract.Context) {
+	return func(c contract.Context) {
+		if c.RequestURI() == "/" {
+			c.SetHeader("Cache-Control", "no-cache")
 		} else {
-			c.Header("Cache-Control", "max-age=604800") // one week
+			c.SetHeader("Cache-Control", "max-age=604800") // one week
 		}
-		c.Header("Cache-Version", "b688f2fb5be447c25e5aa3bd063087a83db32a288bf6a4f35f2d8db310e40b14")
+		c.SetHeader("Cache-Version", "b688f2fb5be447c25e5aa3bd063087a83db32a288bf6a4f35f2d8db310e40b14")
 		c.Next()
 	}
 }
