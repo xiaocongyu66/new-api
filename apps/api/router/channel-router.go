@@ -76,4 +76,7 @@ var channelPermissionRoutes = []permissionRoute{
 	{method: http.MethodPost, path: "/upstream_updates/apply_all", permission: authz.ChannelWrite, handler: controller.ApplyAllChannelUpstreamModelUpdates},
 	{method: http.MethodPost, path: "/upstream_updates/detect", permission: authz.ChannelOperate, handler: controller.DetectChannelUpstreamModelUpdates},
 	{method: http.MethodPost, path: "/upstream_updates/detect_all", permission: authz.ChannelOperate, handler: controller.DetectAllChannelUpstreamModelUpdates},
+	{method: http.MethodGet, path: "/route_unit/", permission: authz.ChannelRead, handler: controller.GetRouteUnitViews},
+	{method: http.MethodGet, path: "/route_unit/aliases", permission: authz.ChannelRead, handler: controller.ListRouteUnitAliases},
+	{method: http.MethodPut, path: "/route_unit/:id", permission: authz.ChannelWrite, handler: controller.UpdateRouteUnit},
 }
