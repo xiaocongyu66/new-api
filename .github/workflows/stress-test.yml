@@ -424,8 +424,8 @@ jobs:
           kubectl top nodes > runtime/logs/nodes-top-after.txt || true
           kubectl top pods -l app=new-api > runtime/logs/pods-top-after.txt || true
           kubectl get pods -l app=new-api -o wide > runtime/logs/pods-after.txt || true
-          kubectl logs deployment/new-api-worker --tail=3000 > runtime/logs/worker-full.log || true
-          kubectl logs deployment/new-api-master --tail=300 > runtime/logs/master-tail.log || true
+          kubectl logs deployment/new-api-worker --all-pods=true --prefix=true --tail=-1 > runtime/logs/worker-full.log || true
+          kubectl logs deployment/new-api-master --all-pods=true --prefix=true --tail=-1 > runtime/logs/master-tail.log || true
           POSTGRES_POD=$(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
           kubectl exec -i "$POSTGRES_POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT channel_id, key_index, model, state, isolation_level, dormant_disable_count, version, updated_at FROM channel_model_health ORDER BY channel_id, model" > runtime/logs/db-health-after.txt || true
           kubectl exec -i "$POSTGRES_POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT channel_id, model, enabled, weight FROM abilities WHERE channel_id BETWEEN 90001 AND 90003 ORDER BY channel_id, model" > runtime/logs/db-abilities-after.txt || true
