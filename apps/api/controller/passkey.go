@@ -37,7 +37,8 @@ type passkeyVerifyBeginRequest struct {
 
 func parsePasskeyFinishRequest(c contract.Context) (*passkeyFinishRequest, error) {
 	var request passkeyFinishRequest
-	if err := c.BindJSON(&request); err != nil {
+	// one-shot decode: this endpoint must not rewrite the request body
+	if err := common.DecodeJson(c.HTTPRequest().Body, &request); err != nil {
 		return nil, err
 	}
 	if request.FlowToken == "" || len(request.Credential) == 0 {

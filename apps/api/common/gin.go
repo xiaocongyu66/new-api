@@ -112,6 +112,12 @@ func UnmarshalBodyReusable(c *gin.Context, v any) error {
 		return err
 	}
 	contentType := c.Request.Header.Get("Content-Type")
+	if contentType == "" {
+		// callers that previously decoded the raw stream (DecodeJson) accepted
+		// bodies regardless of content-type; keep that behaviour for the
+		// replayable path too
+		contentType = "application/json"
+	}
 
 	// disk-backed JSON: stream-decode directly from the file to avoid
 	// materializing the entire payload back into a transient []byte
