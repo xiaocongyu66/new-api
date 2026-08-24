@@ -124,6 +124,7 @@ jobs:
           UPDATE users SET quota=2147483647, used_quota=0 WHERE id=1;
           UPDATE tokens SET status=1, remain_quota=2147483647, unlimited_quota=true, used_quota=0, expired_time=-1, "group"='default' WHERE key='$token_key';
           INSERT INTO options (key,value) VALUES ('RetryTimes','5') ON CONFLICT(key) DO UPDATE SET value='5';
+          INSERT INTO options (key,value) VALUES ('ModelRequestRateLimitEnabled','false') ON CONFLICT(key) DO UPDATE SET value='false';
           DELETE FROM abilities WHERE channel_id BETWEEN 90001 AND 90003;
           DELETE FROM channels WHERE id BETWEEN 90001 AND 90003;
           INSERT INTO channels (id,type,key,status,name,weight,created_time,base_url,models,"group",priority,auto_ban,channel_info)
