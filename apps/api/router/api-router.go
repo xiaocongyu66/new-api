@@ -39,7 +39,51 @@ func SetApiRouter(router *gin.Engine) {
 		//apiRouter.GET("/midjourney", ginadapter.Handler(controller.GetMidjourney))
 		apiRouter.GET("/home_page_content", ginadapter.Handler(controller.GetHomePageContent))
 		apiRouter.GET("/pricing", ginadapter.Middleware(middleware.HeaderNavModuleAuth("pricing")), ginadapter.Handler(controller.GetPricing))
-		usage.RegisterUsageRoutes(apiRouter)
+		// /api/log routes
+		logRoute := apiRouter.Group("/log")
+		logRoute.GET("/", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(usage.GetAllLogs))
+		logRoute.GET("/stat", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(usage.GetLogsStat))
+		logRoute.GET("/self/stat", ginadapter.Middleware(security.UserAuth()), ginadapter.Handler(usage.GetLogsSelfStat))
+		logRoute.GET("/channel_affinity_usage_cache", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(controller.GetChannelAffinityUsageCacheStats))
+		logRoute.GET("/search", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(usage.SearchAllLogs))
+		logRoute.GET("/self", ginadapter.Middleware(security.UserAuth()), ginadapter.Handler(usage.GetUserLogs))
+		logRoute.GET("/self/search", ginadapter.Middleware(security.UserAuth()), ginadapter.Middleware(middleware.SearchRateLimit()), ginadapter.Handler(usage.SearchUserLogs))
+
+		logRoute.Use(middleware.CORS(), ginadapter.Middleware(middleware.CriticalRateLimit()))
+		{
+			logRoute.GET("/token", ginadapter.Middleware(security.TokenAuthReadOnly()), ginadapter.Handler(usage.GetLogByKey))
+		}
+
+		// /api/data routes
+		dataRoute := apiRouter.Group("/data")
+		dataRoute.GET("/", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(usage.GetAllQuotaDates))
+		dataRoute.GET("/users", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(usage.GetQuotaDatesByUser))
+		dataRoute.GET("/self", ginadapter.Middleware(security.UserAuth()), ginadapter.Handler(usage.GetUserQuotaDates))
+		dataRoute.GET("/flow", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(usage.GetAllFlowQuotaDates))
+		dataRoute.GET("/flow/self", ginadapter.Middleware(security.UserAuth()), ginadapter.Handler(usage.GetUserFlowQuotaDates))
+
+		// /api/rankings route
+		apiRouter.GET("/rankings", ginadapter.Middleware(middleware.HeaderNavModuleAuth("rankings")), ginadapter.Handler(controller.GetRankings))
+
+		// /api/perf-metrics routes
+		perfMetricsRoute := apiRouter.Group("/perf-metrics")
+		perfMetricsRoute.Use(ginadapter.Middleware(middleware.HeaderNavModulePublicOrUserAuth("pricing")))
+		{
+			perfMetricsRoute.GET("/summary", ginadapter.Handler(usage.GetPerfMetricsSummary))
+			perfMetricsRoute.GET("", ginadapter.Handler(usage.GetPerfMetrics))
+		}
+
+		// /api/performance routes
+		performanceRoute := apiRouter.Group("/performance")
+		performanceRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(authz.SystemSettings)))
+		{
+			performanceRoute.GET("/stats", ginadapter.Handler(usage.GetPerformanceStats))
+			performanceRoute.DELETE("/disk_cache", ginadapter.Handler(usage.ClearDiskCache))
+			performanceRoute.POST("/reset_stats", ginadapter.Handler(usage.ResetPerformanceStats))
+			performanceRoute.POST("/gc", ginadapter.Handler(usage.ForceGC))
+			performanceRoute.GET("/logs", ginadapter.Handler(usage.GetLogFiles))
+			performanceRoute.DELETE("/logs", ginadapter.Handler(usage.CleanupLogFiles))
+		}
 		apiRouter.GET("/verification", ginadapter.Middleware(middleware.EmailVerificationRateLimit()), ginadapter.Middleware(middleware.TurnstileCheck()), ginadapter.Handler(controller.SendEmailVerification))
 		apiRouter.GET("/reset_password", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.TurnstileCheck()), ginadapter.Handler(controller.SendPasswordResetEmail))
 		apiRouter.POST("/user/reset", ginadapter.Middleware(middleware.CriticalRateLimit()), anonymousRequestBodyLimit, ginadapter.Handler(controller.ResetPassword))

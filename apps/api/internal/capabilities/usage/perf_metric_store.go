@@ -4,7 +4,21 @@ import (
 	"gorm.io/gorm/clause"
 
 	"github.com/QuantumNous/new-api/model"
+	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 )
+
+func init() {
+	// Wire the perf_metrics infrastructure package to this store. The pkg
+	// must not import usage (it is imported back from here), so the
+	// persistence entry points are injected as function hooks.
+	perfmetrics.UpsertMetricFn = UpsertPerfMetric
+	perfmetrics.DeleteMetricsBeforeFn = DeletePerfMetricsBefore
+	perfmetrics.QueryMetricRowsFn = GetPerfMetricsInternal
+	perfmetrics.QuerySummaryBucketsFn = func(startTs, endTs int64, groups []string) ([]model.PerfMetricSummaryBucket, error) {
+		return GetPerfMetricsSummaryBucketsAll(startTs, endTs, groups)
+	}
+}
+
 func UpsertPerfMetric(metric *model.PerfMetric) error {
 	if metric == nil || metric.RequestCount == 0 {
 		return nil

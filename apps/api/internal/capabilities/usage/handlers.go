@@ -3,16 +3,14 @@ package usage
 import (
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 
-	"github.com/samber/lo"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/samber/lo"
 )
 
 func GetAllLogs(c contract.Context) {
@@ -316,33 +314,5 @@ func filterActiveGroups(groups []perfmetrics.GroupResult) []perfmetrics.GroupRes
 	return lo.Filter(groups, func(g perfmetrics.GroupResult, _ int) bool {
 		_, ok := activeRatios[g.Group]
 		return ok || g.Group == "auto"
-	})
-}
-
-func GetChannelAffinityUsageCacheStats(c contract.Context) {
-	ruleName := strings.TrimSpace(c.Query("rule_name"))
-	usingGroup := strings.TrimSpace(c.Query("using_group"))
-	keyFp := strings.TrimSpace(c.Query("key_fp"))
-	stats := service.GetChannelAffinityUsageCacheStats(ruleName, usingGroup, keyFp)
-	_ = c.JSON(http.StatusOK, common.H{
-		"success": true,
-		"message": "",
-		"data":    stats,
-	})
-}
-
-func GetRankings(c contract.Context) {
-	result, err := service.GetRankingsSnapshot(c.DefaultQuery("period", "week"))
-	if err != nil {
-		_ = c.JSON(http.StatusBadRequest, map[string]any{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
-	}
-
-	_ = c.JSON(http.StatusOK, map[string]any{
-		"success": true,
-		"data":    result,
 	})
 }
