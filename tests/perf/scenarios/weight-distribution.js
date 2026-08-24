@@ -84,7 +84,7 @@ export default function () {
         channelId = body.choices[0].channel_id;
       }
     }
-  } catch {
+  } catch (error) {
     // ignore parse errors
   }
 
@@ -97,17 +97,13 @@ export default function () {
 
 export function handleSummary(data) {
   const outPath = __ENV.SUMMARY_JSON || 'stdout';
-  const enriched = {
-    ...data,
-    metadata: {
-      ...data.metadata,
-      scenario: 'weight-distribution',
-      model: MODEL,
-      expected_weights: '100:50:10 (verified via Python DB/log correlation)',
-      header_injected: 'X-Perf-Scenario: weight-distribution',
-    },
-  };
-  const json = JSON.stringify(enriched, null, 2);
+  const metadata = data.metadata || {};
+  metadata.scenario = 'weight-distribution';
+  metadata.model = MODEL;
+  metadata.expected_weights = '100:50:10 (verified via Python DB/log correlation)';
+  metadata.header_injected = 'X-Perf-Scenario: weight-distribution';
+  data.metadata = metadata;
+  const json = JSON.stringify(data, null, 2);
   if (outPath === 'stdout') {
     console.log(json);
     return {};

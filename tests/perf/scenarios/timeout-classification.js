@@ -93,20 +93,16 @@ export default function () {
 
 export function handleSummary(data) {
   const outPath = __ENV.SUMMARY_JSON || 'stdout';
-  const enriched = {
-    ...data,
-    metadata: {
-      ...data.metadata,
-      scenario: 'timeout-classification',
-      model: SLOW_MODEL,
-      request_timeout: TIMEOUT,
-      timeout_classification: {
-        description: 'timed_out_requests = k6 transport timeouts (status 0); upstream_http_errors = 4xx/5xx received before timeout',
-        counters: ['timed_out_requests', 'upstream_http_errors'],
-      },
-    },
+  const metadata = data.metadata || {};
+  metadata.scenario = 'timeout-classification';
+  metadata.model = SLOW_MODEL;
+  metadata.request_timeout = TIMEOUT;
+  metadata.timeout_classification = {
+    description: 'timed_out_requests = k6 transport timeouts (status 0); upstream_http_errors = 4xx/5xx received before timeout',
+    counters: ['timed_out_requests', 'upstream_http_errors'],
   };
-  const json = JSON.stringify(enriched, null, 2);
+  data.metadata = metadata;
+  const json = JSON.stringify(data, null, 2);
   if (outPath === 'stdout') {
     console.log(json);
     return {};

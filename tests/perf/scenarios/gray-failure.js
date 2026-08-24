@@ -80,18 +80,14 @@ export default function () {
 export function handleSummary(data) {
   const outPath = __ENV.SUMMARY_JSON || 'stdout';
   // Enrich summary with expected failure ratio for Python assertions
-  const enriched = {
-    ...data,
-    metadata: {
-      ...data.metadata,
-      scenario: 'gray-failure',
-      expected_failure_ratio: FAILURE_RATIO,
-      expected_success_ratio: EXPECTED_SUCCESS_RATIO,
-      tolerance: TOLERANCE,
-      model: FLAKY_MODEL,
-    },
-  };
-  const json = JSON.stringify(enriched, null, 2);
+  const metadata = data.metadata || {};
+  metadata.scenario = 'gray-failure';
+  metadata.expected_failure_ratio = FAILURE_RATIO;
+  metadata.expected_success_ratio = EXPECTED_SUCCESS_RATIO;
+  metadata.tolerance = TOLERANCE;
+  metadata.model = FLAKY_MODEL;
+  data.metadata = metadata;
+  const json = JSON.stringify(data, null, 2);
   if (outPath === 'stdout') {
     console.log(json);
     return {};

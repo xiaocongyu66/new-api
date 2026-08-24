@@ -75,7 +75,7 @@ export default function () {
       } else if (res.headers && res.headers['x-request-id']) {
         requestId = res.headers['x-request-id'];
       }
-    } catch {
+    } catch (error) {
       // ignore parse errors
     }
     badKeyResponses.add(1, { status: String(res.status), request_id: requestId, type: 'expected_fault' });
