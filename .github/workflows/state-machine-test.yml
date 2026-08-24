@@ -162,15 +162,21 @@ jobs:
       - name: Verify gateway
         run: |
           curl --fail --silent --show-error -H "Authorization: Bearer $API_KEY" "$TARGET_URL/models" > runtime/perf/models.json
-      - name: Rebuild abilities and refresh gateway cache
-        continue-on-error: true
+      - name: Refresh seeded gateway routing
         run: |
-          curl --fail --silent --show-error \
-            -X POST \
-            -H "Authorization: Bearer $API_KEY" \
-            "${TARGET_URL%/v1}/api/channel/fix" \
-            > runtime/logs/channel-fix.json || true
-          cat runtime/logs/channel-fix.json 2>/dev/null || true
+          pod=$(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -i "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 <<'SQL'
+          TRUNCATE TABLE abilities;
+          INSERT INTO abilities ("group", model, channel_id, enabled, priority, weight)
+          SELECT split_part(c."group", ',', 1), trim(m.model), c.id, true, c.priority, c.weight
+          FROM channels c
+          CROSS JOIN LATERAL unnest(string_to_array(c.models, ',')) AS m(model)
+          WHERE c.status = 1;
+          SQL
+          kubectl rollout restart deployment/new-api-master deployment/new-api-worker
+          kubectl rollout status deployment/new-api-master --timeout=300s
+          kubectl rollout status deployment/new-api-worker --timeout=300s
+          kubectl get pods -l app=new-api -o wide > runtime/logs/pods-after-routing-refresh.txt
       - name: Run full scenario matrix
         run: |
           set +e
