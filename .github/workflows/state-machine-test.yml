@@ -74,7 +74,7 @@ jobs:
           chmod 600 ~/.kube/config
       - uses: grafana/setup-k6-action@v1
         with:
-          version: latest
+          k6-version: latest
       - name: Mask key and capture images
         run: |
           echo "::add-mask::$API_KEY"
@@ -149,7 +149,7 @@ jobs:
         run: |
           if ! curl -fsS --connect-timeout 5 -H "Authorization: Bearer $API_KEY" "$TARGET_URL/models" >/dev/null; then
             kubectl port-forward svc/new-api 18080:80 > runtime/logs/port-forward.log 2>&1 &
-            for i in $(seq 1 20); do curl -fsS http://127.0.0.1:18080/api/status >/dev/null && break; sleep 1; done
+            for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18080/api/status >/dev/null && break; sleep 1; done
             echo 'TARGET_URL=http://127.0.0.1:18080/v1' >> "$GITHUB_ENV"
           fi
       - name: Verify gateway
@@ -174,6 +174,17 @@ jobs:
             [ -n "$MODEL_OVERRIDE" ] && model="$MODEL_OVERRIDE"
             [ -n "$VUS_OVERRIDE" ] && vus="$VUS_OVERRIDE"
             [ -n "$DURATION_OVERRIDE" ] && duration="$DURATION_OVERRIDE"
+            ensure_gateway() {
+              curl -fsS --connect-timeout 5 -H "Authorization: Bearer $API_KEY" "$TARGET_URL/models" >/dev/null && return 0
+              pkill -f 'kubectl port-forward svc/new-api 18080:80' || true
+              kubectl port-forward svc/new-api 18080:80 > runtime/logs/port-forward.log 2>&1 &
+              for i in $(seq 1 30); do
+                curl -fsS http://127.0.0.1:18080/api/status >/dev/null && { TARGET_URL=http://127.0.0.1:18080/v1; export TARGET_URL; return 0; }
+                sleep 1
+              done
+              return 1
+            }
+            ensure_gateway || { overall=1; continue; }
             dir="runtime/perf/scenario-$n"; mkdir -p "$dir"
             k6 run --vus "$vus" --duration "$duration" -e TARGET_URL="$TARGET_URL" -e API_KEY="$API_KEY" -e MODEL="$model" -e SUMMARY_JSON="$dir/k6-summary.json" "tests/perf/scenarios/$script" > "$dir/k6.log" 2>&1
             k6_rc=$?
