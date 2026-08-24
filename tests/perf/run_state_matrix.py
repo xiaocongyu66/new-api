@@ -113,6 +113,7 @@ def main() -> int:
     parser.add_argument("--postgres-db", default="")
     parser.add_argument("--postgres-user", default="")
     parser.add_argument("--postgres-password", default="")
+    parser.add_argument("--run-only", action="store_true", help="Run k6 only; assert after external log/DB capture")
     args = parser.parse_args()
 
     # Determine which scenarios to run
@@ -224,23 +225,18 @@ def main() -> int:
             if not health_csv:
                 health_csv = find_latest_file("*.csv", Path("."))
 
-        # Distribution JSON from k6 summary if available
-        if summary_path.exists():
-            distribution_json = summary_path
+        # Assertions run after external capture when --run-only is not set.
+        assertion_exit = 0
+        assertion_output = ""
+        if not args.run_only:
+            print(f"Running assertions for {assertion_alias}...")
+            assertion_exit, assertion_output = run_assertions(
+                assertion_script, assertion_alias, worker_log, health_csv,
+                distribution_json, report_path,
+            )
+            print(f"Assertions exited with code {assertion_exit}")
 
-        # Run assertions
-        print(f"Running assertions for {assertion_alias}...")
-        assertion_exit, assertion_output = run_assertions(
-            assertion_script,
-            assertion_alias,
-            worker_log,
-            health_csv,
-            distribution_json,
-            report_path,
-        )
-        print(f"Assertions exited with code {assertion_exit}")
-
-        passed = (k6_exit == 0) and (assertion_exit == 0)
+        passed = k6_exit == 0 and assertion_exit == 0
         if not passed:
             overall_passed = False
 

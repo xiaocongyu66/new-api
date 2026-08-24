@@ -1,25 +1,8 @@
 /**
- * CAS contention scenario — concurrent updates to channel health cause CAS retries.
+ * #392 scenario 2 — concurrent CAS updates on the same model routing units.
  *
- * Targets a model backed by multiple channels (CAS_MODEL, default "mock-cas")
- * where rapid health updates trigger compare-and-swap contention on the
- * channel_model_health table. High VU count with short requests maximizes
- * contention on the health update path.
- * Emits Counter `cas_conflicts` for observed retryable conflict responses.
- *
- * Fixed VUS (no ramp), steady-state DURATION.
- *
- * Thresholds:
- *   - error rate < 0.10
- *   - CAS conflict rate tracked separately
- *
- * Env vars (all optional, defaults shown):
- *   TARGET_URL          - base URL, e.g. http://localhost:3000
- *   API_KEY             - bearer token
- *   CAS_MODEL           - model name with CAS contention, default "mock-cas"
- *   VUS                 - target VUs, default 100
- *   DURATION            - test duration, default "120s"
- *   SUMMARY_JSON        - output path for handleSummary, default "stdout"
+ * The prepared mock-flaky pool gives every 50 VUs retryable failures; Python
+ * checks health versions and worker CAS exhaustion logs after the run.
  */
 import http from 'k6/http';
 import { check } from 'k6';
@@ -28,8 +11,8 @@ import { makeHeaders, chatPayload } from '../lib/openai.js';
 
 const TARGET_URL = __ENV.TARGET_URL || 'http://localhost:3000';
 const API_KEY = __ENV.API_KEY || '';
-const CAS_MODEL = __ENV.CAS_MODEL || 'mock-cas';
-const VUS = Number(__ENV.VUS) || 100;
+const CAS_MODEL = __ENV.CAS_MODEL || 'mock-flaky';
+const VUS = Number(__ENV.VUS) || 50;
 const DURATION = __ENV.DURATION || '120s';
 
 export const options = {

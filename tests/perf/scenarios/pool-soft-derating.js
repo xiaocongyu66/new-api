@@ -1,25 +1,8 @@
 /**
- * Pool soft derating scenario — sustained load causes gradual pool derating.
+ * #392 scenario 1 — pool pressure, soft derating, and emergency recovery.
  *
- * Targets a model (DERATING_MODEL, default "mock-derating") that simulates
- * connection pool soft limits being approached. The upstream gradually increases
- * latency and error rate as pool utilization rises.
- * Emits Counter `derating_events` for observed derating indicators.
- *
- * Ramp: RAMP_DURATION to VUS, hold DURATION, ramp down.
- *
- * Thresholds:
- *   - error rate < 0.15 (allow elevated errors during derating)
- *   - p99 latency < 10000ms
- *
- * Env vars (all optional, defaults shown):
- *   TARGET_URL          - base URL, e.g. http://localhost:3000
- *   API_KEY             - bearer token
- *   DERATING_MODEL      - model name with derating behavior, default "mock-derating"
- *   VUS                 - target VUs, default 150
- *   DURATION            - steady-state duration, default "180s"
- *   RAMP_DURATION       - ramp-up duration, default "60s"
- *   SUMMARY_JSON        - output path for handleSummary, default "stdout"
+ * The prepared topology supplies several mock-flaky routing units. The Python
+ * assertion reads route isolation/emergency recovery events and health rows.
  */
 import http from 'k6/http';
 import { check } from 'k6';
@@ -28,10 +11,10 @@ import { makeHeaders, chatPayload } from '../lib/openai.js';
 
 const TARGET_URL = __ENV.TARGET_URL || 'http://localhost:3000';
 const API_KEY = __ENV.API_KEY || '';
-const DERATING_MODEL = __ENV.DERATING_MODEL || 'mock-derating';
-const VUS = Number(__ENV.VUS) || 150;
-const DURATION = __ENV.DURATION || '180s';
-const RAMP_DURATION = __ENV.RAMP_DURATION || '60s';
+const DERATING_MODEL = __ENV.DERATING_MODEL || 'mock-flaky';
+const VUS = Number(__ENV.VUS) || 50;
+const DURATION = __ENV.DURATION || '120s';
+const RAMP_DURATION = __ENV.RAMP_DURATION || '30s';
 
 export const options = {
   scenarios: {

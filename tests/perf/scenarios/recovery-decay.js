@@ -1,28 +1,8 @@
 /**
- * Recovery decay scenario — after partial degradation, recovery is slower than expected.
+ * #392 scenario 4 — recovery and decay after partial degradation.
  *
- * Targets a flaky model (RECOVERY_MODEL, default "mock-recovery") that initially
- * fails at a high rate (FAILURE_RATIO_START, default 0.50) then gradually
- * recovers (FAILURE_RATIO_END, default 0.05) over the test duration.
- * The decay is measured as the difference between expected and actual recovery curve.
- * Emits Counters `recovery_success` and `recovery_failure` per time window.
- *
- * Ramp: RAMP_DURATION to VUS, hold DURATION, ramp down.
- *
- * Thresholds:
- *   - final error rate < 0.15 (should have recovered)
- *   - recovery latency trend tracked
- *
- * Env vars (all optional, defaults shown):
- *   TARGET_URL              - base URL, e.g. http://localhost:3000
- *   API_KEY                 - bearer token
- *   RECOVERY_MODEL          - model name with recovery behavior, default "mock-recovery"
- *   VUS                     - target VUs, default 50
- *   DURATION                - test duration, default "300s"
- *   RAMP_DURATION           - ramp-up duration, default "60s"
- *   FAILURE_RATIO_START     - initial failure ratio, default 0.50
- *   FAILURE_RATIO_END       - target failure ratio, default 0.05
- *   SUMMARY_JSON            - output path for handleSummary, default "stdout"
+ * mock-flaky failures create health rows; subsequent successful requests
+ * exercise RecordSuccess/expiry decay. Python checks calm/dormant -> healthy.
  */
 import http from 'k6/http';
 import { check } from 'k6';
@@ -31,10 +11,10 @@ import { makeHeaders, chatPayload } from '../lib/openai.js';
 
 const TARGET_URL = __ENV.TARGET_URL || 'http://localhost:3000';
 const API_KEY = __ENV.API_KEY || '';
-const RECOVERY_MODEL = __ENV.RECOVERY_MODEL || 'mock-recovery';
-const VUS = Number(__ENV.VUS) || 50;
-const DURATION = __ENV.DURATION || '300s';
-const RAMP_DURATION = __ENV.RAMP_DURATION || '60s';
+const RECOVERY_MODEL = __ENV.RECOVERY_MODEL || 'mock-flaky';
+const VUS = Number(__ENV.VUS) || 30;
+const DURATION = __ENV.DURATION || '120s';
+const RAMP_DURATION = __ENV.RAMP_DURATION || '30s';
 
 export const options = {
   scenarios: {
