@@ -124,8 +124,7 @@ jobs:
           UPDATE users SET quota=2147483647, used_quota=0 WHERE id=1;
           UPDATE tokens SET status=1, remain_quota=2147483647, unlimited_quota=true, used_quota=0, expired_time=-1, "group"='default' WHERE key='$token_key';
           INSERT INTO options (key,value) VALUES ('RetryTimes','5') ON CONFLICT(key) DO UPDATE SET value='5';
-          INSERT INTO options (key,value) VALUES ('AutomaticDisableChannelEnabled','true') ON CONFLICT(key) DO UPDATE SET value='true';
-          INSERT INTO options (key,value) VALUES ('AutomaticDisableStatusCodes','401,500') ON CONFLICT(key) DO UPDATE SET value='401,500';
+          INSERT INTO options (key,value) VALUES ('AutomaticDisableStatusCodes','401') ON CONFLICT(key) DO UPDATE SET value='401';
           INSERT INTO options (key,value) VALUES ('ModelRequestRateLimitEnabled','false') ON CONFLICT(key) DO UPDATE SET value='false';
           DELETE FROM abilities WHERE channel_id BETWEEN 90001 AND 90003;
           DELETE FROM channels WHERE id BETWEEN 90001 AND 90003;
@@ -232,7 +231,9 @@ jobs:
             }
             ensure_gateway || { overall=1; continue; }
             dir="runtime/perf/scenario-$n"; mkdir -p "$dir"
-            k6 run --vus "$vus" --duration "$duration" -e TARGET_URL="$TARGET_URL" -e API_KEY="$API_KEY" -e MODEL="$model" -e BAD_KEY_MODEL="$model" -e SLOW_MODEL="$model" -e SUMMARY_JSON="$dir/k6-summary.json" "tests/perf/scenarios/$script" > "$dir/k6.log" 2>&1
+            timeout_env=""
+            [ "$n" = 8 ] && timeout_env="-e TIMEOUT=2s"
+            k6 run --vus "$vus" --duration "$duration" -e TARGET_URL="$TARGET_URL" -e API_KEY="$API_KEY" -e MODEL="$model" -e BAD_KEY_MODEL="$model" -e SLOW_MODEL="$model" $timeout_env -e SUMMARY_JSON="$dir/k6-summary.json" "tests/perf/scenarios/$script" > "$dir/k6.log" 2>&1
             k6_rc=$?
             { kubectl logs deployment/new-api-master --all-pods=true --prefix=true --tail=-1; kubectl logs deployment/new-api-worker --all-pods=true --prefix=true --tail=-1; } > "$dir/worker.log" 2>&1
             pod=$(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
