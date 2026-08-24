@@ -18,6 +18,7 @@ on:
         type: choice
         options:
           - matrix
+          - state_matrix
           - short_non_stream
           - long_stream
           - mixed_stream_non_stream
@@ -370,6 +371,7 @@ jobs:
           echo "api_key=$GW_KEY" >> "$GITHUB_OUTPUT"
 
       - name: Execute stress test
+        if: inputs.scenario != 'state_matrix'
         env:
           K8S_API_KEY: ${{ secrets.K8S_STRESS_API_KEY }}
           LOCAL_API_KEY: ${{ steps.local_token.outputs.api_key }}
@@ -414,6 +416,46 @@ jobs:
             --report-file runtime/logs/report.md \
             --json-file runtime/logs/metrics.json
 
+      - name: Execute state matrix stress test
+        if: inputs.scenario == 'state_matrix'
+        env:
+          K8S_API_KEY: ${{ secrets.K8S_STRESS_API_KEY }}
+          LOCAL_API_KEY: ${{ steps.local_token.outputs.api_key }}
+        run: |
+          set -euo pipefail
+          mkdir -p runtime/perf runtime/logs
+          if [ "${{ inputs.target_env }}" = "local_runner" ]; then
+            TARGET_URL="http://127.0.0.1:3000/v1"
+            API_KEY="$LOCAL_API_KEY"
+            HOST_HEADER=""
+          else
+            TARGET_URL="${{ inputs.target_url }}"
+            API_KEY="$K8S_API_KEY"
+            HOST_HEADER="${{ inputs.host_header }}"
+            STATUS_URL="${TARGET_URL%/v1}/api/status"
+            if ! curl -fsS --connect-timeout 5 -H "Host: $HOST_HEADER" "$STATUS_URL" > runtime/logs/direct-ingress-status.txt 2>&1; then
+              echo "direct ingress failed; using kubectl port-forward to service/new-api" | tee runtime/logs/target-mode.txt
+              kubectl port-forward svc/new-api 18080:80 > runtime/logs/port-forward.log 2>&1 &
+              for i in {1..20}; do
+                curl -fsS http://127.0.0.1:18080/api/status && break || sleep 1
+              done
+              TARGET_URL="http://127.0.0.1:18080/v1"
+              HOST_HEADER=""
+            else
+              echo "direct ingress ok" | tee runtime/logs/target-mode.txt
+            fi
+          fi
+          python3 tests/perf/run_state_matrix.py \
+            --scenario all \
+            --target-url "$TARGET_URL" \
+            --api-key "$API_KEY" \
+            --report-dir runtime/perf \
+            --model "${{ inputs.model }}" \
+            --vus "${{ inputs.concurrency }}" \
+            --duration "${{ inputs.duration }}"
+          # Collect k6 results, logs, health snapshots, and assertion reports
+          find runtime/perf -name "*.json" -o -name "*.md" -o -name "*.log" -o -name "*.csv" | head -20
+          cp -r runtime/perf/* runtime/logs/ 2>/dev/null || true
       - name: Capture k8s after metrics
         if: always() && inputs.target_env == 'k8s_cluster'
         env:
