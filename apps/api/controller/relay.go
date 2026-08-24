@@ -140,7 +140,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if blocked, label := service.CheckSensitiveAll(meta.CombineText); blocked {
 			logger.LogWarn(c, fmt.Sprintf("input blocked by sensitive filter: %s", label))
 			service.RecordSensitiveBlock(c, "input", label, meta.CombineText)
-			newAPIError = types.NewError(err, types.ErrorCodeSensitiveWordsDetected, types.ErrOptionWithStatusCode(http.StatusForbidden))
+			newAPIError = types.NewErrorWithStatusCode(errors.New("input blocked by sensitive filter"), types.ErrorCodeSensitiveWordsDetected, http.StatusForbidden)
 			return
 		}
 	}
@@ -151,7 +151,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if d := service.CheckSensitiveTargets(meta.CombineText); d != "" {
 			logger.LogWarn(c, fmt.Sprintf("input blocked by target domain: %s", d))
 			service.RecordSensitiveBlock(c, "input", "target:"+d, meta.CombineText)
-			newAPIError = types.NewErrorWithStatusCode(err, types.ErrorCodeSensitiveWordsDetected, http.StatusForbidden)
+			newAPIError = types.NewErrorWithStatusCode(errors.New("input blocked by target domain"), types.ErrorCodeSensitiveWordsDetected, http.StatusForbidden)
 			return
 		}
 	}

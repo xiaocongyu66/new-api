@@ -297,6 +297,9 @@ func InitOpenAIError(errorCode ErrorCode, statusCode int, ops ...NewAPIErrorOpti
 }
 
 func NewErrorWithStatusCode(err error, errorCode ErrorCode, statusCode int, ops ...NewAPIErrorOptions) *NewAPIError {
+	if err == nil {
+		err = errors.New("no upstream error context")
+	}
 	e := &NewAPIError{
 		Err: err,
 		RelayError: OpenAIError{
