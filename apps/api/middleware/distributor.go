@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
+	channelcap "github.com/QuantumNous/new-api/internal/capabilities/channel"
 	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/model"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -103,7 +104,7 @@ func Distribute() func(c contract.Context) {
 					}
 				}
 
-				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
+				if preferredChannelID, found := channelcap.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
 					affinityUsable := false
 					preferred, err := model.CacheGetChannel(preferredChannelID)
 					if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled &&
@@ -117,7 +118,7 @@ func Distribute() func(c contract.Context) {
 									common.SetCtxKey(c, constant.ContextKeyAutoGroup, g)
 									channel = preferred
 									affinityUsable = true
-									service.MarkChannelAffinityUsed(c, g, preferred.Id)
+									channelcap.MarkChannelAffinityUsed(c, g, preferred.Id)
 									break
 								}
 							}
@@ -125,11 +126,11 @@ func Distribute() func(c contract.Context) {
 							channel = preferred
 							selectGroup = usingGroup
 							affinityUsable = true
-							service.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
+							channelcap.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
 						}
 					}
-					if !affinityUsable && !service.ShouldKeepChannelAffinityOnChannelDisabled() {
-						service.ClearCurrentChannelAffinityCache(c)
+					if !affinityUsable && !channelcap.ShouldKeepChannelAffinityOnChannelDisabled() {
+						channelcap.ClearCurrentChannelAffinityCache(c)
 					}
 				}
 
@@ -167,7 +168,7 @@ func Distribute() func(c contract.Context) {
 		SetupContextForSelectedChannel(c, channel, modelRequest.Model)
 		c.Next()
 		if channel != nil && c.ResponseStatus() > 0 && c.ResponseStatus() < http.StatusBadRequest {
-			service.RecordChannelAffinity(c, channel.Id)
+			channelcap.RecordChannelAffinity(c, channel.Id)
 		}
 	}
 }
@@ -464,7 +465,7 @@ func SetupContextForSelectedChannel(c contract.Context, channel *model.Channel, 
 	common.SetCtxKey(c, constant.ContextKeyChannelOtherSetting, channel.GetOtherSettings())
 	paramOverride := channel.GetParamOverride()
 	headerOverride := channel.GetHeaderOverride()
-	if mergedParam, applied := service.ApplyChannelAffinityOverrideTemplate(c, paramOverride); applied {
+	if mergedParam, applied := channelcap.ApplyChannelAffinityOverrideTemplate(c, paramOverride); applied {
 		paramOverride = mergedParam
 	}
 	common.SetCtxKey(c, constant.ContextKeyChannelHeaderOverride, headerOverride)

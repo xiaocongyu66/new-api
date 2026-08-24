@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	taskdto "github.com/QuantumNous/new-api/dto"
+	channelcap "github.com/QuantumNous/new-api/internal/capabilities/channel"
 	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
@@ -363,7 +364,7 @@ func shouldRetry(c contract.Context, openaiErr *types.NewAPIError, retryTimes in
 	if openaiErr == nil {
 		return false
 	}
-	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
+	if channelcap.ShouldSkipRetryAfterChannelAffinityFailure(c) {
 		return false
 	}
 	if types.IsChannelError(openaiErr) {
@@ -426,7 +427,7 @@ func processChannelError(c contract.Context, channelError types.ChannelError, er
 			adminInfo["is_multi_key"] = true
 			adminInfo["multi_key_index"] = common.GetCtxKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)
 		}
-		service.AppendChannelAffinityAdminInfo(c, adminInfo)
+		channelcap.AppendChannelAffinityAdminInfo(c, adminInfo)
 		other["admin_info"] = adminInfo
 		startTime := common.GetCtxKeyTime(c, constant.ContextKeyRequestStartTime)
 		if startTime.IsZero() {
@@ -673,7 +674,7 @@ func shouldRetryTaskRelay(c contract.Context, channelId int, taskErr *taskdto.Ta
 	if taskErr == nil {
 		return false
 	}
-	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
+	if channelcap.ShouldSkipRetryAfterChannelAffinityFailure(c) {
 		return false
 	}
 	if retryTimes <= 0 {
