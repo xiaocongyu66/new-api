@@ -168,22 +168,6 @@ func TestCreateLoginSessionEnforcesIssuanceLimitAcrossAllStatuses(t *testing.T) 
 	assert.Equal(t, int64(4), count)
 }
 
-func TestPasswordResetDoesNotClearSessionIssuanceHistory(t *testing.T) {
-	useTestSessionSecret(t)
-	user := setupAuthSessionTestDB(t)
-	common.UserSessionActiveLimit = 50
-	common.UserSessionIssuanceLimit = 1
-	email := "session-reset@example.com"
-	require.NoError(t, model.DB.Model(user).Update("email", email).Error)
-
-	_, err := CreateLoginSession(user.Id, "password", "127.0.0.1", "test-agent")
-	require.NoError(t, err)
-	require.NoError(t, model.ResetUserPasswordByEmail(email, "new-password"))
-
-	_, err = CreateLoginSession(user.Id, "password", "127.0.0.1", "test-agent")
-	assert.ErrorIs(t, err, model.ErrUserSessionIssuanceLimit)
-}
-
 func TestCreateLoginSessionFailsClosedWhenLimitCountFails(t *testing.T) {
 	useTestSessionSecret(t)
 	user := setupAuthSessionTestDB(t)

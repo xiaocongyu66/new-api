@@ -2,6 +2,7 @@ package controller
 
 import (
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/capabilities/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -23,7 +24,7 @@ func GetSubscription(c contract.Context) {
 	} else {
 		userId := c.GetInt("id")
 		remainQuota, err = model.GetUserQuota(userId, false)
-		usedQuota, err = model.GetUserUsedQuota(userId)
+		usedQuota, err = identity.GetUserUsedQuota(userId)
 	}
 	if expiredTime <= 0 {
 		expiredTime = 0
@@ -78,7 +79,7 @@ func GetUsage(c contract.Context) {
 		quota = token.UsedQuota
 	} else {
 		userId := c.GetInt("id")
-		quota, err = model.GetUserUsedQuota(userId)
+		quota, err = identity.GetUserUsedQuota(userId)
 	}
 	if err != nil {
 		openAIError := types.OpenAIError{

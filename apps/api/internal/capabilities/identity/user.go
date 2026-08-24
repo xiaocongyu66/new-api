@@ -186,7 +186,7 @@ func setupLoginAtAuthVersion(user *model.User, expectedAuthVersion int64, c cont
 		writeAuthSessionError(c, err)
 		return
 	}
-	model.UpdateUserLastLoginAt(user.Id)
+	UpdateUserLastLoginAt(user.Id)
 	service.WriteRefreshCookie(c, bundle.RefreshToken)
 	setAuthNoStore(c)
 	recordLoginAudit(user, c)
@@ -250,7 +250,7 @@ func Register(c contract.Context) {
 	if common.EmailVerificationEnabled {
 		emailForExistCheck = user.Email
 	}
-	exist, err := model.CheckUserExistOrDeleted(user.Username, emailForExistCheck)
+	exist, err := CheckUserExistOrDeleted(user.Username, emailForExistCheck)
 	if err != nil {
 		common.CtxApiErrorI18n(c, i18n.MsgDatabaseError)
 		common.SysLog(fmt.Sprintf("CheckUserExistOrDeleted error: %v", err))
@@ -261,7 +261,7 @@ func Register(c contract.Context) {
 		return
 	}
 	affCode := user.AffCode // this code is the inviter's code, not the user's own code
-	inviterId, _ := model.GetUserIdByAffCode(affCode)
+	inviterId, _ := GetUserIdByAffCode(affCode)
 	cleanUser := model.User{
 		Username:    user.Username,
 		Password:    user.Password,
@@ -326,7 +326,7 @@ func Register(c contract.Context) {
 func GetAllUsers(c contract.Context) {
 	pageInfo := common.GetPageQuery(c)
 	sortOptions := model.NewUserSortOptions(c.Query("sort_by"), c.Query("sort_order"))
-	users, total, err := model.GetAllUsers(pageInfo, sortOptions)
+	users, total, err := listAllUsers(pageInfo, sortOptions)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -412,7 +412,7 @@ func GenerateAccessToken(c contract.Context) {
 		return
 	}
 
-	if err := model.UpdateUserAccessToken(id, key); err != nil {
+	if err := UpdateUserAccessToken(id, key); err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -900,7 +900,7 @@ func DeleteUser(c contract.Context) {
 		common.CtxApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return
 	}
-	err = model.HardDeleteUserById(id)
+	err = HardDeleteUserById(id)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -925,7 +925,7 @@ func DeleteSelf(c contract.Context) {
 		return
 	}
 
-	err := model.DeleteUserById(id)
+	err := DeleteUserById(id)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
