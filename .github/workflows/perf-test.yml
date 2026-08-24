@@ -1,0 +1,124 @@
+name: Performance Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: 'Test scenario to run'
+        type: choice
+        required: true
+        options:
+          - chat-throughput
+          - stream-latency
+        default: 'chat-throughput'
+      target_url:
+        description: 'Target base URL (e.g. http://host:port)'
+        type: string
+        required: true
+      api_key:
+        description: 'Bearer API key (will be masked)'
+        type: string
+        required: true
+      model:
+        description: 'Model name'
+        type: string
+        required: false
+        default: 'mock-fast'
+      vus:
+        description: 'Target VUs'
+        type: string
+        required: false
+        default: '100'
+      duration:
+        description: 'Test duration (e.g. 120s)'
+        type: string
+        required: false
+        default: '120s'
+      ramp_duration:
+        description: 'Ramp-up duration (chat-throughput only)'
+        type: string
+        required: false
+        default: '30s'
+      p95_ms:
+        description: 'p95 latency budget in ms (chat-throughput only)'
+        type: string
+        required: false
+        default: '30000'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  perf:
+    name: k6 ${{ github.event.inputs.scenario }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup k6
+        uses: grafana/setup-k6-action@v1
+        with:
+          version: 'latest'
+
+      - name: Mask API key
+        run: echo "::add-mask::${{ github.event.inputs.api_key }}"
+
+      - name: Run k6
+        id: k6
+        run: |
+          k6 run \
+            -e TARGET_URL="${{ github.event.inputs.target_url }}" \
+            -e API_KEY="${{ github.event.inputs.api_key }}" \
+            -e MODEL="${{ github.event.inputs.model }}" \
+            -e VUS="${{ github.event.inputs.vus }}" \
+            -e DURATION="${{ github.event.inputs.duration }}" \
+            -e RAMP_DURATION="${{ github.event.inputs.ramp_duration }}" \
+            -e P95_MS="${{ github.event.inputs.p95_ms }}" \
+            -e SUMMARY_JSON=perf-result.json \
+            tests/perf/scenarios/${{ github.event.inputs.scenario }}.js
+
+      - name: Upload summary artifact
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68396de0c4961d61e8c17a6 # v4.6.2
+        with:
+          name: perf-result-${{ github.event.inputs.scenario }}
+          path: perf-result.json
+          retention-days: 7
+
+      - name: Append summary to job summary
+        if: always()
+        run: |
+          if [ -f perf-result.json ]; then
+            echo "### k6 Summary (${{ github.event.inputs.scenario }})" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '| Metric | Value |' >> $GITHUB_STEP_SUMMARY
+            echo '|--------|-------|' >> $GITHUB_STEP_SUMMARY
+            jq -r '
+              .metrics.http_req_duration.values as $d
+              | "http_req_duration p(50): \($d["p(50)"] | floor)ms",
+                "http_req_duration p(95): \($d["p(95)"] | floor)ms",
+                "http_req_duration p(99): \($d["p(99)"] | floor)ms"
+            ' perf-result.json >> $GITHUB_STEP_SUMMARY 2>/dev/null || true
+            jq -r '
+              .metrics.http_req_failed.values as $f
+              | "http_req_failed rate: \(($f.rate * 100) | floor / 100)%"
+            ' perf-result.json >> $GITHUB_STEP_SUMMARY 2>/dev/null || true
+            jq -r '
+              .metrics.ttft.values as $t
+              | "ttft p(50): \($t["p(50)"] | floor)ms",
+                "ttft p(95): \($t["p(95)"] | floor)ms"
+            ' perf-result.json >> $GITHUB_STEP_SUMMARY 2>/dev/null || true
+            jq -r '
+              .metrics.vus.values as $v,
+              .metrics.iterations.values as $i,
+              .metrics.http_reqs.values as $r
+              | "VUs (max): \($v.max)",
+                "Iterations: \($i.count)",
+                "Total requests: \($r.count)"
+            ' perf-result.json >> $GITHUB_STEP_SUMMARY 2>/dev/null || true
+          else
+            echo "perf-result.json not found, skipping summary" >> $GITHUB_STEP_SUMMARY
+          fi

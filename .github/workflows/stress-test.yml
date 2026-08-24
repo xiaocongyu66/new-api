@@ -1,0 +1,534 @@
+name: Stress & Chaos Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_env:
+        description: '测试目标环境'
+        required: true
+        default: 'k8s_cluster'
+        type: choice
+        options:
+          - k8s_cluster
+          - local_runner
+      scenario:
+        description: '压测场景'
+        required: true
+        default: 'matrix'
+        type: choice
+        options:
+          - matrix
+          - state_matrix
+          - short_non_stream
+          - long_stream
+          - mixed_stream_non_stream
+      concurrency:
+        description: '短/混合请求并发数'
+        required: true
+        default: '30'
+        type: string
+      stream_concurrency:
+        description: '长流式请求并发数'
+        required: true
+        default: '10'
+        type: string
+      duration:
+        description: '混合场景持续时间(秒)'
+        required: true
+        default: '60'
+        type: string
+      short_duration:
+        description: '短非流式场景持续时间(秒)'
+        required: true
+        default: '20'
+        type: string
+      long_duration:
+        description: '长流式场景持续时间(秒)'
+        required: true
+        default: '60'
+        type: string
+      model:
+        description: '测试模型；auto 表示从 /v1/models 自动选择可用模型'
+        required: true
+        default: 'auto'
+        type: string
+      target_url:
+        description: 'K8s 压测目标 URL，默认 NodePort 入口'
+        required: true
+        default: 'http://136.0.34.25:30080/v1'
+        type: string
+      host_header:
+        description: 'Ingress Host header，可为空'
+        required: false
+        default: 'api.example.com'
+        type: string
+      k8s_image_tag:
+        description: '测试镜像 tag；空值表示只测当前集群版本'
+        required: false
+        default: ''
+        type: string
+      rollback_after_test:
+        description: '测试结束后回滚到压测前 Deployment revision'
+        required: true
+        default: true
+        type: boolean
+      local_database:
+        description: 'local_runner 数据库'
+        required: true
+        default: 'sqlite'
+        type: choice
+        options:
+          - sqlite
+          - postgres
+
+jobs:
+  stress-test:
+    name: Stress ${{ inputs.target_env }} ${{ inputs.scenario }}
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: ${{ (inputs.local_database == 'postgres' && inputs.target_env == 'local_runner') && 'postgres:16-alpine' || '' }}
+        env:
+          POSTGRES_USER: root
+          POSTGRES_PASSWORD: rootpassword
+          POSTGRES_DB: newapi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python Dependencies
+        run: pip install --no-cache-dir aiohttp
+
+      - name: Setup kubectl
+        if: inputs.target_env == 'k8s_cluster'
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        if: inputs.target_env == 'k8s_cluster'
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG_B64 }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Capture server hardware specs
+        if: inputs.target_env == 'k8s_cluster'
+        env:
+          SERVERS_LIST_JSON: ${{ secrets.SERVERS_LIST_JSON }}
+        run: |
+          set -euo pipefail
+          mkdir -p runtime/logs
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sshpass jq
+          : > runtime/logs/server-specs.txt
+          echo "$SERVERS_LIST_JSON" | jq -c '.[]' | while read -r s; do
+            IP=$(echo "$s" | jq -r .ip)
+            USER=$(echo "$s" | jq -r .user)
+            PASS=$(echo "$s" | jq -r .password)
+            echo "::add-mask::$PASS"
+            {
+              echo "## $IP"
+              sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 "$USER@$IP" '
+                hostname
+                uname -a
+                lscpu | sed -n "1,25p"
+                free -h
+                df -h /
+              ' || echo "ssh probe failed"
+              echo
+            } >> runtime/logs/server-specs.txt
+          done
+
+      - name: Capture k8s baseline and optionally deploy test image
+        if: inputs.target_env == 'k8s_cluster'
+        run: |
+          set -euo pipefail
+          mkdir -p runtime/logs
+          MASTER_IMAGE=$(kubectl get deployment/new-api-master -o jsonpath='{.spec.template.spec.containers[?(@.name=="new-api")].image}')
+          WORKER_IMAGE=$(kubectl get deployment/new-api-worker -o jsonpath='{.spec.template.spec.containers[?(@.name=="new-api")].image}')
+          echo "$MASTER_IMAGE" > runtime/logs/master-image-before.txt
+          echo "$WORKER_IMAGE" > runtime/logs/worker-image-before.txt
+          kubectl rollout history deployment/new-api-master > runtime/logs/master-rollout-before.txt || true
+          kubectl rollout history deployment/new-api-worker > runtime/logs/worker-rollout-before.txt || true
+          kubectl get nodes -o wide > runtime/logs/nodes.txt
+          kubectl describe nodes > runtime/logs/nodes-describe.txt
+          kubectl top nodes > runtime/logs/nodes-top-before.txt || true
+          kubectl top pods -l app=new-api > runtime/logs/pods-top-before.txt || true
+          kubectl get pods -l app=new-api -o wide > runtime/logs/pods-before.txt
+          kubectl get deploy new-api-master new-api-worker -o yaml > runtime/logs/deploy-before.yaml
+          kubectl get ingress,svc -o wide > runtime/logs/network-before.txt
+          if [ -n "${{ inputs.k8s_image_tag }}" ]; then
+            IMAGE="ghcr.io/${{ github.repository }}:${{ inputs.k8s_image_tag }}"
+            kubectl set image deployment/new-api-master new-api="$IMAGE"
+            kubectl set image deployment/new-api-worker new-api="$IMAGE"
+            kubectl rollout status deployment/new-api-master --timeout=300s
+            kubectl rollout status deployment/new-api-worker --timeout=300s
+          fi
+
+      - name: Deploy in-cluster mock upstream
+        if: inputs.target_env == 'k8s_cluster'
+        run: |
+          set -euo pipefail
+          kubectl apply -f - <<'YAML'
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: stress-mock-py
+          data:
+            mock.py: |
+              import json, random, time
+              from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+              MODELS = ["mock-fast", "mock-slow", "mock-flaky", "mock-bad"]
+              class H(BaseHTTPRequestHandler):
+                  protocol_version = "HTTP/1.1"
+                  def log_message(self, *a):
+                      pass
+                  def _json(self, code, obj):
+                      body = json.dumps(obj).encode()
+                      self.send_response(code)
+                      self.send_header("Content-Type", "application/json")
+                      self.send_header("Content-Length", str(len(body)))
+                      self.end_headers()
+                      self.wfile.write(body)
+                  def do_GET(self):
+                      if self.path == "/v1/models":
+                          self._json(200, {"object": "list", "data": [{"id": m} for m in MODELS]})
+                      else:
+                          self._json(404, {"error": "not found"})
+                  def do_POST(self):
+                      if self.path != "/v1/chat/completions":
+                          self._json(404, {"error": "not found"})
+                          return
+                      ln = int(self.headers.get("Content-Length", 0))
+                      body = json.loads(self.rfile.read(ln) or b"{}")
+                      model = body.get("model", "mock-fast")
+                      stream = bool(body.get("stream"))
+                      max_tokens = int(body.get("max_tokens") or 16)
+                      if "bad" in model:
+                          self._json(401, {"error": {"message": "invalid mock api key", "type": "invalid_request_error"}})
+                          return
+                      if "flaky" in model and random.random() < 0.3:
+                          self._json(500, {"error": {"message": "mock transient failure"}})
+                          return
+                      if "slow" in model:
+                          time.sleep(5)
+                      n = max(1, min(max_tokens, 64))
+                      if not stream:
+                          self._json(200, {"id": "mock", "object": "chat.completion", "created": int(time.time()), "model": model, "choices": [{"index": 0, "message": {"role": "assistant", "content": "OK " * n}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 10, "completion_tokens": n, "total_tokens": n + 10}})
+                          return
+                      self.send_response(200)
+                      self.send_header("Content-Type", "text/event-stream")
+                      self.send_header("Transfer-Encoding", "chunked")
+                      self.end_headers()
+                      def chunk(d):
+                          b = d.encode()
+                          self.wfile.write(("%x\r\n" % len(b)).encode() + b + b"\r\n")
+                          self.wfile.flush()
+                      for _ in range(n):
+                          chunk("data: " + json.dumps({"choices": [{"delta": {"content": "x"}, "index": 0, "finish_reason": None}]}) + "\n\n")
+                          time.sleep(0.05)
+                      chunk("data: [DONE]\n\n")
+                      self.wfile.write(b"0\r\n\r\n")
+              ThreadingHTTPServer(("0.0.0.0", 8099), H).serve_forever()
+          ---
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: stress-mock
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: stress-mock
+            template:
+              metadata:
+                labels:
+                  app: stress-mock
+              spec:
+                containers:
+                  - name: mock
+                    image: python:3.12-alpine
+                    command: ["python", "/mock/mock.py"]
+                    ports:
+                      - containerPort: 8099
+                    volumeMounts:
+                      - name: mock-src
+                        mountPath: /mock
+                        readOnly: true
+                    resources:
+                      requests:
+                        cpu: 50m
+                        memory: 64Mi
+                      limits:
+                        cpu: 500m
+                        memory: 128Mi
+                volumes:
+                  - name: mock-src
+                    configMap:
+                      name: stress-mock-py
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: stress-mock
+          spec:
+            selector:
+              app: stress-mock
+            ports:
+              - port: 80
+                targetPort: 8099
+          YAML
+          kubectl rollout status deployment/stress-mock --timeout=300s
+          kubectl get deployment,svc,cm -l app=stress-mock -o yaml > runtime/logs/stress-mock.yaml || true
+
+      - name: Ensure k8s stress token exists
+        if: inputs.target_env == 'k8s_cluster'
+        env:
+          K8S_API_KEY: ${{ secrets.K8S_STRESS_API_KEY }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${K8S_API_KEY:?K8S_STRESS_API_KEY secret is required}"
+          TOKEN_KEY="${K8S_API_KEY#sk-}"
+          POSTGRES_POD=$(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -i "$POSTGRES_POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 <<SQL
+          INSERT INTO tokens (user_id, key, status, name, created_time, accessed_time, expired_time, remain_quota, unlimited_quota, model_limits_enabled, model_limits, allow_ips, used_quota, "group", cross_group_retry, auto_groups)
+          VALUES (1, '$TOKEN_KEY', 1, 'gha-k8s-stress-token', EXTRACT(EPOCH FROM now())::bigint, EXTRACT(EPOCH FROM now())::bigint, -1, 2147483647, true, false, '', '', 0, 'default', true, '')
+          ON CONFLICT (key) DO UPDATE SET status=1, remain_quota=2147483647, unlimited_quota=true, used_quota=0, "group"='default', model_limits_enabled=false, allow_ips='', expired_time=-1, deleted_at=NULL;
+          UPDATE users SET quota=2147483647, used_quota=0 WHERE id=1;
+          INSERT INTO options (key, value) VALUES ('RetryTimes','5') ON CONFLICT (key) DO UPDATE SET value='5';
+          INSERT INTO options (key, value) VALUES ('GroupRatio','{"default":0.1}')
+          ON CONFLICT (key) DO UPDATE SET value = (COALESCE(options.value,'{}')::jsonb || '{"default":0.1}'::jsonb)::text;
+          DELETE FROM abilities WHERE channel_id BETWEEN 90001 AND 90003;
+          DELETE FROM channels WHERE id BETWEEN 90001 AND 90003;
+          INSERT INTO channels (id, type, key, status, name, weight, created_time, base_url, models, "group", priority, auto_ban, other_info, settings)
+          SELECT 90000 + n, 1, 'mock', 1, 'gha-stress-' || n, 10, EXTRACT(EPOCH FROM now())::bigint, 'http://stress-mock', 'mock-fast,mock-slow,mock-flaky,mock-bad', 'default', 0, 1, '', ''
+          FROM generate_series(1,3) AS n;
+          INSERT INTO abilities ("group", model, channel_id, enabled, priority, weight)
+          SELECT 'default', m, 90000 + n, true, 0, 10
+          FROM generate_series(1,3) AS n CROSS JOIN (VALUES ('mock-fast'),('mock-slow'),('mock-flaky'),('mock-bad')) AS v(m);
+          SELECT id, user_id, status, remain_quota, unlimited_quota, "group", deleted_at FROM tokens WHERE key = '$TOKEN_KEY';
+          SELECT id, name, status, "group" FROM channels WHERE id BETWEEN 90001 AND 90003;
+          SQL
+          kubectl rollout restart deployment/new-api-master deployment/new-api-worker
+          kubectl rollout status deployment/new-api-master --timeout=300s
+          kubectl rollout status deployment/new-api-worker --timeout=300s
+      - name: Setup Go for local runner target
+        if: inputs.target_env == 'local_runner'
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: false
+
+      - name: Build and launch local new-api
+        if: inputs.target_env == 'local_runner'
+        run: |
+          set -euo pipefail
+          mkdir -p bin runtime/data runtime/logs
+          cd apps/api
+          go build -o ../../bin/new-api .
+          cd ../../runtime
+          if [ "${{ inputs.local_database }}" = "postgres" ]; then
+            export SQL_DSN="postgres://root:rootpassword@localhost:5432/newapi?sslmode=disable"
+          else
+            export SQL_DSN="local"
+            export SQLITE_PATH="$PWD/data/new-api.db"
+          fi
+          export PORT=3000 LOG_DIR="$PWD/logs" REDIS_CONN_STRING="redis://127.0.0.1:6379"
+          export SESSION_SECRET="ci-stress-test-secret" CRYPTO_SECRET="ci-stress-test-crypto-secret"
+          ../bin/new-api > logs/stdout.log 2>&1 &
+          for i in {1..30}; do curl -fsS http://127.0.0.1:3000/api/status && break || sleep 1; done
+
+      - name: Initialize local runner token
+        if: inputs.target_env == 'local_runner'
+        id: local_token
+        run: |
+          curl -s -X POST http://127.0.0.1:3000/api/setup -H 'Content-Type: application/json' -d '{"username":"root","password":"root123456","confirmPassword":"root123456"}' || true
+          TOKEN=$(curl -s -X POST http://127.0.0.1:3000/api/user/login -H 'Content-Type: application/json' -d '{"username":"root","password":"root123456"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["access_token"])')
+          curl -s -X PUT -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' http://127.0.0.1:3000/api/option/ -d '{"key":"RetryTimes","value":"5"}'
+          curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' http://127.0.0.1:3000/api/token/ -d '{"name":"ci-stress-token","remain_quota":2147483647,"expired_time":-1,"unlimited_quota":true,"model_limits_enabled":false,"group":"default"}'
+          GW_KEY=$(python3 - <<'PY'
+          import sqlite3
+          print(sqlite3.connect('runtime/data/new-api.db').execute('select key from tokens order by id desc limit 1').fetchone()[0])
+          PY
+          )
+          echo "api_key=$GW_KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Execute stress test
+        if: inputs.scenario != 'state_matrix'
+        env:
+          K8S_API_KEY: ${{ secrets.K8S_STRESS_API_KEY }}
+          LOCAL_API_KEY: ${{ steps.local_token.outputs.api_key }}
+        run: |
+          set -euo pipefail
+          mkdir -p runtime/logs
+          if [ "${{ inputs.target_env }}" = "local_runner" ]; then
+            TARGET_URL="http://127.0.0.1:3000/v1"
+            API_KEY="$LOCAL_API_KEY"
+            HOST_HEADER=""
+          else
+            TARGET_URL="${{ inputs.target_url }}"
+            API_KEY="$K8S_API_KEY"
+            HOST_HEADER="${{ inputs.host_header }}"
+            STATUS_URL="${TARGET_URL%/v1}/api/status"
+            if ! curl -fsS --connect-timeout 5 -H "Host: $HOST_HEADER" "$STATUS_URL" > runtime/logs/direct-ingress-status.txt 2>&1; then
+              echo "direct ingress failed; using kubectl port-forward to service/new-api" | tee runtime/logs/target-mode.txt
+              kubectl port-forward svc/new-api 18080:80 > runtime/logs/port-forward.log 2>&1 &
+              for i in {1..20}; do
+                curl -fsS http://127.0.0.1:18080/api/status && break || sleep 1
+              done
+              TARGET_URL="http://127.0.0.1:18080/v1"
+              HOST_HEADER=""
+            else
+              echo "direct ingress ok" | tee runtime/logs/target-mode.txt
+            fi
+          fi
+          python3 scripts/stress_test.py \
+            --scenario "${{ inputs.scenario }}" \
+            --target-url "$TARGET_URL" \
+            --host-header "$HOST_HEADER" \
+            --api-key "$API_KEY" \
+            --model "${{ inputs.model }}" \
+            --concurrency "${{ inputs.concurrency }}" \
+            --stream-concurrency "${{ inputs.stream_concurrency }}" \
+            --duration "${{ inputs.duration }}" \
+            --short-duration "${{ inputs.short_duration }}" \
+            --long-duration "${{ inputs.long_duration }}" \
+            --mixed-model auto \
+            --min-success-rate 0 \
+            --requests-file runtime/logs/requests.csv \
+            --report-file runtime/logs/report.md \
+            --json-file runtime/logs/metrics.json
+
+      - name: Execute state matrix stress test
+        if: inputs.scenario == 'state_matrix'
+        env:
+          K8S_API_KEY: ${{ secrets.K8S_STRESS_API_KEY }}
+          LOCAL_API_KEY: ${{ steps.local_token.outputs.api_key }}
+        run: |
+          set -euo pipefail
+          mkdir -p runtime/perf runtime/logs
+          if [ "${{ inputs.target_env }}" = "local_runner" ]; then
+            TARGET_URL="http://127.0.0.1:3000/v1"
+            API_KEY="$LOCAL_API_KEY"
+            HOST_HEADER=""
+          else
+            TARGET_URL="${{ inputs.target_url }}"
+            API_KEY="$K8S_API_KEY"
+            HOST_HEADER="${{ inputs.host_header }}"
+            STATUS_URL="${TARGET_URL%/v1}/api/status"
+            if ! curl -fsS --connect-timeout 5 -H "Host: $HOST_HEADER" "$STATUS_URL" > runtime/logs/direct-ingress-status.txt 2>&1; then
+              echo "direct ingress failed; using kubectl port-forward to service/new-api" | tee runtime/logs/target-mode.txt
+              kubectl port-forward svc/new-api 18080:80 > runtime/logs/port-forward.log 2>&1 &
+              for i in {1..20}; do
+                curl -fsS http://127.0.0.1:18080/api/status && break || sleep 1
+              done
+              TARGET_URL="http://127.0.0.1:18080/v1"
+              HOST_HEADER=""
+            else
+              echo "direct ingress ok" | tee runtime/logs/target-mode.txt
+            fi
+          fi
+          python3 tests/perf/run_state_matrix.py \
+            --scenario all \
+            --target-url "$TARGET_URL" \
+            --api-key "$API_KEY" \
+            --report-dir runtime/perf \
+            --model "${{ inputs.model }}" \
+            --vus "${{ inputs.concurrency }}" \
+            --duration "${{ inputs.duration }}"
+          # Collect k6 results, logs, health snapshots, and assertion reports
+          find runtime/perf -name "*.json" -o -name "*.md" -o -name "*.log" -o -name "*.csv" | head -20
+          cp -r runtime/perf/* runtime/logs/ 2>/dev/null || true
+      - name: Capture k8s after metrics
+        if: always() && inputs.target_env == 'k8s_cluster'
+        env:
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        run: |
+          kubectl top nodes > runtime/logs/nodes-top-after.txt || true
+          kubectl top pods -l app=new-api > runtime/logs/pods-top-after.txt || true
+          kubectl get pods -l app=new-api -o wide > runtime/logs/pods-after.txt || true
+          kubectl logs deployment/new-api-worker --all-pods=true --prefix=true --tail=-1 > runtime/logs/worker-full.log || true
+          kubectl logs deployment/new-api-master --all-pods=true --prefix=true --tail=-1 > runtime/logs/master-tail.log || true
+          POSTGRES_POD=$(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -i "$POSTGRES_POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT channel_id, key_index, model, state, isolation_level, dormant_disable_count, version, updated_at FROM channel_model_health ORDER BY channel_id, model" > runtime/logs/db-health-after.txt || true
+          kubectl exec -i "$POSTGRES_POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT channel_id, model, enabled, weight FROM abilities WHERE channel_id BETWEEN 90001 AND 90003 ORDER BY channel_id, model" > runtime/logs/db-abilities-after.txt || true
+          python3 - <<'PY' > runtime/logs/internal.md || true
+          import json, re
+          from collections import Counter, defaultdict
+          text = open("runtime/logs/worker-full.log", encoding="utf-8", errors="ignore").read()
+          print("## 内部路由分发（record consume log）")
+          print("| 渠道 | 模型 | 请求数 | 平均内耗(s) | 流式占比 |")
+          print("|---|---|---:|---:|---:|")
+          agg = defaultdict(lambda: [0, 0.0, 0])
+          for m in re.finditer(r'record consume log: userId=\d+, params=(\{.*?\})\s*$', text, re.M):
+              try:
+                  p = json.loads(m.group(1))
+              except Exception:
+                  continue
+              key = (p.get("channel_id"), p.get("model_name"))
+              a = agg[key]
+              a[0] += 1
+              a[1] += p.get("use_time_seconds", 0)
+              a[2] += 1 if p.get("is_stream") else 0
+          for (ch, model), (n, t, s) in sorted(agg.items()):
+              print(f"| {ch} | {model} | {n} | {round(t/n, 2) if n else 0} | {round(s*100/n, 1) if n else 0}% |")
+          print()
+          print("## 状态机与调度事件")
+          for pat, label in [
+              ("route isolation", "路由隔离"),
+              ("emergency recover", "紧急拉回"),
+              ("key verification", "Key 探活/连坐"),
+              ("channel model health state changed concurrently", "CAS 争用丢账（应为 0）"),
+              ("system cpu overloaded", "CPU 保护拒绝"),
+          ]:
+              hits = [ln for ln in text.splitlines() if pat in ln]
+              print(f"- {label}（`{pat}`）: {len(hits)} 条")
+              for ln in hits[:8]:
+                  print(f"  - `{ln.strip()[:200]}`")
+          PY
+
+      - name: Restore pre-test k8s images
+        if: always() && inputs.target_env == 'k8s_cluster' && inputs.rollback_after_test == true && inputs.k8s_image_tag != ''
+        run: |
+          MASTER_IMAGE=$(cat runtime/logs/master-image-before.txt 2>/dev/null || true)
+          WORKER_IMAGE=$(cat runtime/logs/worker-image-before.txt 2>/dev/null || true)
+          [ -n "$MASTER_IMAGE" ] && kubectl set image deployment/new-api-master new-api="$MASTER_IMAGE" || true
+          [ -n "$WORKER_IMAGE" ] && kubectl set image deployment/new-api-worker new-api="$WORKER_IMAGE" || true
+          kubectl rollout status deployment/new-api-master --timeout=300s || true
+          kubectl rollout status deployment/new-api-worker --timeout=300s || true
+          kubectl get deploy new-api-master new-api-worker -o wide > runtime/logs/deploy-after-rollback.txt || true
+
+      - name: Append report to job summary
+        if: always()
+        run: |
+          [ -f runtime/logs/report.md ] && cat runtime/logs/report.md >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo '## Server / K8s Evidence' >> "$GITHUB_STEP_SUMMARY"
+          for f in runtime/logs/target-mode.txt runtime/logs/internal.md runtime/logs/server-specs.txt runtime/logs/nodes.txt runtime/logs/nodes-top-before.txt runtime/logs/nodes-top-after.txt runtime/logs/pods-before.txt runtime/logs/pods-after.txt runtime/logs/db-health-after.txt; do
+            [ -f "$f" ] && { echo "### $f" >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"; cat "$f" >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"; }
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stress-test-artifacts-${{ inputs.target_env }}-${{ inputs.scenario }}
+          path: runtime/logs/
