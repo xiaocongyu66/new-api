@@ -1,8 +1,8 @@
 package helper
 
 import (
+	"sort"
 	"strings"
-	"sync"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -15,17 +15,20 @@ import (
 // 输出侧敏感内容静默过滤：命中不再断流，而是把目标域名/词库敏感词从 chunk
 // 文本中切除后照常下发，客户端永远看不到系统配置的敏感内容。
 //
-// 流式边界处理：buf 保存全部已扫描未发出的文本；每步全量扫描后只发出
-// 末尾 outputHoldbackLen() 字节之前的部分。任何长度 ≤ holdback 的命中单元
-// 在其末字节被发出前必然完整落入某次扫描窗口（否则它跨越发射边界，长度
-// 必须 > holdback），故不漏放。holdback 取词库词与目标域名的最大字节长度。
+// 流式边界处理：命中单元可能跨 chunk。buf 保存全部已接收未发出的文本，
+// safe 标记「上一轮已有内容」与「本轮新增」的分界。每步对 buf+data 全量
+// 扫描，但只发出 safe 之前的净化文本——跨分界的命中其切除区间必然压住
+// 分界点，发射端被钳到切除起点，整段留到下一轮再发。因此任何长度有限的
+// 命中单元最晚在其后第二个 chunk 到达时被完整切除，且 SSE 帧不会被切断
+// （切除只发生在帧内容内部，帧行数不变）。
 //
-// ponytail: 引入至多 holdback 字节的额外出字延迟；JSON \uXXXX 转义形式的
-// 内容不在折叠范围（上游几乎都发原始 UTF-8）。少数渠道适配器不经 Done()
-// 自行渲染 [DONE]，其尾部缓冲不再补发（截断至多 holdback 字节）。
+// ponytail: 引入一个 chunk 的额外出字延迟；JSON \uXXXX 转义形式的内容不在
+// 折叠范围（上游几乎都发原始 UTF-8）。不经 Done()/StreamScannerHandler
+// 收尾的适配器（少数渠道自渲染 [DONE]）尾部缓冲不再补发。
 
 type sensitiveOutputState struct {
-	buf string // 已接收未发出的文本（尾部 holdback 字节待后续确认）
+	buf  string // 已接收未发出的文本
+	safe int    // buf 内「上轮已有内容」结束偏移（本轮不发出越过它的区间）
 }
 
 // outputFilterState 获取/初始化请求级输出过滤状态。
@@ -40,49 +43,45 @@ func outputFilterState(c *gin.Context) *sensitiveOutputState {
 	return s
 }
 
-// outputHoldbackLen 最长可命中单元的字节长度（词库词 + 目标域名 + 子域余量）。
-// 下限 16 兜底动态配置，上限 256 防极端词条拖垮内存与延迟。
-var outputHoldbackLen = sync.OnceValue(func() int {
-	h := 16
-	for _, w := range setting.SensitiveWords {
-		if l := len(w); l > h {
-			h = l
+// mapOffset 把原文偏移映射为净化后坐标；offset 落在切除区间内时钳到该区间起点。
+func mapOffset(cuts [][2]int, offset int) int {
+	sort.Slice(cuts, func(i, j int) bool { return cuts[i][0] < cuts[j][0] })
+	delta := 0
+	for _, c := range cuts {
+		switch {
+		case c[1] <= offset:
+			delta += c[1] - c[0]
+		case c[0] < offset:
+			return c[0] - delta // 钳到切除起点，整段延迟
+		default:
+			return offset - delta
 		}
 	}
-	for _, d := range service.TargetDomains() {
-		if l := len(d) + 8; l > h { // www. 子域前缀余量
-			h = l
-		}
-	}
-	if h > 256 {
-		h = 256
-	}
-	return h
-})
+	return offset - delta
+}
 
 // outputChunkFiltered 过滤一个输出 chunk，返回可立即下发的净化文本（可能为空）。
 // 目标域过滤无条件生效；词库过滤受 CheckSensitiveOnCompletionEnabled 控制。
 func outputChunkFiltered(c *gin.Context, data string) string {
 	st := outputFilterState(c)
-	st.buf += data
+	safe := len(st.buf)
+	scan := st.buf + data
 	var cleaned string
 	var labels []string
+	var cuts [][2]int
 	if setting.ShouldCheckCompletionSensitive() {
-		cleaned, labels = service.SanitizeSensitiveText(st.buf)
+		cleaned, labels, cuts = service.SanitizeSensitiveTextRanges(scan)
 	} else {
-		cleaned, labels = service.SanitizeTargetDomains(st.buf)
+		cleaned, labels, cuts = service.SanitizeTargetDomainsRanges(scan)
 	}
 	if len(labels) > 0 {
 		common.SysLog("output sanitized by sensitive filter: [" + strings.Join(labels, ",") + "]")
-		service.RecordSensitiveBlock(c, "output", "sanitize:"+strings.Join(labels, ","), st.buf)
+		service.RecordSensitiveBlock(c, "output", "sanitize:"+strings.Join(labels, ","), scan)
 	}
-	keep := outputHoldbackLen()
-	if len(cleaned) <= keep {
-		st.buf = cleaned
-		return ""
-	}
-	out := cleaned[:len(cleaned)-keep]
-	st.buf = cleaned[len(cleaned)-keep:]
+	emitEnd := mapOffset(cuts, safe)
+	out := cleaned[:emitEnd]
+	st.buf = cleaned[emitEnd:]
+	st.safe = len(st.buf)
 	return out
 }
 
@@ -94,6 +93,7 @@ func FlushOutputPending(c *gin.Context) string {
 	}
 	buf := st.buf
 	st.buf = ""
+	st.safe = 0
 	var cleaned string
 	var labels []string
 	if setting.ShouldCheckCompletionSensitive() {

@@ -202,3 +202,32 @@ func SanitizeRelayRequest(request dto.Request) []string {
 	}
 	return labels
 }
+
+// sanitizeRanges 同 sanitizeText，但额外返回原文字节坐标系中的切除区间
+// （升序、不重叠），供流式输出做发射边界映射。
+func sanitizeRanges(text string, withDict bool) (string, []string, [][2]int) {
+	if text == "" {
+		return text, nil, nil
+	}
+	folded, starts := foldView(text)
+	rs, hits := targetHitRanges(folded, starts)
+	if withDict {
+		drs, dhits := dictHitRanges(folded, starts)
+		rs = append(rs, drs...)
+		hits = append(hits, dhits...)
+	}
+	if len(rs) == 0 {
+		return text, nil, nil
+	}
+	return cutRanges(text, rs), hits, rs
+}
+
+// SanitizeSensitiveTextRanges 词库+目标域版本，见 sanitizeRanges。
+func SanitizeSensitiveTextRanges(text string) (string, []string, [][2]int) {
+	return sanitizeRanges(text, true)
+}
+
+// SanitizeTargetDomainsRanges 仅目标域版本，见 sanitizeRanges。
+func SanitizeTargetDomainsRanges(text string) (string, []string, [][2]int) {
+	return sanitizeRanges(text, false)
+}
