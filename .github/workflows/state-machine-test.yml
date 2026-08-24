@@ -207,9 +207,8 @@ jobs:
             }
             ensure_gateway || { overall=1; continue; }
             dir="runtime/perf/scenario-$n"; mkdir -p "$dir"
-            k6 run --vus "$vus" --duration "$duration" -e TARGET_URL="$TARGET_URL" -e API_KEY="$API_KEY" -e MODEL="$model" -e SUMMARY_JSON="$dir/k6-summary.json" "tests/perf/scenarios/$script" > "$dir/k6.log" 2>&1
-            k6_rc=$?
-            kubectl logs -l app=new-api-worker --all-containers=true --prefix=true --tail=-1 > "$dir/worker.log" 2>&1
+            k6 run --vus "$vus" --duration "$duration" -e TARGET_URL="$TARGET_URL" -e API_KEY="$API_KEY" -e MODEL="$model" -e BAD_KEY_MODEL="$model" -e SLOW_MODEL="$model" -e SUMMARY_JSON="$dir/k6-summary.json" "tests/perf/scenarios/$script" > "$dir/k6.log" 2>&1
+            kubectl logs deployment/new-api-worker --all-pods=true --prefix=true --tail=-1 > "$dir/worker.log" 2>&1
             pod=$(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
             kubectl exec "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "COPY (SELECT channel_id,key_index,model,state,isolation_level,dormant_disable_count,local_failure_count,upstream_failure_count,version,updated_at FROM channel_model_health ORDER BY channel_id,key_index,model) TO STDOUT WITH CSV HEADER" > "$dir/channel_model_health.csv" 2>&1
             python3 tests/perf/assertions/state_machine.py --derive-distribution --worker-log "$dir/worker.log" --distribution-json "$dir/distribution.json" || true
