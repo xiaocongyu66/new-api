@@ -70,7 +70,7 @@ func WeChatAuth(c contract.Context) {
 	user := model.User{
 		WeChatId: wechatId,
 	}
-	if model.IsWeChatIdAlreadyTaken(wechatId) {
+	if IsWeChatIdAlreadyTaken(wechatId) {
 		err := user.FillUserByWeChatId()
 		if err != nil {
 			_ = c.JSON(http.StatusOK, common.H{
@@ -88,7 +88,7 @@ func WeChatAuth(c contract.Context) {
 		}
 	} else {
 		if common.RegisterEnabled {
-			user.Username = "wechat_" + strconv.Itoa(model.GetMaxUserId()+1)
+			user.Username = "wechat_" + strconv.Itoa(GetMaxUserId()+1)
 			user.DisplayName = "WeChat User"
 			user.Role = common.RoleCommonUser
 			user.Status = common.UserStatusEnabled
@@ -148,7 +148,7 @@ func WeChatBind(c contract.Context) {
 		})
 		return
 	}
-	if model.IsWeChatIdAlreadyTaken(wechatId) {
+	if IsWeChatIdAlreadyTaken(wechatId) {
 		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": "该微信账号已被绑定",
@@ -161,7 +161,7 @@ func WeChatBind(c contract.Context) {
 		return
 	}
 	// 只更新绑定列，避免完整用户快照覆盖并发的封禁、降权或分组变更。
-	if err := model.UpdateUserBindColumn(userId, "wechat_id", wechatId); err != nil {
+	if err := UpdateUserBindColumn(userId, "wechat_id", wechatId); err != nil {
 		common.CtxApiError(c, err)
 		return
 	}

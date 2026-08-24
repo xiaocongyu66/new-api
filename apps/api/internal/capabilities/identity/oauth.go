@@ -276,7 +276,7 @@ func handleOAuthBind(c contract.Context, provider oauth.Provider, pendingFlow *m
 	} else {
 		// Built-in provider: 只更新绑定列。完整快照的 user.Update 会把读取时刻的
 		// role/status/group 一并写回，覆盖并发发生的封禁、降权或分组变更。
-		err = model.UpdateUserBindColumn(userId, provider.ProviderUserIDColumn(), oauthUser.ProviderUserID)
+		err = UpdateUserBindColumn(userId, provider.ProviderUserIDColumn(), oauthUser.ProviderUserID)
 		if err != nil {
 			common.CtxApiError(c, err)
 			return
@@ -331,10 +331,10 @@ func findOrCreateOAuthUser(c contract.Context, provider oauth.Provider, oauthUse
 	}
 
 	// Set up new user
-	user.Username = provider.GetProviderPrefix() + strconv.Itoa(model.GetMaxUserId()+1)
+	user.Username = provider.GetProviderPrefix() + strconv.Itoa(GetMaxUserId()+1)
 
 	if oauthUser.Username != "" {
-		if exists, err := model.CheckUserExistOrDeleted(oauthUser.Username, ""); err == nil && !exists {
+		if exists, err := CheckUserExistOrDeleted(oauthUser.Username, ""); err == nil && !exists {
 			// 防止索引退化
 			if len(oauthUser.Username) <= model.UserNameMaxLength {
 				user.Username = oauthUser.Username
@@ -364,7 +364,7 @@ func findOrCreateOAuthUser(c contract.Context, provider oauth.Provider, oauthUse
 	// Handle affiliate code
 	inviterId := 0
 	if affiliateCode != "" {
-		inviterId, _ = model.GetUserIdByAffCode(affiliateCode)
+		inviterId, _ = GetUserIdByAffCode(affiliateCode)
 	}
 
 	// Use transaction to ensure user creation and OAuth binding are atomic

@@ -139,22 +139,6 @@ func (user *User) SetAccessToken(token string) {
 	user.AccessToken = &token
 }
 
-// UpdateUserAccessToken rotates a dashboard personal access token without
-// writing a stale user snapshot back over concurrently updated fields.
-func UpdateUserAccessToken(id int, token string) error {
-	if id == 0 {
-		return errors.New("id 为空！")
-	}
-	result := DB.Model(&User{}).Where("id = ?", id).Update("access_token", token)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
-}
-
 func (user *User) GetSetting() dto.UserSetting {
 	setting := dto.UserSetting{}
 	if user.Setting != "" {
@@ -188,30 +172,6 @@ func UpdateUserSetting(userId int, setting dto.UserSetting) error {
 		return err
 	}
 	return updateUserSettingCache(userId, settingValue)
-}
-
-// userBindColumns 允许通过 UpdateUserBindColumn 更新的第三方账号绑定列白名单。
-// 列名只可能来自代码内部的 provider 实现，白名单是防御纵深，不依赖调用方自律。
-var userBindColumns = map[string]bool{
-	"github_id":   true,
-	"discord_id":  true,
-	"oidc_id":     true,
-	"linux_do_id": true,
-	"wechat_id":   true,
-}
-
-// UpdateUserBindColumn 第三方账号绑定字段的专用更新。
-// 绑定操作必须只写绑定列：若改为“读取完整用户 → 改一个字段 → 整体更新”，
-// 读快照期间并发发生的封禁、降权或分组变更会被旧快照覆盖恢复。
-// 角色、状态、分组只允许通过各自带锁/CAS 的专用方法修改。
-func UpdateUserBindColumn(userId int, column string, value string) error {
-	if userId <= 0 {
-		return errors.New("id 为空！")
-	}
-	if !userBindColumns[column] {
-		return fmt.Errorf("invalid user bind column: %s", column)
-	}
-	return DB.Model(&User{}).Where("id = ?", userId).Update(column, value).Error
 }
 
 // 根据用户角色生成默认的边栏配置
@@ -274,31 +234,6 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 	}
 
 	return string(configBytes)
-}
-
-// CheckUserExistOrDeleted check if user exist or deleted, if not exist, return false, nil, if deleted or exist, return true, nil
-func CheckUserExistOrDeleted(username string, email string) (bool, error) {
-	var user User
-
-	// err := DB.Unscoped().First(&user, "username = ? or email = ?", username, email).Error
-	// check email if empty
-	var err error
-	email = NormalizeEmail(email)
-	if email == "" {
-		err = DB.Unscoped().First(&user, "username = ?", username).Error
-	} else {
-		err = DB.Unscoped().First(&user, "username = ? or LOWER(email) = ?", username, email).Error
-	}
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// not exist, return false, nil
-			return false, nil
-		}
-		// other error, return false, err
-		return false, err
-	}
-	// exist, return true, nil
-	return true, nil
 }
 
 func NormalizeEmail(email string) string {
@@ -378,47 +313,6 @@ func withNormalizedEmailLock(tx *gorm.DB, email string, fn func(tx *gorm.DB) err
 		}
 	}
 	return fn(tx)
-}
-
-func GetMaxUserId() int {
-	var user User
-	DB.Unscoped().Last(&user)
-	return user.Id
-}
-
-func GetAllUsers(pageInfo *common.PageInfo, sortOptions ...UserSortOptions) (users []*User, total int64, err error) {
-	// Start transaction
-	tx := DB.Begin()
-	if tx.Error != nil {
-		return nil, 0, tx.Error
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-		}
-	}()
-
-	// Get total count within transaction
-	err = tx.Unscoped().Model(&User{}).Count(&total).Error
-	if err != nil {
-		tx.Rollback()
-		return nil, 0, err
-	}
-
-	// Get paginated users within same transaction
-	order := resolveUserSortOptions(sortOptions)
-	err = order.Apply(tx.Unscoped()).Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Omit("password", "access_token").Find(&users).Error
-	if err != nil {
-		tx.Rollback()
-		return nil, 0, err
-	}
-
-	// Commit transaction
-	if err = tx.Commit().Error; err != nil {
-		return nil, 0, err
-	}
-
-	return users, total, nil
 }
 
 func SearchUsers(keyword string, group string, role *int, status *int, startIdx int, num int, sortOptions ...UserSortOptions) ([]*User, int64, error) {
@@ -511,22 +405,6 @@ func GetUserIdByAffCode(affCode string) (int, error) {
 	var user User
 	err := DB.Select("id").First(&user, "aff_code = ?", affCode).Error
 	return user.Id, err
-}
-
-func DeleteUserById(id int) (err error) {
-	if id == 0 {
-		return errors.New("id 为空！")
-	}
-	user := User{Id: id}
-	return user.Delete()
-}
-
-func HardDeleteUserById(id int) error {
-	if id == 0 {
-		return errors.New("id 为空！")
-	}
-	user := User{Id: id}
-	return user.HardDelete()
 }
 
 func inviteUser(inviterId int) error {
@@ -1083,29 +961,6 @@ func IsEmailAlreadyTaken(email string) bool {
 	return err == nil && count > 0
 }
 
-func GetUniqueUserByEmail(email string) (*User, error) {
-	email = NormalizeEmail(email)
-	if email == "" {
-		return nil, ErrEmailNotFound
-	}
-	var users []User
-	if err := DB.Where("LOWER(email) = ?", email).Limit(2).Find(&users).Error; err != nil {
-		return nil, err
-	}
-	switch len(users) {
-	case 0:
-		return nil, ErrEmailNotFound
-	case 1:
-		return &users[0], nil
-	default:
-		return nil, ErrEmailAmbiguous
-	}
-}
-
-func IsWeChatIdAlreadyTaken(wechatId string) bool {
-	return DB.Unscoped().Where("wechat_id = ?", wechatId).Find(&User{}).RowsAffected == 1
-}
-
 func IsGitHubIdAlreadyTaken(githubId string) bool {
 	return DB.Unscoped().Where("github_id = ?", githubId).Find(&User{}).RowsAffected == 1
 }
@@ -1116,33 +971,6 @@ func IsDiscordIdAlreadyTaken(discordId string) bool {
 
 func IsOidcIdAlreadyTaken(oidcId string) bool {
 	return DB.Where("oidc_id = ?", oidcId).Find(&User{}).RowsAffected == 1
-}
-
-func ResetUserPasswordByEmail(email string, password string) error {
-	if email == "" || password == "" {
-		return errors.New("邮箱地址或密码为空！")
-	}
-	user, err := GetUniqueUserByEmail(email)
-	if err != nil {
-		return err
-	}
-	hashedPassword, err := common.Password2Hash(password)
-	if err != nil {
-		return err
-	}
-	if err = DB.Transaction(func(tx *gorm.DB) error {
-		if _, err := IncrementUserAuthVersionWithTx(tx, user.Id); err != nil {
-			return err
-		}
-		return tx.Model(&User{}).Where("id = ?", user.Id).Update("password", hashedPassword).Error
-	}); err != nil {
-		return err
-	}
-	if err := PublishUserAuthCache(user.Id); err != nil {
-		return err
-	}
-	_, err = RevokeAllUserSessions(user.Id, "password_reset")
-	return err
 }
 
 func IsAdmin(userId int) bool {
@@ -1185,11 +1013,6 @@ func GetUserQuota(id int, fromDB bool) (quota int, err error) {
 	}
 
 	return quota, nil
-}
-
-func GetUserUsedQuota(id int) (quota int, err error) {
-	err = DB.Model(&User{}).Where("id = ?", id).Select("used_quota").Find(&quota).Error
-	return quota, err
 }
 
 // GetUserGroup gets group from Redis first, falls back to DB if needed
@@ -1316,12 +1139,6 @@ func decreaseUserQuota(id int, quota int) (err error) {
 func GetRootUser() (user *User) {
 	DB.Where("role = ?", common.RoleRootUser).First(&user)
 	return user
-}
-
-func UpdateUserLastLoginAt(id int) {
-	if err := DB.Model(&User{}).Where("id = ?", id).Update("last_login_at", common.GetTimestamp()).Error; err != nil {
-		common.SysLog("failed to update user last_login_at: " + err.Error())
-	}
 }
 
 func UpdateUserUsedQuotaAndRequestCount(id int, quota int) {
