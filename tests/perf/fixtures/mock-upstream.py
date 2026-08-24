@@ -10,7 +10,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.getenv("PORT", "8099"))
 FAILURE_RATIO = float(os.getenv("FAILURE_RATIO", "0.3"))
+RECOVERY_FAILURES = int(os.getenv("RECOVERY_FAILURES", "10"))
 SLOW_DELAY = float(os.getenv("SLOW_DELAY", "5"))
+REQUESTS = {}
 MODELS = ["mock-fast", "mock-slow", "mock-flaky", "mock-bad", "mock-recover", "mock-weighted"]
 
 
@@ -26,13 +28,14 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
-
     def do_GET(self):
         if self.path == "/health":
             self.send_json(200, {"status": "ok"})
         elif self.path == "/v1/models":
-            self.send_json(200, {"object": "list", "data": [{"id": name} for name in MODELS]})
+            if "bad-key" in self.headers.get("Authorization", ""):
+                self.send_json(401, {"error": {"message": "invalid mock api key"}})
+            else:
+                self.send_json(200, {"object": "list", "data": [{"id": name} for name in MODELS]})
         else:
             self.send_json(404, {"error": {"message": "not found"}})
 
@@ -47,10 +50,17 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(400, {"error": {"message": "invalid json"}})
             return
         model = body.get("model", "mock-fast")
-        if model == "mock-bad" or model.endswith("-bad"):
+        REQUESTS[model] = REQUESTS.get(model, 0) + 1
+        if model == "mock-bad" and "bad-key" in self.headers.get("Authorization", ""):
             self.send_json(401, {"error": {"message": "invalid mock api key", "type": "authentication_error"}})
             return
-        if model in ("mock-flaky", "mock-recover") and random.random() < FAILURE_RATIO:
+        if model == "mock-recover" and REQUESTS[model] <= RECOVERY_FAILURES:
+            self.send_json(500, {"error": {"message": "recovery warmup failure", "type": "server_error"}})
+            return
+        if model == "mock-slow" and REQUESTS[model] % 3 == 0:
+            self.send_json(500, {"error": {"message": "slow upstream failure", "type": "server_error"}})
+            return
+        if model == "mock-flaky" and random.random() < FAILURE_RATIO:
             self.send_json(500, {"error": {"message": "mock transient failure", "type": "server_error"}})
             return
         if model == "mock-slow":

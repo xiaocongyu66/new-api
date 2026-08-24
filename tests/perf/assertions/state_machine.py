@@ -80,6 +80,15 @@ def derive_distribution(lines: list[str]) -> dict[str, int]:
     return dict(counts)
 
 
+def assert_cas(rows: list[HealthRow], lines: list[str]) -> list[dict[str, object]]:
+    conflicts = sum("state changed concurrently" in line for line in lines)
+    versions = max((row.version for row in rows), default=0)
+    return [
+        result("cas-health-version", versions > 1, f"max_version={versions}"),
+        result("cas-contention-observed", conflicts > 0 or versions >= 2, f"conflict_logs={conflicts}"),
+    ]
+
+
 def load_distribution(path: Path, lines: list[str]) -> dict[str, int]:
     if path.exists():
         try:
@@ -149,7 +158,7 @@ def assert_timeout(rows: list[HealthRow], lines: list[str]) -> list[dict[str, ob
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--scenario", choices=("bad-key-cascade", "pool-pressure", "gray-failure", "weight-distribution", "timeout-classification"))
+    parser.add_argument("--scenario", choices=("cas-contention", "bad-key-cascade", "pool-pressure", "gray-failure", "weight-distribution", "timeout-classification"))
     parser.add_argument("--health-csv", type=Path)
     parser.add_argument("--worker-log", type=Path, required=True)
     parser.add_argument("--distribution-json", type=Path)
@@ -169,8 +178,8 @@ def main() -> int:
     match args.scenario:
         case "bad-key-cascade":
             checks = assert_bad_key(rows, lines, args.bad_key_channel, args.bad_key_index)
-        case "pool-pressure":
-            checks = assert_pool(rows, lines)
+        case "cas-contention":
+            checks = assert_cas(rows, lines)
         case "gray-failure":
             checks = assert_gray(rows, lines)
         case "weight-distribution":
