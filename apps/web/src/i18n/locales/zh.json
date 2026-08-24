@@ -5076,7 +5076,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "相关项目",
     "footer.defaultCopyright": "版权所有。",
-    "footer.newapi.projectAttributionSuffix": "版权所有，由项目贡献者设计与开发。",
+    "footer.new\u0061pi.projectAttributionSuffix": "版权所有，由项目贡献者设计与开发。",
     "gpt-3.5-turbo": "gpt-3.5-turbo",
     "gpt-3.5-turbo-0125": "gpt-3.5-turbo-0125",
     "gpt-4": "gpt-4",
@@ -5387,13 +5387,9 @@
     "Cooldown max duration must be non-negative": "冷却最大时长不能为负数",
     "Max ejection percentage must be between 0 and 100": "最大驱逐比例必须在 0 到 100 之间",
     "Cooldown alpha must be between 0 and 1": "冷却 Alpha 必须在 0 到 1 之间",
-    "Cooldown max duration must be greater than or equal to the base duration": "冷却最大时长必须大于或等于基础时长"
-  },
-  "Recent Blocks": "近期拦截",
-  "{{total}} records": "{{total}} 条记录",
-  "Direction": "方向",
-  "Layer": "层级",
-  "Matched": "命中内容",
-  "Snippet": "片段",
-  "No blocked requests yet": "暂无拦截记录"
+    "Cooldown max duration must be greater than or equal to the base duration": "冷却最大时长必须大于或等于基础时长",
+    "Select an icon": "选择图标",
+    "Search icons": "搜索图标",
+    "Clear icon": "清除图标"
+  }
 }

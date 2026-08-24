@@ -33,6 +33,7 @@ import {
   sideDrawerHeaderClassName,
   sideDrawerSwitchItemClassName,
 } from '@/components/drawer-layout'
+import { IconPicker } from '@/components/icon-picker'
 import { JsonEditor } from '@/components/json-editor'
 import { TagInput } from '@/components/tag-input'
 import { Button } from '@/components/ui/button'
@@ -805,9 +806,9 @@ export function ModelMutateDrawer({
                   <FormItem>
                     <FormLabel>{t('Icon')}</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder={t('OpenAI, Anthropic, etc.')}
-                        {...field}
+                      <IconPicker
+                        value={field.value}
+                        onChange={field.onChange}
                       />
                     </FormControl>
                     <FormDescription className='text-xs'>

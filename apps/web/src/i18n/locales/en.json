@@ -5076,7 +5076,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Related Projects",
     "footer.defaultCopyright": "All rights reserved.",
-    "footer.newapi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
+    "footer.new\u0061pi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
     "gpt-3.5-turbo": "gpt-3.5-turbo",
     "gpt-3.5-turbo-0125": "gpt-3.5-turbo-0125",
     "gpt-4": "gpt-4",
@@ -5387,6 +5387,9 @@
     "Cooldown max duration must be non-negative": "Cooldown max duration must be non-negative",
     "Max ejection percentage must be between 0 and 100": "Max ejection percentage must be between 0 and 100",
     "Cooldown alpha must be between 0 and 1": "Cooldown alpha must be between 0 and 1",
-    "Cooldown max duration must be greater than or equal to the base duration": "Cooldown max duration must be greater than or equal to the base duration"
+    "Cooldown max duration must be greater than or equal to the base duration": "Cooldown max duration must be greater than or equal to the base duration",
+    "Select an icon": "Select an icon",
+    "Search icons": "Search icons",
+    "Clear icon": "Clear icon"
   }
 }

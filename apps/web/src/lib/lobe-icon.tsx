@@ -72,6 +72,9 @@ const LOBE_ICONS: Record<string, Record<string, unknown> | React.ComponentType<R
   Vidu, Wenxin, XAI, Yi, Zhipu,
 }
 
+// Sorted brand keys, exported for the visual icon picker.
+export const LOBE_ICON_KEYS = Object.keys(LOBE_ICONS).sort()
+
 /**
  * Parse a property value from string to appropriate type
  * @param raw - Raw string value
