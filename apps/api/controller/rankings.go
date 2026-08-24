@@ -7,10 +7,6 @@ import (
 	"github.com/QuantumNous/new-api/service"
 )
 
-// GetRankings serves the usage ranking snapshot.
-//
-// It takes the framework-neutral transport contract rather than *gin.Context, so
-// replacing the HTTP framework does not touch this handler.
 func GetRankings(c contract.Context) {
 	result, err := service.GetRankingsSnapshot(c.DefaultQuery("period", "week"))
 	if err != nil {
