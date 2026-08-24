@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/capabilities/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strings"
@@ -80,7 +81,7 @@ func UniversalVerify(c contract.Context) {
 
 func isAllowedSecurityProofScope(scope string) bool {
 	switch scope {
-	case securityProofScopeChannelKeyRead, securityProofScopePasskeyRegister, securityProofScopePasskeyDelete:
+	case identity.SecurityProofScopeChannelKeyRead, identity.SecurityProofScopePasskeyRegister, identity.SecurityProofScopePasskeyDelete:
 		return true
 	default:
 		return false
