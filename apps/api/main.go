@@ -105,10 +105,10 @@ func main() {
 					}
 				}
 			}()
-			model.InitChannelCache()
+			channelcap.InitChannelCache()
 		}()
 
-		go model.SyncChannelCache(common.SyncFrequency)
+		go channelcap.SyncChannelCache(common.SyncFrequency)
 	}
 
 	// Warm pricing after channel cache initialization so Advanced Custom

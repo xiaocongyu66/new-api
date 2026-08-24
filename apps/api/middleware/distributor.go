@@ -113,7 +113,7 @@ func Distribute() func(c contract.Context) {
 							userGroup := common.GetCtxKeyString(c, constant.ContextKeyUserGroup)
 							autoGroups := setting.GetRequestAutoGroups(c, userGroup)
 							for _, g := range autoGroups {
-								if model.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
+								if channelcap.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
 									selectGroup = g
 									common.SetCtxKey(c, constant.ContextKeyAutoGroup, g)
 									channel = preferred
@@ -122,7 +122,7 @@ func Distribute() func(c contract.Context) {
 									break
 								}
 							}
-						} else if model.IsChannelEnabledForGroupModel(usingGroup, modelRequest.Model, preferred.Id) {
+						} else if channelcap.IsChannelEnabledForGroupModel(usingGroup, modelRequest.Model, preferred.Id) {
 							channel = preferred
 							selectGroup = usingGroup
 							affinityUsable = true
