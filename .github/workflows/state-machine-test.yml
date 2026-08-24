@@ -187,6 +187,12 @@ jobs:
             -d '{"model":"mock-bad","messages":[{"role":"user","content":"probe"}],"max_tokens":1,"stream":false}' \
             "$TARGET_URL/chat/completions" > runtime/logs/preflight-chat.json || true
           kubectl logs deployment/stress-mock --tail=-1 > runtime/logs/mock-upstream-before-matrix.log 2>&1 || true
+          kubectl run stress-upstream-probe --rm --restart=Never --image=curlimages/curl:8.10.1 -- \
+            curl --fail --silent --show-error --max-time 10 \
+            -H 'Content-Type: application/json' \
+            -H 'Authorization: Bearer bad-key' \
+            -d '{"model":"mock-bad","messages":[{"role":"user","content":"probe"}],"max_tokens":1}' \
+            http://stress-mock/v1/chat/completions > runtime/logs/upstream-probe.json
       - name: Reconnect refreshed worker target
         run: |
           pkill -f 'kubectl port-forward' || true
