@@ -1,9 +1,9 @@
 package service
 
 import (
-	"github.com/QuantumNous/new-api/internal/capabilities/billing/settlecore"
 	"bytes"
 	"context"
+	"github.com/QuantumNous/new-api/internal/capabilities/billing/settlecore"
 	"io"
 	"net/http"
 	"sync"
