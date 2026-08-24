@@ -1,110 +1,79 @@
 #!/usr/bin/env python3
-"""
-Mock upstream server for state machine stress tests.
-Simulates OpenAI-compatible /v1/chat/completions endpoint with controllable behavior.
-"""
-import os
+"""Dependency-free OpenAI-compatible fixture for #392 scenario matrix."""
+from __future__ import annotations
+
 import json
-import asyncio
-from datetime import datetime
-from typing import Optional
-from aiohttp import web
+import os
+import random
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-# Configuration via environment
-PORT = int(os.getenv("PORT", "8080"))
-FAILURE_MODE = os.getenv("FAILURE_MODE", "healthy")  # healthy, timeout, 500, 401, 429
-FAILURE_RATE = float(os.getenv("FAILURE_RATE", "0.0"))  # 0.0-1.0
-LATENCY_MS = int(os.getenv("LATENCY_MS", "10"))
-DELAY_STARTUP = os.getenv("DELAY_STARTUP", "false").lower() == "true"
-
-request_count = 0
-start_time = datetime.utcnow()
+PORT = int(os.getenv("PORT", "8099"))
+FAILURE_RATIO = float(os.getenv("FAILURE_RATIO", "0.3"))
+SLOW_DELAY = float(os.getenv("SLOW_DELAY", "5"))
+MODELS = ["mock-fast", "mock-slow", "mock-flaky", "mock-bad", "mock-recover", "mock-weighted"]
 
 
-async def health(request):
-    return web.json_response({
-        "status": "ok",
-        "uptime_seconds": (datetime.utcnow() - start_time).total_seconds(),
-        "requests": request_count,
-        "failure_mode": FAILURE_MODE,
-        "failure_rate": FAILURE_RATE,
-    })
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
 
+    def log_message(self, *_args):
+        return
 
-async def models(request):
-    return web.json_response({
-        "object": "list",
-        "data": [
-            {"id": "gpt-4", "object": "model", "owned_by": "mock"},
-            {"id": "gpt-3.5-turbo", "object": "model", "owned_by": "mock"},
-            {"id": "claude-3-opus", "object": "model", "owned_by": "mock"},
-        ],
-    })
+    def send_json(self, status: int, value: dict) -> None:
+        body = json.dumps(value).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
+    def do_GET(self):
+        if self.path == "/health":
+            self.send_json(200, {"status": "ok"})
+        elif self.path == "/v1/models":
+            self.send_json(200, {"object": "list", "data": [{"id": name} for name in MODELS]})
+        else:
+            self.send_json(404, {"error": {"message": "not found"}})
 
-async def chat_completions(request):
-    global request_count
-    request_count += 1
-
-    # Simulate latency
-    if LATENCY_MS > 0:
-        await asyncio.sleep(LATENCY_MS / 1000.0)
-
-    # Determine if this request should fail
-    import random
-    should_fail = random.random() < FAILURE_RATE
-
-    # Also check for forced failure mode (non-rate based)
-    force_fail = FAILURE_MODE != "healthy"
-
-    if should_fail or force_fail:
-        if FAILURE_MODE == "timeout":
-            # Hang until client times out
-            await asyncio.sleep(3600)
-        elif FAILURE_MODE == "500":
-            return web.json_response(
-                {"error": {"message": "Internal server error", "type": "server_error"}},
-                status=500,
-            )
-        elif FAILURE_MODE == "401":
-            return web.json_response(
-                {"error": {"message": "Invalid API key", "type": "authentication_error"}},
-                status=401,
-            )
-        elif FAILURE_MODE == "429":
-            return web.json_response(
-                {"error": {"message": "Rate limit exceeded", "type": "rate_limit_error"}},
-                status=429,
-                headers={"Retry-After": "60"},
-            )
-
-    # Success response
-    body = await request.json()
-    model = body.get("model", "gpt-3.5-turbo")
-    return web.json_response({
-        "id": f"chatcmpl-mock-{request_count}",
-        "object": "chat.completion",
-        "created": int(datetime.utcnow().timestamp()),
-        "model": model,
-        "choices": [{
-            "index": 0,
-            "message": {"role": "assistant", "content": "Mock response"},
-            "finish_reason": "stop",
-        }],
-        "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
-    })
-
-
-async def init_app():
-    app = web.Application()
-    app.router.add_get("/health", health)
-    app.router.add_get("/v1/models", models)
-    app.router.add_post("/v1/chat/completions", chat_completions)
-    return app
+    def do_POST(self):
+        if self.path != "/v1/chat/completions":
+            self.send_json(404, {"error": {"message": "not found"}})
+            return
+        length = int(self.headers.get("Content-Length", 0))
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except json.JSONDecodeError:
+            self.send_json(400, {"error": {"message": "invalid json"}})
+            return
+        model = body.get("model", "mock-fast")
+        if model == "mock-bad" or model.endswith("-bad"):
+            self.send_json(401, {"error": {"message": "invalid mock api key", "type": "authentication_error"}})
+            return
+        if model in ("mock-flaky", "mock-recover") and random.random() < FAILURE_RATIO:
+            self.send_json(500, {"error": {"message": "mock transient failure", "type": "server_error"}})
+            return
+        if model == "mock-slow":
+            time.sleep(SLOW_DELAY)
+        tokens = max(1, min(int(body.get("max_tokens") or 16), 64))
+        created = int(time.time())
+        if not body.get("stream"):
+            self.send_json(200, {"id": "mock", "object": "chat.completion", "created": created, "model": model, "choices": [{"index": 0, "message": {"role": "assistant", "content": "OK " * tokens}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 10, "completion_tokens": tokens, "total_tokens": tokens + 10}})
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Transfer-Encoding", "chunked")
+        self.end_headers()
+        for _ in range(tokens):
+            data = json.dumps({"choices": [{"delta": {"content": "x"}, "index": 0, "finish_reason": None}]})
+            chunk = f"data: {data}\n\n".encode()
+            self.wfile.write(f"{len(chunk):x}\r\n".encode() + chunk + b"\r\n")
+            self.wfile.flush()
+            time.sleep(0.05)
+        done = b"data: [DONE]\n\n"
+        self.wfile.write(f"{len(done):x}\r\n".encode() + done + b"\r\n0\r\n\r\n")
+        self.wfile.flush()
 
 
 if __name__ == "__main__":
-    if DELAY_STARTUP:
-        import time
-        time.sleep(5)
-    web.run_app(init_app(), port=PORT)
+    ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
