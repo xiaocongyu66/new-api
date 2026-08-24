@@ -35,7 +35,7 @@ func GetRouteUnitViews(c *gin.Context) {
 		return
 	}
 
-	// Model already fills HealthScore via GetChannelHealthScore; ensure consistency.
+	// Model fills HealthScore via RouteWeightMultiplier; ensure consistency.
 	// Compute total weight from items.
 	totalWeight := 0
 	for _, v := range views {

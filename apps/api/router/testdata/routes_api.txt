@@ -31,6 +31,7 @@ GET /api/channel/:id
 GET /api/channel/:id/codex/usage
 GET /api/channel/:id/codex/usage/reset-credits
 GET /api/channel/fetch_models/:id
+GET /api/channel/health
 GET /api/channel/models
 GET /api/channel/models_enabled
 GET /api/channel/ollama/version/:id
@@ -154,6 +155,7 @@ POST /api/channel/batch/tag
 POST /api/channel/copy/:id
 POST /api/channel/fetch_models
 POST /api/channel/fix
+POST /api/channel/health/:action
 POST /api/channel/multi_key/manage
 POST /api/channel/ollama/pull
 POST /api/channel/ollama/pull/stream

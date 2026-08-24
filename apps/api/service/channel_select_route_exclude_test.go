@@ -15,9 +15,11 @@ import (
 )
 
 // TestCacheGetRandomSatisfiedChannelExcludesFailedRoute pins the route-level
-// retry contract: excluding a failed route unit (channel + key index) removes
-// exactly that unit from the candidate pool; excluding every unit yields nil
-// instead of silently re-selecting a failed route.
+// retry contract: excluding a failed route unit (channel + key index + model)
+// removes exactly that unit from the candidate pool; excluding every unit yields
+// nil instead of silently re-selecting a failed route. The Model field is part of
+// the key because isolation is per (channel, key, model): a dead model on an
+// otherwise healthy channel must not cost the channel its other models.
 func TestCacheGetRandomSatisfiedChannelExcludesFailedRoute(t *testing.T) {
 	db := setupChannelSelectAutoGroupsTest(t)
 	const modelName = "route-exclude-model"
@@ -44,7 +46,7 @@ func TestCacheGetRandomSatisfiedChannelExcludesFailedRoute(t *testing.T) {
 	assert.Equal(t, map[int]bool{3101: true, 3102: true}, seen)
 
 	// Exclude channel 3101's only key: selection must collapse to 3102.
-	param.ExcludeRoutes[model.RouteKey{ChannelId: 3101, KeyIndex: 0}] = true
+	param.ExcludeRoutes[model.RouteKey{ChannelId: 3101, KeyIndex: 0, Model: modelName}] = true
 	for range 40 {
 		route, _, err := CacheGetRandomSatisfiedChannel(param)
 		require.NoError(t, err)
@@ -53,7 +55,7 @@ func TestCacheGetRandomSatisfiedChannelExcludesFailedRoute(t *testing.T) {
 	}
 
 	// Exclude the remaining route: no candidate at all.
-	param.ExcludeRoutes[model.RouteKey{ChannelId: 3102, KeyIndex: 0}] = true
+	param.ExcludeRoutes[model.RouteKey{ChannelId: 3102, KeyIndex: 0, Model: modelName}] = true
 	route, _, err := CacheGetRandomSatisfiedChannel(param)
 	require.NoError(t, err)
 	assert.Nil(t, route)
@@ -66,7 +68,7 @@ func TestCacheGetRandomSatisfiedChannelExcludesFailedRoute(t *testing.T) {
 		RequestPath:   "",
 		ExcludeRoutes: make(map[model.RouteKey]bool),
 	}
-	multiKeyParam.ExcludeRoutes[model.RouteKey{ChannelId: 3101, KeyIndex: 1}] = true
+	multiKeyParam.ExcludeRoutes[model.RouteKey{ChannelId: 3101, KeyIndex: 1, Model: modelName}] = true
 	route, _, err = CacheGetRandomSatisfiedChannel(multiKeyParam)
 	require.NoError(t, err)
 	require.NotNil(t, route)

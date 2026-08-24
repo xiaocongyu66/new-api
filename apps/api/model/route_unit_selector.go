@@ -9,14 +9,8 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/pkg/routestats"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
-
-type RouteKey struct {
-	ChannelId int
-	KeyIndex  int
-}
 
 type SelectedRoute struct {
 	RouteId       int // channel_model_routes.id
@@ -130,9 +124,13 @@ func filterCandidatesByChannelStatusAndKey(candidates []routeCandidate, requestP
 		}
 		// Exclude routes by RouteKey
 		if excludeRoutes != nil {
-			if excludeRoutes[RouteKey{ChannelId: c.channelId, KeyIndex: c.keyIndex}] {
+			if excludeRoutes[RouteKey{ChannelId: c.channelId, KeyIndex: c.keyIndex, Model: alias}] {
 				continue
 			}
+		}
+		// Hard-signal exclusion: skip disabled routes
+		if !IsRouteSelectable(RouteKey{ChannelId: c.channelId, KeyIndex: c.keyIndex, Model: alias}) {
+			continue
 		}
 		// Advanced Custom path filtering
 		if requestPath != "" && channel.Type == constant.ChannelTypeAdvancedCustom {
@@ -168,7 +166,8 @@ func isKeyEnabled(channel *Channel, keyIndex int) bool {
 
 // selectByWeight performs weighted random selection on candidates using health-adjusted weights.
 // rnd is the random source; if nil, uses global rand.
-func selectByWeight(candidates []routeCandidate, rnd *rand.Rand) *routeCandidate {
+// alias is the public model alias used for RouteWeightMultiplier lookups.
+func selectByWeight(candidates []routeCandidate, alias string, rnd *rand.Rand) *routeCandidate {
 	if len(candidates) == 0 {
 		return nil
 	}
@@ -176,19 +175,7 @@ func selectByWeight(candidates []routeCandidate, rnd *rand.Rand) *routeCandidate
 		return &candidates[0]
 	}
 
-	healthMgr := GetChannelHealthManager()
-	maxEjectionPercent := 0
-	if cfg := operation_setting.GetChannelHealthSetting(); cfg != nil {
-		maxEjectionPercent = cfg.CooldownMaxEjectionPercent
-	}
-
-	channelIDs := make([]int, 0, len(candidates))
-	for _, c := range candidates {
-		channelIDs = append(channelIDs, c.channelId)
-	}
-	ejected := healthMgr.FilterCoolingChannels(channelIDs, maxEjectionPercent)
-
-	// Build final candidate list with weights, excluding ejected
+	// Build final candidate list with weights, excluding disabled (effW <= 0)
 	type weightedCandidate struct {
 		candidate routeCandidate
 		weight    float64
@@ -196,10 +183,7 @@ func selectByWeight(candidates []routeCandidate, rnd *rand.Rand) *routeCandidate
 	var weighted []weightedCandidate
 	var totalWeight float64
 	for _, c := range candidates {
-		if ejected != nil && ejected[c.channelId] {
-			continue
-		}
-		effW := healthMgr.routingWeight(c.channelId, routingBaseWeight(c.staticWeight), true)
+		effW := float64(routingBaseWeight(c.staticWeight)) * RouteWeightMultiplier(RouteKey{ChannelId: c.channelId, KeyIndex: c.keyIndex, Model: alias})
 		if effW <= 0 {
 			continue
 		}
@@ -269,7 +253,7 @@ func SelectRouteUnit(group string, alias string, requestPath string, retry int, 
 	}
 
 	// Weighted random selection
-	selected := selectByWeight(candidates, rnd)
+	selected := selectByWeight(candidates, alias, rnd)
 	if selected == nil {
 		return nil, nil
 	}
@@ -286,7 +270,7 @@ func SelectRouteUnit(group string, alias string, requestPath string, retry int, 
 	key, _, err := channel.GetNextEnabledKeyForIndex(selected.keyIndex)
 	if err != nil {
 		// If the specific key index is not available, fall back to any enabled key
-		key, _, _ = channel.GetNextEnabledKey()
+		key, _, _ = channel.GetNextEnabledKey(alias)
 	}
 
 	// Create routestats handle for this route unit (per-attempt attribution)
@@ -351,7 +335,7 @@ func SelectedRouteFromChannel(channel *Channel, alias string) (*SelectedRoute, e
 	if channel == nil {
 		return nil, errors.New("channel is nil")
 	}
-	key, keyIndex, err := channel.GetNextEnabledKey()
+	key, keyIndex, err := channel.GetNextEnabledKey(alias)
 	if err != nil {
 		return nil, err
 	}

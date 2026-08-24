@@ -98,6 +98,7 @@ func main() {
 				}
 			}()
 			model.InitChannelCache()
+			model.InitChannelModelHealthCache()
 		}()
 
 		go model.SyncChannelCache(common.SyncFrequency)
@@ -370,6 +371,8 @@ func InitResources() error {
 	}
 
 	service.StartAuthArtifactCleanup()
+
+	service.StartSensitiveAuditCleanup()
 
 	return nil
 }

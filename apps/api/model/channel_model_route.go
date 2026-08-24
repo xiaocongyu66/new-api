@@ -312,7 +312,7 @@ func GetRouteUnitViewsByAlias(alias string) ([]RouteUnitView, error) {
 			StaticWeight:     r.StaticWeight,
 			Enabled:          r.Enabled,
 			ExpectedShare:    share,
-			HealthScore:      GetChannelHealthScore(r.ChannelId),
+			HealthScore:      RouteWeightMultiplier(RouteKey{ChannelId: r.ChannelId, KeyIndex: r.KeyIndex, Model: r.PublicModelAlias}),
 			EwmaQuality:      1.0,
 		}
 		// GetHandle deliberately does not create state: listing route units must
@@ -386,10 +386,4 @@ func UpdateRouteUnitConfig(id int, weight *int, enabled *bool) error {
 		return gorm.ErrRecordNotFound
 	}
 	return nil
-}
-
-// GetChannelHealthScore returns the current EWMA health score for a channel.
-// Thin wrapper around GetChannelHealthManager().GetScore.
-func GetChannelHealthScore(channelID int) float64 {
-	return GetChannelHealthManager().GetScore(channelID)
 }

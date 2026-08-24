@@ -79,4 +79,6 @@ var channelPermissionRoutes = []permissionRoute{
 	{method: http.MethodGet, path: "/route_unit/", permission: authz.ChannelRead, handler: controller.GetRouteUnitViews},
 	{method: http.MethodGet, path: "/route_unit/aliases", permission: authz.ChannelRead, handler: controller.ListRouteUnitAliases},
 	{method: http.MethodPut, path: "/route_unit/:id", permission: authz.ChannelWrite, handler: controller.UpdateRouteUnit},
+	{method: http.MethodGet, path: "/health", permission: authz.ChannelRead, handler: controller.GetChannelModelHealth},
+	{method: http.MethodPost, path: "/health/:action", permission: authz.ChannelOperate, handler: controller.UpdateChannelModelHealth},
 }
