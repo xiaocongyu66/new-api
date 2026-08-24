@@ -104,17 +104,18 @@ func TestDataHelpersFraming(t *testing.T) {
 	assert.Empty(t, outputChunkFiltered(c, `{"n":1}`))
 	resp := dto.ClaudeResponse{Type: "content_block_delta"}
 	ClaudeChunkData(c, resp, `{"n":2}`)
-	require.NoError(t, ResponseChunkData(c, dto.ResponsesStreamResponse{}, `{"n":4}`))
 	body := w.Body.String()
 	assert.Contains(t, body, "event: content_block_delta")
 	assert.Contains(t, body, `data: {"n":1}`)
-	assert.Contains(t, body, `{"n":4}`)
-	assert.NotContains(t, body, `{"n":2}`, "第二 chunk 仍在缓冲")
+	assert.NotContains(t, body, `{"n":2}`, "最新 chunk 仍在缓冲")
+
+	// 新 chunk 到达后释放上一帧
+	require.NoError(t, ResponseChunkData(c, dto.ResponsesStreamResponse{}, `{"n":4}`))
 
 	require.NoError(t, StringData(c, `{"n":3}`))
 	Done(c)
 	body = w.Body.String()
-	for _, want := range []string{`{"n":2}`, `{"n":3}`, "[DONE]"} {
+	for _, want := range []string{`{"n":2}`, `{"n":3}`, `{"n":4}`, "[DONE]"} {
 		assert.Contains(t, body, want)
 	}
 	assert.Equal(t, 1, strings.Count(body, "[DONE]"))
