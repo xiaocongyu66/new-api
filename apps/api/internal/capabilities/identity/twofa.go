@@ -2,6 +2,7 @@ package identity
 
 import (
 	"errors"
+	"github.com/QuantumNous/new-api/internal/capabilities/billing"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
@@ -584,7 +585,7 @@ func AdminDisable2FA(c contract.Context) {
 		return
 	}
 
-	recordManageAuditFor(c, userId, "user.2fa_disable", nil)
+	billing.RecordManageAuditFor(c, userId, "user.2fa_disable", nil)
 
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,

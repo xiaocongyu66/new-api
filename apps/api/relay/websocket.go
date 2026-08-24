@@ -2,6 +2,7 @@ package relay
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/capabilities/billing"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -42,6 +43,6 @@ func WssHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.
 		service.ResetStatusCode(newAPIError, statusCodeMappingStr)
 		return newAPIError
 	}
-	service.PostWssConsumeQuota(ginadapter.Wrap(c), info, info.UpstreamModelName, usage.(*dto.RealtimeUsage), "")
+	billing.PostWssConsumeQuota(ginadapter.Wrap(c), info, info.UpstreamModelName, usage.(*dto.RealtimeUsage), "")
 	return nil
 }

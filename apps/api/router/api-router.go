@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/QuantumNous/new-api/controller"
+	"github.com/QuantumNous/new-api/internal/capabilities/billing"
 	"github.com/QuantumNous/new-api/internal/capabilities/identity"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
@@ -60,12 +61,12 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/oauth/:provider", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.DisableCache()), ginadapter.Middleware(security.TryUserAuth()), ginadapter.Handler(identity.HandleOAuth))
 		apiRouter.GET("/ratio_config", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(controller.GetRatioConfig))
 
-		apiRouter.POST("/stripe/webhook", anonymousRequestBodyLimit, ginadapter.Handler(controller.StripeWebhook))
-		apiRouter.POST("/creem/webhook", anonymousRequestBodyLimit, ginadapter.Handler(controller.CreemWebhook))
-		apiRouter.POST("/waffo/webhook", anonymousRequestBodyLimit, ginadapter.Handler(controller.WaffoWebhook))
+		apiRouter.POST("/stripe/webhook", anonymousRequestBodyLimit, ginadapter.Handler(billing.StripeWebhook))
+		apiRouter.POST("/creem/webhook", anonymousRequestBodyLimit, ginadapter.Handler(billing.CreemWebhook))
+		apiRouter.POST("/waffo/webhook", anonymousRequestBodyLimit, ginadapter.Handler(billing.WaffoWebhook))
 		// :env separates test vs prod URLs so the operator can register each
 		// in Pancake's matching webhook slot; handler enforces env match.
-		apiRouter.POST("/waffo-pancake/webhook/:env", anonymousRequestBodyLimit, ginadapter.Handler(controller.WaffoPancakeWebhook))
+		apiRouter.POST("/waffo-pancake/webhook/:env", anonymousRequestBodyLimit, ginadapter.Handler(billing.WaffoPancakeWebhook))
 
 		// Universal secure verification routes
 		apiRouter.POST("/verify", ginadapter.Middleware(security.UserAuth()), ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.DisableCache()), ginadapter.Handler(controller.UniversalVerify))
@@ -80,8 +81,8 @@ func SetApiRouter(router *gin.Engine) {
 			userRoute.POST("/passkey/login/begin", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.DisableCache()), anonymousRequestBodyLimit, ginadapter.Handler(identity.PasskeyLoginBegin))
 			userRoute.POST("/passkey/login/finish", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.DisableCache()), anonymousRequestBodyLimit, ginadapter.Handler(identity.PasskeyLoginFinish))
 			//userRoute.POST("/tokenlog", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(controller.TokenLog))
-			userRoute.POST("/epay/notify", anonymousRequestBodyLimit, ginadapter.Handler(controller.EpayNotify))
-			userRoute.GET("/epay/notify", ginadapter.Handler(controller.EpayNotify))
+			userRoute.POST("/epay/notify", anonymousRequestBodyLimit, ginadapter.Handler(billing.EpayNotify))
+			userRoute.GET("/epay/notify", ginadapter.Handler(billing.EpayNotify))
 			userRoute.GET("/groups", ginadapter.Handler(controller.GetUserGroups))
 
 			selfRoute := userRoute.Group("/")
@@ -103,18 +104,18 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/passkey/verify/finish", ginadapter.Middleware(middleware.DisableCache()), ginadapter.Handler(identity.PasskeyVerifyFinish))
 				selfRoute.DELETE("/passkey", ginadapter.Middleware(middleware.DisableCache()), ginadapter.Handler(identity.PasskeyDelete))
 				selfRoute.GET("/aff", ginadapter.Handler(identity.GetAffCode))
-				selfRoute.GET("/topup/info", ginadapter.Handler(controller.GetTopUpInfo))
-				selfRoute.GET("/topup/self", ginadapter.Handler(controller.GetUserTopUps))
+				selfRoute.GET("/topup/info", ginadapter.Handler(billing.GetTopUpInfo))
+				selfRoute.GET("/topup/self", ginadapter.Handler(billing.GetUserTopUps))
 				selfRoute.POST("/topup", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(identity.TopUp))
-				selfRoute.POST("/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(controller.RequestEpay))
-				selfRoute.POST("/amount", ginadapter.Handler(controller.RequestAmount))
-				selfRoute.POST("/stripe/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(controller.RequestStripePay))
-				selfRoute.POST("/stripe/amount", ginadapter.Handler(controller.RequestStripeAmount))
-				selfRoute.POST("/creem/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(controller.RequestCreemPay))
-				selfRoute.POST("/waffo/amount", ginadapter.Handler(controller.RequestWaffoAmount))
-				selfRoute.POST("/waffo/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(controller.RequestWaffoPay))
-				selfRoute.POST("/waffo-pancake/amount", ginadapter.Handler(controller.RequestWaffoPancakeAmount))
-				selfRoute.POST("/waffo-pancake/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(controller.RequestWaffoPancakePay))
+				selfRoute.POST("/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(billing.RequestEpay))
+				selfRoute.POST("/amount", ginadapter.Handler(billing.RequestAmount))
+				selfRoute.POST("/stripe/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(billing.RequestStripePay))
+				selfRoute.POST("/stripe/amount", ginadapter.Handler(billing.RequestStripeAmount))
+				selfRoute.POST("/creem/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(billing.RequestCreemPay))
+				selfRoute.POST("/waffo/amount", ginadapter.Handler(billing.RequestWaffoAmount))
+				selfRoute.POST("/waffo/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(billing.RequestWaffoPay))
+				selfRoute.POST("/waffo-pancake/amount", ginadapter.Handler(billing.RequestWaffoPancakeAmount))
+				selfRoute.POST("/waffo-pancake/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(billing.RequestWaffoPancakePay))
 				selfRoute.POST("/aff_transfer", ginadapter.Middleware(middleware.UserCriticalRateLimit("aff-transfer")), ginadapter.Handler(identity.TransferAffQuota))
 				selfRoute.PUT("/setting", ginadapter.Handler(identity.UpdateUserSetting))
 
@@ -126,8 +127,8 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/2fa/backup_codes", ginadapter.Middleware(middleware.DisableCache()), ginadapter.Handler(identity.RegenerateBackupCodes))
 
 				// Check-in routes
-				selfRoute.GET("/checkin", ginadapter.Handler(controller.GetCheckinStatus))
-				selfRoute.POST("/checkin", ginadapter.Middleware(middleware.TurnstileCheck()), ginadapter.Handler(controller.DoCheckin))
+				selfRoute.GET("/checkin", ginadapter.Handler(billing.GetCheckinStatus))
+				selfRoute.POST("/checkin", ginadapter.Middleware(middleware.TurnstileCheck()), ginadapter.Handler(billing.DoCheckin))
 
 				// Custom OAuth bindings
 				selfRoute.GET("/oauth/bindings", ginadapter.Handler(identity.GetUserOAuthBindings))
@@ -138,8 +139,8 @@ func SetApiRouter(router *gin.Engine) {
 			adminRoute.Use(ginadapter.Middleware(security.AdminAuth()))
 			{
 				adminRoute.GET("/", ginadapter.Handler(identity.GetAllUsers))
-				adminRoute.GET("/topup", ginadapter.Handler(controller.GetAllTopUps))
-				adminRoute.POST("/topup/complete", ginadapter.Handler(controller.AdminCompleteTopUp))
+				adminRoute.GET("/topup", ginadapter.Handler(billing.GetAllTopUps))
+				adminRoute.POST("/topup/complete", ginadapter.Handler(billing.AdminCompleteTopUp))
 				adminRoute.GET("/search", ginadapter.Handler(identity.SearchUsers))
 				adminRoute.GET("/:id/oauth/bindings", ginadapter.Handler(identity.GetUserOAuthBindingsByAdmin))
 				adminRoute.DELETE("/:id/oauth/bindings/:provider_id", ginadapter.Handler(identity.UnbindCustomOAuthByAdmin))
@@ -161,51 +162,51 @@ func SetApiRouter(router *gin.Engine) {
 		subscriptionRoute := apiRouter.Group("/subscription")
 		subscriptionRoute.Use(ginadapter.Middleware(security.UserAuth()))
 		{
-			subscriptionRoute.GET("/plans", ginadapter.Handler(controller.GetSubscriptionPlans))
-			subscriptionRoute.GET("/self", ginadapter.Handler(controller.GetSubscriptionSelf))
-			subscriptionRoute.PUT("/self/preference", ginadapter.Handler(controller.UpdateSubscriptionPreference))
-			subscriptionRoute.POST("/balance/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(controller.SubscriptionRequestBalancePay))
-			subscriptionRoute.POST("/epay/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(controller.SubscriptionRequestEpay))
-			subscriptionRoute.POST("/stripe/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(controller.SubscriptionRequestStripePay))
-			subscriptionRoute.POST("/creem/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(controller.SubscriptionRequestCreemPay))
-			subscriptionRoute.POST("/waffo-pancake/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(controller.SubscriptionRequestWaffoPancakePay))
+			subscriptionRoute.GET("/plans", ginadapter.Handler(billing.GetSubscriptionPlans))
+			subscriptionRoute.GET("/self", ginadapter.Handler(billing.GetSubscriptionSelf))
+			subscriptionRoute.PUT("/self/preference", ginadapter.Handler(billing.UpdateSubscriptionPreference))
+			subscriptionRoute.POST("/balance/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(billing.SubscriptionRequestBalancePay))
+			subscriptionRoute.POST("/epay/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(billing.SubscriptionRequestEpay))
+			subscriptionRoute.POST("/stripe/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(billing.SubscriptionRequestStripePay))
+			subscriptionRoute.POST("/creem/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(billing.SubscriptionRequestCreemPay))
+			subscriptionRoute.POST("/waffo-pancake/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(billing.SubscriptionRequestWaffoPancakePay))
 		}
 		subscriptionAdminRoute := apiRouter.Group("/subscription/admin")
 		subscriptionAdminRoute.Use(ginadapter.Middleware(security.AdminAuth()))
 		{
-			subscriptionAdminRoute.GET("/plans", ginadapter.Handler(controller.AdminListSubscriptionPlans))
-			subscriptionAdminRoute.POST("/plans", ginadapter.Handler(controller.AdminCreateSubscriptionPlan))
-			subscriptionAdminRoute.PUT("/plans/:id", ginadapter.Handler(controller.AdminUpdateSubscriptionPlan))
-			subscriptionAdminRoute.PATCH("/plans/:id", ginadapter.Handler(controller.AdminUpdateSubscriptionPlanStatus))
-			subscriptionAdminRoute.POST("/bind", ginadapter.Handler(controller.AdminBindSubscription))
-			subscriptionAdminRoute.POST("/plans/:id/subscriptions/reset", ginadapter.Handler(controller.AdminResetPlanSubscriptions))
+			subscriptionAdminRoute.GET("/plans", ginadapter.Handler(billing.AdminListSubscriptionPlans))
+			subscriptionAdminRoute.POST("/plans", ginadapter.Handler(billing.AdminCreateSubscriptionPlan))
+			subscriptionAdminRoute.PUT("/plans/:id", ginadapter.Handler(billing.AdminUpdateSubscriptionPlan))
+			subscriptionAdminRoute.PATCH("/plans/:id", ginadapter.Handler(billing.AdminUpdateSubscriptionPlanStatus))
+			subscriptionAdminRoute.POST("/bind", ginadapter.Handler(billing.AdminBindSubscription))
+			subscriptionAdminRoute.POST("/plans/:id/subscriptions/reset", ginadapter.Handler(billing.AdminResetPlanSubscriptions))
 
 			// User subscription management (admin)
-			subscriptionAdminRoute.GET("/users/:id/subscriptions", ginadapter.Handler(controller.AdminListUserSubscriptions))
-			subscriptionAdminRoute.POST("/users/:id/subscriptions", ginadapter.Handler(controller.AdminCreateUserSubscription))
-			subscriptionAdminRoute.POST("/users/:id/subscriptions/reset", ginadapter.Handler(controller.AdminResetUserSubscriptionsByPlan))
-			subscriptionAdminRoute.POST("/user_subscriptions/:id/invalidate", ginadapter.Handler(controller.AdminInvalidateUserSubscription))
-			subscriptionAdminRoute.DELETE("/user_subscriptions/:id", ginadapter.Handler(controller.AdminDeleteUserSubscription))
+			subscriptionAdminRoute.GET("/users/:id/subscriptions", ginadapter.Handler(billing.AdminListUserSubscriptions))
+			subscriptionAdminRoute.POST("/users/:id/subscriptions", ginadapter.Handler(billing.AdminCreateUserSubscription))
+			subscriptionAdminRoute.POST("/users/:id/subscriptions/reset", ginadapter.Handler(billing.AdminResetUserSubscriptionsByPlan))
+			subscriptionAdminRoute.POST("/user_subscriptions/:id/invalidate", ginadapter.Handler(billing.AdminInvalidateUserSubscription))
+			subscriptionAdminRoute.DELETE("/user_subscriptions/:id", ginadapter.Handler(billing.AdminDeleteUserSubscription))
 		}
 
 		// Subscription payment callbacks (no auth)
-		apiRouter.POST("/subscription/epay/notify", anonymousRequestBodyLimit, ginadapter.Handler(controller.SubscriptionEpayNotify))
-		apiRouter.GET("/subscription/epay/notify", ginadapter.Handler(controller.SubscriptionEpayNotify))
-		apiRouter.GET("/subscription/epay/return", ginadapter.Handler(controller.SubscriptionEpayReturn))
+		apiRouter.POST("/subscription/epay/notify", anonymousRequestBodyLimit, ginadapter.Handler(billing.SubscriptionEpayNotify))
+		apiRouter.GET("/subscription/epay/notify", ginadapter.Handler(billing.SubscriptionEpayNotify))
+		apiRouter.GET("/subscription/epay/return", ginadapter.Handler(billing.SubscriptionEpayReturn))
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(authz.SystemSettings)))
 		{
 			optionRoute.GET("/", ginadapter.Handler(controller.GetOptions))
 			optionRoute.PUT("/", ginadapter.Handler(controller.UpdateOption))
-			optionRoute.POST("/payment_compliance", ginadapter.Handler(controller.ConfirmPaymentCompliance))
+			optionRoute.POST("/payment_compliance", ginadapter.Handler(billing.ConfirmPaymentCompliance))
 			optionRoute.GET("/channel_affinity_cache", ginadapter.Handler(controller.GetChannelAffinityCacheStats))
 			optionRoute.DELETE("/channel_affinity_cache", ginadapter.Handler(controller.ClearChannelAffinityCache))
 			optionRoute.POST("/rest_model_ratio", ginadapter.Handler(controller.ResetModelRatio))
-			optionRoute.GET("/waffo-pancake/catalog", ginadapter.Handler(controller.ListWaffoPancakeCatalog))
-			optionRoute.POST("/waffo-pancake/pair", ginadapter.Handler(controller.CreateWaffoPancakePair))
-			optionRoute.POST("/waffo-pancake/save", ginadapter.Handler(controller.SaveWaffoPancake))
-			optionRoute.POST("/waffo-pancake/subscription-product", ginadapter.Handler(controller.CreateWaffoPancakeSubscriptionProduct))
-			optionRoute.GET("/waffo-pancake/subscription-product-options", ginadapter.Handler(controller.ListWaffoPancakeSubscriptionProductOptions))
+			optionRoute.GET("/waffo-pancake/catalog", ginadapter.Handler(billing.ListWaffoPancakeCatalog))
+			optionRoute.POST("/waffo-pancake/pair", ginadapter.Handler(billing.CreateWaffoPancakePair))
+			optionRoute.POST("/waffo-pancake/save", ginadapter.Handler(billing.SaveWaffoPancake))
+			optionRoute.POST("/waffo-pancake/subscription-product", ginadapter.Handler(billing.CreateWaffoPancakeSubscriptionProduct))
+			optionRoute.GET("/waffo-pancake/subscription-product-options", ginadapter.Handler(billing.ListWaffoPancakeSubscriptionProductOptions))
 		}
 		proxyRoute := apiRouter.Group("/proxy")
 		proxyRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(authz.SystemSettings)))
@@ -283,13 +284,13 @@ func SetApiRouter(router *gin.Engine) {
 		redemptionRoute := apiRouter.Group("/redemption")
 		redemptionRoute.Use(ginadapter.Middleware(security.AdminAuth()))
 		{
-			redemptionRoute.GET("/", ginadapter.Handler(controller.GetAllRedemptions))
-			redemptionRoute.GET("/search", ginadapter.Handler(controller.SearchRedemptions))
-			redemptionRoute.GET("/:id", ginadapter.Handler(controller.GetRedemption))
-			redemptionRoute.POST("/", ginadapter.Handler(controller.AddRedemption))
-			redemptionRoute.PUT("/", ginadapter.Handler(controller.UpdateRedemption))
-			redemptionRoute.DELETE("/invalid", ginadapter.Handler(controller.DeleteInvalidRedemption))
-			redemptionRoute.DELETE("/:id", ginadapter.Handler(controller.DeleteRedemption))
+			redemptionRoute.GET("/", ginadapter.Handler(billing.GetAllRedemptions))
+			redemptionRoute.GET("/search", ginadapter.Handler(billing.SearchRedemptions))
+			redemptionRoute.GET("/:id", ginadapter.Handler(billing.GetRedemption))
+			redemptionRoute.POST("/", ginadapter.Handler(billing.AddRedemption))
+			redemptionRoute.PUT("/", ginadapter.Handler(billing.UpdateRedemption))
+			redemptionRoute.DELETE("/invalid", ginadapter.Handler(billing.DeleteInvalidRedemption))
+			redemptionRoute.DELETE("/:id", ginadapter.Handler(billing.DeleteRedemption))
 		}
 		logRoute := apiRouter.Group("/log")
 		logRoute.GET("/", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(controller.GetAllLogs))

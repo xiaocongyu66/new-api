@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"github.com/QuantumNous/new-api/internal/capabilities/billing"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
 	"net/http"
@@ -40,7 +41,7 @@ func TestEpayNotifyRejectsDisabledWebhookWithRawFail(t *testing.T) {
 	})
 	c, recorder := ginadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/api/user/epay/notify", nil))
 
-	EpayNotify(c)
+	billing.EpayNotify(c)
 
 	assert.Equal(t, "fail", recorder.Body.String(),
 		"the provider parses the literal body; a JSON envelope would be read as a delivery failure")

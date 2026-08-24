@@ -21,33 +21,10 @@ import (
 // admin-only for free, since model.formatUserLogs strips the whole admin_info
 // object for non-admin viewers. Creates admin_info if absent. No-op when the
 // clamp is nil (the common case: no saturation happened).
-func attachQuotaSaturationToOther(other map[string]interface{}, clamp *common.QuotaClamp) {
-	if clamp == nil || other == nil {
-		return
-	}
-	adminInfo, ok := other["admin_info"].(map[string]interface{})
-	if !ok || adminInfo == nil {
-		adminInfo = map[string]interface{}{}
-		other["admin_info"] = adminInfo
-	}
-	adminInfo["quota_saturation"] = clamp.AuditMap()
-}
 
 // attachQuotaSaturation records the request's quota clamp (if any) onto the
 // consume log's other.admin_info and emits a request-correlated backend audit
 // line. Called right before RecordConsumeLog on the text/audio/wss paths.
-func attachQuotaSaturation(ctx contract.Context, relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
-	if relayInfo == nil {
-		return
-	}
-	clamp := relayInfo.QuotaClamp
-	if clamp == nil {
-		return
-	}
-	attachQuotaSaturationToOther(other, clamp)
-	logger.LogWarn(ctx.Context(), fmt.Sprintf("quota saturation on consume log: op=%s kind=%s original=%g clamped=%d user=%d model=%s",
-		clamp.Op, clamp.Kind, clamp.Original, clamp.Clamped, relayInfo.UserId, relayInfo.OriginModelName))
-}
 
 func appendRequestPath(ctx contract.Context, relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
 	if other == nil {
@@ -319,4 +296,28 @@ func InjectTieredBillingInfo(other map[string]interface{}, relayInfo *relaycommo
 			other["request_rules"] = result.RequestRules
 		}
 	}
+}
+
+func AttachQuotaSaturation(ctx contract.Context, relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
+	if relayInfo == nil {
+		return
+	}
+	clamp := relayInfo.QuotaClamp
+	if clamp == nil {
+		return
+	}
+	AttachQuotaSaturationToOther(other, clamp)
+	logger.LogWarn(ctx.Context(), fmt.Sprintf("quota saturation on consume log: op=%s kind=%s original=%g clamped=%d user=%d model=%s",
+		clamp.Op, clamp.Kind, clamp.Original, clamp.Clamped, relayInfo.UserId, relayInfo.OriginModelName))
+}
+func AttachQuotaSaturationToOther(other map[string]interface{}, clamp *common.QuotaClamp) {
+	if clamp == nil || other == nil {
+		return
+	}
+	adminInfo, ok := other["admin_info"].(map[string]interface{})
+	if !ok || adminInfo == nil {
+		adminInfo = map[string]interface{}{}
+		other["admin_info"] = adminInfo
+	}
+	adminInfo["quota_saturation"] = clamp.AuditMap()
 }

@@ -136,7 +136,7 @@ func TestSubscriptionGroupCacheRefreshFailureDoesNotChangeCommittedResult(t *tes
 		common.RedisEnabled, common.RDB = oldRedisEnabled, oldRDB
 	})
 
-	message, err := AdminBindSubscription(user.Id, plan.Id, "test")
+	message, err := AdminBindSubscriptionRecord(user.Id, plan.Id, "test")
 	require.NoError(t, err)
 	assert.Contains(t, message, "pro")
 
