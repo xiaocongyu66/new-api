@@ -18,7 +18,6 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	taskdto "github.com/QuantumNous/new-api/dto"
 	channelcap "github.com/QuantumNous/new-api/internal/capabilities/channel"
-	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
@@ -530,8 +529,8 @@ func RelayTask(c contract.Context) {
 			Code:       "gen_relay_info_failed",
 			Message:    err.Error(),
 			StatusCode: http.StatusInternalServerError,
-	})
-	return
+		})
+		return
 	}
 
 	// Build SubmitInfo from RelayInfo for capability functions
