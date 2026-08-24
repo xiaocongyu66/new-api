@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/controller"
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/relay"
@@ -19,7 +20,7 @@ func SetRelayRouter(router *gin.Engine) {
 	// https://platform.openai.com/docs/api-reference/introduction
 	modelsRouter := router.Group("/v1/models")
 	modelsRouter.Use(middleware.RouteTag("relay"))
-	modelsRouter.Use(ginadapter.Middleware(middleware.TokenAuth()))
+	modelsRouter.Use(ginadapter.Middleware(security.TokenAuth()))
 	{
 		modelsRouter.GET("", func(cc *gin.Context) {
 			switch {
@@ -44,7 +45,7 @@ func SetRelayRouter(router *gin.Engine) {
 
 	geminiRouter := router.Group("/v1beta/models")
 	geminiRouter.Use(middleware.RouteTag("relay"))
-	geminiRouter.Use(ginadapter.Middleware(middleware.TokenAuth()))
+	geminiRouter.Use(ginadapter.Middleware(security.TokenAuth()))
 	{
 		geminiRouter.GET("", func(cc *gin.Context) {
 			controller.ListModels(ginadapter.Wrap(cc), constant.ChannelTypeGemini)
@@ -53,7 +54,7 @@ func SetRelayRouter(router *gin.Engine) {
 
 	geminiCompatibleRouter := router.Group("/v1beta/openai/models")
 	geminiCompatibleRouter.Use(middleware.RouteTag("relay"))
-	geminiCompatibleRouter.Use(ginadapter.Middleware(middleware.TokenAuth()))
+	geminiCompatibleRouter.Use(ginadapter.Middleware(security.TokenAuth()))
 	{
 		geminiCompatibleRouter.GET("", func(cc *gin.Context) {
 			controller.ListModels(ginadapter.Wrap(cc), constant.ChannelTypeOpenAI)
@@ -63,14 +64,14 @@ func SetRelayRouter(router *gin.Engine) {
 	playgroundRouter := router.Group("/pg")
 	playgroundRouter.Use(middleware.RouteTag("relay"))
 	playgroundRouter.Use(ginadapter.Middleware(middleware.SystemPerformanceCheck()))
-	playgroundRouter.Use(ginadapter.Middleware(middleware.UserAuth()), ginadapter.Middleware(middleware.Distribute()))
+	playgroundRouter.Use(ginadapter.Middleware(security.UserAuth()), ginadapter.Middleware(middleware.Distribute()))
 	{
 		playgroundRouter.POST("/chat/completions", ginadapter.Handler(controller.Playground))
 	}
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RouteTag("relay"))
 	relayV1Router.Use(ginadapter.Middleware(middleware.SystemPerformanceCheck()))
-	relayV1Router.Use(ginadapter.Middleware(middleware.TokenAuth()))
+	relayV1Router.Use(ginadapter.Middleware(security.TokenAuth()))
 	relayV1Router.Use(ginadapter.Middleware(middleware.ModelRequestRateLimit()))
 	{
 		// WebSocket 路由（统一到 Relay）
@@ -185,7 +186,7 @@ func SetRelayRouter(router *gin.Engine) {
 	relaySunoRouter := router.Group("/suno")
 	relaySunoRouter.Use(middleware.RouteTag("relay"))
 	relaySunoRouter.Use(ginadapter.Middleware(middleware.SystemPerformanceCheck()))
-	relaySunoRouter.Use(ginadapter.Middleware(middleware.TokenAuth()), ginadapter.Middleware(middleware.Distribute()))
+	relaySunoRouter.Use(ginadapter.Middleware(security.TokenAuth()), ginadapter.Middleware(middleware.Distribute()))
 	{
 		relaySunoRouter.POST("/submit/:action", ginadapter.Handler(controller.RelayTask))
 		relaySunoRouter.POST("/fetch", ginadapter.Handler(controller.RelayTaskFetch))
@@ -195,7 +196,7 @@ func SetRelayRouter(router *gin.Engine) {
 	relayGeminiRouter := router.Group("/v1beta")
 	relayGeminiRouter.Use(middleware.RouteTag("relay"))
 	relayGeminiRouter.Use(ginadapter.Middleware(middleware.SystemPerformanceCheck()))
-	relayGeminiRouter.Use(ginadapter.Middleware(middleware.TokenAuth()))
+	relayGeminiRouter.Use(ginadapter.Middleware(security.TokenAuth()))
 	relayGeminiRouter.Use(ginadapter.Middleware(middleware.ModelRequestRateLimit()))
 	relayGeminiRouter.Use(ginadapter.Middleware(middleware.Distribute()))
 	{
@@ -208,7 +209,7 @@ func SetRelayRouter(router *gin.Engine) {
 
 func registerMjRouterGroup(relayMjRouter *gin.RouterGroup) {
 	relayMjRouter.GET("/image/:id", relay.RelayMidjourneyImage)
-	relayMjRouter.Use(ginadapter.Middleware(middleware.TokenAuth()), ginadapter.Middleware(middleware.Distribute()))
+	relayMjRouter.Use(ginadapter.Middleware(security.TokenAuth()), ginadapter.Middleware(middleware.Distribute()))
 	{
 		relayMjRouter.POST("/submit/action", ginadapter.Handler(controller.RelayMidjourney))
 		relayMjRouter.POST("/submit/shorten", ginadapter.Handler(controller.RelayMidjourney))

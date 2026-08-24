@@ -9,14 +9,14 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/service"
 )
 
 const karmadaDashboardSessionCookie = "newapi_karmada_session"
 
 func CreateKarmadaDashboardSession(c contract.Context) {
-	identity, ok := middleware.GetSessionAuthIdentity(c)
+	identity, ok := security.GetSessionAuthIdentity(c)
 	if !ok {
 		_ = c.JSON(http.StatusForbidden, common.H{"success": false, "code": "AUTH_SESSION_REQUIRED"})
 		return

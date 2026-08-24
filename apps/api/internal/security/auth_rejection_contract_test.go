@@ -1,4 +1,4 @@
-package middleware
+package security
 
 import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"

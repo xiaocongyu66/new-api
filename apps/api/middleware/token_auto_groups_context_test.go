@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"testing"
@@ -21,7 +22,7 @@ func TestSetupContextForTokenPreservesCustomAutoGroupsOrder(t *testing.T) {
 	ctx := newTokenAutoGroupsContext()
 	token := &model.Token{Id: 1, UserId: 2, AutoGroups: `["vip","default"]`}
 
-	require.NoError(t, SetupContextForToken(ctx, token))
+	require.NoError(t, security.SetupContextForToken(ctx, token))
 	value, ok := common.GetCtxKey(ctx, constant.ContextKeyTokenAutoGroups)
 	require.True(t, ok)
 	assert.Equal(t, []string{"vip", "default"}, value)
@@ -31,7 +32,7 @@ func TestSetupContextForTokenTreatsStoredEmptyArrayAsInheritance(t *testing.T) {
 	ctx := newTokenAutoGroupsContext()
 	token := &model.Token{Id: 1, UserId: 2, AutoGroups: `[]`}
 
-	require.NoError(t, SetupContextForToken(ctx, token))
+	require.NoError(t, security.SetupContextForToken(ctx, token))
 	_, ok := common.GetCtxKey(ctx, constant.ContextKeyTokenAutoGroups)
 	assert.False(t, ok)
 }
@@ -40,7 +41,7 @@ func TestSetupContextForTokenMalformedAutoGroupsFailsClosed(t *testing.T) {
 	ctx := newTokenAutoGroupsContext()
 	token := &model.Token{Id: 1, UserId: 2, AutoGroups: `not-json`}
 
-	require.NoError(t, SetupContextForToken(ctx, token))
+	require.NoError(t, security.SetupContextForToken(ctx, token))
 	value, ok := common.GetCtxKey(ctx, constant.ContextKeyTokenAutoGroups)
 	require.True(t, ok)
 	assert.Equal(t, []string{}, value)

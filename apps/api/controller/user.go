@@ -3,24 +3,23 @@ package controller
 import (
 	"errors"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"net/http"
-	"net/url"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
-
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/internal/security"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/QuantumNous/new-api/constant"
 
@@ -820,7 +819,7 @@ func UpdateSelf(c contract.Context) {
 		return
 	}
 	if updatePassword {
-		identity, ok := middleware.GetSessionAuthIdentity(c)
+		identity, ok := security.GetSessionAuthIdentity(c)
 		if !ok {
 			common.CtxApiError(c, errors.New("当前认证方式不支持安全验证"))
 			return

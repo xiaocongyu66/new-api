@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/security/oauth"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/oauth"
 )
 
 // CustomOAuthProviderResponse is the response structure for custom OAuth providers

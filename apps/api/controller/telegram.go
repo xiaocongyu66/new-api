@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 
@@ -53,7 +53,7 @@ func TelegramBindStart(c contract.Context) {
 		})
 		return
 	}
-	identity, ok := middleware.GetSessionAuthIdentity(c)
+	identity, ok := security.GetSessionAuthIdentity(c)
 	if !ok {
 		_ = c.JSON(http.StatusUnauthorized, common.H{"success": false, "message": "未登录"})
 		return

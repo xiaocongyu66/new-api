@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 )
@@ -181,7 +181,7 @@ func Enable2FA(c contract.Context) {
 		return
 	}
 
-	identity, ok := middleware.GetSessionAuthIdentity(c)
+	identity, ok := security.GetSessionAuthIdentity(c)
 	if !ok {
 		common.CtxApiError(c, errors.New("当前认证方式不支持安全验证"))
 		return
@@ -264,7 +264,7 @@ func Disable2FA(c contract.Context) {
 		return
 	}
 
-	identity, ok := middleware.GetSessionAuthIdentity(c)
+	identity, ok := security.GetSessionAuthIdentity(c)
 	if !ok {
 		common.CtxApiError(c, errors.New("当前认证方式不支持安全验证"))
 		return
@@ -390,7 +390,7 @@ func RegenerateBackupCodes(c contract.Context) {
 		return
 	}
 
-	identity, ok := middleware.GetSessionAuthIdentity(c)
+	identity, ok := security.GetSessionAuthIdentity(c)
 	if !ok {
 		common.CtxApiError(c, errors.New("当前认证方式不支持安全验证"))
 		return

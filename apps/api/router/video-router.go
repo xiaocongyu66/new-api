@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/QuantumNous/new-api/controller"
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/QuantumNous/new-api/middleware"
 
@@ -12,14 +13,14 @@ func SetVideoRouter(router *gin.Engine) {
 	// Video proxy: accepts either session auth (dashboard) or token auth (API clients)
 	videoProxyRouter := router.Group("/v1")
 	videoProxyRouter.Use(middleware.RouteTag("relay"))
-	videoProxyRouter.Use(ginadapter.Middleware(middleware.TokenOrUserAuth()))
+	videoProxyRouter.Use(ginadapter.Middleware(security.TokenOrUserAuth()))
 	{
 		videoProxyRouter.GET("/videos/:task_id/content", ginadapter.Handler(controller.VideoProxy))
 	}
 
 	videoV1Router := router.Group("/v1")
 	videoV1Router.Use(middleware.RouteTag("relay"))
-	videoV1Router.Use(ginadapter.Middleware(middleware.TokenAuth()), ginadapter.Middleware(middleware.Distribute()))
+	videoV1Router.Use(ginadapter.Middleware(security.TokenAuth()), ginadapter.Middleware(middleware.Distribute()))
 	{
 		videoV1Router.POST("/video/generations", ginadapter.Handler(controller.RelayTask))
 		videoV1Router.GET("/video/generations/:task_id", ginadapter.Handler(controller.RelayTaskFetch))
@@ -34,7 +35,7 @@ func SetVideoRouter(router *gin.Engine) {
 
 	klingV1Router := router.Group("/kling/v1")
 	klingV1Router.Use(middleware.RouteTag("relay"))
-	klingV1Router.Use(ginadapter.Middleware(middleware.KlingRequestConvert()), ginadapter.Middleware(middleware.TokenAuth()), ginadapter.Middleware(middleware.Distribute()))
+	klingV1Router.Use(ginadapter.Middleware(middleware.KlingRequestConvert()), ginadapter.Middleware(security.TokenAuth()), ginadapter.Middleware(middleware.Distribute()))
 	{
 		klingV1Router.POST("/videos/text2video", ginadapter.Handler(controller.RelayTask))
 		klingV1Router.POST("/videos/image2video", ginadapter.Handler(controller.RelayTask))
@@ -45,7 +46,7 @@ func SetVideoRouter(router *gin.Engine) {
 	// Jimeng official API routes - direct mapping to official API format
 	jimengOfficialGroup := router.Group("jimeng")
 	jimengOfficialGroup.Use(middleware.RouteTag("relay"))
-	jimengOfficialGroup.Use(ginadapter.Middleware(middleware.JimengRequestConvert()), ginadapter.Middleware(middleware.TokenAuth()), ginadapter.Middleware(middleware.Distribute()))
+	jimengOfficialGroup.Use(ginadapter.Middleware(middleware.JimengRequestConvert()), ginadapter.Middleware(security.TokenAuth()), ginadapter.Middleware(middleware.Distribute()))
 	{
 		// Maps to: /?Action=CVSync2AsyncSubmitTask&Version=2022-08-31 and /?Action=CVSync2AsyncGetResult&Version=2022-08-31
 		jimengOfficialGroup.POST("/", ginadapter.Handler(controller.RelayTask))

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
@@ -97,7 +98,7 @@ func PasskeyRegisterBegin(c contract.Context) {
 		return
 	}
 
-	identity, ok := middleware.GetSessionAuthIdentity(c)
+	identity, ok := security.GetSessionAuthIdentity(c)
 	if !ok {
 		common.CtxApiError(c, errors.New("当前认证方式不支持安全验证"))
 		return
@@ -172,7 +173,7 @@ func PasskeyRegisterFinish(c contract.Context) {
 		credentialRecord = nil
 	}
 
-	identity, ok := middleware.GetSessionAuthIdentity(c)
+	identity, ok := security.GetSessionAuthIdentity(c)
 	if !ok {
 		common.CtxApiError(c, errors.New("当前认证方式不支持安全验证"))
 		return
@@ -233,7 +234,7 @@ func PasskeyDelete(c contract.Context) {
 		return
 	}
 
-	identity, ok := middleware.GetSessionAuthIdentity(c)
+	identity, ok := security.GetSessionAuthIdentity(c)
 	if !ok {
 		common.CtxApiError(c, errors.New("当前认证方式不支持安全验证"))
 		return
@@ -534,7 +535,7 @@ func PasskeyVerifyBegin(c contract.Context) {
 		return
 	}
 
-	identity, ok := middleware.GetSessionAuthIdentity(c)
+	identity, ok := security.GetSessionAuthIdentity(c)
 	if !ok {
 		common.CtxApiError(c, errors.New("当前认证方式不支持安全验证"))
 		return
@@ -606,7 +607,7 @@ func PasskeyVerifyFinish(c contract.Context) {
 		return
 	}
 
-	identity, ok := middleware.GetSessionAuthIdentity(c)
+	identity, ok := security.GetSessionAuthIdentity(c)
 	if !ok {
 		common.CtxApiError(c, errors.New("当前认证方式不支持安全验证"))
 		return

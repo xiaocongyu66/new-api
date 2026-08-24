@@ -7,7 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 
-	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -51,7 +51,7 @@ func Playground(c contract.Context) {
 		Name:   fmt.Sprintf("playground-%s", relayInfo.UsingGroup),
 		Group:  relayInfo.UsingGroup,
 	}
-	_ = middleware.SetupContextForToken(c, tempToken)
+	_ = security.SetupContextForToken(c, tempToken)
 
 	Relay(c, types.RelayFormatOpenAI)
 }

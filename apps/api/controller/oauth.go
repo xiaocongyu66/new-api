@@ -11,9 +11,9 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
-	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/internal/security"
+	"github.com/QuantumNous/new-api/internal/security/oauth"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/oauth"
 	"gorm.io/gorm"
 )
 
@@ -54,7 +54,7 @@ func GenerateOAuthCode(c contract.Context) {
 	userID := 0
 	sessionID := ""
 	if request.Intent == model.AuthFlowIntentBind {
-		identity, ok := middleware.GetSessionAuthIdentity(c)
+		identity, ok := security.GetSessionAuthIdentity(c)
 		if !ok {
 			_ = c.JSON(http.StatusUnauthorized, common.H{"success": false, "message": "绑定操作需要登录"})
 			return
@@ -124,7 +124,7 @@ func HandleOAuth(c contract.Context) {
 	}
 	// 2. Bind flows are bound to the live dashboard Session that created them.
 	if pendingFlow.Intent == model.AuthFlowIntentBind {
-		identity, ok := middleware.GetSessionAuthIdentity(c)
+		identity, ok := security.GetSessionAuthIdentity(c)
 		if !ok || identity.UserID != pendingFlow.UserId || identity.SessionID != pendingFlow.SessionId {
 			_ = c.JSON(http.StatusForbidden, common.H{
 				"success": false,
