@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"github.com/QuantumNous/new-api/internal/capabilities/administration"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strings"
@@ -10,7 +11,7 @@ import (
 )
 
 func ListSystemInstances(c contract.Context) {
-	instances, err := model.ListSystemInstances()
+	instances, err := administration.ListSystemInstances()
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -30,7 +31,7 @@ func ListSystemInstances(c contract.Context) {
 }
 
 func DeleteStaleSystemInstances(c contract.Context) {
-	deletedCount, err := model.DeleteStaleSystemInstances(common.GetTimestamp())
+	deletedCount, err := administration.DeleteStaleSystemInstances(common.GetTimestamp())
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -48,7 +49,7 @@ func DeleteStaleSystemInstance(c contract.Context) {
 		return
 	}
 
-	deleted, err := model.DeleteStaleSystemInstance(nodeName, common.GetTimestamp())
+	deleted, err := administration.DeleteStaleSystemInstance(nodeName, common.GetTimestamp())
 	if err != nil {
 		common.CtxApiError(c, err)
 		return

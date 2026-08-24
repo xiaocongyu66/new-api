@@ -6,11 +6,12 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/settings"
 	"github.com/QuantumNous/new-api/setting/console_setting"
 	"gorm.io/gorm"
 )
 
-const retiredThemeOptionKey = "theme.frontend"
+const retiredThemeOptionKey = settings.RetiredThemeOptionKey
 
 type legacyOptionTransform func(string) (string, error)
 
