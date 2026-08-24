@@ -236,7 +236,11 @@ jobs:
             pod=$(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
             kubectl exec "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "COPY (SELECT channel_id,key_index,model,state,isolation_level,dormant_disable_count,local_failure_count,upstream_failure_count,version,updated_at FROM channel_model_health ORDER BY channel_id,key_index,model) TO STDOUT WITH CSV HEADER" > "$dir/channel_model_health.csv" 2>&1
             python3 tests/perf/assertions/state_machine.py --derive-distribution --worker-log "$dir/worker.log" --distribution-json "$dir/distribution.json" || true
-            python3 tests/perf/assertions/state_machine.py --scenario "$alias" --health-csv "$dir/channel_model_health.csv" --worker-log "$dir/worker.log" --distribution-json "$dir/distribution.json" --report-file "$dir/assertion-report.md"
+            if [ "$alias" = bad-key-cascade ]; then
+              python3 tests/perf/assertions/state_machine.py --scenario "$alias" --bad-key-channel 90001 --bad-key-index 0 --health-csv "$dir/channel_model_health.csv" --worker-log "$dir/worker.log" --distribution-json "$dir/distribution.json" --report-file "$dir/assertion-report.md"
+            else
+              python3 tests/perf/assertions/state_machine.py --scenario "$alias" --health-csv "$dir/channel_model_health.csv" --worker-log "$dir/worker.log" --distribution-json "$dir/distribution.json" --report-file "$dir/assertion-report.md"
+            fi
             assert_rc=$?
             if [ "$k6_rc" -ne 0 ] || [ "$assert_rc" -ne 0 ]; then overall=1; fi
           done
