@@ -1,7 +1,8 @@
 package helper
 
 import (
-	"fmt"
+	"strings"
+	"sync"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -11,16 +12,23 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const outputFilterWindowSize = 512
+// 输出侧敏感内容静默过滤：命中不再断流，而是把目标域名/词库敏感词从 chunk
+// 文本中切除后照常下发，客户端永远看不到系统配置的敏感内容。
+//
+// 流式边界处理：buf 保存全部已扫描未发出的文本；每步全量扫描后只发出
+// 末尾 outputHoldbackLen() 字节之前的部分。任何长度 ≤ holdback 的命中单元
+// 在其末字节被发出前必然完整落入某次扫描窗口（否则它跨越发射边界，长度
+// 必须 > holdback），故不漏放。holdback 取词库词与目标域名的最大字节长度。
+//
+// ponytail: 引入至多 holdback 字节的额外出字延迟；JSON \uXXXX 转义形式的
+// 内容不在折叠范围（上游几乎都发原始 UTF-8）。少数渠道适配器不经 Done()
+// 自行渲染 [DONE]，其尾部缓冲不再补发（截断至多 holdback 字节）。
 
-// sensitiveOutputState 是请求级输出闸状态（挂在 gin context）。
 type sensitiveOutputState struct {
-	window    string // 最近窗口内容（用于跨 chunk 检测）
-	blocked   bool   // 已触发终止，后续所有 chunk 直接丢弃
-	terminate bool   // 终止帧已写，防止重复写 content_filter+[DONE]
+	buf string // 已接收未发出的文本（尾部 holdback 字节待后续确认）
 }
 
-// outputFilterState 获取/初始化请求级输出检测状态。
+// outputFilterState 获取/初始化请求级输出过滤状态。
 func outputFilterState(c *gin.Context) *sensitiveOutputState {
 	if v, ok := c.Get(string(constant.ContextKeySensitiveOutputState)); ok {
 		if s, ok := v.(*sensitiveOutputState); ok {
@@ -32,51 +40,70 @@ func outputFilterState(c *gin.Context) *sensitiveOutputState {
 	return s
 }
 
-// outputChunkBlocked 检查一个输出 chunk 是否应被拦截。
-// 已触发的流直接丢弃（blocked=true）；新 chunk 累积进窗口后再判。
-// 目标域名硬闸无条件生效（不受敏感词开关控制），其余检测受
-// CheckSensitiveOnCompletionEnabled 控制（默认开）。
-func outputChunkBlocked(c *gin.Context, data string) (bool, string) {
+// outputHoldbackLen 最长可命中单元的字节长度（词库词 + 目标域名 + 子域余量）。
+// 下限 16 兜底动态配置，上限 256 防极端词条拖垮内存与延迟。
+var outputHoldbackLen = sync.OnceValue(func() int {
+	h := 16
+	for _, w := range setting.SensitiveWords {
+		if l := len(w); l > h {
+			h = l
+		}
+	}
+	for _, d := range service.TargetDomains() {
+		if l := len(d) + 8; l > h { // www. 子域前缀余量
+			h = l
+		}
+	}
+	if h > 256 {
+		h = 256
+	}
+	return h
+})
+
+// outputChunkFiltered 过滤一个输出 chunk，返回可立即下发的净化文本（可能为空）。
+// 目标域过滤无条件生效；词库过滤受 CheckSensitiveOnCompletionEnabled 控制。
+func outputChunkFiltered(c *gin.Context, data string) string {
 	st := outputFilterState(c)
-	if st.blocked {
-		return true, "already-blocked"
+	st.buf += data
+	var cleaned string
+	var labels []string
+	if setting.ShouldCheckCompletionSensitive() {
+		cleaned, labels = service.SanitizeSensitiveText(st.buf)
+	} else {
+		cleaned, labels = service.SanitizeTargetDomains(st.buf)
 	}
-	if data == "" {
-		return false, ""
+	if len(labels) > 0 {
+		common.SysLog("output sanitized by sensitive filter: [" + strings.Join(labels, ",") + "]")
+		service.RecordSensitiveBlock(c, "output", "sanitize:"+strings.Join(labels, ","), st.buf)
 	}
-	// 目标域无条件终止：任何输出包含攻击目标站点即断流（用户要求双向终止）。
-	if d := service.CheckSensitiveTargets(data); d != "" {
-		st.blocked = true
-		common.SysLog(fmt.Sprintf("output blocked by target domain: [%s]", d))
-		service.RecordSensitiveBlock(c, "output", "target:"+d, data)
-		return true, "target:" + d
+	keep := outputHoldbackLen()
+	if len(cleaned) <= keep {
+		st.buf = cleaned
+		return ""
 	}
-	if !setting.ShouldCheckCompletionSensitive() {
-		return false, ""
-	}
-	st.window += data
-	if len(st.window) > outputFilterWindowSize {
-		st.window = st.window[len(st.window)-outputFilterWindowSize:]
-	}
-	if hit, label := service.CheckSensitiveOutput(st.window); hit {
-		st.blocked = true
-		common.SysLog(fmt.Sprintf("output blocked by sensitive filter: [%s]", label))
-		service.RecordSensitiveBlock(c, "output", label, st.window)
-		return true, label
-	}
-	return false, ""
+	out := cleaned[:len(cleaned)-keep]
+	st.buf = cleaned[len(cleaned)-keep:]
+	return out
 }
 
-// terminateOutputSSE 输出命中敏感后向客户端写终止帧并标记截断。
-// 写 OpenAI 风格 content_filter 终止事件 + [DONE]，任何格式客户端都会断流。
-// 幂等：已写入过的流不再重复写（后续 chunk 路过时 blocked 直接丢弃）。
-func terminateOutputSSE(c *gin.Context) {
+// FlushOutputPending 流结束时调用：把剩余缓冲净化后全部放出。
+func FlushOutputPending(c *gin.Context) string {
 	st := outputFilterState(c)
-	if st.terminate {
-		return
+	if st.buf == "" {
+		return ""
 	}
-	st.terminate = true // 先标记，再写入；partial-write 重入也不会重复写
-	_, _ = c.Writer.WriteString("data: " + `{"choices":[{"delta":{},"finish_reason":"content_filter"}]}` + "\n\n")
-	_, _ = c.Writer.WriteString("data: [DONE]\n\n")
-	_ = FlushWriter(c)
+	buf := st.buf
+	st.buf = ""
+	var cleaned string
+	var labels []string
+	if setting.ShouldCheckCompletionSensitive() {
+		cleaned, labels = service.SanitizeSensitiveText(buf)
+		if len(labels) > 0 {
+			common.SysLog("output sanitized by sensitive filter: [" + strings.Join(labels, ",") + "]")
+			service.RecordSensitiveBlock(c, "output", "sanitize:"+strings.Join(labels, ","), buf)
+		}
+		return cleaned
+	}
+	cleaned, _ = service.SanitizeTargetDomains(buf)
+	return cleaned
 }

@@ -136,23 +136,14 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		meta = fastTokenCountMetaForPricing(request)
 	}
 
-	if needSensitiveCheck && meta != nil {
-		if blocked, label := service.CheckSensitiveAll(meta.CombineText); blocked {
-			logger.LogWarn(c, fmt.Sprintf("input blocked by sensitive filter: %s", label))
-			service.RecordSensitiveBlock(c, "input", label, meta.CombineText)
-			newAPIError = types.NewError(err, types.ErrorCodeSensitiveWordsDetected, types.ErrOptionWithStatusCode(http.StatusForbidden))
-			return
-		}
-	}
-
-	// 目标域名硬闸独立于敏感词开关：请求包含攻击目标站点即无条件终止，
-	// 不受 CheckSensitiveOnPromptEnabled 等开关影响（用户要求任何输入输出都终止）。
-	if meta != nil {
-		if d := service.CheckSensitiveTargets(meta.CombineText); d != "" {
-			logger.LogWarn(c, fmt.Sprintf("input blocked by target domain: %s", d))
-			service.RecordSensitiveBlock(c, "input", "target:"+d, meta.CombineText)
-			newAPIError = types.NewErrorWithStatusCode(err, types.ErrorCodeSensitiveWordsDetected, http.StatusForbidden)
-			return
+	// 敏感内容静默过滤：目标域名与词库敏感词从请求文本中删除后照常转发，
+	// 不再 403（攻击者无感知）。破甲组合层已随旧拦截路径一并删除。
+	if needSensitiveCheck {
+		if labels := service.SanitizeRelayRequest(request); len(labels) > 0 {
+			logger.LogInfo(c, fmt.Sprintf("input sanitized by sensitive filter: %s", strings.Join(labels, ",")))
+			service.RecordSensitiveBlock(c, "input", "sanitize:"+strings.Join(labels, ","), meta.CombineText)
+			// 消息已被净化，按净化后文本重建 token 统计。
+			meta = request.GetTokenCountMeta()
 		}
 	}
 

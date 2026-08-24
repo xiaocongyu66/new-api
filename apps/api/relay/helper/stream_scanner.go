@@ -301,6 +301,13 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 		info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, c.Request.Context().Err())
 	}
 
+
+	// 输出过滤尾部缓冲补发：任何结束路径（正常完成/客户端断开/错误）都把
+	// holdback 尾巴净化后放出，避免最后一个 chunk 被输出过滤器吞掉。
+	if tail := FlushOutputPending(c); tail != "" {
+		c.Render(-1, common.CustomEvent{Data: "data: " + tail})
+		FlushWriter(c)
+	}
 	cleanup()
 	if info.StreamStatus.IsNormalEnd() && !info.StreamStatus.HasErrors() {
 		logger.LogInfo(c, fmt.Sprintf("stream ended: %s", info.StreamStatus.Summary()))
