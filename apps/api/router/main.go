@@ -2,13 +2,13 @@ package router
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"os"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
 
 	"github.com/gin-gonic/gin"
