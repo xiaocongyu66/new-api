@@ -24,6 +24,8 @@ import (
 	channelcap "github.com/QuantumNous/new-api/internal/capabilities/channel"
 	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/internal/security/oauth"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
@@ -36,8 +38,6 @@ import (
 	_ "github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
-	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/joho/godotenv"
 
@@ -158,6 +158,10 @@ func main() {
 		}
 		return a
 	}
+
+	// Wire the gateway port factory: capability-layer polling calls port.GetTaskProviderFunc
+	// instead of importing relay/channel. The binding adapts channel.TaskAdaptor to port.TaskProviderExec.
+	port.GetTaskProviderFunc = service.GetTaskProviderFuncBinding()
 
 	// Register the periodic channel test, upstream model update, and async task
 	// polling (Midjourney / Suno / video) jobs as scheduled system tasks
