@@ -74,7 +74,7 @@ jobs:
           chmod 600 ~/.kube/config
       - uses: grafana/setup-k6-action@v1
         with:
-          k6-version: v0.52.0
+          k6-version: 0.52.0
       - name: Mask key and capture images
         run: |
           echo "::add-mask::$API_KEY"
