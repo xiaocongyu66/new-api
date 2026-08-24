@@ -1,13 +1,13 @@
 package controller
 
 import (
+	"github.com/QuantumNous/new-api/internal/capabilities/administration"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 )
 
 func CreateLogCleanupSystemTask(c contract.Context) {
@@ -20,7 +20,7 @@ func CreateLogCleanupSystemTask(c contract.Context) {
 		return
 	}
 
-	task, err := service.StartLogCleanupTask(targetTimestamp)
+	task, err := administration.StartLogCleanupTask(targetTimestamp)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -43,7 +43,7 @@ func GetCurrentSystemTask(c contract.Context) {
 		return
 	}
 
-	task, err := model.GetActiveSystemTask(taskType)
+	task, err := administration.GetActiveSystemTask(taskType)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -67,7 +67,7 @@ func GetCurrentSystemTask(c contract.Context) {
 func ListSystemTasks(c contract.Context) {
 	limit, _ := strconv.Atoi(c.Query("limit"))
 
-	tasks, err := model.ListSystemTasks(limit)
+	tasks, err := administration.ListSystemTasks(limit)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -95,7 +95,7 @@ func GetSystemTask(c contract.Context) {
 		return
 	}
 
-	task, err := model.GetSystemTaskByTaskID(taskID)
+	task, err := administration.GetSystemTaskByTaskID(taskID)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return

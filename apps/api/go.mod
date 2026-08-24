@@ -59,7 +59,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/mysql v1.4.3
 	gorm.io/driver/postgres v1.5.2
-	gorm.io/gorm v1.25.2
+	gorm.io/gorm v1.30.0
 )
 
 require (
@@ -89,6 +89,7 @@ require (
 	github.com/libdns/cloudflare v0.2.2-0.20250708034226-c574dccb31a6 // indirect
 	github.com/libdns/libdns v1.1.0 // indirect
 	github.com/logrusorgru/aurora v2.0.3+incompatible // indirect
+	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/mdlayher/netlink v1.7.3-0.20250113171957-fbb4dce95f42 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
 	github.com/metacubex/tfo-go v0.0.0-20250921095601-b102db4216c0 // indirect
@@ -126,6 +127,7 @@ require (
 	golang.org/x/mod v0.35.0 // indirect
 	golang.org/x/time v0.9.0 // indirect
 	golang.org/x/tools v0.44.0 // indirect
+	gorm.io/driver/sqlite v1.6.0 // indirect
 	lukechampine.com/blake3 v1.3.0 // indirect
 )
 
