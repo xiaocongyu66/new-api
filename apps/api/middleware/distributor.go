@@ -20,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/tidwall/gjson"
@@ -93,7 +94,7 @@ func Distribute() func(c contract.Context) {
 						return
 					}
 					if playgroundRequest.Group != "" {
-						if !service.GroupInUserUsableGroups(usingGroup, playgroundRequest.Group) && playgroundRequest.Group != usingGroup {
+						if !setting.GroupInUserUsableGroups(usingGroup, playgroundRequest.Group) && playgroundRequest.Group != usingGroup {
 							abortWithOpenAiMessage(c, http.StatusForbidden, i18n.TCtx(c, i18n.MsgDistributorGroupAccessDenied))
 							return
 						}
@@ -109,7 +110,7 @@ func Distribute() func(c contract.Context) {
 						channelSupportsRequestPath(preferred, c.Path(), modelRequest.Model) {
 						if usingGroup == "auto" {
 							userGroup := common.GetCtxKeyString(c, constant.ContextKeyUserGroup)
-							autoGroups := service.GetRequestAutoGroups(c, userGroup)
+							autoGroups := setting.GetRequestAutoGroups(c, userGroup)
 							for _, g := range autoGroups {
 								if model.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
 									selectGroup = g

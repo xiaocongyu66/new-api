@@ -20,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/samber/lo"
@@ -191,7 +192,7 @@ func getModelListGroups(c contract.Context) (modelListGroups, error) {
 		return modelListGroups{
 			userGroup:   userGroup,
 			tokenGroup:  tokenGroup,
-			ownerGroups: service.GetRequestAutoGroups(c, userGroup),
+			ownerGroups: setting.GetRequestAutoGroups(c, userGroup),
 		}, nil
 	}
 
