@@ -180,6 +180,8 @@ def main() -> int:
             checks = assert_bad_key(rows, lines, args.bad_key_channel, args.bad_key_index)
         case "cas-contention":
             checks = assert_cas(rows, lines)
+        case "pool-pressure":
+            checks = [result("pool-not-empty", bool(rows), f"health_rows={len(rows)}")]
         case "gray-failure":
             checks = assert_gray(rows, lines)
         case "weight-distribution":
