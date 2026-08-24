@@ -20,6 +20,8 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/i18n"
+	channelcap "github.com/QuantumNous/new-api/internal/capabilities/channel"
+	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/internal/security/oauth"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
@@ -53,6 +55,10 @@ func main() {
 		logger.LogError(nil, message)
 	})
 	kitutil.SetSystemErrorLogging(common.SysError)
+
+	// Gateway channel selection goes through the port; the channel
+	// capability implementation is registered before the router starts.
+	port.SelectChannel = channelcap.CacheGetRandomSatisfiedChannel
 
 	err := InitResources()
 	if err != nil {

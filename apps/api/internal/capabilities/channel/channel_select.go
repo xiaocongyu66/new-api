@@ -1,52 +1,18 @@
-package service
+package channel
 
 import (
 	"errors"
-	"github.com/QuantumNous/new-api/internal/transport/contract"
-
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 )
 
-type RetryParam struct {
-	Ctx          contract.Context
-	TokenGroup   string
-	ModelName    string
-	RequestPath  string
-	ExcludeSet   map[int]bool // P1: request-level exclude set for failed channels
-	Retry        *int
-	resetNextTry bool
-}
-
-func (p *RetryParam) GetRetry() int {
-	if p.Retry == nil {
-		return 0
-	}
-	return *p.Retry
-}
-
-func (p *RetryParam) SetRetry(retry int) {
-	p.Retry = &retry
-}
-
-func (p *RetryParam) IncreaseRetry() {
-	if p.resetNextTry {
-		p.resetNextTry = false
-		return
-	}
-	if p.Retry == nil {
-		p.Retry = new(int)
-	}
-	*p.Retry++
-}
-
-func (p *RetryParam) ResetRetryNextTry() {
-	p.resetNextTry = true
-}
-
-// CacheGetRandomSatisfiedChannel tries to get a random channel that satisfies the requirements.
+// CacheGetRandomSatisfiedChannel is the production implementation behind
+// gateway/port.SelectChannel: pick a channel that satisfies group, model,
+// and retry constraints from the in-memory channel cache.
 // 尝试获取一个满足要求的随机渠道。
 //
 // For "auto" tokenGroup with cross-group Retry enabled:
@@ -81,14 +47,14 @@ func (p *RetryParam) ResetRetryNextTry() {
 //
 //	Retry=3: GroupB, priority1 (startRetryIndex=2, priorityRetry=1)
 //	         分组B, 优先级1
-func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, error) {
+func CacheGetRandomSatisfiedChannel(param *port.SelectParams) (*model.Channel, string, error) {
 	var channel *model.Channel
 	var err error
 	selectGroup := param.TokenGroup
 	userGroup := common.GetCtxKeyString(param.Ctx, constant.ContextKeyUserGroup)
 
 	if param.TokenGroup == "auto" {
-		autoGroups := GetRequestAutoGroups(param.Ctx, userGroup)
+		autoGroups := service.GetRequestAutoGroups(param.Ctx, userGroup) // ponytail: service dep until group resolution migrates out of service
 		if len(autoGroups) == 0 {
 			return nil, selectGroup, errors.New("auto groups is not enabled")
 		}
