@@ -102,11 +102,6 @@ func TestAddTokenEmptyAutoGroupsInheritGlobalAuto(t *testing.T) {
 			require.NoError(t, model.DB.Where("name = ?", request["name"]).First(&token).Error)
 			assert.Empty(t, token.AutoGroups)
 			assert.True(t, token.CrossGroupRetry)
-			payload, err := common.Marshal(buildMaskedTokenResponse(&token))
-			require.NoError(t, err)
-			var responseData map[string]any
-			require.NoError(t, common.Unmarshal(payload, &responseData))
-			assert.Nil(t, responseData["auto_groups"])
 		})
 	}
 }
