@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	taskcap "github.com/QuantumNous/new-api/internal/capabilities/task"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
@@ -37,7 +38,7 @@ func VideoProxy(c contract.Context) {
 	}
 
 	userID := c.GetInt("id")
-	task, exists, err := model.GetByTaskId(userID, taskID)
+	task, exists, err := taskcap.GetByTaskId(userID, taskID)
 	if err != nil {
 		logger.LogError(c.Context(), fmt.Sprintf("Failed to query task %s: %s", taskID, err.Error()))
 		videoProxyError(c, http.StatusInternalServerError, "server_error", "Failed to query task")

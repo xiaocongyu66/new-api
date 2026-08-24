@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	taskcap "github.com/QuantumNous/new-api/internal/capabilities/task"
+
 	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
@@ -429,7 +431,7 @@ func getTaskOriginModelName(c contract.Context) string {
 	}
 
 	userId := c.GetInt("id")
-	if task, exist, err := model.GetByTaskId(userId, taskId); err == nil && exist && task != nil {
+	if task, exist, err := taskcap.GetByTaskId(userId, taskId); err == nil && exist && task != nil {
 		return task.Properties.OriginModelName
 	}
 	return ""

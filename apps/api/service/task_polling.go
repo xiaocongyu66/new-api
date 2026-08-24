@@ -16,6 +16,7 @@ import (
 	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	taskcap "github.com/QuantumNous/new-api/internal/capabilities/task"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -46,7 +47,7 @@ func sweepTimedOutTasks(ctx context.Context) {
 		return
 	}
 	cutoff := time.Now().Unix() - int64(constant.TaskTimeoutMinutes)*60
-	tasks := model.GetTimedOutUnfinishedTasks(cutoff, 100)
+	tasks := taskcap.GetTimedOutUnfinishedTasks(cutoff, 100)
 	if len(tasks) == 0 {
 		return
 	}
@@ -116,7 +117,7 @@ func RunTaskPollingOnce(ctx context.Context, report func(processed, total int)) 
 
 	common.SysLog("任务进度轮询开始")
 	sweepTimedOutTasks(ctx)
-	allTasks := model.GetAllUnFinishSyncTasks(constant.TaskQueryLimit)
+	allTasks := taskcap.GetAllUnFinishSyncTasks(constant.TaskQueryLimit)
 	summary.UnfinishedTasks = len(allTasks)
 	platformTask := make(map[constant.TaskPlatform][]*model.Task)
 	for _, t := range allTasks {

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	taskcap "github.com/QuantumNous/new-api/internal/capabilities/task"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
@@ -57,8 +58,7 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 		return nil
 	}
 
-	// 查找原始任务
-	originTask, exist, err := model.GetByTaskId(info.UserId, info.OriginTaskID)
+	originTask, exist, err := taskcap.GetByTaskId(info.UserId, info.OriginTaskID)
 	if err != nil {
 		return service.TaskErrorWrapper(err, "get_origin_task_failed", http.StatusInternalServerError)
 	}
@@ -331,7 +331,7 @@ func sunoFetchRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *dto.Ta
 	}
 	var tasks []any
 	if len(condition.IDs) > 0 {
-		taskModels, err := model.GetByTaskIds(userId, condition.IDs)
+		taskModels, err := taskcap.GetByTaskIds(userId, condition.IDs)
 		if err != nil {
 			taskResp = service.TaskErrorWrapper(err, "get_tasks_failed", http.StatusInternalServerError)
 			return
@@ -353,7 +353,7 @@ func sunoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *dt
 	taskId := c.Param("id")
 	userId := c.GetInt("id")
 
-	originTask, exist, err := model.GetByTaskId(userId, taskId)
+	originTask, exist, err := taskcap.GetByTaskId(userId, taskId)
 	if err != nil {
 		taskResp = service.TaskErrorWrapper(err, "get_task_failed", http.StatusInternalServerError)
 		return
@@ -377,7 +377,7 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 	}
 	userId := c.GetInt("id")
 
-	originTask, exist, err := model.GetByTaskId(userId, taskId)
+	originTask, exist, err := taskcap.GetByTaskId(userId, taskId)
 	if err != nil {
 		taskResp = service.TaskErrorWrapper(err, "get_task_failed", http.StatusInternalServerError)
 		return

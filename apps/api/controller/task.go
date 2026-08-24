@@ -4,6 +4,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"strconv"
 
+	taskcap "github.com/QuantumNous/new-api/internal/capabilities/task"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
@@ -27,9 +28,8 @@ func GetAllTask(c contract.Context) {
 		EndTimestamp:   endTimestamp,
 		ChannelID:      c.Query("channel_id"),
 	}
-
-	items := model.TaskGetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
-	total := model.TaskCountAllTasks(queryParams)
+	items := taskcap.TaskGetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
+	total := taskcap.TaskCountAllTasks(queryParams)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(tasksToDto(items, true))
 	common.CtxApiSuccess(c, pageInfo)
@@ -52,8 +52,8 @@ func GetUserTask(c contract.Context) {
 		EndTimestamp:   endTimestamp,
 	}
 
-	items := model.TaskGetAllUserTask(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
-	total := model.TaskCountAllUserTask(userId, queryParams)
+	items := taskcap.TaskGetAllUserTask(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
+	total := taskcap.TaskCountAllUserTask(userId, queryParams)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(tasksToDto(items, false))
 	common.CtxApiSuccess(c, pageInfo)
