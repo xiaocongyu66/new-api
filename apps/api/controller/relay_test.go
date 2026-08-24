@@ -1,12 +1,7 @@
 package controller
 
 import (
-	"net/http"
-	"net/http/httptest"
-	"strconv"
-	"testing"
-	"time"
-
+	"errors"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -16,6 +11,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"testing"
+	"time"
 )
 
 func init() {
@@ -585,4 +585,42 @@ func TestRelayLocal4xxDoesNotRecord(t *testing.T) {
 	// Verify no record exists (since we didn't call recordRouteIsolation)
 	_, _, _, ok := model.GetRouteIsolation(routeKey)
 	assert.False(t, ok, "400 error should not create isolation record")
+}
+
+// TestSensitiveBlockErrorNoPanic verifies that sensitive filter and target domain
+// blocking create proper errors without panicking on nil err. This is a regression
+// test for the panic where types.NewError(err, ...) and
+// types.NewErrorWithStatusCode(err, ...) were called with nil err after
+// GenRelayInfo succeeded.
+func TestSensitiveBlockErrorNoPanic(t *testing.T) {
+	// Test sensitive filter blocking error creation (replaces line 170 in relay.go)
+	msg1 := "input blocked by sensitive filter: test_label"
+	err1 := types.NewError(errors.New(msg1), types.ErrorCodeSensitiveWordsDetected, types.ErrOptionWithStatusCode(http.StatusForbidden))
+	require.NotNil(t, err1, "error should not be nil")
+	require.NotNil(t, err1.Error(), "error message should not be nil")
+	assert.Contains(t, err1.Error(), "input blocked by sensitive filter: test_label")
+	assert.Equal(t, http.StatusForbidden, err1.StatusCode)
+	assert.Equal(t, types.ErrorCodeSensitiveWordsDetected, err1.GetErrorCode())
+
+	// Test target domain blocking error creation (replaces line 181 in relay.go)
+	msg2 := "input blocked by target domain: evil.com"
+	err2 := types.NewErrorWithStatusCode(errors.New(msg2), types.ErrorCodeSensitiveWordsDetected, http.StatusForbidden)
+	require.NotNil(t, err2, "error should not be nil")
+	require.NotNil(t, err2.Error(), "error message should not be nil")
+	assert.Contains(t, err2.Error(), "input blocked by target domain: evil.com")
+	assert.Equal(t, http.StatusForbidden, err2.StatusCode)
+	assert.Equal(t, types.ErrorCodeSensitiveWordsDetected, err2.GetErrorCode())
+
+	// Verify the error can be converted to OpenAI format without panic
+	openAIErr1 := err1.ToOpenAIError()
+	require.NotNil(t, openAIErr1)
+	assert.NotEmpty(t, openAIErr1.Message)
+
+	openAIErr2 := err2.ToOpenAIError()
+	require.NotNil(t, openAIErr2)
+	assert.NotEmpty(t, openAIErr2.Message)
+	nilErr := types.NewErrorWithStatusCode(nil, types.ErrorCodeSensitiveWordsDetected, http.StatusForbidden)
+	require.NotNil(t, nilErr)
+	assert.Equal(t, http.StatusForbidden, nilErr.StatusCode)
+	assert.NotEmpty(t, nilErr.Error())
 }
