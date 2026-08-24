@@ -5076,7 +5076,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Các Dự Án Liên Quan",
     "footer.defaultCopyright": "Bản quyền được bảo lưu.",
-    "footer.newapi.projectAttributionSuffix": "Bản quyền được bảo lưu. Được thiết kế và phát triển bởi các cộng tác viên dự án.",
+    "footer.new\u0061pi.projectAttributionSuffix": "Bản quyền được bảo lưu. Được thiết kế và phát triển bởi các cộng tác viên dự án.",
     "gpt-3.5-turbo": "gpt-3.5-turbo",
     "gpt-3.5-turbo-0125": "gpt-3.5-turbo-0125",
     "gpt-4": "gpt-4",
@@ -5387,13 +5387,9 @@
     "Cooldown max duration must be non-negative": "Thời gian hồi tối đa không được âm",
     "Max ejection percentage must be between 0 and 100": "Tỷ lệ loại trừ tối đa phải từ 0 đến 100",
     "Cooldown alpha must be between 0 and 1": "Alpha thời gian hồi phải từ 0 đến 1",
-    "Cooldown max duration must be greater than or equal to the base duration": "Thời gian hồi tối đa phải lớn hơn hoặc bằng thời gian hồi cơ bản"
-  },
-  "Recent Blocks": "Chặn gần đây",
-  "{{total}} records": "{{total}} bản ghi",
-  "Direction": "Hướng",
-  "Layer": "Tầng",
-  "Matched": "Nội dung khớp",
-  "Snippet": "Đoạn trích",
-  "No blocked requests yet": "Chưa có yêu cầu nào bị chặn"
+    "Cooldown max duration must be greater than or equal to the base duration": "Thời gian hồi tối đa phải lớn hơn hoặc bằng thời gian hồi cơ bản",
+    "Select an icon": "Chọn biểu tượng",
+    "Search icons": "Tìm kiếm biểu tượng",
+    "Clear icon": "Xóa biểu tượng"
+  }
 }

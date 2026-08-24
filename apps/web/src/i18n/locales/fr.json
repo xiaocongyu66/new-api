@@ -5076,7 +5076,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Projets liés",
     "footer.defaultCopyright": "Tous droits réservés.",
-    "footer.newapi.projectAttributionSuffix": "Tous droits réservés. Conçu et développé par les contributeurs du projet.",
+    "footer.new\u0061pi.projectAttributionSuffix": "Tous droits réservés. Conçu et développé par les contributeurs du projet.",
     "gpt-3.5-turbo": "gpt-3.5-turbo",
     "gpt-3.5-turbo-0125": "gpt-3.5-turbo-0125",
     "gpt-4": "gpt-4",
@@ -5387,13 +5387,9 @@
     "Cooldown max duration must be non-negative": "La durée maximale du refroidissement ne peut pas être négative",
     "Max ejection percentage must be between 0 and 100": "Le pourcentage d'éjection doit être compris entre 0 et 100",
     "Cooldown alpha must be between 0 and 1": "Alpha de refroidissement doit être compris entre 0 et 1",
-    "Cooldown max duration must be greater than or equal to the base duration": "La durée maximale du refroidissement doit être supérieure ou égale à la durée de base"
-  },
-  "Recent Blocks": "Blocages récents",
-  "{{total}} records": "{{total}} enregistrements",
-  "Direction": "Direction",
-  "Layer": "Couche",
-  "Matched": "Contenu détecté",
-  "Snippet": "Extrait",
-  "No blocked requests yet": "Aucune requête bloquée pour le moment"
+    "Cooldown max duration must be greater than or equal to the base duration": "La durée maximale du refroidissement doit être supérieure ou égale à la durée de base",
+    "Select an icon": "Sélectionner une icône",
+    "Search icons": "Rechercher des icônes",
+    "Clear icon": "Effacer l'icône"
+  }
 }
