@@ -147,12 +147,7 @@ func ObjectData(c *gin.Context, object interface{}) error {
 }
 
 func Done(c *gin.Context) {
-	// 尾部缓冲补发 + 终止标记直写（终止标记不进过滤缓冲，避免被吞）。
-	if tail := FlushOutputPending(c); tail != "" {
-		c.Render(-1, common.CustomEvent{Data: "data: " + tail})
-	}
-	c.Render(-1, common.CustomEvent{Data: "data: [DONE]"})
-	_ = FlushWriter(c)
+	_ = StringData(c, "[DONE]")
 }
 
 func WssString(c *gin.Context, ws *websocket.Conn, str string) error {
