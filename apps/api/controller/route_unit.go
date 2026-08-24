@@ -35,16 +35,12 @@ func GetRouteUnitViews(c *gin.Context) {
 		return
 	}
 
-	// Model fills HealthScore via RouteWeightMultiplier; ensure consistency.
-	// Compute total weight from items.
-	totalWeight := 0
-	for _, v := range views {
-		totalWeight += v.StaticWeight
-	}
-
+	// After F1, expected_share is per-group (static weight within the route's
+	// own group). The cross-group aggregate totalWeight was misleading (a channel
+	// in both default and vip inflated the denominator). Drop it; the frontend
+	// uses unit.expected_share directly.
 	common.ApiSuccess(c, gin.H{
-		"items":        views,
-		"total_weight": totalWeight,
+		"items": views,
 	})
 }
 

@@ -286,9 +286,14 @@ func TestSelectRouteUnit_CooldownEjection(t *testing.T) {
 		require.NotNil(t, selected)
 		counts[selected.ChannelId]++
 	}
-	// Healthy route (1009) should win the clear majority; calm route (1008) keeps reduced share
-	assert.Greater(t, counts[1009], counts[1008]*2, "healthy route must dominate calm route")
-	assert.Greater(t, counts[1008], 0, "calm route must remain selectable (reduced but nonzero share)")
+	// calm multiplier 0.5 pins base scores at 101:50.5 ≈ 2:1, and the share
+	// correction holds actual traffic exactly there (133:67 of 200 ≈ 66.5%,
+	// expected 66.7%). The correction suppresses the sampling jitter that used
+	// to push the healthy route strictly past 2x, so dominance is asserted as a
+	// band around the base-share split instead of strict 2x.
+	assert.Greater(t, counts[1009], counts[1008], "healthy route must dominate calm route")
+	assert.Greater(t, counts[1009], 120, "healthy route holds its base share (~2/3)")
+	assert.Less(t, counts[1009], 147, "correction keeps healthy route near base share, not monopoly")
 
 	// Now disable the calm route - it must be excluded entirely
 	require.NoError(t, DisableRoute(RouteKey{ChannelId: 1008, KeyIndex: 0, Model: alias}, now))

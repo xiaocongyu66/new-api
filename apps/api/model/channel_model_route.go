@@ -244,6 +244,18 @@ type RouteUnitView struct {
 	TtftEwmaMs  float64 `json:"ttft_ewma_ms"`
 	TpsEwma     float64 `json:"tps_ewma"`
 	SampleCount int     `json:"sample_count"`
+
+	// W5.1: six-factor score breakdown for operator verification.
+	// final_score ≈ base_weight * ewma_quality * health_multiplier * share_correction
+	// expected_share is static-weight ratio (operator's configured intent).
+	// RouteScore.ExpectedShare (not exposed here) is base-score share (correction's target).
+	BaseWeight        float64 `json:"base_weight"`          // routingBaseWeight(static_weight) as float
+	HealthMultiplier  float64 `json:"health_multiplier"`    // state machine multiplier (same as health_score, renamed for clarity)
+	ShareCorrection   float64 `json:"share_correction"`     // clamped share-deficit multiplier
+	ActualShare       float64 `json:"actual_share"`         // recent measured share (selections/opportunities)
+	FinalScore        float64 `json:"final_score"`          // product of all four factors
+	ShareOpportunities int    `json:"share_opportunities"`  // sample size behind actual_share
+	ShareSelections   int     `json:"share_selections"`     // selections within the window
 }
 
 // RouteUnitAliasSummary aggregates route units by public model alias.
@@ -254,7 +266,9 @@ type RouteUnitAliasSummary struct {
 }
 
 // GetRouteUnitViewsByAlias returns all route units for a given public model alias,
-// joined with channel information. ExpectedShare is weight/total rounded to 4 decimals.
+// joined with channel information. ExpectedShare is the static-weight ratio
+// within the route's own group (F1: selection draws from a single (group, alias)
+// pool, so the denominator must be per-group, not across all groups).
 func GetRouteUnitViewsByAlias(alias string) ([]RouteUnitView, error) {
 	if alias == "" {
 		return nil, errors.New("alias is required")
@@ -280,10 +294,13 @@ func GetRouteUnitViewsByAlias(alias string) ([]RouteUnitView, error) {
 	for _, ch := range channels {
 		channelMap[ch.Id] = ch
 	}
-	// Compute total weight
-	totalWeight := 0
+	// F1: compute total weight per group. Selection draws from a single
+	// (group, alias) pool, so expected_share = static_weight / Σ(weights in the
+	// same group). Summing across groups makes a channel in both `default` and
+	// `vip` inflate the denominator and halve every route's reported share.
+	groupWeights := make(map[string]int)
 	for _, r := range routes {
-		totalWeight += r.StaticWeight
+		groupWeights[r.Group] += r.StaticWeight
 	}
 	// Build views
 	views := make([]RouteUnitView, 0, len(routes))
@@ -294,9 +311,9 @@ func GetRouteUnitViewsByAlias(alias string) ([]RouteUnitView, error) {
 			baseURL = *ch.BaseURL
 		}
 		share := 0.0
-		if totalWeight > 0 {
-			share = float64(r.StaticWeight) / float64(totalWeight)
-			// Round to 4 decimal places
+		if gw := groupWeights[r.Group]; gw > 0 {
+			share = float64(r.StaticWeight) / float64(gw)
+			// Round to 4 decimal places (preserving existing behaviour)
 			share = float64(int64(share*10000+0.5)) / 10000
 		}
 		view := RouteUnitView{
@@ -332,6 +349,55 @@ func GetRouteUnitViewsByAlias(alias string) ([]RouteUnitView, error) {
 			view.SampleCount = snap.SampleCount
 		}
 		views = append(views, view)
+	}
+	// W5.1: populate the six-factor score breakdown via scoreCandidates. Build
+	// candidate slices per (group, alias) pool, matching how selection groups
+	// them. scoreCandidates calls routestats.Corrections which is a pure read
+	// (it acquires a read lock on the pool window but never calls
+	// RecordSelection), so this read path cannot move any counter.
+	viewsByRouteID := make(map[routestats.RouteID]*RouteUnitView, len(views))
+	for i := range views {
+		v := &views[i]
+		v.BaseWeight = float64(routingBaseWeight(v.StaticWeight))
+		v.HealthMultiplier = v.HealthScore
+		v.ShareCorrection = 1.0
+		v.FinalScore = v.BaseWeight * v.EwmaQuality * v.HealthMultiplier
+		viewsByRouteID[routestats.RouteID{
+			ChannelID:     v.ChannelId,
+			KeyIndex:       v.KeyIndex,
+			UpstreamModel: v.UpstreamModel,
+		}] = v
+	}
+	// Group views by their (group, alias) pool and score each pool.
+	poolToViews := make(map[routestats.PoolKey][]*RouteUnitView)
+	for i := range views {
+		v := &views[i]
+		pool := routestats.PoolKey{Group: v.Group, PublicModelAlias: v.PublicModelAlias}
+		poolToViews[pool] = append(poolToViews[pool], v)
+	}
+	for pool, poolViews := range poolToViews {
+		candidates := make([]routeCandidate, 0, len(poolViews))
+		for _, v := range poolViews {
+			candidates = append(candidates, routeCandidate{
+				channelId:     v.ChannelId,
+				keyIndex:      v.KeyIndex,
+				upstreamModel: v.UpstreamModel,
+				staticWeight:  v.StaticWeight,
+			})
+		}
+		scores, _ := scoreCandidates(pool, candidates, alias)
+		for id, s := range scores {
+			if v, ok := viewsByRouteID[id]; ok {
+				v.BaseWeight = s.BaseWeight
+				v.EwmaQuality = s.Quality
+				v.HealthMultiplier = s.Health
+				v.ShareCorrection = s.Correction
+				v.ActualShare = s.ActualShare
+				v.FinalScore = s.Final
+				v.ShareOpportunities = s.Opportunities
+				v.ShareSelections = s.Selections
+			}
+		}
 	}
 	return views, nil
 }

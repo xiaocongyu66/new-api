@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/pkg/routestats"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -243,6 +244,22 @@ func InitOptionMap() {
 		common.OptionMap["KeyProbeEnabled"] = strconv.FormatBool(healthCfg.KeyProbeEnabled)
 	}
 
+	routeStatsCfg := routestats.GetRouteStatsSetting()
+	if routeStatsCfg != nil {
+		common.OptionMap["RouteStatsEnabled"] = strconv.FormatBool(routeStatsCfg.Enabled)
+		common.OptionMap["RouteStatsShareWindowSize"] = strconv.Itoa(routeStatsCfg.ShareWindowSize)
+		common.OptionMap["RouteStatsShareCorrMin"] = strconv.FormatFloat(routeStatsCfg.ShareCorrMin, 'g', -1, 64)
+		common.OptionMap["RouteStatsShareCorrMax"] = strconv.FormatFloat(routeStatsCfg.ShareCorrMax, 'g', -1, 64)
+		common.OptionMap["RouteStatsMinSamples"] = strconv.Itoa(routeStatsCfg.MinSamples)
+		common.OptionMap["RouteStatsTTLSeconds"] = strconv.Itoa(routeStatsCfg.TTLSeconds)
+		common.OptionMap["RouteStatsTTFTTargetMs"] = strconv.Itoa(routeStatsCfg.TTFTTargetMs)
+		common.OptionMap["RouteStatsTPSTarget"] = strconv.Itoa(routeStatsCfg.TPSTarget)
+		common.OptionMap["RouteStatsQualityFloor"] = strconv.FormatFloat(routeStatsCfg.QualityFloor, 'g', -1, 64)
+		common.OptionMap["RouteStatsQualityCeil"] = strconv.FormatFloat(routeStatsCfg.QualityCeil, 'g', -1, 64)
+		common.OptionMap["RouteStatsComponentFloor"] = strconv.FormatFloat(routeStatsCfg.ComponentFloor, 'g', -1, 64)
+		common.OptionMap["RouteStatsComponentCeil"] = strconv.FormatFloat(routeStatsCfg.ComponentCeil, 'g', -1, 64)
+	}
+
 	// 自动添加所有注册的模型配置
 	modelConfigs := config.GlobalConfig.ExportAllConfigs()
 	for k, v := range modelConfigs {
@@ -277,6 +294,9 @@ func validateOptionValue(key string, value string) error {
 	}
 	if key == "MaxTokenAutoGroups" {
 		return setting.ValidateMaxTokenAutoGroups(value)
+	}
+	if operation_setting.IsRouteStatsOptionKey(key) {
+		return operation_setting.ValidateRouteStatsSettingValue(key, value)
 	}
 	if operation_setting.IsChannelModelHealthOptionKey(key) {
 		return operation_setting.ValidateChannelModelHealthSettingValue(key, value)
@@ -351,6 +371,15 @@ func UpdateOptionsBulk(values map[string]string) error {
 func updateOptionMap(key string, value string) (err error) {
 	if operation_setting.IsChannelModelHealthOptionKey(key) {
 		if err := operation_setting.UpdateChannelModelHealthSettingValue(key, value); err != nil {
+			return err
+		}
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap[key] = value
+		common.OptionMapRWMutex.Unlock()
+		return nil
+	}
+	if operation_setting.IsRouteStatsOptionKey(key) {
+		if err := operation_setting.UpdateRouteStatsSettingValue(key, value); err != nil {
 			return err
 		}
 		common.OptionMapRWMutex.Lock()

@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"math"
 	"math/rand/v2"
 	"sync"
 
@@ -164,31 +165,146 @@ func isKeyEnabled(channel *Channel, keyIndex int) bool {
 	return true // default to enabled if not specified
 }
 
-// selectByWeight performs weighted random selection on candidates using health-adjusted weights.
+// RouteScore is the full breakdown of one candidate's final scheduling score, so
+// an admin query can be recomputed by hand: final == base * correction, where
+// base == routingBaseWeight(static) * quality * health.
+type RouteScore struct {
+	StaticWeight int
+	BaseWeight   float64
+	Quality      float64
+	Health       float64
+	Correction   float64
+	Final        float64
+
+	ExpectedShare float64
+	ActualShare   float64
+	Opportunities int
+	Selections    int
+}
+
+// scoreCandidates computes the final score of every candidate for one pool.
+//
+// The score is a product of four bounded terms:
+//
+//	base_weight  routingBaseWeight(static_weight), so weight 0 stays selectable
+//	quality      EWMA synthesis, clamped to [QualityFloor, QualityCeil]; neutral
+//	             1.0 until MinSamples observations exist
+//	health       #368 state multiplier: 1.0 healthy, calm/dormant derated,
+//	             0.0 disabled — the only term allowed to reach zero
+//	correction   share-deficit multiplier, 1.0 at convergence
+//
+// The division of labour matters: quality expresses a continuous preference and
+// is floored well above zero, so a badly performing route loses share but never
+// leaves the pool. Only the state machine ejects, and it does so by returning a
+// zero health multiplier.
+//
+// The returned targets map is the base-score share of each candidate, which is
+// both the input the correction compares against and the snapshot recorded into
+// the window once a winner is chosen.
+func scoreCandidates(pool routestats.PoolKey, candidates []routeCandidate, alias string) (map[routestats.RouteID]RouteScore, map[routestats.RouteID]float64) {
+	cfg := routestats.GetRouteStatsSetting()
+	scores := make(map[routestats.RouteID]RouteScore, len(candidates))
+	targets := make(map[routestats.RouteID]float64, len(candidates))
+
+	var baseTotal float64
+	for _, c := range candidates {
+		id := routestats.RouteID{ChannelID: c.channelId, KeyIndex: c.keyIndex, UpstreamModel: c.upstreamModel}
+		health := RouteWeightMultiplier(RouteKey{ChannelId: c.channelId, KeyIndex: c.keyIndex, Model: alias})
+		quality := 1.0
+		if cfg != nil && cfg.Enabled {
+			if h := routestats.GetHandle(routestats.RouteKey{
+				Group:            pool.Group,
+				PublicModelAlias: pool.PublicModelAlias,
+				ChannelID:        c.channelId,
+				KeyIndex:         c.keyIndex,
+				UpstreamModel:    c.upstreamModel,
+			}); h != nil {
+				quality = h.Quality().Quality
+			}
+		}
+		baseWeight := float64(routingBaseWeight(c.staticWeight))
+		base := baseWeight * quality * health
+		// A NaN or negative product would poison the cumulative pick below, where
+		// it silently biases every later candidate. Degrade the single bad route to
+		// zero instead of failing the whole selection.
+		if math.IsNaN(base) || math.IsInf(base, 0) || base < 0 {
+			base = 0
+		}
+		scores[id] = RouteScore{
+			StaticWeight: c.staticWeight,
+			BaseWeight:   baseWeight,
+			Quality:      quality,
+			Health:       health,
+			Correction:   1.0,
+			Final:        base,
+		}
+		if base > 0 {
+			targets[id] = base
+			baseTotal += base
+		}
+	}
+
+	if baseTotal <= 0 {
+		return scores, map[routestats.RouteID]float64{}
+	}
+	for id, base := range targets {
+		targets[id] = base / baseTotal
+	}
+
+	for id, corr := range routestats.Corrections(pool, targets, cfg) {
+		s := scores[id]
+		s.Correction = corr.Correction
+		s.ExpectedShare = corr.ExpectedShare
+		s.ActualShare = corr.ActualShare
+		s.Opportunities = corr.Opportunities
+		s.Selections = corr.Selections
+		final := s.Final * corr.Correction
+		if math.IsNaN(final) || math.IsInf(final, 0) || final < 0 {
+			final = 0
+		}
+		s.Final = final
+		scores[id] = s
+	}
+	return scores, targets
+}
+
+// selectByWeight performs weighted random selection over the final scores and
+// records the winner into the pool's share window.
 // rnd is the random source; if nil, uses global rand.
-// alias is the public model alias used for RouteWeightMultiplier lookups.
-func selectByWeight(candidates []routeCandidate, alias string, rnd *rand.Rand) *routeCandidate {
+func selectByWeight(pool routestats.PoolKey, candidates []routeCandidate, alias string, rnd *rand.Rand) *routeCandidate {
 	if len(candidates) == 0 {
 		return nil
 	}
+	// A single candidate is returned as-is: with nothing to compete against, both
+	// quality and the share correction would only scale a share that is already
+	// 100%. It is still recorded below so the window reflects served traffic.
 	if len(candidates) == 1 {
+		only := candidates[0]
+		id := routestats.RouteID{ChannelID: only.channelId, KeyIndex: only.keyIndex, UpstreamModel: only.upstreamModel}
+		if RouteWeightMultiplier(RouteKey{ChannelId: only.channelId, KeyIndex: only.keyIndex, Model: alias}) <= 0 {
+			return nil
+		}
+		routestats.RecordSelection(pool, id, map[routestats.RouteID]float64{id: 1.0}, routestats.GetRouteStatsSetting())
 		return &candidates[0]
 	}
 
-	// Build final candidate list with weights, excluding disabled (effW <= 0)
+	scores, targets := scoreCandidates(pool, candidates, alias)
+
 	type weightedCandidate struct {
 		candidate routeCandidate
+		id        routestats.RouteID
 		weight    float64
 	}
 	var weighted []weightedCandidate
 	var totalWeight float64
 	for _, c := range candidates {
-		effW := float64(routingBaseWeight(c.staticWeight)) * RouteWeightMultiplier(RouteKey{ChannelId: c.channelId, KeyIndex: c.keyIndex, Model: alias})
-		if effW <= 0 {
+		id := routestats.RouteID{ChannelID: c.channelId, KeyIndex: c.keyIndex, UpstreamModel: c.upstreamModel}
+		w := scores[id].Final
+		if w <= 0 {
 			continue
 		}
-		weighted = append(weighted, weightedCandidate{candidate: c, weight: effW})
-		totalWeight += effW
+		weighted = append(weighted, weightedCandidate{candidate: c, id: id, weight: w})
+		totalWeight += w
 	}
 
 	if totalWeight <= 0 || len(weighted) == 0 {
@@ -200,13 +316,17 @@ func selectByWeight(candidates []routeCandidate, alias string, rnd *rand.Rand) *
 		r = rnd.Float64()
 	}
 	randomWeight := r * totalWeight
+	cfg := routestats.GetRouteStatsSetting()
 	for i, wc := range weighted {
 		randomWeight -= wc.weight
 		if randomWeight < 0 || i == len(weighted)-1 {
-			return &wc.candidate
+			routestats.RecordSelection(pool, wc.id, targets, cfg)
+			return &weighted[i].candidate
 		}
 	}
-	return &weighted[len(weighted)-1].candidate
+	last := weighted[len(weighted)-1]
+	routestats.RecordSelection(pool, last.id, targets, cfg)
+	return &last.candidate
 }
 
 // SelectRouteUnit is the unified entry point for route unit selection.
@@ -252,8 +372,10 @@ func SelectRouteUnit(group string, alias string, requestPath string, retry int, 
 		return nil, nil
 	}
 
-	// Weighted random selection
-	selected := selectByWeight(candidates, alias, rnd)
+	// The share window is scoped to the competing pool, which is exactly the
+	// (group, alias) pair selection draws from.
+	pool := routestats.PoolKey{Group: group, PublicModelAlias: alias}
+	selected := selectByWeight(pool, candidates, alias, rnd)
 	if selected == nil {
 		return nil, nil
 	}
@@ -379,6 +501,21 @@ func SelectedRouteFromChannel(channel *Channel, alias string) (*SelectedRoute, e
 			KeyIndex:         keyIndex,
 			UpstreamModel:    upstreamModel,
 		})
+		// This path bypasses weighted random selection entirely, yet it still
+		// consumes traffic from the pool. The share window has to see it, or the
+		// correction is blind to exactly the skew it exists to fix: with 30% of a
+		// three-route pool pinned here by channel affinity, the pinned route takes
+		// 53.4% instead of 33.3%, and leaving these requests unrecorded measurably
+		// degrades the balancer back to that baseline.
+		//
+		// The recorded entitlement is the pool's full candidate set as scored right
+		// now: affinity did not run a competition, so the counterfactual share is
+		// what the other routes would have been entitled to.
+		recordBypassSelection(group, alias, routestats.RouteID{
+			ChannelID:     channel.Id,
+			KeyIndex:      keyIndex,
+			UpstreamModel: upstreamModel,
+		})
 	}
 
 	return &SelectedRoute{
@@ -392,4 +529,39 @@ func SelectedRouteFromChannel(channel *Channel, alias string) (*SelectedRoute, e
 		UpstreamModel: upstreamModel,
 		StatsHandle:   statsHandle,
 	}, nil
+}
+
+// recordBypassSelection folds a selection made outside weighted random into the
+// pool's share window, using the pool's current base-score distribution as the
+// entitlement snapshot. Candidates are read without status/key filtering because
+// this is an accounting entry, not a selection: a route that is momentarily
+// unselectable was still entitled to its configured share of this request.
+func recordBypassSelection(group, alias string, selected routestats.RouteID) {
+	cfg := routestats.GetRouteStatsSetting()
+	if cfg == nil || !cfg.Enabled || cfg.ShareWindowSize <= 0 {
+		return
+	}
+	var candidates []routeCandidate
+	if common.MemoryCacheEnabled {
+		channelSyncLock.RLock()
+		candidates = getCandidatesFromCache(group, alias)
+		channelSyncLock.RUnlock()
+	} else {
+		candidates = getCandidatesFromDB(group, alias)
+	}
+	if len(candidates) == 0 {
+		return
+	}
+	pool := routestats.PoolKey{Group: group, PublicModelAlias: alias}
+	_, targets := scoreCandidates(pool, candidates, alias)
+	if len(targets) == 0 {
+		// Every candidate scored zero (for example the whole pool is disabled).
+		// Charge the served route alone rather than dropping the request.
+		targets = map[routestats.RouteID]float64{selected: 1.0}
+	} else if _, ok := targets[selected]; !ok {
+		// The served route scored zero but was still used: it must appear in its own
+		// entry, otherwise its selection count would exceed its opportunity count.
+		targets[selected] = 0
+	}
+	routestats.RecordSelection(pool, selected, targets, cfg)
 }
