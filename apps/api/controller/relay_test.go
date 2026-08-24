@@ -5,6 +5,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -593,6 +594,10 @@ func TestRelayLocal4xxDoesNotRecord(t *testing.T) {
 // types.NewErrorWithStatusCode(err, ...) were called with nil err after
 // GenRelayInfo succeeded.
 func TestSensitiveBlockErrorNoPanic(t *testing.T) {
+	// #415 issue scenario: the gov.cn request text must actually hit the target-domain gate.
+	require.NotEmpty(t, service.CheckSensitiveTargets("please visit https://www.gov.cn"),
+		"gov.cn input must hit the target-domain gate")
+
 	// Test sensitive filter blocking error creation (replaces line 170 in relay.go)
 	msg1 := "input blocked by sensitive filter: test_label"
 	err1 := types.NewError(errors.New(msg1), types.ErrorCodeSensitiveWordsDetected, types.ErrOptionWithStatusCode(http.StatusForbidden))
