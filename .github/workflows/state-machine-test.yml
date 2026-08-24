@@ -183,6 +183,7 @@ jobs:
           kubectl exec -i "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT channel_id, model, enabled, weight FROM abilities WHERE channel_id BETWEEN 90001 AND 90003 ORDER BY channel_id, model" > runtime/logs/seeded-abilities.txt
       - name: Run full scenario matrix
         run: |
+          set -euo pipefail
           kubectl port-forward svc/new-api 18080:80 > runtime/logs/matrix-port-forward.log 2>&1 &
           pf_pid=$!
           trap 'kill "$pf_pid" 2>/dev/null || true' EXIT
@@ -191,10 +192,18 @@ jobs:
             sleep 1
           done
           TARGET_URL="http://127.0.0.1:18080/v1"
-          curl --max-time 20 --fail-with-body -H "Authorization: Bearer $API_KEY" \
+          # Probe a healthy model before fault injection. A status endpoint alone does not prove relay routing.
+          curl --max-time 15 --fail-with-body -H "Authorization: Bearer $API_KEY" \
             -H 'Content-Type: application/json' \
-            -d '{"model":"mock-bad","messages":[{"role":"user","content":"probe"}],"max_tokens":1,"stream":false}' \
-            "$TARGET_URL/chat/completions" > runtime/logs/preflight-chat.json || true
+            -d '{"model":"mock-fast","messages":[{"role":"user","content":"probe"}],"max_tokens":1,"stream":false}' \
+            "$TARGET_URL/chat/completions" > runtime/logs/preflight-chat.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path("runtime/logs/preflight-chat.json").read_text())
+          if not payload.get("choices"):
+              raise SystemExit("relay preflight returned no choices")
+          PY
           set +e
           if [ "$SCENARIO" = all ]; then scenarios="1 2 3 4 5 6 7 8"; else scenarios="$SCENARIO"; fi
           overall=0
