@@ -180,6 +180,15 @@ jobs:
           kubectl get pods -l app=new-api -o wide > runtime/logs/pods-after-routing-refresh.txt
           kubectl exec -i "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT id, name, status, models FROM channels WHERE id BETWEEN 90001 AND 90003 ORDER BY id" > runtime/logs/seeded-channels.txt
           kubectl exec -i "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT channel_id, model, enabled, weight FROM abilities WHERE channel_id BETWEEN 90001 AND 90003 ORDER BY channel_id, model" > runtime/logs/seeded-abilities.txt
+      - name: Reconnect refreshed worker target
+        run: |
+          pkill -f 'kubectl port-forward' || true
+          (while true; do kubectl port-forward deployment/new-api-worker 18080:3000 >> runtime/logs/port-forward.log 2>&1 || true; sleep 1; done) &
+          for i in $(seq 1 45); do
+            curl -fsS http://127.0.0.1:18080/api/status >/dev/null && exit 0
+            sleep 1
+          done
+          exit 1
       - name: Preflight seeded model and upstream
         run: |
           curl --max-time 20 --fail-with-body -H "Authorization: Bearer $API_KEY" \
@@ -193,15 +202,6 @@ jobs:
             -H 'Authorization: Bearer bad-key' \
             -d '{"model":"mock-bad","messages":[{"role":"user","content":"probe"}],"max_tokens":1}' \
             http://stress-mock/v1/chat/completions > runtime/logs/upstream-probe.json
-      - name: Reconnect refreshed worker target
-        run: |
-          pkill -f 'kubectl port-forward' || true
-          (while true; do kubectl port-forward deployment/new-api-worker 18080:3000 >> runtime/logs/port-forward.log 2>&1 || true; sleep 1; done) &
-          for i in $(seq 1 45); do
-            curl -fsS http://127.0.0.1:18080/api/status >/dev/null && exit 0
-            sleep 1
-          done
-          exit 1
       - name: Run full scenario matrix
         run: |
           set +e
