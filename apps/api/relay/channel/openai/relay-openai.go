@@ -18,6 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, forceFormat bool, thinkToContent bool) error {
@@ -139,40 +140,70 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		observer = newStreamObserver(info.RelayMode)
 	}
 
-	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
-		// One chunk is held back: handleLastResponse may suppress the final chunk,
-		// so it can only be forwarded once the stream is known to continue.
-		if lastStreamData != "" {
-			if fastPath {
-				info.SendResponseCount++
-				if err := helper.StringData(c, lastStreamData); err != nil {
+	var heldChunk string
+	var sawVisibleChunk bool
+	forwardChunk := func(c *gin.Context, info *relaycommon.RelayInfo, fastPath bool, data string, sr *helper.StreamResult) {
+		if fastPath {
+			info.SendResponseCount++
+			if err := helper.StringData(c, data); err != nil {
+				if sr != nil {
 					sr.Error(err)
 				}
-			} else if err := HandleStreamFormat(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
-				common.SysLog("error handling stream format: " + err.Error())
+			}
+			return
+		}
+		if err := HandleStreamFormat(c, info, data, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
+			common.SysLog("error handling stream format: " + err.Error())
+			if sr != nil {
 				sr.Error(err)
 			}
 		}
-		if len(data) > 0 {
-			// 对音频模型，保存倒数第二个stream data
-			if isAudioModel && lastStreamData != "" {
-				secondLastStreamData = lastStreamData
-			}
+	}
+	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+		if len(data) == 0 {
+			return
+		}
+		// 对音频模型，保存倒数第二个stream data
+		if isAudioModel && lastStreamData != "" {
+			secondLastStreamData = lastStreamData
+		}
+		lastStreamData = data
 
-			lastStreamData = data
-			if fastPath {
-				observer.observe(data)
-				return
+		// Forward policy (#426): metadata-only preamble chunks (role/id/created
+		// with empty deltas) are held so an upstream dying before any visible
+		// output leaves the client byte-clean for an error response or a channel
+		// retry. The first visible token flushes the held chunk ahead of itself,
+		// and everything after — including the trailing usage-only chunk — goes
+		// out immediately, keeping time-to-first-token equal to the upstream's.
+		// The old lastStreamData pipeline delayed every chunk by one upstream
+		// interval to buy this far more cheaply.
+		if !sawVisibleChunk {
+			if chunkHasVisibleDelta(data) {
+				if heldChunk != "" {
+					forwardChunk(c, info, fastPath, heldChunk, sr)
+					heldChunk = ""
+				}
+				forwardChunk(c, info, fastPath, data, sr)
+				sawVisibleChunk = true
+			} else {
+				heldChunk = data // latest preamble wins; id/model/created repeat
 			}
-			collectStreamFunctionCallNames(data, seenStreamToolCalls, &streamFunctionCallNames)
-			finished, err := processTokenData(info.RelayMode, data, &responseTextBuilder, &toolCount)
-			if finished {
-				sawFinishReason = true
-			}
-			if err != nil {
-				logger.LogError(c, "error processing stream token data: "+err.Error())
-				sr.Error(err)
-			}
+		} else {
+			forwardChunk(c, info, fastPath, data, sr)
+		}
+
+		if fastPath {
+			observer.observe(data)
+			return
+		}
+		collectStreamFunctionCallNames(data, seenStreamToolCalls, &streamFunctionCallNames)
+		finished, err := processTokenData(info.RelayMode, data, &responseTextBuilder, &toolCount)
+		if finished {
+			sawFinishReason = true
+		}
+		if err != nil {
+			logger.LogError(c, "error processing stream token data: "+err.Error())
+			sr.Error(err)
 		}
 	})
 
@@ -226,19 +257,19 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		return nil, apiErr
 	}
 
-	// 处理最后的响应
-	shouldSendLastResp := true
+	// 处理最后的响应（提取 usage / responseId 等；所有 chunk 已即时转发）
 	if err := handleLastResponse(lastStreamData, &responseId, &createAt, &systemFingerprint, &model, &usage,
-		&containStreamUsage, info, &shouldSendLastResp); err != nil {
+		&containStreamUsage); err != nil {
 		logger.LogError(c, fmt.Sprintf("error handling last response: %s, lastStreamData: [%s]", err.Error(), lastStreamData))
 	}
 
-	if info.RelayFormat == types.RelayFormatOpenAI && shouldSendLastResp {
-		if fastPath {
-			_ = helper.StringData(c, lastStreamData)
-		} else {
-			_ = sendStreamData(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent)
-		}
+	// A stream can end without ever producing a visible token (an empty
+	// completion carrying only finish_reason). Flush whatever preamble is still
+	// held so the client sees the terminal chunk before [DONE]. Reached only on
+	// the clean-completion path: the truncation guard above returns earlier on
+	// failures, keeping a retryable stream byte-clean.
+	if heldChunk != "" {
+		forwardChunk(c, info, fastPath, heldChunk, nil)
 	}
 
 	if !containStreamUsage && fastPath && observer.usage != nil {
@@ -286,6 +317,36 @@ func streamTruncated(info *relaycommon.RelayInfo, sawFinishReason bool) bool {
 		return false
 	}
 	return true
+}
+
+// chunkHasVisibleDelta reports whether an SSE data line carries user-visible
+// output: any choice text, delta content, reasoning content, or tool call.
+// Metadata-only chunks (role/id/created with empty deltas, usage-only tails)
+// are the preamble the forward policy in OaiStreamHandler may hold back while
+// failing cleanly is still an option. Shared by the fast and slow forward
+// paths so both hold and release on exactly the same rule; gjson keeps the
+// per-chunk cost far below the DTO unmarshal the slow path already pays for.
+func chunkHasVisibleDelta(data string) bool {
+	root := gjson.Parse(data)
+	var visible bool
+	root.Get("choices").ForEach(func(_, choice gjson.Result) bool {
+		// Completions streams put output in choices[].text; chat in delta.
+		if choice.Get("text").String() != "" || choice.Get("delta").Get("content").String() != "" {
+			visible = true
+			return false
+		}
+		delta := choice.Get("delta")
+		if deltaReasoning(delta) != "" {
+			visible = true
+			return false
+		}
+		if tc := delta.Get("tool_calls"); tc.IsArray() && len(tc.Array()) > 0 {
+			visible = true
+			return false
+		}
+		return true
+	})
+	return visible
 }
 
 func collectStreamFunctionCallNames(data string, seen map[string]struct{}, names *[]string) {
