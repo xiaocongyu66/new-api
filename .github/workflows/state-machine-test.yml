@@ -149,7 +149,7 @@ jobs:
         run: |
           kubectl get pods -l app=new-api-worker -o wide > runtime/logs/worker-pods-before.txt
           if ! curl -fsS --connect-timeout 5 -H "Authorization: Bearer $API_KEY" "$TARGET_URL/models" >/dev/null; then
-            (while true; do kubectl port-forward deployment/new-api-worker 18080:3000 >> runtime/logs/port-forward.log 2>&1 || true; sleep 1; done) &
+            (while true; do kubectl port-forward svc/new-api 18080:80 >> runtime/logs/port-forward.log 2>&1 || true; sleep 1; done) &
             echo $! > runtime/logs/port-forward-supervisor.pid
             for i in $(seq 1 45); do
               if curl -fsS http://127.0.0.1:18080/api/status >/dev/null; then
@@ -182,12 +182,10 @@ jobs:
           kubectl exec -i "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT channel_id, model, enabled, weight FROM abilities WHERE channel_id BETWEEN 90001 AND 90003 ORDER BY channel_id, model" > runtime/logs/seeded-abilities.txt
       - name: Run full scenario matrix
         run: |
-          if [[ "$TARGET_URL" == http://127.0.0.1:18080/* ]]; then
-            kubectl port-forward deployment/new-api-worker 18080:3000 > runtime/logs/matrix-port-forward.log 2>&1 &
-            pf_pid=$!
-            trap 'kill "$pf_pid" 2>/dev/null || true' EXIT
-            for i in $(seq 1 45); do curl -fsS http://127.0.0.1:18080/api/status >/dev/null && break; sleep 1; done
-          fi
+          for i in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:18080/api/status >/dev/null && break
+            sleep 1
+          done
           curl --max-time 20 --fail-with-body -H "Authorization: Bearer $API_KEY" \
             -H 'Content-Type: application/json' \
             -d '{"model":"mock-bad","messages":[{"role":"user","content":"probe"}],"max_tokens":1,"stream":false}' \
@@ -219,6 +217,7 @@ jobs:
             ensure_gateway || { overall=1; continue; }
             dir="runtime/perf/scenario-$n"; mkdir -p "$dir"
             k6 run --vus "$vus" --duration "$duration" -e TARGET_URL="$TARGET_URL" -e API_KEY="$API_KEY" -e MODEL="$model" -e BAD_KEY_MODEL="$model" -e SLOW_MODEL="$model" -e SUMMARY_JSON="$dir/k6-summary.json" "tests/perf/scenarios/$script" > "$dir/k6.log" 2>&1
+            k6_rc=$?
             { kubectl logs deployment/new-api-master --all-pods=true --prefix=true --tail=-1; kubectl logs deployment/new-api-worker --all-pods=true --prefix=true --tail=-1; } > "$dir/worker.log" 2>&1
             pod=$(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
             kubectl exec "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "COPY (SELECT channel_id,key_index,model,state,isolation_level,dormant_disable_count,local_failure_count,upstream_failure_count,version,updated_at FROM channel_model_health ORDER BY channel_id,key_index,model) TO STDOUT WITH CSV HEADER" > "$dir/channel_model_health.csv" 2>&1
