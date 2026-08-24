@@ -1,0 +1,185 @@
+name: State Machine Scenario Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: '#392 scenario'
+        required: true
+        type: choice
+        options: [bad-key-cascade, pool-pressure, gray-failure, weight-distribution, timeout-classification]
+        default: gray-failure
+      target_url:
+        description: 'Gateway base URL including /v1'
+        required: true
+        type: string
+      api_key:
+        description: 'Gateway bearer key'
+        required: true
+        type: string
+      model:
+        description: 'Target model'
+        required: false
+        type: string
+        default: mock-flaky
+      vus:
+        description: 'k6 virtual users'
+        required: false
+        type: string
+        default: '50'
+      duration:
+        description: 'k6 duration'
+        required: false
+        type: string
+        default: 120s
+      k8s_image_tag:
+        description: 'Optional gateway image tag'
+        required: false
+        type: string
+        default: ''
+      rollback_after_test:
+        description: 'Rollback gateway images and remove mock'
+        required: true
+        type: boolean
+        default: true
+      bad_key_channel:
+        description: 'Channel id for bad-key-cascade assertion'
+        required: false
+        type: string
+        default: '0'
+      bad_key_index:
+        description: 'Key index for bad-key-cascade assertion'
+        required: false
+        type: string
+        default: '0'
+
+permissions:
+  contents: read
+
+jobs:
+  state-machine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      NAMESPACE: default
+      SCENARIO: ${{ inputs.scenario }}
+      TARGET_URL: ${{ inputs.target_url }}
+      API_KEY: ${{ inputs.api_key }}
+      MODEL: ${{ inputs.model }}
+      VUS: ${{ inputs.vus }}
+      DURATION: ${{ inputs.duration }}
+      IMAGE_TAG: ${{ inputs.k8s_image_tag }}
+      ROLLBACK: ${{ inputs.rollback_after_test }}
+      BAD_KEY_CHANNEL: ${{ inputs.bad_key_channel }}
+      BAD_KEY_INDEX: ${{ inputs.bad_key_index }}
+      POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: azure/setup-kubectl@v4
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo '${{ secrets.KUBE_CONFIG_B64 }}' | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+      - uses: grafana/setup-k6-action@v1
+        with:
+          version: latest
+      - name: Mask key and capture images
+        run: |
+          echo "::add-mask::$API_KEY"
+          mkdir -p runtime/logs runtime/perf
+          kubectl get deployment/new-api-master -o jsonpath='{.spec.template.spec.containers[?(@.name=="new-api")].image}' > runtime/logs/master-image-before.txt
+          kubectl get deployment/new-api-worker -o jsonpath='{.spec.template.spec.containers[?(@.name=="new-api")].image}' > runtime/logs/worker-image-before.txt
+      - name: Deploy stress mock
+        run: |
+          kubectl create configmap state-machine-mock --from-file=mock-upstream.py=tests/perf/fixtures/mock-upstream.py --dry-run=client -o yaml | kubectl apply -f -
+          cat <<'YAML' | kubectl apply -f -
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: stress-mock
+          spec:
+            replicas: 1
+            selector:
+              matchLabels: {app: stress-mock}
+            template:
+              metadata:
+                labels: {app: stress-mock}
+              spec:
+                containers:
+                  - name: mock
+                    image: python:3.12-alpine
+                    command: [python3, /mock/mock-upstream.py]
+                    ports: [{containerPort: 8099}]
+                    volumeMounts: [{name: source, mountPath: /mock}]
+                volumes:
+                  - name: source
+                    configMap: {name: state-machine-mock}
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: stress-mock
+          spec:
+            selector: {app: stress-mock}
+            ports: [{port: 80, targetPort: 8099}]
+          YAML
+          kubectl rollout status deployment/stress-mock --timeout=180s
+      - name: Deploy gateway image
+        if: env.IMAGE_TAG != ''
+        run: |
+          image="ghcr.io/${{ github.repository }}:$IMAGE_TAG"
+          kubectl set image deployment/new-api-master new-api="$image"
+          kubectl set image deployment/new-api-worker new-api="$image"
+          kubectl rollout status deployment/new-api-master --timeout=300s
+          kubectl rollout status deployment/new-api-worker --timeout=300s
+      - name: Verify target
+        run: |
+          curl --fail-with-body --silent --show-error --max-time 15 \
+            -H "Authorization: Bearer $API_KEY" "$TARGET_URL/models" > runtime/perf/models.json
+      - name: Run scenario
+        run: |
+          script="tests/perf/scenarios/$SCENARIO.js"
+          k6 run --vus "$VUS" --duration "$DURATION" \
+            -e TARGET_URL="$TARGET_URL" -e API_KEY="$API_KEY" -e MODEL="$MODEL" \
+            -e SUMMARY_JSON=runtime/perf/k6-summary.json "$script" || true
+      - name: Capture logs and health
+        if: always()
+        run: |
+          kubectl logs -l app=new-api-worker --all-containers=true --prefix=true --tail=-1 > runtime/logs/worker.log 2>&1 || true
+          pod=$(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+            -c "COPY (SELECT channel_id,key_index,model,state,isolation_level,dormant_disable_count,local_failure_count,upstream_failure_count,version,updated_at FROM channel_model_health ORDER BY channel_id,key_index,model) TO STDOUT WITH CSV HEADER" \
+            > runtime/perf/channel_model_health.csv 2>&1 || true
+          python3 tests/perf/assertions/state_machine.py --derive-distribution --worker-log runtime/logs/worker.log --distribution-json runtime/perf/distribution.json || true
+      - name: Assert scenario
+        if: always()
+        run: |
+          python3 tests/perf/assertions/state_machine.py --scenario "$SCENARIO" \
+            --health-csv runtime/perf/channel_model_health.csv --worker-log runtime/logs/worker.log \
+            --distribution-json runtime/perf/distribution.json --bad-key-channel "$BAD_KEY_CHANNEL" \
+            --bad-key-index "$BAD_KEY_INDEX" --report-file runtime/perf/assertion-report.md
+      - name: Rollback and cleanup
+        if: always()
+        run: |
+          if [ "$ROLLBACK" = true ] && [ -s runtime/logs/master-image-before.txt ]; then
+            kubectl set image deployment/new-api-master new-api="$(cat runtime/logs/master-image-before.txt)" || true
+            kubectl set image deployment/new-api-worker new-api="$(cat runtime/logs/worker-image-before.txt)" || true
+            kubectl rollout status deployment/new-api-master --timeout=300s || true
+            kubectl rollout status deployment/new-api-worker --timeout=300s || true
+          fi
+          kubectl delete deployment/stress-mock service/stress-mock configmap/state-machine-mock --ignore-not-found=true || true
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68396de0c4961d61e8c17a6
+        with:
+          name: state-machine-${{ inputs.scenario }}-${{ github.run_id }}
+          path: runtime/
+          retention-days: 14
+      - name: Append summary
+        if: always()
+        run: |
+          [ -f runtime/perf/assertion-report.md ] && cat runtime/perf/assertion-report.md >> "$GITHUB_STEP_SUMMARY" || true
+          [ -f runtime/perf/k6-summary.json ] && jq '.metrics | with_entries(select(.key|test("http_req|ttft|sse_chunks")))' runtime/perf/k6-summary.json >> "$GITHUB_STEP_SUMMARY" || true
