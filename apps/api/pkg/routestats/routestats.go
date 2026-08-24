@@ -377,6 +377,11 @@ func (h *RouteHandle) ObserveLatency(latencyMs float64) {
 	st.LastUpdateNs = now
 }
 
+// MinTPSTokens is the smallest completion-token count that yields a usable
+// tokens-per-second sample. Very short answers are dominated by fixed overhead,
+// so their apparent throughput says more about the prompt than the route.
+const MinTPSTokens = 16
+
 // Observation values fed into the success EWMA. Throttled sits between success
 // and fatal because a 429 means "busy", not "broken": a full 0.0 would collapse
 // a merely rate-limited route to the floor and starve it.

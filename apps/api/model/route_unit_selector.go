@@ -2,11 +2,12 @@ package model
 
 import (
 	"errors"
-	"math/rand"
+	"math/rand/v2"
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/pkg/routestats"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -18,14 +19,15 @@ type RouteKey struct {
 }
 
 type SelectedRoute struct {
-	RouteId       int      // channel_model_routes.id
+	RouteId       int // channel_model_routes.id
 	Group         string
 	Alias         string   // public model alias (== requested model name)
 	Channel       *Channel // full channel object
 	ChannelId     int
 	KeyIndex      int
-	Key           string   // selected API key plaintext (multi-key: by key_index; single key: channel.Key)
-	UpstreamModel string   // mapped upstream model name
+	Key           string                  // selected API key plaintext (multi-key: by key_index; single key: channel.Key)
+	UpstreamModel string                  // mapped upstream model name
+	StatsHandle   *routestats.RouteHandle // EWMA stats handle for this route unit
 }
 
 // routeCandidate is a normalized candidate for selection.
@@ -287,6 +289,18 @@ func SelectRouteUnit(group string, alias string, requestPath string, retry int, 
 		key, _, _ = channel.GetNextEnabledKey()
 	}
 
+	// Create routestats handle for this route unit (per-attempt attribution)
+	// RouteKey uses: Group (group), PublicModelAlias (alias = requested alias),
+	// ChannelID, KeyIndex, UpstreamModel (from route row, not adapted).
+	routeKey := routestats.RouteKey{
+		Group:            group,
+		PublicModelAlias: alias,
+		ChannelID:        selected.channelId,
+		KeyIndex:         selected.keyIndex,
+		UpstreamModel:    selected.upstreamModel,
+	}
+	statsHandle := routestats.GetOrCreateHandle(routeKey)
+
 	return &SelectedRoute{
 		RouteId:       selected.routeId,
 		Group:         group,
@@ -296,6 +310,7 @@ func SelectRouteUnit(group string, alias string, requestPath string, retry int, 
 		KeyIndex:      selected.keyIndex,
 		Key:           key,
 		UpstreamModel: selected.upstreamModel,
+		StatsHandle:   statsHandle,
 	}, nil
 }
 
@@ -327,6 +342,7 @@ func (channel *Channel) GetNextEnabledKeyForIndex(keyIndex int) (string, int, *t
 	}
 	return keys[keyIndex], keyIndex, nil
 }
+
 // SelectedRouteFromChannel constructs a SelectedRoute from a specific channel
 // for locked-channel replay paths (channel test, task locked replay).
 // It picks one enabled key via GetNextEnabledKey() and derives Group from

@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
+	"github.com/QuantumNous/new-api/pkg/routestats"
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -236,6 +237,8 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
+		attemptStart := time.Now()
+
 		switch relayFormat {
 		case types.RelayFormatOpenAIRealtime:
 			newAPIError = relay.WssHelper(c, relayInfo)
@@ -247,7 +250,28 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			newAPIError = relayHandler(c, relayInfo)
 		}
 
+		attemptLatencyMs := time.Since(attemptStart).Seconds() * 1000
+		handle := relayInfo.StatsHandle
+
+		// observeAttemptTiming feeds the latency-family EWMAs. It is deliberately
+		// NOT called for neutral outcomes: a user 4xx or a client cancel says
+		// nothing about the route, and charging its timing would let a caller's
+		// own aborted request move the route's score.
+		observeAttemptTiming := func() {
+			if handle == nil {
+				return
+			}
+			if relayInfo.IsStream && relayInfo.HasSendResponse() {
+				handle.ObserveTTFT(relayInfo.FirstResponseTime.Sub(relayInfo.StartTime).Seconds() * 1000)
+			}
+			handle.ObserveLatency(attemptLatencyMs)
+		}
+
 		if newAPIError == nil {
+			observeAttemptTiming()
+			if handle != nil {
+				handle.ObserveSuccess(routestats.SuccessObservation)
+			}
 			relayInfo.LastError = nil
 			winnerID, requestSucceeded = channel.Id, true
 			return
@@ -268,6 +292,22 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			retryParam.ExcludeRoutes[model.RouteKey{ChannelId: channel.Id, KeyIndex: multiKeyIndex}] = true
 		}
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
+
+		// Route stats are charged per attempt (D1), and a failed attempt still
+		// feeds the latency family (D3) so a route that fails fast cannot look
+		// like the fastest route in the pool.
+		if handle != nil {
+			switch outcome {
+			case model.OutcomeThrottled:
+				// 429 derates success to 0.7 and charges a synthetic TTFT penalty
+				// inside Observe429; the observed timing is folded in there too.
+				handle.Observe429(0)
+			case model.OutcomeFatal:
+				observeAttemptTiming()
+				handle.ObserveSuccess(routestats.FatalObservation)
+			}
+			// model.OutcomeNeutral records nothing at all, timing included.
+		}
 
 		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
 			break
@@ -353,6 +393,9 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 	if route == nil {
 		return nil, types.NewError(fmt.Errorf("分组 %s 下模型 %s 的可用渠道不存在（retry）", selectGroup, info.OriginModelName), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
+
+	// Pass route stats handle to relayInfo for per-attempt attribution
+	info.StatsHandle = route.StatsHandle
 
 	info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
 

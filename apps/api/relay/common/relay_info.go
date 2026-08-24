@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/pkg/routestats"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
@@ -183,6 +184,10 @@ type RelayInfo struct {
 	*ResponsesUsageInfo
 	*ChannelMeta
 	*TaskRelayInfo
+
+	// StatsHandle is the routestats handle for the selected route unit.
+	// Set by getChannel after route selection; nil for specific-channel replay paths.
+	StatsHandle *routestats.RouteHandle
 }
 
 func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
