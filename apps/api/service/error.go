@@ -31,7 +31,6 @@ func MidjourneyErrorWithStatusCodeWrapper(code int, desc string, statusCode int)
 		Response:   *MidjourneyErrorWrapper(code, desc),
 	}
 }
-
 //// OpenAIErrorWrapper wraps an error into an OpenAIErrorWithStatusCode
 //func OpenAIErrorWrapper(err error, code string, statusCode int) *dto.OpenAIErrorWithStatusCode {
 //	text := err.Error()

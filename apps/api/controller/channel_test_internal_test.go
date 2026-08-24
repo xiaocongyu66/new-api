@@ -3,6 +3,7 @@ package controller
 import (
 	"bytes"
 	"fmt"
+	taskcap "github.com/QuantumNous/new-api/internal/capabilities/task"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
 	"net/http"
@@ -341,7 +342,7 @@ func TestTestAllChannelsRejectsExistingActiveTask(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
 	require.NoError(t, db.AutoMigrate(&model.SystemTask{}, &model.SystemTaskLock{}))
 
-	existing, err := model.CreateSystemTask(model.SystemTaskTypeChannelTest, nil, nil)
+	existing, err := taskcap.CreateSystemTask(model.SystemTaskTypeChannelTest, nil, nil)
 	require.NoError(t, err)
 
 	recorder := httptest.NewRecorder()

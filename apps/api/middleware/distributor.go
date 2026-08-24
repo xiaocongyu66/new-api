@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	taskcap "github.com/QuantumNous/new-api/internal/capabilities/task"
+
 	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
@@ -261,7 +263,7 @@ func getModelRequest(c contract.Context) (*ModelRequest, bool, error) {
 			if err != nil {
 				return nil, false, errors.New(i18n.TCtx(c, i18n.MsgDistributorInvalidMidjourney, map[string]any{"Error": err.Error()}))
 			}
-			midjourneyModel, mjErr, success := service.GetMjRequestModel(relayMode, &midjourneyRequest)
+			midjourneyModel, mjErr, success := taskcap.GetMjRequestModel(relayMode, &midjourneyRequest)
 			if mjErr != nil {
 				return nil, false, fmt.Errorf("%s", mjErr.Description)
 			}
@@ -429,7 +431,7 @@ func getTaskOriginModelName(c contract.Context) string {
 	}
 
 	userId := c.GetInt("id")
-	if task, exist, err := model.GetByTaskId(userId, taskId); err == nil && exist && task != nil {
+	if task, exist, err := taskcap.GetByTaskId(userId, taskId); err == nil && exist && task != nil {
 		return task.Properties.OriginModelName
 	}
 	return ""

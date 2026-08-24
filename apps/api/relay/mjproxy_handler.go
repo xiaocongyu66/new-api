@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	taskcap "github.com/QuantumNous/new-api/internal/capabilities/task"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -30,7 +31,7 @@ import (
 
 func RelayMidjourneyImage(c *gin.Context) {
 	taskId := c.Param("id")
-	midjourneyTask := model.GetByOnlyMJId(taskId)
+	midjourneyTask := taskcap.GetByOnlyMJId(taskId)
 	if midjourneyTask == nil {
 		c.JSON(400, gin.H{
 			"error": "midjourney_task_not_found",
@@ -110,7 +111,7 @@ func RelayMidjourneyNotify(c *gin.Context) *dto.MidjourneyResponse {
 			Result:      "",
 		}
 	}
-	midjourneyTask := model.GetByOnlyMJId(midjRequest.MjId)
+	midjourneyTask := taskcap.GetByOnlyMJId(midjRequest.MjId)
 	if midjourneyTask == nil {
 		return &dto.MidjourneyResponse{
 			Code:        4,
@@ -203,7 +204,7 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 	if swapFaceRequest.SourceBase64 == "" || swapFaceRequest.TargetBase64 == "" {
 		return service.MidjourneyErrorWrapper(constant.MjRequestError, "sour_base64_and_target_base64_is_required")
 	}
-	modelName := service.CovertMjpActionToModelName(constant.MjActionSwapFace)
+	modelName := taskcap.CovertMjpActionToModelName(constant.MjActionSwapFace)
 
 	priceData, err := helper.ModelPriceHelperPerCall(c, info)
 	if err != nil {
@@ -303,7 +304,7 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 func RelayMidjourneyTaskImageSeed(c *gin.Context) *dto.MidjourneyResponse {
 	taskId := c.Param("id")
 	userId := c.GetInt("id")
-	originTask := model.GetByMJId(userId, taskId)
+	originTask := taskcap.GetByMJId(userId, taskId)
 	if originTask == nil {
 		return service.MidjourneyErrorWrapper(constant.MjRequestError, "task_no_found")
 	}
@@ -340,7 +341,7 @@ func RelayMidjourneyTask(c *gin.Context, relayMode int) *dto.MidjourneyResponse 
 	switch relayMode {
 	case relayconstant.RelayModeMidjourneyTaskFetch:
 		taskId := c.Param("id")
-		originTask := model.GetByMJId(userId, taskId)
+		originTask := taskcap.GetByMJId(userId, taskId)
 		if originTask == nil {
 			return &dto.MidjourneyResponse{
 				Code:        4,
@@ -368,7 +369,7 @@ func RelayMidjourneyTask(c *gin.Context, relayMode int) *dto.MidjourneyResponse 
 		}
 		var tasks []dto.MidjourneyDto
 		if len(condition.IDs) != 0 {
-			originTasks := model.GetByMJIds(userId, condition.IDs)
+			originTasks := taskcap.GetByMJIds(userId, condition.IDs)
 			for _, originTask := range originTasks {
 				midjourneyTask := coverMidjourneyTaskDto(c, originTask)
 				tasks = append(tasks, midjourneyTask)
@@ -409,7 +410,7 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 	relayInfo.InitChannelMeta(c)
 
 	if relayInfo.RelayMode == relayconstant.RelayModeMidjourneyAction { // midjourney plus，需要从customId中获取任务信息
-		mjErr := service.CoverPlusActionToNormalAction(&midjRequest)
+		mjErr := taskcap.CoverPlusActionToNormalAction(&midjRequest)
 		if mjErr != nil {
 			return mjErr
 		}
@@ -450,7 +451,7 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 			if midjRequest.Content == "" {
 				return service.MidjourneyErrorWrapper(constant.MjRequestError, "content_is_required")
 			}
-			params := service.ConvertSimpleChangeParams(midjRequest.Content)
+			params := taskcap.ConvertSimpleChangeParams(midjRequest.Content)
 			if params == nil {
 				return service.MidjourneyErrorWrapper(constant.MjRequestError, "content_parse_failed")
 			}
@@ -472,7 +473,7 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 			mjId = midjRequest.TaskId
 		}
 
-		originTask := model.GetByMJId(relayInfo.UserId, mjId)
+		originTask := taskcap.GetByMJId(relayInfo.UserId, mjId)
 		if originTask == nil {
 			return service.MidjourneyErrorWrapper(constant.MjRequestError, "task_not_found")
 		} else { //原任务的Status=SUCCESS，则可以做放大UPSCALE、变换VARIATION等动作，此时必须使用原来的请求地址才能正确处理
@@ -516,7 +517,7 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 
 	fullRequestURL := fmt.Sprintf("%s%s", baseURL, requestURL)
 
-	modelName := service.CovertMjpActionToModelName(midjRequest.Action)
+	modelName := taskcap.CovertMjpActionToModelName(midjRequest.Action)
 
 	priceData, err := helper.ModelPriceHelperPerCall(c, relayInfo)
 	if err != nil {

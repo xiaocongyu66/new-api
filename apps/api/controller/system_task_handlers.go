@@ -1,6 +1,8 @@
 package controller
 
 import (
+	taskcap "github.com/QuantumNous/new-api/internal/capabilities/task"
+
 	"context"
 	"fmt"
 	"time"
@@ -120,7 +122,7 @@ type midjourneyPollHandler struct{}
 func (midjourneyPollHandler) Type() string { return model.SystemTaskTypeMidjourneyPoll }
 
 func (midjourneyPollHandler) Enabled() bool {
-	return constant.UpdateTask && model.HasUnfinishedMidjourneyTasks()
+	return constant.UpdateTask && taskcap.HasUnfinishedMidjourneyTasks()
 }
 
 func (midjourneyPollHandler) Interval() time.Duration { return 15 * time.Second }
@@ -140,7 +142,7 @@ type asyncTaskPollHandler struct{}
 func (asyncTaskPollHandler) Type() string { return model.SystemTaskTypeAsyncTaskPoll }
 
 func (asyncTaskPollHandler) Enabled() bool {
-	return constant.UpdateTask && model.HasUnfinishedSyncTasks()
+	return constant.UpdateTask && taskcap.HasUnfinishedSyncTasks()
 }
 
 func (asyncTaskPollHandler) Interval() time.Duration { return 15 * time.Second }

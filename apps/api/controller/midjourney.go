@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	taskcap "github.com/QuantumNous/new-api/internal/capabilities/task"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
@@ -36,8 +37,7 @@ func runMidjourneyTaskUpdateOnce(ctx context.Context, report func(processed, tot
 	if ctx == nil {
 		ctx = context.Background()
 	}
-
-	tasks := model.GetAllUnFinishTasks()
+	tasks := taskcap.GetAllUnFinishTasks()
 	if len(tasks) == 0 {
 		return summary
 	}
@@ -58,7 +58,7 @@ func runMidjourneyTaskUpdateOnce(ctx context.Context, report func(processed, tot
 	}
 	if len(nullTaskIds) > 0 {
 		summary.NullTasksFailed = len(nullTaskIds)
-		err := model.MjBulkUpdateByTaskIds(nullTaskIds, map[string]any{
+		err := taskcap.MjBulkUpdateByTaskIds(nullTaskIds, map[string]any{
 			"status":   "FAILURE",
 			"progress": "100%",
 		})
@@ -90,7 +90,7 @@ func runMidjourneyTaskUpdateOnce(ctx context.Context, report func(processed, tot
 		midjourneyChannel, err := model.CacheGetChannel(channelId)
 		if err != nil {
 			logger.LogError(ctx, fmt.Sprintf("CacheGetChannel: %v", err))
-			err := model.MjBulkUpdate(taskIds, map[string]any{
+			err := taskcap.MjBulkUpdate(taskIds, map[string]any{
 				"fail_reason": fmt.Sprintf("获取渠道信息失败，请联系管理员，渠道ID：%d", channelId),
 				"status":      "FAILURE",
 				"progress":    "100%",
@@ -289,8 +289,8 @@ func GetAllMidjourney(c contract.Context) {
 		EndTimestamp:   c.Query("end_timestamp"),
 	}
 
-	items := model.GetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
-	total := model.CountAllTasks(queryParams)
+	items := taskcap.GetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
+	total := taskcap.CountAllTasks(queryParams)
 
 	if setting.MjForwardUrlEnabled {
 		for i, midjourney := range items {
@@ -314,8 +314,8 @@ func GetUserMidjourney(c contract.Context) {
 		EndTimestamp:   c.Query("end_timestamp"),
 	}
 
-	items := model.GetAllUserTask(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
-	total := model.CountAllUserTask(userId, queryParams)
+	items := taskcap.GetAllUserTask(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
+	total := taskcap.CountAllUserTask(userId, queryParams)
 
 	if setting.MjForwardUrlEnabled {
 		for i, midjourney := range items {
