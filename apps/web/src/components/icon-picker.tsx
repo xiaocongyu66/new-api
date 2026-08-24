@@ -48,7 +48,13 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
   )
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) setQuery('')
+      }}
+    >
       <PopoverTrigger
         render={
           <Button
@@ -81,26 +87,31 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
           />
         </div>
         <div className='grid max-h-56 grid-cols-6 gap-1 overflow-y-auto'>
-          {keys.map((key) => (
-            <button
-              key={key}
-              type='button'
-              title={key}
-              aria-label={key}
-              onClick={() => {
-                onChange(key)
-                setOpen(false)
-                setQuery('')
-              }}
-              className={`flex size-9 items-center justify-center rounded-md border ${
-                key === value
-                  ? 'border-primary bg-primary/10'
-                  : 'hover:bg-accent border-transparent'
-              }`}
-            >
-              {getLobeIcon(key, 22)}
-            </button>
-          ))}
+          {keys.length === 0 ? (
+            <div className='text-muted-foreground col-span-6 flex h-20 items-center justify-center text-sm'>
+              {t('No results found')}
+            </div>
+          ) : (
+            keys.map((key) => (
+              <button
+                key={key}
+                type='button'
+                title={key}
+                aria-label={key}
+                onClick={() => {
+                  onChange(key)
+                  setOpen(false)
+                }}
+                className={`flex size-9 items-center justify-center rounded-md border ${
+                  key === value
+                    ? 'border-primary bg-primary/10'
+                    : 'hover:bg-accent border-transparent'
+                }`}
+              >
+                {getLobeIcon(key, 22)}
+              </button>
+            ))
+          )}
         </div>
         {value && (
           <Button
@@ -113,7 +124,7 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
               setOpen(false)
             }}
           >
-            <X data-slot='icon' />
+            <X className='size-4' />
             {t('Clear icon')}
           </Button>
         )}
