@@ -2,6 +2,7 @@ package relay
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/capabilities/billing"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
@@ -86,9 +87,9 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		var containsAudioRatios = ratio_setting.ContainsAudioRatio(info.OriginModelName) || ratio_setting.ContainsAudioCompletionRatio(info.OriginModelName)
 
 		if containAudioTokens && containsAudioRatios {
-			service.PostAudioConsumeQuota(ginadapter.Wrap(c), info, usage, "")
+			billing.PostAudioConsumeQuota(ginadapter.Wrap(c), info, usage, "")
 		} else {
-			service.PostTextConsumeQuota(ginadapter.Wrap(c), info, usage, nil)
+			billing.PostTextConsumeQuota(ginadapter.Wrap(c), info, usage, nil)
 		}
 		return nil
 	}
@@ -215,9 +216,9 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 	var containsAudioRatios = ratio_setting.ContainsAudioRatio(info.OriginModelName) || ratio_setting.ContainsAudioCompletionRatio(info.OriginModelName)
 
 	if containAudioTokens && containsAudioRatios {
-		service.PostAudioConsumeQuota(ginadapter.Wrap(c), info, usage.(*dto.Usage), "")
+		billing.PostAudioConsumeQuota(ginadapter.Wrap(c), info, usage.(*dto.Usage), "")
 	} else {
-		service.PostTextConsumeQuota(ginadapter.Wrap(c), info, usage.(*dto.Usage), nil)
+		billing.PostTextConsumeQuota(ginadapter.Wrap(c), info, usage.(*dto.Usage), nil)
 	}
 	return nil
 }

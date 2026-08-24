@@ -3,8 +3,10 @@ package identity
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/capabilities/billing"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -20,7 +22,6 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
 	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/QuantumNous/new-api/constant"
 
@@ -430,7 +431,7 @@ type TransferAffQuotaRequest struct {
 }
 
 func TransferAffQuota(c contract.Context) {
-	if !requirePaymentCompliance(c) {
+	if !billing.RequirePaymentCompliance(c) {
 		return
 	}
 
@@ -665,7 +666,7 @@ func UpdateUser(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	recordManageAuditFor(c, updatedUser.Id, "user.update", map[string]interface{}{
+	billing.RecordManageAuditFor(c, updatedUser.Id, "user.update", map[string]interface{}{
 		"username": originUser.Username,
 		"id":       updatedUser.Id,
 	})
@@ -706,7 +707,7 @@ func AdminClearUserBinding(c contract.Context) {
 		return
 	}
 
-	recordManageAuditFor(c, user.Id, "user.binding_clear", map[string]interface{}{
+	billing.RecordManageAuditFor(c, user.Id, "user.binding_clear", map[string]interface{}{
 		"bindingType": bindingType,
 		"username":    user.Username,
 	})
@@ -905,7 +906,7 @@ func DeleteUser(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	recordManageAuditFor(c, originUser.Id, "user.delete", map[string]interface{}{
+	billing.RecordManageAuditFor(c, originUser.Id, "user.delete", map[string]interface{}{
 		"username": originUser.Username,
 		"id":       originUser.Id,
 	})
@@ -984,7 +985,7 @@ func CreateUser(c contract.Context) {
 	}
 	cleanUser.FinishInsert(0)
 
-	recordManageAuditFor(c, cleanUser.Id, "user.create", map[string]interface{}{
+	billing.RecordManageAuditFor(c, cleanUser.Id, "user.create", map[string]interface{}{
 		"username": cleanUser.Username,
 		"role":     cleanUser.Role,
 	})
@@ -1067,7 +1068,7 @@ func ManageUser(c contract.Context) {
 		if err := model.InvalidateUserTokensCache(user.Id); err != nil {
 			common.SysLog(fmt.Sprintf("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
 		}
-		recordManageAuditFor(c, user.Id, "user.manage", map[string]interface{}{
+		billing.RecordManageAuditFor(c, user.Id, "user.manage", map[string]interface{}{
 			"action":   req.Action,
 			"username": user.Username,
 			"id":       user.Id,
@@ -1120,7 +1121,7 @@ func ManageUser(c contract.Context) {
 				common.CtxApiError(c, err)
 				return
 			}
-			recordManageAuditFor(c, user.Id, "user.quota_add", map[string]interface{}{
+			billing.RecordManageAuditFor(c, user.Id, "user.quota_add", map[string]interface{}{
 				"quota": logger.LogQuota(req.Value),
 			})
 		case "subtract":
@@ -1132,7 +1133,7 @@ func ManageUser(c contract.Context) {
 				common.CtxApiError(c, err)
 				return
 			}
-			recordManageAuditFor(c, user.Id, "user.quota_subtract", map[string]interface{}{
+			billing.RecordManageAuditFor(c, user.Id, "user.quota_subtract", map[string]interface{}{
 				"quota": logger.LogQuota(req.Value),
 			})
 		case "override":
@@ -1141,7 +1142,7 @@ func ManageUser(c contract.Context) {
 				common.CtxApiError(c, err)
 				return
 			}
-			recordManageAuditFor(c, user.Id, "user.quota_override", map[string]interface{}{
+			billing.RecordManageAuditFor(c, user.Id, "user.quota_override", map[string]interface{}{
 				"from": logger.LogQuota(oldQuota),
 				"to":   logger.LogQuota(req.Value),
 			})
@@ -1194,7 +1195,7 @@ func ManageUser(c contract.Context) {
 	if err := model.InvalidateUserTokensCache(user.Id); err != nil {
 		common.SysLog(fmt.Sprintf("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
 	}
-	recordManageAuditFor(c, user.Id, "user.manage", map[string]interface{}{
+	billing.RecordManageAuditFor(c, user.Id, "user.manage", map[string]interface{}{
 		"action":   req.Action,
 		"username": user.Username,
 		"id":       user.Id,
@@ -1299,39 +1300,6 @@ func getTopUpLock(userID int) *topUpTryLock {
 	l := newTopUpTryLock()
 	topUpLocks.Store(userID, l)
 	return l
-}
-
-func TopUp(c contract.Context) {
-	if !operation_setting.IsPaymentComplianceConfirmed() {
-		common.CtxApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
-		return
-	}
-
-	id := c.GetInt("id")
-	lock := getTopUpLock(id)
-	if !lock.TryLock() {
-		common.CtxApiErrorI18n(c, i18n.MsgUserTopUpProcessing)
-		return
-	}
-	defer lock.Unlock()
-	req := topUpRequest{}
-	err := c.BindJSON(&req)
-	if err != nil {
-		common.CtxApiError(c, err)
-		return
-	}
-	quota, err := model.Redeem(req.Key, id)
-	if err != nil {
-		// 不向用户暴露兑换失败的细分原因，避免攻击者根据错误类型判断兑换码状态。
-		common.CtxApiErrorI18n(c, i18n.MsgRedeemFailed)
-		logger.LogError(c.Context(), fmt.Sprintf("failed to redeem key %s for user %d: %s", req.Key, id, err.Error()))
-		return
-	}
-	_ = c.JSON(http.StatusOK, common.H{
-		"success": true,
-		"message": "",
-		"data":    quota,
-	})
 }
 
 type UpdateUserSettingRequest struct {
@@ -1488,4 +1456,37 @@ func UpdateUserSetting(c contract.Context) {
 	}
 
 	common.CtxApiSuccessI18n(c, i18n.MsgSettingSaved, nil)
+}
+
+func TopUp(c contract.Context) {
+	if !operation_setting.IsPaymentComplianceConfirmed() {
+		common.CtxApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
+		return
+	}
+
+	id := c.GetInt("id")
+	lock := getTopUpLock(id)
+	if !lock.TryLock() {
+		common.CtxApiErrorI18n(c, i18n.MsgUserTopUpProcessing)
+		return
+	}
+	defer lock.Unlock()
+	req := topUpRequest{}
+	err := c.BindJSON(&req)
+	if err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	quota, err := model.Redeem(req.Key, id)
+	if err != nil {
+		// 不向用户暴露兑换失败的细分原因，避免攻击者根据错误类型判断兑换码状态。
+		common.CtxApiErrorI18n(c, i18n.MsgRedeemFailed)
+		logger.LogError(c.Context(), fmt.Sprintf("failed to redeem key %s for user %d: %s", req.Key, id, err.Error()))
+		return
+	}
+	_ = c.JSON(http.StatusOK, common.H{
+		"success": true,
+		"message": "",
+		"data":    quota,
+	})
 }

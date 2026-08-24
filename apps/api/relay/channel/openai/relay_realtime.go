@@ -2,6 +2,7 @@ package openai
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/capabilities/billing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -237,6 +238,6 @@ func preConsumeUsage(ctx *gin.Context, info *relaycommon.RelayInfo, usage *dto.R
 	totalUsage.OutputTokenDetails.TextTokens += usage.OutputTokenDetails.TextTokens
 	totalUsage.OutputTokenDetails.AudioTokens += usage.OutputTokenDetails.AudioTokens
 	// clear usage
-	err := service.PreWssConsumeQuota(ctx, info, usage)
+	err := billing.PreWssConsumeQuota(ctx, info, usage)
 	return err
 }

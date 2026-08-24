@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/capabilities/billing"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
@@ -174,7 +175,7 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 	if priceData.FreeModel {
 		logger.LogInfo(c.Context(), fmt.Sprintf("模型 %s 免费，跳过预扣费", relayInfo.OriginModelName))
 	} else {
-		newAPIError = service.PreConsumeBilling(c, priceData.QuotaToPreConsume, relayInfo)
+		newAPIError = billing.PreConsumeBilling(c, priceData.QuotaToPreConsume, relayInfo)
 		if newAPIError != nil {
 			return
 		}
@@ -183,11 +184,11 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 	defer func() {
 		// Only return quota if downstream failed and quota was actually pre-consumed
 		if newAPIError != nil {
-			newAPIError = service.NormalizeViolationFeeError(newAPIError)
+			newAPIError = billing.NormalizeViolationFeeError(newAPIError)
 			if relayInfo.Billing != nil {
 				relayInfo.Billing.Refund(c)
 			}
-			service.ChargeViolationFeeIfNeeded(c, relayInfo, newAPIError)
+			billing.ChargeViolationFeeIfNeeded(c, relayInfo, newAPIError)
 		}
 	}()
 
@@ -219,7 +220,7 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 			break
 		}
 		addUsedChannel(c, channel.Id)
-		if billingErr := service.PrepareTieredBillingForSelectedGroup(c, relayInfo); billingErr != nil {
+		if billingErr := billing.PrepareTieredBillingForSelectedGroup(c, relayInfo); billingErr != nil {
 			newAPIError = billingErr
 			break
 		}
@@ -253,7 +254,7 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 			return
 		}
 
-		newAPIError = service.NormalizeViolationFeeError(newAPIError)
+		newAPIError = billing.NormalizeViolationFeeError(newAPIError)
 		relayInfo.LastError = newAPIError
 
 		// Classify by what the failure implies about the channel, not by whether the
@@ -627,7 +628,7 @@ func RelayTask(c contract.Context) {
 
 	// ── 成功：结算 + 日志 + 插入任务 ──
 	if taskErr == nil {
-		if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
+		if settleErr := billing.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
 			common.SysError("settle task billing error: " + settleErr.Error())
 		}
 		service.LogTaskConsumption(c, relayInfo)

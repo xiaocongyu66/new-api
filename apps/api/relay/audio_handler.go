@@ -3,6 +3,7 @@ package relay
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/capabilities/billing"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 
@@ -69,9 +70,9 @@ func AudioHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		return newAPIError
 	}
 	if usage.(*dto.Usage).CompletionTokenDetails.AudioTokens > 0 || usage.(*dto.Usage).PromptTokensDetails.AudioTokens > 0 {
-		service.PostAudioConsumeQuota(ginadapter.Wrap(c), info, usage.(*dto.Usage), "")
+		billing.PostAudioConsumeQuota(ginadapter.Wrap(c), info, usage.(*dto.Usage), "")
 	} else {
-		service.PostTextConsumeQuota(ginadapter.Wrap(c), info, usage.(*dto.Usage), nil)
+		billing.PostTextConsumeQuota(ginadapter.Wrap(c), info, usage.(*dto.Usage), nil)
 	}
 
 	return nil

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/capabilities/billing"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
@@ -212,7 +213,7 @@ func PasskeyRegisterFinish(c contract.Context) {
 		return
 	}
 
-	recordUserSecurityAudit(c, user.Id, "user.passkey_register", nil)
+	billing.RecordUserSecurityAudit(c, user.Id, "user.passkey_register", nil)
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "Passkey 注册成功",
@@ -249,7 +250,7 @@ func PasskeyDelete(c contract.Context) {
 		return
 	}
 
-	recordUserSecurityAudit(c, user.Id, "user.passkey_delete", nil)
+	billing.RecordUserSecurityAudit(c, user.Id, "user.passkey_delete", nil)
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "Passkey 已解绑",
@@ -476,7 +477,7 @@ func AdminResetPasskey(c contract.Context) {
 		return
 	}
 
-	recordManageAuditFor(c, user.Id, "user.reset_passkey", map[string]interface{}{
+	billing.RecordManageAuditFor(c, user.Id, "user.reset_passkey", map[string]interface{}{
 		"username": user.Username,
 		"id":       user.Id,
 	})

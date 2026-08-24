@@ -3,6 +3,7 @@ package relay
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/capabilities/billing"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
@@ -116,7 +117,7 @@ func AlphaSearchHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError
 	}
 
 	usage := &dto.Usage{}
-	service.PostTextConsumeQuota(ginadapter.Wrap(c), info, usage, nil)
+	billing.PostTextConsumeQuota(ginadapter.Wrap(c), info, usage, nil)
 	return nil
 }
 

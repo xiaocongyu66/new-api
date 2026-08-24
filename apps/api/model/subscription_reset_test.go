@@ -61,7 +61,7 @@ func TestAdminResetUserSubscriptionsByPlanResetsAllActiveMatchesAndAdvancesTime(
 	seedSubscriptionResetSub(t, &UserSubscription{Id: 9206, UserId: 101, PlanId: plan.Id, AmountTotal: 1000, AmountUsed: 900, StartTime: now - 3600, EndTime: activeEnd, Status: "cancelled", LastResetTime: now - 3600, NextResetTime: now + 120})
 
 	beforeReset := GetDBTimestamp()
-	result, err := AdminResetUserSubscriptionsByPlan(101, plan.Id, true)
+	result, err := AdminResetUserSubscriptionsByPlanRecord(101, plan.Id, true)
 	afterReset := GetDBTimestamp()
 
 	require.NoError(t, err)
@@ -105,7 +105,7 @@ func TestAdminResetUserSubscriptionsByPlanKeepsResetTimes(t *testing.T) {
 	nextReset := now + 86400
 	seedSubscriptionResetSub(t, &UserSubscription{Id: 9302, UserId: 201, PlanId: plan.Id, AmountTotal: 2000, AmountUsed: 1200, StartTime: now - 172800, EndTime: now + 30*24*3600, Status: "active", LastResetTime: lastReset, NextResetTime: nextReset})
 
-	result, err := AdminResetUserSubscriptionsByPlan(201, plan.Id, false)
+	result, err := AdminResetUserSubscriptionsByPlanRecord(201, plan.Id, false)
 
 	require.NoError(t, err)
 	assert.False(t, result.AdvanceResetTime)
@@ -130,7 +130,7 @@ func TestAdminResetUserSubscriptionsByPlanNoActiveMatchReturnsError(t *testing.T
 	seedSubscriptionResetPlan(t, plan)
 	seedSubscriptionResetSub(t, &UserSubscription{Id: 9402, UserId: 301, PlanId: plan.Id, AmountTotal: 1000, AmountUsed: 500, StartTime: now - 7200, EndTime: now - 1, Status: "active"})
 
-	result, err := AdminResetUserSubscriptionsByPlan(301, plan.Id, true)
+	result, err := AdminResetUserSubscriptionsByPlanRecord(301, plan.Id, true)
 
 	require.Error(t, err)
 	assert.Nil(t, result)
@@ -159,7 +159,7 @@ func TestAdminResetPlanSubscriptionsResetsAllActiveUsers(t *testing.T) {
 	seedSubscriptionResetSub(t, &UserSubscription{Id: 9505, UserId: 403, PlanId: plan.Id, AmountTotal: 3000, AmountUsed: 1300, StartTime: now - 7200, EndTime: now - 1, Status: "active", LastResetTime: now - 3600, NextResetTime: now - 10})
 	seedSubscriptionResetSub(t, &UserSubscription{Id: 9506, UserId: 404, PlanId: plan.Id, AmountTotal: 3000, AmountUsed: 1400, StartTime: now - 3600, EndTime: activeEnd, Status: "cancelled", LastResetTime: now - 3600, NextResetTime: now + 10})
 
-	result, err := AdminResetPlanSubscriptions(plan.Id, true)
+	result, err := AdminResetPlanSubscriptionsRecord(plan.Id, true)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -190,7 +190,7 @@ func TestAdminResetPlanSubscriptionsNoMatchSucceeds(t *testing.T) {
 	}
 	seedSubscriptionResetPlan(t, plan)
 
-	result, err := AdminResetPlanSubscriptions(plan.Id, true)
+	result, err := AdminResetPlanSubscriptionsRecord(plan.Id, true)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)

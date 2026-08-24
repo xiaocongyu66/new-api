@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/capabilities/billing"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strconv"
@@ -368,7 +369,7 @@ func UpdateOption(c contract.Context) {
 		return
 	}
 	// 出于安全考虑只记录被修改的配置项名称，不记录配置值（可能含密钥等敏感信息）。
-	recordManageAudit(c, "option.update", map[string]interface{}{
+	billing.RecordManageAudit(c, "option.update", map[string]interface{}{
 		"key": option.Key,
 	})
 	_ = c.JSON(http.StatusOK, common.H{
