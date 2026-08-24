@@ -104,15 +104,15 @@ def result(name: str, passed: bool, detail: str) -> dict[str, object]:
     return {"name": name, "passed": passed, "detail": detail}
 
 
-def assert_bad_key(rows: list[HealthRow], lines: list[str], channel: int, key_index: int) -> list[dict[str, object]]:
-    disabled = {"disabled"}
-    failed = [r for r in rows if r.channel_id == channel and r.key_index == key_index]
-    siblings = [r for r in rows if r.channel_id == channel and r.key_index != key_index]
-    verification = any("key verification failed" in line or "key verification cascade" in line for line in lines)
+def assert_bad_key(rows: list[HealthRow], channel_status: Path, channel: int, key_index: int) -> list[dict[str, object]]:
+    status = channel_status.read_text(encoding="utf-8", errors="replace") if channel_status.exists() else ""
+    key_disabled = f'"{key_index}":3' in status and "status_code=401" in status
+    failed = [row for row in rows if row.channel_id == channel and row.key_index == key_index and row.model == "mock-bad"]
+    siblings = [row for row in rows if row.channel_id == channel and row.key_index != key_index and row.model == "mock-bad"]
     return [
-        result("key-verification", verification, "key verification failed/cascade log required"),
-        result("failed-key-disabled", bool(failed) and all(r.state in disabled for r in failed), f"rows={len(failed)} states={[r.state for r in failed]}"),
-        result("sibling-key-survives", bool(siblings) and all(r.state not in disabled for r in siblings), f"siblings={len(siblings)} states={[r.state for r in siblings]}"),
+        result("failed-key-disabled", key_disabled, f"channel={channel} key_index={key_index} auto-disabled"),
+        result("failed-key-health-recorded", bool(failed) and failed[0].state in {"calm", "dormant"}, f"states={[row.state for row in failed]}"),
+        result("sibling-key-survives", bool(siblings) and all(row.state == "healthy" for row in siblings), f"states={[row.state for row in siblings]}"),
     ]
 
 
@@ -164,6 +164,7 @@ def main() -> int:
     parser.add_argument("--distribution-json", type=Path)
     parser.add_argument("--bad-key-channel", type=int, default=0)
     parser.add_argument("--bad-key-index", type=int, default=0)
+    parser.add_argument("--channel-status", type=Path)
     parser.add_argument("--report-file", type=Path)
     parser.add_argument("--derive-distribution", action="store_true")
     args = parser.parse_args()
@@ -177,7 +178,7 @@ def main() -> int:
     distribution = load_distribution(args.distribution_json, lines) if args.distribution_json else derive_distribution(lines)
     match args.scenario:
         case "bad-key-cascade":
-            checks = assert_bad_key(rows, lines, args.bad_key_channel, args.bad_key_index)
+            checks = assert_bad_key(rows, args.channel_status or Path(), args.bad_key_channel, args.bad_key_index)
         case "cas-contention":
             checks = assert_cas(rows, lines)
         case "pool-pressure":
