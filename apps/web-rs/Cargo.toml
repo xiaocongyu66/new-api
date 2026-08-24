@@ -1,0 +1,18 @@
+[package]
+name = "newapi-web-rs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[features]
+default = ["web"]
+web = ["dioxus/web", "newapi-web/web"]
+
+[[bin]]
+name = "newapi-web-rs"
+path = "src/main.rs"
+
+[dependencies]
+newapi-web = { path = "../../crates/web" }
+dioxus = { workspace = true }

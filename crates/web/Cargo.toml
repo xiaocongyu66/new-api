@@ -1,0 +1,24 @@
+[package]
+name = "newapi-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[features]
+default = ["web"]
+web = ["dioxus/web"]
+
+[lib]
+name = "newapi_web"
+path = "src/lib.rs"
+
+[dependencies]
+dioxus = { workspace = true }
+gloo-net = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+pulldown-cmark = { workspace = true }
+ammonia = { workspace = true }
+qrcode = { workspace = true }
