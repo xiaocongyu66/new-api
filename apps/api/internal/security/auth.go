@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"gorm.io/gorm"
@@ -451,7 +452,7 @@ func TokenAuth() func(c contract.Context) {
 		tokenGroup := token.Group
 		if tokenGroup != "" {
 			// check common.UserUsableGroups[userGroup]
-			if _, ok := service.GetUserUsableGroups(userGroup)[tokenGroup]; !ok {
+			if _, ok := setting.GetUserUsableGroups(userGroup)[tokenGroup]; !ok {
 				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("无权访问 %s 分组", tokenGroup))
 				return
 			}

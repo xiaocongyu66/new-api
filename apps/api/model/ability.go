@@ -158,7 +158,7 @@ func GetChannel(group string, model string, retry int, requestPath string, exclu
 	var weights []float64
 	var totalWeight float64
 	for _, ability := range abilities {
-		effW := healthMgr.routingWeight(ability.ChannelId, routingBaseWeight(int(ability.Weight)), true)
+		effW := healthMgr.RoutingWeight(ability.ChannelId, RoutingBaseWeight(int(ability.Weight)), true)
 		weights = append(weights, effW)
 		totalWeight += effW
 	}

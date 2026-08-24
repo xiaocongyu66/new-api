@@ -1,7 +1,6 @@
 package model
 
-import (
-)
+import ()
 
 // PerfMetric stores aggregated relay performance metrics for the model square.
 type PerfMetric struct {

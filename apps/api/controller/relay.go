@@ -15,6 +15,8 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	taskdto "github.com/QuantumNous/new-api/dto"
+	channelcap "github.com/QuantumNous/new-api/internal/capabilities/channel"
+	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
@@ -192,7 +194,7 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 		}
 	}()
 
-	retryParam := &service.RetryParam{
+	retryParam := &port.SelectParams{
 		Ctx:         c,
 		TokenGroup:  relayInfo.TokenGroup,
 		ModelName:   relayInfo.OriginModelName,
@@ -327,7 +329,7 @@ func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
 	return meta
 }
 
-func getChannel(c contract.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.Channel, *types.NewAPIError) {
+func getChannel(c contract.Context, info *relaycommon.RelayInfo, retryParam *port.SelectParams) (*model.Channel, *types.NewAPIError) {
 	if info.ChannelMeta == nil {
 		autoBan := c.GetBool("auto_ban")
 		autoBanInt := 1
@@ -341,7 +343,7 @@ func getChannel(c contract.Context, info *relaycommon.RelayInfo, retryParam *ser
 			AutoBan: &autoBanInt,
 		}, nil
 	}
-	channel, selectGroup, err := service.CacheGetRandomSatisfiedChannel(retryParam)
+	channel, selectGroup, err := port.SelectChannel(retryParam)
 	if err != nil {
 		return nil, types.NewError(fmt.Errorf("获取分组 %s 下模型 %s 的可用渠道失败（retry）: %s", selectGroup, info.OriginModelName, err.Error()), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
@@ -362,7 +364,7 @@ func shouldRetry(c contract.Context, openaiErr *types.NewAPIError, retryTimes in
 	if openaiErr == nil {
 		return false
 	}
-	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
+	if channelcap.ShouldSkipRetryAfterChannelAffinityFailure(c) {
 		return false
 	}
 	if types.IsChannelError(openaiErr) {
@@ -425,7 +427,7 @@ func processChannelError(c contract.Context, channelError types.ChannelError, er
 			adminInfo["is_multi_key"] = true
 			adminInfo["multi_key_index"] = common.GetCtxKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)
 		}
-		service.AppendChannelAffinityAdminInfo(c, adminInfo)
+		channelcap.AppendChannelAffinityAdminInfo(c, adminInfo)
 		other["admin_info"] = adminInfo
 		startTime := common.GetCtxKeyTime(c, constant.ContextKeyRequestStartTime)
 		if startTime.IsZero() {
@@ -543,7 +545,7 @@ func RelayTask(c contract.Context) {
 		}
 	}()
 
-	retryParam := &service.RetryParam{
+	retryParam := &port.SelectParams{
 		Ctx:         c,
 		TokenGroup:  relayInfo.TokenGroup,
 		ModelName:   relayInfo.OriginModelName,
@@ -672,7 +674,7 @@ func shouldRetryTaskRelay(c contract.Context, channelId int, taskErr *taskdto.Ta
 	if taskErr == nil {
 		return false
 	}
-	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
+	if channelcap.ShouldSkipRetryAfterChannelAffinityFailure(c) {
 		return false
 	}
 	if retryTimes <= 0 {

@@ -2,15 +2,14 @@ package controller
 
 import (
 	"github.com/QuantumNous/new-api/common"
+	channelcap "github.com/QuantumNous/new-api/internal/capabilities/channel"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strings"
-
-	"github.com/QuantumNous/new-api/service"
 )
 
 func GetChannelAffinityCacheStats(c contract.Context) {
-	stats := service.GetChannelAffinityCacheStats()
+	stats := channelcap.GetChannelAffinityCacheStats()
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
@@ -23,7 +22,7 @@ func ClearChannelAffinityCache(c contract.Context) {
 	ruleName := strings.TrimSpace(c.Query("rule_name"))
 
 	if all == "true" {
-		deleted := service.ClearChannelAffinityCacheAll()
+		deleted := channelcap.ClearChannelAffinityCacheAll()
 		_ = c.JSON(http.StatusOK, common.H{
 			"success": true,
 			"message": "",
@@ -42,7 +41,7 @@ func ClearChannelAffinityCache(c contract.Context) {
 		return
 	}
 
-	deleted, err := service.ClearChannelAffinityCacheByRuleName(ruleName)
+	deleted, err := channelcap.ClearChannelAffinityCacheByRuleName(ruleName)
 	if err != nil {
 		_ = c.JSON(http.StatusBadRequest, common.H{
 			"success": false,
@@ -80,7 +79,7 @@ func GetChannelAffinityUsageCacheStats(c contract.Context) {
 		return
 	}
 
-	stats := service.GetChannelAffinityUsageCacheStats(ruleName, usingGroup, keyFp)
+	stats := channelcap.GetChannelAffinityUsageCacheStats(ruleName, usingGroup, keyFp)
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
