@@ -163,13 +163,14 @@ jobs:
         run: |
           curl --fail --silent --show-error -H "Authorization: Bearer $API_KEY" "$TARGET_URL/models" > runtime/perf/models.json
       - name: Rebuild abilities and refresh gateway cache
+        continue-on-error: true
         run: |
           curl --fail --silent --show-error \
             -X POST \
             -H "Authorization: Bearer $API_KEY" \
             "${TARGET_URL%/v1}/api/channel/fix" \
-            > runtime/logs/channel-fix.json
-          cat runtime/logs/channel-fix.json
+            > runtime/logs/channel-fix.json || true
+          cat runtime/logs/channel-fix.json 2>/dev/null || true
       - name: Run full scenario matrix
         run: |
           set +e
