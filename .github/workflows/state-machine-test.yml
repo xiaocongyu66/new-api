@@ -128,9 +128,9 @@ jobs:
           DELETE FROM channels WHERE id BETWEEN 90001 AND 90003;
           INSERT INTO channels (id,type,key,status,name,weight,created_time,base_url,models,"group",priority,auto_ban,channel_info)
           VALUES
-            (90001,1,E'bad-key\ngood-key',1,'state-matrix-keyed',100,extract(epoch from now())::bigint,'http://stress-mock','mock-fast,mock-slow,mock-flaky,mock-bad','default',0,1,'{"is_multi_key":true,"multi_key_size":2,"multi_key_mode":"polling"}'),
-            (90002,1,'good-key',1,'state-matrix-calm',50,extract(epoch from now())::bigint,'http://stress-mock','mock-fast,mock-slow,mock-flaky,mock-bad','default',0,1,'{"is_multi_key":false}'),
-            (90003,1,'good-key',1,'state-matrix-dormant',10,extract(epoch from now())::bigint,'http://stress-mock','mock-fast,mock-slow,mock-flaky,mock-bad','default',0,1,'{"is_multi_key":false}');
+            (90001,1,E'bad-key\ngood-key',1,'state-matrix-keyed',100,extract(epoch from now())::bigint,'http://stress-mock','mock-fast,mock-slow,mock-flaky,mock-bad,mock-recover,mock-weighted','default',0,1,'{"is_multi_key":true,"multi_key_size":2,"multi_key_mode":"polling"}'),
+            (90002,1,'good-key',1,'state-matrix-calm',50,extract(epoch from now())::bigint,'http://stress-mock','mock-fast,mock-slow,mock-flaky,mock-bad,mock-recover,mock-weighted','default',0,1,'{"is_multi_key":false}'),
+            (90003,1,'good-key',1,'state-matrix-dormant',10,extract(epoch from now())::bigint,'http://stress-mock','mock-fast,mock-slow,mock-flaky,mock-bad,mock-recover,mock-weighted','default',0,1,'{"is_multi_key":false}');
           INSERT INTO abilities ("group",model,channel_id,enabled,priority,weight)
           SELECT 'default',m,90000+n,true,0,w FROM (VALUES (1,100),(2,50),(3,10)) AS c(n,w) CROSS JOIN (VALUES ('mock-fast'),('mock-slow'),('mock-flaky'),('mock-bad'),('mock-recover'),('mock-weighted')) AS v(m);
           SQL
