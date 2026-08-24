@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/pkg/routestats"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
@@ -461,4 +462,56 @@ func TestSelectRouteUnit_EmptyResult(t *testing.T) {
 	selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
 	require.NoError(t, err)
 	assert.Nil(t, selected)
+}
+
+// TestSelectRouteUnitAttachesStatsHandleWithRouteIdentity pins the attribution
+// root: the stats handle must be keyed by the route row's own upstream model,
+// captured at selection time. Adaptors (aws, baidu_v2, claude, deepseek) rewrite
+// RelayInfo.UpstreamModelName mid-flight, so deriving the key later would
+// attribute samples to a route unit that was never selected.
+func TestSelectRouteUnitAttachesStatsHandleWithRouteIdentity(t *testing.T) {
+	const group, alias = "stats-group", "stats-alias"
+
+	ch := testRouteChannel(7001, 10, 5, false, []string{"sk-1"}, nil)
+	routes := []ChannelModelRoute{
+		testRoute(1, 7001, 0, group, alias, "upstream-actual", 100),
+	}
+	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, routes)
+	defer cleanup()
+	resetHealthManager()
+	setTestConfig(true, 0.3, 0.05, 0)
+
+	selected, err := SelectRouteUnit(group, alias, "", 0, nil, rand.New(rand.NewPCG(41, 41)))
+	require.NoError(t, err)
+	require.NotNil(t, selected)
+	require.NotNil(t, selected.StatsHandle, "a selected route must carry a stats handle")
+
+	// The handle must be the very same one a lookup by route identity returns.
+	want := routestats.GetOrCreateHandle(routestats.RouteKey{
+		Group:            group,
+		PublicModelAlias: alias,
+		ChannelID:        7001,
+		KeyIndex:         0,
+		UpstreamModel:    "upstream-actual",
+	})
+	assert.Same(t, want.State(), selected.StatsHandle.State(),
+		"handle must be keyed by the route row identity captured at selection time")
+
+	// Recording through the selected route must land on that same state.
+	selected.StatsHandle.ObserveSuccess(routestats.SuccessObservation)
+	assert.Equal(t, 1, want.Snapshot().SampleCount)
+}
+
+// TestSelectedRouteFromChannelHasNoStatsHandle pins the guard for traffic that
+// never went through route selection: specific-channel calls and locked-channel
+// task replay must not fabricate a route unit to charge samples against.
+func TestSelectedRouteFromChannelHasNoStatsHandle(t *testing.T) {
+	ch := testRouteChannel(7002, 10, 5, false, []string{"sk-1"}, nil)
+
+	route, err := SelectedRouteFromChannel(ch, "some-alias")
+	require.NoError(t, err)
+	require.NotNil(t, route)
+
+	assert.Nil(t, route.StatsHandle, "locked-channel replay must leave recording as a no-op")
+	assert.Equal(t, 0, route.RouteId)
 }
