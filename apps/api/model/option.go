@@ -222,17 +222,25 @@ func InitOptionMap() {
 	common.OptionMap["ExposeRatioEnabled"] = strconv.FormatBool(ratio_setting.IsExposeRatioEnabled())
 	common.OptionMap["proxy_config"] = ""
 
-	// Channel health cooldown flat option keys, seeded from the runtime
-	// atomic config so the option-map snapshot reflects the live defaults.
-	healthCfg := operation_setting.GetChannelHealthSetting()
+	healthCfg := operation_setting.GetChannelModelHealthSetting()
 	if healthCfg != nil {
-		common.OptionMap["ChannelHealthEnabled"] = strconv.FormatBool(healthCfg.Enabled)
-		common.OptionMap["ChannelHealthCooldownThreshold"] = strconv.Itoa(healthCfg.CooldownThreshold)
-		common.OptionMap["ChannelHealthCooldownBaseSeconds"] = strconv.Itoa(healthCfg.CooldownBaseSeconds)
-		common.OptionMap["ChannelHealthCooldownMaxSeconds"] = strconv.Itoa(healthCfg.CooldownMaxSeconds)
-		common.OptionMap["ChannelHealthCooldownMaxEjectionPercent"] = strconv.Itoa(healthCfg.CooldownMaxEjectionPercent)
-		common.OptionMap["ChannelHealthCooldownAlpha"] = strconv.FormatFloat(healthCfg.CooldownAlpha, 'f', -1, 64)
-		common.OptionMap["ChannelHealthCooldownDisableStreak"] = strconv.Itoa(healthCfg.CooldownDisableStreak)
+		common.OptionMap["CalmFastBase"] = strconv.Itoa(healthCfg.CalmFastBase)
+		common.OptionMap["CalmFastInterval"] = strconv.Itoa(healthCfg.CalmFastInterval)
+		common.OptionMap["CalmSlowBase"] = strconv.Itoa(healthCfg.CalmSlowBase)
+		common.OptionMap["CalmSlowInterval"] = strconv.Itoa(healthCfg.CalmSlowInterval)
+		common.OptionMap["DormantBase"] = strconv.Itoa(healthCfg.DormantBase)
+		common.OptionMap["DormantInterval"] = strconv.Itoa(healthCfg.DormantInterval)
+		common.OptionMap["DormantMaxBase"] = strconv.Itoa(healthCfg.DormantMaxBase)
+		common.OptionMap["DormantDisableThreshold"] = strconv.Itoa(healthCfg.DormantDisableThreshold)
+		common.OptionMap["LocalFailureThreshold"] = strconv.Itoa(healthCfg.LocalFailureThreshold)
+		common.OptionMap["UpstreamFailureThreshold"] = strconv.Itoa(healthCfg.UpstreamFailureThreshold)
+		common.OptionMap["CalmWeightScale"] = strconv.Itoa(healthCfg.CalmWeightScale)
+		common.OptionMap["DormantWeightScale"] = strconv.Itoa(healthCfg.DormantWeightScale)
+		common.OptionMap["EmergencyThreshold"] = strconv.Itoa(healthCfg.EmergencyThreshold)
+		common.OptionMap["WarningThreshold"] = strconv.Itoa(healthCfg.WarningThreshold)
+		common.OptionMap["AcceleratedDecayStep"] = strconv.Itoa(healthCfg.AcceleratedDecayStep)
+		common.OptionMap["NormalDecayStep"] = strconv.Itoa(healthCfg.NormalDecayStep)
+		common.OptionMap["KeyProbeEnabled"] = strconv.FormatBool(healthCfg.KeyProbeEnabled)
 	}
 
 	// 自动添加所有注册的模型配置
@@ -270,8 +278,8 @@ func validateOptionValue(key string, value string) error {
 	if key == "MaxTokenAutoGroups" {
 		return setting.ValidateMaxTokenAutoGroups(value)
 	}
-	if operation_setting.IsChannelHealthOptionKey(key) {
-		return operation_setting.ValidateChannelHealthSettingValue(key, value)
+	if operation_setting.IsChannelModelHealthOptionKey(key) {
+		return operation_setting.ValidateChannelModelHealthSettingValue(key, value)
 	}
 	return nil
 }
@@ -341,11 +349,8 @@ func UpdateOptionsBulk(values map[string]string) error {
 }
 
 func updateOptionMap(key string, value string) (err error) {
-	if operation_setting.IsChannelHealthOptionKey(key) {
-		// Health flat options are dispatched to the atomic runtime config
-		// before the OptionMap lock is taken; a parse/validation error
-		// returns without storing an invalid value.
-		if err := operation_setting.UpdateChannelHealthSettingValue(key, value); err != nil {
+	if operation_setting.IsChannelModelHealthOptionKey(key) {
+		if err := operation_setting.UpdateChannelModelHealthSettingValue(key, value); err != nil {
 			return err
 		}
 		common.OptionMapRWMutex.Lock()

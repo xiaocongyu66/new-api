@@ -297,10 +297,18 @@ func InitOpenAIError(errorCode ErrorCode, statusCode int, ops ...NewAPIErrorOpti
 }
 
 func NewErrorWithStatusCode(err error, errorCode ErrorCode, statusCode int, ops ...NewAPIErrorOptions) *NewAPIError {
+	// Defense-in-depth: if err is nil, provide a fallback message to avoid panic.
+	// Call sites should pass a non-nil error (e.g., via sensitiveBlockError in relay.go).
+	msg := ""
+	if err != nil {
+		msg = err.Error()
+	} else {
+		msg = string(errorCode)
+	}
 	e := &NewAPIError{
 		Err: err,
 		RelayError: OpenAIError{
-			Message: err.Error(),
+			Message: msg,
 			Type:    string(errorCode),
 		},
 		errorType:  ErrorTypeNewAPIError,
