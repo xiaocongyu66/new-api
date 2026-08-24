@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/model"
 )
+
 // ResolveOriginTask 处理基于已有任务的提交（remix / continuation）：
 // 查找原始任务、从中提取模型名称、将渠道锁定到原始任务的渠道
 // （通过 info.LockedChannel，重试时复用同一渠道并轮换 key），

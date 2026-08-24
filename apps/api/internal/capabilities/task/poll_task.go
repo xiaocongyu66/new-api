@@ -46,7 +46,6 @@ func BuildProxyURL(taskID string) string {
 	return fmt.Sprintf("%s/v1/videos/%s/content", system_setting.ServerAddress, taskID)
 }
 
-
 // RunTaskPollingOnce performs one async-task (Suno/video) polling pass
 // synchronously. It honors ctx cancellation and reports progress via report callback.
 func RunTaskPollingOnce(ctx context.Context, report func(processed, total int)) TaskPollSummary {
@@ -616,6 +615,7 @@ func truncateBase64(s string) string {
 	}
 	return s[:maxKeep] + "..."
 }
+
 // --- Bridge for SettleTaskBillingOnComplete ---
 // SettleTaskBillingOnComplete expects a TaskPollingAdaptor with AdjustBillingOnComplete.
 // We adapt the port.TaskProviderExec to that interface here.

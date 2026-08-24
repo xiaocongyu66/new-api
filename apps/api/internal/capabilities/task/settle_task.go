@@ -6,16 +6,17 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/QuantumNous/new-api/internal/capabilities/billing/settlecore"
-	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/internal/capabilities/billing/settlecore"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 )
+
 // LogTaskConsumption 记录任务消费日志和统计信息（仅记录，不涉及实际扣费）。
 // 实际扣费已由 BillingSession（PreConsumeBilling + SettleBilling）完成。
 func LogTaskConsumption(c contract.Context, info *relaycommon.RelayInfo) {
@@ -348,7 +349,7 @@ func SettleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 		return
 	}
 	// 3. 无调整，保持预扣额度
-// 3. 无调整，保持预扣额度
+	// 3. 无调整，保持预扣额度
 }
 
 // AttachQuotaSaturation 将配额饱和信息附加到消费日志中（来自 relayInfo.QuotaClamp）。

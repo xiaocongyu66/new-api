@@ -12,11 +12,11 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/internal/capabilities/billing/settlecore"
 	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	taskdto "github.com/QuantumNous/new-api/dto"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/stretchr/testify/assert"
@@ -160,7 +160,6 @@ func (p *sunoFailurePollingProvider) AdjustBillingOnComplete(task *model.Task, t
 func (p *sunoFailurePollingProvider) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 	return nil, nil
 }
-
 
 // ---------------------------------------------------------------------------
 // Seed helpers (copied from service/task_billing_test.go)
@@ -467,7 +466,7 @@ func TestUpdateVideoTasksSlowChannelDoesNotBlockOtherChannels(t *testing.T) {
 	assert.ElementsMatch(t, []string{"upstream_slow_1", "upstream_fast_parallel_1", "upstream_fast_parallel_2"}, provider.fetchedTaskIDs())
 }
 
- func TestUpdateVideoTasksMixedChannelSleepSettings(t *testing.T) {
+func TestUpdateVideoTasksMixedChannelSleepSettings(t *testing.T) {
 	truncate(t)
 
 	const sleepDisabledChannel = 301
@@ -500,9 +499,9 @@ func TestUpdateVideoTasksSlowChannelDoesNotBlockOtherChannels(t *testing.T) {
 			sleepEnabledTask2.GetUpstreamTaskID(),
 		},
 	}, map[string]*model.Task{
-		sleepDisabledTask.GetUpstreamTaskID():  sleepDisabledTask,
-		sleepEnabledTask1.GetUpstreamTaskID():  sleepEnabledTask1,
-		sleepEnabledTask2.GetUpstreamTaskID():  sleepEnabledTask2,
+		sleepDisabledTask.GetUpstreamTaskID(): sleepDisabledTask,
+		sleepEnabledTask1.GetUpstreamTaskID(): sleepEnabledTask1,
+		sleepEnabledTask2.GetUpstreamTaskID(): sleepEnabledTask2,
 	})
 
 	require.ErrorIs(t, err, context.DeadlineExceeded)

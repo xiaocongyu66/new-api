@@ -141,7 +141,6 @@ func GetByTaskIds(userId int, taskIds []any) ([]*model.Task, error) {
 	return tasks, err
 }
 
-
 // Insert creates a new task record
 func Insert(task *model.Task) error {
 	return model.DB.Create(task).Error
