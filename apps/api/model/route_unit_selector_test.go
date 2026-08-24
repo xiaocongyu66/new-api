@@ -502,9 +502,9 @@ func TestSelectRouteUnitAttachesStatsHandleWithRouteIdentity(t *testing.T) {
 	assert.Equal(t, 1, want.Snapshot().SampleCount)
 }
 
-// TestSelectedRouteFromChannelHasNoStatsHandle pins the guard for traffic that
-// never went through route selection: specific-channel calls and locked-channel
-// task replay must not fabricate a route unit to charge samples against.
+// TestSelectedRouteFromChannelHasNoStatsHandle pins the guard for a channel that
+// owns no route row for the alias: there is no route unit to charge, so recording
+// must stay a no-op rather than inventing an identity from the alias.
 func TestSelectedRouteFromChannelHasNoStatsHandle(t *testing.T) {
 	ch := testRouteChannel(7002, 10, 5, false, []string{"sk-1"}, nil)
 
@@ -514,4 +514,37 @@ func TestSelectedRouteFromChannelHasNoStatsHandle(t *testing.T) {
 
 	assert.Nil(t, route.StatsHandle, "locked-channel replay must leave recording as a no-op")
 	assert.Equal(t, 0, route.RouteId)
+}
+
+// TestSelectedRouteFromChannelAttributesRealRoute covers the affinity and
+// specific-channel paths. They bypass weighted random selection but still serve a
+// real route unit, so their samples must land on that unit -- keyed by the route
+// row's upstream model, not by the requested alias.
+func TestSelectedRouteFromChannelAttributesRealRoute(t *testing.T) {
+	const group, alias = "affinity-group", "affinity-alias"
+
+	ch := testRouteChannel(7003, 10, 5, false, []string{"sk-1"}, nil)
+	routes := []ChannelModelRoute{
+		testRoute(1, 7003, 0, group, alias, "upstream-affinity", 100),
+	}
+	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, routes)
+	defer cleanup()
+
+	route, err := SelectedRouteFromChannel(ch, alias)
+	require.NoError(t, err)
+	require.NotNil(t, route)
+
+	assert.Equal(t, group, route.Group)
+	assert.Equal(t, "upstream-affinity", route.UpstreamModel,
+		"upstream must come from the route row, not from the requested alias")
+	require.NotNil(t, route.StatsHandle, "a channel that owns a route row must be attributable")
+
+	want := routestats.GetOrCreateHandle(routestats.RouteKey{
+		Group:            group,
+		PublicModelAlias: alias,
+		ChannelID:        7003,
+		KeyIndex:         0,
+		UpstreamModel:    "upstream-affinity",
+	})
+	assert.Same(t, want.State(), route.StatsHandle.State())
 }

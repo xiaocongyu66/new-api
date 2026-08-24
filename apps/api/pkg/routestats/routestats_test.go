@@ -85,7 +85,8 @@ func TestV1_1FirstSampleInitialisesEwma(t *testing.T) {
 	assert.Equal(t, 2000.0, snap.TTFTMs)
 	assert.Equal(t, 20.0, snap.TPS)
 	assert.Equal(t, 30000.0, snap.LatencyMs)
-	assert.Equal(t, 4, snap.SampleCount)
+	// One request contributed all four facets, so it counts as one sample.
+	assert.Equal(t, 1, snap.SampleCount)
 }
 
 // V1.1b a single observation of one metric counts exactly one sample.
@@ -472,4 +473,30 @@ func TestSynthesisFloorKeepsFailingRouteSelectable(t *testing.T) {
 	q := ComputeQuality(comp, cfg)
 	assert.InDelta(t, cfg.QualityFloor, q.Quality, 1e-9,
 		"pre-clamp 0.147 must be lifted to the 0.5 floor so the route keeps being sampled")
+}
+
+// Unobserved components must stay at zero rather than drift toward their target.
+// Regressing an absent component manufactures data: a route that never streamed
+// would report a TTFT that climbs while it idles, and two consecutive reads would
+// disagree. Caught by the first smoke run, where a non-streaming route reported
+// ttft=297ms and tps=2.97 out of nowhere.
+func TestUnobservedComponentsDoNotDrift(t *testing.T) {
+	clock := &fakeClock{d: 1}
+	restore := SetNowFunc(clock.now)
+	defer restore()
+	Reset()
+
+	h := GetOrCreateHandle(RouteKey{Group: "g", PublicModelAlias: "a", ChannelID: 1, UpstreamModel: "u"})
+	h.ObserveSuccess(SuccessObservation)
+
+	for _, idle := range []int{1, 60, 600, 3600} {
+		clock.advance(time.Duration(idle) * time.Second)
+		s := h.Snapshot()
+		if s.HasTTFT || s.TTFTMs != 0 {
+			t.Fatalf("idle %ds: unobserved TTFT drifted to %.3f", idle, s.TTFTMs)
+		}
+		if s.HasTPS || s.TPS != 0 {
+			t.Fatalf("idle %ds: unobserved TPS drifted to %.3f", idle, s.TPS)
+		}
+	}
 }

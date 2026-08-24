@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/pkg/routestats"
 	"github.com/samber/lo"
 	"gorm.io/gorm"
 )
@@ -234,6 +235,15 @@ type RouteUnitView struct {
 	Enabled          bool    `json:"enabled"`
 	ExpectedShare    float64 `json:"expected_share"`
 	HealthScore      float64 `json:"health_score"`
+
+	// Runtime EWMA observation, read straight from the in-memory store. These are
+	// read-only diagnostics: they make it possible to confirm that the route unit
+	// that served a request is the one whose stats moved.
+	EwmaQuality float64 `json:"ewma_quality"`
+	SuccessEwma float64 `json:"success_ewma"`
+	TtftEwmaMs  float64 `json:"ttft_ewma_ms"`
+	TpsEwma     float64 `json:"tps_ewma"`
+	SampleCount int     `json:"sample_count"`
 }
 
 // RouteUnitAliasSummary aggregates route units by public model alias.
@@ -289,7 +299,7 @@ func GetRouteUnitViewsByAlias(alias string) ([]RouteUnitView, error) {
 			// Round to 4 decimal places
 			share = float64(int64(share*10000+0.5)) / 10000
 		}
-		views = append(views, RouteUnitView{
+		view := RouteUnitView{
 			Id:               r.Id,
 			Group:            r.Group,
 			PublicModelAlias: r.PublicModelAlias,
@@ -303,7 +313,25 @@ func GetRouteUnitViewsByAlias(alias string) ([]RouteUnitView, error) {
 			Enabled:          r.Enabled,
 			ExpectedShare:    share,
 			HealthScore:      GetChannelHealthScore(r.ChannelId),
-		})
+			EwmaQuality:      1.0,
+		}
+		// GetHandle deliberately does not create state: listing route units must
+		// not materialise entries for routes that have never served a request.
+		if h := routestats.GetHandle(routestats.RouteKey{
+			Group:            r.Group,
+			PublicModelAlias: r.PublicModelAlias,
+			ChannelID:        r.ChannelId,
+			KeyIndex:         r.KeyIndex,
+			UpstreamModel:    r.UpstreamModel,
+		}); h != nil {
+			snap := h.Snapshot()
+			view.EwmaQuality = h.Quality().Quality
+			view.SuccessEwma = snap.SuccessRate
+			view.TtftEwmaMs = snap.TTFTMs
+			view.TpsEwma = snap.TPS
+			view.SampleCount = snap.SampleCount
+		}
+		views = append(views, view)
 	}
 	return views, nil
 }

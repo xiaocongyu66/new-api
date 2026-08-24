@@ -26,7 +26,10 @@ type RouteState struct {
 	TPS         float64 // EWMA tokens per second
 	LatencyMs   float64 // EWMA latency in milliseconds
 
-	// Observation tracking
+	// Observation tracking. SampleCount counts attributable requests, which is
+	// exactly the number of success observations: TTFT, TPS and latency are facets
+	// of the same request, so counting them too would let a single request clear a
+	// MinSamples threshold of 3.
 	HasSuccess  bool
 	HasTTFT     bool
 	HasTPS      bool
@@ -257,7 +260,6 @@ func (h *RouteHandle) ObserveTTFT(ttftMs float64) {
 	} else {
 		st.TTFTMs = st.TTFTMs + alphaEff*(ttftMs-st.TTFTMs)
 	}
-	st.SampleCount++
 	st.LastUpdateNs = now
 }
 
@@ -312,7 +314,6 @@ func (h *RouteHandle) ObserveTPS(tps float64) {
 	} else {
 		st.TPS = st.TPS + alphaEff*(tps-st.TPS)
 	}
-	st.SampleCount++
 	st.LastUpdateNs = now
 }
 
@@ -373,7 +374,6 @@ func (h *RouteHandle) ObserveLatency(latencyMs float64) {
 	} else {
 		st.LatencyMs = st.LatencyMs + alphaEff*(latencyMs-st.LatencyMs)
 	}
-	st.SampleCount++
 	st.LastUpdateNs = now
 }
 

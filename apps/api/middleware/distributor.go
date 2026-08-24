@@ -513,6 +513,11 @@ func SetupContextForSelectedChannel(c *gin.Context, route *model.SelectedRoute, 
 	}
 	// c.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", key))
 	common.SetContextKey(c, constant.ContextKeyChannelKey, key)
+	// Publish the route's stats handle here rather than at one call site: every
+	// selection path (weighted random, channel affinity, specific channel, locked
+	// replay) funnels through this function, and paths without a real route unit
+	// carry a nil handle so recording stays a no-op.
+	common.SetContextKey(c, constant.ContextKeyRouteStatsHandle, route.StatsHandle)
 	common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, channel.GetBaseURL())
 
 	common.SetContextKey(c, constant.ContextKeySystemPromptOverride, false)

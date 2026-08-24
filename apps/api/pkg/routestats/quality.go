@@ -170,10 +170,22 @@ func RegressionComponents(comp QualityComponents, deltaSeconds float64, cfg *Rou
 		return comp
 	}
 
+	// Only observed components regress. An unobserved component stores a zero, and
+	// regressing that toward the target manufactures data: a route that never
+	// streamed would report a TTFT climbing toward target while it sits idle, and
+	// the value would differ between two consecutive reads.
 	reg := comp
-	reg.SuccessRate = RegressionTowardsNeutral(comp.SuccessRate, 1.0, deltaSeconds, cfg.TauStale)
-	reg.TTFTMs = RegressionTowardsNeutral(comp.TTFTMs, float64(cfg.TTFTTargetMs), deltaSeconds, cfg.TauStale)
-	reg.TPS = RegressionTowardsNeutral(comp.TPS, float64(cfg.TPSTarget), deltaSeconds, cfg.TauStale)
-	reg.LatencyMs = RegressionTowardsNeutral(comp.LatencyMs, float64(cfg.LatencyTargetMs), deltaSeconds, cfg.TauStale)
+	if comp.HasSuccess {
+		reg.SuccessRate = RegressionTowardsNeutral(comp.SuccessRate, 1.0, deltaSeconds, cfg.TauStale)
+	}
+	if comp.HasTTFT {
+		reg.TTFTMs = RegressionTowardsNeutral(comp.TTFTMs, float64(cfg.TTFTTargetMs), deltaSeconds, cfg.TauStale)
+	}
+	if comp.HasTPS {
+		reg.TPS = RegressionTowardsNeutral(comp.TPS, float64(cfg.TPSTarget), deltaSeconds, cfg.TauStale)
+	}
+	if comp.HasLatency {
+		reg.LatencyMs = RegressionTowardsNeutral(comp.LatencyMs, float64(cfg.LatencyTargetMs), deltaSeconds, cfg.TauStale)
+	}
 	return reg
 }
