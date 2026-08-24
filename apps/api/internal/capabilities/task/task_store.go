@@ -120,13 +120,15 @@ func GetByTaskId(userId int, taskId string) (*model.Task, bool, error) {
 	if taskId == "" {
 		return nil, false, nil
 	}
-	var task *model.Task
-	err := model.DB.Where("user_id = ? and task_id = ?", userId, taskId).First(&task).Error
-	exist, err := recordExist(err)
+	var task model.Task
+	err := model.DB.Where("user_id = ? AND task_id = ?", userId, taskId).First(&task).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, false, nil
+		}
 		return nil, false, err
 	}
-	return task, exist, err
+	return &task, true, nil
 }
 
 // GetByTaskIds returns tasks by user ID and task IDs
@@ -135,12 +137,10 @@ func GetByTaskIds(userId int, taskIds []any) ([]*model.Task, error) {
 		return nil, nil
 	}
 	var tasks []*model.Task
-	err := model.DB.Where("user_id = ? and task_id in (?)", userId, taskIds).Find(&tasks).Error
-	if err != nil {
-		return nil, err
-	}
-	return tasks, nil
+	err := model.DB.Where("user_id = ? AND task_id IN ?", userId, taskIds).Find(&tasks).Error
+	return tasks, err
 }
+
 
 // Insert creates a new task record
 func Insert(task *model.Task) error {

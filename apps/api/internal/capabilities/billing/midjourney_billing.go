@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/internal/capabilities/billing/settlecore"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/service"
 )
 
 func PrepareMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.Midjourney, quota int, shouldBill bool) (bool, error) {
@@ -101,7 +102,7 @@ func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason s
 		LogType:   model.LogTypeRefund,
 		Content:   "",
 		ChannelId: billingChannelId,
-		ModelName: service.CovertMjpActionToModelName(task.Action),
+		ModelName: covertMjpActionToModelName(task.Action),
 		Quota:     quota,
 		TokenId:   task.TokenId,
 		Other: map[string]interface{}{
@@ -115,4 +116,13 @@ func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason s
 		logger.LogError(ctx, fmt.Sprintf("Midjourney 退款成功但清除 quota 失败 task %s: %s", task.MjId, err.Error()))
 	}
 	return true
+}
+
+// covertMjpActionToModelName maps a midjourney action to its model name (local copy to avoid import cycle).
+func covertMjpActionToModelName(mjAction string) string {
+	modelName := "mj_" + strings.ToLower(mjAction)
+	if mjAction == constant.MjActionSwapFace {
+		modelName = "swap_face"
+	}
+	return modelName
 }

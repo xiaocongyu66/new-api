@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/capabilities/billing"
+	taskcap "github.com/QuantumNous/new-api/internal/capabilities/task"
+	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
@@ -516,7 +518,7 @@ func RelayTaskFetch(c contract.Context) {
 		})
 		return
 	}
-	if taskErr := relay.RelayTaskFetch(ginadapter.MustUnwrap(c), relayInfo.RelayMode); taskErr != nil {
+	if taskErr := taskcap.FetchTask(c, relayInfo.RelayMode); taskErr != nil {
 		respondTaskError(c, taskErr)
 	}
 }
@@ -528,16 +530,44 @@ func RelayTask(c contract.Context) {
 			Code:       "gen_relay_info_failed",
 			Message:    err.Error(),
 			StatusCode: http.StatusInternalServerError,
-		})
-		return
+	})
+	return
 	}
 
-	if taskErr := relay.ResolveOriginTask(ginadapter.MustUnwrap(c), relayInfo); taskErr != nil {
+	// Build SubmitInfo from RelayInfo for capability functions
+	submitInfo := &port.SubmitInfo{
+		UserId:            relayInfo.UserId,
+		TokenId:           relayInfo.TokenId,
+		TokenGroup:        relayInfo.TokenGroup,
+		SubscriptionId:    relayInfo.SubscriptionId,
+		OriginModelName:   relayInfo.OriginModelName,
+		UpstreamModelName: relayInfo.UpstreamModelName,
+		Action:            relayInfo.Action,
+		PublicTaskID:      relayInfo.PublicTaskID,
+		OriginTaskID:      relayInfo.OriginTaskID,
+		LockedChannel:     relayInfo.LockedChannel.(*model.Channel),
+		ChannelId:         relayInfo.ChannelId,
+		ChannelType:       relayInfo.ChannelType,
+		ChannelBaseUrl:    relayInfo.ChannelBaseUrl,
+		ApiKey:            relayInfo.ApiKey,
+	}
+
+	if taskErr := taskcap.ResolveOriginTask(c, submitInfo); taskErr != nil {
 		respondTaskError(c, taskErr)
 		return
 	}
 
-	var result *relay.TaskSubmitResult
+	// Copy back updated fields from SubmitInfo to RelayInfo for retry loop
+	relayInfo.OriginModelName = submitInfo.OriginModelName
+	relayInfo.UpstreamModelName = submitInfo.UpstreamModelName
+	relayInfo.Action = submitInfo.Action
+	relayInfo.LockedChannel = any(submitInfo.LockedChannel)
+	relayInfo.ChannelId = submitInfo.ChannelId
+	relayInfo.ChannelType = submitInfo.ChannelType
+	relayInfo.ChannelBaseUrl = submitInfo.ChannelBaseUrl
+	relayInfo.ApiKey = submitInfo.ApiKey
+
+	var result *port.TaskSubmitResult
 	var taskErr *taskdto.TaskError
 	defer func() {
 		if taskErr != nil && relayInfo.Billing != nil {
@@ -595,7 +625,24 @@ func RelayTask(c contract.Context) {
 		}
 		c.ResetBody(io.NopCloser(bodyStorage))
 
-		result, taskErr = relay.RelayTaskSubmit(ginadapter.MustUnwrap(c), relayInfo)
+		submitInfo := port.SubmitInfo{
+			UserId:            relayInfo.UserId,
+			TokenId:           relayInfo.TokenId,
+			TokenGroup:        relayInfo.TokenGroup,
+			SubscriptionId:    relayInfo.SubscriptionId,
+			OriginModelName:   relayInfo.OriginModelName,
+			UpstreamModelName: relayInfo.UpstreamModelName,
+			Action:            relayInfo.Action,
+			PublicTaskID:      relayInfo.PublicTaskID,
+			OriginTaskID:      relayInfo.OriginTaskID,
+			LockedChannel:     channel,
+			ChannelId:         channel.Id,
+			ChannelType:       channel.Type,
+			ChannelBaseUrl:    channel.GetBaseURL(),
+			ApiKey:            channel.Key,
+			ForcePreConsume:   relayInfo.ForcePreConsume,
+		}
+		result, taskErr = taskcap.SubmitTask(c, submitInfo)
 		if taskErr == nil {
 			winnerID, requestSucceeded = channel.Id, true
 			break
@@ -635,7 +682,7 @@ func RelayTask(c contract.Context) {
 		}
 		service.LogTaskConsumption(c, relayInfo)
 
-		task := model.InitTask(result.Platform, relayInfo)
+		task := model.InitTask(constant.TaskPlatform(result.Platform), relayInfo)
 		task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
 		task.PrivateData.BillingSource = relayInfo.BillingSource
 		task.PrivateData.SubscriptionId = relayInfo.SubscriptionId

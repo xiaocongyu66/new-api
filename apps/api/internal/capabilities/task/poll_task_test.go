@@ -99,6 +99,10 @@ func (p *taskPollingFetchProvider) AdjustBillingOnComplete(task *model.Task, tas
 	return 0
 }
 
+func (p *taskPollingFetchProvider) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
+	return nil, nil
+}
+
 func (p *taskPollingFetchProvider) fetchCount() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -152,6 +156,11 @@ func (p *sunoFailurePollingProvider) ParseTaskResult(body []byte) (*port.TaskRes
 func (p *sunoFailurePollingProvider) AdjustBillingOnComplete(task *model.Task, taskResult *port.TaskResult) int {
 	return 0
 }
+
+func (p *sunoFailurePollingProvider) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
+	return nil, nil
+}
+
 
 // ---------------------------------------------------------------------------
 // Seed helpers (copied from service/task_billing_test.go)

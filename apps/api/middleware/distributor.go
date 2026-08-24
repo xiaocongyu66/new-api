@@ -263,7 +263,7 @@ func getModelRequest(c contract.Context) (*ModelRequest, bool, error) {
 			if err != nil {
 				return nil, false, errors.New(i18n.TCtx(c, i18n.MsgDistributorInvalidMidjourney, map[string]any{"Error": err.Error()}))
 			}
-			midjourneyModel, mjErr, success := service.GetMjRequestModel(relayMode, &midjourneyRequest)
+			midjourneyModel, mjErr, success := taskcap.GetMjRequestModel(relayMode, &midjourneyRequest)
 			if mjErr != nil {
 				return nil, false, fmt.Errorf("%s", mjErr.Description)
 			}

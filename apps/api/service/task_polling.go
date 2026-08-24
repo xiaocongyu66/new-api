@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/QuantumNous/new-api/constant"
@@ -80,6 +81,16 @@ func (b *taskProviderBinding) AdjustBillingOnComplete(taskModel *model.Task, tas
 		TotalTokens:      taskResult.TotalTokens,
 	}
 	return b.adaptor.AdjustBillingOnComplete(taskModel, relayResult)
+}
+
+func (b *taskProviderBinding) ConvertToOpenAIVideo(taskModel *model.Task) ([]byte, error) {
+	type converter interface {
+		ConvertToOpenAIVideo(*model.Task) ([]byte, error)
+	}
+	if c, ok := b.adaptor.(converter); ok {
+		return c.ConvertToOpenAIVideo(taskModel)
+	}
+	return nil, fmt.Errorf("adaptor does not implement ConvertToOpenAIVideo")
 }
 
 // GetTaskProviderFuncBinding wires the gateway port to the channel adaptors.
