@@ -2,11 +2,12 @@ package model
 
 import (
 	"errors"
-	"math/rand"
+	"math/rand/v2"
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/pkg/routestats"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -18,14 +19,15 @@ type RouteKey struct {
 }
 
 type SelectedRoute struct {
-	RouteId       int      // channel_model_routes.id
+	RouteId       int // channel_model_routes.id
 	Group         string
 	Alias         string   // public model alias (== requested model name)
 	Channel       *Channel // full channel object
 	ChannelId     int
 	KeyIndex      int
-	Key           string   // selected API key plaintext (multi-key: by key_index; single key: channel.Key)
-	UpstreamModel string   // mapped upstream model name
+	Key           string                  // selected API key plaintext (multi-key: by key_index; single key: channel.Key)
+	UpstreamModel string                  // mapped upstream model name
+	StatsHandle   *routestats.RouteHandle // EWMA stats handle for this route unit
 }
 
 // routeCandidate is a normalized candidate for selection.
@@ -287,6 +289,18 @@ func SelectRouteUnit(group string, alias string, requestPath string, retry int, 
 		key, _, _ = channel.GetNextEnabledKey()
 	}
 
+	// Create routestats handle for this route unit (per-attempt attribution)
+	// RouteKey uses: Group (group), PublicModelAlias (alias = requested alias),
+	// ChannelID, KeyIndex, UpstreamModel (from route row, not adapted).
+	routeKey := routestats.RouteKey{
+		Group:            group,
+		PublicModelAlias: alias,
+		ChannelID:        selected.channelId,
+		KeyIndex:         selected.keyIndex,
+		UpstreamModel:    selected.upstreamModel,
+	}
+	statsHandle := routestats.GetOrCreateHandle(routeKey)
+
 	return &SelectedRoute{
 		RouteId:       selected.routeId,
 		Group:         group,
@@ -296,6 +310,7 @@ func SelectRouteUnit(group string, alias string, requestPath string, retry int, 
 		KeyIndex:      selected.keyIndex,
 		Key:           key,
 		UpstreamModel: selected.upstreamModel,
+		StatsHandle:   statsHandle,
 	}, nil
 }
 
@@ -327,6 +342,7 @@ func (channel *Channel) GetNextEnabledKeyForIndex(keyIndex int) (string, int, *t
 	}
 	return keys[keyIndex], keyIndex, nil
 }
+
 // SelectedRouteFromChannel constructs a SelectedRoute from a specific channel
 // for locked-channel replay paths (channel test, task locked replay).
 // It picks one enabled key via GetNextEnabledKey() and derives Group from
@@ -339,17 +355,22 @@ func SelectedRouteFromChannel(channel *Channel, alias string) (*SelectedRoute, e
 	if err != nil {
 		return nil, err
 	}
-	// Determine group: use the first group this channel belongs to for the given alias
+	// Locate the route row this (channel, alias) pair corresponds to. Affinity and
+	// specific-channel requests bypass weighted random selection, but they still
+	// serve a real route unit, so their samples must be attributed to it. Without
+	// this lookup the request would either go unattributed or, worse, be charged
+	// against a key derived from the alias instead of the route's own upstream
+	// model, which is a different route unit entirely.
 	group := ""
+	upstreamModel := alias
+	routeId := 0
 	if common.MemoryCacheEnabled {
 		channelSyncLock.RLock()
 		for g, aliasMap := range group2alias2routes {
-			if routes, ok := aliasMap[alias]; ok {
-				for _, rc := range routes {
-					if rc.channelId == channel.Id {
-						group = g
-						break
-					}
+			for _, rc := range aliasMap[alias] {
+				if rc.channelId == channel.Id && rc.keyIndex == keyIndex {
+					group, upstreamModel, routeId = g, rc.upstreamModel, rc.routeId
+					break
 				}
 			}
 			if group != "" {
@@ -358,27 +379,33 @@ func SelectedRouteFromChannel(channel *Channel, alias string) (*SelectedRoute, e
 		}
 		channelSyncLock.RUnlock()
 	} else {
-		// Fallback: query DB for channel_model_routes to find group
-		var routes []struct{ Group string }
-		DB.Table("channel_model_routes").
-			Select("`group`").
-			Where("channel_id = ? AND `alias` = ? AND status = ?", channel.Id, alias, common.ChannelStatusEnabled).
-			Scan(&routes)
-		if len(routes) > 0 {
-			group = routes[0].Group
+		var row ChannelModelRoute
+		if err := DB.Where(commonGroupCol+" IS NOT NULL AND public_model_alias = ? AND channel_id = ? AND key_index = ? AND enabled = ?",
+			alias, channel.Id, keyIndex, true).First(&row).Error; err == nil {
+			group, upstreamModel, routeId = row.Group, row.UpstreamModel, row.Id
 		}
 	}
-	// Upstream model: for locked channel replay, the alias IS the requested model,
-	// and the channel's model mapping (if any) would be applied downstream.
-	// We store the alias as UpstreamModel; the relay layer will apply mapping.
+
+	var statsHandle *routestats.RouteHandle
+	if routeId != 0 {
+		statsHandle = routestats.GetOrCreateHandle(routestats.RouteKey{
+			Group:            group,
+			PublicModelAlias: alias,
+			ChannelID:        channel.Id,
+			KeyIndex:         keyIndex,
+			UpstreamModel:    upstreamModel,
+		})
+	}
+
 	return &SelectedRoute{
-		RouteId:       0, // not from route table; 0 indicates locked-channel path
+		RouteId:       routeId,
 		Group:         group,
 		Alias:         alias,
 		Channel:       channel,
 		ChannelId:     channel.Id,
 		KeyIndex:      keyIndex,
 		Key:           key,
-		UpstreamModel: alias,
+		UpstreamModel: upstreamModel,
+		StatsHandle:   statsHandle,
 	}, nil
 }
