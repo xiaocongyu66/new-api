@@ -142,17 +142,10 @@ func loadPricingAdvancedCustomConfigs(enableAbilities []AbilityWithChannel) map[
 		return nil
 	}
 
-	configs := make(map[int]*dto.AdvancedCustomConfig, len(channelIDs))
-	if common.MemoryCacheEnabled {
-		channelSyncLock.RLock()
-		defer channelSyncLock.RUnlock()
-		for _, channelID := range channelIDs {
-			if config := channel2advancedCustomConfig[channelID]; config != nil {
-				configs[channelID] = config
-			}
-		}
+	if configs, ok := LookupAdvancedCustomConfigs(channelIDs); ok {
 		return configs
 	}
+	configs := make(map[int]*dto.AdvancedCustomConfig, len(channelIDs))
 
 	for _, channelID := range channelIDs {
 		channel, err := CacheGetChannel(channelID)

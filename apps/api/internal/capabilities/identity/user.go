@@ -576,7 +576,7 @@ func GetUserModels(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	groups := service.GetUserUsableGroups(user.Group)
+	groups := setting.GetUserUsableGroups(user.Group)
 	group := c.Query("group")
 	var groupsToQuery []string
 	switch {
@@ -586,7 +586,7 @@ func GetUserModels(c contract.Context) {
 		}
 	case group == "auto":
 		if _, ok := groups[group]; ok {
-			groupsToQuery = service.GetUserAutoGroup(user.Group)
+			groupsToQuery = setting.GetUserAutoGroup(user.Group)
 		}
 	default:
 		if _, ok := groups[group]; ok {

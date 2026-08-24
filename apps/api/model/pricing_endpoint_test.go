@@ -275,8 +275,10 @@ func TestCacheUpdateChannelSyncsAdvancedCustomConfig(t *testing.T) {
 	}))
 	CacheUpdateChannel(channel)
 
-	require.NotNil(t, channel2advancedCustomConfig[401])
-	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAIResponse}, channel2advancedCustomConfig[401].SupportedEndpointTypesForModel("gemini-3.5-flash"))
+	configs, ok := LookupAdvancedCustomConfigs([]int{401})
+	require.True(t, ok)
+	require.NotNil(t, configs[401])
+	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAIResponse}, configs[401].SupportedEndpointTypesForModel("gemini-3.5-flash"))
 
 	channel.SetOtherSettings(pricingEndpointAdvancedCustomConfig(dto.AdvancedCustomRoute{
 		IncomingPath: "/v1/chat/completions",
@@ -284,11 +286,16 @@ func TestCacheUpdateChannelSyncsAdvancedCustomConfig(t *testing.T) {
 	}))
 	CacheUpdateChannel(channel)
 
-	require.NotNil(t, channel2advancedCustomConfig[401])
-	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAI}, channel2advancedCustomConfig[401].SupportedEndpointTypesForModel("gemini-3.5-flash"))
+	configs, ok = LookupAdvancedCustomConfigs([]int{401})
+	require.True(t, ok)
+	require.NotNil(t, configs[401])
+	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAI}, configs[401].SupportedEndpointTypesForModel("gemini-3.5-flash"))
 
 	channel.Type = constant.ChannelTypeOpenAI
 	CacheUpdateChannel(channel)
 
-	assert.Nil(t, channel2advancedCustomConfig[401])
+	configs, ok = LookupAdvancedCustomConfigs([]int{401})
+	if ok {
+		assert.Nil(t, configs[401])
+	}
 }

@@ -1,4 +1,4 @@
-package service
+package channel
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -101,7 +102,7 @@ func TestCacheGetRandomSatisfiedChannelUsesTokenAutoGroupsWhenGlobalAutoIsEmpty(
 	common.SetCtxKey(ctx, constant.ContextKeyTokenCrossGroupRetry, true)
 
 	retry := 0
-	param := &RetryParam{
+	param := &port.SelectParams{
 		Ctx:         ctx,
 		TokenGroup:  "auto",
 		ModelName:   modelName,

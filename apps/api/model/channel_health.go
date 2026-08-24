@@ -54,10 +54,10 @@ type channelHealthState struct {
 	modelCooldowns map[string]int
 }
 
-// channelHealthNow is the package clock, injected for deterministic tests.
+// ChannelHealthNow is the package clock, injected for deterministic tests.
 // Production code reads it unchanged; tests replace it and restore it via
 // t.Cleanup so no test leaks a frozen clock into another.
-var channelHealthNow = time.Now
+var ChannelHealthNow = time.Now
 
 // channelModelDisabler disables one model on one channel once its cooldowns
 // saturate. It is a package var so tests can capture the call instead of
@@ -117,6 +117,39 @@ func (o ChannelOutcome) ExcludesChannel() bool {
 // dead and will not self-heal. Three follows Envoy, whose
 // consecutive_gateway_failure defaults to 3 while consecutive_5xx defaults to 5.
 const unauthorizedEscalationThreshold = 3
+
+// ResetChannelHealthManagerForTest swaps in a fresh manager singleton so
+// capability-package tests start from a clean state machine.
+func ResetChannelHealthManagerForTest() *ChannelHealthManager {
+	channelHealthOnce = sync.Once{}
+	return GetChannelHealthManager()
+}
+
+// CooldownStateSnapshot exposes a channel's lifecycle counters for
+// capability-package tests that verify cooldown bookkeeping.
+type CooldownStateSnapshot struct {
+	RequestCount   int
+	RampPending    bool
+	RampExited     bool
+	CooldownStreak int
+}
+
+// SnapshotCooldownStateForTest returns the tracked state of one channel;
+// ok is false when the manager has no state for it.
+func (m *ChannelHealthManager) SnapshotCooldownStateForTest(channelID int) (snap CooldownStateSnapshot, ok bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	state, present := m.states[channelID]
+	if !present {
+		return snap, false
+	}
+	return CooldownStateSnapshot{
+		RequestCount:   state.requestCount,
+		RampPending:    state.rampPending,
+		RampExited:     state.rampExited,
+		CooldownStreak: state.cooldownStreak,
+	}, true
+}
 
 // GetChannelHealthManager returns the singleton manager.
 func GetChannelHealthManager() *ChannelHealthManager {
@@ -260,7 +293,7 @@ func (m *ChannelHealthManager) recordChannelOutcome(channelID int, modelName str
 		m.states[channelID] = state
 	}
 
-	now := channelHealthNow()
+	now := ChannelHealthNow()
 
 	// Finish any expired cooldown before applying the new outcome so a
 	// post-expiry result re-enters the slow-start curve cleanly.
@@ -504,14 +537,14 @@ func slowStartFactor(state *channelHealthState, minRequests int) float64 {
 // channel in a live cooldown weighs zero, so weighted-random selection ejects it
 // entirely. When the kill switch is off, returns baseWeight unchanged.
 func (m *ChannelHealthManager) EffectiveWeight(channelID int, baseWeight uint) float64 {
-	return m.routingWeight(channelID, baseWeight, false)
+	return m.RoutingWeight(channelID, baseWeight, false)
 }
 
-// routingWeight is the shared health/cooldown weight path. EffectiveWeight calls
+// RoutingWeight is the shared health/cooldown weight path. EffectiveWeight calls
 // it with bypassCooldown=false. Selectors call it with true only for cooling
 // candidates deliberately retained by the max-ejection cap; ejected candidates
 // are dropped from the candidate set instead.
-func (m *ChannelHealthManager) routingWeight(channelID int, baseWeight uint, bypassCooldown bool) float64 {
+func (m *ChannelHealthManager) RoutingWeight(channelID int, baseWeight uint, bypassCooldown bool) float64 {
 	cfg := operation_setting.GetChannelHealthSetting()
 	if cfg == nil || !cfg.Enabled {
 		return float64(baseWeight)
@@ -525,7 +558,7 @@ func (m *ChannelHealthManager) routingWeight(channelID int, baseWeight uint, byp
 		return float64(baseWeight) // no history = full health, no ramp to apply
 	}
 
-	now := channelHealthNow()
+	now := ChannelHealthNow()
 	if !state.cooldownUntil.IsZero() {
 		if state.cooldownUntil.After(now) {
 			if !bypassCooldown {
@@ -541,11 +574,11 @@ func (m *ChannelHealthManager) routingWeight(channelID int, baseWeight uint, byp
 	return float64(baseWeight) * state.ewmaScore * slowStartFactor(state, cfg.MinRequests)
 }
 
-// cooldownDuration computes the sliding cooldown duration. The formula
+// CooldownDuration computes the sliding cooldown duration. The formula
 // base + (max-base)*(1-alpha^priorActivations) yields exactly base for the first
 // activation and approaches max as activations accumulate. A non-positive base or
 // max yields zero, which disables cooldown.
-func cooldownDuration(cfg *operation_setting.ChannelHealthSetting, priorActivations int) time.Duration {
+func CooldownDuration(cfg *operation_setting.ChannelHealthSetting, priorActivations int) time.Duration {
 	base, max := cfg.CooldownBaseSeconds, cfg.CooldownMaxSeconds
 	if base <= 0 || max <= 0 {
 		return 0
@@ -569,7 +602,7 @@ func cooldownDuration(cfg *operation_setting.ChannelHealthSetting, priorActivati
 // then increments the streak so a repeat offender cools longer. Callers must hold
 // m.mu. A zero-duration configuration disables cooldown without disturbing EWMA.
 func startCooldownLocked(state *channelHealthState, cfg *operation_setting.ChannelHealthSetting, now time.Time) {
-	d := cooldownDuration(cfg, state.cooldownStreak)
+	d := CooldownDuration(cfg, state.cooldownStreak)
 	if d <= 0 {
 		return
 	}
@@ -590,7 +623,7 @@ func finishCooldownLocked(state *channelHealthState) {
 	state.rampPending = true
 }
 
-// routingBaseWeight converts a configured channel weight into the base weight
+// RoutingBaseWeight converts a configured channel weight into the base weight
 // used for weighted-random routing. Both selection paths (the memory-cache path
 // in GetRandomSatisfiedChannel and the DB path in GetChannel) MUST call this so
 // MEMORY_CACHE_ENABLED cannot change traffic distribution.
@@ -598,7 +631,7 @@ func finishCooldownLocked(state *channelHealthState) {
 // The +1 offset keeps weight=0 channels selectable at the lowest possible share
 // instead of dropping them, while staying strictly monotone: a larger configured
 // weight always yields a larger routing weight.
-func routingBaseWeight(weight int) uint {
+func RoutingBaseWeight(weight int) uint {
 	if weight < 0 {
 		return 1
 	}
@@ -654,7 +687,7 @@ func (m *ChannelHealthManager) FilterCoolingChannels(channelIDs []int, maxEjecti
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	now := channelHealthNow()
+	now := ChannelHealthNow()
 
 	var cooling []int
 	for _, id := range channelIDs {
