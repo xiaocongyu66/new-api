@@ -1,7 +1,7 @@
 # github_issues.yaml — issue / sub-issue 内容格式与创建补充行为契约。
 #
-# 使用方式: .githooks/github/issues.py 读取本文件, 逐条匹配规则。
-# 新增/调整规则时只改本文件, 不改 issues.py, 除非是新的检查流程。
+# 使用方式: gate Rust issue validator 读取本文件, 逐条匹配规则。
+# 新增/调整规则时只改本文件, 除非是新的检查流程。
 #
 # 段名约定: 所有 heading 必须是英文 (Heading 语言契约), 正文中文。
 
@@ -38,7 +38,7 @@ forbidden_brackets_in_title:
   - "〈"
   - "〉"
 
-# 正文禁止关键词 (I-xx)
+# 正文禁止关键词 (IS-16)
 forbidden_keywords:
   - "TODO"
   - "TBD"
@@ -59,6 +59,7 @@ keyword_label_suggestions:
   "新功能": "enhancement"
   "清理": "chore"
   "cleanup": "chore"
+  "epic": "epic"
 
 # 标题禁用前缀 (默认: 父/issue:/sub: 等，关系用 label 表达)
 title_forbidden_prefixes:
