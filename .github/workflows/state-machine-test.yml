@@ -230,16 +230,23 @@ jobs:
               return 1
             }
             ensure_gateway || { overall=1; continue; }
+            pod=$(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
             dir="runtime/perf/scenario-$n"; mkdir -p "$dir"
             timeout_env=""
-            [ "$n" = 8 ] && timeout_env="-e TIMEOUT=2s"
+            if [ "$n" = 8 ]; then
+              timeout_env="-e TIMEOUT=2s"
+              # Scenario 8 needs a real local (transport) failure: point one
+              # channel at an unreachable address so DoRequestFailed fires.
+              kubectl exec "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "UPDATE channels SET base_url='http://stress-mock-unreachable:8099' WHERE id=90003"
+              kubectl rollout restart deployment/new-api-worker
+              kubectl rollout status deployment/new-api-worker --timeout=300s
+            fi
             k6 run --vus "$vus" --duration "$duration" -e TARGET_URL="$TARGET_URL" -e API_KEY="$API_KEY" -e MODEL="$model" -e BAD_KEY_MODEL="$model" -e SLOW_MODEL="$model" $timeout_env -e SUMMARY_JSON="$dir/k6-summary.json" "tests/perf/scenarios/$script" > "$dir/k6.log" 2>&1
             k6_rc=$?
             { kubectl logs deployment/new-api-master --all-pods=true --prefix=true --tail=-1; kubectl logs deployment/new-api-worker --all-pods=true --prefix=true --tail=-1; } > "$dir/worker.log" 2>&1
             pod=$(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
-            kubectl exec "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT id, status, channel_info FROM channels WHERE id BETWEEN 90001 AND 90003 ORDER BY id" > "$dir/channel-status.txt" 2>&1
+            kubectl exec "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "COPY (SELECT channel_id,key_index,model,state,isolation_level,dormant_disable_count,local_failure_count,upstream_failure_count,last_error_code,last_error_at,last_success_at,version,updated_at FROM channel_model_health ORDER BY channel_id,key_index,model) TO STDOUT WITH CSV HEADER" > "$dir/channel_model_health.csv" 2>&1
             kubectl exec "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT channel_id, model, enabled FROM abilities WHERE channel_id BETWEEN 90001 AND 90003 ORDER BY channel_id, model" > "$dir/abilities.txt" 2>&1
-            kubectl exec "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "COPY (SELECT channel_id,key_index,model,state,isolation_level,dormant_disable_count,local_failure_count,upstream_failure_count,version,updated_at FROM channel_model_health ORDER BY channel_id,key_index,model) TO STDOUT WITH CSV HEADER" > "$dir/channel_model_health.csv" 2>&1
             python3 tests/perf/assertions/state_machine.py --derive-distribution --worker-log "$dir/worker.log" --distribution-json "$dir/distribution.json" || true
             if [ "$alias" = bad-key-cascade ]; then
               python3 tests/perf/assertions/state_machine.py --scenario "$alias" --bad-key-channel 90001 --bad-key-index 0 --channel-status "$dir/channel-status.txt" --health-csv "$dir/channel_model_health.csv" --worker-log "$dir/worker.log" --distribution-json "$dir/distribution.json" --report-file "$dir/assertion-report.md"
@@ -249,6 +256,8 @@ jobs:
             assert_rc=$?
             if [ "$k6_rc" -ne 0 ] || [ "$assert_rc" -ne 0 ]; then overall=1; fi
           done
+          # Restore the mock base URL so later runs start from a clean topology.
+          kubectl exec "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "UPDATE channels SET base_url='http://stress-mock' WHERE id=90003" || true
           exit "$overall"
       - name: Rollback and cleanup
         if: always()

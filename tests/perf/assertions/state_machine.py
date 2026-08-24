@@ -21,7 +21,9 @@ class HealthRow:
     isolation_level: int
     dormant_disable_count: int
     local_failure_count: int
-    upstream_failure_count: int
+    last_error_code: str
+    last_error_at: int
+    last_success_at: int
     version: int
     updated_at: int
 
@@ -45,8 +47,9 @@ def read_health(path: Path) -> list[HealthRow]:
                 state=row.get("state", "").lower(),
                 isolation_level=integer(row.get("isolation_level")),
                 dormant_disable_count=integer(row.get("dormant_disable_count")),
-                local_failure_count=integer(row.get("local_failure_count")),
-                upstream_failure_count=integer(row.get("upstream_failure_count")),
+                last_error_code=(row.get("last_error_code") or "").strip().lower(),
+                last_error_at=integer(row.get("last_error_at")),
+                last_success_at=integer(row.get("last_success_at")),
                 version=integer(row.get("version")),
                 updated_at=integer(row.get("updated_at")),
             )
@@ -120,13 +123,16 @@ def assert_pool(rows: list[HealthRow], lines: list[str]) -> list[dict[str, objec
     evidence = any("emergency recover" in line or "pool pressure" in line for line in lines)
     return [result("pool-pressure-evidence", evidence, "emergency recover or pool pressure log required"), result("health-rows", bool(rows), f"rows={len(rows)}")]
 
-
 def assert_gray(rows: list[HealthRow], lines: list[str]) -> list[dict[str, object]]:
-    states = {r.state for r in rows}
-    recovery = any("route isolation" in line and "healthy" in line for line in lines)
+    # RecordSuccess decays isolation silently; the observable recovery evidence
+    # is a route whose success timestamp postdates its last error.
+    recovery = any(
+        r.last_error_code and r.last_success_at and r.last_success_at >= r.last_error_at
+        for r in rows
+    )
     return [
         result("mixed-health-states", "healthy" in states and bool(states & {"calm", "dormant"}), f"states={sorted(states)}"),
-        result("recovery", recovery, "route isolation -> healthy log required"),
+        result("recovery", recovery, "route with last_success_at >= last_error_at required"),
         result("not-disabled-only", states != {"disabled"}, f"states={sorted(states)}"),
     ]
 
@@ -144,15 +150,17 @@ def assert_weight(distribution: dict[str, int]) -> list[dict[str, object]]:
 
 
 def assert_timeout(rows: list[HealthRow], lines: list[str]) -> list[dict[str, object]]:
-    local = sum(row.local_failure_count for row in rows)
-    upstream = sum(row.upstream_failure_count for row in rows)
-    if not rows:
-        local = sum("timeout" in line.lower() or "context deadline" in line.lower() for line in lines)
-        upstream = sum("channel error" in line.lower() and "status code: 5" in line.lower() for line in lines)
+    # Thresholds reset counters on every escalation (default threshold=1), so a
+    # final snapshot almost always reads 0. last_error_code persists the most
+    # recent failure source per route and is the reliable classifier evidence.
+    local_codes = {r.last_error_code for r in rows if r.last_error_code == "do_request_failed"}
+    upstream_codes = {r.last_error_code for r in rows if r.last_error_code not in {"", "do_request_failed"}}
+    local = sum(r.local_failure_count for r in rows) or len(local_codes)
+    upstream = sum(r.upstream_failure_count for r in rows) or len(upstream_codes)
     return [
-        result("local-failures", local > 0, f"local_failure_count={local}"),
-        result("upstream-failures", upstream > 0, f"upstream_failure_count={upstream}"),
-        result("independent-counters", local > 0 and upstream > 0, f"local={local} upstream={upstream}"),
+        result("local-failures", bool(local), f"local_failure_count={local} codes={sorted(local_codes)}"),
+        result("upstream-failures", bool(upstream), f"upstream_failure_count={upstream} codes={sorted(upstream_codes)}"),
+        result("independent-counters", bool(local) and bool(upstream), f"local={sorted(local_codes)} upstream={sorted(upstream_codes)}"),
     ]
 
 
