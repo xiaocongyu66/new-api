@@ -236,6 +236,8 @@ jobs:
             k6_rc=$?
             { kubectl logs deployment/new-api-master --all-pods=true --prefix=true --tail=-1; kubectl logs deployment/new-api-worker --all-pods=true --prefix=true --tail=-1; } > "$dir/worker.log" 2>&1
             pod=$(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+            kubectl exec "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT id, status, channel_info FROM channels WHERE id BETWEEN 90001 AND 90003 ORDER BY id" > "$dir/channel-status.txt" 2>&1
+            kubectl exec "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT channel_id, model, enabled FROM abilities WHERE channel_id BETWEEN 90001 AND 90003 ORDER BY channel_id, model" > "$dir/abilities.txt" 2>&1
             kubectl exec "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "COPY (SELECT channel_id,key_index,model,state,isolation_level,dormant_disable_count,local_failure_count,upstream_failure_count,version,updated_at FROM channel_model_health ORDER BY channel_id,key_index,model) TO STDOUT WITH CSV HEADER" > "$dir/channel_model_health.csv" 2>&1
             python3 tests/perf/assertions/state_machine.py --derive-distribution --worker-log "$dir/worker.log" --distribution-json "$dir/distribution.json" || true
             if [ "$alias" = bad-key-cascade ]; then
