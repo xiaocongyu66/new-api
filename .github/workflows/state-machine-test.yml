@@ -126,6 +126,7 @@ jobs:
           kubectl exec -i "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 <<SQL
           UPDATE users SET quota=2147483647, used_quota=0 WHERE id=1;
           UPDATE tokens SET status=1, remain_quota=2147483647, unlimited_quota=true, used_quota=0, expired_time=-1, "group"='default' WHERE key='$token_key';
+          INSERT INTO options (key,value) VALUES ('LocalFailureThreshold','10') ON CONFLICT(key) DO UPDATE SET value='10';
           INSERT INTO options (key,value) VALUES ('RetryTimes','5') ON CONFLICT(key) DO UPDATE SET value='5';
           INSERT INTO options (key,value) VALUES ('AutomaticDisableStatusCodes','401') ON CONFLICT(key) DO UPDATE SET value='401';
           INSERT INTO options (key,value) VALUES ('ModelRequestRateLimitEnabled','false') ON CONFLICT(key) DO UPDATE SET value='false';
