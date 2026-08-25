@@ -1,6 +1,7 @@
 package routestats
 
 import (
+	"fmt"
 	"math/rand/v2"
 	"testing"
 
@@ -103,32 +104,39 @@ func TestShareCorrectionConvergesToBaseScoreShare(t *testing.T) {
 		{"B at quality floor", 0.500, 33.333},
 		{"B four times faster", 1.125, 52.941},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			ResetShares()
-			t.Cleanup(ResetShares)
+		// G1 is an equivalence claim, so every row runs on both arms: the shipped
+		// window and the A/B baseline that #418 compares against. One arm alone
+		// would prove the correction converges somewhere, not that it converges
+		// where the quality term already put it.
+		for _, window := range []int{0, 200} {
+			t.Run(fmt.Sprintf("%s/window=%d", tc.name, window), func(t *testing.T) {
+				ResetShares()
+				t.Cleanup(ResetShares)
 
-			cfg := shareTestSetting(200)
-			pool := PoolKey{Group: "g", PublicModelAlias: "m"}
-			a, b := routeID(1), routeID(2)
-			base := map[RouteID]float64{a: 100.0, b: 100.0 * tc.qualityB}
-			available := []RouteID{a, b}
+				cfg := shareTestSetting(window)
+				pool := PoolKey{Group: "g", PublicModelAlias: "m"}
+				a, b := routeID(1), routeID(2)
+				base := map[RouteID]float64{a: 100.0, b: 100.0 * tc.qualityB}
+				available := []RouteID{a, b}
 
-			rng := rand.New(rand.NewPCG(0x5EED, 0xC0FFEE))
-			const warmup, sample = 2000, 8000
-			for range warmup {
-				drawPool(t, pool, base, available, rng, cfg)
-			}
-			hits := 0
-			for range sample {
-				if drawPool(t, pool, base, available, rng, cfg) == b {
-					hits++
+				rng := rand.New(rand.NewPCG(0x5EED, 0xC0FFEE))
+				const warmup, sample = 2000, 8000
+				for range warmup {
+					drawPool(t, pool, base, available, rng, cfg)
 				}
-			}
+				hits := 0
+				for range sample {
+					if drawPool(t, pool, base, available, rng, cfg) == b {
+						hits++
+					}
+				}
 
-			got := 100 * float64(hits) / float64(sample)
-			assert.InDelta(t, tc.wantShare, got, 0.5,
-				"quality %.3f must yield %.3f%% share, got %.3f%%", tc.qualityB, tc.wantShare, got)
-		})
+				got := 100 * float64(hits) / float64(sample)
+				assert.InDelta(t, tc.wantShare, got, 0.5,
+					"quality %.3f at window %d must yield %.3f%% share, got %.3f%%",
+					tc.qualityB, window, tc.wantShare, got)
+			})
+		}
 	}
 }
 
@@ -195,31 +203,49 @@ func TestShareCorrectionPullsBackBypassedTraffic(t *testing.T) {
 // on "never seen before" does not help, because the spike comes from a small
 // non-zero count rather than a zero one.
 func TestShareCorrectionDoesNotSpikeOnReEntry(t *testing.T) {
-	ResetShares()
-	t.Cleanup(ResetShares)
+	// The gate's 55% line sits about one binomial sigma above the 50% fair share:
+	// 100 requests at p=0.5 has sigma 5pp, so a single seed clears or trips the
+	// line on noise alone (measured across 200 seeds: mean 50.2%, p95 55%, and
+	// 4-8% of seeds above 55% at every window size from 50 to 1000). Averaging the
+	// seeds measures the thing the gate is actually about — whether re-entry
+	// produces a spike — and keeps a per-seed ceiling well clear of the naive
+	// implementation's 74%.
+	const seeds = 40
+	total, worst := 0, 0
+	for seed := range seeds {
+		ResetShares()
 
-	cfg := shareTestSetting(200)
-	pool := PoolKey{Group: "g", PublicModelAlias: "m"}
-	a, b := routeID(1), routeID(2)
-	base := map[RouteID]float64{a: 100, b: 100}
+		cfg := shareTestSetting(200)
+		pool := PoolKey{Group: "g", PublicModelAlias: "m"}
+		a, b := routeID(1), routeID(2)
+		base := map[RouteID]float64{a: 100, b: 100}
 
-	rng := rand.New(rand.NewPCG(0xBEEF, 11))
-	// B is ejected for more than a full window, so nothing about it survives.
-	for range 500 {
-		drawPool(t, pool, base, []RouteID{a}, rng, cfg)
-	}
+		rng := rand.New(rand.NewPCG(uint64(seed)+1, 11))
+		// B is ejected for more than a full window, so nothing about it survives.
+		for range 500 {
+			drawPool(t, pool, base, []RouteID{a}, rng, cfg)
+		}
 
-	hits := 0
-	for range 100 {
-		if drawPool(t, pool, base, []RouteID{a, b}, rng, cfg) == b {
-			hits++
+		hits := 0
+		for range 100 {
+			if drawPool(t, pool, base, []RouteID{a, b}, rng, cfg) == b {
+				hits++
+			}
+		}
+		total += hits
+		if hits > worst {
+			worst = hits
 		}
 	}
+	t.Cleanup(ResetShares)
 
-	assert.LessOrEqual(t, hits, 55,
-		"a returning route must not be flooded: got %d%% of the first 100 requests, fair share is 50%%", hits)
-	assert.GreaterOrEqual(t, hits, 30,
-		"a returning route must not be starved either: got %d%%", hits)
+	mean := float64(total) / seeds
+	assert.LessOrEqual(t, mean, 55.0,
+		"a returning route must not be flooded: mean %.1f%% of the first 100 requests, fair share is 50%%", mean)
+	assert.GreaterOrEqual(t, mean, 45.0,
+		"a returning route must not be starved either: mean %.1f%%", mean)
+	assert.Less(t, worst, 70,
+		"no seed may approach the naive implementation's 74%% spike, worst was %d%%", worst)
 }
 
 // TestShareCorrectionClampBoundsHold covers W3.1's clamp requirement. The clamp
