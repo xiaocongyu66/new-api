@@ -35,7 +35,7 @@ func TestSlowStartFactorTable(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			state := &channelHealthState{requestCount: tc.requestCount, rampExited: tc.rampExited}
+			state := &channelHealthState{RequestCount: tc.requestCount, RampExited: tc.rampExited}
 			assert.InDelta(t, tc.want, slowStartFactor(state, tc.minRequests), 1e-9)
 		})
 	}
@@ -46,7 +46,7 @@ func TestSlowStartFactorTable(t *testing.T) {
 func TestSlowStartFactorNeverExceedsFullWeight(t *testing.T) {
 	for _, minRequests := range []int{1, 2, 5, 10, 50} {
 		for count := 0; count <= minRequests+2; count++ {
-			f := slowStartFactor(&channelHealthState{requestCount: count}, minRequests)
+			f := slowStartFactor(&channelHealthState{RequestCount: count}, minRequests)
 			assert.Greater(t, f, 0.0, "minRequests=%d count=%d", minRequests, count)
 			assert.LessOrEqual(t, f, 1.0, "minRequests=%d count=%d", minRequests, count)
 		}

@@ -172,7 +172,7 @@ func GetRandomSatisfiedChannel(group string, modelName string, retry int, reques
 		return nil, nil
 	}
 
-	healthMgr := model.GetChannelHealthManager()
+	healthMgr := GetHealthStore()
 	maxEjectionPercent := 0
 	if cfg := operation_setting.GetChannelHealthSetting(); cfg != nil {
 		maxEjectionPercent = cfg.CooldownMaxEjectionPercent
@@ -203,7 +203,7 @@ func GetRandomSatisfiedChannel(group string, modelName string, retry int, reques
 	for _, ch := range targetChannels {
 		// Removed channels are truly ejected; retained cooling channels are the
 		// configured availability fallback and may keep their EWMA weight.
-		effW := healthMgr.RoutingWeight(ch.Id, model.RoutingBaseWeight(ch.GetWeight()), true)
+		effW := healthMgr.RoutingWeight(ch.Id, RoutingBaseWeight(ch.GetWeight()), true)
 		weights = append(weights, effW)
 		totalWeight += effW
 	}

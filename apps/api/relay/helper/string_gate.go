@@ -1,80 +1,35 @@
 package helper
 
 import (
-	"fmt"
-
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/internal/gateway"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
-const outputFilterWindowSize = 512
+const outputFilterWindowSize = gateway.OutputFilterWindowSize
 
-// sensitiveOutputState 是请求级输出闸状态（挂在 gin context）。
-type sensitiveOutputState struct {
-	window    string // 最近窗口内容（用于跨 chunk 检测）
-	blocked   bool   // 已触发终止，后续所有 chunk 直接丢弃
-	terminate bool   // 终止帧已写，防止重复写 content_filter+[DONE]
-}
+// sensitiveOutputState is the request-level output gate state (stored on context).
+type sensitiveOutputState = gateway.SensitiveOutputState
 
-// outputFilterState 获取/初始化请求级输出检测状态。
+// outputFilterState gets/initializes request-level output detection state.
 func outputFilterState(c contract.Context) *sensitiveOutputState {
-	if v, ok := c.Get(string(constant.ContextKeySensitiveOutputState)); ok {
-		if s, ok := v.(*sensitiveOutputState); ok {
-			return s
-		}
-	}
-	s := &sensitiveOutputState{}
-	c.Set(string(constant.ContextKeySensitiveOutputState), s)
-	return s
+	return gateway.OutputFilterState(c)
 }
 
-// outputChunkBlocked 检查一个输出 chunk 是否应被拦截。
-// 已触发的流直接丢弃（blocked=true）；新 chunk 累积进窗口后再判。
-// 目标域名硬闸无条件生效（不受敏感词开关控制），其余检测受
-// CheckSensitiveOnCompletionEnabled 控制（默认开）。
+// outputChunkBlocked checks whether an output chunk should be blocked.
+// Already-blocked streams discard directly (blocked=true); new chunks
+// accumulate into the window before being checked. Target-domain hard gate
+// is unconditional (independent of the sensitive-word toggle); the rest is
+// governed by CheckSensitiveOnCompletionEnabled (default on).
 func outputChunkBlocked(c contract.Context, data string) (bool, string) {
-	st := outputFilterState(c)
-	if st.blocked {
-		return true, "already-blocked"
-	}
-	if data == "" {
-		return false, ""
-	}
-	// 目标域无条件终止：任何输出包含攻击目标站点即断流（用户要求双向终止）。
-	if d := service.CheckSensitiveTargets(data); d != "" {
-		st.blocked = true
-		common.SysLog(fmt.Sprintf("output blocked by target domain: [%s]", d))
-		return true, "target:" + d
-	}
-	if !setting.ShouldCheckCompletionSensitive() {
-		return false, ""
-	}
-	st.window += data
-	if len(st.window) > outputFilterWindowSize {
-		st.window = st.window[len(st.window)-outputFilterWindowSize:]
-	}
-	if hit, label := service.CheckSensitiveOutput(st.window); hit {
-		st.blocked = true
-		common.SysLog(fmt.Sprintf("output blocked by sensitive filter: [%s]", label))
-		return true, label
-	}
-	return false, ""
+	return gateway.OutputChunkBlocked(c, data)
 }
 
-// terminateOutputSSE 输出命中敏感后向客户端写终止帧并标记截断。
-// 写 OpenAI 风格 content_filter 终止事件 + [DONE]，任何格式客户端都会断流。
-// 幂等：已写入过的流不再重复写（后续 chunk 路过时 blocked 直接丢弃）。
+// terminateOutputSSE writes the termination frame to the client after a
+// sensitive-output hit and marks the stream truncated. Writes an OpenAI-style
+// content_filter terminal any-format client will break the
+// stream. Idempotent: an already-written stream is not rewritten (subsequent
+// chunks are dropped via blocked).
 func terminateOutputSSE(c contract.Context) {
-	st := outputFilterState(c)
-	if st.terminate {
-		return
-	}
-	st.terminate = true // 先标记，再写入；partial-write 重入也不会重复写
-	_, _ = c.ResponseWriter().Write([]byte("data: " + `{"choices":[{"delta":{},"finish_reason":"content_filter"}]}` + "\n\n"))
-	_, _ = c.ResponseWriter().Write([]byte("data: [DONE]\n\n"))
-	_ = FlushWriter(c)
+	gateway.TerminateOutputSSE(c)
 }
