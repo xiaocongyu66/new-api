@@ -18,7 +18,6 @@ from typing import Any
 import aiohttp
 from aiohttp import web
 
-
 SHORT_PROMPT = "Reply with OK."
 LONG_PROMPT = "Write a detailed but concise explanation of API gateway retry behavior, streaming behavior, and failure isolation."
 
@@ -181,7 +180,7 @@ async def one_non_stream(session: aiohttp.ClientSession, args: argparse.Namespac
             else:
                 metrics.sample_error(f"[{rid}] {resp.status}: {text[:150]}")
             metrics.record_request(stream=False, status=resp.status, latency=latency, ttft=latency if resp.status == 200 else None, request_id=rid)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - stress harness must survive any per-request error
         latency = time.perf_counter() - start
         metrics.record_status(599)
         metrics.latencies.append(latency)
@@ -236,7 +235,7 @@ async def one_stream(session: aiohttp.ClientSession, args: argparse.Namespace, m
             ttft = (first - start) if first is not None else None
             metrics.record_status(terminal_status)
             metrics.record_request(stream=True, status=terminal_status, latency=latency, ttft=ttft, request_id=rid)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - stress harness must survive any per-request error
         latency = time.perf_counter() - start
         # Headers may have been 200 but the stream aborted: count ONE failure.
         metrics.record_status(599)
@@ -260,7 +259,7 @@ async def resolve_model(session: aiohttp.ClientSession, args: argparse.Namespace
             ) as resp:
                 if resp.status == 200:
                     args.available_models = [m.get("id", "") for m in (await resp.json()).get("data", []) if isinstance(m, dict)]
-        except Exception:
+        except Exception:  # noqa: BLE001 - model list is best-effort
             args.available_models = []
         return
     async with session.get(
@@ -313,7 +312,7 @@ async def probe_chat_model(session: aiohttp.ClientSession, args: argparse.Namesp
         ) as resp:
             text = await resp.text()
             return resp.status == 200, f"{resp.status} {text[:120]}"
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - stress harness must survive any per-request error
         return False, f"{type(exc).__name__}: {exc}"
 
 
@@ -427,11 +426,8 @@ def write_report(results: list[dict[str, Any]], args: argparse.Namespace) -> Non
         with open(args.requests_file, "w", encoding="utf-8") as rf:
             rf.write("scenario,model,t_offset_s,stream,status,latency_s,ttft_s,request_id\n")
             for r in results:
-                for rec in r.get("records", []):
-                    rf.write(
-                        f"{r['name']},{r.get('model', args.model)},{rec['t']},{rec['stream']},"
-                        f"{rec['status']},{rec['latency']},{rec['ttft']},{rec['request_id']}\n"
-                    )
+                rf.writelines(f"{r['name']},{r.get('model', args.model)},{rec['t']},{rec['stream']},"
+                        f"{rec['status']},{rec['latency']},{rec['ttft']},{rec['request_id']}\n" for rec in r.get("records", []))
         lines += ["", f"- 请求级明细 CSV: `{args.requests_file}`"]
     safe_args = dict(vars(args))
     if safe_args.get("api_key"):

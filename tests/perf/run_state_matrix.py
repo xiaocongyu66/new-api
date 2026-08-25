@@ -14,9 +14,8 @@ import os
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
-
 
 # Scenario mapping: number -> (script_name, assertion_alias, description)
 SCENARIOS = {
@@ -52,7 +51,7 @@ def run_k6(script: Path, env: dict[str, str], summary_path: Path) -> tuple[int, 
     k6_env["SUMMARY_JSON"] = str(summary_path)
 
     cmd = ["k6", "run", "--out", f"json={summary_path}", str(script)]
-    result = subprocess.run(cmd, env=k6_env, capture_output=True, text=True, timeout=600)
+    result = subprocess.run(cmd, env=k6_env, capture_output=True, text=True, timeout=600, check=False)
     return result.returncode, result.stdout + result.stderr
 
 
@@ -84,7 +83,7 @@ def run_assertions(
     if scenario_alias == "bad-key-cascade":
         cmd.extend(["--bad-key-channel", str(bad_key_channel), "--bad-key-index", str(bad_key_index)])
 
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
     return result.returncode, result.stdout + result.stderr
 
 
@@ -195,7 +194,7 @@ def main() -> int:
         # Run k6
         print(f"Starting k6 run for {script_name}...")
         k6_start = time.time()
-        k6_exit, k6_output = run_k6(script_path, base_env, summary_path)
+        k6_exit, _k6_output = run_k6(script_path, base_env, summary_path)
         k6_duration = time.time() - k6_start
         print(f"k6 exited with code {k6_exit} in {k6_duration:.1f}s")
 
@@ -225,10 +224,9 @@ def main() -> int:
 
         # Assertions run after external capture when --run-only is not set.
         assertion_exit = 0
-        assertion_output = ""
         if not args.run_only:
             print(f"Running assertions for {assertion_alias}...")
-            assertion_exit, assertion_output = run_assertions(
+            assertion_exit, _assertion_output = run_assertions(
                 assertion_script, assertion_alias, worker_log, health_csv,
                 distribution_json, report_path,
             )

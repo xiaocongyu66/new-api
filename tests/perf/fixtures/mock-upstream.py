@@ -8,6 +8,7 @@ import random
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+
 class StressHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     request_queue_size = 128

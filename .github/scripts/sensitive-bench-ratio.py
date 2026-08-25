@@ -15,6 +15,7 @@ Usage: sensitive-bench-ratio.py [bench-output-file]
 import re
 import statistics
 import sys
+from collections.abc import Iterator
 
 BUDGET_NS = 400_000_000  # 400ms per op over the 3000-row normal pool
 
@@ -24,16 +25,18 @@ line_re = re.compile(
 
 new_vals: list[float] = []
 
-if len(sys.argv) > 1:
-    src = open(sys.argv[1], encoding="utf-8")
-else:
-    src = sys.stdin
-for line in src:
+def _iter_lines() -> Iterator[str]:
+    if len(sys.argv) > 1:
+        with open(sys.argv[1], encoding="utf-8") as f:
+            yield from f
+    else:
+        yield from sys.stdin
+
+
+for line in _iter_lines():
     m = line_re.match(line.strip())
     if m:
         new_vals.append(float(m.group(1)))
-if src is not sys.stdin:
-    src.close()
 
 if not new_vals:
     print("::error::benchmark output has no BenchmarkSensitiveNormal rows")
