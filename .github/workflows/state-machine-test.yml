@@ -74,7 +74,7 @@ jobs:
           chmod 600 ~/.kube/config
       - uses: grafana/setup-k6-action@v1
         with:
-          version: latest
+          k6-version: 0.52.0
       - name: Mask key and capture images
         run: |
           echo "::add-mask::$API_KEY"
@@ -89,7 +89,7 @@ jobs:
           kind: Deployment
           metadata: {name: stress-mock}
           spec:
-            replicas: 1
+            replicas: 3
             selector: {matchLabels: {app: stress-mock}}
             template:
               metadata: {labels: {app: stress-mock}}
@@ -100,6 +100,9 @@ jobs:
                     command: [python3, /mock/mock-upstream.py]
                     ports: [{containerPort: 8099}]
                     volumeMounts: [{name: source, mountPath: /mock}]
+                    resources:
+                      requests: {cpu: 500m, memory: 128Mi}
+                      limits: {cpu: "1500m", memory: 256Mi}
                 volumes: [{name: source, configMap: {name: state-machine-mock}}]
           ---
           apiVersion: v1
@@ -123,14 +126,17 @@ jobs:
           kubectl exec -i "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 <<SQL
           UPDATE users SET quota=2147483647, used_quota=0 WHERE id=1;
           UPDATE tokens SET status=1, remain_quota=2147483647, unlimited_quota=true, used_quota=0, expired_time=-1, "group"='default' WHERE key='$token_key';
+          INSERT INTO options (key,value) VALUES ('LocalFailureThreshold','10') ON CONFLICT(key) DO UPDATE SET value='10';
           INSERT INTO options (key,value) VALUES ('RetryTimes','5') ON CONFLICT(key) DO UPDATE SET value='5';
+          INSERT INTO options (key,value) VALUES ('AutomaticDisableStatusCodes','401') ON CONFLICT(key) DO UPDATE SET value='401';
+          INSERT INTO options (key,value) VALUES ('ModelRequestRateLimitEnabled','false') ON CONFLICT(key) DO UPDATE SET value='false';
           DELETE FROM abilities WHERE channel_id BETWEEN 90001 AND 90003;
           DELETE FROM channels WHERE id BETWEEN 90001 AND 90003;
           INSERT INTO channels (id,type,key,status,name,weight,created_time,base_url,models,"group",priority,auto_ban,channel_info)
           VALUES
-            (90001,1,E'bad-key\ngood-key',1,'state-matrix-keyed',100,extract(epoch from now())::bigint,'http://stress-mock','mock-fast,mock-slow,mock-flaky,mock-bad','default',0,1,'{"is_multi_key":true,"multi_key_size":2,"multi_key_mode":"polling"}'),
-            (90002,1,'good-key',1,'state-matrix-calm',50,extract(epoch from now())::bigint,'http://stress-mock','mock-fast,mock-slow,mock-flaky,mock-bad','default',0,1,'{"is_multi_key":false}'),
-            (90003,1,'good-key',1,'state-matrix-dormant',10,extract(epoch from now())::bigint,'http://stress-mock','mock-fast,mock-slow,mock-flaky,mock-bad','default',0,1,'{"is_multi_key":false}');
+            (90001,1,E'bad-key\ngood-key',1,'state-matrix-keyed',100,extract(epoch from now())::bigint,'http://stress-mock','mock-fast,mock-slow,mock-flaky,mock-bad,mock-recover,mock-weighted','default',0,1,'{"is_multi_key":true,"multi_key_size":2,"multi_key_mode":"polling"}'),
+            (90002,1,'good-key',1,'state-matrix-calm',50,extract(epoch from now())::bigint,'http://stress-mock','mock-fast,mock-slow,mock-flaky,mock-bad,mock-recover,mock-weighted','default',0,1,'{"is_multi_key":false}'),
+            (90003,1,'good-key',1,'state-matrix-dormant',10,extract(epoch from now())::bigint,'http://stress-mock','mock-fast,mock-slow,mock-flaky,mock-bad,mock-recover,mock-weighted','default',0,1,'{"is_multi_key":false}');
           INSERT INTO abilities ("group",model,channel_id,enabled,priority,weight)
           SELECT 'default',m,90000+n,true,0,w FROM (VALUES (1,100),(2,50),(3,10)) AS c(n,w) CROSS JOIN (VALUES ('mock-fast'),('mock-slow'),('mock-flaky'),('mock-bad'),('mock-recover'),('mock-weighted')) AS v(m);
           SQL
@@ -147,16 +153,65 @@ jobs:
           kubectl rollout status deployment/new-api-worker --timeout=300s
       - name: Resolve gateway target
         run: |
+          kubectl get pods -l app=new-api-worker -o wide > runtime/logs/worker-pods-before.txt
+          # A supervisor from a previous step may still hold 18080; retire it.
+          [ -f runtime/logs/port-forward-supervisor.pid ] && kill "$(cat runtime/logs/port-forward-supervisor.pid)" 2>/dev/null || true
           if ! curl -fsS --connect-timeout 5 -H "Authorization: Bearer $API_KEY" "$TARGET_URL/models" >/dev/null; then
-            kubectl port-forward svc/new-api 18080:80 > runtime/logs/port-forward.log 2>&1 &
-            for i in $(seq 1 20); do curl -fsS http://127.0.0.1:18080/api/status >/dev/null && break; sleep 1; done
-            echo 'TARGET_URL=http://127.0.0.1:18080/v1' >> "$GITHUB_ENV"
+            (while true; do kubectl port-forward svc/new-api 18080:80 >> runtime/logs/port-forward.log 2>&1 || true; sleep 1; done) &
+            echo $! > runtime/logs/port-forward-supervisor.pid
+            for i in $(seq 1 45); do
+              if curl -fsS http://127.0.0.1:18080/api/status >/dev/null; then
+                echo 'TARGET_URL=http://127.0.0.1:18080/v1' >> "$GITHUB_ENV"
+                exit 0
+              fi
+              sleep 1
+            done
+            exit 1
           fi
       - name: Verify gateway
         run: |
           curl --fail --silent --show-error -H "Authorization: Bearer $API_KEY" "$TARGET_URL/models" > runtime/perf/models.json
+      - name: Refresh seeded gateway routing
+        run: |
+          pod=$(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -i "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 <<'SQL'
+          TRUNCATE TABLE abilities;
+          INSERT INTO abilities ("group", model, channel_id, enabled, priority, weight)
+          SELECT split_part(c."group", ',', 1), trim(m.model), c.id, true, c.priority, c.weight
+          FROM channels c
+          CROSS JOIN LATERAL unnest(string_to_array(c.models, ',')) AS m(model)
+          WHERE c.status = 1;
+          SQL
+          kubectl rollout restart deployment/new-api-master deployment/new-api-worker
+          kubectl rollout status deployment/new-api-master --timeout=300s
+          kubectl rollout status deployment/new-api-worker --timeout=300s
+          kubectl get pods -l app=new-api -o wide > runtime/logs/pods-after-routing-refresh.txt
+          kubectl exec -i "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT id, name, status, models FROM channels WHERE id BETWEEN 90001 AND 90003 ORDER BY id" > runtime/logs/seeded-channels.txt
+          kubectl exec -i "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT channel_id, model, enabled, weight FROM abilities WHERE channel_id BETWEEN 90001 AND 90003 ORDER BY channel_id, model" > runtime/logs/seeded-abilities.txt
       - name: Run full scenario matrix
         run: |
+          set -euo pipefail
+          # Supervisor keeps 18080 alive across transient forward drops.
+          (while true; do kubectl port-forward svc/new-api 18080:80 >> runtime/logs/matrix-port-forward.log 2>&1 || true; sleep 1; done) &
+          pf_pid=$!
+          trap 'kill "$pf_pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:18080/api/status >/dev/null && break
+            sleep 1
+          done
+          TARGET_URL="http://127.0.0.1:18080/v1"
+          # Probe a healthy model before fault injection. A status endpoint alone does not prove relay routing.
+          curl --max-time 15 --fail-with-body -H "Authorization: Bearer $API_KEY" \
+            -H 'Content-Type: application/json' \
+            -d '{"model":"mock-fast","messages":[{"role":"user","content":"probe"}],"max_tokens":1,"stream":false}' \
+            "$TARGET_URL/chat/completions" > runtime/logs/preflight-chat.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path("runtime/logs/preflight-chat.json").read_text())
+          if not payload.get("choices"):
+              raise SystemExit("relay preflight returned no choices")
+          PY
           set +e
           if [ "$SCENARIO" = all ]; then scenarios="1 2 3 4 5 6 7 8"; else scenarios="$SCENARIO"; fi
           overall=0
@@ -168,23 +223,64 @@ jobs:
               4) script=recovery-decay.js; alias=gray-failure; model=mock-recover; vus=30; duration=120s;;
               5) script=pool-pressure.js; alias=pool-pressure; model=mock-flaky; vus=50; duration=120s;;
               6) script=gray-failure.js; alias=gray-failure; model=mock-flaky; vus=50; duration=120s;;
-              7) script=weight-distribution.js; alias=weight-distribution; model=mock-weighted; vus=100; duration=120s;;
+              7) script=weight-distribution.js; alias=weight-distribution; model=mock-weighted; vus=20; duration=180s;;
               8) script=timeout-classification.js; alias=timeout-classification; model=mock-slow; vus=30; duration=120s;;
             esac
             [ -n "$MODEL_OVERRIDE" ] && model="$MODEL_OVERRIDE"
             [ -n "$VUS_OVERRIDE" ] && vus="$VUS_OVERRIDE"
             [ -n "$DURATION_OVERRIDE" ] && duration="$DURATION_OVERRIDE"
-            dir="runtime/perf/scenario-$n"; mkdir -p "$dir"
-            k6 run --vus "$vus" --duration "$duration" -e TARGET_URL="$TARGET_URL" -e API_KEY="$API_KEY" -e MODEL="$model" -e SUMMARY_JSON="$dir/k6-summary.json" "tests/perf/scenarios/$script" > "$dir/k6.log" 2>&1
-            k6_rc=$?
-            kubectl logs -l app=new-api-worker --all-containers=true --prefix=true --tail=-1 > "$dir/worker.log" 2>&1
+            ensure_gateway() {
+              for i in $(seq 1 45); do
+                curl -fsS --connect-timeout 5 -H "Authorization: Bearer $API_KEY" "$TARGET_URL/models" >/dev/null && return 0
+                sleep 1
+              done
+              return 1
+            }
+            ensure_gateway || { overall=1; continue; }
             pod=$(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
-            kubectl exec "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "COPY (SELECT channel_id,key_index,model,state,isolation_level,dormant_disable_count,local_failure_count,upstream_failure_count,version,updated_at FROM channel_model_health ORDER BY channel_id,key_index,model) TO STDOUT WITH CSV HEADER" > "$dir/channel_model_health.csv" 2>&1
+            psqlq() {
+              for i in 1 2 3 4 5; do
+                kubectl exec "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" "$@" && return 0
+                echo "psql retry $i"; sleep 5
+              done
+              return 1
+            }
+            dir="runtime/perf/scenario-$n"; mkdir -p "$dir"
+            timeout_env=""
+            if [ "$n" = 7 ]; then
+              # Scenario 7 measures pure weighted selection: clear isolation
+              # history for the model so every route starts healthy.
+              psqlq -c "DELETE FROM channel_model_health WHERE model='mock-weighted'"
+              kubectl rollout restart deployment/new-api-worker
+              kubectl rollout status deployment/new-api-worker --timeout=300s
+            fi
+            if [ "$n" = 8 ]; then
+              timeout_env="-e TIMEOUT=2s"
+              # Scenario 8 needs a real local (transport) failure: point one
+              # channel at an unreachable address so DoRequestFailed fires.
+              psqlq -c "UPDATE channels SET base_url='http://stress-mock-unreachable:8099' WHERE id=90003"
+              kubectl rollout restart deployment/new-api-master deployment/new-api-worker
+              kubectl rollout status deployment/new-api-master --timeout=300s
+              kubectl rollout status deployment/new-api-worker --timeout=300s
+            fi
+            k6 run --vus "$vus" --duration "$duration" -e TARGET_URL="$TARGET_URL" -e API_KEY="$API_KEY" -e MODEL="$model" -e BAD_KEY_MODEL="$model" -e SLOW_MODEL="$model" $timeout_env -e SUMMARY_JSON="$dir/k6-summary.json" "tests/perf/scenarios/$script" > "$dir/k6.log" 2>&1
+            k6_rc=$?
+            { kubectl logs deployment/new-api-master --all-pods=true --prefix=true --tail=-1; kubectl logs deployment/new-api-worker --all-pods=true --prefix=true --tail=-1; } > "$dir/worker.log" 2>&1
+            pod=$(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+            psqlq -c "COPY (SELECT channel_id,key_index,model,state,isolation_level,dormant_disable_count,local_failure_count,upstream_failure_count,last_error_code,last_error_at,last_success_at,version,updated_at FROM channel_model_health ORDER BY channel_id,key_index,model) TO STDOUT WITH CSV HEADER" > "$dir/channel_model_health.csv" 2>&1
+            psqlq -c "SELECT channel_id, model, enabled FROM abilities WHERE channel_id BETWEEN 90001 AND 90003 ORDER BY channel_id, model" > "$dir/abilities.txt" 2>&1
+            psqlq -c "SELECT id, status, channel_info FROM channels WHERE id BETWEEN 90001 AND 90003 ORDER BY id" > "$dir/channel-status.txt" 2>&1
             python3 tests/perf/assertions/state_machine.py --derive-distribution --worker-log "$dir/worker.log" --distribution-json "$dir/distribution.json" || true
-            python3 tests/perf/assertions/state_machine.py --scenario "$alias" --health-csv "$dir/channel_model_health.csv" --worker-log "$dir/worker.log" --distribution-json "$dir/distribution.json" --report-file "$dir/assertion-report.md"
+            if [ "$alias" = bad-key-cascade ]; then
+              python3 tests/perf/assertions/state_machine.py --scenario "$alias" --bad-key-channel 90001 --bad-key-index 0 --channel-status "$dir/channel-status.txt" --health-csv "$dir/channel_model_health.csv" --worker-log "$dir/worker.log" --distribution-json "$dir/distribution.json" --report-file "$dir/assertion-report.md"
+            else
+              python3 tests/perf/assertions/state_machine.py --scenario "$alias" --health-csv "$dir/channel_model_health.csv" --worker-log "$dir/worker.log" --distribution-json "$dir/distribution.json" --report-file "$dir/assertion-report.md"
+            fi
             assert_rc=$?
             if [ "$k6_rc" -ne 0 ] || [ "$assert_rc" -ne 0 ]; then overall=1; fi
           done
+          # Restore the mock base URL so later runs start from a clean topology.
+          psqlq -c "UPDATE channels SET base_url='http://stress-mock' WHERE id=90003" || true
           exit "$overall"
       - name: Rollback and cleanup
         if: always()
