@@ -219,7 +219,7 @@ jobs:
               4) script=recovery-decay.js; alias=gray-failure; model=mock-recover; vus=30; duration=120s;;
               5) script=pool-pressure.js; alias=pool-pressure; model=mock-flaky; vus=50; duration=120s;;
               6) script=gray-failure.js; alias=gray-failure; model=mock-flaky; vus=50; duration=120s;;
-              7) script=weight-distribution.js; alias=weight-distribution; model=mock-weighted; vus=100; duration=120s;;
+              7) script=weight-distribution.js; alias=weight-distribution; model=mock-weighted; vus=100; duration=180s;;
               8) script=timeout-classification.js; alias=timeout-classification; model=mock-slow; vus=30; duration=120s;;
             esac
             [ -n "$MODEL_OVERRIDE" ] && model="$MODEL_OVERRIDE"
@@ -250,6 +250,7 @@ jobs:
             pod=$(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
             kubectl exec "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "COPY (SELECT channel_id,key_index,model,state,isolation_level,dormant_disable_count,local_failure_count,upstream_failure_count,last_error_code,last_error_at,last_success_at,version,updated_at FROM channel_model_health ORDER BY channel_id,key_index,model) TO STDOUT WITH CSV HEADER" > "$dir/channel_model_health.csv" 2>&1
             kubectl exec "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT channel_id, model, enabled FROM abilities WHERE channel_id BETWEEN 90001 AND 90003 ORDER BY channel_id, model" > "$dir/abilities.txt" 2>&1
+            kubectl exec "$pod" -- env PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT id, status, channel_info FROM channels WHERE id BETWEEN 90001 AND 90003 ORDER BY id" > "$dir/channel-status.txt" 2>&1
             python3 tests/perf/assertions/state_machine.py --derive-distribution --worker-log "$dir/worker.log" --distribution-json "$dir/distribution.json" || true
             if [ "$alias" = bad-key-cascade ]; then
               python3 tests/perf/assertions/state_machine.py --scenario "$alias" --bad-key-channel 90001 --bad-key-index 0 --channel-status "$dir/channel-status.txt" --health-csv "$dir/channel_model_health.csv" --worker-log "$dir/worker.log" --distribution-json "$dir/distribution.json" --report-file "$dir/assertion-report.md"
