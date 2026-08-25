@@ -133,7 +133,9 @@ func StringData(c contract.Context, str string) error {
 }
 
 func PingData(c contract.Context) error {
+	println("DEBUG PingData called")
 	if c == nil {
+		println("DEBUG PingData nil ctx")
 		return errors.New("context is nil")
 	}
 

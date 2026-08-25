@@ -64,7 +64,6 @@ func CopyCodexSSEHeaders(c contract.Context, resp *http.Response) {
 	}
 }
 
-
 // ExtendWriteDeadline pushes the connection write deadline forward before each
 // stream write. Best-effort: writers that don't support deadlines (e.g.
 // httptest recorders) are silently ignored.
@@ -176,6 +175,10 @@ func StreamScannerHandler(
 		pingInterval = DefaultPingInterval
 	}
 
+	if pingEnabled {
+		pingTicker = time.NewTicker(pingInterval)
+	}
+
 	logger.LogDebug(c.Context(), "relay timeout seconds: %d", common.RelayTimeout)
 	logger.LogDebug(c.Context(), "relay max idle conns: %d", common.RelayMaxIdleConns)
 	logger.LogDebug(c.Context(), "relay max idle conns per host: %d", common.RelayMaxIdleConnsPerHost)
@@ -269,7 +272,7 @@ func StreamScannerHandler(
 			stop()
 			wg.Done()
 		}()
-	sr := NewStreamResult(info.StreamStatus)
+		sr := NewStreamResult(info.StreamStatus)
 		for data := range dataChan {
 			sr.reset()
 			func() {

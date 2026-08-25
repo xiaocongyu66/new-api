@@ -838,12 +838,18 @@ func (info *RelayInfo) ConvOptions() *convmeta.Options {
 	}
 	return options
 }
-
 func (info *RelayInfo) SetFirstResponseTime() {
 	if info.isFirstResponse {
 		info.FirstResponseTime = time.Now()
 		info.isFirstResponse = false
 	}
+}
+
+// MarkFirstResponse initializes the first-response flag so the first
+// call to SetFirstResponseTime will record the actual response time.
+// Used by gateway when constructing RelayInfo outside this package.
+func (info *RelayInfo) MarkFirstResponse() {
+	info.isFirstResponse = true
 }
 
 func (info *RelayInfo) HasSendResponse() bool {
