@@ -115,4 +115,3 @@ func TestRoutingBaseWeightVsLegacySmoothing(t *testing.T) {
 	assert.True(t, routingBaseWeight(5) < routingBaseWeight(30),
 		"new routingBaseWeight: weight=5 → 6, weight=30 → 31, so 6 < 31 (fixed)")
 }
-

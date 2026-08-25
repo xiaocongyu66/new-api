@@ -14,4 +14,3 @@ import (
 func CheckSensitiveText(text string) (bool, []string) {
 	return sensitiveCheckHits(text, setting.SensitiveWords)
 }
-

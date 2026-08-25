@@ -32,5 +32,3 @@ func ConvertRequestByID(c *gin.Context, info *relaycommon.RelayInfo, converter s
 func ConvertRequestVia(c *gin.Context, info *relaycommon.RelayInfo, request any, path ...types.RelayFormat) (*relayconvert.RequestResult, error) {
 	return relayconvert.ConvertRequestVia(c, info, request, path...)
 }
-
-

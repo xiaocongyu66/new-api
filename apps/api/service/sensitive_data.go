@@ -181,8 +181,6 @@ func loadFingerprintRaw() []fingerprintRawEntry {
 	return fingerprintRaw
 }
 
-
-
 type fingerprintCategory struct {
 	name  string
 	group string // gov/tech/rp：SensitiveBlockGroups 开关组
@@ -197,7 +195,6 @@ type fpAtom struct {
 	leadWord  bool
 	trailWord bool
 }
-
 
 var fingerprintCategories []fingerprintCategory
 

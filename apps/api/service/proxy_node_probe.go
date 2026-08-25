@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	ProxyNodeHealthFloor       = 0.05
+	ProxyNodeHealthFloor = 0.05
 	// ProxyNodeHealthyThreshold is the minimum health for a node to count as
 	// healthy in the pool report. The decay floor (0.05) is deliberately below
 	// it so a failing node stops counting as healthy while remaining recoverable.

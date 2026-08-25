@@ -1,5 +1,5 @@
 use gateway::config::invalidation::{
-    INVALIDATION_CHANNEL, InvalidationStatus, Notice, RevisionTarget, reconcile,
+    reconcile, InvalidationStatus, Notice, RevisionTarget, INVALIDATION_CHANNEL,
 };
 use gateway::{RevisionReadError, RevisionReader, RoutingRevision};
 use sqlx::any::AnyPoolOptions;
