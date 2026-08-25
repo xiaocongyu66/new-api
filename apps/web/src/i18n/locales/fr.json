@@ -4759,7 +4759,7 @@
     "This will permanently delete user": "Cela supprimera définitivement l'utilisateur",
     "This will permanently remove all log entries created before {{date}}.": "Cela supprimera définitivement toutes les entrées de journal créées avant le {{date}}.",
     "This will permanently remove log entries before the selected timestamp.": "Cela supprimera définitivement les entrées de journal antérieures à l'horodatage sélectionné.",
-    "This will rebuild the channel routing index from every channel configuration, including supported models, groups, priorities, and weights. Routing may be briefly incomplete while the rebuild is running. Continue?": "Cette action reconstruit l’index de routage des canaux à partir de toutes les configurations, y compris les modèles pris en charge, les groupes, les priorités et les poids. Le routage peut être brièvement incomplet pendant la reconstruction. Continuer ?",
+    "This will rebuild the channel routing index from every channel configuration, including supported models and groups. Routing may be briefly incomplete while the rebuild is running. Continue?": "Cette action reconstruit l’index de routage des canaux à partir de toutes les configurations, y compris les modèles pris en charge et les groupes. Le routage peut être brièvement incomplet pendant la reconstruction. Continuer ?",
     "This year": "Cette année",
     "Thought for {{duration}} seconds": "Réflexion pendant {{duration}} secondes",
     "Three calls made by the same user, whose user group is vip:": "Trois appels du même utilisateur, dont le groupe est vip :",

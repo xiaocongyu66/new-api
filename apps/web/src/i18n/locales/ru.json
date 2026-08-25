@@ -4759,7 +4759,7 @@
     "This will permanently delete user": "Это безвозвратно удалит пользователя",
     "This will permanently remove all log entries created before {{date}}.": "Это безвозвратно удалит все записи журнала, созданные до {{date}}.",
     "This will permanently remove log entries before the selected timestamp.": "Это безвозвратно удалит записи журнала до выбранной временной метки.",
-    "This will rebuild the channel routing index from every channel configuration, including supported models, groups, priorities, and weights. Routing may be briefly incomplete while the rebuild is running. Continue?": "Будет заново построен индекс маршрутизации каналов на основе всех конфигураций каналов, включая поддерживаемые модели, группы, приоритеты и веса. Во время перестроения маршрутизация может кратковременно быть неполной. Продолжить?",
+    "This will rebuild the channel routing index from every channel configuration, including supported models and groups. Routing may be briefly incomplete while the rebuild is running. Continue?": "Будет заново построен индекс маршрутизации каналов на основе всех конфигураций каналов, включая поддерживаемые модели и группы. Во время перестроения маршрутизация может кратковременно быть неполной. Продолжить?",
     "This year": "Этот год",
     "Thought for {{duration}} seconds": "Размышлял {{duration}} сек.",
     "Three calls made by the same user, whose user group is vip:": "Три вызова одного пользователя с группой vip:",

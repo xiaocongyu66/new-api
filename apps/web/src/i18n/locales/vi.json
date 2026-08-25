@@ -4759,7 +4759,7 @@
     "This will permanently delete user": "Thao tác này sẽ xóa vĩnh viễn người dùng",
     "This will permanently remove all log entries created before {{date}}.": "Thao tác này sẽ xóa vĩnh viễn tất cả các mục nhật ký được tạo trước {{date}}.",
     "This will permanently remove log entries before the selected timestamp.": "Thao tác này sẽ xóa vĩnh viễn các mục nhật ký trước mốc thời gian đã chọn.",
-    "This will rebuild the channel routing index from every channel configuration, including supported models, groups, priorities, and weights. Routing may be briefly incomplete while the rebuild is running. Continue?": "Thao tác này sẽ xây dựng lại chỉ mục định tuyến kênh từ toàn bộ cấu hình kênh, bao gồm mô hình được hỗ trợ, nhóm, độ ưu tiên và trọng số. Định tuyến có thể tạm thời chưa đầy đủ trong khi xây dựng lại. Tiếp tục?",
+    "This will rebuild the channel routing index from every channel configuration, including supported models and groups. Routing may be briefly incomplete while the rebuild is running. Continue?": "Thao tác này sẽ xây dựng lại chỉ mục định tuyến kênh từ toàn bộ cấu hình kênh, bao gồm mô hình được hỗ trợ và nhóm. Định tuyến có thể tạm thời chưa đầy đủ trong khi xây dựng lại. Tiếp tục?",
     "This year": "Năm nay",
     "Thought for {{duration}} seconds": "Đã suy nghĩ trong {{duration}} giây",
     "Three calls made by the same user, whose user group is vip:": "Ba cuộc gọi của cùng một người dùng, có nhóm người dùng là vip:",

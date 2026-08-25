@@ -4759,7 +4759,7 @@
     "This will permanently delete user": "这将永久删除用户",
     "This will permanently remove all log entries created before {{date}}.": "这将永久删除 {{date}} 之前创建的所有日志条目。",
     "This will permanently remove log entries before the selected timestamp.": "这将永久删除所选时间戳之前的日志条目。",
-    "This will rebuild the channel routing index from every channel configuration, including supported models, groups, priorities, and weights. Routing may be briefly incomplete while the rebuild is running. Continue?": "这会根据所有渠道配置重建渠道路由索引，包括支持模型、分组、优先级和权重。重建期间路由可能短暂不完整。是否继续？",
+    "This will rebuild the channel routing index from every channel configuration, including supported models and groups. Routing may be briefly incomplete while the rebuild is running. Continue?": "这会根据所有渠道配置重建渠道路由索引，包括支持模型与分组。重建期间路由可能短暂不完整。是否继续？",
     "This year": "本年",
     "Thought for {{duration}} seconds": "思考了 {{duration}} 秒",
     "Three calls made by the same user, whose user group is vip:": "同一个用户（用户分组为 vip）发起的三次调用：",

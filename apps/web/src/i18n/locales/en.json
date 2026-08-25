@@ -4759,7 +4759,7 @@
     "This will permanently delete user": "This will permanently delete user",
     "This will permanently remove all log entries created before {{date}}.": "This will permanently remove all log entries created before {{date}}.",
     "This will permanently remove log entries before the selected timestamp.": "This will permanently remove log entries before the selected timestamp.",
-    "This will rebuild the channel routing index from every channel configuration, including supported models, groups, priorities, and weights. Routing may be briefly incomplete while the rebuild is running. Continue?": "This will rebuild the channel routing index from every channel configuration, including supported models, groups, priorities, and weights. Routing may be briefly incomplete while the rebuild is running. Continue?",
+    "This will rebuild the channel routing index from every channel configuration, including supported models and groups. Routing may be briefly incomplete while the rebuild is running. Continue?": "This will rebuild the channel routing index from every channel configuration, including supported models and groups. Routing may be briefly incomplete while the rebuild is running. Continue?",
     "This year": "This year",
     "Thought for {{duration}} seconds": "Thought for {{duration}} seconds",
     "Three calls made by the same user, whose user group is vip:": "Three calls made by the same user, whose user group is vip:",

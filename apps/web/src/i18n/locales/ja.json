@@ -4759,7 +4759,7 @@
     "This will permanently delete user": "これによりユーザーが完全に削除されます",
     "This will permanently remove all log entries created before {{date}}.": "{{date}} より前に作成されたすべてのログエントリが完全に削除されます。",
     "This will permanently remove log entries before the selected timestamp.": "選択したタイムスタンプより前のログエントリが完全に削除されます。",
-    "This will rebuild the channel routing index from every channel configuration, including supported models, groups, priorities, and weights. Routing may be briefly incomplete while the rebuild is running. Continue?": "すべてのチャネル設定からルーティングインデックスを再構築します。対応モデル、グループ、優先度、重みが含まれます。再構築中はルーティングが一時的に不完全になる可能性があります。続行しますか？",
+    "This will rebuild the channel routing index from every channel configuration, including supported models and groups. Routing may be briefly incomplete while the rebuild is running. Continue?": "すべてのチャネル設定からルーティングインデックスを再構築します。対応モデルとグループが含まれます。再構築中はルーティングが一時的に不完全になる可能性があります。続行しますか？",
     "This year": "今年",
     "Thought for {{duration}} seconds": "{{duration}} 秒間思考しました",
     "Three calls made by the same user, whose user group is vip:": "同じユーザー（ユーザーグループは vip）による3回の呼び出し：",
