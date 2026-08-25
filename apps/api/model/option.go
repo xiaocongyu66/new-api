@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/pkg/routestats"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -213,6 +214,8 @@ func InitOptionMap() {
 	common.OptionMap["StopOnSensitiveEnabled"] = strconv.FormatBool(setting.StopOnSensitiveEnabled)
 	common.OptionMap["SensitiveWords"] = setting.SensitiveWordsToString()
 	common.OptionMap["SensitiveBlockGroups"] = setting.SensitiveGroupsToString()
+	common.OptionMap["SensitiveAuditEnabled"] = strconv.FormatBool(setting.SensitiveAuditEnabled)
+	common.OptionMap["SensitiveAuditRetentionDays"] = strconv.Itoa(setting.SensitiveAuditRetentionDays)
 	common.OptionMap["StreamCacheQueueLength"] = strconv.Itoa(setting.StreamCacheQueueLength)
 	common.OptionMap["AutomaticDisableKeywords"] = operation_setting.AutomaticDisableKeywordsToString()
 	common.OptionMap["AutomaticDisableStatusCodes"] = operation_setting.AutomaticDisableStatusCodesToString()
@@ -220,17 +223,41 @@ func InitOptionMap() {
 	common.OptionMap["ExposeRatioEnabled"] = strconv.FormatBool(ratio_setting.IsExposeRatioEnabled())
 	common.OptionMap["proxy_config"] = ""
 
-	// Channel health cooldown flat option keys, seeded from the runtime
-	// atomic config so the option-map snapshot reflects the live defaults.
-	healthCfg := operation_setting.GetChannelHealthSetting()
+	healthCfg := operation_setting.GetChannelModelHealthSetting()
 	if healthCfg != nil {
-		common.OptionMap["ChannelHealthEnabled"] = strconv.FormatBool(healthCfg.Enabled)
-		common.OptionMap["ChannelHealthCooldownThreshold"] = strconv.Itoa(healthCfg.CooldownThreshold)
-		common.OptionMap["ChannelHealthCooldownBaseSeconds"] = strconv.Itoa(healthCfg.CooldownBaseSeconds)
-		common.OptionMap["ChannelHealthCooldownMaxSeconds"] = strconv.Itoa(healthCfg.CooldownMaxSeconds)
-		common.OptionMap["ChannelHealthCooldownMaxEjectionPercent"] = strconv.Itoa(healthCfg.CooldownMaxEjectionPercent)
-		common.OptionMap["ChannelHealthCooldownAlpha"] = strconv.FormatFloat(healthCfg.CooldownAlpha, 'f', -1, 64)
-		common.OptionMap["ChannelHealthCooldownDisableStreak"] = strconv.Itoa(healthCfg.CooldownDisableStreak)
+		common.OptionMap["CalmFastBase"] = strconv.Itoa(healthCfg.CalmFastBase)
+		common.OptionMap["CalmFastInterval"] = strconv.Itoa(healthCfg.CalmFastInterval)
+		common.OptionMap["CalmSlowBase"] = strconv.Itoa(healthCfg.CalmSlowBase)
+		common.OptionMap["CalmSlowInterval"] = strconv.Itoa(healthCfg.CalmSlowInterval)
+		common.OptionMap["DormantBase"] = strconv.Itoa(healthCfg.DormantBase)
+		common.OptionMap["DormantInterval"] = strconv.Itoa(healthCfg.DormantInterval)
+		common.OptionMap["DormantMaxBase"] = strconv.Itoa(healthCfg.DormantMaxBase)
+		common.OptionMap["DormantDisableThreshold"] = strconv.Itoa(healthCfg.DormantDisableThreshold)
+		common.OptionMap["LocalFailureThreshold"] = strconv.Itoa(healthCfg.LocalFailureThreshold)
+		common.OptionMap["UpstreamFailureThreshold"] = strconv.Itoa(healthCfg.UpstreamFailureThreshold)
+		common.OptionMap["CalmWeightScale"] = strconv.Itoa(healthCfg.CalmWeightScale)
+		common.OptionMap["DormantWeightScale"] = strconv.Itoa(healthCfg.DormantWeightScale)
+		common.OptionMap["EmergencyThreshold"] = strconv.Itoa(healthCfg.EmergencyThreshold)
+		common.OptionMap["WarningThreshold"] = strconv.Itoa(healthCfg.WarningThreshold)
+		common.OptionMap["AcceleratedDecayStep"] = strconv.Itoa(healthCfg.AcceleratedDecayStep)
+		common.OptionMap["NormalDecayStep"] = strconv.Itoa(healthCfg.NormalDecayStep)
+		common.OptionMap["KeyProbeEnabled"] = strconv.FormatBool(healthCfg.KeyProbeEnabled)
+	}
+
+	routeStatsCfg := routestats.GetRouteStatsSetting()
+	if routeStatsCfg != nil {
+		common.OptionMap["RouteStatsEnabled"] = strconv.FormatBool(routeStatsCfg.Enabled)
+		common.OptionMap["RouteStatsShareWindowSize"] = strconv.Itoa(routeStatsCfg.ShareWindowSize)
+		common.OptionMap["RouteStatsShareCorrMin"] = strconv.FormatFloat(routeStatsCfg.ShareCorrMin, 'g', -1, 64)
+		common.OptionMap["RouteStatsShareCorrMax"] = strconv.FormatFloat(routeStatsCfg.ShareCorrMax, 'g', -1, 64)
+		common.OptionMap["RouteStatsMinSamples"] = strconv.Itoa(routeStatsCfg.MinSamples)
+		common.OptionMap["RouteStatsTTLSeconds"] = strconv.Itoa(routeStatsCfg.TTLSeconds)
+		common.OptionMap["RouteStatsTTFTTargetMs"] = strconv.Itoa(routeStatsCfg.TTFTTargetMs)
+		common.OptionMap["RouteStatsTPSTarget"] = strconv.Itoa(routeStatsCfg.TPSTarget)
+		common.OptionMap["RouteStatsQualityFloor"] = strconv.FormatFloat(routeStatsCfg.QualityFloor, 'g', -1, 64)
+		common.OptionMap["RouteStatsQualityCeil"] = strconv.FormatFloat(routeStatsCfg.QualityCeil, 'g', -1, 64)
+		common.OptionMap["RouteStatsComponentFloor"] = strconv.FormatFloat(routeStatsCfg.ComponentFloor, 'g', -1, 64)
+		common.OptionMap["RouteStatsComponentCeil"] = strconv.FormatFloat(routeStatsCfg.ComponentCeil, 'g', -1, 64)
 	}
 
 	// 自动添加所有注册的模型配置
@@ -268,8 +295,11 @@ func validateOptionValue(key string, value string) error {
 	if key == "MaxTokenAutoGroups" {
 		return setting.ValidateMaxTokenAutoGroups(value)
 	}
-	if operation_setting.IsChannelHealthOptionKey(key) {
-		return operation_setting.ValidateChannelHealthSettingValue(key, value)
+	if operation_setting.IsRouteStatsOptionKey(key) {
+		return operation_setting.ValidateRouteStatsSettingValue(key, value)
+	}
+	if operation_setting.IsChannelModelHealthOptionKey(key) {
+		return operation_setting.ValidateChannelModelHealthSettingValue(key, value)
 	}
 	return nil
 }
@@ -339,11 +369,17 @@ func UpdateOptionsBulk(values map[string]string) error {
 }
 
 func updateOptionMap(key string, value string) (err error) {
-	if operation_setting.IsChannelHealthOptionKey(key) {
-		// Health flat options are dispatched to the atomic runtime config
-		// before the OptionMap lock is taken; a parse/validation error
-		// returns without storing an invalid value.
-		if err := operation_setting.UpdateChannelHealthSettingValue(key, value); err != nil {
+	if operation_setting.IsChannelModelHealthOptionKey(key) {
+		if err := operation_setting.UpdateChannelModelHealthSettingValue(key, value); err != nil {
+			return err
+		}
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap[key] = value
+		common.OptionMapRWMutex.Unlock()
+		return nil
+	}
+	if operation_setting.IsRouteStatsOptionKey(key) {
+		if err := operation_setting.UpdateRouteStatsSettingValue(key, value); err != nil {
 			return err
 		}
 		common.OptionMapRWMutex.Lock()
@@ -455,6 +491,8 @@ func updateOptionMap(key string, value string) (err error) {
 			setting.ModelRequestRateLimitEnabled = boolValue
 		case "StopOnSensitiveEnabled":
 			setting.StopOnSensitiveEnabled = boolValue
+		case "SensitiveAuditEnabled":
+			setting.SensitiveAuditEnabled = boolValue
 		case "SMTPSSLEnabled":
 			common.SMTPSSLEnabled = boolValue
 		case "SMTPStartTLSEnabled":
@@ -675,6 +713,8 @@ func updateOptionMap(key string, value string) (err error) {
 		err = operation_setting.AutomaticRetryStatusCodesFromString(value)
 	case "StreamCacheQueueLength":
 		setting.StreamCacheQueueLength, _ = strconv.Atoi(value)
+	case "SensitiveAuditRetentionDays":
+		setting.SensitiveAuditRetentionDays, _ = strconv.Atoi(value)
 	case "PayMethods":
 		err = operation_setting.UpdatePayMethodsByJsonString(value)
 	case "WaffoPayMethods":

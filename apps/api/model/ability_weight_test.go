@@ -3,6 +3,7 @@ package model
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -19,7 +20,7 @@ import (
 // This closes the test gap code-review-graph reported for GetChannel: #348
 // changed its weight formula from `Weight + 10` to the shared routingBaseWeight,
 // and nothing covered that path.
-func withAbilityDB(t *testing.T, group, modelName string, rows []Ability) {
+func withAbilityDB(t *testing.T, group, modelName string, rows []abilityFixture) {
 	t.Helper()
 
 	previousDB := DB
@@ -41,27 +42,26 @@ func withAbilityDB(t *testing.T, group, modelName string, rows []Ability) {
 	aliasRoutes := make(map[string]map[string][]routeCandidate)
 	for i := range rows {
 		ch := &Channel{
-			Id:       rows[i].ChannelId,
-			Type:     constant.ChannelTypeOpenAI,
-			Key:      fmt.Sprintf("key-%d", rows[i].ChannelId),
-			Status:   common.ChannelStatusEnabled,
-			Name:     fmt.Sprintf("channel-%d", rows[i].ChannelId),
-			Weight:   &rows[i].Weight,
-			Models:   rows[i].Model,
-			Group:    rows[i].Group,
-			Priority: rows[i].Priority,
+			Id:     rows[i].ability.ChannelId,
+			Type:   constant.ChannelTypeOpenAI,
+			Key:    fmt.Sprintf("key-%d", rows[i].ability.ChannelId),
+			Status: common.ChannelStatusEnabled,
+			Name:   fmt.Sprintf("channel-%d", rows[i].ability.ChannelId),
+			Models: rows[i].ability.Model,
+			Group:  rows[i].ability.Group,
 		}
 		require.NoError(t, db.Create(ch).Error)
-		require.NoError(t, db.Create(&rows[i]).Error)
+		require.NoError(t, db.Create(&rows[i].ability).Error)
 		idm[ch.Id] = ch
-		// Create ChannelModelRoute entry for the new selector
+		// The route unit row is what selection reads; abilities no longer carry a
+		// weight of their own.
 		require.NoError(t, db.Create(&ChannelModelRoute{
 			Group:            group,
 			PublicModelAlias: modelName,
-			ChannelId:        rows[i].ChannelId,
+			ChannelId:        rows[i].ability.ChannelId,
 			KeyIndex:         0,
 			UpstreamModel:    modelName,
-			StaticWeight:     int(rows[i].Weight),
+			StaticWeight:     rows[i].staticWeight,
 			Enabled:          true,
 		}).Error)
 		// Build memory cache for route candidates
@@ -73,7 +73,7 @@ func withAbilityDB(t *testing.T, group, modelName string, rows []Ability) {
 			channelId:     ch.Id,
 			keyIndex:      0,
 			upstreamModel: modelName,
-			staticWeight:  int(rows[i].Weight),
+			staticWeight:  rows[i].staticWeight,
 		})
 	}
 
@@ -83,15 +83,23 @@ func withAbilityDB(t *testing.T, group, modelName string, rows []Ability) {
 	channelSyncLock.Unlock()
 }
 
-func ability(channelID int, group, modelName string, weight uint, priority int64) Ability {
-	p := priority
-	return Ability{
-		Group:     group,
-		Model:     modelName,
-		ChannelId: channelID,
-		Enabled:   true,
-		Priority:  &p,
-		Weight:    weight,
+// abilityFixture pairs an ability row with the route unit weight the selector
+// should see for it. Weight used to live on the ability itself; scheduling now
+// reads channel_model_routes.static_weight, so the test states it there.
+type abilityFixture struct {
+	ability      Ability
+	staticWeight int
+}
+
+func ability(channelID int, group, modelName string, staticWeight int) abilityFixture {
+	return abilityFixture{
+		ability: Ability{
+			Group:     group,
+			Model:     modelName,
+			ChannelId: channelID,
+			Enabled:   true,
+		},
+		staticWeight: staticWeight,
 	}
 }
 
@@ -103,14 +111,13 @@ func ability(channelID int, group, modelName string, weight uint, priority int64
 func TestGetChannelUsesSharedWeightFormula(t *testing.T) {
 	const group, modelName = "db-group", "db-model"
 
-	// Same tier so weighting, not priority, decides the split.
-	withAbilityDB(t, group, modelName, []Ability{
-		ability(9501, group, modelName, 30, 100),
-		ability(9502, group, modelName, 1, 100),
+	// Route unit static weight is the only thing deciding the split now.
+	withAbilityDB(t, group, modelName, []abilityFixture{
+		ability(9501, group, modelName, 30),
+		ability(9502, group, modelName, 1),
 	})
 
-	resetHealthManager()
-	setTestConfig(true, 0.3, 0.05, 0)
+	ClearRouteHealthCache()
 
 	counts := map[int]int{}
 	for range 600 {
@@ -135,44 +142,66 @@ func TestGetChannelUsesSharedWeightFormula(t *testing.T) {
 func TestGetChannelRespectsExcludeSet(t *testing.T) {
 	const group, modelName = "db-group", "db-model"
 
-	withAbilityDB(t, group, modelName, []Ability{
-		ability(9601, group, modelName, 10, 100),
-		ability(9602, group, modelName, 10, 100),
+	withAbilityDB(t, group, modelName, []abilityFixture{
+		ability(9601, group, modelName, 10),
+		ability(9602, group, modelName, 10),
 	})
 
-	resetHealthManager()
-	setTestConfig(true, 0.3, 0.05, 0)
+	ClearRouteHealthCache()
 
 	for range 50 {
-		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", map[RouteKey]bool{{ChannelId: 9601, KeyIndex: 0}: true})
+		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", map[RouteKey]bool{{ChannelId: 9601, KeyIndex: 0, Model: modelName}: true})
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		assert.Equal(t, 9602, got.ChannelId, "the excluded channel must never be returned")
 	}
 
 	// Excluding every candidate yields no channel rather than a stale pick.
-	got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", map[RouteKey]bool{{ChannelId: 9601, KeyIndex: 0}: true, {ChannelId: 9602, KeyIndex: 0}: true})
+	got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", map[RouteKey]bool{{ChannelId: 9601, KeyIndex: 0, Model: modelName}: true, {ChannelId: 9602, KeyIndex: 0, Model: modelName}: true})
 	require.NoError(t, err)
 	assert.Nil(t, got)
 }
 
-// TestGetChannelAppliesHealthScore proves the EWMA factor reaches the DB path,
-// which is the whole point of routing weight being computed in one place.
-func TestGetChannelAppliesHealthScore(t *testing.T) {
+// TestGetChannelDeratesIsolatedRoutes proves the state machine reaches the DB
+// selection path. Since Wave C an isolated route is derated rather than dropped:
+// it keeps CalmWeightScale percent of its weight, so it still wins occasional
+// picks (which is the natural half-open probe) while the healthy peer takes the
+// clear majority. Only a disabled route leaves the pool entirely.
+func TestGetChannelDeratesIsolatedRoutes(t *testing.T) {
 	const group, modelName = "db-group", "db-model"
 
-	withAbilityDB(t, group, modelName, []Ability{
-		ability(9701, group, modelName, 10, 100),
-		ability(9702, group, modelName, 10, 100),
+	withAbilityDB(t, group, modelName, []abilityFixture{
+		ability(9701, group, modelName, 10),
+		ability(9702, group, modelName, 10),
 	})
+	require.NoError(t, DB.AutoMigrate(&ChannelModelHealth{}))
+	ClearRouteHealthCache()
+	t.Cleanup(ClearRouteHealthCache)
+	// The selectors read the real clock, so the isolation window must be live.
+	now := time.Now()
+	require.NoError(t, RecordRetryableFailure(RouteKey{ChannelId: 9702, KeyIndex: 0, Model: modelName}, "bad_response", FailureSourceUpstream, now))
 
-	mgr := resetHealthManager()
-	setTestConfig(true, 0.3, 0.05, 0)
-	for range 50 {
-		mgr.RecordChannelOutcome(9702, OutcomeFatal)
+	derated := map[int]int{}
+	for range 400 {
+		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		derated[got.ChannelId]++
 	}
-	require.InDelta(t, 0.05, mgr.GetScore(9702), 1e-9)
+	assert.Greater(t, derated[9701], derated[9702],
+		"the healthy peer must dominate while the calm route keeps a reduced share")
 
+	// A disabled route is the one state that leaves the candidate set.
+	require.NoError(t, DisableRoute(RouteKey{ChannelId: 9702, KeyIndex: 0, Model: modelName}, now))
+	for range 50 {
+		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, 9701, got.ChannelId, "a disabled route must never be selected")
+	}
+
+	// Admin recovery clears the ladder, so the route competes at full weight again.
+	require.NoError(t, RecoverRoute(RouteKey{ChannelId: 9702, KeyIndex: 0, Model: modelName}, now))
 	counts := map[int]int{}
 	for range 600 {
 		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil)
@@ -180,9 +209,5 @@ func TestGetChannelAppliesHealthScore(t *testing.T) {
 		require.NotNil(t, got)
 		counts[got.ChannelId]++
 	}
-
-	assert.Greater(t, counts[9701], counts[9702]*5,
-		"the degraded channel must lose share on the DB path")
-	assert.Positive(t, counts[9702],
-		"but the MinScore floor keeps it selectable rather than locking it out")
+	assert.Positive(t, counts[9702], "a recovered route is selectable again")
 }

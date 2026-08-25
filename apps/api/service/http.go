@@ -47,20 +47,19 @@ func IOCopyBytesGracefully(c *gin.Context, src *http.Response, data []byte) {
 		return
 	}
 
-	// 输出侧敏感检测（非流式）：目标域名无条件终止；其余敏感词按开关（默认开）。
-	// 命中即响应体替换为 content_filter 错误，状态码换 403。用户要求输出默认 block。
-	if d := CheckSensitiveTargets(string(data)); d != "" {
-		common.SysError(fmt.Sprintf("non-stream output blocked by target domain: [%s]", d))
-		data = []byte(`{"error":{"message":"output blocked by content filter","type":"content_filter","param":null,"code":"content_filter"}}`)
-		src = &http.Response{StatusCode: http.StatusForbidden, Header: http.Header{"Content-Type": []string{"application/json"}}}
-	} else if setting.ShouldCheckCompletionSensitive() {
-		if hit, label := CheckSensitiveOutput(string(data)); hit {
-			common.SysError(fmt.Sprintf("non-stream output blocked by sensitive filter: [%s]", label))
-			data = []byte(`{"error":{"message":"output blocked by content filter","type":"content_filter","param":null,"code":"content_filter"}}`)
-			// 显式携带 Content-Type：header 复制循环会从 src.Header 覆盖式设置，
-			// 不带的话上游的 text/plain 等会盖掉 json 声明。
-			src = &http.Response{StatusCode: http.StatusForbidden, Header: http.Header{"Content-Type": []string{"application/json"}}}
+	// 输出侧敏感过滤（非流式）：目标域与词库敏感词从响应体中静默切除，
+	// 状态码与 Content-Type 保持上游原样，不再替换为 content_filter 错误。
+	// ponytail: JSON \uXXXX 转义形式的内容不在折叠范围（上游几乎都发原始 UTF-8）。
+	if setting.ShouldCheckCompletionSensitive() {
+		if cleaned, labels := SanitizeSensitiveText(string(data)); len(labels) > 0 {
+			common.SysError(fmt.Sprintf("non-stream output sanitized by sensitive filter: [%s]", strings.Join(labels, ",")))
+			RecordSensitiveBlock(c, "output", "sanitize:"+strings.Join(labels, ","), string(data))
+			data = []byte(cleaned)
 		}
+	} else if cleaned, labels := SanitizeTargetDomains(string(data)); len(labels) > 0 {
+		common.SysError(fmt.Sprintf("non-stream output sanitized by target domain filter: [%s]", strings.Join(labels, ",")))
+		RecordSensitiveBlock(c, "output", "sanitize:"+strings.Join(labels, ","), string(data))
+		data = []byte(cleaned)
 	}
 
 	body := io.NopCloser(bytes.NewBuffer(data))

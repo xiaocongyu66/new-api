@@ -25,6 +25,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { Dialog } from '@/components/dialog'
+import { IconPicker } from '@/components/icon-picker'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -202,10 +203,7 @@ export function VendorMutateDialog({
               <FormItem>
                 <FormLabel>{t('Icon')}</FormLabel>
                 <FormControl>
-                  <Input
-                    placeholder={t('OpenAI, Anthropic, Google, etc.')}
-                    {...field}
-                  />
+                  <IconPicker value={field.value} onChange={field.onChange} />
                 </FormControl>
                 <FormDescription>
                   {t('@lobehub/icons key name')}

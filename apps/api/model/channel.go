@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -28,7 +29,6 @@ type Channel struct {
 	TestModel          *string `json:"test_model"`
 	Status             int     `json:"status" gorm:"default:1"`
 	Name               string  `json:"name" gorm:"index"`
-	Weight             *uint   `json:"weight" gorm:"default:0"`
 	CreatedTime        int64   `json:"created_time" gorm:"bigint"`
 	TestTime           int64   `json:"test_time" gorm:"bigint"`
 	ResponseTime       int     `json:"response_time"` // in milliseconds
@@ -42,7 +42,6 @@ type Channel struct {
 	ModelMapping       *string `json:"model_mapping" gorm:"type:text"`
 	//MaxInputTokens     *int    `json:"max_input_tokens" gorm:"default:0"`
 	StatusCodeMapping *string `json:"status_code_mapping" gorm:"type:varchar(1024);default:''"`
-	Priority          *int64  `json:"priority" gorm:"bigint;default:0"`
 	AutoBan           *int    `json:"auto_ban" gorm:"default:1"`
 	OtherInfo         string  `json:"other_info"`
 	Tag               *string `json:"tag" gorm:"index"`
@@ -78,7 +77,6 @@ type ChannelSortOptions struct {
 var channelSortColumns = map[string]string{
 	"id":            "id",
 	"name":          "name",
-	"priority":      "priority",
 	"balance":       "balance",
 	"response_time": "response_time",
 	"test_time":     "test_time",
@@ -114,8 +112,11 @@ func (options ChannelSortOptions) Apply(query *gorm.DB) *gorm.DB {
 			Desc:   true,
 		})
 	}
+	// The default used to be `priority desc`, back when priority ordered the
+	// candidate list. Scheduling now reads route unit static weights, and the
+	// column is gone, so the admin list falls back to the newest channel first.
 	return query.Order(clause.OrderByColumn{
-		Column: clause.Column{Name: "priority"},
+		Column: clause.Column{Name: "id"},
 		Desc:   true,
 	})
 }
@@ -196,16 +197,14 @@ func (channel *Channel) GetKeys() []string {
 	return keys
 }
 
-func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
+func (channel *Channel) GetNextEnabledKey(model string) (string, int, *types.NewAPIError) {
 	// If not in multi-key mode, return the original key string directly.
 	if !channel.ChannelInfo.IsMultiKey {
 		return channel.Key, 0, nil
 	}
 
-	// Obtain all keys (split by \n)
 	keys := channel.GetKeys()
 	if len(keys) == 0 {
-		// No keys available, return error, should disable the channel
 		return "", 0, types.NewError(errors.New("no keys available"), types.ErrorCodeChannelNoAvailableKey)
 	}
 
@@ -214,7 +213,6 @@ func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
 	defer lock.Unlock()
 
 	statusList := channel.ChannelInfo.MultiKeyStatusList
-	// helper to get key status, default to enabled when missing
 	getStatus := func(idx int) int {
 		if statusList == nil {
 			return common.ChannelStatusEnabled
@@ -224,29 +222,33 @@ func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
 		}
 		return common.ChannelStatusEnabled
 	}
-
-	// Collect indexes of enabled keys
-	enabledIdx := make([]int, 0, len(keys))
+	statusEnabledIdx := make([]int, 0, len(keys))
+	healthyIdx := make([]int, 0, len(keys))
 	for i := range keys {
-		if getStatus(i) == common.ChannelStatusEnabled {
-			enabledIdx = append(enabledIdx, i)
+		if getStatus(i) != common.ChannelStatusEnabled {
+			continue
+		}
+		statusEnabledIdx = append(statusEnabledIdx, i)
+		if IsRouteHealthy(RouteKey{ChannelId: channel.Id, KeyIndex: i, Model: model}, time.Now()) {
+			healthyIdx = append(healthyIdx, i)
 		}
 	}
-	// If no specific status list or none enabled, return an explicit error so caller can
-	// properly handle a channel with no available keys (e.g. mark channel disabled).
-	// Returning the first key here caused requests to keep using an already-disabled key.
-	if len(enabledIdx) == 0 {
+	if len(statusEnabledIdx) == 0 {
 		return "", 0, types.NewError(errors.New("no enabled keys"), types.ErrorCodeChannelNoAvailableKey)
+	}
+	// If every usable key is isolated, keep the channel probeable. Channel
+	// selection has already discounted the route; forcing a local retry failure
+	// here would make a soft-isolated pool appear empty.
+	enabledIdx := healthyIdx
+	if len(enabledIdx) == 0 {
+		enabledIdx = statusEnabledIdx
 	}
 
 	switch channel.ChannelInfo.MultiKeyMode {
 	case constant.MultiKeyModeRandom:
-		// Randomly pick one enabled key
-		selectedIdx := enabledIdx[rand.Intn(len(enabledIdx))]
+		selectedIdx := enabledIdx[rand.IntN(len(enabledIdx))]
 		return keys[selectedIdx], selectedIdx, nil
 	case constant.MultiKeyModePolling:
-		// Use channel-specific lock to ensure thread-safe polling
-
 		channelInfo, err := CacheGetChannelInfo(channel.Id)
 		if err != nil {
 			return "", 0, types.NewError(err, types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
@@ -257,27 +259,23 @@ func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
 			}
 			if !common.MemoryCacheEnabled {
 				_ = channel.SaveChannelInfo()
-			} else {
-				// CacheUpdateChannel(channel)
 			}
 		}()
-		// Start from the saved polling index and look for the next enabled key
 		start := channelInfo.MultiKeyPollingIndex
 		if start < 0 || start >= len(keys) {
 			start = 0
 		}
 		for i := 0; i < len(keys); i++ {
 			idx := (start + i) % len(keys)
-			if getStatus(idx) == common.ChannelStatusEnabled {
-				// update polling index for next call (point to the next position)
-				channel.ChannelInfo.MultiKeyPollingIndex = (idx + 1) % len(keys)
-				return keys[idx], idx, nil
+			for _, enabled := range enabledIdx {
+				if idx == enabled {
+					channel.ChannelInfo.MultiKeyPollingIndex = (idx + 1) % len(keys)
+					return keys[idx], idx, nil
+				}
 			}
 		}
-		// Fallback – should not happen, but return first enabled key
 		return keys[enabledIdx[0]], enabledIdx[0], nil
 	default:
-		// Unknown mode, default to first enabled key (or original key string)
 		return keys[enabledIdx[0]], enabledIdx[0], nil
 	}
 }
@@ -491,6 +489,9 @@ func batchDeleteWithTx(tx *gorm.DB, ids []int) (int64, error) {
 		if err := DeleteChannelModelRoutesByChannelIDsWithTx(tx, chunk); err != nil {
 			return 0, err
 		}
+		if err := deleteRouteHealthByChannelIDsWithTx(tx, chunk); err != nil {
+			return 0, err
+		}
 	}
 	return deletedCount, nil
 }
@@ -512,20 +513,6 @@ func BatchDeleteChannels(ids []int) (int64, error) {
 		return 0, err
 	}
 	return deletedCount, nil
-}
-
-func (channel *Channel) GetPriority() int64 {
-	if channel.Priority == nil {
-		return 0
-	}
-	return *channel.Priority
-}
-
-func (channel *Channel) GetWeight() int {
-	if channel.Weight == nil {
-		return 0
-	}
-	return int(*channel.Weight)
 }
 
 func (channel *Channel) GetBaseURL() string {
@@ -605,6 +592,9 @@ func (channel *Channel) updateWithTx(tx *gorm.DB) error {
 	if err := tx.Model(channel).Updates(channel).Error; err != nil {
 		return err
 	}
+	if err := deleteRouteHealthOutsideKeyRangeWithTx(tx, channel.Id, channel.ChannelInfo.MultiKeySize); err != nil {
+		return err
+	}
 	if err := tx.First(channel, "id = ?", channel.Id).Error; err != nil {
 		return err
 	}
@@ -648,7 +638,10 @@ func (channel *Channel) deleteWithTx(tx *gorm.DB) error {
 	if err := deleteAbilitiesWithTx(tx, channel.Id); err != nil {
 		return err
 	}
-	return SyncChannelModelRoutesWithTx(tx, channel.Id)
+	if err := SyncChannelModelRoutesWithTx(tx, channel.Id); err != nil {
+		return err
+	}
+	return deleteRouteHealthByChannelIDsWithTx(tx, []int{channel.Id})
 }
 
 func (channel *Channel) Delete() error {
@@ -911,7 +904,7 @@ func DisableChannelByTag(tag string) error {
 // tag inside one MutateGatewayRouting revision. Channel row updates and derived
 // ability updates commit together with the routing revision bump. The caller
 // must refresh the channel cache only after this returns nil.
-func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *string, group *string, priority *int64, weight *uint, paramOverride *string, headerOverride *string) error {
+func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *string, group *string, paramOverride *string, headerOverride *string) error {
 	updateData := Channel{}
 	shouldReCreateAbilities := false
 	updatedTag := tag
@@ -929,12 +922,6 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 	if group != nil && *group != "" {
 		shouldReCreateAbilities = true
 		updateData.Group = *group
-	}
-	if priority != nil {
-		updateData.Priority = priority
-	}
-	if weight != nil {
-		updateData.Weight = weight
 	}
 	if paramOverride != nil {
 		updateData.ParamOverride = paramOverride
@@ -961,7 +948,7 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 				}
 			}
 		} else {
-			if err := updateAbilityByTagWithTx(tx, tag, newTag, priority, weight); err != nil {
+			if err := updateAbilityTagWithTx(tx, tag, newTag); err != nil {
 				return err
 			}
 			var ids []int
@@ -1005,6 +992,9 @@ func deleteChannelByStatusWithTx(tx *gorm.DB, status int64) (int64, error) {
 		return 0, err
 	}
 	if err := DeleteChannelModelRoutesByChannelIDsWithTx(tx, ids); err != nil {
+		return 0, err
+	}
+	if err := deleteRouteHealthByChannelIDsWithTx(tx, ids); err != nil {
 		return 0, err
 	}
 	result := tx.Where("status = ?", status).Delete(&Channel{})
@@ -1058,6 +1048,9 @@ func deleteDisabledChannelWithTx(tx *gorm.DB) (int64, error) {
 	if err := DeleteChannelModelRoutesByChannelIDsWithTx(tx, ids); err != nil {
 		return 0, err
 	}
+	if err := deleteRouteHealthByChannelIDsWithTx(tx, ids); err != nil {
+		return 0, err
+	}
 	result := tx.Where("status = ? or status = ?", common.ChannelStatusAutoDisabled, common.ChannelStatusManuallyDisabled).Delete(&Channel{})
 	return result.RowsAffected, result.Error
 }
@@ -1074,7 +1067,7 @@ func GetPaginatedChannelTags(query *gorm.DB, offset int, limit int) ([]*string, 
 	return tags, err
 }
 
-func SearchTags(keyword string, group string, model string, idSort bool) ([]*string, error) {
+func SearchTags(keyword string, group string, model string) ([]*string, error) {
 	var tags []*string
 	modelsCol := "`models`"
 
@@ -1089,10 +1082,9 @@ func SearchTags(keyword string, group string, model string, idSort bool) ([]*str
 		baseURLCol = `"base_url"`
 	}
 
-	order := "priority desc"
-	if idSort {
-		order = "id desc"
-	}
+	// priority is gone with the tier scheduler, so newest-first is the only
+	// ordering left for the tag search.
+	order := "id desc"
 
 	// 构造基础查询
 	baseQuery := DB.Model(&Channel{}).Omit("key")

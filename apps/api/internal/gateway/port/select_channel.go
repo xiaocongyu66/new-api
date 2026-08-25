@@ -25,7 +25,8 @@ type ChannelSelection struct {
 //
 // ExcludeChannelIDs carries channels already tried and failed for this request,
 // so a retry does not reselect a known-bad channel. Attempt is the zero-based
-// retry counter, used to descend priority tiers.
+// retry counter; it used to drive descent through priority tiers, and is kept
+// for call-site compatibility now that route units compete in one flat pool.
 type ChannelRequest struct {
 	TokenGroup        string
 	ModelName         string

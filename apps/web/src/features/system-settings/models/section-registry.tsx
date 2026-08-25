@@ -72,16 +72,23 @@ const MODELS_SECTIONS = [
         defaultValues={{
           RetryTimes: settings.RetryTimes,
           ChannelDisableThreshold: settings.ChannelDisableThreshold,
-          ChannelHealthEnabled: settings.ChannelHealthEnabled,
-          ChannelHealthCooldownThreshold:
-            settings.ChannelHealthCooldownThreshold,
-          ChannelHealthCooldownBaseSeconds:
-            settings.ChannelHealthCooldownBaseSeconds,
-          ChannelHealthCooldownMaxSeconds:
-            settings.ChannelHealthCooldownMaxSeconds,
-          ChannelHealthCooldownMaxEjectionPercent:
-            settings.ChannelHealthCooldownMaxEjectionPercent,
-          ChannelHealthCooldownAlpha: settings.ChannelHealthCooldownAlpha,
+          CalmFastBase: settings.CalmFastBase,
+          CalmFastInterval: settings.CalmFastInterval,
+          CalmSlowBase: settings.CalmSlowBase,
+          CalmSlowInterval: settings.CalmSlowInterval,
+          DormantBase: settings.DormantBase,
+          DormantInterval: settings.DormantInterval,
+          DormantMaxBase: settings.DormantMaxBase,
+          DormantDisableThreshold: settings.DormantDisableThreshold,
+          LocalFailureThreshold: settings.LocalFailureThreshold,
+          UpstreamFailureThreshold: settings.UpstreamFailureThreshold,
+          CalmWeightScale: settings.CalmWeightScale,
+          DormantWeightScale: settings.DormantWeightScale,
+          EmergencyThreshold: settings.EmergencyThreshold,
+          WarningThreshold: settings.WarningThreshold,
+          AcceleratedDecayStep: settings.AcceleratedDecayStep,
+          NormalDecayStep: settings.NormalDecayStep,
+          KeyProbeEnabled: settings.KeyProbeEnabled,
           AutomaticDisableChannelEnabled:
             settings.AutomaticDisableChannelEnabled,
           AutomaticEnableChannelEnabled: settings.AutomaticEnableChannelEnabled,

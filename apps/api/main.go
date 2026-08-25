@@ -21,6 +21,7 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/pkg/routestats"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
@@ -98,6 +99,7 @@ func main() {
 				}
 			}()
 			model.InitChannelCache()
+			model.InitChannelModelHealthCache()
 		}()
 
 		go model.SyncChannelCache(common.SyncFrequency)
@@ -120,6 +122,27 @@ func main() {
 
 	// 数据看板
 	go model.UpdateQuotaData()
+
+	// Route stats TTL sweep and share-pool eviction (runs hourly).
+	go func() {
+		const tick = time.Hour
+		for range time.NewTicker(tick).C {
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						common.SysError(fmt.Sprintf("route stats sweep panic: %v", r))
+					}
+				}()
+				if removed := routestats.SweepTTL(); removed > 0 {
+					common.SysLog(fmt.Sprintf("route stats sweep: removed %d stale entries", removed))
+				}
+				keep := model.GetActiveRouteStatsPoolKeys()
+				if removed := routestats.SweepSharePools(keep); removed > 0 {
+					common.SysLog(fmt.Sprintf("route stats sweep: removed %d orphaned share pools", removed))
+				}
+			}()
+		}
+	}()
 
 	if os.Getenv("CHANNEL_UPDATE_FREQUENCY") != "" {
 		frequency, err := strconv.Atoi(os.Getenv("CHANNEL_UPDATE_FREQUENCY"))
@@ -370,6 +393,8 @@ func InitResources() error {
 	}
 
 	service.StartAuthArtifactCleanup()
+
+	service.StartSensitiveAuditCleanup()
 
 	return nil
 }

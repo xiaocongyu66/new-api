@@ -72,16 +72,14 @@ func newRouteUnitRouter() *gin.Engine {
 func decodeRouteUnitList(t *testing.T, recorder *httptest.ResponseRecorder) struct {
 	Success bool `json:"success"`
 	Data    struct {
-		Items       []model.RouteUnitView `json:"items"`
-		TotalWeight int                   `json:"total_weight"`
+		Items []model.RouteUnitView `json:"items"`
 	} `json:"data"`
 } {
 	t.Helper()
 	var resp struct {
 		Success bool `json:"success"`
 		Data    struct {
-			Items       []model.RouteUnitView `json:"items"`
-			TotalWeight int                   `json:"total_weight"`
+			Items []model.RouteUnitView `json:"items"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
@@ -113,12 +111,17 @@ func TestRouteUnit_GetRouteUnitViews_ReturnsItemsWithHealthScore(t *testing.T) {
 	resp := decodeRouteUnitList(t, rec)
 	require.True(t, resp.Success)
 	require.Len(t, resp.Data.Items, 2)
-	assert.Equal(t, 5, resp.Data.TotalWeight)
-	// HealthScore field is present in the JSON (default 0 when no health data)
+	// total_weight is gone: it summed weights across every group while selection
+	// draws from one (group, alias) pool, so the number it reported was not the
+	// denominator of any real share. expected_share carries that intent per group
+	// instead — here both routes sit in the same group with weights 3 and 2.
+	shares := map[int]float64{}
 	for _, item := range resp.Data.Items {
+		shares[item.ChannelId] = item.ExpectedShare
 		assert.Contains(t, rec.Body.String(), "health_score")
-		_ = item
 	}
+	assert.InDelta(t, 0.6, shares[100], 0.0001)
+	assert.InDelta(t, 0.4, shares[101], 0.0001)
 }
 
 func TestRouteUnit_ListAliases(t *testing.T) {

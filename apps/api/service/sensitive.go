@@ -15,8 +15,3 @@ func CheckSensitiveText(text string) (bool, []string) {
 	return sensitiveCheckHits(text, setting.SensitiveWords)
 }
 
-// CheckSensitiveOutput 输出侧敏感检测（目标域 + 破甲术语 + 词库/指纹/模板）。
-// 返回 (是否拦截, 拦截标签)。命中即终止输出，不向客户端泄露后续内容。
-func CheckSensitiveOutput(text string) (bool, string) {
-	return CheckSensitiveAll(text)
-}

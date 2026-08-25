@@ -22,14 +22,15 @@ func withRouteDB(t *testing.T) func() {
 	return func() { DB = previousDB }
 }
 
-// makeSingleKeyChannel builds a single-key channel (IsMultiKey=false).
-func makeSingleKeyChannel(id int, models, group string, modelMapping *string, weight *uint) *Channel {
+// makeSingleKeyChannel builds a single-key channel (IsMultiKey=false). Channel
+// weight is gone: route expansion seeds every row at defaultRouteStaticWeight and
+// scheduling reads that, so a channel carries no weight of its own.
+func makeSingleKeyChannel(id int, models, group string, modelMapping *string) *Channel {
 	ch := &Channel{
 		Id:           id,
 		Models:       models,
 		Group:        group,
 		Status:       1,
-		Weight:       weight,
 		ModelMapping: modelMapping,
 		ChannelInfo: ChannelInfo{
 			IsMultiKey:   false,
@@ -40,13 +41,12 @@ func makeSingleKeyChannel(id int, models, group string, modelMapping *string, we
 }
 
 // makeMultiKeyChannel builds a multi-key channel (IsMultiKey=true).
-func makeMultiKeyChannel(id int, models, group, keys string, modelMapping *string, weight *uint, keyCount int) *Channel {
+func makeMultiKeyChannel(id int, models, group, keys string, modelMapping *string, keyCount int) *Channel {
 	ch := &Channel{
 		Id:           id,
 		Models:       models,
 		Group:        group,
 		Status:       1,
-		Weight:       weight,
 		ModelMapping: modelMapping,
 		Key:          keys,
 		ChannelInfo: ChannelInfo{
@@ -65,7 +65,7 @@ func TestExpandDimensionSingleKey(t *testing.T) {
 
 	// Single-key: 2 models × 2 groups = 4 rows
 	mapping := `{"alias-a":"upstream-x"}`
-	ch := makeSingleKeyChannel(1, "alias-a,model-b", "group-1,group-2", &mapping, nil)
+	ch := makeSingleKeyChannel(1, "alias-a,model-b", "group-1,group-2", &mapping)
 	require.NoError(t, DB.Create(ch).Error)
 
 	routes := ExpandChannelModelRoutes(ch)
@@ -96,7 +96,7 @@ func TestExpandDimensionMultiKey(t *testing.T) {
 	cleanup := withRouteDB(t)
 	defer cleanup()
 
-	ch := makeMultiKeyChannel(2, "model-x", "group-1", "k1\nk2\nk3", nil, nil, 3)
+	ch := makeMultiKeyChannel(2, "model-x", "group-1", "k1\nk2\nk3", nil, 3)
 	require.NoError(t, DB.Create(ch).Error)
 
 	routes := ExpandChannelModelRoutes(ch)
@@ -119,7 +119,7 @@ func TestModelMappingApplied(t *testing.T) {
 	defer cleanup()
 
 	mapping := `{"alias-a":"upstream-x"}`
-	ch := makeSingleKeyChannel(1, "alias-a,model-b", "group-1", &mapping, nil)
+	ch := makeSingleKeyChannel(1, "alias-a,model-b", "group-1", &mapping)
 	require.NoError(t, DB.Create(ch).Error)
 
 	routes := ExpandChannelModelRoutes(ch)
@@ -133,19 +133,22 @@ func TestModelMappingApplied(t *testing.T) {
 	assert.Equal(t, "model-b", upstreams["model-b"])
 }
 
-// TestWeightNotAmplified verifies channel.Weight=5000, 3 keys → each row StaticWeight remains 100 (no implicit multiply by key count).
-func TestWeightNotAmplified(t *testing.T) {
+// TestWeightNotAmplifiedByKeyCount pins that a multi-key channel does not hand
+// itself extra traffic. Each key becomes its own route unit, so multiplying the
+// seed weight by the key count would give a 3-key channel three times the share
+// of a single-key peer for identical configuration.
+func TestWeightNotAmplifiedByKeyCount(t *testing.T) {
 	cleanup := withRouteDB(t)
 	defer cleanup()
 
-	weight := uint(5000)
-	ch := makeMultiKeyChannel(1, "model-x", "group-1", "k1\nk2\nk3", nil, &weight, 3)
+	ch := makeMultiKeyChannel(1, "model-x", "group-1", "k1\nk2\nk3", nil, 3)
 	require.NoError(t, DB.Create(ch).Error)
 
 	routes := ExpandChannelModelRoutes(ch)
 	require.Len(t, routes, 3)
 	for _, r := range routes {
-		assert.Equal(t, 100, r.StaticWeight, "StaticWeight must stay 100 regardless of channel.Weight or key count")
+		assert.Equal(t, defaultRouteStaticWeight, r.StaticWeight,
+			"every key seeds at the default weight regardless of key count")
 	}
 }
 
@@ -154,7 +157,7 @@ func TestSyncIdempotent(t *testing.T) {
 	cleanup := withRouteDB(t)
 	defer cleanup()
 
-	ch := makeSingleKeyChannel(1, "model-a,model-b", "group-1", nil, nil)
+	ch := makeSingleKeyChannel(1, "model-a,model-b", "group-1", nil)
 	require.NoError(t, DB.Create(ch).Error)
 
 	// First sync
@@ -193,7 +196,7 @@ func TestSyncStaleCleanup(t *testing.T) {
 
 	// Seed: single-key channel with 2 models, 2 groups = 4 rows
 	mapping := `{"alias-a":"upstream-x"}`
-	ch := makeSingleKeyChannel(1, "alias-a,model-b", "group-1,group-2", &mapping, nil)
+	ch := makeSingleKeyChannel(1, "alias-a,model-b", "group-1,group-2", &mapping)
 	require.NoError(t, DB.Create(ch).Error)
 	require.NoError(t, SyncChannelModelRoutesWithTx(DB, 1))
 
@@ -216,7 +219,7 @@ func TestSyncStaleCleanup(t *testing.T) {
 	}
 
 	// Multi-key: reduce keys 3→1
-	ch2 := makeMultiKeyChannel(2, "model-x", "group-1", "k1\nk2\nk3", nil, nil, 3)
+	ch2 := makeMultiKeyChannel(2, "model-x", "group-1", "k1\nk2\nk3", nil, 3)
 	require.NoError(t, DB.Create(ch2).Error)
 	require.NoError(t, SyncChannelModelRoutesWithTx(DB, 2))
 
@@ -249,7 +252,7 @@ func TestUniqueConstraintNoDuplicate(t *testing.T) {
 	cleanup := withRouteDB(t)
 	defer cleanup()
 
-	ch := makeSingleKeyChannel(1, "model-a", "group-1", nil, nil)
+	ch := makeSingleKeyChannel(1, "model-a", "group-1", nil)
 	require.NoError(t, DB.Create(ch).Error)
 	require.NoError(t, SyncChannelModelRoutesWithTx(DB, 1))
 
@@ -289,11 +292,11 @@ func TestSeedChannelModelRoutes(t *testing.T) {
 	defer cleanup()
 
 	// Channel 1: single-key, 2 models × 2 groups = 4 rows
-	ch1 := makeSingleKeyChannel(1, "m1,m2", "g1,g2", nil, nil)
+	ch1 := makeSingleKeyChannel(1, "m1,m2", "g1,g2", nil)
 	require.NoError(t, DB.Create(ch1).Error)
 
 	// Channel 2: multi-key 3 keys × 1 model × 1 group = 3 rows
-	ch2 := makeMultiKeyChannel(2, "m3", "g1", "k1\nk2\nk3", nil, nil, 3)
+	ch2 := makeMultiKeyChannel(2, "m3", "g1", "k1\nk2\nk3", nil, 3)
 	require.NoError(t, DB.Create(ch2).Error)
 
 	// First seed
@@ -322,7 +325,7 @@ func TestChannelLifecycleSyncsRouteRows(t *testing.T) {
 	defer cleanup()
 
 	// Create: single-key channel with 2 models × 1 group = 2 route rows
-	ch := makeSingleKeyChannel(1, "model-a,model-b", "group-1", nil, nil)
+	ch := makeSingleKeyChannel(1, "model-a,model-b", "group-1", nil)
 	require.NoError(t, ch.insertWithTx(DB))
 
 	var count int64
@@ -356,13 +359,13 @@ func TestGetRouteUnitViewsByAlias(t *testing.T) {
 	defer cleanup()
 
 	// Create channels
-	ch1 := makeSingleKeyChannel(1, "model-a", "group-1", nil, func() *uint { v := uint(100); return &v }())
+	ch1 := makeSingleKeyChannel(1, "model-a", "group-1", nil)
 	ch1.Name = "channel-1"
 	ch1.BaseURL = strPtr("https://api.example.com/v1")
 	ch1.Status = 1
 	require.NoError(t, DB.Create(ch1).Error)
 
-	ch2 := makeSingleKeyChannel(2, "model-a", "group-1", nil, func() *uint { v := uint(200); return &v }())
+	ch2 := makeSingleKeyChannel(2, "model-a", "group-1", nil)
 	ch2.Name = "channel-2"
 	ch2.BaseURL = strPtr("https://api.example.com/v2")
 	ch2.Status = 2
@@ -413,7 +416,7 @@ func TestGetRouteUnitViewsByAlias(t *testing.T) {
 	assert.Equal(t, 1.0, v2.HealthScore)
 
 	// Test total=0 scenario: manually set route weight to 0
-	ch3 := makeSingleKeyChannel(3, "model-zero", "group-1", nil, func() *uint { v := uint(0); return &v }())
+	ch3 := makeSingleKeyChannel(3, "model-zero", "group-1", nil)
 	ch3.Name = "channel-zero"
 	require.NoError(t, DB.Create(ch3).Error)
 	require.NoError(t, SeedChannelModelRoutes())
@@ -445,13 +448,13 @@ func TestListRouteUnitAliases(t *testing.T) {
 	defer cleanup()
 
 	// Create channels with different aliases and weights
-	ch1 := makeSingleKeyChannel(1, "model-a,model-b", "group-1", nil, func() *uint { v := uint(100); return &v }())
+	ch1 := makeSingleKeyChannel(1, "model-a,model-b", "group-1", nil)
 	require.NoError(t, DB.Create(ch1).Error)
 
-	ch2 := makeSingleKeyChannel(2, "model-a", "group-1", nil, func() *uint { v := uint(200); return &v }())
+	ch2 := makeSingleKeyChannel(2, "model-a", "group-1", nil)
 	require.NoError(t, DB.Create(ch2).Error)
 
-	ch3 := makeSingleKeyChannel(3, "model-c", "group-1", nil, func() *uint { v := uint(50); return &v }())
+	ch3 := makeSingleKeyChannel(3, "model-c", "group-1", nil)
 	require.NoError(t, DB.Create(ch3).Error)
 
 	require.NoError(t, SeedChannelModelRoutes())
@@ -494,7 +497,7 @@ func TestUpdateRouteUnitConfig(t *testing.T) {
 	cleanup := withRouteDB(t)
 	defer cleanup()
 
-	ch := makeSingleKeyChannel(1, "model-a", "group-1", nil, func() *uint { v := uint(100); return &v }())
+	ch := makeSingleKeyChannel(1, "model-a", "group-1", nil)
 	require.NoError(t, DB.Create(ch).Error)
 	require.NoError(t, SeedChannelModelRoutes())
 

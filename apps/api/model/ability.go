@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
-
 	"github.com/samber/lo"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -18,8 +17,6 @@ type Ability struct {
 	Model     string  `json:"model" gorm:"type:varchar(255);primaryKey;autoIncrement:false"`
 	ChannelId int     `json:"channel_id" gorm:"primaryKey;autoIncrement:false;index"`
 	Enabled   bool    `json:"enabled"`
-	Priority  *int64  `json:"priority" gorm:"bigint;default:0;index"`
-	Weight    uint    `json:"weight" gorm:"default:0;index"`
 	Tag       *string `json:"tag" gorm:"index"`
 }
 
@@ -69,8 +66,6 @@ func (channel *Channel) AddAbilities(tx *gorm.DB) error {
 				Model:     model,
 				ChannelId: channel.Id,
 				Enabled:   channel.Status == common.ChannelStatusEnabled,
-				Priority:  channel.Priority,
-				Weight:    uint(channel.GetWeight()),
 				Tag:       channel.Tag,
 			}
 			abilities = append(abilities, ability)
@@ -148,8 +143,6 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 				Model:     model,
 				ChannelId: channel.Id,
 				Enabled:   channel.Status == common.ChannelStatusEnabled,
-				Priority:  channel.Priority,
-				Weight:    uint(channel.GetWeight()),
 				Tag:       channel.Tag,
 			}
 			abilities = append(abilities, ability)
@@ -168,6 +161,22 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 		}
 	}
 
+	// The ability rows were rebuilt from the channel's current model list, so any
+	// isolation row for a model that is no longer declared is unreachable by the
+	// selectors and would only survive as a ghost row. Models that survived the
+	// edit keep their isolation state. EditChannelByTag reaches this through the
+	// same call, so it needs no separate wiring.
+	if err = deleteRouteHealthNotInModelsWithTx(tx, channel.Id, models_); err != nil {
+		if isNewTx {
+			tx.Rollback()
+		}
+		return err
+	}
+
+	// The ability set is the pressure denominator, so a rebuilt model list must
+	// refresh it; otherwise a model that gained or lost channels keeps stale
+	// availability and the three-tier thresholds fire on the wrong ratio.
+	pressureRecomputeTotals()
 	// 如果是新创建的事务，需要提交
 	if isNewTx {
 		return tx.Commit().Error
@@ -236,27 +245,15 @@ func UpdateAbilityStatusByTag(tag string, status bool) error {
 	return updateAbilityStatusByTagWithTx(DB, tag, status)
 }
 
-// updateAbilityByTagWithTx is the tx-aware form of UpdateAbilityByTag. It
-// writes the tag/priority/weight columns for every ability row carrying the
-// given tag inside the outer transaction.
-func updateAbilityByTagWithTx(tx *gorm.DB, tag string, newTag *string, priority *int64, weight *uint) error {
-	ability := Ability{}
-	if newTag != nil {
-		ability.Tag = newTag
+// updateAbilityTagWithTx renames the tag on every ability row carrying the given
+// tag, inside the outer transaction. Priority and weight used to be written here
+// too; both columns are gone, because route units carry the scheduling weight
+// now and abilities are no longer read by the selector at all.
+func updateAbilityTagWithTx(tx *gorm.DB, tag string, newTag *string) error {
+	if newTag == nil {
+		return nil
 	}
-	if priority != nil {
-		ability.Priority = priority
-	}
-	if weight != nil {
-		ability.Weight = *weight
-	}
-	return tx.Model(&Ability{}).Where("tag = ?", tag).Updates(ability).Error
-}
-
-// UpdateAbilityByTag remains the public convenience wrapper. It delegates to
-// the tx-aware form with the shared DB handle.
-func UpdateAbilityByTag(tag string, newTag *string, priority *int64, weight *uint) error {
-	return updateAbilityByTagWithTx(DB, tag, newTag, priority, weight)
+	return tx.Model(&Ability{}).Where("tag = ?", tag).Update("tag", *newTag).Error
 }
 
 // deleteAbilitiesByChannelIDsWithTx deletes every ability row whose

@@ -3,6 +3,7 @@ package model
 import (
 	"math/rand/v2"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -11,7 +12,6 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/pkg/routestats"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
 
 func withRouteUnitFixture(t *testing.T, channels []*Channel, group, alias string, routes []ChannelModelRoute) func() {
@@ -76,13 +76,12 @@ func withRouteUnitFixture(t *testing.T, channels []*Channel, group, alias string
 	}
 }
 
-func testRouteChannel(id int, weight uint, priority int64, isMultiKey bool, keys []string, keyStatus map[int]int) *Channel {
-	w, p := weight, priority
+// testRouteChannel builds a channel for selector tests. Scheduling weight lives on
+// the route unit (see testRoute), not on the channel.
+func testRouteChannel(id int, isMultiKey bool, keys []string, keyStatus map[int]int) *Channel {
 	ch := &Channel{
-		Id:       id,
-		Weight:   &w,
-		Priority: &p,
-		Status:   common.ChannelStatusEnabled,
+		Id:     id,
+		Status: common.ChannelStatusEnabled,
 		ChannelInfo: ChannelInfo{
 			IsMultiKey:         isMultiKey,
 			MultiKeyStatusList: keyStatus,
@@ -119,15 +118,15 @@ func testRoute(routeId, channelId, keyIndex int, group, alias, upstreamModel str
 func TestSelectRouteUnit_SingleCandidate(t *testing.T) {
 	const group, alias = "test-group", "test-model"
 
-	ch := testRouteChannel(1001, 10, 5, false, []string{"sk-single"}, nil)
+	ch := testRouteChannel(1001, false, []string{"sk-single"}, nil)
 	routes := []ChannelModelRoute{
 		testRoute(1, 1001, 0, group, alias, "upstream-model", 100),
 	}
 	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, routes)
 	defer cleanup()
 
-	resetHealthManager()
-	setTestConfig(true, 0.3, 0.05, 0)
+	ClearRouteHealthCache()
+	t.Cleanup(ClearRouteHealthCache)
 
 	rnd := rand.New(rand.NewPCG(42, 0))
 	selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
@@ -142,7 +141,7 @@ func TestSelectRouteUnit_SingleCandidate(t *testing.T) {
 func TestSelectRouteUnit_MultiKeyChannel(t *testing.T) {
 	const group, alias = "test-group", "test-model"
 
-	ch := testRouteChannel(1002, 10, 5, true, []string{"sk-key0", "sk-key1", "sk-key2"}, nil)
+	ch := testRouteChannel(1002, true, []string{"sk-key0", "sk-key1", "sk-key2"}, nil)
 	routes := []ChannelModelRoute{
 		testRoute(1, 1002, 0, group, alias, "upstream-a", 100),
 		testRoute(2, 1002, 1, group, alias, "upstream-b", 100),
@@ -151,8 +150,8 @@ func TestSelectRouteUnit_MultiKeyChannel(t *testing.T) {
 	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, routes)
 	defer cleanup()
 
-	resetHealthManager()
-	setTestConfig(true, 0.3, 0.05, 0)
+	ClearRouteHealthCache()
+	t.Cleanup(ClearRouteHealthCache)
 
 	// Run many times - all three key indices should be selected with roughly equal probability
 	rnd := rand.New(rand.NewPCG(100, 0))
@@ -183,7 +182,7 @@ func TestSelectRouteUnit_MultiKeyDisabledKeyExcluded(t *testing.T) {
 
 	// Key index 1 is disabled
 	keyStatus := map[int]int{0: common.ChannelStatusEnabled, 1: common.ChannelStatusManuallyDisabled, 2: common.ChannelStatusEnabled}
-	ch := testRouteChannel(1003, 10, 5, true, []string{"sk-key0", "sk-key1", "sk-key2"}, keyStatus)
+	ch := testRouteChannel(1003, true, []string{"sk-key0", "sk-key1", "sk-key2"}, keyStatus)
 	routes := []ChannelModelRoute{
 		testRoute(1, 1003, 0, group, alias, "upstream-a", 100),
 		testRoute(2, 1003, 1, group, alias, "upstream-b", 100),
@@ -192,8 +191,8 @@ func TestSelectRouteUnit_MultiKeyDisabledKeyExcluded(t *testing.T) {
 	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, routes)
 	defer cleanup()
 
-	resetHealthManager()
-	setTestConfig(true, 0.3, 0.05, 0)
+	ClearRouteHealthCache()
+	t.Cleanup(ClearRouteHealthCache)
 
 	// Run many times - key index 1 should never be selected
 	rnd := rand.New(rand.NewPCG(200, 0))
@@ -212,8 +211,8 @@ func TestSelectRouteUnit_MultiKeyDisabledKeyExcluded(t *testing.T) {
 func TestSelectRouteUnit_ExcludeRoutes(t *testing.T) {
 	const group, alias = "test-group", "test-model"
 
-	ch1 := testRouteChannel(1004, 10, 5, false, []string{"sk-1"}, nil)
-	ch2 := testRouteChannel(1005, 10, 5, false, []string{"sk-2"}, nil)
+	ch1 := testRouteChannel(1004, false, []string{"sk-1"}, nil)
+	ch2 := testRouteChannel(1005, false, []string{"sk-2"}, nil)
 	routes := []ChannelModelRoute{
 		testRoute(1, 1004, 0, group, alias, "upstream-1", 100),
 		testRoute(2, 1005, 0, group, alias, "upstream-2", 100),
@@ -221,11 +220,11 @@ func TestSelectRouteUnit_ExcludeRoutes(t *testing.T) {
 	cleanup := withRouteUnitFixture(t, []*Channel{ch1, ch2}, group, alias, routes)
 	defer cleanup()
 
-	resetHealthManager()
-	setTestConfig(true, 0.3, 0.05, 0)
+	ClearRouteHealthCache()
+	t.Cleanup(ClearRouteHealthCache)
 
 	// Exclude route 1 (channel 1004, keyIndex 0)
-	excludeRoutes := map[RouteKey]bool{{ChannelId: 1004, KeyIndex: 0}: true}
+	excludeRoutes := map[RouteKey]bool{{ChannelId: 1004, KeyIndex: 0, Model: alias}: true}
 	rnd := rand.New(rand.NewPCG(300, 0))
 	selected, err := SelectRouteUnit(group, alias, "", 0, excludeRoutes, rnd)
 	require.NoError(t, err)
@@ -236,8 +235,8 @@ func TestSelectRouteUnit_ExcludeRoutes(t *testing.T) {
 func TestSelectRouteUnit_DisabledRouteExcluded(t *testing.T) {
 	const group, alias = "test-group", "test-model"
 
-	ch1 := testRouteChannel(1006, 10, 5, false, []string{"sk-1"}, nil)
-	ch2 := testRouteChannel(1007, 10, 5, false, []string{"sk-2"}, nil)
+	ch1 := testRouteChannel(1006, false, []string{"sk-1"}, nil)
+	ch2 := testRouteChannel(1007, false, []string{"sk-2"}, nil)
 	routes := []ChannelModelRoute{
 		testRoute(1, 1006, 0, group, alias, "upstream-1", 100),
 		{Id: 2, Group: group, PublicModelAlias: alias, ChannelId: 1007, KeyIndex: 0, UpstreamModel: "upstream-2", StaticWeight: 100, Enabled: false}, // disabled
@@ -245,8 +244,8 @@ func TestSelectRouteUnit_DisabledRouteExcluded(t *testing.T) {
 	cleanup := withRouteUnitFixture(t, []*Channel{ch1, ch2}, group, alias, routes)
 	defer cleanup()
 
-	resetHealthManager()
-	setTestConfig(true, 0.3, 0.05, 0)
+	ClearRouteHealthCache()
+	t.Cleanup(ClearRouteHealthCache)
 
 	rnd := rand.New(rand.NewPCG(400, 0))
 	selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
@@ -258,8 +257,8 @@ func TestSelectRouteUnit_DisabledRouteExcluded(t *testing.T) {
 func TestSelectRouteUnit_CooldownEjection(t *testing.T) {
 	const group, alias = "test-group", "test-model"
 
-	ch1 := testRouteChannel(1008, 10, 5, false, []string{"sk-1"}, nil)
-	ch2 := testRouteChannel(1009, 10, 5, false, []string{"sk-2"}, nil)
+	ch1 := testRouteChannel(1008, false, []string{"sk-1"}, nil)
+	ch2 := testRouteChannel(1009, false, []string{"sk-2"}, nil)
 	routes := []ChannelModelRoute{
 		testRoute(1, 1008, 0, group, alias, "upstream-1", 100),
 		testRoute(2, 1009, 0, group, alias, "upstream-2", 100),
@@ -267,43 +266,56 @@ func TestSelectRouteUnit_CooldownEjection(t *testing.T) {
 	cleanup := withRouteUnitFixture(t, []*Channel{ch1, ch2}, group, alias, routes)
 	defer cleanup()
 
-	resetHealthManager()
-	// Use cooldown test settings with all cooldown params enabled
-	cfg := cooldownTestSetting()
-	cfg.CooldownMaxEjectionPercent = 50
-	operation_setting.SetChannelHealthSetting(cfg)
+	// The state machine persists to the DB, so install one before driving it.
+	withRouteHealthDB(t)
+	ClearRouteHealthCache()
 
-	// Push channel 1008 into cooldown
-	mgr := GetChannelHealthManager()
-	for range 10 {
-		mgr.RecordChannelOutcome(1008, OutcomeFatal)
-	}
-	// Verify cooldown is active by checking that the channel gets ejected from selection
+	// Push route 1008 into calm state via retryable failures
+	now := time.Now()
+	require.NoError(t, RecordRetryableFailure(RouteKey{ChannelId: 1008, KeyIndex: 0, Model: alias}, "bad_response", FailureSourceUpstream, now))
 
+	// In the new model, a calm route stays selectable at reduced weight (0.5x),
+	// while a disabled route is excluded entirely. A disabled route is the ONLY
+	// state that leaves the candidate set.
 	rnd := rand.New(rand.NewPCG(500, 0))
 	counts := make(map[int]int)
-	for range 100 {
+	for range 200 {
 		selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
 		require.NoError(t, err)
-		if selected != nil {
-			counts[selected.ChannelId]++
-		}
+		require.NotNil(t, selected)
+		counts[selected.ChannelId]++
 	}
-	// Channel 1008 should be ejected (or at least heavily deprioritized)
-	// With 50% max ejection and 2 channels, at most 1 can be ejected
-	assert.Equal(t, 0, counts[1008], "cooldown channel should be ejected")
-	assert.Greater(t, counts[1009], 0)
+	// calm multiplier 0.5 pins base scores at 101:50.5 ≈ 2:1, and the share
+	// correction holds actual traffic exactly there (133:67 of 200 ≈ 66.5%,
+	// expected 66.7%). The correction suppresses the sampling jitter that used
+	// to push the healthy route strictly past 2x, so dominance is asserted as a
+	// band around the base-share split instead of strict 2x.
+	assert.Greater(t, counts[1009], counts[1008], "healthy route must dominate calm route")
+	assert.Greater(t, counts[1009], 120, "healthy route holds its base share (~2/3)")
+	assert.Less(t, counts[1009], 147, "correction keeps healthy route near base share, not monopoly")
+
+	// Now disable the calm route - it must be excluded entirely
+	require.NoError(t, DisableRoute(RouteKey{ChannelId: 1008, KeyIndex: 0, Model: alias}, now))
+	counts = make(map[int]int)
+	for range 50 {
+		selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+		require.NoError(t, err)
+		require.NotNil(t, selected)
+		counts[selected.ChannelId]++
+	}
+	assert.Equal(t, 0, counts[1008], "disabled route must never be selected")
+	assert.Equal(t, 50, counts[1009], "only healthy route remains")
 }
 
 func TestSelectRouteUnit_AdvancedCustomPathFilter(t *testing.T) {
 	const group, alias = "test-group", "test-model"
 
 	// Advanced Custom channel that only supports /v1/chat/completions
-	ch1 := testRouteChannel(1010, 10, 5, false, []string{"sk-1"}, nil)
+	ch1 := testRouteChannel(1010, false, []string{"sk-1"}, nil)
 	ch1.Type = constant.ChannelTypeAdvancedCustom
 	ch1.OtherSettings = `{"advanced_custom":{"advanced_routes":[{"incoming_path":"/v1/chat/completions","models":["test-model"]}]}}`
 
-	ch2 := testRouteChannel(1011, 10, 5, false, []string{"sk-2"}, nil)
+	ch2 := testRouteChannel(1011, false, []string{"sk-2"}, nil)
 	ch2.Type = constant.ChannelTypeAdvancedCustom
 	ch2.OtherSettings = `{"advanced_custom":{"advanced_routes":[{"incoming_path":"/v1/embeddings","models":["test-model"]}]}}`
 
@@ -314,8 +326,8 @@ func TestSelectRouteUnit_AdvancedCustomPathFilter(t *testing.T) {
 	cleanup := withRouteUnitFixture(t, []*Channel{ch1, ch2}, group, alias, routes)
 	defer cleanup()
 
-	resetHealthManager()
-	setTestConfig(true, 0.3, 0.05, 0)
+	ClearRouteHealthCache()
+	t.Cleanup(ClearRouteHealthCache)
 
 	// Request to /v1/chat/completions should only select ch1
 	rnd := rand.New(rand.NewPCG(600, 0))
@@ -339,8 +351,8 @@ func TestSelectRouteUnit_AdvancedCustomPathFilter(t *testing.T) {
 func TestSelectRouteUnit_DeterministicCacheVsDB(t *testing.T) {
 	const group, alias = "test-group", "test-model"
 
-	ch1 := testRouteChannel(2001, 10, 5, false, []string{"sk-1"}, nil)
-	ch2 := testRouteChannel(2002, 20, 5, false, []string{"sk-2"}, nil)
+	ch1 := testRouteChannel(2001, false, []string{"sk-1"}, nil)
+	ch2 := testRouteChannel(2002, false, []string{"sk-2"}, nil)
 	routes := []ChannelModelRoute{
 		testRoute(1, 2001, 0, group, alias, "upstream-1", 100),
 		testRoute(2, 2002, 0, group, alias, "upstream-2", 200), // higher weight
@@ -350,8 +362,8 @@ func TestSelectRouteUnit_DeterministicCacheVsDB(t *testing.T) {
 	cleanupCache := withRouteUnitFixture(t, []*Channel{ch1, ch2}, group, alias, routes)
 	defer cleanupCache()
 
-	resetHealthManager()
-	setTestConfig(true, 0.3, 0.05, 0)
+	ClearRouteHealthCache()
+	t.Cleanup(ClearRouteHealthCache)
 
 	rndCache := rand.New(rand.NewPCG(700, 0))
 	rndDB := rand.New(rand.NewPCG(700, 0)) // same seed
@@ -377,8 +389,8 @@ func TestSelectRouteUnit_DeterministicCacheVsDB(t *testing.T) {
 func TestSelectRouteUnit_WeightDistribution(t *testing.T) {
 	const group, alias = "test-group", "test-model"
 
-	ch1 := testRouteChannel(3001, 10, 5, false, []string{"sk-1"}, nil)
-	ch2 := testRouteChannel(3002, 10, 5, false, []string{"sk-2"}, nil)
+	ch1 := testRouteChannel(3001, false, []string{"sk-1"}, nil)
+	ch2 := testRouteChannel(3002, false, []string{"sk-2"}, nil)
 	routes := []ChannelModelRoute{
 		testRoute(1, 3001, 0, group, alias, "upstream-1", 100), // weight 100
 		testRoute(2, 3002, 0, group, alias, "upstream-2", 300), // weight 300 (3x)
@@ -386,8 +398,8 @@ func TestSelectRouteUnit_WeightDistribution(t *testing.T) {
 	cleanup := withRouteUnitFixture(t, []*Channel{ch1, ch2}, group, alias, routes)
 	defer cleanup()
 
-	resetHealthManager()
-	setTestConfig(true, 0.3, 0.05, 0)
+	ClearRouteHealthCache()
+	t.Cleanup(ClearRouteHealthCache)
 
 	rnd := rand.New(rand.NewPCG(800, 0))
 	counts := make(map[int]int)
@@ -409,7 +421,7 @@ func TestSelectRouteUnit_NormalizedAliasFallback(t *testing.T) {
 	const alias = "gemini-2.5-flash-thinking-512" // FormatMatchingModelName normalizes this
 
 	const normalizedAlias = "gemini-2.5-flash-thinking-*"
-	ch := testRouteChannel(4001, 10, 5, false, []string{"sk-1"}, nil)
+	ch := testRouteChannel(4001, false, []string{"sk-1"}, nil)
 	// Use fixture but with normalized alias for both group2model2channels and routes
 	prevGroups := group2model2channels
 	prevIDM := channelsIDM
@@ -440,8 +452,8 @@ func TestSelectRouteUnit_NormalizedAliasFallback(t *testing.T) {
 	channelSyncLock.Unlock()
 	common.MemoryCacheEnabled = true
 
-	resetHealthManager()
-	setTestConfig(true, 0.3, 0.05, 0)
+	ClearRouteHealthCache()
+	t.Cleanup(ClearRouteHealthCache)
 
 	// Request with non-normalized alias should fall back to normalized
 	rnd := rand.New(rand.NewPCG(900, 0))
@@ -472,14 +484,14 @@ func TestSelectRouteUnit_EmptyResult(t *testing.T) {
 func TestSelectRouteUnitAttachesStatsHandleWithRouteIdentity(t *testing.T) {
 	const group, alias = "stats-group", "stats-alias"
 
-	ch := testRouteChannel(7001, 10, 5, false, []string{"sk-1"}, nil)
+	ch := testRouteChannel(7001, false, []string{"sk-1"}, nil)
 	routes := []ChannelModelRoute{
 		testRoute(1, 7001, 0, group, alias, "upstream-actual", 100),
 	}
 	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, routes)
 	defer cleanup()
-	resetHealthManager()
-	setTestConfig(true, 0.3, 0.05, 0)
+	ClearRouteHealthCache()
+	t.Cleanup(ClearRouteHealthCache)
 
 	selected, err := SelectRouteUnit(group, alias, "", 0, nil, rand.New(rand.NewPCG(41, 41)))
 	require.NoError(t, err)
@@ -506,7 +518,7 @@ func TestSelectRouteUnitAttachesStatsHandleWithRouteIdentity(t *testing.T) {
 // owns no route row for the alias: there is no route unit to charge, so recording
 // must stay a no-op rather than inventing an identity from the alias.
 func TestSelectedRouteFromChannelHasNoStatsHandle(t *testing.T) {
-	ch := testRouteChannel(7002, 10, 5, false, []string{"sk-1"}, nil)
+	ch := testRouteChannel(7002, false, []string{"sk-1"}, nil)
 
 	route, err := SelectedRouteFromChannel(ch, "some-alias")
 	require.NoError(t, err)
@@ -523,7 +535,7 @@ func TestSelectedRouteFromChannelHasNoStatsHandle(t *testing.T) {
 func TestSelectedRouteFromChannelAttributesRealRoute(t *testing.T) {
 	const group, alias = "affinity-group", "affinity-alias"
 
-	ch := testRouteChannel(7003, 10, 5, false, []string{"sk-1"}, nil)
+	ch := testRouteChannel(7003, false, []string{"sk-1"}, nil)
 	routes := []ChannelModelRoute{
 		testRoute(1, 7003, 0, group, alias, "upstream-affinity", 100),
 	}
@@ -547,4 +559,40 @@ func TestSelectedRouteFromChannelAttributesRealRoute(t *testing.T) {
 		UpstreamModel:    "upstream-affinity",
 	})
 	assert.Same(t, want.State(), route.StatsHandle.State())
+}
+
+// TestSelectedRouteForProbeKeepsShareWindowClean draws the line between traffic
+// and administration. Affinity and locked replay serve real requests, so they
+// belong in the share window; a channel test or key probe is the operator poking
+// the upstream, and counting it would let one "test all channels" click move the
+// window and have the correction chase load no user generated. Both variants must
+// still attribute EWMA samples, because a probe's latency and failures are real
+// signal about the route.
+func TestSelectedRouteForProbeKeepsShareWindowClean(t *testing.T) {
+	const group, alias = "probe-group", "probe-alias"
+
+	withRouteStats(t, nil)
+	ch := testRouteChannel(7004, false, []string{"sk-1"}, nil)
+	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, []ChannelModelRoute{
+		testRoute(1, 7004, 0, group, alias, "upstream-probe", 100),
+	})
+	defer cleanup()
+
+	pool := routestats.PoolKey{Group: group, PublicModelAlias: alias}
+	id := routestats.RouteID{ChannelID: 7004, KeyIndex: 0, UpstreamModel: "upstream-probe"}
+	targets := map[routestats.RouteID]float64{id: 1.0}
+	cfg := routestats.GetRouteStatsSetting()
+
+	probe, err := SelectedRouteForProbe(ch, alias)
+	require.NoError(t, err)
+	require.NotNil(t, probe.StatsHandle, "a probe still produces EWMA signal for the route")
+	assert.Zero(t, routestats.Corrections(pool, targets, cfg)[id].Opportunities,
+		"a probe must not appear in the share window")
+
+	served, err := SelectedRouteFromChannel(ch, alias)
+	require.NoError(t, err)
+	require.NotNil(t, served.StatsHandle)
+	assert.Equal(t, 1, routestats.Corrections(pool, targets, cfg)[id].Opportunities,
+		"real traffic on the same path must be recorded")
+	assert.Equal(t, 1, routestats.Corrections(pool, targets, cfg)[id].Selections)
 }
