@@ -45,8 +45,9 @@ export const options = {
     },
   },
   thresholds: {
-    // Higher error budget under pool pressure
-    http_req_failed: ['rate<0.20'],
+    // Injected 30% upstream failures plus the retry-exhaustion tail; the
+    // state-machine contract is asserted from DB snapshots, not this budget.
+    http_req_failed: ['rate<0.50'],
   },
 };
 

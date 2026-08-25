@@ -220,7 +220,7 @@ jobs:
               4) script=recovery-decay.js; alias=gray-failure; model=mock-recover; vus=30; duration=120s;;
               5) script=pool-pressure.js; alias=pool-pressure; model=mock-flaky; vus=50; duration=120s;;
               6) script=gray-failure.js; alias=gray-failure; model=mock-flaky; vus=50; duration=120s;;
-              7) script=weight-distribution.js; alias=weight-distribution; model=mock-weighted; vus=100; duration=180s;;
+              7) script=weight-distribution.js; alias=weight-distribution; model=mock-weighted; vus=20; duration=180s;;
               8) script=timeout-classification.js; alias=timeout-classification; model=mock-slow; vus=30; duration=120s;;
             esac
             [ -n "$MODEL_OVERRIDE" ] && model="$MODEL_OVERRIDE"

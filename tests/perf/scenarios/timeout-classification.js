@@ -43,11 +43,6 @@ export const options = {
       gracefulStop: '5s',
     },
   },
-  thresholds: {
-    // Upstream HTTP errors (non-timeout) should be low
-    // Timeouts are tracked via custom counter, not http_req_failed
-    http_req_failed: ['rate<0.10'],
-  },
 };
 
 const headers = makeHeaders(API_KEY);

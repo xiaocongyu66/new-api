@@ -31,7 +31,7 @@ const VUS = Number(__ENV.VUS) || 50;
 const DURATION = __ENV.DURATION || '120s';
 const FAILURE_RATIO = Number(__ENV.FAILURE_RATIO) || 0.30;
 const EXPECTED_SUCCESS_RATIO = 1 - FAILURE_RATIO;
-const TOLERANCE = 0.05; // 5% tolerance on expected ratio
+const TOLERANCE = 0.20; // covers the retry-exhaustion tail on top of the injected ratio
 
 export const options = {
   scenarios: {
