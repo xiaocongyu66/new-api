@@ -175,6 +175,10 @@ func TestScoreW2QualityDrivesShare(t *testing.T) {
 		{"both healthy", 1.0, 2000, 20, 1.000, 50.0},
 		{"B ttft twice target", 1.0, 4000, 20, 0.875, 46.7},
 		{"B ttft twice and tps half", 1.0, 4000, 10, 0.800, 44.4},
+		// Sustained 429s: success decays to 0.7 and the retry backoff shows up as a
+		// 5s TTFT, with no TPS sample because nothing streamed. Weights renormalise
+		// over the two observed components: (0.60*0.7 + 0.25*0.4)/0.85 = 0.612.
+		{"B throttled by 429s", 0.7, 5000, 0, 0.612, 38.0},
 		{"B four times faster", 1.0, 500, 20, 1.125, 52.9},
 		{"B every attempt failed", 0.0, 120000, 0, 0.500, 33.3},
 	} {
@@ -200,11 +204,14 @@ func TestScoreW2QualityDrivesShare(t *testing.T) {
 			require.InDelta(t, tc.wantQuality, gotQ, 0.01,
 				"fixture must reach quality %.3f before share is meaningful, got %.4f", tc.wantQuality, gotQ)
 
-			const draws = 12000
+			// W2.1 demands the share land within 0.5pp of the analytic value. At
+			// p≈0.5 the sampling error is ~0.25pp/√(n/40000), so 40k draws put 2σ
+			// inside the bound rather than leaving the gate to seed luck.
+			const draws = 40000
 			counts := drawShares(t, group, alias, draws, 0xA11CE)
 			gotShare := 100 * float64(counts[7202]) / float64(draws)
-			assert.InDelta(t, tc.wantShareB, gotShare, 1.5,
-				"quality %.3f must yield ~%.1f%% share, got %.2f%%", tc.wantQuality, tc.wantShareB, gotShare)
+			assert.InDelta(t, tc.wantShareB, gotShare, 0.5,
+				"quality %.3f must yield %.1f%% share within 0.5pp, got %.2f%%", tc.wantQuality, tc.wantShareB, gotShare)
 		})
 	}
 }
@@ -703,4 +710,80 @@ func TestScoreW5WindowZeroDisablesCorrection(t *testing.T) {
 	for id, s := range scores {
 		assert.Equal(t, 1.0, s.Correction, "route %v must carry a neutral correction", id)
 	}
+}
+
+// TestScoreW5ExpectedShareIsScopedPerGroup is W5.2 and the regression guard for
+// F1. One channel can serve the same alias in several groups, and
+// ExpandChannelModelRoutes emits one row per group, so the alias has two rows
+// while selection still draws from a single (group, alias) pool.
+//
+// Two things have to hold per group, not per alias: expected_share must use the
+// group's own weight total, and the six-factor breakdown must belong to that
+// group's pool. RouteID carries no group, so both rows share an identity — a
+// lookup keyed on it across pools silently reports one pool's scores twice.
+func TestScoreW5ExpectedShareIsScopedPerGroup(t *testing.T) {
+	cleanupDB := withRouteDB(t)
+	defer cleanupDB()
+	withRouteStats(t, nil)
+	ClearRouteHealthCache()
+	t.Cleanup(ClearRouteHealthCache)
+
+	const alias = "shared-model"
+	weight := uint(100)
+	ch := makeSingleKeyChannel(1, alias, "default,vip", nil, &weight)
+	ch.Name = "dual-group"
+	require.NoError(t, DB.Create(ch).Error)
+	require.NoError(t, SeedChannelModelRoutes())
+
+	views, err := GetRouteUnitViewsByAlias(alias)
+	require.NoError(t, err)
+	require.Len(t, views, 2, "one row per group")
+
+	byGroup := make(map[string]RouteUnitView, len(views))
+	for _, v := range views {
+		byGroup[v.Group] = v
+	}
+	require.Contains(t, byGroup, "default")
+	require.Contains(t, byGroup, "vip")
+
+	// Give the two pools different histories. Quality alone is not enough to catch
+	// a cross-pool overwrite: both views already carry their own quality from the
+	// GetHandle pass, and an overwritten view keeps a self-consistent product. The
+	// window counters are the discriminator, because they are only ever written by
+	// the pool loop — vip gets three recorded requests, default none.
+	observeQuality(t, routeStatsKey("vip", alias, alias, 1), 1.0, 4000, 20, 8)
+	vipPool := routestats.PoolKey{Group: "vip", PublicModelAlias: alias}
+	vipRoute := routestats.RouteID{ChannelID: 1, KeyIndex: 0, UpstreamModel: alias}
+	cfg := routestats.GetRouteStatsSetting()
+	for range 3 {
+		routestats.RecordSelection(vipPool, vipRoute, map[routestats.RouteID]float64{vipRoute: 1.0}, cfg)
+	}
+
+	views, err = GetRouteUnitViewsByAlias(alias)
+	require.NoError(t, err)
+	byGroup = make(map[string]RouteUnitView, len(views))
+	for _, v := range views {
+		byGroup[v.Group] = v
+	}
+
+	for group, v := range byGroup {
+		assert.InDelta(t, 1.0, v.ExpectedShare, 0.0001,
+			"group %q holds the alias alone, so its route is entitled to all of it", group)
+		// W5.1's hand-recompute must survive the multi-group case.
+		assert.InDelta(t, v.BaseWeight*v.EwmaQuality*v.HealthMultiplier*v.ShareCorrection, v.FinalScore, 1e-9,
+			"group %q: final score must be the product of the five reported factors", group)
+	}
+
+	assert.InDelta(t, 1.0, byGroup["default"].EwmaQuality, 1e-9,
+		"the untouched group must stay neutral")
+	assert.InDelta(t, 0.875, byGroup["vip"].EwmaQuality, 0.01,
+		"the observed group must report its own quality, not the sibling group's")
+	assert.Greater(t, byGroup["default"].FinalScore, byGroup["vip"].FinalScore,
+		"a per-group breakdown must show the degraded pool scoring lower")
+	assert.Equal(t, 3, byGroup["vip"].ShareOpportunities,
+		"vip must report its own window history")
+	assert.Equal(t, 3, byGroup["vip"].ShareSelections)
+	assert.Zero(t, byGroup["default"].ShareOpportunities,
+		"default served nothing, so borrowing vip's window counters is a reporting bug")
+	assert.Zero(t, byGroup["default"].ShareSelections)
 }

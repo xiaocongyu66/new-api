@@ -249,13 +249,13 @@ type RouteUnitView struct {
 	// final_score ≈ base_weight * ewma_quality * health_multiplier * share_correction
 	// expected_share is static-weight ratio (operator's configured intent).
 	// RouteScore.ExpectedShare (not exposed here) is base-score share (correction's target).
-	BaseWeight        float64 `json:"base_weight"`          // routingBaseWeight(static_weight) as float
-	HealthMultiplier  float64 `json:"health_multiplier"`    // state machine multiplier (same as health_score, renamed for clarity)
-	ShareCorrection   float64 `json:"share_correction"`     // clamped share-deficit multiplier
-	ActualShare       float64 `json:"actual_share"`         // recent measured share (selections/opportunities)
-	FinalScore        float64 `json:"final_score"`          // product of all four factors
-	ShareOpportunities int    `json:"share_opportunities"`  // sample size behind actual_share
-	ShareSelections   int     `json:"share_selections"`     // selections within the window
+	BaseWeight         float64 `json:"base_weight"`         // routingBaseWeight(static_weight) as float
+	HealthMultiplier   float64 `json:"health_multiplier"`   // state machine multiplier (same as health_score, renamed for clarity)
+	ShareCorrection    float64 `json:"share_correction"`    // clamped share-deficit multiplier
+	ActualShare        float64 `json:"actual_share"`        // recent measured share (selections/opportunities)
+	FinalScore         float64 `json:"final_score"`         // product of all four factors
+	ShareOpportunities int     `json:"share_opportunities"` // sample size behind actual_share
+	ShareSelections    int     `json:"share_selections"`    // selections within the window
 }
 
 // RouteUnitAliasSummary aggregates route units by public model alias.
@@ -350,33 +350,29 @@ func GetRouteUnitViewsByAlias(alias string) ([]RouteUnitView, error) {
 		}
 		views = append(views, view)
 	}
-	// W5.1: populate the six-factor score breakdown via scoreCandidates. Build
-	// candidate slices per (group, alias) pool, matching how selection groups
-	// them. scoreCandidates calls routestats.Corrections which is a pure read
-	// (it acquires a read lock on the pool window but never calls
-	// RecordSelection), so this read path cannot move any counter.
-	viewsByRouteID := make(map[routestats.RouteID]*RouteUnitView, len(views))
+	// W5.1: populate the six-factor score breakdown via scoreCandidates. Views are
+	// grouped into their (group, alias) pools first, matching how selection groups
+	// them. scoreCandidates calls routestats.Corrections which is a pure read (it
+	// takes the pool window's lock but never calls RecordSelection), so this read
+	// path cannot move any counter.
+	//
+	// The per-route lookup must stay scoped to one pool: RouteID carries no group,
+	// so a channel serving the same alias in both `default` and `vip` produces two
+	// views with identical RouteIDs. A map shared across pools would let the second
+	// pool's scores overwrite the first pool's view and report one pool twice.
+	poolToViews := make(map[routestats.PoolKey][]*RouteUnitView)
 	for i := range views {
 		v := &views[i]
 		v.BaseWeight = float64(routingBaseWeight(v.StaticWeight))
 		v.HealthMultiplier = v.HealthScore
 		v.ShareCorrection = 1.0
 		v.FinalScore = v.BaseWeight * v.EwmaQuality * v.HealthMultiplier
-		viewsByRouteID[routestats.RouteID{
-			ChannelID:     v.ChannelId,
-			KeyIndex:       v.KeyIndex,
-			UpstreamModel: v.UpstreamModel,
-		}] = v
-	}
-	// Group views by their (group, alias) pool and score each pool.
-	poolToViews := make(map[routestats.PoolKey][]*RouteUnitView)
-	for i := range views {
-		v := &views[i]
 		pool := routestats.PoolKey{Group: v.Group, PublicModelAlias: v.PublicModelAlias}
 		poolToViews[pool] = append(poolToViews[pool], v)
 	}
 	for pool, poolViews := range poolToViews {
 		candidates := make([]routeCandidate, 0, len(poolViews))
+		byRouteID := make(map[routestats.RouteID]*RouteUnitView, len(poolViews))
 		for _, v := range poolViews {
 			candidates = append(candidates, routeCandidate{
 				channelId:     v.ChannelId,
@@ -384,19 +380,26 @@ func GetRouteUnitViewsByAlias(alias string) ([]RouteUnitView, error) {
 				upstreamModel: v.UpstreamModel,
 				staticWeight:  v.StaticWeight,
 			})
+			byRouteID[routestats.RouteID{
+				ChannelID:     v.ChannelId,
+				KeyIndex:      v.KeyIndex,
+				UpstreamModel: v.UpstreamModel,
+			}] = v
 		}
 		scores, _ := scoreCandidates(pool, candidates, alias)
 		for id, s := range scores {
-			if v, ok := viewsByRouteID[id]; ok {
-				v.BaseWeight = s.BaseWeight
-				v.EwmaQuality = s.Quality
-				v.HealthMultiplier = s.Health
-				v.ShareCorrection = s.Correction
-				v.ActualShare = s.ActualShare
-				v.FinalScore = s.Final
-				v.ShareOpportunities = s.Opportunities
-				v.ShareSelections = s.Selections
+			v, ok := byRouteID[id]
+			if !ok {
+				continue
 			}
+			v.BaseWeight = s.BaseWeight
+			v.EwmaQuality = s.Quality
+			v.HealthMultiplier = s.Health
+			v.ShareCorrection = s.Correction
+			v.ActualShare = s.ActualShare
+			v.FinalScore = s.Final
+			v.ShareOpportunities = s.Opportunities
+			v.ShareSelections = s.Selections
 		}
 	}
 	return views, nil

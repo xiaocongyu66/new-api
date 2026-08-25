@@ -216,28 +216,14 @@ func normalizeRouteStatsSetting(cfg *RouteStatsSetting) {
 	}
 }
 
-// RouteStatsConfigAccessor defines the interface for accessing route stats config.
-// This allows the model package to inject its own config accessor without
-// routestats importing model.
-type RouteStatsConfigAccessor interface {
-	GetRouteStatsSetting() *RouteStatsSetting
-}
-
-// configAccessor is the package-level accessor, set by the model package on init.
-var configAccessor atomic.Pointer[RouteStatsConfigAccessor]
-
-// SetConfigAccessor sets the config accessor. Should be called once during
-// application initialization by the model package.
-func SetConfigAccessor(accessor RouteStatsConfigAccessor) {
-	configAccessor.Store(&accessor)
-}
-
-// getConfig returns the current config, using the accessor if set.
+// getConfig returns the live config. Admin updates arrive through
+// operation_setting.UpdateRouteStatsSettingValue, which normalises the value and
+// swaps the whole struct via SetRouteStatsSetting, so every read here sees the
+// current setting without a restart. Option rows are replayed into that same path
+// on boot by loadOptionsFromDatabase, which is what makes the kill switch survive
+// a restart.
 func getConfig() *RouteStatsSetting {
-	if accessor := configAccessor.Load(); accessor != nil && *accessor != nil {
-		return (*accessor).GetRouteStatsSetting()
-	}
-	return GetRouteStatsSetting()
+	return routeStatsSetting.Load()
 }
 
 // Time constants for monotonic clock

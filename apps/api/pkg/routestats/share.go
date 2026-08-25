@@ -179,13 +179,17 @@ func RecordSelection(pool PoolKey, selected RouteID, targets map[RouteID]float64
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	// A shrunk window must drop history beyond the new capacity before appending,
-	// otherwise the ring would keep serving stale entries forever.
-	for w.size > 0 && w.size >= cfg.ShareWindowSize {
-		w.evictOldestLocked()
+	// The admin can resize the window at runtime, and both directions break the
+	// ring: shrinking leaves entries past the new capacity, growing appends at the
+	// tail while head is mid-slice, so the oldest entry is no longer at head and
+	// eviction stops being FIFO. Rebuild in logical order once, then the fill and
+	// overwrite paths below hold their invariant (head is only ever non-zero on a
+	// full ring).
+	if len(w.entries) != cfg.ShareWindowSize {
+		w.reorderLocked(cfg.ShareWindowSize)
 	}
-	if cfg.ShareWindowSize <= 0 {
-		return
+	if w.size >= cfg.ShareWindowSize {
+		w.evictOldestLocked()
 	}
 
 	entry := shareEntry{selected: selected, targets: snapshot}
@@ -208,6 +212,26 @@ func (w *poolWindow) evictOldestLocked() {
 	w.entries[w.head] = shareEntry{}
 	w.head = (w.head + 1) % len(w.entries)
 	w.size--
+}
+
+// reorderLocked rebuilds the ring in logical order for a new capacity, dropping
+// the oldest entries that no longer fit and unfolding their counters. After it
+// returns, head is 0 and entries holds size items oldest-first, so the caller's
+// append path fills towards capacity and the overwrite path stays FIFO.
+// Callers must hold w.mu.
+func (w *poolWindow) reorderLocked(capacity int) {
+	if capacity <= 0 {
+		return
+	}
+	for w.size > capacity {
+		w.evictOldestLocked()
+	}
+	ordered := make([]shareEntry, 0, capacity)
+	for i := range w.size {
+		ordered = append(ordered, w.entries[(w.head+i)%len(w.entries)])
+	}
+	w.entries = ordered
+	w.head = 0
 }
 
 // applyLocked folds one entry into the per-route counters, or unfolds it when

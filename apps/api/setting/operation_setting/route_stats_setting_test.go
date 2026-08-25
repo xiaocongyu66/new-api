@@ -24,18 +24,18 @@ func TestRouteStatsRoundTrip(t *testing.T) {
 		extract func(*routestats.RouteStatsSetting) any
 		want    any
 	}{
-		"RouteStatsEnabled":          {"false", func(s *routestats.RouteStatsSetting) any { return s.Enabled }, false},
-		"RouteStatsShareWindowSize":   {"300", func(s *routestats.RouteStatsSetting) any { return s.ShareWindowSize }, 300},
-		"RouteStatsShareCorrMin":      {"0.7", func(s *routestats.RouteStatsSetting) any { return s.ShareCorrMin }, 0.7},
-		"RouteStatsShareCorrMax":      {"2.5", func(s *routestats.RouteStatsSetting) any { return s.ShareCorrMax }, 2.5},
-		"RouteStatsMinSamples":        {"12", func(s *routestats.RouteStatsSetting) any { return s.MinSamples }, 12},
-		"RouteStatsTTLSeconds":        {"3600", func(s *routestats.RouteStatsSetting) any { return s.TTLSeconds }, 3600},
-		"RouteStatsTTFTTargetMs":      {"1500", func(s *routestats.RouteStatsSetting) any { return s.TTFTTargetMs }, 1500},
-		"RouteStatsTPSTarget":         {"40", func(s *routestats.RouteStatsSetting) any { return s.TPSTarget }, 40},
-		"RouteStatsQualityFloor":      {"0.6", func(s *routestats.RouteStatsSetting) any { return s.QualityFloor }, 0.6},
-		"RouteStatsQualityCeil":       {"2.0", func(s *routestats.RouteStatsSetting) any { return s.QualityCeil }, 2.0},
-		"RouteStatsComponentFloor":    {"0.3", func(s *routestats.RouteStatsSetting) any { return s.ComponentFloor }, 0.3},
-		"RouteStatsComponentCeil":     {"1.8", func(s *routestats.RouteStatsSetting) any { return s.ComponentCeil }, 1.8},
+		"RouteStatsEnabled":         {"false", func(s *routestats.RouteStatsSetting) any { return s.Enabled }, false},
+		"RouteStatsShareWindowSize": {"300", func(s *routestats.RouteStatsSetting) any { return s.ShareWindowSize }, 300},
+		"RouteStatsShareCorrMin":    {"0.7", func(s *routestats.RouteStatsSetting) any { return s.ShareCorrMin }, 0.7},
+		"RouteStatsShareCorrMax":    {"2.5", func(s *routestats.RouteStatsSetting) any { return s.ShareCorrMax }, 2.5},
+		"RouteStatsMinSamples":      {"12", func(s *routestats.RouteStatsSetting) any { return s.MinSamples }, 12},
+		"RouteStatsTTLSeconds":      {"3600", func(s *routestats.RouteStatsSetting) any { return s.TTLSeconds }, 3600},
+		"RouteStatsTTFTTargetMs":    {"1500", func(s *routestats.RouteStatsSetting) any { return s.TTFTTargetMs }, 1500},
+		"RouteStatsTPSTarget":       {"40", func(s *routestats.RouteStatsSetting) any { return s.TPSTarget }, 40},
+		"RouteStatsQualityFloor":    {"0.6", func(s *routestats.RouteStatsSetting) any { return s.QualityFloor }, 0.6},
+		"RouteStatsQualityCeil":     {"2.0", func(s *routestats.RouteStatsSetting) any { return s.QualityCeil }, 2.0},
+		"RouteStatsComponentFloor":  {"0.3", func(s *routestats.RouteStatsSetting) any { return s.ComponentFloor }, 0.3},
+		"RouteStatsComponentCeil":   {"1.8", func(s *routestats.RouteStatsSetting) any { return s.ComponentCeil }, 1.8},
 	}
 
 	for key, tc := range roundTrips {
@@ -63,9 +63,9 @@ func TestRouteStatsShareWindowSizeZeroAccepted(t *testing.T) {
 // TestRouteStatsInvalidValues is table-driven, one row per bound.
 func TestRouteStatsInvalidValues(t *testing.T) {
 	invalids := []struct {
-		key    string
-		value  string
-		why    string
+		key   string
+		value string
+		why   string
 	}{
 		// RouteStatsEnabled
 		{"RouteStatsEnabled", "yes", "not true/false"},

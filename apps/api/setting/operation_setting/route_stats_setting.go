@@ -10,18 +10,18 @@ import (
 // RouteStatsSettingOptionKeys are the option keys exposed to the admin panel.
 // These map directly to the fields in routestats.RouteStatsSetting.
 var RouteStatsSettingOptionKeys = map[string]struct{}{
-	"RouteStatsEnabled":            {},
-	"RouteStatsShareWindowSize":    {},
-	"RouteStatsShareCorrMin":       {},
-	"RouteStatsShareCorrMax":       {},
-	"RouteStatsMinSamples":         {},
-	"RouteStatsTTLSeconds":         {},
-	"RouteStatsTTFTTargetMs":       {},
-	"RouteStatsTPSTarget":          {},
-	"RouteStatsQualityFloor":       {},
-	"RouteStatsQualityCeil":        {},
-	"RouteStatsComponentFloor":     {},
-	"RouteStatsComponentCeil":      {},
+	"RouteStatsEnabled":         {},
+	"RouteStatsShareWindowSize": {},
+	"RouteStatsShareCorrMin":    {},
+	"RouteStatsShareCorrMax":    {},
+	"RouteStatsMinSamples":      {},
+	"RouteStatsTTLSeconds":      {},
+	"RouteStatsTTFTTargetMs":    {},
+	"RouteStatsTPSTarget":       {},
+	"RouteStatsQualityFloor":    {},
+	"RouteStatsQualityCeil":     {},
+	"RouteStatsComponentFloor":  {},
+	"RouteStatsComponentCeil":   {},
 }
 
 // IsRouteStatsOptionKey reports whether key is a route stats option key.
