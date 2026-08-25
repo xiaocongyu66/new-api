@@ -89,8 +89,7 @@ jobs:
           kind: Deployment
           metadata: {name: stress-mock}
           spec:
-            replicas: 1
-            selector: {matchLabels: {app: stress-mock}}
+            replicas: 3
             template:
               metadata: {labels: {app: stress-mock}}
               spec:

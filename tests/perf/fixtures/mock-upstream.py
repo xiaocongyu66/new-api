@@ -8,6 +8,10 @@ import random
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+class StressHTTPServer(ThreadingHTTPServer):
+    daemon_threads = True
+    request_queue_size = 128
+
 PORT = int(os.getenv("PORT", "8099"))
 FAILURE_RATIO = float(os.getenv("FAILURE_RATIO", "0.3"))
 RECOVERY_FAILURES = int(os.getenv("RECOVERY_FAILURES", "10"))
@@ -87,4 +91,4 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+    StressHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
