@@ -408,5 +408,3 @@ func authSessionErrorCode(err error) (int, string) {
 func AuthSessionErrorCode(err error) (int, string) {
 	return authSessionErrorCode(err)
 }
-
-

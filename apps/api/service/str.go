@@ -49,8 +49,6 @@ func SundaySearch(text string, pattern string) bool {
 	return false // 如果没有找到匹配，返回-1
 }
 
-
-
 func InitAc(dict []string) *goahocorasick.Machine {
 	return buildMachine(dict, false)
 }

@@ -116,8 +116,6 @@ func GetImageFromUrl(url string) (mimeType string, data string, err error) {
 	return mimeType, data, nil
 }
 
-
-
 func getImageConfig(reader io.Reader) (image.Config, string, error) {
 	// Read all data so we can retry with different decoders
 	data, readErr := io.ReadAll(reader)

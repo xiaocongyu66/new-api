@@ -57,8 +57,8 @@ func TestGetProxyConfigMasksSecrets(t *testing.T) {
 	GetProxyConfig(ctx)
 
 	var resp struct {
-		Success bool              `json:"success"`
-		Data    json.RawMessage   `json:"data"`
+		Success bool            `json:"success"`
+		Data    json.RawMessage `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
 

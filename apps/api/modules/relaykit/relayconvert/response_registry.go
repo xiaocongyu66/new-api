@@ -290,8 +290,6 @@ func NewResponseStreamState(from types.RelayFormat, target types.RelayFormat, op
 	return newResponseStreamStateFromSpec(from, target, options, spec)
 }
 
-
-
 func ConvertStreamResponseChunk(c context.Context, info convmeta.Meta, state *ResponseStreamState, response any) ([]ResponseResult, error) {
 	if state == nil {
 		return nil, errors.New("response stream state is required")

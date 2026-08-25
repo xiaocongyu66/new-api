@@ -66,8 +66,6 @@ func GetPricingSyncData(base map[string]any) map[string]any {
 	return lo.Assign(base, extra)
 }
 
-
-
 func smokeTestExpr(exprStr string) error {
 	vectors := []billingexpr.TokenParams{
 		{P: 0, C: 0, Len: 0},

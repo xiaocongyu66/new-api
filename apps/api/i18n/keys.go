@@ -5,28 +5,28 @@ package i18n
 
 // Common error messages
 const (
-	MsgInvalidParams     = "common.invalid_params"
-	MsgDatabaseError     = "common.database_error"
-	MsgRetryLater        = "common.retry_later"
-	MsgGenerateFailed    = "common.generate_failed"
-	MsgNotFound          = "common.not_found"
-	MsgUnauthorized      = "common.unauthorized"
-	MsgForbidden         = "common.forbidden"
-	MsgInvalidId         = "common.invalid_id"
-	MsgIdEmpty           = "common.id_empty"
-	MsgFeatureDisabled   = "common.feature_disabled"
+	MsgInvalidParams          = "common.invalid_params"
+	MsgDatabaseError          = "common.database_error"
+	MsgRetryLater             = "common.retry_later"
+	MsgGenerateFailed         = "common.generate_failed"
+	MsgNotFound               = "common.not_found"
+	MsgUnauthorized           = "common.unauthorized"
+	MsgForbidden              = "common.forbidden"
+	MsgInvalidId              = "common.invalid_id"
+	MsgIdEmpty                = "common.id_empty"
+	MsgFeatureDisabled        = "common.feature_disabled"
 	MsgSensitiveWordsDetected = "common.sensitive_words_detected"
-	MsgOperationSuccess  = "common.operation_success"
-	MsgOperationFailed   = "common.operation_failed"
-	MsgUpdateSuccess     = "common.update_success"
-	MsgUpdateFailed      = "common.update_failed"
-	MsgCreateSuccess     = "common.create_success"
-	MsgCreateFailed      = "common.create_failed"
-	MsgDeleteSuccess     = "common.delete_success"
-	MsgDeleteFailed      = "common.delete_failed"
-	MsgAlreadyExists     = "common.already_exists"
-	MsgNameCannotBeEmpty = "common.name_cannot_be_empty"
-	MsgBatchTooMany      = "common.batch_too_many"
+	MsgOperationSuccess       = "common.operation_success"
+	MsgOperationFailed        = "common.operation_failed"
+	MsgUpdateSuccess          = "common.update_success"
+	MsgUpdateFailed           = "common.update_failed"
+	MsgCreateSuccess          = "common.create_success"
+	MsgCreateFailed           = "common.create_failed"
+	MsgDeleteSuccess          = "common.delete_success"
+	MsgDeleteFailed           = "common.delete_failed"
+	MsgAlreadyExists          = "common.already_exists"
+	MsgNameCannotBeEmpty      = "common.name_cannot_be_empty"
+	MsgBatchTooMany           = "common.batch_too_many"
 )
 
 // Auth middleware messages
@@ -258,7 +258,6 @@ const (
 	MsgSettingUrlMustHttp      = "setting.url_must_http"
 	MsgSettingSaved            = "setting.saved"
 )
-
 
 // Performance related messages
 const (

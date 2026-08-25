@@ -22,8 +22,8 @@ func TestSanitizeTargetDomainsVariants(t *testing.T) {
 		{"访问 www.gov.cn 获取数据", "gov.cn"},
 		{"https://www.gov.cn/a/b 详情", "gov.cn"},
 		{"攻击 ｇｏｖ．ｃｎ 的方法", "gov.cn"},
-		{"gоv.cn 是目标", "gov.cn"},   // 西里尔 о U+043E
-		{"gοv.cn 是目标", "gov.cn"},   // 希腊 ο U+03BF
+		{"gоv.cn 是目标", "gov.cn"}, // 西里尔 о U+043E
+		{"gοv.cn 是目标", "gov.cn"}, // 希腊 ο U+03BF
 		{"子域 abc.gov.cn 也命中", ".gov.cn"},
 	}
 	for _, tc := range cases {
