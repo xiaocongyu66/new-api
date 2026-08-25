@@ -90,6 +90,7 @@ jobs:
           metadata: {name: stress-mock}
           spec:
             replicas: 3
+            selector: {matchLabels: {app: stress-mock}}
             template:
               metadata: {labels: {app: stress-mock}}
               spec:
