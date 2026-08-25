@@ -450,10 +450,26 @@ func (channel *Channel) GetNextEnabledKeyForIndex(keyIndex int) (string, int, *t
 }
 
 // SelectedRouteFromChannel constructs a SelectedRoute from a specific channel
-// for locked-channel replay paths (channel test, task locked replay).
+// for paths that serve real traffic without a weighted-random draw: channel
+// affinity, specific-channel requests and locked replay. Their requests are
+// folded into the pool's share window, because the correction is blind to skew
+// it cannot see.
+//
 // It picks one enabled key via GetNextEnabledKey() and derives Group from
 // the channel's first enabled group (via ExpandChannelModelRoutes) or empty string.
 func SelectedRouteFromChannel(channel *Channel, alias string) (*SelectedRoute, error) {
+	return selectedRouteFromChannel(channel, alias, true)
+}
+
+// SelectedRouteForProbe is the same construction for administrative probes
+// (channel test, key probe). These requests are not user traffic: counting them
+// would let a single "test all channels" click move the share window and make the
+// correction chase load that no user generated.
+func SelectedRouteForProbe(channel *Channel, alias string) (*SelectedRoute, error) {
+	return selectedRouteFromChannel(channel, alias, false)
+}
+
+func selectedRouteFromChannel(channel *Channel, alias string, recordShare bool) (*SelectedRoute, error) {
 	if channel == nil {
 		return nil, errors.New("channel is nil")
 	}
@@ -511,11 +527,17 @@ func SelectedRouteFromChannel(channel *Channel, alias string) (*SelectedRoute, e
 		// The recorded entitlement is the pool's full candidate set as scored right
 		// now: affinity did not run a competition, so the counterfactual share is
 		// what the other routes would have been entitled to.
-		recordBypassSelection(group, alias, routestats.RouteID{
-			ChannelID:     channel.Id,
-			KeyIndex:      keyIndex,
-			UpstreamModel: upstreamModel,
-		})
+		//
+		// Probes are excluded: an administrator testing every channel would
+		// otherwise inject one entry per channel into the window and the correction
+		// would spend the next window compensating for traffic no user sent.
+		if recordShare {
+			recordBypassSelection(group, alias, routestats.RouteID{
+				ChannelID:     channel.Id,
+				KeyIndex:      keyIndex,
+				UpstreamModel: upstreamModel,
+			})
+		}
 	}
 
 	return &SelectedRoute{

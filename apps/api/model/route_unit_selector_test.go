@@ -561,3 +561,39 @@ func TestSelectedRouteFromChannelAttributesRealRoute(t *testing.T) {
 	})
 	assert.Same(t, want.State(), route.StatsHandle.State())
 }
+
+// TestSelectedRouteForProbeKeepsShareWindowClean draws the line between traffic
+// and administration. Affinity and locked replay serve real requests, so they
+// belong in the share window; a channel test or key probe is the operator poking
+// the upstream, and counting it would let one "test all channels" click move the
+// window and have the correction chase load no user generated. Both variants must
+// still attribute EWMA samples, because a probe's latency and failures are real
+// signal about the route.
+func TestSelectedRouteForProbeKeepsShareWindowClean(t *testing.T) {
+	const group, alias = "probe-group", "probe-alias"
+
+	withRouteStats(t, nil)
+	ch := testRouteChannel(7004, 10, 5, false, []string{"sk-1"}, nil)
+	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, []ChannelModelRoute{
+		testRoute(1, 7004, 0, group, alias, "upstream-probe", 100),
+	})
+	defer cleanup()
+
+	pool := routestats.PoolKey{Group: group, PublicModelAlias: alias}
+	id := routestats.RouteID{ChannelID: 7004, KeyIndex: 0, UpstreamModel: "upstream-probe"}
+	targets := map[routestats.RouteID]float64{id: 1.0}
+	cfg := routestats.GetRouteStatsSetting()
+
+	probe, err := SelectedRouteForProbe(ch, alias)
+	require.NoError(t, err)
+	require.NotNil(t, probe.StatsHandle, "a probe still produces EWMA signal for the route")
+	assert.Zero(t, routestats.Corrections(pool, targets, cfg)[id].Opportunities,
+		"a probe must not appear in the share window")
+
+	served, err := SelectedRouteFromChannel(ch, alias)
+	require.NoError(t, err)
+	require.NotNil(t, served.StatsHandle)
+	assert.Equal(t, 1, routestats.Corrections(pool, targets, cfg)[id].Opportunities,
+		"real traffic on the same path must be recorded")
+	assert.Equal(t, 1, routestats.Corrections(pool, targets, cfg)[id].Selections)
+}
