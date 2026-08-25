@@ -68,10 +68,12 @@ jobs:
 
       - name: Run k6
         id: k6
+        env:
+          INPUT_API_KEY: ${{ github.event.inputs.api_key }}
         run: |
           k6 run \
             -e TARGET_URL="${{ github.event.inputs.target_url }}" \
-            -e API_KEY="${{ github.event.inputs.api_key }}" \
+            -e API_KEY="$INPUT_API_KEY" \
             -e MODEL="${{ github.event.inputs.model }}" \
             -e VUS="${{ github.event.inputs.vus }}" \
             -e DURATION="${{ github.event.inputs.duration }}" \

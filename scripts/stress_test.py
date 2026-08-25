@@ -180,7 +180,7 @@ async def one_non_stream(session: aiohttp.ClientSession, args: argparse.Namespac
                 metrics.output_chars += len(text)
             else:
                 metrics.sample_error(f"[{rid}] {resp.status}: {text[:150]}")
-            metrics.record_request(stream=False, status=resp.status, latency=latency, ttft=latency, request_id=rid)
+            metrics.record_request(stream=False, status=resp.status, latency=latency, ttft=latency if resp.status == 200 else None, request_id=rid)
     except Exception as exc:
         latency = time.perf_counter() - start
         metrics.record_status(599)
@@ -192,7 +192,6 @@ async def one_non_stream(session: aiohttp.ClientSession, args: argparse.Namespac
 async def one_stream(session: aiohttp.ClientSession, args: argparse.Namespace, metrics: Metrics, prompt: str, max_tokens: int) -> None:
     start = time.perf_counter()
     first = None
-    last = None
     try:
         async with session.post(
             f"{args.target_url.rstrip('/')}/chat/completions",
@@ -200,27 +199,46 @@ async def one_stream(session: aiohttp.ClientSession, args: argparse.Namespace, m
             json={"model": args.model, "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens, "stream": True},
             timeout=aiohttp.ClientTimeout(total=args.request_timeout),
         ) as resp:
-            metrics.record_status(resp.status)
             rid = resp.headers.get("X-Oneapi-Request-Id", "")
+            # Record the terminal status exactly once, after the body has been
+            # fully read or has failed — never on header arrival.
+            terminal_status = resp.status
+            buffer = ""
+
+            def feed(buf: str, now: float) -> tuple[str, int, int]:
+                """Consume complete SSE frames; return (remainder, chunks, chars)."""
+                chunks = chars = 0
+                while "\n\n" in buf:
+                    frame, buf = buf.split("\n\n", 1)
+                    if not frame.startswith("data:") or "[DONE]" in frame:
+                        continue
+                    chunks += 1
+                    chars += len(frame) - 5  # payload only, minus "data:"
+                    if last_holder[0] is not None:
+                        metrics.itls.append(now - last_holder[0])
+                    last_holder[0] = now
+                return buf, chunks, chars
+
+            last_holder = [None]
             async for raw in resp.content:
                 now = time.perf_counter()
                 if first is None:
                     first = now
                     metrics.ttfts.append(first - start)
-                if last is not None:
-                    metrics.itls.append(now - last)
-                last = now
-                line = raw.decode(errors="ignore")
-                metrics.output_chars += len(line)
-                if line.startswith("data:") and "[DONE]" not in line:
-                    metrics.chunks += 1
+                buffer += raw.decode(errors="ignore")
+                buffer, chunks, chars = feed(buffer, now)
+                metrics.chunks += chunks
+                metrics.output_chars += chars
             latency = time.perf_counter() - start
             metrics.latencies.append(latency)
-            if resp.status != 200:
-                metrics.sample_error(f"[{rid}] stream status {resp.status}")
-            metrics.record_request(stream=True, status=resp.status, latency=latency, ttft=(first - start) if first is not None else None, request_id=rid)
+            if terminal_status != 200:
+                metrics.sample_error(f"[{rid}] stream status {terminal_status}")
+            ttft = (first - start) if first is not None else None
+            metrics.record_status(terminal_status)
+            metrics.record_request(stream=True, status=terminal_status, latency=latency, ttft=ttft, request_id=rid)
     except Exception as exc:
         latency = time.perf_counter() - start
+        # Headers may have been 200 but the stream aborted: count ONE failure.
         metrics.record_status(599)
         metrics.latencies.append(latency)
         metrics.record_request(stream=True, status=599, latency=latency, ttft=None, request_id="")

@@ -26,7 +26,7 @@ import { makeHeaders, chatPayload } from '../lib/openai.js';
 
 const TARGET_URL = __ENV.TARGET_URL || 'http://localhost:3000';
 const API_KEY = __ENV.API_KEY || '';
-const BAD_KEY_MODEL = __ENV.BAD_KEY_MODEL || 'mock-bad';
+const BAD_KEY_MODEL = __ENV.BAD_KEY_MODEL || __ENV.MODEL || 'mock-bad';
 const VUS = Number(__ENV.VUS) || 20;
 const DURATION = __ENV.DURATION || '60s';
 

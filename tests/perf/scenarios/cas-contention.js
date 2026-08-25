@@ -44,11 +44,12 @@ export default function () {
 
   casLatency.add(latency);
 
-  const isAccepted = [200, 409, 503].includes(res.status);
-  check(res, { 'status is accepted (200/409/503)': () => isAccepted });
+  const isAccepted = [200, 409, 500, 503].includes(res.status);
+  check(res, { 'status is accepted (200/409/500/503)': () => isAccepted });
 
-  // 409 Conflict or 503 with retry-after indicates CAS contention
-  if (res.status === 409 || (res.status === 503 && res.headers['retry-after'])) {
+  // Retryable upstream faults (500 from the mock) are what force concurrent
+  // CAS retries inside the gateway; count them alongside explicit conflicts.
+  if (res.status !== 200) {
     casConflicts.add(1, {
       status: String(res.status),
       retry_after: res.headers['retry-after'] || 'none',

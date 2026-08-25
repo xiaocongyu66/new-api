@@ -62,13 +62,13 @@ python run_state_matrix.py \
 catastrophic failure. The upstream mock gradually increases latency and returns
 503/429 as pool utilization approaches soft limits.
 
-**Key Metrics**:
+**Key Metrics** (k6 observability; Python assertions read DB snapshots):
 - `derating_events` counter (tags: status, latency_bucket)
 - `derating_latency` trend
 - Error rate threshold: < 15%
 - p99 latency threshold: < 10s
 
-**Env Vars**: `DERATING_MODEL`, `VUS` (default 150), `DURATION` (default 180s), `RAMP_DURATION` (default 60s)
+**Env Vars**: `DERATING_MODEL`, `VUS` (default 50), `DURATION` (default 120s)
 
 ---
 
@@ -81,9 +81,9 @@ trigger compare-and-swap (CAS) contention, and the system handles retries correc
 **Key Metrics**:
 - `cas_conflicts` counter (tags: status, retry_after)
 - `cas_latency` trend
-- Error rate threshold: < 10%
+- Error rate budget (k6): < 60% — injected upstream failures dominate; the CAS contract is asserted from DB snapshots
 
-**Env Vars**: `CAS_MODEL`, `VUS` (default 100), `DURATION` (default 120s)
+**Env Vars**: `CAS_MODEL`/`MODEL`, `VUS` (workflow: 50), `DURATION` (workflow: 120s)
 
 ---
 
@@ -97,13 +97,14 @@ route around it.
 **Key Metrics**:
 - `bad_key_responses` counter (tags: status, request_id, type)
 - Accepted status codes: 200, 401, 500
-- Unexpected status threshold: < 10%
+- k6 error budget (<10%) bounds only statuses OUTSIDE {200, 401, 500}
 
-**Env Vars**: `BAD_KEY_MODEL`, `VUS` (default 20), `DURATION` (default 60s)
+**Env Vars**: `BAD_KEY_MODEL`/`MODEL`, `VUS` (workflow: 20), `DURATION` (workflow: 120s)
 
 **Assertion Checks**:
-- `bad-key-cascade-evidence`: channel marked disabled in logs
-- `health-rows`: health CSV contains rows
+- `failed-key-disabled`: bad key auto-disabled in channel_info (`multi_key_status_list.{index}=3`)
+- `failed-key-health-recorded`: health row for that key reached calm/dormant
+- `sibling-key-survives`: sibling keys stay healthy
 
 ---
 
@@ -118,7 +119,7 @@ recovery and actual observed recovery curve.
 - `recovery_latency` trend
 - Final error rate threshold: < 15%
 
-**Env Vars**: `RECOVERY_MODEL`, `VUS` (default 50), `DURATION` (default 300s), `FAILURE_RATIO_START` (0.50), `FAILURE_RATIO_END` (0.05)
+**Env Vars**: `RECOVERY_MODEL`/`MODEL`, `VUS` (workflow: 30), `DURATION` (workflow: 120s)
 
 ---
 
@@ -129,13 +130,12 @@ Uses a flaky model that simulates intermittent upstream failures.
 
 **Key Metrics**:
 - `pool_pressure_errors` counter (tags: status, is_retryable)
-- Error rate threshold: < 20% (higher budget under pressure)
+- Error rate budget (k6): < 60% — injected failures plus retry-exhaustion tail; pool survival is asserted from DB snapshots
 
-**Env Vars**: `FLAKY_MODEL`, `VUS` (default 200), `DURATION` (default 120s), `RAMP_DURATION` (default 60s)
+**Env Vars**: `FLAKY_MODEL`/`MODEL`, `VUS` (workflow: 50), `DURATION` (workflow: 120s)
 
 **Assertion Checks**:
-- `pool-pressure-evidence`: "emergency recover" or "pool pressure" in worker logs
-- `health-rows`: health CSV contains rows
+- `pool-not-empty`: health CSV contains rows (isolation evidence lives in the audit data; see #436)
 
 ---
 
@@ -150,7 +150,7 @@ that the state machine correctly tracks channel health without flapping.
 - `gray_failure_latency` trend
 - Availability threshold: success rate ≥ 1 - FAILURE_RATIO - 0.05
 
-**Env Vars**: `FLAKY_MODEL`, `VUS` (default 50), `DURATION` (default 120s), `FAILURE_RATIO` (default 0.30)
+**Env Vars**: `FLAKY_MODEL`/`MODEL`, `VUS` (workflow: 50), `DURATION` (workflow: 120s), `FAILURE_RATIO` (0.30)
 
 **Assertion Checks**:
 - `gray-failure-states`: observed states include expected degraded/healthy
@@ -171,10 +171,10 @@ correlating `channel_id` from response headers or logs.
 - Error rate threshold: < 5%
 - At least 3 distinct channels observed
 
-**Env Vars**: `MODEL`, `VUS` (default 100), `DURATION` (default 120s)
+**Env Vars**: `MODEL`, `VUS` (workflow: 20), `DURATION` (workflow: 180s)
 
 **Assertion Checks**:
-- `weight-distribution-ratio`: observed ratios within 15% of configured
+- `weight-ratio`: observed shares within 10 percentage points of configured weights
 - `weight-distribution-channels`: ≥ 3 distinct channels
 
 ---
@@ -190,13 +190,12 @@ error → `unhealthy`/`disabled`.
 - `timed_out_requests` counter (k6 transport timeouts)
 - `upstream_http_errors` counter (4xx/5xx before timeout)
 - `completed_latency` trend (excludes timeouts)
-- Upstream error rate threshold: < 10%
+- No HTTP error budget: client timeouts ARE the scenario; classification asserted from persisted error codes
 
-**Env Vars**: `SLOW_MODEL`, `VUS` (default 30), `DURATION` (default 60s), `TIMEOUT` (default 2s)
+**Env Vars**: `SLOW_MODEL`/`MODEL`, `VUS` (workflow: 30), `DURATION` (workflow: 120s), `TIMEOUT` (CI passes 2s)
 
 **Assertion Checks**:
-- `timeout-classification-local`: local_failure_count > 0 (transport timeouts recorded)
-- `timeout-classification-upstream`: upstream HTTP errors tracked separately
+- `local-failures` / `upstream-failures` / `independent-counters`: local vs upstream sources distinguished via persisted `last_error_code`
 - `health-rows`: health CSV contains rows
 
 ## State Reset & Topology Preconditions
@@ -220,7 +219,7 @@ Before running the matrix, you MUST prepare:
 
 3. **Mock Upstream Deployment**
    - `tests/perf/fixtures/mock-upstream.py` running with appropriate `FAILURE_MODE`
-   - Or k8s deployment from `tests/perf/fixtures/stress-mock.yaml`
+   - K8s: the workflow inlines Deployment+Service from the ConfigMap (no standalone yaml file)
 
 4. **Worker Logs & Health CSV Access**
    - Worker process writing structured logs (for `derive_distribution`)
