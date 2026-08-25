@@ -38,11 +38,23 @@ export interface RouteUnitView {
   enabled: boolean
   expected_share: number
   health_score: number
+  ewma_quality: number
+  success_ewma: number
+  ttft_ewma_ms: number
+  tps_ewma: number
+  sample_count: number
+  // W5.1: six-factor score breakdown
+  base_weight: number
+  health_multiplier: number
+  share_correction: number
+  actual_share: number
+  final_score: number
+  share_opportunities: number
+  share_selections: number
 }
 
 export interface GetRouteUnitsResponse {
   items: RouteUnitView[]
-  total_weight: number
 }
 
 export interface UpdateRouteUnitRequest {

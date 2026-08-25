@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -27,7 +27,6 @@ import {
   TableRow,
   TableHead,
   TableCell,
-  TableCaption,
 } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
@@ -47,11 +46,9 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
   const [aliases, setAliases] = useState<RouteUnitAliasSummary[]>([])
   const [selectedAlias, setSelectedAlias] = useState<string>('')
   const [routeUnits, setRouteUnits] = useState<RouteUnitView[]>([])
-  const [totalWeight, setTotalWeight] = useState(0)
   const [loadingAliases, setLoadingAliases] = useState(true)
   const [loadingUnits, setLoadingUnits] = useState(false)
   const [savingIds, setSavingIds] = useState<Set<number>>(new Set())
-
   // Load aliases on mount
   useEffect(() => {
     const loadAliases = async () => {
@@ -75,7 +72,6 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
   useEffect(() => {
     if (!selectedAlias) {
       setRouteUnits([])
-      setTotalWeight(0)
       return
     }
 
@@ -86,7 +82,6 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
         const data = await getRouteUnits(selectedAlias)
         if (!cancelled) {
           setRouteUnits(data.items)
-          setTotalWeight(data.total_weight)
         }
       } catch (error) {
         if (!cancelled) {
@@ -121,7 +116,6 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
     setRouteUnits(prev =>
       prev.map(u => (u.id === id ? { ...u, static_weight: newWeight } : u))
     )
-    setTotalWeight(prev => prev - originalWeight + newWeight)
 
     // Mark as saving
     setSavingIds(prev => new Set(prev).add(id))
@@ -136,11 +130,6 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
         setRouteUnits(prev =>
           prev.map(u => (u.id === id ? { ...u, static_weight: originalWeight } : u))
         )
-        // Recalc totalWeight from rolled-back state
-        setTotalWeight(() => {
-          const rolledBack = routeUnits.map(u => (u.id === id ? { ...u, static_weight: originalWeight } : u))
-          return rolledBack.reduce((sum, u) => sum + u.static_weight, 0)
-        })
         toast.error(t('Failed to update weight'))
         console.error(error)
       } finally {
@@ -190,13 +179,6 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
   }, [])
 
   const isSaving = (id: number) => savingIds.has(id)
-
-  const expectedShare = useMemo(() => {
-    return (weight: number) => {
-      if (totalWeight === 0) return '0.00'
-      return ((weight / totalWeight) * 100).toFixed(2)
-    }
-  }, [totalWeight])
 
   const channelStatusLabel = (status: number) => {
     switch (status) {
@@ -270,10 +252,6 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
             {/* Route Units Table */}
             <div className='overflow-x-auto'>
               <Table>
-                <TableCaption className='text-left text-sm text-muted-foreground'>
-                  {t('Route units for')} <span className='font-mono'>{selectedAlias}</span>
-                  {' '}({t('Total weight')}: {totalWeight})
-                </TableCaption>
                 <TableHeader>
                   <TableRow>
                     <TableHead className='w-[40px]'>{t('#')}</TableHead>
@@ -284,14 +262,21 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                     <TableHead className='w-[100px]'>{t('Weight')}</TableHead>
                     <TableHead className='w-[120px]'>{t('Expected Share %')}</TableHead>
                     <TableHead className='w-[100px]'>{t('Enabled')}</TableHead>
-                    <TableHead className='w-[100px]'>{t('Health Score')}</TableHead>
+                    <TableHead className='w-[80px]'>{t('Health Score')}</TableHead>
+                    <TableHead className='w-[80px]'>{t('Base Wt')}</TableHead>
+                    <TableHead className='w-[80px]'>{t('Quality')}</TableHead>
+                    <TableHead className='w-[80px]'>{t('Health Mult')}</TableHead>
+                    <TableHead className='w-[80px]'>{t('Share Correction')}</TableHead>
+                    <TableHead className='w-[80px]'>{t('Actual Share %')}</TableHead>
+                    <TableHead className='w-[80px]'>{t('Final Score')}</TableHead>
+                    <TableHead className='w-[100px]'>{t('Samples')}</TableHead>
                     <TableHead className='w-[80px]'>{t('Status')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loadingUnits ? (
                     <TableRow>
-                      <TableCell colSpan={10} className='text-center py-8'>
+                      <TableCell colSpan={17} className='text-center py-8'>
                         <div className='flex items-center justify-center gap-2'>
                           <Loader2 className='h-5 w-5 animate-spin text-muted-foreground' />
                           <span>{t('Loading route units...')}</span>
@@ -300,7 +285,7 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                     </TableRow>
                   ) : routeUnits.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10} className='text-center py-8 text-muted-foreground'>
+                      <TableCell colSpan={17} className='text-center py-8 text-muted-foreground'>
                         {t('No route units for this alias')}
                       </TableCell>
                     </TableRow>
@@ -327,7 +312,7 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                           />
                         </TableCell>
                         <TableCell className='font-mono text-sm text-muted-foreground'>
-                          {expectedShare(unit.static_weight)}%
+                          {(unit.expected_share * 100).toFixed(1)}%
                         </TableCell>
                         <TableCell>
                           <Switch
@@ -339,6 +324,29 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                         </TableCell>
                         <TableCell className='font-mono text-sm'>
                           {unit.health_score.toFixed(2)}
+                        </TableCell>
+                        <TableCell className='font-mono text-sm'>
+                          {unit.base_weight.toFixed(2)}
+                        </TableCell>
+                        <TableCell className='font-mono text-sm'>
+                          {unit.ewma_quality.toFixed(2)}
+                        </TableCell>
+                        <TableCell className='font-mono text-sm'>
+                          {unit.health_multiplier.toFixed(2)}
+                        </TableCell>
+                        <TableCell className='font-mono text-sm'>
+                          {unit.share_correction.toFixed(2)}
+                        </TableCell>
+                        <TableCell className='font-mono text-sm'>
+                          {unit.share_opportunities > 0 ? (unit.actual_share * 100).toFixed(1) + '%' : '—'}
+                        </TableCell>
+                        <TableCell className='font-mono text-sm'>
+                          {unit.final_score.toFixed(2)}
+                        </TableCell>
+                        <TableCell className='font-mono text-xs text-muted-foreground'>
+                          {unit.share_opportunities > 0
+                            ? `${unit.share_selections}/${unit.share_opportunities}`
+                            : '—'}
                         </TableCell>
                         <TableCell>
                           <span className={channelStatusClass(unit.channel_status)}>

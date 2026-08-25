@@ -14,15 +14,15 @@ type RouteStatsSetting struct {
 	Enabled bool `json:"enabled"`
 
 	// EWMA parameters
-	AlphaMin      float64 `json:"alpha_min"`       // Minimum EWMA alpha, default 0.05
-	AlphaSuccess  float64 `json:"alpha_success"`   // EWMA alpha for success rate, default 0.10
-	Tau           float64 `json:"tau"`             // Time constant for alpha_eff (seconds), default 60
-	TauStale      float64 `json:"tau_stale"`       // Staleness regression time constant (seconds), default 600
+	AlphaMin     float64 `json:"alpha_min"`     // Minimum EWMA alpha, default 0.05
+	AlphaSuccess float64 `json:"alpha_success"` // EWMA alpha for success rate, default 0.10
+	Tau          float64 `json:"tau"`           // Time constant for alpha_eff (seconds), default 60
+	TauStale     float64 `json:"tau_stale"`     // Staleness regression time constant (seconds), default 600
 
 	// Target values for normalization
-	TTFTTargetMs     int `json:"ttft_target_ms"`     // TTFT target (ms), default 2000
-	TPSTarget        int `json:"tps_target"`         // TPS target (tok/s), default 20
-	LatencyTargetMs  int `json:"latency_target_ms"`  // Latency target (ms), default 30000
+	TTFTTargetMs    int `json:"ttft_target_ms"`    // TTFT target (ms), default 2000
+	TPSTarget       int `json:"tps_target"`        // TPS target (tok/s), default 20
+	LatencyTargetMs int `json:"latency_target_ms"` // Latency target (ms), default 30000
 
 	// Quality synthesis weights (must sum to 1.0 for intuitive behavior)
 	WeightSuccess float64 `json:"weight_success"` // Weight for success rate, default 0.60
@@ -36,8 +36,8 @@ type RouteStatsSetting struct {
 	QualityCeil    float64 `json:"quality_ceil"`    // Synthesized quality ceiling, default 1.5
 
 	// Observation caps
-	TTFTCapMs     int `json:"ttft_cap_ms"`     // TTFT observation cap (ms), default 120000
-	LatencyCapMs  int `json:"latency_cap_ms"`  // Latency observation cap (ms), default 120000
+	TTFTCapMs    int `json:"ttft_cap_ms"`    // TTFT observation cap (ms), default 120000
+	LatencyCapMs int `json:"latency_cap_ms"` // Latency observation cap (ms), default 120000
 
 	// 429 penalty
 	Penalty429DefaultMs int `json:"penalty_429_default_ms"` // Default 429 penalty (ms), default 5000
@@ -46,6 +46,19 @@ type RouteStatsSetting struct {
 
 	// Minimum samples before quality synthesis trusts the data
 	MinSamples int `json:"min_samples"` // Default 5
+
+	// Share-deficit correction. ShareWindowSize is the number of recent selections
+	// kept per (group, alias) pool; 0 disables correction entirely and every route
+	// gets a multiplier of exactly 1.0, which is the A/B baseline.
+	//
+	// 200 is deliberate. A 1000-entry window is worse on both measured axes: the
+	// re-entry spike after an absence grows (77.9% vs 73.8% of the next 100
+	// requests) and a quality step change takes ~3x longer to track (5.9 vs 2.1
+	// hundred-request blocks). Nothing improves in exchange.
+	ShareWindowSize int     `json:"share_window_size"` // Default 200, 0 disables
+	ShareCorrMin    float64 `json:"share_corr_min"`    // Default 0.5
+	ShareCorrMax    float64 `json:"share_corr_max"`    // Default 2.0
+	ShareEpsilon    float64 `json:"share_epsilon"`     // Default 1e-9, guards division
 
 	// TTL for stale entries
 	TTLSeconds int `json:"ttl_seconds"` // Default 86400 (24h)
@@ -75,6 +88,10 @@ func DefaultRouteStatsSetting() *RouteStatsSetting {
 		Penalty429MinMs:     5000,
 		Penalty429MaxMs:     60000,
 		MinSamples:          5,
+		ShareWindowSize:     200,
+		ShareCorrMin:        0.5,
+		ShareCorrMax:        2.0,
+		ShareEpsilon:        1e-9,
 		TTLSeconds:          86400,
 	}
 }
@@ -178,33 +195,35 @@ func normalizeRouteStatsSetting(cfg *RouteStatsSetting) {
 	if cfg.MinSamples < 0 {
 		cfg.MinSamples = 5
 	}
+	// ShareWindowSize 0 is a valid, meaningful value: it disables correction. Only
+	// a negative window is nonsense, and it collapses to disabled rather than to
+	// the default, so an operator who types -1 gets the baseline instead of
+	// silently getting correction back.
+	if cfg.ShareWindowSize < 0 {
+		cfg.ShareWindowSize = 0
+	}
+	if cfg.ShareCorrMin <= 0 || cfg.ShareCorrMin > 1 {
+		cfg.ShareCorrMin = 0.5
+	}
+	if cfg.ShareCorrMax < 1 {
+		cfg.ShareCorrMax = 1
+	}
+	if cfg.ShareEpsilon <= 0 {
+		cfg.ShareEpsilon = 1e-9
+	}
 	if cfg.TTLSeconds <= 0 {
 		cfg.TTLSeconds = 86400
 	}
 }
 
-// RouteStatsConfigAccessor defines the interface for accessing route stats config.
-// This allows the model package to inject its own config accessor without
-// routestats importing model.
-type RouteStatsConfigAccessor interface {
-	GetRouteStatsSetting() *RouteStatsSetting
-}
-
-// configAccessor is the package-level accessor, set by the model package on init.
-var configAccessor atomic.Pointer[RouteStatsConfigAccessor]
-
-// SetConfigAccessor sets the config accessor. Should be called once during
-// application initialization by the model package.
-func SetConfigAccessor(accessor RouteStatsConfigAccessor) {
-	configAccessor.Store(&accessor)
-}
-
-// getConfig returns the current config, using the accessor if set.
+// getConfig returns the live config. Admin updates arrive through
+// operation_setting.UpdateRouteStatsSettingValue, which normalises the value and
+// swaps the whole struct via SetRouteStatsSetting, so every read here sees the
+// current setting without a restart. Option rows are replayed into that same path
+// on boot by loadOptionsFromDatabase, which is what makes the kill switch survive
+// a restart.
 func getConfig() *RouteStatsSetting {
-	if accessor := configAccessor.Load(); accessor != nil && *accessor != nil {
-		return (*accessor).GetRouteStatsSetting()
-	}
-	return GetRouteStatsSetting()
+	return routeStatsSetting.Load()
 }
 
 // Time constants for monotonic clock
