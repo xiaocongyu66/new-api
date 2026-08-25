@@ -14,8 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/pkg/errors"
-
-	"github.com/gin-gonic/gin"
 )
 
 const KeyRequestBody = "key_request_body"
@@ -34,7 +32,7 @@ func IsRequestBodyTooLargeError(err error) bool {
 	return errors.As(err, &mbe)
 }
 
-func GetRequestBody(c *gin.Context) (io.Seeker, error) {
+func GetRequestBody(c contract.Context) (io.Seeker, error) {
 	// 首先检查是否有 BodyStorage 缓存
 	if storage, exists := c.Get(KeyBodyStorage); exists && storage != nil {
 		if bs, ok := storage.(BodyStorage); ok {
@@ -64,11 +62,12 @@ func GetRequestBody(c *gin.Context) (io.Seeker, error) {
 	}
 	maxBytes := int64(maxMB) << 20
 
-	contentLength := c.Request.ContentLength
+	contentLength := c.ContentLength()
 
-	// 使用新的存储系统
-	storage, err := CreateBodyStorageFromReader(c.Request.Body, contentLength, maxBytes)
-	_ = c.Request.Body.Close()
+	// 使用新的存储系统。注意:这里必须读 HTTPRequest().Body 而非 c.BodyReader(),
+	// 后者在 transport 适配层会回调 GetBodyStorage 形成无限递归。
+	storage, err := CreateBodyStorageFromReader(c.HTTPRequest().Body, contentLength, maxBytes)
+	_ = c.HTTPRequest().Body.Close()
 
 	if err != nil {
 		if IsRequestBodyTooLargeError(err) {
@@ -84,7 +83,7 @@ func GetRequestBody(c *gin.Context) (io.Seeker, error) {
 }
 
 // GetBodyStorage 获取请求体存储对象（用于需要多次读取的场景）
-func GetBodyStorage(c *gin.Context) (BodyStorage, error) {
+func GetBodyStorage(c contract.Context) (BodyStorage, error) {
 	seeker, err := GetRequestBody(c)
 	if err != nil {
 		return nil, err
@@ -106,12 +105,12 @@ func CleanupBodyStorage(c contract.Context) {
 	}
 }
 
-func UnmarshalBodyReusable(c *gin.Context, v any) error {
+func UnmarshalBodyReusable(c contract.Context, v any) error {
 	storage, err := GetBodyStorage(c)
 	if err != nil {
 		return err
 	}
-	contentType := c.Request.Header.Get("Content-Type")
+	contentType := c.HTTPRequest().Header.Get("Content-Type")
 	if contentType == "" {
 		// callers that previously decoded the raw stream (DecodeJson) accepted
 		// bodies regardless of content-type; keep that behaviour for the
@@ -132,7 +131,7 @@ func UnmarshalBodyReusable(c *gin.Context, v any) error {
 		if _, seekErr := storage.Seek(0, io.SeekStart); seekErr != nil {
 			return seekErr
 		}
-		c.Request.Body = io.NopCloser(storage)
+		c.ResetBody(io.NopCloser(storage))
 		return nil
 	}
 
@@ -142,9 +141,9 @@ func UnmarshalBodyReusable(c *gin.Context, v any) error {
 	}
 	if strings.HasPrefix(contentType, "application/json") {
 		err = Unmarshal(requestBody, v)
-	} else if strings.Contains(contentType, gin.MIMEPOSTForm) {
+	} else if strings.Contains(contentType, "application/x-www-form-urlencoded") {
 		err = parseFormData(requestBody, v)
-	} else if strings.Contains(contentType, gin.MIMEMultipartPOSTForm) {
+	} else if strings.Contains(contentType, "multipart/form-data") {
 		err = parseMultipartFormData(c, requestBody, v)
 	} else {
 		// skip for now
@@ -157,39 +156,39 @@ func UnmarshalBodyReusable(c *gin.Context, v any) error {
 	if _, seekErr := storage.Seek(0, io.SeekStart); seekErr != nil {
 		return seekErr
 	}
-	c.Request.Body = io.NopCloser(storage)
+	c.ResetBody(io.NopCloser(storage))
 	return nil
 }
 
-func SetContextKey(c *gin.Context, key constant.ContextKey, value any) {
+func SetContextKey(c contract.Context, key constant.ContextKey, value any) {
 	c.Set(string(key), value)
 }
 
-func GetContextKey(c *gin.Context, key constant.ContextKey) (any, bool) {
+func GetContextKey(c contract.Context, key constant.ContextKey) (any, bool) {
 	return c.Get(string(key))
 }
 
-func GetContextKeyString(c *gin.Context, key constant.ContextKey) string {
+func GetContextKeyString(c contract.Context, key constant.ContextKey) string {
 	return c.GetString(string(key))
 }
 
-func GetContextKeyInt(c *gin.Context, key constant.ContextKey) int {
+func GetContextKeyInt(c contract.Context, key constant.ContextKey) int {
 	return c.GetInt(string(key))
 }
 
-func GetContextKeyBool(c *gin.Context, key constant.ContextKey) bool {
+func GetContextKeyBool(c contract.Context, key constant.ContextKey) bool {
 	return c.GetBool(string(key))
 }
 
-func GetContextKeyStringMap(c *gin.Context, key constant.ContextKey) map[string]any {
+func GetContextKeyStringMap(c contract.Context, key constant.ContextKey) map[string]any {
 	return c.GetStringMap(string(key))
 }
 
-func GetContextKeyTime(c *gin.Context, key constant.ContextKey) time.Time {
+func GetContextKeyTime(c contract.Context, key constant.ContextKey) time.Time {
 	return c.GetTime(string(key))
 }
 
-func GetContextKeyType[T any](c *gin.Context, key constant.ContextKey) (T, bool) {
+func GetContextKeyType[T any](c contract.Context, key constant.ContextKey) (T, bool) {
 	if value, ok := c.Get(string(key)); ok {
 		if v, ok := value.(T); ok {
 			return v, true
@@ -199,22 +198,22 @@ func GetContextKeyType[T any](c *gin.Context, key constant.ContextKey) (T, bool)
 	return t, false
 }
 
-func ApiError(c *gin.Context, err error) {
-	c.JSON(http.StatusOK, gin.H{
+func ApiError(c contract.Context, err error) {
+	c.JSON(http.StatusOK, H{
 		"success": false,
 		"message": err.Error(),
 	})
 }
 
-func ApiErrorMsg(c *gin.Context, msg string) {
-	c.JSON(http.StatusOK, gin.H{
+func ApiErrorMsg(c contract.Context, msg string) {
+	c.JSON(http.StatusOK, H{
 		"success": false,
 		"message": msg,
 	})
 }
 
-func ApiSuccess(c *gin.Context, data any) {
-	c.JSON(http.StatusOK, gin.H{
+func ApiSuccess(c contract.Context, data any) {
+	c.JSON(http.StatusOK, H{
 		"success": true,
 		"message": "",
 		"data":    data,
@@ -223,18 +222,18 @@ func ApiSuccess(c *gin.Context, data any) {
 
 // ApiErrorI18n returns a translated error message based on the user's language preference
 // key is the i18n message key, args is optional template data
-func ApiErrorI18n(c *gin.Context, key string, args ...map[string]any) {
+func ApiErrorI18n(c contract.Context, key string, args ...map[string]any) {
 	msg := TranslateMessage(c, key, args...)
-	c.JSON(http.StatusOK, gin.H{
+	c.JSON(http.StatusOK, H{
 		"success": false,
 		"message": msg,
 	})
 }
 
 // ApiSuccessI18n returns a translated success message based on the user's language preference
-func ApiSuccessI18n(c *gin.Context, key string, data any, args ...map[string]any) {
+func ApiSuccessI18n(c contract.Context, key string, data any, args ...map[string]any) {
 	msg := TranslateMessage(c, key, args...)
-	c.JSON(http.StatusOK, gin.H{
+	c.JSON(http.StatusOK, H{
 		"success": true,
 		"message": msg,
 		"data":    data,
@@ -244,18 +243,18 @@ func ApiSuccessI18n(c *gin.Context, key string, data any, args ...map[string]any
 // TranslateMessage is a helper function that calls i18n.T
 // This function is defined here to avoid circular imports
 // The actual implementation will be set during init
-var TranslateMessage func(c *gin.Context, key string, args ...map[string]any) string
+var TranslateMessage func(c contract.Context, key string, args ...map[string]any) string
 
 func init() {
 	// Default implementation that returns the key as-is
 	// This will be replaced by i18n.T during i18n initialization
-	TranslateMessage = func(c *gin.Context, key string, args ...map[string]any) string {
-		c.Header("X-Translate-id", "d5e7afdfc7f03414b941f9c1e7096be9966510e7")
+	TranslateMessage = func(c contract.Context, key string, args ...map[string]any) string {
+		c.SetHeader("X-Translate-id", "d5e7afdfc7f03414b941f9c1e7096be9966510e7")
 		return key
 	}
 }
 
-func ParseMultipartFormReusable(c *gin.Context) (*multipart.Form, error) {
+func ParseMultipartFormReusable(c contract.Context) (*multipart.Form, error) {
 	storage, err := GetBodyStorage(c)
 	if err != nil {
 		return nil, err
@@ -271,7 +270,7 @@ func ParseMultipartFormReusable(c *gin.Context) (*multipart.Form, error) {
 	if saved, ok := c.Get("_original_multipart_ct"); ok {
 		contentType = saved.(string)
 	} else {
-		contentType = c.Request.Header.Get("Content-Type")
+		contentType = c.HTTPRequest().Header.Get("Content-Type")
 		c.Set("_original_multipart_ct", contentType)
 	}
 	boundary, err := parseBoundary(contentType)
@@ -289,7 +288,7 @@ func ParseMultipartFormReusable(c *gin.Context) (*multipart.Form, error) {
 	if _, seekErr := storage.Seek(0, io.SeekStart); seekErr != nil {
 		return nil, seekErr
 	}
-	c.Request.Body = io.NopCloser(storage)
+	c.ResetBody(io.NopCloser(storage))
 	return form, nil
 }
 
@@ -324,12 +323,12 @@ func parseFormData(data []byte, v any) error {
 	return processFormMap(formMap, v)
 }
 
-func parseMultipartFormData(c *gin.Context, data []byte, v any) error {
+func parseMultipartFormData(c contract.Context, data []byte, v any) error {
 	var contentType string
 	if saved, ok := c.Get("_original_multipart_ct"); ok {
 		contentType = saved.(string)
 	} else {
-		contentType = c.Request.Header.Get("Content-Type")
+		contentType = c.HTTPRequest().Header.Get("Content-Type")
 		c.Set("_original_multipart_ct", contentType)
 	}
 	boundary, err := parseBoundary(contentType)

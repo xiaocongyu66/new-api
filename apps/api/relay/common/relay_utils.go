@@ -11,7 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/samber/lo"
 )
 
@@ -98,8 +98,8 @@ func isSensitiveURLQueryKey(key string) bool {
 		strings.Contains(normalized, "signature")
 }
 
-func GetAPIVersion(c *gin.Context) string {
-	query := c.Request.URL.Query()
+func GetAPIVersion(c contract.Context) string {
+	query := c.HTTPRequest().URL.Query()
 	apiVersion := query.Get("api-version")
 	if apiVersion == "" {
 		apiVersion = c.GetString("api_version")
@@ -117,11 +117,11 @@ func createTaskError(err error, code string, statusCode int, localError bool) *d
 	}
 }
 
-func storeTaskRequest(c *gin.Context, info *RelayInfo, action string, requestObj TaskSubmitReq) {
+func storeTaskRequest(c contract.Context, info *RelayInfo, action string, requestObj TaskSubmitReq) {
 	info.Action = action
 	c.Set("task_request", requestObj)
 }
-func GetTaskRequest(c *gin.Context) (TaskSubmitReq, error) {
+func GetTaskRequest(c contract.Context) (TaskSubmitReq, error) {
 	v, exists := c.Get("task_request")
 	if !exists {
 		return TaskSubmitReq{}, fmt.Errorf("request not found in context")
@@ -156,13 +156,13 @@ func validateTaskDurationBounds(req TaskSubmitReq) *dto.TaskError {
 	return nil
 }
 
-func validateMultipartTaskRequest(c *gin.Context, info *RelayInfo, action string) (TaskSubmitReq, error) {
+func validateMultipartTaskRequest(c contract.Context, info *RelayInfo, action string) (TaskSubmitReq, error) {
 	var req TaskSubmitReq
 	if _, err := c.MultipartForm(); err != nil {
 		return req, err
 	}
 
-	formData := c.Request.PostForm
+	formData := c.HTTPRequest().PostForm
 	req = TaskSubmitReq{
 		Prompt:   formData.Get("prompt"),
 		Model:    formData.Get("model"),
@@ -196,7 +196,7 @@ func validateMultipartTaskRequest(c *gin.Context, info *RelayInfo, action string
 	return req, nil
 }
 
-func ValidateMultipartDirect(c *gin.Context, info *RelayInfo) *dto.TaskError {
+func ValidateMultipartDirect(c contract.Context, info *RelayInfo) *dto.TaskError {
 	var prompt string
 	var model string
 	var seconds int
@@ -280,9 +280,9 @@ func isKnownTaskField(field string) bool {
 	return knownFields[field]
 }
 
-func ValidateBasicTaskRequest(c *gin.Context, info *RelayInfo, action string) *dto.TaskError {
+func ValidateBasicTaskRequest(c contract.Context, info *RelayInfo, action string) *dto.TaskError {
 	var err error
-	contentType := c.GetHeader("Content-Type")
+	contentType := c.HTTPRequest().Header.Get("Content-Type")
 	var req TaskSubmitReq
 	if strings.HasPrefix(contentType, "multipart/form-data") {
 		req, err = validateMultipartTaskRequest(c, info, action)

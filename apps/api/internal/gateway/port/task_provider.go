@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 )
+
 // TaskResult captures the minimal upstream task status needed by the polling loop.
 // It mirrors relay/common.TaskInfo but lives on the consumer side to avoid
 // importing relay types into the task capability.

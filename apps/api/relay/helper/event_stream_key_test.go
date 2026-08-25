@@ -24,7 +24,7 @@ func TestSetEventStreamHeadersSharesAdapterFlagKey(t *testing.T) {
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 
-	SetEventStreamHeaders(c)
+	SetEventStreamHeaders(ginadapter.Wrap(c))
 
 	flag, exists := c.Get(ginadapter.EventStreamHeadersKey)
 	require.True(t, exists, "helper must record the flag under the adapter key")
@@ -40,7 +40,7 @@ func TestAdapterStreamSkipsHeadersAlreadyWrittenByHelper(t *testing.T) {
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 
-	SetEventStreamHeaders(c)
+	SetEventStreamHeaders(ginadapter.Wrap(c))
 
 	stream, err := ginadapter.EventStream(ginadapter.Wrap(c))
 	require.NoError(t, err)

@@ -5,10 +5,10 @@ import (
 	"fmt"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/system_setting"
-	"github.com/gin-gonic/gin"
 )
 
 // UnmarshalMetadata converts a map[string]any metadata to a typed struct via JSON round-trip.
@@ -82,7 +82,7 @@ const (
 type BaseBilling struct{}
 
 // EstimateBilling returns nil (no extra ratios; use base model price).
-func (BaseBilling) EstimateBilling(_ *gin.Context, _ *relaycommon.RelayInfo) map[string]float64 {
+func (BaseBilling) EstimateBilling(_ contract.Context, _ *relaycommon.RelayInfo) map[string]float64 {
 	return nil
 }
 

@@ -2,6 +2,7 @@ package channel
 
 import (
 	"bytes"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -62,12 +63,13 @@ func TestDoRequestReturnsUpstreamRedirectWithoutFollowing(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			ctx, _ := gin.CreateTestContext(recorder)
 			ctx.Request = httptest.NewRequest(http.MethodPost, "/relay", nil)
+			ctxW := ginadapter.Wrap(ctx)
 
 			req, err := http.NewRequest(http.MethodPost, source.URL, bytes.NewReader([]byte("request body")))
 			require.NoError(t, err)
 			info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{}}
 
-			resp, err := doRequest(ctx, req, info)
+			resp, err := doRequest(ctxW, req, info)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 			body, err := io.ReadAll(resp.Body)

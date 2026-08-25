@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -66,8 +67,8 @@ func TestStreamScannerHandler_NilInputs(t *testing.T) {
 
 	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{}}
 
-	StreamScannerHandler(c, nil, info, func(data string, sr *StreamResult) {})
-	StreamScannerHandler(c, &http.Response{Body: io.NopCloser(strings.NewReader(""))}, info, nil)
+	StreamScannerHandler(ginadapter.Wrap(c), nil, info, func(data string, sr *StreamResult) {})
+	StreamScannerHandler(ginadapter.Wrap(c), &http.Response{Body: io.NopCloser(strings.NewReader(""))}, info, nil)
 }
 
 func TestNewStreamScanner_AllowsLargeStreamLine(t *testing.T) {
@@ -92,7 +93,7 @@ func TestStreamScannerHandler_EmptyBody(t *testing.T) {
 	c, resp, info := setupStreamTest(t, strings.NewReader(""))
 
 	var called atomic.Bool
-	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
+	StreamScannerHandler(ginadapter.Wrap(c), resp, info, func(data string, sr *StreamResult) {
 		called.Store(true)
 	})
 
@@ -107,7 +108,7 @@ func TestStreamScannerHandler_1000Chunks(t *testing.T) {
 	c, resp, info := setupStreamTest(t, strings.NewReader(body))
 
 	var count atomic.Int64
-	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
+	StreamScannerHandler(ginadapter.Wrap(c), resp, info, func(data string, sr *StreamResult) {
 		count.Add(1)
 	})
 
@@ -125,7 +126,7 @@ func TestStreamScannerHandler_OrderPreserved(t *testing.T) {
 	var mu sync.Mutex
 	received := make([]string, 0, numChunks)
 
-	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
+	StreamScannerHandler(ginadapter.Wrap(c), resp, info, func(data string, sr *StreamResult) {
 		mu.Lock()
 		received = append(received, data)
 		mu.Unlock()
@@ -145,7 +146,7 @@ func TestStreamScannerHandler_DoneStopsScanner(t *testing.T) {
 	c, resp, info := setupStreamTest(t, strings.NewReader(body))
 
 	var count atomic.Int64
-	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
+	StreamScannerHandler(ginadapter.Wrap(c), resp, info, func(data string, sr *StreamResult) {
 		count.Add(1)
 	})
 
@@ -161,7 +162,7 @@ func TestStreamScannerHandler_StopStopsStream(t *testing.T) {
 
 	const stopAt int64 = 50
 	var count atomic.Int64
-	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
+	StreamScannerHandler(ginadapter.Wrap(c), resp, info, func(data string, sr *StreamResult) {
 		n := count.Add(1)
 		if n >= stopAt {
 			sr.Stop(fmt.Errorf("fatal at %d", n))
@@ -190,7 +191,7 @@ func TestStreamScannerHandler_SkipsNonDataLines(t *testing.T) {
 	c, resp, info := setupStreamTest(t, strings.NewReader(b.String()))
 
 	var count atomic.Int64
-	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
+	StreamScannerHandler(ginadapter.Wrap(c), resp, info, func(data string, sr *StreamResult) {
 		count.Add(1)
 	})
 
@@ -204,7 +205,7 @@ func TestStreamScannerHandler_DataWithExtraSpaces(t *testing.T) {
 	c, resp, info := setupStreamTest(t, strings.NewReader(body))
 
 	var got string
-	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
+	StreamScannerHandler(ginadapter.Wrap(c), resp, info, func(data string, sr *StreamResult) {
 		got = data
 	})
 
@@ -240,9 +241,9 @@ func TestStreamScannerHandler_ClientCancelAbortsUpstreamAndReturns(t *testing.T)
 	firstHandled := make(chan struct{})
 	done := make(chan struct{})
 	go func() {
-		StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
+		StreamScannerHandler(ginadapter.Wrap(c), resp, info, func(data string, sr *StreamResult) {
 			count.Add(1)
-			_ = StringData(c, data)
+			_ = StringData(ginadapter.Wrap(c), data)
 			if data == "first" {
 				close(firstHandled)
 			}
@@ -316,7 +317,7 @@ func TestStreamScannerHandler_PingSentDuringSlowUpstream(t *testing.T) {
 	var count atomic.Int64
 	done := make(chan struct{})
 	go func() {
-		StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
+		StreamScannerHandler(ginadapter.Wrap(c), resp, info, func(data string, sr *StreamResult) {
 			count.Add(1)
 		})
 		close(done)
@@ -360,7 +361,7 @@ func TestStreamScannerHandler_PingDisabledByRelayInfo(t *testing.T) {
 	var count atomic.Int64
 	done := make(chan struct{})
 	go func() {
-		StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
+		StreamScannerHandler(ginadapter.Wrap(c), resp, info, func(data string, sr *StreamResult) {
 			count.Add(1)
 		})
 		close(done)
@@ -387,7 +388,7 @@ func TestStreamScannerHandler_StreamStatus_DoneReason(t *testing.T) {
 	body := buildSSEBody(10)
 	c, resp, info := setupStreamTest(t, strings.NewReader(body))
 
-	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {})
+	StreamScannerHandler(ginadapter.Wrap(c), resp, info, func(data string, sr *StreamResult) {})
 
 	require.NotNil(t, info.StreamStatus)
 	assert.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason)
@@ -405,7 +406,7 @@ func TestStreamScannerHandler_StreamStatus_EOFWithoutDone(t *testing.T) {
 	}
 	c, resp, info := setupStreamTest(t, strings.NewReader(b.String()))
 
-	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {})
+	StreamScannerHandler(ginadapter.Wrap(c), resp, info, func(data string, sr *StreamResult) {})
 
 	require.NotNil(t, info.StreamStatus)
 	assert.Equal(t, relaycommon.StreamEndReasonEOF, info.StreamStatus.EndReason)
@@ -419,7 +420,7 @@ func TestStreamScannerHandler_StreamStatus_HandlerStop(t *testing.T) {
 	c, resp, info := setupStreamTest(t, strings.NewReader(body))
 
 	var count atomic.Int64
-	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
+	StreamScannerHandler(ginadapter.Wrap(c), resp, info, func(data string, sr *StreamResult) {
 		n := count.Add(1)
 		if n >= 10 {
 			sr.Stop(fmt.Errorf("stop at 10"))
@@ -438,7 +439,7 @@ func TestStreamScannerHandler_StreamStatus_HandlerDone(t *testing.T) {
 	c, resp, info := setupStreamTest(t, strings.NewReader(body))
 
 	var count atomic.Int64
-	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
+	StreamScannerHandler(ginadapter.Wrap(c), resp, info, func(data string, sr *StreamResult) {
 		n := count.Add(1)
 		if n >= 5 {
 			sr.Done()
@@ -473,7 +474,7 @@ func TestStreamScannerHandler_StreamStatus_Timeout(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {})
+		StreamScannerHandler(ginadapter.Wrap(c), resp, info, func(data string, sr *StreamResult) {})
 		close(done)
 	}()
 
@@ -494,7 +495,7 @@ func TestStreamScannerHandler_StreamStatus_SoftErrors(t *testing.T) {
 	body := buildSSEBody(10)
 	c, resp, info := setupStreamTest(t, strings.NewReader(body))
 
-	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
+	StreamScannerHandler(ginadapter.Wrap(c), resp, info, func(data string, sr *StreamResult) {
 		sr.Error(fmt.Errorf("soft error for chunk"))
 	})
 
@@ -510,7 +511,7 @@ func TestStreamScannerHandler_StreamStatus_MultipleErrorsPerChunk(t *testing.T) 
 	body := buildSSEBody(5)
 	c, resp, info := setupStreamTest(t, strings.NewReader(body))
 
-	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
+	StreamScannerHandler(ginadapter.Wrap(c), resp, info, func(data string, sr *StreamResult) {
 		sr.Error(fmt.Errorf("error A"))
 		sr.Error(fmt.Errorf("error B"))
 	})
@@ -532,7 +533,7 @@ func TestStreamScannerHandler_StreamStatus_ErrorThenStop(t *testing.T) {
 	c, resp, info := setupStreamTest(t, strings.NewReader(b.String()))
 
 	var count atomic.Int64
-	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
+	StreamScannerHandler(ginadapter.Wrap(c), resp, info, func(data string, sr *StreamResult) {
 		count.Add(1)
 		sr.Error(fmt.Errorf("soft error"))
 		sr.Stop(fmt.Errorf("fatal"))
@@ -552,7 +553,7 @@ func TestStreamScannerHandler_StreamStatus_InitializedIfNil(t *testing.T) {
 
 	assert.Nil(t, info.StreamStatus)
 
-	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {})
+	StreamScannerHandler(ginadapter.Wrap(c), resp, info, func(data string, sr *StreamResult) {})
 
 	assert.NotNil(t, info.StreamStatus)
 }
@@ -566,7 +567,7 @@ func TestStreamScannerHandler_StreamStatus_ReplacesPreInitialized(t *testing.T) 
 	info.StreamStatus = relaycommon.NewStreamStatus()
 	info.StreamStatus.RecordError("pre-existing error")
 
-	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {})
+	StreamScannerHandler(ginadapter.Wrap(c), resp, info, func(data string, sr *StreamResult) {})
 
 	assert.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason)
 	assert.Equal(t, 0, info.StreamStatus.TotalErrorCount())

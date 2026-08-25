@@ -6,7 +6,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/capabilities/billing/settlecore"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/gin-gonic/gin"
 	"math"
 	"strings"
 	"time"
@@ -89,7 +88,7 @@ func calculateAudioQuota(info QuotaInfo) (int, *common.QuotaClamp) {
 	return common.QuotaFromDecimalChecked(quota)
 }
 
-func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.RealtimeUsage) error {
+func PreWssConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo, usage *dto.RealtimeUsage) error {
 	if relayInfo.UsePrice {
 		return nil
 	}
@@ -114,7 +113,7 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	autoGroup, exists := common.GetContextKey(ctx, constant.ContextKeyAutoGroup)
 	if exists {
 		groupRatio = ratio_setting.GetGroupRatio(autoGroup.(string))
-		logger.LogDebug(ctx.Request.Context(), "final group ratio: %f", groupRatio)
+		logger.LogDebug(ctx.Context(), "final group ratio: %f", groupRatio)
 		relayInfo.UsingGroup = autoGroup.(string)
 	}
 
@@ -154,7 +153,7 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	if err != nil {
 		return err
 	}
-	logger.LogInfo(ctx.Request.Context(), "realtime streaming consume quota success, quota: "+fmt.Sprintf("%d", quota))
+	logger.LogInfo(ctx.Context(), "realtime streaming consume quota success, quota: "+fmt.Sprintf("%d", quota))
 	return nil
 }
 

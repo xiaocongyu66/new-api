@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/capabilities/billing"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"log"
 	"net/http"
@@ -26,14 +25,14 @@ import (
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
-func RelayMidjourneyImage(c *gin.Context) {
+func RelayMidjourneyImage(c contract.Context) {
 	taskId := c.Param("id")
 	midjourneyTask := taskcap.GetByOnlyMJId(taskId)
 	if midjourneyTask == nil {
-		c.JSON(400, gin.H{
+		c.JSON(400, map[string]any{
 			"error": "midjourney_task_not_found",
 		})
 		return
@@ -44,7 +43,7 @@ func RelayMidjourneyImage(c *gin.Context) {
 		proxy = channel.GetSetting().Proxy
 		if proxy != "" {
 			if httpClient, err = service.GetHttpClientWithProxy(proxy); err != nil {
-				c.JSON(400, gin.H{
+				c.JSON(400, map[string]any{
 					"error": "proxy_url_invalid",
 				})
 				return
@@ -64,14 +63,14 @@ func RelayMidjourneyImage(c *gin.Context) {
 		validateErr = common.ValidateURLWithFetchSetting(midjourneyTask.ImageUrl, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain)
 	}
 	if validateErr != nil {
-		c.JSON(http.StatusForbidden, gin.H{
+		c.JSON(http.StatusForbidden, map[string]any{
 			"error": fmt.Sprintf("request blocked: %v", validateErr),
 		})
 		return
 	}
 	resp, err := httpClient.Get(midjourneyTask.ImageUrl)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
+		c.JSON(http.StatusInternalServerError, map[string]any{
 			"error": "http_get_image_failed",
 		})
 		return
@@ -79,7 +78,7 @@ func RelayMidjourneyImage(c *gin.Context) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		responseBody, _ := io.ReadAll(resp.Body)
-		c.JSON(resp.StatusCode, gin.H{
+		c.JSON(resp.StatusCode, map[string]any{
 			"error": string(responseBody),
 		})
 		return
@@ -91,16 +90,16 @@ func RelayMidjourneyImage(c *gin.Context) {
 		contentType = "image/jpeg"
 	}
 	// 设置响应的内容类型
-	c.Writer.Header().Set("Content-Type", contentType)
+	c.ResponseWriter().Header().Set("Content-Type", contentType)
 	// 将图片流式传输到响应体
-	_, err = io.Copy(c.Writer, resp.Body)
+	_, err = io.Copy(c.ResponseWriter(), resp.Body)
 	if err != nil {
 		log.Println("Failed to stream image:", err)
 	}
 	return
 }
 
-func RelayMidjourneyNotify(c *gin.Context) *dto.MidjourneyResponse {
+func RelayMidjourneyNotify(c contract.Context) *dto.MidjourneyResponse {
 	var midjRequest dto.MidjourneyDto
 	err := common.UnmarshalBodyReusable(c, &midjRequest)
 	if err != nil {
@@ -143,7 +142,7 @@ func RelayMidjourneyNotify(c *gin.Context) *dto.MidjourneyResponse {
 	return nil
 }
 
-func coverMidjourneyTaskDto(c *gin.Context, originTask *model.Midjourney) (midjourneyTask dto.MidjourneyDto) {
+func coverMidjourneyTaskDto(c contract.Context, originTask *model.Midjourney) (midjourneyTask dto.MidjourneyDto) {
 	midjourneyTask.MjId = originTask.MjId
 	midjourneyTask.Progress = originTask.Progress
 	midjourneyTask.PromptEn = originTask.PromptEn
@@ -192,7 +191,7 @@ func coverMidjourneyTaskDto(c *gin.Context, originTask *model.Midjourney) (midjo
 	return
 }
 
-func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyResponse {
+func RelaySwapFace(c contract.Context, info *relaycommon.RelayInfo) *dto.MidjourneyResponse {
 	var swapFaceRequest dto.SwapFaceRequest
 	err := common.UnmarshalBodyReusable(c, &swapFaceRequest)
 	if err != nil {
@@ -228,7 +227,7 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 			Description: "quota_not_enough",
 		}
 	}
-	requestURL := getMjRequestPath(c.Request.URL.String())
+	requestURL := getMjRequestPath(c.HTTPRequest().URL.String())
 	baseURL := c.GetString("base_url")
 	fullRequestURL := fmt.Sprintf("%s%s", baseURL, requestURL)
 	mjResp, _, err := service.DoMidjourneyHttpRequest(c, time.Second*60, fullRequestURL)
@@ -276,7 +275,7 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 		tokenName := c.GetString("token_name")
 		logContent := fmt.Sprintf("模型固定价格 %.2f，分组倍率 %.2f，操作 %s", priceData.ModelPrice, priceData.GroupRatioInfo.GroupRatio, constant.MjActionSwapFace)
 		other := service.GenerateMjOtherInfo(info, priceData)
-		model.RecordConsumeLog(ginadapter.Wrap(c), info.UserId, model.RecordConsumeLogParams{
+		model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
 			ChannelId: billingChannelId,
 			ModelName: modelName,
 			TokenName: tokenName,
@@ -289,19 +288,19 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 		model.UpdateUserUsedQuotaAndRequestCount(info.UserId, midjourneyTask.Quota)
 		model.UpdateChannelUsedQuota(billingChannelId, midjourneyTask.Quota)
 	}
-	c.Writer.WriteHeader(mjResp.StatusCode)
+	c.ResponseWriter().WriteHeader(mjResp.StatusCode)
 	respBody, err := json.Marshal(midjResponse)
 	if err != nil {
 		return service.MidjourneyErrorWrapper(constant.MjRequestError, "unmarshal_response_body_failed")
 	}
-	_, err = io.Copy(c.Writer, bytes.NewBuffer(respBody))
+	_, err = io.Copy(c.ResponseWriter(), bytes.NewBuffer(respBody))
 	if err != nil {
 		return service.MidjourneyErrorWrapper(constant.MjRequestError, "copy_response_body_failed")
 	}
 	return nil
 }
 
-func RelayMidjourneyTaskImageSeed(c *gin.Context) *dto.MidjourneyResponse {
+func RelayMidjourneyTaskImageSeed(c contract.Context) *dto.MidjourneyResponse {
 	taskId := c.Param("id")
 	userId := c.GetInt("id")
 	originTask := taskcap.GetByMJId(userId, taskId)
@@ -316,16 +315,16 @@ func RelayMidjourneyTaskImageSeed(c *gin.Context) *dto.MidjourneyResponse {
 		return service.MidjourneyErrorWrapper(constant.MjRequestError, "该任务所属渠道已被禁用")
 	}
 	c.Set("channel_id", originTask.ChannelId)
-	c.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", channel.Key))
+	c.HTTPRequest().Header.Set("Authorization", fmt.Sprintf("Bearer %s", channel.Key))
 
-	requestURL := getMjRequestPath(c.Request.URL.String())
+	requestURL := getMjRequestPath(c.HTTPRequest().URL.String())
 	fullRequestURL := fmt.Sprintf("%s%s", channel.GetBaseURL(), requestURL)
 	midjResponseWithStatus, _, err := service.DoMidjourneyHttpRequest(c, time.Second*30, fullRequestURL)
 	if err != nil {
 		return &midjResponseWithStatus.Response
 	}
 	midjResponse := &midjResponseWithStatus.Response
-	c.Writer.WriteHeader(midjResponseWithStatus.StatusCode)
+	c.ResponseWriter().WriteHeader(midjResponseWithStatus.StatusCode)
 	respBody, err := json.Marshal(midjResponse)
 	if err != nil {
 		return service.MidjourneyErrorWrapper(constant.MjRequestError, "unmarshal_response_body_failed")
@@ -334,7 +333,7 @@ func RelayMidjourneyTaskImageSeed(c *gin.Context) *dto.MidjourneyResponse {
 	return nil
 }
 
-func RelayMidjourneyTask(c *gin.Context, relayMode int) *dto.MidjourneyResponse {
+func RelayMidjourneyTask(c contract.Context, relayMode int) *dto.MidjourneyResponse {
 	userId := c.GetInt("id")
 	var err error
 	var respBody []byte
@@ -387,9 +386,9 @@ func RelayMidjourneyTask(c *gin.Context, relayMode int) *dto.MidjourneyResponse 
 		}
 	}
 
-	c.Writer.Header().Set("Content-Type", "application/json")
+	c.ResponseWriter().Header().Set("Content-Type", "application/json")
 
-	_, err = io.Copy(c.Writer, bytes.NewBuffer(respBody))
+	_, err = io.Copy(c.ResponseWriter(), bytes.NewBuffer(respBody))
 	if err != nil {
 		return &dto.MidjourneyResponse{
 			Code:        4,
@@ -399,7 +398,7 @@ func RelayMidjourneyTask(c *gin.Context, relayMode int) *dto.MidjourneyResponse 
 	return nil
 }
 
-func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dto.MidjourneyResponse {
+func RelayMidjourneySubmit(c contract.Context, relayInfo *relaycommon.RelayInfo) *dto.MidjourneyResponse {
 	consumeQuota := true
 	var midjRequest dto.MidjourneyRequest
 	err := common.UnmarshalBodyReusable(c, &midjRequest)
@@ -491,8 +490,8 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 			}
 			c.Set("base_url", channel.GetBaseURL())
 			c.Set("channel_id", originTask.ChannelId)
-			c.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", channel.Key))
-			logger.LogDebug(c.Request.Context(), "Midjourney action uses origin channel: id=%s, base_url=%s", strconv.Itoa(originTask.ChannelId), channel.GetBaseURL())
+			c.HTTPRequest().Header.Set("Authorization", fmt.Sprintf("Bearer %s", channel.Key))
+			logger.LogDebug(c.Context(), "Midjourney action uses origin channel: id=%s, base_url=%s", strconv.Itoa(originTask.ChannelId), channel.GetBaseURL())
 		}
 		midjRequest.Prompt = originTask.Prompt
 
@@ -509,7 +508,7 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 	}
 
 	//baseURL := common.ChannelBaseURLs[channelType]
-	requestURL := getMjRequestPath(c.Request.URL.String())
+	requestURL := getMjRequestPath(c.HTTPRequest().URL.String())
 
 	baseURL := c.GetString("base_url")
 
@@ -641,7 +640,7 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 		tokenName := c.GetString("token_name")
 		logContent := fmt.Sprintf("模型固定价格 %.2f，分组倍率 %.2f，操作 %s，ID %s", priceData.ModelPrice, priceData.GroupRatioInfo.GroupRatio, midjRequest.Action, midjResponse.Result)
 		other := service.GenerateMjOtherInfo(relayInfo, priceData)
-		model.RecordConsumeLog(ginadapter.Wrap(c), relayInfo.UserId, model.RecordConsumeLogParams{
+		model.RecordConsumeLog(c, relayInfo.UserId, model.RecordConsumeLogParams{
 			ChannelId: billingChannelId,
 			ModelName: modelName,
 			TokenName: tokenName,
@@ -664,11 +663,11 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 	bodyReader := io.NopCloser(bytes.NewBuffer(responseBody))
 
 	//for k, v := range resp.Header {
-	//	c.Writer.Header().Set(k, v[0])
+	//	c.ResponseWriter().Header().Set(k, v[0])
 	//}
-	c.Writer.WriteHeader(midjResponseWithStatus.StatusCode)
+	c.ResponseWriter().WriteHeader(midjResponseWithStatus.StatusCode)
 
-	_, err = io.Copy(c.Writer, bodyReader)
+	_, err = io.Copy(c.ResponseWriter(), bodyReader)
 	if err != nil {
 		return &dto.MidjourneyResponse{
 			Code:        4,

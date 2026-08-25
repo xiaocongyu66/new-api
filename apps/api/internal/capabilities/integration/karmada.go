@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/QuantumNous/new-api/internal/security/authtoken"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/QuantumNous/new-api/internal/security/authtoken"
 )
 
 const (

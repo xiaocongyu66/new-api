@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,9 +16,10 @@ func TestProcessHeaderOverride_ChannelTestSkipsPassthroughRules(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	ctx.Request.Header.Set("X-Trace-Id", "trace-123")
+	rawCtx, _ := gin.CreateTestContext(recorder)
+	rawCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	ctx := ginadapter.Wrap(rawCtx)
+	rawCtx.Request.Header.Set("X-Trace-Id", "trace-123")
 
 	info := &relaycommon.RelayInfo{
 		IsChannelTest: true,
@@ -38,9 +40,10 @@ func TestProcessHeaderOverride_ChannelTestSkipsClientHeaderPlaceholder(t *testin
 
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	ctx.Request.Header.Set("X-Trace-Id", "trace-123")
+	rawCtx, _ := gin.CreateTestContext(recorder)
+	rawCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	ctx := ginadapter.Wrap(rawCtx)
+	rawCtx.Request.Header.Set("X-Trace-Id", "trace-123")
 
 	info := &relaycommon.RelayInfo{
 		IsChannelTest: true,
@@ -62,9 +65,10 @@ func TestProcessHeaderOverride_NonTestKeepsClientHeaderPlaceholder(t *testing.T)
 
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	ctx.Request.Header.Set("X-Trace-Id", "trace-123")
+	rawCtx, _ := gin.CreateTestContext(recorder)
+	rawCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	ctx := ginadapter.Wrap(rawCtx)
+	rawCtx.Request.Header.Set("X-Trace-Id", "trace-123")
 
 	info := &relaycommon.RelayInfo{
 		IsChannelTest: false,
@@ -85,8 +89,9 @@ func TestProcessHeaderOverride_RuntimeOverrideIsFinalHeaderMap(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	rawCtx, _ := gin.CreateTestContext(recorder)
+	rawCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	ctx := ginadapter.Wrap(rawCtx)
 
 	info := &relaycommon.RelayInfo{
 		IsChannelTest:             false,
@@ -116,10 +121,11 @@ func TestProcessHeaderOverride_PassthroughSkipsAcceptEncoding(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	ctx.Request.Header.Set("X-Trace-Id", "trace-123")
-	ctx.Request.Header.Set("Accept-Encoding", "gzip")
+	rawCtx, _ := gin.CreateTestContext(recorder)
+	rawCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	ctx := ginadapter.Wrap(rawCtx)
+	rawCtx.Request.Header.Set("X-Trace-Id", "trace-123")
+	rawCtx.Request.Header.Set("Accept-Encoding", "gzip")
 
 	info := &relaycommon.RelayInfo{
 		IsChannelTest: false,
@@ -143,10 +149,11 @@ func TestProcessHeaderOverride_PassHeadersTemplateSetsRuntimeHeaders(t *testing.
 
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	ctx.Request.Header.Set("Originator", "Codex CLI")
-	ctx.Request.Header.Set("Session_id", "sess-123")
+	rawCtx, _ := gin.CreateTestContext(recorder)
+	rawCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	rawCtx.Request.Header.Set("Originator", "Codex CLI")
+	rawCtx.Request.Header.Set("Session_id", "sess-123")
+	ctx := ginadapter.Wrap(rawCtx)
 
 	info := &relaycommon.RelayInfo{
 		IsChannelTest: false,

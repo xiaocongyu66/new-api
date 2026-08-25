@@ -17,7 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/samber/lo"
 )
 
@@ -90,13 +90,13 @@ func oaiImage2AliImageRequest(info *relaycommon.RelayInfo, request dto.ImageRequ
 
 	return &imageRequest, nil
 }
-func getImageBase64sFromForm(c *gin.Context, fieldName string) ([]string, error) {
-	mf := c.Request.MultipartForm
+func getImageBase64sFromForm(c contract.Context, fieldName string) ([]string, error) {
+	mf := c.HTTPRequest().MultipartForm
 	if mf == nil {
 		if _, err := c.MultipartForm(); err != nil {
 			return nil, fmt.Errorf("failed to parse image edit form request: %w", err)
 		}
-		mf = c.Request.MultipartForm
+		mf = c.HTTPRequest().MultipartForm
 	}
 
 	var imageFiles []*multipart.FileHeader
@@ -158,7 +158,7 @@ func getImageBase64sFromForm(c *gin.Context, fieldName string) ([]string, error)
 	return imageBase64s, nil
 }
 
-func oaiFormEdit2AliImageEdit(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (*AliImageRequest, error) {
+func oaiFormEdit2AliImageEdit(c contract.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (*AliImageRequest, error) {
 	var imageRequest AliImageRequest
 	imageRequest.Model = request.Model
 	imageRequest.ResponseFormat = request.ResponseFormat
@@ -224,7 +224,7 @@ func updateTask(info *relaycommon.RelayInfo, taskID string) (*AliResponse, error
 	return &response, nil, responseBody
 }
 
-func asyncTaskWait(c *gin.Context, info *relaycommon.RelayInfo, taskID string) (*AliResponse, []byte, error) {
+func asyncTaskWait(c contract.Context, info *relaycommon.RelayInfo, taskID string) (*AliResponse, []byte, error) {
 	waitSeconds := 10
 	step := 0
 	maxStep := 20
@@ -235,12 +235,12 @@ func asyncTaskWait(c *gin.Context, info *relaycommon.RelayInfo, taskID string) (
 	time.Sleep(time.Duration(5) * time.Second)
 
 	for {
-		logger.LogDebug(c.Request.Context(), "asyncTaskWait step %d/%d, wait %d seconds", step, maxStep, waitSeconds)
+		logger.LogDebug(c.Context(), "asyncTaskWait step %d/%d, wait %d seconds", step, maxStep, waitSeconds)
 		step++
 		rsp, err, body := updateTask(info, taskID)
 		responseBody = body
 		if err != nil {
-			logger.LogWarn(c.Request.Context(), "asyncTaskWait UpdateTask err: "+err.Error())
+			logger.LogWarn(c.Context(), "asyncTaskWait UpdateTask err: "+err.Error())
 			time.Sleep(time.Duration(waitSeconds) * time.Second)
 			continue
 		}
@@ -268,7 +268,7 @@ func asyncTaskWait(c *gin.Context, info *relaycommon.RelayInfo, taskID string) (
 	return nil, nil, fmt.Errorf("aliAsyncTaskWait timeout")
 }
 
-func responseAli2OpenAIImage(c *gin.Context, response *AliResponse, originBody []byte, info *relaycommon.RelayInfo, responseFormat string) *dto.ImageResponse {
+func responseAli2OpenAIImage(c contract.Context, response *AliResponse, originBody []byte, info *relaycommon.RelayInfo, responseFormat string) *dto.ImageResponse {
 	imageResponse := dto.ImageResponse{
 		Created: info.StartTime.Unix(),
 	}
@@ -283,7 +283,7 @@ func responseAli2OpenAIImage(c *gin.Context, response *AliResponse, originBody [
 	return &imageResponse
 }
 
-func aliImageHandler(a *Adaptor, c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (*types.NewAPIError, *dto.Usage) {
+func aliImageHandler(a *Adaptor, c contract.Context, resp *http.Response, info *relaycommon.RelayInfo) (*types.NewAPIError, *dto.Usage) {
 	responseFormat := c.GetString("response_format")
 
 	var aliTaskResponse AliResponse
@@ -298,7 +298,7 @@ func aliImageHandler(a *Adaptor, c *gin.Context, resp *http.Response, info *rela
 	}
 
 	if aliTaskResponse.Message != "" {
-		logger.LogError(c.Request.Context(), "ali_async_task_failed: "+aliTaskResponse.Message)
+		logger.LogError(c.Context(), "ali_async_task_failed: "+aliTaskResponse.Message)
 		return types.NewError(errors.New(aliTaskResponse.Message), types.ErrorCodeBadResponse), nil
 	}
 
@@ -327,9 +327,9 @@ func aliImageHandler(a *Adaptor, c *gin.Context, resp *http.Response, info *rela
 	}
 
 	if a.IsSyncImageModel {
-		logger.LogDebug(c.Request.Context(), "ali_sync_image_result: %s", originRespBody)
+		logger.LogDebug(c.Context(), "ali_sync_image_result: %s", originRespBody)
 	} else {
-		logger.LogDebug(c.Request.Context(), "ali_async_image_result: %s", originRespBody)
+		logger.LogDebug(c.Context(), "ali_async_image_result: %s", originRespBody)
 	}
 
 	imageResponses := responseAli2OpenAIImage(c, aliResponse, originRespBody, info, responseFormat)

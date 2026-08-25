@@ -57,7 +57,7 @@ func Init() error {
 		localizers[LangEn] = i18n.NewLocalizer(bundle, LangEn)
 
 		// Set the TranslateMessage function in common package
-		common.TranslateMessage = T
+		common.TranslateMessage = TCtx
 		common.TranslateCtxMessage = TCtx
 	})
 	return initErr

@@ -3,10 +3,10 @@ package ali
 import (
 	"strings"
 
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/gin-gonic/gin"
 )
 
 type AliMessage struct {
@@ -100,7 +100,7 @@ type AliOutput struct {
 	} `json:"choices,omitempty"`
 }
 
-func (o *AliOutput) ChoicesToOpenAIImageDate(c *gin.Context, responseFormat string) []dto.ImageData {
+func (o *AliOutput) ChoicesToOpenAIImageDate(c contract.Context, responseFormat string) []dto.ImageData {
 	var imageData []dto.ImageData
 	if len(o.Choices) > 0 {
 		for _, choice := range o.Choices {
@@ -112,7 +112,7 @@ func (o *AliOutput) ChoicesToOpenAIImageDate(c *gin.Context, responseFormat stri
 						if responseFormat == "b64_json" {
 							_, b64, err := service.GetImageFromUrl(content.Image)
 							if err != nil {
-								logger.LogError(c.Request.Context(), "get_image_data_failed: "+err.Error())
+								logger.LogError(c.Context(), "get_image_data_failed: "+err.Error())
 								continue
 							}
 							b64Json = b64
@@ -133,14 +133,14 @@ func (o *AliOutput) ChoicesToOpenAIImageDate(c *gin.Context, responseFormat stri
 	return imageData
 }
 
-func (o *AliOutput) ResultToOpenAIImageDate(c *gin.Context, responseFormat string) []dto.ImageData {
+func (o *AliOutput) ResultToOpenAIImageDate(c contract.Context, responseFormat string) []dto.ImageData {
 	var imageData []dto.ImageData
 	for _, data := range o.Results {
 		var b64Json string
 		if responseFormat == "b64_json" {
 			_, b64, err := service.GetImageFromUrl(data.Url)
 			if err != nil {
-				logger.LogError(c.Request.Context(), "get_image_data_failed: "+err.Error())
+				logger.LogError(c.Context(), "get_image_data_failed: "+err.Error())
 				continue
 			}
 			b64Json = b64

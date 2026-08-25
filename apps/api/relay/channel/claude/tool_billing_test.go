@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http/httptest"
 	"testing"
 
@@ -21,7 +22,8 @@ func TestHandleClaudeResponseDataCountsToolUse(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
+	cRaw, _ := gin.CreateTestContext(w)
+	c := ginadapter.Wrap(cRaw)
 	info := &relaycommon.RelayInfo{
 		OriginModelName: "claude-3-7-sonnet",
 		RelayFormat:     types.RelayFormatClaude,
@@ -49,7 +51,8 @@ func TestHandleClaudeResponseDataCountsToolUse(t *testing.T) {
 func TestCountClaudeStreamBillableToolsSetsWebSearchRequests(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
+	cRaw, _ := gin.CreateTestContext(w)
+	c := ginadapter.Wrap(cRaw)
 	info := &relaycommon.RelayInfo{OriginModelName: "claude-3-7-sonnet"}
 
 	countClaudeStreamBillableTools(c, info, &dto.ClaudeResponse{

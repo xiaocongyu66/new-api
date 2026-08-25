@@ -132,11 +132,11 @@ func (r *requestContext) Cookie(name string) (string, error) { return r.gin.Cook
 // BindJSON decodes through the shared replayable-body helper so the body stays
 // readable for the outbound relay request.
 func (r *requestContext) BindJSON(target any) error {
-	return common.UnmarshalBodyReusable(r.gin, target)
+	return common.UnmarshalBodyReusable(r, target)
 }
 
 func (r *requestContext) RawBody() ([]byte, error) {
-	storage, err := common.GetBodyStorage(r.gin)
+	storage, err := common.GetBodyStorage(r)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +144,7 @@ func (r *requestContext) RawBody() ([]byte, error) {
 }
 
 func (r *requestContext) BodyReader() (io.ReadCloser, error) {
-	storage, err := common.GetBodyStorage(r.gin)
+	storage, err := common.GetBodyStorage(r)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +152,7 @@ func (r *requestContext) BodyReader() (io.ReadCloser, error) {
 }
 
 func (r *requestContext) MultipartForm() (*multipart.Form, error) {
-	return common.ParseMultipartFormReusable(r.gin)
+	return common.ParseMultipartFormReusable(r)
 }
 
 func (r *requestContext) PostForm(key string) string { return r.gin.PostForm(key) }

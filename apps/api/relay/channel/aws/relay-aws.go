@@ -18,7 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/pkg/errors"
 
 	"github.com/QuantumNous/new-api/setting/model_setting"
@@ -60,7 +60,7 @@ func newAwsInvokeError(requestContext context.Context, err error, operation stri
 	)
 }
 
-func newAwsClient(c *gin.Context, info *relaycommon.RelayInfo) (*bedrockruntime.Client, error) {
+func newAwsClient(c contract.Context, info *relaycommon.RelayInfo) (*bedrockruntime.Client, error) {
 	httpClient, err := service.GetHttpClientWithProxySettings(info.ChannelSetting.Proxy, info.ChannelSetting)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
@@ -93,7 +93,7 @@ func newAwsClient(c *gin.Context, info *relaycommon.RelayInfo) (*bedrockruntime.
 	return client, nil
 }
 
-func doAwsClientRequest(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor, requestBody io.Reader) (any, error) {
+func doAwsClientRequest(c contract.Context, info *relaycommon.RelayInfo, a *Adaptor, requestBody io.Reader) (any, error) {
 	awsCli, err := newAwsClient(c, info)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeChannelAwsClientError)
@@ -176,7 +176,7 @@ func doAwsClientRequest(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor,
 }
 
 // buildAwsRequestBody prepares the payload for AWS requests, applying passthrough rules when enabled.
-func buildAwsRequestBody(c *gin.Context, info *relaycommon.RelayInfo, awsClaudeReq any) ([]byte, error) {
+func buildAwsRequestBody(c contract.Context, info *relaycommon.RelayInfo, awsClaudeReq any) ([]byte, error) {
 	if model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled {
 		storage, err := common.GetBodyStorage(c)
 		if err != nil {
@@ -226,9 +226,9 @@ func getAwsModelID(requestModel string) string {
 	return requestModel
 }
 
-func awsHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types.NewAPIError, *dto.Usage) {
+func awsHandler(c contract.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types.NewAPIError, *dto.Usage) {
 
-	requestContext := c.Request.Context()
+	requestContext := c.Context()
 	ctx, cancel := newAwsInvokeContext(requestContext)
 	defer cancel()
 
@@ -247,7 +247,7 @@ func awsHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types
 
 	// 复制上游 Content-Type 到客户端响应头
 	if awsResp.ContentType != nil && *awsResp.ContentType != "" {
-		c.Writer.Header().Set("Content-Type", *awsResp.ContentType)
+		c.ResponseWriter().Header().Set("Content-Type", *awsResp.ContentType)
 	}
 
 	handlerErr := claude.HandleClaudeResponseData(c, info, claudeInfo, nil, awsResp.Body)
@@ -257,8 +257,8 @@ func awsHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types
 	return nil, claudeInfo.Usage
 }
 
-func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types.NewAPIError, *dto.Usage) {
-	requestContext := c.Request.Context()
+func awsStreamHandler(c contract.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types.NewAPIError, *dto.Usage) {
+	requestContext := c.Context()
 	ctx, cancel := newAwsInvokeContext(requestContext)
 	defer cancel()
 
@@ -314,9 +314,9 @@ streamLoop:
 }
 
 // Nova模型处理函数
-func handleNovaRequest(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types.NewAPIError, *dto.Usage) {
+func handleNovaRequest(c contract.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types.NewAPIError, *dto.Usage) {
 
-	requestContext := c.Request.Context()
+	requestContext := c.Context()
 	ctx, cancel := newAwsInvokeContext(requestContext)
 	defer cancel()
 

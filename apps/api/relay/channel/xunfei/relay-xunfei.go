@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/url"
 	"strings"
 	"time"
@@ -18,7 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/samber/lo"
 
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/gorilla/websocket"
 )
 
@@ -128,7 +127,7 @@ func buildXunfeiAuthUrl(hostUrl string, apiKey, apiSecret string) string {
 	return callUrl
 }
 
-func xunfeiStreamHandler(c *gin.Context, textRequest dto.GeneralOpenAIRequest, appId string, apiSecret string, apiKey string) (*dto.Usage, *types.NewAPIError) {
+func xunfeiStreamHandler(c contract.Context, textRequest dto.GeneralOpenAIRequest, appId string, apiSecret string, apiKey string) (*dto.Usage, *types.NewAPIError) {
 	domain, authUrl := getXunfeiAuthUrl(c, apiKey, apiSecret, textRequest.Model)
 	dataChan, stopChan, err := xunfeiMakeRequest(textRequest, domain, authUrl, appId)
 	if err != nil {
@@ -136,7 +135,8 @@ func xunfeiStreamHandler(c *gin.Context, textRequest dto.GeneralOpenAIRequest, a
 	}
 	helper.SetEventStreamHeaders(c)
 	var usage dto.Usage
-	c.Stream(func(w io.Writer) bool {
+pollLoop:
+	for {
 		select {
 		case xunfeiResponse := <-dataChan:
 			usage.PromptTokens += xunfeiResponse.Payload.Usage.Text.PromptTokens
@@ -146,19 +146,20 @@ func xunfeiStreamHandler(c *gin.Context, textRequest dto.GeneralOpenAIRequest, a
 			jsonResponse, err := json.Marshal(response)
 			if err != nil {
 				common.SysLog("error marshalling stream response: " + err.Error())
-				return true
+				continue
 			}
-			c.Render(-1, common.CustomEvent{Data: "data: " + string(jsonResponse)})
-			return true
+			func() { _ = common.CustomEvent{Data: "data: " + string(jsonResponse)}.Render(c.ResponseWriter()) }()
+			continue
 		case <-stopChan:
-			c.Render(-1, common.CustomEvent{Data: "data: [DONE]"})
-			return false
+			func() { _ = common.CustomEvent{Data: "data: [DONE]"}.Render(c.ResponseWriter()) }()
+			_ = helper.FlushWriter(c)
+			break pollLoop
 		}
-	})
+	}
 	return &usage, nil
 }
 
-func xunfeiHandler(c *gin.Context, textRequest dto.GeneralOpenAIRequest, appId string, apiSecret string, apiKey string) (*dto.Usage, *types.NewAPIError) {
+func xunfeiHandler(c contract.Context, textRequest dto.GeneralOpenAIRequest, appId string, apiSecret string, apiKey string) (*dto.Usage, *types.NewAPIError) {
 	domain, authUrl := getXunfeiAuthUrl(c, apiKey, apiSecret, textRequest.Model)
 	dataChan, stopChan, err := xunfeiMakeRequest(textRequest, domain, authUrl, appId)
 	if err != nil {
@@ -195,8 +196,8 @@ func xunfeiHandler(c *gin.Context, textRequest dto.GeneralOpenAIRequest, appId s
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
-	c.Writer.Header().Set("Content-Type", "application/json")
-	_, _ = c.Writer.Write(jsonResponse)
+	c.ResponseWriter().Header().Set("Content-Type", "application/json")
+	_, _ = c.ResponseWriter().Write(jsonResponse)
 	return &usage, nil
 }
 
@@ -263,15 +264,15 @@ func apiVersion2domain(apiVersion string) string {
 	return "general" + apiVersion
 }
 
-func getXunfeiAuthUrl(c *gin.Context, apiKey string, apiSecret string, modelName string) (string, string) {
+func getXunfeiAuthUrl(c contract.Context, apiKey string, apiSecret string, modelName string) (string, string) {
 	apiVersion := getAPIVersion(c, modelName)
 	domain := apiVersion2domain(apiVersion)
 	authUrl := buildXunfeiAuthUrl(fmt.Sprintf("wss://spark-api.xf-yun.com/%s/chat", apiVersion), apiKey, apiSecret)
 	return domain, authUrl
 }
 
-func getAPIVersion(c *gin.Context, modelName string) string {
-	query := c.Request.URL.Query()
+func getAPIVersion(c contract.Context, modelName string) string {
+	query := c.HTTPRequest().URL.Query()
 	apiVersion := query.Get("api-version")
 	if apiVersion != "" {
 		return apiVersion

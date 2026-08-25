@@ -19,11 +19,12 @@ func TestSoraBuildRequestBodyReturnsReplayablePassThroughBody(t *testing.T) {
 	payload := []byte("opaque-sora-request-body")
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewReader(payload))
+	cc := ginadapter.Wrap(c)
 	c.Request.Header.Set("Content-Type", "application/octet-stream")
-	defer common.CleanupBodyStorage(ginadapter.Wrap(c))
+	defer common.CleanupBodyStorage(cc)
 
 	info := &relaycommon.RelayInfo{}
-	body, err := (&TaskAdaptor{}).BuildRequestBody(c, info)
+	body, err := (&TaskAdaptor{}).BuildRequestBody(cc, info)
 	require.NoError(t, err)
 	replayable, ok := body.(common.ReplayableBody)
 	require.True(t, ok)

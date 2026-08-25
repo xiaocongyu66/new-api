@@ -224,6 +224,7 @@ func GetAllLogsInternal(logType int, startTimestamp int64, endTimestamp int64, m
 
 	return logs, total, err
 }
+
 // GetUserLogsInternal mirrors model.GetUserLogs
 func GetUserLogsInternal(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string) (logs []*model.Log, total int64, err error) {
 	var tx *gorm.DB
@@ -329,6 +330,7 @@ func SumUsedQuotaInternal(logType int, startTimestamp int64, endTimestamp int64,
 
 	return stat, nil
 }
+
 // SumUsedTokenInternal mirrors model.SumUsedToken
 func SumUsedTokenInternal(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string) (token int) {
 	tx := model.LOG_DB.Table("logs").Select("COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0)")

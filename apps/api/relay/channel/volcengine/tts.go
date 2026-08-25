@@ -10,10 +10,10 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
@@ -142,7 +142,7 @@ func getContentTypeByEncoding(encoding string) string {
 	return "application/octet-stream"
 }
 
-func handleTTSResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, encoding string) (usage any, err *types.NewAPIError) {
+func handleTTSResponse(c contract.Context, resp *http.Response, info *relaycommon.RelayInfo, encoding string) (usage any, err *types.NewAPIError) {
 	body, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
 		return nil, types.NewErrorWithStatusCode(
@@ -180,7 +180,7 @@ func handleTTSResponse(c *gin.Context, resp *http.Response, info *relaycommon.Re
 	}
 
 	contentType := getContentTypeByEncoding(encoding)
-	c.Header("Content-Type", contentType)
+	c.SetHeader("Content-Type", contentType)
 	c.Data(http.StatusOK, contentType, audioData)
 
 	usage = &dto.Usage{
@@ -196,7 +196,7 @@ func generateRequestID() string {
 	return uuid.New().String()
 }
 
-func handleTTSWebSocketResponse(c *gin.Context, requestURL string, volcRequest VolcengineTTSRequest, info *relaycommon.RelayInfo, encoding string) (usage any, err *types.NewAPIError) {
+func handleTTSWebSocketResponse(c contract.Context, requestURL string, volcRequest VolcengineTTSRequest, info *relaycommon.RelayInfo, encoding string) (usage any, err *types.NewAPIError) {
 	_, token, parseErr := parseVolcengineAuth(info.ApiKey)
 	if parseErr != nil {
 		return nil, types.NewErrorWithStatusCode(
@@ -244,8 +244,8 @@ func handleTTSWebSocketResponse(c *gin.Context, requestURL string, volcRequest V
 	}
 
 	contentType := getContentTypeByEncoding(encoding)
-	c.Header("Content-Type", contentType)
-	c.Header("Transfer-Encoding", "chunked")
+	c.SetHeader("Content-Type", contentType)
+	c.SetHeader("Transfer-Encoding", "chunked")
 
 	for {
 		msg, recvErr := ReceiveMessage(conn)
@@ -271,14 +271,16 @@ func handleTTSWebSocketResponse(c *gin.Context, requestURL string, volcRequest V
 			continue
 		case MsgTypeAudioOnlyServer:
 			if len(msg.Payload) > 0 {
-				if _, writeErr := c.Writer.Write(msg.Payload); writeErr != nil {
+				if _, writeErr := c.ResponseWriter().Write(msg.Payload); writeErr != nil {
 					return nil, types.NewErrorWithStatusCode(
 						fmt.Errorf("failed to write audio data: %w", writeErr),
 						types.ErrorCodeBadResponse,
 						http.StatusInternalServerError,
 					)
 				}
-				c.Writer.Flush()
+				if f, ok := c.ResponseWriter().(http.Flusher); ok {
+					f.Flush()
+				}
 			}
 
 			if msg.Sequence < 0 {

@@ -15,7 +15,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
 
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
 type TaskAdaptor struct {
@@ -35,7 +35,7 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 	a.ChannelType = info.ChannelType
 }
 
-func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
+func (a *TaskAdaptor) ValidateRequestAndSetAction(c contract.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
 	action := strings.ToUpper(c.Param("action"))
 
 	var sunoRequest *dto.SunoSubmitReq
@@ -69,14 +69,14 @@ func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, erro
 	return fullRequestURL, nil
 }
 
-func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info *relaycommon.RelayInfo) error {
-	req.Header.Set("Content-Type", c.Request.Header.Get("Content-Type"))
-	req.Header.Set("Accept", c.Request.Header.Get("Accept"))
+func (a *TaskAdaptor) BuildRequestHeader(c contract.Context, req *http.Request, info *relaycommon.RelayInfo) error {
+	req.Header.Set("Content-Type", c.HTTPRequest().Header.Get("Content-Type"))
+	req.Header.Set("Accept", c.HTTPRequest().Header.Get("Accept"))
 	req.Header.Set("Authorization", "Bearer "+info.ApiKey)
 	return nil
 }
 
-func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayInfo) (io.Reader, error) {
+func (a *TaskAdaptor) BuildRequestBody(c contract.Context, info *relaycommon.RelayInfo) (io.Reader, error) {
 	sunoRequest, ok := c.Get("task_request")
 	if !ok {
 		return nil, fmt.Errorf("task_request not found in context")
@@ -88,11 +88,11 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	return bytes.NewReader(data), nil
 }
 
-func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (*http.Response, error) {
+func (a *TaskAdaptor) DoRequest(c contract.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (*http.Response, error) {
 	return channel.DoTaskApiRequest(a, c, info, requestBody)
 }
 
-func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *dto.TaskError) {
+func (a *TaskAdaptor) DoResponse(c contract.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *dto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		taskErr = service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
@@ -149,7 +149,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	return client.Do(req)
 }
 
-func actionValidate(c *gin.Context, sunoRequest *dto.SunoSubmitReq, action string) (err error) {
+func actionValidate(c contract.Context, sunoRequest *dto.SunoSubmitReq, action string) (err error) {
 	switch action {
 	case constant.SunoActionMusic:
 		if sunoRequest.Mv == "" {

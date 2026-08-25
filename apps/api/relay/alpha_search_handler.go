@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/capabilities/billing"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 
@@ -17,10 +16,10 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
-func AlphaSearchHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
+func AlphaSearchHelper(c contract.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 	info.InitChannelMeta(c)
 
 	switch info.ChannelType {
@@ -63,7 +62,7 @@ func AlphaSearchHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError
 		}
 	}
 
-	logger.LogDebug(c.Request.Context(), "requestBody: %s", jsonData)
+	logger.LogDebug(c.Context(), "requestBody: %s", jsonData)
 	body, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
@@ -89,16 +88,16 @@ func AlphaSearchHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError
 	defer httpResp.Body.Close()
 
 	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
-		newAPIError = service.RelayErrorHandler(c.Request.Context(), httpResp, false)
+		newAPIError = service.RelayErrorHandler(c.Context(), httpResp, false)
 		service.ResetStatusCode(newAPIError, statusCodeMappingStr)
 		return newAPIError
 	}
 
 	if contentType := httpResp.Header.Get("Content-Type"); contentType != "" {
-		c.Writer.Header().Set("Content-Type", contentType)
+		c.SetHeader("Content-Type", contentType)
 	}
-	c.Writer.WriteHeader(httpResp.StatusCode)
-	if _, err := io.Copy(c.Writer, httpResp.Body); err != nil {
+	c.ResponseWriter().WriteHeader(httpResp.StatusCode)
+	if _, err := io.Copy(c.ResponseWriter(), httpResp.Body); err != nil {
 		return types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithSkipRetry())
 	}
 
@@ -117,7 +116,7 @@ func AlphaSearchHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError
 	}
 
 	usage := &dto.Usage{}
-	billing.PostTextConsumeQuota(ginadapter.Wrap(c), info, usage, nil)
+	billing.PostTextConsumeQuota(c, info, usage, nil)
 	return nil
 }
 

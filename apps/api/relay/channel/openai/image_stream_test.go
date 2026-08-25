@@ -2,6 +2,7 @@ package openai
 
 import (
 	"context"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -46,7 +47,7 @@ func TestOpenaiImageDoResponseUsesInfoIsStream(t *testing.T) {
 		c, recorder, resp, info := newImageTestContext(t, body, "application/json", false)
 		info.RelayMode = relayconstant.RelayModeImagesGenerations
 
-		usage, err := (&Adaptor{}).DoResponse(c, resp, info)
+		usage, err := (&Adaptor{}).DoResponse(ginadapter.Wrap(c), resp, info)
 
 		require.Nil(t, err)
 		require.NotNil(t, usage)
@@ -57,7 +58,7 @@ func TestOpenaiImageDoResponseUsesInfoIsStream(t *testing.T) {
 		c, recorder, resp, info := newImageTestContext(t, body, "application/json", true)
 		info.RelayMode = relayconstant.RelayModeImagesGenerations
 
-		usage, err := (&Adaptor{}).DoResponse(c, resp, info)
+		usage, err := (&Adaptor{}).DoResponse(ginadapter.Wrap(c), resp, info)
 
 		require.Nil(t, err)
 		require.NotNil(t, usage)
@@ -93,7 +94,7 @@ func TestOpenaiImageStreamHandlerForwardsSSEAndUsage(t *testing.T) {
 	info.PriceData.UsePrice = true
 	info.PriceData.AddOtherRatio("n", 3)
 
-	usage, err := OpenaiImageStreamHandler(c, info, resp)
+	usage, err := OpenaiImageStreamHandler(ginadapter.Wrap(c), info, resp)
 	require.Nil(t, err)
 	require.Equal(t, 3, usage.PromptTokens)
 	require.Equal(t, 4, usage.CompletionTokens)
@@ -132,7 +133,7 @@ func TestOpenaiImageStreamHandlerUsesCompletedEventCount(t *testing.T) {
 	info.PriceData.UsePrice = true
 	info.PriceData.AddOtherRatio("n", 3)
 
-	usage, err := OpenaiImageStreamHandler(c, info, resp)
+	usage, err := OpenaiImageStreamHandler(ginadapter.Wrap(c), info, resp)
 
 	require.Nil(t, err)
 	require.Equal(t, 7, usage.TotalTokens)
@@ -234,7 +235,7 @@ func TestOpenaiImageStreamHandlerClientDisconnectKeepsRequestedCount(t *testing.
 	info.PriceData.UsePrice = true
 	info.PriceData.AddOtherRatio("n", 3)
 
-	usage, err := OpenaiImageStreamHandler(c, info, resp)
+	usage, err := OpenaiImageStreamHandler(ginadapter.Wrap(c), info, resp)
 
 	require.Nil(t, err)
 	require.NotNil(t, usage)
@@ -271,7 +272,7 @@ func TestOpenaiImageStreamHandlerClientDisconnectRaisesCount(t *testing.T) {
 	info.PriceData.UsePrice = true
 	info.PriceData.AddOtherRatio("n", 1)
 
-	usage, err := OpenaiImageStreamHandler(c, info, resp)
+	usage, err := OpenaiImageStreamHandler(ginadapter.Wrap(c), info, resp)
 
 	require.Nil(t, err)
 	require.NotNil(t, usage)
@@ -295,7 +296,7 @@ func TestOpenaiImageStreamHandlerWrapsJSONResponse(t *testing.T) {
 	info.PriceData.UsePrice = true
 	info.PriceData.AddOtherRatio("n", 3)
 
-	usage, err := OpenaiImageStreamHandler(c, info, resp)
+	usage, err := OpenaiImageStreamHandler(ginadapter.Wrap(c), info, resp)
 	require.Nil(t, err)
 	require.Equal(t, 3, usage.PromptTokens)
 	require.Equal(t, 4, usage.CompletionTokens)
@@ -352,7 +353,7 @@ func TestOpenaiImageHandlerUsesPositiveActualCountForFixedPrice(t *testing.T) {
 			info.PriceData.UsePrice = tt.usePrice
 			info.PriceData.AddOtherRatio("n", 3)
 
-			_, err := OpenaiImageHandler(c, info, resp)
+			_, err := OpenaiImageHandler(ginadapter.Wrap(c), info, resp)
 
 			require.Nil(t, err)
 			require.Equal(t, tt.wantCount, info.PriceData.OtherRatios()["n"])
@@ -374,7 +375,7 @@ func TestOpenaiImageHandlersReturnJSONError(t *testing.T) {
 	t.Run("non-streaming handler", func(t *testing.T) {
 		c, recorder, resp, info := newImageTestContext(t, body, "application/json", false)
 
-		usage, err := OpenaiImageHandler(c, info, resp)
+		usage, err := OpenaiImageHandler(ginadapter.Wrap(c), info, resp)
 		require.Nil(t, usage)
 		require.NotNil(t, err)
 		require.Equal(t, http.StatusOK, err.StatusCode)
@@ -388,7 +389,7 @@ func TestOpenaiImageHandlersReturnJSONError(t *testing.T) {
 	t.Run("stream handler JSON fallback", func(t *testing.T) {
 		c, recorder, resp, info := newImageTestContext(t, body, "application/json", true)
 
-		usage, err := OpenaiImageStreamHandler(c, info, resp)
+		usage, err := OpenaiImageStreamHandler(ginadapter.Wrap(c), info, resp)
 		require.Nil(t, usage)
 		require.NotNil(t, err)
 		require.Equal(t, http.StatusOK, err.StatusCode)
@@ -400,7 +401,7 @@ func TestOpenaiImageHandlersReturnJSONError(t *testing.T) {
 		c, recorder, resp, info := newImageTestContext(t, body, "application/json", true)
 		resp.StatusCode = http.StatusBadGateway
 
-		usage, err := OpenaiImageStreamHandler(c, info, resp)
+		usage, err := OpenaiImageStreamHandler(ginadapter.Wrap(c), info, resp)
 		require.Nil(t, usage)
 		require.NotNil(t, err)
 		require.Equal(t, http.StatusBadGateway, err.StatusCode)
@@ -433,7 +434,7 @@ func TestOpenaiImageStreamHandlerRecordsUpstreamErrorEvent(t *testing.T) {
 
 	c, recorder, resp, info := newImageTestContext(t, body, "text/event-stream", true)
 
-	usage, err := OpenaiImageStreamHandler(c, info, resp)
+	usage, err := OpenaiImageStreamHandler(ginadapter.Wrap(c), info, resp)
 	require.Nil(t, err)
 	require.NotNil(t, usage)
 	require.NotNil(t, info.StreamStatus)

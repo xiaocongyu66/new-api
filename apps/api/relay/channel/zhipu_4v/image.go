@@ -11,7 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
 type zhipuImageRequest struct {
@@ -54,7 +54,7 @@ type openAIImageData struct {
 	B64Json string `json:"b64_json"`
 }
 
-func zhipu4vImageHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (*dto.Usage, *types.NewAPIError) {
+func zhipu4vImageHandler(c contract.Context, resp *http.Response, info *relaycommon.RelayInfo) (*dto.Usage, *types.NewAPIError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
@@ -86,7 +86,7 @@ func zhipu4vImageHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 			url = data.ImageUrl
 		}
 		if url == "" {
-			logger.LogWarn(c.Request.Context(), "zhipu_image_missing_url")
+			logger.LogWarn(c.Context(), "zhipu_image_missing_url")
 			continue
 		}
 
@@ -99,14 +99,14 @@ func zhipu4vImageHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 		default:
 			_, downloaded, err := service.GetImageFromUrl(url)
 			if err != nil {
-				logger.LogError(c.Request.Context(), "zhipu_image_get_b64_failed: "+err.Error())
+				logger.LogError(c.Context(), "zhipu_image_get_b64_failed: "+err.Error())
 				continue
 			}
 			b64 = downloaded
 		}
 
 		if b64 == "" {
-			logger.LogWarn(c.Request.Context(), "zhipu_image_empty_b64")
+			logger.LogWarn(c.Context(), "zhipu_image_empty_b64")
 			continue
 		}
 

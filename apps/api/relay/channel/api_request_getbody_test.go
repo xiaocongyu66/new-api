@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -191,7 +193,7 @@ func (s *stubTaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, 
 	return s.baseURL + "/v1/video/generations", nil
 }
 
-func (s *stubTaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info *relaycommon.RelayInfo) error {
+func (s *stubTaskAdaptor) BuildRequestHeader(c contract.Context, req *http.Request, info *relaycommon.RelayInfo) error {
 	s.capturedReq = req
 	return nil
 }
@@ -219,8 +221,7 @@ func TestDoTaskApiRequest_KeepsReplayableGetBody(t *testing.T) {
 	defer server.Close()
 
 	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/video/generations", bytes.NewReader(payload))
 
 	info := &relaycommon.RelayInfo{
@@ -228,7 +229,7 @@ func TestDoTaskApiRequest_KeepsReplayableGetBody(t *testing.T) {
 	}
 
 	adaptor := &stubTaskAdaptor{baseURL: server.URL}
-	resp, err := DoTaskApiRequest(adaptor, ctx, info, bytes.NewReader(payload))
+	resp, err := DoTaskApiRequest(adaptor, ginadapter.Wrap(ctx), info, bytes.NewReader(payload))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)

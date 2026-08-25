@@ -7,7 +7,6 @@ import (
 	taskcap "github.com/QuantumNous/new-api/internal/capabilities/task"
 	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"log"
 	"net/http"
@@ -42,23 +41,23 @@ func relayHandler(c contract.Context, info *relaycommon.RelayInfo) *types.NewAPI
 	var err *types.NewAPIError
 	switch info.RelayMode {
 	case relayconstant.RelayModeImagesGenerations, relayconstant.RelayModeImagesEdits:
-		err = relay.ImageHelper(ginadapter.MustUnwrap(c), info)
+		err = relay.ImageHelper(c, info)
 	case relayconstant.RelayModeAudioSpeech:
 		fallthrough
 	case relayconstant.RelayModeAudioTranslation:
 		fallthrough
 	case relayconstant.RelayModeAudioTranscription:
-		err = relay.AudioHelper(ginadapter.MustUnwrap(c), info)
+		err = relay.AudioHelper(c, info)
 	case relayconstant.RelayModeRerank:
-		err = relay.RerankHelper(ginadapter.MustUnwrap(c), info)
+		err = relay.RerankHelper(c, info)
 	case relayconstant.RelayModeEmbeddings:
-		err = relay.EmbeddingHelper(ginadapter.MustUnwrap(c), info)
+		err = relay.EmbeddingHelper(c, info)
 	case relayconstant.RelayModeResponses, relayconstant.RelayModeResponsesCompact:
-		err = relay.ResponsesHelper(ginadapter.MustUnwrap(c), info)
+		err = relay.ResponsesHelper(c, info)
 	case relayconstant.RelayModeAlphaSearch:
-		err = relay.AlphaSearchHelper(ginadapter.MustUnwrap(c), info)
+		err = relay.AlphaSearchHelper(c, info)
 	default:
-		err = relay.TextHelper(ginadapter.MustUnwrap(c), info)
+		err = relay.TextHelper(c, info)
 	}
 	return err
 }
@@ -66,9 +65,9 @@ func relayHandler(c contract.Context, info *relaycommon.RelayInfo) *types.NewAPI
 func geminiRelayHandler(c contract.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
 	var err *types.NewAPIError
 	if strings.Contains(c.Path(), "embed") {
-		err = relay.GeminiEmbeddingHandler(ginadapter.MustUnwrap(c), info)
+		err = relay.GeminiEmbeddingHandler(c, info)
 	} else {
-		err = relay.GeminiHelper(ginadapter.MustUnwrap(c), info)
+		err = relay.GeminiHelper(c, info)
 	}
 	return err
 }
@@ -88,7 +87,7 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 		var err error
 		ws, err = upgrader.Upgrade(c.ResponseWriter(), c.HTTPRequest(), nil)
 		if err != nil {
-			helper.WssError(ginadapter.MustUnwrap(c), ws, types.NewError(err, types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry()).ToOpenAIError())
+			helper.WssError(c, ws, types.NewError(err, types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry()).ToOpenAIError())
 			return
 		}
 		defer ws.Close()
@@ -100,7 +99,7 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
-				helper.WssError(ginadapter.MustUnwrap(c), ws, newAPIError.ToOpenAIError())
+				helper.WssError(c, ws, newAPIError.ToOpenAIError())
 			case types.RelayFormatClaude:
 				_ = c.JSON(newAPIError.StatusCode, common.H{
 					"type":  "error",
@@ -114,7 +113,7 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 		}
 	}()
 
-	request, err := helper.GetAndValidateRequest(ginadapter.MustUnwrap(c), relayFormat)
+	request, err := helper.GetAndValidateRequest(c, relayFormat)
 	if err != nil {
 		// Map "request body too large" to 413 so clients can handle it correctly
 		if common.IsRequestBodyTooLargeError(err) || errors.Is(err, common.ErrRequestBodyTooLarge) {
@@ -125,7 +124,7 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 		return
 	}
 
-	relayInfo, err := relaycommon.GenRelayInfo(ginadapter.MustUnwrap(c), relayFormat, request, ws)
+	relayInfo, err := relaycommon.GenRelayInfo(c, relayFormat, request, ws)
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)
 		return
@@ -167,7 +166,7 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 
 	relayInfo.SetEstimatePromptTokens(tokens)
 
-	priceData, err := helper.ModelPriceHelper(ginadapter.MustUnwrap(c), relayInfo, tokens, meta)
+	priceData, err := helper.ModelPriceHelper(c, relayInfo, tokens, meta)
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
 		return
@@ -228,7 +227,7 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 			break
 		}
 
-		bodyStorage, bodyErr := common.GetBodyStorage(ginadapter.MustUnwrap(c))
+		bodyStorage, bodyErr := common.GetBodyStorage(c)
 		if bodyErr != nil {
 			// Ensure consistent 413 for oversized bodies even when error occurs later (e.g., retry path)
 			if common.IsRequestBodyTooLargeError(bodyErr) || errors.Is(bodyErr, common.ErrRequestBodyTooLarge) {
@@ -242,9 +241,9 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 
 		switch relayFormat {
 		case types.RelayFormatOpenAIRealtime:
-			newAPIError = relay.WssHelper(ginadapter.MustUnwrap(c), relayInfo)
+			newAPIError = relay.WssHelper(c, relayInfo)
 		case types.RelayFormatClaude:
-			newAPIError = relay.ClaudeHelper(ginadapter.MustUnwrap(c), relayInfo)
+			newAPIError = relay.ClaudeHelper(c, relayInfo)
 		case types.RelayFormatGemini:
 			newAPIError = geminiRelayHandler(c, relayInfo)
 		default:
@@ -352,7 +351,7 @@ func getChannel(c contract.Context, info *relaycommon.RelayInfo, retryParam *por
 		return nil, types.NewError(fmt.Errorf("分组 %s 下模型 %s 的可用渠道不存在（retry）", selectGroup, info.OriginModelName), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
 
-	info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(ginadapter.MustUnwrap(c), info)
+	info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
 
 	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName)
 	if newAPIError != nil {
@@ -435,13 +434,13 @@ func processChannelError(c contract.Context, channelError types.ChannelError, er
 			startTime = time.Now()
 		}
 		useTimeSeconds := int(time.Since(startTime).Seconds())
-		model.RecordErrorLog(ginadapter.MustUnwrap(c), userId, channelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, common.GetCtxKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
+		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, common.GetCtxKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
 	}
 
 }
 
 func RelayMidjourney(c contract.Context) {
-	relayInfo, err := relaycommon.GenRelayInfo(ginadapter.MustUnwrap(c), types.RelayFormatMjProxy, nil, nil)
+	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatMjProxy, nil, nil)
 
 	if err != nil {
 		_ = c.JSON(http.StatusInternalServerError, common.H{
@@ -455,15 +454,15 @@ func RelayMidjourney(c contract.Context) {
 	var mjErr *taskdto.MidjourneyResponse
 	switch relayInfo.RelayMode {
 	case relayconstant.RelayModeMidjourneyNotify:
-		mjErr = relay.RelayMidjourneyNotify(ginadapter.MustUnwrap(c))
+		mjErr = relay.RelayMidjourneyNotify(c)
 	case relayconstant.RelayModeMidjourneyTaskFetch, relayconstant.RelayModeMidjourneyTaskFetchByCondition:
-		mjErr = relay.RelayMidjourneyTask(ginadapter.MustUnwrap(c), relayInfo.RelayMode)
+		mjErr = relay.RelayMidjourneyTask(c, relayInfo.RelayMode)
 	case relayconstant.RelayModeMidjourneyTaskImageSeed:
-		mjErr = relay.RelayMidjourneyTaskImageSeed(ginadapter.MustUnwrap(c))
+		mjErr = relay.RelayMidjourneyTaskImageSeed(c)
 	case relayconstant.RelayModeSwapFace:
-		mjErr = relay.RelaySwapFace(ginadapter.MustUnwrap(c), relayInfo)
+		mjErr = relay.RelaySwapFace(c, relayInfo)
 	default:
-		mjErr = relay.RelayMidjourneySubmit(ginadapter.MustUnwrap(c), relayInfo)
+		mjErr = relay.RelayMidjourneySubmit(c, relayInfo)
 	}
 	//err = relayMidjourneySubmit(c, relayMode)
 	log.Println(mjErr)
@@ -508,7 +507,7 @@ func RelayNotFound(c contract.Context) {
 }
 
 func RelayTaskFetch(c contract.Context) {
-	relayInfo, err := relaycommon.GenRelayInfo(ginadapter.MustUnwrap(c), types.RelayFormatTask, nil, nil)
+	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
 	if err != nil {
 		_ = c.JSON(http.StatusInternalServerError, &taskdto.TaskError{
 			Code:       "gen_relay_info_failed",
@@ -523,7 +522,7 @@ func RelayTaskFetch(c contract.Context) {
 }
 
 func RelayTask(c contract.Context) {
-	relayInfo, err := relaycommon.GenRelayInfo(ginadapter.MustUnwrap(c), types.RelayFormatTask, nil, nil)
+	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
 	if err != nil {
 		_ = c.JSON(http.StatusInternalServerError, &taskdto.TaskError{
 			Code:       "gen_relay_info_failed",
@@ -613,7 +612,7 @@ func RelayTask(c contract.Context) {
 		}
 
 		addUsedChannel(c, channel.Id)
-		bodyStorage, bodyErr := common.GetBodyStorage(ginadapter.MustUnwrap(c))
+		bodyStorage, bodyErr := common.GetBodyStorage(c)
 		if bodyErr != nil {
 			if common.IsRequestBodyTooLargeError(bodyErr) || errors.Is(bodyErr, common.ErrRequestBodyTooLarge) {
 				taskErr = service.TaskErrorWrapperLocal(bodyErr, "read_request_body_failed", http.StatusRequestEntityTooLarge)

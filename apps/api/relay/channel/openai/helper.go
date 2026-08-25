@@ -16,11 +16,11 @@ import (
 
 	"github.com/samber/lo"
 
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
 // 辅助函数
-func HandleStreamFormat(c *gin.Context, info *relaycommon.RelayInfo, data string, forceFormat bool, thinkToContent bool) error {
+func HandleStreamFormat(c contract.Context, info *relaycommon.RelayInfo, data string, forceFormat bool, thinkToContent bool) error {
 	info.SendResponseCount++
 
 	switch info.RelayFormat {
@@ -34,7 +34,7 @@ func HandleStreamFormat(c *gin.Context, info *relaycommon.RelayInfo, data string
 	return nil
 }
 
-func handleClaudeFormat(c *gin.Context, data string, info *relaycommon.RelayInfo) error {
+func handleClaudeFormat(c contract.Context, data string, info *relaycommon.RelayInfo) error {
 	var streamResponse dto.ChatCompletionsStreamResponse
 	if err := common.Unmarshal(common.StringToByteSlice(data), &streamResponse); err != nil {
 		return err
@@ -43,7 +43,7 @@ func handleClaudeFormat(c *gin.Context, data string, info *relaycommon.RelayInfo
 	if streamResponse.Usage != nil {
 		info.ClaudeConvertInfo.Usage = streamResponse.Usage
 	}
-	result, err := relayconvert.ConvertStreamResponse(c, info, types.RelayFormatClaude, &streamResponse)
+	result, err := relayconvert.ConvertStreamResponse(c.Context(), info, types.RelayFormatClaude, &streamResponse)
 	if err != nil {
 		return err
 	}
@@ -57,14 +57,14 @@ func handleClaudeFormat(c *gin.Context, data string, info *relaycommon.RelayInfo
 	return nil
 }
 
-func handleGeminiFormat(c *gin.Context, data string, info *relaycommon.RelayInfo) error {
+func handleGeminiFormat(c contract.Context, data string, info *relaycommon.RelayInfo) error {
 	var streamResponse dto.ChatCompletionsStreamResponse
 	if err := common.Unmarshal(common.StringToByteSlice(data), &streamResponse); err != nil {
-		logger.LogError(c.Request.Context(), "failed to unmarshal stream response: "+err.Error())
+		logger.LogError(c.Context(), "failed to unmarshal stream response: "+err.Error())
 		return err
 	}
 
-	result, err := relayconvert.ConvertStreamResponse(c, info, types.RelayFormatGemini, &streamResponse)
+	result, err := relayconvert.ConvertStreamResponse(c.Context(), info, types.RelayFormatGemini, &streamResponse)
 	if err != nil {
 		return err
 	}
@@ -80,12 +80,12 @@ func handleGeminiFormat(c *gin.Context, data string, info *relaycommon.RelayInfo
 
 	geminiResponseStr, err := common.Marshal(geminiResponse)
 	if err != nil {
-		logger.LogError(c.Request.Context(), "failed to marshal gemini response: "+err.Error())
+		logger.LogError(c.Context(), "failed to marshal gemini response: "+err.Error())
 		return err
 	}
 
 	// send gemini format response
-	c.Render(-1, common.CustomEvent{Data: "data: " + string(geminiResponseStr)})
+	func() { _ = common.CustomEvent{Data: "data: " + string(geminiResponseStr)}.Render(c.ResponseWriter()) }()
 	_ = helper.FlushWriter(c)
 	return nil
 }
@@ -159,7 +159,7 @@ func handleLastResponse(lastStreamData string, responseId *string, createAt *int
 	return nil
 }
 
-func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStreamData string,
+func HandleFinalResponse(c contract.Context, info *relaycommon.RelayInfo, lastStreamData string,
 	responseId string, createAt int64, model string, systemFingerprint string,
 	usage *dto.Usage, containStreamUsage bool) {
 
@@ -181,7 +181,7 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 
 		info.ClaudeConvertInfo.Usage = usage
 
-		result, err := relayconvert.ConvertStreamResponse(c, info, types.RelayFormatClaude, &streamResponse)
+		result, err := relayconvert.ConvertStreamResponse(c.Context(), info, types.RelayFormatClaude, &streamResponse)
 		if err != nil {
 			common.SysLog("error converting Claude stream response: " + err.Error())
 			return
@@ -208,7 +208,7 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 		// 而包含最后一段文本输出的响应（倒数第二个）的 finishReason 为 null
 		// 暂不知是否有程序会不兼容。
 
-		result, err := relayconvert.ConvertStreamResponse(c, info, types.RelayFormatGemini, &streamResponse)
+		result, err := relayconvert.ConvertStreamResponse(c.Context(), info, types.RelayFormatGemini, &streamResponse)
 		if err != nil {
 			common.SysLog("error converting Gemini stream response: " + err.Error())
 			return
@@ -231,12 +231,12 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 		}
 
 		// 发送最终的 Gemini 响应
-		c.Render(-1, common.CustomEvent{Data: "data: " + string(geminiResponseStr)})
+		func() { _ = common.CustomEvent{Data: "data: " + string(geminiResponseStr)}.Render(c.ResponseWriter()) }()
 		_ = helper.FlushWriter(c)
 	}
 }
 
-func sendResponsesStreamData(c *gin.Context, streamResponse dto.ResponsesStreamResponse, data string) {
+func sendResponsesStreamData(c contract.Context, streamResponse dto.ResponsesStreamResponse, data string) {
 	if data == "" {
 		return
 	}

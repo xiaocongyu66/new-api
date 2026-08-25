@@ -19,7 +19,8 @@ import (
 // log formatter strips admin_info for non-admin viewers).
 func TestAttachQuotaSaturationNestsUnderAdminInfo(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(nil)
+	ctxRaw, _ := gin.CreateTestContext(nil)
+	ctx := ginadapter.Wrap(ctxRaw)
 
 	relayInfo := &relaycommon.RelayInfo{
 		UserId:          7,
@@ -33,7 +34,7 @@ func TestAttachQuotaSaturationNestsUnderAdminInfo(t *testing.T) {
 	}
 
 	other := map[string]interface{}{"model_price": 0.004}
-	service.AttachQuotaSaturation(ginadapter.Wrap(ctx), relayInfo, other)
+	service.AttachQuotaSaturation(ctx, relayInfo, other)
 
 	adminInfo, ok := other["admin_info"].(map[string]interface{})
 	require.True(t, ok, "admin_info should be created")
@@ -48,7 +49,8 @@ func TestAttachQuotaSaturationNestsUnderAdminInfo(t *testing.T) {
 // merged into a pre-existing admin_info map without clobbering it.
 func TestAttachQuotaSaturationPreservesExistingAdminInfo(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(nil)
+	ctxRaw, _ := gin.CreateTestContext(nil)
+	ctx := ginadapter.Wrap(ctxRaw)
 
 	relayInfo := &relaycommon.RelayInfo{
 		QuotaClamp: &common.QuotaClamp{Op: "QuotaFromFloat", Kind: common.QuotaClampUnderflow, Clamped: common.MinQuota},
@@ -56,7 +58,7 @@ func TestAttachQuotaSaturationPreservesExistingAdminInfo(t *testing.T) {
 	other := map[string]interface{}{
 		"admin_info": map[string]interface{}{"admin_username": "root"},
 	}
-	service.AttachQuotaSaturation(ginadapter.Wrap(ctx), relayInfo, other)
+	service.AttachQuotaSaturation(ctx, relayInfo, other)
 
 	adminInfo := other["admin_info"].(map[string]interface{})
 	require.Equal(t, "root", adminInfo["admin_username"], "existing admin_info fields preserved")
@@ -67,11 +69,12 @@ func TestAttachQuotaSaturationPreservesExistingAdminInfo(t *testing.T) {
 // saturation) leaves the log untouched.
 func TestAttachQuotaSaturationNoClampNoMarker(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(nil)
+	ctxRaw, _ := gin.CreateTestContext(nil)
+	ctx := ginadapter.Wrap(ctxRaw)
 
 	relayInfo := &relaycommon.RelayInfo{QuotaClamp: nil}
 	other := map[string]interface{}{"model_price": 0.004}
-	service.AttachQuotaSaturation(ginadapter.Wrap(ctx), relayInfo, other)
+	service.AttachQuotaSaturation(ctx, relayInfo, other)
 
 	_, hasAdmin := other["admin_info"]
 	require.False(t, hasAdmin, "no admin_info should be added when there is no clamp")
@@ -79,7 +82,8 @@ func TestAttachQuotaSaturationNoClampNoMarker(t *testing.T) {
 
 func TestPreConsumeBillingRejectsSaturatedQuotaBeforeDeduction(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	c, _ := gin.CreateTestContext(nil)
+	cRaw, _ := gin.CreateTestContext(nil)
+	c := ginadapter.Wrap(cRaw)
 	info := &relaycommon.RelayInfo{
 		QuotaClamp: &common.QuotaClamp{
 			Op:       "QuotaFromFloat",
@@ -89,7 +93,7 @@ func TestPreConsumeBillingRejectsSaturatedQuotaBeforeDeduction(t *testing.T) {
 		},
 	}
 
-	apiErr := PreConsumeBilling(ginadapter.Wrap(c), common.MaxQuota, info)
+	apiErr := PreConsumeBilling(c, common.MaxQuota, info)
 
 	require.NotNil(t, apiErr)
 	require.Equal(t, types.ErrorCodeModelPriceError, apiErr.GetErrorCode())
@@ -103,10 +107,11 @@ func TestPreConsumeBillingRejectsSaturatedQuotaBeforeDeduction(t *testing.T) {
 
 func TestPreConsumeBillingRejectsNegativeQuotaBeforeDeduction(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	c, _ := gin.CreateTestContext(nil)
+	cRaw, _ := gin.CreateTestContext(nil)
+	c := ginadapter.Wrap(cRaw)
 	info := &relaycommon.RelayInfo{}
 
-	apiErr := PreConsumeBilling(ginadapter.Wrap(c), -1, info)
+	apiErr := PreConsumeBilling(c, -1, info)
 
 	require.NotNil(t, apiErr)
 	require.Equal(t, types.ErrorCodeModelPriceError, apiErr.GetErrorCode())

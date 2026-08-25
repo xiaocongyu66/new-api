@@ -2,6 +2,7 @@ package ali
 
 import (
 	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -94,7 +95,8 @@ func TestConvertOpenAIRequestPreservesExplicitZeroForMappedQwenModel(t *testing.
 		upstreamModel = "Qwen/Qwen3-235B-A22B-Thinking-2507"
 	)
 
-	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	cRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c := ginadapter.Wrap(cRaw)
 	c.Set("model_mapping", `{"customer-model":"Qwen/Qwen3-235B-A22B-Thinking-2507"}`)
 
 	request := &dto.GeneralOpenAIRequest{
@@ -132,6 +134,7 @@ func TestConvertOpenAIRequestPreservesExplicitZeroForMappedQwenModel(t *testing.
 func TestMappedAliImageModelUsesUpstreamProtocol(t *testing.T) {
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	cc := ginadapter.Wrap(c)
 
 	info := &relaycommon.RelayInfo{
 		RelayMode:       constant.RelayModeImagesGenerations,
@@ -148,10 +151,10 @@ func TestMappedAliImageModelUsesUpstreamProtocol(t *testing.T) {
 	assert.Equal(t, "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation", url)
 
 	header := http.Header{}
-	require.NoError(t, adaptor.SetupRequestHeader(c, &header, info))
+	require.NoError(t, adaptor.SetupRequestHeader(cc, &header, info))
 	assert.Empty(t, header.Get("X-DashScope-Async"))
 
-	converted, err := adaptor.ConvertImageRequest(c, info, dto.ImageRequest{
+	converted, err := adaptor.ConvertImageRequest(cc, info, dto.ImageRequest{
 		Model:  info.UpstreamModelName,
 		Prompt: "poster",
 	})

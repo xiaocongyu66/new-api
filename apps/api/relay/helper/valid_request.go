@@ -15,19 +15,19 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/samber/lo"
 
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
-func GetAndValidateRequest(c *gin.Context, format types.RelayFormat) (request dto.Request, err error) {
-	relayMode := relayconstant.Path2RelayMode(c.Request.URL.Path)
+func GetAndValidateRequest(c contract.Context, format types.RelayFormat) (request dto.Request, err error) {
+	relayMode := relayconstant.Path2RelayMode(c.HTTPRequest().URL.Path)
 
 	switch format {
 	case types.RelayFormatOpenAI:
 		request, err = GetAndValidateTextRequest(c, relayMode)
 	case types.RelayFormatGemini:
-		if strings.Contains(c.Request.URL.Path, ":embedContent") {
+		if strings.Contains(c.HTTPRequest().URL.Path, ":embedContent") {
 			request, err = GetAndValidateGeminiEmbeddingRequest(c)
-		} else if strings.Contains(c.Request.URL.Path, ":batchEmbedContents") {
+		} else if strings.Contains(c.HTTPRequest().URL.Path, ":batchEmbedContents") {
 			request, err = GetAndValidateGeminiBatchEmbeddingRequest(c)
 		} else {
 			request, err = GetAndValidateGeminiRequest(c)
@@ -57,7 +57,7 @@ func GetAndValidateRequest(c *gin.Context, format types.RelayFormat) (request dt
 	return request, err
 }
 
-func GetAndValidAudioRequest(c *gin.Context, relayMode int) (*dto.AudioRequest, error) {
+func GetAndValidAudioRequest(c contract.Context, relayMode int) (*dto.AudioRequest, error) {
 	audioRequest := &dto.AudioRequest{}
 	err := common.UnmarshalBodyReusable(c, audioRequest)
 	if err != nil {
@@ -79,11 +79,11 @@ func GetAndValidAudioRequest(c *gin.Context, relayMode int) (*dto.AudioRequest, 
 	return audioRequest, nil
 }
 
-func GetAndValidateRerankRequest(c *gin.Context) (*dto.RerankRequest, error) {
+func GetAndValidateRerankRequest(c contract.Context) (*dto.RerankRequest, error) {
 	var rerankRequest *dto.RerankRequest
 	err := common.UnmarshalBodyReusable(c, &rerankRequest)
 	if err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("getAndValidateTextRequest failed: %s", err.Error()))
+		logger.LogError(c.HTTPRequest().Context(), fmt.Sprintf("getAndValidateTextRequest failed: %s", err.Error()))
 		return nil, types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 	}
 
@@ -96,11 +96,11 @@ func GetAndValidateRerankRequest(c *gin.Context) (*dto.RerankRequest, error) {
 	return rerankRequest, nil
 }
 
-func GetAndValidateEmbeddingRequest(c *gin.Context, relayMode int) (*dto.EmbeddingRequest, error) {
+func GetAndValidateEmbeddingRequest(c contract.Context, relayMode int) (*dto.EmbeddingRequest, error) {
 	var embeddingRequest *dto.EmbeddingRequest
 	err := common.UnmarshalBodyReusable(c, &embeddingRequest)
 	if err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("getAndValidateTextRequest failed: %s", err.Error()))
+		logger.LogError(c.HTTPRequest().Context(), fmt.Sprintf("getAndValidateTextRequest failed: %s", err.Error()))
 		return nil, types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 	}
 
@@ -130,7 +130,7 @@ func exceedsMaxTokensLimit(values ...*uint) bool {
 	return false
 }
 
-func GetAndValidateResponsesRequest(c *gin.Context) (*dto.OpenAIResponsesRequest, error) {
+func GetAndValidateResponsesRequest(c contract.Context) (*dto.OpenAIResponsesRequest, error) {
 	request := &dto.OpenAIResponsesRequest{}
 	err := common.UnmarshalBodyReusable(c, request)
 	if err != nil {
@@ -148,7 +148,7 @@ func GetAndValidateResponsesRequest(c *gin.Context) (*dto.OpenAIResponsesRequest
 	return request, nil
 }
 
-func GetAndValidateAlphaSearchRequest(c *gin.Context) (*dto.AlphaSearchRequest, error) {
+func GetAndValidateAlphaSearchRequest(c contract.Context) (*dto.AlphaSearchRequest, error) {
 	request := &dto.AlphaSearchRequest{}
 	if err := common.UnmarshalBodyReusable(c, request); err != nil {
 		return nil, err
@@ -168,7 +168,7 @@ func GetAndValidateAlphaSearchRequest(c *gin.Context) (*dto.AlphaSearchRequest, 
 	return request, nil
 }
 
-func GetAndValidateResponsesCompactionRequest(c *gin.Context) (*dto.OpenAIResponsesCompactionRequest, error) {
+func GetAndValidateResponsesCompactionRequest(c contract.Context) (*dto.OpenAIResponsesCompactionRequest, error) {
 	request := &dto.OpenAIResponsesCompactionRequest{}
 	if err := common.UnmarshalBodyReusable(c, request); err != nil {
 		return nil, err
@@ -179,19 +179,19 @@ func GetAndValidateResponsesCompactionRequest(c *gin.Context) (*dto.OpenAIRespon
 	return request, nil
 }
 
-func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageRequest, error) {
+func GetAndValidOpenAIImageRequest(c contract.Context, relayMode int) (*dto.ImageRequest, error) {
 	imageRequest := &dto.ImageRequest{}
 
 	switch relayMode {
 	case relayconstant.RelayModeImagesEdits:
-		if strings.Contains(c.Request.Header.Get("Content-Type"), "multipart/form-data") {
+		if strings.Contains(c.HTTPRequest().Header.Get("Content-Type"), "multipart/form-data") {
 			form, err := common.ParseMultipartFormReusable(c)
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse image edit form request: %w", err)
 			}
 			formData := url.Values(form.Value)
-			c.Request.MultipartForm = form
-			c.Request.PostForm = formData
+			c.HTTPRequest().MultipartForm = form
+			c.HTTPRequest().PostForm = formData
 			imageRequest.Prompt = formData.Get("prompt")
 			imageRequest.Model = formData.Get("model")
 			if nValue := strings.TrimSpace(formData.Get("n")); nValue != "" {
@@ -286,7 +286,7 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 	return imageRequest, nil
 }
 
-func GetAndValidateClaudeRequest(c *gin.Context) (textRequest *dto.ClaudeRequest, err error) {
+func GetAndValidateClaudeRequest(c contract.Context) (textRequest *dto.ClaudeRequest, err error) {
 	textRequest = &dto.ClaudeRequest{}
 	err = common.UnmarshalBodyReusable(c, textRequest)
 	if err != nil {
@@ -309,7 +309,7 @@ func GetAndValidateClaudeRequest(c *gin.Context) (textRequest *dto.ClaudeRequest
 	return textRequest, nil
 }
 
-func GetAndValidateTextRequest(c *gin.Context, relayMode int) (*dto.GeneralOpenAIRequest, error) {
+func GetAndValidateTextRequest(c contract.Context, relayMode int) (*dto.GeneralOpenAIRequest, error) {
 	textRequest := &dto.GeneralOpenAIRequest{}
 	err := common.UnmarshalBodyReusable(c, textRequest)
 	if err != nil {
@@ -367,7 +367,7 @@ func GetAndValidateTextRequest(c *gin.Context, relayMode int) (*dto.GeneralOpenA
 	return textRequest, nil
 }
 
-func GetAndValidateGeminiRequest(c *gin.Context) (*dto.GeminiChatRequest, error) {
+func GetAndValidateGeminiRequest(c contract.Context) (*dto.GeminiChatRequest, error) {
 	request := &dto.GeminiChatRequest{}
 	err := common.UnmarshalBodyReusable(c, request)
 	if err != nil {
@@ -387,7 +387,7 @@ func GetAndValidateGeminiRequest(c *gin.Context) (*dto.GeminiChatRequest, error)
 	return request, nil
 }
 
-func GetAndValidateGeminiEmbeddingRequest(c *gin.Context) (*dto.GeminiEmbeddingRequest, error) {
+func GetAndValidateGeminiEmbeddingRequest(c contract.Context) (*dto.GeminiEmbeddingRequest, error) {
 	request := &dto.GeminiEmbeddingRequest{}
 	err := common.UnmarshalBodyReusable(c, request)
 	if err != nil {
@@ -396,7 +396,7 @@ func GetAndValidateGeminiEmbeddingRequest(c *gin.Context) (*dto.GeminiEmbeddingR
 	return request, nil
 }
 
-func GetAndValidateGeminiBatchEmbeddingRequest(c *gin.Context) (*dto.GeminiBatchEmbeddingRequest, error) {
+func GetAndValidateGeminiBatchEmbeddingRequest(c contract.Context) (*dto.GeminiBatchEmbeddingRequest, error) {
 	request := &dto.GeminiBatchEmbeddingRequest{}
 	err := common.UnmarshalBodyReusable(c, request)
 	if err != nil {

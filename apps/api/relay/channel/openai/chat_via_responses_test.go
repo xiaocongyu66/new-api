@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/gin-gonic/gin"
@@ -60,7 +61,7 @@ func TestOaiResponsesToChatStreamHandlerConvertsSSEOrderAndUsage(t *testing.T) {
 
 	c, recorder, resp, info := newResponsesChatTestContext(t, body, true)
 
-	usage, err := OaiResponsesToChatStreamHandler(c, info, resp)
+	usage, err := OaiResponsesToChatStreamHandler(ginadapter.Wrap(c), info, resp)
 	require.Nil(t, err)
 	require.NotNil(t, usage)
 	require.Equal(t, 2, usage.PromptTokens)
@@ -107,7 +108,7 @@ func TestOaiResponsesToChatStreamHandlerConvertsClaudeSSETerminalsAndUsage(t *te
 	c, recorder, resp, info := newResponsesChatTestContext(t, body, true)
 	info.RelayFormat = types.RelayFormatClaude
 
-	usage, err := OaiResponsesToChatStreamHandler(c, info, resp)
+	usage, err := OaiResponsesToChatStreamHandler(ginadapter.Wrap(c), info, resp)
 	require.Nil(t, err)
 	require.NotNil(t, usage)
 	assert.Equal(t, 2, usage.PromptTokens)
@@ -157,7 +158,7 @@ func TestOaiResponsesToChatBufferedStreamHandlerReturnsJSONFromSSE(t *testing.T)
 
 	c, recorder, resp, info := newResponsesChatTestContext(t, body, false)
 
-	usage, err := OaiResponsesToChatBufferedStreamHandler(c, info, resp)
+	usage, err := OaiResponsesToChatBufferedStreamHandler(ginadapter.Wrap(c), info, resp)
 	require.Nil(t, err)
 	require.NotNil(t, usage)
 	require.Equal(t, 3, usage.TotalTokens)
@@ -194,7 +195,7 @@ func TestOaiChatToResponsesStreamHandlerConvertsSSEOrderAndUsage(t *testing.T) {
 	c, recorder, resp, info := newResponsesChatTestContext(t, body, true)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 
-	usage, err := OaiChatToResponsesStreamHandler(c, info, resp)
+	usage, err := OaiChatToResponsesStreamHandler(ginadapter.Wrap(c), info, resp)
 	require.Nil(t, err)
 	require.NotNil(t, usage)
 	require.Equal(t, 2, usage.PromptTokens)

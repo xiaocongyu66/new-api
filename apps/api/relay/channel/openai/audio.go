@@ -9,16 +9,16 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/gin-gonic/gin"
 )
 
-func OpenaiTTSHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) *dto.Usage {
+func OpenaiTTSHandler(c contract.Context, resp *http.Response, info *relaycommon.RelayInfo) *dto.Usage {
 	// the status code has been judged before, if there is a body reading failure,
 	// it should be regarded as a non-recoverable error, so it should not return err for external retry.
 	// Analogous to nginx's load balancing, it will only retry if it can't be requested or
@@ -33,16 +33,16 @@ func OpenaiTTSHandler(c *gin.Context, resp *http.Response, info *relaycommon.Rel
 		if !service.ShouldCopyUpstreamHeader(c, k, v) {
 			continue
 		}
-		c.Writer.Header().Set(k, v[0])
+		c.ResponseWriter().Header().Set(k, v[0])
 	}
-	c.Writer.WriteHeader(resp.StatusCode)
+	c.ResponseWriter().WriteHeader(resp.StatusCode)
 
 	if info.IsStream {
 		helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 			if service.SundaySearch(data, "usage") {
 				var simpleResponse dto.SimpleResponse
 				if err := common.Unmarshal([]byte(data), &simpleResponse); err != nil {
-					logger.LogError(c.Request.Context(), err.Error())
+					logger.LogError(c.Context(), err.Error())
 					sr.Error(err)
 				} else if simpleResponse.Usage.TotalTokens != 0 {
 					usage.PromptTokens = simpleResponse.Usage.InputTokens
@@ -59,16 +59,16 @@ func OpenaiTTSHandler(c *gin.Context, resp *http.Response, info *relaycommon.Rel
 		// 读取响应体到缓冲区
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
-			logger.LogError(c.Request.Context(), fmt.Sprintf("failed to read TTS response body: %v", err))
-			c.Writer.WriteHeaderNow()
+			logger.LogError(c.Context(), fmt.Sprintf("failed to read TTS response body: %v", err))
+			c.Status(http.StatusOK)
 			return usage
 		}
 
 		// 写入响应到客户端
-		c.Writer.WriteHeaderNow()
-		_, err = c.Writer.Write(bodyBytes)
+		c.Status(http.StatusOK)
+		_, err = c.ResponseWriter().Write(bodyBytes)
 		if err != nil {
-			logger.LogError(c.Request.Context(), fmt.Sprintf("failed to write TTS response: %v", err))
+			logger.LogError(c.Context(), fmt.Sprintf("failed to write TTS response: %v", err))
 		}
 
 		// 计算音频时长并更新 usage
@@ -90,13 +90,13 @@ func OpenaiTTSHandler(c *gin.Context, resp *http.Response, info *relaycommon.Rel
 		} else {
 			ext := "." + audioFormat
 			reader := bytes.NewReader(bodyBytes)
-			duration, durationErr = common.GetAudioDuration(c.Request.Context(), reader, ext)
+			duration, durationErr = common.GetAudioDuration(c.Context(), reader, ext)
 		}
 
 		usage.PromptTokensDetails.TextTokens = usage.PromptTokens
 
 		if durationErr != nil {
-			logger.LogWarn(c.Request.Context(), fmt.Sprintf("failed to get audio duration: %v", durationErr))
+			logger.LogWarn(c.Context(), fmt.Sprintf("failed to get audio duration: %v", durationErr))
 			// 如果无法获取时长，则设置保底的 CompletionTokens，根据body大小计算
 			sizeInKB := float64(len(bodyBytes)) / 1000.0
 			estimatedTokens := int(math.Ceil(sizeInKB)) // 粗略估算每KB约等于1 token
@@ -115,7 +115,7 @@ func OpenaiTTSHandler(c *gin.Context, resp *http.Response, info *relaycommon.Rel
 	return usage
 }
 
-func OpenaiSTTHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, responseFormat string) (*types.NewAPIError, *dto.Usage) {
+func OpenaiSTTHandler(c contract.Context, resp *http.Response, info *relaycommon.RelayInfo, responseFormat string) (*types.NewAPIError, *dto.Usage) {
 	defer service.CloseResponseBodyGracefully(resp)
 
 	responseBody, err := io.ReadAll(resp.Body)
