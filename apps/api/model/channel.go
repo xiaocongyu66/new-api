@@ -29,7 +29,6 @@ type Channel struct {
 	TestModel          *string `json:"test_model"`
 	Status             int     `json:"status" gorm:"default:1"`
 	Name               string  `json:"name" gorm:"index"`
-	Weight             *uint   `json:"weight" gorm:"default:0"`
 	CreatedTime        int64   `json:"created_time" gorm:"bigint"`
 	TestTime           int64   `json:"test_time" gorm:"bigint"`
 	ResponseTime       int     `json:"response_time"` // in milliseconds
@@ -43,7 +42,6 @@ type Channel struct {
 	ModelMapping       *string `json:"model_mapping" gorm:"type:text"`
 	//MaxInputTokens     *int    `json:"max_input_tokens" gorm:"default:0"`
 	StatusCodeMapping *string `json:"status_code_mapping" gorm:"type:varchar(1024);default:''"`
-	Priority          *int64  `json:"priority" gorm:"bigint;default:0"`
 	AutoBan           *int    `json:"auto_ban" gorm:"default:1"`
 	OtherInfo         string  `json:"other_info"`
 	Tag               *string `json:"tag" gorm:"index"`
@@ -79,7 +77,6 @@ type ChannelSortOptions struct {
 var channelSortColumns = map[string]string{
 	"id":            "id",
 	"name":          "name",
-	"priority":      "priority",
 	"balance":       "balance",
 	"response_time": "response_time",
 	"test_time":     "test_time",
@@ -115,8 +112,11 @@ func (options ChannelSortOptions) Apply(query *gorm.DB) *gorm.DB {
 			Desc:   true,
 		})
 	}
+	// The default used to be `priority desc`, back when priority ordered the
+	// candidate list. Scheduling now reads route unit static weights, and the
+	// column is gone, so the admin list falls back to the newest channel first.
 	return query.Order(clause.OrderByColumn{
-		Column: clause.Column{Name: "priority"},
+		Column: clause.Column{Name: "id"},
 		Desc:   true,
 	})
 }
@@ -515,20 +515,6 @@ func BatchDeleteChannels(ids []int) (int64, error) {
 	return deletedCount, nil
 }
 
-func (channel *Channel) GetPriority() int64 {
-	if channel.Priority == nil {
-		return 0
-	}
-	return *channel.Priority
-}
-
-func (channel *Channel) GetWeight() int {
-	if channel.Weight == nil {
-		return 0
-	}
-	return int(*channel.Weight)
-}
-
 func (channel *Channel) GetBaseURL() string {
 	if channel.BaseURL == nil {
 		return ""
@@ -918,7 +904,7 @@ func DisableChannelByTag(tag string) error {
 // tag inside one MutateGatewayRouting revision. Channel row updates and derived
 // ability updates commit together with the routing revision bump. The caller
 // must refresh the channel cache only after this returns nil.
-func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *string, group *string, priority *int64, weight *uint, paramOverride *string, headerOverride *string) error {
+func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *string, group *string, paramOverride *string, headerOverride *string) error {
 	updateData := Channel{}
 	shouldReCreateAbilities := false
 	updatedTag := tag
@@ -936,12 +922,6 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 	if group != nil && *group != "" {
 		shouldReCreateAbilities = true
 		updateData.Group = *group
-	}
-	if priority != nil {
-		updateData.Priority = priority
-	}
-	if weight != nil {
-		updateData.Weight = weight
 	}
 	if paramOverride != nil {
 		updateData.ParamOverride = paramOverride
@@ -968,7 +948,7 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 				}
 			}
 		} else {
-			if err := updateAbilityByTagWithTx(tx, tag, newTag, priority, weight); err != nil {
+			if err := updateAbilityTagWithTx(tx, tag, newTag); err != nil {
 				return err
 			}
 			var ids []int
@@ -1087,7 +1067,7 @@ func GetPaginatedChannelTags(query *gorm.DB, offset int, limit int) ([]*string, 
 	return tags, err
 }
 
-func SearchTags(keyword string, group string, model string, idSort bool) ([]*string, error) {
+func SearchTags(keyword string, group string, model string) ([]*string, error) {
 	var tags []*string
 	modelsCol := "`models`"
 
@@ -1102,10 +1082,9 @@ func SearchTags(keyword string, group string, model string, idSort bool) ([]*str
 		baseURLCol = `"base_url"`
 	}
 
-	order := "priority desc"
-	if idSort {
-		order = "id desc"
-	}
+	// priority is gone with the tier scheduler, so newest-first is the only
+	// ordering left for the tag search.
+	order := "id desc"
 
 	// 构造基础查询
 	baseQuery := DB.Model(&Channel{}).Omit("key")

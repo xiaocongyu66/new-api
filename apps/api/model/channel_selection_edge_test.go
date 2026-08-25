@@ -19,7 +19,10 @@ import (
 // GetRandomSatisfiedChannel reads group2model2channels and channelsIDM under
 // channelSyncLock, and only takes the memory-cache path when
 // common.MemoryCacheEnabled is true (channel_cache.go:114).
-func withChannelCacheFixture(t *testing.T, channels []*Channel, group, modelName string) {
+// routeWeights maps channel id to the route unit static weight the selector should
+// see. Channels no longer carry a weight of their own, so the test states the
+// scheduling weight where production reads it: on the route unit.
+func withChannelCacheFixture(t *testing.T, channels []*Channel, group, modelName string, routeWeights map[int]int) {
 	t.Helper()
 
 	prevGroups := group2model2channels
@@ -46,16 +49,12 @@ func withChannelCacheFixture(t *testing.T, channels []*Channel, group, modelName
 		if aliasRoutes[group] == nil {
 			aliasRoutes[group] = make(map[string][]routeCandidate)
 		}
-		weight := 100
-		if ch.Weight != nil {
-			weight = int(*ch.Weight)
-		}
 		aliasRoutes[group][modelName] = append(aliasRoutes[group][modelName], routeCandidate{
 			routeId:       ch.Id, // use channel ID as route ID for tests
 			channelId:     ch.Id,
 			keyIndex:      0,
 			upstreamModel: modelName,
-			staticWeight:  weight,
+			staticWeight:  routeWeights[ch.Id],
 		})
 	}
 
@@ -67,10 +66,8 @@ func withChannelCacheFixture(t *testing.T, channels []*Channel, group, modelName
 	common.MemoryCacheEnabled = true
 }
 
-func testChannel(id int, weight uint, priority int64) *Channel {
-	w, p := weight, priority
-	status := common.ChannelStatusEnabled
-	return &Channel{Id: id, Weight: &w, Priority: &p, Status: status}
+func testChannel(id int) *Channel {
+	return &Channel{Id: id, Status: common.ChannelStatusEnabled}
 }
 
 // TestSingleChannelShortCircuitIgnoresWeight pins a deliberate asymmetry: with a
@@ -82,9 +79,9 @@ func testChannel(id int, weight uint, priority int64) *Channel {
 func TestSingleChannelShortCircuitIgnoresWeight(t *testing.T) {
 	const group, modelName = "edge-group", "edge-model"
 
-	// weight=0 would be the least attractive channel possible in the weighted path.
-	only := testChannel(9101, 0, 7)
-	withChannelCacheFixture(t, []*Channel{only}, group, modelName)
+	// weight=0 would be the least attractive route possible in the weighted path.
+	only := testChannel(9101)
+	withChannelCacheFixture(t, []*Channel{only}, group, modelName, map[int]int{9101: 0})
 	ClearRouteHealthCache()
 	t.Cleanup(ClearRouteHealthCache)
 
@@ -100,8 +97,8 @@ func TestSingleChannelShortCircuitIgnoresWeight(t *testing.T) {
 func TestSingleChannelShortCircuitRespectsExcludeSet(t *testing.T) {
 	const group, modelName = "edge-group", "edge-model"
 
-	only := testChannel(9102, 10, 7)
-	withChannelCacheFixture(t, []*Channel{only}, group, modelName)
+	only := testChannel(9102)
+	withChannelCacheFixture(t, []*Channel{only}, group, modelName, map[int]int{9102: 10})
 	ClearRouteHealthCache()
 	t.Cleanup(ClearRouteHealthCache)
 
@@ -115,13 +112,12 @@ func TestSingleChannelShortCircuitRespectsExcludeSet(t *testing.T) {
 func TestWeightBasedSelection(t *testing.T) {
 	const group, modelName = "edge-group", "edge-model"
 
-	// Channels with different weights, all same priority (no tiers in new model)
-	channels := []*Channel{
-		testChannel(9201, 100, 100), // high weight
-		testChannel(9202, 10, 100),  // low weight
-		testChannel(9203, 50, 100),  // medium weight
-	}
-	withChannelCacheFixture(t, channels, group, modelName)
+	channels := []*Channel{testChannel(9201), testChannel(9202), testChannel(9203)}
+	withChannelCacheFixture(t, channels, group, modelName, map[int]int{
+		9201: 100, // high weight
+		9202: 10,  // low weight
+		9203: 50,  // medium weight
+	})
 	ClearRouteHealthCache()
 	t.Cleanup(ClearRouteHealthCache)
 
@@ -143,9 +139,10 @@ func TestWeightBasedSelection(t *testing.T) {
 func TestHealthScoreActsInFlatModel(t *testing.T) {
 	const group, modelName = "edge-group", "edge-model"
 
-	healthy := testChannel(9301, 10, 100)
-	isolated := testChannel(9302, 10, 100)
-	withChannelCacheFixture(t, []*Channel{healthy, isolated}, group, modelName)
+	healthy := testChannel(9301)
+	isolated := testChannel(9302)
+	withChannelCacheFixture(t, []*Channel{healthy, isolated}, group, modelName,
+		map[int]int{healthy.Id: 100, isolated.Id: 100})
 
 	withRouteHealthDB(t)
 	cfg := operation_setting.DefaultChannelModelHealthSetting()

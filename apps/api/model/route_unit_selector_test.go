@@ -76,13 +76,12 @@ func withRouteUnitFixture(t *testing.T, channels []*Channel, group, alias string
 	}
 }
 
-func testRouteChannel(id int, weight uint, priority int64, isMultiKey bool, keys []string, keyStatus map[int]int) *Channel {
-	w, p := weight, priority
+// testRouteChannel builds a channel for selector tests. Scheduling weight lives on
+// the route unit (see testRoute), not on the channel.
+func testRouteChannel(id int, isMultiKey bool, keys []string, keyStatus map[int]int) *Channel {
 	ch := &Channel{
-		Id:       id,
-		Weight:   &w,
-		Priority: &p,
-		Status:   common.ChannelStatusEnabled,
+		Id:     id,
+		Status: common.ChannelStatusEnabled,
 		ChannelInfo: ChannelInfo{
 			IsMultiKey:         isMultiKey,
 			MultiKeyStatusList: keyStatus,
@@ -119,7 +118,7 @@ func testRoute(routeId, channelId, keyIndex int, group, alias, upstreamModel str
 func TestSelectRouteUnit_SingleCandidate(t *testing.T) {
 	const group, alias = "test-group", "test-model"
 
-	ch := testRouteChannel(1001, 10, 5, false, []string{"sk-single"}, nil)
+	ch := testRouteChannel(1001, false, []string{"sk-single"}, nil)
 	routes := []ChannelModelRoute{
 		testRoute(1, 1001, 0, group, alias, "upstream-model", 100),
 	}
@@ -142,7 +141,7 @@ func TestSelectRouteUnit_SingleCandidate(t *testing.T) {
 func TestSelectRouteUnit_MultiKeyChannel(t *testing.T) {
 	const group, alias = "test-group", "test-model"
 
-	ch := testRouteChannel(1002, 10, 5, true, []string{"sk-key0", "sk-key1", "sk-key2"}, nil)
+	ch := testRouteChannel(1002, true, []string{"sk-key0", "sk-key1", "sk-key2"}, nil)
 	routes := []ChannelModelRoute{
 		testRoute(1, 1002, 0, group, alias, "upstream-a", 100),
 		testRoute(2, 1002, 1, group, alias, "upstream-b", 100),
@@ -183,7 +182,7 @@ func TestSelectRouteUnit_MultiKeyDisabledKeyExcluded(t *testing.T) {
 
 	// Key index 1 is disabled
 	keyStatus := map[int]int{0: common.ChannelStatusEnabled, 1: common.ChannelStatusManuallyDisabled, 2: common.ChannelStatusEnabled}
-	ch := testRouteChannel(1003, 10, 5, true, []string{"sk-key0", "sk-key1", "sk-key2"}, keyStatus)
+	ch := testRouteChannel(1003, true, []string{"sk-key0", "sk-key1", "sk-key2"}, keyStatus)
 	routes := []ChannelModelRoute{
 		testRoute(1, 1003, 0, group, alias, "upstream-a", 100),
 		testRoute(2, 1003, 1, group, alias, "upstream-b", 100),
@@ -212,8 +211,8 @@ func TestSelectRouteUnit_MultiKeyDisabledKeyExcluded(t *testing.T) {
 func TestSelectRouteUnit_ExcludeRoutes(t *testing.T) {
 	const group, alias = "test-group", "test-model"
 
-	ch1 := testRouteChannel(1004, 10, 5, false, []string{"sk-1"}, nil)
-	ch2 := testRouteChannel(1005, 10, 5, false, []string{"sk-2"}, nil)
+	ch1 := testRouteChannel(1004, false, []string{"sk-1"}, nil)
+	ch2 := testRouteChannel(1005, false, []string{"sk-2"}, nil)
 	routes := []ChannelModelRoute{
 		testRoute(1, 1004, 0, group, alias, "upstream-1", 100),
 		testRoute(2, 1005, 0, group, alias, "upstream-2", 100),
@@ -236,8 +235,8 @@ func TestSelectRouteUnit_ExcludeRoutes(t *testing.T) {
 func TestSelectRouteUnit_DisabledRouteExcluded(t *testing.T) {
 	const group, alias = "test-group", "test-model"
 
-	ch1 := testRouteChannel(1006, 10, 5, false, []string{"sk-1"}, nil)
-	ch2 := testRouteChannel(1007, 10, 5, false, []string{"sk-2"}, nil)
+	ch1 := testRouteChannel(1006, false, []string{"sk-1"}, nil)
+	ch2 := testRouteChannel(1007, false, []string{"sk-2"}, nil)
 	routes := []ChannelModelRoute{
 		testRoute(1, 1006, 0, group, alias, "upstream-1", 100),
 		{Id: 2, Group: group, PublicModelAlias: alias, ChannelId: 1007, KeyIndex: 0, UpstreamModel: "upstream-2", StaticWeight: 100, Enabled: false}, // disabled
@@ -258,8 +257,8 @@ func TestSelectRouteUnit_DisabledRouteExcluded(t *testing.T) {
 func TestSelectRouteUnit_CooldownEjection(t *testing.T) {
 	const group, alias = "test-group", "test-model"
 
-	ch1 := testRouteChannel(1008, 10, 5, false, []string{"sk-1"}, nil)
-	ch2 := testRouteChannel(1009, 10, 5, false, []string{"sk-2"}, nil)
+	ch1 := testRouteChannel(1008, false, []string{"sk-1"}, nil)
+	ch2 := testRouteChannel(1009, false, []string{"sk-2"}, nil)
 	routes := []ChannelModelRoute{
 		testRoute(1, 1008, 0, group, alias, "upstream-1", 100),
 		testRoute(2, 1009, 0, group, alias, "upstream-2", 100),
@@ -312,11 +311,11 @@ func TestSelectRouteUnit_AdvancedCustomPathFilter(t *testing.T) {
 	const group, alias = "test-group", "test-model"
 
 	// Advanced Custom channel that only supports /v1/chat/completions
-	ch1 := testRouteChannel(1010, 10, 5, false, []string{"sk-1"}, nil)
+	ch1 := testRouteChannel(1010, false, []string{"sk-1"}, nil)
 	ch1.Type = constant.ChannelTypeAdvancedCustom
 	ch1.OtherSettings = `{"advanced_custom":{"advanced_routes":[{"incoming_path":"/v1/chat/completions","models":["test-model"]}]}}`
 
-	ch2 := testRouteChannel(1011, 10, 5, false, []string{"sk-2"}, nil)
+	ch2 := testRouteChannel(1011, false, []string{"sk-2"}, nil)
 	ch2.Type = constant.ChannelTypeAdvancedCustom
 	ch2.OtherSettings = `{"advanced_custom":{"advanced_routes":[{"incoming_path":"/v1/embeddings","models":["test-model"]}]}}`
 
@@ -352,8 +351,8 @@ func TestSelectRouteUnit_AdvancedCustomPathFilter(t *testing.T) {
 func TestSelectRouteUnit_DeterministicCacheVsDB(t *testing.T) {
 	const group, alias = "test-group", "test-model"
 
-	ch1 := testRouteChannel(2001, 10, 5, false, []string{"sk-1"}, nil)
-	ch2 := testRouteChannel(2002, 20, 5, false, []string{"sk-2"}, nil)
+	ch1 := testRouteChannel(2001, false, []string{"sk-1"}, nil)
+	ch2 := testRouteChannel(2002, false, []string{"sk-2"}, nil)
 	routes := []ChannelModelRoute{
 		testRoute(1, 2001, 0, group, alias, "upstream-1", 100),
 		testRoute(2, 2002, 0, group, alias, "upstream-2", 200), // higher weight
@@ -390,8 +389,8 @@ func TestSelectRouteUnit_DeterministicCacheVsDB(t *testing.T) {
 func TestSelectRouteUnit_WeightDistribution(t *testing.T) {
 	const group, alias = "test-group", "test-model"
 
-	ch1 := testRouteChannel(3001, 10, 5, false, []string{"sk-1"}, nil)
-	ch2 := testRouteChannel(3002, 10, 5, false, []string{"sk-2"}, nil)
+	ch1 := testRouteChannel(3001, false, []string{"sk-1"}, nil)
+	ch2 := testRouteChannel(3002, false, []string{"sk-2"}, nil)
 	routes := []ChannelModelRoute{
 		testRoute(1, 3001, 0, group, alias, "upstream-1", 100), // weight 100
 		testRoute(2, 3002, 0, group, alias, "upstream-2", 300), // weight 300 (3x)
@@ -422,7 +421,7 @@ func TestSelectRouteUnit_NormalizedAliasFallback(t *testing.T) {
 	const alias = "gemini-2.5-flash-thinking-512" // FormatMatchingModelName normalizes this
 
 	const normalizedAlias = "gemini-2.5-flash-thinking-*"
-	ch := testRouteChannel(4001, 10, 5, false, []string{"sk-1"}, nil)
+	ch := testRouteChannel(4001, false, []string{"sk-1"}, nil)
 	// Use fixture but with normalized alias for both group2model2channels and routes
 	prevGroups := group2model2channels
 	prevIDM := channelsIDM
@@ -485,7 +484,7 @@ func TestSelectRouteUnit_EmptyResult(t *testing.T) {
 func TestSelectRouteUnitAttachesStatsHandleWithRouteIdentity(t *testing.T) {
 	const group, alias = "stats-group", "stats-alias"
 
-	ch := testRouteChannel(7001, 10, 5, false, []string{"sk-1"}, nil)
+	ch := testRouteChannel(7001, false, []string{"sk-1"}, nil)
 	routes := []ChannelModelRoute{
 		testRoute(1, 7001, 0, group, alias, "upstream-actual", 100),
 	}
@@ -519,7 +518,7 @@ func TestSelectRouteUnitAttachesStatsHandleWithRouteIdentity(t *testing.T) {
 // owns no route row for the alias: there is no route unit to charge, so recording
 // must stay a no-op rather than inventing an identity from the alias.
 func TestSelectedRouteFromChannelHasNoStatsHandle(t *testing.T) {
-	ch := testRouteChannel(7002, 10, 5, false, []string{"sk-1"}, nil)
+	ch := testRouteChannel(7002, false, []string{"sk-1"}, nil)
 
 	route, err := SelectedRouteFromChannel(ch, "some-alias")
 	require.NoError(t, err)
@@ -536,7 +535,7 @@ func TestSelectedRouteFromChannelHasNoStatsHandle(t *testing.T) {
 func TestSelectedRouteFromChannelAttributesRealRoute(t *testing.T) {
 	const group, alias = "affinity-group", "affinity-alias"
 
-	ch := testRouteChannel(7003, 10, 5, false, []string{"sk-1"}, nil)
+	ch := testRouteChannel(7003, false, []string{"sk-1"}, nil)
 	routes := []ChannelModelRoute{
 		testRoute(1, 7003, 0, group, alias, "upstream-affinity", 100),
 	}
@@ -573,7 +572,7 @@ func TestSelectedRouteForProbeKeepsShareWindowClean(t *testing.T) {
 	const group, alias = "probe-group", "probe-alias"
 
 	withRouteStats(t, nil)
-	ch := testRouteChannel(7004, 10, 5, false, []string{"sk-1"}, nil)
+	ch := testRouteChannel(7004, false, []string{"sk-1"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, []ChannelModelRoute{
 		testRoute(1, 7004, 0, group, alias, "upstream-probe", 100),
 	})

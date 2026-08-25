@@ -90,8 +90,8 @@ func TestScoreW1StaticWeightBaseline(t *testing.T) {
 	ClearRouteHealthCache()
 	t.Cleanup(ClearRouteHealthCache)
 
-	chLight := testRouteChannel(7101, 10, 0, false, []string{"sk-l"}, nil)
-	chHeavy := testRouteChannel(7102, 10, 0, false, []string{"sk-h"}, nil)
+	chLight := testRouteChannel(7101, false, []string{"sk-l"}, nil)
+	chHeavy := testRouteChannel(7102, false, []string{"sk-h"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chLight, chHeavy}, group, alias, []ChannelModelRoute{
 		testRoute(1, 7101, 0, group, alias, "up-light", 20),
 		testRoute(2, 7102, 0, group, alias, "up-heavy", 80),
@@ -118,8 +118,8 @@ func TestScoreW1ZeroTotalWeight(t *testing.T) {
 	ClearRouteHealthCache()
 	t.Cleanup(ClearRouteHealthCache)
 
-	chA := testRouteChannel(7111, 0, 0, false, []string{"sk-a"}, nil)
-	chB := testRouteChannel(7112, 0, 0, false, []string{"sk-b"}, nil)
+	chA := testRouteChannel(7111, false, []string{"sk-a"}, nil)
+	chB := testRouteChannel(7112, false, []string{"sk-b"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
 		testRoute(1, 7111, 0, group, alias, "up-a", 0),
 		testRoute(2, 7112, 0, group, alias, "up-b", 0),
@@ -140,7 +140,7 @@ func TestScoreW1SingleCandidateShortCircuit(t *testing.T) {
 	ClearRouteHealthCache()
 	t.Cleanup(ClearRouteHealthCache)
 
-	ch := testRouteChannel(7121, 10, 0, false, []string{"sk-only"}, nil)
+	ch := testRouteChannel(7121, false, []string{"sk-only"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, []ChannelModelRoute{
 		testRoute(1, 7121, 0, group, alias, "up-only", 100),
 	})
@@ -188,8 +188,8 @@ func TestScoreW2QualityDrivesShare(t *testing.T) {
 			ClearRouteHealthCache()
 			t.Cleanup(ClearRouteHealthCache)
 
-			chA := testRouteChannel(7201, 10, 0, false, []string{"sk-a"}, nil)
-			chB := testRouteChannel(7202, 10, 0, false, []string{"sk-b"}, nil)
+			chA := testRouteChannel(7201, false, []string{"sk-a"}, nil)
+			chB := testRouteChannel(7202, false, []string{"sk-b"}, nil)
 			cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
 				testRoute(1, 7201, 0, group, alias, "up-a", 100),
 				testRoute(2, 7202, 0, group, alias, "up-b", 100),
@@ -226,8 +226,8 @@ func TestScoreW2QualityNeverStarvesARoute(t *testing.T) {
 	ClearRouteHealthCache()
 	t.Cleanup(ClearRouteHealthCache)
 
-	chA := testRouteChannel(7211, 10, 0, false, []string{"sk-a"}, nil)
-	chB := testRouteChannel(7212, 10, 0, false, []string{"sk-b"}, nil)
+	chA := testRouteChannel(7211, false, []string{"sk-a"}, nil)
+	chB := testRouteChannel(7212, false, []string{"sk-b"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
 		testRoute(1, 7211, 0, group, alias, "up-a", 100),
 		testRoute(2, 7212, 0, group, alias, "up-b", 100),
@@ -269,7 +269,7 @@ func TestScoreW2PoolSizeChangesTheLoss(t *testing.T) {
 			routes := make([]ChannelModelRoute, 0, tc.poolSize)
 			for i := range tc.poolSize {
 				id := 7300 + tc.poolSize*10 + i
-				channels = append(channels, testRouteChannel(id, 10, 0, false, []string{"sk"}, nil))
+				channels = append(channels, testRouteChannel(id, false, []string{"sk"}, nil))
 				routes = append(routes, testRoute(i+1, id, 0, group, alias, "up", 100))
 			}
 			cleanup := withRouteUnitFixture(t, channels, group, alias, routes)
@@ -309,8 +309,8 @@ func TestScoreW2LatencySignalIsBounded(t *testing.T) {
 		ClearRouteHealthCache()
 		t.Cleanup(ClearRouteHealthCache)
 
-		chA := testRouteChannel(7241, 10, 0, false, []string{"sk-a"}, nil)
-		chB := testRouteChannel(7242, 10, 0, false, []string{"sk-b"}, nil)
+		chA := testRouteChannel(7241, false, []string{"sk-a"}, nil)
+		chB := testRouteChannel(7242, false, []string{"sk-b"}, nil)
 		cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
 			testRoute(1, 7241, 0, group, alias, "up-a", 100),
 			testRoute(2, 7242, 0, group, alias, "up-b", 100),
@@ -349,8 +349,8 @@ func TestScoreW3DisabledRouteScoresZero(t *testing.T) {
 	ClearRouteHealthCache()
 	t.Cleanup(ClearRouteHealthCache)
 
-	chA := testRouteChannel(7301, 10, 0, false, []string{"sk-a"}, nil)
-	chB := testRouteChannel(7302, 10, 0, false, []string{"sk-b"}, nil)
+	chA := testRouteChannel(7301, false, []string{"sk-a"}, nil)
+	chB := testRouteChannel(7302, false, []string{"sk-b"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
 		testRoute(1, 7301, 0, group, alias, "up-a", 100),
 		testRoute(2, 7302, 0, group, alias, "up-b", 100),
@@ -374,8 +374,8 @@ func TestScoreW3CalmRouteKeepsReducedShare(t *testing.T) {
 	ClearRouteHealthCache()
 	t.Cleanup(ClearRouteHealthCache)
 
-	chA := testRouteChannel(7311, 10, 0, false, []string{"sk-a"}, nil)
-	chB := testRouteChannel(7312, 10, 0, false, []string{"sk-b"}, nil)
+	chA := testRouteChannel(7311, false, []string{"sk-a"}, nil)
+	chB := testRouteChannel(7312, false, []string{"sk-b"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
 		testRoute(1, 7311, 0, group, alias, "up-a", 100),
 		testRoute(2, 7312, 0, group, alias, "up-b", 100),
@@ -407,7 +407,7 @@ func TestScoreW3SignalsDoNotDoublePenalise(t *testing.T) {
 	ClearRouteHealthCache()
 	t.Cleanup(ClearRouteHealthCache)
 
-	ch := testRouteChannel(7321, 10, 0, false, []string{"sk-a"}, nil)
+	ch := testRouteChannel(7321, false, []string{"sk-a"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, []ChannelModelRoute{
 		testRoute(1, 7321, 0, group, alias, "up-a", 100),
 	})
@@ -445,8 +445,8 @@ func TestScoreW3SafeDegradation(t *testing.T) {
 	ClearRouteHealthCache()
 	t.Cleanup(ClearRouteHealthCache)
 
-	chA := testRouteChannel(7331, 10, 0, false, []string{"sk-a"}, nil)
-	chB := testRouteChannel(7332, 10, 0, false, []string{"sk-b"}, nil)
+	chA := testRouteChannel(7331, false, []string{"sk-a"}, nil)
+	chB := testRouteChannel(7332, false, []string{"sk-b"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
 		testRoute(1, 7331, 0, group, alias, "up-a", 100),
 		testRoute(2, 7332, 0, group, alias, "up-b", 100),
@@ -480,8 +480,8 @@ func TestScoreW3AllZeroCandidatesYieldNoRoute(t *testing.T) {
 	ClearRouteHealthCache()
 	t.Cleanup(ClearRouteHealthCache)
 
-	chA := testRouteChannel(7341, 10, 0, false, []string{"sk-a"}, nil)
-	chB := testRouteChannel(7342, 10, 0, false, []string{"sk-b"}, nil)
+	chA := testRouteChannel(7341, false, []string{"sk-a"}, nil)
+	chB := testRouteChannel(7342, false, []string{"sk-b"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
 		testRoute(1, 7341, 0, group, alias, "up-a", 100),
 		testRoute(2, 7342, 0, group, alias, "up-b", 100),
@@ -508,8 +508,8 @@ func TestScoreW4ColdStartIsNeutral(t *testing.T) {
 	ClearRouteHealthCache()
 	t.Cleanup(ClearRouteHealthCache)
 
-	chOld := testRouteChannel(7401, 10, 0, false, []string{"sk-o"}, nil)
-	chNew := testRouteChannel(7402, 10, 0, false, []string{"sk-n"}, nil)
+	chOld := testRouteChannel(7401, false, []string{"sk-o"}, nil)
+	chNew := testRouteChannel(7402, false, []string{"sk-n"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chOld, chNew}, group, alias, []ChannelModelRoute{
 		testRoute(1, 7401, 0, group, alias, "up-o", 100),
 		testRoute(2, 7402, 0, group, alias, "up-n", 100),
@@ -555,8 +555,8 @@ func TestScoreW4FloorQualityRouteRecovers(t *testing.T) {
 	ClearRouteHealthCache()
 	t.Cleanup(ClearRouteHealthCache)
 
-	chA := testRouteChannel(7421, 10, 0, false, []string{"sk-a"}, nil)
-	chB := testRouteChannel(7422, 10, 0, false, []string{"sk-b"}, nil)
+	chA := testRouteChannel(7421, false, []string{"sk-a"}, nil)
+	chB := testRouteChannel(7422, false, []string{"sk-b"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
 		testRoute(1, 7421, 0, group, alias, "up-a", 100),
 		testRoute(2, 7422, 0, group, alias, "up-b", 100),
@@ -610,8 +610,8 @@ func TestScoreW4ComponentFloorIsWhatPreventsStarvation(t *testing.T) {
 	ClearRouteHealthCache()
 	t.Cleanup(ClearRouteHealthCache)
 
-	chA := testRouteChannel(7431, 10, 0, false, []string{"sk-a"}, nil)
-	chB := testRouteChannel(7432, 10, 0, false, []string{"sk-b"}, nil)
+	chA := testRouteChannel(7431, false, []string{"sk-a"}, nil)
+	chB := testRouteChannel(7432, false, []string{"sk-b"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
 		testRoute(1, 7431, 0, group, alias, "up-a", 100),
 		testRoute(2, 7432, 0, group, alias, "up-b", 100),
@@ -648,8 +648,8 @@ func TestScoreW5CorrectionIsNeutralAtConvergence(t *testing.T) {
 	ClearRouteHealthCache()
 	t.Cleanup(ClearRouteHealthCache)
 
-	chA := testRouteChannel(7501, 10, 0, false, []string{"sk-a"}, nil)
-	chB := testRouteChannel(7502, 10, 0, false, []string{"sk-b"}, nil)
+	chA := testRouteChannel(7501, false, []string{"sk-a"}, nil)
+	chB := testRouteChannel(7502, false, []string{"sk-b"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
 		testRoute(1, 7501, 0, group, alias, "up-a", 100),
 		testRoute(2, 7502, 0, group, alias, "up-b", 100),
@@ -686,8 +686,8 @@ func TestScoreW5WindowZeroDisablesCorrection(t *testing.T) {
 	ClearRouteHealthCache()
 	t.Cleanup(ClearRouteHealthCache)
 
-	chA := testRouteChannel(7511, 10, 0, false, []string{"sk-a"}, nil)
-	chB := testRouteChannel(7512, 10, 0, false, []string{"sk-b"}, nil)
+	chA := testRouteChannel(7511, false, []string{"sk-a"}, nil)
+	chB := testRouteChannel(7512, false, []string{"sk-b"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
 		testRoute(1, 7511, 0, group, alias, "up-a", 100),
 		testRoute(2, 7512, 0, group, alias, "up-b", 100),
@@ -729,8 +729,7 @@ func TestScoreW5ExpectedShareIsScopedPerGroup(t *testing.T) {
 	t.Cleanup(ClearRouteHealthCache)
 
 	const alias = "shared-model"
-	weight := uint(100)
-	ch := makeSingleKeyChannel(1, alias, "default,vip", nil, &weight)
+	ch := makeSingleKeyChannel(1, alias, "default,vip", nil)
 	ch.Name = "dual-group"
 	require.NoError(t, DB.Create(ch).Error)
 	require.NoError(t, SeedChannelModelRoutes())
