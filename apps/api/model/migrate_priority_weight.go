@@ -89,11 +89,40 @@ func carryOverChannelWeightToRoutes() error {
 	return nil
 }
 
+// columnExists probes the live schema without going through GORM's migrator.
+//
+// Migrator().HasColumn with a string table name panics on MySQL: RunWithValue
+// cannot resolve a statement schema from a bare name, and the MySQL migrator then
+// dereferences the nil schema (gorm migrator.go:398). Passing a model struct would
+// avoid it, but these columns have already been removed from the structs, which is
+// the whole reason this migration exists. Querying the catalogue directly keeps the
+// probe independent of any Go type.
 func columnExists(table, column string) bool {
-	if !DB.Migrator().HasTable(table) {
+	var count int64
+	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+		// SQLite has no information_schema; pragma_table_info is the table-valued
+		// equivalent and returns no rows for a table that does not exist.
+		if err := DB.Raw(
+			"SELECT count(*) FROM pragma_table_info(?) WHERE name = ?", table, column,
+		).Scan(&count).Error; err != nil {
+			return false
+		}
+		return count > 0
+	}
+	// The current-schema function differs: MySQL spells it DATABASE(), PostgreSQL
+	// current_schema(). Scoping the lookup matters either way, because a shared
+	// server can hold same-named tables in other schemas.
+	schemaFunc := "DATABASE()"
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+		schemaFunc = "current_schema()"
+	}
+	if err := DB.Raw(
+		"SELECT count(*) FROM information_schema.columns WHERE table_name = ? AND column_name = ? AND table_schema = "+schemaFunc,
+		table, column,
+	).Scan(&count).Error; err != nil {
 		return false
 	}
-	return DB.Migrator().HasColumn(table, column)
+	return count > 0
 }
 
 // dropColumnIfExists removes a column on every supported database.
@@ -102,7 +131,7 @@ func columnExists(table, column string) bool {
 // DropColumn by recreating the whole table, and that path panics on a table whose
 // DDL it cannot round-trip (observed on channels). SQLite has supported native
 // ALTER TABLE ... DROP COLUMN since 3.35 and the bundled driver is newer, so plain
-// DDL works on all three engines. The HasColumn guard is what keeps it idempotent
+// DDL works on all three engines. The columnExists guard keeps it idempotent
 // across restarts.
 func dropColumnIfExists(table, column string) error {
 	if !columnExists(table, column) {
