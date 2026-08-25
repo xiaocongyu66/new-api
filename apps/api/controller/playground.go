@@ -4,11 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/gateway"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/model"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
@@ -29,7 +29,7 @@ func Playground(c contract.Context) {
 		return
 	}
 
-	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatOpenAI, nil, nil)
+	relayInfo, err := gateway.GenRelayInfo(c, types.RelayFormatOpenAI, nil, nil)
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 		return

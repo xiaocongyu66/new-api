@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/capabilities/billing"
+	"github.com/QuantumNous/new-api/internal/gateway"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
@@ -244,7 +245,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 
 	request := buildTestRequest(testModel, endpointType, channel, isStream)
 
-	info, err := relaycommon.GenRelayInfo(c, relayFormat, request, nil)
+	info, err := gateway.GenRelayInfo(c, relayFormat, request, nil)
 
 	if err != nil {
 		return testResult{

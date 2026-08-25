@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/capabilities/billing"
 	taskcap "github.com/QuantumNous/new-api/internal/capabilities/task"
+	"github.com/QuantumNous/new-api/internal/gateway"
 	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"io"
@@ -124,7 +125,7 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 		return
 	}
 
-	relayInfo, err := relaycommon.GenRelayInfo(c, relayFormat, request, ws)
+	relayInfo, err := gateway.GenRelayInfo(c, relayFormat, request, ws)
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)
 		return
@@ -440,7 +441,7 @@ func processChannelError(c contract.Context, channelError types.ChannelError, er
 }
 
 func RelayMidjourney(c contract.Context) {
-	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatMjProxy, nil, nil)
+	relayInfo, err := gateway.GenRelayInfo(c, types.RelayFormatMjProxy, nil, nil)
 
 	if err != nil {
 		_ = c.JSON(http.StatusInternalServerError, common.H{
@@ -507,7 +508,7 @@ func RelayNotFound(c contract.Context) {
 }
 
 func RelayTaskFetch(c contract.Context) {
-	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
+	relayInfo, err := gateway.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
 	if err != nil {
 		_ = c.JSON(http.StatusInternalServerError, &taskdto.TaskError{
 			Code:       "gen_relay_info_failed",
@@ -522,7 +523,7 @@ func RelayTaskFetch(c contract.Context) {
 }
 
 func RelayTask(c contract.Context) {
-	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
+	relayInfo, err := gateway.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
 	if err != nil {
 		_ = c.JSON(http.StatusInternalServerError, &taskdto.TaskError{
 			Code:       "gen_relay_info_failed",

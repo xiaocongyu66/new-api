@@ -208,7 +208,7 @@ func SetRelayRouter(router *gin.Engine) {
 }
 
 func registerMjRouterGroup(relayMjRouter *gin.RouterGroup) {
-	relayMjRouter.GET("/image/:id", relay.RelayMidjourneyImage)
+	relayMjRouter.GET("/image/:id", ginadapter.Handler(relay.RelayMidjourneyImage))
 	relayMjRouter.Use(ginadapter.Middleware(security.TokenAuth()), ginadapter.Middleware(middleware.Distribute()))
 	{
 		relayMjRouter.POST("/submit/action", ginadapter.Handler(controller.RelayMidjourney))
