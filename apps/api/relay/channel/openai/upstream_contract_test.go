@@ -2,6 +2,7 @@ package openai
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting"
 
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -47,14 +49,14 @@ func startMockUpstream(t *testing.T, handler http.HandlerFunc) (*httptest.Server
 
 // newRelayClientContext builds the client-facing context whose response bytes are
 // the contract under test.
-func newRelayClientContext(t *testing.T, path string) (*gin.Context, *httptest.ResponseRecorder) {
+func newRelayClientContext(t *testing.T, path string) (contract.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, path, nil)
-	return c, recorder
+	return ginadapter.Wrap(c), recorder
 }
 
 // disableOutputSensitiveFilter removes the output filter so these tests assert

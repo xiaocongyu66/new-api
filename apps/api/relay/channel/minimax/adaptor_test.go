@@ -2,6 +2,7 @@ package minimax
 
 import (
 	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -52,7 +53,7 @@ func TestConvertImageRequest(t *testing.T) {
 		N:              uintPtr(2),
 	}
 
-	got, err := adaptor.ConvertImageRequest(gin.CreateTestContextOnly(httptest.NewRecorder(), gin.New()), info, request)
+	got, err := adaptor.ConvertImageRequest(ginadapter.Wrap(gin.CreateTestContextOnly(httptest.NewRecorder(), gin.New())), info, request)
 	if err != nil {
 		t.Fatalf("ConvertImageRequest returned error: %v", err)
 	}
@@ -89,7 +90,8 @@ func TestDoResponseForImageGeneration(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
+	cRaw, _ := gin.CreateTestContext(recorder)
+	c := ginadapter.Wrap(cRaw)
 
 	info := &relaycommon.RelayInfo{
 		RelayMode: relayconstant.RelayModeImagesGenerations,

@@ -11,26 +11,33 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/gorilla/websocket"
 )
 
-func FlushWriter(c *gin.Context) (err error) {
+// renderSSE writes a raw SSE line through the framework-neutral response
+// writer, byte-identical to the previous gin CustomEvent render path.
+func renderSSE(c contract.Context, data string) {
+	ev := common.CustomEvent{Data: data}
+	_ = ev.Render(c.ResponseWriter())
+}
+
+func FlushWriter(c contract.Context) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("flush panic recovered: %v", r)
 		}
 	}()
 
-	if c == nil || c.Writer == nil {
+	if c == nil {
 		return nil
 	}
 
 	if requestContextDone(c) {
-		return fmt.Errorf("request context done: %w", c.Request.Context().Err())
+		return fmt.Errorf("request context done: %w", c.Context().Err())
 	}
 
-	flusher, ok := c.Writer.(http.Flusher)
+	flusher, ok := c.ResponseWriter().(http.Flusher)
 	if !ok {
 		return errors.New("streaming error: flusher not found")
 	}
@@ -39,11 +46,11 @@ func FlushWriter(c *gin.Context) (err error) {
 	return nil
 }
 
-func requestContextDone(c *gin.Context) bool {
-	return c != nil && c.Request != nil && c.Request.Context().Err() != nil
+func requestContextDone(c contract.Context) bool {
+	return c != nil && c.Context().Err() != nil
 }
 
-func SetEventStreamHeaders(c *gin.Context) {
+func SetEventStreamHeaders(c contract.Context) {
 	// 检查是否已经设置过头部
 	if _, exists := c.Get(ginadapter.EventStreamHeadersKey); exists {
 		return
@@ -51,14 +58,14 @@ func SetEventStreamHeaders(c *gin.Context) {
 
 	// 设置标志，表示头部已经设置过
 	c.Set(ginadapter.EventStreamHeadersKey, true)
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.Header().Set("Transfer-Encoding", "chunked")
-	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.SetHeader("Content-Type", "text/event-stream")
+	c.SetHeader("Cache-Control", "no-cache")
+	c.SetHeader("Connection", "keep-alive")
+	c.SetHeader("Transfer-Encoding", "chunked")
+	c.SetHeader("X-Accel-Buffering", "no")
 }
 
-func ClaudeData(c *gin.Context, resp dto.ClaudeResponse) error {
+func ClaudeData(c contract.Context, resp dto.ClaudeResponse) error {
 	if requestContextDone(c) {
 		return nil
 	}
@@ -67,14 +74,14 @@ func ClaudeData(c *gin.Context, resp dto.ClaudeResponse) error {
 	if err != nil {
 		common.SysError("error marshalling stream response: " + err.Error())
 	} else {
-		c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)})
-		c.Render(-1, common.CustomEvent{Data: "data: " + string(jsonData)})
+		renderSSE(c, fmt.Sprintf("event: %s\n", resp.Type))
+		renderSSE(c, "data: "+string(jsonData))
 	}
 	_ = FlushWriter(c)
 	return nil
 }
 
-func ClaudeChunkData(c *gin.Context, resp dto.ClaudeResponse, data string) {
+func ClaudeChunkData(c contract.Context, resp dto.ClaudeResponse, data string) {
 	if requestContextDone(c) {
 		return
 	}
@@ -85,14 +92,14 @@ func ClaudeChunkData(c *gin.Context, resp dto.ClaudeResponse, data string) {
 		return
 	}
 
-	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)})
-	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("data: %s\n", data)})
+	renderSSE(c, fmt.Sprintf("event: %s\n", resp.Type))
+	renderSSE(c, fmt.Sprintf("data: %s\n", data))
 	_ = FlushWriter(c)
 }
 
-func ResponseChunkData(c *gin.Context, resp dto.ResponsesStreamResponse, data string) error {
+func ResponseChunkData(c contract.Context, resp dto.ResponsesStreamResponse, data string) error {
 	if requestContextDone(c) {
-		return fmt.Errorf("request context done: %w", c.Request.Context().Err())
+		return fmt.Errorf("request context done: %w", c.Context().Err())
 	}
 
 	if blocked, label := outputChunkBlocked(c, data); blocked {
@@ -101,18 +108,18 @@ func ResponseChunkData(c *gin.Context, resp dto.ResponsesStreamResponse, data st
 		return fmt.Errorf("output blocked by sensitive filter: %s", label)
 	}
 
-	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)})
-	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("data: %s", data)})
+	renderSSE(c, fmt.Sprintf("event: %s\n", resp.Type))
+	renderSSE(c, fmt.Sprintf("data: %s", data))
 	return FlushWriter(c)
 }
 
-func StringData(c *gin.Context, str string) error {
-	if c == nil || c.Writer == nil {
-		return errors.New("context or writer is nil")
+func StringData(c contract.Context, str string) error {
+	if c == nil {
+		return errors.New("context is nil")
 	}
 
 	if requestContextDone(c) {
-		return fmt.Errorf("request context done: %w", c.Request.Context().Err())
+		return fmt.Errorf("request context done: %w", c.Context().Err())
 	}
 
 	if blocked, label := outputChunkBlocked(c, str); blocked {
@@ -120,26 +127,26 @@ func StringData(c *gin.Context, str string) error {
 		return fmt.Errorf("output blocked by sensitive filter: %s", label)
 	}
 
-	c.Render(-1, common.CustomEvent{Data: "data: " + str})
+	renderSSE(c, "data: "+str)
 	return FlushWriter(c)
 }
 
-func PingData(c *gin.Context) error {
-	if c == nil || c.Writer == nil {
-		return errors.New("context or writer is nil")
+func PingData(c contract.Context) error {
+	if c == nil {
+		return errors.New("context is nil")
 	}
 
 	if requestContextDone(c) {
-		return fmt.Errorf("request context done: %w", c.Request.Context().Err())
+		return fmt.Errorf("request context done: %w", c.Context().Err())
 	}
 
-	if _, err := c.Writer.Write([]byte(": PING\n\n")); err != nil {
+	if _, err := c.ResponseWriter().Write([]byte(": PING\n\n")); err != nil {
 		return fmt.Errorf("write ping data failed: %w", err)
 	}
 	return FlushWriter(c)
 }
 
-func ObjectData(c *gin.Context, object interface{}) error {
+func ObjectData(c contract.Context, object interface{}) error {
 	if object == nil {
 		return errors.New("object is nil")
 	}
@@ -150,33 +157,33 @@ func ObjectData(c *gin.Context, object interface{}) error {
 	return StringData(c, string(jsonData))
 }
 
-func Done(c *gin.Context) {
+func Done(c contract.Context) {
 	_ = StringData(c, "[DONE]")
 }
 
-func WssString(c *gin.Context, ws *websocket.Conn, str string) error {
+func WssString(c contract.Context, ws *websocket.Conn, str string) error {
 	if ws == nil {
-		logger.LogError(c.Request.Context(), "websocket connection is nil")
+		logger.LogError(c.Context(), "websocket connection is nil")
 		return errors.New("websocket connection is nil")
 	}
 	//common.LogInfo(c, fmt.Sprintf("sending message: %s", str))
 	return ws.WriteMessage(1, []byte(str))
 }
 
-func WssObject(c *gin.Context, ws *websocket.Conn, object interface{}) error {
+func WssObject(c contract.Context, ws *websocket.Conn, object interface{}) error {
 	jsonData, err := common.Marshal(object)
 	if err != nil {
 		return fmt.Errorf("error marshalling object: %w", err)
 	}
 	if ws == nil {
-		logger.LogError(c.Request.Context(), "websocket connection is nil")
+		logger.LogError(c.Context(), "websocket connection is nil")
 		return errors.New("websocket connection is nil")
 	}
 	//common.LogInfo(c, fmt.Sprintf("sending message: %s", jsonData))
 	return ws.WriteMessage(1, jsonData)
 }
 
-func WssError(c *gin.Context, ws *websocket.Conn, openaiError types.OpenAIError) {
+func WssError(c contract.Context, ws *websocket.Conn, openaiError types.OpenAIError) {
 	if ws == nil {
 		return
 	}
@@ -188,12 +195,12 @@ func WssError(c *gin.Context, ws *websocket.Conn, openaiError types.OpenAIError)
 	_ = WssObject(c, ws, errorObj)
 }
 
-func GetResponseID(c *gin.Context) string {
+func GetResponseID(c contract.Context) string {
 	logID := c.GetString(common.RequestIdKey)
 	return fmt.Sprintf("chatcmpl-%s", logID)
 }
 
-func GetLocalRealtimeID(c *gin.Context) string {
+func GetLocalRealtimeID(c contract.Context) string {
 	logID := c.GetString(common.RequestIdKey)
 	return fmt.Sprintf("evt_%s", logID)
 }
@@ -241,4 +248,10 @@ func GenerateFinalUsageResponse(id string, createAt int64, model string, usage d
 		Choices:           make([]dto.ChatCompletionsStreamResponseChoice, 0),
 		Usage:             &usage,
 	}
+}
+
+// SSERender is the exported form of renderSSE for relay root handlers that
+// stream raw event lines without going through StreamScannerHandler.
+func SSERender(c contract.Context, data string) {
+	renderSSE(c, data)
 }

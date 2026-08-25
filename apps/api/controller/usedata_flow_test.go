@@ -66,11 +66,12 @@ func TestGetAllFlowQuotaDatesUsesAdminDimensions(t *testing.T) {
 	setupFlowControllerTestDB(t)
 
 	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
+	ctxRaw, _ := gin.CreateTestContext(recorder)
+	ctxRaw.Request = httptest.NewRequest(http.MethodGet, "/api/data/flow?start_timestamp=1000&end_timestamp=2000&username=bob", nil)
+	ctx := ginadapter.Wrap(ctxRaw)
 	ctx.Set("role", common.RoleAdminUser)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/data/flow?start_timestamp=1000&end_timestamp=2000&username=bob", nil)
 
-	GetAllFlowQuotaDates(ginadapter.Wrap(ctx))
+	GetAllFlowQuotaDates(ctx)
 
 	payload := decodeFlowQuotaResponse(t, recorder)
 	require.Len(t, payload.Data, 1)
@@ -85,11 +86,12 @@ func TestGetAllFlowQuotaDatesUsesRootDimensions(t *testing.T) {
 	setupFlowControllerTestDB(t)
 
 	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
+	ctxRaw, _ := gin.CreateTestContext(recorder)
+	ctxRaw.Request = httptest.NewRequest(http.MethodGet, "/api/data/flow?start_timestamp=1000&end_timestamp=2000&username=alice", nil)
+	ctx := ginadapter.Wrap(ctxRaw)
 	ctx.Set("role", common.RoleRootUser)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/data/flow?start_timestamp=1000&end_timestamp=2000&username=alice", nil)
 
-	GetAllFlowQuotaDates(ginadapter.Wrap(ctx))
+	GetAllFlowQuotaDates(ctx)
 
 	payload := decodeFlowQuotaResponse(t, recorder)
 	require.Len(t, payload.Data, 1)
@@ -104,11 +106,12 @@ func TestGetUserFlowQuotaDatesRestrictsToAuthenticatedUser(t *testing.T) {
 	setupFlowControllerTestDB(t)
 
 	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
+	ctxRaw, _ := gin.CreateTestContext(recorder)
+	ctxRaw.Request = httptest.NewRequest(http.MethodGet, "/api/data/flow/self?start_timestamp=1000&end_timestamp=2000", nil)
+	ctx := ginadapter.Wrap(ctxRaw)
 	ctx.Set("id", 1)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/data/flow/self?start_timestamp=1000&end_timestamp=2000", nil)
 
-	GetUserFlowQuotaDates(ginadapter.Wrap(ctx))
+	GetUserFlowQuotaDates(ctx)
 
 	payload := decodeFlowQuotaResponse(t, recorder)
 	require.Len(t, payload.Data, 1)
@@ -122,11 +125,12 @@ func TestGetUserFlowQuotaDatesRejectsInvalidTimeRange(t *testing.T) {
 	setupFlowControllerTestDB(t)
 
 	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
+	ctxRaw, _ := gin.CreateTestContext(recorder)
+	ctxRaw.Request = httptest.NewRequest(http.MethodGet, "/api/data/flow/self?start_timestamp=bad&end_timestamp=2000", nil)
+	ctx := ginadapter.Wrap(ctxRaw)
 	ctx.Set("id", 1)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/data/flow/self?start_timestamp=bad&end_timestamp=2000", nil)
 
-	GetUserFlowQuotaDates(ginadapter.Wrap(ctx))
+	GetUserFlowQuotaDates(ctx)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	var payload flowQuotaResponse

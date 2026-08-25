@@ -146,11 +146,12 @@ func TestTelegramBindFailureResponseContract(t *testing.T) {
 	for _, failure := range failures {
 		t.Run(failure.name, func(t *testing.T) {
 			response := httptest.NewRecorder()
-			context, _ := gin.CreateTestContext(response)
-			context.Params = gin.Params{{Key: "flow_token", Value: "flow token"}}
-			context.Request = httptest.NewRequest(http.MethodGet, "/api/oauth/telegram/bind/flow-token", nil)
+			contextRaw, _ := gin.CreateTestContext(response)
+			contextRaw.Params = gin.Params{{Key: "flow_token", Value: "flow token"}}
+			contextRaw.Request = httptest.NewRequest(http.MethodGet, "/api/oauth/telegram/bind/flow-token", nil)
+			context := ginadapter.Wrap(contextRaw)
 
-			telegramBindFailure(ginadapter.Wrap(context), failure.errorCode)
+			telegramBindFailure(context, failure.errorCode)
 
 			assertTelegramBindRedirect(t, response, "flow token", failure.errorCode)
 		})

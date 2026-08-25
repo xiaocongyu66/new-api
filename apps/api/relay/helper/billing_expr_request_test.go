@@ -2,6 +2,7 @@ package helper
 
 import (
 	"bytes"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -31,7 +32,7 @@ func TestResolveIncomingBillingExprRequestInput(t *testing.T) {
 		RequestHeaders: map[string]string{"Content-Type": "application/json"},
 	}
 
-	input, err := ResolveIncomingBillingExprRequestInput(ctx, info)
+	input, err := ResolveIncomingBillingExprRequestInput(ginadapter.Wrap(ctx), info)
 	require.NoError(t, err)
 	require.Equal(t, body, input.Body)
 	require.Equal(t, "application/json", input.Headers["Content-Type"])

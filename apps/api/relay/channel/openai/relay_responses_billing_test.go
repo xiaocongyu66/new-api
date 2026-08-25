@@ -2,6 +2,7 @@ package openai
 
 import (
 	"bytes"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -43,6 +44,7 @@ func TestOaiResponsesHandlerCountsOutputCallsNotDeclarations(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	cc := ginadapter.Wrap(c)
 
 	info := &relaycommon.RelayInfo{
 		OriginModelName: "gpt-5.1",
@@ -59,7 +61,7 @@ func TestOaiResponsesHandlerCountsOutputCallsNotDeclarations(t *testing.T) {
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 	}
 
-	usage, apiErr := OaiResponsesHandler(c, info, resp)
+	usage, apiErr := OaiResponsesHandler(cc, info, resp)
 	require.Nil(t, apiErr)
 	require.NotNil(t, usage)
 	assert.Equal(t, 2, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolWebSearchPreview].CallCount)
@@ -87,6 +89,7 @@ func TestOaiResponsesHandlerDeclaredToolsWithoutOutputCountZero(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	cc := ginadapter.Wrap(c)
 
 	info := &relaycommon.RelayInfo{
 		OriginModelName: "gpt-5.1",
@@ -103,7 +106,7 @@ func TestOaiResponsesHandlerDeclaredToolsWithoutOutputCountZero(t *testing.T) {
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 	}
 
-	_, apiErr := OaiResponsesHandler(c, info, resp)
+	_, apiErr := OaiResponsesHandler(cc, info, resp)
 	require.Nil(t, apiErr)
 	assert.Equal(t, 0, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolWebSearchPreview].CallCount)
 	assert.Equal(t, 0, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolFileSearch].CallCount)
@@ -141,6 +144,7 @@ func TestOaiResponsesHandlerCountsCompletedImageGenerationOutputs(t *testing.T) 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	cc := ginadapter.Wrap(c)
 	info := &relaycommon.RelayInfo{OriginModelName: "gpt-5.1"}
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
@@ -148,7 +152,7 @@ func TestOaiResponsesHandlerCountsCompletedImageGenerationOutputs(t *testing.T) 
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 	}
 
-	_, apiErr := OaiResponsesHandler(c, info, resp)
+	_, apiErr := OaiResponsesHandler(cc, info, resp)
 	require.Nil(t, apiErr)
 	require.Contains(t, info.ResponsesUsageInfo.BuiltInTools, dto.BuildInToolImageGeneration)
 	assert.Equal(t, 2, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolImageGeneration].CallCount)
@@ -175,6 +179,7 @@ func TestOaiResponsesHandlerIncompleteStatusCommitsZeroImageGeneration(t *testin
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	cc := ginadapter.Wrap(c)
 	info := &relaycommon.RelayInfo{
 		OriginModelName: "gpt-5.1",
 		ResponsesUsageInfo: &relaycommon.ResponsesUsageInfo{
@@ -189,7 +194,7 @@ func TestOaiResponsesHandlerIncompleteStatusCommitsZeroImageGeneration(t *testin
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 	}
 
-	_, apiErr := OaiResponsesHandler(c, info, resp)
+	_, apiErr := OaiResponsesHandler(cc, info, resp)
 	require.Nil(t, apiErr)
 	assert.Equal(t, 0, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolImageGeneration].CallCount)
 }
@@ -214,6 +219,7 @@ func runResponsesImageBillingStream(t *testing.T, events ...string) *relaycommon
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	cc := ginadapter.Wrap(c)
 	c.Set(common.RequestIdKey, "responses-image-billing-test")
 	info := &relaycommon.RelayInfo{
 		OriginModelName: "gpt-5.1",
@@ -228,7 +234,7 @@ func runResponsesImageBillingStream(t *testing.T, events ...string) *relaycommon
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
 	}
 
-	_, apiErr := OaiResponsesStreamHandler(c, info, resp)
+	_, apiErr := OaiResponsesStreamHandler(cc, info, resp)
 	require.Nil(t, apiErr)
 	require.NotNil(t, info.ResponsesUsageInfo)
 	require.Contains(t, info.ResponsesUsageInfo.BuiltInTools, dto.BuildInToolImageGeneration)

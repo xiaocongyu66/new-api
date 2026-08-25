@@ -2,6 +2,7 @@ package helper
 
 import (
 	"context"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -43,7 +44,7 @@ func TestStringDataWritesSingleSSEFrame(t *testing.T) {
 	disableCompletionSensitiveCheck(t)
 	c, recorder := newSSERecorder(t)
 
-	require.NoError(t, StringData(c, `{"choices":[{"delta":{"content":"hi"}}]}`))
+	require.NoError(t, StringData(ginadapter.Wrap(c), `{"choices":[{"delta":{"content":"hi"}}]}`))
 
 	assert.Equal(t, "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n", recorder.Body.String())
 }
@@ -54,7 +55,7 @@ func TestDoneWritesTerminalSentinel(t *testing.T) {
 	disableCompletionSensitiveCheck(t)
 	c, recorder := newSSERecorder(t)
 
-	Done(c)
+	Done(ginadapter.Wrap(c))
 
 	assert.Equal(t, "data: [DONE]\n\n", recorder.Body.String())
 }
@@ -65,7 +66,7 @@ func TestObjectDataMarshalsThroughCommonJSON(t *testing.T) {
 	disableCompletionSensitiveCheck(t)
 	c, recorder := newSSERecorder(t)
 
-	require.NoError(t, ObjectData(c, dto.ChatCompletionsStreamResponse{
+	require.NoError(t, ObjectData(ginadapter.Wrap(c), dto.ChatCompletionsStreamResponse{
 		Id:     "chatcmpl-1",
 		Object: "chat.completion.chunk",
 		Model:  "gpt-4",
@@ -84,7 +85,7 @@ func TestObjectDataMarshalsThroughCommonJSON(t *testing.T) {
 func TestPingDataWritesCommentFrame(t *testing.T) {
 	c, recorder := newSSERecorder(t)
 
-	require.NoError(t, PingData(c))
+	require.NoError(t, PingData(ginadapter.Wrap(c)))
 
 	assert.Equal(t, ": PING\n\n", recorder.Body.String())
 }
@@ -101,7 +102,7 @@ func TestClaudeChunkDataWritesEventAndDataLines(t *testing.T) {
 	disableCompletionSensitiveCheck(t)
 	c, recorder := newSSERecorder(t)
 
-	ClaudeChunkData(c, dto.ClaudeResponse{Type: "content_block_delta"}, `{"type":"content_block_delta"}`)
+	ClaudeChunkData(ginadapter.Wrap(c), dto.ClaudeResponse{Type: "content_block_delta"}, `{"type":"content_block_delta"}`)
 
 	assert.Equal(t, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\"}\n\n\n", recorder.Body.String())
 }
@@ -112,7 +113,7 @@ func TestClaudeDataWritesEventAndMarshalledPayload(t *testing.T) {
 	disableCompletionSensitiveCheck(t)
 	c, recorder := newSSERecorder(t)
 
-	require.NoError(t, ClaudeData(c, dto.ClaudeResponse{Type: "message_start"}))
+	require.NoError(t, ClaudeData(ginadapter.Wrap(c), dto.ClaudeResponse{Type: "message_start"}))
 
 	assert.Equal(t, "event: message_start\ndata: {\"type\":\"message_start\"}\n\n", recorder.Body.String())
 }
@@ -122,7 +123,7 @@ func TestClaudeDataWritesEventAndMarshalledPayload(t *testing.T) {
 func TestSetEventStreamHeadersSetsStreamingHeaders(t *testing.T) {
 	c, recorder := newSSERecorder(t)
 
-	SetEventStreamHeaders(c)
+	SetEventStreamHeaders(ginadapter.Wrap(c))
 
 	assert.Equal(t, "text/event-stream", recorder.Header().Get("Content-Type"))
 	assert.Equal(t, "no-cache", recorder.Header().Get("Cache-Control"))
@@ -141,7 +142,7 @@ func TestStringDataRejectsCancelledRequest(t *testing.T) {
 	c.Request = c.Request.WithContext(ctx)
 	cancel()
 
-	err := StringData(c, `{"choices":[]}`)
+	err := StringData(ginadapter.Wrap(c), `{"choices":[]}`)
 
 	require.Error(t, err)
 	assert.Empty(t, recorder.Body.String())

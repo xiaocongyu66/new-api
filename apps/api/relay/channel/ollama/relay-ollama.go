@@ -14,7 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/samber/lo"
 )
 
@@ -39,7 +39,7 @@ func toOllamaResponseFormat(responseFormat *dto.ResponseFormat) (any, error) {
 	}
 }
 
-func openAIChatToOllamaChat(c *gin.Context, r *dto.GeneralOpenAIRequest) (*OllamaChatRequest, error) {
+func openAIChatToOllamaChat(c contract.Context, r *dto.GeneralOpenAIRequest) (*OllamaChatRequest, error) {
 	think := r.Think
 	if len(think) == 0 {
 		effort := r.ReasoningEffort
@@ -205,7 +205,7 @@ func openAIChatToOllamaChat(c *gin.Context, r *dto.GeneralOpenAIRequest) (*Ollam
 }
 
 // openAIToGenerate converts OpenAI completions request to Ollama generate
-func openAIToGenerate(c *gin.Context, r *dto.GeneralOpenAIRequest) (*OllamaGenerateRequest, error) {
+func openAIToGenerate(c contract.Context, r *dto.GeneralOpenAIRequest) (*OllamaGenerateRequest, error) {
 	gen := &OllamaGenerateRequest{
 		Model:   r.Model,
 		Stream:  lo.FromPtrOr(r.Stream, false),
@@ -307,7 +307,7 @@ func requestOpenAI2Embeddings(r dto.EmbeddingRequest) *OllamaEmbeddingRequest {
 	return &OllamaEmbeddingRequest{Model: r.Model, Input: input, Options: opts, Dimensions: dimensions}
 }
 
-func ollamaEmbeddingHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
+func ollamaEmbeddingHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
 	var oResp OllamaEmbeddingResponse
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

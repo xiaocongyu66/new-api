@@ -133,15 +133,15 @@ func TestClearChannelReadOnlyFields(t *testing.T) {
 func TestUpdateChannelRejectsStatusField(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(
+	rawCtx, _ := gin.CreateTestContext(recorder)
+	rawCtx.Request = httptest.NewRequest(
 		http.MethodPut,
 		"/api/channel/",
 		bytes.NewBufferString(`{"id":1,"status":2}`),
 	)
-	ctx.Request.Header.Set("Content-Type", "application/json")
+	rawCtx.Request.Header.Set("Content-Type", "application/json")
 
-	UpdateChannel(ginadapter.Wrap(ctx))
+	UpdateChannel(ginadapter.Wrap(rawCtx))
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	var response struct {

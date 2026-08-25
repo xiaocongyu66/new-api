@@ -415,9 +415,9 @@ func TestListModelsTokenLimitIncludesTieredBillingModel(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
-	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimitEnabled, true)
-	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimit, map[string]bool{
+	common.SetContextKey(ginadapter.Wrap(ctx), constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(ginadapter.Wrap(ctx), constant.ContextKeyTokenModelLimitEnabled, true)
+	common.SetContextKey(ginadapter.Wrap(ctx), constant.ContextKeyTokenModelLimit, map[string]bool{
 		"zz-token-tiered-visible-model":      true,
 		"zz-token-tiered-empty-expr-model":   true,
 		"zz-token-tiered-missing-expr-model": true,
@@ -457,11 +457,11 @@ func TestListModelsTokenLimitUsesResolvedCustomAutoGroups(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
-	common.SetContextKey(ctx, constant.ContextKeyTokenGroup, "auto")
-	common.SetContextKey(ctx, constant.ContextKeyTokenAutoGroups, []string{"vip"})
-	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimitEnabled, true)
-	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimit, map[string]bool{
+	common.SetContextKey(ginadapter.Wrap(ctx), constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(ginadapter.Wrap(ctx), constant.ContextKeyTokenGroup, "auto")
+	common.SetContextKey(ginadapter.Wrap(ctx), constant.ContextKeyTokenAutoGroups, []string{"vip"})
+	common.SetContextKey(ginadapter.Wrap(ctx), constant.ContextKeyTokenModelLimitEnabled, true)
+	common.SetContextKey(ginadapter.Wrap(ctx), constant.ContextKeyTokenModelLimit, map[string]bool{
 		"zz-vip-allowed":              true,
 		"zz-default-outside-snapshot": true,
 		"zz-not-enabled":              true,
@@ -475,11 +475,11 @@ func TestListModelsTokenLimitUsesResolvedCustomAutoGroups(t *testing.T) {
 	emptyRecorder := httptest.NewRecorder()
 	emptyCtx, _ := gin.CreateTestContext(emptyRecorder)
 	emptyCtx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	common.SetContextKey(emptyCtx, constant.ContextKeyUserGroup, "default")
-	common.SetContextKey(emptyCtx, constant.ContextKeyTokenGroup, "auto")
-	common.SetContextKey(emptyCtx, constant.ContextKeyTokenAutoGroups, []string{"vip"})
-	common.SetContextKey(emptyCtx, constant.ContextKeyTokenModelLimitEnabled, true)
-	common.SetContextKey(emptyCtx, constant.ContextKeyTokenModelLimit, map[string]bool{"zz-vip-allowed": true})
+	common.SetContextKey(ginadapter.Wrap(emptyCtx), constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(ginadapter.Wrap(emptyCtx), constant.ContextKeyTokenGroup, "auto")
+	common.SetContextKey(ginadapter.Wrap(emptyCtx), constant.ContextKeyTokenAutoGroups, []string{"vip"})
+	common.SetContextKey(ginadapter.Wrap(emptyCtx), constant.ContextKeyTokenModelLimitEnabled, true)
+	common.SetContextKey(ginadapter.Wrap(emptyCtx), constant.ContextKeyTokenModelLimit, map[string]bool{"zz-vip-allowed": true})
 
 	require.NotPanics(t, func() {
 		ListModels(ginadapter.Wrap(emptyCtx), constant.ChannelTypeAnthropic)

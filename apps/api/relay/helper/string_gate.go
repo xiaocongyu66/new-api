@@ -8,7 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
 const outputFilterWindowSize = 512
@@ -21,7 +21,7 @@ type sensitiveOutputState struct {
 }
 
 // outputFilterState 获取/初始化请求级输出检测状态。
-func outputFilterState(c *gin.Context) *sensitiveOutputState {
+func outputFilterState(c contract.Context) *sensitiveOutputState {
 	if v, ok := c.Get(string(constant.ContextKeySensitiveOutputState)); ok {
 		if s, ok := v.(*sensitiveOutputState); ok {
 			return s
@@ -36,7 +36,7 @@ func outputFilterState(c *gin.Context) *sensitiveOutputState {
 // 已触发的流直接丢弃（blocked=true）；新 chunk 累积进窗口后再判。
 // 目标域名硬闸无条件生效（不受敏感词开关控制），其余检测受
 // CheckSensitiveOnCompletionEnabled 控制（默认开）。
-func outputChunkBlocked(c *gin.Context, data string) (bool, string) {
+func outputChunkBlocked(c contract.Context, data string) (bool, string) {
 	st := outputFilterState(c)
 	if st.blocked {
 		return true, "already-blocked"
@@ -68,13 +68,13 @@ func outputChunkBlocked(c *gin.Context, data string) (bool, string) {
 // terminateOutputSSE 输出命中敏感后向客户端写终止帧并标记截断。
 // 写 OpenAI 风格 content_filter 终止事件 + [DONE]，任何格式客户端都会断流。
 // 幂等：已写入过的流不再重复写（后续 chunk 路过时 blocked 直接丢弃）。
-func terminateOutputSSE(c *gin.Context) {
+func terminateOutputSSE(c contract.Context) {
 	st := outputFilterState(c)
 	if st.terminate {
 		return
 	}
 	st.terminate = true // 先标记，再写入；partial-write 重入也不会重复写
-	_, _ = c.Writer.WriteString("data: " + `{"choices":[{"delta":{},"finish_reason":"content_filter"}]}` + "\n\n")
-	_, _ = c.Writer.WriteString("data: [DONE]\n\n")
+	_, _ = c.ResponseWriter().Write([]byte("data: " + `{"choices":[{"delta":{},"finish_reason":"content_filter"}]}` + "\n\n"))
+	_, _ = c.ResponseWriter().Write([]byte("data: [DONE]\n\n"))
 	_ = FlushWriter(c)
 }

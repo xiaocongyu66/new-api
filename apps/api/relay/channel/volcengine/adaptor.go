@@ -20,7 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/samber/lo"
 )
 
@@ -32,12 +32,12 @@ const (
 type Adaptor struct {
 }
 
-func (a *Adaptor) ConvertGeminiRequest(*gin.Context, *relaycommon.RelayInfo, *dto.GeminiChatRequest) (any, error) {
+func (a *Adaptor) ConvertGeminiRequest(contract.Context, *relaycommon.RelayInfo, *dto.GeminiChatRequest) (any, error) {
 	//TODO implement me
 	return nil, errors.New("not implemented")
 }
 
-func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, req *dto.ClaudeRequest) (any, error) {
+func (a *Adaptor) ConvertClaudeRequest(c contract.Context, info *relaycommon.RelayInfo, req *dto.ClaudeRequest) (any, error) {
 	if _, ok := channelconstant.ChannelSpecialBases[info.ChannelBaseUrl]; ok {
 		adaptor := claude.Adaptor{}
 		return adaptor.ConvertClaudeRequest(c, info, req)
@@ -46,7 +46,7 @@ func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayIn
 	return adaptor.ConvertClaudeRequest(c, info, req)
 }
 
-func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.AudioRequest) (io.Reader, error) {
+func (a *Adaptor) ConvertAudioRequest(c contract.Context, info *relaycommon.RelayInfo, request dto.AudioRequest) (io.Reader, error) {
 	if info.RelayMode != constant.RelayModeAudioSpeech {
 		return nil, errors.New("unsupported audio relay mode")
 	}
@@ -105,7 +105,7 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 	return bytes.NewReader(jsonData), nil
 }
 
-func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
+func (a *Adaptor) ConvertImageRequest(c contract.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
 	switch info.RelayMode {
 	case constant.RelayModeImagesGenerations:
 		return request, nil
@@ -117,7 +117,7 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	//
 	//	writer.WriteField("model", request.Model)
 	//
-	//	formData := c.Request.PostForm
+	//	formData := c.HTTPRequest().PostForm
 	//	for key, values := range formData {
 	//		if key == "model" {
 	//			continue
@@ -127,18 +127,18 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	//		}
 	//	}
 	//
-	//	if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
+	//	if err := c.HTTPRequest().ParseMultipartForm(32 << 20); err != nil {
 	//		return nil, errors.New("failed to parse multipart form")
 	//	}
 	//
-	//	if c.Request.MultipartForm != nil && c.Request.MultipartForm.File != nil {
+	//	if c.HTTPRequest().MultipartForm != nil && c.HTTPRequest().MultipartForm.File != nil {
 	//		var imageFiles []*multipart.FileHeader
 	//		var exists bool
 	//
-	//		if imageFiles, exists = c.Request.MultipartForm.File["image"]; !exists || len(imageFiles) == 0 {
-	//			if imageFiles, exists = c.Request.MultipartForm.File["image[]"]; !exists || len(imageFiles) == 0 {
+	//		if imageFiles, exists = c.HTTPRequest().MultipartForm.File["image"]; !exists || len(imageFiles) == 0 {
+	//			if imageFiles, exists = c.HTTPRequest().MultipartForm.File["image[]"]; !exists || len(imageFiles) == 0 {
 	//				foundArrayImages := false
-	//				for fieldName, files := range c.Request.MultipartForm.File {
+	//				for fieldName, files := range c.HTTPRequest().MultipartForm.File {
 	//					if strings.HasPrefix(fieldName, "image[") && len(files) > 0 {
 	//						foundArrayImages = true
 	//						for _, file := range files {
@@ -181,7 +181,7 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	//			}
 	//		}
 	//
-	//		if maskFiles, exists := c.Request.MultipartForm.File["mask"]; exists && len(maskFiles) > 0 {
+	//		if maskFiles, exists := c.HTTPRequest().MultipartForm.File["mask"]; exists && len(maskFiles) > 0 {
 	//			maskFile, err := maskFiles[0].Open()
 	//			if err != nil {
 	//				return nil, errors.New("failed to open mask file")
@@ -208,7 +208,7 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	//	}
 	//
 	//	writer.Close()
-	//	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+	//	c.HTTPRequest().Header.Set("Content-Type", writer.FormDataContentType())
 	//	return bytes.NewReader(requestBody.Bytes()), nil
 
 	default:
@@ -284,7 +284,7 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	return "", fmt.Errorf("unsupported relay mode: %d", info.RelayMode)
 }
 
-func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *relaycommon.RelayInfo) error {
+func (a *Adaptor) SetupRequestHeader(c contract.Context, req *http.Header, info *relaycommon.RelayInfo) error {
 	channel.SetupApiRequestHeader(info, c, req)
 
 	if info.RelayMode == constant.RelayModeAudioSpeech {
@@ -295,14 +295,14 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 		req.Set("Content-Type", "application/json")
 		return nil
 	} else if info.RelayMode == constant.RelayModeImagesEdits {
-		req.Set("Content-Type", gin.MIMEJSON)
+		req.Set("Content-Type", "application/json")
 	}
 
 	req.Set("Authorization", "Bearer "+info.ApiKey)
 	return nil
 }
 
-func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) (any, error) {
+func (a *Adaptor) ConvertOpenAIRequest(c contract.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) (any, error) {
 	if request == nil {
 		return nil, errors.New("request is nil")
 	}
@@ -317,19 +317,19 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	return request, nil
 }
 
-func (a *Adaptor) ConvertRerankRequest(c *gin.Context, relayMode int, request dto.RerankRequest) (any, error) {
+func (a *Adaptor) ConvertRerankRequest(c contract.Context, relayMode int, request dto.RerankRequest) (any, error) {
 	return nil, nil
 }
 
-func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.EmbeddingRequest) (any, error) {
+func (a *Adaptor) ConvertEmbeddingRequest(c contract.Context, info *relaycommon.RelayInfo, request dto.EmbeddingRequest) (any, error) {
 	return request, nil
 }
 
-func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
+func (a *Adaptor) ConvertOpenAIResponsesRequest(c contract.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
 	return request, nil
 }
 
-func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
+func (a *Adaptor) DoRequest(c contract.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
 	if info.RelayMode == constant.RelayModeAudioSpeech {
 		baseUrl := info.ChannelBaseUrl
 		if baseUrl == "" {
@@ -345,7 +345,7 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 	return channel.DoApiRequest(a, c, info, requestBody)
 }
 
-func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
+func (a *Adaptor) DoResponse(c contract.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
 	if info.RelayFormat == types.RelayFormatClaude {
 		if _, ok := channelconstant.ChannelSpecialBases[info.ChannelBaseUrl]; ok {
 			adaptor := claude.Adaptor{}

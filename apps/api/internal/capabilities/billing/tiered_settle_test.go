@@ -395,9 +395,10 @@ func TestPrepareTieredBillingForSelectedGroupStartsBillingAfterFreeGroup(t *test
 			GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 0.20},
 		},
 	}
-	ctx, _ := gin.CreateTestContext(nil)
+	ctxRaw, _ := gin.CreateTestContext(nil)
+	ctx := ginadapter.Wrap(ctxRaw)
 
-	require.Nil(t, PrepareTieredBillingForSelectedGroup(ginadapter.Wrap(ctx), relayInfo))
+	require.Nil(t, PrepareTieredBillingForSelectedGroup(ctx, relayInfo))
 	require.NotNil(t, relayInfo.Billing)
 	assert.False(t, relayInfo.PriceData.FreeModel, "FreeModel must be cleared after switching to a paid group")
 	assert.Equal(t, 100_000, relayInfo.FinalPreConsumedQuota)

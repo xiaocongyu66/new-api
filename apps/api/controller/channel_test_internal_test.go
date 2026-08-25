@@ -150,11 +150,12 @@ func TestCopyChannelRejectsInvalidLegacyProxySettings(t *testing.T) {
 	require.NoError(t, db.Create(origin).Error)
 
 	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", origin.Id)}}
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/channel/copy", nil)
+	ctxRaw, _ := gin.CreateTestContext(recorder)
+	ctxRaw.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", origin.Id)}}
+	ctxRaw.Request = httptest.NewRequest(http.MethodPost, "/api/channel/copy", nil)
+	ctx := ginadapter.Wrap(ctxRaw)
 
-	CopyChannel(ginadapter.Wrap(ctx))
+	CopyChannel(ctx)
 
 	assert.Contains(t, recorder.Body.String(), "invalid channel settings")
 	var channelCount int64
@@ -173,11 +174,12 @@ func TestDeleteChannelResetsProxyCacheWhenPreReadFails(t *testing.T) {
 	require.NoError(t, err)
 
 	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Params = gin.Params{{Key: "id", Value: "999999"}}
-	ctx.Request = httptest.NewRequest(http.MethodDelete, "/api/channel/999999", nil)
+	ctxRaw, _ := gin.CreateTestContext(recorder)
+	ctxRaw.Params = gin.Params{{Key: "id", Value: "999999"}}
+	ctxRaw.Request = httptest.NewRequest(http.MethodDelete, "/api/channel/999999", nil)
+	ctx := ginadapter.Wrap(ctxRaw)
 
-	DeleteChannel(ginadapter.Wrap(ctx))
+	DeleteChannel(ctx)
 
 	assert.Contains(t, recorder.Body.String(), `"success":true`)
 	afterDelete, err := service.GetHttpClientWithProxy(proxyURL)
@@ -284,10 +286,11 @@ func TestBuildTestLogOtherInjectsTieredInfo(t *testing.T) {
 
 func TestResolveChannelTestUserIDUsesRequestUser(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx := ginadapter.Wrap(ctxRaw)
 	ctx.Set("id", 2)
 
-	userID, err := resolveChannelTestUserID(ginadapter.Wrap(ctx))
+	userID, err := resolveChannelTestUserID(ctx)
 
 	require.NoError(t, err)
 	require.Equal(t, 2, userID)

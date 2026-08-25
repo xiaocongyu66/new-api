@@ -13,16 +13,16 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
-func RerankHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
+func RerankHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
 	service.CloseResponseBodyGracefully(resp)
-	logger.LogDebug(c.Request.Context(), "reranker response body: %s", responseBody)
+	logger.LogDebug(c.Context(), "reranker response body: %s", responseBody)
 	var jinaResp dto.RerankResponse
 	if info.ChannelType == constant.ChannelTypeXinference {
 		var xinRerankResponse xinference.XinRerankResponse
@@ -68,7 +68,7 @@ func RerankHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 		jinaResp.Usage.PromptTokens = jinaResp.Usage.TotalTokens
 	}
 
-	c.Writer.Header().Set("Content-Type", "application/json")
+	c.SetHeader("Content-Type", "application/json")
 	c.JSON(http.StatusOK, jinaResp)
 	return &jinaResp.Usage, nil
 }

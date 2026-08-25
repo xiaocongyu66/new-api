@@ -26,7 +26,8 @@ import (
 func TestCalculateTextQuotaSummaryUnifiedForClaudeSemantic(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
+	ctxRaw, _ := gin.CreateTestContext(w)
+	ctx := ginadapter.Wrap(ctxRaw)
 
 	usage := &dto.Usage{
 		PromptTokens:     1000,
@@ -66,8 +67,8 @@ func TestCalculateTextQuotaSummaryUnifiedForClaudeSemantic(t *testing.T) {
 		StartTime:               time.Now(),
 	}
 
-	chatSummary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), chatRelayInfo, usage)
-	messageSummary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), messageRelayInfo, usage)
+	chatSummary := calculateTextQuotaSummary(ctx, chatRelayInfo, usage)
+	messageSummary := calculateTextQuotaSummary(ctx, messageRelayInfo, usage)
 
 	require.Equal(t, messageSummary.Quota, chatSummary.Quota)
 	require.Equal(t, messageSummary.CacheCreationTokens5m, chatSummary.CacheCreationTokens5m)
@@ -79,7 +80,8 @@ func TestCalculateTextQuotaSummaryUnifiedForClaudeSemantic(t *testing.T) {
 func TestCalculateTextQuotaSummaryUsesSplitClaudeCacheCreationRatios(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
+	ctxRaw, _ := gin.CreateTestContext(w)
+	ctx := ginadapter.Wrap(ctxRaw)
 
 	relayInfo := &relaycommon.RelayInfo{
 		RelayFormat:             types.RelayFormatOpenAI,
@@ -109,7 +111,7 @@ func TestCalculateTextQuotaSummaryUsesSplitClaudeCacheCreationRatios(t *testing.
 		ClaudeCacheCreation1hTokens: 3,
 	}
 
-	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
 
 	// 100 + remaining(5)*1 + 2*2 + 3*3 = 118
 	require.Equal(t, 118, summary.Quota)
@@ -118,7 +120,8 @@ func TestCalculateTextQuotaSummaryUsesSplitClaudeCacheCreationRatios(t *testing.
 func TestCalculateTextQuotaSummaryUsesAnthropicUsageSemanticFromUpstreamUsage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
+	ctxRaw, _ := gin.CreateTestContext(w)
+	ctx := ginadapter.Wrap(ctxRaw)
 
 	relayInfo := &relaycommon.RelayInfo{
 		RelayFormat:     types.RelayFormatOpenAI,
@@ -149,7 +152,7 @@ func TestCalculateTextQuotaSummaryUsesAnthropicUsageSemanticFromUpstreamUsage(t 
 		ClaudeCacheCreation1hTokens: 20,
 	}
 
-	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
 
 	require.True(t, summary.IsClaudeUsageSemantic)
 	require.Equal(t, "anthropic", summary.UsageSemantic)
@@ -159,7 +162,8 @@ func TestCalculateTextQuotaSummaryUsesAnthropicUsageSemanticFromUpstreamUsage(t 
 func TestCalculateTextQuotaSummaryUsesClaudeBillingUsageBeforeTopLevelUsage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
+	ctxRaw, _ := gin.CreateTestContext(w)
+	ctx := ginadapter.Wrap(ctxRaw)
 
 	relayInfo := &relaycommon.RelayInfo{
 		RelayFormat:     types.RelayFormatOpenAI,
@@ -192,7 +196,7 @@ func TestCalculateTextQuotaSummaryUsesClaudeBillingUsageBeforeTopLevelUsage(t *t
 		}),
 	}
 
-	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, effectiveBillingUsage(usage))
+	summary := calculateTextQuotaSummary(ctx, relayInfo, effectiveBillingUsage(usage))
 
 	require.True(t, summary.IsClaudeUsageSemantic)
 	require.Equal(t, dto.BillingUsageSemanticAnthropic, summary.UsageSemantic)
@@ -208,7 +212,8 @@ func TestCalculateTextQuotaSummaryUsesClaudeBillingUsageBeforeTopLevelUsage(t *t
 func TestCalculateTextQuotaSummaryUsesGeminiBillingUsageBeforeTopLevelUsage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
+	ctxRaw, _ := gin.CreateTestContext(w)
+	ctx := ginadapter.Wrap(ctxRaw)
 
 	relayInfo := &relaycommon.RelayInfo{
 		RelayFormat:     types.RelayFormatOpenAI,
@@ -236,7 +241,7 @@ func TestCalculateTextQuotaSummaryUsesGeminiBillingUsageBeforeTopLevelUsage(t *t
 		}),
 	}
 
-	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, effectiveBillingUsage(usage))
+	summary := calculateTextQuotaSummary(ctx, relayInfo, effectiveBillingUsage(usage))
 
 	require.False(t, summary.IsClaudeUsageSemantic)
 	require.Equal(t, dto.BillingUsageSemanticGemini, summary.UsageSemantic)
@@ -250,7 +255,8 @@ func TestCalculateTextQuotaSummaryUsesGeminiBillingUsageBeforeTopLevelUsage(t *t
 func TestCalculateTextQuotaSummaryUsesOpenAIBillingUsageBeforeTopLevelUsage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
+	ctxRaw, _ := gin.CreateTestContext(w)
+	ctx := ginadapter.Wrap(ctxRaw)
 
 	relayInfo := &relaycommon.RelayInfo{
 		RelayFormat:     types.RelayFormatClaude,
@@ -274,7 +280,7 @@ func TestCalculateTextQuotaSummaryUsesOpenAIBillingUsageBeforeTopLevelUsage(t *t
 		}),
 	}
 
-	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, effectiveBillingUsage(usage))
+	summary := calculateTextQuotaSummary(ctx, relayInfo, effectiveBillingUsage(usage))
 
 	require.False(t, summary.IsClaudeUsageSemantic)
 	require.Equal(t, dto.BillingUsageSemanticOpenAI, summary.UsageSemantic)
@@ -358,7 +364,8 @@ func TestCacheWriteTokensTotal(t *testing.T) {
 func TestCalculateTextQuotaSummaryHandlesLegacyClaudeDerivedOpenAIUsage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
+	ctxRaw, _ := gin.CreateTestContext(w)
+	ctx := ginadapter.Wrap(ctxRaw)
 
 	relayInfo := &relaycommon.RelayInfo{
 		RelayFormat:     types.RelayFormatOpenAI,
@@ -384,7 +391,7 @@ func TestCalculateTextQuotaSummaryHandlesLegacyClaudeDerivedOpenAIUsage(t *testi
 		ClaudeCacheCreation5mTokens: 586,
 	}
 
-	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
 
 	// 62 + 3544*0.1 + 586*1.25 + 95*5 = 1624.9 => 1624
 	require.Equal(t, 1624, summary.Quota)
@@ -393,7 +400,8 @@ func TestCalculateTextQuotaSummaryHandlesLegacyClaudeDerivedOpenAIUsage(t *testi
 func TestCalculateTextQuotaSummaryBillsOpenAICacheWriteTokens(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
+	ctxRaw, _ := gin.CreateTestContext(w)
+	ctx := ginadapter.Wrap(ctxRaw)
 
 	relayInfo := &relaycommon.RelayInfo{
 		RelayFormat:     types.RelayFormatOpenAI,
@@ -417,7 +425,7 @@ func TestCalculateTextQuotaSummaryBillsOpenAICacheWriteTokens(t *testing.T) {
 			},
 		}
 
-		summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
+		summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
 
 		require.Equal(t, 1470, summary.CacheCreationTokens)
 		// (1473-0-1470) + 1470*1.25 + 19*2 = 3 + 1837.5 + 38 = 1878.5 => 1879
@@ -437,7 +445,7 @@ func TestCalculateTextQuotaSummaryBillsOpenAICacheWriteTokens(t *testing.T) {
 			},
 		}
 
-		summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
+		summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
 
 		require.Equal(t, 3619, summary.PromptTokens)
 		require.Equal(t, 3616, summary.CacheCreationTokens)
@@ -449,7 +457,8 @@ func TestCalculateTextQuotaSummaryBillsOpenAICacheWriteTokens(t *testing.T) {
 func TestCalculateTextQuotaSummarySeparatesOpenRouterCacheReadFromPromptBilling(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
+	ctxRaw, _ := gin.CreateTestContext(w)
+	ctx := ginadapter.Wrap(ctxRaw)
 
 	relayInfo := &relaycommon.RelayInfo{
 		OriginModelName: "openai/gpt-4.1",
@@ -474,7 +483,7 @@ func TestCalculateTextQuotaSummarySeparatesOpenRouterCacheReadFromPromptBilling(
 		},
 	}
 
-	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
 
 	// OpenRouter OpenAI-format display keeps prompt_tokens as total input,
 	// but billing still separates normal input from cache read tokens.
@@ -486,7 +495,8 @@ func TestCalculateTextQuotaSummarySeparatesOpenRouterCacheReadFromPromptBilling(
 func TestCalculateTextQuotaSummarySeparatesOpenRouterCacheCreationFromPromptBilling(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
+	ctxRaw, _ := gin.CreateTestContext(w)
+	ctx := ginadapter.Wrap(ctxRaw)
 
 	relayInfo := &relaycommon.RelayInfo{
 		OriginModelName: "openai/gpt-4.1",
@@ -510,7 +520,7 @@ func TestCalculateTextQuotaSummarySeparatesOpenRouterCacheCreationFromPromptBill
 		},
 	}
 
-	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
 
 	// prompt_tokens is still logged as total input, but cache creation is billed separately.
 	// quota = (2604 - 100) + 100*1.25 + 383 = 3012
@@ -521,7 +531,8 @@ func TestCalculateTextQuotaSummarySeparatesOpenRouterCacheCreationFromPromptBill
 func TestCalculateTextQuotaSummaryKeepsPrePRClaudeOpenRouterBilling(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
+	ctxRaw, _ := gin.CreateTestContext(w)
+	ctx := ginadapter.Wrap(ctxRaw)
 
 	relayInfo := &relaycommon.RelayInfo{
 		FinalRequestRelayFormat: types.RelayFormatClaude,
@@ -547,7 +558,7 @@ func TestCalculateTextQuotaSummaryKeepsPrePRClaudeOpenRouterBilling(t *testing.T
 		},
 	}
 
-	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
 
 	// Pre-PR PostClaudeConsumeQuota behavior for OpenRouter:
 	// prompt = 2604 - 2432 = 172
@@ -560,7 +571,8 @@ func TestCalculateTextQuotaSummaryKeepsPrePRClaudeOpenRouterBilling(t *testing.T
 func TestComposeTieredTextQuotaKeepsToolCallSurcharges(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
+	ctxRaw, _ := gin.CreateTestContext(w)
+	ctx := ginadapter.Wrap(ctxRaw)
 
 	// 11 $/1K => 0.011 per completed image output, matching the prior fixed low-tier charge.
 	operation_setting.SetToolPriceForTest(dto.BuildInToolImageGeneration, 11.0)
@@ -602,7 +614,7 @@ func TestComposeTieredTextQuotaKeepsToolCallSurcharges(t *testing.T) {
 		TotalTokens:      150,
 	}
 
-	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
 	quota := composeTieredTextQuota(relayInfo, summary, 1000, &billingexpr.TieredResult{
 		ActualQuotaBeforeGroup: 1000,
 		ActualQuotaAfterGroup:  1000,
@@ -615,7 +627,8 @@ func TestComposeTieredTextQuotaKeepsToolCallSurcharges(t *testing.T) {
 func TestComposeTieredTextQuotaFallbackKeepsToolCallSurcharges(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
+	ctxRaw, _ := gin.CreateTestContext(w)
+	ctx := ginadapter.Wrap(ctxRaw)
 	ctx.Set("claude_web_search_requests", 2)
 
 	relayInfo := &relaycommon.RelayInfo{
@@ -639,7 +652,7 @@ func TestComposeTieredTextQuotaFallbackKeepsToolCallSurcharges(t *testing.T) {
 		TotalTokens:      150,
 	}
 
-	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
 	quota := composeTieredTextQuota(relayInfo, summary, 1250, nil)
 
 	require.Equal(t, int64(12500), summary.ToolCallSurchargeQuota.Round(0).IntPart())
@@ -649,7 +662,8 @@ func TestComposeTieredTextQuotaFallbackKeepsToolCallSurcharges(t *testing.T) {
 func TestComposeTieredTextQuotaErrorFallbackUsesPreConsumedQuota(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
+	ctxRaw, _ := gin.CreateTestContext(w)
+	ctx := ginadapter.Wrap(ctxRaw)
 	ctx.Set("claude_web_search_requests", 2)
 
 	relayInfo := &relaycommon.RelayInfo{
@@ -673,7 +687,7 @@ func TestComposeTieredTextQuotaErrorFallbackUsesPreConsumedQuota(t *testing.T) {
 		TotalTokens:      150,
 	}
 
-	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
 
 	// tieredResult=nil simulates a settlement error where TryTieredSettle
 	// falls back to FinalPreConsumedQuota (2000), which differs from
@@ -736,7 +750,8 @@ func TestTryTieredSettleNoClampInRange(t *testing.T) {
 
 func TestCalculateTextQuotaSummaryFixedPriceAppliesImageCountOnceAndAllowsOverride(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx := ginadapter.Wrap(ctxRaw)
 	priceData := hosttypes.PriceData{
 		ModelPrice: 0.12,
 		UsePrice:   true,
@@ -752,19 +767,20 @@ func TestCalculateTextQuotaSummaryFixedPriceAppliesImageCountOnceAndAllowsOverri
 	}
 	usage := &dto.Usage{PromptTokens: 1, TotalTokens: 1}
 
-	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
 	require.Equal(t, 180000, summary.Quota)
 
 	// An adaptor-reported actual count replaces the requested count rather
 	// than multiplying it a second time.
 	relayInfo.PriceData.AddOtherRatio("n", 2)
-	summary = calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
+	summary = calculateTextQuotaSummary(ctx, relayInfo, usage)
 	require.Equal(t, 120000, summary.Quota)
 }
 
 func TestCalculateTextToolCallSurchargeGeneralizedBuiltInTools(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx := ginadapter.Wrap(ctxRaw)
 
 	operation_setting.SetToolPriceForTest("my_fn", 5.0)
 	t.Cleanup(func() {
@@ -786,7 +802,7 @@ func TestCalculateTextToolCallSurchargeGeneralizedBuiltInTools(t *testing.T) {
 		GroupRatio: 1,
 	}
 
-	surcharge := calculateTextToolCallSurcharge(ginadapter.Wrap(ctx), relayInfo, summary)
+	surcharge := calculateTextToolCallSurcharge(ctx, relayInfo, summary)
 	expected := decimal.NewFromFloat((10.0*2 + 5.0*3) / 1000).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
 	assert.True(t, expected.Equal(surcharge), "got %s want %s", surcharge, expected)
 	require.Len(t, summary.ToolSurchargeItems, 2)
@@ -800,7 +816,8 @@ func TestCalculateTextToolCallSurchargeGeneralizedBuiltInTools(t *testing.T) {
 
 func TestCalculateTextToolCallSurchargeKeepsSearchPreviewFallbackWithCustomFunctions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx := ginadapter.Wrap(ctxRaw)
 
 	operation_setting.SetToolPriceForTest("my_fn", 5)
 	t.Cleanup(func() {
@@ -821,7 +838,7 @@ func TestCalculateTextToolCallSurchargeKeepsSearchPreviewFallbackWithCustomFunct
 		GroupRatio: 1,
 	}
 
-	surcharge := calculateTextToolCallSurcharge(ginadapter.Wrap(ctx), relayInfo, summary)
+	surcharge := calculateTextToolCallSurcharge(ctx, relayInfo, summary)
 
 	require.Len(t, summary.ToolSurchargeItems, 2)
 	assert.Equal(t, "my_fn", summary.ToolSurchargeItems[0].Name)
@@ -833,7 +850,8 @@ func TestCalculateTextToolCallSurchargeKeepsSearchPreviewFallbackWithCustomFunct
 
 func TestCalculateTextToolCallSurchargeDoesNotInferSearchForResponses(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx := ginadapter.Wrap(ctxRaw)
 	relayInfo := &relaycommon.RelayInfo{
 		RelayMode:       relayconstant.RelayModeResponses,
 		OriginModelName: "gpt-4o-search-preview",
@@ -846,7 +864,7 @@ func TestCalculateTextToolCallSurchargeDoesNotInferSearchForResponses(t *testing
 		GroupRatio: 1,
 	}
 
-	surcharge := calculateTextToolCallSurcharge(ginadapter.Wrap(ctx), relayInfo, summary)
+	surcharge := calculateTextToolCallSurcharge(ctx, relayInfo, summary)
 
 	assert.True(t, surcharge.IsZero())
 	assert.Empty(t, summary.ToolSurchargeItems)
@@ -854,7 +872,8 @@ func TestCalculateTextToolCallSurchargeDoesNotInferSearchForResponses(t *testing
 
 func TestCalculateTextToolCallSurchargeMergesSameNameAndPrice(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx := ginadapter.Wrap(ctxRaw)
 	ctx.Set("claude_web_search_requests", 3)
 
 	relayInfo := &relaycommon.RelayInfo{
@@ -867,7 +886,7 @@ func TestCalculateTextToolCallSurchargeMergesSameNameAndPrice(t *testing.T) {
 	}
 	summary := &textQuotaSummary{ModelName: relayInfo.OriginModelName, GroupRatio: 1}
 
-	surcharge := calculateTextToolCallSurcharge(ginadapter.Wrap(ctx), relayInfo, summary)
+	surcharge := calculateTextToolCallSurcharge(ctx, relayInfo, summary)
 
 	require.Len(t, summary.ToolSurchargeItems, 1)
 	assert.Equal(t, dto.BuildInToolWebSearch, summary.ToolSurchargeItems[0].Name)
@@ -894,7 +913,8 @@ func TestMergeToolSurchargeItemsSaturatesCountOverflow(t *testing.T) {
 // out the surcharge quota.
 func TestCalculateTextQuotaSummaryZeroTokensStillBillsToolSurcharge(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx := ginadapter.Wrap(ctxRaw)
 
 	relayInfo := &relaycommon.RelayInfo{
 		OriginModelName: "o1",
@@ -907,7 +927,7 @@ func TestCalculateTextQuotaSummaryZeroTokensStillBillsToolSurcharge(t *testing.T
 	relayInfo.PriceData.GroupRatioInfo.GroupRatio = 1
 
 	usage := &dto.Usage{} // zero tokens, mirrors alpha search
-	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
 
 	require.Equal(t, 0, summary.TotalTokens)
 	assert.False(t, summary.ToolCallSurchargeQuota.IsZero(), "surcharge should be computed")
@@ -918,7 +938,8 @@ func TestCalculateTextQuotaSummaryZeroTokensStillBillsToolSurcharge(t *testing.T
 
 func TestCalculateTextQuotaSummaryDoesNotApplyRequestMultipliersToToolSurcharge(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx := ginadapter.Wrap(ctxRaw)
 
 	relayInfo := &relaycommon.RelayInfo{
 		OriginModelName: "o1",
@@ -935,7 +956,7 @@ func TestCalculateTextQuotaSummaryDoesNotApplyRequestMultipliersToToolSurcharge(
 	}
 	relayInfo.PriceData.AddOtherRatio("n", 3)
 
-	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, &dto.Usage{})
+	summary := calculateTextQuotaSummary(ctx, relayInfo, &dto.Usage{})
 
 	expected := decimal.NewFromFloat(10.0 / 1000).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
 	assert.True(t, expected.Equal(summary.ToolCallSurchargeQuota))
@@ -944,13 +965,14 @@ func TestCalculateTextQuotaSummaryDoesNotApplyRequestMultipliersToToolSurcharge(
 
 func TestCalculateTextToolCallSurchargeGeminiGoogleSearch(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx := ginadapter.Wrap(ctxRaw)
 	ctx.Set("gemini_google_search_call", true)
 
 	relayInfo := &relaycommon.RelayInfo{OriginModelName: "gemini-2.5-flash"}
 	summary := &textQuotaSummary{ModelName: "gemini-2.5-flash", GroupRatio: 1}
 
-	surcharge := calculateTextToolCallSurcharge(ginadapter.Wrap(ctx), relayInfo, summary)
+	surcharge := calculateTextToolCallSurcharge(ctx, relayInfo, summary)
 	expected := decimal.NewFromFloat(14.0 / 1000).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
 	assert.True(t, expected.Equal(surcharge), "got %s want %s", surcharge, expected)
 	require.Len(t, summary.ToolSurchargeItems, 1)
@@ -961,7 +983,8 @@ func TestCalculateTextToolCallSurchargeGeminiGoogleSearch(t *testing.T) {
 
 func TestCalculateTextToolCallSurchargeImageGenerationDefaultPrice(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx := ginadapter.Wrap(ctxRaw)
 	t.Cleanup(func() {
 		operation_setting.DeleteToolPriceForTest(dto.BuildInToolImageGeneration)
 	})
@@ -976,7 +999,7 @@ func TestCalculateTextToolCallSurchargeImageGenerationDefaultPrice(t *testing.T)
 	}
 	summary := &textQuotaSummary{ModelName: "gpt-5.1", GroupRatio: 1.5}
 
-	surcharge := calculateTextToolCallSurcharge(ginadapter.Wrap(ctx), relayInfo, summary)
+	surcharge := calculateTextToolCallSurcharge(ctx, relayInfo, summary)
 	expected := decimal.NewFromFloat(150.0).
 		Mul(decimal.NewFromInt(2)).
 		Div(decimal.NewFromInt(1000)).
@@ -991,7 +1014,8 @@ func TestCalculateTextToolCallSurchargeImageGenerationDefaultPrice(t *testing.T)
 
 func TestCalculateTextToolCallSurchargeImageGenerationExplicitZeroDisables(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx := ginadapter.Wrap(ctxRaw)
 	operation_setting.SetToolPriceForTest(dto.BuildInToolImageGeneration, 0)
 	t.Cleanup(func() {
 		operation_setting.DeleteToolPriceForTest(dto.BuildInToolImageGeneration)
@@ -1007,14 +1031,15 @@ func TestCalculateTextToolCallSurchargeImageGenerationExplicitZeroDisables(t *te
 	}
 	summary := &textQuotaSummary{ModelName: "gpt-5.1", GroupRatio: 1}
 
-	surcharge := calculateTextToolCallSurcharge(ginadapter.Wrap(ctx), relayInfo, summary)
+	surcharge := calculateTextToolCallSurcharge(ctx, relayInfo, summary)
 	assert.True(t, surcharge.IsZero())
 	assert.Empty(t, summary.ToolSurchargeItems)
 }
 
 func TestCalculateTextQuotaSummaryImageGenerationUsesStructuredSurcharge(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx := ginadapter.Wrap(ctxRaw)
 	t.Cleanup(func() {
 		operation_setting.DeleteToolPriceForTest(dto.BuildInToolImageGeneration)
 	})
@@ -1032,7 +1057,7 @@ func TestCalculateTextQuotaSummaryImageGenerationUsesStructuredSurcharge(t *test
 	relayInfo.PriceData.CompletionRatio = 1
 
 	usage := &dto.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15}
-	summary := calculateTextQuotaSummary(ginadapter.Wrap(ctx), relayInfo, usage)
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
 
 	require.Len(t, summary.ToolSurchargeItems, 1)
 	assert.Equal(t, dto.BuildInToolImageGeneration, summary.ToolSurchargeItems[0].Name)

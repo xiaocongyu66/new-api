@@ -11,7 +11,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/types"
-	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -278,9 +277,9 @@ func RecordTopupLog(userId int, content string, callerIp string, paymentMethod s
 	}
 }
 
-func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string, tokenName string, content string, tokenId int, useTimeSeconds int,
+func RecordErrorLog(c contract.Context, userId int, channelId int, modelName string, tokenName string, content string, tokenId int, useTimeSeconds int,
 	isStream bool, group string, other map[string]interface{}) {
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("record error log: userId=%d, channelId=%d, modelName=%s, tokenName=%s, content=%s", userId, channelId, modelName, tokenName, common.LocalLogPreview(content)))
+	logger.LogInfo(c.Context(), fmt.Sprintf("record error log: userId=%d, channelId=%d, modelName=%s, tokenName=%s, content=%s", userId, channelId, modelName, tokenName, common.LocalLogPreview(content)))
 	username := c.GetString("username")
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
@@ -320,7 +319,7 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 	}
 	err := createLog(log)
 	if err != nil {
-		logger.LogError(c.Request.Context(), "failed to record log: "+err.Error())
+		logger.LogError(c.Context(), "failed to record log: "+err.Error())
 	}
 }
 

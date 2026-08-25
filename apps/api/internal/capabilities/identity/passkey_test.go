@@ -106,14 +106,15 @@ func TestPasskeyRegisterFinishRejectsMissingOrWrongProofWithoutConsumingFlow(t *
 				request.Header.Set("X-Security-Proof", test.proof)
 			}
 			response := httptest.NewRecorder()
-			context, _ := gin.CreateTestContext(response)
-			context.Request = request
+			rawCtx, _ := gin.CreateTestContext(response)
+			rawCtx.Request = request
+			context := ginadapter.Wrap(rawCtx)
 			context.Set("id", identity.UserID)
 			context.Set("session_id", identity.SessionID)
 			context.Set("auth_version", identity.UserAuthVersion)
 			context.Set("session_version", identity.SessionVersion)
 
-			PasskeyRegisterFinish(ginadapter.Wrap(context))
+			PasskeyRegisterFinish(context)
 
 			assert.Equal(t, http.StatusForbidden, response.Code)
 			var responseBody struct {

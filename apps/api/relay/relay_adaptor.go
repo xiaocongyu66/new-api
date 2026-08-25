@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/advancedcustom"
 	"github.com/QuantumNous/new-api/relay/channel/ali"
@@ -50,7 +51,6 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/xunfei"
 	"github.com/QuantumNous/new-api/relay/channel/zhipu"
 	"github.com/QuantumNous/new-api/relay/channel/zhipu_4v"
-	"github.com/gin-gonic/gin"
 )
 
 func GetAdaptor(apiType int) channel.Adaptor {
@@ -133,7 +133,7 @@ func GetAdaptor(apiType int) channel.Adaptor {
 	return nil
 }
 
-func GetTaskPlatform(c *gin.Context) constant.TaskPlatform {
+func GetTaskPlatform(c contract.Context) constant.TaskPlatform {
 	channelType := c.GetInt("channel_type")
 	if channelType > 0 {
 		return constant.TaskPlatform(strconv.Itoa(channelType))

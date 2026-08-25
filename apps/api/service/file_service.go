@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
-	"github.com/gin-gonic/gin"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
@@ -17,7 +16,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
@@ -421,8 +419,8 @@ func GetImageConfig(c contract.Context, source types.FileSource) (image.Config, 
 // It still accepts *gin.Context because relay provider adaptors have not been
 // migrated yet; the context is adapted before entering the contract-based
 // file-source chain.
-func GetBase64Data(c *gin.Context, source types.FileSource, reason ...string) (string, string, error) {
-	cachedData, err := LoadFileSource(ginadapter.Wrap(c), source, reason...)
+func GetBase64Data(c contract.Context, source types.FileSource, reason ...string) (string, string, error) {
+	cachedData, err := LoadFileSource(c, source, reason...)
 	if err != nil {
 		return "", "", err
 	}

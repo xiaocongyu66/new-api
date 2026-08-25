@@ -10,32 +10,32 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
 type Adaptor interface {
 	// Init IsStream bool
 	Init(info *relaycommon.RelayInfo)
 	GetRequestURL(info *relaycommon.RelayInfo) (string, error)
-	SetupRequestHeader(c *gin.Context, req *http.Header, info *relaycommon.RelayInfo) error
-	ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) (any, error)
-	ConvertRerankRequest(c *gin.Context, relayMode int, request dto.RerankRequest) (any, error)
-	ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.EmbeddingRequest) (any, error)
-	ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.AudioRequest) (io.Reader, error)
-	ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error)
-	ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error)
-	DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error)
-	DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError)
+	SetupRequestHeader(c contract.Context, req *http.Header, info *relaycommon.RelayInfo) error
+	ConvertOpenAIRequest(c contract.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) (any, error)
+	ConvertRerankRequest(c contract.Context, relayMode int, request dto.RerankRequest) (any, error)
+	ConvertEmbeddingRequest(c contract.Context, info *relaycommon.RelayInfo, request dto.EmbeddingRequest) (any, error)
+	ConvertAudioRequest(c contract.Context, info *relaycommon.RelayInfo, request dto.AudioRequest) (io.Reader, error)
+	ConvertImageRequest(c contract.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error)
+	ConvertOpenAIResponsesRequest(c contract.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error)
+	DoRequest(c contract.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error)
+	DoResponse(c contract.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError)
 	GetModelList() []string
 	GetChannelName() string
-	ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.ClaudeRequest) (any, error)
-	ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeminiChatRequest) (any, error)
+	ConvertClaudeRequest(c contract.Context, info *relaycommon.RelayInfo, request *dto.ClaudeRequest) (any, error)
+	ConvertGeminiRequest(c contract.Context, info *relaycommon.RelayInfo, request *dto.GeminiChatRequest) (any, error)
 }
 
 type TaskAdaptor interface {
 	Init(info *relaycommon.RelayInfo)
 
-	ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) *taskdto.TaskError
+	ValidateRequestAndSetAction(c contract.Context, info *relaycommon.RelayInfo) *taskdto.TaskError
 
 	// ── Billing ──────────────────────────────────────────────────────
 
@@ -44,7 +44,7 @@ type TaskAdaptor interface {
 	// Adaptors should extract duration, resolution, etc. from the parsed request
 	// and return them as ratio multipliers (e.g. {"seconds": 5, "size": 1.666}).
 	// Return nil to use the base model price without extra ratios.
-	EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64
+	EstimateBilling(c contract.Context, info *relaycommon.RelayInfo) map[string]float64
 
 	// AdjustBillingOnSubmit returns adjusted OtherRatios from the upstream
 	// submit response. Called after a successful DoResponse.
@@ -64,11 +64,11 @@ type TaskAdaptor interface {
 	// ── Request / Response ───────────────────────────────────────────
 
 	BuildRequestURL(info *relaycommon.RelayInfo) (string, error)
-	BuildRequestHeader(c *gin.Context, req *http.Request, info *relaycommon.RelayInfo) error
-	BuildRequestBody(c *gin.Context, info *relaycommon.RelayInfo) (io.Reader, error)
+	BuildRequestHeader(c contract.Context, req *http.Request, info *relaycommon.RelayInfo) error
+	BuildRequestBody(c contract.Context, info *relaycommon.RelayInfo) (io.Reader, error)
 
-	DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (*http.Response, error)
-	DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, err *taskdto.TaskError)
+	DoRequest(c contract.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (*http.Response, error)
+	DoResponse(c contract.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, err *taskdto.TaskError)
 
 	GetModelList() []string
 	GetChannelName() string

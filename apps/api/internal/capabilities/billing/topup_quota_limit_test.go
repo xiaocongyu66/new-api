@@ -106,15 +106,16 @@ func TestRequestAmountRejectsTopUpThatCannotBeSettled(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(
+	rawCtx, _ := gin.CreateTestContext(recorder)
+	rawCtx.Request = httptest.NewRequest(
 		http.MethodPost,
 		"/api/user/amount",
 		strings.NewReader(`{"amount":4295}`),
 	)
-	ctx.Request.Header.Set("Content-Type", "application/json")
+	rawCtx.Request.Header.Set("Content-Type", "application/json")
+	ctx := ginadapter.Wrap(rawCtx)
 
-	RequestAmount(ginadapter.Wrap(ctx))
+	RequestAmount(ctx)
 
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	assert.JSONEq(t, `{"message":"error","data":"单笔充值数量不能大于 4294"}`, recorder.Body.String())
@@ -150,16 +151,17 @@ func TestRequestAmountRejectsTopUpThatWouldOverflowWallet(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Set("id", 42)
-	ctx.Request = httptest.NewRequest(
+	rawCtx, _ := gin.CreateTestContext(recorder)
+	rawCtx.Request = httptest.NewRequest(
 		http.MethodPost,
 		"/api/user/amount",
 		strings.NewReader(`{"amount":4294}`),
 	)
-	ctx.Request.Header.Set("Content-Type", "application/json")
+	rawCtx.Request.Header.Set("Content-Type", "application/json")
+	ctx := ginadapter.Wrap(rawCtx)
+	ctx.Set("id", 42)
 
-	RequestAmount(ginadapter.Wrap(ctx))
+	RequestAmount(ctx)
 
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	assert.JSONEq(t, `{"message":"error","data":"top-up quota limit exceeded"}`, recorder.Body.String())

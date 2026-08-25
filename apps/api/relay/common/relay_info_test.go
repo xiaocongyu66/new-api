@@ -2,6 +2,7 @@ package common
 
 import (
 	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http/httptest"
 	"testing"
 
@@ -147,8 +148,9 @@ func TestGenRelayInfoCapturesRequestReasoningEffort(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-			ctx.Request = httptest.NewRequest("POST", tt.path, nil)
+			ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctxRaw.Request = httptest.NewRequest("POST", tt.path, nil)
+			ctx := ginadapter.Wrap(ctxRaw)
 
 			info, err := GenRelayInfo(ctx, tt.relayFormat, tt.request, nil)
 			require.NoError(t, err)
@@ -159,8 +161,9 @@ func TestGenRelayInfoCapturesRequestReasoningEffort(t *testing.T) {
 
 func TestInitChannelMetaRestoresRequestReasoningEffortForRetry(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctx.Request = httptest.NewRequest("POST", "/v1/responses", nil)
+	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctxRaw.Request = httptest.NewRequest("POST", "/v1/responses", nil)
+	ctx := ginadapter.Wrap(ctxRaw)
 	request := &dto.OpenAIResponsesRequest{
 		Model:     "gpt-5.6-sol",
 		Reasoning: &dto.Reasoning{Effort: "max"},

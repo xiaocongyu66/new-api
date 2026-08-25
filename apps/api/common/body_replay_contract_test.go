@@ -72,7 +72,7 @@ func TestGetRequestBodySeeksToStartOnRepeatedAccess(t *testing.T) {
 	payload := `{"model":"gemini-pro"}`
 	c, _ := newBodyRequestContext(t, payload)
 
-	storage, err := common.GetBodyStorage(ginadapter.MustUnwrap(c))
+	storage, err := common.GetBodyStorage(c)
 	require.NoError(t, err)
 
 	firstReader, err := storage.NewReader()
@@ -95,7 +95,7 @@ func TestGetRequestBodySeeksToStartOnRepeatedAccess(t *testing.T) {
 func TestCleanupBodyStorageReleasesCachedBody(t *testing.T) {
 	c, _ := newBodyRequestContext(t, `{"model":"gpt-4"}`)
 
-	_, err := common.GetBodyStorage(ginadapter.MustUnwrap(c))
+	_, err := common.GetBodyStorage(c)
 	require.NoError(t, err)
 
 	common.CleanupBodyStorage(c)

@@ -165,7 +165,6 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	c, w = ginadapter.NewSyntheticContext(httptest.NewRequestWithContext(ctx, http.MethodPost, requestPath, nil))
 	// Relay provider adaptors are still gin-typed (migrated in a later phase),
 	// so recover the concrete context this synthetic one wraps.
-	ginCtx, _ := ginadapter.Unwrap(c)
 
 	cache, err := model.GetUserCache(testUserID)
 	if err != nil {
@@ -245,7 +244,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 
 	request := buildTestRequest(testModel, endpointType, channel, isStream)
 
-	info, err := relaycommon.GenRelayInfo(ginCtx, relayFormat, request, nil)
+	info, err := relaycommon.GenRelayInfo(c, relayFormat, request, nil)
 
 	if err != nil {
 		return testResult{
@@ -256,7 +255,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	}
 
 	info.IsChannelTest = true
-	info.InitChannelMeta(ginCtx)
+	info.InitChannelMeta(c)
 
 	err = attachTestBillingRequestInput(info, request)
 	if err != nil {
@@ -267,7 +266,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 		}
 	}
 
-	err = helper.ModelMappedHelper(ginCtx, info, request)
+	err = helper.ModelMappedHelper(c, info, request)
 	if err != nil {
 		return testResult{
 			context:     c,
@@ -303,7 +302,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	//logInfo.ApiKey = ""
 	common.SysLog(fmt.Sprintf("testing channel %d with model %s , info %+v ", channel.Id, testModel, info.ToString()))
 
-	priceData, err := helper.ModelPriceHelper(ginCtx, info, 0, request.GetTokenCountMeta())
+	priceData, err := helper.ModelPriceHelper(c, info, 0, request.GetTokenCountMeta())
 	if err != nil {
 		return testResult{
 			context:     c,
@@ -320,7 +319,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	case relayconstant.RelayModeEmbeddings:
 		// Embedding 请求 - request 已经是正确的类型
 		if embeddingReq, ok := request.(*dto.EmbeddingRequest); ok {
-			convertedRequest, err = adaptor.ConvertEmbeddingRequest(ginCtx, info, *embeddingReq)
+			convertedRequest, err = adaptor.ConvertEmbeddingRequest(c, info, *embeddingReq)
 		} else {
 			return testResult{
 				context:     c,
@@ -331,7 +330,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	case relayconstant.RelayModeImagesGenerations:
 		// 图像生成请求 - request 已经是正确的类型
 		if imageReq, ok := request.(*dto.ImageRequest); ok {
-			convertedRequest, err = adaptor.ConvertImageRequest(ginCtx, info, *imageReq)
+			convertedRequest, err = adaptor.ConvertImageRequest(c, info, *imageReq)
 		} else {
 			return testResult{
 				context:     c,
@@ -342,7 +341,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	case relayconstant.RelayModeRerank:
 		// Rerank 请求 - request 已经是正确的类型
 		if rerankReq, ok := request.(*dto.RerankRequest); ok {
-			convertedRequest, err = adaptor.ConvertRerankRequest(ginCtx, info.RelayMode, *rerankReq)
+			convertedRequest, err = adaptor.ConvertRerankRequest(c, info.RelayMode, *rerankReq)
 		} else {
 			return testResult{
 				context:     c,
@@ -353,7 +352,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	case relayconstant.RelayModeResponses:
 		// Response 请求 - request 已经是正确的类型
 		if responseReq, ok := request.(*dto.OpenAIResponsesRequest); ok {
-			convertedRequest, err = adaptor.ConvertOpenAIResponsesRequest(ginCtx, info, *responseReq)
+			convertedRequest, err = adaptor.ConvertOpenAIResponsesRequest(c, info, *responseReq)
 		} else {
 			return testResult{
 				context:     c,
@@ -365,14 +364,14 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 		// Response compaction request - convert to OpenAIResponsesRequest before adapting
 		switch req := request.(type) {
 		case *dto.OpenAIResponsesCompactionRequest:
-			convertedRequest, err = adaptor.ConvertOpenAIResponsesRequest(ginCtx, info, dto.OpenAIResponsesRequest{
+			convertedRequest, err = adaptor.ConvertOpenAIResponsesRequest(c, info, dto.OpenAIResponsesRequest{
 				Model:              req.Model,
 				Input:              req.Input,
 				Instructions:       req.Instructions,
 				PreviousResponseID: req.PreviousResponseID,
 			})
 		case *dto.OpenAIResponsesRequest:
-			convertedRequest, err = adaptor.ConvertOpenAIResponsesRequest(ginCtx, info, *req)
+			convertedRequest, err = adaptor.ConvertOpenAIResponsesRequest(c, info, *req)
 		default:
 			return testResult{
 				context:     c,
@@ -383,11 +382,11 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	default:
 		switch req := request.(type) {
 		case *dto.GeneralOpenAIRequest:
-			convertedRequest, err = adaptor.ConvertOpenAIRequest(ginCtx, info, req)
+			convertedRequest, err = adaptor.ConvertOpenAIRequest(c, info, req)
 		case *dto.ClaudeRequest:
-			convertedRequest, err = adaptor.ConvertClaudeRequest(ginCtx, info, req)
+			convertedRequest, err = adaptor.ConvertClaudeRequest(c, info, req)
 		case *dto.GeminiChatRequest:
-			convertedRequest, err = adaptor.ConvertGeminiRequest(ginCtx, info, req)
+			convertedRequest, err = adaptor.ConvertGeminiRequest(c, info, req)
 		default:
 			return testResult{
 				context:     c,
@@ -441,8 +440,8 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	}
 
 	requestBody := bytes.NewBuffer(jsonData)
-	ginCtx.Request.Body = io.NopCloser(bytes.NewBuffer(jsonData))
-	resp, err := adaptor.DoRequest(ginCtx, info, requestBody)
+	c.ResetBody(io.NopCloser(bytes.NewBuffer(jsonData)))
+	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
 		return testResult{
 			context:     c,
@@ -472,7 +471,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 			}
 		}
 	}
-	usageA, respErr := adaptor.DoResponse(ginCtx, httpResp, info)
+	usageA, respErr := adaptor.DoResponse(c, httpResp, info)
 	if respErr != nil {
 		return testResult{
 			context:     c,
