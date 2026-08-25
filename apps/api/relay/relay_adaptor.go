@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/internal/gateway"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/advancedcustom"
@@ -51,6 +52,9 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/xunfei"
 	"github.com/QuantumNous/new-api/relay/channel/zhipu"
 	"github.com/QuantumNous/new-api/relay/channel/zhipu_4v"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	dto "github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
 func GetAdaptor(apiType int) channel.Adaptor {
@@ -171,4 +175,15 @@ func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 		}
 	}
 	return nil
+}
+
+// init wires the gateway text-dispatch port to this package's adaptor
+// registry and responses bridge (consumer-owned port pattern).
+func init() {
+	gateway.RegisterTextDispatch(
+		func(apiType int) gateway.RelayAdaptor { return GetAdaptor(apiType) },
+		func(c contract.Context, info *relaycommon.RelayInfo, adaptor gateway.RelayAdaptor, request *dto.GeneralOpenAIRequest) (*dto.Usage, *types.NewAPIError) {
+			return chatCompletionsViaResponses(c, info, adaptor.(channel.Adaptor), request)
+		},
+	)
 }
