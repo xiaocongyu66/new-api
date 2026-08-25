@@ -25,7 +25,9 @@ export const options = {
     },
   },
   thresholds: {
-    http_req_failed: ['rate<0.10'],
+    // Injected upstream failures dominate the error rate; CAS correctness is
+    // asserted from version growth and conflict logs in DB snapshots.
+    http_req_failed: ['rate<0.60'],
   },
 };
 

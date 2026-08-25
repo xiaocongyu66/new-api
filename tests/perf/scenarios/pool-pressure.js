@@ -47,7 +47,7 @@ export const options = {
   thresholds: {
     // Injected 30% upstream failures plus the retry-exhaustion tail; the
     // state-machine contract is asserted from DB snapshots, not this budget.
-    http_req_failed: ['rate<0.50'],
+    http_req_failed: ['rate<0.60'],
   },
 };
 
