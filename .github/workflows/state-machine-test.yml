@@ -100,6 +100,9 @@ jobs:
                     command: [python3, /mock/mock-upstream.py]
                     ports: [{containerPort: 8099}]
                     volumeMounts: [{name: source, mountPath: /mock}]
+                    resources:
+                      requests: {cpu: 500m, memory: 128Mi}
+                      limits: {cpu: "1500m", memory: 256Mi}
                 volumes: [{name: source, configMap: {name: state-machine-mock}}]
           ---
           apiVersion: v1

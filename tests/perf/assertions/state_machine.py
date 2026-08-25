@@ -21,6 +21,7 @@ class HealthRow:
     isolation_level: int
     dormant_disable_count: int
     local_failure_count: int
+    upstream_failure_count: int
     last_error_code: str
     last_error_at: int
     last_success_at: int
@@ -47,6 +48,8 @@ def read_health(path: Path) -> list[HealthRow]:
                 state=row.get("state", "").lower(),
                 isolation_level=integer(row.get("isolation_level")),
                 dormant_disable_count=integer(row.get("dormant_disable_count")),
+                local_failure_count=integer(row.get("local_failure_count")),
+                upstream_failure_count=integer(row.get("upstream_failure_count")),
                 last_error_code=(row.get("last_error_code") or "").strip().lower(),
                 last_error_at=integer(row.get("last_error_at")),
                 last_success_at=integer(row.get("last_success_at")),
@@ -124,6 +127,7 @@ def assert_pool(rows: list[HealthRow], lines: list[str]) -> list[dict[str, objec
     return [result("pool-pressure-evidence", evidence, "emergency recover or pool pressure log required"), result("health-rows", bool(rows), f"rows={len(rows)}")]
 
 def assert_gray(rows: list[HealthRow], lines: list[str]) -> list[dict[str, object]]:
+    states = {r.state for r in rows}
     # RecordSuccess decays isolation silently; the observable recovery evidence
     # is a route whose success timestamp postdates its last error.
     recovery = any(
