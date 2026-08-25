@@ -254,6 +254,13 @@ func migrateDB() error {
 	if err := migrateChannelModelHealthKeyIndex(); err != nil {
 		return err
 	}
+	// Retire the pre-route-unit scheduling columns. This runs before AutoMigrate on
+	// purpose: the structs have already lost these fields, so the carry-over of a
+	// configured channel weight onto its route units has to read the old column
+	// while it is still reachable.
+	if err := dropLegacySchedulingColumns(); err != nil {
+		return err
+	}
 	// Migrate price_amount column from float/double to decimal for existing tables
 	migrateSubscriptionPlanPriceAmount()
 	// Migrate model_limits column from varchar to text for existing tables
@@ -424,6 +431,11 @@ func migrateChannelModelHealthKeyIndex() error {
 }
 
 func migrateDBFast() error {
+	// Same ordering constraint as migrateDB: the legacy columns must be read and
+	// retired before the parallel AutoMigrate wave runs.
+	if err := dropLegacySchedulingColumns(); err != nil {
+		return err
+	}
 	var wg sync.WaitGroup
 	migrations := []struct {
 		model interface{}

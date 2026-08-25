@@ -20,7 +20,7 @@ import (
 // This closes the test gap code-review-graph reported for GetChannel: #348
 // changed its weight formula from `Weight + 10` to the shared routingBaseWeight,
 // and nothing covered that path.
-func withAbilityDB(t *testing.T, group, modelName string, rows []Ability) {
+func withAbilityDB(t *testing.T, group, modelName string, rows []abilityFixture) {
 	t.Helper()
 
 	previousDB := DB
@@ -42,27 +42,26 @@ func withAbilityDB(t *testing.T, group, modelName string, rows []Ability) {
 	aliasRoutes := make(map[string]map[string][]routeCandidate)
 	for i := range rows {
 		ch := &Channel{
-			Id:       rows[i].ChannelId,
-			Type:     constant.ChannelTypeOpenAI,
-			Key:      fmt.Sprintf("key-%d", rows[i].ChannelId),
-			Status:   common.ChannelStatusEnabled,
-			Name:     fmt.Sprintf("channel-%d", rows[i].ChannelId),
-			Weight:   &rows[i].Weight,
-			Models:   rows[i].Model,
-			Group:    rows[i].Group,
-			Priority: rows[i].Priority,
+			Id:     rows[i].ability.ChannelId,
+			Type:   constant.ChannelTypeOpenAI,
+			Key:    fmt.Sprintf("key-%d", rows[i].ability.ChannelId),
+			Status: common.ChannelStatusEnabled,
+			Name:   fmt.Sprintf("channel-%d", rows[i].ability.ChannelId),
+			Models: rows[i].ability.Model,
+			Group:  rows[i].ability.Group,
 		}
 		require.NoError(t, db.Create(ch).Error)
-		require.NoError(t, db.Create(&rows[i]).Error)
+		require.NoError(t, db.Create(&rows[i].ability).Error)
 		idm[ch.Id] = ch
-		// Create ChannelModelRoute entry for the new selector
+		// The route unit row is what selection reads; abilities no longer carry a
+		// weight of their own.
 		require.NoError(t, db.Create(&ChannelModelRoute{
 			Group:            group,
 			PublicModelAlias: modelName,
-			ChannelId:        rows[i].ChannelId,
+			ChannelId:        rows[i].ability.ChannelId,
 			KeyIndex:         0,
 			UpstreamModel:    modelName,
-			StaticWeight:     int(rows[i].Weight),
+			StaticWeight:     rows[i].staticWeight,
 			Enabled:          true,
 		}).Error)
 		// Build memory cache for route candidates
@@ -74,7 +73,7 @@ func withAbilityDB(t *testing.T, group, modelName string, rows []Ability) {
 			channelId:     ch.Id,
 			keyIndex:      0,
 			upstreamModel: modelName,
-			staticWeight:  int(rows[i].Weight),
+			staticWeight:  rows[i].staticWeight,
 		})
 	}
 
@@ -84,15 +83,23 @@ func withAbilityDB(t *testing.T, group, modelName string, rows []Ability) {
 	channelSyncLock.Unlock()
 }
 
-func ability(channelID int, group, modelName string, weight uint, priority int64) Ability {
-	p := priority
-	return Ability{
-		Group:     group,
-		Model:     modelName,
-		ChannelId: channelID,
-		Enabled:   true,
-		Priority:  &p,
-		Weight:    weight,
+// abilityFixture pairs an ability row with the route unit weight the selector
+// should see for it. Weight used to live on the ability itself; scheduling now
+// reads channel_model_routes.static_weight, so the test states it there.
+type abilityFixture struct {
+	ability      Ability
+	staticWeight int
+}
+
+func ability(channelID int, group, modelName string, staticWeight int) abilityFixture {
+	return abilityFixture{
+		ability: Ability{
+			Group:     group,
+			Model:     modelName,
+			ChannelId: channelID,
+			Enabled:   true,
+		},
+		staticWeight: staticWeight,
 	}
 }
 
@@ -104,10 +111,10 @@ func ability(channelID int, group, modelName string, weight uint, priority int64
 func TestGetChannelUsesSharedWeightFormula(t *testing.T) {
 	const group, modelName = "db-group", "db-model"
 
-	// Same tier so weighting, not priority, decides the split.
-	withAbilityDB(t, group, modelName, []Ability{
-		ability(9501, group, modelName, 30, 100),
-		ability(9502, group, modelName, 1, 100),
+	// Route unit static weight is the only thing deciding the split now.
+	withAbilityDB(t, group, modelName, []abilityFixture{
+		ability(9501, group, modelName, 30),
+		ability(9502, group, modelName, 1),
 	})
 
 	ClearRouteHealthCache()
@@ -135,9 +142,9 @@ func TestGetChannelUsesSharedWeightFormula(t *testing.T) {
 func TestGetChannelRespectsExcludeSet(t *testing.T) {
 	const group, modelName = "db-group", "db-model"
 
-	withAbilityDB(t, group, modelName, []Ability{
-		ability(9601, group, modelName, 10, 100),
-		ability(9602, group, modelName, 10, 100),
+	withAbilityDB(t, group, modelName, []abilityFixture{
+		ability(9601, group, modelName, 10),
+		ability(9602, group, modelName, 10),
 	})
 
 	ClearRouteHealthCache()
@@ -163,9 +170,9 @@ func TestGetChannelRespectsExcludeSet(t *testing.T) {
 func TestGetChannelDeratesIsolatedRoutes(t *testing.T) {
 	const group, modelName = "db-group", "db-model"
 
-	withAbilityDB(t, group, modelName, []Ability{
-		ability(9701, group, modelName, 10, 100),
-		ability(9702, group, modelName, 10, 100),
+	withAbilityDB(t, group, modelName, []abilityFixture{
+		ability(9701, group, modelName, 10),
+		ability(9702, group, modelName, 10),
 	})
 	require.NoError(t, DB.AutoMigrate(&ChannelModelHealth{}))
 	ClearRouteHealthCache()

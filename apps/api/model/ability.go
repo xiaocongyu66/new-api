@@ -17,8 +17,6 @@ type Ability struct {
 	Model     string  `json:"model" gorm:"type:varchar(255);primaryKey;autoIncrement:false"`
 	ChannelId int     `json:"channel_id" gorm:"primaryKey;autoIncrement:false;index"`
 	Enabled   bool    `json:"enabled"`
-	Priority  *int64  `json:"priority" gorm:"bigint;default:0;index"`
-	Weight    uint    `json:"weight" gorm:"default:0;index"`
 	Tag       *string `json:"tag" gorm:"index"`
 }
 
@@ -68,8 +66,6 @@ func (channel *Channel) AddAbilities(tx *gorm.DB) error {
 				Model:     model,
 				ChannelId: channel.Id,
 				Enabled:   channel.Status == common.ChannelStatusEnabled,
-				Priority:  channel.Priority,
-				Weight:    uint(channel.GetWeight()),
 				Tag:       channel.Tag,
 			}
 			abilities = append(abilities, ability)
@@ -147,8 +143,6 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 				Model:     model,
 				ChannelId: channel.Id,
 				Enabled:   channel.Status == common.ChannelStatusEnabled,
-				Priority:  channel.Priority,
-				Weight:    uint(channel.GetWeight()),
 				Tag:       channel.Tag,
 			}
 			abilities = append(abilities, ability)
@@ -251,27 +245,15 @@ func UpdateAbilityStatusByTag(tag string, status bool) error {
 	return updateAbilityStatusByTagWithTx(DB, tag, status)
 }
 
-// updateAbilityByTagWithTx is the tx-aware form of UpdateAbilityByTag. It
-// writes the tag/priority/weight columns for every ability row carrying the
-// given tag inside the outer transaction.
-func updateAbilityByTagWithTx(tx *gorm.DB, tag string, newTag *string, priority *int64, weight *uint) error {
-	ability := Ability{}
-	if newTag != nil {
-		ability.Tag = newTag
+// updateAbilityTagWithTx renames the tag on every ability row carrying the given
+// tag, inside the outer transaction. Priority and weight used to be written here
+// too; both columns are gone, because route units carry the scheduling weight
+// now and abilities are no longer read by the selector at all.
+func updateAbilityTagWithTx(tx *gorm.DB, tag string, newTag *string) error {
+	if newTag == nil {
+		return nil
 	}
-	if priority != nil {
-		ability.Priority = priority
-	}
-	if weight != nil {
-		ability.Weight = *weight
-	}
-	return tx.Model(&Ability{}).Where("tag = ?", tag).Updates(ability).Error
-}
-
-// UpdateAbilityByTag remains the public convenience wrapper. It delegates to
-// the tx-aware form with the shared DB handle.
-func UpdateAbilityByTag(tag string, newTag *string, priority *int64, weight *uint) error {
-	return updateAbilityByTagWithTx(DB, tag, newTag, priority, weight)
+	return tx.Model(&Ability{}).Where("tag = ?", tag).Update("tag", *newTag).Error
 }
 
 // deleteAbilitiesByChannelIDsWithTx deletes every ability row whose

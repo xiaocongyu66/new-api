@@ -11,6 +11,12 @@ import (
 	"gorm.io/gorm"
 )
 
+// defaultRouteStaticWeight is the weight a freshly expanded route unit starts at.
+// The legacy channel weight migration keys off it: a row still sitting at this
+// value has never been tuned in the route unit UI, so the retiring channel column
+// is the only place that channel's intent was recorded.
+const defaultRouteStaticWeight = 100
+
 // ChannelModelRoute represents a static weight row for a route unit under a public model alias.
 type ChannelModelRoute struct {
 	Id               int    `json:"id" gorm:"primaryKey;autoIncrement"`
@@ -85,7 +91,7 @@ func ExpandChannelModelRoutes(channel *Channel) []ChannelModelRoute {
 					ChannelId:        channel.Id,
 					KeyIndex:         keyIndex,
 					UpstreamModel:    upstream,
-					StaticWeight:     100,
+					StaticWeight:     defaultRouteStaticWeight,
 					Enabled:          true,
 				})
 			}
