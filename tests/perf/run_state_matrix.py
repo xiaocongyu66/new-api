@@ -16,7 +16,6 @@ import sys
 import time
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Any
 
 
 # Scenario mapping: number -> (script_name, assertion_alias, description)
@@ -125,7 +124,6 @@ def main() -> int:
     # Setup paths
     script_dir = Path(__file__).parent
     scenarios_dir = script_dir / "scenarios"
-    lib_dir = script_dir / "lib"
     assertions_dir = script_dir / "assertions"
     assertion_script = assertions_dir / "state_machine.py"
 
