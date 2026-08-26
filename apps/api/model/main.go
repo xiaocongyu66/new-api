@@ -50,6 +50,13 @@ func initCol() {
 	}
 }
 
+// InitDialectColumns initializes the dialect-specific column name variables
+// (commonGroupCol, commonKeyCol, etc.). Call this after setting the database
+// type via common.SetDatabaseTypes() when using a test database without InitDB.
+func InitDialectColumns() {
+	initCol()
+}
+
 var DB *gorm.DB
 
 var LOG_DB *gorm.DB
