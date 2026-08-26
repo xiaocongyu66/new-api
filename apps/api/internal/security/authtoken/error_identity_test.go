@@ -43,16 +43,19 @@ func TestParseAccessTokenRejectsMalformedTokenWithInspectableCause(t *testing.T)
 	assert.ErrorIs(t, err, jwt.ErrTokenMalformed)
 }
 
-// tamperFinalTokenByte flips the last signature character, producing a token
-// with valid structure but an invalid signature.
+// tamperFinalTokenByte flips the second-to-last signature character,
+// producing a token with valid structure but an invalid signature. The last
+// base64url char may carry only ignored padding bits in unpadded JWT
+// segments, so flipping it can leave the decoded bytes — and the verified
+// signature — untouched; the second-to-last char is always fully significant.
 func tamperFinalTokenByte(token string) string {
-	if token == "" {
+	if len(token) < 2 {
 		return token
 	}
-	last := len(token) - 1
+	i := len(token) - 2
 	replacement := byte('x')
-	if token[last] == 'x' {
+	if token[i] == 'x' {
 		replacement = 'y'
 	}
-	return token[:last] + string(replacement)
+	return token[:i] + string(replacement) + token[i+1:]
 }
