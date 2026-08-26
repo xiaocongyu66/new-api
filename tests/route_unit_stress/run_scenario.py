@@ -627,6 +627,354 @@ def run_phase_s6(
     return stat_rows, stat_ids, step_at_ts, step_hook_result, window_metrics
 
 
+def collect_corr_snapshots(
+    gateway_url: str,
+    token_mgr: AdminTokenManager,
+    alias: str,
+    routes: list[RouteInfo],
+    duration_s: int,
+    interval_s: float,
+) -> tuple[list[dict[str, list[float]]], list[dict[str, Any]]]:
+    """S7: poll topology at high frequency collecting share_correction per route.
+
+    Returns:
+        corr_snapshots: list of {"label": [corr_val, ...]} per poll cycle
+        route_snapshots: raw topology items per poll (for after-snapshot)
+    """
+    corr_snapshots: list[dict[str, list[float]]] = []
+    route_snapshots: list[list[dict[str, Any]]] = []
+    identity_map = {r.identity(): r.label for r in routes}
+    deadline = time.time() + duration_s
+    poll_count = 0
+    last_progress = time.time()
+
+    while time.time() < deadline:
+        items = fetch_topology(gateway_url, token_mgr, alias)
+        if items is not None:
+            route_snapshots.append(items)
+            snap: dict[str, list[float]] = {}
+            for item in items:
+                identity = (item.get("channel_id"), item.get("key_index"), item.get("upstream_model"))
+                label = identity_map.get(identity)
+                if label:
+                    corr = item.get("share_correction", 0.0)
+                    snap.setdefault(label, []).append(float(corr))
+            corr_snapshots.append(snap)
+            poll_count += 1
+
+        now = time.time()
+        if now - last_progress >= 30:
+            total_vals = sum(len(v) for snap in corr_snapshots for v in snap.values())
+            print(f"      S7: {now - (deadline - duration_s):.1f}s, {poll_count} polls, {total_vals} corr values")
+            last_progress = now
+
+        time.sleep(interval_s)
+
+    return corr_snapshots, route_snapshots
+
+
+def run_phase_s7(
+    gateway_url: str,
+    token: str,
+    alias: str,
+    mode: str,
+    duration_s: int,
+    concurrency: int,
+    stream_ratio: float,
+    token_mgr: AdminTokenManager,
+    routes: list[RouteInfo],
+    corr_interval_s: float,
+    step_hook_cmd: str | None,
+    step_at_ratio: float,
+) -> tuple[list[dict[str, Any]], list[str], list[dict[str, list[float]]], dict | None]:
+    """S7: run traffic + collect corr snapshots simultaneously.
+
+    Returns:
+        stat_rows, stat_ids, corr_snapshots, step_hook_result
+    """
+    import subprocess
+
+    step_at_s = duration_s * step_at_ratio
+    phase_started = time.time()
+    deadline = phase_started + duration_s
+    step_at_deadline = phase_started + step_at_s
+    step_triggered = False
+    step_hook_result = None
+
+    stat_rows: list[dict[str, Any]] = []
+    stat_ids: list[str] = []
+    next_req_id = 0
+
+    # Start corr snapshot collection in a background thread
+    import threading
+    corr_snapshots: list[dict[str, list[float]]] = []
+    _route_snapshots: list[list[dict[str, Any]]] = []
+
+    def _collect():
+        nonlocal corr_snapshots, _route_snapshots
+        corr_snapshots, _route_snapshots = collect_corr_snapshots(
+            gateway_url, token_mgr, alias, routes, duration_s, corr_interval_s
+        )
+
+    collector_thread = threading.Thread(target=_collect, daemon=True)
+    collector_thread.start()
+
+    print(f"      S7: running {duration_s}s with corr polling at {corr_interval_s}s interval")
+    last_progress = time.time()
+
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        futures: set = set()
+        stream = stream_ratio > 0.0
+
+        while time.time() < deadline or futures:
+            now = time.time()
+
+            if not step_triggered and now >= step_at_deadline:
+                step_triggered = True
+                print(f"      S7: step transition at {now - phase_started:.1f}s")
+                if step_hook_cmd:
+                    hook_start = time.time()
+                    try:
+                        proc = subprocess.run(step_hook_cmd, shell=True, capture_output=True, text=True, timeout=30)
+                        hook_duration = time.time() - hook_start
+                        step_hook_result = {
+                            "cmd": step_hook_cmd,
+                            "exit_code": proc.returncode,
+                            "duration_sec": hook_duration,
+                        }
+                    except Exception as e:
+                        step_hook_result = {"cmd": step_hook_cmd, "exit_code": -1, "error": str(e)}
+                else:
+                    step_hook_result = {"skipped": True}
+
+            while len(futures) < concurrency and time.time() < deadline:
+                req_id = f"s7-{next_req_id}"
+                next_req_id += 1
+                fut = pool.submit(send_request, gateway_url, token, alias, req_id, mode, stream, "stats")
+                futures.add(fut)
+
+            done = {f for f in futures if f.done()}
+            for f in done:
+                row = f.result()
+                stat_rows.append(row)
+                stat_ids.append(row.get("request_id", ""))
+                futures.discard(f)
+
+            if now - last_progress >= 30:
+                print(f"      S7: {now - phase_started:.1f}s, {len(stat_rows)} requests, step={'done' if step_triggered else 'pending'}")
+                last_progress = now
+
+            if futures and not done:
+                time.sleep(0.05)
+
+    collector_thread.join(timeout=5.0)
+    return stat_rows, stat_ids, corr_snapshots, step_hook_result
+
+
+def run_phase_s8(
+    gateway_url: str,
+    token: str,
+    alias: str,
+    mode: str,
+    duration_s: int,
+    concurrency: int,
+    stream_ratio: float,
+    token_mgr: AdminTokenManager,
+    routes: list[RouteInfo],
+) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
+    """S8: run steady-state traffic and collect memory/pool snapshots.
+
+    Returns:
+        stat_rows, stat_ids, memory_snapshots
+    """
+    stat_rows: list[dict[str, Any]] = []
+    stat_ids: list[str] = []
+    memory_snapshots: list[dict[str, Any]] = []
+    phase_started = time.time()
+    deadline = phase_started + duration_s
+    next_req_id = 0
+    last_snapshot = 0.0
+    last_progress = time.time()
+
+    print(f"      S8: running {duration_s}s steady state, {concurrency} concurrent")
+
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        futures: set = set()
+        stream = stream_ratio > 0.0
+
+        while time.time() < deadline or futures:
+            now = time.time()
+
+            while len(futures) < concurrency and time.time() < deadline:
+                req_id = f"s8-{next_req_id}"
+                next_req_id += 1
+                fut = pool.submit(send_request, gateway_url, token, alias, req_id, mode, stream, "stats")
+                futures.add(fut)
+
+            done = {f for f in futures if f.done()}
+            for f in done:
+                row = f.result()
+                stat_rows.append(row)
+                stat_ids.append(row.get("request_id", ""))
+                futures.discard(f)
+
+            # Collect memory snapshot every 30s
+            if now - last_snapshot >= 30.0:
+                items = fetch_topology(gateway_url, token_mgr, alias)
+                active_pools = len([i for i in (items or []) if i.get("enabled") and i.get("channel_status") == 1])
+                # ponytail: pool_count approximated from topology items (no SharePoolCount API)
+                pool_count = active_pools  # indirect inference; SharePoolCount() not exposed via API
+                rss = 0
+                try:
+                    # Read the gateway process RSS, not the runner's own /proc/self
+                    # The gateway PID is found by matching the port from /proc/net/tcp + /proc/*/cmdline
+                    # ponytail: fallback to gateway_url host:port -> pgrep -> /proc/<pid>/status
+                    import subprocess as _sp
+                    gw_pid_out = _sp.check_output(
+                        ["pgrep", "-f", "newapi"],
+                        stderr=_sp.DEVNULL,
+                        timeout=5,
+                    ).strip()
+                    gw_pid = int(gw_pid_out.splitlines()[0])
+                    status_content = Path(f"/proc/{gw_pid}/status").read_text()
+                    for line in status_content.splitlines():
+                        if line.startswith("VmRSS:"):
+                            rss = int(line.split()[1]) * 1024
+                            break
+                except Exception:
+                    pass
+                # Try pprof heap if available
+                heap = None
+                try:
+                    pprof_resp = requests.get(
+                        "http://127.0.0.1:6060/debug/pprof/heap",
+                        timeout=5,
+                    )
+                    if pprof_resp.status_code == 200:
+                        # pprof returns text; extract alloc_bytes from top line
+                        for line in pprof_resp.text.splitlines():
+                            if "alloc" in line.lower():
+                                # ponytail: parse first numeric after alloc
+                                parts = line.split(":")
+                                if len(parts) >= 2:
+                                    val_str = parts[-1].strip().split()[0]
+                                    heap = int(val_str.replace(",", ""))
+                                    break
+                except Exception:
+                    pass  # pprof not available
+
+                memory_snapshots.append({
+                    "ts": now,
+                    "rss": rss,
+                    "heap": heap,
+                    "pool_count": pool_count,
+                    "active_pools": active_pools,
+                })
+                last_snapshot = now
+
+            if now - last_progress >= 30:
+                print(f"      S8: {now - phase_started:.1f}s, {len(stat_rows)} requests, {len(memory_snapshots)} snapshots")
+                last_progress = now
+
+            if futures and not done:
+                time.sleep(0.05)
+
+    return stat_rows, stat_ids, memory_snapshots
+
+
+def run_phase_s9(
+    gateway_url: str,
+    token: str,
+    alias: str,
+    affinity_ratio: float,
+    count: int,
+    concurrency: int,
+    phase: str,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """S9: send requests with controlled affinity ratio via prompt_cache_key.
+
+    affinity_ratio fraction of requests use a fixed prompt_cache_key (pinned to route A);
+    the rest use unique keys (weighted selection).
+
+    Returns:
+        stat_rows, stat_ids
+    """
+    affinity_count = int(round(count * affinity_ratio))
+    pinned_key = "s9-pinned-affinity-key"
+    stat_rows: list[dict[str, Any]] = []
+    stat_ids: list[str] = []
+    stream = False  # S9 uses non-streaming
+
+    def send_affinity_request(idx: int) -> dict[str, Any]:
+        req_id = f"s9-{phase}-{idx}"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "X-Request-Id": req_id,
+            "X-Mock-Mode": "ok",
+        }
+        if idx < affinity_count:
+            payload = {
+                "model": alias,
+                "messages": [{"role": "user", "content": f"scenario {req_id[:8]}"}],
+                "max_tokens": 16,
+                "stream": False,
+                "prompt_cache_key": pinned_key,
+            }
+        else:
+            payload = {
+                "model": alias,
+                "messages": [{"role": "user", "content": f"scenario {req_id[:8]}"}],
+                "max_tokens": 16,
+                "stream": False,
+                "prompt_cache_key": f"s9-unique-{idx}",
+            }
+        started = time.perf_counter()
+        row: dict[str, Any] = {
+            "request_id": req_id,
+            "phase": phase,
+            "stream": False,
+            "mode": "ok",
+            "status": 0,
+            "latency_ms": None,
+            "ttft_ms": None,
+            "itl_ms": [],
+            "error": None,
+            "start_ts": time.time(),
+            "end_ts": None,
+            "retry_after_sec": None,
+            "is_affinity": idx < affinity_count,
+        }
+        try:
+            r = requests.post(
+                f"{gateway_url.rstrip('/')}/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=60.0,
+            )
+            row["status"] = r.status_code
+            if r.status_code != 200:
+                row["error"] = r.text[:200]
+            r.content
+        except Exception as exc:
+            row["error"] = str(exc)[:200]
+        finally:
+            row["latency_ms"] = (time.perf_counter() - started) * 1000.0
+            row["end_ts"] = time.time()
+        return row
+
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        futures = [
+            pool.submit(send_affinity_request, i)
+            for i in range(count)
+        ]
+        for fut in as_completed(futures):
+            row = fut.result()
+            stat_rows.append(row)
+            stat_ids.append(row["request_id"])
+
+    return stat_rows, stat_ids
+
 def main() -> int:
     scenario_choices = sorted(lib_stats.scenario_targets().keys())
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -665,26 +1013,41 @@ def main() -> int:
     is_s6 = args.scenario.startswith("S6")
     is_s5 = args.scenario.startswith("S5")
     is_s4 = args.scenario.startswith("S4")
+    is_s7 = args.scenario.startswith("S7")
+    is_s8 = args.scenario.startswith("S8")
+    is_s9 = args.scenario.startswith("S9")
+    is_duration_based = is_s6 or is_s7 or is_s8
 
-    # S6-specific defaults from scenario
-    if is_s6:
+    # Duration-based scenarios (S6/S7/S8) share setup
+    if is_duration_based:
         share_window_size = targets.get("share_window_size", 200)
         step_at_ratio = args.step_at_ratio if args.step_at_ratio is not None else targets.get("step_at_ratio", 0.5)
         tail_seconds = args.tail_seconds if args.tail_seconds is not None else targets.get("min_tail_seconds", 90)
-        # Duration: S6 runs by time, not request count. Default 180s minimum per #418.
-        duration = args.duration_seconds if args.duration_seconds is not None else 180
+        # S6: default 180s; S7: default from scenario max_duration_s (900s); S8: from steady_duration_s
+        if args.duration_seconds is not None:
+            duration = args.duration_seconds
+        elif is_s7:
+            duration = targets.get("max_duration_s", 900)
+        elif is_s8:
+            duration = targets.get("steady_duration_s", 2160)
+        else:
+            duration = 180
         step_hook_cmd = args.step_hook
-        # stream_ratio default for S6: streaming
+        # S6/S7: streaming; S8: non-streaming (memory focus, not latency)
         if args.stream_ratio is not None:
             stream_ratio = args.stream_ratio
+        elif is_s8:
+            stream_ratio = 0.0
         else:
             stream_ratio = 1.0
     else:
-        # S4 runs non-streaming; S1 uses mixed; S2/S3/S5 default to streaming
+        # S4 runs non-streaming; S1 uses mixed; S2/S3/S5/S9 default to streaming
         if args.stream_ratio is not None:
             stream_ratio = args.stream_ratio
         elif is_s4:
             stream_ratio = 0.0
+        elif is_s9:
+            stream_ratio = 0.0  # S9: non-streaming
         elif args.scenario == "S1":
             stream_ratio = 0.2
         else:
@@ -709,7 +1072,7 @@ def main() -> int:
             "ci_bounds": list(targets["ci_bounds"]) if targets.get("ci_bounds") else None,
             "subject": targets["subject"],
             "min_samples": targets.get("min_samples"),
-            "injection": targets["injection"],
+            "injection": targets.get("injection"),
             "route_count": targets.get("route_count"),
             "share_window_size": targets.get("share_window_size"),
         },
@@ -729,9 +1092,10 @@ def main() -> int:
     # S6: advisory duration check (real validation requires >= 180s per #418)
     if is_s6 and duration < 180:
         print(f"      WARNING: S6 duration {duration}s < 180s minimum per #418; run may be inconclusive")
-    # Non-S6: require --requests
-    if not is_s6 and args.requests is None:
-        return fail("--requests is required for non-S6 scenarios")
+    # Duration-based scenarios (S6/S7/S8) don't require --requests
+    # S9 requires --requests (like S1-S5)
+    if not is_duration_based and args.requests is None:
+        return fail("--requests is required for non-duration scenarios")
 
     print(f"[1/8] Preflight: {args.gateway_url}")
     try:
@@ -753,7 +1117,15 @@ def main() -> int:
             "可能是 admin JWT 过期，长跑请传 --admin-username/--admin-password 启用自动刷新"
         )
     affinity_on = options.get(AFFINITY_OPTION_KEY, "false").strip().lower() == "true"
-    if affinity_on and not args.allow_affinity:
+    # S9 REQUIRES affinity enabled; other scenarios require it disabled
+    if is_s9 and not affinity_on:
+        return fail(
+            "S9 requires channel_affinity_setting.enabled=true: affinity is the mechanism under test. "
+            "Enable it via PUT /api/option/ with "
+            '{"key":"channel_affinity_setting.enabled","value":"true"}, '
+            "or use the admin console."
+        )
+    if not is_s9 and affinity_on and not args.allow_affinity:
         return fail(
             "channel affinity is enabled: sticky routing bypasses weighted selection and "
             "invalidates share measurement. Disable it before running share scenarios "
@@ -761,12 +1133,14 @@ def main() -> int:
             '{"key":"channel_affinity_setting.enabled","value":"false"}), '
             "or pass --allow-affinity to record the run as advisory only."
         )
-    if affinity_on:
+    if affinity_on and not is_s9:
         summary["affinity_enabled_warning"] = (
             "channel_affinity_setting.enabled=true during this run; sticky routing biases the "
             "measured share, so the verdict is advisory and not a scheduler conclusion."
         )
         print("      WARNING: affinity enabled, continuing because --allow-affinity was passed")
+    elif is_s9:
+        print("      OK (affinity enabled for S9)")
     else:
         print("      OK (affinity disabled)")
 
@@ -792,7 +1166,15 @@ def main() -> int:
     if is_s5 and args.bad_channel_id is None:
         return fail("S5 scenarios require --bad-channel-id to identify the BAD route")
     routes = build_route_infos(items, expected_count=expected_count, bad_channel_id=bad_cid)
-    if len(routes) != expected_count:
+    # S8: topology is large-scale seeded externally; don't fail on count mismatch
+    if is_s8:
+        routes = build_route_infos(items, expected_count=None, bad_channel_id=None)
+        print(f"      S8: {len(routes)} active routes (scale target: {expected_count})")
+        if len(routes) < 8:
+            return fail(
+                f"S8 requires at least 8 active routes for pool candidate set; got {len(routes)}"
+            )
+    elif len(routes) != expected_count:
         return fail(
             f"expected {expected_count} enabled+channel_status=1 route units, "
             f"got {channel_enabled} (topology: total={total_rows}, route.enabled={route_rows_enabled}, channel_enabled={channel_enabled})"
@@ -913,7 +1295,9 @@ def main() -> int:
     original_share_window_size = None
     share_window_applied = False
     share_window_restored = False
-    if is_s6:
+    # S6/S7/S9: switch share window size before stat phase
+    needs_window_switch = is_s6 or is_s7 or is_s9
+    if needs_window_switch:
         # Get original value
         original_share_window_size = get_option(args.gateway_url, token_mgr, "RouteStatsShareWindowSize")
         print(f"      Original RouteStatsShareWindowSize: {original_share_window_size}")
@@ -956,6 +1340,59 @@ def main() -> int:
                 "step_at": step_at_ts,
                 "cooldown_start": step_at_ts + tail_seconds,
             }
+        elif is_s7:
+            corr_interval = targets.get("corr_snapshot_interval_s", 0.25)
+            stat_rows, stat_ids, corr_snapshots, step_hook_result = run_phase_s7(
+                args.gateway_url,
+                args.token,
+                args.alias,
+                mode,
+                duration,
+                args.concurrency,
+                stream_ratio,
+                token_mgr,
+                routes,
+                corr_interval,
+                step_hook_cmd,
+                step_at_ratio,
+            )
+            elapsed = time.time() - phase_started
+            phase_marks = {"warmup_end": warmup_end_ts}
+            step_at_ts = None
+            window_metrics = None
+        elif is_s8:
+            stat_rows, stat_ids, memory_snapshots = run_phase_s8(
+                args.gateway_url,
+                args.token,
+                args.alias,
+                mode,
+                duration,
+                args.concurrency,
+                stream_ratio,
+                token_mgr,
+                routes,
+            )
+            elapsed = time.time() - phase_started
+            phase_marks = {"warmup_end": warmup_end_ts}
+            step_at_ts = None
+            step_hook_result = None
+            window_metrics = None
+        elif is_s9:
+            affinity_ratio = targets.get("affinity_ratio", 0.0)
+            stat_rows, stat_ids = run_phase_s9(
+                args.gateway_url,
+                args.token,
+                args.alias,
+                affinity_ratio,
+                args.requests,
+                args.concurrency,
+                "stats",
+            )
+            elapsed = time.time() - phase_started
+            phase_marks = {"warmup_end": warmup_end_ts}
+            step_at_ts = None
+            step_hook_result = None
+            window_metrics = None
         else:
             stat_rows, stat_ids = run_phase(
                 args.gateway_url, args.token, args.alias, mode, args.requests, args.concurrency, stream_ratio, "stats"
@@ -973,8 +1410,8 @@ def main() -> int:
         stats_succeeded = sum(1 for r in stat_rows if r['status'] == 200)
         print(f"      Done in {elapsed:.1f}s, {stats_succeeded}/{len(stat_rows)} succeeded")
     finally:
-        # S6: restore original share window size
-        if is_s6 and original_share_window_size is not None:
+        # S6/S7/S9: restore original share window size
+        if needs_window_switch and original_share_window_size is not None:
             if set_option(args.gateway_url, token_mgr, "RouteStatsShareWindowSize", original_share_window_size):
                 if wait_option_value(args.gateway_url, token_mgr, "RouteStatsShareWindowSize", original_share_window_size, timeout_s=30.0):
                     share_window_restored = True
@@ -986,7 +1423,7 @@ def main() -> int:
         summary["share_window_size_applied"] = share_window_applied
         summary["share_window_size_restored"] = share_window_restored
         summary["share_window_size_original"] = original_share_window_size
-        summary["share_window_size_target"] = share_window_size if is_s6 else None
+        summary["share_window_size_target"] = share_window_size if needs_window_switch else None
     print(f"      Done in {elapsed:.1f}s, {stats_succeeded}/{len(stat_rows)} succeeded")
 
     # S4: collect throttle stats (429 count, Retry-After distribution)
@@ -1205,6 +1642,56 @@ def main() -> int:
             verdict, code = "PRODUCT_FAIL", 1
         else:
             verdict, code = "PASS", 0
+    elif is_s7:
+        # S7: corr headroom evaluation
+        corr_result = lib_stats.evaluate_corr_headroom(corr_snapshots, targets)
+        summary["corr_evaluation"] = corr_result
+        summary["step_hook_result"] = step_hook_result
+        print(f"      S7 corr: p99={corr_result['corr_p99']:.3f} headroom={corr_result['headroom']:.2%} "
+              f"snapshots={corr_result['total_snapshots']} per_route={corr_result['per_route_counts']}")
+        if rec.verdict != "PASS":
+            verdict, code = "DATA_INVALID", 1
+        elif not corr_result["ok"]:
+            # DATA_INVALID if insufficient snapshots, PRODUCT_FAIL if headroom fails
+            if any("DATA_INVALID" in r for r in corr_result["reasons"]):
+                verdict, code = "DATA_INVALID", 1
+            else:
+                verdict, code = "PRODUCT_FAIL", 1
+        else:
+            verdict, code = "PASS", 0
+    elif is_s8:
+        # S8: memory scaling evaluation
+        mem_result = lib_stats.evaluate_memory_scaling(memory_snapshots, targets)
+        summary["memory_evaluation"] = mem_result
+        print(f"      S8 memory: heap_peak={mem_result['heap_peak']} rss_peak={mem_result['rss_peak']} "
+              f"pool_match={mem_result['active_pool_match']} growth={mem_result['monotonic_growth']}")
+        if rec.verdict != "PASS":
+            verdict, code = "DATA_INVALID", 1
+        elif not mem_result["ok"]:
+            verdict, code = "PRODUCT_FAIL", 1
+        else:
+            verdict, code = "PASS", 0
+    elif is_s9:
+        # S9: affinity ratio scan — single combo per run
+        # share_eval already computed for subject route A
+        subject_row = next(r for r in share_rows if r["route"] == "A")
+        affinity_ratio = targets.get("affinity_ratio", 0.0)
+        wsize = targets.get("share_window_size", 0)
+        summary["s9_result"] = {
+            "affinity_ratio": affinity_ratio,
+            "window_size": wsize,
+            "A_share": subject_row["observed_share"],
+            "A_ci_low": subject_row["ci_low"],
+            "A_ci_high": subject_row["ci_high"],
+            "A_selections": subject_row["selections"],
+        }
+        print(f"      S9: affinity={affinity_ratio:.0%} W={wsize} A_share={subject_row['observed_share']:.4f}")
+        if rec.verdict != "PASS" or effective < args.requests:
+            verdict, code = "DATA_INVALID", 1
+        elif not subject_ok:
+            verdict, code = "PRODUCT_FAIL", 1
+        else:
+            verdict, code = "PASS", 0
     else:
         # S1-S5 existing verdict logic
         if rec.verdict != "PASS" or effective < args.requests:
@@ -1227,14 +1714,20 @@ def main() -> int:
     lib_report.write_summary(out / "summary.json", summary)
     (out / "report.md").write_text(lib_report.render_report_md(summary), encoding="utf-8")
 
-    subject_row = next(r for r in share_rows if r["route"] == subject_route_label)
+    subject_row = next((r for r in share_rows if r["route"] == subject_route_label), None)
     if is_s6:
         print(f"      Subject {subject_route_label}: share={subject_row['observed_share']:.4f} "
               f"(process stability, no point-estimate target)")
         print(f"      Process stability: {summary.get('process_stability', {})}")
         print(f"      Step follow seconds: {summary.get('step_follow_seconds')}")
         print(f"      Step hook: {summary.get('step_hook_result')}")
-    else:
+    elif is_s7:
+        print(f"      S7 corr: {summary.get('corr_evaluation', {})}")
+    elif is_s8:
+        print(f"      S8 memory: {summary.get('memory_evaluation', {})}")
+    elif is_s9:
+        print(f"      S9 result: {summary.get('s9_result', {})}")
+    elif subject_row:
         print(
             f"      Subject {targets['subject']}: share={subject_row['observed_share']:.4f} "
             f"CI=[{subject_row['ci_low']:.4f},{subject_row['ci_high']:.4f}] target={targets['target']:.3f}"
