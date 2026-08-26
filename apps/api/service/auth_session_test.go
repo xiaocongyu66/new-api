@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/gin-gonic/gin"
 	"strings"
 	"testing"
 	"time"
@@ -211,12 +210,12 @@ func TestCleanupAuthArtifactsAlertsBeforeDeletingHourlyIssuance(t *testing.T) {
 
 	var logBuffer bytes.Buffer
 	common.LogWriterMu.Lock()
-	previousErrorWriter := gin.DefaultErrorWriter
-	gin.DefaultErrorWriter = &logBuffer
+	previousErrorWriter := common.LogErrOutput
+	common.LogErrOutput = &logBuffer
 	common.LogWriterMu.Unlock()
 	t.Cleanup(func() {
 		common.LogWriterMu.Lock()
-		gin.DefaultErrorWriter = previousErrorWriter
+		common.LogErrOutput = previousErrorWriter
 		common.LogWriterMu.Unlock()
 	})
 
