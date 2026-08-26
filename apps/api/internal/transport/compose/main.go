@@ -1,15 +1,15 @@
-package router
+package compose
 
 import (
 	"fmt"
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	tpmw "github.com/QuantumNous/new-api/internal/transport/middleware"
 	"net/http"
 	"os"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/middleware"
 
 	"github.com/gin-gonic/gin"
 )
@@ -30,7 +30,7 @@ func SetRouter(router *gin.Engine, assets WebAssets) {
 	} else {
 		frontendBaseUrl = strings.TrimSuffix(frontendBaseUrl, "/")
 		router.NoRoute(func(cc *gin.Context) {
-			cc.Set(middleware.RouteTagKey, "web")
+			cc.Set(tpmw.RouteTagKey, "web")
 			cc.Redirect(http.StatusMovedPermanently, fmt.Sprintf("%s%s", frontendBaseUrl, cc.Request.RequestURI))
 		})
 	}

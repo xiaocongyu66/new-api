@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/gin-gonic/gin"
 	"io"
 	"net/http"
 	"strings"
@@ -71,12 +70,12 @@ func TestRelayErrorHandlerTruncatesInvalidJSONBodyInLog(t *testing.T) {
 	var logBuffer bytes.Buffer
 
 	common.LogWriterMu.Lock()
-	oldWriter := gin.DefaultErrorWriter
-	gin.DefaultErrorWriter = &logBuffer
+	oldWriter := common.LogErrOutput
+	common.LogErrOutput = &logBuffer
 	common.LogWriterMu.Unlock()
 	t.Cleanup(func() {
 		common.LogWriterMu.Lock()
-		gin.DefaultErrorWriter = oldWriter
+		common.LogErrOutput = oldWriter
 		common.LogWriterMu.Unlock()
 	})
 
@@ -129,12 +128,12 @@ func TestRelayErrorHandlerKeepsInvalidJSONBodyInDebugLog(t *testing.T) {
 	var logBuffer bytes.Buffer
 
 	common.LogWriterMu.Lock()
-	oldWriter := gin.DefaultErrorWriter
-	gin.DefaultErrorWriter = &logBuffer
+	oldWriter := common.LogErrOutput
+	common.LogErrOutput = &logBuffer
 	common.LogWriterMu.Unlock()
 	t.Cleanup(func() {
 		common.LogWriterMu.Lock()
-		gin.DefaultErrorWriter = oldWriter
+		common.LogErrOutput = oldWriter
 		common.LogWriterMu.Unlock()
 	})
 

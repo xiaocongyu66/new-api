@@ -5,7 +5,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gin-gonic/gin"
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 	"golang.org/x/text/language"
 	"gopkg.in/yaml.v3"
@@ -13,7 +12,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 )
 
@@ -89,12 +87,6 @@ func GetLocalizer(lang string) *i18n.Localizer {
 	return loc
 }
 
-// T translates a message key using the language from gin context
-func T(c *gin.Context, key string, args ...map[string]any) string {
-	lang := GetLangFromContext(c)
-	return Translate(lang, key, args...)
-}
-
 // TCtx translates a message key using the language from a transport context.
 func TCtx(c contract.Context, key string, args ...map[string]any) string {
 	return Translate(GetLangFromCtx(c), key, args...)
@@ -127,14 +119,6 @@ var userLangLoaderFunc func(userId int) string
 // SetUserLangLoader sets the function to load user language (called from model package)
 func SetUserLangLoader(loader func(userId int) string) {
 	userLangLoaderFunc = loader
-}
-
-// GetLangFromContext extracts the language setting from a gin context.
-func GetLangFromContext(c *gin.Context) string {
-	if c == nil {
-		return DefaultLang
-	}
-	return GetLangFromCtx(ginadapter.Wrap(c))
 }
 
 // GetLangFromCtx extracts the language setting from a transport context.
