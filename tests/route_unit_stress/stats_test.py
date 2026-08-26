@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Synthetic data self-tests for lib_stats (S1–S3 stats).
+"""Synthetic data self-tests for lib_stats (S1–S6 stats).
 
 Deterministic asserts, no external dependencies.
 """
@@ -15,6 +15,10 @@ from lib_stats import (
     share_stats,
     evaluate_share,
     scenario_targets,
+    required_n,
+    bad_route_target,
+    throttle_target,
+    evaluate_process_stability,
 )
 
 
@@ -207,6 +211,192 @@ def test_required_n() -> bool:
     return True
 
 
+def test_bad_route_target() -> bool:
+    """bad_route_target computes exact share for bad route in pool."""
+    assert_close(bad_route_target(2, 0.5), 1/3, 1e-9, "bad_route_target 2 routes")
+    assert_close(bad_route_target(4, 0.5), 1/7, 1e-9, "bad_route_target 4 routes")
+    assert_close(bad_route_target(8, 0.5), 1/15, 1e-9, "bad_route_target 8 routes")
+    # Test with different bad_quality
+    assert_close(bad_route_target(3, 0.25), 0.25/(0.25+2), 1e-9, "bad_route_target quality 0.25")
+    return True
+
+
+def test_throttle_target() -> bool:
+    """throttle_target returns q/(1+q) for ThrottledObservation q."""
+    assert_close(throttle_target(0.7), 0.7/1.7, 1e-9, "throttle_target 0.7")
+    # 0.7/1.7 = 0.4117647058823529
+    assert_close(throttle_target(0.7), 0.4117647058823529, 1e-9, "throttle_target exact")
+    assert_close(throttle_target(1.0), 0.5, 1e-9, "throttle_target 1.0")
+    assert_close(throttle_target(0.5), 0.5/1.5, 1e-9, "throttle_target 0.5")
+    return True
+
+
+def test_scenario_targets_s4_s5_s6() -> bool:
+    """S4, S5, S6 scenario targets match #418 specifications."""
+    targets = scenario_targets()
+
+    # S4 variants
+    for variant in ["S4_NORETRY", "S4_RETRY5", "S4_RETRY10"]:
+        s = targets[variant]
+        assert_close(s["target"], 0.38, 1e-9, f"{variant} target")
+        assert_close(s["tol_pp"], 0.03, 1e-9, f"{variant} tol_pp")
+        assert s["ci_bounds"] == (0.35, 0.41), f"{variant} ci_bounds: {s['ci_bounds']}"
+        assert s["subject"] == "B", f"{variant} subject: {s['subject']}"
+        assert s["min_samples"] == 5400, f"{variant} min_samples: {s['min_samples']}"
+        assert s["throttle_only_share"] == 0.4117647058823529, f"{variant} throttle_only_share: {s['throttle_only_share']}"
+        assert "PRODUCT_FAIL" in s["description"], f"{variant} description missing PRODUCT_FAIL"
+
+    # Check injections
+    assert targets["S4_NORETRY"]["injection"] == {"A": "ok", "B": "ratelimit_missing"}
+    assert targets["S4_RETRY5"]["injection"] == {"A": "ok", "B": "ratelimit_5s"}
+    assert targets["S4_RETRY10"]["injection"] == {"A": "ok", "B": "ratelimit_10s"}
+
+    # S5 pools
+    s5_2 = targets["S5_POOL2"]
+    assert_close(s5_2["target"], 1/3, 1e-9, "S5_POOL2 target")
+    assert_close(s5_2["tol_pp"], 0.03, 1e-9, "S5_POOL2 tol_pp")
+    assert s5_2["ci_bounds"] == (0.303, 0.363), f"S5_POOL2 ci_bounds: {s5_2['ci_bounds']}"
+    assert s5_2["subject"] == "BAD"
+    assert s5_2["route_count"] == 2
+    assert s5_2["injection"] == {"BAD": "q05", "GOOD": "ok"}
+    assert s5_2["min_samples"] == 5100
+
+    s5_4 = targets["S5_POOL4"]
+    assert_close(s5_4["target"], 1/7, 1e-9, "S5_POOL4 target")
+    assert_close(s5_4["tol_pp"], 0.03, 1e-9, "S5_POOL4 tol_pp")
+    assert s5_4["ci_bounds"] == (0.113, 0.173), f"S5_POOL4 ci_bounds: {s5_4['ci_bounds']}"
+    assert s5_4["subject"] == "BAD"
+    assert s5_4["route_count"] == 4
+    assert s5_4["min_samples"] == 2800
+
+    s5_8 = targets["S5_POOL8"]
+    assert_close(s5_8["target"], 1/15, 1e-9, "S5_POOL8 target")
+    assert_close(s5_8["tol_pp"], 0.02, 1e-9, "S5_POOL8 tol_pp")
+    assert s5_8["ci_bounds"] == (0.0467, 0.0867), f"S5_POOL8 ci_bounds: {s5_8['ci_bounds']}"
+    assert s5_8["subject"] == "BAD"
+    assert s5_8["route_count"] == 8
+    assert s5_8["min_samples"] == 3300
+
+    # S6 windows - no target/tol_pp/ci_bounds (or None)
+    for w_name, w_size, stddev_max in [
+        ("S6_W50", 50, 0.06),
+        ("S6_W200", 200, 0.03),
+        ("S6_W1000", 1000, 0.03),
+    ]:
+        s = targets[w_name]
+        assert s["target"] is None, f"{w_name} target should be None"
+        assert s["tol_pp"] is None, f"{w_name} tol_pp should be None"
+        assert s["ci_bounds"] is None, f"{w_name} ci_bounds should be None"
+        assert s["subject"] == "STABLE"
+        assert s["route_count"] == 4
+        assert s["share_window_size"] == w_size
+        assert s["process_thresholds"]["share_stddev_max_pp"] == stddev_max
+        assert s["process_thresholds"]["corr_p99_headroom_min"] == 0.20
+        assert s["process_thresholds"]["consecutive_breach_max"] == 2
+        assert s["process_thresholds"]["min_window_samples"] == 100
+        assert s["process_thresholds"]["corr_p99_max"] == 2.0
+        assert s["injection"] == {"STABLE": "ok", "SLOW": "ttft_4000", "STEP": "ttft_4000→ttft_500"}
+        assert s["step_at_ratio"] == 0.5
+        assert s["min_tail_seconds"] == 90
+
+    return True
+
+
+def test_min_samples_vs_required_n() -> bool:
+    """min_samples >= required_n for S4 and S5 scenarios (S6 skipped)."""
+    targets = scenario_targets()
+    for name in [
+        "S4_NORETRY", "S4_RETRY5", "S4_RETRY10",
+        "S5_POOL2", "S5_POOL4", "S5_POOL8",
+    ]:
+        t = targets[name]
+        req = required_n(t["target"], t["tol_pp"])
+        assert t["min_samples"] >= req, f"{name}: min_samples {t['min_samples']} < required_n {req}"
+    return True
+
+
+def test_evaluate_process_stability() -> bool:
+    """evaluate_process_stability evaluates S6 process stability criteria."""
+    thresholds = {
+        "corr_p99_headroom_min": 0.20,
+        "share_stddev_max_pp": 0.06,
+        "consecutive_breach_max": 2,
+        "min_window_samples": 100,
+        "corr_p99_max": 2.0,
+    }
+
+    # Case 1: all windows pass
+    windows_ok = [
+        {"share": 0.33, "corr_p99": 1.0, "samples": 200},
+        {"share": 0.34, "corr_p99": 1.1, "samples": 200},
+        {"share": 0.32, "corr_p99": 0.9, "samples": 200},
+        {"share": 0.33, "corr_p99": 1.0, "samples": 200},
+        {"share": 0.34, "corr_p99": 1.0, "samples": 200},
+    ]
+    res = evaluate_process_stability(windows_ok, thresholds)
+    assert res["ok"] is True, f"all pass should be ok: {res}"
+    assert res["reasons"] == [], f"unexpected reasons: {res['reasons']}"
+
+    # Case 2: share stddev exceeds threshold (6pp = 0.06)
+    windows_high_std = [
+        {"share": 0.20, "corr_p99": 1.0, "samples": 200},
+        {"share": 0.40, "corr_p99": 1.0, "samples": 200},
+        {"share": 0.20, "corr_p99": 1.0, "samples": 200},
+        {"share": 0.40, "corr_p99": 1.0, "samples": 200},
+        {"share": 0.20, "corr_p99": 1.0, "samples": 200},
+    ]
+    res = evaluate_process_stability(windows_high_std, thresholds)
+    assert res["ok"] is False, f"high stddev should fail: {res}"
+    assert any("stddev" in r.lower() for r in res["reasons"]), f"missing stddev reason: {res['reasons']}"
+
+    # Case 3: consecutive breach > 2 (with low stddev)
+    # Use 10 windows: 7 at 0.33, then 3 at 0.40 (breach = |share - median| > 0.06)
+    # median = 0.33, breach_threshold = 0.06
+    # 0.40 is |0.40-0.33| = 0.07 > 0.06 → breach
+    # Stddev: mean=0.351, stddev≈0.032 (3.2pp < 6pp)
+    windows_consecutive = [
+        {"share": 0.33, "corr_p99": 1.0, "samples": 200},
+        {"share": 0.33, "corr_p99": 1.0, "samples": 200},
+        {"share": 0.33, "corr_p99": 1.0, "samples": 200},
+        {"share": 0.33, "corr_p99": 1.0, "samples": 200},
+        {"share": 0.33, "corr_p99": 1.0, "samples": 200},
+        {"share": 0.33, "corr_p99": 1.0, "samples": 200},
+        {"share": 0.33, "corr_p99": 1.0, "samples": 200},
+        {"share": 0.40, "corr_p99": 1.0, "samples": 200},
+        {"share": 0.40, "corr_p99": 1.0, "samples": 200},
+        {"share": 0.40, "corr_p99": 1.0, "samples": 200},
+    ]
+    res = evaluate_process_stability(windows_consecutive, thresholds)
+    assert res["ok"] is False, f"consecutive breach should fail: {res}"
+    assert any("consecutive" in r.lower() for r in res["reasons"]), f"missing consecutive reason: {res['reasons']}"
+    assert res["max_consecutive_breach"] >= 3, f"max_consecutive_breach should be >=3: {res['max_consecutive_breach']}"
+    # Verify stddev is within bounds so only consecutive breach triggers
+    assert res["share_stddev_pp"] < 6.0, f"stddev should be <6pp: {res['share_stddev_pp']}"
+
+    # Case 4: corr_p99 headroom < 20% (e.g., corr_p99=1.9, headroom=5%)
+    windows_corr = [
+        {"share": 0.33, "corr_p99": 1.9, "samples": 200},
+        {"share": 0.33, "corr_p99": 1.9, "samples": 200},
+        {"share": 0.33, "corr_p99": 1.9, "samples": 200},
+    ]
+    res = evaluate_process_stability(windows_corr, thresholds)
+    assert res["ok"] is False, f"low corr headroom should fail: {res}"
+    assert any("headroom" in r.lower() for r in res["reasons"]), f"missing headroom reason: {res['reasons']}"
+    assert res["corr_p99_headroom"] < 0.20, f"headroom should be <0.20: {res['corr_p99_headroom']}"
+
+    # Case 5: insufficient samples (< 100)
+    windows_insufficient = [
+        {"share": 0.33, "corr_p99": 1.0, "samples": 200},
+        {"share": 0.33, "corr_p99": 1.0, "samples": 50},   # DATA_INVALID
+        {"share": 0.33, "corr_p99": 1.0, "samples": 200},
+    ]
+    res = evaluate_process_stability(windows_insufficient, thresholds)
+    assert res["ok"] is False, f"insufficient samples should fail: {res}"
+    assert any("data_invalid" in r.lower() or "samples" in r.lower() for r in res["reasons"]), f"missing insufficient reason: {res['reasons']}"
+    assert res["insufficient_windows"] == [1], f"insufficient_windows should be [1]: {res['insufficient_windows']}"
+
+    return True
+
 def run_all() -> int:
     tests = [
         ("wilson_ci_known_value", test_wilson_ci_known_value),
@@ -223,6 +413,11 @@ def run_all() -> int:
         ("evaluate_share_point_out_of_tolerance", test_evaluate_share_point_out_of_tolerance),
         ("evaluate_share_both_fail", test_evaluate_share_both_fail),
         ("evaluate_share_ci_exactly_at_bounds", test_evaluate_share_ci_exactly_at_bounds),
+        ("bad_route_target", test_bad_route_target),
+        ("throttle_target", test_throttle_target),
+        ("scenario_targets_s4_s5_s6", test_scenario_targets_s4_s5_s6),
+        ("min_samples_vs_required_n", test_min_samples_vs_required_n),
+        ("evaluate_process_stability", test_evaluate_process_stability),
     ]
 
     passed = 0

@@ -7,12 +7,200 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 from pathlib import Path
 from typing import Any
 
-
 NOT_AVAILABLE = "NOT_AVAILABLE"
 
+
+def _percentiles(values: list[float], ps: list[float]) -> dict[str, float]:
+    """Local percentile computation (linear interpolation, NumPy default method).
+
+    Avoids importing lib_stats to keep modules decoupled.
+    """
+    result: dict[str, float] = {}
+    if not values:
+        for p in ps:
+            key = f"p{int(p)}" if p == int(p) else f"p{p}"
+            result[key] = None
+        result["max"] = None
+        return result
+
+    sorted_vals = sorted(values)
+    n = len(sorted_vals)
+
+    for p in ps:
+        if p < 0 or p > 100:
+            key = f"p{int(p)}" if p == int(p) else f"p{p}"
+            result[key] = None
+            continue
+        idx = (n - 1) * p / 100.0
+        lo = int(math.floor(idx))
+        hi = int(math.ceil(idx))
+        if lo == hi:
+            val = sorted_vals[lo]
+        else:
+            weight = idx - lo
+            val = sorted_vals[lo] * (1 - weight) + sorted_vals[hi] * weight
+        key = f"p{int(p)}" if p == int(p) else f"p{p}"
+        result[key] = val
+
+    result["max"] = sorted_vals[-1]
+    return result
+
+
+def build_traffic_windows(
+    request_rows: list[dict[str, Any]],
+    resource_windows: list[dict[str, Any]],
+    window_s: int = 10,
+    phase_marks: dict[str, float] | None = None,
+) -> list[dict[str, Any]]:
+    """Aggregate request rows and resource windows into fixed time buckets.
+
+    Args:
+        request_rows: List of request dicts with keys:
+            request_id, phase, stream, mode, status, latency_ms, ttft_ms,
+            itl_ms, error, start_ts, end_ts (epoch seconds).
+            If start_ts missing but end_ts + latency_ms present, start_ts is inferred.
+            Rows missing both start_ts and (end_ts + latency_ms) are skipped.
+        resource_windows: List of resource window dicts with window_start and
+            nested cpu/mem/disk/net metrics (same structure as existing windows).
+        window_s: Window size in seconds (default 10).
+        phase_marks: Optional dict with keys "warmup_end", "step_at", "cooldown_start"
+            (epoch seconds). Used to label each window's phase.
+
+    Returns:
+        List of window dicts with keys:
+            window_start, window_end, arrivals, completions, rps, success, failed,
+            p50, p95, p99, samples, cpu_user, rss, disk_write_bps, net_err, phase.
+    """
+    # Bucket requests by window
+    arrivals_by_window: dict[int, list[dict]] = {}
+    completions_by_window: dict[int, list[dict]] = {}
+
+    def _is_success(status: Any) -> bool:
+        """Check if status indicates success.
+        Accepts integer 200, string '200', or string 'success' (case-insensitive).
+        """
+        if status is None:
+            return False
+        try:
+            return int(status) == 200
+        except (ValueError, TypeError):
+            return str(status).strip().lower() == "success"
+
+    for row in request_rows:
+        start_ts = row.get("start_ts")
+        end_ts = row.get("end_ts")
+        latency_ms = row.get("latency_ms", 0)
+
+        # Infer start_ts if missing
+        if start_ts is None and end_ts is not None and latency_ms is not None:
+            start_ts = end_ts - latency_ms / 1000.0
+
+        if start_ts is None:
+            # Cannot determine arrival window, skip
+            continue
+
+        # Arrival window by start_ts
+        arrival_window = int(math.floor(start_ts / window_s)) * window_s
+        if arrival_window not in arrivals_by_window:
+            arrivals_by_window[arrival_window] = []
+        arrivals_by_window[arrival_window].append(row)
+
+        # Completion window by end_ts
+        if end_ts is not None:
+            completion_window = int(math.floor(end_ts / window_s)) * window_s
+            if completion_window not in completions_by_window:
+                completions_by_window[completion_window] = []
+            completions_by_window[completion_window].append(row)
+
+    # Determine all window start times that have data
+    all_window_starts = set(arrivals_by_window.keys()) | set(completions_by_window.keys())
+    if resource_windows:
+        for rw in resource_windows:
+            ws = rw.get("window_start")
+            if ws is not None:
+                all_window_starts.add(int(ws))
+
+    if not all_window_starts:
+        return []
+
+    # Build resource lookup by window_start
+    resource_by_window: dict[int, dict] = {}
+    for rw in resource_windows:
+        ws = rw.get("window_start")
+        if ws is not None:
+            resource_by_window[int(ws)] = rw
+
+    # Phase labeling helper
+    def get_phase_label(ws: int) -> str:
+        if phase_marks is None:
+            return "steady"
+        we = ws + window_s
+        # Window overlaps with phase boundaries; label by window midpoint
+        mid = ws + window_s / 2.0
+        if mid < phase_marks.get("warmup_end", float("inf")):
+            return "warmup"
+        elif mid < phase_marks.get("step_at", float("inf")):
+            return "steady"
+        elif mid < phase_marks.get("cooldown_start", float("inf")):
+            return "fault"  # step_at to cooldown = fault/recovery phase
+        else:
+            return "cooldown"
+
+    # Build output windows
+    result = []
+    for ws in sorted(all_window_starts):
+        we = ws + window_s
+
+        # Arrivals (by start_ts)
+        arrival_rows = arrivals_by_window.get(ws, [])
+        arrivals = len(arrival_rows)
+
+        # Completions (by end_ts)
+        completion_rows = completions_by_window.get(ws, [])
+        completions = len(completion_rows)
+
+        # Success/failed from completion rows
+        success = sum(1 for r in completion_rows if _is_success(r.get("status")))
+        failed = completions - success
+
+        # Latency percentiles from successful completions
+        success_latencies = [r.get("latency_ms", 0) for r in completion_rows if _is_success(r.get("status")) and r.get("latency_ms") is not None]
+        pct = _percentiles(success_latencies, [50, 95, 99])
+
+        # Resource merge
+        rw = resource_by_window.get(ws, {})
+        cpu_user = rw.get("cpu", {}).get("avg", {}).get("user", NOT_AVAILABLE)
+        rss = rw.get("mem", {}).get("avg", {}).get("rss", NOT_AVAILABLE)
+        disk_write_bps = rw.get("disk", {}).get("avg", {}).get("write_bps", NOT_AVAILABLE)
+        net_err = rw.get("net", {}).get("avg", {}).get("error", NOT_AVAILABLE)
+
+        result.append({
+            "window_start": ws,
+            "window_end": we,
+            "arrivals": arrivals,
+            "completions": completions,
+            "rps": completions / window_s if window_s > 0 else 0.0,
+            "success": success,
+            "failed": failed,
+            "p50": pct.get("p50"),
+            "p95": pct.get("p95"),
+            "p99": pct.get("p99"),
+            "samples": completions,
+            "cpu_user": cpu_user if cpu_user != NOT_AVAILABLE else "",
+            "rss": rss if rss != NOT_AVAILABLE else "",
+            "disk_write_bps": disk_write_bps if disk_write_bps != NOT_AVAILABLE else "",
+            "net_err": net_err if net_err != NOT_AVAILABLE else "",
+            "phase": get_phase_label(ws),
+            "route_shares": "",
+            "corr_p99": "",
+            "ewma": "",
+        })
+
+    return result
 
 def write_shares_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     """Write per-route share evaluation CSV.
@@ -60,7 +248,7 @@ def write_windows_csv(path: Path, windows: list[dict[str, Any]]) -> None:
     """Write 10-second aggregated windows CSV.
 
     Columns: window_start,arrivals,completions,rps,success,failed,p50,p95,p99,
-    cpu_user,rss,disk_write_bps,net_err
+    cpu_user,rss,disk_write_bps,net_err,window_end,samples,phase,route_shares,corr_p99,ewma
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
@@ -77,6 +265,12 @@ def write_windows_csv(path: Path, windows: list[dict[str, Any]]) -> None:
         "rss",
         "disk_write_bps",
         "net_err",
+        "window_end",
+        "samples",
+        "phase",
+        "route_shares",
+        "corr_p99",
+        "ewma",
     ]
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -89,18 +283,24 @@ def write_windows_csv(path: Path, windows: list[dict[str, Any]]) -> None:
 
             writer.writerow({
                 "window_start": w.get("window_start", ""),
-                "arrivals": w.get("samples", 0),
-                "completions": w.get("samples", 0),
-                "rps": w.get("samples", 0) / 10.0 if w.get("samples", 0) else 0,
-                "success": 0,
-                "failed": 0,
-                "p50": "",
-                "p95": "",
-                "p99": "",
+                "arrivals": w.get("arrivals", w.get("samples", 0)),
+                "completions": w.get("completions", w.get("samples", 0)),
+                "rps": w.get("rps", w.get("samples", 0) / 10.0 if w.get("samples", 0) else 0),
+                "success": w.get("success", 0),
+                "failed": w.get("failed", 0),
+                "p50": w.get("p50", ""),
+                "p95": w.get("p95", ""),
+                "p99": w.get("p99", ""),
                 "cpu_user": cpu_user if cpu_user != NOT_AVAILABLE else "",
                 "rss": rss if rss != NOT_AVAILABLE else "",
                 "disk_write_bps": disk_write_bps if disk_write_bps != NOT_AVAILABLE else "",
                 "net_err": net_err if net_err != NOT_AVAILABLE else "",
+                "window_end": w.get("window_end", ""),
+                "samples": w.get("samples", w.get("completions", w.get("arrivals", 0))),
+                "phase": w.get("phase", ""),
+                "route_shares": w.get("route_shares", ""),
+                "corr_p99": w.get("corr_p99", ""),
+                "ewma": w.get("ewma", ""),
             })
 
 
@@ -246,9 +446,46 @@ def render_report_md(summary: dict[str, Any]) -> str:
     lines.append(f"| RSS (bytes) | {rss_str} |")
     lines.append(f"| Disk Write (B/s) | {disk_str} |")
     lines.append(f"| Net Errors | {net_str} |")
-    lines.append("")
 
-    # Verdict details
+    # Process Windows (S6 stability)
+    proc = summary.get("process_stability")
+    if proc:
+        lines.append("## Process Windows")
+        lines.append("")
+        lines.append(f"**Verdict:** {'OK' if proc.get('ok') else 'FAIL'}")
+        lines.append(f"**Windows Analyzed:** {proc.get('windows_analyzed', 0)}")
+        lines.append(f"**Insufficient Windows:** {proc.get('insufficient_windows', 0)}")
+        lines.append(f"**Share StdDev:** {proc.get('share_stddev_pp', 0):.2f} pp")
+        lines.append(f"**Max Consecutive Breach:** {proc.get('max_consecutive_breach', 0)}")
+        lines.append(f"**Corr P99 Headroom:** {proc.get('corr_p99_headroom', 0):.2f}")
+        lines.append("")
+        reasons = proc.get("reasons", [])
+        if reasons:
+            lines.append("**Reasons:**")
+            for r in reasons:
+                lines.append(f"- {r}")
+        else:
+            lines.append("- All stability checks passed")
+        lines.append("")
+
+    # Window summary if present
+    win_summary = summary.get("windows")
+    if win_summary:
+        lines.append("## Window Summary")
+        lines.append("")
+        lines.append(f"**Total Windows:** {win_summary.get('total_windows', 0)}")
+        lines.append("")
+        phase_dist = win_summary.get("phase_distribution", {})
+        if phase_dist:
+            lines.append("**Phase Distribution:**")
+            for phase, count in phase_dist.items():
+                lines.append(f"- {phase}: {count}")
+            lines.append("")
+        lines.append(f"**Max Window RPS:** {win_summary.get('max_rps', 0):.2f}")
+        lines.append(f"**Min Window RPS:** {win_summary.get('min_rps', 0):.2f}")
+        lines.append("")
+
+     # Verdict details
     lines.append("## Verdict Details")
     lines.append("")
     reasons = summary.get("reasons", [])

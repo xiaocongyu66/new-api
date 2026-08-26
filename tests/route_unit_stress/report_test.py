@@ -18,6 +18,7 @@ from lib_report import (
     write_resources_csv,
     write_summary,
     render_report_md,
+    build_traffic_windows,
 )
 
 
@@ -174,7 +175,6 @@ def test_shares_csv_headers_and_rows(tmp: Path) -> bool:
     print("  OK: shares CSV headers and rows correct")
     return True
 
-
 def test_windows_csv_headers_and_rows(tmp: Path) -> bool:
     """Windows CSV has correct headers and one row per window."""
     windows = make_synthetic_windows()
@@ -189,12 +189,23 @@ def test_windows_csv_headers_and_rows(tmp: Path) -> bool:
     expected_headers = [
         "window_start", "arrivals", "completions", "rps", "success", "failed",
         "p50", "p95", "p99", "cpu_user", "rss", "disk_write_bps", "net_err",
+        "window_end", "samples", "phase", "route_shares", "corr_p99", "ewma",
     ]
     assert headers == expected_headers, f"headers mismatch: {headers} != {expected_headers}"
     assert len(rows) == 2, f"expected 2 rows, got {len(rows)}"
     assert rows[0][0] == "0", f"first row window_start should be 0, got {rows[0][0]}"
     assert rows[1][0] == "10", f"second row window_start should be 10, got {rows[1][0]}"
-    print("  OK: windows CSV headers and rows correct")
+    # Check new columns have values from synthetic data
+    assert rows[0][headers.index("window_end")] == "10", f"window_end should be 10, got {rows[0][headers.index('window_end')]}"
+    assert rows[1][headers.index("window_end")] == "20", f"window_end should be 20, got {rows[1][headers.index('window_end')]}"
+    assert rows[0][headers.index("samples")] == "5", f"samples should be 5, got {rows[0][headers.index('samples')]}"
+    assert rows[1][headers.index("samples")] == "4", f"samples should be 4, got {rows[1][headers.index('samples')]}"
+    # phase, route_shares, corr_p99, ewma should be empty (not in synthetic data)
+    assert rows[0][headers.index("phase")] == "", "phase should be empty for old format"
+    assert rows[0][headers.index("route_shares")] == "", "route_shares should be empty for old format"
+    assert rows[0][headers.index("corr_p99")] == "", "corr_p99 should be empty for old format"
+    assert rows[0][headers.index("ewma")] == "", "ewma should be empty for old format"
+    print("  OK: windows CSV headers and rows correct (with new columns)")
     return True
 
 
@@ -281,6 +292,358 @@ def test_report_md_underpowered(tmp: Path) -> bool:
     return True
 
 
+def make_synthetic_request_rows() -> list[dict]:
+    """Build 25 synthetic request rows across 3 windows (0-10, 10-20, 20-30s).
+
+    Window 0-10: 9 arrivals, 8 completions (1 completes in window 1), 1 failed
+    Window 10-20: 8 arrivals, 8 completions, 1 failed
+    Window 20-30: 8 arrivals, 7 completions, 1 failed
+    Total: 25 rows, 3 failures.
+    """
+    rows = []
+    rid = 0
+
+    # Window 0-10: 9 requests start in window 0
+    # 8 complete within window 0 (start_ts 1-8, end_ts = start+0.5)
+    for i in range(8):
+        rid += 1
+        rows.append({
+            "request_id": f"req-{rid:03d}",
+            "phase": "steady",
+            "stream": False,
+            "mode": "mock-ok",
+            "status": "success",
+            "latency_ms": 500 + i * 10,
+            "ttft_ms": 100,
+            "itl_ms": 400,
+            "error": "",
+            "start_ts": float(i + 1),        # 1..8
+            "end_ts": float(i + 1) + 0.5,     # 1.5..8.5
+        })
+    # 1 request starts in window 0 but completes in window 1
+    rid += 1
+    rows.append({
+        "request_id": f"req-{rid:03d}",
+        "phase": "steady",
+        "stream": False,
+        "mode": "mock-ok",
+        "status": "success",
+        "latency_ms": 2000,
+        "ttft_ms": 100,
+        "itl_ms": 1900,
+        "error": "",
+        "start_ts": 9.0,
+        "end_ts": 11.0,   # completes in window 1
+    })
+
+    # Window 10-20: 8 requests start in window 1
+    # 1 failed
+    for i in range(8):
+        rid += 1
+        status = "failed" if i == 0 else "success"
+        rows.append({
+            "request_id": f"req-{rid:03d}",
+            "phase": "steady",
+            "stream": False,
+            "mode": "mock-ok",
+            "status": status,
+            "latency_ms": 300 + i * 5,
+            "ttft_ms": 80,
+            "itl_ms": 220,
+            "error": "" if status == "success" else "timeout",
+            "start_ts": 11.0 + i,
+            "end_ts": 11.0 + i + 0.3,
+        })
+
+    # Window 20-30: 8 requests start in window 2
+    # 1 failed
+    for i in range(8):
+        rid += 1
+        status = "failed" if i == 7 else "success"
+        rows.append({
+            "request_id": f"req-{rid:03d}",
+            "phase": "steady",
+            "stream": False,
+            "mode": "mock-ok",
+            "status": status,
+            "latency_ms": 200 + i * 10,
+            "ttft_ms": 50,
+            "itl_ms": 150,
+            "error": "" if status == "success" else "connection_reset",
+            "start_ts": 21.0 + i,
+            "end_ts": 21.0 + i + 0.2,
+        })
+
+    return rows
+
+
+def test_build_traffic_windows_basics(tmp: Path) -> bool:
+    """build_traffic_windows: bucketing, arrivals vs completions, success/failed, p50."""
+    rows = make_synthetic_request_rows()
+    windows = build_traffic_windows(rows, [], window_s=10)
+
+    assert len(windows) == 3, f"expected 3 windows, got {len(windows)}"
+
+    # Window 0-10: arrivals=9, completions=8 (1 completes in window 1)
+    w0 = windows[0]
+    assert w0["window_start"] == 0, f"w0 start={w0['window_start']}"
+    assert w0["window_end"] == 10, f"w0 end={w0['window_end']}"
+    assert w0["arrivals"] == 9, f"w0 arrivals={w0['arrivals']}, expected 9"
+    assert w0["completions"] == 8, f"w0 completions={w0['completions']}, expected 8"
+    assert w0["success"] == 8, f"w0 success={w0['success']}, expected 8"
+    assert w0["failed"] == 0, f"w0 failed={w0['failed']}, expected 0"
+    assert w0["samples"] == 8, f"w0 samples={w0['samples']}"
+    assert w0["rps"] == 0.8, f"w0 rps={w0['rps']}, expected 0.8"
+
+    # Window 10-20: arrivals=8, completions=9 (1 from window 0 completes here + 8 local)
+    w1 = windows[1]
+    assert w1["window_start"] == 10, f"w1 start={w1['window_start']}"
+    assert w1["arrivals"] == 8, f"w1 arrivals={w1['arrivals']}, expected 8"
+    assert w1["completions"] == 9, f"w1 completions={w1['completions']}, expected 9"
+    assert w1["success"] == 8, f"w1 success={w1['success']}, expected 8 (1 failed)"
+    assert w1["failed"] == 1, f"w1 failed={w1['failed']}, expected 1"
+
+    # Window 20-30: arrivals=8, completions=8, 1 failed
+    w2 = windows[2]
+    assert w2["window_start"] == 20, f"w2 start={w2['window_start']}"
+    assert w2["arrivals"] == 8, f"w2 arrivals={w2['arrivals']}, expected 8"
+    assert w2["completions"] == 8, f"w2 completions={w2['completions']}, expected 8"
+    assert w2["success"] == 7, f"w2 success={w2['success']}, expected 7"
+    assert w2["failed"] == 1, f"w2 failed={w2['failed']}, expected 1"
+
+    # p50 for window 0: 8 success latencies 500,510,...,570 → sorted, median interpolation
+    # sorted: [500,510,520,530,540,550,560,570], n=8, idx=7*50/100=3.5 → (530+540)/2=535
+    assert w0["p50"] == 535.0, f"w0 p50={w0['p50']}, expected 535.0"
+
+    print("  OK: build_traffic_windows bucketing and counts correct")
+    return True
+
+
+def test_build_traffic_windows_phase_marks(tmp: Path) -> bool:
+    """build_traffic_windows: phase_marks assigns correct phase per window."""
+    rows = make_synthetic_request_rows()
+    phase_marks = {
+        "warmup_end": 5.0,      # before 5s = warmup
+        "step_at": 15.0,        # 5-15s = steady, 15s+ = fault
+        "cooldown_start": 25.0, # 15-25s = fault, 25s+ = cooldown
+    }
+    windows = build_traffic_windows(rows, [], window_s=10, phase_marks=phase_marks)
+
+    assert len(windows) == 3
+    # Window 0-10: midpoint=5, warmup_end=5, 5 < 5 is false → steady (mid not < warmup_end)
+    # Actually midpoint=5, warmup_end=5, 5 < 5 is false → not warmup
+    # step_at=15, 5 < 15 → steady
+    assert windows[0]["phase"] == "steady", f"w0 phase={windows[0]['phase']}, expected steady"
+    # Window 10-20: midpoint=15, step_at=15, 15 < 15 false → not steady, cooldown_start=25, 15 < 25 → fault
+    assert windows[1]["phase"] == "fault", f"w1 phase={windows[1]['phase']}, expected fault"
+    # Window 20-30: midpoint=25, cooldown_start=25, 25 < 25 false → cooldown
+    assert windows[2]["phase"] == "cooldown", f"w2 phase={windows[2]['phase']}, expected cooldown"
+
+    # Without phase_marks, all should be "steady"
+    windows_no_phase = build_traffic_windows(rows, [], window_s=10)
+    for w in windows_no_phase:
+        assert w["phase"] == "steady", f"phase should be steady without phase_marks, got {w['phase']}"
+
+    print("  OK: build_traffic_windows phase_marks correct")
+    return True
+
+
+def test_build_traffic_windows_ts_inference(tmp: Path) -> bool:
+    """build_traffic_windows: start_ts inference from end_ts+latency, skip rows missing both."""
+    rows = [
+        # Row with only end_ts + latency_ms → start_ts inferred
+        {
+            "request_id": "r1",
+            "status": "success",
+            "latency_ms": 2000,
+            "end_ts": 12.0,  # start_ts = 12 - 2 = 10 → arrival window 10-20
+        },
+        # Row with start_ts explicitly
+        {
+            "request_id": "r2",
+            "status": "success",
+            "latency_ms": 500,
+            "start_ts": 1.0,
+            "end_ts": 1.5,
+        },
+        # Row missing both start_ts and end_ts → skipped
+        {
+            "request_id": "r3",
+            "status": "success",
+            "latency_ms": 500,
+        },
+        # Row missing start_ts, has end_ts but no latency → start_ts = end_ts - 0 = end_ts → not None
+        # Actually latency_ms default 0, so start_ts = end_ts - 0 = end_ts
+        {
+            "request_id": "r4",
+            "status": "success",
+            "latency_ms": 0,
+            "end_ts": 22.0,
+        },
+    ]
+    windows = build_traffic_windows(rows, [], window_s=10)
+
+    # r2 arrives in window 0, completes in window 0
+    # r1 arrives in window 10 (start_ts=10), completes in window 10 (end_ts=12)
+    # r4 arrives in window 20 (start_ts=22), completes in window 20 (end_ts=22)
+    # r3 skipped
+    assert len(windows) == 3, f"expected 3 windows (r3 skipped), got {len(windows)}"
+
+    w0 = windows[0]
+    assert w0["window_start"] == 0
+    assert w0["arrivals"] == 1, f"w0 arrivals={w0['arrivals']}"
+    assert w0["completions"] == 1, f"w0 completions={w0['completions']}"
+
+    w1 = windows[1]
+    assert w1["window_start"] == 10
+    assert w1["arrivals"] == 1, f"w1 arrivals={w1['arrivals']}"
+    assert w1["completions"] == 1, f"w1 completions={w1['completions']}"
+
+    w2 = windows[2]
+    assert w2["window_start"] == 20
+    assert w2["arrivals"] == 1, f"w2 arrivals={w2['arrivals']}"
+    assert w2["completions"] == 1, f"w2 completions={w2['completions']}"
+
+    print("  OK: build_traffic_windows ts inference and skip correct")
+    return True
+
+
+def test_build_traffic_windows_integer_status(tmp: Path) -> bool:
+    """build_traffic_windows: integer status codes (200/429/503) correctly classified.
+
+    Production data uses HTTP status codes as integers. This test verifies:
+    - status=200 → success, status=429/503/others → failed
+    - success/failed counts accurate
+    - p50 computed only from successful (200) latencies
+    """
+    rows = [
+        # Window 0-10: 3 requests, 2 success (200), 1 failed (429)
+        {"request_id": "r1", "status": 200, "latency_ms": 100, "start_ts": 1.0, "end_ts": 1.1},
+        {"request_id": "r2", "status": 429, "latency_ms": 200, "start_ts": 2.0, "end_ts": 2.2},
+        {"request_id": "r3", "status": 200, "latency_ms": 300, "start_ts": 3.0, "end_ts": 3.3},
+        # Window 10-20: 2 requests, 1 success (200), 1 failed (503)
+        {"request_id": "r4", "status": 200, "latency_ms": 150, "start_ts": 11.0, "end_ts": 11.15},
+        {"request_id": "r5", "status": 503, "latency_ms": 500, "start_ts": 12.0, "end_ts": 12.5},
+        # Window 20-30: 1 request, success (200)
+        {"request_id": "r6", "status": 200, "latency_ms": 250, "start_ts": 21.0, "end_ts": 21.25},
+    ]
+    windows = build_traffic_windows(rows, [], window_s=10)
+
+    assert len(windows) == 3, f"expected 3 windows, got {len(windows)}"
+
+    # Window 0: success=2 (latencies 100,300), failed=1, p50=(100+300)/2=200
+    w0 = windows[0]
+    assert w0["window_start"] == 0
+    assert w0["arrivals"] == 3, f"w0 arrivals={w0['arrivals']}"
+    assert w0["completions"] == 3, f"w0 completions={w0['completions']}"
+    assert w0["success"] == 2, f"w0 success={w0['success']}, expected 2"
+    assert w0["failed"] == 1, f"w0 failed={w0['failed']}, expected 1"
+    assert w0["p50"] == 200.0, f"w0 p50={w0['p50']}, expected 200.0 (median of 100,300)"
+
+    # Window 1: success=1 (latency 150), failed=1, p50=150
+    w1 = windows[1]
+    assert w1["window_start"] == 10
+    assert w1["arrivals"] == 2, f"w1 arrivals={w1['arrivals']}"
+    assert w1["completions"] == 2, f"w1 completions={w1['completions']}"
+    assert w1["success"] == 1, f"w1 success={w1['success']}, expected 1"
+    assert w1["failed"] == 1, f"w1 failed={w1['failed']}, expected 1"
+    assert w1["p50"] == 150, f"w1 p50={w1['p50']}, expected 150"
+
+    # Window 2: success=1 (latency 250), failed=0, p50=250
+    w2 = windows[2]
+    assert w2["window_start"] == 20
+    assert w2["arrivals"] == 1, f"w2 arrivals={w2['arrivals']}"
+    assert w2["completions"] == 1, f"w2 completions={w2['completions']}"
+    assert w2["success"] == 1, f"w2 success={w2['success']}, expected 1"
+    assert w2["failed"] == 0, f"w2 failed={w2['failed']}, expected 0"
+    assert w2["p50"] == 250, f"w2 p50={w2['p50']}, expected 250"
+
+    # Totals
+    total_success = sum(w["success"] for w in windows)
+    total_failed = sum(w["failed"] for w in windows)
+    assert total_success == 4, f"total success={total_success}, expected 4"
+    assert total_failed == 2, f"total failed={total_failed}, expected 2"
+
+    print("  OK: build_traffic_windows integer status codes correct")
+    return True
+
+
+
+
+
+def test_windows_csv_backward_compat_old_dict(tmp: Path) -> bool:
+    """write_windows_csv: old-format dicts (without new keys) still write, new columns empty."""
+    old_windows = [
+        {"window_start": 0, "samples": 5, "cpu": {"avg": {"user": 10}}, "mem": {"avg": {"rss": 1000}}},
+        {"window_start": 10, "samples": 3, "cpu": {"avg": {"user": 12}}, "mem": {"avg": {"rss": 2000}}},
+    ]
+    path = tmp / "windows_old.csv"
+    write_windows_csv(path, old_windows)
+
+    with path.open() as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+
+    assert len(rows) == 2
+    # Old-format: arrivals/completions fall back to samples
+    assert rows[0]["arrivals"] == "5", f"old arrivals should fallback to samples, got {rows[0]['arrivals']}"
+    assert rows[0]["completions"] == "5", f"old completions should fallback to samples, got {rows[0]['completions']}"
+    # New columns empty
+    assert rows[0]["window_end"] == "", f"window_end should be empty, got {rows[0]['window_end']}"
+    assert rows[0]["phase"] == "", f"phase should be empty, got {rows[0]['phase']}"
+    assert rows[0]["route_shares"] == "", f"route_shares should be empty"
+    assert rows[0]["corr_p99"] == "", f"corr_p99 should be empty"
+    assert rows[0]["ewma"] == "", f"ewma should be empty"
+
+    print("  OK: write_windows_csv backward compat with old dicts")
+    return True
+
+
+def test_report_md_process_stability(tmp: Path) -> bool:
+    """render_report_md: process_stability section renders reasons."""
+    summary = make_synthetic_summary()
+    summary["scenario"] = "S6"
+    summary["verdict"] = "FAIL"
+    summary["process_stability"] = {
+        "ok": False,
+        "windows_analyzed": 60,
+        "insufficient_windows": 3,
+        "share_stddev_pp": 4.5,
+        "max_consecutive_breach": 3,
+        "corr_p99_headroom": 0.15,
+        "reasons": [
+            "corr_p99 headroom 0.15 below 0.20 threshold",
+            "share stddev 4.50pp exceeds 3.00pp limit (window>=200)",
+        ],
+    }
+    summary["windows"] = {
+        "total_windows": 60,
+        "phase_distribution": {"warmup": 5, "steady": 40, "fault": 10, "cooldown": 5},
+        "max_rps": 52.3,
+        "min_rps": 48.1,
+    }
+    md = render_report_md(summary)
+
+    assert "## Process Windows" in md, "Process Windows section not found"
+    assert "corr_p99 headroom 0.15 below 0.20 threshold" in md, "reason not rendered"
+    assert "share stddev 4.50pp exceeds 3.00pp limit" in md, "reason not rendered"
+    assert "## Window Summary" in md, "Window Summary section not found"
+    assert "60" in md, "total_windows not rendered"
+    assert "52.30" in md, "max_rps not rendered"
+
+    print("  OK: render_report_md process_stability renders reasons")
+    return True
+
+    md = render_report_md(summary)
+
+    assert "UNDERPOWERED" in md, "verdict UNDERPOWERED not found in report.md"
+    assert "13000" in md, "min_samples not found in report.md"
+    assert "100" in md, "actual n not found in report.md"
+    assert "样本量低于判据可行下限" in md, "warning text not found in report.md"
+    print("  OK: report.md renders UNDERPOWERED verdict with warning")
+    return True
+
+
 def test_summary_missing_field_raises(tmp: Path) -> bool:
     """write_summary with missing required field should still write (no crash), but report raises on missing verdict."""
     # write_summary itself is lenient — it writes whatever dict is given.
@@ -311,6 +674,12 @@ def run_all() -> int:
         ("report_md_product_fail", test_report_md_product_fail),
         ("report_md_underpowered", test_report_md_underpowered),
         ("summary_missing_field", test_summary_missing_field_raises),
+        ("build_traffic_windows_basics", test_build_traffic_windows_basics),
+        ("build_traffic_windows_phase_marks", test_build_traffic_windows_phase_marks),
+        ("build_traffic_windows_ts_inference", test_build_traffic_windows_ts_inference),
+        ("build_traffic_windows_integer_status", test_build_traffic_windows_integer_status),
+        ("windows_csv_backward_compat", test_windows_csv_backward_compat_old_dict),
+        ("report_md_process_stability", test_report_md_process_stability),
     ]
 
     failed = 0
