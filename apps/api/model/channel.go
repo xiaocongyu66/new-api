@@ -209,7 +209,7 @@ func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
 		return "", 0, types.NewError(errors.New("no keys available"), types.ErrorCodeChannelNoAvailableKey)
 	}
 
-	lock := GetChannelPollingLock(channel.Id)
+	lock := channelPollingLock(channel.Id)
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -350,13 +350,16 @@ func (channel *Channel) Save() error {
 // Keeping this allowlist here prevents a stale channel snapshot from
 // overwriting credentials, accounting counters, or channel configuration.
 func (channel *Channel) saveStatusState() error {
-	return channel.saveStatusStateWithTx(DB)
+	return channel.SaveStatusStateWithTx(DB)
 }
 
-// saveStatusStateWithTx is the tx-aware form of saveStatusState. It writes the
+// SaveStatusStateWithTx is the tx-aware form of saveStatusState. It writes the
 // same status-owned columns through the given transaction so callers can
 // commit the channel row together with the gateway routing revision bump.
-func (channel *Channel) saveStatusStateWithTx(tx *gorm.DB) error {
+// Exported because the channel health capability (internal/capabilities/channel)
+// owns the channel status mutation chain and must persist the row through the
+// shared MutateGatewayRouting transaction.
+func (channel *Channel) SaveStatusStateWithTx(tx *gorm.DB) error {
 	if channel.Id == 0 {
 		return errors.New("channel ID is 0")
 	}
@@ -643,95 +646,125 @@ func (channel *Channel) Delete() error {
 	return err
 }
 
-var channelStatusLock sync.Mutex
+// PollingLockFn is the channel polling-lock entry point. The capability package
+// internal/capabilities/channel injects the real implementation from its init
+// (see status_store.go); model cannot import the capability without creating an
+// import cycle, so the dependency points the other way. When nil (capability not
+// loaded, e.g. in model-only tests) GetNextEnabledKey falls back to a sync.Map so
+// multi-key polling stays correct without the capability.
+var PollingLockFn func(channelId int) *sync.Mutex
 
-// channelPollingLocks stores locks for each channel.id to ensure thread-safe polling
+// RegisterPollingLockFunc installs the capability's GetChannelPollingLock
+// implementation. Called once by internal/capabilities/channel in its init.
+func RegisterPollingLockFunc(f func(int) *sync.Mutex) {
+	PollingLockFn = f
+}
+
+// channelPollingLock returns the per-channel polling mutex.
+// If the capability has registered its implementation, it delegates; otherwise
+// it uses a local sync.Map so multi-key polling works without the capability
+// (e.g. in model-only tests).
 var channelPollingLocks sync.Map
 
-// GetChannelPollingLock returns or creates a mutex for the given channel ID
-func GetChannelPollingLock(channelId int) *sync.Mutex {
+func channelPollingLock(channelId int) *sync.Mutex {
+	if PollingLockFn != nil {
+		return PollingLockFn(channelId)
+	}
+	// Fallback for tests / capability-absent builds.
 	if lock, exists := channelPollingLocks.Load(channelId); exists {
 		return lock.(*sync.Mutex)
 	}
-	// Create new lock for this channel
 	newLock := &sync.Mutex{}
 	actual, _ := channelPollingLocks.LoadOrStore(channelId, newLock)
 	return actual.(*sync.Mutex)
 }
 
-// CleanupChannelPollingLocks removes locks for channels that no longer exist
-// This is optional and can be called periodically to prevent memory leaks
-func CleanupChannelPollingLocks() {
-	var activeChannelIds []int
-	DB.Model(&Channel{}).Pluck("id", &activeChannelIds)
+// UpdateChannelStatusFn is the channel-status mutation entry point. The
+// capability package internal/capabilities/channel injects the real
+// implementation from its init (see status_store.go); model cannot import the
+// capability without creating an import cycle, so the dependency points the
+// other way. When nil (capability not loaded, e.g. in model-only tests) the
+// call falls back to the legacy local implementation below.
+var UpdateChannelStatusFn func(channelId int, usingKey string, status int, reason string) bool
 
-	activeChannelSet := make(map[int]bool)
-	for _, id := range activeChannelIds {
-		activeChannelSet[id] = true
-	}
-
-	channelPollingLocks.Range(func(key, value interface{}) bool {
-		channelId := key.(int)
-		if !activeChannelSet[channelId] {
-			channelPollingLocks.Delete(channelId)
-		}
-		return true
-	})
+// RegisterUpdateChannelStatusFunc installs the capability's
+// UpdateChannelStatus implementation. Called once by
+// internal/capabilities/channel in its init.
+func RegisterUpdateChannelStatusFunc(f func(int, string, int, string) bool) {
+	UpdateChannelStatusFn = f
 }
 
-func handlerMultiKeyUpdate(channel *Channel, usingKey string, status int, reason string) {
+// UpdateChannelStatus mutates the channel status (and, for multi-key channels,
+// the per-key status) inside a MutateGatewayRouting transaction. When the
+// capability has registered its implementation it delegates; otherwise it
+// falls back to the legacy local implementation so model-only tests keep
+// working without the capability package loaded.
+func UpdateChannelStatus(channelId int, usingKey string, status int, reason string) bool {
+	if UpdateChannelStatusFn != nil {
+		return UpdateChannelStatusFn(channelId, usingKey, status, reason)
+	}
+	return legacyUpdateChannelStatus(channelId, usingKey, status, reason)
+}
+
+// HandlerMultiKeyUpdate applies a status change to one key of a multi-key
+// channel, updating the per-key status maps and deriving the channel-level
+// status. Exported so the channel health capability (which owns the status
+// mutation chain) can call it without duplicating the logic.
+func HandlerMultiKeyUpdate(channel *Channel, usingKey string, status int, reason string) {
 	keys := channel.GetKeys()
 	if len(keys) == 0 {
 		channel.Status = status
-	} else {
-		keyIndex := -1
-		for i, key := range keys {
-			if key == usingKey {
-				keyIndex = i
-				break
-			}
+		return
+	}
+	keyIndex := -1
+	for i, key := range keys {
+		if key == usingKey {
+			keyIndex = i
+			break
 		}
-		if keyIndex < 0 {
-			if usingKey != "" {
-				common.SysLog(fmt.Sprintf("failed to update multi-key status: channel_id=%d, using key not found", channel.Id))
-				return
-			}
-			channel.Status = status
-			info := channel.GetOtherInfo()
-			info["status_reason"] = reason
-			info["status_time"] = common.GetTimestamp()
-			channel.SetOtherInfo(info)
+	}
+	if keyIndex < 0 {
+		if usingKey != "" {
+			common.SysLog(fmt.Sprintf("failed to update multi-key status: channel_id=%d, using key not found", channel.Id))
 			return
 		}
-		if channel.ChannelInfo.MultiKeyStatusList == nil {
-			channel.ChannelInfo.MultiKeyStatusList = make(map[int]int)
+		channel.Status = status
+		info := channel.GetOtherInfo()
+		info["status_reason"] = reason
+		info["status_time"] = common.GetTimestamp()
+		channel.SetOtherInfo(info)
+		return
+	}
+	if channel.ChannelInfo.MultiKeyStatusList == nil {
+		channel.ChannelInfo.MultiKeyStatusList = make(map[int]int)
+	}
+	if status == common.ChannelStatusEnabled {
+		delete(channel.ChannelInfo.MultiKeyStatusList, keyIndex)
+	} else {
+		channel.ChannelInfo.MultiKeyStatusList[keyIndex] = status
+		if channel.ChannelInfo.MultiKeyDisabledReason == nil {
+			channel.ChannelInfo.MultiKeyDisabledReason = make(map[int]string)
 		}
-		if status == common.ChannelStatusEnabled {
-			delete(channel.ChannelInfo.MultiKeyStatusList, keyIndex)
-		} else {
-			channel.ChannelInfo.MultiKeyStatusList[keyIndex] = status
-			if channel.ChannelInfo.MultiKeyDisabledReason == nil {
-				channel.ChannelInfo.MultiKeyDisabledReason = make(map[int]string)
-			}
-			if channel.ChannelInfo.MultiKeyDisabledTime == nil {
-				channel.ChannelInfo.MultiKeyDisabledTime = make(map[int]int64)
-			}
-			channel.ChannelInfo.MultiKeyDisabledReason[keyIndex] = reason
-			channel.ChannelInfo.MultiKeyDisabledTime[keyIndex] = common.GetTimestamp()
+		if channel.ChannelInfo.MultiKeyDisabledTime == nil {
+			channel.ChannelInfo.MultiKeyDisabledTime = make(map[int]int64)
 		}
-		if !hasEnabledMultiKey(keys, channel.ChannelInfo.MultiKeyStatusList) {
-			channel.Status = common.ChannelStatusAutoDisabled
-			info := channel.GetOtherInfo()
-			info["status_reason"] = "All keys are disabled"
-			info["status_time"] = common.GetTimestamp()
-			channel.SetOtherInfo(info)
-		} else if status == common.ChannelStatusEnabled {
-			channel.Status = common.ChannelStatusEnabled
-		}
+		channel.ChannelInfo.MultiKeyDisabledReason[keyIndex] = reason
+		channel.ChannelInfo.MultiKeyDisabledTime[keyIndex] = common.GetTimestamp()
+	}
+	if !HasEnabledMultiKey(keys, channel.ChannelInfo.MultiKeyStatusList) {
+		channel.Status = common.ChannelStatusAutoDisabled
+		info := channel.GetOtherInfo()
+		info["status_reason"] = "All keys are disabled"
+		info["status_time"] = common.GetTimestamp()
+		channel.SetOtherInfo(info)
+	} else if status == common.ChannelStatusEnabled {
+		channel.Status = common.ChannelStatusEnabled
 	}
 }
 
-func hasEnabledMultiKey(keys []string, statusList map[int]int) bool {
+// HasEnabledMultiKey reports whether any key in keys is still enabled.
+// Exported for the channel health capability.
+func HasEnabledMultiKey(keys []string, statusList map[int]int) bool {
 	for i := range keys {
 		if statusList == nil {
 			return true
@@ -744,68 +777,34 @@ func hasEnabledMultiKey(keys []string, statusList map[int]int) bool {
 	return false
 }
 
-func UpdateChannelStatus(channelId int, usingKey string, status int, reason string) bool {
+// channelStatusLock guards the cache-refresh section of the legacy
+// UpdateChannelStatus fallback. The capability owns its own copy.
+var channelStatusLock sync.Mutex
+
+// legacyUpdateChannelStatus is the fallback used when the capability package
+// is not loaded (e.g. model-only tests). It mirrors the capability
+// implementation using only model-internal symbols.
+func legacyUpdateChannelStatus(channelId int, usingKey string, status int, reason string) bool {
 	if common.MemoryCacheEnabled {
 		channelStatusLock.Lock()
 		defer channelStatusLock.Unlock()
 	}
-
-	// ChannelInfo stores both multi-key status and the polling cursor. Hold the
-	// same per-channel lock from the first read through persistence so neither
-	// writer can save a stale JSON snapshot over the other.
-	pollingLock := GetChannelPollingLock(channelId)
+	pollingLock := channelPollingLock(channelId)
 	pollingLock.Lock()
 	defer pollingLock.Unlock()
 
-	ok, err := updateChannelStatusWithTx(DB, channelId, usingKey, status, reason)
-	if err != nil || !ok {
+	channel, err := GetChannelById(channelId, true)
+	if err != nil || channel == nil {
+		return false
+	}
+	if channel.Status == status {
 		return false
 	}
 
-	// Refresh cache only after the mutation has committed. Use the committed
-	// channel row as the source of truth so a rolled-back transaction never
-	// poisons the in-memory status.
-	if common.MemoryCacheEnabled {
-		committed, loadErr := GetChannelById(channelId, true)
-		if loadErr != nil || committed == nil {
-			return true
-		}
-		if committed.ChannelInfo.IsMultiKey {
-			CacheUpdateChannelStatus(channelId, committed.Status)
-		} else {
-			if committed.Status == status {
-				// Non-multi-key path requested a specific status; reflect it.
-				CacheUpdateChannelStatus(channelId, status)
-			} else {
-				CacheUpdateChannelStatus(channelId, committed.Status)
-			}
-		}
-	}
-	return true
-}
-
-// updateChannelStatusWithTx performs the DB channel status mutation plus the
-// ability enabled-state mutation inside one MutateGatewayRouting transaction.
-// It returns (false, nil) without writing when the stored status already equals
-// the requested status (no-op), and (true, nil) after a successful commit. The
-// caller owns cache refresh.
-func updateChannelStatusWithTx(_ *gorm.DB, channelId int, usingKey string, status int, reason string) (bool, error) {
-	channel, err := GetChannelById(channelId, true)
-	if err != nil || channel == nil {
-		return false, err
-	}
-	if channel.Status == status {
-		return false, nil
-	}
-
-	// Mutate the in-memory channel the same way the legacy flow did, then
-	// decide whether the ability enabled-state must move with it. MutateGatewayRouting
-	// owns the outer transaction so the channel row, the ability rows and the
-	// routing revision bump commit together.
 	shouldUpdateAbilities := false
 	if channel.ChannelInfo.IsMultiKey {
 		beforeStatus := channel.Status
-		handlerMultiKeyUpdate(channel, usingKey, status, reason)
+		HandlerMultiKeyUpdate(channel, usingKey, status, reason)
 		if beforeStatus != channel.Status {
 			shouldUpdateAbilities = true
 		}
@@ -819,12 +818,12 @@ func updateChannelStatusWithTx(_ *gorm.DB, channelId int, usingKey string, statu
 	}
 
 	_, mutateErr := MutateGatewayRouting(func(tx *gorm.DB) error {
-		if err := channel.saveStatusStateWithTx(tx); err != nil {
+		if err := channel.SaveStatusStateWithTx(tx); err != nil {
 			return err
 		}
 		if shouldUpdateAbilities {
 			enabled := channel.Status == common.ChannelStatusEnabled
-			if err := updateAbilityStatusWithTx(tx, channelId, enabled); err != nil {
+			if err := UpdateAbilityStatusWithTx(tx, channelId, enabled); err != nil {
 				return err
 			}
 		}
@@ -832,9 +831,33 @@ func updateChannelStatusWithTx(_ *gorm.DB, channelId int, usingKey string, statu
 	})
 	if mutateErr != nil {
 		common.SysLog(fmt.Sprintf("failed to update channel status: channel_id=%d, status=%d, error=%v", channel.Id, status, mutateErr))
-		return false, mutateErr
+		return false
 	}
-	return true, nil
+	if common.MemoryCacheEnabled {
+		committed, loadErr := GetChannelById(channelId, true)
+		if loadErr != nil || committed == nil {
+			return true
+		}
+		if committed.ChannelInfo.IsMultiKey {
+			CacheUpdateChannelStatus(channelId, committed.Status)
+		} else if committed.Status == status {
+			CacheUpdateChannelStatus(channelId, status)
+		} else {
+			CacheUpdateChannelStatus(channelId, committed.Status)
+		}
+	}
+	return true
+}
+
+// UpdateAbilityStatusWithTx is the tx-aware form of UpdateAbilityStatus.
+// It writes the enabled column for every ability row of the channel through the
+// given transaction so callers can commit it together with the channel status
+// and the gateway routing revision bump.
+// Exported because the channel health capability (internal/capabilities/channel)
+// owns the channel status mutation chain and must update abilities through the
+// shared MutateGatewayRouting transaction.
+func UpdateAbilityStatusWithTx(tx *gorm.DB, channelId int, status bool) error {
+	return updateAbilityStatusWithTx(tx, channelId, status)
 }
 
 // EnableChannelByTag flips the status of every channel carrying tag to enabled
