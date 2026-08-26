@@ -121,7 +121,6 @@ func SetUserLangLoader(loader func(userId int) string) {
 	userLangLoaderFunc = loader
 }
 
-
 // GetLangFromCtx extracts the language setting from a transport context.
 // It checks multiple sources in priority order:
 // 1. User settings (ContextKeyUserSetting) - if already loaded (e.g., by TokenAuth)
