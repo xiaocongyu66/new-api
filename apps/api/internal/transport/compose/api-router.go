@@ -1,4 +1,4 @@
-package router
+package compose
 
 import (
 	"github.com/QuantumNous/new-api/controller"
@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/capabilities/usage"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	tpmw "github.com/QuantumNous/new-api/internal/transport/middleware"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/service/authz"
 
@@ -19,7 +20,7 @@ import (
 
 func SetApiRouter(router *gin.Engine) {
 	apiRouter := router.Group("/api")
-	apiRouter.Use(middleware.RouteTag("api"))
+	apiRouter.Use(tpmw.RouteTag("api"))
 	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression))
 	apiRouter.Use(ginadapter.Middleware(middleware.BodyStorageCleanup())) // 清理请求体存储
 	apiRouter.Use(ginadapter.Middleware(middleware.GlobalAPIRateLimit()))
@@ -48,8 +49,7 @@ func SetApiRouter(router *gin.Engine) {
 		logRoute.GET("/search", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(usage.SearchAllLogs))
 		logRoute.GET("/self", ginadapter.Middleware(security.UserAuth()), ginadapter.Handler(usage.GetUserLogs))
 		logRoute.GET("/self/search", ginadapter.Middleware(security.UserAuth()), ginadapter.Middleware(middleware.SearchRateLimit()), ginadapter.Handler(usage.SearchUserLogs))
-
-		logRoute.Use(middleware.CORS(), ginadapter.Middleware(middleware.CriticalRateLimit()))
+		logRoute.Use(tpmw.CORS(), ginadapter.Middleware(middleware.CriticalRateLimit()))
 		{
 			logRoute.GET("/token", ginadapter.Middleware(security.TokenAuthReadOnly()), ginadapter.Handler(usage.GetLogByKey))
 		}
@@ -303,7 +303,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		usageRoute := apiRouter.Group("/usage")
-		usageRoute.Use(middleware.CORS(), ginadapter.Middleware(middleware.CriticalRateLimit()))
+		usageRoute.Use(tpmw.CORS(), ginadapter.Middleware(middleware.CriticalRateLimit()))
 		{
 			tokenUsageRoute := usageRoute.Group("/token")
 			tokenUsageRoute.Use(ginadapter.Middleware(security.TokenAuthReadOnly()))

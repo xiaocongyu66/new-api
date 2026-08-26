@@ -1,4 +1,4 @@
-package router
+package compose
 
 import (
 	"github.com/QuantumNous/new-api/internal/capabilities/billing"

@@ -1,9 +1,10 @@
-package router
+package compose
 
 import (
 	"github.com/QuantumNous/new-api/internal/capabilities/billing"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	tpmw "github.com/QuantumNous/new-api/internal/transport/middleware"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
@@ -11,7 +12,7 @@ import (
 
 func SetDashboardRouter(router *gin.Engine) {
 	apiRouter := router.Group("/")
-	apiRouter.Use(middleware.RouteTag("old_api"))
+	apiRouter.Use(tpmw.RouteTag("old_api"))
 	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression))
 	apiRouter.Use(ginadapter.Middleware(middleware.GlobalAPIRateLimit()))
 	apiRouter.Use(ginadapter.Middleware(security.TokenAuth()))

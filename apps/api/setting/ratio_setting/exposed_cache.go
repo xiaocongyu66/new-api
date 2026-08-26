@@ -4,14 +4,12 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/gin-gonic/gin"
 )
 
 const exposedDataTTL = 30 * time.Second
 
 type exposedCache struct {
-	data      gin.H
+	data      map[string]any
 	expiresAt time.Time
 }
 
@@ -24,24 +22,24 @@ func InvalidateExposedDataCache() {
 	exposedData.Store((*exposedCache)(nil))
 }
 
-func cloneGinH(src gin.H) gin.H {
-	dst := make(gin.H, len(src))
+func cloneMap(src map[string]any) map[string]any {
+	dst := make(map[string]any, len(src))
 	for k, v := range src {
 		dst[k] = v
 	}
 	return dst
 }
 
-func GetExposedData() gin.H {
+func GetExposedData() map[string]any {
 	if c, ok := exposedData.Load().(*exposedCache); ok && c != nil && time.Now().Before(c.expiresAt) {
-		return cloneGinH(c.data)
+		return cloneMap(c.data)
 	}
 	rebuildMu.Lock()
 	defer rebuildMu.Unlock()
 	if c, ok := exposedData.Load().(*exposedCache); ok && c != nil && time.Now().Before(c.expiresAt) {
-		return cloneGinH(c.data)
+		return cloneMap(c.data)
 	}
-	newData := gin.H{
+	newData := map[string]any{
 		"model_ratio":        GetModelRatioCopy(),
 		"completion_ratio":   GetCompletionRatioCopy(),
 		"cache_ratio":        GetCacheRatioCopy(),
@@ -52,5 +50,5 @@ func GetExposedData() gin.H {
 		data:      newData,
 		expiresAt: time.Now().Add(exposedDataTTL),
 	})
-	return cloneGinH(newData)
+	return cloneMap(newData)
 }

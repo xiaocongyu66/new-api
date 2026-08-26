@@ -14,7 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/bytedance/gopkg/util/gopool"
-	"github.com/gin-gonic/gin"
 )
 
 const (
@@ -64,8 +63,8 @@ func SetupLogger() {
 		currentLogPathMu.Unlock()
 
 		common.LogWriterMu.Lock()
-		gin.DefaultWriter = io.MultiWriter(os.Stdout, fd)
-		gin.DefaultErrorWriter = io.MultiWriter(os.Stderr, fd)
+		common.LogOutput = io.MultiWriter(os.Stdout, fd)
+		common.LogErrOutput = io.MultiWriter(os.Stderr, fd)
 		if oldFile != nil {
 			_ = oldFile.Close()
 		}
@@ -103,9 +102,9 @@ func logHelper(ctx context.Context, level string, msg string) {
 	}
 	now := time.Now()
 	common.LogWriterMu.RLock()
-	writer := gin.DefaultErrorWriter
+	writer := common.LogErrOutput
 	if level == loggerINFO {
-		writer = gin.DefaultWriter
+		writer = common.LogOutput
 	}
 	_, _ = fmt.Fprintf(writer, "[%s] %v | %s | %s \n", level, now.Format("2006/01/02 - 15:04:05"), id, msg)
 	common.LogWriterMu.RUnlock()
