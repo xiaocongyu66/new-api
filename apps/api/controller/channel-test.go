@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/capabilities/billing"
+	"github.com/QuantumNous/new-api/internal/billing"
 	"github.com/QuantumNous/new-api/internal/gateway"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
@@ -20,7 +20,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/internal/capabilities/administration"
+	"github.com/QuantumNous/new-api/internal/ops"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
@@ -1069,7 +1069,7 @@ func selectChannelsForAutomaticTest(channels []*model.Channel, mode string) []*m
 // test loop inline. If any channel_test task is already active, the manual run is
 // rejected so the caller does not mistake a scheduled run for this manual one.
 func TestAllChannels(c contract.Context) {
-	task, created, err := administration.EnqueueSystemTask(model.SystemTaskTypeChannelTest, channelTestTaskPayload{
+	task, created, err := ops.EnqueueSystemTask(model.SystemTaskTypeChannelTest, channelTestTaskPayload{
 		Mode:   operation_setting.ChannelTestModeScheduledAll,
 		Notify: true,
 	})

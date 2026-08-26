@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	channelcap "github.com/QuantumNous/new-api/internal/capabilities/channel"
+	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -25,7 +25,7 @@ func DisableChannel(channelError types.ChannelError, reason string) {
 		return
 	}
 
-	success := channelcap.UpdateChannelStatus(channelError.ChannelId, channelError.UsingKey, common.ChannelStatusAutoDisabled, reason)
+	success := catalog.UpdateChannelStatus(channelError.ChannelId, channelError.UsingKey, common.ChannelStatusAutoDisabled, reason)
 	if success {
 		subject := fmt.Sprintf("通道「%s」（#%d）已被禁用", channelError.ChannelName, channelError.ChannelId)
 		content := fmt.Sprintf("通道「%s」（#%d）已被禁用，原因：%s", channelError.ChannelName, channelError.ChannelId, reason)
@@ -34,7 +34,7 @@ func DisableChannel(channelError types.ChannelError, reason string) {
 }
 
 func EnableChannel(channelId int, usingKey string, channelName string) {
-	success := channelcap.UpdateChannelStatus(channelId, usingKey, common.ChannelStatusEnabled, "")
+	success := catalog.UpdateChannelStatus(channelId, usingKey, common.ChannelStatusEnabled, "")
 	if success {
 		subject := fmt.Sprintf("通道「%s」（#%d）已被启用", channelName, channelId)
 		content := fmt.Sprintf("通道「%s」（#%d）已被启用", channelName, channelId)

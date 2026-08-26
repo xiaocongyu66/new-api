@@ -5,7 +5,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 )
 
-// The channel cache implementation lives in internal/capabilities/channel
+// The channel cache implementation lives in internal/catalog
 // (cache_store.go); it fills these bridges in its init(). Model code keeps
 // calling the package-level wrappers below, so no model file imports the
 // capability and the dependency direction stays one-way.
@@ -81,7 +81,7 @@ func GroupCol() string {
 }
 
 // CacheBridge carries the capability-side cache entry points. Registered once
-// by internal/capabilities/channel in its init.
+// by internal/catalog in its init.
 type CacheBridge struct {
 	GetChannel            func(id int) (*Channel, error)
 	GetChannelInfo        func(id int) (*ChannelInfo, error)

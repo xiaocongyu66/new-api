@@ -1,7 +1,7 @@
 package controller
 
 import (
-	taskcap "github.com/QuantumNous/new-api/internal/capabilities/task"
+	taskcap "github.com/QuantumNous/new-api/internal/task"
 
 	"context"
 	"fmt"
@@ -9,7 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/internal/capabilities/administration"
+	"github.com/QuantumNous/new-api/internal/ops"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -19,12 +19,12 @@ import (
 // update, and async task polling (Midjourney / Suno / video) jobs into the
 // system task framework so a DB lease dedups execution across multiple master
 // instances and each run is recorded as one task row. Call this before
-// administration.StartSystemTaskRunner.
+// ops.StartSystemTaskRunner.
 func RegisterScheduledSystemTasks() {
-	administration.RegisterSystemTaskHandler(channelTestHandler{})
-	administration.RegisterSystemTaskHandler(modelUpdateHandler{})
-	administration.RegisterSystemTaskHandler(midjourneyPollHandler{})
-	administration.RegisterSystemTaskHandler(asyncTaskPollHandler{})
+	ops.RegisterSystemTaskHandler(channelTestHandler{})
+	ops.RegisterSystemTaskHandler(modelUpdateHandler{})
+	ops.RegisterSystemTaskHandler(midjourneyPollHandler{})
+	ops.RegisterSystemTaskHandler(asyncTaskPollHandler{})
 }
 
 // channelTestHandler runs the scheduled "test all channels" job. Enablement and
@@ -64,7 +64,7 @@ func (channelTestHandler) Run(ctx context.Context, task *model.SystemTask, runne
 		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
 		return
 	}
-	summary, err := runChannelTestTask(ctx, payload.Mode, payload.Notify, administration.NewSystemTaskProgressReporter(task, runnerID))
+	summary, err := runChannelTestTask(ctx, payload.Mode, payload.Notify, ops.NewSystemTaskProgressReporter(task, runnerID))
 	if err != nil {
 		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
 		return
@@ -109,7 +109,7 @@ func (modelUpdateHandler) Run(ctx context.Context, task *model.SystemTask, runne
 		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
 		return
 	}
-	summary := runChannelUpstreamModelUpdateTaskOnce(ctx, payload.Manual, !payload.Manual, administration.NewSystemTaskProgressReporter(task, runnerID))
+	summary := runChannelUpstreamModelUpdateTaskOnce(ctx, payload.Manual, !payload.Manual, ops.NewSystemTaskProgressReporter(task, runnerID))
 	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, summary, nil)
 }
 
@@ -130,7 +130,7 @@ func (midjourneyPollHandler) Interval() time.Duration { return 15 * time.Second 
 func (midjourneyPollHandler) NewPayload() any { return nil }
 
 func (midjourneyPollHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
-	summary := runMidjourneyTaskUpdateOnce(ctx, administration.NewSystemTaskProgressReporter(task, runnerID))
+	summary := runMidjourneyTaskUpdateOnce(ctx, ops.NewSystemTaskProgressReporter(task, runnerID))
 	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, summary, nil)
 }
 
@@ -150,7 +150,7 @@ func (asyncTaskPollHandler) Interval() time.Duration { return 15 * time.Second }
 func (asyncTaskPollHandler) NewPayload() any { return nil }
 
 func (asyncTaskPollHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
-	summary := service.RunTaskPollingOnce(ctx, administration.NewSystemTaskProgressReporter(task, runnerID))
+	summary := service.RunTaskPollingOnce(ctx, ops.NewSystemTaskProgressReporter(task, runnerID))
 	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, summary, nil)
 }
 
@@ -159,7 +159,7 @@ func finishSystemTaskHandler(task *model.SystemTask, runnerID string, status mod
 	if runErr != nil {
 		errorMessage = runErr.Error()
 	}
-	if err := administration.FinishSystemTask(task.TaskID, runnerID, status, result, errorMessage); err != nil {
+	if err := ops.FinishSystemTask(task.TaskID, runnerID, status, result, errorMessage); err != nil {
 		common.SysLog(fmt.Sprintf("system task %s failed to persist result: %v", task.TaskID, err))
 	}
 }

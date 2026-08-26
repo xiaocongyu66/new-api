@@ -3,7 +3,7 @@ package relay
 import (
 	"errors"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/capabilities/billing"
+	"github.com/QuantumNous/new-api/internal/billing"
 	"io"
 	"net/http"
 

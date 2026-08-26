@@ -354,7 +354,7 @@ func (channel *Channel) saveStatusState() error {
 // SaveStatusStateWithTx is the tx-aware form of saveStatusState. It writes the
 // same status-owned columns through the given transaction so callers can
 // commit the channel row together with the gateway routing revision bump.
-// Exported because the channel health capability (internal/capabilities/channel)
+// Exported because the channel health capability (internal/catalog)
 // owns the channel status mutation chain and must persist the row through the
 // shared MutateGatewayRouting transaction.
 func (channel *Channel) SaveStatusStateWithTx(tx *gorm.DB) error {
@@ -654,7 +654,7 @@ func (channel *Channel) Delete() error {
 }
 
 // PollingLockFn is the channel polling-lock entry point. The capability package
-// internal/capabilities/channel injects the real implementation from its init
+// internal/catalog injects the real implementation from its init
 // (see status_store.go); model cannot import the capability without creating an
 // import cycle, so the dependency points the other way. When nil (capability not
 // loaded, e.g. in model-only tests) GetNextEnabledKey falls back to a sync.Map so
@@ -662,7 +662,7 @@ func (channel *Channel) Delete() error {
 var PollingLockFn func(channelId int) *sync.Mutex
 
 // RegisterPollingLockFunc installs the capability's GetChannelPollingLock
-// implementation. Called once by internal/capabilities/channel in its init.
+// implementation. Called once by internal/catalog in its init.
 func RegisterPollingLockFunc(f func(int) *sync.Mutex) {
 	PollingLockFn = f
 }
@@ -687,7 +687,7 @@ func channelPollingLock(channelId int) *sync.Mutex {
 }
 
 // UpdateChannelStatusFn is the channel-status mutation entry point. The
-// capability package internal/capabilities/channel injects the real
+// capability package internal/catalog injects the real
 // implementation from its init (see status_store.go); model cannot import the
 // capability without creating an import cycle, so the dependency points the
 // other way. When nil (capability not loaded, e.g. in model-only tests) the
@@ -696,7 +696,7 @@ var UpdateChannelStatusFn func(channelId int, usingKey string, status int, reaso
 
 // RegisterUpdateChannelStatusFunc installs the capability's
 // UpdateChannelStatus implementation. Called once by
-// internal/capabilities/channel in its init.
+// internal/catalog in its init.
 func RegisterUpdateChannelStatusFunc(f func(int, string, int, string) bool) {
 	UpdateChannelStatusFn = f
 }
@@ -860,7 +860,7 @@ func legacyUpdateChannelStatus(channelId int, usingKey string, status int, reaso
 // It writes the enabled column for every ability row of the channel through the
 // given transaction so callers can commit it together with the channel status
 // and the gateway routing revision bump.
-// Exported because the channel health capability (internal/capabilities/channel)
+// Exported because the channel health capability (internal/catalog)
 // owns the channel status mutation chain and must update abilities through the
 // shared MutateGatewayRouting transaction.
 func UpdateAbilityStatusWithTx(tx *gorm.DB, channelId int, status bool) error {

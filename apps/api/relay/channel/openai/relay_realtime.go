@@ -2,7 +2,7 @@ package openai
 
 import (
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/capabilities/billing"
+	"github.com/QuantumNous/new-api/internal/billing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"

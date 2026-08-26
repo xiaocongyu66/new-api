@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/capabilities/billing"
+	"github.com/QuantumNous/new-api/internal/billing"
 	"io"
 	"log"
 	"net/http"
@@ -15,8 +15,8 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
-	channelcap "github.com/QuantumNous/new-api/internal/capabilities/channel"
-	taskcap "github.com/QuantumNous/new-api/internal/capabilities/task"
+	catalog "github.com/QuantumNous/new-api/internal/catalog"
+	taskcap "github.com/QuantumNous/new-api/internal/task"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -580,7 +580,7 @@ func RelayMidjourneySubmit(c contract.Context, relayInfo *relaycommon.RelayInfo)
 			common.SysLog("get_channel_null: " + err.Error())
 		}
 		if channel.GetAutoBan() && common.AutomaticDisableChannelEnabled {
-			channelcap.UpdateChannelStatus(midjourneyTask.ChannelId, "", 2, "No available account instance")
+			catalog.UpdateChannelStatus(midjourneyTask.ChannelId, "", 2, "No available account instance")
 		}
 	}
 	if midjResponse.Code != 1 && midjResponse.Code != 21 && midjResponse.Code != 22 {

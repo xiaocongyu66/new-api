@@ -9,7 +9,7 @@ import (
 )
 
 // HealthBridge carries the capability-side health store entry points.
-// Registered once by internal/capabilities/channel in its init().
+// Registered once by internal/catalog in its init().
 type HealthBridge struct {
 	ClassifyOutcome       func(err *types.NewAPIError, channelID int) ChannelOutcome
 	RecordChannelOutcome  func(channelID int, outcome ChannelOutcome)
@@ -36,7 +36,7 @@ func RegisterHealthBridge(b HealthBridge) {
 
 // ChannelHealthManager tracks per-channel EWMA success-rate scores in memory.
 // It is a thin forwarding facade; the business logic lives in
-// internal/capabilities/channel.HealthStore and is accessed via HealthBridge.
+// internal/catalog.HealthStore and is accessed via HealthBridge.
 // When the bridge is not registered (e.g., model-only tests), a local fallback
 // implementation provides the same behavior.
 type ChannelHealthManager struct {

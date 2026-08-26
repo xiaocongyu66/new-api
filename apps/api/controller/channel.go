@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/capabilities/billing"
-	channelcap "github.com/QuantumNous/new-api/internal/capabilities/channel"
+	"github.com/QuantumNous/new-api/internal/billing"
+	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strconv"
@@ -1137,7 +1137,7 @@ func UpdateChannelStatus(c contract.Context) {
 		common.CtxApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	changed := channelcap.UpdateChannelStatus(id, "", req.Status, "manual operation")
+	changed := catalog.UpdateChannelStatus(id, "", req.Status, "manual operation")
 	if changed {
 		model.InitChannelCache()
 	}
@@ -1161,7 +1161,7 @@ func BatchUpdateChannelStatus(c contract.Context) {
 	}
 	changedCount := 0
 	for _, id := range req.Ids {
-		if channelcap.UpdateChannelStatus(id, "", req.Status, "manual batch operation") {
+		if catalog.UpdateChannelStatus(id, "", req.Status, "manual batch operation") {
 			changedCount++
 		}
 	}
@@ -1533,7 +1533,7 @@ func ManageMultiKeys(c contract.Context) {
 		})
 	}
 
-	lock := channelcap.GetChannelPollingLock(channel.Id)
+	lock := catalog.GetChannelPollingLock(channel.Id)
 	lock.Lock()
 	defer lock.Unlock()
 

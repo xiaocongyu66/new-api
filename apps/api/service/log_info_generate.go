@@ -8,7 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	channelcap "github.com/QuantumNous/new-api/internal/capabilities/channel"
+	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -83,7 +83,7 @@ func GenerateTextOtherInfo(ctx contract.Context, relayInfo *relaycommon.RelayInf
 		adminInfo["local_count_tokens"] = isLocalCountTokens
 	}
 
-	channelcap.AppendChannelAffinityAdminInfo(ctx, adminInfo)
+	catalog.AppendChannelAffinityAdminInfo(ctx, adminInfo)
 
 	other["admin_info"] = adminInfo
 	appendRequestPath(ctx, relayInfo, other)

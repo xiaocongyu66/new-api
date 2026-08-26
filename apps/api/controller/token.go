@@ -1,7 +1,7 @@
 package controller
 
 import (
-	"github.com/QuantumNous/new-api/internal/capabilities/identity"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 

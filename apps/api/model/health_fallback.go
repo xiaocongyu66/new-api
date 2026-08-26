@@ -14,7 +14,7 @@ import (
 
 // health_fallback.go provides the local fallback health scoring implementation
 // used when the capability bridge is not registered (e.g., model-only test
-// binaries). It mirrors the logic in internal/capabilities/channel/health_store.go
+// binaries). It mirrors the logic in internal/catalog/health_store.go
 // exactly so model package tests pass without linking the capability package.
 
 func classifyChannelOutcomeUnlocked(state *ChannelHealthState, err *types.NewAPIError) ChannelOutcome {

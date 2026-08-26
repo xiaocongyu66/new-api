@@ -2,9 +2,9 @@ package compose
 
 import (
 	"github.com/QuantumNous/new-api/controller"
-	"github.com/QuantumNous/new-api/internal/capabilities/billing"
-	"github.com/QuantumNous/new-api/internal/capabilities/identity"
-	"github.com/QuantumNous/new-api/internal/capabilities/usage"
+	"github.com/QuantumNous/new-api/internal/billing"
+	"github.com/QuantumNous/new-api/internal/identity"
+	"github.com/QuantumNous/new-api/internal/usage"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	tpmw "github.com/QuantumNous/new-api/internal/transport/middleware"

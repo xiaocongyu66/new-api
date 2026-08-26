@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	taskcap "github.com/QuantumNous/new-api/internal/capabilities/task"
+	taskcap "github.com/QuantumNous/new-api/internal/task"
 
 	"errors"
 	"fmt"
@@ -16,7 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
-	channelcap "github.com/QuantumNous/new-api/internal/capabilities/channel"
+	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/model"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -106,7 +106,7 @@ func Distribute() func(c contract.Context) {
 					}
 				}
 
-				if preferredChannelID, found := channelcap.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
+				if preferredChannelID, found := catalog.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
 					affinityUsable := false
 					preferred, err := model.CacheGetChannel(preferredChannelID)
 					if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled &&
@@ -115,24 +115,24 @@ func Distribute() func(c contract.Context) {
 							userGroup := common.GetCtxKeyString(c, constant.ContextKeyUserGroup)
 							autoGroups := setting.GetRequestAutoGroups(c, userGroup)
 							for _, g := range autoGroups {
-								if channelcap.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
+								if catalog.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
 									selectGroup = g
 									common.SetCtxKey(c, constant.ContextKeyAutoGroup, g)
 									channel = preferred
 									affinityUsable = true
-									channelcap.MarkChannelAffinityUsed(c, g, preferred.Id)
+									catalog.MarkChannelAffinityUsed(c, g, preferred.Id)
 									break
 								}
 							}
-						} else if channelcap.IsChannelEnabledForGroupModel(usingGroup, modelRequest.Model, preferred.Id) {
+						} else if catalog.IsChannelEnabledForGroupModel(usingGroup, modelRequest.Model, preferred.Id) {
 							channel = preferred
 							selectGroup = usingGroup
 							affinityUsable = true
-							channelcap.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
+							catalog.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
 						}
 					}
-					if !affinityUsable && !channelcap.ShouldKeepChannelAffinityOnChannelDisabled() {
-						channelcap.ClearCurrentChannelAffinityCache(c)
+					if !affinityUsable && !catalog.ShouldKeepChannelAffinityOnChannelDisabled() {
+						catalog.ClearCurrentChannelAffinityCache(c)
 					}
 				}
 
@@ -170,7 +170,7 @@ func Distribute() func(c contract.Context) {
 		SetupContextForSelectedChannel(c, channel, modelRequest.Model)
 		c.Next()
 		if channel != nil && c.ResponseStatus() > 0 && c.ResponseStatus() < http.StatusBadRequest {
-			channelcap.RecordChannelAffinity(c, channel.Id)
+			catalog.RecordChannelAffinity(c, channel.Id)
 		}
 	}
 }
@@ -467,7 +467,7 @@ func SetupContextForSelectedChannel(c contract.Context, channel *model.Channel, 
 	common.SetCtxKey(c, constant.ContextKeyChannelOtherSetting, channel.GetOtherSettings())
 	paramOverride := channel.GetParamOverride()
 	headerOverride := channel.GetHeaderOverride()
-	if mergedParam, applied := channelcap.ApplyChannelAffinityOverrideTemplate(c, paramOverride); applied {
+	if mergedParam, applied := catalog.ApplyChannelAffinityOverrideTemplate(c, paramOverride); applied {
 		paramOverride = mergedParam
 	}
 	common.SetCtxKey(c, constant.ContextKeyChannelHeaderOverride, headerOverride)

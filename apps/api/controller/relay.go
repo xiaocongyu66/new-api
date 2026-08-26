@@ -3,8 +3,8 @@ package controller
 import (
 	"errors"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/capabilities/billing"
-	taskcap "github.com/QuantumNous/new-api/internal/capabilities/task"
+	"github.com/QuantumNous/new-api/internal/billing"
+	taskcap "github.com/QuantumNous/new-api/internal/task"
 	"github.com/QuantumNous/new-api/internal/gateway"
 	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
@@ -17,7 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	taskdto "github.com/QuantumNous/new-api/dto"
-	channelcap "github.com/QuantumNous/new-api/internal/capabilities/channel"
+	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
@@ -365,7 +365,7 @@ func shouldRetry(c contract.Context, openaiErr *types.NewAPIError, retryTimes in
 	if openaiErr == nil {
 		return false
 	}
-	if channelcap.ShouldSkipRetryAfterChannelAffinityFailure(c) {
+	if catalog.ShouldSkipRetryAfterChannelAffinityFailure(c) {
 		return false
 	}
 	if types.IsChannelError(openaiErr) {
@@ -428,7 +428,7 @@ func processChannelError(c contract.Context, channelError types.ChannelError, er
 			adminInfo["is_multi_key"] = true
 			adminInfo["multi_key_index"] = common.GetCtxKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)
 		}
-		channelcap.AppendChannelAffinityAdminInfo(c, adminInfo)
+		catalog.AppendChannelAffinityAdminInfo(c, adminInfo)
 		other["admin_info"] = adminInfo
 		startTime := common.GetCtxKeyTime(c, constant.ContextKeyRequestStartTime)
 		if startTime.IsZero() {
@@ -720,7 +720,7 @@ func shouldRetryTaskRelay(c contract.Context, channelId int, taskErr *taskdto.Ta
 	if taskErr == nil {
 		return false
 	}
-	if channelcap.ShouldSkipRetryAfterChannelAffinityFailure(c) {
+	if catalog.ShouldSkipRetryAfterChannelAffinityFailure(c) {
 		return false
 	}
 	if retryTimes <= 0 {

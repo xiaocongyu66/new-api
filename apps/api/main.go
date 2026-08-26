@@ -6,7 +6,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/capabilities/billing"
+	"github.com/QuantumNous/new-api/internal/billing"
 	"log"
 	"net/http"
 	"os"
@@ -20,8 +20,8 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/i18n"
-	"github.com/QuantumNous/new-api/internal/capabilities/administration"
-	channelcap "github.com/QuantumNous/new-api/internal/capabilities/channel"
+	"github.com/QuantumNous/new-api/internal/ops"
+	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/internal/security/oauth"
 	compose "github.com/QuantumNous/new-api/internal/transport/compose"
@@ -60,7 +60,7 @@ func main() {
 
 	// Gateway channel selection goes through the port; the channel
 	// capability implementation is registered before the router starts.
-	port.SelectChannel = channelcap.CacheGetRandomSatisfiedChannel
+	port.SelectChannel = catalog.CacheGetRandomSatisfiedChannel
 
 	err := InitResources()
 	if err != nil {
@@ -107,10 +107,10 @@ func main() {
 					}
 				}
 			}()
-			channelcap.InitChannelCache()
+			catalog.InitChannelCache()
 		}()
 
-		go channelcap.SyncChannelCache(common.SyncFrequency)
+		go catalog.SyncChannelCache(common.SyncFrequency)
 	}
 
 	// Warm pricing after channel cache initialization so Advanced Custom
@@ -147,7 +147,7 @@ func main() {
 
 	// Report this process as a system instance so the System Info page can show
 	// all currently alive nodes in multi-instance deployments.
-	administration.StartSystemInstanceReporter()
+	ops.StartSystemInstanceReporter()
 
 	// Wire task polling adaptor factory (breaks service -> relay import cycle).
 	// Must run before the system task runner starts: the async_task_poll handler
@@ -170,7 +170,7 @@ func main() {
 	// schedules and executes them. Master-only execution and the UpdateTask
 	// switch are enforced inside the runner and each handler's Enabled().
 	controller.RegisterScheduledSystemTasks()
-	administration.StartSystemTaskRunner()
+	ops.StartSystemTaskRunner()
 
 	if os.Getenv("BATCH_UPDATE_ENABLED") == "true" {
 		common.BatchUpdateEnabled = true

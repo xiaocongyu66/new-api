@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/capabilities/usage"
+	"github.com/QuantumNous/new-api/internal/usage"
 	"github.com/QuantumNous/new-api/model"
 )
 

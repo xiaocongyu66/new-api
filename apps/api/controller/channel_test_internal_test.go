@@ -3,7 +3,7 @@ package controller
 import (
 	"bytes"
 	"fmt"
-	taskcap "github.com/QuantumNous/new-api/internal/capabilities/task"
+	taskcap "github.com/QuantumNous/new-api/internal/task"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
 	"net/http"

@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"github.com/QuantumNous/new-api/internal/capabilities/billing/settlecore"
+	"github.com/QuantumNous/new-api/internal/billing/settlecore"
 	"math"
 	"net/http"
 	"os"

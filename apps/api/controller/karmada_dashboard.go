@@ -2,39 +2,40 @@ package controller
 
 import (
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/internal/capabilities/identity"
-	"github.com/QuantumNous/new-api/internal/capabilities/integration"
+	"github.com/QuantumNous/new-api/internal/identity"
+	"github.com/QuantumNous/new-api/internal/ops"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/service"
 )
 
 func CreateKarmadaDashboardSession(c contract.Context) {
 	identity, ok := security.GetSessionAuthIdentity(c)
 	if !ok {
-		integration.AbortWithMessage(c, 401, "unauthorized")
+		ops.AbortWithMessage(c, 401, "unauthorized")
 		return
 	}
-	integration.CreateKarmadaDashboardSession(c, identity)
+	ops.CreateKarmadaDashboardSession(c, identity)
 }
 
 func ProxyKarmadaDashboard(c contract.Context) {
 	sessionCookie, err := c.Cookie("newapi_karmada_session")
 	if err != nil {
-		integration.AbortWithMessage(c, 401, "missing karmada dashboard session cookie")
+		ops.AbortWithMessage(c, 401, "missing karmada dashboard session cookie")
 		return
 	}
 
-	ident, err := integration.ValidateKarmadaDashboardSession(sessionCookie)
+	ident, err := service.ValidateKarmadaDashboardSession(sessionCookie)
 	if err != nil {
-		integration.AbortWithMessage(c, 401, "invalid karmada dashboard session")
+		ops.AbortWithMessage(c, 401, "invalid karmada dashboard session")
 		return
 	}
 
 	_, user, err := identity.ValidateLoginSession(ident)
 	if err != nil || user.Role != common.RoleRootUser || user.Status != common.UserStatusEnabled {
-		integration.AbortWithMessage(c, 403, "forbidden")
+		ops.AbortWithMessage(c, 403, "forbidden")
 		return
 	}
 
-	integration.ProxyKarmadaDashboard(c)
+	ops.ProxyKarmadaDashboard(c)
 }
