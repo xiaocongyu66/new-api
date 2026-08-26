@@ -5,17 +5,29 @@ Behavior is selected per request via the X-Mock-Mode header. Every received
 request (including failures) is appended as one ndjson line to the file named
 by MOCK_NDJSON so the stress client can reconcile against the gateway audit
 endpoint. Intentionally independent of tests/perf/fixtures/mock-upstream.py.
+
+Environment variables:
+  MOCK_PORT         - listen port (default 8099)
+  MOCK_NDJSON       - path to ndjson log file (optional)
+  MOCK_FORCE_MODE   - if set, ignore X-Mock-Mode header and force this mode for all requests
 """
 from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.getenv("MOCK_PORT", "8099"))
 NDJSON_PATH = os.getenv("MOCK_NDJSON", "")
+FORCE_MODE = os.getenv("MOCK_FORCE_MODE", "") or None
+
+VALID_MODES = {"ok", "ttft_500", "ttft_2000", "ttft_4000", "ratelimit_missing", "ratelimit_5s", "ratelimit_10s", "q05"}
+
+if FORCE_MODE is not None and FORCE_MODE not in VALID_MODES:
+    sys.exit(f"MOCK_FORCE_MODE={FORCE_MODE!r} is not a valid mode; valid: {sorted(VALID_MODES)}")
 
 TTFT_MS = {"ttft_500": 0.5, "ttft_2000": 2.0, "ttft_4000": 4.0}
 RATELIMIT_AFTER = {"ratelimit_missing": None, "ratelimit_5s": "5", "ratelimit_10s": "10"}
@@ -30,7 +42,7 @@ def record(request_id: str, model: str, status: int, mode: str) -> None:
     if not NDJSON_PATH:
         return
     line = json.dumps(
-        {"ts": time.time(), "request_id": request_id, "upstream_model": model, "status": status, "mode": mode}
+        {"ts": time.time(), "request_id": request_id, "upstream_model": model, "status": status, "mode": mode, "port": PORT}
     )
     # Open fresh each call so external deletion/rotation is handled.
     with open(NDJSON_PATH, "a", encoding="utf-8") as f:
@@ -80,7 +92,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/healthz":
-            self._send_json(200, {"status": "ok"})
+            self._send_json(200, {"ok": True, "port": PORT, "force_mode": FORCE_MODE})
         else:
             self._send_json(404, {"error": {"message": "not found"}})
 
@@ -96,7 +108,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         request_id = self.headers.get("X-Request-Id", "")
         model = body.get("model", "mock-ok")
-        mode = self.headers.get("X-Mock-Mode", "ok")
+        # Use FORCE_MODE if set, otherwise fall back to X-Mock-Mode header
+        mode = FORCE_MODE if FORCE_MODE is not None else self.headers.get("X-Mock-Mode", "ok")
         stream = bool(body.get("stream"))
         tokens = max(1, min(int(body.get("max_tokens") or 16), 64))
 

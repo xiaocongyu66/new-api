@@ -24,9 +24,9 @@ type AuditAttempt struct {
 	UpstreamModel  string `json:"upstream_model"`
 	Outcome        int    `json:"outcome"`
 }
-
-const auditRingCapacity = 10000
-
+const auditRingCapacity = 32768 // 2^15; fits 13,000 requests + retries
+// AuditAttempt is 112 bytes (5 strings × 16B + 4 ints × 8B on amd64).
+// Backing array ≈ 112 × 32768 = 3,670,016 bytes (~3.5 MiB), well under 20 MiB.
 // AuditOutcomeFromRouteStats maps the internal routeStatsOutcome (0=neutral, 1=throttled, 2=fatal)
 // to the corresponding audit outcome code. Success (0) is handled separately by the caller.
 func AuditOutcomeFromRouteStats(routeStatsOutcome int) int {
@@ -50,6 +50,10 @@ func init() {
 	auditRing.buf = make([]AuditAttempt, auditRingCapacity)
 }
 
+// AuditRingCapacity returns the ring buffer's fixed capacity.
+func AuditRingCapacity() int {
+	return auditRingCapacity
+}
 // RecordAttempt appends one attempt to the audit ring buffer. When the buffer
 // is full, the oldest entry is overwritten (FIFO eviction).
 // clientRequestID is the client-sent X-Request-Id header (may be empty).

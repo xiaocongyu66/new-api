@@ -59,17 +59,17 @@ func TestAuditRingBufferFIFO(t *testing.T) {
 	// Oldest entry should be i=0
 	assert.Equal(t, "a", attempts[0].RequestID)
 	assert.Equal(t, 0, attempts[0].Attempt)
-	// Newest entry should be i=9999
-	assert.Equal(t, 9999, attempts[auditRingCapacity-1].Attempt)
+	// Newest entry should be i=capacity-1
+	assert.Equal(t, auditRingCapacity-1, attempts[auditRingCapacity-1].Attempt)
 
-	// Overwrite one more -> oldest (i=0) is evicted, i=10000 added
+	// Overwrite one more -> oldest (i=0) is evicted, i=capacity added
 	RecordAttempt("new", auditRingCapacity, RouteKey{Group: "g", PublicModelAlias: "a", ChannelID: 99999, KeyIndex: 0, UpstreamModel: "u"}, AuditOutcomeSuccess, "")
 
 	attempts = SnapshotAttempts()
 	require.Len(t, attempts, auditRingCapacity)
 	// Oldest should now be i=1
 	assert.Equal(t, 1, attempts[0].Attempt)
-	// Newest should be i=10000
+	// Newest should be i=capacity
 	assert.Equal(t, auditRingCapacity, attempts[auditRingCapacity-1].Attempt)
 }
 
@@ -79,7 +79,7 @@ func TestAuditRingBufferConcurrent(t *testing.T) {
 
 	var wg sync.WaitGroup
 	concurrency := 50
-	iterations := 200
+	iterations := 700 // 50 * 700 = 35000 > auditRingCapacity (32768)
 
 	wg.Add(concurrency)
 	for range concurrency {
@@ -94,8 +94,8 @@ func TestAuditRingBufferConcurrent(t *testing.T) {
 	wg.Wait()
 
 	attempts := SnapshotAttempts()
-	// Total records = concurrency * iterations = 10000, which equals capacity
-	// All should be present, no data race panic
+	// Total records = concurrency * iterations = 35000 > capacity
+	// Buffer should be full, no data race panic
 	require.Len(t, attempts, auditRingCapacity)
 }
 
@@ -196,4 +196,37 @@ func TestResetAudit(t *testing.T) {
 
 	ResetAudit()
 	assert.Len(t, SnapshotAttempts(), 0)
+}
+
+// TestAuditRingCapacity verifies the ring buffer capacity is sufficient for
+// S1-S3 scenarios (13,000 requests + retries) and that FIFO eviction works
+// correctly when writing beyond capacity.
+func TestAuditRingCapacity(t *testing.T) {
+	ResetAudit()
+	defer ResetAudit()
+
+	// Capacity must be >= 13000 to hold S1-S3 scenario without truncation
+	assert.GreaterOrEqual(t, auditRingCapacity, 13000, "capacity must hold S1-S3 scenario")
+	// AuditRingCapacity() exported function returns the same constant
+	assert.Equal(t, auditRingCapacity, AuditRingCapacity())
+
+	// Write capacity + 100 entries -> oldest 100 should be evicted (FIFO)
+	overwrite := 100
+	total := auditRingCapacity + overwrite
+	for i := 0; i < total; i++ {
+		RecordAttempt(string(rune('a'+i%26)), i, RouteKey{Group: "g", PublicModelAlias: "a", ChannelID: i, KeyIndex: 0, UpstreamModel: "u"}, AuditOutcomeSuccess, "")
+	}
+
+	attempts := SnapshotAttempts()
+	require.Len(t, attempts, auditRingCapacity, "snapshot length equals capacity when full")
+
+	// Oldest entry should be i=overwrite (first 100 evicted)
+	assert.Equal(t, overwrite, attempts[0].Attempt)
+	// Newest entry should be i=total-1
+	assert.Equal(t, total-1, attempts[auditRingCapacity-1].Attempt)
+
+	// Verify strict FIFO order: attempts[i].Attempt == overwrite + i
+	for i := range auditRingCapacity {
+		assert.Equal(t, overwrite+i, attempts[i].Attempt, "FIFO order at index %d", i)
+	}
 }

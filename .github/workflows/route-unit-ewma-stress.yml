@@ -4,18 +4,23 @@ on:
   workflow_dispatch:
     inputs:
       scenario:
-        description: 'Test scenario'
+        description: 'Test scenario (smoke, S1, S2, S3, or all)'
         required: true
         type: choice
         default: smoke
-        options: [smoke]
+        options: [smoke, S1, S2, S3, all]
       target_url:
         description: 'Gateway /v1 URL (NodePort, Ingress, or port-forward)'
         required: true
         type: string
         default: 'http://127.0.0.1:18080/v1'
       api_key:
-        description: 'Admin bearer token (default: K8S_STRESS_API_KEY secret)'
+        description: 'User bearer token (sk-...)'
+        required: false
+        type: string
+        default: ''
+      admin_token:
+        description: 'Admin JWT for audit endpoint (default: K8S_STRESS_ADMIN_TOKEN secret)'
         required: false
         type: string
         default: ''
@@ -24,21 +29,41 @@ on:
         required: false
         type: string
         default: 'mock-ok'
-      requests:
-        description: 'Number of requests to send'
+      alias:
+        description: 'Route alias (subject route name)'
         required: false
         type: string
-        default: '100'
+        default: 'ewma-stress-subject'
+      requests:
+        description: 'Number of requests per scenario'
+        required: false
+        type: string
+        default: '13000'
+      warmup:
+        description: 'Warmup requests before measurement'
+        required: false
+        type: string
+        default: '44'
       concurrency:
         description: 'Concurrent workers'
         required: false
         type: string
-        default: '8'
-      replica:
-        description: 'Mock upstream replica count'
+        default: '64'
+      stream_ratio:
+        description: 'Stream ratio 0-1 (empty = scenario default: S1=0.2, S2/S3=1.0)'
         required: false
         type: string
-        default: '1'
+        default: ''
+      allow_affinity:
+        description: 'Allow channel_affinity_setting.enabled=true (default false, runner requires false)'
+        required: false
+        type: boolean
+        default: false
+      mock_url:
+        description: 'Mock upstream base URL'
+        required: false
+        type: string
+        default: 'http://127.0.0.1:8099'
       kube_config:
         description: 'Base64 kubeconfig (default: KUBE_CONFIG_B64 secret)'
         required: false
@@ -50,15 +75,21 @@ permissions:
 
 env:
   TARGET_URL: ${{ inputs.target_url }}
-  API_KEY: ${{ inputs.api_key || secrets.K8S_STRESS_API_KEY }}
+  API_KEY: ${{ inputs.api_key }}
+  ADMIN_TOKEN: ${{ inputs.admin_token || secrets.K8S_STRESS_ADMIN_TOKEN }}
   MODEL: ${{ inputs.model }}
+  ALIAS: ${{ inputs.alias }}
   REQUESTS: ${{ inputs.requests }}
+  WARMUP: ${{ inputs.warmup }}
   CONCURRENCY: ${{ inputs.concurrency }}
-  REPLICA: ${{ inputs.replica }}
+  STREAM_RATIO: ${{ inputs.stream_ratio }}
+  ALLOW_AFFINITY: ${{ inputs.allow_affinity }}
+  MOCK_URL: ${{ inputs.mock_url }}
   KUBE_CONFIG_B64: ${{ inputs.kube_config || secrets.KUBE_CONFIG_B64 }}
 
 jobs:
-  route-unit-ewma-stress:
+  route-unit-ewma-smoke:
+    if: ${{ inputs.scenario == 'smoke' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -76,16 +107,13 @@ jobs:
         id: mock
         run: |
           set -euo pipefail
-          # Write mock fixture to a known location
           mkdir -p /tmp/mock
           cp tests/route_unit_stress/fixtures/mock_upstream.py /tmp/mock/
-          # Start mock server with ndjson output
           export MOCK_PORT=8099
           export MOCK_NDJSON=/tmp/mock_upstream.ndjson
           python3 /tmp/mock/mock_upstream.py > /tmp/mock.log 2>&1 &
           MOCK_PID=$!
           echo "MOCK_PID=$MOCK_PID" >> "$GITHUB_ENV"
-          # Wait for healthz
           for i in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8099/healthz >/dev/null; then
               echo "Mock upstream ready"
@@ -95,13 +123,6 @@ jobs:
           done
           echo "Mock upstream failed to start" >&2
           exit 1
-
-      - name: Scale mock replicas
-        if: env.REPLICA != '1'
-        run: |
-          # For multi-replica, start additional instances on different ports
-          # (Simplified: single instance for smoke; k8s path would use Deployment)
-          echo "Single replica mode for smoke; replica=${{ env.REPLICA }} noted"
 
       - name: Preflight gateway
         run: |
@@ -116,7 +137,7 @@ jobs:
           echo "Gateway not reachable at $TARGET_URL" >&2
           exit 1
 
-      - name: Run smoke test
+      - name: Run smoke test (S11)
         id: smoke
         env:
           MOCK_NDJSON: /tmp/mock_upstream.ndjson
@@ -125,21 +146,22 @@ jobs:
           python3 tests/route_unit_stress/run_smoke.py \
             --gateway-url "$TARGET_URL" \
             --token "$API_KEY" \
-            --mock-url "http://127.0.0.1:8099" \
+            --admin-token "$ADMIN_TOKEN" \
+            --mock-url "$MOCK_URL" \
             --requests ${{ env.REQUESTS }} \
             --concurrency ${{ env.CONCURRENCY }} \
             --model "${{ env.MODEL }}" \
             --out-dir runtime/smoke-${{ github.run_id }}
 
-      - name: Upload artifacts
+      - name: Upload smoke artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: route-unit-ewma-stress-${{ github.run_id }}
+          name: route-unit-smoke-${{ github.run_id }}
           path: runtime/smoke-*
           retention-days: 14
 
-      - name: Summary
+      - name: Smoke summary
         if: always()
         run: |
           SUMMARY_FILE="runtime/smoke-${{ github.run_id }}/summary.json"
@@ -147,7 +169,7 @@ jobs:
             VERDICT=$(jq -r .verdict "$SUMMARY_FILE")
             TOTAL=$(jq -r .total_requests "$SUMMARY_FILE")
             MATCHED=$(jq -r .matched_pairs "$SUMMARY_FILE")
-            echo "## Route Unit EWMA Stress - ${{ inputs.scenario }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "## Route Unit EWMA Stress - Smoke (S11)" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
             echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
@@ -165,6 +187,133 @@ jobs:
           else
             echo "No summary.json found" >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      - name: Cleanup mock
+        if: always()
+        run: |
+          if [ -n "${{ env.MOCK_PID }}" ]; then
+            kill ${{ env.MOCK_PID }} 2>/dev/null || true
+          fi
+
+  route-unit-ewma-scenario:
+    if: ${{ inputs.scenario != 'smoke' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: ${{ fromJson(inputs.scenario == 'all' && '["S1","S2","S3"]' || format('["{0}"]', inputs.scenario)) }}
+    env:
+      SCENARIO: ${{ matrix.scenario }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Configure kubectl
+        if: env.KUBE_CONFIG_B64 != ''
+        run: |
+          mkdir -p ~/.kube
+          echo '${{ env.KUBE_CONFIG_B64 }}' | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Start mock upstream
+        id: mock
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/mock
+          cp tests/route_unit_stress/fixtures/mock_upstream.py /tmp/mock/
+          export MOCK_PORT=8099
+          export MOCK_NDJSON=/tmp/mock_upstream.ndjson
+          python3 /tmp/mock/mock_upstream.py > /tmp/mock.log 2>&1 &
+          MOCK_PID=$!
+          echo "MOCK_PID=$MOCK_PID" >> "$GITHUB_ENV"
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8099/healthz >/dev/null; then
+              echo "Mock upstream ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Mock upstream failed to start" >&2
+          exit 1
+
+      - name: Preflight gateway
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if curl -fsS --connect-timeout 5 -H "Authorization: Bearer $API_KEY" "$TARGET_URL/models" >/dev/null; then
+              echo "Gateway reachable"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Gateway not reachable at $TARGET_URL" >&2
+          exit 1
+
+      - name: Verify affinity setting
+        run: |
+          set -euo pipefail
+          if [ "${{ env.ALLOW_AFFINITY }}" != "true" ]; then
+            # Check if channel_affinity_setting.enabled is true via admin API
+            # For now, just warn; runner enforces ENVIRONMENT_INVALID
+            echo "Warning: channel_affinity_setting.enabled must be false. Runner will fail with ENVIRONMENT_INVALID if enabled."
+          fi
+
+      - name: Run scenario ${{ matrix.scenario }}
+        id: scenario
+        env:
+          MOCK_NDJSON: /tmp/mock_upstream.ndjson
+        run: |
+          set -euo pipefail
+          python3 tests/route_unit_stress/run_scenario.py \
+            --scenario ${{ matrix.scenario }} \
+            --gateway-url "$TARGET_URL" \
+            --token "$API_KEY" \
+            --admin-token "$ADMIN_TOKEN" \
+            --alias "${{ env.ALIAS }}" \
+            --mock-url "$MOCK_URL" \
+            --requests ${{ env.REQUESTS }} \
+            --warmup ${{ env.WARMUP }} \
+            --concurrency ${{ env.CONCURRENCY }} \
+            ${{
+              env.STREAM_RATIO != '' && format('--stream-ratio {0}', env.STREAM_RATIO) || ''
+            }} \
+            ${{
+              env.ALLOW_AFFINITY == 'true' && '--allow-affinity' || ''
+            }} \
+            --out-dir runtime/${{ matrix.scenario }}-${{ github.run_id }}
+        continue-on-error: true
+
+      - name: Upload scenario artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: route-unit-${{ matrix.scenario }}-${{ github.run_id }}
+          path: runtime/${{ matrix.scenario }}-*
+          retention-days: 14
+
+      - name: Scenario summary
+        if: always()
+        run: |
+          SUMMARY_FILE="runtime/${{ matrix.scenario }}-${{ github.run_id }}/summary.json"
+          if [ -f "$SUMMARY_FILE" ]; then
+            SUMMARY_SCRIPT_B64="aW1wb3J0IGpzb24sIG9zLCBzeXMKc3VtbWFyeV9wYXRoID0gb3MuZW52aXJvblsiU1VNTUFSWV9GSUxFIl0Kc2NlbmFyaW8gPSBvcy5lbnZpcm9uWyJTQ0VOQVJJTyJdCnJ1bl9pZCA9IG9zLmVudmlyb25bIkdJVEhVQl9SVU5fSUQiXQp3aXRoIG9wZW4oc3VtbWFyeV9wYXRoKSBhcyBmOgogICAgcyA9IGpzb24ubG9hZChmKQoKdmVyZGljdCA9IHMuZ2V0KCJ2ZXJkaWN0IiwgIk4vQSIpCmNmZyA9IHMuZ2V0KCJjb25maWciLCB7fSkKcmVjID0gcy5nZXQoInJlY29uY2lsZSIsIHt9KQpzaGFyZXMgPSBzLmdldCgic2hhcmVzIiwgW10pCnNoYXJlX2V2YWwgPSBzLmdldCgic2hhcmVfZXZhbCIsIHt9KQpzcSA9IHMuZ2V0KCJzZXJ2aWNlX3F1YWxpdHkiLCB7fSkKcmVzID0gcy5nZXQoInJlc291cmNlcyIsIHt9KQpyZWFzb25zID0gcy5nZXQoInJlYXNvbnMiLCBbXSkKCmxpbmVzID0gW10KbGluZXMuYXBwZW5kKGYiIyMgUm91dGUgVW5pdCBFV01BIFN0cmVzcyAtIHtzY2VuYXJpb30gKFJ1biB7cnVuX2lkfSkiKQpsaW5lcy5hcHBlbmQoIiIpCmxpbmVzLmFwcGVuZCgifCBNZXRyaWMgfCBWYWx1ZSB8IikKbGluZXMuYXBwZW5kKCJ8LS0tLS0tLS18LS0tLS0tLXwiKQpsaW5lcy5hcHBlbmQoZiJ8IFNjZW5hcmlvIHwge3NjZW5hcmlvfSB8IikKbGluZXMuYXBwZW5kKGYifCBWZXJkaWN0IHwge3ZlcmRpY3R9IHwiKQpsaW5lcy5hcHBlbmQoZiJ8IFJlcXVpcmVkIFNhbXBsZXMgfCB7Y2ZnLmdldCgncmVxdWVzdHMnLCAnTi9BJyl9IHwiKQpsaW5lcy5hcHBlbmQoZiJ8IEFjdHVhbCBTYW1wbGVzIHwge3JlYy5nZXQoJ21hdGNoZWRfcGFpcnMnLCAwKX0gfCIpCmxpbmVzLmFwcGVuZChmInwgUmVjb25jaWxpYXRpb24gfCB7cmVjLmdldCgndmVyZGljdCcsICdOL0EnKX0gfCIpCmxpbmVzLmFwcGVuZChmInwgTWlzc2luZyBpbiBBdWRpdCB8IHtsZW4ocmVjLmdldCgnbWlzc2luZ19pbl9hdWRpdCcsIFtdKSl9IHwiKQpsaW5lcy5hcHBlbmQoZiJ8IE1pc3NpbmcgaW4gTW9jayB8IHtsZW4ocmVjLmdldCgnbWlzc2luZ19pbl9tb2NrJywgW10pKX0gfCIpCmxpbmVzLmFwcGVuZChmInwgSWRlbnRpdHkgTWlzbWF0Y2hlcyB8IHtsZW4ocmVjLmdldCgnaWRlbnRpdHlfbWlzbWF0Y2gnLCBbXSkpfSB8IikKbGluZXMuYXBwZW5kKGYifCBBdHRlbXB0IEdhcHMgfCB7bGVuKHJlYy5nZXQoJ2F0dGVtcHRfZ2FwcycsIFtdKSl9IHwiKQpsaW5lcy5hcHBlbmQoIiIpCgojIFN1YmplY3Qgcm91dGUgc2hhcmUgZXZhbHVhdGlvbgpzdWJqZWN0X3JvdXRlcyA9IFtzaCBmb3Igc2ggaW4gc2hhcmVzIGlmIHNoLmdldCgicm91dGUiKSA9PSBjZmcuZ2V0KCJhbGlhcyIsICIiKV0KaWYgc3ViamVjdF9yb3V0ZXM6CiAgICBzciA9IHN1YmplY3Rfcm91dGVzWzBdCiAgICBldmFsX3IgPSBzaGFyZV9ldmFsLmdldChzci5nZXQoInJvdXRlIiwgIiIpLCB7fSkKICAgIGV2YWxfc3RyID0gIk9LIiBpZiBldmFsX3IuZ2V0KCJvayIpIGVsc2UgZiJGQUlMOiB7JywgJy5qb2luKGV2YWxfci5nZXQoJ3JlYXNvbnMnLCBbXSkpfSIKICAgIGxpbmVzLmFwcGVuZCgiIyMjIFN1YmplY3QgUm91dGUgU2hhcmUgRXZhbHVhdGlvbiIpCiAgICBsaW5lcy5hcHBlbmQoIiIpCiAgICBsaW5lcy5hcHBlbmQoInwgUm91dGUgfCBPYnNlcnZlZCBTaGFyZSB8IENJIExvdyB8IENJIEhpZ2ggfCBUYXJnZXQgfCBUb2wgwrFwcCB8IEV2YWwgfCIpCiAgICBsaW5lcy5hcHBlbmQoInwtLS0tLS0tfC0tLS0tLS0tLS0tLS0tLS18LS0tLS0tLS18LS0tLS0tLS0tfC0tLS0tLS0tfC0tLS0tLS0tLXwtLS0tLS18IikKICAgIHRhcmdldCA9IHNyLmdldCgidGFyZ2V0IikKICAgIHRvbCA9IHNyLmdldCgidG9sX3BwIikKICAgIHRhcmdldF9zdHIgPSBmInt0YXJnZXQ6LjNmfSIgaWYgdGFyZ2V0IGlzIG5vdCBOb25lIGVsc2UgIm4vYSIKICAgIHRvbF9zdHIgPSBmInt0b2w6LjNmfSIgaWYgdG9sIGlzIG5vdCBOb25lIGVsc2UgIm4vYSIKICAgIGxpbmVzLmFwcGVuZChmInwge3NyLmdldCgncm91dGUnLCAnJyl9IHwge3NyLmdldCgnb2JzZXJ2ZWRfc2hhcmUnLCAwKTouNGZ9IHwge3NyLmdldCgnY2lfbG93JywgMCk6LjRmfSB8IHtzci5nZXQoJ2NpX2hpZ2gnLCAwKTouNGZ9IHwge3RhcmdldF9zdHJ9IHwge3RvbF9zdHJ9IHwge2V2YWxfc3RyfSB8IikKICAgIGxpbmVzLmFwcGVuZCgiIikKCiMgU2VydmljZSBxdWFsaXR5CmxpbmVzLmFwcGVuZCgiIyMjIFNlcnZpY2UgUXVhbGl0eSIpCmxpbmVzLmFwcGVuZCgiIikKbGluZXMuYXBwZW5kKCJ8IE1ldHJpYyB8IFZhbHVlIHwiKQpsaW5lcy5hcHBlbmQoInwtLS0tLS0tLXwtLS0tLS0tfCIpCmZvciBrLCB2IGluIHNxLml0ZW1zKCk6CiAgICBpZiB2IGlzIG5vdCBOb25lOgogICAgICAgIGlmIGlzaW5zdGFuY2UodiwgZmxvYXQpOgogICAgICAgICAgICBsaW5lcy5hcHBlbmQoZiJ8IHtrfSB8IHt2Oi4yZn0gfCIpCiAgICAgICAgZWxzZToKICAgICAgICAgICAgbGluZXMuYXBwZW5kKGYifCB7a30gfCB7dn0gfCIpCiAgICBlbHNlOgogICAgICAgIGxpbmVzLmFwcGVuZChmInwge2t9IHwgTi9BIHwiKQpsaW5lcy5hcHBlbmQoIiIpCgojIFJlc291cmNlIHBlYWtzCmxpbmVzLmFwcGVuZCgiIyMjIFJlc291cmNlIFBlYWtzICgxMHMgd2luZG93cykiKQpsaW5lcy5hcHBlbmQoIiIpCmxpbmVzLmFwcGVuZCgifCBNZXRyaWMgfCBQZWFrIHwiKQpsaW5lcy5hcHBlbmQoInwtLS0tLS0tLXwtLS0tLS18IikKcGVha19jcHUgPSByZXMuZ2V0KCJwZWFrX2NwdV91c2VyIikKcGVha19yc3MgPSByZXMuZ2V0KCJwZWFrX3JzcyIpCnBlYWtfZGlzayA9IHJlcy5nZXQoInBlYWtfZGlza193cml0ZV9icHMiKQpwZWFrX25ldF9lcnIgPSByZXMuZ2V0KCJwZWFrX25ldF9lcnJvciIpCmNwdV9zdHIgPSBmIntwZWFrX2NwdTouMmZ9IiBpZiBwZWFrX2NwdSBpcyBub3QgTm9uZSBlbHNlICJOL0EiCnJzc19zdHIgPSBzdHIocGVha19yc3MpIGlmIHBlYWtfcnNzIGlzIG5vdCBOb25lIGVsc2UgIk4vQSIKZGlza19zdHIgPSBzdHIocGVha19kaXNrKSBpZiBwZWFrX2Rpc2sgaXMgbm90IE5vbmUgZWxzZSAiTi9BIgpuZXRfc3RyID0gc3RyKHBlYWtfbmV0X2VycikgaWYgcGVha19uZXRfZXJyIGlzIG5vdCBOb25lIGVsc2UgIk4vQSIKbGluZXMuYXBwZW5kKGYifCBDUFUgVXNlciAlIHwge2NwdV9zdHJ9IHwiKQpsaW5lcy5hcHBlbmQoZiJ8IFJTUyAoYnl0ZXMpIHwge3Jzc19zdHJ9IHwiKQpsaW5lcy5hcHBlbmQoZiJ8IERpc2sgV3JpdGUgKEIvcykgfCB7ZGlza19zdHJ9IHwiKQpsaW5lcy5hcHBlbmQoZiJ8IE5ldCBFcnJvcnMgfCB7bmV0X3N0cn0gfCIpCmxpbmVzLmFwcGVuZCgiIikKCiMgVmVyZGljdCBkZXRhaWxzCmlmIHJlYXNvbnM6CiAgICBsaW5lcy5hcHBlbmQoIiMjIyBWZXJkaWN0IERldGFpbHMiKQogICAgbGluZXMuYXBwZW5kKCIiKQogICAgZm9yIHIgaW4gcmVhc29uczoKICAgICAgICBsaW5lcy5hcHBlbmQoZiItIHtyfSIpCiAgICBsaW5lcy5hcHBlbmQoIiIpCgojIEFydGlmYWN0IGxpbmtzCmxpbmVzLmFwcGVuZCgiIyMjIEFydGlmYWN0cyIpCmxpbmVzLmFwcGVuZCgiIikKbGluZXMuYXBwZW5kKGYiLSBgcm91dGUtdW5pdC17c2NlbmFyaW8ubG93ZXIoKX0te3J1bl9pZH1gIChkb3dubG9hZCBmcm9tIEFjdGlvbnMgYXJ0aWZhY3RzKSIpCmxpbmVzLmFwcGVuZCgiIikKCndpdGggb3Blbihvcy5lbnZpcm9uWyJHSVRIVUJfU1RFUF9TVU1NQVJZIl0sICJhIikgYXMgZjoKICAgIGYud3JpdGUoIlxuIi5qb2luKGxpbmVzKSkK"
+            echo "$SUMMARY_SCRIPT_B64" | base64 -d > /tmp/summary_report.py
+            python3 /tmp/summary_report.py
+          else
+            echo "No summary.json found for ${{ matrix.scenario }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Fail job on non-zero exit
+        if: always()
+        run: |
+          # Both exit code 1 (DATA_INVALID/UNDERPOWERED/PRODUCT_FAIL) and 2 (ENVIRONMENT_INVALID) fail the job
+          # Artifacts already uploaded via always() step above
+          exit ${{ steps.scenario.outcome == 'success' && 0 || 1 }}
 
       - name: Cleanup mock
         if: always()

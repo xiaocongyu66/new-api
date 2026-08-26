@@ -9,9 +9,17 @@ selected per request via the `X-Mock-Mode` header; default `ok`.
 MOCK_PORT=8099 MOCK_NDJSON=/tmp/upstream.ndjson python3 mock_upstream.py
 ```
 
-Preflight: `curl -s localhost:8099/healthz` -> `{"status":"ok"}`
+Preflight: `curl -s localhost:8099/healthz` -> `{"ok":true,"port":8099,"force_mode":null}`
 
-## Modes (X-Mock-Mode header)
+## Environment variables
+
+| variable           | description                                                                 |
+|--------------------|-----------------------------------------------------------------------------|
+| `MOCK_PORT`        | listen port (default `8099`)                                                |
+| `MOCK_NDJSON`      | path to ndjson log file (optional; if unset, nothing is recorded)           |
+| `MOCK_FORCE_MODE`  | if set, **ignore** `X-Mock-Mode` header and force this mode for **all** requests; must be one of the valid modes below; invalid value causes immediate exit at startup |
+
+## Modes (X-Mock-Mode header / MOCK_FORCE_MODE)
 
 | mode               | behavior                                                     |
 |--------------------|--------------------------------------------------------------|
@@ -29,9 +37,41 @@ request (attempt from 0).
 
 ## ndjson schema (one line per received request)
 
-`{"ts":float,"request_id":str,"upstream_model":str,"status":int,"mode":str}`
+```json
+{"ts":float,"request_id":str,"upstream_model":str,"status":int,"mode":str,"port":int}
+```
 
-`status` is the HTTP status the mock returned for that request.
+- `status` is the HTTP status the mock returned for that request.
+- `mode` is the **effective** mode that was applied (after `MOCK_FORCE_MODE` override).
+- `port` is the listen port of the mock instance that handled the request (useful when multiple instances write to the same ndjson file).
+
+## Dual-instance deployment example (S2/S3)
+
+Two routes (A, B) each target their own mock instance with different forced modes:
+
+```sh
+# Terminal 1: Route A — ttft_2000
+MOCK_PORT=18200 MOCK_NDJSON=/tmp/upstream.ndjson MOCK_FORCE_MODE=ttft_2000 python3 mock_upstream.py
+
+# Terminal 2: Route B — ttft_4000
+MOCK_PORT=18201 MOCK_NDJSON=/tmp/upstream.ndjson MOCK_FORCE_MODE=ttft_4000 python3 mock_upstream.py
+```
+
+Gateway routes:
+- Route A -> `http://localhost:18200/v1/chat/completions`
+- Route B -> `http://localhost:18201/v1/chat/completions`
+
+Both instances append to the same `/tmp/upstream.ndjson`; the `port` field tells you which upstream handled each request.
+
+## healthz response
+
+```json
+{"ok": true, "port": 18200, "force_mode": "ttft_2000"}
+```
+
+- `ok`: always `true` when the server is alive
+- `port`: the listen port of this instance
+- `force_mode`: the value of `MOCK_FORCE_MODE` (or `null` if unset)
 
 ## Self-check
 
