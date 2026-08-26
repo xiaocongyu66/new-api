@@ -826,7 +826,17 @@ def run_phase_s8(
                 pool_count = active_pools  # indirect inference; SharePoolCount() not exposed via API
                 rss = 0
                 try:
-                    status_content = Path("/proc/self/status").read_text()
+                    # Read the gateway process RSS, not the runner's own /proc/self
+                    # The gateway PID is found by matching the port from /proc/net/tcp + /proc/*/cmdline
+                    # ponytail: fallback to gateway_url host:port -> pgrep -> /proc/<pid>/status
+                    import subprocess as _sp
+                    gw_pid_out = _sp.check_output(
+                        ["pgrep", "-f", "newapi"],
+                        stderr=_sp.DEVNULL,
+                        timeout=5,
+                    ).strip()
+                    gw_pid = int(gw_pid_out.splitlines()[0])
+                    status_content = Path(f"/proc/{gw_pid}/status").read_text()
                     for line in status_content.splitlines():
                         if line.startswith("VmRSS:"):
                             rss = int(line.split()[1]) * 1024
