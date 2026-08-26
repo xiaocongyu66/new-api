@@ -1,56 +1,55 @@
 package controller
 
 import (
+	"github.com/QuantumNous/new-api/internal/capabilities/administration"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
-
-	"github.com/gin-gonic/gin"
 )
 
-func CreateLogCleanupSystemTask(c *gin.Context) {
+func CreateLogCleanupSystemTask(c contract.Context) {
 	targetTimestamp, _ := strconv.ParseInt(c.Query("target_timestamp"), 10, 64)
 	if targetTimestamp == 0 {
-		c.JSON(http.StatusOK, gin.H{
+		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": "target timestamp is required",
 		})
 		return
 	}
 
-	task, err := service.StartLogCleanupTask(targetTimestamp)
+	task, err := administration.StartLogCleanupTask(targetTimestamp)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 		"data":    task.ToResponse(),
 	})
 }
 
-func GetCurrentSystemTask(c *gin.Context) {
+func GetCurrentSystemTask(c contract.Context) {
 	taskType := c.Query("type")
 	if taskType == "" {
-		c.JSON(http.StatusOK, gin.H{
+		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": "type is required",
 		})
 		return
 	}
 
-	task, err := model.GetActiveSystemTask(taskType)
+	task, err := administration.GetActiveSystemTask(taskType)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	if task == nil {
-		c.JSON(http.StatusOK, gin.H{
+		_ = c.JSON(http.StatusOK, common.H{
 			"success": true,
 			"message": "",
 			"data":    nil,
@@ -58,19 +57,19 @@ func GetCurrentSystemTask(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 		"data":    task.ToResponse(),
 	})
 }
 
-func ListSystemTasks(c *gin.Context) {
+func ListSystemTasks(c contract.Context) {
 	limit, _ := strconv.Atoi(c.Query("limit"))
 
-	tasks, err := model.ListSystemTasks(limit)
+	tasks, err := administration.ListSystemTasks(limit)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 
@@ -79,37 +78,37 @@ func ListSystemTasks(c *gin.Context) {
 		responses = append(responses, task.ToResponse())
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 		"data":    responses,
 	})
 }
 
-func GetSystemTask(c *gin.Context) {
+func GetSystemTask(c contract.Context) {
 	taskID := c.Param("task_id")
 	if taskID == "" {
-		c.JSON(http.StatusOK, gin.H{
+		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": "task id is required",
 		})
 		return
 	}
 
-	task, err := model.GetSystemTaskByTaskID(taskID)
+	task, err := administration.GetSystemTaskByTaskID(taskID)
 	if err != nil {
-		common.ApiError(c, err)
+		common.CtxApiError(c, err)
 		return
 	}
 	if task == nil {
-		c.JSON(http.StatusNotFound, gin.H{
+		_ = c.JSON(http.StatusNotFound, common.H{
 			"success": false,
 			"message": "task not found",
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 		"data":    task.ToResponse(),

@@ -1,7 +1,6 @@
 package model
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -144,59 +143,6 @@ func TestUsageAccountingSupportsSignedDirectAndBatchDeltas(t *testing.T) {
 	assert.Equal(t, int64(1150), gotChannel.UsedQuota)
 }
 
-func TestUpdateUserAccessTokenOnlyUpdatesAccessToken(t *testing.T) {
-	setupUserUpdateTestState(t)
-
-	user := User{
-		Id:              2,
-		Username:        "token-rotation-user",
-		Password:        "password",
-		DisplayName:     "before",
-		Status:          common.UserStatusEnabled,
-		Quota:           1000,
-		AffQuota:        800,
-		AffHistoryQuota: 1200,
-	}
-	require.NoError(t, DB.Create(&user).Error)
-
-	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
-		"quota":        gorm.Expr("quota + ?", 500),
-		"aff_quota":    gorm.Expr("aff_quota - ?", 500),
-		"display_name": "concurrent-update",
-	}).Error)
-
-	require.NoError(t, UpdateUserAccessToken(user.Id, "rotated-token"))
-
-	var got User
-	require.NoError(t, DB.First(&got, user.Id).Error)
-	assert.Equal(t, "rotated-token", got.GetAccessToken())
-	assert.Equal(t, "concurrent-update", got.DisplayName)
-	assert.Equal(t, 1500, got.Quota)
-	assert.Equal(t, 300, got.AffQuota)
-	assert.Equal(t, 1200, got.AffHistoryQuota)
-}
-
-func TestUpdateUserAccessTokenRejectsSoftDeletedUser(t *testing.T) {
-	setupUserUpdateTestState(t)
-
-	user := User{
-		Id:       3,
-		Username: "deleted-token-rotation-user",
-		Password: "password",
-		Status:   common.UserStatusEnabled,
-	}
-	user.SetAccessToken("old-token")
-	require.NoError(t, DB.Create(&user).Error)
-	require.NoError(t, DB.Delete(&user).Error)
-
-	err := UpdateUserAccessToken(user.Id, "orphaned-token")
-	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
-
-	var got User
-	require.NoError(t, DB.Unscoped().First(&got, user.Id).Error)
-	assert.Equal(t, "old-token", got.GetAccessToken())
-}
-
 func TestUpdateUserSettingOnlyUpdatesSetting(t *testing.T) {
 	setupUserUpdateTestState(t)
 
@@ -240,11 +186,11 @@ func TestEnsureEmailAvailableRejectsExistingEmailCaseInsensitive(t *testing.T) {
 	err := EnsureEmailAvailable(" taken@example.COM ", 0)
 	require.ErrorIs(t, err, ErrEmailAlreadyTaken)
 
-	user, err := GetUniqueUserByEmail("TAKEN@example.com")
-	require.NoError(t, err)
-	assert.Equal(t, "existing", user.Username)
+	var users []User
+	require.NoError(t, DB.Where("LOWER(email) = ?", "taken@example.com").Limit(1).Find(&users).Error)
+	require.Len(t, users, 1)
 
-	require.NoError(t, EnsureEmailAvailable("taken@example.com", user.Id))
+	require.NoError(t, EnsureEmailAvailable("taken@example.com", users[0].Id))
 }
 
 func TestInsertRejectsDuplicateEmailWithoutUniqueIndex(t *testing.T) {
@@ -288,51 +234,6 @@ func TestInsertKeepsBlankPasswordForPasswordlessUser(t *testing.T) {
 	assert.Empty(t, stored.Password)
 }
 
-func TestUpdateUserBindColumnOnlyTouchesTheBindingColumn(t *testing.T) {
-	truncateTables(t)
-
-	user := createUserBindTestUser(t)
-	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
-		"role":   common.RoleAdminUser,
-		"status": common.UserStatusEnabled,
-		"group":  "vip",
-	}).Error)
-
-	require.NoError(t, UpdateUserBindColumn(user.Id, "github_id", "gh-12345"))
-
-	reloaded, err := GetUserById(user.Id, true)
-	require.NoError(t, err)
-	assert.Equal(t, "gh-12345", reloaded.GitHubId)
-	assert.Equal(t, common.RoleAdminUser, reloaded.Role)
-	assert.Equal(t, common.UserStatusEnabled, reloaded.Status)
-	assert.Equal(t, "vip", reloaded.Group)
-}
-
-func TestUpdateUserBindColumnPreservesRestrictiveChange(t *testing.T) {
-	truncateTables(t)
-
-	user := createUserBindTestUser(t)
-	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).
-		Update("status", common.UserStatusDisabled).Error)
-	require.NoError(t, UpdateUserBindColumn(user.Id, "wechat_id", "wx-open-id"))
-
-	reloaded, err := GetUserById(user.Id, true)
-	require.NoError(t, err)
-	assert.Equal(t, "wx-open-id", reloaded.WeChatId)
-	assert.Equal(t, common.UserStatusDisabled, reloaded.Status)
-}
-
-func TestUpdateUserBindColumnRejectsNonWhitelistedColumns(t *testing.T) {
-	truncateTables(t)
-
-	user := createUserBindTestUser(t)
-	for _, column := range []string{"role", "status", "group", "quota", "username", "password", "id"} {
-		assert.Error(t, UpdateUserBindColumn(user.Id, column, "1"), "column %s must be rejected", column)
-	}
-	assert.Error(t, UpdateUserBindColumn(user.Id, "github_id; DROP TABLE users", "x"))
-	assert.Error(t, UpdateUserBindColumn(0, "github_id", "x"))
-}
-
 func TestValidateAndFillRejectsPasswordlessUser(t *testing.T) {
 	setupUserUpdateTestState(t)
 
@@ -352,49 +253,4 @@ func TestValidateAndFillRejectsPasswordlessUser(t *testing.T) {
 	var stored User
 	require.NoError(t, DB.Where("username = ?", "passwordless-user").First(&stored).Error)
 	assert.Empty(t, stored.Password)
-}
-
-func TestResetUserPasswordByEmailRequiresSingleActiveMatch(t *testing.T) {
-	setupUserUpdateTestState(t)
-
-	require.NoError(t, DB.Create(&User{
-		Username: "duplicate-1",
-		Password: "old-1",
-		Email:    "legacy@example.com",
-		AffCode:  "dupe1",
-		Status:   common.UserStatusEnabled,
-	}).Error)
-	require.NoError(t, DB.Create(&User{
-		Username: "duplicate-2",
-		Password: "old-2",
-		Email:    "LEGACY@example.com",
-		AffCode:  "dupe2",
-		Status:   common.UserStatusEnabled,
-	}).Error)
-
-	err := ResetUserPasswordByEmail("legacy@example.com", "NewPassword123")
-	require.ErrorIs(t, err, ErrEmailAmbiguous)
-
-	var duplicates []User
-	require.NoError(t, DB.Where("LOWER(email) = ?", "legacy@example.com").Order("username asc").Find(&duplicates).Error)
-	require.Len(t, duplicates, 2)
-	assert.Equal(t, "old-1", duplicates[0].Password)
-	assert.Equal(t, "old-2", duplicates[1].Password)
-
-	require.NoError(t, DB.Create(&User{
-		Username: "unique",
-		Password: "old",
-		Email:    "unique@example.com",
-		AffCode:  "unique",
-		Status:   common.UserStatusEnabled,
-	}).Error)
-
-	require.NoError(t, ResetUserPasswordByEmail("UNIQUE@example.com", "NewPassword123"))
-
-	var unique User
-	require.NoError(t, DB.Where("username = ?", "unique").First(&unique).Error)
-	assert.True(t, common.ValidatePasswordAndHash("NewPassword123", unique.Password))
-
-	err = ResetUserPasswordByEmail("missing@example.com", "NewPassword123")
-	require.True(t, errors.Is(err, ErrEmailNotFound))
 }

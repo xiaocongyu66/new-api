@@ -11,7 +11,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -71,12 +70,12 @@ func TestRelayErrorHandlerTruncatesInvalidJSONBodyInLog(t *testing.T) {
 	var logBuffer bytes.Buffer
 
 	common.LogWriterMu.Lock()
-	oldWriter := gin.DefaultErrorWriter
-	gin.DefaultErrorWriter = &logBuffer
+	oldWriter := common.LogErrOutput
+	common.LogErrOutput = &logBuffer
 	common.LogWriterMu.Unlock()
 	t.Cleanup(func() {
 		common.LogWriterMu.Lock()
-		gin.DefaultErrorWriter = oldWriter
+		common.LogErrOutput = oldWriter
 		common.LogWriterMu.Unlock()
 	})
 
@@ -129,12 +128,12 @@ func TestRelayErrorHandlerKeepsInvalidJSONBodyInDebugLog(t *testing.T) {
 	var logBuffer bytes.Buffer
 
 	common.LogWriterMu.Lock()
-	oldWriter := gin.DefaultErrorWriter
-	gin.DefaultErrorWriter = &logBuffer
+	oldWriter := common.LogErrOutput
+	common.LogErrOutput = &logBuffer
 	common.LogWriterMu.Unlock()
 	t.Cleanup(func() {
 		common.LogWriterMu.Lock()
-		gin.DefaultErrorWriter = oldWriter
+		common.LogErrOutput = oldWriter
 		common.LogWriterMu.Unlock()
 	})
 

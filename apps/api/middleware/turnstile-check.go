@@ -1,23 +1,23 @@
 package middleware
 
 import (
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"net/url"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/gin-gonic/gin"
 )
 
 type turnstileCheckResponse struct {
 	Success bool `json:"success"`
 }
 
-func TurnstileCheck() gin.HandlerFunc {
-	return func(c *gin.Context) {
+func TurnstileCheck() contract.Middleware {
+	return func(c contract.Context) {
 		if common.TurnstileCheckEnabled {
 			response := c.Query("turnstile")
 			if response == "" {
-				c.JSON(http.StatusOK, gin.H{
+				_ = c.JSON(http.StatusOK, common.H{
 					"success": false,
 					"message": "Turnstile token 为空",
 				})
@@ -31,7 +31,7 @@ func TurnstileCheck() gin.HandlerFunc {
 			})
 			if err != nil {
 				common.SysLog(err.Error())
-				c.JSON(http.StatusOK, gin.H{
+				_ = c.JSON(http.StatusOK, common.H{
 					"success": false,
 					"message": err.Error(),
 				})
@@ -43,7 +43,7 @@ func TurnstileCheck() gin.HandlerFunc {
 			err = common.DecodeJson(rawRes.Body, &res)
 			if err != nil {
 				common.SysLog(err.Error())
-				c.JSON(http.StatusOK, gin.H{
+				_ = c.JSON(http.StatusOK, common.H{
 					"success": false,
 					"message": err.Error(),
 				})
@@ -51,7 +51,7 @@ func TurnstileCheck() gin.HandlerFunc {
 				return
 			}
 			if !res.Success {
-				c.JSON(http.StatusOK, gin.H{
+				_ = c.JSON(http.StatusOK, common.H{
 					"success": false,
 					"message": "Turnstile 校验失败，请刷新重试！",
 				})

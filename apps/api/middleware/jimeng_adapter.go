@@ -1,19 +1,17 @@
 package middleware
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
-	"github.com/gin-gonic/gin"
 )
 
-func JimengRequestConvert() func(c *gin.Context) {
-	return func(c *gin.Context) {
+func JimengRequestConvert() func(c contract.Context) {
+	return func(c contract.Context) {
 		action := c.Query("Action")
 		if action == "" {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, "Action query parameter is required")
@@ -22,7 +20,7 @@ func JimengRequestConvert() func(c *gin.Context) {
 
 		// Handle Jimeng official API request
 		var originalReq map[string]interface{}
-		if err := common.UnmarshalBodyReusable(c, &originalReq); err != nil {
+		if err := common.UnmarshalCtxBodyReusable(c, &originalReq); err != nil {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, "Invalid request body")
 			return
 		}
@@ -42,14 +40,14 @@ func JimengRequestConvert() func(c *gin.Context) {
 		}
 
 		// Update request body
-		c.Request.Body = io.NopCloser(bytes.NewBuffer(jsonData))
+		c.ReplaceBody(jsonData)
 		c.Set(common.KeyRequestBody, jsonData)
 
 		if image, ok := originalReq["image"]; !ok || image == "" {
 			c.Set("action", constant.TaskActionTextGenerate)
 		}
 
-		c.Request.URL.Path = "/v1/video/generations"
+		c.SetPath("/v1/video/generations")
 
 		if action == "CVSync2AsyncGetResult" {
 			taskId, ok := originalReq["task_id"].(string)
@@ -57,8 +55,8 @@ func JimengRequestConvert() func(c *gin.Context) {
 				abortWithOpenAiMessage(c, http.StatusBadRequest, "task_id is required for CVSync2AsyncGetResult")
 				return
 			}
-			c.Request.URL.Path = "/v1/video/generations/" + taskId
-			c.Request.Method = http.MethodGet
+			c.SetPath("/v1/video/generations/" + taskId)
+			c.SetMethod(http.MethodGet)
 			c.Set("task_id", taskId)
 			c.Set("relay_mode", relayconstant.RelayModeVideoFetchByID)
 		}

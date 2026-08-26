@@ -2,6 +2,7 @@ package advancedcustom
 
 import (
 	"bytes"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -439,9 +441,10 @@ func TestAdaptorConvertsResponsesRequestToOpenAIChatUpstream(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	cc := ginadapter.Wrap(c)
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	converted, err := adaptor.ConvertOpenAIResponsesRequest(c, info, dto.OpenAIResponsesRequest{
+	converted, err := adaptor.ConvertOpenAIResponsesRequest(cc, info, dto.OpenAIResponsesRequest{
 		Model:        "gpt-test",
 		Instructions: mustAdvancedCustomRawMessage(t, "system rules"),
 		Input:        mustAdvancedCustomRawMessage(t, "hello"),
@@ -542,6 +545,7 @@ func TestAdaptorResponsesToGeminiUsesResponsesBridge(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	cc := ginadapter.Wrap(c)
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	payload := dto.GeminiChatResponse{
@@ -564,7 +568,7 @@ func TestAdaptorResponsesToGeminiUsesResponsesBridge(t *testing.T) {
 	body, err := common.Marshal(payload)
 	require.NoError(t, err)
 
-	usage, newAPIError := adaptor.DoResponse(c, &http.Response{
+	usage, newAPIError := adaptor.DoResponse(cc, &http.Response{
 		Body: io.NopCloser(bytes.NewReader(body)),
 	}, info)
 	require.Nil(t, newAPIError)
@@ -804,12 +808,11 @@ func advancedCustomRelayInfo(config *dto.AdvancedCustomConfig) *relaycommon.Rela
 	}
 }
 
-func advancedCustomGinContext(path string) *gin.Context {
+func advancedCustomGinContext(path string) contract.Context {
 	gin.SetMode(gin.TestMode)
-	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest(http.MethodPost, path, nil)
-	c.Request.Header.Set("Content-Type", "application/json")
-	return c
+	raw, _ := gin.CreateTestContext(httptest.NewRecorder())
+	raw.Request = httptest.NewRequest(http.MethodPost, path, nil)
+	return ginadapter.Wrap(raw)
 }
 
 func mustAdvancedCustomRawMessage(t *testing.T, value any) []byte {

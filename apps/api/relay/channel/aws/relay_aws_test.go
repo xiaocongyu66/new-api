@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
@@ -73,10 +75,10 @@ func newAwsTestClient(httpClient bedrockruntime.HTTPClient) *bedrockruntime.Clie
 	})
 }
 
-func newAwsTestContext(writer http.ResponseWriter, requestContext context.Context) *gin.Context {
+func newAwsTestContext(writer http.ResponseWriter, requestContext context.Context) contract.Context {
 	c, _ := gin.CreateTestContext(writer)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).WithContext(requestContext)
-	return c
+	return contract.Context(ginadapter.Wrap(c))
 }
 
 func newAwsTestRelayInfo() *relaycommon.RelayInfo {
@@ -148,6 +150,7 @@ func TestDoAwsClientRequest_AppliesRuntimeHeaderOverrideToAnthropicBeta(t *testi
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	ctxC := ginadapter.Wrap(ctx)
 
 	info := &relaycommon.RelayInfo{
 		OriginModelName:           "claude-3-5-sonnet-20240620",
@@ -165,7 +168,7 @@ func TestDoAwsClientRequest_AppliesRuntimeHeaderOverrideToAnthropicBeta(t *testi
 	requestBody := bytes.NewBufferString(`{"messages":[{"role":"user","content":"hello"}],"max_tokens":128}`)
 	adaptor := &Adaptor{}
 
-	_, err := doAwsClientRequest(ctx, info, adaptor, requestBody)
+	_, err := doAwsClientRequest(ctxC, info, adaptor, requestBody)
 	require.NoError(t, err)
 
 	awsReq, ok := adaptor.AwsReq.(*bedrockruntime.InvokeModelInput)
@@ -261,7 +264,7 @@ func TestAwsHandlersCancelSdkRequestAndSkipRetry(t *testing.T) {
 	tests := []struct {
 		name    string
 		request any
-		handle  func(*gin.Context, *relaycommon.RelayInfo, *Adaptor) (*relaytypes.NewAPIError, *dto.Usage)
+		handle  func(contract.Context, *relaycommon.RelayInfo, *Adaptor) (*relaytypes.NewAPIError, *dto.Usage)
 	}{
 		{name: "non-stream", request: newAwsInvokeModelInput(), handle: awsHandler},
 		{name: "stream", request: newAwsStreamInput(), handle: awsStreamHandler},

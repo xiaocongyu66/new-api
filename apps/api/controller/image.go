@@ -1,9 +1,9 @@
 package controller
 
 import (
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
-func GetImage(c *gin.Context) {
+func GetImage(c contract.Context) {
 
 }

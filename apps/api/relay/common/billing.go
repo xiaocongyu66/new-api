@@ -1,6 +1,6 @@
 package common
 
-import "github.com/gin-gonic/gin"
+import "github.com/QuantumNous/new-api/internal/transport/contract"
 
 // BillingSettler 抽象计费会话的生命周期操作。
 // 由 service.BillingSession 实现，存储在 RelayInfo 上以避免循环引用。
@@ -11,7 +11,7 @@ type BillingSettler interface {
 
 	// Refund 退还所有预扣费额度（资金来源 + 令牌），幂等安全。
 	// 通过 gopool 异步执行。如果已经结算或退款则不做任何操作。
-	Refund(c *gin.Context)
+	Refund(c contract.Context)
 
 	// NeedsRefund 返回会话是否存在需要退还的预扣状态（未结算且未退款）。
 	NeedsRefund() bool

@@ -1,6 +1,7 @@
 package ollama
 
 import (
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -62,7 +63,8 @@ func TestOllamaChatHandlerNonStreamToolCalls(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			c, _ := gin.CreateTestContext(w)
+			cRaw, _ := gin.CreateTestContext(w)
+			c := ginadapter.Wrap(cRaw)
 
 			resp := &http.Response{
 				StatusCode: http.StatusOK,

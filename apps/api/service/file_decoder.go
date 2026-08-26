@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
@@ -14,13 +15,11 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/relaykit/types"
-
-	"github.com/gin-gonic/gin"
 )
 
 // GetFileTypeFromUrl 获取文件类型，返回 mime type， 例如 image/jpeg, image/png, image/gif, image/bmp, image/tiff, application/pdf
 // 如果获取失败，返回 application/octet-stream
-func GetFileTypeFromUrl(c *gin.Context, url string, reason ...string) (string, error) {
+func GetFileTypeFromUrl(c contract.Context, url string, reason ...string) (string, error) {
 	response, err := DoDownloadRequest(url, []string{"get_mime_type", strings.Join(reason, ", ")}...)
 	if err != nil {
 		common.SysLog(fmt.Sprintf("fail to get file type from url: %s, error: %s", url, err.Error()))
@@ -29,7 +28,7 @@ func GetFileTypeFromUrl(c *gin.Context, url string, reason ...string) (string, e
 	defer response.Body.Close()
 
 	if response.StatusCode != 200 {
-		logger.LogError(c, fmt.Sprintf("failed to download file from %s, status code: %d", url, response.StatusCode))
+		logger.LogError(c.Context(), fmt.Sprintf("failed to download file from %s, status code: %d", url, response.StatusCode))
 		return "", fmt.Errorf("failed to download file, status code: %d", response.StatusCode)
 	}
 
@@ -85,7 +84,7 @@ func GetFileTypeFromUrl(c *gin.Context, url string, reason ...string) (string, e
 	var readData []byte
 	limits := []int{512, 8 * 1024, 24 * 1024, 64 * 1024}
 	for _, limit := range limits {
-		logger.LogDebug(c, "Trying to read %d bytes to determine file type", limit)
+		logger.LogDebug(c.Context(), "Trying to read %d bytes to determine file type", limit)
 		if len(readData) < limit {
 			need := limit - len(readData)
 			tmp := make([]byte, need)
@@ -136,7 +135,7 @@ func GetFileTypeFromUrl(c *gin.Context, url string, reason ...string) (string, e
 // GetFileBase64FromUrl 从 URL 获取文件的 base64 编码数据
 // Deprecated: 请使用 GetBase64Data 配合 types.NewURLFileSource 替代
 // 此函数保留用于向后兼容，内部已重构为调用统一的文件服务
-func GetFileBase64FromUrl(c *gin.Context, url string, reason ...string) (*types.LocalFileData, error) {
+func GetFileBase64FromUrl(c contract.Context, url string, reason ...string) (*types.LocalFileData, error) {
 	source := types.NewURLFileSource(url)
 	cachedData, err := LoadFileSource(c, source, reason...)
 	if err != nil {

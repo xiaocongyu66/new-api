@@ -1,6 +1,8 @@
 package common
 
 import (
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -68,10 +70,10 @@ func TestValidateMultipartDirectNormalizesImageField(t *testing.T) {
 		TaskRelayInfo: &TaskRelayInfo{},
 	}
 
-	taskErr := ValidateMultipartDirect(context, info)
+	taskErr := ValidateMultipartDirect(ginadapter.Wrap(context), info)
 
 	require.Nil(t, taskErr)
-	storedReq, err := GetTaskRequest(context)
+	storedReq, err := GetTaskRequest(ginadapter.Wrap(context))
 	require.NoError(t, err)
 	require.Equal(t, []string{"https://example.com/first.png"}, storedReq.Images)
 	require.Equal(t, constant.TaskActionGenerate, info.Action)
@@ -83,12 +85,12 @@ func TestValidateMultipartDirectNormalizesImageField(t *testing.T) {
 func TestTaskDurationBounds(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	newContext := func(t *testing.T, body string) (*gin.Context, *RelayInfo) {
+	newContext := func(t *testing.T, body string) (contract.Context, *RelayInfo) {
 		request := httptest.NewRequest(http.MethodPost, "/v1/video/generations", strings.NewReader(body))
 		request.Header.Set("Content-Type", "application/json")
 		context, _ := gin.CreateTestContext(httptest.NewRecorder())
 		context.Request = request
-		return context, &RelayInfo{TaskRelayInfo: &TaskRelayInfo{}}
+		return ginadapter.Wrap(context), &RelayInfo{TaskRelayInfo: &TaskRelayInfo{}}
 	}
 
 	tests := []struct {

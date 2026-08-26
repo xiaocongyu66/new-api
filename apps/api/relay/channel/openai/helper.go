@@ -13,11 +13,14 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/gin-gonic/gin"
+
+	"github.com/samber/lo"
+
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
 // 辅助函数
-func HandleStreamFormat(c *gin.Context, info *relaycommon.RelayInfo, data string, forceFormat bool, thinkToContent bool) error {
+func HandleStreamFormat(c contract.Context, info *relaycommon.RelayInfo, data string, forceFormat bool, thinkToContent bool) error {
 	info.SendResponseCount++
 
 	switch info.RelayFormat {
@@ -31,7 +34,7 @@ func HandleStreamFormat(c *gin.Context, info *relaycommon.RelayInfo, data string
 	return nil
 }
 
-func handleClaudeFormat(c *gin.Context, data string, info *relaycommon.RelayInfo) error {
+func handleClaudeFormat(c contract.Context, data string, info *relaycommon.RelayInfo) error {
 	var streamResponse dto.ChatCompletionsStreamResponse
 	if err := common.Unmarshal(common.StringToByteSlice(data), &streamResponse); err != nil {
 		return err
@@ -40,7 +43,7 @@ func handleClaudeFormat(c *gin.Context, data string, info *relaycommon.RelayInfo
 	if streamResponse.Usage != nil {
 		info.ClaudeConvertInfo.Usage = streamResponse.Usage
 	}
-	result, err := relayconvert.ConvertStreamResponse(c, info, types.RelayFormatClaude, &streamResponse)
+	result, err := relayconvert.ConvertStreamResponse(c.Context(), info, types.RelayFormatClaude, &streamResponse)
 	if err != nil {
 		return err
 	}
@@ -54,14 +57,14 @@ func handleClaudeFormat(c *gin.Context, data string, info *relaycommon.RelayInfo
 	return nil
 }
 
-func handleGeminiFormat(c *gin.Context, data string, info *relaycommon.RelayInfo) error {
+func handleGeminiFormat(c contract.Context, data string, info *relaycommon.RelayInfo) error {
 	var streamResponse dto.ChatCompletionsStreamResponse
 	if err := common.Unmarshal(common.StringToByteSlice(data), &streamResponse); err != nil {
-		logger.LogError(c, "failed to unmarshal stream response: "+err.Error())
+		logger.LogError(c.Context(), "failed to unmarshal stream response: "+err.Error())
 		return err
 	}
 
-	result, err := relayconvert.ConvertStreamResponse(c, info, types.RelayFormatGemini, &streamResponse)
+	result, err := relayconvert.ConvertStreamResponse(c.Context(), info, types.RelayFormatGemini, &streamResponse)
 	if err != nil {
 		return err
 	}
@@ -77,12 +80,12 @@ func handleGeminiFormat(c *gin.Context, data string, info *relaycommon.RelayInfo
 
 	geminiResponseStr, err := common.Marshal(geminiResponse)
 	if err != nil {
-		logger.LogError(c, "failed to marshal gemini response: "+err.Error())
+		logger.LogError(c.Context(), "failed to marshal gemini response: "+err.Error())
 		return err
 	}
 
 	// send gemini format response
-	c.Render(-1, common.CustomEvent{Data: "data: " + string(geminiResponseStr)})
+	func() { _ = common.CustomEvent{Data: "data: " + string(geminiResponseStr)}.Render(c.ResponseWriter()) }()
 	_ = helper.FlushWriter(c)
 	return nil
 }
@@ -104,31 +107,22 @@ func ProcessStreamResponse(streamResponse dto.ChatCompletionsStreamResponse, res
 	return nil
 }
 
-// processTokenData accumulates billable text/tool data and reports whether this
-// chunk carried a non-empty finish_reason, i.e. the upstream declared the
-// completion terminated. The caller needs that signal to tell a complete stream
-// apart from an upstream that died mid-answer (#394).
-func processTokenData(relayMode int, data string, responseTextBuilder *strings.Builder, toolCount *int) (bool, error) {
+func processTokenData(relayMode int, data string, responseTextBuilder *strings.Builder, toolCount *int) error {
 	switch relayMode {
 	case relayconstant.RelayModeChatCompletions:
 		var streamResponse dto.ChatCompletionsStreamResponse
 		if err := common.UnmarshalJsonStr(data, &streamResponse); err != nil {
-			return false, err
+			return err
 		}
-		return streamResponse.IsFinished(), ProcessStreamResponse(streamResponse, responseTextBuilder, toolCount)
+		return ProcessStreamResponse(streamResponse, responseTextBuilder, toolCount)
 	case relayconstant.RelayModeCompletions:
 		var streamResponse dto.CompletionsStreamResponse
 		if err := common.UnmarshalJsonStr(data, &streamResponse); err != nil {
-			return false, err
+			return err
 		}
 		processCompletionsStreamResponse(streamResponse, responseTextBuilder)
-		for _, choice := range streamResponse.Choices {
-			if choice.FinishReason != "" {
-				return true, nil
-			}
-		}
 	}
-	return false, nil
+	return nil
 }
 
 func processCompletionsStreamResponse(streamResponse dto.CompletionsStreamResponse, responseTextBuilder *strings.Builder) {
@@ -139,7 +133,8 @@ func processCompletionsStreamResponse(streamResponse dto.CompletionsStreamRespon
 
 func handleLastResponse(lastStreamData string, responseId *string, createAt *int64,
 	systemFingerprint *string, model *string, usage **dto.Usage,
-	containStreamUsage *bool) error {
+	containStreamUsage *bool, info *relaycommon.RelayInfo,
+	shouldSendLastResp *bool) error {
 
 	var lastStreamResponse dto.ChatCompletionsStreamResponse
 	if err := common.Unmarshal(common.StringToByteSlice(lastStreamData), &lastStreamResponse); err != nil {
@@ -154,12 +149,17 @@ func handleLastResponse(lastStreamData string, responseId *string, createAt *int
 	if service.ValidUsage(lastStreamResponse.Usage) {
 		*containStreamUsage = true
 		*usage = lastStreamResponse.Usage
+		if !info.ShouldIncludeUsage {
+			*shouldSendLastResp = lo.SomeBy(lastStreamResponse.Choices, func(choice dto.ChatCompletionsStreamResponseChoice) bool {
+				return choice.Delta.GetContentString() != "" || choice.Delta.GetReasoningContent() != ""
+			})
+		}
 	}
 
 	return nil
 }
 
-func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStreamData string,
+func HandleFinalResponse(c contract.Context, info *relaycommon.RelayInfo, lastStreamData string,
 	responseId string, createAt int64, model string, systemFingerprint string,
 	usage *dto.Usage, containStreamUsage bool) {
 
@@ -181,7 +181,7 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 
 		info.ClaudeConvertInfo.Usage = usage
 
-		result, err := relayconvert.ConvertStreamResponse(c, info, types.RelayFormatClaude, &streamResponse)
+		result, err := relayconvert.ConvertStreamResponse(c.Context(), info, types.RelayFormatClaude, &streamResponse)
 		if err != nil {
 			common.SysLog("error converting Claude stream response: " + err.Error())
 			return
@@ -208,7 +208,7 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 		// 而包含最后一段文本输出的响应（倒数第二个）的 finishReason 为 null
 		// 暂不知是否有程序会不兼容。
 
-		result, err := relayconvert.ConvertStreamResponse(c, info, types.RelayFormatGemini, &streamResponse)
+		result, err := relayconvert.ConvertStreamResponse(c.Context(), info, types.RelayFormatGemini, &streamResponse)
 		if err != nil {
 			common.SysLog("error converting Gemini stream response: " + err.Error())
 			return
@@ -231,12 +231,12 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 		}
 
 		// 发送最终的 Gemini 响应
-		c.Render(-1, common.CustomEvent{Data: "data: " + string(geminiResponseStr)})
+		func() { _ = common.CustomEvent{Data: "data: " + string(geminiResponseStr)}.Render(c.ResponseWriter()) }()
 		_ = helper.FlushWriter(c)
 	}
 }
 
-func sendResponsesStreamData(c *gin.Context, streamResponse dto.ResponsesStreamResponse, data string) {
+func sendResponsesStreamData(c contract.Context, streamResponse dto.ResponsesStreamResponse, data string) {
 	if data == "" {
 		return
 	}

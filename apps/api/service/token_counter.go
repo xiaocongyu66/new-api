@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"math"
 	"path/filepath"
 	"strings"
@@ -15,11 +16,9 @@ import (
 	constant2 "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-
-	"github.com/gin-gonic/gin"
 )
 
-func getImageToken(c *gin.Context, fileMeta *types.FileMeta, model string, stream bool) (int, error) {
+func getImageToken(c contract.Context, fileMeta *types.FileMeta, model string, stream bool) (int, error) {
 	if fileMeta == nil || fileMeta.Source == nil {
 		return 0, fmt.Errorf("image_url_is_nil")
 	}
@@ -111,7 +110,7 @@ func getImageToken(c *gin.Context, fileMeta *types.FileMeta, model string, strea
 
 	width := config.Width
 	height := config.Height
-	logger.LogDebug(c, "image token input: format=%s, width=%d, height=%d", format, width, height)
+	logger.LogDebug(c.Context(), "image token input: format=%s, width=%d, height=%d", format, width, height)
 
 	if isPatchBased {
 		// 32x32 patch-based calculation with 1536 cap and model multiplier
@@ -171,12 +170,12 @@ func getImageToken(c *gin.Context, fileMeta *types.FileMeta, model string, strea
 	tilesH := (finalH + 512 - 1) / 512
 	tiles := tilesW * tilesH
 
-	logger.LogDebug(c, "image token scaled size: width=%d, height=%d, tiles=%d", finalW, finalH, tiles)
+	logger.LogDebug(c.Context(), "image token scaled size: width=%d, height=%d, tiles=%d", finalW, finalH, tiles)
 
 	return tiles*tileTokens + baseTokens, nil
 }
 
-func EstimateRequestToken(c *gin.Context, meta *types.TokenCountMeta, info *relaycommon.RelayInfo) (int, error) {
+func EstimateRequestToken(c contract.Context, meta *types.TokenCountMeta, info *relaycommon.RelayInfo) (int, error) {
 	// 是否统计token
 	if !constant.CountToken {
 		return 0, nil
@@ -190,7 +189,7 @@ func EstimateRequestToken(c *gin.Context, meta *types.TokenCountMeta, info *rela
 		return 0, nil
 	}
 	if info.RelayMode == constant2.RelayModeAudioTranscription || info.RelayMode == constant2.RelayModeAudioTranslation {
-		multiForm, err := common.ParseMultipartFormReusable(c)
+		multiForm, err := common.ParseCtxMultipartForm(c)
 		if err != nil {
 			return 0, fmt.Errorf("error parsing multipart form: %v", err)
 		}
@@ -204,7 +203,7 @@ func EstimateRequestToken(c *gin.Context, meta *types.TokenCountMeta, info *rela
 			defer file.Close()
 			// get ext and io.seeker
 			ext := filepath.Ext(fileHeader.Filename)
-			duration, err := common.GetAudioDuration(c.Request.Context(), file, ext)
+			duration, err := common.GetAudioDuration(c.Context(), file, ext)
 			if err != nil {
 				return 0, fmt.Errorf("error getting audio duration: %v", err)
 			}
@@ -219,7 +218,7 @@ func EstimateRequestToken(c *gin.Context, meta *types.TokenCountMeta, info *rela
 		return totalAudioToken, nil
 	}
 
-	model := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
+	model := common.GetCtxKeyString(c, constant.ContextKeyOriginalModel)
 	tkm := 0
 
 	if meta.TokenType == types.TokenTypeTextNumber {
@@ -296,7 +295,7 @@ func EstimateRequestToken(c *gin.Context, meta *types.TokenCountMeta, info *rela
 		}
 	}
 
-	common.SetContextKey(c, constant.ContextKeyPromptTokens, tkm)
+	common.SetCtxKey(c, constant.ContextKeyPromptTokens, tkm)
 	return tkm, nil
 }
 

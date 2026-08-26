@@ -2,17 +2,19 @@ package middleware
 
 import (
 	"errors"
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/security"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strings"
 
 	"github.com/QuantumNous/new-api/service"
-	"github.com/gin-gonic/gin"
 )
 
 // SecureVerificationRequired protects channel key disclosure. Other sensitive
 // operations validate their narrower proof scopes in their controller.
-func SecureVerificationRequired() gin.HandlerFunc {
-	return func(c *gin.Context) {
+func SecureVerificationRequired() contract.Middleware {
+	return func(c contract.Context) {
 		if !RequireSecurityProof(c, "channel.key.read", []string{"2fa", "passkey"}) {
 			return
 		}
@@ -23,13 +25,13 @@ func SecureVerificationRequired() gin.HandlerFunc {
 
 // RequireSecurityProof validates a proof against the authenticated dashboard
 // session and writes the shared proof error contract on failure.
-func RequireSecurityProof(c *gin.Context, requiredScope string, allowedMethods []string) bool {
-	identity, ok := GetSessionAuthIdentity(c)
+func RequireSecurityProof(c contract.Context, requiredScope string, allowedMethods []string) bool {
+	identity, ok := security.GetSessionAuthIdentity(c)
 	if !ok {
 		securityProofError(c, "SECURITY_PROOF_INVALID", "安全验证状态无效")
 		return false
 	}
-	raw := strings.TrimSpace(c.GetHeader("X-Security-Proof"))
+	raw := strings.TrimSpace(c.Header("X-Security-Proof"))
 	if raw == "" {
 		securityProofError(c, "SECURITY_PROOF_REQUIRED", "需要安全验证")
 		return false
@@ -50,8 +52,8 @@ func RequireSecurityProof(c *gin.Context, requiredScope string, allowedMethods [
 	return true
 }
 
-func securityProofError(c *gin.Context, code, message string) {
-	c.JSON(http.StatusForbidden, gin.H{
+func securityProofError(c contract.Context, code, message string) {
+	_ = c.JSON(http.StatusForbidden, common.H{
 		"success": false,
 		"message": message,
 		"code":    code,

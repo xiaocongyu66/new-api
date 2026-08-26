@@ -7,15 +7,15 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/gin-gonic/gin"
 )
 
 const maxVeoImageSize = 20 * 1024 * 1024 // 20 MB
 
 // ExtractMultipartImage reads the first `input_reference` file from a multipart
 // form upload and returns a VeoImageInput. Returns nil if no file is present.
-func ExtractMultipartImage(c *gin.Context, info *relaycommon.RelayInfo) *VeoImageInput {
+func ExtractMultipartImage(c contract.Context, info *relaycommon.RelayInfo) *VeoImageInput {
 	mf, err := c.MultipartForm()
 	if err != nil {
 		return nil

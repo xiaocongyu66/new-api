@@ -15,10 +15,10 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
-	"github.com/gin-gonic/gin"
 	"golang.org/x/image/webp"
 )
 
@@ -44,13 +44,13 @@ func getBase64ContextCacheKey(data string, mimeType string) string {
 
 // LoadFileSource 加载文件源数据
 // 这是统一的入口，会自动处理缓存和不同的来源类型
-func LoadFileSource(c *gin.Context, source types.FileSource, reason ...string) (*types.CachedFileData, error) {
+func LoadFileSource(c contract.Context, source types.FileSource, reason ...string) (*types.CachedFileData, error) {
 	if source == nil {
 		return nil, fmt.Errorf("file source is nil")
 	}
 
 	if common.DebugEnabled {
-		logger.LogDebug(c, "LoadFileSource starting for: %s", source.GetIdentifier())
+		logger.LogDebug(c.Context(), "LoadFileSource starting for: %s", source.GetIdentifier())
 	}
 
 	// 1. 快速检查内部缓存
@@ -124,7 +124,7 @@ func LoadFileSource(c *gin.Context, source types.FileSource, reason ...string) (
 }
 
 // registerSourceForCleanup 注册 FileSource 到 context 以便请求结束时清理
-func registerSourceForCleanup(c *gin.Context, source types.FileSource) {
+func registerSourceForCleanup(c contract.Context, source types.FileSource) {
 	if source.IsRegistered() {
 		return
 	}
@@ -141,7 +141,7 @@ func registerSourceForCleanup(c *gin.Context, source types.FileSource) {
 
 // CleanupFileSources 清理请求中所有注册的 FileSource
 // 应在请求结束时调用（通常由中间件自动调用）
-func CleanupFileSources(c *gin.Context) {
+func CleanupFileSources(c contract.Context) {
 	key := string(constant.ContextKeyFileSourcesToCleanup)
 	if sources, exists := c.Get(key); exists {
 		for _, source := range sources.([]types.FileSource) {
@@ -154,12 +154,12 @@ func CleanupFileSources(c *gin.Context) {
 }
 
 // loadFromURL 从 URL 加载文件
-func loadFromURL(c *gin.Context, url string, reason ...string) (*types.CachedFileData, error) {
+func loadFromURL(c contract.Context, url string, reason ...string) (*types.CachedFileData, error) {
 	// 下载文件
 	var maxFileSize = constant.MaxFileDownloadMB * 1024 * 1024
 
 	if common.DebugEnabled {
-		logger.LogDebug(c, "loadFromURL: initiating download")
+		logger.LogDebug(c.Context(), "loadFromURL: initiating download")
 	}
 	resp, err := DoDownloadRequest(url, reason...)
 	if err != nil {
@@ -173,7 +173,7 @@ func loadFromURL(c *gin.Context, url string, reason ...string) (*types.CachedFil
 
 	// 读取文件内容（限制大小）
 	if common.DebugEnabled {
-		logger.LogDebug(c, "loadFromURL: reading response body")
+		logger.LogDebug(c.Context(), "loadFromURL: reading response body")
 	}
 	fileBytes, err := io.ReadAll(io.LimitReader(resp.Body, int64(maxFileSize+1)))
 	if err != nil {
@@ -198,7 +198,7 @@ func loadFromURL(c *gin.Context, url string, reason ...string) (*types.CachedFil
 		diskPath, err := writeToDiskCache(base64Data)
 		if err != nil {
 			// 磁盘缓存失败，回退到内存
-			logger.LogWarn(c, fmt.Sprintf("Failed to write to disk cache, falling back to memory: %v", err))
+			logger.LogWarn(c.Context(), fmt.Sprintf("Failed to write to disk cache, falling back to memory: %v", err))
 			cachedData = types.NewMemoryCachedData(base64Data, mimeType, int64(len(fileBytes)))
 		} else {
 			cachedData = types.NewDiskCachedData(diskPath, mimeType, int64(len(fileBytes)))
@@ -208,7 +208,7 @@ func loadFromURL(c *gin.Context, url string, reason ...string) (*types.CachedFil
 			}
 			common.IncrementDiskFiles(base64Size)
 			if common.DebugEnabled {
-				logger.LogDebug(c, "File cached to disk: %s, size: %d bytes", diskPath, base64Size)
+				logger.LogDebug(c.Context(), "File cached to disk: %s, size: %d bytes", diskPath, base64Size)
 			}
 		}
 	} else {
@@ -219,7 +219,7 @@ func loadFromURL(c *gin.Context, url string, reason ...string) (*types.CachedFil
 	// 如果是图片，尝试获取图片配置
 	if strings.HasPrefix(mimeType, "image/") {
 		if common.DebugEnabled {
-			logger.LogDebug(c, "loadFromURL: decoding image config")
+			logger.LogDebug(c.Context(), "loadFromURL: decoding image config")
 		}
 		config, format, err := decodeImageConfig(fileBytes)
 		if err == nil {
@@ -384,7 +384,7 @@ func loadFromBase64(base64String string, providedMimeType string) (*types.Cached
 }
 
 // GetImageConfig 获取图片配置
-func GetImageConfig(c *gin.Context, source types.FileSource) (image.Config, string, error) {
+func GetImageConfig(c contract.Context, source types.FileSource) (image.Config, string, error) {
 	cachedData, err := LoadFileSource(c, source, "get_image_config")
 	if err != nil {
 		return image.Config{}, "", err
@@ -415,7 +415,11 @@ func GetImageConfig(c *gin.Context, source types.FileSource) (image.Config, stri
 }
 
 // GetBase64Data 获取 base64 编码的数据
-func GetBase64Data(c *gin.Context, source types.FileSource, reason ...string) (string, string, error) {
+//
+// It still accepts *gin.Context because relay provider adaptors have not been
+// migrated yet; the context is adapted before entering the contract-based
+// file-source chain.
+func GetBase64Data(c contract.Context, source types.FileSource, reason ...string) (string, string, error) {
 	cachedData, err := LoadFileSource(c, source, reason...)
 	if err != nil {
 		return "", "", err
@@ -428,7 +432,7 @@ func GetBase64Data(c *gin.Context, source types.FileSource, reason ...string) (s
 }
 
 // GetMimeType 获取文件的 MIME 类型
-func GetMimeType(c *gin.Context, source types.FileSource) (string, error) {
+func GetMimeType(c contract.Context, source types.FileSource) (string, error) {
 	if source.HasCache() {
 		return source.GetCache().MimeType, nil
 	}

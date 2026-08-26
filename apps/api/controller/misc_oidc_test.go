@@ -1,13 +1,14 @@
 package controller
 
 import (
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/system_setting"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -46,7 +47,7 @@ func TestGetStatusReturnsEffectiveOIDCDisplayName(t *testing.T) {
 			context, _ := gin.CreateTestContext(response)
 			context.Request = httptest.NewRequest(http.MethodGet, "/api/status", nil)
 
-			GetStatus(context)
+			GetStatus(ginadapter.Wrap(context))
 
 			var payload struct {
 				Success bool           `json:"success"`

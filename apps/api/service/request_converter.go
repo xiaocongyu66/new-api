@@ -2,33 +2,50 @@ package service
 
 import (
 	"context"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/gin-gonic/gin"
 )
 
 func init() {
 	relayconvert.SetMediaResolver(relayconvert.MediaResolver{
-		// relayconvert is gin-free; recover the gin context when the caller
-		// passed one so file caching/cleanup keeps working.
+		// relayconvert is gin-free; recover the contract context threaded
+		// through the request context so file caching/cleanup keeps working.
 		GetBase64Data: func(ctx context.Context, source types.FileSource, reason ...string) (string, string, error) {
-			ginCtx, _ := ctx.(*gin.Context)
-			return GetBase64Data(ginCtx, source, reason...)
+			if cc, ok := ctx.Value(mediaContractKey{}).(contract.Context); ok {
+				return GetBase64Data(cc, source, reason...)
+			}
+			return GetBase64Data(nil, source, reason...)
 		},
 		DecodeBase64FileData: DecodeBase64FileData,
 	})
 }
 
-func ConvertRequest(c *gin.Context, info *relaycommon.RelayInfo, target types.RelayFormat, request any) (*relayconvert.RequestResult, error) {
-	return relayconvert.ConvertRequest(c, info, target, request)
+// mediaContractKey threads the contract context through relayconvert's plain
+// context so the media resolver can reach file services.
+type mediaContractKey struct{}
+
+func threadMediaCtx(c contract.Context) context.Context {
+	if c == nil {
+		return context.Background()
+	}
+	c.SetContextValue(mediaContractKey{}, c)
+	return c.Context()
 }
 
-func ConvertRequestByID(c *gin.Context, info *relaycommon.RelayInfo, converter string, request any) (*relayconvert.RequestResult, error) {
-	return relayconvert.ConvertRequestByID(c, info, converter, request)
+func ConvertRequest(c contract.Context, info *relaycommon.RelayInfo, target types.RelayFormat, request any) (*relayconvert.RequestResult, error) {
+	ctx := threadMediaCtx(c)
+	return relayconvert.ConvertRequest(ctx, info, target, request)
 }
 
-func ConvertRequestVia(c *gin.Context, info *relaycommon.RelayInfo, request any, path ...types.RelayFormat) (*relayconvert.RequestResult, error) {
-	return relayconvert.ConvertRequestVia(c, info, request, path...)
+func ConvertRequestByID(c contract.Context, info *relaycommon.RelayInfo, converter string, request any) (*relayconvert.RequestResult, error) {
+	ctx := threadMediaCtx(c)
+	return relayconvert.ConvertRequestByID(ctx, info, converter, request)
+}
+
+func ConvertRequestVia(c contract.Context, info *relaycommon.RelayInfo, request any, path ...types.RelayFormat) (*relayconvert.RequestResult, error) {
+	ctx := threadMediaCtx(c)
+	return relayconvert.ConvertRequestVia(ctx, info, request, path...)
 }

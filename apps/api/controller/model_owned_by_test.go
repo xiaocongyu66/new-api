@@ -2,6 +2,8 @@ package controller
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/gin-gonic/gin"
 	"net/http/httptest"
 	"testing"
 
@@ -9,7 +11,6 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -62,8 +63,9 @@ func TestBuildOpenAIModelFallsBackToCustomForUnknownModels(t *testing.T) {
 
 func TestGetModelListGroupsUsesUserGroupWhenTokenGroupIsEmpty(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx := ginadapter.Wrap(ctxRaw)
+	common.SetCtxKey(ctx, constant.ContextKeyUserGroup, "default")
 
 	groups, err := getModelListGroups(ctx)
 	require.NoError(t, err)
@@ -75,9 +77,10 @@ func TestGetModelListGroupsUsesUserGroupWhenTokenGroupIsEmpty(t *testing.T) {
 
 func TestGetModelListGroupsUsesExplicitTokenGroup(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
-	common.SetContextKey(ctx, constant.ContextKeyTokenGroup, "vip")
+	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx := ginadapter.Wrap(ctxRaw)
+	common.SetCtxKey(ctx, constant.ContextKeyUserGroup, "default")
+	common.SetCtxKey(ctx, constant.ContextKeyTokenGroup, "vip")
 
 	groups, err := getModelListGroups(ctx)
 	require.NoError(t, err)
@@ -101,16 +104,17 @@ func TestGetModelListGroupsUsesFilteredTokenAutoGroupsSnapshot(t *testing.T) {
 	})
 
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
-	common.SetContextKey(ctx, constant.ContextKeyTokenGroup, "auto")
-	common.SetContextKey(ctx, constant.ContextKeyTokenAutoGroups, []string{"vip", "default"})
+	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx := ginadapter.Wrap(ctxRaw)
+	common.SetCtxKey(ctx, constant.ContextKeyUserGroup, "default")
+	common.SetCtxKey(ctx, constant.ContextKeyTokenGroup, "auto")
+	common.SetCtxKey(ctx, constant.ContextKeyTokenAutoGroups, []string{"vip", "default"})
 
 	groups, err := getModelListGroups(ctx)
 	require.NoError(t, err)
 	require.Equal(t, []string{"vip"}, groups.ownerGroups)
 
-	common.SetContextKey(ctx, constant.ContextKeyTokenAutoGroups, []string{"vip"})
+	common.SetCtxKey(ctx, constant.ContextKeyTokenAutoGroups, []string{"vip"})
 	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"Default"}`))
 	groups, err = getModelListGroups(ctx)
 	require.NoError(t, err)

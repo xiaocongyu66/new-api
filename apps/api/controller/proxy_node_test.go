@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,7 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,14 +42,13 @@ func setupProxyNodeControllerTest(t *testing.T) *gorm.DB {
 	})
 	return db
 }
-func proxyNodeContext(t *testing.T, method, path, body string) (*gin.Context, *httptest.ResponseRecorder) {
+func proxyNodeContext(t *testing.T, method, routePattern, requestPath, body string, handler contract.Handler) *httptest.ResponseRecorder {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(method, path, bytes.NewBufferString(body))
-	ctx.Request.Header.Set("Content-Type", "application/json")
-	return ctx, recorder
+	engine := gin.New()
+	engine.Handle(method, routePattern, ginadapter.Handler(handler))
+	engine.ServeHTTP(recorder, httptest.NewRequest(method, requestPath, bytes.NewBufferString(body)))
+	return recorder
 }
 
 func decodeProxyNodeResponse(t *testing.T, recorder *httptest.ResponseRecorder) proxyNodeAPIResponse {
@@ -64,8 +65,7 @@ func TestListProxyNodesRedactsStoredConfiguration(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	ctx, recorder := proxyNodeContext(t, http.MethodGet, "/api/proxy/nodes", "")
-	ListProxyNodes(ctx)
+	recorder := proxyNodeContext(t, http.MethodGet, "/api/proxy/nodes", "/api/proxy/nodes", "", ListProxyNodes)
 
 	response := decodeProxyNodeResponse(t, recorder)
 	require.True(t, response.Success, response.Message)
@@ -81,9 +81,7 @@ func TestListProxyNodesRedactsStoredConfiguration(t *testing.T) {
 
 func TestCreateProxyNodeRejectsInvalidScopeWithoutPersistence(t *testing.T) {
 	db := setupProxyNodeControllerTest(t)
-	ctx, recorder := proxyNodeContext(t, http.MethodPost, "/api/proxy/nodes", `{"name":"bad","enabled":true,"proxy":"http://example.com:8080","scope_type":"all","scope_value":""}`)
-
-	CreateProxyNode(ctx)
+	recorder := proxyNodeContext(t, http.MethodPost, "/api/proxy/nodes", "/api/proxy/nodes", `{"name":"bad","enabled":true,"proxy":"http://example.com:8080","scope_type":"all","scope_value":""}`, CreateProxyNode)
 
 	response := decodeProxyNodeResponse(t, recorder)
 	assert.False(t, response.Success)
@@ -100,9 +98,7 @@ func TestUpdateProxyNodeWithoutProxyPreservesEncryptedConfiguration(t *testing.T
 	require.NoError(t, err)
 	originalCiphertext := node.EncryptedProxyConfig
 
-	ctx, recorder := proxyNodeContext(t, http.MethodPut, "/api/proxy/nodes/1", `{"name":"after","enabled":false,"scope_type":"custom","scope_value":""}`)
-	ctx.Params = gin.Params{{Key: "id", Value: "1"}}
-	UpdateProxyNode(ctx)
+	recorder := proxyNodeContext(t, http.MethodPut, "/api/proxy/nodes/:id", "/api/proxy/nodes/1", `{"name":"after","enabled":false,"scope_type":"custom","scope_value":""}`, UpdateProxyNode)
 
 	response := decodeProxyNodeResponse(t, recorder)
 	require.True(t, response.Success, response.Message)
@@ -121,9 +117,7 @@ func TestUpdateProxyNodeWithEmptyProxyPreservesEncryptedConfiguration(t *testing
 	require.NoError(t, err)
 	originalCiphertext := node.EncryptedProxyConfig
 
-	ctx, recorder := proxyNodeContext(t, http.MethodPut, "/api/proxy/nodes/1", `{"name":"after","enabled":true,"proxy":"","scope_type":"custom","scope_value":""}`)
-	ctx.Params = gin.Params{{Key: "id", Value: "1"}}
-	UpdateProxyNode(ctx)
+	recorder := proxyNodeContext(t, http.MethodPut, "/api/proxy/nodes/:id", "/api/proxy/nodes/1", `{"name":"after","enabled":true,"proxy":"","scope_type":"custom","scope_value":""}`, UpdateProxyNode)
 
 	response := decodeProxyNodeResponse(t, recorder)
 	require.True(t, response.Success, response.Message)
@@ -153,8 +147,7 @@ func TestGetProxyNodeReportCountsHealthyNodesRegardlessOfEnabled(t *testing.T) {
 	require.NoError(t, db.Model(&model.ProxyNode{}).Where("id = ?", enabled.ID).
 		Updates(map[string]any{"health": 0.1}).Error)
 
-	ctx, recorder := proxyNodeContext(t, http.MethodGet, "/api/proxy/nodes/report", "")
-	GetProxyNodeReport(ctx)
+	recorder := proxyNodeContext(t, http.MethodGet, "/api/proxy/nodes/report", "/api/proxy/nodes/report", "", GetProxyNodeReport)
 
 	response := decodeProxyNodeResponse(t, recorder)
 	require.True(t, response.Success, response.Message)
@@ -176,9 +169,10 @@ func TestGetProxyNodeReturnsEditableLinkOnlyFromDetailEndpoint(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	ctx, recorder := proxyNodeContext(t, http.MethodGet, "/api/proxy/nodes/1", "")
-	ctx.Params = gin.Params{{Key: "id", Value: fmt.Sprint(node.ID)}}
-	GetProxyNode(ctx)
+	recorder := httptest.NewRecorder()
+	getEngine := gin.New()
+	getEngine.GET("/api/proxy/nodes/:id", ginadapter.Handler(GetProxyNode))
+	getEngine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/proxy/nodes/"+fmt.Sprint(node.ID), nil))
 
 	response := decodeProxyNodeResponse(t, recorder)
 	require.True(t, response.Success, response.Message)
@@ -210,8 +204,7 @@ func TestAllProxyNodesProbesEnabledNodesAndReportsCounts(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	ctx, recorder := proxyNodeContext(t, http.MethodPost, "/api/proxy/nodes/test-all", "")
-	TestAllProxyNodes(ctx)
+	recorder := proxyNodeContext(t, http.MethodPost, "/api/proxy/nodes/test-all", "/api/proxy/nodes/test-all", "", TestAllProxyNodes)
 	response := decodeProxyNodeResponse(t, recorder)
 	require.True(t, response.Success, response.Message)
 	var counts struct {

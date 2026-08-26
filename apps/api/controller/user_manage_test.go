@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -57,7 +58,7 @@ func performManageUserRequest(t *testing.T, body string) *httptest.ResponseRecor
 	c.Set("id", 9999)
 	c.Set("role", common.RoleRootUser)
 	c.Set("username", "root-operator")
-	ManageUser(c)
+	ManageUser(ginadapter.Wrap(c))
 	return recorder
 }
 

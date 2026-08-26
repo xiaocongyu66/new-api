@@ -1,11 +1,13 @@
 package helper
 
 import (
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -34,12 +36,13 @@ func TestModelPriceHelperTieredUsesPreloadedRequestInput(t *testing.T) {
 	}))
 
 	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	req := httptest.NewRequest(http.MethodPost, "/api/channel/test/1", nil)
-	req.Body = nil
-	req.ContentLength = 0
-	req.Header.Set("Content-Type", "application/json")
-	ctx.Request = req
+	ctxRaw, _ := gin.CreateTestContext(recorder)
+	ctx := ginadapter.Wrap(ctxRaw)
+	rawReq := httptest.NewRequest(http.MethodPost, "/api/channel/test/1", nil)
+	rawReq.Body = nil
+	rawReq.ContentLength = 0
+	rawReq.Header.Set("Content-Type", "application/json")
+	ctxRaw.Request = rawReq
 	ctx.Set("group", "default")
 
 	info := &relaycommon.RelayInfo{
@@ -118,10 +121,11 @@ func TestModelPriceHelperTieredPreConsumeMaxTokensFallback(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
-			ctx, _ := gin.CreateTestContext(recorder)
+			ctxRaw, _ := gin.CreateTestContext(recorder)
+			ctx := ginadapter.Wrap(ctxRaw)
 			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 			req.Header.Set("Content-Type", "application/json")
-			ctx.Request = req
+			ctxRaw.Request = req
 			ctx.Set("group", tc.group)
 
 			info := &relaycommon.RelayInfo{
@@ -161,8 +165,9 @@ func TestModelPriceHelperTieredRejectsPreConsumeOverflow(t *testing.T) {
 	}))
 
 	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	ctxRaw, _ := gin.CreateTestContext(recorder)
+	ctxRaw.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	ctx := ginadapter.Wrap(ctxRaw)
 	ctx.Set("group", "default")
 	info := &relaycommon.RelayInfo{
 		OriginModelName: "tiered-overflow-model",
@@ -225,7 +230,8 @@ func TestModelPriceHelperRequestBillingRatiosOnlyApplyToFixedPrice(t *testing.T)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx := ginadapter.Wrap(ctxRaw)
 			ctx.Set("group", "default")
 			info := &relaycommon.RelayInfo{
 				OriginModelName: tt.model,
@@ -247,8 +253,9 @@ func TestModelPriceHelperRequestBillingRatiosOnlyApplyToFixedPrice(t *testing.T)
 		})
 	}
 
-	newInfo := func(model string) (*gin.Context, *relaycommon.RelayInfo) {
-		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	newInfo := func(model string) (contract.Context, *relaycommon.RelayInfo) {
+		ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx := ginadapter.Wrap(ctxRaw)
 		ctx.Set("group", "default")
 		return ctx, &relaycommon.RelayInfo{
 			OriginModelName: model,

@@ -3,6 +3,9 @@ package controller
 import (
 	"bytes"
 	"fmt"
+	taskcap "github.com/QuantumNous/new-api/internal/capabilities/task"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -16,7 +19,6 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -148,9 +150,10 @@ func TestCopyChannelRejectsInvalidLegacyProxySettings(t *testing.T) {
 	require.NoError(t, db.Create(origin).Error)
 
 	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", origin.Id)}}
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/channel/copy", nil)
+	ctxRaw, _ := gin.CreateTestContext(recorder)
+	ctxRaw.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", origin.Id)}}
+	ctxRaw.Request = httptest.NewRequest(http.MethodPost, "/api/channel/copy", nil)
+	ctx := ginadapter.Wrap(ctxRaw)
 
 	CopyChannel(ctx)
 
@@ -171,9 +174,10 @@ func TestDeleteChannelResetsProxyCacheWhenPreReadFails(t *testing.T) {
 	require.NoError(t, err)
 
 	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Params = gin.Params{{Key: "id", Value: "999999"}}
-	ctx.Request = httptest.NewRequest(http.MethodDelete, "/api/channel/999999", nil)
+	ctxRaw, _ := gin.CreateTestContext(recorder)
+	ctxRaw.Params = gin.Params{{Key: "id", Value: "999999"}}
+	ctxRaw.Request = httptest.NewRequest(http.MethodDelete, "/api/channel/999999", nil)
+	ctx := ginadapter.Wrap(ctxRaw)
 
 	DeleteChannel(ctx)
 
@@ -196,7 +200,7 @@ func TestDeleteChannelBatchReportsAndAuditsActualDeletedCount(t *testing.T) {
 	ctx.Request = httptest.NewRequest(http.MethodDelete, "/api/channel/batch", bytes.NewReader(requestBody))
 	ctx.Request.Header.Set("Content-Type", "application/json")
 
-	DeleteChannelBatch(ctx)
+	DeleteChannelBatch(ginadapter.Wrap(ctx))
 
 	var response struct {
 		Success bool  `json:"success"`
@@ -246,8 +250,7 @@ func TestSettleTestQuotaUsesTieredBilling(t *testing.T) {
 }
 
 func TestBuildTestLogOtherInjectsTieredInfo(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx, _ := ginadapter.NewSyntheticContext(nil)
 
 	info := &relaycommon.RelayInfo{
 		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
@@ -283,7 +286,8 @@ func TestBuildTestLogOtherInjectsTieredInfo(t *testing.T) {
 
 func TestResolveChannelTestUserIDUsesRequestUser(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx := ginadapter.Wrap(ctxRaw)
 	ctx.Set("id", 2)
 
 	userID, err := resolveChannelTestUserID(ctx)
@@ -341,14 +345,14 @@ func TestTestAllChannelsRejectsExistingActiveTask(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
 	require.NoError(t, db.AutoMigrate(&model.SystemTask{}, &model.SystemTaskLock{}))
 
-	existing, err := model.CreateSystemTask(model.SystemTaskTypeChannelTest, nil, nil)
+	existing, err := taskcap.CreateSystemTask(model.SystemTaskTypeChannelTest, nil, nil)
 	require.NoError(t, err)
 
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/channel/test", nil)
 
-	TestAllChannels(ctx)
+	TestAllChannels(ginadapter.Wrap(ctx))
 
 	require.Equal(t, http.StatusConflict, recorder.Code)
 	require.Contains(t, recorder.Body.String(), existing.TaskID)

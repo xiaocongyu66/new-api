@@ -20,8 +20,8 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/bytedance/gopkg/util/gopool"
-	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
 
@@ -48,15 +48,15 @@ func ApplyUpstreamBodyMetadata(req *http.Request, body io.Reader) {
 	}
 }
 
-func SetupApiRequestHeader(info *common.RelayInfo, c *gin.Context, req *http.Header) {
+func SetupApiRequestHeader(info *common.RelayInfo, c contract.Context, req *http.Header) {
 	if info.RelayMode == constant.RelayModeAudioTranscription || info.RelayMode == constant.RelayModeAudioTranslation {
 		// multipart/form-data
 	} else if info.RelayMode == constant.RelayModeRealtime {
 		// websocket
 	} else {
-		req.Set("Content-Type", c.Request.Header.Get("Content-Type"))
-		req.Set("Accept", c.Request.Header.Get("Accept"))
-		if info.IsStream && c.Request.Header.Get("Accept") == "" {
+		req.Set("Content-Type", c.HTTPRequest().Header.Get("Content-Type"))
+		req.Set("Accept", c.HTTPRequest().Header.Get("Accept"))
+		if info.IsStream && c.HTTPRequest().Header.Get("Accept") == "" {
 			req.Set("Accept", "text/event-stream")
 		}
 	}
@@ -147,7 +147,7 @@ func shouldSkipPassthroughHeader(name string) bool {
 	return false
 }
 
-func applyHeaderOverridePlaceholders(template string, c *gin.Context, apiKey string) (string, bool, error) {
+func applyHeaderOverridePlaceholders(template string, c contract.Context, apiKey string) (string, bool, error) {
 	trimmed := strings.TrimSpace(template)
 	if strings.HasPrefix(trimmed, clientHeaderPlaceholderPrefix) {
 		afterPrefix := trimmed[len(clientHeaderPlaceholderPrefix):]
@@ -160,10 +160,10 @@ func applyHeaderOverridePlaceholders(template string, c *gin.Context, apiKey str
 		if name == "" {
 			return "", false, fmt.Errorf("client_header placeholder name is empty: %q", template)
 		}
-		if c == nil || c.Request == nil {
+		if c == nil || c.HTTPRequest() == nil {
 			return "", false, fmt.Errorf("missing request context for client_header placeholder")
 		}
-		clientHeaderValue := c.Request.Header.Get(name)
+		clientHeaderValue := c.HTTPRequest().Header.Get(name)
 		if strings.TrimSpace(clientHeaderValue) == "" {
 			return "", false, nil
 		}
@@ -190,7 +190,7 @@ func applyHeaderOverridePlaceholders(template string, c *gin.Context, apiKey str
 //   - "re:<regex>" / "regex:<regex>": passthrough headers whose names match the regex (Go regexp)
 //
 // Passthrough rules are applied first, then normal overrides are applied, so explicit overrides win.
-func processHeaderOverride(info *common.RelayInfo, c *gin.Context) (map[string]string, error) {
+func processHeaderOverride(info *common.RelayInfo, c contract.Context) (map[string]string, error) {
 	headerOverride := make(map[string]string)
 	if info == nil {
 		return headerOverride, nil
@@ -233,10 +233,10 @@ func processHeaderOverride(info *common.RelayInfo, c *gin.Context) (map[string]s
 	}
 
 	if passAll || len(passthroughRegex) > 0 {
-		if c == nil || c.Request == nil {
+		if c == nil || c.HTTPRequest() == nil {
 			return nil, types.NewError(fmt.Errorf("missing request context for header passthrough"), types.ErrorCodeChannelHeaderOverrideInvalid)
 		}
-		for name := range c.Request.Header {
+		for name := range c.HTTPRequest().Header {
 			if shouldSkipPassthroughHeader(name) {
 				continue
 			}
@@ -252,7 +252,7 @@ func processHeaderOverride(info *common.RelayInfo, c *gin.Context) (map[string]s
 					continue
 				}
 			}
-			value := strings.TrimSpace(c.Request.Header.Get(name))
+			value := strings.TrimSpace(c.HTTPRequest().Header.Get(name))
 			if value == "" {
 				continue
 			}
@@ -290,7 +290,7 @@ func processHeaderOverride(info *common.RelayInfo, c *gin.Context) (map[string]s
 	return headerOverride, nil
 }
 
-func ResolveHeaderOverride(info *common.RelayInfo, c *gin.Context) (map[string]string, error) {
+func ResolveHeaderOverride(info *common.RelayInfo, c contract.Context) (map[string]string, error) {
 	return processHeaderOverride(info, c)
 }
 
@@ -307,13 +307,13 @@ func applyHeaderOverrideToRequest(req *http.Request, headerOverride map[string]s
 	}
 }
 
-func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody io.Reader) (*http.Response, error) {
+func DoApiRequest(a Adaptor, c contract.Context, info *common.RelayInfo, requestBody io.Reader) (*http.Response, error) {
 	fullRequestURL, err := a.GetRequestURL(info)
 	if err != nil {
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
-	logger.LogDebug(c, "fullRequestURL: %s", common.SanitizeURLForLog(fullRequestURL))
-	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
+	logger.LogDebug(c.HTTPRequest().Context(), "fullRequestURL: %s", common.SanitizeURLForLog(fullRequestURL))
+	req, err := http.NewRequest(c.HTTPRequest().Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
@@ -337,19 +337,19 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 	return resp, nil
 }
 
-func DoFormRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody io.Reader) (*http.Response, error) {
+func DoFormRequest(a Adaptor, c contract.Context, info *common.RelayInfo, requestBody io.Reader) (*http.Response, error) {
 	fullRequestURL, err := a.GetRequestURL(info)
 	if err != nil {
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
-	logger.LogDebug(c, "fullRequestURL: %s", common.SanitizeURLForLog(fullRequestURL))
-	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
+	logger.LogDebug(c.HTTPRequest().Context(), "fullRequestURL: %s", common.SanitizeURLForLog(fullRequestURL))
+	req, err := http.NewRequest(c.HTTPRequest().Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
 	ApplyUpstreamBodyMetadata(req, requestBody)
 	// set form data
-	req.Header.Set("Content-Type", c.Request.Header.Get("Content-Type"))
+	req.Header.Set("Content-Type", c.HTTPRequest().Header.Get("Content-Type"))
 	headers := req.Header
 	err = a.SetupRequestHeader(c, &headers, info)
 	if err != nil {
@@ -369,7 +369,7 @@ func DoFormRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBod
 	return resp, nil
 }
 
-func DoWssRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody io.Reader) (*websocket.Conn, error) {
+func DoWssRequest(a Adaptor, c contract.Context, info *common.RelayInfo, requestBody io.Reader) (*websocket.Conn, error) {
 	fullRequestURL, err := a.GetRequestURL(info)
 	if err != nil {
 		return nil, fmt.Errorf("get request url failed: %w", err)
@@ -388,7 +388,7 @@ func DoWssRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 	for key, value := range headerOverride {
 		targetHeader.Set(key, value)
 	}
-	targetHeader.Set("Content-Type", c.Request.Header.Get("Content-Type"))
+	targetHeader.Set("Content-Type", c.HTTPRequest().Header.Get("Content-Type"))
 	targetConn, _, err := websocket.DefaultDialer.Dial(fullRequestURL, targetHeader)
 	if err != nil {
 		return nil, fmt.Errorf("dial failed to %s: %w", common.SanitizeURLForLog(fullRequestURL), err)
@@ -399,7 +399,7 @@ func DoWssRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 	return targetConn, nil
 }
 
-func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) (context.CancelFunc, <-chan struct{}) {
+func startPingKeepAlive(c contract.Context, pingInterval time.Duration) (context.CancelFunc, <-chan struct{}) {
 	pingerCtx, stopPinger := context.WithCancel(context.Background())
 	done := make(chan struct{})
 
@@ -408,9 +408,9 @@ func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) (context.Can
 		defer func() {
 			// 增加panic恢复处理
 			if r := recover(); r != nil {
-				logger.LogDebug(c, "SSE ping goroutine panic recovered: %v", r)
+				logger.LogDebug(c.HTTPRequest().Context(), "SSE ping goroutine panic recovered: %v", r)
 			}
-			logger.LogDebug(c, "SSE ping goroutine stopped")
+			logger.LogDebug(c.HTTPRequest().Context(), "SSE ping goroutine stopped")
 		}()
 
 		if pingInterval <= 0 {
@@ -421,11 +421,11 @@ func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) (context.Can
 		// 确保在任何情况下都清理ticker
 		defer func() {
 			ticker.Stop()
-			logger.LogDebug(c, "SSE ping ticker stopped")
+			logger.LogDebug(c.HTTPRequest().Context(), "SSE ping ticker stopped")
 		}()
 
 		var pingMutex sync.Mutex
-		logger.LogDebug(c, "SSE ping goroutine started")
+		logger.LogDebug(c.HTTPRequest().Context(), "SSE ping goroutine started")
 
 		// 增加超时控制，防止goroutine长时间运行
 		maxPingDuration := 120 * time.Minute // 最大ping持续时间
@@ -437,18 +437,18 @@ func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) (context.Can
 			// 发送 ping 数据
 			case <-ticker.C:
 				if err := sendPingData(c, &pingMutex); err != nil {
-					logger.LogDebug(c, "SSE ping error, stopping goroutine: %s", err.Error())
+					logger.LogDebug(c.HTTPRequest().Context(), "SSE ping error, stopping goroutine: %s", err.Error())
 					return
 				}
 			// 收到退出信号
 			case <-pingerCtx.Done():
 				return
 			// request 结束
-			case <-c.Request.Context().Done():
+			case <-c.HTTPRequest().Context().Done():
 				return
 			// 超时保护，防止goroutine无限运行
 			case <-pingTimeout.C:
-				logger.LogDebug(c, "SSE ping goroutine timeout, stopping")
+				logger.LogDebug(c.HTTPRequest().Context(), "SSE ping goroutine timeout, stopping")
 				return
 			}
 		}
@@ -457,7 +457,7 @@ func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) (context.Can
 	return stopPinger, done
 }
 
-func sendPingData(c *gin.Context, mutex *sync.Mutex) error {
+func sendPingData(c contract.Context, mutex *sync.Mutex) error {
 	mutex.Lock()
 	defer mutex.Unlock()
 
@@ -466,15 +466,15 @@ func sendPingData(c *gin.Context, mutex *sync.Mutex) error {
 	helper.ExtendWriteDeadline(c)
 	err := helper.PingData(c)
 	if err != nil {
-		logger.LogError(c, "SSE ping error: "+err.Error())
+		logger.LogError(c.HTTPRequest().Context(), "SSE ping error: "+err.Error())
 		return err
 	}
 
-	logger.LogDebug(c, "SSE ping data sent")
+	logger.LogDebug(c.HTTPRequest().Context(), "SSE ping data sent")
 	return nil
 }
 
-func DoRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
+func DoRequest(c contract.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
 	return doRequest(c, req, info)
 }
 
@@ -484,7 +484,7 @@ func keepUpstreamRedirectResponse(_ *http.Request, _ []*http.Request) error {
 	return http.ErrUseLastResponse
 }
 
-func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
+func doRequest(c contract.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
 	client, err := service.GetHttpClientWithProxySettings(info.ChannelSetting.Proxy, info.ChannelSetting)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
@@ -497,7 +497,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	relayClient.CheckRedirect = keepUpstreamRedirectResponse
 	if common2.DebugEnabled && req != nil && req.URL != nil {
 		policy := service.NormalizeHTTPTransportPolicy(info.ChannelSetting)
-		logger.LogDebug(c, fmt.Sprintf(
+		logger.LogDebug(c.HTTPRequest().Context(), fmt.Sprintf(
 			"http transport select: host=%s protocol=%s shards=%d policy=%s",
 			req.URL.Host,
 			policy.Protocol,
@@ -520,7 +520,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 				if stopPinger != nil {
 					stopPinger()
 					<-pingerDone
-					logger.LogDebug(c, "SSE ping goroutine stopped by defer")
+					logger.LogDebug(c.HTTPRequest().Context(), "SSE ping goroutine stopped by defer")
 				}
 			}()
 		}
@@ -528,7 +528,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 
 	resp, err := relayClient.Do(req)
 	if err != nil {
-		logger.LogError(c, "do request failed: "+err.Error())
+		logger.LogError(c.HTTPRequest().Context(), "do request failed: "+err.Error())
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}
 	if resp == nil {
@@ -536,7 +536,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	}
 	if common2.DebugEnabled {
 		policy := service.NormalizeHTTPTransportPolicy(info.ChannelSetting)
-		logger.LogDebug(c, fmt.Sprintf(
+		logger.LogDebug(c.HTTPRequest().Context(), fmt.Sprintf(
 			"http transport negotiated: host=%s protocol=%s shards=%d policy=%s negotiated=%s",
 			req.URL.Host,
 			policy.Protocol,
@@ -551,16 +551,16 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	}
 
 	_ = req.Body.Close()
-	_ = c.Request.Body.Close()
+	_ = c.HTTPRequest().Body.Close()
 	return resp, nil
 }
 
-func DoTaskApiRequest(a TaskAdaptor, c *gin.Context, info *common.RelayInfo, requestBody io.Reader) (*http.Response, error) {
+func DoTaskApiRequest(a TaskAdaptor, c contract.Context, info *common.RelayInfo, requestBody io.Reader) (*http.Response, error) {
 	fullRequestURL, err := a.BuildRequestURL(info)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
+	req, err := http.NewRequest(c.HTTPRequest().Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}

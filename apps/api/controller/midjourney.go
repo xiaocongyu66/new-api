@@ -4,19 +4,20 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/capabilities/billing"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"io"
 	"net/http"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	taskcap "github.com/QuantumNous/new-api/internal/capabilities/task"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
-
-	"github.com/gin-gonic/gin"
 )
 
 // midjourneyPollSummary is the result recorded on a midjourney_poll system task
@@ -36,8 +37,7 @@ func runMidjourneyTaskUpdateOnce(ctx context.Context, report func(processed, tot
 	if ctx == nil {
 		ctx = context.Background()
 	}
-
-	tasks := model.GetAllUnFinishTasks()
+	tasks := taskcap.GetAllUnFinishTasks()
 	if len(tasks) == 0 {
 		return summary
 	}
@@ -58,7 +58,7 @@ func runMidjourneyTaskUpdateOnce(ctx context.Context, report func(processed, tot
 	}
 	if len(nullTaskIds) > 0 {
 		summary.NullTasksFailed = len(nullTaskIds)
-		err := model.MjBulkUpdateByTaskIds(nullTaskIds, map[string]any{
+		err := taskcap.MjBulkUpdateByTaskIds(nullTaskIds, map[string]any{
 			"status":   "FAILURE",
 			"progress": "100%",
 		})
@@ -90,7 +90,7 @@ func runMidjourneyTaskUpdateOnce(ctx context.Context, report func(processed, tot
 		midjourneyChannel, err := model.CacheGetChannel(channelId)
 		if err != nil {
 			logger.LogError(ctx, fmt.Sprintf("CacheGetChannel: %v", err))
-			err := model.MjBulkUpdate(taskIds, map[string]any{
+			err := taskcap.MjBulkUpdate(taskIds, map[string]any{
 				"fail_reason": fmt.Sprintf("获取渠道信息失败，请联系管理员，渠道ID：%d", channelId),
 				"status":      "FAILURE",
 				"progress":    "100%",
@@ -213,7 +213,7 @@ func runMidjourneyTaskUpdateOnce(ctx context.Context, report func(processed, tot
 			if err != nil {
 				logger.LogError(ctx, "UpdateMidjourneyTask task error: "+err.Error())
 			} else if won && shouldReturnQuota {
-				service.RefundMidjourneyQuota(ctx, task, "构图失败")
+				billing.RefundMidjourneyQuota(ctx, task, "构图失败")
 			}
 		}
 	}
@@ -278,7 +278,7 @@ func checkMjTaskNeedUpdate(oldTask *model.Midjourney, newTask dto.MidjourneyDto)
 	return false
 }
 
-func GetAllMidjourney(c *gin.Context) {
+func GetAllMidjourney(c contract.Context) {
 	pageInfo := common.GetPageQuery(c)
 
 	// 解析其他查询参数
@@ -289,8 +289,8 @@ func GetAllMidjourney(c *gin.Context) {
 		EndTimestamp:   c.Query("end_timestamp"),
 	}
 
-	items := model.GetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
-	total := model.CountAllTasks(queryParams)
+	items := taskcap.GetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
+	total := taskcap.CountAllTasks(queryParams)
 
 	if setting.MjForwardUrlEnabled {
 		for i, midjourney := range items {
@@ -300,10 +300,10 @@ func GetAllMidjourney(c *gin.Context) {
 	}
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(items)
-	common.ApiSuccess(c, pageInfo)
+	common.CtxApiSuccess(c, pageInfo)
 }
 
-func GetUserMidjourney(c *gin.Context) {
+func GetUserMidjourney(c contract.Context) {
 	pageInfo := common.GetPageQuery(c)
 
 	userId := c.GetInt("id")
@@ -314,8 +314,8 @@ func GetUserMidjourney(c *gin.Context) {
 		EndTimestamp:   c.Query("end_timestamp"),
 	}
 
-	items := model.GetAllUserTask(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
-	total := model.CountAllUserTask(userId, queryParams)
+	items := taskcap.GetAllUserTask(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
+	total := taskcap.CountAllUserTask(userId, queryParams)
 
 	if setting.MjForwardUrlEnabled {
 		for i, midjourney := range items {
@@ -325,5 +325,5 @@ func GetUserMidjourney(c *gin.Context) {
 	}
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(items)
-	common.ApiSuccess(c, pageInfo)
+	common.CtxApiSuccess(c, pageInfo)
 }

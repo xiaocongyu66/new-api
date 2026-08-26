@@ -21,7 +21,9 @@ Layered architecture: Router -> Controller -> Service -> Model
 
 ```
 apps/api/       — Go backend application (main module)
-  router/        — HTTP routing (API, relay, dashboard, web)
+  internal/transport/ — HTTP boundary: compose (route assembly), middleware
+                      (engine-level glue: cors/gzip/logger/trusted proxies),
+                      static (web assets + SPA fallback), contract/ginadapter
   controller/    — Request handlers
   service/       — Business logic
   model/         — Data models and DB access (GORM)
@@ -34,7 +36,7 @@ apps/api/       — Go backend application (main module)
   constant/      — Constants (API types, channel types, context keys)
   types/         — Type definitions (relay formats, file sources, errors)
   i18n/          — Backend internationalization (go-i18n, en/zh)
-  oauth/         — OAuth provider implementations
+  internal/security/oauth/ — OAuth provider implementations
   pkg/           — Internal packages (billingexpr, cachex, perf_metrics)
   web/dist/      — Frontend build output copied here for go:embed (gitignored)
 apps/web/       — Frontend (React 19, Rsbuild, Base UI, Tailwind)

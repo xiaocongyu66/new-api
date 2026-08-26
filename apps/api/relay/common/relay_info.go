@@ -18,7 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	hosttypes "github.com/QuantumNous/new-api/types"
 
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/gorilla/websocket"
 	"github.com/tidwall/gjson"
 )
@@ -185,7 +185,7 @@ type RelayInfo struct {
 	*TaskRelayInfo
 }
 
-func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
+func (info *RelayInfo) InitChannelMeta(c contract.Context) {
 	channelType := common.GetContextKeyInt(c, constant.ContextKeyChannelType)
 	paramOverride := common.GetContextKeyStringMap(c, constant.ContextKeyChannelParamOverride)
 	headerOverride := common.GetContextKeyStringMap(c, constant.ContextKeyChannelHeaderOverride)
@@ -348,7 +348,7 @@ var streamSupportedChannels = map[int]bool{
 	constant.ChannelTypeTencent:        true,
 }
 
-func GenRelayInfoWs(c *gin.Context, ws *websocket.Conn) *RelayInfo {
+func GenRelayInfoWs(c contract.Context, ws *websocket.Conn) *RelayInfo {
 	info := genBaseRelayInfo(c, nil)
 	info.RelayFormat = types.RelayFormatOpenAIRealtime
 	info.ClientWs = ws
@@ -358,7 +358,7 @@ func GenRelayInfoWs(c *gin.Context, ws *websocket.Conn) *RelayInfo {
 	return info
 }
 
-func GenRelayInfoClaude(c *gin.Context, request dto.Request) *RelayInfo {
+func GenRelayInfoClaude(c contract.Context, request dto.Request) *RelayInfo {
 	info := genBaseRelayInfo(c, request)
 	info.RelayFormat = types.RelayFormatClaude
 	info.ShouldIncludeUsage = false
@@ -369,7 +369,7 @@ func GenRelayInfoClaude(c *gin.Context, request dto.Request) *RelayInfo {
 	return info
 }
 
-func GenRelayInfoRerank(c *gin.Context, request *dto.RerankRequest) *RelayInfo {
+func GenRelayInfoRerank(c contract.Context, request *dto.RerankRequest) *RelayInfo {
 	info := genBaseRelayInfo(c, request)
 	info.RelayMode = relayconstant.RelayModeRerank
 	info.RelayFormat = types.RelayFormatRerank
@@ -380,19 +380,19 @@ func GenRelayInfoRerank(c *gin.Context, request *dto.RerankRequest) *RelayInfo {
 	return info
 }
 
-func GenRelayInfoOpenAIAudio(c *gin.Context, request dto.Request) *RelayInfo {
+func GenRelayInfoOpenAIAudio(c contract.Context, request dto.Request) *RelayInfo {
 	info := genBaseRelayInfo(c, request)
 	info.RelayFormat = types.RelayFormatOpenAIAudio
 	return info
 }
 
-func GenRelayInfoEmbedding(c *gin.Context, request dto.Request) *RelayInfo {
+func GenRelayInfoEmbedding(c contract.Context, request dto.Request) *RelayInfo {
 	info := genBaseRelayInfo(c, request)
 	info.RelayFormat = types.RelayFormatEmbedding
 	return info
 }
 
-func GenRelayInfoResponses(c *gin.Context, request *dto.OpenAIResponsesRequest) *RelayInfo {
+func GenRelayInfoResponses(c contract.Context, request *dto.OpenAIResponsesRequest) *RelayInfo {
 	info := genBaseRelayInfo(c, request)
 	info.RelayMode = relayconstant.RelayModeResponses
 	info.RelayFormat = types.RelayFormatOpenAIResponses
@@ -420,7 +420,7 @@ func GenRelayInfoResponses(c *gin.Context, request *dto.OpenAIResponsesRequest) 
 	return info
 }
 
-func GenRelayInfoGemini(c *gin.Context, request dto.Request) *RelayInfo {
+func GenRelayInfoGemini(c contract.Context, request dto.Request) *RelayInfo {
 	info := genBaseRelayInfo(c, request)
 	info.RelayFormat = types.RelayFormatGemini
 	info.ShouldIncludeUsage = false
@@ -428,13 +428,13 @@ func GenRelayInfoGemini(c *gin.Context, request dto.Request) *RelayInfo {
 	return info
 }
 
-func GenRelayInfoImage(c *gin.Context, request dto.Request) *RelayInfo {
+func GenRelayInfoImage(c contract.Context, request dto.Request) *RelayInfo {
 	info := genBaseRelayInfo(c, request)
 	info.RelayFormat = types.RelayFormatOpenAIImage
 	return info
 }
 
-func GenRelayInfoOpenAI(c *gin.Context, request dto.Request) *RelayInfo {
+func GenRelayInfoOpenAI(c contract.Context, request dto.Request) *RelayInfo {
 	info := genBaseRelayInfo(c, request)
 	info.RelayFormat = types.RelayFormatOpenAI
 	return info
@@ -470,7 +470,7 @@ func reasoningEffortFromRequest(request dto.Request) string {
 	return strings.TrimSpace(effort)
 }
 
-func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
+func genBaseRelayInfo(c contract.Context, request dto.Request) *RelayInfo {
 
 	//channelType := common.GetContextKeyInt(c, constant.ContextKeyChannelType)
 	//channelId := common.GetContextKeyInt(c, constant.ContextKeyChannelId)
@@ -490,7 +490,7 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 	isStream := false
 
 	if request != nil {
-		isStream = request.IsStream(c.Request)
+		isStream = request.IsStream(c.HTTPRequest())
 	}
 	c.Set(string(constant.ContextKeyIsStream), isStream)
 
@@ -520,8 +520,8 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		TokenGroup:     tokenGroup,
 
 		isFirstResponse: true,
-		RelayMode:       relayconstant.Path2RelayMode(c.Request.URL.Path),
-		RequestURLPath:  c.Request.URL.String(),
+		RelayMode:       relayconstant.Path2RelayMode(c.HTTPRequest().URL.Path),
+		RequestURLPath:  c.HTTPRequest().URL.String(),
 		RequestHeaders:  cloneRequestHeaders(c),
 		IsStream:        isStream,
 
@@ -541,7 +541,7 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		info.RelayMode = c.GetInt("relay_mode")
 	}
 
-	if strings.HasPrefix(c.Request.URL.Path, "/pg") {
+	if strings.HasPrefix(c.HTTPRequest().URL.Path, "/pg") {
 		info.IsPlayground = true
 		info.RequestURLPath = strings.TrimPrefix(info.RequestURLPath, "/pg")
 		info.RequestURLPath = "/v1" + info.RequestURLPath
@@ -555,16 +555,16 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 	return info
 }
 
-func cloneRequestHeaders(c *gin.Context) map[string]string {
-	if c == nil || c.Request == nil {
+func cloneRequestHeaders(c contract.Context) map[string]string {
+	if c == nil || c.HTTPRequest() == nil {
 		return nil
 	}
-	if len(c.Request.Header) == 0 {
+	if len(c.HTTPRequest().Header) == 0 {
 		return nil
 	}
-	headers := make(map[string]string, len(c.Request.Header))
-	for key := range c.Request.Header {
-		value := strings.TrimSpace(c.Request.Header.Get(key))
+	headers := make(map[string]string, len(c.HTTPRequest().Header))
+	for key := range c.HTTPRequest().Header {
+		value := strings.TrimSpace(c.HTTPRequest().Header.Get(key))
 		if value == "" {
 			continue
 		}
@@ -576,7 +576,7 @@ func cloneRequestHeaders(c *gin.Context) map[string]string {
 	return headers
 }
 
-func GenRelayInfo(c *gin.Context, relayFormat types.RelayFormat, request dto.Request, ws *websocket.Conn) (*RelayInfo, error) {
+func GenRelayInfo(c contract.Context, relayFormat types.RelayFormat, request dto.Request, ws *websocket.Conn) (*RelayInfo, error) {
 	var info *RelayInfo
 	var err error
 	switch relayFormat {
@@ -681,7 +681,7 @@ func (info *RelayInfo) GetFinalRequestRelayFormat() types.RelayFormat {
 	return info.RelayFormat
 }
 
-func GenRelayInfoResponsesCompaction(c *gin.Context, request *dto.OpenAIResponsesCompactionRequest) *RelayInfo {
+func GenRelayInfoResponsesCompaction(c contract.Context, request *dto.OpenAIResponsesCompactionRequest) *RelayInfo {
 	info := genBaseRelayInfo(c, request)
 	if info.RelayMode == relayconstant.RelayModeUnknown {
 		info.RelayMode = relayconstant.RelayModeResponsesCompact
@@ -690,7 +690,7 @@ func GenRelayInfoResponsesCompaction(c *gin.Context, request *dto.OpenAIResponse
 	return info
 }
 
-func GenRelayInfoAlphaSearch(c *gin.Context, request *dto.AlphaSearchRequest) *RelayInfo {
+func GenRelayInfoAlphaSearch(c contract.Context, request *dto.AlphaSearchRequest) *RelayInfo {
 	info := genBaseRelayInfo(c, request)
 	if info.RelayMode == relayconstant.RelayModeUnknown {
 		info.RelayMode = relayconstant.RelayModeAlphaSearch
@@ -838,12 +838,18 @@ func (info *RelayInfo) ConvOptions() *convmeta.Options {
 	}
 	return options
 }
-
 func (info *RelayInfo) SetFirstResponseTime() {
 	if info.isFirstResponse {
 		info.FirstResponseTime = time.Now()
 		info.isFirstResponse = false
 	}
+}
+
+// MarkFirstResponse initializes the first-response flag so the first
+// call to SetFirstResponseTime will record the actual response time.
+// Used by gateway when constructing RelayInfo outside this package.
+func (info *RelayInfo) MarkFirstResponse() {
+	info.isFirstResponse = true
 }
 
 func (info *RelayInfo) HasSendResponse() bool {

@@ -6,6 +6,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/capabilities/billing"
 	"log"
 	"net/http"
 	"os"
@@ -19,21 +20,26 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/internal/capabilities/administration"
+	channelcap "github.com/QuantumNous/new-api/internal/capabilities/channel"
+	"github.com/QuantumNous/new-api/internal/gateway/port"
+	"github.com/QuantumNous/new-api/internal/security/oauth"
+	compose "github.com/QuantumNous/new-api/internal/transport/compose"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	tpmw "github.com/QuantumNous/new-api/internal/transport/middleware"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/oauth"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/relay"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
-	"github.com/QuantumNous/new-api/router"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
 	_ "github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/bytedance/gopkg/util/gopool"
-	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 
 	_ "net/http/pprof"
@@ -52,6 +58,10 @@ func main() {
 	})
 	kitutil.SetSystemErrorLogging(common.SysError)
 
+	// Gateway channel selection goes through the port; the channel
+	// capability implementation is registered before the router starts.
+	port.SelectChannel = channelcap.CacheGetRandomSatisfiedChannel
+
 	err := InitResources()
 	if err != nil {
 		common.FatalLog("failed to initialize resources: " + err.Error())
@@ -60,7 +70,7 @@ func main() {
 
 	common.SysLog("New API " + common.Version + " started")
 	if os.Getenv("GIN_MODE") != "debug" {
-		gin.SetMode(gin.ReleaseMode)
+		ginadapter.SetReleaseMode()
 	}
 	if common.DebugEnabled {
 		common.SysLog("running in debug mode")
@@ -97,11 +107,10 @@ func main() {
 					}
 				}
 			}()
-			model.InitChannelCache()
-			model.InitChannelModelHealthCache()
+			channelcap.InitChannelCache()
 		}()
 
-		go model.SyncChannelCache(common.SyncFrequency)
+		go channelcap.SyncChannelCache(common.SyncFrequency)
 	}
 
 	// Warm pricing after channel cache initialization so Advanced Custom
@@ -127,18 +136,18 @@ func main() {
 		if err != nil {
 			common.FatalLog("failed to parse CHANNEL_UPDATE_FREQUENCY: " + err.Error())
 		}
-		go controller.AutomaticallyUpdateChannels(frequency)
+		go billing.AutomaticallyUpdateChannels(frequency)
 	}
 
 	// Codex credential auto-refresh check every 10 minutes, refresh when expires within 1 day
 	service.StartCodexCredentialAutoRefreshTask()
 
 	// Subscription quota reset task (daily/weekly/monthly/custom)
-	service.StartSubscriptionQuotaResetTask()
+	billing.StartSubscriptionQuotaResetTask()
 
 	// Report this process as a system instance so the System Info page can show
 	// all currently alive nodes in multi-instance deployments.
-	service.StartSystemInstanceReporter()
+	administration.StartSystemInstanceReporter()
 
 	// Wire task polling adaptor factory (breaks service -> relay import cycle).
 	// Must run before the system task runner starts: the async_task_poll handler
@@ -151,13 +160,17 @@ func main() {
 		return a
 	}
 
+	// Wire the gateway port factory: capability-layer polling calls port.GetTaskProviderFunc
+	// instead of importing relay/channel. The binding adapts channel.TaskAdaptor to port.TaskProviderExec.
+	port.GetTaskProviderFunc = service.GetTaskProviderFuncBinding()
+
 	// Register the periodic channel test, upstream model update, and async task
 	// polling (Midjourney / Suno / video) jobs as scheduled system tasks
 	// (DB-lease dedup across masters + run history), then start the runner that
 	// schedules and executes them. Master-only execution and the UpdateTask
 	// switch are enforced inside the runner and each handler's Enabled().
 	controller.RegisterScheduledSystemTasks()
-	service.StartSystemTaskRunner()
+	administration.StartSystemTaskRunner()
 
 	if os.Getenv("BATCH_UPDATE_ENABLED") == "true" {
 		common.BatchUpdateEnabled = true
@@ -179,31 +192,30 @@ func main() {
 	}
 
 	// Initialize HTTP server
-	server := gin.New()
-	if err := middleware.ConfigureTrustedProxies(server); err != nil {
-		common.FatalLog("failed to configure trusted proxies: " + err.Error())
-		return
-	}
-	server.Use(gin.CustomRecovery(func(c *gin.Context, err any) {
-		common.SysLog(fmt.Sprintf("panic detected: %v", err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": gin.H{
-				"message": fmt.Sprintf("Panic detected, error: %v. Please submit a issue here: https://github.com/Calcium-Ion/new-api", err),
+	server := ginadapter.NewEngine(func(c contract.Context, recovered any) {
+		common.SysLog(fmt.Sprintf("panic detected: %v", recovered))
+		c.JSON(http.StatusInternalServerError, common.H{
+			"error": common.H{
+				"message": fmt.Sprintf("Panic detected, error: %v. Please submit a issue here: https://github.com/Calcium-Ion/new-api", recovered),
 				"type":    "new_api_panic",
 			},
 		})
-	}))
+	})
+	if err := tpmw.ConfigureTrustedProxies(server); err != nil {
+		common.FatalLog("failed to configure trusted proxies: " + err.Error())
+		return
+	}
 	// This will cause SSE not to work!!!
 	//server.Use(gzip.Gzip(gzip.DefaultCompression))
-	server.Use(middleware.RequestId())
-	server.Use(middleware.Version())
-	server.Use(middleware.I18n())
-	middleware.SetUpLogger(server)
+	server.Use(ginadapter.Middleware(middleware.RequestId()))
+	server.Use(ginadapter.Middleware(tpmw.Version()))
+	server.Use(ginadapter.Middleware(middleware.I18n()))
+	tpmw.SetUpLogger(server)
 	InjectUmamiAnalytics()
 	InjectGoogleAnalytics()
 
 	// 设置路由
-	router.SetRouter(server, router.WebAssets{
+	compose.SetRouter(server, compose.WebAssets{
 		BuildFS:   buildFS,
 		IndexPage: indexPage,
 	})
@@ -371,8 +383,6 @@ func InitResources() error {
 	}
 
 	service.StartAuthArtifactCleanup()
-
-	service.StartSensitiveAuditCleanup()
 
 	return nil
 }

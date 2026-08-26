@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/gin-gonic/gin"
 )
 
 // SignRequestForJimeng 对即梦 API 请求进行签名，支持 http.Request 或 header+url+body 方式
@@ -40,22 +40,22 @@ import (
 
 const HexPayloadHashKey = "HexPayloadHash"
 
-func SetPayloadHash(c *gin.Context, req any) error {
+func SetPayloadHash(c contract.Context, req any) error {
 	body, err := json.Marshal(req)
 	if err != nil {
 		return err
 	}
-	logger.LogInfo(c, fmt.Sprintf("SetPayloadHash body: %s", body))
+	logger.LogInfo(c.Context(), fmt.Sprintf("SetPayloadHash body: %s", body))
 	payloadHash := sha256.Sum256(body)
 	hexPayloadHash := hex.EncodeToString(payloadHash[:])
 	c.Set(HexPayloadHashKey, hexPayloadHash)
 	return nil
 }
-func getPayloadHash(c *gin.Context) string {
+func getPayloadHash(c contract.Context) string {
 	return c.GetString(HexPayloadHashKey)
 }
 
-func Sign(c *gin.Context, req *http.Request, apiKey string) error {
+func Sign(c contract.Context, req *http.Request, apiKey string) error {
 	header := req.Header
 
 	var bodyBytes []byte
@@ -73,7 +73,7 @@ func Sign(c *gin.Context, req *http.Request, apiKey string) error {
 	payloadHash := sha256.Sum256(bodyBytes)
 	hexPayloadHash := hex.EncodeToString(payloadHash[:])
 
-	method := c.Request.Method
+	method := c.HTTPRequest().Method
 	u := req.URL
 	keyParts := strings.Split(apiKey, "|")
 	if len(keyParts) != 2 {

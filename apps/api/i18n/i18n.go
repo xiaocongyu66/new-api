@@ -5,13 +5,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gin-gonic/gin"
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 	"golang.org/x/text/language"
 	"gopkg.in/yaml.v3"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 )
 
@@ -55,7 +55,8 @@ func Init() error {
 		localizers[LangEn] = i18n.NewLocalizer(bundle, LangEn)
 
 		// Set the TranslateMessage function in common package
-		common.TranslateMessage = T
+		common.TranslateMessage = TCtx
+		common.TranslateCtxMessage = TCtx
 	})
 	return initErr
 }
@@ -86,10 +87,9 @@ func GetLocalizer(lang string) *i18n.Localizer {
 	return loc
 }
 
-// T translates a message key using the language from gin context
-func T(c *gin.Context, key string, args ...map[string]any) string {
-	lang := GetLangFromContext(c)
-	return Translate(lang, key, args...)
+// TCtx translates a message key using the language from a transport context.
+func TCtx(c contract.Context, key string, args ...map[string]any) string {
+	return Translate(GetLangFromCtx(c), key, args...)
 }
 
 // Translate translates a message key for the specified language
@@ -121,19 +121,19 @@ func SetUserLangLoader(loader func(userId int) string) {
 	userLangLoaderFunc = loader
 }
 
-// GetLangFromContext extracts the language setting from gin context
+// GetLangFromCtx extracts the language setting from a transport context.
 // It checks multiple sources in priority order:
 // 1. User settings (ContextKeyUserSetting) - if already loaded (e.g., by TokenAuth)
 // 2. Lazy load user language from cache/DB using user ID
 // 3. Language set by middleware (ContextKeyLanguage) - from Accept-Language header
 // 4. Default language (English)
-func GetLangFromContext(c *gin.Context) string {
+func GetLangFromCtx(c contract.Context) string {
 	if c == nil {
 		return DefaultLang
 	}
 
 	// 1. Try to get language from user settings (if already loaded by TokenAuth or other middleware)
-	if userSetting, ok := common.GetContextKeyType[dto.UserSetting](c, constant.ContextKeyUserSetting); ok {
+	if userSetting, ok := common.GetCtxKeyType[dto.UserSetting](c, constant.ContextKeyUserSetting); ok {
 		if userSetting.Language != "" {
 			normalized := normalizeLang(userSetting.Language)
 			if IsSupported(normalized) {
@@ -166,7 +166,7 @@ func GetLangFromContext(c *gin.Context) string {
 	}
 
 	// 4. Try Accept-Language header directly (fallback if middleware didn't run)
-	if acceptLang := c.GetHeader("Accept-Language"); acceptLang != "" {
+	if acceptLang := c.Header("Accept-Language"); acceptLang != "" {
 		lang := ParseAcceptLanguage(acceptLang)
 		if IsSupported(lang) {
 			return lang

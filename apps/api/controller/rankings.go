@@ -3,21 +3,21 @@ package controller
 import (
 	"net/http"
 
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/gin-gonic/gin"
 )
 
-func GetRankings(c *gin.Context) {
+func GetRankings(c contract.Context) {
 	result, err := service.GetRankingsSnapshot(c.DefaultQuery("period", "week"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
+		_ = c.JSON(http.StatusBadRequest, map[string]any{
 			"success": false,
 			"message": err.Error(),
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	_ = c.JSON(http.StatusOK, map[string]any{
 		"success": true,
 		"data":    result,
 	})

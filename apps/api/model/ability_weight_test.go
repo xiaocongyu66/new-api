@@ -15,7 +15,7 @@ import (
 // ability.go) can be driven for real rather than approximated.
 //
 // This closes the test gap code-review-graph reported for GetChannel: #348
-// changed its weight formula from `Weight + 10` to the shared routingBaseWeight,
+// changed its weight formula from `Weight + 10` to the shared RoutingBaseWeight,
 // and nothing covered that path.
 func withAbilityDB(t *testing.T, group, modelName string, rows []Ability) {
 	t.Helper()
@@ -76,7 +76,7 @@ func TestGetChannelUsesSharedWeightFormula(t *testing.T) {
 		counts[got.Id]++
 	}
 
-	// routingBaseWeight maps 30 -> 31 and 1 -> 2, so the heavy channel should take
+	// RoutingBaseWeight maps 30 -> 31 and 1 -> 2, so the heavy channel should take
 	// roughly 31/33 of traffic. The legacy `Weight + 10` curve would have made it
 	// 40/51, and the legacy memory-path smoothing would have inverted the order
 	// outright by scaling weight 1 up to 100.

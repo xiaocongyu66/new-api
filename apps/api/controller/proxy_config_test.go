@@ -3,6 +3,9 @@ package controller
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,7 +13,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,13 +39,11 @@ func setupProxyConfigControllerTest(t *testing.T) *gorm.DB {
 	return db
 }
 
-func proxyConfigContext(t *testing.T, method, path, body string) (*gin.Context, *httptest.ResponseRecorder) {
+func proxyConfigContext(t *testing.T, method, path, body string) (contract.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(method, path, bytes.NewBufferString(body))
-	ctx.Request.Header.Set("Content-Type", "application/json")
+	ctx, recorder := ginadapter.NewSyntheticContext(httptest.NewRequest(method, path, bytes.NewBufferString(body)))
+	ctx.Headers().Set("Content-Type", "application/json")
 	return ctx, recorder
 }
 
