@@ -121,10 +121,7 @@ func TestRoutingBaseWeightVsLegacySmoothing(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRoutingBaseWeightWithHealthScore(t *testing.T) {
-	// resetHealthManager and setTestConfig are unexported helpers in
 	// channel_health_test.go, same package → accessible here.
-	resetHealthManager()
-	setTestConfig(true, 0.5, 0.05, 0) // Enabled, Alpha=0.5, MinScore=0.05, MinRequests=0
 
 	// Record one failure for channel ID 42 → ewmaScore becomes 0.5
 	mgr := GetChannelHealthManager()

@@ -8,7 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
 // channelModelHealthRow is the admin-facing shape of one isolation row. Until is
@@ -31,7 +31,7 @@ type channelModelHealthRow struct {
 // GetChannelModelHealth lists isolation state. Without a channel_id it returns
 // every row, which is the system-wide view; with one it returns that channel's
 // per-model matrix.
-func GetChannelModelHealth(c *gin.Context) {
+func GetChannelModelHealth(c contract.Context) {
 	channelID := 0
 	if raw := c.Query("channel_id"); raw != "" {
 		parsed, err := strconv.Atoi(raw)
@@ -75,7 +75,7 @@ func GetChannelModelHealth(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"data":    payload,
 	})
@@ -90,9 +90,9 @@ type channelModelHealthActionRequest struct {
 // UpdateChannelModelHealth disables or recovers one route. Recovery clears the
 // isolation ladder and the auto-disable counter, so an operator who fixed the
 // upstream does not have to wait out a dormant window.
-func UpdateChannelModelHealth(c *gin.Context) {
+func UpdateChannelModelHealth(c contract.Context) {
 	var req channelModelHealthActionRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.ChannelId <= 0 || req.Model == "" {
+	if err := c.BindJSON(&req); err != nil || req.ChannelId <= 0 || req.Model == "" {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
@@ -116,7 +116,7 @@ func UpdateChannelModelHealth(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
 	})

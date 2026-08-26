@@ -94,7 +94,7 @@ func ResolveOriginTask(c contract.Context, info *port.SubmitInfo) *dto.TaskError
 	info.LockedChannel = ch
 
 	if originTask.ChannelId != info.ChannelId {
-		key, _, newAPIError := ch.GetNextEnabledKey()
+		key, _, newAPIError := ch.GetNextEnabledKey(info.OriginModelName)
 		if newAPIError != nil {
 			return &dto.TaskError{
 				Code:       "channel_no_available_key",

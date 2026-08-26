@@ -3,10 +3,11 @@ package service
 import (
 	"strings"
 	"testing"
+	"net/http"
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -109,8 +110,7 @@ func TestRecordSensitiveBlockDisabled(t *testing.T) {
 	setting.SensitiveAuditEnabled = false
 	t.Cleanup(func() { setting.SensitiveAuditEnabled = previous })
 
-	gin.SetMode(gin.TestMode)
-	c, _ := gin.CreateTestContext(nil)
+	c, _ := ginadapter.NewSyntheticContext(&http.Request{Method: "GET"})
 	assert.NotPanics(t, func() {
 		RecordSensitiveBlock(c, "input", "target:gov.cn", "text")
 	})

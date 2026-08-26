@@ -57,10 +57,10 @@ func OutputChunkBlocked(c contract.Context, data string) (bool, string) {
 	if len(st.Window) > OutputFilterWindowSize {
 		st.Window = st.Window[len(st.Window)-OutputFilterWindowSize:]
 	}
-	if hit, label := service.CheckSensitiveOutput(st.Window); hit {
+	if hit, labels := service.CheckSensitiveText(st.Window); hit && len(labels) > 0 {
 		st.Blocked = true
-		common.SysLog(fmt.Sprintf("output blocked by sensitive filter: [%s]", label))
-		return true, label
+		common.SysLog(fmt.Sprintf("output blocked by sensitive filter: [%s]", labels[0]))
+		return true, labels[0]
 	}
 	return false, ""
 }

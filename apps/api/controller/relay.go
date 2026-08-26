@@ -142,8 +142,8 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 	}
 
 	if needSensitiveCheck && meta != nil {
-		if blocked, label := service.CheckSensitiveAll(meta.CombineText); blocked {
-			logger.LogWarn(c.Context(), fmt.Sprintf("input blocked by sensitive filter: %s", label))
+		if hit, labels := service.CheckSensitiveText(meta.CombineText); hit && len(labels) > 0 {
+			logger.LogWarn(c.Context(), fmt.Sprintf("input blocked by sensitive filter: %s", labels[0]))
 			newAPIError = types.NewError(err, types.ErrorCodeSensitiveWordsDetected, types.ErrOptionWithStatusCode(http.StatusForbidden))
 			return
 		}

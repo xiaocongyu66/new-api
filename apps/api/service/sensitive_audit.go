@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"unicode/utf8"
 
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -74,7 +74,7 @@ func recordSensitiveAuditEvent(ev sensitiveAuditEvent) {
 // label 为引擎返回的命中标签："target:gov.cn"、"breakout:xxx"、
 // "persona-evasion:xxx" 等，或词库层的裸逗号串（无前缀）。
 // text 为被检查文本，截断后作为 snippet 入库。开关关闭时直接返回。
-func RecordSensitiveBlock(c *gin.Context, direction string, label string, text string) {
+func RecordSensitiveBlock(c contract.Context, direction string, label string, text string) {
 	if !setting.SensitiveAuditEnabled {
 		return
 	}

@@ -17,7 +17,7 @@ var StreamCacheQueueLength = 0
 
 // SensitiveWords 敏感词
 // 默认空：内容词库不参与生产拦截（用户拍板：只管破甲 + 攻击 gov 两类，
-// 由 breakoutTerms/targetActionTerms/指纹模板层承担，见 sensitive_breakout.go）。
+// 由 breakoutTerms/targetActionTerms/指纹模板层承担，已被 #380 移除。
 var SensitiveWords = []string{}
 
 // SensitiveBlockGroups 敏感检测启用组。可选值（逗号分隔）：

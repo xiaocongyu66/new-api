@@ -16,6 +16,8 @@ import (
 
 	"github.com/samber/lo"
 
+	"github.com/tidwall/gjson"
+
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
@@ -241,4 +243,29 @@ func sendResponsesStreamData(c contract.Context, streamResponse dto.ResponsesStr
 		return
 	}
 	_ = helper.ResponseChunkData(c, streamResponse, data)
+}
+
+// chunkHasVisibleDelta reports whether an SSE data line carries user-visible
+// content (text, reasoning, or tool-call deltas). Non-visible chunks (usage,
+// role-only, finish-reason-only) are holdable to batch flushes.
+func chunkHasVisibleDelta(data string) bool {
+	root := gjson.Parse(data)
+	var visible bool
+	root.Get("choices").ForEach(func(_, choice gjson.Result) bool {
+		if choice.Get("text").String() != "" || choice.Get("delta").Get("content").String() != "" {
+			visible = true
+			return false
+		}
+		delta := choice.Get("delta")
+		if deltaReasoning(delta) != "" {
+			visible = true
+			return false
+		}
+		if tc := delta.Get("tool_calls"); tc.IsArray() && len(tc.Array()) > 0 {
+			visible = true
+			return false
+		}
+		return true
+	})
+	return visible
 }

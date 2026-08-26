@@ -12,13 +12,14 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/stretchr/testify/require"
 )
 
 // newStreamTestContext builds the minimal gin/RelayInfo pair OaiStreamHandler
 // needs: a chat-completions stream relay against a recorder.
-func newStreamTestContext(t *testing.T, upstream string) (*gin.Context, *httptest.ResponseRecorder, *http.Response, *relaycommon.RelayInfo) {
+func newStreamTestContext(t *testing.T, upstream string) (contract.Context, *httptest.ResponseRecorder, *http.Response, *relaycommon.RelayInfo) {
 	t.Helper()
 
 	// StreamScannerHandler builds a ticker from this global; zero panics.
@@ -27,8 +28,8 @@ func newStreamTestContext(t *testing.T, upstream string) (*gin.Context, *httptes
 	}
 
 	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	c, _ := ginadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+	
 
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
@@ -51,9 +52,6 @@ func newStreamTestContext(t *testing.T, upstream string) (*gin.Context, *httptes
 // the client would then treat a truncated answer as a complete one. It must
 // surface a retryable error instead.
 func TestOaiStreamHandlerIncompleteUpstreamStream(t *testing.T) {
-	oldMode := gin.Mode()
-	gin.SetMode(gin.TestMode)
-	t.Cleanup(func() { gin.SetMode(oldMode) })
 
 	// Two content chunks, then the upstream body just ends: no finish_reason,
 	// no data: [DONE].
@@ -93,9 +91,6 @@ data: {"id":"c1","object":"chat.completion.chunk","created":1710000000,"model":"
 // of the retry decision: the upstream died before any chunk was forwarded, so
 // nothing is on the wire yet and the request can safely move to another channel.
 func TestOaiStreamHandlerTruncatedBeforeFirstChunkIsRetryable(t *testing.T) {
-	oldMode := gin.Mode()
-	gin.SetMode(gin.TestMode)
-	t.Cleanup(func() { gin.SetMode(oldMode) })
 
 	c, _, resp, info := newStreamTestContext(t, "")
 
@@ -111,9 +106,6 @@ func TestOaiStreamHandlerTruncatedBeforeFirstChunkIsRetryable(t *testing.T) {
 // terminator: some providers close with `data: [DONE]` and never set
 // finish_reason. That is an explicit upstream termination, not a truncation.
 func TestOaiStreamHandlerDoneWithoutFinishReasonIsComplete(t *testing.T) {
-	oldMode := gin.Mode()
-	gin.SetMode(gin.TestMode)
-	t.Cleanup(func() { gin.SetMode(oldMode) })
 
 	upstream := `data: {"id":"c1","object":"chat.completion.chunk","created":1710000000,"model":"gpt-test","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"}}]}
 
@@ -134,9 +126,6 @@ data: [DONE]
 // guard cannot reject well-formed streams: a finish_reason chunk followed by
 // [DONE] stays a success and still terminates the client stream with [DONE].
 func TestOaiStreamHandlerCompleteUpstreamStream(t *testing.T) {
-	oldMode := gin.Mode()
-	gin.SetMode(gin.TestMode)
-	t.Cleanup(func() { gin.SetMode(oldMode) })
 
 	upstream := `data: {"id":"c1","object":"chat.completion.chunk","created":1710000000,"model":"gpt-test","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"}}]}
 

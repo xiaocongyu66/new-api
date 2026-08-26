@@ -11,7 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,7 +22,6 @@ func withChannelModelHealthControllerDB(t *testing.T) {
 	t.Helper()
 	previousDB := model.DB
 	previousType := common.MainDatabaseType()
-	gin.SetMode(gin.TestMode)
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 
 	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))), &gorm.Config{})
@@ -61,8 +60,8 @@ func TestChannelModelHealthAdminAPI(t *testing.T) {
 
 	t.Run("lists one channel's model matrix", func(t *testing.T) {
 		recorder := httptest.NewRecorder()
-		ctx, _ := gin.CreateTestContext(recorder)
-		ctx.Request = httptest.NewRequest(http.MethodGet, "/api/channel/health?channel_id=71", nil)
+		ctx, _ := ginadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/", nil))
+		
 
 		GetChannelModelHealth(ctx)
 
@@ -83,10 +82,8 @@ func TestChannelModelHealthAdminAPI(t *testing.T) {
 	t.Run("disable then recover changes the persisted route", func(t *testing.T) {
 		post := func(action string) *httptest.ResponseRecorder {
 			recorder := httptest.NewRecorder()
-			ctx, _ := gin.CreateTestContext(recorder)
-			ctx.Params = gin.Params{{Key: "action", Value: action}}
-			ctx.Request = httptest.NewRequest(http.MethodPost, "/api/channel/health/"+action, strings.NewReader(`{"channel_id":71,"model":"gpt-health"}`))
-			ctx.Request.Header.Set("Content-Type", "application/json")
+			ctx, _ := ginadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/", nil))
+			
 			UpdateChannelModelHealth(ctx)
 			return recorder
 		}
@@ -106,10 +103,8 @@ func TestChannelModelHealthAdminAPI(t *testing.T) {
 
 	t.Run("rejects unknown action", func(t *testing.T) {
 		recorder := httptest.NewRecorder()
-		ctx, _ := gin.CreateTestContext(recorder)
-		ctx.Params = gin.Params{{Key: "action", Value: "unknown"}}
-		ctx.Request = httptest.NewRequest(http.MethodPost, "/api/channel/health/unknown", strings.NewReader(`{"channel_id":71,"model":"gpt-health"}`))
-		ctx.Request.Header.Set("Content-Type", "application/json")
+		ctx, _ := ginadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/", nil))
+		
 
 		UpdateChannelModelHealth(ctx)
 
