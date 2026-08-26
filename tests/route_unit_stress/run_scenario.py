@@ -479,8 +479,6 @@ def run_phase_s6(
     Returns:
         stat_rows, stat_ids, step_at_ts, step_hook_result, window_metrics
     """
-    import threading
-    import queue
     import subprocess
 
     step_at_s = duration_s * step_at_ratio
@@ -496,58 +494,25 @@ def run_phase_s6(
     stat_ids: list[str] = []
     window_metrics: list[dict[str, Any]] = []
 
-    # Request queue and results
-    request_queue: queue.Queue[tuple[str, dict]] = queue.Queue()
-    results_queue: queue.Queue[dict] = queue.Queue()
-    def send_one(req_id: str) -> dict:
-        return send_request(gateway_url, token, alias, req_id, mode, stream_ratio > 0.0, "stats")
-
-    def worker():
-        while True:
-            try:
-                req_id, _ = request_queue.get_nowait()
-            except queue.Empty:
-                break
-            row = send_one(req_id)
-            results_queue.put(row)
-            request_queue.task_done()
-
-    # Start with initial batch to fill concurrency
-    in_flight = 0
-    next_req_id = 0
-
     # Track window boundaries for metrics collection
     window_s = 10
     next_window_ts = (int(time.time() / window_s) + 1) * window_s
 
     def collect_window_metrics(current_ts: float) -> dict | None:
         """Collect topology and audit for current window."""
-        # Fetch topology
         items = fetch_topology(gateway_url, token_mgr, alias)
         if items is None:
             return None
-
-        # Build route share map from attempts in audit
         attempts = fetch_audit(gateway_url, token_mgr)
         if attempts is None:
             return None
-
-        # Find subject route info
         subject_route = None
         for r in routes:
             if r.label == subject_label:
                 subject_route = r
                 break
-
         if subject_route is None:
             return None
-
-        # Count selections per route in this window
-        # Note: we don't have window-scoped attempts from audit directly,
-        # so we approximate by using the stat_rows we've collected so far
-        # This is a simplification - proper implementation would need windowed audit
-
-        # Collect ewma_quality per route
         ewma_map = {}
         corr_vals = []
         for item in items:
@@ -561,120 +526,98 @@ def run_phase_s6(
                 corr = item.get("share_correction", 0.0)
                 if corr > 0:
                     corr_vals.append(corr)
-
-        # Compute corr_p99
         corr_p99 = compute_percentile(corr_vals, 0.99) if corr_vals else 0.0
-
-        # For route_shares, we use the subject's share from topology's actual_share if available
-        # Otherwise approximate from ewma
         subject_share = 0.0
         if subject_route:
             for item in items:
                 if item.get("channel_id") == subject_route.channel_id and item.get("key_index") == subject_route.key_index:
                     subject_share = item.get("actual_share", item.get("share_correction", 0.0))
                     break
-
         return {
             "window_start": int(current_ts // window_s) * window_s,
             "subject_share": subject_share,
             "corr_p99": corr_p99,
             "ewma": ewma_map,
-            "samples": len(attempts),  # approximation
+            "samples": len(attempts),
         }
 
     print(f"      S6: running for {min_total_s}s (step at {step_at_s:.1f}s, tail {tail_seconds}s)")
     last_progress = time.time()
+    next_req_id = 0
 
-    while time.time() < deadline:
-        now = time.time()
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        futures: set = set()
+        stream = stream_ratio > 0.0
 
-        # Trigger step hook at step_at_ratio
-        if not step_triggered and now >= step_at_deadline:
-            step_triggered = True
-            step_at_ts = time.time()
-            print(f"      S6: step transition at {step_at_ts - phase_started:.1f}s elapsed")
-            if step_hook_cmd:
-                hook_start = time.time()
-                try:
-                    proc = subprocess.run(step_hook_cmd, shell=True, capture_output=True, text=True, timeout=30)
-                    hook_duration = time.time() - hook_start
-                    step_hook_result = {
-                        "cmd": step_hook_cmd,
-                        "exit_code": proc.returncode,
-                        "duration_sec": hook_duration,
-                        "stdout": proc.stdout[-500:] if proc.stdout else "",
-                        "stderr": proc.stderr[-500:] if proc.stderr else "",
-                    }
-                    print(f"      S6: step hook exited with code {proc.returncode} in {hook_duration:.2f}s")
-                except subprocess.TimeoutExpired:
-                    hook_duration = time.time() - hook_start
-                    step_hook_result = {
-                        "cmd": step_hook_cmd,
-                        "exit_code": -1,
-                        "duration_sec": hook_duration,
-                        "stdout": "",
-                        "stderr": "timeout after 30s",
-                    }
-                    print(f"      S6: step hook timed out after 30s")
-                except Exception as e:
-                    hook_duration = time.time() - hook_start
-                    step_hook_result = {
-                        "cmd": step_hook_cmd,
-                        "exit_code": -1,
-                        "duration_sec": hook_duration,
-                        "stdout": "",
-                        "stderr": str(e),
-                    }
-                    print(f"      S6: step hook failed: {e}")
-            else:
-                step_hook_result = {"skipped": True}
-                print(f"      S6: step hook skipped (no --step-hook provided)")
+        while time.time() < deadline or futures:
+            now = time.time()
 
-        # Maintain concurrency: submit new requests as slots free up
-        while in_flight < concurrency and time.time() < deadline:
-            req_id = f"s6-{next_req_id}"
-            next_req_id += 1
-            request_queue.put((req_id, {}))
-            in_flight += 1
+            # Trigger step hook at step_at_ratio
+            if not step_triggered and now >= step_at_deadline:
+                step_triggered = True
+                step_at_ts = time.time()
+                print(f"      S6: step transition at {step_at_ts - phase_started:.1f}s elapsed")
+                if step_hook_cmd:
+                    hook_start = time.time()
+                    try:
+                        proc = subprocess.run(step_hook_cmd, shell=True, capture_output=True, text=True, timeout=30)
+                        hook_duration = time.time() - hook_start
+                        step_hook_result = {
+                            "cmd": step_hook_cmd,
+                            "exit_code": proc.returncode,
+                            "duration_sec": hook_duration,
+                            "stdout": proc.stdout[-500:] if proc.stdout else "",
+                            "stderr": proc.stderr[-500:] if proc.stderr else "",
+                        }
+                        print(f"      S6: step hook exited with code {proc.returncode} in {hook_duration:.2f}s")
+                    except subprocess.TimeoutExpired:
+                        hook_duration = time.time() - hook_start
+                        step_hook_result = {
+                            "cmd": step_hook_cmd, "exit_code": -1, "duration_sec": hook_duration,
+                            "stdout": "", "stderr": "timeout after 30s",
+                        }
+                        print(f"      S6: step hook timed out after 30s")
+                    except Exception as e:
+                        hook_duration = time.time() - hook_start
+                        step_hook_result = {
+                            "cmd": step_hook_cmd, "exit_code": -1, "duration_sec": hook_duration,
+                            "stdout": "", "stderr": str(e),
+                        }
+                        print(f"      S6: step hook failed: {e}")
+                else:
+                    step_hook_result = {"skipped": True}
+                    print(f"      S6: step hook skipped (no --step-hook provided)")
 
-        # Start workers for queued requests
-        threads = []
-        for _ in range(min(concurrency, request_queue.qsize())):
-            t = threading.Thread(target=worker)
-            t.start()
-            threads.append(t)
+            # Submit new requests to maintain concurrency while within deadline
+            while len(futures) < concurrency and time.time() < deadline:
+                req_id = f"s6-{next_req_id}"
+                next_req_id += 1
+                fut = pool.submit(send_request, gateway_url, token, alias, req_id, mode, stream, "stats")
+                futures.add(fut)
 
-        # Collect completed results
-        while not results_queue.empty():
-            row = results_queue.get_nowait()
-            stat_rows.append(row)
-            stat_ids.append(row.get("client_request_id", ""))
-            in_flight -= 1
+            # Collect completed futures
+            done = {f for f in futures if f.done()}
+            for f in done:
+                row = f.result()
+                stat_rows.append(row)
+                stat_ids.append(row.get("request_id", ""))
+                futures.discard(f)
 
-        # Wait for threads
-        for t in threads:
-            t.join(timeout=0.1)
+            # Collect per-window metrics every 10s
+            if now >= next_window_ts:
+                metrics = collect_window_metrics(now)
+                if metrics:
+                    window_metrics.append(metrics)
+                next_window_ts += window_s
 
-        # Collect per-window metrics every 10s
-        if now >= next_window_ts:
-            metrics = collect_window_metrics(now)
-            if metrics:
-                window_metrics.append(metrics)
-            next_window_ts += window_s
+            # Progress log
+            if now - last_progress >= 10:
+                print(f"      S6: {now - phase_started:.1f}s elapsed, {len(stat_rows)} requests, step={'done' if step_triggered else 'pending'}")
+                last_progress = now
 
-        # Progress log
-        if now - last_progress >= 10:
-            print(f"      S6: {now - phase_started:.1f}s elapsed, {len(stat_rows)} requests, step={'done' if step_triggered else 'pending'}")
-            last_progress = now
-
-        # Small sleep to avoid busy loop
-        time.sleep(0.05)
-
-    # Drain any remaining results
-    while not results_queue.empty():
-        row = results_queue.get_nowait()
-        stat_rows.append(row)
-        stat_ids.append(row.get("client_request_id", ""))
+            # Small sleep to avoid busy loop when futures are still pending
+            if futures and not done:
+                time.sleep(0.05)
 
     # Final window metrics collection
     metrics = collect_window_metrics(time.time())
@@ -1182,9 +1125,15 @@ def main() -> int:
     }
 
     # Build traffic windows using lib_report with phase marks
-    phase_marks = {"warmup_end": warmup_end_ts}
-    if is_s4:
-        phase_marks["step_at"] = warmup_end_ts + elapsed  # no step in S4, but mark end
+    if is_s6:
+        phase_marks = {"warmup_end": warmup_end_ts}
+        if step_at_ts is not None:
+            phase_marks["step_at"] = step_at_ts
+            phase_marks["cooldown_start"] = step_at_ts + tail_seconds
+    else:
+        phase_marks = {"warmup_end": warmup_end_ts}
+        if is_s4:
+            phase_marks["step_at"] = warmup_end_ts + elapsed  # no step in S4, but mark end
     traffic_windows_data = lib_report.build_traffic_windows(stat_rows, windows, window_s=10, phase_marks=phase_marks)
 
     # S6: fill traffic windows with per-window metrics from window_metrics
