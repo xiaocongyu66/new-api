@@ -239,6 +239,9 @@ func withAbilityDB(t *testing.T, group, modelName string, rows []model.Ability) 
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.Ability{}, &model.Channel{}))
 	model.DB = db
+	// initCol() runs inside InitDB but tests bypass InitDB with a bare gorm.Open,
+	// so initialize the dialect-correct column names (commonGroupCol etc.) now.
+	model.InitDialectColumns()
 	t.Cleanup(func() { model.DB = previousDB })
 
 	for i := range rows {
