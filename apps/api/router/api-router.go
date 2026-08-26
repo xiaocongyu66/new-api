@@ -245,6 +245,11 @@ func SetApiRouter(router *gin.Engine) {
 				performanceRoute.GET("/logs", controller.GetLogFiles)
 				performanceRoute.DELETE("/logs", controller.CleanupLogFiles)
 			}
+			routeUnitAuditRoute := apiRouter.Group("/route_unit")
+			routeUnitAuditRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.SystemSettings))
+			{
+				routeUnitAuditRoute.GET("/audit", controller.GetRouteUnitAudit)
+			}
 			ratioSyncRoute := apiRouter.Group("/ratio_sync")
 			ratioSyncRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.SystemSettings))
 			ratioSyncRoute.GET("/channels", controller.GetSyncableChannels)

@@ -64,9 +64,11 @@ func TestChannelHasSensitiveChanges(t *testing.T) {
 	t.Run("omitted sensitive fields do not use zero values", func(t *testing.T) {
 		updated := PatchChannel{}
 		updated.Id = origin.Id
-		updated.Priority = origin.Priority
+		updated.Name = origin.Name
 
-		assert.False(t, channelHasSensitiveChanges(&updated, origin, map[string]any{"priority": 10}))
+		// name is not in the sensitive set, so naming it in requestData must not by
+		// itself trip the check while every sensitive field is absent.
+		assert.False(t, channelHasSensitiveChanges(&updated, origin, map[string]any{"name": "renamed"}))
 	})
 
 	t.Run("unknown field fails closed", func(t *testing.T) {

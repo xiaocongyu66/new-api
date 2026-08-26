@@ -1,0 +1,586 @@
+name: Route Unit EWMA Stress
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: 'Test scenario (smoke, S1, S2, S3, S4, S5, S6, or all)'
+        required: true
+        type: choice
+        default: smoke
+        options: [smoke, S1, S2, S3, S4, S5, S6, all]
+      target_url:
+        description: 'Gateway /v1 URL (NodePort, Ingress, or port-forward)'
+        required: true
+        type: string
+        default: 'http://127.0.0.1:18080/v1'
+      api_key:
+        description: 'User bearer token (sk-...)'
+        required: false
+        type: string
+        default: ''
+      admin_token:
+        description: 'Admin JWT for audit endpoint (default: K8S_STRESS_ADMIN_TOKEN secret)'
+        required: false
+        type: string
+        default: ''
+      model:
+        description: 'Model to request'
+        required: false
+        type: string
+        default: 'mock-ok'
+      alias:
+        description: 'Route alias (subject route name)'
+        required: false
+        type: string
+        default: 'ewma-stress-subject'
+      requests:
+        description: 'Number of requests per scenario'
+        required: false
+        type: string
+        default: '13000'
+      warmup:
+        description: 'Warmup requests before measurement'
+        required: false
+        type: string
+        default: '44'
+      concurrency:
+        description: 'Concurrent workers'
+        required: false
+        type: string
+        default: '64'
+      stream_ratio:
+        description: 'Stream ratio 0-1 (empty = scenario default: S1=0.2, S2/S3=1.0)'
+        required: false
+        type: string
+        default: ''
+      allow_affinity:
+        description: 'Allow channel_affinity_setting.enabled=true (default false, runner requires false)'
+        required: false
+        type: boolean
+        default: false
+      mock_url:
+        description: 'Mock upstream base URL'
+        required: false
+        type: string
+        default: 'http://127.0.0.1:8099'
+      kube_config:
+        description: 'Base64 kubeconfig (default: KUBE_CONFIG_B64 secret)'
+        required: false
+        type: string
+        default: ''
+
+      route_count:
+        description: 'S5 pool size override (empty = scenario default: 2/4/8)'
+        required: false
+        type: string
+        default: ''
+      bad_channel_id:
+        description: 'S5 channel id of the BAD route (empty = first route)'
+        required: false
+        type: string
+        default: ''
+      share_window_size:
+        description: 'S6 RouteStatsShareWindowSize override (empty = scenario default: 50/200/1000)'
+        required: false
+        type: string
+        default: ''
+
+env:
+  TARGET_URL: ${{ inputs.target_url }}
+  API_KEY: ${{ inputs.api_key }}
+  ADMIN_TOKEN: ${{ inputs.admin_token || secrets.K8S_STRESS_ADMIN_TOKEN }}
+  MODEL: ${{ inputs.model }}
+  ALIAS: ${{ inputs.alias }}
+  REQUESTS: ${{ inputs.requests }}
+  WARMUP: ${{ inputs.warmup }}
+  ROUTE_COUNT: ${{ inputs.route_count }}
+  BAD_CHANNEL_ID: ${{ inputs.bad_channel_id }}
+  SHARE_WINDOW_SIZE: ${{ inputs.share_window_size }}
+
+jobs:
+  route-unit-ewma-smoke:
+    if: ${{ inputs.scenario == 'smoke' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure kubectl
+        if: env.KUBE_CONFIG_B64 != ''
+        run: |
+          mkdir -p ~/.kube
+          echo '${{ env.KUBE_CONFIG_B64 }}' | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Start mock upstream
+        id: mock
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/mock
+          cp tests/route_unit_stress/fixtures/mock_upstream.py /tmp/mock/
+          export MOCK_PORT=8099
+          export MOCK_NDJSON=/tmp/mock_upstream.ndjson
+          python3 /tmp/mock/mock_upstream.py > /tmp/mock.log 2>&1 &
+          MOCK_PID=$!
+          echo "MOCK_PID=$MOCK_PID" >> "$GITHUB_ENV"
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8099/healthz >/dev/null; then
+              echo "Mock upstream ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Mock upstream failed to start" >&2
+          exit 1
+
+      - name: Preflight gateway
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if curl -fsS --connect-timeout 5 -H "Authorization: Bearer $API_KEY" "$TARGET_URL/models" >/dev/null; then
+              echo "Gateway reachable"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Gateway not reachable at $TARGET_URL" >&2
+          exit 1
+
+      - name: Run smoke test (S11)
+        id: smoke
+        env:
+          MOCK_NDJSON: /tmp/mock_upstream.ndjson
+        run: |
+          set -euo pipefail
+          python3 tests/route_unit_stress/run_smoke.py \
+            --gateway-url "$TARGET_URL" \
+            --token "$API_KEY" \
+            --admin-token "$ADMIN_TOKEN" \
+            --mock-url "$MOCK_URL" \
+            --requests ${{ env.REQUESTS }} \
+            --concurrency ${{ env.CONCURRENCY }} \
+            --model "${{ env.MODEL }}" \
+            --out-dir runtime/smoke-${{ github.run_id }}
+
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: route-unit-smoke-${{ github.run_id }}
+          path: runtime/smoke-*
+          retention-days: 14
+
+      - name: Smoke summary
+        if: always()
+        run: |
+          SUMMARY_FILE="runtime/smoke-${{ github.run_id }}/summary.json"
+          if [ -f "$SUMMARY_FILE" ]; then
+            VERDICT=$(jq -r .verdict "$SUMMARY_FILE")
+            TOTAL=$(jq -r .total_requests "$SUMMARY_FILE")
+            MATCHED=$(jq -r .matched_pairs "$SUMMARY_FILE")
+            echo "## Route Unit EWMA Stress - Smoke (S11)" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Verdict | $VERDICT |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Total Requests | $TOTAL |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Matched Pairs | $MATCHED |" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$VERDICT" != "PASS" ]; then
+              echo "### Mismatches" >> "$GITHUB_STEP_SUMMARY"
+              jq -r '.missing_in_audit[]? | "Missing in audit: \(.)"' "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+              jq -r '.missing_in_mock[]? | "Missing in mock: \(.)"' "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+              jq -r '.identity_mismatch[]? | "Identity mismatch: \(.request_id) \(.type)"' "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+              jq -r '.attempt_gaps[]? | "Attempt gap: \(.request_id) expected=\(.expected) actual=\(.actual)"' "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+            fi
+          else
+            echo "No summary.json found" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Cleanup mock
+        if: always()
+        run: |
+          if [ -n "${{ env.MOCK_PID }}" ]; then
+            kill ${{ env.MOCK_PID }} 2>/dev/null || true
+          fi
+
+  route-unit-ewma-scenario:
+    if: ${{ inputs.scenario != 'smoke' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: ${{ fromJson(inputs.scenario == 'all' && '["S1","S2","S3","S4_NORETRY","S4_RETRY5","S4_RETRY10","S5_POOL2","S5_POOL4","S5_POOL8","S6_W50","S6_W200","S6_W1000"]' || inputs.scenario == 'S4' && '["S4_NORETRY","S4_RETRY5","S4_RETRY10"]' || inputs.scenario == 'S5' && '["S5_POOL2","S5_POOL4","S5_POOL8"]' || inputs.scenario == 'S6' && '["S6_W50","S6_W200","S6_W1000"]' || format('["{0}"]', inputs.scenario)) }}
+    env:
+      SCENARIO: ${{ matrix.scenario }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Configure kubectl
+        if: env.KUBE_CONFIG_B64 != ''
+        run: |
+          mkdir -p ~/.kube
+          echo '${{ env.KUBE_CONFIG_B64 }}' | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Start mock upstream (multi-instance)
+        id: mock
+        env:
+          SCENARIO: ${{ matrix.scenario }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/mock
+          cp tests/route_unit_stress/fixtures/mock_upstream.py /tmp/mock/
+          MOCK_NDJSON=/tmp/mock_upstream.ndjson
+          export MOCK_NDJSON
+          PIDS=()
+          BASE_PORT=18200
+
+          # Determine number of mock instances and their MOCK_FORCE_MODE per scenario
+          case "${SCENARIO}" in
+            S4_NORETRY)
+              INSTANCES=2
+              MODES=("ok" "ratelimit_missing")
+              ;;
+            S4_RETRY5)
+              INSTANCES=2
+              MODES=("ok" "ratelimit_5s")
+              ;;
+            S4_RETRY10)
+              INSTANCES=2
+              MODES=("ok" "ratelimit_10s")
+              ;;
+            S5_POOL2)
+              INSTANCES=2
+              MODES=("q05" "ok")
+              ;;
+            S5_POOL4)
+              INSTANCES=4
+              MODES=("q05" "ok" "ok" "ok")
+              ;;
+            S5_POOL8)
+              INSTANCES=8
+              MODES=("q05" "ok" "ok" "ok" "ok" "ok" "ok" "ok")
+              ;;
+            S6_W50|S6_W200|S6_W1000)
+              INSTANCES=4
+              MODES=("ok" "ok" "ttft_4000" "ttft_4000")
+              ;;
+            *)
+              INSTANCES=1
+              MODES=("ok")
+              ;;
+          esac
+
+          for i in $(seq 0 $((INSTANCES - 1))); do
+            PORT=$((BASE_PORT + i))
+            MODE=${MODES[$i]}
+            export MOCK_FORCE_MODE="${MODE}"
+            export MOCK_PORT="${PORT}"
+            python3 /tmp/mock/mock_upstream.py > "/tmp/mock_${PORT}.log" 2>&1 &
+            PIDS+=($!)
+            echo "MOCK_PID_${PORT}=${PIDS[-1]}" >> "$GITHUB_ENV"
+          done
+
+          # Wait for all /healthz endpoints
+          for i in $(seq 0 $((INSTANCES - 1))); do
+            PORT=$((BASE_PORT + i))
+            for j in $(seq 1 30); do
+              if curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null; then
+                echo "Mock upstream on port ${PORT} ready"
+                break
+              fi
+              sleep 1
+            done
+            if ! curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null; then
+              echo "Mock upstream on port ${PORT} failed to start" >&2
+              exit 1
+            fi
+          done
+          echo "All ${INSTANCES} mock upstreams ready on ports $((BASE_PORT))-$((BASE_PORT + INSTANCES - 1))"
+
+      - name: Configure mock URL for scenario
+        run: |
+          # For multi-mock scenarios, run_scenario.py expects a single mock-url.
+          # The per-route mode injection is handled by X-Mock-Mode header from the runner,
+          # but since we use MOCK_FORCE_MODE per instance, the gateway must route to the correct port.
+          # The topology channels should point to different ports (18200, 18201, ...).
+          # Here we just set the primary mock URL; run_scenario.py will use X-Mock-Mode header.
+          # For S4/S5/S6, the topology must already have channels pointing to the correct mock ports.
+          # This is a pre-requisite handled outside this workflow (k8s channel config).
+          echo "MOCK_URL_PRIMARY=http://127.0.0.1:18200" >> "$GITHUB_ENV"
+
+      - name: Preflight gateway
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if curl -fsS --connect-timeout 5 -H "Authorization: Bearer $API_KEY" "$TARGET_URL/models" >/dev/null; then
+              echo "Gateway reachable"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Gateway not reachable at $TARGET_URL" >&2
+          exit 1
+
+      - name: Verify affinity setting
+        run: |
+          set -euo pipefail
+          if [ "${{ env.ALLOW_AFFINITY }}" != "true" ]; then
+            # Check if channel_affinity_setting.enabled is true via admin API
+            # For now, just warn; runner enforces ENVIRONMENT_INVALID
+            echo "Warning: channel_affinity_setting.enabled must be false. Runner will fail with ENVIRONMENT_INVALID if enabled."
+          fi
+
+      - name: Run scenario ${{ matrix.scenario }}
+        id: scenario
+        env:
+          MOCK_NDJSON: /tmp/mock_upstream.ndjson
+        run: |
+          set -euo pipefail
+          python3 tests/route_unit_stress/run_scenario.py \
+            --scenario ${{ matrix.scenario }} \
+            --gateway-url "$TARGET_URL" \
+            --token "$API_KEY" \
+            --admin-token "$ADMIN_TOKEN" \
+            --alias "${{ env.ALIAS }}" \
+            --mock-url "$MOCK_URL" \
+            --requests ${{ env.REQUESTS }} \
+            --warmup ${{ env.WARMUP }} \
+            --concurrency ${{ env.CONCURRENCY }} \
+            ${{
+              env.STREAM_RATIO != '' && format('--stream-ratio {0}', env.STREAM_RATIO) || ''
+            }} \
+            ${{
+              env.ALLOW_AFFINITY == 'true' && '--allow-affinity' || ''
+            }} \
+            ${{
+              env.ROUTE_COUNT != '' && format('--route-count {0}', env.ROUTE_COUNT) || ''
+            }} \
+            ${{
+              env.BAD_CHANNEL_ID != '' && format('--bad-channel-id {0}', env.BAD_CHANNEL_ID) || ''
+            }} \
+            ${{
+              env.SHARE_WINDOW_SIZE != '' && format('--share-window-size {0}', env.SHARE_WINDOW_SIZE) || ''
+            }} \
+            --out-dir runtime/${{ matrix.scenario }}-${{ github.run_id }}
+        continue-on-error: true
+
+      - name: Upload scenario artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: route-unit-${{ matrix.scenario }}-${{ github.run_id }}
+          path: runtime/${{ matrix.scenario }}-*
+          retention-days: 14
+
+      - name: Scenario summary
+        if: always()
+        env:
+          SCENARIO: ${{ matrix.scenario }}
+        run: |
+          SUMMARY_FILE="runtime/${{ matrix.scenario }}-${{ github.run_id }}/summary.json"
+          if [ -f "$SUMMARY_FILE" ]; then
+            python3 - "$SUMMARY_FILE" << 'PYEOF'
+          import json, os, sys
+          summary_path = sys.argv[1]
+          scenario = os.environ["SCENARIO"]
+          run_id = os.environ["GITHUB_RUN_ID"]
+          with open(summary_path) as f:
+              s = json.load(f)
+
+          verdict = s.get("verdict", "N/A")
+          cfg = s.get("config", {})
+          rec = s.get("reconcile", {})
+          shares = s.get("shares", [])
+          share_eval = s.get("share_eval", {})
+          sq = s.get("service_quality", {})
+          res = s.get("resources", {})
+          reasons = s.get("reasons", [])
+
+          lines = []
+          lines.append(f"## Route Unit EWMA Stress - {scenario} (Run {run_id})")
+          lines.append("")
+          lines.append("| Metric | Value |")
+          lines.append("|--------|-------|")
+          lines.append(f"| Scenario | {scenario} |")
+          lines.append(f"| Verdict | {verdict} |")
+          lines.append(f"| Required Samples | {cfg.get('requests', 'N/A')} |")
+          lines.append(f"| Actual Samples | {rec.get('matched_pairs', 0)} |")
+          lines.append(f"| Reconciliation | {rec.get('verdict', 'N/A')} |")
+          lines.append(f"| Missing in Audit | {len(rec.get('missing_in_audit', []))} |")
+          lines.append(f"| Missing in Mock | {len(rec.get('missing_in_mock', []))} |")
+          lines.append(f"| Identity Mismatches | {len(rec.get('identity_mismatch', []))} |")
+          lines.append(f"| Attempt Gaps | {len(rec.get('attempt_gaps', []))} |")
+          lines.append("")
+
+          # Subject route share evaluation
+          subject_routes = [sh for sh in shares if sh.get("route") == cfg.get("alias", "")]
+          if subject_routes:
+              sr = subject_routes[0]
+              eval_r = share_eval.get(sr.get("route", ""), {})
+              eval_str = "OK" if eval_r.get("ok") else f"FAIL: {', '.join(eval_r.get('reasons', []))}"
+              lines.append("### Subject Route Share Evaluation")
+              lines.append("")
+              lines.append("| Route | Observed Share | CI Low | CI High | Target | Tol pp | Eval |")
+              lines.append("|-------|----------------|--------|---------|--------|---------|------|")
+              target = sr.get("target")
+              tol = sr.get("tol_pp")
+              target_str = f"{target:.3f}" if target is not None else "n/a"
+              tol_str = f"{tol:.3f}" if tol is not None else "n/a"
+              lines.append(f"| {sr.get('route', '')} | {sr.get('observed_share', 0):.4f} | {sr.get('ci_low', 0):.4f} | {sr.get('ci_high', 0):.4f} | {target_str} | {tol_str} | {eval_str} |")
+              lines.append("")
+
+          # --- S4: 429 counts, Retry-After distribution, throttle_only_share comparison ---
+          if scenario.startswith("S4"):
+              lines.append("### S4 Throttling Analysis")
+              lines.append("")
+              lines.append("| Metric | Value |")
+              lines.append("|--------|-------|")
+              throttle_only = cfg.get("throttle_only_share")
+              throttle_str = f"{throttle_only:.4f}" if throttle_only is not None else "N/A"
+              lines.append(f"| throttle_only_share (q/(1+q)=0.4118) | {throttle_str} |")
+              lines.append(f"| Observed subject share | {sr.get('observed_share', 0):.4f} |")
+              lines.append(f"| Target (Retry-After in TTFT) | {target_str if target else 'N/A'} |")
+              rate_429 = sq.get("status_429", rec.get("status_429", 0))
+              lines.append(f"| 429 responses | {rate_429} |")
+              retry_after_dist = s.get("retry_after_distribution", {})
+              if retry_after_dist:
+                  lines.append("")
+                  lines.append("#### Retry-After Header Distribution")
+                  lines.append("")
+                  lines.append("| Retry-After | Count |")
+                  lines.append("|-------------|-------|")
+                  for k, v in sorted(retry_after_dist.items()):
+                      lines.append(f"| {k} | {v} |")
+                  lines.append("")
+              lines.append("")
+              lines.append("> If observed ~ throttle_only_share (0.4118) instead of target (0.38), Retry-After is NOT counted in TTFT -> PRODUCT_FAIL.")
+              lines.append("")
+
+          # --- S5: per-route healthy shares and total ---
+          if scenario.startswith("S5"):
+              lines.append("### S5 Pool Route Shares")
+              lines.append("")
+              lines.append("| Route | Label | Observed Share | Target | Eval |")
+              lines.append("|------|-------|----------------|--------|------|")
+              total_healthy = 0.0
+              for sh in shares:
+                  eval_r = share_eval.get(sh.get("route", ""), {})
+                  eval_str = "OK" if eval_r.get("ok") else "FAIL"
+                  obs = sh.get("observed_share", 0)
+                  lbl = sh.get("label", sh.get("route", ""))
+                  tgt = sh.get("target")
+                  tgt_str = f"{tgt:.4f}" if tgt is not None else "n/a"
+                  lines.append(f"| {sh.get('route', '')} | {lbl} | {obs:.4f} | {tgt_str} | {eval_str} |")
+                  if lbl != "BAD":
+                      total_healthy += obs
+              lines.append(f"| **Total healthy** | | **{total_healthy:.4f}** | | |")
+              lines.append("")
+              lines.append(f"> Pool size: {cfg.get('route_count', 'N/A')} routes under same alias; BAD route target={target_str if target else 'N/A'}.")
+              lines.append("")
+
+          # --- S6: process stability ---
+          if scenario.startswith("S6"):
+              ps = s.get("process_stability", {})
+              if ps:
+                  lines.append("### S6 Process Stability")
+                  lines.append("")
+                  lines.append("| Metric | Value | Threshold |")
+                  lines.append("|--------|-------|-----------|")
+                  lines.append(f"| Verdict | {'OK' if ps.get('ok') else 'FAIL'} | |")
+                  lines.append(f"| corr_p99 headroom | {ps.get('corr_p99_headroom', 0):.4f} | >0.20 |")
+                  lines.append(f"| share stddev (pp) | {ps.get('share_stddev_pp', 0):.4f} | <={cfg.get('process_thresholds', {}).get('share_stddev_max_pp', 'N/A')} |")
+                  lines.append(f"| max consecutive breach | {ps.get('max_consecutive_breach', 0)} | <={cfg.get('process_thresholds', {}).get('consecutive_breach_max', 'N/A')} |")
+                  lines.append(f"| insufficient windows | {ps.get('insufficient_windows', 0)} | |")
+                  lines.append(f"| window samples (min) | {ps.get('min_window_samples', 'N/A')} | >={cfg.get('process_thresholds', {}).get('min_window_samples', 'N/A')} |")
+                  lines.append("")
+                  ps_reasons = ps.get("reasons", [])
+                  if ps_reasons:
+                      lines.append("#### Stability Reasons")
+                      lines.append("")
+                      for r in ps_reasons:
+                          lines.append(f"- {r}")
+                      lines.append("")
+              lines.append(f"> Window size: {cfg.get('share_window_size', 'N/A')} | Step at {cfg.get('step_at_ratio', 'N/A')} of progress | Min tail: {cfg.get('min_tail_seconds', 'N/A')}s")
+              lines.append("")
+
+          # Service quality
+          lines.append("### Service Quality")
+          lines.append("")
+          lines.append("| Metric | Value |")
+          lines.append("|--------|-------|")
+          for k, v in sq.items():
+              if v is not None:
+                  if isinstance(v, float):
+                      lines.append(f"| {k} | {v:.2f} |")
+                  else:
+                      lines.append(f"| {k} | {v} |")
+              else:
+                  lines.append(f"| {k} | N/A |")
+          lines.append("")
+
+          # Resource peaks
+          lines.append("### Resource Peaks (10s windows)")
+          lines.append("")
+          lines.append("| Metric | Peak |")
+          lines.append("|--------|------|")
+          peak_cpu = res.get("peak_cpu_user")
+          peak_rss = res.get("peak_rss")
+          peak_disk = res.get("peak_disk_write_bps")
+          peak_net_err = res.get("peak_net_error")
+          cpu_str = f"{peak_cpu:.2f}" if peak_cpu is not None else "N/A"
+          rss_str = str(peak_rss) if peak_rss is not None else "N/A"
+          disk_str = str(peak_disk) if peak_disk is not None else "N/A"
+          net_str = str(peak_net_err) if peak_net_err is not None else "N/A"
+          lines.append(f"| CPU User % | {cpu_str} |")
+          lines.append(f"| RSS (bytes) | {rss_str} |")
+          lines.append(f"| Disk Write (B/s) | {disk_str} |")
+          lines.append(f"| Net Errors | {net_str} |")
+          lines.append("")
+
+          # Verdict details
+          if reasons:
+              lines.append("### Verdict Details")
+              lines.append("")
+              for r in reasons:
+                  lines.append(f"- {r}")
+              lines.append("")
+
+          # Artifact links
+          lines.append("### Artifacts")
+          lines.append("")
+          lines.append(f"- `route-unit-{scenario.lower()}-{run_id}` (download from Actions artifacts)")
+          lines.append("")
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("\n".join(lines))
+          PYEOF
+          else
+            echo "No summary.json found for ${{ matrix.scenario }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Fail job on non-zero exit
+        if: always()
+        run: |
+          # Both exit code 1 (DATA_INVALID/UNDERPOWERED/PRODUCT_FAIL) and 2 (ENVIRONMENT_INVALID) fail the job
+          # Artifacts already uploaded via always() step above
+          exit ${{ steps.scenario.outcome == 'success' && 0 || 1 }}
+
+      - name: Cleanup mock
+        if: always()
+        run: |
+          for var in $(env | grep '^MOCK_PID_' | cut -d= -f1); do
+            pid="${!var}"
+            if [ -n "$pid" ]; then
+              kill "$pid" 2>/dev/null || true
+            fi
+          done

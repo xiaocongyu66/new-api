@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
+	"github.com/QuantumNous/new-api/pkg/routestats"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -537,6 +538,21 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		Group:            relayInfo.UsingGroup,
 		Other:            other,
 	})
+
+	// The success observation, TTFT and per-attempt latency are already recorded by
+	// the relay loop (per-attempt attribution). Only TPS is added here, because the
+	// token count is not known until settlement. Recording success again would
+	// double-count the sample and halve the effective alpha.
+	if handle := relayInfo.StatsHandle; handle != nil && summary.CompletionTokens >= routestats.MinTPSTokens {
+		generationSec := float64(summary.UseTimeSeconds)
+		if relayInfo.IsStream && relayInfo.HasSendResponse() {
+			generationSec = time.Since(relayInfo.FirstResponseTime).Seconds()
+		}
+		if generationSec > 0 {
+			handle.ObserveTPS(float64(summary.CompletionTokens) / generationSec)
+		}
+	}
+
 	gopool.Go(func() {
 		perfmetrics.RecordRelaySample(relayInfo, true, int64(summary.CompletionTokens))
 	})

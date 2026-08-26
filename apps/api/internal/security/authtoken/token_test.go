@@ -1,4 +1,4 @@
-package service
+package authtoken
 
 import (
 	"errors"
@@ -66,7 +66,7 @@ func TestDashboardAccessTokenClassification(t *testing.T) {
 
 	external := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"iss": "external-issuer",
-		"aud": authTokenAudience,
+		"aud": TokenAudience,
 		"exp": time.Now().Add(time.Minute).Unix(),
 	})
 	externalRaw, err := external.SignedString([]byte("external-secret"))
@@ -76,8 +76,8 @@ func TestDashboardAccessTokenClassification(t *testing.T) {
 	assert.False(t, internal)
 
 	unknownUse := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"iss":       authTokenIssuer,
-		"aud":       authTokenAudience,
+		"iss":       TokenIssuer,
+		"aud":       TokenAudience,
 		"token_use": "third_party",
 		"exp":       time.Now().Add(time.Minute).Unix(),
 	})
@@ -101,16 +101,16 @@ func TestDashboardAccessTokenClassification(t *testing.T) {
 		UserAuthVersion: 1,
 		SessionVersion:  1,
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    authTokenIssuer,
+			Issuer:    TokenIssuer,
 			Subject:   "42",
-			Audience:  jwt.ClaimStrings{authTokenAudience},
+			Audience:  jwt.ClaimStrings{TokenAudience},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Minute)),
 			NotBefore: jwt.NewNumericDate(time.Now().Add(-2 * time.Minute)),
 			IssuedAt:  jwt.NewNumericDate(time.Now().Add(-2 * time.Minute)),
 			ID:        "expired-token",
 		},
 	}
-	expired, err := jwt.NewWithClaims(jwt.SigningMethodHS256, expiredClaims).SignedString(authSigningKey(accessTokenUse))
+	expired, err := jwt.NewWithClaims(jwt.SigningMethodHS256, expiredClaims).SignedString(SigningKey(accessTokenUse))
 	require.NoError(t, err)
 	_, internal, err = ParseDashboardAccessToken(expired)
 	assert.True(t, internal)

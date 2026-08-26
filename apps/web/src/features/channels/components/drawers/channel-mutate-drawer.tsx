@@ -639,8 +639,6 @@ function ChannelMutateDrawerContent({
   const upstreamModelUpdateCheckEnabled = useWatch({ control: form.control, name: 'upstream_model_update_check_enabled' })
   const currentSettings = useWatch({ control: form.control, name: 'settings' })
   const currentAdvancedCustom = useWatch({ control: form.control, name: 'advanced_custom' })
-  const currentPriority = useWatch({ control: form.control, name: 'priority' })
-  const currentWeight = useWatch({ control: form.control, name: 'weight' })
   const currentTestModel = useWatch({ control: form.control, name: 'test_model' })
   const currentAutoBan = useWatch({ control: form.control, name: 'auto_ban' })
   const currentTag = useWatch({ control: form.control, name: 'tag' })
@@ -868,9 +866,7 @@ function ChannelMutateDrawerContent({
     : 'idle'
 
   const routingStrategyConfigured = Boolean(
-    currentPriority ||
-      currentWeight ||
-      currentTestModel?.trim() ||
+    currentTestModel?.trim() ||
       (currentAutoBan ?? 1) !== 1
   )
   const internalNotesConfigured = Boolean(
@@ -1803,7 +1799,7 @@ function ChannelMutateDrawerContent({
                   'Sensitive channel settings are read-only for your account.'
                 )}{' '}
                 {t(
-                  'You can still edit non-sensitive operations fields such as models, groups, priority, and weight.'
+                  'You can still edit non-sensitive operations fields such as models and groups.'
                 )}
               </AlertDescription>
             </Alert>
@@ -3506,55 +3502,6 @@ function ChannelMutateDrawerContent({
                               icon={<Route className='h-3.5 w-3.5' />}
                               iconTone='info'
                             />
-                            <div className='grid gap-4 sm:grid-cols-2'>
-                              <FormField
-                                control={form.control}
-                                name='priority'
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>{t('Priority')}</FormLabel>
-                                    <FormControl>
-                                      <Input
-                                        type='number'
-                                        placeholder='0'
-                                        {...field}
-                                        onChange={(e) =>
-                                          field.onChange(Number(e.target.value))
-                                        }
-                                      />
-                                    </FormControl>
-                                    <FormDescription>
-                                      {t(FIELD_DESCRIPTIONS.PRIORITY)}
-                                    </FormDescription>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-
-                              <FormField
-                                control={form.control}
-                                name='weight'
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>{t('Weight')}</FormLabel>
-                                    <FormControl>
-                                      <Input
-                                        type='number'
-                                        placeholder='0'
-                                        {...field}
-                                        onChange={(e) =>
-                                          field.onChange(Number(e.target.value))
-                                        }
-                                      />
-                                    </FormControl>
-                                    <FormDescription>
-                                      {t(FIELD_DESCRIPTIONS.WEIGHT)}
-                                    </FormDescription>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-                            </div>
 
                             <FormField
                               control={form.control}
