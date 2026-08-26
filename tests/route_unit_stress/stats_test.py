@@ -19,6 +19,9 @@ from lib_stats import (
     bad_route_target,
     throttle_target,
     evaluate_process_stability,
+    evaluate_corr_headroom,
+    evaluate_memory_scaling,
+    evaluate_affinity_scan,
 )
 
 
@@ -394,7 +397,192 @@ def test_evaluate_process_stability() -> bool:
     assert res["ok"] is False, f"insufficient samples should fail: {res}"
     assert any("data_invalid" in r.lower() or "samples" in r.lower() for r in res["reasons"]), f"missing insufficient reason: {res['reasons']}"
     assert res["insufficient_windows"] == [1], f"insufficient_windows should be [1]: {res['insufficient_windows']}"
+    return True
 
+def test_scenario_targets_s7_s8_s9() -> bool:
+    """S7, S8, S9 scenario targets match #418 specifications."""
+    targets = scenario_targets()
+
+    # S7: three window sizes
+    for w_name, w_size in [("S7_W50", 50), ("S7_W200", 200), ("S7_W1000", 1000)]:
+        s = targets[w_name]
+        assert s["target"] is None, f"{w_name} target should be None"
+        assert s["subject"] == "CORR", f"{w_name} subject: {s['subject']}"
+        assert s["route_count"] == 4, f"{w_name} route_count: {s['route_count']}"
+        assert s["share_window_size"] == w_size, f"{w_name} window: {s['share_window_size']}"
+        assert s["min_corr_snapshots"] == 10000, f"{w_name} min_corr: {s['min_corr_snapshots']}"
+        assert s["corr_p99_headroom_min"] == 0.20, f"{w_name} headroom_min: {s['corr_p99_headroom_min']}"
+        assert s["corr_p99_max"] == 2.0, f"{w_name} corr_max: {s['corr_p99_max']}"
+        assert s["corr_snapshot_interval_s"] == 0.25, f"{w_name} interval: {s['corr_snapshot_interval_s']}"
+        assert s["max_duration_s"] == 900, f"{w_name} max_duration: {s['max_duration_s']}"
+
+    # S8: two scale points
+    s8_3k = targets["S8_3K"]
+    assert s8_3k["subject"] == "MEMORY"
+    assert s8_3k["route_count"] == 3000
+    assert s8_3k["share_window_size"] == 200
+    assert s8_3k["scale"] == {"channels": 50, "aliases": 20, "groups": 3}
+    assert s8_3k["steady_duration_s"] == 2160
+    assert s8_3k["candidates_per_pool"] == 8
+
+    s8_50k = targets["S8_50K"]
+    assert s8_50k["route_count"] == 50000
+    assert s8_50k["scale"] == {"channels": 200, "aliases": 50, "groups": 5}
+    assert s8_50k["candidates_per_pool"] == 8
+
+    # S9: 8 combos (4 ratios × 2 window sizes)
+    for ratio in [0.10, 0.30, 0.50, 0.70]:
+        for wsize in [0, 200]:
+            key = f"S9_A{int(ratio*100)}_W{wsize}"
+            s = targets[key]
+            assert s["subject"] == "A", f"{key} subject: {s['subject']}"
+            assert s["route_count"] == 3, f"{key} route_count: {s['route_count']}"
+            assert s["share_window_size"] == wsize, f"{key} window: {s['share_window_size']}"
+            assert s["affinity_ratio"] == ratio, f"{key} ratio: {s['affinity_ratio']}"
+            assert s["min_samples"] == 1200, f"{key} min_samples: {s['min_samples']}"
+            assert s["injection"] == {"A": "ok", "B": "ok", "C": "ok"}, f"{key} injection: {s['injection']}"
+
+    return True
+
+
+def test_evaluate_corr_headroom_pass() -> bool:
+    """corr headroom passes when p99 is well below ShareCorrMax."""
+    # Generate 12000 corr values per route, all near 1.0 (well below 2.0)
+    import random
+    random.seed(42)
+    snapshots = []
+    for _ in range(100):
+        snap = {"A": [1.0 + random.uniform(-0.1, 0.1) for _ in range(120)],
+                "B": [1.0 + random.uniform(-0.1, 0.1) for _ in range(120)]}
+        snapshots.append(snap)
+
+    targets = {"corr_p99_max": 2.0, "corr_p99_headroom_min": 0.20, "min_corr_snapshots": 10000}
+    res = evaluate_corr_headroom(snapshots, targets)
+    assert res["ok"] is True, f"should pass: {res}"
+    assert res["total_snapshots"] == 24000, f"total: {res['total_snapshots']}"
+    assert res["headroom"] > 0.20, f"headroom: {res['headroom']}"
+    return True
+
+
+def test_evaluate_corr_headroom_insufficient() -> bool:
+    """corr headroom fails with DATA_INVALID when < min_snapshots."""
+    snapshots = [{"A": [1.0] * 500, "B": [1.0] * 500}]  # only 500 per route
+    targets = {"corr_p99_max": 2.0, "corr_p99_headroom_min": 0.20, "min_corr_snapshots": 10000}
+    res = evaluate_corr_headroom(snapshots, targets)
+    assert res["ok"] is False, f"should fail: {res}"
+    assert any("DATA_INVALID" in r for r in res["reasons"]), f"reasons: {res['reasons']}"
+    return True
+
+
+def test_evaluate_corr_headroom_low_headroom() -> bool:
+    """corr headroom fails when p99 near ShareCorrMax."""
+    # 12000 values per route near 1.9 (headroom only 5%)
+    snapshots = [{"A": [1.9] * 12000, "B": [1.9] * 12000}]
+    targets = {"corr_p99_max": 2.0, "corr_p99_headroom_min": 0.20, "min_corr_snapshots": 10000}
+    res = evaluate_corr_headroom(snapshots, targets)
+    assert res["ok"] is False, f"should fail: {res}"
+    assert any("headroom" in r.lower() for r in res["reasons"]), f"reasons: {res['reasons']}"
+    assert res["headroom"] < 0.20, f"headroom: {res['headroom']}"
+    return True
+
+
+def test_evaluate_memory_scaling_pass() -> bool:
+    """memory scaling passes when pool count matches and no growth."""
+    snapshots = [
+        {"rss": 100_000_000, "heap": 50_000_000, "pool_count": 10, "active_pools": 10, "ts": 0.0},
+        {"rss": 120_000_000, "heap": 55_000_000, "pool_count": 10, "active_pools": 10, "ts": 30.0},
+        {"rss": 130_000_000, "heap": 56_000_000, "pool_count": 10, "active_pools": 10, "ts": 60.0},
+    ]
+    res = evaluate_memory_scaling(snapshots, {})
+    assert res["ok"] is True, f"should pass: {res}"
+    assert res["active_pool_match"] is True
+    assert res["monotonic_growth"] is False
+    return True
+
+
+def test_evaluate_memory_scaling_pool_mismatch() -> bool:
+    """memory scaling fails when pool_count != active_pools."""
+    snapshots = [
+        {"rss": 100, "heap": 50, "pool_count": 10, "active_pools": 10, "ts": 0.0},
+        {"rss": 100, "heap": 50, "pool_count": 10, "active_pools": 8, "ts": 30.0},  # mismatch
+    ]
+    res = evaluate_memory_scaling(snapshots, {})
+    assert res["ok"] is False, f"should fail: {res}"
+    assert any("pool_count" in r for r in res["reasons"]), f"reasons: {res['reasons']}"
+    return True
+
+
+def test_evaluate_memory_scaling_growth() -> bool:
+    """memory scaling flags unexplained monotonic growth."""
+    snapshots = [
+        {"rss": 100, "heap": 50_000_000, "pool_count": 10, "active_pools": 10, "ts": 0.0},
+    ]
+    for i in range(1, 15):
+        snapshots.append({
+            "rss": 100 + i * 10,
+            "heap": 50_000_000 + i * 10_000_000,  # grows past 2× baseline
+            "pool_count": 10,
+            "active_pools": 10,
+            "ts": i * 30.0,
+        })
+    res = evaluate_memory_scaling(snapshots, {})
+    assert res["monotonic_growth"] is True, f"growth: {res['monotonic_growth']}"
+    assert res["ok"] is False, f"should fail: {res}"
+    return True
+
+
+def test_evaluate_affinity_scan_monotonic() -> bool:
+    """affinity scan passes when A share is monotonic and W200 < W0 at 50%."""
+    share_rows = {
+        "0.10_0": {"A_share": 0.367, "A_ci_low": 0.34, "A_ci_high": 0.39},
+        "0.30_0": {"A_share": 0.425, "A_ci_low": 0.40, "A_ci_high": 0.45},
+        "0.50_0": {"A_share": 0.500, "A_ci_low": 0.47, "A_ci_high": 0.53},
+        "0.70_0": {"A_share": 0.583, "A_ci_low": 0.55, "A_ci_high": 0.61},
+        "0.10_200": {"A_share": 0.345, "A_ci_low": 0.32, "A_ci_high": 0.37},
+        "0.30_200": {"A_share": 0.400, "A_ci_low": 0.37, "A_ci_high": 0.43},
+        "0.50_200": {"A_share": 0.430, "A_ci_low": 0.40, "A_ci_high": 0.46},
+        "0.70_200": {"A_share": 0.560, "A_ci_low": 0.53, "A_ci_high": 0.59},
+    }
+    res = evaluate_affinity_scan(share_rows, {})
+    assert res["ok"] is True, f"should pass: {res}"
+    assert res["monotonic"] is True
+    assert res["correction_significant"] is True  # 0.50 - 0.43 = 0.07 > 0.02
+    return True
+
+
+def test_evaluate_affinity_scan_non_monotonic() -> bool:
+    """affinity scan fails when A share decreases."""
+    share_rows = {
+        "0.10_0": {"A_share": 0.40, "A_ci_low": 0.37, "A_ci_high": 0.43},
+        "0.30_0": {"A_share": 0.35, "A_ci_low": 0.32, "A_ci_high": 0.38},  # decreased!
+        "0.50_0": {"A_share": 0.50, "A_ci_low": 0.47, "A_ci_high": 0.53},
+        "0.70_0": {"A_share": 0.58, "A_ci_low": 0.55, "A_ci_high": 0.61},
+        "0.10_200": {"A_share": 0.34, "A_ci_low": 0.31, "A_ci_high": 0.37},
+        "0.30_200": {"A_share": 0.38, "A_ci_low": 0.35, "A_ci_high": 0.41},
+        "0.50_200": {"A_share": 0.43, "A_ci_low": 0.40, "A_ci_high": 0.46},
+        "0.70_200": {"A_share": 0.56, "A_ci_low": 0.53, "A_ci_high": 0.59},
+    }
+    res = evaluate_affinity_scan(share_rows, {})
+    assert res["ok"] is False, f"should fail: {res}"
+    assert res["monotonic"] is False
+    return True
+
+
+def test_evaluate_affinity_scan_no_correction() -> bool:
+    """affinity scan fails when W200 not significantly lower than W0 at 50%."""
+    share_rows = {
+        "0.10_0": {"A_share": 0.37, "A_ci_low": 0.34, "A_ci_high": 0.40},
+        "0.30_0": {"A_share": 0.42, "A_ci_low": 0.39, "A_ci_high": 0.45},
+        "0.50_0": {"A_share": 0.50, "A_ci_low": 0.47, "A_ci_high": 0.53},
+        "0.70_0": {"A_share": 0.58, "A_ci_low": 0.55, "A_ci_high": 0.61},
+        "0.10_200": {"A_share": 0.35, "A_ci_low": 0.32, "A_ci_high": 0.38},
+        "0.30_200": {"A_share": 0.40, "A_ci_low": 0.37, "A_ci_high": 0.43},
+        "0.50_200": {"A_share": 0.49, "A_ci_low": 0.46, "A_ci_high": 0.52},  # only 1pp lower
+        "0.70_200": {"A_share": 0.57, "A_ci_low": 0.54, "A_ci_high": 0.60},
+    }
+    res = evaluate_affinity_scan(share_rows, {})
+    assert res["ok"] is False, f"should fail: {res}"
+    assert res["correction_significant"] is False
     return True
 
 def run_all() -> int:
@@ -418,6 +606,16 @@ def run_all() -> int:
         ("scenario_targets_s4_s5_s6", test_scenario_targets_s4_s5_s6),
         ("min_samples_vs_required_n", test_min_samples_vs_required_n),
         ("evaluate_process_stability", test_evaluate_process_stability),
+        ("scenario_targets_s7_s8_s9", test_scenario_targets_s7_s8_s9),
+        ("evaluate_corr_headroom_pass", test_evaluate_corr_headroom_pass),
+        ("evaluate_corr_headroom_insufficient", test_evaluate_corr_headroom_insufficient),
+        ("evaluate_corr_headroom_low_headroom", test_evaluate_corr_headroom_low_headroom),
+        ("evaluate_memory_scaling_pass", test_evaluate_memory_scaling_pass),
+        ("evaluate_memory_scaling_pool_mismatch", test_evaluate_memory_scaling_pool_mismatch),
+        ("evaluate_memory_scaling_growth", test_evaluate_memory_scaling_growth),
+        ("evaluate_affinity_scan_monotonic", test_evaluate_affinity_scan_monotonic),
+        ("evaluate_affinity_scan_non_monotonic", test_evaluate_affinity_scan_non_monotonic),
+        ("evaluate_affinity_scan_no_correction", test_evaluate_affinity_scan_no_correction),
     ]
 
     passed = 0

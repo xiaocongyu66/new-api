@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       scenario:
-        description: 'Test scenario (smoke, S1, S2, S3, S4, S5, S6, or all)'
+        description: 'Test scenario (smoke, S1-S9, or all)'
         required: true
         type: choice
         default: smoke
-        options: [smoke, S1, S2, S3, S4, S5, S6, all]
+        options: [smoke, S1, S2, S3, S4, S5, S6, S7, S8, S9, all]
       target_url:
         description: 'Gateway /v1 URL (NodePort, Ingress, or port-forward)'
         required: true
@@ -213,7 +213,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scenario: ${{ fromJson(inputs.scenario == 'all' && '["S1","S2","S3","S4_NORETRY","S4_RETRY5","S4_RETRY10","S5_POOL2","S5_POOL4","S5_POOL8","S6_W50","S6_W200","S6_W1000"]' || inputs.scenario == 'S4' && '["S4_NORETRY","S4_RETRY5","S4_RETRY10"]' || inputs.scenario == 'S5' && '["S5_POOL2","S5_POOL4","S5_POOL8"]' || inputs.scenario == 'S6' && '["S6_W50","S6_W200","S6_W1000"]' || format('["{0}"]', inputs.scenario)) }}
+        scenario: ${{ fromJson(inputs.scenario == 'all' && '["S1","S2","S3","S4_NORETRY","S4_RETRY5","S4_RETRY10","S5_POOL2","S5_POOL4","S5_POOL8","S6_W50","S6_W200","S6_W1000","S7_W50","S7_W200","S7_W1000","S8_3K","S8_50K","S9_A10_W0","S9_A10_W200","S9_A30_W0","S9_A30_W200","S9_A50_W0","S9_A50_W200","S9_A70_W0","S9_A70_W200"]' || inputs.scenario == 'S4' && '["S4_NORETRY","S4_RETRY5","S4_RETRY10"]' || inputs.scenario == 'S5' && '["S5_POOL2","S5_POOL4","S5_POOL8"]' || inputs.scenario == 'S6' && '["S6_W50","S6_W200","S6_W1000"]' || inputs.scenario == 'S7' && '["S7_W50","S7_W200","S7_W1000"]' || inputs.scenario == 'S8' && '["S8_3K","S8_50K"]' || inputs.scenario == 'S9' && '["S9_A10_W0","S9_A10_W200","S9_A30_W0","S9_A30_W200","S9_A50_W0","S9_A50_W200","S9_A70_W0","S9_A70_W200"]' || format('["{0}"]', inputs.scenario)) }}
     env:
       SCENARIO: ${{ matrix.scenario }}
     steps:
@@ -275,7 +275,18 @@ jobs:
               INSTANCES=4
               MODES=("ok" "ok" "ttft_4000" "ttft_4000")
               ;;
-            *)
+            S7_W50|S7_W200|S7_W1000)
+              INSTANCES=4
+              MODES=("ok" "ok" "ttft_4000" "ttft_4000")
+              ;;
+            S8_3K|S8_50K)
+              INSTANCES=1
+              MODES=("ok")
+              ;;
+            S9_A*)
+              INSTANCES=3
+              MODES=("ok" "ok" "ok")
+              ;;
               INSTANCES=1
               MODES=("ok")
               ;;
@@ -361,7 +372,7 @@ jobs:
               env.STREAM_RATIO != '' && format('--stream-ratio {0}', env.STREAM_RATIO) || ''
             }} \
             ${{
-              env.ALLOW_AFFINITY == 'true' && '--allow-affinity' || ''
+              (env.ALLOW_AFFINITY == 'true' || startsWith(matrix.scenario, 'S9')) && '--allow-affinity' || ''
             }} \
             ${{
               env.ROUTE_COUNT != '' && format('--route-count {0}', env.ROUTE_COUNT) || ''
@@ -513,6 +524,78 @@ jobs:
                       lines.append("")
               lines.append(f"> Window size: {cfg.get('share_window_size', 'N/A')} | Step at {cfg.get('step_at_ratio', 'N/A')} of progress | Min tail: {cfg.get('min_tail_seconds', 'N/A')}s")
               lines.append("")
+
+          # --- S7: corr headroom ---
+          if scenario.startswith("S7"):
+              ce = s.get("corr_evaluation", {})
+              if ce:
+                  lines.append("### S7 Corr Headroom")
+                  lines.append("")
+                  lines.append("| Metric | Value |")
+                  lines.append("|--------|-------|")
+                  lines.append(f"| Verdict | {'OK' if ce.get('ok') else 'FAIL'} |")
+                  lines.append(f"| corr p99 | {ce.get('corr_p99', 0):.3f} |")
+                  lines.append(f"| corr min | {ce.get('corr_min', 0):.3f} |")
+                  lines.append(f"| corr max | {ce.get('corr_max', 0):.3f} |")
+                  lines.append(f"| corr p50 | {ce.get('corr_p50', 0):.3f} |")
+                  lines.append(f"| corr p95 | {ce.get('corr_p95', 0):.3f} |")
+                  lines.append(f"| headroom | {ce.get('headroom', 0):.2%} |")
+                  lines.append(f"| total snapshots | {ce.get('total_snapshots', 0)} |")
+                  prc = ce.get("per_route_counts", {})
+                  if prc:
+                      lines.append(f"| per-route counts | {prc} |")
+                  lines.append("")
+                  ce_reasons = ce.get("reasons", [])
+                  if ce_reasons:
+                      lines.append("#### Reasons")
+                      lines.append("")
+                      for r in ce_reasons:
+                          lines.append(f"- {r}")
+                      lines.append("")
+              lines.append(f"> Window size: {cfg.get('share_window_size', 'N/A')}")
+              lines.append("")
+
+          # --- S8: memory scaling ---
+          if scenario.startswith("S8"):
+              me = s.get("memory_evaluation", {})
+              if me:
+                  lines.append("### S8 Memory Scaling")
+                  lines.append("")
+                  lines.append("| Metric | Value |")
+                  lines.append("|--------|-------|")
+                  lines.append(f"| Verdict | {'OK' if me.get('ok') else 'FAIL'} |")
+                  lines.append(f"| heap baseline | {me.get('heap_baseline', 'N/A')} |")
+                  lines.append(f"| heap peak | {me.get('heap_peak', 'N/A')} |")
+                  lines.append(f"| heap post-sweep | {me.get('heap_post_sweep', 'N/A')} |")
+                  lines.append(f"| RSS peak | {me.get('rss_peak', 'N/A')} |")
+                  lines.append(f"| pool count peak | {me.get('pool_count_peak', 0)} |")
+                  lines.append(f"| pool count == active | {me.get('active_pool_match', False)} |")
+                  lines.append(f"| monotonic growth | {me.get('monotonic_growth', False)} |")
+                  lines.append("")
+                  me_reasons = me.get("reasons", [])
+                  if me_reasons:
+                      lines.append("#### Reasons")
+                      lines.append("")
+                      for r in me_reasons:
+                          lines.append(f"- {r}")
+                      lines.append("")
+              lines.append(f"> Scale: {cfg.get('scale', 'N/A')} | Duration: {cfg.get('steady_duration_s', 'N/A')}s")
+              lines.append("")
+
+          # --- S9: affinity scan ---
+          if scenario.startswith("S9"):
+              s9 = s.get("s9_result", {})
+              if s9:
+                  lines.append("### S9 Affinity Scan")
+                  lines.append("")
+                  lines.append("| Metric | Value |")
+                  lines.append("|--------|-------|")
+                  lines.append(f"| affinity ratio | {s9.get('affinity_ratio', 0):.0%} |")
+                  lines.append(f"| window size | {s9.get('window_size', 0)} |")
+                  lines.append(f"| A share | {s9.get('A_share', 0):.4f} |")
+                  lines.append(f"| A CI | [{s9.get('A_ci_low', 0):.4f}, {s9.get('A_ci_high', 0):.4f}] |")
+                  lines.append(f"| A selections | {s9.get('A_selections', 0)} |")
+                  lines.append("")
 
           # Service quality
           lines.append("### Service Quality")

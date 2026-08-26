@@ -319,6 +319,227 @@ def evaluate_process_stability(
         "insufficient_windows": insufficient,
     }
 
+def evaluate_corr_headroom(
+    corr_snapshots: list[dict[str, list[float]]],
+    targets: dict[str, Any],
+) -> dict[str, Any]:
+    """Evaluate S7 corr walk vs clamp headroom.
+
+    Args:
+        corr_snapshots: list of per-route corr dicts, each:
+            {"route_label": [corr_val, ...], ...}
+        targets: scenario target dict with corr_p99_max, corr_p99_headroom_min,
+            min_corr_snapshots
+
+    Returns:
+        Dict with ok, reasons, corr_p99, corr_min, corr_max, corr_p50, corr_p95,
+        headroom, per_route_counts, total_snapshots
+    """
+    corr_max_bound = targets.get("corr_p99_max", 2.0)
+    headroom_min = targets.get("corr_p99_headroom_min", 0.20)
+    min_snapshots = targets.get("min_corr_snapshots", 10000)
+
+    all_corr_vals: list[float] = []
+    per_route_counts: dict[str, int] = {}
+    for snap in corr_snapshots:
+        for label, vals in snap.items():
+            all_corr_vals.extend(vals)
+            per_route_counts[label] = per_route_counts.get(label, 0) + len(vals)
+
+    reasons: list[str] = []
+
+    if not all_corr_vals:
+        return {
+            "ok": False,
+            "reasons": ["no corr snapshots collected"],
+            "corr_p99": 0.0,
+            "corr_min": 0.0,
+            "corr_max": 0.0,
+            "corr_p50": 0.0,
+            "corr_p95": 0.0,
+            "headroom": 0.0,
+            "per_route_counts": {},
+            "total_snapshots": 0,
+        }
+
+    total = len(all_corr_vals)
+    per_route_min = min(per_route_counts.values()) if per_route_counts else 0
+    if per_route_min < min_snapshots:
+        reasons.append(
+            f"min per-route corr snapshots {per_route_min} < required {min_snapshots} (DATA_INVALID)"
+        )
+
+    p = percentiles(all_corr_vals, [50, 95, 99])
+    corr_p50 = p["p50"]
+    corr_p95 = p["p95"]
+    corr_p99 = p["p99"]
+    corr_min = min(all_corr_vals)
+    corr_max = max(all_corr_vals)
+
+    if corr_max_bound > 0:
+        headroom = (corr_max_bound - corr_p99) / corr_max_bound
+    else:
+        headroom = 0.0
+
+    if headroom < headroom_min:
+        reasons.append(
+            f"corr p99 headroom {headroom:.2%} < required {headroom_min:.0%} "
+            f"(corr_p99={corr_p99:.3f} vs bound {corr_max_bound})"
+        )
+
+    return {
+        "ok": len(reasons) == 0,
+        "reasons": reasons,
+        "corr_p99": corr_p99,
+        "corr_min": corr_min,
+        "corr_max": corr_max,
+        "corr_p50": corr_p50,
+        "corr_p95": corr_p95,
+        "headroom": headroom,
+        "per_route_counts": per_route_counts,
+        "total_snapshots": total,
+    }
+
+
+def evaluate_memory_scaling(
+    snapshots: list[dict[str, Any]],
+    targets: dict[str, Any],
+) -> dict[str, Any]:
+    """Evaluate S8 memory scaling: heap/pool count consistency.
+
+    Args:
+        snapshots: list of resource+pool snapshots taken during steady state:
+            {"rss": int, "heap": int|None, "pool_count": int, "active_pools": int, "ts": float}
+        targets: scenario target dict
+
+    Returns:
+        Dict with ok, reasons, heap_baseline, heap_peak, heap_post_sweep,
+        rss_peak, pool_count_peak, active_pool_match, monotonic_growth
+    """
+    reasons: list[str] = []
+
+    if not snapshots:
+        return {
+            "ok": False,
+            "reasons": ["no snapshots collected"],
+            "heap_baseline": None,
+            "heap_peak": None,
+            "heap_post_sweep": None,
+            "rss_peak": None,
+            "pool_count_peak": 0,
+            "active_pool_match": False,
+            "monotonic_growth": False,
+        }
+
+    heaps = [s.get("heap") for s in snapshots if s.get("heap") is not None]
+    rss_vals = [s.get("rss", 0) for s in snapshots]
+    pool_counts = [s.get("pool_count", 0) for s in snapshots]
+    active_counts = [s.get("active_pools", 0) for s in snapshots]
+
+    heap_baseline = heaps[0] if heaps else None
+    heap_peak = max(heaps) if heaps else None
+    heap_post_sweep = heaps[-1] if heaps else None
+    rss_peak = max(rss_vals) if rss_vals else 0
+    pool_count_peak = max(pool_counts) if pool_counts else 0
+
+    # Check pool_count matches active_pools at each snapshot
+    pool_mismatches = sum(
+        1 for pc, ac in zip(pool_counts, active_counts) if pc != ac
+    )
+    active_pool_match = pool_mismatches == 0
+    if not active_pool_match:
+        reasons.append(
+            f"pool_count != active_pools in {pool_mismatches}/{len(snapshots)} snapshots"
+        )
+
+    # Check for unexplained monotonic heap growth (last > 2× first, no sweep)
+    monotonic_growth = False
+    if len(heaps) >= 10:
+        if heap_peak and heap_baseline and heap_peak > 2 * heap_baseline:
+            # Check if it stabilized (last 3 samples within 10% of peak)
+            tail = heaps[-3:]
+            if tail and max(tail) > 0.9 * heap_peak:
+                monotonic_growth = True
+                reasons.append(
+                    f"unexplained heap growth: baseline={heap_baseline} peak={heap_peak} "
+                    f"(2× baseline, not swept)"
+                )
+
+    return {
+        "ok": len(reasons) == 0,
+        "reasons": reasons,
+        "heap_baseline": heap_baseline,
+        "heap_peak": heap_peak,
+        "heap_post_sweep": heap_post_sweep,
+        "rss_peak": rss_peak,
+        "pool_count_peak": pool_count_peak,
+        "active_pool_match": active_pool_match,
+        "monotonic_growth": monotonic_growth,
+    }
+
+
+def evaluate_affinity_scan(
+    share_rows: dict[str, dict[str, float]],
+    targets: dict[str, Any],
+) -> dict[str, Any]:
+    """Evaluate S9 affinity ratio scan: monotonicity and correction effect.
+
+    Args:
+        share_rows: dict keyed by "ratio_Wsize" -> {"A_share": float, "A_ci_low": float, "A_ci_high": float}
+        targets: scenario target dict (unused, kept for API symmetry)
+
+    Returns:
+        Dict with ok, reasons, monotonic, correction_significant, per_combo
+    """
+    reasons: list[str] = []
+
+    # Extract ratios and window sizes
+    ratios = sorted(set(
+        float(k.split("_")[0]) for k in share_rows
+    ))
+    w0_shares: dict[float, float] = {}
+    w200_shares: dict[float, float] = {}
+    for key, data in share_rows.items():
+        parts = key.split("_")
+        ratio = float(parts[0])
+        wsize = int(parts[1])
+        if wsize == 0:
+            w0_shares[ratio] = data["A_share"]
+        else:
+            w200_shares[ratio] = data["A_share"]
+
+    # Monotonicity: A share must increase with ratio for both window sizes
+    monotonic = True
+    for shares_dict, wname in [(w0_shares, "W0"), (w200_shares, "W200")]:
+        sorted_ratios = sorted(shares_dict.keys())
+        for i in range(1, len(sorted_ratios)):
+            if shares_dict[sorted_ratios[i]] < shares_dict[sorted_ratios[i - 1]]:
+                monotonic = False
+                reasons.append(
+                    f"{wname}: A share decreased from {sorted_ratios[i-1]:.0%} to {sorted_ratios[i]:.0%} "
+                    f"({shares_dict[sorted_ratios[i-1]]:.4f} → {shares_dict[sorted_ratios[i]]:.4f})"
+                )
+
+    # Correction significance: at 50%, W200 must be significantly lower than W0
+    correction_significant = False
+    if 0.5 in w0_shares and 0.5 in w200_shares:
+        diff = w0_shares[0.5] - w200_shares[0.5]
+        if diff > 0.02:  # at least 2pp lower
+            correction_significant = True
+        else:
+            reasons.append(
+                f"50% ratio: W200 ({w200_shares[0.5]:.4f}) not significantly lower than W0 ({w0_shares[0.5]:.4f})"
+            )
+
+    return {
+        "ok": len(reasons) == 0,
+        "reasons": reasons,
+        "monotonic": monotonic,
+        "correction_significant": correction_significant,
+        "w0_shares": w0_shares,
+        "w200_shares": w200_shares,
+    }
+
 
 def scenario_targets() -> dict[str, dict[str, Any]]:
      """Return official judgment criteria for S1, S2, S3 per issue #418.
@@ -516,4 +737,180 @@ def scenario_targets() -> dict[str, dict[str, Any]]:
              "corr_p99 headroom >20%, share stddev ≤3pp, consecutive breach ≤2, "
              "min 100 samples/window; step follow by EWMA ±1σ band; window<100 samples = DATA_INVALID",
          },
+        "S7_W50": {
+            "target": None,
+            "tol_pp": None,
+            "ci_bounds": None,
+            "subject": "CORR",
+            "route_count": 4,
+            "share_window_size": 50,
+            "min_corr_snapshots": 10000,
+            "corr_p99_headroom_min": 0.20,
+            "corr_p99_max": 2.0,
+            "corr_snapshot_interval_s": 0.25,
+            "max_duration_s": 900,
+            "injection": {"STABLE": "ok", "SLOW": "ttft_4000", "STEP": "ttft_4000→ttft_500"},
+            "description": "S7 window=50: corr walk vs clamp headroom; four routes (two ok, one 2×TTFT, one step); "
+            "collect ≥10,000 share_correction snapshots per route at ≤250ms interval; "
+            "corr p99 headroom from ShareCorrMax=2.0 must be >20%; <10k snapshots = DATA_INVALID",
+        },
+        "S7_W200": {
+            "target": None,
+            "tol_pp": None,
+            "ci_bounds": None,
+            "subject": "CORR",
+            "route_count": 4,
+            "share_window_size": 200,
+            "min_corr_snapshots": 10000,
+            "corr_p99_headroom_min": 0.20,
+            "corr_p99_max": 2.0,
+            "corr_snapshot_interval_s": 0.25,
+            "max_duration_s": 900,
+            "injection": {"STABLE": "ok", "SLOW": "ttft_4000", "STEP": "ttft_4000→ttft_500"},
+            "description": "S7 window=200: corr walk vs clamp headroom; same topology as S7_W50; "
+            "collect ≥10,000 share_correction snapshots per route; corr p99 headroom >20%",
+        },
+        "S7_W1000": {
+            "target": None,
+            "tol_pp": None,
+            "ci_bounds": None,
+            "subject": "CORR",
+            "route_count": 4,
+            "share_window_size": 1000,
+            "min_corr_snapshots": 10000,
+            "corr_p99_headroom_min": 0.20,
+            "corr_p99_max": 2.0,
+            "corr_snapshot_interval_s": 0.25,
+            "max_duration_s": 900,
+            "injection": {"STABLE": "ok", "SLOW": "ttft_4000", "STEP": "ttft_4000→ttft_500"},
+            "description": "S7 window=1000: corr walk vs clamp headroom; same topology as S7_W50; "
+            "collect ≥10,000 share_correction snapshots per route; corr p99 headroom >20%",
+        },
+        "S8_3K": {
+            "target": None,
+            "tol_pp": None,
+            "ci_bounds": None,
+            "subject": "MEMORY",
+            "route_count": 3000,
+            "share_window_size": 200,
+            "scale": {"channels": 50, "aliases": 20, "groups": 3},
+            "steady_duration_s": 2160,
+            "candidates_per_pool": 8,
+            "description": "S8 scale 3K: 50 channel × 20 alias × 3 group = 3,000 route; "
+            "measure heap baseline/peak/post-sweep, RSS, SharePoolCount(), active pool count; "
+            "pool count must equal active pools; orphan pools must clear after sweep; "
+            "unexplained heap growth or OOM/restart = PRODUCT_FAIL",
+        },
+        "S8_50K": {
+            "target": None,
+            "tol_pp": None,
+            "ci_bounds": None,
+            "subject": "MEMORY",
+            "route_count": 50000,
+            "share_window_size": 200,
+            "scale": {"channels": 200, "aliases": 50, "groups": 5},
+            "steady_duration_s": 2160,
+            "candidates_per_pool": 8,
+            "description": "S8 scale 50K: 200 channel × 50 alias × 5 group = 50,000 route; "
+            "same metrics as S8_3K; measure heap cost of shareEntry.targets snapshot map",
+        },
+        "S9_A10_W0": {
+            "target": None,
+            "tol_pp": None,
+            "ci_bounds": None,
+            "subject": "A",
+            "route_count": 3,
+            "share_window_size": 0,
+            "affinity_ratio": 0.10,
+            "injection": {"A": "ok", "B": "ok", "C": "ok"},
+            "min_samples": 1200,
+            "description": "S9 affinity 10% window=0: three routes q=1 static_weight=100; "
+            "route A pinned by affinity (prompt_cache_key); 10% requests use same key; "
+            "measure A's global share; baseline (no correction)",
+        },
+        "S9_A10_W200": {
+            "target": None,
+            "tol_pp": None,
+            "ci_bounds": None,
+            "subject": "A",
+            "route_count": 3,
+            "share_window_size": 200,
+            "affinity_ratio": 0.10,
+            "injection": {"A": "ok", "B": "ok", "C": "ok"},
+            "min_samples": 1200,
+            "description": "S9 affinity 10% window=200: correction active; "
+            "expect A share lower than W0 baseline at same ratio",
+        },
+        "S9_A30_W0": {
+            "target": None,
+            "tol_pp": None,
+            "ci_bounds": None,
+            "subject": "A",
+            "route_count": 3,
+            "share_window_size": 0,
+            "affinity_ratio": 0.30,
+            "injection": {"A": "ok", "B": "ok", "C": "ok"},
+            "min_samples": 1200,
+            "description": "S9 affinity 30% window=0: 30% requests pinned to A; baseline",
+        },
+        "S9_A30_W200": {
+            "target": None,
+            "tol_pp": None,
+            "ci_bounds": None,
+            "subject": "A",
+            "route_count": 3,
+            "share_window_size": 200,
+            "affinity_ratio": 0.30,
+            "injection": {"A": "ok", "B": "ok", "C": "ok"},
+            "min_samples": 1200,
+            "description": "S9 affinity 30% window=200: correction should pull A down from baseline",
+        },
+        "S9_A50_W0": {
+            "target": None,
+            "tol_pp": None,
+            "ci_bounds": None,
+            "subject": "A",
+            "route_count": 3,
+            "share_window_size": 0,
+            "affinity_ratio": 0.50,
+            "injection": {"A": "ok", "B": "ok", "C": "ok"},
+            "min_samples": 1200,
+            "description": "S9 affinity 50% window=0: 50% requests pinned to A; baseline",
+        },
+        "S9_A50_W200": {
+            "target": None,
+            "tol_pp": None,
+            "ci_bounds": None,
+            "subject": "A",
+            "route_count": 3,
+            "share_window_size": 200,
+            "affinity_ratio": 0.50,
+            "injection": {"A": "ok", "B": "ok", "C": "ok"},
+            "min_samples": 1200,
+            "description": "S9 affinity 50% window=200: must be significantly lower than W0 at same ratio",
+        },
+        "S9_A70_W0": {
+            "target": None,
+            "tol_pp": None,
+            "ci_bounds": None,
+            "subject": "A",
+            "route_count": 3,
+            "share_window_size": 0,
+            "affinity_ratio": 0.70,
+            "injection": {"A": "ok", "B": "ok", "C": "ok"},
+            "min_samples": 1200,
+            "description": "S9 affinity 70% window=0: 70% requests pinned to A; baseline",
+        },
+        "S9_A70_W200": {
+            "target": None,
+            "tol_pp": None,
+            "ci_bounds": None,
+            "subject": "A",
+            "route_count": 3,
+            "share_window_size": 200,
+            "affinity_ratio": 0.70,
+            "injection": {"A": "ok", "B": "ok", "C": "ok"},
+            "min_samples": 1200,
+            "description": "S9 affinity 70% window=200: correction cannot fully offset pinned traffic",
+        },
      }
