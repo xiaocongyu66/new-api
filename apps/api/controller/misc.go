@@ -317,7 +317,7 @@ func SendPasswordResetEmail(c contract.Context) {
 		if err != nil {
 			logger.LogError(c.Context(), fmt.Sprintf("failed to send password reset email to %s: %s", email, err.Error()))
 		}
-	} else if err != nil && !errors.Is(err, model.ErrEmailNotFound) {
+	} else if err != nil && !errors.Is(err, identity.ErrEmailNotFound) {
 		logger.LogWarn(c.Context(), fmt.Sprintf("skip password reset email for %s: %s", email, err.Error()))
 	}
 	_ = c.JSON(http.StatusOK, common.H{
@@ -350,7 +350,7 @@ func ResetPassword(c contract.Context) {
 	password := common.GenerateVerificationCode(12)
 	err = identity.ResetUserPasswordByEmail(req.Email, password)
 	if err != nil {
-		if errors.Is(err, model.ErrEmailNotFound) || errors.Is(err, model.ErrEmailAmbiguous) {
+		if errors.Is(err, identity.ErrEmailNotFound) || errors.Is(err, identity.ErrEmailAmbiguous) {
 			common.CtxApiErrorI18n(c, i18n.MsgUserPasswordResetLinkInvalid)
 			return
 		}

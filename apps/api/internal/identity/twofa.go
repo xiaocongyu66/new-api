@@ -117,7 +117,7 @@ func Setup2FA(c contract.Context) {
 	}
 
 	// 记录操作日志
-	model.RecordLog(userId, model.LogTypeSystem, "开始设置两步验证")
+	usage.RecordLog(userId, usage.LogTypeSystem, "开始设置两步验证")
 
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
@@ -199,7 +199,7 @@ func Enable2FA(c contract.Context) {
 	}
 
 	// 记录操作日志
-	model.RecordLog(userId, model.LogTypeSystem, "成功启用两步验证")
+	usage.RecordLog(userId, usage.LogTypeSystem, "成功启用两步验证")
 
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
@@ -282,7 +282,7 @@ func Disable2FA(c contract.Context) {
 	}
 
 	// 记录操作日志
-	model.RecordLog(userId, model.LogTypeSystem, "禁用两步验证")
+	usage.RecordLog(userId, usage.LogTypeSystem, "禁用两步验证")
 
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
@@ -412,7 +412,7 @@ func RegenerateBackupCodes(c contract.Context) {
 	}
 
 	// 记录操作日志
-	model.RecordLog(userId, model.LogTypeSystem, "重新生成两步验证备用码")
+	usage.RecordLog(userId, usage.LogTypeSystem, "重新生成两步验证备用码")
 
 	data := authRotationData(bundle)
 	data["backup_codes"] = backupCodes
@@ -570,7 +570,7 @@ func AdminDisable2FA(c contract.Context) {
 
 	// 禁用2FA
 	if err := model.DisableTwoFAWithAuthVersion(userId); err != nil {
-		if errors.Is(err, model.ErrTwoFANotEnabled) {
+		if errors.Is(err, ErrTwoFANotEnabled) {
 			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "用户未启用2FA",

@@ -196,7 +196,7 @@ func HandleOAuth(c contract.Context) {
 	}
 	user, err := findOrCreateOAuthUser(c, provider, oauthUser, payload.AffiliateCode)
 	if err != nil {
-		if errors.Is(err, model.ErrEmailAlreadyTaken) {
+		if errors.Is(err, ErrEmailAlreadyTaken) {
 			common.CtxApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
 			return
 		}
@@ -353,7 +353,7 @@ func findOrCreateOAuthUser(c contract.Context, provider oauth.Provider, oauthUse
 	if oauthUser.Email != "" {
 		user.Email = model.NormalizeEmail(oauthUser.Email)
 		if err := model.EnsureEmailAvailable(user.Email, 0); err != nil {
-			if errors.Is(err, model.ErrEmailAlreadyTaken) {
+			if errors.Is(err, ErrEmailAlreadyTaken) {
 				return nil, &OAuthEmailAlreadyTakenError{}
 			}
 			return nil, err

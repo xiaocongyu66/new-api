@@ -159,7 +159,7 @@ func UpdateUserLastLoginAt(id int) {
 func GetUniqueUserByEmail(email string) (*model.User, error) {
 	email = model.NormalizeEmail(email)
 	if email == "" {
-		return nil, model.ErrEmailNotFound
+		return nil, ErrEmailNotFound
 	}
 	var users []model.User
 	if err := dbx.DB.Where("LOWER(email) = ?", email).Limit(2).Find(&users).Error; err != nil {
@@ -167,11 +167,11 @@ func GetUniqueUserByEmail(email string) (*model.User, error) {
 	}
 	switch len(users) {
 	case 0:
-		return nil, model.ErrEmailNotFound
+		return nil, ErrEmailNotFound
 	case 1:
 		return &users[0], nil
 	default:
-		return nil, model.ErrEmailAmbiguous
+		return nil, ErrEmailAmbiguous
 	}
 }
 

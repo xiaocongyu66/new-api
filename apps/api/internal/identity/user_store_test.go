@@ -210,7 +210,7 @@ func TestResetUserPasswordByEmailRequiresSingleActiveMatch(t *testing.T) {
 	}).Error)
 
 	err := ResetUserPasswordByEmail("legacy@example.com", "NewPassword123")
-	require.ErrorIs(t, err, model.ErrEmailAmbiguous)
+	require.ErrorIs(t, err, ErrEmailAmbiguous)
 
 	var duplicates []model.User
 	require.NoError(t, dbx.DB.Where("LOWER(email) = ?", "legacy@example.com").Order("username asc").Find(&duplicates).Error)
@@ -233,7 +233,7 @@ func TestResetUserPasswordByEmailRequiresSingleActiveMatch(t *testing.T) {
 	assert.True(t, common.ValidatePasswordAndHash("NewPassword123", unique.Password))
 
 	err = ResetUserPasswordByEmail("missing@example.com", "NewPassword123")
-	require.True(t, errors.Is(err, model.ErrEmailNotFound))
+	require.True(t, errors.Is(err, ErrEmailNotFound))
 }
 
 func newStoreTestUserSession(sid string, userID int, now int64) *model.UserSession {

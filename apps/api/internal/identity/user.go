@@ -66,7 +66,7 @@ func Login(c contract.Context) {
 		case errors.Is(err, model.ErrDatabase):
 			common.SysLog(fmt.Sprintf("Login database error for user %s: %v", username, err))
 			common.CtxApiErrorI18n(c, i18n.MsgDatabaseError)
-		case errors.Is(err, model.ErrUserEmptyCredentials):
+		case errors.Is(err, ErrUserEmptyCredentials):
 			common.CtxApiErrorI18n(c, i18n.MsgInvalidParams)
 		default:
 			common.CtxApiErrorI18n(c, i18n.MsgUserUsernameOrPasswordError)
@@ -146,7 +146,7 @@ func recordLoginAudit(user *model.User, c contract.Context) {
 		"user_agent":   c.UserAgent(),
 	}
 	content := fmt.Sprintf("Logged in successfully via %s", method)
-	model.RecordLoginLog(user.Id, user.Username, content, ip, "login", map[string]interface{}{
+	usage.RecordLoginLog(user.Id, user.Username, content, ip, "login", map[string]interface{}{
 		"method": method,
 	}, extra)
 }
@@ -240,7 +240,7 @@ func Register(c contract.Context) {
 			return
 		}
 		if err := model.EnsureEmailAvailable(user.Email, 0); err != nil {
-			if errors.Is(err, model.ErrEmailAlreadyTaken) {
+			if errors.Is(err, ErrEmailAlreadyTaken) {
 				common.CtxApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
 				return
 			}
@@ -275,7 +275,7 @@ func Register(c contract.Context) {
 		cleanUser.Email = user.Email
 	}
 	if err := cleanUser.Insert(inviterId); err != nil {
-		if errors.Is(err, model.ErrEmailAlreadyTaken) {
+		if errors.Is(err, ErrEmailAlreadyTaken) {
 			common.CtxApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
 			return
 		}
@@ -1243,7 +1243,7 @@ func EmailBind(c contract.Context) {
 		return
 	}
 	if err := model.BindEmailToUser(&user, email); err != nil {
-		if errors.Is(err, model.ErrEmailAlreadyTaken) {
+		if errors.Is(err, ErrEmailAlreadyTaken) {
 			common.CtxApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
 			return
 		}

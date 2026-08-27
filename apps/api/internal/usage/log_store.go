@@ -25,6 +25,19 @@ const (
 	LogTypeLogin   = model.LogTypeLogin
 )
 
+// RecordLog writes a log entry. It forwards to the record layer, and exists so
+// other domains can write usage records through this domain instead of reaching
+// into the record package themselves.
+func RecordLog(userId int, logType int, content string) {
+	model.RecordLog(userId, logType, content)
+}
+
+// RecordLoginLog writes an authentication-event log entry, carrying the action
+// and its structured parameters.
+func RecordLoginLog(userId int, username string, content string, ip string, action string, params map[string]interface{}, extra map[string]interface{}) {
+	model.RecordLoginLog(userId, username, content, ip, action, params, extra)
+}
+
 const logSearchCountLimit = 10000
 
 // logGroupCol mirrors the unexported constant from model/log.go
