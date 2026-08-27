@@ -1,4 +1,4 @@
-package model
+package identity
 
 import (
 	"errors"
@@ -9,30 +9,10 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/alicebob/miniredis/v2"
-	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
-
-func useUserCacheMiniRedis(t *testing.T) *miniredis.Miniredis {
-	t.Helper()
-	server := miniredis.RunT(t)
-	oldRedisEnabled := common.RedisEnabled
-	oldRDB := common.RDB
-	oldSyncFrequency := common.SyncFrequency
-	common.RedisEnabled = true
-	common.SyncFrequency = 2
-	common.RDB = redis.NewClient(&redis.Options{Addr: server.Addr()})
-	t.Cleanup(func() {
-		_ = common.RDB.Close()
-		common.RedisEnabled = oldRedisEnabled
-		common.RDB = oldRDB
-		common.SyncFrequency = oldSyncFrequency
-	})
-	return server
-}
 
 func TestUserAuthFenceRollbackExpiresAndRecovers(t *testing.T) {
 	truncateTables(t)
@@ -47,7 +27,7 @@ func TestUserAuthFenceRollbackExpiresAndRecovers(t *testing.T) {
 		AuthVersion: 1,
 	}
 	require.NoError(t, dbx.DB.Create(&user).Error)
-	require.NoError(t, populateUserCache(user))
+	require.NoError(t, PopulateUserCache(user))
 
 	tx := dbx.DB.Begin()
 	require.NoError(t, tx.Error)
@@ -55,7 +35,7 @@ func TestUserAuthFenceRollbackExpiresAndRecovers(t *testing.T) {
 	require.NoError(t, err)
 	assert.EqualValues(t, 2, next)
 
-	_, err = cacheGetUserBase(user.Id)
+	_, err = CacheGetUserBase(user.Id)
 	assert.ErrorIs(t, err, ErrUserAuthCachePending)
 	cacheTTL, err := common.RDB.TTL(t.Context(), quotacache.UserKey(user.Id)).Result()
 	require.NoError(t, err)
@@ -76,6 +56,7 @@ func TestUserAuthFenceRollbackExpiresAndRecovers(t *testing.T) {
 }
 
 func TestPendingUserAuthFenceRejectsStaleCacheWrite(t *testing.T) {
+	truncateTables(t)
 	server := useUserCacheMiniRedis(t)
 	const userID = 4201
 	require.NoError(t, SetUserAuthVersionFence(userID, 2))
@@ -89,6 +70,7 @@ func TestPendingUserAuthFenceRejectsStaleCacheWrite(t *testing.T) {
 }
 
 func TestUserAuthFieldUpdateRejectsVersionMismatch(t *testing.T) {
+	truncateTables(t)
 	useUserCacheMiniRedis(t)
 	const userID = 4202
 	require.NoError(t, writeUserCache(&UserBase{
@@ -116,7 +98,7 @@ func TestRefreshUserGroupCacheRepairsDelayedSameVersionWrite(t *testing.T) {
 		AuthVersion: 1,
 	}
 	require.NoError(t, dbx.DB.Create(&user).Error)
-	require.NoError(t, populateUserCache(user))
+	require.NoError(t, PopulateUserCache(user))
 
 	firstSnapshotRead := make(chan struct{})
 	releaseDelayedRefresh := make(chan struct{})
@@ -140,14 +122,14 @@ func TestRefreshUserGroupCacheRepairsDelayedSameVersionWrite(t *testing.T) {
 
 	require.NoError(t, dbx.DB.Model(&User{}).Where("id = ?", user.Id).Update("group", "pro").Error)
 	require.NoError(t, RefreshUserGroupCache(user.Id))
-	cached, err := cacheGetUserBase(user.Id)
+	cached, err := CacheGetUserBase(user.Id)
 	require.NoError(t, err)
 	assert.Equal(t, "pro", cached.Group)
 	assert.EqualValues(t, 1, cached.AuthVersion)
 
 	close(releaseDelayedRefresh)
 	require.NoError(t, <-delayedResult)
-	cached, err = cacheGetUserBase(user.Id)
+	cached, err = CacheGetUserBase(user.Id)
 	require.NoError(t, err)
 	assert.Equal(t, "pro", cached.Group)
 	assert.EqualValues(t, 1, cached.AuthVersion)
@@ -166,7 +148,7 @@ func TestCommittedUserAuthVersionPermanentlyRejectsDelayedCacheFill(t *testing.T
 		AuthVersion: 1,
 	}
 	require.NoError(t, dbx.DB.Create(&user).Error)
-	require.NoError(t, populateUserCache(user))
+	require.NoError(t, PopulateUserCache(user))
 	stale := *user.ToBaseUser()
 
 	require.NoError(t, dbx.DB.Transaction(func(tx *gorm.DB) error {

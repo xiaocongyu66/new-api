@@ -3,6 +3,7 @@ package model
 import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -40,7 +41,7 @@ func TestSearchUsersSortsBeforePagination(t *testing.T) {
 	truncateTables(t)
 	insertUsersForPaginationTest(t, 42)
 
-	users, total, err := SearchUsers("user", "", nil, nil, 20, 20, NewUserSortOptions("id", "asc"))
+	users, total, err := SearchUsers("user", "", nil, nil, 20, 20, identity.NewUserSortOptions("id", "asc"))
 	require.NoError(t, err)
 	assert.Equal(t, int64(42), total)
 	assert.Equal(t, []int{21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}, collectUserIDs(users))

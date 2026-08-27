@@ -1,4 +1,4 @@
-package model
+package identity
 
 import (
 	"context"
@@ -44,8 +44,7 @@ func (setMiniRedisTimeOnEvalHook) AfterProcessPipeline(context.Context, []redis.
 
 func setupUserSessionTest(t *testing.T) {
 	t.Helper()
-	require.NoError(t, dbx.DB.AutoMigrate(&User{}, &UserSession{}))
-	require.NoError(t, dbx.DB.Exec("DELETE FROM user_sessions").Error)
+	setupIdentityTestDB(t)
 	oldRedisEnabled := common.RedisEnabled
 	oldActiveLimit := common.UserSessionActiveLimit
 	oldIssuanceLimit := common.UserSessionIssuanceLimit

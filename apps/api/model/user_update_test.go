@@ -2,6 +2,7 @@ package model
 
 import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -184,14 +185,14 @@ func TestEnsureEmailAvailableRejectsExistingEmailCaseInsensitive(t *testing.T) {
 		Status:   common.UserStatusEnabled,
 	}).Error)
 
-	err := EnsureEmailAvailable(" taken@example.COM ", 0)
+	err := identity.EnsureEmailAvailable(" taken@example.COM ", 0)
 	require.ErrorIs(t, err, ErrEmailAlreadyTaken)
 
 	var users []User
 	require.NoError(t, dbx.DB.Where("LOWER(email) = ?", "taken@example.com").Limit(1).Find(&users).Error)
 	require.Len(t, users, 1)
 
-	require.NoError(t, EnsureEmailAvailable("taken@example.com", users[0].Id))
+	require.NoError(t, identity.EnsureEmailAvailable("taken@example.com", users[0].Id))
 }
 
 func TestInsertRejectsDuplicateEmailWithoutUniqueIndex(t *testing.T) {
