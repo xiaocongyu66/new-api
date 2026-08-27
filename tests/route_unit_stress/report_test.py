@@ -666,10 +666,41 @@ def test_summary_missing_field_raises(tmp: Path) -> bool:
     return True
 
 
+def test_resource_peaks_read_nested_window_shape(tmp: Path) -> bool:
+    """Resource peaks must read aggregate_windows' nested shape, not flat keys.
+
+    Regression: the summary previously read cpu_user_max / mem_rss_max, which
+    aggregate_windows never emits, so every reported peak was silently 0 — the
+    exact CPU/memory evidence #418 requires. This pins the real shape.
+    """
+    import lib_resources
+
+    now = 1_700_000_000.0
+    rows = [
+        {
+            "ts": now + i,
+            "cpu": {"user": 10.0 + i, "system": 2.0, "iowait": 0.5, "steal": 0.0,
+                    "load1": 1.0, "load5": 1.0, "load15": 1.0, "runqueue": 1},
+            "mem": {"rss": 1000 + i, "available": 1, "total": 2},
+            "disk": {"write_bps": 100 + i},
+            "net": {"error": i, "retransmit": i},
+        }
+        for i in range(3)
+    ]
+    windows = lib_resources.aggregate_windows(rows, window_s=10)
+    assert windows, "expected at least one window"
+    w = windows[0]
+    assert "cpu_user_max" not in w, "flat key must not exist; the nested shape is authoritative"
+    peak_cpu = max((x.get("cpu", {}).get("max", {}).get("user", 0) or 0 for x in windows), default=None)
+    peak_rss = max((x.get("mem", {}).get("max", {}).get("rss", 0) or 0 for x in windows), default=None)
+    assert peak_cpu == 12.0, f"peak cpu user should be 12.0, got {peak_cpu}"
+    assert peak_rss == 1002, f"peak rss should be 1002, got {peak_rss}"
+    print("  OK: resource peaks read the nested window shape")
+    return True
+
 def run_all() -> int:
     tmp = Path("/tmp/route_unit_stress_report_test")
     tmp.mkdir(parents=True, exist_ok=True)
-
     tests = [
         ("shares_csv", test_shares_csv_headers_and_rows),
         ("windows_csv", test_windows_csv_headers_and_rows),
@@ -685,6 +716,7 @@ def run_all() -> int:
         ("build_traffic_windows_integer_status", test_build_traffic_windows_integer_status),
         ("windows_csv_backward_compat", test_windows_csv_backward_compat_old_dict),
         ("report_md_process_stability", test_report_md_process_stability),
+        ("resource_peaks_nested_shape", test_resource_peaks_read_nested_window_shape),
     ]
 
     failed = 0

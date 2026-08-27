@@ -80,6 +80,12 @@ AUDIT_RING_CAPACITY = 32768  # keep in sync with routestats.AuditRingCapacity()
 # Retries happen inside the gateway, so without audit rows the count is not
 # observable at all. #418 requires unavailable metrics to say so explicitly
 # rather than defaulting to a misleading 0.
+
+# Per-process run tag mixed into every generated request id. The audit ring
+# persists across runs against the same gateway, so ids like "s11-weighted-1"
+# from an earlier run collide with this one and inflate any attempts-per-request
+# derivation (it reported 300 phantom retries for 300 clean requests).
+RUN_TAG = uuid.uuid4().hex[:8]
 NOT_AVAILABLE_RETRY = "NOT_AVAILABLE: retry count needs gateway audit rows"
 
 
@@ -558,12 +564,17 @@ def service_quality(
             kind_counts[k] = kind_counts.get(k, 0) + 1
 
     # Retries are gateway-side: one user request can span several attempts, so the
-    # retry count is attempts-minus-requests, floored at 0. Without audit rows it
-    # is genuinely unobservable rather than zero.
+    # retry count is attempts-minus-requests, floored at 0. Only attempts belonging
+    # to a request we actually sent may be counted: S11 fires administrative probes
+    # that create attempts with no client row, and counting those reported 300
+    # phantom retries for 300 clean requests. Without audit rows the number is
+    # genuinely unobservable rather than zero.
     if attempts is None:
         retry_count: Any = NOT_AVAILABLE_RETRY
     else:
-        retry_count = max(0, len(attempts) - len(rows))
+        own_ids = {r.get("request_id") for r in rows if r.get("request_id")}
+        own_attempts = sum(1 for a in attempts if a.get("client_request_id") in own_ids)
+        retry_count = max(0, own_attempts - len(rows))
 
     completion_tokens = [r.get("completion_tokens") for r in rows if r.get("completion_tokens") is not None]
     total_completion = sum(completion_tokens) if completion_tokens else 0
@@ -809,7 +820,7 @@ def run_phase_s6(
 
             # Submit new requests to maintain concurrency while within deadline
             while len(futures) < concurrency and time.time() < deadline:
-                req_id = f"s6-{next_req_id}"
+                req_id = f"s6-{RUN_TAG}-{next_req_id}"
                 next_req_id += 1
                 fut = pool.submit(send_request, gateway_url, token, alias, req_id, mode, stream, "stats")
                 futures.add(fut)
@@ -967,7 +978,7 @@ def run_phase_s7(
                     step_hook_result = {"skipped": True}
 
             while len(futures) < concurrency and time.time() < deadline:
-                req_id = f"s7-{next_req_id}"
+                req_id = f"s7-{RUN_TAG}-{next_req_id}"
                 next_req_id += 1
                 fut = pool.submit(send_request, gateway_url, token, alias, req_id, mode, stream, "stats")
                 futures.add(fut)
@@ -1025,7 +1036,7 @@ def run_phase_s8(
             now = time.time()
 
             while len(futures) < concurrency and time.time() < deadline:
-                req_id = f"s8-{next_req_id}"
+                req_id = f"s8-{RUN_TAG}-{next_req_id}"
                 next_req_id += 1
                 fut = pool.submit(send_request, gateway_url, token, alias, req_id, mode, stream, "stats")
                 futures.add(fut)
@@ -1125,7 +1136,7 @@ def run_phase_s9(
     stream = False  # S9 uses non-streaming
 
     def send_affinity_request(idx: int) -> dict[str, Any]:
-        req_id = f"s9-{phase}-{idx}"
+        req_id = f"s9-{RUN_TAG}-{phase}-{idx}"
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
@@ -1222,7 +1233,7 @@ def run_phase_s11(
     path_counts: dict[str, int] = {"weighted": 0, "affinity": 0, "specific": 0}
 
     def send_labelled(path: str, idx: int) -> dict[str, Any]:
-        req_id = f"s11-{path}-{idx}"
+        req_id = f"s11-{RUN_TAG}-{path}-{idx}"
         use_token = token
         payload: dict[str, Any] = {
             "model": alias,
@@ -1629,7 +1640,7 @@ def run_phase_s13(
                 break
 
             while len(futures) < concurrency:
-                req_id = f"s13-{next_req_id}"
+                req_id = f"s13-{RUN_TAG}-{next_req_id}"
                 next_req_id += 1
                 futures.add(pool.submit(send_request, gateway_url, token, alias, req_id, mode, False, "stats"))
 
@@ -2550,10 +2561,16 @@ def main() -> int:
     summary["resources"] = {
         "samples": len(resource_rows),
         "windows": len(windows),
-        "peak_cpu_user": max((w.get("cpu_user_max", 0) or 0 for w in windows), default=None),
-        "peak_rss": max((w.get("mem_rss_max", 0) or 0 for w in windows), default=None),
-        "peak_disk_write_bps": max((w.get("disk_write_bps_max", 0) or 0 for w in windows), default=None),
-        "peak_net_error": max((w.get("net_error_max", 0) or 0 for w in windows), default=None),
+        # aggregate_windows() nests as {"cpu": {"avg": {...}, "max": {...}}, "mem": ...}.
+        # The old flat keys (cpu_user_max / mem_rss_max) never existed, so every peak
+        # silently reported 0 — which is precisely the resource evidence #418 asks for.
+        "peak_cpu_user": max((w.get("cpu", {}).get("max", {}).get("user", 0) or 0 for w in windows), default=None),
+        "peak_cpu_system": max((w.get("cpu", {}).get("max", {}).get("system", 0) or 0 for w in windows), default=None),
+        "peak_cpu_iowait": max((w.get("cpu", {}).get("max", {}).get("iowait", 0) or 0 for w in windows), default=None),
+        "peak_rss": max((w.get("mem", {}).get("max", {}).get("rss", 0) or 0 for w in windows), default=None),
+        "peak_disk_write_bps": max((w.get("disk", {}).get("max", {}).get("write_bps", 0) or 0 for w in windows), default=None),
+        "peak_net_error": max((w.get("net", {}).get("max", {}).get("error", 0) or 0 for w in windows), default=None),
+        "peak_net_retransmit": max((w.get("net", {}).get("max", {}).get("retransmit", 0) or 0 for w in windows), default=None),
     }
 
     # Build traffic windows using lib_report with phase marks
