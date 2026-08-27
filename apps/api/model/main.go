@@ -34,29 +34,6 @@ func InitDialectColumns() {
 	initCol()
 }
 
-func createRootAccountIfNeed() error {
-	var user User
-	//if user.Status != common.UserStatusEnabled {
-	if err := dbx.DB.First(&user).Error; err != nil {
-		common.SysLog("no user exists, create a root user for you: username is root, password is 123456")
-		hashedPassword, err := common.Password2Hash("123456")
-		if err != nil {
-			return err
-		}
-		rootUser := User{
-			Username:    "root",
-			Password:    hashedPassword,
-			Role:        common.RoleRootUser,
-			Status:      common.UserStatusEnabled,
-			DisplayName: "Root User",
-			AccessToken: nil,
-			Quota:       100000000,
-		}
-		dbx.DB.Create(&rootUser)
-	}
-	return nil
-}
-
 func CheckSetup() {
 	setup := GetSetup()
 	if setup == nil {
@@ -586,56 +563,6 @@ PRIMARY KEY (` + "`id`" + `)
 
 // migrateTokenModelLimitsToText migrates model_limits column from varchar(1024) to text
 // This is safe to run multiple times - it checks the column type first
-func migrateTokenModelLimitsToText() error {
-	// SQLite uses type affinity, so TEXT and VARCHAR are effectively the same — no migration needed
-	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
-		return nil
-	}
-
-	tableName := "tokens"
-	columnName := "model_limits"
-
-	if !dbx.DB.Migrator().HasTable(tableName) {
-		return nil
-	}
-
-	if !dbx.DB.Migrator().HasColumn(&Token{}, columnName) {
-		return nil
-	}
-
-	var alterSQL string
-	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
-		var dataType string
-		if err := dbx.DB.Raw(`SELECT data_type FROM information_schema.columns
-			WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?`,
-			tableName, columnName).Scan(&dataType).Error; err != nil {
-			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
-		} else if dataType == "text" {
-			return nil
-		}
-		alterSQL = fmt.Sprintf(`ALTER TABLE %s ALTER COLUMN %s TYPE text`, tableName, columnName)
-	} else if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
-		var columnType string
-		if err := dbx.DB.Raw(`SELECT COLUMN_TYPE FROM information_schema.columns
-				WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
-			tableName, columnName).Scan(&columnType).Error; err != nil {
-			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
-		} else if strings.ToLower(columnType) == "text" {
-			return nil
-		}
-		alterSQL = fmt.Sprintf("ALTER TABLE %s MODIFY COLUMN %s text", tableName, columnName)
-	} else {
-		return nil
-	}
-
-	if alterSQL != "" {
-		if err := dbx.DB.Exec(alterSQL).Error; err != nil {
-			return fmt.Errorf("failed to migrate %s.%s to text: %w", tableName, columnName, err)
-		}
-		common.SysLog(fmt.Sprintf("Successfully migrated %s.%s to text", tableName, columnName))
-	}
-	return nil
-}
 
 // migrateSubscriptionPlanPriceAmount migrates price_amount column from float/double to decimal(10,6)
 // This is safe to run multiple times - it checks the column type first
