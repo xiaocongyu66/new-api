@@ -8,7 +8,6 @@ import (
 	"strconv"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 )
 
 // Setup2FARequest 设置2FA请求结构
@@ -38,7 +37,7 @@ func Setup2FA(c contract.Context) {
 	userId := c.GetInt("id")
 
 	// 检查用户是否已经启用2FA
-	existing, err := model.GetTwoFAByUserId(userId)
+	existing, err := GetTwoFAByUserId(userId)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -61,7 +60,7 @@ func Setup2FA(c contract.Context) {
 	}
 
 	// 获取用户信息
-	user, err := model.GetUserById(userId, false)
+	user, err := GetUserById(userId, false)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -93,7 +92,7 @@ func Setup2FA(c contract.Context) {
 	qrCodeData := common.GenerateQRCodeData(key.Secret(), user.Username)
 
 	// 创建或更新2FA记录（暂未启用）
-	twoFA := &model.TwoFA{
+	twoFA := &TwoFA{
 		UserId:    userId,
 		Secret:    key.Secret(),
 		IsEnabled: false,
@@ -105,7 +104,7 @@ func Setup2FA(c contract.Context) {
 	}
 
 	// 创建备用码记录
-	if err := model.CreatePendingTwoFASetupBackupCodes(userId, backupCodes); err != nil {
+	if err := CreatePendingTwoFASetupBackupCodes(userId, backupCodes); err != nil {
 		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": "保存备用码失败",
@@ -142,7 +141,7 @@ func Enable2FA(c contract.Context) {
 	userId := c.GetInt("id")
 
 	// 获取2FA记录
-	twoFA, err := model.GetTwoFAByUserId(userId)
+	twoFA, err := GetTwoFAByUserId(userId)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -220,7 +219,7 @@ func Disable2FA(c contract.Context) {
 	userId := c.GetInt("id")
 
 	// 获取2FA记录
-	twoFA, err := model.GetTwoFAByUserId(userId)
+	twoFA, err := GetTwoFAByUserId(userId)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -269,7 +268,7 @@ func Disable2FA(c contract.Context) {
 		return
 	}
 	// 禁用2FA并原子推进用户鉴权版本
-	if err := model.DisableTwoFAWithAuthVersion(userId); err != nil {
+	if err := DisableTwoFAWithAuthVersion(userId); err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -293,7 +292,7 @@ func Disable2FA(c contract.Context) {
 func Get2FAStatus(c contract.Context) {
 	userId := c.GetInt("id")
 
-	twoFA, err := model.GetTwoFAByUserId(userId)
+	twoFA, err := GetTwoFAByUserId(userId)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -309,7 +308,7 @@ func Get2FAStatus(c contract.Context) {
 		status["locked"] = twoFA.IsLocked()
 		if twoFA.IsEnabled {
 			// 获取剩余备用码数量
-			backupCount, err := model.GetUnusedBackupCodeCount(userId)
+			backupCount, err := GetUnusedBackupCodeCount(userId)
 			if err != nil {
 				common.SysLog("获取备用码数量失败: " + err.Error())
 			} else {
@@ -339,7 +338,7 @@ func RegenerateBackupCodes(c contract.Context) {
 	userId := c.GetInt("id")
 
 	// 获取2FA记录
-	twoFA, err := model.GetTwoFAByUserId(userId)
+	twoFA, err := GetTwoFAByUserId(userId)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -395,7 +394,7 @@ func RegenerateBackupCodes(c contract.Context) {
 		return
 	}
 	// 保存新的备用码并原子推进用户鉴权版本
-	if err := model.ReplaceBackupCodesWithAuthVersion(userId, backupCodes); err != nil {
+	if err := ReplaceBackupCodesWithAuthVersion(userId, backupCodes); err != nil {
 		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": "保存备用码失败",
@@ -432,7 +431,7 @@ func Verify2FALogin(c contract.Context) {
 		return
 	}
 
-	flow, err := model.GetAuthFlow(req.FlowToken, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeTwoFALogin})
+	flow, err := GetAuthFlow(req.FlowToken, AuthFlowMatch{Purpose: AuthFlowPurposeTwoFALogin})
 	if err != nil {
 		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
@@ -441,7 +440,7 @@ func Verify2FALogin(c contract.Context) {
 		return
 	}
 	// 获取用户信息
-	user, err := model.GetUserById(flow.UserId, false)
+	user, err := GetUserById(flow.UserId, false)
 	if err != nil {
 		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
@@ -466,7 +465,7 @@ func Verify2FALogin(c contract.Context) {
 	}
 
 	// 获取2FA记录
-	twoFA, err := model.GetTwoFAByUserId(user.Id)
+	twoFA, err := GetTwoFAByUserId(user.Id)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -509,8 +508,8 @@ func Verify2FALogin(c contract.Context) {
 		return
 	}
 
-	if _, err := model.ConsumeAuthFlow(req.FlowToken, model.AuthFlowMatch{
-		Purpose: model.AuthFlowPurposeTwoFALogin,
+	if _, err := ConsumeAuthFlow(req.FlowToken, AuthFlowMatch{
+		Purpose: AuthFlowPurposeTwoFALogin,
 		UserId:  user.Id,
 	}); err != nil {
 		_ = c.JSON(http.StatusOK, common.H{
@@ -525,7 +524,7 @@ func Verify2FALogin(c contract.Context) {
 
 // Admin2FAStats 管理员获取2FA统计信息
 func Admin2FAStats(c contract.Context) {
-	stats, err := model.GetTwoFAStats()
+	stats, err := GetTwoFAStats()
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -551,7 +550,7 @@ func AdminDisable2FA(c contract.Context) {
 	}
 
 	// 检查目标用户权限
-	targetUser, err := model.GetUserById(userId, false)
+	targetUser, err := GetUserById(userId, false)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -567,7 +566,7 @@ func AdminDisable2FA(c contract.Context) {
 	}
 
 	// 禁用2FA
-	if err := model.DisableTwoFAWithAuthVersion(userId); err != nil {
+	if err := DisableTwoFAWithAuthVersion(userId); err != nil {
 		if errors.Is(err, ErrTwoFANotEnabled) {
 			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
@@ -578,7 +577,7 @@ func AdminDisable2FA(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	if _, err := model.RevokeAllUserSessions(userId, "admin_twofa_disabled"); err != nil {
+	if _, err := RevokeAllUserSessions(userId, "admin_twofa_disabled"); err != nil {
 		common.CtxApiError(c, err)
 		return
 	}

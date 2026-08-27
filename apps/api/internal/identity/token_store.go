@@ -1,4 +1,4 @@
-package model
+package identity
 
 import (
 	"errors"
@@ -476,7 +476,7 @@ func invalidateTokensCache(tokens []Token) error {
 // migrateTokenModelLimitsToText widens model_limits from varchar to text. It
 // lives with the token record because it names the record type; the bootstrap
 // only sequences it.
-func migrateTokenModelLimitsToText() error {
+func MigrateTokenModelLimitsToText() error {
 	// SQLite uses type affinity, so TEXT and VARCHAR are effectively the same — no migration needed
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
 		return nil

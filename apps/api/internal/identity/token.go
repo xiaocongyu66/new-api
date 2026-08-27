@@ -10,7 +10,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/i18n"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
@@ -30,16 +29,16 @@ func (input *tokenAutoGroupsInput) UnmarshalJSON(data []byte) error {
 }
 
 type tokenRequest struct {
-	model.Token
+	Token
 	AutoGroups tokenAutoGroupsInput `json:"auto_groups"`
 }
 
 type tokenResponse struct {
-	*model.Token
+	*Token
 	AutoGroups []string `json:"auto_groups"`
 }
 
-func buildMaskedTokenResponse(token *model.Token) *tokenResponse {
+func buildMaskedTokenResponse(token *Token) *tokenResponse {
 	if token == nil {
 		return nil
 	}
@@ -56,7 +55,7 @@ func buildMaskedTokenResponse(token *model.Token) *tokenResponse {
 	return &tokenResponse{Token: &maskedToken, AutoGroups: autoGroups}
 }
 
-func buildMaskedTokenResponses(tokens []*model.Token) []*tokenResponse {
+func buildMaskedTokenResponses(tokens []*Token) []*tokenResponse {
 	maskedTokens := make([]*tokenResponse, 0, len(tokens))
 	for _, token := range tokens {
 		maskedTokens = append(maskedTokens, buildMaskedTokenResponse(token))
@@ -71,10 +70,10 @@ func getTokenRequestUserGroup(c contract.Context) (string, error) {
 	if userGroup := c.GetString("group"); userGroup != "" {
 		return userGroup, nil
 	}
-	return model.GetUserGroup(c.GetInt("id"), false)
+	return GetUserGroup(c.GetInt("id"), false)
 }
 
-func setTokenAutoGroups(c contract.Context, token *model.Token, groups []string) bool {
+func setTokenAutoGroups(c contract.Context, token *Token, groups []string) bool {
 	if len(groups) == 0 {
 		if err := token.SetAutoGroups(nil); err != nil {
 			common.CtxApiError(c, err)
@@ -117,12 +116,12 @@ func setTokenAutoGroups(c contract.Context, token *model.Token, groups []string)
 func GetAllTokens(c contract.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
-	tokens, err := model.GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	tokens, err := GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
-	total, _ := model.CountUserTokens(userId)
+	total, _ := CountUserTokens(userId)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
 	common.CtxApiSuccess(c, pageInfo)
@@ -135,7 +134,7 @@ func SearchTokens(c contract.Context) {
 
 	pageInfo := common.GetPageQuery(c)
 
-	tokens, total, err := model.SearchUserTokens(userId, keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	tokens, total, err := SearchUserTokens(userId, keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -152,7 +151,7 @@ func GetToken(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	token, err := model.GetTokenByIds(id, userId)
+	token, err := GetTokenByIds(id, userId)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -179,7 +178,7 @@ func GetTokenKey(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	token, err := model.GetTokenByIds(id, userId)
+	token, err := GetTokenByIds(id, userId)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -192,7 +191,7 @@ func GetTokenKey(c contract.Context) {
 func GetTokenStatus(c contract.Context) {
 	tokenId := c.GetInt("token_id")
 	userId := c.GetInt("id")
-	token, err := model.GetTokenByIds(tokenId, userId)
+	token, err := GetTokenByIds(tokenId, userId)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -230,7 +229,7 @@ func GetTokenUsage(c contract.Context) {
 	}
 	tokenKey := parts[1]
 
-	token, err := model.GetTokenByKey(strings.TrimPrefix(tokenKey, "sk-"), false)
+	token, err := GetTokenByKey(strings.TrimPrefix(tokenKey, "sk-"), false)
 	if err != nil {
 		common.SysError("failed to get token by key: " + err.Error())
 		common.CtxApiErrorI18n(c, i18n.MsgTokenGetInfoFailed)
@@ -285,7 +284,7 @@ func AddToken(c contract.Context) {
 	}
 	// 检查用户令牌数量是否已达上限
 	maxTokens := operation_setting.GetMaxUserTokens()
-	count, err := model.CountUserTokens(c.GetInt("id"))
+	count, err := CountUserTokens(c.GetInt("id"))
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -311,7 +310,7 @@ func AddToken(c contract.Context) {
 		common.SysLog("failed to generate token key: " + err.Error())
 		return
 	}
-	cleanToken := model.Token{
+	cleanToken := Token{
 		UserId:             c.GetInt("id"),
 		Name:               token.Name,
 		Key:                key,
@@ -341,7 +340,7 @@ func AddToken(c contract.Context) {
 func DeleteToken(c contract.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	userId := c.GetInt("id")
-	err := model.DeleteTokenById(id, userId)
+	err := DeleteTokenById(id, userId)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -377,7 +376,7 @@ func UpdateToken(c contract.Context) {
 			return
 		}
 	}
-	cleanToken, err := model.GetTokenByIds(token.Id, userId)
+	cleanToken, err := GetTokenByIds(token.Id, userId)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -437,7 +436,7 @@ func DeleteTokenBatch(c contract.Context) {
 		return
 	}
 	userId := c.GetInt("id")
-	count, err := model.BatchDeleteTokens(tokenBatch.Ids, userId)
+	count, err := BatchDeleteTokens(tokenBatch.Ids, userId)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -460,7 +459,7 @@ func GetTokenKeysBatch(c contract.Context) {
 		return
 	}
 	userId := c.GetInt("id")
-	tokens, err := model.GetTokenKeysByIds(tokenBatch.Ids, userId)
+	tokens, err := GetTokenKeysByIds(tokenBatch.Ids, userId)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return

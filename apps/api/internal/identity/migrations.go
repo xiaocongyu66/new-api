@@ -1,6 +1,9 @@
-package model
+package identity
 
-import "github.com/QuantumNous/new-api/internal/common/dbx"
+import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity/policy"
+)
 
 // Identity-domain records register separately so this file moves wholesale into
 // internal/identity along with the records themselves. Keeping them out of
@@ -17,8 +20,8 @@ func init() {
 		dbx.Migration{Model: &TwoFABackupCode{}, Name: "TwoFABackupCode"},
 		dbx.Migration{Model: &CustomOAuthProvider{}, Name: "CustomOAuthProvider"},
 		dbx.Migration{Model: &UserOAuthBinding{}, Name: "UserOAuthBinding"},
-		dbx.Migration{Model: &CasbinRule{}, Name: "CasbinRule"},
-		dbx.Migration{Model: &AuthzRole{}, Name: "AuthzRole"},
+		dbx.Migration{Model: &policy.CasbinRule{}, Name: "CasbinRule"},
+		dbx.Migration{Model: &policy.AuthzRole{}, Name: "AuthzRole"},
 	)
 	// Backfills that a schema change alone cannot express: both seed a new column
 	// from existing rows and must run after AutoMigrate.

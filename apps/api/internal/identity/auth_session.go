@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/model"
 	"gorm.io/gorm"
 )
 
@@ -60,7 +59,7 @@ func AuthLogout(c contract.Context) {
 				writeAuthSessionError(c, ErrLoginSessionMismatch)
 				return
 			}
-			if _, err := model.RevokeUserSession(identity.UserID, identity.SessionID, "logout"); err != nil {
+			if _, err := RevokeUserSession(identity.UserID, identity.SessionID, "logout"); err != nil {
 				writeAuthSessionError(c, err)
 				return
 			}
@@ -117,7 +116,7 @@ func DeleteLoginSession(c contract.Context) {
 		_ = c.JSON(http.StatusBadRequest, common.H{"success": false, "code": "AUTH_SESSION_ID_REQUIRED", "message": "session id is required"})
 		return
 	}
-	revoked, err := model.RevokeUserSession(identity.UserID, sid, "user_revoked")
+	revoked, err := RevokeUserSession(identity.UserID, sid, "user_revoked")
 	if err != nil {
 		writeAuthSessionError(c, err)
 		return
@@ -140,7 +139,7 @@ func RevokeOtherLoginSessions(c contract.Context) {
 	if !ok {
 		return
 	}
-	count, err := model.RevokeOtherUserSessions(identity.UserID, identity.SessionID, "user_revoked_others")
+	count, err := RevokeOtherUserSessions(identity.UserID, identity.SessionID, "user_revoked_others")
 	if err != nil {
 		writeAuthSessionError(c, err)
 		return

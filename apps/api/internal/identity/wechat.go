@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 )
 
 type wechatLoginResponse struct {
@@ -67,7 +66,7 @@ func WeChatAuth(c contract.Context) {
 		})
 		return
 	}
-	user := model.User{
+	user := User{
 		WeChatId: wechatId,
 	}
 	if IsWeChatIdAlreadyTaken(wechatId) {
@@ -116,7 +115,7 @@ func WeChatAuth(c contract.Context) {
 		})
 		return
 	}
-	setupLogin(&user, c)
+	SetupLogin(&user, c)
 }
 
 type wechatBindRequest struct {

@@ -7,9 +7,7 @@ var (
 	ErrDatabase = errors.New("database error")
 )
 
-// User auth errors. internal/identity re-exports these as identity.ErrX; the
-// definitions stay here while the user and token records do, so that there is
-// exactly one sentinel per condition for errors.Is to match.
+// User auth errors
 var (
 	ErrInvalidCredentials   = errors.New("invalid credentials")
 	ErrUserEmptyCredentials = errors.New("empty credentials")

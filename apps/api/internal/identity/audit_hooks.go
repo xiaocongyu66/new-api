@@ -88,3 +88,26 @@ func groupModels(groups []string) []string {
 	}
 	return resolveGroupModels(groups)
 }
+
+// RedemptionKeyRedeemer redeems a top-up key for a user.
+type RedemptionKeyRedeemer func(key string, userID int) (quota int, err error)
+
+var redeemKey RedemptionKeyRedeemer
+
+func RegisterRedemptionRedeemer(redeemer RedemptionKeyRedeemer) {
+	redeemKey = redeemer
+}
+
+// CustomOAuthRegistrar manages custom OAuth provider registration.
+type CustomOAuthRegistrar interface {
+	IsProviderRegistered(slug string) bool
+	IsCustomProvider(slug string) bool
+	RegisterOrUpdateCustomProvider(config *CustomOAuthProvider)
+	UnregisterCustomProvider(slug string)
+}
+
+var oauthRegistrar CustomOAuthRegistrar
+
+func RegisterCustomOAuthRegistrar(registrar CustomOAuthRegistrar) {
+	oauthRegistrar = registrar
+}

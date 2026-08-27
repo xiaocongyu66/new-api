@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/go-webauthn/webauthn/protocol"
@@ -67,12 +66,12 @@ func PasskeyRegisterBegin(c contract.Context) {
 		return
 	}
 
-	credential, err := model.GetPasskeyByUserID(user.Id)
-	if err != nil && !errors.Is(err, model.ErrPasskeyNotFound) {
+	credential, err := GetPasskeyByUserID(user.Id)
+	if err != nil && !errors.Is(err, ErrPasskeyNotFound) {
 		common.CtxApiError(c, err)
 		return
 	}
-	if errors.Is(err, model.ErrPasskeyNotFound) {
+	if errors.Is(err, ErrPasskeyNotFound) {
 		credential = nil
 	}
 
@@ -101,7 +100,7 @@ func PasskeyRegisterBegin(c contract.Context) {
 		return
 	}
 	flowToken, expiresAt, err := CreateSessionDataFlow(
-		model.AuthFlowPurposePasskeyRegister,
+		AuthFlowPurposePasskeyRegister,
 		user.Id,
 		identity.SessionID,
 		SecurityProofScopePasskeyRegister,
@@ -161,12 +160,12 @@ func PasskeyRegisterFinish(c contract.Context) {
 		return
 	}
 
-	credentialRecord, err := model.GetPasskeyByUserID(user.Id)
-	if err != nil && !errors.Is(err, model.ErrPasskeyNotFound) {
+	credentialRecord, err := GetPasskeyByUserID(user.Id)
+	if err != nil && !errors.Is(err, ErrPasskeyNotFound) {
 		common.CtxApiError(c, err)
 		return
 	}
-	if errors.Is(err, model.ErrPasskeyNotFound) {
+	if errors.Is(err, ErrPasskeyNotFound) {
 		credentialRecord = nil
 	}
 
@@ -177,7 +176,7 @@ func PasskeyRegisterFinish(c contract.Context) {
 	}
 	sessionData, _, err := PopSessionDataFlow(
 		request.FlowToken,
-		model.AuthFlowPurposePasskeyRegister,
+		AuthFlowPurposePasskeyRegister,
 		user.Id,
 		identity.SessionID,
 	)
@@ -193,13 +192,13 @@ func PasskeyRegisterFinish(c contract.Context) {
 		return
 	}
 
-	passkeyCredential := model.NewPasskeyCredentialFromWebAuthn(user.Id, credential)
+	passkeyCredential := NewPasskeyCredentialFromWebAuthn(user.Id, credential)
 	if passkeyCredential == nil {
 		common.CtxApiErrorMsg(c, "无法创建 Passkey 凭证")
 		return
 	}
 
-	if err := model.UpsertPasskeyCredentialWithAuthVersion(passkeyCredential); err != nil {
+	if err := UpsertPasskeyCredentialWithAuthVersion(passkeyCredential); err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -236,7 +235,7 @@ func PasskeyDelete(c contract.Context) {
 		common.CtxApiError(c, errors.New("当前认证方式不支持安全验证"))
 		return
 	}
-	if err := model.DeletePasskeyByUserIDWithAuthVersion(user.Id); err != nil {
+	if err := DeletePasskeyByUserIDWithAuthVersion(user.Id); err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -264,8 +263,8 @@ func PasskeyStatus(c contract.Context) {
 		return
 	}
 
-	credential, err := model.GetPasskeyByUserID(user.Id)
-	if errors.Is(err, model.ErrPasskeyNotFound) {
+	credential, err := GetPasskeyByUserID(user.Id)
+	if errors.Is(err, ErrPasskeyNotFound) {
 		_ = c.JSON(http.StatusOK, common.H{
 			"success": true,
 			"message": "",
@@ -314,7 +313,7 @@ func PasskeyLoginBegin(c contract.Context) {
 	}
 
 	flowToken, expiresAt, err := CreateSessionDataFlow(
-		model.AuthFlowPurposePasskeyLogin,
+		AuthFlowPurposePasskeyLogin,
 		0,
 		"",
 		"",
@@ -364,7 +363,7 @@ func PasskeyLoginFinish(c contract.Context) {
 
 	sessionData, _, err := PopSessionDataFlow(
 		request.FlowToken,
-		model.AuthFlowPurposePasskeyLogin,
+		AuthFlowPurposePasskeyLogin,
 		0,
 		"",
 	)
@@ -375,13 +374,13 @@ func PasskeyLoginFinish(c contract.Context) {
 
 	handler := func(rawID, userHandle []byte) (webauthnlib.User, error) {
 		// 首先通过凭证ID查找用户
-		credential, err := model.GetPasskeyByCredentialID(rawID)
+		credential, err := GetPasskeyByCredentialID(rawID)
 		if err != nil {
 			return nil, fmt.Errorf("未找到 Passkey 凭证: %w", err)
 		}
 
 		// 通过凭证获取用户
-		user := &model.User{Id: credential.UserID}
+		user := &User{Id: credential.UserID}
 		if err := user.FillUserById(); err != nil {
 			return nil, fmt.Errorf("用户信息获取失败: %w", err)
 		}
@@ -426,12 +425,12 @@ func PasskeyLoginFinish(c contract.Context) {
 		return
 	}
 
-	if err := model.UpdatePasskeyAssertionState(modelUser.Id, credential, time.Now()); err != nil {
+	if err := UpdatePasskeyAssertionState(modelUser.Id, credential, time.Now()); err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
 
-	setupLogin(modelUser, c)
+	SetupLogin(modelUser, c)
 }
 
 func AdminResetPasskey(c contract.Context) {
@@ -441,7 +440,7 @@ func AdminResetPasskey(c contract.Context) {
 		return
 	}
 
-	user := &model.User{Id: id}
+	user := &User{Id: id}
 	if err := user.FillUserById(); err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -452,8 +451,8 @@ func AdminResetPasskey(c contract.Context) {
 		return
 	}
 
-	if _, err := model.GetPasskeyByUserID(user.Id); err != nil {
-		if errors.Is(err, model.ErrPasskeyNotFound) {
+	if _, err := GetPasskeyByUserID(user.Id); err != nil {
+		if errors.Is(err, ErrPasskeyNotFound) {
 			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "该用户尚未绑定 Passkey",
@@ -464,11 +463,11 @@ func AdminResetPasskey(c contract.Context) {
 		return
 	}
 
-	if err := model.DeletePasskeyByUserIDWithAuthVersion(user.Id); err != nil {
+	if err := DeletePasskeyByUserIDWithAuthVersion(user.Id); err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
-	if _, err := model.RevokeAllUserSessions(user.Id, "admin_passkey_reset"); err != nil {
+	if _, err := RevokeAllUserSessions(user.Id, "admin_passkey_reset"); err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -510,7 +509,7 @@ func PasskeyVerifyBegin(c contract.Context) {
 		return
 	}
 
-	credential, err := model.GetPasskeyByUserID(user.Id)
+	credential, err := GetPasskeyByUserID(user.Id)
 	if err != nil {
 		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
@@ -538,7 +537,7 @@ func PasskeyVerifyBegin(c contract.Context) {
 		return
 	}
 	flowToken, expiresAt, err := CreateSessionDataFlow(
-		model.AuthFlowPurposePasskeyStepUp,
+		AuthFlowPurposePasskeyStepUp,
 		user.Id,
 		identity.SessionID,
 		request.Scope,
@@ -595,7 +594,7 @@ func PasskeyVerifyFinish(c contract.Context) {
 		return
 	}
 
-	credential, err := model.GetPasskeyByUserID(user.Id)
+	credential, err := GetPasskeyByUserID(user.Id)
 	if err != nil {
 		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
@@ -611,7 +610,7 @@ func PasskeyVerifyFinish(c contract.Context) {
 	}
 	sessionData, scope, err := PopSessionDataFlow(
 		request.FlowToken,
-		model.AuthFlowPurposePasskeyStepUp,
+		AuthFlowPurposePasskeyStepUp,
 		user.Id,
 		identity.SessionID,
 	)
@@ -627,7 +626,7 @@ func PasskeyVerifyFinish(c contract.Context) {
 		return
 	}
 
-	if err := model.UpdatePasskeyAssertionState(user.Id, validatedCredential, time.Now()); err != nil {
+	if err := UpdatePasskeyAssertionState(user.Id, validatedCredential, time.Now()); err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -650,12 +649,12 @@ func PasskeyVerifyFinish(c contract.Context) {
 	})
 }
 
-func getAuthenticatedUser(c contract.Context) (*model.User, error) {
+func getAuthenticatedUser(c contract.Context) (*User, error) {
 	id := c.GetInt("id")
 	if id == 0 {
 		return nil, errors.New("未登录")
 	}
-	user := &model.User{Id: id}
+	user := &User{Id: id}
 	if err := user.FillUserById(); err != nil {
 		return nil, err
 	}
@@ -666,7 +665,7 @@ func getAuthenticatedUser(c contract.Context) (*model.User, error) {
 }
 
 func requirePasskeyRegistrationVerification(c contract.Context, userID int) bool {
-	twoFA, err := model.GetTwoFAByUserId(userID)
+	twoFA, err := GetTwoFAByUserId(userID)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return false
@@ -678,7 +677,7 @@ func requirePasskeyRegistrationVerification(c contract.Context, userID int) bool
 }
 
 func requirePasskeyDeleteVerification(c contract.Context, userID int) bool {
-	twoFA, err := model.GetTwoFAByUserId(userID)
+	twoFA, err := GetTwoFAByUserId(userID)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return false
@@ -687,9 +686,9 @@ func requirePasskeyDeleteVerification(c contract.Context, userID int) bool {
 		return RequireSecurityProof(c, SecurityProofScopePasskeyDelete, []string{secureVerificationMethod2FA})
 	}
 
-	_, err = model.GetPasskeyByUserID(userID)
+	_, err = GetPasskeyByUserID(userID)
 	if err != nil {
-		if errors.Is(err, model.ErrPasskeyNotFound) {
+		if errors.Is(err, ErrPasskeyNotFound) {
 			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "该用户尚未绑定 Passkey",

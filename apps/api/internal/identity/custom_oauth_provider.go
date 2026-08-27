@@ -1,4 +1,4 @@
-package model
+package identity
 
 import (
 	"errors"
@@ -106,7 +106,7 @@ func GetCustomOAuthProviderBySlug(slug string) (*CustomOAuthProvider, error) {
 }
 
 // CreateCustomOAuthProvider creates a new custom OAuth provider
-func CreateCustomOAuthProvider(provider *CustomOAuthProvider) error {
+func createCustomOAuthProvider(provider *CustomOAuthProvider) error {
 	if err := validateCustomOAuthProvider(provider); err != nil {
 		return err
 	}
@@ -114,7 +114,7 @@ func CreateCustomOAuthProvider(provider *CustomOAuthProvider) error {
 }
 
 // UpdateCustomOAuthProvider updates an existing custom OAuth provider
-func UpdateCustomOAuthProvider(provider *CustomOAuthProvider) error {
+func updateCustomOAuthProvider(provider *CustomOAuthProvider) error {
 	if err := validateCustomOAuthProvider(provider); err != nil {
 		return err
 	}
@@ -122,7 +122,7 @@ func UpdateCustomOAuthProvider(provider *CustomOAuthProvider) error {
 }
 
 // DeleteCustomOAuthProvider deletes a custom OAuth provider by ID
-func DeleteCustomOAuthProvider(id int) error {
+func deleteCustomOAuthProvider(id int) error {
 	// First, delete all user bindings for this provider
 	if err := dbx.DB.Where("provider_id = ?", id).Delete(&UserOAuthBinding{}).Error; err != nil {
 		return err

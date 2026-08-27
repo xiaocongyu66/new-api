@@ -383,7 +383,26 @@ func InitResources() error {
 		// Don't return error, custom OAuth is not critical
 	}
 
-	identity.StartAuthArtifactCleanup()
+	// Wire identity-domain functions that model/ still calls via variables.
+	model.SetIdentityFunctions(
+		identity.UserQuery, identity.TokenQuery,
+		identity.LockUserRow, identity.ReadUserQuota,
+		identity.GetUsernameById, identity.GetUserSetting,
+		identity.IncreaseUserQuota, identity.DecreaseUserQuota,
+		identity.RootUserExists,
+	)
+	model.GetTokenByIdFn = func(id int) (*model.Token, error) {
+		t, err := identity.GetTokenById(id)
+		if err != nil {
+			return nil, err
+		}
+		return t, nil
+	}
+	model.GetTokenByKeyWrFn = identity.GetTokenByKey
+	model.GetUserCacheWrFn = identity.GetUserCache
+	model.DecreaseTokenQuotaFn = identity.DecreaseTokenQuota
+	model.RefreshUserGroupCacheFn = identity.RefreshUserGroupCache
+	model.MigrateTokenModelLimitsFn = identity.MigrateTokenModelLimitsToText
 
 	return nil
 }

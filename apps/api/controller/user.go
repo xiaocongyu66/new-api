@@ -19,7 +19,7 @@ func GetAllUsers(c contract.Context) {
 }
 
 func SearchUsers(c contract.Context) {
-	identity.SearchUsers(c)
+	identity.SearchUsersHandler(c)
 }
 
 func GetUser(c contract.Context) {
@@ -90,5 +90,5 @@ func TopUp(c contract.Context) {
 }
 
 func UpdateUserSetting(c contract.Context) {
-	identity.UpdateUserSetting(c)
+	identity.UpdateUserSettingHandler(c)
 }

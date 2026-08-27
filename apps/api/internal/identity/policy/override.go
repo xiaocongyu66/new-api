@@ -5,7 +5,6 @@ import (
 	"sort"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/casbin/casbin/v2"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -49,14 +48,14 @@ func SetUserPermissionsInTx(tx *gorm.DB, userID int, permissions PermissionsMap)
 		if !isKnownResource(resource) {
 			continue
 		}
-		if err := tx.Where("ptype = ? AND v0 = ? AND v1 = ?", "p", UserSubject(userID), resource).Delete(&model.CasbinRule{}).Error; err != nil {
+		if err := tx.Where("ptype = ? AND v0 = ? AND v1 = ?", "p", UserSubject(userID), resource).Delete(&CasbinRule{}).Error; err != nil {
 			return err
 		}
 		policies := userOverridePolicies(e, resource, actions)
 		if len(policies) == 0 {
 			continue
 		}
-		rules := make([]model.CasbinRule, 0, len(policies))
+		rules := make([]CasbinRule, 0, len(policies))
 		for _, policy := range policies {
 			rules = append(rules, newRule("p", []string{UserSubject(userID), policy.Resource, policy.Action, policy.Effect}))
 		}
@@ -83,7 +82,7 @@ func ClearUserPermissions(userID int) error {
 
 func ClearUserPermissionsInTx(tx *gorm.DB, userID int) error {
 	for _, resource := range registry {
-		if err := tx.Where("ptype = ? AND v0 = ? AND v1 = ?", "p", UserSubject(userID), resource.Resource).Delete(&model.CasbinRule{}).Error; err != nil {
+		if err := tx.Where("ptype = ? AND v0 = ? AND v1 = ?", "p", UserSubject(userID), resource.Resource).Delete(&CasbinRule{}).Error; err != nil {
 			return err
 		}
 	}

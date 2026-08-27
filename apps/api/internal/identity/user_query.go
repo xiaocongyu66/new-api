@@ -1,4 +1,4 @@
-package model
+package identity
 
 import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"

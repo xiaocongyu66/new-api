@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 
 	"gorm.io/gorm"
 )
@@ -59,8 +58,8 @@ func TelegramBindStart(c contract.Context) {
 		return
 	}
 	expiresAt := time.Now().Add(telegramBindFlowTTL)
-	flowToken, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
-		Purpose:   model.AuthFlowPurposeTelegramBind,
+	flowToken, _, err := CreateAuthFlow(AuthFlowCreate{
+		Purpose:   AuthFlowPurposeTelegramBind,
 		UserId:    identity.UserID,
 		SessionId: identity.SessionID,
 		ExpiresAt: expiresAt,
@@ -93,13 +92,13 @@ func TelegramBind(c contract.Context) {
 		telegramBindFailure(c, telegramBindErrorInvalidRequest)
 		return
 	}
-	pendingFlow, err := model.GetAuthFlow(c.Param("flow_token"), model.AuthFlowMatch{
-		Purpose: model.AuthFlowPurposeTelegramBind,
+	pendingFlow, err := GetAuthFlow(c.Param("flow_token"), AuthFlowMatch{
+		Purpose: AuthFlowPurposeTelegramBind,
 	})
 	if err != nil {
-		if !errors.Is(err, model.ErrAuthFlowInvalid) &&
-			!errors.Is(err, model.ErrAuthFlowExpired) &&
-			!errors.Is(err, model.ErrAuthFlowConsumed) {
+		if !errors.Is(err, ErrAuthFlowInvalid) &&
+			!errors.Is(err, ErrAuthFlowExpired) &&
+			!errors.Is(err, ErrAuthFlowConsumed) {
 			common.SysError("TelegramBind flow lookup failed: " + err.Error())
 			telegramBindFailure(c, telegramBindErrorInternal)
 			return
@@ -110,14 +109,14 @@ func TelegramBind(c contract.Context) {
 	if _, err := ValidateSessionReference(pendingFlow.UserId, pendingFlow.SessionId); err != nil {
 		if !errors.Is(err, ErrLoginSessionInvalid) &&
 			!errors.Is(err, ErrLoginSessionRevoked) &&
-			!errors.Is(err, model.ErrUserSessionInactive) &&
+			!errors.Is(err, ErrUserSessionInactive) &&
 			!errors.Is(err, gorm.ErrRecordNotFound) {
 			common.SysError("TelegramBind session validation failed: " + err.Error())
 			telegramBindFailure(c, telegramBindErrorInternal)
 			return
 		}
 
-		var user model.User
+		var user User
 		userErr := dbx.DB.First(&user, pendingFlow.UserId).Error
 		switch {
 		case errors.Is(userErr, gorm.ErrRecordNotFound):
@@ -138,19 +137,19 @@ func TelegramBind(c contract.Context) {
 		telegramBindFailure(c, telegramBindErrorInvalidRequest)
 		return
 	}
-	_, err = model.ConsumeAuthFlowWithAction(c.Param("flow_token"), model.AuthFlowMatch{
-		Purpose:   model.AuthFlowPurposeTelegramBind,
+	_, err = ConsumeAuthFlowWithAction(c.Param("flow_token"), AuthFlowMatch{
+		Purpose:   AuthFlowPurposeTelegramBind,
 		UserId:    pendingFlow.UserId,
 		SessionId: pendingFlow.SessionId,
-	}, func(tx *gorm.DB, flow *model.AuthFlow) error {
-		if err := model.ClaimExternalAuthAssertionWithTx(tx, model.AuthFlowPurposeTelegramAssertion, assertion, assertionExpiresAt); err != nil {
-			if errors.Is(err, model.ErrAuthFlowInvalid) || errors.Is(err, model.ErrAuthFlowConsumed) {
+	}, func(tx *gorm.DB, flow *AuthFlow) error {
+		if err := ClaimExternalAuthAssertionWithTx(tx, AuthFlowPurposeTelegramAssertion, assertion, assertionExpiresAt); err != nil {
+			if errors.Is(err, ErrAuthFlowInvalid) || errors.Is(err, ErrAuthFlowConsumed) {
 				return errors.Join(errTelegramBindAssertionInvalid, err)
 			}
 			return err
 		}
 
-		var user model.User
+		var user User
 		if err := tx.First(&user, flow.UserId).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errTelegramBindUserDeleted
@@ -161,14 +160,14 @@ func TelegramBind(c contract.Context) {
 			return errTelegramBindUserDisabled
 		}
 
-		var session model.UserSession
+		var session UserSession
 		if err := tx.Where("sid = ? AND user_id = ?", flow.SessionId, flow.UserId).First(&session).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrLoginSessionRevoked
 			}
 			return err
 		}
-		if session.Status != model.UserSessionStatusActive || session.RevokedAt != 0 || session.ExpiresAt <= time.Now().Unix() {
+		if session.Status != UserSessionStatusActive || session.RevokedAt != 0 || session.ExpiresAt <= time.Now().Unix() {
 			return ErrLoginSessionRevoked
 		}
 		if session.UserAuthVersion != user.AuthVersion {
@@ -177,18 +176,18 @@ func TelegramBind(c contract.Context) {
 		if user.TelegramId != "" {
 			return errTelegramAccountAlreadyBound
 		}
-		if err := model.ClaimExternalIdentityWithTx(
+		if err := ClaimExternalIdentityWithTx(
 			tx,
-			model.ExternalIdentityProviderTelegram,
+			ExternalIdentityProviderTelegram,
 			telegramId,
 			user.Id,
 		); err != nil {
-			if errors.Is(err, model.ErrExternalIdentityAlreadyClaimed) {
+			if errors.Is(err, ErrExternalIdentityAlreadyClaimed) {
 				return errTelegramAccountAlreadyBound
 			}
 			return err
 		}
-		result := tx.Model(&model.User{}).
+		result := tx.Model(&User{}).
 			Where("id = ? AND status = ? AND auth_version = ? AND telegram_id = ?", user.Id, common.UserStatusEnabled, user.AuthVersion, "").
 			Update("telegram_id", telegramId)
 		if result.Error != nil {
@@ -211,7 +210,7 @@ func TelegramBind(c contract.Context) {
 			telegramBindFailure(c, telegramBindErrorUserDisabled)
 		case errors.Is(err, ErrLoginSessionRevoked):
 			telegramBindFailure(c, telegramBindErrorSessionInvalid)
-		case errors.Is(err, model.ErrAuthFlowInvalid), errors.Is(err, model.ErrAuthFlowExpired), errors.Is(err, model.ErrAuthFlowConsumed):
+		case errors.Is(err, ErrAuthFlowInvalid), errors.Is(err, ErrAuthFlowExpired), errors.Is(err, ErrAuthFlowConsumed):
 			telegramBindFailure(c, telegramBindErrorFlowInvalid)
 		default:
 			common.SysError("TelegramBind failed: " + err.Error())
@@ -252,7 +251,7 @@ func TelegramLogin(c contract.Context) {
 		return
 	}
 
-	user := model.User{TelegramId: telegramId}
+	user := User{TelegramId: telegramId}
 	if err := user.FillUserByTelegramId(); err != nil {
 		_ = c.JSON(200, common.H{
 			"message": err.Error(),
@@ -268,7 +267,7 @@ func TelegramLogin(c contract.Context) {
 		})
 		return
 	}
-	setupLogin(&user, c)
+	SetupLogin(&user, c)
 }
 
 func claimTelegramAuthorization(params url.Values, now time.Time) error {
@@ -276,7 +275,7 @@ func claimTelegramAuthorization(params url.Values, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	return model.ClaimExternalAuthAssertion(model.AuthFlowPurposeTelegramAssertion, assertion, expiresAt)
+	return ClaimExternalAuthAssertion(AuthFlowPurposeTelegramAssertion, assertion, expiresAt)
 }
 
 func telegramAuthorizationClaim(params url.Values, now time.Time) (string, time.Time, error) {

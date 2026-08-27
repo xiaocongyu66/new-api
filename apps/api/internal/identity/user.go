@@ -18,7 +18,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/identity/policy"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting"
 
@@ -54,14 +53,14 @@ func Login(c contract.Context) {
 		common.CtxApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	user := model.User{
+	user := User{
 		Username: username,
 		Password: password,
 	}
 	err = user.ValidateAndFill()
 	if err != nil {
 		switch {
-		case errors.Is(err, model.ErrDatabase):
+		case errors.Is(err, ErrDatabase):
 			common.SysLog(fmt.Sprintf("Login database error for user %s: %v", username, err))
 			common.CtxApiErrorI18n(c, i18n.MsgDatabaseError)
 		case errors.Is(err, ErrUserEmptyCredentials):
@@ -73,7 +72,7 @@ func Login(c contract.Context) {
 	}
 
 	// 检查是否启用2FA
-	twoFAEnabled, err := model.IsTwoFAEnabled(user.Id)
+	twoFAEnabled, err := IsTwoFAEnabled(user.Id)
 	if err != nil {
 		common.SysLog(fmt.Sprintf("Login failed to load 2FA status for user %d: %v", user.Id, err))
 		common.CtxApiErrorI18n(c, i18n.MsgDatabaseError)
@@ -86,8 +85,8 @@ func Login(c contract.Context) {
 			common.CtxApiError(c, err)
 			return
 		}
-		flowToken, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
-			Purpose:   model.AuthFlowPurposeTwoFALogin,
+		flowToken, _, err := CreateAuthFlow(AuthFlowCreate{
+			Purpose:   AuthFlowPurposeTwoFALogin,
 			UserId:    user.Id,
 			Payload:   string(payload),
 			ExpiresAt: expiresAt,
@@ -109,7 +108,7 @@ func Login(c contract.Context) {
 		return
 	}
 
-	setupLogin(&user, c)
+	SetupLogin(&user, c)
 }
 
 // loginMethodFromContext 根据请求路径推导登录方式，用于登录审计日志。
@@ -136,7 +135,7 @@ func loginMethodFromContext(c contract.Context) string {
 }
 
 // recordLoginAudit 记录登录成功审计日志（对所有用户启用，仅记录成功，不记录失败）。
-func recordLoginAudit(user *model.User, c contract.Context) {
+func recordLoginAudit(user *User, c contract.Context) {
 	method := loginMethodFromContext(c)
 	ip := c.ClientIP()
 	extra := map[string]interface{}{
@@ -151,16 +150,16 @@ func recordLoginAudit(user *model.User, c contract.Context) {
 
 // setupLogin creates a server-controlled login Session and returns the shared
 // authentication bundle used by every login method.
-func setupLogin(user *model.User, c contract.Context) {
+func SetupLogin(user *User, c contract.Context) {
 	setupLoginAtAuthVersion(user, 0, c)
 }
 
-func setupLoginAtAuthVersion(user *model.User, expectedAuthVersion int64, c contract.Context) {
+func setupLoginAtAuthVersion(user *User, expectedAuthVersion int64, c contract.Context) {
 	if user == nil || user.Id <= 0 || user.Status != common.UserStatusEnabled {
 		common.CtxApiErrorI18n(c, i18n.MsgAuthUserBanned)
 		return
 	}
-	currentUser, err := model.GetUserById(user.Id, false)
+	currentUser, err := GetUserById(user.Id, false)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -212,14 +211,14 @@ func Register(c contract.Context) {
 		common.CtxApiErrorI18n(c, i18n.MsgUserPasswordRegisterDisabled)
 		return
 	}
-	var user model.User
+	var user User
 	err := c.BindJSON(&user)
 	if err != nil {
 		common.CtxApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	user.Username = strings.TrimSpace(user.Username)
-	user.Email = model.NormalizeEmail(user.Email)
+	user.Email = NormalizeEmail(user.Email)
 	if user.Username == "" {
 		common.CtxApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
@@ -237,7 +236,7 @@ func Register(c contract.Context) {
 			common.CtxApiErrorI18n(c, i18n.MsgUserVerificationCodeError)
 			return
 		}
-		if err := model.EnsureEmailAvailable(user.Email, 0); err != nil {
+		if err := EnsureEmailAvailable(user.Email, 0); err != nil {
 			if errors.Is(err, ErrEmailAlreadyTaken) {
 				common.CtxApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
 				return
@@ -262,7 +261,7 @@ func Register(c contract.Context) {
 	}
 	affCode := user.AffCode // this code is the inviter's code, not the user's own code
 	inviterId, _ := GetUserIdByAffCode(affCode)
-	cleanUser := model.User{
+	cleanUser := User{
 		Username:    user.Username,
 		Password:    user.Password,
 		DisplayName: user.Username,
@@ -282,7 +281,7 @@ func Register(c contract.Context) {
 	}
 
 	// 获取插入后的用户ID
-	var insertedUser model.User
+	var insertedUser User
 	if err := dbx.DB.Where("username = ?", cleanUser.Username).First(&insertedUser).Error; err != nil {
 		common.CtxApiErrorI18n(c, i18n.MsgUserRegisterFailed)
 		return
@@ -296,7 +295,7 @@ func Register(c contract.Context) {
 			return
 		}
 		// 生成默认令牌
-		token := model.Token{
+		token := Token{
 			UserId:             insertedUser.Id, // 使用插入后的用户ID
 			Name:               cleanUser.Username + "的初始令牌",
 			Key:                key,
@@ -325,7 +324,7 @@ func Register(c contract.Context) {
 
 func GetAllUsers(c contract.Context) {
 	pageInfo := common.GetPageQuery(c)
-	sortOptions := model.NewUserSortOptions(c.Query("sort_by"), c.Query("sort_order"))
+	sortOptions := NewUserSortOptions(c.Query("sort_by"), c.Query("sort_order"))
 	users, total, err := listAllUsers(pageInfo, sortOptions)
 	if err != nil {
 		common.CtxApiError(c, err)
@@ -339,7 +338,7 @@ func GetAllUsers(c contract.Context) {
 	return
 }
 
-func SearchUsers(c contract.Context) {
+func SearchUsersHandler(c contract.Context) {
 	keyword := c.Query("keyword")
 	group := c.Query("group")
 	var role *int
@@ -355,8 +354,8 @@ func SearchUsers(c contract.Context) {
 		}
 	}
 	pageInfo := common.GetPageQuery(c)
-	sortOptions := model.NewUserSortOptions(c.Query("sort_by"), c.Query("sort_order"))
-	users, total, err := model.SearchUsers(keyword, group, role, status, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), sortOptions)
+	sortOptions := NewUserSortOptions(c.Query("sort_by"), c.Query("sort_order"))
+	users, total, err := SearchUsers(keyword, group, role, status, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), sortOptions)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -378,7 +377,7 @@ func GetUser(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	user, err := model.GetUserById(id, false)
+	user, err := GetUserById(id, false)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -407,7 +406,7 @@ func GenerateAccessToken(c contract.Context) {
 		common.SysLog("failed to generate key: " + err.Error())
 		return
 	}
-	if dbx.DB.Where("access_token = ?", key).First(&model.User{}).RowsAffected != 0 {
+	if dbx.DB.Where("access_token = ?", key).First(&User{}).RowsAffected != 0 {
 		common.CtxApiErrorI18n(c, i18n.MsgUuidDuplicate)
 		return
 	}
@@ -434,7 +433,7 @@ type TransferAffQuotaRequest struct {
 // so this domain does not depend on billing.
 func TransferAffQuota(c contract.Context) {
 	id := c.GetInt("id")
-	user, err := model.GetUserById(id, true)
+	user, err := GetUserById(id, true)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -454,7 +453,7 @@ func TransferAffQuota(c contract.Context) {
 
 func GetAffCode(c contract.Context) {
 	id := c.GetInt("id")
-	user, err := model.GetUserById(id, true)
+	user, err := GetUserById(id, true)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -480,7 +479,7 @@ func GetAffCode(c contract.Context) {
 func GetSelf(c contract.Context) {
 	id := c.GetInt("id")
 	userRole := c.GetInt("role")
-	user, err := model.GetUserById(id, false)
+	user, err := GetUserById(id, false)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -503,7 +502,7 @@ func GetSelf(c contract.Context) {
 // buildSelfUserData is the single safe dashboard-user DTO used by GetSelf,
 // login and refresh. It intentionally excludes password, management PAT and
 // administrator-only remarks.
-func buildSelfUserData(user *model.User) map[string]interface{} {
+func buildSelfUserData(user *User) map[string]interface{} {
 	userSetting := user.GetSetting()
 	permissions := calculateUserPermissions(user.Id, user.Role)
 	permissions["admin_permissions"] = policy.Capabilities(user.Id, user.Role)
@@ -569,7 +568,7 @@ func GetUserModels(c contract.Context) {
 	if err != nil {
 		id = c.GetInt("id")
 	}
-	user, err := model.GetUserCache(id)
+	user, err := GetUserCache(id)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -599,7 +598,7 @@ func GetUserModels(c contract.Context) {
 }
 
 func UpdateUser(c contract.Context) {
-	var updatedUser model.User
+	var updatedUser User
 	err := c.BindJSON(&updatedUser)
 	if err != nil || updatedUser.Id == 0 {
 		common.CtxApiErrorI18n(c, i18n.MsgInvalidParams)
@@ -617,7 +616,7 @@ func UpdateUser(c contract.Context) {
 		common.CtxApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
 		return
 	}
-	originUser, err := model.GetUserById(updatedUser.Id, false)
+	originUser, err := GetUserById(updatedUser.Id, false)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -655,12 +654,12 @@ func UpdateUser(c contract.Context) {
 		}
 	}
 	if updatedUser.AuthVersion > originUser.AuthVersion {
-		if _, err := model.RevokeAllUserSessions(updatedUser.Id, "admin_user_update"); err != nil {
+		if _, err := RevokeAllUserSessions(updatedUser.Id, "admin_user_update"); err != nil {
 			common.CtxApiError(c, err)
 			return
 		}
 	}
-	if err := model.PublishUserAuthCache(updatedUser.Id); err != nil {
+	if err := PublishUserAuthCache(updatedUser.Id); err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -688,7 +687,7 @@ func AdminClearUserBinding(c contract.Context) {
 		return
 	}
 
-	user, err := model.GetUserById(id, false)
+	user, err := GetUserById(id, false)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -726,7 +725,7 @@ func UpdateSelf(c contract.Context) {
 	// 检查是否是用户设置更新请求 (sidebar_modules 或 language)
 	if sidebarModules, sidebarExists := requestData["sidebar_modules"]; sidebarExists {
 		userId := c.GetInt("id")
-		user, err := model.GetUserById(userId, false)
+		user, err := GetUserById(userId, false)
 		if err != nil {
 			common.CtxApiError(c, err)
 			return
@@ -740,7 +739,7 @@ func UpdateSelf(c contract.Context) {
 			currentSetting.SidebarModules = sidebarModulesStr
 		}
 
-		if err := model.UpdateUserSetting(user.Id, currentSetting); err != nil {
+		if err := UpdateUserSetting(user.Id, currentSetting); err != nil {
 			common.CtxApiErrorI18n(c, i18n.MsgUpdateFailed)
 			return
 		}
@@ -752,7 +751,7 @@ func UpdateSelf(c contract.Context) {
 	// 检查是否是语言偏好更新请求
 	if language, langExists := requestData["language"]; langExists {
 		userId := c.GetInt("id")
-		user, err := model.GetUserById(userId, false)
+		user, err := GetUserById(userId, false)
 		if err != nil {
 			common.CtxApiError(c, err)
 			return
@@ -766,7 +765,7 @@ func UpdateSelf(c contract.Context) {
 			currentSetting.Language = langStr
 		}
 
-		if err := model.UpdateUserSetting(user.Id, currentSetting); err != nil {
+		if err := UpdateUserSetting(user.Id, currentSetting); err != nil {
 			common.CtxApiErrorI18n(c, i18n.MsgUpdateFailed)
 			return
 		}
@@ -776,7 +775,7 @@ func UpdateSelf(c contract.Context) {
 	}
 
 	// 原有的用户信息更新逻辑
-	var user model.User
+	var user User
 	requestDataBytes, err := common.Marshal(requestData)
 	if err != nil {
 		common.CtxApiErrorI18n(c, i18n.MsgInvalidParams)
@@ -795,7 +794,7 @@ func UpdateSelf(c contract.Context) {
 		return
 	}
 
-	cleanUser := model.User{
+	cleanUser := User{
 		Id:          c.GetInt("id"),
 		Username:    user.Username,
 		Password:    user.Password,
@@ -830,7 +829,7 @@ func UpdateSelf(c contract.Context) {
 			common.CtxApiError(c, err)
 			return
 		}
-		if err := model.PublishUserAuthCache(cleanUser.Id); err != nil {
+		if err := PublishUserAuthCache(cleanUser.Id); err != nil {
 			common.CtxApiError(c, err)
 			return
 		}
@@ -864,8 +863,8 @@ func checkUpdatePassword(originalPassword string, newPassword string, userId int
 	if newPassword == "" {
 		return
 	}
-	var currentUser *model.User
-	currentUser, err = model.GetUserById(userId, true)
+	var currentUser *User
+	currentUser, err = GetUserById(userId, true)
 	if err != nil {
 		return
 	}
@@ -889,7 +888,7 @@ func DeleteUser(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	originUser, err := model.GetUserById(id, false)
+	originUser, err := GetUserById(id, false)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -917,7 +916,7 @@ func DeleteUser(c contract.Context) {
 
 func DeleteSelf(c contract.Context) {
 	id := c.GetInt("id")
-	user, _ := model.GetUserById(id, false)
+	user, _ := GetUserById(id, false)
 
 	if user.Role == common.RoleRootUser {
 		common.CtxApiErrorI18n(c, i18n.MsgUserCannotDeleteRootUser)
@@ -937,7 +936,7 @@ func DeleteSelf(c contract.Context) {
 }
 
 func CreateUser(c contract.Context) {
-	var user model.User
+	var user User
 	err := c.BindJSON(&user)
 	user.Username = strings.TrimSpace(user.Username)
 	if err != nil || user.Username == "" || user.Password == "" {
@@ -957,7 +956,7 @@ func CreateUser(c contract.Context) {
 		return
 	}
 	// Even for admin users, we cannot fully trust them!
-	cleanUser := model.User{
+	cleanUser := User{
 		Username:    user.Username,
 		Password:    user.Password,
 		DisplayName: user.DisplayName,
@@ -1026,7 +1025,7 @@ func ManageUser(c contract.Context) {
 		common.CtxApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	user := model.User{
+	user := User{
 		Id: req.Id,
 	}
 	// Fill attributes
@@ -1063,7 +1062,7 @@ func ManageUser(c contract.Context) {
 		}
 		// 删除用户后，强制清理 Redis 中所有该用户令牌的缓存，
 		// 避免已缓存的令牌在 TTL 过期前仍能通过 TokenAuth 校验。
-		if err := model.InvalidateUserTokensCache(user.Id); err != nil {
+		if err := InvalidateUserTokensCache(user.Id); err != nil {
 			common.SysLog(fmt.Sprintf("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
 		}
 		writeManageAudit(c, user.Id, "user.manage", map[string]interface{}{
@@ -1115,7 +1114,7 @@ func ManageUser(c contract.Context) {
 				common.CtxApiErrorI18n(c, i18n.MsgUserQuotaChangeZero)
 				return
 			}
-			if err := model.IncreaseUserQuota(user.Id, req.Value, true); err != nil {
+			if err := IncreaseUserQuota(user.Id, req.Value, true); err != nil {
 				common.CtxApiError(c, err)
 				return
 			}
@@ -1127,7 +1126,7 @@ func ManageUser(c contract.Context) {
 				common.CtxApiErrorI18n(c, i18n.MsgUserQuotaChangeZero)
 				return
 			}
-			if err := model.DecreaseUserQuota(user.Id, req.Value, true); err != nil {
+			if err := DecreaseUserQuota(user.Id, req.Value, true); err != nil {
 				common.CtxApiError(c, err)
 				return
 			}
@@ -1136,7 +1135,7 @@ func ManageUser(c contract.Context) {
 			})
 		case "override":
 			oldQuota := user.Quota
-			if err := dbx.DB.Model(&model.User{}).Where("id = ?", user.Id).Update("quota", req.Value).Error; err != nil {
+			if err := dbx.DB.Model(&User{}).Where("id = ?", user.Id).Update("quota", req.Value).Error; err != nil {
 				common.CtxApiError(c, err)
 				return
 			}
@@ -1172,11 +1171,11 @@ func ManageUser(c contract.Context) {
 			common.CtxApiError(c, err)
 			return
 		}
-		if err := model.PublishUserAuthCache(user.Id); err != nil {
+		if err := PublishUserAuthCache(user.Id); err != nil {
 			common.CtxApiError(c, err)
 			return
 		}
-		if _, err := model.RevokeAllUserSessions(user.Id, "admin_demote"); err != nil {
+		if _, err := RevokeAllUserSessions(user.Id, "admin_demote"); err != nil {
 			common.CtxApiError(c, err)
 			return
 		}
@@ -1190,7 +1189,7 @@ func ManageUser(c contract.Context) {
 	// browser sessions exactly once. Only PAT/relay token caches still need an
 	// explicit invalidation; deleting the user hash here would discard the
 	// freshly published auth-version floor.
-	if err := model.InvalidateUserTokensCache(user.Id); err != nil {
+	if err := InvalidateUserTokensCache(user.Id); err != nil {
 		common.SysLog(fmt.Sprintf("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
 	}
 	writeManageAudit(c, user.Id, "user.manage", map[string]interface{}{
@@ -1198,7 +1197,7 @@ func ManageUser(c contract.Context) {
 		"username": user.Username,
 		"id":       user.Id,
 	})
-	clearUser := model.User{
+	clearUser := User{
 		Role:   user.Role,
 		Status: user.Status,
 	}
@@ -1222,13 +1221,13 @@ func EmailBind(c contract.Context) {
 		return
 	}
 	email := req.Email
-	email = model.NormalizeEmail(email)
+	email = NormalizeEmail(email)
 	code := req.Code
 	if !common.VerifyCodeWithKey(email, code, common.EmailVerificationPurpose) {
 		common.CtxApiErrorI18n(c, i18n.MsgUserVerificationCodeError)
 		return
 	}
-	user := model.User{
+	user := User{
 		Id: c.GetInt("id"),
 	}
 	if user.Id == 0 {
@@ -1240,7 +1239,7 @@ func EmailBind(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	if err := model.BindEmailToUser(&user, email); err != nil {
+	if err := BindEmailToUser(&user, email); err != nil {
 		if errors.Is(err, ErrEmailAlreadyTaken) {
 			common.CtxApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
 			return
@@ -1315,7 +1314,7 @@ type UpdateUserSettingRequest struct {
 	RecordIpLog                      bool    `json:"record_ip_log"`
 }
 
-func UpdateUserSetting(c contract.Context) {
+func UpdateUserSettingHandler(c contract.Context) {
 	var req UpdateUserSettingRequest
 	if err := c.BindJSON(&req); err != nil {
 		common.CtxApiErrorI18n(c, i18n.MsgInvalidParams)
@@ -1397,7 +1396,7 @@ func UpdateUserSetting(c contract.Context) {
 	}
 
 	userId := c.GetInt("id")
-	user, err := model.GetUserById(userId, true)
+	user, err := GetUserById(userId, true)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -1448,7 +1447,7 @@ func UpdateUserSetting(c contract.Context) {
 	}
 
 	// 更新用户设置
-	if err := model.UpdateUserSetting(user.Id, settings); err != nil {
+	if err := UpdateUserSetting(user.Id, settings); err != nil {
 		common.CtxApiErrorI18n(c, i18n.MsgUpdateFailed)
 		return
 	}
@@ -1475,7 +1474,7 @@ func TopUp(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	quota, err := model.Redeem(req.Key, id)
+	quota, err := redeemKey(req.Key, id)
 	if err != nil {
 		// 不向用户暴露兑换失败的细分原因，避免攻击者根据错误类型判断兑换码状态。
 		common.CtxApiErrorI18n(c, i18n.MsgRedeemFailed)

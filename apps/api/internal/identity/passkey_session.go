@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 
 	webauthn "github.com/go-webauthn/webauthn/webauthn"
 )
@@ -28,7 +27,7 @@ func CreateSessionDataFlow(purpose string, userID int, sessionID, scope string, 
 		return "", 0, err
 	}
 	expiresAt := time.Now().Add(passkeyFlowTTL)
-	token, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
+	token, _, err := CreateAuthFlow(AuthFlowCreate{
 		Purpose:   purpose,
 		UserId:    userID,
 		SessionId: sessionID,
@@ -42,13 +41,13 @@ func CreateSessionDataFlow(purpose string, userID int, sessionID, scope string, 
 }
 
 func PopSessionDataFlow(token, purpose string, userID int, sessionID string) (*webauthn.SessionData, string, error) {
-	flow, err := model.ConsumeAuthFlow(token, model.AuthFlowMatch{
+	flow, err := ConsumeAuthFlow(token, AuthFlowMatch{
 		Purpose:   purpose,
 		UserId:    userID,
 		SessionId: sessionID,
 	})
 	if err != nil {
-		if errors.Is(err, model.ErrAuthFlowInvalid) || errors.Is(err, model.ErrAuthFlowExpired) || errors.Is(err, model.ErrAuthFlowConsumed) {
+		if errors.Is(err, ErrAuthFlowInvalid) || errors.Is(err, ErrAuthFlowExpired) || errors.Is(err, ErrAuthFlowConsumed) {
 			return nil, "", errSessionNotFound
 		}
 		return nil, "", err

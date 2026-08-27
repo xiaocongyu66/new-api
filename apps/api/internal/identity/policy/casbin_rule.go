@@ -1,4 +1,4 @@
-package model
+package policy
 
 type CasbinRule struct {
 	Id    uint   `gorm:"primaryKey;autoIncrement"`

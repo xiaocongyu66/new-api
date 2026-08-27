@@ -87,7 +87,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/reset_password", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.TurnstileCheck()), ginadapter.Handler(controller.SendPasswordResetEmail))
 		apiRouter.POST("/user/reset", ginadapter.Middleware(middleware.CriticalRateLimit()), anonymousRequestBodyLimit, ginadapter.Handler(controller.ResetPassword))
 		// OAuth routes - specific routes must come before :provider wildcard
-		apiRouter.POST("/oauth/state", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.DisableCache()), ginadapter.Middleware(security.TryUserAuth()), anonymousRequestBodyLimit, ginadapter.Handler(identity.GenerateOAuthCode))
+		apiRouter.POST("/oauth/state", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.DisableCache()), ginadapter.Middleware(security.TryUserAuth()), anonymousRequestBodyLimit, ginadapter.Handler(controller.GenerateOAuthCode))
 		apiRouter.POST("/oauth/email/bind", ginadapter.Middleware(security.UserAuth()), ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(identity.EmailBind))
 		// Non-standard OAuth (WeChat, Telegram) - keep original routes
 		apiRouter.GET("/oauth/wechat", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.DisableCache()), ginadapter.Handler(identity.WeChatAuth))
@@ -96,7 +96,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/oauth/telegram/bind/start", ginadapter.Middleware(security.UserAuth()), ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.DisableCache()), ginadapter.Handler(identity.TelegramBindStart))
 		apiRouter.GET("/oauth/telegram/bind/:flow_token", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.DisableCache()), ginadapter.Handler(identity.TelegramBind))
 		// Standard OAuth providers (GitHub, Discord, OIDC, LinuxDO) - unified route
-		apiRouter.GET("/oauth/:provider", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.DisableCache()), ginadapter.Middleware(security.TryUserAuth()), ginadapter.Handler(identity.HandleOAuth))
+		apiRouter.GET("/oauth/:provider", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.DisableCache()), ginadapter.Middleware(security.TryUserAuth()), ginadapter.Handler(controller.HandleOAuth))
 		apiRouter.GET("/ratio_config", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(controller.GetRatioConfig))
 
 		apiRouter.POST("/stripe/webhook", anonymousRequestBodyLimit, ginadapter.Handler(billing.StripeWebhook))
@@ -155,7 +155,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/waffo-pancake/amount", ginadapter.Handler(billing.RequestWaffoPancakeAmount))
 				selfRoute.POST("/waffo-pancake/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(billing.RequestWaffoPancakePay))
 				selfRoute.POST("/aff_transfer", ginadapter.Middleware(middleware.UserCriticalRateLimit("aff-transfer")), ginadapter.Handler(controller.TransferAffQuota))
-				selfRoute.PUT("/setting", ginadapter.Handler(identity.UpdateUserSetting))
+				selfRoute.PUT("/setting", ginadapter.Handler(identity.UpdateUserSettingHandler))
 
 				// 2FA routes
 				selfRoute.GET("/2fa/status", ginadapter.Handler(identity.Get2FAStatus))
@@ -179,7 +179,7 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.GET("/", ginadapter.Handler(identity.GetAllUsers))
 				adminRoute.GET("/topup", ginadapter.Handler(billing.GetAllTopUps))
 				adminRoute.POST("/topup/complete", ginadapter.Handler(billing.AdminCompleteTopUp))
-				adminRoute.GET("/search", ginadapter.Handler(identity.SearchUsers))
+				adminRoute.GET("/search", ginadapter.Handler(identity.SearchUsersHandler))
 				adminRoute.GET("/:id/oauth/bindings", ginadapter.Handler(identity.GetUserOAuthBindingsByAdmin))
 				adminRoute.DELETE("/:id/oauth/bindings/:provider_id", ginadapter.Handler(identity.UnbindCustomOAuthByAdmin))
 				adminRoute.DELETE("/:id/bindings/:binding_type", ginadapter.Handler(identity.AdminClearUserBinding))

@@ -3,14 +3,13 @@ package policy
 import (
 	"fmt"
 
-	"github.com/QuantumNous/new-api/model"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 func seedBuiltInRoles(db *gorm.DB) error {
 	for _, spec := range builtInRoles {
-		role := model.AuthzRole{
+		role := AuthzRole{
 			Key:         spec.Key,
 			Name:        spec.Name,
 			Description: spec.Description,
@@ -39,7 +38,7 @@ func resetBuiltInRolePolicies(db *gorm.DB) error {
 	for _, spec := range builtInRoles {
 		subjects = append(subjects, RoleSubject(spec.Key))
 	}
-	return db.Where("ptype = ? AND v0 IN ?", "p", subjects).Delete(&model.CasbinRule{}).Error
+	return db.Where("ptype = ? AND v0 IN ?", "p", subjects).Delete(&CasbinRule{}).Error
 }
 
 func seedDefaultPolicies() error {

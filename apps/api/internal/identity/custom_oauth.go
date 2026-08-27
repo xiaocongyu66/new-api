@@ -11,8 +11,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/security/oauth"
-	"github.com/QuantumNous/new-api/model"
 )
 
 // CustomOAuthProviderResponse is the response structure for custom OAuth providers
@@ -46,7 +44,7 @@ type UserOAuthBindingResponse struct {
 	ProviderUserId string `json:"provider_user_id"`
 }
 
-func toCustomOAuthProviderResponse(p *model.CustomOAuthProvider) *CustomOAuthProviderResponse {
+func toCustomOAuthProviderResponse(p *CustomOAuthProvider) *CustomOAuthProviderResponse {
 	return &CustomOAuthProviderResponse{
 		Id:                    p.Id,
 		Name:                  p.Name,
@@ -71,7 +69,7 @@ func toCustomOAuthProviderResponse(p *model.CustomOAuthProvider) *CustomOAuthPro
 
 // GetCustomOAuthProviders returns all custom OAuth providers
 func GetCustomOAuthProviders(c contract.Context) {
-	providers, err := model.GetAllCustomOAuthProviders()
+	providers, err := GetAllCustomOAuthProviders()
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -98,7 +96,7 @@ func GetCustomOAuthProvider(c contract.Context) {
 		return
 	}
 
-	provider, err := model.GetCustomOAuthProviderById(id)
+	provider, err := GetCustomOAuthProviderById(id)
 	if err != nil {
 		common.CtxApiErrorMsg(c, "未找到该 OAuth 提供商")
 		return
@@ -219,18 +217,18 @@ func CreateCustomOAuthProvider(c contract.Context) {
 	}
 
 	// Check if slug is already taken
-	if model.IsSlugTaken(req.Slug, 0) {
+	if IsSlugTaken(req.Slug, 0) {
 		common.CtxApiErrorMsg(c, "该 Slug 已被使用")
 		return
 	}
 
 	// Check if slug conflicts with built-in providers
-	if oauth.IsProviderRegistered(req.Slug) && !oauth.IsCustomProvider(req.Slug) {
+	if oauthRegistrar.IsProviderRegistered(req.Slug) && !oauthRegistrar.IsCustomProvider(req.Slug) {
 		common.CtxApiErrorMsg(c, "该 Slug 与内置 OAuth 提供商冲突")
 		return
 	}
 
-	provider := &model.CustomOAuthProvider{
+	provider := &CustomOAuthProvider{
 		Name:                  req.Name,
 		Slug:                  req.Slug,
 		Icon:                  req.Icon,
@@ -251,13 +249,13 @@ func CreateCustomOAuthProvider(c contract.Context) {
 		AccessDeniedMessage:   req.AccessDeniedMessage,
 	}
 
-	if err := model.CreateCustomOAuthProvider(provider); err != nil {
+	if err := createCustomOAuthProvider(provider); err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
 
 	// Register the provider in the OAuth registry
-	oauth.RegisterOrUpdateCustomProvider(provider)
+	oauthRegistrar.RegisterOrUpdateCustomProvider(provider)
 
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
@@ -304,7 +302,7 @@ func UpdateCustomOAuthProvider(c contract.Context) {
 	}
 
 	// Get existing provider
-	provider, err := model.GetCustomOAuthProviderById(id)
+	provider, err := GetCustomOAuthProviderById(id)
 	if err != nil {
 		common.CtxApiErrorMsg(c, "未找到该 OAuth 提供商")
 		return
@@ -314,12 +312,12 @@ func UpdateCustomOAuthProvider(c contract.Context) {
 
 	// Check if new slug is taken by another provider
 	if req.Slug != "" && req.Slug != provider.Slug {
-		if model.IsSlugTaken(req.Slug, id) {
+		if IsSlugTaken(req.Slug, id) {
 			common.CtxApiErrorMsg(c, "该 Slug 已被使用")
 			return
 		}
 		// Check if slug conflicts with built-in providers
-		if oauth.IsProviderRegistered(req.Slug) && !oauth.IsCustomProvider(req.Slug) {
+		if oauthRegistrar.IsProviderRegistered(req.Slug) && !oauthRegistrar.IsCustomProvider(req.Slug) {
 			common.CtxApiErrorMsg(c, "该 Slug 与内置 OAuth 提供商冲突")
 			return
 		}
@@ -381,16 +379,16 @@ func UpdateCustomOAuthProvider(c contract.Context) {
 		provider.AccessDeniedMessage = *req.AccessDeniedMessage
 	}
 
-	if err := model.UpdateCustomOAuthProvider(provider); err != nil {
+	if err := updateCustomOAuthProvider(provider); err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
 
 	// Update the provider in the OAuth registry
 	if oldSlug != provider.Slug {
-		oauth.UnregisterCustomProvider(oldSlug)
+		oauthRegistrar.UnregisterCustomProvider(oldSlug)
 	}
-	oauth.RegisterOrUpdateCustomProvider(provider)
+	oauthRegistrar.RegisterOrUpdateCustomProvider(provider)
 
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
@@ -409,14 +407,14 @@ func DeleteCustomOAuthProvider(c contract.Context) {
 	}
 
 	// Get existing provider to get slug
-	provider, err := model.GetCustomOAuthProviderById(id)
+	provider, err := GetCustomOAuthProviderById(id)
 	if err != nil {
 		common.CtxApiErrorMsg(c, "未找到该 OAuth 提供商")
 		return
 	}
 
 	// Check if there are any user bindings
-	count, err := model.GetBindingCountByProviderId(id)
+	count, err := GetBindingCountByProviderId(id)
 	if err != nil {
 		common.SysError("Failed to get binding count for provider " + strconv.Itoa(id) + ": " + err.Error())
 		common.CtxApiErrorMsg(c, "检查用户绑定时发生错误，请稍后重试")
@@ -427,13 +425,13 @@ func DeleteCustomOAuthProvider(c contract.Context) {
 		return
 	}
 
-	if err := model.DeleteCustomOAuthProvider(id); err != nil {
+	if err := deleteCustomOAuthProvider(id); err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
 
 	// Unregister the provider from the OAuth registry
-	oauth.UnregisterCustomProvider(provider.Slug)
+	oauthRegistrar.UnregisterCustomProvider(provider.Slug)
 
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
@@ -442,14 +440,14 @@ func DeleteCustomOAuthProvider(c contract.Context) {
 }
 
 func buildUserOAuthBindingsResponse(userId int) ([]UserOAuthBindingResponse, error) {
-	bindings, err := model.GetUserOAuthBindingsByUserId(userId)
+	bindings, err := GetUserOAuthBindingsByUserId(userId)
 	if err != nil {
 		return nil, err
 	}
 
 	response := make([]UserOAuthBindingResponse, 0, len(bindings))
 	for _, binding := range bindings {
-		provider, err := model.GetCustomOAuthProviderById(binding.ProviderId)
+		provider, err := GetCustomOAuthProviderById(binding.ProviderId)
 		if err != nil {
 			continue
 		}
@@ -494,7 +492,7 @@ func GetUserOAuthBindingsByAdmin(c contract.Context) {
 		return
 	}
 
-	targetUser, err := model.GetUserById(userId, false)
+	targetUser, err := GetUserById(userId, false)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -534,7 +532,7 @@ func UnbindCustomOAuth(c contract.Context) {
 		return
 	}
 
-	if err := model.DeleteUserOAuthBinding(userId, providerId); err != nil {
+	if err := DeleteUserOAuthBinding(userId, providerId); err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -553,7 +551,7 @@ func UnbindCustomOAuthByAdmin(c contract.Context) {
 		return
 	}
 
-	targetUser, err := model.GetUserById(userId, false)
+	targetUser, err := GetUserById(userId, false)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -572,7 +570,7 @@ func UnbindCustomOAuthByAdmin(c contract.Context) {
 		return
 	}
 
-	if err := model.DeleteUserOAuthBinding(userId, providerId); err != nil {
+	if err := DeleteUserOAuthBinding(userId, providerId); err != nil {
 		common.CtxApiError(c, err)
 		return
 	}

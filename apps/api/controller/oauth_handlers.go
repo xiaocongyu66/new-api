@@ -1,4 +1,4 @@
-package identity
+package controller
 
 import (
 	"errors"
@@ -13,8 +13,8 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/i18n"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/security/oauth"
-	"github.com/QuantumNous/new-api/model"
 	"gorm.io/gorm"
 )
 
@@ -46,15 +46,15 @@ func GenerateOAuthCode(c contract.Context) {
 	request.Intent = strings.TrimSpace(request.Intent)
 	request.Aff = strings.TrimSpace(request.Aff)
 	if oauth.GetProvider(request.Provider) == nil ||
-		(request.Intent != model.AuthFlowIntentLogin && request.Intent != model.AuthFlowIntentBind) ||
+		(request.Intent != identity.AuthFlowIntentLogin && request.Intent != identity.AuthFlowIntentBind) ||
 		len(request.Aff) > 32 ||
-		(request.Intent == model.AuthFlowIntentBind && request.Aff != "") {
+		(request.Intent == identity.AuthFlowIntentBind && request.Aff != "") {
 		common.CtxApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	userID := 0
 	sessionID := ""
-	if request.Intent == model.AuthFlowIntentBind {
+	if request.Intent == identity.AuthFlowIntentBind {
 		identity, ok := authtoken.ReadSessionAuthIdentity(c)
 		if !ok {
 			_ = c.JSON(http.StatusUnauthorized, common.H{"success": false, "message": "绑定操作需要登录"})
@@ -69,8 +69,8 @@ func GenerateOAuthCode(c contract.Context) {
 		return
 	}
 	expiresAt := time.Now().Add(oauthAuthFlowTTL)
-	state, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
-		Purpose:   model.AuthFlowPurposeOAuth,
+	state, _, err := identity.CreateAuthFlow(identity.AuthFlowCreate{
+		Purpose:   identity.AuthFlowPurposeOAuth,
 		Provider:  request.Provider,
 		Intent:    request.Intent,
 		UserId:    userID,
@@ -106,8 +106,8 @@ func HandleOAuth(c contract.Context) {
 
 	// 1. Validate state (CSRF protection)
 	state := c.Query("state")
-	pendingFlow, err := model.GetAuthFlow(state, model.AuthFlowMatch{
-		Purpose:  model.AuthFlowPurposeOAuth,
+	pendingFlow, err := identity.GetAuthFlow(state, identity.AuthFlowMatch{
+		Purpose:  identity.AuthFlowPurposeOAuth,
 		Provider: providerName,
 	})
 	if err != nil {
@@ -118,13 +118,13 @@ func HandleOAuth(c contract.Context) {
 		return
 	}
 
-	consumeMatch := model.AuthFlowMatch{
-		Purpose:  model.AuthFlowPurposeOAuth,
+	consumeMatch := identity.AuthFlowMatch{
+		Purpose:  identity.AuthFlowPurposeOAuth,
 		Provider: providerName,
 		Intent:   pendingFlow.Intent,
 	}
 	// 2. Bind flows are bound to the live dashboard Session that created them.
-	if pendingFlow.Intent == model.AuthFlowIntentBind {
+	if pendingFlow.Intent == identity.AuthFlowIntentBind {
 		identity, ok := authtoken.ReadSessionAuthIdentity(c)
 		if !ok || identity.UserID != pendingFlow.UserId || identity.SessionID != pendingFlow.SessionId {
 			_ = c.JSON(http.StatusForbidden, common.H{
@@ -135,7 +135,7 @@ func HandleOAuth(c contract.Context) {
 		}
 		consumeMatch.UserId = identity.UserID
 		consumeMatch.SessionId = identity.SessionID
-	} else if pendingFlow.Intent != model.AuthFlowIntentLogin {
+	} else if pendingFlow.Intent != identity.AuthFlowIntentLogin {
 		common.CtxApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
@@ -149,7 +149,7 @@ func HandleOAuth(c contract.Context) {
 	// 4. Handle error from provider
 	errorCode := c.Query("error")
 	if errorCode != "" {
-		if _, err := model.ConsumeAuthFlow(state, consumeMatch); err != nil {
+		if _, err := identity.ConsumeAuthFlow(state, consumeMatch); err != nil {
 			_ = c.JSON(http.StatusForbidden, common.H{"success": false, "message": i18n.TCtx(c, i18n.MsgOAuthStateInvalid)})
 			return
 		}
@@ -163,7 +163,7 @@ func HandleOAuth(c contract.Context) {
 		})
 		return
 	}
-	if pendingFlow.Intent == model.AuthFlowIntentBind {
+	if pendingFlow.Intent == identity.AuthFlowIntentBind {
 		handleOAuthBind(c, provider, pendingFlow, state)
 		return
 	}
@@ -182,7 +182,7 @@ func HandleOAuth(c contract.Context) {
 		handleOAuthError(c, err)
 		return
 	}
-	flow, err := model.ConsumeAuthFlow(state, consumeMatch)
+	flow, err := identity.ConsumeAuthFlow(state, consumeMatch)
 	if err != nil {
 		_ = c.JSON(http.StatusForbidden, common.H{"success": false, "message": i18n.TCtx(c, i18n.MsgOAuthStateInvalid)})
 		return
@@ -196,7 +196,7 @@ func HandleOAuth(c contract.Context) {
 	}
 	user, err := findOrCreateOAuthUser(c, provider, oauthUser, payload.AffiliateCode)
 	if err != nil {
-		if errors.Is(err, ErrEmailAlreadyTaken) {
+		if errors.Is(err, identity.ErrEmailAlreadyTaken) {
 			common.CtxApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
 			return
 		}
@@ -220,11 +220,11 @@ func HandleOAuth(c contract.Context) {
 	}
 
 	// 9. Setup login
-	setupLogin(user, c)
+	identity.SetupLogin(user, c)
 }
 
 // handleOAuthBind handles binding OAuth account to existing user
-func handleOAuthBind(c contract.Context, provider oauth.Provider, pendingFlow *model.AuthFlow, flowToken string) {
+func handleOAuthBind(c contract.Context, provider oauth.Provider, pendingFlow *identity.AuthFlow, flowToken string) {
 	// Exchange code for token
 	code := c.Query("code")
 	token, err := provider.ExchangeToken(c.Context(), code, c)
@@ -253,10 +253,10 @@ func handleOAuthBind(c contract.Context, provider oauth.Provider, pendingFlow *m
 		}
 	}
 
-	if _, err := model.ConsumeAuthFlow(flowToken, model.AuthFlowMatch{
-		Purpose:   model.AuthFlowPurposeOAuth,
+	if _, err := identity.ConsumeAuthFlow(flowToken, identity.AuthFlowMatch{
+		Purpose:   identity.AuthFlowPurposeOAuth,
 		Provider:  pendingFlow.Provider,
-		Intent:    model.AuthFlowIntentBind,
+		Intent:    identity.AuthFlowIntentBind,
 		UserId:    pendingFlow.UserId,
 		SessionId: pendingFlow.SessionId,
 	}); err != nil {
@@ -269,7 +269,7 @@ func handleOAuthBind(c contract.Context, provider oauth.Provider, pendingFlow *m
 	// Handle binding based on provider type
 	if genericProvider, ok := provider.(*oauth.GenericOAuthProvider); ok {
 		// Custom provider: use user_oauth_bindings table
-		err = model.UpdateUserOAuthBinding(userId, genericProvider.GetProviderId(), oauthUser.ProviderUserID)
+		err = identity.UpdateUserOAuthBinding(userId, genericProvider.GetProviderId(), oauthUser.ProviderUserID)
 		if err != nil {
 			common.CtxApiError(c, err)
 			return
@@ -277,7 +277,7 @@ func handleOAuthBind(c contract.Context, provider oauth.Provider, pendingFlow *m
 	} else {
 		// Built-in provider: 只更新绑定列。完整快照的 user.Update 会把读取时刻的
 		// role/status/group 一并写回，覆盖并发发生的封禁、降权或分组变更。
-		err = UpdateUserBindColumn(userId, provider.ProviderUserIDColumn(), oauthUser.ProviderUserID)
+		err = identity.UpdateUserBindColumn(userId, provider.ProviderUserIDColumn(), oauthUser.ProviderUserID)
 		if err != nil {
 			common.CtxApiError(c, err)
 			return
@@ -290,8 +290,8 @@ func handleOAuthBind(c contract.Context, provider oauth.Provider, pendingFlow *m
 }
 
 // findOrCreateOAuthUser finds existing user or creates new user
-func findOrCreateOAuthUser(c contract.Context, provider oauth.Provider, oauthUser *oauth.OAuthUser, affiliateCode string) (*model.User, error) {
-	user := &model.User{}
+func findOrCreateOAuthUser(c contract.Context, provider oauth.Provider, oauthUser *oauth.OAuthUser, affiliateCode string) (*identity.User, error) {
+	user := &identity.User{}
 
 	// Check if user already exists with new ID
 	if provider.IsUserIDTaken(oauthUser.ProviderUserID) {
@@ -332,12 +332,12 @@ func findOrCreateOAuthUser(c contract.Context, provider oauth.Provider, oauthUse
 	}
 
 	// Set up new user
-	user.Username = provider.GetProviderPrefix() + strconv.Itoa(GetMaxUserId()+1)
+	user.Username = provider.GetProviderPrefix() + strconv.Itoa(identity.GetMaxUserId()+1)
 
 	if oauthUser.Username != "" {
-		if exists, err := CheckUserExistOrDeleted(oauthUser.Username, ""); err == nil && !exists {
+		if exists, err := identity.CheckUserExistOrDeleted(oauthUser.Username, ""); err == nil && !exists {
 			// 防止索引退化
-			if len(oauthUser.Username) <= model.UserNameMaxLength {
+			if len(oauthUser.Username) <= identity.UserNameMaxLength {
 				user.Username = oauthUser.Username
 			}
 		}
@@ -351,9 +351,9 @@ func findOrCreateOAuthUser(c contract.Context, provider oauth.Provider, oauthUse
 		user.DisplayName = provider.GetName() + " User"
 	}
 	if oauthUser.Email != "" {
-		user.Email = model.NormalizeEmail(oauthUser.Email)
-		if err := model.EnsureEmailAvailable(user.Email, 0); err != nil {
-			if errors.Is(err, ErrEmailAlreadyTaken) {
+		user.Email = identity.NormalizeEmail(oauthUser.Email)
+		if err := identity.EnsureEmailAvailable(user.Email, 0); err != nil {
+			if errors.Is(err, identity.ErrEmailAlreadyTaken) {
 				return nil, &OAuthEmailAlreadyTakenError{}
 			}
 			return nil, err
@@ -365,7 +365,7 @@ func findOrCreateOAuthUser(c contract.Context, provider oauth.Provider, oauthUse
 	// Handle affiliate code
 	inviterId := 0
 	if affiliateCode != "" {
-		inviterId, _ = GetUserIdByAffCode(affiliateCode)
+		inviterId, _ = identity.GetUserIdByAffCode(affiliateCode)
 	}
 
 	// Use transaction to ensure user creation and OAuth binding are atomic
@@ -378,12 +378,12 @@ func findOrCreateOAuthUser(c contract.Context, provider oauth.Provider, oauthUse
 			}
 
 			// Create OAuth binding
-			binding := &model.UserOAuthBinding{
+			binding := &identity.UserOAuthBinding{
 				UserId:         user.Id,
 				ProviderId:     genericProvider.GetProviderId(),
 				ProviderUserId: oauthUser.ProviderUserID,
 			}
-			if err := model.CreateUserOAuthBindingWithTx(tx, binding); err != nil {
+			if err := identity.CreateUserOAuthBindingWithTx(tx, binding); err != nil {
 				return err
 			}
 
