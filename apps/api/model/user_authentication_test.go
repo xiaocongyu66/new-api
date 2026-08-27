@@ -1,12 +1,12 @@
 package model
 
 import (
-	"github.com/QuantumNous/new-api/internal/identity"
 	"context"
 	"encoding/base64"
 	"errors"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/common/quotacache"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"net"
 	"sync"
 	"testing"
@@ -56,7 +56,7 @@ func TestHardDeleteUserFailsClosedWhenAuthFenceCannotPublish(t *testing.T) {
 		common.RedisEnabled, common.RDB = oldRedisEnabled, oldRDB
 	})
 
-	require.Error(t, (&identity.User{Id: user.Id}).identity.HardDelete())
+	require.Error(t, (&identity.User{Id: user.Id}).HardDelete())
 
 	var count int64
 	require.NoError(t, dbx.DB.Unscoped().Model(&identity.User{}).Where("id = ?", user.Id).Count(&count).Error)
@@ -105,9 +105,9 @@ func TestHardDeleteUserPublishesTombstoneAndPurgesAuthenticationData(t *testing.
 	require.NoError(t, identity.populateUserCache(user))
 	// Administrative hard deletion commonly targets an already soft-deleted
 	// user; the shared version increment must therefore query unscoped.
-	require.NoError(t, dbx.DB.identity.Delete(&user).Error)
+	require.NoError(t, dbx.DB.Delete(&user).Error)
 
-	require.NoError(t, (&identity.User{Id: user.Id}).identity.HardDelete())
+	require.NoError(t, (&identity.User{Id: user.Id}).HardDelete())
 
 	var count int64
 	require.NoError(t, dbx.DB.Unscoped().Model(&identity.User{}).Where("id = ?", user.Id).Count(&count).Error)
@@ -147,7 +147,7 @@ func TestIncrementFailedAttemptsCountsConcurrentFailures(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			errs <- (&identity.TwoFA{Id: twoFA.Id}).identity.IncrementFailedAttempts()
+			errs <- (&identity.TwoFA{Id: twoFA.Id}).IncrementFailedAttempts()
 		}()
 	}
 	wg.Wait()
@@ -212,7 +212,7 @@ func TestPendingTwoFASetupAPIsRejectEnabledFactor(t *testing.T) {
 	require.NoError(t, dbx.DB.Create(&twoFA).Error)
 
 	require.Error(t, identity.CreatePendingTwoFASetupBackupCodes(user.Id, []string{"ABCD-1234"}))
-	require.Error(t, twoFA.identity.DeletePendingTwoFASetup())
+	require.Error(t, twoFA.DeletePendingTwoFASetup())
 
 	var stored identity.TwoFA
 	require.NoError(t, dbx.DB.First(&stored, twoFA.Id).Error)
@@ -237,9 +237,9 @@ func TestSecurityFactorMutationsAdvanceUserAuthVersion(t *testing.T) {
 	twoFA := identity.TwoFA{UserId: user.Id, Secret: "secret", IsEnabled: false}
 	require.NoError(t, dbx.DB.Create(&twoFA).Error)
 
-	require.NoError(t, twoFA.identity.EnableWithAuthVersion())
+	require.NoError(t, twoFA.EnableWithAuthVersion())
 	assertUserAuthVersion(t, user.Id, 2)
-	assert.ErrorIs(t, twoFA.identity.EnableWithAuthVersion(), identity.ErrTwoFAAlreadyEnabled)
+	assert.ErrorIs(t, twoFA.EnableWithAuthVersion(), identity.ErrTwoFAAlreadyEnabled)
 	assertUserAuthVersion(t, user.Id, 2)
 	require.NoError(t, identity.ReplaceBackupCodesWithAuthVersion(user.Id, []string{"ABCD-1234"}))
 	assertUserAuthVersion(t, user.Id, 3)

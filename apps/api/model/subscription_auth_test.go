@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"net"
 	"strings"
 	"testing"
@@ -42,7 +43,7 @@ func TestSubscriptionGroupTransitionsPreserveAuthVersionAndSessions(t *testing.T
 		LastActiveAt:    now,
 		ExpiresAt:       now + 3600,
 	}))
-	require.NoError(t, populateUserCache(user))
+	require.NoError(t, identity.PopulateUserCache(user))
 	plan := &SubscriptionPlan{
 		Title:         "Upgraded",
 		DurationUnit:  SubscriptionDurationMonth,

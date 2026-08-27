@@ -61,7 +61,7 @@ func invalidateUserCache(userId int) error {
 	return common.RedisDelKey(quotacache.UserKey(userId))
 }
 
-func populateUserCache(user User) error {
+func PopulateUserCache(user User) error {
 	if !common.RedisEnabled {
 		return nil
 	}
@@ -81,7 +81,7 @@ func updateUserCache(user User) error {
 // GetUserCache gets complete user cache from hash
 func GetUserCache(userId int) (*UserBase, error) {
 	// Try getting from Redis first
-	userCache, err := cacheGetUserBase(userId)
+	userCache, err := CacheGetUserBase(userId)
 	if err == nil {
 		return userCache, nil
 	}
@@ -98,7 +98,7 @@ func GetUserCache(userId int) (*UserBase, error) {
 		if floorErr == nil && floor > user.AuthVersion {
 			return nil, ErrUserAuthCachePending
 		}
-		if err := populateUserCache(*user); err != nil {
+		if err := PopulateUserCache(*user); err != nil {
 			if errors.Is(err, ErrUserAuthCachePending) {
 				return nil, err
 			}
@@ -108,7 +108,7 @@ func GetUserCache(userId int) (*UserBase, error) {
 	return user.ToBaseUser(), nil
 }
 
-func cacheGetUserBase(userId int) (*UserBase, error) {
+func CacheGetUserBase(userId int) (*UserBase, error) {
 	if !common.RedisEnabled {
 		return nil, fmt.Errorf("redis is not enabled")
 	}

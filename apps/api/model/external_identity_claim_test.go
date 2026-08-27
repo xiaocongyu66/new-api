@@ -1,8 +1,8 @@
 package model
 
 import (
-	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -54,7 +54,7 @@ func TestClearTelegramBindingReleasesIdentityClaim(t *testing.T) {
 		return identity.ClaimExternalIdentityWithTx(tx, identity.ExternalIdentityProviderTelegram, user.TelegramId, user.Id)
 	}))
 
-	require.NoError(t, user.identity.ClearBinding(identity.ExternalIdentityProviderTelegram))
+	require.NoError(t, user.ClearBinding(identity.ExternalIdentityProviderTelegram))
 	assert.Empty(t, user.TelegramId)
 
 	var count int64

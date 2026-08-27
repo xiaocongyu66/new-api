@@ -3,6 +3,7 @@ package model
 import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/common/quotacache"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"testing"
 	"time"
 
@@ -139,7 +140,7 @@ func TestReserveFallsBackToDatabaseWhenRedisIsUnavailable(t *testing.T) {
 	server := useUserCacheMiniRedis(t)
 
 	user := createReserveTestUser(t, 20)
-	require.NoError(t, populateUserCache(user))
+	require.NoError(t, identity.PopulateUserCache(user))
 	server.Close()
 
 	// Redis 故障时降级为数据库条件更新：服务保持可用且不会超扣。
@@ -160,13 +161,13 @@ func TestSynchronousReserveCompensatesCacheWhenPersistenceFails(t *testing.T) {
 	useUserCacheMiniRedis(t)
 
 	user := createReserveTestUser(t, 10)
-	require.NoError(t, populateUserCache(user))
+	require.NoError(t, identity.PopulateUserCache(user))
 	require.NoError(t, dbx.DB.Delete(&user).Error)
 
 	reserved, err := TryReserveUserQuota(user.Id, 6)
 	assert.False(t, reserved)
 	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
-	cached, cacheErr := cacheGetUserBase(user.Id)
+	cached, cacheErr := identity.CacheGetUserBase(user.Id)
 	require.NoError(t, cacheErr)
 	assert.Equal(t, 10, cached.Quota)
 
@@ -177,7 +178,7 @@ func TestSynchronousReserveCompensatesCacheWhenPersistenceFails(t *testing.T) {
 	reserved, err = TryReserveTokenQuota(token.Id, token.Key, 7, false)
 	assert.False(t, reserved)
 	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
-	cachedToken, cacheErr := cacheGetTokenByKey(token.Key)
+	cachedToken, cacheErr := identity.CacheGetTokenByKey(token.Key)
 	require.NoError(t, cacheErr)
 	assert.Equal(t, 12, cachedToken.RemainQuota)
 	assert.Zero(t, cachedToken.UsedQuota)
@@ -198,27 +199,27 @@ func TestTokenCacheInitPreservesLiveQuotaAndFenceBlocksStaleSnapshot(t *testing.
 	require.Equal(t, quotacache.OK, result)
 
 	// 已存在的哈希只刷新 TTL：数据库快照不得覆盖已被原子预扣的余额。
-	code, err := cacheInitToken(stale)
+	code, err := identity.CacheInitToken(stale)
 	require.NoError(t, err)
 	assert.Equal(t, 2, code)
-	cached, err := cacheGetTokenByKey(token.Key)
+	cached, err := identity.CacheGetTokenByKey(token.Key)
 	require.NoError(t, err)
 	assert.Equal(t, 30, cached.RemainQuota)
 
 	// 变更期间：fence 删除缓存并拦截并发读者手中的过期快照。
-	require.NoError(t, invalidateTokenCacheForMutation(token.Key))
-	code, err = cacheInitToken(stale)
+	require.NoError(t, identity.InvalidateTokenCacheForMutation(token.Key))
+	code, err = identity.CacheInitToken(stale)
 	require.NoError(t, err)
 	assert.Zero(t, code, "the pre-mutation snapshot must not be published while fenced")
-	_, err = cacheGetTokenByKey(token.Key)
+	_, err = identity.CacheGetTokenByKey(token.Key)
 	assert.Error(t, err)
 
 	// fence 过期后可重新从数据库水合。
-	server.FastForward(time.Duration(tokenCacheFenceSeconds+1) * time.Second)
+	server.FastForward(time.Duration(identity.TokenCacheFenceSeconds+1) * time.Second)
 	fresh, err := GetTokenByKey(token.Key, false)
 	require.NoError(t, err)
 	assert.Equal(t, 100, fresh.RemainQuota)
-	cached, err = cacheGetTokenByKey(token.Key)
+	cached, err = identity.CacheGetTokenByKey(token.Key)
 	require.NoError(t, err)
 	assert.Equal(t, 100, cached.RemainQuota)
 }

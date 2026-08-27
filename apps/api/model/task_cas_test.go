@@ -1,9 +1,9 @@
 package model
 
 import (
-	"github.com/QuantumNous/new-api/internal/identity"
 	"encoding/json"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"os"
 	"sync"
 	"testing"
@@ -50,7 +50,7 @@ func TestMain(m *testing.M) {
 		&Channel{},
 		&QuotaData{},
 		&Ability{},
-		&identity.TopUp{},
+		&TopUp{},
 		&SubscriptionPlan{},
 		&SubscriptionOrder{},
 		&UserSubscription{},

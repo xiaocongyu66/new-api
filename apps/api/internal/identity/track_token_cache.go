@@ -22,35 +22,35 @@ func tokenCacheTTLSeconds() int {
 	return ttl
 }
 
-// tokenCacheFenceSeconds must outlive a token mutation's database write plus
+// TokenCacheFenceSeconds must outlive a token mutation's database write plus
 // any in-flight reader's DB-read-to-cache-init gap. The fence is not deleted
 // after commit; it expires naturally so a reader holding a pre-mutation
 // snapshot cannot publish it right after the mutation cleared the cache.
 // While the fence exists readers simply serve the database without caching.
-const tokenCacheFenceSeconds = 10
+const TokenCacheFenceSeconds = 10
 
-// invalidateTokenCacheForMutation is called before a token metadata mutation
+// InvalidateTokenCacheForMutation is called before a token metadata mutation
 // writes to the database: it raises the fence and drops the cached hash so no
 // reader can act on (or re-publish) the pre-mutation state.
-func invalidateTokenCacheForMutation(key string) error {
+func InvalidateTokenCacheForMutation(key string) error {
 	if !common.RedisEnabled || key == "" {
 		return nil
 	}
 	ctx := context.Background()
-	err := common.RDB.Set(ctx, getTokenCacheFenceKey(key), 1, time.Duration(tokenCacheFenceSeconds)*time.Second).Err()
+	err := common.RDB.Set(ctx, getTokenCacheFenceKey(key), 1, time.Duration(TokenCacheFenceSeconds)*time.Second).Err()
 	if err != nil {
 		return err
 	}
 	return common.RDB.Del(ctx, quotacache.TokenKey(key)).Err()
 }
 
-// cacheInitToken publishes a database snapshot only when no mutation fence is
+// CacheInitToken publishes a database snapshot only when no mutation fence is
 // active and the hash is cold. An existing hash only gets its TTL refreshed:
 // its RemainQuota may already be ahead of this snapshot because atomic
 // pre-consume decrements Redis first, so a snapshot must never overwrite any
 // field of a live hash.
 // 返回值：0=被 fence 拦截，1=完成初始化，2=哈希已存在，仅刷新 TTL。
-func cacheInitToken(token Token) (int, error) {
+func CacheInitToken(token Token) (int, error) {
 	if !common.RedisEnabled {
 		return 0, nil
 	}
@@ -87,8 +87,8 @@ return 1`
 	).Int()
 }
 
-// cacheGetTokenByKey 从缓存读取 token；不完整的哈希（如仅有配额字段）会被拒绝。
-func cacheGetTokenByKey(key string) (*Token, error) {
+// CacheGetTokenByKey 从缓存读取 token；不完整的哈希（如仅有配额字段）会被拒绝。
+func CacheGetTokenByKey(key string) (*Token, error) {
 	if !common.RedisEnabled {
 		return nil, fmt.Errorf("redis is not enabled")
 	}
