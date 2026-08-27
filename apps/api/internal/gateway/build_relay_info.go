@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
-	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/internal/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
@@ -189,10 +189,10 @@ func genBaseRelayInfo(c contract.Context, request dto.Request) *relaycommon.Rela
 		TokenUnlimited: common.GetContextKeyBool(c, constant.ContextKeyTokenUnlimited),
 		TokenGroup:     tokenGroup,
 
-		RelayMode:       relayconstant.Path2RelayMode(c.HTTPRequest().URL.Path),
-		RequestURLPath:  c.HTTPRequest().URL.String(),
-		RequestHeaders:  cloneRequestHeaders(c),
-		IsStream:        isStream,
+		RelayMode:      relayconstant.Path2RelayMode(c.HTTPRequest().URL.Path),
+		RequestURLPath: c.HTTPRequest().URL.String(),
+		RequestHeaders: cloneRequestHeaders(c),
+		IsStream:       isStream,
 
 		StartTime:         startTime,
 		FirstResponseTime: startTime.Add(-time.Second),

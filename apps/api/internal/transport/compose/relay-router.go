@@ -1,8 +1,8 @@
 package compose
 
 import (
-	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/controller"
+	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	tpmw "github.com/QuantumNous/new-api/internal/transport/middleware"

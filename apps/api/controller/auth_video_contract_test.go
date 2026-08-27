@@ -8,12 +8,12 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/internal/constant"
+	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/task"
-	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
@@ -102,7 +102,7 @@ func createTestUserWith2FA(t *testing.T, username, password string) (*model.User
 	twoFA := &model.TwoFA{
 		UserId:    user.Id,
 		Secret:    "JBSWY3DPEHPK3PXP", // base32 for "testsecret"
-		IsEnabled: false, // pending setup
+		IsEnabled: false,              // pending setup
 	}
 	err := twoFA.CreatePendingTwoFASetup()
 	require.NoError(t, err)

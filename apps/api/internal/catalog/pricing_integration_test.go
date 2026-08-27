@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/glebarez/sqlite"
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -25,13 +25,13 @@ func resetPricingEndpointTestTables(t *testing.T) {
 	originalMemoryCacheEnabled := common.MemoryCacheEnabled
 	common.MemoryCacheEnabled = true
 	for _, table := range []string{"abilities", "channels", "models", "vendors"} {
-		require.NoError(t, model.DB.Exec("DELETE FROM " + table).Error)
+		require.NoError(t, model.DB.Exec("DELETE FROM "+table).Error)
 	}
 	model.InitChannelCache()
 	model.InvalidatePricingCache()
 	t.Cleanup(func() {
 		for _, table := range []string{"abilities", "channels", "models", "vendors"} {
-			require.NoError(t, model.DB.Exec("DELETE FROM " + table).Error)
+			require.NoError(t, model.DB.Exec("DELETE FROM "+table).Error)
 		}
 		model.InitChannelCache()
 		model.InvalidatePricingCache()
