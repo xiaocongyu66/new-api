@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"gorm.io/gorm"
