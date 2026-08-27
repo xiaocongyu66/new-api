@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
@@ -25,19 +26,19 @@ import (
 
 func setupDashboardAuthMiddlewareTest(t *testing.T) {
 	t.Helper()
-	previousDB := model.DB
+	previousDB := dbx.DB
 	previousType := common.MainDatabaseType()
 	previousRedis := common.RedisEnabled
 	previousSecret := common.SessionSecret
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}))
-	model.DB = db
+	dbx.DB = db
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	common.SessionSecret = "middleware-auth-test-secret"
 	t.Cleanup(func() {
-		model.DB = previousDB
+		dbx.DB = previousDB
 		common.SetMainDatabaseType(previousType)
 		common.RedisEnabled = previousRedis
 		common.SessionSecret = previousSecret
@@ -82,7 +83,7 @@ func createMiddlewarePATUser(t *testing.T, username, token string) *model.User {
 		Status: common.UserStatusEnabled, Group: "default", AccessToken: &token, AuthVersion: 1,
 		AffCode: "middleware-aff-" + username,
 	}
-	require.NoError(t, model.DB.Create(user).Error)
+	require.NoError(t, dbx.DB.Create(user).Error)
 	return user
 }
 
@@ -224,7 +225,7 @@ func TestTryUserAuthCredentialClassification(t *testing.T) {
 	var patUserQueries int
 	forcedCacheError := errors.New("forced PAT user cache lookup failure")
 	const callbackName = "test:optional-auth-pat-user-cache-failure"
-	require.NoError(t, model.DB.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+	require.NoError(t, dbx.DB.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
 		if tx.Statement.Table != "users" {
 			return
 		}
@@ -237,11 +238,11 @@ func TestTryUserAuthCredentialClassification(t *testing.T) {
 	cacheFailureRequest.Header.Set("Authorization", "Bearer optional.pat.with-dots")
 	cacheFailureResponse := httptest.NewRecorder()
 	router.ServeHTTP(cacheFailureResponse, cacheFailureRequest)
-	model.DB.Callback().Query().Remove(callbackName)
+	dbx.DB.Callback().Query().Remove(callbackName)
 	assert.Equal(t, http.StatusInternalServerError, cacheFailureResponse.Code)
 	assert.Contains(t, cacheFailureResponse.Body.String(), "AUTH_INTERNAL_ERROR")
 
-	sqlDB, err := model.DB.DB()
+	sqlDB, err := dbx.DB.DB()
 	require.NoError(t, err)
 	require.NoError(t, sqlDB.Close())
 	databaseFailureRequest := httptest.NewRequest(http.MethodGet, "/optional", nil)

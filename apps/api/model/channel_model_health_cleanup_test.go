@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"testing"
 	"time"
 
@@ -25,7 +26,7 @@ func seedHealthRow(t *testing.T, channelID int, model, state string, level, vers
 		Until:          &until,
 		Version:        version,
 	}
-	require.NoError(t, DB.Create(&row).Error)
+	require.NoError(t, dbx.DB.Create(&row).Error)
 	cacheHealth(&row)
 }
 
@@ -40,7 +41,7 @@ func assertRouteIsolated(t *testing.T, channelID int, model, state string, level
 	assert.Equal(t, state, st, "cached state for (%d,%s) should be %s", channelID, model, state)
 	assert.False(t, healthy, "GetRouteHealth should report unhealthy for (%d,%s)", channelID, model)
 	var row ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND model = ?", channelID, model).First(&row).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", channelID, model).First(&row).Error)
 	assert.Equal(t, state, row.State, "DB state for (%d,%s) should be %s", channelID, model, state)
 	assert.Equal(t, level, row.IsolationLevel, "DB isolation level for (%d,%s) should be %d", channelID, model, level)
 	assert.Equal(t, version, row.Version, "DB version for (%d,%s) should be %d", channelID, model, version)
@@ -57,7 +58,7 @@ func assertRouteGone(t *testing.T, channelID int, model string) {
 	assert.Equal(t, HealthHealthy, st, "GetRouteHealth should return healthy for (%d,%s) after cleanup", channelID, model)
 	assert.True(t, healthy, "GetRouteHealth should return healthy=true for (%d,%s) after cleanup", channelID, model)
 	var count int64
-	require.NoError(t, DB.Model(&ChannelModelHealth{}).Where("channel_id = ? AND model = ?", channelID, model).Count(&count).Error)
+	require.NoError(t, dbx.DB.Model(&ChannelModelHealth{}).Where("channel_id = ? AND model = ?", channelID, model).Count(&count).Error)
 	assert.Zero(t, count, "DB should have no rows for (%d,%s) after cleanup", channelID, model)
 }
 
@@ -76,7 +77,7 @@ func TestDeleteRouteHealthByChannelIDsClearsRowsAndCache(t *testing.T) {
 	seedHealthRow(t, 8801, "model-beta", HealthCalm, 2, 3)
 	seedHealthRow(t, 8802, "model-gamma", HealthCalm, 2, 3)
 
-	require.NoError(t, deleteRouteHealthByChannelIDsWithTx(DB, []int{8801}))
+	require.NoError(t, deleteRouteHealthByChannelIDsWithTx(dbx.DB, []int{8801}))
 
 	// 8801 routes must be gone from both DB and cache.
 	assertRouteGone(t, 8801, "model-alpha")
@@ -96,7 +97,7 @@ func TestDeleteRouteHealthByChannelIDsNilIDsIsNoOp(t *testing.T) {
 
 	seedHealthRow(t, 8803, "model-delta", HealthCalm, 1, 1)
 
-	require.NoError(t, deleteRouteHealthByChannelIDsWithTx(DB, nil))
+	require.NoError(t, deleteRouteHealthByChannelIDsWithTx(dbx.DB, nil))
 
 	// Row and cache must survive the no-op call.
 	assertRouteIsolated(t, 8803, "model-delta", HealthCalm, 1, 1)
@@ -134,13 +135,13 @@ func TestDeleteRouteHealthNotInModelsPreservesKeptRows(t *testing.T) {
 			// Each sub-case starts from a clean DB and cache. The fixture
 			// (withRouteHealthDB) only runs once at the top level, so we must
 			// manually purge state between sub-cases.
-			require.NoError(t, DB.Where("channel_id = ?", 8804).Delete(&ChannelModelHealth{}).Error)
+			require.NoError(t, dbx.DB.Where("channel_id = ?", 8804).Delete(&ChannelModelHealth{}).Error)
 			ClearRouteHealthCache()
 
 			seedHealthRow(t, 8804, "kept-a", HealthCalm, 2, 3)
 			seedHealthRow(t, 8804, "removed-b", HealthCalm, 1, 2)
 
-			require.NoError(t, deleteRouteHealthNotInModelsWithTx(DB, 8804, tc.keepModels))
+			require.NoError(t, deleteRouteHealthNotInModelsWithTx(dbx.DB, 8804, tc.keepModels))
 
 			if tc.keepModels == nil {
 				// nil → full channel clear: both routes must be gone.
@@ -170,7 +171,7 @@ func TestDeleteRouteHealthNotInModelsPreservesKeptRows(t *testing.T) {
 // call, leaving ghost rows behind after a channel is removed.
 func TestChannelDeleteWithTxCleansRouteHealth(t *testing.T) {
 	withRouteHealthDB(t)
-	require.NoError(t, DB.AutoMigrate(&Channel{}, &Ability{}))
+	require.NoError(t, dbx.DB.AutoMigrate(&Channel{}, &Ability{}))
 
 	ch := Channel{
 		Id:     8805,
@@ -181,8 +182,8 @@ func TestChannelDeleteWithTxCleansRouteHealth(t *testing.T) {
 		Models: "model-a",
 		Group:  "default",
 	}
-	require.NoError(t, DB.Create(&ch).Error)
-	require.NoError(t, DB.Create(&Ability{
+	require.NoError(t, dbx.DB.Create(&ch).Error)
+	require.NoError(t, dbx.DB.Create(&Ability{
 		Group:     "default",
 		Model:     "model-a",
 		ChannelId: ch.Id,
@@ -190,10 +191,10 @@ func TestChannelDeleteWithTxCleansRouteHealth(t *testing.T) {
 	}).Error)
 	seedHealthRow(t, ch.Id, "model-a", HealthCalm, 2, 3)
 
-	require.NoError(t, ch.deleteWithTx(DB))
+	require.NoError(t, ch.deleteWithTx(dbx.DB))
 
 	var count int64
-	require.NoError(t, DB.Model(&ChannelModelHealth{}).Where("channel_id = ?", ch.Id).Count(&count).Error)
+	require.NoError(t, dbx.DB.Model(&ChannelModelHealth{}).Where("channel_id = ?", ch.Id).Count(&count).Error)
 	assert.Zero(t, count, "no isolation rows should remain after channel deletion")
 }
 
@@ -210,7 +211,7 @@ func TestChannelDeleteWithTxCleansRouteHealth(t *testing.T) {
 // call, leaving ghost rows for models the channel no longer serves.
 func TestUpdateAbilitiesRemovesOrphanedRouteHealth(t *testing.T) {
 	withRouteHealthDB(t)
-	require.NoError(t, DB.AutoMigrate(&Channel{}, &Ability{}))
+	require.NoError(t, dbx.DB.AutoMigrate(&Channel{}, &Ability{}))
 
 	ch := Channel{
 		Id:     8806,
@@ -221,14 +222,14 @@ func TestUpdateAbilitiesRemovesOrphanedRouteHealth(t *testing.T) {
 		Models: "a,b",
 		Group:  "default",
 	}
-	require.NoError(t, DB.Create(&ch).Error)
+	require.NoError(t, dbx.DB.Create(&ch).Error)
 
 	seedHealthRow(t, ch.Id, "a", HealthCalm, 2, 3)
 	seedHealthRow(t, ch.Id, "b", HealthCalm, 1, 2)
 
 	// Narrow the model list: "a,b" → "a". Model "b" is now orphaned.
 	ch.Models = "a"
-	require.NoError(t, ch.UpdateAbilities(DB))
+	require.NoError(t, ch.UpdateAbilities(dbx.DB))
 
 	// "a" must keep its isolation state untouched.
 	assertRouteIsolated(t, ch.Id, "a", HealthCalm, 2, 3)
@@ -255,14 +256,14 @@ func TestRouteHealthCacheEvictionSurvivesRollback(t *testing.T) {
 
 	seedHealthRow(t, 8807, "model-epsilon", HealthCalm, 2, 3)
 
-	tx := DB.Begin()
+	tx := dbx.DB.Begin()
 	require.NoError(t, deleteRouteHealthByChannelIDsWithTx(tx, []int{8807}))
 	// Rollback the DB delete — the row must reappear in the DB.
 	require.NoError(t, tx.Rollback().Error)
 
 	// The DB row must survive the rollback.
 	var row ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND model = ?", 8807, "model-epsilon").First(&row).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", 8807, "model-epsilon").First(&row).Error)
 	assert.Equal(t, HealthCalm, row.State, "DB row should survive transaction rollback")
 	assert.Equal(t, 2, row.IsolationLevel, "DB isolation level should survive rollback")
 	assert.Equal(t, 3, row.Version, "DB version should survive rollback")
@@ -293,14 +294,14 @@ func TestDeleteRouteHealthOutsideKeyRangeClearsOrphanedKeys(t *testing.T) {
 		Until:          &until,
 		Version:        3,
 	}
-	require.NoError(t, DB.Create(&row).Error)
+	require.NoError(t, dbx.DB.Create(&row).Error)
 	cacheHealth(&row)
 
-	require.NoError(t, deleteRouteHealthOutsideKeyRangeWithTx(DB, 8808, 1))
+	require.NoError(t, deleteRouteHealthOutsideKeyRangeWithTx(dbx.DB, 8808, 1))
 	assertRouteIsolated(t, 8808, "key-model", HealthCalm, 2, 3)
 	assert.True(t, IsRouteHealthy(keyOne, time.Now()))
 
 	var count int64
-	require.NoError(t, DB.Model(&ChannelModelHealth{}).Where("channel_id = ? AND key_index = ?", keyOne.ChannelId, keyOne.KeyIndex).Count(&count).Error)
+	require.NoError(t, dbx.DB.Model(&ChannelModelHealth{}).Where("channel_id = ? AND key_index = ?", keyOne.ChannelId, keyOne.KeyIndex).Count(&count).Error)
 	assert.Zero(t, count)
 }

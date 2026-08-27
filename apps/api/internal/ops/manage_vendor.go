@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"strconv"
 
@@ -19,7 +20,7 @@ func ListVendors(c contract.Context) {
 		return
 	}
 	var total int64
-	model.DB.Model(&model.Vendor{}).Count(&total)
+	dbx.DB.Model(&model.Vendor{}).Count(&total)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(vendors)
 	common.CtxApiSuccess(c, pageInfo)
@@ -116,7 +117,7 @@ func DeleteVendor(c contract.Context) {
 		return
 	}
 	var existing model.Vendor
-	if err := model.DB.First(&existing, id).Error; err != nil {
+	if err := dbx.DB.First(&existing, id).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
 	}

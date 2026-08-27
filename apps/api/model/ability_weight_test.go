@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"testing"
 	"time"
 
@@ -20,18 +21,18 @@ import (
 func withAbilityDB(t *testing.T, group, modelName string, rows []Ability) {
 	t.Helper()
 
-	previousDB := DB
+	previousDB := dbx.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&Ability{}, &Channel{}))
-	DB = db
-	t.Cleanup(func() { DB = previousDB })
+	dbx.DB = db
+	t.Cleanup(func() { dbx.DB = previousDB })
 
 	for i := range rows {
-		require.NoError(t, DB.Create(&rows[i]).Error)
+		require.NoError(t, dbx.DB.Create(&rows[i]).Error)
 		weight := rows[i].Weight
 		priority := rows[i].Priority
-		require.NoError(t, DB.Create(&Channel{
+		require.NoError(t, dbx.DB.Create(&Channel{
 			Id:       rows[i].ChannelId,
 			Weight:   &weight,
 			Priority: priority,
@@ -123,7 +124,7 @@ func TestGetChannelDeratesIsolatedRoutes(t *testing.T) {
 		ability(9701, group, modelName, 10, 100),
 		ability(9702, group, modelName, 10, 100),
 	})
-	require.NoError(t, DB.AutoMigrate(&ChannelModelHealth{}))
+	require.NoError(t, dbx.DB.AutoMigrate(&ChannelModelHealth{}))
 	ClearRouteHealthCache()
 	t.Cleanup(ClearRouteHealthCache)
 	// The selectors read the real clock, so the isolation window must be live.

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql/driver"
 	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -220,7 +221,7 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 
 func (Task *Task) Insert() error {
 	var err error
-	err = DB.Create(Task).Error
+	err = dbx.DB.Create(Task).Error
 	return err
 }
 
@@ -258,12 +259,12 @@ func (t *Task) Snapshot() taskSnapshot {
 
 func (Task *Task) Update() error {
 	var err error
-	err = DB.Save(Task).Error
+	err = dbx.DB.Save(Task).Error
 	return err
 }
 
 func (t *Task) UpdateQuota() error {
-	return DB.Model(t).Update("quota", t.Quota).Error
+	return dbx.DB.Model(t).Update("quota", t.Quota).Error
 }
 
 // UpdateWithStatus performs a conditional UPDATE guarded by fromStatus (CAS).
@@ -276,7 +277,7 @@ func (t *Task) UpdateQuota() error {
 // falls back to INSERT ON CONFLICT when the WHERE-guarded UPDATE matches
 // zero rows, which silently bypasses the CAS guard.
 func (t *Task) UpdateWithStatus(fromStatus TaskStatus) (bool, error) {
-	result := DB.Model(t).Where("status = ?", fromStatus).Select("*").Updates(t)
+	result := dbx.DB.Model(t).Where("status = ?", fromStatus).Select("*").Updates(t)
 	if result.Error != nil {
 		return false, result.Error
 	}
@@ -292,7 +293,7 @@ func TaskBulkUpdateByID(ids []int64, params map[string]any) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	return DB.Model(&Task{}).
+	return dbx.DB.Model(&Task{}).
 		Where("id in (?)", ids).
 		Updates(params).Error
 }

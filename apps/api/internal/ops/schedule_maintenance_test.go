@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"os"
 	"testing"
 	"time"
@@ -26,8 +27,8 @@ func TestMain(m *testing.M) {
 	}
 	sqlDB.SetMaxOpenConns(1)
 
-	model.DB = db
-	model.LOG_DB = db
+	dbx.DB = db
+	dbx.LogDB = db
 
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
@@ -47,8 +48,8 @@ func TestMain(m *testing.M) {
 func truncate(t *testing.T) {
 	t.Helper()
 	t.Cleanup(func() {
-		model.DB.Exec("DELETE FROM system_task_locks")
-		model.DB.Exec("DELETE FROM system_tasks")
+		dbx.DB.Exec("DELETE FROM system_task_locks")
+		dbx.DB.Exec("DELETE FROM system_tasks")
 	})
 }
 
@@ -80,7 +81,7 @@ func (h *stubScheduledHandler) NewPayload() any         { return nil }
 func countSystemTasks(t *testing.T, taskType string) int64 {
 	t.Helper()
 	var count int64
-	require.NoError(t, model.DB.Model(&model.SystemTask{}).Where("type = ?", taskType).Count(&count).Error)
+	require.NoError(t, dbx.DB.Model(&model.SystemTask{}).Where("type = ?", taskType).Count(&count).Error)
 	return count
 }
 
@@ -123,7 +124,7 @@ func TestSystemTaskSchedulerCreatesWhenDueAndDedups(t *testing.T) {
 	runSystemTaskScheduler()
 	require.Equal(t, int64(1), countSystemTasks(t, handler.taskType))
 
-	require.NoError(t, model.DB.Model(&model.SystemTask{}).
+	require.NoError(t, dbx.DB.Model(&model.SystemTask{}).
 		Where("task_id = ?", latest.TaskID).
 		Update("updated_at", common.GetTimestamp()-120).Error)
 
@@ -214,7 +215,7 @@ func TestSystemTaskClaimPassDispatchesEarliestPendingByType(t *testing.T) {
 		Type:   handlerA.taskType,
 		Status: model.SystemTaskStatusPending,
 	}
-	require.NoError(t, model.DB.Create(secondA).Error)
+	require.NoError(t, dbx.DB.Create(secondA).Error)
 	firstB, err := CreateSystemTask(handlerB.taskType, nil, nil)
 	require.NoError(t, err)
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"strings"
 	"time"
 
@@ -99,7 +100,7 @@ func ensureLogRequestId(log *Log) {
 
 func createLog(log *Log) error {
 	ensureLogRequestId(log)
-	return LOG_DB.Create(log).Error
+	return dbx.LogDB.Create(log).Error
 }
 
 func clickHouseLogOrder(prefix string) string {
@@ -135,7 +136,7 @@ func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		order = clickHouseLogOrder("")
 	}
-	err = LOG_DB.Model(&Log{}).Where("token_id = ?", tokenId).Order(order).Limit(common.MaxRecentItems).Find(&logs).Error
+	err = dbx.LogDB.Model(&Log{}).Where("token_id = ?", tokenId).Order(order).Limit(common.MaxRecentItems).Find(&logs).Error
 	formatUserLogs(logs, 0)
 	return logs, err
 }
@@ -255,11 +256,11 @@ func RecordOperationAuditLog(logUserId int, content string, ip string, action st
 // （写入 Other.op）。命中词与文本片段属管理敏感信息，前端仅 super admin 的
 // 敏感词设置页展示；content 为英文兜底文本（供导出使用）。
 func RecordSensitiveAuditLog(userId int, content string, ip string, params map[string]interface{}) {
-	if LOG_DB == nil {
+	if dbx.LogDB == nil {
 		return
 	}
 	username := ""
-	if userId > 0 && DB != nil {
+	if userId > 0 && dbx.DB != nil {
 		username, _ = GetUsernameById(userId, true)
 	}
 	other := map[string]interface{}{
@@ -496,9 +497,9 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
-		tx = LOG_DB
+		tx = dbx.LogDB
 	} else {
-		tx = LOG_DB.Where("logs.type = ?", logType)
+		tx = dbx.LogDB.Where("logs.type = ?", logType)
 	}
 
 	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
@@ -526,7 +527,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 		tx = tx.Where("logs.channel_id = ?", channel)
 	}
 	if group != "" {
-		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+		tx = tx.Where("logs."+dbx.LogGroupCol()+" = ?", group)
 	}
 	err = tx.Model(&Log{}).Count(&total).Error
 	if err != nil {
@@ -571,7 +572,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 			}
 		} else {
 			// Bulk query channels from DB
-			if err = DB.Table("channels").Select("id, name").Where("id IN ?", channelIds.Items()).Find(&channels).Error; err != nil {
+			if err = dbx.DB.Table("channels").Select("id, name").Where("id IN ?", channelIds.Items()).Find(&channels).Error; err != nil {
 				return logs, total, err
 			}
 		}
@@ -592,9 +593,9 @@ const logSearchCountLimit = 10000
 func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
-		tx = LOG_DB.Where("logs.user_id = ?", userId)
+		tx = dbx.LogDB.Where("logs.user_id = ?", userId)
 	} else {
-		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
+		tx = dbx.LogDB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
 	}
 
 	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
@@ -616,7 +617,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 		tx = tx.Where("logs.created_at <= ?", endTimestamp)
 	}
 	if group != "" {
-		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+		tx = tx.Where("logs."+dbx.LogGroupCol()+" = ?", group)
 	}
 	err = tx.Model(&Log{}).Limit(logSearchCountLimit).Count(&total).Error
 	if err != nil {
@@ -644,10 +645,10 @@ type Stat struct {
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
-	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
+	tx := dbx.LogDB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
 
 	// 为rpm和tpm创建单独的查询
-	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm")
+	rpmTpmQuery := dbx.LogDB.Table("logs").Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm")
 
 	if tx, err = applyExplicitLogTextFilter(tx, "username", username); err != nil {
 		return stat, err
@@ -676,8 +677,8 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 		rpmTpmQuery = rpmTpmQuery.Where("channel_id = ?", channel)
 	}
 	if group != "" {
-		tx = tx.Where(logGroupCol+" = ?", group)
-		rpmTpmQuery = rpmTpmQuery.Where(logGroupCol+" = ?", group)
+		tx = tx.Where(dbx.LogGroupCol()+" = ?", group)
+		rpmTpmQuery = rpmTpmQuery.Where(dbx.LogGroupCol()+" = ?", group)
 	}
 
 	tx = tx.Where("type = ?", LogTypeConsume)
@@ -700,7 +701,7 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 }
 
 func SumUsedToken(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string) (token int) {
-	tx := LOG_DB.Table("logs").Select("COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0)")
+	tx := dbx.LogDB.Table("logs").Select("COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0)")
 	if username != "" {
 		tx = tx.Where("username = ?", username)
 	}
@@ -722,7 +723,7 @@ func SumUsedToken(logType int, startTimestamp int64, endTimestamp int64, modelNa
 
 func CountOldLog(ctx context.Context, targetTimestamp int64) (int64, error) {
 	var total int64
-	if err := LOG_DB.WithContext(ctx).Model(&Log{}).Where("created_at < ?", targetTimestamp).Count(&total).Error; err != nil {
+	if err := dbx.LogDB.WithContext(ctx).Model(&Log{}).Where("created_at < ?", targetTimestamp).Count(&total).Error; err != nil {
 		return 0, err
 	}
 	return total, nil
@@ -748,7 +749,7 @@ func DeleteOldLogBatch(ctx context.Context, targetTimestamp int64, limit int) (i
 		if total == 0 {
 			return 0, nil
 		}
-		if err := LOG_DB.WithContext(ctx).Exec(
+		if err := dbx.LogDB.WithContext(ctx).Exec(
 			"ALTER TABLE logs DELETE WHERE created_at < ? SETTINGS mutations_sync = 1",
 			targetTimestamp,
 		).Error; err != nil {
@@ -757,7 +758,7 @@ func DeleteOldLogBatch(ctx context.Context, targetTimestamp int64, limit int) (i
 		return total, nil
 	}
 
-	result := LOG_DB.WithContext(ctx).Where("created_at < ?", targetTimestamp).Limit(limit).Delete(&Log{})
+	result := dbx.LogDB.WithContext(ctx).Where("created_at < ?", targetTimestamp).Limit(limit).Delete(&Log{})
 	if nil != result.Error {
 		return 0, result.Error
 	}
@@ -775,7 +776,7 @@ func DeleteOldSensitiveLogBatch(ctx context.Context, targetTimestamp int64, limi
 	}
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		var total int64
-		if err := LOG_DB.WithContext(ctx).Model(&Log{}).
+		if err := dbx.LogDB.WithContext(ctx).Model(&Log{}).
 			Where("type = ? AND created_at < ?", LogTypeSensitive, targetTimestamp).
 			Count(&total).Error; err != nil {
 			return 0, err
@@ -783,7 +784,7 @@ func DeleteOldSensitiveLogBatch(ctx context.Context, targetTimestamp int64, limi
 		if total == 0 {
 			return 0, nil
 		}
-		if err := LOG_DB.WithContext(ctx).Exec(
+		if err := dbx.LogDB.WithContext(ctx).Exec(
 			"ALTER TABLE logs DELETE WHERE type = ? AND created_at < ? SETTINGS mutations_sync = 1",
 			LogTypeSensitive, targetTimestamp,
 		).Error; err != nil {
@@ -791,7 +792,7 @@ func DeleteOldSensitiveLogBatch(ctx context.Context, targetTimestamp int64, limi
 		}
 		return total, nil
 	}
-	result := LOG_DB.WithContext(ctx).
+	result := dbx.LogDB.WithContext(ctx).
 		Where("type = ? AND created_at < ?", LogTypeSensitive, targetTimestamp).
 		Limit(limit).Delete(&Log{})
 	if nil != result.Error {

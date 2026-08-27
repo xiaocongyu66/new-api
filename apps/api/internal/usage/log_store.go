@@ -3,6 +3,7 @@ package usage
 import (
 	"context"
 	"errors"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"strings"
 	"time"
 
@@ -126,7 +127,7 @@ func GetLogByTokenIdInternal(tokenId int) (logs []*model.Log, err error) {
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		order = clickHouseLogOrder("")
 	}
-	err = model.LOG_DB.Order(order).Where("token_id = ?", tokenId).Find(&logs).Error
+	err = dbx.LogDB.Order(order).Where("token_id = ?", tokenId).Find(&logs).Error
 	return logs, err
 }
 
@@ -134,9 +135,9 @@ func GetLogByTokenIdInternal(tokenId int) (logs []*model.Log, err error) {
 func GetAllLogsInternal(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string) (logs []*model.Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
-		tx = model.LOG_DB
+		tx = dbx.LogDB
 	} else {
-		tx = model.LOG_DB.Where("logs.type = ?", logType)
+		tx = dbx.LogDB.Where("logs.type = ?", logType)
 	}
 
 	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
@@ -209,7 +210,7 @@ func GetAllLogsInternal(logType int, startTimestamp int64, endTimestamp int64, m
 			}
 		} else {
 			// Bulk query channels from DB
-			if err = model.DB.Table("channels").Select("id, name").Where("id IN ?", channelIds.Items()).Find(&channels).Error; err != nil {
+			if err = dbx.DB.Table("channels").Select("id, name").Where("id IN ?", channelIds.Items()).Find(&channels).Error; err != nil {
 				return logs, total, err
 			}
 		}
@@ -229,9 +230,9 @@ func GetAllLogsInternal(logType int, startTimestamp int64, endTimestamp int64, m
 func GetUserLogsInternal(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string) (logs []*model.Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
-		tx = model.LOG_DB.Where("logs.user_id = ?", userId)
+		tx = dbx.LogDB.Where("logs.user_id = ?", userId)
 	} else {
-		tx = model.LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
+		tx = dbx.LogDB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
 	}
 
 	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
@@ -276,10 +277,10 @@ func GetUserLogsInternal(userId int, logType int, startTimestamp int64, endTimes
 
 // SumUsedQuotaInternal mirrors model.SumUsedQuota
 func SumUsedQuotaInternal(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat model.Stat, err error) {
-	tx := model.LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
+	tx := dbx.LogDB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
 
 	// 为rpm和tpm创建单独的查询
-	rpmTpmQuery := model.LOG_DB.Table("logs").Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm")
+	rpmTpmQuery := dbx.LogDB.Table("logs").Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm")
 
 	if tx, err = applyExplicitLogTextFilter(tx, "username", username); err != nil {
 		return stat, err
@@ -333,7 +334,7 @@ func SumUsedQuotaInternal(logType int, startTimestamp int64, endTimestamp int64,
 
 // SumUsedTokenInternal mirrors model.SumUsedToken
 func SumUsedTokenInternal(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string) (token int) {
-	tx := model.LOG_DB.Table("logs").Select("COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0)")
+	tx := dbx.LogDB.Table("logs").Select("COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0)")
 	if username != "" {
 		tx = tx.Where("username = ?", username)
 	}
@@ -356,7 +357,7 @@ func SumUsedTokenInternal(logType int, startTimestamp int64, endTimestamp int64,
 // CountOldLog mirrors model.CountOldLog
 func CountOldLog(ctx context.Context, targetTimestamp int64) (int64, error) {
 	var total int64
-	if err := model.LOG_DB.WithContext(ctx).Model(&model.Log{}).Where("created_at < ?", targetTimestamp).Count(&total).Error; err != nil {
+	if err := dbx.LogDB.WithContext(ctx).Model(&model.Log{}).Where("created_at < ?", targetTimestamp).Count(&total).Error; err != nil {
 		return 0, err
 	}
 	return total, nil
@@ -383,7 +384,7 @@ func DeleteOldLogBatch(ctx context.Context, targetTimestamp int64, limit int) (i
 		if total == 0 {
 			return 0, nil
 		}
-		if err := model.LOG_DB.WithContext(ctx).Exec(
+		if err := dbx.LogDB.WithContext(ctx).Exec(
 			"ALTER TABLE logs DELETE WHERE created_at < ? SETTINGS mutations_sync = 1",
 			targetTimestamp,
 		).Error; err != nil {
@@ -392,7 +393,7 @@ func DeleteOldLogBatch(ctx context.Context, targetTimestamp int64, limit int) (i
 		return total, nil
 	}
 
-	result := model.LOG_DB.WithContext(ctx).Where("created_at < ?", targetTimestamp).Limit(limit).Delete(&model.Log{})
+	result := dbx.LogDB.WithContext(ctx).Where("created_at < ?", targetTimestamp).Limit(limit).Delete(&model.Log{})
 	if nil != result.Error {
 		return 0, result.Error
 	}

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"testing"
 	"time"
 
@@ -22,7 +23,7 @@ func seedHealthRowWithLevel(t *testing.T, key RouteKey, state string, level int,
 		Until:          until,
 		Version:        version,
 	}
-	require.NoError(t, DB.Create(&row).Error)
+	require.NoError(t, dbx.DB.Create(&row).Error)
 	cacheHealth(&row)
 }
 
@@ -44,7 +45,7 @@ func TestRecordSuccessDecaysLevel(t *testing.T) {
 	require.NoError(t, RecordSuccess(key, now.Add(time.Minute)))
 
 	var row ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error)
 	assert.Equal(t, 2, row.IsolationLevel, "level should decay by 1 (NormalDecayStep)")
 	assert.Equal(t, HealthCalm, row.State, "level 2 is still calm")
 	assert.Equal(t, 2, row.Version, "version must advance")
@@ -74,7 +75,7 @@ func TestRecordSuccessReachesHealthy(t *testing.T) {
 	require.NoError(t, RecordSuccess(key, now))
 
 	var row ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error)
 	assert.Equal(t, 0, row.IsolationLevel, "level should reach 0")
 	assert.Equal(t, HealthHealthy, row.State, "state should be healthy")
 	assert.Nil(t, row.Until, "until should be cleared")
@@ -102,7 +103,7 @@ func TestRecordSuccessDisabledImmune(t *testing.T) {
 	require.NoError(t, RecordSuccess(key, now))
 
 	var row ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error)
 	assert.Equal(t, HealthDisabled, row.State, "disabled must not change")
 	assert.Equal(t, 7, row.IsolationLevel, "level must not decay")
 	assert.Equal(t, 1, row.Version, "version must not advance")
@@ -121,7 +122,7 @@ func TestRecordSuccessMissingRowNoop(t *testing.T) {
 	require.NoError(t, RecordSuccess(key, now))
 
 	var count int64
-	require.NoError(t, DB.Model(&ChannelModelHealth{}).Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).Count(&count).Error)
+	require.NoError(t, dbx.DB.Model(&ChannelModelHealth{}).Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).Count(&count).Error)
 	assert.Zero(t, count, "no row should be created for a success on an unseen route")
 	assert.True(t, IsRouteHealthy(key, now), "missing row = healthy")
 }
@@ -143,7 +144,7 @@ func TestRecordSuccessClearsDormantCountInCalmBand(t *testing.T) {
 	seedHealthRowWithLevel(t, key, HealthDormant, 7, &deadline, 1)
 
 	// Manually set dormant_disable_count to 2 via DB.
-	require.NoError(t, DB.Model(&ChannelModelHealth{}).
+	require.NoError(t, dbx.DB.Model(&ChannelModelHealth{}).
 		Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).
 		Update("dormant_disable_count", 2).Error)
 
@@ -151,7 +152,7 @@ func TestRecordSuccessClearsDormantCountInCalmBand(t *testing.T) {
 	require.NoError(t, RecordSuccess(key, now))
 
 	var row ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error)
 	assert.Equal(t, 6, row.IsolationLevel, "level should decay to 6")
 	assert.Equal(t, 0, row.DormantDisableCount, "dormant count should be cleared in calm band")
 }
@@ -170,7 +171,7 @@ func TestRecordSuccessDormantCountPreservedAboveCalmBand(t *testing.T) {
 	deadline := now.Add(time.Hour).Unix()
 	seedHealthRowWithLevel(t, key, HealthDormant, 9, &deadline, 1)
 
-	require.NoError(t, DB.Model(&ChannelModelHealth{}).
+	require.NoError(t, dbx.DB.Model(&ChannelModelHealth{}).
 		Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).
 		Update("dormant_disable_count", 2).Error)
 
@@ -178,7 +179,7 @@ func TestRecordSuccessDormantCountPreservedAboveCalmBand(t *testing.T) {
 	require.NoError(t, RecordSuccess(key, now))
 
 	var row ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error)
 	assert.Equal(t, 8, row.IsolationLevel, "level should decay to 8")
 	assert.Equal(t, 2, row.DormantDisableCount, "dormant count preserved above calm band")
 }
@@ -201,7 +202,7 @@ func TestExpiryCASDecaysLevel(t *testing.T) {
 	assert.True(t, IsRouteHealthy(key, now))
 
 	var row ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error)
 	assert.Equal(t, HealthHealthy, row.State, "expiry CAS should set healthy")
 	assert.Nil(t, row.Until, "expiry CAS should clear until")
 	assert.Equal(t, 2, row.IsolationLevel, "level should decay by 1 (NormalDecayStep)")
@@ -222,20 +223,20 @@ func TestExpiryCASClearsDormantCountInCalmBand(t *testing.T) {
 	expired := now.Add(-time.Minute).Unix()
 	seedHealthRowWithLevel(t, key, HealthDormant, 7, &expired, 1)
 
-	require.NoError(t, DB.Model(&ChannelModelHealth{}).
+	require.NoError(t, dbx.DB.Model(&ChannelModelHealth{}).
 		Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).
 		Update("dormant_disable_count", 3).Error)
 
 	// Re-cache the updated dormant count.
 	var refreshed ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&refreshed).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&refreshed).Error)
 	cacheHealth(&refreshed)
 
 	// Expiry CAS: level 7 → 6 (calm band), dormant count should clear.
 	assert.True(t, IsRouteHealthy(key, now))
 
 	var row ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error)
 	assert.Equal(t, 6, row.IsolationLevel, "level should decay to 6")
 	assert.Equal(t, 0, row.DormantDisableCount, "dormant count should be cleared in calm band")
 	assert.Equal(t, HealthHealthy, row.State)
@@ -260,20 +261,20 @@ func TestExpiryCASDormantCountPreservedAboveCalmBand(t *testing.T) {
 	expired := now.Add(-time.Minute).Unix()
 	seedHealthRowWithLevel(t, key, HealthDormant, 9, &expired, 1)
 
-	require.NoError(t, DB.Model(&ChannelModelHealth{}).
+	require.NoError(t, dbx.DB.Model(&ChannelModelHealth{}).
 		Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).
 		Update("dormant_disable_count", 2).Error)
 
 	// Re-cache the updated dormant count.
 	var refreshed ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&refreshed).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&refreshed).Error)
 	cacheHealth(&refreshed)
 
 	// Expiry CAS: level 9 → 8 (still dormant, >6), dormant count preserved.
 	assert.True(t, IsRouteHealthy(key, now))
 
 	var row ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error)
 	assert.Equal(t, 8, row.IsolationLevel, "level should decay to 8")
 	assert.Equal(t, 2, row.DormantDisableCount, "dormant count preserved above calm band")
 	assert.Equal(t, HealthHealthy, row.State)

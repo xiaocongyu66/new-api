@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
 	"net/http"
@@ -159,7 +160,7 @@ func TestTelegramBindFailureResponseContract(t *testing.T) {
 }
 
 func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
-	previousDB := model.DB
+	previousDB := dbx.DB
 	previousType := common.MainDatabaseType()
 	previousRedis := common.RedisEnabled
 	previousEnabled := common.TelegramOAuthEnabled
@@ -173,14 +174,14 @@ func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
 		&model.AuthFlow{},
 		&model.ExternalIdentityClaim{},
 	))
-	model.DB = db
+	dbx.DB = db
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	common.TelegramOAuthEnabled = true
 	common.TelegramBotToken = "telegram-bind-test-token"
 	common.SessionSecret = "telegram-bind-session-secret"
 	t.Cleanup(func() {
-		model.DB = previousDB
+		dbx.DB = previousDB
 		common.SetMainDatabaseType(previousType)
 		common.RedisEnabled = previousRedis
 		common.TelegramOAuthEnabled = previousEnabled

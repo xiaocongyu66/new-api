@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"io"
 	"strings"
 
@@ -47,7 +48,7 @@ func CreateProxyNode(input ProxyNodeInput) (*model.ProxyNode, error) {
 	if node.Name == "" {
 		return nil, fmt.Errorf("proxy node name must not be empty")
 	}
-	if err := model.DB.Create(node).Error; err != nil {
+	if err := dbx.DB.Create(node).Error; err != nil {
 		return nil, err
 	}
 	return node, nil
@@ -155,7 +156,7 @@ func SetProxyNodesEnabled(ids []uint, enabled bool) (int64, error) {
 	if len(ids) == 0 {
 		return 0, nil
 	}
-	result := model.DB.Model(&model.ProxyNode{}).Where("id IN ?", ids).Update("enabled", enabled)
+	result := dbx.DB.Model(&model.ProxyNode{}).Where("id IN ?", ids).Update("enabled", enabled)
 	return result.RowsAffected, result.Error
 }
 
@@ -163,6 +164,6 @@ func ClearProxyNodeErrors(ids []uint) (int64, error) {
 	if len(ids) == 0 {
 		return 0, nil
 	}
-	result := model.DB.Model(&model.ProxyNode{}).Where("id IN ?", ids).Updates(map[string]any{"last_error": "", "failure_count": 0, "cooldown_until": nil})
+	result := dbx.DB.Model(&model.ProxyNode{}).Where("id IN ?", ids).Updates(map[string]any{"last_error": "", "failure_count": 0, "cooldown_until": nil})
 	return result.RowsAffected, result.Error
 }

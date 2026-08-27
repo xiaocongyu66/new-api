@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"strings"
 	"time"
 
@@ -89,7 +90,7 @@ func GetProxyNodesForChannelAndModel(channel *Channel, modelName string) ([]*Pro
 	}
 
 	var enabledNodes []*ProxyNode
-	if err := DB.Where("enabled = ?", true).
+	if err := dbx.DB.Where("enabled = ?", true).
 		Where("scope_type = ?", ProxyNodeScopeCustom).
 		Find(&enabledNodes).Error; err != nil {
 		return nil, err

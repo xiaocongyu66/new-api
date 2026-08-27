@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"testing"
 	"time"
 
@@ -13,7 +14,7 @@ func TestInitChannelModelHealthCacheLoadsPersistedIsolation(t *testing.T) {
 
 	now := time.Now()
 	until := now.Add(time.Minute).Unix()
-	require.NoError(t, DB.Create(&ChannelModelHealth{
+	require.NoError(t, dbx.DB.Create(&ChannelModelHealth{
 		ChannelId:      9401,
 		Model:          "startup-cache-model",
 		State:          HealthCalm,

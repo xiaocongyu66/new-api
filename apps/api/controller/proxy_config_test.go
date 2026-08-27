@@ -3,6 +3,7 @@ package controller
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
@@ -21,19 +22,19 @@ import (
 
 func setupProxyConfigControllerTest(t *testing.T) *gorm.DB {
 	t.Helper()
-	previousDB := model.DB
+	previousDB := dbx.DB
 	previousSecret := common.CryptoSecret
 	dsn := "file:proxy-config-controller-test?mode=memory&cache=private"
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.Option{}))
-	model.DB = db
+	dbx.DB = db
 	common.CryptoSecret = "proxy-config-controller-test-secret"
 	if common.OptionMap == nil {
 		common.OptionMap = make(map[string]string)
 	}
 	t.Cleanup(func() {
-		model.DB = previousDB
+		dbx.DB = previousDB
 		common.CryptoSecret = previousSecret
 	})
 	return db

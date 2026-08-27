@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
@@ -85,8 +86,8 @@ func openTokenControllerTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("failed to open sqlite db: %v", err)
 	}
-	model.DB = db
-	model.LOG_DB = db
+	dbx.DB = db
+	dbx.LogDB = db
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()
@@ -140,8 +141,8 @@ func openTokenControllerExternalDB(t *testing.T, dialect string, dsn string) (*g
 		t.Fatalf("failed to open %s db: %v", dialect, err)
 	}
 
-	model.DB = db
-	model.LOG_DB = db
+	dbx.DB = db
+	dbx.LogDB = db
 
 	if db.Migrator().HasTable("tokens") {
 		t.Skipf("refusing to run %s migration compatibility test against external database because tokens table already exists", dialect)

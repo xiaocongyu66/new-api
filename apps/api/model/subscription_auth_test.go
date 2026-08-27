@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"net"
 	"strings"
 	"testing"
@@ -29,7 +30,7 @@ func TestSubscriptionGroupTransitionsPreserveAuthVersionAndSessions(t *testing.T
 		Group:       "default",
 		AuthVersion: 1,
 	}
-	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, dbx.DB.Create(&user).Error)
 	require.NoError(t, CreateUserSession(&UserSession{
 		SID:             "subscription-auth-session",
 		UserID:          user.Id,
@@ -50,35 +51,35 @@ func TestSubscriptionGroupTransitionsPreserveAuthVersionAndSessions(t *testing.T
 		UpgradeGroup:  "pro",
 		Enabled:       true,
 	}
-	require.NoError(t, DB.Create(plan).Error)
+	require.NoError(t, dbx.DB.Create(plan).Error)
 
-	subscription, err := CreateUserSubscriptionFromPlanTx(DB, user.Id, plan, "test")
+	subscription, err := CreateUserSubscriptionFromPlanTx(dbx.DB, user.Id, plan, "test")
 	require.NoError(t, err)
 	require.Equal(t, "default", subscription.PrevUserGroup)
 	require.NoError(t, RefreshUserGroupCache(user.Id))
 
 	var updated User
-	require.NoError(t, DB.First(&updated, user.Id).Error)
+	require.NoError(t, dbx.DB.First(&updated, user.Id).Error)
 	assert.Equal(t, "pro", updated.Group)
 	assert.EqualValues(t, 1, updated.AuthVersion)
 	var session UserSession
-	require.NoError(t, DB.First(&session, "sid = ?", "subscription-auth-session").Error)
+	require.NoError(t, dbx.DB.First(&session, "sid = ?", "subscription-auth-session").Error)
 	assert.Equal(t, UserSessionStatusActive, session.Status)
 	cached, err := GetUserCache(user.Id)
 	require.NoError(t, err)
 	assert.Equal(t, "pro", cached.Group)
 	assert.EqualValues(t, 1, cached.AuthVersion)
 
-	require.NoError(t, DB.Transaction(func(tx *gorm.DB) error {
+	require.NoError(t, dbx.DB.Transaction(func(tx *gorm.DB) error {
 		target, err := downgradeUserGroupForSubscriptionTx(tx, subscription, now+1)
 		assert.Equal(t, "default", target)
 		return err
 	}))
 	require.NoError(t, RefreshUserGroupCache(user.Id))
-	require.NoError(t, DB.First(&updated, user.Id).Error)
+	require.NoError(t, dbx.DB.First(&updated, user.Id).Error)
 	assert.Equal(t, "default", updated.Group)
 	assert.EqualValues(t, 1, updated.AuthVersion)
-	require.NoError(t, DB.First(&session, "sid = ?", "subscription-auth-session").Error)
+	require.NoError(t, dbx.DB.First(&session, "sid = ?", "subscription-auth-session").Error)
 	assert.Equal(t, UserSessionStatusActive, session.Status)
 	cached, err = GetUserCache(user.Id)
 	require.NoError(t, err)
@@ -86,19 +87,19 @@ func TestSubscriptionGroupTransitionsPreserveAuthVersionAndSessions(t *testing.T
 }
 
 func TestSubscriptionGroupCacheRefreshFailureDoesNotChangeCommittedResult(t *testing.T) {
-	previousDB, previousLogDB := DB, LOG_DB
+	previousDB, previousLogDB := dbx.DB, dbx.LogDB
 	previousMainDatabaseType, previousLogDatabaseType := common.MainDatabaseType(), common.LogDatabaseType()
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	DB, LOG_DB = db, db
+	dbx.DB, dbx.LogDB = db, db
 	require.NoError(t, db.AutoMigrate(&User{}, &SubscriptionPlan{}, &UserSubscription{}))
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(4)
 	t.Cleanup(func() {
-		DB, LOG_DB = previousDB, previousLogDB
+		dbx.DB, dbx.LogDB = previousDB, previousLogDB
 		common.SetDatabaseTypes(previousMainDatabaseType, previousLogDatabaseType)
 		_ = sqlDB.Close()
 	})
@@ -111,7 +112,7 @@ func TestSubscriptionGroupCacheRefreshFailureDoesNotChangeCommittedResult(t *tes
 		Group:       "default",
 		AuthVersion: 1,
 	}
-	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, dbx.DB.Create(&user).Error)
 	plan := &SubscriptionPlan{
 		Title:         "Cache failure plan",
 		DurationUnit:  SubscriptionDurationMonth,
@@ -120,7 +121,7 @@ func TestSubscriptionGroupCacheRefreshFailureDoesNotChangeCommittedResult(t *tes
 		UpgradeGroup:  "pro",
 		Enabled:       true,
 	}
-	require.NoError(t, DB.Create(plan).Error)
+	require.NoError(t, dbx.DB.Create(plan).Error)
 	InvalidateSubscriptionPlanCache(plan.Id)
 
 	oldRedisEnabled, oldRDB := common.RedisEnabled, common.RDB
@@ -141,10 +142,10 @@ func TestSubscriptionGroupCacheRefreshFailureDoesNotChangeCommittedResult(t *tes
 	assert.Contains(t, message, "pro")
 
 	var updated User
-	require.NoError(t, DB.First(&updated, user.Id).Error)
+	require.NoError(t, dbx.DB.First(&updated, user.Id).Error)
 	assert.Equal(t, "pro", updated.Group)
 	assert.EqualValues(t, 1, updated.AuthVersion)
 	var subscription UserSubscription
-	require.NoError(t, DB.Where("user_id = ?", user.Id).First(&subscription).Error)
+	require.NoError(t, dbx.DB.Where("user_id = ?", user.Id).First(&subscription).Error)
 	assert.Equal(t, "active", subscription.Status)
 }

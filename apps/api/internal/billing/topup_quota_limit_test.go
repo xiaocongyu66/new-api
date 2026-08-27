@@ -1,6 +1,7 @@
 package billing
 
 import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
 	"net/http"
@@ -124,25 +125,25 @@ func TestRequestAmountRejectsTopUpThatCannotBeSettled(t *testing.T) {
 func TestRequestAmountRejectsTopUpThatWouldOverflowWallet(t *testing.T) {
 	oldQuotaPerUnit := common.QuotaPerUnit
 	oldDisplayType := operation_setting.GetGeneralSetting().QuotaDisplayType
-	oldDB := model.DB
+	oldDB := dbx.DB
 	common.QuotaPerUnit = 500000
 	operation_setting.GetGeneralSetting().QuotaDisplayType = operation_setting.QuotaDisplayTypeUSD
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.User{}))
-	model.DB = db
+	dbx.DB = db
 	t.Cleanup(func() {
 		common.QuotaPerUnit = oldQuotaPerUnit
 		operation_setting.GetGeneralSetting().QuotaDisplayType = oldDisplayType
-		model.DB = oldDB
+		dbx.DB = oldDB
 		sqlDB, dbErr := db.DB()
 		if dbErr == nil {
 			require.NoError(t, sqlDB.Close())
 		}
 	})
 
-	require.NoError(t, model.DB.Create(&model.User{
+	require.NoError(t, dbx.DB.Create(&model.User{
 		Id:       42,
 		Username: "topup_capacity_user",
 		Quota:    1_000_000,

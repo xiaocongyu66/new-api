@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"testing"
 	"time"
 
@@ -74,12 +75,12 @@ func TestProxyNodePersistenceFields(t *testing.T) {
 }
 
 func TestGetProxyNodesForChannelMatchesCustomScopeOnly(t *testing.T) {
-	previousDB := DB
+	previousDB := dbx.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&ProxyNode{}))
-	DB = db
-	t.Cleanup(func() { DB = previousDB })
+	dbx.DB = db
+	t.Cleanup(func() { dbx.DB = previousDB })
 
 	require.NoError(t, db.Create(&ProxyNode{Name: "by-channel", Enabled: true, ScopeType: ProxyNodeScopeCustom, ScopeValue: `{"models":[],"channels":[42]}`}).Error)
 	require.NoError(t, db.Create(&ProxyNode{Name: "by-model", Enabled: true, ScopeType: ProxyNodeScopeCustom, ScopeValue: `{"models":["gpt-4o"],"channels":[]}`}).Error)

@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"log"
 	"net/url"
 	"os"
@@ -19,52 +20,24 @@ import (
 	"gorm.io/gorm"
 )
 
-var commonGroupCol string
-var commonKeyCol string
-var commonTrueVal string
-var commonFalseVal string
-
-var logKeyCol string
-var logGroupCol string
-
+// The dialect-dependent SQL fragments and the GORM handles live in
+// internal/common/dbx so a domain that owns its own records can reach them
+// without importing this package.
 func initCol() {
-	// init common column names
-	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
-		commonGroupCol = `"group"`
-		commonKeyCol = `"key"`
-		commonTrueVal = "true"
-		commonFalseVal = "false"
-	} else {
-		commonGroupCol = "`group`"
-		commonKeyCol = "`key`"
-		commonTrueVal = "1"
-		commonFalseVal = "0"
-	}
-	switch common.LogDatabaseType() {
-	case common.DatabaseTypePostgreSQL:
-		logGroupCol = `"group"`
-		logKeyCol = `"key"`
-	default:
-		logGroupCol = "`group`"
-		logKeyCol = "`key`"
-	}
+	dbx.InitColumns()
 }
 
-// InitDialectColumns initializes the dialect-specific column name variables
-// (commonGroupCol, commonKeyCol, etc.). Call this after setting the database
-// type via common.SetDatabaseTypes() when using a test database without InitDB.
+// InitDialectColumns initializes the dialect-specific column names. Call this
+// after setting the database type via common.SetDatabaseTypes() when using a
+// test database without InitDB.
 func InitDialectColumns() {
 	initCol()
 }
 
-var DB *gorm.DB
-
-var LOG_DB *gorm.DB
-
 func createRootAccountIfNeed() error {
 	var user User
 	//if user.Status != common.UserStatusEnabled {
-	if err := DB.First(&user).Error; err != nil {
+	if err := dbx.DB.First(&user).Error; err != nil {
 		common.SysLog("no user exists, create a root user for you: username is root, password is 123456")
 		hashedPassword, err := common.Password2Hash("123456")
 		if err != nil {
@@ -79,7 +52,7 @@ func createRootAccountIfNeed() error {
 			AccessToken: nil,
 			Quota:       100000000,
 		}
-		DB.Create(&rootUser)
+		dbx.DB.Create(&rootUser)
 	}
 	return nil
 }
@@ -95,7 +68,7 @@ func CheckSetup() {
 				Version:       common.Version,
 				InitializedAt: time.Now().Unix(),
 			}
-			err := DB.Create(&newSetup).Error
+			err := dbx.DB.Create(&newSetup).Error
 			if err != nil {
 				common.SysLog("failed to create setup record: " + err.Error())
 			}
@@ -186,14 +159,14 @@ func InitDB() (err error) {
 		if common.DebugEnabled {
 			db = db.Debug()
 		}
-		DB = db
+		dbx.DB = db
 		// MySQL charset/collation startup check: ensure Chinese-capable charset
 		if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
-			if err := checkMySQLChineseSupport(DB); err != nil {
+			if err := checkMySQLChineseSupport(dbx.DB); err != nil {
 				panic(err)
 			}
 		}
-		sqlDB, err := DB.DB()
+		sqlDB, err := dbx.DB.DB()
 		if err != nil {
 			return err
 		}
@@ -218,7 +191,7 @@ func InitDB() (err error) {
 
 func InitLogDB() (err error) {
 	if os.Getenv("LOG_SQL_DSN") == "" {
-		LOG_DB = DB
+		dbx.LogDB = dbx.DB
 		common.SetLogDatabaseType(common.MainDatabaseType())
 		initCol()
 		return
@@ -230,14 +203,14 @@ func InitLogDB() (err error) {
 		if common.DebugEnabled {
 			db = db.Debug()
 		}
-		LOG_DB = db
+		dbx.LogDB = db
 		// If log DB is MySQL, also ensure Chinese-capable charset
 		if common.UsingLogDatabase(common.DatabaseTypeMySQL) {
-			if err := checkMySQLChineseSupport(LOG_DB); err != nil {
+			if err := checkMySQLChineseSupport(dbx.LogDB); err != nil {
 				panic(err)
 			}
 		}
-		sqlDB, err := LOG_DB.DB()
+		sqlDB, err := dbx.LogDB.DB()
 		if err != nil {
 			return err
 		}
@@ -267,7 +240,7 @@ func migrateDB() error {
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
 	}
-	err := DB.AutoMigrate(
+	err := dbx.DB.AutoMigrate(
 		&Channel{},
 		&Token{},
 		&User{},
@@ -323,7 +296,7 @@ func migrateDB() error {
 			return err
 		}
 	} else {
-		if err := DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
+		if err := dbx.DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
 			return err
 		}
 	}
@@ -331,7 +304,7 @@ func migrateDB() error {
 }
 
 func migrateChannelModelHealthKeyIndex() error {
-	if !DB.Migrator().HasTable(&ChannelModelHealth{}) {
+	if !dbx.DB.Migrator().HasTable(&ChannelModelHealth{}) {
 		return nil
 	}
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
@@ -339,7 +312,7 @@ func migrateChannelModelHealthKeyIndex() error {
 			Name string `gorm:"column:name"`
 			PK   int    `gorm:"column:pk"`
 		}
-		if err := DB.Raw("PRAGMA table_info(channel_model_health)").Scan(&rows).Error; err != nil {
+		if err := dbx.DB.Raw("PRAGMA table_info(channel_model_health)").Scan(&rows).Error; err != nil {
 			return err
 		}
 		for _, row := range rows {
@@ -347,7 +320,7 @@ func migrateChannelModelHealthKeyIndex() error {
 				return nil
 			}
 		}
-		return DB.Transaction(func(tx *gorm.DB) error {
+		return dbx.DB.Transaction(func(tx *gorm.DB) error {
 			if err := tx.Exec(`CREATE TABLE channel_model_health_new (
 				channel_id integer NOT NULL,
 				key_index integer NOT NULL DEFAULT 0,
@@ -385,13 +358,13 @@ func migrateChannelModelHealthKeyIndex() error {
 	}
 	if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
 		var primaryColumns []string
-		if err := DB.Raw("SELECT column_name FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = 'PRIMARY' ORDER BY seq_in_index", "channel_model_health").Scan(&primaryColumns).Error; err != nil {
+		if err := dbx.DB.Raw("SELECT column_name FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = 'PRIMARY' ORDER BY seq_in_index", "channel_model_health").Scan(&primaryColumns).Error; err != nil {
 			return err
 		}
 		if len(primaryColumns) == 3 && primaryColumns[1] == "key_index" {
 			return nil
 		}
-		return DB.Transaction(func(tx *gorm.DB) error {
+		return dbx.DB.Transaction(func(tx *gorm.DB) error {
 			if !tx.Migrator().HasColumn(&ChannelModelHealth{}, "key_index") {
 				if err := tx.Exec("ALTER TABLE channel_model_health ADD COLUMN key_index integer NOT NULL DEFAULT 0").Error; err != nil {
 					return err
@@ -402,7 +375,7 @@ func migrateChannelModelHealthKeyIndex() error {
 	}
 	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
 		var primaryColumns []string
-		if err := DB.Raw(`SELECT attribute.attname
+		if err := dbx.DB.Raw(`SELECT attribute.attname
 			FROM pg_index index_def
 			JOIN pg_class table_def ON table_def.oid = index_def.indrelid
 			JOIN pg_attribute attribute ON attribute.attrelid = table_def.oid AND attribute.attnum = ANY(index_def.indkey)
@@ -413,7 +386,7 @@ func migrateChannelModelHealthKeyIndex() error {
 		if len(primaryColumns) == 3 && primaryColumns[1] == "key_index" {
 			return nil
 		}
-		return DB.Transaction(func(tx *gorm.DB) error {
+		return dbx.DB.Transaction(func(tx *gorm.DB) error {
 			if err := tx.Exec("ALTER TABLE channel_model_health ADD COLUMN IF NOT EXISTS key_index integer NOT NULL DEFAULT 0").Error; err != nil {
 				return err
 			}
@@ -475,7 +448,7 @@ func migrateDBFast() error {
 		wg.Add(1)
 		go func(model interface{}, name string) {
 			defer wg.Done()
-			if err := DB.AutoMigrate(model); err != nil {
+			if err := dbx.DB.AutoMigrate(model); err != nil {
 				errChan <- fmt.Errorf("failed to migrate %s: %v", name, err)
 			}
 		}(m.model, m.name)
@@ -505,7 +478,7 @@ func migrateDBFast() error {
 			return err
 		}
 	} else {
-		if err := DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
+		if err := dbx.DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
 			return err
 		}
 	}
@@ -517,12 +490,12 @@ func migrateLOGDB() error {
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		return migrateClickHouseLogDB()
 	}
-	return LOG_DB.AutoMigrate(&Log{})
+	return dbx.LogDB.AutoMigrate(&Log{})
 }
 
 func migrateClickHouseLogDB() error {
 	ttlDays := clickHouseLogTTLDays()
-	if err := LOG_DB.Exec(clickHouseLogCreateTableSQL(ttlDays)).Error; err != nil {
+	if err := dbx.LogDB.Exec(clickHouseLogCreateTableSQL(ttlDays)).Error; err != nil {
 		return err
 	}
 	return syncClickHouseLogTTL(ttlDays)
@@ -583,7 +556,7 @@ ORDER BY (created_at, request_id)%s`, clickHouseLogTTLClause(ttlDays))
 func syncClickHouseLogTTL(ttlDays int) error {
 	expression := clickHouseLogTTLExpression(ttlDays)
 	if expression != "" {
-		return LOG_DB.Exec("ALTER TABLE logs MODIFY TTL " + expression).Error
+		return dbx.LogDB.Exec("ALTER TABLE logs MODIFY TTL " + expression).Error
 	}
 
 	hasTTL, err := clickHouseLogTableHasTTL()
@@ -593,12 +566,12 @@ func syncClickHouseLogTTL(ttlDays int) error {
 	if !hasTTL {
 		return nil
 	}
-	return LOG_DB.Exec("ALTER TABLE logs REMOVE TTL").Error
+	return dbx.LogDB.Exec("ALTER TABLE logs REMOVE TTL").Error
 }
 
 func clickHouseLogTableHasTTL() (bool, error) {
 	var createTableSQL string
-	if err := LOG_DB.Raw("SHOW CREATE TABLE logs").Scan(&createTableSQL).Error; err != nil {
+	if err := dbx.LogDB.Raw("SHOW CREATE TABLE logs").Scan(&createTableSQL).Error; err != nil {
 		return false, err
 	}
 	return clickHouseCreateTableHasTTL(createTableSQL), nil
@@ -619,7 +592,7 @@ func ensureSubscriptionPlanTableSQLite() error {
 		return nil
 	}
 	tableName := "subscription_plans"
-	if !DB.Migrator().HasTable(tableName) {
+	if !dbx.DB.Migrator().HasTable(tableName) {
 		createSQL := `CREATE TABLE ` + "`" + tableName + "`" + ` (
 ` + "`id`" + ` integer,
 ` + "`title`" + ` varchar(128) NOT NULL,
@@ -646,12 +619,12 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`updated_at`" + ` bigint,
 PRIMARY KEY (` + "`id`" + `)
 )`
-		return DB.Exec(createSQL).Error
+		return dbx.DB.Exec(createSQL).Error
 	}
 	var cols []struct {
 		Name string `gorm:"column:name"`
 	}
-	if err := DB.Raw("PRAGMA table_info(`" + tableName + "`)").Scan(&cols).Error; err != nil {
+	if err := dbx.DB.Raw("PRAGMA table_info(`" + tableName + "`)").Scan(&cols).Error; err != nil {
 		return err
 	}
 	existing := make(map[string]struct{}, len(cols))
@@ -686,7 +659,7 @@ PRIMARY KEY (` + "`id`" + `)
 		if _, ok := existing[col.Name]; ok {
 			continue
 		}
-		if err := DB.Exec("ALTER TABLE `" + tableName + "` ADD COLUMN " + col.DDL).Error; err != nil {
+		if err := dbx.DB.Exec("ALTER TABLE `" + tableName + "` ADD COLUMN " + col.DDL).Error; err != nil {
 			return err
 		}
 	}
@@ -704,18 +677,18 @@ func migrateTokenModelLimitsToText() error {
 	tableName := "tokens"
 	columnName := "model_limits"
 
-	if !DB.Migrator().HasTable(tableName) {
+	if !dbx.DB.Migrator().HasTable(tableName) {
 		return nil
 	}
 
-	if !DB.Migrator().HasColumn(&Token{}, columnName) {
+	if !dbx.DB.Migrator().HasColumn(&Token{}, columnName) {
 		return nil
 	}
 
 	var alterSQL string
 	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
 		var dataType string
-		if err := DB.Raw(`SELECT data_type FROM information_schema.columns
+		if err := dbx.DB.Raw(`SELECT data_type FROM information_schema.columns
 			WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?`,
 			tableName, columnName).Scan(&dataType).Error; err != nil {
 			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
@@ -725,7 +698,7 @@ func migrateTokenModelLimitsToText() error {
 		alterSQL = fmt.Sprintf(`ALTER TABLE %s ALTER COLUMN %s TYPE text`, tableName, columnName)
 	} else if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
 		var columnType string
-		if err := DB.Raw(`SELECT COLUMN_TYPE FROM information_schema.columns
+		if err := dbx.DB.Raw(`SELECT COLUMN_TYPE FROM information_schema.columns
 				WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
 			tableName, columnName).Scan(&columnType).Error; err != nil {
 			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
@@ -738,7 +711,7 @@ func migrateTokenModelLimitsToText() error {
 	}
 
 	if alterSQL != "" {
-		if err := DB.Exec(alterSQL).Error; err != nil {
+		if err := dbx.DB.Exec(alterSQL).Error; err != nil {
 			return fmt.Errorf("failed to migrate %s.%s to text: %w", tableName, columnName, err)
 		}
 		common.SysLog(fmt.Sprintf("Successfully migrated %s.%s to text", tableName, columnName))
@@ -759,12 +732,12 @@ func migrateSubscriptionPlanPriceAmount() {
 	columnName := "price_amount"
 
 	// Check if table exists first
-	if !DB.Migrator().HasTable(tableName) {
+	if !dbx.DB.Migrator().HasTable(tableName) {
 		return
 	}
 
 	// Check if column exists
-	if !DB.Migrator().HasColumn(&SubscriptionPlan{}, columnName) {
+	if !dbx.DB.Migrator().HasColumn(&SubscriptionPlan{}, columnName) {
 		return
 	}
 
@@ -772,7 +745,7 @@ func migrateSubscriptionPlanPriceAmount() {
 	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
 		// PostgreSQL: Check if already decimal/numeric
 		var dataType string
-		if err := DB.Raw(`SELECT data_type FROM information_schema.columns
+		if err := dbx.DB.Raw(`SELECT data_type FROM information_schema.columns
 			WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?`,
 			tableName, columnName).Scan(&dataType).Error; err != nil {
 			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
@@ -784,7 +757,7 @@ func migrateSubscriptionPlanPriceAmount() {
 	} else if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
 		// MySQL: Check if already decimal
 		var columnType string
-		if err := DB.Raw(`SELECT COLUMN_TYPE FROM information_schema.columns
+		if err := dbx.DB.Raw(`SELECT COLUMN_TYPE FROM information_schema.columns
 				WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
 			tableName, columnName).Scan(&columnType).Error; err != nil {
 			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
@@ -798,7 +771,7 @@ func migrateSubscriptionPlanPriceAmount() {
 	}
 
 	if alterSQL != "" {
-		if err := DB.Exec(alterSQL).Error; err != nil {
+		if err := dbx.DB.Exec(alterSQL).Error; err != nil {
 			common.SysLog(fmt.Sprintf("Warning: failed to migrate %s.%s to decimal: %v", tableName, columnName, err))
 		} else {
 			common.SysLog(fmt.Sprintf("Successfully migrated %s.%s to decimal(10,6)", tableName, columnName))
@@ -816,13 +789,13 @@ func closeDB(db *gorm.DB) error {
 }
 
 func CloseDB() error {
-	if LOG_DB != DB {
-		err := closeDB(LOG_DB)
+	if dbx.LogDB != dbx.DB {
+		err := closeDB(dbx.LogDB)
 		if err != nil {
 			return err
 		}
 	}
-	return closeDB(DB)
+	return closeDB(dbx.DB)
 }
 
 // checkMySQLChineseSupport ensures the MySQL connection and current schema
@@ -930,7 +903,7 @@ func PingDB() error {
 		return nil
 	}
 
-	sqlDB, err := DB.DB()
+	sqlDB, err := dbx.DB.DB()
 	if err != nil {
 		log.Printf("Error getting sql.DB from GORM: %v", err)
 		return err

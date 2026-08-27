@@ -2,6 +2,7 @@ package channel
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"math/rand"
 	"sort"
 	"strings"
@@ -32,7 +33,7 @@ func InitChannelCache() {
 	newChannelId2channel := make(map[int]*model.Channel)
 	newChannel2advancedCustomConfig := make(map[int]*dto.AdvancedCustomConfig)
 	var channels []*model.Channel
-	model.DB.Find(&channels)
+	dbx.DB.Find(&channels)
 	for _, channel := range channels {
 		newChannelId2channel[channel.Id] = channel
 		if channel.Type == constant.ChannelTypeAdvancedCustom {
@@ -42,7 +43,7 @@ func InitChannelCache() {
 		}
 	}
 	var abilities []*model.Ability
-	model.DB.Find(&abilities)
+	dbx.DB.Find(&abilities)
 	groups := make(map[string]bool)
 	for _, ability := range abilities {
 		groups[ability.Group] = true

@@ -2,6 +2,7 @@ package channel
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"sync"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -29,7 +30,7 @@ func GetChannelPollingLock(channelId int) *sync.Mutex {
 // This is optional and can be called periodically to prevent memory leaks.
 func CleanupChannelPollingLocks() {
 	var activeChannelIds []int
-	model.DB.Model(&model.Channel{}).Pluck("id", &activeChannelIds)
+	dbx.DB.Model(&model.Channel{}).Pluck("id", &activeChannelIds)
 
 	activeChannelSet := make(map[int]bool)
 	for _, id := range activeChannelIds {
@@ -69,7 +70,7 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 	pollingLock.Lock()
 	defer pollingLock.Unlock()
 
-	ok, err := updateChannelStatusWithTx(model.DB, channelId, usingKey, status, reason)
+	ok, err := updateChannelStatusWithTx(dbx.DB, channelId, usingKey, status, reason)
 	if err != nil || !ok {
 		return false
 	}

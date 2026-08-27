@@ -2,6 +2,7 @@ package channel
 
 import (
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
@@ -33,8 +34,8 @@ func IsChannelEnabledForGroupModel(group string, modelName string, channelID int
 
 func isChannelEnabledForGroupModelDB(group string, modelName string, channelID int) bool {
 	var count int64
-	err := model.DB.Model(&model.Ability{}).
-		Where(model.GroupCol()+" = ? and model = ? and channel_id = ? and enabled = ?", group, modelName, channelID, true).
+	err := dbx.DB.Model(&model.Ability{}).
+		Where(dbx.GroupCol()+" = ? and model = ? and channel_id = ? and enabled = ?", group, modelName, channelID, true).
 		Count(&count).Error
 	if err == nil && count > 0 {
 		return true
@@ -44,8 +45,8 @@ func isChannelEnabledForGroupModelDB(group string, modelName string, channelID i
 		return false
 	}
 	count = 0
-	err = model.DB.Model(&model.Ability{}).
-		Where(model.GroupCol()+" = ? and model = ? and channel_id = ? and enabled = ?", group, normalized, channelID, true).
+	err = dbx.DB.Model(&model.Ability{}).
+		Where(dbx.GroupCol()+" = ? and model = ? and channel_id = ? and enabled = ?", group, normalized, channelID, true).
 		Count(&count).Error
 	return err == nil && count > 0
 }

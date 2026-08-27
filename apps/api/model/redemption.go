@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/common/quotacache"
 	"strconv"
 
@@ -29,25 +30,25 @@ type Redemption struct {
 
 func (redemption *Redemption) Insert() error {
 	var err error
-	err = DB.Create(redemption).Error
+	err = dbx.DB.Create(redemption).Error
 	return err
 }
 
 func (redemption *Redemption) SelectUpdate() error {
 	// This can update zero values
-	return DB.Model(redemption).Select("redeemed_time", "status").Updates(redemption).Error
+	return dbx.DB.Model(redemption).Select("redeemed_time", "status").Updates(redemption).Error
 }
 
 // Update Make sure your token's fields is completed, because this will update non-zero values
 func (redemption *Redemption) Update() error {
 	var err error
-	err = DB.Model(redemption).Select("name", "status", "quota", "redeemed_time", "expired_time").Updates(redemption).Error
+	err = dbx.DB.Model(redemption).Select("name", "status", "quota", "redeemed_time", "expired_time").Updates(redemption).Error
 	return err
 }
 
 func (redemption *Redemption) Delete() error {
 	var err error
-	err = DB.Delete(redemption).Error
+	err = dbx.DB.Delete(redemption).Error
 	return err
 }
 func DeleteRedemptionById(id int) (err error) {
@@ -55,7 +56,7 @@ func DeleteRedemptionById(id int) (err error) {
 		return errors.New("id 为空！")
 	}
 	redemption := Redemption{Id: id}
-	err = DB.Where(redemption).First(&redemption).Error
+	err = dbx.DB.Where(redemption).First(&redemption).Error
 	if err != nil {
 		return err
 	}
@@ -75,8 +76,8 @@ func Redeem(key string, userId int) (quota int, err error) {
 		keyCol = `"key"`
 	}
 	common.RandomSleep()
-	err = DB.Transaction(func(tx *gorm.DB) error {
-		err := LockForUpdate(tx).Where(keyCol+" = ?", key).First(redemption).Error
+	err = dbx.DB.Transaction(func(tx *gorm.DB) error {
+		err := dbx.LockForUpdate(tx).Where(keyCol+" = ?", key).First(redemption).Error
 		if err != nil {
 			return errors.New("无效的兑换码")
 		}
@@ -118,11 +119,11 @@ func GetRedemptionById(id int) (*Redemption, error) {
 	}
 	redemption := Redemption{Id: id}
 	var err error = nil
-	err = DB.First(&redemption, "id = ?", id).Error
+	err = dbx.DB.First(&redemption, "id = ?", id).Error
 	return &redemption, err
 }
 func SearchRedemptions(keyword string, status string, startIdx int, num int) (redemptions []*Redemption, total int64, err error) {
-	tx := DB.Begin()
+	tx := dbx.DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
 	}
@@ -186,7 +187,7 @@ func SearchRedemptions(keyword string, status string, startIdx int, num int) (re
 }
 func GetAllRedemptions(startIdx int, num int) (redemptions []*Redemption, total int64, err error) {
 	// 开始事务
-	tx := DB.Begin()
+	tx := dbx.DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
 	}

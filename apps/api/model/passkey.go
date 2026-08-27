@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"strings"
 	"time"
 
@@ -126,7 +127,7 @@ func GetPasskeyByUserID(userID int) (*PasskeyCredential, error) {
 		return nil, ErrFriendlyPasskeyNotFound
 	}
 	var credential PasskeyCredential
-	if err := DB.Where("user_id = ?", userID).First(&credential).Error; err != nil {
+	if err := dbx.DB.Where("user_id = ?", userID).First(&credential).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// 未找到记录是正常情况（用户未绑定），返回 ErrPasskeyNotFound 而不记录日志
 			return nil, ErrPasskeyNotFound
@@ -146,7 +147,7 @@ func GetPasskeyByCredentialID(credentialID []byte) (*PasskeyCredential, error) {
 
 	credIDStr := base64.StdEncoding.EncodeToString(credentialID)
 	var credential PasskeyCredential
-	if err := DB.Where("credential_id = ?", credIDStr).First(&credential).Error; err != nil {
+	if err := dbx.DB.Where("credential_id = ?", credIDStr).First(&credential).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			common.SysLog(fmt.Sprintf("GetPasskeyByCredentialID: passkey not found for credential ID length %d", len(credentialID)))
 			return nil, ErrFriendlyPasskeyNotFound
@@ -166,7 +167,7 @@ func UpdatePasskeyAssertionState(userID int, credential *webauthn.Credential, la
 		return fmt.Errorf("Passkey 保存失败，请重试")
 	}
 	credentialID := base64.StdEncoding.EncodeToString(credential.ID)
-	result := DB.Model(&PasskeyCredential{}).
+	result := dbx.DB.Model(&PasskeyCredential{}).
 		Where("user_id = ? AND credential_id = ?", userID, credentialID).
 		Updates(map[string]interface{}{
 			"sign_count":      credential.Authenticator.SignCount,
@@ -204,7 +205,7 @@ func UpsertPasskeyCredentialWithAuthVersion(credential *PasskeyCredential) error
 	if credential == nil || credential.UserID <= 0 {
 		return fmt.Errorf("Passkey 保存失败，请重试")
 	}
-	if err := DB.Transaction(func(tx *gorm.DB) error {
+	if err := dbx.DB.Transaction(func(tx *gorm.DB) error {
 		if _, err := IncrementUserAuthVersionWithTx(tx, credential.UserID); err != nil {
 			return err
 		}
@@ -219,9 +220,9 @@ func DeletePasskeyByUserIDWithAuthVersion(userID int) error {
 	if userID == 0 {
 		return fmt.Errorf("删除失败，请重试")
 	}
-	if err := DB.Transaction(func(tx *gorm.DB) error {
+	if err := dbx.DB.Transaction(func(tx *gorm.DB) error {
 		var credential PasskeyCredential
-		if err := LockForUpdate(tx).Where("user_id = ?", userID).First(&credential).Error; err != nil {
+		if err := dbx.LockForUpdate(tx).Where("user_id = ?", userID).First(&credential).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrPasskeyNotFound
 			}

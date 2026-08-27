@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"net"
 	"sync"
 	"time"
@@ -308,11 +309,11 @@ func setV2RayTransport(outbound map[string]interface{}, transType, path, host, s
 }
 
 func outboundFingerprint() (string, json.RawMessage) {
-	if model.DB == nil {
+	if dbx.DB == nil {
 		return "", nil
 	}
 	var opt model.Option
-	if err := model.DB.Where("key = ?", "proxy_config").First(&opt).Error; err != nil {
+	if err := dbx.DB.Where("key = ?", "proxy_config").First(&opt).Error; err != nil {
 		return "", nil
 	}
 	// Decrypt if encrypted; fall back to raw for backward compatibility

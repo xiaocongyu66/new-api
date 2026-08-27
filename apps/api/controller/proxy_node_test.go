@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
@@ -28,16 +29,16 @@ type proxyNodeAPIResponse struct {
 
 func setupProxyNodeControllerTest(t *testing.T) *gorm.DB {
 	t.Helper()
-	previousDB := model.DB
+	previousDB := dbx.DB
 	previousSecret := common.CryptoSecret
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=private", t.Name())
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.ProxyNode{}))
-	model.DB = db
+	dbx.DB = db
 	common.CryptoSecret = "proxy-node-controller-test-secret"
 	t.Cleanup(func() {
-		model.DB = previousDB
+		dbx.DB = previousDB
 		common.CryptoSecret = previousSecret
 	})
 	return db

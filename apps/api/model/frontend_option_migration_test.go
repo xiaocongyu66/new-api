@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -13,15 +14,15 @@ import (
 
 func useFrontendOptionMigrationDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	previousDB := DB
+	previousDB := dbx.DB
 	previousType := common.MainDatabaseType()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&Option{}))
-	DB = db
+	dbx.DB = db
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	t.Cleanup(func() {
-		DB = previousDB
+		dbx.DB = previousDB
 		common.SetMainDatabaseType(previousType)
 	})
 	return db

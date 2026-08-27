@@ -3,6 +3,7 @@ package identity
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 
 	"gorm.io/gorm"
 
@@ -22,7 +23,7 @@ func resolveUserStoreSort(sortOptions []model.UserSortOptions) model.UserSortOpt
 
 func listAllUsers(pageInfo *common.PageInfo, sortOptions ...model.UserSortOptions) (users []*model.User, total int64, err error) {
 	// Start transaction
-	tx := model.DB.Begin()
+	tx := dbx.DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
 	}
@@ -57,7 +58,7 @@ func listAllUsers(pageInfo *common.PageInfo, sortOptions ...model.UserSortOption
 
 func GetMaxUserId() int {
 	var user model.User
-	model.DB.Unscoped().Last(&user)
+	dbx.DB.Unscoped().Last(&user)
 	return user.Id
 }
 
@@ -82,7 +83,7 @@ func GetUserIdByAffCode(affCode string) (int, error) {
 		return 0, errors.New("affCode 为空！")
 	}
 	var user model.User
-	err := model.DB.Select("id").First(&user, "aff_code = ?", affCode).Error
+	err := dbx.DB.Select("id").First(&user, "aff_code = ?", affCode).Error
 	return user.Id, err
 }
 
@@ -93,9 +94,9 @@ func CheckUserExistOrDeleted(username string, email string) (bool, error) {
 	var err error
 	email = model.NormalizeEmail(email)
 	if email == "" {
-		err = model.DB.Unscoped().First(&user, "username = ?", username).Error
+		err = dbx.DB.Unscoped().First(&user, "username = ?", username).Error
 	} else {
-		err = model.DB.Unscoped().First(&user, "username = ? or LOWER(email) = ?", username, email).Error
+		err = dbx.DB.Unscoped().First(&user, "username = ? or LOWER(email) = ?", username, email).Error
 	}
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -115,7 +116,7 @@ func UpdateUserAccessToken(id int, token string) error {
 	if id == 0 {
 		return errors.New("id 为空！")
 	}
-	result := model.DB.Model(&model.User{}).Where("id = ?", id).Update("access_token", token)
+	result := dbx.DB.Model(&model.User{}).Where("id = ?", id).Update("access_token", token)
 	if result.Error != nil {
 		return result.Error
 	}
@@ -146,11 +147,11 @@ func UpdateUserBindColumn(userId int, column string, value string) error {
 	if !userBindColumns[column] {
 		return fmt.Errorf("invalid user bind column: %s", column)
 	}
-	return model.DB.Model(&model.User{}).Where("id = ?", userId).Update(column, value).Error
+	return dbx.DB.Model(&model.User{}).Where("id = ?", userId).Update(column, value).Error
 }
 
 func UpdateUserLastLoginAt(id int) {
-	if err := model.DB.Model(&model.User{}).Where("id = ?", id).Update("last_login_at", common.GetTimestamp()).Error; err != nil {
+	if err := dbx.DB.Model(&model.User{}).Where("id = ?", id).Update("last_login_at", common.GetTimestamp()).Error; err != nil {
 		common.SysLog("failed to update user last_login_at: " + err.Error())
 	}
 }
@@ -161,7 +162,7 @@ func GetUniqueUserByEmail(email string) (*model.User, error) {
 		return nil, model.ErrEmailNotFound
 	}
 	var users []model.User
-	if err := model.DB.Where("LOWER(email) = ?", email).Limit(2).Find(&users).Error; err != nil {
+	if err := dbx.DB.Where("LOWER(email) = ?", email).Limit(2).Find(&users).Error; err != nil {
 		return nil, err
 	}
 	switch len(users) {
@@ -186,7 +187,7 @@ func ResetUserPasswordByEmail(email string, password string) error {
 	if err != nil {
 		return err
 	}
-	if err = model.DB.Transaction(func(tx *gorm.DB) error {
+	if err = dbx.DB.Transaction(func(tx *gorm.DB) error {
 		if _, err := model.IncrementUserAuthVersionWithTx(tx, user.Id); err != nil {
 			return err
 		}
@@ -202,5 +203,5 @@ func ResetUserPasswordByEmail(email string, password string) error {
 }
 
 func IsWeChatIdAlreadyTaken(wechatId string) bool {
-	return model.DB.Unscoped().Where("wechat_id = ?", wechatId).Find(&model.User{}).RowsAffected == 1
+	return dbx.DB.Unscoped().Where("wechat_id = ?", wechatId).Find(&model.User{}).RowsAffected == 1
 }

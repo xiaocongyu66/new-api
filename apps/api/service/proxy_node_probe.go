@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"io"
 	"net/http"
 	"strings"
@@ -136,7 +137,7 @@ func ProbeProxyNode(ctx context.Context, node *model.ProxyNode) (*ProxyNodeProbe
 	if node == nil {
 		return nil, fmt.Errorf("proxy node is nil")
 	}
-	if model.DB == nil {
+	if dbx.DB == nil {
 		return nil, fmt.Errorf("proxy node database is unavailable")
 	}
 
@@ -189,7 +190,7 @@ func ProbeProxyNode(ctx context.Context, node *model.ProxyNode) (*ProxyNodeProbe
 	}
 
 	ApplyProxyNodeProbeSuccess(node, now)
-	if err := model.DB.Save(node).Error; err != nil {
+	if err := dbx.DB.Save(node).Error; err != nil {
 		return nil, fmt.Errorf("persist proxy node probe success: %w", err)
 	}
 	result.Node = node.Public()
@@ -201,7 +202,7 @@ func ProbeProxyNode(ctx context.Context, node *model.ProxyNode) (*ProxyNodeProbe
 
 func persistProxyNodeProbeFailure(node *model.ProxyNode, now, startedAt time.Time, result *ProxyNodeProbeResult, probeErr error) (*ProxyNodeProbeResult, error) {
 	ApplyProxyNodeProbeFailure(node, now, probeErr.Error())
-	if err := model.DB.Save(node).Error; err != nil {
+	if err := dbx.DB.Save(node).Error; err != nil {
 		return nil, fmt.Errorf("persist proxy node probe failure: %w", err)
 	}
 	result.Node = node.Public()

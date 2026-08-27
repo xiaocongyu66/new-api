@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
@@ -99,7 +100,7 @@ func TestAddTokenEmptyAutoGroupsInheritGlobalAuto(t *testing.T) {
 			response := decodeAPIResponse(t, recorder)
 			require.True(t, response.Success, response.Message)
 			var token model.Token
-			require.NoError(t, model.DB.Where("name = ?", request["name"]).First(&token).Error)
+			require.NoError(t, dbx.DB.Where("name = ?", request["name"]).First(&token).Error)
 			assert.Empty(t, token.AutoGroups)
 			assert.True(t, token.CrossGroupRetry)
 		})
@@ -117,7 +118,7 @@ func TestAddTokenPersistsOrderedAutoGroupsSnapshot(t *testing.T) {
 	require.True(t, decodeAPIResponse(t, recorder).Success)
 
 	var token model.Token
-	require.NoError(t, model.DB.Where("name = ?", "ordered-snapshot").First(&token).Error)
+	require.NoError(t, dbx.DB.Where("name = ?", "ordered-snapshot").First(&token).Error)
 	assert.JSONEq(t, `["vip","default"]`, token.AutoGroups)
 
 	getRecorder := httptest.NewRecorder()
@@ -157,11 +158,11 @@ func TestUpdateTokenAutoGroupsTriStateAndNonAutoCleanup(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			configureTokenAutoGroupsTest(t, "5", `["default","vip"]`)
 			user := setupTokenAutoGroupsControllerTest(t)
-			token := seedToken(t, model.DB, user.Id, "update-auto", "update-auto-key")
+			token := seedToken(t, dbx.DB, user.Id, "update-auto", "update-auto-key")
 			token.Group = "auto"
 			token.CrossGroupRetry = true
 			require.NoError(t, token.SetAutoGroups([]string{"vip", "default"}))
-			require.NoError(t, model.DB.Save(token).Error)
+			require.NoError(t, dbx.DB.Save(token).Error)
 
 			request := baseAutoTokenRequest("updated-auto")
 			request["id"] = token.Id
@@ -176,7 +177,7 @@ func TestUpdateTokenAutoGroupsTriStateAndNonAutoCleanup(t *testing.T) {
 			require.True(t, response.Success, response.Message)
 
 			var updated model.Token
-			require.NoError(t, model.DB.First(&updated, token.Id).Error)
+			require.NoError(t, dbx.DB.First(&updated, token.Id).Error)
 			if test.expectedAutoGroups == "" {
 				assert.Empty(t, updated.AutoGroups)
 			} else {
@@ -212,7 +213,7 @@ func TestAddTokenRejectsInvalidAutoGroups(t *testing.T) {
 			response := decodeAPIResponse(t, recorder)
 			assert.False(t, response.Success)
 			var count int64
-			require.NoError(t, model.DB.Model(&model.Token{}).Count(&count).Error)
+			require.NoError(t, dbx.DB.Model(&model.Token{}).Count(&count).Error)
 			assert.Zero(t, count)
 		})
 	}

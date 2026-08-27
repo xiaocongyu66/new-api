@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/common/quotacache"
 	"sync/atomic"
 	"testing"
@@ -45,10 +46,10 @@ func TestUserAuthFenceRollbackExpiresAndRecovers(t *testing.T) {
 		Group:       "default",
 		AuthVersion: 1,
 	}
-	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, dbx.DB.Create(&user).Error)
 	require.NoError(t, populateUserCache(user))
 
-	tx := DB.Begin()
+	tx := dbx.DB.Begin()
 	require.NoError(t, tx.Error)
 	next, err := IncrementUserAuthVersionWithTx(tx, user.Id)
 	require.NoError(t, err)
@@ -114,21 +115,21 @@ func TestRefreshUserGroupCacheRepairsDelayedSameVersionWrite(t *testing.T) {
 		Group:       "default",
 		AuthVersion: 1,
 	}
-	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, dbx.DB.Create(&user).Error)
 	require.NoError(t, populateUserCache(user))
 
 	firstSnapshotRead := make(chan struct{})
 	releaseDelayedRefresh := make(chan struct{})
 	var intercepted atomic.Bool
 	const callbackName = "test:block_delayed_group_refresh"
-	require.NoError(t, DB.Callback().Query().After("gorm:query").Register(callbackName, func(*gorm.DB) {
+	require.NoError(t, dbx.DB.Callback().Query().After("gorm:query").Register(callbackName, func(*gorm.DB) {
 		if intercepted.CompareAndSwap(false, true) {
 			close(firstSnapshotRead)
 			<-releaseDelayedRefresh
 		}
 	}))
 	t.Cleanup(func() {
-		_ = DB.Callback().Query().Remove(callbackName)
+		_ = dbx.DB.Callback().Query().Remove(callbackName)
 	})
 
 	delayedResult := make(chan error, 1)
@@ -137,7 +138,7 @@ func TestRefreshUserGroupCacheRepairsDelayedSameVersionWrite(t *testing.T) {
 	}()
 	<-firstSnapshotRead
 
-	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Update("group", "pro").Error)
+	require.NoError(t, dbx.DB.Model(&User{}).Where("id = ?", user.Id).Update("group", "pro").Error)
 	require.NoError(t, RefreshUserGroupCache(user.Id))
 	cached, err := cacheGetUserBase(user.Id)
 	require.NoError(t, err)
@@ -164,11 +165,11 @@ func TestCommittedUserAuthVersionPermanentlyRejectsDelayedCacheFill(t *testing.T
 		Group:       "default",
 		AuthVersion: 1,
 	}
-	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, dbx.DB.Create(&user).Error)
 	require.NoError(t, populateUserCache(user))
 	stale := *user.ToBaseUser()
 
-	require.NoError(t, DB.Transaction(func(tx *gorm.DB) error {
+	require.NoError(t, dbx.DB.Transaction(func(tx *gorm.DB) error {
 		_, err := IncrementUserAuthVersionWithTx(tx, user.Id)
 		return err
 	}))

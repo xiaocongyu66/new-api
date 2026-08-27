@@ -2,6 +2,7 @@ package billing
 
 import (
 	"context"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"os"
 	"testing"
 
@@ -26,8 +27,8 @@ func TestMain(m *testing.M) {
 	}
 	sqlDB.SetMaxOpenConns(1)
 
-	model.DB = db
-	model.LOG_DB = db
+	dbx.DB = db
+	dbx.LogDB = db
 
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
@@ -55,16 +56,16 @@ func TestMain(m *testing.M) {
 func truncate(t *testing.T) {
 	t.Helper()
 	t.Cleanup(func() {
-		model.DB.Exec("DELETE FROM tasks")
-		model.DB.Exec("DELETE FROM users")
-		model.DB.Exec("DELETE FROM tokens")
-		model.DB.Exec("DELETE FROM logs")
-		model.DB.Exec("DELETE FROM channels")
-		model.DB.Exec("DELETE FROM midjourneys")
-		model.DB.Exec("DELETE FROM top_ups")
-		model.DB.Exec("DELETE FROM user_subscriptions")
-		model.DB.Exec("DELETE FROM system_task_locks")
-		model.DB.Exec("DELETE FROM system_tasks")
+		dbx.DB.Exec("DELETE FROM tasks")
+		dbx.DB.Exec("DELETE FROM users")
+		dbx.DB.Exec("DELETE FROM tokens")
+		dbx.DB.Exec("DELETE FROM logs")
+		dbx.DB.Exec("DELETE FROM channels")
+		dbx.DB.Exec("DELETE FROM midjourneys")
+		dbx.DB.Exec("DELETE FROM top_ups")
+		dbx.DB.Exec("DELETE FROM user_subscriptions")
+		dbx.DB.Exec("DELETE FROM system_task_locks")
+		dbx.DB.Exec("DELETE FROM system_tasks")
 	})
 }
 
@@ -209,7 +210,7 @@ func TestSettleMidjourneyTaskBillingFundingFailureClearsMarkers(t *testing.T) {
 	require.True(t, prepared)
 	require.NoError(t, task.Insert())
 
-	require.NoError(t, model.DB.Exec(`
+	require.NoError(t, dbx.DB.Exec(`
 		CREATE TRIGGER fail_midjourney_user_update
 		BEFORE UPDATE ON users
 		WHEN OLD.id = 52
@@ -218,7 +219,7 @@ func TestSettleMidjourneyTaskBillingFundingFailureClearsMarkers(t *testing.T) {
 		END;
 	`).Error)
 	t.Cleanup(func() {
-		model.DB.Exec("DROP TRIGGER IF EXISTS fail_midjourney_user_update")
+		dbx.DB.Exec("DROP TRIGGER IF EXISTS fail_midjourney_user_update")
 	})
 
 	billed, err := SettleMidjourneyTaskBilling(relayInfo, task, prepared)
@@ -263,7 +264,7 @@ func TestSettleMidjourneyTaskBillingTokenFailureKeepsFundingRefundable(t *testin
 	require.True(t, prepared)
 	require.NoError(t, task.Insert())
 
-	require.NoError(t, model.DB.Exec(`
+	require.NoError(t, dbx.DB.Exec(`
 		CREATE TRIGGER fail_midjourney_token_update
 		BEFORE UPDATE ON tokens
 		WHEN OLD.id = 53
@@ -272,7 +273,7 @@ func TestSettleMidjourneyTaskBillingTokenFailureKeepsFundingRefundable(t *testin
 		END;
 	`).Error)
 	t.Cleanup(func() {
-		model.DB.Exec("DROP TRIGGER IF EXISTS fail_midjourney_token_update")
+		dbx.DB.Exec("DROP TRIGGER IF EXISTS fail_midjourney_token_update")
 	})
 
 	billed, err := SettleMidjourneyTaskBilling(relayInfo, task, prepared)
@@ -351,7 +352,7 @@ func TestRefundMidjourneyQuotaUsesLegacyChannelFallbackWithoutTokenAdjustment(t 
 func seedUser(t *testing.T, id int, quota int) {
 	t.Helper()
 	user := &model.User{Id: id, Username: "test_user", Quota: quota, Status: common.UserStatusEnabled}
-	require.NoError(t, model.DB.Create(user).Error)
+	require.NoError(t, dbx.DB.Create(user).Error)
 }
 func seedToken(t *testing.T, id int, userId int, key string, remainQuota int) {
 	t.Helper()
@@ -364,66 +365,66 @@ func seedToken(t *testing.T, id int, userId int, key string, remainQuota int) {
 		RemainQuota: remainQuota,
 		UsedQuota:   0,
 	}
-	require.NoError(t, model.DB.Create(token).Error)
+	require.NoError(t, dbx.DB.Create(token).Error)
 }
 func seedChannel(t *testing.T, id int) {
 	t.Helper()
 	ch := &model.Channel{Id: id, Name: "test_channel", Key: "sk-test", Status: common.ChannelStatusEnabled}
-	require.NoError(t, model.DB.Create(ch).Error)
+	require.NoError(t, dbx.DB.Create(ch).Error)
 }
 func getUserQuota(t *testing.T, id int) int {
 	t.Helper()
 	var user model.User
-	require.NoError(t, model.DB.Select("quota").Where("id = ?", id).First(&user).Error)
+	require.NoError(t, dbx.DB.Select("quota").Where("id = ?", id).First(&user).Error)
 	return user.Quota
 }
 func getTokenRemainQuota(t *testing.T, id int) int {
 	t.Helper()
 	var token model.Token
-	require.NoError(t, model.DB.Select("remain_quota").Where("id = ?", id).First(&token).Error)
+	require.NoError(t, dbx.DB.Select("remain_quota").Where("id = ?", id).First(&token).Error)
 	return token.RemainQuota
 }
 func seedChargedAccounting(t *testing.T, userID, channelID, tokenID, quota, requestCount int) {
 	t.Helper()
-	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", userID).Updates(map[string]any{
+	require.NoError(t, dbx.DB.Model(&model.User{}).Where("id = ?", userID).Updates(map[string]any{
 		"used_quota":    quota,
 		"request_count": requestCount,
 	}).Error)
-	require.NoError(t, model.DB.Model(&model.Channel{}).Where("id = ?", channelID).
+	require.NoError(t, dbx.DB.Model(&model.Channel{}).Where("id = ?", channelID).
 		Update("used_quota", quota).Error)
 	if tokenID > 0 {
-		require.NoError(t, model.DB.Model(&model.Token{}).Where("id = ?", tokenID).
+		require.NoError(t, dbx.DB.Model(&model.Token{}).Where("id = ?", tokenID).
 			Update("used_quota", quota).Error)
 	}
 }
 func getMidjourneyTask(t *testing.T, id int) model.Midjourney {
 	t.Helper()
 	var task model.Midjourney
-	require.NoError(t, model.DB.First(&task, id).Error)
+	require.NoError(t, dbx.DB.First(&task, id).Error)
 	return task
 }
 func getUserUsageAccounting(t *testing.T, id int) (int, int) {
 	t.Helper()
 	var user model.User
-	require.NoError(t, model.DB.Select("used_quota", "request_count").Where("id = ?", id).First(&user).Error)
+	require.NoError(t, dbx.DB.Select("used_quota", "request_count").Where("id = ?", id).First(&user).Error)
 	return user.UsedQuota, user.RequestCount
 }
 func getChannelUsedQuota(t *testing.T, id int) int64 {
 	t.Helper()
 	var channel model.Channel
-	require.NoError(t, model.DB.Select("used_quota").Where("id = ?", id).First(&channel).Error)
+	require.NoError(t, dbx.DB.Select("used_quota").Where("id = ?", id).First(&channel).Error)
 	return channel.UsedQuota
 }
 func getTokenUsedQuota(t *testing.T, id int) int {
 	t.Helper()
 	var token model.Token
-	require.NoError(t, model.DB.Select("used_quota").Where("id = ?", id).First(&token).Error)
+	require.NoError(t, dbx.DB.Select("used_quota").Where("id = ?", id).First(&token).Error)
 	return token.UsedQuota
 }
 func getLastLog(t *testing.T) *model.Log {
 	t.Helper()
 	var log model.Log
-	err := model.LOG_DB.Order("id desc").First(&log).Error
+	err := dbx.LogDB.Order("id desc").First(&log).Error
 	if err != nil {
 		return nil
 	}
@@ -432,6 +433,6 @@ func getLastLog(t *testing.T) *model.Log {
 func countLogs(t *testing.T) int64 {
 	t.Helper()
 	var count int64
-	model.LOG_DB.Model(&model.Log{}).Count(&count)
+	dbx.LogDB.Model(&model.Log{}).Count(&count)
 	return count
 }

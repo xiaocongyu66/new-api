@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"net/http"
 	"time"
 
@@ -112,7 +113,7 @@ func PostSetup(c contract.Context) {
 			AccessToken: nil,
 			Quota:       100000000,
 		}
-		err = model.DB.Create(&rootUser).Error
+		err = dbx.DB.Create(&rootUser).Error
 		if err != nil {
 			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
@@ -152,7 +153,7 @@ func PostSetup(c contract.Context) {
 		Version:       common.Version,
 		InitializedAt: time.Now().Unix(),
 	}
-	err = model.DB.Create(&setup).Error
+	err = dbx.DB.Create(&setup).Error
 	if err != nil {
 		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,

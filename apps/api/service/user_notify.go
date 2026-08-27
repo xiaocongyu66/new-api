@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"net/http"
 	"net/url"
 	"strings"
@@ -23,7 +24,7 @@ func NotifyRootUser(t string, subject string, content string) {
 
 func NotifyUpstreamModelUpdateWatchers(subject string, content string) {
 	var users []model.User
-	if err := model.DB.
+	if err := dbx.DB.
 		Select("id", "email", "role", "status", "setting").
 		Where("status = ? AND role >= ?", common.UserStatusEnabled, common.RoleAdminUser).
 		Find(&users).Error; err != nil {

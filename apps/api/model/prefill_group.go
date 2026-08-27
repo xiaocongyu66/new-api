@@ -3,6 +3,7 @@ package model
 import (
 	"database/sql/driver"
 	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 
 	"github.com/QuantumNous/new-api/internal/common"
 
@@ -89,7 +90,7 @@ func (g *PrefillGroup) Insert() error {
 	now := common.GetTimestamp()
 	g.CreatedTime = now
 	g.UpdatedTime = now
-	return DB.Create(g).Error
+	return dbx.DB.Create(g).Error
 }
 
 // IsPrefillGroupNameDuplicated 检查组名称是否重复（排除自身 ID）
@@ -98,25 +99,25 @@ func IsPrefillGroupNameDuplicated(id int, name string) (bool, error) {
 		return false, nil
 	}
 	var cnt int64
-	err := DB.Model(&PrefillGroup{}).Where("name = ? AND id <> ?", name, id).Count(&cnt).Error
+	err := dbx.DB.Model(&PrefillGroup{}).Where("name = ? AND id <> ?", name, id).Count(&cnt).Error
 	return cnt > 0, err
 }
 
 // Update 更新组
 func (g *PrefillGroup) Update() error {
 	g.UpdatedTime = common.GetTimestamp()
-	return DB.Save(g).Error
+	return dbx.DB.Save(g).Error
 }
 
 // DeleteByID 根据 ID 删除组
 func DeletePrefillGroupByID(id int) error {
-	return DB.Delete(&PrefillGroup{}, id).Error
+	return dbx.DB.Delete(&PrefillGroup{}, id).Error
 }
 
 // GetAllPrefillGroups 获取全部组，可按类型过滤（为空则返回全部）
 func GetAllPrefillGroups(groupType string) ([]*PrefillGroup, error) {
 	var groups []*PrefillGroup
-	query := DB.Model(&PrefillGroup{})
+	query := dbx.DB.Model(&PrefillGroup{})
 	if groupType != "" {
 		query = query.Where("type = ?", groupType)
 	}

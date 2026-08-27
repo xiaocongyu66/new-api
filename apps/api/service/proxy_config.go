@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/model"
@@ -51,11 +52,11 @@ type transportOptions struct {
 // directly (bypassing the in-memory OptionMap cache) so every new-api instance
 // observes configuration changes on the next request.
 func getGlobalProxyURL() string {
-	if model.DB == nil {
+	if dbx.DB == nil {
 		return ""
 	}
 	var option model.Option
-	if err := model.DB.Where("key = ?", "proxy_config").First(&option).Error; err != nil {
+	if err := dbx.DB.Where("key = ?", "proxy_config").First(&option).Error; err != nil {
 		return ""
 	}
 	// Decrypt if encrypted; fall back to plaintext for backward compatibility.
@@ -78,11 +79,11 @@ func getGlobalProxyURL() string {
 // decryption fails the raw value is returned as-is (legacy plaintext stored
 // before #141 introduced encryption).
 func LoadProxyConfigJSON() (string, error) {
-	if model.DB == nil {
+	if dbx.DB == nil {
 		return "", fmt.Errorf("database not initialised")
 	}
 	var option model.Option
-	if err := model.DB.Where("key = ?", "proxy_config").First(&option).Error; err != nil {
+	if err := dbx.DB.Where("key = ?", "proxy_config").First(&option).Error; err != nil {
 		return "", err
 	}
 	plain, err := common.DecryptAESGCM(option.Value, "proxy-config")

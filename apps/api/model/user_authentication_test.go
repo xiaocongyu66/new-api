@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/common/quotacache"
 	"net"
 	"sync"
@@ -22,21 +23,21 @@ func TestHardDeleteUserFailsClosedWhenAuthFenceCannotPublish(t *testing.T) {
 	truncateTables(t)
 
 	user := User{Username: "hard-delete-user", Password: "password", TelegramId: "hard-delete-telegram"}
-	require.NoError(t, DB.Create(&user).Error)
-	require.NoError(t, DB.Transaction(func(tx *gorm.DB) error {
+	require.NoError(t, dbx.DB.Create(&user).Error)
+	require.NoError(t, dbx.DB.Transaction(func(tx *gorm.DB) error {
 		return ClaimExternalIdentityWithTx(tx, ExternalIdentityProviderTelegram, user.TelegramId, user.Id)
 	}))
-	require.NoError(t, DB.Create(&Token{UserId: user.Id, Key: "hard-delete-token"}).Error)
-	require.NoError(t, DB.Create(&TwoFA{UserId: user.Id, Secret: "secret", IsEnabled: true}).Error)
-	require.NoError(t, DB.Create(&TwoFABackupCode{UserId: user.Id, CodeHash: "hash"}).Error)
-	require.NoError(t, DB.Create(&PasskeyCredential{UserID: user.Id, CredentialID: "credential", PublicKey: "public-key"}).Error)
-	require.NoError(t, DB.Create(&UserOAuthBinding{UserId: user.Id, ProviderId: 1, ProviderUserId: "provider-user"}).Error)
-	require.NoError(t, DB.Create(&UserSession{
+	require.NoError(t, dbx.DB.Create(&Token{UserId: user.Id, Key: "hard-delete-token"}).Error)
+	require.NoError(t, dbx.DB.Create(&TwoFA{UserId: user.Id, Secret: "secret", IsEnabled: true}).Error)
+	require.NoError(t, dbx.DB.Create(&TwoFABackupCode{UserId: user.Id, CodeHash: "hash"}).Error)
+	require.NoError(t, dbx.DB.Create(&PasskeyCredential{UserID: user.Id, CredentialID: "credential", PublicKey: "public-key"}).Error)
+	require.NoError(t, dbx.DB.Create(&UserOAuthBinding{UserId: user.Id, ProviderId: 1, ProviderUserId: "provider-user"}).Error)
+	require.NoError(t, dbx.DB.Create(&UserSession{
 		SID: "hard-delete-session", UserID: user.Id, Version: 1, UserAuthVersion: 1,
 		Status: UserSessionStatusActive, RefreshHash: "refresh-hash", LoginMethod: "password",
 		LastActiveAt: 1, ExpiresAt: 2,
 	}).Error)
-	require.NoError(t, DB.Create(&AuthFlow{
+	require.NoError(t, dbx.DB.Create(&AuthFlow{
 		TokenHash: "hard-delete-auth-flow", Purpose: AuthFlowPurposeTwoFALogin,
 		UserId: user.Id, ExpiresAt: time.Now().Add(time.Minute),
 	}).Error)
@@ -57,7 +58,7 @@ func TestHardDeleteUserFailsClosedWhenAuthFenceCannotPublish(t *testing.T) {
 	require.Error(t, (&User{Id: user.Id}).HardDelete())
 
 	var count int64
-	require.NoError(t, DB.Unscoped().Model(&User{}).Where("id = ?", user.Id).Count(&count).Error)
+	require.NoError(t, dbx.DB.Unscoped().Model(&User{}).Where("id = ?", user.Id).Count(&count).Error)
 	assert.EqualValues(t, 1, count)
 	for _, record := range []any{
 		&Token{},
@@ -69,7 +70,7 @@ func TestHardDeleteUserFailsClosedWhenAuthFenceCannotPublish(t *testing.T) {
 		&AuthFlow{},
 		&ExternalIdentityClaim{},
 	} {
-		require.NoError(t, DB.Unscoped().Model(record).Where("user_id = ?", user.Id).Count(&count).Error)
+		require.NoError(t, dbx.DB.Unscoped().Model(record).Where("user_id = ?", user.Id).Count(&count).Error)
 		assert.EqualValues(t, 1, count)
 	}
 }
@@ -82,33 +83,33 @@ func TestHardDeleteUserPublishesTombstoneAndPurgesAuthenticationData(t *testing.
 		Username: "hard-delete-success", Password: "password", AuthVersion: 1,
 		TelegramId: "hard-delete-success-telegram",
 	}
-	require.NoError(t, DB.Create(&user).Error)
-	require.NoError(t, DB.Transaction(func(tx *gorm.DB) error {
+	require.NoError(t, dbx.DB.Create(&user).Error)
+	require.NoError(t, dbx.DB.Transaction(func(tx *gorm.DB) error {
 		return ClaimExternalIdentityWithTx(tx, ExternalIdentityProviderTelegram, user.TelegramId, user.Id)
 	}))
-	require.NoError(t, DB.Create(&Token{UserId: user.Id, Key: "hard-delete-success-token"}).Error)
-	require.NoError(t, DB.Create(&TwoFA{UserId: user.Id, Secret: "secret", IsEnabled: true}).Error)
-	require.NoError(t, DB.Create(&TwoFABackupCode{UserId: user.Id, CodeHash: "hash"}).Error)
-	require.NoError(t, DB.Create(&PasskeyCredential{UserID: user.Id, CredentialID: "credential-success", PublicKey: "public-key"}).Error)
-	require.NoError(t, DB.Create(&UserOAuthBinding{UserId: user.Id, ProviderId: 1, ProviderUserId: "provider-user-success"}).Error)
-	require.NoError(t, DB.Create(&UserSession{
+	require.NoError(t, dbx.DB.Create(&Token{UserId: user.Id, Key: "hard-delete-success-token"}).Error)
+	require.NoError(t, dbx.DB.Create(&TwoFA{UserId: user.Id, Secret: "secret", IsEnabled: true}).Error)
+	require.NoError(t, dbx.DB.Create(&TwoFABackupCode{UserId: user.Id, CodeHash: "hash"}).Error)
+	require.NoError(t, dbx.DB.Create(&PasskeyCredential{UserID: user.Id, CredentialID: "credential-success", PublicKey: "public-key"}).Error)
+	require.NoError(t, dbx.DB.Create(&UserOAuthBinding{UserId: user.Id, ProviderId: 1, ProviderUserId: "provider-user-success"}).Error)
+	require.NoError(t, dbx.DB.Create(&UserSession{
 		SID: "hard-delete-success-session", UserID: user.Id, Version: 1, UserAuthVersion: 1,
 		Status: UserSessionStatusActive, RefreshHash: "refresh-hash", LoginMethod: "password",
 		LastActiveAt: 1, ExpiresAt: 2,
 	}).Error)
-	require.NoError(t, DB.Create(&AuthFlow{
+	require.NoError(t, dbx.DB.Create(&AuthFlow{
 		TokenHash: "hard-delete-success-flow", Purpose: AuthFlowPurposeTwoFALogin,
 		UserId: user.Id, ExpiresAt: time.Now().Add(time.Minute),
 	}).Error)
 	require.NoError(t, populateUserCache(user))
 	// Administrative hard deletion commonly targets an already soft-deleted
 	// user; the shared version increment must therefore query unscoped.
-	require.NoError(t, DB.Delete(&user).Error)
+	require.NoError(t, dbx.DB.Delete(&user).Error)
 
 	require.NoError(t, (&User{Id: user.Id}).HardDelete())
 
 	var count int64
-	require.NoError(t, DB.Unscoped().Model(&User{}).Where("id = ?", user.Id).Count(&count).Error)
+	require.NoError(t, dbx.DB.Unscoped().Model(&User{}).Where("id = ?", user.Id).Count(&count).Error)
 	assert.Zero(t, count)
 	for _, record := range []any{
 		&Token{},
@@ -120,7 +121,7 @@ func TestHardDeleteUserPublishesTombstoneAndPurgesAuthenticationData(t *testing.
 		&AuthFlow{},
 		&ExternalIdentityClaim{},
 	} {
-		require.NoError(t, DB.Unscoped().Model(record).Where("user_id = ?", user.Id).Count(&count).Error)
+		require.NoError(t, dbx.DB.Unscoped().Model(record).Where("user_id = ?", user.Id).Count(&count).Error)
 		assert.Zero(t, count)
 	}
 	assert.False(t, server.Exists(getUserAuthFenceKey(user.Id)))
@@ -134,9 +135,9 @@ func TestIncrementFailedAttemptsCountsConcurrentFailures(t *testing.T) {
 	truncateTables(t)
 
 	user := User{Username: "twofa-cas-user", Password: "password"}
-	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, dbx.DB.Create(&user).Error)
 	twoFA := TwoFA{UserId: user.Id, Secret: "secret", IsEnabled: true}
-	require.NoError(t, DB.Create(&twoFA).Error)
+	require.NoError(t, dbx.DB.Create(&twoFA).Error)
 
 	const attempts = 4
 	errs := make(chan error, attempts)
@@ -155,7 +156,7 @@ func TestIncrementFailedAttemptsCountsConcurrentFailures(t *testing.T) {
 	}
 
 	var reloaded TwoFA
-	require.NoError(t, DB.First(&reloaded, twoFA.Id).Error)
+	require.NoError(t, dbx.DB.First(&reloaded, twoFA.Id).Error)
 	assert.Equal(t, attempts, reloaded.FailedAttempts)
 }
 
@@ -164,8 +165,8 @@ func TestValidateBackupCodeCanOnlySucceedOnce(t *testing.T) {
 
 	const code = "ABCD-1234"
 	user := User{Id: 123, Username: "backup-code-user", Password: "password", AuthVersion: 1}
-	require.NoError(t, DB.Create(&user).Error)
-	require.NoError(t, DB.Create(&TwoFA{UserId: user.Id, Secret: "secret", IsEnabled: false}).Error)
+	require.NoError(t, dbx.DB.Create(&user).Error)
+	require.NoError(t, dbx.DB.Create(&TwoFA{UserId: user.Id, Secret: "secret", IsEnabled: false}).Error)
 	require.NoError(t, CreatePendingTwoFASetupBackupCodes(user.Id, []string{code}))
 
 	const attempts = 2
@@ -205,18 +206,18 @@ func TestPendingTwoFASetupAPIsRejectEnabledFactor(t *testing.T) {
 	truncateTables(t)
 
 	user := User{Username: "enabled-twofa-guard", Password: "password", AuthVersion: 1}
-	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, dbx.DB.Create(&user).Error)
 	twoFA := TwoFA{UserId: user.Id, Secret: "secret", IsEnabled: true}
-	require.NoError(t, DB.Create(&twoFA).Error)
+	require.NoError(t, dbx.DB.Create(&twoFA).Error)
 
 	require.Error(t, CreatePendingTwoFASetupBackupCodes(user.Id, []string{"ABCD-1234"}))
 	require.Error(t, twoFA.DeletePendingTwoFASetup())
 
 	var stored TwoFA
-	require.NoError(t, DB.First(&stored, twoFA.Id).Error)
+	require.NoError(t, dbx.DB.First(&stored, twoFA.Id).Error)
 	assert.True(t, stored.IsEnabled)
 	var backupCodeCount int64
-	require.NoError(t, DB.Model(&TwoFABackupCode{}).Where("user_id = ?", user.Id).Count(&backupCodeCount).Error)
+	require.NoError(t, dbx.DB.Model(&TwoFABackupCode{}).Where("user_id = ?", user.Id).Count(&backupCodeCount).Error)
 	assert.Zero(t, backupCodeCount)
 }
 
@@ -231,9 +232,9 @@ func TestSecurityFactorMutationsAdvanceUserAuthVersion(t *testing.T) {
 		Group:       "default",
 		AuthVersion: 1,
 	}
-	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, dbx.DB.Create(&user).Error)
 	twoFA := TwoFA{UserId: user.Id, Secret: "secret", IsEnabled: false}
-	require.NoError(t, DB.Create(&twoFA).Error)
+	require.NoError(t, dbx.DB.Create(&twoFA).Error)
 
 	require.NoError(t, twoFA.EnableWithAuthVersion())
 	assertUserAuthVersion(t, user.Id, 2)
@@ -255,7 +256,7 @@ func TestUpdatePasskeyAssertionStateCannotRewriteRegistrationIdentity(t *testing
 	truncateTables(t)
 
 	user := User{Username: "passkey-assertion-state", Password: "password", AuthVersion: 1}
-	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, dbx.DB.Create(&user).Error)
 	credentialID := []byte("stable-credential-id")
 	stored := PasskeyCredential{
 		UserID:          user.Id,
@@ -267,7 +268,7 @@ func TestUpdatePasskeyAssertionStateCannotRewriteRegistrationIdentity(t *testing
 		Transports:      `["usb"]`,
 		Attachment:      "platform",
 	}
-	require.NoError(t, DB.Create(&stored).Error)
+	require.NoError(t, dbx.DB.Create(&stored).Error)
 	usedAt := time.Now().UTC().Truncate(time.Second)
 	validated := &webauthn.Credential{
 		ID:              credentialID,
@@ -288,7 +289,7 @@ func TestUpdatePasskeyAssertionStateCannotRewriteRegistrationIdentity(t *testing
 	require.NoError(t, UpdatePasskeyAssertionState(user.Id, validated, usedAt))
 
 	var updated PasskeyCredential
-	require.NoError(t, DB.First(&updated, stored.ID).Error)
+	require.NoError(t, dbx.DB.First(&updated, stored.ID).Error)
 	assert.Equal(t, stored.CredentialID, updated.CredentialID)
 	assert.Equal(t, stored.PublicKey, updated.PublicKey)
 	assert.Equal(t, stored.AttestationType, updated.AttestationType)
@@ -311,6 +312,6 @@ func TestUpdatePasskeyAssertionStateCannotRewriteRegistrationIdentity(t *testing
 func assertUserAuthVersion(t *testing.T, userID int, expected int64) {
 	t.Helper()
 	var version int64
-	require.NoError(t, DB.Model(&User{}).Where("id = ?", userID).Select("auth_version").Scan(&version).Error)
+	require.NoError(t, dbx.DB.Model(&User{}).Where("id = ?", userID).Select("auth_version").Scan(&version).Error)
 	assert.Equal(t, expected, version)
 }

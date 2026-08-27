@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"strconv"
 	"testing"
 	"time"
@@ -31,7 +32,7 @@ func withKeyProbe(t *testing.T, valid, decisive bool) *int {
 // key's units with it.
 func seedMultiKeyChannel(t *testing.T, id int) *Channel {
 	t.Helper()
-	require.NoError(t, DB.AutoMigrate(&Channel{}, &Ability{}, &GatewayConfigRevision{}, &GatewayConfigOutbox{}))
+	require.NoError(t, dbx.DB.AutoMigrate(&Channel{}, &Ability{}, &GatewayConfigRevision{}, &GatewayConfigOutbox{}))
 	require.NoError(t, InitializeGatewayConfigRevision())
 	channel := Channel{
 		Id:     id,
@@ -47,7 +48,7 @@ func seedMultiKeyChannel(t *testing.T, id int) *Channel {
 			MultiKeyMode: constant.MultiKeyModeRandom,
 		},
 	}
-	require.NoError(t, DB.Create(&channel).Error)
+	require.NoError(t, dbx.DB.Create(&channel).Error)
 	return &channel
 }
 
@@ -74,7 +75,7 @@ func TestVerifyKeyAndCascadeDisablesEveryModelOfTheKey(t *testing.T) {
 	}
 
 	var stored Channel
-	require.NoError(t, DB.First(&stored, "id = ?", channel.Id).Error)
+	require.NoError(t, dbx.DB.First(&stored, "id = ?", channel.Id).Error)
 	assert.Equal(t, common.ChannelStatusAutoDisabled, stored.ChannelInfo.MultiKeyStatusList[0],
 		"the channel's key status must record the dead key")
 }
@@ -96,7 +97,7 @@ func TestVerifyKeyAndCascadeIgnoresInconclusiveProbe(t *testing.T) {
 			"an inconclusive probe must not disable model %s", name)
 	}
 	var stored Channel
-	require.NoError(t, DB.First(&stored, "id = ?", channel.Id).Error)
+	require.NoError(t, dbx.DB.First(&stored, "id = ?", channel.Id).Error)
 	assert.Equal(t, common.ChannelStatusEnabled, stored.Status, "channel status must be untouched")
 }
 

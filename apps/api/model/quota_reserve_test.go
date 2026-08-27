@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/common/quotacache"
 	"testing"
 	"time"
@@ -23,7 +24,7 @@ func createReserveTestUser(t *testing.T, quota int) User {
 		Quota:       quota,
 		AffCode:     "reserve-aff-" + common.GetRandomString(8),
 	}
-	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, dbx.DB.Create(&user).Error)
 	return user
 }
 
@@ -44,14 +45,14 @@ func createReserveTestToken(t *testing.T, remainQuota int) Token {
 func getUserQuotaFromDB(t *testing.T, id int) int {
 	t.Helper()
 	var user User
-	require.NoError(t, DB.Select("quota").First(&user, id).Error)
+	require.NoError(t, dbx.DB.Select("quota").First(&user, id).Error)
 	return user.Quota
 }
 
 func getTokenFromDB(t *testing.T, id int) Token {
 	t.Helper()
 	var token Token
-	require.NoError(t, DB.First(&token, id).Error)
+	require.NoError(t, dbx.DB.First(&token, id).Error)
 	return token
 }
 
@@ -166,7 +167,7 @@ func TestSynchronousReserveCompensatesCacheWhenPersistenceFails(t *testing.T) {
 
 	user := createReserveTestUser(t, 10)
 	require.NoError(t, populateUserCache(user))
-	require.NoError(t, DB.Delete(&user).Error)
+	require.NoError(t, dbx.DB.Delete(&user).Error)
 
 	reserved, err := TryReserveUserQuota(user.Id, 6)
 	assert.False(t, reserved)
@@ -178,7 +179,7 @@ func TestSynchronousReserveCompensatesCacheWhenPersistenceFails(t *testing.T) {
 	token := createReserveTestToken(t, 12)
 	_, err = GetTokenByKey(token.Key, true)
 	require.NoError(t, err)
-	require.NoError(t, DB.Delete(&token).Error)
+	require.NoError(t, dbx.DB.Delete(&token).Error)
 	reserved, err = TryReserveTokenQuota(token.Id, token.Key, 7, false)
 	assert.False(t, reserved)
 	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)

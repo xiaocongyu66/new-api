@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -11,8 +12,8 @@ import (
 
 func clearPreferredOwnerTables(t *testing.T) {
 	t.Helper()
-	require.NoError(t, DB.Exec("DELETE FROM abilities").Error)
-	require.NoError(t, DB.Exec("DELETE FROM channels").Error)
+	require.NoError(t, dbx.DB.Exec("DELETE FROM abilities").Error)
+	require.NoError(t, dbx.DB.Exec("DELETE FROM channels").Error)
 }
 
 func insertPreferredOwnerCandidate(
@@ -27,14 +28,14 @@ func insertPreferredOwnerCandidate(
 	abilityEnabled bool,
 ) {
 	t.Helper()
-	require.NoError(t, DB.Create(&Channel{
+	require.NoError(t, dbx.DB.Create(&Channel{
 		Id:     channelID,
 		Type:   channelType,
 		Key:    fmt.Sprintf("key-%d", channelID),
 		Status: channelStatus,
 		Name:   fmt.Sprintf("channel-%d", channelID),
 	}).Error)
-	require.NoError(t, DB.Create(&Ability{
+	require.NoError(t, dbx.DB.Create(&Ability{
 		Group:     group,
 		Model:     modelName,
 		ChannelId: channelID,

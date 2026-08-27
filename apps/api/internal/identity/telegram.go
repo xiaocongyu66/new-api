@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/security/authtoken"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
@@ -118,7 +119,7 @@ func TelegramBind(c contract.Context) {
 		}
 
 		var user model.User
-		userErr := model.DB.First(&user, pendingFlow.UserId).Error
+		userErr := dbx.DB.First(&user, pendingFlow.UserId).Error
 		switch {
 		case errors.Is(userErr, gorm.ErrRecordNotFound):
 			telegramBindFailure(c, telegramBindErrorUserDeleted)

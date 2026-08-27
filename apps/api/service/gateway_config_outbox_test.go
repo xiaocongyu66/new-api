@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"testing"
 	"time"
 
@@ -15,17 +16,17 @@ import (
 )
 
 func TestGatewayConfigOutboxPublishMarksAfterRedisSuccess(t *testing.T) {
-	previousDB, previousRedis, previousRDB := model.DB, common.RedisEnabled, common.RDB
+	previousDB, previousRedis, previousRDB := dbx.DB, common.RedisEnabled, common.RDB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.GatewayConfigOutbox{}))
-	model.DB = db
+	dbx.DB = db
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
 	common.RedisEnabled, common.RDB = true, client
 	t.Cleanup(func() {
 		_ = client.Close()
-		model.DB, common.RedisEnabled, common.RDB = previousDB, previousRedis, previousRDB
+		dbx.DB, common.RedisEnabled, common.RDB = previousDB, previousRedis, previousRDB
 	})
 
 	subscriber := client.Subscribe(context.Background(), GatewayRoutingRevisionChannel)
@@ -41,13 +42,13 @@ func TestGatewayConfigOutboxPublishMarksAfterRedisSuccess(t *testing.T) {
 }
 
 func TestGatewayConfigOutboxPublishFailureKeepsRowPending(t *testing.T) {
-	previousDB, previousRedis, previousRDB := model.DB, common.RedisEnabled, common.RDB
+	previousDB, previousRedis, previousRDB := dbx.DB, common.RedisEnabled, common.RDB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.GatewayConfigOutbox{}))
-	model.DB = db
+	dbx.DB = db
 	common.RedisEnabled, common.RDB = false, nil
-	t.Cleanup(func() { model.DB, common.RedisEnabled, common.RDB = previousDB, previousRedis, previousRDB })
+	t.Cleanup(func() { dbx.DB, common.RedisEnabled, common.RDB = previousDB, previousRedis, previousRDB })
 
 	require.NoError(t, db.Create(&model.GatewayConfigOutbox{RoutingRevision: 12}).Error)
 	require.NoError(t, PublishPendingGatewayRevisions(context.Background(), 10))
@@ -60,12 +61,12 @@ func TestGatewayConfigOutboxPublishFailureKeepsRowPending(t *testing.T) {
 }
 
 func TestGatewayConfigOutboxPublishedMarkerIsIdempotent(t *testing.T) {
-	previousDB := model.DB
+	previousDB := dbx.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.GatewayConfigOutbox{}))
-	model.DB = db
-	t.Cleanup(func() { model.DB = previousDB })
+	dbx.DB = db
+	t.Cleanup(func() { dbx.DB = previousDB })
 
 	first := time.Date(2026, 8, 16, 1, 0, 0, 0, time.UTC)
 	second := first.Add(time.Minute)

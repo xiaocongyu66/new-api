@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -12,14 +13,14 @@ import (
 )
 
 func TestProxyNodeStorageEncryptsAndRoundTrips(t *testing.T) {
-	previousDB := model.DB
+	previousDB := dbx.DB
 	previousSecret := common.CryptoSecret
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.ProxyNode{}))
-	model.DB = db
+	dbx.DB = db
 	common.CryptoSecret = "test-secret"
-	t.Cleanup(func() { model.DB = previousDB; common.CryptoSecret = previousSecret })
+	t.Cleanup(func() { dbx.DB = previousDB; common.CryptoSecret = previousSecret })
 
 	node, err := CreateProxyNode(ProxyNodeInput{
 		Name:       "edge",

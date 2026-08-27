@@ -2,6 +2,7 @@ package channel
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"strings"
 	"testing"
@@ -21,7 +22,7 @@ import (
 func setupChannelSelectAutoGroupsTest(t *testing.T) *gorm.DB {
 	t.Helper()
 
-	originalDB := model.DB
+	originalDB := dbx.DB
 	originalMemoryCacheEnabled := common.MemoryCacheEnabled
 	originalRetryTimes := common.RetryTimes
 	originalAutoGroups := setting.AutoGroups2JsonString()
@@ -33,7 +34,7 @@ func setupChannelSelectAutoGroupsTest(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.Ability{}))
-	model.DB = db
+	dbx.DB = db
 	common.MemoryCacheEnabled = true
 	common.RetryTimes = 0
 
@@ -43,7 +44,7 @@ func setupChannelSelectAutoGroupsTest(t *testing.T) *gorm.DB {
 	require.NoError(t, setting.UpdateMaxTokenAutoGroups("2"))
 
 	t.Cleanup(func() {
-		model.DB = originalDB
+		dbx.DB = originalDB
 		common.MemoryCacheEnabled = originalMemoryCacheEnabled
 		common.RetryTimes = originalRetryTimes
 		require.NoError(t, setting.UpdateAutoGroupsByJsonString(originalAutoGroups))

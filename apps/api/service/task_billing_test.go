@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/QuantumNous/new-api/internal/billing/settlecore"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"math"
 	"net/http"
 	"os"
@@ -32,8 +33,8 @@ func TestMain(m *testing.M) {
 	}
 	sqlDB.SetMaxOpenConns(1)
 
-	model.DB = db
-	model.LOG_DB = db
+	dbx.DB = db
+	dbx.LogDB = db
 
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
@@ -65,23 +66,23 @@ func TestMain(m *testing.M) {
 func truncate(t *testing.T) {
 	t.Helper()
 	t.Cleanup(func() {
-		model.DB.Exec("DELETE FROM tasks")
-		model.DB.Exec("DELETE FROM users")
-		model.DB.Exec("DELETE FROM tokens")
-		model.DB.Exec("DELETE FROM logs")
-		model.DB.Exec("DELETE FROM channels")
-		model.DB.Exec("DELETE FROM midjourneys")
-		model.DB.Exec("DELETE FROM top_ups")
-		model.DB.Exec("DELETE FROM user_subscriptions")
-		model.DB.Exec("DELETE FROM system_task_locks")
-		model.DB.Exec("DELETE FROM system_tasks")
+		dbx.DB.Exec("DELETE FROM tasks")
+		dbx.DB.Exec("DELETE FROM users")
+		dbx.DB.Exec("DELETE FROM tokens")
+		dbx.DB.Exec("DELETE FROM logs")
+		dbx.DB.Exec("DELETE FROM channels")
+		dbx.DB.Exec("DELETE FROM midjourneys")
+		dbx.DB.Exec("DELETE FROM top_ups")
+		dbx.DB.Exec("DELETE FROM user_subscriptions")
+		dbx.DB.Exec("DELETE FROM system_task_locks")
+		dbx.DB.Exec("DELETE FROM system_tasks")
 	})
 }
 
 func seedUser(t *testing.T, id int, quota int) {
 	t.Helper()
 	user := &model.User{Id: id, Username: "test_user", Quota: quota, Status: common.UserStatusEnabled}
-	require.NoError(t, model.DB.Create(user).Error)
+	require.NoError(t, dbx.DB.Create(user).Error)
 }
 
 func seedToken(t *testing.T, id int, userId int, key string, remainQuota int) {
@@ -95,7 +96,7 @@ func seedToken(t *testing.T, id int, userId int, key string, remainQuota int) {
 		RemainQuota: remainQuota,
 		UsedQuota:   0,
 	}
-	require.NoError(t, model.DB.Create(token).Error)
+	require.NoError(t, dbx.DB.Create(token).Error)
 }
 
 func seedSubscription(t *testing.T, id int, userId int, amountTotal int64, amountUsed int64) {
@@ -109,25 +110,25 @@ func seedSubscription(t *testing.T, id int, userId int, amountTotal int64, amoun
 		StartTime:   time.Now().Unix(),
 		EndTime:     time.Now().Add(30 * 24 * time.Hour).Unix(),
 	}
-	require.NoError(t, model.DB.Create(sub).Error)
+	require.NoError(t, dbx.DB.Create(sub).Error)
 }
 
 func seedChannel(t *testing.T, id int) {
 	t.Helper()
 	ch := &model.Channel{Id: id, Name: "test_channel", Key: "sk-test", Status: common.ChannelStatusEnabled}
-	require.NoError(t, model.DB.Create(ch).Error)
+	require.NoError(t, dbx.DB.Create(ch).Error)
 }
 
 func seedChargedAccounting(t *testing.T, userID, channelID, tokenID, quota, requestCount int) {
 	t.Helper()
-	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", userID).Updates(map[string]any{
+	require.NoError(t, dbx.DB.Model(&model.User{}).Where("id = ?", userID).Updates(map[string]any{
 		"used_quota":    quota,
 		"request_count": requestCount,
 	}).Error)
-	require.NoError(t, model.DB.Model(&model.Channel{}).Where("id = ?", channelID).
+	require.NoError(t, dbx.DB.Model(&model.Channel{}).Where("id = ?", channelID).
 		Update("used_quota", quota).Error)
 	if tokenID > 0 {
-		require.NoError(t, model.DB.Model(&model.Token{}).Where("id = ?", tokenID).
+		require.NoError(t, dbx.DB.Model(&model.Token{}).Where("id = ?", tokenID).
 			Update("used_quota", quota).Error)
 	}
 }
@@ -262,63 +263,63 @@ func TestTaskBillingContextPriceDataFiltersMultiplier(t *testing.T) {
 func getUserQuota(t *testing.T, id int) int {
 	t.Helper()
 	var user model.User
-	require.NoError(t, model.DB.Select("quota").Where("id = ?", id).First(&user).Error)
+	require.NoError(t, dbx.DB.Select("quota").Where("id = ?", id).First(&user).Error)
 	return user.Quota
 }
 
 func getUserUsageAccounting(t *testing.T, id int) (int, int) {
 	t.Helper()
 	var user model.User
-	require.NoError(t, model.DB.Select("used_quota", "request_count").Where("id = ?", id).First(&user).Error)
+	require.NoError(t, dbx.DB.Select("used_quota", "request_count").Where("id = ?", id).First(&user).Error)
 	return user.UsedQuota, user.RequestCount
 }
 
 func getChannelUsedQuota(t *testing.T, id int) int64 {
 	t.Helper()
 	var channel model.Channel
-	require.NoError(t, model.DB.Select("used_quota").Where("id = ?", id).First(&channel).Error)
+	require.NoError(t, dbx.DB.Select("used_quota").Where("id = ?", id).First(&channel).Error)
 	return channel.UsedQuota
 }
 
 func getTokenRemainQuota(t *testing.T, id int) int {
 	t.Helper()
 	var token model.Token
-	require.NoError(t, model.DB.Select("remain_quota").Where("id = ?", id).First(&token).Error)
+	require.NoError(t, dbx.DB.Select("remain_quota").Where("id = ?", id).First(&token).Error)
 	return token.RemainQuota
 }
 
 func getTokenUsedQuota(t *testing.T, id int) int {
 	t.Helper()
 	var token model.Token
-	require.NoError(t, model.DB.Select("used_quota").Where("id = ?", id).First(&token).Error)
+	require.NoError(t, dbx.DB.Select("used_quota").Where("id = ?", id).First(&token).Error)
 	return token.UsedQuota
 }
 
 func getSubscriptionUsed(t *testing.T, id int) int64 {
 	t.Helper()
 	var sub model.UserSubscription
-	require.NoError(t, model.DB.Select("amount_used").Where("id = ?", id).First(&sub).Error)
+	require.NoError(t, dbx.DB.Select("amount_used").Where("id = ?", id).First(&sub).Error)
 	return sub.AmountUsed
 }
 
 func getTaskQuota(t *testing.T, id int64) int {
 	t.Helper()
 	var task model.Task
-	require.NoError(t, model.DB.Select("quota").Where("id = ?", id).First(&task).Error)
+	require.NoError(t, dbx.DB.Select("quota").Where("id = ?", id).First(&task).Error)
 	return task.Quota
 }
 
 func getMidjourneyTask(t *testing.T, id int) model.Midjourney {
 	t.Helper()
 	var task model.Midjourney
-	require.NoError(t, model.DB.First(&task, id).Error)
+	require.NoError(t, dbx.DB.First(&task, id).Error)
 	return task
 }
 
 func getLastLog(t *testing.T) *model.Log {
 	t.Helper()
 	var log model.Log
-	err := model.LOG_DB.Order("id desc").First(&log).Error
+	err := dbx.LogDB.Order("id desc").First(&log).Error
 	if err != nil {
 		return nil
 	}
@@ -328,7 +329,7 @@ func getLastLog(t *testing.T) *model.Log {
 func countLogs(t *testing.T) int64 {
 	t.Helper()
 	var count int64
-	model.LOG_DB.Model(&model.Log{}).Count(&count)
+	dbx.LogDB.Model(&model.Log{}).Count(&count)
 	return count
 }
 
@@ -354,7 +355,7 @@ func TestRefundTaskQuota_Wallet(t *testing.T) {
 	seedChargedAccounting(t, userID, channelID, tokenID, preConsumed, 1)
 
 	task := makeTask(userID, channelID, preConsumed, tokenID, settlecore.BillingSourceWallet, 0)
-	require.NoError(t, model.DB.Create(task).Error)
+	require.NoError(t, dbx.DB.Create(task).Error)
 
 	assert.True(t, RefundTaskQuota(ctx, task, "task failed: upstream error"))
 
@@ -395,7 +396,7 @@ func TestRefundTaskQuota_Subscription(t *testing.T) {
 	seedChargedAccounting(t, userID, channelID, tokenID, preConsumed, 1)
 
 	task := makeTask(userID, channelID, preConsumed, tokenID, settlecore.BillingSourceSubscription, subID)
-	require.NoError(t, model.DB.Create(task).Error)
+	require.NoError(t, dbx.DB.Create(task).Error)
 
 	assert.True(t, RefundTaskQuota(ctx, task, "subscription task failed"))
 
@@ -446,7 +447,7 @@ func TestRefundTaskQuota_NoToken(t *testing.T) {
 	seedChargedAccounting(t, userID, channelID, 0, preConsumed, 1)
 
 	task := makeTask(userID, channelID, preConsumed, 0, settlecore.BillingSourceWallet, 0) // TokenId=0
-	require.NoError(t, model.DB.Create(task).Error)
+	require.NoError(t, dbx.DB.Create(task).Error)
 
 	assert.True(t, RefundTaskQuota(ctx, task, "no token task failed"))
 
@@ -474,7 +475,7 @@ func TestRefundTaskQuota_FundingFailureKeepsAccountingAndPendingMarker(t *testin
 	seedChargedAccounting(t, userID, channelID, 0, preConsumed, 1)
 	task := makeTask(userID, channelID, preConsumed, 0, settlecore.BillingSourceSubscription, 9999)
 	task.Status = model.TaskStatusFailure
-	require.NoError(t, model.DB.Create(task).Error)
+	require.NoError(t, dbx.DB.Create(task).Error)
 
 	assert.False(t, RefundTaskQuota(ctx, task, "subscription missing"))
 	assert.Equal(t, 5000, getUserQuota(t, userID))
@@ -714,13 +715,13 @@ func TestCASGuardedRefund_Win(t *testing.T) {
 
 	task := makeTask(userID, channelID, preConsumed, tokenID, settlecore.BillingSourceWallet, 0)
 	task.Status = model.TaskStatus(model.TaskStatusInProgress)
-	require.NoError(t, model.DB.Create(task).Error)
+	require.NoError(t, dbx.DB.Create(task).Error)
 
 	simulatePollBilling(ctx, task, model.TaskStatus(model.TaskStatusFailure), 0)
 
 	// CAS wins: task in DB should now be FAILURE
 	var reloaded model.Task
-	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	require.NoError(t, dbx.DB.First(&reloaded, task.ID).Error)
 	assert.EqualValues(t, model.TaskStatusFailure, reloaded.Status)
 	assert.Zero(t, reloaded.Quota)
 
@@ -753,10 +754,10 @@ func TestCASGuardedRefund_Lose(t *testing.T) {
 	// Create task with IN_PROGRESS in DB
 	task := makeTask(userID, channelID, preConsumed, tokenID, settlecore.BillingSourceWallet, 0)
 	task.Status = model.TaskStatus(model.TaskStatusInProgress)
-	require.NoError(t, model.DB.Create(task).Error)
+	require.NoError(t, dbx.DB.Create(task).Error)
 
 	// Simulate another process already transitioning to FAILURE
-	model.DB.Model(&model.Task{}).Where("id = ?", task.ID).Update("status", model.TaskStatusFailure)
+	dbx.DB.Model(&model.Task{}).Where("id = ?", task.ID).Update("status", model.TaskStatusFailure)
 
 	// Our process still has the old in-memory state (IN_PROGRESS) and tries to transition
 	// task.Status is still IN_PROGRESS in the snapshot
@@ -790,13 +791,13 @@ func TestCASGuardedSettle_Win(t *testing.T) {
 
 	task := makeTask(userID, channelID, preConsumed, tokenID, settlecore.BillingSourceWallet, 0)
 	task.Status = model.TaskStatus(model.TaskStatusInProgress)
-	require.NoError(t, model.DB.Create(task).Error)
+	require.NoError(t, dbx.DB.Create(task).Error)
 
 	simulatePollBilling(ctx, task, model.TaskStatus(model.TaskStatusSuccess), actualQuota)
 
 	// CAS wins: task should be SUCCESS
 	var reloaded model.Task
-	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	require.NoError(t, dbx.DB.First(&reloaded, task.ID).Error)
 	assert.EqualValues(t, model.TaskStatusSuccess, reloaded.Status)
 
 	// Settlement should refund the over-charge (5000 - 3000 = 2000 back to user)
@@ -824,7 +825,7 @@ func TestNonTerminalUpdate_NoBilling(t *testing.T) {
 	task := makeTask(userID, channelID, preConsumed, 0, settlecore.BillingSourceWallet, 0)
 	task.Status = model.TaskStatus(model.TaskStatusInProgress)
 	task.Progress = "20%"
-	require.NoError(t, model.DB.Create(task).Error)
+	require.NoError(t, dbx.DB.Create(task).Error)
 
 	// Simulate a non-terminal poll update (still IN_PROGRESS, progress changed)
 	simulatePollBilling(ctx, task, model.TaskStatus(model.TaskStatusInProgress), 0)
@@ -837,7 +838,7 @@ func TestNonTerminalUpdate_NoBilling(t *testing.T) {
 
 	// Task progress should be updated in DB
 	var reloaded model.Task
-	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	require.NoError(t, dbx.DB.First(&reloaded, task.ID).Error)
 	assert.Equal(t, "50%", reloaded.Progress)
 }
 

@@ -3,6 +3,7 @@ package controller
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -25,8 +26,8 @@ import (
 
 func setupAuthVideoContractTestDB(t *testing.T) {
 	t.Helper()
-	previousDB := model.DB
-	previousLogDB := model.LOG_DB
+	previousDB := dbx.DB
+	previousLogDB := dbx.LogDB
 	previousRedis := common.RedisEnabled
 	previousPasswordLogin := common.PasswordLoginEnabled
 	previousRegisterEnabled := common.RegisterEnabled
@@ -51,8 +52,8 @@ func setupAuthVideoContractTestDB(t *testing.T) {
 		&model.Log{},
 	))
 	require.NoError(t, i18n.Init())
-	model.DB = db
-	model.LOG_DB = db
+	dbx.DB = db
+	dbx.LogDB = db
 	common.RedisEnabled = false
 	common.PasswordLoginEnabled = true
 	common.RegisterEnabled = true
@@ -68,8 +69,8 @@ func setupAuthVideoContractTestDB(t *testing.T) {
 	system_setting.GetFetchSetting().EnableSSRFProtection = false
 
 	t.Cleanup(func() {
-		model.DB = previousDB
-		model.LOG_DB = previousLogDB
+		dbx.DB = previousDB
+		dbx.LogDB = previousLogDB
 		common.RedisEnabled = previousRedis
 		common.PasswordLoginEnabled = previousPasswordLogin
 		common.RegisterEnabled = previousRegisterEnabled
@@ -124,7 +125,7 @@ func createTestTask(t *testing.T, userID int, taskID string, channelID int) *mod
 			ResultURL:      "https://example.com/video.mp4",
 		},
 	}
-	err := model.DB.Create(taskModel).Error
+	err := dbx.DB.Create(taskModel).Error
 	require.NoError(t, err)
 	return taskModel
 }
@@ -139,7 +140,7 @@ func createTestChannel(t *testing.T, channelType int) *model.Channel {
 		BaseURL: &baseURL,
 		Status:  common.ChannelStatusEnabled,
 	}
-	err := model.DB.Create(channel).Error
+	err := dbx.DB.Create(channel).Error
 	require.NoError(t, err)
 	return channel
 }
@@ -401,7 +402,7 @@ func TestVideoProxySuccessPathContract(t *testing.T) {
 
 	// Override channel base URL to point to our test server
 	newBaseURL := upstream.URL
-	model.DB.Model(channel).Update("base_url", &newBaseURL)
+	dbx.DB.Model(channel).Update("base_url", &newBaseURL)
 
 	// Make the request through the video proxy
 	req := httptest.NewRequest(http.MethodGet, "/v1/videos/task-video-1/content", nil)
@@ -428,7 +429,7 @@ func TestVideoProxySuccessPathOpenAIContract(t *testing.T) {
 	channel := createTestChannel(t, constant.ChannelTypeOpenAI)
 	taskModel := createTestTask(t, user.Id, "task-openai-1", channel.Id)
 	// Store API key in private data for OpenAI (though OpenAI uses channel key)
-	model.DB.Model(taskModel).Update("private_data", model.TaskPrivateData{
+	dbx.DB.Model(taskModel).Update("private_data", model.TaskPrivateData{
 		Key:            "",
 		UpstreamTaskID: "upstream-task-openai-1",
 		ResultURL:      "https://example.com/openai-video.mp4",
@@ -446,7 +447,7 @@ func TestVideoProxySuccessPathOpenAIContract(t *testing.T) {
 	defer upstream.Close()
 
 	newBaseURL := upstream.URL
-	model.DB.Model(channel).Update("base_url", &newBaseURL)
+	dbx.DB.Model(channel).Update("base_url", &newBaseURL)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/videos/task-openai-1/content", nil)
 	c, recorder := ginadapter.NewSyntheticContext(req)
@@ -480,7 +481,7 @@ func TestVideoProxyTransfersUpstreamHeadersContract(t *testing.T) {
 	defer upstream.Close()
 
 	newBaseURL := upstream.URL
-	model.DB.Model(channel).Update("base_url", &newBaseURL)
+	dbx.DB.Model(channel).Update("base_url", &newBaseURL)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/videos/task-header-1/content", nil)
 	c, recorder := ginadapter.NewSyntheticContext(req)

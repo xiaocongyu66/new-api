@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"strings"
 	"time"
 
@@ -51,7 +52,7 @@ type Option struct {
 func AllOption() ([]*Option, error) {
 	var options []*Option
 	var err error
-	err = DB.Find(&options).Error
+	err = dbx.DB.Find(&options).Error
 	return options, err
 }
 
@@ -94,7 +95,7 @@ func UpdateOption(key string, value string) error {
 		}
 		return settings.ApplyOption(key, value)
 	}
-	if err := DB.Transaction(func(tx *gorm.DB) error {
+	if err := dbx.DB.Transaction(func(tx *gorm.DB) error {
 		return UpdateOptionWithTx(tx, key, value)
 	}); err != nil {
 		return err
@@ -135,7 +136,7 @@ func UpdateOptionsBulk(values map[string]string) error {
 		if _, err := MutateGatewayRouting(mutate); err != nil {
 			return err
 		}
-	} else if err := DB.Transaction(mutate); err != nil {
+	} else if err := dbx.DB.Transaction(mutate); err != nil {
 		return err
 	}
 	for key, value := range values {

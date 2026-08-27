@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/billing"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"log"
 	"net/http"
 	"os"
@@ -328,7 +329,7 @@ func InitResources() error {
 		common.FatalLog("failed to initialize database: " + err.Error())
 		return err
 	}
-	if err = authz.Init(model.DB); err != nil {
+	if err = authz.Init(dbx.DB); err != nil {
 		common.FatalLog("failed to initialize authorization: " + err.Error())
 		return err
 	}

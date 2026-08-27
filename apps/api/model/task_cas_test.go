@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"os"
 	"sync"
 	"testing"
@@ -19,8 +20,8 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("failed to open test db: " + err.Error())
 	}
-	DB = db
-	LOG_DB = db
+	dbx.DB = db
+	dbx.LogDB = db
 
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
@@ -72,28 +73,28 @@ func TestMain(m *testing.M) {
 func truncateTables(t *testing.T) {
 	t.Helper()
 	t.Cleanup(func() {
-		DB.Exec("DELETE FROM tasks")
-		DB.Exec("DELETE FROM auth_flows")
-		DB.Exec("DELETE FROM external_identity_claims")
-		DB.Exec("DELETE FROM user_sessions")
-		DB.Exec("DELETE FROM passkey_credentials")
-		DB.Exec("DELETE FROM two_fa_backup_codes")
-		DB.Exec("DELETE FROM two_fas")
-		DB.Exec("DELETE FROM tokens")
-		DB.Exec("DELETE FROM user_oauth_bindings")
-		DB.Exec("DELETE FROM users")
-		DB.Exec("DELETE FROM logs")
-		DB.Exec("DELETE FROM channels")
-		DB.Exec("DELETE FROM quota_data")
-		DB.Exec("DELETE FROM abilities")
-		DB.Exec("DELETE FROM top_ups")
-		DB.Exec("DELETE FROM subscription_orders")
-		DB.Exec("DELETE FROM subscription_plans")
-		DB.Exec("DELETE FROM user_subscriptions")
-		DB.Exec("DELETE FROM perf_metrics")
-		DB.Exec("DELETE FROM system_instances")
-		DB.Exec("DELETE FROM system_task_locks")
-		DB.Exec("DELETE FROM system_tasks")
+		dbx.DB.Exec("DELETE FROM tasks")
+		dbx.DB.Exec("DELETE FROM auth_flows")
+		dbx.DB.Exec("DELETE FROM external_identity_claims")
+		dbx.DB.Exec("DELETE FROM user_sessions")
+		dbx.DB.Exec("DELETE FROM passkey_credentials")
+		dbx.DB.Exec("DELETE FROM two_fa_backup_codes")
+		dbx.DB.Exec("DELETE FROM two_fas")
+		dbx.DB.Exec("DELETE FROM tokens")
+		dbx.DB.Exec("DELETE FROM user_oauth_bindings")
+		dbx.DB.Exec("DELETE FROM users")
+		dbx.DB.Exec("DELETE FROM logs")
+		dbx.DB.Exec("DELETE FROM channels")
+		dbx.DB.Exec("DELETE FROM quota_data")
+		dbx.DB.Exec("DELETE FROM abilities")
+		dbx.DB.Exec("DELETE FROM top_ups")
+		dbx.DB.Exec("DELETE FROM subscription_orders")
+		dbx.DB.Exec("DELETE FROM subscription_plans")
+		dbx.DB.Exec("DELETE FROM user_subscriptions")
+		dbx.DB.Exec("DELETE FROM perf_metrics")
+		dbx.DB.Exec("DELETE FROM system_instances")
+		dbx.DB.Exec("DELETE FROM system_task_locks")
+		dbx.DB.Exec("DELETE FROM system_tasks")
 	})
 }
 
@@ -101,7 +102,7 @@ func insertTask(t *testing.T, task *Task) {
 	t.Helper()
 	task.CreatedAt = time.Now().Unix()
 	task.UpdatedAt = time.Now().Unix()
-	require.NoError(t, DB.Create(task).Error)
+	require.NoError(t, dbx.DB.Create(task).Error)
 }
 
 // ---------------------------------------------------------------------------
@@ -190,7 +191,7 @@ func TestUpdateWithStatus_Win(t *testing.T) {
 	assert.True(t, won)
 
 	var reloaded Task
-	require.NoError(t, DB.First(&reloaded, task.ID).Error)
+	require.NoError(t, dbx.DB.First(&reloaded, task.ID).Error)
 	assert.EqualValues(t, TaskStatusSuccess, reloaded.Status)
 	assert.Equal(t, "100%", reloaded.Progress)
 }
@@ -211,7 +212,7 @@ func TestUpdateWithStatus_Lose(t *testing.T) {
 	assert.False(t, won)
 
 	var reloaded Task
-	require.NoError(t, DB.First(&reloaded, task.ID).Error)
+	require.NoError(t, dbx.DB.First(&reloaded, task.ID).Error)
 	assert.EqualValues(t, TaskStatusFailure, reloaded.Status) // unchanged
 }
 

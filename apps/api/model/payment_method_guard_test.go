@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"testing"
 	"time"
 
@@ -17,7 +18,7 @@ func insertUserForPaymentGuardTest(t *testing.T, id int, quota int) *User {
 		Status:   common.UserStatusEnabled,
 		Quota:    quota,
 	}
-	require.NoError(t, DB.Create(user).Error)
+	require.NoError(t, dbx.DB.Create(user).Error)
 	return user
 }
 
@@ -33,7 +34,7 @@ func insertSubscriptionPlanForPaymentGuardTest(t *testing.T, id int) *Subscripti
 		Enabled:       true,
 		TotalAmount:   1000,
 	}
-	require.NoError(t, DB.Create(plan).Error)
+	require.NoError(t, dbx.DB.Create(plan).Error)
 	return plan
 }
 
@@ -77,14 +78,14 @@ func getTopUpStatusForPaymentGuardTest(t *testing.T, tradeNo string) string {
 func countUserSubscriptionsForPaymentGuardTest(t *testing.T, userID int) int64 {
 	t.Helper()
 	var count int64
-	require.NoError(t, DB.Model(&UserSubscription{}).Where("user_id = ?", userID).Count(&count).Error)
+	require.NoError(t, dbx.DB.Model(&UserSubscription{}).Where("user_id = ?", userID).Count(&count).Error)
 	return count
 }
 
 func getUserQuotaForPaymentGuardTest(t *testing.T, userID int) int {
 	t.Helper()
 	var user User
-	require.NoError(t, DB.Select("quota").Where("id = ?", userID).First(&user).Error)
+	require.NoError(t, dbx.DB.Select("quota").Where("id = ?", userID).First(&user).Error)
 	return user.Quota
 }
 
@@ -186,7 +187,7 @@ func createEpayTestOrder(t *testing.T, userId int, tradeNo string, provider stri
 		CreateTime:      common.GetTimestamp(),
 		Status:          status,
 	}
-	require.NoError(t, DB.Create(&topUp).Error)
+	require.NoError(t, dbx.DB.Create(&topUp).Error)
 	return topUp
 }
 

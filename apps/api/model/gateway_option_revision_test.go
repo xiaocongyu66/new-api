@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -23,14 +24,14 @@ func TestGatewayRoutingOptionAllowlistIsExplicit(t *testing.T) {
 }
 
 func TestGatewayRoutingOptionUpdateCommitsOneRevision(t *testing.T) {
-	previousDB := DB
+	previousDB := dbx.DB
 	previousOptionMap := common.OptionMap
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&Option{}, &GatewayConfigRevision{}, &GatewayConfigOutbox{}))
-	DB = db
+	dbx.DB = db
 	common.OptionMap = make(map[string]string)
-	t.Cleanup(func() { DB, common.OptionMap = previousDB, previousOptionMap })
+	t.Cleanup(func() { dbx.DB, common.OptionMap = previousDB, previousOptionMap })
 	require.NoError(t, InitializeGatewayConfigRevision())
 
 	require.NoError(t, UpdateOption("ModelPrice", "{}"))
@@ -41,14 +42,14 @@ func TestGatewayRoutingOptionUpdateCommitsOneRevision(t *testing.T) {
 }
 
 func TestGatewayRoutingOptionBulkCommitsOneRevision(t *testing.T) {
-	previousDB := DB
+	previousDB := dbx.DB
 	previousOptionMap := common.OptionMap
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&Option{}, &GatewayConfigRevision{}, &GatewayConfigOutbox{}))
-	DB = db
+	dbx.DB = db
 	common.OptionMap = make(map[string]string)
-	t.Cleanup(func() { DB, common.OptionMap = previousDB, previousOptionMap })
+	t.Cleanup(func() { dbx.DB, common.OptionMap = previousDB, previousOptionMap })
 	require.NoError(t, InitializeGatewayConfigRevision())
 
 	require.NoError(t, UpdateOptionsBulk(map[string]string{"ModelRatio": "{}", "SMTPToken": "synthetic"}))

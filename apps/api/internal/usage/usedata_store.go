@@ -2,13 +2,14 @@ package usage
 
 import (
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/model"
 	"gorm.io/gorm"
 )
 
 func GetQuotaDataByUsername(username string, startTime int64, endTime int64) (quotaData []*model.QuotaData, err error) {
 	var quotaDatas []*model.QuotaData
-	err = model.DB.Table("quota_data").
+	err = dbx.DB.Table("quota_data").
 		Select("user_id, username, model_name, created_at, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used").
 		Where("username = ? and created_at >= ? and created_at <= ?", username, startTime, endTime).
 		Group("user_id, username, model_name, created_at").
@@ -18,7 +19,7 @@ func GetQuotaDataByUsername(username string, startTime int64, endTime int64) (qu
 
 func GetQuotaDataByUserId(userId int, startTime int64, endTime int64) (quotaData []*model.QuotaData, err error) {
 	var quotaDatas []*model.QuotaData
-	err = model.DB.Table("quota_data").
+	err = dbx.DB.Table("quota_data").
 		Select("user_id, username, model_name, created_at, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used").
 		Where("user_id = ? and created_at >= ? and created_at <= ?", userId, startTime, endTime).
 		Group("user_id, username, model_name, created_at").
@@ -28,7 +29,7 @@ func GetQuotaDataByUserId(userId int, startTime int64, endTime int64) (quotaData
 
 func GetQuotaDataGroupByUser(startTime int64, endTime int64) (quotaData []*model.QuotaData, err error) {
 	var quotaDatas []*model.QuotaData
-	err = model.DB.Table("quota_data").
+	err = dbx.DB.Table("quota_data").
 		Select("username, created_at, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used").
 		Where("created_at >= ? and created_at <= ?", startTime, endTime).
 		Group("username, created_at").
@@ -41,14 +42,14 @@ func GetAllQuotaDatesInternal(startTime int64, endTime int64, username string) (
 		return GetQuotaDataByUsername(username, startTime, endTime)
 	}
 	var quotaDatas []*model.QuotaData
-	err = model.DB.Table("quota_data").Select("model_name, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used, created_at").Where("created_at >= ? and created_at <= ?", startTime, endTime).Group("model_name, created_at").Find(&quotaDatas).Error
+	err = dbx.DB.Table("quota_data").Select("model_name, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used, created_at").Where("created_at >= ? and created_at <= ?", startTime, endTime).Group("model_name, created_at").Find(&quotaDatas).Error
 	return quotaDatas, err
 }
 
 type FlowQuotaData = model.FlowQuotaData
 
 func flowQuotaBaseQuery(startTime int64, endTime int64) *gorm.DB {
-	query := model.DB.Table("quota_data").
+	query := dbx.DB.Table("quota_data").
 		Where("use_group <> ''").
 		Where("created_at >= ? and created_at <= ?", startTime, endTime)
 	return query
@@ -125,7 +126,7 @@ func fillFlowTokenNames(rows []*FlowQuotaData) error {
 		Name string
 	}
 	var tokenNames []tokenNameRow
-	if err := model.DB.Table("tokens").Select("id, name").Where("id IN ?", tokenIds).Find(&tokenNames).Error; err != nil {
+	if err := dbx.DB.Table("tokens").Select("id, name").Where("id IN ?", tokenIds).Find(&tokenNames).Error; err != nil {
 		return err
 	}
 	nameMap := make(map[int]string, len(tokenNames))
@@ -165,7 +166,7 @@ func fillFlowChannelNames(rows []*FlowQuotaData) error {
 			}
 		}
 	} else {
-		if err := model.DB.Table("channels").Select("id, name").Where("id IN ?", channelIds).Find(&channelNames).Error; err != nil {
+		if err := dbx.DB.Table("channels").Select("id, name").Where("id IN ?", channelIds).Find(&channelNames).Error; err != nil {
 			return err
 		}
 	}

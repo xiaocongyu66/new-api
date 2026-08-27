@@ -2,6 +2,7 @@ package billing
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/usage"
 	"strconv"
@@ -37,7 +38,7 @@ func GetSubscriptionPlans(c contract.Context) {
 	}
 
 	var plans []model.SubscriptionPlan
-	if err := model.DB.Where("enabled = ?", true).Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
+	if err := dbx.DB.Where("enabled = ?", true).Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -121,7 +122,7 @@ func SubscriptionRequestBalancePay(c contract.Context) {
 
 func AdminListSubscriptionPlans(c contract.Context) {
 	var plans []model.SubscriptionPlan
-	if err := model.DB.Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
+	if err := dbx.DB.Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -205,7 +206,7 @@ func AdminCreateSubscriptionPlan(c contract.Context) {
 		common.CtxApiErrorMsg(c, "自定义重置周期需大于0秒")
 		return
 	}
-	err := model.DB.Create(&req.Plan).Error
+	err := dbx.DB.Create(&req.Plan).Error
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -280,7 +281,7 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 		return
 	}
 
-	err := model.DB.Transaction(func(tx *gorm.DB) error {
+	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
 		// update plan (allow zero values updates with map)
 		updateMap := map[string]interface{}{
 			"title":                      req.Plan.Title,
@@ -341,7 +342,7 @@ func AdminUpdateSubscriptionPlanStatus(c contract.Context) {
 		common.CtxApiErrorMsg(c, "参数错误")
 		return
 	}
-	if err := model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Update("enabled", *req.Enabled).Error; err != nil {
+	if err := dbx.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Update("enabled", *req.Enabled).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
 	}

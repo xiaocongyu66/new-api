@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/common/quotacache"
 	"strconv"
 
@@ -184,7 +185,7 @@ func IncrementUserAuthVersionWithTx(tx *gorm.DB, userId int) (int64, error) {
 	}
 	for range 3 {
 		var user User
-		if err := LockForUpdate(tx.Unscoped()).Select("id", "auth_version").Where("id = ?", userId).First(&user).Error; err != nil {
+		if err := dbx.LockForUpdate(tx.Unscoped()).Select("id", "auth_version").Where("id = ?", userId).First(&user).Error; err != nil {
 			return 0, err
 		}
 		current := user.AuthVersion
@@ -212,7 +213,7 @@ func IncrementUserAuthVersionWithTx(tx *gorm.DB, userId int) (int64, error) {
 // role, status and security-factor changes outside another transaction.
 func BumpUserAuthVersion(userId int) (int64, error) {
 	var next int64
-	if err := DB.Transaction(func(tx *gorm.DB) error {
+	if err := dbx.DB.Transaction(func(tx *gorm.DB) error {
 		var err error
 		next, err = IncrementUserAuthVersionWithTx(tx, userId)
 		return err
@@ -238,7 +239,7 @@ func PublishUserAuthCache(userId int) error {
 // InitializeUserAuthVersions must run after AutoMigrate when upgrading an
 // existing database. It is idempotent and portable across all supported DBs.
 func InitializeUserAuthVersions() error {
-	return DB.Model(&User{}).Where("auth_version IS NULL OR auth_version < ?", 1).Update("auth_version", 1).Error
+	return dbx.DB.Model(&User{}).Where("auth_version IS NULL OR auth_version < ?", 1).Update("auth_version", 1).Error
 }
 
 func updateUserCacheFieldAtVersion(userId int, field string, value interface{}, authVersion int64) error {

@@ -1,5 +1,9 @@
 package model
 
+import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
+)
+
 type Setup struct {
 	ID            uint   `json:"id" gorm:"primaryKey"`
 	Version       string `json:"version" gorm:"type:varchar(50);not null"`
@@ -8,7 +12,7 @@ type Setup struct {
 
 func GetSetup() *Setup {
 	var setup Setup
-	err := DB.First(&setup).Error
+	err := dbx.DB.First(&setup).Error
 	if err != nil {
 		return nil
 	}

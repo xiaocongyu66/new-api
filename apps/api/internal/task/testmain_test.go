@@ -2,6 +2,7 @@ package task
 
 import (
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"os"
 	"testing"
 
@@ -15,8 +16,8 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("failed to open test db: " + err.Error())
 	}
-	model.DB = db
-	model.LOG_DB = db
+	dbx.DB = db
+	dbx.LogDB = db
 
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
@@ -67,27 +68,27 @@ func TestMain(m *testing.M) {
 func truncateTables(t *testing.T) {
 	t.Helper()
 	t.Cleanup(func() {
-		model.DB.Exec("DELETE FROM tasks")
-		model.DB.Exec("DELETE FROM auth_flows")
-		model.DB.Exec("DELETE FROM external_identity_claims")
-		model.DB.Exec("DELETE FROM user_sessions")
-		model.DB.Exec("DELETE FROM passkey_credentials")
-		model.DB.Exec("DELETE FROM two_fa_backup_codes")
-		model.DB.Exec("DELETE FROM two_fas")
-		model.DB.Exec("DELETE FROM tokens")
-		model.DB.Exec("DELETE FROM user_oauth_bindings")
-		model.DB.Exec("DELETE FROM users")
-		model.DB.Exec("DELETE FROM logs")
-		model.DB.Exec("DELETE FROM channels")
-		model.DB.Exec("DELETE FROM quota_data")
-		model.DB.Exec("DELETE FROM abilities")
-		model.DB.Exec("DELETE FROM top_ups")
-		model.DB.Exec("DELETE FROM subscription_orders")
-		model.DB.Exec("DELETE FROM subscription_plans")
-		model.DB.Exec("DELETE FROM user_subscriptions")
-		model.DB.Exec("DELETE FROM perf_metrics")
-		model.DB.Exec("DELETE FROM system_instances")
-		model.DB.Exec("DELETE FROM system_task_locks")
-		model.DB.Exec("DELETE FROM system_tasks")
+		dbx.DB.Exec("DELETE FROM tasks")
+		dbx.DB.Exec("DELETE FROM auth_flows")
+		dbx.DB.Exec("DELETE FROM external_identity_claims")
+		dbx.DB.Exec("DELETE FROM user_sessions")
+		dbx.DB.Exec("DELETE FROM passkey_credentials")
+		dbx.DB.Exec("DELETE FROM two_fa_backup_codes")
+		dbx.DB.Exec("DELETE FROM two_fas")
+		dbx.DB.Exec("DELETE FROM tokens")
+		dbx.DB.Exec("DELETE FROM user_oauth_bindings")
+		dbx.DB.Exec("DELETE FROM users")
+		dbx.DB.Exec("DELETE FROM logs")
+		dbx.DB.Exec("DELETE FROM channels")
+		dbx.DB.Exec("DELETE FROM quota_data")
+		dbx.DB.Exec("DELETE FROM abilities")
+		dbx.DB.Exec("DELETE FROM top_ups")
+		dbx.DB.Exec("DELETE FROM subscription_orders")
+		dbx.DB.Exec("DELETE FROM subscription_plans")
+		dbx.DB.Exec("DELETE FROM user_subscriptions")
+		dbx.DB.Exec("DELETE FROM perf_metrics")
+		dbx.DB.Exec("DELETE FROM system_instances")
+		dbx.DB.Exec("DELETE FROM system_task_locks")
+		dbx.DB.Exec("DELETE FROM system_tasks")
 	})
 }

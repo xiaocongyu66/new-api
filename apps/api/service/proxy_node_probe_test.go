@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"testing"
 	"time"
 
@@ -88,12 +89,12 @@ func TestProxyNodeProbeFailurePersistsRedactedState(t *testing.T) {
 }
 
 func TestProbeProxyNodePersistsFailureState(t *testing.T) {
-	previousDB := model.DB
+	previousDB := dbx.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.ProxyNode{}))
-	model.DB = db
-	t.Cleanup(func() { model.DB = previousDB })
+	dbx.DB = db
+	t.Cleanup(func() { dbx.DB = previousDB })
 
 	node := &model.ProxyNode{Name: "broken", Enabled: true, EncryptedProxyConfig: "not-valid-ciphertext", Health: 1}
 	require.NoError(t, db.Create(node).Error)

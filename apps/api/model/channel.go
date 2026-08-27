@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"math/rand/v2"
 	"strings"
 	"sync"
@@ -140,9 +141,9 @@ func NormalizeChannelGroupFilter(group string) string {
 
 func channelGroupFilterCondition() string {
 	if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
-		return `CONCAT(',', ` + commonGroupCol + `, ',') LIKE ? ESCAPE '!'`
+		return `CONCAT(',', ` + dbx.GroupCol() + `, ',') LIKE ? ESCAPE '!'`
 	}
-	return `(',' || ` + commonGroupCol + ` || ',') LIKE ? ESCAPE '!'`
+	return `(',' || ` + dbx.GroupCol() + ` || ',') LIKE ? ESCAPE '!'`
 }
 
 func channelGroupFilterPattern(group string) string {
@@ -281,7 +282,7 @@ func (channel *Channel) GetNextEnabledKey(model string) (string, int, *types.New
 }
 
 func (channel *Channel) SaveChannelInfo() error {
-	return DB.Model(channel).Update("channel_info", channel.ChannelInfo).Error
+	return dbx.DB.Model(channel).Update("channel_info", channel.ChannelInfo).Error
 }
 
 func (channel *Channel) GetModels() []string {
@@ -341,14 +342,14 @@ func (channel *Channel) GetAutoBan() bool {
 }
 
 func (channel *Channel) Save() error {
-	return DB.Save(channel).Error
+	return dbx.DB.Save(channel).Error
 }
 
 // saveStatusState persists only the fields owned by the channel status flow.
 // Keeping this allowlist here prevents a stale channel snapshot from
 // overwriting credentials, accounting counters, or channel configuration.
 func (channel *Channel) saveStatusState() error {
-	return channel.SaveStatusStateWithTx(DB)
+	return channel.SaveStatusStateWithTx(dbx.DB)
 }
 
 // SaveStatusStateWithTx is the tx-aware form of saveStatusState. It writes the
@@ -376,9 +377,9 @@ func GetAllChannels(startIdx int, num int, selectAll bool, idSort bool, sortOpti
 	var err error
 	order := resolveChannelSortOptions(idSort, sortOptions)
 	if selectAll {
-		err = order.Apply(DB).Find(&channels).Error
+		err = order.Apply(dbx.DB).Find(&channels).Error
 	} else {
-		err = order.Apply(DB).Limit(num).Offset(startIdx).Omit("key").Find(&channels).Error
+		err = order.Apply(dbx.DB).Limit(num).Offset(startIdx).Omit("key").Find(&channels).Error
 	}
 	return channels, err
 }
@@ -386,7 +387,7 @@ func GetAllChannels(startIdx int, num int, selectAll bool, idSort bool, sortOpti
 func GetChannelsByTag(tag string, idSort bool, selectAll bool, sortOptions ...ChannelSortOptions) ([]*Channel, error) {
 	var channels []*Channel
 	order := resolveChannelSortOptions(idSort, sortOptions)
-	query := order.Apply(DB.Where("tag = ?", tag))
+	query := order.Apply(dbx.DB.Where("tag = ?", tag))
 	if !selectAll {
 		query = query.Omit("key")
 	}
@@ -412,10 +413,10 @@ func SearchChannels(keyword string, group string, model string, idSort bool, sor
 	order := resolveChannelSortOptions(idSort, sortOptions)
 
 	// 构造基础查询
-	baseQuery := DB.Model(&Channel{}).Omit("key")
+	baseQuery := dbx.DB.Model(&Channel{}).Omit("key")
 
 	// 构造WHERE子句
-	whereClause := "(id = ? OR name LIKE ? OR " + commonKeyCol + " = ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + " LIKE ?"
+	whereClause := "(id = ? OR name LIKE ? OR " + dbx.KeyCol() + " = ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + " LIKE ?"
 	args := []any{common.String2Int(keyword), "%" + keyword + "%", keyword, "%" + keyword + "%", "%" + model + "%"}
 	baseQuery = ApplyChannelGroupFilter(baseQuery.Where(whereClause, args...), group)
 
@@ -431,9 +432,9 @@ func GetChannelById(id int, selectAll bool) (*Channel, error) {
 	channel := &Channel{Id: id}
 	var err error = nil
 	if selectAll {
-		err = DB.First(channel, "id = ?", id).Error
+		err = dbx.DB.First(channel, "id = ?", id).Error
 	} else {
-		err = DB.Omit("key").First(channel, "id = ?", id).Error
+		err = dbx.DB.Omit("key").First(channel, "id = ?", id).Error
 	}
 	if err != nil {
 		return nil, err
@@ -617,7 +618,7 @@ func (channel *Channel) Update() error {
 }
 
 func (channel *Channel) UpdateResponseTime(responseTime int64) {
-	err := DB.Model(channel).Select("response_time", "test_time").Updates(Channel{
+	err := dbx.DB.Model(channel).Select("response_time", "test_time").Updates(Channel{
 		TestTime:     common.GetTimestamp(),
 		ResponseTime: int(responseTime),
 	}).Error
@@ -627,7 +628,7 @@ func (channel *Channel) UpdateResponseTime(responseTime int64) {
 }
 
 func (channel *Channel) UpdateBalance(balance float64) {
-	err := DB.Model(channel).Select("balance_updated_time", "balance").Updates(Channel{
+	err := dbx.DB.Model(channel).Select("balance_updated_time", "balance").Updates(Channel{
 		BalanceUpdatedTime: common.GetTimestamp(),
 		Balance:            balance,
 	}).Error
@@ -964,7 +965,7 @@ func UpdateChannelUsedQuota(id int, quota int) {
 }
 
 func updateChannelUsedQuota(id int, quota int) {
-	err := DB.Model(&Channel{}).Where("id = ?", id).Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error
+	err := dbx.DB.Model(&Channel{}).Where("id = ?", id).Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error
 	if err != nil {
 		common.SysLog(fmt.Sprintf("failed to update channel used quota: channel_id=%d, delta_quota=%d, error=%v", id, quota, err))
 	}
@@ -1071,10 +1072,10 @@ func SearchTags(keyword string, group string, model string, idSort bool) ([]*str
 	}
 
 	// 构造基础查询
-	baseQuery := DB.Model(&Channel{}).Omit("key")
+	baseQuery := dbx.DB.Model(&Channel{}).Omit("key")
 
 	// 构造WHERE子句
-	whereClause := "(id = ? OR name LIKE ? OR " + commonKeyCol + " = ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + " LIKE ?"
+	whereClause := "(id = ? OR name LIKE ? OR " + dbx.KeyCol() + " = ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + " LIKE ?"
 	args := []any{common.String2Int(keyword), "%" + keyword + "%", keyword, "%" + keyword + "%", "%" + model + "%"}
 	baseQuery = ApplyChannelGroupFilter(baseQuery.Where(whereClause, args...), group)
 
@@ -1083,7 +1084,7 @@ func SearchTags(keyword string, group string, model string, idSort bool) ([]*str
 		Where("tag != ''").
 		Order(order)
 
-	err := DB.Table("(?) as sub", subQuery).
+	err := dbx.DB.Table("(?) as sub", subQuery).
 		Select("DISTINCT tag").
 		Find(&tags).Error
 
@@ -1201,13 +1202,13 @@ func (channel *Channel) GetHeaderOverride() map[string]interface{} {
 
 func GetChannelsByIds(ids []int) ([]*Channel, error) {
 	var channels []*Channel
-	err := DB.Where("id in (?)", ids).Find(&channels).Error
+	err := dbx.DB.Where("id in (?)", ids).Find(&channels).Error
 	return channels, err
 }
 
 func BatchSetChannelTag(ids []int, tag *string) error {
 	// 开启事务
-	tx := DB.Begin()
+	tx := dbx.DB.Begin()
 	if tx.Error != nil {
 		return tx.Error
 	}
@@ -1241,13 +1242,13 @@ func BatchSetChannelTag(ids []int, tag *string) error {
 // CountAllChannels returns total channels in DB
 func CountAllChannels() (int64, error) {
 	var total int64
-	err := DB.Model(&Channel{}).Count(&total).Error
+	err := dbx.DB.Model(&Channel{}).Count(&total).Error
 	return total, err
 }
 
 // CountAllTags returns number of non-empty distinct tags
 func CountAllTags() (int64, error) {
-	return CountChannelTags(DB.Model(&Channel{}))
+	return CountChannelTags(dbx.DB.Model(&Channel{}))
 }
 
 func CountChannelTags(query *gorm.DB) (int64, error) {

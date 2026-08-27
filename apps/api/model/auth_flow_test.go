@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"testing"
 	"time"
 
@@ -62,7 +63,7 @@ func TestAuthFlowExpiryIsEnforced(t *testing.T) {
 		ExpiresAt: time.Now().Add(time.Minute),
 	})
 	require.NoError(t, err)
-	require.NoError(t, DB.Model(&AuthFlow{}).Where("id = ?", flow.Id).Update("expires_at", time.Now().Add(-time.Second)).Error)
+	require.NoError(t, dbx.DB.Model(&AuthFlow{}).Where("id = ?", flow.Id).Update("expires_at", time.Now().Add(-time.Second)).Error)
 
 	_, err = GetAuthFlow(token, AuthFlowMatch{Purpose: AuthFlowPurposeTwoFALogin})
 	assert.True(t, errors.Is(err, ErrAuthFlowExpired))

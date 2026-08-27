@@ -3,6 +3,7 @@ package identity
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/security/authtoken"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/usage"
@@ -284,7 +285,7 @@ func Register(c contract.Context) {
 
 	// 获取插入后的用户ID
 	var insertedUser model.User
-	if err := model.DB.Where("username = ?", cleanUser.Username).First(&insertedUser).Error; err != nil {
+	if err := dbx.DB.Where("username = ?", cleanUser.Username).First(&insertedUser).Error; err != nil {
 		common.CtxApiErrorI18n(c, i18n.MsgUserRegisterFailed)
 		return
 	}
@@ -408,7 +409,7 @@ func GenerateAccessToken(c contract.Context) {
 		common.SysLog("failed to generate key: " + err.Error())
 		return
 	}
-	if model.DB.Where("access_token = ?", key).First(&model.User{}).RowsAffected != 0 {
+	if dbx.DB.Where("access_token = ?", key).First(&model.User{}).RowsAffected != 0 {
 		common.CtxApiErrorI18n(c, i18n.MsgUuidDuplicate)
 		return
 	}
@@ -638,7 +639,7 @@ func UpdateUser(c contract.Context) {
 	}
 	updatePassword := updatedUser.Password != ""
 	authzTouched := false
-	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+	if err := dbx.DB.Transaction(func(tx *gorm.DB) error {
 		if err := updatedUser.EditWithTx(tx, updatePassword); err != nil {
 			return err
 		}
@@ -825,7 +826,7 @@ func UpdateSelf(c contract.Context) {
 			common.CtxApiError(c, errors.New("当前认证方式不支持安全验证"))
 			return
 		}
-		if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := dbx.DB.Transaction(func(tx *gorm.DB) error {
 			return cleanUser.UpdateWithTx(tx, true)
 		}); err != nil {
 			common.CtxApiError(c, err)
@@ -965,7 +966,7 @@ func CreateUser(c contract.Context) {
 		Role:        user.Role, // 保持管理员设置的角色
 	}
 	authzTouched := false
-	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+	if err := dbx.DB.Transaction(func(tx *gorm.DB) error {
 		if err := cleanUser.InsertWithTx(tx, 0); err != nil {
 			return err
 		}
@@ -1031,7 +1032,7 @@ func ManageUser(c contract.Context) {
 		Id: req.Id,
 	}
 	// Fill attributes
-	model.DB.Unscoped().Where(&user).First(&user)
+	dbx.DB.Unscoped().Where(&user).First(&user)
 	if user.Id == 0 {
 		common.CtxApiErrorI18n(c, i18n.MsgUserNotExists)
 		return
@@ -1137,7 +1138,7 @@ func ManageUser(c contract.Context) {
 			})
 		case "override":
 			oldQuota := user.Quota
-			if err := model.DB.Model(&model.User{}).Where("id = ?", user.Id).Update("quota", req.Value).Error; err != nil {
+			if err := dbx.DB.Model(&model.User{}).Where("id = ?", user.Id).Update("quota", req.Value).Error; err != nil {
 				common.CtxApiError(c, err)
 				return
 			}
@@ -1160,7 +1161,7 @@ func ManageUser(c contract.Context) {
 	}
 
 	if req.Action == "demote" {
-		if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := dbx.DB.Transaction(func(tx *gorm.DB) error {
 			if err := user.UpdateWithTx(tx, false); err != nil {
 				return err
 			}

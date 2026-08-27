@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"sync"
 	"time"
 
@@ -95,7 +96,7 @@ func IsRouteHealthy(key RouteKey, now time.Time) bool {
 	} else {
 		newDormantCount = state.DormantDisableCount
 	}
-	result := DB.Model(&ChannelModelHealth{}).
+	result := dbx.DB.Model(&ChannelModelHealth{}).
 		Where("channel_id = ? AND key_index = ? AND model = ? AND version = ?", key.ChannelId, key.KeyIndex, key.Model, state.Version).
 		Updates(map[string]interface{}{
 			"state":                 HealthHealthy,
@@ -115,7 +116,7 @@ func IsRouteHealthy(key RouteKey, now time.Time) bool {
 	}
 
 	var row ChannelModelHealth
-	if err := DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error; err != nil {
+	if err := dbx.DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error; err != nil {
 		common.SysError("failed to refresh channel model health after expiry CAS: " + err.Error())
 		return false
 	}
@@ -227,7 +228,7 @@ func ClearRouteHealthCache() {
 // are inserted directly by RecordRetryableFailure and mirrored immediately.
 func InitChannelModelHealthCache() {
 	var rows []ChannelModelHealth
-	if err := DB.Find(&rows).Error; err != nil {
+	if err := dbx.DB.Find(&rows).Error; err != nil {
 		common.SysError("failed to load channel model health cache: " + err.Error())
 		return
 	}
@@ -310,12 +311,12 @@ func RecordRetryableFailure(key RouteKey, errorCode string, source FailureSource
 	for attempt := 0; attempt < casMaxAttempts; attempt++ {
 		casBackoff(attempt)
 		var row ChannelModelHealth
-		if err := DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error; err != nil {
+		if err := dbx.DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error; err != nil {
 			if err != gorm.ErrRecordNotFound {
 				return err
 			}
 			row = ChannelModelHealth{ChannelId: key.ChannelId, KeyIndex: key.KeyIndex, Model: key.Model, State: HealthHealthy, Version: 1}
-			if err := DB.Create(&row).Error; err != nil {
+			if err := dbx.DB.Create(&row).Error; err != nil {
 				continue
 			}
 		}
@@ -326,7 +327,7 @@ func RecordRetryableFailure(key RouteKey, errorCode string, source FailureSource
 			newCount = row.UpstreamFailureCount + 1
 		}
 		if newCount < threshold {
-			q := DB.Model(&ChannelModelHealth{}).Where("channel_id = ? AND key_index = ? AND model = ? AND version = ?", key.ChannelId, key.KeyIndex, key.Model, row.Version).Updates(map[string]interface{}{
+			q := dbx.DB.Model(&ChannelModelHealth{}).Where("channel_id = ? AND key_index = ? AND model = ? AND version = ?", key.ChannelId, key.KeyIndex, key.Model, row.Version).Updates(map[string]interface{}{
 				countColumn:       newCount,
 				"last_error_code": errorCode,
 				"last_error_at":   now.Unix(),
@@ -355,7 +356,7 @@ func RecordRetryableFailure(key RouteKey, errorCode string, source FailureSource
 		// incident. The failure is still counted, so the ladder resumes as soon
 		// as availability recovers.
 		if modelPressureLevel(key.Model) != PressureNormal {
-			q := DB.Model(&ChannelModelHealth{}).Where("channel_id = ? AND key_index = ? AND model = ? AND version = ?", key.ChannelId, key.KeyIndex, key.Model, row.Version).Updates(map[string]interface{}{
+			q := dbx.DB.Model(&ChannelModelHealth{}).Where("channel_id = ? AND key_index = ? AND model = ? AND version = ?", key.ChannelId, key.KeyIndex, key.Model, row.Version).Updates(map[string]interface{}{
 				"last_error_code": errorCode,
 				"last_error_at":   now.Unix(),
 				"version":         row.Version + 1,
@@ -386,7 +387,7 @@ func RecordRetryableFailure(key RouteKey, errorCode string, source FailureSource
 			deadline := now.Unix() + seconds
 			until = &deadline
 		}
-		q := DB.Model(&ChannelModelHealth{}).Where("channel_id = ? AND key_index = ? AND model = ? AND version = ?", key.ChannelId, key.KeyIndex, key.Model, row.Version).Updates(map[string]interface{}{"state": state, "isolation_level": level, "until": until, "version": row.Version + 1, "dormant_disable_count": row.DormantDisableCount, countColumn: 0, "last_error_code": errorCode, "last_error_at": now.Unix(), "updated_at": now.Unix()})
+		q := dbx.DB.Model(&ChannelModelHealth{}).Where("channel_id = ? AND key_index = ? AND model = ? AND version = ?", key.ChannelId, key.KeyIndex, key.Model, row.Version).Updates(map[string]interface{}{"state": state, "isolation_level": level, "until": until, "version": row.Version + 1, "dormant_disable_count": row.DormantDisableCount, countColumn: 0, "last_error_code": errorCode, "last_error_at": now.Unix(), "updated_at": now.Unix()})
 		if q.Error != nil {
 			return q.Error
 		}
@@ -428,7 +429,7 @@ func RecordSuccess(key RouteKey, now time.Time) error {
 	for attempt := 0; attempt < casMaxAttempts; attempt++ {
 		casBackoff(attempt)
 		var row ChannelModelHealth
-		if err := DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error; err != nil {
+		if err := dbx.DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
 				return nil
 			}
@@ -455,7 +456,7 @@ func RecordSuccess(key RouteKey, now time.Time) error {
 		} else {
 			newDormantCount = row.DormantDisableCount
 		}
-		q := DB.Model(&ChannelModelHealth{}).
+		q := dbx.DB.Model(&ChannelModelHealth{}).
 			Where("channel_id = ? AND key_index = ? AND model = ? AND version = ?", key.ChannelId, key.KeyIndex, key.Model, row.Version).
 			Updates(map[string]interface{}{
 				"last_success_at":       now.Unix(),
@@ -496,16 +497,16 @@ func updateRouteState(key RouteKey, state string, level int, until *int64, dorma
 	for attempt := 0; attempt < casMaxAttempts; attempt++ {
 		casBackoff(attempt)
 		var row ChannelModelHealth
-		if err := DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error; err != nil {
+		if err := dbx.DB.Where("channel_id = ? AND key_index = ? AND model = ?", key.ChannelId, key.KeyIndex, key.Model).First(&row).Error; err != nil {
 			if err != gorm.ErrRecordNotFound {
 				return err
 			}
 			row = ChannelModelHealth{ChannelId: key.ChannelId, KeyIndex: key.KeyIndex, Model: key.Model, State: HealthHealthy, Version: 1}
-			if err := DB.Create(&row).Error; err != nil {
+			if err := dbx.DB.Create(&row).Error; err != nil {
 				continue
 			}
 		}
-		q := DB.Model(&ChannelModelHealth{}).Where("channel_id = ? AND key_index = ? AND model = ? AND version = ?", key.ChannelId, key.KeyIndex, key.Model, row.Version).Updates(map[string]interface{}{"state": state, "isolation_level": level, "until": until, "version": row.Version + 1, "dormant_disable_count": dormantCount, "updated_at": now.Unix()})
+		q := dbx.DB.Model(&ChannelModelHealth{}).Where("channel_id = ? AND key_index = ? AND model = ? AND version = ?", key.ChannelId, key.KeyIndex, key.Model, row.Version).Updates(map[string]interface{}{"state": state, "isolation_level": level, "until": until, "version": row.Version + 1, "dormant_disable_count": dormantCount, "updated_at": now.Unix()})
 		if q.Error != nil {
 			return q.Error
 		}
@@ -524,7 +525,7 @@ func updateRouteState(key RouteKey, state string, level int, until *int64, dorma
 // panel needs; 0 returns every row for a system-wide view.
 func ListChannelModelHealth(channelID int) ([]ChannelModelHealth, error) {
 	var rows []ChannelModelHealth
-	query := DB.Order("channel_id, key_index, model")
+	query := dbx.DB.Order("channel_id, key_index, model")
 	if channelID > 0 {
 		query = query.Where("channel_id = ?", channelID)
 	}

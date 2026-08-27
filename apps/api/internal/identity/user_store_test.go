@@ -3,6 +3,7 @@ package identity
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"testing"
 	"time"
 
@@ -16,17 +17,17 @@ import (
 
 func setupUserStoreTestDB(t *testing.T) {
 	t.Helper()
-	previousDB, previousRedis := model.DB, common.RedisEnabled
+	previousDB, previousRedis := dbx.DB, common.RedisEnabled
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
 	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}))
-	model.DB = db
+	dbx.DB = db
 	common.RedisEnabled = false
 	t.Cleanup(func() {
-		model.DB = previousDB
+		dbx.DB = previousDB
 		common.RedisEnabled = previousRedis
 	})
 }
@@ -45,7 +46,7 @@ func insertUsersForPaginationTest(t *testing.T, total int) {
 			Group:       "default",
 			AffCode:     fmt.Sprintf("aff%02d", id),
 		}
-		require.NoError(t, model.DB.Create(user).Error)
+		require.NoError(t, dbx.DB.Create(user).Error)
 	}
 }
 
@@ -60,7 +61,7 @@ func createUserBindTestUser(t *testing.T) model.User {
 		AuthVersion: 1,
 		AffCode:     "bind-test-aff-code",
 	}
-	require.NoError(t, model.DB.Create(&user).Error)
+	require.NoError(t, dbx.DB.Create(&user).Error)
 	return user
 }
 
@@ -105,9 +106,9 @@ func TestUpdateUserAccessTokenOnlyUpdatesAccessToken(t *testing.T) {
 		AffQuota:        800,
 		AffHistoryQuota: 1200,
 	}
-	require.NoError(t, model.DB.Create(&user).Error)
+	require.NoError(t, dbx.DB.Create(&user).Error)
 
-	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
+	require.NoError(t, dbx.DB.Model(&model.User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
 		"quota":        gorm.Expr("quota + ?", 500),
 		"aff_quota":    gorm.Expr("aff_quota - ?", 500),
 		"display_name": "concurrent-update",
@@ -116,7 +117,7 @@ func TestUpdateUserAccessTokenOnlyUpdatesAccessToken(t *testing.T) {
 	require.NoError(t, UpdateUserAccessToken(user.Id, "rotated-token"))
 
 	var got model.User
-	require.NoError(t, model.DB.First(&got, user.Id).Error)
+	require.NoError(t, dbx.DB.First(&got, user.Id).Error)
 	assert.Equal(t, "rotated-token", got.GetAccessToken())
 	assert.Equal(t, "concurrent-update", got.DisplayName)
 	assert.Equal(t, 1500, got.Quota)
@@ -134,14 +135,14 @@ func TestUpdateUserAccessTokenRejectsSoftDeletedUser(t *testing.T) {
 		Status:   common.UserStatusEnabled,
 	}
 	user.SetAccessToken("old-token")
-	require.NoError(t, model.DB.Create(&user).Error)
-	require.NoError(t, model.DB.Delete(&user).Error)
+	require.NoError(t, dbx.DB.Create(&user).Error)
+	require.NoError(t, dbx.DB.Delete(&user).Error)
 
 	err := UpdateUserAccessToken(user.Id, "orphaned-token")
 	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
 
 	var got model.User
-	require.NoError(t, model.DB.Unscoped().First(&got, user.Id).Error)
+	require.NoError(t, dbx.DB.Unscoped().First(&got, user.Id).Error)
 	assert.Equal(t, "old-token", got.GetAccessToken())
 }
 
@@ -149,7 +150,7 @@ func TestUpdateUserBindColumnOnlyTouchesTheBindingColumn(t *testing.T) {
 	setupUserStoreTestDB(t)
 
 	user := createUserBindTestUser(t)
-	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
+	require.NoError(t, dbx.DB.Model(&model.User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
 		"role":   common.RoleAdminUser,
 		"status": common.UserStatusEnabled,
 		"group":  "vip",
@@ -169,7 +170,7 @@ func TestUpdateUserBindColumnPreservesRestrictiveChange(t *testing.T) {
 	setupUserStoreTestDB(t)
 
 	user := createUserBindTestUser(t)
-	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", user.Id).
+	require.NoError(t, dbx.DB.Model(&model.User{}).Where("id = ?", user.Id).
 		Update("status", common.UserStatusDisabled).Error)
 	require.NoError(t, UpdateUserBindColumn(user.Id, "wechat_id", "wx-open-id"))
 
@@ -193,14 +194,14 @@ func TestUpdateUserBindColumnRejectsNonWhitelistedColumns(t *testing.T) {
 func TestResetUserPasswordByEmailRequiresSingleActiveMatch(t *testing.T) {
 	setupUserStoreTestDB(t)
 
-	require.NoError(t, model.DB.Create(&model.User{
+	require.NoError(t, dbx.DB.Create(&model.User{
 		Username: "duplicate-1",
 		Password: "old-1",
 		Email:    "legacy@example.com",
 		AffCode:  "dupe1",
 		Status:   common.UserStatusEnabled,
 	}).Error)
-	require.NoError(t, model.DB.Create(&model.User{
+	require.NoError(t, dbx.DB.Create(&model.User{
 		Username: "duplicate-2",
 		Password: "old-2",
 		Email:    "LEGACY@example.com",
@@ -212,12 +213,12 @@ func TestResetUserPasswordByEmailRequiresSingleActiveMatch(t *testing.T) {
 	require.ErrorIs(t, err, model.ErrEmailAmbiguous)
 
 	var duplicates []model.User
-	require.NoError(t, model.DB.Where("LOWER(email) = ?", "legacy@example.com").Order("username asc").Find(&duplicates).Error)
+	require.NoError(t, dbx.DB.Where("LOWER(email) = ?", "legacy@example.com").Order("username asc").Find(&duplicates).Error)
 	require.Len(t, duplicates, 2)
 	assert.Equal(t, "old-1", duplicates[0].Password)
 	assert.Equal(t, "old-2", duplicates[1].Password)
 
-	require.NoError(t, model.DB.Create(&model.User{
+	require.NoError(t, dbx.DB.Create(&model.User{
 		Username: "unique",
 		Password: "old",
 		Email:    "unique@example.com",
@@ -228,7 +229,7 @@ func TestResetUserPasswordByEmailRequiresSingleActiveMatch(t *testing.T) {
 	require.NoError(t, ResetUserPasswordByEmail("UNIQUE@example.com", "NewPassword123"))
 
 	var unique model.User
-	require.NoError(t, model.DB.Where("username = ?", "unique").First(&unique).Error)
+	require.NoError(t, dbx.DB.Where("username = ?", "unique").First(&unique).Error)
 	assert.True(t, common.ValidatePasswordAndHash("NewPassword123", unique.Password))
 
 	err = ResetUserPasswordByEmail("missing@example.com", "NewPassword123")
@@ -263,14 +264,14 @@ func TestPasswordResetBumpsAuthVersionAndRevokesSessions(t *testing.T) {
 		Status:   common.UserStatusEnabled,
 		Group:    "default",
 	}
-	require.NoError(t, model.DB.Create(user).Error)
-	t.Cleanup(func() { _ = model.DB.Unscoped().Delete(&model.User{}, user.Id).Error })
+	require.NoError(t, dbx.DB.Create(user).Error)
+	t.Cleanup(func() { _ = dbx.DB.Unscoped().Delete(&model.User{}, user.Id).Error })
 	session := newStoreTestUserSession("password-reset-session", user.Id, now)
 	require.NoError(t, model.CreateUserSession(session))
 
 	require.NoError(t, ResetUserPasswordByEmail(user.Email, "new-password"))
 	var stored model.User
-	require.NoError(t, model.DB.First(&stored, user.Id).Error)
+	require.NoError(t, dbx.DB.First(&stored, user.Id).Error)
 	assert.Equal(t, int64(2), stored.AuthVersion)
 	storedSession, err := model.GetUserSessionBySID(session.SID)
 	require.NoError(t, err)

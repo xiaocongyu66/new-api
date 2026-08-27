@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"io"
 	"net/http"
 	"sync"
@@ -168,23 +169,23 @@ func (p *sunoFailurePollingProvider) ConvertToOpenAIVideo(task *model.Task) ([]b
 func truncate(t *testing.T) {
 	t.Helper()
 	t.Cleanup(func() {
-		model.DB.Exec("DELETE FROM tasks")
-		model.DB.Exec("DELETE FROM users")
-		model.DB.Exec("DELETE FROM tokens")
-		model.DB.Exec("DELETE FROM logs")
-		model.DB.Exec("DELETE FROM channels")
-		model.DB.Exec("DELETE FROM midjourneys")
-		model.DB.Exec("DELETE FROM top_ups")
-		model.DB.Exec("DELETE FROM user_subscriptions")
-		model.DB.Exec("DELETE FROM system_task_locks")
-		model.DB.Exec("DELETE FROM system_tasks")
+		dbx.DB.Exec("DELETE FROM tasks")
+		dbx.DB.Exec("DELETE FROM users")
+		dbx.DB.Exec("DELETE FROM tokens")
+		dbx.DB.Exec("DELETE FROM logs")
+		dbx.DB.Exec("DELETE FROM channels")
+		dbx.DB.Exec("DELETE FROM midjourneys")
+		dbx.DB.Exec("DELETE FROM top_ups")
+		dbx.DB.Exec("DELETE FROM user_subscriptions")
+		dbx.DB.Exec("DELETE FROM system_task_locks")
+		dbx.DB.Exec("DELETE FROM system_tasks")
 	})
 }
 
 func seedUser(t *testing.T, id int, quota int) {
 	t.Helper()
 	user := &model.User{Id: id, Username: "test_user", Quota: quota, Status: common.UserStatusEnabled}
-	require.NoError(t, model.DB.Create(user).Error)
+	require.NoError(t, dbx.DB.Create(user).Error)
 }
 
 func seedToken(t *testing.T, id int, userId int, key string, remainQuota int) {
@@ -198,7 +199,7 @@ func seedToken(t *testing.T, id int, userId int, key string, remainQuota int) {
 		RemainQuota: remainQuota,
 		UsedQuota:   0,
 	}
-	require.NoError(t, model.DB.Create(token).Error)
+	require.NoError(t, dbx.DB.Create(token).Error)
 }
 func seedChannel(t *testing.T, id int, disableSleep bool) {
 	t.Helper()
@@ -212,7 +213,7 @@ func seedChannel(t *testing.T, id int, disableSleep bool) {
 	if disableSleep {
 		ch.SetOtherSettings(dto.ChannelOtherSettings{DisableTaskPollingSleep: true})
 	}
-	require.NoError(t, model.DB.Create(ch).Error)
+	require.NoError(t, dbx.DB.Create(ch).Error)
 }
 
 func makeTask(userId, channelId, quota, tokenId int, billingSource string, subscriptionId int) *model.Task {
@@ -251,28 +252,28 @@ func seedPollingTask(t *testing.T, channelID int, publicID string, upstreamID st
 	task.Progress = "50%"
 	task.SubmitTime = time.Now().Unix()
 	task.PrivateData.UpstreamTaskID = upstreamID
-	require.NoError(t, model.DB.Create(task).Error)
+	require.NoError(t, dbx.DB.Create(task).Error)
 	return task
 }
 
 func getUserQuota(t *testing.T, id int) int {
 	t.Helper()
 	var user model.User
-	require.NoError(t, model.DB.Select("quota").Where("id = ?", id).First(&user).Error)
+	require.NoError(t, dbx.DB.Select("quota").Where("id = ?", id).First(&user).Error)
 	return user.Quota
 }
 
 func getTokenRemainQuota(t *testing.T, id int) int {
 	t.Helper()
 	var token model.Token
-	require.NoError(t, model.DB.Select("remain_quota").Where("id = ?", id).First(&token).Error)
+	require.NoError(t, dbx.DB.Select("remain_quota").Where("id = ?", id).First(&token).Error)
 	return token.RemainQuota
 }
 
 func countLogs(t *testing.T) int64 {
 	t.Helper()
 	var count int64
-	model.LOG_DB.Model(&model.Log{}).Count(&count)
+	dbx.LogDB.Model(&model.Log{}).Count(&count)
 	return count
 }
 
@@ -518,7 +519,7 @@ func TestUpdateSunoTasksStalePollsRefundExactlyOnce(t *testing.T) {
 	seedUser(t, userID, initialUserQuota)
 	seedToken(t, tokenID, userID, "sk-suno-refund-once", initialTokenQuota)
 	baseURL := "https://suno.invalid"
-	require.NoError(t, model.DB.Create(&model.Channel{
+	require.NoError(t, dbx.DB.Create(&model.Channel{
 		Id:      channelID,
 		Type:    constant.ChannelTypeSunoAPI,
 		Name:    "suno_refund_once",
@@ -534,12 +535,12 @@ func TestUpdateSunoTasksStalePollsRefundExactlyOnce(t *testing.T) {
 	task.Progress = "50%"
 	task.SubmitTime = time.Now().Unix()
 	task.PrivateData.UpstreamTaskID = upstreamTaskID
-	require.NoError(t, model.DB.Create(task).Error)
+	require.NoError(t, dbx.DB.Create(task).Error)
 
 	var firstPollTask model.Task
 	var staleSecondPollTask model.Task
-	require.NoError(t, model.DB.First(&firstPollTask, task.ID).Error)
-	require.NoError(t, model.DB.First(&staleSecondPollTask, task.ID).Error)
+	require.NoError(t, dbx.DB.First(&firstPollTask, task.ID).Error)
+	require.NoError(t, dbx.DB.First(&staleSecondPollTask, task.ID).Error)
 
 	provider := &sunoFailurePollingProvider{failReason: "upstream failed"}
 	previousFactory := port.GetTaskProviderFunc
@@ -556,7 +557,7 @@ func TestUpdateSunoTasksStalePollsRefundExactlyOnce(t *testing.T) {
 	}))
 
 	var reloaded model.Task
-	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	require.NoError(t, dbx.DB.First(&reloaded, task.ID).Error)
 	assert.EqualValues(t, model.TaskStatusFailure, reloaded.Status)
 	assert.Zero(t, reloaded.Quota)
 	assert.Equal(t, initialUserQuota+taskQuota, getUserQuota(t, userID))
@@ -576,7 +577,7 @@ func TestRunTaskPollingOnceDoesNotRefundHistoricalFailedTask(t *testing.T) {
 	legacyTask.Progress = "100%"
 	legacyTask.FinishTime = 1771718399
 	legacyTask.FailReason = "old failure"
-	require.NoError(t, model.DB.Create(legacyTask).Error)
+	require.NoError(t, dbx.DB.Create(legacyTask).Error)
 
 	previousTimeout := constant.TaskTimeoutMinutes
 	constant.TaskTimeoutMinutes = 1
@@ -586,7 +587,7 @@ func TestRunTaskPollingOnceDoesNotRefundHistoricalFailedTask(t *testing.T) {
 	require.Equal(t, 0, summary.NullTasksFailed)
 
 	var reloadedLegacy model.Task
-	require.NoError(t, model.DB.First(&reloadedLegacy, legacyTask.ID).Error)
+	require.NoError(t, dbx.DB.First(&reloadedLegacy, legacyTask.ID).Error)
 	assert.EqualValues(t, model.TaskStatusFailure, reloadedLegacy.Status)
 	assert.Equal(t, initialQuota, getUserQuota(t, userID))
 }
@@ -606,13 +607,13 @@ func TestSweepTimedOutTasksHonorsRefundRolloutBoundary(t *testing.T) {
 	legacyTask.TaskID = "legacy_timeout_without_refund"
 	legacyTask.Progress = "50%"
 	legacyTask.SubmitTime = 1771718399 // 2026-02-21 23:59:59 UTC
-	require.NoError(t, model.DB.Create(legacyTask).Error)
+	require.NoError(t, dbx.DB.Create(legacyTask).Error)
 
 	modernTask := makeTask(userID, 0, modernTaskQuota, 0, settlecore.BillingSourceWallet, 0)
 	modernTask.TaskID = "modern_timeout_with_refund"
 	modernTask.Progress = "50%"
 	modernTask.SubmitTime = 1771718400 // 2026-02-22 00:00:00 UTC
-	require.NoError(t, model.DB.Create(modernTask).Error)
+	require.NoError(t, dbx.DB.Create(modernTask).Error)
 
 	previousTimeout := constant.TaskTimeoutMinutes
 	constant.TaskTimeoutMinutes = 1
@@ -622,8 +623,8 @@ func TestSweepTimedOutTasksHonorsRefundRolloutBoundary(t *testing.T) {
 
 	var reloadedLegacy model.Task
 	var reloadedModern model.Task
-	require.NoError(t, model.DB.First(&reloadedLegacy, legacyTask.ID).Error)
-	require.NoError(t, model.DB.First(&reloadedModern, modernTask.ID).Error)
+	require.NoError(t, dbx.DB.First(&reloadedLegacy, legacyTask.ID).Error)
+	require.NoError(t, dbx.DB.First(&reloadedModern, modernTask.ID).Error)
 	assert.EqualValues(t, model.TaskStatusFailure, reloadedLegacy.Status)
 	assert.EqualValues(t, model.TaskStatusFailure, reloadedModern.Status)
 	assert.Zero(t, reloadedLegacy.Quota)

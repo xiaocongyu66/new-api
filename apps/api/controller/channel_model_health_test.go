@@ -3,6 +3,7 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -20,17 +21,17 @@ import (
 
 func withChannelModelHealthControllerDB(t *testing.T) {
 	t.Helper()
-	previousDB := model.DB
+	previousDB := dbx.DB
 	previousType := common.MainDatabaseType()
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 
 	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.ChannelModelHealth{}))
-	model.DB = db
+	dbx.DB = db
 	model.ClearRouteHealthCache()
 	t.Cleanup(func() {
-		model.DB = previousDB
+		dbx.DB = previousDB
 		common.SetMainDatabaseType(previousType)
 		model.ClearRouteHealthCache()
 		sqlDB, err := db.DB()
@@ -45,7 +46,7 @@ func TestChannelModelHealthAdminAPI(t *testing.T) {
 
 	now := time.Now().Unix()
 	until := now + 30
-	require.NoError(t, model.DB.Create(&model.ChannelModelHealth{
+	require.NoError(t, dbx.DB.Create(&model.ChannelModelHealth{
 		ChannelId:           71,
 		Model:               "gpt-health",
 		State:               model.HealthCalm,
@@ -89,12 +90,12 @@ func TestChannelModelHealthAdminAPI(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, post("disable").Code)
 		var row model.ChannelModelHealth
-		require.NoError(t, model.DB.Where("channel_id = ? AND model = ?", 71, "gpt-health").First(&row).Error)
+		require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", 71, "gpt-health").First(&row).Error)
 		assert.Equal(t, model.HealthDisabled, row.State)
 		assert.Nil(t, row.Until)
 
 		require.Equal(t, http.StatusOK, post("recover").Code)
-		require.NoError(t, model.DB.Where("channel_id = ? AND model = ?", 71, "gpt-health").First(&row).Error)
+		require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", 71, "gpt-health").First(&row).Error)
 		assert.Equal(t, model.HealthHealthy, row.State)
 		assert.Zero(t, row.IsolationLevel)
 		assert.Zero(t, row.DormantDisableCount)

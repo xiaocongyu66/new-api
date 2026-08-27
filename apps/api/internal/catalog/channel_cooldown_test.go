@@ -2,6 +2,7 @@ package channel
 
 import (
 	"errors"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"testing"
 	"time"
 
@@ -234,21 +235,21 @@ func ability(channelID int, group, modelName string, weight uint, priority int64
 func withAbilityDB(t *testing.T, group, modelName string, rows []model.Ability) {
 	t.Helper()
 
-	previousDB := model.DB
+	previousDB := dbx.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.Ability{}, &model.Channel{}))
-	model.DB = db
+	dbx.DB = db
 	// initCol() runs inside InitDB but tests bypass InitDB with a bare gorm.Open,
 	// so initialize the dialect-correct column names (commonGroupCol etc.) now.
 	model.InitDialectColumns()
-	t.Cleanup(func() { model.DB = previousDB })
+	t.Cleanup(func() { dbx.DB = previousDB })
 
 	for i := range rows {
-		require.NoError(t, model.DB.Create(&rows[i]).Error)
+		require.NoError(t, dbx.DB.Create(&rows[i]).Error)
 		weight := rows[i].Weight
 		priority := rows[i].Priority
-		require.NoError(t, model.DB.Create(&model.Channel{
+		require.NoError(t, dbx.DB.Create(&model.Channel{
 			Id:       rows[i].ChannelId,
 			Weight:   &weight,
 			Priority: priority,

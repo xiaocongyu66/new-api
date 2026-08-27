@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
@@ -48,14 +49,14 @@ func performHeaderNavRequest(t *testing.T, handler gin.HandlerFunc, authenticate
 
 	var accessToken string
 	if authenticated {
-		previousDB, previousRedis := model.DB, common.RedisEnabled
+		previousDB, previousRedis := dbx.DB, common.RedisEnabled
 		db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 		require.NoError(t, err)
 		require.NoError(t, db.AutoMigrate(&model.User{}))
-		model.DB = db
+		dbx.DB = db
 		common.RedisEnabled = false
 		t.Cleanup(func() {
-			model.DB = previousDB
+			dbx.DB = previousDB
 			common.RedisEnabled = previousRedis
 		})
 		accessToken = "header-nav-pat"

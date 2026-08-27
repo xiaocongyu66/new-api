@@ -2,6 +2,7 @@ package ops
 
 import (
 	"errors"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/model"
@@ -36,7 +37,7 @@ func CreateSystemTask(taskType string, payload any, state any) (*model.SystemTas
 		State:     stateText,
 	}
 
-	if err := model.DB.Create(task).Error; err != nil {
+	if err := dbx.DB.Create(task).Error; err != nil {
 		return nil, err
 	}
 	return task, nil
@@ -45,7 +46,7 @@ func CreateSystemTask(taskType string, payload any, state any) (*model.SystemTas
 // GetSystemTaskByTaskID returns a system task by its task_id.
 func GetSystemTaskByTaskID(taskID string) (*model.SystemTask, error) {
 	var task model.SystemTask
-	if err := model.DB.Where("task_id = ?", taskID).First(&task).Error; err != nil {
+	if err := dbx.DB.Where("task_id = ?", taskID).First(&task).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
@@ -57,7 +58,7 @@ func GetSystemTaskByTaskID(taskID string) (*model.SystemTask, error) {
 // GetActiveSystemTask returns the active (pending/running) task of a given type.
 func GetActiveSystemTask(taskType string) (*model.SystemTask, error) {
 	var task model.SystemTask
-	err := model.DB.Where("type = ? AND status IN ?", taskType, activeSystemTaskStatuses()).
+	err := dbx.DB.Where("type = ? AND status IN ?", taskType, activeSystemTaskStatuses()).
 		Order("id desc").
 		First(&task).Error
 	if err != nil {
@@ -76,12 +77,12 @@ func FindEarliestPendingSystemTasks(taskTypes []string) (map[string]*model.Syste
 		return tasksByType, nil
 	}
 
-	subQuery := model.DB.Model(&model.SystemTask{}).
+	subQuery := dbx.DB.Model(&model.SystemTask{}).
 		Select("MIN(id)").
 		Where("type IN ? AND status = ?", taskTypes, model.SystemTaskStatusPending).
 		Group("type")
 	var tasks []*model.SystemTask
-	if err := model.DB.Where("id IN (?)", subQuery).Find(&tasks).Error; err != nil {
+	if err := dbx.DB.Where("id IN (?)", subQuery).Find(&tasks).Error; err != nil {
 		return nil, err
 	}
 	for _, task := range tasks {
@@ -99,14 +100,14 @@ func ListSystemTasks(limit int) ([]*model.SystemTask, error) {
 		limit = 100
 	}
 	var tasks []*model.SystemTask
-	err := model.DB.Order("id desc").Limit(limit).Find(&tasks).Error
+	err := dbx.DB.Order("id desc").Limit(limit).Find(&tasks).Error
 	return tasks, err
 }
 
 // GetLatestSystemTask returns the most recent task row of the given type (any status).
 func GetLatestSystemTask(taskType string) (*model.SystemTask, error) {
 	var task model.SystemTask
-	err := model.DB.Where("type = ?", taskType).Order("id desc").First(&task).Error
+	err := dbx.DB.Where("type = ?", taskType).Order("id desc").First(&task).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -123,12 +124,12 @@ func GetLatestSystemTasks(taskTypes []string) (map[string]*model.SystemTask, err
 		return tasksByType, nil
 	}
 
-	subQuery := model.DB.Model(&model.SystemTask{}).
+	subQuery := dbx.DB.Model(&model.SystemTask{}).
 		Select("MAX(id)").
 		Where("type IN ?", taskTypes).
 		Group("type")
 	var tasks []*model.SystemTask
-	if err := model.DB.Where("id IN (?)", subQuery).Find(&tasks).Error; err != nil {
+	if err := dbx.DB.Where("id IN (?)", subQuery).Find(&tasks).Error; err != nil {
 		return nil, err
 	}
 	for _, task := range tasks {
@@ -141,7 +142,7 @@ func GetLatestSystemTasks(taskTypes []string) (map[string]*model.SystemTask, err
 func ClaimSystemTask(id int64, taskType string, runnerID string, lockUntil int64) (*model.SystemTask, bool, error) {
 	now := common.GetTimestamp()
 	var task model.SystemTask
-	if err := model.DB.Where("id = ? AND type = ? AND status = ?", id, taskType, model.SystemTaskStatusPending).First(&task).Error; err != nil {
+	if err := dbx.DB.Where("id = ? AND type = ? AND status = ?", id, taskType, model.SystemTaskStatusPending).First(&task).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, false, nil
 		}
@@ -159,7 +160,7 @@ func ClaimSystemTask(id int64, taskType string, runnerID string, lockUntil int64
 		}
 	}
 
-	result := model.DB.Model(&model.SystemTask{}).
+	result := dbx.DB.Model(&model.SystemTask{}).
 		Where("id = ? AND type = ? AND status = ?", id, taskType, model.SystemTaskStatusPending).
 		Updates(map[string]any{
 			"status":     model.SystemTaskStatusRunning,
@@ -175,7 +176,7 @@ func ClaimSystemTask(id int64, taskType string, runnerID string, lockUntil int64
 		return nil, false, nil
 	}
 
-	if err := model.DB.Where("id = ?", id).First(&task).Error; err != nil {
+	if err := dbx.DB.Where("id = ?", id).First(&task).Error; err != nil {
 		return nil, false, err
 	}
 	return &task, true, nil
@@ -190,12 +191,12 @@ func acquireSystemTaskLock(taskType string, taskID string, lockedBy string, now 
 		LockedUntil: lockUntil,
 		UpdatedAt:   now,
 	}
-	if err := model.DB.Create(lock).Error; err == nil {
+	if err := dbx.DB.Create(lock).Error; err == nil {
 		return true, "", nil
 	}
 
 	var existing model.SystemTaskLock
-	err := model.DB.Where("type = ?", taskType).First(&existing).Error
+	err := dbx.DB.Where("type = ?", taskType).First(&existing).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return false, "", nil
@@ -206,7 +207,7 @@ func acquireSystemTaskLock(taskType string, taskID string, lockedBy string, now 
 		return false, "", nil
 	}
 
-	result := model.DB.Model(&model.SystemTaskLock{}).
+	result := dbx.DB.Model(&model.SystemTaskLock{}).
 		Where("type = ? AND locked_until < ?", taskType, now).
 		Updates(map[string]any{
 			"task_id":      taskID,
@@ -230,7 +231,7 @@ func UpdateSystemTaskState(taskID string, lockedBy string, state any) error {
 		return err
 	}
 	now := common.GetTimestamp()
-	result := model.DB.Model(&model.SystemTask{}).
+	result := dbx.DB.Model(&model.SystemTask{}).
 		Where("task_id = ? AND status = ? AND locked_by = ?", taskID, model.SystemTaskStatusRunning, lockedBy).
 		Where("EXISTS (SELECT 1 FROM system_task_locks WHERE system_task_locks.task_id = system_tasks.task_id AND system_task_locks.locked_by = ? AND system_task_locks.locked_until >= ?)", lockedBy, now).
 		Updates(map[string]any{
@@ -249,7 +250,7 @@ func UpdateSystemTaskState(taskID string, lockedBy string, state any) error {
 // RenewSystemTaskLock renews the per-type lock for a running task.
 func RenewSystemTaskLock(taskID string, lockedBy string, lockUntil int64) error {
 	now := common.GetTimestamp()
-	result := model.DB.Model(&model.SystemTaskLock{}).
+	result := dbx.DB.Model(&model.SystemTaskLock{}).
 		Where("task_id = ? AND locked_by = ? AND locked_until >= ?", taskID, lockedBy, now).
 		Updates(map[string]any{
 			"locked_until": lockUntil,
@@ -266,7 +267,7 @@ func RenewSystemTaskLock(taskID string, lockedBy string, lockUntil int64) error 
 
 // MarkSystemTaskLeaseExpired marks a task as failed due to lease expiration.
 func MarkSystemTaskLeaseExpired(taskID string) error {
-	result := model.DB.Model(&model.SystemTask{}).
+	result := dbx.DB.Model(&model.SystemTask{}).
 		Where("task_id = ? AND status = ?", taskID, model.SystemTaskStatusRunning).
 		Updates(map[string]any{
 			"status":     model.SystemTaskStatusFailed,
@@ -280,14 +281,14 @@ func MarkSystemTaskLeaseExpired(taskID string) error {
 // ExpireStaleSystemTaskLocks expires all stale locks and marks their tasks failed.
 func ExpireStaleSystemTaskLocks(now int64) error {
 	var locks []*model.SystemTaskLock
-	if err := model.DB.Where("locked_until < ?", now).Find(&locks).Error; err != nil {
+	if err := dbx.DB.Where("locked_until < ?", now).Find(&locks).Error; err != nil {
 		return err
 	}
 	for _, lock := range locks {
 		if err := MarkSystemTaskLeaseExpired(lock.TaskID); err != nil {
 			return err
 		}
-		result := model.DB.Where("type = ? AND task_id = ? AND locked_by = ? AND locked_until < ?", lock.Type, lock.TaskID, lock.LockedBy, now).
+		result := dbx.DB.Where("type = ? AND task_id = ? AND locked_by = ? AND locked_until < ?", lock.Type, lock.TaskID, lock.LockedBy, now).
 			Delete(&model.SystemTaskLock{})
 		if result.Error != nil {
 			return result.Error
@@ -298,7 +299,7 @@ func ExpireStaleSystemTaskLocks(now int64) error {
 
 // ReleaseSystemTaskLock releases the per-type lock for a task.
 func ReleaseSystemTaskLock(taskID string, lockedBy string) error {
-	result := model.DB.Where("task_id = ? AND locked_by = ?", taskID, lockedBy).Delete(&model.SystemTaskLock{})
+	result := dbx.DB.Where("task_id = ? AND locked_by = ?", taskID, lockedBy).Delete(&model.SystemTaskLock{})
 	return result.Error
 }
 
@@ -309,7 +310,7 @@ func FinishSystemTask(taskID string, lockedBy string, status model.SystemTaskSta
 		return err
 	}
 	now := common.GetTimestamp()
-	result := model.DB.Model(&model.SystemTask{}).
+	result := dbx.DB.Model(&model.SystemTask{}).
 		Where("task_id = ? AND status = ? AND locked_by = ?", taskID, model.SystemTaskStatusRunning, lockedBy).
 		Where("EXISTS (SELECT 1 FROM system_task_locks WHERE system_task_locks.task_id = system_tasks.task_id AND system_task_locks.locked_by = ? AND system_task_locks.locked_until >= ?)", lockedBy, now).
 		Updates(map[string]any{
@@ -372,7 +373,7 @@ func UpsertSystemInstance(nodeName string, info any, startedAt int64, lastSeenAt
 		LastSeenAt: lastSeenAt,
 		UpdatedAt:  lastSeenAt,
 	}
-	return model.DB.Clauses(clause.OnConflict{
+	return dbx.DB.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "node_name"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"info",
@@ -386,19 +387,19 @@ func UpsertSystemInstance(nodeName string, info any, startedAt int64, lastSeenAt
 // ListSystemInstances returns all system instances ordered by last_seen_at desc.
 func ListSystemInstances() ([]*model.SystemInstance, error) {
 	var instances []*model.SystemInstance
-	err := model.DB.Order("last_seen_at desc").Find(&instances).Error
+	err := dbx.DB.Order("last_seen_at desc").Find(&instances).Error
 	return instances, err
 }
 
 // DeleteStaleSystemInstances deletes system instances that haven't reported recently.
 func DeleteStaleSystemInstances(now int64) (int64, error) {
-	result := model.DB.Where("last_seen_at < ?", now-model.SystemInstanceStaleAfterSeconds).Delete(&model.SystemInstance{})
+	result := dbx.DB.Where("last_seen_at < ?", now-model.SystemInstanceStaleAfterSeconds).Delete(&model.SystemInstance{})
 	return result.RowsAffected, result.Error
 }
 
 // DeleteStaleSystemInstance deletes a specific stale system instance.
 func DeleteStaleSystemInstance(nodeName string, now int64) (bool, error) {
-	result := model.DB.Where("node_name = ? AND last_seen_at < ?", nodeName, now-model.SystemInstanceStaleAfterSeconds).Delete(&model.SystemInstance{})
+	result := dbx.DB.Where("node_name = ? AND last_seen_at < ?", nodeName, now-model.SystemInstanceStaleAfterSeconds).Delete(&model.SystemInstance{})
 	return result.RowsAffected > 0, result.Error
 }
 

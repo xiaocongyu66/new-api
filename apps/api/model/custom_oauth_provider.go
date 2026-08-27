@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"strings"
 	"time"
 
@@ -73,21 +74,21 @@ func (CustomOAuthProvider) TableName() string {
 // GetAllCustomOAuthProviders returns all custom OAuth providers
 func GetAllCustomOAuthProviders() ([]*CustomOAuthProvider, error) {
 	var providers []*CustomOAuthProvider
-	err := DB.Order("id asc").Find(&providers).Error
+	err := dbx.DB.Order("id asc").Find(&providers).Error
 	return providers, err
 }
 
 // GetEnabledCustomOAuthProviders returns all enabled custom OAuth providers
 func GetEnabledCustomOAuthProviders() ([]*CustomOAuthProvider, error) {
 	var providers []*CustomOAuthProvider
-	err := DB.Where("enabled = ?", true).Order("id asc").Find(&providers).Error
+	err := dbx.DB.Where("enabled = ?", true).Order("id asc").Find(&providers).Error
 	return providers, err
 }
 
 // GetCustomOAuthProviderById returns a custom OAuth provider by ID
 func GetCustomOAuthProviderById(id int) (*CustomOAuthProvider, error) {
 	var provider CustomOAuthProvider
-	err := DB.First(&provider, id).Error
+	err := dbx.DB.First(&provider, id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +98,7 @@ func GetCustomOAuthProviderById(id int) (*CustomOAuthProvider, error) {
 // GetCustomOAuthProviderBySlug returns a custom OAuth provider by slug
 func GetCustomOAuthProviderBySlug(slug string) (*CustomOAuthProvider, error) {
 	var provider CustomOAuthProvider
-	err := DB.Where("slug = ?", slug).First(&provider).Error
+	err := dbx.DB.Where("slug = ?", slug).First(&provider).Error
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +110,7 @@ func CreateCustomOAuthProvider(provider *CustomOAuthProvider) error {
 	if err := validateCustomOAuthProvider(provider); err != nil {
 		return err
 	}
-	return DB.Create(provider).Error
+	return dbx.DB.Create(provider).Error
 }
 
 // UpdateCustomOAuthProvider updates an existing custom OAuth provider
@@ -117,23 +118,23 @@ func UpdateCustomOAuthProvider(provider *CustomOAuthProvider) error {
 	if err := validateCustomOAuthProvider(provider); err != nil {
 		return err
 	}
-	return DB.Save(provider).Error
+	return dbx.DB.Save(provider).Error
 }
 
 // DeleteCustomOAuthProvider deletes a custom OAuth provider by ID
 func DeleteCustomOAuthProvider(id int) error {
 	// First, delete all user bindings for this provider
-	if err := DB.Where("provider_id = ?", id).Delete(&UserOAuthBinding{}).Error; err != nil {
+	if err := dbx.DB.Where("provider_id = ?", id).Delete(&UserOAuthBinding{}).Error; err != nil {
 		return err
 	}
-	return DB.Delete(&CustomOAuthProvider{}, id).Error
+	return dbx.DB.Delete(&CustomOAuthProvider{}, id).Error
 }
 
 // IsSlugTaken checks if a slug is already taken by another provider
 // Returns true on DB errors (fail-closed) to prevent slug conflicts
 func IsSlugTaken(slug string, excludeId int) bool {
 	var count int64
-	query := DB.Model(&CustomOAuthProvider{}).Where("slug = ?", slug)
+	query := dbx.DB.Model(&CustomOAuthProvider{}).Where("slug = ?", slug)
 	if excludeId > 0 {
 		query = query.Where("id != ?", excludeId)
 	}

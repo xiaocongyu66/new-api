@@ -2,6 +2,7 @@ package ops
 
 import (
 	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"sort"
 	"strconv"
 	"strings"
@@ -268,7 +269,7 @@ func GetModel(c contract.Context) {
 		return
 	}
 	var m model.Model
-	if err := model.DB.First(&m, id).Error; err != nil {
+	if err := dbx.DB.First(&m, id).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -349,7 +350,7 @@ func DeleteModel(c contract.Context) {
 		return
 	}
 	var existing model.Model
-	if err := model.DB.First(&existing, id).Error; err != nil {
+	if err := dbx.DB.First(&existing, id).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
 	}

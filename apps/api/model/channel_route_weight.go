@@ -1,5 +1,9 @@
 package model
 
+import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
+)
+
 // Channel selection picks a channel, and only afterwards does
 // SetupContextForSelectedChannel pick one of its keys. The isolation state,
 // however, lives per (channel, key, model) unit. These helpers collapse the per
@@ -49,7 +53,7 @@ func channelKeyCounts(channelIDs []int) map[int]int {
 		return counts
 	}
 	var channels []*Channel
-	if err := DB.Select("id", "channel_info").Where("id IN ?", channelIDs).Find(&channels).Error; err != nil {
+	if err := dbx.DB.Select("id", "channel_info").Where("id IN ?", channelIDs).Find(&channels).Error; err != nil {
 		// A failed lookup must not empty the candidate pool: fall back to one
 		// unit per channel, which is the single-key shape.
 		return counts

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"math"
 	"strconv"
 	"sync"
@@ -131,13 +132,13 @@ func pressureRecomputeTotals() {
 		ChannelId int
 	}
 	var abilities []abilityRow
-	if err := DB.Model(&Ability{}).Select("model, channel_id").Where("enabled = ?", true).Find(&abilities).Error; err != nil {
+	if err := dbx.DB.Model(&Ability{}).Select("model, channel_id").Where("enabled = ?", true).Find(&abilities).Error; err != nil {
 		common.SysError("pressure recompute: query abilities failed: " + err.Error())
 		return
 	}
 
 	var channels []Channel
-	if err := DB.Select("id, channel_info").Find(&channels).Error; err != nil {
+	if err := dbx.DB.Select("id, channel_info").Find(&channels).Error; err != nil {
 		common.SysError("pressure recompute: query channels failed: " + err.Error())
 		return
 	}
@@ -170,7 +171,7 @@ func pressureRecomputeTotals() {
 	}
 
 	var healthRows []ChannelModelHealth
-	if err := DB.Find(&healthRows).Error; err != nil {
+	if err := dbx.DB.Find(&healthRows).Error; err != nil {
 		common.SysError("pressure recompute: query health rows failed: " + err.Error())
 		return
 	}
@@ -227,7 +228,7 @@ func maybeEmergencyRecover(model string, now time.Time) {
 	}
 
 	var rows []ChannelModelHealth
-	if err := DB.Where("model = ? AND state <> ?", model, HealthDisabled).
+	if err := dbx.DB.Where("model = ? AND state <> ?", model, HealthDisabled).
 		Order("isolation_level ASC, updated_at ASC").
 		Limit(want).
 		Find(&rows).Error; err != nil {

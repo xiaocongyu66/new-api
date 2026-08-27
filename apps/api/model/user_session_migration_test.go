@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"os"
 	"strings"
 	"sync"
@@ -68,7 +69,7 @@ func (recorder *migrationSQLRecorder) schemaMutations() []string {
 }
 
 func TestUserSessionPreviousRefreshHashSchemaUsesNullableVarchar(t *testing.T) {
-	statement := &gorm.Statement{DB: DB}
+	statement := &gorm.Statement{DB: dbx.DB}
 	require.NoError(t, statement.Parse(&UserSession{}))
 	field := statement.Schema.LookUpField("PreviousRefreshHash")
 	require.NotNil(t, field)

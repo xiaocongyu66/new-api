@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"strings"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -19,7 +20,7 @@ type legacyOptionTransform func(string) (string, error)
 // removed dashboard frontend. Each legacy console setting is migrated in its
 // own transaction so one malformed value cannot block the other settings.
 func MigrateRetiredFrontendOptions() error {
-	if DB == nil {
+	if dbx.DB == nil {
 		return errors.New("database is not initialized")
 	}
 
@@ -49,7 +50,7 @@ func MigrateRetiredFrontendOptions() error {
 }
 
 func normalizeRetiredThemeOption() error {
-	return DB.Transaction(func(tx *gorm.DB) error {
+	return dbx.DB.Transaction(func(tx *gorm.DB) error {
 		var option Option
 		err := tx.Where(&Option{Key: retiredThemeOptionKey}).First(&option).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -66,7 +67,7 @@ func normalizeRetiredThemeOption() error {
 }
 
 func migrateLegacyOption(sourceKey, targetKey string, transform legacyOptionTransform) error {
-	return DB.Transaction(func(tx *gorm.DB) error {
+	return dbx.DB.Transaction(func(tx *gorm.DB) error {
 		var source Option
 		if err := tx.Where(&Option{Key: sourceKey}).First(&source).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -173,7 +174,7 @@ func transformLegacyFAQ(value string) (string, error) {
 }
 
 func migrateLegacyUptimeOptions() error {
-	return DB.Transaction(func(tx *gorm.DB) error {
+	return dbx.DB.Transaction(func(tx *gorm.DB) error {
 		var urlOption Option
 		urlErr := tx.Where(&Option{Key: "UptimeKumaUrl"}).First(&urlOption).Error
 		if urlErr != nil && !errors.Is(urlErr, gorm.ErrRecordNotFound) {

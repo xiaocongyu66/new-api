@@ -2,6 +2,7 @@ package model
 
 import (
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 )
 
@@ -77,14 +78,14 @@ func LookupAdvancedCustomConfigs(channelIDs []int) (map[int]*dto.AdvancedCustomC
 // column to packages that build ability queries without touching raw SQL
 // themselves.
 func GroupCol() string {
-	return commonGroupCol
+	return dbx.GroupCol()
 }
 
 // KeyCol is the same accessor for the reserved "key" column. Both names are
 // assigned by initCol during database setup, so callers must read them through
 // these functions; a copy taken at package-init time would still be empty.
 func KeyCol() string {
-	return commonKeyCol
+	return dbx.KeyCol()
 }
 
 // CacheBridge carries the capability-side cache entry points. Registered once

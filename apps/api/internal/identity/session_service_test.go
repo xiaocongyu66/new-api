@@ -3,6 +3,7 @@ package identity
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +21,7 @@ import (
 
 func setupAuthSessionTestDB(t *testing.T) *model.User {
 	t.Helper()
-	previousDB, previousRedis := model.DB, common.RedisEnabled
+	previousDB, previousRedis := dbx.DB, common.RedisEnabled
 	previousActiveLimit := common.UserSessionActiveLimit
 	previousIssuanceLimit := common.UserSessionIssuanceLimit
 	previousIssuanceWindow := common.UserSessionIssuanceWindowSeconds
@@ -32,7 +33,7 @@ func setupAuthSessionTestDB(t *testing.T) *model.User {
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
 	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.AuthFlow{}))
-	model.DB = db
+	dbx.DB = db
 	common.RedisEnabled = false
 	common.UserSessionActiveLimit = common.DefaultUserSessionActiveLimit
 	common.UserSessionIssuanceLimit = common.DefaultUserSessionIssuanceLimit
@@ -40,7 +41,7 @@ func setupAuthSessionTestDB(t *testing.T) *model.User {
 	common.UserSessionRevokedRetentionDays = common.DefaultUserSessionRevokedRetentionDays
 	common.UserSessionHourlyAlertThreshold = common.DefaultUserSessionHourlyAlertThreshold
 	t.Cleanup(func() {
-		model.DB = previousDB
+		dbx.DB = previousDB
 		common.RedisEnabled = previousRedis
 		common.UserSessionActiveLimit = previousActiveLimit
 		common.UserSessionIssuanceLimit = previousIssuanceLimit
@@ -119,7 +120,7 @@ func TestCreateLoginSessionEnforcesActiveLimitAcrossAuthVersions(t *testing.T) {
 			ExpiresAt:       now + 3600,
 		})
 	}
-	require.NoError(t, model.DB.Create(&rows).Error)
+	require.NoError(t, dbx.DB.Create(&rows).Error)
 
 	_, err := CreateLoginSession(user.Id, "password", "127.0.0.1", "test-agent")
 	require.NoError(t, err, "49 active sessions must allow creation of the 50th")
@@ -127,7 +128,7 @@ func TestCreateLoginSessionEnforcesActiveLimitAcrossAuthVersions(t *testing.T) {
 	_, err = CreateLoginSession(user.Id, "password", "127.0.0.1", "test-agent")
 	assert.ErrorIs(t, err, model.ErrUserSessionLimit)
 	var count int64
-	require.NoError(t, model.DB.Model(&model.UserSession{}).Count(&count).Error)
+	require.NoError(t, dbx.DB.Model(&model.UserSession{}).Count(&count).Error)
 	assert.Equal(t, int64(50), count)
 }
 
@@ -155,7 +156,7 @@ func TestCreateLoginSessionEnforcesIssuanceLimitAcrossAllStatuses(t *testing.T) 
 			CreatedAt: now - 61, LastActiveAt: now - 61, ExpiresAt: now + 3600, RevokedAt: now - 60,
 		},
 	}
-	require.NoError(t, model.DB.Create(&rows).Error)
+	require.NoError(t, dbx.DB.Create(&rows).Error)
 
 	_, err := CreateLoginSession(user.Id, "password", "127.0.0.1", "test-agent")
 	require.NoError(t, err, "rows outside the effective issuance window must not consume the limit")
@@ -163,7 +164,7 @@ func TestCreateLoginSessionEnforcesIssuanceLimitAcrossAllStatuses(t *testing.T) 
 	_, err = CreateLoginSession(user.Id, "password", "127.0.0.1", "test-agent")
 	assert.ErrorIs(t, err, model.ErrUserSessionIssuanceLimit)
 	var count int64
-	require.NoError(t, model.DB.Model(&model.UserSession{}).Count(&count).Error)
+	require.NoError(t, dbx.DB.Model(&model.UserSession{}).Count(&count).Error)
 	assert.Equal(t, int64(4), count)
 }
 
@@ -173,7 +174,7 @@ func TestPasswordResetDoesNotClearSessionIssuanceHistory(t *testing.T) {
 	common.UserSessionActiveLimit = 50
 	common.UserSessionIssuanceLimit = 1
 	email := "session-reset@example.com"
-	require.NoError(t, model.DB.Model(user).Update("email", email).Error)
+	require.NoError(t, dbx.DB.Model(user).Update("email", email).Error)
 
 	_, err := CreateLoginSession(user.Id, "password", "127.0.0.1", "test-agent")
 	require.NoError(t, err)
@@ -189,23 +190,23 @@ func TestCreateLoginSessionFailsClosedWhenLimitCountFails(t *testing.T) {
 	forcedErr := errors.New("forced session count failure")
 	callbackName := "test:fail_user_session_limit_count"
 	callbackRegistered := true
-	require.NoError(t, model.DB.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+	require.NoError(t, dbx.DB.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
 		if tx.Statement != nil && tx.Statement.Table == "user_sessions" {
 			tx.AddError(forcedErr)
 		}
 	}))
 	t.Cleanup(func() {
 		if callbackRegistered {
-			_ = model.DB.Callback().Query().Remove(callbackName)
+			_ = dbx.DB.Callback().Query().Remove(callbackName)
 		}
 	})
 
 	_, err := CreateLoginSession(user.Id, "password", "127.0.0.1", "test-agent")
 	assert.ErrorIs(t, err, forcedErr)
-	require.NoError(t, model.DB.Callback().Query().Remove(callbackName))
+	require.NoError(t, dbx.DB.Callback().Query().Remove(callbackName))
 	callbackRegistered = false
 	var count int64
-	require.NoError(t, model.DB.Model(&model.UserSession{}).Count(&count).Error)
+	require.NoError(t, dbx.DB.Model(&model.UserSession{}).Count(&count).Error)
 	assert.Zero(t, count)
 }
 

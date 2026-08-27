@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 
 	"github.com/QuantumNous/new-api/internal/common"
 
@@ -101,12 +102,12 @@ func acquireSystemTaskLock(taskType string, taskID string, lockedBy string, now 
 		LockedUntil: lockUntil,
 		UpdatedAt:   now,
 	}
-	if err := DB.Create(lock).Error; err == nil {
+	if err := dbx.DB.Create(lock).Error; err == nil {
 		return true, "", nil
 	}
 
 	var existing SystemTaskLock
-	err := DB.Where("type = ?", taskType).First(&existing).Error
+	err := dbx.DB.Where("type = ?", taskType).First(&existing).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return false, "", nil
@@ -117,7 +118,7 @@ func acquireSystemTaskLock(taskType string, taskID string, lockedBy string, now 
 		return false, "", nil
 	}
 
-	result := DB.Model(&SystemTaskLock{}).
+	result := dbx.DB.Model(&SystemTaskLock{}).
 		Where("type = ? AND locked_until < ?", taskType, now).
 		Updates(map[string]any{
 			"task_id":      taskID,

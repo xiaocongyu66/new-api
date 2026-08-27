@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"strconv"
 	"sync"
 	"testing"
@@ -17,14 +18,14 @@ import (
 // so isolation state written by one case cannot leak into the next.
 func withRouteHealthDB(t *testing.T) {
 	t.Helper()
-	previousDB := DB
+	previousDB := dbx.DB
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&ChannelModelHealth{}))
-	DB = db
+	dbx.DB = db
 	ClearRouteHealthCache()
 	t.Cleanup(func() {
-		DB = previousDB
+		dbx.DB = previousDB
 		ClearRouteHealthCache()
 	})
 }
@@ -122,7 +123,7 @@ func TestRetryableFailureEscalatesAndExpires(t *testing.T) {
 
 	require.NoError(t, RecordRetryableFailure(key, "bad_response_status_code", FailureSourceUpstream, now.Add(3*time.Second)))
 	var row ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row).Error)
 	assert.Equal(t, 1, row.IsolationLevel,
 		"a recovered route restarts the ladder instead of resuming from the residual level")
 	assert.Equal(t, HealthCalm, row.State)
@@ -142,7 +143,7 @@ func TestExpiredIsolationDecaysAndPersistsHealthy(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	until := now.Add(-time.Second).Unix()
 	key := RouteKey{ChannelId: 9051, Model: "expired-route"}
-	require.NoError(t, DB.Create(&ChannelModelHealth{
+	require.NoError(t, dbx.DB.Create(&ChannelModelHealth{
 		ChannelId: key.ChannelId, Model: key.Model, State: HealthCalm,
 		IsolationLevel: 2, Until: &until, Version: 4,
 	}).Error)
@@ -151,7 +152,7 @@ func TestExpiredIsolationDecaysAndPersistsHealthy(t *testing.T) {
 	require.True(t, IsRouteHealthy(key, now))
 
 	var row ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row).Error)
 	assert.Equal(t, HealthHealthy, row.State)
 	assert.Nil(t, row.Until)
 	assert.Equal(t, 5, row.Version)
@@ -165,7 +166,7 @@ func TestExpiredIsolationDecaysAndPersistsHealthy(t *testing.T) {
 func TestDormantExpiryDisableThreshold(t *testing.T) {
 	dormantRow := func(t *testing.T, key RouteKey, until int64) {
 		t.Helper()
-		require.NoError(t, DB.Create(&ChannelModelHealth{
+		require.NoError(t, dbx.DB.Create(&ChannelModelHealth{
 			ChannelId:      key.ChannelId,
 			Model:          key.Model,
 			State:          HealthDormant,
@@ -188,7 +189,7 @@ func TestDormantExpiryDisableThreshold(t *testing.T) {
 		require.NoError(t, RecordRetryableFailure(key, "bad_response", FailureSourceUpstream, now))
 
 		var row ChannelModelHealth
-		require.NoError(t, DB.Where("channel_id = ?", key.ChannelId).First(&row).Error)
+		require.NoError(t, dbx.DB.Where("channel_id = ?", key.ChannelId).First(&row).Error)
 		assert.Equal(t, HealthDisabled, row.State)
 		assert.Equal(t, 1, row.DormantDisableCount)
 		assert.Nil(t, row.Until, "a disabled route has no expiry; only an admin restores it")
@@ -208,7 +209,7 @@ func TestDormantExpiryDisableThreshold(t *testing.T) {
 		require.NoError(t, RecordRetryableFailure(key, "bad_response", FailureSourceUpstream, now))
 
 		var row ChannelModelHealth
-		require.NoError(t, DB.Where("channel_id = ?", key.ChannelId).First(&row).Error)
+		require.NoError(t, dbx.DB.Where("channel_id = ?", key.ChannelId).First(&row).Error)
 		assert.Equal(t, HealthDormant, row.State, "threshold 0 keeps cycling dormant -> healthy")
 		assert.Equal(t, 1, row.DormantDisableCount, "the counter still advances for observability")
 		require.NotNil(t, row.Until)
@@ -233,7 +234,7 @@ func TestAdminRecoverAndDisable(t *testing.T) {
 	assert.True(t, IsRouteHealthy(key, now), "admin recovery makes the route selectable immediately")
 
 	var row ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ?", key.ChannelId).First(&row).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ?", key.ChannelId).First(&row).Error)
 	assert.Equal(t, HealthHealthy, row.State)
 	assert.Zero(t, row.IsolationLevel, "recovery resets the ladder, not just the timer")
 	assert.Zero(t, row.DormantDisableCount)
@@ -261,7 +262,7 @@ func TestRecordRetryableFailureVersionsMonotonically(t *testing.T) {
 	for i := range 4 {
 		require.NoError(t, RecordRetryableFailure(key, "bad_response", FailureSourceUpstream, now.Add(time.Duration(i)*time.Hour)))
 		var row ChannelModelHealth
-		require.NoError(t, DB.Where("channel_id = ?", key.ChannelId).First(&row).Error)
+		require.NoError(t, dbx.DB.Where("channel_id = ?", key.ChannelId).First(&row).Error)
 		assert.False(t, seen[row.Version], "version %d reused", row.Version)
 		seen[row.Version] = true
 	}
@@ -282,7 +283,7 @@ func TestConcurrentRetryableFailureCASContention(t *testing.T) {
 	// Pre-create the row so all 10 goroutines compete on the CAS update path,
 	// not on INSERT. This mirrors the real multi-instance scenario where the
 	// row already exists and two processes race to bump the version.
-	require.NoError(t, DB.Create(&ChannelModelHealth{
+	require.NoError(t, dbx.DB.Create(&ChannelModelHealth{
 		ChannelId: key.ChannelId, Model: key.Model, State: HealthHealthy, Version: 1,
 	}).Error)
 	var wg sync.WaitGroup
@@ -304,7 +305,7 @@ func TestConcurrentRetryableFailureCASContention(t *testing.T) {
 	}
 
 	var row ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row).Error)
 	assert.Equal(t, 10, row.IsolationLevel, "every concurrent failure must escalate exactly once")
 	assert.GreaterOrEqual(t, row.Version, 11, "version must be at least initial+10 after 10 accepted writes")
 	assert.NotEqual(t, HealthHealthy, row.State, "the route must be isolated after 10 failures")
@@ -332,7 +333,7 @@ func TestFullLadderEscalation(t *testing.T) {
 		require.NoError(t, RecordRetryableFailure(key, "bad_response", FailureSourceUpstream, now.Add(time.Duration(level)*time.Hour)))
 
 		var row ChannelModelHealth
-		require.NoError(t, DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row).Error)
+		require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row).Error)
 		assert.Equal(t, level, row.IsolationLevel, "level %d", level)
 
 		expectedState, expectedSeconds := isolationDuration(level, operation_setting.DefaultChannelModelHealthSetting())
@@ -344,7 +345,7 @@ func TestFullLadderEscalation(t *testing.T) {
 	// Level 10+ stays dormant with DormantMaxBase.
 	require.NoError(t, RecordRetryableFailure(key, "bad_response", FailureSourceUpstream, now.Add(11*time.Hour)))
 	var finalRow ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&finalRow).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&finalRow).Error)
 	assert.Equal(t, 11, finalRow.IsolationLevel)
 	assert.Equal(t, HealthDormant, finalRow.State)
 	_, maxSeconds := isolationDuration(11, operation_setting.DefaultChannelModelHealthSetting())
@@ -377,7 +378,7 @@ func TestDormantMultiCycleThresholdAndSibling(t *testing.T) {
 				require.NoError(t, RecordRetryableFailure(key, "bad_response", FailureSourceUpstream, base.Add(time.Duration(i)*time.Second)))
 			}
 			var row ChannelModelHealth
-			require.NoError(t, DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row).Error)
+			require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row).Error)
 			assert.Equal(t, HealthDormant, row.State)
 			// Expire the dormant window.
 			require.NotNil(t, row.Until)
@@ -388,7 +389,7 @@ func TestDormantMultiCycleThresholdAndSibling(t *testing.T) {
 		driveToExpiredDormant(now)
 		require.NoError(t, RecordRetryableFailure(key, "bad_response", FailureSourceUpstream, now.Add(time.Hour)))
 		var row1 ChannelModelHealth
-		require.NoError(t, DB.Where("channel_id = ?", key.ChannelId).First(&row1).Error)
+		require.NoError(t, dbx.DB.Where("channel_id = ?", key.ChannelId).First(&row1).Error)
 		assert.Equal(t, 1, row1.DormantDisableCount, "first expired-dormant failure")
 		assert.NotEqual(t, HealthDisabled, row1.State, "threshold 3 not yet reached")
 
@@ -398,7 +399,7 @@ func TestDormantMultiCycleThresholdAndSibling(t *testing.T) {
 		// Cycle 2: expire and fail → count=2, still not disabled.
 		require.NoError(t, RecordRetryableFailure(key, "bad_response", FailureSourceUpstream, now.Add(2*time.Hour)))
 		var row2 ChannelModelHealth
-		require.NoError(t, DB.Where("channel_id = ?", key.ChannelId).First(&row2).Error)
+		require.NoError(t, dbx.DB.Where("channel_id = ?", key.ChannelId).First(&row2).Error)
 		assert.Equal(t, 2, row2.DormantDisableCount)
 		assert.NotEqual(t, HealthDisabled, row2.State, "threshold 3 not yet reached")
 		assert.True(t, IsRouteHealthy(sibling, now), "sibling still healthy after cycle 2")
@@ -406,7 +407,7 @@ func TestDormantMultiCycleThresholdAndSibling(t *testing.T) {
 		// Cycle 3: expire and fail → count=3, disabled.
 		require.NoError(t, RecordRetryableFailure(key, "bad_response", FailureSourceUpstream, now.Add(3*time.Hour)))
 		var row3 ChannelModelHealth
-		require.NoError(t, DB.Where("channel_id = ?", key.ChannelId).First(&row3).Error)
+		require.NoError(t, dbx.DB.Where("channel_id = ?", key.ChannelId).First(&row3).Error)
 		assert.Equal(t, 3, row3.DormantDisableCount)
 		assert.Equal(t, HealthDisabled, row3.State, "threshold 3 reached → disabled")
 		assert.Nil(t, row3.Until, "disabled has no expiry")
@@ -438,7 +439,7 @@ func TestDormantMultiCycleThresholdAndSibling(t *testing.T) {
 			// Fail after the dormant window has expired.
 			require.NoError(t, RecordRetryableFailure(key, "bad_response", FailureSourceUpstream, cycleBase.Add(2000*time.Second)))
 			var row ChannelModelHealth
-			require.NoError(t, DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row).Error)
+			require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row).Error)
 			assert.Greater(t, row.DormantDisableCount, prevCount, "cycle %d: counter must keep climbing", cycle)
 			prevCount = row.DormantDisableCount
 			assert.NotEqual(t, HealthDisabled, row.State, "threshold 0 never disables")
@@ -459,7 +460,7 @@ func TestCacheHydrationAndExpiryPersistence(t *testing.T) {
 
 	// Persist a calm row with an already-expired deadline.
 	expiredUntil := now.Add(-time.Minute).Unix()
-	require.NoError(t, DB.Create(&ChannelModelHealth{
+	require.NoError(t, dbx.DB.Create(&ChannelModelHealth{
 		ChannelId:      key.ChannelId,
 		Model:          key.Model,
 		State:          HealthCalm,
@@ -477,7 +478,7 @@ func TestCacheHydrationAndExpiryPersistence(t *testing.T) {
 
 	// The CAS must have persisted healthy to the DB.
 	var row ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row).Error)
 	assert.Equal(t, HealthHealthy, row.State, "CAS must persist healthy after expiry")
 	assert.Nil(t, row.Until)
 	assert.Equal(t, 6, row.Version, "version must bump")
@@ -491,7 +492,7 @@ func TestCacheHydrationAndExpiryPersistence(t *testing.T) {
 	assert.True(t, IsRouteHealthy(key, now), "no spurious isolation after re-hydration")
 
 	var row2 ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row2).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row2).Error)
 	assert.Equal(t, HealthHealthy, row2.State, "DB must still be healthy after second hydration")
 	assert.Nil(t, row2.Until)
 }
@@ -564,7 +565,7 @@ func TestConcurrentFailureNeverLosesUpdate(t *testing.T) {
 	}
 
 	var row ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row).Error)
 	assert.Equal(t, writers, row.IsolationLevel, "every concurrent failure must escalate the ladder exactly once")
 	assert.Equal(t, writers+1, row.Version, "version must advance once per accepted write")
 }
@@ -586,7 +587,7 @@ func TestLocalFailureThresholdEscalatesAtThreshold(t *testing.T) {
 	// First local failure: count 1, still level 0, still healthy.
 	require.NoError(t, RecordRetryableFailure(key, "no_available_channel", FailureSourceLocal, now))
 	var row1 ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row1).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row1).Error)
 	assert.Equal(t, 1, row1.LocalFailureCount, "first local failure: count 1")
 	assert.Equal(t, 0, row1.UpstreamFailureCount, "upstream counter untouched")
 	assert.Equal(t, 0, row1.IsolationLevel, "below threshold: no escalation")
@@ -596,7 +597,7 @@ func TestLocalFailureThresholdEscalatesAtThreshold(t *testing.T) {
 	// Second local failure: count 2, still level 0, still healthy.
 	require.NoError(t, RecordRetryableFailure(key, "no_available_channel", FailureSourceLocal, now.Add(time.Second)))
 	var row2 ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row2).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row2).Error)
 	assert.Equal(t, 2, row2.LocalFailureCount, "second local failure: count 2")
 	assert.Equal(t, 0, row2.UpstreamFailureCount, "upstream counter still zero")
 	assert.Equal(t, 0, row2.IsolationLevel, "still below threshold: no escalation")
@@ -605,7 +606,7 @@ func TestLocalFailureThresholdEscalatesAtThreshold(t *testing.T) {
 	// Third local failure: reaches threshold → reset to 0, escalate to level 1.
 	require.NoError(t, RecordRetryableFailure(key, "no_available_channel", FailureSourceLocal, now.Add(2*time.Second)))
 	var row3 ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row3).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row3).Error)
 	assert.Equal(t, 0, row3.LocalFailureCount, "threshold reached: local counter reset")
 	assert.Equal(t, 0, row3.UpstreamFailureCount, "upstream counter still zero after local escalation")
 	assert.Equal(t, 1, row3.IsolationLevel, "threshold reached: escalated to level 1")
@@ -630,14 +631,14 @@ func TestUpstreamFailureThresholdEscalatesWhilePreservingLocalCounter(t *testing
 	require.NoError(t, RecordRetryableFailure(key, "no_available_channel", FailureSourceLocal, now))
 	require.NoError(t, RecordRetryableFailure(key, "no_available_channel", FailureSourceLocal, now.Add(time.Second)))
 	var rowA ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&rowA).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&rowA).Error)
 	assert.Equal(t, 2, rowA.LocalFailureCount, "two local failures counted")
 	assert.Equal(t, 0, rowA.IsolationLevel, "local below threshold: no escalation")
 
 	// One upstream failure: threshold 1 → escalate immediately.
 	require.NoError(t, RecordRetryableFailure(key, "bad_response", FailureSourceUpstream, now.Add(2*time.Second)))
 	var rowB ChannelModelHealth
-	require.NoError(t, DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&rowB).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&rowB).Error)
 	assert.Equal(t, 0, rowB.UpstreamFailureCount, "upstream counter reset after escalation")
 	assert.Equal(t, 2, rowB.LocalFailureCount, "local counter preserved across upstream escalation")
 	assert.Equal(t, 1, rowB.IsolationLevel, "upstream threshold 1 escalates immediately")
@@ -660,7 +661,7 @@ func TestRecordRetryableFailureRejectsUnknownSource(t *testing.T) {
 	assert.Contains(t, err.Error(), "unknown failure source")
 
 	var count int64
-	require.NoError(t, DB.Model(&ChannelModelHealth{}).Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).Count(&count).Error)
+	require.NoError(t, dbx.DB.Model(&ChannelModelHealth{}).Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).Count(&count).Error)
 	assert.Zero(t, count, "no DB row should be created for an invalid source")
 	assert.True(t, IsRouteHealthy(key, now), "no cache entry, route healthy by default")
 }
@@ -678,7 +679,7 @@ func TestRouteHealthSeparatesKeysForSameChannelModel(t *testing.T) {
 	assert.True(t, IsRouteHealthy(healthy, now), "one failed key must not isolate a healthy sibling key")
 
 	var count int64
-	require.NoError(t, DB.Model(&ChannelModelHealth{}).Where("channel_id = ? AND model = ?", failed.ChannelId, failed.Model).Count(&count).Error)
+	require.NoError(t, dbx.DB.Model(&ChannelModelHealth{}).Where("channel_id = ? AND model = ?", failed.ChannelId, failed.Model).Count(&count).Error)
 	assert.Equal(t, int64(1), count)
 }
 

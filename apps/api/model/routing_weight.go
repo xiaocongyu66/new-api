@@ -1,5 +1,7 @@
 package model
 
+import ()
+
 // routingBaseWeight converts a configured channel weight into the base weight
 // used for weighted-random routing. Both selection paths (the memory-cache path
 // in GetRandomSatisfiedChannel and the DB path in GetChannel) MUST call this so

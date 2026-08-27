@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/common/quotacache"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -52,7 +53,7 @@ var (
 
 func (topUp *TopUp) Insert() error {
 	var err error
-	err = DB.Create(topUp).Error
+	err = dbx.DB.Create(topUp).Error
 	return err
 }
 
@@ -73,7 +74,7 @@ func ValidateTopUpQuotaCapacity(userId int, creditedQuota int) error {
 	}
 
 	var user User
-	if err := DB.Select("quota").Where("id = ?", userId).First(&user).Error; err != nil {
+	if err := dbx.DB.Select("quota").Where("id = ?", userId).First(&user).Error; err != nil {
 		return err
 	}
 	if user.Quota > maxCurrentQuota {
@@ -119,7 +120,7 @@ func creditTopUpQuota(tx *gorm.DB, userId int, creditedQuota int, updates map[st
 
 func (topUp *TopUp) Update() error {
 	var err error
-	err = DB.Save(topUp).Error
+	err = dbx.DB.Save(topUp).Error
 	return err
 }
 
@@ -139,8 +140,8 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 
 	var quotaToAdd int
 	topUp := &TopUp{}
-	err = DB.Transaction(func(tx *gorm.DB) error {
-		if err := LockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
+	err = dbx.DB.Transaction(func(tx *gorm.DB) error {
+		if err := dbx.LockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
 			return ErrTopUpNotFound
 		}
 		if topUp.PaymentProvider != PaymentProviderEpay {
@@ -196,7 +197,7 @@ func topUpQueryCutoff() int64 {
 
 // GetAllTopUps 获取全平台的充值记录（管理员使用，不限制时间窗口）
 func GetAllTopUps(pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
-	tx := DB.Begin()
+	tx := dbx.DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
 	}
@@ -229,7 +230,7 @@ const searchTopUpCountHardLimit = 10000
 
 // SearchUserTopUps 按订单号搜索某用户的充值记录
 func SearchUserTopUps(userId int, keyword string, pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
-	tx := DB.Begin()
+	tx := dbx.DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
 	}
@@ -269,7 +270,7 @@ func SearchUserTopUps(userId int, keyword string, pageInfo *common.PageInfo) (to
 
 // SearchAllTopUps 按订单号搜索全平台充值记录（管理员使用，不限制时间窗口）
 func SearchAllTopUps(keyword string, pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
-	tx := DB.Begin()
+	tx := dbx.DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
 	}
@@ -323,10 +324,10 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 	var payMoney float64
 	var paymentMethod string
 
-	err := DB.Transaction(func(tx *gorm.DB) error {
+	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
 		topUp := &TopUp{}
 		// 行级锁，避免并发补单
-		if err := LockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
+		if err := dbx.LockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
 			return errors.New("充值订单不存在")
 		}
 
@@ -396,8 +397,8 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 		refCol = `"trade_no"`
 	}
 
-	err = DB.Transaction(func(tx *gorm.DB) error {
-		err := LockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error
+	err = dbx.DB.Transaction(func(tx *gorm.DB) error {
+		err := dbx.LockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error
 		if err != nil {
 			return errors.New("充值订单不存在")
 		}
@@ -455,8 +456,8 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 		refCol = `"trade_no"`
 	}
 
-	err = DB.Transaction(func(tx *gorm.DB) error {
-		err := LockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error
+	err = dbx.DB.Transaction(func(tx *gorm.DB) error {
+		err := dbx.LockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error
 		if err != nil {
 			return errors.New("充值订单不存在")
 		}
@@ -514,8 +515,8 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 		refCol = `"trade_no"`
 	}
 
-	err = DB.Transaction(func(tx *gorm.DB) error {
-		err := LockForUpdate(tx).Where(refCol+" = ?", referenceId).First(topUp).Error
+	err = dbx.DB.Transaction(func(tx *gorm.DB) error {
+		err := dbx.LockForUpdate(tx).Where(refCol+" = ?", referenceId).First(topUp).Error
 		if err != nil {
 			return errors.New("充值订单不存在")
 		}
@@ -574,7 +575,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 }
 func GetUserTopUps(userId int, pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
 	// Start transaction
-	tx := DB.Begin()
+	tx := dbx.DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
 	}
@@ -620,8 +621,8 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 		refCol = `"trade_no"`
 	}
 
-	err = DB.Transaction(func(tx *gorm.DB) error {
-		err := LockForUpdate(tx).Where(refCol+" = ?", referenceId).First(topUp).Error
+	err = dbx.DB.Transaction(func(tx *gorm.DB) error {
+		err := dbx.LockForUpdate(tx).Where(refCol+" = ?", referenceId).First(topUp).Error
 		if err != nil {
 			return errors.New("充值订单不存在")
 		}
@@ -672,9 +673,9 @@ func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, ta
 		refCol = `"trade_no"`
 	}
 
-	return DB.Transaction(func(tx *gorm.DB) error {
+	return dbx.DB.Transaction(func(tx *gorm.DB) error {
 		topUp := &TopUp{}
-		if err := LockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
+		if err := dbx.LockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
 			return ErrTopUpNotFound
 		}
 		if expectedPaymentProvider != "" && topUp.PaymentProvider != expectedPaymentProvider {
@@ -691,7 +692,7 @@ func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, ta
 func GetTopUpByTradeNo(tradeNo string) *TopUp {
 	var topUp *TopUp
 	var err error
-	err = DB.Where("trade_no = ?", tradeNo).First(&topUp).Error
+	err = dbx.DB.Where("trade_no = ?", tradeNo).First(&topUp).Error
 	if err != nil {
 		return nil
 	}

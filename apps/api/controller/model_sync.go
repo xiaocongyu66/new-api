@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"io"
 	"math/rand"
@@ -242,7 +243,7 @@ func ensureVendorID(vendorName string, vendorByName map[string]upstreamVendor, v
 		return id
 	}
 	var existing model.Vendor
-	if err := model.DB.Where("name = ?", vendorName).First(&existing).Error; err == nil {
+	if err := dbx.DB.Where("name = ?", vendorName).First(&existing).Error; err == nil {
 		vendorIDCache[vendorName] = existing.Id
 		return existing.Id
 	}
@@ -361,7 +362,7 @@ func SyncUpstreamModels(c contract.Context) {
 
 		// 若本地已存在且设置为不同步，则跳过（极端情况：缺失列表与本地状态不同步时）
 		var existing model.Model
-		if err := model.DB.Where("model_name = ?", name).First(&existing).Error; err == nil {
+		if err := dbx.DB.Where("model_name = ?", name).First(&existing).Error; err == nil {
 			if existing.SyncOfficial == 0 {
 				skipped = append(skipped, name)
 				continue
@@ -398,7 +399,7 @@ func SyncUpstreamModels(c contract.Context) {
 				continue
 			}
 			var local model.Model
-			if err := model.DB.Where("model_name = ?", ow.ModelName).First(&local).Error; err != nil {
+			if err := dbx.DB.Where("model_name = ?", ow.ModelName).First(&local).Error; err != nil {
 				continue
 			}
 
@@ -411,7 +412,7 @@ func SyncUpstreamModels(c contract.Context) {
 			newVendorID := ensureVendorID(up.VendorName, vendorByName, vendorIDCache, &createdVendors)
 
 			// 应用字段覆盖（事务）
-			_ = model.DB.Transaction(func(tx *gorm.DB) error {
+			_ = dbx.DB.Transaction(func(tx *gorm.DB) error {
 				needUpdate := false
 				if containsField(ow.Fields, "description") {
 					local.Description = up.Description
@@ -544,7 +545,7 @@ func SyncUpstreamPreview(c contract.Context) {
 	// 2) 本地已有模型
 	var locals []model.Model
 	if len(upstreamNames) > 0 {
-		_ = model.DB.Where("model_name IN ? AND sync_official <> 0", upstreamNames).Find(&locals).Error
+		_ = dbx.DB.Where("model_name IN ? AND sync_official <> 0", upstreamNames).Find(&locals).Error
 	}
 
 	// 本地 vendor 名称映射
@@ -561,7 +562,7 @@ func SyncUpstreamPreview(c contract.Context) {
 	idToVendorName := make(map[int]string)
 	if len(vendorIDs) > 0 {
 		var dbVendors []model.Vendor
-		_ = model.DB.Where("id IN ?", vendorIDs).Find(&dbVendors).Error
+		_ = dbx.DB.Where("id IN ?", vendorIDs).Find(&dbVendors).Error
 		for _, v := range dbVendors {
 			idToVendorName[v.Id] = v.Name
 		}

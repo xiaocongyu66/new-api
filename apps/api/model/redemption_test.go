@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"sync"
 	"testing"
 
@@ -11,10 +12,10 @@ import (
 )
 
 func TestSearchRedemptionsFiltersAndPaginates(t *testing.T) {
-	require.NoError(t, DB.AutoMigrate(&Redemption{}))
-	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
+	require.NoError(t, dbx.DB.AutoMigrate(&Redemption{}))
+	require.NoError(t, dbx.DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
 	t.Cleanup(func() {
-		require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
+		require.NoError(t, dbx.DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
 	})
 
 	now := common.GetTimestamp()
@@ -25,7 +26,7 @@ func TestSearchRedemptionsFiltersAndPaginates(t *testing.T) {
 		{Id: 4, Name: "beta-disabled", Key: "00000000000000000000000000000004", Status: common.RedemptionCodeStatusDisabled, ExpiredTime: 0},
 		{Id: 5, Name: "beta-used", Key: "00000000000000000000000000000005", Status: common.RedemptionCodeStatusUsed, ExpiredTime: 0},
 	}
-	require.NoError(t, DB.Create(&redemptions).Error)
+	require.NoError(t, dbx.DB.Create(&redemptions).Error)
 
 	tests := []struct {
 		name      string
@@ -102,16 +103,16 @@ func TestSearchRedemptionsFiltersAndPaginates(t *testing.T) {
 
 func setupRedeemFixture(t *testing.T, quota int) (userId int, key string) {
 	t.Helper()
-	require.NoError(t, DB.AutoMigrate(&Redemption{}))
-	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
+	require.NoError(t, dbx.DB.AutoMigrate(&Redemption{}))
+	require.NoError(t, dbx.DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
 	t.Cleanup(func() {
-		require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
-		DB.Exec("DELETE FROM users")
-		DB.Exec("DELETE FROM logs")
+		require.NoError(t, dbx.DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
+		dbx.DB.Exec("DELETE FROM users")
+		dbx.DB.Exec("DELETE FROM logs")
 	})
 
 	user := &User{Username: "redeem-user", Password: "password", Status: common.UserStatusEnabled, Quota: 0}
-	require.NoError(t, DB.Create(user).Error)
+	require.NoError(t, dbx.DB.Create(user).Error)
 
 	key = "10000000000000000000000000000001"
 	redemption := &Redemption{
@@ -121,7 +122,7 @@ func setupRedeemFixture(t *testing.T, quota int) (userId int, key string) {
 		Quota:       quota,
 		CreatedTime: common.GetTimestamp(),
 	}
-	require.NoError(t, DB.Create(redemption).Error)
+	require.NoError(t, dbx.DB.Create(redemption).Error)
 	return user.Id, key
 }
 
@@ -133,18 +134,18 @@ func TestRedeemCreditsQuotaExactlyOnce(t *testing.T) {
 	assert.Equal(t, 500, quota)
 
 	var user User
-	require.NoError(t, DB.First(&user, "id = ?", userId).Error)
+	require.NoError(t, dbx.DB.First(&user, "id = ?", userId).Error)
 	assert.Equal(t, 500, user.Quota)
 
 	var redemption Redemption
-	require.NoError(t, DB.First(&redemption, "name = ?", "redeem-test").Error)
+	require.NoError(t, dbx.DB.First(&redemption, "name = ?", "redeem-test").Error)
 	assert.Equal(t, common.RedemptionCodeStatusUsed, redemption.Status)
 	assert.Equal(t, userId, redemption.UsedUserId)
 
 	// Redeeming the same code again must fail and must not credit quota.
 	_, err = Redeem(key, userId)
 	require.Error(t, err)
-	require.NoError(t, DB.First(&user, "id = ?", userId).Error)
+	require.NoError(t, dbx.DB.First(&user, "id = ?", userId).Error)
 	assert.Equal(t, 500, user.Quota)
 }
 
@@ -176,6 +177,6 @@ func TestRedeemConcurrentSingleSuccess(t *testing.T) {
 	assert.Equal(t, 1, successCount, "exactly one concurrent redeem should succeed")
 
 	var user User
-	require.NoError(t, DB.First(&user, "id = ?", userId).Error)
+	require.NoError(t, dbx.DB.First(&user, "id = ?", userId).Error)
 	assert.Equal(t, 300, user.Quota, "quota must be credited exactly once")
 }

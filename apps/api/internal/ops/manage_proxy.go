@@ -3,6 +3,7 @@ package ops
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net"
 	"os"
@@ -453,7 +454,7 @@ type proxyNodeBatchClearErrorsRequest struct {
 
 func ListProxyNodes(c contract.Context) {
 	var nodes []model.ProxyNode
-	query := model.DB
+	query := dbx.DB
 	if scopeType := c.Query("scope_type"); scopeType != "" {
 		query = query.Where("scope_type = ?", scopeType)
 	}
@@ -551,7 +552,7 @@ func BatchClearProxyNodeErrors(c contract.Context) {
 
 func GetProxyNodeReport(c contract.Context) {
 	var total, enabled, healthy int64
-	base := model.DB.Model(&model.ProxyNode{})
+	base := dbx.DB.Model(&model.ProxyNode{})
 	if err := base.Count(&total).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -559,11 +560,11 @@ func GetProxyNodeReport(c contract.Context) {
 	// Each metric runs on its own fresh query. Reusing one query would
 	// accumulate predicates (enabled leaking into the healthy count), same
 	// class of bug as GetProxyNodesForChannel — see proxy_node_test.go.
-	if err := model.DB.Model(&model.ProxyNode{}).Where("enabled = ?", true).Count(&enabled).Error; err != nil {
+	if err := dbx.DB.Model(&model.ProxyNode{}).Where("enabled = ?", true).Count(&enabled).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
-	if err := model.DB.Model(&model.ProxyNode{}).Where("health >= ?", service.ProxyNodeHealthyThreshold).Count(&healthy).Error; err != nil {
+	if err := dbx.DB.Model(&model.ProxyNode{}).Where("health >= ?", service.ProxyNodeHealthyThreshold).Count(&healthy).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -589,7 +590,7 @@ func GetProxyNode(c contract.Context) {
 		return
 	}
 	var node model.ProxyNode
-	if err := model.DB.First(&node, id).Error; err != nil {
+	if err := dbx.DB.First(&node, id).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -631,7 +632,7 @@ func UpdateProxyNode(c contract.Context) {
 		return
 	}
 	var node model.ProxyNode
-	if err := model.DB.First(&node, id).Error; err != nil {
+	if err := dbx.DB.First(&node, id).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -659,7 +660,7 @@ func UpdateProxyNode(c contract.Context) {
 		common.CtxApiErrorMsg(c, "proxy node name must not be empty")
 		return
 	}
-	if err := model.DB.Save(&node).Error; err != nil {
+	if err := dbx.DB.Save(&node).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -672,7 +673,7 @@ func DeleteProxyNode(c contract.Context) {
 		common.CtxApiErrorMsg(c, "invalid proxy node id")
 		return
 	}
-	if err := model.DB.Delete(&model.ProxyNode{}, id).Error; err != nil {
+	if err := dbx.DB.Delete(&model.ProxyNode{}, id).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -687,7 +688,7 @@ func TestProxyNode(c contract.Context) {
 		return
 	}
 	var node model.ProxyNode
-	if err := model.DB.First(&node, id).Error; err != nil {
+	if err := dbx.DB.First(&node, id).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -701,7 +702,7 @@ func TestProxyNode(c contract.Context) {
 
 func TestAllProxyNodes(c contract.Context) {
 	var nodes []model.ProxyNode
-	if err := model.DB.Where("enabled = ?", true).Find(&nodes).Error; err != nil {
+	if err := dbx.DB.Where("enabled = ?", true).Find(&nodes).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
 	}

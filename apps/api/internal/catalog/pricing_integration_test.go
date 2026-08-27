@@ -2,6 +2,7 @@ package channel
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -16,27 +17,27 @@ import (
 
 func resetPricingEndpointTestTables(t *testing.T) {
 	t.Helper()
-	previousDB := model.DB
+	previousDB := dbx.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.Ability{}, &model.Model{}, &model.Vendor{}))
-	model.DB = db
+	dbx.DB = db
 	model.InitDialectColumns()
 	originalMemoryCacheEnabled := common.MemoryCacheEnabled
 	common.MemoryCacheEnabled = true
 	for _, table := range []string{"abilities", "channels", "models", "vendors"} {
-		require.NoError(t, model.DB.Exec("DELETE FROM "+table).Error)
+		require.NoError(t, dbx.DB.Exec("DELETE FROM "+table).Error)
 	}
 	model.InitChannelCache()
 	model.InvalidatePricingCache()
 	t.Cleanup(func() {
 		for _, table := range []string{"abilities", "channels", "models", "vendors"} {
-			require.NoError(t, model.DB.Exec("DELETE FROM "+table).Error)
+			require.NoError(t, dbx.DB.Exec("DELETE FROM "+table).Error)
 		}
 		model.InitChannelCache()
 		model.InvalidatePricingCache()
 		common.MemoryCacheEnabled = originalMemoryCacheEnabled
-		model.DB = previousDB
+		dbx.DB = previousDB
 	})
 }
 
@@ -52,12 +53,12 @@ func insertPricingEndpointChannel(t *testing.T, channelID int, channelType int, 
 	if settings.AdvancedCustom != nil {
 		channel.SetOtherSettings(settings)
 	}
-	require.NoError(t, model.DB.Create(channel).Error)
+	require.NoError(t, dbx.DB.Create(channel).Error)
 }
 
 func insertPricingEndpointAbility(t *testing.T, channelID int, modelName string) {
 	t.Helper()
-	require.NoError(t, model.DB.Create(&model.Ability{
+	require.NoError(t, dbx.DB.Create(&model.Ability{
 		Group:     "default",
 		Model:     modelName,
 		ChannelId: channelID,

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -14,7 +15,7 @@ import (
 func setupUserUpdateTestState(t *testing.T) {
 	t.Helper()
 	truncateTables(t)
-	require.NoError(t, DB.Exec("DELETE FROM users").Error)
+	require.NoError(t, dbx.DB.Exec("DELETE FROM users").Error)
 
 	oldRedisEnabled := common.RedisEnabled
 	oldBatchUpdateEnabled := common.BatchUpdateEnabled
@@ -37,7 +38,7 @@ func createUserBindTestUser(t *testing.T) User {
 		AuthVersion: 1,
 		AffCode:     "bind-test-aff-code",
 	}
-	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, dbx.DB.Create(&user).Error)
 	return user
 }
 
@@ -58,12 +59,12 @@ func TestUserUpdateDoesNotOverwriteConcurrentAccountingOrTokenChanges(t *testing
 		AffHistoryQuota: 1200,
 	}
 	user.SetAccessToken("old-token")
-	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, dbx.DB.Create(&user).Error)
 
 	staleUser, err := GetUserById(user.Id, true)
 	require.NoError(t, err)
 
-	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
+	require.NoError(t, dbx.DB.Model(&User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
 		"quota":         gorm.Expr("quota - ?", 400),
 		"used_quota":    gorm.Expr("used_quota + ?", 400),
 		"request_count": gorm.Expr("request_count + ?", 1),
@@ -77,7 +78,7 @@ func TestUserUpdateDoesNotOverwriteConcurrentAccountingOrTokenChanges(t *testing
 	require.NoError(t, staleUser.Update(false))
 
 	var got User
-	require.NoError(t, DB.First(&got, user.Id).Error)
+	require.NoError(t, dbx.DB.First(&got, user.Id).Error)
 	assert.Equal(t, "after", got.DisplayName)
 	assert.Equal(t, 600, got.Quota)
 	assert.Equal(t, 420, got.UsedQuota)
@@ -107,8 +108,8 @@ func TestUsageAccountingSupportsSignedDirectAndBatchDeltas(t *testing.T) {
 		Status:    common.ChannelStatusEnabled,
 		UsedQuota: 1000,
 	}
-	require.NoError(t, DB.Create(&user).Error)
-	require.NoError(t, DB.Create(&channel).Error)
+	require.NoError(t, dbx.DB.Create(&user).Error)
+	require.NoError(t, dbx.DB.Create(&channel).Error)
 
 	UpdateUserUsedQuota(user.Id, -200)
 	UpdateUserUsedQuota(user.Id, 50)
@@ -116,11 +117,11 @@ func TestUsageAccountingSupportsSignedDirectAndBatchDeltas(t *testing.T) {
 	UpdateChannelUsedQuota(channel.Id, 50)
 
 	var got User
-	require.NoError(t, DB.Select("used_quota", "request_count").First(&got, user.Id).Error)
+	require.NoError(t, dbx.DB.Select("used_quota", "request_count").First(&got, user.Id).Error)
 	assert.Equal(t, 850, got.UsedQuota)
 	assert.Equal(t, 3, got.RequestCount)
 	var gotChannel Channel
-	require.NoError(t, DB.Select("used_quota").First(&gotChannel, channel.Id).Error)
+	require.NoError(t, dbx.DB.Select("used_quota").First(&gotChannel, channel.Id).Error)
 	assert.Equal(t, int64(850), gotChannel.UsedQuota)
 
 	common.BatchUpdateEnabled = true
@@ -129,17 +130,17 @@ func TestUsageAccountingSupportsSignedDirectAndBatchDeltas(t *testing.T) {
 	UpdateChannelUsedQuota(channel.Id, 400)
 	UpdateChannelUsedQuota(channel.Id, -100)
 
-	require.NoError(t, DB.Select("used_quota", "request_count").First(&got, user.Id).Error)
+	require.NoError(t, dbx.DB.Select("used_quota", "request_count").First(&got, user.Id).Error)
 	assert.Equal(t, 850, got.UsedQuota, "batch deltas must remain queued until flush")
 	assert.Equal(t, 3, got.RequestCount)
-	require.NoError(t, DB.Select("used_quota").First(&gotChannel, channel.Id).Error)
+	require.NoError(t, dbx.DB.Select("used_quota").First(&gotChannel, channel.Id).Error)
 	assert.Equal(t, int64(850), gotChannel.UsedQuota, "batch deltas must remain queued until flush")
 
 	batchUpdate()
-	require.NoError(t, DB.Select("used_quota", "request_count").First(&got, user.Id).Error)
+	require.NoError(t, dbx.DB.Select("used_quota", "request_count").First(&got, user.Id).Error)
 	assert.Equal(t, 1150, got.UsedQuota)
 	assert.Equal(t, 3, got.RequestCount)
-	require.NoError(t, DB.Select("used_quota").First(&gotChannel, channel.Id).Error)
+	require.NoError(t, dbx.DB.Select("used_quota").First(&gotChannel, channel.Id).Error)
 	assert.Equal(t, int64(1150), gotChannel.UsedQuota)
 }
 
@@ -155,9 +156,9 @@ func TestUpdateUserSettingOnlyUpdatesSetting(t *testing.T) {
 		UsedQuota:    20,
 		RequestCount: 3,
 	}
-	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, dbx.DB.Create(&user).Error)
 
-	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
+	require.NoError(t, dbx.DB.Model(&User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
 		"quota":         gorm.Expr("quota - ?", 250),
 		"used_quota":    gorm.Expr("used_quota + ?", 250),
 		"request_count": gorm.Expr("request_count + ?", 1),
@@ -166,7 +167,7 @@ func TestUpdateUserSettingOnlyUpdatesSetting(t *testing.T) {
 	require.NoError(t, UpdateUserSetting(user.Id, dto.UserSetting{Language: "zh"}))
 
 	var got User
-	require.NoError(t, DB.First(&got, user.Id).Error)
+	require.NoError(t, dbx.DB.First(&got, user.Id).Error)
 	assert.Equal(t, 750, got.Quota)
 	assert.Equal(t, 270, got.UsedQuota)
 	assert.Equal(t, 4, got.RequestCount)
@@ -176,7 +177,7 @@ func TestUpdateUserSettingOnlyUpdatesSetting(t *testing.T) {
 func TestEnsureEmailAvailableRejectsExistingEmailCaseInsensitive(t *testing.T) {
 	setupUserUpdateTestState(t)
 
-	require.NoError(t, DB.Create(&User{
+	require.NoError(t, dbx.DB.Create(&User{
 		Username: "existing",
 		Password: "old-password",
 		Email:    "Taken@Example.com",
@@ -187,7 +188,7 @@ func TestEnsureEmailAvailableRejectsExistingEmailCaseInsensitive(t *testing.T) {
 	require.ErrorIs(t, err, ErrEmailAlreadyTaken)
 
 	var users []User
-	require.NoError(t, DB.Where("LOWER(email) = ?", "taken@example.com").Limit(1).Find(&users).Error)
+	require.NoError(t, dbx.DB.Where("LOWER(email) = ?", "taken@example.com").Limit(1).Find(&users).Error)
 	require.Len(t, users, 1)
 
 	require.NoError(t, EnsureEmailAvailable("taken@example.com", users[0].Id))
@@ -196,7 +197,7 @@ func TestEnsureEmailAvailableRejectsExistingEmailCaseInsensitive(t *testing.T) {
 func TestInsertRejectsDuplicateEmailWithoutUniqueIndex(t *testing.T) {
 	setupUserUpdateTestState(t)
 
-	require.NoError(t, DB.Create(&User{
+	require.NoError(t, dbx.DB.Create(&User{
 		Username: "existing",
 		Password: "old-password",
 		Email:    "taken@example.com",
@@ -214,7 +215,7 @@ func TestInsertRejectsDuplicateEmailWithoutUniqueIndex(t *testing.T) {
 	require.ErrorIs(t, err, ErrEmailAlreadyTaken)
 
 	var count int64
-	require.NoError(t, DB.Model(&User{}).Where("username = ?", "oauth-user").Count(&count).Error)
+	require.NoError(t, dbx.DB.Model(&User{}).Where("username = ?", "oauth-user").Count(&count).Error)
 	assert.Zero(t, count)
 }
 
@@ -230,14 +231,14 @@ func TestInsertKeepsBlankPasswordForPasswordlessUser(t *testing.T) {
 	require.NoError(t, user.Insert(0))
 
 	var stored User
-	require.NoError(t, DB.Where("username = ?", user.Username).First(&stored).Error)
+	require.NoError(t, dbx.DB.Where("username = ?", user.Username).First(&stored).Error)
 	assert.Empty(t, stored.Password)
 }
 
 func TestValidateAndFillRejectsPasswordlessUser(t *testing.T) {
 	setupUserUpdateTestState(t)
 
-	require.NoError(t, DB.Create(&User{
+	require.NoError(t, dbx.DB.Create(&User{
 		Username: "passwordless-user",
 		Password: "",
 		Status:   common.UserStatusEnabled,
@@ -251,6 +252,6 @@ func TestValidateAndFillRejectsPasswordlessUser(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidCredentials)
 
 	var stored User
-	require.NoError(t, DB.Where("username = ?", "passwordless-user").First(&stored).Error)
+	require.NoError(t, dbx.DB.Where("username = ?", "passwordless-user").First(&stored).Error)
 	assert.Empty(t, stored.Password)
 }

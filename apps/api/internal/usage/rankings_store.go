@@ -2,6 +2,7 @@ package usage
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/model"
@@ -14,7 +15,7 @@ type RankingQuotaBucket = model.RankingQuotaBucket
 
 func GetRankingQuotaTotals(startTime int64, endTime int64) ([]RankingQuotaTotal, error) {
 	var rows []RankingQuotaTotal
-	query := model.DB.Table("quota_data").
+	query := dbx.DB.Table("quota_data").
 		Select("model_name, sum(token_used) as total_tokens").
 		Where("model_name <> ''").
 		Group("model_name").
@@ -31,7 +32,7 @@ func GetRankingQuotaBuckets(startTime int64, endTime int64, bucketSize int64) ([
 	}
 	bucketExpr := rankingBucketExpr(bucketSize)
 	var rows []RankingQuotaBucket
-	query := model.DB.Table("quota_data").
+	query := dbx.DB.Table("quota_data").
 		Select(fmt.Sprintf("model_name, %s as bucket, sum(token_used) as tokens", bucketExpr)).
 		Where("model_name <> ''").
 		Group(fmt.Sprintf("model_name, %s", bucketExpr)).

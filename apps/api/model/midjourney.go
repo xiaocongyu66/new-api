@@ -1,5 +1,9 @@
 package model
 
+import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
+)
+
 type Midjourney struct {
 	Id          int    `json:"id"`
 	Code        int    `json:"code"`
@@ -43,18 +47,18 @@ type TaskQueryParams struct {
 
 func (midjourney *Midjourney) Insert() error {
 	var err error
-	err = DB.Create(midjourney).Error
+	err = dbx.DB.Create(midjourney).Error
 	return err
 }
 
 func (midjourney *Midjourney) Update() error {
 	var err error
-	err = DB.Save(midjourney).Error
+	err = dbx.DB.Save(midjourney).Error
 	return err
 }
 
 func (midjourney *Midjourney) UpdateBillingState() error {
-	return DB.Model(midjourney).
+	return dbx.DB.Model(midjourney).
 		Select("quota", "token_id", "billing_channel_id").
 		Updates(midjourney).Error
 }
@@ -72,7 +76,7 @@ func (midjourney *Midjourney) GetBillingChannelId() int {
 // UpdateWithStatus performs a conditional UPDATE guarded by fromStatus (CAS).
 // Uses Model().Select("*").Updates() to avoid GORM Save()'s INSERT fallback.
 func (midjourney *Midjourney) UpdateWithStatus(fromStatus string) (bool, error) {
-	result := DB.Model(midjourney).Where("status = ?", fromStatus).Select("*").Updates(midjourney)
+	result := dbx.DB.Model(midjourney).Where("status = ?", fromStatus).Select("*").Updates(midjourney)
 	if result.Error != nil {
 		return false, result.Error
 	}

@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -23,7 +24,7 @@ func insertUsersForPaginationTest(t *testing.T, total int) {
 			Group:       "default",
 			AffCode:     fmt.Sprintf("aff%02d", id),
 		}
-		require.NoError(t, DB.Create(user).Error)
+		require.NoError(t, dbx.DB.Create(user).Error)
 	}
 }
 

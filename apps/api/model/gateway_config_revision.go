@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"time"
 
 	"gorm.io/gorm"
@@ -50,14 +51,14 @@ type GatewayConfigOutbox struct {
 // otherwise see the revision move backwards.
 func InitializeGatewayConfigRevision() error {
 	var existing int64
-	if err := DB.Model(&GatewayConfigRevision{}).Count(&existing).Error; err != nil {
+	if err := dbx.DB.Model(&GatewayConfigRevision{}).Count(&existing).Error; err != nil {
 		return err
 	}
 	if existing == 0 {
-		return DB.Create(&GatewayConfigRevision{ID: gatewayConfigRevisionID, RoutingRevision: 1}).Error
+		return dbx.DB.Create(&GatewayConfigRevision{ID: gatewayConfigRevisionID, RoutingRevision: 1}).Error
 	}
 	var row GatewayConfigRevision
-	if err := DB.Where("id = ?", gatewayConfigRevisionID).Take(&row).Error; err != nil {
+	if err := dbx.DB.Where("id = ?", gatewayConfigRevisionID).Take(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return fmt.Errorf("%w: singleton id %d is absent from non-empty table", ErrGatewayRevisionMissing, gatewayConfigRevisionID)
 		}
@@ -112,7 +113,7 @@ func MutateGatewayRouting(mutator func(tx *gorm.DB) error) (int64, error) {
 		return 0, errors.New("gateway routing mutation requires a mutator")
 	}
 	var revision int64
-	err := DB.Transaction(func(tx *gorm.DB) error {
+	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
 		if err := mutator(tx); err != nil {
 			return err
 		}
@@ -133,7 +134,7 @@ func ListPendingGatewayConfigOutbox(limit int) ([]GatewayConfigOutbox, error) {
 		return nil, errors.New("outbox limit must be positive")
 	}
 	var rows []GatewayConfigOutbox
-	err := DB.Where("published_at IS NULL").
+	err := dbx.DB.Where("published_at IS NULL").
 		Order("routing_revision ASC").
 		Limit(limit).
 		Find(&rows).Error
@@ -146,7 +147,7 @@ func RecordGatewayConfigOutboxAttempt(id int, errorClass string) error {
 	if id <= 0 || errorClass == "" || len(errorClass) > 64 {
 		return errors.New("invalid outbox publish attempt")
 	}
-	return DB.Model(&GatewayConfigOutbox{}).Where("id = ?", id).
+	return dbx.DB.Model(&GatewayConfigOutbox{}).Where("id = ?", id).
 		Updates(map[string]interface{}{
 			"publish_attempts":         gorm.Expr("publish_attempts + ?", 1),
 			"last_publish_error_class": errorClass,
@@ -160,7 +161,7 @@ func MarkGatewayConfigOutboxPublished(id int, publishedAt time.Time) error {
 	if id <= 0 || publishedAt.IsZero() {
 		return errors.New("invalid outbox published marker")
 	}
-	return DB.Model(&GatewayConfigOutbox{}).
+	return dbx.DB.Model(&GatewayConfigOutbox{}).
 		Where("id = ? AND published_at IS NULL", id).
 		Update("published_at", publishedAt).Error
 }

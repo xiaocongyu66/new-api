@@ -1,6 +1,7 @@
 package task
 
 import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/model"
 
 	"testing"
@@ -32,7 +33,7 @@ func createLegacyPendingSystemTask(t *testing.T, taskType string) *model.SystemT
 		Type:   taskType,
 		Status: model.SystemTaskStatusPending,
 	}
-	require.NoError(t, model.DB.Create(task).Error)
+	require.NoError(t, dbx.DB.Create(task).Error)
 	return task
 }
 
@@ -124,7 +125,7 @@ func TestExpiredSystemTaskLockFailsOldRunAndClaimsLegacyPendingRun(t *testing.T)
 	require.NoError(t, err)
 	require.True(t, claimed)
 
-	require.NoError(t, model.DB.Model(&model.SystemTaskLock{}).
+	require.NoError(t, dbx.DB.Model(&model.SystemTaskLock{}).
 		Where("task_id = ?", first.TaskID).
 		Update("locked_until", common.GetTimestamp()-1).Error)
 
@@ -152,7 +153,7 @@ func TestExpireStaleSystemTaskLockFailsOldRunAndAllowsNewRun(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, claimed)
 
-	require.NoError(t, model.DB.Model(&model.SystemTaskLock{}).
+	require.NoError(t, dbx.DB.Model(&model.SystemTaskLock{}).
 		Where("task_id = ?", first.TaskID).
 		Update("locked_until", common.GetTimestamp()-1).Error)
 
@@ -166,7 +167,7 @@ func TestExpireStaleSystemTaskLockFailsOldRunAndAllowsNewRun(t *testing.T) {
 	assert.Nil(t, reloadedFirst.ActiveKey)
 
 	var lockCount int64
-	require.NoError(t, model.DB.Model(&model.SystemTaskLock{}).Where("task_id = ?", first.TaskID).Count(&lockCount).Error)
+	require.NoError(t, dbx.DB.Model(&model.SystemTaskLock{}).Where("task_id = ?", first.TaskID).Count(&lockCount).Error)
 	assert.Equal(t, int64(0), lockCount)
 
 	second, err := CreateSystemTask(model.SystemTaskTypeLogCleanup, nil, nil)
@@ -274,7 +275,7 @@ func TestRenewSystemTaskLock(t *testing.T) {
 	require.NoError(t, RenewSystemTaskLock(task.TaskID, runnerID, newLockUntil))
 
 	var lock model.SystemTaskLock
-	require.NoError(t, model.DB.Where("task_id = ?", task.TaskID).First(&lock).Error)
+	require.NoError(t, dbx.DB.Where("task_id = ?", task.TaskID).First(&lock).Error)
 	assert.Equal(t, newLockUntil, lock.LockedUntil)
 
 	// A different runner cannot renew a lease it does not hold.
@@ -305,7 +306,7 @@ func TestFinishSystemTaskRetainsExecutor(t *testing.T) {
 	assert.Equal(t, runnerID, reloaded.LockedBy, "executor-of-record must be retained for history")
 
 	var lockCount int64
-	require.NoError(t, model.DB.Model(&model.SystemTaskLock{}).Where("task_id = ?", task.TaskID).Count(&lockCount).Error)
+	require.NoError(t, dbx.DB.Model(&model.SystemTaskLock{}).Where("task_id = ?", task.TaskID).Count(&lockCount).Error)
 	assert.Equal(t, int64(0), lockCount)
 }
 
@@ -320,7 +321,7 @@ func TestSystemTaskUpdatesRequireCurrentLock(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, claimed)
 
-	require.NoError(t, model.DB.Model(&model.SystemTaskLock{}).
+	require.NoError(t, dbx.DB.Model(&model.SystemTaskLock{}).
 		Where("task_id = ?", task.TaskID).
 		Updates(map[string]any{"locked_by": "runner-b"}).Error)
 
@@ -339,7 +340,7 @@ func TestSystemTaskUpdatesRequireUnexpiredLock(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, claimed)
 
-	require.NoError(t, model.DB.Model(&model.SystemTaskLock{}).
+	require.NoError(t, dbx.DB.Model(&model.SystemTaskLock{}).
 		Where("task_id = ?", task.TaskID).
 		Update("locked_until", common.GetTimestamp()-1).Error)
 

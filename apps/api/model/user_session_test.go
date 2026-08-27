@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/common/quotacache"
 	"strings"
 	"testing"
@@ -43,8 +44,8 @@ func (setMiniRedisTimeOnEvalHook) AfterProcessPipeline(context.Context, []redis.
 
 func setupUserSessionTest(t *testing.T) {
 	t.Helper()
-	require.NoError(t, DB.AutoMigrate(&User{}, &UserSession{}))
-	require.NoError(t, DB.Exec("DELETE FROM user_sessions").Error)
+	require.NoError(t, dbx.DB.AutoMigrate(&User{}, &UserSession{}))
+	require.NoError(t, dbx.DB.Exec("DELETE FROM user_sessions").Error)
 	oldRedisEnabled := common.RedisEnabled
 	oldActiveLimit := common.UserSessionActiveLimit
 	oldIssuanceLimit := common.UserSessionIssuanceLimit
@@ -76,8 +77,8 @@ func createUserSessionTestUser(t *testing.T, userID int, authVersion int64) {
 		AffCode:     fmt.Sprintf("session-aff-%d", userID),
 		AuthVersion: authVersion,
 	}
-	require.NoError(t, DB.Create(&user).Error)
-	t.Cleanup(func() { _ = DB.Unscoped().Delete(&User{}, userID).Error })
+	require.NoError(t, dbx.DB.Create(&user).Error)
+	t.Cleanup(func() { _ = dbx.DB.Unscoped().Delete(&User{}, userID).Error })
 }
 
 func newTestUserSession(sid string, userID int, now int64) *UserSession {
@@ -218,8 +219,8 @@ func TestUserSessionCreateListAndRevokeOne(t *testing.T) {
 	setupUserSessionTest(t)
 	now := time.Now().Unix()
 	user := User{Id: 1001, Username: "session-list-user", Password: "password", AuthVersion: 1}
-	require.NoError(t, DB.Create(&user).Error)
-	t.Cleanup(func() { _ = DB.Unscoped().Delete(&User{}, user.Id).Error })
+	require.NoError(t, dbx.DB.Create(&user).Error)
+	t.Cleanup(func() { _ = dbx.DB.Unscoped().Delete(&User{}, user.Id).Error })
 	first := newTestUserSession("session-one", 1001, now)
 	second := newTestUserSession("session-two", 1001, now+1)
 	require.NoError(t, CreateUserSession(first))
@@ -282,7 +283,7 @@ func TestUserSessionPreviousRefreshHashNormalizesLegacyPadding(t *testing.T) {
 	blank := newTestUserSession("legacy-blank-previous-hash", 1010, now)
 	blank.PreviousRefreshHash = strings.Repeat(" ", 64)
 	blank.PreviousValidUntil = now + 60
-	require.NoError(t, DB.Create(blank).Error)
+	require.NoError(t, dbx.DB.Create(blank).Error)
 	loadedBlank, err := GetUserSessionBySID(blank.SID)
 	require.NoError(t, err)
 	assert.Empty(t, loadedBlank.PreviousRefreshHash)
@@ -291,12 +292,12 @@ func TestUserSessionPreviousRefreshHashNormalizesLegacyPadding(t *testing.T) {
 	valid.RefreshHash = strings.Repeat("b", 64)
 	valid.PreviousRefreshHash = digest
 	valid.PreviousValidUntil = now + 60
-	require.NoError(t, DB.Create(valid).Error)
+	require.NoError(t, dbx.DB.Create(valid).Error)
 	loadedValid, err := GetUserSessionBySID(valid.SID)
 	require.NoError(t, err)
 	assert.Equal(t, digest, loadedValid.PreviousRefreshHash)
 
-	require.NoError(t, DB.Model(&UserSession{}).Where("sid = ?", valid.SID).
+	require.NoError(t, dbx.DB.Model(&UserSession{}).Where("sid = ?", valid.SID).
 		Updates(map[string]any{
 			"previous_refresh_hash": digest + "   ",
 			"previous_valid_until":  now + 60,
@@ -411,7 +412,7 @@ func TestUserSessionGrowthCountsUseBroadActiveAndStrictIssuancePredicates(t *tes
 	rows[4].UserAuthVersion = 7
 	rows[4].CreatedAt = now - 3600
 	rows[4].ExpiresAt = now
-	require.NoError(t, DB.Create(&rows).Error)
+	require.NoError(t, dbx.DB.Create(&rows).Error)
 
 	activeCount, err := CountActiveUserSessions(1006, now)
 	require.NoError(t, err)
@@ -441,7 +442,7 @@ func TestListActiveUserSessionsKeepsCurrentAndBoundsOtherSessions(t *testing.T) 
 	stale := newTestUserSession("list-stale-auth-version", 1007, now+1)
 	stale.UserAuthVersion = 6
 	rows = append(rows, *stale)
-	require.NoError(t, DB.CreateInBatches(rows, 100).Error)
+	require.NoError(t, dbx.DB.CreateInBatches(rows, 100).Error)
 
 	sessions, err := ListActiveUserSessions(1007, current.SID, now)
 	require.NoError(t, err)
@@ -465,13 +466,13 @@ func TestRevokeUserSessionsReturnsCumulativeProgressAndSupportsRetry(t *testing.
 	for i := 0; i < userSessionRevokeBatchSize+1; i++ {
 		rows = append(rows, *newTestUserSession(fmt.Sprintf("batch-revoke-%03d", i), 1008, now))
 	}
-	require.NoError(t, DB.CreateInBatches(rows, 100).Error)
+	require.NoError(t, dbx.DB.CreateInBatches(rows, 100).Error)
 
 	forcedErr := errors.New("forced second revoke batch failure")
 	callbackName := "test:fail_second_user_session_revoke_batch"
 	updateCalls := 0
 	callbackRegistered := true
-	require.NoError(t, DB.Callback().Update().Before("gorm:update").Register(callbackName, func(tx *gorm.DB) {
+	require.NoError(t, dbx.DB.Callback().Update().Before("gorm:update").Register(callbackName, func(tx *gorm.DB) {
 		if tx.Statement != nil && tx.Statement.Table == "user_sessions" {
 			updateCalls++
 			if updateCalls == 2 {
@@ -481,21 +482,21 @@ func TestRevokeUserSessionsReturnsCumulativeProgressAndSupportsRetry(t *testing.
 	}))
 	t.Cleanup(func() {
 		if callbackRegistered {
-			_ = DB.Callback().Update().Remove(callbackName)
+			_ = dbx.DB.Callback().Update().Remove(callbackName)
 		}
 	})
 
 	affected, err := RevokeAllUserSessions(1008, "batch-test")
 	assert.ErrorIs(t, err, forcedErr)
 	assert.Equal(t, int64(userSessionRevokeBatchSize), affected)
-	require.NoError(t, DB.Callback().Update().Remove(callbackName))
+	require.NoError(t, dbx.DB.Callback().Update().Remove(callbackName))
 	callbackRegistered = false
 
 	retried, err := RevokeAllUserSessions(1008, "batch-test-retry")
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), retried)
 	var activeCount int64
-	require.NoError(t, DB.Model(&UserSession{}).Where("user_id = ? AND status = ?", 1008, UserSessionStatusActive).Count(&activeCount).Error)
+	require.NoError(t, dbx.DB.Model(&UserSession{}).Where("user_id = ? AND status = ?", 1008, UserSessionStatusActive).Count(&activeCount).Error)
 	assert.Zero(t, activeCount)
 }
 
@@ -541,12 +542,12 @@ func TestDeleteExpiredUserSessionsLoopsInChunksAndRechecksPredicate(t *testing.T
 	rows = append(rows, *revokedBoundary)
 	live := newTestUserSession("cleanup-live", 1009, now-8)
 	rows = append(rows, *live)
-	require.NoError(t, DB.CreateInBatches(rows, 100).Error)
+	require.NoError(t, dbx.DB.CreateInBatches(rows, 100).Error)
 
 	callbackName := "test:recheck_user_session_cleanup_predicate"
 	deleteCalls := 0
 	mutated := false
-	require.NoError(t, DB.Callback().Delete().Before("gorm:delete").Register(callbackName, func(tx *gorm.DB) {
+	require.NoError(t, dbx.DB.Callback().Delete().Before("gorm:delete").Register(callbackName, func(tx *gorm.DB) {
 		if tx.Statement == nil || tx.Statement.Table != "user_sessions" {
 			return
 		}
@@ -556,13 +557,13 @@ func TestDeleteExpiredUserSessionsLoopsInChunksAndRechecksPredicate(t *testing.T
 			tx.Exec("UPDATE user_sessions SET expires_at = ? WHERE sid = ?", now+3600, race.SID)
 		}
 	}))
-	t.Cleanup(func() { _ = DB.Callback().Delete().Remove(callbackName) })
+	t.Cleanup(func() { _ = dbx.DB.Callback().Delete().Remove(callbackName) })
 
 	require.NoError(t, DeleteExpiredUserSessions(now))
 	require.NoError(t, DeleteOldRevokedUserSessions(now))
 	assert.Equal(t, 4, deleteCalls, "expired and retained-revoked scans each delete in bounded chunks")
 	var remaining []UserSession
-	require.NoError(t, DB.Order("sid").Find(&remaining).Error)
+	require.NoError(t, dbx.DB.Order("sid").Find(&remaining).Error)
 	require.Len(t, remaining, 6)
 	remainingSIDs := make([]string, 0, len(remaining))
 	for _, session := range remaining {
@@ -580,7 +581,7 @@ func TestDeleteExpiredUserSessionsLoopsInChunksAndRechecksPredicate(t *testing.T
 
 func TestUserSessionGrowthQueryIndexesExist(t *testing.T) {
 	setupUserSessionTest(t)
-	migrator := DB.Migrator()
+	migrator := dbx.DB.Migrator()
 	assert.True(t, migrator.HasIndex(&UserSession{}, "idx_user_sessions_expires_at"))
 	assert.True(t, migrator.HasIndex(&UserSession{}, "idx_user_sessions_user_created"))
 	assert.True(t, migrator.HasIndex(&UserSession{}, "idx_user_sessions_status_revoked"))
@@ -612,8 +613,8 @@ func TestUserUpdateBumpsAuthVersionOnlyForAuthorizationChanges(t *testing.T) {
 		Status:   common.UserStatusEnabled,
 		Group:    "default",
 	}
-	require.NoError(t, DB.Create(user).Error)
-	t.Cleanup(func() { _ = DB.Unscoped().Delete(&User{}, user.Id).Error })
+	require.NoError(t, dbx.DB.Create(user).Error)
+	t.Cleanup(func() { _ = dbx.DB.Unscoped().Delete(&User{}, user.Id).Error })
 	assert.Equal(t, int64(1), user.AuthVersion)
 
 	user.DisplayName = "profile-only"

@@ -2,6 +2,7 @@ package identity
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
@@ -22,7 +23,7 @@ import (
 
 func setupManageUserTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	previousDB, previousLogDB := model.DB, model.LOG_DB
+	previousDB, previousLogDB := dbx.DB, dbx.LogDB
 	previousRedisEnabled := common.RedisEnabled
 	previousMainDatabaseType, previousLogDatabaseType := common.MainDatabaseType(), common.LogDatabaseType()
 	common.RedisEnabled = false
@@ -31,13 +32,13 @@ func setupManageUserTestDB(t *testing.T) *gorm.DB {
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	model.DB, model.LOG_DB = db, db
+	dbx.DB, dbx.LogDB = db, db
 	require.NoError(t, db.AutoMigrate(
 		&model.User{}, &model.UserSession{}, &model.Log{}, &model.CasbinRule{}, &model.AuthzRole{},
 	))
 
 	t.Cleanup(func() {
-		model.DB, model.LOG_DB = previousDB, previousLogDB
+		dbx.DB, dbx.LogDB = previousDB, previousLogDB
 		common.RedisEnabled = previousRedisEnabled
 		common.SetDatabaseTypes(previousMainDatabaseType, previousLogDatabaseType)
 		sqlDB, err := db.DB()
@@ -162,15 +163,15 @@ func TestManageUserDeleteReturnsImmediatelyAndUnknownActionFails(t *testing.T) {
 }
 
 func TestSetupLoginDoesNotTouchPasswordWhenPasswordFieldOmitted(t *testing.T) {
-	previousDB := model.DB
+	previousDB := dbx.DB
 	previousRedis := common.RedisEnabled
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Log{}, &model.UserSession{}))
-	model.DB = db
+	dbx.DB = db
 	common.RedisEnabled = false
 	t.Cleanup(func() {
-		model.DB = previousDB
+		dbx.DB = previousDB
 		common.RedisEnabled = previousRedis
 	})
 	require.NoError(t, db.AutoMigrate(&model.Log{}, &model.UserSession{}))
@@ -208,15 +209,15 @@ func TestSetupLoginDoesNotTouchPasswordWhenPasswordFieldOmitted(t *testing.T) {
 }
 
 func TestCheckUpdatePasswordRequiresCurrentPassword(t *testing.T) {
-	previousDB := model.DB
+	previousDB := dbx.DB
 	previousRedis := common.RedisEnabled
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.User{}))
-	model.DB = db
+	dbx.DB = db
 	common.RedisEnabled = false
 	t.Cleanup(func() {
-		model.DB = previousDB
+		dbx.DB = previousDB
 		common.RedisEnabled = previousRedis
 	})
 	hashedPassword, err := common.Password2Hash("CurrentPassword123")
@@ -243,15 +244,15 @@ func TestCheckUpdatePasswordRequiresCurrentPassword(t *testing.T) {
 }
 
 func TestCheckUpdatePasswordRejectsHistoricalEmptyPassword(t *testing.T) {
-	previousDB := model.DB
+	previousDB := dbx.DB
 	previousRedis := common.RedisEnabled
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.User{}))
-	model.DB = db
+	dbx.DB = db
 	common.RedisEnabled = false
 	t.Cleanup(func() {
-		model.DB = previousDB
+		dbx.DB = previousDB
 		common.RedisEnabled = previousRedis
 	})
 	user := &model.User{

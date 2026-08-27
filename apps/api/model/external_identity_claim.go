@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"strings"
 	"time"
 
@@ -88,11 +89,11 @@ func releaseAllExternalIdentitiesWithTx(tx *gorm.DB, userId int) error {
 // than preserving an ambiguous login identity.
 func InitializeExternalIdentityClaims() error {
 	var users []User
-	if err := DB.Unscoped().Select("id", "telegram_id").
+	if err := dbx.DB.Unscoped().Select("id", "telegram_id").
 		Where("telegram_id <> ?", "").Find(&users).Error; err != nil {
 		return err
 	}
-	return DB.Transaction(func(tx *gorm.DB) error {
+	return dbx.DB.Transaction(func(tx *gorm.DB) error {
 		for _, user := range users {
 			if err := ClaimExternalIdentityWithTx(tx, ExternalIdentityProviderTelegram, user.TelegramId, user.Id); err != nil {
 				return fmt.Errorf("backfill Telegram identity for user %d: %w", user.Id, err)

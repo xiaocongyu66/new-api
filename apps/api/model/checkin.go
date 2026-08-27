@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/common/quotacache"
 	"math/rand"
 	"time"
@@ -33,7 +34,7 @@ func (Checkin) TableName() string {
 // GetUserCheckinRecords 获取用户在指定日期范围内的签到记录
 func GetUserCheckinRecords(userId int, startDate, endDate string) ([]Checkin, error) {
 	var records []Checkin
-	err := DB.Where("user_id = ? AND checkin_date >= ? AND checkin_date <= ?",
+	err := dbx.DB.Where("user_id = ? AND checkin_date >= ? AND checkin_date <= ?",
 		userId, startDate, endDate).
 		Order("checkin_date DESC").
 		Find(&records).Error
@@ -44,7 +45,7 @@ func GetUserCheckinRecords(userId int, startDate, endDate string) ([]Checkin, er
 func HasCheckedInToday(userId int) (bool, error) {
 	today := time.Now().Format("2006-01-02")
 	var count int64
-	err := DB.Model(&Checkin{}).
+	err := dbx.DB.Model(&Checkin{}).
 		Where("user_id = ? AND checkin_date = ?", userId, today).
 		Count(&count).Error
 	return count > 0, err
@@ -94,7 +95,7 @@ func UserCheckin(userId int) (*Checkin, error) {
 
 // userCheckinWithTransaction 使用事务执行签到（适用于 MySQL 和 PostgreSQL）
 func userCheckinWithTransaction(checkin *Checkin, userId int, quotaAwarded int) (*Checkin, error) {
-	err := DB.Transaction(func(tx *gorm.DB) error {
+	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
 		// 步骤1: 创建签到记录
 		// 数据库有唯一约束 (user_id, checkin_date)，可以防止并发重复签到
 		if err := tx.Create(checkin).Error; err != nil {
@@ -126,7 +127,7 @@ func userCheckinWithTransaction(checkin *Checkin, userId int, quotaAwarded int) 
 func userCheckinWithoutTransaction(checkin *Checkin, userId int, quotaAwarded int) (*Checkin, error) {
 	// 步骤1: 创建签到记录
 	// 数据库有唯一约束 (user_id, checkin_date)，可以防止并发重复签到
-	if err := DB.Create(checkin).Error; err != nil {
+	if err := dbx.DB.Create(checkin).Error; err != nil {
 		return nil, errors.New("签到失败，请稍后重试")
 	}
 
@@ -134,7 +135,7 @@ func userCheckinWithoutTransaction(checkin *Checkin, userId int, quotaAwarded in
 	// 使用 db=true 强制直接写入数据库，不使用批量更新
 	if err := IncreaseUserQuota(userId, quotaAwarded, true); err != nil {
 		// 如果增加额度失败，需要回滚签到记录
-		DB.Delete(checkin)
+		dbx.DB.Delete(checkin)
 		return nil, errors.New("签到失败：更新额度出错")
 	}
 
@@ -167,8 +168,8 @@ func GetUserCheckinStats(userId int, month string) (map[string]interface{}, erro
 	// 获取用户所有时间的签到统计
 	var totalCheckins int64
 	var totalQuota int64
-	DB.Model(&Checkin{}).Where("user_id = ?", userId).Count(&totalCheckins)
-	DB.Model(&Checkin{}).Where("user_id = ?", userId).Select("COALESCE(SUM(quota_awarded), 0)").Scan(&totalQuota)
+	dbx.DB.Model(&Checkin{}).Where("user_id = ?", userId).Count(&totalCheckins)
+	dbx.DB.Model(&Checkin{}).Where("user_id = ?", userId).Select("COALESCE(SUM(quota_awarded), 0)").Scan(&totalQuota)
 
 	return map[string]interface{}{
 		"total_quota":      totalQuota,      // 所有时间累计获得的额度

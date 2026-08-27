@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"net/http"
 	"strings"
 	"testing"
@@ -54,12 +55,12 @@ func TestParseSensitiveLabel(t *testing.T) {
 // withAuditDB 用内存 SQLite 替换 LOG_DB，验证审计事件真正落库。
 func withAuditDB(t *testing.T) {
 	t.Helper()
-	previousDB := model.LOG_DB
+	previousDB := dbx.LogDB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.Log{}))
-	model.LOG_DB = db
-	t.Cleanup(func() { model.LOG_DB = previousDB })
+	dbx.LogDB = db
+	t.Cleanup(func() { dbx.LogDB = previousDB })
 }
 
 // TestRecordSensitiveAuditEventPersists 审计事件落库：type=LogTypeSensitive、
@@ -82,7 +83,7 @@ func TestRecordSensitiveAuditEventPersists(t *testing.T) {
 	recordSensitiveAuditEvent(ev)
 
 	var logs []model.Log
-	require.NoError(t, model.LOG_DB.Where("type = ?", model.LogTypeSensitive).Find(&logs).Error)
+	require.NoError(t, dbx.LogDB.Where("type = ?", model.LogTypeSensitive).Find(&logs).Error)
 	require.Len(t, logs, 1)
 
 	var other struct {

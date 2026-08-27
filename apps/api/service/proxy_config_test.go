@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -15,9 +16,9 @@ func setupProxyConfigTestDB(t *testing.T) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	previousDB := model.DB
-	model.DB = db
-	t.Cleanup(func() { model.DB = previousDB })
+	previousDB := dbx.DB
+	dbx.DB = db
+	t.Cleanup(func() { dbx.DB = previousDB })
 	require.NoError(t, db.AutoMigrate(&model.Option{}))
 	// OptionMap must be non-nil for updateOptionMap.
 	if common.OptionMap == nil {
@@ -33,7 +34,7 @@ func TestSaveAndLoadProxyConfigEncryptsRoundTrip(t *testing.T) {
 
 	// Verify the stored value is encrypted (not plaintext).
 	var opt model.Option
-	require.NoError(t, model.DB.Where("key = ?", "proxy_config").First(&opt).Error)
+	require.NoError(t, dbx.DB.Where("key = ?", "proxy_config").First(&opt).Error)
 	assert.NotContains(t, opt.Value, "my-secret-password")
 	assert.NotContains(t, opt.Value, "my-secret-uuid")
 	assert.NotContains(t, opt.Value, "global_proxy_url")
