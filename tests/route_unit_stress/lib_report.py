@@ -222,6 +222,10 @@ def write_shares_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         "selections",
         "attempts",
         "observed_share",
+        # expected_share is the scheduler's own entitlement for this route
+        # (base_weight normalised across the pool). Reported next to
+        # observed_share so a reviewer can see the gap without recomputing it.
+        "expected_share",
         "ci_low",
         "ci_high",
         "target",

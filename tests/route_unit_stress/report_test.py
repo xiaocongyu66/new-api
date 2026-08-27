@@ -164,7 +164,8 @@ def test_shares_csv_headers_and_rows(tmp: Path) -> bool:
 
     expected_headers = [
         "route", "channel_id", "key_index", "upstream_model",
-        "selections", "attempts", "observed_share", "ci_low", "ci_high",
+        "selections", "attempts", "observed_share", "expected_share",
+        "ci_low", "ci_high",
         "target", "tol_pp", "base_weight", "ewma_quality",
         "health_multiplier", "share_correction", "final_score", "sample_count",
     ]
@@ -172,6 +173,10 @@ def test_shares_csv_headers_and_rows(tmp: Path) -> bool:
     assert len(rows) == 2, f"expected 2 rows, got {len(rows)}"
     assert rows[0][0] == "A", f"first row route should be A, got {rows[0][0]}"
     assert rows[1][0] == "B", f"second row route should be B, got {rows[1][0]}"
+    # A row lacking expected_share must leave the cell empty rather than crash or
+    # emit "None": #418 reviewers read this CSV directly.
+    exp_idx = expected_headers.index("expected_share")
+    assert rows[0][exp_idx] == "", f"absent expected_share should be empty, got {rows[0][exp_idx]!r}"
     print("  OK: shares CSV headers and rows correct")
     return True
 

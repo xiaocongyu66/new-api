@@ -1383,7 +1383,12 @@ def scenario_targets() -> dict[str, dict[str, Any]]:
             "PRODUCT_FAIL. Both => correct. Exactly one => partial product risk, reported as such "
             "and never silently passed. Requires gateway RetryTimes >= 1.",
         },
+        # Key kept as S13_CASCADE for CI/workflow compatibility; the SCENARIO NAME is
+        # "S13 单 route 降级与恢复时份额窗口的行为" (single-route degradation and
+        # recovery). "Cascade" is retained only as an identifier, never as a claim.
         "S13_CASCADE": {
+            "scenario_name": "S13 单 route 降级与恢复时份额窗口的行为",
+            "scenario_name_en": "S13 share-window behaviour under single-route degradation and recovery",
             "target": 0.50,
             "tol_pp": 0.03,
             "ci_bounds": None,
@@ -1398,12 +1403,17 @@ def scenario_targets() -> dict[str, dict[str, Any]]:
             "recovery_tolerance_pp": 0.03,
             "recovery_deadline_s": 300,
             "sample_interval_s": 10,
-            "description": "S13 degradation and recovery: phases steady -> fault -> recover, B "
-            "flipped at runtime by hook. Judgement: share_correction must stay inside "
+            "description": "S13 single-route degradation and recovery: phases steady -> fault -> "
+            "recover, B flipped at runtime by hook. Judgement: share_correction must stay inside "
             "[0.5, 2.0] in EVERY phase, and B's share must return within +/-3pp after recovery. "
-            "Out-of-clamp corr or non-recovery is PRODUCT_FAIL. Note: isolation is per-route with "
-            "no cross-route cascade, and calm/dormant routes stay selectable at reduced weight, so "
-            "this measures weight degradation and recovery, NOT an emptied candidate pool. A 503 "
-            "mock is FailureSourceUpstream, so UpstreamFailureThreshold is the governing knob.",
+            "Out-of-clamp corr or non-recovery is PRODUCT_FAIL; missing correlation or too few "
+            "samples is DATA_INVALID. "
+            "SEMANTICS (verified in apps/api/model/channel_model_health.go): route stats isolate "
+            "per (ChannelId, KeyIndex, Model); calm/dormant routes remain selectable at reduced "
+            "weight (IsRouteSelectable excludes only 'disabled'); an upstream 503 does not trigger "
+            "a cross-route LocalFailureThreshold cascade. This scenario therefore does NOT claim, "
+            "require or test an emptied candidate pool, a no-channel terminal state, or any "
+            "cross-route cascade. A 503 mock is FailureSourceUpstream, so UpstreamFailureThreshold "
+            "is the governing knob, not LocalFailureThreshold.",
         },
      }

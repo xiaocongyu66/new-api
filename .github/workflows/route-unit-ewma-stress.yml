@@ -393,6 +393,46 @@ jobs:
             echo "Warning: channel_affinity_setting.enabled must be false. Runner will fail with ENVIRONMENT_INVALID if enabled."
           fi
 
+      - name: Scale gateway replicas
+        id: replicas
+        run: |
+          set -euo pipefail
+          # The replica input must change the deployment, not merely be forwarded
+          # to the runner. Without that, a "dual-replica" claim is unfounded.
+          REPLICA="${REPLICA:-}"
+          if [ -z "$REPLICA" ] || [ "$REPLICA" = "1" ]; then
+            echo "replica not set or 1: single-instance run"
+            echo "REPLICA_URLS=" >> "$GITHUB_ENV"
+            echo "REPLICA_APPLIED=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          if ! command -v kubectl >/dev/null 2>&1 || [ ! -f ~/.kube/config ]; then
+            echo "::error::replica=$REPLICA requested but kubectl/kubeconfig unavailable; cannot scale the deployment. Refusing to report a multi-replica run that did not happen."
+            exit 1
+          fi
+          DEPLOY="${K8S_DEPLOYMENT:-new-api}"
+          NS="${K8S_NAMESPACE:-default}"
+          kubectl -n "$NS" scale deployment/"$DEPLOY" --replicas="$REPLICA"
+          kubectl -n "$NS" rollout status deployment/"$DEPLOY" --timeout=300s
+          READY=$(kubectl -n "$NS" get deployment/"$DEPLOY" -o jsonpath='{.status.readyReplicas}')
+          echo "readyReplicas=$READY (requested $REPLICA)"
+          if [ "$READY" != "$REPLICA" ]; then
+            echo "::error::deployment reports readyReplicas=$READY, expected $REPLICA"
+            exit 1
+          fi
+          # Record pod identity: #418 requires per-pod evidence, and each replica
+          # keeps its own in-process share window, so the runner must poll each.
+          kubectl -n "$NS" get pods -l app="$DEPLOY" -o json > /tmp/replica-pods.json
+          kubectl -n "$NS" get pods -l app="$DEPLOY" \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.podIP}{"\n"}{end}' | tee /tmp/replica-pods.txt
+          URLS=""
+          while IFS=$'\t' read -r name ip; do
+            [ -z "$ip" ] && continue
+            URLS="$URLS --replica-url http://$ip:3000"
+          done < /tmp/replica-pods.txt
+          echo "REPLICA_URLS=$URLS" >> "$GITHUB_ENV"
+          echo "REPLICA_APPLIED=$READY" >> "$GITHUB_ENV"
+
       - name: Run scenario ${{ matrix.scenario }}
         id: scenario
         env:
@@ -427,6 +467,7 @@ jobs:
             ${{
               env.REPLICA != '' && format('--replica {0}', env.REPLICA) || ''
             }} \
+            $REPLICA_URLS \
             ${{
               env.SPECIFIC_CHANNEL_ID != '' && format('--specific-channel-id {0}', env.SPECIFIC_CHANNEL_ID) || ''
             }} \

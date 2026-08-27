@@ -188,6 +188,126 @@ def _get_cgroup_v2_paths() -> tuple[str | None, str | None]:
                         return str(current), str(max_path) if max_path.exists() else None
     return None, None
 
+def read_cgroup_cpu_throttle() -> tuple[dict[str, int] | None, str | None]:
+    """Read cgroup v2 cpu.stat throttling counters.
+
+    Returns:
+        (counters, reason_unavailable). Counters carry nr_periods,
+        nr_throttled and throttled_usec — the saturation evidence #418 asks for,
+        since a throttled process looks slow without looking busy.
+    """
+    content = _read_file("/sys/fs/cgroup/cpu.stat")
+    if content is None:
+        # cgroup v1 splits this into cpu.cfs_* under a cpuacct hierarchy.
+        v1 = _read_file("/sys/fs/cgroup/cpu/cpu.stat")
+        if v1 is None:
+            return None, "cpu.stat not readable (no cgroup v2 unified hierarchy)"
+        content = v1
+    out: dict[str, int] = {}
+    for line in content.strip().split("\n"):
+        parts = line.split()
+        if len(parts) == 2 and parts[0] in ("nr_periods", "nr_throttled", "throttled_usec"):
+            try:
+                out[parts[0]] = int(parts[1])
+            except ValueError:
+                continue
+    if not out:
+        return None, "cpu.stat present but carried no throttling counters"
+    return out, None
+
+
+def read_go_runtime(pprof_url: str | None) -> tuple[dict[str, Any] | None, str | None]:
+    """Read Go heap/GC stats from a pprof endpoint.
+
+    Uses /debug/pprof/heap?debug=1, whose trailing runtime.MemStats block is
+    plain text and needs no protobuf decoding. Returns None with a reason when
+    the endpoint is absent, which is the normal case: the gateway does not
+    enable pprof by default and #418 requires that be stated, not guessed.
+    """
+    if not pprof_url:
+        return None, "no pprof URL configured (gateway does not expose net/http/pprof by default)"
+    try:
+        import urllib.request
+        with urllib.request.urlopen(f"{pprof_url.rstrip('/')}/debug/pprof/heap?debug=1", timeout=5) as resp:
+            body = resp.read().decode("utf-8", "replace")
+    except Exception as exc:
+        return None, f"pprof heap unreachable at {pprof_url}: {type(exc).__name__}"
+
+    wanted = {
+        "HeapAlloc": "heap_alloc",
+        "HeapSys": "heap_sys",
+        "HeapInuse": "heap_inuse",
+        "HeapObjects": "heap_objects",
+        "NextGC": "next_gc",
+        "NumGC": "num_gc",
+        "PauseTotalNs": "gc_pause_total_ns",
+        "Sys": "sys_total",
+    }
+    out: dict[str, Any] = {}
+    for line in body.splitlines():
+        s = line.strip().lstrip("#").strip()
+        for key, name in wanted.items():
+            if s.startswith(key + " ") or s.startswith(key + "="):
+                digits = "".join(ch for ch in s[len(key):] if ch.isdigit())
+                if digits:
+                    out[name] = int(digits)
+    if not out:
+        return None, "pprof heap reachable but no MemStats fields parsed"
+    return out, None
+
+
+def read_process_identity(pid: int | None) -> tuple[dict[str, Any] | None, str | None]:
+    """Read a process's identity and restart-relevant facts.
+
+    Start time plus PID is what makes "the gateway restarted" checkable: a PID can
+    be reused, but PID+starttime cannot silently collide within a run.
+    """
+    if pid is None:
+        return None, "no gateway pid supplied"
+    stat = _read_file(f"/proc/{pid}/stat")
+    if stat is None:
+        return None, f"/proc/{pid}/stat not readable (process gone?)"
+    fields = stat.rsplit(")", 1)[-1].split()
+    starttime = None
+    if len(fields) >= 20:
+        try:
+            starttime = int(fields[19])
+        except ValueError:
+            starttime = None
+    rss_bytes = None
+    status = _read_file(f"/proc/{pid}/status")
+    if status:
+        for line in status.splitlines():
+            if line.startswith("VmRSS:"):
+                try:
+                    rss_bytes = int(line.split()[1]) * 1024
+                except (ValueError, IndexError):
+                    pass
+                break
+    return {"pid": pid, "starttime_ticks": starttime, "rss_bytes": rss_bytes}, None
+
+
+def read_oom_events() -> tuple[dict[str, int] | None, str | None]:
+    """Read cgroup v2 memory.events OOM counters.
+
+    oom_kill > 0 is direct evidence a run was memory-starved, which #418 treats as
+    invalidating rather than as a product verdict.
+    """
+    content = _read_file("/sys/fs/cgroup/memory.events")
+    if content is None:
+        return None, "memory.events not readable (no cgroup v2 unified hierarchy)"
+    out: dict[str, int] = {}
+    for line in content.strip().split("\n"):
+        parts = line.split()
+        if len(parts) == 2 and parts[0] in ("oom", "oom_kill", "max", "high"):
+            try:
+                out[parts[0]] = int(parts[1])
+            except ValueError:
+                continue
+    if not out:
+        return None, "memory.events present but carried no counters"
+    return out, None
+
 
 class _DiffTracker:
     """Track previous samples for differential metrics."""
@@ -327,8 +447,14 @@ class _DiffTracker:
 _diff_tracker = _DiffTracker()
 
 
-def sample_once() -> dict[str, Any]:
-    """Single resource snapshot from procfs/sysfs."""
+def sample_once(pprof_url: str | None = None, gateway_pid: int | None = None) -> dict[str, Any]:
+    """Single resource snapshot from procfs/sysfs.
+
+    Args:
+        pprof_url: base URL of a Go pprof endpoint for heap/GC stats; None marks
+            them NOT_AVAILABLE with a reason instead of reporting zeros.
+        gateway_pid: gateway PID for process identity and restart detection.
+    """
     ts = time.time()
     unavailable_reasons: dict[str, str] = {}
 
@@ -465,6 +591,18 @@ def sample_once() -> dict[str, Any]:
         net["conns"] = _count_tcp_connections(tcp_content)
     else:
         unavailable_reasons["conns"] = "/proc/net/tcp not readable"
+    throttle, throttle_reason = read_cgroup_cpu_throttle()
+    if throttle_reason:
+        unavailable_reasons["cpu_throttle"] = throttle_reason
+    go_rt, go_reason = read_go_runtime(pprof_url)
+    if go_reason:
+        unavailable_reasons["go_runtime"] = go_reason
+    proc_id, proc_reason = read_process_identity(gateway_pid)
+    if proc_reason:
+        unavailable_reasons["process_identity"] = proc_reason
+    oom, oom_reason = read_oom_events()
+    if oom_reason:
+        unavailable_reasons["oom_events"] = oom_reason
 
     return {
         "ts": ts,
@@ -477,10 +615,14 @@ def sample_once() -> dict[str, Any]:
             "load5": load.get("load5", 0.0),
             "load15": load.get("load15", 0.0),
             "runqueue": load.get("runqueue", 0),
+            "throttle": throttle if throttle is not None else NOT_AVAILABLE,
         },
         "mem": mem,
         "disk": disk,
         "net": net,
+        "go_runtime": go_rt if go_rt is not None else NOT_AVAILABLE,
+        "process": proc_id if proc_id is not None else NOT_AVAILABLE,
+        "oom": oom if oom is not None else NOT_AVAILABLE,
         "unavailable_reasons": unavailable_reasons,
     }
 
@@ -490,6 +632,13 @@ class ResourceSampler:
     """Background resource sampler writing ndjson."""
     interval: float = 1.0
     out_path: Path = field(default_factory=lambda: Path("/tmp/resources.ndjson"))
+    # Optional gateway introspection: a pprof URL enables Go heap/GC sampling and
+    # a PID enables process identity / restart detection. Absent either, those
+    # blocks are recorded NOT_AVAILABLE with a reason.
+    pprof_url: str | None = None
+    gateway_pid: int | None = None
+    # Callable returning the current gateway PID, used to recover after a restart.
+    _pid_resolver: Any = None
 
     _thread: threading.Thread | None = field(default=None, init=False)
     _stop_event: threading.Event = field(default_factory=threading.Event, init=False)
@@ -505,7 +654,15 @@ class ResourceSampler:
 
     def _run(self) -> None:
         while not self._stop_event.is_set():
-            sample = sample_once()
+            # Re-resolve the PID when it goes stale: S10_RESTART deliberately
+            # restarts the gateway mid-run, and a sampler pinned to the dead PID
+            # would report process identity as permanently unavailable.
+            if self.gateway_pid is not None and self._pid_resolver is not None:
+                if not Path(f"/proc/{self.gateway_pid}").exists():
+                    fresh = self._pid_resolver()
+                    if fresh:
+                        self.gateway_pid = fresh
+            sample = sample_once(pprof_url=self.pprof_url, gateway_pid=self.gateway_pid)
             self._file_handle.write(json.dumps(sample) + "\n")
             self._file_handle.flush()
             self._stop_event.wait(self.interval)

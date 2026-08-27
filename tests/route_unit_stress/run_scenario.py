@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import uuid
 import time
@@ -76,6 +77,68 @@ class AdminTokenManager:
         return False
 AFFINITY_OPTION_KEY = "channel_affinity_setting.enabled"
 AUDIT_RING_CAPACITY = 32768  # keep in sync with routestats.AuditRingCapacity()
+# Retries happen inside the gateway, so without audit rows the count is not
+# observable at all. #418 requires unavailable metrics to say so explicitly
+# rather than defaulting to a misleading 0.
+NOT_AVAILABLE_RETRY = "NOT_AVAILABLE: retry count needs gateway audit rows"
+
+
+def detect_gateway_pid(gateway_url: str) -> int | None:
+    """Find the local PID listening on the gateway's port.
+
+    Walks /proc/net/tcp to map the listening port to an inode, then scans
+    /proc/*/fd for the owning process. Returns None when the gateway is remote or
+    the mapping cannot be made — the caller records NOT_AVAILABLE rather than
+    guessing, because a wrong PID would make restart detection lie.
+    """
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(gateway_url)
+        port = parsed.port
+        host = parsed.hostname or ""
+        if port is None or host not in ("127.0.0.1", "localhost", "::1", "0.0.0.0"):
+            return None
+    except Exception:
+        return None
+
+    target_inodes: set[str] = set()
+    for proto in ("tcp", "tcp6"):
+        try:
+            with open(f"/proc/net/{proto}", "r", encoding="utf-8") as f:
+                next(f, None)
+                for line in f:
+                    parts = line.split()
+                    if len(parts) < 10:
+                        continue
+                    local = parts[1]
+                    # state 0A == LISTEN
+                    if parts[3] != "0A":
+                        continue
+                    try:
+                        if int(local.rsplit(":", 1)[1], 16) == port:
+                            target_inodes.add(parts[9])
+                    except (ValueError, IndexError):
+                        continue
+        except (OSError, StopIteration):
+            continue
+    if not target_inodes:
+        return None
+
+    for proc in Path("/proc").iterdir():
+        if not proc.name.isdigit():
+            continue
+        fd_dir = proc / "fd"
+        try:
+            for fd in fd_dir.iterdir():
+                try:
+                    link = os.readlink(fd)
+                except OSError:
+                    continue
+                if link.startswith("socket:[") and link[8:-1] in target_inodes:
+                    return int(proc.name)
+        except OSError:
+            continue  # process vanished or not ours
+    return None
 
 
 @dataclass
@@ -357,6 +420,12 @@ def send_request(
         "start_ts": start_ts,
         "end_ts": None,
         "retry_after_sec": None,
+        # error_kind classifies a failure as http_status / timeout / cancelled /
+        # transport so #418's separate timeout and cancel counts are derivable.
+        "error_kind": None,
+        "prompt_tokens": None,
+        "completion_tokens": None,
+        "total_tokens": None,
     }
     started = time.perf_counter()
     try:
@@ -387,14 +456,39 @@ def send_request(
                 else:
                     row["itl_ms"].append((now - frame_times[-1]) * 1000.0)
                 frame_times.append(now)
+            # Streaming frames stand in for completion tokens: the mock emits one
+            # frame per token, so the frame count is the only token signal the
+            # client can observe without trusting a usage block it did not verify.
+            row["completion_tokens"] = len(frame_times)
         else:
-            r.content  # drain so latency covers the whole response
+            body = r.content  # drain so latency covers the whole response
+            try:
+                usage = json.loads(body).get("usage") or {}
+                row["prompt_tokens"] = usage.get("prompt_tokens")
+                row["completion_tokens"] = usage.get("completion_tokens")
+                row["total_tokens"] = usage.get("total_tokens")
+            except Exception:
+                pass  # non-JSON or usage-less body: leave token fields unset
         row["latency_ms"] = (time.perf_counter() - started) * 1000.0
         if r.status_code != 200:
             row["error"] = r.text[:200]
-    except Exception as exc:  # network/timeout
+            row["error_kind"] = "http_status"
+    except requests.exceptions.Timeout as exc:
+        # Distinguished from a generic transport error because #418 asks for a
+        # separate timeout count, and a timeout is a saturation signal.
         row["latency_ms"] = (time.perf_counter() - started) * 1000.0
         row["error"] = str(exc)[:200]
+        row["error_kind"] = "timeout"
+    except (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError) as exc:
+        # A mid-stream disconnect lands here: the request was cancelled by the
+        # peer rather than answered, which is not the same as an HTTP failure.
+        row["latency_ms"] = (time.perf_counter() - started) * 1000.0
+        row["error"] = str(exc)[:200]
+        row["error_kind"] = "cancelled"
+    except Exception as exc:
+        row["latency_ms"] = (time.perf_counter() - started) * 1000.0
+        row["error"] = str(exc)[:200]
+        row["error_kind"] = "transport"
     finally:
         row["end_ts"] = time.time()
     return row
@@ -426,8 +520,22 @@ def run_phase(
     return rows, request_ids
 
 
-def service_quality(rows: list[dict[str, Any]], elapsed_s: float) -> dict[str, Any]:
-    """Latency/throughput metrics with success and failure kept separate."""
+def service_quality(
+    rows: list[dict[str, Any]],
+    elapsed_s: float,
+    attempts: list[dict[str, Any]] | None = None,
+    requested: int | None = None,
+) -> dict[str, Any]:
+    """Latency/throughput metrics with success and failure kept separate.
+
+    Args:
+        rows: client-side request rows.
+        elapsed_s: stat-phase wall time.
+        attempts: gateway audit rows; used to derive the retry count, which is
+            only visible gateway-side (the client sees one response per request).
+        requested: how many requests the phase intended to send, so a generator
+            that could not keep up is reported instead of silently ignored.
+    """
     ok = [r for r in rows if r["status"] == 200]
     bad = [r for r in rows if r["status"] != 200]
     ok_lat = [r["latency_ms"] for r in ok if r["latency_ms"] is not None]
@@ -441,6 +549,31 @@ def service_quality(rows: list[dict[str, Any]], elapsed_s: float) -> dict[str, A
     for r in rows:
         key = str(r["status"])
         status_counts[key] = status_counts.get(key, 0) + 1
+
+    # Error kinds: #418 wants timeout and cancel counted apart from HTTP failures.
+    kind_counts: dict[str, int] = {}
+    for r in rows:
+        k = r.get("error_kind")
+        if k:
+            kind_counts[k] = kind_counts.get(k, 0) + 1
+
+    # Retries are gateway-side: one user request can span several attempts, so the
+    # retry count is attempts-minus-requests, floored at 0. Without audit rows it
+    # is genuinely unobservable rather than zero.
+    if attempts is None:
+        retry_count: Any = NOT_AVAILABLE_RETRY
+    else:
+        retry_count = max(0, len(attempts) - len(rows))
+
+    completion_tokens = [r.get("completion_tokens") for r in rows if r.get("completion_tokens") is not None]
+    total_completion = sum(completion_tokens) if completion_tokens else 0
+
+    # "Dropped iterations" in the k6 sense: requests the phase meant to issue but
+    # never did, which is the generator-saturation signal #418 asks for.
+    dropped = None
+    if requested is not None:
+        dropped = max(0, requested - len(rows))
+
     return {
         "requests": len(rows),
         "succeeded": len(ok),
@@ -464,6 +597,16 @@ def service_quality(rows: list[dict[str, Any]], elapsed_s: float) -> dict[str, A
         "itl_mean_ms": (sum(itl) / len(itl)) if itl else None,
         "itl_samples": len(itl),
         "status_counts": status_counts,
+        "error_kind_counts": kind_counts,
+        "timeout_count": kind_counts.get("timeout", 0),
+        "cancelled_count": kind_counts.get("cancelled", 0),
+        "transport_error_count": kind_counts.get("transport", 0),
+        "retry_count": retry_count,
+        "completion_tokens_total": total_completion,
+        "completion_tokens_samples": len(completion_tokens),
+        "token_throughput_per_s": (total_completion / elapsed_s) if elapsed_s > 0 else 0.0,
+        "requested": requested,
+        "dropped_iterations": dropped,
     }
 
 def build_route_infos(
@@ -1186,6 +1329,196 @@ def run_phase_s12(
     """
     return run_phase(gateway_url, token, alias, mode, count, concurrency, 0.0, phase)
 
+def run_phase_s10_restart(
+    gateway_url: str,
+    token: str,
+    alias: str,
+    mode: str,
+    count: int,
+    concurrency: int,
+    token_mgr: AdminTokenManager,
+    routes: list[RouteInfo],
+    restart_hook: str | None,
+    kill_switch_option: str,
+    out: Path,
+) -> tuple[list[dict[str, Any]], list[str], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """S10_RESTART: prove the kill switch survives a real restart.
+
+    Sequence: traffic -> snapshot -> write RouteStatsEnabled=false -> restart ->
+    snapshot -> traffic. The before/after snapshots carry the option value, every
+    route's correction, the share-window entry count and the gateway PID, because
+    each of those is one half of a claim the scenario has to check:
+      - option value  -> the write persisted across the restart
+      - corrections   -> all exactly 1.0 (neutral) once disabled
+      - window count  -> stopped growing
+      - PID           -> a restart actually happened
+
+    Returns:
+        stat_rows, stat_ids, before_snapshot, after_snapshot, sweep_evidence
+    """
+    import subprocess
+
+    def snapshot(label: str) -> dict[str, Any]:
+        opts = fetch_options(gateway_url, token_mgr) or {}
+        items = fetch_topology(gateway_url, token_mgr, alias) or []
+        shares = fetch_share_snapshot(gateway_url, token_mgr) or []
+        window_entries = sum(len(p.get("window", []) or []) for p in shares)
+        corrections = [
+            float(i.get("share_correction", 0.0) or 0.0)
+            for i in items
+            if i.get("enabled") and i.get("channel_status") == 1
+        ]
+        snap = {
+            "label": label,
+            "ts": time.time(),
+            "option": opts.get(kill_switch_option),
+            "corrections": corrections,
+            "window_entries": window_entries,
+            "pool_count": len(shares),
+            "pid": str(detect_gateway_pid(gateway_url) or ""),
+        }
+        (out / f"kill-switch-{label}.json").write_text(
+            json.dumps(snap, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        print(f"      S10 {label}: option={snap['option']!r} corrections={corrections} "
+              f"window_entries={window_entries} pid={snap['pid']}")
+        return snap
+
+    # Phase 1: traffic with route stats live, so the window has something in it.
+    print(f"      S10 restart: {count} requests before the kill switch")
+    rows_before, ids_before = run_phase(
+        gateway_url, token, alias, mode, count, concurrency, 0.0, "stats"
+    )
+    before = snapshot("before")
+
+    # Phase 2: flip the kill switch through the real admin API.
+    if not set_option(gateway_url, token_mgr, kill_switch_option, "false"):
+        print(f"      WARNING: failed to set {kill_switch_option}=false")
+    else:
+        wait_option_value(gateway_url, token_mgr, kill_switch_option, "false", timeout_s=30.0)
+        print(f"      S10 {kill_switch_option}=false written")
+
+    # Phase 3: restart. Without a hook the persistence claim is untestable, so
+    # record that rather than pretending the restart happened.
+    sweep_evidence: dict[str, Any] = {"pool_count_before": before["pool_count"]}
+    if restart_hook:
+        started = time.time()
+        try:
+            proc = subprocess.run(restart_hook, shell=True, capture_output=True, text=True, timeout=180)
+            sweep_evidence["restart_hook"] = {
+                "cmd": restart_hook,
+                "exit_code": proc.returncode,
+                "duration_sec": time.time() - started,
+                "stdout": (proc.stdout or "")[-2000:],
+                "stderr": (proc.stderr or "")[-2000:],
+            }
+            print(f"      S10 restart hook exit={proc.returncode} in {time.time() - started:.1f}s")
+        except Exception as exc:
+            sweep_evidence["restart_hook"] = {"cmd": restart_hook, "exit_code": -1, "stderr": str(exc)}
+            print(f"      S10 restart hook failed: {exc}")
+        # Wait for the gateway to answer again before snapshotting.
+        deadline = time.time() + 90
+        while time.time() < deadline:
+            try:
+                if requests.get(f"{gateway_url.rstrip('/')}/api/status", timeout=5).status_code == 200:
+                    break
+            except Exception:
+                pass
+            time.sleep(1.0)
+    else:
+        sweep_evidence["restart_hook"] = {
+            "skipped": True,
+            "note": "no --restart-hook: option persistence across restart is UNPROVEN",
+        }
+        print("      S10 restart hook skipped (persistence unproven)")
+
+    after = snapshot("after")
+    sweep_evidence["pool_count_after"] = after["pool_count"]
+
+    # Phase 4: traffic after the restart, to show the window does not grow again.
+    print(f"      S10 restart: {count} requests after the restart")
+    rows_after, ids_after = run_phase(
+        gateway_url, token, alias, mode, count, concurrency, 0.0, "stats"
+    )
+    post = snapshot("post-traffic")
+    # The kill-switch check compares before vs post-traffic: growth here would mean
+    # the window kept allocating despite being disabled.
+    after["window_entries"] = post["window_entries"]
+    after["corrections"] = post["corrections"]
+    sweep_evidence["pool_count_post_traffic"] = post["pool_count"]
+    sweep_evidence["sweep_note"] = (
+        "The share-pool sweep ticker is time.Hour (apps/api/main.go), so a run shorter "
+        "than an hour cannot produce a 'route stats sweep' log line. Per #418 that is a "
+        "KNOWN LIMITATION for short runs, not a FAIL; pool counts before/after/post are "
+        "recorded so a long CI run can be compared against them."
+    )
+
+    return rows_before + rows_after, ids_before + ids_after, before, after, sweep_evidence
+
+def run_phase_s10_global(
+    replica_urls: list[str],
+    token: str,
+    alias: str,
+    mode: str,
+    count: int,
+    concurrency: int,
+    phase: str,
+) -> tuple[list[dict[str, Any]], list[str], dict[str, int]]:
+    """S10_GLOBAL: spread traffic across replicas, recording which one served each request.
+
+    Share windows are process-local, so a replica converges on its own view. The
+    only sound global number comes from pooling raw attempts across replicas, and
+    that requires knowing which replica produced each attempt — hence the
+    round-robin plus a per-row `replica_url`.
+
+    Returns:
+        stat_rows, stat_ids, per_replica_request_counts
+    """
+    stat_rows: list[dict[str, Any]] = []
+    stat_ids: list[str] = []
+    per_replica: dict[str, int] = {u: 0 for u in replica_urls}
+
+    def send_to_replica(idx: int) -> dict[str, Any]:
+        url = replica_urls[idx % len(replica_urls)]
+        rid = str(uuid.uuid4())
+        row = send_request(url, token, alias, rid, mode, False, phase)
+        row["replica_url"] = url
+        return row
+
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        futures = [pool.submit(send_to_replica, i) for i in range(count)]
+        for fut in as_completed(futures):
+            row = fut.result()
+            stat_rows.append(row)
+            stat_ids.append(row["request_id"])
+            per_replica[row["replica_url"]] = per_replica.get(row["replica_url"], 0) + 1
+
+    return stat_rows, stat_ids, per_replica
+
+
+def fetch_audit_multi(
+    replica_urls: list[str],
+    token_mgr: AdminTokenManager,
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Collect audit attempts from every replica, tagging each with its pod.
+
+    Each replica keeps its own in-process ring, so the global picture needs all of
+    them. The `pod` tag is what lets aggregate_global_share report a per-pod
+    breakdown while still dividing only once, globally.
+    """
+    all_attempts: list[dict[str, Any]] = []
+    per_pod: dict[str, int] = {}
+    for url in replica_urls:
+        rows = fetch_audit(url, token_mgr)
+        if rows is None:
+            print(f"      WARNING: could not read audit from replica {url}")
+            continue
+        for a in rows:
+            a["pod"] = url
+        all_attempts.extend(rows)
+        per_pod[url] = len(rows)
+    return all_attempts, per_pod
+
 
 def run_phase_s13(
     gateway_url: str,
@@ -1367,9 +1700,12 @@ def main() -> int:
     p.add_argument("--specific-channel-id", type=int, default=None, help="S11: channel id used for the specific-channel path and administrative probes")
     p.add_argument("--fault-hook", default=None, help="S13: shell command flipping the subject route's mock to a failing mode")
     p.add_argument("--recover-hook", default=None, help="S13: shell command flipping the subject route's mock back to ok")
+    p.add_argument("--replica-url", action="append", default=[], help="S10_GLOBAL: additional gateway replica base URL (repeatable). Traffic is spread across --gateway-url plus these, and each replica's audit is collected separately so 'pod' identity is real rather than assumed.")
     p.add_argument("--steady-seconds", type=int, default=60, help="S13: steady phase duration")
     p.add_argument("--fault-seconds", type=int, default=120, help="S13: fault phase duration")
     p.add_argument("--recovery-deadline-seconds", type=int, default=None, help="S13: max seconds to wait for recovery (default from scenario)")
+    p.add_argument("--pprof-url", default=None, help="Gateway pprof base URL (e.g. http://127.0.0.1:6060) for Go heap/GC sampling; omitted = NOT_AVAILABLE with reason")
+    p.add_argument("--gateway-pid", type=int, default=None, help="Gateway PID for process identity / restart detection")
     args = p.parse_args()
 
     token_mgr = AdminTokenManager(
@@ -1564,6 +1900,17 @@ def main() -> int:
         if not bad_routes:
             return fail(f"S5 requires a BAD route with channel_id={args.bad_channel_id}, none found among enabled routes")
     (out / "route-before.json").write_text(json.dumps(items, indent=2, ensure_ascii=False), encoding="utf-8")
+    # #418 done-when 3: the option map must be snapshotted before AND after the
+    # run, so a reviewer can prove which scheduler settings were actually in
+    # force and that the runner restored them.
+    options_before = fetch_options(args.gateway_url, token_mgr)
+    if options_before is not None:
+        (out / "options-before.json").write_text(
+            json.dumps(options_before, indent=2, ensure_ascii=False, sort_keys=True), encoding="utf-8"
+        )
+        print(f"      options-before.json written ({len(options_before)} keys)")
+    else:
+        print("      WARNING: could not snapshot options before the run")
     for r in routes:
         print(f"      Route {r.label}: channel_id={r.channel_id} key_index={r.key_index} model={r.upstream_model}")
 
@@ -1732,9 +2079,28 @@ def main() -> int:
     s11_probes = 0
     s13_samples: list[dict[str, Any]] = []
     s13_hooks: dict[str, Any] = {}
+
+    # Resolve the gateway PID once: it feeds process-identity sampling and is the
+    # only way S10_RESTART can prove a restart actually happened.
+    gateway_pid = args.gateway_pid
+    if gateway_pid is None:
+        gateway_pid = detect_gateway_pid(args.gateway_url)
+    summary["gateway_pid_before"] = gateway_pid
+    if gateway_pid is None:
+        print("      NOTE: gateway PID unknown; process identity will be NOT_AVAILABLE")
+    else:
+        print(f"      Gateway PID: {gateway_pid}")
     try:
         print("[5/8] Resource sampling + stats phase")
-        sampler = lib_resources.ResourceSampler(interval=1.0, out_path=out / "resources.ndjson")
+        sampler = lib_resources.ResourceSampler(
+            interval=1.0,
+            out_path=out / "resources.ndjson",
+            pprof_url=args.pprof_url,
+            gateway_pid=gateway_pid,
+            # Lets the sampler recover process identity after S10_RESTART bounces
+            # the gateway and the original PID disappears.
+            _pid_resolver=lambda: detect_gateway_pid(args.gateway_url),
+        )
         sampler.start()
         phase_started = time.time()
         warmup_end_ts = time.time()  # for phase_marks
@@ -1811,6 +2177,47 @@ def main() -> int:
                 args.concurrency,
                 "stats",
             )
+            elapsed = time.time() - phase_started
+            phase_marks = {"warmup_end": warmup_end_ts}
+            step_at_ts = None
+            step_hook_result = None
+            window_metrics = None
+        elif is_s10 and args.replica_url:
+            replica_urls = [args.gateway_url] + list(args.replica_url)
+            stat_rows, stat_ids, per_replica_requests = run_phase_s10_global(
+                replica_urls,
+                args.token,
+                args.alias,
+                mode,
+                args.requests,
+                args.concurrency,
+                "stats",
+            )
+            summary["replica_urls"] = replica_urls
+            summary["per_replica_requests"] = per_replica_requests
+            print(f"      S10 global: {len(replica_urls)} replicas, requests per replica={per_replica_requests}")
+            elapsed = time.time() - phase_started
+            phase_marks = {"warmup_end": warmup_end_ts}
+            step_at_ts = None
+            step_hook_result = None
+            window_metrics = None
+        elif is_s10 and args.scenario == "S10_RESTART":
+            stat_rows, stat_ids, ks_before, ks_after, sweep_evidence = run_phase_s10_restart(
+                args.gateway_url,
+                args.token,
+                args.alias,
+                mode,
+                args.requests,
+                args.concurrency,
+                token_mgr,
+                routes,
+                args.restart_hook,
+                targets.get("kill_switch_option", "RouteStatsEnabled"),
+                out,
+            )
+            summary["kill_switch_before"] = ks_before
+            summary["kill_switch_after"] = ks_after
+            summary["sweep_evidence"] = sweep_evidence
             elapsed = time.time() - phase_started
             phase_marks = {"warmup_end": warmup_end_ts}
             step_at_ts = None
@@ -1946,6 +2353,23 @@ def main() -> int:
     items_after = fetch_topology(args.gateway_url, token_mgr, args.alias)
     if items_after is not None:
         (out / "route-after.json").write_text(json.dumps(items_after, indent=2, ensure_ascii=False), encoding="utf-8")
+    options_after = fetch_options(args.gateway_url, token_mgr)
+    if options_after is not None:
+        (out / "options-after.json").write_text(
+            json.dumps(options_after, indent=2, ensure_ascii=False, sort_keys=True), encoding="utf-8"
+        )
+        # Surface exactly which options the run changed, so "restored" is a
+        # checkable claim rather than a log line.
+        if options_before is not None:
+            changed = {
+                k: {"before": options_before.get(k), "after": v}
+                for k, v in options_after.items()
+                if options_before.get(k) != v
+            }
+            summary["options_changed"] = changed
+            print(f"      options-after.json written; {len(changed)} option(s) differ from before")
+    else:
+        print("      WARNING: could not snapshot options after the run")
     routes_after = build_route_infos(items_after) if items_after else routes
     stat_id_set = set(stat_ids)
     # The relay records its attempt after the response body is flushed, so the
@@ -1953,8 +2377,15 @@ def main() -> int:
     # until the audit ring carries every stat-phase id, or the budget expires.
     settle_deadline = time.time() + 15.0
     attempts_all: list[dict[str, Any]] | None = None
+    # With replicas, each keeps its own in-process ring, so the global picture
+    # needs every replica's audit — tagged with which one it came from.
+    audit_urls = [args.gateway_url] + list(args.replica_url or [])
     while True:
-        attempts_all = fetch_audit(args.gateway_url, token_mgr)
+        if len(audit_urls) > 1:
+            attempts_all, per_pod_audit = fetch_audit_multi(audit_urls, token_mgr)
+            summary["per_pod_audit_rows"] = per_pod_audit
+        else:
+            attempts_all = fetch_audit(args.gateway_url, token_mgr)
         if attempts_all is None:
             return fail("cannot read GET /api/route_unit/audit. 可能是 admin JWT 过期，长跑请传 --admin-username/--admin-password 启用自动刷新")
         seen = {a.get("client_request_id") for a in attempts_all}
@@ -2011,6 +2442,24 @@ def main() -> int:
         per_route[key] = per_route.get(key, 0) + 1
     after_by_identity = {r.identity(): r for r in routes_after}
 
+    # expected_share: each route's entitlement from the scheduler's own post-run
+    # final_score, normalised across the pool. Falls back to base_weight when
+    # final_score is unavailable, and to an equal split when neither is usable,
+    # so the column is always populated rather than silently empty.
+    def _expected_shares() -> dict[tuple, float]:
+        scores: dict[tuple, float] = {}
+        for r in routes:
+            snap = after_by_identity.get(r.identity(), r)
+            score = snap.final_score if snap.final_score else snap.base_weight
+            scores[r.identity()] = float(score or 0.0)
+        total = sum(scores.values())
+        if total <= 0:
+            equal = (1.0 / len(routes)) if routes else 0.0
+            return {k: equal for k in scores}
+        return {k: v / total for k, v in scores.items()}
+
+    expected_by_identity = _expected_shares()
+
     share_rows: list[dict[str, Any]] = []
     share_eval: dict[str, dict[str, Any]] = {}
     # Some scenarios name an aggregate subject rather than a route: S6 "STABLE",
@@ -2032,6 +2481,7 @@ def main() -> int:
             "selections": selections,
             "attempts": opportunities,
             "observed_share": stats["point"],
+            "expected_share": expected_by_identity.get(r.identity()),
             "ci_low": stats["ci_low"],
             "ci_high": stats["ci_high"],
             "target": targets["target"] if is_subject else None,
@@ -2060,6 +2510,27 @@ def main() -> int:
     summary["shares"] = share_rows
     summary["share_eval"] = share_eval
 
+    # #418 done-when 4: always emit BOTH the per-pod breakdown and the global
+    # share re-aggregated from raw attempt quadruples. Single-replica runs report
+    # one pod so the shape is identical at any replica count, and the global
+    # number is never a mean of pod percentages.
+    per_route_global: dict[str, dict[str, Any]] = {}
+    for r in routes:
+        agg = lib_stats.aggregate_global_share(attempts, r.identity())
+        per_route_global[r.label] = {
+            "global_share": agg["global_share"],
+            "global_selections": agg["global_selections"],
+            "global_total": agg["global_total"],
+            "per_pod": agg["per_pod"],
+            "pods_seen": agg["pods_seen"],
+        }
+    summary["per_route_global_aggregation"] = per_route_global
+    summary["pods_seen"] = sorted({str(a.get("pod", "single")) for a in attempts}) if attempts else []
+    summary["aggregation_note"] = (
+        "global_share is one division over pooled raw attempts; per_pod is reporting only. "
+        "Averaging per-pod percentages is forbidden by #418 and is not done anywhere here."
+    )
+
     # S5: compute healthy_share_sum (sum of GOOD routes' observed shares)
     if is_s5:
         healthy_share_sum = sum(
@@ -2068,7 +2539,9 @@ def main() -> int:
         summary["healthy_share_sum"] = healthy_share_sum
         print(f"      S5 healthy_share_sum (sum of GOOD routes): {healthy_share_sum:.4f}")
 
-    summary["service_quality"] = service_quality(stat_rows, elapsed)
+    # Pass audit rows so the retry count is real, and the intended request count so
+    # generator saturation (dropped iterations) is visible.
+    summary["service_quality"] = service_quality(stat_rows, elapsed, attempts=attempts, requested=args.requests)
     # Track user requests vs total attempts for S4
     summary["user_requests"] = args.requests
     summary["total_attempts"] = opportunities
@@ -2109,6 +2582,58 @@ def main() -> int:
                 tw["corr_p99"] = m["corr_p99"]
                 # ewma: JSON string of ewma_quality per route
                 tw["ewma"] = json.dumps(m["ewma"])
+    elif traffic_windows_data:
+        # #418 done-when 7: every scenario must fill the per-window route share /
+        # corr / EWMA columns, not just the ones that poll topology live (S6/S7).
+        # Only S6/S7 sample the gateway mid-run, so for the rest the per-window
+        # share is recomputed from the audit attempts bucketed by their request's
+        # own window, and corr/EWMA are the post-run per-route values — labelled as
+        # such so nobody mistakes them for a mid-window sample.
+        end_ts_by_id = {
+            r.get("request_id"): r.get("end_ts")
+            for r in stat_rows
+            if r.get("request_id") and r.get("end_ts") is not None
+        }
+        label_by_identity = {r.identity(): r.label for r in routes}
+        window_s = 10
+        per_window_counts: dict[int, dict[str, int]] = {}
+        for a in attempts:
+            ts = end_ts_by_id.get(a.get("client_request_id"))
+            if ts is None:
+                continue
+            label = label_by_identity.get(
+                (a.get("channel_id"), a.get("key_index"), a.get("upstream_model"))
+            )
+            if not label:
+                continue
+            bucket = int(ts // window_s) * window_s
+            per_window_counts.setdefault(bucket, {})[label] = (
+                per_window_counts.setdefault(bucket, {}).get(label, 0) + 1
+            )
+
+        post_corr = {r.label: r.share_correction for r in routes_after}
+        post_ewma = {r.label: r.ewma_quality for r in routes_after}
+        corr_values = [v for v in post_corr.values() if v]
+        post_corr_p99 = compute_percentile(corr_values, 0.99) if corr_values else ""
+
+        for tw in traffic_windows_data:
+            counts = per_window_counts.get(tw["window_start"])
+            if counts:
+                total = sum(counts.values())
+                tw["route_shares"] = json.dumps(
+                    {k: (v / total) for k, v in sorted(counts.items())}
+                )
+            # corr/EWMA are end-of-run values repeated per window: the gateway is
+            # not polled mid-run outside S6/S7, and inventing a per-window value
+            # would be fabrication.
+            tw["corr_p99"] = post_corr_p99
+            tw["ewma"] = json.dumps(post_ewma)
+        summary["window_metrics_note"] = (
+            "route_shares is recomputed per 10s window from audit attempts joined to each "
+            "request's completion time. corr_p99 and ewma are POST-RUN per-route values repeated "
+            "across windows, because only S6/S7 poll the gateway mid-run; they are not mid-window "
+            "samples and must not be read as a time series."
+        )
 
     lib_report.write_shares_csv(out / "shares.csv", share_rows)
     lib_report.write_windows_csv(out / "windows.csv", traffic_windows_data)
@@ -2269,7 +2794,15 @@ def main() -> int:
             attempts, probe_opportunities, window_paths, targets
         )
         summary["path_audit"] = path_result
-        summary["s11_path_requests"] = s11_path_counts
+        # Naming matters here: per_path_counts inside path_audit comes from the
+        # GATEWAY audit attempts and is the evidence. s11_client_intended_requests
+        # is what the client meant to send and is corroboration only — #418 forbids
+        # substituting it for the audit-side label.
+        summary["s11_client_intended_requests"] = s11_path_counts
+        summary["s11_path_evidence_source"] = (
+            "path_audit.per_path_counts is derived from gateway audit attempt.path; "
+            "s11_client_intended_requests is client-side intent and is not evidence."
+        )
         summary["s11_probes_sent"] = s11_probes
         summary["s11_window_paths"] = sorted(set(window_paths))
         print(f"      S11 paths: attempts={path_result['per_path_counts']} "
