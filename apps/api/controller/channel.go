@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/billing"
 	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/usage"
 	"net/http"
 	"strconv"
 	"strings"
@@ -440,7 +441,7 @@ func GetChannelKey(c contract.Context) {
 	}
 
 	// 记录操作审计日志（高危：查看渠道密钥）
-	billing.RecordManageAudit(c, "channel.key_view", map[string]interface{}{
+	usage.RecordManageAudit(c, "channel.key_view", map[string]interface{}{
 		"id":   channelId,
 		"name": channel.Name,
 	})
@@ -703,7 +704,7 @@ func AddChannel(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	billing.RecordManageAudit(c, "channel.create", map[string]interface{}{
+	usage.RecordManageAudit(c, "channel.create", map[string]interface{}{
 		"name":  addChannelRequest.Channel.Name,
 		"type":  addChannelRequest.Channel.Type,
 		"count": len(channels),
@@ -738,7 +739,7 @@ func DeleteChannel(c contract.Context) {
 	} else {
 		service.InvalidateProxyClient(channelProxy)
 	}
-	billing.RecordManageAudit(c, "channel.delete", map[string]interface{}{
+	usage.RecordManageAudit(c, "channel.delete", map[string]interface{}{
 		"id":   id,
 		"name": channelName,
 	})
@@ -759,7 +760,7 @@ func DeleteDisabledChannel(c contract.Context) {
 	if rows > 0 {
 		service.ResetProxyClientCache()
 	}
-	billing.RecordManageAudit(c, "channel.delete_disabled", map[string]interface{}{
+	usage.RecordManageAudit(c, "channel.delete_disabled", map[string]interface{}{
 		"count": rows,
 	})
 	_ = c.JSON(http.StatusOK, common.H{
@@ -798,7 +799,7 @@ func DisableTagChannels(c contract.Context) {
 		return
 	}
 	model.InitChannelCache()
-	billing.RecordManageAudit(c, "channel.tag_disable", map[string]interface{}{
+	usage.RecordManageAudit(c, "channel.tag_disable", map[string]interface{}{
 		"tag": channelTag.Tag,
 	})
 	_ = c.JSON(http.StatusOK, common.H{
@@ -824,7 +825,7 @@ func EnableTagChannels(c contract.Context) {
 		return
 	}
 	model.InitChannelCache()
-	billing.RecordManageAudit(c, "channel.tag_enable", map[string]interface{}{
+	usage.RecordManageAudit(c, "channel.tag_enable", map[string]interface{}{
 		"tag": channelTag.Tag,
 	})
 	_ = c.JSON(http.StatusOK, common.H{
@@ -884,7 +885,7 @@ func EditTagChannels(c contract.Context) {
 		return
 	}
 	model.InitChannelCache()
-	billing.RecordManageAudit(c, "channel.tag_edit", map[string]interface{}{
+	usage.RecordManageAudit(c, "channel.tag_edit", map[string]interface{}{
 		"tag": channelTag.Tag,
 	})
 	_ = c.JSON(http.StatusOK, common.H{
@@ -918,7 +919,7 @@ func DeleteChannelBatch(c contract.Context) {
 	if deletedCount > 0 {
 		service.ResetProxyClientCache()
 	}
-	billing.RecordManageAudit(c, "channel.delete_batch", map[string]interface{}{
+	usage.RecordManageAudit(c, "channel.delete_batch", map[string]interface{}{
 		"count": deletedCount,
 	})
 	_ = c.JSON(http.StatusOK, common.H{
@@ -1111,7 +1112,7 @@ func UpdateChannel(c contract.Context) {
 	if channel.Key != "" && channel.Key != originChannel.Key {
 		changedFields = append(changedFields, "key")
 	}
-	billing.RecordManageAudit(c, "channel.update", map[string]interface{}{
+	usage.RecordManageAudit(c, "channel.update", map[string]interface{}{
 		"id":             channel.Id,
 		"name":           channel.Name,
 		"changed_fields": changedFields,
@@ -1141,7 +1142,7 @@ func UpdateChannelStatus(c contract.Context) {
 	if changed {
 		model.InitChannelCache()
 	}
-	billing.RecordManageAudit(c, "channel.status_update", map[string]interface{}{
+	usage.RecordManageAudit(c, "channel.status_update", map[string]interface{}{
 		"id":      id,
 		"status":  req.Status,
 		"changed": changed,
@@ -1168,7 +1169,7 @@ func BatchUpdateChannelStatus(c contract.Context) {
 	if changedCount > 0 {
 		model.InitChannelCache()
 	}
-	billing.RecordManageAudit(c, "channel.status_update_batch", map[string]interface{}{
+	usage.RecordManageAudit(c, "channel.status_update_batch", map[string]interface{}{
 		"count":  changedCount,
 		"total":  len(req.Ids),
 		"status": req.Status,
@@ -1346,7 +1347,7 @@ func BatchSetChannelTag(c contract.Context) {
 		return
 	}
 	model.InitChannelCache()
-	billing.RecordManageAudit(c, "channel.tag_batch_set", map[string]interface{}{
+	usage.RecordManageAudit(c, "channel.tag_batch_set", map[string]interface{}{
 		"count": len(channelBatch.Ids),
 	})
 	_ = c.JSON(http.StatusOK, common.H{
@@ -1452,7 +1453,7 @@ func CopyChannel(c contract.Context) {
 		return
 	}
 	model.InitChannelCache()
-	billing.RecordManageAudit(c, "channel.copy", map[string]interface{}{
+	usage.RecordManageAudit(c, "channel.copy", map[string]interface{}{
 		"sourceId": id,
 		"id":       clone.Id,
 		"name":     clone.Name,
@@ -1525,9 +1526,9 @@ func ManageMultiKeys(c contract.Context) {
 
 	// get_key_status 为只读查询，不记录审计；其余为修改操作，记录审计并跳过中间件兜底。
 	if request.Action == "get_key_status" {
-		billing.MarkAuditLogged(c)
+		usage.MarkAuditLogged(c)
 	} else {
-		billing.RecordManageAudit(c, "channel.multi_key_manage", map[string]interface{}{
+		usage.RecordManageAudit(c, "channel.multi_key_manage", map[string]interface{}{
 			"action": request.Action,
 			"id":     channel.Id,
 		})

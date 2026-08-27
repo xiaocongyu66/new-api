@@ -2,6 +2,7 @@ package billing
 
 import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/usage"
 	"net/http"
 	"strconv"
 	"unicode/utf8"
@@ -111,7 +112,7 @@ func AddRedemption(c contract.Context) {
 		}
 		keys = append(keys, key)
 	}
-	RecordManageAudit(c, "redemption.create", map[string]interface{}{
+	usage.RecordManageAudit(c, "redemption.create", map[string]interface{}{
 		"name":  redemption.Name,
 		"count": redemption.Count,
 		"quota": logger.LogQuota(redemption.Quota),

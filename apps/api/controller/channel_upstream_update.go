@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/billing"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/usage"
 	"io"
 	"net/http"
 	"net/url"
@@ -855,7 +855,7 @@ func ApplyChannelUpstreamModelUpdates(c contract.Context) {
 		refreshChannelRuntimeCache()
 	}
 
-	billing.RecordManageAudit(c, "channel.upstream_apply", map[string]interface{}{
+	usage.RecordManageAudit(c, "channel.upstream_apply", map[string]interface{}{
 		"id": channel.Id,
 	})
 	_ = c.JSON(http.StatusOK, common.H{
@@ -1053,7 +1053,7 @@ func ApplyAllChannelUpstreamModelUpdates(c contract.Context) {
 		refreshChannelRuntimeCache()
 	}
 
-	billing.RecordManageAudit(c, "channel.upstream_apply_all", map[string]interface{}{
+	usage.RecordManageAudit(c, "channel.upstream_apply_all", map[string]interface{}{
 		"count": len(results),
 	})
 	_ = c.JSON(http.StatusOK, common.H{
@@ -1094,7 +1094,7 @@ func DetectAllChannelUpstreamModelUpdates(c contract.Context) {
 		return
 	}
 
-	billing.RecordManageAudit(c, "channel.upstream_detect_all", map[string]interface{}{
+	usage.RecordManageAudit(c, "channel.upstream_detect_all", map[string]interface{}{
 		"task_id": task.TaskID,
 	})
 	_ = c.JSON(http.StatusOK, common.H{

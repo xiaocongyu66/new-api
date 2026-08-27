@@ -3,6 +3,7 @@ package billing
 import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/usage"
 	"strconv"
 	"strings"
 
@@ -466,8 +467,8 @@ func AdminResetUserSubscriptionsByPlan(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	recordSubscriptionResetUserLogs(result, AuditOperatorInfo(c))
-	RecordManageAuditFor(c, userId, "subscription.user_plan_reset", map[string]interface{}{
+	recordSubscriptionResetUserLogs(result, usage.AuditOperatorInfo(c))
+	usage.RecordManageAuditFor(c, userId, "subscription.user_plan_reset", map[string]interface{}{
 		"target_user_id":     userId,
 		"plan_id":            result.PlanId,
 		"plan_title":         result.PlanTitle,
@@ -495,10 +496,10 @@ func AdminResetPlanSubscriptions(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	recordSubscriptionResetUserLogs(result, AuditOperatorInfo(c))
+	recordSubscriptionResetUserLogs(result, usage.AuditOperatorInfo(c))
 	common.SysLog(fmt.Sprintf("admin reset subscription plan %d quota: reset_count=%d user_count=%d advance_reset_time=%t",
 		result.PlanId, result.ResetCount, result.UserCount, result.AdvanceResetTime))
-	RecordManageAudit(c, "subscription.plan_reset", map[string]interface{}{
+	usage.RecordManageAudit(c, "subscription.plan_reset", map[string]interface{}{
 		"plan_id":            result.PlanId,
 		"plan_title":         result.PlanTitle,
 		"reset_count":        result.ResetCount,
