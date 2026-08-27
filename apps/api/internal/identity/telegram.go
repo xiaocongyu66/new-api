@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"github.com/QuantumNous/new-api/internal/security"
+	"github.com/QuantumNous/new-api/internal/security/authtoken"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"net/url"
@@ -53,7 +53,7 @@ func TelegramBindStart(c contract.Context) {
 		})
 		return
 	}
-	identity, ok := security.GetSessionAuthIdentity(c)
+	identity, ok := authtoken.ReadSessionAuthIdentity(c)
 	if !ok {
 		_ = c.JSON(http.StatusUnauthorized, common.H{"success": false, "message": "未登录"})
 		return

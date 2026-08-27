@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"github.com/QuantumNous/new-api/internal/billing"
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
@@ -29,7 +30,14 @@ func GenerateAccessToken(c contract.Context) {
 	identity.GenerateAccessToken(c)
 }
 
+// TransferAffQuota gates on payment compliance before delegating. The check
+// lives here rather than inside identity: it is a billing policy, and having
+// identity call into billing would cycle once the user/token records move into
+// the identity domain.
 func TransferAffQuota(c contract.Context) {
+	if !billing.RequirePaymentCompliance(c) {
+		return
+	}
 	identity.TransferAffQuota(c)
 }
 

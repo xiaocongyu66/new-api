@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/security"
+	"github.com/QuantumNous/new-api/internal/security/authtoken"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strings"
@@ -150,7 +150,7 @@ func RevokeOtherLoginSessions(c contract.Context) {
 }
 
 func requireBrowserSession(c contract.Context) (service.AuthIdentity, bool) {
-	identity, ok := security.GetSessionAuthIdentity(c)
+	identity, ok := authtoken.ReadSessionAuthIdentity(c)
 	if !ok {
 		_ = c.JSON(http.StatusForbidden, common.H{
 			"success": false,

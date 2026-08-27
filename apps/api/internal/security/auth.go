@@ -3,6 +3,7 @@ package security
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/security/authtoken"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net"
 	"net/http"
@@ -21,8 +22,6 @@ import (
 
 	"gorm.io/gorm"
 )
-
-const authIdentityContextKey = "auth_identity"
 
 type dashboardCredentialKind int
 
@@ -110,31 +109,19 @@ func RootAuth() func(c contract.Context) {
 
 // GetAuthIdentity returns a dashboard session identity. PAT-authenticated
 // requests intentionally have no SessionID and cannot manage browser sessions.
+//
+// Both readers are thin wrappers over authtoken, which owns AuthIdentity and
+// the context key. They stay exported here so existing security callers keep
+// working; new domain code should call authtoken directly rather than
+// depending on this package.
 func GetAuthIdentity(c contract.Context) (service.AuthIdentity, bool) {
-	value, ok := c.Get(authIdentityContextKey)
-	if !ok {
-		return service.AuthIdentity{}, false
-	}
-	identity, ok := value.(service.AuthIdentity)
-	return identity, ok
+	return authtoken.ReadAuthIdentity(c)
 }
 
 // GetSessionAuthIdentity returns only identities backed by a live dashboard
 // session. PAT-authenticated requests intentionally fail this check.
 func GetSessionAuthIdentity(c contract.Context) (service.AuthIdentity, bool) {
-	identity, ok := GetAuthIdentity(c)
-	if !ok {
-		identity = service.AuthIdentity{
-			UserID:          c.GetInt("id"),
-			SessionID:       c.GetString("session_id"),
-			UserAuthVersion: c.GetInt64("auth_version"),
-			SessionVersion:  c.GetInt64("session_version"),
-		}
-	}
-	if identity.UserID <= 0 || identity.SessionID == "" || identity.UserAuthVersion <= 0 || identity.SessionVersion <= 0 {
-		return service.AuthIdentity{}, false
-	}
-	return identity, true
+	return authtoken.ReadSessionAuthIdentity(c)
 }
 
 func authenticateDashboardRequest(c contract.Context) (*model.UserBase, service.AuthIdentity, bool, error) {
@@ -195,7 +182,7 @@ func setDashboardAuthContext(c contract.Context, user *model.UserBase, identity 
 	c.Set("session_id", identity.SessionID)
 	c.Set("auth_version", identity.UserAuthVersion)
 	c.Set("session_version", identity.SessionVersion)
-	c.Set(authIdentityContextKey, identity)
+	c.Set(authtoken.AuthIdentityContextKey, identity)
 	user.WriteContext(c)
 }
 

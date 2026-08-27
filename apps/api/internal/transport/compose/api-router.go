@@ -154,7 +154,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/waffo/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(billing.RequestWaffoPay))
 				selfRoute.POST("/waffo-pancake/amount", ginadapter.Handler(billing.RequestWaffoPancakeAmount))
 				selfRoute.POST("/waffo-pancake/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(billing.RequestWaffoPancakePay))
-				selfRoute.POST("/aff_transfer", ginadapter.Middleware(middleware.UserCriticalRateLimit("aff-transfer")), ginadapter.Handler(identity.TransferAffQuota))
+				selfRoute.POST("/aff_transfer", ginadapter.Middleware(middleware.UserCriticalRateLimit("aff-transfer")), ginadapter.Handler(controller.TransferAffQuota))
 				selfRoute.PUT("/setting", ginadapter.Handler(identity.UpdateUserSetting))
 
 				// 2FA routes

@@ -3,8 +3,7 @@ package identity
 import (
 	"errors"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/billing"
-	"github.com/QuantumNous/new-api/internal/security"
+	"github.com/QuantumNous/new-api/internal/security/authtoken"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/usage"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -431,11 +430,10 @@ type TransferAffQuotaRequest struct {
 	Quota int `json:"quota" binding:"required"`
 }
 
+// TransferAffQuota moves affiliate reward quota into spendable quota. The
+// payment-compliance gate runs in the HTTP shell (controller.TransferAffQuota)
+// so this domain does not depend on billing.
 func TransferAffQuota(c contract.Context) {
-	if !billing.RequirePaymentCompliance(c) {
-		return
-	}
-
 	id := c.GetInt("id")
 	user, err := model.GetUserById(id, true)
 	if err != nil {
@@ -822,7 +820,7 @@ func UpdateSelf(c contract.Context) {
 		return
 	}
 	if updatePassword {
-		identity, ok := security.GetSessionAuthIdentity(c)
+		identity, ok := authtoken.ReadSessionAuthIdentity(c)
 		if !ok {
 			common.CtxApiError(c, errors.New("当前认证方式不支持安全验证"))
 			return
