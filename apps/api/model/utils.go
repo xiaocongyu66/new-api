@@ -18,34 +18,13 @@ func InitBatchUpdater() {
 	})
 }
 
-// The batch queues live in dbx; each domain registers the writer for its own
-// records so no package needs another's unexported persistence helpers.
+// Each record file registers the flusher for the queue that writes its own rows,
+// so no file needs another's unexported persistence helper. This one covers the
+// channel queue; token and user live beside their records.
 func init() {
-	dbx.RegisterTokenQuotaFlusher(func(deltas map[int]int) {
-		for id, delta := range deltas {
-			if err := increaseTokenQuota(id, delta); err != nil {
-				common.SysLog("failed to batch update token quota: " + err.Error())
-			}
-		}
-	})
 	dbx.RegisterChannelUsedQuotaFlusher(func(deltas map[int]int) {
 		for id, delta := range deltas {
 			updateChannelUsedQuota(id, delta)
-		}
-	})
-	dbx.RegisterUserFlusher(func(quota, usedQuota, requestCount map[int]int) {
-		ids := make(map[int]struct{}, len(quota)+len(usedQuota)+len(requestCount))
-		for id := range quota {
-			ids[id] = struct{}{}
-		}
-		for id := range usedQuota {
-			ids[id] = struct{}{}
-		}
-		for id := range requestCount {
-			ids[id] = struct{}{}
-		}
-		for id := range ids {
-			updateUserQuotaUsedQuotaAndRequestCount(id, quota[id], usedQuota[id], requestCount[id])
 		}
 	})
 }

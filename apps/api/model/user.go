@@ -1198,6 +1198,27 @@ func updateUserQuotaUsedQuotaAndRequestCount(id int, quota int, usedQuota int, r
 	}
 }
 
+// Registered here so the user queues' writer stays with the user record. The
+// three queues share one flusher because quota, used quota and request count
+// collapse into a single row update per user.
+func init() {
+	dbx.RegisterUserFlusher(func(quota, usedQuota, requestCount map[int]int) {
+		ids := make(map[int]struct{}, len(quota)+len(usedQuota)+len(requestCount))
+		for id := range quota {
+			ids[id] = struct{}{}
+		}
+		for id := range usedQuota {
+			ids[id] = struct{}{}
+		}
+		for id := range requestCount {
+			ids[id] = struct{}{}
+		}
+		for id := range ids {
+			updateUserQuotaUsedQuotaAndRequestCount(id, quota[id], usedQuota[id], requestCount[id])
+		}
+	})
+}
+
 // GetUsernameById gets username from Redis first, falls back to DB if needed
 func GetUsernameById(id int, fromDB bool) (username string, err error) {
 	defer func() {

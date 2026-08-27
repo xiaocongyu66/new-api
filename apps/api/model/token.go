@@ -353,6 +353,17 @@ func increaseTokenQuota(id int, quota int) (err error) {
 	return err
 }
 
+// Registered here so the token queue's writer stays with the token record.
+func init() {
+	dbx.RegisterTokenQuotaFlusher(func(deltas map[int]int) {
+		for id, delta := range deltas {
+			if err := increaseTokenQuota(id, delta); err != nil {
+				common.SysLog("failed to batch update token quota: " + err.Error())
+			}
+		}
+	})
+}
+
 func DecreaseTokenQuota(id int, key string, quota int) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
