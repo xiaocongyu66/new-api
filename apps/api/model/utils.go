@@ -39,7 +39,7 @@ func InitBatchUpdater() {
 	})
 }
 
-func addNewRecord(type_ int, id int, value int) {
+func AddNewRecord(type_ int, id int, value int) {
 	batchUpdateLocks[type_].Lock()
 	defer batchUpdateLocks[type_].Unlock()
 	if _, ok := batchUpdateStores[type_][id]; !ok {
@@ -122,6 +122,6 @@ func RecordExist(err error) (bool, error) {
 	return false, err
 }
 
-func shouldUpdateRedis(fromDB bool, err error) bool {
+func ShouldUpdateRedis(fromDB bool, err error) bool {
 	return common.RedisEnabled && fromDB && err == nil
 }

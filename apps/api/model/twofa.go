@@ -109,7 +109,7 @@ func (t *TwoFA) DeletePendingTwoFASetup() error {
 
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var pending TwoFA
-		if err := lockForUpdate(tx).
+		if err := LockForUpdate(tx).
 			Where("id = ? AND user_id = ? AND is_enabled = ?", t.Id, t.UserId, false).
 			First(&pending).Error; err != nil {
 			return err
@@ -189,7 +189,7 @@ func (t *TwoFA) IsLocked() bool {
 func CreatePendingTwoFASetupBackupCodes(userId int, codes []string) error {
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var pending TwoFA
-		if err := lockForUpdate(tx).Where("user_id = ? AND is_enabled = ?", userId, false).First(&pending).Error; err != nil {
+		if err := LockForUpdate(tx).Where("user_id = ? AND is_enabled = ?", userId, false).First(&pending).Error; err != nil {
 			return err
 		}
 		return replaceBackupCodesWithTx(tx, userId, codes)
@@ -217,7 +217,7 @@ func replaceBackupCodesWithTx(tx *gorm.DB, userId int, codes []string) error {
 func ReplaceBackupCodesWithAuthVersion(userId int, codes []string) error {
 	if err := DB.Transaction(func(tx *gorm.DB) error {
 		var enabled TwoFA
-		if err := lockForUpdate(tx).Where("user_id = ? AND is_enabled = ?", userId, true).First(&enabled).Error; err != nil {
+		if err := LockForUpdate(tx).Where("user_id = ? AND is_enabled = ?", userId, true).First(&enabled).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrTwoFANotEnabled
 			}
@@ -279,7 +279,7 @@ func GetUnusedBackupCodeCount(userId int) (int, error) {
 func DisableTwoFAWithAuthVersion(userId int) error {
 	if err := DB.Transaction(func(tx *gorm.DB) error {
 		var twoFA TwoFA
-		if err := lockForUpdate(tx).Where("user_id = ? AND is_enabled = ?", userId, true).First(&twoFA).Error; err != nil {
+		if err := LockForUpdate(tx).Where("user_id = ? AND is_enabled = ?", userId, true).First(&twoFA).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrTwoFANotEnabled
 			}
@@ -306,7 +306,7 @@ func (t *TwoFA) EnableWithAuthVersion() error {
 	}
 	if err := DB.Transaction(func(tx *gorm.DB) error {
 		var pending TwoFA
-		if err := lockForUpdate(tx).Where("id = ? AND user_id = ? AND is_enabled = ?", t.Id, t.UserId, false).First(&pending).Error; err != nil {
+		if err := LockForUpdate(tx).Where("id = ? AND user_id = ? AND is_enabled = ?", t.Id, t.UserId, false).First(&pending).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrTwoFAAlreadyEnabled
 			}

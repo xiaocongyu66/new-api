@@ -80,6 +80,13 @@ func GroupCol() string {
 	return commonGroupCol
 }
 
+// KeyCol is the same accessor for the reserved "key" column. Both names are
+// assigned by initCol during database setup, so callers must read them through
+// these functions; a copy taken at package-init time would still be empty.
+func KeyCol() string {
+	return commonKeyCol
+}
+
 // CacheBridge carries the capability-side cache entry points. Registered once
 // by internal/catalog in its init.
 type CacheBridge struct {

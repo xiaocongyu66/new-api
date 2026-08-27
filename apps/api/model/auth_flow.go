@@ -192,7 +192,7 @@ func ConsumeAuthFlowWithAction(token string, match AuthFlowMatch, action func(tx
 	}
 	var consumed AuthFlow
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		query := applyAuthFlowMatch(lockForUpdate(tx), token, match)
+		query := applyAuthFlowMatch(LockForUpdate(tx), token, match)
 		if err := query.First(&consumed).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrAuthFlowInvalid

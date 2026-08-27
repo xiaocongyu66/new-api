@@ -63,17 +63,18 @@ func (l *localHealthManager) getState(channelID int) *ChannelHealthState {
 
 var channelHealthOnce sync.Once
 var channelHealth *ChannelHealthManager
+
 // Exported so capabilities/channel can access fields directly.
 type ChannelHealthState struct {
-	EwmaScore       float64            // range [MinScore, 1.0]
-	RequestCount    int                // guard: don't trust EWMA until min_requests reached
-	UnauthorizedRun int                // consecutive 401s for escalation classification
-	RampExited      bool               // slow-start warm-up abandoned after a real failure
-	RampPending     bool               // post-cooldown first selection starts at the ramp floor
-	FailureStreak   int                // consecutive fatal/throttled outcomes
-	CooldownStreak  int                // number of successive cooldown activations
-	CooldownUntil   time.Time          // lazy expiry deadline; zero means "not cooling"
-	ModelCooldowns  map[string]int     // cooldown activations attributed to each model
+	EwmaScore       float64        // range [MinScore, 1.0]
+	RequestCount    int            // guard: don't trust EWMA until min_requests reached
+	UnauthorizedRun int            // consecutive 401s for escalation classification
+	RampExited      bool           // slow-start warm-up abandoned after a real failure
+	RampPending     bool           // post-cooldown first selection starts at the ramp floor
+	FailureStreak   int            // consecutive fatal/throttled outcomes
+	CooldownStreak  int            // number of successive cooldown activations
+	CooldownUntil   time.Time      // lazy expiry deadline; zero means "not cooling"
+	ModelCooldowns  map[string]int // cooldown activations attributed to each model
 }
 
 // CooldownStateSnapshot is a serializable snapshot of a channel's cooldown
@@ -84,6 +85,7 @@ type CooldownStateSnapshot struct {
 	RampExited     bool
 	CooldownStreak int
 }
+
 // ChannelHealthNow is the package clock, injected for deterministic tests.
 // Production code reads it unchanged; tests replace it and restore it via
 // t.Cleanup so no test leaks a frozen clock into another.
@@ -122,6 +124,7 @@ var ChannelModelDisabler = DisableChannelModel
 
 // Backward-compatible aliases for tests that reference the old unexported names.
 var channelModelDisabler = ChannelModelDisabler
+
 // slowStartFactor scales a channel's routing weight during its warm-up window.
 // Kept for model package tests; implementation mirrors health_store.go.
 func slowStartFactor(state *channelHealthState, minRequests int) float64 {
@@ -136,6 +139,7 @@ func slowStartFactor(state *channelHealthState, minRequests int) float64 {
 	}
 	return float64(state.RequestCount) / float64(minRequests)
 }
+
 // Wire the kill-switch cleanup here rather than in operation_setting, which must
 // not import this package. Toggling the switch off now discards accumulated
 // scores so re-enabling starts from a clean slate instead of resurrecting them.
@@ -193,7 +197,6 @@ func ResetChannelHealthManagerForTest() *ChannelHealthManager {
 	return GetChannelHealthManager()
 }
 
-
 // SnapshotCooldownStateForTest returns the tracked state of one channel;
 // ok is false when the manager has no state for it.
 func (m *ChannelHealthManager) SnapshotCooldownStateForTest(channelID int) (snap CooldownStateSnapshot, ok bool) {
@@ -235,6 +238,7 @@ func (m *ChannelHealthManager) RecordChannelOutcome(channelID int, outcome Chann
 		m.fallback.recordChannelOutcome(channelID, "", outcome)
 	}
 }
+
 // RecordRequestAttempts applies health accounting once for a whole client
 // request, rather than once per failed try.
 func (m *ChannelHealthManager) RecordRequestAttempts(attempts []ChannelAttempt, winnerID int, succeeded bool) {
@@ -280,6 +284,7 @@ func (m *ChannelHealthManager) RoutingWeight(channelID int, baseWeight uint, byp
 	}
 	return float64(baseWeight)
 }
+
 // CooldownDuration computes the sliding cooldown duration.
 func CooldownDuration(cfg *operation_setting.ChannelHealthSetting, priorActivations int) time.Duration {
 	if healthBridge != nil && healthBridge.CooldownDuration != nil {

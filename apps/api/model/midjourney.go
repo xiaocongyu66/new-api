@@ -36,16 +36,10 @@ type TaskQueryParams struct {
 	EndTimestamp   string
 }
 
-
-
-
 // HasUnfinishedMidjourneyTasks reports whether at least one Midjourney task is
 // still in progress. It is a cheap existence check (LIMIT 1) used to decide
 // whether the midjourney_poll system task needs to run; when no task is pending
 // the scheduler skips creating a row entirely.
-
-
-
 
 func (midjourney *Midjourney) Insert() error {
 	var err error
@@ -84,8 +78,6 @@ func (midjourney *Midjourney) UpdateWithStatus(fromStatus string) (bool, error) 
 	}
 	return result.RowsAffected > 0, nil
 }
-
-
 
 // CountAllTasks returns total midjourney tasks for admin query
 

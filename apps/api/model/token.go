@@ -378,7 +378,7 @@ func IncreaseTokenQuota(tokenId int, key string, quota int) (err error) {
 		})
 	}
 	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeTokenQuota, tokenId, quota)
+		AddNewRecord(BatchUpdateTypeTokenQuota, tokenId, quota)
 		return nil
 	}
 	return increaseTokenQuota(tokenId, quota)
@@ -407,7 +407,7 @@ func DecreaseTokenQuota(id int, key string, quota int) (err error) {
 		})
 	}
 	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeTokenQuota, id, -quota)
+		AddNewRecord(BatchUpdateTypeTokenQuota, id, -quota)
 		return nil
 	}
 	return decreaseTokenQuota(id, quota)
