@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/security/authtoken"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/glebarez/sqlite"
 	"github.com/golang-jwt/jwt/v5"
@@ -18,7 +19,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -34,7 +34,7 @@ func TestHeaderNavPublicRouteRejectsExpiredInternalAccessToken(t *testing.T) {
 		_ = c.JSON(http.StatusOK, common.H{"success": true})
 	}))
 	request := httptest.NewRequest(http.MethodGet, "/api/test", nil)
-	request.Header.Set("Authorization", "Bearer "+issueExpiredDashboardAccessToken(t, service.AuthIdentity{
+	request.Header.Set("Authorization", "Bearer "+issueExpiredDashboardAccessToken(t, authtoken.AuthIdentity{
 		UserID: 1, SessionID: "expired-header-nav-session", UserAuthVersion: 1, SessionVersion: 1,
 	}))
 	response := httptest.NewRecorder()
@@ -65,7 +65,7 @@ func setupDashboardAuthMiddlewareTest(t *testing.T) {
 		common.SessionSecret = previousSecret
 	})
 }
-func issueExpiredDashboardAccessToken(t *testing.T, identity service.AuthIdentity) string {
+func issueExpiredDashboardAccessToken(t *testing.T, identity authtoken.AuthIdentity) string {
 	t.Helper()
 	claims := jwt.MapClaims{
 		"iss":       "new-api",

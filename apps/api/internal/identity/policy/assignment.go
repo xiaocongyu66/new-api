@@ -1,4 +1,4 @@
-package authz
+package policy
 
 import "github.com/QuantumNous/new-api/internal/common"
 

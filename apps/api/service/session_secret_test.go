@@ -6,11 +6,11 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 )
 
-// useTestSessionSecret pins a deterministic signing secret for auth tests.
+// useTestSessionSecret pins a deterministic signing secret so token derivation is
+// reproducible across the karmada dashboard session tests.
 //
-// It lives here because the session and external-dashboard flows in this package
-// sign tokens through the shared derivation; the token mechanism package keeps
-// its own copy so neither package exports a test-only helper.
+// The identity package keeps its own copy rather than either package exporting a
+// test-only helper.
 func useTestSessionSecret(t *testing.T) {
 	t.Helper()
 	previous := common.SessionSecret

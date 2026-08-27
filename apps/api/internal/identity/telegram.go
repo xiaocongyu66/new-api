@@ -17,7 +17,6 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 
 	"gorm.io/gorm"
 )
@@ -108,9 +107,9 @@ func TelegramBind(c contract.Context) {
 		telegramBindFailure(c, telegramBindErrorFlowInvalid)
 		return
 	}
-	if _, err := service.ValidateSessionReference(pendingFlow.UserId, pendingFlow.SessionId); err != nil {
-		if !errors.Is(err, service.ErrLoginSessionInvalid) &&
-			!errors.Is(err, service.ErrLoginSessionRevoked) &&
+	if _, err := ValidateSessionReference(pendingFlow.UserId, pendingFlow.SessionId); err != nil {
+		if !errors.Is(err, ErrLoginSessionInvalid) &&
+			!errors.Is(err, ErrLoginSessionRevoked) &&
 			!errors.Is(err, model.ErrUserSessionInactive) &&
 			!errors.Is(err, gorm.ErrRecordNotFound) {
 			common.SysError("TelegramBind session validation failed: " + err.Error())
@@ -165,15 +164,15 @@ func TelegramBind(c contract.Context) {
 		var session model.UserSession
 		if err := tx.Where("sid = ? AND user_id = ?", flow.SessionId, flow.UserId).First(&session).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return service.ErrLoginSessionRevoked
+				return ErrLoginSessionRevoked
 			}
 			return err
 		}
 		if session.Status != model.UserSessionStatusActive || session.RevokedAt != 0 || session.ExpiresAt <= time.Now().Unix() {
-			return service.ErrLoginSessionRevoked
+			return ErrLoginSessionRevoked
 		}
 		if session.UserAuthVersion != user.AuthVersion {
-			return service.ErrLoginSessionRevoked
+			return ErrLoginSessionRevoked
 		}
 		if user.TelegramId != "" {
 			return errTelegramAccountAlreadyBound
@@ -210,7 +209,7 @@ func TelegramBind(c contract.Context) {
 			telegramBindFailure(c, telegramBindErrorUserDeleted)
 		case errors.Is(err, errTelegramBindUserDisabled):
 			telegramBindFailure(c, telegramBindErrorUserDisabled)
-		case errors.Is(err, service.ErrLoginSessionRevoked):
+		case errors.Is(err, ErrLoginSessionRevoked):
 			telegramBindFailure(c, telegramBindErrorSessionInvalid)
 		case errors.Is(err, model.ErrAuthFlowInvalid), errors.Is(err, model.ErrAuthFlowExpired), errors.Is(err, model.ErrAuthFlowConsumed):
 			telegramBindFailure(c, telegramBindErrorFlowInvalid)

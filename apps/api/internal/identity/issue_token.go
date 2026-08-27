@@ -1,4 +1,4 @@
-package service
+package identity
 
 import (
 	"github.com/QuantumNous/new-api/internal/security/authtoken"

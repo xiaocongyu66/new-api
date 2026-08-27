@@ -1,4 +1,4 @@
-package authz
+package policy
 
 const (
 	BuiltInRoleRoot  = "root"

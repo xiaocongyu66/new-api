@@ -11,7 +11,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 )
 
 const (
@@ -26,7 +25,7 @@ type UniversalVerifyRequest struct {
 }
 
 func UniversalVerify(c contract.Context) {
-	identity, ok := security.GetSessionAuthIdentity(c)
+	authID, ok := security.GetSessionAuthIdentity(c)
 	if !ok {
 		_ = c.JSON(http.StatusUnauthorized, common.H{"success": false, "message": "当前认证方式不支持安全验证"})
 		return
@@ -48,7 +47,7 @@ func UniversalVerify(c contract.Context) {
 		common.CtxApiError(c, errors.New("验证码不能为空"))
 		return
 	}
-	twoFA, err := model.GetTwoFAByUserId(identity.UserID)
+	twoFA, err := model.GetTwoFAByUserId(authID.UserID)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -61,12 +60,12 @@ func UniversalVerify(c contract.Context) {
 		common.CtxApiError(c, errors.New("验证失败，请检查验证码"))
 		return
 	}
-	proofToken, expiresAt, err := service.IssueSecurityProof(identity, request.Method, []string{request.Scope})
+	proofToken, expiresAt, err := identity.IssueSecurityProof(authID, request.Method, []string{request.Scope})
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
-	model.RecordLog(identity.UserID, model.LogTypeSystem, "通用安全验证成功 (验证方式: 2FA)")
+	model.RecordLog(authID.UserID, model.LogTypeSystem, "通用安全验证成功 (验证方式: 2FA)")
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "验证成功",

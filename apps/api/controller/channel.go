@@ -17,13 +17,13 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/i18n"
+	"github.com/QuantumNous/new-api/internal/identity/policy"
 	relaychannel "github.com/QuantumNous/new-api/internal/relay/channel"
 	"github.com/QuantumNous/new-api/internal/relay/channel/ollama"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/service/authz"
 
 	"gorm.io/gorm"
 )
@@ -854,7 +854,7 @@ func EditTagChannels(c contract.Context) {
 		return
 	}
 	if (channelTag.ParamOverride != nil || channelTag.HeaderOverride != nil) &&
-		!authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelSensitiveWrite) {
+		!policy.Can(c.GetInt("id"), c.GetInt("role"), policy.ChannelSensitiveWrite) {
 		common.CtxApiErrorI18n(c, i18n.MsgAuthInsufficientPrivilege)
 		return
 	}
@@ -997,7 +997,7 @@ func UpdateChannel(c contract.Context) {
 	channel.ChannelInfo = originChannel.ChannelInfo
 
 	if channelHasSensitiveChanges(&channel, originChannel, requestData) &&
-		!authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelSensitiveWrite) {
+		!policy.Can(c.GetInt("id"), c.GetInt("role"), policy.ChannelSensitiveWrite) {
 		common.CtxApiErrorI18n(c, i18n.MsgAuthInsufficientPrivilege)
 		return
 	}
@@ -1520,7 +1520,7 @@ func ManageMultiKeys(c contract.Context) {
 		return
 	}
 	if multiKeyActionRequiresSensitiveWrite(request.Action) &&
-		!authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelSensitiveWrite) {
+		!policy.Can(c.GetInt("id"), c.GetInt("role"), policy.ChannelSensitiveWrite) {
 		common.CtxApiErrorI18n(c, i18n.MsgAuthInsufficientPrivilege)
 		return
 	}

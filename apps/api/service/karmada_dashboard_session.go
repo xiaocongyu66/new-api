@@ -29,7 +29,7 @@ type karmadaDashboardClaims struct {
 }
 
 // IssueKarmadaDashboardSession issues a short-lived JWT for Karmada dashboard access.
-func IssueKarmadaDashboardSession(ident AuthIdentity) (string, int64, error) {
+func IssueKarmadaDashboardSession(ident authtoken.AuthIdentity) (string, int64, error) {
 	if ident.UserID <= 0 || ident.SessionID == "" || ident.UserAuthVersion <= 0 || ident.SessionVersion <= 0 {
 		return "", 0, ErrKarmadaDashboardSessionInvalid
 	}
@@ -60,10 +60,10 @@ func IssueKarmadaDashboardSession(ident AuthIdentity) (string, int64, error) {
 }
 
 // ValidateKarmadaDashboardSession validates a Karmada dashboard session token.
-func ValidateKarmadaDashboardSession(raw string) (AuthIdentity, error) {
+func ValidateKarmadaDashboardSession(raw string) (authtoken.AuthIdentity, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return AuthIdentity{}, ErrKarmadaDashboardSessionInvalid
+		return authtoken.AuthIdentity{}, ErrKarmadaDashboardSessionInvalid
 	}
 
 	claims := &karmadaDashboardClaims{}
@@ -74,15 +74,15 @@ func ValidateKarmadaDashboardSession(raw string) (AuthIdentity, error) {
 		return authtoken.SigningKey(karmadaDashboardTokenUse), nil
 	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithIssuer(authtoken.TokenIssuer), jwt.WithAudience(karmadaDashboardAudience), jwt.WithExpirationRequired(), jwt.WithIssuedAt(), jwt.WithLeeway(5*time.Second))
 	if err != nil || !parsed.Valid || claims.TokenUse != karmadaDashboardTokenUse || claims.ID == "" {
-		return AuthIdentity{}, ErrKarmadaDashboardSessionInvalid
+		return authtoken.AuthIdentity{}, ErrKarmadaDashboardSessionInvalid
 	}
 
 	userID, err := strconv.Atoi(claims.Subject)
 	if err != nil || userID <= 0 || claims.SessionID == "" || claims.UserAuthVersion <= 0 || claims.SessionVersion <= 0 {
-		return AuthIdentity{}, ErrKarmadaDashboardSessionInvalid
+		return authtoken.AuthIdentity{}, ErrKarmadaDashboardSessionInvalid
 	}
 
-	return AuthIdentity{
+	return authtoken.AuthIdentity{
 		UserID:          userID,
 		SessionID:       claims.SessionID,
 		UserAuthVersion: claims.UserAuthVersion,

@@ -1,4 +1,4 @@
-package authz
+package policy
 
 // ActionDefinition describes a single action exposed by a resource. DefaultRoles
 // lists the role keys that receive this action as part of their baseline grants.

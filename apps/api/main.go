@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/billing"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"log"
 	"net/http"
 	"os"
@@ -23,6 +24,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/internal/i18n"
+	"github.com/QuantumNous/new-api/internal/identity/policy"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/internal/ops"
 	"github.com/QuantumNous/new-api/internal/relay"
@@ -35,7 +37,6 @@ import (
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/service/authz"
 	_ "github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
@@ -126,7 +127,7 @@ func main() {
 	go model.SyncOptions(common.SyncFrequency)
 
 	// 周期性重载授权策略，保证多节点/多 master 部署下权限变更能传播到每个实例
-	go authz.StartPolicySync(common.SyncFrequency)
+	go policy.StartPolicySync(common.SyncFrequency)
 
 	// 数据看板
 	go model.UpdateQuotaData()
@@ -329,7 +330,7 @@ func InitResources() error {
 		common.FatalLog("failed to initialize database: " + err.Error())
 		return err
 	}
-	if err = authz.Init(dbx.DB); err != nil {
+	if err = policy.Init(dbx.DB); err != nil {
 		common.FatalLog("failed to initialize authorization: " + err.Error())
 		return err
 	}
@@ -382,7 +383,7 @@ func InitResources() error {
 		// Don't return error, custom OAuth is not critical
 	}
 
-	service.StartAuthArtifactCleanup()
+	identity.StartAuthArtifactCleanup()
 
 	return nil
 }

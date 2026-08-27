@@ -2,8 +2,6 @@ package identity
 
 import (
 	"errors"
-	"github.com/QuantumNous/new-api/internal/security/authtoken"
-	"github.com/QuantumNous/new-api/service"
 	"net/http"
 	"strings"
 	"time"
@@ -96,7 +94,7 @@ func createLoginSession(userID int, expectedAuthVersion int64, loginMethod, ip, 
 		UserAgent:       truncateAuthMetadata(userAgent, 512),
 		CreatedAt:       now,
 		LastActiveAt:    now,
-		ExpiresAt:       time.Unix(now, 0).Add(service.LoginSessionTTL).Unix(),
+		ExpiresAt:       time.Unix(now, 0).Add(LoginSessionTTL).Unix(),
 	}
 	if session.LoginMethod == "" {
 		session.LoginMethod = "unknown"
@@ -231,7 +229,7 @@ func RefreshLoginSession(rawRefreshToken, expectedSID, ip, userAgent string) (*A
 		return nil, nil, ErrLoginSessionRevoked
 	}
 	nextSecret := deriveNextRefreshSecret(sid, secret)
-	rotated, err := model.RotateUserSessionRefresh(session.UserID, sid, hashRefreshSecret(secret), hashRefreshSecret(nextSecret), time.Now().Unix(), service.RefreshReplayWindow)
+	rotated, err := model.RotateUserSessionRefresh(session.UserID, sid, hashRefreshSecret(secret), hashRefreshSecret(nextSecret), time.Now().Unix(), RefreshReplayWindow)
 	if err != nil {
 		if errors.Is(err, model.ErrUserSessionRefreshRace) && rotated != nil &&
 			hashRefreshSecret(nextSecret) == rotated.RefreshHash {
@@ -291,7 +289,7 @@ func ListLoginSessions(userID int, currentSID string) ([]LoginSessionView, error
 }
 
 func WriteRefreshCookie(c contract.Context, rawToken string) {
-	expiresAt := time.Now().Add(service.LoginSessionTTL)
+	expiresAt := time.Now().Add(LoginSessionTTL)
 	if sid, _, ok := splitRefreshToken(rawToken); ok {
 		if session, err := model.GetUserSessionCached(sid); err == nil && session.ExpiresAt > time.Now().Unix() {
 			expiresAt = time.Unix(session.ExpiresAt, 0)
@@ -333,7 +331,7 @@ func issueAuthBundle(session *model.UserSession, rawRefreshToken string, current
 		UserAuthVersion: session.UserAuthVersion,
 		SessionVersion:  session.Version,
 	}
-	accessToken, accessExpiresAt, err := service.IssueAccessToken(identity)
+	accessToken, accessExpiresAt, err := IssueAccessToken(identity)
 	if err != nil {
 		return nil, err
 	}
@@ -371,11 +369,11 @@ func splitRefreshToken(raw string) (string, string, bool) {
 }
 
 func hashRefreshSecret(secret string) string {
-	return common.GenerateHMACWithKey(authtoken.SigningKey("refresh"), secret)
+	return common.GenerateHMACWithKey(authSigningKey("refresh"), secret)
 }
 
 func deriveNextRefreshSecret(sid, currentSecret string) string {
-	return common.GenerateHMACWithKey(authtoken.SigningKey("refresh-rotate"), sid+"."+currentSecret)
+	return common.GenerateHMACWithKey(authSigningKey("refresh-rotate"), sid+"."+currentSecret)
 }
 
 func truncateAuthMetadata(value string, max int) string {
@@ -396,11 +394,11 @@ func authSessionErrorCode(err error) (int, string) {
 		return http.StatusConflict, "AUTH_SESSION_MISMATCH"
 	case errors.Is(err, ErrRefreshRace):
 		return http.StatusConflict, "AUTH_REFRESH_RACE"
-	case errors.Is(err, authtoken.ErrAuthTokenExpired):
+	case errors.Is(err, ErrAuthTokenExpired):
 		return http.StatusUnauthorized, "AUTH_TOKEN_EXPIRED"
 	case errors.Is(err, ErrLoginSessionRevoked):
 		return http.StatusUnauthorized, "AUTH_SESSION_REVOKED"
-	case errors.Is(err, ErrRefreshTokenInvalid), errors.Is(err, authtoken.ErrAuthTokenInvalid):
+	case errors.Is(err, ErrRefreshTokenInvalid), errors.Is(err, ErrAuthTokenInvalid):
 		return http.StatusUnauthorized, "AUTH_UNAUTHORIZED"
 	default:
 		return http.StatusInternalServerError, "AUTH_INTERNAL_ERROR"

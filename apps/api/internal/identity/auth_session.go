@@ -11,27 +11,26 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 	"gorm.io/gorm"
 )
 
 func RefreshAuth(c contract.Context) {
 	setAuthNoStore(c)
-	rawRefreshToken, err := c.Cookie(service.RefreshCookieName)
+	rawRefreshToken, err := c.Cookie(RefreshCookieName)
 	if err != nil || rawRefreshToken == "" {
-		service.ClearRefreshCookie(c)
-		writeAuthSessionError(c, service.ErrRefreshTokenInvalid)
+		ClearRefreshCookie(c)
+		writeAuthSessionError(c, ErrRefreshTokenInvalid)
 		return
 	}
-	bundle, user, err := service.RefreshLoginSession(rawRefreshToken, c.Header("X-Auth-Session"), c.ClientIP(), c.UserAgent())
+	bundle, user, err := RefreshLoginSession(rawRefreshToken, c.Header("X-Auth-Session"), c.ClientIP(), c.UserAgent())
 	if err != nil {
-		if errors.Is(err, service.ErrRefreshTokenInvalid) || errors.Is(err, service.ErrLoginSessionRevoked) {
-			service.ClearRefreshCookie(c)
+		if errors.Is(err, ErrRefreshTokenInvalid) || errors.Is(err, ErrLoginSessionRevoked) {
+			ClearRefreshCookie(c)
 		}
 		writeAuthSessionError(c, err)
 		return
 	}
-	service.WriteRefreshCookie(c, bundle.RefreshToken)
+	WriteRefreshCookie(c, bundle.RefreshToken)
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
@@ -48,17 +47,17 @@ func RefreshAuth(c contract.Context) {
 func AuthLogout(c contract.Context) {
 	setAuthNoStore(c)
 	expectedSID := strings.TrimSpace(c.Header("X-Auth-Session"))
-	rawRefreshToken, cookieErr := c.Cookie(service.RefreshCookieName)
-	cookieSID, hasCookieSID := service.RefreshTokenSID(rawRefreshToken)
+	rawRefreshToken, cookieErr := c.Cookie(RefreshCookieName)
+	cookieSID, hasCookieSID := RefreshTokenSID(rawRefreshToken)
 	if expectedSID != "" && cookieErr == nil && hasCookieSID && cookieSID != expectedSID {
-		writeAuthSessionError(c, service.ErrLoginSessionMismatch)
+		writeAuthSessionError(c, ErrLoginSessionMismatch)
 		return
 	}
 
 	if rawAccessToken, ok := dashboardBearer(c.Header("Authorization")); ok {
-		if identity, err := service.ParseAccessToken(rawAccessToken); err == nil {
+		if identity, err := ParseAccessToken(rawAccessToken); err == nil {
 			if expectedSID != "" && expectedSID != identity.SessionID {
-				writeAuthSessionError(c, service.ErrLoginSessionMismatch)
+				writeAuthSessionError(c, ErrLoginSessionMismatch)
 				return
 			}
 			if _, err := model.RevokeUserSession(identity.UserID, identity.SessionID, "logout"); err != nil {
@@ -67,11 +66,11 @@ func AuthLogout(c contract.Context) {
 			}
 			cookieCleared := false
 			if cookieErr == nil && hasCookieSID && cookieSID == identity.SessionID {
-				if err := service.RevokeByRefreshToken(rawRefreshToken, identity.SessionID, "logout"); err != nil {
+				if err := RevokeByRefreshToken(rawRefreshToken, identity.SessionID, "logout"); err != nil {
 					writeAuthSessionError(c, err)
 					return
 				}
-				service.ClearRefreshCookie(c)
+				ClearRefreshCookie(c)
 				cookieCleared = true
 			}
 			_ = c.JSON(http.StatusOK, common.H{
@@ -83,15 +82,15 @@ func AuthLogout(c contract.Context) {
 		}
 	}
 	if cookieErr != nil || rawRefreshToken == "" {
-		service.ClearRefreshCookie(c)
+		ClearRefreshCookie(c)
 		_ = c.JSON(http.StatusOK, common.H{"success": true, "message": ""})
 		return
 	}
-	if err := service.RevokeByRefreshToken(rawRefreshToken, expectedSID, "logout"); err != nil {
+	if err := RevokeByRefreshToken(rawRefreshToken, expectedSID, "logout"); err != nil {
 		writeAuthSessionError(c, err)
 		return
 	}
-	service.ClearRefreshCookie(c)
+	ClearRefreshCookie(c)
 	_ = c.JSON(http.StatusOK, common.H{"success": true, "message": ""})
 }
 
@@ -100,7 +99,7 @@ func GetLoginSessions(c contract.Context) {
 	if !ok {
 		return
 	}
-	sessions, err := service.ListLoginSessions(identity.UserID, identity.SessionID)
+	sessions, err := ListLoginSessions(identity.UserID, identity.SessionID)
 	if err != nil {
 		writeAuthSessionError(c, err)
 		return
@@ -127,10 +126,10 @@ func DeleteLoginSession(c contract.Context) {
 		_ = c.JSON(http.StatusNotFound, common.H{"success": false, "code": "AUTH_SESSION_NOT_FOUND", "message": "session not found"})
 		return
 	}
-	if rawRefreshToken, cookieErr := c.Cookie(service.RefreshCookieName); cookieErr == nil {
-		cookieSID, ok := service.RefreshTokenSID(rawRefreshToken)
+	if rawRefreshToken, cookieErr := c.Cookie(RefreshCookieName); cookieErr == nil {
+		cookieSID, ok := RefreshTokenSID(rawRefreshToken)
 		if ok && cookieSID == sid {
-			service.ClearRefreshCookie(c)
+			ClearRefreshCookie(c)
 		}
 	}
 	_ = c.JSON(http.StatusOK, common.H{"success": true, "message": "", "data": common.H{"revoked_sid": sid, "current": sid == identity.SessionID}})
@@ -149,7 +148,7 @@ func RevokeOtherLoginSessions(c contract.Context) {
 	_ = c.JSON(http.StatusOK, common.H{"success": true, "message": "", "data": common.H{"revoked_count": count}})
 }
 
-func requireBrowserSession(c contract.Context) (service.AuthIdentity, bool) {
+func requireBrowserSession(c contract.Context) (AuthIdentity, bool) {
 	identity, ok := authtoken.ReadSessionAuthIdentity(c)
 	if !ok {
 		_ = c.JSON(http.StatusForbidden, common.H{
@@ -157,13 +156,13 @@ func requireBrowserSession(c contract.Context) (service.AuthIdentity, bool) {
 			"code":    "AUTH_SESSION_REQUIRED",
 			"message": "a dashboard login session is required",
 		})
-		return service.AuthIdentity{}, false
+		return AuthIdentity{}, false
 	}
 	return identity, true
 }
 
 func writeAuthSessionError(c contract.Context, err error) {
-	status, code := service.AuthSessionErrorCode(err)
+	status, code := AuthSessionErrorCode(err)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		status, code = http.StatusUnauthorized, "AUTH_UNAUTHORIZED"
 	}
@@ -180,7 +179,7 @@ func setAuthNoStore(c contract.Context) {
 	c.SetHeader("Cache-Control", "no-store")
 }
 
-func authRotationData(bundle *service.AuthBundle) common.H {
+func authRotationData(bundle *AuthBundle) common.H {
 	return common.H{
 		"access_token":      bundle.AccessToken,
 		"token_type":        bundle.TokenType,

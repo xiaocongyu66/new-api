@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/identity/policy"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service/authz"
 
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -95,7 +95,7 @@ func TestManageUserDemoteAdvancesAuthVersionAndRevokesSessionsOnce(t *testing.T)
 	previousMaster := common.IsMasterNode
 	common.IsMasterNode = false
 	t.Cleanup(func() { common.IsMasterNode = previousMaster })
-	require.NoError(t, authz.Init(db))
+	require.NoError(t, policy.Init(db))
 
 	now := time.Now().Unix()
 	user := model.User{

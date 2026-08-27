@@ -6,25 +6,25 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/controller"
-	"github.com/QuantumNous/new-api/service/authz"
+	"github.com/QuantumNous/new-api/internal/identity/policy"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestChannelStatusRoutesUseOperatePermission(t *testing.T) {
-	assertChannelRoutePermission(t, http.MethodPost, "/:id/status", authz.ChannelOperate, controller.UpdateChannelStatus)
-	assertChannelRoutePermission(t, http.MethodPost, "/status/batch", authz.ChannelOperate, controller.BatchUpdateChannelStatus)
-	assertChannelRoutePermission(t, http.MethodPut, "/", authz.ChannelWrite, controller.UpdateChannel)
+	assertChannelRoutePermission(t, http.MethodPost, "/:id/status", policy.ChannelOperate, controller.UpdateChannelStatus)
+	assertChannelRoutePermission(t, http.MethodPost, "/status/batch", policy.ChannelOperate, controller.BatchUpdateChannelStatus)
+	assertChannelRoutePermission(t, http.MethodPut, "/", policy.ChannelWrite, controller.UpdateChannel)
 }
 
 func TestChannelDeleteRoutesUseSensitiveWritePermission(t *testing.T) {
-	assertChannelRoutePermission(t, http.MethodDelete, "/:id", authz.ChannelSensitiveWrite, controller.DeleteChannel)
-	assertChannelRoutePermission(t, http.MethodPost, "/batch", authz.ChannelSensitiveWrite, controller.DeleteChannelBatch)
-	assertChannelRoutePermission(t, http.MethodDelete, "/disabled", authz.ChannelSensitiveWrite, controller.DeleteDisabledChannel)
-	assertChannelRoutePermission(t, http.MethodPut, "/", authz.ChannelWrite, controller.UpdateChannel)
-	assertChannelRoutePermission(t, http.MethodPut, "/tag", authz.ChannelWrite, controller.EditTagChannels)
-	assertChannelRoutePermission(t, http.MethodPost, "/batch/tag", authz.ChannelWrite, controller.BatchSetChannelTag)
+	assertChannelRoutePermission(t, http.MethodDelete, "/:id", policy.ChannelSensitiveWrite, controller.DeleteChannel)
+	assertChannelRoutePermission(t, http.MethodPost, "/batch", policy.ChannelSensitiveWrite, controller.DeleteChannelBatch)
+	assertChannelRoutePermission(t, http.MethodDelete, "/disabled", policy.ChannelSensitiveWrite, controller.DeleteDisabledChannel)
+	assertChannelRoutePermission(t, http.MethodPut, "/", policy.ChannelWrite, controller.UpdateChannel)
+	assertChannelRoutePermission(t, http.MethodPut, "/tag", policy.ChannelWrite, controller.EditTagChannels)
+	assertChannelRoutePermission(t, http.MethodPost, "/batch/tag", policy.ChannelWrite, controller.BatchSetChannelTag)
 }
 
 func TestChannelStatusRoutesRegisterWithoutConflict(t *testing.T) {
@@ -37,7 +37,7 @@ func TestChannelStatusRoutesRegisterWithoutConflict(t *testing.T) {
 	})
 }
 
-func assertChannelRoutePermission(t *testing.T, method string, path string, permission authz.Permission, handler any) {
+func assertChannelRoutePermission(t *testing.T, method string, path string, permission policy.Permission, handler any) {
 	t.Helper()
 	for _, route := range channelPermissionRoutes {
 		if route.method == method && route.path == path {

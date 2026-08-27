@@ -3,6 +3,7 @@ package security
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/security/authtoken"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net"
@@ -12,11 +13,10 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/i18n"
+	"github.com/QuantumNous/new-api/internal/identity/policy"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/service/authz"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
@@ -43,7 +43,7 @@ func validUserInfo(username string, role int) bool {
 }
 
 func authHelper(c contract.Context, minRole int) {
-	user, identity, useAccessToken, err := authenticateDashboardRequest(c)
+	user, authID, useAccessToken, err := authenticateDashboardRequest(c)
 	if err != nil {
 		writeDashboardAuthError(c, err)
 		return
@@ -60,7 +60,7 @@ func authHelper(c contract.Context, minRole int) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, common.H{"success": false, "code": "AUTH_USER_INVALID", "message": common.TranslateCtxMessage(c, i18n.MsgAuthUserInfoInvalid)})
 		return
 	}
-	setDashboardAuthContext(c, user, identity, useAccessToken)
+	setDashboardAuthContext(c, user, authID, useAccessToken)
 
 	// 管理/root 写操作审计兜底：内聚在鉴权链路里，保证任何经过 AdminAuth/RootAuth
 	// 的写接口都会自动留痕（无需在路由上单独挂审计中间件，避免漏挂）。
@@ -77,13 +77,13 @@ func authHelper(c contract.Context, minRole int) {
 
 func TryUserAuth() func(c contract.Context) {
 	return func(c contract.Context) {
-		user, identity, credentialKind, err := classifyDashboardCredential(c)
+		user, authID, credentialKind, err := classifyDashboardCredential(c)
 		if err != nil {
 			writeDashboardAuthError(c, err)
 			return
 		}
 		if credentialKind != dashboardCredentialUnmatched {
-			setDashboardAuthContext(c, user, identity, credentialKind == dashboardCredentialPAT)
+			setDashboardAuthContext(c, user, authID, credentialKind == dashboardCredentialPAT)
 		}
 		c.Next()
 	}
@@ -114,55 +114,55 @@ func RootAuth() func(c contract.Context) {
 // the context key. They stay exported here so existing security callers keep
 // working; new domain code should call authtoken directly rather than
 // depending on this package.
-func GetAuthIdentity(c contract.Context) (service.AuthIdentity, bool) {
+func GetAuthIdentity(c contract.Context) (authtoken.AuthIdentity, bool) {
 	return authtoken.ReadAuthIdentity(c)
 }
 
 // GetSessionAuthIdentity returns only identities backed by a live dashboard
 // session. PAT-authenticated requests intentionally fail this check.
-func GetSessionAuthIdentity(c contract.Context) (service.AuthIdentity, bool) {
+func GetSessionAuthIdentity(c contract.Context) (authtoken.AuthIdentity, bool) {
 	return authtoken.ReadSessionAuthIdentity(c)
 }
 
-func authenticateDashboardRequest(c contract.Context) (*model.UserBase, service.AuthIdentity, bool, error) {
-	user, identity, credentialKind, err := classifyDashboardCredential(c)
+func authenticateDashboardRequest(c contract.Context) (*model.UserBase, authtoken.AuthIdentity, bool, error) {
+	user, authID, credentialKind, err := classifyDashboardCredential(c)
 	if err != nil {
-		return nil, service.AuthIdentity{}, credentialKind == dashboardCredentialPAT, err
+		return nil, authtoken.AuthIdentity{}, credentialKind == dashboardCredentialPAT, err
 	}
 	if credentialKind == dashboardCredentialUnmatched {
-		return nil, service.AuthIdentity{}, false, service.ErrAuthTokenInvalid
+		return nil, authtoken.AuthIdentity{}, false, authtoken.ErrAuthTokenInvalid
 	}
-	return user, identity, credentialKind == dashboardCredentialPAT, nil
+	return user, authID, credentialKind == dashboardCredentialPAT, nil
 }
 
-func classifyDashboardCredential(c contract.Context) (*model.UserBase, service.AuthIdentity, dashboardCredentialKind, error) {
+func classifyDashboardCredential(c contract.Context) (*model.UserBase, authtoken.AuthIdentity, dashboardCredentialKind, error) {
 	raw, ok := authorizationToken(c.Header("Authorization"))
 	if !ok {
-		return nil, service.AuthIdentity{}, dashboardCredentialUnmatched, nil
+		return nil, authtoken.AuthIdentity{}, dashboardCredentialUnmatched, nil
 	}
-	identity, internal, err := service.ParseDashboardAccessToken(raw)
+	authID, internal, err := identity.ParseDashboardAccessToken(raw)
 	if internal {
 		if err != nil {
-			return nil, service.AuthIdentity{}, dashboardCredentialInternal, err
+			return nil, authtoken.AuthIdentity{}, dashboardCredentialInternal, err
 		}
-		_, user, err := service.ValidateLoginSession(identity)
+		_, user, err := identity.ValidateLoginSession(authID)
 		if err != nil {
-			return nil, service.AuthIdentity{}, dashboardCredentialInternal, err
+			return nil, authtoken.AuthIdentity{}, dashboardCredentialInternal, err
 		}
-		return user, identity, dashboardCredentialInternal, nil
+		return user, authID, dashboardCredentialInternal, nil
 	}
 	patUser, err := model.ValidateAccessToken(raw)
 	if err != nil {
-		return nil, service.AuthIdentity{}, dashboardCredentialPAT, err
+		return nil, authtoken.AuthIdentity{}, dashboardCredentialPAT, err
 	}
 	if patUser == nil || patUser.Id <= 0 {
-		return nil, service.AuthIdentity{}, dashboardCredentialUnmatched, nil
+		return nil, authtoken.AuthIdentity{}, dashboardCredentialUnmatched, nil
 	}
 	user, err := model.GetUserCache(patUser.Id)
 	if err != nil {
-		return nil, service.AuthIdentity{}, dashboardCredentialPAT, err
+		return nil, authtoken.AuthIdentity{}, dashboardCredentialPAT, err
 	}
-	return user, service.AuthIdentity{UserID: user.Id, UserAuthVersion: user.AuthVersion}, dashboardCredentialPAT, nil
+	return user, authtoken.AuthIdentity{UserID: user.Id, UserAuthVersion: user.AuthVersion}, dashboardCredentialPAT, nil
 }
 
 // authorizationToken delegates to the identity capability so the credential
@@ -171,7 +171,7 @@ func authorizationToken(header string) (string, bool) {
 	return ParseBearerCredential(header)
 }
 
-func setDashboardAuthContext(c contract.Context, user *model.UserBase, identity service.AuthIdentity, useAccessToken bool) {
+func setDashboardAuthContext(c contract.Context, user *model.UserBase, authID authtoken.AuthIdentity, useAccessToken bool) {
 	c.SetHeader("Auth-Version", "864b7076dbcd0a3c01b5520316720ebf")
 	c.Set("username", user.Username)
 	c.Set("role", user.Role)
@@ -179,23 +179,23 @@ func setDashboardAuthContext(c contract.Context, user *model.UserBase, identity 
 	c.Set("group", user.Group)
 	c.Set("user_group", user.Group)
 	c.Set("use_access_token", useAccessToken)
-	c.Set("session_id", identity.SessionID)
-	c.Set("auth_version", identity.UserAuthVersion)
-	c.Set("session_version", identity.SessionVersion)
-	c.Set(authtoken.AuthIdentityContextKey, identity)
+	c.Set("session_id", authID.SessionID)
+	c.Set("auth_version", authID.UserAuthVersion)
+	c.Set("session_version", authID.SessionVersion)
+	c.Set(authtoken.AuthIdentityContextKey, authID)
 	user.WriteContext(c)
 }
 
 func writeDashboardAuthError(c contract.Context, err error) {
-	if errors.Is(err, service.ErrAuthTokenExpired) {
+	if errors.Is(err, authtoken.ErrAuthTokenExpired) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, common.H{"success": false, "code": "AUTH_TOKEN_EXPIRED", "message": common.TranslateCtxMessage(c, i18n.MsgAuthNotLoggedIn)})
 		return
 	}
-	if errors.Is(err, service.ErrLoginSessionRevoked) || errors.Is(err, gorm.ErrRecordNotFound) {
+	if errors.Is(err, identity.ErrLoginSessionRevoked) || errors.Is(err, gorm.ErrRecordNotFound) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, common.H{"success": false, "code": "AUTH_SESSION_REVOKED", "message": common.TranslateCtxMessage(c, i18n.MsgAuthNotLoggedIn)})
 		return
 	}
-	if errors.Is(err, service.ErrAuthTokenInvalid) {
+	if errors.Is(err, authtoken.ErrAuthTokenInvalid) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, common.H{"success": false, "code": "AUTH_UNAUTHORIZED", "message": common.TranslateCtxMessage(c, i18n.MsgAuthAccessTokenInvalid)})
 		return
 	}
@@ -203,11 +203,11 @@ func writeDashboardAuthError(c contract.Context, err error) {
 	c.AbortWithStatusJSON(http.StatusInternalServerError, common.H{"success": false, "code": "AUTH_INTERNAL_ERROR", "message": common.TranslateCtxMessage(c, i18n.MsgDatabaseError)})
 }
 
-func RequirePermission(permission authz.Permission) func(c contract.Context) {
+func RequirePermission(permission policy.Permission) func(c contract.Context) {
 	return func(c contract.Context) {
 		role := c.GetInt("role")
 		userID := c.GetInt("id")
-		if authz.Can(userID, role, permission) {
+		if policy.Can(userID, role, permission) {
 			c.Next()
 			return
 		}
@@ -229,7 +229,7 @@ func TokenOrUserAuth() func(c contract.Context) {
 	return func(c contract.Context) {
 		raw, ok := authorizationToken(c.Header("Authorization"))
 		if ok {
-			identity, internal, err := service.ParseDashboardAccessToken(raw)
+			authID, internal, err := identity.ParseDashboardAccessToken(raw)
 			if !internal {
 				TokenAuth()(c)
 				return
@@ -238,12 +238,12 @@ func TokenOrUserAuth() func(c contract.Context) {
 				writeDashboardAuthError(c, err)
 				return
 			}
-			_, user, err := service.ValidateLoginSession(identity)
+			_, user, err := identity.ValidateLoginSession(authID)
 			if err != nil {
 				writeDashboardAuthError(c, err)
 				return
 			}
-			setDashboardAuthContext(c, user, identity, false)
+			setDashboardAuthContext(c, user, authID, false)
 			c.Next()
 			return
 		}

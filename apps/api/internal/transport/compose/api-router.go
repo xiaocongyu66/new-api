@@ -4,11 +4,11 @@ import (
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/internal/billing"
 	"github.com/QuantumNous/new-api/internal/identity"
+	"github.com/QuantumNous/new-api/internal/identity/policy"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
 	"github.com/QuantumNous/new-api/internal/usage"
-	"github.com/QuantumNous/new-api/service/authz"
 
 	// Import oauth package to register providers via init()
 	_ "github.com/QuantumNous/new-api/internal/security/oauth"
@@ -74,7 +74,7 @@ func SetApiRouter(router *gin.Engine) {
 
 		// /api/performance routes
 		performanceRoute := apiRouter.Group("/performance")
-		performanceRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(authz.SystemSettings)))
+		performanceRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(policy.SystemSettings)))
 		{
 			performanceRoute.GET("/stats", ginadapter.Handler(usage.GetPerformanceStats))
 			performanceRoute.DELETE("/disk_cache", ginadapter.Handler(usage.ClearDiskCache))
@@ -232,7 +232,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/subscription/epay/notify", ginadapter.Handler(billing.SubscriptionEpayNotify))
 		apiRouter.GET("/subscription/epay/return", ginadapter.Handler(billing.SubscriptionEpayReturn))
 		optionRoute := apiRouter.Group("/option")
-		optionRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(authz.SystemSettings)))
+		optionRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(policy.SystemSettings)))
 		{
 			optionRoute.GET("/", ginadapter.Handler(controller.GetOptions))
 			optionRoute.PUT("/", ginadapter.Handler(controller.UpdateOption))
@@ -247,7 +247,7 @@ func SetApiRouter(router *gin.Engine) {
 			optionRoute.GET("/waffo-pancake/subscription-product-options", ginadapter.Handler(billing.ListWaffoPancakeSubscriptionProductOptions))
 		}
 		proxyRoute := apiRouter.Group("/proxy")
-		proxyRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(authz.SystemSettings)))
+		proxyRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(policy.SystemSettings)))
 		{
 			proxyRoute.GET("/config", ginadapter.Handler(controller.GetProxyConfig))
 			proxyRoute.PUT("/config", ginadapter.Handler(controller.UpdateProxyConfig))
@@ -269,7 +269,7 @@ func SetApiRouter(router *gin.Engine) {
 
 		// Custom OAuth provider management (admin with system.settings permission)
 		customOAuthRoute := apiRouter.Group("/custom-oauth-provider")
-		customOAuthRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(authz.SystemSettings)))
+		customOAuthRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(policy.SystemSettings)))
 		{
 			customOAuthRoute.POST("/discovery", ginadapter.Handler(identity.FetchCustomOAuthDiscovery))
 			customOAuthRoute.GET("/", ginadapter.Handler(identity.GetCustomOAuthProviders))
@@ -279,7 +279,7 @@ func SetApiRouter(router *gin.Engine) {
 			customOAuthRoute.DELETE("/:id", ginadapter.Handler(identity.DeleteCustomOAuthProvider))
 		}
 		ratioSyncRoute := apiRouter.Group("/ratio_sync")
-		ratioSyncRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(authz.SystemSettings)))
+		ratioSyncRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(policy.SystemSettings)))
 		{
 			ratioSyncRoute.GET("/channels", ginadapter.Handler(controller.GetSyncableChannels))
 			ratioSyncRoute.POST("/fetch", ginadapter.Handler(controller.FetchUpstreamRatios))
@@ -324,7 +324,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		systemTaskRoute := apiRouter.Group("/system-task")
-		systemTaskRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(authz.SystemSettings)))
+		systemTaskRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(policy.SystemSettings)))
 		{
 			systemTaskRoute.POST("/log-cleanup", ginadapter.Handler(controller.CreateLogCleanupSystemTask))
 			systemTaskRoute.GET("/list", ginadapter.Handler(controller.ListSystemTasks))
@@ -332,7 +332,7 @@ func SetApiRouter(router *gin.Engine) {
 			systemTaskRoute.GET("/:task_id", ginadapter.Handler(controller.GetSystemTask))
 		}
 		systemInfoRoute := apiRouter.Group("/system-info")
-		systemInfoRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(authz.SystemSettings)))
+		systemInfoRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(policy.SystemSettings)))
 		{
 			systemInfoRoute.GET("/instances", ginadapter.Handler(controller.ListSystemInstances))
 			systemInfoRoute.DELETE("/stale-instances", ginadapter.Handler(controller.DeleteStaleSystemInstances))

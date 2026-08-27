@@ -3,8 +3,8 @@ package controller
 import (
 	"net/http"
 
+	"github.com/QuantumNous/new-api/internal/identity/policy"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/service/authz"
 )
 
 // GetPermissionCatalog returns the permission schema used by the client to
@@ -19,8 +19,8 @@ func GetPermissionCatalog(c contract.Context) {
 		"success": true,
 		"message": "",
 		"data": map[string]any{
-			"resources": authz.Catalog(),
-			"roles":     authz.Roles(),
+			"resources": policy.Catalog(),
+			"roles":     policy.Roles(),
 		},
 	})
 }

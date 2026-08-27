@@ -6,12 +6,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 )
-
-// AuthIdentity aliases the service-level identity carried through the
-// dashboard auth chain.
-type AuthIdentity = service.AuthIdentity
 
 func abortWithOpenAiMessage(c contract.Context, statusCode int, message string, code ...types.ErrorCode) {
 	codeStr := ""

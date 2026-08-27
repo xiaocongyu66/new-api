@@ -17,11 +17,11 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/i18n"
+	"github.com/QuantumNous/new-api/internal/identity/policy"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/service/authz"
 	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/QuantumNous/new-api/internal/constant"
@@ -167,9 +167,9 @@ func setupLoginAtAuthVersion(user *model.User, expectedAuthVersion int64, c cont
 		common.CtxApiError(c, err)
 		return
 	}
-	var bundle *service.AuthBundle
+	var bundle *AuthBundle
 	if expectedAuthVersion > 0 {
-		bundle, err = service.CreateLoginSessionAtAuthVersion(
+		bundle, err = CreateLoginSessionAtAuthVersion(
 			user.Id,
 			expectedAuthVersion,
 			loginMethodFromContext(c),
@@ -177,7 +177,7 @@ func setupLoginAtAuthVersion(user *model.User, expectedAuthVersion int64, c cont
 			c.UserAgent(),
 		)
 	} else {
-		bundle, err = service.CreateLoginSession(
+		bundle, err = CreateLoginSession(
 			user.Id,
 			loginMethodFromContext(c),
 			c.ClientIP(),
@@ -189,7 +189,7 @@ func setupLoginAtAuthVersion(user *model.User, expectedAuthVersion int64, c cont
 		return
 	}
 	UpdateUserLastLoginAt(user.Id)
-	service.WriteRefreshCookie(c, bundle.RefreshToken)
+	WriteRefreshCookie(c, bundle.RefreshToken)
 	setAuthNoStore(c)
 	recordLoginAudit(user, c)
 	_ = c.JSON(http.StatusOK, common.H{
@@ -390,7 +390,7 @@ func GetUser(c contract.Context) {
 		common.CtxApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
 		return
 	}
-	user.AdminPermissions = authz.Capabilities(user.Id, user.Role)
+	user.AdminPermissions = policy.Capabilities(user.Id, user.Role)
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
@@ -491,7 +491,7 @@ func GetSelf(c contract.Context) {
 	// The authenticated role is loaded from GetUserCache. It should equal the
 	// row role, but use it for capabilities so GetSelf and login/refresh remain
 	permissions := calculateUserPermissions(id, userRole)
-	permissions["admin_permissions"] = authz.Capabilities(id, userRole)
+	permissions["admin_permissions"] = policy.Capabilities(id, userRole)
 	responseData["permissions"] = permissions
 
 	_ = c.JSON(http.StatusOK, common.H{
@@ -508,7 +508,7 @@ func GetSelf(c contract.Context) {
 func buildSelfUserData(user *model.User) map[string]interface{} {
 	userSetting := user.GetSetting()
 	permissions := calculateUserPermissions(user.Id, user.Role)
-	permissions["admin_permissions"] = authz.Capabilities(user.Id, user.Role)
+	permissions["admin_permissions"] = policy.Capabilities(user.Id, user.Role)
 	return map[string]interface{}{
 		"id":                user.Id,
 		"username":          user.Username,
@@ -552,7 +552,7 @@ func calculateUserPermissions(userID int, userRole int) map[string]interface{} {
 		permissions["sidebar_settings"] = true
 		permissions["sidebar_modules"] = map[string]interface{}{
 			"admin": map[string]interface{}{
-				"setting": authz.Can(userID, userRole, authz.SystemSettings),
+				"setting": policy.Can(userID, userRole, policy.SystemSettings),
 			},
 		}
 	} else {
@@ -651,7 +651,7 @@ func UpdateUser(c contract.Context) {
 		return
 	}
 	if authzTouched {
-		if err := authz.ReloadPolicy(); err != nil {
+		if err := policy.ReloadPolicy(); err != nil {
 			common.CtxApiError(c, err)
 			return
 		}
@@ -836,7 +836,7 @@ func UpdateSelf(c contract.Context) {
 			common.CtxApiError(c, err)
 			return
 		}
-		bundle, err := service.AdvanceCurrentSessionToUserVersion(identity, "password_changed")
+		bundle, err := AdvanceCurrentSessionToUserVersion(identity, "password_changed")
 		if err != nil {
 			common.CtxApiError(c, err)
 			return
@@ -978,7 +978,7 @@ func CreateUser(c contract.Context) {
 		return
 	}
 	if authzTouched {
-		if err := authz.ReloadPolicy(); err != nil {
+		if err := policy.ReloadPolicy(); err != nil {
 			common.CtxApiError(c, err)
 			return
 		}
@@ -999,7 +999,7 @@ func CreateUser(c contract.Context) {
 func updateAdminPermissionsForUserInTx(c contract.Context, tx *gorm.DB, userID int, userRole int, permissions map[string]map[string]bool) (bool, error) {
 	if permissions == nil {
 		if userRole < common.RoleAdminUser && c.GetInt("role") == common.RoleRootUser {
-			return true, authz.ClearUserAuthorizationInTx(tx, userID)
+			return true, policy.ClearUserAuthorizationInTx(tx, userID)
 		}
 		return false, nil
 	}
@@ -1007,9 +1007,9 @@ func updateAdminPermissionsForUserInTx(c contract.Context, tx *gorm.DB, userID i
 		return false, fmt.Errorf("only root can update admin permissions")
 	}
 	if userRole < common.RoleAdminUser {
-		return true, authz.ClearUserAuthorizationInTx(tx, userID)
+		return true, policy.ClearUserAuthorizationInTx(tx, userID)
 	}
-	return true, authz.SetUserPermissionsInTx(tx, userID, permissions)
+	return true, policy.SetUserPermissionsInTx(tx, userID, permissions)
 }
 
 type ManageRequest struct {
@@ -1165,12 +1165,12 @@ func ManageUser(c contract.Context) {
 			if err := user.UpdateWithTx(tx, false); err != nil {
 				return err
 			}
-			return authz.ClearUserAuthorizationInTx(tx, user.Id)
+			return policy.ClearUserAuthorizationInTx(tx, user.Id)
 		}); err != nil {
 			common.CtxApiError(c, err)
 			return
 		}
-		if err := authz.ReloadPolicy(); err != nil {
+		if err := policy.ReloadPolicy(); err != nil {
 			common.CtxApiError(c, err)
 			return
 		}

@@ -10,7 +10,6 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 )
 
 // Setup2FARequest 设置2FA请求结构
@@ -192,7 +191,7 @@ func Enable2FA(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	bundle, err := service.AdvanceCurrentSessionToUserVersion(identity, "twofa_enabled")
+	bundle, err := AdvanceCurrentSessionToUserVersion(identity, "twofa_enabled")
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -275,7 +274,7 @@ func Disable2FA(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	bundle, err := service.AdvanceCurrentSessionToUserVersion(identity, "twofa_disabled")
+	bundle, err := AdvanceCurrentSessionToUserVersion(identity, "twofa_disabled")
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -405,7 +404,7 @@ func RegenerateBackupCodes(c contract.Context) {
 		common.SysLog("保存备用码失败: " + err.Error())
 		return
 	}
-	bundle, err := service.AdvanceCurrentSessionToUserVersion(identity, "twofa_backup_codes_regenerated")
+	bundle, err := AdvanceCurrentSessionToUserVersion(identity, "twofa_backup_codes_regenerated")
 	if err != nil {
 		common.CtxApiError(c, err)
 		return

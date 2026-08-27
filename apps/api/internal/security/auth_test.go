@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity"
+	"github.com/QuantumNous/new-api/internal/security/authtoken"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
@@ -16,7 +18,6 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/glebarez/sqlite"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
@@ -45,16 +46,16 @@ func setupDashboardAuthMiddlewareTest(t *testing.T) {
 	})
 }
 
-func issueExpiredDashboardAccessToken(t *testing.T, identity service.AuthIdentity) string {
+func issueExpiredDashboardAccessToken(t *testing.T, authID authtoken.AuthIdentity) string {
 	t.Helper()
 	claims := jwt.MapClaims{
 		"iss":       "new-api",
 		"aud":       []string{"new-api-dashboard"},
-		"sub":       fmt.Sprintf("%d", identity.UserID),
+		"sub":       fmt.Sprintf("%d", authID.UserID),
 		"token_use": "access",
-		"sid":       identity.SessionID,
-		"uv":        identity.UserAuthVersion,
-		"sv":        identity.SessionVersion,
+		"sid":       authID.SessionID,
+		"uv":        authID.UserAuthVersion,
+		"sv":        authID.SessionVersion,
 		"exp":       time.Now().Add(-time.Minute).Unix(),
 		"nbf":       time.Now().Add(-2 * time.Minute).Unix(),
 		"iat":       time.Now().Add(-2 * time.Minute).Unix(),
@@ -110,8 +111,8 @@ func TestUserAuthAllowsOpaqueDottedPAT(t *testing.T) {
 
 func TestUserAuthNeverFallsBackForRecognizedInvalidInternalJWT(t *testing.T) {
 	setupDashboardAuthMiddlewareTest(t)
-	identity := service.AuthIdentity{UserID: 42, SessionID: "session-42", UserAuthVersion: 1, SessionVersion: 1}
-	token, _, err := service.IssueAccessToken(identity)
+	authID := authtoken.AuthIdentity{UserID: 42, SessionID: "session-42", UserAuthVersion: 1, SessionVersion: 1}
+	token, _, err := identity.IssueAccessToken(authID)
 	require.NoError(t, err)
 	tampered := tamperDashboardToken(token)
 	createMiddlewarePATUser(t, "jwt-fallback-user", tampered)
@@ -148,15 +149,15 @@ func TestTryUserAuthCredentialClassification(t *testing.T) {
 		ExpiresAt:       now + 3600,
 	}
 	require.NoError(t, model.CreateUserSession(session))
-	identity := service.AuthIdentity{
+	authID := authtoken.AuthIdentity{
 		UserID:          internalUser.Id,
 		SessionID:       session.SID,
 		UserAuthVersion: session.UserAuthVersion,
 		SessionVersion:  session.Version,
 	}
-	accessToken, _, err := service.IssueAccessToken(identity)
+	accessToken, _, err := identity.IssueAccessToken(authID)
 	require.NoError(t, err)
-	securityProof, _, err := service.IssueSecurityProof(identity, "2fa", []string{"channel.key.read"})
+	securityProof, _, err := identity.IssueSecurityProof(authID, "2fa", []string{"channel.key.read"})
 	require.NoError(t, err)
 	externalToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"iss": "external-issuer",
@@ -187,7 +188,7 @@ func TestTryUserAuthCredentialClassification(t *testing.T) {
 		{name: "third party jwt", token: externalToken, wantStatus: http.StatusOK},
 		{name: "valid pat", token: "optional.pat.with-dots", wantStatus: http.StatusOK, wantUserID: patUser.Id, wantPAT: true},
 		{name: "valid internal access jwt", token: accessToken, wantStatus: http.StatusOK, wantUserID: internalUser.Id},
-		{name: "expired internal access jwt", token: issueExpiredDashboardAccessToken(t, identity), wantStatus: http.StatusUnauthorized, wantErrorCode: "AUTH_TOKEN_EXPIRED"},
+		{name: "expired internal access jwt", token: issueExpiredDashboardAccessToken(t, authID), wantStatus: http.StatusUnauthorized, wantErrorCode: "AUTH_TOKEN_EXPIRED"},
 		{name: "tampered internal access jwt", token: tamperDashboardToken(accessToken), wantStatus: http.StatusUnauthorized, wantErrorCode: "AUTH_UNAUTHORIZED"},
 		{name: "security proof used as access", token: securityProof, wantStatus: http.StatusUnauthorized, wantErrorCode: "AUTH_UNAUTHORIZED"},
 	}

@@ -12,10 +12,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/transport/middleware"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
-	passkeysvc "github.com/QuantumNous/new-api/service/passkey"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/go-webauthn/webauthn/protocol"
@@ -80,13 +77,13 @@ func PasskeyRegisterBegin(c contract.Context) {
 		credential = nil
 	}
 
-	wa, err := passkeysvc.BuildWebAuthn(c.HTTPRequest())
+	wa, err := BuildWebAuthn(c.HTTPRequest())
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
 
-	waUser := passkeysvc.NewWebAuthnUser(user, credential)
+	waUser := NewWebAuthnUser(user, credential)
 	var options []webauthnlib.RegistrationOption
 	if credential != nil {
 		descriptor := credential.ToWebAuthnCredential().Descriptor()
@@ -104,7 +101,7 @@ func PasskeyRegisterBegin(c contract.Context) {
 		common.CtxApiError(c, errors.New("当前认证方式不支持安全验证"))
 		return
 	}
-	flowToken, expiresAt, err := passkeysvc.CreateSessionDataFlow(
+	flowToken, expiresAt, err := CreateSessionDataFlow(
 		model.AuthFlowPurposePasskeyRegister,
 		user.Id,
 		identity.SessionID,
@@ -159,7 +156,7 @@ func PasskeyRegisterFinish(c contract.Context) {
 		return
 	}
 
-	wa, err := passkeysvc.BuildWebAuthn(c.HTTPRequest())
+	wa, err := BuildWebAuthn(c.HTTPRequest())
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -179,7 +176,7 @@ func PasskeyRegisterFinish(c contract.Context) {
 		common.CtxApiError(c, errors.New("当前认证方式不支持安全验证"))
 		return
 	}
-	sessionData, _, err := passkeysvc.PopSessionDataFlow(
+	sessionData, _, err := PopSessionDataFlow(
 		request.FlowToken,
 		model.AuthFlowPurposePasskeyRegister,
 		user.Id,
@@ -190,7 +187,7 @@ func PasskeyRegisterFinish(c contract.Context) {
 		return
 	}
 
-	waUser := passkeysvc.NewWebAuthnUser(user, credentialRecord)
+	waUser := NewWebAuthnUser(user, credentialRecord)
 	credential, err := wa.CreateCredential(waUser, *sessionData, parsedCredential)
 	if err != nil {
 		common.CtxApiError(c, err)
@@ -207,7 +204,7 @@ func PasskeyRegisterFinish(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	bundle, err := service.AdvanceCurrentSessionToUserVersion(identity, "passkey_registered")
+	bundle, err := AdvanceCurrentSessionToUserVersion(identity, "passkey_registered")
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -244,7 +241,7 @@ func PasskeyDelete(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	bundle, err := service.AdvanceCurrentSessionToUserVersion(identity, "passkey_deleted")
+	bundle, err := AdvanceCurrentSessionToUserVersion(identity, "passkey_deleted")
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -305,7 +302,7 @@ func PasskeyLoginBegin(c contract.Context) {
 		return
 	}
 
-	wa, err := passkeysvc.BuildWebAuthn(c.HTTPRequest())
+	wa, err := BuildWebAuthn(c.HTTPRequest())
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -317,7 +314,7 @@ func PasskeyLoginBegin(c contract.Context) {
 		return
 	}
 
-	flowToken, expiresAt, err := passkeysvc.CreateSessionDataFlow(
+	flowToken, expiresAt, err := CreateSessionDataFlow(
 		model.AuthFlowPurposePasskeyLogin,
 		0,
 		"",
@@ -360,13 +357,13 @@ func PasskeyLoginFinish(c contract.Context) {
 		return
 	}
 
-	wa, err := passkeysvc.BuildWebAuthn(c.HTTPRequest())
+	wa, err := BuildWebAuthn(c.HTTPRequest())
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
 
-	sessionData, _, err := passkeysvc.PopSessionDataFlow(
+	sessionData, _, err := PopSessionDataFlow(
 		request.FlowToken,
 		model.AuthFlowPurposePasskeyLogin,
 		0,
@@ -404,7 +401,7 @@ func PasskeyLoginFinish(c contract.Context) {
 			}
 		}
 
-		return passkeysvc.NewWebAuthnUser(user, credential), nil
+		return NewWebAuthnUser(user, credential), nil
 	}
 
 	waUser, credential, err := wa.ValidatePasskeyLogin(handler, *sessionData, parsedCredential)
@@ -413,7 +410,7 @@ func PasskeyLoginFinish(c contract.Context) {
 		return
 	}
 
-	userWrapper, ok := waUser.(*passkeysvc.WebAuthnUser)
+	userWrapper, ok := waUser.(*WebAuthnUser)
 	if !ok {
 		common.CtxApiErrorMsg(c, "Passkey 登录状态异常")
 		return
@@ -523,13 +520,13 @@ func PasskeyVerifyBegin(c contract.Context) {
 		return
 	}
 
-	wa, err := passkeysvc.BuildWebAuthn(c.HTTPRequest())
+	wa, err := BuildWebAuthn(c.HTTPRequest())
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
 
-	waUser := passkeysvc.NewWebAuthnUser(user, credential)
+	waUser := NewWebAuthnUser(user, credential)
 	assertion, sessionData, err := wa.BeginLogin(waUser)
 	if err != nil {
 		common.CtxApiError(c, err)
@@ -541,7 +538,7 @@ func PasskeyVerifyBegin(c contract.Context) {
 		common.CtxApiError(c, errors.New("当前认证方式不支持安全验证"))
 		return
 	}
-	flowToken, expiresAt, err := passkeysvc.CreateSessionDataFlow(
+	flowToken, expiresAt, err := CreateSessionDataFlow(
 		model.AuthFlowPurposePasskeyStepUp,
 		user.Id,
 		identity.SessionID,
@@ -593,7 +590,7 @@ func PasskeyVerifyFinish(c contract.Context) {
 		return
 	}
 
-	wa, err := passkeysvc.BuildWebAuthn(c.HTTPRequest())
+	wa, err := BuildWebAuthn(c.HTTPRequest())
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -613,7 +610,7 @@ func PasskeyVerifyFinish(c contract.Context) {
 		common.CtxApiError(c, errors.New("当前认证方式不支持安全验证"))
 		return
 	}
-	sessionData, scope, err := passkeysvc.PopSessionDataFlow(
+	sessionData, scope, err := PopSessionDataFlow(
 		request.FlowToken,
 		model.AuthFlowPurposePasskeyStepUp,
 		user.Id,
@@ -624,7 +621,7 @@ func PasskeyVerifyFinish(c contract.Context) {
 		return
 	}
 
-	waUser := passkeysvc.NewWebAuthnUser(user, credential)
+	waUser := NewWebAuthnUser(user, credential)
 	validatedCredential, err := wa.ValidateLogin(waUser, *sessionData, parsedCredential)
 	if err != nil {
 		common.CtxApiError(c, err)
@@ -636,7 +633,7 @@ func PasskeyVerifyFinish(c contract.Context) {
 		return
 	}
 
-	proofToken, proofExpiresAt, err := service.IssueSecurityProof(identity, secureVerificationMethodPasskey, []string{scope})
+	proofToken, proofExpiresAt, err := IssueSecurityProof(identity, secureVerificationMethodPasskey, []string{scope})
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -678,7 +675,7 @@ func requirePasskeyRegistrationVerification(c contract.Context, userID int) bool
 	if twoFA == nil || !twoFA.IsEnabled {
 		return true
 	}
-	return middleware.RequireSecurityProof(c, SecurityProofScopePasskeyRegister, []string{secureVerificationMethod2FA})
+	return RequireSecurityProof(c, SecurityProofScopePasskeyRegister, []string{secureVerificationMethod2FA})
 }
 
 func requirePasskeyDeleteVerification(c contract.Context, userID int) bool {
@@ -688,7 +685,7 @@ func requirePasskeyDeleteVerification(c contract.Context, userID int) bool {
 		return false
 	}
 	if twoFA != nil && twoFA.IsEnabled {
-		return middleware.RequireSecurityProof(c, SecurityProofScopePasskeyDelete, []string{secureVerificationMethod2FA})
+		return RequireSecurityProof(c, SecurityProofScopePasskeyDelete, []string{secureVerificationMethod2FA})
 	}
 
 	_, err = model.GetPasskeyByUserID(userID)
@@ -704,5 +701,5 @@ func requirePasskeyDeleteVerification(c contract.Context, userID int) bool {
 		return false
 	}
 
-	return middleware.RequireSecurityProof(c, SecurityProofScopePasskeyDelete, []string{secureVerificationMethodPasskey})
+	return RequireSecurityProof(c, SecurityProofScopePasskeyDelete, []string{secureVerificationMethodPasskey})
 }

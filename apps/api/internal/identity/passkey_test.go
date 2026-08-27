@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
@@ -82,7 +81,7 @@ func TestPasskeyRegisterFinishRejectsMissingOrWrongProofWithoutConsumingFlow(t *
 	identity := AuthIdentity{
 		UserID: user.Id, SessionID: "passkey-proof-session", UserAuthVersion: 1, SessionVersion: 1,
 	}
-	wrongScopeProof, _, err := service.IssueSecurityProof(identity, secureVerificationMethod2FA, []string{SecurityProofScopePasskeyDelete})
+	wrongScopeProof, _, err := IssueSecurityProof(identity, secureVerificationMethod2FA, []string{SecurityProofScopePasskeyDelete})
 	require.NoError(t, err)
 
 	tests := []struct {

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
@@ -9,7 +10,6 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,16 +37,16 @@ func TestAuthLogoutRejectsRefreshCookieSessionMismatch(t *testing.T) {
 		Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1,
 	}
 	require.NoError(t, db.Create(user).Error)
-	sessionA, err := service.CreateLoginSession(user.Id, "password", "127.0.0.1", "agent-a")
+	sessionA, err := identity.CreateLoginSession(user.Id, "password", "127.0.0.1", "agent-a")
 	require.NoError(t, err)
-	sessionB, err := service.CreateLoginSession(user.Id, "password", "127.0.0.1", "agent-b")
+	sessionB, err := identity.CreateLoginSession(user.Id, "password", "127.0.0.1", "agent-b")
 	require.NoError(t, err)
 
 	c, recorder := ginadapter.NewSyntheticContext(nil)
 	ginadapter.ReplaceRequest(c, httptest.NewRequest(http.MethodPost, "/api/user/auth/logout", nil))
 	c.Headers().Set("Authorization", "Bearer "+sessionA.AccessToken)
 	c.Headers().Set("X-Auth-Session", sessionA.Session.SID)
-	c.HTTPRequest().AddCookie(&http.Cookie{Name: service.RefreshCookieName, Value: sessionB.RefreshToken})
+	c.HTTPRequest().AddCookie(&http.Cookie{Name: identity.RefreshCookieName, Value: sessionB.RefreshToken})
 
 	AuthLogout(c)
 

@@ -1,4 +1,4 @@
-package authz
+package policy
 
 import "github.com/casbin/casbin/v2"
 

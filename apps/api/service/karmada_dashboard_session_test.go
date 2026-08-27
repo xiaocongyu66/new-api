@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/QuantumNous/new-api/internal/security/authtoken"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,13 +10,13 @@ import (
 
 func TestKarmadaDashboardSessionPurposeIsolation(t *testing.T) {
 	useTestSessionSecret(t)
-	identity := AuthIdentity{UserID: 42, SessionID: "session-1", UserAuthVersion: 3, SessionVersion: 2}
+	authID := authtoken.AuthIdentity{UserID: 42, SessionID: "session-1", UserAuthVersion: 3, SessionVersion: 2}
 
-	token, expiresAt, err := IssueKarmadaDashboardSession(identity)
+	token, expiresAt, err := IssueKarmadaDashboardSession(authID)
 	require.NoError(t, err)
 	assert.Positive(t, expiresAt)
 
-	access, _, err := IssueAccessToken(identity)
+	access, _, err := authtoken.IssueAccessToken(authID)
 	require.NoError(t, err)
 	_, err = ValidateKarmadaDashboardSession(access)
 	assert.ErrorIs(t, err, ErrKarmadaDashboardSessionInvalid)
@@ -26,8 +27,8 @@ func TestKarmadaDashboardSessionPurposeIsolation(t *testing.T) {
 
 func TestKarmadaDashboardSessionRejectsTampering(t *testing.T) {
 	useTestSessionSecret(t)
-	identity := AuthIdentity{UserID: 42, SessionID: "session-1", UserAuthVersion: 3, SessionVersion: 2}
-	token, _, err := IssueKarmadaDashboardSession(identity)
+	authID := authtoken.AuthIdentity{UserID: 42, SessionID: "session-1", UserAuthVersion: 3, SessionVersion: 2}
+	token, _, err := IssueKarmadaDashboardSession(authID)
 	require.NoError(t, err)
 
 	tamperAt := len(token) - 2
