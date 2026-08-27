@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	common2 "github.com/QuantumNous/new-api/common"
+	common2 "github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"

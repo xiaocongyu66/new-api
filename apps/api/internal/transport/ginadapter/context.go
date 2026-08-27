@@ -13,7 +13,7 @@ import (
 	"net/http/httptest"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 
 	"github.com/gin-gonic/gin"

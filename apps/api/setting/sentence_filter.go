@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/common"
 )
 
 // 短泛词过滤：SensitiveWordsFromString 在生产路径剔除易误伤的 2 字泛词

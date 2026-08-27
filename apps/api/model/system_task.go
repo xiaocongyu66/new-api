@@ -3,7 +3,7 @@ package model
 import (
 	"errors"
 
-	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/common"
 
 	"gorm.io/gorm"
 )
@@ -89,16 +89,9 @@ func GenerateSystemTaskID() (string, error) {
 	return "systask_" + key, nil
 }
 
-
-
-
-
-
 // GetLatestSystemTask returns the most recent task row of the given type
 // (any status) so the scheduler can decide whether enough time has elapsed
 // since the last run. Returns (nil, nil) when no row exists.
-
-
 
 func acquireSystemTaskLock(taskType string, taskID string, lockedBy string, now int64, lockUntil int64) (bool, string, error) {
 	lock := &SystemTaskLock{
@@ -140,12 +133,6 @@ func acquireSystemTaskLock(taskType string, taskID string, lockedBy string, now 
 	}
 	return true, existing.TaskID, nil
 }
-
-
-
-
-
-
 
 func (task *SystemTask) DecodePayload(v any) error {
 	return decodeSystemTaskJSONString(task.Payload, v)

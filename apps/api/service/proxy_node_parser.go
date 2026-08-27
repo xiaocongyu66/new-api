@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/common"
 )
 
 const (

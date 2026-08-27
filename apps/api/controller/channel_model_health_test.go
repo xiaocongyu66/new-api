@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -61,7 +61,6 @@ func TestChannelModelHealthAdminAPI(t *testing.T) {
 	t.Run("lists one channel's model matrix", func(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		ctx, _ := ginadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/", nil))
-		
 
 		GetChannelModelHealth(ctx)
 
@@ -83,7 +82,7 @@ func TestChannelModelHealthAdminAPI(t *testing.T) {
 		post := func(action string) *httptest.ResponseRecorder {
 			recorder := httptest.NewRecorder()
 			ctx, _ := ginadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/", nil))
-			
+
 			UpdateChannelModelHealth(ctx)
 			return recorder
 		}
@@ -104,7 +103,6 @@ func TestChannelModelHealthAdminAPI(t *testing.T) {
 	t.Run("rejects unknown action", func(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		ctx, _ := ginadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/", nil))
-		
 
 		UpdateChannelModelHealth(ctx)
 

@@ -3,7 +3,7 @@ package middleware
 import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 
-	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/common"
 )
 
 func RequestId() func(c contract.Context) {

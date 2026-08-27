@@ -1,8 +1,8 @@
 package controller
 
 import (
-	"github.com/QuantumNous/new-api/common"
 	catalog "github.com/QuantumNous/new-api/internal/catalog"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strings"

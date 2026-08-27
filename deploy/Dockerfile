@@ -26,7 +26,7 @@ RUN cd apps/api && go mod download
 COPY . .
 # 方案 A：go:embed 只能引用包内路径，前端产物必须拷进 apps/api 包内。
 COPY --from=builder /build/web/dist ./apps/api/web/dist
-RUN cd apps/api && go build -tags "${SINGBOX_TAGS}" -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat /build/VERSION)'" -o /build/new-api
+RUN cd apps/api && go build -tags "${SINGBOX_TAGS}" -ldflags "-s -w -X 'github.com/QuantumNous/new-api/internal/common.Version=$(cat /build/VERSION)'" -o /build/new-api
 
 FROM debian:bookworm-slim@sha256:f06537653ac770703bc45b4b113475bd402f451e85223f0f2837acbf89ab020a
 

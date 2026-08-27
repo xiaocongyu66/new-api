@@ -3,7 +3,7 @@ package middleware
 import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 
-	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/relaykit/dto"

@@ -1,12 +1,12 @@
 package service
 
 import (
+	"net/http"
 	"strings"
 	"testing"
-	"net/http"
 	"unicode/utf8"
 
-	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"

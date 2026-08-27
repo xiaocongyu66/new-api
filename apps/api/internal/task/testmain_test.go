@@ -1,7 +1,7 @@
 package task
 
 import (
-	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/common"
 	"os"
 	"testing"
 
