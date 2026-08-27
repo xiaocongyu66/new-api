@@ -105,6 +105,16 @@ on:
         required: false
         type: string
         default: ''
+      enable_pprof:
+        description: 'Sample gateway Go heap/GC via pprof during the run (passes --pprof-url to the runner)'
+        required: false
+        type: boolean
+        default: false
+      pprof_url:
+        description: 'Gateway pprof base URL when enable_pprof is true (default 127.0.0.1:6060)'
+        required: false
+        type: string
+        default: 'http://127.0.0.1:6060'
 
 env:
   TARGET_URL: ${{ inputs.target_url }}
@@ -114,6 +124,10 @@ env:
   ALIAS: ${{ inputs.alias }}
   REQUESTS: ${{ inputs.requests }}
   WARMUP: ${{ inputs.warmup }}
+  CONCURRENCY: ${{ inputs.concurrency }}
+  STREAM_RATIO: ${{ inputs.stream_ratio }}
+  ALLOW_AFFINITY: ${{ inputs.allow_affinity }}
+  MOCK_URL: ${{ inputs.mock_url }}
   ROUTE_COUNT: ${{ inputs.route_count }}
   BAD_CHANNEL_ID: ${{ inputs.bad_channel_id }}
   SHARE_WINDOW_SIZE: ${{ inputs.share_window_size }}
@@ -121,6 +135,8 @@ env:
   SPECIFIC_CHANNEL_ID: ${{ inputs.specific_channel_id }}
   FAULT_HOOK: ${{ inputs.fault_hook }}
   RECOVER_HOOK: ${{ inputs.recover_hook }}
+  ENABLE_PPROF: ${{ inputs.enable_pprof }}
+  PPROF_URL: ${{ inputs.pprof_url }}
 
 jobs:
   route-unit-ewma-smoke:
@@ -240,6 +256,7 @@ jobs:
         scenario: ${{ fromJson(inputs.scenario == 'all' && '["S1","S2","S3","S4_NORETRY","S4_RETRY5","S4_RETRY10","S5_POOL2","S5_POOL4","S5_POOL8","S6_W50","S6_W200","S6_W1000","S7_W50","S7_W200","S7_W1000","S8_3K","S8_50K","S9_A10_W0","S9_A10_W200","S9_A30_W0","S9_A30_W200","S9_A50_W0","S9_A50_W200","S9_A70_W0","S9_A70_W200","S10_RACE","S10_GLOBAL","S10_RESTART","S11_FULL","S12_RETRY","S13_CASCADE"]' || inputs.scenario == 'S4' && '["S4_NORETRY","S4_RETRY5","S4_RETRY10"]' || inputs.scenario == 'S5' && '["S5_POOL2","S5_POOL4","S5_POOL8"]' || inputs.scenario == 'S6' && '["S6_W50","S6_W200","S6_W1000"]' || inputs.scenario == 'S7' && '["S7_W50","S7_W200","S7_W1000"]' || inputs.scenario == 'S8' && '["S8_3K","S8_50K"]' || inputs.scenario == 'S9' && '["S9_A10_W0","S9_A10_W200","S9_A30_W0","S9_A30_W200","S9_A50_W0","S9_A50_W200","S9_A70_W0","S9_A70_W200"]' || inputs.scenario == 'S10' && '["S10_RACE","S10_GLOBAL","S10_RESTART"]' || inputs.scenario == 'S11' && '["S11_FULL"]' || inputs.scenario == 'S12' && '["S12_RETRY"]' || inputs.scenario == 'S13' && '["S13_CASCADE"]' || format('["{0}"]', inputs.scenario)) }}
     env:
       SCENARIO: ${{ matrix.scenario }}
+      REPLICA: ${{ inputs.replica != '' && inputs.replica || (startsWith(matrix.scenario, 'S10_GLOBAL') || startsWith(matrix.scenario, 'S10_RESTART')) && '2' || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -432,6 +449,21 @@ jobs:
           done < /tmp/replica-pods.txt
           echo "REPLICA_URLS=$URLS" >> "$GITHUB_ENV"
           echo "REPLICA_APPLIED=$READY" >> "$GITHUB_ENV"
+          # Surface pod identity + readyReplicas in the run summary: a "dual-replica"
+          # claim without per-pod evidence is the exact failure #418 forbids.
+          {
+            echo "## Replica Deployment"
+            echo ""
+            echo "| requested | readyReplicas |"
+            echo "|-----------|---------------|"
+            echo "| $REPLICA | $READY |"
+            echo ""
+            echo "| pod | podIP |"
+            echo "|-----|-------|"
+            while IFS=$'\t' read -r name ip; do
+              echo "| $name | $ip |"
+            done < /tmp/replica-pods.txt
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run scenario ${{ matrix.scenario }}
         id: scenario
@@ -446,7 +478,10 @@ jobs:
             --admin-token "$ADMIN_TOKEN" \
             --alias "${{ env.ALIAS }}" \
             --mock-url "$MOCK_URL" \
-            --requests ${{ env.REQUESTS }} \
+            ${{
+              (startsWith(matrix.scenario, 'S6') || startsWith(matrix.scenario, 'S7') || startsWith(matrix.scenario, 'S8') || startsWith(matrix.scenario, 'S13'))
+              && '' || format('--requests {0}', env.REQUESTS)
+            }} \
             --warmup ${{ env.WARMUP }} \
             --concurrency ${{ env.CONCURRENCY }} \
             ${{
@@ -473,6 +508,9 @@ jobs:
             }} \
             ${{
               startsWith(matrix.scenario, 'S13') && format('--fault-hook {0} --recover-hook {1}', env.FAULT_HOOK, env.RECOVER_HOOK) || ''
+            }} \
+            ${{
+              env.ENABLE_PPROF == 'true' && format('--pprof-url {0}', env.PPROF_URL) || ''
             }} \
             --out-dir runtime/${{ matrix.scenario }}-${{ github.run_id }}
         continue-on-error: true
@@ -824,6 +862,21 @@ jobs:
           lines.append(f"| RSS (bytes) | {rss_str} |")
           lines.append(f"| Disk Write (B/s) | {disk_str} |")
           lines.append(f"| Net Errors | {net_str} |")
+          lines.append("")
+
+          # K8s / replica context (Task 4 + Task 6): per-pod evidence and sweep
+          # KNOWN LIMITATION must be visible, not buried in summary.json.
+          lines.append("### Replica / K8s")
+          lines.append("")
+          lines.append("| Field | Value |")
+          lines.append("|-------|-------|")
+          lines.append(f"| replica (requested) | {cfg.get('replica', 'N/A')} |")
+          lines.append(f"| replica_urls | {cfg.get('replica_urls', 'N/A')} |")
+          lines.append(f"| replica_count_effective | {cfg.get('replica_count_effective', 'N/A')} |")
+          k8s_val = res.get("k8s", "NOT_AVAILABLE")
+          lines.append(f"| k8s pod/node | {k8s_val} |")
+          if s.get("s10_sweep_known_limitation"):
+              lines.append("| sweep | KNOWN LIMITATION (ticker is time.Hour; short run cannot trigger) |")
           lines.append("")
 
           # Verdict details
