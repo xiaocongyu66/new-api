@@ -240,52 +240,12 @@ func migrateDB() error {
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
 	}
-	err := dbx.DB.AutoMigrate(
-		&Channel{},
-		&Token{},
-		&User{},
-		&UserSession{},
-		&AuthFlow{},
-		&ExternalIdentityClaim{},
-		&PasskeyCredential{},
-		&Option{},
-		&Redemption{},
-		&Ability{},
-		&Log{},
-		&Midjourney{},
-		&TopUp{},
-		&QuotaData{},
-		&Task{},
-		&Model{},
-		&Vendor{},
-		&PrefillGroup{},
-		&Setup{},
-		&TwoFA{},
-		&TwoFABackupCode{},
-		&Checkin{},
-		&SubscriptionOrder{},
-		&UserSubscription{},
-		&SubscriptionPreConsumeRecord{},
-		&CustomOAuthProvider{},
-		&UserOAuthBinding{},
-		&PerfMetric{},
-		&SystemInstance{},
-		&SystemTask{},
-		&SystemTaskLock{},
-		&CasbinRule{},
-		&AuthzRole{},
-		&ProxyNode{},
-		&GatewayConfigRevision{},
-		&GatewayConfigOutbox{},
-		&ChannelModelHealth{},
-	)
-	if err != nil {
+	if err := dbx.DB.AutoMigrate(migrationModels()...); err != nil {
 		return err
 	}
-	if err := InitializeUserAuthVersions(); err != nil {
-		return err
-	}
-	if err := InitializeExternalIdentityClaims(); err != nil {
+	// Registered backfills first (they seed columns AutoMigrate just added), then
+	// the gateway revision seed, which the original order ran last.
+	if err := dbx.RunPostMigrations(); err != nil {
 		return err
 	}
 	if err := InitializeGatewayConfigRevision(); err != nil {
@@ -401,46 +361,7 @@ func migrateChannelModelHealthKeyIndex() error {
 
 func migrateDBFast() error {
 	var wg sync.WaitGroup
-	migrations := []struct {
-		model interface{}
-		name  string
-	}{
-		{&Channel{}, "Channel"},
-		{&Token{}, "Token"},
-		{&User{}, "User"},
-		{&UserSession{}, "UserSession"},
-		{&AuthFlow{}, "AuthFlow"},
-		{&ExternalIdentityClaim{}, "ExternalIdentityClaim"},
-		{&PasskeyCredential{}, "PasskeyCredential"},
-		{&Option{}, "Option"},
-		{&Redemption{}, "Redemption"},
-		{&Ability{}, "Ability"},
-		{&Log{}, "Log"},
-		{&Midjourney{}, "Midjourney"},
-		{&TopUp{}, "TopUp"},
-		{&QuotaData{}, "QuotaData"},
-		{&Task{}, "Task"},
-		{&Model{}, "Model"},
-		{&Vendor{}, "Vendor"},
-		{&PrefillGroup{}, "PrefillGroup"},
-		{&Setup{}, "Setup"},
-		{&TwoFA{}, "TwoFA"},
-		{&TwoFABackupCode{}, "TwoFABackupCode"},
-		{&Checkin{}, "Checkin"},
-		{&SubscriptionOrder{}, "SubscriptionOrder"},
-		{&UserSubscription{}, "UserSubscription"},
-		{&SubscriptionPreConsumeRecord{}, "SubscriptionPreConsumeRecord"},
-		{&CustomOAuthProvider{}, "CustomOAuthProvider"},
-		{&UserOAuthBinding{}, "UserOAuthBinding"},
-		{&PerfMetric{}, "PerfMetric"},
-		{&SystemInstance{}, "SystemInstance"},
-		{&SystemTask{}, "SystemTask"},
-		{&SystemTaskLock{}, "SystemTaskLock"},
-		{&ProxyNode{}, "ProxyNode"},
-		{&GatewayConfigRevision{}, "GatewayConfigRevision"},
-		{&GatewayConfigOutbox{}, "GatewayConfigOutbox"},
-		{&ChannelModelHealth{}, "ChannelModelHealth"},
-	}
+	migrations := dbx.Migrations()
 	// 动态计算migration数量，确保errChan缓冲区足够大
 	errChan := make(chan error, len(migrations))
 
@@ -451,7 +372,7 @@ func migrateDBFast() error {
 			if err := dbx.DB.AutoMigrate(model); err != nil {
 				errChan <- fmt.Errorf("failed to migrate %s: %v", name, err)
 			}
-		}(m.model, m.name)
+		}(m.Model, m.Name)
 	}
 
 	// Wait for all migrations to complete
@@ -464,10 +385,7 @@ func migrateDBFast() error {
 			return err
 		}
 	}
-	if err := InitializeUserAuthVersions(); err != nil {
-		return err
-	}
-	if err := InitializeExternalIdentityClaims(); err != nil {
+	if err := dbx.RunPostMigrations(); err != nil {
 		return err
 	}
 	if err := InitializeGatewayConfigRevision(); err != nil {
@@ -490,7 +408,7 @@ func migrateLOGDB() error {
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		return migrateClickHouseLogDB()
 	}
-	return dbx.LogDB.AutoMigrate(&Log{})
+	return dbx.LogDB.AutoMigrate(logMigrationModels()...)
 }
 
 func migrateClickHouseLogDB() error {
