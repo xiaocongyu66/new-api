@@ -38,7 +38,7 @@ func buildLogLikeCondition(column string, value string) (string, string, error) 
 		return column + " LIKE ?", pattern, nil
 	}
 
-	pattern, err := sanitizeLikePattern(value)
+	pattern, err := dbx.SanitizeLikePattern(value)
 	if err != nil {
 		return "", "", err
 	}
@@ -49,7 +49,7 @@ func sanitizeClickHouseLikePattern(input string) (string, error) {
 	input = strings.ReplaceAll(input, `\`, `\\`)
 	input = strings.ReplaceAll(input, `_`, `\_`)
 
-	if err := validateLikePattern(input); err != nil {
+	if err := dbx.ValidateLikePattern(input); err != nil {
 		return "", err
 	}
 	return input, nil

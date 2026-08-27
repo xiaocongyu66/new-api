@@ -958,7 +958,7 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 
 func UpdateChannelUsedQuota(id int, quota int) {
 	if common.BatchUpdateEnabled {
-		AddNewRecord(BatchUpdateTypeChannelUsedQuota, id, quota)
+		dbx.AddNewRecord(dbx.BatchUpdateTypeChannelUsedQuota, id, quota)
 		return
 	}
 	updateChannelUsedQuota(id, quota)

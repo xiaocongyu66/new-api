@@ -242,7 +242,7 @@ func SearchUserTopUps(userId int, keyword string, pageInfo *common.PageInfo) (to
 
 	query := tx.Model(&TopUp{}).Where("user_id = ? AND create_time >= ?", userId, topUpQueryCutoff())
 	if keyword != "" {
-		pattern, perr := sanitizeLikePattern(keyword)
+		pattern, perr := dbx.SanitizeLikePattern(keyword)
 		if perr != nil {
 			tx.Rollback()
 			return nil, 0, perr
@@ -282,7 +282,7 @@ func SearchAllTopUps(keyword string, pageInfo *common.PageInfo) (topups []*TopUp
 
 	query := tx.Model(&TopUp{})
 	if keyword != "" {
-		pattern, perr := sanitizeLikePattern(keyword)
+		pattern, perr := dbx.SanitizeLikePattern(keyword)
 		if perr != nil {
 			tx.Rollback()
 			return nil, 0, perr

@@ -1021,7 +1021,7 @@ func GetUserQuota(id int, fromDB bool) (quota int, err error) {
 func GetUserGroup(id int, fromDB bool) (group string, err error) {
 	defer func() {
 		// Update Redis cache asynchronously on successful DB read
-		if ShouldUpdateRedis(fromDB, err) {
+		if dbx.ShouldUpdateRedis(fromDB, err) {
 			gopool.Go(func() {
 				if err := RefreshUserGroupCache(id); err != nil {
 					common.SysLog("failed to update user group cache: " + err.Error())
@@ -1050,7 +1050,7 @@ func GetUserSetting(id int, fromDB bool) (settingMap dto.UserSetting, err error)
 	var setting string
 	defer func() {
 		// Update Redis cache asynchronously on successful DB read
-		if ShouldUpdateRedis(fromDB, err) {
+		if dbx.ShouldUpdateRedis(fromDB, err) {
 			gopool.Go(func() {
 				if err := updateUserSettingCache(id, setting); err != nil {
 					common.SysLog("failed to update user setting cache: " + err.Error())
@@ -1094,7 +1094,7 @@ func IncreaseUserQuota(id int, quota int, db bool) (err error) {
 		}
 	})
 	if !db && common.BatchUpdateEnabled {
-		AddNewRecord(BatchUpdateTypeUserQuota, id, quota)
+		dbx.AddNewRecord(dbx.BatchUpdateTypeUserQuota, id, quota)
 		return nil
 	}
 	return increaseUserQuota(id, quota)
@@ -1119,7 +1119,7 @@ func DecreaseUserQuota(id int, quota int, db bool) (err error) {
 		}
 	})
 	if !db && common.BatchUpdateEnabled {
-		AddNewRecord(BatchUpdateTypeUserQuota, id, -quota)
+		dbx.AddNewRecord(dbx.BatchUpdateTypeUserQuota, id, -quota)
 		return nil
 	}
 	return decreaseUserQuota(id, quota)
@@ -1145,8 +1145,8 @@ func GetRootUser() (user *User) {
 
 func UpdateUserUsedQuotaAndRequestCount(id int, quota int) {
 	if common.BatchUpdateEnabled {
-		AddNewRecord(BatchUpdateTypeUsedQuota, id, quota)
-		AddNewRecord(BatchUpdateTypeRequestCount, id, 1)
+		dbx.AddNewRecord(dbx.BatchUpdateTypeUsedQuota, id, quota)
+		dbx.AddNewRecord(dbx.BatchUpdateTypeRequestCount, id, 1)
 		return
 	}
 	updateUserUsedQuotaAndRequestCount(id, quota, 1)
@@ -1155,7 +1155,7 @@ func UpdateUserUsedQuotaAndRequestCount(id int, quota int) {
 // UpdateUserUsedQuota adjusts accumulated usage without changing request count.
 func UpdateUserUsedQuota(id int, quota int) {
 	if common.BatchUpdateEnabled {
-		AddNewRecord(BatchUpdateTypeUsedQuota, id, quota)
+		dbx.AddNewRecord(dbx.BatchUpdateTypeUsedQuota, id, quota)
 		return
 	}
 	if err := dbx.DB.Model(&User{}).Where("id = ?", id).Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error; err != nil {
@@ -1202,7 +1202,7 @@ func updateUserQuotaUsedQuotaAndRequestCount(id int, quota int, usedQuota int, r
 func GetUsernameById(id int, fromDB bool) (username string, err error) {
 	defer func() {
 		// Update Redis cache asynchronously on successful DB read
-		if ShouldUpdateRedis(fromDB, err) {
+		if dbx.ShouldUpdateRedis(fromDB, err) {
 			gopool.Go(func() {
 				if err := updateUserNameCache(id, username); err != nil {
 					common.SysLog("failed to update user name cache: " + err.Error())

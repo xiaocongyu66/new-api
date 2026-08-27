@@ -145,14 +145,14 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 
 	// 非空才加 LIKE 条件，空则跳过（不过滤该字段）
 	if keyword != "" {
-		keywordPattern, err := sanitizeLikePattern(keyword)
+		keywordPattern, err := dbx.SanitizeLikePattern(keyword)
 		if err != nil {
 			return nil, 0, err
 		}
 		baseQuery = baseQuery.Where("name LIKE ? ESCAPE '!'", keywordPattern)
 	}
 	if token != "" {
-		tokenPattern, err := sanitizeLikePattern(token)
+		tokenPattern, err := dbx.SanitizeLikePattern(token)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -336,7 +336,7 @@ func IncreaseTokenQuota(tokenId int, key string, quota int) (err error) {
 		})
 	}
 	if common.BatchUpdateEnabled {
-		AddNewRecord(BatchUpdateTypeTokenQuota, tokenId, quota)
+		dbx.AddNewRecord(dbx.BatchUpdateTypeTokenQuota, tokenId, quota)
 		return nil
 	}
 	return increaseTokenQuota(tokenId, quota)
@@ -365,7 +365,7 @@ func DecreaseTokenQuota(id int, key string, quota int) (err error) {
 		})
 	}
 	if common.BatchUpdateEnabled {
-		AddNewRecord(BatchUpdateTypeTokenQuota, id, -quota)
+		dbx.AddNewRecord(dbx.BatchUpdateTypeTokenQuota, id, -quota)
 		return nil
 	}
 	return decreaseTokenQuota(id, quota)

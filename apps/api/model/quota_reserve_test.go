@@ -60,18 +60,12 @@ func resetBatchUpdateTestState(t *testing.T) {
 	t.Helper()
 	oldBatchEnabled := common.BatchUpdateEnabled
 	common.BatchUpdateEnabled = false
-	for i := 0; i < BatchUpdateTypeCount; i++ {
-		batchUpdateLocks[i].Lock()
-		batchUpdateStores[i] = make(map[int]int)
-		batchUpdateLocks[i].Unlock()
-	}
+	// Draining discards whatever the queues hold, which is exactly the reset
+	// these tests need before running and again on cleanup.
+	dbx.DrainBatchQueues()
 	t.Cleanup(func() {
 		common.BatchUpdateEnabled = oldBatchEnabled
-		for i := 0; i < BatchUpdateTypeCount; i++ {
-			batchUpdateLocks[i].Lock()
-			batchUpdateStores[i] = make(map[int]int)
-			batchUpdateLocks[i].Unlock()
-		}
+		dbx.DrainBatchQueues()
 	})
 }
 
