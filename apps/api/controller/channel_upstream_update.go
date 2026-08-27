@@ -52,6 +52,8 @@ var channelUpstreamModelUpdateSelectFields = []string{
 	"setting",
 	"other",
 	"group",
+	"priority",
+	"weight",
 	"tag",
 	"channel_info",
 	"header_override",

@@ -3,10 +3,13 @@ package model
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 	"strings"
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/samber/lo"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -17,6 +20,8 @@ type Ability struct {
 	Model     string  `json:"model" gorm:"type:varchar(255);primaryKey;autoIncrement:false"`
 	ChannelId int     `json:"channel_id" gorm:"primaryKey;autoIncrement:false;index"`
 	Enabled   bool    `json:"enabled"`
+	Priority  *int64  `json:"priority" gorm:"bigint;default:0;index"`
+	Weight    uint    `json:"weight" gorm:"default:0;index"`
 	Tag       *string `json:"tag" gorm:"index"`
 }
 
@@ -49,6 +54,173 @@ func GetEnabledModels() []string {
 	return models
 }
 
+func GetAllEnableAbilities() []Ability {
+	var abilities []Ability
+	DB.Find(&abilities, "enabled = ?", true)
+	return abilities
+}
+
+func getPriority(group string, model string, retry int) (int, error) {
+
+	var priorities []int
+	err := DB.Model(&Ability{}).
+		Select("DISTINCT(priority)").
+		Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true).
+		Order("priority DESC").              // 按优先级降序排序
+		Pluck("priority", &priorities).Error // Pluck用于将查询的结果直接扫描到一个切片中
+
+	if err != nil {
+		// 处理错误
+		return 0, err
+	}
+
+	if len(priorities) == 0 {
+		// 如果没有查询到优先级，则返回错误
+		return 0, errors.New("数据库一致性被破坏")
+	}
+
+	// 确定要使用的优先级
+	var priorityToUse int
+	if retry >= len(priorities) {
+		// 如果重试次数大于优先级数，则使用最小的优先级
+		priorityToUse = priorities[len(priorities)-1]
+	} else {
+		priorityToUse = priorities[retry]
+	}
+	return priorityToUse, nil
+}
+
+func getChannelQuery(group string, model string, retry int) (*gorm.DB, error) {
+	maxPrioritySubQuery := DB.Model(&Ability{}).Select("MAX(priority)").Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true)
+	channelQuery := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ? and priority = (?)", group, model, true, maxPrioritySubQuery)
+	if retry != 0 {
+		priority, err := getPriority(group, model, retry)
+		if err != nil {
+			return nil, err
+		} else {
+			channelQuery = DB.Where(commonGroupCol+" = ? and model = ? and enabled = ? and priority = ?", group, model, true, priority)
+		}
+	}
+
+	return channelQuery, nil
+}
+
+func GetChannel(group string, model string, retry int, requestPath string, excludeSet map[int]bool) (*Channel, error) {
+	var abilities []Ability
+
+	var err error = nil
+	channelQuery, err := getChannelQuery(group, model, retry)
+	if err != nil {
+		return nil, err
+	}
+	if common.UsingMainDatabase(common.DatabaseTypeSQLite) || common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+		err = channelQuery.Order("weight DESC").Find(&abilities).Error
+	} else {
+		err = channelQuery.Order("weight DESC").Find(&abilities).Error
+	}
+	if err != nil {
+		return nil, err
+	}
+	abilities = filterAbilitiesByRequestPathAndModel(abilities, requestPath, model)
+	// P1: filter out request-level excluded channels
+	if excludeSet != nil {
+		filtered := make([]Ability, 0, len(abilities))
+		for _, a := range abilities {
+			if !excludeSet[a.ChannelId] {
+				filtered = append(filtered, a)
+			}
+		}
+		abilities = filtered
+	}
+	if len(abilities) == 0 {
+		return nil, nil
+	}
+	candidateIDs := make([]int, 0, len(abilities))
+	for _, ability := range abilities {
+		candidateIDs = append(candidateIDs, ability.ChannelId)
+	}
+	keyCounts := channelKeyCounts(candidateIDs)
+	filtered := abilities[:0]
+	for _, ability := range abilities {
+		if channelRouteSelectable(ability.ChannelId, keyCounts[ability.ChannelId], model) {
+			filtered = append(filtered, ability)
+		}
+	}
+	abilities = filtered
+	if len(abilities) == 0 {
+		return nil, nil
+	}
+
+	var weights []float64
+	var totalWeight float64
+	for _, ability := range abilities {
+		weight := float64(routingBaseWeight(int(ability.Weight))) * channelRouteWeightFactor(ability.ChannelId, keyCounts[ability.ChannelId], model)
+		weights = append(weights, weight)
+		totalWeight += weight
+	}
+	if totalWeight <= 0 {
+		return nil, nil
+	}
+	channel := Channel{}
+	randomWeight := rand.Float64() * totalWeight
+	for i, ability_ := range abilities {
+		randomWeight -= weights[i]
+		if randomWeight < 0 || i == len(abilities)-1 {
+			channel.Id = ability_.ChannelId
+			break
+		}
+	}
+	err = DB.First(&channel, "id = ?", channel.Id).Error
+	return &channel, err
+}
+
+// filterAbilitiesByRequestPathAndModel restricts candidates by request path and
+// model for the DB (non-memory-cache) selection path. Only Advanced Custom
+// (type 58) channels are path-checked: kept only when one of their routes matches
+// requestPath and model; all other channel types always pass. When requestPath is
+// empty, filtering is skipped.
+func filterAbilitiesByRequestPathAndModel(abilities []Ability, requestPath string, model string) []Ability {
+	if requestPath == "" || len(abilities) == 0 {
+		return abilities
+	}
+
+	channelIds := make([]int, 0, len(abilities))
+	seen := make(map[int]struct{}, len(abilities))
+	for _, ability := range abilities {
+		if _, ok := seen[ability.ChannelId]; ok {
+			continue
+		}
+		seen[ability.ChannelId] = struct{}{}
+		channelIds = append(channelIds, ability.ChannelId)
+	}
+
+	var channels []*Channel
+	if err := DB.Where("id IN ?", channelIds).Find(&channels).Error; err != nil {
+		// On error, fall back to unfiltered candidates to avoid blocking selection
+		return abilities
+	}
+
+	advancedConfigs := make(map[int]*dto.AdvancedCustomConfig)
+	for _, channel := range channels {
+		if channel.Type == constant.ChannelTypeAdvancedCustom {
+			advancedConfigs[channel.Id] = channel.GetOtherSettings().AdvancedCustom
+		}
+	}
+
+	filtered := make([]Ability, 0, len(abilities))
+	for _, ability := range abilities {
+		config, isAdvancedCustom := advancedConfigs[ability.ChannelId]
+		if !isAdvancedCustom {
+			filtered = append(filtered, ability)
+			continue
+		}
+		if config != nil && config.SupportsPathForModel(requestPath, model) {
+			filtered = append(filtered, ability)
+		}
+	}
+	return filtered
+}
+
 func (channel *Channel) AddAbilities(tx *gorm.DB) error {
 	models_ := strings.Split(channel.Models, ",")
 	groups_ := strings.Split(channel.Group, ",")
@@ -66,6 +238,8 @@ func (channel *Channel) AddAbilities(tx *gorm.DB) error {
 				Model:     model,
 				ChannelId: channel.Id,
 				Enabled:   channel.Status == common.ChannelStatusEnabled,
+				Priority:  channel.Priority,
+				Weight:    uint(channel.GetWeight()),
 				Tag:       channel.Tag,
 			}
 			abilities = append(abilities, ability)
@@ -143,6 +317,8 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 				Model:     model,
 				ChannelId: channel.Id,
 				Enabled:   channel.Status == common.ChannelStatusEnabled,
+				Priority:  channel.Priority,
+				Weight:    uint(channel.GetWeight()),
 				Tag:       channel.Tag,
 			}
 			abilities = append(abilities, ability)
@@ -205,39 +381,6 @@ func updateAbilityStatusByTagWithTx(tx *gorm.DB, tag string, status bool) error 
 	return tx.Model(&Ability{}).Where("tag = ?", tag).Select("enabled").Update("enabled", status).Error
 }
 
-// updateAbilityStatusByModelWithTx is the tx-aware form of
-// DisableChannelModel. It flips the enabled column for every ability
-// row matching both the given channel_id and model_name inside the outer
-// transaction. It deliberately does NOT filter on group, so a single
-// channel+model pair across all groups has its enabled status flipped —
-// a single dead model on an otherwise healthy channel should not cost the
-// channel its other models.
-func updateAbilityStatusByModelWithTx(tx *gorm.DB, channelID int, modelName string, status bool) error {
-	return tx.Model(&Ability{}).Where("channel_id = ? AND model = ?", channelID, modelName).Select("enabled").Update("enabled", status).Error
-}
-
-// DisableChannelModel flips the enabled status of every ability row matching
-// the given channel_id and model_name inside one MutateGatewayRouting revision,
-// so the ability write and the gateway routing revision bump commit atomically.
-// A single disabled model on an otherwise healthy channel should not cost the
-// channel its other models; this helper spans ALL groups deliberately.
-// Returns an error if modelName is empty, as there is nothing specific to disable.
-func DisableChannelModel(channelID int, modelName string) error {
-	if modelName == "" {
-		return fmt.Errorf("model name must not be empty")
-	}
-	_, err := MutateGatewayRouting(func(tx *gorm.DB) error {
-		if err := updateAbilityStatusByModelWithTx(tx, channelID, modelName, false); err != nil {
-			return err
-		}
-		if err := SyncChannelModelRoutesWithTx(tx, channelID); err != nil {
-			return err
-		}
-		return nil
-	})
-	return err
-}
-
 // UpdateAbilityStatusByTag remains the public convenience wrapper. It
 // delegates to the tx-aware form with the shared DB handle so callers that
 // are not inside a MutateGatewayRouting transaction keep working.
@@ -245,15 +388,27 @@ func UpdateAbilityStatusByTag(tag string, status bool) error {
 	return updateAbilityStatusByTagWithTx(DB, tag, status)
 }
 
-// updateAbilityTagWithTx renames the tag on every ability row carrying the given
-// tag, inside the outer transaction. Priority and weight used to be written here
-// too; both columns are gone, because route units carry the scheduling weight
-// now and abilities are no longer read by the selector at all.
-func updateAbilityTagWithTx(tx *gorm.DB, tag string, newTag *string) error {
-	if newTag == nil {
-		return nil
+// updateAbilityByTagWithTx is the tx-aware form of UpdateAbilityByTag. It
+// writes the tag/priority/weight columns for every ability row carrying the
+// given tag inside the outer transaction.
+func updateAbilityByTagWithTx(tx *gorm.DB, tag string, newTag *string, priority *int64, weight *uint) error {
+	ability := Ability{}
+	if newTag != nil {
+		ability.Tag = newTag
 	}
-	return tx.Model(&Ability{}).Where("tag = ?", tag).Update("tag", *newTag).Error
+	if priority != nil {
+		ability.Priority = priority
+	}
+	if weight != nil {
+		ability.Weight = *weight
+	}
+	return tx.Model(&Ability{}).Where("tag = ?", tag).Updates(ability).Error
+}
+
+// UpdateAbilityByTag remains the public convenience wrapper. It delegates to
+// the tx-aware form with the shared DB handle.
+func UpdateAbilityByTag(tag string, newTag *string, priority *int64, weight *uint) error {
+	return updateAbilityByTagWithTx(DB, tag, newTag, priority, weight)
 }
 
 // deleteAbilitiesByChannelIDsWithTx deletes every ability row whose

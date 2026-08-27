@@ -46,7 +46,3 @@ __pycache__/
 # Rust build artifacts
 /target
 .zcode
-
-# i18n sync generated reports
-apps/web/src/i18n/locales/_reports/
-runtime/

@@ -10,7 +10,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/i18n"
-	"github.com/QuantumNous/new-api/internal/capabilities/identity"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -178,10 +177,18 @@ func classifyDashboardCredential(c *gin.Context) (*model.UserBase, service.AuthI
 	return user, service.AuthIdentity{UserID: user.Id, UserAuthVersion: user.AuthVersion}, dashboardCredentialPAT, nil
 }
 
-// authorizationToken delegates to the identity capability so the credential
-// parsing rule has a single implementation.
 func authorizationToken(header string) (string, bool) {
-	return identity.ParseBearerCredential(header)
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return "", false
+	}
+	parts := strings.Fields(header)
+	if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+		header = parts[1]
+	} else if len(parts) != 1 {
+		return "", false
+	}
+	return header, header != ""
 }
 
 func setDashboardAuthContext(c *gin.Context, user *model.UserBase, identity service.AuthIdentity, useAccessToken bool) {

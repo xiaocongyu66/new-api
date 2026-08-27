@@ -32,7 +32,7 @@ func setupChannelSelectAutoGroupsTest(t *testing.T) *gorm.DB {
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.Ability{}, &model.ChannelModelRoute{}))
+	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.Ability{}))
 	model.DB = db
 	common.MemoryCacheEnabled = true
 	common.RetryTimes = 0
@@ -66,33 +66,27 @@ func setupChannelSelectAutoGroupsTest(t *testing.T) *gorm.DB {
 
 func createChannelSelectAutoGroupsChannel(t *testing.T, db *gorm.DB, id int, group, modelName string) {
 	t.Helper()
+	priority := int64(0)
+	weight := uint(100)
 	require.NoError(t, db.Create(&model.Channel{
-		Id:     id,
-		Type:   constant.ChannelTypeOpenAI,
-		Key:    fmt.Sprintf("key-%d", id),
-		Status: common.ChannelStatusEnabled,
-		Name:   fmt.Sprintf("channel-%d", id),
-		Models: modelName,
-		Group:  group,
+		Id:       id,
+		Type:     constant.ChannelTypeOpenAI,
+		Key:      fmt.Sprintf("key-%d", id),
+		Status:   common.ChannelStatusEnabled,
+		Name:     fmt.Sprintf("channel-%d", id),
+		Weight:   &weight,
+		Models:   modelName,
+		Group:    group,
+		Priority: &priority,
 	}).Error)
 	require.NoError(t, db.Create(&model.Ability{
 		Group:     group,
 		Model:     modelName,
 		ChannelId: id,
 		Enabled:   true,
+		Priority:  &priority,
+		Weight:    weight,
 	}).Error)
-	// Create ChannelModelRoute entries for the new route-unit selector
-	for keyIndex := 0; keyIndex < 1; keyIndex++ { // single key
-		require.NoError(t, db.Create(&model.ChannelModelRoute{
-			Group:            group,
-			PublicModelAlias: modelName,
-			ChannelId:        id,
-			KeyIndex:         keyIndex,
-			UpstreamModel:    modelName,
-			StaticWeight:     100,
-			Enabled:          true,
-		}).Error)
-	}
 }
 
 func TestCacheGetRandomSatisfiedChannelUsesTokenAutoGroupsWhenGlobalAutoIsEmpty(t *testing.T) {
@@ -120,7 +114,7 @@ func TestCacheGetRandomSatisfiedChannelUsesTokenAutoGroupsWhenGlobalAutoIsEmpty(
 	first, selectedGroup, err := CacheGetRandomSatisfiedChannel(param)
 	require.NoError(t, err)
 	require.NotNil(t, first)
-	assert.Equal(t, 2101, first.ChannelId)
+	assert.Equal(t, 2101, first.Id)
 	assert.Equal(t, "vip", selectedGroup)
 	assert.Equal(t, "vip", common.GetContextKeyString(ctx, constant.ContextKeyAutoGroup))
 	assert.Empty(t, setting.GetAutoGroups(), "the selection must not depend on the global Auto list")
@@ -129,7 +123,7 @@ func TestCacheGetRandomSatisfiedChannelUsesTokenAutoGroupsWhenGlobalAutoIsEmpty(
 	second, selectedGroup, err := CacheGetRandomSatisfiedChannel(param)
 	require.NoError(t, err)
 	require.NotNil(t, second)
-	assert.Equal(t, 2102, second.ChannelId)
+	assert.Equal(t, 2102, second.Id)
 	assert.Equal(t, "default", selectedGroup)
 	assert.Equal(t, "default", common.GetContextKeyString(ctx, constant.ContextKeyAutoGroup))
 }

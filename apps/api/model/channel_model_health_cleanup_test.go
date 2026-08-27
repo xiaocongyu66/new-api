@@ -170,9 +170,7 @@ func TestDeleteRouteHealthNotInModelsPreservesKeptRows(t *testing.T) {
 // call, leaving ghost rows behind after a channel is removed.
 func TestChannelDeleteWithTxCleansRouteHealth(t *testing.T) {
 	withRouteHealthDB(t)
-	// deleteWithTx now cleans both tables: route rows (#402) and isolation rows
-	// (#368). Both must exist or the deletion path fails before it can be observed.
-	require.NoError(t, DB.AutoMigrate(&Channel{}, &Ability{}, &ChannelModelRoute{}))
+	require.NoError(t, DB.AutoMigrate(&Channel{}, &Ability{}))
 
 	ch := Channel{
 		Id:     8805,

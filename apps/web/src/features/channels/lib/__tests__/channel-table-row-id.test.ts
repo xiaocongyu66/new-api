@@ -27,7 +27,7 @@ function channel(id: number): Channel {
 }
 
 describe('channel table row identity', () => {
-  test('keeps each channel identity when an update reorders the rows', () => {
+  test('keeps each channel identity when priority updates reorder the rows', () => {
     const first = channel(101)
     const updated = channel(202)
     const third = channel(303)

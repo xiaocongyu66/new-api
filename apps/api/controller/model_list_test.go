@@ -49,7 +49,7 @@ func setupModelListControllerTestDB(t *testing.T) *gorm.DB {
 	model.DB = db
 	model.LOG_DB = db
 
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Channel{}, &model.Ability{}, &model.ChannelModelRoute{}, &model.Model{}, &model.Vendor{}, &model.GatewayConfigRevision{}, &model.GatewayConfigOutbox{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Channel{}, &model.Ability{}, &model.Model{}, &model.Vendor{}, &model.GatewayConfigRevision{}, &model.GatewayConfigOutbox{}))
 	require.NoError(t, model.InitializeGatewayConfigRevision())
 
 	t.Cleanup(func() {
