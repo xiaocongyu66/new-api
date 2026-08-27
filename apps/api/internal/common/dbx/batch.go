@@ -72,6 +72,51 @@ func BatchQueuesPending() bool {
 	return false
 }
 
+// BatchFlusher persists one queue's accumulated deltas, keyed by record id.
+type BatchFlusher func(deltas map[int]int)
+
+// userBatchFlusher receives the user-quota, used-quota and request-count queues
+// together, because they collapse into a single row update per user.
+type userBatchFlusher func(quota, usedQuota, requestCount map[int]int)
+
+var (
+	tokenQuotaFlusher       BatchFlusher
+	channelUsedQuotaFlusher BatchFlusher
+	userFlusher             userBatchFlusher
+)
+
+// RegisterTokenQuotaFlusher, RegisterChannelUsedQuotaFlusher and
+// RegisterUserFlusher install the persistence side of each queue.
+//
+// The queues live here but the writes cannot: each one targets a different
+// domain's records. Inverting the direction lets every domain own its own writer
+// and keeps this package free of record types.
+func RegisterTokenQuotaFlusher(f BatchFlusher) { tokenQuotaFlusher = f }
+
+// RegisterChannelUsedQuotaFlusher installs the channel used-quota writer.
+func RegisterChannelUsedQuotaFlusher(f BatchFlusher) { channelUsedQuotaFlusher = f }
+
+// RegisterUserFlusher installs the combined user quota/used-quota/request-count
+// writer.
+func RegisterUserFlusher(f userBatchFlusher) { userFlusher = f }
+
+// FlushBatchQueues drains every queue and hands each set of deltas to its
+// registered writer. Queues with no writer registered are still drained, so an
+// unwired queue cannot grow without bound.
+func FlushBatchQueues() {
+	stores := DrainBatchQueues()
+
+	if f := tokenQuotaFlusher; f != nil {
+		f(stores[BatchUpdateTypeTokenQuota])
+	}
+	if f := channelUsedQuotaFlusher; f != nil {
+		f(stores[BatchUpdateTypeChannelUsedQuota])
+	}
+	if f := userFlusher; f != nil {
+		f(stores[BatchUpdateTypeUserQuota], stores[BatchUpdateTypeUsedQuota], stores[BatchUpdateTypeRequestCount])
+	}
+}
+
 // ShouldUpdateRedis reports whether a value just read from the database should be
 // written back to the cache.
 func ShouldUpdateRedis(fromDB bool, err error) bool {

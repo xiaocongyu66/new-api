@@ -18,50 +18,43 @@ func InitBatchUpdater() {
 	})
 }
 
-// batchUpdate flushes the queues dbx accumulates. The queues live in dbx because
-// several domains enqueue into them; the writes stay here because they need the
-// record types.
+// The batch queues live in dbx; each domain registers the writer for its own
+// records so no package needs another's unexported persistence helpers.
+func init() {
+	dbx.RegisterTokenQuotaFlusher(func(deltas map[int]int) {
+		for id, delta := range deltas {
+			if err := increaseTokenQuota(id, delta); err != nil {
+				common.SysLog("failed to batch update token quota: " + err.Error())
+			}
+		}
+	})
+	dbx.RegisterChannelUsedQuotaFlusher(func(deltas map[int]int) {
+		for id, delta := range deltas {
+			updateChannelUsedQuota(id, delta)
+		}
+	})
+	dbx.RegisterUserFlusher(func(quota, usedQuota, requestCount map[int]int) {
+		ids := make(map[int]struct{}, len(quota)+len(usedQuota)+len(requestCount))
+		for id := range quota {
+			ids[id] = struct{}{}
+		}
+		for id := range usedQuota {
+			ids[id] = struct{}{}
+		}
+		for id := range requestCount {
+			ids[id] = struct{}{}
+		}
+		for id := range ids {
+			updateUserQuotaUsedQuotaAndRequestCount(id, quota[id], usedQuota[id], requestCount[id])
+		}
+	})
+}
+
 func batchUpdate() {
 	if !dbx.BatchQueuesPending() {
 		return
 	}
-
 	common.SysLog("batch update started")
-	stores := dbx.DrainBatchQueues()
-
-	for i, store := range stores {
-		if i == dbx.BatchUpdateTypeUserQuota || i == dbx.BatchUpdateTypeUsedQuota || i == dbx.BatchUpdateTypeRequestCount {
-			continue
-		}
-		for key, value := range store {
-			switch i {
-			case dbx.BatchUpdateTypeTokenQuota:
-				err := increaseTokenQuota(key, value)
-				if err != nil {
-					common.SysLog("failed to batch update token quota: " + err.Error())
-				}
-			case dbx.BatchUpdateTypeChannelUsedQuota:
-				updateChannelUsedQuota(key, value)
-			}
-		}
-	}
-
-	userQuotaStore := stores[dbx.BatchUpdateTypeUserQuota]
-	usedQuotaStore := stores[dbx.BatchUpdateTypeUsedQuota]
-	requestCountStore := stores[dbx.BatchUpdateTypeRequestCount]
-
-	userIDs := make(map[int]struct{}, len(userQuotaStore)+len(usedQuotaStore)+len(requestCountStore))
-	for key := range userQuotaStore {
-		userIDs[key] = struct{}{}
-	}
-	for key := range usedQuotaStore {
-		userIDs[key] = struct{}{}
-	}
-	for key := range requestCountStore {
-		userIDs[key] = struct{}{}
-	}
-	for key := range userIDs {
-		updateUserQuotaUsedQuotaAndRequestCount(key, userQuotaStore[key], usedQuotaStore[key], requestCountStore[key])
-	}
+	dbx.FlushBatchQueues()
 	common.SysLog("batch update finished")
 }
