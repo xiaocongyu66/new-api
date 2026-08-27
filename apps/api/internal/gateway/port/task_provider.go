@@ -8,7 +8,7 @@ package port
 import (
 	"net/http"
 
-	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/internal/dto"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
