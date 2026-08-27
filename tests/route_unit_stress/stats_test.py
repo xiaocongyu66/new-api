@@ -22,6 +22,11 @@ from lib_stats import (
     evaluate_corr_headroom,
     evaluate_memory_scaling,
     evaluate_affinity_scan,
+    aggregate_global_share,
+    evaluate_kill_switch,
+    evaluate_path_audit,
+    evaluate_retry_attribution,
+    evaluate_recovery,
 )
 
 
@@ -585,6 +590,393 @@ def test_evaluate_affinity_scan_no_correction() -> bool:
     assert res["correction_significant"] is False
     return True
 
+def test_scenario_targets_s10_s11_s12_s13() -> bool:
+    """S10-S13 scenario targets match #418 specifications."""
+    targets = scenario_targets()
+
+    race = targets["S10_RACE"]
+    assert race["subject"] == "B"
+    assert race["route_count"] == 2
+    assert race["replica"] == 1
+    assert race["min_samples"] == 6000
+
+    glob = targets["S10_GLOBAL"]
+    assert glob["replica"] == 2
+    assert glob["min_samples"] == 12000, "12,000 must be GLOBAL, not per pod"
+    assert glob["ci_bounds"] == (0.47, 0.53)
+
+    restart = targets["S10_RESTART"]
+    assert restart["subject"] == "KILLSWITCH"
+    assert restart["kill_switch_option"] == "RouteStatsEnabled"
+    assert restart["neutral_correction"] == 1.0
+    assert restart["min_samples"] == 1000
+
+    full = targets["S11_FULL"]
+    assert full["subject"] == "PATHS"
+    assert full["min_per_path"] == 100
+    assert full["min_probe"] == 20
+    assert full["user_paths"] == ["weighted", "affinity", "specific"]
+
+    retry = targets["S12_RETRY"]
+    assert retry["subject"] == "B"
+    assert retry["injection"]["B"] == "first_fail_then_ok"
+    assert retry["min_samples"] == 600
+    assert retry["retry_times"] == 1
+
+    casc = targets["S13_CASCADE"]
+    assert_close(casc["target"], 0.50, 1e-9, "S13 target")
+    assert_close(casc["tol_pp"], 0.03, 1e-9, "S13 tol_pp")
+    assert casc["corr_min"] == 0.5
+    assert casc["corr_max"] == 2.0
+    assert casc["upstream_failure_threshold"] == 1, "503 is upstream, not local"
+    assert casc["retry_times"] == 1
+    assert casc["sample_interval_s"] == 10
+    return True
+
+
+def test_aggregate_global_share_pools_raw_attempts() -> bool:
+    """Global share is one division over pooled attempts, not a mean of pod shares.
+
+    Pod A: 1/1 for the subject. Pod B: 1/3. Averaging the percentages gives
+    (1.00 + 0.333)/2 = 0.667; the correct pooled answer is 2/4 = 0.50. This test
+    exists to catch exactly that mistake.
+    """
+    subject = (1, 0, "up1")
+    other = (2, 0, "up2")
+    attempts = [
+        {"channel_id": 1, "key_index": 0, "upstream_model": "up1", "pod": "a"},
+        {"channel_id": 1, "key_index": 0, "upstream_model": "up1", "pod": "b"},
+        {"channel_id": 2, "key_index": 0, "upstream_model": "up2", "pod": "b"},
+        {"channel_id": 2, "key_index": 0, "upstream_model": "up2", "pod": "b"},
+    ]
+    res = aggregate_global_share(attempts, subject)
+    assert_close(res["global_share"], 0.50, 1e-9, "pooled global share")
+    assert res["global_selections"] == 2
+    assert res["global_total"] == 4
+    assert res["pods_seen"] == ["a", "b"]
+    assert_close(res["per_pod"]["a"]["share"], 1.0, 1e-9, "pod a share")
+    assert_close(res["per_pod"]["b"]["share"], 1 / 3, 1e-9, "pod b share")
+    naive_mean = (res["per_pod"]["a"]["share"] + res["per_pod"]["b"]["share"]) / 2
+    assert abs(naive_mean - res["global_share"]) > 0.1, "the per-pod mean must differ from pooled"
+    assert other != subject
+    return True
+
+
+def test_aggregate_global_share_empty() -> bool:
+    """No attempts yields a zero share rather than a division error."""
+    res = aggregate_global_share([], (1, 0, "up1"))
+    assert res["global_share"] == 0.0
+    assert res["global_total"] == 0
+    assert res["pods_seen"] == []
+    return True
+
+
+def test_evaluate_kill_switch_pass() -> bool:
+    """Option persisted false, corrections neutral, window frozen, pid changed."""
+    targets = scenario_targets()["S10_RESTART"]
+    before = {"option": "true", "corrections": [1.3, 0.8], "window_entries": 200, "pid": "111"}
+    after = {"option": "false", "corrections": [1.0, 1.0], "window_entries": 200, "pid": "222"}
+    res = evaluate_kill_switch(before, after, targets)
+    assert res["ok"] is True, f"should pass: {res}"
+    assert res["option_persisted"] is True
+    assert res["corrections_neutral"] is True
+    assert res["window_stopped"] is True
+    assert res["restarted"] is True
+    return True
+
+
+def test_evaluate_kill_switch_non_neutral_correction() -> bool:
+    """A non-1.0 correction after the kill switch is a product failure."""
+    targets = scenario_targets()["S10_RESTART"]
+    before = {"option": "true", "corrections": [1.0], "window_entries": 100, "pid": "111"}
+    after = {"option": "false", "corrections": [1.0, 1.45], "window_entries": 100, "pid": "222"}
+    res = evaluate_kill_switch(before, after, targets)
+    assert res["ok"] is False, f"should fail: {res}"
+    assert res["corrections_neutral"] is False
+    assert res["non_neutral"] == [1.45]
+    return True
+
+
+def test_evaluate_kill_switch_no_restart_is_data_invalid() -> bool:
+    """Same pid means no restart happened, so persistence is unproven."""
+    targets = scenario_targets()["S10_RESTART"]
+    before = {"option": "true", "corrections": [1.0], "window_entries": 10, "pid": "111"}
+    after = {"option": "false", "corrections": [1.0], "window_entries": 10, "pid": "111"}
+    res = evaluate_kill_switch(before, after, targets)
+    assert res["ok"] is False
+    assert res["restarted"] is False
+    assert any("DATA_INVALID" in r for r in res["reasons"]), res["reasons"]
+    return True
+
+
+def test_evaluate_kill_switch_window_kept_growing() -> bool:
+    """The window must stop allocating once the kill switch is set."""
+    targets = scenario_targets()["S10_RESTART"]
+    before = {"option": "true", "corrections": [1.0], "window_entries": 100, "pid": "111"}
+    after = {"option": "false", "corrections": [1.0], "window_entries": 180, "pid": "222"}
+    res = evaluate_kill_switch(before, after, targets)
+    assert res["ok"] is False
+    assert res["window_stopped"] is False
+    assert any("kept allocating" in r for r in res["reasons"]), res["reasons"]
+    return True
+
+
+def _s11_attempts(path: str, n: int, channel_id: int = 1) -> list[dict]:
+    return [
+        {
+            "request_id": f"{path}-{i}",
+            "client_request_id": f"c-{path}-{i}",
+            "group": "g",
+            "alias": "a",
+            "channel_id": channel_id,
+            "key_index": 0,
+            "upstream_model": f"up{channel_id}",
+            "path": path,
+        }
+        for i in range(n)
+    ]
+
+
+def test_evaluate_path_audit_pass() -> bool:
+    """All paths labelled and sampled, probes isolated, bypass in window."""
+    targets = scenario_targets()["S11_FULL"]
+    attempts = (
+        _s11_attempts("weighted", 100, 1)
+        + _s11_attempts("affinity", 100, 2)
+        + _s11_attempts("specific", 100, 3)
+    )
+    res = evaluate_path_audit(attempts, 0, ["weighted", "affinity", "specific"], targets)
+    assert res["ok"] is True, f"should pass: {res}"
+    assert res["probe_isolated"] is True
+    assert res["bypass_in_window"] is True
+    assert res["unlabelled"] == 0
+    return True
+
+
+def test_evaluate_path_audit_probe_in_window() -> bool:
+    """A probe contributing share opportunities is PRODUCT_FAIL."""
+    targets = scenario_targets()["S11_FULL"]
+    attempts = (
+        _s11_attempts("weighted", 100, 1)
+        + _s11_attempts("affinity", 100, 2)
+        + _s11_attempts("specific", 100, 3)
+    )
+    res = evaluate_path_audit(attempts, 7, ["weighted", "affinity", "specific"], targets)
+    assert res["ok"] is False, f"should fail: {res}"
+    assert res["probe_isolated"] is False
+    assert any("opportunity_count=0" in r for r in res["reasons"]), res["reasons"]
+    return True
+
+
+def test_evaluate_path_audit_bypass_missing_from_window() -> bool:
+    """Real bypass traffic absent from the window blinds the correction."""
+    targets = scenario_targets()["S11_FULL"]
+    attempts = (
+        _s11_attempts("weighted", 100, 1)
+        + _s11_attempts("affinity", 100, 2)
+        + _s11_attempts("specific", 100, 3)
+    )
+    res = evaluate_path_audit(attempts, 0, ["weighted"], targets)
+    assert res["ok"] is False, f"should fail: {res}"
+    assert res["bypass_in_window"] is False
+    assert any("never entered the share window" in r for r in res["reasons"]), res["reasons"]
+    return True
+
+
+def test_evaluate_path_audit_unlabelled_attempt() -> bool:
+    """An attempt with no path label breaks the data contract."""
+    targets = scenario_targets()["S11_FULL"]
+    attempts = (
+        _s11_attempts("weighted", 100, 1)
+        + _s11_attempts("affinity", 100, 2)
+        + _s11_attempts("specific", 100, 3)
+    )
+    attempts.append({**attempts[0], "path": ""})
+    res = evaluate_path_audit(attempts, 0, ["weighted", "affinity", "specific"], targets)
+    assert res["ok"] is False
+    assert res["unlabelled"] == 1
+    assert any("no path label" in r for r in res["reasons"]), res["reasons"]
+    return True
+
+
+def test_evaluate_path_audit_below_min_per_path() -> bool:
+    """Too few samples on a path is DATA_INVALID, not a product verdict."""
+    targets = scenario_targets()["S11_FULL"]
+    attempts = _s11_attempts("weighted", 100, 1) + _s11_attempts("affinity", 5, 2)
+    res = evaluate_path_audit(attempts, 0, ["weighted", "affinity", "specific"], targets)
+    assert res["ok"] is False
+    assert "affinity" in res["paths_missing"]
+    assert any("DATA_INVALID" in r for r in res["reasons"]), res["reasons"]
+    return True
+
+
+def test_evaluate_retry_attribution_both() -> bool:
+    """Failed attempts moved quality AND took window slots: correct behaviour."""
+    stats = {
+        "b_attempt_failures": 300,
+        "b_user_failures": 0,
+        "b_ewma_before": 1.0,
+        "b_ewma_after": 0.82,
+        "b_window_selections": 600,
+        "b_total_attempts": 900,
+    }
+    res = evaluate_retry_attribution(stats, {})
+    assert res["attribution"] == "both", res
+    assert res["ok"] is True, res
+    assert res["quality_observed"] is True
+    assert res["window_observed"] is True
+    assert res["ewma_delta"] < 0
+    return True
+
+
+def test_evaluate_retry_attribution_neither() -> bool:
+    """Neither signal: a failing route can never be de-weighted (PRODUCT_FAIL)."""
+    stats = {
+        "b_attempt_failures": 300,
+        "b_user_failures": 0,
+        "b_ewma_before": 1.0,
+        "b_ewma_after": 1.0,
+        "b_window_selections": 10,
+        "b_total_attempts": 900,
+    }
+    res = evaluate_retry_attribution(stats, {})
+    assert res["attribution"] == "neither", res
+    assert res["ok"] is False
+    assert any("never be de-weighted" in r for r in res["reasons"]), res["reasons"]
+    return True
+
+
+def test_evaluate_retry_attribution_partial() -> bool:
+    """Exactly one half observed is a partial risk, never a silent pass."""
+    quality_only = {
+        "b_attempt_failures": 300,
+        "b_user_failures": 0,
+        "b_ewma_before": 1.0,
+        "b_ewma_after": 0.8,
+        "b_window_selections": 10,
+        "b_total_attempts": 900,
+    }
+    res = evaluate_retry_attribution(quality_only, {})
+    assert res["attribution"] == "quality_only", res
+    assert res["ok"] is False
+    assert any("partial product risk" in r for r in res["reasons"]), res["reasons"]
+
+    window_only = {
+        "b_attempt_failures": 300,
+        "b_user_failures": 0,
+        "b_ewma_before": 1.0,
+        "b_ewma_after": 1.0,
+        "b_window_selections": 600,
+        "b_total_attempts": 900,
+    }
+    res2 = evaluate_retry_attribution(window_only, {})
+    assert res2["attribution"] == "window_only", res2
+    assert res2["ok"] is False
+    assert any("partial product risk" in r for r in res2["reasons"]), res2["reasons"]
+    return True
+
+
+def test_evaluate_retry_attribution_no_data() -> bool:
+    """Zero attempts is DATA_INVALID, not a product conclusion."""
+    stats = {
+        "b_attempt_failures": 0,
+        "b_user_failures": 0,
+        "b_ewma_before": 0.0,
+        "b_ewma_after": 0.0,
+        "b_window_selections": 0,
+        "b_total_attempts": 0,
+    }
+    res = evaluate_retry_attribution(stats, {})
+    assert res["ok"] is False
+    assert any("DATA_INVALID" in r for r in res["reasons"]), res["reasons"]
+    assert res["attempt_failure_rate"] == 0.0
+    return True
+
+
+def _s13_samples(steady: float, fault: float, recover: list[float], corr: float = 1.0) -> list[dict]:
+    rows = []
+    ts = 0.0
+    for _ in range(3):
+        rows.append({"ts": ts, "phase": "steady", "b_share": steady, "corr": {"A": corr, "B": corr}, "samples": 200})
+        ts += 10.0
+    for _ in range(3):
+        rows.append({"ts": ts, "phase": "fault", "b_share": fault, "corr": {"A": corr, "B": corr}, "samples": 200})
+        ts += 10.0
+    for share in recover:
+        rows.append({"ts": ts, "phase": "recover", "b_share": share, "corr": {"A": corr, "B": corr}, "samples": 200})
+        ts += 10.0
+    return rows
+
+
+def test_evaluate_recovery_pass() -> bool:
+    """Degradation observed, corr clamped, share returns within tolerance."""
+    targets = scenario_targets()["S13_CASCADE"]
+    samples = _s13_samples(0.50, 0.20, [0.30, 0.42, 0.49])
+    res = evaluate_recovery(samples, targets)
+    assert res["ok"] is True, f"should pass: {res}"
+    assert res["recovered"] is True
+    assert res["corr_in_clamp"] is True
+    assert res["degradation_observed"] is True
+    assert res["recovery_seconds"] == 20.0, res["recovery_seconds"]
+    return True
+
+
+def test_evaluate_recovery_corr_violation() -> bool:
+    """A correction outside [0.5, 2.0] is the defect this scenario hunts."""
+    targets = scenario_targets()["S13_CASCADE"]
+    samples = _s13_samples(0.50, 0.20, [0.30, 0.49])
+    samples[4]["corr"] = {"A": 2.5, "B": 1.0}
+    res = evaluate_recovery(samples, targets)
+    assert res["ok"] is False, f"should fail: {res}"
+    assert res["corr_in_clamp"] is False
+    assert len(res["corr_violations"]) == 1
+    assert res["corr_violations"][0]["corr"] == 2.5
+    assert res["corr_violations"][0]["phase"] == "fault"
+    return True
+
+
+def test_evaluate_recovery_never_recovers() -> bool:
+    """Share stuck far below target after recovery is PRODUCT_FAIL."""
+    targets = scenario_targets()["S13_CASCADE"]
+    samples = _s13_samples(0.50, 0.15, [0.16, 0.18, 0.20])
+    res = evaluate_recovery(samples, targets)
+    assert res["ok"] is False, f"should fail: {res}"
+    assert res["recovered"] is False
+    assert res["recovery_seconds"] is None
+    return True
+
+
+def test_evaluate_recovery_no_degradation() -> bool:
+    """If the injection never bit there is nothing to judge: DATA_INVALID."""
+    targets = scenario_targets()["S13_CASCADE"]
+    samples = _s13_samples(0.50, 0.50, [0.50, 0.50])
+    res = evaluate_recovery(samples, targets)
+    assert res["ok"] is False
+    assert res["degradation_observed"] is False
+    assert any("DATA_INVALID" in r for r in res["reasons"]), res["reasons"]
+    return True
+
+
+def test_evaluate_recovery_empty() -> bool:
+    """Empty input returns DATA_INVALID without raising."""
+    res = evaluate_recovery([], scenario_targets()["S13_CASCADE"])
+    assert res["ok"] is False
+    assert res["recovery_seconds"] is None
+    assert any("DATA_INVALID" in r for r in res["reasons"]), res["reasons"]
+    return True
+
+
+def test_evaluate_recovery_scalar_corr() -> bool:
+    """A scalar corr field is accepted as well as a per-route dict."""
+    targets = scenario_targets()["S13_CASCADE"]
+    samples = _s13_samples(0.50, 0.20, [0.30, 0.49])
+    for s in samples:
+        s["corr"] = 3.0
+    res = evaluate_recovery(samples, targets)
+    assert res["corr_in_clamp"] is False
+    assert all(v["route"] == "subject" for v in res["corr_violations"]), res["corr_violations"]
+    return True
+
 def run_all() -> int:
     tests = [
         ("wilson_ci_known_value", test_wilson_ci_known_value),
@@ -616,6 +1008,28 @@ def run_all() -> int:
         ("evaluate_affinity_scan_monotonic", test_evaluate_affinity_scan_monotonic),
         ("evaluate_affinity_scan_non_monotonic", test_evaluate_affinity_scan_non_monotonic),
         ("evaluate_affinity_scan_no_correction", test_evaluate_affinity_scan_no_correction),
+        ("scenario_targets_s10_s11_s12_s13", test_scenario_targets_s10_s11_s12_s13),
+        ("aggregate_global_share_pools_raw_attempts", test_aggregate_global_share_pools_raw_attempts),
+        ("aggregate_global_share_empty", test_aggregate_global_share_empty),
+        ("evaluate_kill_switch_pass", test_evaluate_kill_switch_pass),
+        ("evaluate_kill_switch_non_neutral_correction", test_evaluate_kill_switch_non_neutral_correction),
+        ("evaluate_kill_switch_no_restart_is_data_invalid", test_evaluate_kill_switch_no_restart_is_data_invalid),
+        ("evaluate_kill_switch_window_kept_growing", test_evaluate_kill_switch_window_kept_growing),
+        ("evaluate_path_audit_pass", test_evaluate_path_audit_pass),
+        ("evaluate_path_audit_probe_in_window", test_evaluate_path_audit_probe_in_window),
+        ("evaluate_path_audit_bypass_missing_from_window", test_evaluate_path_audit_bypass_missing_from_window),
+        ("evaluate_path_audit_unlabelled_attempt", test_evaluate_path_audit_unlabelled_attempt),
+        ("evaluate_path_audit_below_min_per_path", test_evaluate_path_audit_below_min_per_path),
+        ("evaluate_retry_attribution_both", test_evaluate_retry_attribution_both),
+        ("evaluate_retry_attribution_neither", test_evaluate_retry_attribution_neither),
+        ("evaluate_retry_attribution_partial", test_evaluate_retry_attribution_partial),
+        ("evaluate_retry_attribution_no_data", test_evaluate_retry_attribution_no_data),
+        ("evaluate_recovery_pass", test_evaluate_recovery_pass),
+        ("evaluate_recovery_corr_violation", test_evaluate_recovery_corr_violation),
+        ("evaluate_recovery_never_recovers", test_evaluate_recovery_never_recovers),
+        ("evaluate_recovery_no_degradation", test_evaluate_recovery_no_degradation),
+        ("evaluate_recovery_empty", test_evaluate_recovery_empty),
+        ("evaluate_recovery_scalar_corr", test_evaluate_recovery_scalar_corr),
     ]
 
     passed = 0

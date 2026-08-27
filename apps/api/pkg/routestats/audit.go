@@ -22,11 +22,14 @@ type AuditAttempt struct {
 	ChannelID      int    `json:"channel_id"`
 	KeyIndex       int    `json:"key_index"`
 	UpstreamModel  string `json:"upstream_model"`
-	Outcome        int    `json:"outcome"`
+	// Path is the selection path that chose this route unit: "weighted",
+	// "affinity" or "specific". Empty when the request took no labelled path.
+	Path    string `json:"path,omitempty"`
+	Outcome int    `json:"outcome"`
 }
 const auditRingCapacity = 32768 // 2^15; fits 13,000 requests + retries
-// AuditAttempt is 112 bytes (5 strings × 16B + 4 ints × 8B on amd64).
-// Backing array ≈ 112 × 32768 = 3,670,016 bytes (~3.5 MiB), well under 20 MiB.
+// AuditAttempt is 128 bytes (6 strings × 16B + 4 ints × 8B on amd64).
+// Backing array ≈ 128 × 32768 = 4,194,304 bytes (~4 MiB), well under 20 MiB.
 // AuditOutcomeFromRouteStats maps the internal routeStatsOutcome (0=neutral, 1=throttled, 2=fatal)
 // to the corresponding audit outcome code. Success (0) is handled separately by the caller.
 func AuditOutcomeFromRouteStats(routeStatsOutcome int) int {
@@ -57,7 +60,8 @@ func AuditRingCapacity() int {
 // RecordAttempt appends one attempt to the audit ring buffer. When the buffer
 // is full, the oldest entry is overwritten (FIFO eviction).
 // clientRequestID is the client-sent X-Request-Id header (may be empty).
-func RecordAttempt(requestID string, attempt int, key RouteKey, outcome int, clientRequestID string) {
+// path is the selection path label (may be empty when unlabelled).
+func RecordAttempt(requestID string, attempt int, key RouteKey, outcome int, clientRequestID string, path string) {
 	auditRing.mu.Lock()
 	defer auditRing.mu.Unlock()
 
@@ -70,6 +74,7 @@ func RecordAttempt(requestID string, attempt int, key RouteKey, outcome int, cli
 		ChannelID:        key.ChannelID,
 		KeyIndex:         key.KeyIndex,
 		UpstreamModel:    key.UpstreamModel,
+		Path:             path,
 		Outcome:          outcome,
 	}
 

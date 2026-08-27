@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 import time
 import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -24,13 +25,43 @@ PORT = int(os.getenv("MOCK_PORT", "8099"))
 NDJSON_PATH = os.getenv("MOCK_NDJSON", "")
 FORCE_MODE = os.getenv("MOCK_FORCE_MODE", "") or None
 
-VALID_MODES = {"ok", "ttft_500", "ttft_2000", "ttft_4000", "ratelimit_missing", "ratelimit_5s", "ratelimit_10s", "q05"}
+VALID_MODES = {"ok", "ttft_500", "ttft_2000", "ttft_4000", "ratelimit_missing", "ratelimit_5s", "ratelimit_10s", "q05", "first_fail_then_ok"}
 
 if FORCE_MODE is not None and FORCE_MODE not in VALID_MODES:
     sys.exit(f"MOCK_FORCE_MODE={FORCE_MODE!r} is not a valid mode; valid: {sorted(VALID_MODES)}")
 
 TTFT_MS = {"ttft_500": 0.5, "ttft_2000": 2.0, "ttft_4000": 4.0}
 RATELIMIT_AFTER = {"ratelimit_missing": None, "ratelimit_5s": "5", "ratelimit_10s": "10"}
+
+# S12 first_fail_then_ok state.
+#
+# VERIFIED against the real gateway: it does NOT forward the client X-Request-Id
+# upstream, so every upstream call arrives with an empty id and a retry is
+# indistinguishable from a fresh request. Keying on request_id therefore cannot
+# work; it would fail every call and never exercise the "then_ok" half.
+#
+# Instead alternate on a per-instance call counter: odd call -> 503, even call ->
+# 200. With RetryTimes >= 1 the gateway retries the 503 and lands on the next
+# call, which succeeds, producing exactly the "first attempt fails, retry
+# succeeds" chain S12 needs. This is a property of the sequence rather than of a
+# correlation id, which is all the transport preserves.
+#
+# ponytail: a plain counter, not per-chain state; sound because S12 sends its
+# traffic through one route and asserts on aggregate attempt counts.
+_call_counter = 0
+_seen_lock = threading.Lock()
+
+
+def first_attempt_for(_request_id: str) -> bool:
+    """True on odd-numbered calls, which must fail so the retry can succeed.
+
+    Takes the request_id only for signature stability; it is deliberately unused
+    because the gateway does not propagate it (see the note above).
+    """
+    global _call_counter
+    with _seen_lock:
+        _call_counter += 1
+        return _call_counter % 2 == 1
 
 
 class MockServer(ThreadingHTTPServer):
@@ -123,6 +154,17 @@ class Handler(BaseHTTPRequestHandler):
             if zlib.crc32(request_id.encode()) % 2 == 0:
                 self._send_json(500, {"error": {"message": "deterministic q05 failure", "type": "server_error"}})
                 record(request_id, model, 500, mode)
+            else:
+                self._respond_ok(request_id, model, mode, stream, tokens)
+            return
+
+        if mode == "first_fail_then_ok":
+            # S12: fail the first attempt of a chain, serve the retry. Both
+            # attempts are recorded with their true status so reconciliation
+            # sees the whole chain, not just the rescued success.
+            if first_attempt_for(request_id):
+                self._send_json(503, {"error": {"message": "first attempt fails, retry succeeds", "type": "server_error"}})
+                record(request_id, model, 503, mode)
             else:
                 self._respond_ok(request_id, model, mode, stream, tokens)
             return

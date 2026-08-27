@@ -60,6 +60,7 @@ func Distribute() func(c *gin.Context) {
 				abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidChannelId))
 				return
 			}
+			common.SetContextKey(c, constant.ContextKeyRoutePath, "specific")
 		} else {
 			// Select a channel for the user
 			// check token model mapping
@@ -126,6 +127,7 @@ func Distribute() func(c *gin.Context) {
 										affinityUsable = false
 									} else {
 										affinityUsable = true
+										common.SetContextKey(c, constant.ContextKeyRoutePath, "affinity")
 										service.MarkChannelAffinityUsed(c, g, preferred.Id)
 									}
 									break
@@ -138,6 +140,7 @@ func Distribute() func(c *gin.Context) {
 							} else {
 								selectGroup = usingGroup
 								affinityUsable = true
+								common.SetContextKey(c, constant.ContextKeyRoutePath, "affinity")
 								service.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
 							}
 						}
@@ -169,6 +172,7 @@ func Distribute() func(c *gin.Context) {
 						abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelRequest.Model}), types.ErrorCodeModelNotFound)
 						return
 					}
+					common.SetContextKey(c, constant.ContextKeyRoutePath, "weighted")
 				}
 			}
 		}

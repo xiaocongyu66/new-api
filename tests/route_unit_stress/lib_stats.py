@@ -111,7 +111,9 @@ def evaluate_share(
         ci: (lower, upper) confidence interval from wilson_ci.
         target: Expected share (proportion 0–1).
         tol_pp: Tolerance in percentage points (e.g., 0.02 for ±2pp).
-        ci_bounds: (min_ci, max_ci) allowed CI range (proportions).
+        ci_bounds: (min_ci, max_ci) allowed CI range (proportions), or None when
+            the scenario judges only the point estimate and sets no CI-containment
+            criterion (e.g. S13, which measures recovery rather than convergence).
 
     Returns:
         Dict with "ok" (bool) and "reasons" (list[str]).
@@ -119,7 +121,6 @@ def evaluate_share(
     """
     reasons: list[str] = []
     ci_low, ci_high = ci
-    min_ci, max_ci = ci_bounds
 
     # Check point estimate within target ± tol_pp
     if not (target - tol_pp <= observed_share <= target + tol_pp):
@@ -127,11 +128,13 @@ def evaluate_share(
             f"point {observed_share:.4f} outside {target:.3f}±{tol_pp:.2f}"
         )
 
-    # Check CI fully within bounds
-    if not (min_ci <= ci_low and ci_high <= max_ci):
-        reasons.append(
-            f"ci [{ci_low:.3f},{ci_high:.3f}] not within [{min_ci:.3f},{max_ci:.3f}]"
-        )
+    # Check CI fully within bounds, when the scenario defines any.
+    if ci_bounds is not None:
+        min_ci, max_ci = ci_bounds
+        if not (min_ci <= ci_low and ci_high <= max_ci):
+            reasons.append(
+                f"ci [{ci_low:.3f},{ci_high:.3f}] not within [{min_ci:.3f},{max_ci:.3f}]"
+            )
 
     return {"ok": len(reasons) == 0, "reasons": reasons}
 
@@ -541,6 +544,388 @@ def evaluate_affinity_scan(
     }
 
 
+def aggregate_global_share(attempts: list[dict[str, Any]], subject_identity: tuple) -> dict[str, Any]:
+    """S10: re-aggregate raw attempt quadruples into one global share.
+
+    Share windows are process-local, so with N replicas each pod converges on its
+    own view. #418 forbids averaging per-pod percentages: the only sound global
+    number comes from pooling raw attempts and dividing once. This function is
+    that single division, plus the per-pod breakdown for reporting only.
+
+    Args:
+        attempts: audit rows, each with channel_id / key_index / upstream_model
+            and optionally `pod` (replica identity).
+        subject_identity: (channel_id, key_index, upstream_model) of the subject.
+
+    Returns:
+        Dict with global_share, global_selections, global_total, per_pod
+        (pod -> {selections, total, share} for reporting), pods_seen.
+    """
+    global_total = 0
+    global_selections = 0
+    per_pod: dict[str, dict[str, Any]] = {}
+
+    for a in attempts:
+        identity = (a.get("channel_id"), a.get("key_index"), a.get("upstream_model"))
+        pod = str(a.get("pod", "single"))
+        bucket = per_pod.setdefault(pod, {"selections": 0, "total": 0, "share": 0.0})
+        bucket["total"] += 1
+        global_total += 1
+        if identity == subject_identity:
+            bucket["selections"] += 1
+            global_selections += 1
+
+    for bucket in per_pod.values():
+        bucket["share"] = (bucket["selections"] / bucket["total"]) if bucket["total"] else 0.0
+
+    return {
+        "global_share": (global_selections / global_total) if global_total else 0.0,
+        "global_selections": global_selections,
+        "global_total": global_total,
+        "per_pod": per_pod,
+        "pods_seen": sorted(per_pod.keys()),
+    }
+
+
+def evaluate_kill_switch(before: dict[str, Any], after: dict[str, Any], targets: dict[str, Any]) -> dict[str, Any]:
+    """S10: verify RouteStatsEnabled=false survives a restart and neutralises correction.
+
+    Args:
+        before/after: each {"option": str|None, "corrections": list[float],
+            "window_entries": int, "pid": str|None}
+        targets: scenario dict (reads neutral_correction, default 1.0).
+
+    Returns:
+        Dict with ok, reasons, option_persisted, corrections_neutral,
+        window_stopped, restarted, non_neutral.
+    """
+    neutral = targets.get("neutral_correction", 1.0)
+    reasons: list[str] = []
+
+    option_persisted = str(after.get("option")).strip().lower() == "false"
+    if not option_persisted:
+        reasons.append(
+            f"RouteStatsEnabled did not persist as false across restart (after={after.get('option')!r})"
+        )
+
+    after_corr = after.get("corrections") or []
+    if not after_corr:
+        reasons.append("no post-restart corrections sampled (DATA_INVALID)")
+    non_neutral = [c for c in after_corr if abs(c - neutral) > 1e-9]
+    corrections_neutral = bool(after_corr) and not non_neutral
+    if non_neutral:
+        reasons.append(
+            f"{len(non_neutral)} post-restart corrections are not neutral {neutral}: "
+            f"{non_neutral[:5]}"
+        )
+
+    # The kill switch must stop the window growing. Equal counts are acceptable
+    # (nothing added); growth means the window kept allocating.
+    before_entries = before.get("window_entries", 0) or 0
+    after_entries = after.get("window_entries", 0) or 0
+    window_stopped = after_entries <= before_entries
+    if not window_stopped:
+        reasons.append(
+            f"share window kept allocating after kill switch: {before_entries} -> {after_entries}"
+        )
+
+    # A restart that never happened invalidates the whole premise.
+    before_pid, after_pid = before.get("pid"), after.get("pid")
+    restarted = bool(before_pid and after_pid and before_pid != after_pid)
+    if not restarted:
+        reasons.append(
+            f"no restart observed (pid {before_pid!r} -> {after_pid!r}); "
+            "the persistence claim is unproven (DATA_INVALID)"
+        )
+
+    return {
+        "ok": len(reasons) == 0,
+        "reasons": reasons,
+        "option_persisted": option_persisted,
+        "corrections_neutral": corrections_neutral,
+        "window_stopped": window_stopped,
+        "restarted": restarted,
+        "non_neutral": non_neutral,
+    }
+
+
+def evaluate_path_audit(
+    attempts: list[dict[str, Any]],
+    probe_opportunities: int,
+    window_paths: list[str],
+    targets: dict[str, Any],
+) -> dict[str, Any]:
+    """S11: turn "selected route == counted route" into a checked data contract.
+
+    Three independent failure modes, all PRODUCT_FAIL per #418:
+      1. any attempt missing its path label or its identity quadruple
+      2. a probe inside the share window (probe must yield opportunity_count=0)
+      3. real bypass traffic (affinity / specific) absent from the window
+
+    Args:
+        attempts: audit rows carrying `path` plus the identity quadruple.
+        probe_opportunities: opportunity count attributable to probes; must be 0.
+        window_paths: path labels observed inside the share window.
+        targets: scenario dict (reads user_paths, min_per_path).
+
+    Returns:
+        Dict with ok, reasons, per_path_counts, unlabelled, incomplete_quadruples,
+        probe_isolated, bypass_in_window, paths_missing.
+    """
+    expected_paths = list(targets.get("user_paths", ["weighted", "affinity", "specific"]))
+    min_per_path = targets.get("min_per_path", 100)
+    reasons: list[str] = []
+
+    identity_fields = ("group", "alias", "channel_id", "key_index", "upstream_model")
+    per_path_counts: dict[str, int] = {}
+    unlabelled = 0
+    incomplete_quadruples: list[dict[str, Any]] = []
+
+    for a in attempts:
+        path = (a.get("path") or "").strip()
+        if path:
+            per_path_counts[path] = per_path_counts.get(path, 0) + 1
+        else:
+            unlabelled += 1
+        missing = [f for f in identity_fields if a.get(f) in (None, "")]
+        # key_index 0 is legitimate; only a genuinely absent field counts.
+        missing = [f for f in missing if not (f == "key_index" and a.get(f) == 0)]
+        if missing:
+            incomplete_quadruples.append(
+                {"request_id": a.get("client_request_id") or a.get("request_id"), "missing": missing}
+            )
+
+    if not attempts:
+        reasons.append("no attempts collected (DATA_INVALID)")
+    if unlabelled:
+        reasons.append(f"{unlabelled} attempts carry no path label")
+    if incomplete_quadruples:
+        reasons.append(
+            f"{len(incomplete_quadruples)} attempts have an incomplete identity quadruple: "
+            f"{incomplete_quadruples[:3]}"
+        )
+
+    paths_missing = [p for p in expected_paths if per_path_counts.get(p, 0) < min_per_path]
+    if paths_missing:
+        reasons.append(
+            f"paths below {min_per_path} samples: "
+            f"{ {p: per_path_counts.get(p, 0) for p in paths_missing} } (DATA_INVALID)"
+        )
+
+    probe_isolated = probe_opportunities == 0
+    if not probe_isolated:
+        reasons.append(
+            f"probe traffic contributed {probe_opportunities} share opportunities; probes must "
+            "produce EWMA signal with opportunity_count=0"
+        )
+
+    bypass_labels = [p for p in ("affinity", "specific") if p in expected_paths]
+    observed_window = set(window_paths)
+    bypass_missing = [p for p in bypass_labels if p not in observed_window]
+    bypass_in_window = not bypass_missing
+    if bypass_missing:
+        reasons.append(
+            f"bypass paths {bypass_missing} never entered the share window; correction would be "
+            "blind to the skew they cause"
+        )
+
+    return {
+        "ok": len(reasons) == 0,
+        "reasons": reasons,
+        "per_path_counts": per_path_counts,
+        "unlabelled": unlabelled,
+        "incomplete_quadruples": incomplete_quadruples,
+        "probe_isolated": probe_isolated,
+        "bypass_in_window": bypass_in_window,
+        "paths_missing": paths_missing,
+    }
+
+
+def evaluate_retry_attribution(attempt_stats: dict[str, Any], targets: dict[str, Any]) -> dict[str, Any]:
+    """S12: did a retry-absorbed failure still reach quality and the share window?
+
+    Args:
+        attempt_stats: b_attempt_failures, b_user_failures, b_ewma_before,
+            b_ewma_after, b_window_selections, b_total_attempts.
+        targets: scenario dict (unused; kept for signature symmetry).
+
+    Returns:
+        Dict with ok, reasons, quality_observed, window_observed, attribution,
+        attempt_failure_rate, user_failure_rate, ewma_delta.
+    """
+    failures = attempt_stats.get("b_attempt_failures", 0) or 0
+    user_failures = attempt_stats.get("b_user_failures", 0) or 0
+    ewma_before = attempt_stats.get("b_ewma_before", 0.0) or 0.0
+    ewma_after = attempt_stats.get("b_ewma_after", 0.0) or 0.0
+    window_selections = attempt_stats.get("b_window_selections", 0) or 0
+    total = attempt_stats.get("b_total_attempts", 0) or 0
+
+    ewma_delta = ewma_after - ewma_before
+    quality_observed = failures > 0 and ewma_after < ewma_before
+    window_observed = failures > 0 and window_selections >= failures
+
+    if quality_observed and window_observed:
+        attribution = "both"
+    elif quality_observed:
+        attribution = "quality_only"
+    elif window_observed:
+        attribution = "window_only"
+    else:
+        attribution = "neither"
+
+    reasons: list[str] = []
+    if total == 0:
+        reasons.append("no attempts recorded for B (DATA_INVALID)")
+    elif attribution == "neither":
+        reasons.append(
+            "failed attempts reached neither EWMA quality nor the share window: a persistently "
+            "failing route can never be de-weighted (PRODUCT_FAIL)"
+        )
+    elif attribution == "quality_only":
+        reasons.append(
+            "partial product risk: failed attempts moved EWMA quality but did not take share "
+            "window slots, so the correction cannot see the failing load"
+        )
+    elif attribution == "window_only":
+        reasons.append(
+            "partial product risk: failed attempts took share window slots but did not move EWMA "
+            "quality, so repeated failure does not lower the route's score"
+        )
+
+    return {
+        "ok": len(reasons) == 0,
+        "reasons": reasons,
+        "quality_observed": quality_observed,
+        "window_observed": window_observed,
+        "attribution": attribution,
+        "attempt_failure_rate": (failures / total) if total else 0.0,
+        "user_failure_rate": (user_failures / total) if total else 0.0,
+        "ewma_delta": ewma_delta,
+    }
+
+
+def evaluate_recovery(samples: list[dict[str, Any]], targets: dict[str, Any]) -> dict[str, Any]:
+    """S13: correction stays clamped through degradation, and share recovers after.
+
+    Args:
+        samples: ordered list of {"ts", "phase" in {steady,fault,recover},
+            "b_share", "corr" (per-route dict or scalar), "samples"}.
+        targets: reads corr_min, corr_max, target, recovery_tolerance_pp.
+
+    Returns:
+        Dict with ok, reasons, corr_in_clamp, corr_violations, recovery_seconds,
+        recovered, steady_share, fault_share, post_recovery_share,
+        degradation_observed.
+    """
+    corr_min = targets.get("corr_min", 0.5)
+    corr_max = targets.get("corr_max", 2.0)
+    target = targets.get("target", 0.5)
+    tol = targets.get("recovery_tolerance_pp", 0.03)
+
+    empty = {
+        "ok": False,
+        "reasons": ["no samples collected (DATA_INVALID)"],
+        "corr_in_clamp": False,
+        "corr_violations": [],
+        "recovery_seconds": None,
+        "recovered": False,
+        "steady_share": None,
+        "fault_share": None,
+        "post_recovery_share": None,
+        "degradation_observed": False,
+    }
+    if not samples:
+        return empty
+
+    reasons: list[str] = []
+
+    # Corrections are checked in every phase: an out-of-clamp value during
+    # degradation is exactly the defect this scenario hunts.
+    corr_violations: list[dict[str, Any]] = []
+    for s in samples:
+        corr = s.get("corr")
+        if isinstance(corr, dict):
+            pairs = list(corr.items())
+        elif corr is None:
+            pairs = []
+        else:
+            pairs = [("subject", corr)]
+        for route, value in pairs:
+            if value is None:
+                continue
+            if value < corr_min or value > corr_max:
+                corr_violations.append(
+                    {"ts": s.get("ts"), "phase": s.get("phase"), "route": route, "corr": value}
+                )
+    corr_in_clamp = not corr_violations
+    if corr_violations:
+        reasons.append(
+            f"{len(corr_violations)} corrections outside clamp [{corr_min}, {corr_max}]: "
+            f"{corr_violations[:3]} (PRODUCT_FAIL)"
+        )
+
+    by_phase: dict[str, list[dict[str, Any]]] = {}
+    for s in samples:
+        by_phase.setdefault(s.get("phase", ""), []).append(s)
+
+    def mean_share(phase: str) -> float | None:
+        rows = by_phase.get(phase) or []
+        vals = [r.get("b_share") for r in rows if r.get("b_share") is not None]
+        return (sum(vals) / len(vals)) if vals else None
+
+    steady_share = mean_share("steady")
+    fault_share = mean_share("fault")
+
+    missing_phases = [p for p in ("steady", "fault", "recover") if not by_phase.get(p)]
+    if missing_phases:
+        reasons.append(f"phases missing from samples: {missing_phases} (DATA_INVALID)")
+
+    # If the injection never bit, there is nothing to recover from: that is bad
+    # data, not a product verdict.
+    degradation_observed = False
+    if steady_share is not None and fault_share is not None:
+        degradation_observed = fault_share < steady_share - tol
+        if not degradation_observed:
+            reasons.append(
+                f"fault phase share {fault_share:.4f} is not meaningfully below steady "
+                f"{steady_share:.4f}: the injection did not degrade B (DATA_INVALID)"
+            )
+
+    recover_rows = by_phase.get("recover") or []
+    recovery_seconds = None
+    recovered = False
+    post_recovery_share = None
+    if recover_rows:
+        start_ts = recover_rows[0].get("ts")
+        post_recovery_share = recover_rows[-1].get("b_share")
+        for r in recover_rows:
+            share = r.get("b_share")
+            if share is None:
+                continue
+            if abs(share - target) <= tol:
+                recovered = True
+                if start_ts is not None and r.get("ts") is not None:
+                    recovery_seconds = max(0.0, r["ts"] - start_ts)
+                break
+        if not recovered:
+            reasons.append(
+                f"B never returned within +/-{tol * 100:.0f}pp of {target:.2f} before the recovery "
+                f"deadline (last {post_recovery_share}) (PRODUCT_FAIL)"
+            )
+
+    return {
+        "ok": len(reasons) == 0,
+        "reasons": reasons,
+        "corr_in_clamp": corr_in_clamp,
+        "corr_violations": corr_violations,
+        "recovery_seconds": recovery_seconds,
+        "recovered": recovered,
+        "steady_share": steady_share,
+        "fault_share": fault_share,
+        "post_recovery_share": post_recovery_share,
+        "degradation_observed": degradation_observed,
+    }
+
 def scenario_targets() -> dict[str, dict[str, Any]]:
      """Return official judgment criteria for S1, S2, S3 per issue #418.
  
@@ -912,5 +1297,113 @@ def scenario_targets() -> dict[str, dict[str, Any]]:
             "injection": {"A": "ok", "B": "ok", "C": "ok"},
             "min_samples": 1200,
             "description": "S9 affinity 70% window=200: correction cannot fully offset pinned traffic",
+        },
+        "S10_RACE": {
+            "target": 0.50,
+            "tol_pp": 0.03,
+            "ci_bounds": None,
+            "subject": "B",
+            "route_count": 2,
+            "replica": 1,
+            "min_samples": 6000,
+            "injection": {"A": "ok", "B": "ok"},
+            "description": "S10 race: single replica, 2 route / 2 key, 64 concurrent, 6,000 stat "
+            "requests; validates lock contention under real concurrency. The -race verdict comes "
+            "from `go test -race`, not from this runner; the runner checks share sanity and that "
+            "sampleCount agrees with attributable attempts.",
+        },
+        "S10_GLOBAL": {
+            "target": 0.50,
+            "tol_pp": 0.03,
+            "ci_bounds": (0.47, 0.53),
+            "subject": "B",
+            "route_count": 2,
+            "replica": 2,
+            "min_samples": 12000,
+            "injection": {"A": "ok", "B": "ok"},
+            "description": "S10 global share: 2 replicas, 12,000 GLOBAL requests (not 12,000 per "
+            "pod). Share windows are process-local, so the verdict must come from re-aggregating "
+            "raw attempt quadruples into one global share. Averaging per-pod percentages is "
+            "explicitly forbidden and is what this scenario exists to catch.",
+        },
+        "S10_RESTART": {
+            "target": None,
+            "tol_pp": None,
+            "ci_bounds": None,
+            "subject": "KILLSWITCH",
+            "route_count": 2,
+            "replica": 1,
+            "min_samples": 1000,
+            "injection": {"A": "ok", "B": "ok"},
+            "kill_switch_option": "RouteStatsEnabled",
+            "neutral_correction": 1.0,
+            "description": "S10 restart kill switch: >=1,000 requests before and after writing "
+            "RouteStatsEnabled=false and restarting. After restart every correction must be exactly "
+            "1.0 (neutral) and the share window must stop allocating. Sweep evidence is collected "
+            "when available; a run shorter than the 1h sweep ticker that shows orphan pools with no "
+            "sweep log is a KNOWN LIMITATION, not a FAIL.",
+        },
+        "S11_FULL": {
+            "target": None,
+            "tol_pp": None,
+            "ci_bounds": None,
+            "subject": "PATHS",
+            "route_count": 4,
+            "injection": {"A": "ok", "B": "ok", "C": "ok", "D": "ok"},
+            "user_paths": ["weighted", "affinity", "specific"],
+            "min_per_path": 100,
+            "min_probe": 20,
+            "description": "S11 auditability: >=100 requests per labelled user path "
+            "(weighted / affinity / specific) plus >=20 administrative probes. Contract: every "
+            "attempt carries its path label and a matching quadruple; probes produce EWMA signal "
+            "but contribute opportunity_count=0 and must NOT appear in the share window; real "
+            "bypass traffic (affinity / specific) MUST enter the window. Any quadruple mismatch, a "
+            "probe inside the window, or bypass missing from it is PRODUCT_FAIL. Note: locked "
+            "replay shares SelectedRouteFromChannel with the specific-channel path and has no "
+            "distinct label, so it is covered by 'specific' rather than counted separately. "
+            "SETUP (verified on a real gateway): the shipped affinity rule only matches "
+            "path_regex /v1/responses, so on /v1/chat/completions affinity never engages and every "
+            "request is labelled 'weighted'. A rule whose path_regex matches the relay path under "
+            "test must be installed first, otherwise the affinity path silently reports 0 samples. "
+            "The first request of an affinity chain is also legitimately 'weighted' because the "
+            "affinity entry is only recorded after a success.",
+        },
+        "S12_RETRY": {
+            "target": None,
+            "tol_pp": None,
+            "ci_bounds": None,
+            "subject": "B",
+            "route_count": 2,
+            "injection": {"A": "ok", "B": "first_fail_then_ok"},
+            "min_samples": 600,
+            "retry_times": 1,
+            "description": "S12 retry attribution: B fails its first attempt and succeeds on retry. "
+            "The question is whether the absorbed failure still reaches EWMA quality AND takes a "
+            "share-window slot. Neither => a persistently failing route can never be de-weighted, "
+            "PRODUCT_FAIL. Both => correct. Exactly one => partial product risk, reported as such "
+            "and never silently passed. Requires gateway RetryTimes >= 1.",
+        },
+        "S13_CASCADE": {
+            "target": 0.50,
+            "tol_pp": 0.03,
+            "ci_bounds": None,
+            "subject": "B",
+            "route_count": 2,
+            "injection": {"A": "ok", "B": "ok"},
+            "share_window_size": 200,
+            "retry_times": 1,
+            "upstream_failure_threshold": 1,
+            "corr_min": 0.5,
+            "corr_max": 2.0,
+            "recovery_tolerance_pp": 0.03,
+            "recovery_deadline_s": 300,
+            "sample_interval_s": 10,
+            "description": "S13 degradation and recovery: phases steady -> fault -> recover, B "
+            "flipped at runtime by hook. Judgement: share_correction must stay inside "
+            "[0.5, 2.0] in EVERY phase, and B's share must return within +/-3pp after recovery. "
+            "Out-of-clamp corr or non-recovery is PRODUCT_FAIL. Note: isolation is per-route with "
+            "no cross-route cascade, and calm/dormant routes stay selectable at reduced weight, so "
+            "this measures weight degradation and recovery, NOT an emptied candidate pool. A 503 "
+            "mock is FailureSourceUpstream, so UpstreamFailureThreshold is the governing knob.",
         },
      }

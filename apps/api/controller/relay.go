@@ -288,7 +288,8 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			}
 			if handle != nil {
 				clientReqID := c.GetHeader("X-Request-Id")
-				routestats.RecordAttempt(requestId, relayInfo.RetryIndex, handle.Key(), routestats.AuditOutcomeSuccess, clientReqID)
+				routePath := common.GetContextKeyString(c, constant.ContextKeyRoutePath)
+				routestats.RecordAttempt(requestId, relayInfo.RetryIndex, handle.Key(), routestats.AuditOutcomeSuccess, clientReqID, routePath)
 			}
 			relayInfo.LastError = nil
 			return
@@ -334,7 +335,8 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		if handle != nil {
 			clientReqID := c.GetHeader("X-Request-Id")
-			routestats.RecordAttempt(requestId, relayInfo.RetryIndex, handle.Key(), routestats.AuditOutcomeFromRouteStats(int(classifyRouteStatsOutcome(newAPIError))), clientReqID)
+			routePath := common.GetContextKeyString(c, constant.ContextKeyRoutePath)
+			routestats.RecordAttempt(requestId, relayInfo.RetryIndex, handle.Key(), routestats.AuditOutcomeFromRouteStats(int(classifyRouteStatsOutcome(newAPIError))), clientReqID, routePath)
 		}
 
 		if !retryEligible {

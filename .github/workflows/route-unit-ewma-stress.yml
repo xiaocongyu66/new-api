@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       scenario:
-        description: 'Test scenario (smoke, S1-S9, or all)'
+        description: 'Test scenario (smoke, S1-S13, or all)'
         required: true
         type: choice
         default: smoke
-        options: [smoke, S1, S2, S3, S4, S5, S6, S7, S8, S9, all]
+        options: [smoke, S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, S11, S12, S13, all]
       target_url:
         description: 'Gateway /v1 URL (NodePort, Ingress, or port-forward)'
         required: true
@@ -85,6 +85,26 @@ on:
         required: false
         type: string
         default: ''
+      replica:
+        description: 'S10 replica count; global share is re-aggregated from raw attempts, never averaged per pod'
+        required: false
+        type: string
+        default: ''
+      specific_channel_id:
+        description: 'S11 channel id used for the specific-channel path and administrative probes'
+        required: false
+        type: string
+        default: ''
+      fault_hook:
+        description: 'S13 shell command flipping the subject route mock to a failing mode'
+        required: false
+        type: string
+        default: ''
+      recover_hook:
+        description: 'S13 shell command flipping the subject route mock back to ok'
+        required: false
+        type: string
+        default: ''
 
 env:
   TARGET_URL: ${{ inputs.target_url }}
@@ -97,6 +117,10 @@ env:
   ROUTE_COUNT: ${{ inputs.route_count }}
   BAD_CHANNEL_ID: ${{ inputs.bad_channel_id }}
   SHARE_WINDOW_SIZE: ${{ inputs.share_window_size }}
+  REPLICA: ${{ inputs.replica }}
+  SPECIFIC_CHANNEL_ID: ${{ inputs.specific_channel_id }}
+  FAULT_HOOK: ${{ inputs.fault_hook }}
+  RECOVER_HOOK: ${{ inputs.recover_hook }}
 
 jobs:
   route-unit-ewma-smoke:
@@ -213,7 +237,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scenario: ${{ fromJson(inputs.scenario == 'all' && '["S1","S2","S3","S4_NORETRY","S4_RETRY5","S4_RETRY10","S5_POOL2","S5_POOL4","S5_POOL8","S6_W50","S6_W200","S6_W1000","S7_W50","S7_W200","S7_W1000","S8_3K","S8_50K","S9_A10_W0","S9_A10_W200","S9_A30_W0","S9_A30_W200","S9_A50_W0","S9_A50_W200","S9_A70_W0","S9_A70_W200"]' || inputs.scenario == 'S4' && '["S4_NORETRY","S4_RETRY5","S4_RETRY10"]' || inputs.scenario == 'S5' && '["S5_POOL2","S5_POOL4","S5_POOL8"]' || inputs.scenario == 'S6' && '["S6_W50","S6_W200","S6_W1000"]' || inputs.scenario == 'S7' && '["S7_W50","S7_W200","S7_W1000"]' || inputs.scenario == 'S8' && '["S8_3K","S8_50K"]' || inputs.scenario == 'S9' && '["S9_A10_W0","S9_A10_W200","S9_A30_W0","S9_A30_W200","S9_A50_W0","S9_A50_W200","S9_A70_W0","S9_A70_W200"]' || format('["{0}"]', inputs.scenario)) }}
+        scenario: ${{ fromJson(inputs.scenario == 'all' && '["S1","S2","S3","S4_NORETRY","S4_RETRY5","S4_RETRY10","S5_POOL2","S5_POOL4","S5_POOL8","S6_W50","S6_W200","S6_W1000","S7_W50","S7_W200","S7_W1000","S8_3K","S8_50K","S9_A10_W0","S9_A10_W200","S9_A30_W0","S9_A30_W200","S9_A50_W0","S9_A50_W200","S9_A70_W0","S9_A70_W200","S10_RACE","S10_GLOBAL","S10_RESTART","S11_FULL","S12_RETRY","S13_CASCADE"]' || inputs.scenario == 'S4' && '["S4_NORETRY","S4_RETRY5","S4_RETRY10"]' || inputs.scenario == 'S5' && '["S5_POOL2","S5_POOL4","S5_POOL8"]' || inputs.scenario == 'S6' && '["S6_W50","S6_W200","S6_W1000"]' || inputs.scenario == 'S7' && '["S7_W50","S7_W200","S7_W1000"]' || inputs.scenario == 'S8' && '["S8_3K","S8_50K"]' || inputs.scenario == 'S9' && '["S9_A10_W0","S9_A10_W200","S9_A30_W0","S9_A30_W200","S9_A50_W0","S9_A50_W200","S9_A70_W0","S9_A70_W200"]' || inputs.scenario == 'S10' && '["S10_RACE","S10_GLOBAL","S10_RESTART"]' || inputs.scenario == 'S11' && '["S11_FULL"]' || inputs.scenario == 'S12' && '["S12_RETRY"]' || inputs.scenario == 'S13' && '["S13_CASCADE"]' || format('["{0}"]', inputs.scenario)) }}
     env:
       SCENARIO: ${{ matrix.scenario }}
     steps:
@@ -287,6 +311,23 @@ jobs:
               INSTANCES=3
               MODES=("ok" "ok" "ok")
               ;;
+            S10_*)
+              INSTANCES=2
+              MODES=("ok" "ok")
+              ;;
+            S11_FULL)
+              INSTANCES=4
+              MODES=("ok" "ok" "ok" "ok")
+              ;;
+            S12_RETRY)
+              INSTANCES=2
+              MODES=("ok" "first_fail_then_ok")
+              ;;
+            S13_CASCADE)
+              INSTANCES=2
+              MODES=("ok" "ok")
+              ;;
+            *)
               INSTANCES=1
               MODES=("ok")
               ;;
@@ -382,6 +423,15 @@ jobs:
             }} \
             ${{
               env.SHARE_WINDOW_SIZE != '' && format('--share-window-size {0}', env.SHARE_WINDOW_SIZE) || ''
+            }} \
+            ${{
+              env.REPLICA != '' && format('--replica {0}', env.REPLICA) || ''
+            }} \
+            ${{
+              env.SPECIFIC_CHANNEL_ID != '' && format('--specific-channel-id {0}', env.SPECIFIC_CHANNEL_ID) || ''
+            }} \
+            ${{
+              startsWith(matrix.scenario, 'S13') && format('--fault-hook {0} --recover-hook {1}', env.FAULT_HOOK, env.RECOVER_HOOK) || ''
             }} \
             --out-dir runtime/${{ matrix.scenario }}-${{ github.run_id }}
         continue-on-error: true
@@ -595,6 +645,110 @@ jobs:
                   lines.append(f"| A share | {s9.get('A_share', 0):.4f} |")
                   lines.append(f"| A CI | [{s9.get('A_ci_low', 0):.4f}, {s9.get('A_ci_high', 0):.4f}] |")
                   lines.append(f"| A selections | {s9.get('A_selections', 0)} |")
+                  lines.append("")
+
+          # --- S10: global share re-aggregation + kill switch ---
+          if scenario.startswith("S10"):
+              gs = s.get("global_share", {})
+              if gs:
+                  lines.append("### S10 Global Share (re-aggregated from raw attempts)")
+                  lines.append("")
+                  lines.append("| Metric | Value |")
+                  lines.append("|--------|-------|")
+                  lines.append(f"| global share | {gs.get('global_share', 0):.4f} |")
+                  lines.append(f"| global selections | {gs.get('global_selections', 0)} |")
+                  lines.append(f"| global attempts | {gs.get('global_total', 0)} |")
+                  lines.append(f"| pods seen | {gs.get('pods_seen', [])} |")
+                  lines.append("")
+                  per_pod = gs.get("per_pod", {})
+                  if per_pod:
+                      lines.append("| Pod | Selections | Attempts | Pod share (reporting only) |")
+                      lines.append("|-----|-----------|----------|----------------------------|")
+                      for pod, b in sorted(per_pod.items()):
+                          lines.append(f"| {pod} | {b.get('selections', 0)} | {b.get('total', 0)} | {b.get('share', 0):.4f} |")
+                      lines.append("")
+                      lines.append("> Per-pod shares are reporting only. The verdict uses the pooled global share; averaging pod percentages is forbidden by #418.")
+                      lines.append("")
+              ks = s.get("kill_switch_evaluation", {})
+              if ks:
+                  lines.append("#### Kill Switch")
+                  lines.append("")
+                  lines.append("| Check | Result |")
+                  lines.append("|-------|--------|")
+                  lines.append(f"| option persisted false | {ks.get('option_persisted')} |")
+                  lines.append(f"| corrections neutral (1.0) | {ks.get('corrections_neutral')} |")
+                  lines.append(f"| window stopped allocating | {ks.get('window_stopped')} |")
+                  lines.append(f"| restart observed | {ks.get('restarted')} |")
+                  lines.append("")
+                  for r in ks.get("reasons", []):
+                      lines.append(f"- {r}")
+                  lines.append("")
+
+          # --- S11: path audit ---
+          if scenario.startswith("S11"):
+              pa = s.get("path_audit", {})
+              if pa:
+                  lines.append("### S11 Path Audit")
+                  lines.append("")
+                  lines.append("| Check | Result |")
+                  lines.append("|-------|--------|")
+                  lines.append(f"| verdict | {'OK' if pa.get('ok') else 'FAIL'} |")
+                  lines.append(f"| attempts per path | {pa.get('per_path_counts', {})} |")
+                  lines.append(f"| unlabelled attempts | {pa.get('unlabelled', 0)} |")
+                  lines.append(f"| incomplete quadruples | {len(pa.get('incomplete_quadruples', []))} |")
+                  lines.append(f"| probe isolated (opportunity_count=0) | {pa.get('probe_isolated')} |")
+                  lines.append(f"| bypass entered window | {pa.get('bypass_in_window')} |")
+                  lines.append(f"| probes sent | {s.get('s11_probes_sent', 0)} |")
+                  lines.append(f"| window paths | {s.get('s11_window_paths', [])} |")
+                  lines.append("")
+                  for r in pa.get("reasons", []):
+                      lines.append(f"- {r}")
+                  lines.append("")
+
+          # --- S12: retry attribution ---
+          if scenario.startswith("S12"):
+              ra = s.get("retry_attribution", {})
+              if ra:
+                  lines.append("### S12 Retry Attribution")
+                  lines.append("")
+                  lines.append("| Metric | Value |")
+                  lines.append("|--------|-------|")
+                  lines.append(f"| attribution | {ra.get('attribution')} |")
+                  lines.append(f"| failed attempt reached quality | {ra.get('quality_observed')} |")
+                  lines.append(f"| failed attempt reached window | {ra.get('window_observed')} |")
+                  lines.append(f"| EWMA delta | {ra.get('ewma_delta', 0):.4f} |")
+                  lines.append(f"| attempt failure rate | {ra.get('attempt_failure_rate', 0):.4f} |")
+                  lines.append(f"| user failure rate | {ra.get('user_failure_rate', 0):.4f} |")
+                  lines.append(f"| RetryTimes applied | {s.get('retry_times_applied')} |")
+                  lines.append("")
+                  for r in ra.get("reasons", []):
+                      lines.append(f"- {r}")
+                  lines.append("")
+                  lines.append("> 'neither' means a persistently failing route can never be de-weighted (PRODUCT_FAIL).")
+                  lines.append("")
+
+          # --- S13: degradation and recovery ---
+          if scenario.startswith("S13"):
+              re_ = s.get("recovery_evaluation", {})
+              if re_:
+                  lines.append("### S13 Degradation and Recovery")
+                  lines.append("")
+                  lines.append("| Metric | Value |")
+                  lines.append("|--------|-------|")
+                  lines.append(f"| verdict | {'OK' if re_.get('ok') else 'FAIL'} |")
+                  lines.append(f"| corr inside [0.5, 2.0] | {re_.get('corr_in_clamp')} |")
+                  lines.append(f"| corr violations | {len(re_.get('corr_violations', []))} |")
+                  lines.append(f"| degradation observed | {re_.get('degradation_observed')} |")
+                  lines.append(f"| steady share | {re_.get('steady_share')} |")
+                  lines.append(f"| fault share | {re_.get('fault_share')} |")
+                  lines.append(f"| post-recovery share | {re_.get('post_recovery_share')} |")
+                  lines.append(f"| recovered | {re_.get('recovered')} |")
+                  lines.append(f"| recovery seconds | {re_.get('recovery_seconds')} |")
+                  lines.append("")
+                  for r in re_.get("reasons", []):
+                      lines.append(f"- {r}")
+                  lines.append("")
+                  lines.append("> Isolation is per-route with no cross-route cascade, and calm/dormant routes stay selectable at reduced weight: this measures weight degradation and recovery, not an emptied candidate pool.")
                   lines.append("")
 
           # Service quality

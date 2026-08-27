@@ -221,6 +221,82 @@ def fetch_audit(gateway_url: str, token_mgr: AdminTokenManager) -> list[dict[str
     return None
 
 
+def fetch_share_snapshot(gateway_url: str, token_mgr: AdminTokenManager) -> list[dict[str, Any]] | None:
+    """Return the per-pool share window snapshots, or None on failure.
+
+    Same endpoint as fetch_audit; the payload carries both "attempts" and
+    "shares", and S11 needs the window side to prove what did and did not
+    enter the share window.
+    """
+    for _ in range(2):
+        try:
+            r = requests.get(
+                f"{gateway_url.rstrip('/')}/api/route_unit/audit",
+                headers=token_mgr.auth_header(),
+                timeout=30,
+            )
+            if r.status_code == 200:
+                shares = r.json().get("shares")
+                return shares if isinstance(shares, list) else []
+            if token_mgr.maybe_refresh(r.status_code):
+                continue
+            return None
+        except Exception:
+            return None
+    return None
+
+
+def summarise_window_paths(
+    shares: list[dict[str, Any]],
+    attempts: list[dict[str, Any]],
+) -> tuple[list[str], int]:
+    """Map share-window selections back to the paths that produced them.
+
+    Schema verified against pkg/routestats/audit.go SharePoolSnapshot on a live
+    gateway: each pool is {"pool": {...}, "window": [{"selected": {...},
+    "targets": [...]}]}. The key is "window" (NOT "entries"), and "selected" is
+    the route that actually took the slot while "targets" is the candidate set
+    with its entitlements. Only "selected" represents traffic that entered the
+    window, so the path join uses it; counting "targets" would count every
+    candidate of every request.
+
+    The window stores route identities, not path labels, so labels come from
+    joining on the identity quadruple carried by the audit attempts.
+
+    Probe isolation is the asymmetry S11 checks: probes go through
+    SelectedRouteForProbe (recordShare=false), so they never call RecordAttempt
+    AND never take a window slot. A selected identity that matches no audited
+    attempt therefore indicates a probe (or other unaudited traffic) leaking
+    into the window.
+
+    Returns:
+        (path labels seen in the window, window slots with no matching attempt)
+    """
+    labels_by_identity: dict[tuple, set[str]] = {}
+    for a in attempts:
+        identity = (a.get("channel_id"), a.get("key_index"), a.get("upstream_model"))
+        path = (a.get("path") or "").strip()
+        if path:
+            labels_by_identity.setdefault(identity, set()).add(path)
+
+    window_paths: list[str] = []
+    probe_opportunities = 0
+    for pool in shares:
+        for entry in pool.get("window", []) or []:
+            selected = entry.get("selected") or {}
+            identity = (
+                selected.get("channel_id"),
+                selected.get("key_index"),
+                selected.get("upstream_model"),
+            )
+            found = labels_by_identity.get(identity)
+            if found:
+                window_paths.extend(sorted(found))
+            else:
+                probe_opportunities += 1
+    return window_paths, probe_opportunities
+
+
 def read_ndjson(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     if not path.exists():
@@ -975,6 +1051,290 @@ def run_phase_s9(
 
     return stat_rows, stat_ids
 
+
+def run_phase_s11(
+    gateway_url: str,
+    token: str,
+    alias: str,
+    per_path: int,
+    probe_count: int,
+    concurrency: int,
+    specific_channel_id: int | None,
+    token_mgr: AdminTokenManager,
+) -> tuple[list[dict[str, Any]], list[str], dict[str, int], int]:
+    """S11: drive each labelled selection path, plus administrative probes.
+
+    weighted  - plain request, no affinity key, no channel pin
+    affinity  - prompt_cache_key pins the chain to one channel (gpt-* rule)
+    specific  - Authorization "sk-xxx-<channel_id>" pins the channel directly;
+                this is also the code path locked replay uses, so it has no
+                separate label of its own
+    probe     - POST /api/channel/test/<id>, admin JWT, never user traffic
+
+    Returns:
+        stat_rows, stat_ids, path_request_counts, probes_sent
+    """
+    stat_rows: list[dict[str, Any]] = []
+    stat_ids: list[str] = []
+    path_counts: dict[str, int] = {"weighted": 0, "affinity": 0, "specific": 0}
+
+    def send_labelled(path: str, idx: int) -> dict[str, Any]:
+        req_id = f"s11-{path}-{idx}"
+        use_token = token
+        payload: dict[str, Any] = {
+            "model": alias,
+            "messages": [{"role": "user", "content": f"s11 {path} {idx}"}],
+            "max_tokens": 16,
+            "stream": False,
+        }
+        if path == "affinity":
+            # One shared key so every affinity request sticks to the same channel.
+            payload["prompt_cache_key"] = "s11-affinity-pin"
+        elif path == "specific":
+            # The gateway reads the channel id from the key suffix and only
+            # honours it for admin tokens.
+            use_token = f"{token}-{specific_channel_id}"
+        headers = {
+            "Authorization": f"Bearer {use_token}",
+            "Content-Type": "application/json",
+            "X-Request-Id": req_id,
+            "X-Mock-Mode": "ok",
+        }
+        row: dict[str, Any] = {
+            "request_id": req_id,
+            "phase": "stats",
+            "stream": False,
+            "mode": "ok",
+            "status": 0,
+            "latency_ms": None,
+            "ttft_ms": None,
+            "itl_ms": [],
+            "error": None,
+            "start_ts": time.time(),
+            "end_ts": None,
+            "retry_after_sec": None,
+            "intended_path": path,
+        }
+        started = time.perf_counter()
+        try:
+            r = requests.post(
+                f"{gateway_url.rstrip('/')}/v1/chat/completions",
+                headers=headers, json=payload, timeout=60.0,
+            )
+            row["status"] = r.status_code
+            r.content
+            if r.status_code != 200:
+                row["error"] = r.text[:200]
+        except Exception as exc:
+            row["error"] = str(exc)[:200]
+        finally:
+            row["latency_ms"] = (time.perf_counter() - started) * 1000.0
+            row["end_ts"] = time.time()
+        return row
+
+    jobs: list[tuple[str, int]] = []
+    for path in ("weighted", "affinity", "specific"):
+        if path == "specific" and specific_channel_id is None:
+            continue
+        for i in range(per_path):
+            jobs.append((path, i))
+
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        futures = [pool.submit(send_labelled, p, i) for p, i in jobs]
+        for fut in as_completed(futures):
+            row = fut.result()
+            stat_rows.append(row)
+            stat_ids.append(row["request_id"])
+            path_counts[row["intended_path"]] = path_counts.get(row["intended_path"], 0) + 1
+
+    # Probes are administrative: they must produce EWMA signal but never enter
+    # the share window. Fired serially; 20 of them is not a load concern.
+    probes_sent = 0
+    if probe_count > 0 and specific_channel_id is not None:
+        for _ in range(probe_count):
+            try:
+                pr = requests.get(
+                    f"{gateway_url.rstrip('/')}/api/channel/test/{specific_channel_id}",
+                    headers=token_mgr.auth_header(),
+                    params={"model": alias},
+                    timeout=60,
+                )
+                if pr.status_code in (200, 400, 500):
+                    probes_sent += 1
+                elif token_mgr.maybe_refresh(pr.status_code):
+                    continue
+            except Exception:
+                pass
+
+    return stat_rows, stat_ids, path_counts, probes_sent
+
+
+def run_phase_s12(
+    gateway_url: str,
+    token: str,
+    alias: str,
+    mode: str,
+    count: int,
+    concurrency: int,
+    phase: str,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """S12: fixed-count non-streaming traffic; B fails once then succeeds on retry.
+
+    Attempt counts are NOT derivable client-side (the gateway retries internally
+    and returns one response), so no attempt_count field is invented here. The
+    attempt-level view comes from the audit ring.
+    """
+    return run_phase(gateway_url, token, alias, mode, count, concurrency, 0.0, phase)
+
+
+def run_phase_s13(
+    gateway_url: str,
+    token: str,
+    alias: str,
+    mode: str,
+    concurrency: int,
+    token_mgr: AdminTokenManager,
+    routes: list[RouteInfo],
+    subject_label: str,
+    steady_s: int,
+    fault_s: int,
+    recovery_deadline_s: int,
+    sample_interval_s: int,
+    fault_hook: str | None,
+    recover_hook: str | None,
+    target: float,
+    tolerance: float,
+) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]], dict[str, Any]]:
+    """S13: steady -> fault -> recover on one traffic loop, sampling share and corr.
+
+    Returns:
+        stat_rows, stat_ids, samples, hook_results
+    """
+    import subprocess
+
+    stat_rows: list[dict[str, Any]] = []
+    stat_ids: list[str] = []
+    samples: list[dict[str, Any]] = []
+    hook_results: dict[str, Any] = {}
+    next_req_id = 0
+    identity_map = {r.identity(): r.label for r in routes}
+
+    def run_hook(name: str, cmd: str | None) -> None:
+        if not cmd:
+            hook_results[name] = {"skipped": True}
+            return
+        started = time.time()
+        try:
+            proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
+            hook_results[name] = {
+                "cmd": cmd,
+                "exit_code": proc.returncode,
+                "duration_sec": time.time() - started,
+                "stdout": (proc.stdout or "")[-500:],
+                "stderr": (proc.stderr or "")[-500:],
+            }
+        except subprocess.TimeoutExpired:
+            hook_results[name] = {"cmd": cmd, "exit_code": -1, "duration_sec": time.time() - started, "stderr": "timeout after 30s"}
+        except Exception as exc:
+            hook_results[name] = {"cmd": cmd, "exit_code": -1, "duration_sec": time.time() - started, "stderr": str(exc)}
+        print(f"      S13: {name} hook -> {hook_results[name].get('exit_code')}")
+
+    def take_sample(phase_name: str) -> dict[str, Any] | None:
+        items = fetch_topology(gateway_url, token_mgr, alias)
+        if items is None:
+            return None
+        corr: dict[str, float] = {}
+        b_share = None
+        for item in items:
+            label = identity_map.get(
+                (item.get("channel_id"), item.get("key_index"), item.get("upstream_model"))
+            )
+            if not label:
+                continue
+            corr[label] = float(item.get("share_correction", 0.0) or 0.0)
+            if label == subject_label:
+                # actual_share is the gateway's own windowed share; preferred over
+                # a client-side recount because it is what the correction reacts to.
+                if item.get("actual_share") is not None:
+                    b_share = float(item["actual_share"])
+        return {
+            "ts": time.time(),
+            "phase": phase_name,
+            "b_share": b_share,
+            "corr": corr,
+            "samples": len(stat_rows),
+        }
+
+    print(f"      S13: steady {steady_s}s -> fault {fault_s}s -> recover (deadline {recovery_deadline_s}s)")
+    phase_started = time.time()
+    current_phase = "steady"
+    phase_deadline = phase_started + steady_s
+    recover_started = None
+    last_sample = 0.0
+    recovered = False
+
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        futures: set = set()
+        while True:
+            now = time.time()
+
+            if now >= phase_deadline:
+                if current_phase == "steady":
+                    run_hook("fault", fault_hook)
+                    current_phase = "fault"
+                    phase_deadline = now + fault_s
+                elif current_phase == "fault":
+                    run_hook("recover", recover_hook)
+                    current_phase = "recover"
+                    recover_started = now
+                    phase_deadline = now + recovery_deadline_s
+                elif current_phase == "recover":
+                    break
+
+            # Recovery ends early once the subject is back inside tolerance.
+            if current_phase == "recover" and recovered:
+                break
+
+            while len(futures) < concurrency:
+                req_id = f"s13-{next_req_id}"
+                next_req_id += 1
+                futures.add(pool.submit(send_request, gateway_url, token, alias, req_id, mode, False, "stats"))
+
+            done = {f for f in futures if f.done()}
+            for f in done:
+                row = f.result()
+                stat_rows.append(row)
+                stat_ids.append(row.get("request_id", ""))
+                futures.discard(f)
+
+            if now - last_sample >= sample_interval_s:
+                s = take_sample(current_phase)
+                if s:
+                    samples.append(s)
+                    if current_phase == "recover" and s["b_share"] is not None:
+                        if abs(s["b_share"] - target) <= tolerance:
+                            recovered = True
+                            print(f"      S13: recovered at {now - (recover_started or now):.1f}s into recover phase")
+                last_sample = now
+
+            if futures and not done:
+                time.sleep(0.05)
+
+        for f in list(futures):
+            try:
+                row = f.result(timeout=60)
+                stat_rows.append(row)
+                stat_ids.append(row.get("request_id", ""))
+            except Exception:
+                pass
+
+    final = take_sample(current_phase)
+    if final:
+        samples.append(final)
+
+    return stat_rows, stat_ids, samples, hook_results
+
+
 def main() -> int:
     scenario_choices = sorted(lib_stats.scenario_targets().keys())
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1000,6 +1360,16 @@ def main() -> int:
     p.add_argument("--bad-channel-id", type=int, help="Channel ID of the BAD route (S5 scenarios)")
     p.add_argument("--route-mode", action="append", default=[], help="Per-route mock mode intent: LABEL=mode or CHANNEL_ID=mode (repeatable). Recorded in summary and validated against mock /healthz force_mode.")
     p.add_argument("--allow-affinity", action="store_true", help="Allow running with channel affinity enabled (advisory only)")
+    p.add_argument("--replica", type=int, default=None, help="S10: replica count; global share is re-aggregated from raw attempts, never averaged per pod")
+    p.add_argument("--kill-switch", action="store_true", help="S10_RESTART: write RouteStatsEnabled=false, expect a restart, then verify corrections are neutral")
+    p.add_argument("--restart-hook", default=None, help="S10_RESTART: shell command that restarts the gateway between the before/after request batches")
+    p.add_argument("--retry-times", type=int, default=None, help="S12/S13: gateway RetryTimes to apply for the run (restored afterwards)")
+    p.add_argument("--specific-channel-id", type=int, default=None, help="S11: channel id used for the specific-channel path and administrative probes")
+    p.add_argument("--fault-hook", default=None, help="S13: shell command flipping the subject route's mock to a failing mode")
+    p.add_argument("--recover-hook", default=None, help="S13: shell command flipping the subject route's mock back to ok")
+    p.add_argument("--steady-seconds", type=int, default=60, help="S13: steady phase duration")
+    p.add_argument("--fault-seconds", type=int, default=120, help="S13: fault phase duration")
+    p.add_argument("--recovery-deadline-seconds", type=int, default=None, help="S13: max seconds to wait for recovery (default from scenario)")
     args = p.parse_args()
 
     token_mgr = AdminTokenManager(
@@ -1016,7 +1386,15 @@ def main() -> int:
     is_s7 = args.scenario.startswith("S7")
     is_s8 = args.scenario.startswith("S8")
     is_s9 = args.scenario.startswith("S9")
-    is_duration_based = is_s6 or is_s7 or is_s8
+    # S10_* / S11_* / S12_* / S13_* use distinct prefixes; the only exact-name
+    # comparison in this function is `args.scenario == "S1"`, so there is no
+    # S1 vs S10 collision.
+    is_s10 = args.scenario.startswith("S10")
+    is_s11 = args.scenario.startswith("S11")
+    is_s12 = args.scenario.startswith("S12")
+    is_s13 = args.scenario.startswith("S13")
+    # S13 runs by phase duration (steady/fault/recover), not a fixed request count.
+    is_duration_based = is_s6 or is_s7 or is_s8 or is_s13
 
     # Duration-based scenarios (S6/S7/S8) share setup
     if is_duration_based:
@@ -1094,7 +1472,9 @@ def main() -> int:
         print(f"      WARNING: S6 duration {duration}s < 180s minimum per #418; run may be inconclusive")
     # Duration-based scenarios (S6/S7/S8) don't require --requests
     # S9 requires --requests (like S1-S5)
-    if not is_duration_based and args.requests is None:
+    # S11 derives its request count from min_per_path × the labelled paths, so it
+    # needs no --requests either.
+    if not is_duration_based and not is_s11 and args.requests is None:
         return fail("--requests is required for non-duration scenarios")
 
     print(f"[1/8] Preflight: {args.gateway_url}")
@@ -1291,12 +1671,11 @@ def main() -> int:
     )
     write_ndjson(out / "warmup.ndjson", warmup_rows)
     print(f"      Done, {sum(1 for r in warmup_rows if r['status'] == 200)}/{len(warmup_rows)} succeeded")
-    # S6: switch share window size before stat phase
     original_share_window_size = None
     share_window_applied = False
     share_window_restored = False
-    # S6/S7/S9: switch share window size before stat phase
-    needs_window_switch = is_s6 or is_s7 or is_s9
+    # S6/S7/S9/S13: switch share window size before stat phase
+    needs_window_switch = is_s6 or is_s7 or is_s9 or is_s13
     if needs_window_switch:
         # Get original value
         original_share_window_size = get_option(args.gateway_url, token_mgr, "RouteStatsShareWindowSize")
@@ -1309,6 +1688,50 @@ def main() -> int:
             return fail(f"RouteStatsShareWindowSize did not propagate to {share_window_size} within 30s")
         share_window_applied = True
         print(f"      RouteStatsShareWindowSize set to {share_window_size} and confirmed")
+
+    # S12/S13: health transitions and retry chains only exist when RetryTimes >= 1.
+    original_retry_times = None
+    retry_times_applied = None
+    original_upstream_threshold = None
+    upstream_threshold_applied = None
+    if is_s12 or is_s13:
+        want_retry = args.retry_times if args.retry_times is not None else targets.get("retry_times", 1)
+        if not want_retry or want_retry < 1:
+            return fail(
+                f"{args.scenario} requires RetryTimes >= 1 (got {want_retry}): without a retry the "
+                "scenario cannot observe a retry chain or a health transition"
+            )
+        original_retry_times = get_option(args.gateway_url, token_mgr, "RetryTimes")
+        print(f"      Original RetryTimes: {original_retry_times}")
+        if not set_option(args.gateway_url, token_mgr, "RetryTimes", str(want_retry)):
+            return fail(f"Failed to set RetryTimes={want_retry}")
+        if not wait_option_value(args.gateway_url, token_mgr, "RetryTimes", str(want_retry), timeout_s=30.0):
+            return fail(f"RetryTimes did not propagate to {want_retry} within 30s")
+        retry_times_applied = want_retry
+        print(f"      RetryTimes set to {want_retry} and confirmed")
+
+    if is_s13:
+        # A mock 503 is FailureSourceUpstream, so UpstreamFailureThreshold is the
+        # knob that escalates the route; LocalFailureThreshold would never fire.
+        want_threshold = targets.get("upstream_failure_threshold")
+        if want_threshold is not None:
+            original_upstream_threshold = get_option(args.gateway_url, token_mgr, "UpstreamFailureThreshold")
+            if not set_option(args.gateway_url, token_mgr, "UpstreamFailureThreshold", str(want_threshold)):
+                return fail(f"Failed to set UpstreamFailureThreshold={want_threshold}")
+            upstream_threshold_applied = want_threshold
+            print(f"      UpstreamFailureThreshold set to {want_threshold} (was {original_upstream_threshold})")
+        if not args.fault_hook or not args.recover_hook:
+            return fail(
+                "S13 needs --fault-hook and --recover-hook to flip the subject route's mock mode "
+                "at runtime; without them no degradation can be injected"
+            )
+
+    # Scenario-local collectors: bound up front so a verdict branch can never hit
+    # an unbound name when its phase did not run.
+    s11_path_counts: dict[str, int] = {}
+    s11_probes = 0
+    s13_samples: list[dict[str, Any]] = []
+    s13_hooks: dict[str, Any] = {}
     try:
         print("[5/8] Resource sampling + stats phase")
         sampler = lib_resources.ResourceSampler(interval=1.0, out_path=out / "resources.ndjson")
@@ -1393,6 +1816,68 @@ def main() -> int:
             step_at_ts = None
             step_hook_result = None
             window_metrics = None
+        elif is_s11:
+            per_path = targets.get("min_per_path", 100)
+            probe_count = targets.get("min_probe", 20)
+            stat_rows, stat_ids, s11_path_counts, s11_probes = run_phase_s11(
+                args.gateway_url,
+                args.token,
+                args.alias,
+                per_path,
+                probe_count,
+                args.concurrency,
+                args.specific_channel_id,
+                token_mgr,
+            )
+            elapsed = time.time() - phase_started
+            phase_marks = {"warmup_end": warmup_end_ts}
+            step_at_ts = None
+            step_hook_result = None
+            window_metrics = None
+        elif is_s12:
+            stat_rows, stat_ids = run_phase_s12(
+                args.gateway_url,
+                args.token,
+                args.alias,
+                mode,
+                args.requests,
+                args.concurrency,
+                "stats",
+            )
+            elapsed = time.time() - phase_started
+            phase_marks = {"warmup_end": warmup_end_ts}
+            step_at_ts = None
+            step_hook_result = None
+            window_metrics = None
+        elif is_s13:
+            recovery_deadline = (
+                args.recovery_deadline_seconds
+                if args.recovery_deadline_seconds is not None
+                else targets.get("recovery_deadline_s", 300)
+            )
+            stat_rows, stat_ids, s13_samples, s13_hooks = run_phase_s13(
+                args.gateway_url,
+                args.token,
+                args.alias,
+                mode,
+                args.concurrency,
+                token_mgr,
+                routes,
+                targets["subject"],
+                args.steady_seconds,
+                args.fault_seconds,
+                recovery_deadline,
+                targets.get("sample_interval_s", 10),
+                args.fault_hook,
+                args.recover_hook,
+                targets.get("target", 0.5),
+                targets.get("recovery_tolerance_pp", 0.03),
+            )
+            elapsed = time.time() - phase_started
+            phase_marks = {"warmup_end": warmup_end_ts}
+            step_at_ts = None
+            step_hook_result = s13_hooks
+            window_metrics = None
         else:
             stat_rows, stat_ids = run_phase(
                 args.gateway_url, args.token, args.alias, mode, args.requests, args.concurrency, stream_ratio, "stats"
@@ -1424,6 +1909,21 @@ def main() -> int:
         summary["share_window_size_restored"] = share_window_restored
         summary["share_window_size_original"] = original_share_window_size
         summary["share_window_size_target"] = share_window_size if needs_window_switch else None
+        # S12/S13: restore RetryTimes and UpstreamFailureThreshold
+        if original_retry_times is not None:
+            if set_option(args.gateway_url, token_mgr, "RetryTimes", original_retry_times):
+                print(f"      RetryTimes restored to {original_retry_times}")
+            else:
+                print(f"      WARNING: Failed to restore RetryTimes to {original_retry_times}")
+        if original_upstream_threshold is not None:
+            if set_option(args.gateway_url, token_mgr, "UpstreamFailureThreshold", original_upstream_threshold):
+                print(f"      UpstreamFailureThreshold restored to {original_upstream_threshold}")
+            else:
+                print(f"      WARNING: Failed to restore UpstreamFailureThreshold to {original_upstream_threshold}")
+        summary["retry_times_applied"] = retry_times_applied
+        summary["retry_times_original"] = original_retry_times
+        summary["upstream_failure_threshold_applied"] = upstream_threshold_applied
+        summary["upstream_failure_threshold_original"] = original_upstream_threshold
     print(f"      Done in {elapsed:.1f}s, {stats_succeeded}/{len(stat_rows)} succeeded")
 
     # S4: collect throttle stats (429 count, Retry-After distribution)
@@ -1478,6 +1978,21 @@ def main() -> int:
             "ring capacity or lower --requests."
         )
 
+    # Cross-side reconciliation needs the upstream to echo a correlation id, but
+    # the gateway does not forward X-Request-Id upstream (verified: the header
+    # appears only in controller/relay.go's audit calls, never in the outbound
+    # request). When every mock row carries an empty request_id the join is
+    # structurally impossible, so record that as an environment limitation rather
+    # than letting it masquerade as a data-integrity failure.
+    upstream_ids = {str(r.get("request_id") or "") for r in upstream_rows}
+    if upstream_rows and upstream_ids == {""}:
+        summary["upstream_correlation_unavailable"] = (
+            f"all {len(upstream_rows)} upstream rows carry an empty request_id: this gateway does "
+            "not forward X-Request-Id upstream, so gateway-to-mock reconciliation cannot match. "
+            "Audit-side identity checks remain valid; cross-side matching needs an upstream that "
+            "echoes a correlation id (or a gateway change to forward one)."
+        )
+
     print("[7/8] Reconciling")
     # S6: skip reconcile expected_requests check (duration-based, not count-based)
     rec = lib_reconcile.reconcile(
@@ -1498,8 +2013,12 @@ def main() -> int:
 
     share_rows: list[dict[str, Any]] = []
     share_eval: dict[str, dict[str, Any]] = {}
-    # S6: subject is "STABLE" in scenario config, maps to route label "A"
-    subject_route_label = "A" if is_s6 else targets["subject"]
+    # Some scenarios name an aggregate subject rather than a route: S6 "STABLE",
+    # S7 "CORR", S8 "MEMORY", S10_RESTART "KILLSWITCH", S11 "PATHS". Those judge a
+    # whole-pool property, so the per-route subject falls back to "A" and the real
+    # verdict comes from the scenario's own evaluator.
+    AGGREGATE_SUBJECTS = {"STABLE", "CORR", "MEMORY", "KILLSWITCH", "PATHS"}
+    subject_route_label = "A" if targets["subject"] in AGGREGATE_SUBJECTS else targets["subject"]
     for r in routes:
         snap = after_by_identity.get(r.identity(), r)
         selections = per_route.get(r.identity(), 0)
@@ -1525,7 +2044,10 @@ def main() -> int:
             "sample_count": snap.sample_count,
         }
         share_rows.append(row)
-        if is_subject and not is_s6:
+        # Only point-estimate scenarios have a numeric target; process/aggregate
+        # scenarios (S6/S7/S8/S10_RESTART/S11) carry target=None and are judged by
+        # their own evaluator, so calling evaluate_share here would compare to None.
+        if is_subject and targets.get("target") is not None and targets.get("tol_pp") is not None:
             share_eval[r.label] = lib_stats.evaluate_share(
                 stats["point"],
                 (stats["ci_low"], stats["ci_high"]),
@@ -1692,6 +2214,130 @@ def main() -> int:
             verdict, code = "PRODUCT_FAIL", 1
         else:
             verdict, code = "PASS", 0
+    elif is_s10:
+        # S10: global share must be re-aggregated from raw attempts. Averaging
+        # per-pod percentages is what #418 forbids and this branch avoids.
+        subject_route = next((r for r in routes if r.label == targets["subject"]), None)
+        agg = lib_stats.aggregate_global_share(
+            attempts, subject_route.identity() if subject_route else (None, None, None)
+        )
+        summary["global_share"] = agg
+        print(f"      S10 global: share={agg['global_share']:.4f} "
+              f"({agg['global_selections']}/{agg['global_total']}) pods={agg['pods_seen']}")
+
+        if args.kill_switch or args.scenario == "S10_RESTART":
+            ks = lib_stats.evaluate_kill_switch(
+                summary.get("kill_switch_before", {}),
+                summary.get("kill_switch_after", {}),
+                targets,
+            )
+            summary["kill_switch_evaluation"] = ks
+            print(f"      S10 kill switch: {ks['reasons'] or 'ok'}")
+            if rec.verdict != "PASS":
+                verdict, code = "DATA_INVALID", 1
+            elif any("DATA_INVALID" in r for r in ks["reasons"]):
+                verdict, code = "DATA_INVALID", 1
+            elif not ks["ok"]:
+                verdict, code = "PRODUCT_FAIL", 1
+            else:
+                verdict, code = "PASS", 0
+        else:
+            # Race / global-share sub-runs judge the re-aggregated global number.
+            target_share = targets.get("target")
+            tol = targets.get("tol_pp", 0.03)
+            within = target_share is None or abs(agg["global_share"] - target_share) <= tol
+            if rec.verdict != "PASS":
+                verdict, code = "DATA_INVALID", 1
+            elif agg["global_total"] < targets.get("min_samples", 0):
+                verdict, code = "DATA_INVALID", 1
+                summary["sample_size_warning"] = (
+                    f"global attempts {agg['global_total']} below required "
+                    f"{targets.get('min_samples')}"
+                )
+            elif not within:
+                verdict, code = "PRODUCT_FAIL", 1
+            else:
+                verdict, code = "PASS", 0
+    elif is_s11:
+        # S11: path labels, probe isolation, bypass-in-window.
+        window_paths: list[str] = []
+        probe_opportunities = 0
+        shares_snapshot = fetch_share_snapshot(args.gateway_url, token_mgr)
+        if shares_snapshot is not None:
+            window_paths, probe_opportunities = summarise_window_paths(shares_snapshot, attempts)
+        path_result = lib_stats.evaluate_path_audit(
+            attempts, probe_opportunities, window_paths, targets
+        )
+        summary["path_audit"] = path_result
+        summary["s11_path_requests"] = s11_path_counts
+        summary["s11_probes_sent"] = s11_probes
+        summary["s11_window_paths"] = sorted(set(window_paths))
+        print(f"      S11 paths: attempts={path_result['per_path_counts']} "
+              f"probes_sent={s11_probes} probe_opportunities={probe_opportunities} "
+              f"window_paths={sorted(set(window_paths))}")
+        if rec.verdict != "PASS":
+            verdict, code = "DATA_INVALID", 1
+        elif any("DATA_INVALID" in r for r in path_result["reasons"]):
+            verdict, code = "DATA_INVALID", 1
+        elif not path_result["ok"]:
+            verdict, code = "PRODUCT_FAIL", 1
+        else:
+            verdict, code = "PASS", 0
+    elif is_s12:
+        # S12: did the retry-absorbed failure reach quality AND the window?
+        subject_label_s12 = targets["subject"]
+        subject_route = next((r for r in routes if r.label == subject_label_s12), None)
+        subject_after = next((r for r in routes_after if r.label == subject_label_s12), None)
+        subject_identity = subject_route.identity() if subject_route else (None, None, None)
+
+        b_attempts = [
+            a for a in attempts
+            if (a.get("channel_id"), a.get("key_index"), a.get("upstream_model")) == subject_identity
+        ]
+        # outcome 0 == success; anything else is a failed attempt against B.
+        b_attempt_failures = sum(1 for a in b_attempts if a.get("outcome") not in (0, None))
+        b_user_failures = sum(1 for r in stat_rows if r.get("status") not in (200, None))
+
+        attempt_stats = {
+            "b_attempt_failures": b_attempt_failures,
+            "b_user_failures": b_user_failures,
+            "b_ewma_before": subject_route.ewma_quality if subject_route else 0.0,
+            "b_ewma_after": subject_after.ewma_quality if subject_after else 0.0,
+            "b_window_selections": subject_after.sample_count if subject_after else 0,
+            "b_total_attempts": len(b_attempts),
+        }
+        retry_result = lib_stats.evaluate_retry_attribution(attempt_stats, targets)
+        summary["retry_attribution"] = retry_result
+        summary["retry_attempt_stats"] = attempt_stats
+        print(f"      S12 attribution={retry_result['attribution']} "
+              f"quality={retry_result['quality_observed']} window={retry_result['window_observed']} "
+              f"ewma_delta={retry_result['ewma_delta']:.4f} failures={b_attempt_failures}")
+        if rec.verdict != "PASS":
+            verdict, code = "DATA_INVALID", 1
+        elif any("DATA_INVALID" in r for r in retry_result["reasons"]):
+            verdict, code = "DATA_INVALID", 1
+        elif not retry_result["ok"]:
+            verdict, code = "PRODUCT_FAIL", 1
+        else:
+            verdict, code = "PASS", 0
+    elif is_s13:
+        # S13: corr stayed clamped through degradation, and share recovered.
+        recovery_result = lib_stats.evaluate_recovery(s13_samples, targets)
+        summary["recovery_evaluation"] = recovery_result
+        summary["s13_samples"] = s13_samples
+        summary["s13_hooks"] = s13_hooks
+        print(f"      S13 recovery: recovered={recovery_result['recovered']} "
+              f"seconds={recovery_result['recovery_seconds']} "
+              f"corr_in_clamp={recovery_result['corr_in_clamp']} "
+              f"steady={recovery_result['steady_share']} fault={recovery_result['fault_share']}")
+        if rec.verdict != "PASS":
+            verdict, code = "DATA_INVALID", 1
+        elif any("DATA_INVALID" in r for r in recovery_result["reasons"]):
+            verdict, code = "DATA_INVALID", 1
+        elif not recovery_result["ok"]:
+            verdict, code = "PRODUCT_FAIL", 1
+        else:
+            verdict, code = "PASS", 0
     else:
         # S1-S5 existing verdict logic
         if rec.verdict != "PASS" or effective < args.requests:
@@ -1727,6 +2373,17 @@ def main() -> int:
         print(f"      S8 memory: {summary.get('memory_evaluation', {})}")
     elif is_s9:
         print(f"      S9 result: {summary.get('s9_result', {})}")
+    elif is_s10:
+        print(f"      S10 global share: {summary.get('global_share', {})}")
+        if summary.get("kill_switch_evaluation"):
+            print(f"      S10 kill switch: {summary.get('kill_switch_evaluation')}")
+    elif is_s11:
+        print(f"      S11 path audit: {summary.get('path_audit', {})}")
+    elif is_s12:
+        print(f"      S12 retry attribution: {summary.get('retry_attribution', {})}")
+    elif is_s13:
+        print(f"      S13 recovery: {summary.get('recovery_evaluation', {})}")
+        print(f"      S13 hooks: {summary.get('s13_hooks', {})}")
     elif subject_row:
         print(
             f"      Subject {targets['subject']}: share={subject_row['observed_share']:.4f} "
