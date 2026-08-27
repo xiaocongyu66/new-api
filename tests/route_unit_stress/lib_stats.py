@@ -744,25 +744,69 @@ def evaluate_path_audit(
 def evaluate_retry_attribution(attempt_stats: dict[str, Any], targets: dict[str, Any]) -> dict[str, Any]:
     """S12: did a retry-absorbed failure still reach quality and the share window?
 
+    Window evidence is a counting bound, not an alignment. B's slots in the final
+    window snapshot are compared against B's total SUCCESSFUL attempts: since only
+    a selection creates a slot, at most `b_successes` of B's slots can be explained
+    by successful traffic, so
+
+        failed_attempts_in_window >= window_slots - b_successes
+
+    is exact. Any positive value proves at least that many retry-absorbed failures
+    took a window slot. In S12, where B fails every attempt, `b_successes` is 0 and
+    every slot B holds is a failed attempt.
+
+    Positional alignment was tried and rejected: the share window is ordered by
+    selection time while the audit ring is ordered by completion time, so under
+    concurrency "the last N of each" are different event sets and the ratio can
+    exceed 1.0 (measured 1.8 and 2.67 on a live gateway). A bound that never
+    depends on matching orders avoids the problem entirely.
+
+    This also replaces the earlier `sample_count >= failures` test, which was
+    unsound twice over: `sample_count` is the EWMA sample counter
+    (model/channel_model_route.go sets it from `Snapshot().SampleCount`), not the
+    share window at all, and a cumulative counter clears any fixed threshold for a
+    long-lived route no matter what the run did.
+
+    The bound is a count, not an identity join: the window stores route identities
+    and entitlements, never a request id, so no snapshot can name WHICH failed
+    attempt took a given slot. `window_evidence_strength` records that limit.
+
     Args:
         attempt_stats: b_attempt_failures, b_user_failures, b_ewma_before,
-            b_ewma_after, b_window_selections, b_total_attempts.
-        targets: scenario dict (unused; kept for signature symmetry).
+            b_ewma_after, b_total_attempts, b_window_slots_final,
+            window_total_slots.
+        targets: unused; kept for signature symmetry.
 
     Returns:
         Dict with ok, reasons, quality_observed, window_observed, attribution,
-        attempt_failure_rate, user_failure_rate, ewma_delta.
+        attempt_failure_rate, user_failure_rate, ewma_delta,
+        failed_attempts_in_window_min, window_evidence_strength.
     """
     failures = attempt_stats.get("b_attempt_failures", 0) or 0
     user_failures = attempt_stats.get("b_user_failures", 0) or 0
     ewma_before = attempt_stats.get("b_ewma_before", 0.0) or 0.0
     ewma_after = attempt_stats.get("b_ewma_after", 0.0) or 0.0
-    window_selections = attempt_stats.get("b_window_selections", 0) or 0
     total = attempt_stats.get("b_total_attempts", 0) or 0
+    window_slots = attempt_stats.get("b_window_slots_final")
 
     ewma_delta = ewma_after - ewma_before
+    # A route already sitting on the quality floor has no room left to fall, so
+    # "EWMA did not decrease" says nothing about attribution. Observed on a rerun
+    # against a warm gateway: B entered at exactly 0.5 (RouteStatsQualityFloor) and
+    # stayed there, which the plain `after < before` test reported as a product
+    # failure. Treat a saturated baseline as unmeasurable and require a fresh
+    # baseline instead of accusing the scheduler.
+    quality_floor = targets.get("quality_floor", 0.5)
+    quality_saturated = failures > 0 and ewma_before <= quality_floor + 1e-9
     quality_observed = failures > 0 and ewma_after < ewma_before
-    window_observed = failures > 0 and window_selections >= failures
+
+    successes = max(0, total - failures)
+    if window_slots is None:
+        failed_in_window_min = None
+        window_observed = False
+    else:
+        failed_in_window_min = max(0, window_slots - successes)
+        window_observed = failures > 0 and failed_in_window_min > 0
 
     if quality_observed and window_observed:
         attribution = "both"
@@ -776,6 +820,17 @@ def evaluate_retry_attribution(attempt_stats: dict[str, Any], targets: dict[str,
     reasons: list[str] = []
     if total == 0:
         reasons.append("no attempts recorded for B (DATA_INVALID)")
+    elif window_slots is None:
+        reasons.append(
+            "B's share-window slot count was not measured, so the window half of the attribution is "
+            "unproven (DATA_INVALID)"
+        )
+    elif quality_saturated and not quality_observed:
+        reasons.append(
+            f"B's EWMA quality entered this run already at the floor ({ewma_before:.4f} <= "
+            f"{quality_floor}), so it had no room to fall and the quality half of the attribution is "
+            "unmeasurable. Reset route stats (or use a fresh gateway) and rerun (DATA_INVALID)"
+        )
     elif attribution == "neither":
         reasons.append(
             "failed attempts reached neither EWMA quality nor the share window: a persistently "
@@ -783,8 +838,9 @@ def evaluate_retry_attribution(attempt_stats: dict[str, Any], targets: dict[str,
         )
     elif attribution == "quality_only":
         reasons.append(
-            "partial product risk: failed attempts moved EWMA quality but did not take share "
-            "window slots, so the correction cannot see the failing load"
+            f"partial product risk: failed attempts moved EWMA quality but B holds {window_slots} "
+            f"window slots against {successes} successful attempts, so no slot is provably owed to a "
+            "failed attempt and the correction cannot see the failing load"
         )
     elif attribution == "window_only":
         reasons.append(
@@ -801,6 +857,18 @@ def evaluate_retry_attribution(attempt_stats: dict[str, Any], targets: dict[str,
         "attempt_failure_rate": (failures / total) if total else 0.0,
         "user_failure_rate": (user_failures / total) if total else 0.0,
         "ewma_delta": ewma_delta,
+        "quality_saturated": quality_saturated,
+        "quality_floor": quality_floor,
+        "window_slots_final": window_slots,
+        "b_successes": successes,
+        "failed_attempts_in_window_min": failed_in_window_min,
+        "window_evidence_strength": (
+            "counting bound: failed_attempts_in_window >= window_slots - successful_attempts, which "
+            "is order-independent and needs no alignment between the window and the audit ring. It "
+            "proves at least that many retry-absorbed failures took a window slot. The window stores "
+            "no request id, so this is NOT a per-failed-attempt identity correlation and must not be "
+            "reported as one."
+        ),
     }
 
 

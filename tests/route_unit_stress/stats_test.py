@@ -817,8 +817,11 @@ def test_evaluate_retry_attribution_both() -> bool:
         "b_user_failures": 0,
         "b_ewma_before": 1.0,
         "b_ewma_after": 0.82,
-        "b_window_selections": 600,
         "b_total_attempts": 900,
+        # 600 successes cannot account for 700 slots, so at least 100 slots are
+        # owed to failed attempts.
+        "b_window_slots_final": 700,
+        "window_total_slots": 900,
     }
     res = evaluate_retry_attribution(stats, {})
     assert res["attribution"] == "both", res
@@ -826,6 +829,7 @@ def test_evaluate_retry_attribution_both() -> bool:
     assert res["quality_observed"] is True
     assert res["window_observed"] is True
     assert res["ewma_delta"] < 0
+    assert res["failed_attempts_in_window_min"] == 100, res
     return True
 
 
@@ -836,12 +840,16 @@ def test_evaluate_retry_attribution_neither() -> bool:
         "b_user_failures": 0,
         "b_ewma_before": 1.0,
         "b_ewma_after": 1.0,
-        "b_window_selections": 10,
+        # Every slot B holds is explained by its 600 successes, so no failed
+        # attempt is provably in the window.
         "b_total_attempts": 900,
+        "b_window_slots_final": 600,
+        "window_total_slots": 900,
     }
     res = evaluate_retry_attribution(stats, {})
     assert res["attribution"] == "neither", res
     assert res["ok"] is False
+    assert res["failed_attempts_in_window_min"] == 0, res
     assert any("never be de-weighted" in r for r in res["reasons"]), res["reasons"]
     return True
 
@@ -853,8 +861,9 @@ def test_evaluate_retry_attribution_partial() -> bool:
         "b_user_failures": 0,
         "b_ewma_before": 1.0,
         "b_ewma_after": 0.8,
-        "b_window_selections": 10,
         "b_total_attempts": 900,
+        "b_window_slots_final": 600,
+        "window_total_slots": 900,
     }
     res = evaluate_retry_attribution(quality_only, {})
     assert res["attribution"] == "quality_only", res
@@ -866,13 +875,87 @@ def test_evaluate_retry_attribution_partial() -> bool:
         "b_user_failures": 0,
         "b_ewma_before": 1.0,
         "b_ewma_after": 1.0,
-        "b_window_selections": 600,
         "b_total_attempts": 900,
+        "b_window_slots_final": 700,
+        "window_total_slots": 900,
     }
     res2 = evaluate_retry_attribution(window_only, {})
     assert res2["attribution"] == "window_only", res2
     assert res2["ok"] is False
     assert any("partial product risk" in r for r in res2["reasons"]), res2["reasons"]
+    return True
+
+
+def test_evaluate_retry_attribution_rejects_cumulative_counter() -> bool:
+    """A large cumulative EWMA sample count must not stand in for window evidence.
+
+    This is the regression the old `sample_count >= failures` criterion allowed:
+    653 >= 22 passed while the share window was never consulted. Without a
+    measured window slot count the window half is unproven and the run is
+    DATA_INVALID.
+    """
+    stats = {
+        "b_attempt_failures": 22,
+        "b_user_failures": 0,
+        "b_ewma_before": 1.09697,
+        "b_ewma_after": 0.77607,
+        "b_total_attempts": 44,
+        "b_ewma_sample_count_after": 653,
+    }
+    res = evaluate_retry_attribution(stats, {})
+    assert res["window_observed"] is False, res
+    assert res["ok"] is False
+    assert any("DATA_INVALID" in r for r in res["reasons"]), res["reasons"]
+    assert res["failed_attempts_in_window_min"] is None, res
+    return True
+
+
+def test_evaluate_retry_attribution_all_attempts_fail() -> bool:
+    """When B fails every attempt, every slot it holds is a failed attempt.
+
+    This is the shape S12 actually produces on a live gateway: B's mock fails the
+    first call of each chain, so B has zero successes and its window slots are
+    entirely retry-absorbed failures.
+    """
+    stats = {
+        "b_attempt_failures": 27,
+        "b_user_failures": 0,
+        "b_ewma_before": 0.636,
+        "b_ewma_after": 0.5,
+        "b_total_attempts": 27,
+        "b_window_slots_final": 9,
+        "window_total_slots": 200,
+    }
+    res = evaluate_retry_attribution(stats, {})
+    assert res["b_successes"] == 0, res
+    assert res["failed_attempts_in_window_min"] == 9, res
+    assert res["attribution"] == "both", res
+    assert res["ok"] is True, res
+    return True
+
+
+def test_evaluate_retry_attribution_quality_floor_saturated() -> bool:
+    """A baseline already at the quality floor is unmeasurable, not a product fail.
+
+    Observed rerunning S12 against a warm gateway: B entered at exactly 0.5
+    (RouteStatsQualityFloor) and stayed there, so EWMA had no room to fall. The
+    plain `after < before` test called that PRODUCT_FAIL, which accuses the
+    scheduler for a stale baseline.
+    """
+    stats = {
+        "b_attempt_failures": 25,
+        "b_user_failures": 0,
+        "b_ewma_before": 0.5,
+        "b_ewma_after": 0.5,
+        "b_total_attempts": 25,
+        "b_window_slots_final": 5,
+        "window_total_slots": 200,
+    }
+    res = evaluate_retry_attribution(stats, {})
+    assert res["quality_saturated"] is True, res
+    assert res["ok"] is False
+    assert any("DATA_INVALID" in r for r in res["reasons"]), res["reasons"]
+    assert not any("PRODUCT_FAIL" in r for r in res["reasons"]), res["reasons"]
     return True
 
 
@@ -883,8 +966,9 @@ def test_evaluate_retry_attribution_no_data() -> bool:
         "b_user_failures": 0,
         "b_ewma_before": 0.0,
         "b_ewma_after": 0.0,
-        "b_window_selections": 0,
         "b_total_attempts": 0,
+        "b_window_slots_final": 0,
+        "window_total_slots": 0,
     }
     res = evaluate_retry_attribution(stats, {})
     assert res["ok"] is False
@@ -1024,6 +1108,12 @@ def run_all() -> int:
         ("evaluate_retry_attribution_neither", test_evaluate_retry_attribution_neither),
         ("evaluate_retry_attribution_partial", test_evaluate_retry_attribution_partial),
         ("evaluate_retry_attribution_no_data", test_evaluate_retry_attribution_no_data),
+        ("evaluate_retry_attribution_rejects_cumulative_counter",
+         test_evaluate_retry_attribution_rejects_cumulative_counter),
+        ("evaluate_retry_attribution_all_attempts_fail",
+         test_evaluate_retry_attribution_all_attempts_fail),
+        ("evaluate_retry_attribution_quality_floor_saturated",
+         test_evaluate_retry_attribution_quality_floor_saturated),
         ("evaluate_recovery_pass", test_evaluate_recovery_pass),
         ("evaluate_recovery_corr_violation", test_evaluate_recovery_corr_violation),
         ("evaluate_recovery_never_recovers", test_evaluate_recovery_never_recovers),

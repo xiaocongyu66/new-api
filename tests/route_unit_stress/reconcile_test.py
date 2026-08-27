@@ -52,17 +52,23 @@ def make_mock_row(
 
 
 def test_pass() -> bool:
-    """All fields match, attempt sequence continuous."""
+    """A retry chain matches when every attempt has its own upstream call.
+
+    Two audit attempts means the upstream was called twice, so two mock rows are
+    the correct shape. The second attempt sits on a different channel because
+    controller/relay.go excludes the failed route unit from the retry.
+    """
     crid = "test-pass-1"
     attempts = [
-        make_audit_attempt(crid, 0),
-        make_audit_attempt(crid, 1),
+        make_audit_attempt(crid, 0, channel_id=90001),
+        make_audit_attempt(crid, 1, channel_id=90002),
     ]
-    mock = [make_mock_row(crid)]
+    mock = [make_mock_row(crid), make_mock_row(crid)]
     result = reconcile(attempts, mock)
     assert result.verdict == "PASS", f"Expected PASS, got {result.verdict}: {result.to_summary()}"
     assert result.matched_pairs == 1
     assert result.total_requests == 1
+    assert result.attempt_count_mismatch == []
     print("✓ test_pass")
     return True
 
@@ -95,8 +101,14 @@ def test_missing_in_mock() -> bool:
     return True
 
 
-def test_duplicate_in_mock() -> bool:
-    """Duplicate mock rows for same request_id."""
+def test_extra_mock_row_without_attempt() -> bool:
+    """More upstream calls than recorded attempts is a real inconsistency.
+
+    One audited attempt but two upstream calls means a call was made that the
+    gateway never charged to any route, which is exactly the audit blind spot
+    #418 is checking for. This replaces the old "duplicate mock row" rule, which
+    treated a legitimate retry chain as corrupt.
+    """
     attempts = [make_audit_attempt("crid-1", 0)]
     mock = [
         make_mock_row("crid-1"),
@@ -104,8 +116,11 @@ def test_duplicate_in_mock() -> bool:
     ]
     result = reconcile(attempts, mock)
     assert result.verdict == "DATA_INVALID"
-    assert "crid-1" in result.duplicate_in_mock
-    print("✓ test_duplicate_in_mock")
+    assert any(
+        m["request_id"] == "crid-1" and m["audit_attempts"] == 1 and m["mock_rows"] == 2
+        for m in result.attempt_count_mismatch
+    ), result.attempt_count_mismatch
+    print("✓ test_extra_mock_row_without_attempt")
     return True
 
 
@@ -120,17 +135,39 @@ def test_upstream_model_mismatch() -> bool:
     return True
 
 
-def test_audit_internal_inconsistent() -> bool:
-    """Audit attempts for same request_id have different identity tuples."""
-    attempts = [
-        make_audit_attempt("crid-1", 0, alias="alias-a", channel_id=90001),
-        make_audit_attempt("crid-1", 1, alias="alias-b", channel_id=90002),
-    ]
-    mock = [make_mock_row("crid-1")]
+def test_incomplete_audit_identity() -> bool:
+    """An attempt missing part of its quadruple cannot be attributed to a route.
+
+    A retry landing on a DIFFERENT channel is correct behaviour (the failed route
+    is excluded), so differing identities across a chain is not an error. What is
+    an error is an attempt whose own identity is incomplete.
+    """
+    attempts = [make_audit_attempt("crid-1", 0, upstream_model="")]
+    mock = [make_mock_row("crid-1", upstream_model="")]
     result = reconcile(attempts, mock)
     assert result.verdict == "DATA_INVALID"
-    assert any(m.get("type") == "audit_internal_inconsistent" for m in result.identity_mismatch)
-    print("✓ test_audit_internal_inconsistent")
+    assert any(m.get("type") == "incomplete_audit_identity" for m in result.identity_mismatch), \
+        result.identity_mismatch
+    print("✓ test_incomplete_audit_identity")
+    return True
+
+
+def test_retry_across_channels_is_not_a_mismatch() -> bool:
+    """A retry chain spanning two channels reconciles cleanly.
+
+    Regression guard: the earlier rule required every attempt of a request to
+    share one identity tuple, which flagged 24 of 600 correct retry chains as
+    DATA_INVALID on a live gateway.
+    """
+    attempts = [
+        make_audit_attempt("crid-1", 0, channel_id=90001, outcome=2),
+        make_audit_attempt("crid-1", 1, channel_id=90002, outcome=0),
+    ]
+    mock = [make_mock_row("crid-1", status=503), make_mock_row("crid-1")]
+    result = reconcile(attempts, mock)
+    assert result.verdict == "PASS", result.to_summary()
+    assert result.identity_mismatch == []
+    print("✓ test_retry_across_channels_is_not_a_mismatch")
     return True
 
 
@@ -255,9 +292,10 @@ def run_all() -> int:
         test_pass,
         test_missing_in_audit,
         test_missing_in_mock,
-        test_duplicate_in_mock,
+        test_extra_mock_row_without_attempt,
         test_upstream_model_mismatch,
-        test_audit_internal_inconsistent,
+        test_incomplete_audit_identity,
+        test_retry_across_channels_is_not_a_mismatch,
         test_attempt_gap,
         test_multiple_requests_mixed,
         test_empty_inputs,

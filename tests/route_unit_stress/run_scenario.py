@@ -585,6 +585,22 @@ def service_quality(
     if requested is not None:
         dropped = max(0, requested - len(rows))
 
+    # A 503 carrying new-api's own overload code came from the gateway's
+    # SystemPerformanceCheck middleware (middleware/performance.go), which sheds
+    # load when host CPU/memory/disk crosses performance_setting.monitor_*
+    # thresholds. It never reached the upstream, so attributing it to mock capacity
+    # is wrong: S2's archived 720 503s had ~19ms latency and produced zero upstream
+    # rows. Count these separately so the report can name the real cause.
+    shed_codes = ("system_cpu_overloaded", "system_memory_overloaded", "system_disk_overloaded")
+    shed_counts: dict[str, int] = {}
+    for r in bad:
+        err = r.get("error") or ""
+        for code in shed_codes:
+            if code in err:
+                shed_counts[code] = shed_counts.get(code, 0) + 1
+                break
+    gateway_shed_total = sum(shed_counts.values())
+
     return {
         "requests": len(rows),
         "succeeded": len(ok),
@@ -617,6 +633,13 @@ def service_quality(
         "completion_tokens_samples": len(completion_tokens),
         "token_throughput_per_s": (total_completion / elapsed_s) if elapsed_s > 0 else 0.0,
         "requested": requested,
+        "gateway_shed_load_503": gateway_shed_total,
+        "gateway_shed_load_breakdown": shed_counts,
+        "gateway_shed_load_note": (
+            "503s emitted by the gateway's own SystemPerformanceCheck middleware "
+            "(performance_setting.monitor_* thresholds). These never reached the upstream, so they "
+            "are runner/host saturation, NOT upstream mock capacity."
+        ) if gateway_shed_total else None,
         "dropped_iterations": dropped,
     }
 
@@ -1215,7 +1238,7 @@ def run_phase_s11(
     concurrency: int,
     specific_channel_id: int | None,
     token_mgr: AdminTokenManager,
-) -> tuple[list[dict[str, Any]], list[str], dict[str, int], int]:
+) -> tuple[list[dict[str, Any]], list[str], dict[str, int], int, list[dict[str, Any]]]:
     """S11: drive each labelled selection path, plus administrative probes.
 
     weighted  - plain request, no affinity key, no channel pin
@@ -1286,6 +1309,20 @@ def run_phase_s11(
             row["end_ts"] = time.time()
         return row
 
+    # The affinity path only exists once the cache holds an entry for the key: the
+    # FIRST request with a given prompt_cache_key has nothing to stick to, so
+    # middleware/distributor.go labels it "weighted" and creates the pin. Fired
+    # concurrently, every request already in flight races past the empty cache, so a
+    # plain batch of N yields fewer than N affinity-labelled attempts (measured
+    # 95/100, with indices 0-4 labelled weighted).
+    #
+    # Send one pin-establishing request serially first, and exclude it from the
+    # measured batch, so the N that follow can all take the affinity path. This is a
+    # correct-by-construction fix rather than relaxing #418's per-path minimum.
+    affinity_warm_rows: list[dict[str, Any]] = []
+    if per_path > 0:
+        affinity_warm_rows.append(send_labelled("affinity", -1))
+
     jobs: list[tuple[str, int]] = []
     for path in ("weighted", "affinity", "specific"):
         if path == "specific" and specific_channel_id is None:
@@ -1320,7 +1357,10 @@ def run_phase_s11(
             except Exception:
                 pass
 
-    return stat_rows, stat_ids, path_counts, probes_sent
+    # The pin request is deliberately NOT in stat_rows/stat_ids: it is setup, and
+    # counting it would put a weighted-labelled affinity request back into the
+    # measured batch. It is returned so the summary can show the pin really ran.
+    return stat_rows, stat_ids, path_counts, probes_sent, affinity_warm_rows
 
 
 def run_phase_s12(
@@ -1462,6 +1502,19 @@ def run_phase_s10_restart(
         "than an hour cannot produce a 'route stats sweep' log line. Per #418 that is a "
         "KNOWN LIMITATION for short runs, not a FAIL; pool counts before/after/post are "
         "recorded so a long CI run can be compared against them."
+    )
+    # The audit ring lives in process memory (pkg/routestats/audit.go), so the
+    # restart necessarily discards every attempt recorded before it. Those request
+    # ids can therefore never reconcile, and counting them as missing data would
+    # report an expected property of this scenario as corruption. Name the
+    # pre-restart ids so the caller can scope reconciliation to post-restart
+    # traffic and still state the loss explicitly.
+    sweep_evidence["pre_restart_request_ids"] = list(ids_before)
+    sweep_evidence["audit_ring_reset_note"] = (
+        f"{len(ids_before)} pre-restart requests cannot appear in the audit ring: the ring is "
+        "in-process state and the restart cleared it. Reconciliation is scoped to the "
+        f"{len(ids_after)} post-restart requests; the pre-restart batch remains in "
+        "requests.ndjson and upstream-received.ndjson as raw evidence."
     )
 
     return rows_before + rows_after, ids_before + ids_after, before, after, sweep_evidence
@@ -1800,6 +1853,11 @@ def main() -> int:
             "injection": targets.get("injection"),
             "route_count": targets.get("route_count"),
             "share_window_size": targets.get("share_window_size"),
+            # #418 requires the run's topology to be stated, and a two-replica run
+            # must be distinguishable from a single-pod one in the artifact itself.
+            "replica": args.replica,
+            "replica_urls": list(args.replica_url or []),
+            "replica_count_effective": 1 + len(args.replica_url or []),
         },
         "injection_plan": {},
     }
@@ -1823,6 +1881,18 @@ def main() -> int:
     # needs no --requests either.
     if not is_duration_based and not is_s11 and args.requests is None:
         return fail("--requests is required for non-duration scenarios")
+
+    # --replica is a claim about topology, so it must match the replicas actually
+    # addressed. Without this check a single-pod run could be archived as a
+    # multi-replica result, which is exactly the "local convergence passed off as
+    # global" failure #418 warns about.
+    effective_replicas = 1 + len(args.replica_url or [])
+    if args.replica is not None and args.replica != effective_replicas:
+        return fail(
+            f"--replica {args.replica} does not match the {effective_replicas} gateway(s) actually "
+            f"addressed (--gateway-url plus {len(args.replica_url or [])} --replica-url). Pass one "
+            "--replica-url per additional replica so per-pod identity is real."
+        )
 
     print(f"[1/8] Preflight: {args.gateway_url}")
     try:
@@ -2237,7 +2307,7 @@ def main() -> int:
         elif is_s11:
             per_path = targets.get("min_per_path", 100)
             probe_count = targets.get("min_probe", 20)
-            stat_rows, stat_ids, s11_path_counts, s11_probes = run_phase_s11(
+            stat_rows, stat_ids, s11_path_counts, s11_probes, s11_affinity_pin = run_phase_s11(
                 args.gateway_url,
                 args.token,
                 args.alias,
@@ -2383,6 +2453,20 @@ def main() -> int:
         print("      WARNING: could not snapshot options after the run")
     routes_after = build_route_infos(items_after) if items_after else routes
     stat_id_set = set(stat_ids)
+    # S10_RESTART deliberately restarts the gateway mid-run, which clears the
+    # in-process audit ring. Its pre-restart requests can never reconcile, so
+    # scope the join to post-restart traffic instead of reporting an expected
+    # restart property as missing data. The exclusion is recorded in the summary.
+    reconcile_excluded_ids: list[str] = []
+    sweep_evidence_s10 = summary.get("sweep_evidence") or {}
+    if is_s10 and sweep_evidence_s10:
+        reconcile_excluded_ids = list(sweep_evidence_s10.get("pre_restart_request_ids") or [])
+        if reconcile_excluded_ids:
+            stat_id_set -= set(reconcile_excluded_ids)
+            summary["reconcile_scope"] = {
+                "excluded_request_count": len(reconcile_excluded_ids),
+                "reason": sweep_evidence_s10.get("audit_ring_reset_note"),
+            }
     # The relay records its attempt after the response body is flushed, so the
     # last few requests can still be in flight when the client returns. Poll
     # until the audit ring carries every stat-phase id, or the budget expires.
@@ -2420,26 +2504,35 @@ def main() -> int:
             "ring capacity or lower --requests."
         )
 
-    # Cross-side reconciliation needs the upstream to echo a correlation id, but
-    # the gateway does not forward X-Request-Id upstream (verified: the header
-    # appears only in controller/relay.go's audit calls, never in the outbound
-    # request). When every mock row carries an empty request_id the join is
-    # structurally impossible, so record that as an environment limitation rather
-    # than letting it masquerade as a data-integrity failure.
+    # Cross-side reconciliation needs the upstream to echo a correlation id. The
+    # gateway forwards one only when the channel's header_override carries
+    # {client_header:X-Request-Id} (relay/channel/api_request.go:
+    # applyHeaderOverridePlaceholders -> applyHeaderOverrideToRequest); the relay
+    # does not forward it by default. Verified on a live gateway: with the override
+    # configured the mock records the client id, without it every row is empty.
+    # An unconfigured rig therefore makes the join structurally impossible, which
+    # is a rig configuration gap, not a data-integrity failure and not a product
+    # limitation.
     upstream_ids = {str(r.get("request_id") or "") for r in upstream_rows}
     if upstream_rows and upstream_ids == {""}:
         summary["upstream_correlation_unavailable"] = (
-            f"all {len(upstream_rows)} upstream rows carry an empty request_id: this gateway does "
-            "not forward X-Request-Id upstream, so gateway-to-mock reconciliation cannot match. "
-            "Audit-side identity checks remain valid; cross-side matching needs an upstream that "
-            "echoes a correlation id (or a gateway change to forward one)."
+            f"all {len(upstream_rows)} upstream rows carry an empty request_id: no channel in this "
+            "topology forwards the client X-Request-Id upstream, so gateway-to-mock reconciliation "
+            "cannot match. Audit-side identity checks remain valid. Fix the rig by setting each "
+            'channel header_override to {"X-Request-Id": "{client_header:X-Request-Id}"} '
+            "(README 环境前提); this needs no production change."
         )
 
     print("[7/8] Reconciling")
-    # S6: skip reconcile expected_requests check (duration-based, not count-based)
+    # S6: skip reconcile expected_requests check (duration-based, not count-based).
+    # The expected count must follow the scoped id set, otherwise S10_RESTART's
+    # deliberately excluded pre-restart batch would still fail the count check.
+    expected_for_reconcile = args.requests if args.requests is not None else 0
+    if reconcile_excluded_ids:
+        expected_for_reconcile = len(stat_id_set)
     rec = lib_reconcile.reconcile(
         attempts, upstream_rows,
-        expected_requests=args.requests if args.requests is not None else 0,
+        expected_requests=expected_for_reconcile,
         expected_request_ids=stat_id_set,
     )
     summary["reconcile"] = rec.to_summary()
@@ -2822,6 +2915,17 @@ def main() -> int:
         )
         summary["s11_probes_sent"] = s11_probes
         summary["s11_window_paths"] = sorted(set(window_paths))
+        summary["s11_affinity_pin"] = {
+            "requests": len(s11_affinity_pin),
+            "statuses": [r.get("status") for r in s11_affinity_pin],
+            "note": (
+                "Serial pin-establishing request(s) sent before the measured batch and excluded "
+                "from it. The first request for a prompt_cache_key has no affinity entry to stick "
+                "to, so middleware/distributor.go labels it 'weighted' while creating the pin; "
+                "without this warm-up a concurrent batch of N yields fewer than N affinity-labelled "
+                "attempts."
+            ),
+        }
         print(f"      S11 paths: attempts={path_result['per_path_counts']} "
               f"probes_sent={s11_probes} probe_opportunities={probe_opportunities} "
               f"window_paths={sorted(set(window_paths))}")
@@ -2848,20 +2952,50 @@ def main() -> int:
         b_attempt_failures = sum(1 for a in b_attempts if a.get("outcome") not in (0, None))
         b_user_failures = sum(1 for r in stat_rows if r.get("status") not in (200, None))
 
+        # Window evidence: a counting bound, not an alignment. Only a selection
+        # creates a window slot, so at most B's successful attempts can account for
+        # B's slots and the remainder must be failed attempts:
+        #   failed_attempts_in_window >= b_window_slots_final - b_successes
+        #
+        # Positional alignment was tried and rejected: the window is ordered by
+        # selection time and the audit ring by completion time, so under concurrency
+        # "the last N of each" are different event sets and the ratio exceeded 1.0
+        # (measured 1.8 and 2.67 against this gateway).
+        window_snapshot = fetch_share_snapshot(args.gateway_url, token_mgr) or []
+        window_total_slots = 0
+        b_window_slots_final = 0
+        for pool_snap in window_snapshot:
+            for entry in pool_snap.get("window", []) or []:
+                selected = entry.get("selected") or {}
+                window_total_slots += 1
+                if (
+                    selected.get("channel_id"),
+                    selected.get("key_index"),
+                    selected.get("upstream_model"),
+                ) == subject_identity:
+                    b_window_slots_final += 1
+
         attempt_stats = {
             "b_attempt_failures": b_attempt_failures,
             "b_user_failures": b_user_failures,
             "b_ewma_before": subject_route.ewma_quality if subject_route else 0.0,
             "b_ewma_after": subject_after.ewma_quality if subject_after else 0.0,
-            "b_window_selections": subject_after.sample_count if subject_after else 0,
             "b_total_attempts": len(b_attempts),
+            "b_window_slots_final": b_window_slots_final,
+            "window_total_slots": window_total_slots,
+            # sample_count is the EWMA sample counter, NOT the share window. Kept
+            # only as a labelled diagnostic so nobody mistakes it for window
+            # evidence again.
+            "b_ewma_sample_count_after": subject_after.sample_count if subject_after else 0,
         }
         retry_result = lib_stats.evaluate_retry_attribution(attempt_stats, targets)
         summary["retry_attribution"] = retry_result
         summary["retry_attempt_stats"] = attempt_stats
         print(f"      S12 attribution={retry_result['attribution']} "
               f"quality={retry_result['quality_observed']} window={retry_result['window_observed']} "
-              f"ewma_delta={retry_result['ewma_delta']:.4f} failures={b_attempt_failures}")
+              f"ewma_delta={retry_result['ewma_delta']:.4f} failures={b_attempt_failures} "
+              f"window_slots={b_window_slots_final}/{window_total_slots} "
+              f"failed_in_window_min={retry_result['failed_attempts_in_window_min']}")
         if rec.verdict != "PASS":
             verdict, code = "DATA_INVALID", 1
         elif any("DATA_INVALID" in r for r in retry_result["reasons"]):
@@ -2903,6 +3037,32 @@ def main() -> int:
             verdict, code = "PRODUCT_FAIL", 1
         else:
             verdict, code = "PASS", 0
+
+    # Host saturation outranks every scheduler conclusion: if the gateway shed load
+    # on its own CPU/memory/disk thresholds, a meaningful fraction of the intended
+    # traffic never reached selection at all, so neither PASS nor PRODUCT_FAIL is
+    # honest. #418 requires generator/host saturation to preserve the data but block
+    # a product verdict.
+    shed = summary["service_quality"].get("gateway_shed_load_503") or 0
+    shed_share = shed / len(stat_rows) if stat_rows else 0.0
+    if shed:
+        summary["gateway_shed_load"] = {
+            "count": shed,
+            "share_of_requests": shed_share,
+            "breakdown": summary["service_quality"].get("gateway_shed_load_breakdown"),
+            "cause": (
+                "middleware/performance.go SystemPerformanceCheck rejected these requests before "
+                "relay, using performance_setting.monitor_cpu/memory/disk_threshold. The upstream "
+                "never saw them. Lower --concurrency or raise the thresholds for the run; do not "
+                "attribute this to upstream mock capacity."
+            ),
+        }
+        if shed_share > 0.01 and verdict == "PASS":
+            verdict, code = "ENVIRONMENT_INVALID", 2
+            summary["gateway_shed_load"]["verdict_override"] = (
+                f"{shed_share:.1%} of requests were shed by the gateway's own overload check, so a "
+                "PASS would rest on traffic that never reached the scheduler."
+            )
 
     summary["verdict"] = verdict
     summary["admin_token_refreshes"] = token_mgr.refresh_count

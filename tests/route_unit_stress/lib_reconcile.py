@@ -29,8 +29,11 @@ class ReconcileResult:
     missing_in_audit: list[str] = field(default_factory=list)      # request_ids in mock but not audit
     missing_in_mock: list[str] = field(default_factory=list)       # request_ids in audit but not mock
     duplicate_in_audit: list[str] = field(default_factory=list)    # request_ids with duplicate audit rows
-    duplicate_in_mock: list[str] = field(default_factory=list)     # request_ids with duplicate mock rows
-    identity_mismatch: list[dict[str, Any]] = field(default_factory=list)  # tuple diffs (audit internal + cross-side model)
+    duplicate_in_mock: list[str] = field(default_factory=list)     # request_ids with more mock rows than attempts
+    # Per-request attempt count disagreements: the gateway recorded N attempts but
+    # the upstream saw a different number of calls.
+    attempt_count_mismatch: list[dict[str, Any]] = field(default_factory=list)
+    identity_mismatch: list[dict[str, Any]] = field(default_factory=list)  # per-attempt quadruple + cross-side model diffs
     attempt_gaps: list[dict[str, Any]] = field(default_factory=list)       # non-continuous attempt sequences
     # New fields for pre/post filter counts
     total_records: int = 0         # total unique request_ids seen before filtering
@@ -47,6 +50,7 @@ class ReconcileResult:
             "duplicate_in_mock": self.duplicate_in_mock,
             "identity_mismatch": self.identity_mismatch,
             "attempt_gaps": self.attempt_gaps,
+            "attempt_count_mismatch": self.attempt_count_mismatch,
             "total_records": self.total_records,
             "scoped_records": self.scoped_records,
         }
@@ -128,38 +132,49 @@ def reconcile(
             result.verdict = "DATA_INVALID"
             continue
 
-        # Duplicate rows on mock side (should be exactly 1 per request_id)
-        if len(mock_rows) > 1:
-            result.duplicate_in_mock.append(crid)
+        # A retry chain legitimately produces one mock row per attempt, and each
+        # attempt may sit on a DIFFERENT route: controller/relay.go adds the failed
+        # route unit to retryParam.ExcludeRoutes, so attempt 1 is selected from the
+        # remaining candidates. Requiring one mock row per request, or one shared
+        # identity across a chain, would therefore mark correct retry behaviour as
+        # corrupt. #418 asks for a (request_id, attempt) join, so the chain is
+        # matched positionally: attempts ordered by index against mock rows ordered
+        # by arrival.
+        if len(mock_rows) != len(audit_rows):
+            result.attempt_count_mismatch.append({
+                "request_id": crid,
+                "audit_attempts": len(audit_rows),
+                "mock_rows": len(mock_rows),
+            })
             result.verdict = "DATA_INVALID"
 
-        # Identity check:
-        # 1. All audit rows for this crid must have identical identity tuple
-        # 2. upstream_model must match between audit (first row) and mock (first row)
-        if audit_rows:
-            first_audit_identity = _audit_identity_tuple(audit_rows[0])
-            for a in audit_rows[1:]:
-                if _audit_identity_tuple(a) != first_audit_identity:
-                    result.identity_mismatch.append({
-                        "request_id": crid,
-                        "type": "audit_internal_inconsistent",
-                        "expected": dict(zip(AUDIT_IDENTITY_FIELDS, first_audit_identity)),
-                        "actual": dict(zip(AUDIT_IDENTITY_FIELDS, _audit_identity_tuple(a))),
-                    })
-                    result.verdict = "DATA_INVALID"
-
-            # Cross-side upstream_model match
-            if mock_rows:
-                audit_model = audit_rows[0].get("upstream_model")
-                mock_model = mock_rows[0].get("upstream_model")
-                if audit_model != mock_model:
-                    result.identity_mismatch.append({
-                        "request_id": crid,
-                        "type": "upstream_model_mismatch",
-                        "audit": audit_model,
-                        "mock": mock_model,
-                    })
-                    result.verdict = "DATA_INVALID"
+        # Identity check, per attempt: every audit row must be a complete quadruple,
+        # and its upstream_model must match the mock row for the same attempt.
+        ordered_audit = sorted(audit_rows, key=lambda a: a.get("attempt", 0))
+        ordered_mock = sorted(mock_rows, key=lambda m: m.get("ts", 0))
+        for idx, a in enumerate(ordered_audit):
+            identity = _audit_identity_tuple(a)
+            if any(v in (None, "") for v in identity):
+                result.identity_mismatch.append({
+                    "request_id": crid,
+                    "attempt": a.get("attempt"),
+                    "type": "incomplete_audit_identity",
+                    "actual": dict(zip(AUDIT_IDENTITY_FIELDS, identity)),
+                })
+                result.verdict = "DATA_INVALID"
+            if idx >= len(ordered_mock):
+                continue
+            audit_model = a.get("upstream_model")
+            mock_model = ordered_mock[idx].get("upstream_model")
+            if audit_model != mock_model:
+                result.identity_mismatch.append({
+                    "request_id": crid,
+                    "attempt": a.get("attempt"),
+                    "type": "upstream_model_mismatch",
+                    "audit": audit_model,
+                    "mock": mock_model,
+                })
+                result.verdict = "DATA_INVALID"
 
         # Attempt sequence continuity: attempts must be 0,1,2... no gaps
         attempt_nums = sorted(a.get("attempt", -1) for a in audit_rows)

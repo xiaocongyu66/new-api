@@ -35,33 +35,38 @@ RATELIMIT_AFTER = {"ratelimit_missing": None, "ratelimit_5s": "5", "ratelimit_10
 
 # S12 first_fail_then_ok state.
 #
-# VERIFIED against the real gateway: it does NOT forward the client X-Request-Id
-# upstream, so every upstream call arrives with an empty id and a retry is
-# indistinguishable from a fresh request. Keying on request_id therefore cannot
-# work; it would fail every call and never exercise the "then_ok" half.
+# Correlated mode: when the channel forwards the client X-Request-Id (channel
+# header_override {"X-Request-Id": "{client_header:X-Request-Id}"}), the first
+# call for a given id fails and every later call for that same id succeeds. That
+# is true per-chain state: attempt 0 of request R gets the 503 and R's retry gets
+# the 200, regardless of how other chains interleave.
 #
-# Instead alternate on a per-instance call counter: odd call -> 503, even call ->
-# 200. With RetryTimes >= 1 the gateway retries the 503 and lands on the next
-# call, which succeeds, producing exactly the "first attempt fails, retry
-# succeeds" chain S12 needs. This is a property of the sequence rather than of a
-# correlation id, which is all the transport preserves.
-#
-# ponytail: a plain counter, not per-chain state; sound because S12 sends its
-# traffic through one route and asserts on aggregate attempt counts.
+# Uncorrelated fallback: without the override every call arrives with an empty
+# id, so per-chain state is impossible and the mode degrades to alternating on a
+# call counter (odd -> 503, even -> 200). That still produces fail-then-succeed
+# chains in aggregate but cannot prove which retry rescued which request; the
+# runner records it as a limitation.
+_seen_request_ids: set[str] = set()
 _call_counter = 0
 _seen_lock = threading.Lock()
 
 
-def first_attempt_for(_request_id: str) -> bool:
-    """True on odd-numbered calls, which must fail so the retry can succeed.
+def first_attempt_for(request_id: str) -> bool:
+    """True when this call must fail so the gateway's retry can succeed.
 
-    Takes the request_id only for signature stability; it is deliberately unused
-    because the gateway does not propagate it (see the note above).
+    With a real request_id this is exact per-chain state. With an empty one it
+    falls back to alternating calls, which is all an uncorrelated transport
+    permits.
     """
     global _call_counter
     with _seen_lock:
-        _call_counter += 1
-        return _call_counter % 2 == 1
+        if not request_id:
+            _call_counter += 1
+            return _call_counter % 2 == 1
+        if request_id in _seen_request_ids:
+            return False
+        _seen_request_ids.add(request_id)
+        return True
 
 
 class MockServer(ThreadingHTTPServer):

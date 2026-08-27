@@ -118,7 +118,8 @@ python3 run_scenario.py --scenario S6_W50 --gateway-url URL --token sk-... --adm
 |-----------|--------|------|
 | MEMORY_CACHE_ENABLED | true | 网关启用内存缓存 |
 | channel_affinity_setting.enabled | **false** | true 则 runner 退出码 2 (ENVIRONMENT_INVALID) |
-| header_override | 透传 X-Request-Id | 审计/对账依赖请求 ID |
+| channel `header_override` | `{"X-Request-Id": "{client_header:X-Request-Id}"}` | **跨侧对账的硬前提**。网关默认不向上游转发 X-Request-Id；配了该 override 才转发（`relay/channel/api_request.go` 的 `applyHeaderOverridePlaceholders` → `applyHeaderOverrideToRequest`）。未配则 mock 收到空 request_id，reconcile 必然 DATA_INVALID。这是**压测台配置问题，不是产品限制**，无需改生产代码。已实测：配了 override 后 S2/S10/S11/S12/S13 全部 reconcile PASS |
+| performance_setting.monitor_enabled | 大样本跑 **false** | 网关自带 `SystemPerformanceCheck`（`middleware/performance.go`）在宿主 CPU/内存/磁盘超阈值时直接返 503 `system_cpu_overloaded`，请求**根本没到上游**。4 核机器上 12,000 请求 / 并发 64 会被削掉 12.8%。runner 现在单列 `gateway_shed_load_503` 并在占比 >1% 时把 PASS 降级为 ENVIRONMENT_INVALID。**不要把这种 503 归因为 mock 容量不足** |
 | GOTOOLCHAIN | go1.26.4 | 编译工具链固定 |
 | MOCK_PORT/MOCK_NDJSON/MOCK_FORCE_MODE | 见上 | mock fixture 环境变量 (S4/S5/S6 需多实例不同端口) |
 | RouteStatsShareWindowSize | 50/200/1000 (S6) | 运行时 PUT /api/option/ 设置，S6 场景必需 |
