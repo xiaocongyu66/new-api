@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"github.com/QuantumNous/new-api/internal/common/quotacache"
 	"math/rand"
 	"time"
 
@@ -115,7 +116,7 @@ func userCheckinWithTransaction(checkin *Checkin, userId int, quotaAwarded int) 
 
 	// 事务成功后，异步更新缓存
 	go func() {
-		_ = cacheIncrUserQuota(userId, int64(quotaAwarded))
+		_ = quotacache.IncrUser(userId, int64(quotaAwarded))
 	}()
 
 	return checkin, nil

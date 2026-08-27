@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"github.com/QuantumNous/new-api/internal/common/quotacache"
 	"net"
 	"sync"
 	"testing"
@@ -126,7 +127,7 @@ func TestHardDeleteUserPublishesTombstoneAndPurgesAuthenticationData(t *testing.
 	committed, err := common.RDB.Get(t.Context(), getUserAuthVersionKey(user.Id)).Result()
 	require.NoError(t, err)
 	assert.Equal(t, "2", committed)
-	assert.False(t, server.Exists(getUserCacheKey(user.Id)))
+	assert.False(t, server.Exists(quotacache.UserKey(user.Id)))
 }
 
 func TestIncrementFailedAttemptsCountsConcurrentFailures(t *testing.T) {

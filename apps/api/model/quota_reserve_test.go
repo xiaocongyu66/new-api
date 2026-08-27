@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/QuantumNous/new-api/internal/common/quotacache"
 	"testing"
 	"time"
 
@@ -197,9 +198,9 @@ func TestTokenCacheInitPreservesLiveQuotaAndFenceBlocksStaleSnapshot(t *testing.
 	require.NoError(t, err)
 	stale := *loaded
 
-	result, err := cacheApplyTokenQuotaDelta(token.Id, token.Key, -70)
+	result, err := quotacache.ApplyTokenDelta(token.Id, token.Key, -70)
 	require.NoError(t, err)
-	require.Equal(t, cacheQuotaOK, result)
+	require.Equal(t, quotacache.OK, result)
 
 	// 已存在的哈希只刷新 TTL：数据库快照不得覆盖已被原子预扣的余额。
 	code, err := cacheInitToken(stale)

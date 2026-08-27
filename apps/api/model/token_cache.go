@@ -3,15 +3,12 @@ package model
 import (
 	"context"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/quotacache"
 	"strconv"
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
 )
-
-func getTokenCacheKey(key string) string {
-	return fmt.Sprintf("token:%s", common.GenerateHMAC(key))
-}
 
 func getTokenCacheFenceKey(key string) string {
 	return fmt.Sprintf("token:fence:%s", common.GenerateHMAC(key))
@@ -44,7 +41,7 @@ func invalidateTokenCacheForMutation(key string) error {
 	if err != nil {
 		return err
 	}
-	return common.RDB.Del(ctx, getTokenCacheKey(key)).Err()
+	return common.RDB.Del(ctx, quotacache.TokenKey(key)).Err()
 }
 
 // cacheInitToken publishes a database snapshot only when no mutation fence is
@@ -79,7 +76,7 @@ redis.call('EXPIRE', KEYS[1], ARGV[17])
 return 1`
 
 	return common.RDB.Eval(context.Background(), script, []string{
-		getTokenCacheKey(token.Key), getTokenCacheFenceKey(token.Key),
+		quotacache.TokenKey(token.Key), getTokenCacheFenceKey(token.Key),
 	},
 		token.Id, token.UserId, token.Status, token.Name,
 		token.CreatedTime, token.AccessedTime, token.ExpiredTime,
@@ -96,7 +93,7 @@ func cacheGetTokenByKey(key string) (*Token, error) {
 		return nil, fmt.Errorf("redis is not enabled")
 	}
 	var token Token
-	if err := common.RedisHGetObj(getTokenCacheKey(key), &token); err != nil {
+	if err := common.RedisHGetObj(quotacache.TokenKey(key), &token); err != nil {
 		return nil, err
 	}
 	if token.Id <= 0 {

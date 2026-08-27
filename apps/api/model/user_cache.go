@@ -3,14 +3,13 @@ package model
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/quotacache"
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 )
-
-const userCacheSchemaVersion = 2
 
 type UserBase struct {
 	Id          int    `json:"id"`
@@ -45,11 +44,6 @@ func (user *UserBase) GetSetting() dto.UserSetting {
 	return setting
 }
 
-// getUserCacheKey returns the key for user cache
-func getUserCacheKey(userId int) string {
-	return fmt.Sprintf("user:%d", userId)
-}
-
 func userCacheTTLSeconds() int {
 	ttl := common.RedisKeyCacheSeconds()
 	if ttl <= 0 {
@@ -63,7 +57,7 @@ func invalidateUserCache(userId int) error {
 	if !common.RedisEnabled {
 		return nil
 	}
-	return common.RedisDelKey(getUserCacheKey(userId))
+	return common.RedisDelKey(quotacache.UserKey(userId))
 }
 
 func populateUserCache(user User) error {
@@ -119,11 +113,11 @@ func cacheGetUserBase(userId int) (*UserBase, error) {
 	}
 	var userCache UserBase
 	// Try getting from Redis first
-	err := common.RedisHGetObj(getUserCacheKey(userId), &userCache)
+	err := common.RedisHGetObj(quotacache.UserKey(userId), &userCache)
 	if err != nil {
 		return nil, err
 	}
-	if userCache.Id != userId || userCache.CacheSchema != userCacheSchemaVersion || userCache.AuthVersion <= 0 {
+	if userCache.Id != userId || userCache.CacheSchema != quotacache.UserSchemaVersion || userCache.AuthVersion <= 0 {
 		return nil, fmt.Errorf("user cache schema is stale")
 	}
 	floor, err := getUserAuthVersionFloor(userId)
@@ -134,33 +128,6 @@ func cacheGetUserBase(userId int) (*UserBase, error) {
 		return nil, ErrUserAuthCachePending
 	}
 	return &userCache, nil
-}
-
-// Add atomic quota operations using hash fields.
-// 通过守卫式 Lua 脚本执行：哈希不存在时直接跳过（下次读取会从数据库水合），
-// 不会像裸 HINCRBY 那样创建只含 Quota 字段的残缺哈希。
-func cacheIncrUserQuota(userId int, delta int64) error {
-	if !common.RedisEnabled {
-		return nil
-	}
-	_, err := cacheApplyUserQuotaDelta(userId, delta)
-	return err
-}
-
-func cacheDecrUserQuota(userId int, delta int64) error {
-	return cacheIncrUserQuota(userId, -delta)
-}
-
-// syncCreditUserQuotaCache 在授信事务（充值/兑换等）提交后同步把增量补进缓存
-// 余额。预扣以缓存值为准（存在期间），授信不能绕过它，否则新到账的额度在
-// 缓存过期前不可用；缓存未命中无需处理，下次读取会从已提交的数据库余额水合。
-func syncCreditUserQuotaCache(userId int, quota int, operation string) {
-	if quota <= 0 {
-		return
-	}
-	if err := cacheIncrUserQuota(userId, int64(quota)); err != nil {
-		common.SysLog(fmt.Sprintf("failed to sync %s credit to user quota cache: %s", operation, err.Error()))
-	}
 }
 
 // Helper functions to get individual fields if needed

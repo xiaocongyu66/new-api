@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/quotacache"
 	"strconv"
 	"strings"
 
@@ -123,7 +124,7 @@ func (user *User) ToBaseUser() *UserBase {
 		Setting:     user.Setting,
 		Email:       user.Email,
 		AuthVersion: user.AuthVersion,
-		CacheSchema: userCacheSchemaVersion,
+		CacheSchema: quotacache.UserSchemaVersion,
 	}
 	return cache
 }
@@ -1086,7 +1087,7 @@ func IncreaseUserQuota(id int, quota int, db bool) (err error) {
 		return errors.New("quota 不能为负数！")
 	}
 	gopool.Go(func() {
-		err := cacheIncrUserQuota(id, int64(quota))
+		err := quotacache.IncrUser(id, int64(quota))
 		if err != nil {
 			common.SysLog("failed to increase user quota: " + err.Error())
 		}
@@ -1111,7 +1112,7 @@ func DecreaseUserQuota(id int, quota int, db bool) (err error) {
 		return errors.New("quota 不能为负数！")
 	}
 	gopool.Go(func() {
-		err := cacheDecrUserQuota(id, int64(quota))
+		err := quotacache.DecrUser(id, int64(quota))
 		if err != nil {
 			common.SysLog("failed to decrease user quota: " + err.Error())
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/quotacache"
 	"strings"
 	"testing"
 	"time"
@@ -598,7 +599,7 @@ func TestUserBaseIncludesAuthorizationFields(t *testing.T) {
 	base := user.ToBaseUser()
 	assert.Equal(t, user.Role, base.Role)
 	assert.Equal(t, user.AuthVersion, base.AuthVersion)
-	assert.Equal(t, userCacheSchemaVersion, base.CacheSchema)
+	assert.Equal(t, quotacache.UserSchemaVersion, base.CacheSchema)
 	assert.Equal(t, user.Quota, base.Quota)
 }
 
