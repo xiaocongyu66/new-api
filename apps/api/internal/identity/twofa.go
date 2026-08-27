@@ -4,7 +4,6 @@ import (
 	"errors"
 	"github.com/QuantumNous/new-api/internal/security/authtoken"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/usage"
 	"net/http"
 	"strconv"
 
@@ -116,7 +115,7 @@ func Setup2FA(c contract.Context) {
 	}
 
 	// 记录操作日志
-	usage.RecordLog(userId, usage.LogTypeSystem, "开始设置两步验证")
+	writeSystemLog(userId, "开始设置两步验证")
 
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
@@ -198,7 +197,7 @@ func Enable2FA(c contract.Context) {
 	}
 
 	// 记录操作日志
-	usage.RecordLog(userId, usage.LogTypeSystem, "成功启用两步验证")
+	writeSystemLog(userId, "成功启用两步验证")
 
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
@@ -281,7 +280,7 @@ func Disable2FA(c contract.Context) {
 	}
 
 	// 记录操作日志
-	usage.RecordLog(userId, usage.LogTypeSystem, "禁用两步验证")
+	writeSystemLog(userId, "禁用两步验证")
 
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
@@ -411,7 +410,7 @@ func RegenerateBackupCodes(c contract.Context) {
 	}
 
 	// 记录操作日志
-	usage.RecordLog(userId, usage.LogTypeSystem, "重新生成两步验证备用码")
+	writeSystemLog(userId, "重新生成两步验证备用码")
 
 	data := authRotationData(bundle)
 	data["backup_codes"] = backupCodes
@@ -584,7 +583,7 @@ func AdminDisable2FA(c contract.Context) {
 		return
 	}
 
-	usage.RecordManageAuditFor(c, userId, "user.2fa_disable", nil)
+	writeManageAudit(c, userId, "user.2fa_disable", nil)
 
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,

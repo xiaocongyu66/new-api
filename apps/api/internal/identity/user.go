@@ -6,7 +6,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/security/authtoken"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/usage"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"net/http"
 	"net/url"
@@ -21,7 +20,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/QuantumNous/new-api/internal/constant"
@@ -146,7 +144,7 @@ func recordLoginAudit(user *model.User, c contract.Context) {
 		"user_agent":   c.UserAgent(),
 	}
 	content := fmt.Sprintf("Logged in successfully via %s", method)
-	usage.RecordLoginLog(user.Id, user.Username, content, ip, "login", map[string]interface{}{
+	writeLoginLog(user.Id, user.Username, content, ip, "login", map[string]interface{}{
 		"method": method,
 	}, extra)
 }
@@ -596,7 +594,7 @@ func GetUserModels(c contract.Context) {
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
-		"data":    service.GetGroupsEnabledModels(groupsToQuery),
+		"data":    groupModels(groupsToQuery),
 	})
 }
 
@@ -666,7 +664,7 @@ func UpdateUser(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	usage.RecordManageAuditFor(c, updatedUser.Id, "user.update", map[string]interface{}{
+	writeManageAudit(c, updatedUser.Id, "user.update", map[string]interface{}{
 		"username": originUser.Username,
 		"id":       updatedUser.Id,
 	})
@@ -707,7 +705,7 @@ func AdminClearUserBinding(c contract.Context) {
 		return
 	}
 
-	usage.RecordManageAuditFor(c, user.Id, "user.binding_clear", map[string]interface{}{
+	writeManageAudit(c, user.Id, "user.binding_clear", map[string]interface{}{
 		"bindingType": bindingType,
 		"username":    user.Username,
 	})
@@ -906,7 +904,7 @@ func DeleteUser(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	usage.RecordManageAuditFor(c, originUser.Id, "user.delete", map[string]interface{}{
+	writeManageAudit(c, originUser.Id, "user.delete", map[string]interface{}{
 		"username": originUser.Username,
 		"id":       originUser.Id,
 	})
@@ -985,7 +983,7 @@ func CreateUser(c contract.Context) {
 	}
 	cleanUser.FinishInsert(0)
 
-	usage.RecordManageAuditFor(c, cleanUser.Id, "user.create", map[string]interface{}{
+	writeManageAudit(c, cleanUser.Id, "user.create", map[string]interface{}{
 		"username": cleanUser.Username,
 		"role":     cleanUser.Role,
 	})
@@ -1068,7 +1066,7 @@ func ManageUser(c contract.Context) {
 		if err := model.InvalidateUserTokensCache(user.Id); err != nil {
 			common.SysLog(fmt.Sprintf("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
 		}
-		usage.RecordManageAuditFor(c, user.Id, "user.manage", map[string]interface{}{
+		writeManageAudit(c, user.Id, "user.manage", map[string]interface{}{
 			"action":   req.Action,
 			"username": user.Username,
 			"id":       user.Id,
@@ -1121,7 +1119,7 @@ func ManageUser(c contract.Context) {
 				common.CtxApiError(c, err)
 				return
 			}
-			usage.RecordManageAuditFor(c, user.Id, "user.quota_add", map[string]interface{}{
+			writeManageAudit(c, user.Id, "user.quota_add", map[string]interface{}{
 				"quota": logger.LogQuota(req.Value),
 			})
 		case "subtract":
@@ -1133,7 +1131,7 @@ func ManageUser(c contract.Context) {
 				common.CtxApiError(c, err)
 				return
 			}
-			usage.RecordManageAuditFor(c, user.Id, "user.quota_subtract", map[string]interface{}{
+			writeManageAudit(c, user.Id, "user.quota_subtract", map[string]interface{}{
 				"quota": logger.LogQuota(req.Value),
 			})
 		case "override":
@@ -1142,7 +1140,7 @@ func ManageUser(c contract.Context) {
 				common.CtxApiError(c, err)
 				return
 			}
-			usage.RecordManageAuditFor(c, user.Id, "user.quota_override", map[string]interface{}{
+			writeManageAudit(c, user.Id, "user.quota_override", map[string]interface{}{
 				"from": logger.LogQuota(oldQuota),
 				"to":   logger.LogQuota(req.Value),
 			})
@@ -1195,7 +1193,7 @@ func ManageUser(c contract.Context) {
 	if err := model.InvalidateUserTokensCache(user.Id); err != nil {
 		common.SysLog(fmt.Sprintf("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
 	}
-	usage.RecordManageAuditFor(c, user.Id, "user.manage", map[string]interface{}{
+	writeManageAudit(c, user.Id, "user.manage", map[string]interface{}{
 		"action":   req.Action,
 		"username": user.Username,
 		"id":       user.Id,
