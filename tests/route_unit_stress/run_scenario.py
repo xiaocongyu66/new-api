@@ -2696,8 +2696,16 @@ def main() -> int:
         "peak_disk_write_bps": max((w.get("disk", {}).get("max", {}).get("write_bps", 0) or 0 for w in windows), default=None),
         "peak_net_error": max((w.get("net", {}).get("max", {}).get("error", 0) or 0 for w in windows), default=None),
         "peak_net_retransmit": max((w.get("net", {}).get("max", {}).get("retransmit", 0) or 0 for w in windows), default=None),
-        "peak_go_heap_alloc": max((w.get("go_runtime", {}).get("max", {}).get("heap_alloc", 0) or 0 for w in windows), default=None),
-        "peak_go_num_gc": max((w.get("go_runtime", {}).get("max", {}).get("num_gc", 0) or 0 for w in windows), default=None),
+        "peak_go_heap_alloc": max(
+            (w.get("go_runtime", {}).get("max", {}).get("heap_alloc", 0) or 0
+             for w in windows if isinstance(w.get("go_runtime"), dict)),
+            default=None,
+        ),
+        "peak_go_num_gc": max(
+            (w.get("go_runtime", {}).get("max", {}).get("num_gc", 0) or 0
+             for w in windows if isinstance(w.get("go_runtime"), dict)),
+            default=None,
+        ),
     }
     # k8s is per-sample (not windowed), so surface the first dict seen across
     # all raw samples; NOT_AVAILABLE when no sample carried pod/node data.
