@@ -308,6 +308,66 @@ def read_oom_events() -> tuple[dict[str, int] | None, str | None]:
         return None, "memory.events present but carried no counters"
     return out, None
 
+def read_k8s_pod_node_info() -> tuple[dict[str, Any] | None, str | None]:
+    """Read Kubernetes pod/node identity and resource requests/limits.
+
+    Only returns data inside a real pod: detected via downward-API env
+    (KUBE_POD_NAME/KUBE_NODE_NAME/KUBE_POD_UID) or the serviceaccount
+    namespace file. Locally (none of those) returns None with a reason, so
+    summary['resources']['k8s'] is NOT_AVAILABLE rather than fabricated.
+    """
+    pod_name = os.environ.get("KUBE_POD_NAME")
+    node_name = os.environ.get("KUBE_NODE_NAME")
+    pod_uid = os.environ.get("KUBE_POD_UID")
+    sa_ns = Path("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+    if not (pod_name or node_name or pod_uid or sa_ns.exists()):
+        return None, (
+            "not running inside Kubernetes: no downward-API pod/node env "
+            "(KUBE_POD_NAME/KUBE_NODE_NAME) and no serviceaccount namespace file"
+        )
+
+    info: dict[str, Any] = {
+        "pod_name": pod_name or NOT_AVAILABLE,
+        "node_name": node_name or NOT_AVAILABLE,
+        "pod_uid": pod_uid or NOT_AVAILABLE,
+        "cpu_request": os.environ.get("KUBE_POD_CPU_REQUEST", NOT_AVAILABLE),
+        "memory_request": os.environ.get("KUBE_POD_MEMORY_REQUEST", NOT_AVAILABLE),
+        "restart_count": NOT_AVAILABLE,  # needs kubectl; handled at workflow layer
+    }
+
+    # CPU limit: downward-API env, then cgroup v2 cpu.max ("quota period")
+    cpu_limit = os.environ.get("KUBE_POD_CPU_LIMIT")
+    if cpu_limit is not None:
+        info["cpu_limit"] = cpu_limit
+    else:
+        cpu_max = _read_file("/sys/fs/cgroup/cpu.max")
+        info["cpu_limit"] = NOT_AVAILABLE
+        if cpu_max:
+            parts = cpu_max.strip().split()
+            if len(parts) == 2 and parts[0] != "max":
+                try:
+                    quota, period = int(parts[0]), int(parts[1])
+                    info["cpu_limit"] = quota / period if period else NOT_AVAILABLE
+                except ValueError:
+                    pass
+
+    # Memory limit: downward-API env, then cgroup v2 memory.max (bytes)
+    memory_limit = os.environ.get("KUBE_POD_MEMORY_LIMIT")
+    if memory_limit is not None:
+        info["memory_limit"] = memory_limit
+    else:
+        mem_max = _read_file("/sys/fs/cgroup/memory.max")
+        info["memory_limit"] = NOT_AVAILABLE
+        if mem_max:
+            val = mem_max.strip()
+            if val != "max":
+                try:
+                    info["memory_limit"] = int(val)
+                except ValueError:
+                    pass
+
+    return info, None
+
 
 class _DiffTracker:
     """Track previous samples for differential metrics."""
@@ -603,6 +663,9 @@ def sample_once(pprof_url: str | None = None, gateway_pid: int | None = None) ->
     oom, oom_reason = read_oom_events()
     if oom_reason:
         unavailable_reasons["oom_events"] = oom_reason
+    k8s_info, k8s_reason = read_k8s_pod_node_info()
+    if k8s_reason:
+        unavailable_reasons["k8s"] = k8s_reason
 
     return {
         "ts": ts,
@@ -621,6 +684,7 @@ def sample_once(pprof_url: str | None = None, gateway_pid: int | None = None) ->
         "disk": disk,
         "net": net,
         "go_runtime": go_rt if go_rt is not None else NOT_AVAILABLE,
+        "k8s": k8s_info if k8s_info is not None else NOT_AVAILABLE,
         "process": proc_id if proc_id is not None else NOT_AVAILABLE,
         "oom": oom if oom is not None else NOT_AVAILABLE,
         "unavailable_reasons": unavailable_reasons,
@@ -734,6 +798,14 @@ def aggregate_windows(rows: list[dict], window_s: int = 10) -> list[dict]:
         disk_max = {k: agg(["disk", k], "max") for k in ("used", "free", "inodes", "read_bps", "write_bps", "iops", "util", "await", "queue")}
         net_avg = {k: agg(["net", k], "avg") for k in ("rx", "tx", "retransmit", "drop", "error", "conns")}
         net_max = {k: agg(["net", k], "max") for k in ("rx", "tx", "retransmit", "drop", "error", "conns")}
+        go_keys = ("heap_alloc", "heap_sys", "heap_inuse", "heap_objects",
+                   "next_gc", "num_gc", "gc_pause_total_ns", "sys_total")
+        if any(isinstance(r.get("go_runtime"), dict) for r in win_rows):
+            go_avg = {k: agg(["go_runtime", k], "avg") for k in go_keys}
+            go_max = {k: agg(["go_runtime", k], "max") for k in go_keys}
+            go_runtime = {"avg": go_avg, "max": go_max}
+        else:
+            go_runtime = NOT_AVAILABLE
 
         result.append({
             "window_start": win_start,
@@ -743,6 +815,7 @@ def aggregate_windows(rows: list[dict], window_s: int = 10) -> list[dict]:
             "mem": {"avg": mem_avg, "max": mem_max},
             "disk": {"avg": disk_avg, "max": disk_max},
             "net": {"avg": net_avg, "max": net_max},
+            "go_runtime": go_runtime,
         })
     return result
 

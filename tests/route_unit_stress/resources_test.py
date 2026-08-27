@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from lib_resources import sample_once, ResourceSampler, aggregate_windows, NOT_AVAILABLE
+from lib_resources import sample_once, ResourceSampler, aggregate_windows, NOT_AVAILABLE, read_k8s_pod_node_info
 
 
 def test_sample_once_structure() -> bool:
@@ -190,6 +190,48 @@ def test_aggregate_windows_boundary_exact() -> bool:
     return True
 
 
+def test_aggregate_windows_folds_go_runtime() -> bool:
+    """aggregate_windows folds go_runtime dict (avg/max), skipping NOT_AVAILABLE."""
+    base = 3000.0
+    rows = []
+    go_vals = [
+        {"heap_alloc": 100, "heap_sys": 200, "heap_inuse": 150, "heap_objects": 50,
+         "next_gc": 400, "num_gc": 10, "gc_pause_total_ns": 5000, "sys_total": 300},
+        NOT_AVAILABLE,  # pprof unreachable for this sample
+        {"heap_alloc": 300, "heap_sys": 200, "heap_inuse": 250, "heap_objects": 70,
+         "next_gc": 600, "num_gc": 25, "gc_pause_total_ns": 8000, "sys_total": 300},
+    ]
+    for i, gr in enumerate(go_vals):
+        rows.append({
+            "ts": base + i,
+            "cpu": {"user": 10.0, "system": 5.0, "iowait": 1.0, "steal": 0.0, "load1": 1.0, "load5": 1.0, "load15": 1.0, "runqueue": 2},
+            "mem": {"rss": 100000000, "available": 5000000000, "cgroup_usage": NOT_AVAILABLE, "cgroup_limit": NOT_AVAILABLE},
+            "disk": {"used": 10000000000, "free": 50000000000, "inodes": 100000, "read_bps": 1000000, "write_bps": 500000, "iops": 100, "util": 10.0, "await": 2.0, "queue": 0.5, "errors": NOT_AVAILABLE},
+            "net": {"rx": 100000, "tx": 50000, "retransmit": 0, "drop": 0, "error": 0, "conns": 10},
+            "go_runtime": gr,
+            "unavailable_reasons": {},
+        })
+
+    windows = aggregate_windows(rows, window_s=10)
+    assert len(windows) == 1
+    w = windows[0]
+    # Only the 2 numeric samples count: heap_alloc avg=(100+300)/2=200, max=300
+    assert w["go_runtime"]["avg"]["heap_alloc"] == 200.0, f"go avg heap_alloc={w['go_runtime']['avg']['heap_alloc']}"
+    assert w["go_runtime"]["max"]["heap_alloc"] == 300.0, f"go max heap_alloc={w['go_runtime']['max']['heap_alloc']}"
+    # num_gc avg=(10+25)/2=17.5, max=25
+    assert w["go_runtime"]["avg"]["num_gc"] == 17.5, f"go avg num_gc={w['go_runtime']['avg']['num_gc']}"
+    assert w["go_runtime"]["max"]["num_gc"] == 25.0, f"go max num_gc={w['go_runtime']['max']['num_gc']}"
+    return True
+
+
+def test_read_k8s_pod_node_info_local_returns_none() -> bool:
+    """read_k8s_pod_node_info() returns (None, reason) on a non-k8s host."""
+    info, reason = read_k8s_pod_node_info()
+    assert info is None, f"expected None outside k8s, got {info!r}"
+    assert isinstance(reason, str), f"reason should be str, got {type(reason)}"
+    assert "not running inside Kubernetes" in reason, f"reason text mismatch: {reason}"
+    return True
+
 def run_all() -> int:
     tests = [
         ("sample_once_structure", test_sample_once_structure),
@@ -199,6 +241,8 @@ def run_all() -> int:
         ("aggregate_windows_empty_input", test_aggregate_windows_empty_input),
         ("aggregate_windows_single_sample", test_aggregate_windows_single_sample),
         ("aggregate_windows_boundary_exact", test_aggregate_windows_boundary_exact),
+        ("aggregate_windows_folds_go_runtime", test_aggregate_windows_folds_go_runtime),
+        ("read_k8s_pod_node_info_local_returns_none", test_read_k8s_pod_node_info_local_returns_none),
     ]
     failed = 0
     for name, fn in tests:

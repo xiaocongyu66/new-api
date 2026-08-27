@@ -2326,6 +2326,11 @@ def main() -> int:
             summary["kill_switch_before"] = ks_before
             summary["kill_switch_after"] = ks_after
             summary["sweep_evidence"] = sweep_evidence
+            # #418 Task 5: declare the sweep KNOWN LIMITATION at the top level.
+            # This is plan B (document the time.Hour sweep ticker gap in summary),
+            # NOT plan A (a test hook into the gateway). The sweep_note text above
+            # is the reason; the bool makes it machine-queryable for the closure check.
+            summary["s10_sweep_known_limitation"] = True
             elapsed = time.time() - phase_started
             phase_marks = {"warmup_end": warmup_end_ts}
             step_at_ts = None
@@ -2691,7 +2696,17 @@ def main() -> int:
         "peak_disk_write_bps": max((w.get("disk", {}).get("max", {}).get("write_bps", 0) or 0 for w in windows), default=None),
         "peak_net_error": max((w.get("net", {}).get("max", {}).get("error", 0) or 0 for w in windows), default=None),
         "peak_net_retransmit": max((w.get("net", {}).get("max", {}).get("retransmit", 0) or 0 for w in windows), default=None),
+        "peak_go_heap_alloc": max((w.get("go_runtime", {}).get("max", {}).get("heap_alloc", 0) or 0 for w in windows), default=None),
+        "peak_go_num_gc": max((w.get("go_runtime", {}).get("max", {}).get("num_gc", 0) or 0 for w in windows), default=None),
     }
+    # k8s is per-sample (not windowed), so surface the first dict seen across
+    # all raw samples; NOT_AVAILABLE when no sample carried pod/node data.
+    k8s_val: Any = lib_resources.NOT_AVAILABLE
+    for r in resource_rows:
+        if isinstance(r.get("k8s"), dict):
+            k8s_val = r["k8s"]
+            break
+    summary["resources"]["k8s"] = k8s_val
 
     # Build traffic windows using lib_report with phase marks
     if is_s6:
