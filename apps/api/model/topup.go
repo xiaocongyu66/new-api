@@ -73,8 +73,8 @@ func ValidateTopUpQuotaCapacity(userId int, creditedQuota int) error {
 		return err
 	}
 
-	var user User
-	if err := dbx.DB.Select("quota").Where("id = ?", userId).First(&user).Error; err != nil {
+	user, err := ReadUserQuota(dbx.DB, userId)
+	if err != nil {
 		return err
 	}
 	if user.Quota > maxCurrentQuota {
@@ -98,7 +98,7 @@ func creditTopUpQuota(tx *gorm.DB, userId int, creditedQuota int, updates map[st
 	}
 	updateFields["quota"] = gorm.Expr("quota + ?", creditedQuota)
 
-	result := tx.Model(&User{}).
+	result := UserQuery(tx).
 		Where("id = ? AND quota <= ?", userId, maxCurrentQuota).
 		Updates(updateFields)
 	if result.Error != nil {
@@ -109,7 +109,7 @@ func creditTopUpQuota(tx *gorm.DB, userId int, creditedQuota int, updates map[st
 	}
 
 	var count int64
-	if err := tx.Model(&User{}).Where("id = ?", userId).Count(&count).Error; err != nil {
+	if err := UserQuery(tx).Where("id = ?", userId).Count(&count).Error; err != nil {
 		return err
 	}
 	if count == 0 {
@@ -548,8 +548,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 		// 如果有客户邮箱，尝试更新用户邮箱（仅当用户邮箱为空时）
 		if customerEmail != "" {
 			// 先检查用户当前邮箱是否为空
-			var user User
-			err = tx.Where("id = ?", topUp.UserId).First(&user).Error
+			user, err := LockUserRow(tx, topUp.UserId)
 			if err != nil {
 				return err
 			}

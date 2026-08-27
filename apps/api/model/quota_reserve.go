@@ -17,7 +17,7 @@ func persistUserQuotaDelta(id int, delta int) error {
 		dbx.AddNewRecord(dbx.BatchUpdateTypeUserQuota, id, delta)
 		return nil
 	}
-	result := dbx.DB.Model(&User{}).Where("id = ?", id).Update("quota", gorm.Expr("quota + ?", delta))
+	result := UserQuery(dbx.DB).Where("id = ?", id).Update("quota", gorm.Expr("quota + ?", delta))
 	if result.Error != nil {
 		return result.Error
 	}
@@ -32,7 +32,7 @@ func persistTokenQuotaDelta(id int, delta int) error {
 		dbx.AddNewRecord(dbx.BatchUpdateTypeTokenQuota, id, delta)
 		return nil
 	}
-	result := dbx.DB.Model(&Token{}).Where("id = ?", id).Updates(
+	result := TokenQuery(dbx.DB).Where("id = ?", id).Updates(
 		map[string]interface{}{
 			"remain_quota":  gorm.Expr("remain_quota + ?", delta),
 			"used_quota":    gorm.Expr("used_quota - ?", delta),
@@ -49,14 +49,14 @@ func persistTokenQuotaDelta(id int, delta int) error {
 }
 
 func reserveUserQuotaDB(id int, quota int) (bool, error) {
-	result := dbx.DB.Model(&User{}).
+	result := UserQuery(dbx.DB).
 		Where("id = ? AND quota >= ?", id, quota).
 		Update("quota", gorm.Expr("quota - ?", quota))
 	return result.RowsAffected == 1, result.Error
 }
 
 func reserveTokenQuotaDB(id int, quota int) (bool, error) {
-	result := dbx.DB.Model(&Token{}).
+	result := TokenQuery(dbx.DB).
 		Where("id = ? AND remain_quota >= ?", id, quota).
 		Updates(map[string]interface{}{
 			"remain_quota":  gorm.Expr("remain_quota - ?", quota),

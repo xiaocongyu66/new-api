@@ -358,7 +358,7 @@ func getUserGroupByIdTx(tx *gorm.DB, userId int) (string, error) {
 		tx = dbx.DB
 	}
 	var group string
-	if err := dbx.LockForUpdate(tx).Model(&User{}).Where("id = ?", userId).Select(dbx.GroupCol()).Find(&group).Error; err != nil {
+	if err := UserQuery(dbx.LockForUpdate(tx)).Where("id = ?", userId).Select(dbx.GroupCol()).Find(&group).Error; err != nil {
 		return "", err
 	}
 	return group, nil
@@ -401,7 +401,7 @@ func downgradeUserGroupForSubscriptionTx(tx *gorm.DB, sub *UserSubscription, now
 	if target == "" || target == currentGroup {
 		return "", nil
 	}
-	if err := tx.Model(&User{}).Where("id = ?", sub.UserId).
+	if err := UserQuery(tx).Where("id = ?", sub.UserId).
 		Update("group", target).Error; err != nil {
 		return "", err
 	}
@@ -450,7 +450,7 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		}
 		if currentGroup != upgradeGroup {
 			prevGroup = currentGroup
-			if err := tx.Model(&User{}).Where("id = ?", userId).
+			if err := UserQuery(tx).Where("id = ?", userId).
 				Update("group", upgradeGroup).Error; err != nil {
 				return nil, err
 			}
@@ -539,15 +539,15 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 			return err
 		}
 
-		var user User
-		if err := dbx.LockForUpdate(tx).Where("id = ?", userId).First(&user).Error; err != nil {
+		user, err := LockUserRow(tx, userId)
+		if err != nil {
 			return err
 		}
 		if requiredQuota > 0 && user.Quota < requiredQuota {
 			return errors.New("余额不足")
 		}
 		if requiredQuota > 0 {
-			if err := tx.Model(&User{}).Where("id = ?", userId).
+			if err := UserQuery(tx).Where("id = ?", userId).
 				Update("quota", gorm.Expr("quota - ?", requiredQuota)).Error; err != nil {
 				return err
 			}
@@ -855,7 +855,7 @@ func ExpireDueSubscriptions(limit int) (int, error) {
 			if target == "" || target == currentGroup {
 				return nil
 			}
-			if err := tx.Model(&User{}).Where("id = ?", userId).
+			if err := UserQuery(tx).Where("id = ?", userId).
 				Update("group", target).Error; err != nil {
 				return err
 			}
@@ -1273,8 +1273,7 @@ func AdminBindSubscriptionRecord(userId int, planId int, sourceNote string) (str
 	groupChanged := false
 	err = dbx.DB.Transaction(func(tx *gorm.DB) error {
 		// 与 CompleteSubscriptionOrder 一致：先锁用户行，再做购买次数检查。
-		var userRow User
-		if err := dbx.LockForUpdate(tx).Select("id").Where("id = ?", userId).First(&userRow).Error; err != nil {
+		if _, err := LockUserRow(tx, userId); err != nil {
 			return err
 		}
 		subscription, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "admin")
@@ -1387,8 +1386,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		}
 		// 锁定用户行：并发完成同一用户的不同订单（包括多实例部署下）时，
 		// 使 CreateUserSubscriptionFromPlanTx 的 MaxPurchasePerUser 检查按用户串行。
-		var userRow User
-		if err := dbx.LockForUpdate(tx).Select("id").Where("id = ?", order.UserId).First(&userRow).Error; err != nil {
+		if _, err := LockUserRow(tx, order.UserId); err != nil {
 			return err
 		}
 		subscription, err := CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
