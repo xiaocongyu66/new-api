@@ -2,7 +2,7 @@ package ops
 
 import (
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/security/authtoken"
+	"github.com/QuantumNous/new-api/internal/authtoken"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 

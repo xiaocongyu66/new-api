@@ -1,7 +1,7 @@
 package service
 
 import (
-	"github.com/QuantumNous/new-api/internal/security/authtoken"
+	"github.com/QuantumNous/new-api/internal/authtoken"
 	"testing"
 
 	"github.com/stretchr/testify/assert"

@@ -1,13 +1,13 @@
 package identity
 
 import (
-	"github.com/QuantumNous/new-api/internal/security/authtoken"
+	"github.com/QuantumNous/new-api/internal/authtoken"
 )
 
 // The dashboard token mechanism (JWT issuing, parsing, and security proofs) now
-// lives in internal/security/authtoken. It is a pure protocol concern with no
-// model or database dependency, so it belongs with the security mechanisms
-// rather than the identity business logic.
+// lives in the internal/authtoken leaf package. It is a pure protocol concern
+// with no model or database dependency, shared by identity (issuing) and
+// security (verification) so neither domain imports the other.
 //
 // These aliases keep the existing service.* call sites compiling while identity
 // handlers migrate to the capability package. They are re-exports, not a second
@@ -62,7 +62,7 @@ func VerifySecurityProof(raw string, identity AuthIdentity, requiredScope string
 }
 
 // authSigningKey keeps the existing unexported call sites working; the exported
-// derivation lives in the security package.
+// derivation lives in the authtoken package.
 func authSigningKey(purpose string) []byte { return authtoken.SigningKey(purpose) }
 
 const (

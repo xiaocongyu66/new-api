@@ -10,10 +10,11 @@ const AuthIdentityContextKey = "auth_identity"
 // request, if any. PAT-authenticated requests intentionally have no SessionID
 // and so cannot manage browser sessions.
 //
-// This lives beside AuthIdentity rather than in internal/security because
-// reading it needs nothing but the request context: keeping it here lets the
-// identity domain resolve the current caller without importing security, which
-// would otherwise cycle once security consumes identity's records.
+// This lives beside AuthIdentity in the authtoken leaf rather than in the
+// security domain because reading it needs nothing but the request context:
+// keeping it here lets the identity domain resolve the current caller without
+// importing security, which would otherwise cycle once security consumes
+// identity's records.
 func ReadAuthIdentity(c contract.Context) (AuthIdentity, bool) {
 	value, ok := c.Get(AuthIdentityContextKey)
 	if !ok {
