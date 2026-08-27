@@ -7,10 +7,10 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/dto"
+	"github.com/QuantumNous/new-api/internal/relay"
 	taskcap "github.com/QuantumNous/new-api/internal/task"
 	"github.com/QuantumNous/new-api/internal/types"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/relay"
 )
 
 func GetAllTask(c contract.Context) {

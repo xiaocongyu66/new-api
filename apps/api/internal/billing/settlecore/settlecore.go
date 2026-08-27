@@ -8,8 +8,8 @@ import (
 	"fmt"
 
 	"github.com/QuantumNous/new-api/internal/logger"
+	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/model"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
 )
 
 const (

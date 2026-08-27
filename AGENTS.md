@@ -27,9 +27,9 @@ apps/api/       — Go backend application (main module)
   controller/    — Request handlers
   service/       — Business logic
   model/         — Data models and DB access (GORM)
-  relay/         — AI API relay/proxy with provider adapters
-    relay/channel/ — Provider-specific adapters (openai/, claude/, gemini/, aws/, etc.)
-  middleware/    — Auth, rate limiting, CORS, logging, distribution
+  internal/relay/     — AI API relay/proxy with provider adapters
+    internal/relay/channel/ — Provider-specific adapters (openai/, claude/, gemini/, aws/, etc.)
+  internal/transport/middleware/ — Auth, rate limiting, CORS, gzip, logging, distribution
   setting/       — Configuration management (ratio, model, operation, system, performance)
   internal/common/    — Shared utilities (JSON, crypto, Redis, env, rate-limit, etc.)
   internal/dto/       — Data transfer objects (request/response structs)
@@ -191,7 +191,7 @@ Do NOT directly import or call `encoding/json` in business code. `json.RawMessag
 
 **Billing safety invariants:** Quota/billing code MUST never produce a negative charge (a credit) from arithmetic overflow or unvalidated input. Apply defense in depth:
 
-- Every user-controlled quantity that becomes a billing multiplier (image `n`, video `seconds`/`duration`, resolution/quality ratios, batch counts) MUST be bounded before it reaches quota calculation. Reject out-of-range values at request validation with a 400. Existing bounds: `dto.MaxImageN` for image generation count, `relaycommon.MaxTaskDurationSeconds` for task video duration, `maxTokensLimit` (`apps/api/relay/helper/valid_request.go`) for `max_tokens`-family fields on every relay format (OpenAI, Claude, Gemini, Responses). Reuse these constants instead of introducing new ad hoc limits for the same concepts. When adding a new relay format or request DTO, bound its max-tokens and count fields in its validator from day one.
+- Every user-controlled quantity that becomes a billing multiplier (image `n`, video `seconds`/`duration`, resolution/quality ratios, batch counts) MUST be bounded before it reaches quota calculation. Reject out-of-range values at request validation with a 400. Existing bounds: `dto.MaxImageN` for image generation count, `relaycommon.MaxTaskDurationSeconds` for task video duration, `maxTokensLimit` (`apps/api/internal/relay/helper/valid_request.go`) for `max_tokens`-family fields on every relay format (OpenAI, Claude, Gemini, Responses). Reuse these constants instead of introducing new ad hoc limits for the same concepts. When adding a new relay format or request DTO, bound its max-tokens and count fields in its validator from day one.
 - Watch for validation bypass paths: passthrough fields (e.g. `Extra["parameters"]`), task `metadata` maps, and multipart form fields can carry the same quantities around the standard DTO validation. Any adaptor that reads a multiplier from such a path must enforce the same bound (or clamp) locally.
 - Durations parsed from media metadata are user/upstream-controlled too: audio file headers (transcription token counting, TTS response duration) and upstream deduction numbers (e.g. Kling `FinalUnitDeduction`) can claim absurd values. Convert them with saturation before they become token counts.
 - Never convert a computed quota or token count to `int` with a bare cast like `int(float64(quota) * ratio)`, `int(math.Round(...))` on unbounded input, or `int(decimal.IntPart())`. All quota rounding/conversion is centralized in `apps/api/internal/common/quota_math.go`; use those helpers: `common.QuotaFromFloat` (truncating) for float products, `common.QuotaRound` (half-away-from-zero) where rounding is intended, and `common.QuotaFromDecimal` for decimal products. `billingexpr.QuotaRound` delegates to `common.QuotaRound`. Do not reintroduce local conversion helpers or bare casts. Saturation bounds are int32 because quota columns (user/token/log) are 32-bit integers in the database, and every clamp/NaN fallback is logged via `common.SysError` since a single request should never approach those bounds.
@@ -199,7 +199,7 @@ Do NOT directly import or call `encoding/json` in business code. `json.RawMessag
 - Multiplier maps go through `types.PriceData.AddOtherRatio`, which rejects non-positive, NaN, and +Inf ratios. Do not write to `PriceData.OtherRatios` directly, and do not weaken these guards.
 - Pre-consume (预扣费) and settle (结算/差额) must both be safe: a saturated oversized quota must fail pre-consume with insufficient-quota, never silently wrap. When adding a new billing path (new relay format, new task platform, new adjustment hook), trace the full chain — validation → EstimateBilling/OtherRatios → quota conversion → pre-consume → settle/refund — and confirm each step preserves these invariants.
 - Fields parsed into unsigned types (`*uint`) accept huge positive JSON numbers (e.g. `18446744073686646784`, a wrapped negative); a `>= 0` check is not sufficient, an upper bound is mandatory.
-- Regression tests for these invariants belong with the boundary they protect (request validators, converter helpers). See `apps/api/relay/helper/openai_image_request_test.go`, `apps/api/relay/common/relay_utils_test.go`, and `apps/api/internal/common/quota_math_test.go` for the expected style.
+- Regression tests for these invariants belong with the boundary they protect (request validators, converter helpers). See `apps/api/internal/relay/helper/openai_image_request_test.go`, `apps/api/internal/relay/common/relay_utils_test.go`, and `apps/api/internal/common/quota_math_test.go` for the expected style.
 
 **Backend test quality:** Backend tests must protect real behavior, API contracts, billing/accounting invariants, data compatibility, or regression paths.
 

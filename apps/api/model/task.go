@@ -8,7 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
-	commonRelay "github.com/QuantumNous/new-api/relay/common"
+	commonRelay "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 )
 

@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/QuantumNous/new-api/internal/logger"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
 

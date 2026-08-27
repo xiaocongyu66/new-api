@@ -7,8 +7,8 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/billing/settlecore"
 	"github.com/QuantumNous/new-api/internal/common"
+	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/model"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

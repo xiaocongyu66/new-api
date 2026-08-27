@@ -11,9 +11,9 @@ import (
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/dto"
 	"github.com/QuantumNous/new-api/internal/gateway/port"
+	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/model"
-	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 )
 
 // maxTaskDurationSeconds mirrors relaycommon.MaxTaskDurationSeconds to avoid import.

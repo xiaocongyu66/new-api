@@ -15,8 +15,8 @@ import (
 	"github.com/QuantumNous/new-api/internal/constant"
 	taskdto "github.com/QuantumNous/new-api/internal/dto"
 	"github.com/QuantumNous/new-api/internal/logger"
+	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/model"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 

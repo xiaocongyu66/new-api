@@ -6,7 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/dto"
-	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
 )
 
 // MidjourneyErrorWrapper wraps an error code and description into a MidjourneyResponse.

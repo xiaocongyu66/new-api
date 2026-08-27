@@ -4,7 +4,7 @@ import (
 	"context"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
 )

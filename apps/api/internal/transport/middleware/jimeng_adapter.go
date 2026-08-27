@@ -7,7 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
-	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
 )
 
 func JimengRequestConvert() func(c contract.Context) {

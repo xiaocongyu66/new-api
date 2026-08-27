@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/setting/perf_metrics_setting"
 )
 

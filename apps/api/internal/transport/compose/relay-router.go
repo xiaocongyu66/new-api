@@ -3,10 +3,10 @@ package compose
 import (
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/internal/constant"
+	"github.com/QuantumNous/new-api/internal/relay"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
-	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
 	"github.com/gin-gonic/gin"
