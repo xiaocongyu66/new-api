@@ -19,6 +19,7 @@ from lib_report import (
     write_summary,
     render_report_md,
     build_traffic_windows,
+    fill_per_window_route_shares,
 )
 
 
@@ -698,6 +699,45 @@ def test_resource_peaks_read_nested_window_shape(tmp: Path) -> bool:
     print("  OK: resource peaks read the nested window shape")
     return True
 
+
+def test_fill_per_window_route_shares(tmp: Path) -> bool:
+    """fill_per_window_route_shares buckets audit attempts to windows by request
+    completion time and recomputes per-route shares, repeating post-run corr/EWMA."""
+    # Three windows at 10s; two routes A (channel 1) and B (channel 2).
+    windows = [
+        {"window_start": 1000, "route_shares": "", "corr_p99": "", "ewma": ""},
+        {"window_start": 1010, "route_shares": "", "corr_p99": "", "ewma": ""},
+        {"window_start": 1020, "route_shares": "", "corr_p99": "", "ewma": ""},
+    ]
+    end_ts_by_id = {"r1": 1000.0, "r2": 1011.0, "r3": 1025.0, "r4": 1026.0}
+    attempts = [
+        # window 1000: one A
+        {"client_request_id": "r1", "channel_id": 1, "key_index": 0, "upstream_model": "m"},
+        # window 1010: one A + two B
+        {"client_request_id": "r2", "channel_id": 1, "key_index": 0, "upstream_model": "m"},
+        {"client_request_id": "x", "channel_id": 1, "key_index": 0, "upstream_model": "m"},  # no completion ts -> skipped
+        {"client_request_id": "r2", "channel_id": 2, "key_index": 1, "upstream_model": "n"},
+        {"client_request_id": "r2", "channel_id": 2, "key_index": 1, "upstream_model": "n"},
+        # window 1020: two B
+        {"client_request_id": "r3", "channel_id": 2, "key_index": 1, "upstream_model": "n"},
+        {"client_request_id": "r4", "channel_id": 2, "key_index": 1, "upstream_model": "n"},
+    ]
+    label_by_identity = {(1, 0, "m"): "A", (2, 1, "n"): "B"}
+    fill_per_window_route_shares(
+        windows, attempts, end_ts_by_id, label_by_identity,
+        post_corr_p99=1.17, post_ewma={"A": 1.0, "B": 0.8},
+    )
+    assert json.loads(windows[0]["route_shares"]) == {"A": 1.0}, \
+        f"window 1000 should be all A, got {windows[0]['route_shares']}"
+    assert json.loads(windows[1]["route_shares"]) == {"A": 1 / 3, "B": 2 / 3}, \
+        f"window 1010 should be A=1/3 B=2/3, got {windows[1]['route_shares']}"
+    assert json.loads(windows[2]["route_shares"]) == {"B": 1.0}, \
+        f"window 1020 should be all B, got {windows[2]['route_shares']}"
+    assert windows[0]["corr_p99"] == 1.17
+    assert json.loads(windows[0]["ewma"]) == {"A": 1.0, "B": 0.8}
+    print("  OK: fill_per_window_route_shares buckets and attributes correctly")
+    return True
+
 def run_all() -> int:
     tmp = Path("/tmp/route_unit_stress_report_test")
     tmp.mkdir(parents=True, exist_ok=True)
@@ -717,6 +757,7 @@ def run_all() -> int:
         ("windows_csv_backward_compat", test_windows_csv_backward_compat_old_dict),
         ("report_md_process_stability", test_report_md_process_stability),
         ("resource_peaks_nested_shape", test_resource_peaks_read_nested_window_shape),
+        ("fill_per_window_route_shares", test_fill_per_window_route_shares),
     ]
 
     failed = 0

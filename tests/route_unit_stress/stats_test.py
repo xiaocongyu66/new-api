@@ -1061,6 +1061,39 @@ def test_evaluate_recovery_scalar_corr() -> bool:
     assert all(v["route"] == "subject" for v in res["corr_violations"]), res["corr_violations"]
     return True
 
+
+def test_service_quality_retry_breakdown() -> bool:
+    """service_quality must name gateway retry / upstream fatal / shed 503 apart,
+    and mark attempt-derived counts NOT_AVAILABLE (not 0) when audit rows are absent."""
+    from run_scenario import service_quality
+
+    rows = [
+        {"request_id": "a", "status": 200, "latency_ms": 10.0, "ttft_ms": None,
+         "itl_ms": [], "error_kind": None, "completion_tokens": 5},
+    ]
+    attempts = [
+        {"client_request_id": "a", "attempt": 0, "outcome": 0},
+        {"client_request_id": "a", "attempt": 1, "outcome": 2},
+    ]
+    sq = service_quality(rows, 1.0, attempts=attempts, requested=1)
+    rb = sq["retry_breakdown"]
+    assert isinstance(rb, dict), f"retry_breakdown must be a dict, got {type(rb)}"
+    for key in ("gateway_retry_attempts", "upstream_fatal_attempts", "shed_503_requests"):
+        assert key in rb, f"retry_breakdown missing {key}"
+    assert rb["gateway_retry_attempts"] == 1, f"one retry attempt expected, got {rb['gateway_retry_attempts']}"
+    assert rb["upstream_fatal_attempts"] == 1, f"one upstream fatal expected, got {rb['upstream_fatal_attempts']}"
+    assert isinstance(rb["gateway_retry_attempts"], int), "attempt-derived counts must be ints when available"
+    assert isinstance(rb["shed_503_requests"], int), "shed count must be int"
+
+    # No audit rows: attempt-derived fields must be NOT_AVAILABLE, never 0.
+    sq2 = service_quality(rows, 1.0, attempts=None, requested=1)
+    rb2 = sq2["retry_breakdown"]
+    assert isinstance(rb2["gateway_retry_attempts"], str) and "NOT_AVAILABLE" in rb2["gateway_retry_attempts"], \
+        "gateway_retry_attempts must be NOT_AVAILABLE when audit rows are unavailable"
+    assert isinstance(rb2["upstream_fatal_attempts"], str) and "NOT_AVAILABLE" in rb2["upstream_fatal_attempts"], \
+        "upstream_fatal_attempts must be NOT_AVAILABLE when audit rows are unavailable"
+    return True
+
 def run_all() -> int:
     tests = [
         ("wilson_ci_known_value", test_wilson_ci_known_value),
@@ -1120,6 +1153,7 @@ def run_all() -> int:
         ("evaluate_recovery_no_degradation", test_evaluate_recovery_no_degradation),
         ("evaluate_recovery_empty", test_evaluate_recovery_empty),
         ("evaluate_recovery_scalar_corr", test_evaluate_recovery_scalar_corr),
+        ("service_quality_retry_breakdown", test_service_quality_retry_breakdown),
     ]
 
     passed = 0

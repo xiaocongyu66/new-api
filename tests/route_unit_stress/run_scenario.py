@@ -571,10 +571,11 @@ def service_quality(
     # genuinely unobservable rather than zero.
     if attempts is None:
         retry_count: Any = NOT_AVAILABLE_RETRY
+        own_attempts_list: list[dict[str, Any]] = []
     else:
-        own_ids = {r.get("request_id") for r in rows if r.get("request_id")}
-        own_attempts = sum(1 for a in attempts if a.get("client_request_id") in own_ids)
-        retry_count = max(0, own_attempts - len(rows))
+        own_ids_retry = {r.get("request_id") for r in rows if r.get("request_id")}
+        own_attempts_list = [a for a in attempts if a.get("client_request_id") in own_ids_retry]
+        retry_count = max(0, len(own_attempts_list) - len(rows))
 
     completion_tokens = [r.get("completion_tokens") for r in rows if r.get("completion_tokens") is not None]
     total_completion = sum(completion_tokens) if completion_tokens else 0
@@ -598,8 +599,33 @@ def service_quality(
         for code in shed_codes:
             if code in err:
                 shed_counts[code] = shed_counts.get(code, 0) + 1
-                break
     gateway_shed_total = sum(shed_counts.values())
+
+    # Retry/failure type breakdown: #418 wants gateway-internal retries, upstream
+    # 5xx and the gateway's own shed 503 named separately, not collapsed into one
+    # "failed" bucket. The audit records outcome==2 as "fatal" (upstream 5xx /
+    # channel error; the mock's first_fail 503 lands here), and a retry is an
+    # attempt whose index is >= 1. Shed 503s never reach the upstream, so they
+    # produce no attempt and are counted only from the client rows.
+    if attempts is None:
+        retry_breakdown: dict[str, Any] = {
+            "gateway_retry_attempts": NOT_AVAILABLE_RETRY,
+            "upstream_fatal_attempts": NOT_AVAILABLE_RETRY,
+            "shed_503_requests": gateway_shed_total,
+            "note": "gateway_retry_attempts and upstream_fatal_attempts need gateway audit rows.",
+        }
+    else:
+        retry_breakdown = {
+            "gateway_retry_attempts": sum(1 for a in own_attempts_list if (a.get("attempt") or 0) >= 1),
+            "upstream_fatal_attempts": sum(1 for a in own_attempts_list if a.get("outcome") == 2),
+            "shed_503_requests": gateway_shed_total,
+            "note": (
+                "gateway_retry_attempts = audit attempts with index >= 1 (RetryTimes fired); "
+                "upstream_fatal_attempts = audit outcome 2 (upstream 5xx/channel error, the mock's "
+                "503 first_fail maps here); shed_503_requests = gateway SystemPerformanceCheck 503, "
+                "which never reached the upstream and produced no attempt."
+            ),
+        }
 
     return {
         "requests": len(rows),
@@ -640,6 +666,7 @@ def service_quality(
             "(performance_setting.monitor_* thresholds). These never reached the upstream, so they "
             "are runner/host saturation, NOT upstream mock capacity."
         ) if gateway_shed_total else None,
+        "retry_breakdown": retry_breakdown,
         "dropped_iterations": dropped,
     }
 
@@ -2695,49 +2722,26 @@ def main() -> int:
     elif traffic_windows_data:
         # #418 done-when 7: every scenario must fill the per-window route share /
         # corr / EWMA columns, not just the ones that poll topology live (S6/S7).
-        # Only S6/S7 sample the gateway mid-run, so for the rest the per-window
-        # share is recomputed from the audit attempts bucketed by their request's
-        # own window, and corr/EWMA are the post-run per-route values — labelled as
-        # such so nobody mistakes them for a mid-window sample.
+        # route_shares is recomputed from the audit attempts bucketed by their
+        # request's completion time; corr/EWMA are the post-run per-route values —
+        # labelled as such so nobody mistakes them for a mid-window sample.
         end_ts_by_id = {
             r.get("request_id"): r.get("end_ts")
             for r in stat_rows
             if r.get("request_id") and r.get("end_ts") is not None
         }
-        label_by_identity = {r.identity(): r.label for r in routes}
-        window_s = 10
-        per_window_counts: dict[int, dict[str, int]] = {}
-        for a in attempts:
-            ts = end_ts_by_id.get(a.get("client_request_id"))
-            if ts is None:
-                continue
-            label = label_by_identity.get(
-                (a.get("channel_id"), a.get("key_index"), a.get("upstream_model"))
-            )
-            if not label:
-                continue
-            bucket = int(ts // window_s) * window_s
-            per_window_counts.setdefault(bucket, {})[label] = (
-                per_window_counts.setdefault(bucket, {}).get(label, 0) + 1
-            )
-
         post_corr = {r.label: r.share_correction for r in routes_after}
         post_ewma = {r.label: r.ewma_quality for r in routes_after}
         corr_values = [v for v in post_corr.values() if v]
         post_corr_p99 = compute_percentile(corr_values, 0.99) if corr_values else ""
-
-        for tw in traffic_windows_data:
-            counts = per_window_counts.get(tw["window_start"])
-            if counts:
-                total = sum(counts.values())
-                tw["route_shares"] = json.dumps(
-                    {k: (v / total) for k, v in sorted(counts.items())}
-                )
-            # corr/EWMA are end-of-run values repeated per window: the gateway is
-            # not polled mid-run outside S6/S7, and inventing a per-window value
-            # would be fabrication.
-            tw["corr_p99"] = post_corr_p99
-            tw["ewma"] = json.dumps(post_ewma)
+        lib_report.fill_per_window_route_shares(
+            traffic_windows_data,
+            attempts,
+            end_ts_by_id,
+            {r.identity(): r.label for r in routes},
+            post_corr_p99,
+            post_ewma,
+        )
         summary["window_metrics_note"] = (
             "route_shares is recomputed per 10s window from audit attempts joined to each "
             "request's completion time. corr_p99 and ewma are POST-RUN per-route values repeated "

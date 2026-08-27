@@ -202,6 +202,51 @@ def build_traffic_windows(
 
     return result
 
+
+def fill_per_window_route_shares(
+    windows: list[dict[str, Any]],
+    attempts: list[dict[str, Any]],
+    end_ts_by_id: dict[str, float],
+    label_by_identity: dict[tuple, str],
+    post_corr_p99: float | str,
+    post_ewma: dict[str, Any],
+    window_s: int = 10,
+) -> list[dict[str, Any]]:
+    """Fill each window's route_shares/corr_p99/ewma columns from audit attempts.
+
+    route_shares is recomputed per window by bucketing each attempt against its
+    request's completion time and attributing it to the route identity that served
+    it. corr_p99 and post_ewma are post-run per-route values repeated across
+    windows, because only S6/S7 poll the gateway mid-run; they are NOT mid-window
+    samples and must not be read as a time series.
+
+    Returns the same list (mutated in place) for call-chaining convenience.
+    """
+    per_window_counts: dict[int, dict[str, int]] = {}
+    for a in attempts:
+        ts = end_ts_by_id.get(a.get("client_request_id"))
+        if ts is None:
+            continue
+        label = label_by_identity.get(
+            (a.get("channel_id"), a.get("key_index"), a.get("upstream_model"))
+        )
+        if not label:
+            continue
+        bucket = int(ts // window_s) * window_s
+        inner = per_window_counts.setdefault(bucket, {})
+        inner[label] = inner.get(label, 0) + 1
+
+    for tw in windows:
+        counts = per_window_counts.get(tw["window_start"])
+        if counts:
+            total = sum(counts.values())
+            tw["route_shares"] = json.dumps(
+                {k: (v / total) for k, v in sorted(counts.items())}
+            )
+        tw["corr_p99"] = post_corr_p99
+        tw["ewma"] = json.dumps(post_ewma)
+    return windows
+
 def write_shares_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     """Write per-route share evaluation CSV.
 
