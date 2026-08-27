@@ -10,7 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/QuantumNous/new-api/internal/types"
 	"gorm.io/gorm"
 )
 

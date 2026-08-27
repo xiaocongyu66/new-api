@@ -10,13 +10,13 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	hosttypes "github.com/QuantumNous/new-api/internal/types"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/model_setting"
-	hosttypes "github.com/QuantumNous/new-api/types"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/gorilla/websocket"

@@ -10,11 +10,11 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/logger"
+	hosttypes "github.com/QuantumNous/new-api/internal/types"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	hosttypes "github.com/QuantumNous/new-api/types"
 )
 
 // attachQuotaSaturationToOther nests a quota saturation marker under

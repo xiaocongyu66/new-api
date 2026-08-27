@@ -8,9 +8,9 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	taskcap "github.com/QuantumNous/new-api/internal/task"
+	"github.com/QuantumNous/new-api/internal/types"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay"
-	"github.com/QuantumNous/new-api/types"
 )
 
 func GetAllTask(c contract.Context) {
