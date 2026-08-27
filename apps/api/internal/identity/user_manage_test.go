@@ -12,7 +12,6 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/identity/policy"
-	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -34,7 +33,7 @@ func setupManageUserTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	dbx.DB, dbx.LogDB = db, db
 	require.NoError(t, db.AutoMigrate(
-		&model.User{}, &model.UserSession{}, &model.Log{}, &model.CasbinRule{}, &model.AuthzRole{},
+		&User{}, &UserSession{}, &policy.CasbinRule{}, &policy.AuthzRole{},
 	))
 
 	t.Cleanup(func() {
@@ -66,14 +65,14 @@ func performManageUserRequest(t *testing.T, body string) *httptest.ResponseRecor
 func TestManageUserDisableAdvancesAuthVersionOnceAndRevokesSession(t *testing.T) {
 	db := setupManageUserTestDB(t)
 	now := time.Now().Unix()
-	user := model.User{
+	user := User{
 		Username: "managed-disable-user", Password: "password", Role: common.RoleCommonUser,
 		Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1,
 	}
 	require.NoError(t, db.Create(&user).Error)
-	require.NoError(t, db.Create(&model.UserSession{
+	require.NoError(t, db.Create(&UserSession{
 		SID: "managed-disable-session", UserID: user.Id, Version: 1, UserAuthVersion: 1,
-		Status: model.UserSessionStatusActive, RefreshHash: "refresh-hash", LoginMethod: "password",
+		Status: UserSessionStatusActive, RefreshHash: "refresh-hash", LoginMethod: "password",
 		LastActiveAt: now, ExpiresAt: now + 3600,
 	}).Error)
 
@@ -81,13 +80,13 @@ func TestManageUserDisableAdvancesAuthVersionOnceAndRevokesSession(t *testing.T)
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	assert.Contains(t, recorder.Body.String(), `"success":true`)
 
-	var updated model.User
+	var updated User
 	require.NoError(t, db.First(&updated, user.Id).Error)
 	assert.Equal(t, common.UserStatusDisabled, updated.Status)
 	assert.EqualValues(t, 2, updated.AuthVersion)
-	var session model.UserSession
+	var session UserSession
 	require.NoError(t, db.First(&session, "sid = ?", "managed-disable-session").Error)
-	assert.Equal(t, model.UserSessionStatusRevoked, session.Status)
+	assert.Equal(t, UserSessionStatusRevoked, session.Status)
 }
 
 func TestManageUserDemoteAdvancesAuthVersionAndRevokesSessionsOnce(t *testing.T) {
@@ -98,15 +97,15 @@ func TestManageUserDemoteAdvancesAuthVersionAndRevokesSessionsOnce(t *testing.T)
 	require.NoError(t, policy.Init(db))
 
 	now := time.Now().Unix()
-	user := model.User{
+	user := User{
 		Username: "managed-demote-user", Password: "password", Role: common.RoleAdminUser,
 		Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1,
 	}
 	require.NoError(t, db.Create(&user).Error)
 	for _, sid := range []string{"managed-demote-session-one", "managed-demote-session-two"} {
-		require.NoError(t, db.Create(&model.UserSession{
+		require.NoError(t, db.Create(&UserSession{
 			SID: sid, UserID: user.Id, Version: 1, UserAuthVersion: 1,
-			Status: model.UserSessionStatusActive, RefreshHash: "refresh-" + sid, LoginMethod: "password",
+			Status: UserSessionStatusActive, RefreshHash: "refresh-" + sid, LoginMethod: "password",
 			LastActiveAt: now, ExpiresAt: now + 3600,
 		}).Error)
 	}
@@ -122,15 +121,15 @@ func TestManageUserDemoteAdvancesAuthVersionAndRevokesSessionsOnce(t *testing.T)
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	assert.Contains(t, recorder.Body.String(), `"success":true`)
 
-	var updated model.User
+	var updated User
 	require.NoError(t, db.First(&updated, user.Id).Error)
 	assert.Equal(t, common.RoleCommonUser, updated.Role)
 	assert.EqualValues(t, 2, updated.AuthVersion)
-	var sessions []model.UserSession
+	var sessions []UserSession
 	require.NoError(t, db.Where("user_id = ?", user.Id).Order("sid asc").Find(&sessions).Error)
 	require.Len(t, sessions, 2)
 	for _, session := range sessions {
-		assert.Equal(t, model.UserSessionStatusRevoked, session.Status)
+		assert.Equal(t, UserSessionStatusRevoked, session.Status)
 		assert.Equal(t, "admin_demote", session.RevokedReason)
 	}
 	assert.Equal(t, 1, sessionUpdateCount)
@@ -138,7 +137,7 @@ func TestManageUserDemoteAdvancesAuthVersionAndRevokesSessionsOnce(t *testing.T)
 
 func TestManageUserDeleteReturnsImmediatelyAndUnknownActionFails(t *testing.T) {
 	db := setupManageUserTestDB(t)
-	deleted := model.User{
+	deleted := User{
 		Username: "managed-delete-user", Password: "password", Role: common.RoleCommonUser,
 		Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "delete-aff",
 	}
@@ -147,10 +146,10 @@ func TestManageUserDeleteReturnsImmediatelyAndUnknownActionFails(t *testing.T) {
 	recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"delete"}`, deleted.Id))
 	assert.Contains(t, recorder.Body.String(), `"success":true`)
 	var deletedCount int64
-	require.NoError(t, db.Unscoped().Model(&model.User{}).Where("id = ? AND deleted_at IS NOT NULL", deleted.Id).Count(&deletedCount).Error)
+	require.NoError(t, db.Unscoped().Model(&User{}).Where("id = ? AND deleted_at IS NOT NULL", deleted.Id).Count(&deletedCount).Error)
 	assert.EqualValues(t, 1, deletedCount)
 
-	unchanged := model.User{
+	unchanged := User{
 		Username: "managed-unknown-user", Password: "password", Role: common.RoleCommonUser,
 		Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "unknown-aff",
 	}
@@ -167,18 +166,18 @@ func TestSetupLoginDoesNotTouchPasswordWhenPasswordFieldOmitted(t *testing.T) {
 	previousRedis := common.RedisEnabled
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Log{}, &model.UserSession{}))
+	require.NoError(t, db.AutoMigrate(&User{}, &UserSession{}))
 	dbx.DB = db
 	common.RedisEnabled = false
 	t.Cleanup(func() {
 		dbx.DB = previousDB
 		common.RedisEnabled = previousRedis
 	})
-	require.NoError(t, db.AutoMigrate(&model.Log{}, &model.UserSession{}))
+	require.NoError(t, db.AutoMigrate(&UserSession{}))
 
 	hashedPassword, err := common.Password2Hash("CurrentPassword123")
 	require.NoError(t, err)
-	user := &model.User{
+	user := &User{
 		Username: "twofa-user",
 		Password: hashedPassword,
 		Role:     common.RoleCommonUser,
@@ -189,7 +188,7 @@ func TestSetupLoginDoesNotTouchPasswordWhenPasswordFieldOmitted(t *testing.T) {
 
 	router := gin.New()
 	router.GET("/", func(c *gin.Context) {
-		setupLogin(&model.User{
+		SetupLogin(&User{
 			Id:       user.Id,
 			Username: user.Username,
 			Role:     user.Role,
@@ -203,7 +202,7 @@ func TestSetupLoginDoesNotTouchPasswordWhenPasswordFieldOmitted(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
-	var stored model.User
+	var stored User
 	require.NoError(t, db.First(&stored, user.Id).Error)
 	assert.Equal(t, hashedPassword, stored.Password)
 }
@@ -213,7 +212,7 @@ func TestCheckUpdatePasswordRequiresCurrentPassword(t *testing.T) {
 	previousRedis := common.RedisEnabled
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}))
+	require.NoError(t, db.AutoMigrate(&User{}))
 	dbx.DB = db
 	common.RedisEnabled = false
 	t.Cleanup(func() {
@@ -222,7 +221,7 @@ func TestCheckUpdatePasswordRequiresCurrentPassword(t *testing.T) {
 	})
 	hashedPassword, err := common.Password2Hash("CurrentPassword123")
 	require.NoError(t, err)
-	user := &model.User{
+	user := &User{
 		Username: "password-user",
 		Password: hashedPassword,
 		Status:   common.UserStatusEnabled,
@@ -248,14 +247,14 @@ func TestCheckUpdatePasswordRejectsHistoricalEmptyPassword(t *testing.T) {
 	previousRedis := common.RedisEnabled
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}))
+	require.NoError(t, db.AutoMigrate(&User{}))
 	dbx.DB = db
 	common.RedisEnabled = false
 	t.Cleanup(func() {
 		dbx.DB = previousDB
 		common.RedisEnabled = previousRedis
 	})
-	user := &model.User{
+	user := &User{
 		Username: "legacy-passwordless-user",
 		Password: "",
 		Status:   common.UserStatusEnabled,

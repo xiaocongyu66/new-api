@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/QuantumNous/new-api/internal/identity"
 	"encoding/json"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"os"
@@ -37,23 +38,23 @@ func TestMain(m *testing.M) {
 
 	if err := db.AutoMigrate(
 		&Task{},
-		&User{},
-		&UserSession{},
-		&AuthFlow{},
-		&ExternalIdentityClaim{},
-		&Token{},
-		&PasskeyCredential{},
-		&TwoFA{},
-		&TwoFABackupCode{},
+		&identity.User{},
+		&identity.UserSession{},
+		&identity.AuthFlow{},
+		&identity.ExternalIdentityClaim{},
+		&identity.Token{},
+		&identity.PasskeyCredential{},
+		&identity.TwoFA{},
+		&identity.TwoFABackupCode{},
 		&Log{},
 		&Channel{},
 		&QuotaData{},
 		&Ability{},
-		&TopUp{},
+		&identity.TopUp{},
 		&SubscriptionPlan{},
 		&SubscriptionOrder{},
 		&UserSubscription{},
-		&UserOAuthBinding{},
+		&identity.UserOAuthBinding{},
 		&PerfMetric{},
 		&SystemInstance{},
 		&SystemTask{},

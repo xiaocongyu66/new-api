@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/QuantumNous/new-api/internal/identity"
 	"errors"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"testing"
@@ -14,12 +15,12 @@ import (
 func TestAuthFlowIsBoundAndConsumedOnce(t *testing.T) {
 	truncateTables(t)
 
-	token, created, err := CreateAuthFlow(AuthFlowCreate{
-		Purpose:   AuthFlowPurposeOAuth,
+	token, created, err := identity.CreateAuthFlow(identity.AuthFlowCreate{
+		Purpose:   identity.AuthFlowPurposeOAuth,
 		Provider:  "github",
-		Intent:    AuthFlowIntentBind,
+		Intent:    identity.AuthFlowIntentBind,
 		UserId:    42,
-		SessionId: "session-a",
+		SessionId: "identity.session-a",
 		Payload:   `{"affiliate_code":"invite"}`,
 		ExpiresAt: time.Now().Add(time.Minute),
 	})
@@ -27,84 +28,84 @@ func TestAuthFlowIsBoundAndConsumedOnce(t *testing.T) {
 	require.NotEmpty(t, token)
 	assert.NotEqual(t, token, created.TokenHash)
 
-	_, err = ConsumeAuthFlow(token, AuthFlowMatch{
-		Purpose:   AuthFlowPurposeOAuth,
+	_, err = identity.ConsumeAuthFlow(token, identity.AuthFlowMatch{
+		Purpose:   identity.AuthFlowPurposeOAuth,
 		Provider:  "github",
-		Intent:    AuthFlowIntentBind,
+		Intent:    identity.AuthFlowIntentBind,
 		UserId:    99,
-		SessionId: "session-a",
+		SessionId: "identity.session-a",
 	})
-	assert.ErrorIs(t, err, ErrAuthFlowInvalid)
+	assert.ErrorIs(t, err, identity.ErrAuthFlowInvalid)
 
-	peeked, err := GetAuthFlow(token, AuthFlowMatch{Purpose: AuthFlowPurposeOAuth, Provider: "github"})
+	peeked, err := identity.GetAuthFlow(token, identity.AuthFlowMatch{Purpose: identity.AuthFlowPurposeOAuth, Provider: "github"})
 	require.NoError(t, err)
 	assert.Nil(t, peeked.ConsumedAt)
 
-	consumed, err := ConsumeAuthFlow(token, AuthFlowMatch{
-		Purpose:   AuthFlowPurposeOAuth,
+	consumed, err := identity.ConsumeAuthFlow(token, identity.AuthFlowMatch{
+		Purpose:   identity.AuthFlowPurposeOAuth,
 		Provider:  "github",
-		Intent:    AuthFlowIntentBind,
+		Intent:    identity.AuthFlowIntentBind,
 		UserId:    42,
-		SessionId: "session-a",
+		SessionId: "identity.session-a",
 	})
 	require.NoError(t, err)
 	require.NotNil(t, consumed.ConsumedAt)
 
-	_, err = ConsumeAuthFlow(token, AuthFlowMatch{Purpose: AuthFlowPurposeOAuth})
-	assert.ErrorIs(t, err, ErrAuthFlowConsumed)
+	_, err = identity.ConsumeAuthFlow(token, identity.AuthFlowMatch{Purpose: identity.AuthFlowPurposeOAuth})
+	assert.ErrorIs(t, err, identity.ErrAuthFlowConsumed)
 }
 
 func TestAuthFlowExpiryIsEnforced(t *testing.T) {
 	truncateTables(t)
 
-	token, flow, err := CreateAuthFlow(AuthFlowCreate{
-		Purpose:   AuthFlowPurposeTwoFALogin,
+	token, flow, err := identity.CreateAuthFlow(identity.AuthFlowCreate{
+		Purpose:   identity.AuthFlowPurposeTwoFALogin,
 		UserId:    7,
 		ExpiresAt: time.Now().Add(time.Minute),
 	})
 	require.NoError(t, err)
-	require.NoError(t, dbx.DB.Model(&AuthFlow{}).Where("id = ?", flow.Id).Update("expires_at", time.Now().Add(-time.Second)).Error)
+	require.NoError(t, dbx.DB.Model(&identity.AuthFlow{}).Where("id = ?", flow.Id).identity.Update("expires_at", time.Now().Add(-time.Second)).Error)
 
-	_, err = GetAuthFlow(token, AuthFlowMatch{Purpose: AuthFlowPurposeTwoFALogin})
-	assert.True(t, errors.Is(err, ErrAuthFlowExpired))
-	_, err = ConsumeAuthFlow(token, AuthFlowMatch{Purpose: AuthFlowPurposeTwoFALogin})
-	assert.True(t, errors.Is(err, ErrAuthFlowExpired))
+	_, err = identity.GetAuthFlow(token, identity.AuthFlowMatch{Purpose: identity.AuthFlowPurposeTwoFALogin})
+	assert.True(t, errors.Is(err, identity.ErrAuthFlowExpired))
+	_, err = identity.ConsumeAuthFlow(token, identity.AuthFlowMatch{Purpose: identity.AuthFlowPurposeTwoFALogin})
+	assert.True(t, errors.Is(err, identity.ErrAuthFlowExpired))
 }
 
 func TestExternalAuthAssertionCanOnlyBeClaimedOnce(t *testing.T) {
 	truncateTables(t)
 	expiresAt := time.Now().Add(time.Minute)
 
-	require.NoError(t, ClaimExternalAuthAssertion(AuthFlowPurposeTelegramAssertion, "signed-assertion", expiresAt))
-	err := ClaimExternalAuthAssertion(AuthFlowPurposeTelegramAssertion, "signed-assertion", expiresAt)
-	assert.ErrorIs(t, err, ErrAuthFlowConsumed)
+	require.NoError(t, identity.ClaimExternalAuthAssertion(identity.AuthFlowPurposeTelegramAssertion, "signed-assertion", expiresAt))
+	err := identity.ClaimExternalAuthAssertion(identity.AuthFlowPurposeTelegramAssertion, "signed-assertion", expiresAt)
+	assert.ErrorIs(t, err, identity.ErrAuthFlowConsumed)
 
-	require.NoError(t, ClaimExternalAuthAssertion(AuthFlowPurposeTelegramAssertion, "different-assertion", expiresAt))
+	require.NoError(t, identity.ClaimExternalAuthAssertion(identity.AuthFlowPurposeTelegramAssertion, "different-assertion", expiresAt))
 }
 
 func TestConsumeAuthFlowWithActionRollsBackTogether(t *testing.T) {
 	truncateTables(t)
-	token, _, err := CreateAuthFlow(AuthFlowCreate{
-		Purpose:   AuthFlowPurposeTelegramBind,
+	token, _, err := identity.CreateAuthFlow(identity.AuthFlowCreate{
+		Purpose:   identity.AuthFlowPurposeTelegramBind,
 		UserId:    42,
-		SessionId: "session-a",
+		SessionId: "identity.session-a",
 		ExpiresAt: time.Now().Add(time.Minute),
 	})
 	require.NoError(t, err)
 	actionErr := errors.New("binding failed")
 
-	_, err = ConsumeAuthFlowWithAction(token, AuthFlowMatch{
-		Purpose: AuthFlowPurposeTelegramBind, UserId: 42, SessionId: "session-a",
-	}, func(tx *gorm.DB, _ *AuthFlow) error {
-		if err := ClaimExternalAuthAssertionWithTx(tx, AuthFlowPurposeTelegramAssertion, "assertion-a", time.Now().Add(time.Minute)); err != nil {
+	_, err = identity.ConsumeAuthFlowWithAction(token, identity.AuthFlowMatch{
+		Purpose: identity.AuthFlowPurposeTelegramBind, UserId: 42, SessionId: "identity.session-a",
+	}, func(tx *gorm.DB, _ *identity.AuthFlow) error {
+		if err := identity.ClaimExternalAuthAssertionWithTx(tx, identity.AuthFlowPurposeTelegramAssertion, "assertion-a", time.Now().Add(time.Minute)); err != nil {
 			return err
 		}
 		return actionErr
 	})
 	assert.ErrorIs(t, err, actionErr)
 
-	flow, err := GetAuthFlow(token, AuthFlowMatch{Purpose: AuthFlowPurposeTelegramBind})
+	flow, err := identity.GetAuthFlow(token, identity.AuthFlowMatch{Purpose: identity.AuthFlowPurposeTelegramBind})
 	require.NoError(t, err)
 	assert.Nil(t, flow.ConsumedAt)
-	require.NoError(t, ClaimExternalAuthAssertion(AuthFlowPurposeTelegramAssertion, "assertion-a", time.Now().Add(time.Minute)))
+	require.NoError(t, identity.ClaimExternalAuthAssertion(identity.AuthFlowPurposeTelegramAssertion, "assertion-a", time.Now().Add(time.Minute)))
 }

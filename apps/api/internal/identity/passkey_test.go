@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -54,7 +53,7 @@ func TestPasskeyRegisterFinishRejectsMissingOrWrongProofWithoutConsumingFlow(t *
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.TwoFA{}, &model.AuthFlow{}))
+	require.NoError(t, db.AutoMigrate(&User{}, &TwoFA{}, &AuthFlow{}))
 	dbx.DB = db
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
@@ -72,12 +71,12 @@ func TestPasskeyRegisterFinishRejectsMissingOrWrongProofWithoutConsumingFlow(t *
 		}
 	})
 
-	user := &model.User{
+	user := &User{
 		Username: "passkey-proof-user", Password: "password-placeholder", Role: common.RoleCommonUser,
 		Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1,
 	}
 	require.NoError(t, db.Create(user).Error)
-	require.NoError(t, db.Create(&model.TwoFA{UserId: user.Id, Secret: "totp-secret", IsEnabled: true}).Error)
+	require.NoError(t, db.Create(&TwoFA{UserId: user.Id, Secret: "totp-secret", IsEnabled: true}).Error)
 	identity := AuthIdentity{
 		UserID: user.Id, SessionID: "passkey-proof-session", UserAuthVersion: 1, SessionVersion: 1,
 	}
@@ -94,8 +93,8 @@ func TestPasskeyRegisterFinishRejectsMissingOrWrongProofWithoutConsumingFlow(t *
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			flowToken, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
-				Purpose: model.AuthFlowPurposePasskeyRegister, UserId: user.Id, SessionId: identity.SessionID,
+			flowToken, _, err := CreateAuthFlow(AuthFlowCreate{
+				Purpose: AuthFlowPurposePasskeyRegister, UserId: user.Id, SessionId: identity.SessionID,
 				Payload: `{}`, ExpiresAt: time.Now().Add(time.Minute),
 			})
 			require.NoError(t, err)
@@ -122,8 +121,8 @@ func TestPasskeyRegisterFinishRejectsMissingOrWrongProofWithoutConsumingFlow(t *
 			}
 			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &responseBody))
 			assert.Equal(t, test.expectedCode, responseBody.Code)
-			flow, err := model.GetAuthFlow(flowToken, model.AuthFlowMatch{
-				Purpose: model.AuthFlowPurposePasskeyRegister, UserId: user.Id, SessionId: identity.SessionID,
+			flow, err := GetAuthFlow(flowToken, AuthFlowMatch{
+				Purpose: AuthFlowPurposePasskeyRegister, UserId: user.Id, SessionId: identity.SessionID,
 			})
 			require.NoError(t, err)
 			assert.Nil(t, flow.ConsumedAt)

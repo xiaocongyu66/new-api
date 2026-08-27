@@ -247,3 +247,25 @@ var GetRootUser = identity.GetRootUser
 var IsEmailAlreadyTaken = identity.IsEmailAlreadyTaken
 var GetTwoFAByUserId = identity.GetTwoFAByUserId
 var GetUserLanguage = identity.GetUserLanguage
+
+// Re-exports for test compatibility
+var (
+	UserSessionStatusActive   = identity.UserSessionStatusActive
+	UserSessionStatusRevoked  = identity.UserSessionStatusRevoked
+	CreateUserSession          = identity.CreateUserSession
+	GetUserSessionCached       = identity.GetUserSessionCached
+	RevokeUserSession          = identity.RevokeUserSession
+	RevokeAllUserSessions      = identity.RevokeAllUserSessions
+	GetUserSessionBySID        = identity.GetUserSessionBySID
+	CountActiveUserSessions    = identity.CountActiveUserSessions
+	AdvanceUserSessionAuthVersion = identity.AdvanceUserSessionAuthVersion
+	IsTwoFAEnabled             = identity.IsTwoFAEnabled
+	GetPasskeyByUserID         = identity.GetPasskeyByUserID
+	ValidateBackupCode         = identity.ValidateBackupCode
+	DisableTwoFAWithAuthVersion = identity.DisableTwoFAWithAuthVersion
+	CreateAuthFlow             = identity.CreateAuthFlow
+	GetAuthFlow                = identity.GetAuthFlow
+	ConsumeAuthFlow            = identity.ConsumeAuthFlow
+)
+var AuthFlowPurposeOAuth = identity.AuthFlowPurposeOAuth
+var AuthFlowPurposePasskeyLogin = identity.AuthFlowPurposePasskeyLogin

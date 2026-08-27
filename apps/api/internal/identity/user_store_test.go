@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,7 +22,7 @@ func setupUserStoreTestDB(t *testing.T) {
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}))
+	require.NoError(t, db.AutoMigrate(&User{}, &UserSession{}))
 	dbx.DB = db
 	common.RedisEnabled = false
 	t.Cleanup(func() {
@@ -35,7 +34,7 @@ func setupUserStoreTestDB(t *testing.T) {
 func insertUsersForPaginationTest(t *testing.T, total int) {
 	t.Helper()
 	for id := 1; id <= total; id++ {
-		user := &model.User{
+		user := &User{
 			Id:          id,
 			Username:    fmt.Sprintf("user%02d", id),
 			Password:    "password123",
@@ -50,9 +49,9 @@ func insertUsersForPaginationTest(t *testing.T, total int) {
 	}
 }
 
-func createUserBindTestUser(t *testing.T) model.User {
+func createUserBindTestUser(t *testing.T) User {
 	t.Helper()
-	user := model.User{
+	user := User{
 		Username:    "bind-test-user",
 		Password:    "unused-password-hash",
 		Role:        common.RoleCommonUser,
@@ -65,7 +64,7 @@ func createUserBindTestUser(t *testing.T) model.User {
 	return user
 }
 
-func collectUserIDs(users []*model.User) []int {
+func collectUserIDs(users []*User) []int {
 	ids := make([]int, 0, len(users))
 	for _, user := range users {
 		ids = append(ids, user.Id)
@@ -77,17 +76,17 @@ func TestGetAllUsersSortsBeforePagination(t *testing.T) {
 	setupUserStoreTestDB(t)
 	insertUsersForPaginationTest(t, 42)
 
-	pageOne, total, err := listAllUsers(&common.PageInfo{Page: 1, PageSize: 20}, model.NewUserSortOptions("id", "asc"))
+	pageOne, total, err := listAllUsers(&common.PageInfo{Page: 1, PageSize: 20}, NewUserSortOptions("id", "asc"))
 	require.NoError(t, err)
 	assert.Equal(t, int64(42), total)
 	assert.Equal(t, []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}, collectUserIDs(pageOne))
 
-	pageTwo, total, err := listAllUsers(&common.PageInfo{Page: 2, PageSize: 20}, model.NewUserSortOptions("id", "asc"))
+	pageTwo, total, err := listAllUsers(&common.PageInfo{Page: 2, PageSize: 20}, NewUserSortOptions("id", "asc"))
 	require.NoError(t, err)
 	assert.Equal(t, int64(42), total)
 	assert.Equal(t, []int{21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}, collectUserIDs(pageTwo))
 
-	pageThree, total, err := listAllUsers(&common.PageInfo{Page: 3, PageSize: 20}, model.NewUserSortOptions("id", "asc"))
+	pageThree, total, err := listAllUsers(&common.PageInfo{Page: 3, PageSize: 20}, NewUserSortOptions("id", "asc"))
 	require.NoError(t, err)
 	assert.Equal(t, int64(42), total)
 	assert.Equal(t, []int{41, 42}, collectUserIDs(pageThree))
@@ -96,7 +95,7 @@ func TestGetAllUsersSortsBeforePagination(t *testing.T) {
 func TestUpdateUserAccessTokenOnlyUpdatesAccessToken(t *testing.T) {
 	setupUserStoreTestDB(t)
 
-	user := model.User{
+	user := User{
 		Id:              2,
 		Username:        "token-rotation-user",
 		Password:        "password",
@@ -108,7 +107,7 @@ func TestUpdateUserAccessTokenOnlyUpdatesAccessToken(t *testing.T) {
 	}
 	require.NoError(t, dbx.DB.Create(&user).Error)
 
-	require.NoError(t, dbx.DB.Model(&model.User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
+	require.NoError(t, dbx.DB.Model(&User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
 		"quota":        gorm.Expr("quota + ?", 500),
 		"aff_quota":    gorm.Expr("aff_quota - ?", 500),
 		"display_name": "concurrent-update",
@@ -116,7 +115,7 @@ func TestUpdateUserAccessTokenOnlyUpdatesAccessToken(t *testing.T) {
 
 	require.NoError(t, UpdateUserAccessToken(user.Id, "rotated-token"))
 
-	var got model.User
+	var got User
 	require.NoError(t, dbx.DB.First(&got, user.Id).Error)
 	assert.Equal(t, "rotated-token", got.GetAccessToken())
 	assert.Equal(t, "concurrent-update", got.DisplayName)
@@ -128,7 +127,7 @@ func TestUpdateUserAccessTokenOnlyUpdatesAccessToken(t *testing.T) {
 func TestUpdateUserAccessTokenRejectsSoftDeletedUser(t *testing.T) {
 	setupUserStoreTestDB(t)
 
-	user := model.User{
+	user := User{
 		Id:       3,
 		Username: "deleted-token-rotation-user",
 		Password: "password",
@@ -141,7 +140,7 @@ func TestUpdateUserAccessTokenRejectsSoftDeletedUser(t *testing.T) {
 	err := UpdateUserAccessToken(user.Id, "orphaned-token")
 	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
 
-	var got model.User
+	var got User
 	require.NoError(t, dbx.DB.Unscoped().First(&got, user.Id).Error)
 	assert.Equal(t, "old-token", got.GetAccessToken())
 }
@@ -150,7 +149,7 @@ func TestUpdateUserBindColumnOnlyTouchesTheBindingColumn(t *testing.T) {
 	setupUserStoreTestDB(t)
 
 	user := createUserBindTestUser(t)
-	require.NoError(t, dbx.DB.Model(&model.User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
+	require.NoError(t, dbx.DB.Model(&User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
 		"role":   common.RoleAdminUser,
 		"status": common.UserStatusEnabled,
 		"group":  "vip",
@@ -158,7 +157,7 @@ func TestUpdateUserBindColumnOnlyTouchesTheBindingColumn(t *testing.T) {
 
 	require.NoError(t, UpdateUserBindColumn(user.Id, "github_id", "gh-12345"))
 
-	reloaded, err := model.GetUserById(user.Id, true)
+	reloaded, err := GetUserById(user.Id, true)
 	require.NoError(t, err)
 	assert.Equal(t, "gh-12345", reloaded.GitHubId)
 	assert.Equal(t, common.RoleAdminUser, reloaded.Role)
@@ -170,11 +169,11 @@ func TestUpdateUserBindColumnPreservesRestrictiveChange(t *testing.T) {
 	setupUserStoreTestDB(t)
 
 	user := createUserBindTestUser(t)
-	require.NoError(t, dbx.DB.Model(&model.User{}).Where("id = ?", user.Id).
+	require.NoError(t, dbx.DB.Model(&User{}).Where("id = ?", user.Id).
 		Update("status", common.UserStatusDisabled).Error)
 	require.NoError(t, UpdateUserBindColumn(user.Id, "wechat_id", "wx-open-id"))
 
-	reloaded, err := model.GetUserById(user.Id, true)
+	reloaded, err := GetUserById(user.Id, true)
 	require.NoError(t, err)
 	assert.Equal(t, "wx-open-id", reloaded.WeChatId)
 	assert.Equal(t, common.UserStatusDisabled, reloaded.Status)
@@ -194,14 +193,14 @@ func TestUpdateUserBindColumnRejectsNonWhitelistedColumns(t *testing.T) {
 func TestResetUserPasswordByEmailRequiresSingleActiveMatch(t *testing.T) {
 	setupUserStoreTestDB(t)
 
-	require.NoError(t, dbx.DB.Create(&model.User{
+	require.NoError(t, dbx.DB.Create(&User{
 		Username: "duplicate-1",
 		Password: "old-1",
 		Email:    "legacy@example.com",
 		AffCode:  "dupe1",
 		Status:   common.UserStatusEnabled,
 	}).Error)
-	require.NoError(t, dbx.DB.Create(&model.User{
+	require.NoError(t, dbx.DB.Create(&User{
 		Username: "duplicate-2",
 		Password: "old-2",
 		Email:    "LEGACY@example.com",
@@ -212,13 +211,13 @@ func TestResetUserPasswordByEmailRequiresSingleActiveMatch(t *testing.T) {
 	err := ResetUserPasswordByEmail("legacy@example.com", "NewPassword123")
 	require.ErrorIs(t, err, ErrEmailAmbiguous)
 
-	var duplicates []model.User
+	var duplicates []User
 	require.NoError(t, dbx.DB.Where("LOWER(email) = ?", "legacy@example.com").Order("username asc").Find(&duplicates).Error)
 	require.Len(t, duplicates, 2)
 	assert.Equal(t, "old-1", duplicates[0].Password)
 	assert.Equal(t, "old-2", duplicates[1].Password)
 
-	require.NoError(t, dbx.DB.Create(&model.User{
+	require.NoError(t, dbx.DB.Create(&User{
 		Username: "unique",
 		Password: "old",
 		Email:    "unique@example.com",
@@ -228,7 +227,7 @@ func TestResetUserPasswordByEmailRequiresSingleActiveMatch(t *testing.T) {
 
 	require.NoError(t, ResetUserPasswordByEmail("UNIQUE@example.com", "NewPassword123"))
 
-	var unique model.User
+	var unique User
 	require.NoError(t, dbx.DB.Where("username = ?", "unique").First(&unique).Error)
 	assert.True(t, common.ValidatePasswordAndHash("NewPassword123", unique.Password))
 
@@ -236,13 +235,13 @@ func TestResetUserPasswordByEmailRequiresSingleActiveMatch(t *testing.T) {
 	require.True(t, errors.Is(err, ErrEmailNotFound))
 }
 
-func newStoreTestUserSession(sid string, userID int, now int64) *model.UserSession {
-	return &model.UserSession{
+func newStoreTestUserSession(sid string, userID int, now int64) *UserSession {
+	return &UserSession{
 		SID:             sid,
 		UserID:          userID,
 		Version:         1,
 		UserAuthVersion: 1,
-		Status:          model.UserSessionStatusActive,
+		Status:          UserSessionStatusActive,
 		RefreshHash:     fmt.Sprintf("current-%s", sid),
 		LoginMethod:     "password",
 		IP:              "127.0.0.1",
@@ -256,7 +255,7 @@ func newStoreTestUserSession(sid string, userID int, now int64) *model.UserSessi
 func TestPasswordResetBumpsAuthVersionAndRevokesSessions(t *testing.T) {
 	setupUserStoreTestDB(t)
 	now := time.Now().Unix()
-	user := &model.User{
+	user := &User{
 		Username: "password-reset-user",
 		Password: "old-hash",
 		Email:    "password-reset@example.com",
@@ -265,16 +264,16 @@ func TestPasswordResetBumpsAuthVersionAndRevokesSessions(t *testing.T) {
 		Group:    "default",
 	}
 	require.NoError(t, dbx.DB.Create(user).Error)
-	t.Cleanup(func() { _ = dbx.DB.Unscoped().Delete(&model.User{}, user.Id).Error })
+	t.Cleanup(func() { _ = dbx.DB.Unscoped().Delete(&User{}, user.Id).Error })
 	session := newStoreTestUserSession("password-reset-session", user.Id, now)
-	require.NoError(t, model.CreateUserSession(session))
+	require.NoError(t, CreateUserSession(session))
 
 	require.NoError(t, ResetUserPasswordByEmail(user.Email, "new-password"))
-	var stored model.User
+	var stored User
 	require.NoError(t, dbx.DB.First(&stored, user.Id).Error)
 	assert.Equal(t, int64(2), stored.AuthVersion)
-	storedSession, err := model.GetUserSessionBySID(session.SID)
+	storedSession, err := GetUserSessionBySID(session.SID)
 	require.NoError(t, err)
-	assert.Equal(t, model.UserSessionStatusRevoked, storedSession.Status)
+	assert.Equal(t, UserSessionStatusRevoked, storedSession.Status)
 	assert.Equal(t, "password_reset", storedSession.RevokedReason)
 }

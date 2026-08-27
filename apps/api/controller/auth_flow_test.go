@@ -15,7 +15,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/security/oauth"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -46,8 +46,8 @@ func (provider *authFlowTestOAuthProvider) GetUserInfo(context.Context, *oauth.O
 	return &oauth.OAuthUser{ProviderUserID: "external-user"}, nil
 }
 func (*authFlowTestOAuthProvider) IsUserIDTaken(string) bool                      { return false }
-func (*authFlowTestOAuthProvider) FillUserByProviderID(*model.User, string) error { return nil }
-func (*authFlowTestOAuthProvider) SetProviderUserID(*model.User, string)          {}
+func (*authFlowTestOAuthProvider) FillUserByProviderID(*identity.User, string) error { return nil }
+func (*authFlowTestOAuthProvider) SetProviderUserID(*identity.User, string)          {}
 func (*authFlowTestOAuthProvider) GetProviderPrefix() string                      { return "flow_" }
 func (*authFlowTestOAuthProvider) ProviderUserIDColumn() string                   { return "" }
 
@@ -57,7 +57,7 @@ func setupAuthFlowControllerTest(t *testing.T) *authFlowTestOAuthProvider {
 	previousType := common.MainDatabaseType()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.AuthFlow{}))
+	require.NoError(t, db.AutoMigrate(&identity.AuthFlow{}))
 	dbx.DB = db
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	provider := &authFlowTestOAuthProvider{}
@@ -87,8 +87,8 @@ func TestGenerateOAuthCodeCarriesAffiliateInLoginFlow(t *testing.T) {
 	}
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	require.True(t, response.Success)
-	flow, err := model.GetAuthFlow(response.Data.FlowToken, model.AuthFlowMatch{
-		Purpose: model.AuthFlowPurposeOAuth, Provider: "auth-flow-test", Intent: model.AuthFlowIntentLogin,
+	flow, err := identity.GetAuthFlow(response.Data.FlowToken, identity.AuthFlowMatch{
+		Purpose: identity.AuthFlowPurposeOAuth, Provider: "auth-flow-test", Intent: identity.AuthFlowIntentLogin,
 	})
 	require.NoError(t, err)
 	var payload oauthFlowPayload
@@ -119,17 +119,13 @@ func TestGenerateOAuthCodeBindsFlowToAuthenticatedSession(t *testing.T) {
 	}
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	require.True(t, response.Success)
-	flow, err := model.GetAuthFlow(response.Data.FlowToken, model.AuthFlowMatch{
-		Purpose: model.AuthFlowPurposeOAuth, Provider: "auth-flow-test", Intent: model.AuthFlowIntentBind,
+	flow, err := identity.GetAuthFlow(response.Data.FlowToken, identity.AuthFlowMatch{
+		Purpose: identity.AuthFlowPurposeOAuth, Provider: "auth-flow-test", Intent: identity.AuthFlowIntentBind,
 		UserId: 42, SessionId: "session-42",
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 42, flow.UserId)
 	assert.Equal(t, "session-42", flow.SessionId)
-}
-
-type oauthFlowPayload struct {
-	AffiliateCode string `json:"affiliate_code,omitempty"`
 }
 
 func TestOAuthLoginConsumesFlowOnlyAfterProviderIdentity(t *testing.T) {
@@ -147,8 +143,8 @@ func TestOAuthLoginConsumesFlowOnlyAfterProviderIdentity(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			provider.exchangeErr = test.exchangeErr
 			provider.userInfoErr = test.userInfoErr
-			token, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
-				Purpose: model.AuthFlowPurposeOAuth, Provider: "auth-flow-test", Intent: model.AuthFlowIntentLogin,
+			token, _, err := identity.CreateAuthFlow(identity.AuthFlowCreate{
+				Purpose: identity.AuthFlowPurposeOAuth, Provider: "auth-flow-test", Intent: identity.AuthFlowIntentLogin,
 				Payload: `{}`, ExpiresAt: time.Now().Add(time.Minute),
 			})
 			require.NoError(t, err)
@@ -159,8 +155,8 @@ func TestOAuthLoginConsumesFlowOnlyAfterProviderIdentity(t *testing.T) {
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)
 
-			flow, err := model.GetAuthFlow(token, model.AuthFlowMatch{
-				Purpose: model.AuthFlowPurposeOAuth, Provider: "auth-flow-test", Intent: model.AuthFlowIntentLogin,
+			flow, err := identity.GetAuthFlow(token, identity.AuthFlowMatch{
+				Purpose: identity.AuthFlowPurposeOAuth, Provider: "auth-flow-test", Intent: identity.AuthFlowIntentLogin,
 			})
 			require.NoError(t, err)
 			assert.Nil(t, flow.ConsumedAt)
@@ -173,8 +169,8 @@ func TestOAuthLoginConsumesFlowAfterProviderIdentityAndOnProviderError(t *testin
 
 	provider.exchangeErr = nil
 	provider.userInfoErr = nil
-	successToken, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
-		Purpose: model.AuthFlowPurposeOAuth, Provider: "auth-flow-test", Intent: model.AuthFlowIntentLogin,
+	successToken, _, err := identity.CreateAuthFlow(identity.AuthFlowCreate{
+		Purpose: identity.AuthFlowPurposeOAuth, Provider: "auth-flow-test", Intent: identity.AuthFlowIntentLogin,
 		Payload: `{invalid`, ExpiresAt: time.Now().Add(time.Minute),
 	})
 	require.NoError(t, err)
@@ -183,29 +179,29 @@ func TestOAuthLoginConsumesFlowAfterProviderIdentityAndOnProviderError(t *testin
 	request := httptest.NewRequest(http.MethodGet, "/api/oauth/auth-flow-test?state="+successToken+"&code=test", nil)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
-	_, err = model.GetAuthFlow(successToken, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeOAuth})
-	assert.ErrorIs(t, err, model.ErrAuthFlowConsumed)
+	_, err = identity.GetAuthFlow(successToken, identity.AuthFlowMatch{Purpose: identity.AuthFlowPurposeOAuth})
+	assert.ErrorIs(t, err, identity.ErrAuthFlowConsumed)
 	assert.Equal(t, 1, provider.exchangeCalls)
 	assert.Equal(t, 1, provider.userInfoCalls)
 
-	providerErrorToken, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
-		Purpose: model.AuthFlowPurposeOAuth, Provider: "auth-flow-test", Intent: model.AuthFlowIntentLogin,
+	providerErrorToken, _, err := identity.CreateAuthFlow(identity.AuthFlowCreate{
+		Purpose: identity.AuthFlowPurposeOAuth, Provider: "auth-flow-test", Intent: identity.AuthFlowIntentLogin,
 		Payload: `{}`, ExpiresAt: time.Now().Add(time.Minute),
 	})
 	require.NoError(t, err)
 	request = httptest.NewRequest(http.MethodGet, "/api/oauth/auth-flow-test?state="+providerErrorToken+"&error=access_denied", nil)
 	response = httptest.NewRecorder()
 	router.ServeHTTP(response, request)
-	_, err = model.GetAuthFlow(providerErrorToken, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeOAuth})
-	assert.ErrorIs(t, err, model.ErrAuthFlowConsumed)
+	_, err = identity.GetAuthFlow(providerErrorToken, identity.AuthFlowMatch{Purpose: identity.AuthFlowPurposeOAuth})
+	assert.ErrorIs(t, err, identity.ErrAuthFlowConsumed)
 	assert.Equal(t, 1, provider.exchangeCalls)
 	assert.Equal(t, 1, provider.userInfoCalls)
 }
 
 func TestOAuthBindProviderErrorConsumesSessionBoundFlow(t *testing.T) {
 	provider := setupAuthFlowControllerTest(t)
-	flowToken, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
-		Purpose: model.AuthFlowPurposeOAuth, Provider: "auth-flow-test", Intent: model.AuthFlowIntentBind,
+	flowToken, _, err := identity.CreateAuthFlow(identity.AuthFlowCreate{
+		Purpose: identity.AuthFlowPurposeOAuth, Provider: "auth-flow-test", Intent: identity.AuthFlowIntentBind,
 		UserId: 42, SessionId: "session-42", Payload: `{}`, ExpiresAt: time.Now().Add(time.Minute),
 	})
 	require.NoError(t, err)
@@ -223,8 +219,8 @@ func TestOAuthBindProviderErrorConsumesSessionBoundFlow(t *testing.T) {
 	router.ServeHTTP(response, request)
 
 	assert.Equal(t, http.StatusOK, response.Code)
-	_, err = model.GetAuthFlow(flowToken, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeOAuth})
-	assert.ErrorIs(t, err, model.ErrAuthFlowConsumed)
+	_, err = identity.GetAuthFlow(flowToken, identity.AuthFlowMatch{Purpose: identity.AuthFlowPurposeOAuth})
+	assert.ErrorIs(t, err, identity.ErrAuthFlowConsumed)
 	assert.Zero(t, provider.exchangeCalls)
 	assert.Zero(t, provider.userInfoCalls)
 }

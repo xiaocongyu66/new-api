@@ -34,7 +34,7 @@ func setupManageUserTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	dbx.DB, dbx.LogDB = db, db
 	require.NoError(t, db.AutoMigrate(
-		&model.User{}, &model.UserSession{}, &model.Log{}, &model.CasbinRule{}, &model.AuthzRole{},
+		&model.User{}, &model.UserSession{}, &model.Log{}, &policy.CasbinRule{}, &policy.AuthzRole{},
 	))
 
 	t.Cleanup(func() {

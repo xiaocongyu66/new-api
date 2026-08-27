@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -95,21 +94,21 @@ func signTelegramAuthorization(token string, params url.Values) {
 	params.Set("hash", hex.EncodeToString(mac.Sum(nil)))
 }
 
-func createTelegramBindTestFlow(t *testing.T, db *gorm.DB, name string, status int, now time.Time) (*model.User, string) {
+func createTelegramBindTestFlow(t *testing.T, db *gorm.DB, name string, status int, now time.Time) (*User, string) {
 	t.Helper()
-	user := &model.User{
+	user := &User{
 		Username: name, Password: "password-placeholder", Role: common.RoleCommonUser,
 		Status: status, Group: "default", AuthVersion: 1, AffCode: name,
 	}
 	require.NoError(t, db.Create(user).Error)
-	session := &model.UserSession{
+	session := &UserSession{
 		SID: name + "-session", UserID: user.Id, Version: 1, UserAuthVersion: user.AuthVersion,
-		Status: model.UserSessionStatusActive, RefreshHash: name + "-refresh-hash", LoginMethod: "password",
+		Status: UserSessionStatusActive, RefreshHash: name + "-refresh-hash", LoginMethod: "password",
 		CreatedAt: now.Unix(), LastActiveAt: now.Unix(), ExpiresAt: now.Add(time.Hour).Unix(),
 	}
-	require.NoError(t, model.CreateUserSession(session))
-	flowToken, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
-		Purpose: model.AuthFlowPurposeTelegramBind, UserId: user.Id, SessionId: session.SID,
+	require.NoError(t, CreateUserSession(session))
+	flowToken, _, err := CreateAuthFlow(AuthFlowCreate{
+		Purpose: AuthFlowPurposeTelegramBind, UserId: user.Id, SessionId: session.SID,
 		ExpiresAt: now.Add(time.Minute),
 	})
 	require.NoError(t, err)
@@ -169,10 +168,10 @@ func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(
-		&model.User{},
-		&model.UserSession{},
-		&model.AuthFlow{},
-		&model.ExternalIdentityClaim{},
+		&User{},
+		&UserSession{},
+		&AuthFlow{},
+		&ExternalIdentityClaim{},
 	))
 	dbx.DB = db
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
@@ -189,20 +188,20 @@ func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
 		common.SessionSecret = previousSecret
 	})
 
-	user := &model.User{
+	user := &User{
 		Username: "telegram-bind-user", Password: "password-placeholder", Role: common.RoleCommonUser,
 		Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "telegram-bind-user",
 	}
 	require.NoError(t, db.Create(user).Error)
 	now := time.Now()
-	session := &model.UserSession{
+	session := &UserSession{
 		SID: "telegram-bind-session", UserID: user.Id, Version: 1, UserAuthVersion: user.AuthVersion,
-		Status: model.UserSessionStatusActive, RefreshHash: "refresh-hash", LoginMethod: "password",
+		Status: UserSessionStatusActive, RefreshHash: "refresh-hash", LoginMethod: "password",
 		CreatedAt: now.Unix(), LastActiveAt: now.Unix(), ExpiresAt: now.Add(time.Hour).Unix(),
 	}
-	require.NoError(t, model.CreateUserSession(session))
-	flowToken, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
-		Purpose: model.AuthFlowPurposeTelegramBind, UserId: user.Id, SessionId: session.SID,
+	require.NoError(t, CreateUserSession(session))
+	flowToken, _, err := CreateAuthFlow(AuthFlowCreate{
+		Purpose: AuthFlowPurposeTelegramBind, UserId: user.Id, SessionId: session.SID,
 		ExpiresAt: now.Add(time.Minute),
 	})
 	require.NoError(t, err)
@@ -227,8 +226,8 @@ func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
 	router.ServeHTTP(response, request)
 	assertTelegramBindRedirect(t, response, "missing-flow", telegramBindErrorFlowInvalid)
 
-	invalidSessionFlowToken, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
-		Purpose: model.AuthFlowPurposeTelegramBind, UserId: user.Id, SessionId: "missing-session",
+	invalidSessionFlowToken, _, err := CreateAuthFlow(AuthFlowCreate{
+		Purpose: AuthFlowPurposeTelegramBind, UserId: user.Id, SessionId: "missing-session",
 		ExpiresAt: now.Add(time.Minute),
 	})
 	require.NoError(t, err)
@@ -240,7 +239,7 @@ func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
 	response = httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 	assertTelegramBindRedirect(t, response, invalidSessionFlowToken, telegramBindErrorSessionInvalid)
-	invalidSessionFlow, err := model.GetAuthFlow(invalidSessionFlowToken, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeTelegramBind})
+	invalidSessionFlow, err := GetAuthFlow(invalidSessionFlowToken, AuthFlowMatch{Purpose: AuthFlowPurposeTelegramBind})
 	require.NoError(t, err)
 	assert.Nil(t, invalidSessionFlow.ConsumedAt)
 
@@ -250,18 +249,18 @@ func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
 
 	assert.Equal(t, http.StatusFound, response.Code)
 	assert.Equal(t, "/oauth/telegram?telegram_bind=success&flow_token="+url.QueryEscape(flowToken), response.Header().Get("Location"))
-	var storedUser model.User
+	var storedUser User
 	require.NoError(t, db.First(&storedUser, user.Id).Error)
 	assert.Equal(t, "123456", storedUser.TelegramId)
-	var identityClaim model.ExternalIdentityClaim
-	require.NoError(t, db.Where("provider = ? AND subject = ?", model.ExternalIdentityProviderTelegram, "123456").
+	var identityClaim ExternalIdentityClaim
+	require.NoError(t, db.Where("provider = ? AND subject = ?", ExternalIdentityProviderTelegram, "123456").
 		First(&identityClaim).Error)
 	assert.Equal(t, user.Id, identityClaim.UserId)
-	_, err = model.GetAuthFlow(flowToken, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeTelegramBind})
-	assert.ErrorIs(t, err, model.ErrAuthFlowConsumed)
+	_, err = GetAuthFlow(flowToken, AuthFlowMatch{Purpose: AuthFlowPurposeTelegramBind})
+	assert.ErrorIs(t, err, ErrAuthFlowConsumed)
 
-	replayFlowToken, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
-		Purpose: model.AuthFlowPurposeTelegramBind, UserId: user.Id, SessionId: session.SID,
+	replayFlowToken, _, err := CreateAuthFlow(AuthFlowCreate{
+		Purpose: AuthFlowPurposeTelegramBind, UserId: user.Id, SessionId: session.SID,
 		ExpiresAt: now.Add(time.Minute),
 	})
 	require.NoError(t, err)
@@ -269,24 +268,24 @@ func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
 	response = httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 	assertTelegramBindRedirect(t, response, replayFlowToken, telegramBindErrorInvalidRequest)
-	replayFlow, err := model.GetAuthFlow(replayFlowToken, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeTelegramBind})
+	replayFlow, err := GetAuthFlow(replayFlowToken, AuthFlowMatch{Purpose: AuthFlowPurposeTelegramBind})
 	require.NoError(t, err)
 	assert.Nil(t, replayFlow.ConsumedAt)
 
-	competingUser := &model.User{
+	competingUser := &User{
 		Username: "telegram-bind-competing-user", Password: "password-placeholder", Role: common.RoleCommonUser,
 		Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "telegram-bind-competing-user",
 	}
 	require.NoError(t, db.Create(competingUser).Error)
-	competingSession := &model.UserSession{
+	competingSession := &UserSession{
 		SID: "telegram-bind-competing-session", UserID: competingUser.Id, Version: 1,
-		UserAuthVersion: competingUser.AuthVersion, Status: model.UserSessionStatusActive,
+		UserAuthVersion: competingUser.AuthVersion, Status: UserSessionStatusActive,
 		RefreshHash: "competing-refresh-hash", LoginMethod: "password",
 		CreatedAt: now.Unix(), LastActiveAt: now.Unix(), ExpiresAt: now.Add(time.Hour).Unix(),
 	}
-	require.NoError(t, model.CreateUserSession(competingSession))
-	competingFlowToken, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
-		Purpose: model.AuthFlowPurposeTelegramBind, UserId: competingUser.Id, SessionId: competingSession.SID,
+	require.NoError(t, CreateUserSession(competingSession))
+	competingFlowToken, _, err := CreateAuthFlow(AuthFlowCreate{
+		Purpose: AuthFlowPurposeTelegramBind, UserId: competingUser.Id, SessionId: competingSession.SID,
 		ExpiresAt: now.Add(time.Minute),
 	})
 	require.NoError(t, err)
@@ -304,13 +303,13 @@ func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
 
 	require.NoError(t, db.First(competingUser, competingUser.Id).Error)
 	assert.Empty(t, competingUser.TelegramId)
-	competingFlow, err := model.GetAuthFlow(competingFlowToken, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeTelegramBind})
+	competingFlow, err := GetAuthFlow(competingFlowToken, AuthFlowMatch{Purpose: AuthFlowPurposeTelegramBind})
 	require.NoError(t, err)
 	assert.Nil(t, competingFlow.ConsumedAt)
 	competingAssertion, competingAssertionExpiry, err := telegramAuthorizationClaim(competingParams, time.Now())
 	require.NoError(t, err)
-	require.NoError(t, model.ClaimExternalAuthAssertion(
-		model.AuthFlowPurposeTelegramAssertion,
+	require.NoError(t, ClaimExternalAuthAssertion(
+		AuthFlowPurposeTelegramAssertion,
 		competingAssertion,
 		competingAssertionExpiry,
 	))
@@ -330,16 +329,16 @@ func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
 	response = httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 	assertTelegramBindRedirect(t, response, disabledFlowToken, telegramBindErrorUserDisabled)
-	var storedDisabledUser model.User
+	var storedDisabledUser User
 	require.NoError(t, db.First(&storedDisabledUser, disabledUser.Id).Error)
 	assert.Empty(t, storedDisabledUser.TelegramId)
-	disabledFlow, err := model.GetAuthFlow(disabledFlowToken, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeTelegramBind})
+	disabledFlow, err := GetAuthFlow(disabledFlowToken, AuthFlowMatch{Purpose: AuthFlowPurposeTelegramBind})
 	require.NoError(t, err)
 	assert.Nil(t, disabledFlow.ConsumedAt)
 	disabledAssertion, disabledAssertionExpiry, err := telegramAuthorizationClaim(disabledParams, time.Now())
 	require.NoError(t, err)
-	require.NoError(t, model.ClaimExternalAuthAssertion(
-		model.AuthFlowPurposeTelegramAssertion,
+	require.NoError(t, ClaimExternalAuthAssertion(
+		AuthFlowPurposeTelegramAssertion,
 		disabledAssertion,
 		disabledAssertionExpiry,
 	))
@@ -360,13 +359,13 @@ func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
 	response = httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 	assertTelegramBindRedirect(t, response, deletedFlowToken, telegramBindErrorUserDeleted)
-	deletedFlow, err := model.GetAuthFlow(deletedFlowToken, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeTelegramBind})
+	deletedFlow, err := GetAuthFlow(deletedFlowToken, AuthFlowMatch{Purpose: AuthFlowPurposeTelegramBind})
 	require.NoError(t, err)
 	assert.Nil(t, deletedFlow.ConsumedAt)
 	deletedAssertion, deletedAssertionExpiry, err := telegramAuthorizationClaim(deletedParams, time.Now())
 	require.NoError(t, err)
-	require.NoError(t, model.ClaimExternalAuthAssertion(
-		model.AuthFlowPurposeTelegramAssertion,
+	require.NoError(t, ClaimExternalAuthAssertion(
+		AuthFlowPurposeTelegramAssertion,
 		deletedAssertion,
 		deletedAssertionExpiry,
 	))
@@ -398,13 +397,13 @@ func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
 	db.Callback().Query().Remove(callbackName)
 	assertTelegramBindRedirect(t, response, internalFlowToken, telegramBindErrorInternal)
 	assert.NotContains(t, response.Header().Get("Location"), forcedError.Error())
-	internalFlow, err := model.GetAuthFlow(internalFlowToken, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeTelegramBind})
+	internalFlow, err := GetAuthFlow(internalFlowToken, AuthFlowMatch{Purpose: AuthFlowPurposeTelegramBind})
 	require.NoError(t, err)
 	assert.Nil(t, internalFlow.ConsumedAt)
 	internalAssertion, internalAssertionExpiry, err := telegramAuthorizationClaim(internalParams, time.Now())
 	require.NoError(t, err)
-	require.NoError(t, model.ClaimExternalAuthAssertion(
-		model.AuthFlowPurposeTelegramAssertion,
+	require.NoError(t, ClaimExternalAuthAssertion(
+		AuthFlowPurposeTelegramAssertion,
 		internalAssertion,
 		internalAssertionExpiry,
 	))

@@ -19,7 +19,6 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/glebarez/sqlite"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
@@ -104,7 +103,7 @@ func openTokenControllerTestDB(t *testing.T) *gorm.DB {
 func migrateTokenControllerTestDB(t *testing.T, db *gorm.DB) {
 	t.Helper()
 
-	if err := db.AutoMigrate(&model.Token{}); err != nil {
+	if err := db.AutoMigrate(&Token{}); err != nil {
 		t.Fatalf("failed to migrate token table: %v", err)
 	}
 }
@@ -165,10 +164,10 @@ func openTokenControllerExternalDB(t *testing.T, dialect string, dsn string) (*g
 	return db, managedTokensTable
 }
 
-func seedToken(t *testing.T, db *gorm.DB, userID int, name string, rawKey string) *model.Token {
+func seedToken(t *testing.T, db *gorm.DB, userID int, name string, rawKey string) *Token {
 	t.Helper()
 
-	token := &model.Token{
+	token := &Token{
 		UserId:         userID,
 		Name:           name,
 		Key:            rawKey,
@@ -345,14 +344,14 @@ func runTokenMigrationCompatibilityTest(t *testing.T, db *gorm.DB, dialect strin
 	if got := getTokenKeyColumnType(t, db, dialect); got != "varchar(128)" {
 		t.Fatalf("expected migrated key column type varchar(128), got %q", got)
 	}
-	if !db.Migrator().HasColumn(&model.Token{}, "auto_groups") {
+	if !db.Migrator().HasColumn(&Token{}, "auto_groups") {
 		t.Fatal("expected migration to add auto_groups column")
 	}
 	if got := getTokenAutoGroupsColumnType(t, db, dialect); got != "text" {
 		t.Fatalf("expected migrated auto_groups column type text, got %q", got)
 	}
 
-	var migratedToken model.Token
+	var migratedToken Token
 	if err := db.First(&migratedToken, "name = ?", "legacy-token").Error; err != nil {
 		t.Fatalf("failed to load migrated token row: %v", err)
 	}
@@ -366,7 +365,7 @@ func runTokenMigrationCompatibilityTest(t *testing.T, db *gorm.DB, dialect strin
 		t.Fatalf("expected legacy token to inherit global Auto groups, got %q", migratedToken.AutoGroups)
 	}
 
-	inserted := model.Token{
+	inserted := Token{
 		UserId:             8,
 		Name:               "long-token",
 		Key:                longKey,
@@ -387,7 +386,7 @@ func runTokenMigrationCompatibilityTest(t *testing.T, db *gorm.DB, dialect strin
 		t.Fatalf("failed to insert long token after migration: %v", err)
 	}
 
-	var fetched model.Token
+	var fetched Token
 	if err := db.First(&fetched, "id = ?", inserted.Id).Error; err != nil {
 		t.Fatalf("failed to fetch long token after migration: %v", err)
 	}
@@ -593,7 +592,7 @@ func newTokenIDRouteContext(t *testing.T, method, pattern, target string, userID
 }
 
 func TestBuildMaskedTokenResponseOmitsEmptyAutoGroups(t *testing.T) {
-	token := &model.Token{CrossGroupRetry: true}
+	token := &Token{CrossGroupRetry: true}
 	payload, err := common.Marshal(buildMaskedTokenResponse(token))
 	require.NoError(t, err)
 	var responseData map[string]any

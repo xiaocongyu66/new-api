@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,7 +22,7 @@ func newAuthzTestDB(t *testing.T) *gorm.DB {
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
-	require.NoError(t, db.AutoMigrate(&model.CasbinRule{}, &model.AuthzRole{}))
+	require.NoError(t, db.AutoMigrate(&CasbinRule{}, &AuthzRole{}))
 	return db
 }
 
@@ -36,10 +35,10 @@ func TestInitSeedsBuiltInRolesAndPoliciesOnce(t *testing.T) {
 	// root is a superuser role and is granted everything implicitly, so only the
 	// admin baseline is written as explicit policy rows.
 	var count int64
-	require.NoError(t, db.Model(&model.CasbinRule{}).Count(&count).Error)
+	require.NoError(t, db.Model(&CasbinRule{}).Count(&count).Error)
 	assert.Equal(t, int64(len(PermissionsForRole(BuiltInRoleAdmin))), count)
 
-	var roles []model.AuthzRole
+	var roles []AuthzRole
 	require.NoError(t, db.Order("sort asc").Find(&roles).Error)
 	require.Len(t, roles, 2)
 	assert.Equal(t, BuiltInRoleRoot, roles[0].Key)
@@ -64,15 +63,15 @@ func TestInitOnSlaveOnlyLoadsPolicies(t *testing.T) {
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
-	require.NoError(t, db.AutoMigrate(&model.CasbinRule{}, &model.AuthzRole{}))
+	require.NoError(t, db.AutoMigrate(&CasbinRule{}, &AuthzRole{}))
 
 	require.NoError(t, Init(db))
 
 	var roleCount int64
-	require.NoError(t, db.Model(&model.AuthzRole{}).Count(&roleCount).Error)
+	require.NoError(t, db.Model(&AuthzRole{}).Count(&roleCount).Error)
 	assert.Equal(t, int64(0), roleCount)
 	var policyCount int64
-	require.NoError(t, db.Model(&model.CasbinRule{}).Count(&policyCount).Error)
+	require.NoError(t, db.Model(&CasbinRule{}).Count(&policyCount).Error)
 	assert.Equal(t, int64(0), policyCount)
 	assert.False(t, Can(2, common.RoleAdminUser, ChannelRead))
 }
@@ -117,7 +116,7 @@ func TestSetUserPermissionsStoresOnlyOverrides(t *testing.T) {
 	}, ExplicitUserOverrides(42))
 
 	var userPolicyCount int64
-	require.NoError(t, db.Model(&model.CasbinRule{}).Where("v0 = ?", UserSubject(42)).Count(&userPolicyCount).Error)
+	require.NoError(t, db.Model(&CasbinRule{}).Where("v0 = ?", UserSubject(42)).Count(&userPolicyCount).Error)
 	assert.Equal(t, int64(2), userPolicyCount)
 
 	require.NoError(t, SetUserPermissions(42, PermissionsMap{ResourceChannel: {
@@ -197,7 +196,7 @@ func TestSetUserPermissionsInTxRollbackLeavesNoPolicy(t *testing.T) {
 
 	assert.False(t, Can(43, common.RoleAdminUser, ChannelSensitiveWrite))
 	var count int64
-	require.NoError(t, db.Model(&model.CasbinRule{}).Where("v0 = ?", UserSubject(43)).Count(&count).Error)
+	require.NoError(t, db.Model(&CasbinRule{}).Where("v0 = ?", UserSubject(43)).Count(&count).Error)
 	assert.Equal(t, int64(0), count)
 }
 
@@ -210,7 +209,7 @@ func TestAdapterAddPolicyIsIdempotent(t *testing.T) {
 	require.NoError(t, adapter.AddPolicy("p", "p", rule))
 
 	var count int64
-	require.NoError(t, db.Model(&model.CasbinRule{}).Where(
+	require.NoError(t, db.Model(&CasbinRule{}).Where(
 		"ptype = ? AND v0 = ? AND v1 = ? AND v2 = ? AND v3 = ?",
 		"p",
 		UserSubject(55),

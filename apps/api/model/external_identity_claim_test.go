@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"testing"
 
@@ -12,65 +13,65 @@ import (
 func TestExternalIdentityClaimEnforcesSingleOwnerAtomically(t *testing.T) {
 	truncateTables(t)
 
-	first := User{Username: "telegram-owner-one", Password: "password", AffCode: "telegram-owner-one"}
-	second := User{Username: "telegram-owner-two", Password: "password", AffCode: "telegram-owner-two"}
+	first := identity.User{Username: "telegram-owner-one", Password: "password", AffCode: "telegram-owner-one"}
+	second := identity.User{Username: "telegram-owner-two", Password: "password", AffCode: "telegram-owner-two"}
 	require.NoError(t, dbx.DB.Create(&first).Error)
 	require.NoError(t, dbx.DB.Create(&second).Error)
 
 	require.NoError(t, dbx.DB.Transaction(func(tx *gorm.DB) error {
-		return ClaimExternalIdentityWithTx(tx, ExternalIdentityProviderTelegram, "telegram-123", first.Id)
+		return identity.ClaimExternalIdentityWithTx(tx, identity.ExternalIdentityProviderTelegram, "telegram-123", first.Id)
 	}))
 	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
-		return ClaimExternalIdentityWithTx(tx, ExternalIdentityProviderTelegram, "telegram-123", second.Id)
+		return identity.ClaimExternalIdentityWithTx(tx, identity.ExternalIdentityProviderTelegram, "telegram-123", second.Id)
 	})
-	assert.ErrorIs(t, err, ErrExternalIdentityAlreadyClaimed)
+	assert.ErrorIs(t, err, identity.ErrExternalIdentityAlreadyClaimed)
 
 	err = dbx.DB.Transaction(func(tx *gorm.DB) error {
-		return ClaimExternalIdentityWithTx(tx, ExternalIdentityProviderTelegram, "telegram-456", first.Id)
+		return identity.ClaimExternalIdentityWithTx(tx, identity.ExternalIdentityProviderTelegram, "telegram-456", first.Id)
 	})
-	assert.ErrorIs(t, err, ErrExternalIdentityAlreadyClaimed)
+	assert.ErrorIs(t, err, identity.ErrExternalIdentityAlreadyClaimed)
 
-	var claims []ExternalIdentityClaim
+	var claims []identity.ExternalIdentityClaim
 	require.NoError(t, dbx.DB.Find(&claims).Error)
 	require.Len(t, claims, 1)
 	assert.Equal(t, first.Id, claims[0].UserId)
 	assert.Equal(t, "telegram-123", claims[0].Subject)
 
 	require.NoError(t, dbx.DB.Transaction(func(tx *gorm.DB) error {
-		return ReleaseExternalIdentityWithTx(tx, ExternalIdentityProviderTelegram, first.Id)
+		return identity.ReleaseExternalIdentityWithTx(tx, identity.ExternalIdentityProviderTelegram, first.Id)
 	}))
 	require.NoError(t, dbx.DB.Transaction(func(tx *gorm.DB) error {
-		return ClaimExternalIdentityWithTx(tx, ExternalIdentityProviderTelegram, "telegram-123", second.Id)
+		return identity.ClaimExternalIdentityWithTx(tx, identity.ExternalIdentityProviderTelegram, "telegram-123", second.Id)
 	}))
 }
 
 func TestClearTelegramBindingReleasesIdentityClaim(t *testing.T) {
 	truncateTables(t)
 
-	user := User{Username: "telegram-unbind", Password: "password", TelegramId: "telegram-unbind-id"}
+	user := identity.User{Username: "telegram-unbind", Password: "password", TelegramId: "telegram-unbind-id"}
 	require.NoError(t, dbx.DB.Create(&user).Error)
 	require.NoError(t, dbx.DB.Transaction(func(tx *gorm.DB) error {
-		return ClaimExternalIdentityWithTx(tx, ExternalIdentityProviderTelegram, user.TelegramId, user.Id)
+		return identity.ClaimExternalIdentityWithTx(tx, identity.ExternalIdentityProviderTelegram, user.TelegramId, user.Id)
 	}))
 
-	require.NoError(t, user.ClearBinding(ExternalIdentityProviderTelegram))
+	require.NoError(t, user.identity.ClearBinding(identity.ExternalIdentityProviderTelegram))
 	assert.Empty(t, user.TelegramId)
 
 	var count int64
-	require.NoError(t, dbx.DB.Model(&ExternalIdentityClaim{}).Where("user_id = ?", user.Id).Count(&count).Error)
+	require.NoError(t, dbx.DB.Model(&identity.ExternalIdentityClaim{}).Where("user_id = ?", user.Id).Count(&count).Error)
 	assert.Zero(t, count)
 }
 
 func TestInitializeExternalIdentityClaimsIsIdempotent(t *testing.T) {
 	truncateTables(t)
 
-	user := User{Username: "telegram-legacy", Password: "password", TelegramId: "telegram-legacy-id"}
+	user := identity.User{Username: "telegram-legacy", Password: "password", TelegramId: "telegram-legacy-id"}
 	require.NoError(t, dbx.DB.Create(&user).Error)
-	require.NoError(t, InitializeExternalIdentityClaims())
-	require.NoError(t, InitializeExternalIdentityClaims())
+	require.NoError(t, identity.InitializeExternalIdentityClaims())
+	require.NoError(t, identity.InitializeExternalIdentityClaims())
 
-	var claim ExternalIdentityClaim
-	require.NoError(t, dbx.DB.Where("provider = ? AND subject = ?", ExternalIdentityProviderTelegram, user.TelegramId).
+	var claim identity.ExternalIdentityClaim
+	require.NoError(t, dbx.DB.Where("provider = ? AND subject = ?", identity.ExternalIdentityProviderTelegram, user.TelegramId).
 		First(&claim).Error)
 	assert.Equal(t, user.Id, claim.UserId)
 }
@@ -78,15 +79,15 @@ func TestInitializeExternalIdentityClaimsIsIdempotent(t *testing.T) {
 func TestInitializeExternalIdentityClaimsRejectsAmbiguousLegacyBindings(t *testing.T) {
 	truncateTables(t)
 
-	first := User{Username: "telegram-legacy-one", Password: "password", TelegramId: "duplicate-telegram-id", AffCode: "telegram-legacy-one"}
-	second := User{Username: "telegram-legacy-two", Password: "password", TelegramId: "duplicate-telegram-id", AffCode: "telegram-legacy-two"}
+	first := identity.User{Username: "telegram-legacy-one", Password: "password", TelegramId: "duplicate-telegram-id", AffCode: "telegram-legacy-one"}
+	second := identity.User{Username: "telegram-legacy-two", Password: "password", TelegramId: "duplicate-telegram-id", AffCode: "telegram-legacy-two"}
 	require.NoError(t, dbx.DB.Create(&first).Error)
 	require.NoError(t, dbx.DB.Create(&second).Error)
 
-	err := InitializeExternalIdentityClaims()
-	assert.ErrorIs(t, err, ErrExternalIdentityAlreadyClaimed)
+	err := identity.InitializeExternalIdentityClaims()
+	assert.ErrorIs(t, err, identity.ErrExternalIdentityAlreadyClaimed)
 
 	var count int64
-	require.NoError(t, dbx.DB.Model(&ExternalIdentityClaim{}).Count(&count).Error)
+	require.NoError(t, dbx.DB.Model(&identity.ExternalIdentityClaim{}).Count(&count).Error)
 	assert.Zero(t, count)
 }
