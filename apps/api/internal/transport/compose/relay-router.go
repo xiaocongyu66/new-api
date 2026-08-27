@@ -5,8 +5,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	tpmw "github.com/QuantumNous/new-api/internal/transport/middleware"
-	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/internal/transport/middleware"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
@@ -14,13 +13,13 @@ import (
 )
 
 func SetRelayRouter(router *gin.Engine) {
-	router.Use(tpmw.CORS())
-	router.Use(tpmw.DecompressRequestMiddleware())
+	router.Use(middleware.CORS())
+	router.Use(middleware.DecompressRequestMiddleware())
 	router.Use(ginadapter.Middleware(middleware.BodyStorageCleanup())) // 清理请求体存储
 	router.Use(ginadapter.Middleware(middleware.StatsMiddleware()))
 	// https://platform.openai.com/docs/api-reference/introduction
 	modelsRouter := router.Group("/v1/models")
-	modelsRouter.Use(tpmw.RouteTag("relay"))
+	modelsRouter.Use(middleware.RouteTag("relay"))
 	modelsRouter.Use(ginadapter.Middleware(security.TokenAuth()))
 	{
 		modelsRouter.GET("", func(cc *gin.Context) {
@@ -45,7 +44,7 @@ func SetRelayRouter(router *gin.Engine) {
 	}
 
 	geminiRouter := router.Group("/v1beta/models")
-	geminiRouter.Use(tpmw.RouteTag("relay"))
+	geminiRouter.Use(middleware.RouteTag("relay"))
 	geminiRouter.Use(ginadapter.Middleware(security.TokenAuth()))
 	{
 		geminiRouter.GET("", func(cc *gin.Context) {
@@ -54,7 +53,7 @@ func SetRelayRouter(router *gin.Engine) {
 	}
 
 	geminiCompatibleRouter := router.Group("/v1beta/openai/models")
-	geminiCompatibleRouter.Use(tpmw.RouteTag("relay"))
+	geminiCompatibleRouter.Use(middleware.RouteTag("relay"))
 	geminiCompatibleRouter.Use(ginadapter.Middleware(security.TokenAuth()))
 	{
 		geminiCompatibleRouter.GET("", func(cc *gin.Context) {
@@ -63,14 +62,14 @@ func SetRelayRouter(router *gin.Engine) {
 	}
 
 	playgroundRouter := router.Group("/pg")
-	playgroundRouter.Use(tpmw.RouteTag("relay"))
+	playgroundRouter.Use(middleware.RouteTag("relay"))
 	playgroundRouter.Use(ginadapter.Middleware(middleware.SystemPerformanceCheck()))
 	playgroundRouter.Use(ginadapter.Middleware(security.UserAuth()), ginadapter.Middleware(middleware.Distribute()))
 	{
 		playgroundRouter.POST("/chat/completions", ginadapter.Handler(controller.Playground))
 	}
 	relayV1Router := router.Group("/v1")
-	relayV1Router.Use(tpmw.RouteTag("relay"))
+	relayV1Router.Use(middleware.RouteTag("relay"))
 	relayV1Router.Use(ginadapter.Middleware(middleware.SystemPerformanceCheck()))
 	relayV1Router.Use(ginadapter.Middleware(security.TokenAuth()))
 	relayV1Router.Use(ginadapter.Middleware(middleware.ModelRequestRateLimit()))
@@ -173,16 +172,16 @@ func SetRelayRouter(router *gin.Engine) {
 		httpRouter.DELETE("/models/:model", ginadapter.Handler(controller.RelayNotImplemented))
 	}
 	relayMjRouter := router.Group("/mj")
-	relayMjRouter.Use(tpmw.RouteTag("relay"))
+	relayMjRouter.Use(middleware.RouteTag("relay"))
 	relayMjRouter.Use(ginadapter.Middleware(middleware.SystemPerformanceCheck()))
 	registerMjRouterGroup(relayMjRouter)
 	relayMjModeRouter := router.Group("/:mode/mj")
-	relayMjModeRouter.Use(tpmw.RouteTag("relay"))
+	relayMjModeRouter.Use(middleware.RouteTag("relay"))
 	relayMjModeRouter.Use(ginadapter.Middleware(middleware.SystemPerformanceCheck()))
 	registerMjRouterGroup(relayMjModeRouter)
 	//relayMjRouter.Use()
 	relaySunoRouter := router.Group("/suno")
-	relaySunoRouter.Use(tpmw.RouteTag("relay"))
+	relaySunoRouter.Use(middleware.RouteTag("relay"))
 	relaySunoRouter.Use(ginadapter.Middleware(middleware.SystemPerformanceCheck()))
 	relaySunoRouter.Use(ginadapter.Middleware(security.TokenAuth()), ginadapter.Middleware(middleware.Distribute()))
 	{
@@ -191,7 +190,7 @@ func SetRelayRouter(router *gin.Engine) {
 		relaySunoRouter.GET("/fetch/:id", ginadapter.Handler(controller.RelayTaskFetch))
 	}
 	relayGeminiRouter := router.Group("/v1beta")
-	relayGeminiRouter.Use(tpmw.RouteTag("relay"))
+	relayGeminiRouter.Use(middleware.RouteTag("relay"))
 	relayGeminiRouter.Use(ginadapter.Middleware(middleware.SystemPerformanceCheck()))
 	relayGeminiRouter.Use(ginadapter.Middleware(security.TokenAuth()))
 	relayGeminiRouter.Use(ginadapter.Middleware(middleware.ModelRequestRateLimit()))

@@ -4,8 +4,7 @@ import (
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	tpmw "github.com/QuantumNous/new-api/internal/transport/middleware"
-	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/internal/transport/middleware"
 
 	"github.com/gin-gonic/gin"
 )
@@ -13,14 +12,14 @@ import (
 func SetVideoRouter(router *gin.Engine) {
 	// Video proxy: accepts either session auth (dashboard) or token auth (API clients)
 	videoProxyRouter := router.Group("/v1")
-	videoProxyRouter.Use(tpmw.RouteTag("relay"))
+	videoProxyRouter.Use(middleware.RouteTag("relay"))
 	videoProxyRouter.Use(ginadapter.Middleware(security.TokenOrUserAuth()))
 	{
 		videoProxyRouter.GET("/videos/:task_id/content", ginadapter.Handler(controller.VideoProxy))
 	}
 
 	videoV1Router := router.Group("/v1")
-	videoV1Router.Use(tpmw.RouteTag("relay"))
+	videoV1Router.Use(middleware.RouteTag("relay"))
 	videoV1Router.Use(ginadapter.Middleware(security.TokenAuth()), ginadapter.Middleware(middleware.Distribute()))
 	{
 		videoV1Router.POST("/video/generations", ginadapter.Handler(controller.RelayTask))
@@ -35,7 +34,7 @@ func SetVideoRouter(router *gin.Engine) {
 	}
 
 	klingV1Router := router.Group("/kling/v1")
-	klingV1Router.Use(tpmw.RouteTag("relay"))
+	klingV1Router.Use(middleware.RouteTag("relay"))
 	klingV1Router.Use(ginadapter.Middleware(middleware.KlingRequestConvert()), ginadapter.Middleware(security.TokenAuth()), ginadapter.Middleware(middleware.Distribute()))
 	{
 		klingV1Router.POST("/videos/text2video", ginadapter.Handler(controller.RelayTask))
@@ -46,7 +45,7 @@ func SetVideoRouter(router *gin.Engine) {
 
 	// Jimeng official API routes - direct mapping to official API format
 	jimengOfficialGroup := router.Group("jimeng")
-	jimengOfficialGroup.Use(tpmw.RouteTag("relay"))
+	jimengOfficialGroup.Use(middleware.RouteTag("relay"))
 	jimengOfficialGroup.Use(ginadapter.Middleware(middleware.JimengRequestConvert()), ginadapter.Middleware(security.TokenAuth()), ginadapter.Middleware(middleware.Distribute()))
 	{
 		// Maps to: /?Action=CVSync2AsyncSubmitTask&Version=2022-08-31 and /?Action=CVSync2AsyncGetResult&Version=2022-08-31

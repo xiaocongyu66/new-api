@@ -28,8 +28,7 @@ import (
 	compose "github.com/QuantumNous/new-api/internal/transport/compose"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	tpmw "github.com/QuantumNous/new-api/internal/transport/middleware"
-	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/internal/transport/middleware"
 	"github.com/QuantumNous/new-api/model"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/relay"
@@ -201,16 +200,16 @@ func main() {
 			},
 		})
 	})
-	if err := tpmw.ConfigureTrustedProxies(server); err != nil {
+	if err := middleware.ConfigureTrustedProxies(server); err != nil {
 		common.FatalLog("failed to configure trusted proxies: " + err.Error())
 		return
 	}
 	// This will cause SSE not to work!!!
 	//server.Use(gzip.Gzip(gzip.DefaultCompression))
 	server.Use(ginadapter.Middleware(middleware.RequestId()))
-	server.Use(ginadapter.Middleware(tpmw.Version()))
+	server.Use(ginadapter.Middleware(middleware.Version()))
 	server.Use(ginadapter.Middleware(middleware.I18n()))
-	tpmw.SetUpLogger(server)
+	middleware.SetUpLogger(server)
 	InjectUmamiAnalytics()
 	InjectGoogleAnalytics()
 

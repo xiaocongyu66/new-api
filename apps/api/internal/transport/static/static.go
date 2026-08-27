@@ -3,7 +3,7 @@ package static
 import (
 	"embed"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	tpmw "github.com/QuantumNous/new-api/internal/transport/middleware"
+	"github.com/QuantumNous/new-api/internal/transport/middleware"
 	"net/http"
 	"strings"
 
@@ -26,7 +26,7 @@ func ServeStatic(router *gin.Engine, assets WebAssets) {
 
 	router.Use(static.Serve("/", frontendFS))
 	router.NoRoute(func(cc *gin.Context) {
-		cc.Set(tpmw.RouteTagKey, "web")
+		cc.Set(middleware.RouteTagKey, "web")
 		uri := cc.Request.RequestURI
 		if strings.HasPrefix(uri, "/v1") || strings.HasPrefix(uri, "/api") || strings.HasPrefix(uri, "/assets") {
 			controller.RelayNotFound(ginadapter.Wrap(cc))

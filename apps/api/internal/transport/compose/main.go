@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	tpmw "github.com/QuantumNous/new-api/internal/transport/middleware"
+	"github.com/QuantumNous/new-api/internal/transport/middleware"
 	"net/http"
 	"os"
 	"strings"
@@ -30,7 +30,7 @@ func SetRouter(router *gin.Engine, assets WebAssets) {
 	} else {
 		frontendBaseUrl = strings.TrimSuffix(frontendBaseUrl, "/")
 		router.NoRoute(func(cc *gin.Context) {
-			cc.Set(tpmw.RouteTagKey, "web")
+			cc.Set(middleware.RouteTagKey, "web")
 			cc.Redirect(http.StatusMovedPermanently, fmt.Sprintf("%s%s", frontendBaseUrl, cc.Request.RequestURI))
 		})
 	}
