@@ -50,6 +50,12 @@ func carryOverChannelWeightToRoutes() error {
 	if !columnExists("channels", "weight") {
 		return nil
 	}
+	// The carry-over runs before AutoMigrate has created channel_model_routes on
+	// a fresh install. Treat a missing target table as a no-op so the legacy
+	// column can still be dropped; nothing to migrate anyway.
+	if !tableExists("channel_model_routes") {
+		return nil
+	}
 	type legacyWeight struct {
 		Id     int
 		Weight *uint
@@ -125,6 +131,34 @@ func columnExists(table, column string) bool {
 	return count > 0
 }
 
+// tableExists probes the live schema for a table without going through GORM.
+// Mirrors columnExists so carry-over can no-op when its target table has not
+// been AutoMigrate'd yet (e.g. fresh installs that still carry legacy
+// channels.weight from a previous deployment).
+func tableExists(table string) bool {
+	var count int64
+	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+		if err := DB.Raw(
+			"SELECT count(*) FROM sqlite_master WHERE type='table' AND name = ?", table,
+		).Scan(&count).Error; err != nil {
+			return false
+		}
+		return count > 0
+	}
+	schemaFunc := "DATABASE()"
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+		schemaFunc = "current_schema()"
+	}
+	if err := DB.Raw(
+		"SELECT count(*) FROM information_schema.tables WHERE table_name = ? AND table_schema = "+schemaFunc,
+		table,
+	).Scan(&count).Error; err != nil {
+		return false
+	}
+	return count > 0
+}
+
+// dropColumnIfExists removes a column on every supported database.
 // dropColumnIfExists removes a column on every supported database.
 //
 // The GORM SQLite migrator is deliberately bypassed: glebarez/sqlite implements
