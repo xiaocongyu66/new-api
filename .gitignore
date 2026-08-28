@@ -49,3 +49,4 @@ __pycache__/
 
 # i18n sync generated reports
 apps/web/src/i18n/locales/_reports/
+runtime/

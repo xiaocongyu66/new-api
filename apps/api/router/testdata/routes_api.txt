@@ -98,6 +98,7 @@ GET /api/redemption/
 GET /api/redemption/:id
 GET /api/redemption/search
 GET /api/reset_password
+GET /api/route_unit/audit
 GET /api/setup
 GET /api/status
 GET /api/status/test
