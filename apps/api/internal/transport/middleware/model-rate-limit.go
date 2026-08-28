@@ -11,9 +11,9 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/limiter"
 	"github.com/QuantumNous/new-api/internal/constant"
-	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/go-redis/redis/v8"
+	"github.com/QuantumNous/new-api/internal/transport/middleware/rate_limit"
 )
 
 const (
@@ -55,7 +55,7 @@ func checkRedisRateLimit(ctx context.Context, rdb *redis.Client, key string, max
 	// 如果在时间窗口内已达到限制，拒绝请求
 	subTime := nowTime.Sub(oldTime).Seconds()
 	if int64(subTime) < duration {
-		rdb.Expire(ctx, key, time.Duration(setting.ModelRequestRateLimitDurationMinutes)*time.Minute)
+		rdb.Expire(ctx, key, time.Duration(rate_limit.ModelRequestRateLimitDurationMinutes)*time.Minute)
 		return false, nil
 	}
 
@@ -72,7 +72,7 @@ func recordRedisRequest(ctx context.Context, rdb *redis.Client, key string, maxC
 	now := time.Now().UTC().Format(modelRateLimitTimeFormat)
 	rdb.LPush(ctx, key, now)
 	rdb.LTrim(ctx, key, 0, int64(maxCount-1))
-	rdb.Expire(ctx, key, time.Duration(setting.ModelRequestRateLimitDurationMinutes)*time.Minute)
+	rdb.Expire(ctx, key, time.Duration(rate_limit.ModelRequestRateLimitDurationMinutes)*time.Minute)
 }
 
 // Redis限流处理器
@@ -91,7 +91,7 @@ func redisRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) c
 			return
 		}
 		if !allowed {
-			abortWithOpenAiMessage(c, http.StatusTooManyRequests, fmt.Sprintf("您已达到请求数限制：%d分钟内最多请求%d次", setting.ModelRequestRateLimitDurationMinutes, successMaxCount))
+			abortWithOpenAiMessage(c, http.StatusTooManyRequests, fmt.Sprintf("您已达到请求数限制：%d分钟内最多请求%d次", rate_limit.ModelRequestRateLimitDurationMinutes, successMaxCount))
 			return
 		}
 
@@ -115,7 +115,7 @@ func redisRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) c
 			}
 
 			if !allowed {
-				abortWithOpenAiMessage(c, http.StatusTooManyRequests, fmt.Sprintf("您已达到总请求数限制：%d分钟内最多请求%d次，包括失败次数，请检查您的请求是否正确", setting.ModelRequestRateLimitDurationMinutes, totalMaxCount))
+				abortWithOpenAiMessage(c, http.StatusTooManyRequests, fmt.Sprintf("您已达到总请求数限制：%d分钟内最多请求%d次，包括失败次数，请检查您的请求是否正确", rate_limit.ModelRequestRateLimitDurationMinutes, totalMaxCount))
 			}
 		}
 
@@ -131,7 +131,7 @@ func redisRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) c
 
 // 内存限流处理器
 func memoryRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) contract.Middleware {
-	inMemoryRateLimiter.Init(time.Duration(setting.ModelRequestRateLimitDurationMinutes) * time.Minute)
+	inMemoryRateLimiter.Init(time.Duration(rate_limit.ModelRequestRateLimitDurationMinutes) * time.Minute)
 
 	return func(c contract.Context) {
 		userId := strconv.Itoa(c.GetInt("id"))
@@ -168,15 +168,15 @@ func memoryRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) 
 func ModelRequestRateLimit() func(c contract.Context) {
 	return func(c contract.Context) {
 		// 在每个请求时检查是否启用限流
-		if !setting.ModelRequestRateLimitEnabled {
+		if !rate_limit.ModelRequestRateLimitEnabled {
 			c.Next()
 			return
 		}
 
 		// 计算限流参数
-		duration := int64(setting.ModelRequestRateLimitDurationMinutes * 60)
-		totalMaxCount := setting.ModelRequestRateLimitCount
-		successMaxCount := setting.ModelRequestRateLimitSuccessCount
+		duration := int64(rate_limit.ModelRequestRateLimitDurationMinutes * 60)
+		totalMaxCount := rate_limit.ModelRequestRateLimitCount
+		successMaxCount := rate_limit.ModelRequestRateLimitSuccessCount
 
 		// 获取分组
 		group := common.GetCtxKeyString(c, constant.ContextKeyTokenGroup)
@@ -185,7 +185,7 @@ func ModelRequestRateLimit() func(c contract.Context) {
 		}
 
 		//获取分组的限流配置
-		groupTotalCount, groupSuccessCount, found := setting.GetGroupRateLimit(group)
+		groupTotalCount, groupSuccessCount, found := rate_limit.GetGroupRateLimit(group)
 		if found {
 			totalMaxCount = groupTotalCount
 			successMaxCount = groupSuccessCount

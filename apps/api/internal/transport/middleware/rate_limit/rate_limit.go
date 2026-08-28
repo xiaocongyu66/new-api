@@ -1,4 +1,4 @@
-package setting
+package rate_limit
 
 import (
 	"encoding/json"

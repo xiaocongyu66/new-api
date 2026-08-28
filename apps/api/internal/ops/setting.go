@@ -10,7 +10,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
 	console_setting "github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
@@ -19,6 +18,7 @@ import (
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/security/discord"
 	"github.com/QuantumNous/new-api/internal/security/oidc"
+	"github.com/QuantumNous/new-api/internal/transport/middleware/rate_limit"
 )
 
 func GetOptions(c contract.Context) {
@@ -214,7 +214,7 @@ func UpdateOption(c contract.Context) {
 			return
 		}
 	case "ModelRequestRateLimitGroup":
-		err = setting.CheckModelRequestRateLimitGroup(option.Value.(string))
+		err = rate_limit.CheckModelRequestRateLimitGroup(option.Value.(string))
 		if err != nil {
 			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
