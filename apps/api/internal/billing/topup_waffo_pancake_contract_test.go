@@ -9,7 +9,6 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -33,16 +32,16 @@ func setupWaffoPancakeContext(t *testing.T, method, path string, body io.Reader)
 func TestWaffoPancakeWebhookRejectsDisabledViaForbidden(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	prevMerchantID := setting.WaffoPancakeMerchantID
-	prevPrivateKey := setting.WaffoPancakePrivateKey
-	prevProductID := setting.WaffoPancakeProductID
-	setting.WaffoPancakeMerchantID = ""
-	setting.WaffoPancakePrivateKey = ""
-	setting.WaffoPancakeProductID = ""
+	prevMerchantID := pay_subscription.WaffoPancakeMerchantID
+	prevPrivateKey := pay_subscription.WaffoPancakePrivateKey
+	prevProductID := pay_subscription.WaffoPancakeProductID
+	pay_subscription.WaffoPancakeMerchantID = ""
+	pay_subscription.WaffoPancakePrivateKey = ""
+	pay_subscription.WaffoPancakeProductID = ""
 	t.Cleanup(func() {
-		setting.WaffoPancakeMerchantID = prevMerchantID
-		setting.WaffoPancakePrivateKey = prevPrivateKey
-		setting.WaffoPancakeProductID = prevProductID
+		pay_subscription.WaffoPancakeMerchantID = prevMerchantID
+		pay_subscription.WaffoPancakePrivateKey = prevPrivateKey
+		pay_subscription.WaffoPancakeProductID = prevProductID
 	})
 
 	c, rec := ginadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/api/waffo-pancake/webhook/test", nil))
@@ -61,21 +60,21 @@ func TestWaffoPancakeWebhookRejectsInvalidSignatureViaUnauthorized(t *testing.T)
 	// Setup minimal config to enable the webhook
 	prevCompliance := pay_subscription.GetPaymentSetting().ComplianceConfirmed
 	prevTermsVersion := pay_subscription.GetPaymentSetting().ComplianceTermsVersion
-	prevMerchantID := setting.WaffoPancakeMerchantID
-	prevPrivateKey := setting.WaffoPancakePrivateKey
-	prevProductID := setting.WaffoPancakeProductID
+	prevMerchantID := pay_subscription.WaffoPancakeMerchantID
+	prevPrivateKey := pay_subscription.WaffoPancakePrivateKey
+	prevProductID := pay_subscription.WaffoPancakeProductID
 	t.Cleanup(func() {
 		pay_subscription.GetPaymentSetting().ComplianceConfirmed = prevCompliance
 		pay_subscription.GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
-		setting.WaffoPancakeMerchantID = prevMerchantID
-		setting.WaffoPancakePrivateKey = prevPrivateKey
-		setting.WaffoPancakeProductID = prevProductID
+		pay_subscription.WaffoPancakeMerchantID = prevMerchantID
+		pay_subscription.WaffoPancakePrivateKey = prevPrivateKey
+		pay_subscription.WaffoPancakeProductID = prevProductID
 	})
 	pay_subscription.GetPaymentSetting().ComplianceConfirmed = true
 	pay_subscription.GetPaymentSetting().ComplianceTermsVersion = pay_subscription.CurrentComplianceTermsVersion
-	setting.WaffoPancakeMerchantID = "merch_test"
-	setting.WaffoPancakePrivateKey = "dummy_private_key"
-	setting.WaffoPancakeProductID = "prod_test"
+	pay_subscription.WaffoPancakeMerchantID = "merch_test"
+	pay_subscription.WaffoPancakePrivateKey = "dummy_private_key"
+	pay_subscription.WaffoPancakeProductID = "prod_test"
 
 	payload := `{"id":"evt_test","timestamp":"2026-05-13T00:00:00Z","eventType":"order.completed","eventId":"PAY_test","storeId":"STO_test","storeName":"Test","mode":"test","data":{"orderId":"ORD_test","orderMerchantExternalID":"trade_test"}}`
 	badSig := "t=1234567890000,v1=invalidsignature"

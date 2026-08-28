@@ -11,13 +11,12 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
-	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/Calcium-Ion/go-epay/epay"
 	"github.com/samber/lo"
 	"github.com/shopspring/decimal"
@@ -48,7 +47,7 @@ func GetTopUpInfo(c contract.Context) {
 				"name":      "Stripe",
 				"type":      "stripe",
 				"color":     "#635BFF",
-				"min_topup": strconv.Itoa(setting.StripeMinTopUp),
+				"min_topup": strconv.Itoa(pay_subscription.StripeMinTopUp),
 			}
 			payMethods = append(payMethods, stripeMethod)
 		}
@@ -70,7 +69,7 @@ func GetTopUpInfo(c contract.Context) {
 				"name":      "Waffo Pancake",
 				"type":      model.PaymentMethodWaffoPancake,
 				"color":     "#F97316",
-				"min_topup": strconv.Itoa(setting.WaffoPancakeMinTopUp),
+				"min_topup": strconv.Itoa(pay_subscription.WaffoPancakeMinTopUp),
 			})
 		}
 	}
@@ -91,7 +90,7 @@ func GetTopUpInfo(c contract.Context) {
 				"name":      "Waffo (Global Payment)",
 				"type":      model.PaymentMethodWaffo,
 				"color":     "#3B82F6",
-				"min_topup": strconv.Itoa(setting.WaffoMinTopUp),
+				"min_topup": strconv.Itoa(pay_subscription.WaffoMinTopUp),
 			}
 			payMethods = append(payMethods, waffoMethod)
 		}
@@ -108,16 +107,16 @@ func GetTopUpInfo(c contract.Context) {
 		"payment_compliance_terms_version": pay_subscription.CurrentComplianceTermsVersion,
 		"waffo_pay_methods": func() interface{} {
 			if enableWaffo {
-				return setting.GetWaffoPayMethods()
+				return pay_subscription.GetWaffoPayMethods()
 			}
 			return nil
 		}(),
-		"creem_products":          setting.CreemProducts,
+		"creem_products":          pay_subscription.CreemProducts,
 		"pay_methods":             payMethods,
 		"min_topup":               pay_subscription.MinTopUp,
-		"stripe_min_topup":        setting.StripeMinTopUp,
-		"waffo_min_topup":         setting.WaffoMinTopUp,
-		"waffo_pancake_min_topup": setting.WaffoPancakeMinTopUp,
+		"stripe_min_topup":        pay_subscription.StripeMinTopUp,
+		"waffo_min_topup":         pay_subscription.WaffoMinTopUp,
+		"waffo_pancake_min_topup": pay_subscription.WaffoPancakeMinTopUp,
 		"amount_options":          pay_subscription.GetPaymentSetting().AmountOptions,
 		"discount":                pay_subscription.GetPaymentSetting().AmountDiscount,
 		"topup_link":              common.TopUpLink,

@@ -1,4 +1,4 @@
-package setting
+package pay_subscription
 
 // Waffo Pancake hosted checkout configuration. Gateway is enabled once
 // MerchantID + PrivateKey + ProductID are populated (no separate Enabled

@@ -10,10 +10,10 @@ import (
 	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
 	"io"
 	"net/http"
 	"time"
@@ -36,8 +36,8 @@ func generateCreemSignature(payload string, secret string) string {
 // 验证Creem webhook签名
 func verifyCreemSignature(payload string, signature string, secret string) bool {
 	if secret == "" {
-		logger.LogWarn(context.Background(), fmt.Sprintf("Creem webhook secret 未配置 test_mode=%t signature=%q body=%q", setting.CreemTestMode, signature, payload))
-		if setting.CreemTestMode {
+		logger.LogWarn(context.Background(), fmt.Sprintf("Creem webhook secret 未配置 test_mode=%t signature=%q body=%q", pay_subscription.CreemTestMode, signature, payload))
+		if pay_subscription.CreemTestMode {
 			logger.LogInfo(context.Background(), fmt.Sprintf("Creem webhook 验签已跳过 reason=test_mode signature=%q body=%q", signature, payload))
 			return true
 		}
@@ -77,7 +77,7 @@ func (*CreemAdaptor) RequestPay(c contract.Context, req *CreemPayRequest) {
 
 	// 解析产品列表
 	var products []CreemProduct
-	err := json.Unmarshal([]byte(setting.CreemProducts), &products)
+	err := json.Unmarshal([]byte(pay_subscription.CreemProducts), &products)
 	if err != nil {
 		logger.LogError(c.Context(), fmt.Sprintf("Creem 产品配置解析失败 user_id=%d error=%q", c.GetInt("id"), err.Error()))
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "产品配置错误"})
@@ -259,7 +259,7 @@ func CreemWebhook(c contract.Context) {
 	}
 
 	// 验证签名
-	if !verifyCreemSignature(string(bodyBytes), signature, setting.CreemWebhookSecret) {
+	if !verifyCreemSignature(string(bodyBytes), signature, pay_subscription.CreemWebhookSecret) {
 		logger.LogWarn(c.Context(), fmt.Sprintf("Creem webhook 验签失败 path=%q client_ip=%s signature=%q body=%q", c.RequestURI(), c.ClientIP(), signature, string(bodyBytes)))
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
@@ -380,13 +380,13 @@ type CreemCheckoutResponse struct {
 }
 
 func genCreemLink(ctx context.Context, referenceId string, product *CreemProduct, email string, username string) (string, error) {
-	if setting.CreemApiKey == "" {
+	if pay_subscription.CreemApiKey == "" {
 		return "", fmt.Errorf("未配置Creem API密钥")
 	}
 
 	// 根据测试模式选择 API 端点
 	apiUrl := "https://api.creem.io/v1/checkouts"
-	if setting.CreemTestMode {
+	if pay_subscription.CreemTestMode {
 		apiUrl = "https://test-api.creem.io/v1/checkouts"
 		logger.LogInfo(ctx, fmt.Sprintf("Creem 使用测试环境 api_url=%s", apiUrl))
 	}
@@ -422,7 +422,7 @@ func genCreemLink(ctx context.Context, referenceId string, product *CreemProduct
 
 	// 设置请求头
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", setting.CreemApiKey)
+	req.Header.Set("x-api-key", pay_subscription.CreemApiKey)
 
 	logger.LogInfo(ctx, fmt.Sprintf("Creem 支付请求已发送 api_url=%s product_id=%s email=%q trade_no=%s", apiUrl, product.ProductId, email, referenceId))
 

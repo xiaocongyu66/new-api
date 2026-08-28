@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -24,9 +23,9 @@ import (
 func TestStripeWebhookRejectsDisabledViaForbidden(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	prevSecret := setting.StripeWebhookSecret
-	setting.StripeWebhookSecret = ""
-	t.Cleanup(func() { setting.StripeWebhookSecret = prevSecret })
+	prevSecret := pay_subscription.StripeWebhookSecret
+	pay_subscription.StripeWebhookSecret = ""
+	t.Cleanup(func() { pay_subscription.StripeWebhookSecret = prevSecret })
 
 	req := httptest.NewRequest(http.MethodPost, "/api/stripe/webhook", nil)
 	c, rec := ginadapter.NewSyntheticContext(req)
@@ -46,22 +45,22 @@ func TestStripeWebhookAcceptsValidSignatureAndReturnsOK(t *testing.T) {
 	// Setup all required settings for Stripe webhook to be enabled
 	prevCompliance := pay_subscription.GetPaymentSetting().ComplianceConfirmed
 	prevTermsVersion := pay_subscription.GetPaymentSetting().ComplianceTermsVersion
-	prevApiSecret := setting.StripeApiSecret
-	prevSecret := setting.StripeWebhookSecret
-	prevPriceId := setting.StripePriceId
+	prevApiSecret := pay_subscription.StripeApiSecret
+	prevSecret := pay_subscription.StripeWebhookSecret
+	prevPriceId := pay_subscription.StripePriceId
 	t.Cleanup(func() {
 		pay_subscription.GetPaymentSetting().ComplianceConfirmed = prevCompliance
 		pay_subscription.GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
-		setting.StripeApiSecret = prevApiSecret
-		setting.StripeWebhookSecret = prevSecret
-		setting.StripePriceId = prevPriceId
+		pay_subscription.StripeApiSecret = prevApiSecret
+		pay_subscription.StripeWebhookSecret = prevSecret
+		pay_subscription.StripePriceId = prevPriceId
 	})
 	pay_subscription.GetPaymentSetting().ComplianceConfirmed = true
 	pay_subscription.GetPaymentSetting().ComplianceTermsVersion = pay_subscription.CurrentComplianceTermsVersion
 	secret := "whsec_test_secret"
-	setting.StripeApiSecret = "sk_test_123"
-	setting.StripeWebhookSecret = secret
-	setting.StripePriceId = "price_123"
+	pay_subscription.StripeApiSecret = "sk_test_123"
+	pay_subscription.StripeWebhookSecret = secret
+	pay_subscription.StripePriceId = "price_123"
 
 	// Minimal checkout.session.completed payload
 	payload := []byte(`{
@@ -106,22 +105,22 @@ func TestStripeWebhookRejectsInvalidSignatureViaBadRequest(t *testing.T) {
 	// Setup all required settings
 	prevCompliance := pay_subscription.GetPaymentSetting().ComplianceConfirmed
 	prevTermsVersion := pay_subscription.GetPaymentSetting().ComplianceTermsVersion
-	prevApiSecret := setting.StripeApiSecret
-	prevSecret := setting.StripeWebhookSecret
-	prevPriceId := setting.StripePriceId
+	prevApiSecret := pay_subscription.StripeApiSecret
+	prevSecret := pay_subscription.StripeWebhookSecret
+	prevPriceId := pay_subscription.StripePriceId
 	t.Cleanup(func() {
 		pay_subscription.GetPaymentSetting().ComplianceConfirmed = prevCompliance
 		pay_subscription.GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
-		setting.StripeApiSecret = prevApiSecret
-		setting.StripeWebhookSecret = prevSecret
-		setting.StripePriceId = prevPriceId
+		pay_subscription.StripeApiSecret = prevApiSecret
+		pay_subscription.StripeWebhookSecret = prevSecret
+		pay_subscription.StripePriceId = prevPriceId
 	})
 	pay_subscription.GetPaymentSetting().ComplianceConfirmed = true
 	pay_subscription.GetPaymentSetting().ComplianceTermsVersion = pay_subscription.CurrentComplianceTermsVersion
 	secret := "whsec_test_secret"
-	setting.StripeApiSecret = "sk_test_123"
-	setting.StripeWebhookSecret = secret
-	setting.StripePriceId = "price_123"
+	pay_subscription.StripeApiSecret = "sk_test_123"
+	pay_subscription.StripeWebhookSecret = secret
+	pay_subscription.StripePriceId = "price_123"
 
 	payload := []byte(`{"id":"evt_test","type":"checkout.session.completed"}`)
 	// Wrong signature

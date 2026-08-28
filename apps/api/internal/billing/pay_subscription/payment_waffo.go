@@ -1,4 +1,4 @@
-package setting
+package pay_subscription
 
 import (
 	"github.com/QuantumNous/new-api/internal/common"

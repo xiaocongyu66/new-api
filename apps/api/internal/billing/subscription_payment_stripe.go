@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/stripe/stripe-go/v81"
 	"github.com/stripe/stripe-go/v81/checkout/session"
 	"github.com/thanhpk/randstr"
@@ -44,11 +44,11 @@ func SubscriptionRequestStripePay(c contract.Context) {
 		common.CtxApiErrorMsg(c, "该套餐未配置 StripePriceId")
 		return
 	}
-	if !strings.HasPrefix(setting.StripeApiSecret, "sk_") && !strings.HasPrefix(setting.StripeApiSecret, "rk_") {
+	if !strings.HasPrefix(pay_subscription.StripeApiSecret, "sk_") && !strings.HasPrefix(pay_subscription.StripeApiSecret, "rk_") {
 		common.CtxApiErrorMsg(c, "Stripe 未配置或密钥无效")
 		return
 	}
-	if setting.StripeWebhookSecret == "" {
+	if pay_subscription.StripeWebhookSecret == "" {
 		common.CtxApiErrorMsg(c, "Stripe Webhook 未配置")
 		return
 	}
@@ -110,7 +110,7 @@ func SubscriptionRequestStripePay(c contract.Context) {
 }
 
 func genStripeSubscriptionLink(referenceId string, customerId string, email string, priceId string) (string, error) {
-	stripe.Key = setting.StripeApiSecret
+	stripe.Key = pay_subscription.StripeApiSecret
 
 	params := &stripe.CheckoutSessionParams{
 		ClientReferenceID: stripe.String(referenceId),

@@ -96,7 +96,7 @@ func GetStatus(c contract.Context) {
 
 		"usd_exchange_rate": pay_subscription.USDExchangeRate,
 		"price":             pay_subscription.Price,
-		"stripe_unit_price": setting.StripeUnitPrice,
+		"stripe_unit_price": pay_subscription.StripeUnitPrice,
 
 		// 面板启用开关
 		"api_info_enabled":      cs.ApiInfoEnabled,

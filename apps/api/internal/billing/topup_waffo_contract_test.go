@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -61,13 +60,13 @@ func waffoSign(t *testing.T, data, privateKeyB64 string) string {
 func TestWaffoWebhookRejectsDisabledViaForbidden(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	prevEnabled := setting.WaffoEnabled
-	prevSandbox := setting.WaffoSandbox
-	setting.WaffoEnabled = false
-	setting.WaffoSandbox = false
+	prevEnabled := pay_subscription.WaffoEnabled
+	prevSandbox := pay_subscription.WaffoSandbox
+	pay_subscription.WaffoEnabled = false
+	pay_subscription.WaffoSandbox = false
 	t.Cleanup(func() {
-		setting.WaffoEnabled = prevEnabled
-		setting.WaffoSandbox = prevSandbox
+		pay_subscription.WaffoEnabled = prevEnabled
+		pay_subscription.WaffoSandbox = prevSandbox
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/waffo/webhook", nil)
@@ -89,27 +88,27 @@ func TestWaffoWebhookRejectsInvalidSignatureViaBadRequest(t *testing.T) {
 	// Setup all required settings for Waffo webhook to be enabled
 	prevCompliance := pay_subscription.GetPaymentSetting().ComplianceConfirmed
 	prevTermsVersion := pay_subscription.GetPaymentSetting().ComplianceTermsVersion
-	prevEnabled := setting.WaffoEnabled
-	prevSandbox := setting.WaffoSandbox
-	prevApiKey := setting.WaffoApiKey
-	prevPrivateKey := setting.WaffoPrivateKey
-	prevPublicCert := setting.WaffoPublicCert
+	prevEnabled := pay_subscription.WaffoEnabled
+	prevSandbox := pay_subscription.WaffoSandbox
+	prevApiKey := pay_subscription.WaffoApiKey
+	prevPrivateKey := pay_subscription.WaffoPrivateKey
+	prevPublicCert := pay_subscription.WaffoPublicCert
 	t.Cleanup(func() {
 		pay_subscription.GetPaymentSetting().ComplianceConfirmed = prevCompliance
 		pay_subscription.GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
-		setting.WaffoEnabled = prevEnabled
-		setting.WaffoSandbox = prevSandbox
-		setting.WaffoApiKey = prevApiKey
-		setting.WaffoPrivateKey = prevPrivateKey
-		setting.WaffoPublicCert = prevPublicCert
+		pay_subscription.WaffoEnabled = prevEnabled
+		pay_subscription.WaffoSandbox = prevSandbox
+		pay_subscription.WaffoApiKey = prevApiKey
+		pay_subscription.WaffoPrivateKey = prevPrivateKey
+		pay_subscription.WaffoPublicCert = prevPublicCert
 	})
 	pay_subscription.GetPaymentSetting().ComplianceConfirmed = true
 	pay_subscription.GetPaymentSetting().ComplianceTermsVersion = pay_subscription.CurrentComplianceTermsVersion
-	setting.WaffoEnabled = true
-	setting.WaffoSandbox = false
-	setting.WaffoApiKey = "waffo_api_key"
-	setting.WaffoPrivateKey = privateKeyB64
-	setting.WaffoPublicCert = publicCertB64
+	pay_subscription.WaffoEnabled = true
+	pay_subscription.WaffoSandbox = false
+	pay_subscription.WaffoApiKey = "waffo_api_key"
+	pay_subscription.WaffoPrivateKey = privateKeyB64
+	pay_subscription.WaffoPublicCert = publicCertB64
 
 	payload := `{"eventType":"PAYMENT_NOTIFICATION","result":{"merchantOrderId":"test_123","orderStatus":"PAY_SUCCESS"}}`
 	// Wrong signature
@@ -136,27 +135,27 @@ func TestWaffoWebhookAcceptsValidSignatureAndReturnsOK(t *testing.T) {
 	// Setup all required settings
 	prevCompliance := pay_subscription.GetPaymentSetting().ComplianceConfirmed
 	prevTermsVersion := pay_subscription.GetPaymentSetting().ComplianceTermsVersion
-	prevEnabled := setting.WaffoEnabled
-	prevSandbox := setting.WaffoSandbox
-	prevApiKey := setting.WaffoApiKey
-	prevPrivateKey := setting.WaffoPrivateKey
-	prevPublicCert := setting.WaffoPublicCert
+	prevEnabled := pay_subscription.WaffoEnabled
+	prevSandbox := pay_subscription.WaffoSandbox
+	prevApiKey := pay_subscription.WaffoApiKey
+	prevPrivateKey := pay_subscription.WaffoPrivateKey
+	prevPublicCert := pay_subscription.WaffoPublicCert
 	t.Cleanup(func() {
 		pay_subscription.GetPaymentSetting().ComplianceConfirmed = prevCompliance
 		pay_subscription.GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
-		setting.WaffoEnabled = prevEnabled
-		setting.WaffoSandbox = prevSandbox
-		setting.WaffoApiKey = prevApiKey
-		setting.WaffoPrivateKey = prevPrivateKey
-		setting.WaffoPublicCert = prevPublicCert
+		pay_subscription.WaffoEnabled = prevEnabled
+		pay_subscription.WaffoSandbox = prevSandbox
+		pay_subscription.WaffoApiKey = prevApiKey
+		pay_subscription.WaffoPrivateKey = prevPrivateKey
+		pay_subscription.WaffoPublicCert = prevPublicCert
 	})
 	pay_subscription.GetPaymentSetting().ComplianceConfirmed = true
 	pay_subscription.GetPaymentSetting().ComplianceTermsVersion = pay_subscription.CurrentComplianceTermsVersion
-	setting.WaffoEnabled = true
-	setting.WaffoSandbox = false
-	setting.WaffoApiKey = "waffo_api_key"
-	setting.WaffoPrivateKey = privateKeyB64
-	setting.WaffoPublicCert = publicCertB64
+	pay_subscription.WaffoEnabled = true
+	pay_subscription.WaffoSandbox = false
+	pay_subscription.WaffoApiKey = "waffo_api_key"
+	pay_subscription.WaffoPrivateKey = privateKeyB64
+	pay_subscription.WaffoPublicCert = publicCertB64
 
 	// A non-PAYMENT event type is ignored with a success response — no DB
 	// lookup required, so the test is deterministic without a database.

@@ -8,11 +8,10 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
-	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/shopspring/decimal"
 	"github.com/thanhpk/randstr"
 )
@@ -28,8 +27,8 @@ func RequestWaffoPancakeAmount(c contract.Context) {
 		return
 	}
 
-	if req.Amount < int64(setting.WaffoPancakeMinTopUp) {
-		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", setting.WaffoPancakeMinTopUp)})
+	if req.Amount < int64(pay_subscription.WaffoPancakeMinTopUp) {
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", pay_subscription.WaffoPancakeMinTopUp)})
 		return
 	}
 	id := c.GetInt("id")
@@ -69,7 +68,7 @@ func getWaffoPancakePayMoney(amount int64, group string) float64 {
 	}
 
 	payMoney := dAmount.
-		Mul(decimal.NewFromFloat(setting.WaffoPancakeUnitPrice)).
+		Mul(decimal.NewFromFloat(pay_subscription.WaffoPancakeUnitPrice)).
 		Mul(decimal.NewFromFloat(topupGroupRatio)).
 		Mul(decimal.NewFromFloat(discount))
 
@@ -145,8 +144,8 @@ func SaveWaffoPancake(c contract.Context) {
 	_ = c.JSON(http.StatusOK, common.H{
 		"message": "success",
 		"data": common.H{
-			"product_id": setting.WaffoPancakeProductID,
-			"store_id":   setting.WaffoPancakeStoreID,
+			"product_id": pay_subscription.WaffoPancakeProductID,
+			"store_id":   pay_subscription.WaffoPancakeStoreID,
 		},
 	})
 }
@@ -159,7 +158,7 @@ func resolveWaffoPancakeAdminCreds(bodyMerchantID, bodyPrivateKey string) (strin
 	m := strings.TrimSpace(bodyMerchantID)
 	k := strings.TrimSpace(bodyPrivateKey)
 	if m == "" && k == "" {
-		return setting.WaffoPancakeMerchantID, setting.WaffoPancakePrivateKey
+		return pay_subscription.WaffoPancakeMerchantID, pay_subscription.WaffoPancakePrivateKey
 	}
 	return m, k
 }
@@ -265,7 +264,7 @@ func CreateWaffoPancakeSubscriptionProduct(c contract.Context) {
 		return
 	}
 	merchantID, privateKey := resolveWaffoPancakeAdminCreds("", "")
-	storeID := strings.TrimSpace(setting.WaffoPancakeStoreID)
+	storeID := strings.TrimSpace(pay_subscription.WaffoPancakeStoreID)
 	if merchantID == "" || privateKey == "" || storeID == "" {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "Waffo Pancake 未完成配置，请先在支付设置中完成网关绑定"})
 		return
@@ -277,7 +276,7 @@ func CreateWaffoPancakeSubscriptionProduct(c contract.Context) {
 		storeID,
 		req.Name,
 		req.Amount,
-		setting.WaffoPancakeReturnURL,
+		pay_subscription.WaffoPancakeReturnURL,
 	)
 	if err != nil {
 		logger.LogError(c.Context(), fmt.Sprintf(
@@ -302,7 +301,7 @@ func CreateWaffoPancakeSubscriptionProduct(c contract.Context) {
 // reflects new-api's plan concept; under the hood it's still OnetimeProducts.
 func ListWaffoPancakeSubscriptionProductOptions(c contract.Context) {
 	merchantID, privateKey := resolveWaffoPancakeAdminCreds("", "")
-	storeID := strings.TrimSpace(setting.WaffoPancakeStoreID)
+	storeID := strings.TrimSpace(pay_subscription.WaffoPancakeStoreID)
 	if merchantID == "" || privateKey == "" || storeID == "" {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "Waffo Pancake 未完成配置，请先在支付设置中完成网关绑定"})
 		return
@@ -349,8 +348,8 @@ func RequestWaffoPancakePay(c contract.Context) {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "参数错误"})
 		return
 	}
-	if req.Amount < int64(setting.WaffoPancakeMinTopUp) {
-		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", setting.WaffoPancakeMinTopUp)})
+	if req.Amount < int64(pay_subscription.WaffoPancakeMinTopUp) {
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", pay_subscription.WaffoPancakeMinTopUp)})
 		return
 	}
 	id := c.GetInt("id")
@@ -395,7 +394,7 @@ func RequestWaffoPancakePay(c contract.Context) {
 
 	expiresInSeconds := 45 * 60
 	session, err := CreateWaffoPancakeCheckoutSession(c.Context(), &WaffoPancakeCreateSessionParams{
-		ProductID:     setting.WaffoPancakeProductID,
+		ProductID:     pay_subscription.WaffoPancakeProductID,
 		BuyerIdentity: getWaffoPancakeBuyerIdentity(user),
 		PriceSnapshot: &WaffoPancakePriceSnapshot{
 			Amount:      formatWaffoPancakeAmount(payMoney),

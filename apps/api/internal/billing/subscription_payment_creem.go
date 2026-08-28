@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/thanhpk/randstr"
 )
@@ -50,7 +50,7 @@ func SubscriptionRequestCreemPay(c contract.Context) {
 		common.CtxApiErrorMsg(c, "该套餐未配置 CreemProductId")
 		return
 	}
-	if setting.CreemWebhookSecret == "" && !setting.CreemTestMode {
+	if pay_subscription.CreemWebhookSecret == "" && !pay_subscription.CreemTestMode {
 		common.CtxApiErrorMsg(c, "Creem Webhook 未配置")
 		return
 	}

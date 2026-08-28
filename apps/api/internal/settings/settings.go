@@ -135,39 +135,39 @@ func SeedOptionMap() {
 	common.OptionMap["Price"] = strconv.FormatFloat(pay_subscription.Price, 'f', -1, 64)
 	common.OptionMap["USDExchangeRate"] = strconv.FormatFloat(pay_subscription.USDExchangeRate, 'f', -1, 64)
 	common.OptionMap["MinTopUp"] = strconv.Itoa(pay_subscription.MinTopUp)
-	common.OptionMap["StripeMinTopUp"] = strconv.Itoa(setting.StripeMinTopUp)
-	common.OptionMap["StripeApiSecret"] = setting.StripeApiSecret
-	common.OptionMap["StripeWebhookSecret"] = setting.StripeWebhookSecret
-	common.OptionMap["StripePriceId"] = setting.StripePriceId
-	common.OptionMap["StripeUnitPrice"] = strconv.FormatFloat(setting.StripeUnitPrice, 'f', -1, 64)
-	common.OptionMap["StripePromotionCodesEnabled"] = strconv.FormatBool(setting.StripePromotionCodesEnabled)
-	common.OptionMap["CreemApiKey"] = setting.CreemApiKey
-	common.OptionMap["CreemProducts"] = setting.CreemProducts
-	common.OptionMap["CreemTestMode"] = strconv.FormatBool(setting.CreemTestMode)
-	common.OptionMap["CreemWebhookSecret"] = setting.CreemWebhookSecret
-	common.OptionMap["WaffoEnabled"] = strconv.FormatBool(setting.WaffoEnabled)
-	common.OptionMap["WaffoApiKey"] = setting.WaffoApiKey
-	common.OptionMap["WaffoPrivateKey"] = setting.WaffoPrivateKey
-	common.OptionMap["WaffoPublicCert"] = setting.WaffoPublicCert
-	common.OptionMap["WaffoSandboxPublicCert"] = setting.WaffoSandboxPublicCert
-	common.OptionMap["WaffoSandboxApiKey"] = setting.WaffoSandboxApiKey
-	common.OptionMap["WaffoSandboxPrivateKey"] = setting.WaffoSandboxPrivateKey
-	common.OptionMap["WaffoSandbox"] = strconv.FormatBool(setting.WaffoSandbox)
-	common.OptionMap["WaffoMerchantId"] = setting.WaffoMerchantId
-	common.OptionMap["WaffoNotifyUrl"] = setting.WaffoNotifyUrl
-	common.OptionMap["WaffoReturnUrl"] = setting.WaffoReturnUrl
-	common.OptionMap["WaffoSubscriptionReturnUrl"] = setting.WaffoSubscriptionReturnUrl
-	common.OptionMap["WaffoCurrency"] = setting.WaffoCurrency
-	common.OptionMap["WaffoUnitPrice"] = strconv.FormatFloat(setting.WaffoUnitPrice, 'f', -1, 64)
-	common.OptionMap["WaffoMinTopUp"] = strconv.Itoa(setting.WaffoMinTopUp)
-	common.OptionMap["WaffoPayMethods"] = setting.WaffoPayMethods2JsonString()
-	common.OptionMap["WaffoPancakeMerchantID"] = setting.WaffoPancakeMerchantID
-	common.OptionMap["WaffoPancakePrivateKey"] = setting.WaffoPancakePrivateKey
-	common.OptionMap["WaffoPancakeReturnURL"] = setting.WaffoPancakeReturnURL
-	common.OptionMap["WaffoPancakeUnitPrice"] = strconv.FormatFloat(setting.WaffoPancakeUnitPrice, 'f', -1, 64)
-	common.OptionMap["WaffoPancakeMinTopUp"] = strconv.Itoa(setting.WaffoPancakeMinTopUp)
-	common.OptionMap["WaffoPancakeStoreID"] = setting.WaffoPancakeStoreID
-	common.OptionMap["WaffoPancakeProductID"] = setting.WaffoPancakeProductID
+	common.OptionMap["StripeMinTopUp"] = strconv.Itoa(pay_subscription.StripeMinTopUp)
+	common.OptionMap["StripeApiSecret"] = pay_subscription.StripeApiSecret
+	common.OptionMap["StripeWebhookSecret"] = pay_subscription.StripeWebhookSecret
+	common.OptionMap["StripePriceId"] = pay_subscription.StripePriceId
+	common.OptionMap["StripeUnitPrice"] = strconv.FormatFloat(pay_subscription.StripeUnitPrice, 'f', -1, 64)
+	common.OptionMap["StripePromotionCodesEnabled"] = strconv.FormatBool(pay_subscription.StripePromotionCodesEnabled)
+	common.OptionMap["CreemApiKey"] = pay_subscription.CreemApiKey
+	common.OptionMap["CreemProducts"] = pay_subscription.CreemProducts
+	common.OptionMap["CreemTestMode"] = strconv.FormatBool(pay_subscription.CreemTestMode)
+	common.OptionMap["CreemWebhookSecret"] = pay_subscription.CreemWebhookSecret
+	common.OptionMap["WaffoEnabled"] = strconv.FormatBool(pay_subscription.WaffoEnabled)
+	common.OptionMap["WaffoApiKey"] = pay_subscription.WaffoApiKey
+	common.OptionMap["WaffoPrivateKey"] = pay_subscription.WaffoPrivateKey
+	common.OptionMap["WaffoPublicCert"] = pay_subscription.WaffoPublicCert
+	common.OptionMap["WaffoSandboxPublicCert"] = pay_subscription.WaffoSandboxPublicCert
+	common.OptionMap["WaffoSandboxApiKey"] = pay_subscription.WaffoSandboxApiKey
+	common.OptionMap["WaffoSandboxPrivateKey"] = pay_subscription.WaffoSandboxPrivateKey
+	common.OptionMap["WaffoSandbox"] = strconv.FormatBool(pay_subscription.WaffoSandbox)
+	common.OptionMap["WaffoMerchantId"] = pay_subscription.WaffoMerchantId
+	common.OptionMap["WaffoNotifyUrl"] = pay_subscription.WaffoNotifyUrl
+	common.OptionMap["WaffoReturnUrl"] = pay_subscription.WaffoReturnUrl
+	common.OptionMap["WaffoSubscriptionReturnUrl"] = pay_subscription.WaffoSubscriptionReturnUrl
+	common.OptionMap["WaffoCurrency"] = pay_subscription.WaffoCurrency
+	common.OptionMap["WaffoUnitPrice"] = strconv.FormatFloat(pay_subscription.WaffoUnitPrice, 'f', -1, 64)
+	common.OptionMap["WaffoMinTopUp"] = strconv.Itoa(pay_subscription.WaffoMinTopUp)
+	common.OptionMap["WaffoPayMethods"] = pay_subscription.WaffoPayMethods2JsonString()
+	common.OptionMap["WaffoPancakeMerchantID"] = pay_subscription.WaffoPancakeMerchantID
+	common.OptionMap["WaffoPancakePrivateKey"] = pay_subscription.WaffoPancakePrivateKey
+	common.OptionMap["WaffoPancakeReturnURL"] = pay_subscription.WaffoPancakeReturnURL
+	common.OptionMap["WaffoPancakeUnitPrice"] = strconv.FormatFloat(pay_subscription.WaffoPancakeUnitPrice, 'f', -1, 64)
+	common.OptionMap["WaffoPancakeMinTopUp"] = strconv.Itoa(pay_subscription.WaffoPancakeMinTopUp)
+	common.OptionMap["WaffoPancakeStoreID"] = pay_subscription.WaffoPancakeStoreID
+	common.OptionMap["WaffoPancakeProductID"] = pay_subscription.WaffoPancakeProductID
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
 	common.OptionMap["Chats"] = setting.Chats2JsonString()
 	common.OptionMap["AutoGroups"] = resolve_group.AutoGroups2JsonString()
@@ -439,69 +439,69 @@ func ApplyOption(key string, value string) (err error) {
 	case "MinTopUp":
 		pay_subscription.MinTopUp, _ = strconv.Atoi(value)
 	case "StripeApiSecret":
-		setting.StripeApiSecret = value
+		pay_subscription.StripeApiSecret = value
 	case "StripeWebhookSecret":
-		setting.StripeWebhookSecret = value
+		pay_subscription.StripeWebhookSecret = value
 	case "StripePriceId":
-		setting.StripePriceId = value
+		pay_subscription.StripePriceId = value
 	case "StripeUnitPrice":
-		setting.StripeUnitPrice, _ = strconv.ParseFloat(value, 64)
+		pay_subscription.StripeUnitPrice, _ = strconv.ParseFloat(value, 64)
 	case "StripeMinTopUp":
-		setting.StripeMinTopUp, _ = strconv.Atoi(value)
+		pay_subscription.StripeMinTopUp, _ = strconv.Atoi(value)
 	case "StripePromotionCodesEnabled":
-		setting.StripePromotionCodesEnabled = value == "true"
+		pay_subscription.StripePromotionCodesEnabled = value == "true"
 	case "CreemApiKey":
-		setting.CreemApiKey = value
+		pay_subscription.CreemApiKey = value
 	case "CreemProducts":
-		setting.CreemProducts = value
+		pay_subscription.CreemProducts = value
 	case "CreemTestMode":
-		setting.CreemTestMode = value == "true"
+		pay_subscription.CreemTestMode = value == "true"
 	case "CreemWebhookSecret":
-		setting.CreemWebhookSecret = value
+		pay_subscription.CreemWebhookSecret = value
 	case "WaffoEnabled":
-		setting.WaffoEnabled = value == "true"
+		pay_subscription.WaffoEnabled = value == "true"
 	case "WaffoApiKey":
-		setting.WaffoApiKey = value
+		pay_subscription.WaffoApiKey = value
 	case "WaffoPrivateKey":
-		setting.WaffoPrivateKey = value
+		pay_subscription.WaffoPrivateKey = value
 	case "WaffoPublicCert":
-		setting.WaffoPublicCert = value
+		pay_subscription.WaffoPublicCert = value
 	case "WaffoSandboxPublicCert":
-		setting.WaffoSandboxPublicCert = value
+		pay_subscription.WaffoSandboxPublicCert = value
 	case "WaffoSandboxApiKey":
-		setting.WaffoSandboxApiKey = value
+		pay_subscription.WaffoSandboxApiKey = value
 	case "WaffoSandboxPrivateKey":
-		setting.WaffoSandboxPrivateKey = value
+		pay_subscription.WaffoSandboxPrivateKey = value
 	case "WaffoSandbox":
-		setting.WaffoSandbox = value == "true"
+		pay_subscription.WaffoSandbox = value == "true"
 	case "WaffoMerchantId":
-		setting.WaffoMerchantId = value
+		pay_subscription.WaffoMerchantId = value
 	case "WaffoNotifyUrl":
-		setting.WaffoNotifyUrl = value
+		pay_subscription.WaffoNotifyUrl = value
 	case "WaffoReturnUrl":
-		setting.WaffoReturnUrl = value
+		pay_subscription.WaffoReturnUrl = value
 	case "WaffoSubscriptionReturnUrl":
-		setting.WaffoSubscriptionReturnUrl = value
+		pay_subscription.WaffoSubscriptionReturnUrl = value
 	case "WaffoCurrency":
-		setting.WaffoCurrency = value
+		pay_subscription.WaffoCurrency = value
 	case "WaffoUnitPrice":
-		setting.WaffoUnitPrice, _ = strconv.ParseFloat(value, 64)
+		pay_subscription.WaffoUnitPrice, _ = strconv.ParseFloat(value, 64)
 	case "WaffoMinTopUp":
-		setting.WaffoMinTopUp, _ = strconv.Atoi(value)
+		pay_subscription.WaffoMinTopUp, _ = strconv.Atoi(value)
 	case "WaffoPancakeMerchantID":
-		setting.WaffoPancakeMerchantID = value
+		pay_subscription.WaffoPancakeMerchantID = value
 	case "WaffoPancakePrivateKey":
-		setting.WaffoPancakePrivateKey = value
+		pay_subscription.WaffoPancakePrivateKey = value
 	case "WaffoPancakeReturnURL":
-		setting.WaffoPancakeReturnURL = value
+		pay_subscription.WaffoPancakeReturnURL = value
 	case "WaffoPancakeStoreID":
-		setting.WaffoPancakeStoreID = value
+		pay_subscription.WaffoPancakeStoreID = value
 	case "WaffoPancakeProductID":
-		setting.WaffoPancakeProductID = value
+		pay_subscription.WaffoPancakeProductID = value
 	case "WaffoPancakeUnitPrice":
-		setting.WaffoPancakeUnitPrice, _ = strconv.ParseFloat(value, 64)
+		pay_subscription.WaffoPancakeUnitPrice, _ = strconv.ParseFloat(value, 64)
 	case "WaffoPancakeMinTopUp":
-		setting.WaffoPancakeMinTopUp, _ = strconv.Atoi(value)
+		pay_subscription.WaffoPancakeMinTopUp, _ = strconv.Atoi(value)
 	case "TopupGroupRatio":
 		err = common.UpdateTopupGroupRatioByJSONString(value)
 	case "GitHubClientId":
@@ -601,7 +601,7 @@ func ApplyOption(key string, value string) (err error) {
 	case "PayMethods":
 		err = pay_subscription.UpdatePayMethodsByJsonString(value)
 	case "WaffoPayMethods":
-		// WaffoPayMethods is read directly from OptionMap via setting.GetWaffoPayMethods().
+		// WaffoPayMethods is read directly from OptionMap via pay_subscription.GetWaffoPayMethods().
 		// The value is already stored in OptionMap at the top of this function.
 		// No additional in-memory variable to update.
 	}

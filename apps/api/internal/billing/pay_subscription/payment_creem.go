@@ -1,4 +1,4 @@
-package setting
+package pay_subscription
 
 var CreemApiKey = ""
 var CreemProducts = "[]"

@@ -3,7 +3,6 @@ package billing
 import (
 	"testing"
 
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/stretchr/testify/require"
 )
@@ -23,122 +22,122 @@ func confirmPaymentComplianceForTest(t *testing.T) {
 
 func TestStripeWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 	confirmPaymentComplianceForTest(t)
-	originalAPISecret := setting.StripeApiSecret
-	originalWebhookSecret := setting.StripeWebhookSecret
-	originalPriceID := setting.StripePriceId
+	originalAPISecret := pay_subscription.StripeApiSecret
+	originalWebhookSecret := pay_subscription.StripeWebhookSecret
+	originalPriceID := pay_subscription.StripePriceId
 	t.Cleanup(func() {
-		setting.StripeApiSecret = originalAPISecret
-		setting.StripeWebhookSecret = originalWebhookSecret
-		setting.StripePriceId = originalPriceID
+		pay_subscription.StripeApiSecret = originalAPISecret
+		pay_subscription.StripeWebhookSecret = originalWebhookSecret
+		pay_subscription.StripePriceId = originalPriceID
 	})
 
-	setting.StripeWebhookSecret = ""
-	setting.StripeApiSecret = "sk_test_123"
-	setting.StripePriceId = "price_123"
+	pay_subscription.StripeWebhookSecret = ""
+	pay_subscription.StripeApiSecret = "sk_test_123"
+	pay_subscription.StripePriceId = "price_123"
 	require.False(t, isStripeWebhookEnabled())
 
-	setting.StripeWebhookSecret = "whsec_test"
+	pay_subscription.StripeWebhookSecret = "whsec_test"
 	require.True(t, isStripeWebhookEnabled())
 
-	setting.StripePriceId = ""
+	pay_subscription.StripePriceId = ""
 	require.False(t, isStripeWebhookEnabled())
 }
 
 func TestCreemWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 	confirmPaymentComplianceForTest(t)
-	originalAPIKey := setting.CreemApiKey
-	originalProducts := setting.CreemProducts
-	originalWebhookSecret := setting.CreemWebhookSecret
+	originalAPIKey := pay_subscription.CreemApiKey
+	originalProducts := pay_subscription.CreemProducts
+	originalWebhookSecret := pay_subscription.CreemWebhookSecret
 	t.Cleanup(func() {
-		setting.CreemApiKey = originalAPIKey
-		setting.CreemProducts = originalProducts
-		setting.CreemWebhookSecret = originalWebhookSecret
+		pay_subscription.CreemApiKey = originalAPIKey
+		pay_subscription.CreemProducts = originalProducts
+		pay_subscription.CreemWebhookSecret = originalWebhookSecret
 	})
 
-	setting.CreemWebhookSecret = ""
-	setting.CreemApiKey = "creem_api_key"
-	setting.CreemProducts = `[{"productId":"prod_123"}]`
+	pay_subscription.CreemWebhookSecret = ""
+	pay_subscription.CreemApiKey = "creem_api_key"
+	pay_subscription.CreemProducts = `[{"productId":"prod_123"}]`
 	require.False(t, isCreemWebhookEnabled())
 
-	setting.CreemWebhookSecret = "creem_secret"
+	pay_subscription.CreemWebhookSecret = "creem_secret"
 	require.True(t, isCreemWebhookEnabled())
 
-	setting.CreemProducts = "[]"
+	pay_subscription.CreemProducts = "[]"
 	require.False(t, isCreemWebhookEnabled())
 }
 
 func TestWaffoWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 	confirmPaymentComplianceForTest(t)
-	originalEnabled := setting.WaffoEnabled
-	originalSandbox := setting.WaffoSandbox
-	originalAPIKey := setting.WaffoApiKey
-	originalPrivateKey := setting.WaffoPrivateKey
-	originalPublicCert := setting.WaffoPublicCert
-	originalSandboxAPIKey := setting.WaffoSandboxApiKey
-	originalSandboxPrivateKey := setting.WaffoSandboxPrivateKey
-	originalSandboxPublicCert := setting.WaffoSandboxPublicCert
+	originalEnabled := pay_subscription.WaffoEnabled
+	originalSandbox := pay_subscription.WaffoSandbox
+	originalAPIKey := pay_subscription.WaffoApiKey
+	originalPrivateKey := pay_subscription.WaffoPrivateKey
+	originalPublicCert := pay_subscription.WaffoPublicCert
+	originalSandboxAPIKey := pay_subscription.WaffoSandboxApiKey
+	originalSandboxPrivateKey := pay_subscription.WaffoSandboxPrivateKey
+	originalSandboxPublicCert := pay_subscription.WaffoSandboxPublicCert
 	t.Cleanup(func() {
-		setting.WaffoEnabled = originalEnabled
-		setting.WaffoSandbox = originalSandbox
-		setting.WaffoApiKey = originalAPIKey
-		setting.WaffoPrivateKey = originalPrivateKey
-		setting.WaffoPublicCert = originalPublicCert
-		setting.WaffoSandboxApiKey = originalSandboxAPIKey
-		setting.WaffoSandboxPrivateKey = originalSandboxPrivateKey
-		setting.WaffoSandboxPublicCert = originalSandboxPublicCert
+		pay_subscription.WaffoEnabled = originalEnabled
+		pay_subscription.WaffoSandbox = originalSandbox
+		pay_subscription.WaffoApiKey = originalAPIKey
+		pay_subscription.WaffoPrivateKey = originalPrivateKey
+		pay_subscription.WaffoPublicCert = originalPublicCert
+		pay_subscription.WaffoSandboxApiKey = originalSandboxAPIKey
+		pay_subscription.WaffoSandboxPrivateKey = originalSandboxPrivateKey
+		pay_subscription.WaffoSandboxPublicCert = originalSandboxPublicCert
 	})
 
-	setting.WaffoEnabled = true
-	setting.WaffoSandbox = false
-	setting.WaffoApiKey = ""
-	setting.WaffoPrivateKey = "private"
-	setting.WaffoPublicCert = "public"
+	pay_subscription.WaffoEnabled = true
+	pay_subscription.WaffoSandbox = false
+	pay_subscription.WaffoApiKey = ""
+	pay_subscription.WaffoPrivateKey = "private"
+	pay_subscription.WaffoPublicCert = "public"
 	require.False(t, isWaffoWebhookEnabled())
 
-	setting.WaffoApiKey = "api"
+	pay_subscription.WaffoApiKey = "api"
 	require.True(t, isWaffoWebhookEnabled())
 
-	setting.WaffoEnabled = false
+	pay_subscription.WaffoEnabled = false
 	require.False(t, isWaffoWebhookEnabled())
 
-	setting.WaffoEnabled = true
-	setting.WaffoSandbox = true
-	setting.WaffoSandboxApiKey = ""
-	setting.WaffoSandboxPrivateKey = "sandbox_private"
-	setting.WaffoSandboxPublicCert = "sandbox_public"
+	pay_subscription.WaffoEnabled = true
+	pay_subscription.WaffoSandbox = true
+	pay_subscription.WaffoSandboxApiKey = ""
+	pay_subscription.WaffoSandboxPrivateKey = "sandbox_private"
+	pay_subscription.WaffoSandboxPublicCert = "sandbox_public"
 	require.False(t, isWaffoWebhookEnabled())
 
-	setting.WaffoSandboxApiKey = "sandbox_api"
+	pay_subscription.WaffoSandboxApiKey = "sandbox_api"
 	require.True(t, isWaffoWebhookEnabled())
 }
 
 func TestWaffoPancakeWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 	confirmPaymentComplianceForTest(t)
-	originalMerchantID := setting.WaffoPancakeMerchantID
-	originalPrivateKey := setting.WaffoPancakePrivateKey
-	originalProductID := setting.WaffoPancakeProductID
+	originalMerchantID := pay_subscription.WaffoPancakeMerchantID
+	originalPrivateKey := pay_subscription.WaffoPancakePrivateKey
+	originalProductID := pay_subscription.WaffoPancakeProductID
 	t.Cleanup(func() {
-		setting.WaffoPancakeMerchantID = originalMerchantID
-		setting.WaffoPancakePrivateKey = originalPrivateKey
-		setting.WaffoPancakeProductID = originalProductID
+		pay_subscription.WaffoPancakeMerchantID = originalMerchantID
+		pay_subscription.WaffoPancakePrivateKey = originalPrivateKey
+		pay_subscription.WaffoPancakeProductID = originalProductID
 	})
 
 	// Presence of all three credentials enables the gateway. Webhook public
 	// keys are bundled in the SDK and there is no separate Enabled toggle —
 	// clear any of the three fields to disable.
-	setting.WaffoPancakeMerchantID = ""
-	setting.WaffoPancakePrivateKey = "private"
-	setting.WaffoPancakeProductID = "product"
+	pay_subscription.WaffoPancakeMerchantID = ""
+	pay_subscription.WaffoPancakePrivateKey = "private"
+	pay_subscription.WaffoPancakeProductID = "product"
 	require.False(t, isWaffoPancakeWebhookEnabled())
 
-	setting.WaffoPancakeMerchantID = "merchant"
+	pay_subscription.WaffoPancakeMerchantID = "merchant"
 	require.True(t, isWaffoPancakeWebhookEnabled())
 
-	setting.WaffoPancakeProductID = ""
+	pay_subscription.WaffoPancakeProductID = ""
 	require.False(t, isWaffoPancakeWebhookEnabled())
 
-	setting.WaffoPancakeProductID = "product"
-	setting.WaffoPancakePrivateKey = ""
+	pay_subscription.WaffoPancakeProductID = "product"
+	pay_subscription.WaffoPancakePrivateKey = ""
 	require.False(t, isWaffoPancakeWebhookEnabled())
 }
 

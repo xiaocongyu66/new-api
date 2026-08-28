@@ -4,9 +4,8 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
+	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,7 +28,7 @@ func TestFormatWaffoPancakeAmount_UsesDisplayPriceString(t *testing.T) {
 }
 
 func TestGetWaffoPancakePayMoney(t *testing.T) {
-	originalUnitPrice := setting.WaffoPancakeUnitPrice
+	originalUnitPrice := pay_subscription.WaffoPancakeUnitPrice
 	originalQuotaDisplayType := manage_subscription.GetGeneralSetting().QuotaDisplayType
 	originalDiscounts := make(map[int]float64, len(pay_subscription.GetPaymentSetting().AmountDiscount))
 	for k, v := range pay_subscription.GetPaymentSetting().AmountDiscount {
@@ -38,13 +37,13 @@ func TestGetWaffoPancakePayMoney(t *testing.T) {
 	originalTopupGroupRatio := common.TopupGroupRatio2JSONString()
 
 	t.Cleanup(func() {
-		setting.WaffoPancakeUnitPrice = originalUnitPrice
+		pay_subscription.WaffoPancakeUnitPrice = originalUnitPrice
 		manage_subscription.GetGeneralSetting().QuotaDisplayType = originalQuotaDisplayType
 		pay_subscription.GetPaymentSetting().AmountDiscount = originalDiscounts
 		require.NoError(t, common.UpdateTopupGroupRatioByJSONString(originalTopupGroupRatio))
 	})
 
-	setting.WaffoPancakeUnitPrice = 2.5
+	pay_subscription.WaffoPancakeUnitPrice = 2.5
 	pay_subscription.GetPaymentSetting().AmountDiscount = map[int]float64{
 		10:                           0.8,
 		int(common.QuotaPerUnit * 3): 0.5,
