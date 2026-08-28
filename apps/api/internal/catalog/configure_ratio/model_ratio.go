@@ -1,4 +1,4 @@
-package ratio_setting
+package configure_ratio
 
 import (
 	"strings"

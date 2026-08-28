@@ -13,7 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/types"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 )
 
 type Pricing struct {
