@@ -1,4 +1,4 @@
-package perfmetrics
+package record_perf
 
 import (
 	"fmt"
@@ -6,15 +6,15 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	record_perf_config "github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 	"github.com/QuantumNous/new-api/model"
-	perf_metrics_setting "github.com/QuantumNous/new-api/internal/usage/record_perf"
 )
 
 func flushLoop() {
 	for {
-		interval := perf_metrics_setting.GetFlushIntervalMinutes()
+		interval := record_perf_config.GetFlushIntervalMinutes()
 		time.Sleep(time.Duration(interval) * time.Minute)
-		setting := perf_metrics_setting.GetSetting()
+		setting := record_perf_config.GetSetting()
 		if !setting.Enabled {
 			continue
 		}

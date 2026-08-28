@@ -1,4 +1,4 @@
-package perfmetrics
+package record_perf
 
 import (
 	"context"
@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	record_perf_config "github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	perf_metrics_setting "github.com/QuantumNous/new-api/internal/usage/record_perf"
 )
 
 var hotBuckets sync.Map
@@ -54,7 +54,7 @@ func RecordRelaySample(info *relaycommon.RelayInfo, success bool, outputTokens i
 }
 
 func Record(sample Sample) {
-	setting := perf_metrics_setting.GetSetting()
+	setting := record_perf_config.GetSetting()
 	if !setting.Enabled || sample.Model == "" {
 		return
 	}
@@ -263,7 +263,7 @@ func allowedGroupSet(groups []string) map[string]struct{} {
 }
 
 func bucketStart(ts int64) int64 {
-	bucketSeconds := perf_metrics_setting.GetBucketSeconds()
+	bucketSeconds := record_perf_config.GetBucketSeconds()
 	if bucketSeconds <= 0 {
 		bucketSeconds = 3600
 	}

@@ -16,6 +16,7 @@ import (
 
 	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/usage/record_perf"
 	"github.com/QuantumNous/new-api/internal/constant"
 	taskdto "github.com/QuantumNous/new-api/internal/dto"
 	"github.com/QuantumNous/new-api/internal/logger"
@@ -25,7 +26,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/helper"
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
 	"github.com/QuantumNous/new-api/model"
-	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
@@ -283,7 +283,7 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 	}
 	if newAPIError != nil {
 		gopool.Go(func() {
-			perfmetrics.RecordRelaySample(relayInfo, false, 0)
+			record_perf.RecordRelaySample(relayInfo, false, 0)
 		})
 	}
 }

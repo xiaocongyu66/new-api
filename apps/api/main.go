@@ -21,6 +21,7 @@ import (
 	"github.com/QuantumNous/new-api/controller"
 	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/usage/record_perf"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/internal/i18n"
@@ -34,10 +35,9 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
 	"github.com/QuantumNous/new-api/model"
-	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"github.com/QuantumNous/new-api/service"
-	_ "github.com/QuantumNous/new-api/internal/usage/record_perf"
+	_ "github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/joho/godotenv"
@@ -359,7 +359,8 @@ func InitResources() error {
 		return err
 	}
 
-	perfmetrics.Init()
+	record_perf.Init()
+	settings.OnPerformanceSettingChanged = record_perf.UpdateAndSync
 
 	// 启动系统监控
 	common.StartSystemMonitor()

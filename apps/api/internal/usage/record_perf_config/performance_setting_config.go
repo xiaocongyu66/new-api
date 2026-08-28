@@ -1,4 +1,4 @@
-package record_perf
+package record_perf_config
 
 import (
 	"github.com/QuantumNous/new-api/internal/common"

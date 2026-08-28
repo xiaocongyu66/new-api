@@ -1,4 +1,4 @@
-package perfmetrics
+package record_perf
 
 import "sync/atomic"
 

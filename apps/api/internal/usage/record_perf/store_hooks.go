@@ -1,4 +1,4 @@
-package perfmetrics
+package record_perf
 
 import "github.com/QuantumNous/new-api/model"
 

@@ -19,8 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
 	"github.com/QuantumNous/new-api/internal/transport/middleware/status_code"
-	performance_setting "github.com/QuantumNous/new-api/internal/usage/record_perf"
-	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
+		ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 )
 
@@ -32,6 +31,13 @@ const RetiredThemeOptionKey = "theme.frontend"
 // when a billing_setting.* tiered config changes. Wired by the host module to
 // avoid an import cycle.
 var OnBillingSettingChanged func()
+
+// OnPerformanceSettingChanged invalidates caches that live outside this package
+// when performance_setting.* config changes. Wired by main to keep settings
+// free of internal/usage/record_perf import (record_perf depends on model for
+// flush ops, which would cycle with the model layer).
+var OnPerformanceSettingChanged func()
+
 
 // GatewayRoutingOptionKeys is deliberately explicit. New settings must be
 // reviewed before they become part of the gateway snapshot contract.
@@ -629,8 +635,8 @@ func handleConfigUpdate(key, value string) bool {
 	config.UpdateConfigFromMap(cfg, configMap)
 
 	// 特定配置的后处理
-	if configName == "performance_setting" {
-		performance_setting.UpdateAndSync()
+	if configName == "performance_setting" && OnPerformanceSettingChanged != nil {
+		OnPerformanceSettingChanged()
 	} else if configName == "billing_setting" && OnBillingSettingChanged != nil {
 		OnBillingSettingChanged()
 	}

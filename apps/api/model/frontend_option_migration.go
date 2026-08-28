@@ -7,12 +7,11 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/settings"
-	console_setting "github.com/QuantumNous/new-api/internal/usage/record_perf"
+	console_setting "github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 	"gorm.io/gorm"
 )
 
-const retiredThemeOptionKey = settings.RetiredThemeOptionKey
+const retiredThemeOptionKey = common.RetiredThemeOptionKey
 
 type legacyOptionTransform func(string) (string, error)
 

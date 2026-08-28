@@ -11,7 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
-	console_setting "github.com/QuantumNous/new-api/internal/usage/record_perf"
+	console_setting "github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/billing/price_expression"

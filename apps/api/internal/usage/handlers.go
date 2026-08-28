@@ -5,10 +5,10 @@ import (
 	"strconv"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/usage/record_perf"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/model"
 
-	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/samber/lo"
 )
@@ -256,7 +256,7 @@ func GetPerfMetricsSummary(c contract.Context) {
 	}
 
 	activeGroups := append(lo.Keys(ratio_setting.GetGroupRatioCopy()), "auto")
-	result, err := perfmetrics.QuerySummaryAll(hours, activeGroups)
+	result, err := record_perf.QuerySummaryAll(hours, activeGroups)
 	if err != nil {
 		_ = c.JSON(http.StatusInternalServerError, common.H{
 			"success": false,
@@ -288,7 +288,7 @@ func GetPerfMetrics(c contract.Context) {
 		}
 	}
 
-	result, err := perfmetrics.Query(perfmetrics.QueryParams{
+	result, err := record_perf.Query(record_perf.QueryParams{
 		Model: modelName,
 		Group: c.Query("group"),
 		Hours: hours,
@@ -309,9 +309,9 @@ func GetPerfMetrics(c contract.Context) {
 	})
 }
 
-func filterActiveGroups(groups []perfmetrics.GroupResult) []perfmetrics.GroupResult {
+func filterActiveGroups(groups []record_perf.GroupResult) []record_perf.GroupResult {
 	activeRatios := ratio_setting.GetGroupRatioCopy()
-	return lo.Filter(groups, func(g perfmetrics.GroupResult, _ int) bool {
+	return lo.Filter(groups, func(g record_perf.GroupResult, _ int) bool {
 		_, ok := activeRatios[g.Group]
 		return ok || g.Group == "auto"
 	})
