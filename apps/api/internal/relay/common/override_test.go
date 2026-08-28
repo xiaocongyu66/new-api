@@ -10,7 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/setting/model_setting"
+	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

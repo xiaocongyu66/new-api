@@ -11,8 +11,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/setting/model_setting"
-
+	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
 	"github.com/shopspring/decimal"
 )
 

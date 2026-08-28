@@ -13,8 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/model_setting"
-
+	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 

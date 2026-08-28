@@ -21,7 +21,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/pkg/errors"
 
-	"github.com/QuantumNous/new-api/setting/model_setting"
+	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"

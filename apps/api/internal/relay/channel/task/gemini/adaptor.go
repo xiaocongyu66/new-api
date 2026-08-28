@@ -19,7 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/model_setting"
+	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
 	"github.com/pkg/errors"
 )
 

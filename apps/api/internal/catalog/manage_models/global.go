@@ -1,4 +1,4 @@
-package model_setting
+package manage_models
 
 import (
 	"slices"
