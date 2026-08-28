@@ -5,15 +5,15 @@ import (
 	"net/http"
 
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
-// TieredResultWrapper wraps billingexpr.TieredResult for use at the service layer.
-type TieredResultWrapper = billingexpr.TieredResult
+// TieredResultWrapper wraps price_expression.TieredResult for use at the service layer.
+type TieredResultWrapper = price_expression.TieredResult
 
-// BuildTieredTokenParams constructs billingexpr.TokenParams from a dto.Usage,
+// BuildTieredTokenParams constructs price_expression.TokenParams from a dto.Usage,
 // normalizing P and C so they mean "tokens not separately priced by the
 // expression". Sub-categories (cache, image, audio) are only subtracted
 // when the expression references them via their own variable.
@@ -22,7 +22,7 @@ type TieredResultWrapper = billingexpr.TieredResult
 // include all sub-categories (cache, image, audio). Claude-format APIs
 // report them as text-only. This function normalizes to text-only when
 // sub-categories are separately priced.
-func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVars map[string]bool) billingexpr.TokenParams {
+func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVars map[string]bool) price_expression.TokenParams {
 	p := float64(usage.PromptTokens)
 	c := float64(usage.CompletionTokens)
 	cr := float64(usage.PromptTokensDetails.CachedTokens)
@@ -80,7 +80,7 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 		c = 0
 	}
 
-	return billingexpr.TokenParams{
+	return price_expression.TokenParams{
 		P:    p,
 		C:    c,
 		Len:  inputLen,
@@ -94,7 +94,7 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 	}
 }
 
-func refreshTieredBillingGroup(relayInfo *relaycommon.RelayInfo) (*billingexpr.BillingSnapshot, error) {
+func refreshTieredBillingGroup(relayInfo *relaycommon.RelayInfo) (*price_expression.BillingSnapshot, error) {
 	if relayInfo == nil {
 		return nil, nil
 	}
@@ -109,7 +109,7 @@ func refreshTieredBillingGroup(relayInfo *relaycommon.RelayInfo) (*billingexpr.B
 	}
 
 	estimatedQuotaAfterGroup := snap.EstimatedQuotaBeforeGroup * groupRatio
-	estimatedQuota, err := billingexpr.QuotaRoundStrict(estimatedQuotaAfterGroup)
+	estimatedQuota, err := price_expression.QuotaRoundStrict(estimatedQuotaAfterGroup)
 	if err != nil {
 		return nil, err
 	}
@@ -160,18 +160,18 @@ func PrepareTieredBillingForSelectedGroup(c contract.Context, relayInfo *relayco
 // computes the actual quota using the captured BillingSnapshot. Returns:
 //   - ok=true, quota, result  when tiered billing applies
 //   - ok=false, 0, nil        when it doesn't (caller should fall through to existing logic)
-func TryTieredSettle(relayInfo *relaycommon.RelayInfo, params billingexpr.TokenParams) (ok bool, quota int, result *billingexpr.TieredResult) {
+func TryTieredSettle(relayInfo *relaycommon.RelayInfo, params price_expression.TokenParams) (ok bool, quota int, result *price_expression.TieredResult) {
 	snap := relayInfo.TieredBillingSnapshot
 	if snap == nil || snap.BillingMode != "tiered_expr" {
 		return false, 0, nil
 	}
 
-	requestInput := billingexpr.RequestInput{}
+	requestInput := price_expression.RequestInput{}
 	if relayInfo.BillingRequestInput != nil {
 		requestInput = *relayInfo.BillingRequestInput
 	}
 
-	tr, err := billingexpr.ComputeTieredQuotaWithRequest(snap, params, requestInput)
+	tr, err := price_expression.ComputeTieredQuotaWithRequest(snap, params, requestInput)
 	if err != nil {
 		quota = relayInfo.FinalPreConsumedQuota
 		if quota <= 0 {

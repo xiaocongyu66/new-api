@@ -11,7 +11,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/types"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
@@ -32,11 +32,11 @@ const probeExpr = `param("service_tier") == "fast" ? tier("fast", p * 4 + c * 20
 
 const testQuotaPerUnit = 500_000.0
 
-func makeSnapshot(expr string, groupRatio float64, estPrompt, estCompletion int) *billingexpr.BillingSnapshot {
-	return &billingexpr.BillingSnapshot{
+func makeSnapshot(expr string, groupRatio float64, estPrompt, estCompletion int) *price_expression.BillingSnapshot {
+	return &price_expression.BillingSnapshot{
 		BillingMode:               "tiered_expr",
 		ExprString:                expr,
-		ExprHash:                  billingexpr.ExprHashString(expr),
+		ExprHash:                  price_expression.ExprHashString(expr),
 		GroupRatio:                groupRatio,
 		EstimatedPromptTokens:     estPrompt,
 		EstimatedCompletionTokens: estCompletion,
@@ -46,10 +46,10 @@ func makeSnapshot(expr string, groupRatio float64, estPrompt, estCompletion int)
 
 func makeRelayInfo(expr string, groupRatio float64, estPrompt, estCompletion int) *relaycommon.RelayInfo {
 	snap := makeSnapshot(expr, groupRatio, estPrompt, estCompletion)
-	cost, trace, _ := billingexpr.RunExpr(expr, billingexpr.TokenParams{P: float64(estPrompt), C: float64(estCompletion)})
+	cost, trace, _ := price_expression.RunExpr(expr, price_expression.TokenParams{P: float64(estPrompt), C: float64(estCompletion)})
 	quotaBeforeGroup := cost / 1_000_000 * testQuotaPerUnit
 	snap.EstimatedQuotaBeforeGroup = quotaBeforeGroup
-	snap.EstimatedQuotaAfterGroup = billingexpr.QuotaRound(quotaBeforeGroup * groupRatio)
+	snap.EstimatedQuotaAfterGroup = price_expression.QuotaRound(quotaBeforeGroup * groupRatio)
 	snap.EstimatedTier = trace.MatchedTier
 	return &relaycommon.RelayInfo{
 		TieredBillingSnapshot: snap,
@@ -64,22 +64,22 @@ func makeRelayInfo(expr string, groupRatio float64, estPrompt, estCompletion int
 func TestTryTieredSettleUsesFrozenRequestInput(t *testing.T) {
 	exprStr := `param("service_tier") == "fast" ? tier("fast", p * 2) : tier("normal", p)`
 	relayInfo := &relaycommon.RelayInfo{
-		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+		TieredBillingSnapshot: &price_expression.BillingSnapshot{
 			BillingMode:               "tiered_expr",
 			ExprString:                exprStr,
-			ExprHash:                  billingexpr.ExprHashString(exprStr),
+			ExprHash:                  price_expression.ExprHashString(exprStr),
 			GroupRatio:                1.0,
 			EstimatedPromptTokens:     100,
 			EstimatedCompletionTokens: 0,
 			EstimatedQuotaAfterGroup:  50,
 			QuotaPerUnit:              testQuotaPerUnit,
 		},
-		BillingRequestInput: &billingexpr.RequestInput{
+		BillingRequestInput: &price_expression.RequestInput{
 			Body: []byte(`{"service_tier":"fast"}`),
 		},
 	}
 
-	ok, quota, result := TryTieredSettle(relayInfo, billingexpr.TokenParams{P: 100})
+	ok, quota, result := TryTieredSettle(relayInfo, price_expression.TokenParams{P: 100})
 	if !ok {
 		t.Fatal("expected tiered settle to apply")
 	}
@@ -95,16 +95,16 @@ func TestTryTieredSettleUsesFrozenRequestInput(t *testing.T) {
 func TestTryTieredSettleFallsBackToFrozenPreConsumeOnExprError(t *testing.T) {
 	relayInfo := &relaycommon.RelayInfo{
 		FinalPreConsumedQuota: 321,
-		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+		TieredBillingSnapshot: &price_expression.BillingSnapshot{
 			BillingMode:              "tiered_expr",
 			ExprString:               `invalid +-+ expr`,
-			ExprHash:                 billingexpr.ExprHashString(`invalid +-+ expr`),
+			ExprHash:                 price_expression.ExprHashString(`invalid +-+ expr`),
 			GroupRatio:               1.0,
 			EstimatedQuotaAfterGroup: 123,
 		},
 	}
 
-	ok, quota, result := TryTieredSettle(relayInfo, billingexpr.TokenParams{P: 100})
+	ok, quota, result := TryTieredSettle(relayInfo, price_expression.TokenParams{P: 100})
 	if !ok {
 		t.Fatal("expected tiered settle to apply")
 	}
@@ -122,7 +122,7 @@ func TestTryTieredSettleFallsBackToFrozenPreConsumeOnExprError(t *testing.T) {
 
 func TestTryTieredSettle_PreConsumeMatchesPostConsume(t *testing.T) {
 	info := makeRelayInfo(flatExpr, 1.0, 1000, 500)
-	params := billingexpr.TokenParams{P: 1000, C: 500}
+	params := price_expression.TokenParams{P: 1000, C: 500}
 
 	ok, quota, _ := TryTieredSettle(info, params)
 	if !ok {
@@ -142,7 +142,7 @@ func TestTryTieredSettle_PostConsumeOverPreConsume(t *testing.T) {
 	preConsumed := info.FinalPreConsumedQuota // 3500
 
 	// Actual usage is higher than estimated
-	params := billingexpr.TokenParams{P: 2000, C: 1000}
+	params := price_expression.TokenParams{P: 2000, C: 1000}
 	ok, quota, _ := TryTieredSettle(info, params)
 	if !ok {
 		t.Fatal("expected tiered settle")
@@ -161,7 +161,7 @@ func TestTryTieredSettle_PostConsumeUnderPreConsume(t *testing.T) {
 	preConsumed := info.FinalPreConsumedQuota // 3500
 
 	// Actual usage is lower than estimated
-	params := billingexpr.TokenParams{P: 100, C: 50}
+	params := price_expression.TokenParams{P: 100, C: 50}
 	ok, quota, _ := TryTieredSettle(info, params)
 	if !ok {
 		t.Fatal("expected tiered settle")
@@ -183,7 +183,7 @@ func TestTryTieredSettle_ExactBoundary(t *testing.T) {
 	info := makeRelayInfo(sonnetTieredExpr, 1.0, 200000, 1000)
 
 	// p == 200000 => standard tier (p <= 200000)
-	ok, quota, result := TryTieredSettle(info, billingexpr.TokenParams{P: 200000, C: 1000})
+	ok, quota, result := TryTieredSettle(info, price_expression.TokenParams{P: 200000, C: 1000})
 	if !ok {
 		t.Fatal("expected tiered settle")
 	}
@@ -200,7 +200,7 @@ func TestTryTieredSettle_BoundaryPlusOne(t *testing.T) {
 	info := makeRelayInfo(sonnetTieredExpr, 1.0, 200000, 1000)
 
 	// p == 200001 => crosses to long_context tier
-	ok, quota, result := TryTieredSettle(info, billingexpr.TokenParams{P: 200001, C: 1000})
+	ok, quota, result := TryTieredSettle(info, price_expression.TokenParams{P: 200001, C: 1000})
 	if !ok {
 		t.Fatal("expected tiered settle")
 	}
@@ -219,7 +219,7 @@ func TestTryTieredSettle_BoundaryPlusOne(t *testing.T) {
 func TestTryTieredSettle_ZeroTokens(t *testing.T) {
 	info := makeRelayInfo(flatExpr, 1.0, 0, 0)
 
-	ok, quota, result := TryTieredSettle(info, billingexpr.TokenParams{P: 0, C: 0})
+	ok, quota, result := TryTieredSettle(info, price_expression.TokenParams{P: 0, C: 0})
 	if !ok {
 		t.Fatal("expected tiered settle")
 	}
@@ -234,7 +234,7 @@ func TestTryTieredSettle_ZeroTokens(t *testing.T) {
 func TestTryTieredSettle_HugeTokens(t *testing.T) {
 	info := makeRelayInfo(flatExpr, 1.0, 10000000, 5000000)
 
-	ok, quota, _ := TryTieredSettle(info, billingexpr.TokenParams{P: 10000000, C: 5000000})
+	ok, quota, _ := TryTieredSettle(info, price_expression.TokenParams{P: 10000000, C: 5000000})
 	if !ok {
 		t.Fatal("expected tiered settle")
 	}
@@ -248,14 +248,14 @@ func TestTryTieredSettle_CacheTokensAffectSettlement(t *testing.T) {
 	info := makeRelayInfo(cacheExpr, 1.0, 1000, 500)
 
 	// Without cache tokens
-	ok1, quota1, _ := TryTieredSettle(info, billingexpr.TokenParams{P: 1000, C: 500})
+	ok1, quota1, _ := TryTieredSettle(info, price_expression.TokenParams{P: 1000, C: 500})
 	if !ok1 {
 		t.Fatal("expected tiered settle")
 	}
 	// p*2 + c*10 = 7000; quota = 7000 / 1M * 500K = 3500
 
 	// With cache tokens
-	ok2, quota2, _ := TryTieredSettle(info, billingexpr.TokenParams{P: 1000, C: 500, CR: 10000, CC: 5000, CC1h: 2000})
+	ok2, quota2, _ := TryTieredSettle(info, price_expression.TokenParams{P: 1000, C: 500, CR: 10000, CC: 5000, CC1h: 2000})
 	if !ok2 {
 		t.Fatal("expected tiered settle")
 	}
@@ -278,11 +278,11 @@ func TestTryTieredSettle_CacheTokensAffectSettlement(t *testing.T) {
 
 func TestTryTieredSettle_RequestProbeInfluencesBilling(t *testing.T) {
 	info := makeRelayInfo(probeExpr, 1.0, 1000, 500)
-	info.BillingRequestInput = &billingexpr.RequestInput{
+	info.BillingRequestInput = &price_expression.RequestInput{
 		Body: []byte(`{"service_tier":"fast"}`),
 	}
 
-	ok, quota, result := TryTieredSettle(info, billingexpr.TokenParams{P: 1000, C: 500})
+	ok, quota, result := TryTieredSettle(info, price_expression.TokenParams{P: 1000, C: 500})
 	if !ok {
 		t.Fatal("expected tiered settle")
 	}
@@ -299,7 +299,7 @@ func TestTryTieredSettle_NoRequestInput_FallsBackToDefault(t *testing.T) {
 	info := makeRelayInfo(probeExpr, 1.0, 1000, 500)
 	// No BillingRequestInput set — param("service_tier") returns nil, not "fast"
 
-	ok, quota, result := TryTieredSettle(info, billingexpr.TokenParams{P: 1000, C: 500})
+	ok, quota, result := TryTieredSettle(info, price_expression.TokenParams{P: 1000, C: 500})
 	if !ok {
 		t.Fatal("expected tiered settle")
 	}
@@ -345,10 +345,10 @@ func TestPrepareTieredBillingForSelectedGroupUpdatesReservation(t *testing.T) {
 	relayInfo := &relaycommon.RelayInfo{
 		Billing:               billing,
 		FinalPreConsumedQuota: 50_000,
-		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+		TieredBillingSnapshot: &price_expression.BillingSnapshot{
 			BillingMode:               "tiered_expr",
 			ExprString:                expr,
-			ExprHash:                  billingexpr.ExprHashString(expr),
+			ExprHash:                  price_expression.ExprHashString(expr),
 			GroupRatio:                0.10,
 			EstimatedQuotaBeforeGroup: 500_000,
 			EstimatedQuotaAfterGroup:  50_000,
@@ -382,10 +382,10 @@ func TestPrepareTieredBillingForSelectedGroupStartsBillingAfterFreeGroup(t *test
 		UserSetting: dto.UserSetting{
 			BillingPreference: "wallet_only",
 		},
-		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+		TieredBillingSnapshot: &price_expression.BillingSnapshot{
 			BillingMode:               "tiered_expr",
 			ExprString:                `tier("base", p)`,
-			ExprHash:                  billingexpr.ExprHashString(`tier("base", p)`),
+			ExprHash:                  price_expression.ExprHashString(`tier("base", p)`),
 			GroupRatio:                0,
 			EstimatedQuotaBeforeGroup: 500_000,
 			QuotaPerUnit:              testQuotaPerUnit,
@@ -416,10 +416,10 @@ func TestPrepareTieredBillingForSelectedGroupPaidToFreeKeepsFreeModelFalse(t *te
 	relayInfo := &relaycommon.RelayInfo{
 		Billing:               billing,
 		FinalPreConsumedQuota: 50_000,
-		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+		TieredBillingSnapshot: &price_expression.BillingSnapshot{
 			BillingMode:               "tiered_expr",
 			ExprString:                expr,
-			ExprHash:                  billingexpr.ExprHashString(expr),
+			ExprHash:                  price_expression.ExprHashString(expr),
 			GroupRatio:                0.10,
 			EstimatedQuotaBeforeGroup: 500_000,
 			EstimatedQuotaAfterGroup:  50_000,
@@ -454,10 +454,10 @@ func TestPrepareTieredBillingForSelectedGroupTopUpArrearsAllowsNegativeBalance(t
 		UserId:                userID,
 		IsPlayground:          true,
 		FinalPreConsumedQuota: 50_000,
-		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+		TieredBillingSnapshot: &price_expression.BillingSnapshot{
 			BillingMode:               "tiered_expr",
 			ExprString:                `tier("base", p)`,
-			ExprHash:                  billingexpr.ExprHashString(`tier("base", p)`),
+			ExprHash:                  price_expression.ExprHashString(`tier("base", p)`),
 			GroupRatio:                0.10,
 			EstimatedQuotaBeforeGroup: 500_000,
 			EstimatedQuotaAfterGroup:  50_000,
@@ -533,10 +533,10 @@ func TestTryTieredSettleUsesFinalGroupAfterRetry(t *testing.T) {
 			relayInfo := &relaycommon.RelayInfo{
 				Billing:               &recordingBillingSettler{preConsumedQuota: 50_000},
 				FinalPreConsumedQuota: 50_000,
-				TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+				TieredBillingSnapshot: &price_expression.BillingSnapshot{
 					BillingMode:               "tiered_expr",
 					ExprString:                expr,
-					ExprHash:                  billingexpr.ExprHashString(expr),
+					ExprHash:                  price_expression.ExprHashString(expr),
 					GroupRatio:                0.10,
 					EstimatedQuotaBeforeGroup: 500_000,
 					EstimatedQuotaAfterGroup:  50_000,
@@ -548,7 +548,7 @@ func TestTryTieredSettleUsesFinalGroupAfterRetry(t *testing.T) {
 			}
 
 			require.Nil(t, PrepareTieredBillingForSelectedGroup(nil, relayInfo))
-			ok, quota, result := TryTieredSettle(relayInfo, billingexpr.TokenParams{P: 1_000_000})
+			ok, quota, result := TryTieredSettle(relayInfo, price_expression.TokenParams{P: 1_000_000})
 
 			require.True(t, ok)
 			require.NotNil(t, result)
@@ -562,7 +562,7 @@ func TestTryTieredSettleUsesFinalGroupAfterRetry(t *testing.T) {
 func TestTryTieredSettle_GroupRatioScaling(t *testing.T) {
 	info := makeRelayInfo(flatExpr, 1.5, 1000, 500)
 
-	ok, quota, _ := TryTieredSettle(info, billingexpr.TokenParams{P: 1000, C: 500})
+	ok, quota, _ := TryTieredSettle(info, price_expression.TokenParams{P: 1000, C: 500})
 	if !ok {
 		t.Fatal("expected tiered settle")
 	}
@@ -575,7 +575,7 @@ func TestTryTieredSettle_GroupRatioScaling(t *testing.T) {
 func TestTryTieredSettle_GroupRatioZero(t *testing.T) {
 	info := makeRelayInfo(flatExpr, 0, 1000, 500)
 
-	ok, quota, _ := TryTieredSettle(info, billingexpr.TokenParams{P: 1000, C: 500})
+	ok, quota, _ := TryTieredSettle(info, price_expression.TokenParams{P: 1000, C: 500})
 	if !ok {
 		t.Fatal("expected tiered settle")
 	}
@@ -593,7 +593,7 @@ func TestTryTieredSettle_RatioMode_NilSnapshot(t *testing.T) {
 		TieredBillingSnapshot: nil,
 	}
 
-	ok, _, _ := TryTieredSettle(info, billingexpr.TokenParams{P: 1000, C: 500})
+	ok, _, _ := TryTieredSettle(info, price_expression.TokenParams{P: 1000, C: 500})
 	if ok {
 		t.Fatal("expected TryTieredSettle to return false when snapshot is nil")
 	}
@@ -601,15 +601,15 @@ func TestTryTieredSettle_RatioMode_NilSnapshot(t *testing.T) {
 
 func TestTryTieredSettle_RatioMode_WrongBillingMode(t *testing.T) {
 	info := &relaycommon.RelayInfo{
-		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+		TieredBillingSnapshot: &price_expression.BillingSnapshot{
 			BillingMode: "ratio",
 			ExprString:  flatExpr,
-			ExprHash:    billingexpr.ExprHashString(flatExpr),
+			ExprHash:    price_expression.ExprHashString(flatExpr),
 			GroupRatio:  1.0,
 		},
 	}
 
-	ok, _, _ := TryTieredSettle(info, billingexpr.TokenParams{P: 1000, C: 500})
+	ok, _, _ := TryTieredSettle(info, price_expression.TokenParams{P: 1000, C: 500})
 	if ok {
 		t.Fatal("expected TryTieredSettle to return false for ratio billing mode")
 	}
@@ -617,15 +617,15 @@ func TestTryTieredSettle_RatioMode_WrongBillingMode(t *testing.T) {
 
 func TestTryTieredSettle_RatioMode_EmptyBillingMode(t *testing.T) {
 	info := &relaycommon.RelayInfo{
-		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+		TieredBillingSnapshot: &price_expression.BillingSnapshot{
 			BillingMode: "",
 			ExprString:  flatExpr,
-			ExprHash:    billingexpr.ExprHashString(flatExpr),
+			ExprHash:    price_expression.ExprHashString(flatExpr),
 			GroupRatio:  1.0,
 		},
 	}
 
-	ok, _, _ := TryTieredSettle(info, billingexpr.TokenParams{P: 1000, C: 500})
+	ok, _, _ := TryTieredSettle(info, price_expression.TokenParams{P: 1000, C: 500})
 	if ok {
 		t.Fatal("expected TryTieredSettle to return false for empty billing mode")
 	}
@@ -638,16 +638,16 @@ func TestTryTieredSettle_RatioMode_EmptyBillingMode(t *testing.T) {
 func TestTryTieredSettle_ErrorFallbackToEstimatedQuotaAfterGroup(t *testing.T) {
 	info := &relaycommon.RelayInfo{
 		FinalPreConsumedQuota: 0,
-		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+		TieredBillingSnapshot: &price_expression.BillingSnapshot{
 			BillingMode:              "tiered_expr",
 			ExprString:               `invalid expr!!!`,
-			ExprHash:                 billingexpr.ExprHashString(`invalid expr!!!`),
+			ExprHash:                 price_expression.ExprHashString(`invalid expr!!!`),
 			GroupRatio:               1.0,
 			EstimatedQuotaAfterGroup: 999,
 		},
 	}
 
-	ok, quota, result := TryTieredSettle(info, billingexpr.TokenParams{P: 100})
+	ok, quota, result := TryTieredSettle(info, price_expression.TokenParams{P: 100})
 	if !ok {
 		t.Fatal("expected tiered settle to apply")
 	}
@@ -665,9 +665,9 @@ func TestTryTieredSettle_ErrorFallbackToEstimatedQuotaAfterGroup(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func tieredQuota(exprStr string, usage *dto.Usage, isClaudeSemantic bool, groupRatio float64) float64 {
-	usedVars := billingexpr.UsedVars(exprStr)
+	usedVars := price_expression.UsedVars(exprStr)
 	params := BuildTieredTokenParams(usage, isClaudeSemantic, usedVars)
-	cost, _, _ := billingexpr.RunExpr(exprStr, params)
+	cost, _, _ := price_expression.RunExpr(exprStr, params)
 	return cost / 1_000_000 * testQuotaPerUnit * groupRatio
 }
 
@@ -867,7 +867,7 @@ func TestBuildTieredTokenParams_Len_GPT(t *testing.T) {
 		},
 	}
 	expr := `tier("base", p * 2.5 + c * 15 + cr * 0.25)`
-	usedVars := billingexpr.UsedVars(expr)
+	usedVars := price_expression.UsedVars(expr)
 	params := BuildTieredTokenParams(usage, false, usedVars)
 
 	// Non-Claude: Len = raw PromptTokens
@@ -893,7 +893,7 @@ func TestBuildTieredTokenParams_Len_Claude(t *testing.T) {
 		ClaudeCacheCreation1hTokens: 500,
 	}
 	expr := `tier("base", p * 3 + c * 15 + cr * 0.3 + cc * 3.75 + cc1h * 6)`
-	usedVars := billingexpr.UsedVars(expr)
+	usedVars := price_expression.UsedVars(expr)
 	params := BuildTieredTokenParams(usage, true, usedVars)
 
 	// Claude: Len = PromptTokens + CachedTokens + CacheCreation5m + CacheCreation1h
@@ -918,7 +918,7 @@ func TestBuildTieredTokenParams_Len_TierCondition(t *testing.T) {
 		},
 	}
 	expr := `len <= 200000 ? tier("standard", p * 3 + c * 15 + cr * 0.3) : tier("long_context", p * 6 + c * 22.5 + cr * 0.6)`
-	usedVars := billingexpr.UsedVars(expr)
+	usedVars := price_expression.UsedVars(expr)
 	params := BuildTieredTokenParams(usage, false, usedVars)
 
 	// Len = 300000 (raw prompt), P = 50000 (300000 - 250000 cache)
@@ -930,7 +930,7 @@ func TestBuildTieredTokenParams_Len_TierCondition(t *testing.T) {
 	}
 
 	// Run expression: len=300000 > 200000, so long_context tier
-	cost, trace, err := billingexpr.RunExpr(expr, params)
+	cost, trace, err := price_expression.RunExpr(expr, params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -977,7 +977,7 @@ func randomUsage(rng *rand.Rand) *dto.Usage {
 
 func BenchmarkTieredBilling_ComplexExpr(b *testing.B) {
 	rng := rand.New(rand.NewSource(42))
-	usedVars := billingexpr.UsedVars(complexTieredExpr)
+	usedVars := price_expression.UsedVars(complexTieredExpr)
 	usages := make([]*dto.Usage, 1000)
 	for i := range usages {
 		usages[i] = randomUsage(rng)
@@ -987,7 +987,7 @@ func BenchmarkTieredBilling_ComplexExpr(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		usage := usages[i%len(usages)]
 		params := BuildTieredTokenParams(usage, false, usedVars)
-		billingexpr.RunExpr(complexTieredExpr, params)
+		price_expression.RunExpr(complexTieredExpr, params)
 	}
 }
 
@@ -1006,14 +1006,14 @@ func BenchmarkRatioBilling_Equivalent(b *testing.B) {
 }
 
 func BenchmarkTieredBilling_Parallel(b *testing.B) {
-	usedVars := billingexpr.UsedVars(complexTieredExpr)
+	usedVars := price_expression.UsedVars(complexTieredExpr)
 
 	b.RunParallel(func(pb *testing.PB) {
 		rng := rand.New(rand.NewSource(rand.Int63()))
 		for pb.Next() {
 			usage := randomUsage(rng)
 			params := BuildTieredTokenParams(usage, false, usedVars)
-			billingexpr.RunExpr(complexTieredExpr, params)
+			price_expression.RunExpr(complexTieredExpr, params)
 		}
 	})
 }

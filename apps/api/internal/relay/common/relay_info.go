@@ -12,7 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/constant"
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
 	hosttypes "github.com/QuantumNous/new-api/internal/types"
-	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -158,8 +158,8 @@ type RelayInfo struct {
 	// TieredBillingSnapshot captures tiered billing rules at pre-consume time.
 	// Auto-group retries refresh its group-dependent fields before each attempt
 	// and again before settlement. Non-nil only when billing mode is "tiered_expr".
-	TieredBillingSnapshot *billingexpr.BillingSnapshot
-	BillingRequestInput   *billingexpr.RequestInput
+	TieredBillingSnapshot *price_expression.BillingSnapshot
+	BillingRequestInput   *price_expression.RequestInput
 
 	Request dto.Request
 

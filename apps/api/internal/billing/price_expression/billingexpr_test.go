@@ -1,10 +1,10 @@
-package billingexpr_test
+package price_expression_test
 
 import (
 	"math"
 	"testing"
 
-	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,7 +16,7 @@ import (
 const claudeExpr = `p <= 200000 ? tier("standard", p * 1.5 + c * 7.5) : tier("long_context", p * 3.0 + c * 11.25)`
 
 func TestClaude_StandardTier(t *testing.T) {
-	cost, trace, err := billingexpr.RunExpr(claudeExpr, billingexpr.TokenParams{P: 100000, C: 5000})
+	cost, trace, err := price_expression.RunExpr(claudeExpr, price_expression.TokenParams{P: 100000, C: 5000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func TestClaude_StandardTier(t *testing.T) {
 }
 
 func TestClaude_LongContextTier(t *testing.T) {
-	cost, trace, err := billingexpr.RunExpr(claudeExpr, billingexpr.TokenParams{P: 300000, C: 10000})
+	cost, trace, err := price_expression.RunExpr(claudeExpr, price_expression.TokenParams{P: 300000, C: 10000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestClaude_LongContextTier(t *testing.T) {
 }
 
 func TestClaude_BoundaryExact(t *testing.T) {
-	cost, trace, err := billingexpr.RunExpr(claudeExpr, billingexpr.TokenParams{P: 200000, C: 1000})
+	cost, trace, err := price_expression.RunExpr(claudeExpr, price_expression.TokenParams{P: 200000, C: 1000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ const glmExpr = `
 `
 
 func TestGLM_Tier1(t *testing.T) {
-	cost, trace, err := billingexpr.RunExpr(glmExpr, billingexpr.TokenParams{P: 15000, C: 100})
+	cost, trace, err := price_expression.RunExpr(glmExpr, price_expression.TokenParams{P: 15000, C: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestGLM_Tier1(t *testing.T) {
 }
 
 func TestGLM_Tier2(t *testing.T) {
-	cost, trace, err := billingexpr.RunExpr(glmExpr, billingexpr.TokenParams{P: 15000, C: 500})
+	cost, trace, err := price_expression.RunExpr(glmExpr, price_expression.TokenParams{P: 15000, C: 500})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestGLM_Tier2(t *testing.T) {
 }
 
 func TestGLM_Tier3(t *testing.T) {
-	cost, trace, err := billingexpr.RunExpr(glmExpr, billingexpr.TokenParams{P: 50000, C: 100})
+	cost, trace, err := price_expression.RunExpr(glmExpr, price_expression.TokenParams{P: 50000, C: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestGLM_Tier3(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestSimpleExpr_NoTier(t *testing.T) {
-	cost, trace, err := billingexpr.RunExpr("p * 0.5 + c * 1.0", billingexpr.TokenParams{P: 1000, C: 500})
+	cost, trace, err := price_expression.RunExpr("p * 0.5 + c * 1.0", price_expression.TokenParams{P: 1000, C: 500})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestSimpleExpr_NoTier(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestMathHelpers(t *testing.T) {
-	cost, _, err := billingexpr.RunExpr("max(p, c) * 0.5 + min(p, c) * 0.1", billingexpr.TokenParams{P: 300, C: 500})
+	cost, _, err := price_expression.RunExpr("max(p, c) * 0.5 + min(p, c) * 0.1", price_expression.TokenParams{P: 300, C: 500})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,10 +145,10 @@ func TestMathHelpers(t *testing.T) {
 }
 
 func TestRequestProbeHelpers(t *testing.T) {
-	cost, _, err := billingexpr.RunExprWithRequest(
+	cost, _, err := price_expression.RunExprWithRequest(
 		`p * 0.5 + c * 1.0 * (param("service_tier") == "fast" ? 2 : 1)`,
-		billingexpr.TokenParams{P: 1000, C: 500},
-		billingexpr.RequestInput{
+		price_expression.TokenParams{P: 1000, C: 500},
+		price_expression.RequestInput{
 			Body: []byte(`{"service_tier":"fast"}`),
 		},
 	)
@@ -162,10 +162,10 @@ func TestRequestProbeHelpers(t *testing.T) {
 }
 
 func TestHeaderProbeHelper(t *testing.T) {
-	cost, _, err := billingexpr.RunExprWithRequest(
+	cost, _, err := price_expression.RunExprWithRequest(
 		`p * 0.5 + c * 1.0 * (has(header("anthropic-beta"), "fast-mode") ? 2 : 1)`,
-		billingexpr.TokenParams{P: 1000, C: 500},
-		billingexpr.RequestInput{
+		price_expression.TokenParams{P: 1000, C: 500},
+		price_expression.RequestInput{
 			Headers: map[string]string{
 				"Anthropic-Beta": "fast-mode-2026-02-01",
 			},
@@ -181,10 +181,10 @@ func TestHeaderProbeHelper(t *testing.T) {
 }
 
 func TestParamProbeNestedBool(t *testing.T) {
-	cost, _, err := billingexpr.RunExprWithRequest(
+	cost, _, err := price_expression.RunExprWithRequest(
 		`p * (param("stream_options.fast_mode") == true ? 1.5 : 1.0)`,
-		billingexpr.TokenParams{P: 100},
-		billingexpr.RequestInput{
+		price_expression.TokenParams{P: 100},
+		price_expression.RequestInput{
 			Body: []byte(`{"stream_options":{"fast_mode":true}}`),
 		},
 	)
@@ -198,10 +198,10 @@ func TestParamProbeNestedBool(t *testing.T) {
 }
 
 func TestParamProbeArrayLength(t *testing.T) {
-	cost, _, err := billingexpr.RunExprWithRequest(
+	cost, _, err := price_expression.RunExprWithRequest(
 		`p * (param("messages.#") > 20 ? 1.2 : 1.0)`,
-		billingexpr.TokenParams{P: 100},
-		billingexpr.RequestInput{
+		price_expression.TokenParams{P: 100},
+		price_expression.RequestInput{
 			Body: []byte(`{"messages":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21]}`),
 		},
 	)
@@ -215,10 +215,10 @@ func TestParamProbeArrayLength(t *testing.T) {
 }
 
 func TestRequestProbeMissingFieldReturnsNil(t *testing.T) {
-	cost, _, err := billingexpr.RunExprWithRequest(
+	cost, _, err := price_expression.RunExprWithRequest(
 		`param("missing.value") == nil ? 2 : 1`,
-		billingexpr.TokenParams{},
-		billingexpr.RequestInput{
+		price_expression.TokenParams{},
+		price_expression.RequestInput{
 			Body: []byte(`{"service_tier":"standard"}`),
 		},
 	)
@@ -232,10 +232,10 @@ func TestRequestProbeMissingFieldReturnsNil(t *testing.T) {
 
 func TestRequestProbeMultipleRulesTraceAllFactors(t *testing.T) {
 	exprStr := `(tier("base", p * 2)) * (param("service_tier") == "fast" ? 2 : 1) * (has(header("anthropic-beta"), "fast-mode-2026-02-01") ? 2.5 : 1)`
-	cost, trace, err := billingexpr.RunExprWithRequest(
+	cost, trace, err := price_expression.RunExprWithRequest(
 		exprStr,
-		billingexpr.TokenParams{P: 10},
-		billingexpr.RequestInput{
+		price_expression.TokenParams{P: 10},
+		price_expression.RequestInput{
 			Headers: map[string]string{
 				"Anthropic-Beta": "fast-mode-2026-02-01",
 			},
@@ -246,7 +246,7 @@ func TestRequestProbeMultipleRulesTraceAllFactors(t *testing.T) {
 	require.NoError(t, err)
 	assert.InDelta(t, 100, cost, 1e-6)
 	assert.Equal(t, "base", trace.MatchedTier)
-	assert.Equal(t, []billingexpr.RequestRuleTrace{
+	assert.Equal(t, []price_expression.RequestRuleTrace{
 		{Cond: `param("service_tier") == "fast"`, Multiplier: 2, Matched: true},
 		{Cond: `has(header("anthropic-beta"), "fast-mode-2026-02-01")`, Multiplier: 2.5, Matched: true},
 	}, trace.RequestRules)
@@ -254,39 +254,39 @@ func TestRequestProbeMultipleRulesTraceAllFactors(t *testing.T) {
 
 func TestRequestProbeTraceIncludesUnmatchedFactors(t *testing.T) {
 	exprStr := `(tier("base", p * 2)) * (param("service_tier") == "fast" ? 2 : 1) * (has(header("anthropic-beta"), "fast-mode") ? 2.5 : 1)`
-	cost, trace, err := billingexpr.RunExprWithRequest(
+	cost, trace, err := price_expression.RunExprWithRequest(
 		exprStr,
-		billingexpr.TokenParams{P: 10},
-		billingexpr.RequestInput{Body: []byte(`{"service_tier":"fast"}`)},
+		price_expression.TokenParams{P: 10},
+		price_expression.RequestInput{Body: []byte(`{"service_tier":"fast"}`)},
 	)
 
 	require.NoError(t, err)
 	assert.InDelta(t, 40, cost, 1e-6)
-	assert.Equal(t, []billingexpr.RequestRuleTrace{
+	assert.Equal(t, []price_expression.RequestRuleTrace{
 		{Cond: `param("service_tier") == "fast"`, Multiplier: 2, Matched: true},
 		{Cond: `has(header("anthropic-beta"), "fast-mode")`, Multiplier: 2.5, Matched: false},
 	}, trace.RequestRules)
 }
 
 func TestRequestProbeTracePreservesIntegerConditionalType(t *testing.T) {
-	cost, trace, err := billingexpr.RunExprWithRequest(
+	cost, trace, err := price_expression.RunExprWithRequest(
 		`5 % (param("service_tier") == "fast" ? 2 : 1)`,
-		billingexpr.TokenParams{},
-		billingexpr.RequestInput{Body: []byte(`{"service_tier":"fast"}`)},
+		price_expression.TokenParams{},
+		price_expression.RequestInput{Body: []byte(`{"service_tier":"fast"}`)},
 	)
 
 	require.NoError(t, err)
 	assert.Equal(t, float64(1), cost)
-	assert.Equal(t, []billingexpr.RequestRuleTrace{
+	assert.Equal(t, []price_expression.RequestRuleTrace{
 		{Cond: `param("service_tier") == "fast"`, Multiplier: 2, Matched: true},
 	}, trace.RequestRules)
 }
 
 func TestRequestProbeNonUnitFallbackIsNotTraced(t *testing.T) {
-	cost, trace, err := billingexpr.RunExprWithRequest(
+	cost, trace, err := price_expression.RunExprWithRequest(
 		`10 * (param("service_tier") == "fast" ? 2 : 1.5)`,
-		billingexpr.TokenParams{},
-		billingexpr.RequestInput{Body: []byte(`{"service_tier":"standard"}`)},
+		price_expression.TokenParams{},
+		price_expression.RequestInput{Body: []byte(`{"service_tier":"standard"}`)},
 	)
 
 	require.NoError(t, err)
@@ -295,13 +295,13 @@ func TestRequestProbeNonUnitFallbackIsNotTraced(t *testing.T) {
 }
 
 func TestRequestProbeInternalTraceFunctionIsReserved(t *testing.T) {
-	_, err := billingexpr.CompileFromCache(`_trace(0, true, 5.0)`)
+	_, err := price_expression.CompileFromCache(`_trace(0, true, 5.0)`)
 
 	require.ErrorContains(t, err, `identifier "_trace" is reserved for internal use`)
 }
 
 func TestCeilFloor(t *testing.T) {
-	cost, _, err := billingexpr.RunExpr("ceil(p / 1000) * 0.5", billingexpr.TokenParams{P: 1500})
+	cost, _, err := price_expression.RunExpr("ceil(p / 1000) * 0.5", price_expression.TokenParams{P: 1500})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,7 +316,7 @@ func TestCeilFloor(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestZeroTokens(t *testing.T) {
-	cost, _, err := billingexpr.RunExpr(claudeExpr, billingexpr.TokenParams{})
+	cost, _, err := price_expression.RunExpr(claudeExpr, price_expression.TokenParams{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,7 +349,7 @@ func TestQuotaRound(t *testing.T) {
 		{3.6893488147419103e19, math.MaxInt32},
 	}
 	for _, tt := range tests {
-		got := billingexpr.QuotaRound(tt.in)
+		got := price_expression.QuotaRound(tt.in)
 		if got != tt.want {
 			t.Errorf("QuotaRound(%f) = %d, want %d", tt.in, got, tt.want)
 		}
@@ -361,20 +361,20 @@ func TestQuotaRound(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestComputeTieredQuota_Basic(t *testing.T) {
-	snap := &billingexpr.BillingSnapshot{
+	snap := &price_expression.BillingSnapshot{
 		BillingMode:               "tiered_expr",
 		ExprString:                claudeExpr,
-		ExprHash:                  billingexpr.ExprHashString(claudeExpr),
+		ExprHash:                  price_expression.ExprHashString(claudeExpr),
 		GroupRatio:                1.0,
 		EstimatedPromptTokens:     100000,
 		EstimatedCompletionTokens: 5000,
 		EstimatedQuotaBeforeGroup: (100000*1.5 + 5000*7.5) / 1_000_000 * 500_000,
-		EstimatedQuotaAfterGroup:  billingexpr.QuotaRound((100000*1.5 + 5000*7.5) / 1_000_000 * 500_000),
+		EstimatedQuotaAfterGroup:  price_expression.QuotaRound((100000*1.5 + 5000*7.5) / 1_000_000 * 500_000),
 		EstimatedTier:             "standard",
 		QuotaPerUnit:              500_000,
 	}
 
-	result, err := billingexpr.ComputeTieredQuota(snap, billingexpr.TokenParams{P: 300000, C: 10000})
+	result, err := price_expression.ComputeTieredQuota(snap, price_expression.TokenParams{P: 300000, C: 10000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -392,26 +392,26 @@ func TestComputeTieredQuota_Basic(t *testing.T) {
 }
 
 func TestComputeTieredQuota_SameTier(t *testing.T) {
-	snap := &billingexpr.BillingSnapshot{
+	snap := &price_expression.BillingSnapshot{
 		BillingMode:               "tiered_expr",
 		ExprString:                claudeExpr,
-		ExprHash:                  billingexpr.ExprHashString(claudeExpr),
+		ExprHash:                  price_expression.ExprHashString(claudeExpr),
 		GroupRatio:                1.5,
 		EstimatedPromptTokens:     50000,
 		EstimatedCompletionTokens: 1000,
 		EstimatedQuotaBeforeGroup: (50000*1.5 + 1000*7.5) / 1_000_000 * 500_000,
-		EstimatedQuotaAfterGroup:  billingexpr.QuotaRound((50000*1.5 + 1000*7.5) / 1_000_000 * 500_000 * 1.5),
+		EstimatedQuotaAfterGroup:  price_expression.QuotaRound((50000*1.5 + 1000*7.5) / 1_000_000 * 500_000 * 1.5),
 		EstimatedTier:             "standard",
 		QuotaPerUnit:              500_000,
 	}
 
-	result, err := billingexpr.ComputeTieredQuota(snap, billingexpr.TokenParams{P: 80000, C: 2000})
+	result, err := price_expression.ComputeTieredQuota(snap, price_expression.TokenParams{P: 80000, C: 2000})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	wantBefore := (80000*1.5 + 2000*7.5) / 1_000_000 * 500_000
-	wantAfter := billingexpr.QuotaRound(wantBefore * 1.5)
+	wantAfter := price_expression.QuotaRound(wantBefore * 1.5)
 	if result.ActualQuotaAfterGroup != wantAfter {
 		t.Errorf("after group: got %d, want %d", result.ActualQuotaAfterGroup, wantAfter)
 	}
@@ -425,7 +425,7 @@ func TestComputeTieredQuota_SameTier(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCompileError(t *testing.T) {
-	_, _, err := billingexpr.RunExpr("invalid +-+ syntax", billingexpr.TokenParams{})
+	_, _, err := price_expression.RunExpr("invalid +-+ syntax", price_expression.TokenParams{})
 	if err == nil {
 		t.Error("expected compile error")
 	}
@@ -436,11 +436,11 @@ func TestCompileError(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCompileCache_SameResult(t *testing.T) {
-	r1, _, err := billingexpr.RunExpr("p * 0.5", billingexpr.TokenParams{P: 100})
+	r1, _, err := price_expression.RunExpr("p * 0.5", price_expression.TokenParams{P: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
-	r2, _, err := billingexpr.RunExpr("p * 0.5", billingexpr.TokenParams{P: 100})
+	r2, _, err := price_expression.RunExpr("p * 0.5", price_expression.TokenParams{P: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -450,10 +450,10 @@ func TestCompileCache_SameResult(t *testing.T) {
 }
 
 func TestInvalidateCache(t *testing.T) {
-	billingexpr.InvalidateCache()
-	r1, _, _ := billingexpr.RunExpr("p * 0.5", billingexpr.TokenParams{P: 100})
-	billingexpr.InvalidateCache()
-	r2, _, _ := billingexpr.RunExpr("p * 0.5", billingexpr.TokenParams{P: 100})
+	price_expression.InvalidateCache()
+	r1, _, _ := price_expression.RunExpr("p * 0.5", price_expression.TokenParams{P: 100})
+	price_expression.InvalidateCache()
+	r2, _, _ := price_expression.RunExpr("p * 0.5", price_expression.TokenParams{P: 100})
 	if r1 != r2 {
 		t.Errorf("post-invalidate results differ: %f != %f", r1, r2)
 	}
@@ -464,12 +464,12 @@ func TestInvalidateCache(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestExprHashString_Deterministic(t *testing.T) {
-	h1 := billingexpr.ExprHashString("p * 0.5")
-	h2 := billingexpr.ExprHashString("p * 0.5")
+	h1 := price_expression.ExprHashString("p * 0.5")
+	h2 := price_expression.ExprHashString("p * 0.5")
 	if h1 != h2 {
 		t.Error("hash should be deterministic")
 	}
-	h3 := billingexpr.ExprHashString("p * 0.6")
+	h3 := price_expression.ExprHashString("p * 0.6")
 	if h1 == h3 {
 		t.Error("different expressions should have different hashes")
 	}
@@ -482,8 +482,8 @@ func TestExprHashString_Deterministic(t *testing.T) {
 const claudeWithCacheExpr = `p <= 200000 ? tier("standard", p * 1.5 + c * 7.5 + cr * 0.15 + cc * 1.875) : tier("long_context", p * 3.0 + c * 11.25 + cr * 0.3 + cc * 3.75)`
 
 func TestCachePresent_StandardTier(t *testing.T) {
-	params := billingexpr.TokenParams{P: 100000, C: 5000, CR: 50000, CC: 10000}
-	cost, trace, err := billingexpr.RunExpr(claudeWithCacheExpr, params)
+	params := price_expression.TokenParams{P: 100000, C: 5000, CR: 50000, CC: 10000}
+	cost, trace, err := price_expression.RunExpr(claudeWithCacheExpr, params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -497,8 +497,8 @@ func TestCachePresent_StandardTier(t *testing.T) {
 }
 
 func TestCachePresent_LongContextTier(t *testing.T) {
-	params := billingexpr.TokenParams{P: 300000, C: 10000, CR: 100000, CC: 20000}
-	cost, trace, err := billingexpr.RunExpr(claudeWithCacheExpr, params)
+	params := price_expression.TokenParams{P: 300000, C: 10000, CR: 100000, CC: 20000}
+	cost, trace, err := price_expression.RunExpr(claudeWithCacheExpr, params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -516,8 +516,8 @@ func TestCachePresent_LongContextTier(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCacheAbsent_ZeroCacheTokens(t *testing.T) {
-	params := billingexpr.TokenParams{P: 100000, C: 5000}
-	cost, trace, err := billingexpr.RunExpr(claudeWithCacheExpr, params)
+	params := price_expression.TokenParams{P: 100000, C: 5000}
+	cost, trace, err := price_expression.RunExpr(claudeWithCacheExpr, params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -537,8 +537,8 @@ func TestCacheAbsent_ZeroCacheTokens(t *testing.T) {
 const claudeCacheSplitExpr = `tier("default", p * 1.5 + c * 7.5 + cr * 0.15 + cc * 2.0 + cc1h * 3.0)`
 
 func TestMixedCacheFields(t *testing.T) {
-	params := billingexpr.TokenParams{P: 100000, C: 5000, CR: 10000, CC: 5000, CC1h: 2000}
-	cost, _, err := billingexpr.RunExpr(claudeCacheSplitExpr, params)
+	params := price_expression.TokenParams{P: 100000, C: 5000, CR: 10000, CC: 5000, CC1h: 2000}
+	cost, _, err := price_expression.RunExpr(claudeCacheSplitExpr, params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -549,8 +549,8 @@ func TestMixedCacheFields(t *testing.T) {
 }
 
 func TestMixedCacheFields_AllCacheZero(t *testing.T) {
-	params := billingexpr.TokenParams{P: 100000, C: 5000}
-	cost, _, err := billingexpr.RunExpr(claudeCacheSplitExpr, params)
+	params := price_expression.TokenParams{P: 100000, C: 5000}
+	cost, _, err := price_expression.RunExpr(claudeCacheSplitExpr, params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -565,8 +565,8 @@ func TestMixedCacheFields_AllCacheZero(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestBackwardCompat_OldExprWithTokenParams(t *testing.T) {
-	params := billingexpr.TokenParams{P: 100000, C: 5000, CR: 99999, CC: 88888}
-	cost, trace, err := billingexpr.RunExpr(claudeExpr, params)
+	params := price_expression.TokenParams{P: 100000, C: 5000, CR: 99999, CC: 88888}
+	cost, trace, err := price_expression.RunExpr(claudeExpr, params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -584,21 +584,21 @@ func TestBackwardCompat_OldExprWithTokenParams(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestComputeTieredQuota_WithCache(t *testing.T) {
-	snap := &billingexpr.BillingSnapshot{
+	snap := &price_expression.BillingSnapshot{
 		BillingMode:               "tiered_expr",
 		ExprString:                claudeWithCacheExpr,
-		ExprHash:                  billingexpr.ExprHashString(claudeWithCacheExpr),
+		ExprHash:                  price_expression.ExprHashString(claudeWithCacheExpr),
 		GroupRatio:                1.0,
 		EstimatedPromptTokens:     100000,
 		EstimatedCompletionTokens: 5000,
 		EstimatedQuotaBeforeGroup: (100000*1.5 + 5000*7.5) / 1_000_000 * 500_000,
-		EstimatedQuotaAfterGroup:  billingexpr.QuotaRound((100000*1.5 + 5000*7.5) / 1_000_000 * 500_000),
+		EstimatedQuotaAfterGroup:  price_expression.QuotaRound((100000*1.5 + 5000*7.5) / 1_000_000 * 500_000),
 		EstimatedTier:             "standard",
 		QuotaPerUnit:              500_000,
 	}
 
-	params := billingexpr.TokenParams{P: 100000, C: 5000, CR: 50000, CC: 10000}
-	result, err := billingexpr.ComputeTieredQuota(snap, params)
+	params := price_expression.TokenParams{P: 100000, C: 5000, CR: 50000, CC: 10000}
+	result, err := price_expression.ComputeTieredQuota(snap, params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -616,27 +616,27 @@ func TestComputeTieredQuota_WithCache(t *testing.T) {
 }
 
 func TestComputeTieredQuota_WithCacheCrossTier(t *testing.T) {
-	snap := &billingexpr.BillingSnapshot{
+	snap := &price_expression.BillingSnapshot{
 		BillingMode:               "tiered_expr",
 		ExprString:                claudeWithCacheExpr,
-		ExprHash:                  billingexpr.ExprHashString(claudeWithCacheExpr),
+		ExprHash:                  price_expression.ExprHashString(claudeWithCacheExpr),
 		GroupRatio:                2.0,
 		EstimatedPromptTokens:     100000,
 		EstimatedCompletionTokens: 5000,
 		EstimatedQuotaBeforeGroup: (100000*1.5 + 5000*7.5) / 1_000_000 * 500_000,
-		EstimatedQuotaAfterGroup:  billingexpr.QuotaRound((100000*1.5 + 5000*7.5) / 1_000_000 * 500_000 * 2.0),
+		EstimatedQuotaAfterGroup:  price_expression.QuotaRound((100000*1.5 + 5000*7.5) / 1_000_000 * 500_000 * 2.0),
 		EstimatedTier:             "standard",
 		QuotaPerUnit:              500_000,
 	}
 
-	params := billingexpr.TokenParams{P: 300000, C: 10000, CR: 50000, CC: 10000}
-	result, err := billingexpr.ComputeTieredQuota(snap, params)
+	params := price_expression.TokenParams{P: 300000, C: 10000, CR: 50000, CC: 10000}
+	result, err := price_expression.ComputeTieredQuota(snap, params)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	wantBefore := (300000*3.0 + 10000*11.25 + 50000*0.3 + 10000*3.75) / 1_000_000 * 500_000
-	wantAfter := billingexpr.QuotaRound(wantBefore * 2.0)
+	wantAfter := price_expression.QuotaRound(wantBefore * 2.0)
 	if math.Abs(result.ActualQuotaBeforeGroup-wantBefore) > 1e-6 {
 		t.Errorf("before group: got %f, want %f", result.ActualQuotaBeforeGroup, wantBefore)
 	}
@@ -654,15 +654,15 @@ func TestComputeTieredQuota_WithCacheCrossTier(t *testing.T) {
 
 func TestComputeTieredQuota_BasicSettlement(t *testing.T) {
 	exprStr := `tier("default", p + c)`
-	snap := &billingexpr.BillingSnapshot{
+	snap := &price_expression.BillingSnapshot{
 		BillingMode:  "tiered_expr",
 		ExprString:   exprStr,
-		ExprHash:     billingexpr.ExprHashString(exprStr),
+		ExprHash:     price_expression.ExprHashString(exprStr),
 		GroupRatio:   1.0,
 		QuotaPerUnit: 500_000,
 	}
 
-	result, err := billingexpr.ComputeTieredQuota(snap, billingexpr.TokenParams{P: 3000, C: 2000})
+	result, err := price_expression.ComputeTieredQuota(snap, price_expression.TokenParams{P: 3000, C: 2000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -680,15 +680,15 @@ func TestComputeTieredQuota_BasicSettlement(t *testing.T) {
 
 func TestComputeTieredQuota_WithGroupRatio(t *testing.T) {
 	exprStr := `tier("default", p + c)`
-	snap := &billingexpr.BillingSnapshot{
+	snap := &price_expression.BillingSnapshot{
 		BillingMode:  "tiered_expr",
 		ExprString:   exprStr,
-		ExprHash:     billingexpr.ExprHashString(exprStr),
+		ExprHash:     price_expression.ExprHashString(exprStr),
 		GroupRatio:   2.0,
 		QuotaPerUnit: 500_000,
 	}
 
-	result, err := billingexpr.ComputeTieredQuota(snap, billingexpr.TokenParams{P: 1000, C: 500})
+	result, err := price_expression.ComputeTieredQuota(snap, price_expression.TokenParams{P: 1000, C: 500})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -700,15 +700,15 @@ func TestComputeTieredQuota_WithGroupRatio(t *testing.T) {
 
 func TestComputeTieredQuota_ZeroTokens(t *testing.T) {
 	exprStr := `tier("default", p * 2 + c * 10)`
-	snap := &billingexpr.BillingSnapshot{
+	snap := &price_expression.BillingSnapshot{
 		BillingMode:  "tiered_expr",
 		ExprString:   exprStr,
-		ExprHash:     billingexpr.ExprHashString(exprStr),
+		ExprHash:     price_expression.ExprHashString(exprStr),
 		GroupRatio:   1.0,
 		QuotaPerUnit: 500_000,
 	}
 
-	result, err := billingexpr.ComputeTieredQuota(snap, billingexpr.TokenParams{})
+	result, err := price_expression.ComputeTieredQuota(snap, price_expression.TokenParams{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -719,15 +719,15 @@ func TestComputeTieredQuota_ZeroTokens(t *testing.T) {
 
 func TestComputeTieredQuota_RoundingEdge(t *testing.T) {
 	exprStr := `tier("default", p * 0.5)` // 3 * 0.5 = 1.5 (expr); 1.5 / 1M * 500K = 0.75; round(0.75) = 1
-	snap := &billingexpr.BillingSnapshot{
+	snap := &price_expression.BillingSnapshot{
 		BillingMode:  "tiered_expr",
 		ExprString:   exprStr,
-		ExprHash:     billingexpr.ExprHashString(exprStr),
+		ExprHash:     price_expression.ExprHashString(exprStr),
 		GroupRatio:   1.0,
 		QuotaPerUnit: 500_000,
 	}
 
-	result, err := billingexpr.ComputeTieredQuota(snap, billingexpr.TokenParams{P: 3})
+	result, err := price_expression.ComputeTieredQuota(snap, price_expression.TokenParams{P: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -739,15 +739,15 @@ func TestComputeTieredQuota_RoundingEdge(t *testing.T) {
 
 func TestComputeTieredQuota_RoundingEdgeDown(t *testing.T) {
 	exprStr := `tier("default", p * 0.4)` // 3 * 0.4 = 1.2 (expr); 1.2 / 1M * 500K = 0.6; round(0.6) = 1
-	snap := &billingexpr.BillingSnapshot{
+	snap := &price_expression.BillingSnapshot{
 		BillingMode:  "tiered_expr",
 		ExprString:   exprStr,
-		ExprHash:     billingexpr.ExprHashString(exprStr),
+		ExprHash:     price_expression.ExprHashString(exprStr),
 		GroupRatio:   1.0,
 		QuotaPerUnit: 500_000,
 	}
 
-	result, err := billingexpr.ComputeTieredQuota(snap, billingexpr.TokenParams{P: 3})
+	result, err := price_expression.ComputeTieredQuota(snap, price_expression.TokenParams{P: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -759,17 +759,17 @@ func TestComputeTieredQuota_RoundingEdgeDown(t *testing.T) {
 
 func TestComputeTieredQuotaWithRequest_ProbeAffectsQuota(t *testing.T) {
 	exprStr := `param("fast") == true ? tier("fast", p * 4) : tier("normal", p * 2)`
-	snap := &billingexpr.BillingSnapshot{
+	snap := &price_expression.BillingSnapshot{
 		BillingMode:   "tiered_expr",
 		ExprString:    exprStr,
-		ExprHash:      billingexpr.ExprHashString(exprStr),
+		ExprHash:      price_expression.ExprHashString(exprStr),
 		GroupRatio:    1.0,
 		EstimatedTier: "normal",
 		QuotaPerUnit:  500_000,
 	}
 
 	// Without request: normal tier
-	r1, err := billingexpr.ComputeTieredQuota(snap, billingexpr.TokenParams{P: 1000})
+	r1, err := price_expression.ComputeTieredQuota(snap, price_expression.TokenParams{P: 1000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -779,7 +779,7 @@ func TestComputeTieredQuotaWithRequest_ProbeAffectsQuota(t *testing.T) {
 	}
 
 	// With request: fast tier
-	r2, err := billingexpr.ComputeTieredQuotaWithRequest(snap, billingexpr.TokenParams{P: 1000}, billingexpr.RequestInput{
+	r2, err := price_expression.ComputeTieredQuotaWithRequest(snap, price_expression.TokenParams{P: 1000}, price_expression.RequestInput{
 		Body: []byte(`{"fast":true}`),
 	})
 	if err != nil {
@@ -796,17 +796,17 @@ func TestComputeTieredQuotaWithRequest_ProbeAffectsQuota(t *testing.T) {
 
 func TestComputeTieredQuota_BoundaryTierCrossing(t *testing.T) {
 	exprStr := `p <= 100000 ? tier("small", p * 1) : tier("large", p * 2)`
-	snap := &billingexpr.BillingSnapshot{
+	snap := &price_expression.BillingSnapshot{
 		BillingMode:   "tiered_expr",
 		ExprString:    exprStr,
-		ExprHash:      billingexpr.ExprHashString(exprStr),
+		ExprHash:      price_expression.ExprHashString(exprStr),
 		GroupRatio:    1.0,
 		EstimatedTier: "small",
 		QuotaPerUnit:  500_000,
 	}
 
 	// At boundary: small, p*1 = 100000; quota = 100000 / 1M * 500K = 50000
-	r1, err := billingexpr.ComputeTieredQuota(snap, billingexpr.TokenParams{P: 100000})
+	r1, err := price_expression.ComputeTieredQuota(snap, price_expression.TokenParams{P: 100000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -818,7 +818,7 @@ func TestComputeTieredQuota_BoundaryTierCrossing(t *testing.T) {
 	}
 
 	// Past boundary: large, p*2 = 200002; quota = 200002 / 1M * 500K = 100001
-	r2, err := billingexpr.ComputeTieredQuota(snap, billingexpr.TokenParams{P: 100001})
+	r2, err := price_expression.ComputeTieredQuota(snap, price_expression.TokenParams{P: 100001})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -839,7 +839,7 @@ func TestComputeTieredQuota_BoundaryTierCrossing(t *testing.T) {
 
 func TestTimeFunctions_ValidTimezone(t *testing.T) {
 	exprStr := `tier("default", p) * (hour("UTC") >= 0 ? 1 : 1)`
-	cost, _, err := billingexpr.RunExpr(exprStr, billingexpr.TokenParams{P: 100})
+	cost, _, err := price_expression.RunExpr(exprStr, price_expression.TokenParams{P: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -850,7 +850,7 @@ func TestTimeFunctions_ValidTimezone(t *testing.T) {
 
 func TestTimeFunctions_AllFunctionsCompile(t *testing.T) {
 	exprStr := `tier("default", p) * (hour("Asia/Shanghai") >= 0 ? 1 : 1) * (minute("UTC") >= 0 ? 1 : 1) * (weekday("UTC") >= 0 ? 1 : 1) * (month("UTC") >= 1 ? 1 : 1) * (day("UTC") >= 1 ? 1 : 1)`
-	cost, _, err := billingexpr.RunExpr(exprStr, billingexpr.TokenParams{P: 500})
+	cost, _, err := price_expression.RunExpr(exprStr, price_expression.TokenParams{P: 500})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -861,7 +861,7 @@ func TestTimeFunctions_AllFunctionsCompile(t *testing.T) {
 
 func TestTimeFunctions_InvalidTimezone(t *testing.T) {
 	exprStr := `tier("default", p) * (hour("Invalid/Zone") >= 0 ? 1 : 2)`
-	cost, _, err := billingexpr.RunExpr(exprStr, billingexpr.TokenParams{P: 100})
+	cost, _, err := price_expression.RunExpr(exprStr, price_expression.TokenParams{P: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -873,7 +873,7 @@ func TestTimeFunctions_InvalidTimezone(t *testing.T) {
 
 func TestTimeFunctions_EmptyTimezone(t *testing.T) {
 	exprStr := `tier("default", p) * (hour("") >= 0 ? 1 : 2)`
-	cost, _, err := billingexpr.RunExpr(exprStr, billingexpr.TokenParams{P: 100})
+	cost, _, err := price_expression.RunExpr(exprStr, price_expression.TokenParams{P: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -884,7 +884,7 @@ func TestTimeFunctions_EmptyTimezone(t *testing.T) {
 
 func TestTimeFunctions_NightDiscountPattern(t *testing.T) {
 	exprStr := `tier("default", p * 2 + c * 10) * (hour("UTC") >= 21 || hour("UTC") < 6 ? 0.5 : 1)`
-	cost, _, err := billingexpr.RunExpr(exprStr, billingexpr.TokenParams{P: 1000, C: 500})
+	cost, _, err := price_expression.RunExpr(exprStr, price_expression.TokenParams{P: 1000, C: 500})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -896,7 +896,7 @@ func TestTimeFunctions_NightDiscountPattern(t *testing.T) {
 
 func TestTimeFunctions_WeekdayRange(t *testing.T) {
 	exprStr := `tier("default", p) * (weekday("UTC") >= 0 && weekday("UTC") <= 6 ? 1 : 999)`
-	cost, _, err := billingexpr.RunExpr(exprStr, billingexpr.TokenParams{P: 100})
+	cost, _, err := price_expression.RunExpr(exprStr, price_expression.TokenParams{P: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -908,7 +908,7 @@ func TestTimeFunctions_WeekdayRange(t *testing.T) {
 
 func TestTimeFunctions_MonthDayPattern(t *testing.T) {
 	exprStr := `tier("default", p) * (month("Asia/Shanghai") == 1 && day("Asia/Shanghai") == 1 ? 0.5 : 1)`
-	cost, _, err := billingexpr.RunExpr(exprStr, billingexpr.TokenParams{P: 1000})
+	cost, _, err := price_expression.RunExpr(exprStr, price_expression.TokenParams{P: 1000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -924,7 +924,7 @@ func TestTimeFunctions_MonthDayPattern(t *testing.T) {
 
 func TestImageTokenVariable(t *testing.T) {
 	exprStr := `tier("base", p * 2 + c * 10 + img * 5)`
-	cost, _, err := billingexpr.RunExpr(exprStr, billingexpr.TokenParams{P: 1000, C: 500, Img: 200})
+	cost, _, err := price_expression.RunExpr(exprStr, price_expression.TokenParams{P: 1000, C: 500, Img: 200})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -936,7 +936,7 @@ func TestImageTokenVariable(t *testing.T) {
 
 func TestAudioTokenVariables(t *testing.T) {
 	exprStr := `tier("base", p * 2 + c * 10 + ai * 50 + ao * 100)`
-	cost, _, err := billingexpr.RunExpr(exprStr, billingexpr.TokenParams{P: 1000, C: 500, AI: 100, AO: 50})
+	cost, _, err := price_expression.RunExpr(exprStr, price_expression.TokenParams{P: 1000, C: 500, AI: 100, AO: 50})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -948,7 +948,7 @@ func TestAudioTokenVariables(t *testing.T) {
 
 func TestImageAudioVariables(t *testing.T) {
 	exprStr := `tier("base", p * 1 + img * 3 + ai * 5 + ao * 10)`
-	cost, _, err := billingexpr.RunExpr(exprStr, billingexpr.TokenParams{P: 100, Img: 50, AI: 20, AO: 10})
+	cost, _, err := price_expression.RunExpr(exprStr, price_expression.TokenParams{P: 100, Img: 50, AI: 20, AO: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -960,7 +960,7 @@ func TestImageAudioVariables(t *testing.T) {
 
 func TestImageAudioZero(t *testing.T) {
 	exprStr := `tier("base", p * 2 + img * 5 + ai * 50 + ao * 100)`
-	cost, _, err := billingexpr.RunExpr(exprStr, billingexpr.TokenParams{P: 1000})
+	cost, _, err := price_expression.RunExpr(exprStr, price_expression.TokenParams{P: 1000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -977,8 +977,8 @@ func TestImageAudioZero(t *testing.T) {
 const lenTieredExpr = `len <= 200000 ? tier("standard", p * 3 + c * 15 + cr * 0.3) : tier("long_context", p * 6 + c * 22.5 + cr * 0.6)`
 
 func TestLen_StandardTier(t *testing.T) {
-	params := billingexpr.TokenParams{P: 80000, C: 5000, Len: 100000, CR: 20000}
-	cost, trace, err := billingexpr.RunExpr(lenTieredExpr, params)
+	params := price_expression.TokenParams{P: 80000, C: 5000, Len: 100000, CR: 20000}
+	cost, trace, err := price_expression.RunExpr(lenTieredExpr, params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -993,8 +993,8 @@ func TestLen_StandardTier(t *testing.T) {
 
 func TestLen_LongContextTier(t *testing.T) {
 	// p is low (cache subtracted), but len is high (full context)
-	params := billingexpr.TokenParams{P: 50000, C: 5000, Len: 300000, CR: 250000}
-	cost, trace, err := billingexpr.RunExpr(lenTieredExpr, params)
+	params := price_expression.TokenParams{P: 50000, C: 5000, Len: 300000, CR: 250000}
+	cost, trace, err := price_expression.RunExpr(lenTieredExpr, params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1008,8 +1008,8 @@ func TestLen_LongContextTier(t *testing.T) {
 }
 
 func TestLen_BoundaryExact(t *testing.T) {
-	params := billingexpr.TokenParams{P: 100000, C: 1000, Len: 200000, CR: 100000}
-	_, trace, err := billingexpr.RunExpr(lenTieredExpr, params)
+	params := price_expression.TokenParams{P: 100000, C: 1000, Len: 200000, CR: 100000}
+	_, trace, err := price_expression.RunExpr(lenTieredExpr, params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1019,8 +1019,8 @@ func TestLen_BoundaryExact(t *testing.T) {
 }
 
 func TestLen_BoundaryPlusOne(t *testing.T) {
-	params := billingexpr.TokenParams{P: 100000, C: 1000, Len: 200001, CR: 100001}
-	_, trace, err := billingexpr.RunExpr(lenTieredExpr, params)
+	params := price_expression.TokenParams{P: 100000, C: 1000, Len: 200001, CR: 100001}
+	_, trace, err := price_expression.RunExpr(lenTieredExpr, params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1031,8 +1031,8 @@ func TestLen_BoundaryPlusOne(t *testing.T) {
 
 func TestLen_ZeroDefaultsToZero(t *testing.T) {
 	// len defaults to 0 when not set
-	params := billingexpr.TokenParams{P: 1000, C: 500}
-	_, trace, err := billingexpr.RunExpr(lenTieredExpr, params)
+	params := price_expression.TokenParams{P: 1000, C: 500}
+	_, trace, err := price_expression.RunExpr(lenTieredExpr, params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1049,16 +1049,16 @@ const benchComplexExpr = `len <= 200000 ? tier("standard", p * 3 + c * 15 + cr *
 
 func BenchmarkExprCompile(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		billingexpr.InvalidateCache()
-		billingexpr.CompileFromCache(benchComplexExpr)
+		price_expression.InvalidateCache()
+		price_expression.CompileFromCache(benchComplexExpr)
 	}
 }
 
 func BenchmarkExprRunCached(b *testing.B) {
-	billingexpr.CompileFromCache(benchComplexExpr)
-	params := billingexpr.TokenParams{P: 150000, C: 10000, Len: 188000, CR: 30000, CC: 5000, Img: 2000, AI: 1000, AO: 500}
+	price_expression.CompileFromCache(benchComplexExpr)
+	params := price_expression.TokenParams{P: 150000, C: 10000, Len: 188000, CR: 30000, CC: 5000, Img: 2000, AI: 1000, AO: 500}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		billingexpr.RunExpr(benchComplexExpr, params)
+		price_expression.RunExpr(benchComplexExpr, params)
 	}
 }

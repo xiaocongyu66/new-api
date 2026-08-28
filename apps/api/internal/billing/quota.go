@@ -16,7 +16,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/types"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
@@ -159,8 +159,8 @@ func PreWssConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo, 
 func PostWssConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo, modelName string,
 	usage *dto.RealtimeUsage, extraContent string) {
 
-	var tieredResult *billingexpr.TieredResult
-	tieredOk, tieredQuota, tieredRes := TryTieredSettle(relayInfo, billingexpr.TokenParams{
+	var tieredResult *price_expression.TieredResult
+	tieredOk, tieredQuota, tieredRes := TryTieredSettle(relayInfo, price_expression.TokenParams{
 		P:   float64(usage.InputTokens),
 		C:   float64(usage.OutputTokens),
 		Len: float64(usage.InputTokens),
@@ -284,9 +284,9 @@ func PostAudioConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInf
 
 	var tieredUsedVars map[string]bool
 	if snap := relayInfo.TieredBillingSnapshot; snap != nil {
-		tieredUsedVars = billingexpr.UsedVars(snap.ExprString)
+		tieredUsedVars = price_expression.UsedVars(snap.ExprString)
 	}
-	var tieredResult *billingexpr.TieredResult
+	var tieredResult *price_expression.TieredResult
 	tieredOk, tieredQuota, tieredRes := TryTieredSettle(relayInfo, BuildTieredTokenParams(usage, false, tieredUsedVars))
 	if tieredOk {
 		tieredResult = tieredRes

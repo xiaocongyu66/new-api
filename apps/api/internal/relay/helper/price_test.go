@@ -10,7 +10,7 @@ import (
 	tiered_pricing "github.com/QuantumNous/new-api/internal/billing/tiered_pricing"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/internal/settings/config"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
@@ -50,7 +50,7 @@ func TestModelPriceHelperTieredUsesPreloadedRequestInput(t *testing.T) {
 		UserGroup:       "default",
 		UsingGroup:      "default",
 		RequestHeaders:  map[string]string{"Content-Type": "application/json"},
-		BillingRequestInput: &billingexpr.RequestInput{
+		BillingRequestInput: &price_expression.RequestInput{
 			Headers: map[string]string{"Content-Type": "application/json"},
 			Body:    []byte(`{"stream":true}`),
 		},
@@ -133,7 +133,7 @@ func TestModelPriceHelperTieredPreConsumeMaxTokensFallback(t *testing.T) {
 				UserGroup:       tc.group,
 				UsingGroup:      tc.group,
 				RequestHeaders:  map[string]string{"Content-Type": "application/json"},
-				BillingRequestInput: &billingexpr.RequestInput{
+				BillingRequestInput: &price_expression.RequestInput{
 					Headers: map[string]string{"Content-Type": "application/json"},
 					Body:    []byte(`{}`),
 				},
@@ -173,7 +173,7 @@ func TestModelPriceHelperTieredRejectsPreConsumeOverflow(t *testing.T) {
 		OriginModelName: "tiered-overflow-model",
 		UserGroup:       "default",
 		UsingGroup:      "default",
-		BillingRequestInput: &billingexpr.RequestInput{
+		BillingRequestInput: &price_expression.RequestInput{
 			Body: []byte(`{}`),
 		},
 	}

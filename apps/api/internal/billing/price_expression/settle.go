@@ -1,4 +1,4 @@
-package billingexpr
+package price_expression
 
 import "github.com/QuantumNous/new-api/internal/common"
 

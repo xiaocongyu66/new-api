@@ -15,7 +15,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/types"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/internal/ops/monitor_uptime"
@@ -223,16 +223,16 @@ func TestDeleteChannelBatchReportsAndAuditsActualDeletedCount(t *testing.T) {
 
 func TestSettleTestQuotaUsesTieredBilling(t *testing.T) {
 	info := &relaycommon.RelayInfo{
-		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+		TieredBillingSnapshot: &price_expression.BillingSnapshot{
 			BillingMode:   "tiered_expr",
 			ExprString:    `param("stream") == true ? tier("stream", p * 3) : tier("base", p * 2)`,
-			ExprHash:      billingexpr.ExprHashString(`param("stream") == true ? tier("stream", p * 3) : tier("base", p * 2)`),
+			ExprHash:      price_expression.ExprHashString(`param("stream") == true ? tier("stream", p * 3) : tier("base", p * 2)`),
 			GroupRatio:    1,
 			EstimatedTier: "stream",
 			QuotaPerUnit:  common.QuotaPerUnit,
 			ExprVersion:   1,
 		},
-		BillingRequestInput: &billingexpr.RequestInput{
+		BillingRequestInput: &price_expression.RequestInput{
 			Body: []byte(`{"stream":true}`),
 		},
 	}
@@ -253,7 +253,7 @@ func TestBuildTestLogOtherInjectsTieredInfo(t *testing.T) {
 	ctx, _ := ginadapter.NewSyntheticContext(nil)
 
 	info := &relaycommon.RelayInfo{
-		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+		TieredBillingSnapshot: &price_expression.BillingSnapshot{
 			BillingMode: "tiered_expr",
 			ExprString:  `tier("base", p * 2)`,
 		},
@@ -268,12 +268,12 @@ func TestBuildTestLogOtherInjectsTieredInfo(t *testing.T) {
 		},
 	}
 
-	requestRules := []billingexpr.RequestRuleTrace{{
+	requestRules := []price_expression.RequestRuleTrace{{
 		Cond:       `param("service_tier") == "fast"`,
 		Multiplier: 2,
 		Matched:    true,
 	}}
-	other := buildTestLogOther(ctx, info, priceData, usage, &billingexpr.TieredResult{
+	other := buildTestLogOther(ctx, info, priceData, usage, &price_expression.TieredResult{
 		MatchedTier:  "base",
 		RequestRules: requestRules,
 	})

@@ -13,11 +13,10 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
 	hosttypes "github.com/QuantumNous/new-api/internal/types"
-	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
-	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -600,7 +599,7 @@ func TestComposeTieredTextQuotaKeepsToolCallSurcharges(t *testing.T) {
 				},
 			},
 		},
-		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+		TieredBillingSnapshot: &price_expression.BillingSnapshot{
 			BillingMode:               "tiered_expr",
 			GroupRatio:                1,
 			EstimatedQuotaBeforeGroup: 1000,
@@ -615,7 +614,7 @@ func TestComposeTieredTextQuotaKeepsToolCallSurcharges(t *testing.T) {
 	}
 
 	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
-	quota := composeTieredTextQuota(relayInfo, summary, 1000, &billingexpr.TieredResult{
+	quota := composeTieredTextQuota(relayInfo, summary, 1000, &price_expression.TieredResult{
 		ActualQuotaBeforeGroup: 1000,
 		ActualQuotaAfterGroup:  1000,
 	})
@@ -638,7 +637,7 @@ func TestComposeTieredTextQuotaFallbackKeepsToolCallSurcharges(t *testing.T) {
 			CompletionRatio: 1,
 			GroupRatioInfo:  hosttypes.GroupRatioInfo{GroupRatio: 1.25},
 		},
-		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+		TieredBillingSnapshot: &price_expression.BillingSnapshot{
 			BillingMode:               "tiered_expr",
 			GroupRatio:                1.25,
 			EstimatedQuotaBeforeGroup: 1000,
@@ -673,7 +672,7 @@ func TestComposeTieredTextQuotaErrorFallbackUsesPreConsumedQuota(t *testing.T) {
 			CompletionRatio: 1,
 			GroupRatioInfo:  hosttypes.GroupRatioInfo{GroupRatio: 1.25},
 		},
-		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+		TieredBillingSnapshot: &price_expression.BillingSnapshot{
 			BillingMode:               "tiered_expr",
 			GroupRatio:                1.25,
 			EstimatedQuotaBeforeGroup: 1000,
@@ -708,16 +707,16 @@ func TestTryTieredSettleRecordsClampOnOverflow(t *testing.T) {
 	exprStr := `tier("base", p * 1000000000)`
 	relayInfo := &relaycommon.RelayInfo{
 		OriginModelName: "overflow-model",
-		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+		TieredBillingSnapshot: &price_expression.BillingSnapshot{
 			BillingMode:  "tiered_expr",
 			ExprString:   exprStr,
-			ExprHash:     billingexpr.ExprHashString(exprStr),
+			ExprHash:     price_expression.ExprHashString(exprStr),
 			GroupRatio:   1,
 			QuotaPerUnit: 500_000,
 		},
 	}
 
-	ok, quota, result := TryTieredSettle(relayInfo, billingexpr.TokenParams{P: 1_000_000_000})
+	ok, quota, result := TryTieredSettle(relayInfo, price_expression.TokenParams{P: 1_000_000_000})
 
 	require.True(t, ok)
 	require.NotNil(t, result)
@@ -732,16 +731,16 @@ func TestTryTieredSettleNoClampInRange(t *testing.T) {
 	exprStr := `tier("base", p * 2 + c * 10)`
 	relayInfo := &relaycommon.RelayInfo{
 		OriginModelName: "in-range-model",
-		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+		TieredBillingSnapshot: &price_expression.BillingSnapshot{
 			BillingMode:  "tiered_expr",
 			ExprString:   exprStr,
-			ExprHash:     billingexpr.ExprHashString(exprStr),
+			ExprHash:     price_expression.ExprHashString(exprStr),
 			GroupRatio:   1,
 			QuotaPerUnit: 500_000,
 		},
 	}
 
-	ok, _, result := TryTieredSettle(relayInfo, billingexpr.TokenParams{P: 1000, C: 500})
+	ok, _, result := TryTieredSettle(relayInfo, price_expression.TokenParams{P: 1000, C: 500})
 
 	require.True(t, ok)
 	require.NotNil(t, result)

@@ -3,7 +3,7 @@ package tiered_pricing
 import (
 	"fmt"
 
-	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	"github.com/QuantumNous/new-api/internal/settings/config"
 	"github.com/samber/lo"
 )
@@ -67,13 +67,13 @@ func GetPricingSyncData(base map[string]any) map[string]any {
 }
 
 func smokeTestExpr(exprStr string) error {
-	vectors := []billingexpr.TokenParams{
+	vectors := []price_expression.TokenParams{
 		{P: 0, C: 0, Len: 0},
 		{P: 1000, C: 1000, Len: 1000},
 		{P: 100000, C: 100000, Len: 100000},
 		{P: 1000000, C: 1000000, Len: 1000000},
 	}
-	requests := []billingexpr.RequestInput{
+	requests := []price_expression.RequestInput{
 		{},
 		{
 			Headers: map[string]string{
@@ -85,7 +85,7 @@ func smokeTestExpr(exprStr string) error {
 
 	for _, v := range vectors {
 		for _, request := range requests {
-			result, _, err := billingexpr.RunExprWithRequest(exprStr, v, request)
+			result, _, err := price_expression.RunExprWithRequest(exprStr, v, request)
 			if err != nil {
 				return fmt.Errorf("vector {p=%g, c=%g}: run failed: %w", v.P, v.C, err)
 			}

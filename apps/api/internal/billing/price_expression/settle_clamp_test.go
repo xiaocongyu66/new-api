@@ -1,11 +1,11 @@
-package billingexpr_test
+package price_expression_test
 
 import (
 	"math"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,15 +18,15 @@ func TestComputeTieredQuota_ClampOnOverflow(t *testing.T) {
 	// exprOutput = p * 1e9 = 1e18; quotaBeforeGroup = 1e18 / 1e6 * 5e5 = 5e17,
 	// which far exceeds MaxInt32 and must saturate.
 	exprStr := `tier("base", p * 1000000000)`
-	snap := &billingexpr.BillingSnapshot{
+	snap := &price_expression.BillingSnapshot{
 		BillingMode:  "tiered_expr",
 		ExprString:   exprStr,
-		ExprHash:     billingexpr.ExprHashString(exprStr),
+		ExprHash:     price_expression.ExprHashString(exprStr),
 		GroupRatio:   1.0,
 		QuotaPerUnit: 500_000,
 	}
 
-	result, err := billingexpr.ComputeTieredQuota(snap, billingexpr.TokenParams{P: 1_000_000_000})
+	result, err := price_expression.ComputeTieredQuota(snap, price_expression.TokenParams{P: 1_000_000_000})
 	require.NoError(t, err)
 
 	assert.Equal(t, math.MaxInt32, result.ActualQuotaAfterGroup, "oversized quota must clamp to int32 max, never wrap negative")
@@ -39,15 +39,15 @@ func TestComputeTieredQuota_ClampOnOverflow(t *testing.T) {
 // Clamp nil, so the audit path is a no-op in the common case.
 func TestComputeTieredQuota_NoClampInRange(t *testing.T) {
 	exprStr := `tier("base", p * 2 + c * 10)`
-	snap := &billingexpr.BillingSnapshot{
+	snap := &price_expression.BillingSnapshot{
 		BillingMode:  "tiered_expr",
 		ExprString:   exprStr,
-		ExprHash:     billingexpr.ExprHashString(exprStr),
+		ExprHash:     price_expression.ExprHashString(exprStr),
 		GroupRatio:   1.0,
 		QuotaPerUnit: 500_000,
 	}
 
-	result, err := billingexpr.ComputeTieredQuota(snap, billingexpr.TokenParams{P: 1000, C: 500})
+	result, err := price_expression.ComputeTieredQuota(snap, price_expression.TokenParams{P: 1000, C: 500})
 	require.NoError(t, err)
 	assert.Nil(t, result.Clamp, "in-range settlement must not report a clamp")
 }

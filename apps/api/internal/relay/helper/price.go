@@ -10,7 +10,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	hosttypes "github.com/QuantumNous/new-api/internal/types"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/internal/billing/consume_quota"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
@@ -281,7 +281,7 @@ func modelPriceHelperTiered(c contract.Context, info *relaycommon.RelayInfo, pro
 		return hosttypes.PriceData{}, err
 	}
 
-	rawCost, trace, err := billingexpr.RunExprWithRequest(exprStr, billingexpr.TokenParams{
+	rawCost, trace, err := price_expression.RunExprWithRequest(exprStr, price_expression.TokenParams{
 		P:   float64(promptTokens),
 		C:   float64(estimatedCompletionTokens),
 		Len: float64(promptTokens),
@@ -292,7 +292,7 @@ func modelPriceHelperTiered(c contract.Context, info *relaycommon.RelayInfo, pro
 
 	// Expression coefficients are $/1M tokens prices; convert to quota the same way per-call billing does.
 	quotaBeforeGroup := rawCost / 1_000_000 * common.QuotaPerUnit
-	preConsumedQuota, err := billingexpr.QuotaRoundStrict(quotaBeforeGroup * groupRatioInfo.GroupRatio)
+	preConsumedQuota, err := price_expression.QuotaRoundStrict(quotaBeforeGroup * groupRatioInfo.GroupRatio)
 	if err != nil {
 		return hosttypes.PriceData{}, err
 	}
@@ -305,8 +305,8 @@ func modelPriceHelperTiered(c contract.Context, info *relaycommon.RelayInfo, pro
 		}
 	}
 
-	exprHash := billingexpr.ExprHashString(exprStr)
-	snapshot := &billingexpr.BillingSnapshot{
+	exprHash := price_expression.ExprHashString(exprStr)
+	snapshot := &price_expression.BillingSnapshot{
 		BillingMode:               tiered_pricing.BillingModeTieredExpr,
 		ModelName:                 info.OriginModelName,
 		ExprString:                exprStr,
@@ -318,7 +318,7 @@ func modelPriceHelperTiered(c contract.Context, info *relaycommon.RelayInfo, pro
 		EstimatedQuotaAfterGroup:  preConsumedQuota,
 		EstimatedTier:             trace.MatchedTier,
 		QuotaPerUnit:              common.QuotaPerUnit,
-		ExprVersion:               billingexpr.ExprVersion(exprStr),
+		ExprVersion:               price_expression.ExprVersion(exprStr),
 	}
 	info.TieredBillingSnapshot = snapshot
 	info.BillingRequestInput = &requestInput

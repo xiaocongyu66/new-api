@@ -1,4 +1,4 @@
-package billingexpr
+package price_expression
 
 import (
 	"crypto/sha256"

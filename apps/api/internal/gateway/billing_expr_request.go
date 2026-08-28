@@ -6,11 +6,11 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 )
 
-func ResolveIncomingBillingExprRequestInput(c contract.Context, info *relaycommon.RelayInfo) (billingexpr.RequestInput, error) {
+func ResolveIncomingBillingExprRequestInput(c contract.Context, info *relaycommon.RelayInfo) (price_expression.RequestInput, error) {
 	if info != nil && info.BillingRequestInput != nil {
 		input := cloneRequestInput(*info.BillingRequestInput)
 		merged := cloneStringMap(info.RequestHeaders)
@@ -21,21 +21,21 @@ func ResolveIncomingBillingExprRequestInput(c contract.Context, info *relaycommo
 		return input, nil
 	}
 
-	input := billingexpr.RequestInput{}
+	input := price_expression.RequestInput{}
 	if info != nil {
 		input.Headers = cloneStringMap(info.RequestHeaders)
 	}
 
 	bodyBytes, err := readIncomingBillingExprBody(c)
 	if err != nil {
-		return billingexpr.RequestInput{}, err
+		return price_expression.RequestInput{}, err
 	}
 	input.Body = bodyBytes
 	return input, nil
 }
 
-func BuildBillingExprRequestInputFromRequest(request dto.Request, headers map[string]string) (billingexpr.RequestInput, error) {
-	input := billingexpr.RequestInput{
+func BuildBillingExprRequestInputFromRequest(request dto.Request, headers map[string]string) (price_expression.RequestInput, error) {
+	input := price_expression.RequestInput{
 		Headers: cloneStringMap(headers),
 	}
 	if request == nil {
@@ -44,7 +44,7 @@ func BuildBillingExprRequestInputFromRequest(request dto.Request, headers map[st
 
 	bodyBytes, err := common.Marshal(request)
 	if err != nil {
-		return billingexpr.RequestInput{}, err
+		return price_expression.RequestInput{}, err
 	}
 	input.Body = bodyBytes
 	return input, nil
@@ -61,8 +61,8 @@ func readIncomingBillingExprBody(c contract.Context) ([]byte, error) {
 	return storage.Bytes()
 }
 
-func cloneRequestInput(src billingexpr.RequestInput) billingexpr.RequestInput {
-	input := billingexpr.RequestInput{
+func cloneRequestInput(src price_expression.RequestInput) price_expression.RequestInput {
+	input := price_expression.RequestInput{
 		Headers: cloneStringMap(src.Headers),
 	}
 	if len(src.Body) > 0 {
