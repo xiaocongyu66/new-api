@@ -18,8 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
-	"github.com/QuantumNous/new-api/setting/reasoning"
-
+	reasoning "github.com/QuantumNous/new-api/internal/billing"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/samber/lo"
 )

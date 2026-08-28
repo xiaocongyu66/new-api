@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/billing"
+	reasoning "github.com/QuantumNous/new-api/internal/billing"
 	"io"
 	"net/http"
 	"strings"
@@ -16,10 +17,8 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
-	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
-	"github.com/QuantumNous/new-api/setting/reasoning"
-
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
 )
 
 func ClaudeHelper(c contract.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {

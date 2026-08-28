@@ -1,4 +1,4 @@
-package billing_setting
+package tiered_pricing
 
 import (
 	"fmt"

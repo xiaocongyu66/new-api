@@ -1,7 +1,7 @@
 // Package reasoning re-exports the pure model-name effort-suffix helpers,
 // which moved to the conversion kit (service/relayconvert/reasoning) as part
 // of the relaykit extraction. Host code keeps importing this path unchanged.
-package reasoning
+package billing
 
 import kitreasoning "github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
 
