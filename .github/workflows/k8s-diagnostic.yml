@@ -1,0 +1,50 @@
+name: K8s Diagnostic
+
+on:
+  workflow_dispatch:
+    inputs:
+      pod_selector:
+        description: 'kubectl label selector (e.g. app=new-api,role=master)'
+        required: false
+        type: string
+        default: 'app=new-api,role=master'
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG_B64 }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+          kubectl config set-cluster default --insecure-skip-tls-verify=true
+          kubectl config unset clusters.default.certificate-authority-data
+      - name: Pod list
+        env:
+          SEL: ${{ inputs.pod_selector }}
+        run: |
+          echo "### Pods for selector $SEL"
+          kubectl -n default get pods -l "$SEL" -o wide
+      - name: Master pod logs
+        env:
+          SEL: ${{ inputs.pod_selector }}
+        run: |
+          POD=$(kubectl -n default get pods -l "$SEL" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+          if [ -z "$POD" ]; then echo "No pod matches $SEL"; exit 0; fi
+          echo "### Pod: $POD"
+          echo "#### Current logs"
+          kubectl -n default logs "$POD" --tail=80 2>&1 || true
+          echo "#### Previous logs"
+          kubectl -n default logs "$POD" --previous --tail=80 2>&1 || true
+          echo "#### Describe"
+          kubectl -n default describe pod "$POD" 2>&1 | tail -60 || true
+      - name: Cluster status
+        run: |
+          echo "### Nodes"
+          kubectl -n default get nodes -o wide
+          echo "### Pods (all)"
+          kubectl -n default get pods -o wide
+          echo "### PVCs"
+          kubectl -n default get pvc
