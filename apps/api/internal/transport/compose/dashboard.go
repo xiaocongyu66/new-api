@@ -2,9 +2,9 @@ package compose
 
 import (
 	"github.com/QuantumNous/new-api/internal/billing"
-	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 )

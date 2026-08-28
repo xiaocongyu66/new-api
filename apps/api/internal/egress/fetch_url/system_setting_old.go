@@ -1,4 +1,4 @@
-package system_setting
+package fetch_url
 
 var ServerAddress = "http://localhost:3000"
 var WorkerUrl = ""

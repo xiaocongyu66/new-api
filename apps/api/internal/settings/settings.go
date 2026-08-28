@@ -21,7 +21,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/middleware/status_code"
 	"github.com/QuantumNous/new-api/setting/performance_setting"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
-	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 )
 
 // RetiredThemeOptionKey is the option key of the removed classic frontend
@@ -118,9 +118,9 @@ func SeedOptionMap() {
 	common.OptionMap["SystemName"] = common.SystemName
 	common.OptionMap["Logo"] = common.Logo
 	common.OptionMap["ServerAddress"] = ""
-	common.OptionMap["WorkerUrl"] = system_setting.WorkerUrl
-	common.OptionMap["WorkerValidKey"] = system_setting.WorkerValidKey
-	common.OptionMap["WorkerAllowHttpImageRequestEnabled"] = strconv.FormatBool(system_setting.WorkerAllowHttpImageRequestEnabled)
+	common.OptionMap["WorkerUrl"] = fetch_url.WorkerUrl
+	common.OptionMap["WorkerValidKey"] = fetch_url.WorkerValidKey
+	common.OptionMap["WorkerAllowHttpImageRequestEnabled"] = strconv.FormatBool(fetch_url.WorkerAllowHttpImageRequestEnabled)
 	common.OptionMap["PayAddress"] = ""
 	common.OptionMap["CustomCallbackAddress"] = ""
 	common.OptionMap["EpayId"] = ""
@@ -384,7 +384,7 @@ func ApplyOption(key string, value string) (err error) {
 		case "SMTPForceAuthLogin":
 			common.SMTPForceAuthLogin = boolValue
 		case "WorkerAllowHttpImageRequestEnabled":
-			system_setting.WorkerAllowHttpImageRequestEnabled = boolValue
+			fetch_url.WorkerAllowHttpImageRequestEnabled = boolValue
 		case "DefaultUseAutoGroup":
 			setting.DefaultUseAutoGroup = boolValue
 		case "ExposeRatioEnabled":
@@ -406,11 +406,11 @@ func ApplyOption(key string, value string) (err error) {
 	case "SMTPToken":
 		common.SMTPToken = value
 	case "ServerAddress":
-		system_setting.ServerAddress = value
+		fetch_url.ServerAddress = value
 	case "WorkerUrl":
-		system_setting.WorkerUrl = value
+		fetch_url.WorkerUrl = value
 	case "WorkerValidKey":
-		system_setting.WorkerValidKey = value
+		fetch_url.WorkerValidKey = value
 	case "PayAddress":
 		pay_subscription.PayAddress = value
 	case "Chats":

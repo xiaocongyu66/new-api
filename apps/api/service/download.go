@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 )
 
 // WorkerRequest Worker请求的数据结构
@@ -22,20 +22,20 @@ type WorkerRequest struct {
 
 // DoWorkerRequest 通过Worker发送请求
 func DoWorkerRequest(req *WorkerRequest) (*http.Response, error) {
-	if !system_setting.EnableWorker() {
+	if !fetch_url.EnableWorker() {
 		return nil, fmt.Errorf("worker not enabled")
 	}
-	if !system_setting.WorkerAllowHttpImageRequestEnabled && !strings.HasPrefix(req.URL, "https") {
+	if !fetch_url.WorkerAllowHttpImageRequestEnabled && !strings.HasPrefix(req.URL, "https") {
 		return nil, fmt.Errorf("only support https url")
 	}
 
 	// SSRF防护：验证请求URL
-	fetchSetting := system_setting.GetFetchSetting()
+	fetchSetting := fetch_url.GetFetchSetting()
 	if err := common.ValidateURLWithFetchSetting(req.URL, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain); err != nil {
 		return nil, fmt.Errorf("request reject: %v", err)
 	}
 
-	workerUrl := system_setting.WorkerUrl
+	workerUrl := fetch_url.WorkerUrl
 	if !strings.HasSuffix(workerUrl, "/") {
 		workerUrl += "/"
 	}
@@ -50,11 +50,11 @@ func DoWorkerRequest(req *WorkerRequest) (*http.Response, error) {
 }
 
 func DoDownloadRequest(originUrl string, reason ...string) (resp *http.Response, err error) {
-	if system_setting.EnableWorker() {
+	if fetch_url.EnableWorker() {
 		common.SysLog(fmt.Sprintf("downloading file from worker: %s, reason: %s", originUrl, strings.Join(reason, ", ")))
 		req := &WorkerRequest{
 			URL: originUrl,
-			Key: system_setting.WorkerValidKey,
+			Key: fetch_url.WorkerValidKey,
 		}
 		return DoWorkerRequest(req)
 	} else {

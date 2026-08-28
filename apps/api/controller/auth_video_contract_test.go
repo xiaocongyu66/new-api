@@ -16,7 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/task"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -34,7 +34,7 @@ func setupAuthVideoContractTestDB(t *testing.T) {
 	previousPasswordRegister := common.PasswordRegisterEnabled
 	previousEmailVerification := common.EmailVerificationEnabled
 	previousTaskProviderFunc := port.GetTaskProviderFunc
-	previousFetchSetting := *system_setting.GetFetchSetting()
+	previousFetchSetting := *fetch_url.GetFetchSetting()
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
@@ -66,7 +66,7 @@ func setupAuthVideoContractTestDB(t *testing.T) {
 	}
 
 	// Disable SSRF protection for test upstream URLs (http://localhost)
-	system_setting.GetFetchSetting().EnableSSRFProtection = false
+	fetch_url.GetFetchSetting().EnableSSRFProtection = false
 
 	t.Cleanup(func() {
 		dbx.DB = previousDB
@@ -77,7 +77,7 @@ func setupAuthVideoContractTestDB(t *testing.T) {
 		common.PasswordRegisterEnabled = previousPasswordRegister
 		common.EmailVerificationEnabled = previousEmailVerification
 		port.GetTaskProviderFunc = previousTaskProviderFunc
-		*system_setting.GetFetchSetting() = previousFetchSetting
+		*fetch_url.GetFetchSetting() = previousFetchSetting
 	})
 }
 

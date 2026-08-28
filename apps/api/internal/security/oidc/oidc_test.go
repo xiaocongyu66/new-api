@@ -1,4 +1,4 @@
-package system_setting
+package oidc
 
 import (
 	"testing"

@@ -8,7 +8,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 )
 
 // UnmarshalMetadata converts a map[string]any metadata to a typed struct via JSON round-trip.
@@ -63,7 +63,7 @@ func DecodeLocalTaskID(id string) (string, error) {
 // BuildProxyURL constructs the video proxy URL using the public task ID.
 // e.g., "https://your-server.com/v1/videos/task_xxxx/content"
 func BuildProxyURL(taskID string) string {
-	return fmt.Sprintf("%s/v1/videos/%s/content", system_setting.ServerAddress, taskID)
+	return fmt.Sprintf("%s/v1/videos/%s/content", fetch_url.ServerAddress, taskID)
 }
 
 // Status-to-progress mapping constants for polling updates.

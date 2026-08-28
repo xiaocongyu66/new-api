@@ -13,7 +13,11 @@ import (
 	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
-	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/new-api/internal/security/discord"
+	"github.com/QuantumNous/new-api/internal/security/oidc"
+	"github.com/QuantumNous/new-api/internal/security/passkey"
+	"github.com/QuantumNous/new-api/internal/security/legal"
+	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"net/http"
 )
 
@@ -42,8 +46,8 @@ func GetStatus(c contract.Context) {
 	common.OptionMapRWMutex.RLock()
 	defer common.OptionMapRWMutex.RUnlock()
 
-	passkeySetting := system_setting.GetPasskeySettings()
-	legalSetting := system_setting.GetLegalSettings()
+	passkeySetting := passkey.GetPasskeySettings()
+	legalSetting := legal.GetLegalSettings()
 
 	data := common.H{
 		"version":                     common.Version,
@@ -51,8 +55,8 @@ func GetStatus(c contract.Context) {
 		"email_verification":          common.EmailVerificationEnabled,
 		"github_oauth":                common.GitHubOAuthEnabled,
 		"github_client_id":            common.GitHubClientId,
-		"discord_oauth":               system_setting.GetDiscordSettings().Enabled,
-		"discord_client_id":           system_setting.GetDiscordSettings().ClientId,
+		"discord_oauth":               discord.GetDiscordSettings().Enabled,
+		"discord_client_id":           discord.GetDiscordSettings().ClientId,
 		"linuxdo_oauth":               common.LinuxDOOAuthEnabled,
 		"linuxdo_client_id":           common.LinuxDOClientId,
 		"linuxdo_minimum_trust_level": common.LinuxDOMinimumTrustLevel,
@@ -64,7 +68,7 @@ func GetStatus(c contract.Context) {
 		"footer_html":                 common.Footer,
 		"wechat_qrcode":               common.WeChatAccountQRCodeImageURL,
 		"wechat_login":                common.WeChatAuthEnabled,
-		"server_address":              system_setting.ServerAddress,
+		"server_address":              fetch_url.ServerAddress,
 		"turnstile_check":             common.TurnstileCheckEnabled,
 		"turnstile_site_key":          common.TurnstileSiteKey,
 		"docs_link":                   manage_subscription.GetGeneralSetting().DocsLink,
@@ -103,10 +107,10 @@ func GetStatus(c contract.Context) {
 		"HeaderNavModules":    common.OptionMap["HeaderNavModules"],
 		"SidebarModulesAdmin": common.OptionMap["SidebarModulesAdmin"],
 
-		"oidc_enabled":                system_setting.GetOIDCSettings().Enabled,
-		"oidc_client_id":              system_setting.GetOIDCSettings().ClientId,
-		"oidc_authorization_endpoint": system_setting.GetOIDCSettings().AuthorizationEndpoint,
-		"oidc_display_name":           system_setting.GetOIDCSettings().GetEffectiveDisplayName(),
+		"oidc_enabled":                oidc.GetOIDCSettings().Enabled,
+		"oidc_client_id":              oidc.GetOIDCSettings().ClientId,
+		"oidc_authorization_endpoint": oidc.GetOIDCSettings().AuthorizationEndpoint,
+		"oidc_display_name":           oidc.GetOIDCSettings().GetEffectiveDisplayName(),
 		"passkey_login":               passkeySetting.Enabled,
 		"passkey_display_name":        passkeySetting.RPDisplayName,
 		"passkey_rp_id":               passkeySetting.RPID,
@@ -193,7 +197,7 @@ func GetUserAgreement(c contract.Context) {
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
-		"data":    system_setting.GetLegalSettings().UserAgreement,
+		"data":    legal.GetLegalSettings().UserAgreement,
 	})
 	return
 }
@@ -202,7 +206,7 @@ func GetPrivacyPolicy(c contract.Context) {
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
-		"data":    system_setting.GetLegalSettings().PrivacyPolicy,
+		"data":    legal.GetLegalSettings().PrivacyPolicy,
 	})
 	return
 }

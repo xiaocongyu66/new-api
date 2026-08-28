@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/new-api/internal/security/passkey"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -48,7 +48,7 @@ func TestPasskeyRegisterFinishRejectsMissingOrWrongProofWithoutConsumingFlow(t *
 	previousType := common.MainDatabaseType()
 	previousRedis := common.RedisEnabled
 	previousSecret := common.SessionSecret
-	settings := system_setting.GetPasskeySettings()
+	settings := passkey.GetPasskeySettings()
 	previousSettings := *settings
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
@@ -58,7 +58,7 @@ func TestPasskeyRegisterFinishRejectsMissingOrWrongProofWithoutConsumingFlow(t *
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	common.SessionSecret = "passkey-register-proof-test-secret"
-	*settings = system_setting.PasskeySettings{Enabled: true}
+	*settings = passkey.PasskeySettings{Enabled: true}
 	t.Cleanup(func() {
 		dbx.DB = previousDB
 		common.SetMainDatabaseType(previousType)

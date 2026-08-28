@@ -18,7 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 )
 
 // videoProxyError returns a standardized OpenAI-style error response.
@@ -174,7 +174,7 @@ func VideoProxy(c contract.Context) {
 	if proxy == "" {
 		validateErr = validateSSRFProtectedFetchURL(videoURL)
 	} else {
-		fetchSetting := system_setting.GetFetchSetting()
+		fetchSetting := fetch_url.GetFetchSetting()
 		validateErr = common.ValidateURLWithFetchSetting(videoURL, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain)
 	}
 	if validateErr != nil {
@@ -532,7 +532,7 @@ func getHTTPClientWithProxy(proxyURL string) (*http.Client, error) {
 
 // validateSSRFProtectedFetchURL validates a URL against the current fetch protection settings.
 func validateSSRFProtectedFetchURL(urlStr string) error {
-	fetchSetting := system_setting.GetFetchSetting()
+	fetchSetting := fetch_url.GetFetchSetting()
 	if fetchSetting == nil || !fetchSetting.EnableSSRFProtection {
 		return nil
 	}

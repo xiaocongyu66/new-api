@@ -11,7 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 )
 
 func NotifyRootUser(t string, subject string, content string) {
@@ -131,11 +131,11 @@ func sendBarkNotify(barkURL string, data dto.Notify) error {
 	var resp *http.Response
 	var err error
 
-	if system_setting.EnableWorker() {
+	if fetch_url.EnableWorker() {
 		// 使用worker发送请求
 		workerReq := &WorkerRequest{
 			URL:    finalURL,
-			Key:    system_setting.WorkerValidKey,
+			Key:    fetch_url.WorkerValidKey,
 			Method: http.MethodGet,
 			Headers: map[string]string{
 				"User-Agent": "OneAPI-Bark-Notify/1.0",
@@ -222,11 +222,11 @@ func sendGotifyNotify(gotifyUrl string, gotifyToken string, priority int, data d
 	var req *http.Request
 	var resp *http.Response
 
-	if system_setting.EnableWorker() {
+	if fetch_url.EnableWorker() {
 		// 使用worker发送请求
 		workerReq := &WorkerRequest{
 			URL:    finalURL,
-			Key:    system_setting.WorkerValidKey,
+			Key:    fetch_url.WorkerValidKey,
 			Method: http.MethodPost,
 			Headers: map[string]string{
 				"Content-Type": "application/json; charset=utf-8",

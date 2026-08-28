@@ -17,7 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 )
 
 // midjourneyPollSummary is the result recorded on a midjourney_poll system task
@@ -294,7 +294,7 @@ func GetAllMidjourney(c contract.Context) {
 
 	if setting.MjForwardUrlEnabled {
 		for i, midjourney := range items {
-			midjourney.ImageUrl = system_setting.ServerAddress + "/mj/image/" + midjourney.MjId
+			midjourney.ImageUrl = fetch_url.ServerAddress + "/mj/image/" + midjourney.MjId
 			items[i] = midjourney
 		}
 	}
@@ -319,7 +319,7 @@ func GetUserMidjourney(c contract.Context) {
 
 	if setting.MjForwardUrlEnabled {
 		for i, midjourney := range items {
-			midjourney.ImageUrl = system_setting.ServerAddress + "/mj/image/" + midjourney.MjId
+			midjourney.ImageUrl = fetch_url.ServerAddress + "/mj/image/" + midjourney.MjId
 			items[i] = midjourney
 		}
 	}

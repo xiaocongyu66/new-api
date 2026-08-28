@@ -24,7 +24,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
@@ -60,7 +60,7 @@ func RelayMidjourneyImage(c contract.Context) {
 	} else {
 		// 渠道代理路径的连接由代理侧建立，无法做拨号时逐 IP 校验，
 		// 因此保留请求前的一次性 SSRF 校验。
-		fetchSetting := system_setting.GetFetchSetting()
+		fetchSetting := fetch_url.GetFetchSetting()
 		validateErr = common.ValidateURLWithFetchSetting(midjourneyTask.ImageUrl, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain)
 	}
 	if validateErr != nil {
@@ -153,7 +153,7 @@ func coverMidjourneyTaskDto(c contract.Context, originTask *model.Midjourney) (m
 	midjourneyTask.FinishTime = originTask.FinishTime
 	midjourneyTask.ImageUrl = ""
 	if originTask.ImageUrl != "" && setting.MjForwardUrlEnabled {
-		midjourneyTask.ImageUrl = system_setting.ServerAddress + "/mj/image/" + originTask.MjId
+		midjourneyTask.ImageUrl = fetch_url.ServerAddress + "/mj/image/" + originTask.MjId
 		if originTask.Status != "SUCCESS" {
 			midjourneyTask.ImageUrl += "?rand=" + strconv.FormatInt(time.Now().UnixNano(), 10)
 		}

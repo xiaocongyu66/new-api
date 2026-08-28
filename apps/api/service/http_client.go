@@ -14,7 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 
 	"golang.org/x/net/proxy"
 )
@@ -63,7 +63,7 @@ func checkProtectedFetchRedirect(req *http.Request, via []*http.Request) error {
 }
 
 func validateURLWithCurrentFetchSetting(urlStr string, applyDomainIPFilter bool) error {
-	fetchSetting := system_setting.GetFetchSetting()
+	fetchSetting := fetch_url.GetFetchSetting()
 	return common.ValidateURLWithFetchSetting(urlStr, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, applyDomainIPFilter && fetchSetting.ApplyIPFilterForDomain)
 }
 
@@ -134,7 +134,7 @@ func GetHttpClient() *http.Client {
 // GetSSRFProtectedHTTPClient 返回带拨号时 SSRF 校验的客户端。
 // ssrfProtectedHTTPClient 由 InitHttpClient 在启动时初始化，运行期只读。
 func GetSSRFProtectedHTTPClient() *http.Client {
-	if fetchSetting := system_setting.GetFetchSetting(); fetchSetting != nil && !fetchSetting.EnableSSRFProtection {
+	if fetchSetting := fetch_url.GetFetchSetting(); fetchSetting != nil && !fetchSetting.EnableSSRFProtection {
 		return GetHttpClient()
 	}
 	return ssrfProtectedHTTPClient

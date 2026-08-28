@@ -2,7 +2,6 @@ package compose
 
 import (
 	"github.com/QuantumNous/new-api/internal/billing"
-	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
@@ -11,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/identity/policy"
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
 	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/security"
 )
 
 type permissionRoute struct {

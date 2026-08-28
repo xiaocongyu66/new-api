@@ -11,7 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 )
 
 // WebhookPayload webhook 通知的负载数据
@@ -57,11 +57,11 @@ func SendWebhookNotify(webhookURL string, secret string, data dto.Notify) error 
 	var req *http.Request
 	var resp *http.Response
 
-	if system_setting.EnableWorker() {
+	if fetch_url.EnableWorker() {
 		// 构建worker请求数据
 		workerReq := &WorkerRequest{
 			URL:    webhookURL,
-			Key:    system_setting.WorkerValidKey,
+			Key:    fetch_url.WorkerValidKey,
 			Method: http.MethodPost,
 			Headers: map[string]string{
 				"Content-Type": "application/json",

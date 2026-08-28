@@ -1,4 +1,4 @@
-package system_setting
+package legal
 
 import "github.com/QuantumNous/new-api/setting/config"
 

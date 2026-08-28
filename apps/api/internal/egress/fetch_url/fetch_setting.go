@@ -1,4 +1,4 @@
-package system_setting
+package fetch_url
 
 import "github.com/QuantumNous/new-api/setting/config"
 

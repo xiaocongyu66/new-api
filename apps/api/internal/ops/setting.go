@@ -17,7 +17,8 @@ import (
 	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	"github.com/QuantumNous/new-api/internal/transport/middleware/status_code"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
-	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/new-api/internal/security/discord"
+	"github.com/QuantumNous/new-api/internal/security/oidc"
 )
 
 func GetOptions(c contract.Context) {
@@ -76,7 +77,7 @@ func UpdateOption(c contract.Context) {
 			return
 		}
 	case "discord.enabled":
-		if option.Value == "true" && system_setting.GetDiscordSettings().ClientId == "" {
+		if option.Value == "true" && discord.GetDiscordSettings().ClientId == "" {
 			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "无法启用 Discord OAuth，请先填入 Discord Client Id 以及 Discord Client Secret！",
@@ -84,7 +85,7 @@ func UpdateOption(c contract.Context) {
 			return
 		}
 	case "oidc.enabled":
-		if option.Value == "true" && system_setting.GetOIDCSettings().ClientId == "" {
+		if option.Value == "true" && oidc.GetOIDCSettings().ClientId == "" {
 			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "无法启用 OIDC 登录，请先填入 OIDC Client Id 以及 OIDC Client Secret！",

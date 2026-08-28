@@ -1,10 +1,11 @@
-package system_setting
+package passkey
 
 import (
 	"net/url"
 	"strings"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"github.com/QuantumNous/new-api/setting/config"
 )
 
@@ -33,10 +34,10 @@ func init() {
 }
 
 func GetPasskeySettings() *PasskeySettings {
-	if defaultPasskeySettings.RPID == "" && ServerAddress != "" {
+	if defaultPasskeySettings.RPID == "" && fetch_url.ServerAddress != "" {
 		// 从ServerAddress提取域名作为RPID
 		// ServerAddress可能是 "https://newapi.pro" 这种格式
-		serverAddr := strings.TrimSpace(ServerAddress)
+		serverAddr := strings.TrimSpace(fetch_url.ServerAddress)
 		if parsed, err := url.Parse(serverAddr); err == nil && parsed.Host != "" {
 			defaultPasskeySettings.RPID = parsed.Host
 		} else {
@@ -44,7 +45,7 @@ func GetPasskeySettings() *PasskeySettings {
 		}
 	}
 	if defaultPasskeySettings.Origins == "" || defaultPasskeySettings.Origins == "[]" {
-		defaultPasskeySettings.Origins = ServerAddress
+		defaultPasskeySettings.Origins = fetch_url.ServerAddress
 	}
 	return &defaultPasskeySettings
 }
