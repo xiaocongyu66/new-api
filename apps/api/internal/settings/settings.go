@@ -23,6 +23,7 @@ import (
 		ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"github.com/QuantumNous/new-api/internal/sensitive"
+	"github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 )
 
 // RetiredThemeOptionKey is the option key of the removed classic frontend
@@ -170,7 +171,7 @@ func SeedOptionMap() {
 	common.OptionMap["WaffoPancakeStoreID"] = pay_subscription.WaffoPancakeStoreID
 	common.OptionMap["WaffoPancakeProductID"] = pay_subscription.WaffoPancakeProductID
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
-	common.OptionMap["Chats"] = setting.Chats2JsonString()
+	common.OptionMap["Chats"] = record_perf_config.Chats2JsonString()
 	common.OptionMap["AutoGroups"] = resolve_group.AutoGroups2JsonString()
 	common.OptionMap["DefaultUseAutoGroup"] = strconv.FormatBool(resolve_group.DefaultUseAutoGroup)
 	common.OptionMap["MaxTokenAutoGroups"] = strconv.Itoa(resolve_group.GetMaxTokenAutoGroups())
@@ -210,11 +211,11 @@ func SeedOptionMap() {
 	common.OptionMap["DataExportInterval"] = strconv.Itoa(common.DataExportInterval)
 	common.OptionMap["DataExportDefaultTime"] = common.DataExportDefaultTime
 	common.OptionMap["DefaultCollapseSidebar"] = strconv.FormatBool(common.DefaultCollapseSidebar)
-	common.OptionMap["MjNotifyEnabled"] = strconv.FormatBool(setting.MjNotifyEnabled)
-	common.OptionMap["MjAccountFilterEnabled"] = strconv.FormatBool(setting.MjAccountFilterEnabled)
-	common.OptionMap["MjModeClearEnabled"] = strconv.FormatBool(setting.MjModeClearEnabled)
-	common.OptionMap["MjForwardUrlEnabled"] = strconv.FormatBool(setting.MjForwardUrlEnabled)
-	common.OptionMap["MjActionCheckSuccessEnabled"] = strconv.FormatBool(setting.MjActionCheckSuccessEnabled)
+	common.OptionMap["MjNotifyEnabled"] = strconv.FormatBool(record_perf_config.MjNotifyEnabled)
+	common.OptionMap["MjAccountFilterEnabled"] = strconv.FormatBool(record_perf_config.MjAccountFilterEnabled)
+	common.OptionMap["MjModeClearEnabled"] = strconv.FormatBool(record_perf_config.MjModeClearEnabled)
+	common.OptionMap["MjForwardUrlEnabled"] = strconv.FormatBool(record_perf_config.MjForwardUrlEnabled)
+	common.OptionMap["MjActionCheckSuccessEnabled"] = strconv.FormatBool(record_perf_config.MjActionCheckSuccessEnabled)
 	common.OptionMap["CheckSensitiveEnabled"] = strconv.FormatBool(sensitive.CheckSensitiveEnabled)
 	common.OptionMap["DemoSiteEnabled"] = strconv.FormatBool(manage_channels.DemoSiteEnabled)
 	common.OptionMap["SelfUseModeEnabled"] = strconv.FormatBool(manage_channels.SelfUseModeEnabled)
@@ -360,15 +361,15 @@ func ApplyOption(key string, value string) (err error) {
 		case "DefaultCollapseSidebar":
 			common.DefaultCollapseSidebar = boolValue
 		case "MjNotifyEnabled":
-			setting.MjNotifyEnabled = boolValue
+			record_perf_config.MjNotifyEnabled = boolValue
 		case "MjAccountFilterEnabled":
-			setting.MjAccountFilterEnabled = boolValue
+			record_perf_config.MjAccountFilterEnabled = boolValue
 		case "MjModeClearEnabled":
-			setting.MjModeClearEnabled = boolValue
+			record_perf_config.MjModeClearEnabled = boolValue
 		case "MjForwardUrlEnabled":
-			setting.MjForwardUrlEnabled = boolValue
+			record_perf_config.MjForwardUrlEnabled = boolValue
 		case "MjActionCheckSuccessEnabled":
-			setting.MjActionCheckSuccessEnabled = boolValue
+			record_perf_config.MjActionCheckSuccessEnabled = boolValue
 		case "CheckSensitiveEnabled":
 			sensitive.CheckSensitiveEnabled = boolValue
 		case "DemoSiteEnabled":
@@ -422,7 +423,7 @@ func ApplyOption(key string, value string) (err error) {
 	case "PayAddress":
 		pay_subscription.PayAddress = value
 	case "Chats":
-		err = setting.UpdateChatsByJsonString(value)
+		err = record_perf_config.UpdateChatsByJsonString(value)
 	case "AutoGroups":
 		err = resolve_group.UpdateAutoGroupsByJsonString(value)
 	case "MaxTokenAutoGroups":

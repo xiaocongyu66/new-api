@@ -12,9 +12,9 @@ import (
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/dto"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 )
 
 // DoMidjourneyHttpRequest forwards an HTTP request to the Midjourney upstream.
@@ -27,13 +27,13 @@ func DoMidjourneyHttpRequest(c contract.Context, timeout time.Duration, fullRequ
 		if err != nil {
 			return MidjourneyErrorWithStatusCodeWrapper(constant.MjErrorUnknown, "read_request_body_failed", http.StatusInternalServerError), nullBytes, err
 		}
-		if !setting.MjAccountFilterEnabled {
+		if !record_perf_config.MjAccountFilterEnabled {
 			delete(mapResult, "accountFilter")
 		}
-		if !setting.MjNotifyEnabled {
+		if !record_perf_config.MjNotifyEnabled {
 			delete(mapResult, "notifyHook")
 		}
-		if setting.MjModeClearEnabled {
+		if record_perf_config.MjModeClearEnabled {
 			if prompt, ok := mapResult["prompt"].(string); ok {
 				prompt = strings.Replace(prompt, "--fast", "", -1)
 				prompt = strings.Replace(prompt, "--relax", "", -1)

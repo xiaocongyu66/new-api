@@ -1,4 +1,4 @@
-package setting
+package record_perf_config
 
 var MjNotifyEnabled = false
 var MjAccountFilterEnabled = false

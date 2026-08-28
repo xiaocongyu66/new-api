@@ -8,7 +8,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
 	console_setting "github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 	"github.com/QuantumNous/new-api/internal/billing/do_checkin"
 	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
@@ -85,8 +84,8 @@ func GetStatus(c contract.Context) {
 		"enable_data_export":            common.DataExportEnabled,
 		"data_export_default_time":      common.DataExportDefaultTime,
 		"default_collapse_sidebar":      common.DefaultCollapseSidebar,
-		"mj_notify_enabled":             setting.MjNotifyEnabled,
-		"chats":                         setting.Chats,
+		"mj_notify_enabled":             console_setting.MjNotifyEnabled,
+		"chats":                         console_setting.Chats,
 		"demo_site_enabled":             manage_channels.DemoSiteEnabled,
 		"self_use_mode_enabled":         manage_channels.SelfUseModeEnabled,
 		"register_enabled":              common.RegisterEnabled,

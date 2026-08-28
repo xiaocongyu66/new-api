@@ -1,4 +1,4 @@
-package setting
+package record_perf_config
 
 import (
 	"encoding/json"

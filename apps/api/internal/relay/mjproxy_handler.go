@@ -23,10 +23,10 @@ import (
 	taskcap "github.com/QuantumNous/new-api/internal/task"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 )
 
 func RelayMidjourneyImage(c contract.Context) {
@@ -152,7 +152,7 @@ func coverMidjourneyTaskDto(c contract.Context, originTask *model.Midjourney) (m
 	midjourneyTask.StartTime = originTask.StartTime
 	midjourneyTask.FinishTime = originTask.FinishTime
 	midjourneyTask.ImageUrl = ""
-	if originTask.ImageUrl != "" && setting.MjForwardUrlEnabled {
+	if originTask.ImageUrl != "" && record_perf_config.MjForwardUrlEnabled {
 		midjourneyTask.ImageUrl = fetch_url.ServerAddress + "/mj/image/" + originTask.MjId
 		if originTask.Status != "SUCCESS" {
 			midjourneyTask.ImageUrl += "?rand=" + strconv.FormatInt(time.Now().UnixNano(), 10)
@@ -477,7 +477,7 @@ func RelayMidjourneySubmit(c contract.Context, relayInfo *relaycommon.RelayInfo)
 		if originTask == nil {
 			return service.MidjourneyErrorWrapper(constant.MjRequestError, "task_not_found")
 		} else { //原任务的Status=SUCCESS，则可以做放大UPSCALE、变换VARIATION等动作，此时必须使用原来的请求地址才能正确处理
-			if setting.MjActionCheckSuccessEnabled {
+			if record_perf_config.MjActionCheckSuccessEnabled {
 				if originTask.Status != "SUCCESS" && relayInfo.RelayMode != relayconstant.RelayModeMidjourneyModal {
 					return service.MidjourneyErrorWrapper(constant.MjRequestError, "task_status_not_success")
 				}

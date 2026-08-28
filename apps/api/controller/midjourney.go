@@ -16,8 +16,8 @@ import (
 	taskcap "github.com/QuantumNous/new-api/internal/task"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
+	"github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 )
 
 // midjourneyPollSummary is the result recorded on a midjourney_poll system task
@@ -292,7 +292,7 @@ func GetAllMidjourney(c contract.Context) {
 	items := taskcap.GetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	total := taskcap.CountAllTasks(queryParams)
 
-	if setting.MjForwardUrlEnabled {
+	if record_perf_config.MjForwardUrlEnabled {
 		for i, midjourney := range items {
 			midjourney.ImageUrl = fetch_url.ServerAddress + "/mj/image/" + midjourney.MjId
 			items[i] = midjourney
@@ -317,7 +317,7 @@ func GetUserMidjourney(c contract.Context) {
 	items := taskcap.GetAllUserTask(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	total := taskcap.CountAllUserTask(userId, queryParams)
 
-	if setting.MjForwardUrlEnabled {
+	if record_perf_config.MjForwardUrlEnabled {
 		for i, midjourney := range items {
 			midjourney.ImageUrl = fetch_url.ServerAddress + "/mj/image/" + midjourney.MjId
 			items[i] = midjourney
