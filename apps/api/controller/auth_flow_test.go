@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/security/oauth"
 	"github.com/QuantumNous/new-api/internal/identity"
+	"github.com/QuantumNous/new-api/internal/security/oauth"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -45,11 +45,11 @@ func (provider *authFlowTestOAuthProvider) GetUserInfo(context.Context, *oauth.O
 	}
 	return &oauth.OAuthUser{ProviderUserID: "external-user"}, nil
 }
-func (*authFlowTestOAuthProvider) IsUserIDTaken(string) bool                      { return false }
+func (*authFlowTestOAuthProvider) IsUserIDTaken(string) bool                         { return false }
 func (*authFlowTestOAuthProvider) FillUserByProviderID(*identity.User, string) error { return nil }
 func (*authFlowTestOAuthProvider) SetProviderUserID(*identity.User, string)          {}
-func (*authFlowTestOAuthProvider) GetProviderPrefix() string                      { return "flow_" }
-func (*authFlowTestOAuthProvider) ProviderUserIDColumn() string                   { return "" }
+func (*authFlowTestOAuthProvider) GetProviderPrefix() string                         { return "flow_" }
+func (*authFlowTestOAuthProvider) ProviderUserIDColumn() string                      { return "" }
 
 func setupAuthFlowControllerTest(t *testing.T) *authFlowTestOAuthProvider {
 	t.Helper()

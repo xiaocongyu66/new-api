@@ -1,7 +1,7 @@
 package compose
 
 import (
-	"github.com/QuantumNous/new-api/controller"
+	"github.com/QuantumNous/new-api/internal/identity/policy"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 
@@ -15,6 +15,6 @@ func registerAuthzRoutes(apiRouter *gin.RouterGroup) {
 	authzRoute := apiRouter.Group("/authz")
 	authzRoute.Use(ginadapter.Middleware(security.AdminAuth()))
 	{
-		authzRoute.GET("/catalog", ginadapter.Handler(controller.GetPermissionCatalog))
+		authzRoute.GET("/catalog", ginadapter.Handler(policy.GetPermissionCatalogHandler))
 	}
 }

@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
@@ -95,7 +96,7 @@ func TestAddTokenEmptyAutoGroupsInheritGlobalAuto(t *testing.T) {
 			}
 
 			ctx, recorder := newTokenAutoGroupsAuthenticatedContext(t, http.MethodPost, "/api/token/", request, user.Id)
-			AddToken(ctx)
+			identity.AddToken(ctx)
 
 			response := decodeAPIResponse(t, recorder)
 			require.True(t, response.Success, response.Message)
@@ -114,7 +115,7 @@ func TestAddTokenPersistsOrderedAutoGroupsSnapshot(t *testing.T) {
 	request["auto_groups"] = []string{"vip", "default"}
 
 	ctx, recorder := newTokenAutoGroupsAuthenticatedContext(t, http.MethodPost, "/api/token/", request, user.Id)
-	AddToken(ctx)
+	identity.AddToken(ctx)
 	require.True(t, decodeAPIResponse(t, recorder).Success)
 
 	var token model.Token
@@ -128,7 +129,7 @@ func TestAddTokenPersistsOrderedAutoGroupsSnapshot(t *testing.T) {
 		c.Set(string(constant.ContextKeyUserGroup), "default")
 		c.Next()
 	})
-	getEngine.GET("/api/token/:id", ginadapter.Handler(GetToken))
+	getEngine.GET("/api/token/:id", ginadapter.Handler(identity.GetToken))
 	getEngine.ServeHTTP(getRecorder, httptest.NewRequest(http.MethodGet, "/api/token/"+stringInt(token.Id), nil))
 	getResponse := decodeAPIResponse(t, getRecorder)
 	require.True(t, getResponse.Success)
@@ -172,7 +173,7 @@ func TestUpdateTokenAutoGroupsTriStateAndNonAutoCleanup(t *testing.T) {
 				request["auto_groups"] = test.value
 			}
 			ctx, recorder := newTokenAutoGroupsAuthenticatedContext(t, http.MethodPut, "/api/token/", request, user.Id)
-			UpdateToken(ctx)
+			identity.UpdateToken(ctx)
 			response := decodeAPIResponse(t, recorder)
 			require.True(t, response.Success, response.Message)
 
@@ -208,7 +209,7 @@ func TestAddTokenRejectsInvalidAutoGroups(t *testing.T) {
 			request["auto_groups"] = test.groups
 
 			ctx, recorder := newTokenAutoGroupsAuthenticatedContext(t, http.MethodPost, "/api/token/", request, user.Id)
-			AddToken(ctx)
+			identity.AddToken(ctx)
 
 			response := decodeAPIResponse(t, recorder)
 			assert.False(t, response.Success)
@@ -224,7 +225,7 @@ func TestGetTokenAutoGroupsReturnsFullFilteredGlobalOrderAndLimit(t *testing.T) 
 	user := setupTokenAutoGroupsControllerTest(t)
 
 	ctx, recorder := newTokenAutoGroupsAuthenticatedContext(t, http.MethodGet, "/api/token/auto-groups", nil, user.Id)
-	GetTokenAutoGroups(ctx)
+	identity.GetTokenAutoGroups(ctx)
 
 	response := decodeAPIResponse(t, recorder)
 	require.True(t, response.Success, response.Message)

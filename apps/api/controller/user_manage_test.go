@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
@@ -59,7 +60,7 @@ func performManageUserRequest(t *testing.T, body string) *httptest.ResponseRecor
 	c.Set("id", 9999)
 	c.Set("role", common.RoleRootUser)
 	c.Set("username", "root-operator")
-	ManageUser(ginadapter.Wrap(c))
+	identity.ManageUser(ginadapter.Wrap(c))
 	return recorder
 }
 

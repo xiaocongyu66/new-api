@@ -83,9 +83,9 @@ func SetApiRouter(router *gin.Engine) {
 			performanceRoute.GET("/logs", ginadapter.Handler(usage.GetLogFiles))
 			performanceRoute.DELETE("/logs", ginadapter.Handler(usage.CleanupLogFiles))
 		}
-		apiRouter.GET("/verification", ginadapter.Middleware(middleware.EmailVerificationRateLimit()), ginadapter.Middleware(middleware.TurnstileCheck()), ginadapter.Handler(controller.SendEmailVerification))
-		apiRouter.GET("/reset_password", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.TurnstileCheck()), ginadapter.Handler(controller.SendPasswordResetEmail))
-		apiRouter.POST("/user/reset", ginadapter.Middleware(middleware.CriticalRateLimit()), anonymousRequestBodyLimit, ginadapter.Handler(controller.ResetPassword))
+		apiRouter.GET("/verification", ginadapter.Middleware(middleware.EmailVerificationRateLimit()), ginadapter.Middleware(middleware.TurnstileCheck()), ginadapter.Handler(identity.SendEmailVerification))
+		apiRouter.GET("/reset_password", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.TurnstileCheck()), ginadapter.Handler(identity.SendPasswordResetEmail))
+		apiRouter.POST("/user/reset", ginadapter.Middleware(middleware.CriticalRateLimit()), anonymousRequestBodyLimit, ginadapter.Handler(identity.ResetPassword))
 		// OAuth routes - specific routes must come before :provider wildcard
 		apiRouter.POST("/oauth/state", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.DisableCache()), ginadapter.Middleware(security.TryUserAuth()), anonymousRequestBodyLimit, ginadapter.Handler(controller.GenerateOAuthCode))
 		apiRouter.POST("/oauth/email/bind", ginadapter.Middleware(security.UserAuth()), ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(identity.EmailBind))
@@ -107,7 +107,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/waffo-pancake/webhook/:env", anonymousRequestBodyLimit, ginadapter.Handler(billing.WaffoPancakeWebhook))
 
 		// Universal secure verification routes
-		apiRouter.POST("/verify", ginadapter.Middleware(security.UserAuth()), ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.DisableCache()), ginadapter.Handler(controller.UniversalVerify))
+		apiRouter.POST("/verify", ginadapter.Middleware(security.UserAuth()), ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.DisableCache()), ginadapter.Handler(identity.UniversalVerify))
 
 		userRoute := apiRouter.Group("/user")
 		{
@@ -154,7 +154,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/waffo/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(billing.RequestWaffoPay))
 				selfRoute.POST("/waffo-pancake/amount", ginadapter.Handler(billing.RequestWaffoPancakeAmount))
 				selfRoute.POST("/waffo-pancake/pay", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(billing.RequestWaffoPancakePay))
-				selfRoute.POST("/aff_transfer", ginadapter.Middleware(middleware.UserCriticalRateLimit("aff-transfer")), ginadapter.Handler(controller.TransferAffQuota))
+				selfRoute.POST("/aff_transfer", ginadapter.Middleware(middleware.UserCriticalRateLimit("aff-transfer")), ginadapter.Middleware(billing.RequirePaymentComplianceMiddleware), ginadapter.Handler(identity.TransferAffQuota))
 				selfRoute.PUT("/setting", ginadapter.Handler(identity.UpdateUserSettingHandler))
 
 				// 2FA routes

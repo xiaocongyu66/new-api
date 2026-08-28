@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
@@ -203,7 +204,7 @@ func TestGetUserModelsFiltersByRequestedGroup(t *testing.T) {
 	defaultContext.Request = httptest.NewRequest(http.MethodGet, "/api/user/models?group=default", nil)
 	defaultContext.Set("id", 1002)
 
-	GetUserModels(ginadapter.Wrap(defaultContext))
+	identity.GetUserModels(ginadapter.Wrap(defaultContext))
 
 	defaultModels := decodeUserModelsResponse(t, defaultRecorder)
 	require.ElementsMatch(t, []string{"zz-default-only-model"}, defaultModels)
@@ -213,7 +214,7 @@ func TestGetUserModelsFiltersByRequestedGroup(t *testing.T) {
 	vipContext.Request = httptest.NewRequest(http.MethodGet, "/api/user/models?group=vip", nil)
 	vipContext.Set("id", 1002)
 
-	GetUserModels(ginadapter.Wrap(vipContext))
+	identity.GetUserModels(ginadapter.Wrap(vipContext))
 
 	require.Empty(t, decodeUserModelsResponse(t, vipRecorder))
 }
@@ -260,7 +261,7 @@ func TestGetUserModelsExpandsAutoGroupsInConfiguredOrder(t *testing.T) {
 	context.Request = httptest.NewRequest(http.MethodGet, "/api/user/models?group=auto", nil)
 	context.Set("id", 1003)
 
-	GetUserModels(ginadapter.Wrap(context))
+	identity.GetUserModels(ginadapter.Wrap(context))
 
 	models := decodeUserModelsResponse(t, recorder)
 	require.Len(t, models, 3)

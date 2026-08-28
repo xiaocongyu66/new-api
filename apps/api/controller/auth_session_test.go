@@ -48,7 +48,7 @@ func TestAuthLogoutRejectsRefreshCookieSessionMismatch(t *testing.T) {
 	c.Headers().Set("X-Auth-Session", sessionA.Session.SID)
 	c.HTTPRequest().AddCookie(&http.Cookie{Name: identity.RefreshCookieName, Value: sessionB.RefreshToken})
 
-	AuthLogout(c)
+	identity.AuthLogout(c)
 
 	assert.Equal(t, http.StatusConflict, recorder.Code)
 	var response struct {

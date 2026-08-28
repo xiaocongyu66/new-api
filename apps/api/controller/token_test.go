@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
@@ -436,7 +437,7 @@ func TestGetAllTokensMasksKeyInResponse(t *testing.T) {
 	seedToken(t, db, 2, "other-user-token", "zzzz1234yyyy5678")
 
 	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/token/?p=1&size=10", nil, 1)
-	GetAllTokens(ctx)
+	identity.GetAllTokens(ctx)
 
 	response := decodeAPIResponse(t, recorder)
 	if !response.Success {
@@ -463,7 +464,7 @@ func TestSearchTokensMasksKeyInResponse(t *testing.T) {
 	token := seedToken(t, db, 1, "searchable-token", "ijkl1234mnop5678")
 
 	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/token/search?keyword=searchable-token&p=1&size=10", nil, 1)
-	SearchTokens(ctx)
+	identity.SearchTokens(ctx)
 
 	response := decodeAPIResponse(t, recorder)
 	if !response.Success {
@@ -489,7 +490,7 @@ func TestGetTokenMasksKeyInResponse(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
 	token := seedToken(t, db, 1, "detail-token", "qrst1234uvwx5678")
 
-	recorder := newTokenIDRouteContext(t, http.MethodGet, "/api/token/:id", "/api/token/"+strconv.Itoa(token.Id), 1, GetToken)
+	recorder := newTokenIDRouteContext(t, http.MethodGet, "/api/token/:id", "/api/token/"+strconv.Itoa(token.Id), 1, identity.GetToken)
 
 	response := decodeAPIResponse(t, recorder)
 	if !response.Success {
@@ -525,7 +526,7 @@ func TestUpdateTokenMasksKeyInResponse(t *testing.T) {
 	}
 
 	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 1)
-	UpdateToken(ctx)
+	identity.UpdateToken(ctx)
 
 	response := decodeAPIResponse(t, recorder)
 	if !response.Success {
@@ -548,7 +549,7 @@ func TestGetTokenKeyRequiresOwnershipAndReturnsFullKey(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
 	token := seedToken(t, db, 1, "owned-token", "owner1234token5678")
 
-	authorizedRecorder := newTokenIDRouteContext(t, http.MethodPost, "/api/token/:id/key", "/api/token/"+strconv.Itoa(token.Id)+"/key", 1, GetTokenKey)
+	authorizedRecorder := newTokenIDRouteContext(t, http.MethodPost, "/api/token/:id/key", "/api/token/"+strconv.Itoa(token.Id)+"/key", 1, identity.GetTokenKey)
 
 	authorizedResponse := decodeAPIResponse(t, authorizedRecorder)
 	if !authorizedResponse.Success {
@@ -563,7 +564,7 @@ func TestGetTokenKeyRequiresOwnershipAndReturnsFullKey(t *testing.T) {
 		t.Fatalf("expected full key %q, got %q", token.GetFullKey(), keyData.Key)
 	}
 
-	unauthorizedRecorder := newTokenIDRouteContext(t, http.MethodPost, "/api/token/:id/key", "/api/token/"+strconv.Itoa(token.Id)+"/key", 2, GetTokenKey)
+	unauthorizedRecorder := newTokenIDRouteContext(t, http.MethodPost, "/api/token/:id/key", "/api/token/"+strconv.Itoa(token.Id)+"/key", 2, identity.GetTokenKey)
 
 	unauthorizedResponse := decodeAPIResponse(t, unauthorizedRecorder)
 	if unauthorizedResponse.Success {

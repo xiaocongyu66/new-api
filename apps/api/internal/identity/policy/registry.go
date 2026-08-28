@@ -1,5 +1,9 @@
 package policy
 
+import (
+	transportcontract "github.com/QuantumNous/new-api/internal/transport/contract"
+)
+
 // ActionDefinition describes a single action exposed by a resource. DefaultRoles
 // lists the role keys that receive this action as part of their baseline grants.
 type ActionDefinition struct {
@@ -105,4 +109,21 @@ func isKnownPermission(permission Permission) bool {
 		}
 	}
 	return false
+}
+
+// GetPermissionCatalogHandler returns the permission schema (resources with
+// actions and display label keys, plus the roles with their baseline grant
+// matrices) used by the client permission editor. It is defined here alongside
+// Catalog and Roles so the schema lives in a single place, and takes the
+// framework-neutral transport contract so replacing the HTTP framework does
+// not touch this handler.
+func GetPermissionCatalogHandler(c transportcontract.Context) {
+	c.JSON(200, map[string]any{
+		"success": true,
+		"message": "",
+		"data": map[string]any{
+			"resources": Catalog(),
+			"roles":     Roles(),
+		},
+	})
 }

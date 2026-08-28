@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/identity/policy"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 
@@ -25,7 +25,7 @@ func TestMigratedHandlerServesThroughGinAdapter(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	engine := gin.New()
-	engine.GET("/api/authz/catalog", ginadapter.Handler(controller.GetPermissionCatalog))
+	engine.GET("/api/authz/catalog", ginadapter.Handler(policy.GetPermissionCatalogHandler))
 
 	recorder := httptest.NewRecorder()
 	engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/authz/catalog", nil))

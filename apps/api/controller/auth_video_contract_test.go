@@ -307,11 +307,10 @@ func TestPasswordResetSendAndConfirmContract(t *testing.T) {
 	setupAuthVideoContractTestDB(t)
 
 	user := createTestUser(t, "resetuser", "oldpassword123")
-
 	// Step 1: Send password reset email
 	req := httptest.NewRequest(http.MethodGet, "/api/reset_password?email="+user.Email, nil)
 	c, recorder := ginadapter.NewSyntheticContext(req)
-	SendPasswordResetEmail(c)
+	identity.SendPasswordResetEmail(c)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 
@@ -327,9 +326,8 @@ func TestPasswordResetSendAndConfirmContract(t *testing.T) {
 	resetJSON, _ := json.Marshal(resetBody)
 	req2 := httptest.NewRequest(http.MethodPost, "/api/user/reset", bytes.NewReader(resetJSON))
 	req2.Header.Set("Content-Type", "application/json")
-
 	c2, recorder2 := ginadapter.NewSyntheticContext(req2)
-	ResetPassword(c2)
+	identity.ResetPassword(c2)
 
 	require.Equal(t, http.StatusOK, recorder2.Code)
 
@@ -366,8 +364,7 @@ func TestPasswordResetInvalidTokenContract(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 
 	c, recorder := ginadapter.NewSyntheticContext(req)
-	ResetPassword(c)
-
+	identity.ResetPassword(c)
 	require.Equal(t, http.StatusOK, recorder.Code)
 
 	var resp common.H

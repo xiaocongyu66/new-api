@@ -79,3 +79,14 @@ func ConfirmPaymentCompliance(c contract.Context) {
 		"confirmed_by":  userId,
 	})
 }
+
+// RequirePaymentComplianceMiddleware adapts RequirePaymentCompliance into a
+// contract.Middleware: the check writes its own error response on failure and
+// stops the chain so the billing gate can sit in the route layer. This keeps
+// the identity domain free of the billing dependency (466c split).
+func RequirePaymentComplianceMiddleware(c contract.Context) {
+	if !RequirePaymentCompliance(c) {
+		return
+	}
+	c.Next()
+}
