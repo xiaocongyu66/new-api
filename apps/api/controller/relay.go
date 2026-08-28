@@ -286,6 +286,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			}, time.Now()); healthErr != nil {
 				logger.LogError(c, fmt.Sprintf("record route success failed: %s", healthErr.Error()))
 			}
+			if handle != nil {
+				clientReqID := c.GetHeader("X-Request-Id")
+				routePath := common.GetContextKeyString(c, constant.ContextKeyRoutePath)
+				routestats.RecordAttempt(requestId, relayInfo.RetryIndex, handle.Key(), routestats.AuditOutcomeSuccess, clientReqID, routePath)
+			}
 			relayInfo.LastError = nil
 			return
 		}
@@ -327,6 +332,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 				observeAttemptTiming()
 				handle.ObserveSuccess(routestats.FatalObservation)
 			}
+		}
+		if handle != nil {
+			clientReqID := c.GetHeader("X-Request-Id")
+			routePath := common.GetContextKeyString(c, constant.ContextKeyRoutePath)
+			routestats.RecordAttempt(requestId, relayInfo.RetryIndex, handle.Key(), routestats.AuditOutcomeFromRouteStats(int(classifyRouteStatsOutcome(newAPIError))), clientReqID, routePath)
 		}
 
 		if !retryEligible {

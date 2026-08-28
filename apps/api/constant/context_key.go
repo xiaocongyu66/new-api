@@ -39,6 +39,9 @@ const (
 	ContextKeyChannelMultiKeyIndex     ContextKey = "channel_multi_key_index"
 	ContextKeyRouteStatsHandle         ContextKey = "route_stats_handle"
 	ContextKeyChannelKey               ContextKey = "channel_key"
+	// ContextKeyRoutePath labels which selection path chose the route unit
+	// (weighted / affinity / specific). Empty when no labelled path ran.
+	ContextKeyRoutePath ContextKey = "route_path"
 
 	ContextKeyAutoGroup           ContextKey = "auto_group"
 	ContextKeyAutoGroupIndex      ContextKey = "auto_group_index"
