@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,9 +36,9 @@ func TestCountBillableToolCallWebSearchDefaultsToPreview(t *testing.T) {
 }
 
 func TestCountBillableToolCallFunctionCallRequiresPrice(t *testing.T) {
-	operation_setting.SetToolPriceForTest("my_priced_fn", 5.0)
+	price_expression.SetToolPriceForTest("my_priced_fn", 5.0)
 	t.Cleanup(func() {
-		operation_setting.DeleteToolPriceForTest("my_priced_fn")
+		price_expression.DeleteToolPriceForTest("my_priced_fn")
 	})
 
 	info := &RelayInfo{OriginModelName: "gpt-5.1"}

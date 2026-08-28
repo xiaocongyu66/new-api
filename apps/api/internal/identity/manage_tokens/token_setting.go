@@ -1,4 +1,4 @@
-package operation_setting
+package manage_tokens
 
 import "github.com/QuantumNous/new-api/setting/config"
 

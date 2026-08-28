@@ -17,7 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -128,20 +128,20 @@ func withTieredBillingConfig(t *testing.T, modes map[string]string, exprs map[st
 func withSelfUseModeDisabled(t *testing.T) {
 	t.Helper()
 
-	original := operation_setting.SelfUseModeEnabled
-	operation_setting.SelfUseModeEnabled = false
+	original := manage_channels.SelfUseModeEnabled
+	manage_channels.SelfUseModeEnabled = false
 	t.Cleanup(func() {
-		operation_setting.SelfUseModeEnabled = original
+		manage_channels.SelfUseModeEnabled = original
 	})
 }
 
 func withSelfUseModeEnabled(t *testing.T) {
 	t.Helper()
 
-	original := operation_setting.SelfUseModeEnabled
-	operation_setting.SelfUseModeEnabled = true
+	original := manage_channels.SelfUseModeEnabled
+	manage_channels.SelfUseModeEnabled = true
 	t.Cleanup(func() {
-		operation_setting.SelfUseModeEnabled = original
+		manage_channels.SelfUseModeEnabled = original
 	})
 }
 

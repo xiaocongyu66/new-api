@@ -10,7 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )
@@ -59,20 +59,20 @@ func TestWaffoPancakeWebhookRejectsInvalidSignatureViaUnauthorized(t *testing.T)
 	gin.SetMode(gin.TestMode)
 
 	// Setup minimal config to enable the webhook
-	prevCompliance := operation_setting.GetPaymentSetting().ComplianceConfirmed
-	prevTermsVersion := operation_setting.GetPaymentSetting().ComplianceTermsVersion
+	prevCompliance := pay_subscription.GetPaymentSetting().ComplianceConfirmed
+	prevTermsVersion := pay_subscription.GetPaymentSetting().ComplianceTermsVersion
 	prevMerchantID := setting.WaffoPancakeMerchantID
 	prevPrivateKey := setting.WaffoPancakePrivateKey
 	prevProductID := setting.WaffoPancakeProductID
 	t.Cleanup(func() {
-		operation_setting.GetPaymentSetting().ComplianceConfirmed = prevCompliance
-		operation_setting.GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
+		pay_subscription.GetPaymentSetting().ComplianceConfirmed = prevCompliance
+		pay_subscription.GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
 		setting.WaffoPancakeMerchantID = prevMerchantID
 		setting.WaffoPancakePrivateKey = prevPrivateKey
 		setting.WaffoPancakeProductID = prevProductID
 	})
-	operation_setting.GetPaymentSetting().ComplianceConfirmed = true
-	operation_setting.GetPaymentSetting().ComplianceTermsVersion = operation_setting.CurrentComplianceTermsVersion
+	pay_subscription.GetPaymentSetting().ComplianceConfirmed = true
+	pay_subscription.GetPaymentSetting().ComplianceTermsVersion = pay_subscription.CurrentComplianceTermsVersion
 	setting.WaffoPancakeMerchantID = "merch_test"
 	setting.WaffoPancakePrivateKey = "dummy_private_key"
 	setting.WaffoPancakeProductID = "prod_test"

@@ -4,11 +4,11 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 )
 
 func isPaymentComplianceConfirmed() bool {
-	return operation_setting.IsPaymentComplianceConfirmed()
+	return pay_subscription.IsPaymentComplianceConfirmed()
 }
 
 func isStripeTopUpEnabled() bool {
@@ -96,13 +96,13 @@ func isEpayTopUpEnabled() bool {
 	if !isPaymentComplianceConfirmed() {
 		return false
 	}
-	return isEpayWebhookConfigured() && len(operation_setting.PayMethods) > 0
+	return isEpayWebhookConfigured() && len(pay_subscription.PayMethods) > 0
 }
 
 func isEpayWebhookConfigured() bool {
-	return strings.TrimSpace(operation_setting.PayAddress) != "" &&
-		strings.TrimSpace(operation_setting.EpayId) != "" &&
-		strings.TrimSpace(operation_setting.EpayKey) != ""
+	return strings.TrimSpace(pay_subscription.PayAddress) != "" &&
+		strings.TrimSpace(pay_subscription.EpayId) != "" &&
+		strings.TrimSpace(pay_subscription.EpayKey) != ""
 }
 
 func isEpayWebhookEnabled() bool {

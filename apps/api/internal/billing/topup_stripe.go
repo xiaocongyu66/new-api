@@ -14,8 +14,9 @@ import (
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 
+	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
+	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/shopspring/decimal"
 	"github.com/stripe/stripe-go/v81"
 	"github.com/stripe/stripe-go/v81/checkout/session"
@@ -422,7 +423,7 @@ func getStripeCreditedQuota(amount int64, group string) decimal.Decimal {
 
 func getStripePayMoney(amount float64, group string) float64 {
 	originalAmount := amount
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
+	if manage_subscription.GetQuotaDisplayType() == manage_subscription.QuotaDisplayTypeTokens {
 		amount = amount / common.QuotaPerUnit
 	}
 	// Using float64 for monetary calculations is acceptable here due to the small amounts involved
@@ -432,7 +433,7 @@ func getStripePayMoney(amount float64, group string) float64 {
 	}
 	// apply optional preset discount by the original request amount (if configured), default 1.0
 	discount := 1.0
-	if ds, ok := operation_setting.GetPaymentSetting().AmountDiscount[int(originalAmount)]; ok {
+	if ds, ok := pay_subscription.GetPaymentSetting().AmountDiscount[int(originalAmount)]; ok {
 		if ds > 0 {
 			discount = ds
 		}
@@ -443,7 +444,7 @@ func getStripePayMoney(amount float64, group string) float64 {
 
 func getStripeMinTopup() int64 {
 	minTopup := setting.StripeMinTopUp
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
+	if manage_subscription.GetQuotaDisplayType() == manage_subscription.QuotaDisplayTypeTokens {
 		minTopup = minTopup * int(common.QuotaPerUnit)
 	}
 	return int64(minTopup)

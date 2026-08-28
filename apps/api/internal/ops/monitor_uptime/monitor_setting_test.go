@@ -1,4 +1,4 @@
-package operation_setting
+package monitor_uptime
 
 import (
 	"testing"

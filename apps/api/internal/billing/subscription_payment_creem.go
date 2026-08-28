@@ -10,7 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/thanhpk/randstr"
 )
 
@@ -99,10 +99,10 @@ func SubscriptionRequestCreemPay(c contract.Context) {
 
 	// Reuse Creem checkout generator by building a lightweight product reference.
 	currency := "USD"
-	switch operation_setting.GetGeneralSetting().QuotaDisplayType {
-	case operation_setting.QuotaDisplayTypeCNY:
+	switch manage_subscription.GetGeneralSetting().QuotaDisplayType {
+	case manage_subscription.QuotaDisplayTypeCNY:
 		currency = "CNY"
-	case operation_setting.QuotaDisplayTypeUSD:
+	case manage_subscription.QuotaDisplayTypeUSD:
 		currency = "USD"
 	default:
 		currency = "USD"

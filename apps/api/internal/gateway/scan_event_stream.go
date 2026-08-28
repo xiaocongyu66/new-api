@@ -15,8 +15,8 @@ import (
 	"github.com/QuantumNous/new-api/internal/logger"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 
+	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/bytedance/gopkg/util/gopool"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
@@ -168,7 +168,7 @@ func StreamScannerHandler(
 		})
 	}
 
-	generalSettings := operation_setting.GetGeneralSetting()
+	generalSettings := manage_subscription.GetGeneralSetting()
 	pingEnabled := generalSettings.PingIntervalEnabled && !info.DisablePing
 	pingInterval := time.Duration(generalSettings.PingIntervalSeconds) * time.Second
 	if pingInterval <= 0 {

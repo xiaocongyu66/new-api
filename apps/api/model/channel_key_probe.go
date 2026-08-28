@@ -7,7 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 )
 
 // ProbeChannelKeyFunc verifies one channel key without spending tokens and
@@ -24,7 +24,7 @@ var ProbeChannelKeyFunc func(channelID, keyIndex int) (valid bool, decisive bool
 // remaining keys of a multi-key channel keep serving. An inconclusive probe
 // changes nothing: the unit stays disabled, its siblings stay untouched.
 func verifyKeyAndCascade(channelID, keyIndex int, now time.Time) {
-	cfg := operation_setting.GetChannelModelHealthSetting()
+	cfg := health_store.GetChannelModelHealthSetting()
 	if !cfg.KeyProbeEnabled || ProbeChannelKeyFunc == nil {
 		return
 	}

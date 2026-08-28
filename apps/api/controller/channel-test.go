@@ -33,7 +33,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/ops/monitor_uptime"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/samber/lo"
 	"github.com/tidwall/gjson"
@@ -1037,10 +1037,10 @@ func runChannelTestTask(ctx context.Context, mode string, notify bool, report fu
 		return channelTestSummary{}, err
 	}
 	if strings.TrimSpace(mode) == "" {
-		mode = operation_setting.GetMonitorSetting().ChannelTestMode
+		mode = monitor_uptime.GetMonitorSetting().ChannelTestMode
 	}
 	selected := selectChannelsForAutomaticTest(channels, mode)
-	allowDisable := mode != operation_setting.ChannelTestModePassiveRecovery
+	allowDisable := mode != monitor_uptime.ChannelTestModePassiveRecovery
 	summary := performChannelTests(ctx, selected, testUserID, allowDisable, report)
 	if notify && (ctx == nil || ctx.Err() == nil) {
 		service.NotifyRootUser(dto.NotifyTypeChannelTest, "通道测试完成", "所有通道测试已完成")
@@ -1054,10 +1054,10 @@ func selectChannelsForAutomaticTest(channels []*model.Channel, mode string) []*m
 		if channel.Status == common.ChannelStatusManuallyDisabled {
 			continue
 		}
-		if mode == operation_setting.ChannelTestModeAutoBanOnly && !channel.GetAutoBan() {
+		if mode == monitor_uptime.ChannelTestModeAutoBanOnly && !channel.GetAutoBan() {
 			continue
 		}
-		if mode == operation_setting.ChannelTestModePassiveRecovery && channel.Status != common.ChannelStatusAutoDisabled {
+		if mode == monitor_uptime.ChannelTestModePassiveRecovery && channel.Status != common.ChannelStatusAutoDisabled {
 			continue
 		}
 		selected = append(selected, channel)
@@ -1070,7 +1070,7 @@ func selectChannelsForAutomaticTest(channels []*model.Channel, mode string) []*m
 // rejected so the caller does not mistake a scheduled run for this manual one.
 func TestAllChannels(c contract.Context) {
 	task, created, err := ops.EnqueueSystemTask(model.SystemTaskTypeChannelTest, channelTestTaskPayload{
-		Mode:   operation_setting.ChannelTestModeScheduledAll,
+		Mode:   monitor_uptime.ChannelTestModeScheduledAll,
 		Notify: true,
 	})
 	if err != nil {

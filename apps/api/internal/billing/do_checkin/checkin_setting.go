@@ -1,4 +1,4 @@
-package operation_setting
+package do_checkin
 
 import "github.com/QuantumNous/new-api/setting/config"
 

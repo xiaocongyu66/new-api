@@ -15,7 +15,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -87,24 +87,24 @@ func TestWaffoWebhookRejectsInvalidSignatureViaBadRequest(t *testing.T) {
 	privateKeyB64, publicCertB64 := waffoTestKeys(t)
 
 	// Setup all required settings for Waffo webhook to be enabled
-	prevCompliance := operation_setting.GetPaymentSetting().ComplianceConfirmed
-	prevTermsVersion := operation_setting.GetPaymentSetting().ComplianceTermsVersion
+	prevCompliance := pay_subscription.GetPaymentSetting().ComplianceConfirmed
+	prevTermsVersion := pay_subscription.GetPaymentSetting().ComplianceTermsVersion
 	prevEnabled := setting.WaffoEnabled
 	prevSandbox := setting.WaffoSandbox
 	prevApiKey := setting.WaffoApiKey
 	prevPrivateKey := setting.WaffoPrivateKey
 	prevPublicCert := setting.WaffoPublicCert
 	t.Cleanup(func() {
-		operation_setting.GetPaymentSetting().ComplianceConfirmed = prevCompliance
-		operation_setting.GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
+		pay_subscription.GetPaymentSetting().ComplianceConfirmed = prevCompliance
+		pay_subscription.GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
 		setting.WaffoEnabled = prevEnabled
 		setting.WaffoSandbox = prevSandbox
 		setting.WaffoApiKey = prevApiKey
 		setting.WaffoPrivateKey = prevPrivateKey
 		setting.WaffoPublicCert = prevPublicCert
 	})
-	operation_setting.GetPaymentSetting().ComplianceConfirmed = true
-	operation_setting.GetPaymentSetting().ComplianceTermsVersion = operation_setting.CurrentComplianceTermsVersion
+	pay_subscription.GetPaymentSetting().ComplianceConfirmed = true
+	pay_subscription.GetPaymentSetting().ComplianceTermsVersion = pay_subscription.CurrentComplianceTermsVersion
 	setting.WaffoEnabled = true
 	setting.WaffoSandbox = false
 	setting.WaffoApiKey = "waffo_api_key"
@@ -134,24 +134,24 @@ func TestWaffoWebhookAcceptsValidSignatureAndReturnsOK(t *testing.T) {
 	privateKeyB64, publicCertB64 := waffoTestKeys(t)
 
 	// Setup all required settings
-	prevCompliance := operation_setting.GetPaymentSetting().ComplianceConfirmed
-	prevTermsVersion := operation_setting.GetPaymentSetting().ComplianceTermsVersion
+	prevCompliance := pay_subscription.GetPaymentSetting().ComplianceConfirmed
+	prevTermsVersion := pay_subscription.GetPaymentSetting().ComplianceTermsVersion
 	prevEnabled := setting.WaffoEnabled
 	prevSandbox := setting.WaffoSandbox
 	prevApiKey := setting.WaffoApiKey
 	prevPrivateKey := setting.WaffoPrivateKey
 	prevPublicCert := setting.WaffoPublicCert
 	t.Cleanup(func() {
-		operation_setting.GetPaymentSetting().ComplianceConfirmed = prevCompliance
-		operation_setting.GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
+		pay_subscription.GetPaymentSetting().ComplianceConfirmed = prevCompliance
+		pay_subscription.GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
 		setting.WaffoEnabled = prevEnabled
 		setting.WaffoSandbox = prevSandbox
 		setting.WaffoApiKey = prevApiKey
 		setting.WaffoPrivateKey = prevPrivateKey
 		setting.WaffoPublicCert = prevPublicCert
 	})
-	operation_setting.GetPaymentSetting().ComplianceConfirmed = true
-	operation_setting.GetPaymentSetting().ComplianceTermsVersion = operation_setting.CurrentComplianceTermsVersion
+	pay_subscription.GetPaymentSetting().ComplianceConfirmed = true
+	pay_subscription.GetPaymentSetting().ComplianceTermsVersion = pay_subscription.CurrentComplianceTermsVersion
 	setting.WaffoEnabled = true
 	setting.WaffoSandbox = false
 	setting.WaffoApiKey = "waffo_api_key"

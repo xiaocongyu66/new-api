@@ -11,8 +11,8 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 
+	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 	"github.com/samber/lo"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -135,7 +135,7 @@ func GetChannel(group string, model string, retry int, requestPath string, exclu
 	// Weighted random with EWMA health adjustment and capped cooldown ejection.
 	healthMgr := GetChannelHealthManager()
 	maxEjectionPercent := 0
-	if cfg := operation_setting.GetChannelHealthSetting(); cfg != nil {
+	if cfg := health_store.GetChannelHealthSetting(); cfg != nil {
 		maxEjectionPercent = cfg.CooldownMaxEjectionPercent
 	}
 	channelIDs := make([]int, 0, len(abilities))

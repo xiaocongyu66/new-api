@@ -1,13 +1,13 @@
 package service
 
 import (
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 )
 
 func GetCallbackAddress() string {
-	if operation_setting.CustomCallbackAddress == "" {
+	if pay_subscription.CustomCallbackAddress == "" {
 		return system_setting.ServerAddress
 	}
-	return operation_setting.CustomCallbackAddress
+	return pay_subscription.CustomCallbackAddress
 }

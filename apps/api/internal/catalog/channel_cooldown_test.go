@@ -13,26 +13,26 @@ import (
 
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 )
 
-func configureCooldownTest(t *testing.T, cfg *operation_setting.ChannelHealthSetting, now *time.Time) {
+func configureCooldownTest(t *testing.T, cfg *health_store.ChannelHealthSetting, now *time.Time) {
 	t.Helper()
 
-	previous := *operation_setting.GetChannelHealthSetting()
+	previous := *health_store.GetChannelHealthSetting()
 	previousNow := model.ChannelHealthNow
-	operation_setting.SetChannelHealthSetting(cfg)
+	health_store.SetChannelHealthSetting(cfg)
 	if now != nil {
 		model.ChannelHealthNow = func() time.Time { return *now }
 	}
 	t.Cleanup(func() {
 		model.ChannelHealthNow = previousNow
-		operation_setting.SetChannelHealthSetting(&previous)
+		health_store.SetChannelHealthSetting(&previous)
 	})
 }
 
-func cooldownTestSetting() *operation_setting.ChannelHealthSetting {
-	return operation_setting.DefaultChannelHealthSetting()
+func cooldownTestSetting() *health_store.ChannelHealthSetting {
+	return health_store.DefaultChannelHealthSetting()
 }
 
 func TestChannelCooldownTriggersOnConsecutiveThrottleAndFatal(t *testing.T) {
@@ -123,7 +123,7 @@ func TestChannelCooldownKillSwitchAndLegacyRecordOutcome(t *testing.T) {
 	require.Zero(t, mgr.EffectiveWeight(channelID, 10))
 
 	cfg.Enabled = false
-	operation_setting.SetChannelHealthSetting(cfg)
+	health_store.SetChannelHealthSetting(cfg)
 	assert.InDelta(t, 10.0, mgr.EffectiveWeight(channelID, 10), 1e-9)
 }
 
@@ -264,7 +264,7 @@ func resetChannelHealthManagerForTest() *model.ChannelHealthManager {
 
 // setTestConfigCapability mirrors model's setTestConfig helper.
 func setTestConfigCapability(enabled bool, alpha, minScore float64, minRequests int) {
-	operation_setting.SetChannelHealthSetting(&operation_setting.ChannelHealthSetting{
+	health_store.SetChannelHealthSetting(&health_store.ChannelHealthSetting{
 		Enabled:     enabled,
 		Alpha:       alpha,
 		MinScore:    minScore,

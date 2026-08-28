@@ -6,7 +6,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/authtoken"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -1456,7 +1456,7 @@ func UpdateUserSettingHandler(c contract.Context) {
 }
 
 func TopUp(c contract.Context) {
-	if !operation_setting.IsPaymentComplianceConfirmed() {
+	if !pay_subscription.IsPaymentComplianceConfirmed() {
 		common.CtxApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
 		return
 	}

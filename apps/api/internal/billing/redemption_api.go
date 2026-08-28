@@ -11,7 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 )
 
 func GetAllRedemptions(c contract.Context) {
@@ -62,7 +62,7 @@ func GetRedemption(c contract.Context) {
 }
 
 func AddRedemption(c contract.Context) {
-	if !operation_setting.IsPaymentComplianceConfirmed() {
+	if !pay_subscription.IsPaymentComplianceConfirmed() {
 		common.CtxApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
 		return
 	}

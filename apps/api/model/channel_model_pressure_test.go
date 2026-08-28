@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -131,7 +131,7 @@ func TestPressureOnRemove_FlooredAtZero(t *testing.T) {
 }
 
 func TestDefaultChannelModelHealthSetting_NewFields(t *testing.T) {
-	s := operation_setting.DefaultChannelModelHealthSetting()
+	s := health_store.DefaultChannelModelHealthSetting()
 	require.NotNil(t, s)
 	assert.Equal(t, 20, s.EmergencyThreshold)
 	assert.Equal(t, 50, s.WarningThreshold)
@@ -144,49 +144,49 @@ func TestDefaultChannelModelHealthSetting_NewFields(t *testing.T) {
 func TestValidateChannelModelHealthSettingValue_NewKeys(t *testing.T) {
 	// EmergencyThreshold / WarningThreshold: 0–100.
 	for _, key := range []string{"EmergencyThreshold", "WarningThreshold"} {
-		assert.NoError(t, operation_setting.ValidateChannelModelHealthSettingValue(key, "0"))
-		assert.NoError(t, operation_setting.ValidateChannelModelHealthSettingValue(key, "50"))
-		assert.NoError(t, operation_setting.ValidateChannelModelHealthSettingValue(key, "100"))
-		assert.Error(t, operation_setting.ValidateChannelModelHealthSettingValue(key, "101"))
-		assert.Error(t, operation_setting.ValidateChannelModelHealthSettingValue(key, "-1"))
-		assert.Error(t, operation_setting.ValidateChannelModelHealthSettingValue(key, "abc"))
+		assert.NoError(t, health_store.ValidateChannelModelHealthSettingValue(key, "0"))
+		assert.NoError(t, health_store.ValidateChannelModelHealthSettingValue(key, "50"))
+		assert.NoError(t, health_store.ValidateChannelModelHealthSettingValue(key, "100"))
+		assert.Error(t, health_store.ValidateChannelModelHealthSettingValue(key, "101"))
+		assert.Error(t, health_store.ValidateChannelModelHealthSettingValue(key, "-1"))
+		assert.Error(t, health_store.ValidateChannelModelHealthSettingValue(key, "abc"))
 	}
 
 	// AcceleratedDecayStep / NormalDecayStep: >= 1.
 	for _, key := range []string{"AcceleratedDecayStep", "NormalDecayStep"} {
-		assert.NoError(t, operation_setting.ValidateChannelModelHealthSettingValue(key, "1"))
-		assert.NoError(t, operation_setting.ValidateChannelModelHealthSettingValue(key, "5"))
-		assert.Error(t, operation_setting.ValidateChannelModelHealthSettingValue(key, "0"))
-		assert.Error(t, operation_setting.ValidateChannelModelHealthSettingValue(key, "-1"))
-		assert.Error(t, operation_setting.ValidateChannelModelHealthSettingValue(key, "1.5"))
+		assert.NoError(t, health_store.ValidateChannelModelHealthSettingValue(key, "1"))
+		assert.NoError(t, health_store.ValidateChannelModelHealthSettingValue(key, "5"))
+		assert.Error(t, health_store.ValidateChannelModelHealthSettingValue(key, "0"))
+		assert.Error(t, health_store.ValidateChannelModelHealthSettingValue(key, "-1"))
+		assert.Error(t, health_store.ValidateChannelModelHealthSettingValue(key, "1.5"))
 	}
 
 	// KeyProbeEnabled: only "true"/"false".
-	assert.NoError(t, operation_setting.ValidateChannelModelHealthSettingValue("KeyProbeEnabled", "true"))
-	assert.NoError(t, operation_setting.ValidateChannelModelHealthSettingValue("KeyProbeEnabled", "false"))
-	assert.Error(t, operation_setting.ValidateChannelModelHealthSettingValue("KeyProbeEnabled", "1"))
-	assert.Error(t, operation_setting.ValidateChannelModelHealthSettingValue("KeyProbeEnabled", "0"))
-	assert.Error(t, operation_setting.ValidateChannelModelHealthSettingValue("KeyProbeEnabled", "yes"))
+	assert.NoError(t, health_store.ValidateChannelModelHealthSettingValue("KeyProbeEnabled", "true"))
+	assert.NoError(t, health_store.ValidateChannelModelHealthSettingValue("KeyProbeEnabled", "false"))
+	assert.Error(t, health_store.ValidateChannelModelHealthSettingValue("KeyProbeEnabled", "1"))
+	assert.Error(t, health_store.ValidateChannelModelHealthSettingValue("KeyProbeEnabled", "0"))
+	assert.Error(t, health_store.ValidateChannelModelHealthSettingValue("KeyProbeEnabled", "yes"))
 }
 
 func TestUpdateChannelModelHealthSettingValue_KeyProbeEnabled(t *testing.T) {
-	orig := operation_setting.GetChannelModelHealthSetting()
-	t.Cleanup(func() { operation_setting.RestoreChannelModelHealthSetting(orig) })
+	orig := health_store.GetChannelModelHealthSetting()
+	t.Cleanup(func() { health_store.RestoreChannelModelHealthSetting(orig) })
 
-	require.NoError(t, operation_setting.UpdateChannelModelHealthSettingValue("KeyProbeEnabled", "false"))
-	assert.False(t, operation_setting.GetChannelModelHealthSetting().KeyProbeEnabled)
+	require.NoError(t, health_store.UpdateChannelModelHealthSettingValue("KeyProbeEnabled", "false"))
+	assert.False(t, health_store.GetChannelModelHealthSetting().KeyProbeEnabled)
 
-	require.NoError(t, operation_setting.UpdateChannelModelHealthSettingValue("KeyProbeEnabled", "true"))
-	assert.True(t, operation_setting.GetChannelModelHealthSetting().KeyProbeEnabled)
+	require.NoError(t, health_store.UpdateChannelModelHealthSettingValue("KeyProbeEnabled", "true"))
+	assert.True(t, health_store.GetChannelModelHealthSetting().KeyProbeEnabled)
 
 	// Other fields unchanged.
-	updated := operation_setting.GetChannelModelHealthSetting()
+	updated := health_store.GetChannelModelHealthSetting()
 	assert.Equal(t, orig.EmergencyThreshold, updated.EmergencyThreshold)
 }
 
 func TestUpdateChannelModelHealthSettingValue_IntegerKeys(t *testing.T) {
-	orig := operation_setting.GetChannelModelHealthSetting()
-	t.Cleanup(func() { operation_setting.RestoreChannelModelHealthSetting(orig) })
+	orig := health_store.GetChannelModelHealthSetting()
+	t.Cleanup(func() { health_store.RestoreChannelModelHealthSetting(orig) })
 
 	intKeys := map[string]int{
 		"EmergencyThreshold":   15,
@@ -195,9 +195,9 @@ func TestUpdateChannelModelHealthSettingValue_IntegerKeys(t *testing.T) {
 		"NormalDecayStep":      2,
 	}
 	for key, val := range intKeys {
-		require.NoError(t, operation_setting.UpdateChannelModelHealthSettingValue(key, strconv.Itoa(val)))
+		require.NoError(t, health_store.UpdateChannelModelHealthSettingValue(key, strconv.Itoa(val)))
 	}
-	updated := operation_setting.GetChannelModelHealthSetting()
+	updated := health_store.GetChannelModelHealthSetting()
 	assert.Equal(t, 15, updated.EmergencyThreshold)
 	assert.Equal(t, 45, updated.WarningThreshold)
 	assert.Equal(t, 3, updated.AcceleratedDecayStep)

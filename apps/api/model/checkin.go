@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/billing/do_checkin"
 	"gorm.io/gorm"
 )
 
@@ -55,7 +55,7 @@ func HasCheckedInToday(userId int) (bool, error) {
 // MySQL 和 PostgreSQL 使用事务保证原子性
 // SQLite 不支持嵌套事务，使用顺序操作 + 手动回滚
 func UserCheckin(userId int) (*Checkin, error) {
-	setting := operation_setting.GetCheckinSetting()
+	setting := do_checkin.GetCheckinSetting()
 	if !setting.Enabled {
 		return nil, errors.New("签到功能未启用")
 	}

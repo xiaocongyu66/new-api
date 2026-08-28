@@ -4,13 +4,13 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/stretchr/testify/require"
 )
 
 func confirmPaymentComplianceForTest(t *testing.T) {
 	t.Helper()
-	paymentSetting := operation_setting.GetPaymentSetting()
+	paymentSetting := pay_subscription.GetPaymentSetting()
 	originalConfirmed := paymentSetting.ComplianceConfirmed
 	originalTermsVersion := paymentSetting.ComplianceTermsVersion
 	t.Cleanup(func() {
@@ -18,7 +18,7 @@ func confirmPaymentComplianceForTest(t *testing.T) {
 		paymentSetting.ComplianceTermsVersion = originalTermsVersion
 	})
 	paymentSetting.ComplianceConfirmed = true
-	paymentSetting.ComplianceTermsVersion = operation_setting.CurrentComplianceTermsVersion
+	paymentSetting.ComplianceTermsVersion = pay_subscription.CurrentComplianceTermsVersion
 }
 
 func TestStripeWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
@@ -144,26 +144,26 @@ func TestWaffoPancakeWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 
 func TestEpayWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 	confirmPaymentComplianceForTest(t)
-	originalPayAddress := operation_setting.PayAddress
-	originalEpayID := operation_setting.EpayId
-	originalEpayKey := operation_setting.EpayKey
-	originalPayMethods := operation_setting.PayMethods
+	originalPayAddress := pay_subscription.PayAddress
+	originalEpayID := pay_subscription.EpayId
+	originalEpayKey := pay_subscription.EpayKey
+	originalPayMethods := pay_subscription.PayMethods
 	t.Cleanup(func() {
-		operation_setting.PayAddress = originalPayAddress
-		operation_setting.EpayId = originalEpayID
-		operation_setting.EpayKey = originalEpayKey
-		operation_setting.PayMethods = originalPayMethods
+		pay_subscription.PayAddress = originalPayAddress
+		pay_subscription.EpayId = originalEpayID
+		pay_subscription.EpayKey = originalEpayKey
+		pay_subscription.PayMethods = originalPayMethods
 	})
 
-	operation_setting.PayAddress = "https://pay.example.com"
-	operation_setting.EpayId = "epay_id"
-	operation_setting.EpayKey = ""
-	operation_setting.PayMethods = []map[string]string{{"type": "alipay"}}
+	pay_subscription.PayAddress = "https://pay.example.com"
+	pay_subscription.EpayId = "epay_id"
+	pay_subscription.EpayKey = ""
+	pay_subscription.PayMethods = []map[string]string{{"type": "alipay"}}
 	require.False(t, isEpayWebhookEnabled())
 
-	operation_setting.EpayKey = "epay_key"
+	pay_subscription.EpayKey = "epay_key"
 	require.True(t, isEpayWebhookEnabled())
 
-	operation_setting.PayMethods = nil
+	pay_subscription.PayMethods = nil
 	require.False(t, isEpayWebhookEnabled())
 }

@@ -30,8 +30,8 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 
+	"github.com/QuantumNous/new-api/internal/transport/middleware/status_code"
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/samber/lo"
 
@@ -387,10 +387,10 @@ func shouldRetry(c contract.Context, openaiErr *types.NewAPIError, retryTimes in
 	if code < 100 || code > 599 {
 		return true
 	}
-	if operation_setting.IsAlwaysSkipRetryCode(openaiErr.GetErrorCode()) {
+	if status_code.IsAlwaysSkipRetryCode(openaiErr.GetErrorCode()) {
 		return false
 	}
-	return operation_setting.ShouldRetryByStatusCode(code)
+	return status_code.ShouldRetryByStatusCode(code)
 }
 
 func processChannelError(c contract.Context, channelError types.ChannelError, err *types.NewAPIError) {
@@ -737,7 +737,7 @@ func shouldRetryTaskRelay(c contract.Context, channelId int, taskErr *taskdto.Ta
 	}
 	if taskErr.StatusCode/100 == 5 {
 		// 超时不重试
-		if operation_setting.IsAlwaysSkipRetryStatusCode(taskErr.StatusCode) {
+		if status_code.IsAlwaysSkipRetryStatusCode(taskErr.StatusCode) {
 			return false
 		}
 		return true

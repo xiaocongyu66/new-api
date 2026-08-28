@@ -16,8 +16,8 @@ import (
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 
+	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -575,9 +575,9 @@ func TestComposeTieredTextQuotaKeepsToolCallSurcharges(t *testing.T) {
 	ctx := ginadapter.Wrap(ctxRaw)
 
 	// 11 $/1K => 0.011 per completed image output, matching the prior fixed low-tier charge.
-	operation_setting.SetToolPriceForTest(dto.BuildInToolImageGeneration, 11.0)
+	price_expression.SetToolPriceForTest(dto.BuildInToolImageGeneration, 11.0)
 	t.Cleanup(func() {
-		operation_setting.DeleteToolPriceForTest(dto.BuildInToolImageGeneration)
+		price_expression.DeleteToolPriceForTest(dto.BuildInToolImageGeneration)
 	})
 
 	relayInfo := &relaycommon.RelayInfo{
@@ -782,9 +782,9 @@ func TestCalculateTextToolCallSurchargeGeneralizedBuiltInTools(t *testing.T) {
 	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
 	ctx := ginadapter.Wrap(ctxRaw)
 
-	operation_setting.SetToolPriceForTest("my_fn", 5.0)
+	price_expression.SetToolPriceForTest("my_fn", 5.0)
 	t.Cleanup(func() {
-		operation_setting.DeleteToolPriceForTest("my_fn")
+		price_expression.DeleteToolPriceForTest("my_fn")
 	})
 
 	relayInfo := &relaycommon.RelayInfo{
@@ -819,9 +819,9 @@ func TestCalculateTextToolCallSurchargeKeepsSearchPreviewFallbackWithCustomFunct
 	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
 	ctx := ginadapter.Wrap(ctxRaw)
 
-	operation_setting.SetToolPriceForTest("my_fn", 5)
+	price_expression.SetToolPriceForTest("my_fn", 5)
 	t.Cleanup(func() {
-		operation_setting.DeleteToolPriceForTest("my_fn")
+		price_expression.DeleteToolPriceForTest("my_fn")
 	})
 
 	relayInfo := &relaycommon.RelayInfo{
@@ -986,7 +986,7 @@ func TestCalculateTextToolCallSurchargeImageGenerationDefaultPrice(t *testing.T)
 	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
 	ctx := ginadapter.Wrap(ctxRaw)
 	t.Cleanup(func() {
-		operation_setting.DeleteToolPriceForTest(dto.BuildInToolImageGeneration)
+		price_expression.DeleteToolPriceForTest(dto.BuildInToolImageGeneration)
 	})
 
 	relayInfo := &relaycommon.RelayInfo{
@@ -1016,9 +1016,9 @@ func TestCalculateTextToolCallSurchargeImageGenerationExplicitZeroDisables(t *te
 	gin.SetMode(gin.TestMode)
 	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
 	ctx := ginadapter.Wrap(ctxRaw)
-	operation_setting.SetToolPriceForTest(dto.BuildInToolImageGeneration, 0)
+	price_expression.SetToolPriceForTest(dto.BuildInToolImageGeneration, 0)
 	t.Cleanup(func() {
-		operation_setting.DeleteToolPriceForTest(dto.BuildInToolImageGeneration)
+		price_expression.DeleteToolPriceForTest(dto.BuildInToolImageGeneration)
 	})
 
 	relayInfo := &relaycommon.RelayInfo{
@@ -1041,7 +1041,7 @@ func TestCalculateTextQuotaSummaryImageGenerationUsesStructuredSurcharge(t *test
 	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
 	ctx := ginadapter.Wrap(ctxRaw)
 	t.Cleanup(func() {
-		operation_setting.DeleteToolPriceForTest(dto.BuildInToolImageGeneration)
+		price_expression.DeleteToolPriceForTest(dto.BuildInToolImageGeneration)
 	})
 
 	relayInfo := &relaycommon.RelayInfo{

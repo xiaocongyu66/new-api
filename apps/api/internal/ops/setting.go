@@ -13,7 +13,9 @@ import (
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/console_setting"
 	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
+	"github.com/QuantumNous/new-api/internal/billing/price_expression"
+	"github.com/QuantumNous/new-api/internal/transport/middleware/status_code"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 )
@@ -54,7 +56,7 @@ func UpdateOption(c contract.Context) {
 	}
 	switch option.Key {
 	case "QuotaForInviter", "QuotaForInvitee":
-		if settingIsPositiveOptionValue(option.Value.(string)) && !operation_setting.IsPaymentComplianceConfirmed() {
+		if settingIsPositiveOptionValue(option.Value.(string)) && !pay_subscription.IsPaymentComplianceConfirmed() {
 			common.CtxApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
 			return
 		}
@@ -165,8 +167,8 @@ func UpdateOption(c contract.Context) {
 			})
 			return
 		}
-	case operation_setting.ToolPriceOptionKey:
-		err = operation_setting.ValidateToolPricesJSON(option.Value.(string))
+	case price_expression.ToolPriceOptionKey:
+		err = price_expression.ValidateToolPricesJSON(option.Value.(string))
 		if err != nil {
 			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
@@ -220,7 +222,7 @@ func UpdateOption(c contract.Context) {
 			return
 		}
 	case "AutomaticDisableStatusCodes":
-		_, err = operation_setting.ParseHTTPStatusCodeRanges(option.Value.(string))
+		_, err = status_code.ParseHTTPStatusCodeRanges(option.Value.(string))
 		if err != nil {
 			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
@@ -229,7 +231,7 @@ func UpdateOption(c contract.Context) {
 			return
 		}
 	case "AutomaticRetryStatusCodes":
-		_, err = operation_setting.ParseHTTPStatusCodeRanges(option.Value.(string))
+		_, err = status_code.ParseHTTPStatusCodeRanges(option.Value.(string))
 		if err != nil {
 			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,

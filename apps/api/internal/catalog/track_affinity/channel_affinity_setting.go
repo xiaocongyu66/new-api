@@ -1,4 +1,4 @@
-package operation_setting
+package track_affinity
 
 import "github.com/QuantumNous/new-api/setting/config"
 

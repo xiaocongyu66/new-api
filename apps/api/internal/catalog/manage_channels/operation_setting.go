@@ -1,4 +1,4 @@
-package operation_setting
+package manage_channels
 
 import "strings"
 

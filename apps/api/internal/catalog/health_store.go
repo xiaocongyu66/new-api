@@ -10,7 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 )
 
 // HealthStore holds the channel health scoring state and implements the
@@ -116,7 +116,7 @@ func (h *HealthStore) RecordChannelOutcome(channelID int, outcome model.ChannelO
 // recordChannelOutcome is the model-aware form. An empty modelName records
 // health exactly as before but cannot escalate to a per-model disable.
 func (h *HealthStore) recordChannelOutcome(channelID int, modelName string, outcome model.ChannelOutcome) {
-	cfg := operation_setting.GetChannelHealthSetting()
+	cfg := health_store.GetChannelHealthSetting()
 	if cfg == nil || !cfg.Enabled {
 		return
 	}
@@ -200,7 +200,7 @@ func (h *HealthStore) recordChannelOutcome(channelID int, modelName string, outc
 // escalateModelLocked counts this cooldown against modelName and disables that
 // model on the channel once the count reaches CooldownDisableStreak. Caller
 // must hold h.mu.
-func (h *HealthStore) escalateModelLocked(state *model.ChannelHealthState, cfg *operation_setting.ChannelHealthSetting, channelID int, modelName string) {
+func (h *HealthStore) escalateModelLocked(state *model.ChannelHealthState, cfg *health_store.ChannelHealthSetting, channelID int, modelName string) {
 	if cfg.CooldownDisableStreak <= 0 {
 		return
 	}
@@ -256,7 +256,7 @@ func (h *HealthStore) RecordRequestAttempts(attempts []model.ChannelAttempt, win
 // success=true means the request succeeded; false means it failed.
 // The kill switch is checked: if disabled, the method returns immediately.
 func (h *HealthStore) RecordOutcome(channelID int, success bool) {
-	cfg := operation_setting.GetChannelHealthSetting()
+	cfg := health_store.GetChannelHealthSetting()
 	if cfg == nil || !cfg.Enabled {
 		return
 	}
@@ -322,7 +322,7 @@ func (h *HealthStore) EffectiveWeight(channelID int, baseWeight uint) float64 {
 // it with bypassCooldown=false. Selectors call it with true for cooling
 // candidates deliberately retained by the max-ejection cap.
 func (h *HealthStore) RoutingWeight(channelID int, baseWeight uint, bypassCooldown bool) float64 {
-	cfg := operation_setting.GetChannelHealthSetting()
+	cfg := health_store.GetChannelHealthSetting()
 	if cfg == nil || !cfg.Enabled {
 		return float64(baseWeight)
 	}
@@ -352,7 +352,7 @@ func (h *HealthStore) RoutingWeight(channelID int, baseWeight uint, bypassCooldo
 }
 
 // CooldownDuration computes the sliding cooldown duration.
-func CooldownDuration(cfg *operation_setting.ChannelHealthSetting, priorActivations int) time.Duration {
+func CooldownDuration(cfg *health_store.ChannelHealthSetting, priorActivations int) time.Duration {
 	base, max := cfg.CooldownBaseSeconds, cfg.CooldownMaxSeconds
 	if base <= 0 || max <= 0 {
 		return 0
@@ -374,7 +374,7 @@ func CooldownDuration(cfg *operation_setting.ChannelHealthSetting, priorActivati
 
 // startCooldownLocked activates a cooldown sized from the current cooldownStreak,
 // then increments the streak. Caller must hold h.mu.
-func startCooldownLocked(state *model.ChannelHealthState, cfg *operation_setting.ChannelHealthSetting, now time.Time) {
+func startCooldownLocked(state *model.ChannelHealthState, cfg *health_store.ChannelHealthSetting, now time.Time) {
 	d := CooldownDuration(cfg, state.CooldownStreak)
 	if d <= 0 {
 		return
@@ -413,7 +413,7 @@ func (h *HealthStore) Reset() {
 
 // GetScore returns the current EWMA score for diagnostics.
 func (h *HealthStore) GetScore(channelID int) float64 {
-	cfg := operation_setting.GetChannelHealthSetting()
+	cfg := health_store.GetChannelHealthSetting()
 	if cfg == nil || !cfg.Enabled {
 		return model.DefaultScore
 	}
@@ -432,7 +432,7 @@ func (h *HealthStore) GetScore(channelID int) float64 {
 // priority tier because they are in a live cooldown.
 func (h *HealthStore) FilterCoolingChannels(channelIDs []int, maxEjectionPercent int) map[int]bool {
 	ejected := make(map[int]bool)
-	cfg := operation_setting.GetChannelHealthSetting()
+	cfg := health_store.GetChannelHealthSetting()
 	if cfg == nil || !cfg.Enabled || maxEjectionPercent <= 0 {
 		return ejected
 	}

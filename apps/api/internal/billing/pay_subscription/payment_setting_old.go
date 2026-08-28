@@ -3,7 +3,7 @@
 This file is the old version of the payment settings file. If you need to add new parameters, variables, etc., please add them in payment_setting.go
 */
 
-package operation_setting
+package pay_subscription
 
 import (
 	"github.com/QuantumNous/new-api/internal/common"

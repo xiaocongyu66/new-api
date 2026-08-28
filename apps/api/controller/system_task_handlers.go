@@ -12,7 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/ops"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/ops/monitor_uptime"
 )
 
 // RegisterScheduledSystemTasks wires the periodic channel test, upstream model
@@ -35,11 +35,11 @@ type channelTestHandler struct{}
 func (channelTestHandler) Type() string { return model.SystemTaskTypeChannelTest }
 
 func (channelTestHandler) Enabled() bool {
-	return operation_setting.GetMonitorSetting().AutoTestChannelEnabled
+	return monitor_uptime.GetMonitorSetting().AutoTestChannelEnabled
 }
 
 func (channelTestHandler) Interval() time.Duration {
-	minutes := operation_setting.GetMonitorSetting().AutoTestChannelMinutes
+	minutes := monitor_uptime.GetMonitorSetting().AutoTestChannelMinutes
 	if minutes <= 0 {
 		minutes = 10
 	}

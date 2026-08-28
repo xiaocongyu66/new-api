@@ -4,27 +4,27 @@ import (
 	"testing"
 	"time"
 
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func cooldownTestSetting() *operation_setting.ChannelHealthSetting {
-	return operation_setting.DefaultChannelHealthSetting()
+func cooldownTestSetting() *health_store.ChannelHealthSetting {
+	return health_store.DefaultChannelHealthSetting()
 }
 
-func configureCooldownTest(t *testing.T, cfg *operation_setting.ChannelHealthSetting, now *time.Time) {
+func configureCooldownTest(t *testing.T, cfg *health_store.ChannelHealthSetting, now *time.Time) {
 	t.Helper()
-	previous := *operation_setting.GetChannelHealthSetting()
+	previous := *health_store.GetChannelHealthSetting()
 	previousNow := ChannelHealthNow
 	if now != nil {
 		ChannelHealthNow = func() time.Time { return *now }
 	}
 	t.Cleanup(func() {
 		ChannelHealthNow = previousNow
-		operation_setting.SetChannelHealthSetting(&previous)
+		health_store.SetChannelHealthSetting(&previous)
 	})
-	operation_setting.SetChannelHealthSetting(cfg)
+	health_store.SetChannelHealthSetting(cfg)
 }
 
 func TestChannelHealthCooldownConfigNormalizesAndPreservesInput(t *testing.T) {
@@ -36,7 +36,7 @@ func TestChannelHealthCooldownConfigNormalizesAndPreservesInput(t *testing.T) {
 	cfg.CooldownAlpha = -1
 	configureCooldownTest(t, cfg, nil)
 
-	got := operation_setting.GetChannelHealthSetting()
+	got := health_store.GetChannelHealthSetting()
 	require.NotNil(t, got)
 	assert.Equal(t, 1, got.CooldownThreshold)
 	assert.Equal(t, 0, got.CooldownBaseSeconds)
@@ -54,17 +54,17 @@ func TestChannelHealthCooldownConfigNormalizesAndPreservesInput(t *testing.T) {
 func TestChannelHealthCooldownOptionUpdateRejectsInvalidValue(t *testing.T) {
 	configureCooldownTest(t, cooldownTestSetting(), nil)
 
-	require.NoError(t, operation_setting.UpdateChannelHealthSettingValue(
+	require.NoError(t, health_store.UpdateChannelHealthSettingValue(
 		"ChannelHealthCooldownThreshold", "7",
 	))
-	assert.Equal(t, 7, operation_setting.GetChannelHealthSetting().CooldownThreshold)
+	assert.Equal(t, 7, health_store.GetChannelHealthSetting().CooldownThreshold)
 
-	before := *operation_setting.GetChannelHealthSetting()
-	assert.Error(t, operation_setting.UpdateChannelHealthSettingValue(
+	before := *health_store.GetChannelHealthSetting()
+	assert.Error(t, health_store.UpdateChannelHealthSettingValue(
 		"ChannelHealthCooldownAlpha", "not-a-number",
 	))
-	assert.Error(t, operation_setting.UpdateChannelHealthSettingValue("unknown", "1"))
-	assert.Equal(t, before, *operation_setting.GetChannelHealthSetting())
+	assert.Error(t, health_store.UpdateChannelHealthSettingValue("unknown", "1"))
+	assert.Equal(t, before, *health_store.GetChannelHealthSetting())
 
 	// Out-of-range values are rejected rather than silently clamped: a clamped
 	// value would leave the persisted option and the effective config disagreeing.
@@ -75,19 +75,19 @@ func TestChannelHealthCooldownOptionUpdateRejectsInvalidValue(t *testing.T) {
 		"ChannelHealthCooldownMaxEjectionPercent": "101",
 		"ChannelHealthCooldownAlpha":              "1.5",
 	} {
-		assert.Error(t, operation_setting.UpdateChannelHealthSettingValue(key, value), key)
+		assert.Error(t, health_store.UpdateChannelHealthSettingValue(key, value), key)
 		assert.Error(t, validateOptionValue(key, value), key)
 	}
-	assert.Equal(t, before, *operation_setting.GetChannelHealthSetting(),
+	assert.Equal(t, before, *health_store.GetChannelHealthSetting(),
 		"a rejected value must not change the live config")
 
 	// An inverted base/max pair is rejected too: normalization would raise max up
 	// to base, so accepting it would store a duration that never takes effect.
-	assert.Error(t, operation_setting.UpdateChannelHealthSettingValue(
+	assert.Error(t, health_store.UpdateChannelHealthSettingValue(
 		"ChannelHealthCooldownMaxSeconds", "5",
 	), "max below the configured base must be rejected")
-	require.NoError(t, operation_setting.UpdateChannelHealthSettingValue(
+	require.NoError(t, health_store.UpdateChannelHealthSettingValue(
 		"ChannelHealthCooldownMaxSeconds", "90",
 	))
-	assert.Equal(t, 90, operation_setting.GetChannelHealthSetting().CooldownMaxSeconds)
+	assert.Equal(t, 90, health_store.GetChannelHealthSetting().CooldownMaxSeconds)
 }

@@ -9,7 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
 )
 
 type Setup struct {
@@ -124,8 +124,8 @@ func PostSetup(c contract.Context) {
 	}
 
 	// Set operation modes
-	operation_setting.SelfUseModeEnabled = req.SelfUseModeEnabled
-	operation_setting.DemoSiteEnabled = req.DemoSiteEnabled
+	manage_channels.SelfUseModeEnabled = req.SelfUseModeEnabled
+	manage_channels.DemoSiteEnabled = req.DemoSiteEnabled
 
 	// Save operation modes to database for persistence
 	err = model.UpdateOption("SelfUseModeEnabled", setupBoolToString(req.SelfUseModeEnabled))

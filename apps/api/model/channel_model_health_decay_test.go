@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -33,7 +33,7 @@ func seedHealthRowWithLevel(t *testing.T, key RouteKey, state string, level int,
 // last_success_at is not set, or the CAS version does not advance.
 func TestRecordSuccessDecaysLevel(t *testing.T) {
 	withRouteHealthDB(t)
-	withHealthSetting(t, operation_setting.DefaultChannelModelHealthSetting())
+	withHealthSetting(t, health_store.DefaultChannelModelHealthSetting())
 
 	now := time.Unix(1_700_000_000, 0)
 	key := RouteKey{ChannelId: 9601, KeyIndex: 0, Model: "success-decay"}
@@ -63,7 +63,7 @@ func TestRecordSuccessDecaysLevel(t *testing.T) {
 // remains isolated, until is not nil, or the level goes negative.
 func TestRecordSuccessReachesHealthy(t *testing.T) {
 	withRouteHealthDB(t)
-	withHealthSetting(t, operation_setting.DefaultChannelModelHealthSetting())
+	withHealthSetting(t, health_store.DefaultChannelModelHealthSetting())
 
 	now := time.Unix(1_700_000_000, 0)
 	key := RouteKey{ChannelId: 9602, KeyIndex: 0, Model: "success-to-healthy"}
@@ -93,7 +93,7 @@ func TestRecordSuccessReachesHealthy(t *testing.T) {
 // disabled row is mutated in any way.
 func TestRecordSuccessDisabledImmune(t *testing.T) {
 	withRouteHealthDB(t)
-	withHealthSetting(t, operation_setting.DefaultChannelModelHealthSetting())
+	withHealthSetting(t, health_store.DefaultChannelModelHealthSetting())
 
 	now := time.Unix(1_700_000_000, 0)
 	key := RouteKey{ChannelId: 9603, KeyIndex: 0, Model: "disabled-immune"}
@@ -114,7 +114,7 @@ func TestRecordSuccessDisabledImmune(t *testing.T) {
 // row is inserted, since a success must not conjure an isolation record.
 func TestRecordSuccessMissingRowNoop(t *testing.T) {
 	withRouteHealthDB(t)
-	withHealthSetting(t, operation_setting.DefaultChannelModelHealthSetting())
+	withHealthSetting(t, health_store.DefaultChannelModelHealthSetting())
 
 	now := time.Unix(1_700_000_000, 0)
 	key := RouteKey{ChannelId: 9604, KeyIndex: 0, Model: "no-row"}
@@ -134,7 +134,7 @@ func TestRecordSuccessMissingRowNoop(t *testing.T) {
 // (level <=6).
 func TestRecordSuccessClearsDormantCountInCalmBand(t *testing.T) {
 	withRouteHealthDB(t)
-	withHealthSetting(t, operation_setting.DefaultChannelModelHealthSetting())
+	withHealthSetting(t, health_store.DefaultChannelModelHealthSetting())
 
 	now := time.Unix(1_700_000_000, 0)
 	key := RouteKey{ChannelId: 9605, KeyIndex: 0, Model: "dormant-count-clear"}
@@ -162,7 +162,7 @@ func TestRecordSuccessClearsDormantCountInCalmBand(t *testing.T) {
 // preserved. Fails if: the dormant count is cleared when it should not be.
 func TestRecordSuccessDormantCountPreservedAboveCalmBand(t *testing.T) {
 	withRouteHealthDB(t)
-	withHealthSetting(t, operation_setting.DefaultChannelModelHealthSetting())
+	withHealthSetting(t, health_store.DefaultChannelModelHealthSetting())
 
 	now := time.Unix(1_700_000_000, 0)
 	key := RouteKey{ChannelId: 9606, KeyIndex: 0, Model: "dormant-count-preserved"}
@@ -189,7 +189,7 @@ func TestRecordSuccessDormantCountPreservedAboveCalmBand(t *testing.T) {
 // level stays unchanged after expiry, proving the CAS does not decay.
 func TestExpiryCASDecaysLevel(t *testing.T) {
 	withRouteHealthDB(t)
-	withHealthSetting(t, operation_setting.DefaultChannelModelHealthSetting())
+	withHealthSetting(t, health_store.DefaultChannelModelHealthSetting())
 
 	now := time.Unix(1_700_000_000, 0)
 	key := RouteKey{ChannelId: 9607, KeyIndex: 0, Model: "expiry-decay"}
@@ -214,7 +214,7 @@ func TestExpiryCASDecaysLevel(t *testing.T) {
 // band (<=6). Fails if: the dormant count survives expiry into the calm band.
 func TestExpiryCASClearsDormantCountInCalmBand(t *testing.T) {
 	withRouteHealthDB(t)
-	withHealthSetting(t, operation_setting.DefaultChannelModelHealthSetting())
+	withHealthSetting(t, health_store.DefaultChannelModelHealthSetting())
 
 	now := time.Unix(1_700_000_000, 0)
 	key := RouteKey{ChannelId: 9608, KeyIndex: 0, Model: "expiry-dormant-clear"}
@@ -252,7 +252,7 @@ func TestExpiryCASClearsDormantCountInCalmBand(t *testing.T) {
 // band (>6). Fails if: the dormant count is cleared when it should not be.
 func TestExpiryCASDormantCountPreservedAboveCalmBand(t *testing.T) {
 	withRouteHealthDB(t)
-	withHealthSetting(t, operation_setting.DefaultChannelModelHealthSetting())
+	withHealthSetting(t, health_store.DefaultChannelModelHealthSetting())
 
 	now := time.Unix(1_700_000_000, 0)
 	key := RouteKey{ChannelId: 9609, KeyIndex: 0, Model: "expiry-dormant-preserved"}

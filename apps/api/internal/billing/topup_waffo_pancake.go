@@ -11,7 +11,8 @@ import (
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
+	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/shopspring/decimal"
 	"github.com/thanhpk/randstr"
 )
@@ -53,7 +54,7 @@ func RequestWaffoPancakeAmount(c contract.Context) {
 
 func getWaffoPancakePayMoney(amount int64, group string) float64 {
 	dAmount := decimal.NewFromInt(amount)
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
+	if manage_subscription.GetQuotaDisplayType() == manage_subscription.QuotaDisplayTypeTokens {
 		dAmount = dAmount.Div(decimal.NewFromFloat(common.QuotaPerUnit))
 	}
 
@@ -63,7 +64,7 @@ func getWaffoPancakePayMoney(amount int64, group string) float64 {
 	}
 
 	discount := 1.0
-	if ds, ok := operation_setting.GetPaymentSetting().AmountDiscount[int(amount)]; ok && ds > 0 {
+	if ds, ok := pay_subscription.GetPaymentSetting().AmountDiscount[int(amount)]; ok && ds > 0 {
 		discount = ds
 	}
 
@@ -76,7 +77,7 @@ func getWaffoPancakePayMoney(amount int64, group string) float64 {
 }
 
 func normalizeWaffoPancakeTopUpAmount(amount int64) int64 {
-	if operation_setting.GetQuotaDisplayType() != operation_setting.QuotaDisplayTypeTokens {
+	if manage_subscription.GetQuotaDisplayType() != manage_subscription.QuotaDisplayTypeTokens {
 		return amount
 	}
 

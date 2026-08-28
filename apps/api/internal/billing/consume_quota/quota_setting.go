@@ -1,4 +1,4 @@
-package operation_setting
+package consume_quota
 
 import "github.com/QuantumNous/new-api/setting/config"
 

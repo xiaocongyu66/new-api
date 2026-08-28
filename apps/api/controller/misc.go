@@ -9,7 +9,10 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/console_setting"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/billing/do_checkin"
+	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
+	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
+	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"net/http"
 )
@@ -64,13 +67,13 @@ func GetStatus(c contract.Context) {
 		"server_address":              system_setting.ServerAddress,
 		"turnstile_check":             common.TurnstileCheckEnabled,
 		"turnstile_site_key":          common.TurnstileSiteKey,
-		"docs_link":                   operation_setting.GetGeneralSetting().DocsLink,
+		"docs_link":                   manage_subscription.GetGeneralSetting().DocsLink,
 		"quota_per_unit":              common.QuotaPerUnit,
 		// 兼容旧前端：保留 display_in_currency，同时提供新的 quota_display_type
-		"display_in_currency":           operation_setting.IsCurrencyDisplay(),
-		"quota_display_type":            operation_setting.GetQuotaDisplayType(),
-		"custom_currency_symbol":        operation_setting.GetGeneralSetting().CustomCurrencySymbol,
-		"custom_currency_exchange_rate": operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate,
+		"display_in_currency":           manage_subscription.IsCurrencyDisplay(),
+		"quota_display_type":            manage_subscription.GetQuotaDisplayType(),
+		"custom_currency_symbol":        manage_subscription.GetGeneralSetting().CustomCurrencySymbol,
+		"custom_currency_exchange_rate": manage_subscription.GetGeneralSetting().CustomCurrencyExchangeRate,
 		"enable_batch_update":           common.BatchUpdateEnabled,
 		"enable_drawing":                common.DrawingEnabled,
 		"enable_task":                   common.TaskEnabled,
@@ -79,15 +82,15 @@ func GetStatus(c contract.Context) {
 		"default_collapse_sidebar":      common.DefaultCollapseSidebar,
 		"mj_notify_enabled":             setting.MjNotifyEnabled,
 		"chats":                         setting.Chats,
-		"demo_site_enabled":             operation_setting.DemoSiteEnabled,
-		"self_use_mode_enabled":         operation_setting.SelfUseModeEnabled,
+		"demo_site_enabled":             manage_channels.DemoSiteEnabled,
+		"self_use_mode_enabled":         manage_channels.SelfUseModeEnabled,
 		"register_enabled":              common.RegisterEnabled,
 		"password_login_enabled":        common.PasswordLoginEnabled,
 		"password_register_enabled":     common.PasswordRegisterEnabled,
 		"default_use_auto_group":        setting.DefaultUseAutoGroup,
 
-		"usd_exchange_rate": operation_setting.USDExchangeRate,
-		"price":             operation_setting.Price,
+		"usd_exchange_rate": pay_subscription.USDExchangeRate,
+		"price":             pay_subscription.Price,
 		"stripe_unit_price": setting.StripeUnitPrice,
 
 		// 面板启用开关
@@ -114,7 +117,7 @@ func GetStatus(c contract.Context) {
 		"setup":                       constant.Setup,
 		"user_agreement_enabled":      legalSetting.UserAgreement != "",
 		"privacy_policy_enabled":      legalSetting.PrivacyPolicy != "",
-		"checkin_enabled":             operation_setting.GetCheckinSetting().Enabled,
+		"checkin_enabled":             do_checkin.GetCheckinSetting().Enabled,
 	}
 
 	// 根据启用状态注入可选内容

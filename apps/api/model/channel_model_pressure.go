@@ -9,7 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 )
 
 // PressureLevel classifies pool availability for a model's schedulable units.
@@ -43,7 +43,7 @@ func modelPressureLevel(model string) PressureLevel {
 		return PressureNormal
 	}
 	ratio := float64(p.healthy) * 100 / float64(p.total)
-	cfg := operation_setting.GetChannelModelHealthSetting()
+	cfg := health_store.GetChannelModelHealthSetting()
 	switch {
 	case ratio < float64(cfg.EmergencyThreshold):
 		return PressureEmergency
@@ -58,7 +58,7 @@ func modelPressureLevel(model string) PressureLevel {
 // warning → AcceleratedDecayStep; normal/emergency → NormalDecayStep.
 // Config values <= 0 fall back to 1 so decay never stalls at step 0.
 func decayStep(model string) int {
-	cfg := operation_setting.GetChannelModelHealthSetting()
+	cfg := health_store.GetChannelModelHealthSetting()
 	step := cfg.NormalDecayStep
 	if modelPressureLevel(model) == PressureWarning {
 		step = cfg.AcceleratedDecayStep
@@ -215,7 +215,7 @@ func maybeEmergencyRecover(model string, now time.Time) {
 		return
 	}
 
-	cfg := operation_setting.GetChannelModelHealthSetting()
+	cfg := health_store.GetChannelModelHealthSetting()
 	ratio := float64(p.healthy) * 100 / float64(p.total)
 	if ratio >= float64(cfg.EmergencyThreshold) {
 		return

@@ -20,8 +20,8 @@ import (
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 
+	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/shopspring/decimal"
 )
@@ -106,7 +106,7 @@ func collectToolSurchargeItem(items []ToolSurchargeItem, name string, count int,
 	if count <= 0 {
 		return items
 	}
-	price := operation_setting.GetToolPriceForModel(name, modelName)
+	price := price_expression.GetToolPriceForModel(name, modelName)
 	if price <= 0 || math.IsNaN(price) || math.IsInf(price, 0) {
 		return items
 	}
@@ -338,7 +338,7 @@ func calculateTextQuotaSummary(ctx contract.Context, relayInfo *relaycommon.Rela
 		}
 
 		if !dAudioTokens.IsZero() {
-			summary.AudioInputPrice = operation_setting.GetGeminiInputAudioPricePerMillionTokens(summary.ModelName)
+			summary.AudioInputPrice = price_expression.GetGeminiInputAudioPricePerMillionTokens(summary.ModelName)
 			if summary.AudioInputPrice > 0 {
 				baseTokens = baseTokens.Sub(dAudioTokens)
 				audioInputQuota = decimal.NewFromFloat(summary.AudioInputPrice).

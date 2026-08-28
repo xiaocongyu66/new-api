@@ -14,7 +14,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )
@@ -44,20 +44,20 @@ func TestStripeWebhookAcceptsValidSignatureAndReturnsOK(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	// Setup all required settings for Stripe webhook to be enabled
-	prevCompliance := operation_setting.GetPaymentSetting().ComplianceConfirmed
-	prevTermsVersion := operation_setting.GetPaymentSetting().ComplianceTermsVersion
+	prevCompliance := pay_subscription.GetPaymentSetting().ComplianceConfirmed
+	prevTermsVersion := pay_subscription.GetPaymentSetting().ComplianceTermsVersion
 	prevApiSecret := setting.StripeApiSecret
 	prevSecret := setting.StripeWebhookSecret
 	prevPriceId := setting.StripePriceId
 	t.Cleanup(func() {
-		operation_setting.GetPaymentSetting().ComplianceConfirmed = prevCompliance
-		operation_setting.GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
+		pay_subscription.GetPaymentSetting().ComplianceConfirmed = prevCompliance
+		pay_subscription.GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
 		setting.StripeApiSecret = prevApiSecret
 		setting.StripeWebhookSecret = prevSecret
 		setting.StripePriceId = prevPriceId
 	})
-	operation_setting.GetPaymentSetting().ComplianceConfirmed = true
-	operation_setting.GetPaymentSetting().ComplianceTermsVersion = operation_setting.CurrentComplianceTermsVersion
+	pay_subscription.GetPaymentSetting().ComplianceConfirmed = true
+	pay_subscription.GetPaymentSetting().ComplianceTermsVersion = pay_subscription.CurrentComplianceTermsVersion
 	secret := "whsec_test_secret"
 	setting.StripeApiSecret = "sk_test_123"
 	setting.StripeWebhookSecret = secret
@@ -104,20 +104,20 @@ func TestStripeWebhookRejectsInvalidSignatureViaBadRequest(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	// Setup all required settings
-	prevCompliance := operation_setting.GetPaymentSetting().ComplianceConfirmed
-	prevTermsVersion := operation_setting.GetPaymentSetting().ComplianceTermsVersion
+	prevCompliance := pay_subscription.GetPaymentSetting().ComplianceConfirmed
+	prevTermsVersion := pay_subscription.GetPaymentSetting().ComplianceTermsVersion
 	prevApiSecret := setting.StripeApiSecret
 	prevSecret := setting.StripeWebhookSecret
 	prevPriceId := setting.StripePriceId
 	t.Cleanup(func() {
-		operation_setting.GetPaymentSetting().ComplianceConfirmed = prevCompliance
-		operation_setting.GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
+		pay_subscription.GetPaymentSetting().ComplianceConfirmed = prevCompliance
+		pay_subscription.GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
 		setting.StripeApiSecret = prevApiSecret
 		setting.StripeWebhookSecret = prevSecret
 		setting.StripePriceId = prevPriceId
 	})
-	operation_setting.GetPaymentSetting().ComplianceConfirmed = true
-	operation_setting.GetPaymentSetting().ComplianceTermsVersion = operation_setting.CurrentComplianceTermsVersion
+	pay_subscription.GetPaymentSetting().ComplianceConfirmed = true
+	pay_subscription.GetPaymentSetting().ComplianceTermsVersion = pay_subscription.CurrentComplianceTermsVersion
 	secret := "whsec_test_secret"
 	setting.StripeApiSecret = "sk_test_123"
 	setting.StripeWebhookSecret = secret

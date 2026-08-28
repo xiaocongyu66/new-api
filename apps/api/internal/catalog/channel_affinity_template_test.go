@@ -11,7 +11,7 @@ import (
 	"time"
 
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/catalog/track_affinity"
 	"github.com/stretchr/testify/require"
 )
 
@@ -181,7 +181,7 @@ func TestExtractChannelAffinityValue_RequestHeader(t *testing.T) {
 	ginadapter.ReplaceRequest(ctx, httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
 	ctx.Headers().Set("X-Affinity-Key", " tenant-123 ")
 
-	value := extractChannelAffinityValue(ctx, operation_setting.ChannelAffinityKeySource{
+	value := extractChannelAffinityValue(ctx, track_affinity.ChannelAffinityKeySource{
 		Type: "request_header",
 		Key:  "X-Affinity-Key",
 	})
@@ -191,11 +191,11 @@ func TestExtractChannelAffinityValue_RequestHeader(t *testing.T) {
 
 func TestGetPreferredChannelByAffinity_RequestHeaderKeySource(t *testing.T) {
 
-	rule := operation_setting.ChannelAffinityRule{
+	rule := track_affinity.ChannelAffinityRule{
 		Name:       "header-affinity",
 		ModelRegex: []string{"^gpt-.*$"},
 		PathRegex:  []string{"/v1/responses"},
-		KeySources: []operation_setting.ChannelAffinityKeySource{
+		KeySources: []track_affinity.ChannelAffinityKeySource{
 			{Type: "request_header", Key: "X-Affinity-Key"},
 		},
 		IncludeRuleName:  true,
@@ -211,9 +211,9 @@ func TestGetPreferredChannelByAffinity_RequestHeaderKeySource(t *testing.T) {
 		_, _ = cache.DeleteMany([]string{cacheKeySuffix})
 	})
 
-	setting := operation_setting.GetChannelAffinitySetting()
+	setting := track_affinity.GetChannelAffinitySetting()
 	originalRules := setting.Rules
-	setting.Rules = append([]operation_setting.ChannelAffinityRule{rule}, originalRules...)
+	setting.Rules = append([]track_affinity.ChannelAffinityRule{rule}, originalRules...)
 	t.Cleanup(func() {
 		setting.Rules = originalRules
 	})
@@ -261,10 +261,10 @@ func TestClearCurrentChannelAffinityCache(t *testing.T) {
 
 func TestChannelAffinityHitCodexTemplatePassHeadersEffective(t *testing.T) {
 
-	setting := operation_setting.GetChannelAffinitySetting()
+	setting := track_affinity.GetChannelAffinitySetting()
 	require.NotNil(t, setting)
 
-	var codexRule *operation_setting.ChannelAffinityRule
+	var codexRule *track_affinity.ChannelAffinityRule
 	for i := range setting.Rules {
 		rule := &setting.Rules[i]
 		if strings.EqualFold(strings.TrimSpace(rule.Name), "codex cli trace") {

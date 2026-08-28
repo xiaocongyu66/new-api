@@ -5,7 +5,8 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
+	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 )
 
 func GetSubscription(c contract.Context) {
@@ -45,10 +46,10 @@ func GetSubscription(c contract.Context) {
 	// - USD: 直接除以 QuotaPerUnit
 	// - CNY: 先转 USD 再乘汇率
 	// - TOKENS: 直接使用 tokens 数量
-	switch operation_setting.GetQuotaDisplayType() {
-	case operation_setting.QuotaDisplayTypeCNY:
-		amount = amount / common.QuotaPerUnit * operation_setting.USDExchangeRate
-	case operation_setting.QuotaDisplayTypeTokens:
+	switch manage_subscription.GetQuotaDisplayType() {
+	case manage_subscription.QuotaDisplayTypeCNY:
+		amount = amount / common.QuotaPerUnit * pay_subscription.USDExchangeRate
+	case manage_subscription.QuotaDisplayTypeTokens:
 		// amount 保持 tokens 数值
 	default:
 		amount = amount / common.QuotaPerUnit
@@ -91,10 +92,10 @@ func GetUsage(c contract.Context) {
 		return
 	}
 	amount := float64(quota)
-	switch operation_setting.GetQuotaDisplayType() {
-	case operation_setting.QuotaDisplayTypeCNY:
-		amount = amount / common.QuotaPerUnit * operation_setting.USDExchangeRate
-	case operation_setting.QuotaDisplayTypeTokens:
+	switch manage_subscription.GetQuotaDisplayType() {
+	case manage_subscription.QuotaDisplayTypeCNY:
+		amount = amount / common.QuotaPerUnit * pay_subscription.USDExchangeRate
+	case manage_subscription.QuotaDisplayTypeTokens:
 		// tokens 保持原值
 	default:
 		amount = amount / common.QuotaPerUnit

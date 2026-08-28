@@ -8,7 +8,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,9 +16,9 @@ import (
 
 func TestHandleClaudeResponseDataCountsToolUse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	operation_setting.SetToolPriceForTest("lookup_fn", 3.0)
+	price_expression.SetToolPriceForTest("lookup_fn", 3.0)
 	t.Cleanup(func() {
-		operation_setting.DeleteToolPriceForTest("lookup_fn")
+		price_expression.DeleteToolPriceForTest("lookup_fn")
 	})
 
 	w := httptest.NewRecorder()
@@ -63,9 +63,9 @@ func TestCountClaudeStreamBillableToolsSetsWebSearchRequests(t *testing.T) {
 	})
 	assert.Equal(t, 3, c.GetInt("claude_web_search_requests"))
 
-	operation_setting.SetToolPriceForTest("stream_fn", 2.0)
+	price_expression.SetToolPriceForTest("stream_fn", 2.0)
 	t.Cleanup(func() {
-		operation_setting.DeleteToolPriceForTest("stream_fn")
+		price_expression.DeleteToolPriceForTest("stream_fn")
 	})
 	countClaudeStreamBillableTools(c, info, &dto.ClaudeResponse{
 		Type: "content_block_start",

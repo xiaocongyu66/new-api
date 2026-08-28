@@ -12,7 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/samber/lo"
 )
 
@@ -45,7 +45,7 @@ func SubscriptionRequestEpay(c contract.Context) {
 		common.CtxApiErrorMsg(c, "套餐金额过低")
 		return
 	}
-	if !operation_setting.ContainsPayMethod(req.PaymentMethod) {
+	if !pay_subscription.ContainsPayMethod(req.PaymentMethod) {
 		common.CtxApiErrorMsg(c, "支付方式不存在")
 		return
 	}

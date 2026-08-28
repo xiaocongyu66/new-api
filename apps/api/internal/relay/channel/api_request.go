@@ -18,8 +18,8 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 
+	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gorilla/websocket"
@@ -511,7 +511,7 @@ func doRequest(c contract.Context, req *http.Request, info *common.RelayInfo) (*
 	if info.IsStream {
 		helper.SetEventStreamHeaders(c)
 		// 处理流式请求的 ping 保活
-		generalSettings := operation_setting.GetGeneralSetting()
+		generalSettings := manage_subscription.GetGeneralSetting()
 		if generalSettings.PingIntervalEnabled && !info.DisablePing {
 			pingInterval := time.Duration(generalSettings.PingIntervalSeconds) * time.Second
 			stopPinger, pingerDone = startPingKeepAlive(c, pingInterval)

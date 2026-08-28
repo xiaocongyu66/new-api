@@ -21,7 +21,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/samber/lo"
 )
@@ -208,7 +208,7 @@ func getModelListGroups(c contract.Context) (modelListGroups, error) {
 }
 
 func ListModels(c contract.Context, modelType int) {
-	acceptUnsetRatioModel := operation_setting.SelfUseModeEnabled
+	acceptUnsetRatioModel := manage_channels.SelfUseModeEnabled
 	if !acceptUnsetRatioModel {
 		userId := c.GetInt("id")
 		if userId > 0 {

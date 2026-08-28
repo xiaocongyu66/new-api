@@ -1,4 +1,4 @@
-package operation_setting
+package manage_subscription
 
 import "github.com/QuantumNous/new-api/setting/config"
 

@@ -18,7 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/ops/monitor_uptime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -303,7 +303,7 @@ func TestSelectChannelsForAutomaticTestPassiveRecoveryOnlyUsesAutoDisabled(t *te
 		{Id: 3, Status: common.ChannelStatusManuallyDisabled},
 	}
 
-	selected := selectChannelsForAutomaticTest(channels, operation_setting.ChannelTestModePassiveRecovery)
+	selected := selectChannelsForAutomaticTest(channels, monitor_uptime.ChannelTestModePassiveRecovery)
 
 	require.Len(t, selected, 1)
 	require.Equal(t, 2, selected[0].Id)
@@ -316,7 +316,7 @@ func TestSelectChannelsForAutomaticTestScheduledSkipsManualDisabled(t *testing.T
 		{Id: 3, Status: common.ChannelStatusManuallyDisabled},
 	}
 
-	selected := selectChannelsForAutomaticTest(channels, operation_setting.ChannelTestModeScheduledAll)
+	selected := selectChannelsForAutomaticTest(channels, monitor_uptime.ChannelTestModeScheduledAll)
 
 	require.Len(t, selected, 2)
 	require.Equal(t, 1, selected[0].Id)
@@ -334,7 +334,7 @@ func TestSelectChannelsForAutomaticTestAutoBanOnlyUsesEligibleChannels(t *testin
 		{Id: 5, Status: common.ChannelStatusEnabled},
 	}
 
-	selected := selectChannelsForAutomaticTest(channels, operation_setting.ChannelTestModeAutoBanOnly)
+	selected := selectChannelsForAutomaticTest(channels, monitor_uptime.ChannelTestModeAutoBanOnly)
 
 	require.Len(t, selected, 2)
 	require.Equal(t, 1, selected[0].Id)

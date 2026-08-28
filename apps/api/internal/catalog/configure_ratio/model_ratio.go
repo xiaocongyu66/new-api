@@ -5,7 +5,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/types"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
 )
 
 // from songquanpeng/one-api
@@ -400,7 +400,7 @@ func GetModelRatio(name string) (float64, bool, string) {
 			}
 			//return 0, true, name
 		}
-		return 37.5, operation_setting.SelfUseModeEnabled, name
+		return 37.5, manage_channels.SelfUseModeEnabled, name
 	}
 	return ratio, true, name
 }

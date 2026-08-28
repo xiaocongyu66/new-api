@@ -8,7 +8,8 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
+	"github.com/QuantumNous/new-api/internal/transport/middleware/status_code"
 )
 
 func formatNotifyType(channelId int, status int) string {
@@ -55,12 +56,12 @@ func ShouldDisableChannel(err *types.NewAPIError) bool {
 	if types.IsSkipRetryError(err) {
 		return false
 	}
-	if operation_setting.ShouldDisableByStatusCode(err.StatusCode) {
+	if status_code.ShouldDisableByStatusCode(err.StatusCode) {
 		return true
 	}
 
 	lowerMessage := strings.ToLower(err.Error())
-	search, _ := AcSearch(lowerMessage, operation_setting.AutomaticDisableKeywords, true)
+	search, _ := AcSearch(lowerMessage, manage_channels.AutomaticDisableKeywords, true)
 	return search
 }
 

@@ -13,7 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/constant"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,9 +21,9 @@ import (
 
 func TestOaiResponsesHandlerCountsOutputCallsNotDeclarations(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	operation_setting.SetToolPriceForTest("priced_fn", 5.0)
+	price_expression.SetToolPriceForTest("priced_fn", 5.0)
 	t.Cleanup(func() {
-		operation_setting.DeleteToolPriceForTest("priced_fn")
+		price_expression.DeleteToolPriceForTest("priced_fn")
 	})
 
 	body, err := common.Marshal(dto.OpenAIResponsesResponse{

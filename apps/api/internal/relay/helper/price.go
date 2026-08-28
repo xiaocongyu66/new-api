@@ -12,7 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/billing/consume_quota"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
@@ -129,7 +129,7 @@ func ModelPriceHelper(c contract.Context, info *relaycommon.RelayInfo, promptTok
 	}
 
 	// check if free model pre-consume is disabled
-	if !operation_setting.GetQuotaSetting().EnableFreeModelPreConsume {
+	if !consume_quota.GetQuotaSetting().EnableFreeModelPreConsume {
 		// if model price or ratio is 0, do not pre-consume quota
 		if groupRatioInfo.GroupRatio == 0 {
 			preConsumedQuota = 0
@@ -218,7 +218,7 @@ func ModelPriceHelperPerCall(c contract.Context, info *relaycommon.RelayInfo) (h
 		if err != nil {
 			return hosttypes.PriceData{}, err
 		}
-		if !operation_setting.GetQuotaSetting().EnableFreeModelPreConsume {
+		if !consume_quota.GetQuotaSetting().EnableFreeModelPreConsume {
 			if groupRatioInfo.GroupRatio == 0 || modelPrice == 0 {
 				quota = 0
 				freeModel = true
@@ -232,7 +232,7 @@ func ModelPriceHelperPerCall(c contract.Context, info *relaycommon.RelayInfo) (h
 			return hosttypes.PriceData{}, err
 		}
 		modelPrice = -1
-		if !operation_setting.GetQuotaSetting().EnableFreeModelPreConsume {
+		if !consume_quota.GetQuotaSetting().EnableFreeModelPreConsume {
 			if groupRatioInfo.GroupRatio == 0 || modelRatio == 0 {
 				quota = 0
 				freeModel = true
@@ -298,7 +298,7 @@ func modelPriceHelperTiered(c contract.Context, info *relaycommon.RelayInfo, pro
 	}
 
 	freeModel := false
-	if !operation_setting.GetQuotaSetting().EnableFreeModelPreConsume {
+	if !consume_quota.GetQuotaSetting().EnableFreeModelPreConsume {
 		if groupRatioInfo.GroupRatio == 0 {
 			preConsumedQuota = 0
 			freeModel = true

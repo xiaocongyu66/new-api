@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 )
 
 // HealthBridge carries the capability-side health store entry points.
@@ -17,7 +17,7 @@ type HealthBridge struct {
 	RecordOutcome         func(channelID int, success bool)
 	EffectiveWeight       func(channelID int, baseWeight uint) float64
 	RoutingWeight         func(channelID int, baseWeight uint, bypassCooldown bool) float64
-	CooldownDuration      func(cfg *operation_setting.ChannelHealthSetting, priorActivations int) time.Duration
+	CooldownDuration      func(cfg *health_store.ChannelHealthSetting, priorActivations int) time.Duration
 	RoutingBaseWeight     func(weight int) uint
 	Reset                 func()
 	GetScore              func(channelID int) float64
@@ -144,7 +144,7 @@ func slowStartFactor(state *channelHealthState, minRequests int) float64 {
 // not import this package. Toggling the switch off now discards accumulated
 // scores so re-enabling starts from a clean slate instead of resurrecting them.
 func init() {
-	operation_setting.RegisterHealthStateResetHook(func() {
+	health_store.RegisterHealthStateResetHook(func() {
 		GetChannelHealthManager().Reset()
 	})
 }
@@ -286,7 +286,7 @@ func (m *ChannelHealthManager) RoutingWeight(channelID int, baseWeight uint, byp
 }
 
 // CooldownDuration computes the sliding cooldown duration.
-func CooldownDuration(cfg *operation_setting.ChannelHealthSetting, priorActivations int) time.Duration {
+func CooldownDuration(cfg *health_store.ChannelHealthSetting, priorActivations int) time.Duration {
 	if healthBridge != nil && healthBridge.CooldownDuration != nil {
 		return healthBridge.CooldownDuration(cfg, priorActivations)
 	}

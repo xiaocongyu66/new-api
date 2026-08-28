@@ -14,7 +14,8 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
+	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/thanhpk/randstr"
 	waffo "github.com/waffo-com/waffo-go"
 	"github.com/waffo-com/waffo-go/config"
@@ -87,7 +88,7 @@ func formatWaffoAmount(amount float64, currency string) string {
 // display types (USD/CNY/TOKENS) to the actual USD amount to charge.
 func getWaffoPayMoney(amount float64, group string) float64 {
 	originalAmount := amount
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
+	if manage_subscription.GetQuotaDisplayType() == manage_subscription.QuotaDisplayTypeTokens {
 		amount = amount / common.QuotaPerUnit
 	}
 	topupGroupRatio := common.GetTopupGroupRatio(group)
@@ -95,7 +96,7 @@ func getWaffoPayMoney(amount float64, group string) float64 {
 		topupGroupRatio = 1
 	}
 	discount := 1.0
-	if ds, ok := operation_setting.GetPaymentSetting().AmountDiscount[int(originalAmount)]; ok {
+	if ds, ok := pay_subscription.GetPaymentSetting().AmountDiscount[int(originalAmount)]; ok {
 		if ds > 0 {
 			discount = ds
 		}
@@ -215,7 +216,7 @@ func RequestWaffoPay(c contract.Context) {
 
 	// Token 模式下归一化 Amount（存等价美元/CNY 数量，避免 RechargeWaffo 双重放大）
 	amount := req.Amount
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
+	if manage_subscription.GetQuotaDisplayType() == manage_subscription.QuotaDisplayTypeTokens {
 		amount = int64(float64(req.Amount) / common.QuotaPerUnit)
 		if amount < 1 {
 			amount = 1

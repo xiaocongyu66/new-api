@@ -14,7 +14,11 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
+	"github.com/QuantumNous/new-api/internal/billing/price_expression"
+	"github.com/QuantumNous/new-api/internal/catalog/health_store"
+	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
+	"github.com/QuantumNous/new-api/internal/transport/middleware/status_code"
 	"github.com/QuantumNous/new-api/setting/performance_setting"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/setting/system_setting"
@@ -54,14 +58,14 @@ func GatewayRoutingOptionKeyList() []string {
 }
 
 func ValidateOptionValue(key string, value string) error {
-	if key == operation_setting.ToolPriceOptionKey {
-		return operation_setting.ValidateToolPricesJSON(value)
+	if key == price_expression.ToolPriceOptionKey {
+		return price_expression.ValidateToolPricesJSON(value)
 	}
 	if key == "MaxTokenAutoGroups" {
 		return setting.ValidateMaxTokenAutoGroups(value)
 	}
-	if operation_setting.IsChannelModelHealthOptionKey(key) {
-		return operation_setting.ValidateChannelModelHealthSettingValue(key, value)
+	if health_store.IsChannelModelHealthOptionKey(key) {
+		return health_store.ValidateChannelModelHealthSettingValue(key, value)
 	}
 	return nil
 }
@@ -121,9 +125,9 @@ func SeedOptionMap() {
 	common.OptionMap["CustomCallbackAddress"] = ""
 	common.OptionMap["EpayId"] = ""
 	common.OptionMap["EpayKey"] = ""
-	common.OptionMap["Price"] = strconv.FormatFloat(operation_setting.Price, 'f', -1, 64)
-	common.OptionMap["USDExchangeRate"] = strconv.FormatFloat(operation_setting.USDExchangeRate, 'f', -1, 64)
-	common.OptionMap["MinTopUp"] = strconv.Itoa(operation_setting.MinTopUp)
+	common.OptionMap["Price"] = strconv.FormatFloat(pay_subscription.Price, 'f', -1, 64)
+	common.OptionMap["USDExchangeRate"] = strconv.FormatFloat(pay_subscription.USDExchangeRate, 'f', -1, 64)
+	common.OptionMap["MinTopUp"] = strconv.Itoa(pay_subscription.MinTopUp)
 	common.OptionMap["StripeMinTopUp"] = strconv.Itoa(setting.StripeMinTopUp)
 	common.OptionMap["StripeApiSecret"] = setting.StripeApiSecret
 	common.OptionMap["StripeWebhookSecret"] = setting.StripeWebhookSecret
@@ -162,7 +166,7 @@ func SeedOptionMap() {
 	common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
 	common.OptionMap["DefaultUseAutoGroup"] = strconv.FormatBool(setting.DefaultUseAutoGroup)
 	common.OptionMap["MaxTokenAutoGroups"] = strconv.Itoa(setting.GetMaxTokenAutoGroups())
-	common.OptionMap["PayMethods"] = operation_setting.PayMethods2JsonString()
+	common.OptionMap["PayMethods"] = pay_subscription.PayMethods2JsonString()
 	common.OptionMap["GitHubClientId"] = ""
 	common.OptionMap["GitHubClientSecret"] = ""
 	common.OptionMap["TelegramBotToken"] = ""
@@ -204,8 +208,8 @@ func SeedOptionMap() {
 	common.OptionMap["MjForwardUrlEnabled"] = strconv.FormatBool(setting.MjForwardUrlEnabled)
 	common.OptionMap["MjActionCheckSuccessEnabled"] = strconv.FormatBool(setting.MjActionCheckSuccessEnabled)
 	common.OptionMap["CheckSensitiveEnabled"] = strconv.FormatBool(setting.CheckSensitiveEnabled)
-	common.OptionMap["DemoSiteEnabled"] = strconv.FormatBool(operation_setting.DemoSiteEnabled)
-	common.OptionMap["SelfUseModeEnabled"] = strconv.FormatBool(operation_setting.SelfUseModeEnabled)
+	common.OptionMap["DemoSiteEnabled"] = strconv.FormatBool(manage_channels.DemoSiteEnabled)
+	common.OptionMap["SelfUseModeEnabled"] = strconv.FormatBool(manage_channels.SelfUseModeEnabled)
 	common.OptionMap["ModelRequestRateLimitEnabled"] = strconv.FormatBool(setting.ModelRequestRateLimitEnabled)
 	common.OptionMap["CheckSensitiveOnPromptEnabled"] = strconv.FormatBool(setting.CheckSensitiveOnPromptEnabled)
 	common.OptionMap["CheckSensitiveOnCompletionEnabled"] = strconv.FormatBool(setting.CheckSensitiveOnCompletionEnabled)
@@ -213,16 +217,16 @@ func SeedOptionMap() {
 	common.OptionMap["SensitiveWords"] = setting.SensitiveWordsToString()
 	common.OptionMap["SensitiveBlockGroups"] = setting.SensitiveGroupsToString()
 	common.OptionMap["StreamCacheQueueLength"] = strconv.Itoa(setting.StreamCacheQueueLength)
-	common.OptionMap["AutomaticDisableKeywords"] = operation_setting.AutomaticDisableKeywordsToString()
-	common.OptionMap["AutomaticDisableStatusCodes"] = operation_setting.AutomaticDisableStatusCodesToString()
-	common.OptionMap["AutomaticRetryStatusCodes"] = operation_setting.AutomaticRetryStatusCodesToString()
+	common.OptionMap["AutomaticDisableKeywords"] = manage_channels.AutomaticDisableKeywordsToString()
+	common.OptionMap["AutomaticDisableStatusCodes"] = status_code.AutomaticDisableStatusCodesToString()
+	common.OptionMap["AutomaticRetryStatusCodes"] = status_code.AutomaticRetryStatusCodesToString()
 	common.OptionMap["ExposeRatioEnabled"] = strconv.FormatBool(ratio_setting.IsExposeRatioEnabled())
 	common.OptionMap["proxy_config"] = ""
 
 	// Channel model health state-machine option keys, seeded from the
 	// runtime atomic config so the option-map snapshot reflects the
 	// live defaults.
-	healthCfg := operation_setting.GetChannelModelHealthSetting()
+	healthCfg := health_store.GetChannelModelHealthSetting()
 	if healthCfg != nil {
 		common.OptionMap["CalmFastBase"] = strconv.Itoa(healthCfg.CalmFastBase)
 		common.OptionMap["CalmFastInterval"] = strconv.Itoa(healthCfg.CalmFastInterval)
@@ -255,11 +259,11 @@ func SeedOptionMap() {
 // ApplyOption dispatches one persisted option value onto its typed target and
 // records it in common.OptionMap.
 func ApplyOption(key string, value string) (err error) {
-	if operation_setting.IsChannelModelHealthOptionKey(key) {
+	if health_store.IsChannelModelHealthOptionKey(key) {
 		// Health state-machine options are dispatched to the atomic runtime
 		// config before the OptionMap lock is taken; a parse/validation
 		// error returns without storing an invalid value.
-		if err := operation_setting.UpdateChannelModelHealthSettingValue(key, value); err != nil {
+		if err := health_store.UpdateChannelModelHealthSettingValue(key, value); err != nil {
 			return err
 		}
 		common.OptionMapRWMutex.Lock()
@@ -360,9 +364,9 @@ func ApplyOption(key string, value string) (err error) {
 		case "CheckSensitiveEnabled":
 			setting.CheckSensitiveEnabled = boolValue
 		case "DemoSiteEnabled":
-			operation_setting.DemoSiteEnabled = boolValue
+			manage_channels.DemoSiteEnabled = boolValue
 		case "SelfUseModeEnabled":
-			operation_setting.SelfUseModeEnabled = boolValue
+			manage_channels.SelfUseModeEnabled = boolValue
 		case "CheckSensitiveOnPromptEnabled":
 			setting.CheckSensitiveOnPromptEnabled = boolValue
 		case "CheckSensitiveOnCompletionEnabled":
@@ -408,7 +412,7 @@ func ApplyOption(key string, value string) (err error) {
 	case "WorkerValidKey":
 		system_setting.WorkerValidKey = value
 	case "PayAddress":
-		operation_setting.PayAddress = value
+		pay_subscription.PayAddress = value
 	case "Chats":
 		err = setting.UpdateChatsByJsonString(value)
 	case "AutoGroups":
@@ -416,17 +420,17 @@ func ApplyOption(key string, value string) (err error) {
 	case "MaxTokenAutoGroups":
 		err = setting.UpdateMaxTokenAutoGroups(value)
 	case "CustomCallbackAddress":
-		operation_setting.CustomCallbackAddress = value
+		pay_subscription.CustomCallbackAddress = value
 	case "EpayId":
-		operation_setting.EpayId = value
+		pay_subscription.EpayId = value
 	case "EpayKey":
-		operation_setting.EpayKey = value
+		pay_subscription.EpayKey = value
 	case "Price":
-		operation_setting.Price, _ = strconv.ParseFloat(value, 64)
+		pay_subscription.Price, _ = strconv.ParseFloat(value, 64)
 	case "USDExchangeRate":
-		operation_setting.USDExchangeRate, _ = strconv.ParseFloat(value, 64)
+		pay_subscription.USDExchangeRate, _ = strconv.ParseFloat(value, 64)
 	case "MinTopUp":
-		operation_setting.MinTopUp, _ = strconv.Atoi(value)
+		pay_subscription.MinTopUp, _ = strconv.Atoi(value)
 	case "StripeApiSecret":
 		setting.StripeApiSecret = value
 	case "StripeWebhookSecret":
@@ -580,15 +584,15 @@ func ApplyOption(key string, value string) (err error) {
 	case "SensitiveBlockGroups":
 		setting.SensitiveGroupsFromString(value)
 	case "AutomaticDisableKeywords":
-		operation_setting.AutomaticDisableKeywordsFromString(value)
+		manage_channels.AutomaticDisableKeywordsFromString(value)
 	case "AutomaticDisableStatusCodes":
-		err = operation_setting.AutomaticDisableStatusCodesFromString(value)
+		err = status_code.AutomaticDisableStatusCodesFromString(value)
 	case "AutomaticRetryStatusCodes":
-		err = operation_setting.AutomaticRetryStatusCodesFromString(value)
+		err = status_code.AutomaticRetryStatusCodesFromString(value)
 	case "StreamCacheQueueLength":
 		setting.StreamCacheQueueLength, _ = strconv.Atoi(value)
 	case "PayMethods":
-		err = operation_setting.UpdatePayMethodsByJsonString(value)
+		err = pay_subscription.UpdatePayMethodsByJsonString(value)
 	case "WaffoPayMethods":
 		// WaffoPayMethods is read directly from OptionMap via setting.GetWaffoPayMethods().
 		// The value is already stored in OptionMap at the top of this function.
@@ -599,8 +603,8 @@ func ApplyOption(key string, value string) (err error) {
 
 // handleConfigUpdate 处理分层配置更新，返回是否已处理
 func handleConfigUpdate(key, value string) bool {
-	if key == operation_setting.ToolPriceOptionKey {
-		operation_setting.LoadToolPricesFromJSONString(value)
+	if key == price_expression.ToolPriceOptionKey {
+		price_expression.LoadToolPricesFromJSONString(value)
 		return true
 	}
 
