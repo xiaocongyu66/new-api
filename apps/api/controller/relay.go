@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
+	"github.com/QuantumNous/new-api/pkg/routestats"
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -200,24 +201,25 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}()
 
 	retryParam := &service.RetryParam{
-		Ctx:         c,
-		TokenGroup:  relayInfo.TokenGroup,
-		ModelName:   relayInfo.OriginModelName,
-		RequestPath: c.Request.URL.Path,
-		Retry:       common.GetPointer(0),
-		ExcludeSet:  make(map[int]bool),
+		Ctx:           c,
+		TokenGroup:    relayInfo.TokenGroup,
+		ModelName:     relayInfo.OriginModelName,
+		RequestPath:   c.Request.URL.Path,
+		Retry:         common.GetPointer(0),
+		ExcludeRoutes: make(map[model.RouteKey]bool),
 	}
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
 		relayInfo.RetryIndex = retryParam.GetRetry()
-		channel, channelErr := getChannel(c, relayInfo, retryParam)
+		route, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
 			newAPIError = channelErr
 			break
 		}
+		channel := route.Channel
 		addUsedChannel(c, channel.Id)
 		if billingErr := service.PrepareTieredBillingForSelectedGroup(c, relayInfo); billingErr != nil {
 			newAPIError = billingErr
@@ -236,6 +238,8 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
+		attemptStart := time.Now()
+
 		switch relayFormat {
 		case types.RelayFormatOpenAIRealtime:
 			newAPIError = relay.WssHelper(c, relayInfo)
@@ -247,7 +251,34 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			newAPIError = relayHandler(c, relayInfo)
 		}
 
+		attemptLatencyMs := time.Since(attemptStart).Seconds() * 1000
+		handle := relayInfo.StatsHandle
+
+		// observeAttemptTiming feeds the latency-family EWMAs. It is deliberately
+		// NOT called for neutral outcomes: a user 4xx or a client cancel says
+		// nothing about the route, and charging its timing would let a caller's
+		// own aborted request move the route's score.
+		observeAttemptTiming := func() {
+			if handle == nil {
+				return
+			}
+			if relayInfo.IsStream && relayInfo.HasSendResponse() {
+				handle.ObserveTTFT(relayInfo.FirstResponseTime.Sub(relayInfo.StartTime).Seconds() * 1000)
+			}
+			handle.ObserveLatency(attemptLatencyMs)
+		}
+
 		if newAPIError == nil {
+			// Two independent signals are charged for one attempt, and both must
+			// fire. The soft signal (#405 EWMA) only nudges a continuous
+			// preference inside [0.5, 1.5]; the hard signal (#368 state machine)
+			// owns discrete isolation and is the only thing that can zero a route
+			// out. Recording one and not the other silently disables half the
+			// scheduler.
+			observeAttemptTiming()
+			if handle != nil {
+				handle.ObserveSuccess(routestats.SuccessObservation)
+			}
 			if healthErr := model.RecordSuccess(model.RouteKey{
 				ChannelId: channel.Id,
 				KeyIndex:  common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex),
@@ -266,13 +297,37 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		// happens, rather than deferring to a single terminal record. This
 		// ensures every failing attempt in a retry chain is counted.
 		retryEligible := shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry())
-		if retryEligible && retryParam.ExcludeSet != nil {
-			retryParam.ExcludeSet[channel.Id] = true
+		if retryEligible && retryParam.ExcludeRoutes != nil {
+			// Exclude the exact route unit that failed, not the whole channel: a
+			// dead key on a multi-key channel must not cost its siblings, and the
+			// route unit is what selection actually picks.
+			retryParam.ExcludeRoutes[model.RouteKey{
+				ChannelId: channel.Id,
+				KeyIndex:  common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex),
+				Model:     relayInfo.OriginModelName,
+			}] = true
 		}
 		if common.RetryTimes > 0 && wouldRetryWithOneBudget(c, newAPIError) {
 			recordRouteIsolation(c, model.RouteKey{ChannelId: channel.Id, KeyIndex: common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex), Model: relayInfo.OriginModelName}, newAPIError, classifyChatFailureSource(newAPIError))
 		}
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
+
+		// Route stats are charged per attempt (D1), and a failed attempt still
+		// feeds the latency family (D3) so a route that fails fast cannot look
+		// like the fastest route in the pool. A 429 is derated to 0.7 rather than
+		// 0.0 because the route is busy, not broken; a caller's own 4xx says
+		// nothing about the route and is recorded as nothing at all.
+		if handle != nil {
+			switch classifyRouteStatsOutcome(newAPIError) {
+			case routeStatsThrottled:
+				// Observe429 folds in the synthetic TTFT penalty itself, so the
+				// observed timing must not be charged a second time here.
+				handle.Observe429(0)
+			case routeStatsFatal:
+				observeAttemptTiming()
+				handle.ObserveSuccess(routestats.FatalObservation)
+			}
+		}
 
 		if !retryEligible {
 			break
@@ -334,35 +389,42 @@ func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
 	return meta
 }
 
-func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.Channel, *types.NewAPIError) {
+func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.SelectedRoute, *types.NewAPIError) {
 	if info.ChannelMeta == nil {
 		autoBan := c.GetBool("auto_ban")
 		autoBanInt := 1
 		if !autoBan {
 			autoBanInt = 0
 		}
-		return &model.Channel{
-			Id:      c.GetInt("channel_id"),
-			Type:    c.GetInt("channel_type"),
-			Name:    c.GetString("channel_name"),
-			AutoBan: &autoBanInt,
+		// Build a minimal SelectedRoute from context for specific channel case
+		return &model.SelectedRoute{
+			Channel: &model.Channel{
+				Id:      c.GetInt("channel_id"),
+				Type:    c.GetInt("channel_type"),
+				Name:    c.GetString("channel_name"),
+				AutoBan: &autoBanInt,
+			},
+			ChannelId: c.GetInt("channel_id"),
 		}, nil
 	}
-	channel, selectGroup, err := service.CacheGetRandomSatisfiedChannel(retryParam)
+	route, selectGroup, err := service.CacheGetRandomSatisfiedChannel(retryParam)
 	if err != nil {
 		return nil, types.NewError(fmt.Errorf("获取分组 %s 下模型 %s 的可用渠道失败（retry）: %s", selectGroup, info.OriginModelName, err.Error()), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
-	if channel == nil {
+	if route == nil {
 		return nil, types.NewError(fmt.Errorf("分组 %s 下模型 %s 的可用渠道不存在（retry）", selectGroup, info.OriginModelName), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
 
+	// Pass route stats handle to relayInfo for per-attempt attribution
+	info.StatsHandle = route.StatsHandle
+
 	info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
 
-	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName)
+	newAPIError := middleware.SetupContextForSelectedChannel(c, route, info.OriginModelName)
 	if newAPIError != nil {
 		return nil, newAPIError
 	}
-	return channel, nil
+	return route, nil
 }
 
 // recordRouteIsolation persists one retry-eligible failure against the route and
@@ -413,6 +475,44 @@ func classifyChatFailureSource(err *types.NewAPIError) model.FailureSource {
 		return model.FailureSourceLocal
 	}
 	return model.FailureSourceUpstream
+}
+
+// routeStatsOutcome tells the EWMA how much of a failure an attempt was. It
+// exists only to shape the soft signal: isolation, disabling and retry
+// eligibility are decided elsewhere by the state machine and shouldRetry.
+type routeStatsOutcome int
+
+const (
+	// routeStatsNeutral records nothing. A caller's own 4xx, a client cancel or
+	// a local transport failure says nothing about the route's quality, and
+	// charging it would let a caller move a healthy route's score.
+	routeStatsNeutral routeStatsOutcome = iota
+	// routeStatsThrottled is a 429: the route is busy, not broken.
+	routeStatsThrottled
+	// routeStatsFatal is a failure the route is answerable for: a channel error,
+	// an unusable response body, or a 5xx.
+	routeStatsFatal
+)
+
+// classifyRouteStatsOutcome maps a relay error onto the soft signal. It replaces
+// the channel-level ClassifyChannelOutcome that #368 removed along with the old
+// per-channel EWMA layer; the 401 escalation that classifier carried is gone on
+// purpose, because a dead credential is now handled by the key probe and the
+// state machine rather than by derating a score.
+func classifyRouteStatsOutcome(err *types.NewAPIError) routeStatsOutcome {
+	if err == nil {
+		return routeStatsNeutral
+	}
+	if types.IsChannelError(err) || err.GetErrorCode() == types.ErrorCodeBadResponseBody {
+		return routeStatsFatal
+	}
+	if err.StatusCode == http.StatusTooManyRequests {
+		return routeStatsThrottled
+	}
+	if err.StatusCode >= http.StatusInternalServerError {
+		return routeStatsFatal
+	}
+	return routeStatsNeutral
 }
 
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
@@ -601,34 +701,41 @@ func RelayTask(c *gin.Context) {
 	}()
 
 	retryParam := &service.RetryParam{
-		Ctx:         c,
-		TokenGroup:  relayInfo.TokenGroup,
-		ModelName:   relayInfo.OriginModelName,
-		RequestPath: c.Request.URL.Path,
-		Retry:       common.GetPointer(0),
-		ExcludeSet:  make(map[int]bool),
+		Ctx:           c,
+		TokenGroup:    relayInfo.TokenGroup,
+		ModelName:     relayInfo.OriginModelName,
+		RequestPath:   c.Request.URL.Path,
+		Retry:         common.GetPointer(0),
+		ExcludeRoutes: make(map[model.RouteKey]bool),
 	}
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
-		var channel *model.Channel
+		var route *model.SelectedRoute
 
 		if lockedCh, ok := relayInfo.LockedChannel.(*model.Channel); ok && lockedCh != nil {
-			channel = lockedCh
+			// Locked channel replay: build SelectedRoute from the channel
+			var err error
+			route, err = model.SelectedRouteFromChannel(lockedCh, relayInfo.OriginModelName)
+			if err != nil {
+				taskErr = service.TaskErrorWrapperLocal(err, "setup_locked_channel_failed", http.StatusInternalServerError)
+				break
+			}
 			if retryParam.GetRetry() > 0 {
-				if setupErr := middleware.SetupContextForSelectedChannel(c, channel, relayInfo.OriginModelName); setupErr != nil {
+				if setupErr := middleware.SetupContextForSelectedChannel(c, route, relayInfo.OriginModelName); setupErr != nil {
 					taskErr = service.TaskErrorWrapperLocal(setupErr.Err, "setup_locked_channel_failed", http.StatusInternalServerError)
 					break
 				}
 			}
 		} else {
 			var channelErr *types.NewAPIError
-			channel, channelErr = getChannel(c, relayInfo, retryParam)
+			route, channelErr = getChannel(c, relayInfo, retryParam)
 			if channelErr != nil {
 				logger.LogError(c, channelErr.Error())
 				taskErr = service.TaskErrorWrapperLocal(channelErr.Err, "get_channel_failed", http.StatusInternalServerError)
 				break
 			}
 		}
+		channel := route.Channel
 
 		addUsedChannel(c, channel.Id)
 		bodyStorage, bodyErr := common.GetBodyStorage(c)
@@ -652,8 +759,13 @@ func RelayTask(c *gin.Context) {
 		// happens. Only upstream (non-local) errors reflect channel health.
 		if !taskErr.LocalError {
 			taskAPIError := types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode)
-			if retryEligible && retryParam.ExcludeSet != nil {
-				retryParam.ExcludeSet[channel.Id] = true
+			if retryEligible && retryParam.ExcludeRoutes != nil {
+				// Exclude the exact route unit that failed: (ChannelId, KeyIndex, Model).
+				retryParam.ExcludeRoutes[model.RouteKey{
+					ChannelId: channel.Id,
+					KeyIndex:  common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex),
+					Model:     relayInfo.OriginModelName,
+				}] = true
 			}
 			if common.RetryTimes > 0 && shouldRetryTaskRelay(c, channel.Id, taskErr, 1) {
 				recordRouteIsolation(c, model.RouteKey{ChannelId: channel.Id, KeyIndex: common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex), Model: relayInfo.OriginModelName}, taskAPIError, model.FailureSourceUpstream)

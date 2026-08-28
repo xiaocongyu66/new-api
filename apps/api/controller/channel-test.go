@@ -176,10 +176,18 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Set("channel", channel.Type)
 	c.Set("base_url", channel.GetBaseURL())
-	group, _ := model.GetUserGroup(testUserID, false)
-	c.Set("group", group)
-
-	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, testModel)
+	_, _ = model.GetUserGroup(testUserID, false) // group stored in context by the route lookup if needed
+	// Probe variant: a channel test is not user traffic, so it must not land in the
+	// route unit share window.
+	route, err := model.SelectedRouteForProbe(channel, testModel)
+	if err != nil {
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewError(err, types.ErrorCodeGetChannelFailed),
+		}
+	}
+	newAPIError := middleware.SetupContextForSelectedChannel(c, route, testModel)
 	if newAPIError != nil {
 		return testResult{
 			context:     c,

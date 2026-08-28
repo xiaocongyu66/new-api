@@ -121,6 +121,55 @@ func TestClassifyChatFailureSourceNilIsUpstream(t *testing.T) {
 	assert.Equal(t, model.FailureSourceUpstream, classifyChatFailureSource(nil))
 }
 
+// classifyRouteStatsOutcome decides how much of a failure an attempt was for the
+// EWMA soft signal only. It replaced the channel-level ClassifyChannelOutcome
+// that #368 deleted, so the mapping is pinned here: a throttle must stay
+// distinguishable from a hard failure (otherwise a merely busy route is punished
+// as if it were broken), and a caller's own 4xx must record nothing at all
+// (otherwise a client can move a healthy route's score).
+func TestClassifyRouteStatsOutcome(t *testing.T) {
+	channelErr := types.NewError(testErr("upstream is unreachable"), types.ErrorCode("channel:dead"))
+	badBody := types.NewError(testErr("cannot decode body"), types.ErrorCodeBadResponseBody)
+
+	throttled := types.NewError(testErr("slow down"), types.ErrorCodeBadResponseStatusCode)
+	throttled.StatusCode = http.StatusTooManyRequests
+
+	serverErr := types.NewError(testErr("provider exploded"), types.ErrorCodeBadResponseStatusCode)
+	serverErr.StatusCode = http.StatusInternalServerError
+
+	badRequest := types.NewError(testErr("your json is wrong"), types.ErrorCodeBadResponseStatusCode)
+	badRequest.StatusCode = http.StatusBadRequest
+
+	unauthorized := types.NewError(testErr("bad credential"), types.ErrorCodeBadResponseStatusCode)
+	unauthorized.StatusCode = http.StatusUnauthorized
+
+	// NewError defaults StatusCode to 500, which is exactly how a transport
+	// failure reaches this classifier in production: it is charged to the route,
+	// matching the pre-merge ClassifyChannelOutcome. classifyChatFailureSource is
+	// the one that separates local from upstream, and it does so for isolation
+	// attribution rather than for the EWMA.
+	localTransport := types.NewError(testErr("dial tcp: connection refused"), types.ErrorCodeDoRequestFailed)
+
+	for _, tc := range []struct {
+		name string
+		err  *types.NewAPIError
+		want routeStatsOutcome
+	}{
+		{"nil records nothing", nil, routeStatsNeutral},
+		{"channel error is fatal", channelErr, routeStatsFatal},
+		{"unusable response body is fatal", badBody, routeStatsFatal},
+		{"429 is throttled, not fatal", throttled, routeStatsThrottled},
+		{"5xx is fatal", serverErr, routeStatsFatal},
+		{"caller 400 is neutral", badRequest, routeStatsNeutral},
+		{"401 is neutral: a dead credential is the key probe's job", unauthorized, routeStatsNeutral},
+		{"local transport failure carries 500 and is fatal", localTransport, routeStatsFatal},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, classifyRouteStatsOutcome(tc.err))
+		})
+	}
+}
+
 // wouldRetryWithOneBudget is the predicate the retry loop uses to decide
 // whether a terminal failure is an isolation candidate. It must answer "would
 // this error retry if one retry were available?" independently of the real

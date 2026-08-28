@@ -29,7 +29,6 @@ type Channel struct {
 	TestModel          *string `json:"test_model"`
 	Status             int     `json:"status" gorm:"default:1"`
 	Name               string  `json:"name" gorm:"index"`
-	Weight             *uint   `json:"weight" gorm:"default:0"`
 	CreatedTime        int64   `json:"created_time" gorm:"bigint"`
 	TestTime           int64   `json:"test_time" gorm:"bigint"`
 	ResponseTime       int     `json:"response_time"` // in milliseconds
@@ -43,7 +42,6 @@ type Channel struct {
 	ModelMapping       *string `json:"model_mapping" gorm:"type:text"`
 	//MaxInputTokens     *int    `json:"max_input_tokens" gorm:"default:0"`
 	StatusCodeMapping *string `json:"status_code_mapping" gorm:"type:varchar(1024);default:''"`
-	Priority          *int64  `json:"priority" gorm:"bigint;default:0"`
 	AutoBan           *int    `json:"auto_ban" gorm:"default:1"`
 	OtherInfo         string  `json:"other_info"`
 	Tag               *string `json:"tag" gorm:"index"`
@@ -79,7 +77,6 @@ type ChannelSortOptions struct {
 var channelSortColumns = map[string]string{
 	"id":            "id",
 	"name":          "name",
-	"priority":      "priority",
 	"balance":       "balance",
 	"response_time": "response_time",
 	"test_time":     "test_time",
@@ -115,8 +112,11 @@ func (options ChannelSortOptions) Apply(query *gorm.DB) *gorm.DB {
 			Desc:   true,
 		})
 	}
+	// The default used to be `priority desc`, back when priority ordered the
+	// candidate list. Scheduling now reads route unit static weights, and the
+	// column is gone, so the admin list falls back to the newest channel first.
 	return query.Order(clause.OrderByColumn{
-		Column: clause.Column{Name: "priority"},
+		Column: clause.Column{Name: "id"},
 		Desc:   true,
 	})
 }
@@ -451,6 +451,9 @@ func batchInsertWithTx(tx *gorm.DB, channels []Channel) error {
 			if err := channel_.AddAbilities(tx); err != nil {
 				return err
 			}
+			if err := SyncChannelModelRoutesWithTx(tx, channel_.Id); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -483,6 +486,9 @@ func batchDeleteWithTx(tx *gorm.DB, ids []int) (int64, error) {
 		if err := deleteAbilitiesByChannelIDsWithTx(tx, chunk); err != nil {
 			return 0, err
 		}
+		if err := DeleteChannelModelRoutesByChannelIDsWithTx(tx, chunk); err != nil {
+			return 0, err
+		}
 		if err := deleteRouteHealthByChannelIDsWithTx(tx, chunk); err != nil {
 			return 0, err
 		}
@@ -507,20 +513,6 @@ func BatchDeleteChannels(ids []int) (int64, error) {
 		return 0, err
 	}
 	return deletedCount, nil
-}
-
-func (channel *Channel) GetPriority() int64 {
-	if channel.Priority == nil {
-		return 0
-	}
-	return *channel.Priority
-}
-
-func (channel *Channel) GetWeight() int {
-	if channel.Weight == nil {
-		return 0
-	}
-	return int(*channel.Weight)
 }
 
 func (channel *Channel) GetBaseURL() string {
@@ -552,7 +544,10 @@ func (channel *Channel) insertWithTx(tx *gorm.DB) error {
 	if err := tx.Create(channel).Error; err != nil {
 		return err
 	}
-	return channel.AddAbilities(tx)
+	if err := channel.AddAbilities(tx); err != nil {
+		return err
+	}
+	return SyncChannelModelRoutesWithTx(tx, channel.Id)
 }
 
 func (channel *Channel) Insert() error {
@@ -603,7 +598,10 @@ func (channel *Channel) updateWithTx(tx *gorm.DB) error {
 	if err := tx.First(channel, "id = ?", channel.Id).Error; err != nil {
 		return err
 	}
-	return channel.UpdateAbilities(tx)
+	if err := channel.UpdateAbilities(tx); err != nil {
+		return err
+	}
+	return SyncChannelModelRoutesWithTx(tx, channel.Id)
 }
 
 func (channel *Channel) Update() error {
@@ -638,6 +636,9 @@ func (channel *Channel) deleteWithTx(tx *gorm.DB) error {
 		return err
 	}
 	if err := deleteAbilitiesWithTx(tx, channel.Id); err != nil {
+		return err
+	}
+	if err := SyncChannelModelRoutesWithTx(tx, channel.Id); err != nil {
 		return err
 	}
 	return deleteRouteHealthByChannelIDsWithTx(tx, []int{channel.Id})
@@ -834,6 +835,9 @@ func updateChannelStatusWithTx(_ *gorm.DB, channelId int, usingKey string, statu
 			if err := updateAbilityStatusWithTx(tx, channelId, enabled); err != nil {
 				return err
 			}
+			if err := SyncChannelModelRoutesWithTx(tx, channelId); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -853,7 +857,19 @@ func EnableChannelByTag(tag string) error {
 		if err := tx.Model(&Channel{}).Where("tag = ?", tag).Update("status", common.ChannelStatusEnabled).Error; err != nil {
 			return err
 		}
-		return updateAbilityStatusByTagWithTx(tx, tag, true)
+		if err := updateAbilityStatusByTagWithTx(tx, tag, true); err != nil {
+			return err
+		}
+		var ids []int
+		if err := tx.Model(&Channel{}).Where("tag = ?", tag).Pluck("id", &ids).Error; err != nil {
+			return err
+		}
+		for _, id := range ids {
+			if err := SyncChannelModelRoutesWithTx(tx, id); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	return err
 }
@@ -867,7 +883,19 @@ func DisableChannelByTag(tag string) error {
 		if err := tx.Model(&Channel{}).Where("tag = ?", tag).Update("status", common.ChannelStatusManuallyDisabled).Error; err != nil {
 			return err
 		}
-		return updateAbilityStatusByTagWithTx(tx, tag, false)
+		if err := updateAbilityStatusByTagWithTx(tx, tag, false); err != nil {
+			return err
+		}
+		var ids []int
+		if err := tx.Model(&Channel{}).Where("tag = ?", tag).Pluck("id", &ids).Error; err != nil {
+			return err
+		}
+		for _, id := range ids {
+			if err := SyncChannelModelRoutesWithTx(tx, id); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	return err
 }
@@ -876,7 +904,7 @@ func DisableChannelByTag(tag string) error {
 // tag inside one MutateGatewayRouting revision. Channel row updates and derived
 // ability updates commit together with the routing revision bump. The caller
 // must refresh the channel cache only after this returns nil.
-func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *string, group *string, priority *int64, weight *uint, paramOverride *string, headerOverride *string) error {
+func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *string, group *string, paramOverride *string, headerOverride *string) error {
 	updateData := Channel{}
 	shouldReCreateAbilities := false
 	updatedTag := tag
@@ -895,12 +923,6 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 		shouldReCreateAbilities = true
 		updateData.Group = *group
 	}
-	if priority != nil {
-		updateData.Priority = priority
-	}
-	if weight != nil {
-		updateData.Weight = weight
-	}
 	if paramOverride != nil {
 		updateData.ParamOverride = paramOverride
 	}
@@ -913,18 +935,30 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 			return err
 		}
 		if shouldReCreateAbilities {
-			channels, err := GetChannelsByTag(updatedTag, false, false)
-			if err != nil {
+			var channels []*Channel
+			if err := tx.Where("tag = ?", updatedTag).Find(&channels).Error; err != nil {
 				return err
 			}
 			for _, channel := range channels {
 				if err := channel.UpdateAbilities(tx); err != nil {
 					return fmt.Errorf("failed to update abilities: channel_id=%d, tag=%s, error=%w", channel.Id, channel.GetTag(), err)
 				}
+				if err := SyncChannelModelRoutesWithTx(tx, channel.Id); err != nil {
+					return err
+				}
 			}
 		} else {
-			if err := updateAbilityByTagWithTx(tx, tag, newTag, priority, weight); err != nil {
+			if err := updateAbilityTagWithTx(tx, tag, newTag); err != nil {
 				return err
+			}
+			var ids []int
+			if err := tx.Model(&Channel{}).Where("tag = ?", updatedTag).Pluck("id", &ids).Error; err != nil {
+				return err
+			}
+			for _, id := range ids {
+				if err := SyncChannelModelRoutesWithTx(tx, id); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
@@ -955,6 +989,9 @@ func deleteChannelByStatusWithTx(tx *gorm.DB, status int64) (int64, error) {
 		return 0, err
 	}
 	if err := deleteAbilitiesByChannelIDsWithTx(tx, ids); err != nil {
+		return 0, err
+	}
+	if err := DeleteChannelModelRoutesByChannelIDsWithTx(tx, ids); err != nil {
 		return 0, err
 	}
 	if err := deleteRouteHealthByChannelIDsWithTx(tx, ids); err != nil {
@@ -1008,6 +1045,9 @@ func deleteDisabledChannelWithTx(tx *gorm.DB) (int64, error) {
 	if err := deleteAbilitiesByChannelIDsWithTx(tx, ids); err != nil {
 		return 0, err
 	}
+	if err := DeleteChannelModelRoutesByChannelIDsWithTx(tx, ids); err != nil {
+		return 0, err
+	}
 	if err := deleteRouteHealthByChannelIDsWithTx(tx, ids); err != nil {
 		return 0, err
 	}
@@ -1027,7 +1067,7 @@ func GetPaginatedChannelTags(query *gorm.DB, offset int, limit int) ([]*string, 
 	return tags, err
 }
 
-func SearchTags(keyword string, group string, model string, idSort bool) ([]*string, error) {
+func SearchTags(keyword string, group string, model string) ([]*string, error) {
 	var tags []*string
 	modelsCol := "`models`"
 
@@ -1042,10 +1082,9 @@ func SearchTags(keyword string, group string, model string, idSort bool) ([]*str
 		baseURLCol = `"base_url"`
 	}
 
-	order := "priority desc"
-	if idSort {
-		order = "id desc"
-	}
+	// priority is gone with the tier scheduler, so newest-first is the only
+	// ordering left for the tag search.
+	order := "id desc"
 
 	// 构造基础查询
 	baseQuery := DB.Model(&Channel{}).Omit("key")
@@ -1206,6 +1245,10 @@ func BatchSetChannelTag(ids []int, tag *string) error {
 	for _, channel := range channels {
 		err = channel.UpdateAbilities(tx)
 		if err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := SyncChannelModelRoutesWithTx(tx, channel.Id); err != nil {
 			tx.Rollback()
 			return err
 		}
