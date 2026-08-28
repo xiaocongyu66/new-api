@@ -11,8 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/setting/console_setting"
-
+	console_setting "github.com/QuantumNous/new-api/internal/usage/record_perf"
 	"golang.org/x/sync/errgroup"
 )
 

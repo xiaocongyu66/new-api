@@ -1,4 +1,4 @@
-package perf_metrics_setting
+package record_perf
 
 import "github.com/QuantumNous/new-api/setting/config"
 

@@ -19,7 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
 	"github.com/QuantumNous/new-api/internal/transport/middleware/status_code"
-	"github.com/QuantumNous/new-api/setting/performance_setting"
+	performance_setting "github.com/QuantumNous/new-api/internal/usage/record_perf"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 )

@@ -10,7 +10,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/QuantumNous/new-api/setting/perf_metrics_setting"
+	perf_metrics_setting "github.com/QuantumNous/new-api/internal/usage/record_perf"
 )
 
 var hotBuckets sync.Map

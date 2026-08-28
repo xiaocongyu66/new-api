@@ -1,4 +1,4 @@
-package console_setting
+package record_perf
 
 import (
 	"fmt"
