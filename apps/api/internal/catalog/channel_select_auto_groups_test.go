@@ -8,10 +8,10 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -25,10 +25,10 @@ func setupChannelSelectAutoGroupsTest(t *testing.T) *gorm.DB {
 	originalDB := dbx.DB
 	originalMemoryCacheEnabled := common.MemoryCacheEnabled
 	originalRetryTimes := common.RetryTimes
-	originalAutoGroups := setting.AutoGroups2JsonString()
-	originalUsableGroups := setting.UserUsableGroups2JSONString()
+	originalAutoGroups := resolve_group.AutoGroups2JsonString()
+	originalUsableGroups := resolve_group.UserUsableGroups2JSONString()
 	originalGroupRatios := ratio_setting.GroupRatio2JSONString()
-	originalMaxTokenAutoGroups := setting.GetMaxTokenAutoGroups()
+	originalMaxTokenAutoGroups := resolve_group.GetMaxTokenAutoGroups()
 
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
@@ -38,19 +38,19 @@ func setupChannelSelectAutoGroupsTest(t *testing.T) *gorm.DB {
 	common.MemoryCacheEnabled = true
 	common.RetryTimes = 0
 
-	require.NoError(t, setting.UpdateAutoGroupsByJsonString(`[]`))
-	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"Default","vip":"VIP"}`))
+	require.NoError(t, resolve_group.UpdateAutoGroupsByJsonString(`[]`))
+	require.NoError(t, resolve_group.UpdateUserUsableGroupsByJSONString(`{"default":"Default","vip":"VIP"}`))
 	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":2}`))
-	require.NoError(t, setting.UpdateMaxTokenAutoGroups("2"))
+	require.NoError(t, resolve_group.UpdateMaxTokenAutoGroups("2"))
 
 	t.Cleanup(func() {
 		dbx.DB = originalDB
 		common.MemoryCacheEnabled = originalMemoryCacheEnabled
 		common.RetryTimes = originalRetryTimes
-		require.NoError(t, setting.UpdateAutoGroupsByJsonString(originalAutoGroups))
-		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(originalUsableGroups))
+		require.NoError(t, resolve_group.UpdateAutoGroupsByJsonString(originalAutoGroups))
+		require.NoError(t, resolve_group.UpdateUserUsableGroupsByJSONString(originalUsableGroups))
 		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalGroupRatios))
-		require.NoError(t, setting.UpdateMaxTokenAutoGroups(fmt.Sprintf("%d", originalMaxTokenAutoGroups)))
+		require.NoError(t, resolve_group.UpdateMaxTokenAutoGroups(fmt.Sprintf("%d", originalMaxTokenAutoGroups)))
 
 		if originalMemoryCacheEnabled && originalDB != nil &&
 			originalDB.Migrator().HasTable(&model.Channel{}) && originalDB.Migrator().HasTable(&model.Ability{}) {
@@ -117,7 +117,7 @@ func TestCacheGetRandomSatisfiedChannelUsesTokenAutoGroupsWhenGlobalAutoIsEmpty(
 	assert.Equal(t, 2101, first.Id)
 	assert.Equal(t, "vip", selectedGroup)
 	assert.Equal(t, "vip", common.GetCtxKeyString(ctx, constant.ContextKeyAutoGroup))
-	assert.Empty(t, setting.GetAutoGroups(), "the selection must not depend on the global Auto list")
+	assert.Empty(t, resolve_group.GetAutoGroups(), "the selection must not depend on the global Auto list")
 
 	param.IncreaseRetry()
 	second, selectedGroup, err := CacheGetRandomSatisfiedChannel(param)

@@ -15,11 +15,11 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/identity/policy"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/QuantumNous/new-api/internal/constant"
 
@@ -306,7 +306,7 @@ func Register(c contract.Context) {
 			UnlimitedQuota:     true,
 			ModelLimitsEnabled: false,
 		}
-		if setting.DefaultUseAutoGroup {
+		if resolve_group.DefaultUseAutoGroup {
 			token.Group = "auto"
 		}
 		if err := token.Insert(); err != nil {
@@ -573,7 +573,7 @@ func GetUserModels(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	groups := setting.GetUserUsableGroups(user.Group)
+	groups := resolve_group.GetUserUsableGroups(user.Group)
 	group := c.Query("group")
 	var groupsToQuery []string
 	switch {
@@ -583,7 +583,7 @@ func GetUserModels(c contract.Context) {
 		}
 	case group == "auto":
 		if _, ok := groups[group]; ok {
-			groupsToQuery = setting.GetUserAutoGroup(user.Group)
+			groupsToQuery = resolve_group.GetUserAutoGroup(user.Group)
 		}
 	default:
 		if _, ok := groups[group]; ok {

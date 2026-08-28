@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/internal/settings/config"
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
@@ -68,7 +69,7 @@ func ValidateOptionValue(key string, value string) error {
 		return price_expression.ValidateToolPricesJSON(value)
 	}
 	if key == "MaxTokenAutoGroups" {
-		return setting.ValidateMaxTokenAutoGroups(value)
+		return resolve_group.ValidateMaxTokenAutoGroups(value)
 	}
 	if health_store.IsChannelModelHealthOptionKey(key) {
 		return health_store.ValidateChannelModelHealthSettingValue(key, value)
@@ -169,9 +170,9 @@ func SeedOptionMap() {
 	common.OptionMap["WaffoPancakeProductID"] = setting.WaffoPancakeProductID
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
 	common.OptionMap["Chats"] = setting.Chats2JsonString()
-	common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
-	common.OptionMap["DefaultUseAutoGroup"] = strconv.FormatBool(setting.DefaultUseAutoGroup)
-	common.OptionMap["MaxTokenAutoGroups"] = strconv.Itoa(setting.GetMaxTokenAutoGroups())
+	common.OptionMap["AutoGroups"] = resolve_group.AutoGroups2JsonString()
+	common.OptionMap["DefaultUseAutoGroup"] = strconv.FormatBool(resolve_group.DefaultUseAutoGroup)
+	common.OptionMap["MaxTokenAutoGroups"] = strconv.Itoa(resolve_group.GetMaxTokenAutoGroups())
 	common.OptionMap["PayMethods"] = pay_subscription.PayMethods2JsonString()
 	common.OptionMap["GitHubClientId"] = ""
 	common.OptionMap["GitHubClientSecret"] = ""
@@ -197,7 +198,7 @@ func SeedOptionMap() {
 	common.OptionMap["CreateCacheRatio"] = ratio_setting.CreateCacheRatio2JSONString()
 	common.OptionMap["GroupRatio"] = ratio_setting.GroupRatio2JSONString()
 	common.OptionMap["GroupGroupRatio"] = ratio_setting.GroupGroupRatio2JSONString()
-	common.OptionMap["UserUsableGroups"] = setting.UserUsableGroups2JSONString()
+	common.OptionMap["UserUsableGroups"] = resolve_group.UserUsableGroups2JSONString()
 	common.OptionMap["CompletionRatio"] = ratio_setting.CompletionRatio2JSONString()
 	common.OptionMap["ImageRatio"] = ratio_setting.ImageRatio2JSONString()
 	common.OptionMap["AudioRatio"] = ratio_setting.AudioRatio2JSONString()
@@ -392,7 +393,7 @@ func ApplyOption(key string, value string) (err error) {
 		case "WorkerAllowHttpImageRequestEnabled":
 			fetch_url.WorkerAllowHttpImageRequestEnabled = boolValue
 		case "DefaultUseAutoGroup":
-			setting.DefaultUseAutoGroup = boolValue
+			resolve_group.DefaultUseAutoGroup = boolValue
 		case "ExposeRatioEnabled":
 			ratio_setting.SetExposeRatioEnabled(boolValue)
 		}
@@ -422,9 +423,9 @@ func ApplyOption(key string, value string) (err error) {
 	case "Chats":
 		err = setting.UpdateChatsByJsonString(value)
 	case "AutoGroups":
-		err = setting.UpdateAutoGroupsByJsonString(value)
+		err = resolve_group.UpdateAutoGroupsByJsonString(value)
 	case "MaxTokenAutoGroups":
-		err = setting.UpdateMaxTokenAutoGroups(value)
+		err = resolve_group.UpdateMaxTokenAutoGroups(value)
 	case "CustomCallbackAddress":
 		pay_subscription.CustomCallbackAddress = value
 	case "EpayId":
@@ -564,7 +565,7 @@ func ApplyOption(key string, value string) (err error) {
 	case "GroupGroupRatio":
 		err = ratio_setting.UpdateGroupGroupRatioByJSONString(value)
 	case "UserUsableGroups":
-		err = setting.UpdateUserUsableGroupsByJSONString(value)
+		err = resolve_group.UpdateUserUsableGroupsByJSONString(value)
 	case "CompletionRatio":
 		err = ratio_setting.UpdateCompletionRatioByJSONString(value)
 	case "ModelPrice":

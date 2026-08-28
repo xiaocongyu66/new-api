@@ -14,6 +14,7 @@ import (
 
 	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
 	"github.com/QuantumNous/new-api/internal/constant"
 	taskdto "github.com/QuantumNous/new-api/internal/dto"
 	"github.com/QuantumNous/new-api/internal/gateway/port"
@@ -23,7 +24,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/tidwall/gjson"
 )
@@ -96,7 +96,7 @@ func Distribute() func(c contract.Context) {
 						return
 					}
 					if playgroundRequest.Group != "" {
-						if !setting.GroupInUserUsableGroups(usingGroup, playgroundRequest.Group) && playgroundRequest.Group != usingGroup {
+						if !resolve_group.GroupInUserUsableGroups(usingGroup, playgroundRequest.Group) && playgroundRequest.Group != usingGroup {
 							abortWithOpenAiMessage(c, http.StatusForbidden, i18n.TCtx(c, i18n.MsgDistributorGroupAccessDenied))
 							return
 						}
@@ -112,7 +112,7 @@ func Distribute() func(c contract.Context) {
 						channelSupportsRequestPath(preferred, c.Path(), modelRequest.Model) {
 						if usingGroup == "auto" {
 							userGroup := common.GetCtxKeyString(c, constant.ContextKeyUserGroup)
-							autoGroups := setting.GetRequestAutoGroups(c, userGroup)
+							autoGroups := resolve_group.GetRequestAutoGroups(c, userGroup)
 							for _, g := range autoGroups {
 								if catalog.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
 									selectGroup = g

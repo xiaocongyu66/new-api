@@ -2,12 +2,12 @@ package controller
 
 import (
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 )
 
@@ -28,7 +28,7 @@ func GetUserGroups(c contract.Context) {
 	userGroup := ""
 	userId := c.GetInt("id")
 	userGroup, _ = model.GetUserGroup(userId, false)
-	userUsableGroups := setting.GetUserUsableGroups(userGroup)
+	userUsableGroups := resolve_group.GetUserUsableGroups(userGroup)
 	for groupName, _ := range ratio_setting.GetGroupRatioCopy() {
 		// UserUsableGroups contains the groups that the user can use
 		if desc, ok := userUsableGroups[groupName]; ok {
@@ -41,7 +41,7 @@ func GetUserGroups(c contract.Context) {
 	if _, ok := userUsableGroups["auto"]; ok {
 		usableGroups["auto"] = map[string]interface{}{
 			"ratio": "自动",
-			"desc":  setting.GetUsableGroupDescription("auto"),
+			"desc":  resolve_group.GetUsableGroupDescription("auto"),
 		}
 	}
 	_ = c.JSON(http.StatusOK, common.H{

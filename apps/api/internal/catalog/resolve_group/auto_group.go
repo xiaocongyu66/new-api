@@ -1,4 +1,4 @@
-package setting
+package resolve_group
 
 import (
 	"fmt"

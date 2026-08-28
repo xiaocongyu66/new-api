@@ -3,11 +3,11 @@ package channel
 import (
 	"errors"
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
 )
 
 // CacheGetRandomSatisfiedChannel is the production implementation behind
@@ -54,7 +54,7 @@ func CacheGetRandomSatisfiedChannel(param *port.SelectParams) (*model.Channel, s
 	userGroup := common.GetCtxKeyString(param.Ctx, constant.ContextKeyUserGroup)
 
 	if param.TokenGroup == "auto" {
-		autoGroups := setting.GetRequestAutoGroups(param.Ctx, userGroup) // ponytail: service dep until group resolution migrates out of service
+		autoGroups := resolve_group.GetRequestAutoGroups(param.Ctx, userGroup) // ponytail: service dep until group resolution migrates out of service
 		if len(autoGroups) == 0 {
 			return nil, selectGroup, errors.New("auto groups is not enabled")
 		}

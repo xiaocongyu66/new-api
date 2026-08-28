@@ -1,4 +1,4 @@
-package setting
+package resolve_group
 
 // Group-resolution rules shared by relay selection, token issuance, and the
 // pricing/pricing-adjacent controllers. They read group configuration from

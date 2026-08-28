@@ -8,10 +8,10 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 )
 
@@ -385,7 +385,7 @@ func GetPricing(c contract.Context) {
 		}
 	}
 
-	usableGroup = setting.GetUserUsableGroups(group)
+	usableGroup = resolve_group.GetUserUsableGroups(group)
 	pricing = filterPricingByUsableGroups(pricing, usableGroup)
 	for group := range ratio_setting.GetGroupRatioCopy() {
 		if _, ok := usableGroup[group]; !ok {
@@ -400,7 +400,7 @@ func GetPricing(c contract.Context) {
 		"group_ratio":        groupRatio,
 		"usable_group":       usableGroup,
 		"supported_endpoint": model.GetSupportedEndpointMap(),
-		"auto_groups":        setting.GetUserAutoGroup(group),
+		"auto_groups":        resolve_group.GetUserAutoGroup(group),
 		"pricing_version":    "a42d372ccf0b5dd13ecf71203521f9d2",
 	})
 }
