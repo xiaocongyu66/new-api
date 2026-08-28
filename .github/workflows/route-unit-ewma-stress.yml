@@ -20,7 +20,22 @@ on:
         type: string
         default: ''
       admin_token:
-        description: 'Admin JWT for audit endpoint (default: K8S_STRESS_ADMIN_TOKEN secret)'
+        description: 'Admin JWT for audit endpoint (default: K8S_STRESS_ADMIN_TOKEN secret, then auto-login)'
+        required: false
+        type: string
+        default: ''
+      admin_username:
+        description: 'Username for auto-login (default: root). Ignored if admin_token is provided.'
+        required: false
+        type: string
+        default: 'root'
+      admin_password:
+        description: 'Password for auto-login (default: 123456). Ignored if admin_token is provided.'
+        required: false
+        type: string
+        default: '123456'
+      gateway_admin_url:
+        description: 'Gateway admin base URL (default: derived from target_url by stripping /v1). Used only for auto-login.'
         required: false
         type: string
         default: ''
@@ -120,6 +135,9 @@ env:
   TARGET_URL: ${{ inputs.target_url }}
   API_KEY: ${{ inputs.api_key }}
   ADMIN_TOKEN: ${{ inputs.admin_token || secrets.K8S_STRESS_ADMIN_TOKEN }}
+  ADMIN_USERNAME: ${{ inputs.admin_username || 'root' }}
+  ADMIN_PASSWORD: ${{ inputs.admin_password || '123456' }}
+  GATEWAY_ADMIN_URL: ${{ inputs.gateway_admin_url != '' && inputs.gateway_admin_url || format('{0}', replace(inputs.target_url, '/v1', '')) }}
   MODEL: ${{ inputs.model }}
   ALIAS: ${{ inputs.alias }}
   REQUESTS: ${{ inputs.requests }}
@@ -175,6 +193,43 @@ jobs:
           echo "Mock upstream failed to start" >&2
           exit 1
 
+      - name: Resolve admin token
+        id: admin_login_smoke
+        env:
+          ADMIN_TOKEN: ${{ env.ADMIN_TOKEN }}
+          ADMIN_USERNAME: ${{ env.ADMIN_USERNAME }}
+          ADMIN_PASSWORD: ${{ env.ADMIN_PASSWORD }}
+          GATEWAY_ADMIN_URL: ${{ env.GATEWAY_ADMIN_URL }}
+        run: |
+          set -euo pipefail
+          login_url="${GATEWAY_ADMIN_URL%/}/api/user/login"
+          probe_token() {
+            curl -fsS --max-time 5 -H "Authorization: Bearer $1"               "${GATEWAY_ADMIN_URL%/}/api/route_unit/audit?alias=__probe__&limit=1" >/dev/null 2>&1
+          }
+          if [ -n "$ADMIN_TOKEN" ] && probe_token "$ADMIN_TOKEN"; then
+            echo "Using provided admin token"
+            echo "ADMIN_TOKEN_FINAL=$ADMIN_TOKEN" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          for i in $(seq 1 15); do
+            RESP=$(curl -fsS --max-time 10 -H 'Content-Type: application/json' \
+              -X POST -d "{\"username\":\"$ADMIN_USERNAME\",\"password\":\"$ADMIN_PASSWORD\"}" \
+              "$login_url" 2>/dev/null || true)
+            if [ -n "$RESP" ]; then
+              TOKEN=$(echo "$RESP" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("data",{}).get("access_token",""))' 2>/dev/null || true)
+              if [ -n "$TOKEN" ] && probe_token "$TOKEN"; then
+                echo "Auto-login admin token obtained (len=${#TOKEN})"
+                echo "::add-mask::$TOKEN"
+                echo "ADMIN_TOKEN_FINAL=$TOKEN" >> "$GITHUB_ENV"
+                exit 0
+              fi
+            fi
+            echo "Login attempt $i failed, retrying..."
+            sleep 2
+          done
+          echo "::error::Failed to obtain admin token from $login_url"
+          exit 1
+
       - name: Preflight gateway
         run: |
           set -euo pipefail
@@ -197,7 +252,7 @@ jobs:
           python3 tests/route_unit_stress/run_smoke.py \
             --gateway-url "$TARGET_URL" \
             --token "$API_KEY" \
-            --admin-token "$ADMIN_TOKEN" \
+            --admin-token "${{ env.ADMIN_TOKEN_FINAL }}" \
             --mock-url "$MOCK_URL" \
             --requests ${{ env.REQUESTS }} \
             --concurrency ${{ env.CONCURRENCY }} \
@@ -388,6 +443,44 @@ jobs:
           # This is a pre-requisite handled outside this workflow (k8s channel config).
           echo "MOCK_URL_PRIMARY=http://127.0.0.1:18200" >> "$GITHUB_ENV"
 
+      - name: Resolve admin token
+        id: admin_login_scenario
+        env:
+          ADMIN_TOKEN: ${{ env.ADMIN_TOKEN }}
+          ADMIN_USERNAME: ${{ env.ADMIN_USERNAME }}
+          ADMIN_PASSWORD: ${{ env.ADMIN_PASSWORD }}
+          GATEWAY_ADMIN_URL: ${{ env.GATEWAY_ADMIN_URL }}
+        run: |
+          set -euo pipefail
+          login_url="${GATEWAY_ADMIN_URL%/}/api/user/login"
+          probe_token() {
+            curl -fsS --max-time 5 -H "Authorization: Bearer $1" \
+              "${GATEWAY_ADMIN_URL%/}/api/route_unit/audit?alias=__probe__&limit=1" >/dev/null 2>&1
+          }
+          if [ -n "$ADMIN_TOKEN" ] && probe_token "$ADMIN_TOKEN"; then
+            echo "Using provided admin token"
+            echo "ADMIN_TOKEN_FINAL=$ADMIN_TOKEN" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          for i in $(seq 1 15); do
+            RESP=$(curl -fsS --max-time 10 -H 'Content-Type: application/json' \
+              -X POST -d "{\"username\":\"$ADMIN_USERNAME\",\"password\":\"$ADMIN_PASSWORD\"}" \
+              "$login_url" 2>/dev/null || true)
+            if [ -n "$RESP" ]; then
+              TOKEN=$(echo "$RESP" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("data",{}).get("access_token",""))' 2>/dev/null || true)
+              if [ -n "$TOKEN" ] && probe_token "$TOKEN"; then
+                echo "Auto-login admin token obtained (len=${#TOKEN})"
+                echo "::add-mask::$TOKEN"
+                echo "ADMIN_TOKEN_FINAL=$TOKEN" >> "$GITHUB_ENV"
+                exit 0
+              fi
+            fi
+            echo "Login attempt $i failed, retrying..."
+            sleep 2
+          done
+          echo "::error::Failed to obtain admin token from $login_url"
+          exit 1
+
       - name: Preflight gateway
         run: |
           set -euo pipefail
@@ -475,7 +568,7 @@ jobs:
             --scenario ${{ matrix.scenario }} \
             --gateway-url "$TARGET_URL" \
             --token "$API_KEY" \
-            --admin-token "$ADMIN_TOKEN" \
+            --admin-token "${{ env.ADMIN_TOKEN_FINAL }}" \
             --alias "${{ env.ALIAS }}" \
             --mock-url "$MOCK_URL" \
             ${{
