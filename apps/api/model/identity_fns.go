@@ -142,12 +142,7 @@ func (TokenNameRow) TableName() string {
 }
 
 var (
-	GetTokenByIdFn            func(id int) (*Token, error)
-	GetTokenByKeyFn           func(key string, fromDB bool) (*Token, error)
-	GetUserCacheFn            func(userId int) (*UserBase, error)
-	DecreaseTokenQuotaFn      func(id int, key string, quota int) error
-	RefreshUserGroupCacheFn   func(userId int) error
-	MigrateTokenModelLimitsFn func() error
+	GetTokenByIdFn func(id int) (*Token, error)
 )
 
 func GetTokenById(id int) (*Token, error) {
@@ -160,43 +155,27 @@ func GetTokenById(id int) (*Token, error) {
 }
 
 func GetTokenByKey(key string, fromDB bool) (*Token, error) {
-	if GetTokenByKeyFn != nil {
-		return GetTokenByKeyFn(key, fromDB)
-	}
-	return nil, nil
+	return GetTokenByKeyWrFn(key, fromDB)
 }
 
 func GetUserCache(userId int) (*UserBase, error) {
-	if GetUserCacheFn != nil {
-		return GetUserCacheFn(userId)
-	}
-	return nil, nil
+	return GetUserCacheWrFn(userId)
 }
 
 func DecreaseTokenQuota(id int, key string, quota int) error {
-	if DecreaseTokenQuotaFn != nil {
-		return DecreaseTokenQuotaFn(id, key, quota)
-	}
-	return nil
+	return identity.DecreaseTokenQuota(id, key, quota)
 }
 
 func RefreshUserGroupCache(userId int) error {
-	if RefreshUserGroupCacheFn != nil {
-		return RefreshUserGroupCacheFn(userId)
-	}
-	return nil
+	return identity.RefreshUserGroupCache(userId)
 }
 
 func migrateTokenModelLimitsToText() error {
-	if MigrateTokenModelLimitsFn != nil {
-		return MigrateTokenModelLimitsFn()
-	}
-	return nil
+	return identity.MigrateTokenModelLimitsToText()
 }
 
 // Type re-exports for callers still importing model (security/oauth, etc.).
 // These are aliases — model.User and identity.User are the same type.
-
 
 type User = identity.User
 type Token = identity.Token
@@ -228,24 +207,24 @@ var (
 var IncreaseTokenQuota = identity.IncreaseTokenQuota
 
 var (
-	GetTokenByKeyWrFn   = identity.GetTokenByKey
-	GetUserCacheWrFn    = identity.GetUserCache
+	GetTokenByKeyWrFn = identity.GetTokenByKey
+	GetUserCacheWrFn  = identity.GetUserCache
 )
 var UpdateUserSetting = identity.UpdateUserSetting
 var ValidateAccessToken = identity.ValidateAccessToken
 
 var (
-	ValidateUserToken               = identity.ValidateUserToken
-	IsAdmin                         = identity.IsAdmin
-	UpdateUserUsedQuota             = identity.UpdateUserUsedQuota
+	ValidateUserToken                  = identity.ValidateUserToken
+	IsAdmin                            = identity.IsAdmin
+	UpdateUserUsedQuota                = identity.UpdateUserUsedQuota
 	UpdateUserUsedQuotaAndRequestCount = identity.UpdateUserUsedQuotaAndRequestCount
-	GetUserById                     = identity.GetUserById
-	GetUserGroup                    = identity.GetUserGroup
-	GetUserQuota                    = identity.GetUserQuota
-	NormalizeEmail                  = identity.NormalizeEmail
-	SearchUsers                     = identity.SearchUsers
-	GetUsernameByIdRe               = identity.GetUsernameById
-	GetUserSettingRe                = identity.GetUserSetting
+	GetUserById                        = identity.GetUserById
+	GetUserGroup                       = identity.GetUserGroup
+	GetUserQuota                       = identity.GetUserQuota
+	NormalizeEmail                     = identity.NormalizeEmail
+	SearchUsers                        = identity.SearchUsers
+	GetUsernameByIdRe                  = identity.GetUsernameById
+	GetUserSettingRe                   = identity.GetUserSetting
 )
 var GetRootUser = identity.GetRootUser
 var IsEmailAlreadyTaken = identity.IsEmailAlreadyTaken
@@ -254,22 +233,37 @@ var GetUserLanguage = identity.GetUserLanguage
 
 // Re-exports for test compatibility
 var (
-	UserSessionStatusActive   = identity.UserSessionStatusActive
-	UserSessionStatusRevoked  = identity.UserSessionStatusRevoked
-	CreateUserSession          = identity.CreateUserSession
-	GetUserSessionCached       = identity.GetUserSessionCached
-	RevokeUserSession          = identity.RevokeUserSession
-	RevokeAllUserSessions      = identity.RevokeAllUserSessions
-	GetUserSessionBySID        = identity.GetUserSessionBySID
-	CountActiveUserSessions    = identity.CountActiveUserSessions
+	UserSessionStatusActive       = identity.UserSessionStatusActive
+	UserSessionStatusRevoked      = identity.UserSessionStatusRevoked
+	CreateUserSession             = identity.CreateUserSession
+	GetUserSessionCached          = identity.GetUserSessionCached
+	RevokeUserSession             = identity.RevokeUserSession
+	RevokeAllUserSessions         = identity.RevokeAllUserSessions
+	GetUserSessionBySID           = identity.GetUserSessionBySID
+	CountActiveUserSessions       = identity.CountActiveUserSessions
 	AdvanceUserSessionAuthVersion = identity.AdvanceUserSessionAuthVersion
-	IsTwoFAEnabled             = identity.IsTwoFAEnabled
-	GetPasskeyByUserID         = identity.GetPasskeyByUserID
-	ValidateBackupCode         = identity.ValidateBackupCode
-	DisableTwoFAWithAuthVersion = identity.DisableTwoFAWithAuthVersion
-	CreateAuthFlow             = identity.CreateAuthFlow
-	GetAuthFlow                = identity.GetAuthFlow
-	ConsumeAuthFlow            = identity.ConsumeAuthFlow
+	IsTwoFAEnabled                = identity.IsTwoFAEnabled
+	GetPasskeyByUserID            = identity.GetPasskeyByUserID
+	ValidateBackupCode            = identity.ValidateBackupCode
+	DisableTwoFAWithAuthVersion   = identity.DisableTwoFAWithAuthVersion
+	CreateAuthFlow                = identity.CreateAuthFlow
+	GetAuthFlow                   = identity.GetAuthFlow
+	ConsumeAuthFlow               = identity.ConsumeAuthFlow
 )
 var AuthFlowPurposeOAuth = identity.AuthFlowPurposeOAuth
 var AuthFlowPurposePasskeyLogin = identity.AuthFlowPurposePasskeyLogin
+
+// Error sentinel re-exports: the identity domain owns these errors, so model
+// callers must compare against the same values (errors.Is uses ==).
+var (
+	ErrDatabase             = identity.ErrDatabase
+	ErrInvalidCredentials   = identity.ErrInvalidCredentials
+	ErrUserEmptyCredentials = identity.ErrUserEmptyCredentials
+	ErrEmailAlreadyTaken    = identity.ErrEmailAlreadyTaken
+	ErrEmailNotFound        = identity.ErrEmailNotFound
+	ErrEmailAmbiguous       = identity.ErrEmailAmbiguous
+	ErrTokenNotProvided     = identity.ErrTokenNotProvided
+	ErrTokenInvalid         = identity.ErrTokenInvalid
+	ErrTwoFANotEnabled      = identity.ErrTwoFANotEnabled
+	ErrTwoFAAlreadyEnabled  = identity.ErrTwoFAAlreadyEnabled
+)

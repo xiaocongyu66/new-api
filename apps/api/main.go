@@ -400,9 +400,6 @@ func InitResources() error {
 	}
 	model.GetTokenByKeyWrFn = identity.GetTokenByKey
 	model.GetUserCacheWrFn = identity.GetUserCache
-	model.DecreaseTokenQuotaFn = identity.DecreaseTokenQuota
-	model.RefreshUserGroupCacheFn = identity.RefreshUserGroupCache
-	model.MigrateTokenModelLimitsFn = identity.MigrateTokenModelLimitsToText
 
 	return nil
 }
