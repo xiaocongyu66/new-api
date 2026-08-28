@@ -1,6 +1,6 @@
 package manage_models
 
-import "github.com/QuantumNous/new-api/setting/config"
+import "github.com/QuantumNous/new-api/internal/settings/config"
 
 // GrokSettings defines Grok model configuration.
 type GrokSettings struct {

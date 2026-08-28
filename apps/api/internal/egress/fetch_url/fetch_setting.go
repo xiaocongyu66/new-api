@@ -1,6 +1,6 @@
 package fetch_url
 
-import "github.com/QuantumNous/new-api/setting/config"
+import "github.com/QuantumNous/new-api/internal/settings/config"
 
 type FetchSetting struct {
 	EnableSSRFProtection   bool     `json:"enable_ssrf_protection"` // 是否启用SSRF防护

@@ -16,7 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/internal/settings/config"
 	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/gin-gonic/gin"

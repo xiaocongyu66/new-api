@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/internal/settings/config"
 )
 
 type ChatCompletionsToResponsesPolicy struct {

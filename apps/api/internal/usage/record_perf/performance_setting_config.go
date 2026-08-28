@@ -2,7 +2,7 @@ package record_perf
 
 import (
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/internal/settings/config"
 )
 
 // PerformanceSetting 性能设置配置

@@ -6,7 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
-	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/internal/settings/config"
 )
 
 type PasskeySettings struct {

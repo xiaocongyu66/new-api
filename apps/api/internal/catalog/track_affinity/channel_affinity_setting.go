@@ -1,6 +1,6 @@
 package track_affinity
 
-import "github.com/QuantumNous/new-api/setting/config"
+import "github.com/QuantumNous/new-api/internal/settings/config"
 
 type ChannelAffinityKeySource struct {
 	Type string `json:"type"` // context_int, context_string, request_header, gjson

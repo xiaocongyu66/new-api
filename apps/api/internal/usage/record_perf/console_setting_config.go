@@ -1,6 +1,6 @@
 package record_perf
 
-import "github.com/QuantumNous/new-api/setting/config"
+import "github.com/QuantumNous/new-api/internal/settings/config"
 
 type ConsoleSetting struct {
 	ApiInfo              string `json:"api_info"`              // 控制台 API 信息 (JSON 数组字符串)

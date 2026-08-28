@@ -1,6 +1,6 @@
 package manage_subscription
 
-import "github.com/QuantumNous/new-api/setting/config"
+import "github.com/QuantumNous/new-api/internal/settings/config"
 
 // 额度展示类型
 const (

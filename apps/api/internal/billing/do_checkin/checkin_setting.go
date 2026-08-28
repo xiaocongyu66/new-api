@@ -1,6 +1,6 @@
 package do_checkin
 
-import "github.com/QuantumNous/new-api/setting/config"
+import "github.com/QuantumNous/new-api/internal/settings/config"
 
 // CheckinSetting 签到功能配置
 type CheckinSetting struct {
