@@ -31,20 +31,24 @@ var (
 	RootUserExistsFn    func() bool
 )
 
-// UserQuery delegates to the identity implementation.
+// UserQuery delegates to the identity implementation. The fallback scopes to
+// the User model directly so model-package tests (which run without the
+// main.go wiring) still get a table-bound query; the delegate would otherwise
+// return a bare tx and make Updates(map{...}) fail with "Table not set".
 func UserQuery(tx *gorm.DB) *gorm.DB {
 	if UserQueryFn != nil {
 		return UserQueryFn(tx)
 	}
-	return tx
+	return tx.Model(&User{})
 }
 
-// TokenQuery delegates to the identity implementation.
+// TokenQuery delegates to the identity implementation; fallback mirrors
+// UserQuery for the same reason.
 func TokenQuery(tx *gorm.DB) *gorm.DB {
 	if TokenQueryFn != nil {
 		return TokenQueryFn(tx)
 	}
-	return tx
+	return tx.Model(&Token{})
 }
 
 // LockUserRow delegates to the identity implementation.
