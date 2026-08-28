@@ -9,9 +9,9 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/sensitive"
 )
 
 func CloseResponseBodyGracefully(httpResponse *http.Response) {
@@ -50,7 +50,7 @@ func IOCopyBytesGracefully(c contract.Context, src *http.Response, data []byte) 
 	// 输出侧敏感过滤（非流式）：目标域与词库敏感词从响应体中静默切除，
 	// 状态码与 Content-Type 保持上游原样，不再替换为 content_filter 错误。
 	// ponytail: JSON \uXXXX 转义形式的内容不在折叠范围（上游几乎都发原始 UTF-8）。
-	if setting.ShouldCheckCompletionSensitive() {
+	if sensitive.ShouldCheckCompletionSensitive() {
 		if cleaned, labels := SanitizeSensitiveText(string(data)); len(labels) > 0 {
 			common.SysError(fmt.Sprintf("non-stream output sanitized by sensitive filter: [%s]", strings.Join(labels, ",")))
 			RecordSensitiveBlock(c, "output", "sanitize:"+strings.Join(labels, ","), string(data))

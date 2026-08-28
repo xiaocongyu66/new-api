@@ -4,16 +4,16 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/QuantumNous/new-api/internal/sensitive"
 )
 
 func withSanitizeDict(t *testing.T, words []string) {
 	t.Helper()
-	old := setting.SensitiveWords
-	setting.SensitiveWords = words
-	t.Cleanup(func() { setting.SensitiveWords = old })
+	old := sensitive.SensitiveWords
+	sensitive.SensitiveWords = words
+	t.Cleanup(func() { sensitive.SensitiveWords = old })
 }
 
 // TestSanitizeTargetDomainsVariants gov.cn 及全角/西里尔同形变体全部被静默切除。

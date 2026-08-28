@@ -4,8 +4,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/QuantumNous/new-api/setting"
 	"golang.org/x/text/unicode/norm"
+	"github.com/QuantumNous/new-api/internal/sensitive"
 )
 
 // sensitiveHits checks a single text with the layered engine.
@@ -23,7 +23,7 @@ func sensitiveCheckHits(text string, dict []string) (bool, []string) {
 	if text == "" {
 		return false, nil
 	}
-	gov := setting.SensitiveGroupEnabled("gov")
+	gov := sensitive.SensitiveGroupEnabled("gov")
 	lowered, hasCJK, hasASCII, cjkStream, nonCJKStream := scanAndLower(text)
 
 	// L1a：明文 AC（gov 组）
@@ -156,7 +156,7 @@ func templateVerdict(lowered string) (bool, []string) {
 		return false, nil
 	}
 	// 快路径：rp 组关闭且文本不含 rp 前缀的先行词时，直接判定 tech 前缀
-	techOnly := !setting.SensitiveGroupEnabled("rp")
+	techOnly := !sensitive.SensitiveGroupEnabled("rp")
 	if techOnly {
 		return templateVerdictTech(lowered)
 	}

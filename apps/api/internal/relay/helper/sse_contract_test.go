@@ -8,10 +8,10 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/QuantumNous/new-api/internal/sensitive"
 )
 
 // newSSERecorder builds a context whose writes land in a recorder so the exact
@@ -30,10 +30,10 @@ func newSSERecorder(t *testing.T) (*gin.Context, *httptest.ResponseRecorder) {
 func disableCompletionSensitiveCheck(t *testing.T) {
 	t.Helper()
 
-	previous := setting.CheckSensitiveEnabled
-	setting.CheckSensitiveEnabled = false
+	previous := sensitive.CheckSensitiveEnabled
+	sensitive.CheckSensitiveEnabled = false
 	t.Cleanup(func() {
-		setting.CheckSensitiveEnabled = previous
+		sensitive.CheckSensitiveEnabled = previous
 	})
 }
 

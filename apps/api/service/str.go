@@ -77,7 +77,7 @@ func acKey(dict []string) string {
 }
 
 // dictCacheKey 用「切片指针 + 长度 + 首尾抽样」做键：词库仅在配置更新时换新切片，
-// 指针不变即内容不变（setting.SensitiveWords 每次解析都是新分配）。
+// 指针不变即内容不变（sensitive.SensitiveWords 每次解析都是新分配）。
 // 完整 acKey（小写+trim+排序+全文哈希）只在指针/SliceHeader 变化时重算，
 // 避免热路径上每次调用 O(n log n)。
 type dictCacheKey struct {

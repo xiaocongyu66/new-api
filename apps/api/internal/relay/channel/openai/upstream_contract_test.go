@@ -13,12 +13,12 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/QuantumNous/new-api/internal/sensitive"
 )
 
 // The stream scanner arms a watchdog ticker from constant.StreamingTimeout, which
@@ -64,9 +64,9 @@ func newRelayClientContext(t *testing.T, path string) (contract.Context, *httpte
 func disableOutputSensitiveFilter(t *testing.T) {
 	t.Helper()
 
-	previous := setting.CheckSensitiveEnabled
-	setting.CheckSensitiveEnabled = false
-	t.Cleanup(func() { setting.CheckSensitiveEnabled = previous })
+	previous := sensitive.CheckSensitiveEnabled
+	sensitive.CheckSensitiveEnabled = false
+	t.Cleanup(func() { sensitive.CheckSensitiveEnabled = previous })
 }
 
 func newUpstreamRelayInfo(modelName string) *relaycommon.RelayInfo {

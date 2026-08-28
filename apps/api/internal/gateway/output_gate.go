@@ -6,9 +6,9 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/sensitive"
 )
 
 const OutputFilterWindowSize = 512
@@ -50,7 +50,7 @@ func OutputChunkBlocked(c contract.Context, data string) (bool, string) {
 		common.SysLog(fmt.Sprintf("output blocked by target domain: [%s]", d))
 		return true, "target:" + d
 	}
-	if !setting.ShouldCheckCompletionSensitive() {
+	if !sensitive.ShouldCheckCompletionSensitive() {
 		return false, ""
 	}
 	st.Window += data

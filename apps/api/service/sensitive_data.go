@@ -11,7 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/internal/sensitive"
 )
 
 //go:embed testdata/sensitive_templates.json
@@ -423,7 +423,7 @@ func fingerprintScore(text string) (int, []string) {
 	score := 0
 	hits := make([]string, 0, 4)
 	for ci, cat := range fingerprintCategories {
-		if catHit[ci] && (cat.group == "" || setting.SensitiveGroupEnabled(cat.group)) {
+		if catHit[ci] && (cat.group == "" || sensitive.SensitiveGroupEnabled(cat.group)) {
 			score++
 			hits = append(hits, cat.name)
 		}

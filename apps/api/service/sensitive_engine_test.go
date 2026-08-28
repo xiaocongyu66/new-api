@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/QuantumNous/new-api/internal/sensitive"
 )
 
 // ──────────────────────────────────────────────────────────────
@@ -103,9 +103,9 @@ func loadSensitiveTestData(t testing.TB) (jail []string, normal []sentence, word
 // installTestGroups 注入启用组集合（sensitive 引擎按组开关拦截）。
 func installTestGroups(t testing.TB, groups []string) {
 	t.Helper()
-	old := setting.SensitiveBlockGroups
-	setting.SensitiveBlockGroups = groups
-	t.Cleanup(func() { setting.SensitiveBlockGroups = old })
+	old := sensitive.SensitiveBlockGroups
+	sensitive.SensitiveBlockGroups = groups
+	t.Cleanup(func() { sensitive.SensitiveBlockGroups = old })
 }
 
 func countTrue(b []bool) int {
@@ -121,9 +121,9 @@ func countTrue(b []bool) int {
 // installTestDict 注入测试词库并恢复旧值。
 func installTestDict(t testing.TB, words []string) {
 	t.Helper()
-	old := setting.SensitiveWords
-	setting.SensitiveWords = words
-	t.Cleanup(func() { setting.SensitiveWords = old })
+	old := sensitive.SensitiveWords
+	sensitive.SensitiveWords = words
+	t.Cleanup(func() { sensitive.SensitiveWords = old })
 }
 
 // TestSensitiveEnginePythonParity 逐行对齐引擎快照基线（jail 297 / normal 108，
@@ -149,9 +149,9 @@ func TestSensitiveEngineDefaultGroups(t *testing.T) {
 	t.Logf("default 组基线 jail %d / normal %d", countTrue(jailDefault), countTrue(normalDefault))
 
 	// 验收：默认组下角色扮演不拦、技术/政府仍拦
-	assert.True(t, setting.SensitiveGroupEnabled("gov"))
-	assert.True(t, setting.SensitiveGroupEnabled("tech"))
-	assert.False(t, setting.SensitiveGroupEnabled("rp"))
+	assert.True(t, sensitive.SensitiveGroupEnabled("gov"))
+	assert.True(t, sensitive.SensitiveGroupEnabled("tech"))
+	assert.False(t, sensitive.SensitiveGroupEnabled("rp"))
 }
 
 func runParityCheck(t *testing.T, jail []string, normal []sentence, jailExpected, normalExpected []bool, minJail int) {

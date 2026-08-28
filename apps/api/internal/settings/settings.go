@@ -22,6 +22,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/middleware/status_code"
 		ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
+	"github.com/QuantumNous/new-api/internal/sensitive"
 )
 
 // RetiredThemeOptionKey is the option key of the removed classic frontend
@@ -214,16 +215,16 @@ func SeedOptionMap() {
 	common.OptionMap["MjModeClearEnabled"] = strconv.FormatBool(setting.MjModeClearEnabled)
 	common.OptionMap["MjForwardUrlEnabled"] = strconv.FormatBool(setting.MjForwardUrlEnabled)
 	common.OptionMap["MjActionCheckSuccessEnabled"] = strconv.FormatBool(setting.MjActionCheckSuccessEnabled)
-	common.OptionMap["CheckSensitiveEnabled"] = strconv.FormatBool(setting.CheckSensitiveEnabled)
+	common.OptionMap["CheckSensitiveEnabled"] = strconv.FormatBool(sensitive.CheckSensitiveEnabled)
 	common.OptionMap["DemoSiteEnabled"] = strconv.FormatBool(manage_channels.DemoSiteEnabled)
 	common.OptionMap["SelfUseModeEnabled"] = strconv.FormatBool(manage_channels.SelfUseModeEnabled)
 	common.OptionMap["ModelRequestRateLimitEnabled"] = strconv.FormatBool(setting.ModelRequestRateLimitEnabled)
-	common.OptionMap["CheckSensitiveOnPromptEnabled"] = strconv.FormatBool(setting.CheckSensitiveOnPromptEnabled)
-	common.OptionMap["CheckSensitiveOnCompletionEnabled"] = strconv.FormatBool(setting.CheckSensitiveOnCompletionEnabled)
-	common.OptionMap["StopOnSensitiveEnabled"] = strconv.FormatBool(setting.StopOnSensitiveEnabled)
-	common.OptionMap["SensitiveWords"] = setting.SensitiveWordsToString()
-	common.OptionMap["SensitiveBlockGroups"] = setting.SensitiveGroupsToString()
-	common.OptionMap["StreamCacheQueueLength"] = strconv.Itoa(setting.StreamCacheQueueLength)
+	common.OptionMap["CheckSensitiveOnPromptEnabled"] = strconv.FormatBool(sensitive.CheckSensitiveOnPromptEnabled)
+	common.OptionMap["CheckSensitiveOnCompletionEnabled"] = strconv.FormatBool(sensitive.CheckSensitiveOnCompletionEnabled)
+	common.OptionMap["StopOnSensitiveEnabled"] = strconv.FormatBool(sensitive.StopOnSensitiveEnabled)
+	common.OptionMap["SensitiveWords"] = sensitive.SensitiveWordsToString()
+	common.OptionMap["SensitiveBlockGroups"] = sensitive.SensitiveGroupsToString()
+	common.OptionMap["StreamCacheQueueLength"] = strconv.Itoa(sensitive.StreamCacheQueueLength)
 	common.OptionMap["AutomaticDisableKeywords"] = manage_channels.AutomaticDisableKeywordsToString()
 	common.OptionMap["AutomaticDisableStatusCodes"] = status_code.AutomaticDisableStatusCodesToString()
 	common.OptionMap["AutomaticRetryStatusCodes"] = status_code.AutomaticRetryStatusCodesToString()
@@ -369,19 +370,19 @@ func ApplyOption(key string, value string) (err error) {
 		case "MjActionCheckSuccessEnabled":
 			setting.MjActionCheckSuccessEnabled = boolValue
 		case "CheckSensitiveEnabled":
-			setting.CheckSensitiveEnabled = boolValue
+			sensitive.CheckSensitiveEnabled = boolValue
 		case "DemoSiteEnabled":
 			manage_channels.DemoSiteEnabled = boolValue
 		case "SelfUseModeEnabled":
 			manage_channels.SelfUseModeEnabled = boolValue
 		case "CheckSensitiveOnPromptEnabled":
-			setting.CheckSensitiveOnPromptEnabled = boolValue
+			sensitive.CheckSensitiveOnPromptEnabled = boolValue
 		case "CheckSensitiveOnCompletionEnabled":
-			setting.CheckSensitiveOnCompletionEnabled = boolValue
+			sensitive.CheckSensitiveOnCompletionEnabled = boolValue
 		case "ModelRequestRateLimitEnabled":
 			setting.ModelRequestRateLimitEnabled = boolValue
 		case "StopOnSensitiveEnabled":
-			setting.StopOnSensitiveEnabled = boolValue
+			sensitive.StopOnSensitiveEnabled = boolValue
 		case "SMTPSSLEnabled":
 			common.SMTPSSLEnabled = boolValue
 		case "SMTPStartTLSEnabled":
@@ -587,9 +588,9 @@ func ApplyOption(key string, value string) (err error) {
 	case "QuotaPerUnit":
 		common.QuotaPerUnit, _ = strconv.ParseFloat(value, 64)
 	case "SensitiveWords":
-		setting.SensitiveWordsFromString(value)
+		sensitive.SensitiveWordsFromString(value)
 	case "SensitiveBlockGroups":
-		setting.SensitiveGroupsFromString(value)
+		sensitive.SensitiveGroupsFromString(value)
 	case "AutomaticDisableKeywords":
 		manage_channels.AutomaticDisableKeywordsFromString(value)
 	case "AutomaticDisableStatusCodes":
@@ -597,7 +598,7 @@ func ApplyOption(key string, value string) (err error) {
 	case "AutomaticRetryStatusCodes":
 		err = status_code.AutomaticRetryStatusCodesFromString(value)
 	case "StreamCacheQueueLength":
-		setting.StreamCacheQueueLength, _ = strconv.Atoi(value)
+		sensitive.StreamCacheQueueLength, _ = strconv.Atoi(value)
 	case "PayMethods":
 		err = pay_subscription.UpdatePayMethodsByJsonString(value)
 	case "WaffoPayMethods":

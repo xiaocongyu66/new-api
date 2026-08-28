@@ -129,5 +129,5 @@ func CheckSensitiveTargets(text string) string {
 	return best
 }
 
-// 输出检测总开关由 setting.ShouldCheckCompletionSensitive() 承担
+// 输出检测总开关由 sensitive.ShouldCheckCompletionSensitive() 承担
 // （默认开启，用户要求输出默认 block）。

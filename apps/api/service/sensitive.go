@@ -1,7 +1,7 @@
 package service
 
 import (
-	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/internal/sensitive"
 )
 
 // CheckSensitiveText 分层敏感词引擎入口：
@@ -12,5 +12,5 @@ import (
 // 54 模板前缀特征）1:1 对齐：jailbreak 1405 池召回 21.1%（296/1405）、
 // 正常 3000 池真误伤 2/3000（0.07%，两条均为词库 L1a 命中「政府」的良性文本）。
 func CheckSensitiveText(text string) (bool, []string) {
-	return sensitiveCheckHits(text, setting.SensitiveWords)
+	return sensitiveCheckHits(text, sensitive.SensitiveWords)
 }

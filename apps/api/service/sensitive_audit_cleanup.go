@@ -6,7 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/internal/sensitive"
 )
 
 const sensitiveAuditCleanupInterval = time.Hour
@@ -28,7 +28,7 @@ func StartSensitiveAuditCleanup() {
 }
 
 func runSensitiveAuditCleanup() {
-	days := setting.SensitiveAuditRetentionDays
+	days := sensitive.SensitiveAuditRetentionDays
 	if days <= 0 {
 		return
 	}

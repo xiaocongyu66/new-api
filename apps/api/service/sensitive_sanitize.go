@@ -8,7 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/internal/sensitive"
 )
 
 // 敏感内容静默过滤：把目标域名与词库敏感词从文本中删除，替代旧的「命中即拦」。
@@ -100,12 +100,12 @@ func targetHitRanges(folded string, starts []int) ([][2]int, []string) {
 
 // dictHitRanges 在折叠视图上找词库敏感词命中，映射回原文字节区间。
 func dictHitRanges(folded string, starts []int) ([][2]int, []string) {
-	if len(setting.SensitiveWords) == 0 {
+	if len(sensitive.SensitiveWords) == 0 {
 		return nil, nil
 	}
 	var rs [][2]int
 	var hits []string
-	for _, w := range setting.SensitiveWords {
+	for _, w := range sensitive.SensitiveWords {
 		lw := strings.ToLower(w)
 		if lw == "" {
 			continue

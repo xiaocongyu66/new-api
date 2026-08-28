@@ -15,7 +15,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/internal/sensitive"
 )
 
 // TestTruncateSensitiveSnippet 截断不得把多字节字形切成无效 UTF-8，
@@ -107,9 +107,9 @@ func TestRecordSensitiveAuditEventPersists(t *testing.T) {
 
 // TestRecordSensitiveBlockDisabled 开关关闭时不入队、不启动 worker。
 func TestRecordSensitiveBlockDisabled(t *testing.T) {
-	previous := setting.SensitiveAuditEnabled
-	setting.SensitiveAuditEnabled = false
-	t.Cleanup(func() { setting.SensitiveAuditEnabled = previous })
+	previous := sensitive.SensitiveAuditEnabled
+	sensitive.SensitiveAuditEnabled = false
+	t.Cleanup(func() { sensitive.SensitiveAuditEnabled = previous })
 
 	c, _ := ginadapter.NewSyntheticContext(&http.Request{Method: "GET"})
 	assert.NotPanics(t, func() {

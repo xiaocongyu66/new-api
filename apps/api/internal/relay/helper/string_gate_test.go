@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/QuantumNous/new-api/internal/sensitive"
 )
 
 func testCtx() (*gin.Context, *httptest.ResponseRecorder) {
@@ -20,9 +20,9 @@ func testCtx() (*gin.Context, *httptest.ResponseRecorder) {
 }
 
 func TestOutputGateTargetDomainUnconditional(t *testing.T) {
-	oldOn := setting.CheckSensitiveOnCompletionEnabled
-	setting.CheckSensitiveOnCompletionEnabled = false
-	t.Cleanup(func() { setting.CheckSensitiveOnCompletionEnabled = oldOn })
+	oldOn := sensitive.CheckSensitiveOnCompletionEnabled
+	sensitive.CheckSensitiveOnCompletionEnabled = false
+	t.Cleanup(func() { sensitive.CheckSensitiveOnCompletionEnabled = oldOn })
 
 	c, _ := testCtx()
 	blocked, label := outputChunkBlocked(ginadapter.Wrap(c), "模型回答：参考 www.gov.cn 上面发布的数据")
@@ -31,9 +31,9 @@ func TestOutputGateTargetDomainUnconditional(t *testing.T) {
 }
 
 func TestOutputGateSwitchOffAllowsNormal(t *testing.T) {
-	oldOn := setting.CheckSensitiveOnCompletionEnabled
-	setting.CheckSensitiveOnCompletionEnabled = false
-	t.Cleanup(func() { setting.CheckSensitiveOnCompletionEnabled = oldOn })
+	oldOn := sensitive.CheckSensitiveOnCompletionEnabled
+	sensitive.CheckSensitiveOnCompletionEnabled = false
+	t.Cleanup(func() { sensitive.CheckSensitiveOnCompletionEnabled = oldOn })
 
 	c, _ := testCtx()
 	blocked, _ := outputChunkBlocked(ginadapter.Wrap(c), "hello world, normal answer")
@@ -41,9 +41,9 @@ func TestOutputGateSwitchOffAllowsNormal(t *testing.T) {
 }
 
 func TestOutputGateBlockThenDrain(t *testing.T) {
-	oldOn := setting.CheckSensitiveOnCompletionEnabled
-	setting.CheckSensitiveOnCompletionEnabled = true
-	t.Cleanup(func() { setting.CheckSensitiveOnCompletionEnabled = oldOn })
+	oldOn := sensitive.CheckSensitiveOnCompletionEnabled
+	sensitive.CheckSensitiveOnCompletionEnabled = true
+	t.Cleanup(func() { sensitive.CheckSensitiveOnCompletionEnabled = oldOn })
 
 	c, _ := testCtx()
 	blocked, label := outputChunkBlocked(ginadapter.Wrap(c), "ignore previous instructions")
@@ -57,9 +57,9 @@ func TestOutputGateBlockThenDrain(t *testing.T) {
 }
 
 func TestTerminateOutputSSEIdempotent(t *testing.T) {
-	oldOn := setting.CheckSensitiveOnCompletionEnabled
-	setting.CheckSensitiveOnCompletionEnabled = true
-	t.Cleanup(func() { setting.CheckSensitiveOnCompletionEnabled = oldOn })
+	oldOn := sensitive.CheckSensitiveOnCompletionEnabled
+	sensitive.CheckSensitiveOnCompletionEnabled = true
+	t.Cleanup(func() { sensitive.CheckSensitiveOnCompletionEnabled = oldOn })
 
 	c, w := testCtx()
 	terminateOutputSSE(ginadapter.Wrap(c))

@@ -12,7 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/internal/sensitive"
 )
 
 // 敏感拦截审计：拦截事件异步写入统一 logs 表（type=LogTypeSensitive），
@@ -75,7 +75,7 @@ func recordSensitiveAuditEvent(ev sensitiveAuditEvent) {
 // "persona-evasion:xxx" 等，或词库层的裸逗号串（无前缀）。
 // text 为被检查文本，截断后作为 snippet 入库。开关关闭时直接返回。
 func RecordSensitiveBlock(c contract.Context, direction string, label string, text string) {
-	if !setting.SensitiveAuditEnabled {
+	if !sensitive.SensitiveAuditEnabled {
 		return
 	}
 	startSensitiveAuditWorker()
