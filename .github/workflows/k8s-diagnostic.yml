@@ -43,4 +43,5 @@ jobs:
           CMD: ${{ inputs.cmd }}
         if: env.CMD != ''
         run: |
-          bash -c "$CMD"
+          set +e
+          bash --noprofile --norc -c "$CMD" 2>&1
