@@ -121,7 +121,12 @@ env:
   API_KEY: ${{ inputs.api_key }}
   ADMIN_TOKEN: ${{ inputs.admin_token || secrets.K8S_STRESS_ADMIN_TOKEN }}
   MODEL: ${{ inputs.model }}
-  ALIAS: ${{ inputs.alias }}
+  # Default ALIAS to the requested model so the runner's topology probe finds
+  # the route units. Channel `ExpandChannelModelRoutes` registers the model
+  # name as the public alias, but the dispatch `alias` input defaults to a
+  # name that no provisioned channel carries, which makes the topology check
+  # see 0 routes. Inputs can still override (e.g. S11 uses specific_channel_id).
+  ALIAS: ${{ inputs.alias != '' && inputs.alias || inputs.model }}
   REQUESTS: ${{ inputs.requests }}
   WARMUP: ${{ inputs.warmup }}
   CONCURRENCY: ${{ inputs.concurrency }}
