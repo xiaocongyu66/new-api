@@ -137,6 +137,15 @@ env:
   RECOVER_HOOK: ${{ inputs.recover_hook }}
   ENABLE_PPROF: ${{ inputs.enable_pprof }}
   PPROF_URL: ${{ inputs.pprof_url }}
+  # Hardcoded test-account credentials so the runner can auto-refresh the admin
+  # JWT on 401/403 (the `Resolve admin token` step does an initial login; the
+  # runner reuses these to refresh during the post-run audit fetch). root/123456
+  # is the bootstrap account provisioned for the k3s stress cluster and is not a
+  # secret. If the cluster ever uses different credentials, prefer the
+  # `K8S_STRESS_ADMIN_USERNAME` / `K8S_STRESS_ADMIN_PASSWORD` repository secrets
+  # and switch this back to `secrets.*`.
+  ADMIN_USERNAME: root
+  ADMIN_PASSWORD: '123456'
 
 jobs:
   route-unit-ewma-smoke:
@@ -682,7 +691,9 @@ jobs:
             --scenario ${{ matrix.scenario }} \
             --gateway-url "$TARGET_URL" \
             --token "$API_KEY" \
-            --admin-token "$ADMIN_TOKEN" \
+            --admin-token "${ADMIN_TOKEN_FINAL:-$ADMIN_TOKEN}" \
+            --admin-username "$ADMIN_USERNAME" \
+            --admin-password "$ADMIN_PASSWORD" \
             --alias "${{ env.ALIAS }}" \
             --mock-url "${MOCK_URL_PRIMARY:-$MOCK_URL}" \
             ${MOCK_URL_EXTRA_ARGS:-} \
