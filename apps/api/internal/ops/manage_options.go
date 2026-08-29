@@ -2,6 +2,7 @@ package ops
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/usage"
 	"net/http"
 	"strings"
@@ -12,8 +13,6 @@ import (
 	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/i18n"
-	"github.com/QuantumNous/new-api/internal/security/discord"
-	"github.com/QuantumNous/new-api/internal/security/oidc"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/middleware/rate_limit"
 	"github.com/QuantumNous/new-api/internal/transport/middleware/status_code"
@@ -77,7 +76,7 @@ func UpdateOption(c contract.Context) {
 			return
 		}
 	case "discord.enabled":
-		if option.Value == "true" && discord.GetDiscordSettings().ClientId == "" {
+		if option.Value == "true" && security.GetDiscordSettings().ClientId == "" {
 			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "无法启用 Discord OAuth，请先填入 Discord Client Id 以及 Discord Client Secret！",
@@ -85,7 +84,7 @@ func UpdateOption(c contract.Context) {
 			return
 		}
 	case "oidc.enabled":
-		if option.Value == "true" && oidc.GetOIDCSettings().ClientId == "" {
+		if option.Value == "true" && security.GetOIDCSettings().ClientId == "" {
 			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "无法启用 OIDC 登录，请先填入 OIDC Client Id 以及 OIDC Client Secret！",

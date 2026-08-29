@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"net/url"
@@ -13,7 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/internal/security/discord"
 	"github.com/QuantumNous/new-api/model"
 )
 
@@ -44,7 +44,7 @@ func (p *DiscordProvider) GetName() string {
 }
 
 func (p *DiscordProvider) IsEnabled() bool {
-	return discord.GetDiscordSettings().Enabled
+	return security.GetDiscordSettings().Enabled
 }
 
 func (p *DiscordProvider) ExchangeToken(ctx context.Context, code string, c contract.Context) (*OAuthToken, error) {
@@ -54,7 +54,7 @@ func (p *DiscordProvider) ExchangeToken(ctx context.Context, code string, c cont
 
 	logger.LogDebug(ctx, "[OAuth-Discord] ExchangeToken: code=%s...", code[:min(len(code), 10)])
 
-	settings := discord.GetDiscordSettings()
+	settings := security.GetDiscordSettings()
 	redirectUri := fmt.Sprintf("%s/oauth/discord", fetch_url.ServerAddress)
 	values := url.Values{}
 	values.Set("client_id", settings.ClientId)

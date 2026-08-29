@@ -145,3 +145,84 @@ diff /tmp/s5-base.txt /tmp/s5-bN.txt                               # must be emp
 34th failure or any panic = regression. Stop, do not proceed.
 
 `web/dist/index.html` stub already created (needed by `go:embed`, gitignored).
+
+---
+
+## Consolidated root cause (after two full A2+A3 attempts)
+
+The 9 cycles are NOT caused by handler placement alone. Measured by probe
+(move all 61 ex-controller handlers into one `internal/transport/handler`
+package, rebuild):
+
+```
+9 cycles  ->  6 cycles
+```
+
+So: **3 cycles from the controller split, 6 from the model/service split.**
+A unified handler package is necessary but NOT sufficient.
+
+### The 6 model/service cycles all trace to two pre-existing shims
+
+Both exist *specifically* to avoid the cycle that §4 now re-creates:
+
+**1. `internal/billing/settlecore/settlecore.go`** (pre-existing subpackage)
+
+At A1 it imports `model` — a leaf, so legal. It uses six symbols:
+`DecreaseTokenQuota`, `DecreaseUserQuota`, `GetTokenById`,
+`IncreaseTokenQuota`, `IncreaseUserQuota`, `PostConsumeUserSubscriptionDelta`.
+
+§4 scatters those into `internal/identity` (5) and `internal/billing` (1).
+Result: `billing/settlecore` must import both its own parent `billing` AND
+sibling `identity` → cycle.
+
+**2. `model/identity_fns.go`** (hook + type-alias shim, 75 `identity.` refs)
+
+Its own header states the contract:
+
+> The implementations moved to internal/identity. Files still in model/
+> call these functions. To avoid a model → identity import cycle (identity
+> imports security/oauth which imports model), these are function variables
+> wired at startup.
+
+§4 routes this file to `internal/common/dbx`. But it imports
+`internal/identity`, so placing it in `dbx` makes base infrastructure depend
+on a domain — the same layering inversion that blocked A4.1. `dbx` currently
+imports only `internal/common`.
+
+### Why this is a planning defect, not an execution problem
+
+§4's destination table was derived from *file names*, not from the dependency
+graph. Three independent places where it inverts layering:
+
+| § | Claim | Measured reality |
+|---|---|---|
+| §3 | 11 `service/` files → `internal/common` | 10 of 11 depend on domains |
+| §4 | `model/identity_fns.go` → `dbx` | imports `internal/identity` |
+| §4 | 39 handlers → 7 domains | creates 3 cycles among handler pairs |
+| §4 | quota fns → `identity`+`billing` | breaks `billing/settlecore` |
+
+### What a correct plan needs (scoping input, not something to guess)
+
+1. **Handlers**: one package (`internal/transport/handler`) — removes 3 cycles
+   and satisfies §8.1 (`controller/` not found).
+2. **`identity_fns.go` + `settlecore`'s six symbols**: need a shared leaf that
+   may import `identity` — e.g. keep a minimal `internal/identity/shim`
+   subpackage, or invert `settlecore` onto injected hooks like
+   `record_perf`/`sensitive` already do.
+3. **The 10 domain-coupled `service/` files**: need a real home (a `media`/
+   `httpio` domain), not `internal/common`.
+
+Each is a deliberate architecture choice. Doing any of them silently would
+violate §0.3 ("zero logic changes") and, for `cache_channels.go`, §7.5.
+
+### Handoff state (verified)
+
+```
+worktree  /home/hathaway/projects/new-api/.wt/phase0-correct   clean
+HEAD      cb0c61b75  (A1, pushed)
+build     go build ./...            green
+tests     33 failures, 0 panics, zero delta vs /tmp/s5-base.txt
+frozen    internal/catalog/cache_channels.go  sha256 268a76d8db72  UNCHANGED
+stash@{0} A2+A3 v2 (self-imports cleared, system-task colocated)
+stash@{1} A2+A3 v1
+```

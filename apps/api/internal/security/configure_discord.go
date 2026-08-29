@@ -1,4 +1,4 @@
-package discord
+package security
 
 import "github.com/QuantumNous/new-api/internal/settings/config"
 

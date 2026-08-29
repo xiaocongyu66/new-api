@@ -9,10 +9,8 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
-	"github.com/QuantumNous/new-api/internal/security/discord"
-	"github.com/QuantumNous/new-api/internal/security/legal"
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/security/oauth"
-	"github.com/QuantumNous/new-api/internal/security/oidc"
 	"github.com/QuantumNous/new-api/internal/security/passkey"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
@@ -47,7 +45,7 @@ func GetStatus(c contract.Context) {
 	defer common.OptionMapRWMutex.RUnlock()
 
 	passkeySetting := passkey.GetPasskeySettings()
-	legalSetting := legal.GetLegalSettings()
+	legalSetting := security.GetLegalSettings()
 
 	data := common.H{
 		"version":                     common.Version,
@@ -55,8 +53,8 @@ func GetStatus(c contract.Context) {
 		"email_verification":          common.EmailVerificationEnabled,
 		"github_oauth":                common.GitHubOAuthEnabled,
 		"github_client_id":            common.GitHubClientId,
-		"discord_oauth":               discord.GetDiscordSettings().Enabled,
-		"discord_client_id":           discord.GetDiscordSettings().ClientId,
+		"discord_oauth":               security.GetDiscordSettings().Enabled,
+		"discord_client_id":           security.GetDiscordSettings().ClientId,
 		"linuxdo_oauth":               common.LinuxDOOAuthEnabled,
 		"linuxdo_client_id":           common.LinuxDOClientId,
 		"linuxdo_minimum_trust_level": common.LinuxDOMinimumTrustLevel,
@@ -107,10 +105,10 @@ func GetStatus(c contract.Context) {
 		"HeaderNavModules":    common.OptionMap["HeaderNavModules"],
 		"SidebarModulesAdmin": common.OptionMap["SidebarModulesAdmin"],
 
-		"oidc_enabled":                oidc.GetOIDCSettings().Enabled,
-		"oidc_client_id":              oidc.GetOIDCSettings().ClientId,
-		"oidc_authorization_endpoint": oidc.GetOIDCSettings().AuthorizationEndpoint,
-		"oidc_display_name":           oidc.GetOIDCSettings().GetEffectiveDisplayName(),
+		"oidc_enabled":                security.GetOIDCSettings().Enabled,
+		"oidc_client_id":              security.GetOIDCSettings().ClientId,
+		"oidc_authorization_endpoint": security.GetOIDCSettings().AuthorizationEndpoint,
+		"oidc_display_name":           security.GetOIDCSettings().GetEffectiveDisplayName(),
 		"passkey_login":               passkeySetting.Enabled,
 		"passkey_display_name":        passkeySetting.RPDisplayName,
 		"passkey_rp_id":               passkeySetting.RPID,
@@ -197,7 +195,7 @@ func GetUserAgreement(c contract.Context) {
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
-		"data":    legal.GetLegalSettings().UserAgreement,
+		"data":    security.GetLegalSettings().UserAgreement,
 	})
 	return
 }
@@ -206,7 +204,7 @@ func GetPrivacyPolicy(c contract.Context) {
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
-		"data":    legal.GetLegalSettings().PrivacyPolicy,
+		"data":    security.GetLegalSettings().PrivacyPolicy,
 	})
 	return
 }

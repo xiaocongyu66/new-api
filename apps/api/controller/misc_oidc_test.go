@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
 	"net/http"
@@ -8,13 +9,12 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/security/oidc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestGetStatusReturnsEffectiveOIDCDisplayName(t *testing.T) {
-	settings := oidc.GetOIDCSettings()
+	settings := security.GetOIDCSettings()
 	originalDisplayName := settings.DisplayName
 	originalOptionMap := common.OptionMap
 	t.Cleanup(func() {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"net/url"
@@ -13,7 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/internal/security/oidc"
 	"github.com/QuantumNous/new-api/model"
 )
 
@@ -42,11 +42,11 @@ type oidcUser struct {
 }
 
 func (p *OIDCProvider) GetName() string {
-	return oidc.GetOIDCSettings().GetEffectiveDisplayName()
+	return security.GetOIDCSettings().GetEffectiveDisplayName()
 }
 
 func (p *OIDCProvider) IsEnabled() bool {
-	return oidc.GetOIDCSettings().Enabled
+	return security.GetOIDCSettings().Enabled
 }
 
 func (p *OIDCProvider) ExchangeToken(ctx context.Context, code string, c contract.Context) (*OAuthToken, error) {
@@ -56,7 +56,7 @@ func (p *OIDCProvider) ExchangeToken(ctx context.Context, code string, c contrac
 
 	logger.LogDebug(ctx, "[OAuth-OIDC] ExchangeToken: code=%s...", code[:min(len(code), 10)])
 
-	settings := oidc.GetOIDCSettings()
+	settings := security.GetOIDCSettings()
 	redirectUri := fmt.Sprintf("%s/oauth/oidc", fetch_url.ServerAddress)
 	values := url.Values{}
 	values.Set("client_id", settings.ClientId)
@@ -111,7 +111,7 @@ func (p *OIDCProvider) ExchangeToken(ctx context.Context, code string, c contrac
 }
 
 func (p *OIDCProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*OAuthUser, error) {
-	settings := oidc.GetOIDCSettings()
+	settings := security.GetOIDCSettings()
 
 	logger.LogDebug(ctx, "[OAuth-OIDC] GetUserInfo: userinfo_endpoint=%s", settings.UserInfoEndpoint)
 

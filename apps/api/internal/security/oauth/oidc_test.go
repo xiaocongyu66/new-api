@@ -1,14 +1,14 @@
 package oauth
 
 import (
+	"github.com/QuantumNous/new-api/internal/security"
 	"testing"
 
-	"github.com/QuantumNous/new-api/internal/security/oidc"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestOIDCProvider_GetName(t *testing.T) {
-	settings := oidc.GetOIDCSettings()
+	settings := security.GetOIDCSettings()
 	originalDisplayName := settings.DisplayName
 	defer func() { settings.DisplayName = originalDisplayName }()
 
