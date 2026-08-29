@@ -345,10 +345,18 @@ jobs:
               MODES=("ok" "ok")
               ;;
             *)
-              INSTANCES=1
-              MODES=("ok")
+              # S1/S2/S3 (and any future unlisted scenario): read the injection
+              # plan straight from lib_stats.scenario_targets() so the mock
+              # MOCK_FORCE_MODE matches the run_scenario.py preflight check.
+              # Earlier this branch hard-coded ("ok" "ok"), which made S1/S2/S3
+              # fail preflight with force_mode mismatch.
+              META=$(SCENARIO="${SCENARIO}" python3 tests/route_unit_stress/mode_lookup.py)
+              INSTANCES=$(printf '%s' "$META" | python3 -c 'import json,sys; print(json.load(sys.stdin)["instances"])')
+              # bash array from JSON list
+              mapfile -t MODES < <(printf '%s' "$META" | python3 -c 'import json,sys; [print(m) for m in json.load(sys.stdin)["modes"]]')
               ;;
           esac
+
 
           for i in $(seq 0 $((INSTANCES - 1))); do
             PORT=$((BASE_PORT + i))
