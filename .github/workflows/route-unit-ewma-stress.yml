@@ -39,6 +39,11 @@ on:
         required: false
         type: string
         default: ''
+      gateway_host_alias:
+        description: 'hosts entry "<name>=<ip>" so the runner can resolve a placeholder ingress host (e.g. api.example.com=156.254.6.210). Ingress routes only on Host, and the placeholder name has no public DNS.'
+        required: false
+        type: string
+        default: ''
       model:
         description: 'Model to request'
         required: false
@@ -137,7 +142,11 @@ env:
   ADMIN_TOKEN: ${{ inputs.admin_token || secrets.K8S_STRESS_ADMIN_TOKEN }}
   ADMIN_USERNAME: ${{ inputs.admin_username || 'root' }}
   ADMIN_PASSWORD: ${{ inputs.admin_password || '123456' }}
-  GATEWAY_ADMIN_URL: ${{ inputs.gateway_admin_url != '' && inputs.gateway_admin_url || format('{0}', replace(inputs.target_url, '/v1', '')) }}
+  # GitHub Actions expressions have no replace(); only replaceAll() exists, and a
+  # bad function name fails workflow parsing at dispatch time (HTTP 422), so no
+  # run can ever start. Derive the admin base URL with replaceAll instead.
+  GATEWAY_ADMIN_URL: ${{ inputs.gateway_admin_url != '' && inputs.gateway_admin_url || replaceAll(inputs.target_url, '/v1', '') }}
+  GATEWAY_HOST_ALIAS: ${{ inputs.gateway_host_alias }}
   MODEL: ${{ inputs.model }}
   ALIAS: ${{ inputs.alias }}
   REQUESTS: ${{ inputs.requests }}
@@ -164,6 +173,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve gateway host alias
+        if: env.GATEWAY_HOST_ALIAS != ''
+        run: |
+          set -euo pipefail
+          # The ingress routes solely on Host, and the configured ingress host may
+          # be a placeholder with no public DNS. Without this the preflight curl
+          # fails DNS resolution and the job dies before any request is sent.
+          NAME="${GATEWAY_HOST_ALIAS%%=*}"
+          IP="${GATEWAY_HOST_ALIAS#*=}"
+          if [ -z "$NAME" ] || [ -z "$IP" ] || [ "$NAME" = "$GATEWAY_HOST_ALIAS" ]; then
+            echo "::error::gateway_host_alias must be '<name>=<ip>', got '$GATEWAY_HOST_ALIAS'"
+            exit 1
+          fi
+          echo "$IP $NAME" | sudo tee -a /etc/hosts >/dev/null
+          getent hosts "$NAME"
 
       - name: Configure kubectl
         if: env.KUBE_CONFIG_B64 != ''
@@ -315,6 +340,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve gateway host alias
+        if: env.GATEWAY_HOST_ALIAS != ''
+        run: |
+          set -euo pipefail
+          # The ingress routes solely on Host, and the configured ingress host may
+          # be a placeholder with no public DNS. Without this the preflight curl
+          # fails DNS resolution and the job dies before any request is sent.
+          NAME="${GATEWAY_HOST_ALIAS%%=*}"
+          IP="${GATEWAY_HOST_ALIAS#*=}"
+          if [ -z "$NAME" ] || [ -z "$IP" ] || [ "$NAME" = "$GATEWAY_HOST_ALIAS" ]; then
+            echo "::error::gateway_host_alias must be '<name>=<ip>', got '$GATEWAY_HOST_ALIAS'"
+            exit 1
+          fi
+          echo "$IP $NAME" | sudo tee -a /etc/hosts >/dev/null
+          getent hosts "$NAME"
 
       - name: Setup Python
         uses: actions/setup-python@v5
