@@ -980,7 +980,12 @@ jobs:
           # reads one pod's buffer and the rest is reported missing_in_audit. S10
           # scales up separately and polls each pod directly.
           if [ -z "${REPLICA:-}" ] || [ "${REPLICA}" = "1" ]; then
+            # Let the scale settle before restarting. kubectl scale returns as soon as
+            # the spec is accepted, so an immediate rollout restart observes a
+            # deployment still converging and then waits on replicas the scale is busy
+            # removing, which times out.
             kubectl scale deployment/new-api-worker --replicas=1
+            kubectl rollout status deployment/new-api-worker --timeout=300s
           fi
           # Master and worker must not restart together. Only the master seeds route
           # units, and a worker booting alongside it caches whatever pool exists at
