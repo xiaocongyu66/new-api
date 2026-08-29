@@ -1,9 +1,9 @@
 package billing
 
 import (
+	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"testing"
 
-	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/stretchr/testify/require"

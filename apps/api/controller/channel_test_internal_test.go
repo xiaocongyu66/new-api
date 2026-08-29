@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/egress"
+	"github.com/QuantumNous/new-api/internal/ops"
 	taskcap "github.com/QuantumNous/new-api/internal/task"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
@@ -14,7 +15,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
-	"github.com/QuantumNous/new-api/internal/ops/monitor_uptime"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/types"
 	"github.com/QuantumNous/new-api/model"
@@ -303,7 +303,7 @@ func TestSelectChannelsForAutomaticTestPassiveRecoveryOnlyUsesAutoDisabled(t *te
 		{Id: 3, Status: common.ChannelStatusManuallyDisabled},
 	}
 
-	selected := selectChannelsForAutomaticTest(channels, monitor_uptime.ChannelTestModePassiveRecovery)
+	selected := selectChannelsForAutomaticTest(channels, ops.ChannelTestModePassiveRecovery)
 
 	require.Len(t, selected, 1)
 	require.Equal(t, 2, selected[0].Id)
@@ -316,7 +316,7 @@ func TestSelectChannelsForAutomaticTestScheduledSkipsManualDisabled(t *testing.T
 		{Id: 3, Status: common.ChannelStatusManuallyDisabled},
 	}
 
-	selected := selectChannelsForAutomaticTest(channels, monitor_uptime.ChannelTestModeScheduledAll)
+	selected := selectChannelsForAutomaticTest(channels, ops.ChannelTestModeScheduledAll)
 
 	require.Len(t, selected, 2)
 	require.Equal(t, 1, selected[0].Id)
@@ -334,7 +334,7 @@ func TestSelectChannelsForAutomaticTestAutoBanOnlyUsesEligibleChannels(t *testin
 		{Id: 5, Status: common.ChannelStatusEnabled},
 	}
 
-	selected := selectChannelsForAutomaticTest(channels, monitor_uptime.ChannelTestModeAutoBanOnly)
+	selected := selectChannelsForAutomaticTest(channels, ops.ChannelTestModeAutoBanOnly)
 
 	require.Len(t, selected, 2)
 	require.Equal(t, 1, selected[0].Id)

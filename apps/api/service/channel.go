@@ -2,10 +2,10 @@ package service
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
 	"strings"
 
 	catalog "github.com/QuantumNous/new-api/internal/catalog"
-	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/transport/middleware/status_code"
 	"github.com/QuantumNous/new-api/relaykit/dto"

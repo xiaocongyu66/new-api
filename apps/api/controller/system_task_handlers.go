@@ -10,7 +10,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/ops"
-	"github.com/QuantumNous/new-api/internal/ops/monitor_uptime"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 )
@@ -35,11 +34,11 @@ type channelTestHandler struct{}
 func (channelTestHandler) Type() string { return model.SystemTaskTypeChannelTest }
 
 func (channelTestHandler) Enabled() bool {
-	return monitor_uptime.GetMonitorSetting().AutoTestChannelEnabled
+	return ops.GetMonitorSetting().AutoTestChannelEnabled
 }
 
 func (channelTestHandler) Interval() time.Duration {
-	minutes := monitor_uptime.GetMonitorSetting().AutoTestChannelMinutes
+	minutes := ops.GetMonitorSetting().AutoTestChannelMinutes
 	if minutes <= 0 {
 		minutes = 10
 	}

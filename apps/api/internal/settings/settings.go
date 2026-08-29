@@ -7,6 +7,7 @@
 package settings
 
 import (
+	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
 	"sort"
 	"strconv"
 	"strings"
@@ -15,7 +16,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/catalog/health_store"
-	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
 	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/egress/fetch_url"

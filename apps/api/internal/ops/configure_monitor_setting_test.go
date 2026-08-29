@@ -1,4 +1,4 @@
-package monitor_uptime
+package ops
 
 import (
 	"testing"

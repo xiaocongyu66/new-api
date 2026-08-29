@@ -2,13 +2,13 @@ package controller
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strings"
 	"time"
 
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
-	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
 	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"

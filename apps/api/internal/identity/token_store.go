@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/identity/manage_tokens"
 	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
 )
@@ -128,7 +127,7 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 	}
 
 	// 超量用户（令牌数超过上限）只允许精确搜索，禁止模糊搜索
-	maxTokens := manage_tokens.GetMaxUserTokens()
+	maxTokens := GetMaxUserTokens()
 	hasFuzzy := strings.Contains(keyword, "%") || strings.Contains(token, "%")
 	if hasFuzzy {
 		count, err := CountUserTokens(userId)

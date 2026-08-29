@@ -2,9 +2,9 @@ package helper
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/billing/consume_quota"
 	"strings"
 
-	"github.com/QuantumNous/new-api/internal/billing/consume_quota"
 	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	tiered_pricing "github.com/QuantumNous/new-api/internal/billing/tiered_pricing"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"

@@ -2,11 +2,11 @@ package billing
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/billing/do_checkin"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/billing/do_checkin"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/model"

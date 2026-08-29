@@ -11,7 +11,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/i18n"
-	"github.com/QuantumNous/new-api/internal/identity/manage_tokens"
 )
 
 type tokenAutoGroupsInput struct {
@@ -283,7 +282,7 @@ func AddToken(c contract.Context) {
 		}
 	}
 	// 检查用户令牌数量是否已达上限
-	maxTokens := manage_tokens.GetMaxUserTokens()
+	maxTokens := GetMaxUserTokens()
 	count, err := CountUserTokens(c.GetInt("id"))
 	if err != nil {
 		common.CtxApiError(c, err)

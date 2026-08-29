@@ -1,4 +1,4 @@
-package manage_tokens
+package identity
 
 import "github.com/QuantumNous/new-api/internal/settings/config"
 
