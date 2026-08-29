@@ -142,10 +142,11 @@ env:
   ADMIN_TOKEN: ${{ inputs.admin_token || secrets.K8S_STRESS_ADMIN_TOKEN }}
   ADMIN_USERNAME: ${{ inputs.admin_username || 'root' }}
   ADMIN_PASSWORD: ${{ inputs.admin_password || '123456' }}
-  # GitHub Actions expressions have no replace(); only replaceAll() exists, and a
-  # bad function name fails workflow parsing at dispatch time (HTTP 422), so no
-  # run can ever start. Derive the admin base URL with replaceAll instead.
-  GATEWAY_ADMIN_URL: ${{ inputs.gateway_admin_url != '' && inputs.gateway_admin_url || replaceAll(inputs.target_url, '/v1', '') }}
+  # GitHub Actions expressions have no string-replace function at all (no
+  # replace, no replaceAll). Calling one fails workflow parsing at dispatch
+  # time with HTTP 422, so no run can ever start. Pass the raw input and strip
+  # the /v1 suffix in shell at the point of use instead.
+  GATEWAY_ADMIN_URL: ${{ inputs.gateway_admin_url }}
   GATEWAY_HOST_ALIAS: ${{ inputs.gateway_host_alias }}
   MODEL: ${{ inputs.model }}
   ALIAS: ${{ inputs.alias }}
@@ -225,8 +226,15 @@ jobs:
           ADMIN_USERNAME: ${{ env.ADMIN_USERNAME }}
           ADMIN_PASSWORD: ${{ env.ADMIN_PASSWORD }}
           GATEWAY_ADMIN_URL: ${{ env.GATEWAY_ADMIN_URL }}
+          TARGET_URL: ${{ env.TARGET_URL }}
         run: |
           set -euo pipefail
+          # Empty means "derive from target_url by stripping the /v1 suffix";
+          # expressions cannot do string replacement, so it happens here.
+          if [ -z "${GATEWAY_ADMIN_URL:-}" ]; then
+            GATEWAY_ADMIN_URL="${TARGET_URL%/v1}"
+            GATEWAY_ADMIN_URL="${GATEWAY_ADMIN_URL%/}"
+          fi
           login_url="${GATEWAY_ADMIN_URL%/}/api/user/login"
           probe_token() {
             curl -fsS --max-time 5 -H "Authorization: Bearer $1"               "${GATEWAY_ADMIN_URL%/}/api/route_unit/audit?alias=__probe__&limit=1" >/dev/null 2>&1
@@ -491,8 +499,15 @@ jobs:
           ADMIN_USERNAME: ${{ env.ADMIN_USERNAME }}
           ADMIN_PASSWORD: ${{ env.ADMIN_PASSWORD }}
           GATEWAY_ADMIN_URL: ${{ env.GATEWAY_ADMIN_URL }}
+          TARGET_URL: ${{ env.TARGET_URL }}
         run: |
           set -euo pipefail
+          # Empty means "derive from target_url by stripping the /v1 suffix";
+          # expressions cannot do string replacement, so it happens here.
+          if [ -z "${GATEWAY_ADMIN_URL:-}" ]; then
+            GATEWAY_ADMIN_URL="${TARGET_URL%/v1}"
+            GATEWAY_ADMIN_URL="${GATEWAY_ADMIN_URL%/}"
+          fi
           login_url="${GATEWAY_ADMIN_URL%/}/api/user/login"
           probe_token() {
             curl -fsS --max-time 5 -H "Authorization: Bearer $1" \
