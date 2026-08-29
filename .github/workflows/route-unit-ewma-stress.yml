@@ -891,9 +891,19 @@ jobs:
                         mountPath: /mock
                         readOnly: true
                     resources:
+                      # Squeeze the mock down to share the control-plane node with
+                      # everything else. The control-plane node has ~1.9Gi of
+                      # requestable memory; the master, worker, postgres, redis,
+                      # ingress, and coredns together leave just enough room for
+                      # one mock at 128Mi, never two. 64Mi fits two, with headroom
+                      # for whatever else might land on the node. The mock only
+                      # serves HTTP and writes a small ndjson; 64Mi is plenty.
                       requests:
-                        cpu: 100m
-                        memory: 128Mi
+                        cpu: 50m
+                        memory: 64Mi
+                      limits:
+                        cpu: "1"
+                        memory: 256Mi
                       limits:
                         cpu: "1"
                         memory: 512Mi
