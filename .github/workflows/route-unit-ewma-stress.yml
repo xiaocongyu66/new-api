@@ -827,6 +827,11 @@ jobs:
           fi
           echo "scheduling mocks onto ${MOCK_NODE}"
 
+          # Remove any mocks a previous run left behind before recreating them. Without
+          # this a stale Deployment would keep serving the old fixture, and restarting
+          # it in place cannot work on a node with no room for a surge pod.
+          kubectl delete deployment,service -l app=route-unit-mock --ignore-not-found=true --wait=true || true
+
           # One Deployment + Service per instance, because each carries a different
           # MOCK_FORCE_MODE and the channels must address them individually.
           kubectl create configmap route-unit-mock-src \
@@ -909,13 +914,29 @@ jobs:
               - port: 80
                 targetPort: 8099
           YAML
-            # Restart so a re-run picks up the current fixture rather than the
-            # ConfigMap contents the pod started with.
-            kubectl rollout restart "deployment/route-unit-mock-${i}"
           done
 
           for i in $(seq 0 $((INSTANCES - 1))); do
-            kubectl rollout status "deployment/route-unit-mock-${i}" --timeout=180s
+            # Wait on pod readiness, not the rollout. The node has room for exactly one
+            # pod per mock, while a RollingUpdate wants a surge pod, so `rollout status`
+            # only ever reports its deadline. No restart is needed either: the cleanup
+            # below deletes the previous run's mocks, so these Deployments are created
+            # fresh against the current ConfigMap.
+            for j in $(seq 1 90); do
+              READY=$(kubectl get pods -l "app=route-unit-mock,instance=m${i}" \
+                -o jsonpath='{range .items[*]}{range @.status.conditions[?(@.type=="Ready")]}{.status}{end} {end}')
+              case "$READY" in
+                *True*) break ;;
+              esac
+              sleep 2
+            done
+            case "${READY:-}" in
+              *True*) echo "mock ${i} pod ready" ;;
+              *) echo "::error::mock ${i} pod never became ready (last: ${READY:-<none>})"
+                 kubectl get pods -l "app=route-unit-mock,instance=m${i}" -o wide || true
+                 kubectl describe pods -l "app=route-unit-mock,instance=m${i}" 2>&1 | tail -20 || true
+                 exit 1 ;;
+            esac
           done
 
           # /healthz and /_ndjson are read from here; the gateway uses Service DNS.
