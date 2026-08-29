@@ -1071,13 +1071,45 @@ jobs:
           exit 1
 
       - name: Verify affinity setting
+        env:
+          SCENARIO: ${{ matrix.scenario }}
         run: |
           set -euo pipefail
-          if [ "${{ env.ALLOW_AFFINITY }}" != "true" ]; then
-            # Check if channel_affinity_setting.enabled is true via admin API
-            # For now, just warn; runner enforces ENVIRONMENT_INVALID
-            echo "Warning: channel_affinity_setting.enabled must be false. Runner will fail with ENVIRONMENT_INVALID if enabled."
+          # Sticky routing bypasses weighted selection, so every share scenario needs
+          # channel_affinity_setting.enabled=false; the runner refuses with
+          # ENVIRONMENT_INVALID otherwise. Only S9 measures affinity itself and runs
+          # with --allow-affinity. Warning was not enough: the cluster carries this
+          # option across runs, so the step has to set the value it requires.
+          if [ "${ALLOW_AFFINITY}" = "true" ] || [ "${SCENARIO#S9}" != "${SCENARIO}" ]; then
+            echo "scenario ${SCENARIO} runs with affinity allowed; leaving the option untouched"
+            exit 0
           fi
+          CURRENT=$(curl -sS -H "Authorization: Bearer ${ADMIN_TOKEN_FINAL}" \
+            "${GATEWAY_ADMIN_URL%/}/api/option/" \
+            | python3 -c 'import sys,json; d=json.load(sys.stdin).get("data",[]); print(next((o["value"] for o in d if o["key"]=="channel_affinity_setting.enabled"), ""))' 2>/dev/null || true)
+          echo "channel_affinity_setting.enabled currently: ${CURRENT:-<unset>}"
+          if [ "$CURRENT" = "false" ]; then
+            exit 0
+          fi
+          curl -fsS -X PUT -H "Authorization: Bearer ${ADMIN_TOKEN_FINAL}" \
+            -H 'Content-Type: application/json' \
+            -d '{"key":"channel_affinity_setting.enabled","value":"false"}' \
+            "${GATEWAY_ADMIN_URL%/}/api/option/" >/dev/null
+          # The write lands in the options table immediately, but the API serves the
+          # in-memory config until each pod's sync cycle reloads it (SYNC_FREQUENCY,
+          # 60s by default). Wait past one full cycle before calling it a failure.
+          for i in $(seq 1 45); do
+            CURRENT=$(curl -sS -H "Authorization: Bearer ${ADMIN_TOKEN_FINAL}" \
+              "${GATEWAY_ADMIN_URL%/}/api/option/" \
+              | python3 -c 'import sys,json; d=json.load(sys.stdin).get("data",[]); print(next((o["value"] for o in d if o["key"]=="channel_affinity_setting.enabled"), ""))' 2>/dev/null || true)
+            [ "$CURRENT" = "false" ] && break
+            sleep 2
+          done
+          if [ "$CURRENT" != "false" ]; then
+            echo "::error::channel_affinity_setting.enabled is still '${CURRENT:-<unset>}' after the sync window; the runner would reject this run as ENVIRONMENT_INVALID"
+            exit 1
+          fi
+          echo "channel_affinity_setting.enabled=false"
 
       - name: Scale gateway replicas
         id: replicas
