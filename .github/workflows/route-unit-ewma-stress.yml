@@ -1143,9 +1143,15 @@ jobs:
           MOCK_NDJSON: ${{ env.MOCK_IN_CLUSTER == 'true' && '' || '/tmp/mock_upstream.ndjson' }}
         run: |
           set -euo pipefail
+          # run_scenario.py builds "{gateway_url}/api/status" and "{gateway_url}/v1/...",
+          # so it needs the gateway base without the /v1 suffix. Passing target_url
+          # verbatim yields /v1/api/status, which the gateway answers 404, and the
+          # preflight reports ENVIRONMENT_INVALID.
+          SCENARIO_BASE="${TARGET_URL%/v1}"
+          SCENARIO_BASE="${SCENARIO_BASE%/}"
           python3 tests/route_unit_stress/run_scenario.py \
             --scenario ${{ matrix.scenario }} \
-            --gateway-url "$TARGET_URL" \
+            --gateway-url "$SCENARIO_BASE" \
             --token "$API_KEY" \
             --admin-token "${{ env.ADMIN_TOKEN_FINAL }}" \
             --alias "${{ env.ALIAS }}" \
