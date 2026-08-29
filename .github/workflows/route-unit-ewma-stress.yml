@@ -39,11 +39,6 @@ on:
         required: false
         type: string
         default: ''
-      gateway_host_alias:
-        description: 'hosts entry "<name>=<ip>" so the runner can resolve a placeholder ingress host (e.g. api.example.com=156.254.6.210). Ingress routes only on Host, and the placeholder name has no public DNS.'
-        required: false
-        type: string
-        default: ''
       model:
         description: 'Model to request'
         required: false
@@ -147,7 +142,6 @@ env:
   # time with HTTP 422, so no run can ever start. Pass the raw input and strip
   # the /v1 suffix in shell at the point of use instead.
   GATEWAY_ADMIN_URL: ${{ inputs.gateway_admin_url }}
-  GATEWAY_HOST_ALIAS: ${{ inputs.gateway_host_alias }}
   MODEL: ${{ inputs.model }}
   ALIAS: ${{ inputs.alias }}
   REQUESTS: ${{ inputs.requests }}
@@ -176,16 +170,28 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Resolve gateway host alias
-        if: env.GATEWAY_HOST_ALIAS != ''
+        env:
+          TARGET_URL: ${{ env.TARGET_URL }}
+          GATEWAY_ADMIN_URL: ${{ env.GATEWAY_ADMIN_URL }}
         run: |
           set -euo pipefail
-          # The ingress routes solely on Host, and the configured ingress host may
-          # be a placeholder with no public DNS. Without this the preflight curl
-          # fails DNS resolution and the job dies before any request is sent.
-          NAME="${GATEWAY_HOST_ALIAS%%=*}"
-          IP="${GATEWAY_HOST_ALIAS#*=}"
-          if [ -z "$NAME" ] || [ -z "$IP" ] || [ "$NAME" = "$GATEWAY_HOST_ALIAS" ]; then
-            echo "::error::gateway_host_alias must be '<name>=<ip>', got '$GATEWAY_HOST_ALIAS'"
+          # The ingress routes solely on Host, so target_url must carry the ingress
+          # host, which can be a placeholder with no public DNS. When it does not
+          # resolve, map it to the admin URL's address (the node running the
+          # ingress) so the preflight curl reaches the gateway instead of dying on
+          # DNS. No extra input: workflow_dispatch allows at most 25.
+          NAME=$(printf '%s' "$TARGET_URL" | sed -E 's#^[a-zA-Z]+://##; s#[:/].*$##')
+          if [ -z "$NAME" ]; then
+            echo "target_url has no host; nothing to map"
+            exit 0
+          fi
+          if getent hosts "$NAME" >/dev/null 2>&1; then
+            echo "$NAME already resolves; no hosts entry added"
+            exit 0
+          fi
+          IP=$(printf '%s' "$GATEWAY_ADMIN_URL" | sed -E 's#^[a-zA-Z]+://##; s#[:/].*$##')
+          if ! printf '%s' "$IP" | grep -Eq '^[0-9]+(\.[0-9]+){3}$'; then
+            echo "::error::$NAME does not resolve and gateway_admin_url ('$GATEWAY_ADMIN_URL') has no IP literal to map it to"
             exit 1
           fi
           echo "$IP $NAME" | sudo tee -a /etc/hosts >/dev/null
@@ -350,16 +356,28 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Resolve gateway host alias
-        if: env.GATEWAY_HOST_ALIAS != ''
+        env:
+          TARGET_URL: ${{ env.TARGET_URL }}
+          GATEWAY_ADMIN_URL: ${{ env.GATEWAY_ADMIN_URL }}
         run: |
           set -euo pipefail
-          # The ingress routes solely on Host, and the configured ingress host may
-          # be a placeholder with no public DNS. Without this the preflight curl
-          # fails DNS resolution and the job dies before any request is sent.
-          NAME="${GATEWAY_HOST_ALIAS%%=*}"
-          IP="${GATEWAY_HOST_ALIAS#*=}"
-          if [ -z "$NAME" ] || [ -z "$IP" ] || [ "$NAME" = "$GATEWAY_HOST_ALIAS" ]; then
-            echo "::error::gateway_host_alias must be '<name>=<ip>', got '$GATEWAY_HOST_ALIAS'"
+          # The ingress routes solely on Host, so target_url must carry the ingress
+          # host, which can be a placeholder with no public DNS. When it does not
+          # resolve, map it to the admin URL's address (the node running the
+          # ingress) so the preflight curl reaches the gateway instead of dying on
+          # DNS. No extra input: workflow_dispatch allows at most 25.
+          NAME=$(printf '%s' "$TARGET_URL" | sed -E 's#^[a-zA-Z]+://##; s#[:/].*$##')
+          if [ -z "$NAME" ]; then
+            echo "target_url has no host; nothing to map"
+            exit 0
+          fi
+          if getent hosts "$NAME" >/dev/null 2>&1; then
+            echo "$NAME already resolves; no hosts entry added"
+            exit 0
+          fi
+          IP=$(printf '%s' "$GATEWAY_ADMIN_URL" | sed -E 's#^[a-zA-Z]+://##; s#[:/].*$##')
+          if ! printf '%s' "$IP" | grep -Eq '^[0-9]+(\.[0-9]+){3}$'; then
+            echo "::error::$NAME does not resolve and gateway_admin_url ('$GATEWAY_ADMIN_URL') has no IP literal to map it to"
             exit 1
           fi
           echo "$IP $NAME" | sudo tee -a /etc/hosts >/dev/null
