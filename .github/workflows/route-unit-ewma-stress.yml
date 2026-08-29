@@ -980,19 +980,25 @@ jobs:
           # reads one pod's buffer and the rest is reported missing_in_audit. S10
           # scales up separately and polls each pod directly.
           if [ -z "${REPLICA:-}" ] || [ "${REPLICA}" = "1" ]; then
-            # Let the scale settle before restarting. kubectl scale returns as soon as
-            # the spec is accepted, so an immediate rollout restart observes a
-            # deployment still converging and then waits on replicas the scale is busy
-            # removing, which times out.
             kubectl scale deployment/new-api-worker --replicas=1
-            kubectl rollout status deployment/new-api-worker --timeout=300s
+            # No `rollout status` here. The node fits exactly one worker (512Mi each
+            # against ~1.9Gi total), while the deployment's RollingUpdate allows a
+            # surge to two, so a rollout can never converge and only reports its
+            # progress deadline. Readiness is asserted by the pod wait and the relay
+            # probe further down, which is what the run actually depends on.
+            kubectl wait --for=delete pod -l app=new-api,role=worker \
+              --field-selector status.phase=Pending --timeout=120s 2>/dev/null || true
+            kubectl delete pods -l app=new-api,role=worker \
+              --field-selector status.phase=Pending --ignore-not-found=true || true
           fi
           # Master and worker must not restart together. Only the master seeds route
           # units, and a worker booting alongside it caches whatever pool exists at
           # that moment; if seeding has not finished the worker holds an empty pool for
           # a full SYNC_FREQUENCY (60s) and answers model_not_found.
-          kubectl rollout restart deployment/new-api-master
-          kubectl rollout status deployment/new-api-master --timeout=300s
+          # Delete rather than roll: the master is also a single replica on a node with
+          # no room for a surge pod, so a RollingUpdate cannot converge.
+          kubectl delete pods -l app=new-api,role=master --wait=false
+          kubectl wait --for=condition=ready pod -l app=new-api,role=master --timeout=300s
           for i in $(seq 1 60); do
             ROUTES=$(kubectl exec -i "$POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" \
               psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
