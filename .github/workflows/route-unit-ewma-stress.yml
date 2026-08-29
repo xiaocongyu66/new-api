@@ -280,6 +280,12 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install runner dependencies
+        # setup-python provides a clean interpreter without the runner image's
+        # preinstalled packages, so run_scenario.py's `import requests` fails
+        # with ModuleNotFoundError. Cherry-picked from main (commit 56de47cdb).
+        run: python3 -m pip install --quiet --disable-pip-version-check requests
+
       - name: Configure kubectl
         if: env.KUBE_CONFIG_B64 != ''
         run: |
