@@ -296,8 +296,14 @@ jobs:
           MOCK_NDJSON: /tmp/mock_upstream.ndjson
         run: |
           set -euo pipefail
+          # run_smoke.py builds "{gateway_url}/api/status" and "{gateway_url}/v1/models",
+          # so it needs the gateway base without the /v1 suffix. Passing target_url
+          # verbatim yields /v1/api/status, which the gateway answers 404, and the
+          # runner reports a healthz preflight failure.
+          SMOKE_BASE="${TARGET_URL%/v1}"
+          SMOKE_BASE="${SMOKE_BASE%/}"
           python3 tests/route_unit_stress/run_smoke.py \
-            --gateway-url "$TARGET_URL" \
+            --gateway-url "$SMOKE_BASE" \
             --token "$API_KEY" \
             --admin-token "${{ env.ADMIN_TOKEN_FINAL }}" \
             --mock-url "$MOCK_URL" \
