@@ -661,6 +661,13 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install runner dependencies
+        # setup-python provides a clean interpreter without the runner image's
+        # preinstalled packages, so run_scenario.py's `import requests` fails with
+        # ModuleNotFoundError. Install it explicitly rather than relying on whatever
+        # the image happens to ship.
+        run: python3 -m pip install --quiet --disable-pip-version-check requests
+
       - name: Configure kubectl
         # KUBE_CONFIG_B64 was never in env, so `if: env.KUBE_CONFIG_B64 != ''`
         # was always false and this step silently skipped, which made the S10
