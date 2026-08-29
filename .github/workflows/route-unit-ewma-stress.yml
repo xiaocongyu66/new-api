@@ -379,14 +379,213 @@ jobs:
 
       - name: Configure mock URL for scenario
         run: |
-          # For multi-mock scenarios, run_scenario.py expects a single mock-url.
-          # The per-route mode injection is handled by X-Mock-Mode header from the runner,
-          # but since we use MOCK_FORCE_MODE per instance, the gateway must route to the correct port.
-          # The topology channels should point to different ports (18200, 18201, ...).
-          # Here we just set the primary mock URL; run_scenario.py will use X-Mock-Mode header.
-          # For S4/S5/S6, the topology must already have channels pointing to the correct mock ports.
-          # This is a pre-requisite handled outside this workflow (k8s channel config).
-          echo "MOCK_URL_PRIMARY=http://127.0.0.1:18200" >> "$GITHUB_ENV"
+          set -euo pipefail
+          # run_scenario.py takes one --mock-url for /healthz; the ndjson pull walks
+          # every instance via --mock-url-extra so multi-instance reconciliation sees
+          # all upstream records, not just the first instance's.
+          echo "MOCK_URL_PRIMARY=http://127.0.0.1:${MOCK_BASE_PORT}" >> "$GITHUB_ENV"
+          EXTRA=""
+          for i in $(seq 0 $((MOCK_INSTANCES - 1))); do
+            EXTRA="$EXTRA --mock-url-extra http://127.0.0.1:$((MOCK_BASE_PORT + i))"
+          done
+          echo "MOCK_URL_EXTRA_ARGS=$EXTRA" >> "$GITHUB_ENV"
+          # Per-channel mock base URL map: the runner cannot resolve cluster
+          # Service DNS, so we feed it the runner-local port-forward address
+          # for each provisioned channel (channel_id = 91000 + i, port = MOCK_BASE_PORT + i).
+          MAP=""
+          for i in $(seq 0 $((MOCK_INSTANCES - 1))); do
+            CID=$((91000 + i + 1))
+            MAP="$MAP --mock-url-for ${CID}=http://127.0.0.1:$((MOCK_BASE_PORT + i))"
+          done
+          echo "MOCK_URL_FOR_ARGS=$MAP" >> "$GITHUB_ENV"
+          echo "mock-url-for map:$MAP"
+          echo "mock bases: $EXTRA"
+
+      - name: Point stress channels at the in-cluster mocks
+        if: env.MOCK_IN_CLUSTER == 'true'
+        env:
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          MODEL: ${{ env.MODEL }}
+        run: |
+          set -euo pipefail
+          # Reconciliation compares gateway attempts against the mocks this run reads
+          # from, so every attempt must land on one of them. Channels left pointing at
+          # another upstream yield audit rows with no matching upstream row and the
+          # scenario is reported DATA_INVALID.
+          POD=$(kubectl get pods -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+          if [ -z "$POD" ]; then
+            echo "::error::no postgres pod found; cannot provision stress channels"
+            exit 1
+          fi
+          # One channel per mock instance, id 91001..9100N, each pointing at its own
+          # Service so the scenario's per-instance MOCK_FORCE_MODE actually reaches
+          # distinct route units.
+          VALUES=""
+          for i in $(seq 0 $((MOCK_INSTANCES - 1))); do
+            CID=$((91001 + i))
+            [ -n "$VALUES" ] && VALUES="$VALUES,"
+            VALUES="$VALUES($CID, 1, 'mock', 1, 'route-unit-mock-$i', EXTRACT(EPOCH FROM now())::bigint, 'http://route-unit-mock-$i', '${MODEL}', 'default', 0, '', '', '{\"X-Request-Id\":\"{client_header:X-Request-Id}\"}')"
+          done
+          LAST=$((91000 + MOCK_INSTANCES))
+          kubectl exec -i "$POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" \
+            psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 <<SQL
+          DELETE FROM abilities WHERE channel_id BETWEEN 91001 AND 91099;
+          DELETE FROM channel_model_routes WHERE channel_id BETWEEN 91001 AND 91099;
+          DELETE FROM channels WHERE id BETWEEN 91001 AND 91099;
+          INSERT INTO channels (id, type, key, status, name, created_time, base_url, models, "group", auto_ban, other_info, settings, header_override)
+          VALUES $VALUES;
+          INSERT INTO abilities ("group", model, channel_id, enabled)
+          SELECT 'default', '${MODEL}', id, true FROM channels WHERE id BETWEEN 91001 AND $LAST;
+          -- Route units are not inserted here: SeedChannelModelRoutes() derives them
+          -- from every channel on master startup, and the restart below triggers it.
+          SELECT id, name, base_url, models FROM channels WHERE id BETWEEN 91001 AND $LAST;
+          SQL
+          # Every scenario except S10 wants a single worker: the audit ring is
+          # per process and the Service load-balances, so with N replicas the runner
+          # reads one pod's buffer and the rest is reported missing_in_audit. S10
+          # scales up separately and polls each pod directly.
+          if [ -z "${REPLICA:-}" ] || [ "${REPLICA}" = "1" ]; then
+            kubectl scale deployment/new-api-worker --replicas=1
+            # No `rollout status` here. The node fits exactly one worker (512Mi each
+            # against ~1.9Gi total), while the deployment's RollingUpdate allows a
+            # surge to two, so a rollout can never converge and only reports its
+            # progress deadline. Readiness is asserted by the pod wait and the relay
+            # probe further down, which is what the run actually depends on.
+            kubectl wait --for=delete pod -l app=new-api,role=worker \
+              --field-selector status.phase=Pending --timeout=120s 2>/dev/null || true
+            kubectl delete pods -l app=new-api,role=worker \
+              --field-selector status.phase=Pending --ignore-not-found=true || true
+          fi
+          # Master and worker must not restart together. Only the master seeds route
+          # units, and a worker booting alongside it caches whatever pool exists at
+          # that moment; if seeding has not finished the worker holds an empty pool for
+          # a full SYNC_FREQUENCY (60s) and answers model_not_found.
+          # Delete rather than roll: the master is also a single replica on a node with
+          # no room for a surge pod, so a RollingUpdate cannot converge. Block until the
+          # old pod is gone before waiting on the new one; `kubectl wait` on a label
+          # selector matches both during the handover and fails NotFound when the dying
+          # pod disappears underneath it.
+          OLD_MASTER=$(kubectl get pods -l app=new-api,role=master -o jsonpath='{.items[*].metadata.name}')
+          kubectl delete pods -l app=new-api,role=master
+          for i in $(seq 1 150); do
+            READY=$(kubectl get pods -l app=new-api,role=master \
+              -o jsonpath='{range .items[*]}{.metadata.name}={range @.status.conditions[?(@.type=="Ready")]}{.status}{end} {end}')
+            case "$READY" in
+              *=True*) echo "master ready: $READY"; break ;;
+            esac
+            sleep 2
+          done
+          case "${READY:-}" in
+            *=True*) ;;
+            *) echo "::error::master did not become ready after replacing ${OLD_MASTER:-<none>} (last: ${READY:-<none>})"; exit 1 ;;
+          esac
+          for i in $(seq 1 60); do
+            ROUTES=$(kubectl exec -i "$POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" \
+              psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+              "SELECT count(*) FROM channel_model_routes WHERE channel_id BETWEEN 91001 AND $LAST;" | tr -d '[:space:]')
+            [ "${ROUTES:-0}" -ge "$MOCK_INSTANCES" ] && break
+            sleep 2
+          done
+          echo "route units for stress channels: ${ROUTES:-0}"
+          if [ "${ROUTES:-0}" -lt "$MOCK_INSTANCES" ]; then
+            echo "::error::route-unit seeding produced ${ROUTES:-0} rows; expected $MOCK_INSTANCES"
+            kubectl exec -i "$POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" \
+              psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+              -c "SELECT channel_id, \"group\", public_model_alias, upstream_model, static_weight, enabled FROM channel_model_routes WHERE channel_id BETWEEN 91001 AND $LAST;" || true
+            exit 1
+          fi
+          # Delete the pods rather than `rollout restart`. The deployment declares
+          # maxUnavailable: 0 with maxSurge: 1, so a rolling restart needs the new pod
+          # ready before the old one leaves; the new pod's init container waits on the
+          # master's schema probe, and with a single replica pinned to one node the
+          # two serialize until the rollout deadline expires. Deleting frees the slot
+          # immediately, and the ReplicaSet recreates the pod with the current config,
+          # which is all the cache refresh needs.
+          # Same handover race as the master: wait for the delete to finish, then poll
+          # readiness rather than letting `kubectl wait` straddle both pods.
+          kubectl delete pods -l app=new-api,role=worker
+          for i in $(seq 1 210); do
+            READY=$(kubectl get pods -l app=new-api,role=worker \
+              -o jsonpath='{range .items[*]}{.metadata.name}={range @.status.conditions[?(@.type=="Ready")]}{.status}{end} {end}')
+            case "$READY" in
+              *=True*) echo "worker ready: $READY"; break ;;
+            esac
+            sleep 2
+          done
+          case "${READY:-}" in
+            *=True*) ;;
+            *) echo "::error::worker did not become ready after pod replacement (last: ${READY:-<none>})"; exit 1 ;;
+          esac
+          # Readiness only proves /api/status answers; the route pool loads on the same
+          # boot path, so confirm the worker resolves the alias before handing over.
+          for i in $(seq 1 45); do
+            CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \
+              -H "Authorization: Bearer $API_KEY" -H 'Content-Type: application/json' \
+              -X POST -d "{\"model\":\"${MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":1}" \
+              "${TARGET_URL%/}/chat/completions" || true)
+            if [ "$CODE" = "200" ]; then
+              echo "worker resolves ${MODEL} (probe HTTP $CODE)"
+              break
+            fi
+            sleep 2
+          done
+          if [ "${CODE:-}" != "200" ]; then
+            echo "::error::worker still cannot route ${MODEL} after restart (last HTTP ${CODE:-none})"
+            exit 1
+          fi
+          # Route units take their public_model_alias from the channel's model list
+          # (ExpandChannelModelRoutes), so the alias the runner looks up must be the
+          # model these channels serve. The alias input defaults to a name that no
+          # provisioned channel carries, which made the topology check see 0 routes.
+          echo "ALIAS=${MODEL}" >> "$GITHUB_ENV"
+          echo "alias for this run: ${MODEL}"
+
+      - name: Resolve admin token
+        id: admin_login_scenario
+        env:
+          ADMIN_TOKEN: ${{ env.ADMIN_TOKEN }}
+          ADMIN_USERNAME: ${{ env.ADMIN_USERNAME }}
+          ADMIN_PASSWORD: ${{ env.ADMIN_PASSWORD }}
+          GATEWAY_ADMIN_URL: ${{ env.GATEWAY_ADMIN_URL }}
+          TARGET_URL: ${{ env.TARGET_URL }}
+        run: |
+          set -euo pipefail
+          # Empty means "derive from target_url by stripping the /v1 suffix";
+          # expressions cannot do string replacement, so it happens here.
+          if [ -z "${GATEWAY_ADMIN_URL:-}" ]; then
+            GATEWAY_ADMIN_URL="${TARGET_URL%/v1}"
+            GATEWAY_ADMIN_URL="${GATEWAY_ADMIN_URL%/}"
+          fi
+          login_url="${GATEWAY_ADMIN_URL%/}/api/user/login"
+          probe_token() {
+            curl -fsS --max-time 5 -H "Authorization: Bearer $1" \
+              "${GATEWAY_ADMIN_URL%/}/api/route_unit/audit?alias=__probe__&limit=1" >/dev/null 2>&1
+          }
+          if [ -n "$ADMIN_TOKEN" ] && probe_token "$ADMIN_TOKEN"; then
+            echo "Using provided admin token"
+            echo "ADMIN_TOKEN_FINAL=$ADMIN_TOKEN" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          for i in $(seq 1 15); do
+            RESP=$(curl -fsS --max-time 10 -H 'Content-Type: application/json' \
+              -X POST -d "{\"username\":\"$ADMIN_USERNAME\",\"password\":\"$ADMIN_PASSWORD\"}" \
+              "$login_url" 2>/dev/null || true)
+            if [ -n "$RESP" ]; then
+              TOKEN=$(echo "$RESP" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("data",{}).get("access_token",""))' 2>/dev/null || true)
+              if [ -n "$TOKEN" ] && probe_token "$TOKEN"; then
+                echo "Auto-login admin token obtained (len=${#TOKEN})"
+                echo "::add-mask::$TOKEN"
+                echo "ADMIN_TOKEN_FINAL=$TOKEN" >> "$GITHUB_ENV"
+                exit 0
+              fi
+            fi
+            echo "Login attempt $i failed, retrying..."
+            sleep 2
+          done
+          echo "::error::Failed to obtain admin token from $login_url"
+          exit 1
 
       - name: Preflight gateway
         run: |
@@ -477,7 +676,9 @@ jobs:
             --token "$API_KEY" \
             --admin-token "$ADMIN_TOKEN" \
             --alias "${{ env.ALIAS }}" \
-            --mock-url "$MOCK_URL" \
+            --mock-url "${MOCK_URL_PRIMARY:-$MOCK_URL}" \
+            ${MOCK_URL_EXTRA_ARGS:-} \
+            ${MOCK_URL_FOR_ARGS:-} \
             ${{
               (startsWith(matrix.scenario, 'S6') || startsWith(matrix.scenario, 'S7') || startsWith(matrix.scenario, 'S8') || startsWith(matrix.scenario, 'S13'))
               && '' || format('--requests {0}', env.REQUESTS)
