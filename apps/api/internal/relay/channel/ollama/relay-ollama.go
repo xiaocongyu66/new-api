@@ -13,7 +13,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/samber/lo"
@@ -147,7 +146,7 @@ func openAIChatToOllamaChat(c contract.Context, r *dto.GeneralOpenAIRequest) (*O
 				if part.Type == dto.ContentTypeImageURL {
 					source := part.ToFileSource()
 					if source != nil {
-						base64Data, _, err := service.GetBase64Data(c, source, "fetch image for ollama chat")
+						base64Data, _, err := relaycommon.GetBase64Data(c, source, "fetch image for ollama chat")
 						if err != nil {
 							return nil, err
 						}

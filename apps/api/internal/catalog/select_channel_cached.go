@@ -5,13 +5,11 @@ import (
 	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
-	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/model"
 )
 
 // CacheGetRandomSatisfiedChannel is the production implementation behind
-// gateway/port.SelectChannel: pick a channel that satisfies group, model,
+// gateway/SelectChannel: pick a channel that satisfies group, model,
 // and retry constraints from the in-memory channel cache.
 // 尝试获取一个满足要求的随机渠道。
 //
@@ -47,8 +45,8 @@ import (
 //
 //	Retry=3: GroupB, priority1 (startRetryIndex=2, priorityRetry=1)
 //	         分组B, 优先级1
-func CacheGetRandomSatisfiedChannel(param *port.SelectParams) (*model.Channel, string, error) {
-	var channel *model.Channel
+func CacheGetRandomSatisfiedChannel(param *SelectParams) (*Channel, string, error) {
+	var channel *Channel
 	var err error
 	selectGroup := param.TokenGroup
 	userGroup := common.GetCtxKeyString(param.Ctx, constant.ContextKeyUserGroup)

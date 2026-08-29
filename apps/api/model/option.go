@@ -14,7 +14,6 @@ func init() {
 	// billing_setting.* tiered config changes must invalidate the pricing
 	// cache owned by this module; wired here to keep internal/settings free
 	// of a dependency on model.
-	settings.OnBillingSettingChanged = InvalidatePricingCache
 }
 
 // GatewayRoutingOptionKeys is deliberately explicit. New settings must be
@@ -88,7 +87,7 @@ func UpdateOption(key string, value string) error {
 		return err
 	}
 	if IsGatewayRoutingOptionKey(key) {
-		if _, err := MutateGatewayRouting(func(tx *gorm.DB) error {
+		if _, err := MutateGatewayRoutingFn(func(tx *gorm.DB) error {
 			return UpdateOptionWithTx(tx, key, value)
 		}); err != nil {
 			return err
@@ -133,7 +132,7 @@ func UpdateOptionsBulk(values map[string]string) error {
 		}
 		return false
 	}(); hasGatewayOption {
-		if _, err := MutateGatewayRouting(mutate); err != nil {
+		if _, err := MutateGatewayRoutingFn(mutate); err != nil {
 			return err
 		}
 	} else if err := dbx.DB.Transaction(mutate); err != nil {
@@ -146,3 +145,8 @@ func UpdateOptionsBulk(values map[string]string) error {
 	}
 	return nil
 }
+
+// MutateGatewayRoutingFn is wired by internal/catalog, which owns the gateway
+// routing revision. model must not import catalog (catalog imports model), so
+// the mutation entry point arrives as a hook at startup.
+var MutateGatewayRoutingFn func(mutate func(tx *gorm.DB) error) (int64, error)

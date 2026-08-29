@@ -11,9 +11,9 @@ import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/model"
 	"io"
 	"net/http"
 	"time"
@@ -65,7 +65,7 @@ type CreemAdaptor struct {
 }
 
 func (*CreemAdaptor) RequestPay(c contract.Context, req *CreemPayRequest) {
-	if req.PaymentMethod != model.PaymentMethodCreem {
+	if req.PaymentMethod != PaymentMethodCreem {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "不支持的支付渠道"})
 		return
 	}
@@ -103,7 +103,7 @@ func (*CreemAdaptor) RequestPay(c contract.Context, req *CreemPayRequest) {
 		return
 	}
 
-	user, err := model.GetUserById(id, false)
+	user, err := identity.GetUserById(id, false)
 	if err != nil || user == nil {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "用户不存在"})
 		return
@@ -114,13 +114,13 @@ func (*CreemAdaptor) RequestPay(c contract.Context, req *CreemPayRequest) {
 	referenceId := "ref_" + common.Sha1([]byte(reference))
 
 	// 先创建订单记录，使用产品配置的金额和充值额度
-	topUp := &model.TopUp{
+	topUp := &TopUp{
 		UserId:          id,
 		Amount:          selectedProduct.Quota, // 充值额度
 		Money:           selectedProduct.Price, // 支付金额
 		TradeNo:         referenceId,
-		PaymentMethod:   model.PaymentMethodCreem,
-		PaymentProvider: model.PaymentProviderCreem,
+		PaymentMethod:   PaymentMethodCreem,
+		PaymentProvider: PaymentProviderCreem,
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}
@@ -309,11 +309,11 @@ func handleCheckoutCompleted(c contract.Context, event *CreemWebhookEvent) {
 	// Try complete subscription order first
 	LockOrder(referenceId)
 	defer UnlockOrder(referenceId)
-	if err := model.CompleteSubscriptionOrder(referenceId, common.GetJsonString(event), model.PaymentProviderCreem, ""); err == nil {
+	if err := CompleteSubscriptionOrder(referenceId, common.GetJsonString(event), PaymentProviderCreem, ""); err == nil {
 		logger.LogInfo(c.Context(), fmt.Sprintf("Creem 订阅订单处理成功 trade_no=%s creem_order_id=%s", referenceId, event.Object.Order.Id))
 		c.Status(http.StatusOK)
 		return
-	} else if err != nil && !errors.Is(err, model.ErrSubscriptionOrderNotFound) {
+	} else if err != nil && !errors.Is(err, ErrSubscriptionOrderNotFound) {
 		logger.LogError(c.Context(), fmt.Sprintf("Creem 订阅订单处理失败 trade_no=%s creem_order_id=%s error=%q", referenceId, event.Object.Order.Id, err.Error()))
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
@@ -329,7 +329,7 @@ func handleCheckoutCompleted(c contract.Context, event *CreemWebhookEvent) {
 	logger.LogInfo(c.Context(), fmt.Sprintf("Creem 支付完成回调 trade_no=%s creem_order_id=%s amount_paid=%d currency=%s product_name=%q customer_email=%q customer_name=%q", referenceId, event.Object.Order.Id, event.Object.Order.AmountPaid, event.Object.Order.Currency, event.Object.Product.Name, event.Object.Customer.Email, event.Object.Customer.Name))
 
 	// 查询本地订单确认存在
-	topUp := model.GetTopUpByTradeNo(referenceId)
+	topUp := GetTopUpByTradeNo(referenceId)
 	if topUp == nil {
 		logger.LogWarn(c.Context(), fmt.Sprintf("Creem 充值订单不存在 trade_no=%s creem_order_id=%s", referenceId, event.Object.Order.Id))
 		c.AbortWithStatus(http.StatusBadRequest)
@@ -354,7 +354,7 @@ func handleCheckoutCompleted(c contract.Context, event *CreemWebhookEvent) {
 		logger.LogWarn(c.Context(), fmt.Sprintf("Creem 回调客户姓名为空 trade_no=%s creem_order_id=%s", referenceId, event.Object.Order.Id))
 	}
 
-	err := model.RechargeCreem(referenceId, customerEmail, customerName, c.ClientIP())
+	err := RechargeCreem(referenceId, customerEmail, customerName, c.ClientIP())
 	if err != nil {
 		logger.LogError(c.Context(), fmt.Sprintf("Creem 充值处理失败 trade_no=%s creem_order_id=%s client_ip=%s error=%q", referenceId, event.Object.Order.Id, c.ClientIP(), err.Error()))
 		c.AbortWithStatus(http.StatusInternalServerError)

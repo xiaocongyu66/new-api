@@ -17,7 +17,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/samber/lo"
 )
 
@@ -74,7 +73,7 @@ func (a *Adaptor) ConvertClaudeRequest(c contract.Context, info *relaycommon.Rel
 		return req, nil
 	}
 
-	result, err := service.ConvertRequest(c, info, types.RelayFormatOpenAI, req)
+	result, err := relaycommon.ConvertRequest(c, info, types.RelayFormatOpenAI, req)
 	if err != nil {
 		return nil, err
 	}

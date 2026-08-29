@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
@@ -14,7 +15,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/model"
 )
 
 func init() {
@@ -161,15 +161,15 @@ func (p *OIDCProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*OAu
 }
 
 func (p *OIDCProvider) IsUserIDTaken(providerUserID string) bool {
-	return model.IsOidcIdAlreadyTaken(providerUserID)
+	return identity.IsOidcIdAlreadyTaken(providerUserID)
 }
 
-func (p *OIDCProvider) FillUserByProviderID(user *model.User, providerUserID string) error {
+func (p *OIDCProvider) FillUserByProviderID(user *identity.User, providerUserID string) error {
 	user.OidcId = providerUserID
 	return user.FillUserByOidcId()
 }
 
-func (p *OIDCProvider) SetProviderUserID(user *model.User, providerUserID string) {
+func (p *OIDCProvider) SetProviderUserID(user *identity.User, providerUserID string) {
 	user.OidcId = providerUserID
 }
 

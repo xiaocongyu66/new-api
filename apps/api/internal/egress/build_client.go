@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
-	"github.com/QuantumNous/new-api/model"
 	"net"
 	"net/http"
 	"net/url"
@@ -474,7 +473,7 @@ func getGlobalProxyURL() string {
 	if dbx.DB == nil {
 		return ""
 	}
-	var option model.Option
+	var option optionRow
 	if err := dbx.DB.Where("key = ?", "proxy_config").First(&option).Error; err != nil {
 		return ""
 	}

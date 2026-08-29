@@ -2,12 +2,10 @@ package egress
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
-	"github.com/QuantumNous/new-api/model"
 	"strings"
 	"time"
-
-	"github.com/QuantumNous/new-api/internal/common"
 )
 
 const (
@@ -82,14 +80,16 @@ func (node ProxyNode) Public() ProxyNodePublic {
 	}
 }
 
-func GetProxyNodesForChannel(channel *model.Channel) ([]*ProxyNode, error) {
-	return GetProxyNodesForChannelAndModel(channel, "")
+// GetProxyNodesForChannel returns the enabled custom-scope proxy nodes bound to
+// channelID. It takes the id rather than a channel record so egress stays free
+// of a catalog/model import (plan.md verdict #4: catalog -> egress one-way).
+func GetProxyNodesForChannel(channelID int) ([]*ProxyNode, error) {
+	return GetProxyNodesForChannelAndModel(channelID, "")
 }
-func GetProxyNodesForChannelAndModel(channel *model.Channel, modelName string) ([]*ProxyNode, error) {
-	if channel == nil {
-		return nil, fmt.Errorf("channel is nil")
-	}
 
+// GetProxyNodesForChannelAndModel additionally matches nodes whose custom scope
+// lists modelName. An empty modelName disables model matching.
+func GetProxyNodesForChannelAndModel(channelID int, modelName string) ([]*ProxyNode, error) {
 	var enabledNodes []*ProxyNode
 	if err := dbx.DB.Where("enabled = ?", true).
 		Where("scope_type = ?", ProxyNodeScopeCustom).
@@ -111,7 +111,7 @@ func GetProxyNodesForChannelAndModel(channel *model.Channel, modelName string) (
 		}
 		hit := false
 		for _, chID := range customScope.Channels {
-			if chID == channel.Id {
+			if chID == channelID {
 				hit = true
 				break
 			}

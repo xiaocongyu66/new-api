@@ -2,6 +2,7 @@ package billing
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strings"
@@ -10,7 +11,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/stripe/stripe-go/v81"
 	"github.com/stripe/stripe-go/v81/checkout/session"
 	"github.com/thanhpk/randstr"
@@ -31,7 +31,7 @@ func SubscriptionRequestStripePay(c contract.Context) {
 		return
 	}
 
-	plan, err := model.GetSubscriptionPlanById(req.PlanId)
+	plan, err := GetSubscriptionPlanById(req.PlanId)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -54,7 +54,7 @@ func SubscriptionRequestStripePay(c contract.Context) {
 	}
 
 	userId := c.GetInt("id")
-	user, err := model.GetUserById(userId, false)
+	user, err := identity.GetUserById(userId, false)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -65,7 +65,7 @@ func SubscriptionRequestStripePay(c contract.Context) {
 	}
 
 	if plan.MaxPurchasePerUser > 0 {
-		count, err := model.CountUserSubscriptionsByPlan(userId, plan.Id)
+		count, err := CountUserSubscriptionsByPlan(userId, plan.Id)
 		if err != nil {
 			common.CtxApiError(c, err)
 			return
@@ -86,13 +86,13 @@ func SubscriptionRequestStripePay(c contract.Context) {
 		return
 	}
 
-	order := &model.SubscriptionOrder{
+	order := &SubscriptionOrder{
 		UserId:          userId,
 		PlanId:          plan.Id,
 		Money:           plan.PriceAmount,
 		TradeNo:         referenceId,
-		PaymentMethod:   model.PaymentMethodStripe,
-		PaymentProvider: model.PaymentProviderStripe,
+		PaymentMethod:   PaymentMethodStripe,
+		PaymentProvider: PaymentProviderStripe,
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}

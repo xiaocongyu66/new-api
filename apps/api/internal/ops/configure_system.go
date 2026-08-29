@@ -1,15 +1,16 @@
 package ops
 
 import (
-	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity"
+	"github.com/QuantumNous/new-api/model"
 	"net/http"
 	"time"
 
+	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/model"
 )
 
 type Setup struct {
@@ -37,7 +38,7 @@ func GetSetup(c contract.Context) {
 		})
 		return
 	}
-	setup.RootInit = model.RootUserExists()
+	setup.RootInit = identity.RootUserExists()
 	setup.DatabaseType = string(common.MainDatabaseType())
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
@@ -56,7 +57,7 @@ func PostSetup(c contract.Context) {
 	}
 
 	// Check if root user already exists
-	rootExists := model.RootUserExists()
+	rootExists := identity.RootUserExists()
 
 	var req SetupRequest
 	err := c.BindJSON(&req)
@@ -70,7 +71,7 @@ func PostSetup(c contract.Context) {
 
 	// If root doesn't exist, validate and create admin account
 	if !rootExists {
-		// Validate username length: max 12 characters to align with model.User validation
+		// Validate username length: max 12 characters to align with identity.User validation
 		if len(req.Username) > 12 {
 			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
@@ -104,7 +105,7 @@ func PostSetup(c contract.Context) {
 			})
 			return
 		}
-		rootUser := model.User{
+		rootUser := identity.User{
 			Username:    req.Username,
 			Password:    hashedPassword,
 			Role:        common.RoleRootUser,

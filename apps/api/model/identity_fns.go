@@ -175,7 +175,7 @@ func migrateTokenModelLimitsToText() error {
 }
 
 // Type re-exports for callers still importing model (security/oauth, etc.).
-// These are aliases — model.User and identity.User are the same type.
+// These are aliases — identity.User and identity.User are the same type.
 
 type User = identity.User
 type Token = identity.Token
@@ -267,3 +267,16 @@ var (
 	ErrTwoFANotEnabled      = identity.ErrTwoFANotEnabled
 	ErrTwoFAAlreadyEnabled  = identity.ErrTwoFAAlreadyEnabled
 )
+
+// PostConsumeUserSubscriptionDeltaFn is wired by internal/billing, which owns
+// user subscriptions. model must not import billing (billing imports model), so
+// the entry point arrives as a hook at startup.
+var PostConsumeUserSubscriptionDeltaFn func(userSubscriptionId int, delta int64) error
+
+// PostConsumeUserSubscriptionDelta delegates to the billing implementation.
+func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error {
+	if PostConsumeUserSubscriptionDeltaFn != nil {
+		return PostConsumeUserSubscriptionDeltaFn(userSubscriptionId, delta)
+	}
+	return nil
+}

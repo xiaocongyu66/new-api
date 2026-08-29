@@ -2,7 +2,10 @@ package billing
 
 import (
 	"fmt"
+	channel "github.com/QuantumNous/new-api/internal/catalog"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/usage"
 	"strings"
 	"time"
 
@@ -10,7 +13,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/shopspring/decimal"
 )
@@ -126,8 +128,8 @@ func ChargeViolationFeeIfNeeded(ctx contract.Context, relayInfo *relaycommon.Rel
 		return false
 	}
 
-	model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, feeQuota)
-	model.UpdateChannelUsedQuota(relayInfo.ChannelId, feeQuota)
+	identity.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, feeQuota)
+	channel.UpdateChannelUsedQuota(relayInfo.ChannelId, feeQuota)
 
 	useTimeSeconds := time.Now().Unix() - relayInfo.StartTime.Unix()
 	tokenName := ctx.GetString("token_name")
@@ -145,7 +147,7 @@ func ChargeViolationFeeIfNeeded(ctx contract.Context, relayInfo *relaycommon.Rel
 		"violation_fee_marker": CSAMViolationMarker,
 	}
 
-	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
+	usage.RecordConsumeLog(ctx, relayInfo.UserId, usage.RecordConsumeLogParams{
 		ChannelId:      relayInfo.ChannelId,
 		ModelName:      relayInfo.OriginModelName,
 		TokenName:      tokenName,

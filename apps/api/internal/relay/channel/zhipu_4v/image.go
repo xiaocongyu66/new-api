@@ -10,7 +10,6 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
@@ -98,7 +97,7 @@ func zhipu4vImageHandler(c contract.Context, resp *http.Response, info *relaycom
 		case data.B64Image != "":
 			b64 = data.B64Image
 		default:
-			_, downloaded, err := service.GetImageFromUrl(url)
+			_, downloaded, err := relaycommon.GetImageFromUrl(url)
 			if err != nil {
 				logger.LogError(c.Context(), "zhipu_image_get_b64_failed: "+err.Error())
 				continue

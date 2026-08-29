@@ -204,8 +204,8 @@ func ResolveWaffoPancakeTradeNo(event *WaffoPancakeWebhookEvent) (string, error)
 	if tradeNo == "" {
 		return "", fmt.Errorf("missing webhook orderMerchantExternalId")
 	}
-	topUp := model.GetTopUpByTradeNo(tradeNo)
-	if topUp == nil || topUp.PaymentProvider != model.PaymentProviderWaffoPancake {
+	topUp := GetTopUpByTradeNo(tradeNo)
+	if topUp == nil || topUp.PaymentProvider != PaymentProviderWaffoPancake {
 		return "", fmt.Errorf("waffo pancake order not found for tradeNo=%s", tradeNo)
 	}
 	expectedIdentity := WaffoPancakeBuyerIdentityFromUserID(topUp.UserId)
@@ -231,8 +231,8 @@ func ResolveWaffoPancakeSubscriptionTradeNo(event *WaffoPancakeWebhookEvent) (st
 	if tradeNo == "" {
 		return "", fmt.Errorf("missing webhook orderMerchantExternalId")
 	}
-	order := model.GetSubscriptionOrderByTradeNo(tradeNo)
-	if order == nil || order.PaymentProvider != model.PaymentProviderWaffoPancake {
+	order := GetSubscriptionOrderByTradeNo(tradeNo)
+	if order == nil || order.PaymentProvider != PaymentProviderWaffoPancake {
 		return "", fmt.Errorf("waffo pancake subscription order not found for tradeNo=%s", tradeNo)
 	}
 	expectedIdentity := WaffoPancakeBuyerIdentityFromUserID(order.UserId)

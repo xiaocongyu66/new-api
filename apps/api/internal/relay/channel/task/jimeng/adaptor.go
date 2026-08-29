@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/egress"
+	"github.com/QuantumNous/new-api/internal/task"
 	"io"
 	"net/http"
 	"net/url"
@@ -16,7 +17,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/samber/lo"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
@@ -28,7 +28,6 @@ import (
 	taskcommon "github.com/QuantumNous/new-api/internal/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/service"
 )
 
 // ============================
@@ -187,7 +186,7 @@ func (a *TaskAdaptor) DoRequest(c contract.Context, info *relaycommon.RelayInfo,
 func (a *TaskAdaptor) DoResponse(c contract.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *taskdto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		taskErr = service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
+		taskErr = task.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
 		return
 	}
 	_ = resp.Body.Close()
@@ -195,12 +194,12 @@ func (a *TaskAdaptor) DoResponse(c contract.Context, resp *http.Response, info *
 	// Parse Jimeng response
 	var jResp responsePayload
 	if err := common.Unmarshal(responseBody, &jResp); err != nil {
-		taskErr = service.TaskErrorWrapper(errors.Wrapf(err, "body: %s", responseBody), "unmarshal_response_body_failed", http.StatusInternalServerError)
+		taskErr = task.TaskErrorWrapper(errors.Wrapf(err, "body: %s", responseBody), "unmarshal_response_body_failed", http.StatusInternalServerError)
 		return
 	}
 
 	if jResp.Code != 10000 {
-		taskErr = service.TaskErrorWrapper(fmt.Errorf("%s", jResp.Message), fmt.Sprintf("%d", jResp.Code), http.StatusInternalServerError)
+		taskErr = task.TaskErrorWrapper(fmt.Errorf("%s", jResp.Message), fmt.Sprintf("%d", jResp.Code), http.StatusInternalServerError)
 		return
 	}
 
@@ -438,22 +437,22 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	} else {
 		taskResult.Code = resTask.Code // todo uni code
 		taskResult.Reason = resTask.Message
-		taskResult.Status = model.TaskStatusFailure
+		taskResult.Status = task.TaskStatusFailure
 		taskResult.Progress = "100%"
 	}
 	switch resTask.Data.Status {
 	case "in_queue":
-		taskResult.Status = model.TaskStatusQueued
+		taskResult.Status = task.TaskStatusQueued
 		taskResult.Progress = "10%"
 	case "done":
-		taskResult.Status = model.TaskStatusSuccess
+		taskResult.Status = task.TaskStatusSuccess
 		taskResult.Progress = "100%"
 	}
 	taskResult.Url = resTask.Data.VideoUrl
 	return &taskResult, nil
 }
 
-func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error) {
+func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *task.Task) ([]byte, error) {
 	var jimengResp responseTask
 	if err := common.Unmarshal(originTask.Data, &jimengResp); err != nil {
 		return nil, errors.Wrap(err, "unmarshal jimeng task data failed")

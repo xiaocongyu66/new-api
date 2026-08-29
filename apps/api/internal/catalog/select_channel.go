@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
-	"github.com/QuantumNous/new-api/internal/gateway/port"
 )
 
 // Selection failure modes are distinct sentinels so the gateway can tell an
@@ -44,15 +42,15 @@ func NewSelector(lookup LookupFunc) *Selector {
 // because both would otherwise surface as a confusing lookup miss. A lookup that
 // returns a non-positive id is treated as "nothing available": returning it would
 // make the gateway dial a channel that does not exist.
-func (s *Selector) SelectChannel(ctx context.Context, request port.ChannelRequest) (port.ChannelSelection, error) {
+func (s *Selector) SelectChannel(ctx context.Context, request ChannelRequest) (ChannelSelection, error) {
 	if s == nil || s.lookup == nil {
-		return port.ChannelSelection{}, ErrSelectorNotConfigured
+		return ChannelSelection{}, ErrSelectorNotConfigured
 	}
 	if request.ModelName == "" {
-		return port.ChannelSelection{}, ErrModelNameRequired
+		return ChannelSelection{}, ErrModelNameRequired
 	}
 	if err := ctx.Err(); err != nil {
-		return port.ChannelSelection{}, fmt.Errorf("channel selection cancelled: %w", err)
+		return ChannelSelection{}, fmt.Errorf("channel selection cancelled: %w", err)
 	}
 
 	excluded := NewExclusionSet(request.ExcludeChannelIDs)
@@ -65,13 +63,13 @@ func (s *Selector) SelectChannel(ctx context.Context, request port.ChannelReques
 		excluded,
 	)
 	if err != nil {
-		return port.ChannelSelection{}, err
+		return ChannelSelection{}, err
 	}
 	if channelID <= 0 {
-		return port.ChannelSelection{}, ErrNoChannelAvailable
+		return ChannelSelection{}, ErrNoChannelAvailable
 	}
 	if excluded.Excludes(channelID) {
-		return port.ChannelSelection{}, fmt.Errorf(
+		return ChannelSelection{}, fmt.Errorf(
 			"%w: lookup returned already-excluded channel %d",
 			ErrNoChannelAvailable, channelID,
 		)
@@ -81,8 +79,8 @@ func (s *Selector) SelectChannel(ctx context.Context, request port.ChannelReques
 		selectedGroup = request.TokenGroup
 	}
 
-	return port.ChannelSelection{ChannelID: channelID, SelectedGroup: selectedGroup}, nil
+	return ChannelSelection{ChannelID: channelID, SelectedGroup: selectedGroup}, nil
 }
 
 // Selector satisfies the gateway port.
-var _ port.ChannelSelector = (*Selector)(nil)
+var _ ChannelSelector = (*Selector)(nil)

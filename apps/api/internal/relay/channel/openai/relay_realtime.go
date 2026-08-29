@@ -10,7 +10,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/bytedance/gopkg/util/gopool"
@@ -71,7 +70,7 @@ func OpenaiRealtimeHandler(c contract.Context, info *relaycommon.RelayInfo) (*ty
 					}
 				}
 
-				textToken, audioToken, err := service.CountTokenRealtime(info, *realtimeEvent, info.UpstreamModelName)
+				textToken, audioToken, err := relaycommon.CountTokenRealtime(info, *realtimeEvent, info.UpstreamModelName)
 				if err != nil {
 					errChan <- fmt.Errorf("error counting text token: %v", err)
 					return
@@ -144,7 +143,7 @@ func OpenaiRealtimeHandler(c contract.Context, info *relaycommon.RelayInfo) (*ty
 
 						localUsage = &dto.RealtimeUsage{}
 					} else {
-						textToken, audioToken, err := service.CountTokenRealtime(info, *realtimeEvent, info.UpstreamModelName)
+						textToken, audioToken, err := relaycommon.CountTokenRealtime(info, *realtimeEvent, info.UpstreamModelName)
 						if err != nil {
 							errChan <- fmt.Errorf("error counting text token: %v", err)
 							return
@@ -176,7 +175,7 @@ func OpenaiRealtimeHandler(c contract.Context, info *relaycommon.RelayInfo) (*ty
 						info.OutputAudioFormat = common.GetStringIfEmpty(realtimeSession.OutputAudioFormat, info.OutputAudioFormat)
 					}
 				} else {
-					textToken, audioToken, err := service.CountTokenRealtime(info, *realtimeEvent, info.UpstreamModelName)
+					textToken, audioToken, err := relaycommon.CountTokenRealtime(info, *realtimeEvent, info.UpstreamModelName)
 					if err != nil {
 						errChan <- fmt.Errorf("error counting text token: %v", err)
 						return

@@ -17,7 +17,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 )
 
 func ImageHelper(c contract.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
@@ -102,9 +101,9 @@ func ImageHelper(c contract.Context, info *relaycommon.RelayInfo) (newAPIError *
 				// replicate channel returns 201 Created when using Prefer: wait, treat it as success.
 				httpResp.StatusCode = http.StatusOK
 			} else {
-				newAPIError = service.RelayErrorHandler(c.Context(), httpResp, false)
+				newAPIError = relaycommon.RelayErrorHandler(c.Context(), httpResp, false)
 				// reset status code 重置状态码
-				service.ResetStatusCode(newAPIError, statusCodeMappingStr)
+				relaycommon.ResetStatusCode(newAPIError, statusCodeMappingStr)
 				return newAPIError
 			}
 		}
@@ -113,7 +112,7 @@ func ImageHelper(c contract.Context, info *relaycommon.RelayInfo) (newAPIError *
 	usage, newAPIError := adaptor.DoResponse(c, httpResp, info)
 	if newAPIError != nil {
 		// reset status code 重置状态码
-		service.ResetStatusCode(newAPIError, statusCodeMappingStr)
+		relaycommon.ResetStatusCode(newAPIError, statusCodeMappingStr)
 		return newAPIError
 	}
 

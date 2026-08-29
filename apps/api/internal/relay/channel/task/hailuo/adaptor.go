@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/egress"
+	"github.com/QuantumNous/new-api/internal/task"
 	"io"
 	"net/http"
 	"strconv"
@@ -12,7 +13,6 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/pkg/errors"
 
 	"github.com/QuantumNous/new-api/internal/constant"
@@ -21,7 +21,6 @@ import (
 	taskcommon "github.com/QuantumNous/new-api/internal/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/service"
 )
 
 // https://platform.minimaxi.com/docs/api-reference/video-generation-intro
@@ -83,19 +82,19 @@ func (a *TaskAdaptor) DoRequest(c contract.Context, info *relaycommon.RelayInfo,
 func (a *TaskAdaptor) DoResponse(c contract.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *taskdto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		taskErr = service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
+		taskErr = task.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
 		return
 	}
 	_ = resp.Body.Close()
 
 	var hResp VideoResponse
 	if err := common.Unmarshal(responseBody, &hResp); err != nil {
-		taskErr = service.TaskErrorWrapper(errors.Wrapf(err, "body: %s", responseBody), "unmarshal_response_body_failed", http.StatusInternalServerError)
+		taskErr = task.TaskErrorWrapper(errors.Wrapf(err, "body: %s", responseBody), "unmarshal_response_body_failed", http.StatusInternalServerError)
 		return
 	}
 
 	if hResp.BaseResp.StatusCode != StatusSuccess {
-		taskErr = service.TaskErrorWrapper(
+		taskErr = task.TaskErrorWrapper(
 			fmt.Errorf("hailuo api error: %s", hResp.BaseResp.StatusMsg),
 			strconv.Itoa(hResp.BaseResp.StatusCode),
 			http.StatusBadRequest,
@@ -196,36 +195,36 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	} else {
 		taskResult.Code = resTask.BaseResp.StatusCode
 		taskResult.Reason = resTask.BaseResp.StatusMsg
-		taskResult.Status = model.TaskStatusFailure
+		taskResult.Status = task.TaskStatusFailure
 		taskResult.Progress = "100%"
 	}
 
 	switch resTask.Status {
 	case TaskStatusPreparing, TaskStatusQueueing, TaskStatusProcessing:
-		taskResult.Status = model.TaskStatusInProgress
+		taskResult.Status = task.TaskStatusInProgress
 		taskResult.Progress = "30%"
 		if resTask.Status == TaskStatusProcessing {
 			taskResult.Progress = "50%"
 		}
 	case TaskStatusSuccess:
-		taskResult.Status = model.TaskStatusSuccess
+		taskResult.Status = task.TaskStatusSuccess
 		taskResult.Progress = "100%"
 		taskResult.Url = a.buildVideoURL(resTask.TaskID, resTask.FileID)
 	case TaskStatusFailed:
-		taskResult.Status = model.TaskStatusFailure
+		taskResult.Status = task.TaskStatusFailure
 		taskResult.Progress = "100%"
 		if taskResult.Reason == "" {
 			taskResult.Reason = "task failed"
 		}
 	default:
-		taskResult.Status = model.TaskStatusInProgress
+		taskResult.Status = task.TaskStatusInProgress
 		taskResult.Progress = "30%"
 	}
 
 	return &taskResult, nil
 }
 
-func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error) {
+func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *task.Task) ([]byte, error) {
 	var hailuoResp QueryTaskResponse
 	if err := common.Unmarshal(originTask.Data, &hailuoResp); err != nil {
 		return nil, errors.Wrap(err, "unmarshal hailuo task data failed")

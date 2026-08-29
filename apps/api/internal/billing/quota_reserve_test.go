@@ -1,0 +1,225 @@
+package billing
+
+import (
+	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/common/quotacache"
+	"github.com/QuantumNous/new-api/internal/identity"
+	"testing"
+	"time"
+
+	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
+)
+
+func createReserveTestUser(t *testing.T, quota int) identity.User {
+	t.Helper()
+	user := identity.User{
+		Username:    "reserve-user-" + common.GetRandomString(6),
+		Password:    "unused-password-hash",
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		Group:       "default",
+		AuthVersion: 1,
+		Quota:       quota,
+		AffCode:     "reserve-aff-" + common.GetRandomString(8),
+	}
+	require.NoError(t, dbx.DB.Create(&user).Error)
+	return user
+}
+
+func createReserveTestToken(t *testing.T, remainQuota int) identity.Token {
+	t.Helper()
+	token := identity.Token{
+		UserId:      1,
+		Key:         "reserve-token-" + common.GetRandomString(8),
+		Name:        "reserve-test",
+		Status:      common.TokenStatusEnabled,
+		ExpiredTime: -1,
+		RemainQuota: remainQuota,
+	}
+	require.NoError(t, token.Insert())
+	return token
+}
+
+func getUserQuotaFromDB(t *testing.T, id int) int {
+	t.Helper()
+	var user identity.User
+	require.NoError(t, dbx.DB.Select("quota").First(&user, id).Error)
+	return user.Quota
+}
+
+func getTokenFromDB(t *testing.T, id int) identity.Token {
+	t.Helper()
+	var token identity.Token
+	require.NoError(t, dbx.DB.First(&token, id).Error)
+	return token
+}
+
+func resetBatchUpdateTestState(t *testing.T) {
+	t.Helper()
+	oldBatchEnabled := common.BatchUpdateEnabled
+	common.BatchUpdateEnabled = false
+	// Draining discards whatever the queues hold, which is exactly the reset
+	// these tests need before running and again on cleanup.
+	dbx.DrainBatchQueues()
+	t.Cleanup(func() {
+		common.BatchUpdateEnabled = oldBatchEnabled
+		dbx.DrainBatchQueues()
+	})
+}
+
+func TestTryReserveQuotaWithoutRedis(t *testing.T) {
+	truncateTables(t)
+	resetBatchUpdateTestState(t)
+
+	user := createReserveTestUser(t, 100)
+	reserved, err := TryReserveUserQuota(user.Id, 60)
+	require.NoError(t, err)
+	assert.True(t, reserved)
+	assert.Equal(t, 40, getUserQuotaFromDB(t, user.Id))
+
+	reserved, err = TryReserveUserQuota(user.Id, 41)
+	require.NoError(t, err)
+	assert.False(t, reserved)
+	assert.Equal(t, 40, getUserQuotaFromDB(t, user.Id))
+
+	token := createReserveTestToken(t, 80)
+	reserved, err = TryReserveTokenQuota(token.Id, token.Key, 25, false)
+	require.NoError(t, err)
+	assert.True(t, reserved)
+	reloaded := getTokenFromDB(t, token.Id)
+	assert.Equal(t, 55, reloaded.RemainQuota)
+	assert.Equal(t, 25, reloaded.UsedQuota)
+
+	reserved, err = TryReserveTokenQuota(token.Id, token.Key, 56, false)
+	require.NoError(t, err)
+	assert.False(t, reserved)
+	assert.Equal(t, 55, getTokenFromDB(t, token.Id).RemainQuota)
+}
+
+func TestRedisBatchReserveNeverFallsBackToStaleDatabaseBalance(t *testing.T) {
+	truncateTables(t)
+	resetBatchUpdateTestState(t)
+	useUserCacheMiniRedis(t)
+	common.BatchUpdateEnabled = true
+
+	user := createReserveTestUser(t, 10)
+	reserved, err := TryReserveUserQuota(user.Id, 8)
+	require.NoError(t, err)
+	assert.True(t, reserved)
+	assert.Equal(t, 10, getUserQuotaFromDB(t, user.Id), "batch delta is not flushed yet")
+
+	reserved, err = TryReserveUserQuota(user.Id, 3)
+	require.NoError(t, err)
+	assert.False(t, reserved, "stale DB balance must not authorize a second spend")
+	cachedUser, err := identity.GetUserCache(user.Id)
+	require.NoError(t, err)
+	assert.Equal(t, 2, cachedUser.Quota)
+
+	token := createReserveTestToken(t, 9)
+	reserved, err = TryReserveTokenQuota(token.Id, token.Key, 7, false)
+	require.NoError(t, err)
+	assert.True(t, reserved)
+	reserved, err = TryReserveTokenQuota(token.Id, token.Key, 3, false)
+	require.NoError(t, err)
+	assert.False(t, reserved)
+	assert.Equal(t, 9, getTokenFromDB(t, token.Id).RemainQuota)
+
+	dbx.FlushBatchQueues()
+	assert.Equal(t, 2, getUserQuotaFromDB(t, user.Id))
+	reloadedToken := getTokenFromDB(t, token.Id)
+	assert.Equal(t, 2, reloadedToken.RemainQuota)
+	assert.Equal(t, 7, reloadedToken.UsedQuota)
+}
+
+func TestReserveFallsBackToDatabaseWhenRedisIsUnavailable(t *testing.T) {
+	truncateTables(t)
+	resetBatchUpdateTestState(t)
+	server := useUserCacheMiniRedis(t)
+
+	user := createReserveTestUser(t, 20)
+	require.NoError(t, identity.PopulateUserCache(user))
+	server.Close()
+
+	// Redis 故障时降级为数据库条件更新：服务保持可用且不会超扣。
+	reserved, err := TryReserveUserQuota(user.Id, 5)
+	require.NoError(t, err)
+	assert.True(t, reserved)
+	assert.Equal(t, 15, getUserQuotaFromDB(t, user.Id))
+
+	reserved, err = TryReserveUserQuota(user.Id, 16)
+	require.NoError(t, err)
+	assert.False(t, reserved)
+	assert.Equal(t, 15, getUserQuotaFromDB(t, user.Id))
+}
+
+func TestSynchronousReserveCompensatesCacheWhenPersistenceFails(t *testing.T) {
+	truncateTables(t)
+	resetBatchUpdateTestState(t)
+	useUserCacheMiniRedis(t)
+
+	user := createReserveTestUser(t, 10)
+	require.NoError(t, identity.PopulateUserCache(user))
+	require.NoError(t, dbx.DB.Delete(&user).Error)
+
+	reserved, err := TryReserveUserQuota(user.Id, 6)
+	assert.False(t, reserved)
+	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	cached, cacheErr := identity.CacheGetUserBase(user.Id)
+	require.NoError(t, cacheErr)
+	assert.Equal(t, 10, cached.Quota)
+
+	token := createReserveTestToken(t, 12)
+	_, err = identity.GetTokenByKey(token.Key, true)
+	require.NoError(t, err)
+	require.NoError(t, dbx.DB.Delete(&token).Error)
+	reserved, err = TryReserveTokenQuota(token.Id, token.Key, 7, false)
+	assert.False(t, reserved)
+	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	cachedToken, cacheErr := identity.CacheGetTokenByKey(token.Key)
+	require.NoError(t, cacheErr)
+	assert.Equal(t, 12, cachedToken.RemainQuota)
+	assert.Zero(t, cachedToken.UsedQuota)
+}
+
+func TestTokenCacheInitPreservesLiveQuotaAndFenceBlocksStaleSnapshot(t *testing.T) {
+	truncateTables(t)
+	resetBatchUpdateTestState(t)
+	server := useUserCacheMiniRedis(t)
+
+	token := createReserveTestToken(t, 100)
+	loaded, err := identity.GetTokenByKey(token.Key, true)
+	require.NoError(t, err)
+	stale := *loaded
+
+	result, err := quotacache.ApplyTokenDelta(token.Id, token.Key, -70)
+	require.NoError(t, err)
+	require.Equal(t, quotacache.OK, result)
+
+	// 已存在的哈希只刷新 TTL：数据库快照不得覆盖已被原子预扣的余额。
+	code, err := identity.CacheInitToken(stale)
+	require.NoError(t, err)
+	assert.Equal(t, 2, code)
+	cached, err := identity.CacheGetTokenByKey(token.Key)
+	require.NoError(t, err)
+	assert.Equal(t, 30, cached.RemainQuota)
+
+	// 变更期间：fence 删除缓存并拦截并发读者手中的过期快照。
+	require.NoError(t, identity.InvalidateTokenCacheForMutation(token.Key))
+	code, err = identity.CacheInitToken(stale)
+	require.NoError(t, err)
+	assert.Zero(t, code, "the pre-mutation snapshot must not be published while fenced")
+	_, err = identity.CacheGetTokenByKey(token.Key)
+	assert.Error(t, err)
+
+	// fence 过期后可重新从数据库水合。
+	server.FastForward(time.Duration(identity.TokenCacheFenceSeconds+1) * time.Second)
+	fresh, err := identity.GetTokenByKey(token.Key, false)
+	require.NoError(t, err)
+	assert.Equal(t, 100, fresh.RemainQuota)
+	cached, err = identity.CacheGetTokenByKey(token.Key)
+	require.NoError(t, err)
+	assert.Equal(t, 100, cached.RemainQuota)
+}

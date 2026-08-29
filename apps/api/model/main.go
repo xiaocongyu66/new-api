@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"log"
-	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -61,35 +60,15 @@ func CheckSetup() {
 	}
 }
 
-func isClickHouseDSN(dsn string) bool {
-	return strings.HasPrefix(dsn, "clickhouse://") ||
-		strings.HasPrefix(dsn, "tcp://") ||
-		strings.HasPrefix(dsn, "http://") ||
-		strings.HasPrefix(dsn, "https://")
-}
-
-func normalizeClickHouseDSN(dsn string) string {
-	parsed, err := url.Parse(dsn)
-	if err != nil || parsed.Scheme != "https" {
-		return dsn
-	}
-	query := parsed.Query()
-	if _, ok := query["secure"]; !ok {
-		query.Set("secure", "true")
-		parsed.RawQuery = query.Encode()
-	}
-	return parsed.String()
-}
-
-func chooseDB(envName string, isLog bool) (*gorm.DB, common.DatabaseType, error) {
+func ChooseDB(envName string, isLog bool) (*gorm.DB, common.DatabaseType, error) {
 	dsn := os.Getenv(envName)
 	if dsn != "" {
-		if isClickHouseDSN(dsn) {
+		if common.IsClickHouseDSN(dsn) {
 			if !isLog {
 				return nil, "", fmt.Errorf("%s does not support ClickHouse; use SQLite, MySQL, or PostgreSQL for the primary database and LOG_SQL_DSN for ClickHouse logs", envName)
 			}
 			common.SysLog("using ClickHouse as log database")
-			db, err := gorm.Open(clickhouse.Open(normalizeClickHouseDSN(dsn)), newGormConfig(false))
+			db, err := gorm.Open(clickhouse.Open(common.NormalizeClickHouseDSN(dsn)), newGormConfig(false))
 			return db, common.DatabaseTypeClickHouse, err
 		}
 		if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
@@ -126,7 +105,7 @@ func chooseDB(envName string, isLog bool) (*gorm.DB, common.DatabaseType, error)
 }
 
 func InitDB() (err error) {
-	db, dbType, err := chooseDB("SQL_DSN", false)
+	db, dbType, err := ChooseDB("SQL_DSN", false)
 	if err == nil {
 		common.SetMainDatabaseType(dbType)
 		if os.Getenv("LOG_SQL_DSN") == "" {
@@ -173,7 +152,7 @@ func InitLogDB() (err error) {
 		initCol()
 		return
 	}
-	db, dbType, err := chooseDB("LOG_SQL_DSN", true)
+	db, dbType, err := ChooseDB("LOG_SQL_DSN", true)
 	if err == nil {
 		common.SetLogDatabaseType(dbType)
 		initCol()
@@ -208,11 +187,6 @@ func InitLogDB() (err error) {
 }
 
 func migrateDB() error {
-	if err := migrateChannelModelHealthKeyIndex(); err != nil {
-		return err
-	}
-	// Migrate price_amount column from float/double to decimal for existing tables
-	migrateSubscriptionPlanPriceAmount()
 	// Migrate model_limits column from varchar to text for existing tables
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
@@ -225,115 +199,7 @@ func migrateDB() error {
 	if err := dbx.RunPostMigrations(); err != nil {
 		return err
 	}
-	if err := InitializeGatewayConfigRevision(); err != nil {
-		return err
-	}
-	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
-		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
-			return err
-		}
-	} else {
-		if err := dbx.DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
-			return err
-		}
-	}
 	return nil
-}
-
-func migrateChannelModelHealthKeyIndex() error {
-	if !dbx.DB.Migrator().HasTable(&ChannelModelHealth{}) {
-		return nil
-	}
-	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
-		var rows []struct {
-			Name string `gorm:"column:name"`
-			PK   int    `gorm:"column:pk"`
-		}
-		if err := dbx.DB.Raw("PRAGMA table_info(channel_model_health)").Scan(&rows).Error; err != nil {
-			return err
-		}
-		for _, row := range rows {
-			if row.Name == "key_index" && row.PK == 2 {
-				return nil
-			}
-		}
-		return dbx.DB.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Exec(`CREATE TABLE channel_model_health_new (
-				channel_id integer NOT NULL,
-				key_index integer NOT NULL DEFAULT 0,
-				model varchar(255) NOT NULL,
-				state varchar(16) NOT NULL DEFAULT 'healthy',
-				isolation_level integer NOT NULL DEFAULT 0,
-				until bigint,
-				version integer NOT NULL DEFAULT 1,
-				dormant_disable_count integer NOT NULL DEFAULT 0,
-				local_failure_count integer NOT NULL DEFAULT 0,
-				upstream_failure_count integer NOT NULL DEFAULT 0,
-				last_error_code varchar(64),
-				last_error_at bigint,
-				last_success_at bigint,
-				updated_at bigint,
-				PRIMARY KEY (channel_id, key_index, model)
-			)`).Error; err != nil {
-				return err
-			}
-			if err := tx.Exec(`INSERT INTO channel_model_health_new (
-				channel_id, key_index, model, state, isolation_level, until, version,
-				dormant_disable_count, local_failure_count, upstream_failure_count,
-				last_error_code, last_error_at, last_success_at, updated_at
-			) SELECT channel_id, 0, model, state, isolation_level, until, version,
-				dormant_disable_count, local_failure_count, upstream_failure_count,
-				last_error_code, last_error_at, last_success_at, updated_at
-			FROM channel_model_health`).Error; err != nil {
-				return err
-			}
-			if err := tx.Exec("DROP TABLE channel_model_health").Error; err != nil {
-				return err
-			}
-			return tx.Exec("ALTER TABLE channel_model_health_new RENAME TO channel_model_health").Error
-		})
-	}
-	if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
-		var primaryColumns []string
-		if err := dbx.DB.Raw("SELECT column_name FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = 'PRIMARY' ORDER BY seq_in_index", "channel_model_health").Scan(&primaryColumns).Error; err != nil {
-			return err
-		}
-		if len(primaryColumns) == 3 && primaryColumns[1] == "key_index" {
-			return nil
-		}
-		return dbx.DB.Transaction(func(tx *gorm.DB) error {
-			if !tx.Migrator().HasColumn(&ChannelModelHealth{}, "key_index") {
-				if err := tx.Exec("ALTER TABLE channel_model_health ADD COLUMN key_index integer NOT NULL DEFAULT 0").Error; err != nil {
-					return err
-				}
-			}
-			return tx.Exec("ALTER TABLE channel_model_health DROP PRIMARY KEY, ADD PRIMARY KEY (channel_id, key_index, model)").Error
-		})
-	}
-	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
-		var primaryColumns []string
-		if err := dbx.DB.Raw(`SELECT attribute.attname
-			FROM pg_index index_def
-			JOIN pg_class table_def ON table_def.oid = index_def.indrelid
-			JOIN pg_attribute attribute ON attribute.attrelid = table_def.oid AND attribute.attnum = ANY(index_def.indkey)
-			WHERE table_def.relname = 'channel_model_health' AND index_def.indisprimary
-			ORDER BY array_position(index_def.indkey, attribute.attnum)`).Scan(&primaryColumns).Error; err != nil {
-			return err
-		}
-		if len(primaryColumns) == 3 && primaryColumns[1] == "key_index" {
-			return nil
-		}
-		return dbx.DB.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Exec("ALTER TABLE channel_model_health ADD COLUMN IF NOT EXISTS key_index integer NOT NULL DEFAULT 0").Error; err != nil {
-				return err
-			}
-			if err := tx.Exec("ALTER TABLE channel_model_health DROP CONSTRAINT channel_model_health_pkey").Error; err != nil {
-				return err
-			}
-			return tx.Exec("ALTER TABLE channel_model_health ADD PRIMARY KEY (channel_id, key_index, model)").Error
-		})
-	}
-	return fmt.Errorf("unsupported database for channel model health migration")
 }
 
 func migrateDBFast() error {
@@ -365,18 +231,6 @@ func migrateDBFast() error {
 	if err := dbx.RunPostMigrations(); err != nil {
 		return err
 	}
-	if err := InitializeGatewayConfigRevision(); err != nil {
-		return err
-	}
-	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
-		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
-			return err
-		}
-	} else {
-		if err := dbx.DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
-			return err
-		}
-	}
 	common.SysLog("database migrated")
 	return nil
 }
@@ -390,7 +244,7 @@ func migrateLOGDB() error {
 
 func migrateClickHouseLogDB() error {
 	ttlDays := clickHouseLogTTLDays()
-	if err := dbx.LogDB.Exec(clickHouseLogCreateTableSQL(ttlDays)).Error; err != nil {
+	if err := dbx.LogDB.Exec(ClickHouseLogCreateTableSQL(ttlDays)).Error; err != nil {
 		return err
 	}
 	return syncClickHouseLogTTL(ttlDays)
@@ -404,22 +258,22 @@ func clickHouseLogTTLDays() int {
 	return ttlDays
 }
 
-func clickHouseLogTTLExpression(ttlDays int) string {
+func ClickHouseLogTTLExpression(ttlDays int) string {
 	if ttlDays <= 0 {
 		return ""
 	}
 	return fmt.Sprintf("toDateTime(created_at) + INTERVAL %d DAY DELETE", ttlDays)
 }
 
-func clickHouseLogTTLClause(ttlDays int) string {
-	expression := clickHouseLogTTLExpression(ttlDays)
+func ClickHouseLogTTLClause(ttlDays int) string {
+	expression := ClickHouseLogTTLExpression(ttlDays)
 	if expression == "" {
 		return ""
 	}
 	return "\nTTL " + expression
 }
 
-func clickHouseLogCreateTableSQL(ttlDays int) string {
+func ClickHouseLogCreateTableSQL(ttlDays int) string {
 	return fmt.Sprintf(`
 CREATE TABLE IF NOT EXISTS logs (
 	id Int64 DEFAULT 0,
@@ -445,11 +299,11 @@ CREATE TABLE IF NOT EXISTS logs (
 )
 ENGINE = MergeTree()
 PARTITION BY toYYYYMM(toDateTime(created_at))
-ORDER BY (created_at, request_id)%s`, clickHouseLogTTLClause(ttlDays))
+ORDER BY (created_at, request_id)%s`, ClickHouseLogTTLClause(ttlDays))
 }
 
 func syncClickHouseLogTTL(ttlDays int) error {
-	expression := clickHouseLogTTLExpression(ttlDays)
+	expression := ClickHouseLogTTLExpression(ttlDays)
 	if expression != "" {
 		return dbx.LogDB.Exec("ALTER TABLE logs MODIFY TTL " + expression).Error
 	}
@@ -469,96 +323,12 @@ func clickHouseLogTableHasTTL() (bool, error) {
 	if err := dbx.LogDB.Raw("SHOW CREATE TABLE logs").Scan(&createTableSQL).Error; err != nil {
 		return false, err
 	}
-	return clickHouseCreateTableHasTTL(createTableSQL), nil
+	return ClickHouseCreateTableHasTTL(createTableSQL), nil
 }
 
-func clickHouseCreateTableHasTTL(createTableSQL string) bool {
+func ClickHouseCreateTableHasTTL(createTableSQL string) bool {
 	upperSQL := strings.ToUpper(createTableSQL)
 	return strings.Contains(upperSQL, "\nTTL ") || strings.Contains(upperSQL, " TTL ")
-}
-
-type sqliteColumnDef struct {
-	Name string
-	DDL  string
-}
-
-func ensureSubscriptionPlanTableSQLite() error {
-	if !common.UsingMainDatabase(common.DatabaseTypeSQLite) {
-		return nil
-	}
-	tableName := "subscription_plans"
-	if !dbx.DB.Migrator().HasTable(tableName) {
-		createSQL := `CREATE TABLE ` + "`" + tableName + "`" + ` (
-` + "`id`" + ` integer,
-` + "`title`" + ` varchar(128) NOT NULL,
-` + "`subtitle`" + ` varchar(255) DEFAULT '',
-` + "`price_amount`" + ` decimal(10,6) NOT NULL,
-` + "`currency`" + ` varchar(8) NOT NULL DEFAULT 'USD',
-` + "`duration_unit`" + ` varchar(16) NOT NULL DEFAULT 'month',
-` + "`duration_value`" + ` integer NOT NULL DEFAULT 1,
-` + "`custom_seconds`" + ` bigint NOT NULL DEFAULT 0,
-` + "`enabled`" + ` numeric DEFAULT 1,
-` + "`sort_order`" + ` integer DEFAULT 0,
-` + "`allow_balance_pay`" + ` numeric DEFAULT 1,
-` + "`allow_wallet_overflow`" + ` numeric DEFAULT 1,
-` + "`stripe_price_id`" + ` varchar(128) DEFAULT '',
-` + "`creem_product_id`" + ` varchar(128) DEFAULT '',
-` + "`waffo_pancake_product_id`" + ` varchar(128) DEFAULT '',
-` + "`max_purchase_per_user`" + ` integer DEFAULT 0,
-` + "`upgrade_group`" + ` varchar(64) DEFAULT '',
-` + "`downgrade_group`" + ` varchar(64) DEFAULT '',
-` + "`total_amount`" + ` bigint NOT NULL DEFAULT 0,
-` + "`quota_reset_period`" + ` varchar(16) DEFAULT 'never',
-` + "`quota_reset_custom_seconds`" + ` bigint DEFAULT 0,
-` + "`created_at`" + ` bigint,
-` + "`updated_at`" + ` bigint,
-PRIMARY KEY (` + "`id`" + `)
-)`
-		return dbx.DB.Exec(createSQL).Error
-	}
-	var cols []struct {
-		Name string `gorm:"column:name"`
-	}
-	if err := dbx.DB.Raw("PRAGMA table_info(`" + tableName + "`)").Scan(&cols).Error; err != nil {
-		return err
-	}
-	existing := make(map[string]struct{}, len(cols))
-	for _, c := range cols {
-		existing[c.Name] = struct{}{}
-	}
-	required := []sqliteColumnDef{
-		{Name: "title", DDL: "`title` varchar(128) NOT NULL"},
-		{Name: "subtitle", DDL: "`subtitle` varchar(255) DEFAULT ''"},
-		{Name: "price_amount", DDL: "`price_amount` decimal(10,6) NOT NULL"},
-		{Name: "currency", DDL: "`currency` varchar(8) NOT NULL DEFAULT 'USD'"},
-		{Name: "duration_unit", DDL: "`duration_unit` varchar(16) NOT NULL DEFAULT 'month'"},
-		{Name: "duration_value", DDL: "`duration_value` integer NOT NULL DEFAULT 1"},
-		{Name: "custom_seconds", DDL: "`custom_seconds` bigint NOT NULL DEFAULT 0"},
-		{Name: "enabled", DDL: "`enabled` numeric DEFAULT 1"},
-		{Name: "sort_order", DDL: "`sort_order` integer DEFAULT 0"},
-		{Name: "allow_balance_pay", DDL: "`allow_balance_pay` numeric DEFAULT 1"},
-		{Name: "allow_wallet_overflow", DDL: "`allow_wallet_overflow` numeric DEFAULT 1"},
-		{Name: "stripe_price_id", DDL: "`stripe_price_id` varchar(128) DEFAULT ''"},
-		{Name: "creem_product_id", DDL: "`creem_product_id` varchar(128) DEFAULT ''"},
-		{Name: "waffo_pancake_product_id", DDL: "`waffo_pancake_product_id` varchar(128) DEFAULT ''"},
-		{Name: "max_purchase_per_user", DDL: "`max_purchase_per_user` integer DEFAULT 0"},
-		{Name: "upgrade_group", DDL: "`upgrade_group` varchar(64) DEFAULT ''"},
-		{Name: "downgrade_group", DDL: "`downgrade_group` varchar(64) DEFAULT ''"},
-		{Name: "total_amount", DDL: "`total_amount` bigint NOT NULL DEFAULT 0"},
-		{Name: "quota_reset_period", DDL: "`quota_reset_period` varchar(16) DEFAULT 'never'"},
-		{Name: "quota_reset_custom_seconds", DDL: "`quota_reset_custom_seconds` bigint DEFAULT 0"},
-		{Name: "created_at", DDL: "`created_at` bigint"},
-		{Name: "updated_at", DDL: "`updated_at` bigint"},
-	}
-	for _, col := range required {
-		if _, ok := existing[col.Name]; ok {
-			continue
-		}
-		if err := dbx.DB.Exec("ALTER TABLE `" + tableName + "` ADD COLUMN " + col.DDL).Error; err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // migrateTokenModelLimitsToText migrates model_limits column from varchar(1024) to text
@@ -566,63 +336,6 @@ PRIMARY KEY (` + "`id`" + `)
 
 // migrateSubscriptionPlanPriceAmount migrates price_amount column from float/double to decimal(10,6)
 // This is safe to run multiple times - it checks the column type first
-func migrateSubscriptionPlanPriceAmount() {
-	// SQLite doesn't support ALTER COLUMN, and its type affinity handles this automatically
-	// Skip early to avoid GORM parsing the existing table DDL which may cause issues
-	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
-		return
-	}
-
-	tableName := "subscription_plans"
-	columnName := "price_amount"
-
-	// Check if table exists first
-	if !dbx.DB.Migrator().HasTable(tableName) {
-		return
-	}
-
-	// Check if column exists
-	if !dbx.DB.Migrator().HasColumn(&SubscriptionPlan{}, columnName) {
-		return
-	}
-
-	var alterSQL string
-	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
-		// PostgreSQL: Check if already decimal/numeric
-		var dataType string
-		if err := dbx.DB.Raw(`SELECT data_type FROM information_schema.columns
-			WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?`,
-			tableName, columnName).Scan(&dataType).Error; err != nil {
-			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
-		} else if dataType == "numeric" {
-			return // Already decimal/numeric
-		}
-		alterSQL = fmt.Sprintf(`ALTER TABLE %s ALTER COLUMN %s TYPE decimal(10,6) USING %s::decimal(10,6)`,
-			tableName, columnName, columnName)
-	} else if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
-		// MySQL: Check if already decimal
-		var columnType string
-		if err := dbx.DB.Raw(`SELECT COLUMN_TYPE FROM information_schema.columns
-				WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
-			tableName, columnName).Scan(&columnType).Error; err != nil {
-			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
-		} else if strings.HasPrefix(strings.ToLower(columnType), "decimal") {
-			return // Already decimal
-		}
-		alterSQL = fmt.Sprintf("ALTER TABLE %s MODIFY COLUMN %s decimal(10,6) NOT NULL DEFAULT 0",
-			tableName, columnName)
-	} else {
-		return
-	}
-
-	if alterSQL != "" {
-		if err := dbx.DB.Exec(alterSQL).Error; err != nil {
-			common.SysLog(fmt.Sprintf("Warning: failed to migrate %s.%s to decimal: %v", tableName, columnName, err))
-		} else {
-			common.SysLog(fmt.Sprintf("Successfully migrated %s.%s to decimal(10,6)", tableName, columnName))
-		}
-	}
-}
 
 func closeDB(db *gorm.DB) error {
 	sqlDB, err := db.DB()

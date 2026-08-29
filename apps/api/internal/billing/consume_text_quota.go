@@ -2,8 +2,9 @@ package billing
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/service"
+	usagedomain "github.com/QuantumNous/new-api/internal/usage"
 	"math"
 	"sort"
 	"strings"
@@ -17,7 +18,6 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
 	"github.com/QuantumNous/new-api/internal/usage/record_perf"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
@@ -445,8 +445,8 @@ func PostTextConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo
 		extraContent = append(extraContent, "上游没有返回计费信息，无法扣费（可能是上游超时）")
 		logger.LogError(ctx.Context(), fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, summary.ModelName, relayInfo.FinalPreConsumedQuota))
 	} else {
-		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, summary.Quota)
-		model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
+		identity.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, summary.Quota)
+		catalog.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
 	}
 
 	if err := SettleBilling(ctx, relayInfo, summary.Quota); err != nil {
@@ -466,7 +466,7 @@ func PostTextConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo
 	logContent := strings.Join(extraContent, ", ")
 	var other map[string]interface{}
 	if summary.IsClaudeUsageSemantic {
-		other = service.GenerateClaudeOtherInfo(ctx, relayInfo,
+		other = usagedomain.GenerateClaudeOtherInfo(ctx, relayInfo,
 			summary.ModelRatio, summary.GroupRatio, summary.CompletionRatio,
 			summary.CacheTokens, summary.CacheRatio,
 			summary.CacheCreationTokens, summary.CacheCreationRatio,
@@ -475,7 +475,7 @@ func PostTextConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo
 			summary.ModelPrice, relayInfo.PriceData.GroupRatioInfo.GroupSpecialRatio)
 		other["usage_semantic"] = "anthropic"
 	} else {
-		other = service.GenerateTextOtherInfo(ctx, relayInfo, summary.ModelRatio, summary.GroupRatio, summary.CompletionRatio, summary.CacheTokens, summary.CacheRatio, summary.ModelPrice, relayInfo.PriceData.GroupRatioInfo.GroupSpecialRatio)
+		other = usagedomain.GenerateTextOtherInfo(ctx, relayInfo, summary.ModelRatio, summary.GroupRatio, summary.CompletionRatio, summary.CacheTokens, summary.CacheRatio, summary.ModelPrice, relayInfo.PriceData.GroupRatioInfo.GroupSpecialRatio)
 	}
 	appendUsageBillingPathForLog(other, common.GetCtxKeyBool(ctx, constant.ContextKeyLocalCountTokens), originUsage)
 	if adminRejectReason != "" {
@@ -519,12 +519,12 @@ func PostTextConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo
 		other["input_tokens_total"] = billingUsage.InputTokens
 	}
 	if tieredBillingApplied {
-		service.InjectTieredBillingInfo(other, relayInfo, tieredResult)
+		usagedomain.InjectTieredBillingInfo(other, relayInfo, tieredResult)
 	}
 
-	service.AttachQuotaSaturation(ctx, relayInfo, other)
+	usagedomain.AttachQuotaSaturation(ctx, relayInfo, other)
 
-	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
+	usagedomain.RecordConsumeLog(ctx, relayInfo.UserId, usagedomain.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     summary.PromptTokens,
 		CompletionTokens: summary.CompletionTokens,

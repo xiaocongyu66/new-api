@@ -3,12 +3,12 @@ package taskcommon
 import (
 	"encoding/base64"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/task"
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/model"
 )
 
 // UnmarshalMetadata converts a map[string]any metadata to a typed struct via JSON round-trip.
@@ -92,6 +92,6 @@ func (BaseBilling) AdjustBillingOnSubmit(_ *relaycommon.RelayInfo, _ []byte) map
 }
 
 // AdjustBillingOnComplete returns 0 (keep pre-charged amount).
-func (BaseBilling) AdjustBillingOnComplete(_ *model.Task, _ *relaycommon.TaskInfo) int {
+func (BaseBilling) AdjustBillingOnComplete(_ *task.Task, _ *relaycommon.TaskInfo) int {
 	return 0
 }

@@ -10,6 +10,9 @@ import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/egress"
 	"github.com/QuantumNous/new-api/internal/identity"
+	"github.com/QuantumNous/new-api/internal/task"
+	"github.com/QuantumNous/new-api/internal/transport/handler"
+	"github.com/QuantumNous/new-api/internal/usage"
 	"log"
 	"net/http"
 	"os"
@@ -19,12 +22,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/QuantumNous/new-api/controller"
 	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
-	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/identity/policy"
 	"github.com/QuantumNous/new-api/internal/logger"
@@ -39,7 +40,6 @@ import (
 	recordperf "github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 	"github.com/QuantumNous/new-api/model"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/joho/godotenv"
 
@@ -61,7 +61,7 @@ func main() {
 
 	// Gateway channel selection goes through the port; the channel
 	// capability implementation is registered before the router starts.
-	port.SelectChannel = catalog.CacheGetRandomSatisfiedChannel
+	catalog.SelectChannel = catalog.CacheGetRandomSatisfiedChannel
 
 	err := InitResources()
 	if err != nil {
@@ -102,7 +102,7 @@ func main() {
 				if r := recover(); r != nil {
 					common.SysLog(fmt.Sprintf("InitChannelCache panic: %v, retrying once", r))
 					// Retry once
-					_, _, fixErr := model.FixAbility()
+					_, _, fixErr := catalog.FixAbility()
 					if fixErr != nil {
 						common.FatalLog(fmt.Sprintf("InitChannelCache failed: %s", fixErr.Error()))
 					}
@@ -116,12 +116,12 @@ func main() {
 
 	// Warm pricing after channel cache initialization so Advanced Custom
 	// endpoint inference can read cached route settings on first request.
-	model.GetPricing()
+	catalog.GetPricing()
 
 	// 热更新配置
 	outboxCtx, stopOutboxPublisher := context.WithCancel(context.Background())
 	defer stopOutboxPublisher()
-	go service.RunGatewayConfigOutboxPublisher(outboxCtx)
+	go catalog.RunGatewayConfigOutboxPublisher(outboxCtx)
 
 	// 热更新配置
 	go model.SyncOptions(common.SyncFrequency)
@@ -130,7 +130,7 @@ func main() {
 	go policy.StartPolicySync(common.SyncFrequency)
 
 	// 数据看板
-	go model.UpdateQuotaData()
+	go usage.UpdateQuotaData()
 
 	if os.Getenv("CHANNEL_UPDATE_FREQUENCY") != "" {
 		frequency, err := strconv.Atoi(os.Getenv("CHANNEL_UPDATE_FREQUENCY"))
@@ -141,7 +141,7 @@ func main() {
 	}
 
 	// Codex credential auto-refresh check every 10 minutes, refresh when expires within 1 day
-	service.StartCodexCredentialAutoRefreshTask()
+	catalog.StartCodexCredentialAutoRefreshTask()
 
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	billing.StartSubscriptionQuotaResetTask()
@@ -152,8 +152,8 @@ func main() {
 
 	// Wire task polling adaptor factory (breaks service -> relay import cycle).
 	// Must run before the system task runner starts: the async_task_poll handler
-	// calls service.RunTaskPollingOnce, which needs this factory set.
-	service.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) service.TaskPollingAdaptor {
+	// calls task.RunTaskPollingOnce, which needs this factory set.
+	task.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) task.TaskPollingAdaptor {
 		a := relay.GetTaskAdaptor(platform)
 		if a == nil {
 			return nil
@@ -162,15 +162,15 @@ func main() {
 	}
 
 	// Wire the gateway port factory: capability-layer polling calls port.GetTaskProviderFunc
-	// instead of importing relay/channel. The binding adapts channel.TaskAdaptor to port.TaskProviderExec.
-	port.GetTaskProviderFunc = service.GetTaskProviderFuncBinding()
+	// instead of importing relay/channel. The binding adapts catalog.TaskAdaptor to task.TaskProviderExec.
+	// The task provider interface lives in the task domain; nothing external needs wiring.
 
 	// Register the periodic channel test, upstream model update, and async task
 	// polling (Midjourney / Suno / video) jobs as scheduled system tasks
 	// (DB-lease dedup across masters + run history), then start the runner that
 	// schedules and executes them. Master-only execution and the UpdateTask
 	// switch are enforced inside the runner and each handler's Enabled().
-	controller.RegisterScheduledSystemTasks()
+	handler.RegisterScheduledSystemTasks()
 	ops.StartSystemTaskRunner()
 
 	if os.Getenv("BATCH_UPDATE_ENABLED") == "true" {
@@ -254,7 +254,7 @@ func main() {
 	}
 	// 内存中的看板数据保存入库，避免重启丢失未落库数据 (issue #5679)
 	if common.DataExportEnabled {
-		model.SaveQuotaDataCache()
+		usage.SaveQuotaDataCache()
 	}
 	common.SysLog("server exited")
 }
@@ -322,7 +322,7 @@ func InitResources() error {
 
 	egress.InitHttpClient()
 
-	service.InitTokenEncoders()
+	usage.InitTokenEncoders()
 
 	// Initialize SQL Database
 	err = model.InitDB()
@@ -374,7 +374,7 @@ func InitResources() error {
 		common.SysLog("i18n initialized with languages: " + strings.Join(i18n.SupportedLanguages(), ", "))
 	}
 	// Register user language loader for lazy loading
-	i18n.SetUserLangLoader(model.GetUserLanguage)
+	i18n.SetUserLangLoader(identity.GetUserLanguage)
 
 	// Load custom OAuth providers from database
 	err = oauth.LoadCustomProviders()
@@ -391,7 +391,7 @@ func InitResources() error {
 		identity.IncreaseUserQuota, identity.DecreaseUserQuota,
 		identity.RootUserExists,
 	)
-	model.GetTokenByIdFn = func(id int) (*model.Token, error) {
+	model.GetTokenByIdFn = func(id int) (*identity.Token, error) {
 		t, err := identity.GetTokenById(id)
 		if err != nil {
 			return nil, err
@@ -400,6 +400,10 @@ func InitResources() error {
 	}
 	model.GetTokenByKeyWrFn = identity.GetTokenByKey
 	model.GetUserCacheWrFn = identity.GetUserCache
+
+	// ops owns notification delivery and imports catalog, so catalog reaches
+	// root-user notifications through a hook wired here.
+	catalog.RootUserNotifier = ops.NotifyRootUser
 
 	return nil
 }

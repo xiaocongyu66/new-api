@@ -2,9 +2,10 @@ package helper
 
 import (
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/billing/consume_quota"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"strings"
 
+	"github.com/QuantumNous/new-api/internal/billing/consume_quota"
 	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	tiered_pricing "github.com/QuantumNous/new-api/internal/billing/tiered_pricing"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
@@ -13,12 +14,11 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	hosttypes "github.com/QuantumNous/new-api/internal/types"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
 func modelPriceNotConfiguredError(modelName string, userId int) error {
-	if model.IsAdmin(userId) {
+	if identity.IsAdmin(userId) {
 		return fmt.Errorf(
 			"模型 %s 的价格未配置。请前往「系统设置 → 运营设置」开启自用模式，或在「系统设置 → 分组与模型定价设置」中为该模型配置价格；"+
 				"Model %s price not configured. Go to System Settings → Operation Settings to enable self-use mode, or configure the model price in System Settings → Group & Model Pricing.",

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/egress"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"io"
@@ -14,9 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/shopspring/decimal"
 )
@@ -136,7 +135,7 @@ func GetClaudeAuthHeader(token string) http.Header {
 	return h
 }
 
-func GetResponseBody(method, url string, channel *model.Channel, headers http.Header) ([]byte, error) {
+func GetResponseBody(method, url string, channel *catalog.Channel, headers http.Header) ([]byte, error) {
 	req, err := http.NewRequest(method, url, nil)
 	if err != nil {
 		return nil, err
@@ -166,7 +165,7 @@ func GetResponseBody(method, url string, channel *model.Channel, headers http.He
 	return body, nil
 }
 
-func updateChannelCloseAIBalance(channel *model.Channel) (float64, error) {
+func updateChannelCloseAIBalance(channel *catalog.Channel) (float64, error) {
 	url := fmt.Sprintf("%s/dashboard/billing/credit_grants", channel.GetBaseURL())
 	body, err := GetResponseBody("GET", url, channel, GetAuthHeader(channel.Key))
 
@@ -182,7 +181,7 @@ func updateChannelCloseAIBalance(channel *model.Channel) (float64, error) {
 	return response.TotalAvailable, nil
 }
 
-func updateChannelOpenAISBBalance(channel *model.Channel) (float64, error) {
+func updateChannelOpenAISBBalance(channel *catalog.Channel) (float64, error) {
 	url := fmt.Sprintf("https://api.openai-sb.com/sb-api/user/status?api_key=%s", channel.Key)
 	body, err := GetResponseBody("GET", url, channel, GetAuthHeader(channel.Key))
 	if err != nil {
@@ -204,7 +203,7 @@ func updateChannelOpenAISBBalance(channel *model.Channel) (float64, error) {
 	return balance, nil
 }
 
-func updateChannelAIProxyBalance(channel *model.Channel) (float64, error) {
+func updateChannelAIProxyBalance(channel *catalog.Channel) (float64, error) {
 	url := "https://aiproxy.io/api/report/getUserOverview"
 	headers := http.Header{}
 	headers.Add("Api-Key", channel.Key)
@@ -224,7 +223,7 @@ func updateChannelAIProxyBalance(channel *model.Channel) (float64, error) {
 	return response.Data.TotalPoints, nil
 }
 
-func updateChannelAPI2GPTBalance(channel *model.Channel) (float64, error) {
+func updateChannelAPI2GPTBalance(channel *catalog.Channel) (float64, error) {
 	url := "https://api.api2gpt.com/dashboard/billing/credit_grants"
 	body, err := GetResponseBody("GET", url, channel, GetAuthHeader(channel.Key))
 
@@ -240,7 +239,7 @@ func updateChannelAPI2GPTBalance(channel *model.Channel) (float64, error) {
 	return response.TotalRemaining, nil
 }
 
-func updateChannelSiliconFlowBalance(channel *model.Channel) (float64, error) {
+func updateChannelSiliconFlowBalance(channel *catalog.Channel) (float64, error) {
 	url := "https://api.siliconflow.cn/v1/user/info"
 	body, err := GetResponseBody("GET", url, channel, GetAuthHeader(channel.Key))
 	if err != nil {
@@ -262,7 +261,7 @@ func updateChannelSiliconFlowBalance(channel *model.Channel) (float64, error) {
 	return balance, nil
 }
 
-func updateChannelDeepSeekBalance(channel *model.Channel) (float64, error) {
+func updateChannelDeepSeekBalance(channel *catalog.Channel) (float64, error) {
 	url := "https://api.deepseek.com/user/balance"
 	body, err := GetResponseBody("GET", url, channel, GetAuthHeader(channel.Key))
 	if err != nil {
@@ -291,7 +290,7 @@ func updateChannelDeepSeekBalance(channel *model.Channel) (float64, error) {
 	return balance, nil
 }
 
-func updateChannelAIGC2DBalance(channel *model.Channel) (float64, error) {
+func updateChannelAIGC2DBalance(channel *catalog.Channel) (float64, error) {
 	url := "https://api.aigc2d.com/dashboard/billing/credit_grants"
 	body, err := GetResponseBody("GET", url, channel, GetAuthHeader(channel.Key))
 	if err != nil {
@@ -306,7 +305,7 @@ func updateChannelAIGC2DBalance(channel *model.Channel) (float64, error) {
 	return response.TotalAvailable, nil
 }
 
-func updateChannelOpenRouterBalance(channel *model.Channel) (float64, error) {
+func updateChannelOpenRouterBalance(channel *catalog.Channel) (float64, error) {
 	url := "https://openrouter.ai/api/v1/credits"
 	body, err := GetResponseBody("GET", url, channel, GetAuthHeader(channel.Key))
 	if err != nil {
@@ -322,7 +321,7 @@ func updateChannelOpenRouterBalance(channel *model.Channel) (float64, error) {
 	return balance, nil
 }
 
-func updateChannelMoonshotBalance(channel *model.Channel) (float64, error) {
+func updateChannelMoonshotBalance(channel *catalog.Channel) (float64, error) {
 	url := "https://api.moonshot.cn/v1/users/me/balance"
 	body, err := GetResponseBody("GET", url, channel, GetAuthHeader(channel.Key))
 	if err != nil {
@@ -356,7 +355,7 @@ func updateChannelMoonshotBalance(channel *model.Channel) (float64, error) {
 	return availableBalanceUsd, nil
 }
 
-func updateChannelBalance(channel *model.Channel) (float64, error) {
+func updateChannelBalance(channel *catalog.Channel) (float64, error) {
 	baseURL := constant.ChannelBaseURLs[channel.Type]
 	if channel.GetBaseURL() == "" {
 		channel.BaseURL = &baseURL
@@ -427,7 +426,7 @@ func UpdateChannelBalance(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	channel, err := model.CacheGetChannel(id)
+	channel, err := catalog.CacheGetChannel(id)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -452,7 +451,7 @@ func UpdateChannelBalance(c contract.Context) {
 }
 
 func updateAllChannelsBalance() error {
-	channels, err := model.GetAllChannels(0, 0, true, false)
+	channels, err := catalog.GetAllChannels(0, 0, true, false)
 	if err != nil {
 		return err
 	}
@@ -473,7 +472,7 @@ func updateAllChannelsBalance() error {
 		} else {
 			// err is nil & balance <= 0 means quota is used up
 			if balance <= 0 {
-				service.DisableChannel(*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, "", channel.GetAutoBan()), "余额不足")
+				catalog.DisableChannel(*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, "", channel.GetAutoBan()), "余额不足")
 			}
 		}
 		time.Sleep(common.RequestInterval)

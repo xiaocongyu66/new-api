@@ -1,9 +1,9 @@
 package configure_ratio
 
 import (
-	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
 	"strings"
 
+	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/types"
 )

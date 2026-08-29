@@ -2,16 +2,16 @@ package billing
 
 import (
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/shopspring/decimal"
 	"github.com/thanhpk/randstr"
 )
@@ -36,7 +36,7 @@ func RequestWaffoPancakeAmount(c contract.Context) {
 		return
 	}
 
-	group, err := model.GetUserGroup(id, true)
+	group, err := identity.GetUserGroup(id, true)
 	if err != nil {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "获取用户分组失败"})
 		return
@@ -93,7 +93,7 @@ func formatWaffoPancakeAmount(payMoney float64) string {
 	return decimal.NewFromFloat(payMoney).StringFixed(2)
 }
 
-func getWaffoPancakeBuyerEmail(user *model.User) string {
+func getWaffoPancakeBuyerEmail(user *identity.User) string {
 	if user != nil && strings.TrimSpace(user.Email) != "" {
 		return user.Email
 	}
@@ -330,7 +330,7 @@ func ListWaffoPancakeSubscriptionProductOptions(c contract.Context) {
 	})
 }
 
-func getWaffoPancakeBuyerIdentity(user *model.User) string {
+func getWaffoPancakeBuyerIdentity(user *identity.User) string {
 	if user == nil {
 		return ""
 	}
@@ -357,13 +357,13 @@ func RequestWaffoPancakePay(c contract.Context) {
 		return
 	}
 
-	user, err := model.GetUserById(id, false)
+	user, err := identity.GetUserById(id, false)
 	if err != nil || user == nil {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "用户不存在"})
 		return
 	}
 
-	group, err := model.GetUserGroup(id, true)
+	group, err := identity.GetUserGroup(id, true)
 	if err != nil {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "获取用户分组失败"})
 		return
@@ -376,13 +376,13 @@ func RequestWaffoPancakePay(c contract.Context) {
 	}
 
 	tradeNo := fmt.Sprintf("WAFFO_PANCAKE-%d-%d-%s", id, time.Now().UnixMilli(), randstr.String(6))
-	topUp := &model.TopUp{
+	topUp := &TopUp{
 		UserId:          id,
 		Amount:          normalizeWaffoPancakeTopUpAmount(req.Amount),
 		Money:           payMoney,
 		TradeNo:         tradeNo,
-		PaymentMethod:   model.PaymentMethodWaffoPancake,
-		PaymentProvider: model.PaymentProviderWaffoPancake,
+		PaymentMethod:   PaymentMethodWaffoPancake,
+		PaymentProvider: PaymentProviderWaffoPancake,
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}
@@ -495,7 +495,7 @@ func WaffoPancakeWebhook(c contract.Context) {
 		}
 		LockOrder(tradeNo)
 		defer UnlockOrder(tradeNo)
-		if err := model.CompleteSubscriptionOrder(tradeNo, string(bodyBytes), model.PaymentProviderWaffoPancake, ""); err != nil {
+		if err := CompleteSubscriptionOrder(tradeNo, string(bodyBytes), PaymentProviderWaffoPancake, ""); err != nil {
 			logger.LogError(c.Context(), fmt.Sprintf("Waffo Pancake 订阅完成失败 trade_no=%s event_id=%s order_id=%s client_ip=%s error=%q", tradeNo, event.ID, event.Data.OrderID, c.ClientIP(), err.Error()))
 			_ = c.String(http.StatusInternalServerError, "retry")
 			return
@@ -521,7 +521,7 @@ func WaffoPancakeWebhook(c contract.Context) {
 	LockOrder(tradeNo)
 	defer UnlockOrder(tradeNo)
 
-	if err := model.RechargeWaffoPancake(tradeNo); err != nil {
+	if err := RechargeWaffoPancake(tradeNo); err != nil {
 		logger.LogError(c.Context(), fmt.Sprintf("Waffo Pancake 充值处理失败 trade_no=%s event_id=%s order_id=%s client_ip=%s error=%q", tradeNo, event.ID, event.Data.OrderID, c.ClientIP(), err.Error()))
 		_ = c.String(http.StatusInternalServerError, "retry")
 		return

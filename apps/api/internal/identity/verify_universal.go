@@ -21,7 +21,7 @@ type UniversalVerifyRequest struct {
 
 // UniversalVerify implements POST /api/verify. It exchanges a 2FA code for a
 // short-lived security proof token. The previous 466-c placement under
-// controller used model.RecordLog / model.LogTypeSystem; the writeSystemLog
+// controller used usage.RecordLog / model.LogTypeSystem; the writeSystemLog
 // hook installed by 466-a already records system activity. authID comes from
 // the authtoken leaf rather than the security package, because security
 // imports identity (cycle) but authtoken is the upstream leaf for the JWT

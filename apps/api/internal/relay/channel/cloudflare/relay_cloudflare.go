@@ -14,7 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/samber/lo"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
@@ -76,7 +75,7 @@ func cfStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http
 	if err := scanner.Err(); err != nil {
 		logger.LogError(c.Context(), "error_scanning_stream_response: "+err.Error())
 	}
-	usage := service.ResponseText2Usage(c, responseText, info.UpstreamModelName, info.GetEstimatePromptTokens())
+	usage := relaycommon.ResponseText2Usage(c, responseText, info.UpstreamModelName, info.GetEstimatePromptTokens())
 	if info.ShouldIncludeUsage {
 		response := helper.GenerateFinalUsageResponse(id, info.StartTime.Unix(), info.UpstreamModelName, *usage)
 		err := helper.ObjectData(c, response)
@@ -107,7 +106,7 @@ func cfHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	for _, choice := range response.Choices {
 		responseText += choice.Message.StringContent()
 	}
-	usage := service.ResponseText2Usage(c, responseText, info.UpstreamModelName, info.GetEstimatePromptTokens())
+	usage := relaycommon.ResponseText2Usage(c, responseText, info.UpstreamModelName, info.GetEstimatePromptTokens())
 	response.Usage = *usage
 	response.Id = helper.GetResponseID(c)
 	jsonResponse, err := json.Marshal(response)
@@ -144,6 +143,6 @@ func cfSTTHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Re
 	c.ResponseWriter().WriteHeader(resp.StatusCode)
 	_, _ = c.ResponseWriter().Write(jsonResponse)
 
-	usage := service.ResponseText2Usage(c, cfResp.Result.Text, info.UpstreamModelName, info.GetEstimatePromptTokens())
+	usage := relaycommon.ResponseText2Usage(c, cfResp.Result.Text, info.UpstreamModelName, info.GetEstimatePromptTokens())
 	return nil, usage
 }

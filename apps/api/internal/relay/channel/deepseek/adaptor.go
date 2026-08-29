@@ -3,11 +3,11 @@ package deepseek
 import (
 	"errors"
 	"fmt"
+	reasoning "github.com/QuantumNous/new-api/internal/billing"
 	"io"
 	"net/http"
 	"strings"
 
-	reasoning "github.com/QuantumNous/new-api/internal/billing"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/relay/channel"
 	"github.com/QuantumNous/new-api/internal/relay/channel/claude"

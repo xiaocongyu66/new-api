@@ -1,12 +1,17 @@
 package task
 
 import (
+	"github.com/QuantumNous/new-api/internal/billing"
+	channel "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity"
+	"github.com/QuantumNous/new-api/internal/ops"
+	"github.com/QuantumNous/new-api/internal/usage"
+	"github.com/QuantumNous/new-api/internal/usage/record_perf"
 	"os"
 	"testing"
 
-	"github.com/QuantumNous/new-api/model"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )
@@ -31,34 +36,35 @@ func TestMain(m *testing.M) {
 	sqlDB.SetMaxOpenConns(1)
 
 	if err := db.AutoMigrate(
-		&model.Task{},
-		&model.User{},
-		&model.UserSession{},
-		&model.AuthFlow{},
-		&model.ExternalIdentityClaim{},
-		&model.Token{},
-		&model.PasskeyCredential{},
-		&model.TwoFA{},
-		&model.TwoFABackupCode{},
-		&model.Log{},
-		&model.Channel{},
-		&model.QuotaData{},
-		&model.Ability{},
-		&model.TopUp{},
-		&model.SubscriptionPlan{},
-		&model.SubscriptionOrder{},
-		&model.UserSubscription{},
-		&model.UserOAuthBinding{},
-		&model.PerfMetric{},
-		&model.SystemInstance{},
-		&model.SystemTask{},
-		&model.SystemTaskLock{},
-		&model.GatewayConfigRevision{},
-		&model.GatewayConfigOutbox{},
+		&Task{},
+		&identity.User{},
+		&identity.UserSession{},
+		&identity.AuthFlow{},
+		&identity.ExternalIdentityClaim{},
+		&identity.Token{},
+		&identity.PasskeyCredential{},
+		&identity.TwoFA{},
+		&identity.TwoFABackupCode{},
+		&usage.Log{},
+		&channel.Channel{},
+		&Midjourney{},
+		&usage.QuotaData{},
+		&channel.Ability{},
+		&billing.TopUp{},
+		&billing.SubscriptionPlan{},
+		&billing.SubscriptionOrder{},
+		&billing.UserSubscription{},
+		&identity.UserOAuthBinding{},
+		&record_perf.PerfMetric{},
+		&ops.SystemInstance{},
+		&ops.SystemTask{},
+		&ops.SystemTaskLock{},
+		&channel.GatewayConfigRevision{},
+		&channel.GatewayConfigOutbox{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
-	if err := model.InitializeGatewayConfigRevision(); err != nil {
+	if err := channel.InitializeGatewayConfigRevision(); err != nil {
 		panic("failed to initialize gateway revision: " + err.Error())
 	}
 

@@ -2,12 +2,12 @@ package common_test
 
 import (
 	"errors"
+	common "github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/stretchr/testify/assert"
 )

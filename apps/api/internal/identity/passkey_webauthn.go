@@ -3,7 +3,6 @@ package identity
 import (
 	"errors"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/security/passkey"
 	"net"
 	"net/http"
 	"net/url"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
+	"github.com/QuantumNous/new-api/internal/security/passkey"
 
 	"github.com/go-webauthn/webauthn/protocol"
 	webauthn "github.com/go-webauthn/webauthn/webauthn"

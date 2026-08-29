@@ -7,7 +7,6 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
-	"github.com/QuantumNous/new-api/model"
 )
 
 // auditContentTemplates 将稳定的操作标识 action 映射为英文兜底模板，渲染后写入
@@ -103,12 +102,12 @@ func RecordManageAuditFor(c contract.Context, targetUserId int, action string, p
 	if _, ok := params["target_user_id"]; !ok && targetUserId > 0 && targetUserId != operatorUserId {
 		params["target_user_id"] = targetUserId
 	}
-	model.RecordOperationAuditLog(operatorUserId, auditContentEN(action, params), c.ClientIP(), action, params, AuditOperatorInfo(c), nil)
+	RecordOperationAuditLog(operatorUserId, auditContentEN(action, params), c.ClientIP(), action, params, AuditOperatorInfo(c), nil)
 	MarkAuditLogged(c)
 }
 
 // RecordUserSecurityAudit 记录普通用户自己的安全敏感操作（如 passkey 绑定/解绑）。
 // 这类日志没有管理员操作者，不写 admin_info；同时不依赖 AdminAuth/RootAuth 的兜底。
 func RecordUserSecurityAudit(c contract.Context, userId int, action string, params map[string]interface{}) {
-	model.RecordOperationAuditLog(userId, auditContentEN(action, params), c.ClientIP(), action, params, nil, nil)
+	RecordOperationAuditLog(userId, auditContentEN(action, params), c.ClientIP(), action, params, nil, nil)
 }

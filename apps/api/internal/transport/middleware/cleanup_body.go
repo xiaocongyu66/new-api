@@ -2,8 +2,8 @@ package middleware
 
 import (
 	"github.com/QuantumNous/new-api/internal/common"
+	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/service"
 )
 
 // BodyStorageCleanup 请求体存储清理中间件
@@ -17,6 +17,6 @@ func BodyStorageCleanup() contract.Middleware {
 		common.CleanupBodyStorage(c)
 
 		// 清理文件缓存（URL 下载的文件等）
-		service.CleanupFileSources(c)
+		relaycommon.CleanupFileSources(c)
 	}
 }

@@ -12,7 +12,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
@@ -69,7 +68,7 @@ func xAIStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *htt
 	})
 
 	if !containStreamUsage {
-		usage = service.ResponseText2Usage(c, responseTextBuilder.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
+		usage = relaycommon.ResponseText2Usage(c, responseTextBuilder.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
 		usage.CompletionTokens += toolCount * 7
 	}
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/usage"
+	"github.com/QuantumNous/new-api/model"
 	"net/http"
 	"strings"
 
@@ -17,7 +18,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/middleware/rate_limit"
 	"github.com/QuantumNous/new-api/internal/transport/middleware/status_code"
 	console_setting "github.com/QuantumNous/new-api/internal/usage/record_perf_config"
-	"github.com/QuantumNous/new-api/model"
 )
 
 func GetOptions(c contract.Context) {

@@ -16,7 +16,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/tidwall/gjson"
@@ -128,7 +127,7 @@ func OpenaiImageStreamHandler(c contract.Context, info *relaycommon.RelayInfo, r
 		}
 		if err := common.Unmarshal(raw, &chunk); err == nil {
 			normalizeOpenAIUsage(&chunk.Usage)
-			if service.ValidUsage(&chunk.Usage) {
+			if relaycommon.ValidUsage(&chunk.Usage) {
 				usage = &chunk.Usage
 			}
 			if chunk.Type == "image_generation.completed" || chunk.Type == "image_edit.completed" {
@@ -268,7 +267,7 @@ func openaiImageJSONAsStreamHandler(c contract.Context, info *relaycommon.RelayI
 		info.SetFirstResponseTime()
 	}
 
-	validUsage := service.ValidUsage(&usageResp.Usage)
+	validUsage := relaycommon.ValidUsage(&usageResp.Usage)
 	var usageJSON []byte
 	if validUsage {
 		usageJSON, err = common.Marshal(usageResp.Usage)

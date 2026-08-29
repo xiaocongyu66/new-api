@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/egress"
+	"github.com/QuantumNous/new-api/internal/task"
 	"io"
 	"net/http"
 	"strings"
@@ -17,9 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/channel"
 	taskcommon "github.com/QuantumNous/new-api/internal/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/pkg/errors"
 )
@@ -91,7 +90,7 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c contract.Context, info *rela
 	}
 	req, err := relaycommon.GetTaskRequest(c)
 	if err != nil {
-		return service.TaskErrorWrapper(err, "get_task_request_failed", http.StatusBadRequest)
+		return task.TaskErrorWrapper(err, "get_task_request_failed", http.StatusBadRequest)
 	}
 	action := constant.TaskActionTextGenerate
 	if meatAction, ok := req.Metadata["action"]; ok {
@@ -166,19 +165,19 @@ func (a *TaskAdaptor) DoRequest(c contract.Context, info *relaycommon.RelayInfo,
 func (a *TaskAdaptor) DoResponse(c contract.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *taskdto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		taskErr = service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
+		taskErr = task.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
 		return
 	}
 
 	var vResp responsePayload
 	err = common.Unmarshal(responseBody, &vResp)
 	if err != nil {
-		taskErr = service.TaskErrorWrapper(errors.Wrap(err, fmt.Sprintf("%s", responseBody)), "unmarshal_response_failed", http.StatusInternalServerError)
+		taskErr = task.TaskErrorWrapper(errors.Wrap(err, fmt.Sprintf("%s", responseBody)), "unmarshal_response_failed", http.StatusInternalServerError)
 		return
 	}
 
 	if vResp.State == "failed" {
-		taskErr = service.TaskErrorWrapperLocal(fmt.Errorf("task failed"), "task_failed", http.StatusBadRequest)
+		taskErr = task.TaskErrorWrapperLocal(fmt.Errorf("task failed"), "task_failed", http.StatusBadRequest)
 		return
 	}
 
@@ -254,16 +253,16 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	state := taskResp.State
 	switch state {
 	case "created", "queueing":
-		taskInfo.Status = model.TaskStatusSubmitted
+		taskInfo.Status = task.TaskStatusSubmitted
 	case "processing":
-		taskInfo.Status = model.TaskStatusInProgress
+		taskInfo.Status = task.TaskStatusInProgress
 	case "success":
-		taskInfo.Status = model.TaskStatusSuccess
+		taskInfo.Status = task.TaskStatusSuccess
 		if len(taskResp.Creations) > 0 {
 			taskInfo.Url = taskResp.Creations[0].URL
 		}
 	case "failed":
-		taskInfo.Status = model.TaskStatusFailure
+		taskInfo.Status = task.TaskStatusFailure
 		if taskResp.ErrCode != "" {
 			taskInfo.Reason = taskResp.ErrCode
 		}
@@ -274,7 +273,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	return taskInfo, nil
 }
 
-func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error) {
+func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *task.Task) ([]byte, error) {
 	var viduResp taskResultResponse
 	if err := common.Unmarshal(originTask.Data, &viduResp); err != nil {
 		return nil, errors.Wrap(err, "unmarshal vidu task data failed")

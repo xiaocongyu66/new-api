@@ -3,6 +3,7 @@ package task
 import (
 	"bytes"
 	"fmt"
+	channel "github.com/QuantumNous/new-api/internal/catalog"
 	"io"
 	"net/http"
 	"strings"
@@ -10,10 +11,8 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/dto"
-	"github.com/QuantumNous/new-api/internal/gateway/port"
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/model"
 )
 
 // maxTaskDurationSeconds mirrors relaycommon.MaxTaskDurationSeconds to avoid import.
@@ -166,7 +165,7 @@ func videoFetchByIDRespBodyBuilder(c contract.Context) (respBody []byte, taskRes
 	// OpenAI Video API 格式: 走各 adaptor 的 ConvertToOpenAIVideo
 	if isOpenAIVideoAPI {
 		platform := string(originTask.Platform)
-		provider := port.GetTaskProviderFunc(platform)
+		provider := GetTaskProviderFunc(platform)
 		if provider == nil {
 			return nil, &dto.TaskError{
 				Code:       "not_implemented",
@@ -203,8 +202,8 @@ func videoFetchByIDRespBodyBuilder(c contract.Context) (respBody []byte, taskRes
 // tryRealtimeFetch 尝试从上游实时拉取 Gemini/Vertex 任务状态。
 // 仅当渠道类型为 Gemini 或 Vertex 时触发；其他渠道或出错时返回 nil。
 // 当非 OpenAI Video API 时，还会构建自定义格式的响应体。
-func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
-	channelModel, err := model.GetChannelById(task.ChannelId, true)
+func tryRealtimeFetch(task *Task, isOpenAIVideoAPI bool) []byte {
+	channelModel, err := channel.GetChannelById(task.ChannelId, true)
 	if err != nil {
 		return nil
 	}
@@ -220,7 +219,7 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 
 	// Get provider for the task's platform (e.g., "suno", "kling", "vertex", etc.)
 	platform := string(task.Platform)
-	provider := port.GetTaskProviderFunc(platform)
+	provider := GetTaskProviderFunc(platform)
 	if provider == nil {
 		return nil
 	}
@@ -258,7 +257,7 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 
 	// 将上游最新状态更新到 task
 	if ti.Status != "" {
-		task.Status = model.TaskStatus(ti.Status)
+		task.Status = TaskStatus(ti.Status)
 	}
 	if ti.Progress != "" {
 		task.Progress = ti.Progress
@@ -267,7 +266,7 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 		// data: URI — kept in Data, not ResultURL
 	} else if ti.Url != "" {
 		task.PrivateData.ResultURL = ti.Url
-	} else if task.Status == model.TaskStatusSuccess {
+	} else if task.Status == TaskStatusSuccess {
 		// No URL from adaptor — construct proxy URL using public task ID
 		task.PrivateData.ResultURL = BuildProxyURL(task.TaskID)
 	}
@@ -324,13 +323,13 @@ func detectVideoFormat(rawBody []byte) string {
 }
 
 // mapTaskStatusToSimple 将内部 TaskStatus 映射为简化状态字符串
-func mapTaskStatusToSimple(status model.TaskStatus) string {
+func mapTaskStatusToSimple(status TaskStatus) string {
 	switch status {
-	case model.TaskStatusSuccess:
+	case TaskStatusSuccess:
 		return "succeeded"
-	case model.TaskStatusFailure:
+	case TaskStatusFailure:
 		return "failed"
-	case model.TaskStatusQueued, model.TaskStatusSubmitted:
+	case TaskStatusQueued, TaskStatusSubmitted:
 		return "queued"
 	default:
 		return "processing"
@@ -338,7 +337,7 @@ func mapTaskStatusToSimple(status model.TaskStatus) string {
 }
 
 // relayTaskModel2Dto converts a task model to DTO (internal version to avoid import cycle).
-func relayTaskModel2Dto(task *model.Task) *dto.TaskDto {
+func relayTaskModel2Dto(task *Task) *dto.TaskDto {
 	return &dto.TaskDto{
 		ID:         task.ID,
 		CreatedAt:  task.CreatedAt,

@@ -1,23 +1,23 @@
 package channel
 
 import (
+	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 )
 
 // withChannelCacheFixture installs an isolated in-memory channel cache and
 // restores the previous globals afterwards, so these tests cannot leak state into
 // the rest of the package.
 //
-// model.GetRandomSatisfiedChannel reads group2model2channels and channelsIDM under
+// GetRandomSatisfiedChannel reads group2model2channels and channelsIDM under
 // channelSyncLock, and only takes the memory-cache path when
 // common.MemoryCacheEnabled is true (channel_cache.go:114).
-func withChannelCacheFixture(t *testing.T, channels []*model.Channel, group, modelName string) {
+func withChannelCacheFixture(t *testing.T, channels []*Channel, group, modelName string) {
 	t.Helper()
 
 	prevGroups := group2model2channels
@@ -32,7 +32,7 @@ func withChannelCacheFixture(t *testing.T, channels []*model.Channel, group, mod
 	})
 
 	ids := make([]int, 0, len(channels))
-	idm := make(map[int]*model.Channel, len(channels))
+	idm := make(map[int]*Channel, len(channels))
 	for _, ch := range channels {
 		ids = append(ids, ch.Id)
 		idm[ch.Id] = ch
@@ -45,17 +45,17 @@ func withChannelCacheFixture(t *testing.T, channels []*model.Channel, group, mod
 	common.MemoryCacheEnabled = true
 }
 
-func testChannel(id int, weight uint, priority int64) *model.Channel {
+func testChannel(id int, weight uint, priority int64) *Channel {
 	w, p := weight, priority
-	return &model.Channel{Id: id, Weight: &w, Priority: &p}
+	return &Channel{Id: id, Weight: &w, Priority: &p}
 }
 
 // TestSingleChannelShortCircuitIgnoresWeight pins a deliberate asymmetry: with a
-// single candidate, model.GetRandomSatisfiedChannel returns early
+// single candidate, GetRandomSatisfiedChannel returns early
 // (channel_cache.go:136 for one id, :180 for one channel at the target priority)
 // without consulting weight or health score. There is nothing to fall back to, so
 // selecting it is correct — but it means weight=0 behaves differently here than in
-// the multi-channel path, where model.RoutingBaseWeight maps it to 1. Locking this down
+// the multi-channel path, where RoutingBaseWeight maps it to 1. Locking this down
 // so a later refactor does not silently start dropping single-channel groups.
 func TestSingleChannelShortCircuitIgnoresWeight(t *testing.T) {
 	const group, modelName = "edge-group", "edge-model"
@@ -63,12 +63,12 @@ func TestSingleChannelShortCircuitIgnoresWeight(t *testing.T) {
 	// weight=0 plus a floored health score would be the least attractive channel
 	// possible in the weighted path.
 	only := testChannel(9101, 0, 7)
-	withChannelCacheFixture(t, []*model.Channel{only}, group, modelName)
+	withChannelCacheFixture(t, []*Channel{only}, group, modelName)
 
 	mgr := resetChannelHealthManagerForTest()
 	setTestConfigCapability(true, 0.3, 0.05, 0)
 	for range 50 {
-		mgr.RecordChannelOutcome(only.Id, model.OutcomeFatal)
+		mgr.RecordChannelOutcome(only.Id, OutcomeFatal)
 	}
 	require.InDelta(t, 0.05, mgr.GetScore(only.Id), 1e-9, "channel is scored at the floor")
 
@@ -85,7 +85,7 @@ func TestSingleChannelShortCircuitRespectsExcludeSet(t *testing.T) {
 	const group, modelName = "edge-group", "edge-model"
 
 	only := testChannel(9102, 10, 7)
-	withChannelCacheFixture(t, []*model.Channel{only}, group, modelName)
+	withChannelCacheFixture(t, []*Channel{only}, group, modelName)
 	resetChannelHealthManagerForTest()
 	setTestConfigCapability(true, 0.3, 0.05, 0)
 
@@ -102,7 +102,7 @@ func TestRetryDescendsPriorityTiers(t *testing.T) {
 	const group, modelName = "edge-group", "edge-model"
 
 	// One channel per tier so the selected tier is unambiguous.
-	channels := []*model.Channel{
+	channels := []*Channel{
 		testChannel(9201, 10, 100),
 		testChannel(9202, 10, 50),
 		testChannel(9203, 10, 10),
@@ -145,12 +145,12 @@ func TestHealthScoreActsWithinPriorityTierOnly(t *testing.T) {
 	healthy := testChannel(9301, 10, 100)
 	degraded := testChannel(9302, 10, 100)
 	lowerTier := testChannel(9303, 10, 10)
-	withChannelCacheFixture(t, []*model.Channel{healthy, degraded, lowerTier}, group, modelName)
+	withChannelCacheFixture(t, []*Channel{healthy, degraded, lowerTier}, group, modelName)
 
 	mgr := resetChannelHealthManagerForTest()
 	setTestConfigCapability(true, 0.3, 0.05, 0)
 	for range 50 {
-		mgr.RecordChannelOutcome(degraded.Id, model.OutcomeFatal)
+		mgr.RecordChannelOutcome(degraded.Id, OutcomeFatal)
 	}
 	require.InDelta(t, 0.05, mgr.GetScore(degraded.Id), 1e-9)
 	require.Equal(t, 1.0, mgr.GetScore(healthy.Id))
@@ -170,7 +170,7 @@ func TestHealthScoreActsWithinPriorityTierOnly(t *testing.T) {
 		"within the tier, the healthy channel must win the majority of selections")
 
 	// The degraded channel keeps a floored share rather than being locked out:
-	// effective weight is model.RoutingBaseWeight(10)*0.05 versus *1.0, so roughly 1 in 21.
+	// effective weight is RoutingBaseWeight(10)*0.05 versus *1.0, so roughly 1 in 21.
 	assert.Less(t, counts[degraded.Id], counts[healthy.Id]/4,
 		"the degraded channel is heavily derated")
 
@@ -180,4 +180,18 @@ func TestHealthScoreActsWithinPriorityTierOnly(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, lowerTier.Id, got.Id)
+}
+
+func resetChannelHealthManagerForTest() *ChannelHealthManager {
+	return ResetChannelHealthManagerForTest()
+}
+
+// setTestConfigCapability mirrors model's setTestConfig helper.
+func setTestConfigCapability(enabled bool, alpha, minScore float64, minRequests int) {
+	health_store.SetChannelHealthSetting(&health_store.ChannelHealthSetting{
+		Enabled:     enabled,
+		Alpha:       alpha,
+		MinScore:    minScore,
+		MinRequests: minRequests,
+	})
 }

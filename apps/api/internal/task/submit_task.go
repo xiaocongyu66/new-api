@@ -2,6 +2,7 @@ package task
 
 import (
 	"fmt"
+	channel "github.com/QuantumNous/new-api/internal/catalog"
 	"io"
 	"net/http"
 	"strconv"
@@ -10,9 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/dto"
-	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/model"
 )
 
 // ResolveOriginTask 处理基于已有任务的提交（remix / continuation）：
@@ -20,7 +19,7 @@ import (
 // （通过 info.LockedChannel，重试时复用同一渠道并轮换 key），
 // 以及提取 OtherRatios（时长、分辨率）。
 // 该函数在控制器的重试循环之前调用一次，其结果通过 info 字段和上下文持久化。
-func ResolveOriginTask(c contract.Context, info *port.SubmitInfo) *dto.TaskError {
+func ResolveOriginTask(c contract.Context, info *SubmitInfo) *dto.TaskError {
 	// 检测 remix action - from request path
 	path := c.Path()
 	if strings.Contains(path, "/v1/videos/") && strings.HasSuffix(path, "/remix") {
@@ -76,7 +75,7 @@ func ResolveOriginTask(c contract.Context, info *port.SubmitInfo) *dto.TaskError
 	}
 
 	// 锁定到原始任务的渠道（重试时复用同一渠道，轮换 key）
-	ch, err := model.GetChannelById(originTask.ChannelId, true)
+	ch, err := channel.GetChannelById(originTask.ChannelId, true)
 	if err != nil {
 		return &dto.TaskError{
 			Code:       "channel_not_found",
@@ -117,7 +116,7 @@ func ResolveOriginTask(c contract.Context, info *port.SubmitInfo) *dto.TaskError
 	// 提取 remix 参数（时长、分辨率 → OtherRatios）
 	if info.Action == constant.TaskActionRemix {
 		if info.PriceData == nil {
-			info.PriceData = &port.PriceData{}
+			info.PriceData = &PriceData{}
 		}
 		if originTask.PrivateData.BillingContext != nil {
 			// 新的 remix 逻辑：直接从原始任务的 BillingContext 中提取 OtherRatios（如果存在）
@@ -152,12 +151,12 @@ func ResolveOriginTask(c contract.Context, info *port.SubmitInfo) *dto.TaskError
 // SubmitTask orchestrates the task submission flow:
 // platform detection → validation → model mapping → price calc → billing →
 // request build/send/response → billing adjustment.
-func SubmitTask(c contract.Context, info port.SubmitInfo) (*port.TaskSubmitResult, *dto.TaskError) {
+func SubmitTask(c contract.Context, info SubmitInfo) (*TaskSubmitResult, *dto.TaskError) {
 	// 1. 确定 platform → 创建适配器 → 验证请求
 	platform := c.GetString("platform")
 	if platform == "" {
 		// Try to get from provider
-		provider := port.GetTaskSubmitProviderFunc("")
+		provider := GetTaskSubmitProviderFunc("")
 		if provider != nil {
 			p, a := provider.GetPlatform(c)
 			if p != "" {
@@ -166,7 +165,7 @@ func SubmitTask(c contract.Context, info port.SubmitInfo) (*port.TaskSubmitResul
 			}
 		}
 	}
-	provider := port.GetTaskSubmitProviderFunc(platform)
+	provider := GetTaskSubmitProviderFunc(platform)
 	if provider == nil {
 		return nil, &dto.TaskError{
 			Code:       "invalid_api_platform",
@@ -200,7 +199,7 @@ func SubmitTask(c contract.Context, info port.SubmitInfo) (*port.TaskSubmitResul
 
 	// 3. 预生成公开 task ID（仅首次）
 	if info.PublicTaskID == "" {
-		info.PublicTaskID = model.GenerateTaskID()
+		info.PublicTaskID = GenerateTaskID()
 	}
 
 	// 4. 价格计算：基础模型价格
@@ -293,7 +292,7 @@ func SubmitTask(c contract.Context, info port.SubmitInfo) (*port.TaskSubmitResul
 		}
 	}
 
-	return &port.TaskSubmitResult{
+	return &TaskSubmitResult{
 		UpstreamTaskID: upstreamTaskID,
 		TaskData:       taskData,
 		Platform:       platform,
@@ -302,7 +301,7 @@ func SubmitTask(c contract.Context, info port.SubmitInfo) (*port.TaskSubmitResul
 }
 
 // noteTaskQuotaClamp records quota clamp info on the submit info for logging.
-func noteTaskQuotaClamp(info *port.SubmitInfo, clamp *common.QuotaClamp) {
+func noteTaskQuotaClamp(info *SubmitInfo, clamp *common.QuotaClamp) {
 	if clamp != nil && info.Billing != nil {
 		// The billing session will carry this for logging
 		// Actual logging happens in the controller via billing.SettleBilling
@@ -311,7 +310,7 @@ func noteTaskQuotaClamp(info *port.SubmitInfo, clamp *common.QuotaClamp) {
 
 // recalcQuotaFromRatios 根据 adjustedRatios 重新计算 quota。
 // 公式: baseQuota × ∏(ratio) — 其中 baseQuota 是不含 OtherRatios 的基础额度。
-func recalcQuotaFromRatios(info *port.SubmitInfo, adjustedRatios map[string]float64) (int, bool) {
+func recalcQuotaFromRatios(info *SubmitInfo, adjustedRatios map[string]float64) (int, bool) {
 	baseQuota := info.PriceData.Quota
 	// Undo current OtherRatios to get base
 	for _, v := range info.PriceData.OtherRatios() {

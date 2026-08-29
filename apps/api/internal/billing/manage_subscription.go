@@ -3,6 +3,7 @@ package billing
 import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/usage"
 	"strconv"
@@ -11,14 +12,13 @@ import (
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 	"gorm.io/gorm"
 )
 
 // ---- Shared types ----
 
 type SubscriptionPlanDTO struct {
-	Plan model.SubscriptionPlan `json:"plan"`
+	Plan SubscriptionPlan `json:"plan"`
 }
 
 type BillingPreferenceRequest struct {
@@ -37,7 +37,7 @@ func GetSubscriptionPlans(c contract.Context) {
 		return
 	}
 
-	var plans []model.SubscriptionPlan
+	var plans []SubscriptionPlan
 	if err := dbx.DB.Where("enabled = ?", true).Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -54,19 +54,19 @@ func GetSubscriptionPlans(c contract.Context) {
 
 func GetSubscriptionSelf(c contract.Context) {
 	userId := c.GetInt("id")
-	settingMap, _ := model.GetUserSetting(userId, false)
+	settingMap, _ := identity.GetUserSetting(userId, false)
 	pref := common.NormalizeBillingPreference(settingMap.BillingPreference)
 
 	// Get all subscriptions (including expired)
-	allSubscriptions, err := model.GetAllUserSubscriptions(userId)
+	allSubscriptions, err := GetAllUserSubscriptions(userId)
 	if err != nil {
-		allSubscriptions = []model.SubscriptionSummary{}
+		allSubscriptions = []SubscriptionSummary{}
 	}
 
 	// Get active subscriptions for backward compatibility
-	activeSubscriptions, err := model.GetAllActiveUserSubscriptions(userId)
+	activeSubscriptions, err := GetAllActiveUserSubscriptions(userId)
 	if err != nil {
-		activeSubscriptions = []model.SubscriptionSummary{}
+		activeSubscriptions = []SubscriptionSummary{}
 	}
 
 	common.CtxApiSuccess(c, common.H{
@@ -85,14 +85,14 @@ func UpdateSubscriptionPreference(c contract.Context) {
 	}
 	pref := common.NormalizeBillingPreference(req.BillingPreference)
 
-	user, err := model.GetUserById(userId, true)
+	user, err := identity.GetUserById(userId, true)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
 	current := user.GetSetting()
 	current.BillingPreference = pref
-	if err := model.UpdateUserSetting(user.Id, current); err != nil {
+	if err := identity.UpdateUserSetting(user.Id, current); err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -111,7 +111,7 @@ func SubscriptionRequestBalancePay(c contract.Context) {
 		return
 	}
 
-	if err := model.PurchaseSubscriptionWithBalance(userId, req.PlanId); err != nil {
+	if err := PurchaseSubscriptionWithBalance(userId, req.PlanId); err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -121,7 +121,7 @@ func SubscriptionRequestBalancePay(c contract.Context) {
 // ---- Admin APIs ----
 
 func AdminListSubscriptionPlans(c contract.Context) {
-	var plans []model.SubscriptionPlan
+	var plans []SubscriptionPlan
 	if err := dbx.DB.Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -137,7 +137,7 @@ func AdminListSubscriptionPlans(c contract.Context) {
 }
 
 type AdminUpsertSubscriptionPlanRequest struct {
-	Plan model.SubscriptionPlan `json:"plan"`
+	Plan SubscriptionPlan `json:"plan"`
 }
 
 func AdminCreateSubscriptionPlan(c contract.Context) {
@@ -174,9 +174,9 @@ func AdminCreateSubscriptionPlan(c contract.Context) {
 		req.Plan.AllowWalletOverflow = common.GetPointer(true)
 	}
 	if req.Plan.DurationUnit == "" {
-		req.Plan.DurationUnit = model.SubscriptionDurationMonth
+		req.Plan.DurationUnit = SubscriptionDurationMonth
 	}
-	if req.Plan.DurationValue <= 0 && req.Plan.DurationUnit != model.SubscriptionDurationCustom {
+	if req.Plan.DurationValue <= 0 && req.Plan.DurationUnit != SubscriptionDurationCustom {
 		req.Plan.DurationValue = 1
 	}
 	if req.Plan.MaxPurchasePerUser < 0 {
@@ -201,8 +201,8 @@ func AdminCreateSubscriptionPlan(c contract.Context) {
 			return
 		}
 	}
-	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
-	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
+	req.Plan.QuotaResetPeriod = NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
+	if req.Plan.QuotaResetPeriod == SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.CtxApiErrorMsg(c, "自定义重置周期需大于0秒")
 		return
 	}
@@ -211,7 +211,7 @@ func AdminCreateSubscriptionPlan(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	model.InvalidateSubscriptionPlanCache(req.Plan.Id)
+	InvalidateSubscriptionPlanCache(req.Plan.Id)
 	common.CtxApiSuccess(c, req.Plan)
 }
 
@@ -248,9 +248,9 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 	}
 	req.Plan.Currency = "USD"
 	if req.Plan.DurationUnit == "" {
-		req.Plan.DurationUnit = model.SubscriptionDurationMonth
+		req.Plan.DurationUnit = SubscriptionDurationMonth
 	}
-	if req.Plan.DurationValue <= 0 && req.Plan.DurationUnit != model.SubscriptionDurationCustom {
+	if req.Plan.DurationValue <= 0 && req.Plan.DurationUnit != SubscriptionDurationCustom {
 		req.Plan.DurationValue = 1
 	}
 	if req.Plan.MaxPurchasePerUser < 0 {
@@ -275,8 +275,8 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 			return
 		}
 	}
-	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
-	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
+	req.Plan.QuotaResetPeriod = NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
+	if req.Plan.QuotaResetPeriod == SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.CtxApiErrorMsg(c, "自定义重置周期需大于0秒")
 		return
 	}
@@ -310,7 +310,7 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 		if req.Plan.AllowWalletOverflow != nil {
 			updateMap["allow_wallet_overflow"] = *req.Plan.AllowWalletOverflow
 		}
-		if err := tx.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {
+		if err := tx.Model(&SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {
 			return err
 		}
 		return nil
@@ -319,7 +319,7 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	model.InvalidateSubscriptionPlanCache(id)
+	InvalidateSubscriptionPlanCache(id)
 	common.CtxApiSuccess(c, nil)
 }
 
@@ -342,11 +342,11 @@ func AdminUpdateSubscriptionPlanStatus(c contract.Context) {
 		common.CtxApiErrorMsg(c, "参数错误")
 		return
 	}
-	if err := dbx.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Update("enabled", *req.Enabled).Error; err != nil {
+	if err := dbx.DB.Model(&SubscriptionPlan{}).Where("id = ?", id).Update("enabled", *req.Enabled).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
-	model.InvalidateSubscriptionPlanCache(id)
+	InvalidateSubscriptionPlanCache(id)
 	common.CtxApiSuccess(c, nil)
 }
 
@@ -365,7 +365,7 @@ func AdminBindSubscription(c contract.Context) {
 		common.CtxApiErrorMsg(c, "参数错误")
 		return
 	}
-	msg, err := model.AdminBindSubscriptionRecord(req.UserId, req.PlanId, "")
+	msg, err := AdminBindSubscriptionRecord(req.UserId, req.PlanId, "")
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -385,7 +385,7 @@ func AdminListUserSubscriptions(c contract.Context) {
 		common.CtxApiErrorMsg(c, "无效的用户ID")
 		return
 	}
-	subs, err := model.GetAllUserSubscriptions(userId)
+	subs, err := GetAllUserSubscriptions(userId)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -409,13 +409,13 @@ func resolveAdvanceResetTime(value *bool) bool {
 	return *value
 }
 
-func recordSubscriptionResetUserLogs(result *model.SubscriptionResetResult, adminInfo map[string]interface{}) {
+func recordSubscriptionResetUserLogs(result *SubscriptionResetResult, adminInfo map[string]interface{}) {
 	if result == nil || result.ResetCount == 0 {
 		return
 	}
 	content := fmt.Sprintf("管理员重置订阅套餐 %s（ID: %d）额度", result.PlanTitle, result.PlanId)
 	for _, userId := range result.AffectedUserIds {
-		model.RecordLogWithAdminInfo(userId, model.LogTypeManage, content, adminInfo)
+		usage.RecordLogWithAdminInfo(userId, usage.LogTypeManage, content, adminInfo)
 	}
 }
 
@@ -435,7 +435,7 @@ func AdminCreateUserSubscription(c contract.Context) {
 		common.CtxApiErrorMsg(c, "参数错误")
 		return
 	}
-	msg, err := model.AdminBindSubscriptionRecord(userId, req.PlanId, "")
+	msg, err := AdminBindSubscriptionRecord(userId, req.PlanId, "")
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -463,7 +463,7 @@ func AdminResetUserSubscriptionsByPlan(c contract.Context) {
 		return
 	}
 	advanceResetTime := resolveAdvanceResetTime(req.AdvanceResetTime)
-	result, err := model.AdminResetUserSubscriptionsByPlanRecord(userId, req.PlanId, advanceResetTime)
+	result, err := AdminResetUserSubscriptionsByPlanRecord(userId, req.PlanId, advanceResetTime)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -492,7 +492,7 @@ func AdminResetPlanSubscriptions(c contract.Context) {
 		return
 	}
 	advanceResetTime := resolveAdvanceResetTime(req.AdvanceResetTime)
-	result, err := model.AdminResetPlanSubscriptionsRecord(planId, advanceResetTime)
+	result, err := AdminResetPlanSubscriptionsRecord(planId, advanceResetTime)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -517,7 +517,7 @@ func AdminInvalidateUserSubscription(c contract.Context) {
 		common.CtxApiErrorMsg(c, "无效的订阅ID")
 		return
 	}
-	msg, err := model.AdminInvalidateUserSubscription(subId)
+	msg, err := invalidateUserSubscriptionRecord(subId)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -536,7 +536,7 @@ func AdminDeleteUserSubscription(c contract.Context) {
 		common.CtxApiErrorMsg(c, "无效的订阅ID")
 		return
 	}
-	msg, err := model.AdminDeleteUserSubscription(subId)
+	msg, err := deleteUserSubscriptionRecord(subId)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return

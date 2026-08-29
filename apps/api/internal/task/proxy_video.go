@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	channel "github.com/QuantumNous/new-api/internal/catalog"
 	"io"
 	"net"
 	"net/http"
@@ -15,10 +16,8 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
-	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/model"
 )
 
 // videoProxyError returns a standardized OpenAI-style error response.
@@ -83,13 +82,13 @@ func VideoProxy(c contract.Context) {
 		return
 	}
 
-	if task.Status != model.TaskStatusSuccess {
+	if task.Status != TaskStatusSuccess {
 		videoProxyError(c, http.StatusBadRequest, "invalid_request_error",
 			fmt.Sprintf("Task is not completed yet, current status: %s", task.Status))
 		return
 	}
 
-	channel, err := model.CacheGetChannel(task.ChannelId)
+	channel, err := channel.CacheGetChannel(task.ChannelId)
 	if err != nil {
 		logger.LogError(c.Context(), fmt.Sprintf("Failed to get channel for task %s: %s", taskID, err.Error()))
 		videoProxyError(c, http.StatusInternalServerError, "server_error", "Failed to retrieve channel information")
@@ -121,7 +120,7 @@ func VideoProxy(c contract.Context) {
 		return
 	}
 
-	provider := port.GetTaskProviderFunc(strconv.Itoa(channel.Type))
+	provider := GetTaskProviderFunc(strconv.Itoa(channel.Type))
 	if provider != nil {
 		provider.Init(baseURL, channel.Key)
 	}
@@ -219,7 +218,7 @@ func VideoProxy(c contract.Context) {
 }
 
 // resolveGeminiVideoURL resolves the video URL for a Gemini task using the port provider.
-func resolveGeminiVideoURL(provider port.TaskProviderExec, baseURL, apiKey string, task *model.Task, proxy string) (string, error) {
+func resolveGeminiVideoURL(provider TaskProviderExec, baseURL, apiKey string, task *Task, proxy string) (string, error) {
 	if provider == nil {
 		return "", fmt.Errorf("gemini task provider not found")
 	}
@@ -265,7 +264,7 @@ func resolveGeminiVideoURL(provider port.TaskProviderExec, baseURL, apiKey strin
 	return "", fmt.Errorf("gemini video url not found")
 }
 
-func extractGeminiVideoURLFromTaskData(task *model.Task) string {
+func extractGeminiVideoURLFromTaskData(task *Task) string {
 	if task == nil || len(task.Data) == 0 {
 		return ""
 	}
@@ -345,7 +344,7 @@ func extractGeminiVideoURLFromGeneratedSamples(gvr map[string]any) string {
 }
 
 // resolveVertexVideoURL resolves the video URL for a Vertex AI task using the port provider.
-func resolveVertexVideoURL(provider port.TaskProviderExec, baseURL string, channel *model.Channel, task *model.Task, proxy string) (string, error) {
+func resolveVertexVideoURL(provider TaskProviderExec, baseURL string, channel *channel.Channel, task *Task, proxy string) (string, error) {
 	if channel == nil || task == nil {
 		return "", fmt.Errorf("invalid channel or task")
 	}
@@ -399,7 +398,7 @@ func isTaskProxyContentURL(url string, taskID string) bool {
 	return strings.Contains(url, "/v1/videos/"+taskID+"/content")
 }
 
-func getVertexTaskKey(channel *model.Channel, task *model.Task) string {
+func getVertexTaskKey(channel *channel.Channel, task *Task) string {
 	if task != nil {
 		if key := strings.TrimSpace(task.PrivateData.Key); key != "" {
 			return key
@@ -418,7 +417,7 @@ func getVertexTaskKey(channel *model.Channel, task *model.Task) string {
 	return strings.TrimSpace(channel.Key)
 }
 
-func extractVertexVideoURLFromTaskData(task *model.Task) string {
+func extractVertexVideoURLFromTaskData(task *Task) string {
 	if task == nil || len(task.Data) == 0 {
 		return ""
 	}

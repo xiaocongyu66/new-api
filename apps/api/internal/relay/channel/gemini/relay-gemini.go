@@ -20,7 +20,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 )
 
 func buildUsageFromGeminiMetadata(metadata *dto.GeminiUsageMetadata, fallbackPromptTokens int) dto.Usage {
@@ -50,7 +49,7 @@ func patchGeminiZeroCompletionUsage(c contract.Context, info *relaycommon.RelayI
 	if responseText == "" && imageCount == 0 {
 		return
 	}
-	estimated := service.ResponseText2Usage(c, responseText, info.UpstreamModelName, usage.PromptTokens)
+	estimated := relaycommon.ResponseText2Usage(c, responseText, info.UpstreamModelName, usage.PromptTokens)
 	usage.CompletionTokens = estimated.CompletionTokens
 	if imageCount != 0 && usage.CompletionTokens == 0 {
 		usage.CompletionTokens = imageCount * 1400
@@ -96,7 +95,7 @@ func buildUsageFromGeminiResponse(c contract.Context, info *relaycommon.RelayInf
 		patchGeminiZeroCompletionUsage(c, info, &usage, geminiResponseUsageText(response), geminiResponseInlineImageCount(response))
 		return usage
 	}
-	usage := service.ResponseText2Usage(c, geminiResponseUsageText(response), info.UpstreamModelName, info.GetEstimatePromptTokens())
+	usage := relaycommon.ResponseText2Usage(c, geminiResponseUsageText(response), info.UpstreamModelName, info.GetEstimatePromptTokens())
 	attachEstimatedGeminiBillingUsage(usage)
 	return *usage
 }
@@ -190,7 +189,7 @@ func geminiStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *
 
 	if !hasBillableUsageMetadata {
 		if info.ReceivedResponseCount > 0 {
-			usage = service.ResponseText2Usage(c, responseText.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
+			usage = relaycommon.ResponseText2Usage(c, responseText.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
 		} else {
 			usage = &dto.Usage{}
 		}
@@ -344,7 +343,7 @@ func GeminiChatHandler(c contract.Context, info *relaycommon.RelayInfo, resp *ht
 			)
 		}
 
-		service.ResetStatusCode(newAPIError, c.GetString("status_code_mapping"))
+		relaycommon.ResetStatusCode(newAPIError, c.GetString("status_code_mapping"))
 
 		switch info.RelayFormat {
 		case types.RelayFormatClaude:
@@ -423,7 +422,7 @@ func GeminiEmbeddingHandler(c contract.Context, info *relaycommon.RelayInfo, res
 	// Google has not yet clarified how embedding models will be billed
 	// refer to openai billing method to use input tokens billing
 	// https://platform.openai.com/docs/guides/embeddings#what-are-embeddings
-	usage := service.ResponseText2Usage(c, "", info.UpstreamModelName, info.GetEstimatePromptTokens())
+	usage := relaycommon.ResponseText2Usage(c, "", info.UpstreamModelName, info.GetEstimatePromptTokens())
 	openAIResponse.Usage = *usage
 
 	jsonResponse, jsonErr := common.Marshal(openAIResponse)

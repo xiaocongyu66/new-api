@@ -11,36 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/model"
 )
-
-func GetAllRedemptions(c contract.Context) {
-	pageInfo := common.GetPageQuery(c)
-	redemptions, total, err := model.GetAllRedemptions(pageInfo.GetStartIdx(), pageInfo.GetPageSize())
-	if err != nil {
-		common.CtxApiError(c, err)
-		return
-	}
-	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(redemptions)
-	common.CtxApiSuccess(c, pageInfo)
-	return
-}
-
-func SearchRedemptions(c contract.Context) {
-	keyword := c.Query("keyword")
-	status := c.Query("status")
-	pageInfo := common.GetPageQuery(c)
-	redemptions, total, err := model.SearchRedemptions(keyword, status, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
-	if err != nil {
-		common.CtxApiError(c, err)
-		return
-	}
-	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(redemptions)
-	common.CtxApiSuccess(c, pageInfo)
-	return
-}
 
 func GetRedemption(c contract.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
@@ -48,7 +19,7 @@ func GetRedemption(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	redemption, err := model.GetRedemptionById(id)
+	redemption, err := GetRedemptionById(id)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -67,7 +38,7 @@ func AddRedemption(c contract.Context) {
 		return
 	}
 
-	redemption := model.Redemption{}
+	redemption := Redemption{}
 	err := c.BindJSON(&redemption)
 	if err != nil {
 		common.CtxApiError(c, err)
@@ -92,7 +63,7 @@ func AddRedemption(c contract.Context) {
 	var keys []string
 	for i := 0; i < redemption.Count; i++ {
 		key := common.GetUUID()
-		cleanRedemption := model.Redemption{
+		cleanRedemption := Redemption{
 			UserId:      c.GetInt("id"),
 			Name:        redemption.Name,
 			Key:         key,
@@ -127,7 +98,7 @@ func AddRedemption(c contract.Context) {
 
 func DeleteRedemption(c contract.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
-	err := model.DeleteRedemptionById(id)
+	err := DeleteRedemptionById(id)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -141,13 +112,13 @@ func DeleteRedemption(c contract.Context) {
 
 func UpdateRedemption(c contract.Context) {
 	statusOnly := c.Query("status_only")
-	redemption := model.Redemption{}
+	redemption := Redemption{}
 	err := c.BindJSON(&redemption)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
-	cleanRedemption, err := model.GetRedemptionById(redemption.Id)
+	cleanRedemption, err := GetRedemptionById(redemption.Id)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -197,4 +168,32 @@ func validateExpiredTime(c contract.Context, expired int64) (bool, string) {
 		return false, i18n.TCtx(c, i18n.MsgRedemptionExpireTimeInvalid)
 	}
 	return true, ""
+}
+
+func GetAllRedemptions(c contract.Context) {
+	pageInfo := common.GetPageQuery(c)
+	redemptions, total, err := QueryAllRedemptions(pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	if err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(redemptions)
+	common.CtxApiSuccess(c, pageInfo)
+	return
+}
+
+func SearchRedemptions(c contract.Context) {
+	keyword := c.Query("keyword")
+	status := c.Query("status")
+	pageInfo := common.GetPageQuery(c)
+	redemptions, total, err := QueryRedemptions(keyword, status, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	if err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(redemptions)
+	common.CtxApiSuccess(c, pageInfo)
+	return
 }

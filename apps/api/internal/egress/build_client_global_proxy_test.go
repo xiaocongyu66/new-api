@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,7 +18,7 @@ func setupProxyConfigTestDB(t *testing.T) {
 	previousDB := dbx.DB
 	dbx.DB = db
 	t.Cleanup(func() { dbx.DB = previousDB })
-	require.NoError(t, db.AutoMigrate(&model.Option{}))
+	require.NoError(t, db.AutoMigrate(&optionRow{}))
 	// OptionMap must be non-nil for updateOptionMap.
 	if common.OptionMap == nil {
 		common.OptionMap = make(map[string]string)
@@ -35,7 +34,7 @@ func TestGetGlobalProxyURLWithEncryptedConfig(t *testing.T) {
 	plaintext := `{"enabled":true,"global_proxy_url":"socks5://127.0.0.1:1080"}`
 	encrypted, encErr := common.EncryptAESGCM(plaintext, "proxy-config")
 	require.NoError(t, encErr)
-	require.NoError(t, model.UpdateOption("proxy_config", encrypted))
+	require.NoError(t, dbx.DB.Save(&optionRow{Key: "proxy_config", Value: encrypted}).Error)
 
 	url := getGlobalProxyURL()
 	assert.Equal(t, "socks5://127.0.0.1:1080", url)

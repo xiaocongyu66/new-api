@@ -1,8 +1,8 @@
 package billing
 
 import (
-	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
 	"net/http"
@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/glebarez/sqlite"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
@@ -131,7 +131,7 @@ func TestRequestAmountRejectsTopUpThatWouldOverflowWallet(t *testing.T) {
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}))
+	require.NoError(t, db.AutoMigrate(&identity.User{}))
 	dbx.DB = db
 	t.Cleanup(func() {
 		common.QuotaPerUnit = oldQuotaPerUnit
@@ -143,7 +143,7 @@ func TestRequestAmountRejectsTopUpThatWouldOverflowWallet(t *testing.T) {
 		}
 	})
 
-	require.NoError(t, dbx.DB.Create(&model.User{
+	require.NoError(t, dbx.DB.Create(&identity.User{
 		Id:       42,
 		Username: "topup_capacity_user",
 		Quota:    1_000_000,

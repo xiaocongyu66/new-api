@@ -1,17 +1,17 @@
 package billing
 
 import (
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
 	"math"
-	"math/rand"
+	mathrand "math/rand"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/types"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
@@ -405,7 +405,7 @@ func TestPrepareTieredBillingForSelectedGroupStartsBillingAfterFreeGroup(t *test
 	assert.Equal(t, 0.20, relayInfo.TieredBillingSnapshot.GroupRatio)
 	assert.Equal(t, 100_000, relayInfo.TieredBillingSnapshot.EstimatedQuotaAfterGroup)
 
-	userQuota, err := model.GetUserQuota(userID, false)
+	userQuota, err := identity.GetUserQuota(userID, false)
 	require.NoError(t, err)
 	assert.Equal(t, 400_000, userQuota)
 }
@@ -480,14 +480,14 @@ func TestPrepareTieredBillingForSelectedGroupTopUpArrearsAllowsNegativeBalance(t
 	assert.Equal(t, 100_000, session.GetPreConsumedQuota())
 	assert.Equal(t, 100_000, relayInfo.FinalPreConsumedQuota)
 	assert.Equal(t, 100_000, relayInfo.TieredBillingSnapshot.EstimatedQuotaAfterGroup)
-	userQuota, err := model.GetUserQuota(userID, false)
+	userQuota, err := identity.GetUserQuota(userID, false)
 	require.NoError(t, err)
 	assert.Equal(t, -30_000, userQuota)
 
 	// Settlement still reconciles against the full reservation: actual 80k
 	// refunds the 20k over-reserve, landing at seed - (actual - initial) = -10k.
 	require.NoError(t, session.Settle(80_000))
-	userQuota, err = model.GetUserQuota(userID, false)
+	userQuota, err = identity.GetUserQuota(userID, false)
 	require.NoError(t, err)
 	assert.Equal(t, -10_000, userQuota)
 }
@@ -512,7 +512,7 @@ func TestBillingSessionReserveWalletTopUpDecrementsBalance(t *testing.T) {
 
 	assert.Equal(t, 100_000, session.GetPreConsumedQuota())
 	assert.Equal(t, 100_000, relayInfo.FinalPreConsumedQuota)
-	userQuota, err := model.GetUserQuota(userID, false)
+	userQuota, err := identity.GetUserQuota(userID, false)
 	require.NoError(t, err)
 	assert.Equal(t, 450_000, userQuota)
 }
@@ -946,7 +946,7 @@ func TestBuildTieredTokenParams_Len_TierCondition(t *testing.T) {
 
 const complexTieredExpr = `p <= 200000 ? tier("standard", p * 3 + c * 15 + cr * 0.3 + cc * 3.75 + cc1h * 6 + img * 3 + img_o * 30 + ai * 10 + ao * 40) : tier("long_context", p * 6 + c * 22.5 + cr * 0.6 + cc * 7.5 + cc1h * 12 + img * 6 + img_o * 60 + ai * 20 + ao * 80)`
 
-func randomUsage(rng *rand.Rand) *dto.Usage {
+func randomUsage(rng *mathrand.Rand) *dto.Usage {
 	cacheRead := int(rng.Float64() * 50000)
 	cacheCreate := int(rng.Float64() * 10000)
 	imgIn := int(rng.Float64() * 5000)
@@ -976,7 +976,7 @@ func randomUsage(rng *rand.Rand) *dto.Usage {
 }
 
 func BenchmarkTieredBilling_ComplexExpr(b *testing.B) {
-	rng := rand.New(rand.NewSource(42))
+	rng := mathrand.New(mathrand.NewSource(42))
 	usedVars := price_expression.UsedVars(complexTieredExpr)
 	usages := make([]*dto.Usage, 1000)
 	for i := range usages {
@@ -992,7 +992,7 @@ func BenchmarkTieredBilling_ComplexExpr(b *testing.B) {
 }
 
 func BenchmarkRatioBilling_Equivalent(b *testing.B) {
-	rng := rand.New(rand.NewSource(42))
+	rng := mathrand.New(mathrand.NewSource(42))
 	usages := make([]*dto.Usage, 1000)
 	for i := range usages {
 		usages[i] = randomUsage(rng)
@@ -1009,7 +1009,7 @@ func BenchmarkTieredBilling_Parallel(b *testing.B) {
 	usedVars := price_expression.UsedVars(complexTieredExpr)
 
 	b.RunParallel(func(pb *testing.PB) {
-		rng := rand.New(rand.NewSource(rand.Int63()))
+		rng := mathrand.New(mathrand.NewSource(mathrand.Int63()))
 		for pb.Next() {
 			usage := randomUsage(rng)
 			params := BuildTieredTokenParams(usage, false, usedVars)
@@ -1020,7 +1020,7 @@ func BenchmarkTieredBilling_Parallel(b *testing.B) {
 
 func BenchmarkRatioBilling_Parallel(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
-		rng := rand.New(rand.NewSource(rand.Int63()))
+		rng := mathrand.New(mathrand.NewSource(mathrand.Int63()))
 		for pb.Next() {
 			usage := randomUsage(rng)
 			ratioQuota(usage, false, 1.5, 5.0, 0.1, 1.0, 1.5)

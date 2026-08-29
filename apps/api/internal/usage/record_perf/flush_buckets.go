@@ -7,7 +7,6 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	record_perf_config "github.com/QuantumNous/new-api/internal/usage/record_perf_config"
-	"github.com/QuantumNous/new-api/model"
 )
 
 func flushLoop() {
@@ -37,7 +36,7 @@ func flushCompletedBuckets() {
 			deleteOldEmptyBucket(k, key)
 			return true
 		}
-		err := UpsertMetricFn(&model.PerfMetric{
+		err := UpsertMetricFn(&PerfMetric{
 			ModelName:      k.model,
 			Group:          k.group,
 			BucketTs:       k.bucketTs,

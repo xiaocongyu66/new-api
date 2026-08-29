@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"context"
+	reasoning "github.com/QuantumNous/new-api/internal/billing"
 
 	"errors"
 	"fmt"
@@ -9,7 +10,6 @@ import (
 	"net/http"
 	"strings"
 
-	reasoning "github.com/QuantumNous/new-api/internal/billing"
 	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
 	"github.com/QuantumNous/new-api/internal/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/egress"
+	"github.com/QuantumNous/new-api/internal/task"
 	"io"
 	"net/http"
 	"strings"
@@ -14,7 +15,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/channel"
 	taskcommon "github.com/QuantumNous/new-api/internal/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
@@ -42,18 +42,18 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c contract.Context, info *rela
 	var sunoRequest *dto.SunoSubmitReq
 	err := common.UnmarshalBodyReusable(c, &sunoRequest)
 	if err != nil {
-		taskErr = service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+		taskErr = task.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 		return
 	}
 	err = actionValidate(c, sunoRequest, action)
 	if err != nil {
-		taskErr = service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+		taskErr = task.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 		return
 	}
 
 	//if sunoRequest.ContinueClipId != "" {
 	//	if sunoRequest.TaskID == "" {
-	//		taskErr = service.TaskErrorWrapperLocal(fmt.Errorf("task id is empty"), "invalid_request", http.StatusBadRequest)
+	//		taskErr = task.TaskErrorWrapperLocal(fmt.Errorf("task id is empty"), "invalid_request", http.StatusBadRequest)
 	//		return
 	//	}
 	//	info.OriginTaskID = sunoRequest.TaskID
@@ -96,17 +96,17 @@ func (a *TaskAdaptor) DoRequest(c contract.Context, info *relaycommon.RelayInfo,
 func (a *TaskAdaptor) DoResponse(c contract.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *dto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		taskErr = service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
+		taskErr = task.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
 		return
 	}
 	var sunoResponse dto.TaskResponse[string]
 	err = common.Unmarshal(responseBody, &sunoResponse)
 	if err != nil {
-		taskErr = service.TaskErrorWrapper(err, "unmarshal_response_body_failed", http.StatusInternalServerError)
+		taskErr = task.TaskErrorWrapper(err, "unmarshal_response_body_failed", http.StatusInternalServerError)
 		return
 	}
 	if !sunoResponse.IsSuccess() {
-		taskErr = service.TaskErrorWrapper(fmt.Errorf("%s", sunoResponse.Message), sunoResponse.Code, http.StatusInternalServerError)
+		taskErr = task.TaskErrorWrapper(fmt.Errorf("%s", sunoResponse.Message), sunoResponse.Code, http.StatusInternalServerError)
 		return
 	}
 

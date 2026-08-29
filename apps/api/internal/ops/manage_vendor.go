@@ -1,12 +1,12 @@
 package ops
 
 import (
+	channel "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 )
 
 // ---- Vendor Use Cases ----
@@ -14,13 +14,13 @@ import (
 // ListVendors returns paginated vendor list.
 func ListVendors(c contract.Context) {
 	pageInfo := common.GetPageQuery(c)
-	vendors, err := model.GetAllVendors(pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	vendors, err := channel.GetAllVendors(pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
 	var total int64
-	dbx.DB.Model(&model.Vendor{}).Count(&total)
+	dbx.DB.Model(&channel.Vendor{}).Count(&total)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(vendors)
 	common.CtxApiSuccess(c, pageInfo)
@@ -30,7 +30,7 @@ func ListVendors(c contract.Context) {
 func SearchVendors(c contract.Context) {
 	keyword := c.Query("keyword")
 	pageInfo := common.GetPageQuery(c)
-	vendors, total, err := model.SearchVendors(keyword, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	vendors, total, err := channel.SearchVendors(keyword, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -48,7 +48,7 @@ func GetVendor(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	v, err := model.GetVendorByID(id)
+	v, err := channel.GetVendorByID(id)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -58,7 +58,7 @@ func GetVendor(c contract.Context) {
 
 // CreateVendor creates a new vendor.
 func CreateVendor(c contract.Context) {
-	var v model.Vendor
+	var v channel.Vendor
 	if err := c.BindJSON(&v); err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -67,7 +67,7 @@ func CreateVendor(c contract.Context) {
 		common.CtxApiErrorMsg(c, "供应商名称不能为空")
 		return
 	}
-	if dup, err := model.IsVendorNameDuplicated(0, v.Name); err != nil {
+	if dup, err := channel.IsVendorNameDuplicated(0, v.Name); err != nil {
 		common.CtxApiError(c, err)
 		return
 	} else if dup {
@@ -84,7 +84,7 @@ func CreateVendor(c contract.Context) {
 
 // UpdateVendor updates an existing vendor.
 func UpdateVendor(c contract.Context) {
-	var v model.Vendor
+	var v channel.Vendor
 	if err := c.BindJSON(&v); err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -93,7 +93,7 @@ func UpdateVendor(c contract.Context) {
 		common.CtxApiErrorMsg(c, "缺少供应商 ID")
 		return
 	}
-	if dup, err := model.IsVendorNameDuplicated(v.Id, v.Name); err != nil {
+	if dup, err := channel.IsVendorNameDuplicated(v.Id, v.Name); err != nil {
 		common.CtxApiError(c, err)
 		return
 	} else if dup {
@@ -116,7 +116,7 @@ func DeleteVendor(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	var existing model.Vendor
+	var existing channel.Vendor
 	if err := dbx.DB.First(&existing, id).Error; err != nil {
 		common.CtxApiError(c, err)
 		return

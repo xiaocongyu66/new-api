@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	channel "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity"
+	"github.com/QuantumNous/new-api/internal/usage"
 	"io"
 	"net/http"
 	"sync"
@@ -15,8 +18,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	taskdto "github.com/QuantumNous/new-api/internal/dto"
-	"github.com/QuantumNous/new-api/internal/gateway/port"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 
 	"github.com/bytedance/gopkg/util/gopool"
@@ -25,7 +26,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Test adaptors implementing port.TaskProviderExec
+// Test adaptors implementing TaskProviderExec
 // ---------------------------------------------------------------------------
 
 type taskPollingFetchProvider struct {
@@ -86,21 +87,21 @@ func (p *taskPollingFetchProvider) FetchTask(baseURL, key string, body map[strin
 	}, nil
 }
 
-func (p *taskPollingFetchProvider) ParseTaskResult(body []byte) (*port.TaskResult, error) {
-	return &port.TaskResult{
+func (p *taskPollingFetchProvider) ParseTaskResult(body []byte) (*TaskResult, error) {
+	return &TaskResult{
 		TaskID:           "",
-		Status:           string(model.TaskStatusInProgress),
+		Status:           string(TaskStatusInProgress),
 		Progress:         "50%",
 		CompletionTokens: 0,
 		TotalTokens:      0,
 	}, nil
 }
 
-func (p *taskPollingFetchProvider) AdjustBillingOnComplete(task *model.Task, taskResult *port.TaskResult) int {
+func (p *taskPollingFetchProvider) AdjustBillingOnComplete(task *Task, taskResult *TaskResult) int {
 	return 0
 }
 
-func (p *taskPollingFetchProvider) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
+func (p *taskPollingFetchProvider) ConvertToOpenAIVideo(task *Task) ([]byte, error) {
 	return nil, nil
 }
 
@@ -130,7 +131,7 @@ func (p *sunoFailurePollingProvider) FetchTask(baseURL, key string, body map[str
 	for _, taskID := range ids {
 		items = append(items, taskdto.SunoDataResponse{
 			TaskID:     taskID,
-			Status:     string(model.TaskStatusFailure),
+			Status:     string(TaskStatusFailure),
 			FailReason: p.failReason,
 			FinishTime: time.Now().Unix(),
 		})
@@ -149,16 +150,16 @@ func (p *sunoFailurePollingProvider) FetchTask(baseURL, key string, body map[str
 	}, nil
 }
 
-func (p *sunoFailurePollingProvider) ParseTaskResult(body []byte) (*port.TaskResult, error) {
+func (p *sunoFailurePollingProvider) ParseTaskResult(body []byte) (*TaskResult, error) {
 	// Not used for Suno bulk path
 	return nil, nil
 }
 
-func (p *sunoFailurePollingProvider) AdjustBillingOnComplete(task *model.Task, taskResult *port.TaskResult) int {
+func (p *sunoFailurePollingProvider) AdjustBillingOnComplete(task *Task, taskResult *TaskResult) int {
 	return 0
 }
 
-func (p *sunoFailurePollingProvider) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
+func (p *sunoFailurePollingProvider) ConvertToOpenAIVideo(task *Task) ([]byte, error) {
 	return nil, nil
 }
 
@@ -184,13 +185,13 @@ func truncate(t *testing.T) {
 
 func seedUser(t *testing.T, id int, quota int) {
 	t.Helper()
-	user := &model.User{Id: id, Username: "test_user", Quota: quota, Status: common.UserStatusEnabled}
+	user := &identity.User{Id: id, Username: "test_user", Quota: quota, Status: common.UserStatusEnabled}
 	require.NoError(t, dbx.DB.Create(user).Error)
 }
 
 func seedToken(t *testing.T, id int, userId int, key string, remainQuota int) {
 	t.Helper()
-	token := &model.Token{
+	token := &identity.Token{
 		Id:          id,
 		UserId:      userId,
 		Key:         key,
@@ -203,7 +204,7 @@ func seedToken(t *testing.T, id int, userId int, key string, remainQuota int) {
 }
 func seedChannel(t *testing.T, id int, disableSleep bool) {
 	t.Helper()
-	ch := &model.Channel{
+	ch := &channel.Channel{
 		Id:     id,
 		Type:   constant.ChannelTypeKling,
 		Name:   "polling_channel",
@@ -216,25 +217,25 @@ func seedChannel(t *testing.T, id int, disableSleep bool) {
 	require.NoError(t, dbx.DB.Create(ch).Error)
 }
 
-func makeTask(userId, channelId, quota, tokenId int, billingSource string, subscriptionId int) *model.Task {
-	return &model.Task{
+func makeTask(userId, channelId, quota, tokenId int, billingSource string, subscriptionId int) *Task {
+	return &Task{
 		TaskID:    "task_" + time.Now().Format("150405.000"),
 		UserId:    userId,
 		ChannelId: channelId,
 		Quota:     quota,
-		Status:    model.TaskStatus(model.TaskStatusInProgress),
+		Status:    TaskStatus(TaskStatusInProgress),
 		Group:     "default",
 		Data:      json.RawMessage(`{}`),
 		CreatedAt: time.Now().Unix(),
 		UpdatedAt: time.Now().Unix(),
-		Properties: model.Properties{
+		Properties: Properties{
 			OriginModelName: "test-model",
 		},
-		PrivateData: model.TaskPrivateData{
+		PrivateData: TaskPrivateData{
 			BillingSource:  billingSource,
 			SubscriptionId: subscriptionId,
 			TokenId:        tokenId,
-			BillingContext: &model.TaskBillingContext{
+			BillingContext: &TaskBillingContext{
 				ModelPrice:      0.02,
 				GroupRatio:      1.0,
 				OriginModelName: "test-model",
@@ -243,12 +244,12 @@ func makeTask(userId, channelId, quota, tokenId int, billingSource string, subsc
 	}
 }
 
-func seedPollingTask(t *testing.T, channelID int, publicID string, upstreamID string) *model.Task {
+func seedPollingTask(t *testing.T, channelID int, publicID string, upstreamID string) *Task {
 	t.Helper()
 	task := makeTask(1, channelID, 100, 0, settlecore.BillingSourceWallet, 0)
 	task.TaskID = publicID
 	task.Platform = constant.TaskPlatform("kling")
-	task.Status = model.TaskStatusInProgress
+	task.Status = TaskStatusInProgress
 	task.Progress = "50%"
 	task.SubmitTime = time.Now().Unix()
 	task.PrivateData.UpstreamTaskID = upstreamID
@@ -258,14 +259,14 @@ func seedPollingTask(t *testing.T, channelID int, publicID string, upstreamID st
 
 func getUserQuota(t *testing.T, id int) int {
 	t.Helper()
-	var user model.User
+	var user identity.User
 	require.NoError(t, dbx.DB.Select("quota").Where("id = ?", id).First(&user).Error)
 	return user.Quota
 }
 
 func getTokenRemainQuota(t *testing.T, id int) int {
 	t.Helper()
-	var token model.Token
+	var token identity.Token
 	require.NoError(t, dbx.DB.Select("remain_quota").Where("id = ?", id).First(&token).Error)
 	return token.RemainQuota
 }
@@ -273,7 +274,7 @@ func getTokenRemainQuota(t *testing.T, id int) int {
 func countLogs(t *testing.T) int64 {
 	t.Helper()
 	var count int64
-	dbx.LogDB.Model(&model.Log{}).Count(&count)
+	dbx.LogDB.Model(&usage.Log{}).Count(&count)
 	return count
 }
 
@@ -294,11 +295,11 @@ func TestUpdateVideoTasksDefaultSleepWaitsBetweenTasks(t *testing.T) {
 	provider := &taskPollingFetchProvider{
 		fetched: make(chan string, 2),
 	}
-	previousFactory := port.GetTaskProviderFunc
-	port.GetTaskProviderFunc = func(platform string) port.TaskProviderExec {
+	previousFactory := GetTaskProviderFunc
+	GetTaskProviderFunc = func(platform string) TaskProviderExec {
 		return provider
 	}
-	t.Cleanup(func() { port.GetTaskProviderFunc = previousFactory })
+	t.Cleanup(func() { GetTaskProviderFunc = previousFactory })
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
@@ -308,7 +309,7 @@ func TestUpdateVideoTasksDefaultSleepWaitsBetweenTasks(t *testing.T) {
 			first.GetUpstreamTaskID(),
 			second.GetUpstreamTaskID(),
 		},
-	}, map[string]*model.Task{
+	}, map[string]*Task{
 		first.GetUpstreamTaskID():  first,
 		second.GetUpstreamTaskID(): second,
 	})
@@ -328,11 +329,11 @@ func TestUpdateVideoTasksCanSkipPollingSleepPerChannel(t *testing.T) {
 	provider := &taskPollingFetchProvider{
 		fetched: make(chan string, 2),
 	}
-	previousFactory := port.GetTaskProviderFunc
-	port.GetTaskProviderFunc = func(platform string) port.TaskProviderExec {
+	previousFactory := GetTaskProviderFunc
+	GetTaskProviderFunc = func(platform string) TaskProviderExec {
 		return provider
 	}
-	t.Cleanup(func() { port.GetTaskProviderFunc = previousFactory })
+	t.Cleanup(func() { GetTaskProviderFunc = previousFactory })
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
@@ -342,7 +343,7 @@ func TestUpdateVideoTasksCanSkipPollingSleepPerChannel(t *testing.T) {
 			first.GetUpstreamTaskID(),
 			second.GetUpstreamTaskID(),
 		},
-	}, map[string]*model.Task{
+	}, map[string]*Task{
 		first.GetUpstreamTaskID():  first,
 		second.GetUpstreamTaskID(): second,
 	})
@@ -367,11 +368,11 @@ func TestUpdateVideoTasksDefaultSleepDoesNotBlockOtherChannels(t *testing.T) {
 	provider := &taskPollingFetchProvider{
 		fetched: make(chan string, 4),
 	}
-	previousFactory := port.GetTaskProviderFunc
-	port.GetTaskProviderFunc = func(platform string) port.TaskProviderExec {
+	previousFactory := GetTaskProviderFunc
+	GetTaskProviderFunc = func(platform string) TaskProviderExec {
 		return provider
 	}
-	t.Cleanup(func() { port.GetTaskProviderFunc = previousFactory })
+	t.Cleanup(func() { GetTaskProviderFunc = previousFactory })
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -385,7 +386,7 @@ func TestUpdateVideoTasksDefaultSleepDoesNotBlockOtherChannels(t *testing.T) {
 			secondChannelFirst.GetUpstreamTaskID(),
 			secondChannelSecond.GetUpstreamTaskID(),
 		},
-	}, map[string]*model.Task{
+	}, map[string]*Task{
 		firstChannelFirst.GetUpstreamTaskID():   firstChannelFirst,
 		firstChannelSecond.GetUpstreamTaskID():  firstChannelSecond,
 		secondChannelFirst.GetUpstreamTaskID():  secondChannelFirst,
@@ -420,11 +421,11 @@ func TestUpdateVideoTasksSlowChannelDoesNotBlockOtherChannels(t *testing.T) {
 		})
 	}
 	t.Cleanup(releaseBlockedTask)
-	previousFactory := port.GetTaskProviderFunc
-	port.GetTaskProviderFunc = func(platform string) port.TaskProviderExec {
+	previousFactory := GetTaskProviderFunc
+	GetTaskProviderFunc = func(platform string) TaskProviderExec {
 		return provider
 	}
-	t.Cleanup(func() { port.GetTaskProviderFunc = previousFactory })
+	t.Cleanup(func() { GetTaskProviderFunc = previousFactory })
 
 	errCh := make(chan error, 1)
 	gopool.Go(func() {
@@ -436,7 +437,7 @@ func TestUpdateVideoTasksSlowChannelDoesNotBlockOtherChannels(t *testing.T) {
 				fastFirst.GetUpstreamTaskID(),
 				fastSecond.GetUpstreamTaskID(),
 			},
-		}, map[string]*model.Task{
+		}, map[string]*Task{
 			slowTask.GetUpstreamTaskID():   slowTask,
 			fastFirst.GetUpstreamTaskID():  fastFirst,
 			fastSecond.GetUpstreamTaskID(): fastSecond,
@@ -482,11 +483,11 @@ func TestUpdateVideoTasksMixedChannelSleepSettings(t *testing.T) {
 	provider := &taskPollingFetchProvider{
 		fetched: make(chan string, 3),
 	}
-	previousFactory := port.GetTaskProviderFunc
-	port.GetTaskProviderFunc = func(platform string) port.TaskProviderExec {
+	previousFactory := GetTaskProviderFunc
+	GetTaskProviderFunc = func(platform string) TaskProviderExec {
 		return provider
 	}
-	t.Cleanup(func() { port.GetTaskProviderFunc = previousFactory })
+	t.Cleanup(func() { GetTaskProviderFunc = previousFactory })
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -499,7 +500,7 @@ func TestUpdateVideoTasksMixedChannelSleepSettings(t *testing.T) {
 			sleepEnabledTask1.GetUpstreamTaskID(),
 			sleepEnabledTask2.GetUpstreamTaskID(),
 		},
-	}, map[string]*model.Task{
+	}, map[string]*Task{
 		sleepDisabledTask.GetUpstreamTaskID(): sleepDisabledTask,
 		sleepEnabledTask1.GetUpstreamTaskID(): sleepEnabledTask1,
 		sleepEnabledTask2.GetUpstreamTaskID(): sleepEnabledTask2,
@@ -519,7 +520,7 @@ func TestUpdateSunoTasksStalePollsRefundExactlyOnce(t *testing.T) {
 	seedUser(t, userID, initialUserQuota)
 	seedToken(t, tokenID, userID, "sk-suno-refund-once", initialTokenQuota)
 	baseURL := "https://suno.invalid"
-	require.NoError(t, dbx.DB.Create(&model.Channel{
+	require.NoError(t, dbx.DB.Create(&channel.Channel{
 		Id:      channelID,
 		Type:    constant.ChannelTypeSunoAPI,
 		Name:    "suno_refund_once",
@@ -531,34 +532,34 @@ func TestUpdateSunoTasksStalePollsRefundExactlyOnce(t *testing.T) {
 	task := makeTask(userID, channelID, taskQuota, tokenID, settlecore.BillingSourceWallet, 0)
 	task.TaskID = publicTaskID
 	task.Platform = constant.TaskPlatformSuno
-	task.Status = model.TaskStatusInProgress
+	task.Status = TaskStatusInProgress
 	task.Progress = "50%"
 	task.SubmitTime = time.Now().Unix()
 	task.PrivateData.UpstreamTaskID = upstreamTaskID
 	require.NoError(t, dbx.DB.Create(task).Error)
 
-	var firstPollTask model.Task
-	var staleSecondPollTask model.Task
+	var firstPollTask Task
+	var staleSecondPollTask Task
 	require.NoError(t, dbx.DB.First(&firstPollTask, task.ID).Error)
 	require.NoError(t, dbx.DB.First(&staleSecondPollTask, task.ID).Error)
 
 	provider := &sunoFailurePollingProvider{failReason: "upstream failed"}
-	previousFactory := port.GetTaskProviderFunc
-	port.GetTaskProviderFunc = func(platform string) port.TaskProviderExec {
+	previousFactory := GetTaskProviderFunc
+	GetTaskProviderFunc = func(platform string) TaskProviderExec {
 		return provider
 	}
-	t.Cleanup(func() { port.GetTaskProviderFunc = previousFactory })
+	t.Cleanup(func() { GetTaskProviderFunc = previousFactory })
 
-	require.NoError(t, updateSunoTasksChannel(context.Background(), channelID, []string{upstreamTaskID}, map[string]*model.Task{
+	require.NoError(t, updateSunoTasksChannel(context.Background(), channelID, []string{upstreamTaskID}, map[string]*Task{
 		upstreamTaskID: &firstPollTask,
 	}))
-	require.NoError(t, updateSunoTasksChannel(context.Background(), channelID, []string{upstreamTaskID}, map[string]*model.Task{
+	require.NoError(t, updateSunoTasksChannel(context.Background(), channelID, []string{upstreamTaskID}, map[string]*Task{
 		upstreamTaskID: &staleSecondPollTask,
 	}))
 
-	var reloaded model.Task
+	var reloaded Task
 	require.NoError(t, dbx.DB.First(&reloaded, task.ID).Error)
-	assert.EqualValues(t, model.TaskStatusFailure, reloaded.Status)
+	assert.EqualValues(t, TaskStatusFailure, reloaded.Status)
 	assert.Zero(t, reloaded.Quota)
 	assert.Equal(t, initialUserQuota+taskQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota+taskQuota, getTokenRemainQuota(t, tokenID))
@@ -573,7 +574,7 @@ func TestRunTaskPollingOnceDoesNotRefundHistoricalFailedTask(t *testing.T) {
 
 	legacyTask := makeTask(userID, 0, taskQuota, 0, settlecore.BillingSourceWallet, 0)
 	legacyTask.TaskID = "historical_failed_task"
-	legacyTask.Status = model.TaskStatusFailure
+	legacyTask.Status = TaskStatusFailure
 	legacyTask.Progress = "100%"
 	legacyTask.FinishTime = 1771718399
 	legacyTask.FailReason = "old failure"
@@ -586,9 +587,9 @@ func TestRunTaskPollingOnceDoesNotRefundHistoricalFailedTask(t *testing.T) {
 	summary := RunTaskPollingOnce(context.Background(), nil)
 	require.Equal(t, 0, summary.NullTasksFailed)
 
-	var reloadedLegacy model.Task
+	var reloadedLegacy Task
 	require.NoError(t, dbx.DB.First(&reloadedLegacy, legacyTask.ID).Error)
-	assert.EqualValues(t, model.TaskStatusFailure, reloadedLegacy.Status)
+	assert.EqualValues(t, TaskStatusFailure, reloadedLegacy.Status)
 	assert.Equal(t, initialQuota, getUserQuota(t, userID))
 }
 
@@ -621,12 +622,12 @@ func TestSweepTimedOutTasksHonorsRefundRolloutBoundary(t *testing.T) {
 
 	sweepTimedOutTasks(context.Background())
 
-	var reloadedLegacy model.Task
-	var reloadedModern model.Task
+	var reloadedLegacy Task
+	var reloadedModern Task
 	require.NoError(t, dbx.DB.First(&reloadedLegacy, legacyTask.ID).Error)
 	require.NoError(t, dbx.DB.First(&reloadedModern, modernTask.ID).Error)
-	assert.EqualValues(t, model.TaskStatusFailure, reloadedLegacy.Status)
-	assert.EqualValues(t, model.TaskStatusFailure, reloadedModern.Status)
+	assert.EqualValues(t, TaskStatusFailure, reloadedLegacy.Status)
+	assert.EqualValues(t, TaskStatusFailure, reloadedModern.Status)
 	assert.Zero(t, reloadedLegacy.Quota)
 	assert.Zero(t, reloadedModern.Quota)
 	assert.Contains(t, reloadedLegacy.FailReason, "旧系统遗留任务")

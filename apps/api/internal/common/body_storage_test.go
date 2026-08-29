@@ -1,6 +1,7 @@
-package common
+package common_test
 
 import (
+	common "github.com/QuantumNous/new-api/internal/common"
 	"io"
 	"net/http"
 	"testing"
@@ -11,11 +12,11 @@ import (
 
 func TestNewReplayableBodyReaderKeepsStorageLifecycleWithCaller(t *testing.T) {
 	payload := []byte(`{"model":"test-model","input":"hello"}`)
-	storage, err := CreateBodyStorage(payload)
+	storage, err := common.CreateBodyStorage(payload)
 	require.NoError(t, err)
 	defer storage.Close()
 
-	body := NewReplayableBodyReader(storage)
+	body := common.NewReplayableBodyReader(storage)
 	assert.EqualValues(t, len(payload), body.Size())
 	_, exposesCloser := any(body).(io.Closer)
 	assert.False(t, exposesCloser, "the request body must not expose the storage closer")
@@ -33,5 +34,5 @@ func TestNewReplayableBodyReaderKeepsStorageLifecycleWithCaller(t *testing.T) {
 
 	require.NoError(t, storage.Close())
 	_, err = body.NewReader()
-	require.ErrorIs(t, err, ErrStorageClosed)
+	require.ErrorIs(t, err, common.ErrStorageClosed)
 }

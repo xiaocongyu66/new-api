@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 	"gorm.io/gorm"
 )
 
@@ -30,7 +29,7 @@ func GetChannelPollingLock(channelId int) *sync.Mutex {
 // This is optional and can be called periodically to prevent memory leaks.
 func CleanupChannelPollingLocks() {
 	var activeChannelIds []int
-	dbx.DB.Model(&model.Channel{}).Pluck("id", &activeChannelIds)
+	dbx.DB.Model(&Channel{}).Pluck("id", &activeChannelIds)
 
 	activeChannelSet := make(map[int]bool)
 	for _, id := range activeChannelIds {
@@ -50,8 +49,8 @@ func CleanupChannelPollingLocks() {
 // model package so model-internal callers (GetNextEnabledKey, legacy
 // UpdateChannelStatus fallback) can delegate without importing this package.
 func init() {
-	model.RegisterPollingLockFunc(GetChannelPollingLock)
-	model.RegisterUpdateChannelStatusFunc(UpdateChannelStatus)
+	RegisterPollingLockFunc(GetChannelPollingLock)
+	RegisterUpdateChannelStatusFunc(UpdateChannelStatus)
 }
 
 // UpdateChannelStatus updates the status of a channel.
@@ -79,18 +78,18 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 	// channel row as the source of truth so a rolled-back transaction never
 	// poisons the in-memory status.
 	if common.MemoryCacheEnabled {
-		committed, loadErr := model.GetChannelById(channelId, true)
+		committed, loadErr := GetChannelById(channelId, true)
 		if loadErr != nil || committed == nil {
 			return true
 		}
 		if committed.ChannelInfo.IsMultiKey {
-			model.CacheUpdateChannelStatus(channelId, committed.Status)
+			CacheUpdateChannelStatus(channelId, committed.Status)
 		} else {
 			if committed.Status == status {
 				// Non-multi-key path requested a specific status; reflect it.
-				model.CacheUpdateChannelStatus(channelId, status)
+				CacheUpdateChannelStatus(channelId, status)
 			} else {
-				model.CacheUpdateChannelStatus(channelId, committed.Status)
+				CacheUpdateChannelStatus(channelId, committed.Status)
 			}
 		}
 	}
@@ -103,7 +102,7 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 // the requested status (no-op), and (true, nil) after a successful commit.
 // The caller owns cache refresh.
 func updateChannelStatusWithTx(_ *gorm.DB, channelId int, usingKey string, status int, reason string) (bool, error) {
-	channel, err := model.GetChannelById(channelId, true)
+	channel, err := GetChannelById(channelId, true)
 	if err != nil || channel == nil {
 		return false, err
 	}
@@ -118,7 +117,7 @@ func updateChannelStatusWithTx(_ *gorm.DB, channelId int, usingKey string, statu
 	shouldUpdateAbilities := false
 	if channel.ChannelInfo.IsMultiKey {
 		beforeStatus := channel.Status
-		model.HandlerMultiKeyUpdate(channel, usingKey, status, reason)
+		HandlerMultiKeyUpdate(channel, usingKey, status, reason)
 		if beforeStatus != channel.Status {
 			shouldUpdateAbilities = true
 		}
@@ -131,13 +130,13 @@ func updateChannelStatusWithTx(_ *gorm.DB, channelId int, usingKey string, statu
 		shouldUpdateAbilities = true
 	}
 
-	_, mutateErr := model.MutateGatewayRouting(func(tx *gorm.DB) error {
+	_, mutateErr := MutateGatewayRouting(func(tx *gorm.DB) error {
 		if err := channel.SaveStatusStateWithTx(tx); err != nil {
 			return err
 		}
 		if shouldUpdateAbilities {
 			enabled := channel.Status == common.ChannelStatusEnabled
-			if err := model.UpdateAbilityStatusWithTx(tx, channelId, enabled); err != nil {
+			if err := UpdateAbilityStatusWithTx(tx, channelId, enabled); err != nil {
 				return err
 			}
 		}

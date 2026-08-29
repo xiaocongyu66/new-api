@@ -123,7 +123,7 @@ func GetSessionAuthIdentity(c contract.Context) (authtoken.AuthIdentity, bool) {
 	return authtoken.ReadSessionAuthIdentity(c)
 }
 
-func authenticateDashboardRequest(c contract.Context) (*model.UserBase, authtoken.AuthIdentity, bool, error) {
+func authenticateDashboardRequest(c contract.Context) (*identity.UserBase, authtoken.AuthIdentity, bool, error) {
 	user, authID, credentialKind, err := classifyDashboardCredential(c)
 	if err != nil {
 		return nil, authtoken.AuthIdentity{}, credentialKind == dashboardCredentialPAT, err
@@ -134,7 +134,7 @@ func authenticateDashboardRequest(c contract.Context) (*model.UserBase, authtoke
 	return user, authID, credentialKind == dashboardCredentialPAT, nil
 }
 
-func classifyDashboardCredential(c contract.Context) (*model.UserBase, authtoken.AuthIdentity, dashboardCredentialKind, error) {
+func classifyDashboardCredential(c contract.Context) (*identity.UserBase, authtoken.AuthIdentity, dashboardCredentialKind, error) {
 	raw, ok := authorizationToken(c.Header("Authorization"))
 	if !ok {
 		return nil, authtoken.AuthIdentity{}, dashboardCredentialUnmatched, nil
@@ -150,14 +150,14 @@ func classifyDashboardCredential(c contract.Context) (*model.UserBase, authtoken
 		}
 		return user, authID, dashboardCredentialInternal, nil
 	}
-	patUser, err := model.ValidateAccessToken(raw)
+	patUser, err := identity.ValidateAccessToken(raw)
 	if err != nil {
 		return nil, authtoken.AuthIdentity{}, dashboardCredentialPAT, err
 	}
 	if patUser == nil || patUser.Id <= 0 {
 		return nil, authtoken.AuthIdentity{}, dashboardCredentialUnmatched, nil
 	}
-	user, err := model.GetUserCache(patUser.Id)
+	user, err := identity.GetUserCache(patUser.Id)
 	if err != nil {
 		return nil, authtoken.AuthIdentity{}, dashboardCredentialPAT, err
 	}
@@ -170,7 +170,7 @@ func authorizationToken(header string) (string, bool) {
 	return ParseBearerCredential(header)
 }
 
-func setDashboardAuthContext(c contract.Context, user *model.UserBase, authID authtoken.AuthIdentity, useAccessToken bool) {
+func setDashboardAuthContext(c contract.Context, user *identity.UserBase, authID authtoken.AuthIdentity, useAccessToken bool) {
 	c.SetHeader("Auth-Version", "864b7076dbcd0a3c01b5520316720ebf")
 	c.Set("username", user.Username)
 	c.Set("role", user.Role)
@@ -273,7 +273,7 @@ func TokenAuthReadOnly() func(c contract.Context) {
 		parts := strings.Split(key, "-")
 		key = parts[0]
 
-		token, err := model.GetTokenByKey(key, false)
+		token, err := identity.GetTokenByKey(key, false)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				_ = c.JSON(http.StatusUnauthorized, common.H{
@@ -302,7 +302,7 @@ func TokenAuthReadOnly() func(c contract.Context) {
 			return
 		}
 
-		userCache, err := model.GetUserCache(token.UserId)
+		userCache, err := identity.GetUserCache(token.UserId)
 		if err != nil {
 			common.SysLog(fmt.Sprintf("TokenAuthReadOnly GetUserCache error for user %d: %v", token.UserId, err))
 			_ = c.JSON(http.StatusInternalServerError, common.H{
@@ -384,7 +384,7 @@ func TokenAuth() func(c contract.Context) {
 			parts = strings.Split(key, "-")
 			key = parts[0]
 		}
-		token, err := model.ValidateUserToken(key)
+		token, err := identity.ValidateUserToken(key)
 		if token != nil {
 			id := c.GetInt("id")
 			if id == 0 {
@@ -419,7 +419,7 @@ func TokenAuth() func(c contract.Context) {
 			logger.LogDebug(c.Context(), "Client IP %s passed the token IP restrictions check", clientIp)
 		}
 
-		userCache, err := model.GetUserCache(token.UserId)
+		userCache, err := identity.GetUserCache(token.UserId)
 		if err != nil {
 			common.SysLog(fmt.Sprintf("TokenAuth GetUserCache error for user %d: %v", token.UserId, err))
 			abortWithOpenAiMessage(c, http.StatusInternalServerError,
@@ -461,7 +461,7 @@ func TokenAuth() func(c contract.Context) {
 	}
 }
 
-func SetupContextForToken(c contract.Context, token *model.Token, parts ...string) error {
+func SetupContextForToken(c contract.Context, token *identity.Token, parts ...string) error {
 	if token == nil {
 		return fmt.Errorf("token is nil")
 	}
@@ -492,7 +492,7 @@ func SetupContextForToken(c contract.Context, token *model.Token, parts ...strin
 		}
 	}
 	if len(parts) > 1 {
-		if model.IsAdmin(token.UserId) {
+		if identity.IsAdmin(token.UserId) {
 			c.Set("specific_channel_id", parts[1])
 		} else {
 			c.SetHeader("specific_channel_version", "701e3ae1dc3f7975556d354e0675168d004891c8")

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
@@ -14,7 +15,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/model"
 )
 
 func init() {
@@ -156,15 +156,15 @@ func (p *DiscordProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*
 }
 
 func (p *DiscordProvider) IsUserIDTaken(providerUserID string) bool {
-	return model.IsDiscordIdAlreadyTaken(providerUserID)
+	return identity.IsDiscordIdAlreadyTaken(providerUserID)
 }
 
-func (p *DiscordProvider) FillUserByProviderID(user *model.User, providerUserID string) error {
+func (p *DiscordProvider) FillUserByProviderID(user *identity.User, providerUserID string) error {
 	user.DiscordId = providerUserID
 	return user.FillUserByDiscordId()
 }
 
-func (p *DiscordProvider) SetProviderUserID(user *model.User, providerUserID string) {
+func (p *DiscordProvider) SetProviderUserID(user *identity.User, providerUserID string) {
 	user.DiscordId = providerUserID
 }
 

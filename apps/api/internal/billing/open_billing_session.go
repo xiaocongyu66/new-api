@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/billing/settlecore"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strings"
@@ -12,7 +13,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
 	"github.com/bytedance/gopkg/util/gopool"
@@ -62,9 +62,9 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	var tokenErr error
 	if !s.relayInfo.IsPlayground {
 		if delta > 0 {
-			tokenErr = model.DecreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, delta)
+			tokenErr = identity.DecreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, delta)
 		} else {
-			tokenErr = model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, -delta)
+			tokenErr = identity.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, -delta)
 		}
 		if tokenErr != nil {
 			// 资金来源已提交，令牌调整失败只能记录日志；标记 settled 防止 Refund 误退资金
@@ -111,13 +111,13 @@ func (s *BillingSession) Refund(c contract.Context) {
 			common.SysLog("error refunding billing source: " + err.Error())
 		}
 		if extraReserved > 0 && funding.Source() == settlecore.BillingSourceSubscription && subscriptionId > 0 {
-			if err := model.PostConsumeUserSubscriptionDelta(subscriptionId, -int64(extraReserved)); err != nil {
+			if err := PostConsumeUserSubscriptionDelta(subscriptionId, -int64(extraReserved)); err != nil {
 				common.SysLog("error refunding subscription extra reserved quota: " + err.Error())
 			}
 		}
 		// 2) 退还令牌额度
 		if tokenConsumed > 0 && !isPlayground {
-			if err := model.IncreaseTokenQuota(tokenId, tokenKey, tokenConsumed); err != nil {
+			if err := identity.IncreaseTokenQuota(tokenId, tokenKey, tokenConsumed); err != nil {
 				common.SysLog("error refunding token quota: " + err.Error())
 			}
 		}
@@ -209,7 +209,7 @@ func (s *BillingSession) preConsume(c contract.Context, quota int) *types.NewAPI
 	if err := s.funding.PreConsume(effectiveQuota); err != nil {
 		// 预扣费失败，回滚令牌额度
 		if s.tokenConsumed > 0 && !s.relayInfo.IsPlayground {
-			if rollbackErr := model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, s.tokenConsumed); rollbackErr != nil {
+			if rollbackErr := identity.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, s.tokenConsumed); rollbackErr != nil {
 				common.SysLog(fmt.Sprintf("error rolling back token quota (userId=%d, tokenId=%d, amount=%d, fundingErr=%s): %s",
 					s.relayInfo.UserId, s.relayInfo.TokenId, s.tokenConsumed, err.Error(), rollbackErr.Error()))
 			}
@@ -217,7 +217,7 @@ func (s *BillingSession) preConsume(c contract.Context, quota int) *types.NewAPI
 		}
 		// TODO: model 层应定义哨兵错误（如 ErrNoActiveSubscription），用 errors.Is 替代字符串匹配
 		if errors.Is(err, ErrInsufficientWalletQuota) {
-			userQuota, quotaErr := model.GetUserQuota(s.relayInfo.UserId, false)
+			userQuota, quotaErr := identity.GetUserQuota(s.relayInfo.UserId, false)
 			if quotaErr != nil {
 				userQuota = 0
 			}
@@ -248,13 +248,13 @@ func (s *BillingSession) reserveFunding(delta int) error {
 		// 全额无条件扣减，余额不足的部分记为欠费（余额可为负），不中断请求，
 		// 保证日志记录的预扣额度与用户余额的实际变动始终对账一致。
 		// DecreaseUserQuota 仅在数据库错误时失败。
-		if err := model.DecreaseUserQuota(funding.userId, delta, false); err != nil {
+		if err := identity.DecreaseUserQuota(funding.userId, delta, false); err != nil {
 			return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 		}
 		funding.consumed += delta
 		return nil
 	case *SubscriptionFunding:
-		if err := model.PostConsumeUserSubscriptionDelta(funding.subscriptionId, int64(delta)); err != nil {
+		if err := PostConsumeUserSubscriptionDelta(funding.subscriptionId, int64(delta)); err != nil {
 			return types.NewErrorWithStatusCode(
 				fmt.Errorf("订阅额度不足或未配置订阅: %s", err.Error()),
 				types.ErrorCodeInsufficientUserQuota,
@@ -272,13 +272,13 @@ func (s *BillingSession) reserveFunding(delta int) error {
 func (s *BillingSession) rollbackFundingReserve(delta int) {
 	switch funding := s.funding.(type) {
 	case *WalletFunding:
-		if err := model.IncreaseUserQuota(funding.userId, delta, false); err != nil {
+		if err := identity.IncreaseUserQuota(funding.userId, delta, false); err != nil {
 			common.SysLog("error rolling back wallet funding reserve: " + err.Error())
 		} else {
 			funding.consumed -= delta
 		}
 	case *SubscriptionFunding:
-		if err := model.PostConsumeUserSubscriptionDelta(funding.subscriptionId, -int64(delta)); err != nil {
+		if err := PostConsumeUserSubscriptionDelta(funding.subscriptionId, -int64(delta)); err != nil {
 			common.SysLog("error rolling back subscription funding reserve: " + err.Error())
 		}
 	}
@@ -364,7 +364,7 @@ func NewBillingSession(c contract.Context, relayInfo *relaycommon.RelayInfo, pre
 
 	// 钱包路径需要先检查用户额度
 	tryWallet := func() (*BillingSession, *types.NewAPIError) {
-		userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
+		userQuota, err := identity.GetUserQuota(relayInfo.UserId, false)
 		if err != nil {
 			return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 		}
@@ -431,7 +431,7 @@ func NewBillingSession(c contract.Context, relayInfo *relaycommon.RelayInfo, pre
 	case "subscription_first":
 		fallthrough
 	default:
-		hasSub, subCheckErr := model.HasActiveUserSubscription(relayInfo.UserId)
+		hasSub, subCheckErr := HasActiveUserSubscription(relayInfo.UserId)
 		if subCheckErr != nil {
 			return nil, types.NewError(subCheckErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 		}
@@ -442,7 +442,7 @@ func NewBillingSession(c contract.Context, relayInfo *relaycommon.RelayInfo, pre
 		if apiErr != nil {
 			if apiErr.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
 				// 仅当用户的活跃订阅允许钱包回退时才回退到钱包，否则返回订阅额度不足错误
-				allowOverflow, overflowErr := model.UserActiveSubscriptionsAllowWalletOverflow(relayInfo.UserId)
+				allowOverflow, overflowErr := UserActiveSubscriptionsAllowWalletOverflow(relayInfo.UserId)
 				if overflowErr != nil {
 					return nil, types.NewError(overflowErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 				}

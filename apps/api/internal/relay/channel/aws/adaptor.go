@@ -11,7 +11,6 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/pkg/errors"
 
@@ -51,7 +50,7 @@ func (a *Adaptor) ConvertClaudeRequest(c contract.Context, info *relaycommon.Rel
 					if mediaMessage.Source.Type == "url" {
 						// 使用统一的文件服务获取图片数据
 						source := types.NewURLFileSource(mediaMessage.Source.Url)
-						base64Data, mimeType, err := service.GetBase64Data(c, source, "formatting image for Claude")
+						base64Data, mimeType, err := relaycommon.GetBase64Data(c, source, "formatting image for Claude")
 						if err != nil {
 							return nil, fmt.Errorf("get file base64 from url failed: %s", err.Error())
 						}
@@ -123,7 +122,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c contract.Context, info *relaycommon.Rel
 	}
 
 	// 原有的Claude模型处理逻辑
-	result, err := service.ConvertRequest(c, info, types.RelayFormatClaude, request)
+	result, err := relaycommon.ConvertRequest(c, info, types.RelayFormatClaude, request)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to convert openai request to claude request")
 	}

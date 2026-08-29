@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/egress"
+	"github.com/QuantumNous/new-api/internal/task"
 	"io"
 	"net/http"
 	"strconv"
@@ -16,9 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/channel"
 	"github.com/QuantumNous/new-api/internal/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/pkg/errors"
@@ -212,7 +211,7 @@ func (a *TaskAdaptor) DoRequest(c contract.Context, info *relaycommon.RelayInfo,
 func (a *TaskAdaptor) DoResponse(c contract.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *taskdto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		taskErr = service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
+		taskErr = task.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
 		return
 	}
 	_ = resp.Body.Close()
@@ -220,12 +219,12 @@ func (a *TaskAdaptor) DoResponse(c contract.Context, resp *http.Response, info *
 	// Parse Doubao response
 	var dResp responsePayload
 	if err := common.Unmarshal(responseBody, &dResp); err != nil {
-		taskErr = service.TaskErrorWrapper(errors.Wrapf(err, "body: %s", responseBody), "unmarshal_response_body_failed", http.StatusInternalServerError)
+		taskErr = task.TaskErrorWrapper(errors.Wrapf(err, "body: %s", responseBody), "unmarshal_response_body_failed", http.StatusInternalServerError)
 		return
 	}
 
 	if dResp.ID == "" {
-		taskErr = service.TaskErrorWrapper(fmt.Errorf("task_id is empty"), "invalid_response", http.StatusInternalServerError)
+		taskErr = task.TaskErrorWrapper(fmt.Errorf("task_id is empty"), "invalid_response", http.StatusInternalServerError)
 		return
 	}
 
@@ -321,32 +320,32 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	// Map Doubao status to internal status
 	switch resTask.Status {
 	case "pending", "queued":
-		taskResult.Status = model.TaskStatusQueued
+		taskResult.Status = task.TaskStatusQueued
 		taskResult.Progress = "10%"
 	case "processing", "running":
-		taskResult.Status = model.TaskStatusInProgress
+		taskResult.Status = task.TaskStatusInProgress
 		taskResult.Progress = "50%"
 	case "succeeded":
-		taskResult.Status = model.TaskStatusSuccess
+		taskResult.Status = task.TaskStatusSuccess
 		taskResult.Progress = "100%"
 		taskResult.Url = resTask.Content.VideoURL
 		// 解析 usage 信息用于按倍率计费
 		taskResult.CompletionTokens = resTask.Usage.CompletionTokens
 		taskResult.TotalTokens = resTask.Usage.TotalTokens
 	case "failed":
-		taskResult.Status = model.TaskStatusFailure
+		taskResult.Status = task.TaskStatusFailure
 		taskResult.Progress = "100%"
 		taskResult.Reason = resTask.Error.Message
 	default:
 		// Unknown status, treat as processing
-		taskResult.Status = model.TaskStatusInProgress
+		taskResult.Status = task.TaskStatusInProgress
 		taskResult.Progress = "30%"
 	}
 
 	return &taskResult, nil
 }
 
-func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error) {
+func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *task.Task) ([]byte, error) {
 	var dResp responseTask
 	if err := common.Unmarshal(originTask.Data, &dResp); err != nil {
 		return nil, errors.Wrap(err, "unmarshal doubao task data failed")

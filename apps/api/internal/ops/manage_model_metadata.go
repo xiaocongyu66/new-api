@@ -2,7 +2,9 @@ package ops
 
 import (
 	"encoding/json"
+	channel "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,7 +18,7 @@ import (
 )
 
 // enrichModels 批量填充附加信息：端点、渠道、分组、计费类型，避免 N+1 查询
-func enrichModels(models []*model.Model) {
+func enrichModels(models []*channel.Model) {
 	if len(models) == 0 {
 		return
 	}
@@ -29,7 +31,7 @@ func enrichModels(models []*model.Model) {
 		if m == nil {
 			continue
 		}
-		if m.NameRule == model.NameRuleExact {
+		if m.NameRule == channel.NameRuleExact {
 			exactNames = append(exactNames, m.ModelName)
 			exactIdx[m.ModelName] = append(exactIdx[m.ModelName], i)
 		} else {
@@ -38,7 +40,7 @@ func enrichModels(models []*model.Model) {
 	}
 
 	// 2) 批量查询精确模型的绑定渠道
-	channelsByModel, _ := model.GetBoundChannelsByModelsMap(exactNames)
+	channelsByModel, _ := channel.GetBoundChannelsByModelsMap(exactNames)
 
 	// 3) 精确模型：端点从缓存、渠道批量映射、分组/计费类型从缓存
 	for name, indices := range exactIdx {
@@ -46,14 +48,14 @@ func enrichModels(models []*model.Model) {
 		for _, idx := range indices {
 			mm := models[idx]
 			if mm.Endpoints == "" {
-				eps := model.GetModelSupportEndpointTypes(mm.ModelName)
+				eps := channel.GetModelSupportEndpointTypes(mm.ModelName)
 				if b, err := json.Marshal(eps); err == nil {
 					mm.Endpoints = string(b)
 				}
 			}
 			mm.BoundChannels = chs
-			mm.EnableGroups = model.GetModelEnableGroups(mm.ModelName)
-			mm.QuotaTypes = model.GetModelQuotaTypes(mm.ModelName)
+			mm.EnableGroups = channel.GetModelEnableGroups(mm.ModelName)
+			mm.QuotaTypes = channel.GetModelQuotaTypes(mm.ModelName)
 		}
 	}
 
@@ -62,7 +64,7 @@ func enrichModels(models []*model.Model) {
 	}
 
 	// 4) 一次性读取定价缓存，内存匹配所有规则模型
-	pricings := model.GetPricing()
+	pricings := channel.GetPricing()
 
 	// 为全部规则模型收集匹配名集合、端点并集、分组并集、配额集合
 	matchedNamesByIdx := make(map[int][]string)
@@ -75,11 +77,11 @@ func enrichModels(models []*model.Model) {
 			mm := models[idx]
 			var matched bool
 			switch mm.NameRule {
-			case model.NameRulePrefix:
+			case channel.NameRulePrefix:
 				matched = strings.HasPrefix(p.ModelName, mm.ModelName)
-			case model.NameRuleSuffix:
+			case channel.NameRuleSuffix:
 				matched = strings.HasSuffix(p.ModelName, mm.ModelName)
-			case model.NameRuleContains:
+			case channel.NameRuleContains:
 				matched = strings.Contains(p.ModelName, mm.ModelName)
 			}
 			if !matched {
@@ -125,7 +127,7 @@ func enrichModels(models []*model.Model) {
 	for n := range allMatchedSet {
 		allMatched = append(allMatched, n)
 	}
-	matchedChannelsByModel, _ := model.GetBoundChannelsByModelsMap(allMatched)
+	matchedChannelsByModel, _ := channel.GetBoundChannelsByModelsMap(allMatched)
 
 	// 6) 回填每个规则模型的并集信息
 	for _, idx := range ruleIndices {
@@ -163,7 +165,7 @@ func enrichModels(models []*model.Model) {
 
 		// 渠道并集
 		names := matchedNamesByIdx[idx]
-		channelSet := make(map[string]model.BoundChannel)
+		channelSet := make(map[string]channel.BoundChannel)
 		for _, n := range names {
 			for _, ch := range matchedChannelsByModel[n] {
 				key := ch.Name + "_" + strconv.Itoa(ch.Type)
@@ -171,7 +173,7 @@ func enrichModels(models []*model.Model) {
 			}
 		}
 		if len(channelSet) > 0 {
-			chs := make([]model.BoundChannel, 0, len(channelSet))
+			chs := make([]channel.BoundChannel, 0, len(channelSet))
 			for _, ch := range channelSet {
 				chs = append(chs, ch)
 			}
@@ -185,15 +187,15 @@ func enrichModels(models []*model.Model) {
 }
 
 // filterPricingByUsableGroups filters pricing by user's usable groups.
-func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string]string) []model.Pricing {
+func filterPricingByUsableGroups(pricing []channel.Pricing, usableGroup map[string]string) []channel.Pricing {
 	if len(pricing) == 0 {
 		return pricing
 	}
 	if len(usableGroup) == 0 {
-		return []model.Pricing{}
+		return []channel.Pricing{}
 	}
 
-	filtered := make([]model.Pricing, 0, len(pricing))
+	filtered := make([]channel.Pricing, 0, len(pricing))
 	for _, item := range pricing {
 		if common.StringsContains(item.EnableGroup, "all") {
 			filtered = append(filtered, item)
@@ -216,13 +218,13 @@ func ListModels(c contract.Context) {
 	pageInfo := common.GetPageQuery(c)
 	status := c.Query("status")
 	syncOfficial := c.Query("sync_official")
-	modelsMeta, total, err := model.SearchModels("", "", status, syncOfficial, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	modelsMeta, total, err := channel.SearchModels("", "", status, syncOfficial, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
 	enrichModels(modelsMeta)
-	vendorCounts, _ := model.GetVendorModelCounts()
+	vendorCounts, _ := channel.GetVendorModelCounts()
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(modelsMeta)
 	common.CtxApiSuccess(c, common.H{
@@ -242,13 +244,13 @@ func SearchModels(c contract.Context) {
 	syncOfficial := c.Query("sync_official")
 	pageInfo := common.GetPageQuery(c)
 
-	modelsMeta, total, err := model.SearchModels(keyword, vendor, status, syncOfficial, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	modelsMeta, total, err := channel.SearchModels(keyword, vendor, status, syncOfficial, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
 	enrichModels(modelsMeta)
-	vendorCounts, _ := model.GetVendorModelCounts()
+	vendorCounts, _ := channel.GetVendorModelCounts()
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(modelsMeta)
 	common.CtxApiSuccess(c, common.H{
@@ -268,18 +270,18 @@ func GetModel(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	var m model.Model
+	var m channel.Model
 	if err := dbx.DB.First(&m, id).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
-	enrichModels([]*model.Model{&m})
+	enrichModels([]*channel.Model{&m})
 	common.CtxApiSuccess(c, &m)
 }
 
 // CreateModel creates a new model.
 func CreateModel(c contract.Context) {
-	var m model.Model
+	var m channel.Model
 	if err := c.BindJSON(&m); err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -288,7 +290,7 @@ func CreateModel(c contract.Context) {
 		common.CtxApiErrorMsg(c, "模型名称不能为空")
 		return
 	}
-	if dup, err := model.IsModelNameDuplicated(0, m.ModelName); err != nil {
+	if dup, err := channel.IsModelNameDuplicated(0, m.ModelName); err != nil {
 		common.CtxApiError(c, err)
 		return
 	} else if dup {
@@ -300,7 +302,7 @@ func CreateModel(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	model.RefreshPricing()
+	channel.RefreshPricing()
 	common.CtxApiSuccess(c, &m)
 }
 
@@ -308,7 +310,7 @@ func CreateModel(c contract.Context) {
 func UpdateModel(c contract.Context) {
 	statusOnly := c.Query("status_only") == "true"
 
-	var m model.Model
+	var m channel.Model
 	if err := c.BindJSON(&m); err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -319,12 +321,12 @@ func UpdateModel(c contract.Context) {
 	}
 
 	if statusOnly {
-		if err := model.UpdateModelStatus(m.Id, m.Status); err != nil {
+		if err := channel.UpdateModelStatus(m.Id, m.Status); err != nil {
 			common.CtxApiError(c, err)
 			return
 		}
 	} else {
-		if dup, err := model.IsModelNameDuplicated(m.Id, m.ModelName); err != nil {
+		if dup, err := channel.IsModelNameDuplicated(m.Id, m.ModelName); err != nil {
 			common.CtxApiError(c, err)
 			return
 		} else if dup {
@@ -337,7 +339,7 @@ func UpdateModel(c contract.Context) {
 			return
 		}
 	}
-	model.RefreshPricing()
+	channel.RefreshPricing()
 	common.CtxApiSuccess(c, &m)
 }
 
@@ -349,7 +351,7 @@ func DeleteModel(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	var existing model.Model
+	var existing channel.Model
 	if err := dbx.DB.First(&existing, id).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -358,13 +360,13 @@ func DeleteModel(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	model.RefreshPricing()
+	channel.RefreshPricing()
 	common.CtxApiSuccess(c, nil)
 }
 
 // GetPricing returns pricing data for frontend.
 func GetPricing(c contract.Context) {
-	pricing := model.GetPricing()
+	pricing := channel.GetPricing()
 	userId, exists := c.Get("id")
 	usableGroup := map[string]string{}
 	groupRatio := map[string]float64{}
@@ -373,7 +375,7 @@ func GetPricing(c contract.Context) {
 	}
 	var group string
 	if exists {
-		user, err := model.GetUserCache(userId.(int))
+		user, err := identity.GetUserCache(userId.(int))
 		if err == nil {
 			group = user.Group
 			for g := range groupRatio {
@@ -396,10 +398,10 @@ func GetPricing(c contract.Context) {
 	_ = c.JSON(200, common.H{
 		"success":            true,
 		"data":               pricing,
-		"vendors":            model.GetVendors(),
+		"vendors":            channel.GetVendors(),
 		"group_ratio":        groupRatio,
 		"usable_group":       usableGroup,
-		"supported_endpoint": model.GetSupportedEndpointMap(),
+		"supported_endpoint": channel.GetSupportedEndpointMap(),
 		"auto_groups":        resolve_group.GetUserAutoGroup(group),
 		"pricing_version":    "a42d372ccf0b5dd13ecf71203521f9d2",
 	})

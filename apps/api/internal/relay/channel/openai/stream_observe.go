@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/service"
 	"strings"
 
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
@@ -146,7 +145,7 @@ func (o *streamObserver) readUsage(usage gjson.Result) {
 	if err := common.UnmarshalJsonStr(usage.Raw, &parsed); err != nil {
 		return
 	}
-	if !service.ValidUsage(&parsed) {
+	if !relaycommon.ValidUsage(&parsed) {
 		return
 	}
 	o.usage = &parsed

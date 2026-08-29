@@ -1,12 +1,12 @@
 package channel
 
 import (
+	"github.com/QuantumNous/new-api/internal/task"
 	"io"
 	"net/http"
 
 	taskdto "github.com/QuantumNous/new-api/internal/dto"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
@@ -59,7 +59,7 @@ type TaskAdaptor interface {
 	// Called by the polling loop after ParseTaskResult.
 	// Return a positive value to trigger delta settlement (supplement / refund).
 	// Return 0 to keep the pre-charged amount unchanged.
-	AdjustBillingOnComplete(task *model.Task, taskResult *relaycommon.TaskInfo) int
+	AdjustBillingOnComplete(task *task.Task, taskResult *relaycommon.TaskInfo) int
 
 	// ── Request / Response ───────────────────────────────────────────
 
@@ -80,5 +80,5 @@ type TaskAdaptor interface {
 }
 
 type OpenAIVideoConverter interface {
-	ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error)
+	ConvertToOpenAIVideo(originTask *task.Task) ([]byte, error)
 }

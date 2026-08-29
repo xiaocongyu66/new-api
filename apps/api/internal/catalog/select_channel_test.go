@@ -5,8 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/QuantumNous/new-api/internal/gateway/port"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -15,13 +13,13 @@ import (
 // through the gateway's interface. This is the wiring the split depends on: the
 // gateway consumes ChannelSelector and never imports this package.
 func TestSelectorSatisfiesGatewayPort(t *testing.T) {
-	var selector port.ChannelSelector = NewSelector(
+	var selector ChannelSelector = NewSelector(
 		func(group, modelName, requestPath string, attempt int, excluded ExclusionSet) (int, string, error) {
 			return 5, group, nil
 		},
 	)
 
-	selection, err := selector.SelectChannel(context.Background(), port.ChannelRequest{
+	selection, err := selector.SelectChannel(context.Background(), ChannelRequest{
 		TokenGroup: "default",
 		ModelName:  "gpt-4",
 	})
@@ -47,7 +45,7 @@ func TestSelectorForwardsRequestToLookup(t *testing.T) {
 		return 9, "resolved-group", nil
 	})
 
-	selection, err := selector.SelectChannel(context.Background(), port.ChannelRequest{
+	selection, err := selector.SelectChannel(context.Background(), ChannelRequest{
 		TokenGroup:        "auto",
 		ModelName:         "claude-3",
 		RequestPath:       "/v1/messages",
@@ -73,7 +71,7 @@ func TestSelectorRejectsNonPositiveChannelID(t *testing.T) {
 			return channelID, "default", nil
 		})
 
-		_, err := selector.SelectChannel(context.Background(), port.ChannelRequest{
+		_, err := selector.SelectChannel(context.Background(), ChannelRequest{
 			TokenGroup: "default",
 			ModelName:  "gpt-4",
 		})
@@ -91,7 +89,7 @@ func TestSelectorRejectsExcludedChannel(t *testing.T) {
 		return 4, "default", nil
 	})
 
-	_, err := selector.SelectChannel(context.Background(), port.ChannelRequest{
+	_, err := selector.SelectChannel(context.Background(), ChannelRequest{
 		TokenGroup:        "default",
 		ModelName:         "gpt-4",
 		ExcludeChannelIDs: []int{4},
@@ -109,7 +107,7 @@ func TestSelectorPropagatesLookupError(t *testing.T) {
 		return 0, "", lookupErr
 	})
 
-	_, err := selector.SelectChannel(context.Background(), port.ChannelRequest{
+	_, err := selector.SelectChannel(context.Background(), ChannelRequest{
 		TokenGroup: "default",
 		ModelName:  "gpt-4",
 	})
@@ -128,7 +126,7 @@ func TestSelectorRequiresModelName(t *testing.T) {
 		return 1, "default", nil
 	})
 
-	_, err := selector.SelectChannel(context.Background(), port.ChannelRequest{TokenGroup: "default"})
+	_, err := selector.SelectChannel(context.Background(), ChannelRequest{TokenGroup: "default"})
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrModelNameRequired)
@@ -148,7 +146,7 @@ func TestSelectorRejectsCancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := selector.SelectChannel(ctx, port.ChannelRequest{TokenGroup: "default", ModelName: "gpt-4"})
+	_, err := selector.SelectChannel(ctx, ChannelRequest{TokenGroup: "default", ModelName: "gpt-4"})
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
@@ -160,7 +158,7 @@ func TestSelectorRejectsCancelledContext(t *testing.T) {
 func TestSelectorRejectsUnconfiguredLookup(t *testing.T) {
 	selector := NewSelector(nil)
 
-	_, err := selector.SelectChannel(context.Background(), port.ChannelRequest{
+	_, err := selector.SelectChannel(context.Background(), ChannelRequest{
 		TokenGroup: "default",
 		ModelName:  "gpt-4",
 	})
@@ -177,7 +175,7 @@ func TestSelectorFallsBackToRequestedGroup(t *testing.T) {
 		return 8, "", nil
 	})
 
-	selection, err := selector.SelectChannel(context.Background(), port.ChannelRequest{
+	selection, err := selector.SelectChannel(context.Background(), ChannelRequest{
 		TokenGroup: "vip",
 		ModelName:  "gpt-4",
 	})

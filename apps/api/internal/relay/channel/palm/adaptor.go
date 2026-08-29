@@ -10,7 +10,6 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
@@ -80,7 +79,7 @@ func (a *Adaptor) DoResponse(c contract.Context, resp *http.Response, info *rela
 	if info.IsStream {
 		var responseText string
 		err, responseText = palmStreamHandler(c, resp)
-		usage = service.ResponseText2Usage(c, responseText, info.UpstreamModelName, info.GetEstimatePromptTokens())
+		usage = relaycommon.ResponseText2Usage(c, responseText, info.UpstreamModelName, info.GetEstimatePromptTokens())
 	} else {
 		usage, err = palmHandler(c, info, resp)
 	}

@@ -9,13 +9,12 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/service"
 )
 
 const karmadaDashboardSessionCookie = "newapi_karmada_session"
 
 func CreateKarmadaDashboardSession(c contract.Context, ident AuthIdentity) {
-	sessionToken, expiresAt, err := service.IssueKarmadaDashboardSession(ident)
+	sessionToken, expiresAt, err := IssueKarmadaDashboardSession(ident)
 	if err != nil {
 		AbortWithMessage(c, http.StatusInternalServerError, "failed to issue karmada dashboard session")
 		return
@@ -28,7 +27,7 @@ func CreateKarmadaDashboardSession(c contract.Context, ident AuthIdentity) {
 		HttpOnly: true,
 		Secure:   true,
 		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int(service.KarmadaDashboardSessionTTL.Seconds()),
+		MaxAge:   int(KarmadaDashboardSessionTTL.Seconds()),
 	})
 	c.SetHeader("Cache-Control", "no-store")
 	_ = c.JSON(http.StatusOK, common.H{"success": true, "data": common.H{"expires_at": expiresAt}})

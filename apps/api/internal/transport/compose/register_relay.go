@@ -1,10 +1,10 @@
 package compose
 
 import (
-	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/relay"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/handler"
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
@@ -25,20 +25,20 @@ func SetRelayRouter(router *gin.Engine) {
 		modelsRouter.GET("", func(cc *gin.Context) {
 			switch {
 			case cc.GetHeader("x-api-key") != "" && cc.GetHeader("anthropic-version") != "":
-				controller.ListModels(ginadapter.Wrap(cc), constant.ChannelTypeAnthropic)
+				handler.ListModels(ginadapter.Wrap(cc), constant.ChannelTypeAnthropic)
 			case cc.GetHeader("x-goog-api-key") != "" || cc.Query("key") != "": // 单独的适配
-				controller.RetrieveModel(ginadapter.Wrap(cc), constant.ChannelTypeGemini)
+				handler.RetrieveModel(ginadapter.Wrap(cc), constant.ChannelTypeGemini)
 			default:
-				controller.ListModels(ginadapter.Wrap(cc), constant.ChannelTypeOpenAI)
+				handler.ListModels(ginadapter.Wrap(cc), constant.ChannelTypeOpenAI)
 			}
 		})
 
 		modelsRouter.GET("/:model", func(cc *gin.Context) {
 			switch {
 			case cc.GetHeader("x-api-key") != "" && cc.GetHeader("anthropic-version") != "":
-				controller.RetrieveModel(ginadapter.Wrap(cc), constant.ChannelTypeAnthropic)
+				handler.RetrieveModel(ginadapter.Wrap(cc), constant.ChannelTypeAnthropic)
 			default:
-				controller.RetrieveModel(ginadapter.Wrap(cc), constant.ChannelTypeOpenAI)
+				handler.RetrieveModel(ginadapter.Wrap(cc), constant.ChannelTypeOpenAI)
 			}
 		})
 	}
@@ -48,7 +48,7 @@ func SetRelayRouter(router *gin.Engine) {
 	geminiRouter.Use(ginadapter.Middleware(security.TokenAuth()))
 	{
 		geminiRouter.GET("", func(cc *gin.Context) {
-			controller.ListModels(ginadapter.Wrap(cc), constant.ChannelTypeGemini)
+			handler.ListModels(ginadapter.Wrap(cc), constant.ChannelTypeGemini)
 		})
 	}
 
@@ -57,7 +57,7 @@ func SetRelayRouter(router *gin.Engine) {
 	geminiCompatibleRouter.Use(ginadapter.Middleware(security.TokenAuth()))
 	{
 		geminiCompatibleRouter.GET("", func(cc *gin.Context) {
-			controller.ListModels(ginadapter.Wrap(cc), constant.ChannelTypeOpenAI)
+			handler.ListModels(ginadapter.Wrap(cc), constant.ChannelTypeOpenAI)
 		})
 	}
 
@@ -66,7 +66,7 @@ func SetRelayRouter(router *gin.Engine) {
 	playgroundRouter.Use(ginadapter.Middleware(middleware.SystemPerformanceCheck()))
 	playgroundRouter.Use(ginadapter.Middleware(security.UserAuth()), ginadapter.Middleware(middleware.Distribute()))
 	{
-		playgroundRouter.POST("/chat/completions", ginadapter.Handler(controller.Playground))
+		playgroundRouter.POST("/chat/completions", ginadapter.Handler(handler.Playground))
 	}
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RouteTag("relay"))
@@ -78,7 +78,7 @@ func SetRelayRouter(router *gin.Engine) {
 		wsRouter := relayV1Router.Group("")
 		wsRouter.Use(ginadapter.Middleware(middleware.Distribute()))
 		wsRouter.GET("/realtime", func(cc *gin.Context) {
-			controller.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAIRealtime)
+			handler.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAIRealtime)
 		})
 	}
 	{
@@ -88,88 +88,88 @@ func SetRelayRouter(router *gin.Engine) {
 
 		// claude related routes
 		httpRouter.POST("/messages", func(cc *gin.Context) {
-			controller.Relay(ginadapter.Wrap(cc), types.RelayFormatClaude)
+			handler.Relay(ginadapter.Wrap(cc), types.RelayFormatClaude)
 		})
 
 		// chat related routes
 		httpRouter.POST("/completions", func(cc *gin.Context) {
-			controller.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAI)
+			handler.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAI)
 		})
 		httpRouter.POST("/chat/completions", func(cc *gin.Context) {
-			controller.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAI)
+			handler.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAI)
 		})
 
 		// response related routes
 		httpRouter.POST("/responses", func(cc *gin.Context) {
-			controller.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAIResponses)
+			handler.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAIResponses)
 		})
 		httpRouter.POST("/responses/compact", func(cc *gin.Context) {
-			controller.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAIResponsesCompaction)
+			handler.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAIResponsesCompaction)
 		})
 
 		// alpha search related routes (Codex standalone web search)
 		httpRouter.POST("/alpha/search", func(cc *gin.Context) {
-			controller.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAIAlphaSearch)
+			handler.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAIAlphaSearch)
 		})
 
 		// image related routes
 		httpRouter.POST("/edits", func(cc *gin.Context) {
-			controller.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAIImage)
+			handler.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAIImage)
 		})
 		httpRouter.POST("/images/generations", func(cc *gin.Context) {
-			controller.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAIImage)
+			handler.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAIImage)
 		})
 		httpRouter.POST("/images/edits", func(cc *gin.Context) {
-			controller.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAIImage)
+			handler.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAIImage)
 		})
 
 		// embedding related routes
 		httpRouter.POST("/embeddings", func(cc *gin.Context) {
-			controller.Relay(ginadapter.Wrap(cc), types.RelayFormatEmbedding)
+			handler.Relay(ginadapter.Wrap(cc), types.RelayFormatEmbedding)
 		})
 
 		// audio related routes
 		httpRouter.POST("/audio/transcriptions", func(cc *gin.Context) {
-			controller.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAIAudio)
+			handler.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAIAudio)
 		})
 		httpRouter.POST("/audio/translations", func(cc *gin.Context) {
-			controller.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAIAudio)
+			handler.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAIAudio)
 		})
 		httpRouter.POST("/audio/speech", func(cc *gin.Context) {
-			controller.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAIAudio)
+			handler.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAIAudio)
 		})
 
 		// rerank related routes
 		httpRouter.POST("/rerank", func(cc *gin.Context) {
-			controller.Relay(ginadapter.Wrap(cc), types.RelayFormatRerank)
+			handler.Relay(ginadapter.Wrap(cc), types.RelayFormatRerank)
 		})
 
 		// gemini relay routes
 		httpRouter.POST("/engines/:model/embeddings", func(cc *gin.Context) {
-			controller.Relay(ginadapter.Wrap(cc), types.RelayFormatGemini)
+			handler.Relay(ginadapter.Wrap(cc), types.RelayFormatGemini)
 		})
 		httpRouter.POST("/models/*path", func(cc *gin.Context) {
-			controller.Relay(ginadapter.Wrap(cc), types.RelayFormatGemini)
+			handler.Relay(ginadapter.Wrap(cc), types.RelayFormatGemini)
 		})
 
 		// other relay routes
 		httpRouter.POST("/moderations", func(cc *gin.Context) {
-			controller.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAI)
+			handler.Relay(ginadapter.Wrap(cc), types.RelayFormatOpenAI)
 		})
 
 		// not implemented
-		httpRouter.POST("/images/variations", ginadapter.Handler(controller.RelayNotImplemented))
-		httpRouter.GET("/files", ginadapter.Handler(controller.RelayNotImplemented))
-		httpRouter.POST("/files", ginadapter.Handler(controller.RelayNotImplemented))
-		httpRouter.DELETE("/files/:id", ginadapter.Handler(controller.RelayNotImplemented))
-		httpRouter.GET("/files/:id", ginadapter.Handler(controller.RelayNotImplemented))
-		httpRouter.GET("/files/:id/content", ginadapter.Handler(controller.RelayNotImplemented))
-		httpRouter.POST("/fine-tunes", ginadapter.Handler(controller.RelayNotImplemented))
-		httpRouter.GET("/fine-tunes", ginadapter.Handler(controller.RelayNotImplemented))
-		httpRouter.GET("/fine-tunes/:id", ginadapter.Handler(controller.RelayNotImplemented))
-		httpRouter.POST("/fine-tunes/:id/cancel", ginadapter.Handler(controller.RelayNotImplemented))
-		httpRouter.GET("/fine-tunes/:id/events", ginadapter.Handler(controller.RelayNotImplemented))
-		httpRouter.DELETE("/models/:model", ginadapter.Handler(controller.RelayNotImplemented))
+		httpRouter.POST("/images/variations", ginadapter.Handler(handler.RelayNotImplemented))
+		httpRouter.GET("/files", ginadapter.Handler(handler.RelayNotImplemented))
+		httpRouter.POST("/files", ginadapter.Handler(handler.RelayNotImplemented))
+		httpRouter.DELETE("/files/:id", ginadapter.Handler(handler.RelayNotImplemented))
+		httpRouter.GET("/files/:id", ginadapter.Handler(handler.RelayNotImplemented))
+		httpRouter.GET("/files/:id/content", ginadapter.Handler(handler.RelayNotImplemented))
+		httpRouter.POST("/fine-tunes", ginadapter.Handler(handler.RelayNotImplemented))
+		httpRouter.GET("/fine-tunes", ginadapter.Handler(handler.RelayNotImplemented))
+		httpRouter.GET("/fine-tunes/:id", ginadapter.Handler(handler.RelayNotImplemented))
+		httpRouter.POST("/fine-tunes/:id/cancel", ginadapter.Handler(handler.RelayNotImplemented))
+		httpRouter.GET("/fine-tunes/:id/events", ginadapter.Handler(handler.RelayNotImplemented))
+		httpRouter.DELETE("/models/:model", ginadapter.Handler(handler.RelayNotImplemented))
 	}
 	relayMjRouter := router.Group("/mj")
 	relayMjRouter.Use(middleware.RouteTag("relay"))
@@ -185,9 +185,9 @@ func SetRelayRouter(router *gin.Engine) {
 	relaySunoRouter.Use(ginadapter.Middleware(middleware.SystemPerformanceCheck()))
 	relaySunoRouter.Use(ginadapter.Middleware(security.TokenAuth()), ginadapter.Middleware(middleware.Distribute()))
 	{
-		relaySunoRouter.POST("/submit/:action", ginadapter.Handler(controller.RelayTask))
-		relaySunoRouter.POST("/fetch", ginadapter.Handler(controller.RelayTaskFetch))
-		relaySunoRouter.GET("/fetch/:id", ginadapter.Handler(controller.RelayTaskFetch))
+		relaySunoRouter.POST("/submit/:action", ginadapter.Handler(handler.RelayTask))
+		relaySunoRouter.POST("/fetch", ginadapter.Handler(handler.RelayTaskFetch))
+		relaySunoRouter.GET("/fetch/:id", ginadapter.Handler(handler.RelayTaskFetch))
 	}
 	relayGeminiRouter := router.Group("/v1beta")
 	relayGeminiRouter.Use(middleware.RouteTag("relay"))
@@ -198,7 +198,7 @@ func SetRelayRouter(router *gin.Engine) {
 	{
 		// Gemini API 路径格式: /v1beta/models/{model_name}:{action}
 		relayGeminiRouter.POST("/models/*path", func(cc *gin.Context) {
-			controller.Relay(ginadapter.Wrap(cc), types.RelayFormatGemini)
+			handler.Relay(ginadapter.Wrap(cc), types.RelayFormatGemini)
 		})
 	}
 }
@@ -207,21 +207,21 @@ func registerMjRouterGroup(relayMjRouter *gin.RouterGroup) {
 	relayMjRouter.GET("/image/:id", ginadapter.Handler(relay.RelayMidjourneyImage))
 	relayMjRouter.Use(ginadapter.Middleware(security.TokenAuth()), ginadapter.Middleware(middleware.Distribute()))
 	{
-		relayMjRouter.POST("/submit/action", ginadapter.Handler(controller.RelayMidjourney))
-		relayMjRouter.POST("/submit/shorten", ginadapter.Handler(controller.RelayMidjourney))
-		relayMjRouter.POST("/submit/modal", ginadapter.Handler(controller.RelayMidjourney))
-		relayMjRouter.POST("/submit/imagine", ginadapter.Handler(controller.RelayMidjourney))
-		relayMjRouter.POST("/submit/change", ginadapter.Handler(controller.RelayMidjourney))
-		relayMjRouter.POST("/submit/simple-change", ginadapter.Handler(controller.RelayMidjourney))
-		relayMjRouter.POST("/submit/describe", ginadapter.Handler(controller.RelayMidjourney))
-		relayMjRouter.POST("/submit/blend", ginadapter.Handler(controller.RelayMidjourney))
-		relayMjRouter.POST("/submit/edits", ginadapter.Handler(controller.RelayMidjourney))
-		relayMjRouter.POST("/submit/video", ginadapter.Handler(controller.RelayMidjourney))
-		//relayMjRouter.POST("/notify", ginadapter.Handler(controller.RelayMidjourney))
-		relayMjRouter.GET("/task/:id/fetch", ginadapter.Handler(controller.RelayMidjourney))
-		relayMjRouter.GET("/task/:id/image-seed", ginadapter.Handler(controller.RelayMidjourney))
-		relayMjRouter.POST("/task/list-by-condition", ginadapter.Handler(controller.RelayMidjourney))
-		relayMjRouter.POST("/insight-face/swap", ginadapter.Handler(controller.RelayMidjourney))
-		relayMjRouter.POST("/submit/upload-discord-images", ginadapter.Handler(controller.RelayMidjourney))
+		relayMjRouter.POST("/submit/action", ginadapter.Handler(handler.RelayMidjourney))
+		relayMjRouter.POST("/submit/shorten", ginadapter.Handler(handler.RelayMidjourney))
+		relayMjRouter.POST("/submit/modal", ginadapter.Handler(handler.RelayMidjourney))
+		relayMjRouter.POST("/submit/imagine", ginadapter.Handler(handler.RelayMidjourney))
+		relayMjRouter.POST("/submit/change", ginadapter.Handler(handler.RelayMidjourney))
+		relayMjRouter.POST("/submit/simple-change", ginadapter.Handler(handler.RelayMidjourney))
+		relayMjRouter.POST("/submit/describe", ginadapter.Handler(handler.RelayMidjourney))
+		relayMjRouter.POST("/submit/blend", ginadapter.Handler(handler.RelayMidjourney))
+		relayMjRouter.POST("/submit/edits", ginadapter.Handler(handler.RelayMidjourney))
+		relayMjRouter.POST("/submit/video", ginadapter.Handler(handler.RelayMidjourney))
+		//relayMjRouter.POST("/notify", ginadapter.Handler(handler.RelayMidjourney))
+		relayMjRouter.GET("/task/:id/fetch", ginadapter.Handler(handler.RelayMidjourney))
+		relayMjRouter.GET("/task/:id/image-seed", ginadapter.Handler(handler.RelayMidjourney))
+		relayMjRouter.POST("/task/list-by-condition", ginadapter.Handler(handler.RelayMidjourney))
+		relayMjRouter.POST("/insight-face/swap", ginadapter.Handler(handler.RelayMidjourney))
+		relayMjRouter.POST("/submit/upload-discord-images", ginadapter.Handler(handler.RelayMidjourney))
 	}
 }

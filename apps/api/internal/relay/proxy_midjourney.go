@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/billing"
 	"github.com/QuantumNous/new-api/internal/egress"
+	taskdomain "github.com/QuantumNous/new-api/internal/task"
+	usagedomain "github.com/QuantumNous/new-api/internal/usage"
 	"io"
 	"log"
 	"net/http"
@@ -24,7 +25,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/helper"
 	taskcap "github.com/QuantumNous/new-api/internal/task"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/usage/record_perf_config"
@@ -41,7 +41,7 @@ func RelayMidjourneyImage(c contract.Context) {
 	}
 	var httpClient *http.Client
 	var proxy string
-	if channel, err := model.CacheGetChannel(midjourneyTask.ChannelId); err == nil {
+	if channel, err := catalog.CacheGetChannel(midjourneyTask.ChannelId); err == nil {
 		proxy = channel.GetSetting().Proxy
 		if proxy != "" {
 			if httpClient, err = egress.GetHttpClientWithProxy(proxy); err != nil {
@@ -144,7 +144,7 @@ func RelayMidjourneyNotify(c contract.Context) *dto.MidjourneyResponse {
 	return nil
 }
 
-func coverMidjourneyTaskDto(c contract.Context, originTask *model.Midjourney) (midjourneyTask dto.MidjourneyDto) {
+func coverMidjourneyTaskDto(c contract.Context, originTask *taskdomain.Midjourney) (midjourneyTask dto.MidjourneyDto) {
 	midjourneyTask.MjId = originTask.MjId
 	midjourneyTask.Progress = originTask.Progress
 	midjourneyTask.PromptEn = originTask.PromptEn
@@ -197,13 +197,13 @@ func RelaySwapFace(c contract.Context, info *relaycommon.RelayInfo) *dto.Midjour
 	var swapFaceRequest dto.SwapFaceRequest
 	err := common.UnmarshalBodyReusable(c, &swapFaceRequest)
 	if err != nil {
-		return service.MidjourneyErrorWrapper(constant.MjRequestError, "bind_request_body_failed")
+		return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "bind_request_body_failed")
 	}
 
 	info.InitChannelMeta(c)
 
 	if swapFaceRequest.SourceBase64 == "" || swapFaceRequest.TargetBase64 == "" {
-		return service.MidjourneyErrorWrapper(constant.MjRequestError, "sour_base64_and_target_base64_is_required")
+		return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "sour_base64_and_target_base64_is_required")
 	}
 	modelName := taskcap.CovertMjpActionToModelName(constant.MjActionSwapFace)
 
@@ -232,12 +232,12 @@ func RelaySwapFace(c contract.Context, info *relaycommon.RelayInfo) *dto.Midjour
 	requestURL := getMjRequestPath(c.HTTPRequest().URL.String())
 	baseURL := c.GetString("base_url")
 	fullRequestURL := fmt.Sprintf("%s%s", baseURL, requestURL)
-	mjResp, _, err := service.DoMidjourneyHttpRequest(c, time.Second*60, fullRequestURL)
+	mjResp, _, err := taskdomain.DoMidjourneyHttpRequest(c, time.Second*60, fullRequestURL)
 	if err != nil {
 		return &mjResp.Response
 	}
 	midjResponse := &mjResp.Response
-	midjourneyTask := &model.Midjourney{
+	midjourneyTask := &taskdomain.Midjourney{
 		UserId:      info.UserId,
 		Code:        midjResponse.Code,
 		Action:      constant.MjActionSwapFace,
@@ -255,7 +255,7 @@ func RelaySwapFace(c contract.Context, info *relaycommon.RelayInfo) *dto.Midjour
 		FailReason:  "",
 		ChannelId:   c.GetInt("channel_id"),
 	}
-	billingPrepared, billingErr := billing.PrepareMidjourneyTaskBilling(
+	billingPrepared, billingErr := taskdomain.PrepareMidjourneyTaskBilling(
 		info,
 		midjourneyTask,
 		priceData.Quota,
@@ -266,9 +266,9 @@ func RelaySwapFace(c contract.Context, info *relaycommon.RelayInfo) *dto.Midjour
 	}
 	err = midjourneyTask.Insert()
 	if err != nil {
-		return service.MidjourneyErrorWrapper(constant.MjRequestError, "insert_midjourney_task_failed")
+		return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "insert_midjourney_task_failed")
 	}
-	billingApplied, billingErr := billing.SettleMidjourneyTaskBilling(info, midjourneyTask, billingPrepared)
+	billingApplied, billingErr := taskdomain.SettleMidjourneyTaskBilling(info, midjourneyTask, billingPrepared)
 	if billingErr != nil {
 		common.SysLog("error settling Midjourney quota: " + billingErr.Error())
 	}
@@ -276,8 +276,8 @@ func RelaySwapFace(c contract.Context, info *relaycommon.RelayInfo) *dto.Midjour
 		billingChannelId := midjourneyTask.GetBillingChannelId()
 		tokenName := c.GetString("token_name")
 		logContent := fmt.Sprintf("模型固定价格 %.2f，分组倍率 %.2f，操作 %s", priceData.ModelPrice, priceData.GroupRatioInfo.GroupRatio, constant.MjActionSwapFace)
-		other := service.GenerateMjOtherInfo(info, priceData)
-		model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
+		other := usagedomain.GenerateMjOtherInfo(info, priceData)
+		usagedomain.RecordConsumeLog(c, info.UserId, usagedomain.RecordConsumeLogParams{
 			ChannelId: billingChannelId,
 			ModelName: modelName,
 			TokenName: tokenName,
@@ -288,16 +288,16 @@ func RelaySwapFace(c contract.Context, info *relaycommon.RelayInfo) *dto.Midjour
 			Other:     other,
 		})
 		model.UpdateUserUsedQuotaAndRequestCount(info.UserId, midjourneyTask.Quota)
-		model.UpdateChannelUsedQuota(billingChannelId, midjourneyTask.Quota)
+		catalog.UpdateChannelUsedQuota(billingChannelId, midjourneyTask.Quota)
 	}
 	c.ResponseWriter().WriteHeader(mjResp.StatusCode)
 	respBody, err := json.Marshal(midjResponse)
 	if err != nil {
-		return service.MidjourneyErrorWrapper(constant.MjRequestError, "unmarshal_response_body_failed")
+		return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "unmarshal_response_body_failed")
 	}
 	_, err = io.Copy(c.ResponseWriter(), bytes.NewBuffer(respBody))
 	if err != nil {
-		return service.MidjourneyErrorWrapper(constant.MjRequestError, "copy_response_body_failed")
+		return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "copy_response_body_failed")
 	}
 	return nil
 }
@@ -307,21 +307,21 @@ func RelayMidjourneyTaskImageSeed(c contract.Context) *dto.MidjourneyResponse {
 	userId := c.GetInt("id")
 	originTask := taskcap.GetByMJId(userId, taskId)
 	if originTask == nil {
-		return service.MidjourneyErrorWrapper(constant.MjRequestError, "task_no_found")
+		return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "task_no_found")
 	}
-	channel, err := model.GetChannelById(originTask.ChannelId, true)
+	channel, err := catalog.GetChannelById(originTask.ChannelId, true)
 	if err != nil {
-		return service.MidjourneyErrorWrapper(constant.MjRequestError, "get_channel_info_failed")
+		return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "get_channel_info_failed")
 	}
 	if channel.Status != common.ChannelStatusEnabled {
-		return service.MidjourneyErrorWrapper(constant.MjRequestError, "该任务所属渠道已被禁用")
+		return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "该任务所属渠道已被禁用")
 	}
 	c.Set("channel_id", originTask.ChannelId)
 	c.HTTPRequest().Header.Set("Authorization", fmt.Sprintf("Bearer %s", channel.Key))
 
 	requestURL := getMjRequestPath(c.HTTPRequest().URL.String())
 	fullRequestURL := fmt.Sprintf("%s%s", channel.GetBaseURL(), requestURL)
-	midjResponseWithStatus, _, err := service.DoMidjourneyHttpRequest(c, time.Second*30, fullRequestURL)
+	midjResponseWithStatus, _, err := taskdomain.DoMidjourneyHttpRequest(c, time.Second*30, fullRequestURL)
 	if err != nil {
 		return &midjResponseWithStatus.Response
 	}
@@ -329,7 +329,7 @@ func RelayMidjourneyTaskImageSeed(c contract.Context) *dto.MidjourneyResponse {
 	c.ResponseWriter().WriteHeader(midjResponseWithStatus.StatusCode)
 	respBody, err := json.Marshal(midjResponse)
 	if err != nil {
-		return service.MidjourneyErrorWrapper(constant.MjRequestError, "unmarshal_response_body_failed")
+		return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "unmarshal_response_body_failed")
 	}
 	egress.IOCopyBytesGracefully(c, nil, respBody)
 	return nil
@@ -405,7 +405,7 @@ func RelayMidjourneySubmit(c contract.Context, relayInfo *relaycommon.RelayInfo)
 	var midjRequest dto.MidjourneyRequest
 	err := common.UnmarshalBodyReusable(c, &midjRequest)
 	if err != nil {
-		return service.MidjourneyErrorWrapper(constant.MjRequestError, "bind_request_body_failed")
+		return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "bind_request_body_failed")
 	}
 
 	relayInfo.InitChannelMeta(c)
@@ -423,7 +423,7 @@ func RelayMidjourneySubmit(c contract.Context, relayInfo *relaycommon.RelayInfo)
 
 	if relayInfo.RelayMode == relayconstant.RelayModeMidjourneyImagine { //绘画任务，此类任务可重复
 		if midjRequest.Prompt == "" {
-			return service.MidjourneyErrorWrapper(constant.MjRequestError, "prompt_is_required")
+			return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "prompt_is_required")
 		}
 		midjRequest.Action = constant.MjActionImagine
 	} else if relayInfo.RelayMode == relayconstant.RelayModeMidjourneyDescribe { //按图生文任务，此类任务可重复
@@ -440,55 +440,55 @@ func RelayMidjourneySubmit(c contract.Context, relayInfo *relaycommon.RelayInfo)
 		mjId := ""
 		if relayInfo.RelayMode == relayconstant.RelayModeMidjourneyChange {
 			if midjRequest.TaskId == "" {
-				return service.MidjourneyErrorWrapper(constant.MjRequestError, "task_id_is_required")
+				return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "task_id_is_required")
 			} else if midjRequest.Action == "" {
-				return service.MidjourneyErrorWrapper(constant.MjRequestError, "action_is_required")
+				return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "action_is_required")
 			} else if midjRequest.Index == 0 {
-				return service.MidjourneyErrorWrapper(constant.MjRequestError, "index_is_required")
+				return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "index_is_required")
 			}
 			//action = midjRequest.Action
 			mjId = midjRequest.TaskId
 		} else if relayInfo.RelayMode == relayconstant.RelayModeMidjourneySimpleChange {
 			if midjRequest.Content == "" {
-				return service.MidjourneyErrorWrapper(constant.MjRequestError, "content_is_required")
+				return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "content_is_required")
 			}
 			params := taskcap.ConvertSimpleChangeParams(midjRequest.Content)
 			if params == nil {
-				return service.MidjourneyErrorWrapper(constant.MjRequestError, "content_parse_failed")
+				return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "content_parse_failed")
 			}
 			mjId = params.TaskId
 			midjRequest.Action = params.Action
 		} else if relayInfo.RelayMode == relayconstant.RelayModeMidjourneyModal {
 			//if midjRequest.MaskBase64 == "" {
-			//	return service.MidjourneyErrorWrapper(constant.MjRequestError, "mask_base64_is_required")
+			//	return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "mask_base64_is_required")
 			//}
 			mjId = midjRequest.TaskId
 			midjRequest.Action = constant.MjActionModal
 		} else if relayInfo.RelayMode == relayconstant.RelayModeMidjourneyVideo {
 			midjRequest.Action = constant.MjActionVideo
 			if midjRequest.TaskId == "" {
-				return service.MidjourneyErrorWrapper(constant.MjRequestError, "task_id_is_required")
+				return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "task_id_is_required")
 			} else if midjRequest.Action == "" {
-				return service.MidjourneyErrorWrapper(constant.MjRequestError, "action_is_required")
+				return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "action_is_required")
 			}
 			mjId = midjRequest.TaskId
 		}
 
 		originTask := taskcap.GetByMJId(relayInfo.UserId, mjId)
 		if originTask == nil {
-			return service.MidjourneyErrorWrapper(constant.MjRequestError, "task_not_found")
+			return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "task_not_found")
 		} else { //原任务的Status=SUCCESS，则可以做放大UPSCALE、变换VARIATION等动作，此时必须使用原来的请求地址才能正确处理
 			if record_perf_config.MjActionCheckSuccessEnabled {
 				if originTask.Status != "SUCCESS" && relayInfo.RelayMode != relayconstant.RelayModeMidjourneyModal {
-					return service.MidjourneyErrorWrapper(constant.MjRequestError, "task_status_not_success")
+					return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "task_status_not_success")
 				}
 			}
-			channel, err := model.GetChannelById(originTask.ChannelId, true)
+			channel, err := catalog.GetChannelById(originTask.ChannelId, true)
 			if err != nil {
-				return service.MidjourneyErrorWrapper(constant.MjRequestError, "get_channel_info_failed")
+				return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "get_channel_info_failed")
 			}
 			if channel.Status != common.ChannelStatusEnabled {
-				return service.MidjourneyErrorWrapper(constant.MjRequestError, "该任务所属渠道已被禁用")
+				return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "该任务所属渠道已被禁用")
 			}
 			c.Set("base_url", channel.GetBaseURL())
 			c.Set("channel_id", originTask.ChannelId)
@@ -543,7 +543,7 @@ func RelayMidjourneySubmit(c contract.Context, relayInfo *relaycommon.RelayInfo)
 		}
 	}
 
-	midjResponseWithStatus, responseBody, err := service.DoMidjourneyHttpRequest(c, time.Second*60, fullRequestURL)
+	midjResponseWithStatus, responseBody, err := taskdomain.DoMidjourneyHttpRequest(c, time.Second*60, fullRequestURL)
 	if err != nil {
 		return &midjResponseWithStatus.Response
 	}
@@ -556,7 +556,7 @@ func RelayMidjourneySubmit(c contract.Context, relayInfo *relaycommon.RelayInfo)
 	// 23-队列已满，请稍后再试 {"code":23,"description":"队列已满，请稍后尝试","result":"14001929738841620","properties":{"discordInstanceId":"1118138338562560102"}}
 	// 24-prompt包含敏感词 {"code":24,"description":"可能包含敏感词","properties":{"promptEn":"nude body","bannedWord":"nude"}}
 	// other: 提交错误，description为错误描述
-	midjourneyTask := &model.Midjourney{
+	midjourneyTask := &taskdomain.Midjourney{
 		UserId:      relayInfo.UserId,
 		Code:        midjResponse.Code,
 		Action:      midjRequest.Action,
@@ -576,7 +576,7 @@ func RelayMidjourneySubmit(c contract.Context, relayInfo *relaycommon.RelayInfo)
 	}
 	if midjResponse.Code == 3 {
 		//无实例账号自动禁用渠道（No available account instance）
-		channel, err := model.GetChannelById(midjourneyTask.ChannelId, true)
+		channel, err := catalog.GetChannelById(midjourneyTask.ChannelId, true)
 		if err != nil {
 			common.SysLog("get_channel_null: " + err.Error())
 		}
@@ -617,7 +617,7 @@ func RelayMidjourneySubmit(c contract.Context, relayInfo *relaycommon.RelayInfo)
 		midjourneyTask.Progress = "100%"
 		midjourneyTask.Status = "SUCCESS"
 	}
-	billingPrepared, billingErr := billing.PrepareMidjourneyTaskBilling(
+	billingPrepared, billingErr := taskdomain.PrepareMidjourneyTaskBilling(
 		relayInfo,
 		midjourneyTask,
 		priceData.Quota,
@@ -633,7 +633,7 @@ func RelayMidjourneySubmit(c contract.Context, relayInfo *relaycommon.RelayInfo)
 			Description: "insert_midjourney_task_failed",
 		}
 	}
-	billingApplied, billingErr := billing.SettleMidjourneyTaskBilling(relayInfo, midjourneyTask, billingPrepared)
+	billingApplied, billingErr := taskdomain.SettleMidjourneyTaskBilling(relayInfo, midjourneyTask, billingPrepared)
 	if billingErr != nil {
 		common.SysLog("error settling Midjourney quota: " + billingErr.Error())
 	}
@@ -641,8 +641,8 @@ func RelayMidjourneySubmit(c contract.Context, relayInfo *relaycommon.RelayInfo)
 		billingChannelId := midjourneyTask.GetBillingChannelId()
 		tokenName := c.GetString("token_name")
 		logContent := fmt.Sprintf("模型固定价格 %.2f，分组倍率 %.2f，操作 %s，ID %s", priceData.ModelPrice, priceData.GroupRatioInfo.GroupRatio, midjRequest.Action, midjResponse.Result)
-		other := service.GenerateMjOtherInfo(relayInfo, priceData)
-		model.RecordConsumeLog(c, relayInfo.UserId, model.RecordConsumeLogParams{
+		other := usagedomain.GenerateMjOtherInfo(relayInfo, priceData)
+		usagedomain.RecordConsumeLog(c, relayInfo.UserId, usagedomain.RecordConsumeLogParams{
 			ChannelId: billingChannelId,
 			ModelName: modelName,
 			TokenName: tokenName,
@@ -653,7 +653,7 @@ func RelayMidjourneySubmit(c contract.Context, relayInfo *relaycommon.RelayInfo)
 			Other:     other,
 		})
 		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, midjourneyTask.Quota)
-		model.UpdateChannelUsedQuota(billingChannelId, midjourneyTask.Quota)
+		catalog.UpdateChannelUsedQuota(billingChannelId, midjourneyTask.Quota)
 	}
 
 	if midjResponse.Code == 22 { //22-排队中，说明任务已存在

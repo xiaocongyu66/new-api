@@ -13,7 +13,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
@@ -58,7 +57,7 @@ func NativeGeminiEmbeddingHandler(c contract.Context, resp *http.Response, info 
 
 	logger.LogDebug(c.Context(), "Gemini native embedding response body: %s", responseBody)
 
-	usage := service.ResponseText2Usage(c, "", info.UpstreamModelName, info.GetEstimatePromptTokens())
+	usage := relaycommon.ResponseText2Usage(c, "", info.UpstreamModelName, info.GetEstimatePromptTokens())
 
 	if info.IsGeminiBatchEmbedding {
 		var geminiResponse dto.GeminiBatchEmbeddingResponse

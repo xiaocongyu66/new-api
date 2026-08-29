@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/egress"
+	"github.com/QuantumNous/new-api/internal/task"
 	"io"
 	"net/http"
 	"regexp"
@@ -12,7 +13,6 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/model"
 
 	"github.com/QuantumNous/new-api/internal/constant"
 	taskdto "github.com/QuantumNous/new-api/internal/dto"
@@ -22,7 +22,6 @@ import (
 	vertexcore "github.com/QuantumNous/new-api/internal/relay/channel/vertex"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/service"
 )
 
 // ============================
@@ -196,16 +195,16 @@ func (a *TaskAdaptor) DoRequest(c contract.Context, info *relaycommon.RelayInfo,
 func (a *TaskAdaptor) DoResponse(c contract.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *taskdto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", nil, service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
+		return "", nil, task.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
 	}
 	_ = resp.Body.Close()
 
 	var s submitResponse
 	if err := common.Unmarshal(responseBody, &s); err != nil {
-		return "", nil, service.TaskErrorWrapper(err, "unmarshal_response_failed", http.StatusInternalServerError)
+		return "", nil, task.TaskErrorWrapper(err, "unmarshal_response_failed", http.StatusInternalServerError)
 	}
 	if strings.TrimSpace(s.Name) == "" {
-		return "", nil, service.TaskErrorWrapper(fmt.Errorf("missing operation name"), "invalid_response", http.StatusInternalServerError)
+		return "", nil, task.TaskErrorWrapper(fmt.Errorf("missing operation name"), "invalid_response", http.StatusInternalServerError)
 	}
 	localID := taskcommon.EncodeLocalTaskID(s.Name)
 	ov := dto.NewOpenAIVideo()
@@ -292,17 +291,17 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	}
 	ti := &relaycommon.TaskInfo{}
 	if op.Error.Message != "" {
-		ti.Status = model.TaskStatusFailure
+		ti.Status = task.TaskStatusFailure
 		ti.Reason = op.Error.Message
 		ti.Progress = "100%"
 		return ti, nil
 	}
 	if !op.Done {
-		ti.Status = model.TaskStatusInProgress
+		ti.Status = task.TaskStatusInProgress
 		ti.Progress = "50%"
 		return ti, nil
 	}
-	ti.Status = model.TaskStatusSuccess
+	ti.Status = task.TaskStatusSuccess
 	ti.Progress = "100%"
 	if len(op.Response.Videos) > 0 {
 		v0 := op.Response.Videos[0]
@@ -350,7 +349,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	return ti, nil
 }
 
-func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
+func (a *TaskAdaptor) ConvertToOpenAIVideo(task *task.Task) ([]byte, error) {
 	// Use GetUpstreamTaskID() to get the real upstream operation name for model extraction.
 	// task.TaskID is now a public task_xxxx ID, no longer a base64-encoded upstream name.
 	upstreamTaskID := task.GetUpstreamTaskID()

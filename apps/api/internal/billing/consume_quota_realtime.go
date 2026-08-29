@@ -4,8 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/billing/settlecore"
+	channel "github.com/QuantumNous/new-api/internal/catalog"
+	"github.com/QuantumNous/new-api/internal/identity"
+	"github.com/QuantumNous/new-api/internal/ops"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/service"
+	usagedomain "github.com/QuantumNous/new-api/internal/usage"
 	"math"
 	"strings"
 	"time"
@@ -18,7 +21,6 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/types"
 	"github.com/QuantumNous/new-api/internal/usage/record_perf"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/bytedance/gopkg/util/gopool"
 
@@ -91,12 +93,12 @@ func PreWssConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo, 
 	if relayInfo.UsePrice {
 		return nil
 	}
-	userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
+	userQuota, err := identity.GetUserQuota(relayInfo.UserId, false)
 	if err != nil {
 		return err
 	}
 
-	token, err := model.GetTokenByKey(strings.TrimPrefix(relayInfo.TokenKey, "sk-"), false)
+	token, err := identity.GetTokenByKey(strings.TrimPrefix(relayInfo.TokenKey, "sk-"), false)
 	if err != nil {
 		return err
 	}
@@ -225,8 +227,8 @@ func PostWssConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo,
 		logger.LogError(ctx.Context(), fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, "+
 			"tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, modelName, relayInfo.FinalPreConsumedQuota))
 	} else {
-		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, quota)
-		model.UpdateChannelUsedQuota(relayInfo.ChannelId, quota)
+		identity.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, quota)
+		channel.UpdateChannelUsedQuota(relayInfo.ChannelId, quota)
 	}
 
 	if err := SettleBilling(ctx, relayInfo, quota); err != nil {
@@ -237,13 +239,13 @@ func PostWssConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo,
 	if extraContent != "" {
 		logContent += ", " + extraContent
 	}
-	other := service.GenerateWssOtherInfo(ctx, relayInfo, usage, modelRatio, groupRatio,
+	other := usagedomain.GenerateWssOtherInfo(ctx, relayInfo, usage, modelRatio, groupRatio,
 		completionRatio.InexactFloat64(), audioRatio.InexactFloat64(), audioCompletionRatio.InexactFloat64(), modelPrice, relayInfo.PriceData.GroupRatioInfo.GroupSpecialRatio)
 	if tieredResult != nil {
-		service.InjectTieredBillingInfo(other, relayInfo, tieredResult)
+		usagedomain.InjectTieredBillingInfo(other, relayInfo, tieredResult)
 	}
-	service.AttachQuotaSaturation(ctx, relayInfo, other)
-	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
+	usagedomain.AttachQuotaSaturation(ctx, relayInfo, other)
+	usagedomain.RecordConsumeLog(ctx, relayInfo.UserId, usagedomain.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     usage.InputTokens,
 		CompletionTokens: usage.OutputTokens,
@@ -348,8 +350,8 @@ func PostAudioConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInf
 		logger.LogError(ctx.Context(), fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, "+
 			"tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, relayInfo.OriginModelName, relayInfo.FinalPreConsumedQuota))
 	} else {
-		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, quota)
-		model.UpdateChannelUsedQuota(relayInfo.ChannelId, quota)
+		identity.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, quota)
+		channel.UpdateChannelUsedQuota(relayInfo.ChannelId, quota)
 	}
 
 	if err := SettleBilling(ctx, relayInfo, quota); err != nil {
@@ -360,13 +362,13 @@ func PostAudioConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInf
 	if extraContent != "" {
 		logContent += ", " + extraContent
 	}
-	other := service.GenerateAudioOtherInfo(ctx, relayInfo, usage, modelRatio, groupRatio,
+	other := usagedomain.GenerateAudioOtherInfo(ctx, relayInfo, usage, modelRatio, groupRatio,
 		completionRatio.InexactFloat64(), audioRatio.InexactFloat64(), audioCompletionRatio.InexactFloat64(), modelPrice, relayInfo.PriceData.GroupRatioInfo.GroupSpecialRatio)
 	if tieredResult != nil {
-		service.InjectTieredBillingInfo(other, relayInfo, tieredResult)
+		usagedomain.InjectTieredBillingInfo(other, relayInfo, tieredResult)
 	}
-	service.AttachQuotaSaturation(ctx, relayInfo, other)
-	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
+	usagedomain.AttachQuotaSaturation(ctx, relayInfo, other)
+	usagedomain.RecordConsumeLog(ctx, relayInfo.UserId, usagedomain.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     usage.PromptTokens,
 		CompletionTokens: usage.CompletionTokens,
@@ -393,13 +395,13 @@ func PreConsumeTokenQuota(relayInfo *relaycommon.RelayInfo, quota int) error {
 		return nil
 	}
 	// 原子预扣：检查与扣减在同一操作中完成，并发请求不可能同时通过检查后超扣。
-	reserved, err := model.TryReserveTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, quota, relayInfo.TokenUnlimited)
+	reserved, err := TryReserveTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, quota, relayInfo.TokenUnlimited)
 	if err != nil {
 		return err
 	}
 	if !reserved {
 		remainQuota := 0
-		if token, tokenErr := model.GetTokenByKey(relayInfo.TokenKey, false); tokenErr == nil && token != nil {
+		if token, tokenErr := identity.GetTokenByKey(relayInfo.TokenKey, false); tokenErr == nil && token != nil {
 			remainQuota = token.RemainQuota
 		}
 		return fmt.Errorf("token quota is not enough, token remain quota: %s, need quota: %s", logger.FormatQuota(remainQuota), logger.FormatQuota(quota))
@@ -441,7 +443,7 @@ func checkAndSendQuotaNotify(relayInfo *relaycommon.RelayInfo, quota int, preCon
 		}
 		if quotaTooLow {
 			prompt := "您的额度即将用尽"
-			topUpLink := service.PaymentReturnURL("/wallet")
+			topUpLink := PaymentReturnURL("/wallet")
 
 			// 根据通知方式生成不同的内容格式
 			var content string
@@ -465,7 +467,7 @@ func checkAndSendQuotaNotify(relayInfo *relaycommon.RelayInfo, quota int, preCon
 				values = []interface{}{prompt, logger.FormatQuota(relayInfo.UserQuota), topUpLink, topUpLink}
 			}
 
-			err := service.NotifyUser(relayInfo.UserId, relayInfo.UserEmail, relayInfo.UserSetting, dto.NewNotify(dto.NotifyTypeQuotaExceed, prompt, content, values))
+			err := ops.NotifyUser(relayInfo.UserId, relayInfo.UserEmail, relayInfo.UserSetting, dto.NewNotify(dto.NotifyTypeQuotaExceed, prompt, content, values))
 			if err != nil {
 				common.SysError(fmt.Sprintf("failed to send quota notify to user %d: %s", relayInfo.UserId, err.Error()))
 			}
@@ -495,7 +497,7 @@ func checkAndSendSubscriptionQuotaNotify(relayInfo *relaycommon.RelayInfo) {
 		}
 
 		prompt := "您的订阅额度即将用尽"
-		topUpLink := service.PaymentReturnURL("/wallet")
+		topUpLink := PaymentReturnURL("/wallet")
 
 		var content string
 		var values []interface{}
@@ -515,7 +517,7 @@ func checkAndSendSubscriptionQuotaNotify(relayInfo *relaycommon.RelayInfo) {
 			values = []interface{}{prompt, logger.FormatQuota(int(remaining)), topUpLink, topUpLink}
 		}
 
-		if err := service.NotifyUser(relayInfo.UserId, relayInfo.UserEmail, relayInfo.UserSetting, dto.NewNotify(dto.NotifyTypeQuotaExceed, prompt, content, values)); err != nil {
+		if err := ops.NotifyUser(relayInfo.UserId, relayInfo.UserEmail, relayInfo.UserSetting, dto.NewNotify(dto.NotifyTypeQuotaExceed, prompt, content, values)); err != nil {
 			common.SysError(fmt.Sprintf("failed to send subscription quota notify to user %d: %s", relayInfo.UserId, err.Error()))
 		}
 	})

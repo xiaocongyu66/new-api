@@ -18,17 +18,6 @@ func InitBatchUpdater() {
 	})
 }
 
-// Each record file registers the flusher for the queue that writes its own rows,
-// so no file needs another's unexported persistence helper. This one covers the
-// channel queue; token and user live beside their records.
-func init() {
-	dbx.RegisterChannelUsedQuotaFlusher(func(deltas map[int]int) {
-		for id, delta := range deltas {
-			updateChannelUsedQuota(id, delta)
-		}
-	})
-}
-
 func batchUpdate() {
 	if !dbx.BatchQueuesPending() {
 		return

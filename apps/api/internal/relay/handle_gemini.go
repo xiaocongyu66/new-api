@@ -17,7 +17,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 )
 
 func isNoThinkingRequest(req *dto.GeminiChatRequest) bool {
@@ -186,16 +185,16 @@ func GeminiHelper(c contract.Context, info *relaycommon.RelayInfo) (newAPIError 
 		httpResp = resp.(*http.Response)
 		info.IsStream = info.IsStream || strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream")
 		if httpResp.StatusCode != http.StatusOK {
-			newAPIError = service.RelayErrorHandler(c.Context(), httpResp, false)
+			newAPIError = relaycommon.RelayErrorHandler(c.Context(), httpResp, false)
 			// reset status code 重置状态码
-			service.ResetStatusCode(newAPIError, statusCodeMappingStr)
+			relaycommon.ResetStatusCode(newAPIError, statusCodeMappingStr)
 			return newAPIError
 		}
 	}
 
 	usage, openaiErr := adaptor.DoResponse(c, resp.(*http.Response), info)
 	if openaiErr != nil {
-		service.ResetStatusCode(openaiErr, statusCodeMappingStr)
+		relaycommon.ResetStatusCode(openaiErr, statusCodeMappingStr)
 		return openaiErr
 	}
 
@@ -287,15 +286,15 @@ func GeminiEmbeddingHandler(c contract.Context, info *relaycommon.RelayInfo) (ne
 	if resp != nil {
 		httpResp = resp.(*http.Response)
 		if httpResp.StatusCode != http.StatusOK {
-			newAPIError = service.RelayErrorHandler(c.Context(), httpResp, false)
-			service.ResetStatusCode(newAPIError, statusCodeMappingStr)
+			newAPIError = relaycommon.RelayErrorHandler(c.Context(), httpResp, false)
+			relaycommon.ResetStatusCode(newAPIError, statusCodeMappingStr)
 			return newAPIError
 		}
 	}
 
 	usage, openaiErr := adaptor.DoResponse(c, resp.(*http.Response), info)
 	if openaiErr != nil {
-		service.ResetStatusCode(openaiErr, statusCodeMappingStr)
+		relaycommon.ResetStatusCode(openaiErr, statusCodeMappingStr)
 		return openaiErr
 	}
 

@@ -13,7 +13,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
@@ -164,7 +163,7 @@ func OaiResponsesStreamHandler(c contract.Context, info *relaycommon.RelayInfo, 
 		tempStr := responseTextBuilder.String()
 		if len(tempStr) > 0 {
 			// 非正常结束，使用输出文本的 token 数量
-			completionTokens := service.CountTextToken(tempStr, info.UpstreamModelName)
+			completionTokens := relaycommon.CountTextToken(tempStr, info.UpstreamModelName)
 			usage.CompletionTokens = completionTokens
 		}
 	}

@@ -14,7 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
@@ -88,8 +87,8 @@ func AlphaSearchHelper(c contract.Context, info *relaycommon.RelayInfo) (newAPIE
 	defer httpResp.Body.Close()
 
 	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
-		newAPIError = service.RelayErrorHandler(c.Context(), httpResp, false)
-		service.ResetStatusCode(newAPIError, statusCodeMappingStr)
+		newAPIError = relaycommon.RelayErrorHandler(c.Context(), httpResp, false)
+		relaycommon.ResetStatusCode(newAPIError, statusCodeMappingStr)
 		return newAPIError
 	}
 

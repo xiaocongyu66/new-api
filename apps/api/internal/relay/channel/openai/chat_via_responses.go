@@ -16,7 +16,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
@@ -56,8 +55,8 @@ func OaiResponsesToChatHandler(c contract.Context, info *relaycommon.RelayInfo, 
 	usage := chatResult.Usage
 
 	if usage == nil || usage.TotalTokens == 0 {
-		text := service.ExtractOutputTextFromResponses(&responsesResp)
-		usage = service.ResponseText2Usage(c, text, info.UpstreamModelName, info.GetEstimatePromptTokens())
+		text := relaycommon.ExtractOutputTextFromResponses(&responsesResp)
+		usage = relaycommon.ResponseText2Usage(c, text, info.UpstreamModelName, info.GetEstimatePromptTokens())
 		chatResp.Usage = *usage
 	}
 
@@ -164,8 +163,8 @@ func OaiResponsesToChatBufferedStreamHandler(c contract.Context, info *relaycomm
 	}
 	usage := chatResult.Usage
 	if usage == nil || usage.TotalTokens == 0 {
-		text := service.ExtractOutputTextFromResponses(finalResponse)
-		usage = service.ResponseText2Usage(c, text, info.UpstreamModelName, info.GetEstimatePromptTokens())
+		text := relaycommon.ExtractOutputTextFromResponses(finalResponse)
+		usage = relaycommon.ResponseText2Usage(c, text, info.UpstreamModelName, info.GetEstimatePromptTokens())
 		chatResp.Usage = *usage
 	}
 
@@ -314,7 +313,7 @@ func OaiResponsesToChatStreamHandler(c contract.Context, info *relaycommon.Relay
 
 	usage := state.Usage()
 	if usage == nil || usage.TotalTokens == 0 {
-		usage = service.ResponseText2Usage(c, state.UsageText(), info.UpstreamModelName, info.GetEstimatePromptTokens())
+		usage = relaycommon.ResponseText2Usage(c, state.UsageText(), info.UpstreamModelName, info.GetEstimatePromptTokens())
 		state.SetUsage(usage)
 	}
 

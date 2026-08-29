@@ -15,7 +15,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/samber/lo"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
@@ -144,7 +143,7 @@ func cozeChatStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp
 	helper.Done(c)
 
 	if usage.TotalTokens == 0 {
-		usage = service.ResponseText2Usage(c, responseText, info.UpstreamModelName, c.GetInt("coze_input_count"))
+		usage = relaycommon.ResponseText2Usage(c, responseText, info.UpstreamModelName, c.GetInt("coze_input_count"))
 	}
 
 	return usage, nil

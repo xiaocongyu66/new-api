@@ -23,7 +23,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/samber/lo"
 )
 
@@ -101,7 +100,7 @@ func DispatchTextRequest(c contract.Context, info *relaycommon.RelayInfo) (newAP
 	if info.RelayMode == relayconstant.RelayModeChatCompletions &&
 		!passThroughGlobal &&
 		!info.ChannelSetting.PassThroughBodyEnabled &&
-		service.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, info.OriginModelName) {
+		relaycommon.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, info.OriginModelName) {
 		applySystemPromptIfNeeded(c, info, request)
 		usage, newApiErr := textViaResponses(c, info, adaptor, request)
 		if newApiErr != nil {
@@ -223,9 +222,9 @@ func DispatchTextRequest(c contract.Context, info *relaycommon.RelayInfo) (newAP
 		httpResp = resp.(*http.Response)
 		info.IsStream = info.IsStream || strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream")
 		if httpResp.StatusCode != http.StatusOK {
-			newApiErr := service.RelayErrorHandler(c.Context(), httpResp, false)
+			newApiErr := relaycommon.RelayErrorHandler(c.Context(), httpResp, false)
 			// reset status code 重置状态码
-			service.ResetStatusCode(newApiErr, statusCodeMappingStr)
+			relaycommon.ResetStatusCode(newApiErr, statusCodeMappingStr)
 			return newApiErr
 		}
 	}
@@ -233,7 +232,7 @@ func DispatchTextRequest(c contract.Context, info *relaycommon.RelayInfo) (newAP
 	usage, newApiErr := adaptor.DoResponse(c, httpResp, info)
 	if newApiErr != nil {
 		// reset status code 重置状态码
-		service.ResetStatusCode(newApiErr, statusCodeMappingStr)
+		relaycommon.ResetStatusCode(newApiErr, statusCodeMappingStr)
 		return newApiErr
 	}
 

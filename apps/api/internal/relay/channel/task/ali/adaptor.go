@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/egress"
+	"github.com/QuantumNous/new-api/internal/task"
 	"io"
 	"net/http"
 	"strconv"
@@ -15,9 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/channel"
 	"github.com/QuantumNous/new-api/internal/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/samber/lo"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
@@ -482,7 +481,7 @@ func (a *TaskAdaptor) DoRequest(c contract.Context, info *relaycommon.RelayInfo,
 func (a *TaskAdaptor) DoResponse(c contract.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *taskdto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		taskErr = service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
+		taskErr = task.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
 		return
 	}
 	_ = resp.Body.Close()
@@ -490,18 +489,18 @@ func (a *TaskAdaptor) DoResponse(c contract.Context, resp *http.Response, info *
 	// 解析阿里响应
 	var aliResp AliVideoResponse
 	if err := common.Unmarshal(responseBody, &aliResp); err != nil {
-		taskErr = service.TaskErrorWrapper(errors.Wrapf(err, "body: %s", responseBody), "unmarshal_response_body_failed", http.StatusInternalServerError)
+		taskErr = task.TaskErrorWrapper(errors.Wrapf(err, "body: %s", responseBody), "unmarshal_response_body_failed", http.StatusInternalServerError)
 		return
 	}
 
 	// 检查错误
 	if aliResp.Code != "" {
-		taskErr = service.TaskErrorWrapper(fmt.Errorf("%s: %s", aliResp.Code, aliResp.Message), "ali_api_error", resp.StatusCode)
+		taskErr = task.TaskErrorWrapper(fmt.Errorf("%s: %s", aliResp.Code, aliResp.Message), "ali_api_error", resp.StatusCode)
 		return
 	}
 
 	if aliResp.Output.TaskID == "" {
-		taskErr = service.TaskErrorWrapper(fmt.Errorf("task_id is empty"), "invalid_response", http.StatusInternalServerError)
+		taskErr = task.TaskErrorWrapper(fmt.Errorf("task_id is empty"), "invalid_response", http.StatusInternalServerError)
 		return
 	}
 
@@ -567,15 +566,15 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	// 状态映射
 	switch aliResp.Output.TaskStatus {
 	case "PENDING":
-		taskResult.Status = model.TaskStatusQueued
+		taskResult.Status = task.TaskStatusQueued
 	case "RUNNING":
-		taskResult.Status = model.TaskStatusInProgress
+		taskResult.Status = task.TaskStatusInProgress
 	case "SUCCEEDED":
-		taskResult.Status = model.TaskStatusSuccess
+		taskResult.Status = task.TaskStatusSuccess
 		// 阿里直接返回视频URL，不需要额外的代理端点
 		taskResult.Url = aliResp.Output.VideoURL
 	case "FAILED", "CANCELED", "UNKNOWN":
-		taskResult.Status = model.TaskStatusFailure
+		taskResult.Status = task.TaskStatusFailure
 		if aliResp.Message != "" {
 			taskResult.Reason = aliResp.Message
 		} else if aliResp.Output.Message != "" {
@@ -584,13 +583,13 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 			taskResult.Reason = "task failed"
 		}
 	default:
-		taskResult.Status = model.TaskStatusQueued
+		taskResult.Status = task.TaskStatusQueued
 	}
 
 	return &taskResult, nil
 }
 
-func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
+func (a *TaskAdaptor) ConvertToOpenAIVideo(task *task.Task) ([]byte, error) {
 	var aliResp AliVideoResponse
 	if err := common.Unmarshal(task.Data, &aliResp); err != nil {
 		return nil, errors.Wrap(err, "unmarshal ali response failed")

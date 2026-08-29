@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	channel "github.com/QuantumNous/new-api/internal/catalog"
 	"io"
 	"math"
 	"net"
@@ -21,7 +22,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/samber/lo"
 )
@@ -640,7 +640,7 @@ func FetchUpstreamRatios(c contract.Context) {
 		for _, id64 := range req.ChannelIDs {
 			intIds = append(intIds, int(id64))
 		}
-		dbChannels, err := model.GetChannelsByIds(intIds)
+		dbChannels, err := channel.GetChannelsByIds(intIds)
 		if err != nil {
 			logger.LogError(c.Context(), "failed to query channels: "+err.Error())
 			_ = c.JSON(http.StatusInternalServerError, common.H{"success": false, "message": "查询渠道失败"})
@@ -710,7 +710,7 @@ func FetchUpstreamRatios(c contract.Context) {
 			}
 
 			if isOpenRouter && chItem.ID != 0 {
-				dbCh, err := model.GetChannelById(chItem.ID, true)
+				dbCh, err := channel.GetChannelById(chItem.ID, true)
 				if err != nil {
 					ch <- upstreamResult{Name: uniqueName, Err: "failed to get channel key: " + err.Error()}
 					return
@@ -972,7 +972,7 @@ func FetchUpstreamRatios(c contract.Context) {
 
 // GetSyncableChannels returns channels that can be used for ratio sync.
 func GetSyncableChannels(c contract.Context) {
-	channels, err := model.GetAllChannels(0, 0, true, false)
+	channels, err := channel.GetAllChannels(0, 0, true, false)
 	if err != nil {
 		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,

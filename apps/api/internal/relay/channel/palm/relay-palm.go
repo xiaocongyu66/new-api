@@ -12,7 +12,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
@@ -124,7 +123,7 @@ func palmHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Res
 		}, resp.StatusCode)
 	}
 	fullTextResponse := responsePaLM2OpenAI(&palmResponse)
-	usage := service.ResponseText2Usage(c, palmResponse.Candidates[0].Content, info.UpstreamModelName, info.GetEstimatePromptTokens())
+	usage := relaycommon.ResponseText2Usage(c, palmResponse.Candidates[0].Content, info.UpstreamModelName, info.GetEstimatePromptTokens())
 	fullTextResponse.Usage = *usage
 	jsonResponse, err := common.Marshal(fullTextResponse)
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	stdjson "encoding/json"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"io"
 	"net/http"
@@ -19,7 +20,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/samber/lo"
 	"github.com/tidwall/gjson"
 )
@@ -33,7 +33,7 @@ const (
 
 // GenericOAuthProvider implements OAuth for custom/generic OAuth providers
 type GenericOAuthProvider struct {
-	config *model.CustomOAuthProvider
+	config *identity.CustomOAuthProvider
 }
 
 type accessPolicy struct {
@@ -71,7 +71,7 @@ var supportedAccessPolicyOps = []string{
 }
 
 // NewGenericOAuthProvider creates a new generic OAuth provider from config
-func NewGenericOAuthProvider(config *model.CustomOAuthProvider) *GenericOAuthProvider {
+func NewGenericOAuthProvider(config *identity.CustomOAuthProvider) *GenericOAuthProvider {
 	return &GenericOAuthProvider{config: config}
 }
 
@@ -83,7 +83,7 @@ func (p *GenericOAuthProvider) IsEnabled() bool {
 	return p.config.Enabled
 }
 
-func (p *GenericOAuthProvider) GetConfig() *model.CustomOAuthProvider {
+func (p *GenericOAuthProvider) GetConfig() *identity.CustomOAuthProvider {
 	return p.config
 }
 
@@ -291,11 +291,11 @@ func (p *GenericOAuthProvider) GetUserInfo(ctx context.Context, token *OAuthToke
 }
 
 func (p *GenericOAuthProvider) IsUserIDTaken(providerUserID string) bool {
-	return model.IsProviderUserIdTaken(p.config.Id, providerUserID)
+	return identity.IsProviderUserIdTaken(p.config.Id, providerUserID)
 }
 
-func (p *GenericOAuthProvider) FillUserByProviderID(user *model.User, providerUserID string) error {
-	foundUser, err := model.GetUserByOAuthBinding(p.config.Id, providerUserID)
+func (p *GenericOAuthProvider) FillUserByProviderID(user *identity.User, providerUserID string) error {
+	foundUser, err := identity.GetUserByOAuthBinding(p.config.Id, providerUserID)
 	if err != nil {
 		return err
 	}
@@ -303,7 +303,7 @@ func (p *GenericOAuthProvider) FillUserByProviderID(user *model.User, providerUs
 	return nil
 }
 
-func (p *GenericOAuthProvider) SetProviderUserID(user *model.User, providerUserID string) {
+func (p *GenericOAuthProvider) SetProviderUserID(user *identity.User, providerUserID string) {
 	// For generic providers, we store the binding in user_oauth_bindings table
 	// This is handled separately in the OAuth controller
 }

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/billing"
-	reasoning "github.com/QuantumNous/new-api/internal/billing"
 	"io"
 	"net/http"
 	"strings"
@@ -18,7 +17,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 )
 
 func ClaudeHelper(c contract.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
@@ -52,7 +50,7 @@ func ClaudeHelper(c contract.Context, info *relaycommon.RelayInfo) (newAPIError 
 		request.MaxTokens = &defaultMaxTokens
 	}
 
-	if baseModel, effortLevel, ok := reasoning.TrimEffortSuffix(request.Model); ok && effortLevel != "" &&
+	if baseModel, effortLevel, ok := billing.TrimEffortSuffix(request.Model); ok && effortLevel != "" &&
 		(strings.HasPrefix(request.Model, "claude-opus-4-6") ||
 			strings.HasPrefix(request.Model, "claude-opus-4-7") ||
 			strings.HasPrefix(request.Model, "claude-opus-4-8")) {
@@ -139,8 +137,8 @@ func ClaudeHelper(c contract.Context, info *relaycommon.RelayInfo) (newAPIError 
 
 	if !model_setting.GetGlobalSettings().PassThroughRequestEnabled &&
 		!info.ChannelSetting.PassThroughBodyEnabled &&
-		service.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, info.OriginModelName) {
-		result, convErr := service.ConvertRequest(c, info, types.RelayFormatOpenAI, request)
+		relaycommon.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, info.OriginModelName) {
+		result, convErr := relaycommon.ConvertRequest(c, info, types.RelayFormatOpenAI, request)
 		if convErr != nil {
 			return types.NewError(convErr, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 		}
@@ -211,9 +209,9 @@ func ClaudeHelper(c contract.Context, info *relaycommon.RelayInfo) (newAPIError 
 		httpResp = resp.(*http.Response)
 		info.IsStream = info.IsStream || strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream")
 		if httpResp.StatusCode != http.StatusOK {
-			newAPIError = service.RelayErrorHandler(c.Context(), httpResp, false)
+			newAPIError = relaycommon.RelayErrorHandler(c.Context(), httpResp, false)
 			// reset status code 重置状态码
-			service.ResetStatusCode(newAPIError, statusCodeMappingStr)
+			relaycommon.ResetStatusCode(newAPIError, statusCodeMappingStr)
 			return newAPIError
 		}
 	}
@@ -221,7 +219,7 @@ func ClaudeHelper(c contract.Context, info *relaycommon.RelayInfo) (newAPIError 
 	usage, newAPIError := adaptor.DoResponse(c, httpResp, info)
 	if newAPIError != nil {
 		// reset status code 重置状态码
-		service.ResetStatusCode(newAPIError, statusCodeMappingStr)
+		relaycommon.ResetStatusCode(newAPIError, statusCodeMappingStr)
 		return newAPIError
 	}
 

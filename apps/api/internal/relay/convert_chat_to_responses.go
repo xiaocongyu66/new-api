@@ -14,7 +14,6 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
@@ -93,7 +92,7 @@ func chatCompletionsViaResponses(c contract.Context, info *relaycommon.RelayInfo
 		return nil, types.NewError(err, types.ErrorCodeChannelParamOverrideInvalid, types.ErrOptionWithSkipRetry())
 	}
 
-	result, err := service.ConvertRequestVia(c, info, &overriddenChatReq, types.RelayFormatOpenAI, types.RelayFormatOpenAIResponses)
+	result, err := relaycommon.ConvertRequestVia(c, info, &overriddenChatReq, types.RelayFormatOpenAI, types.RelayFormatOpenAIResponses)
 	if err != nil {
 		return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
@@ -152,15 +151,15 @@ func chatCompletionsViaResponses(c contract.Context, info *relaycommon.RelayInfo
 	upstreamStream := isResponsesEventStreamContentType(httpResp.Header.Get("Content-Type"))
 	info.IsStream = clientStream || upstreamStream
 	if httpResp.StatusCode != http.StatusOK {
-		newApiErr := service.RelayErrorHandler(c.Context(), httpResp, false)
-		service.ResetStatusCode(newApiErr, statusCodeMappingStr)
+		newApiErr := relaycommon.RelayErrorHandler(c.Context(), httpResp, false)
+		relaycommon.ResetStatusCode(newApiErr, statusCodeMappingStr)
 		return nil, newApiErr
 	}
 
 	if upstreamStream && clientStream {
 		usage, newApiErr := openaichannel.OaiResponsesToChatStreamHandler(c, info, httpResp)
 		if newApiErr != nil {
-			service.ResetStatusCode(newApiErr, statusCodeMappingStr)
+			relaycommon.ResetStatusCode(newApiErr, statusCodeMappingStr)
 			return nil, newApiErr
 		}
 		return usage, nil
@@ -169,7 +168,7 @@ func chatCompletionsViaResponses(c contract.Context, info *relaycommon.RelayInfo
 		info.IsStream = false
 		usage, newApiErr := openaichannel.OaiResponsesToChatBufferedStreamHandler(c, info, httpResp)
 		if newApiErr != nil {
-			service.ResetStatusCode(newApiErr, statusCodeMappingStr)
+			relaycommon.ResetStatusCode(newApiErr, statusCodeMappingStr)
 			return nil, newApiErr
 		}
 		return usage, nil
@@ -177,7 +176,7 @@ func chatCompletionsViaResponses(c contract.Context, info *relaycommon.RelayInfo
 
 	usage, newApiErr := openaichannel.OaiResponsesToChatHandler(c, info, httpResp)
 	if newApiErr != nil {
-		service.ResetStatusCode(newApiErr, statusCodeMappingStr)
+		relaycommon.ResetStatusCode(newApiErr, statusCodeMappingStr)
 		return nil, newApiErr
 	}
 	return usage, nil

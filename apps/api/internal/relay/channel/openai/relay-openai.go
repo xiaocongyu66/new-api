@@ -16,7 +16,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
@@ -154,7 +153,7 @@ func OaiStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *htt
 			Usage *dto.Usage `json:"usage"`
 		}
 		err := common.Unmarshal([]byte(secondLastStreamData), &streamResp)
-		if err == nil && streamResp.Usage != nil && service.ValidUsage(streamResp.Usage) {
+		if err == nil && streamResp.Usage != nil && relaycommon.ValidUsage(streamResp.Usage) {
 			usage = streamResp.Usage
 			containStreamUsage = true
 
@@ -180,7 +179,7 @@ func OaiStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *htt
 	}
 
 	if !containStreamUsage {
-		usage = service.ResponseText2Usage(c, responseTextBuilder.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
+		usage = relaycommon.ResponseText2Usage(c, responseTextBuilder.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
 		usage.CompletionTokens += toolCount * 7
 	}
 
@@ -277,7 +276,7 @@ func OpenaiHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.R
 		completionTokens := simpleResponse.Usage.CompletionTokens
 		if completionTokens == 0 {
 			for _, choice := range simpleResponse.Choices {
-				ctkm := service.CountTextToken(choice.Message.StringContent()+choice.Message.GetReasoningContent(), info.UpstreamModelName)
+				ctkm := relaycommon.CountTextToken(choice.Message.StringContent()+choice.Message.GetReasoningContent(), info.UpstreamModelName)
 				completionTokens += ctkm
 			}
 		}

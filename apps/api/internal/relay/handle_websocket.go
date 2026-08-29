@@ -7,7 +7,6 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/gorilla/websocket"
@@ -39,7 +38,7 @@ func WssHelper(c contract.Context, info *relaycommon.RelayInfo) (newAPIError *ty
 	usage, newAPIError := adaptor.DoResponse(c, nil, info)
 	if newAPIError != nil {
 		// reset status code 重置状态码
-		service.ResetStatusCode(newAPIError, statusCodeMappingStr)
+		relaycommon.ResetStatusCode(newAPIError, statusCodeMappingStr)
 		return newAPIError
 	}
 	billing.PostWssConsumeQuota(c, info, info.UpstreamModelName, usage.(*dto.RealtimeUsage), "")

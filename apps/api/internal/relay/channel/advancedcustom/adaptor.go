@@ -19,7 +19,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/samber/lo"
 )
 
@@ -57,7 +56,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c contract.Context, info *relaycommon.Rel
 	case relayconvert.ConverterOpenAIChatToClaudeMessages,
 		relayconvert.ConverterOpenAIChatToOpenAIResponses,
 		relayconvert.ConverterOpenAIChatToGeminiContent:
-		result, err := service.ConvertRequestByID(c, info, converter, request)
+		result, err := relaycommon.ConvertRequestByID(c, info, converter, request)
 		if err != nil {
 			return nil, err
 		}
@@ -77,7 +76,7 @@ func (a *Adaptor) ConvertClaudeRequest(c contract.Context, info *relaycommon.Rel
 	case relayconvert.ConverterNone:
 		return a.claudeAdaptor.ConvertClaudeRequest(c, info, request)
 	case relayconvert.ConverterClaudeMessagesToOpenAIChat:
-		result, err := service.ConvertRequestByID(c, info, converter, request)
+		result, err := relaycommon.ConvertRequestByID(c, info, converter, request)
 		if err != nil {
 			return nil, err
 		}
@@ -101,7 +100,7 @@ func (a *Adaptor) ConvertGeminiRequest(c contract.Context, info *relaycommon.Rel
 	case relayconvert.ConverterNone:
 		return a.geminiAdaptor.ConvertGeminiRequest(c, info, request)
 	case relayconvert.ConverterGeminiContentToOpenAIChat:
-		result, err := service.ConvertRequestByID(c, info, converter, request)
+		result, err := relaycommon.ConvertRequestByID(c, info, converter, request)
 		if err != nil {
 			return nil, err
 		}
@@ -124,7 +123,7 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c contract.Context, info *relayc
 	case relayconvert.ConverterNone:
 		return a.convertOpenAICompatibleResponsesRequest(c, info, request)
 	case relayconvert.ConverterOpenAIResponsesToOpenAIChat:
-		result, err := service.ConvertRequestByID(c, info, converter, request)
+		result, err := relaycommon.ConvertRequestByID(c, info, converter, request)
 		if err != nil {
 			return nil, err
 		}
@@ -134,7 +133,7 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c contract.Context, info *relayc
 		}
 		return a.convertOpenAICompatibleRequest(c, info, chatRequest)
 	case relayconvert.ConverterOpenAIResponsesToGemini:
-		result, err := service.ConvertRequestByID(c, info, converter, request)
+		result, err := relaycommon.ConvertRequestByID(c, info, converter, request)
 		if err != nil {
 			return nil, err
 		}

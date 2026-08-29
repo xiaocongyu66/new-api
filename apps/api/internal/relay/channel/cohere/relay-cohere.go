@@ -13,7 +13,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/samber/lo"
@@ -172,7 +171,7 @@ pollLoop:
 		}
 	}
 	if usage.PromptTokens == 0 {
-		usage = service.ResponseText2Usage(c, responseText, info.UpstreamModelName, info.GetEstimatePromptTokens())
+		usage = relaycommon.ResponseText2Usage(c, responseText, info.UpstreamModelName, info.GetEstimatePromptTokens())
 	}
 	return usage, nil
 }

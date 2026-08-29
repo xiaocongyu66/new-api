@@ -3,11 +3,11 @@ package vertex
 import (
 	"errors"
 	"fmt"
+	reasoning "github.com/QuantumNous/new-api/internal/billing"
 	"io"
 	"net/http"
 	"strings"
 
-	reasoning "github.com/QuantumNous/new-api/internal/billing"
 	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/relay/channel"
@@ -19,7 +19,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/samber/lo"
 )
 
@@ -288,7 +287,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c contract.Context, info *relaycommon.Rel
 		return a.ConvertImageRequest(c, info, imgReq)
 	}
 	if a.RequestMode == RequestModeClaude {
-		result, err := service.ConvertRequest(c, info, types.RelayFormatClaude, request)
+		result, err := relaycommon.ConvertRequest(c, info, types.RelayFormatClaude, request)
 		if err != nil {
 			return nil, err
 		}
@@ -301,7 +300,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c contract.Context, info *relaycommon.Rel
 		info.UpstreamModelName = claudeReq.Model
 		return vertexClaudeReq, nil
 	} else if a.RequestMode == RequestModeGemini {
-		result, err := service.ConvertRequest(c, info, types.RelayFormatGemini, request)
+		result, err := relaycommon.ConvertRequest(c, info, types.RelayFormatGemini, request)
 		if err != nil {
 			return nil, err
 		}

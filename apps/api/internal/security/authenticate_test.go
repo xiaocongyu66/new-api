@@ -33,7 +33,7 @@ func setupDashboardAuthMiddlewareTest(t *testing.T) {
 	previousSecret := common.SessionSecret
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}))
+	require.NoError(t, db.AutoMigrate(&identity.User{}, &identity.UserSession{}))
 	dbx.DB = db
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
@@ -77,9 +77,9 @@ func tamperDashboardToken(token string) string {
 	return token[:tamperAt] + replacement + token[tamperAt+1:]
 }
 
-func createMiddlewarePATUser(t *testing.T, username, token string) *model.User {
+func createMiddlewarePATUser(t *testing.T, username, token string) *identity.User {
 	t.Helper()
-	user := &model.User{
+	user := &identity.User{
 		Username: username, Password: "password-placeholder", Role: common.RoleCommonUser,
 		Status: common.UserStatusEnabled, Group: "default", AccessToken: &token, AuthVersion: 1,
 		AffCode: "middleware-aff-" + username,
@@ -137,7 +137,7 @@ func TestTryUserAuthCredentialClassification(t *testing.T) {
 	patUser := createMiddlewarePATUser(t, "optional-pat-user", "optional.pat.with-dots")
 	internalUser := createMiddlewarePATUser(t, "optional-session-user", "unrelated-pat")
 	now := time.Now().Unix()
-	session := &model.UserSession{
+	session := &identity.UserSession{
 		SID:             "optional-auth-session",
 		UserID:          internalUser.Id,
 		Version:         1,
@@ -148,7 +148,7 @@ func TestTryUserAuthCredentialClassification(t *testing.T) {
 		LastActiveAt:    now,
 		ExpiresAt:       now + 3600,
 	}
-	require.NoError(t, model.CreateUserSession(session))
+	require.NoError(t, identity.CreateUserSession(session))
 	authID := authtoken.AuthIdentity{
 		UserID:          internalUser.Id,
 		SessionID:       session.SID,

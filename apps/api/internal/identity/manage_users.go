@@ -429,7 +429,7 @@ type TransferAffQuotaRequest struct {
 }
 
 // TransferAffQuota moves affiliate reward quota into spendable quota. The
-// payment-compliance gate runs in the HTTP shell (controller.TransferAffQuota)
+// payment-compliance gate runs in the HTTP shell (TransferAffQuota)
 // so this domain does not depend on billing.
 func TransferAffQuota(c contract.Context) {
 	id := c.GetInt("id")

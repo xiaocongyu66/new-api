@@ -5,13 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/authtoken"
-	"github.com/QuantumNous/new-api/internal/security/passkey"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/security/passkey"
 
 	"github.com/go-webauthn/webauthn/protocol"
 	webauthnlib "github.com/go-webauthn/webauthn/webauthn"

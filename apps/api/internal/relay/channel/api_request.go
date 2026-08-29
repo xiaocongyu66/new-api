@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
@@ -20,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
+	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gorilla/websocket"
@@ -395,7 +395,7 @@ func DoWssRequest(a Adaptor, c contract.Context, info *common.RelayInfo, request
 	}
 	// send request body
 	//all, err := io.ReadAll(requestBody)
-	//err = service.WssString(c, targetConn, string(all))
+	//err = gateway.WssString(c, targetConn, string(all))
 	return targetConn, nil
 }
 

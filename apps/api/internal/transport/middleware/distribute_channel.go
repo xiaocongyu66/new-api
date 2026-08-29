@@ -2,7 +2,9 @@ package middleware
 
 import (
 	"github.com/QuantumNous/new-api/internal/egress"
+	"github.com/QuantumNous/new-api/internal/ops"
 	taskcap "github.com/QuantumNous/new-api/internal/task"
+	taskdomain "github.com/QuantumNous/new-api/internal/task"
 
 	"errors"
 	"fmt"
@@ -19,13 +21,10 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	taskdto "github.com/QuantumNous/new-api/internal/dto"
-	"github.com/QuantumNous/new-api/internal/gateway/port"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/tidwall/gjson"
 )
 
@@ -36,7 +35,7 @@ type ModelRequest struct {
 
 func Distribute() func(c contract.Context) {
 	return func(c contract.Context) {
-		var channel *model.Channel
+		var channel *catalog.Channel
 		channelId, ok := common.GetCtxKey(c, constant.ContextKeyTokenSpecificChannelId)
 		modelRequest, shouldSelectChannel, err := getModelRequest(c)
 		if err != nil {
@@ -49,7 +48,7 @@ func Distribute() func(c contract.Context) {
 				abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.TCtx(c, i18n.MsgDistributorInvalidChannelId))
 				return
 			}
-			channel, err = model.GetChannelById(id, true)
+			channel, err = catalog.GetChannelById(id, true)
 			if err != nil {
 				abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.TCtx(c, i18n.MsgDistributorInvalidChannelId))
 				return
@@ -108,7 +107,7 @@ func Distribute() func(c contract.Context) {
 
 				if preferredChannelID, found := catalog.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
 					affinityUsable := false
-					preferred, err := model.CacheGetChannel(preferredChannelID)
+					preferred, err := catalog.CacheGetChannel(preferredChannelID)
 					if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled &&
 						channelSupportsRequestPath(preferred, c.Path(), modelRequest.Model) {
 						if usingGroup == "auto" {
@@ -137,7 +136,7 @@ func Distribute() func(c contract.Context) {
 				}
 
 				if channel == nil {
-					channel, selectGroup, err = port.SelectChannel(&port.SelectParams{
+					channel, selectGroup, err = catalog.SelectChannel(&catalog.SelectParams{
 						Ctx:         c,
 						ModelName:   modelRequest.Model,
 						TokenGroup:  usingGroup,
@@ -178,7 +177,7 @@ func Distribute() func(c contract.Context) {
 // channelSupportsRequestPath reports whether a channel can serve the request path.
 // Only Advanced Custom (type 58) channels are path-checked; all other channel types
 // always pass. A type-58 channel is usable only when one of its routes matches.
-func channelSupportsRequestPath(channel *model.Channel, requestPath string, requestModel string) bool {
+func channelSupportsRequestPath(channel *catalog.Channel, requestPath string, requestModel string) bool {
 	if channel == nil {
 		return false
 	}
@@ -284,7 +283,7 @@ func getModelRequest(c contract.Context) (*ModelRequest, bool, error) {
 			relayMode == relayconstant.RelayModeSunoFetchByID {
 			shouldSelectChannel = false
 		} else {
-			modelName := service.CoverTaskActionToModelName(constant.TaskPlatformSuno, c.Param("action"))
+			modelName := taskdomain.CoverTaskActionToModelName(constant.TaskPlatformSuno, c.Param("action"))
 			modelRequest.Model = modelName
 		}
 		c.Set("platform", string(constant.TaskPlatformSuno))
@@ -437,7 +436,7 @@ func getTaskOriginModelName(c contract.Context) string {
 	return ""
 }
 
-func SetupContextForSelectedChannel(c contract.Context, channel *model.Channel, modelName string) *types.NewAPIError {
+func SetupContextForSelectedChannel(c contract.Context, channel *catalog.Channel, modelName string) *types.NewAPIError {
 	c.Set("original_model", modelName) // for retry
 	if channel == nil {
 		return types.NewError(errors.New("channel is nil"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
@@ -447,7 +446,7 @@ func SetupContextForSelectedChannel(c contract.Context, channel *model.Channel, 
 	common.SetCtxKey(c, constant.ContextKeyChannelType, channel.Type)
 	setting := channel.GetSetting()
 	if setting.Proxy == "" {
-		if nodes, err := egress.GetProxyNodesForChannelAndModel(channel, modelName); err == nil && len(nodes) > 0 {
+		if nodes, err := egress.GetProxyNodesForChannelAndModel(channel.Id, modelName); err == nil && len(nodes) > 0 {
 			// Select the first healthy/highest health node
 			var bestNode *egress.ProxyNode
 			for _, n := range nodes {
@@ -456,7 +455,7 @@ func SetupContextForSelectedChannel(c contract.Context, channel *model.Channel, 
 				}
 			}
 			if bestNode != nil {
-				if parsed, err := service.DecryptProxyNodeConfig(bestNode); err == nil && parsed != nil {
+				if parsed, err := ops.DecryptProxyNodeConfig(bestNode); err == nil && parsed != nil {
 					setting.Proxy = parsed.CanonicalInput
 				}
 			}

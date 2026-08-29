@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/billing"
+	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	"io"
 	"net/http"
 	"strconv"
@@ -20,8 +21,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/helper"
 	taskcap "github.com/QuantumNous/new-api/internal/task"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 )
 
 type TaskSubmitResult struct {
@@ -48,7 +47,7 @@ func ResolveOriginTask(c contract.Context, info *relaycommon.RelayInfo) *dto.Tas
 	if info.Action == constant.TaskActionRemix {
 		videoID := c.Param("video_id")
 		if strings.TrimSpace(videoID) == "" {
-			return service.TaskErrorWrapperLocal(fmt.Errorf("video_id is required"), "invalid_request", http.StatusBadRequest)
+			return taskcap.TaskErrorWrapperLocal(fmt.Errorf("video_id is required"), "invalid_request", http.StatusBadRequest)
 		}
 		info.OriginTaskID = videoID
 	}
@@ -59,10 +58,10 @@ func ResolveOriginTask(c contract.Context, info *relaycommon.RelayInfo) *dto.Tas
 
 	originTask, exist, err := taskcap.GetByTaskId(info.UserId, info.OriginTaskID)
 	if err != nil {
-		return service.TaskErrorWrapper(err, "get_origin_task_failed", http.StatusInternalServerError)
+		return taskcap.TaskErrorWrapper(err, "get_origin_task_failed", http.StatusInternalServerError)
 	}
 	if !exist {
-		return service.TaskErrorWrapperLocal(errors.New("task_origin_not_exist"), "task_not_exist", http.StatusBadRequest)
+		return taskcap.TaskErrorWrapperLocal(errors.New("task_origin_not_exist"), "task_not_exist", http.StatusBadRequest)
 	}
 
 	// 从原始任务推导模型名称
@@ -81,19 +80,19 @@ func ResolveOriginTask(c contract.Context, info *relaycommon.RelayInfo) *dto.Tas
 	}
 
 	// 锁定到原始任务的渠道（重试时复用同一渠道，轮换 key）
-	ch, err := model.GetChannelById(originTask.ChannelId, true)
+	ch, err := catalog.GetChannelById(originTask.ChannelId, true)
 	if err != nil {
-		return service.TaskErrorWrapperLocal(err, "channel_not_found", http.StatusBadRequest)
+		return taskcap.TaskErrorWrapperLocal(err, "channel_not_found", http.StatusBadRequest)
 	}
 	if ch.Status != common.ChannelStatusEnabled {
-		return service.TaskErrorWrapperLocal(errors.New("the channel of the origin task is disabled"), "task_channel_disable", http.StatusBadRequest)
+		return taskcap.TaskErrorWrapperLocal(errors.New("the channel of the origin task is disabled"), "task_channel_disable", http.StatusBadRequest)
 	}
 	info.LockedChannel = ch
 
 	if originTask.ChannelId != info.ChannelId {
 		key, _, newAPIError := ch.GetNextEnabledKey(info.OriginModelName)
 		if newAPIError != nil {
-			return service.TaskErrorWrapper(newAPIError, "channel_no_available_key", newAPIError.StatusCode)
+			return taskcap.TaskErrorWrapper(newAPIError, "channel_no_available_key", newAPIError.StatusCode)
 		}
 		common.SetContextKey(c, constant.ContextKeyChannelKey, key)
 		common.SetContextKey(c, constant.ContextKeyChannelType, ch.Type)
@@ -153,7 +152,7 @@ func RelayTaskSubmit(c contract.Context, info *relaycommon.RelayInfo) (*TaskSubm
 	}
 	adaptor := GetTaskAdaptor(platform)
 	if adaptor == nil {
-		return nil, service.TaskErrorWrapperLocal(fmt.Errorf("invalid api platform: %s", platform), "invalid_api_platform", http.StatusBadRequest)
+		return nil, taskcap.TaskErrorWrapperLocal(fmt.Errorf("invalid api platform: %s", platform), "invalid_api_platform", http.StatusBadRequest)
 	}
 	adaptor.Init(info)
 	if taskErr := adaptor.ValidateRequestAndSetAction(c, info); taskErr != nil {
@@ -163,26 +162,26 @@ func RelayTaskSubmit(c contract.Context, info *relaycommon.RelayInfo) (*TaskSubm
 	// 2. 确定模型名称
 	modelName := info.OriginModelName
 	if modelName == "" {
-		modelName = service.CoverTaskActionToModelName(platform, info.Action)
+		modelName = taskcap.CoverTaskActionToModelName(platform, info.Action)
 	}
 
 	// 2.5 应用渠道的模型映射（与同步任务对齐）
 	info.OriginModelName = modelName
 	info.UpstreamModelName = modelName
 	if err := helper.ModelMappedHelper(c, info, nil); err != nil {
-		return nil, service.TaskErrorWrapperLocal(err, "model_mapping_failed", http.StatusBadRequest)
+		return nil, taskcap.TaskErrorWrapperLocal(err, "model_mapping_failed", http.StatusBadRequest)
 	}
 
 	// 3. 预生成公开 task ID（仅首次）
 	if info.PublicTaskID == "" {
-		info.PublicTaskID = model.GenerateTaskID()
+		info.PublicTaskID = taskcap.GenerateTaskID()
 	}
 
 	// 4. 价格计算：基础模型价格
 	info.OriginModelName = modelName
 	priceData, err := helper.ModelPriceHelperPerCall(c, info)
 	if err != nil {
-		return nil, service.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)
+		return nil, taskcap.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)
 	}
 	info.PriceData = priceData
 
@@ -207,24 +206,24 @@ func RelayTaskSubmit(c contract.Context, info *relaycommon.RelayInfo) (*TaskSubm
 	if info.Billing == nil && !info.PriceData.FreeModel {
 		info.ForcePreConsume = true
 		if apiErr := billing.PreConsumeBilling(c, info.PriceData.Quota, info); apiErr != nil {
-			return nil, service.TaskErrorFromAPIError(apiErr)
+			return nil, relaycommon.TaskErrorFromAPIError(apiErr)
 		}
 	}
 
 	// 8. 构建请求体
 	requestBody, err := adaptor.BuildRequestBody(c, info)
 	if err != nil {
-		return nil, service.TaskErrorWrapper(err, "build_request_failed", http.StatusInternalServerError)
+		return nil, taskcap.TaskErrorWrapper(err, "build_request_failed", http.StatusInternalServerError)
 	}
 
 	// 9. 发送请求
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
-		return nil, service.TaskErrorWrapper(err, "do_request_failed", http.StatusInternalServerError)
+		return nil, taskcap.TaskErrorWrapper(err, "do_request_failed", http.StatusInternalServerError)
 	}
 	if resp != nil && resp.StatusCode != http.StatusOK {
 		responseBody, _ := io.ReadAll(resp.Body)
-		return nil, service.TaskErrorWrapper(fmt.Errorf("%s", string(responseBody)), "fail_to_fetch_task", resp.StatusCode)
+		return nil, taskcap.TaskErrorWrapper(fmt.Errorf("%s", string(responseBody)), "fail_to_fetch_task", resp.StatusCode)
 	}
 
 	// 10. 返回 OtherRatios 给下游（header 必须在 DoResponse 写 body 之前设置）
@@ -297,7 +296,7 @@ var fetchRespBuilders = map[int]func(c contract.Context) (respBody []byte, taskR
 func RelayTaskFetch(c contract.Context, relayMode int) (taskResp *dto.TaskError) {
 	respBuilder, ok := fetchRespBuilders[relayMode]
 	if !ok {
-		taskResp = service.TaskErrorWrapperLocal(errors.New("invalid_relay_mode"), "invalid_relay_mode", http.StatusBadRequest)
+		taskResp = taskcap.TaskErrorWrapperLocal(errors.New("invalid_relay_mode"), "invalid_relay_mode", http.StatusBadRequest)
 	}
 
 	respBody, taskErr := respBuilder(c)
@@ -311,7 +310,7 @@ func RelayTaskFetch(c contract.Context, relayMode int) (taskResp *dto.TaskError)
 	c.ResponseWriter().Header().Set("Content-Type", "application/json")
 	_, err := io.Copy(c.ResponseWriter(), bytes.NewBuffer(respBody))
 	if err != nil {
-		taskResp = service.TaskErrorWrapper(err, "copy_response_body_failed", http.StatusInternalServerError)
+		taskResp = taskcap.TaskErrorWrapper(err, "copy_response_body_failed", http.StatusInternalServerError)
 		return
 	}
 	return
@@ -325,14 +324,14 @@ func sunoFetchRespBodyBuilder(c contract.Context) (respBody []byte, taskResp *dt
 	}{}
 	err := c.BindJSON(&condition)
 	if err != nil {
-		taskResp = service.TaskErrorWrapper(err, "invalid_request", http.StatusBadRequest)
+		taskResp = taskcap.TaskErrorWrapper(err, "invalid_request", http.StatusBadRequest)
 		return
 	}
 	var tasks []any
 	if len(condition.IDs) > 0 {
 		taskModels, err := taskcap.GetByTaskIds(userId, condition.IDs)
 		if err != nil {
-			taskResp = service.TaskErrorWrapper(err, "get_tasks_failed", http.StatusInternalServerError)
+			taskResp = taskcap.TaskErrorWrapper(err, "get_tasks_failed", http.StatusInternalServerError)
 			return
 		}
 		for _, task := range taskModels {
@@ -354,11 +353,11 @@ func sunoFetchByIDRespBodyBuilder(c contract.Context) (respBody []byte, taskResp
 
 	originTask, exist, err := taskcap.GetByTaskId(userId, taskId)
 	if err != nil {
-		taskResp = service.TaskErrorWrapper(err, "get_task_failed", http.StatusInternalServerError)
+		taskResp = taskcap.TaskErrorWrapper(err, "get_task_failed", http.StatusInternalServerError)
 		return
 	}
 	if !exist {
-		taskResp = service.TaskErrorWrapperLocal(errors.New("task_not_exist"), "task_not_exist", http.StatusBadRequest)
+		taskResp = taskcap.TaskErrorWrapperLocal(errors.New("task_not_exist"), "task_not_exist", http.StatusBadRequest)
 		return
 	}
 
@@ -378,11 +377,11 @@ func videoFetchByIDRespBodyBuilder(c contract.Context) (respBody []byte, taskRes
 
 	originTask, exist, err := taskcap.GetByTaskId(userId, taskId)
 	if err != nil {
-		taskResp = service.TaskErrorWrapper(err, "get_task_failed", http.StatusInternalServerError)
+		taskResp = taskcap.TaskErrorWrapper(err, "get_task_failed", http.StatusInternalServerError)
 		return
 	}
 	if !exist {
-		taskResp = service.TaskErrorWrapperLocal(errors.New("task_not_exist"), "task_not_exist", http.StatusBadRequest)
+		taskResp = taskcap.TaskErrorWrapperLocal(errors.New("task_not_exist"), "task_not_exist", http.StatusBadRequest)
 		return
 	}
 
@@ -398,19 +397,19 @@ func videoFetchByIDRespBodyBuilder(c contract.Context) (respBody []byte, taskRes
 	if isOpenAIVideoAPI {
 		adaptor := GetTaskAdaptor(originTask.Platform)
 		if adaptor == nil {
-			taskResp = service.TaskErrorWrapperLocal(fmt.Errorf("invalid channel id: %d", originTask.ChannelId), "invalid_channel_id", http.StatusBadRequest)
+			taskResp = taskcap.TaskErrorWrapperLocal(fmt.Errorf("invalid channel id: %d", originTask.ChannelId), "invalid_channel_id", http.StatusBadRequest)
 			return
 		}
 		if converter, ok := adaptor.(channel.OpenAIVideoConverter); ok {
 			openAIVideoData, err := converter.ConvertToOpenAIVideo(originTask)
 			if err != nil {
-				taskResp = service.TaskErrorWrapper(err, "convert_to_openai_video_failed", http.StatusInternalServerError)
+				taskResp = taskcap.TaskErrorWrapper(err, "convert_to_openai_video_failed", http.StatusInternalServerError)
 				return
 			}
 			respBody = openAIVideoData
 			return
 		}
-		taskResp = service.TaskErrorWrapperLocal(fmt.Errorf("not_implemented:%s", originTask.Platform), "not_implemented", http.StatusNotImplemented)
+		taskResp = taskcap.TaskErrorWrapperLocal(fmt.Errorf("not_implemented:%s", originTask.Platform), "not_implemented", http.StatusNotImplemented)
 		return
 	}
 
@@ -420,7 +419,7 @@ func videoFetchByIDRespBodyBuilder(c contract.Context) (respBody []byte, taskRes
 		Data: TaskModel2Dto(originTask),
 	})
 	if err != nil {
-		taskResp = service.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)
+		taskResp = taskcap.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)
 	}
 	return
 }
@@ -428,8 +427,8 @@ func videoFetchByIDRespBodyBuilder(c contract.Context) (respBody []byte, taskRes
 // tryRealtimeFetch 尝试从上游实时拉取 Gemini/Vertex 任务状态。
 // 仅当渠道类型为 Gemini 或 Vertex 时触发；其他渠道或出错时返回 nil。
 // 当非 OpenAI Video API 时，还会构建自定义格式的响应体。
-func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
-	channelModel, err := model.GetChannelById(task.ChannelId, true)
+func tryRealtimeFetch(task *taskcap.Task, isOpenAIVideoAPI bool) []byte {
+	channelModel, err := catalog.GetChannelById(task.ChannelId, true)
 	if err != nil {
 		return nil
 	}
@@ -469,7 +468,7 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 
 	// 将上游最新状态更新到 task
 	if ti.Status != "" {
-		task.Status = model.TaskStatus(ti.Status)
+		task.Status = taskcap.TaskStatus(ti.Status)
 	}
 	if ti.Progress != "" {
 		task.Progress = ti.Progress
@@ -478,7 +477,7 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 		// data: URI — kept in Data, not ResultURL
 	} else if ti.Url != "" {
 		task.PrivateData.ResultURL = ti.Url
-	} else if task.Status == model.TaskStatusSuccess {
+	} else if task.Status == taskcap.TaskStatusSuccess {
 		// No URL from adaptor — construct proxy URL using public task ID
 		task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
 	}
@@ -535,20 +534,20 @@ func detectVideoFormat(rawBody []byte) string {
 }
 
 // mapTaskStatusToSimple 将内部 TaskStatus 映射为简化状态字符串
-func mapTaskStatusToSimple(status model.TaskStatus) string {
+func mapTaskStatusToSimple(status taskcap.TaskStatus) string {
 	switch status {
-	case model.TaskStatusSuccess:
+	case taskcap.TaskStatusSuccess:
 		return "succeeded"
-	case model.TaskStatusFailure:
+	case taskcap.TaskStatusFailure:
 		return "failed"
-	case model.TaskStatusQueued, model.TaskStatusSubmitted:
+	case taskcap.TaskStatusQueued, taskcap.TaskStatusSubmitted:
 		return "queued"
 	default:
 		return "processing"
 	}
 }
 
-func TaskModel2Dto(task *model.Task) *dto.TaskDto {
+func TaskModel2Dto(task *taskcap.Task) *dto.TaskDto {
 	return &dto.TaskDto{
 		ID:         task.ID,
 		CreatedAt:  task.CreatedAt,

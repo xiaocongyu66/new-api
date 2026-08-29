@@ -2,7 +2,7 @@ package billing
 
 import (
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/internal/usage"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"testing"
@@ -34,7 +34,7 @@ func TestAttachQuotaSaturationNestsUnderAdminInfo(t *testing.T) {
 	}
 
 	other := map[string]interface{}{"model_price": 0.004}
-	service.AttachQuotaSaturation(ctx, relayInfo, other)
+	usage.AttachQuotaSaturation(ctx, relayInfo, other)
 
 	adminInfo, ok := other["admin_info"].(map[string]interface{})
 	require.True(t, ok, "admin_info should be created")
@@ -58,7 +58,7 @@ func TestAttachQuotaSaturationPreservesExistingAdminInfo(t *testing.T) {
 	other := map[string]interface{}{
 		"admin_info": map[string]interface{}{"admin_username": "root"},
 	}
-	service.AttachQuotaSaturation(ctx, relayInfo, other)
+	usage.AttachQuotaSaturation(ctx, relayInfo, other)
 
 	adminInfo := other["admin_info"].(map[string]interface{})
 	require.Equal(t, "root", adminInfo["admin_username"], "existing admin_info fields preserved")
@@ -74,7 +74,7 @@ func TestAttachQuotaSaturationNoClampNoMarker(t *testing.T) {
 
 	relayInfo := &relaycommon.RelayInfo{QuotaClamp: nil}
 	other := map[string]interface{}{"model_price": 0.004}
-	service.AttachQuotaSaturation(ctx, relayInfo, other)
+	usage.AttachQuotaSaturation(ctx, relayInfo, other)
 
 	_, hasAdmin := other["admin_info"]
 	require.False(t, hasAdmin, "no admin_info should be added when there is no clamp")

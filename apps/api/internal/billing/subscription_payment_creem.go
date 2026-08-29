@@ -2,15 +2,15 @@ package billing
 
 import (
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"time"
 
+	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/thanhpk/randstr"
 )
 
@@ -37,7 +37,7 @@ func SubscriptionRequestCreemPay(c contract.Context) {
 		return
 	}
 
-	plan, err := model.GetSubscriptionPlanById(req.PlanId)
+	plan, err := GetSubscriptionPlanById(req.PlanId)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -56,7 +56,7 @@ func SubscriptionRequestCreemPay(c contract.Context) {
 	}
 
 	userId := c.GetInt("id")
-	user, err := model.GetUserById(userId, false)
+	user, err := identity.GetUserById(userId, false)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -67,7 +67,7 @@ func SubscriptionRequestCreemPay(c contract.Context) {
 	}
 
 	if plan.MaxPurchasePerUser > 0 {
-		count, err := model.CountUserSubscriptionsByPlan(userId, plan.Id)
+		count, err := CountUserSubscriptionsByPlan(userId, plan.Id)
 		if err != nil {
 			common.CtxApiError(c, err)
 			return
@@ -82,13 +82,13 @@ func SubscriptionRequestCreemPay(c contract.Context) {
 	referenceId := "sub_ref_" + common.Sha1([]byte(reference+time.Now().String()+user.Username))
 
 	// create pending order first
-	order := &model.SubscriptionOrder{
+	order := &SubscriptionOrder{
 		UserId:          userId,
 		PlanId:          plan.Id,
 		Money:           plan.PriceAmount,
 		TradeNo:         referenceId,
-		PaymentMethod:   model.PaymentMethodCreem,
-		PaymentProvider: model.PaymentProviderCreem,
+		PaymentMethod:   PaymentMethodCreem,
+		PaymentProvider: PaymentProviderCreem,
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}

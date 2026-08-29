@@ -3,7 +3,6 @@ package egress
 import (
 	"encoding/json"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
-	"github.com/QuantumNous/new-api/model"
 	"testing"
 	"time"
 
@@ -88,22 +87,20 @@ func TestGetProxyNodesForChannelMatchesCustomScopeOnly(t *testing.T) {
 	require.NoError(t, db.Create(&ProxyNode{Name: "unrelated", Enabled: true, ScopeType: ProxyNodeScopeCustom, ScopeValue: `{"models":[],"channels":[7]}`}).Error)
 	require.NoError(t, db.Create(&ProxyNode{Name: "disabled-hit", Enabled: false, ScopeType: ProxyNodeScopeCustom, ScopeValue: `{"models":[],"channels":[42]}`}).Error)
 
-	channel := &model.Channel{Id: 42, Group: "premium"}
-
 	// Channel-ID match returns only enabled nodes whose custom scope lists channel 42.
-	nodes, err := GetProxyNodesForChannel(channel)
+	nodes, err := GetProxyNodesForChannel(42)
 	require.NoError(t, err)
 	require.Len(t, nodes, 1)
 	assert.Equal(t, "by-channel", nodes[0].Name)
 
 	// Model-name match returns nodes whose custom scope lists the model.
-	nodes, err = GetProxyNodesForChannelAndModel(&model.Channel{Id: 99}, "GPT-4O")
+	nodes, err = GetProxyNodesForChannelAndModel(99, "GPT-4O")
 	require.NoError(t, err)
 	require.Len(t, nodes, 1)
 	assert.Equal(t, "by-model", nodes[0].Name)
 
 	// No match anywhere returns empty.
-	nodes, err = GetProxyNodesForChannelAndModel(&model.Channel{Id: 1234}, "no-such-model")
+	nodes, err = GetProxyNodesForChannelAndModel(1234, "no-such-model")
 	require.NoError(t, err)
 	assert.Empty(t, nodes)
 }

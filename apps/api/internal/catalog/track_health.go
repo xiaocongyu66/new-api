@@ -9,17 +9,16 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
 // HealthStore holds the channel health scoring state and implements the
 // business logic for EWMA scoring, cooldowns, and routing weight calculation.
-// It is the logical owner of channel health state; model.ChannelHealthManager
+// It is the logical owner of channel health state; ChannelHealthManager
 // is a thin forwarding facade that calls into this store via a registered bridge.
 type HealthStore struct {
 	mu     sync.Mutex
-	states map[int]*model.ChannelHealthState
+	states map[int]*ChannelHealthState
 }
 
 var (
@@ -31,7 +30,7 @@ var (
 func GetHealthStore() *HealthStore {
 	healthStoreOnce.Do(func() {
 		healthStore = &HealthStore{
-			states: make(map[int]*model.ChannelHealthState),
+			states: make(map[int]*ChannelHealthState),
 		}
 	})
 	return healthStore
@@ -45,13 +44,13 @@ func ResetHealthStoreForTest() {
 // ClassifyChannelOutcome categorizes an API error into a ChannelOutcome.
 // It is concurrency-safe and does NOT respect the kill switch; classification
 // drives request-level exclusion which should always operate.
-func (h *HealthStore) ClassifyChannelOutcome(err *types.NewAPIError, channelID int) model.ChannelOutcome {
+func (h *HealthStore) ClassifyChannelOutcome(err *types.NewAPIError, channelID int) ChannelOutcome {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	state, tracked := h.states[channelID]
 	if !tracked {
-		state = &model.ChannelHealthState{EwmaScore: model.DefaultScore}
+		state = &ChannelHealthState{EwmaScore: DefaultScore}
 	}
 
 	outcome := classifyChannelOutcomeUnlocked(state, err)
@@ -67,55 +66,55 @@ func (h *HealthStore) ClassifyChannelOutcome(err *types.NewAPIError, channelID i
 
 // classifyChannelOutcomeUnlocked classifies the error assuming the store mutex
 // is already held by the caller.
-func classifyChannelOutcomeUnlocked(state *model.ChannelHealthState, err *types.NewAPIError) model.ChannelOutcome {
+func classifyChannelOutcomeUnlocked(state *ChannelHealthState, err *types.NewAPIError) ChannelOutcome {
 	if err == nil {
 		state.UnauthorizedRun = 0
-		return model.OutcomeSuccess
+		return OutcomeSuccess
 	}
 
 	// Channel errors or bad response body are always fatal.
 	if types.IsChannelError(err) || err.GetErrorCode() == types.ErrorCodeBadResponseBody {
 		state.UnauthorizedRun = 0
-		return model.OutcomeFatal
+		return OutcomeFatal
 	}
 
 	// 429 => throttled, reset unauthorized run.
 	if err.StatusCode == 429 {
 		state.UnauthorizedRun = 0
-		return model.OutcomeThrottled
+		return OutcomeThrottled
 	}
 
 	// 5xx => fatal.
 	if err.StatusCode >= 500 {
 		state.UnauthorizedRun = 0
-		return model.OutcomeFatal
+		return OutcomeFatal
 	}
 
 	// 401 => count the run and escalate once it is sustained.
 	if err.StatusCode == 401 {
-		if state.UnauthorizedRun < model.UnauthorizedEscalationThreshold {
+		if state.UnauthorizedRun < UnauthorizedEscalationThreshold {
 			state.UnauthorizedRun++
 		}
-		if state.UnauthorizedRun >= model.UnauthorizedEscalationThreshold {
-			return model.OutcomeFatal
+		if state.UnauthorizedRun >= UnauthorizedEscalationThreshold {
+			return OutcomeFatal
 		}
-		return model.OutcomeNeutral
+		return OutcomeNeutral
 	}
 
 	// All other status codes => neutral, reset unauthorized run.
 	state.UnauthorizedRun = 0
-	return model.OutcomeNeutral
+	return OutcomeNeutral
 }
 
 // RecordChannelOutcome updates the EWMA score for a channel based on a
 // ChannelOutcome. The kill switch gates health scoring only.
-func (h *HealthStore) RecordChannelOutcome(channelID int, outcome model.ChannelOutcome) {
+func (h *HealthStore) RecordChannelOutcome(channelID int, outcome ChannelOutcome) {
 	h.recordChannelOutcome(channelID, "", outcome)
 }
 
 // recordChannelOutcome is the model-aware form. An empty modelName records
 // health exactly as before but cannot escalate to a per-model disable.
-func (h *HealthStore) recordChannelOutcome(channelID int, modelName string, outcome model.ChannelOutcome) {
+func (h *HealthStore) recordChannelOutcome(channelID int, modelName string, outcome ChannelOutcome) {
 	cfg := health_store.GetChannelHealthSetting()
 	if cfg == nil || !cfg.Enabled {
 		return
@@ -126,15 +125,15 @@ func (h *HealthStore) recordChannelOutcome(channelID int, modelName string, outc
 
 	state, ok := h.states[channelID]
 	if !ok {
-		state = &model.ChannelHealthState{
-			EwmaScore:       model.DefaultScore,
+		state = &ChannelHealthState{
+			EwmaScore:       DefaultScore,
 			RequestCount:    0,
 			UnauthorizedRun: 0,
 		}
 		h.states[channelID] = state
 	}
 
-	now := model.ChannelHealthNow()
+	now := ChannelHealthNow()
 
 	// Finish any expired cooldown before applying the new outcome so a
 	// post-expiry result re-enters the slow-start curve cleanly.
@@ -143,31 +142,31 @@ func (h *HealthStore) recordChannelOutcome(channelID int, modelName string, outc
 	}
 
 	switch outcome {
-	case model.OutcomeSuccess:
+	case OutcomeSuccess:
 		state.FailureStreak = 0
 		// A clean success once a cooldown has expired decays the streak so the
 		// next failure run starts from a shorter duration.
 		if state.CooldownStreak > 0 && state.CooldownUntil.IsZero() {
 			state.CooldownStreak--
 		}
-	case model.OutcomeNeutral:
+	case OutcomeNeutral:
 		// Neutral stays score/request-count inert but clears an accumulated
 		// failure streak: it is not evidence against the channel.
 		state.FailureStreak = 0
 		return
-	case model.OutcomeFatal, model.OutcomeThrottled:
+	case OutcomeFatal, OutcomeThrottled:
 		state.FailureStreak++
 	}
 
 	// Apply the appropriate observation via the shared EWMA update.
 	var observation float64
 	switch outcome {
-	case model.OutcomeSuccess:
+	case OutcomeSuccess:
 		observation = 1.0
-	case model.OutcomeFatal:
+	case OutcomeFatal:
 		observation = 0.0
-	case model.OutcomeThrottled:
-		observation = model.ThrottledObservation
+	case OutcomeThrottled:
+		observation = ThrottledObservation
 	default:
 		observation = 0.0
 	}
@@ -177,7 +176,7 @@ func (h *HealthStore) recordChannelOutcome(channelID int, modelName string, outc
 	state.RampPending = false
 
 	// A fatal outcome ends the warm-up ramp immediately.
-	if outcome == model.OutcomeFatal {
+	if outcome == OutcomeFatal {
 		state.RampExited = true
 	}
 
@@ -189,7 +188,7 @@ func (h *HealthStore) recordChannelOutcome(channelID int, modelName string, outc
 	}
 
 	// The cooldown trigger is deliberately outside the MinRequests guard.
-	if (outcome == model.OutcomeFatal || outcome == model.OutcomeThrottled) && state.FailureStreak >= cfg.CooldownThreshold {
+	if (outcome == OutcomeFatal || outcome == OutcomeThrottled) && state.FailureStreak >= cfg.CooldownThreshold {
 		startCooldownLocked(state, cfg, now)
 		if modelName != "" {
 			h.escalateModelLocked(state, cfg, channelID, modelName)
@@ -200,7 +199,7 @@ func (h *HealthStore) recordChannelOutcome(channelID int, modelName string, outc
 // escalateModelLocked counts this cooldown against modelName and disables that
 // model on the channel once the count reaches CooldownDisableStreak. Caller
 // must hold h.mu.
-func (h *HealthStore) escalateModelLocked(state *model.ChannelHealthState, cfg *health_store.ChannelHealthSetting, channelID int, modelName string) {
+func (h *HealthStore) escalateModelLocked(state *ChannelHealthState, cfg *health_store.ChannelHealthSetting, channelID int, modelName string) {
 	if cfg.CooldownDisableStreak <= 0 {
 		return
 	}
@@ -213,7 +212,7 @@ func (h *HealthStore) escalateModelLocked(state *model.ChannelHealthState, cfg *
 	}
 	reached := state.ModelCooldowns[modelName]
 	delete(state.ModelCooldowns, modelName)
-	disable := model.ChannelModelDisabler
+	disable := ChannelModelDisabler
 	go func() {
 		if err := disable(channelID, modelName); err != nil {
 			common.SysError(fmt.Sprintf("failed to disable model %q on channel %d after repeated cooldowns: %s",
@@ -238,7 +237,7 @@ func (h *HealthStore) escalateModelLocked(state *model.ChannelHealthState, cfg *
 
 // RecordRequestAttempts applies health accounting once for a whole client
 // request, rather than once per failed try.
-func (h *HealthStore) RecordRequestAttempts(attempts []model.ChannelAttempt, winnerID int, succeeded bool) {
+func (h *HealthStore) RecordRequestAttempts(attempts []ChannelAttempt, winnerID int, succeeded bool) {
 	if succeeded {
 		// ClassifyChannelOutcome(nil, ...) also clears any in-flight 401 run,
 		// which a bare OutcomeSuccess would leave standing.
@@ -266,8 +265,8 @@ func (h *HealthStore) RecordOutcome(channelID int, success bool) {
 
 	state, ok := h.states[channelID]
 	if !ok {
-		state = &model.ChannelHealthState{
-			EwmaScore:       model.DefaultScore,
+		state = &ChannelHealthState{
+			EwmaScore:       DefaultScore,
 			RequestCount:    0,
 			UnauthorizedRun: 0,
 		}
@@ -299,7 +298,7 @@ func (h *HealthStore) RecordOutcome(channelID int, success bool) {
 
 // slowStartFactor scales a channel's routing weight during its warm-up window.
 // Caller must hold h.mu.
-func slowStartFactor(state *model.ChannelHealthState, minRequests int) float64 {
+func slowStartFactor(state *ChannelHealthState, minRequests int) float64 {
 	if minRequests <= 0 || state.RampExited {
 		return 1.0
 	}
@@ -335,7 +334,7 @@ func (h *HealthStore) RoutingWeight(channelID int, baseWeight uint, bypassCooldo
 		return float64(baseWeight) // no history = full health, no ramp to apply
 	}
 
-	now := model.ChannelHealthNow()
+	now := ChannelHealthNow()
 	if !state.CooldownUntil.IsZero() {
 		if state.CooldownUntil.After(now) {
 			if !bypassCooldown {
@@ -374,7 +373,7 @@ func CooldownDuration(cfg *health_store.ChannelHealthSetting, priorActivations i
 
 // startCooldownLocked activates a cooldown sized from the current cooldownStreak,
 // then increments the streak. Caller must hold h.mu.
-func startCooldownLocked(state *model.ChannelHealthState, cfg *health_store.ChannelHealthSetting, now time.Time) {
+func startCooldownLocked(state *ChannelHealthState, cfg *health_store.ChannelHealthSetting, now time.Time) {
 	d := CooldownDuration(cfg, state.CooldownStreak)
 	if d <= 0 {
 		return
@@ -388,7 +387,7 @@ func startCooldownLocked(state *model.ChannelHealthState, cfg *health_store.Chan
 
 // finishCooldownLocked clears an expired cooldown and arms the slow-start ramp.
 // Caller must hold h.mu.
-func finishCooldownLocked(state *model.ChannelHealthState) {
+func finishCooldownLocked(state *ChannelHealthState) {
 	state.CooldownUntil = time.Time{}
 	state.RequestCount = 0
 	state.RampExited = false
@@ -408,14 +407,14 @@ func RoutingBaseWeight(weight int) uint {
 func (h *HealthStore) Reset() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.states = make(map[int]*model.ChannelHealthState)
+	h.states = make(map[int]*ChannelHealthState)
 }
 
 // GetScore returns the current EWMA score for diagnostics.
 func (h *HealthStore) GetScore(channelID int) float64 {
 	cfg := health_store.GetChannelHealthSetting()
 	if cfg == nil || !cfg.Enabled {
-		return model.DefaultScore
+		return DefaultScore
 	}
 
 	h.mu.Lock()
@@ -423,7 +422,7 @@ func (h *HealthStore) GetScore(channelID int) float64 {
 
 	state, ok := h.states[channelID]
 	if !ok {
-		return model.DefaultScore
+		return DefaultScore
 	}
 	return state.EwmaScore
 }
@@ -440,7 +439,7 @@ func (h *HealthStore) FilterCoolingChannels(channelIDs []int, maxEjectionPercent
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	now := model.ChannelHealthNow()
+	now := ChannelHealthNow()
 
 	var cooling []int
 	for _, id := range channelIDs {
@@ -482,15 +481,15 @@ func (h *HealthStore) FilterCoolingChannels(channelIDs []int, maxEjectionPercent
 }
 
 // SnapshotCooldownStateForTest returns the tracked state of one channel for testing.
-func (h *HealthStore) SnapshotCooldownStateForTest(channelID int) (model.CooldownStateSnapshot, bool) {
+func (h *HealthStore) SnapshotCooldownStateForTest(channelID int) (CooldownStateSnapshot, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	state, ok := h.states[channelID]
 	if !ok {
-		return model.CooldownStateSnapshot{}, false
+		return CooldownStateSnapshot{}, false
 	}
-	return model.CooldownStateSnapshot{
+	return CooldownStateSnapshot{
 		RequestCount:   state.RequestCount,
 		RampPending:    state.RampPending,
 		RampExited:     state.RampExited,
@@ -502,32 +501,32 @@ func (h *HealthStore) SnapshotCooldownStateForTest(channelID int) (model.Cooldow
 // so model-internal consumers keep working without this package importing model
 // in the reverse direction.
 func init() {
-	model.RegisterHealthBridge(model.HealthBridge{
-		ClassifyOutcome:       hClassifyOutcome,
-		RecordChannelOutcome:  hRecordChannelOutcome,
-		RecordRequestAttempts: hRecordRequestAttempts,
-		RecordOutcome:         hRecordOutcome,
-		EffectiveWeight:       hEffectiveWeight,
-		RoutingWeight:         hRoutingWeight,
-		CooldownDuration:      CooldownDuration,
-		RoutingBaseWeight:     RoutingBaseWeight,
-		Reset:                 hReset,
-		GetScore:              hGetScore,
-		FilterCoolingChannels: hFilterCoolingChannels,
-		SnapshotCooldownState: hSnapshotCooldownState,
-		ResetForTest:          ResetHealthStoreForTest,
+	RegisterHealthBridge(HealthBridge{
+		ClassifyOutcome:         hClassifyOutcome,
+		RecordChannelOutcome:    hRecordChannelOutcome,
+		RecordRequestAttempts:   hRecordRequestAttempts,
+		RecordOutcome:           hRecordOutcome,
+		EffectiveWeight:         hEffectiveWeight,
+		RoutingWeight:           hRoutingWeight,
+		BridgeCooldownDuration:  CooldownDuration,
+		BridgeRoutingBaseWeight: RoutingBaseWeight,
+		Reset:                   hReset,
+		GetScore:                hGetScore,
+		FilterCoolingChannels:   hFilterCoolingChannels,
+		SnapshotCooldownState:   hSnapshotCooldownState,
+		ResetForTest:            ResetHealthStoreForTest,
 	})
 }
 
-func hClassifyOutcome(err *types.NewAPIError, channelID int) model.ChannelOutcome {
+func hClassifyOutcome(err *types.NewAPIError, channelID int) ChannelOutcome {
 	return GetHealthStore().ClassifyChannelOutcome(err, channelID)
 }
 
-func hRecordChannelOutcome(channelID int, outcome model.ChannelOutcome) {
+func hRecordChannelOutcome(channelID int, outcome ChannelOutcome) {
 	GetHealthStore().RecordChannelOutcome(channelID, outcome)
 }
 
-func hRecordRequestAttempts(attempts []model.ChannelAttempt, winnerID int, succeeded bool) {
+func hRecordRequestAttempts(attempts []ChannelAttempt, winnerID int, succeeded bool) {
 	GetHealthStore().RecordRequestAttempts(attempts, winnerID, succeeded)
 }
 
@@ -555,6 +554,6 @@ func hFilterCoolingChannels(channelIDs []int, maxEjectionPercent int) map[int]bo
 	return GetHealthStore().FilterCoolingChannels(channelIDs, maxEjectionPercent)
 }
 
-func hSnapshotCooldownState(channelID int) (model.CooldownStateSnapshot, bool) {
+func hSnapshotCooldownState(channelID int) (CooldownStateSnapshot, bool) {
 	return GetHealthStore().SnapshotCooldownStateForTest(channelID)
 }

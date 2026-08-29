@@ -2,11 +2,11 @@ package security
 
 import (
 	"bytes"
+	"github.com/QuantumNous/new-api/internal/usage"
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/model"
 
 	"github.com/bytedance/gopkg/util/gopool"
 )
@@ -136,7 +136,7 @@ func finishAdminAudit(c contract.Context, capture contract.ResponseCapture) {
 	}
 
 	gopool.Go(func() {
-		model.RecordOperationAuditLog(operatorId, content, ip, action, opParams, adminInfo, auditInfo)
+		usage.RecordOperationAuditLog(operatorId, content, ip, action, opParams, adminInfo, auditInfo)
 	})
 }
 

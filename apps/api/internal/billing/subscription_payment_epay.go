@@ -11,8 +11,6 @@ import (
 	"github.com/Calcium-Ion/go-epay/epay"
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/samber/lo"
 )
 
@@ -32,7 +30,7 @@ func SubscriptionRequestEpay(c contract.Context) {
 		return
 	}
 
-	plan, err := model.GetSubscriptionPlanById(req.PlanId)
+	plan, err := GetSubscriptionPlanById(req.PlanId)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -52,7 +50,7 @@ func SubscriptionRequestEpay(c contract.Context) {
 
 	userId := c.GetInt("id")
 	if plan.MaxPurchasePerUser > 0 {
-		count, err := model.CountUserSubscriptionsByPlan(userId, plan.Id)
+		count, err := CountUserSubscriptionsByPlan(userId, plan.Id)
 		if err != nil {
 			common.CtxApiError(c, err)
 			return
@@ -63,7 +61,7 @@ func SubscriptionRequestEpay(c contract.Context) {
 		}
 	}
 
-	callBackAddress := service.GetCallbackAddress()
+	callBackAddress := GetCallbackAddress()
 	returnUrl, err := url.Parse(callBackAddress + "/api/subscription/epay/return")
 	if err != nil {
 		common.CtxApiErrorMsg(c, "回调地址配置错误")
@@ -84,13 +82,13 @@ func SubscriptionRequestEpay(c contract.Context) {
 		return
 	}
 
-	order := &model.SubscriptionOrder{
+	order := &SubscriptionOrder{
 		UserId:          userId,
 		PlanId:          plan.Id,
 		Money:           plan.PriceAmount,
 		TradeNo:         tradeNo,
 		PaymentMethod:   req.PaymentMethod,
-		PaymentProvider: model.PaymentProviderEpay,
+		PaymentProvider: PaymentProviderEpay,
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}
@@ -108,7 +106,7 @@ func SubscriptionRequestEpay(c contract.Context) {
 		ReturnUrl:      returnUrl,
 	})
 	if err != nil {
-		_ = model.ExpireSubscriptionOrder(tradeNo, model.PaymentProviderEpay)
+		_ = ExpireSubscriptionOrder(tradeNo, PaymentProviderEpay)
 		common.CtxApiErrorMsg(c, "拉起支付失败")
 		return
 	}
@@ -160,7 +158,7 @@ func SubscriptionEpayNotify(c contract.Context) {
 	LockOrder(verifyInfo.ServiceTradeNo)
 	defer UnlockOrder(verifyInfo.ServiceTradeNo)
 
-	if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type); err != nil {
+	if err := CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), PaymentProviderEpay, verifyInfo.Type); err != nil {
 		_, _ = c.ResponseWriter().Write([]byte("fail"))
 		return
 	}
@@ -209,7 +207,7 @@ func SubscriptionEpayReturn(c contract.Context) {
 	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
-		if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type); err != nil {
+		if err := CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), PaymentProviderEpay, verifyInfo.Type); err != nil {
 			c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=fail"))
 			return
 		}

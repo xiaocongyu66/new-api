@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
@@ -9,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
@@ -52,7 +52,7 @@ func performHeaderNavRequest(t *testing.T, handler gin.HandlerFunc, authenticate
 		previousDB, previousRedis := dbx.DB, common.RedisEnabled
 		db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 		require.NoError(t, err)
-		require.NoError(t, db.AutoMigrate(&model.User{}))
+		require.NoError(t, db.AutoMigrate(&identity.User{}))
 		dbx.DB = db
 		common.RedisEnabled = false
 		t.Cleanup(func() {
@@ -60,7 +60,7 @@ func performHeaderNavRequest(t *testing.T, handler gin.HandlerFunc, authenticate
 			common.RedisEnabled = previousRedis
 		})
 		accessToken = "header-nav-pat"
-		user := model.User{
+		user := identity.User{
 			Username:    "tester",
 			Password:    "unused-password-hash",
 			Role:        common.RoleCommonUser,

@@ -4,13 +4,12 @@ import (
 	"errors"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 
-	"github.com/QuantumNous/new-api/model"
 	"gorm.io/gorm"
 )
 
 // TaskGetAllUserTask returns tasks for a given user with filters
-func TaskGetAllUserTask(userId int, startIdx int, num int, queryParams model.SyncTaskQueryParams) []*model.Task {
-	var tasks []*model.Task
+func TaskGetAllUserTask(userId int, startIdx int, num int, queryParams SyncTaskQueryParams) []*Task {
+	var tasks []*Task
 	query := dbx.DB.Where("user_id = ?", userId)
 
 	if queryParams.TaskID != "" {
@@ -40,8 +39,8 @@ func TaskGetAllUserTask(userId int, startIdx int, num int, queryParams model.Syn
 }
 
 // TaskGetAllTasks returns all tasks with filters (admin usage)
-func TaskGetAllTasks(startIdx int, num int, queryParams model.SyncTaskQueryParams) []*model.Task {
-	var tasks []*model.Task
+func TaskGetAllTasks(startIdx int, num int, queryParams SyncTaskQueryParams) []*Task {
+	var tasks []*Task
 	query := dbx.DB
 
 	if queryParams.ChannelID != "" {
@@ -80,10 +79,10 @@ func TaskGetAllTasks(startIdx int, num int, queryParams model.SyncTaskQueryParam
 }
 
 // GetTimedOutUnfinishedTasks returns tasks that have timed out but not finished
-func GetTimedOutUnfinishedTasks(cutoffUnix int64, limit int) []*model.Task {
-	var tasks []*model.Task
+func GetTimedOutUnfinishedTasks(cutoffUnix int64, limit int) []*Task {
+	var tasks []*Task
 	err := dbx.DB.Where("progress != ?", "100%").
-		Where("status NOT IN ?", []string{model.TaskStatusFailure, model.TaskStatusSuccess}).
+		Where("status NOT IN ?", []string{TaskStatusFailure, TaskStatusSuccess}).
 		Where("submit_time < ?", cutoffUnix).
 		Order("submit_time").
 		Limit(limit).
@@ -95,9 +94,9 @@ func GetTimedOutUnfinishedTasks(cutoffUnix int64, limit int) []*model.Task {
 }
 
 // GetAllUnFinishSyncTasks returns all unfinished sync tasks (Suno/video)
-func GetAllUnFinishSyncTasks(limit int) []*model.Task {
-	var tasks []*model.Task
-	err := dbx.DB.Where("progress != ?", "100%").Where("status != ?", model.TaskStatusFailure).Where("status != ?", model.TaskStatusSuccess).Limit(limit).Order("id").Find(&tasks).Error
+func GetAllUnFinishSyncTasks(limit int) []*Task {
+	var tasks []*Task
+	err := dbx.DB.Where("progress != ?", "100%").Where("status != ?", TaskStatusFailure).Where("status != ?", TaskStatusSuccess).Limit(limit).Order("id").Find(&tasks).Error
 	if err != nil {
 		return nil
 	}
@@ -107,21 +106,21 @@ func GetAllUnFinishSyncTasks(limit int) []*model.Task {
 // HasUnfinishedSyncTasks reports whether at least one async (Suno/video) task is still in progress
 func HasUnfinishedSyncTasks() bool {
 	var id int64
-	err := dbx.DB.Model(&model.Task{}).
+	err := dbx.DB.Model(&Task{}).
 		Where("progress != ?", "100%").
-		Where("status != ?", model.TaskStatusFailure).
-		Where("status != ?", model.TaskStatusSuccess).
+		Where("status != ?", TaskStatusFailure).
+		Where("status != ?", TaskStatusSuccess).
 		Limit(1).
 		Pluck("id", &id).Error
 	return err == nil && id != 0
 }
 
 // GetByTaskId returns a task by user ID and task ID
-func GetByTaskId(userId int, taskId string) (*model.Task, bool, error) {
+func GetByTaskId(userId int, taskId string) (*Task, bool, error) {
 	if taskId == "" {
 		return nil, false, nil
 	}
-	var task model.Task
+	var task Task
 	err := dbx.DB.Where("user_id = ? AND task_id = ?", userId, taskId).First(&task).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -133,24 +132,24 @@ func GetByTaskId(userId int, taskId string) (*model.Task, bool, error) {
 }
 
 // GetByTaskIds returns tasks by user ID and task IDs
-func GetByTaskIds(userId int, taskIds []any) ([]*model.Task, error) {
+func GetByTaskIds(userId int, taskIds []any) ([]*Task, error) {
 	if len(taskIds) == 0 {
 		return nil, nil
 	}
-	var tasks []*model.Task
+	var tasks []*Task
 	err := dbx.DB.Where("user_id = ? AND task_id IN ?", userId, taskIds).Find(&tasks).Error
 	return tasks, err
 }
 
 // Insert creates a new task record
-func Insert(task *model.Task) error {
+func Insert(task *Task) error {
 	return dbx.DB.Create(task).Error
 }
 
 // TaskCountAllTasks returns total tasks matching query params (admin usage)
-func TaskCountAllTasks(queryParams model.SyncTaskQueryParams) int64 {
+func TaskCountAllTasks(queryParams SyncTaskQueryParams) int64 {
 	var total int64
-	query := dbx.DB.Model(&model.Task{})
+	query := dbx.DB.Model(&Task{})
 	if queryParams.ChannelID != "" {
 		query = query.Where("channel_id = ?", queryParams.ChannelID)
 	}
@@ -183,9 +182,9 @@ func TaskCountAllTasks(queryParams model.SyncTaskQueryParams) int64 {
 }
 
 // TaskCountAllUserTask returns total tasks for given user
-func TaskCountAllUserTask(userId int, queryParams model.SyncTaskQueryParams) int64 {
+func TaskCountAllUserTask(userId int, queryParams SyncTaskQueryParams) int64 {
 	var total int64
-	query := dbx.DB.Model(&model.Task{}).Where("user_id = ?", userId)
+	query := dbx.DB.Model(&Task{}).Where("user_id = ?", userId)
 	if queryParams.TaskID != "" {
 		query = query.Where("task_id = ?", queryParams.TaskID)
 	}

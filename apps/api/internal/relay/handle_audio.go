@@ -11,7 +11,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
@@ -55,9 +54,9 @@ func AudioHelper(c contract.Context, info *relaycommon.RelayInfo) (newAPIError *
 	if resp != nil {
 		httpResp = resp.(*http.Response)
 		if httpResp.StatusCode != http.StatusOK {
-			newAPIError = service.RelayErrorHandler(c.Context(), httpResp, false)
+			newAPIError = relaycommon.RelayErrorHandler(c.Context(), httpResp, false)
 			// reset status code 重置状态码
-			service.ResetStatusCode(newAPIError, statusCodeMappingStr)
+			relaycommon.ResetStatusCode(newAPIError, statusCodeMappingStr)
 			return newAPIError
 		}
 	}
@@ -65,7 +64,7 @@ func AudioHelper(c contract.Context, info *relaycommon.RelayInfo) (newAPIError *
 	usage, newAPIError := adaptor.DoResponse(c, httpResp, info)
 	if newAPIError != nil {
 		// reset status code 重置状态码
-		service.ResetStatusCode(newAPIError, statusCodeMappingStr)
+		relaycommon.ResetStatusCode(newAPIError, statusCodeMappingStr)
 		return newAPIError
 	}
 	if usage.(*dto.Usage).CompletionTokenDetails.AudioTokens > 0 || usage.(*dto.Usage).PromptTokensDetails.AudioTokens > 0 {

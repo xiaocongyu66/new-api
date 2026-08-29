@@ -3,11 +3,11 @@ package static
 import (
 	"embed"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	handler "github.com/QuantumNous/new-api/internal/transport/handler"
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
@@ -29,7 +29,7 @@ func ServeStatic(router *gin.Engine, assets WebAssets) {
 		cc.Set(middleware.RouteTagKey, "web")
 		uri := cc.Request.RequestURI
 		if strings.HasPrefix(uri, "/v1") || strings.HasPrefix(uri, "/api") || strings.HasPrefix(uri, "/assets") {
-			controller.RelayNotFound(ginadapter.Wrap(cc))
+			handler.RelayNotFound(ginadapter.Wrap(cc))
 			return
 		}
 		cc.Header("Cache-Control", "no-cache")

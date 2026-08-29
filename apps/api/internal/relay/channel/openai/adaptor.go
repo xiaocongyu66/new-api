@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	reasoning "github.com/QuantumNous/new-api/internal/billing"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -22,7 +23,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 
 	//"github.com/QuantumNous/new-api/internal/relay/channel/minimax"
-	reasoning "github.com/QuantumNous/new-api/internal/billing"
 	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
 	"github.com/QuantumNous/new-api/internal/relay/channel/openrouter"
 	"github.com/QuantumNous/new-api/internal/relay/channel/xinference"
@@ -30,7 +30,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/common_handler"
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/samber/lo"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
@@ -42,7 +41,7 @@ type Adaptor struct {
 }
 
 func (a *Adaptor) ConvertGeminiRequest(c contract.Context, info *relaycommon.RelayInfo, request *dto.GeminiChatRequest) (any, error) {
-	result, err := service.ConvertRequest(c, info, types.RelayFormatOpenAI, request)
+	result, err := relaycommon.ConvertRequest(c, info, types.RelayFormatOpenAI, request)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +63,7 @@ func (a *Adaptor) ConvertClaudeRequest(c contract.Context, info *relaycommon.Rel
 	//		println(fmt.Sprintf("failed to save request body to file: %v", err))
 	//	}
 	//}
-	result, err := service.ConvertRequest(c, info, types.RelayFormatOpenAI, request)
+	result, err := relaycommon.ConvertRequest(c, info, types.RelayFormatOpenAI, request)
 	if err != nil {
 		return nil, err
 	}

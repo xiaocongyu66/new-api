@@ -1,11 +1,12 @@
 package compose
 
 import (
-	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/internal/billing"
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/identity/policy"
+	"github.com/QuantumNous/new-api/internal/ops"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/handler"
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
 	"github.com/QuantumNous/new-api/internal/usage"
 
@@ -25,51 +26,51 @@ func SetApiRouter(router *gin.Engine) {
 	apiRouter.Use(ginadapter.Middleware(middleware.GlobalAPIRateLimit()))
 	anonymousRequestBodyLimit := ginadapter.Middleware(middleware.AnonymousRequestBodyLimit())
 	{
-		apiRouter.GET("/setup", ginadapter.Handler(controller.GetSetup))
-		apiRouter.POST("/setup", anonymousRequestBodyLimit, ginadapter.Handler(controller.PostSetup))
-		apiRouter.GET("/status", ginadapter.Handler(controller.GetStatus))
-		apiRouter.GET("/uptime/status", ginadapter.Handler(controller.GetUptimeKumaStatus))
-		apiRouter.GET("/models", ginadapter.Middleware(security.UserAuth()), ginadapter.Handler(controller.DashboardListModels))
-		apiRouter.GET("/status/test", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(controller.TestStatus))
-		apiRouter.POST("/karmada/session", ginadapter.Middleware(security.RootAuth()), ginadapter.Middleware(middleware.DisableCache()), ginadapter.Handler(controller.CreateKarmadaDashboardSession))
-		apiRouter.GET("/notice", ginadapter.Handler(controller.GetNotice))
-		apiRouter.GET("/user-agreement", ginadapter.Handler(controller.GetUserAgreement))
-		apiRouter.GET("/privacy-policy", ginadapter.Handler(controller.GetPrivacyPolicy))
-		apiRouter.GET("/about", ginadapter.Handler(controller.GetAbout))
-		//apiRouter.GET("/midjourney", ginadapter.Handler(controller.GetMidjourney))
-		apiRouter.GET("/home_page_content", ginadapter.Handler(controller.GetHomePageContent))
-		apiRouter.GET("/pricing", ginadapter.Middleware(middleware.HeaderNavModuleAuth("pricing")), ginadapter.Handler(controller.GetPricing))
+		apiRouter.GET("/setup", ginadapter.Handler(ops.GetSetup))
+		apiRouter.POST("/setup", anonymousRequestBodyLimit, ginadapter.Handler(ops.PostSetup))
+		apiRouter.GET("/status", ginadapter.Handler(handler.GetStatus))
+		apiRouter.GET("/uptime/status", ginadapter.Handler(ops.GetUptimeKumaStatus))
+		apiRouter.GET("/models", ginadapter.Middleware(security.UserAuth()), ginadapter.Handler(handler.DashboardListModels))
+		apiRouter.GET("/status/test", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(handler.TestStatus))
+		apiRouter.POST("/karmada/session", ginadapter.Middleware(security.RootAuth()), ginadapter.Middleware(middleware.DisableCache()), ginadapter.Handler(handler.CreateKarmadaDashboardSession))
+		apiRouter.GET("/notice", ginadapter.Handler(handler.GetNotice))
+		apiRouter.GET("/user-agreement", ginadapter.Handler(handler.GetUserAgreement))
+		apiRouter.GET("/privacy-policy", ginadapter.Handler(handler.GetPrivacyPolicy))
+		apiRouter.GET("/about", ginadapter.Handler(handler.GetAbout))
+		//apiRouter.GET("/midjourney", ginadapter.Handler(handler.GetMidjourney))
+		apiRouter.GET("/home_page_content", ginadapter.Handler(handler.GetHomePageContent))
+		apiRouter.GET("/pricing", ginadapter.Middleware(middleware.HeaderNavModuleAuth("pricing")), ginadapter.Handler(handler.GetPricing))
 		// /api/log routes
 		logRoute := apiRouter.Group("/log")
-		logRoute.GET("/", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(usage.GetAllLogs))
-		logRoute.GET("/stat", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(usage.GetLogsStat))
-		logRoute.GET("/self/stat", ginadapter.Middleware(security.UserAuth()), ginadapter.Handler(usage.GetLogsSelfStat))
-		logRoute.GET("/channel_affinity_usage_cache", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(controller.GetChannelAffinityUsageCacheStats))
-		logRoute.GET("/search", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(usage.SearchAllLogs))
-		logRoute.GET("/self", ginadapter.Middleware(security.UserAuth()), ginadapter.Handler(usage.GetUserLogs))
-		logRoute.GET("/self/search", ginadapter.Middleware(security.UserAuth()), ginadapter.Middleware(middleware.SearchRateLimit()), ginadapter.Handler(usage.SearchUserLogs))
+		logRoute.GET("/", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(handler.GetAllLogs))
+		logRoute.GET("/stat", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(handler.GetLogsStat))
+		logRoute.GET("/self/stat", ginadapter.Middleware(security.UserAuth()), ginadapter.Handler(handler.GetLogsSelfStat))
+		logRoute.GET("/channel_affinity_usage_cache", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(handler.GetChannelAffinityUsageCacheStats))
+		logRoute.GET("/search", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(handler.SearchAllLogs))
+		logRoute.GET("/self", ginadapter.Middleware(security.UserAuth()), ginadapter.Handler(handler.GetUserLogs))
+		logRoute.GET("/self/search", ginadapter.Middleware(security.UserAuth()), ginadapter.Middleware(middleware.SearchRateLimit()), ginadapter.Handler(handler.SearchUserLogs))
 		logRoute.Use(middleware.CORS(), ginadapter.Middleware(middleware.CriticalRateLimit()))
 		{
-			logRoute.GET("/token", ginadapter.Middleware(security.TokenAuthReadOnly()), ginadapter.Handler(usage.GetLogByKey))
+			logRoute.GET("/token", ginadapter.Middleware(security.TokenAuthReadOnly()), ginadapter.Handler(handler.GetLogByKey))
 		}
 
 		// /api/data routes
 		dataRoute := apiRouter.Group("/data")
-		dataRoute.GET("/", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(usage.GetAllQuotaDates))
-		dataRoute.GET("/users", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(usage.GetQuotaDatesByUser))
-		dataRoute.GET("/self", ginadapter.Middleware(security.UserAuth()), ginadapter.Handler(usage.GetUserQuotaDates))
-		dataRoute.GET("/flow", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(usage.GetAllFlowQuotaDates))
-		dataRoute.GET("/flow/self", ginadapter.Middleware(security.UserAuth()), ginadapter.Handler(usage.GetUserFlowQuotaDates))
+		dataRoute.GET("/", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(handler.GetAllQuotaDates))
+		dataRoute.GET("/users", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(handler.GetQuotaDatesByUser))
+		dataRoute.GET("/self", ginadapter.Middleware(security.UserAuth()), ginadapter.Handler(handler.GetUserQuotaDates))
+		dataRoute.GET("/flow", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(handler.GetAllFlowQuotaDates))
+		dataRoute.GET("/flow/self", ginadapter.Middleware(security.UserAuth()), ginadapter.Handler(handler.GetUserFlowQuotaDates))
 
 		// /api/rankings route
-		apiRouter.GET("/rankings", ginadapter.Middleware(middleware.HeaderNavModuleAuth("rankings")), ginadapter.Handler(controller.GetRankings))
+		apiRouter.GET("/rankings", ginadapter.Middleware(middleware.HeaderNavModuleAuth("rankings")), ginadapter.Handler(handler.GetRankings))
 
 		// /api/perf-metrics routes
 		perfMetricsRoute := apiRouter.Group("/perf-metrics")
 		perfMetricsRoute.Use(ginadapter.Middleware(middleware.HeaderNavModulePublicOrUserAuth("pricing")))
 		{
-			perfMetricsRoute.GET("/summary", ginadapter.Handler(usage.GetPerfMetricsSummary))
-			perfMetricsRoute.GET("", ginadapter.Handler(usage.GetPerfMetrics))
+			perfMetricsRoute.GET("/summary", ginadapter.Handler(handler.GetPerfMetricsSummary))
+			perfMetricsRoute.GET("", ginadapter.Handler(handler.GetPerfMetrics))
 		}
 
 		// /api/performance routes
@@ -87,7 +88,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/reset_password", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.TurnstileCheck()), ginadapter.Handler(identity.SendPasswordResetEmail))
 		apiRouter.POST("/user/reset", ginadapter.Middleware(middleware.CriticalRateLimit()), anonymousRequestBodyLimit, ginadapter.Handler(identity.ResetPassword))
 		// OAuth routes - specific routes must come before :provider wildcard
-		apiRouter.POST("/oauth/state", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.DisableCache()), ginadapter.Middleware(security.TryUserAuth()), anonymousRequestBodyLimit, ginadapter.Handler(controller.GenerateOAuthCode))
+		apiRouter.POST("/oauth/state", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.DisableCache()), ginadapter.Middleware(security.TryUserAuth()), anonymousRequestBodyLimit, ginadapter.Handler(handler.GenerateOAuthCode))
 		apiRouter.POST("/oauth/email/bind", ginadapter.Middleware(security.UserAuth()), ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(identity.EmailBind))
 		// Non-standard OAuth (WeChat, Telegram) - keep original routes
 		apiRouter.GET("/oauth/wechat", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.DisableCache()), ginadapter.Handler(identity.WeChatAuth))
@@ -96,8 +97,8 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/oauth/telegram/bind/start", ginadapter.Middleware(security.UserAuth()), ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.DisableCache()), ginadapter.Handler(identity.TelegramBindStart))
 		apiRouter.GET("/oauth/telegram/bind/:flow_token", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.DisableCache()), ginadapter.Handler(identity.TelegramBind))
 		// Standard OAuth providers (GitHub, Discord, OIDC, LinuxDO) - unified route
-		apiRouter.GET("/oauth/:provider", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.DisableCache()), ginadapter.Middleware(security.TryUserAuth()), ginadapter.Handler(controller.HandleOAuth))
-		apiRouter.GET("/ratio_config", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(controller.GetRatioConfig))
+		apiRouter.GET("/oauth/:provider", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.DisableCache()), ginadapter.Middleware(security.TryUserAuth()), ginadapter.Handler(handler.HandleOAuth))
+		apiRouter.GET("/ratio_config", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(handler.GetRatioConfig))
 
 		apiRouter.POST("/stripe/webhook", anonymousRequestBodyLimit, ginadapter.Handler(billing.StripeWebhook))
 		apiRouter.POST("/creem/webhook", anonymousRequestBodyLimit, ginadapter.Handler(billing.CreemWebhook))
@@ -121,7 +122,7 @@ func SetApiRouter(router *gin.Engine) {
 			//userRoute.POST("/tokenlog", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Handler(controller.TokenLog))
 			userRoute.POST("/epay/notify", anonymousRequestBodyLimit, ginadapter.Handler(billing.EpayNotify))
 			userRoute.GET("/epay/notify", ginadapter.Handler(billing.EpayNotify))
-			userRoute.GET("/groups", ginadapter.Handler(controller.GetUserGroups))
+			userRoute.GET("/groups", ginadapter.Handler(handler.GetUserGroups))
 
 			selfRoute := userRoute.Group("/")
 			selfRoute.Use(ginadapter.Middleware(security.UserAuth()))
@@ -129,7 +130,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/sessions", ginadapter.Middleware(middleware.DisableCache()), ginadapter.Handler(identity.GetLoginSessions))
 				selfRoute.DELETE("/sessions/:sid", ginadapter.Middleware(middleware.DisableCache()), ginadapter.Handler(identity.DeleteLoginSession))
 				selfRoute.POST("/sessions/revoke-others", ginadapter.Middleware(middleware.DisableCache()), ginadapter.Handler(identity.RevokeOtherLoginSessions))
-				selfRoute.GET("/self/groups", ginadapter.Handler(controller.GetUserGroups))
+				selfRoute.GET("/self/groups", ginadapter.Handler(handler.GetUserGroups))
 				selfRoute.GET("/self", ginadapter.Handler(identity.GetSelf))
 				selfRoute.GET("/models", ginadapter.Handler(identity.GetUserModels))
 				selfRoute.PUT("/self", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.DisableCache()), ginadapter.Handler(identity.UpdateSelf))
@@ -234,12 +235,12 @@ func SetApiRouter(router *gin.Engine) {
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(policy.SystemSettings)))
 		{
-			optionRoute.GET("/", ginadapter.Handler(controller.GetOptions))
-			optionRoute.PUT("/", ginadapter.Handler(controller.UpdateOption))
+			optionRoute.GET("/", ginadapter.Handler(ops.GetOptions))
+			optionRoute.PUT("/", ginadapter.Handler(ops.UpdateOption))
 			optionRoute.POST("/payment_compliance", ginadapter.Handler(billing.ConfirmPaymentCompliance))
-			optionRoute.GET("/channel_affinity_cache", ginadapter.Handler(controller.GetChannelAffinityCacheStats))
-			optionRoute.DELETE("/channel_affinity_cache", ginadapter.Handler(controller.ClearChannelAffinityCache))
-			optionRoute.POST("/rest_model_ratio", ginadapter.Handler(controller.ResetModelRatio))
+			optionRoute.GET("/channel_affinity_cache", ginadapter.Handler(handler.GetChannelAffinityCacheStats))
+			optionRoute.DELETE("/channel_affinity_cache", ginadapter.Handler(handler.ClearChannelAffinityCache))
+			optionRoute.POST("/rest_model_ratio", ginadapter.Handler(handler.ResetModelRatio))
 			optionRoute.GET("/waffo-pancake/catalog", ginadapter.Handler(billing.ListWaffoPancakeCatalog))
 			optionRoute.POST("/waffo-pancake/pair", ginadapter.Handler(billing.CreateWaffoPancakePair))
 			optionRoute.POST("/waffo-pancake/save", ginadapter.Handler(billing.SaveWaffoPancake))
@@ -249,22 +250,22 @@ func SetApiRouter(router *gin.Engine) {
 		proxyRoute := apiRouter.Group("/proxy")
 		proxyRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(policy.SystemSettings)))
 		{
-			proxyRoute.GET("/config", ginadapter.Handler(controller.GetProxyConfig))
-			proxyRoute.PUT("/config", ginadapter.Handler(controller.UpdateProxyConfig))
-			proxyRoute.GET("/config/generate", ginadapter.Handler(controller.GenerateProxyConfig))
-			proxyRoute.GET("/status", ginadapter.Handler(controller.GetProxyStatus))
-			proxyRoute.POST("/reload", ginadapter.Handler(controller.ReloadProxy))
-			proxyRoute.GET("/nodes", ginadapter.Handler(controller.ListProxyNodes))
-			proxyRoute.GET("/nodes/report", ginadapter.Handler(controller.GetProxyNodeReport))
-			proxyRoute.POST("/nodes", ginadapter.Handler(controller.CreateProxyNode))
-			proxyRoute.POST("/nodes/batch", ginadapter.Handler(controller.BatchCreateProxyNodes))
-			proxyRoute.POST("/nodes/batch-enabled", ginadapter.Handler(controller.BatchSetProxyNodesEnabled))
-			proxyRoute.POST("/nodes/batch-clear-errors", ginadapter.Handler(controller.BatchClearProxyNodeErrors))
-			proxyRoute.GET("/nodes/:id", ginadapter.Handler(controller.GetProxyNode))
-			proxyRoute.PUT("/nodes/:id", ginadapter.Handler(controller.UpdateProxyNode))
-			proxyRoute.DELETE("/nodes/:id", ginadapter.Handler(controller.DeleteProxyNode))
-			proxyRoute.POST("/nodes/:id/test", ginadapter.Handler(controller.TestProxyNode))
-			proxyRoute.POST("/nodes/test", ginadapter.Handler(controller.TestAllProxyNodes))
+			proxyRoute.GET("/config", ginadapter.Handler(ops.GetProxyConfig))
+			proxyRoute.PUT("/config", ginadapter.Handler(ops.UpdateProxyConfig))
+			proxyRoute.GET("/config/generate", ginadapter.Handler(ops.GenerateProxyConfig))
+			proxyRoute.GET("/status", ginadapter.Handler(ops.GetProxyStatus))
+			proxyRoute.POST("/reload", ginadapter.Handler(ops.ReloadProxy))
+			proxyRoute.GET("/nodes", ginadapter.Handler(ops.ListProxyNodes))
+			proxyRoute.GET("/nodes/report", ginadapter.Handler(ops.GetProxyNodeReport))
+			proxyRoute.POST("/nodes", ginadapter.Handler(ops.CreateProxyNode))
+			proxyRoute.POST("/nodes/batch", ginadapter.Handler(ops.BatchCreateProxyNodes))
+			proxyRoute.POST("/nodes/batch-enabled", ginadapter.Handler(ops.BatchSetProxyNodesEnabled))
+			proxyRoute.POST("/nodes/batch-clear-errors", ginadapter.Handler(ops.BatchClearProxyNodeErrors))
+			proxyRoute.GET("/nodes/:id", ginadapter.Handler(ops.GetProxyNode))
+			proxyRoute.PUT("/nodes/:id", ginadapter.Handler(ops.UpdateProxyNode))
+			proxyRoute.DELETE("/nodes/:id", ginadapter.Handler(ops.DeleteProxyNode))
+			proxyRoute.POST("/nodes/:id/test", ginadapter.Handler(ops.TestProxyNode))
+			proxyRoute.POST("/nodes/test", ginadapter.Handler(ops.TestAllProxyNodes))
 		}
 
 		// Custom OAuth provider management (admin with system.settings permission)
@@ -281,8 +282,8 @@ func SetApiRouter(router *gin.Engine) {
 		ratioSyncRoute := apiRouter.Group("/ratio_sync")
 		ratioSyncRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(policy.SystemSettings)))
 		{
-			ratioSyncRoute.GET("/channels", ginadapter.Handler(controller.GetSyncableChannels))
-			ratioSyncRoute.POST("/fetch", ginadapter.Handler(controller.FetchUpstreamRatios))
+			ratioSyncRoute.GET("/channels", ginadapter.Handler(handler.GetSyncableChannels))
+			ratioSyncRoute.POST("/fetch", ginadapter.Handler(handler.FetchUpstreamRatios))
 		}
 		registerChannelRoutes(apiRouter)
 		registerAuthzRoutes(apiRouter)
@@ -326,67 +327,67 @@ func SetApiRouter(router *gin.Engine) {
 		systemTaskRoute := apiRouter.Group("/system-task")
 		systemTaskRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(policy.SystemSettings)))
 		{
-			systemTaskRoute.POST("/log-cleanup", ginadapter.Handler(controller.CreateLogCleanupSystemTask))
-			systemTaskRoute.GET("/list", ginadapter.Handler(controller.ListSystemTasks))
-			systemTaskRoute.GET("/current", ginadapter.Handler(controller.GetCurrentSystemTask))
-			systemTaskRoute.GET("/:task_id", ginadapter.Handler(controller.GetSystemTask))
+			systemTaskRoute.POST("/log-cleanup", ginadapter.Handler(handler.CreateLogCleanupSystemTask))
+			systemTaskRoute.GET("/list", ginadapter.Handler(handler.ListSystemTasks))
+			systemTaskRoute.GET("/current", ginadapter.Handler(handler.GetCurrentSystemTask))
+			systemTaskRoute.GET("/:task_id", ginadapter.Handler(handler.GetSystemTask))
 		}
 		systemInfoRoute := apiRouter.Group("/system-info")
 		systemInfoRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(policy.SystemSettings)))
 		{
-			systemInfoRoute.GET("/instances", ginadapter.Handler(controller.ListSystemInstances))
-			systemInfoRoute.DELETE("/stale-instances", ginadapter.Handler(controller.DeleteStaleSystemInstances))
-			systemInfoRoute.DELETE("/instances/:node_name", ginadapter.Handler(controller.DeleteStaleSystemInstance))
+			systemInfoRoute.GET("/instances", ginadapter.Handler(handler.ListSystemInstances))
+			systemInfoRoute.DELETE("/stale-instances", ginadapter.Handler(handler.DeleteStaleSystemInstances))
+			systemInfoRoute.DELETE("/instances/:node_name", ginadapter.Handler(handler.DeleteStaleSystemInstance))
 		}
 
 		groupRoute := apiRouter.Group("/group")
 		groupRoute.Use(ginadapter.Middleware(security.AdminAuth()))
 		{
-			groupRoute.GET("/", ginadapter.Handler(controller.GetGroups))
+			groupRoute.GET("/", ginadapter.Handler(handler.GetGroups))
 		}
 
 		prefillGroupRoute := apiRouter.Group("/prefill_group")
 		prefillGroupRoute.Use(ginadapter.Middleware(security.AdminAuth()))
 		{
-			prefillGroupRoute.GET("/", ginadapter.Handler(controller.GetPrefillGroups))
-			prefillGroupRoute.POST("/", ginadapter.Handler(controller.CreatePrefillGroup))
-			prefillGroupRoute.PUT("/", ginadapter.Handler(controller.UpdatePrefillGroup))
-			prefillGroupRoute.DELETE("/:id", ginadapter.Handler(controller.DeletePrefillGroup))
+			prefillGroupRoute.GET("/", ginadapter.Handler(handler.GetPrefillGroups))
+			prefillGroupRoute.POST("/", ginadapter.Handler(handler.CreatePrefillGroup))
+			prefillGroupRoute.PUT("/", ginadapter.Handler(handler.UpdatePrefillGroup))
+			prefillGroupRoute.DELETE("/:id", ginadapter.Handler(handler.DeletePrefillGroup))
 		}
 
 		mjRoute := apiRouter.Group("/mj")
-		mjRoute.GET("/self", ginadapter.Middleware(security.UserAuth()), ginadapter.Handler(controller.GetUserMidjourney))
-		mjRoute.GET("/", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(controller.GetAllMidjourney))
+		mjRoute.GET("/self", ginadapter.Middleware(security.UserAuth()), ginadapter.Handler(handler.GetUserMidjourney))
+		mjRoute.GET("/", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(handler.GetAllMidjourney))
 
 		taskRoute := apiRouter.Group("/task")
 		{
-			taskRoute.GET("/self", ginadapter.Middleware(security.UserAuth()), ginadapter.Handler(controller.GetUserTask))
-			taskRoute.GET("/", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(controller.GetAllTask))
+			taskRoute.GET("/self", ginadapter.Middleware(security.UserAuth()), ginadapter.Handler(handler.GetUserTask))
+			taskRoute.GET("/", ginadapter.Middleware(security.AdminAuth()), ginadapter.Handler(handler.GetAllTask))
 		}
 
 		vendorRoute := apiRouter.Group("/vendors")
 		vendorRoute.Use(ginadapter.Middleware(security.AdminAuth()))
 		{
-			vendorRoute.GET("/", ginadapter.Handler(controller.GetAllVendors))
-			vendorRoute.GET("/search", ginadapter.Handler(controller.SearchVendors))
-			vendorRoute.GET("/:id", ginadapter.Handler(controller.GetVendorMeta))
-			vendorRoute.POST("/", ginadapter.Handler(controller.CreateVendorMeta))
-			vendorRoute.PUT("/", ginadapter.Handler(controller.UpdateVendorMeta))
-			vendorRoute.DELETE("/:id", ginadapter.Handler(controller.DeleteVendorMeta))
+			vendorRoute.GET("/", ginadapter.Handler(handler.GetAllVendors))
+			vendorRoute.GET("/search", ginadapter.Handler(handler.SearchVendors))
+			vendorRoute.GET("/:id", ginadapter.Handler(handler.GetVendorMeta))
+			vendorRoute.POST("/", ginadapter.Handler(handler.CreateVendorMeta))
+			vendorRoute.PUT("/", ginadapter.Handler(handler.UpdateVendorMeta))
+			vendorRoute.DELETE("/:id", ginadapter.Handler(handler.DeleteVendorMeta))
 		}
 
 		modelsRoute := apiRouter.Group("/models")
 		modelsRoute.Use(ginadapter.Middleware(security.AdminAuth()))
 		{
-			modelsRoute.GET("/sync_upstream/preview", ginadapter.Handler(controller.SyncUpstreamPreview))
-			modelsRoute.POST("/sync_upstream", ginadapter.Handler(controller.SyncUpstreamModels))
-			modelsRoute.GET("/missing", ginadapter.Handler(controller.GetMissingModels))
-			modelsRoute.GET("/", ginadapter.Handler(controller.GetAllModelsMeta))
-			modelsRoute.GET("/search", ginadapter.Handler(controller.SearchModelsMeta))
-			modelsRoute.GET("/:id", ginadapter.Handler(controller.GetModelMeta))
-			modelsRoute.POST("/", ginadapter.Handler(controller.CreateModelMeta))
-			modelsRoute.PUT("/", ginadapter.Handler(controller.UpdateModelMeta))
-			modelsRoute.DELETE("/:id", ginadapter.Handler(controller.DeleteModelMeta))
+			modelsRoute.GET("/sync_upstream/preview", ginadapter.Handler(handler.SyncUpstreamPreview))
+			modelsRoute.POST("/sync_upstream", ginadapter.Handler(handler.SyncUpstreamModels))
+			modelsRoute.GET("/missing", ginadapter.Handler(handler.GetMissingModels))
+			modelsRoute.GET("/", ginadapter.Handler(handler.GetAllModelsMeta))
+			modelsRoute.GET("/search", ginadapter.Handler(handler.SearchModelsMeta))
+			modelsRoute.GET("/:id", ginadapter.Handler(handler.GetModelMeta))
+			modelsRoute.POST("/", ginadapter.Handler(handler.CreateModelMeta))
+			modelsRoute.PUT("/", ginadapter.Handler(handler.UpdateModelMeta))
+			modelsRoute.DELETE("/:id", ginadapter.Handler(handler.DeleteModelMeta))
 		}
 
 	}

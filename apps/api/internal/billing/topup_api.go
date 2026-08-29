@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"net/url"
@@ -14,8 +15,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/Calcium-Ion/go-epay/epay"
 	"github.com/samber/lo"
@@ -58,7 +57,7 @@ func GetTopUpInfo(c contract.Context) {
 	if enableWaffoPancake {
 		hasWaffoPancake := false
 		for _, method := range payMethods {
-			if method["type"] == model.PaymentMethodWaffoPancake {
+			if method["type"] == PaymentMethodWaffoPancake {
 				hasWaffoPancake = true
 				break
 			}
@@ -67,7 +66,7 @@ func GetTopUpInfo(c contract.Context) {
 		if !hasWaffoPancake {
 			payMethods = append(payMethods, map[string]string{
 				"name":      "Waffo Pancake",
-				"type":      model.PaymentMethodWaffoPancake,
+				"type":      PaymentMethodWaffoPancake,
 				"color":     "#F97316",
 				"min_topup": strconv.Itoa(pay_subscription.WaffoPancakeMinTopUp),
 			})
@@ -79,7 +78,7 @@ func GetTopUpInfo(c contract.Context) {
 	if enableWaffo {
 		hasWaffo := false
 		for _, method := range payMethods {
-			if method["type"] == model.PaymentMethodWaffo {
+			if method["type"] == PaymentMethodWaffo {
 				hasWaffo = true
 				break
 			}
@@ -88,7 +87,7 @@ func GetTopUpInfo(c contract.Context) {
 		if !hasWaffo {
 			waffoMethod := map[string]string{
 				"name":      "Waffo (Global Payment)",
-				"type":      model.PaymentMethodWaffo,
+				"type":      PaymentMethodWaffo,
 				"color":     "#3B82F6",
 				"min_topup": strconv.Itoa(pay_subscription.WaffoMinTopUp),
 			}
@@ -242,7 +241,7 @@ func validateTopUpQuota(amount int64) (int, error) {
 func rejectInvalidCreditedQuota(c contract.Context, userId int, quota decimal.Decimal) bool {
 	creditedQuota, err := validateCreditedQuota(quota)
 	if err == nil {
-		err = model.ValidateTopUpQuotaCapacity(userId, creditedQuota)
+		err = ValidateTopUpQuotaCapacity(userId, creditedQuota)
 	}
 	if err != nil {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": err.Error()})
@@ -254,7 +253,7 @@ func rejectInvalidCreditedQuota(c contract.Context, userId int, quota decimal.De
 func rejectInvalidTopUpQuota(c contract.Context, userId int, amount int64) bool {
 	creditedQuota, err := validateTopUpQuota(amount)
 	if err == nil {
-		err = model.ValidateTopUpQuotaCapacity(userId, creditedQuota)
+		err = ValidateTopUpQuotaCapacity(userId, creditedQuota)
 	}
 	if err != nil {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": err.Error()})
@@ -279,7 +278,7 @@ func RequestEpay(c contract.Context) {
 		return
 	}
 
-	group, err := model.GetUserGroup(id, true)
+	group, err := identity.GetUserGroup(id, true)
 	if err != nil {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "获取用户分组失败"})
 		return
@@ -295,7 +294,7 @@ func RequestEpay(c contract.Context) {
 		return
 	}
 
-	callBackAddress := service.GetCallbackAddress()
+	callBackAddress := GetCallbackAddress()
 	returnUrl, _ := url.Parse(paymentReturnPath("/usage-logs"))
 	notifyUrl, _ := url.Parse(callBackAddress + "/api/user/epay/notify")
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
@@ -325,13 +324,13 @@ func RequestEpay(c contract.Context) {
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 		amount = dAmount.Div(dQuotaPerUnit).IntPart()
 	}
-	topUp := &model.TopUp{
+	topUp := &TopUp{
 		UserId:          id,
 		Amount:          amount,
 		Money:           payMoney,
 		TradeNo:         tradeNo,
 		PaymentMethod:   req.PaymentMethod,
-		PaymentProvider: model.PaymentProviderEpay,
+		PaymentProvider: PaymentProviderEpay,
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}
@@ -449,14 +448,14 @@ func EpayNotify(c contract.Context) {
 		// 数据库行锁 + 事务内状态校验保证（多实例部署下同样安全）。
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
-		alreadyDone, err := model.RechargeEpay(verifyInfo.ServiceTradeNo, verifyInfo.Type, c.ClientIP())
+		alreadyDone, err := RechargeEpay(verifyInfo.ServiceTradeNo, verifyInfo.Type, c.ClientIP())
 		if err != nil {
 			switch {
-			case errors.Is(err, model.ErrTopUpNotFound):
+			case errors.Is(err, ErrTopUpNotFound):
 				logger.LogWarn(c.Context(), fmt.Sprintf("易支付 回调订单不存在 trade_no=%s callback_type=%s client_ip=%s verify_info=%q", verifyInfo.ServiceTradeNo, verifyInfo.Type, c.ClientIP(), common.GetJsonString(verifyInfo)))
-			case errors.Is(err, model.ErrPaymentMethodMismatch):
+			case errors.Is(err, ErrPaymentMethodMismatch):
 				logger.LogWarn(c.Context(), fmt.Sprintf("易支付 订单支付网关不匹配 trade_no=%s callback_type=%s client_ip=%s", verifyInfo.ServiceTradeNo, verifyInfo.Type, c.ClientIP()))
-			case errors.Is(err, model.ErrTopUpStatusInvalid):
+			case errors.Is(err, ErrTopUpStatusInvalid):
 				logger.LogWarn(c.Context(), fmt.Sprintf("易支付 订单状态非法 trade_no=%s callback_type=%s client_ip=%s", verifyInfo.ServiceTradeNo, verifyInfo.Type, c.ClientIP()))
 			default:
 				logger.LogError(c.Context(), fmt.Sprintf("易支付 充值处理失败 trade_no=%s client_ip=%s error=%q", verifyInfo.ServiceTradeNo, c.ClientIP(), err.Error()))
@@ -495,7 +494,7 @@ func RequestAmount(c contract.Context) {
 	if rejectInvalidTopUpQuota(c, id, req.Amount) {
 		return
 	}
-	group, err := model.GetUserGroup(id, true)
+	group, err := identity.GetUserGroup(id, true)
 	if err != nil {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "获取用户分组失败"})
 		return
@@ -514,14 +513,14 @@ func GetUserTopUps(c contract.Context) {
 	keyword := c.Query("keyword")
 
 	var (
-		topups []*model.TopUp
+		topups []*TopUp
 		total  int64
 		err    error
 	)
 	if keyword != "" {
-		topups, total, err = model.SearchUserTopUps(userId, keyword, pageInfo)
+		topups, total, err = SearchUserTopUps(userId, keyword, pageInfo)
 	} else {
-		topups, total, err = model.GetUserTopUps(userId, pageInfo)
+		topups, total, err = QueryUserTopUps(userId, pageInfo)
 	}
 	if err != nil {
 		common.CtxApiError(c, err)
@@ -539,14 +538,14 @@ func GetAllTopUps(c contract.Context) {
 	keyword := c.Query("keyword")
 
 	var (
-		topups []*model.TopUp
+		topups []*TopUp
 		total  int64
 		err    error
 	)
 	if keyword != "" {
-		topups, total, err = model.SearchAllTopUps(keyword, pageInfo)
+		topups, total, err = SearchAllTopUps(keyword, pageInfo)
 	} else {
-		topups, total, err = model.GetAllTopUps(pageInfo)
+		topups, total, err = QueryAllTopUps(pageInfo)
 	}
 	if err != nil {
 		common.CtxApiError(c, err)
@@ -574,7 +573,7 @@ func AdminCompleteTopUp(c contract.Context) {
 	LockOrder(req.TradeNo)
 	defer UnlockOrder(req.TradeNo)
 
-	if err := model.ManualCompleteTopUp(req.TradeNo, c.ClientIP()); err != nil {
+	if err := ManualCompleteTopUp(req.TradeNo, c.ClientIP()); err != nil {
 		common.CtxApiError(c, err)
 		return
 	}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"io"
 	"net/http"
@@ -14,7 +15,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/model"
 )
 
 func init() {
@@ -161,15 +161,15 @@ func (p *GitHubProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*O
 }
 
 func (p *GitHubProvider) IsUserIDTaken(providerUserID string) bool {
-	return model.IsGitHubIdAlreadyTaken(providerUserID)
+	return identity.IsGitHubIdAlreadyTaken(providerUserID)
 }
 
-func (p *GitHubProvider) FillUserByProviderID(user *model.User, providerUserID string) error {
+func (p *GitHubProvider) FillUserByProviderID(user *identity.User, providerUserID string) error {
 	user.GitHubId = providerUserID
 	return user.FillUserByGitHubId()
 }
 
-func (p *GitHubProvider) SetProviderUserID(user *model.User, providerUserID string) {
+func (p *GitHubProvider) SetProviderUserID(user *identity.User, providerUserID string) {
 	user.GitHubId = providerUserID
 }
 

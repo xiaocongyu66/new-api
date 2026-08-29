@@ -4,8 +4,8 @@ import (
 	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
@@ -13,17 +13,17 @@ func GetSubscription(c contract.Context) {
 	var remainQuota int
 	var usedQuota int
 	var err error
-	var token *model.Token
+	var token *identity.Token
 	var expiredTime int64
 	if common.DisplayTokenStatEnabled {
 		tokenId := c.GetInt("token_id")
-		token, err = model.GetTokenById(tokenId)
+		token, err = identity.GetTokenById(tokenId)
 		expiredTime = token.ExpiredTime
 		remainQuota = token.RemainQuota
 		usedQuota = token.UsedQuota
 	} else {
 		userId := c.GetInt("id")
-		remainQuota, err = model.GetUserQuota(userId, false)
+		remainQuota, err = identity.GetUserQuota(userId, false)
 		usedQuota, err = GetUserUsedQuota(userId)
 	}
 	if expiredTime <= 0 {
@@ -72,10 +72,10 @@ func GetSubscription(c contract.Context) {
 func GetUsage(c contract.Context) {
 	var quota int
 	var err error
-	var token *model.Token
+	var token *identity.Token
 	if common.DisplayTokenStatEnabled {
 		tokenId := c.GetInt("token_id")
-		token, err = model.GetTokenById(tokenId)
+		token, err = identity.GetTokenById(tokenId)
 		quota = token.UsedQuota
 	} else {
 		userId := c.GetInt("id")

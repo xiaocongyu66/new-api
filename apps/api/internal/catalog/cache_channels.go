@@ -3,7 +3,7 @@ package channel
 import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
-	"math/rand"
+	"math/rand/v2"
 	"sort"
 	"strings"
 	"sync"
@@ -14,12 +14,11 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 )
 
 var group2model2channels map[string]map[string][]int // enabled channel
-var channelsIDM map[int]*model.Channel               // all channels include disabled
+var channelsIDM map[int]*Channel                     // all channels include disabled
 // channel2advancedCustomConfig caches parsed Advanced Custom (type 58) configs so
 // path-aware selection avoids re-parsing JSON per request. Refreshed on full sync.
 var channel2advancedCustomConfig map[int]*dto.AdvancedCustomConfig
@@ -27,12 +26,12 @@ var channelSyncLock sync.RWMutex
 
 func InitChannelCache() {
 	if !common.MemoryCacheEnabled {
-		model.InvalidatePricingCache()
+		InvalidatePricingCache()
 		return
 	}
-	newChannelId2channel := make(map[int]*model.Channel)
+	newChannelId2channel := make(map[int]*Channel)
 	newChannel2advancedCustomConfig := make(map[int]*dto.AdvancedCustomConfig)
-	var channels []*model.Channel
+	var channels []*Channel
 	dbx.DB.Find(&channels)
 	for _, channel := range channels {
 		newChannelId2channel[channel.Id] = channel
@@ -42,7 +41,7 @@ func InitChannelCache() {
 			}
 		}
 	}
-	var abilities []*model.Ability
+	var abilities []*Ability
 	dbx.DB.Find(&abilities)
 	groups := make(map[string]bool)
 	for _, ability := range abilities {
@@ -97,11 +96,11 @@ func InitChannelCache() {
 	channelsIDM = newChannelId2channel
 	channel2advancedCustomConfig = newChannel2advancedCustomConfig
 	channelSyncLock.Unlock()
-	// Lock ordering: model.InvalidatePricingCache acquires updatePricingLock, and
+	// Lock ordering: InvalidatePricingCache acquires updatePricingLock, and
 	// GetPricing (holding updatePricingLock) nests channelSyncLock.RLock via
 	// loadPricingAdvancedCustomConfigs. channelSyncLock MUST be released before
 	// invalidating the pricing cache, otherwise the reversed order deadlocks.
-	model.InvalidatePricingCache()
+	InvalidatePricingCache()
 	common.SysLog("channels synced from database")
 }
 
@@ -113,10 +112,10 @@ func SyncChannelCache(frequency int) {
 	}
 }
 
-func GetRandomSatisfiedChannel(group string, modelName string, retry int, requestPath string, excludeSet map[int]bool) (*model.Channel, error) {
+func GetRandomSatisfiedChannel(group string, modelName string, retry int, requestPath string, excludeSet map[int]bool) (*Channel, error) {
 	// if memory cache is disabled, get channel directly from database
 	if !common.MemoryCacheEnabled {
-		return model.GetChannel(group, modelName, retry, requestPath, excludeSet)
+		return GetChannel(group, modelName, retry, requestPath, excludeSet)
 	}
 
 	channelSyncLock.RLock()
@@ -155,7 +154,7 @@ func GetRandomSatisfiedChannel(group string, modelName string, retry int, reques
 	targetPriority := int64(sortedUniquePriorities[retry])
 
 	// get the channels at the target priority level, excluding request-level excludes
-	var targetChannels []*model.Channel
+	var targetChannels []*Channel
 	for _, channelId := range channels {
 		if excludeSet != nil && excludeSet[channelId] {
 			continue // P1: skip channels that failed in this request
@@ -251,9 +250,9 @@ func filterChannelsByRequestPathAndModel(channels []int, requestPath string, mod
 	return filtered
 }
 
-func CacheGetChannel(id int) (*model.Channel, error) {
+func CacheGetChannel(id int) (*Channel, error) {
 	if !common.MemoryCacheEnabled {
-		return model.GetChannelById(id, true)
+		return GetChannelById(id, true)
 	}
 	channelSyncLock.RLock()
 	defer channelSyncLock.RUnlock()
@@ -265,9 +264,9 @@ func CacheGetChannel(id int) (*model.Channel, error) {
 	return c, nil
 }
 
-func CacheGetChannelInfo(id int) (*model.ChannelInfo, error) {
+func CacheGetChannelInfo(id int) (*ChannelInfo, error) {
 	if !common.MemoryCacheEnabled {
-		channel, err := model.GetChannelById(id, true)
+		channel, err := GetChannelById(id, true)
 		if err != nil {
 			return nil, err
 		}
@@ -308,7 +307,7 @@ func CacheUpdateChannelStatus(id int, status int) {
 	}
 }
 
-func CacheUpdateChannel(channel *model.Channel) {
+func CacheUpdateChannel(channel *Channel) {
 	if !common.MemoryCacheEnabled {
 		return
 	}
@@ -319,7 +318,7 @@ func CacheUpdateChannel(channel *model.Channel) {
 	}
 
 	if channelsIDM == nil {
-		channelsIDM = make(map[int]*model.Channel)
+		channelsIDM = make(map[int]*Channel)
 	}
 	if oldChannel, ok := channelsIDM[channel.Id]; ok {
 		logger.LogDebug(nil, "CacheUpdateChannel before: id=%d, name=%s, status=%d, polling_index=%d", channel.Id, channel.Name, channel.Status, oldChannel.ChannelInfo.MultiKeyPollingIndex)
@@ -336,18 +335,18 @@ func CacheUpdateChannel(channel *model.Channel) {
 	}
 	logger.LogDebug(nil, "CacheUpdateChannel after: id=%d, name=%s, status=%d, polling_index=%d", channel.Id, channel.Name, channel.Status, channel.ChannelInfo.MultiKeyPollingIndex)
 	// Lock ordering: do NOT hold channelSyncLock while calling
-	// model.InvalidatePricingCache. GetPricing acquires updatePricingLock first and then
+	// InvalidatePricingCache. GetPricing acquires updatePricingLock first and then
 	// channelSyncLock.RLock (via loadPricingAdvancedCustomConfigs); acquiring
 	// updatePricingLock while holding channelSyncLock would be an AB-BA deadlock.
 	channelSyncLock.Unlock()
-	model.InvalidatePricingCache()
+	InvalidatePricingCache()
 }
 
 // init registers the cache implementation with the model package bridges so
 // model-internal consumers (pricing, logs, status writes) keep working without
 // importing this package.
 func init() {
-	model.RegisterCacheBridge(model.CacheBridge{
+	RegisterCacheBridge(CacheBridge{
 		GetChannel:            CacheGetChannel,
 		GetChannelInfo:        CacheGetChannelInfo,
 		UpdateChannelStatus:   CacheUpdateChannelStatus,

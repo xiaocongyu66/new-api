@@ -18,7 +18,6 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/model"
 )
 
 type SingBoxDialer struct {
@@ -312,7 +311,7 @@ func outboundFingerprint() (string, json.RawMessage) {
 	if dbx.DB == nil {
 		return "", nil
 	}
-	var opt model.Option
+	var opt optionRow
 	if err := dbx.DB.Where("key = ?", "proxy_config").First(&opt).Error; err != nil {
 		return "", nil
 	}

@@ -2,8 +2,8 @@ package compose
 
 import (
 	"fmt"
-	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/handler"
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
 	"net/http"
 	"os"
@@ -19,7 +19,7 @@ func SetRouter(router *gin.Engine, assets WebAssets) {
 	SetDashboardRouter(router)
 	SetRelayRouter(router)
 	SetVideoRouter(router)
-	router.Any("/karmada-dashboard/*path", ginadapter.Handler(controller.ProxyKarmadaDashboard))
+	router.Any("/karmada-dashboard/*path", ginadapter.Handler(handler.ProxyKarmadaDashboard))
 	frontendBaseUrl := os.Getenv("FRONTEND_BASE_URL")
 	if common.IsMasterNode && frontendBaseUrl != "" {
 		frontendBaseUrl = ""

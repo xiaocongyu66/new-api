@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strconv"
@@ -14,8 +14,8 @@ import (
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/model"
 
+	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/shopspring/decimal"
 	"github.com/stripe/stripe-go/v81"
 	"github.com/stripe/stripe-go/v81/checkout/session"
@@ -52,7 +52,7 @@ func (*StripeAdaptor) RequestAmount(c contract.Context, req *StripePayRequest) {
 		return
 	}
 	id := c.GetInt("id")
-	group, err := model.GetUserGroup(id, true)
+	group, err := identity.GetUserGroup(id, true)
 	if err != nil {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "获取用户分组失败"})
 		return
@@ -69,7 +69,7 @@ func (*StripeAdaptor) RequestAmount(c contract.Context, req *StripePayRequest) {
 }
 
 func (*StripeAdaptor) RequestPay(c contract.Context, req *StripePayRequest) {
-	if req.PaymentMethod != model.PaymentMethodStripe {
+	if req.PaymentMethod != PaymentMethodStripe {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "不支持的支付渠道"})
 		return
 	}
@@ -93,7 +93,7 @@ func (*StripeAdaptor) RequestPay(c contract.Context, req *StripePayRequest) {
 	}
 
 	id := c.GetInt("id")
-	user, err := model.GetUserById(id, false)
+	user, err := identity.GetUserById(id, false)
 	if err != nil || user == nil {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "用户不存在"})
 		return
@@ -115,13 +115,13 @@ func (*StripeAdaptor) RequestPay(c contract.Context, req *StripePayRequest) {
 		return
 	}
 
-	topUp := &model.TopUp{
+	topUp := &TopUp{
 		UserId:          id,
 		Amount:          req.Amount,
 		Money:           chargedMoney,
 		TradeNo:         referenceId,
-		PaymentMethod:   model.PaymentMethodStripe,
-		PaymentProvider: model.PaymentProviderStripe,
+		PaymentMethod:   PaymentMethodStripe,
+		PaymentProvider: PaymentProviderStripe,
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}
@@ -247,13 +247,13 @@ func sessionAsyncPaymentFailed(ctx context.Context, event stripe.Event, callerIp
 	LockOrder(referenceId)
 	defer UnlockOrder(referenceId)
 
-	topUp := model.GetTopUpByTradeNo(referenceId)
+	topUp := GetTopUpByTradeNo(referenceId)
 	if topUp == nil {
 		logger.LogWarn(ctx, fmt.Sprintf("Stripe 异步支付失败但本地订单不存在 trade_no=%s client_ip=%s", referenceId, callerIp))
 		return
 	}
 
-	if topUp.PaymentProvider != model.PaymentProviderStripe {
+	if topUp.PaymentProvider != PaymentProviderStripe {
 		logger.LogWarn(ctx, fmt.Sprintf("Stripe 异步支付失败但订单支付网关不匹配 trade_no=%s payment_provider=%s client_ip=%s", referenceId, topUp.PaymentProvider, callerIp))
 		return
 	}
@@ -286,15 +286,15 @@ func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, c
 		"currency":     strings.ToUpper(event.GetObjectValue("currency")),
 		"event_type":   string(event.Type),
 	}
-	if err := model.CompleteSubscriptionOrder(referenceId, common.GetJsonString(payload), model.PaymentProviderStripe, ""); err == nil {
+	if err := CompleteSubscriptionOrder(referenceId, common.GetJsonString(payload), PaymentProviderStripe, ""); err == nil {
 		logger.LogInfo(ctx, fmt.Sprintf("Stripe 订阅订单处理成功 trade_no=%s event_type=%s client_ip=%s", referenceId, string(event.Type), callerIp))
 		return
-	} else if err != nil && !errors.Is(err, model.ErrSubscriptionOrderNotFound) {
+	} else if err != nil && !errors.Is(err, ErrSubscriptionOrderNotFound) {
 		logger.LogError(ctx, fmt.Sprintf("Stripe 订阅订单处理失败 trade_no=%s event_type=%s client_ip=%s error=%q", referenceId, string(event.Type), callerIp, err.Error()))
 		return
 	}
 
-	err := model.Recharge(referenceId, customerId, callerIp)
+	err := Recharge(referenceId, customerId, callerIp)
 	if err != nil {
 		logger.LogError(ctx, fmt.Sprintf("Stripe 充值处理失败 trade_no=%s event_type=%s client_ip=%s error=%q", referenceId, string(event.Type), callerIp, err.Error()))
 		return
@@ -321,16 +321,16 @@ func sessionExpired(ctx context.Context, event stripe.Event) {
 	// Subscription order expiration
 	LockOrder(referenceId)
 	defer UnlockOrder(referenceId)
-	if err := model.ExpireSubscriptionOrder(referenceId, model.PaymentProviderStripe); err == nil {
+	if err := ExpireSubscriptionOrder(referenceId, PaymentProviderStripe); err == nil {
 		logger.LogInfo(ctx, fmt.Sprintf("Stripe 订阅订单已过期 trade_no=%s", referenceId))
 		return
-	} else if err != nil && !errors.Is(err, model.ErrSubscriptionOrderNotFound) {
+	} else if err != nil && !errors.Is(err, ErrSubscriptionOrderNotFound) {
 		logger.LogError(ctx, fmt.Sprintf("Stripe 订阅订单过期处理失败 trade_no=%s error=%q", referenceId, err.Error()))
 		return
 	}
 
-	err := model.UpdatePendingTopUpStatus(referenceId, model.PaymentProviderStripe, common.TopUpStatusExpired)
-	if errors.Is(err, model.ErrTopUpNotFound) {
+	err := UpdatePendingTopUpStatus(referenceId, PaymentProviderStripe, common.TopUpStatusExpired)
+	if errors.Is(err, ErrTopUpNotFound) {
 		logger.LogWarn(ctx, fmt.Sprintf("Stripe 充值订单不存在，无法标记过期 trade_no=%s", referenceId))
 		return
 	}
@@ -401,7 +401,7 @@ func genStripeLink(referenceId string, customerId string, email string, amount i
 	return result.URL, nil
 }
 
-func GetChargedAmount(count float64, user model.User) float64 {
+func GetChargedAmount(count float64, user identity.User) float64 {
 	topUpGroupRatio := common.GetTopupGroupRatio(user.Group)
 	if topUpGroupRatio == 0 {
 		topUpGroupRatio = 1

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/egress"
+	"github.com/QuantumNous/new-api/internal/task"
 	"io"
 	"math"
 	"net/http"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 
 	"github.com/samber/lo"
 
@@ -26,7 +26,6 @@ import (
 	taskcommon "github.com/QuantumNous/new-api/internal/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/service"
 )
 
 // ============================
@@ -193,18 +192,18 @@ func (a *TaskAdaptor) DoRequest(c contract.Context, info *relaycommon.RelayInfo,
 func (a *TaskAdaptor) DoResponse(c contract.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *taskdto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		taskErr = service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
+		taskErr = task.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
 		return
 	}
 
 	var kResp responsePayload
 	err = common.Unmarshal(responseBody, &kResp)
 	if err != nil {
-		taskErr = service.TaskErrorWrapper(err, "unmarshal_response_failed", http.StatusInternalServerError)
+		taskErr = task.TaskErrorWrapper(err, "unmarshal_response_failed", http.StatusInternalServerError)
 		return
 	}
 	if kResp.Code != 0 {
-		taskErr = service.TaskErrorWrapperLocal(fmt.Errorf("%s", kResp.Message), "task_failed", http.StatusBadRequest)
+		taskErr = task.TaskErrorWrapperLocal(fmt.Errorf("%s", kResp.Message), "task_failed", http.StatusBadRequest)
 		return
 	}
 	ov := dto.NewOpenAIVideo()
@@ -350,11 +349,11 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	status := resPayload.Data.TaskStatus
 	switch status {
 	case "submitted":
-		taskInfo.Status = model.TaskStatusSubmitted
+		taskInfo.Status = task.TaskStatusSubmitted
 	case "processing":
-		taskInfo.Status = model.TaskStatusInProgress
+		taskInfo.Status = task.TaskStatusInProgress
 	case "succeed":
-		taskInfo.Status = model.TaskStatusSuccess
+		taskInfo.Status = task.TaskStatusSuccess
 		if videos := resPayload.Data.TaskResult.Videos; len(videos) > 0 {
 			video := videos[0]
 			taskInfo.Url = video.Url
@@ -368,7 +367,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 			}
 		}
 	case "failed":
-		taskInfo.Status = model.TaskStatusFailure
+		taskInfo.Status = task.TaskStatusFailure
 	default:
 		return nil, fmt.Errorf("unknown task status: %s", status)
 	}
@@ -379,7 +378,7 @@ func isNewAPIRelay(apiKey string) bool {
 	return strings.HasPrefix(apiKey, "sk-")
 }
 
-func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error) {
+func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *task.Task) ([]byte, error) {
 	var klingResp responsePayload
 	if err := common.Unmarshal(originTask.Data, &klingResp); err != nil {
 		return nil, errors.Wrap(err, "unmarshal kling task data failed")

@@ -3,6 +3,7 @@ package billing
 import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/model"
 	"net/http"
 	"strconv"
 	"time"
@@ -11,7 +12,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/model"
 )
 
 type PaymentComplianceRequest struct {

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/authtoken"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/glebarez/sqlite"
 	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/gorm"
@@ -53,7 +53,7 @@ func setupDashboardAuthMiddlewareTest(t *testing.T) {
 	previousSecret := common.SessionSecret
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}))
+	require.NoError(t, db.AutoMigrate(&identity.User{}, &identity.UserSession{}))
 	dbx.DB = db
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	common.RedisEnabled = false

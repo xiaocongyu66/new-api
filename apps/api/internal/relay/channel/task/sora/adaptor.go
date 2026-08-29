@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/egress"
+	"github.com/QuantumNous/new-api/internal/task"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -17,8 +18,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/channel"
 	taskcommon "github.com/QuantumNous/new-api/internal/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/pkg/errors"
@@ -78,10 +77,10 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 func validateRemixRequest(c contract.Context) *dto.TaskError {
 	var req relaycommon.TaskSubmitReq
 	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
-		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+		return task.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 	}
 	if strings.TrimSpace(req.Prompt) == "" {
-		return service.TaskErrorWrapperLocal(fmt.Errorf("field prompt is required"), "invalid_request", http.StatusBadRequest)
+		return task.TaskErrorWrapperLocal(fmt.Errorf("field prompt is required"), "invalid_request", http.StatusBadRequest)
 	}
 	// 存储原始请求到 context，与 ValidateMultipartDirect 路径保持一致
 	c.Set("task_request", req)
@@ -229,7 +228,7 @@ func (a *TaskAdaptor) DoRequest(c contract.Context, info *relaycommon.RelayInfo,
 func (a *TaskAdaptor) DoResponse(c contract.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *dto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		taskErr = service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
+		taskErr = task.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
 		return
 	}
 	_ = resp.Body.Close()
@@ -237,7 +236,7 @@ func (a *TaskAdaptor) DoResponse(c contract.Context, resp *http.Response, info *
 	// Parse Sora response
 	var dResp responseTask
 	if err := common.Unmarshal(responseBody, &dResp); err != nil {
-		taskErr = service.TaskErrorWrapper(errors.Wrapf(err, "body: %s", responseBody), "unmarshal_response_body_failed", http.StatusInternalServerError)
+		taskErr = task.TaskErrorWrapper(errors.Wrapf(err, "body: %s", responseBody), "unmarshal_response_body_failed", http.StatusInternalServerError)
 		return
 	}
 
@@ -246,7 +245,7 @@ func (a *TaskAdaptor) DoResponse(c contract.Context, resp *http.Response, info *
 		upstreamID = dResp.TaskID
 	}
 	if upstreamID == "" {
-		taskErr = service.TaskErrorWrapper(fmt.Errorf("task_id is empty"), "invalid_response", http.StatusInternalServerError)
+		taskErr = task.TaskErrorWrapper(fmt.Errorf("task_id is empty"), "invalid_response", http.StatusInternalServerError)
 		return
 	}
 
@@ -300,14 +299,14 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 
 	switch resTask.Status {
 	case "queued", "pending":
-		taskResult.Status = model.TaskStatusQueued
+		taskResult.Status = task.TaskStatusQueued
 	case "processing", "in_progress":
-		taskResult.Status = model.TaskStatusInProgress
+		taskResult.Status = task.TaskStatusInProgress
 	case "completed":
-		taskResult.Status = model.TaskStatusSuccess
+		taskResult.Status = task.TaskStatusSuccess
 		// Url intentionally left empty — the caller constructs the proxy URL using the public task ID
 	case "failed", "cancelled":
-		taskResult.Status = model.TaskStatusFailure
+		taskResult.Status = task.TaskStatusFailure
 		if resTask.Error != nil {
 			taskResult.Reason = resTask.Error.Message
 		} else {
@@ -322,7 +321,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	return &taskResult, nil
 }
 
-func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
+func (a *TaskAdaptor) ConvertToOpenAIVideo(task *task.Task) ([]byte, error) {
 	data := task.Data
 	var err error
 	if data, err = sjson.SetBytes(data, "id", task.TaskID); err != nil {

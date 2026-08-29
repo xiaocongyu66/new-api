@@ -1,13 +1,14 @@
-package channel
+package channel_test
 
 import (
 	"fmt"
+	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/model"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -20,7 +21,7 @@ func resetPricingEndpointTestTables(t *testing.T) {
 	previousDB := dbx.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.Ability{}, &model.Model{}, &model.Vendor{}))
+	require.NoError(t, db.AutoMigrate(&catalog.Channel{}, &catalog.Ability{}, &catalog.Model{}, &catalog.Vendor{}))
 	dbx.DB = db
 	model.InitDialectColumns()
 	originalMemoryCacheEnabled := common.MemoryCacheEnabled
@@ -28,14 +29,14 @@ func resetPricingEndpointTestTables(t *testing.T) {
 	for _, table := range []string{"abilities", "channels", "models", "vendors"} {
 		require.NoError(t, dbx.DB.Exec("DELETE FROM "+table).Error)
 	}
-	model.InitChannelCache()
-	model.InvalidatePricingCache()
+	catalog.InitChannelCache()
+	catalog.InvalidatePricingCache()
 	t.Cleanup(func() {
 		for _, table := range []string{"abilities", "channels", "models", "vendors"} {
 			require.NoError(t, dbx.DB.Exec("DELETE FROM "+table).Error)
 		}
-		model.InitChannelCache()
-		model.InvalidatePricingCache()
+		catalog.InitChannelCache()
+		catalog.InvalidatePricingCache()
 		common.MemoryCacheEnabled = originalMemoryCacheEnabled
 		dbx.DB = previousDB
 	})
@@ -43,7 +44,7 @@ func resetPricingEndpointTestTables(t *testing.T) {
 
 func insertPricingEndpointChannel(t *testing.T, channelID int, channelType int, settings dto.ChannelOtherSettings) {
 	t.Helper()
-	channel := &model.Channel{
+	channel := &catalog.Channel{
 		Id:     channelID,
 		Type:   channelType,
 		Key:    fmt.Sprintf("key-%d", channelID),
@@ -58,7 +59,7 @@ func insertPricingEndpointChannel(t *testing.T, channelID int, channelType int, 
 
 func insertPricingEndpointAbility(t *testing.T, channelID int, modelName string) {
 	t.Helper()
-	require.NoError(t, dbx.DB.Create(&model.Ability{
+	require.NoError(t, dbx.DB.Create(&catalog.Ability{
 		Group:     "default",
 		Model:     modelName,
 		ChannelId: channelID,
@@ -74,7 +75,7 @@ func pricingEndpointAdvancedCustomConfig(routes ...dto.AdvancedCustomRoute) dto.
 	}
 }
 
-func pricingEndpointTypesFromPricing(pricings []model.Pricing) map[string][]constant.EndpointType {
+func pricingEndpointTypesFromPricing(pricings []catalog.Pricing) map[string][]constant.EndpointType {
 	byModel := make(map[string][]constant.EndpointType)
 	for _, pricing := range pricings {
 		byModel[pricing.ModelName] = pricing.SupportedEndpointTypes
@@ -99,12 +100,12 @@ func TestInitChannelCacheInvalidatesStartupPricingBuiltBeforeChannelCache(t *tes
 	))
 	insertPricingEndpointAbility(t, 302, "gemini-3.5-flash")
 
-	staleByModel := pricingEndpointTypesFromPricing(model.GetPricing())
+	staleByModel := pricingEndpointTypesFromPricing(catalog.GetPricing())
 	require.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAI}, staleByModel["gemini-3.5-flash"])
 
-	model.InitChannelCache()
+	catalog.InitChannelCache()
 
-	rebuiltByModel := pricingEndpointTypesFromPricing(model.GetPricing())
+	rebuiltByModel := pricingEndpointTypesFromPricing(catalog.GetPricing())
 	assert.Equal(t, []constant.EndpointType{
 		constant.EndpointTypeOpenAI,
 		constant.EndpointTypeOpenAIResponse,
@@ -114,7 +115,7 @@ func TestInitChannelCacheInvalidatesStartupPricingBuiltBeforeChannelCache(t *tes
 func TestCacheUpdateChannelSyncsAdvancedCustomConfig(t *testing.T) {
 	resetPricingEndpointTestTables(t)
 
-	channel := &model.Channel{
+	channel := &catalog.Channel{
 		Id:     401,
 		Type:   constant.ChannelTypeAdvancedCustom,
 		Key:    "key-401",
@@ -126,9 +127,9 @@ func TestCacheUpdateChannelSyncsAdvancedCustomConfig(t *testing.T) {
 		UpstreamPath: "/v1beta/models/{model}:generateContent",
 		Converter:    "openai_responses_to_gemini_generate_content",
 	}))
-	model.CacheUpdateChannel(channel)
+	catalog.CacheUpdateChannel(channel)
 
-	configs, ok := model.LookupAdvancedCustomConfigs([]int{401})
+	configs, ok := catalog.LookupAdvancedCustomConfigs([]int{401})
 	require.True(t, ok)
 	require.NotNil(t, configs[401])
 	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAIResponse}, configs[401].SupportedEndpointTypesForModel("gemini-3.5-flash"))
@@ -137,17 +138,17 @@ func TestCacheUpdateChannelSyncsAdvancedCustomConfig(t *testing.T) {
 		IncomingPath: "/v1/chat/completions",
 		UpstreamPath: "/v1/chat/completions",
 	}))
-	model.CacheUpdateChannel(channel)
+	catalog.CacheUpdateChannel(channel)
 
-	configs, ok = model.LookupAdvancedCustomConfigs([]int{401})
+	configs, ok = catalog.LookupAdvancedCustomConfigs([]int{401})
 	require.True(t, ok)
 	require.NotNil(t, configs[401])
 	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAI}, configs[401].SupportedEndpointTypesForModel("gemini-3.5-flash"))
 
 	channel.Type = constant.ChannelTypeOpenAI
-	model.CacheUpdateChannel(channel)
+	catalog.CacheUpdateChannel(channel)
 
-	configs, ok = model.LookupAdvancedCustomConfigs([]int{401})
+	configs, ok = catalog.LookupAdvancedCustomConfigs([]int{401})
 	if ok {
 		assert.Nil(t, configs[401])
 	}
