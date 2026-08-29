@@ -176,14 +176,33 @@ def run_smoke(config: SmokeConfig) -> tuple[int, ReconcileResult | None]:
     write_ndjson(requests_path, sent_rows)
     print(f"      Done. Written to {requests_path}")
 
-    # Small delay to let audit ring buffer populate
-    time.sleep(0.5)
-
     print(f"[3/5] Fetching audit from gateway (admin JWT)")
-    attempts = fetch_audit(config.gateway_url, config.admin_token)
-    if attempts is None:
-        print("ERROR: Failed to fetch audit endpoint", file=sys.stderr)
-        return 2, None
+    # The audit record is written after the response is handed back, so a fixed
+    # sleep races the last few requests and they get reported as missing_in_audit.
+    # Poll until every sent request is present, or until the records stop arriving.
+    sent_ids = {row["request_id"] for row in sent_rows}
+    attempts: list[dict[str, Any]] | None = None
+    deadline = time.time() + 30.0
+    stable_since: tuple[float, int] | None = None
+    while True:
+        attempts = fetch_audit(config.gateway_url, config.admin_token)
+        if attempts is None:
+            print("ERROR: Failed to fetch audit endpoint", file=sys.stderr)
+            return 2, None
+        seen = {a.get("client_request_id") for a in attempts}
+        if sent_ids <= seen:
+            break
+        if time.time() >= deadline:
+            print(f"      audit still missing {len(sent_ids - seen)} of {len(sent_ids)} after 30s")
+            break
+        # Give up early once the count holds steady, so a genuinely dropped record
+        # does not cost the full timeout.
+        if stable_since is not None and len(seen & sent_ids) == stable_since[1] and time.time() - stable_since[0] > 5.0:
+            print(f"      audit count steady at {stable_since[1]}; not waiting further")
+            break
+        if stable_since is None or len(seen & sent_ids) != stable_since[1]:
+            stable_since = (time.time(), len(seen & sent_ids))
+        time.sleep(0.5)
     print(f"      Got {len(attempts)} attempt records")
 
     # Write gateway attempts
