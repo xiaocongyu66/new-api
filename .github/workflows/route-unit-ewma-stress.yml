@@ -203,6 +203,16 @@ jobs:
           if [ -n "$ADMIN_PORT" ]; then
             echo "GATEWAY_ADMIN_URL=http://$NAME:$ADMIN_PORT" >> "$GITHUB_ENV"
             echo "admin URL rewritten to http://$NAME:$ADMIN_PORT"
+            # The same port applies to relay traffic. Without a port target_url
+            # resolves to :80, where the ingress controller is not listening when it
+            # is exposed via NodePort, so every relay request fails to connect while
+            # admin calls on the explicit port succeed.
+            TARGET_PORT=$(printf '%s' "$TARGET_URL" | sed -nE 's#^[a-zA-Z]+://[^:/]+:([0-9]+).*$#\1#p')
+            if [ -z "$TARGET_PORT" ]; then
+              TARGET_PATH=$(printf '%s' "$TARGET_URL" | sed -E 's#^[a-zA-Z]+://[^/]+##')
+              echo "TARGET_URL=http://$NAME:$ADMIN_PORT$TARGET_PATH" >> "$GITHUB_ENV"
+              echo "target URL rewritten to http://$NAME:$ADMIN_PORT$TARGET_PATH"
+            fi
           fi
 
       - name: Configure kubectl
@@ -588,6 +598,16 @@ jobs:
           if [ -n "$ADMIN_PORT" ]; then
             echo "GATEWAY_ADMIN_URL=http://$NAME:$ADMIN_PORT" >> "$GITHUB_ENV"
             echo "admin URL rewritten to http://$NAME:$ADMIN_PORT"
+            # The same port applies to relay traffic. Without a port target_url
+            # resolves to :80, where the ingress controller is not listening when it
+            # is exposed via NodePort, so every relay request fails to connect while
+            # admin calls on the explicit port succeed.
+            TARGET_PORT=$(printf '%s' "$TARGET_URL" | sed -nE 's#^[a-zA-Z]+://[^:/]+:([0-9]+).*$#\1#p')
+            if [ -z "$TARGET_PORT" ]; then
+              TARGET_PATH=$(printf '%s' "$TARGET_URL" | sed -E 's#^[a-zA-Z]+://[^/]+##')
+              echo "TARGET_URL=http://$NAME:$ADMIN_PORT$TARGET_PATH" >> "$GITHUB_ENV"
+              echo "target URL rewritten to http://$NAME:$ADMIN_PORT$TARGET_PATH"
+            fi
           fi
 
       - name: Setup Python
