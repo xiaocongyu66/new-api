@@ -146,6 +146,11 @@ env:
   # and switch this back to `secrets.*`.
   ADMIN_USERNAME: root
   ADMIN_PASSWORD: '123456'
+  # Hardcode the k3s ingress NodePort so the Resolve admin token step can reach
+  # /api/user/login from the Actions runner. `api.example.com` has no public DNS,
+  # so deriving the URL from TARGET_URL yields an unresolvable host and the 15
+  # login retries fail. Override in dispatch only when the cluster moves.
+  GATEWAY_ADMIN_URL: http://156.254.6.210:32032
 
 jobs:
   route-unit-ewma-smoke:
