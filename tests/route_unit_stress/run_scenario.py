@@ -1770,6 +1770,17 @@ def main() -> int:
     p.add_argument("--admin-password", help="Admin password for auto token refresh on 401/403")
     p.add_argument("--alias", required=True, help="Public model alias under test")
     p.add_argument("--mock-url", required=True, help="Mock upstream base URL (healthz probe)")
+    p.add_argument(
+        "--mock-url-extra",
+        action="append",
+        default=[],
+        metavar="URL",
+        help=(
+            "Additional mock upstream base URL to pull /_ndjson from. Repeatable. "
+            "Multi-instance scenarios run one mock per route, and each keeps its own "
+            "records, so reconciliation needs every instance, not just --mock-url."
+        ),
+    )
     p.add_argument("--mock-file", type=Path, help="Mock upstream ndjson path")
     p.add_argument("--warmup", type=int, default=44, help="Warmup requests, excluded from share fitting")
     p.add_argument("--requests", type=int, default=None, help="Stat-phase request count (required for non-S6 scenarios)")
@@ -2523,27 +2534,52 @@ def main() -> int:
     write_ndjson(out / "gateway-attempts.ndjson", attempts)
     upstream_rows = read_ndjson(mock_file)
     if not upstream_rows:
-        # No shared filesystem when the mock runs inside the cluster, which is
-        # required for the gateway to reach it at all. Pull the records over HTTP.
-        for base in [args.mock_url]:
+        # No shared filesystem when the mocks run inside the cluster, which is
+        # required for the gateway to reach them at all. Pull the records over HTTP.
+        # Multi-instance scenarios keep one record set per instance, so every base has
+        # to be walked; reading only the first would drop the other routes' attempts
+        # and reconciliation would report them as missing_in_mock.
+        bases: list[str] = []
+        for base in [args.mock_url, *args.mock_url_extra]:
+            normalized = base.rstrip("/")
+            if normalized and normalized not in bases:
+                bases.append(normalized)
+        seen_keys: set[tuple[str, str, int, float]] = set()
+        for base in bases:
             try:
-                resp = requests.get(f"{base.rstrip('/')}/_ndjson", timeout=15)
+                resp = requests.get(f"{base}/_ndjson", timeout=15)
             except requests.RequestException as exc:
                 print(f"      mock {base}/_ndjson unreachable: {exc}")
                 continue
             if resp.status_code != 200:
                 print(f"      mock {base}/_ndjson returned {resp.status_code}")
                 continue
+            added = 0
             for line in resp.text.splitlines():
                 line = line.strip()
                 if not line:
                     continue
                 try:
-                    upstream_rows.append(json.loads(line))
+                    row = json.loads(line)
                 except json.JSONDecodeError:
-                    pass
+                    continue
+                # Instances are distinct processes writing distinct files, so overlap
+                # is not expected; dedupe defensively so a retried fetch or a shared
+                # port-forward cannot inflate the upstream count.
+                key = (
+                    str(row.get("request_id", "")),
+                    str(row.get("upstream_model", "")),
+                    int(row.get("status", 0) or 0),
+                    float(row.get("ts", 0.0) or 0.0),
+                )
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                upstream_rows.append(row)
+                added += 1
+            print(f"      {base}/_ndjson -> {added} rows")
         if upstream_rows:
-            print(f"      fetched {len(upstream_rows)} upstream rows over HTTP")
+            print(f"      fetched {len(upstream_rows)} upstream rows from {len(bases)} mock base(s)")
     write_ndjson(out / "upstream-received.ndjson", upstream_rows)
     print(f"      audit total={len(attempts_all)} scoped={len(attempts)} upstream_rows={len(upstream_rows)}")
 

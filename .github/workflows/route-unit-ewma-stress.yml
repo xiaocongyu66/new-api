@@ -757,43 +757,253 @@ jobs:
               ;;
           esac
 
+          echo "MOCK_INSTANCES=${INSTANCES}" >> "$GITHUB_ENV"
+          echo "MOCK_BASE_PORT=${BASE_PORT}" >> "$GITHUB_ENV"
+
+          # In-cluster is not a separate input: workflow_dispatch is already at the
+          # 25-input ceiling, and the mode is fully determined by whether a cluster is
+          # reachable. With a kubeconfig the gateway runs in k3s and cannot dial the
+          # runner's loopback, so the mocks must live in the cluster. Without one the
+          # gateway is local and runner-local mocks are correct.
+          if command -v kubectl >/dev/null 2>&1 && [ -f ~/.kube/config ]; then
+            MOCK_IN_CLUSTER=true
+          else
+            MOCK_IN_CLUSTER=false
+          fi
+          echo "MOCK_IN_CLUSTER=$MOCK_IN_CLUSTER" >> "$GITHUB_ENV"
+
+          if [ "$MOCK_IN_CLUSTER" != "true" ]; then
+            for i in $(seq 0 $((INSTANCES - 1))); do
+              PORT=$((BASE_PORT + i))
+              export MOCK_FORCE_MODE="${MODES[$i]}"
+              export MOCK_PORT="${PORT}"
+              python3 /tmp/mock/mock_upstream.py > "/tmp/mock_${PORT}.log" 2>&1 &
+              PIDS+=($!)
+              echo "MOCK_PID_${PORT}=${PIDS[-1]}" >> "$GITHUB_ENV"
+            done
+            for i in $(seq 0 $((INSTANCES - 1))); do
+              PORT=$((BASE_PORT + i))
+              for j in $(seq 1 30); do
+                curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null && break
+                sleep 1
+              done
+              if ! curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null; then
+                echo "::error::mock upstream on port ${PORT} failed to start"
+                exit 1
+              fi
+            done
+            echo "All ${INSTANCES} runner-local mocks ready on $((BASE_PORT))-$((BASE_PORT + INSTANCES - 1))"
+            exit 0
+          fi
+
+          # One Deployment + Service per instance, because each carries a different
+          # MOCK_FORCE_MODE and the channels must address them individually.
+          kubectl create configmap route-unit-mock-src \
+            --from-file=mock_upstream.py=tests/route_unit_stress/fixtures/mock_upstream.py \
+            --dry-run=client -o yaml | kubectl apply -f -
           for i in $(seq 0 $((INSTANCES - 1))); do
-            PORT=$((BASE_PORT + i))
-            MODE=${MODES[$i]}
-            export MOCK_FORCE_MODE="${MODE}"
-            export MOCK_PORT="${PORT}"
-            python3 /tmp/mock/mock_upstream.py > "/tmp/mock_${PORT}.log" 2>&1 &
-            PIDS+=($!)
-            echo "MOCK_PID_${PORT}=${PIDS[-1]}" >> "$GITHUB_ENV"
+            MODE="${MODES[$i]}"
+            kubectl apply -f - <<YAML
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: route-unit-mock-${i}
+            labels:
+              app: route-unit-mock
+              instance: "m${i}"
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: route-unit-mock
+                instance: "m${i}"
+            template:
+              metadata:
+                labels:
+                  app: route-unit-mock
+                  instance: "m${i}"
+              spec:
+                containers:
+                  - name: mock
+                    image: python:3.12-alpine
+                    command: ["python", "/mock/mock_upstream.py"]
+                    env:
+                      - name: MOCK_PORT
+                        value: "8099"
+                      - name: MOCK_NDJSON
+                        value: /tmp/mock_upstream.ndjson
+                      - name: MOCK_FORCE_MODE
+                        value: "${MODE}"
+                    ports:
+                      - containerPort: 8099
+                    readinessProbe:
+                      httpGet:
+                        path: /healthz
+                        port: 8099
+                      initialDelaySeconds: 2
+                      periodSeconds: 2
+                    volumeMounts:
+                      - name: mock-src
+                        mountPath: /mock
+                        readOnly: true
+                    resources:
+                      requests:
+                        cpu: 100m
+                        memory: 128Mi
+                      limits:
+                        cpu: "1"
+                        memory: 512Mi
+                volumes:
+                  - name: mock-src
+                    configMap:
+                      name: route-unit-mock-src
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: route-unit-mock-${i}
+          spec:
+            selector:
+              app: route-unit-mock
+              instance: "m${i}"
+            ports:
+              - port: 80
+                targetPort: 8099
+          YAML
+            # Restart so a re-run picks up the current fixture rather than the
+            # ConfigMap contents the pod started with.
+            kubectl rollout restart "deployment/route-unit-mock-${i}"
           done
 
-          # Wait for all /healthz endpoints
+          for i in $(seq 0 $((INSTANCES - 1))); do
+            kubectl rollout status "deployment/route-unit-mock-${i}" --timeout=180s
+          done
+
+          # /healthz and /_ndjson are read from here; the gateway uses Service DNS.
+          # Keep the same ports the runner-local path uses so nothing downstream
+          # needs to know which mode produced them.
+          for i in $(seq 0 $((INSTANCES - 1))); do
+            PORT=$((BASE_PORT + i))
+            kubectl port-forward "service/route-unit-mock-${i}" "${PORT}:80" \
+              > "/tmp/mock-pf-${PORT}.log" 2>&1 &
+            echo "MOCK_PF_PID_${PORT}=$!" >> "$GITHUB_ENV"
+          done
           for i in $(seq 0 $((INSTANCES - 1))); do
             PORT=$((BASE_PORT + i))
             for j in $(seq 1 30); do
-              if curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null; then
-                echo "Mock upstream on port ${PORT} ready"
-                break
-              fi
+              curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null 2>&1 && break
               sleep 1
             done
-            if ! curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null; then
-              echo "Mock upstream on port ${PORT} failed to start" >&2
+            if ! curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null 2>&1; then
+              echo "::error::port-forward to route-unit-mock-${i} never became ready"
+              cat "/tmp/mock-pf-${PORT}.log" || true
               exit 1
             fi
+            echo "in-cluster mock ${i} (mode=${MODES[$i]}) reachable on 127.0.0.1:${PORT}"
           done
-          echo "All ${INSTANCES} mock upstreams ready on ports $((BASE_PORT))-$((BASE_PORT + INSTANCES - 1))"
 
       - name: Configure mock URL for scenario
         run: |
-          # For multi-mock scenarios, run_scenario.py expects a single mock-url.
-          # The per-route mode injection is handled by X-Mock-Mode header from the runner,
-          # but since we use MOCK_FORCE_MODE per instance, the gateway must route to the correct port.
-          # The topology channels should point to different ports (18200, 18201, ...).
-          # Here we just set the primary mock URL; run_scenario.py will use X-Mock-Mode header.
-          # For S4/S5/S6, the topology must already have channels pointing to the correct mock ports.
-          # This is a pre-requisite handled outside this workflow (k8s channel config).
-          echo "MOCK_URL_PRIMARY=http://127.0.0.1:18200" >> "$GITHUB_ENV"
+          set -euo pipefail
+          # run_scenario.py takes one --mock-url for /healthz; the ndjson pull walks
+          # every instance via --mock-url-extra so multi-instance reconciliation sees
+          # all upstream records, not just the first instance's.
+          echo "MOCK_URL_PRIMARY=http://127.0.0.1:${MOCK_BASE_PORT}" >> "$GITHUB_ENV"
+          EXTRA=""
+          for i in $(seq 0 $((MOCK_INSTANCES - 1))); do
+            EXTRA="$EXTRA --mock-url-extra http://127.0.0.1:$((MOCK_BASE_PORT + i))"
+          done
+          echo "MOCK_URL_EXTRA_ARGS=$EXTRA" >> "$GITHUB_ENV"
+          echo "mock bases: $EXTRA"
+
+      - name: Point stress channels at the in-cluster mocks
+        if: env.MOCK_IN_CLUSTER == 'true'
+        env:
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          MODEL: ${{ env.MODEL }}
+        run: |
+          set -euo pipefail
+          # Reconciliation compares gateway attempts against the mocks this run reads
+          # from, so every attempt must land on one of them. Channels left pointing at
+          # another upstream yield audit rows with no matching upstream row and the
+          # scenario is reported DATA_INVALID.
+          POD=$(kubectl get pods -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+          if [ -z "$POD" ]; then
+            echo "::error::no postgres pod found; cannot provision stress channels"
+            exit 1
+          fi
+          # One channel per mock instance, id 91001..9100N, each pointing at its own
+          # Service so the scenario's per-instance MOCK_FORCE_MODE actually reaches
+          # distinct route units.
+          VALUES=""
+          for i in $(seq 0 $((MOCK_INSTANCES - 1))); do
+            CID=$((91001 + i))
+            [ -n "$VALUES" ] && VALUES="$VALUES,"
+            VALUES="$VALUES($CID, 1, 'mock', 1, 'route-unit-mock-$i', EXTRACT(EPOCH FROM now())::bigint, 'http://route-unit-mock-$i', '${MODEL}', 'default', 0, '', '', '{\"X-Request-Id\":\"{client_header:X-Request-Id}\"}')"
+          done
+          LAST=$((91000 + MOCK_INSTANCES))
+          kubectl exec -i "$POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" \
+            psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 <<SQL
+          DELETE FROM abilities WHERE channel_id BETWEEN 91001 AND 91099;
+          DELETE FROM channel_model_routes WHERE channel_id BETWEEN 91001 AND 91099;
+          DELETE FROM channels WHERE id BETWEEN 91001 AND 91099;
+          INSERT INTO channels (id, type, key, status, name, created_time, base_url, models, "group", auto_ban, other_info, settings, header_override)
+          VALUES $VALUES;
+          INSERT INTO abilities ("group", model, channel_id, enabled)
+          SELECT 'default', '${MODEL}', id, true FROM channels WHERE id BETWEEN 91001 AND $LAST;
+          -- Route units are not inserted here: SeedChannelModelRoutes() derives them
+          -- from every channel on master startup, and the restart below triggers it.
+          SELECT id, name, base_url, models FROM channels WHERE id BETWEEN 91001 AND $LAST;
+          SQL
+          # Every scenario except S10 wants a single worker: the audit ring is
+          # per process and the Service load-balances, so with N replicas the runner
+          # reads one pod's buffer and the rest is reported missing_in_audit. S10
+          # scales up separately and polls each pod directly.
+          if [ -z "${REPLICA:-}" ] || [ "${REPLICA}" = "1" ]; then
+            kubectl scale deployment/new-api-worker --replicas=1
+          fi
+          # Master and worker must not restart together. Only the master seeds route
+          # units, and a worker booting alongside it caches whatever pool exists at
+          # that moment; if seeding has not finished the worker holds an empty pool for
+          # a full SYNC_FREQUENCY (60s) and answers model_not_found.
+          kubectl rollout restart deployment/new-api-master
+          kubectl rollout status deployment/new-api-master --timeout=300s
+          for i in $(seq 1 60); do
+            ROUTES=$(kubectl exec -i "$POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" \
+              psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+              "SELECT count(*) FROM channel_model_routes WHERE channel_id BETWEEN 91001 AND $LAST;" | tr -d '[:space:]')
+            [ "${ROUTES:-0}" -ge "$MOCK_INSTANCES" ] && break
+            sleep 2
+          done
+          echo "route units for stress channels: ${ROUTES:-0}"
+          if [ "${ROUTES:-0}" -lt "$MOCK_INSTANCES" ]; then
+            echo "::error::route-unit seeding produced ${ROUTES:-0} rows; expected $MOCK_INSTANCES"
+            kubectl exec -i "$POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" \
+              psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+              -c "SELECT channel_id, \"group\", public_model_alias, upstream_model, static_weight, enabled FROM channel_model_routes WHERE channel_id BETWEEN 91001 AND $LAST;" || true
+            exit 1
+          fi
+          kubectl rollout restart deployment/new-api-worker
+          kubectl rollout status deployment/new-api-worker --timeout=420s
+          # Readiness only proves /api/status answers; the route pool loads on the same
+          # boot path, so confirm the worker resolves the alias before handing over.
+          for i in $(seq 1 45); do
+            CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \
+              -H "Authorization: Bearer $API_KEY" -H 'Content-Type: application/json' \
+              -X POST -d "{\"model\":\"${MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":1}" \
+              "${TARGET_URL%/}/chat/completions" || true)
+            if [ "$CODE" = "200" ]; then
+              echo "worker resolves ${MODEL} (probe HTTP $CODE)"
+              break
+            fi
+            sleep 2
+          done
+          if [ "${CODE:-}" != "200" ]; then
+            echo "::error::worker still cannot route ${MODEL} after restart (last HTTP ${CODE:-none})"
+            exit 1
+          fi
 
       - name: Resolve admin token
         id: admin_login_scenario
@@ -920,7 +1130,10 @@ jobs:
       - name: Run scenario ${{ matrix.scenario }}
         id: scenario
         env:
-          MOCK_NDJSON: /tmp/mock_upstream.ndjson
+          # In-cluster the records live in the mock pods, so leave this unset and let
+          # the runner pull them from each instance's /_ndjson over the port-forwards.
+          # Runner-local runs share the file and read it directly.
+          MOCK_NDJSON: ${{ env.MOCK_IN_CLUSTER == 'true' && '' || '/tmp/mock_upstream.ndjson' }}
         run: |
           set -euo pipefail
           python3 tests/route_unit_stress/run_scenario.py \
@@ -929,7 +1142,8 @@ jobs:
             --token "$API_KEY" \
             --admin-token "${{ env.ADMIN_TOKEN_FINAL }}" \
             --alias "${{ env.ALIAS }}" \
-            --mock-url "$MOCK_URL" \
+            --mock-url "${MOCK_URL_PRIMARY:-$MOCK_URL}" \
+            ${MOCK_URL_EXTRA_ARGS:-} \
             ${{
               (startsWith(matrix.scenario, 'S6') || startsWith(matrix.scenario, 'S7') || startsWith(matrix.scenario, 'S8') || startsWith(matrix.scenario, 'S13'))
               && '' || format('--requests {0}', env.REQUESTS)
@@ -1361,9 +1575,15 @@ jobs:
       - name: Cleanup mock
         if: always()
         run: |
-          for var in $(env | grep '^MOCK_PID_' | cut -d= -f1); do
+          for var in $(env | grep -E '^MOCK_(PID|PF_PID)_' | cut -d= -f1); do
             pid="${!var}"
             if [ -n "$pid" ]; then
               kill "$pid" 2>/dev/null || true
             fi
           done
+          # Leave the cluster as found: the mock Deployments and the stress channels
+          # would otherwise keep serving traffic and skew any later run.
+          if [ "${MOCK_IN_CLUSTER:-}" = "true" ]; then
+            kubectl delete deployment,service -l app=route-unit-mock --ignore-not-found=true || true
+            kubectl delete configmap/route-unit-mock-src --ignore-not-found=true || true
+          fi
