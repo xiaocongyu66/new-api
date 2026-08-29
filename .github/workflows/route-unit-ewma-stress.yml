@@ -404,23 +404,47 @@ jobs:
           # multi-replica share aggregation is what S10 covers, and it polls each pod
           # directly.
           kubectl scale deployment/new-api-worker --replicas=1
-          # Workers cache channels and routes; without a restart the run would use
-          # the pre-provisioning topology. The restart also re-runs the route-unit
-          # seeding that expands these channels into route rows.
-          kubectl rollout restart deployment/new-api-master deployment/new-api-worker
+          # Master and worker must not restart together. Only the master seeds route
+          # units, and a worker booting alongside it caches whatever pool exists at
+          # that moment; if seeding has not finished the worker holds an empty pool
+          # for a full SYNC_FREQUENCY (60s) and answers model_not_found. Restart the
+          # master, wait for the route units to exist, and only then cycle the worker
+          # so it loads a complete pool.
+          kubectl rollout restart deployment/new-api-master
           kubectl rollout status deployment/new-api-master --timeout=300s
-          kubectl rollout status deployment/new-api-worker --timeout=420s
-          # Assert the seeding actually produced route units; an empty pool would
-          # otherwise surface later as an unrelated scheduling failure.
-          ROUTES=$(kubectl exec -i "$POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" \
-            psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
-            "SELECT count(*) FROM channel_model_routes WHERE channel_id BETWEEN 91001 AND 91002;")
-          echo "route units for stress channels: $ROUTES"
+          for i in $(seq 1 60); do
+            ROUTES=$(kubectl exec -i "$POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" \
+              psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+              "SELECT count(*) FROM channel_model_routes WHERE channel_id BETWEEN 91001 AND 91002;" | tr -d '[:space:]')
+            [ "${ROUTES:-0}" -ge 2 ] && break
+            sleep 2
+          done
+          echo "route units for stress channels: ${ROUTES:-0}"
           if [ "${ROUTES:-0}" -lt 2 ]; then
-            echo "::error::expected at least 2 route units after seeding, found ${ROUTES:-0}"
+            echo "::error::route-unit seeding produced ${ROUTES:-0} rows for the stress channels; expected 2"
             kubectl exec -i "$POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" \
               psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
               -c "SELECT channel_id, \"group\", public_model_alias, upstream_model, static_weight, enabled FROM channel_model_routes WHERE channel_id BETWEEN 91001 AND 91002;" || true
+            exit 1
+          fi
+          kubectl rollout restart deployment/new-api-worker
+          kubectl rollout status deployment/new-api-worker --timeout=420s
+          # Readiness only proves /api/status answers; the route pool is loaded on the
+          # same boot path, so confirm the worker actually resolves the alias before
+          # handing the run to the smoke.
+          for i in $(seq 1 45); do
+            CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \
+              -H "Authorization: Bearer $API_KEY" -H 'Content-Type: application/json' \
+              -X POST -d "{\"model\":\"${MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":1}" \
+              "${TARGET_URL%/}/chat/completions" || true)
+            if [ "$CODE" = "200" ]; then
+              echo "worker resolves ${MODEL} (probe HTTP $CODE)"
+              break
+            fi
+            sleep 2
+          done
+          if [ "${CODE:-}" != "200" ]; then
+            echo "::error::worker still cannot route ${MODEL} after restart (last HTTP ${CODE:-none})"
             exit 1
           fi
 
