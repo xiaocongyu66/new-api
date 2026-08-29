@@ -196,6 +196,14 @@ jobs:
           fi
           echo "$IP $NAME" | sudo tee -a /etc/hosts >/dev/null
           getent hosts "$NAME"
+          # Requests must carry the ingress host, otherwise the ingress has no rule
+          # to match and answers 404. Now that the name resolves, rewrite the admin
+          # base URL from the bare IP to that host, keeping scheme and port.
+          ADMIN_PORT=$(printf '%s' "$GATEWAY_ADMIN_URL" | sed -nE 's#^[a-zA-Z]+://[^:/]+:([0-9]+).*$#\1#p')
+          if [ -n "$ADMIN_PORT" ]; then
+            echo "GATEWAY_ADMIN_URL=http://$NAME:$ADMIN_PORT" >> "$GITHUB_ENV"
+            echo "admin URL rewritten to http://$NAME:$ADMIN_PORT"
+          fi
 
       - name: Configure kubectl
         if: env.KUBE_CONFIG_B64 != ''
@@ -382,6 +390,14 @@ jobs:
           fi
           echo "$IP $NAME" | sudo tee -a /etc/hosts >/dev/null
           getent hosts "$NAME"
+          # Requests must carry the ingress host, otherwise the ingress has no rule
+          # to match and answers 404. Now that the name resolves, rewrite the admin
+          # base URL from the bare IP to that host, keeping scheme and port.
+          ADMIN_PORT=$(printf '%s' "$GATEWAY_ADMIN_URL" | sed -nE 's#^[a-zA-Z]+://[^:/]+:([0-9]+).*$#\1#p')
+          if [ -n "$ADMIN_PORT" ]; then
+            echo "GATEWAY_ADMIN_URL=http://$NAME:$ADMIN_PORT" >> "$GITHUB_ENV"
+            echo "admin URL rewritten to http://$NAME:$ADMIN_PORT"
+          fi
 
       - name: Setup Python
         uses: actions/setup-python@v5
