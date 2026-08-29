@@ -996,9 +996,24 @@ jobs:
           # that moment; if seeding has not finished the worker holds an empty pool for
           # a full SYNC_FREQUENCY (60s) and answers model_not_found.
           # Delete rather than roll: the master is also a single replica on a node with
-          # no room for a surge pod, so a RollingUpdate cannot converge.
-          kubectl delete pods -l app=new-api,role=master --wait=false
-          kubectl wait --for=condition=ready pod -l app=new-api,role=master --timeout=300s
+          # no room for a surge pod, so a RollingUpdate cannot converge. Block until the
+          # old pod is gone before waiting on the new one; `kubectl wait` on a label
+          # selector matches both during the handover and fails NotFound when the dying
+          # pod disappears underneath it.
+          OLD_MASTER=$(kubectl get pods -l app=new-api,role=master -o jsonpath='{.items[*].metadata.name}')
+          kubectl delete pods -l app=new-api,role=master
+          for i in $(seq 1 150); do
+            READY=$(kubectl get pods -l app=new-api,role=master \
+              -o jsonpath='{range .items[*]}{.metadata.name}={range @.status.conditions[?(@.type=="Ready")]}{.status}{end} {end}')
+            case "$READY" in
+              *=True*) echo "master ready: $READY"; break ;;
+            esac
+            sleep 2
+          done
+          case "${READY:-}" in
+            *=True*) ;;
+            *) echo "::error::master did not become ready after replacing ${OLD_MASTER:-<none>} (last: ${READY:-<none>})"; exit 1 ;;
+          esac
           for i in $(seq 1 60); do
             ROUTES=$(kubectl exec -i "$POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" \
               psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
@@ -1021,8 +1036,21 @@ jobs:
           # two serialize until the rollout deadline expires. Deleting frees the slot
           # immediately, and the ReplicaSet recreates the pod with the current config,
           # which is all the cache refresh needs.
-          kubectl delete pods -l app=new-api,role=worker --wait=false
-          kubectl wait --for=condition=ready pod -l app=new-api,role=worker --timeout=420s
+          # Same handover race as the master: wait for the delete to finish, then poll
+          # readiness rather than letting `kubectl wait` straddle both pods.
+          kubectl delete pods -l app=new-api,role=worker
+          for i in $(seq 1 210); do
+            READY=$(kubectl get pods -l app=new-api,role=worker \
+              -o jsonpath='{range .items[*]}{.metadata.name}={range @.status.conditions[?(@.type=="Ready")]}{.status}{end} {end}')
+            case "$READY" in
+              *=True*) echo "worker ready: $READY"; break ;;
+            esac
+            sleep 2
+          done
+          case "${READY:-}" in
+            *=True*) ;;
+            *) echo "::error::worker did not become ready after pod replacement (last: ${READY:-<none>})"; exit 1 ;;
+          esac
           # Readiness only proves /api/status answers; the route pool loads on the same
           # boot path, so confirm the worker resolves the alias before handing over.
           for i in $(seq 1 45); do
