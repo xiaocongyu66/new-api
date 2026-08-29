@@ -2522,6 +2522,28 @@ def main() -> int:
     attempts = [a for a in attempts_all if a.get("client_request_id") in stat_id_set]
     write_ndjson(out / "gateway-attempts.ndjson", attempts)
     upstream_rows = read_ndjson(mock_file)
+    if not upstream_rows:
+        # No shared filesystem when the mock runs inside the cluster, which is
+        # required for the gateway to reach it at all. Pull the records over HTTP.
+        for base in [args.mock_url]:
+            try:
+                resp = requests.get(f"{base.rstrip('/')}/_ndjson", timeout=15)
+            except requests.RequestException as exc:
+                print(f"      mock {base}/_ndjson unreachable: {exc}")
+                continue
+            if resp.status_code != 200:
+                print(f"      mock {base}/_ndjson returned {resp.status_code}")
+                continue
+            for line in resp.text.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    upstream_rows.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+        if upstream_rows:
+            print(f"      fetched {len(upstream_rows)} upstream rows over HTTP")
     write_ndjson(out / "upstream-received.ndjson", upstream_rows)
     print(f"      audit total={len(attempts_all)} scoped={len(attempts)} upstream_rows={len(upstream_rows)}")
 

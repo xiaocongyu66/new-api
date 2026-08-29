@@ -129,6 +129,23 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/healthz":
             self._send_json(200, {"ok": True, "port": PORT, "force_mode": FORCE_MODE})
+        elif self.path == "/_ndjson":
+            # Reconciliation needs these records, and when the mock runs inside the
+            # cluster (so the gateway can reach it) the stress client has no access
+            # to the container filesystem. Serve the log over HTTP instead.
+            if not NDJSON_PATH:
+                self._send_json(409, {"error": {"message": "MOCK_NDJSON is not configured"}})
+                return
+            try:
+                with open(NDJSON_PATH, "rb") as f:
+                    payload = f.read()
+            except FileNotFoundError:
+                payload = b""
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-ndjson")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
         else:
             self._send_json(404, {"error": {"message": "not found"}})
 

@@ -206,32 +206,206 @@ jobs:
           fi
 
       - name: Configure kubectl
-        if: env.KUBE_CONFIG_B64 != ''
+        # KUBE_CONFIG_B64 was never in env, so `if: env.KUBE_CONFIG_B64 != ''`
+        # was always false and this step silently skipped. Secrets have to be
+        # named in env: to be visible to `if:` and to the shell.
+        env:
+          KUBE_CONFIG_B64: ${{ inputs.kube_config || secrets.KUBE_CONFIG_B64 }}
         run: |
+          set -euo pipefail
+          if [ -z "${KUBE_CONFIG_B64:-}" ]; then
+            echo "no kubeconfig supplied; kubectl-dependent steps will fail loudly if they need it"
+            exit 0
+          fi
           mkdir -p ~/.kube
-          echo '${{ env.KUBE_CONFIG_B64 }}' | base64 -d > ~/.kube/config
+          printf '%s' "$KUBE_CONFIG_B64" | base64 -d > ~/.kube/config
           chmod 600 ~/.kube/config
+          # k3s certificates only cover the cluster-internal IP, so a public
+          # endpoint needs TLS verification skipped and the CA data removed.
+          kubectl config set-cluster default --insecure-skip-tls-verify=true
+          kubectl config unset clusters.default.certificate-authority-data
+          kubectl cluster-info
 
       - name: Start mock upstream
         id: mock
         run: |
           set -euo pipefail
-          mkdir -p /tmp/mock
-          cp tests/route_unit_stress/fixtures/mock_upstream.py /tmp/mock/
-          export MOCK_PORT=8099
-          export MOCK_NDJSON=/tmp/mock_upstream.ndjson
-          python3 /tmp/mock/mock_upstream.py > /tmp/mock.log 2>&1 &
-          MOCK_PID=$!
-          echo "MOCK_PID=$MOCK_PID" >> "$GITHUB_ENV"
+          # In-cluster is not a separate switch: workflow_dispatch is already at the
+          # 25-input ceiling, and the mode is fully determined by whether a cluster
+          # is reachable. With a kubeconfig the gateway is in k3s and cannot dial the
+          # runner's loopback, so the mock must live in the cluster. Without one the
+          # gateway is local and the runner-local mock is correct.
+          if command -v kubectl >/dev/null 2>&1 && [ -f ~/.kube/config ]; then
+            MOCK_IN_CLUSTER=true
+          else
+            MOCK_IN_CLUSTER=false
+          fi
+          echo "MOCK_IN_CLUSTER=$MOCK_IN_CLUSTER" >> "$GITHUB_ENV"
+          if [ "${MOCK_IN_CLUSTER}" != "true" ]; then
+            mkdir -p /tmp/mock
+            cp tests/route_unit_stress/fixtures/mock_upstream.py /tmp/mock/
+            export MOCK_PORT=8099
+            export MOCK_NDJSON=/tmp/mock_upstream.ndjson
+            python3 /tmp/mock/mock_upstream.py > /tmp/mock.log 2>&1 &
+            echo "MOCK_PID=$!" >> "$GITHUB_ENV"
+            for i in $(seq 1 30); do
+              if curl -fsS http://127.0.0.1:8099/healthz >/dev/null; then
+                echo "Mock upstream ready (runner-local)"
+                exit 0
+              fi
+              sleep 1
+            done
+            echo "Mock upstream failed to start" >&2
+            exit 1
+          fi
+          # The gateway runs in the cluster and can never dial the runner's
+          # loopback, so a runner-local mock makes every reconciliation compare
+          # gateway attempts against zero upstream rows. Run the mock in the
+          # cluster instead and reach it from here through a port-forward.
+          if ! command -v kubectl >/dev/null 2>&1 || [ ! -f ~/.kube/config ]; then
+            echo "::error::mock_in_cluster=true needs a kubeconfig; supply KUBE_CONFIG_B64"
+            exit 1
+          fi
+          kubectl create configmap route-unit-mock-src \
+            --from-file=mock_upstream.py=tests/route_unit_stress/fixtures/mock_upstream.py \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl apply -f - <<'YAML'
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: route-unit-mock
+            labels:
+              app: route-unit-mock
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: route-unit-mock
+            template:
+              metadata:
+                labels:
+                  app: route-unit-mock
+              spec:
+                containers:
+                  - name: mock
+                    image: python:3.12-alpine
+                    command: ["python", "/mock/mock_upstream.py"]
+                    env:
+                      - name: MOCK_PORT
+                        value: "8099"
+                      - name: MOCK_NDJSON
+                        value: /tmp/mock_upstream.ndjson
+                    ports:
+                      - containerPort: 8099
+                    readinessProbe:
+                      httpGet:
+                        path: /healthz
+                        port: 8099
+                      initialDelaySeconds: 2
+                      periodSeconds: 2
+                    volumeMounts:
+                      - name: mock-src
+                        mountPath: /mock
+                        readOnly: true
+                    resources:
+                      requests:
+                        cpu: 100m
+                        memory: 128Mi
+                      limits:
+                        cpu: "1"
+                        memory: 512Mi
+                volumes:
+                  - name: mock-src
+                    configMap:
+                      name: route-unit-mock-src
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: route-unit-mock
+          spec:
+            selector:
+              app: route-unit-mock
+            ports:
+              - port: 80
+                targetPort: 8099
+          YAML
+          # Restart so a re-run picks up the current fixture instead of the
+          # ConfigMap the pod started with.
+          kubectl rollout restart deployment/route-unit-mock
+          kubectl rollout status deployment/route-unit-mock --timeout=180s
+          # /healthz and /_ndjson are read from here; the gateway uses the Service DNS.
+          kubectl port-forward service/route-unit-mock 8099:80 > /tmp/mock-pf.log 2>&1 &
+          echo "MOCK_PF_PID=$!" >> "$GITHUB_ENV"
           for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8099/healthz >/dev/null; then
-              echo "Mock upstream ready"
+            if curl -fsS http://127.0.0.1:8099/healthz >/dev/null 2>&1; then
+              echo "In-cluster mock reachable via port-forward"
               exit 0
             fi
             sleep 1
           done
-          echo "Mock upstream failed to start" >&2
+          echo "::error::port-forward to route-unit-mock never became ready"
+          cat /tmp/mock-pf.log || true
           exit 1
+
+      - name: Point stress channels at the in-cluster mock
+        if: env.MOCK_IN_CLUSTER == 'true'
+        env:
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          MODEL: ${{ env.MODEL }}
+        run: |
+          set -euo pipefail
+          # Reconciliation compares gateway attempts against the mock's own records,
+          # so every attempt has to land on the mock this run reads from. Channels
+          # left pointing at another upstream produce audit rows with no matching
+          # upstream row and the scenario is reported DATA_INVALID.
+          POD=$(kubectl get pods -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+          if [ -z "$POD" ]; then
+            echo "::error::no postgres pod found; cannot provision stress channels"
+            exit 1
+          fi
+          kubectl exec -i "$POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" \
+            psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 <<SQL
+          DELETE FROM abilities WHERE channel_id BETWEEN 91001 AND 91002;
+          DELETE FROM channel_model_routes WHERE channel_id BETWEEN 91001 AND 91002;
+          DELETE FROM channels WHERE id BETWEEN 91001 AND 91002;
+          INSERT INTO channels (id, type, key, status, name, created_time, base_url, models, "group", auto_ban, other_info, settings, header_override)
+          SELECT 91000 + n, 1, 'mock', 1, 'route-unit-mock-' || n,
+                 EXTRACT(EPOCH FROM now())::bigint,
+                 'http://route-unit-mock',
+                 '${MODEL}', 'default', 0, '', '',
+                 -- S11/S12 reconcile per (request_id, attempt); without forwarding the
+                 -- client id the mock records an empty one and cannot be correlated.
+                 '{"X-Request-Id":"{client_header:X-Request-Id}"}'
+          FROM generate_series(1,2) AS n;
+          INSERT INTO abilities ("group", model, channel_id, enabled)
+          SELECT 'default', '${MODEL}', 91000 + n, true FROM generate_series(1,2) AS n;
+          -- Route units are not inserted here: SeedChannelModelRoutes() derives them
+          -- from every channel on master startup, and the restart below triggers it.
+          -- Hand-written rows would only risk drifting from that expansion.
+          SELECT id, name, base_url, models FROM channels WHERE id BETWEEN 91001 AND 91002;
+          SQL
+          # Workers cache channels and routes; without a restart the run would use
+          # the pre-provisioning topology. The restart also re-runs the route-unit
+          # seeding that expands these channels into route rows.
+          kubectl rollout restart deployment/new-api-master deployment/new-api-worker
+          kubectl rollout status deployment/new-api-master --timeout=300s
+          kubectl rollout status deployment/new-api-worker --timeout=420s
+          # Assert the seeding actually produced route units; an empty pool would
+          # otherwise surface later as an unrelated scheduling failure.
+          ROUTES=$(kubectl exec -i "$POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" \
+            psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+            "SELECT count(*) FROM channel_model_routes WHERE channel_id BETWEEN 91001 AND 91002;")
+          echo "route units for stress channels: $ROUTES"
+          if [ "${ROUTES:-0}" -lt 2 ]; then
+            echo "::error::expected at least 2 route units after seeding, found ${ROUTES:-0}"
+            kubectl exec -i "$POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" \
+              psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+              -c "SELECT channel_id, \"group\", public_model_alias, upstream_model, static_weight, enabled FROM channel_model_routes WHERE channel_id BETWEEN 91001 AND 91002;" || true
+            exit 1
+          fi
 
       - name: Resolve admin token
         id: admin_login_smoke
@@ -293,7 +467,10 @@ jobs:
       - name: Run smoke test (S11)
         id: smoke
         env:
-          MOCK_NDJSON: /tmp/mock_upstream.ndjson
+          # In-cluster the records live in the mock pod, so leave this unset and let
+          # the runner pull them from the mock's /_ndjson export over the
+          # port-forward. Runner-local runs share the file and read it directly.
+          MOCK_NDJSON: ${{ env.MOCK_IN_CLUSTER == 'true' && '' || '/tmp/mock_upstream.ndjson' }}
         run: |
           set -euo pipefail
           # run_smoke.py builds "{gateway_url}/api/status" and "{gateway_url}/v1/models",
@@ -353,6 +530,14 @@ jobs:
           if [ -n "${{ env.MOCK_PID }}" ]; then
             kill ${{ env.MOCK_PID }} 2>/dev/null || true
           fi
+          if [ -n "${{ env.MOCK_PF_PID }}" ]; then
+            kill ${{ env.MOCK_PF_PID }} 2>/dev/null || true
+          fi
+          # Leave the cluster as found: the mock Deployment and the stress channels
+          # would otherwise keep serving traffic and skew any later run.
+          if [ "${{ env.MOCK_IN_CLUSTER }}" = "true" ]; then
+            kubectl delete deployment/route-unit-mock service/route-unit-mock configmap/route-unit-mock-src --ignore-not-found=true || true
+          fi
 
   route-unit-ewma-scenario:
     if: ${{ inputs.scenario != 'smoke' }}
@@ -411,11 +596,23 @@ jobs:
           python-version: '3.12'
 
       - name: Configure kubectl
-        if: env.KUBE_CONFIG_B64 != ''
+        # KUBE_CONFIG_B64 was never in env, so `if: env.KUBE_CONFIG_B64 != ''`
+        # was always false and this step silently skipped, which made the S10
+        # replica scaling fail on "kubectl/kubeconfig unavailable".
+        env:
+          KUBE_CONFIG_B64: ${{ inputs.kube_config || secrets.KUBE_CONFIG_B64 }}
         run: |
+          set -euo pipefail
+          if [ -z "${KUBE_CONFIG_B64:-}" ]; then
+            echo "no kubeconfig supplied; kubectl-dependent steps will fail loudly if they need it"
+            exit 0
+          fi
           mkdir -p ~/.kube
-          echo '${{ env.KUBE_CONFIG_B64 }}' | base64 -d > ~/.kube/config
+          printf '%s' "$KUBE_CONFIG_B64" | base64 -d > ~/.kube/config
           chmod 600 ~/.kube/config
+          kubectl config set-cluster default --insecure-skip-tls-verify=true
+          kubectl config unset clusters.default.certificate-authority-data
+          kubectl cluster-info
 
       - name: Start mock upstream (multi-instance)
         id: mock

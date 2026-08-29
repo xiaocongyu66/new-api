@@ -192,21 +192,23 @@ def run_smoke(config: SmokeConfig) -> tuple[int, ReconcileResult | None]:
     print(f"      Written to {attempts_path}")
 
     print(f"[4/5] Reading mock ndjson from {config.mock_url}")
-    # mock_url is the base URL; ndjson path is MOCK_NDJSON env var on mock side
-    # For local runs, we assume the mock writes to a known path or we fetch via HTTP
-    # Here we try to read from a local file path derived from mock_url, or fetch via HTTP
+    # Local runs share a filesystem with the mock, so the file is authoritative.
+    # When the mock runs inside the cluster (required for the gateway to reach it)
+    # there is no shared file and the export endpoint is the only source.
     mock_ndjson_path = config.mock_file or Path(os.getenv("MOCK_NDJSON", "/tmp/mock_upstream.ndjson"))
     upstream_rows = read_mock_ndjson(mock_ndjson_path)
     if not upstream_rows:
-        # Try fetching from mock /ndjson endpoint if available
         try:
-            r = requests.get(f"{config.mock_url.rstrip('/')}/ndjson", timeout=5.0)
+            r = requests.get(f"{config.mock_url.rstrip('/')}/_ndjson", timeout=10.0)
             if r.status_code == 200:
                 for line in r.text.strip().split("\n"):
                     if line:
                         upstream_rows.append(json.loads(line))
-        except Exception:
-            pass
+                print(f"      Fetched {len(upstream_rows)} rows from {config.mock_url}/_ndjson")
+            else:
+                print(f"      mock /_ndjson returned {r.status_code}")
+        except Exception as exc:
+            print(f"      mock /_ndjson unreachable: {exc}")
 
     if not upstream_rows:
         print("WARNING: No mock upstream rows found", file=sys.stderr)
