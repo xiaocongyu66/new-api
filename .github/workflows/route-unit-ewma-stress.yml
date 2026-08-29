@@ -287,6 +287,45 @@ jobs:
           echo '${{ env.KUBE_CONFIG_B64 }}' | base64 -d > ~/.kube/config
           chmod 600 ~/.kube/config
 
+      - name: Resolve gateway host alias
+        env:
+          TARGET_URL: ${{ env.TARGET_URL }}
+          GATEWAY_ADMIN_URL: ${{ env.GATEWAY_ADMIN_URL }}
+        run: |
+          set -euo pipefail
+          # Cherry-picked from main (commit 56de47cdb) so the runner's curls carry
+          # the ingress host. Without this, the dispatch's `target_url`
+          # (api.example.com) has no public DNS and the k3s ingress answers
+          # every request with a 404 from its default backend, so the
+          # Resolve admin token step's 15 login retries all fail.
+          NAME=$(printf '%s' "$TARGET_URL" | sed -E 's#^[a-zA-Z]+://##; s#[:/].*$##')
+          if [ -z "$NAME" ]; then
+            echo "target_url has no host; nothing to map"
+            exit 0
+          fi
+          if getent hosts "$NAME" >/dev/null 2>&1; then
+            echo "$NAME already resolves; no hosts entry added"
+            exit 0
+          fi
+          IP=$(printf '%s' "$GATEWAY_ADMIN_URL" | sed -E 's#^[a-zA-Z]+://##; s#[:/].*$##')
+          if ! printf '%s' "$IP" | grep -Eq '^[0-9]+(\.[0-9]+){3}$'; then
+            echo "::error::$NAME does not resolve and gateway_admin_url ('$GATEWAY_ADMIN_URL') has no IP literal to map it to"
+            exit 1
+          fi
+          echo "$IP $NAME" | sudo tee -a /etc/hosts >/dev/null
+          getent hosts "$NAME"
+          ADMIN_PORT=$(printf '%s' "$GATEWAY_ADMIN_URL" | sed -nE 's#^[a-zA-Z]+://[^:/]+:([0-9]+).*$#\1#p')
+          if [ -n "$ADMIN_PORT" ]; then
+            echo "GATEWAY_ADMIN_URL=http://$NAME:$ADMIN_PORT" >> "$GITHUB_ENV"
+            echo "admin URL rewritten to http://$NAME:$ADMIN_PORT"
+            TARGET_PORT=$(printf '%s' "$TARGET_URL" | sed -nE 's#^[a-zA-Z]+://[^:/]+:([0-9]+).*$#\1#p')
+            if [ -z "$TARGET_PORT" ]; then
+              TARGET_PATH=$(printf '%s' "$TARGET_URL" | sed -E 's#^[a-zA-Z]+://[^/]+##')
+              echo "TARGET_URL=http://$NAME:$ADMIN_PORT$TARGET_PATH" >> "$GITHUB_ENV"
+              echo "target URL rewritten to http://$NAME:$ADMIN_PORT$TARGET_PATH"
+            fi
+          fi
+
       - name: Start mock upstream (multi-instance)
         id: mock
         env:
