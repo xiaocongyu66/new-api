@@ -775,7 +775,9 @@ jobs:
               INSTANCES=$(printf '%s' "$META" | python3 -c 'import json,sys; print(json.load(sys.stdin)["instances"])')
               # bash array from JSON list
               mapfile -t MODES < <(printf '%s' "$META" | python3 -c 'import json,sys; [print(m) for m in json.load(sys.stdin)["modes"]]')
-              ;;
+
+          esac
+
 
           echo "MOCK_INSTANCES=${INSTANCES}" >> "$GITHUB_ENV"
           echo "MOCK_BASE_PORT=${BASE_PORT}" >> "$GITHUB_ENV"
