@@ -766,14 +766,16 @@ jobs:
               MODES=("ok")
               ;;
             *)
-              # S1/S2/S3 and any unlisted scenario: lib_stats.scenario_targets()
-              # leaves route_count unset and run_scenario.py defaults it to 2, so a
-              # single mock leaves the topology check short and the run dies as
-              # ENVIRONMENT_INVALID.
-              INSTANCES=2
-              MODES=("ok" "ok")
+              # S1/S2/S3 (and any future unlisted scenario): read the injection
+              # plan straight from lib_stats.scenario_targets() so the mock
+              # MOCK_FORCE_MODE matches the run_scenario.py preflight check.
+              # Earlier this branch hard-coded ("ok" "ok"), which made S1/S2/S3
+              # fail preflight with force_mode mismatch.
+              META=$(SCENARIO="${SCENARIO}" python3 tests/route_unit_stress/mode_lookup.py)
+              INSTANCES=$(printf '%s' "$META" | python3 -c 'import json,sys; print(json.load(sys.stdin)["instances"])')
+              # bash array from JSON list
+              mapfile -t MODES < <(printf '%s' "$META" | python3 -c 'import json,sys; [print(m) for m in json.load(sys.stdin)["modes"]]')
               ;;
-          esac
 
           echo "MOCK_INSTANCES=${INSTANCES}" >> "$GITHUB_ENV"
           echo "MOCK_BASE_PORT=${BASE_PORT}" >> "$GITHUB_ENV"
