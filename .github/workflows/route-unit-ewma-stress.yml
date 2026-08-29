@@ -1,5 +1,13 @@
 name: Route Unit EWMA Stress
 
+# One stress run at a time, cluster-wide. Batches are dispatched separately but
+# share a single k3s cluster, its channels and its gateway deployment, so an
+# overlapping run would corrupt both. Queue instead of cancelling: a half-run
+# batch produces artifacts that look complete but hold interleaved traffic.
+concurrency:
+  group: route-unit-ewma-stress
+  cancel-in-progress: false
+
 on:
   workflow_dispatch:
     inputs:
@@ -586,6 +594,13 @@ jobs:
     timeout-minutes: 120
     strategy:
       fail-fast: false
+      # Every matrix job mutates cluster-wide state: it applies the same mock
+      # Deployment name, rewrites channels 91001-91002, scales and restarts the
+      # gateway, and writes options such as RouteStatsShareWindowSize. The audit
+      # ring and the mock's ndjson are process-global too, so concurrent jobs
+      # would interleave their attempts into each other's share windows. Run one
+      # at a time; correctness here is worth the wall clock.
+      max-parallel: 1
       matrix:
         scenario: ${{ fromJson(inputs.scenario == 'all' && '["S1","S2","S3","S4_NORETRY","S4_RETRY5","S4_RETRY10","S5_POOL2","S5_POOL4","S5_POOL8","S6_W50","S6_W200","S6_W1000","S7_W50","S7_W200","S7_W1000","S8_3K","S8_50K","S9_A10_W0","S9_A10_W200","S9_A30_W0","S9_A30_W200","S9_A50_W0","S9_A50_W200","S9_A70_W0","S9_A70_W200","S10_RACE","S10_GLOBAL","S10_RESTART","S11_FULL","S12_RETRY","S13_CASCADE"]' || inputs.scenario == 'S4' && '["S4_NORETRY","S4_RETRY5","S4_RETRY10"]' || inputs.scenario == 'S5' && '["S5_POOL2","S5_POOL4","S5_POOL8"]' || inputs.scenario == 'S6' && '["S6_W50","S6_W200","S6_W1000"]' || inputs.scenario == 'S7' && '["S7_W50","S7_W200","S7_W1000"]' || inputs.scenario == 'S8' && '["S8_3K","S8_50K"]' || inputs.scenario == 'S9' && '["S9_A10_W0","S9_A10_W200","S9_A30_W0","S9_A30_W200","S9_A50_W0","S9_A50_W200","S9_A70_W0","S9_A70_W200"]' || inputs.scenario == 'S10' && '["S10_RACE","S10_GLOBAL","S10_RESTART"]' || inputs.scenario == 'S11' && '["S11_FULL"]' || inputs.scenario == 'S12' && '["S12_RETRY"]' || inputs.scenario == 'S13' && '["S13_CASCADE"]' || format('["{0}"]', inputs.scenario)) }}
     env:
