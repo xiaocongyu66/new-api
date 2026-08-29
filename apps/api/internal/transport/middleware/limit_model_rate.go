@@ -12,8 +12,8 @@ import (
 	"github.com/QuantumNous/new-api/internal/common/limiter"
 	"github.com/QuantumNous/new-api/internal/constant"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/QuantumNous/new-api/internal/transport/middleware/rate_limit"
+	"github.com/go-redis/redis/v8"
 )
 
 const (

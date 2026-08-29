@@ -4,8 +4,8 @@ import (
 	"github.com/QuantumNous/new-api/internal/identity/policy"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 
-	"github.com/gin-gonic/gin"
 	"github.com/QuantumNous/new-api/internal/security"
+	"github.com/gin-gonic/gin"
 )
 
 // registerAuthzRoutes mounts the authorization API under its own /authz

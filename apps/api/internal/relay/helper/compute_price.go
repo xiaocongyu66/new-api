@@ -4,17 +4,17 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/billing/consume_quota"
+	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	tiered_pricing "github.com/QuantumNous/new-api/internal/billing/tiered_pricing"
+	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	hosttypes "github.com/QuantumNous/new-api/internal/types"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/internal/billing/consume_quota"
-	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
-	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
 func modelPriceNotConfiguredError(modelName string, userId int) error {

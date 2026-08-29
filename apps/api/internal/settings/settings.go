@@ -11,19 +11,19 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
-	"github.com/QuantumNous/new-api/internal/settings/config"
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/billing/price_expression"
+	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
-	"github.com/QuantumNous/new-api/internal/transport/middleware/status_code"
-		ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
+	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"github.com/QuantumNous/new-api/internal/sensitive"
-	"github.com/QuantumNous/new-api/internal/usage/record_perf_config"
+	"github.com/QuantumNous/new-api/internal/settings/config"
 	"github.com/QuantumNous/new-api/internal/transport/middleware/rate_limit"
+	"github.com/QuantumNous/new-api/internal/transport/middleware/status_code"
+	"github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 )
 
 // RetiredThemeOptionKey is the option key of the removed classic frontend
@@ -40,7 +40,6 @@ var OnBillingSettingChanged func()
 // free of internal/usage/record_perf import (record_perf depends on model for
 // flush ops, which would cycle with the model layer).
 var OnPerformanceSettingChanged func()
-
 
 // GatewayRoutingOptionKeys is deliberately explicit. New settings must be
 // reviewed before they become part of the gateway snapshot contract.

@@ -13,6 +13,8 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/QuantumNous/new-api/internal/billing"
+	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
+	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/logger"
@@ -22,8 +24,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
-	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
-	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/samber/lo"
 )
 

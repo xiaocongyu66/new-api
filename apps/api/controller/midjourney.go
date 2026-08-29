@@ -12,12 +12,12 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/dto"
+	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"github.com/QuantumNous/new-api/internal/logger"
 	taskcap "github.com/QuantumNous/new-api/internal/task"
+	"github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
-	"github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 )
 
 // midjourneyPollSummary is the result recorded on a midjourney_poll system task

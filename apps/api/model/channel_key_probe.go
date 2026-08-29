@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 )
 
 // ProbeChannelKeyFunc verifies one channel key without spending tokens and

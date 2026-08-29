@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"github.com/QuantumNous/new-api/internal/security/discord"
+	"github.com/QuantumNous/new-api/model"
 )
 
 func init() {

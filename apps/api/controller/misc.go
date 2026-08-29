@@ -1,23 +1,23 @@
 package controller
 
 import (
-	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
-	"github.com/QuantumNous/new-api/internal/constant"
-	"github.com/QuantumNous/new-api/internal/security/oauth"
-	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/middleware"
-	"github.com/QuantumNous/new-api/model"
-	console_setting "github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 	"github.com/QuantumNous/new-api/internal/billing/do_checkin"
 	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
+	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
+	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/constant"
+	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"github.com/QuantumNous/new-api/internal/security/discord"
+	"github.com/QuantumNous/new-api/internal/security/legal"
+	"github.com/QuantumNous/new-api/internal/security/oauth"
 	"github.com/QuantumNous/new-api/internal/security/oidc"
 	"github.com/QuantumNous/new-api/internal/security/passkey"
-	"github.com/QuantumNous/new-api/internal/security/legal"
-	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/middleware"
+	console_setting "github.com/QuantumNous/new-api/internal/usage/record_perf_config"
+	"github.com/QuantumNous/new-api/model"
 	"net/http"
 )
 

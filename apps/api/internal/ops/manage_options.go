@@ -6,19 +6,19 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/i18n"
-	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/model"
-	console_setting "github.com/QuantumNous/new-api/internal/usage/record_perf_config"
-	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/billing/price_expression"
-	"github.com/QuantumNous/new-api/internal/transport/middleware/status_code"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
+	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
+	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/security/discord"
 	"github.com/QuantumNous/new-api/internal/security/oidc"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/middleware/rate_limit"
+	"github.com/QuantumNous/new-api/internal/transport/middleware/status_code"
+	console_setting "github.com/QuantumNous/new-api/internal/usage/record_perf_config"
+	"github.com/QuantumNous/new-api/model"
 )
 
 func GetOptions(c contract.Context) {

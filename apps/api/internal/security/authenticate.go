@@ -3,22 +3,22 @@ package security
 import (
 	"errors"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/authtoken"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net"
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/new-api/internal/common"
+	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/identity/policy"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"gorm.io/gorm"
 )
 

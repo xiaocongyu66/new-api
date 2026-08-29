@@ -10,9 +10,9 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/ops"
+	"github.com/QuantumNous/new-api/internal/ops/monitor_uptime"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/internal/ops/monitor_uptime"
 )
 
 // RegisterScheduledSystemTasks wires the periodic channel test, upstream model

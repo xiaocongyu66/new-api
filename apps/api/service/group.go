@@ -1,8 +1,8 @@
 package service
 
 import (
-	"github.com/QuantumNous/new-api/model"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
+	"github.com/QuantumNous/new-api/model"
 )
 
 // GetGroupsEnabledModels 按 groups 顺序获取各分组启用的模型并去重

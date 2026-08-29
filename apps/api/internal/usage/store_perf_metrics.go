@@ -4,8 +4,8 @@ import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"gorm.io/gorm/clause"
 
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/internal/usage/record_perf"
+	"github.com/QuantumNous/new-api/model"
 )
 
 func init() {

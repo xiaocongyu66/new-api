@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/catalog/track_affinity"
+	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/stretchr/testify/require"
 )
 

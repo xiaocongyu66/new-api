@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )

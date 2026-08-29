@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	record_perf_config "github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
+	record_perf_config "github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 )
 
 var hotBuckets sync.Map

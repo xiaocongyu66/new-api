@@ -9,13 +9,13 @@ import (
 	"sync"
 	"time"
 
+	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
+	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/internal/catalog/health_store"
-	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 )
 
 var group2model2channels map[string]map[string][]int // enabled channel

@@ -3,9 +3,9 @@ package claude
 import (
 	"testing"
 
+	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"

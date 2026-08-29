@@ -4,8 +4,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/internal/catalog/health_store"
+	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
 // HealthBridge carries the capability-side health store entry points.

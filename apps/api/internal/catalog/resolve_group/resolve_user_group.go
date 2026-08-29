@@ -8,10 +8,10 @@ package resolve_group
 import (
 	"strings"
 
+	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 )
 
 func GetUserUsableGroups(userGroup string) map[string]string {

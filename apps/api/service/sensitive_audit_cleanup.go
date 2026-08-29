@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/internal/sensitive"
+	"github.com/QuantumNous/new-api/model"
 )
 
 const sensitiveAuditCleanupInterval = time.Hour

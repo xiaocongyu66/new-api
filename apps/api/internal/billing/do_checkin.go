@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/QuantumNous/new-api/internal/billing/do_checkin"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/internal/billing/do_checkin"
 )
 
 // GetCheckinStatus 获取用户签到状态和历史记录

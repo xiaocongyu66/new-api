@@ -8,12 +8,12 @@ import (
 	"sync"
 	"time"
 
+	tiered_pricing "github.com/QuantumNous/new-api/internal/billing/tiered_pricing"
+	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/types"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	tiered_pricing "github.com/QuantumNous/new-api/internal/billing/tiered_pricing"
-	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 )
 
 type Pricing struct {

@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"strings"
 
-
 	webauthn "github.com/go-webauthn/webauthn/webauthn"
 )
 

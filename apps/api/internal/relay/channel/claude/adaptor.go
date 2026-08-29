@@ -7,13 +7,13 @@ import (
 	"net/http"
 	"net/url"
 
+	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
 	"github.com/QuantumNous/new-api/internal/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
-	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
 type Adaptor struct {

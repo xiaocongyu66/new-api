@@ -5,8 +5,8 @@ import (
 	"strconv"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/usage/record_perf"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/usage/record_perf"
 	"github.com/QuantumNous/new-api/model"
 
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"

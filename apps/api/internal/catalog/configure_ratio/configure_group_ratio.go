@@ -5,8 +5,8 @@ import (
 	"errors"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/types"
 	"github.com/QuantumNous/new-api/internal/settings/config"
+	"github.com/QuantumNous/new-api/internal/types"
 )
 
 var defaultGroupRatio = map[string]float64{

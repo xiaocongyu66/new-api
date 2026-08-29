@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/internal/sensitive"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
-	"github.com/QuantumNous/new-api/internal/sensitive"
 )
 
 func testCtx() (*gin.Context, *httptest.ResponseRecorder) {

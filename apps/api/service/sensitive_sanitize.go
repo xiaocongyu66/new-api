@@ -7,8 +7,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/internal/sensitive"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 )
 
 // 敏感内容静默过滤：把目标域名与词库敏感词从文本中删除，替代旧的「命中即拦」。

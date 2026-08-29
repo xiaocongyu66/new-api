@@ -258,4 +258,3 @@ const (
 // Lives in common so the model layer can reference it without depending on
 // the settings domain (which transitively depends on the model for flush ops).
 const RetiredThemeOptionKey = "theme.frontend"
-

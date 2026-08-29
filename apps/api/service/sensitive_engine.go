@@ -4,8 +4,8 @@ import (
 	"strings"
 	"unicode"
 
-	"golang.org/x/text/unicode/norm"
 	"github.com/QuantumNous/new-api/internal/sensitive"
+	"golang.org/x/text/unicode/norm"
 )
 
 // sensitiveHits checks a single text with the layered engine.

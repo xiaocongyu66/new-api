@@ -8,8 +8,8 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
-	"github.com/gin-gonic/gin"
 	"github.com/QuantumNous/new-api/internal/security"
+	"github.com/gin-gonic/gin"
 )
 
 func SetRelayRouter(router *gin.Engine) {

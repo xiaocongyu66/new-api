@@ -8,10 +8,10 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/types"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"

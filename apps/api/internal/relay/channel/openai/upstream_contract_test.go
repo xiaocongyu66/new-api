@@ -14,11 +14,11 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
+	"github.com/QuantumNous/new-api/internal/sensitive"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/QuantumNous/new-api/internal/sensitive"
 )
 
 // The stream scanner arms a watchdog ticker from constant.StreamingTimeout, which

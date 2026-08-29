@@ -1,10 +1,10 @@
 package channel
 
 import (
+	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/model"
-	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 )
 
 func IsChannelEnabledForGroupModel(group string, modelName string, channelID int) bool {

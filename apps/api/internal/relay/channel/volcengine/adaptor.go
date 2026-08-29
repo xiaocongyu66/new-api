@@ -10,16 +10,16 @@ import (
 	"path/filepath"
 	"strings"
 
+	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
 	channelconstant "github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/relay/channel"
 	"github.com/QuantumNous/new-api/internal/relay/channel/claude"
 	"github.com/QuantumNous/new-api/internal/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/relay/constant"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
-	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/samber/lo"
 )
 

@@ -11,8 +11,8 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/internal/sensitive"
+	"github.com/QuantumNous/new-api/model"
 )
 
 // 敏感拦截审计：拦截事件异步写入统一 logs 表（type=LogTypeSensitive），

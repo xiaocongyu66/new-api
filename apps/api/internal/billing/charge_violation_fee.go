@@ -6,12 +6,12 @@ import (
 	"strings"
 	"time"
 
+	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
 	"github.com/shopspring/decimal"
 )
 

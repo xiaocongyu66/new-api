@@ -3,9 +3,9 @@ package configure_ratio
 import (
 	"strings"
 
+	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/types"
-	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
 )
 
 // from songquanpeng/one-api

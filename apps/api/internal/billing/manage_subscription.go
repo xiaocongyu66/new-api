@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
-	"github.com/QuantumNous/new-api/model"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
+	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/model"
 	"gorm.io/gorm"
 )
 

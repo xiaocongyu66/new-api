@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/internal/sensitive"
+	"github.com/QuantumNous/new-api/model"
 )
 
 // TestTruncateSensitiveSnippet 截断不得把多字节字形切成无效 UTF-8，
