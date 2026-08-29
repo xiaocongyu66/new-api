@@ -393,6 +393,11 @@ jobs:
             fi
           done
           echo "All ${INSTANCES} mock upstreams ready on ports $((BASE_PORT))-$((BASE_PORT + INSTANCES - 1))"
+          # Export for the next step: with `set -u` in Configure mock URL,
+          # referencing $MOCK_BASE_PORT / $MOCK_INSTANCES without this export
+          # would fail with "unbound variable".
+          echo "MOCK_INSTANCES=${INSTANCES}" >> "$GITHUB_ENV"
+          echo "MOCK_BASE_PORT=${BASE_PORT}" >> "$GITHUB_ENV"
 
       - name: Configure mock URL for scenario
         run: |
