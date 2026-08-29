@@ -137,7 +137,11 @@ env:
   ADMIN_TOKEN: ${{ inputs.admin_token || secrets.K8S_STRESS_ADMIN_TOKEN }}
   ADMIN_USERNAME: ${{ inputs.admin_username || 'root' }}
   ADMIN_PASSWORD: ${{ inputs.admin_password || '123456' }}
-  GATEWAY_ADMIN_URL: ${{ inputs.gateway_admin_url != '' && inputs.gateway_admin_url || format('{0}', replace(inputs.target_url, '/v1', '')) }}
+  # GitHub Actions expressions have no string-replace function at all (no
+  # replace, no replaceAll). Calling one fails workflow parsing at dispatch
+  # time with HTTP 422, so no run can ever start. Pass the raw input and strip
+  # the /v1 suffix in shell at the point of use instead.
+  GATEWAY_ADMIN_URL: ${{ inputs.gateway_admin_url }}
   MODEL: ${{ inputs.model }}
   ALIAS: ${{ inputs.alias }}
   REQUESTS: ${{ inputs.requests }}
@@ -164,6 +168,42 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve gateway host alias
+        env:
+          TARGET_URL: ${{ env.TARGET_URL }}
+          GATEWAY_ADMIN_URL: ${{ env.GATEWAY_ADMIN_URL }}
+        run: |
+          set -euo pipefail
+          # The ingress routes solely on Host, so target_url must carry the ingress
+          # host, which can be a placeholder with no public DNS. When it does not
+          # resolve, map it to the admin URL's address (the node running the
+          # ingress) so the preflight curl reaches the gateway instead of dying on
+          # DNS. No extra input: workflow_dispatch allows at most 25.
+          NAME=$(printf '%s' "$TARGET_URL" | sed -E 's#^[a-zA-Z]+://##; s#[:/].*$##')
+          if [ -z "$NAME" ]; then
+            echo "target_url has no host; nothing to map"
+            exit 0
+          fi
+          if getent hosts "$NAME" >/dev/null 2>&1; then
+            echo "$NAME already resolves; no hosts entry added"
+            exit 0
+          fi
+          IP=$(printf '%s' "$GATEWAY_ADMIN_URL" | sed -E 's#^[a-zA-Z]+://##; s#[:/].*$##')
+          if ! printf '%s' "$IP" | grep -Eq '^[0-9]+(\.[0-9]+){3}$'; then
+            echo "::error::$NAME does not resolve and gateway_admin_url ('$GATEWAY_ADMIN_URL') has no IP literal to map it to"
+            exit 1
+          fi
+          echo "$IP $NAME" | sudo tee -a /etc/hosts >/dev/null
+          getent hosts "$NAME"
+          # Requests must carry the ingress host, otherwise the ingress has no rule
+          # to match and answers 404. Now that the name resolves, rewrite the admin
+          # base URL from the bare IP to that host, keeping scheme and port.
+          ADMIN_PORT=$(printf '%s' "$GATEWAY_ADMIN_URL" | sed -nE 's#^[a-zA-Z]+://[^:/]+:([0-9]+).*$#\1#p')
+          if [ -n "$ADMIN_PORT" ]; then
+            echo "GATEWAY_ADMIN_URL=http://$NAME:$ADMIN_PORT" >> "$GITHUB_ENV"
+            echo "admin URL rewritten to http://$NAME:$ADMIN_PORT"
+          fi
 
       - name: Configure kubectl
         if: env.KUBE_CONFIG_B64 != ''
@@ -200,8 +240,15 @@ jobs:
           ADMIN_USERNAME: ${{ env.ADMIN_USERNAME }}
           ADMIN_PASSWORD: ${{ env.ADMIN_PASSWORD }}
           GATEWAY_ADMIN_URL: ${{ env.GATEWAY_ADMIN_URL }}
+          TARGET_URL: ${{ env.TARGET_URL }}
         run: |
           set -euo pipefail
+          # Empty means "derive from target_url by stripping the /v1 suffix";
+          # expressions cannot do string replacement, so it happens here.
+          if [ -z "${GATEWAY_ADMIN_URL:-}" ]; then
+            GATEWAY_ADMIN_URL="${TARGET_URL%/v1}"
+            GATEWAY_ADMIN_URL="${GATEWAY_ADMIN_URL%/}"
+          fi
           login_url="${GATEWAY_ADMIN_URL%/}/api/user/login"
           probe_token() {
             curl -fsS --max-time 5 -H "Authorization: Bearer $1"               "${GATEWAY_ADMIN_URL%/}/api/route_unit/audit?alias=__probe__&limit=1" >/dev/null 2>&1
@@ -249,8 +296,14 @@ jobs:
           MOCK_NDJSON: /tmp/mock_upstream.ndjson
         run: |
           set -euo pipefail
+          # run_smoke.py builds "{gateway_url}/api/status" and "{gateway_url}/v1/models",
+          # so it needs the gateway base without the /v1 suffix. Passing target_url
+          # verbatim yields /v1/api/status, which the gateway answers 404, and the
+          # runner reports a healthz preflight failure.
+          SMOKE_BASE="${TARGET_URL%/v1}"
+          SMOKE_BASE="${SMOKE_BASE%/}"
           python3 tests/route_unit_stress/run_smoke.py \
-            --gateway-url "$TARGET_URL" \
+            --gateway-url "$SMOKE_BASE" \
             --token "$API_KEY" \
             --admin-token "${{ env.ADMIN_TOKEN_FINAL }}" \
             --mock-url "$MOCK_URL" \
@@ -315,6 +368,42 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve gateway host alias
+        env:
+          TARGET_URL: ${{ env.TARGET_URL }}
+          GATEWAY_ADMIN_URL: ${{ env.GATEWAY_ADMIN_URL }}
+        run: |
+          set -euo pipefail
+          # The ingress routes solely on Host, so target_url must carry the ingress
+          # host, which can be a placeholder with no public DNS. When it does not
+          # resolve, map it to the admin URL's address (the node running the
+          # ingress) so the preflight curl reaches the gateway instead of dying on
+          # DNS. No extra input: workflow_dispatch allows at most 25.
+          NAME=$(printf '%s' "$TARGET_URL" | sed -E 's#^[a-zA-Z]+://##; s#[:/].*$##')
+          if [ -z "$NAME" ]; then
+            echo "target_url has no host; nothing to map"
+            exit 0
+          fi
+          if getent hosts "$NAME" >/dev/null 2>&1; then
+            echo "$NAME already resolves; no hosts entry added"
+            exit 0
+          fi
+          IP=$(printf '%s' "$GATEWAY_ADMIN_URL" | sed -E 's#^[a-zA-Z]+://##; s#[:/].*$##')
+          if ! printf '%s' "$IP" | grep -Eq '^[0-9]+(\.[0-9]+){3}$'; then
+            echo "::error::$NAME does not resolve and gateway_admin_url ('$GATEWAY_ADMIN_URL') has no IP literal to map it to"
+            exit 1
+          fi
+          echo "$IP $NAME" | sudo tee -a /etc/hosts >/dev/null
+          getent hosts "$NAME"
+          # Requests must carry the ingress host, otherwise the ingress has no rule
+          # to match and answers 404. Now that the name resolves, rewrite the admin
+          # base URL from the bare IP to that host, keeping scheme and port.
+          ADMIN_PORT=$(printf '%s' "$GATEWAY_ADMIN_URL" | sed -nE 's#^[a-zA-Z]+://[^:/]+:([0-9]+).*$#\1#p')
+          if [ -n "$ADMIN_PORT" ]; then
+            echo "GATEWAY_ADMIN_URL=http://$NAME:$ADMIN_PORT" >> "$GITHUB_ENV"
+            echo "admin URL rewritten to http://$NAME:$ADMIN_PORT"
+          fi
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -450,8 +539,15 @@ jobs:
           ADMIN_USERNAME: ${{ env.ADMIN_USERNAME }}
           ADMIN_PASSWORD: ${{ env.ADMIN_PASSWORD }}
           GATEWAY_ADMIN_URL: ${{ env.GATEWAY_ADMIN_URL }}
+          TARGET_URL: ${{ env.TARGET_URL }}
         run: |
           set -euo pipefail
+          # Empty means "derive from target_url by stripping the /v1 suffix";
+          # expressions cannot do string replacement, so it happens here.
+          if [ -z "${GATEWAY_ADMIN_URL:-}" ]; then
+            GATEWAY_ADMIN_URL="${TARGET_URL%/v1}"
+            GATEWAY_ADMIN_URL="${GATEWAY_ADMIN_URL%/}"
+          fi
           login_url="${GATEWAY_ADMIN_URL%/}/api/user/login"
           probe_token() {
             curl -fsS --max-time 5 -H "Authorization: Bearer $1" \
