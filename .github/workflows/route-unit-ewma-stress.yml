@@ -1008,8 +1008,15 @@ jobs:
               -c "SELECT channel_id, \"group\", public_model_alias, upstream_model, static_weight, enabled FROM channel_model_routes WHERE channel_id BETWEEN 91001 AND $LAST;" || true
             exit 1
           fi
-          kubectl rollout restart deployment/new-api-worker
-          kubectl rollout status deployment/new-api-worker --timeout=420s
+          # Delete the pods rather than `rollout restart`. The deployment declares
+          # maxUnavailable: 0 with maxSurge: 1, so a rolling restart needs the new pod
+          # ready before the old one leaves; the new pod's init container waits on the
+          # master's schema probe, and with a single replica pinned to one node the
+          # two serialize until the rollout deadline expires. Deleting frees the slot
+          # immediately, and the ReplicaSet recreates the pod with the current config,
+          # which is all the cache refresh needs.
+          kubectl delete pods -l app=new-api,role=worker --wait=false
+          kubectl wait --for=condition=ready pod -l app=new-api,role=worker --timeout=420s
           # Readiness only proves /api/status answers; the route pool loads on the same
           # boot path, so confirm the worker resolves the alias before handing over.
           for i in $(seq 1 45); do
