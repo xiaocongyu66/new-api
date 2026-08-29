@@ -397,6 +397,13 @@ jobs:
           -- Hand-written rows would only risk drifting from that expansion.
           SELECT id, name, base_url, models FROM channels WHERE id BETWEEN 91001 AND 91002;
           SQL
+          # The audit ring is per process, and the Service load-balances across
+          # workers, so with N replicas the runner sees roughly 1/N of the attempts
+          # and reconciliation reports the rest as missing_in_audit. The smoke proves
+          # the data chain, not replica behaviour, so pin it to a single worker;
+          # multi-replica share aggregation is what S10 covers, and it polls each pod
+          # directly.
+          kubectl scale deployment/new-api-worker --replicas=1
           # Workers cache channels and routes; without a restart the run would use
           # the pre-provisioning topology. The restart also re-runs the route-unit
           # seeding that expands these channels into route rows.
