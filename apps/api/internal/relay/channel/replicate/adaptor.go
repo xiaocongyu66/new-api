@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -478,7 +479,7 @@ func uploadFileFromForm(c contract.Context, info *relaycommon.RelayInfo, fieldCa
 	req.Header.Set("Content-Type", formContentType)
 	req.Header.Set("Authorization", "Bearer "+info.ApiKey)
 
-	resp, err := service.GetHttpClient().Do(req)
+	resp, err := egress.GetHttpClient().Do(req)
 	if err != nil {
 		return "", fmt.Errorf("replicate adaptor: upload image failed: %w", err)
 	}

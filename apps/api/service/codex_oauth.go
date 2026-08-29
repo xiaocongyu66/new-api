@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"net/http"
 	"net/url"
 	"strings"
@@ -89,7 +90,7 @@ func refreshCodexOAuthToken(
 }
 
 func getCodexOAuthHTTPClient(proxyURL string) (*http.Client, error) {
-	baseClient, err := GetHttpClientWithProxy(strings.TrimSpace(proxyURL))
+	baseClient, err := egress.GetHttpClientWithProxy(strings.TrimSpace(proxyURL))
 	if err != nil {
 		return nil, err
 	}

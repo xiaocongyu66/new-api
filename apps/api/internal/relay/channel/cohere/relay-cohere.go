@@ -2,6 +2,7 @@ package cohere
 
 import (
 	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 	"strings"
@@ -182,7 +183,7 @@ func cohereHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.R
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
-	service.CloseResponseBodyGracefully(resp)
+	egress.CloseResponseBodyGracefully(resp)
 	var cohereResp CohereResponseResult
 	err = json.Unmarshal(responseBody, &cohereResp)
 	if err != nil {
@@ -223,7 +224,7 @@ func cohereRerankHandler(c contract.Context, resp *http.Response, info *relaycom
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
-	service.CloseResponseBodyGracefully(resp)
+	egress.CloseResponseBodyGracefully(resp)
 	var cohereResp CohereRerankResponseResult
 	err = json.Unmarshal(responseBody, &cohereResp)
 	if err != nil {

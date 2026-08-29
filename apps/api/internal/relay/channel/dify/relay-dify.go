@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -98,7 +99,7 @@ func uploadDifyFile(c contract.Context, info *relaycommon.RelayInfo, user string
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", info.ApiKey))
 
 		// Send request
-		client := service.GetHttpClient()
+		client := egress.GetHttpClient()
 		resp, err := client.Do(req)
 		if err != nil {
 			common.SysLog("failed to send request: " + err.Error())
@@ -270,7 +271,7 @@ func difyHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Res
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
-	service.CloseResponseBodyGracefully(resp)
+	egress.CloseResponseBodyGracefully(resp)
 	err = json.Unmarshal(responseBody, &difyResponse)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)

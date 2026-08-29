@@ -2,13 +2,13 @@ package controller
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"net/http"
 	"strings"
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 )
 
 func init() {
@@ -60,7 +60,7 @@ func probeChannelKey(channelID, keyIndex int) (valid bool, decisive bool) {
 			request.Host = headers.Get(name)
 		}
 	}
-	client, err := service.NewProxyHttpClient(channel.GetSetting().Proxy)
+	client, err := egress.NewProxyHttpClient(channel.GetSetting().Proxy)
 	if err != nil {
 		return false, false
 	}
@@ -69,7 +69,7 @@ func probeChannelKey(channelID, keyIndex int) (valid bool, decisive bool) {
 		common.SysLog(fmt.Sprintf("key probe inconclusive: channel_id=%d key_index=%d error=%v", channelID, keyIndex, sanitizeFetchModelsError(err, key)))
 		return false, false
 	}
-	defer service.CloseResponseBodyGracefully(response)
+	defer egress.CloseResponseBodyGracefully(response)
 
 	switch response.StatusCode {
 	case http.StatusOK:

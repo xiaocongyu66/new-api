@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 	"strings"
@@ -14,7 +15,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/logger"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/bytedance/gopkg/util/gopool"
@@ -53,7 +53,7 @@ func CopyCodexSSEHeaders(c contract.Context, resp *http.Response) {
 	// codex
 	for _, name := range []string{"X-Reasoning-Included", "X-Codex-Turn-State"} {
 		values := resp.Header.Values(name)
-		if !service.ShouldCopyUpstreamHeader(c, name, values) {
+		if !egress.ShouldCopyUpstreamHeader(c, name, values) {
 			continue
 		}
 		for _, value := range values {

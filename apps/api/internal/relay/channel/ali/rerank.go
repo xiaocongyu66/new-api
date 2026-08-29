@@ -2,13 +2,13 @@ package ali
 
 import (
 	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
@@ -37,7 +37,7 @@ func RerankHandler(c contract.Context, resp *http.Response, info *relaycommon.Re
 	if err != nil {
 		return types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError), nil
 	}
-	service.CloseResponseBodyGracefully(resp)
+	egress.CloseResponseBodyGracefully(resp)
 
 	var aliResponse AliRerankResponse
 	err = json.Unmarshal(responseBody, &aliResponse)

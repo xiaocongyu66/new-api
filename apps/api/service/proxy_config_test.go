@@ -64,16 +64,3 @@ func TestLoadProxyConfigNoRow(t *testing.T) {
 	_, err := LoadProxyConfigJSON()
 	require.Error(t, err)
 }
-
-func TestGetGlobalProxyURLWithEncryptedConfig(t *testing.T) {
-	setupProxyConfigTestDB(t)
-	originalSecret := common.CryptoSecret
-	common.CryptoSecret = "test-secret-key"
-	t.Cleanup(func() { common.CryptoSecret = originalSecret })
-
-	plaintext := `{"enabled":true,"global_proxy_url":"socks5://127.0.0.1:1080"}`
-	require.NoError(t, SaveProxyConfigJSON(plaintext))
-
-	url := getGlobalProxyURL()
-	assert.Equal(t, "socks5://127.0.0.1:1080", url)
-}

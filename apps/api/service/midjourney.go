@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 	"strings"
@@ -62,7 +63,7 @@ func DoMidjourneyHttpRequest(c contract.Context, timeout time.Duration, fullRequ
 		req.Header.Set("mj-api-secret", auth)
 	}
 	defer cancel()
-	resp, err := GetHttpClient().Do(req)
+	resp, err := egress.GetHttpClient().Do(req)
 	if err != nil {
 		common.SysLog("do request failed: " + err.Error())
 		return MidjourneyErrorWithStatusCodeWrapper(constant.MjErrorUnknown, "do_request_failed", http.StatusInternalServerError), nullBytes, err
@@ -82,7 +83,7 @@ func DoMidjourneyHttpRequest(c contract.Context, timeout time.Duration, fullRequ
 	if err != nil {
 		return MidjourneyErrorWithStatusCodeWrapper(constant.MjErrorUnknown, "read_response_body_failed", statusCode), nullBytes, err
 	}
-	CloseResponseBodyGracefully(resp)
+	egress.CloseResponseBodyGracefully(resp)
 	logger.LogDebug(c.HTTPRequest().Context(), "midjourney response body: %s", responseBody)
 	if len(responseBody) == 0 {
 		return MidjourneyErrorWithStatusCodeWrapper(constant.MjErrorUnknown, "empty_response_body", statusCode), responseBody, nil

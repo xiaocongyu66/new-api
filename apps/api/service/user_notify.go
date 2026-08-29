@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"net/http"
 	"net/url"
 	"strings"
@@ -133,7 +134,7 @@ func sendBarkNotify(barkURL string, data dto.Notify) error {
 
 	if fetch_url.EnableWorker() {
 		// 使用worker发送请求
-		workerReq := &WorkerRequest{
+		workerReq := &egress.WorkerRequest{
 			URL:    finalURL,
 			Key:    fetch_url.WorkerValidKey,
 			Method: http.MethodGet,
@@ -142,7 +143,7 @@ func sendBarkNotify(barkURL string, data dto.Notify) error {
 			},
 		}
 
-		resp, err = DoWorkerRequest(workerReq)
+		resp, err = egress.DoWorkerRequest(workerReq)
 		if err != nil {
 			return fmt.Errorf("failed to send bark request through worker: %v", err)
 		}
@@ -154,7 +155,7 @@ func sendBarkNotify(barkURL string, data dto.Notify) error {
 		}
 	} else {
 		// SSRF防护：验证Bark URL（非Worker模式）
-		if err := ValidateSSRFProtectedFetchURL(finalURL); err != nil {
+		if err := egress.ValidateSSRFProtectedFetchURL(finalURL); err != nil {
 			return fmt.Errorf("request reject: %v", err)
 		}
 
@@ -168,7 +169,7 @@ func sendBarkNotify(barkURL string, data dto.Notify) error {
 		req.Header.Set("User-Agent", "OneAPI-Bark-Notify/1.0")
 
 		// 发送请求
-		client := GetSSRFProtectedHTTPClient()
+		client := egress.GetSSRFProtectedHTTPClient()
 		resp, err = client.Do(req)
 		if err != nil {
 			return fmt.Errorf("failed to send bark request: %v", err)
@@ -224,7 +225,7 @@ func sendGotifyNotify(gotifyUrl string, gotifyToken string, priority int, data d
 
 	if fetch_url.EnableWorker() {
 		// 使用worker发送请求
-		workerReq := &WorkerRequest{
+		workerReq := &egress.WorkerRequest{
 			URL:    finalURL,
 			Key:    fetch_url.WorkerValidKey,
 			Method: http.MethodPost,
@@ -235,7 +236,7 @@ func sendGotifyNotify(gotifyUrl string, gotifyToken string, priority int, data d
 			Body: payloadBytes,
 		}
 
-		resp, err = DoWorkerRequest(workerReq)
+		resp, err = egress.DoWorkerRequest(workerReq)
 		if err != nil {
 			return fmt.Errorf("failed to send gotify request through worker: %v", err)
 		}
@@ -247,7 +248,7 @@ func sendGotifyNotify(gotifyUrl string, gotifyToken string, priority int, data d
 		}
 	} else {
 		// SSRF防护：验证Gotify URL（非Worker模式）
-		if err := ValidateSSRFProtectedFetchURL(finalURL); err != nil {
+		if err := egress.ValidateSSRFProtectedFetchURL(finalURL); err != nil {
 			return fmt.Errorf("request reject: %v", err)
 		}
 
@@ -262,7 +263,7 @@ func sendGotifyNotify(gotifyUrl string, gotifyToken string, priority int, data d
 		req.Header.Set("User-Agent", "NewAPI-Gotify-Notify/1.0")
 
 		// 发送请求
-		client := GetSSRFProtectedHTTPClient()
+		client := egress.GetSSRFProtectedHTTPClient()
 		resp, err = client.Do(req)
 		if err != nil {
 			return fmt.Errorf("failed to send gotify request: %v", err)

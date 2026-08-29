@@ -2,13 +2,13 @@ package siliconflow
 
 import (
 	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
@@ -18,7 +18,7 @@ func siliconflowRerankHandler(c contract.Context, info *relaycommon.RelayInfo, r
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
-	service.CloseResponseBodyGracefully(resp)
+	egress.CloseResponseBodyGracefully(resp)
 	var siliconflowResp SFRerankResponse
 	err = json.Unmarshal(responseBody, &siliconflowResp)
 	if err != nil {
@@ -40,6 +40,6 @@ func siliconflowRerankHandler(c contract.Context, info *relaycommon.RelayInfo, r
 	}
 	c.ResponseWriter().Header().Set("Content-Type", "application/json")
 	c.ResponseWriter().WriteHeader(resp.StatusCode)
-	service.IOCopyBytesGracefully(c, resp, jsonResponse)
+	egress.IOCopyBytesGracefully(c, resp, jsonResponse)
 	return usage, nil
 }

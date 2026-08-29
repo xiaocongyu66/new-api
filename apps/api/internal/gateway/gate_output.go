@@ -5,7 +5,6 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/sensitive"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
@@ -45,7 +44,7 @@ func OutputChunkBlocked(c contract.Context, data string) (bool, string) {
 		return false, ""
 	}
 	// 目标域无条件终止：任何输出包含攻击目标站点即断流（用户要求双向终止）。
-	if d := service.CheckSensitiveTargets(data); d != "" {
+	if d := sensitive.CheckSensitiveTargets(data); d != "" {
 		st.Blocked = true
 		common.SysLog(fmt.Sprintf("output blocked by target domain: [%s]", d))
 		return true, "target:" + d
@@ -57,7 +56,7 @@ func OutputChunkBlocked(c contract.Context, data string) (bool, string) {
 	if len(st.Window) > OutputFilterWindowSize {
 		st.Window = st.Window[len(st.Window)-OutputFilterWindowSize:]
 	}
-	if hit, labels := service.CheckSensitiveText(st.Window); hit && len(labels) > 0 {
+	if hit, labels := sensitive.CheckSensitiveText(st.Window); hit && len(labels) > 0 {
 		st.Blocked = true
 		common.SysLog(fmt.Sprintf("output blocked by sensitive filter: [%s]", labels[0]))
 		return true, labels[0]

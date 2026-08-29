@@ -3,6 +3,7 @@ package suno
 import (
 	"bytes"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 	"strings"
@@ -142,7 +143,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+key)
-	client, err := service.GetHttpClientWithProxy(proxy)
+	client, err := egress.GetHttpClientWithProxy(proxy)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
 	}

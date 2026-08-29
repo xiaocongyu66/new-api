@@ -3,6 +3,7 @@ package openai
 import (
 	"bytes"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"math"
 	"net/http"
@@ -15,7 +16,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 )
 
 func OpenaiTTSHandler(c contract.Context, resp *http.Response, info *relaycommon.RelayInfo) *dto.Usage {
@@ -25,12 +25,12 @@ func OpenaiTTSHandler(c contract.Context, resp *http.Response, info *relaycommon
 	// if the upstream returns a specific status code, once the upstream has already written the header,
 	// the subsequent failure of the response body should be regarded as a non-recoverable error,
 	// and can be terminated directly.
-	defer service.CloseResponseBodyGracefully(resp)
+	defer egress.CloseResponseBodyGracefully(resp)
 	usage := &dto.Usage{}
 	usage.PromptTokens = info.GetEstimatePromptTokens()
 	usage.TotalTokens = info.GetEstimatePromptTokens()
 	for k, v := range resp.Header {
-		if !service.ShouldCopyUpstreamHeader(c, k, v) {
+		if !egress.ShouldCopyUpstreamHeader(c, k, v) {
 			continue
 		}
 		c.ResponseWriter().Header().Set(k, v[0])
@@ -39,7 +39,7 @@ func OpenaiTTSHandler(c contract.Context, resp *http.Response, info *relaycommon
 
 	if info.IsStream {
 		helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
-			if service.SundaySearch(data, "usage") {
+			if common.SundaySearch(data, "usage") {
 				var simpleResponse dto.SimpleResponse
 				if err := common.Unmarshal([]byte(data), &simpleResponse); err != nil {
 					logger.LogError(c.Context(), err.Error())
@@ -116,14 +116,14 @@ func OpenaiTTSHandler(c contract.Context, resp *http.Response, info *relaycommon
 }
 
 func OpenaiSTTHandler(c contract.Context, resp *http.Response, info *relaycommon.RelayInfo, responseFormat string) (*types.NewAPIError, *dto.Usage) {
-	defer service.CloseResponseBodyGracefully(resp)
+	defer egress.CloseResponseBodyGracefully(resp)
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError), nil
 	}
 	// 写入新的 response body
-	service.IOCopyBytesGracefully(c, resp, responseBody)
+	egress.IOCopyBytesGracefully(c, resp, responseBody)
 
 	var responseData struct {
 		Usage *dto.Usage `json:"usage"`

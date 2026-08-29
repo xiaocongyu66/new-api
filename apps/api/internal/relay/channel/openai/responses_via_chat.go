@@ -2,6 +2,7 @@ package openai
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 
@@ -20,7 +21,7 @@ func OaiChatToResponsesHandler(c contract.Context, info *relaycommon.RelayInfo, 
 	if resp == nil || resp.Body == nil {
 		return nil, types.NewOpenAIError(fmt.Errorf("invalid response"), types.ErrorCodeBadResponse, http.StatusInternalServerError)
 	}
-	defer service.CloseResponseBodyGracefully(resp)
+	defer egress.CloseResponseBodyGracefully(resp)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -58,7 +59,7 @@ func OaiChatToResponsesHandler(c contract.Context, info *relaycommon.RelayInfo, 
 		return nil, types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
 	}
 
-	service.IOCopyBytesGracefully(c, resp, responseBody)
+	egress.IOCopyBytesGracefully(c, resp, responseBody)
 	return usage, nil
 }
 
@@ -66,7 +67,7 @@ func OaiChatToResponsesStreamHandler(c contract.Context, info *relaycommon.Relay
 	if resp == nil || resp.Body == nil {
 		return nil, types.NewOpenAIError(fmt.Errorf("invalid response"), types.ErrorCodeBadResponse, http.StatusInternalServerError)
 	}
-	defer service.CloseResponseBodyGracefully(resp)
+	defer egress.CloseResponseBodyGracefully(resp)
 
 	responseID := helper.GetResponseID(c)
 	state, err := relayconvert.NewResponseStreamState(types.RelayFormatOpenAI, types.RelayFormatOpenAIResponses, relayconvert.ResponseStreamOptions{

@@ -2,6 +2,7 @@ package ollama
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 	"strings"
@@ -313,7 +314,7 @@ func ollamaEmbeddingHandler(c contract.Context, info *relaycommon.RelayInfo, res
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
-	service.CloseResponseBodyGracefully(resp)
+	egress.CloseResponseBodyGracefully(resp)
 	if err = common.Unmarshal(body, &oResp); err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
@@ -327,7 +328,7 @@ func ollamaEmbeddingHandler(c contract.Context, info *relaycommon.RelayInfo, res
 	usage := &dto.Usage{PromptTokens: oResp.PromptEvalCount, CompletionTokens: 0, TotalTokens: oResp.PromptEvalCount}
 	embResp := &dto.OpenAIEmbeddingResponse{Object: "list", Data: data, Model: info.UpstreamModelName, Usage: *usage}
 	out, _ := common.Marshal(embResp)
-	service.IOCopyBytesGracefully(c, resp, out)
+	egress.IOCopyBytesGracefully(c, resp, out)
 	return usage, nil
 }
 

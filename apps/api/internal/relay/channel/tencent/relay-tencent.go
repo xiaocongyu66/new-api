@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 	"strconv"
@@ -128,7 +129,7 @@ func tencentStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp 
 
 	helper.Done(c)
 
-	service.CloseResponseBodyGracefully(resp)
+	egress.CloseResponseBodyGracefully(resp)
 
 	return service.ResponseText2Usage(c, responseText, info.UpstreamModelName, info.GetEstimatePromptTokens()), nil
 }
@@ -139,7 +140,7 @@ func tencentHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
-	service.CloseResponseBodyGracefully(resp)
+	egress.CloseResponseBodyGracefully(resp)
 	err = json.Unmarshal(responseBody, &tencentSb)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
@@ -157,7 +158,7 @@ func tencentHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.
 	}
 	c.ResponseWriter().Header().Set("Content-Type", "application/json")
 	c.ResponseWriter().WriteHeader(resp.StatusCode)
-	service.IOCopyBytesGracefully(c, resp, jsonResponse)
+	egress.IOCopyBytesGracefully(c, resp, jsonResponse)
 	return &fullTextResponse.Usage, nil
 }
 

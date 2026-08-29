@@ -2,6 +2,7 @@ package mokaai
 
 import (
 	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 
@@ -9,7 +10,6 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
@@ -58,7 +58,7 @@ func mokaEmbeddingHandler(c contract.Context, info *relaycommon.RelayInfo, resp 
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
-	service.CloseResponseBodyGracefully(resp)
+	egress.CloseResponseBodyGracefully(resp)
 	err = json.Unmarshal(responseBody, &baiduResponse)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
@@ -79,6 +79,6 @@ func mokaEmbeddingHandler(c contract.Context, info *relaycommon.RelayInfo, resp 
 	}
 	c.ResponseWriter().Header().Set("Content-Type", "application/json")
 	c.ResponseWriter().WriteHeader(resp.StatusCode)
-	service.IOCopyBytesGracefully(c, resp, jsonResponse)
+	egress.IOCopyBytesGracefully(c, resp, jsonResponse)
 	return &fullTextResponse.Usage, nil
 }

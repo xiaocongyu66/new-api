@@ -2,10 +2,10 @@ package service
 
 import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,7 +17,7 @@ func TestProxyNodeStorageEncryptsAndRoundTrips(t *testing.T) {
 	previousSecret := common.CryptoSecret
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.ProxyNode{}))
+	require.NoError(t, db.AutoMigrate(&egress.ProxyNode{}))
 	dbx.DB = db
 	common.CryptoSecret = "test-secret"
 	t.Cleanup(func() { dbx.DB = previousDB; common.CryptoSecret = previousSecret })
@@ -26,7 +26,7 @@ func TestProxyNodeStorageEncryptsAndRoundTrips(t *testing.T) {
 		Name:       "edge",
 		Enabled:    true,
 		Proxy:      "http://user:pass@example.com:8080",
-		ScopeType:  model.ProxyNodeScopeCustom,
+		ScopeType:  egress.ProxyNodeScopeCustom,
 		ScopeValue: "",
 	})
 	require.NoError(t, err)

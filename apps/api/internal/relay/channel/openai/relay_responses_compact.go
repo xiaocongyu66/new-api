@@ -1,19 +1,19 @@
 package openai
 
 import (
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
 func OaiResponsesCompactionHandler(c contract.Context, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
-	defer service.CloseResponseBodyGracefully(resp)
+	defer egress.CloseResponseBodyGracefully(resp)
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -28,7 +28,7 @@ func OaiResponsesCompactionHandler(c contract.Context, resp *http.Response) (*dt
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
 
-	service.IOCopyBytesGracefully(c, resp, responseBody)
+	egress.IOCopyBytesGracefully(c, resp, responseBody)
 
 	usage := dto.Usage{}
 	if compactResp.Usage != nil {

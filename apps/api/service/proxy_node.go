@@ -8,11 +8,11 @@ import (
 	"encoding/base64"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"strings"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 )
 
 type ProxyNodeInput struct {
@@ -23,12 +23,12 @@ type ProxyNodeInput struct {
 	ScopeValue string
 }
 
-func CreateProxyNode(input ProxyNodeInput) (*model.ProxyNode, error) {
-	parsed, err := ParseProxyNodeShareLink(input.Proxy)
+func CreateProxyNode(input ProxyNodeInput) (*egress.ProxyNode, error) {
+	parsed, err := egress.ParseProxyNodeShareLink(input.Proxy)
 	if err != nil {
 		return nil, err
 	}
-	scopeType, scopeValue, err := model.NormalizeProxyNodeScope(input.ScopeType, input.ScopeValue)
+	scopeType, scopeValue, err := egress.NormalizeProxyNodeScope(input.ScopeType, input.ScopeValue)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +36,7 @@ func CreateProxyNode(input ProxyNodeInput) (*model.ProxyNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	node := &model.ProxyNode{
+	node := &egress.ProxyNode{
 		Name:                 strings.TrimSpace(input.Name),
 		Enabled:              input.Enabled,
 		EncryptedProxyConfig: encrypted,
@@ -54,7 +54,7 @@ func CreateProxyNode(input ProxyNodeInput) (*model.ProxyNode, error) {
 	return node, nil
 }
 
-func DecryptProxyNodeConfig(node *model.ProxyNode) (*ProxyNodeParsed, error) {
+func DecryptProxyNodeConfig(node *egress.ProxyNode) (*egress.ProxyNodeParsed, error) {
 	if node == nil {
 		return nil, fmt.Errorf("proxy node is nil")
 	}
@@ -62,7 +62,7 @@ func DecryptProxyNodeConfig(node *model.ProxyNode) (*ProxyNodeParsed, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ParseProxyNodeShareLink(raw)
+	return egress.ParseProxyNodeShareLink(raw)
 }
 
 func encryptProxyNodeConfig(value string) (string, error) {
@@ -115,11 +115,11 @@ func EncryptProxyNodeConfigForUpdate(value string) (string, error) {
 }
 
 type ProxyNodeBatchResult struct {
-	Created int                     `json:"created"`
-	Failed  int                     `json:"failed"`
-	Skipped int                     `json:"skipped"`
-	Errors  []string                `json:"errors"`
-	Items   []model.ProxyNodePublic `json:"items"`
+	Created int                      `json:"created"`
+	Failed  int                      `json:"failed"`
+	Skipped int                      `json:"skipped"`
+	Errors  []string                 `json:"errors"`
+	Items   []egress.ProxyNodePublic `json:"items"`
 }
 
 func CreateProxyNodesBatch(input ProxyNodeInput, namePrefix, proxyText string, proxyURLs []string) (*ProxyNodeBatchResult, error) {
@@ -127,11 +127,11 @@ func CreateProxyNodesBatch(input ProxyNodeInput, namePrefix, proxyText string, p
 	if strings.TrimSpace(proxyText) != "" {
 		lines = append(lines, strings.Split(proxyText, "\n")...)
 	}
-	normalized, skipped, err := NormalizeProxyNodeLines(strings.Join(lines, "\n"))
+	normalized, skipped, err := egress.NormalizeProxyNodeLines(strings.Join(lines, "\n"))
 	if err != nil {
 		return nil, err
 	}
-	result := &ProxyNodeBatchResult{Skipped: skipped, Errors: []string{}, Items: []model.ProxyNodePublic{}}
+	result := &ProxyNodeBatchResult{Skipped: skipped, Errors: []string{}, Items: []egress.ProxyNodePublic{}}
 	namePrefix = strings.TrimSpace(namePrefix)
 	if namePrefix == "" {
 		namePrefix = "Proxy Node"
@@ -156,7 +156,7 @@ func SetProxyNodesEnabled(ids []uint, enabled bool) (int64, error) {
 	if len(ids) == 0 {
 		return 0, nil
 	}
-	result := dbx.DB.Model(&model.ProxyNode{}).Where("id IN ?", ids).Update("enabled", enabled)
+	result := dbx.DB.Model(&egress.ProxyNode{}).Where("id IN ?", ids).Update("enabled", enabled)
 	return result.RowsAffected, result.Error
 }
 
@@ -164,6 +164,6 @@ func ClearProxyNodeErrors(ids []uint) (int64, error) {
 	if len(ids) == 0 {
 		return 0, nil
 	}
-	result := dbx.DB.Model(&model.ProxyNode{}).Where("id IN ?", ids).Updates(map[string]any{"last_error": "", "failure_count": 0, "cooldown_until": nil})
+	result := dbx.DB.Model(&egress.ProxyNode{}).Where("id IN ?", ids).Updates(map[string]any{"last_error": "", "failure_count": 0, "cooldown_until": nil})
 	return result.RowsAffected, result.Error
 }

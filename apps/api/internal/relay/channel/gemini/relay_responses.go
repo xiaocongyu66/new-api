@@ -3,6 +3,7 @@ package gemini
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 
@@ -15,11 +16,10 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 )
 
 func GeminiResponsesHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
-	defer service.CloseResponseBodyGracefully(resp)
+	defer egress.CloseResponseBodyGracefully(resp)
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -75,7 +75,7 @@ func GeminiResponsesHandler(c contract.Context, info *relaycommon.RelayInfo, res
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
 	}
-	service.IOCopyBytesGracefully(c, resp, responseBody)
+	egress.IOCopyBytesGracefully(c, resp, responseBody)
 	return &usage, nil
 }
 

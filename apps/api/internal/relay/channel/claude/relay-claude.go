@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 	"strings"
@@ -260,12 +261,12 @@ func HandleClaudeResponseData(c contract.Context, info *relaycommon.RelayInfo, c
 		}
 	}
 
-	service.IOCopyBytesGracefully(c, httpResp, responseData)
+	egress.IOCopyBytesGracefully(c, httpResp, responseData)
 	return nil
 }
 
 func ClaudeHandler(c contract.Context, resp *http.Response, info *relaycommon.RelayInfo) (*dto.Usage, *types.NewAPIError) {
-	defer service.CloseResponseBodyGracefully(resp)
+	defer egress.CloseResponseBodyGracefully(resp)
 
 	claudeInfo := &ClaudeResponseInfo{
 		ResponseId:   helper.GetResponseID(c),

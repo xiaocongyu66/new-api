@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"github.com/QuantumNous/new-api/internal/egress"
 	taskcap "github.com/QuantumNous/new-api/internal/task"
 
 	"errors"
@@ -446,9 +447,9 @@ func SetupContextForSelectedChannel(c contract.Context, channel *model.Channel, 
 	common.SetCtxKey(c, constant.ContextKeyChannelType, channel.Type)
 	setting := channel.GetSetting()
 	if setting.Proxy == "" {
-		if nodes, err := model.GetProxyNodesForChannelAndModel(channel, modelName); err == nil && len(nodes) > 0 {
+		if nodes, err := egress.GetProxyNodesForChannelAndModel(channel, modelName); err == nil && len(nodes) > 0 {
 			// Select the first healthy/highest health node
-			var bestNode *model.ProxyNode
+			var bestNode *egress.ProxyNode
 			for _, n := range nodes {
 				if n.Enabled && (bestNode == nil || n.Health > bestNode.Health) {
 					bestNode = n

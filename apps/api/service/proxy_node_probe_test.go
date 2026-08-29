@@ -3,10 +3,10 @@ package service
 import (
 	"context"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"testing"
 	"time"
 
-	"github.com/QuantumNous/new-api/model"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,7 +16,7 @@ import (
 func TestProxyNodeHealthSuccessCapsAndClearsFailureState(t *testing.T) {
 	now := time.Date(2026, time.August, 11, 12, 0, 0, 0, time.UTC)
 	cooldown := now.Add(time.Minute)
-	node := &model.ProxyNode{
+	node := &egress.ProxyNode{
 		Health:        0.96,
 		FailureCount:  3,
 		CooldownUntil: &cooldown,
@@ -35,7 +35,7 @@ func TestProxyNodeHealthSuccessCapsAndClearsFailureState(t *testing.T) {
 
 func TestProxyNodeHealthFailureHasFloorAndExponentialCooldownCap(t *testing.T) {
 	now := time.Date(2026, time.August, 11, 12, 0, 0, 0, time.UTC)
-	node := &model.ProxyNode{Health: 1}
+	node := &egress.ProxyNode{Health: 1}
 
 	for failure := 1; failure <= 12; failure++ {
 		ApplyProxyNodeProbeFailure(node, now, "request failed")
@@ -51,7 +51,7 @@ func TestProxyNodeHealthFailureHasFloorAndExponentialCooldownCap(t *testing.T) {
 
 func TestProxyNodeHealthFailureDoesNotLeakSensitiveError(t *testing.T) {
 	now := time.Date(2026, time.August, 11, 12, 0, 0, 0, time.UTC)
-	node := &model.ProxyNode{Health: 1}
+	node := &egress.ProxyNode{Health: 1}
 
 	ApplyProxyNodeProbeFailure(node, now, "request failed for user:pass@example.com")
 
@@ -77,7 +77,7 @@ func TestProxyNodeProbeStatsTrackOnlyProbeOperations(t *testing.T) {
 
 func TestProxyNodeProbeFailurePersistsRedactedState(t *testing.T) {
 	now := time.Date(2026, time.August, 11, 12, 0, 0, 0, time.UTC)
-	node := &model.ProxyNode{Health: 0.1}
+	node := &egress.ProxyNode{Health: 0.1}
 
 	ApplyProxyNodeProbeFailure(node, now, "https://user:password@example.com:8443/path")
 
@@ -92,11 +92,11 @@ func TestProbeProxyNodePersistsFailureState(t *testing.T) {
 	previousDB := dbx.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.ProxyNode{}))
+	require.NoError(t, db.AutoMigrate(&egress.ProxyNode{}))
 	dbx.DB = db
 	t.Cleanup(func() { dbx.DB = previousDB })
 
-	node := &model.ProxyNode{Name: "broken", Enabled: true, EncryptedProxyConfig: "not-valid-ciphertext", Health: 1}
+	node := &egress.ProxyNode{Name: "broken", Enabled: true, EncryptedProxyConfig: "not-valid-ciphertext", Health: 1}
 	require.NoError(t, db.Create(node).Error)
 
 	result, err := ProbeProxyNode(context.Background(), node)
@@ -105,7 +105,7 @@ func TestProbeProxyNodePersistsFailureState(t *testing.T) {
 	assert.False(t, result.Success)
 	assert.Equal(t, "proxy handshake failed", result.Error)
 
-	var persisted model.ProxyNode
+	var persisted egress.ProxyNode
 	require.NoError(t, db.First(&persisted, node.ID).Error)
 	assert.Equal(t, 1, persisted.FailureCount)
 	assert.Equal(t, result.Error, persisted.LastError)

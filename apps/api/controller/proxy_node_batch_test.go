@@ -3,6 +3,7 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
 	"net/http"
@@ -11,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,10 +27,10 @@ func TestBatchCreateProxyNodesKeepsValidRows(t *testing.T) {
 	response := decodeProxyNodeResponse(t, recorder)
 	require.True(t, response.Success, response.Message)
 	var result struct {
-		Created int                     `json:"created"`
-		Failed  int                     `json:"failed"`
-		Skipped int                     `json:"skipped"`
-		Items   []model.ProxyNodePublic `json:"items"`
+		Created int                      `json:"created"`
+		Failed  int                      `json:"failed"`
+		Skipped int                      `json:"skipped"`
+		Items   []egress.ProxyNodePublic `json:"items"`
 	}
 	require.NoError(t, common.Unmarshal(response.Data, &result))
 	assert.Equal(t, 2, result.Created)
@@ -40,29 +40,29 @@ func TestBatchCreateProxyNodesKeepsValidRows(t *testing.T) {
 	assert.Equal(t, "edge#1", result.Items[0].Name)
 	assert.Equal(t, "edge#3", result.Items[1].Name)
 	var count int64
-	require.NoError(t, db.Model(&model.ProxyNode{}).Count(&count).Error)
+	require.NoError(t, db.Model(&egress.ProxyNode{}).Count(&count).Error)
 	assert.Equal(t, int64(2), count)
 }
 
 func TestBatchProxyNodeStateOperationsOnlyChangeSelectedRows(t *testing.T) {
 	db := setupProxyNodeControllerTest(t)
-	first, err := service.CreateProxyNode(service.ProxyNodeInput{Name: "first", Enabled: true, Proxy: "http://one.example:8080", ScopeType: model.ProxyNodeScopeCustom})
+	first, err := service.CreateProxyNode(service.ProxyNodeInput{Name: "first", Enabled: true, Proxy: "http://one.example:8080", ScopeType: egress.ProxyNodeScopeCustom})
 	require.NoError(t, err)
-	second, err := service.CreateProxyNode(service.ProxyNodeInput{Name: "second", Enabled: false, Proxy: "http://two.example:8080", ScopeType: model.ProxyNodeScopeCustom})
+	second, err := service.CreateProxyNode(service.ProxyNodeInput{Name: "second", Enabled: false, Proxy: "http://two.example:8080", ScopeType: egress.ProxyNodeScopeCustom})
 	require.NoError(t, err)
 
 	recorder := proxyNodeContext(t, http.MethodPost, "/api/proxy/nodes/batch-enabled", "/api/proxy/nodes/batch-enabled", fmt.Sprintf(`{"ids":[%d],"enabled":false}`, first.ID), BatchSetProxyNodesEnabled)
 	assert.True(t, decodeProxyNodeResponse(t, recorder).Success)
-	var updated model.ProxyNode
+	var updated egress.ProxyNode
 	require.NoError(t, db.First(&updated, first.ID).Error)
 	assert.False(t, updated.Enabled)
-	updated = model.ProxyNode{}
+	updated = egress.ProxyNode{}
 	require.NoError(t, db.First(&updated, second.ID).Error)
 	assert.False(t, updated.Enabled)
 
-	require.NoError(t, db.Model(&model.ProxyNode{}).Where("id = ?", first.ID).Updates(map[string]any{"last_error": "failed", "failure_count": 3}).Error)
+	require.NoError(t, db.Model(&egress.ProxyNode{}).Where("id = ?", first.ID).Updates(map[string]any{"last_error": "failed", "failure_count": 3}).Error)
 	recorder = proxyNodeContext(t, http.MethodPost, "/api/proxy/nodes/batch-clear-errors", "/api/proxy/nodes/batch-clear-errors", fmt.Sprintf(`{"ids":[%d]}`, first.ID), BatchClearProxyNodeErrors)
-	updated = model.ProxyNode{}
+	updated = egress.ProxyNode{}
 	require.NoError(t, db.First(&updated, first.ID).Error)
 	assert.Empty(t, updated.LastError)
 	assert.Zero(t, updated.FailureCount)

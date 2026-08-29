@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net"
 	"os"
@@ -15,7 +16,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"golang.org/x/sync/errgroup"
 )
@@ -35,7 +35,7 @@ type ProxyConfigRequest struct {
 	Enabled        bool           `json:"enabled"`
 }
 
-// OutboundConfig mirrors service.OutboundConfig so the controller can
+// OutboundConfig mirrors egress.OutboundConfig so the controller can
 // accept and marshal proxy configuration without importing service.
 type OutboundConfig struct {
 	Type           string `json:"type"`
@@ -210,7 +210,7 @@ func UpdateProxyConfig(c contract.Context) {
 			common.CtxApiErrorMsg(c, "failed to marshal outbound config")
 			return
 		}
-		validationDialer, err := service.BuildSingBoxDialer(outboundJSON)
+		validationDialer, err := egress.BuildSingBoxDialer(outboundJSON)
 		if err != nil {
 			common.CtxApiErrorMsg(c, "invalid sing-box outbound configuration: "+err.Error())
 			return
@@ -453,7 +453,7 @@ type proxyNodeBatchClearErrorsRequest struct {
 }
 
 func ListProxyNodes(c contract.Context) {
-	var nodes []model.ProxyNode
+	var nodes []egress.ProxyNode
 	query := dbx.DB
 	if scopeType := c.Query("scope_type"); scopeType != "" {
 		query = query.Where("scope_type = ?", scopeType)
@@ -469,7 +469,7 @@ func ListProxyNodes(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	items := make([]model.ProxyNodePublic, 0, len(nodes))
+	items := make([]egress.ProxyNodePublic, 0, len(nodes))
 	for _, node := range nodes {
 		public := node.Public()
 		probeStats := service.GetProxyNodeProbeStatsFor(node.ID)
@@ -552,7 +552,7 @@ func BatchClearProxyNodeErrors(c contract.Context) {
 
 func GetProxyNodeReport(c contract.Context) {
 	var total, enabled, healthy int64
-	base := dbx.DB.Model(&model.ProxyNode{})
+	base := dbx.DB.Model(&egress.ProxyNode{})
 	if err := base.Count(&total).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -560,11 +560,11 @@ func GetProxyNodeReport(c contract.Context) {
 	// Each metric runs on its own fresh query. Reusing one query would
 	// accumulate predicates (enabled leaking into the healthy count), same
 	// class of bug as GetProxyNodesForChannel — see proxy_node_test.go.
-	if err := dbx.DB.Model(&model.ProxyNode{}).Where("enabled = ?", true).Count(&enabled).Error; err != nil {
+	if err := dbx.DB.Model(&egress.ProxyNode{}).Where("enabled = ?", true).Count(&enabled).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
-	if err := dbx.DB.Model(&model.ProxyNode{}).Where("health >= ?", service.ProxyNodeHealthyThreshold).Count(&healthy).Error; err != nil {
+	if err := dbx.DB.Model(&egress.ProxyNode{}).Where("health >= ?", service.ProxyNodeHealthyThreshold).Count(&healthy).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -589,7 +589,7 @@ func GetProxyNode(c contract.Context) {
 		common.CtxApiErrorMsg(c, "invalid proxy node id")
 		return
 	}
-	var node model.ProxyNode
+	var node egress.ProxyNode
 	if err := dbx.DB.First(&node, id).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -631,19 +631,19 @@ func UpdateProxyNode(c contract.Context) {
 		common.CtxApiErrorMsg(c, "invalid request body")
 		return
 	}
-	var node model.ProxyNode
+	var node egress.ProxyNode
 	if err := dbx.DB.First(&node, id).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
-	scopeType, scopeValue, err := model.NormalizeProxyNodeScope(req.ScopeType, req.ScopeValue)
+	scopeType, scopeValue, err := egress.NormalizeProxyNodeScope(req.ScopeType, req.ScopeValue)
 	if err != nil {
 		common.CtxApiErrorMsg(c, err.Error())
 		return
 	}
 	node.Name, node.Enabled, node.ScopeType, node.ScopeValue = strings.TrimSpace(req.Name), req.Enabled, scopeType, scopeValue
 	if req.Proxy != nil && strings.TrimSpace(*req.Proxy) != "" {
-		parsed, parseErr := service.ParseProxyNodeShareLink(*req.Proxy)
+		parsed, parseErr := egress.ParseProxyNodeShareLink(*req.Proxy)
 		if parseErr != nil {
 			common.CtxApiErrorMsg(c, parseErr.Error())
 			return
@@ -673,7 +673,7 @@ func DeleteProxyNode(c contract.Context) {
 		common.CtxApiErrorMsg(c, "invalid proxy node id")
 		return
 	}
-	if err := dbx.DB.Delete(&model.ProxyNode{}, id).Error; err != nil {
+	if err := dbx.DB.Delete(&egress.ProxyNode{}, id).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -687,7 +687,7 @@ func TestProxyNode(c contract.Context) {
 		common.CtxApiErrorMsg(c, "invalid proxy node id")
 		return
 	}
-	var node model.ProxyNode
+	var node egress.ProxyNode
 	if err := dbx.DB.First(&node, id).Error; err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -701,7 +701,7 @@ func TestProxyNode(c contract.Context) {
 }
 
 func TestAllProxyNodes(c contract.Context) {
-	var nodes []model.ProxyNode
+	var nodes []egress.ProxyNode
 	if err := dbx.DB.Where("enabled = ?", true).Find(&nodes).Error; err != nil {
 		common.CtxApiError(c, err)
 		return

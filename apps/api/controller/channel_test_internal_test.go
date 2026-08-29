@@ -3,6 +3,7 @@ package controller
 import (
 	"bytes"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	taskcap "github.com/QuantumNous/new-api/internal/task"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
@@ -18,7 +19,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/types"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -166,11 +166,11 @@ func TestCopyChannelRejectsInvalidLegacyProxySettings(t *testing.T) {
 func TestDeleteChannelResetsProxyCacheWhenPreReadFails(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
 	require.NoError(t, db.AutoMigrate(&model.Log{}))
-	service.ResetProxyClientCache()
-	t.Cleanup(service.ResetProxyClientCache)
+	egress.ResetProxyClientCache()
+	t.Cleanup(egress.ResetProxyClientCache)
 
 	proxyURL := "http://proxy.example:8080"
-	beforeDelete, err := service.GetHttpClientWithProxy(proxyURL)
+	beforeDelete, err := egress.GetHttpClientWithProxy(proxyURL)
 	require.NoError(t, err)
 
 	recorder := httptest.NewRecorder()
@@ -182,7 +182,7 @@ func TestDeleteChannelResetsProxyCacheWhenPreReadFails(t *testing.T) {
 	DeleteChannel(ctx)
 
 	assert.Contains(t, recorder.Body.String(), `"success":true`)
-	afterDelete, err := service.GetHttpClientWithProxy(proxyURL)
+	afterDelete, err := egress.GetHttpClientWithProxy(proxyURL)
 	require.NoError(t, err)
 	assert.NotSame(t, beforeDelete, afterDelete)
 }

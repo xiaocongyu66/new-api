@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 	"regexp"
@@ -17,7 +18,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/constant"
 	"github.com/QuantumNous/new-api/internal/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
@@ -485,7 +485,7 @@ func keepUpstreamRedirectResponse(_ *http.Request, _ []*http.Request) error {
 }
 
 func doRequest(c contract.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
-	client, err := service.GetHttpClientWithProxySettings(info.ChannelSetting.Proxy, info.ChannelSetting)
+	client, err := egress.GetHttpClientWithProxySettings(info.ChannelSetting.Proxy, info.ChannelSetting)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
 	}
@@ -496,7 +496,7 @@ func doRequest(c contract.Context, req *http.Request, info *common.RelayInfo) (*
 	relayClient := *client
 	relayClient.CheckRedirect = keepUpstreamRedirectResponse
 	if common2.DebugEnabled && req != nil && req.URL != nil {
-		policy := service.NormalizeHTTPTransportPolicy(info.ChannelSetting)
+		policy := egress.NormalizeHTTPTransportPolicy(info.ChannelSetting)
 		logger.LogDebug(c.HTTPRequest().Context(), fmt.Sprintf(
 			"http transport select: host=%s protocol=%s shards=%d policy=%s",
 			req.URL.Host,
@@ -535,7 +535,7 @@ func doRequest(c contract.Context, req *http.Request, info *common.RelayInfo) (*
 		return nil, errors.New("resp is nil")
 	}
 	if common2.DebugEnabled {
-		policy := service.NormalizeHTTPTransportPolicy(info.ChannelSetting)
+		policy := egress.NormalizeHTTPTransportPolicy(info.ChannelSetting)
 		logger.LogDebug(c.HTTPRequest().Context(), fmt.Sprintf(
 			"http transport negotiated: host=%s protocol=%s shards=%d policy=%s negotiated=%s",
 			req.URL.Host,

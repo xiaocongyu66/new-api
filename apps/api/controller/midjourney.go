@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/billing"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"io"
 	"net/http"
@@ -17,7 +18,6 @@ import (
 	taskcap "github.com/QuantumNous/new-api/internal/task"
 	"github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 )
 
 // midjourneyPollSummary is the result recorded on a midjourney_poll system task
@@ -119,7 +119,7 @@ func runMidjourneyTaskUpdateOnce(ctx context.Context, report func(processed, tot
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("mj-api-secret", midjourneyChannel.Key)
-		resp, err := service.GetHttpClient().Do(req)
+		resp, err := egress.GetHttpClient().Do(req)
 		if err != nil {
 			logger.LogError(ctx, fmt.Sprintf("Get Task Do req error: %v", err))
 			cancel()

@@ -2,6 +2,7 @@ package minimax
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 	"strconv"
@@ -11,7 +12,6 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
@@ -180,7 +180,7 @@ func miniMaxImageHandler(c contract.Context, resp *http.Response, info *relaycom
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
-	service.CloseResponseBodyGracefully(resp)
+	egress.CloseResponseBodyGracefully(resp)
 
 	var minimaxResponse MiniMaxImageResponse
 	if err := common.Unmarshal(responseBody, &minimaxResponse); err != nil {

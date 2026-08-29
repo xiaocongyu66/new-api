@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"image"
 	"io"
 	"net/http"
@@ -67,7 +68,7 @@ func DecodeBase64FileData(base64String string) (string, string, error) {
 
 // GetImageFromUrl 获取图片的类型和base64编码的数据
 func GetImageFromUrl(url string) (mimeType string, data string, err error) {
-	resp, err := DoDownloadRequest(url)
+	resp, err := egress.DoDownloadRequest(url)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to download image: %w", err)
 	}

@@ -1,6 +1,7 @@
 package xai
 
 import (
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 	"strings"
@@ -73,12 +74,12 @@ func xAIStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *htt
 	}
 
 	helper.Done(c)
-	service.CloseResponseBodyGracefully(resp)
+	egress.CloseResponseBodyGracefully(resp)
 	return usage, nil
 }
 
 func xAIHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
-	defer service.CloseResponseBodyGracefully(resp)
+	defer egress.CloseResponseBodyGracefully(resp)
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -100,7 +101,7 @@ func xAIHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Resp
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
 
-	service.IOCopyBytesGracefully(c, resp, encodeJson)
+	egress.IOCopyBytesGracefully(c, resp, encodeJson)
 
 	return xaiResponse.Usage, nil
 }

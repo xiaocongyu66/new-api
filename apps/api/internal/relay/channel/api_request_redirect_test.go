@@ -2,6 +2,7 @@ package channel
 
 import (
 	"bytes"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
@@ -11,16 +12,15 @@ import (
 	"testing"
 
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestDoRequestReturnsUpstreamRedirectWithoutFollowing(t *testing.T) {
-	service.InitHttpClient()
+	egress.InitHttpClient()
 	gin.SetMode(gin.TestMode)
-	sharedClient := service.GetHttpClient()
+	sharedClient := egress.GetHttpClient()
 	require.NotNil(t, sharedClient)
 	require.NotNil(t, sharedClient.CheckRedirect)
 	originalRedirectPolicy := reflect.ValueOf(sharedClient.CheckRedirect).Pointer()

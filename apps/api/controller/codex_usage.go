@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strconv"
@@ -99,7 +100,7 @@ func fetchCodexChannelWhamData(
 		return
 	}
 
-	client, err := service.GetHttpClientWithProxy(ch.GetSetting().Proxy)
+	client, err := egress.GetHttpClientWithProxy(ch.GetSetting().Proxy)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return

@@ -3,6 +3,7 @@ package ollama
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 	"strings"
@@ -15,7 +16,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
@@ -99,7 +99,7 @@ func ollamaStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *
 	if resp == nil || resp.Body == nil {
 		return nil, types.NewOpenAIError(fmt.Errorf("empty response"), types.ErrorCodeBadResponse, http.StatusBadRequest)
 	}
-	defer service.CloseResponseBodyGracefully(resp)
+	defer egress.CloseResponseBodyGracefully(resp)
 
 	helper.SetEventStreamHeaders(c)
 	scanner := helper.NewStreamScanner(resp.Body)
@@ -212,7 +212,7 @@ func ollamaChatHandler(c contract.Context, info *relaycommon.RelayInfo, resp *ht
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
-	service.CloseResponseBodyGracefully(resp)
+	egress.CloseResponseBodyGracefully(resp)
 	raw := string(body)
 	if common.DebugEnabled {
 		println("ollama non-stream raw resp:", raw)
@@ -334,7 +334,7 @@ func ollamaChatHandler(c contract.Context, info *relaycommon.RelayInfo, resp *ht
 		Usage: *usage,
 	}
 	out, _ := common.Marshal(full)
-	service.IOCopyBytesGracefully(c, resp, out)
+	egress.IOCopyBytesGracefully(c, resp, out)
 	return usage, nil
 }
 

@@ -2,6 +2,7 @@ package palm
 
 import (
 	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 
@@ -63,7 +64,7 @@ func palmStreamHandler(c contract.Context, resp *http.Response) (*types.NewAPIEr
 			stopChan <- true
 			return
 		}
-		service.CloseResponseBodyGracefully(resp)
+		egress.CloseResponseBodyGracefully(resp)
 		var palmResponse PaLMChatResponse
 		err = json.Unmarshal(responseBody, &palmResponse)
 		if err != nil {
@@ -99,7 +100,7 @@ pollLoop:
 			break pollLoop
 		}
 	}
-	service.CloseResponseBodyGracefully(resp)
+	egress.CloseResponseBodyGracefully(resp)
 	return nil, responseText
 }
 
@@ -108,7 +109,7 @@ func palmHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Res
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
-	service.CloseResponseBodyGracefully(resp)
+	egress.CloseResponseBodyGracefully(resp)
 	var palmResponse PaLMChatResponse
 	err = json.Unmarshal(responseBody, &palmResponse)
 	if err != nil {
@@ -131,6 +132,6 @@ func palmHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Res
 	}
 	c.ResponseWriter().Header().Set("Content-Type", "application/json")
 	c.ResponseWriter().WriteHeader(resp.StatusCode)
-	service.IOCopyBytesGracefully(c, resp, jsonResponse)
+	egress.IOCopyBytesGracefully(c, resp, jsonResponse)
 	return usage, nil
 }

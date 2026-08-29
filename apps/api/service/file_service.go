@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
@@ -161,7 +162,7 @@ func loadFromURL(c contract.Context, url string, reason ...string) (*types.Cache
 	if common.DebugEnabled {
 		logger.LogDebug(c.Context(), "loadFromURL: initiating download")
 	}
-	resp, err := DoDownloadRequest(url, reason...)
+	resp, err := egress.DoDownloadRequest(url, reason...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download file from %s: %w", url, err)
 	}

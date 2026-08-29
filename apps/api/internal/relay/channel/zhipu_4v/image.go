@@ -1,6 +1,7 @@
 package zhipu_4v
 
 import (
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 
@@ -59,7 +60,7 @@ func zhipu4vImageHandler(c contract.Context, resp *http.Response, info *relaycom
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
-	service.CloseResponseBodyGracefully(resp)
+	egress.CloseResponseBodyGracefully(resp)
 
 	var zhipuResp zhipuImageResponse
 	if err := common.Unmarshal(responseBody, &zhipuResp); err != nil {
@@ -121,7 +122,7 @@ func zhipu4vImageHandler(c contract.Context, resp *http.Response, info *relaycom
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
 
-	service.IOCopyBytesGracefully(c, resp, jsonResp)
+	egress.IOCopyBytesGracefully(c, resp, jsonResp)
 
 	return &dto.Usage{}, nil
 }

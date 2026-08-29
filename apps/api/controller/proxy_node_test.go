@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
@@ -13,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -34,7 +34,7 @@ func setupProxyNodeControllerTest(t *testing.T) *gorm.DB {
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=private", t.Name())
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.ProxyNode{}))
+	require.NoError(t, db.AutoMigrate(&egress.ProxyNode{}))
 	dbx.DB = db
 	common.CryptoSecret = "proxy-node-controller-test-secret"
 	t.Cleanup(func() {
@@ -62,7 +62,7 @@ func decodeProxyNodeResponse(t *testing.T, recorder *httptest.ResponseRecorder) 
 func TestListProxyNodesRedactsStoredConfiguration(t *testing.T) {
 	db := setupProxyNodeControllerTest(t)
 	_, err := service.CreateProxyNode(service.ProxyNodeInput{
-		Name: "edge", Enabled: true, Proxy: "http://user:pass@example.com:8080", ScopeType: model.ProxyNodeScopeCustom,
+		Name: "edge", Enabled: true, Proxy: "http://user:pass@example.com:8080", ScopeType: egress.ProxyNodeScopeCustom,
 	})
 	require.NoError(t, err)
 
@@ -73,11 +73,11 @@ func TestListProxyNodesRedactsStoredConfiguration(t *testing.T) {
 	assert.NotContains(t, recorder.Body.String(), "example.com")
 	assert.NotContains(t, recorder.Body.String(), "user")
 	assert.NotContains(t, recorder.Body.String(), "pass")
-	var items []model.ProxyNodePublic
+	var items []egress.ProxyNodePublic
 	require.NoError(t, common.Unmarshal(response.Data, &items))
 	require.Len(t, items, 1)
 	assert.True(t, items[0].ProxyConfigured)
-	assert.NoError(t, db.Model(&model.ProxyNode{}).Where("name = ?", "edge").Error)
+	assert.NoError(t, db.Model(&egress.ProxyNode{}).Where("name = ?", "edge").Error)
 }
 
 func TestCreateProxyNodeRejectsInvalidScopeWithoutPersistence(t *testing.T) {
@@ -87,14 +87,14 @@ func TestCreateProxyNodeRejectsInvalidScopeWithoutPersistence(t *testing.T) {
 	response := decodeProxyNodeResponse(t, recorder)
 	assert.False(t, response.Success)
 	var count int64
-	require.NoError(t, db.Model(&model.ProxyNode{}).Count(&count).Error)
+	require.NoError(t, db.Model(&egress.ProxyNode{}).Count(&count).Error)
 	assert.Zero(t, count)
 }
 
 func TestUpdateProxyNodeWithoutProxyPreservesEncryptedConfiguration(t *testing.T) {
 	db := setupProxyNodeControllerTest(t)
 	node, err := service.CreateProxyNode(service.ProxyNodeInput{
-		Name: "before", Enabled: true, Proxy: "http://user:pass@example.com:8080", ScopeType: model.ProxyNodeScopeCustom,
+		Name: "before", Enabled: true, Proxy: "http://user:pass@example.com:8080", ScopeType: egress.ProxyNodeScopeCustom,
 	})
 	require.NoError(t, err)
 	originalCiphertext := node.EncryptedProxyConfig
@@ -103,7 +103,7 @@ func TestUpdateProxyNodeWithoutProxyPreservesEncryptedConfiguration(t *testing.T
 
 	response := decodeProxyNodeResponse(t, recorder)
 	require.True(t, response.Success, response.Message)
-	var updated model.ProxyNode
+	var updated egress.ProxyNode
 	require.NoError(t, db.First(&updated, node.ID).Error)
 	assert.Equal(t, originalCiphertext, updated.EncryptedProxyConfig)
 	assert.Equal(t, "after", updated.Name)
@@ -113,7 +113,7 @@ func TestUpdateProxyNodeWithoutProxyPreservesEncryptedConfiguration(t *testing.T
 func TestUpdateProxyNodeWithEmptyProxyPreservesEncryptedConfiguration(t *testing.T) {
 	db := setupProxyNodeControllerTest(t)
 	node, err := service.CreateProxyNode(service.ProxyNodeInput{
-		Name: "before", Enabled: true, Proxy: "http://user:pass@example.com:8080", ScopeType: model.ProxyNodeScopeCustom,
+		Name: "before", Enabled: true, Proxy: "http://user:pass@example.com:8080", ScopeType: egress.ProxyNodeScopeCustom,
 	})
 	require.NoError(t, err)
 	originalCiphertext := node.EncryptedProxyConfig
@@ -122,7 +122,7 @@ func TestUpdateProxyNodeWithEmptyProxyPreservesEncryptedConfiguration(t *testing
 
 	response := decodeProxyNodeResponse(t, recorder)
 	require.True(t, response.Success, response.Message)
-	var updated model.ProxyNode
+	var updated egress.ProxyNode
 	require.NoError(t, db.First(&updated, node.ID).Error)
 	assert.Equal(t, originalCiphertext, updated.EncryptedProxyConfig)
 }
@@ -133,19 +133,19 @@ func TestGetProxyNodeReportCountsHealthyNodesRegardlessOfEnabled(t *testing.T) {
 	// but not toward `enabled`. Regression guard for the GORM query-chain bug
 	// where the enabled predicate leaked into the healthy count.
 	disabled, err := service.CreateProxyNode(service.ProxyNodeInput{
-		Name: "disabled-healthy", Enabled: false, Proxy: "http://one.example:8080", ScopeType: model.ProxyNodeScopeCustom,
+		Name: "disabled-healthy", Enabled: false, Proxy: "http://one.example:8080", ScopeType: egress.ProxyNodeScopeCustom,
 	})
 	require.NoError(t, err)
-	require.NoError(t, db.Model(&model.ProxyNode{}).Where("id = ?", disabled.ID).
+	require.NoError(t, db.Model(&egress.ProxyNode{}).Where("id = ?", disabled.ID).
 		Updates(map[string]any{"health": 0.9}).Error)
 	enabled, err := service.CreateProxyNode(service.ProxyNodeInput{
-		Name: "enabled-unhealthy", Enabled: true, Proxy: "http://two.example:8080", ScopeType: model.ProxyNodeScopeCustom,
+		Name: "enabled-unhealthy", Enabled: true, Proxy: "http://two.example:8080", ScopeType: egress.ProxyNodeScopeCustom,
 	})
 	require.NoError(t, err)
 	// CreateProxyNode seeds Health=1; drive the enabled node below the healthy
 	// threshold so only the disabled node should count as healthy. Under the
 	// query-chain bug, the leaked enabled predicate drops it and healthy==0.
-	require.NoError(t, db.Model(&model.ProxyNode{}).Where("id = ?", enabled.ID).
+	require.NoError(t, db.Model(&egress.ProxyNode{}).Where("id = ?", enabled.ID).
 		Updates(map[string]any{"health": 0.1}).Error)
 
 	recorder := proxyNodeContext(t, http.MethodGet, "/api/proxy/nodes/report", "/api/proxy/nodes/report", "", GetProxyNodeReport)
@@ -166,7 +166,7 @@ func TestGetProxyNodeReportCountsHealthyNodesRegardlessOfEnabled(t *testing.T) {
 func TestGetProxyNodeReturnsEditableLinkOnlyFromDetailEndpoint(t *testing.T) {
 	setupProxyNodeControllerTest(t)
 	node, err := service.CreateProxyNode(service.ProxyNodeInput{
-		Name: "edge", Enabled: true, Proxy: "http://user:pass@example.com:8080", ScopeType: model.ProxyNodeScopeCustom,
+		Name: "edge", Enabled: true, Proxy: "http://user:pass@example.com:8080", ScopeType: egress.ProxyNodeScopeCustom,
 	})
 	require.NoError(t, err)
 
@@ -178,8 +178,8 @@ func TestGetProxyNodeReturnsEditableLinkOnlyFromDetailEndpoint(t *testing.T) {
 	response := decodeProxyNodeResponse(t, recorder)
 	require.True(t, response.Success, response.Message)
 	var detail struct {
-		Node  model.ProxyNodePublic `json:"node"`
-		Proxy string                `json:"proxy"`
+		Node  egress.ProxyNodePublic `json:"node"`
+		Proxy string                 `json:"proxy"`
 	}
 	require.NoError(t, common.Unmarshal(response.Data, &detail))
 	assert.Equal(t, "http://user:pass@example.com:8080", detail.Proxy)
@@ -194,14 +194,14 @@ func TestAllProxyNodesProbesEnabledNodesAndReportsCounts(t *testing.T) {
 	for i := 0; i < enabledCount; i++ {
 		_, err := service.CreateProxyNode(service.ProxyNodeInput{
 			Name: fmt.Sprintf("probe-%d", i), Enabled: true,
-			Proxy: "http://127.0.0.1:9", ScopeType: model.ProxyNodeScopeCustom,
+			Proxy: "http://127.0.0.1:9", ScopeType: egress.ProxyNodeScopeCustom,
 		})
 		require.NoError(t, err)
 	}
 	// Disabled node must be excluded from the batch.
 	_, err := service.CreateProxyNode(service.ProxyNodeInput{
 		Name: "disabled", Enabled: false,
-		Proxy: "http://127.0.0.1:9", ScopeType: model.ProxyNodeScopeCustom,
+		Proxy: "http://127.0.0.1:9", ScopeType: egress.ProxyNodeScopeCustom,
 	})
 	require.NoError(t, err)
 

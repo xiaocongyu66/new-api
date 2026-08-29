@@ -142,7 +142,7 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 	}
 
 	if needSensitiveCheck && meta != nil {
-		if hit, labels := service.CheckSensitiveText(meta.CombineText); hit && len(labels) > 0 {
+		if hit, labels := sensitive.CheckSensitiveText(meta.CombineText); hit && len(labels) > 0 {
 			logger.LogWarn(c.Context(), fmt.Sprintf("input blocked by sensitive filter: %s", labels[0]))
 			newAPIError = types.NewError(err, types.ErrorCodeSensitiveWordsDetected, types.ErrOptionWithStatusCode(http.StatusForbidden))
 			return
@@ -152,7 +152,7 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 	// 目标域名硬闸独立于敏感词开关：请求包含攻击目标站点即无条件终止，
 	// 不受 CheckSensitiveOnPromptEnabled 等开关影响（用户要求任何输入输出都终止）。
 	if meta != nil {
-		if d := service.CheckSensitiveTargets(meta.CombineText); d != "" {
+		if d := sensitive.CheckSensitiveTargets(meta.CombineText); d != "" {
 			logger.LogWarn(c.Context(), fmt.Sprintf("input blocked by target domain: %s", d))
 			newAPIError = types.NewErrorWithStatusCode(err, types.ErrorCodeSensitiveWordsDetected, http.StatusForbidden)
 			return

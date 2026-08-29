@@ -3,6 +3,7 @@ package cloudflare
 import (
 	"bufio"
 	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 	"strings"
@@ -85,7 +86,7 @@ func cfStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http
 	}
 	helper.Done(c)
 
-	service.CloseResponseBodyGracefully(resp)
+	egress.CloseResponseBodyGracefully(resp)
 
 	return nil, usage
 }
@@ -95,7 +96,7 @@ func cfHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil
 	}
-	service.CloseResponseBodyGracefully(resp)
+	egress.CloseResponseBodyGracefully(resp)
 	var response dto.TextResponse
 	err = json.Unmarshal(responseBody, &response)
 	if err != nil {
@@ -125,7 +126,7 @@ func cfSTTHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Re
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil
 	}
-	service.CloseResponseBodyGracefully(resp)
+	egress.CloseResponseBodyGracefully(resp)
 	err = json.Unmarshal(responseBody, &cfResp)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil

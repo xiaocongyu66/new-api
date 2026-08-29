@@ -5,14 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/QuantumNous/new-api/model"
 )
 
 const (
@@ -29,10 +28,10 @@ const (
 )
 
 type ProxyNodeProbeResult struct {
-	Node       model.ProxyNodePublic `json:"node"`
-	Success    bool                  `json:"success"`
-	DurationMS int64                 `json:"duration_ms"`
-	Error      string                `json:"error,omitempty"`
+	Node       egress.ProxyNodePublic `json:"node"`
+	Success    bool                   `json:"success"`
+	DurationMS int64                  `json:"duration_ms"`
+	Error      string                 `json:"error,omitempty"`
 }
 
 type ProxyNodeProbeStats struct {
@@ -109,7 +108,7 @@ func recordProxyNodeProbeResult(success bool) {
 	proxyNodeProbeStats.active.Add(-1)
 }
 
-func ApplyProxyNodeProbeSuccess(node *model.ProxyNode, now time.Time) {
+func ApplyProxyNodeProbeSuccess(node *egress.ProxyNode, now time.Time) {
 	node.Health = min(1, node.Health+proxyNodeHealthStep)
 	node.FailureCount = 0
 	node.CooldownUntil = nil
@@ -117,7 +116,7 @@ func ApplyProxyNodeProbeSuccess(node *model.ProxyNode, now time.Time) {
 	node.LastProbeAt = &now
 }
 
-func ApplyProxyNodeProbeFailure(node *model.ProxyNode, now time.Time, probeError string) {
+func ApplyProxyNodeProbeFailure(node *egress.ProxyNode, now time.Time, probeError string) {
 	node.Health = max(ProxyNodeHealthFloor, node.Health*proxyNodeHealthDecay)
 	node.FailureCount++
 	cooldown := now.Add(proxyNodeProbeCooldown(node.FailureCount))
@@ -133,7 +132,7 @@ func proxyNodeProbeCooldown(failureCount int) time.Duration {
 	return min(ProxyNodeProbeCooldownMax, proxyNodeProbeCooldownBase<<min(failureCount-1, 4))
 }
 
-func ProbeProxyNode(ctx context.Context, node *model.ProxyNode) (*ProxyNodeProbeResult, error) {
+func ProbeProxyNode(ctx context.Context, node *egress.ProxyNode) (*ProxyNodeProbeResult, error) {
 	if node == nil {
 		return nil, fmt.Errorf("proxy node is nil")
 	}
@@ -160,7 +159,7 @@ func ProbeProxyNode(ctx context.Context, node *model.ProxyNode) (*ProxyNodeProbe
 		return persistProxyNodeProbeFailure(node, now, startedAt, result, err)
 	}
 
-	dialer, err := BuildSingBoxDialer(json.RawMessage(parsed.OutboundJSON))
+	dialer, err := egress.BuildSingBoxDialer(json.RawMessage(parsed.OutboundJSON))
 	if err != nil {
 		return persistProxyNodeProbeFailure(node, now, startedAt, result, err)
 	}
@@ -200,7 +199,7 @@ func ProbeProxyNode(ctx context.Context, node *model.ProxyNode) (*ProxyNodeProbe
 	return result, nil
 }
 
-func persistProxyNodeProbeFailure(node *model.ProxyNode, now, startedAt time.Time, result *ProxyNodeProbeResult, probeErr error) (*ProxyNodeProbeResult, error) {
+func persistProxyNodeProbeFailure(node *egress.ProxyNode, now, startedAt time.Time, result *ProxyNodeProbeResult, probeErr error) (*ProxyNodeProbeResult, error) {
 	ApplyProxyNodeProbeFailure(node, now, probeErr.Error())
 	if err := dbx.DB.Save(node).Error; err != nil {
 		return nil, fmt.Errorf("persist proxy node probe failure: %w", err)

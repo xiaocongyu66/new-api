@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 
@@ -18,7 +19,7 @@ import (
 )
 
 func GeminiTextGenerationHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
-	defer service.CloseResponseBodyGracefully(resp)
+	defer egress.CloseResponseBodyGracefully(resp)
 
 	// 读取响应体
 	responseBody, err := io.ReadAll(resp.Body)
@@ -42,13 +43,13 @@ func GeminiTextGenerationHandler(c contract.Context, info *relaycommon.RelayInfo
 	// 计算使用量（优先上游 UsageMetadata，缺失时本地估算并保留 Gemini 计费语义）
 	usage := buildUsageFromGeminiResponse(c, info, &geminiResponse)
 
-	service.IOCopyBytesGracefully(c, resp, responseBody)
+	egress.IOCopyBytesGracefully(c, resp, responseBody)
 
 	return &usage, nil
 }
 
 func NativeGeminiEmbeddingHandler(c contract.Context, resp *http.Response, info *relaycommon.RelayInfo) (*dto.Usage, *types.NewAPIError) {
-	defer service.CloseResponseBodyGracefully(resp)
+	defer egress.CloseResponseBodyGracefully(resp)
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -73,7 +74,7 @@ func NativeGeminiEmbeddingHandler(c contract.Context, resp *http.Response, info 
 		}
 	}
 
-	service.IOCopyBytesGracefully(c, resp, responseBody)
+	egress.IOCopyBytesGracefully(c, resp, responseBody)
 
 	return usage, nil
 }

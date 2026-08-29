@@ -3,6 +3,7 @@ package openai
 import (
 	"bufio"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 	"strings"
@@ -25,7 +26,7 @@ func OaiResponsesToChatHandler(c contract.Context, info *relaycommon.RelayInfo, 
 		return nil, types.NewOpenAIError(fmt.Errorf("invalid response"), types.ErrorCodeBadResponse, http.StatusInternalServerError)
 	}
 
-	defer service.CloseResponseBodyGracefully(resp)
+	defer egress.CloseResponseBodyGracefully(resp)
 
 	var responsesResp dto.OpenAIResponsesResponse
 	body, err := io.ReadAll(resp.Body)
@@ -73,7 +74,7 @@ func OaiResponsesToChatHandler(c contract.Context, info *relaycommon.RelayInfo, 
 		return nil, types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
 	}
 
-	service.IOCopyBytesGracefully(c, resp, responseBody)
+	egress.IOCopyBytesGracefully(c, resp, responseBody)
 	return usage, nil
 }
 
@@ -81,7 +82,7 @@ func OaiResponsesToChatBufferedStreamHandler(c contract.Context, info *relaycomm
 	if resp == nil || resp.Body == nil {
 		return nil, types.NewOpenAIError(fmt.Errorf("invalid response"), types.ErrorCodeBadResponse, http.StatusInternalServerError)
 	}
-	defer service.CloseResponseBodyGracefully(resp)
+	defer egress.CloseResponseBodyGracefully(resp)
 
 	accumulator := relayconvert.NewResponsesBufferedAccumulator()
 	var finalResponse *dto.OpenAIResponsesResponse
@@ -181,7 +182,7 @@ func OaiResponsesToChatBufferedStreamHandler(c contract.Context, info *relaycomm
 		return nil, types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
 	}
 
-	service.IOCopyBytesGracefully(c, resp, responseBody)
+	egress.IOCopyBytesGracefully(c, resp, responseBody)
 	return usage, nil
 }
 
@@ -190,7 +191,7 @@ func OaiResponsesToChatStreamHandler(c contract.Context, info *relaycommon.Relay
 		return nil, types.NewOpenAIError(fmt.Errorf("invalid response"), types.ErrorCodeBadResponse, http.StatusInternalServerError)
 	}
 
-	defer service.CloseResponseBodyGracefully(resp)
+	defer egress.CloseResponseBodyGracefully(resp)
 
 	responseId := helper.GetResponseID(c)
 	createAt := time.Now().Unix()

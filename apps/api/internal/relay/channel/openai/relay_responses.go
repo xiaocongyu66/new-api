@@ -2,6 +2,7 @@ package openai
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 	"strings"
@@ -18,7 +19,7 @@ import (
 )
 
 func OaiResponsesHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
-	defer service.CloseResponseBodyGracefully(resp)
+	defer egress.CloseResponseBodyGracefully(resp)
 
 	// read response body
 	var responsesResponse dto.OpenAIResponsesResponse
@@ -35,7 +36,7 @@ func OaiResponsesHandler(c contract.Context, info *relaycommon.RelayInfo, resp *
 	}
 
 	// 写入新的 response body
-	service.IOCopyBytesGracefully(c, resp, responseBody)
+	egress.IOCopyBytesGracefully(c, resp, responseBody)
 
 	// compute usage
 	usage := dto.Usage{}
@@ -78,7 +79,7 @@ func OaiResponsesStreamHandler(c contract.Context, info *relaycommon.RelayInfo, 
 		return nil, types.NewError(fmt.Errorf("invalid response"), types.ErrorCodeBadResponse)
 	}
 
-	defer service.CloseResponseBodyGracefully(resp)
+	defer egress.CloseResponseBodyGracefully(resp)
 
 	var usage = &dto.Usage{}
 	var responseTextBuilder strings.Builder

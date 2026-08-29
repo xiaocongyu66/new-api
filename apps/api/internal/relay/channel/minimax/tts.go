@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 	"strings"
@@ -13,7 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 )
 
 type MiniMaxTTSRequest struct {
@@ -185,7 +185,7 @@ func handleChatCompletionResponse(c contract.Context, resp *http.Response, info 
 
 	// Set response headers
 	for key, values := range resp.Header {
-		if !service.ShouldCopyUpstreamHeader(c, key, values) {
+		if !egress.ShouldCopyUpstreamHeader(c, key, values) {
 			continue
 		}
 		for _, value := range values {

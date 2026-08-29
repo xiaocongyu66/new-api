@@ -3,6 +3,7 @@ package kling
 import (
 	"bytes"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"math"
 	"net/http"
@@ -245,7 +246,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("User-Agent", "kling-sdk/1.0")
 
-	client, err := service.GetHttpClientWithProxy(proxy)
+	client, err := egress.GetHttpClientWithProxy(proxy)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
 	}

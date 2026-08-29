@@ -30,7 +30,6 @@ func init() {
 		dbx.Migration{Model: &SystemInstance{}, Name: "SystemInstance"},
 		dbx.Migration{Model: &SystemTask{}, Name: "SystemTask"},
 		dbx.Migration{Model: &SystemTaskLock{}, Name: "SystemTaskLock"},
-		dbx.Migration{Model: &ProxyNode{}, Name: "ProxyNode"},
 		dbx.Migration{Model: &GatewayConfigRevision{}, Name: "GatewayConfigRevision"},
 		dbx.Migration{Model: &GatewayConfigOutbox{}, Name: "GatewayConfigOutbox"},
 		dbx.Migration{Model: &ChannelModelHealth{}, Name: "ChannelModelHealth"},

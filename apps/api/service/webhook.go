@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"net/http"
 	"time"
 
@@ -59,7 +60,7 @@ func SendWebhookNotify(webhookURL string, secret string, data dto.Notify) error 
 
 	if fetch_url.EnableWorker() {
 		// 构建worker请求数据
-		workerReq := &WorkerRequest{
+		workerReq := &egress.WorkerRequest{
 			URL:    webhookURL,
 			Key:    fetch_url.WorkerValidKey,
 			Method: http.MethodPost,
@@ -76,7 +77,7 @@ func SendWebhookNotify(webhookURL string, secret string, data dto.Notify) error 
 			workerReq.Headers["Authorization"] = "Bearer " + secret
 		}
 
-		resp, err = DoWorkerRequest(workerReq)
+		resp, err = egress.DoWorkerRequest(workerReq)
 		if err != nil {
 			return fmt.Errorf("failed to send webhook request through worker: %v", err)
 		}
@@ -88,7 +89,7 @@ func SendWebhookNotify(webhookURL string, secret string, data dto.Notify) error 
 		}
 	} else {
 		// SSRF防护：验证Webhook URL（非Worker模式）
-		if err := ValidateSSRFProtectedFetchURL(webhookURL); err != nil {
+		if err := egress.ValidateSSRFProtectedFetchURL(webhookURL); err != nil {
 			return fmt.Errorf("request reject: %v", err)
 		}
 
@@ -107,7 +108,7 @@ func SendWebhookNotify(webhookURL string, secret string, data dto.Notify) error 
 		}
 
 		// 发送请求
-		client := GetSSRFProtectedHTTPClient()
+		client := egress.GetSSRFProtectedHTTPClient()
 		resp, err = client.Do(req)
 		if err != nil {
 			return fmt.Errorf("failed to send webhook request: %v", err)

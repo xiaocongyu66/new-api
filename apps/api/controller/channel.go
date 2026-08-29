@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/billing"
 	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/usage"
 	"net/http"
@@ -719,9 +720,9 @@ func DeleteChannel(c contract.Context) {
 	}
 	model.InitChannelCache()
 	if channelLookupFailed {
-		service.ResetProxyClientCache()
+		egress.ResetProxyClientCache()
 	} else {
-		service.InvalidateProxyClient(channelProxy)
+		egress.InvalidateProxyClient(channelProxy)
 	}
 	usage.RecordManageAudit(c, "channel.delete", map[string]interface{}{
 		"id":   id,
@@ -742,7 +743,7 @@ func DeleteDisabledChannel(c contract.Context) {
 	}
 	model.InitChannelCache()
 	if rows > 0 {
-		service.ResetProxyClientCache()
+		egress.ResetProxyClientCache()
 	}
 	usage.RecordManageAudit(c, "channel.delete_disabled", map[string]interface{}{
 		"count": rows,
@@ -901,7 +902,7 @@ func DeleteChannelBatch(c contract.Context) {
 	}
 	model.InitChannelCache()
 	if deletedCount > 0 {
-		service.ResetProxyClientCache()
+		egress.ResetProxyClientCache()
 	}
 	usage.RecordManageAudit(c, "channel.delete_batch", map[string]interface{}{
 		"count": deletedCount,
@@ -971,8 +972,8 @@ func UpdateChannel(c contract.Context) {
 	originProxy := originChannel.GetSetting().Proxy
 	proxyChanged := false
 	if _, settingProvided := requestData["setting"]; settingProvided {
-		newProxy, _ := service.NormalizeProxyURL(channel.GetSetting().Proxy)
-		normalizedOriginProxy, originProxyErr := service.NormalizeProxyURL(originProxy)
+		newProxy, _ := egress.NormalizeProxyURL(channel.GetSetting().Proxy)
+		normalizedOriginProxy, originProxyErr := egress.NormalizeProxyURL(originProxy)
 		proxyChanged = originProxyErr != nil || normalizedOriginProxy != newProxy
 	}
 
@@ -1077,7 +1078,7 @@ func UpdateChannel(c contract.Context) {
 	}
 	model.InitChannelCache()
 	if proxyChanged {
-		service.InvalidateProxyClient(originProxy)
+		egress.InvalidateProxyClient(originProxy)
 	}
 	// 记录变更的字段名（语言无关的字段标识），密钥仅记录"已更换"绝不记录内容。
 	changedFields := make([]string, 0)

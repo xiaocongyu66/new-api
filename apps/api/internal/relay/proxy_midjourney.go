@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/billing"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"log"
 	"net/http"
@@ -43,7 +44,7 @@ func RelayMidjourneyImage(c contract.Context) {
 	if channel, err := model.CacheGetChannel(midjourneyTask.ChannelId); err == nil {
 		proxy = channel.GetSetting().Proxy
 		if proxy != "" {
-			if httpClient, err = service.GetHttpClientWithProxy(proxy); err != nil {
+			if httpClient, err = egress.GetHttpClientWithProxy(proxy); err != nil {
 				c.JSON(400, map[string]any{
 					"error": "proxy_url_invalid",
 				})
@@ -52,11 +53,11 @@ func RelayMidjourneyImage(c contract.Context) {
 		}
 	}
 	if httpClient == nil {
-		httpClient = service.GetSSRFProtectedHTTPClient()
+		httpClient = egress.GetSSRFProtectedHTTPClient()
 	}
 	var validateErr error
 	if proxy == "" {
-		validateErr = service.ValidateSSRFProtectedFetchURL(midjourneyTask.ImageUrl)
+		validateErr = egress.ValidateSSRFProtectedFetchURL(midjourneyTask.ImageUrl)
 	} else {
 		// 渠道代理路径的连接由代理侧建立，无法做拨号时逐 IP 校验，
 		// 因此保留请求前的一次性 SSRF 校验。
@@ -330,7 +331,7 @@ func RelayMidjourneyTaskImageSeed(c contract.Context) *dto.MidjourneyResponse {
 	if err != nil {
 		return service.MidjourneyErrorWrapper(constant.MjRequestError, "unmarshal_response_body_failed")
 	}
-	service.IOCopyBytesGracefully(c, nil, respBody)
+	egress.IOCopyBytesGracefully(c, nil, respBody)
 	return nil
 }
 

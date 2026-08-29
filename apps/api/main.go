@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/billing"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"github.com/QuantumNous/new-api/internal/identity"
 	"log"
 	"net/http"
@@ -85,7 +86,7 @@ func main() {
 		}
 	}()
 	// Close the in-process sing-box dialer on shutdown (Issue #57).
-	defer service.CloseSingBoxDialer()
+	defer egress.CloseSingBoxDialer()
 
 	if common.RedisEnabled {
 		// for compatibility with old versions
@@ -319,7 +320,7 @@ func InitResources() error {
 	// Initialize model settings
 	ratio_setting.InitRatioSettings()
 
-	service.InitHttpClient()
+	egress.InitHttpClient()
 
 	service.InitTokenEncoders()
 

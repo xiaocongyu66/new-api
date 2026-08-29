@@ -2,6 +2,7 @@ package openai
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 	"strings"
@@ -107,7 +108,7 @@ func OaiStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *htt
 		return nil, types.NewOpenAIError(fmt.Errorf("invalid response"), types.ErrorCodeBadResponse, http.StatusInternalServerError)
 	}
 
-	defer service.CloseResponseBodyGracefully(resp)
+	defer egress.CloseResponseBodyGracefully(resp)
 
 	model := info.UpstreamModelName
 	var responseId string
@@ -220,7 +221,7 @@ func collectStreamFunctionCallNames(data string, seen map[string]struct{}, names
 }
 
 func OpenaiHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
-	defer service.CloseResponseBodyGracefully(resp)
+	defer egress.CloseResponseBodyGracefully(resp)
 
 	var simpleResponse dto.OpenAITextResponse
 	responseBody, err := io.ReadAll(resp.Body)
@@ -331,7 +332,7 @@ func OpenaiHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.R
 		responseBody = geminiRespStr
 	}
 
-	service.IOCopyBytesGracefully(c, resp, responseBody)
+	egress.IOCopyBytesGracefully(c, resp, responseBody)
 
 	return &simpleResponse.Usage, nil
 }
