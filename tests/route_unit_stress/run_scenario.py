@@ -1781,6 +1781,19 @@ def main() -> int:
             "records, so reconciliation needs every instance, not just --mock-url."
         ),
     )
+    p.add_argument(
+        "--mock-url-for",
+        action="append",
+        default=[],
+        metavar="CHANNEL_ID=BASE_URL",
+        help=(
+            "Override the per-route mock base URL used for the preflight healthz "
+            "probe. Repeatable. The in-cluster mocks are reached through a "
+            "port-forward on the runner, so each channel's stored base_url (a "
+            "Service DNS name the runner cannot resolve) must be replaced with the "
+            "runner-local address. Format: <channel_id>=<http://127.0.0.1:PORT>."
+        ),
+    )
     p.add_argument("--mock-file", type=Path, help="Mock upstream ndjson path")
     p.add_argument("--warmup", type=int, default=44, help="Warmup requests, excluded from share fitting")
     p.add_argument("--requests", type=int, default=None, help="Stat-phase request count (required for non-S6 scenarios)")
@@ -1810,6 +1823,20 @@ def main() -> int:
     p.add_argument("--gateway-pid", type=int, default=None, help="Gateway PID for process identity / restart detection")
     args = p.parse_args()
 
+    # Build the per-channel mock URL map. The in-cluster mocks are reached
+    # through a port-forward on the runner, so the channel's stored base_url
+    # (a Service DNS name the runner cannot resolve) must be replaced for
+    # preflight probes and any runner-side mock access that needs the address.
+    mock_url_for: dict[int, str] = {}
+    for entry in args.mock_url_for:
+        if "=" not in entry:
+            print(f"      NOTE: ignoring malformed --mock-url-for entry: {entry!r}")
+            continue
+        cid_s, base = entry.split("=", 1)
+        try:
+            mock_url_for[int(cid_s)] = base.rstrip("/")
+        except ValueError:
+            print(f"      NOTE: ignoring --mock-url-for with non-int channel id: {entry!r}")
     token_mgr = AdminTokenManager(
         initial_token=args.admin_token,
         gateway_url=args.gateway_url,
@@ -2075,12 +2102,9 @@ def main() -> int:
             else:
                 injection_plan[label] = mode_val
     else:
-        # S1–S4: labels A/B/C/D
         for label, mode_val in injection.items():
             injection_plan[label] = mode_val
-    # Apply --route-mode overrides
-    injection_plan.update(route_mode_overrides)
-    summary["injection_plan"] = injection_plan
+
 
     # Preflight: validate each route's mock /healthz force_mode matches plan
     for r in routes:
@@ -2096,6 +2120,11 @@ def main() -> int:
         mock_base = base_url.rstrip("/")
         if mock_base.endswith("/v1"):
             mock_base = mock_base[:-3]
+        override = mock_url_for.get(r.channel_id)
+        if override:
+            mock_base = override.rstrip("/")
+            if mock_base.endswith("/v1"):
+                mock_base = mock_base[:-3]
         try:
             hz = requests.get(f"{mock_base}/healthz", timeout=10)
             if hz.status_code != 200:

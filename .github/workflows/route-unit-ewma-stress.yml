@@ -984,6 +984,16 @@ jobs:
             EXTRA="$EXTRA --mock-url-extra http://127.0.0.1:$((MOCK_BASE_PORT + i))"
           done
           echo "MOCK_URL_EXTRA_ARGS=$EXTRA" >> "$GITHUB_ENV"
+          # Per-channel mock base URL map: the runner cannot resolve cluster
+          # Service DNS, so we feed it the runner-local port-forward address
+          # for each provisioned channel (channel_id = 91000 + i, port = MOCK_BASE_PORT + i).
+          MAP=""
+          for i in $(seq 0 $((MOCK_INSTANCES - 1))); do
+            CID=$((91000 + i + 1))
+            MAP="$MAP --mock-url-for ${CID}=http://127.0.0.1:$((MOCK_BASE_PORT + i))"
+          done
+          echo "MOCK_URL_FOR_ARGS=$MAP" >> "$GITHUB_ENV"
+          echo "mock-url-for map:$MAP"
           echo "mock bases: $EXTRA"
 
       - name: Point stress channels at the in-cluster mocks
@@ -1304,6 +1314,7 @@ jobs:
             --alias "${{ env.ALIAS }}" \
             --mock-url "${MOCK_URL_PRIMARY:-$MOCK_URL}" \
             ${MOCK_URL_EXTRA_ARGS:-} \
+            ${MOCK_URL_FOR_ARGS:-} \
             ${{
               (startsWith(matrix.scenario, 'S6') || startsWith(matrix.scenario, 'S7') || startsWith(matrix.scenario, 'S8') || startsWith(matrix.scenario, 'S13'))
               && '' || format('--requests {0}', env.REQUESTS)
