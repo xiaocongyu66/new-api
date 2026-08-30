@@ -536,7 +536,7 @@ jobs:
                       # serves HTTP and writes a small ndjson; 64Mi is plenty.
                       requests:
                         cpu: 50m
-                        memory: 64Mi
+                        memory: 32Mi
                       limits:
                         cpu: "1"
                         memory: 256Mi
