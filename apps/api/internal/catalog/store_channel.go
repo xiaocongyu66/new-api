@@ -956,6 +956,16 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 	return err
 }
 
+// The batch queue lives in dbx but the write targets this domain's rows, so the
+// flusher is registered beside the writer it calls.
+func init() {
+	dbx.RegisterChannelUsedQuotaFlusher(func(deltas map[int]int) {
+		for id, delta := range deltas {
+			updateChannelUsedQuota(id, delta)
+		}
+	})
+}
+
 func UpdateChannelUsedQuota(id int, quota int) {
 	if common.BatchUpdateEnabled {
 		dbx.AddNewRecord(dbx.BatchUpdateTypeChannelUsedQuota, id, quota)
