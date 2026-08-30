@@ -1029,22 +1029,31 @@ jobs:
               -d '{"model":"mock-ok","messages":[{"role":"user","content":"sync"}],"max_tokens":1,"stream":false}' \
               "http://127.0.0.1:${PORT}/v1/chat/completions" >/dev/null 2>&1 || true
           done
-          # Verify /_ndjson returns non-empty content.
+          # Verify each mock pod has the ndjson file populated. fix6 reads the
+          # file directly via kubectl exec (avoiding the HTTP /_ndjson endpoint
+          # whose 4xx response under set -euo pipefail trapped fix5 with curl
+          # exit 22 and aborted the scenario before Run scenario could start).
           for i in $(seq 0 $((MOCK_INSTANCES - 1))); do
             PORT=$((MOCK_BASE_PORT + i))
+            POD=$(kubectl get pods -l "app=route-unit-mock,instance=m${i}" \
+              -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+            if [ -z "$POD" ]; then
+              echo "::error::no pod found for mock instance ${i}"
+              exit 1
+            fi
             SIZE=0
             for j in $(seq 1 10); do
-              SIZE=$(curl -fsS --max-time 10 "http://127.0.0.1:${PORT}/_ndjson" 2>/dev/null | wc -c)
+              SIZE=$(kubectl exec "$POD" -- sh -c 'wc -c < /tmp/mock_upstream.ndjson 2>/dev/null || echo 0' 2>/dev/null | tr -d '[:space:]')
+              SIZE="${SIZE:-0}"
               [ "$SIZE" -gt 0 ] && break
               sleep 1
             done
-            if [ "$SIZE" -eq 0 ]; then
-              echo "::error::mock ${i} /_ndjson returned 0 bytes after sync probe"
-              kubectl exec -n default -l app=route-unit-mock,instance=m${i} -- \
-                ls -la /tmp/mock_upstream.ndjson 2>&1 || true
+            if [ "${SIZE:-0}" -eq 0 ]; then
+              echo "::error::mock ${i} (${POD}) /tmp/mock_upstream.ndjson still 0 bytes after sync probe"
+              kubectl exec "$POD" -- sh -c 'ls -la /tmp/mock_upstream.ndjson 2>&1; echo ---; env | grep -E "MOCK_NDJSON|MOCK_FORCE_MODE|MOCK_PORT" 2>&1' || true
               exit 1
             fi
-            echo "mock ${i} /_ndjson has ${SIZE} bytes"
+            echo "mock ${i} (${POD}) /tmp/mock_upstream.ndjson has ${SIZE} bytes"
           done
 
       - name: Run scenario ${{ matrix.scenario }}
