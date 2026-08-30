@@ -2,19 +2,18 @@ package handler
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/catalog"
 	channelpkg "github.com/QuantumNous/new-api/internal/catalog"
+	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
+	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/identity"
+	"github.com/QuantumNous/new-api/internal/relay"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"strings"
 	"time"
 
-	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
-	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
-	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
-	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/constant"
-	"github.com/QuantumNous/new-api/internal/relay"
 	"github.com/QuantumNous/new-api/internal/relay/channel/ai360"
 	"github.com/QuantumNous/new-api/internal/relay/channel/lingyiwanwu"
 	"github.com/QuantumNous/new-api/internal/relay/channel/minimax"
@@ -208,7 +207,7 @@ func getModelListGroups(c contract.Context) (modelListGroups, error) {
 }
 
 func ListModels(c contract.Context, modelType int) {
-	acceptUnsetRatioModel := manage_channels.SelfUseModeEnabled
+	acceptUnsetRatioModel := channelpkg.SelfUseModeEnabled
 	if !acceptUnsetRatioModel {
 		userId := c.GetInt("id")
 		if userId > 0 {

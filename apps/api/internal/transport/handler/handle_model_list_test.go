@@ -13,9 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/internal/catalog"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
-	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
-	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/settings/config"
@@ -130,20 +129,20 @@ func withTieredBillingConfig(t *testing.T, modes map[string]string, exprs map[st
 func withSelfUseModeDisabled(t *testing.T) {
 	t.Helper()
 
-	original := manage_channels.SelfUseModeEnabled
-	manage_channels.SelfUseModeEnabled = false
+	original := channelpkg.SelfUseModeEnabled
+	channelpkg.SelfUseModeEnabled = false
 	t.Cleanup(func() {
-		manage_channels.SelfUseModeEnabled = original
+		channelpkg.SelfUseModeEnabled = original
 	})
 }
 
 func withSelfUseModeEnabled(t *testing.T) {
 	t.Helper()
 
-	original := manage_channels.SelfUseModeEnabled
-	manage_channels.SelfUseModeEnabled = true
+	original := channelpkg.SelfUseModeEnabled
+	channelpkg.SelfUseModeEnabled = true
 	t.Cleanup(func() {
-		manage_channels.SelfUseModeEnabled = original
+		channelpkg.SelfUseModeEnabled = original
 	})
 }
 

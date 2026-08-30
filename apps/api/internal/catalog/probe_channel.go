@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/transport/middleware/status_code"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
+
 
 // RootUserNotifier delivers a channel status change to the root user. ops owns
 // notification delivery and imports catalog, so the entry point arrives as a
@@ -72,7 +72,7 @@ func ShouldDisableChannel(err *types.NewAPIError) bool {
 	}
 
 	lowerMessage := strings.ToLower(err.Error())
-	search, _ := common.AcSearch(lowerMessage, manage_channels.AutomaticDisableKeywords, true)
+	search, _ := common.AcSearch(lowerMessage, AutomaticDisableKeywords, true)
 	return search
 }
 

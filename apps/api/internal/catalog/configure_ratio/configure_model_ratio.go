@@ -3,10 +3,11 @@ package configure_ratio
 import (
 	"strings"
 
-	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/types"
 )
+
+var SelfUseModeEnabled = false
 
 // from songquanpeng/one-api
 const (
@@ -400,11 +401,10 @@ func GetModelRatio(name string) (float64, bool, string) {
 			}
 			//return 0, true, name
 		}
-		return 37.5, manage_channels.SelfUseModeEnabled, name
+		return 37.5, SelfUseModeEnabled, name
 	}
 	return ratio, true, name
 }
-
 func DefaultModelRatio2JSONString() string {
 	jsonBytes, err := common.Marshal(defaultModelRatio)
 	if err != nil {
