@@ -776,16 +776,23 @@ jobs:
           esac
           # Readiness only proves /api/status answers; the route pool loads on the same
           # boot path, so confirm the worker resolves the alias before handing over.
-          for i in $(seq 1 45); do
+          # Extend the probe loop: the worker takes up to SYNC_FREQUENCY (60s) to
+          # load the route pool after restart, and on a cold node the bootstrap
+          # can take a couple of minutes. 180 * 3s = 9 min budget keeps HTTP 401
+          # (route pool not yet loaded) and HTTP 503 from going critical. Echo
+          # the last code on every failure so the failure step summary tells
+          # the maintainer which response was sticky.
+          for i in $(seq 1 180); do
             CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \
               -H "Authorization: Bearer $API_KEY" -H 'Content-Type: application/json' \
               -X POST -d "{\"model\":\"${MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":1}" \
               "${TARGET_URL%/}/chat/completions" || true)
             if [ "$CODE" = "200" ]; then
-              echo "worker resolves ${MODEL} (probe HTTP $CODE)"
+              echo "worker resolves ${MODEL} (probe HTTP $CODE, attempt $i)"
               break
             fi
-            sleep 2
+            [ $((i % 10)) -eq 1 ] && echo "  probe attempt $i: HTTP ${CODE:-none}"
+            sleep 3
           done
           if [ "${CODE:-}" != "200" ]; then
             echo "::error::worker still cannot route ${MODEL} after restart (last HTTP ${CODE:-none})"
