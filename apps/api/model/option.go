@@ -1,20 +1,15 @@
 package model
 
 import (
-	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"errors"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/settings"
 	"gorm.io/gorm"
 )
-
-func init() {
-	// billing_setting.* tiered config changes must invalidate the pricing
-	// cache owned by this module; wired here to keep internal/settings free
-	// of a dependency on model.
-}
 
 // GatewayRoutingOptionKeys is deliberately explicit. New settings must be
 // reviewed before they become part of the gateway snapshot contract.
@@ -87,6 +82,9 @@ func UpdateOption(key string, value string) error {
 		return err
 	}
 	if IsGatewayRoutingOptionKey(key) {
+		if MutateGatewayRoutingFn == nil {
+			return errGatewayRoutingMutatorUnwired
+		}
 		if _, err := MutateGatewayRoutingFn(func(tx *gorm.DB) error {
 			return UpdateOptionWithTx(tx, key, value)
 		}); err != nil {
@@ -132,6 +130,9 @@ func UpdateOptionsBulk(values map[string]string) error {
 		}
 		return false
 	}(); hasGatewayOption {
+		if MutateGatewayRoutingFn == nil {
+			return errGatewayRoutingMutatorUnwired
+		}
 		if _, err := MutateGatewayRoutingFn(mutate); err != nil {
 			return err
 		}
@@ -150,3 +151,9 @@ func UpdateOptionsBulk(values map[string]string) error {
 // routing revision. model must not import catalog (catalog imports model), so
 // the mutation entry point arrives as a hook at startup.
 var MutateGatewayRoutingFn func(mutate func(tx *gorm.DB) error) (int64, error)
+
+// errGatewayRoutingMutatorUnwired fails a gateway-routing option write that
+// arrives before the hook is installed. Falling back to a plain write would
+// persist the option without bumping the gateway config revision, so the
+// published snapshot would keep serving the superseded routing.
+var errGatewayRoutingMutatorUnwired = errors.New("gateway routing mutator not wired")

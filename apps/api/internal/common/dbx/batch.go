@@ -2,6 +2,7 @@ package dbx
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -102,19 +103,40 @@ func RegisterUserFlusher(f userBatchFlusher) { userFlusher = f }
 
 // FlushBatchQueues drains every queue and hands each set of deltas to its
 // registered writer. Queues with no writer registered are still drained, so an
-// unwired queue cannot grow without bound.
+// unwired queue cannot grow without bound — but the drained deltas are then lost,
+// so each one is reported: an unwired flusher silently discards accounting.
 func FlushBatchQueues() {
 	stores := DrainBatchQueues()
 
 	if f := tokenQuotaFlusher; f != nil {
 		f(stores[BatchUpdateTypeTokenQuota])
+	} else {
+		reportDroppedDeltas("token quota", stores[BatchUpdateTypeTokenQuota])
 	}
 	if f := channelUsedQuotaFlusher; f != nil {
 		f(stores[BatchUpdateTypeChannelUsedQuota])
+	} else {
+		reportDroppedDeltas("channel used quota", stores[BatchUpdateTypeChannelUsedQuota])
 	}
 	if f := userFlusher; f != nil {
 		f(stores[BatchUpdateTypeUserQuota], stores[BatchUpdateTypeUsedQuota], stores[BatchUpdateTypeRequestCount])
+	} else {
+		reportDroppedDeltas("user quota", stores[BatchUpdateTypeUserQuota])
+		reportDroppedDeltas("user used quota", stores[BatchUpdateTypeUsedQuota])
+		reportDroppedDeltas("user request count", stores[BatchUpdateTypeRequestCount])
 	}
+}
+
+// reportDroppedDeltas records accounting lost because a queue was drained with no
+// writer installed. The registration lives in the domain that owns the rows, so a
+// package reshuffle can drop it without breaking the build.
+func reportDroppedDeltas(queue string, deltas map[int]int) {
+	if len(deltas) == 0 {
+		return
+	}
+	common.SysError(fmt.Sprintf(
+		"batch update: %s flusher not registered, discarded accumulated deltas for %d record(s)",
+		queue, len(deltas)))
 }
 
 // ShouldUpdateRedis reports whether a value just read from the database should be
