@@ -1,4 +1,4 @@
-package model
+package dbinfra
 
 import (
 	"bytes"
@@ -93,7 +93,7 @@ func TestGormLoggerEndToEndSanitizedOutput(t *testing.T) {
 	assert.Contains(t, out, "k = ?")
 	assert.NotContains(t, out, "secret-value")
 	assert.Contains(t, out, "sqlite error")
-	assert.Contains(t, out, "gorm_logger_test.go")
+	assert.Contains(t, out, "log_gorm_test.go")
 
 	common.DebugEnabled = true
 	debugOut := execQuery()
