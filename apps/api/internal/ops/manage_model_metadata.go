@@ -12,8 +12,8 @@ import (
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/model"
 )
 
 // enrichModels 批量填充附加信息：端点、渠道、分组、计费类型，避免 N+1 查询
@@ -408,7 +408,7 @@ func GetPricing(c contract.Context) {
 // ResetModelRatio resets model ratio to default.
 func ResetModelRatio(c contract.Context) {
 	defaultStr := ratio_setting.DefaultModelRatio2JSONString()
-	err := model.UpdateOption("ModelRatio", defaultStr)
+	err := dbinfra.UpdateOption("ModelRatio", defaultStr)
 	if err != nil {
 		_ = c.JSON(200, common.H{
 			"success": false,

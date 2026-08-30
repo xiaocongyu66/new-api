@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,7 +27,7 @@ func setupProxyConfigControllerTest(t *testing.T) *gorm.DB {
 	dsn := "file:proxy-config-controller-test?mode=memory&cache=private"
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.Option{}))
+	require.NoError(t, db.AutoMigrate(&dbinfra.Option{}))
 	dbx.DB = db
 	common.CryptoSecret = "proxy-config-controller-test-secret"
 	if common.OptionMap == nil {

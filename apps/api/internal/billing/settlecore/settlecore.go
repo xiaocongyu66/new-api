@@ -7,9 +7,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/QuantumNous/new-api/internal/logger"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/QuantumNous/new-api/model"
 )
 
 const (
@@ -31,7 +31,7 @@ func PostConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, pre
 		}
 		delta := int64(quota)
 		if delta != 0 {
-			if err := model.PostConsumeUserSubscriptionDelta(relayInfo.SubscriptionId, delta); err != nil {
+			if err := dbinfra.PostConsumeUserSubscriptionDelta(relayInfo.SubscriptionId, delta); err != nil {
 				return result, err
 			}
 			relayInfo.SubscriptionPostDelta += delta
@@ -39,9 +39,9 @@ func PostConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, pre
 	} else {
 		// Wallet
 		if quota > 0 {
-			err = model.DecreaseUserQuota(relayInfo.UserId, quota, false)
+			err = dbinfra.DecreaseUserQuota(relayInfo.UserId, quota, false)
 		} else {
-			err = model.IncreaseUserQuota(relayInfo.UserId, -quota, false)
+			err = dbinfra.IncreaseUserQuota(relayInfo.UserId, -quota, false)
 		}
 		if err != nil {
 			return result, err
@@ -51,9 +51,9 @@ func PostConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, pre
 
 	if !relayInfo.IsPlayground {
 		if quota > 0 {
-			err = model.DecreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, quota)
+			err = dbinfra.DecreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, quota)
 		} else {
-			err = model.IncreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, -quota)
+			err = dbinfra.IncreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, -quota)
 		}
 		if err != nil {
 			return result, err
@@ -64,7 +64,7 @@ func PostConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, pre
 	return result, nil
 }
 func ResolveTokenKey(ctx context.Context, tokenId int, taskID string) string {
-	token, err := model.GetTokenById(tokenId)
+	token, err := dbinfra.GetTokenById(tokenId)
 	if err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("获取令牌 key 失败 (tokenId=%d, task=%s): %s", tokenId, taskID, err.Error()))
 		return ""

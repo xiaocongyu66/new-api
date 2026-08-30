@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	channel "github.com/QuantumNous/new-api/internal/catalog"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/QuantumNous/new-api/internal/usage"
-	"github.com/QuantumNous/new-api/model"
 	"strings"
 
 	"github.com/QuantumNous/new-api/internal/billing/settlecore"
@@ -82,7 +82,7 @@ func RefundMidjourneyQuota(ctx context.Context, task *Midjourney, reason string)
 		return true
 	}
 
-	if err := model.IncreaseUserQuota(task.UserId, quota, false); err != nil {
+	if err := dbinfra.IncreaseUserQuota(task.UserId, quota, false); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("退还 Midjourney 用户额度失败 task %s: %s", task.MjId, err.Error()))
 		return false
 	}
@@ -90,14 +90,14 @@ func RefundMidjourneyQuota(ctx context.Context, task *Midjourney, reason string)
 	if task.TokenId > 0 {
 		tokenKey := settlecore.ResolveTokenKey(ctx, task.TokenId, task.MjId)
 		if tokenKey != "" {
-			if err := model.IncreaseTokenQuota(task.TokenId, tokenKey, quota); err != nil {
+			if err := dbinfra.IncreaseTokenQuota(task.TokenId, tokenKey, quota); err != nil {
 				logger.LogWarn(ctx, fmt.Sprintf("退还 Midjourney 令牌额度失败 task %s: %s", task.MjId, err.Error()))
 			}
 		}
 	}
 
 	billingChannelId := task.GetBillingChannelId()
-	model.UpdateUserUsedQuotaAndRequestCount(task.UserId, -quota)
+	dbinfra.UpdateUserUsedQuotaAndRequestCount(task.UserId, -quota)
 	channel.UpdateChannelUsedQuota(billingChannelId, -quota)
 	usage.RecordTaskBillingLog(usage.RecordTaskBillingLogParams{
 		UserId:    task.UserId,

@@ -26,6 +26,7 @@ import (
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/identity/policy"
 	"github.com/QuantumNous/new-api/internal/logger"
@@ -37,7 +38,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
-	"github.com/QuantumNous/new-api/model"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/joho/godotenv"
@@ -79,7 +79,7 @@ func main() {
 	kitutil.Debug.Store(common.DebugEnabled)
 
 	defer func() {
-		err := model.CloseDB()
+		err := dbinfra.CloseDB()
 		if err != nil {
 			common.FatalLog("failed to close database: " + err.Error())
 		}
@@ -123,7 +123,7 @@ func main() {
 	go catalog.RunGatewayConfigOutboxPublisher(outboxCtx)
 
 	// 热更新配置
-	go model.SyncOptions(common.SyncFrequency)
+	go dbinfra.SyncOptions(common.SyncFrequency)
 
 	// 周期性重载授权策略，保证多节点/多 master 部署下权限变更能传播到每个实例
 	go policy.StartPolicySync(common.SyncFrequency)
@@ -175,7 +175,7 @@ func main() {
 	if os.Getenv("BATCH_UPDATE_ENABLED") == "true" {
 		common.BatchUpdateEnabled = true
 		common.SysLog("batch update enabled with interval " + strconv.Itoa(common.BatchUpdateInterval) + "s")
-		model.InitBatchUpdater()
+		dbinfra.InitBatchUpdater()
 	}
 
 	if os.Getenv("ENABLE_PPROF") == "true" {
@@ -323,15 +323,15 @@ func InitResources() error {
 
 	usage.InitTokenEncoders()
 
-	// model must not import usage, so bootstrap wires this one. It MUST stay
+	// dbinfra must not import usage, so bootstrap wires this one. It MUST stay
 	// above MigrateRetiredFrontendOptions and InitOptionMap below: a nil
 	// OnValidateConsoleSettings would silently skip validation during the
 	// migration. (identity.OnResolveServerAddress is registered by egress's own
 	// init(), so every binary linking egress gets it, not just this one.)
-	model.OnValidateConsoleSettings = usage.ValidateConsoleSettings
+	dbinfra.OnValidateConsoleSettings = usage.ValidateConsoleSettings
 
 	// Initialize SQL Database
-	err = model.InitDB()
+	err = dbinfra.InitDB()
 	if err != nil {
 		common.FatalLog("failed to initialize database: " + err.Error())
 		return err
@@ -341,21 +341,21 @@ func InitResources() error {
 		return err
 	}
 
-	model.CheckSetup()
+	dbinfra.CheckSetup()
 
-	// Initialize options, should after model.InitDB()
+	// Initialize options, should after dbinfra.InitDB()
 	if common.IsMasterNode {
-		if err := model.MigrateRetiredFrontendOptions(); err != nil {
+		if err := dbinfra.MigrateRetiredFrontendOptions(); err != nil {
 			common.SysError("failed to migrate retired frontend options: " + err.Error())
 		}
 	}
-	model.InitOptionMap()
+	dbinfra.InitOptionMap()
 
 	// 清理旧的磁盘缓存文件
 	common.CleanupOldCacheFiles()
 
 	// Initialize SQL Database
-	err = model.InitLogDB()
+	err = dbinfra.InitLogDB()
 	if err != nil {
 		return err
 	}
@@ -389,33 +389,27 @@ func InitResources() error {
 		// Don't return error, custom OAuth is not critical
 	}
 
-	// Wire identity-domain functions that model/ still calls via variables.
-	model.SetIdentityFunctions(
+	// Wire identity-domain functions that dbinfra still calls via variables.
+	dbinfra.SetIdentityFunctions(
 		identity.UserQuery, identity.TokenQuery,
 		identity.LockUserRow, identity.ReadUserQuota,
 		identity.GetUsernameById, identity.GetUserSetting,
 		identity.IncreaseUserQuota, identity.DecreaseUserQuota,
 		identity.RootUserExists,
 	)
-	model.GetTokenByIdFn = func(id int) (*identity.Token, error) {
+	dbinfra.GetTokenByIdFn = func(id int) (*identity.Token, error) {
 		t, err := identity.GetTokenById(id)
 		if err != nil {
 			return nil, err
 		}
 		return t, nil
 	}
-	model.GetTokenByKeyWrFn = identity.GetTokenByKey
-	model.GetUserCacheWrFn = identity.GetUserCache
+	dbinfra.GetTokenByKeyWrFn = identity.GetTokenByKey
+	dbinfra.GetUserCacheWrFn = identity.GetUserCache
 
 	// ops owns notification delivery and imports catalog, so catalog reaches
 	// root-user notifications through a hook wired here.
 	catalog.RootUserNotifier = ops.NotifyRootUser
-
-	// Wire catalog-provided functions that model and identity cannot import
-	// directly (catalog imports model; identity imports catalog). Bootstrap
-	// owns the registration to keep the dependency one-way.
-	identity.RegisterGroupModelsResolver(catalog.GetGroupsEnabledModels)
-	model.MutateGatewayRoutingFn = catalog.MutateGatewayRouting
 
 	return nil
 }

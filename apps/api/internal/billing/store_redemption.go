@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/common/quotacache"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/usage"
-	"github.com/QuantumNous/new-api/model"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -110,7 +110,7 @@ func Redeem(key string, userId int) (quota int, err error) {
 	})
 	if err != nil {
 		common.SysError("redemption failed: " + err.Error())
-		return 0, model.ErrRedeemFailed
+		return 0, dbinfra.ErrRedeemFailed
 	}
 	quotacache.SyncCredit(userId, redemption.Quota, "redemption")
 	usage.RecordLog(userId, usage.LogTypeTopup, fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id))

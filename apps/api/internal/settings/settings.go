@@ -53,6 +53,15 @@ var (
 // package never imports billing / usage / egress / catalog. Same nil-safe
 // contract as the catalog hooks above: unregistered means "no such option
 // behavior", not an error.
+//
+// Validation dispatch criterion (ValidateOptionValue): a rule that is a pure
+// check on the value string stays inline in this package, so it holds in every
+// binary regardless of which domains are linked. A rule that needs domain
+// state — a key set, a range table, a price schema — arrives as a hook,
+// because inlining it would mean importing that domain and closing a cycle.
+// The consequence is deliberate: in a binary that does not link catalog, the
+// health keys are simply not recognized as options and validate to nil, the
+// same neutral path as any other unknown key.
 var (
 	OnSeedPaymentOptions func() map[string]string
 	OnApplyPaymentOption func(key, value string) error

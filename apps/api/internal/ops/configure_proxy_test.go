@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,7 +19,7 @@ func setupProxyConfigTestDB(t *testing.T) {
 	previousDB := dbx.DB
 	dbx.DB = db
 	t.Cleanup(func() { dbx.DB = previousDB })
-	require.NoError(t, db.AutoMigrate(&model.Option{}))
+	require.NoError(t, db.AutoMigrate(&dbinfra.Option{}))
 	// OptionMap must be non-nil for updateOptionMap.
 	if common.OptionMap == nil {
 		common.OptionMap = make(map[string]string)
@@ -33,7 +33,7 @@ func TestSaveAndLoadProxyConfigEncryptsRoundTrip(t *testing.T) {
 	require.NoError(t, SaveProxyConfigJSON(plaintext))
 
 	// Verify the stored value is encrypted (not plaintext).
-	var opt model.Option
+	var opt dbinfra.Option
 	require.NoError(t, dbx.DB.Where("key = ?", "proxy_config").First(&opt).Error)
 	assert.NotContains(t, opt.Value, "my-secret-password")
 	assert.NotContains(t, opt.Value, "my-secret-uuid")
@@ -50,7 +50,7 @@ func TestLoadProxyConfigLegacyPlaintext(t *testing.T) {
 
 	// Simulate a pre-#141 plaintext value stored directly.
 	legacy := `{"enabled":false,"outbound":{"type":"trojan"}}`
-	require.NoError(t, model.UpdateOption("proxy_config", legacy))
+	require.NoError(t, dbinfra.UpdateOption("proxy_config", legacy))
 
 	// Load should return the legacy plaintext as-is (decryption fails → fallback).
 	loaded, err := LoadProxyConfigJSON()

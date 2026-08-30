@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,12 +16,12 @@ func TestOutboundFingerprintDisabledReturnsEmpty(t *testing.T) {
 	previousDB := dbx.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.Option{}))
+	require.NoError(t, db.AutoMigrate(&dbinfra.Option{}))
 	dbx.DB = db
 	t.Cleanup(func() { dbx.DB = previousDB })
 
 	configJSON := `{"enabled": false, "outbound": {"type": "socks5", "tag": "out"}}`
-	require.NoError(t, db.Create(&model.Option{Key: "proxy_config", Value: configJSON}).Error)
+	require.NoError(t, db.Create(&dbinfra.Option{Key: "proxy_config", Value: configJSON}).Error)
 
 	fp, raw := outboundFingerprint()
 	assert.Empty(t, fp, "fingerprint should be empty when disabled")
@@ -32,13 +32,13 @@ func TestOutboundFingerprintEnabledReturnsNonEmpty(t *testing.T) {
 	previousDB := dbx.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.Option{}))
+	require.NoError(t, db.AutoMigrate(&dbinfra.Option{}))
 	dbx.DB = db
 	t.Cleanup(func() { dbx.DB = previousDB })
 
 	outboundJSON := `{"type":"socks5","tag":"out","socks5":{"server":"127.0.0.1","server_port":1080}}`
 	configJSON := `{"enabled": true, "outbound": ` + outboundJSON + `}`
-	require.NoError(t, db.Create(&model.Option{Key: "proxy_config", Value: configJSON}).Error)
+	require.NoError(t, db.Create(&dbinfra.Option{Key: "proxy_config", Value: configJSON}).Error)
 
 	fp, raw := outboundFingerprint()
 	assert.NotEmpty(t, fp, "fingerprint should be non-empty when enabled")
@@ -50,7 +50,7 @@ func TestOutboundFingerprintNoConfigReturnsEmpty(t *testing.T) {
 	previousDB := dbx.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.Option{}))
+	require.NoError(t, db.AutoMigrate(&dbinfra.Option{}))
 	dbx.DB = db
 	t.Cleanup(func() { dbx.DB = previousDB })
 
@@ -74,13 +74,13 @@ func TestOutboundFingerprintConsistentHash(t *testing.T) {
 	previousDB := dbx.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.Option{}))
+	require.NoError(t, db.AutoMigrate(&dbinfra.Option{}))
 	dbx.DB = db
 	t.Cleanup(func() { dbx.DB = previousDB })
 
 	outboundJSON := `{"type":"vless","tag":"out"}`
 	configJSON := `{"enabled": true, "outbound": ` + outboundJSON + `}`
-	require.NoError(t, db.Create(&model.Option{Key: "proxy_config", Value: configJSON}).Error)
+	require.NoError(t, db.Create(&dbinfra.Option{Key: "proxy_config", Value: configJSON}).Error)
 
 	fp1, raw1 := outboundFingerprint()
 	fp2, raw2 := outboundFingerprint()
@@ -93,11 +93,11 @@ func TestOutboundFingerprintInvalidJSONReturnsEmpty(t *testing.T) {
 	previousDB := dbx.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.Option{}))
+	require.NoError(t, db.AutoMigrate(&dbinfra.Option{}))
 	dbx.DB = db
 	t.Cleanup(func() { dbx.DB = previousDB })
 
-	require.NoError(t, db.Create(&model.Option{Key: "proxy_config", Value: "not-valid-json"}).Error)
+	require.NoError(t, db.Create(&dbinfra.Option{Key: "proxy_config", Value: "not-valid-json"}).Error)
 
 	fp, raw := outboundFingerprint()
 	assert.Empty(t, fp, "fingerprint should be empty for invalid JSON")
@@ -107,7 +107,7 @@ func TestOutboundFingerprintEncryptedValueReturnsNonEmpty(t *testing.T) {
 	previousDB := dbx.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.Option{}))
+	require.NoError(t, db.AutoMigrate(&dbinfra.Option{}))
 	dbx.DB = db
 	t.Cleanup(func() { dbx.DB = previousDB })
 
@@ -115,7 +115,7 @@ func TestOutboundFingerprintEncryptedValueReturnsNonEmpty(t *testing.T) {
 	plaintext := `{"enabled": true, "outbound": {"type": "socks5", "server": "127.0.0.1", "server_port": 1080}}`
 	encrypted, err := common.EncryptAESGCM(plaintext, "proxy-config")
 	require.NoError(t, err)
-	require.NoError(t, db.Create(&model.Option{Key: "proxy_config", Value: encrypted}).Error)
+	require.NoError(t, db.Create(&dbinfra.Option{Key: "proxy_config", Value: encrypted}).Error)
 
 	fp, raw := outboundFingerprint()
 	assert.NotEmpty(t, fp, "fingerprint should be non-empty for encrypted value")

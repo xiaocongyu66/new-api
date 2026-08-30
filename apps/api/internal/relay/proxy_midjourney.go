@@ -17,13 +17,13 @@ import (
 	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/QuantumNous/new-api/internal/dto"
 	"github.com/QuantumNous/new-api/internal/logger"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
 	"github.com/QuantumNous/new-api/internal/relay/helper"
 	taskcap "github.com/QuantumNous/new-api/internal/task"
-	"github.com/QuantumNous/new-api/model"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
@@ -213,7 +213,7 @@ func RelaySwapFace(c contract.Context, info *relaycommon.RelayInfo) *dto.Midjour
 		}
 	}
 
-	userQuota, err := model.GetUserQuota(info.UserId, false)
+	userQuota, err := dbinfra.GetUserQuota(info.UserId, false)
 	if err != nil {
 		return &dto.MidjourneyResponse{
 			Code:        4,
@@ -285,7 +285,7 @@ func RelaySwapFace(c contract.Context, info *relaycommon.RelayInfo) *dto.Midjour
 			Group:     info.UsingGroup,
 			Other:     other,
 		})
-		model.UpdateUserUsedQuotaAndRequestCount(info.UserId, midjourneyTask.Quota)
+		dbinfra.UpdateUserUsedQuotaAndRequestCount(info.UserId, midjourneyTask.Quota)
 		catalog.UpdateChannelUsedQuota(billingChannelId, midjourneyTask.Quota)
 	}
 	c.ResponseWriter().WriteHeader(mjResp.StatusCode)
@@ -526,7 +526,7 @@ func RelayMidjourneySubmit(c contract.Context, relayInfo *relaycommon.RelayInfo)
 		}
 	}
 
-	userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
+	userQuota, err := dbinfra.GetUserQuota(relayInfo.UserId, false)
 	if err != nil {
 		return &dto.MidjourneyResponse{
 			Code:        4,
@@ -650,7 +650,7 @@ func RelayMidjourneySubmit(c contract.Context, relayInfo *relaycommon.RelayInfo)
 			Group:     relayInfo.UsingGroup,
 			Other:     other,
 		})
-		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, midjourneyTask.Quota)
+		dbinfra.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, midjourneyTask.Quota)
 		catalog.UpdateChannelUsedQuota(billingChannelId, midjourneyTask.Quota)
 	}
 

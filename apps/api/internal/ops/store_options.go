@@ -9,7 +9,7 @@ import (
 
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 )
 
 var settingCompletionRatioMetaOptionKeys = []string{
@@ -66,8 +66,8 @@ func settingBuildCompletionRatioMetaValue(optionValues map[string]string) string
 
 // ListVisibleOptions returns the non-sensitive option snapshot served to the
 // admin console, plus the completion-ratio metadata entry.
-func ListVisibleOptions() []*model.Option {
-	var options []*model.Option
+func ListVisibleOptions() []*dbinfra.Option {
+	var options []*dbinfra.Option
 	optionValues := make(map[string]string)
 	common.OptionMapRWMutex.Lock()
 	for k, v := range common.OptionMap {
@@ -78,7 +78,7 @@ func ListVisibleOptions() []*model.Option {
 		if settingIsSensitiveOptionKey(k) {
 			continue
 		}
-		options = append(options, &model.Option{
+		options = append(options, &dbinfra.Option{
 			Key:   k,
 			Value: value,
 		})
@@ -90,7 +90,7 @@ func ListVisibleOptions() []*model.Option {
 		}
 	}
 	common.OptionMapRWMutex.Unlock()
-	options = append(options, &model.Option{
+	options = append(options, &dbinfra.Option{
 		Key:   "CompletionRatioMeta",
 		Value: settingBuildCompletionRatioMetaValue(optionValues),
 	})

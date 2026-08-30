@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/glebarez/sqlite"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
@@ -142,7 +142,7 @@ func TestTryUserAuthCredentialClassification(t *testing.T) {
 		UserID:          internalUser.Id,
 		Version:         1,
 		UserAuthVersion: internalUser.AuthVersion,
-		Status:          model.UserSessionStatusActive,
+		Status:          dbinfra.UserSessionStatusActive,
 		RefreshHash:     "refresh-hash",
 		LoginMethod:     "password",
 		LastActiveAt:    now,

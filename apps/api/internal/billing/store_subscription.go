@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/common/quotacache"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/usage"
-	"github.com/QuantumNous/new-api/model"
 	"strconv"
 	"strings"
 	"sync"
@@ -432,7 +432,7 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 			return nil, errors.New("已达到该套餐购买上限")
 		}
 	}
-	nowUnix := model.GetDBTimestamp()
+	nowUnix := dbinfra.GetDBTimestamp()
 	now := time.Unix(nowUnix, 0)
 	endUnix, err := calcPlanEndTime(now, plan)
 	if err != nil {
@@ -782,7 +782,7 @@ func ExpireDueSubscriptions(limit int) (int, error) {
 	if limit <= 0 {
 		limit = 200
 	}
-	now := model.GetDBTimestamp()
+	now := dbinfra.GetDBTimestamp()
 	var subs []UserSubscription
 	if err := dbx.DB.Where("status = ? AND end_time > 0 AND end_time <= ?", "active", now).
 		Order("end_time asc, id asc").
@@ -946,7 +946,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 	if amount <= 0 {
 		return nil, errors.New("amount must be > 0")
 	}
-	now := model.GetDBTimestamp()
+	now := dbinfra.GetDBTimestamp()
 
 	returnValue := &SubscriptionPreConsumeResult{}
 
@@ -1070,7 +1070,7 @@ func ResetDueSubscriptions(limit int) (int, error) {
 	if limit <= 0 {
 		limit = 200
 	}
-	now := model.GetDBTimestamp()
+	now := dbinfra.GetDBTimestamp()
 	var subs []UserSubscription
 	if err := dbx.DB.Where("next_reset_time > 0 AND next_reset_time <= ? AND status = ?", now, "active").
 		Order("next_reset_time asc").
@@ -1113,7 +1113,7 @@ func CleanupSubscriptionPreConsumeRecords(olderThanSeconds int64) (int64, error)
 	if olderThanSeconds <= 0 {
 		olderThanSeconds = 7 * 24 * 3600
 	}
-	cutoff := model.GetDBTimestamp() - olderThanSeconds
+	cutoff := dbinfra.GetDBTimestamp() - olderThanSeconds
 	res := dbx.DB.Where("updated_at < ?", cutoff).Delete(&SubscriptionPreConsumeRecord{})
 	return res.RowsAffected, res.Error
 }
@@ -1177,7 +1177,7 @@ func AdminResetPlanSubscriptionsRecord(planId int, advanceResetTime bool) (*Subs
 		return nil, errors.New("invalid planId")
 	}
 	var result *SubscriptionResetResult
-	now := model.GetDBTimestamp()
+	now := dbinfra.GetDBTimestamp()
 	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
 		plan, err := getSubscriptionPlanByIdTx(tx, planId)
 		if err != nil {
@@ -1196,7 +1196,7 @@ func AdminResetUserSubscriptionsByPlanRecord(userId int, planId int, advanceRese
 		return nil, errors.New("invalid userId or planId")
 	}
 	var result *SubscriptionResetResult
-	now := model.GetDBTimestamp()
+	now := dbinfra.GetDBTimestamp()
 	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
 		plan, err := getSubscriptionPlanByIdTx(tx, planId)
 		if err != nil {

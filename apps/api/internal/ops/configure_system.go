@@ -2,8 +2,8 @@ package ops
 
 import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/QuantumNous/new-api/internal/identity"
-	"github.com/QuantumNous/new-api/model"
 	"net/http"
 	"time"
 
@@ -129,7 +129,7 @@ func PostSetup(c contract.Context) {
 	channel.DemoSiteEnabled = req.DemoSiteEnabled
 
 	// Save operation modes to database for persistence
-	err = model.UpdateOption("SelfUseModeEnabled", setupBoolToString(req.SelfUseModeEnabled))
+	err = dbinfra.UpdateOption("SelfUseModeEnabled", setupBoolToString(req.SelfUseModeEnabled))
 	if err != nil {
 		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
@@ -138,7 +138,7 @@ func PostSetup(c contract.Context) {
 		return
 	}
 
-	err = model.UpdateOption("DemoSiteEnabled", setupBoolToString(req.DemoSiteEnabled))
+	err = dbinfra.UpdateOption("DemoSiteEnabled", setupBoolToString(req.DemoSiteEnabled))
 	if err != nil {
 		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
@@ -150,7 +150,7 @@ func PostSetup(c contract.Context) {
 	// Update setup status
 	constant.Setup = true
 
-	setup := model.Setup{
+	setup := dbinfra.Setup{
 		Version:       common.Version,
 		InitializedAt: time.Now().Unix(),
 	}

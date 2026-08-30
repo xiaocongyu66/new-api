@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/QuantumNous/new-api/internal/identity/policy"
-	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -75,7 +75,7 @@ func TestManageUserDisableAdvancesAuthVersionOnceAndRevokesSession(t *testing.T)
 	require.NoError(t, db.Create(&user).Error)
 	require.NoError(t, db.Create(&identity.UserSession{
 		SID: "managed-disable-session", UserID: user.Id, Version: 1, UserAuthVersion: 1,
-		Status: model.UserSessionStatusActive, RefreshHash: "refresh-hash", LoginMethod: "password",
+		Status: dbinfra.UserSessionStatusActive, RefreshHash: "refresh-hash", LoginMethod: "password",
 		LastActiveAt: now, ExpiresAt: now + 3600,
 	}).Error)
 
@@ -89,7 +89,7 @@ func TestManageUserDisableAdvancesAuthVersionOnceAndRevokesSession(t *testing.T)
 	assert.EqualValues(t, 2, updated.AuthVersion)
 	var session identity.UserSession
 	require.NoError(t, db.First(&session, "sid = ?", "managed-disable-session").Error)
-	assert.Equal(t, model.UserSessionStatusRevoked, session.Status)
+	assert.Equal(t, dbinfra.UserSessionStatusRevoked, session.Status)
 }
 
 func TestManageUserDemoteAdvancesAuthVersionAndRevokesSessionsOnce(t *testing.T) {
@@ -108,7 +108,7 @@ func TestManageUserDemoteAdvancesAuthVersionAndRevokesSessionsOnce(t *testing.T)
 	for _, sid := range []string{"managed-demote-session-one", "managed-demote-session-two"} {
 		require.NoError(t, db.Create(&identity.UserSession{
 			SID: sid, UserID: user.Id, Version: 1, UserAuthVersion: 1,
-			Status: model.UserSessionStatusActive, RefreshHash: "refresh-" + sid, LoginMethod: "password",
+			Status: dbinfra.UserSessionStatusActive, RefreshHash: "refresh-" + sid, LoginMethod: "password",
 			LastActiveAt: now, ExpiresAt: now + 3600,
 		}).Error)
 	}
@@ -132,7 +132,7 @@ func TestManageUserDemoteAdvancesAuthVersionAndRevokesSessionsOnce(t *testing.T)
 	require.NoError(t, db.Where("user_id = ?", user.Id).Order("sid asc").Find(&sessions).Error)
 	require.Len(t, sessions, 2)
 	for _, session := range sessions {
-		assert.Equal(t, model.UserSessionStatusRevoked, session.Status)
+		assert.Equal(t, dbinfra.UserSessionStatusRevoked, session.Status)
 		assert.Equal(t, "admin_demote", session.RevokedReason)
 	}
 	assert.Equal(t, 1, sessionUpdateCount)

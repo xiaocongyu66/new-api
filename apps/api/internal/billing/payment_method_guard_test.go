@@ -2,9 +2,9 @@ package billing
 
 import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/usage"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/glebarez/sqlite"
 	"github.com/go-redis/redis/v8"
@@ -430,7 +430,7 @@ func setupIdentityTestDB(t *testing.T) {
 		&identity.UserSession{},
 		&identity.AuthFlow{},
 		&identity.ExternalIdentityClaim{},
-		&model.Token{},
+		&dbinfra.Token{},
 		&identity.PasskeyCredential{},
 		&identity.TwoFA{},
 		&identity.TwoFABackupCode{},

@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -61,6 +61,6 @@ func TestAuthLogoutRejectsRefreshCookieSessionMismatch(t *testing.T) {
 	for _, sid := range []string{sessionA.Session.SID, sessionB.Session.SID} {
 		stored, err := identity.GetUserSessionBySID(sid)
 		require.NoError(t, err)
-		assert.Equal(t, model.UserSessionStatusActive, stored.Status)
+		assert.Equal(t, dbinfra.UserSessionStatusActive, stored.Status)
 	}
 }

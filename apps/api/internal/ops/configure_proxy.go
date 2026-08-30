@@ -5,7 +5,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 )
 
 // egress.ProxyConfig holds the sing-box global proxy configuration stored in the
@@ -22,7 +22,7 @@ func LoadProxyConfigJSON() (string, error) {
 	if dbx.DB == nil {
 		return "", fmt.Errorf("database not initialised")
 	}
-	var option model.Option
+	var option dbinfra.Option
 	if err := dbx.DB.Where("key = ?", "proxy_config").First(&option).Error; err != nil {
 		return "", err
 	}
@@ -41,5 +41,5 @@ func SaveProxyConfigJSON(plaintext string) error {
 	if err != nil {
 		return fmt.Errorf("encrypt proxy config: %w", err)
 	}
-	return model.UpdateOption("proxy_config", encrypted)
+	return dbinfra.UpdateOption("proxy_config", encrypted)
 }

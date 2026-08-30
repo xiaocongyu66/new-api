@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	pancake "github.com/waffo-com/waffo-pancake-sdk-go"
 )
 
@@ -384,7 +384,7 @@ func CreateWaffoPancakePrimaryPair(ctx context.Context, merchantID, privateKey, 
 }
 
 // SaveWaffoPancakeConfig persists the operator-controlled fields atomically
-// at the end of the configuration flow via model.UpdateOptionsBulk (single
+// at the end of the configuration flow via dbinfra.UpdateOptionsBulk (single
 // DB transaction). A blank privateKey is treated as "keep current"
 // (Stripe-style API-secret UX) and is omitted from the bulk payload.
 func SaveWaffoPancakeConfig(ctx context.Context, merchantID, privateKey, returnURL, storeID, productID string) error {
@@ -403,7 +403,7 @@ func SaveWaffoPancakeConfig(ctx context.Context, merchantID, privateKey, returnU
 	if pk := strings.TrimSpace(privateKey); pk != "" {
 		values["WaffoPancakePrivateKey"] = pk
 	}
-	if err := model.UpdateOptionsBulk(values); err != nil {
+	if err := dbinfra.UpdateOptionsBulk(values); err != nil {
 		return fmt.Errorf("persist Waffo Pancake config: %w", err)
 	}
 	return nil

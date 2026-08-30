@@ -2,7 +2,7 @@ package usage
 
 import (
 	common "github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 
 	"os"
 	"strings"
@@ -60,7 +60,7 @@ func TestChooseDBRejectsClickHouseForMainDatabase(t *testing.T) {
 	})
 	require.NoError(t, os.Setenv("SQL_DSN", "clickhouse://default:pass@localhost:9000/logs"))
 
-	db, dbType, err := model.ChooseDB("SQL_DSN", false)
+	db, dbType, err := dbinfra.ChooseDB("SQL_DSN", false)
 	require.Error(t, err)
 	assert.Nil(t, db)
 	assert.Equal(t, common.DatabaseType(""), dbType)
@@ -68,33 +68,33 @@ func TestChooseDBRejectsClickHouseForMainDatabase(t *testing.T) {
 }
 
 func TestClickHouseLogTTLExpression(t *testing.T) {
-	assert.Equal(t, "", model.ClickHouseLogTTLExpression(0))
-	assert.Equal(t, "", model.ClickHouseLogTTLExpression(-5))
-	assert.Equal(t, "toDateTime(created_at) + INTERVAL 30 DAY DELETE", model.ClickHouseLogTTLExpression(30))
+	assert.Equal(t, "", dbinfra.ClickHouseLogTTLExpression(0))
+	assert.Equal(t, "", dbinfra.ClickHouseLogTTLExpression(-5))
+	assert.Equal(t, "toDateTime(created_at) + INTERVAL 30 DAY DELETE", dbinfra.ClickHouseLogTTLExpression(30))
 }
 
 func TestClickHouseLogTTLClause(t *testing.T) {
-	assert.Equal(t, "", model.ClickHouseLogTTLClause(0))
-	assert.Equal(t, "\nTTL toDateTime(created_at) + INTERVAL 7 DAY DELETE", model.ClickHouseLogTTLClause(7))
+	assert.Equal(t, "", dbinfra.ClickHouseLogTTLClause(0))
+	assert.Equal(t, "\nTTL toDateTime(created_at) + INTERVAL 7 DAY DELETE", dbinfra.ClickHouseLogTTLClause(7))
 }
 
 func TestClickHouseLogCreateTableSQL(t *testing.T) {
-	withoutTTL := model.ClickHouseLogCreateTableSQL(0)
+	withoutTTL := dbinfra.ClickHouseLogCreateTableSQL(0)
 	assert.Contains(t, withoutTTL, "CREATE TABLE IF NOT EXISTS logs")
 	assert.Contains(t, withoutTTL, "ENGINE = MergeTree()")
 	assert.Contains(t, withoutTTL, "PARTITION BY toYYYYMM(toDateTime(created_at))")
 	assert.Contains(t, withoutTTL, "ORDER BY (created_at, request_id)")
 	assert.NotContains(t, withoutTTL, "TTL ")
 
-	withTTL := model.ClickHouseLogCreateTableSQL(30)
+	withTTL := dbinfra.ClickHouseLogCreateTableSQL(30)
 	assert.Contains(t, withTTL, "ORDER BY (created_at, request_id)")
 	assert.Contains(t, withTTL, "TTL toDateTime(created_at) + INTERVAL 30 DAY DELETE")
 }
 
 func TestClickHouseCreateTableHasTTL(t *testing.T) {
-	assert.True(t, model.ClickHouseCreateTableHasTTL("CREATE TABLE logs (...)\nTTL toDateTime(created_at) + INTERVAL 30 DAY DELETE"))
-	assert.True(t, model.ClickHouseCreateTableHasTTL("CREATE TABLE logs (...) TTL toDateTime(created_at)"))
-	assert.False(t, model.ClickHouseCreateTableHasTTL("CREATE TABLE logs (...)\nORDER BY (created_at, request_id)"))
+	assert.True(t, dbinfra.ClickHouseCreateTableHasTTL("CREATE TABLE logs (...)\nTTL toDateTime(created_at) + INTERVAL 30 DAY DELETE"))
+	assert.True(t, dbinfra.ClickHouseCreateTableHasTTL("CREATE TABLE logs (...) TTL toDateTime(created_at)"))
+	assert.False(t, dbinfra.ClickHouseCreateTableHasTTL("CREATE TABLE logs (...)\nORDER BY (created_at, request_id)"))
 }
 
 func TestClickHouseLogOrder(t *testing.T) {

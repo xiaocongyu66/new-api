@@ -2,7 +2,7 @@ package billing
 
 import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"strings"
 	"testing"
 	"time"
@@ -31,7 +31,7 @@ func getSubscriptionResetSub(t *testing.T, id int) UserSubscription {
 func TestAdminResetUserSubscriptionsByPlanResetsAllActiveMatchesAndAdvancesTime(t *testing.T) {
 	truncateTables(t)
 
-	now := model.GetDBTimestamp()
+	now := dbinfra.GetDBTimestamp()
 	plan := &SubscriptionPlan{
 		Id:               9101,
 		Title:            "Pro",
@@ -62,9 +62,9 @@ func TestAdminResetUserSubscriptionsByPlanResetsAllActiveMatchesAndAdvancesTime(
 	seedSubscriptionResetSub(t, &UserSubscription{Id: 9205, UserId: 102, PlanId: plan.Id, AmountTotal: 1000, AmountUsed: 800, StartTime: now - 3600, EndTime: activeEnd, Status: "active", LastResetTime: now - 3600, NextResetTime: now + 120})
 	seedSubscriptionResetSub(t, &UserSubscription{Id: 9206, UserId: 101, PlanId: plan.Id, AmountTotal: 1000, AmountUsed: 900, StartTime: now - 3600, EndTime: activeEnd, Status: "cancelled", LastResetTime: now - 3600, NextResetTime: now + 120})
 
-	beforeReset := model.GetDBTimestamp()
+	beforeReset := dbinfra.GetDBTimestamp()
 	result, err := AdminResetUserSubscriptionsByPlanRecord(101, plan.Id, true)
-	afterReset := model.GetDBTimestamp()
+	afterReset := dbinfra.GetDBTimestamp()
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -91,7 +91,7 @@ func TestAdminResetUserSubscriptionsByPlanResetsAllActiveMatchesAndAdvancesTime(
 func TestAdminResetUserSubscriptionsByPlanKeepsResetTimes(t *testing.T) {
 	truncateTables(t)
 
-	now := model.GetDBTimestamp()
+	now := dbinfra.GetDBTimestamp()
 	plan := &SubscriptionPlan{
 		Id:               9301,
 		Title:            "Team",
@@ -120,7 +120,7 @@ func TestAdminResetUserSubscriptionsByPlanKeepsResetTimes(t *testing.T) {
 func TestAdminResetUserSubscriptionsByPlanNoActiveMatchReturnsError(t *testing.T) {
 	truncateTables(t)
 
-	now := model.GetDBTimestamp()
+	now := dbinfra.GetDBTimestamp()
 	plan := &SubscriptionPlan{
 		Id:            9401,
 		Title:         "Expired",
@@ -142,7 +142,7 @@ func TestAdminResetUserSubscriptionsByPlanNoActiveMatchReturnsError(t *testing.T
 func TestAdminResetPlanSubscriptionsResetsAllActiveUsers(t *testing.T) {
 	truncateTables(t)
 
-	now := model.GetDBTimestamp()
+	now := dbinfra.GetDBTimestamp()
 	plan := &SubscriptionPlan{
 		Id:               9501,
 		Title:            "Business",

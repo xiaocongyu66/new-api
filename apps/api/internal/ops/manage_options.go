@@ -3,9 +3,9 @@ package ops
 import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/billing"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/usage"
-	"github.com/QuantumNous/new-api/model"
 	"net/http"
 	"strings"
 
@@ -275,7 +275,7 @@ func UpdateOption(c contract.Context) {
 			return
 		}
 	}
-	err = model.UpdateOption(option.Key, option.Value.(string))
+	err = dbinfra.UpdateOption(option.Key, option.Value.(string))
 	if err != nil {
 		common.CtxApiError(c, err)
 		return

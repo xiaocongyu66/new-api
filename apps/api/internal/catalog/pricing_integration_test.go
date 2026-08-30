@@ -4,7 +4,7 @@ import (
 	"fmt"
 	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -23,7 +23,7 @@ func resetPricingEndpointTestTables(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&catalog.Channel{}, &catalog.Ability{}, &catalog.Model{}, &catalog.Vendor{}))
 	dbx.DB = db
-	model.InitDialectColumns()
+	dbinfra.InitDialectColumns()
 	originalMemoryCacheEnabled := common.MemoryCacheEnabled
 	common.MemoryCacheEnabled = true
 	for _, table := range []string{"abilities", "channels", "models", "vendors"} {

@@ -5,18 +5,18 @@ import (
 	"github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/QuantumNous/new-api/internal/egress"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/security/oauth"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
 	"github.com/QuantumNous/new-api/internal/usage"
-	"github.com/QuantumNous/new-api/model"
 	"net/http"
 )
 
 func TestStatus(c contract.Context) {
-	err := model.PingDB()
+	err := dbinfra.PingDB()
 	if err != nil {
 		_ = c.JSON(http.StatusServiceUnavailable, common.H{
 			"success": false,

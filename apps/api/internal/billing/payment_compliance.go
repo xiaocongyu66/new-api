@@ -2,8 +2,8 @@ package billing
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/model"
 	"net/http"
 	"strconv"
 	"time"
@@ -57,7 +57,7 @@ func ConfirmPaymentCompliance(c contract.Context) {
 	}
 
 	for key, value := range updates {
-		if err := model.UpdateOption(key, value); err != nil {
+		if err := dbinfra.UpdateOption(key, value); err != nil {
 			common.CtxApiError(c, err)
 			return
 		}

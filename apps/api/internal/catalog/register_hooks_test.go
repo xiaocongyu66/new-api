@@ -6,9 +6,9 @@ import (
 	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/settings"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,7 +20,7 @@ import (
 func TestPackageInitInstallsCrossDomainHooks(t *testing.T) {
 	assert.NotNil(t, settings.OnBillingSettingChanged,
 		"a billing_setting change must invalidate the pricing cache")
-	assert.NotNil(t, model.MutateGatewayRoutingFn,
+	assert.NotNil(t, dbinfra.MutateGatewayRoutingFn,
 		"a gateway-routing option write must bump the config revision")
 	assert.True(t, identity.HasGroupModelsResolver(),
 		"the group-models resolver must be installed, or /api/user/models returns nothing")
@@ -38,7 +38,7 @@ func TestBillingSettingUpdateInvalidatesPricingCache(t *testing.T) {
 
 	// The shared TestMain migration omits these three; UpdateOption writes options
 	// and the pricing rebuild reads models/vendors.
-	require.NoError(t, dbx.DB.AutoMigrate(&model.Option{}, &catalog.Model{}, &catalog.Vendor{}))
+	require.NoError(t, dbx.DB.AutoMigrate(&dbinfra.Option{}, &catalog.Model{}, &catalog.Vendor{}))
 	t.Cleanup(func() {
 		require.NoError(t, dbx.DB.Exec("DELETE FROM options").Error)
 	})
@@ -64,7 +64,7 @@ func TestBillingSettingUpdateInvalidatesPricingCache(t *testing.T) {
 	// Drop the row the warm snapshot was built from. Only a cache invalidation
 	// makes the next read observe the deletion.
 	require.NoError(t, dbx.DB.Exec("DELETE FROM abilities").Error)
-	require.NoError(t, model.UpdateOption("billing_setting.tiered.enabled", "false"))
+	require.NoError(t, dbinfra.UpdateOption("billing_setting.tiered.enabled", "false"))
 
 	for _, pricing := range catalog.GetPricing() {
 		assert.NotEqual(t, "pricing-invalidation-model", pricing.ModelName,

@@ -3,7 +3,7 @@ package channel
 import (
 	"errors"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"testing"
 	"time"
 
@@ -241,7 +241,7 @@ func withAbilityDB(t *testing.T, group, modelName string, rows []Ability) {
 	dbx.DB = db
 	// initCol() runs inside InitDB but tests bypass InitDB with a bare gorm.Open,
 	// so initialize the dialect-correct column names (commonGroupCol etc.) now.
-	model.InitDialectColumns()
+	dbinfra.InitDialectColumns()
 	t.Cleanup(func() { dbx.DB = previousDB })
 
 	for i := range rows {
