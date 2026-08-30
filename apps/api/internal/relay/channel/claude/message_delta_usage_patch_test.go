@@ -3,7 +3,7 @@ package claude
 import (
 	"testing"
 
-	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
+	model_setting "github.com/QuantumNous/new-api/internal/catalog"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/stretchr/testify/assert"

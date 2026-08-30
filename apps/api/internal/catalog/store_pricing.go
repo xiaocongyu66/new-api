@@ -2,19 +2,24 @@ package channel
 
 import (
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"strings"
-
 	"sync"
 	"time"
 
-	tiered_pricing "github.com/QuantumNous/new-api/internal/billing/tiered_pricing"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/types"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 )
+
+// OnResolveTieredBilling reports the tiered-expression pricing configured for a
+// model. The billing domain owns that setting and already imports this package,
+// so it registers the lookup from its own init() instead of catalog importing
+// billing. Unregistered means no tiered expression, the same result the
+// non-tiered branch produced before.
+var OnResolveTieredBilling func(model string) (mode string, expr string, ok bool)
 
 type Pricing struct {
 	ModelName              string                  `json:"model_name"`
@@ -394,9 +399,9 @@ func updatePricing() {
 			audioCompletionRatio := ratio_setting.GetAudioCompletionRatio(model)
 			pricing.AudioCompletionRatio = &audioCompletionRatio
 		}
-		if billingMode := tiered_pricing.GetBillingMode(model); billingMode == "tiered_expr" {
-			if expr, ok := tiered_pricing.GetBillingExpr(model); ok && strings.TrimSpace(expr) != "" {
-				pricing.BillingMode = billingMode
+		if OnResolveTieredBilling != nil {
+			if mode, expr, ok := OnResolveTieredBilling(model); ok && strings.TrimSpace(expr) != "" {
+				pricing.BillingMode = mode
 				pricing.BillingExpr = expr
 			}
 		}

@@ -11,8 +11,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/internal/catalog"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
-	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/stretchr/testify/assert"
@@ -21,18 +21,18 @@ import (
 
 func configureTokenAutoGroupsTest(t *testing.T, maxCount string, autoGroups string) {
 	t.Helper()
-	originalMax := resolve_group.GetMaxTokenAutoGroups()
-	originalAutoGroups := resolve_group.AutoGroups2JsonString()
-	originalUsableGroups := resolve_group.UserUsableGroups2JSONString()
+	originalMax := channel.GetMaxTokenAutoGroups()
+	originalAutoGroups := channel.AutoGroups2JsonString()
+	originalUsableGroups := channel.UserUsableGroups2JSONString()
 	originalRatios := ratio_setting.GroupRatio2JSONString()
-	require.NoError(t, resolve_group.UpdateMaxTokenAutoGroups(maxCount))
-	require.NoError(t, resolve_group.UpdateAutoGroupsByJsonString(autoGroups))
-	require.NoError(t, resolve_group.UpdateUserUsableGroupsByJSONString(`{"default":"Default","vip":"VIP"}`))
+	require.NoError(t, channel.UpdateMaxTokenAutoGroups(maxCount))
+	require.NoError(t, channel.UpdateAutoGroupsByJsonString(autoGroups))
+	require.NoError(t, channel.UpdateUserUsableGroupsByJSONString(`{"default":"Default","vip":"VIP"}`))
 	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":1}`))
 	t.Cleanup(func() {
-		require.NoError(t, resolve_group.UpdateMaxTokenAutoGroups(stringInt(originalMax)))
-		require.NoError(t, resolve_group.UpdateAutoGroupsByJsonString(originalAutoGroups))
-		require.NoError(t, resolve_group.UpdateUserUsableGroupsByJSONString(originalUsableGroups))
+		require.NoError(t, channel.UpdateMaxTokenAutoGroups(stringInt(originalMax)))
+		require.NoError(t, channel.UpdateAutoGroupsByJsonString(originalAutoGroups))
+		require.NoError(t, channel.UpdateUserUsableGroupsByJSONString(originalUsableGroups))
 		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalRatios))
 	})
 }

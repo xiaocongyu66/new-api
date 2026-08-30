@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/stretchr/testify/assert"
@@ -59,7 +58,7 @@ func seedMultiKeyChannel(t *testing.T, id int) *Channel {
 // scheduling unit carries a key index.
 func TestVerifyKeyAndCascadeDisablesEveryModelOfTheKey(t *testing.T) {
 	withRouteHealthDB(t)
-	withHealthSetting(t, health_store.DefaultChannelModelHealthSetting())
+	withHealthSetting(t, DefaultChannelModelHealthSetting())
 	calls := withKeyProbe(t, false, true)
 	channel := seedMultiKeyChannel(t, 9210)
 	now := time.Now()
@@ -85,7 +84,7 @@ func TestVerifyKeyAndCascadeDisablesEveryModelOfTheKey(t *testing.T) {
 // one upstream hiccup would disable a whole key's worth of models.
 func TestVerifyKeyAndCascadeIgnoresInconclusiveProbe(t *testing.T) {
 	withRouteHealthDB(t)
-	withHealthSetting(t, health_store.DefaultChannelModelHealthSetting())
+	withHealthSetting(t, DefaultChannelModelHealthSetting())
 	withKeyProbe(t, false, false)
 	channel := seedMultiKeyChannel(t, 9211)
 	now := time.Now()
@@ -105,7 +104,7 @@ func TestVerifyKeyAndCascadeIgnoresInconclusiveProbe(t *testing.T) {
 // kill switch: with probing off the upstream is never contacted at all.
 func TestVerifyKeyAndCascadeSkipsWhenProbeDisabled(t *testing.T) {
 	withRouteHealthDB(t)
-	cfg := health_store.DefaultChannelModelHealthSetting()
+	cfg := DefaultChannelModelHealthSetting()
 	cfg.KeyProbeEnabled = false
 	withHealthSetting(t, cfg)
 	calls := withKeyProbe(t, false, true)

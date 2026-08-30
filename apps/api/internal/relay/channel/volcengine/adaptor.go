@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
+	model_setting "github.com/QuantumNous/new-api/internal/catalog"
 	channelconstant "github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/relay/channel"
 	"github.com/QuantumNous/new-api/internal/relay/channel/claude"

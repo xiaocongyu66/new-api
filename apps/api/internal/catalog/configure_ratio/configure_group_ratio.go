@@ -3,9 +3,9 @@ package configure_ratio
 import (
 	"encoding/json"
 	"errors"
+	"github.com/QuantumNous/new-api/internal/settings"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/settings/config"
 	"github.com/QuantumNous/new-api/internal/types"
 )
 
@@ -48,7 +48,7 @@ func init() {
 		GroupGroupRatio:         groupGroupRatioMap,
 	}
 
-	config.GlobalConfig.Register("group_ratio_setting", &groupRatioSetting)
+	settings.GlobalConfig.Register("group_ratio_setting", &groupRatioSetting)
 }
 
 func GetGroupRatioSetting() *GroupRatioSetting {

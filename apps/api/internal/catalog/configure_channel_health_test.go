@@ -1,4 +1,4 @@
-package health_store
+package channel
 
 import (
 	"testing"
@@ -7,16 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func cooldownTestSetting() *ChannelHealthSetting {
-	return DefaultChannelHealthSetting()
-}
-
-func configureCooldownTest(t *testing.T, cfg *ChannelHealthSetting) {
-	t.Helper()
-	previous := *GetChannelHealthSetting()
-	t.Cleanup(func() { SetChannelHealthSetting(&previous) })
-	SetChannelHealthSetting(cfg)
-}
+// cooldownTestSetting / configureCooldownTest are declared in track_cooldown_test.go.
 
 func TestChannelHealthCooldownConfigNormalizesAndPreservesInput(t *testing.T) {
 	cfg := cooldownTestSetting()
@@ -25,7 +16,7 @@ func TestChannelHealthCooldownConfigNormalizesAndPreservesInput(t *testing.T) {
 	cfg.CooldownMaxSeconds = -2
 	cfg.CooldownMaxEjectionPercent = 101
 	cfg.CooldownAlpha = -1
-	configureCooldownTest(t, cfg)
+	configureCooldownTest(t, cfg, nil)
 
 	got := GetChannelHealthSetting()
 	require.NotNil(t, got)
@@ -43,7 +34,7 @@ func TestChannelHealthCooldownConfigNormalizesAndPreservesInput(t *testing.T) {
 }
 
 func TestChannelHealthCooldownOptionUpdateRejectsInvalidValue(t *testing.T) {
-	configureCooldownTest(t, cooldownTestSetting())
+	configureCooldownTest(t, cooldownTestSetting(), nil)
 
 	require.NoError(t, UpdateChannelHealthSettingValue(
 		"ChannelHealthCooldownThreshold", "7",

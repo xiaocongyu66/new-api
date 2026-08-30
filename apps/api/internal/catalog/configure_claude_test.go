@@ -1,4 +1,4 @@
-package manage_models
+package channel
 
 import (
 	"net/http"

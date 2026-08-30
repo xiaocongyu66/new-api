@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"sync"
 
-	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
+	model_setting "github.com/QuantumNous/new-api/internal/catalog"
 )
 
 // Chat→Responses upgrade policy is host routing logic (it decides *whether*

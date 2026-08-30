@@ -1,8 +1,6 @@
 package channel
 
-import (
-	"github.com/QuantumNous/new-api/internal/settings/config"
-)
+import "github.com/QuantumNous/new-api/internal/settings"
 
 type ChannelAffinityKeySource struct {
 	Type string `json:"type"` // context_int, context_string, request_header, gjson
@@ -152,7 +150,7 @@ var channelAffinitySetting = ChannelAffinitySetting{
 }
 
 func init() {
-	config.GlobalConfig.Register("channel_affinity_setting", &channelAffinitySetting)
+	settings.GlobalConfig.Register("channel_affinity_setting", &channelAffinitySetting)
 }
 
 func GetChannelAffinitySetting() *ChannelAffinitySetting {

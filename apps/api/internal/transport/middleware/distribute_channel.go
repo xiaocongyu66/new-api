@@ -17,7 +17,6 @@ import (
 
 	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
-	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	taskdto "github.com/QuantumNous/new-api/internal/dto"
@@ -96,7 +95,7 @@ func Distribute() func(c contract.Context) {
 						return
 					}
 					if playgroundRequest.Group != "" {
-						if !resolve_group.GroupInUserUsableGroups(usingGroup, playgroundRequest.Group) && playgroundRequest.Group != usingGroup {
+						if !catalog.GroupInUserUsableGroups(usingGroup, playgroundRequest.Group) && playgroundRequest.Group != usingGroup {
 							abortWithOpenAiMessage(c, http.StatusForbidden, i18n.TCtx(c, i18n.MsgDistributorGroupAccessDenied))
 							return
 						}
@@ -112,7 +111,7 @@ func Distribute() func(c contract.Context) {
 						channelSupportsRequestPath(preferred, c.Path(), modelRequest.Model) {
 						if usingGroup == "auto" {
 							userGroup := common.GetCtxKeyString(c, constant.ContextKeyUserGroup)
-							autoGroups := resolve_group.GetRequestAutoGroups(c, userGroup)
+							autoGroups := catalog.GetRequestAutoGroups(c, userGroup)
 							for _, g := range autoGroups {
 								if catalog.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
 									selectGroup = g

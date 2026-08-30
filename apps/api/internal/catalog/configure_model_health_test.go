@@ -1,4 +1,4 @@
-package health_store
+package channel
 
 import (
 	"testing"

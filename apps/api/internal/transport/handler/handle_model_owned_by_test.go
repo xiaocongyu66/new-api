@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/internal/catalog"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
-	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/stretchr/testify/require"
@@ -91,15 +91,15 @@ func TestGetModelListGroupsUsesExplicitTokenGroup(t *testing.T) {
 }
 
 func TestGetModelListGroupsUsesFilteredTokenAutoGroupsSnapshot(t *testing.T) {
-	originalMax := resolve_group.GetMaxTokenAutoGroups()
-	originalUsableGroups := resolve_group.UserUsableGroups2JSONString()
+	originalMax := channel.GetMaxTokenAutoGroups()
+	originalUsableGroups := channel.UserUsableGroups2JSONString()
 	originalRatios := ratio_setting.GroupRatio2JSONString()
-	require.NoError(t, resolve_group.UpdateMaxTokenAutoGroups("1"))
-	require.NoError(t, resolve_group.UpdateUserUsableGroupsByJSONString(`{"default":"Default","vip":"VIP"}`))
+	require.NoError(t, channel.UpdateMaxTokenAutoGroups("1"))
+	require.NoError(t, channel.UpdateUserUsableGroupsByJSONString(`{"default":"Default","vip":"VIP"}`))
 	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":1}`))
 	t.Cleanup(func() {
-		require.NoError(t, resolve_group.UpdateMaxTokenAutoGroups(fmt.Sprintf("%d", originalMax)))
-		require.NoError(t, resolve_group.UpdateUserUsableGroupsByJSONString(originalUsableGroups))
+		require.NoError(t, channel.UpdateMaxTokenAutoGroups(fmt.Sprintf("%d", originalMax)))
+		require.NoError(t, channel.UpdateUserUsableGroupsByJSONString(originalUsableGroups))
 		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalRatios))
 	})
 
@@ -115,7 +115,7 @@ func TestGetModelListGroupsUsesFilteredTokenAutoGroupsSnapshot(t *testing.T) {
 	require.Equal(t, []string{"vip"}, groups.ownerGroups)
 
 	common.SetCtxKey(ctx, constant.ContextKeyTokenAutoGroups, []string{"vip"})
-	require.NoError(t, resolve_group.UpdateUserUsableGroupsByJSONString(`{"default":"Default"}`))
+	require.NoError(t, channel.UpdateUserUsableGroupsByJSONString(`{"default":"Default"}`))
 	groups, err = getModelListGroups(ctx)
 	require.NoError(t, err)
 	require.Empty(t, groups.ownerGroups)

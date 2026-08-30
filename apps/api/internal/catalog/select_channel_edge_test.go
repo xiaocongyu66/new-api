@@ -1,7 +1,6 @@
 package channel
 
 import (
-	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -188,7 +187,7 @@ func resetChannelHealthManagerForTest() *ChannelHealthManager {
 
 // setTestConfigCapability mirrors model's setTestConfig helper.
 func setTestConfigCapability(enabled bool, alpha, minScore float64, minRequests int) {
-	health_store.SetChannelHealthSetting(&health_store.ChannelHealthSetting{
+	SetChannelHealthSetting(&ChannelHealthSetting{
 		Enabled:     enabled,
 		Alpha:       alpha,
 		MinScore:    minScore,

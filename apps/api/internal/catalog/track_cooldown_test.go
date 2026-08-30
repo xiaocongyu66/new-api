@@ -12,27 +12,26 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
-	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
-func configureCooldownTest(t *testing.T, cfg *health_store.ChannelHealthSetting, now *time.Time) {
+func configureCooldownTest(t *testing.T, cfg *ChannelHealthSetting, now *time.Time) {
 	t.Helper()
 
-	previous := *health_store.GetChannelHealthSetting()
+	previous := *GetChannelHealthSetting()
 	previousNow := ChannelHealthNow
-	health_store.SetChannelHealthSetting(cfg)
+	SetChannelHealthSetting(cfg)
 	if now != nil {
 		ChannelHealthNow = func() time.Time { return *now }
 	}
 	t.Cleanup(func() {
 		ChannelHealthNow = previousNow
-		health_store.SetChannelHealthSetting(&previous)
+		SetChannelHealthSetting(&previous)
 	})
 }
 
-func cooldownTestSetting() *health_store.ChannelHealthSetting {
-	return health_store.DefaultChannelHealthSetting()
+func cooldownTestSetting() *ChannelHealthSetting {
+	return DefaultChannelHealthSetting()
 }
 
 func TestChannelCooldownTriggersOnConsecutiveThrottleAndFatal(t *testing.T) {
@@ -123,7 +122,7 @@ func TestChannelCooldownKillSwitchAndLegacyRecordOutcome(t *testing.T) {
 	require.Zero(t, mgr.EffectiveWeight(channelID, 10))
 
 	cfg.Enabled = false
-	health_store.SetChannelHealthSetting(cfg)
+	SetChannelHealthSetting(cfg)
 	assert.InDelta(t, 10.0, mgr.EffectiveWeight(channelID, 10), 1e-9)
 }
 

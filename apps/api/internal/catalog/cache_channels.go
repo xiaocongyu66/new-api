@@ -10,7 +10,7 @@ import (
 	"time"
 
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
-	"github.com/QuantumNous/new-api/internal/catalog/health_store"
+
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/logger"
@@ -174,7 +174,7 @@ func GetRandomSatisfiedChannel(group string, modelName string, retry int, reques
 
 	healthMgr := GetHealthStore()
 	maxEjectionPercent := 0
-	if cfg := health_store.GetChannelHealthSetting(); cfg != nil {
+	if cfg := GetChannelHealthSetting(); cfg != nil {
 		maxEjectionPercent = cfg.CooldownMaxEjectionPercent
 	}
 	channelIDs := make([]int, 0, len(targetChannels))

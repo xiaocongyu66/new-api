@@ -7,15 +7,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
 // health_fallback.go provides the local fallback health scoring implementation
 // used when the capability bridge is not registered (e.g., model-only test
-// binaries). It mirrors the logic in internal/catalog/health_store.go
-// exactly so model package tests pass without linking the capability package.
+// binaries). It mirrors the logic now consolidated in track_health.go
+// (package channel) so model package tests pass without linking extra packages.
 
 func fallbackClassifyChannelOutcomeUnlocked(state *ChannelHealthState, err *types.NewAPIError) ChannelOutcome {
 	if err == nil {
@@ -71,7 +70,7 @@ func (l *localHealthManager) classifyChannelOutcome(err *types.NewAPIError, chan
 }
 
 func (l *localHealthManager) recordChannelOutcome(channelID int, modelName string, outcome ChannelOutcome) {
-	cfg := health_store.GetChannelHealthSetting()
+	cfg := GetChannelHealthSetting()
 	if cfg == nil || !cfg.Enabled {
 		return
 	}
@@ -142,7 +141,7 @@ func (l *localHealthManager) recordChannelOutcome(channelID int, modelName strin
 	}
 }
 
-func (l *localHealthManager) escalateModelLocked(state *ChannelHealthState, cfg *health_store.ChannelHealthSetting, channelID int, modelName string) {
+func (l *localHealthManager) escalateModelLocked(state *ChannelHealthState, cfg *ChannelHealthSetting, channelID int, modelName string) {
 	if cfg.CooldownDisableStreak <= 0 {
 		return
 	}
@@ -190,7 +189,7 @@ func (l *localHealthManager) recordRequestAttempts(attempts []ChannelAttempt, wi
 }
 
 func (l *localHealthManager) recordOutcome(channelID int, success bool) {
-	cfg := health_store.GetChannelHealthSetting()
+	cfg := GetChannelHealthSetting()
 	if cfg == nil || !cfg.Enabled {
 		return
 	}
@@ -230,7 +229,7 @@ func (l *localHealthManager) recordOutcome(channelID int, success bool) {
 }
 
 func (l *localHealthManager) routingWeight(channelID int, baseWeight uint, bypassCooldown bool) float64 {
-	cfg := health_store.GetChannelHealthSetting()
+	cfg := GetChannelHealthSetting()
 	if cfg == nil || !cfg.Enabled {
 		return float64(baseWeight)
 	}
@@ -264,7 +263,7 @@ func (l *localHealthManager) reset() {
 }
 
 func (l *localHealthManager) getScore(channelID int) float64 {
-	cfg := health_store.GetChannelHealthSetting()
+	cfg := GetChannelHealthSetting()
 	if cfg == nil || !cfg.Enabled {
 		return DefaultScore
 	}
@@ -281,7 +280,7 @@ func (l *localHealthManager) getScore(channelID int) float64 {
 
 func (l *localHealthManager) filterCoolingChannels(channelIDs []int, maxEjectionPercent int) map[int]bool {
 	ejected := make(map[int]bool)
-	cfg := health_store.GetChannelHealthSetting()
+	cfg := GetChannelHealthSetting()
 	if cfg == nil || !cfg.Enabled || maxEjectionPercent <= 0 {
 		return ejected
 	}
@@ -345,7 +344,7 @@ func (l *localHealthManager) snapshotCooldownState(channelID int) (CooldownState
 	}, true
 }
 
-func (l *localHealthManager) startCooldownLocked(state *ChannelHealthState, cfg *health_store.ChannelHealthSetting, now time.Time) {
+func (l *localHealthManager) startCooldownLocked(state *ChannelHealthState, cfg *ChannelHealthSetting, now time.Time) {
 	d := cooldownDurationCalc(cfg, state.CooldownStreak)
 	if d <= 0 {
 		return
@@ -364,7 +363,7 @@ func (l *localHealthManager) finishCooldownLocked(state *ChannelHealthState) {
 	state.RampPending = true
 }
 
-func cooldownDurationCalc(cfg *health_store.ChannelHealthSetting, priorActivations int) time.Duration {
+func cooldownDurationCalc(cfg *ChannelHealthSetting, priorActivations int) time.Duration {
 	base, max := cfg.CooldownBaseSeconds, cfg.CooldownMaxSeconds
 	if base <= 0 || max <= 0 {
 		return 0

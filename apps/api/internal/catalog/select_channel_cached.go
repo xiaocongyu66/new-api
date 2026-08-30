@@ -2,7 +2,6 @@ package channel
 
 import (
 	"errors"
-	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/logger"
@@ -52,7 +51,7 @@ func CacheGetRandomSatisfiedChannel(param *SelectParams) (*Channel, string, erro
 	userGroup := common.GetCtxKeyString(param.Ctx, constant.ContextKeyUserGroup)
 
 	if param.TokenGroup == "auto" {
-		autoGroups := resolve_group.GetRequestAutoGroups(param.Ctx, userGroup) // ponytail: service dep until group resolution migrates out of service
+		autoGroups := GetRequestAutoGroups(param.Ctx, userGroup) // ponytail: service dep until group resolution migrates out of service
 		if len(autoGroups) == 0 {
 			return nil, selectGroup, errors.New("auto groups is not enabled")
 		}

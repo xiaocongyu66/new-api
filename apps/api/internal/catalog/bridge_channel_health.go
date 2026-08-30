@@ -4,7 +4,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
@@ -17,7 +16,7 @@ type HealthBridge struct {
 	RecordOutcome           func(channelID int, success bool)
 	EffectiveWeight         func(channelID int, baseWeight uint) float64
 	RoutingWeight           func(channelID int, baseWeight uint, bypassCooldown bool) float64
-	BridgeCooldownDuration  func(cfg *health_store.ChannelHealthSetting, priorActivations int) time.Duration
+	BridgeCooldownDuration  func(cfg *ChannelHealthSetting, priorActivations int) time.Duration
 	BridgeRoutingBaseWeight func(weight int) uint
 	Reset                   func()
 	GetScore                func(channelID int) float64
@@ -126,7 +125,7 @@ var ChannelModelDisabler = DisableChannelModel
 var channelModelDisabler = ChannelModelDisabler
 
 // bridgeSlowStartFactor scales a channel's routing weight during its warm-up window.
-// Kept for model package tests; implementation mirrors health_store.go.
+// Kept for model package tests; implementation mirrors track_health.go.
 func bridgeSlowStartFactor(state *channelHealthState, minRequests int) float64 {
 	if minRequests <= 0 || state.RampExited {
 		return 1.0
@@ -144,7 +143,7 @@ func bridgeSlowStartFactor(state *channelHealthState, minRequests int) float64 {
 // not import this package. Toggling the switch off now discards accumulated
 // scores so re-enabling starts from a clean slate instead of resurrecting them.
 func init() {
-	health_store.RegisterHealthStateResetHook(func() {
+	RegisterHealthStateResetHook(func() {
 		GetChannelHealthManager().Reset()
 	})
 }
@@ -286,7 +285,7 @@ func (m *ChannelHealthManager) RoutingWeight(channelID int, baseWeight uint, byp
 }
 
 // BridgeCooldownDuration computes the sliding cooldown duration.
-func BridgeCooldownDuration(cfg *health_store.ChannelHealthSetting, priorActivations int) time.Duration {
+func BridgeCooldownDuration(cfg *ChannelHealthSetting, priorActivations int) time.Duration {
 	if healthBridge != nil && healthBridge.BridgeCooldownDuration != nil {
 		return healthBridge.BridgeCooldownDuration(cfg, priorActivations)
 	}

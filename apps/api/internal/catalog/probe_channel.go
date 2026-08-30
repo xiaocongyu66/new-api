@@ -10,7 +10,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
-
 // RootUserNotifier delivers a channel status change to the root user. ops owns
 // notification delivery and imports catalog, so the entry point arrives as a
 // hook wired at startup rather than a direct import.

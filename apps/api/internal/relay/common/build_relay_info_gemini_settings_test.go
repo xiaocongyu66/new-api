@@ -3,7 +3,7 @@ package common
 import (
 	"testing"
 
-	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
+	model_setting "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -32,10 +31,11 @@ func withRouteHealthDB(t *testing.T) {
 
 // withHealthSetting installs a config and restores the previous one, so a
 // threshold set here cannot change the defaults another test relies on.
-func withHealthSetting(t *testing.T, cfg *health_store.ChannelModelHealthSetting) {
+func withHealthSetting(t *testing.T, cfg *ChannelModelHealthSetting) {
 	t.Helper()
-	previous := health_store.GetChannelModelHealthSetting()
-	apply := func(c *health_store.ChannelModelHealthSetting) {
+
+	previous := *GetChannelModelHealthSetting()
+	apply := func(c *ChannelModelHealthSetting) {
 		for key, value := range map[string]int{
 			"CalmFastBase":             c.CalmFastBase,
 			"CalmFastInterval":         c.CalmFastInterval,
@@ -54,12 +54,12 @@ func withHealthSetting(t *testing.T, cfg *health_store.ChannelModelHealthSetting
 			"AcceleratedDecayStep":     c.AcceleratedDecayStep,
 			"NormalDecayStep":          c.NormalDecayStep,
 		} {
-			require.NoError(t, health_store.UpdateChannelModelHealthSettingValue(key, strconv.Itoa(value)))
+			require.NoError(t, UpdateChannelModelHealthSettingValue(key, strconv.Itoa(value)))
 		}
-		require.NoError(t, health_store.UpdateChannelModelHealthSettingValue("KeyProbeEnabled", strconv.FormatBool(c.KeyProbeEnabled)))
+		require.NoError(t, UpdateChannelModelHealthSettingValue("KeyProbeEnabled", strconv.FormatBool(c.KeyProbeEnabled)))
 	}
 	apply(cfg)
-	t.Cleanup(func() { apply(previous) })
+	t.Cleanup(func() { apply(&previous) })
 }
 
 // TestIsolationDurationLadder pins the four-stage duration ladder from the
@@ -67,7 +67,7 @@ func withHealthSetting(t *testing.T, cfg *health_store.ChannelModelHealthSetting
 // then a flat dormant ceiling. The state name matters as much as the number,
 // because dormant expiry is what feeds the auto-disable counter.
 func TestIsolationDurationLadder(t *testing.T) {
-	cfg := health_store.DefaultChannelModelHealthSetting()
+	cfg := DefaultChannelModelHealthSetting()
 
 	cases := []struct {
 		level int
@@ -100,7 +100,7 @@ func TestIsolationDurationLadder(t *testing.T) {
 // again without any background probe.
 func TestRetryableFailureEscalatesAndExpires(t *testing.T) {
 	withRouteHealthDB(t)
-	withHealthSetting(t, health_store.DefaultChannelModelHealthSetting())
+	withHealthSetting(t, DefaultChannelModelHealthSetting())
 
 	now := time.Unix(1_700_000_000, 0)
 	key := RouteKey{ChannelId: 9001, Model: "gpt-4o"}
@@ -138,7 +138,7 @@ func TestRetryableFailureEscalatesAndExpires(t *testing.T) {
 // resume from the residual level and skip the whole fast band.
 func TestExpiredIsolationDecaysAndPersistsHealthy(t *testing.T) {
 	withRouteHealthDB(t)
-	withHealthSetting(t, health_store.DefaultChannelModelHealthSetting())
+	withHealthSetting(t, DefaultChannelModelHealthSetting())
 
 	now := time.Unix(1_700_000_000, 0)
 	until := now.Add(-time.Second).Unix()
@@ -178,7 +178,7 @@ func TestDormantExpiryDisableThreshold(t *testing.T) {
 
 	t.Run("threshold reached disables the route", func(t *testing.T) {
 		withRouteHealthDB(t)
-		cfg := health_store.DefaultChannelModelHealthSetting()
+		cfg := DefaultChannelModelHealthSetting()
 		cfg.DormantDisableThreshold = 1
 		withHealthSetting(t, cfg)
 
@@ -198,7 +198,7 @@ func TestDormantExpiryDisableThreshold(t *testing.T) {
 
 	t.Run("threshold zero never disables", func(t *testing.T) {
 		withRouteHealthDB(t)
-		cfg := health_store.DefaultChannelModelHealthSetting()
+		cfg := DefaultChannelModelHealthSetting()
 		cfg.DormantDisableThreshold = 0
 		withHealthSetting(t, cfg)
 
@@ -221,7 +221,7 @@ func TestDormantExpiryDisableThreshold(t *testing.T) {
 // ladder and the disable counter, and an admin disable is terminal.
 func TestAdminRecoverAndDisable(t *testing.T) {
 	withRouteHealthDB(t)
-	withHealthSetting(t, health_store.DefaultChannelModelHealthSetting())
+	withHealthSetting(t, DefaultChannelModelHealthSetting())
 
 	now := time.Unix(1_700_000_000, 0)
 	key := RouteKey{ChannelId: 9201, Model: "gemini-2.5-pro"}
@@ -253,7 +253,7 @@ func TestAdminRecoverAndDisable(t *testing.T) {
 // other's isolation silently.
 func TestRecordRetryableFailureVersionsMonotonically(t *testing.T) {
 	withRouteHealthDB(t)
-	withHealthSetting(t, health_store.DefaultChannelModelHealthSetting())
+	withHealthSetting(t, DefaultChannelModelHealthSetting())
 
 	now := time.Unix(1_700_000_000, 0)
 	key := RouteKey{ChannelId: 9301, Model: "gpt-4o"}
@@ -275,7 +275,7 @@ func TestRecordRetryableFailureVersionsMonotonically(t *testing.T) {
 // CAS retry loop absorbs the loser(s) without corrupting state.
 func TestConcurrentRetryableFailureCASContention(t *testing.T) {
 	withRouteHealthDB(t)
-	withHealthSetting(t, health_store.DefaultChannelModelHealthSetting())
+	withHealthSetting(t, DefaultChannelModelHealthSetting())
 
 	now := time.Unix(1_700_000_000, 0)
 	key := RouteKey{ChannelId: 9401, Model: "concurrent-model"}
@@ -322,7 +322,7 @@ func TestConcurrentRetryableFailureCASContention(t *testing.T) {
 // TestDormantMultiCycleThresholdAndSibling.
 func TestFullLadderEscalation(t *testing.T) {
 	withRouteHealthDB(t)
-	cfg := health_store.DefaultChannelModelHealthSetting()
+	cfg := DefaultChannelModelHealthSetting()
 	cfg.DormantDisableThreshold = 0
 	withHealthSetting(t, cfg)
 
@@ -336,7 +336,7 @@ func TestFullLadderEscalation(t *testing.T) {
 		require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row).Error)
 		assert.Equal(t, level, row.IsolationLevel, "level %d", level)
 
-		expectedState, expectedSeconds := isolationDuration(level, health_store.DefaultChannelModelHealthSetting())
+		expectedState, expectedSeconds := isolationDuration(level, DefaultChannelModelHealthSetting())
 		assert.Equal(t, expectedState, row.State, "level %d state", level)
 		require.NotNil(t, row.Until, "level %d must have a deadline", level)
 		assert.Equal(t, now.Add(time.Duration(level)*time.Hour).Unix()+expectedSeconds, *row.Until, "level %d until", level)
@@ -348,7 +348,7 @@ func TestFullLadderEscalation(t *testing.T) {
 	require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&finalRow).Error)
 	assert.Equal(t, 11, finalRow.IsolationLevel)
 	assert.Equal(t, HealthDormant, finalRow.State)
-	_, maxSeconds := isolationDuration(11, health_store.DefaultChannelModelHealthSetting())
+	_, maxSeconds := isolationDuration(11, DefaultChannelModelHealthSetting())
 	require.NotNil(t, finalRow.Until)
 	assert.Equal(t, now.Add(11*time.Hour).Unix()+maxSeconds, *finalRow.Until)
 }
@@ -361,7 +361,7 @@ func TestFullLadderEscalation(t *testing.T) {
 func TestDormantMultiCycleThresholdAndSibling(t *testing.T) {
 	t.Run("threshold 3 disables on third dormant expiry", func(t *testing.T) {
 		withRouteHealthDB(t)
-		cfg := health_store.DefaultChannelModelHealthSetting()
+		cfg := DefaultChannelModelHealthSetting()
 		cfg.DormantDisableThreshold = 3
 		withHealthSetting(t, cfg)
 
@@ -417,7 +417,7 @@ func TestDormantMultiCycleThresholdAndSibling(t *testing.T) {
 
 	t.Run("threshold 0 cycles forever without disabling", func(t *testing.T) {
 		withRouteHealthDB(t)
-		cfg := health_store.DefaultChannelModelHealthSetting()
+		cfg := DefaultChannelModelHealthSetting()
 		cfg.DormantDisableThreshold = 0
 		withHealthSetting(t, cfg)
 
@@ -453,7 +453,7 @@ func TestDormantMultiCycleThresholdAndSibling(t *testing.T) {
 // healthy back to DB, and a subsequent re-hydration sees the healthy state.
 func TestCacheHydrationAndExpiryPersistence(t *testing.T) {
 	withRouteHealthDB(t)
-	withHealthSetting(t, health_store.DefaultChannelModelHealthSetting())
+	withHealthSetting(t, DefaultChannelModelHealthSetting())
 
 	now := time.Unix(1_700_000_000, 0)
 	key := RouteKey{ChannelId: 9701, Model: "hydration-model"}
@@ -504,7 +504,7 @@ func TestCacheHydrationAndExpiryPersistence(t *testing.T) {
 // report ok=false for a route that was never isolated.
 func TestGetRouteIsolationReportsTransition(t *testing.T) {
 	withRouteHealthDB(t)
-	withHealthSetting(t, health_store.DefaultChannelModelHealthSetting())
+	withHealthSetting(t, DefaultChannelModelHealthSetting())
 
 	key := RouteKey{ChannelId: 9801, Model: "isolation-report-model"}
 	untouched := RouteKey{ChannelId: 9801, Model: "never-failed-model"}
@@ -522,7 +522,7 @@ func TestGetRouteIsolationReportsTransition(t *testing.T) {
 	require.True(t, ok, "an isolated route must expose its snapshot")
 	assert.Equal(t, HealthCalm, state)
 	assert.Equal(t, 1, level)
-	cfg := health_store.DefaultChannelModelHealthSetting()
+	cfg := DefaultChannelModelHealthSetting()
 	assert.Equal(t, now.Unix()+int64(cfg.CalmFastBase), until, "deadline must match the level 1 duration")
 
 	// Escalation must be visible through the same accessor, otherwise the log
@@ -540,7 +540,7 @@ func TestGetRouteIsolationReportsTransition(t *testing.T) {
 // the ladder. The writer count exceeds the old bound on purpose.
 func TestConcurrentFailureNeverLosesUpdate(t *testing.T) {
 	withRouteHealthDB(t)
-	withHealthSetting(t, health_store.DefaultChannelModelHealthSetting())
+	withHealthSetting(t, DefaultChannelModelHealthSetting())
 
 	now := time.Unix(1_700_000_000, 0)
 	key := RouteKey{ChannelId: 9901, Model: "no-lost-update-model"}
@@ -577,7 +577,7 @@ func TestConcurrentFailureNeverLosesUpdate(t *testing.T) {
 // counter must remain zero throughout.
 func TestLocalFailureThresholdEscalatesAtThreshold(t *testing.T) {
 	withRouteHealthDB(t)
-	cfg := health_store.DefaultChannelModelHealthSetting()
+	cfg := DefaultChannelModelHealthSetting()
 	cfg.LocalFailureThreshold = 3
 	withHealthSetting(t, cfg)
 
@@ -619,7 +619,7 @@ func TestLocalFailureThresholdEscalatesAtThreshold(t *testing.T) {
 // while the local counter accumulated by prior local failures is preserved.
 func TestUpstreamFailureThresholdEscalatesWhilePreservingLocalCounter(t *testing.T) {
 	withRouteHealthDB(t)
-	cfg := health_store.DefaultChannelModelHealthSetting()
+	cfg := DefaultChannelModelHealthSetting()
 	cfg.LocalFailureThreshold = 3
 	cfg.UpstreamFailureThreshold = 1
 	withHealthSetting(t, cfg)
@@ -651,7 +651,7 @@ func TestUpstreamFailureThresholdEscalatesWhilePreservingLocalCounter(t *testing
 // cache entry is inserted, and the error is returned.
 func TestRecordRetryableFailureRejectsUnknownSource(t *testing.T) {
 	withRouteHealthDB(t)
-	withHealthSetting(t, health_store.DefaultChannelModelHealthSetting())
+	withHealthSetting(t, DefaultChannelModelHealthSetting())
 
 	now := time.Unix(1_700_000_000, 0)
 	key := RouteKey{ChannelId: 9122, Model: "bad-source"}
@@ -668,7 +668,7 @@ func TestRecordRetryableFailureRejectsUnknownSource(t *testing.T) {
 
 func TestRouteHealthSeparatesKeysForSameChannelModel(t *testing.T) {
 	withRouteHealthDB(t)
-	withHealthSetting(t, health_store.DefaultChannelModelHealthSetting())
+	withHealthSetting(t, DefaultChannelModelHealthSetting())
 
 	now := time.Unix(1_700_000_000, 0)
 	failed := RouteKey{ChannelId: 9123, KeyIndex: 0, Model: "key-separated"}
@@ -689,7 +689,7 @@ func TestRouteHealthSeparatesKeysForSameChannelModel(t *testing.T) {
 // excluded (IsRouteSelectable=false, multiplier=0). A healthy route gets 1.0.
 func TestRouteWeightMultiplierCalmAndDormant(t *testing.T) {
 	withRouteHealthDB(t)
-	cfg := health_store.DefaultChannelModelHealthSetting()
+	cfg := DefaultChannelModelHealthSetting()
 	cfg.CalmWeightScale = 50
 	cfg.DormantWeightScale = 10
 	withHealthSetting(t, cfg)
@@ -730,7 +730,7 @@ func TestRouteWeightMultiplierCalmAndDormant(t *testing.T) {
 // disabled).
 func TestSoftDepressionKeepsCalmRouteSelectable(t *testing.T) {
 	withRouteHealthDB(t)
-	cfg := health_store.DefaultChannelModelHealthSetting()
+	cfg := DefaultChannelModelHealthSetting()
 	cfg.CalmWeightScale = 100
 	withHealthSetting(t, cfg)
 

@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
@@ -174,7 +173,7 @@ func RouteWeightMultiplier(key RouteKey) float64 {
 	if modelPressureLevel(key.Model) == PressureEmergency {
 		return 1.0
 	}
-	cfg := health_store.GetChannelModelHealthSetting()
+	cfg := GetChannelModelHealthSetting()
 	switch state.State {
 	case HealthCalm:
 		return float64(cfg.CalmWeightScale) / 100.0
@@ -258,7 +257,7 @@ func InitChannelModelHealthCache() {
 	common.SysLog("channel model health cache loaded from database")
 }
 
-func isolationDuration(level int, cfg *health_store.ChannelModelHealthSetting) (string, int64) {
+func isolationDuration(level int, cfg *ChannelModelHealthSetting) (string, int64) {
 	switch {
 	case level <= 0:
 		return HealthHealthy, 0
@@ -295,7 +294,7 @@ func casBackoff(attempt int) {
 // resets to zero and the route escalates one ladder step — the other counter
 // is preserved so a burst of local errors never masks upstream degradation.
 func RecordRetryableFailure(key RouteKey, errorCode string, source FailureSource, now time.Time) error {
-	cfg := health_store.GetChannelModelHealthSetting()
+	cfg := GetChannelModelHealthSetting()
 	var threshold int
 	var countColumn string
 	switch source {

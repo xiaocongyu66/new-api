@@ -7,14 +7,16 @@ import (
 	"github.com/QuantumNous/new-api/internal/types"
 )
 
-var SelfUseModeEnabled = false
-
 // from songquanpeng/one-api
 const (
 	USD2RMB = 7.3 // 暂定 1 USD = 7.3 RMB
 	USD     = 500 // $0.002 = 1 -> $1 = 500
 	RMB     = USD / USD2RMB
 )
+
+// SelfUseModeEnabled is owned by configure_ratio to avoid importing catalog.manage_channels (cycle after C1 flattening).
+// manage_channels syncs it via ratio_setting.SelfUseModeEnabled in applyOperationSetting.
+var SelfUseModeEnabled = false
 
 // modelRatio
 // https://platform.openai.com/docs/models/model-endpoint-compatibility
@@ -405,6 +407,7 @@ func GetModelRatio(name string) (float64, bool, string) {
 	}
 	return ratio, true, name
 }
+
 func DefaultModelRatio2JSONString() string {
 	jsonBytes, err := common.Marshal(defaultModelRatio)
 	if err != nil {

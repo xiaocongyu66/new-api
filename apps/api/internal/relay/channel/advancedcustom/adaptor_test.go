@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"testing"
 
-	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
+	model_setting "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"

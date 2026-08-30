@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
 )
@@ -24,7 +23,7 @@ var ProbeChannelKeyFunc func(channelID, keyIndex int) (valid bool, decisive bool
 // remaining keys of a multi-key channel keep serving. An inconclusive probe
 // changes nothing: the unit stays disabled, its siblings stay untouched.
 func verifyKeyAndCascade(channelID, keyIndex int, now time.Time) {
-	cfg := health_store.GetChannelModelHealthSetting()
+	cfg := GetChannelModelHealthSetting()
 	if !cfg.KeyProbeEnabled || ProbeChannelKeyFunc == nil {
 		return
 	}

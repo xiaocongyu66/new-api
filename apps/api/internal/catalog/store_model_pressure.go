@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/catalog/health_store"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
 )
@@ -43,7 +42,7 @@ func modelPressureLevel(model string) PressureLevel {
 		return PressureNormal
 	}
 	ratio := float64(p.healthy) * 100 / float64(p.total)
-	cfg := health_store.GetChannelModelHealthSetting()
+	cfg := GetChannelModelHealthSetting()
 	switch {
 	case ratio < float64(cfg.EmergencyThreshold):
 		return PressureEmergency
@@ -58,7 +57,7 @@ func modelPressureLevel(model string) PressureLevel {
 // warning → AcceleratedDecayStep; normal/emergency → NormalDecayStep.
 // Config values <= 0 fall back to 1 so decay never stalls at step 0.
 func decayStep(model string) int {
-	cfg := health_store.GetChannelModelHealthSetting()
+	cfg := GetChannelModelHealthSetting()
 	step := cfg.NormalDecayStep
 	if modelPressureLevel(model) == PressureWarning {
 		step = cfg.AcceleratedDecayStep
@@ -215,7 +214,7 @@ func maybeEmergencyRecover(model string, now time.Time) {
 		return
 	}
 
-	cfg := health_store.GetChannelModelHealthSetting()
+	cfg := GetChannelModelHealthSetting()
 	ratio := float64(p.healthy) * 100 / float64(p.total)
 	if ratio >= float64(cfg.EmergencyThreshold) {
 		return

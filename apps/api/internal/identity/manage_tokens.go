@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/i18n"
@@ -81,7 +80,7 @@ func setTokenAutoGroups(c contract.Context, token *Token, groups []string) bool 
 		return true
 	}
 
-	maxCount := resolve_group.GetMaxTokenAutoGroups()
+	maxCount := maxTokenAutoGroups()
 	if len(groups) > maxCount {
 		common.CtxApiErrorI18n(c, i18n.MsgTokenAutoGroupsTooMany, map[string]any{"Max": maxCount})
 		return false
@@ -99,7 +98,7 @@ func setTokenAutoGroups(c contract.Context, token *Token, groups []string) bool 
 			return false
 		}
 		seen[group] = struct{}{}
-		if !resolve_group.IsUserSelectableGroup(userGroup, group) {
+		if !isUserSelectableGroup(userGroup, group) {
 			common.CtxApiErrorI18n(c, i18n.MsgTokenAutoGroupsInvalid, map[string]any{"Group": group})
 			return false
 		}
@@ -165,8 +164,8 @@ func GetTokenAutoGroups(c contract.Context) {
 		return
 	}
 	common.CtxApiSuccess(c, common.H{
-		"groups":    resolve_group.GetUserAutoGroup(userGroup),
-		"max_count": resolve_group.GetMaxTokenAutoGroups(),
+		"groups":    userAutoGroup(userGroup),
+		"max_count": maxTokenAutoGroups(),
 	})
 }
 

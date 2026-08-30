@@ -23,7 +23,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 
 	//"github.com/QuantumNous/new-api/internal/relay/channel/minimax"
-	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
+	model_setting "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/relay/channel/openrouter"
 	"github.com/QuantumNous/new-api/internal/relay/channel/xinference"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"

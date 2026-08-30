@@ -9,7 +9,7 @@ import (
 	common2 "github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
-	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
+	model_setting "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"

@@ -54,14 +54,15 @@ func applyOperationSetting(key, value string) error {
 	case "AutomaticDisableKeywords":
 		AutomaticDisableKeywordsFromString(value)
 	}
+	return nil
 }
 
 // seedOperationOptions returns the map for OnSeedCatalogOptions chaining.
 func seedOperationOptions() map[string]string {
 	return map[string]string{
-		"DemoSiteEnabled":           strconv.FormatBool(DemoSiteEnabled),
-		"SelfUseModeEnabled":        strconv.FormatBool(SelfUseModeEnabled),
-		"AutomaticDisableKeywords":  AutomaticDisableKeywordsToString(),
+		"DemoSiteEnabled":          strconv.FormatBool(DemoSiteEnabled),
+		"SelfUseModeEnabled":       strconv.FormatBool(SelfUseModeEnabled),
+		"AutomaticDisableKeywords": AutomaticDisableKeywordsToString(),
 	}
 }
 

@@ -3,7 +3,6 @@ package handler
 import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/catalog"
-	channelpkg "github.com/QuantumNous/new-api/internal/catalog"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
@@ -130,9 +129,9 @@ func channelOwnerName(channelType int) string {
 }
 
 func getPreferredModelOwners(modelNames []string, groups []string) map[string]string {
-	channelTypes, err := channelpkg.GetPreferredModelOwnerChannelTypes(modelNames, groups)
+	channelTypes, err := channel.GetPreferredModelOwnerChannelTypes(modelNames, groups)
 	if err != nil {
-		common.SysLog(fmt.Sprintf("channelpkg.GetPreferredModelOwnerChannelTypes error: %v", err))
+		common.SysLog(fmt.Sprintf("channel.GetPreferredModelOwnerChannelTypes error: %v", err))
 		return map[string]string{}
 	}
 
@@ -166,7 +165,7 @@ func buildOpenAIModel(modelName string, ownerByModel map[string]string) dto.Open
 	if owner, ok := ownerByModel[modelName]; ok && owner != "" {
 		oaiModel.OwnedBy = owner
 	}
-	oaiModel.SupportedEndpointTypes = channelpkg.GetModelSupportEndpointTypes(modelName)
+	oaiModel.SupportedEndpointTypes = channel.GetModelSupportEndpointTypes(modelName)
 	return oaiModel
 }
 
@@ -191,7 +190,7 @@ func getModelListGroups(c contract.Context) (modelListGroups, error) {
 		return modelListGroups{
 			userGroup:   userGroup,
 			tokenGroup:  tokenGroup,
-			ownerGroups: resolve_group.GetRequestAutoGroups(c, userGroup),
+			ownerGroups: channel.GetRequestAutoGroups(c, userGroup),
 		}, nil
 	}
 
@@ -207,7 +206,7 @@ func getModelListGroups(c contract.Context) (modelListGroups, error) {
 }
 
 func ListModels(c contract.Context, modelType int) {
-	acceptUnsetRatioModel := channelpkg.SelfUseModeEnabled
+	acceptUnsetRatioModel := channel.SelfUseModeEnabled
 	if !acceptUnsetRatioModel {
 		userId := c.GetInt("id")
 		if userId > 0 {
@@ -239,7 +238,7 @@ func ListModels(c contract.Context, modelType int) {
 			tokenModelLimit = map[string]bool{}
 		}
 	}
-	models := channelpkg.GetGroupsEnabledModels(ownerGroups)
+	models := channel.GetGroupsEnabledModels(ownerGroups)
 	for _, modelName := range models {
 		if modelLimitEnable {
 			matchingName := ratio_setting.FormatMatchingModelName(modelName)
@@ -323,7 +322,7 @@ func DashboardListModels(c contract.Context) {
 func EnabledListModels(c contract.Context) {
 	_ = c.JSON(200, common.H{
 		"success": true,
-		"data":    channelpkg.GetEnabledModels(),
+		"data":    channel.GetEnabledModels(),
 	})
 }
 

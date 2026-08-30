@@ -6,6 +6,7 @@ import (
 	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/settings"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/stretchr/testify/assert"
@@ -21,6 +22,8 @@ func TestPackageInitInstallsCrossDomainHooks(t *testing.T) {
 		"a billing_setting change must invalidate the pricing cache")
 	assert.NotNil(t, model.MutateGatewayRoutingFn,
 		"a gateway-routing option write must bump the config revision")
+	assert.True(t, identity.HasGroupModelsResolver(),
+		"the group-models resolver must be installed, or /api/user/models returns nothing")
 }
 
 // A billing_setting update must reach the pricing cache. Without the hook the

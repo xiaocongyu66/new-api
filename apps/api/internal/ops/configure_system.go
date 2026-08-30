@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	manage_channels "github.com/QuantumNous/new-api/internal/catalog"
+	"github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
@@ -125,8 +125,8 @@ func PostSetup(c contract.Context) {
 	}
 
 	// Set operation modes
-	manage_channels.SelfUseModeEnabled = req.SelfUseModeEnabled
-	manage_channels.DemoSiteEnabled = req.DemoSiteEnabled
+	channel.SelfUseModeEnabled = req.SelfUseModeEnabled
+	channel.DemoSiteEnabled = req.DemoSiteEnabled
 
 	// Save operation modes to database for persistence
 	err = model.UpdateOption("SelfUseModeEnabled", setupBoolToString(req.SelfUseModeEnabled))
