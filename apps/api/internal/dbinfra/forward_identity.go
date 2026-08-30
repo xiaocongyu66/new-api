@@ -1,4 +1,4 @@
-package model
+package dbinfra
 
 import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"
@@ -9,13 +9,13 @@ import (
 
 // Identity-domain function wrappers.
 //
-// The implementations moved to internal/identity. Files still in model/
-// (checkin.go, log.go, subscription.go, topup.go, etc.) call these functions.
-// To avoid a model → identity import cycle (identity imports security/oauth
-// which imports model), these are function variables wired at startup.
+// The implementations moved to internal/identity. Callers of this package
+// still reach identity records through these wrappers. To avoid a
+// dbinfra → identity import cycle (identity imports security/oauth which
+// imports dbinfra), these are function variables wired at startup.
 //
 // Until wired, calls return zero values. main.go wires them via
-// model.SetIdentityFunctions() during init, before serving requests.
+// dbinfra.SetIdentityFunctions() during init, before serving requests.
 
 type UserQuotaRow = identity.UserQuotaRow
 
@@ -32,7 +32,7 @@ var (
 )
 
 // UserQuery delegates to the identity implementation. The fallback scopes to
-// the User model directly so model-package tests (which run without the
+// the User record directly so dbinfra-package tests (which run without the
 // main.go wiring) still get a table-bound query; the delegate would otherwise
 // return a bare tx and make Updates(map{...}) fail with "Table not set".
 func UserQuery(tx *gorm.DB) *gorm.DB {
@@ -174,7 +174,7 @@ func migrateTokenModelLimitsToText() error {
 	return identity.MigrateTokenModelLimitsToText()
 }
 
-// Type re-exports for callers still importing model (security/oauth, etc.).
+// Type re-exports for callers of this package (security/oauth, etc.).
 // These are aliases — identity.User and identity.User are the same type.
 
 type User = identity.User
@@ -192,7 +192,7 @@ type UserOAuthBinding = identity.UserOAuthBinding
 type ExternalIdentityClaim = identity.ExternalIdentityClaim
 type UserSortOptions = identity.UserSortOptions
 
-// Function re-exports for callers still importing model (security/oauth).
+// Function re-exports for callers of this package (security/oauth).
 var (
 	IsDiscordIdAlreadyTaken    = identity.IsDiscordIdAlreadyTaken
 	IsGitHubIdAlreadyTaken     = identity.IsGitHubIdAlreadyTaken
@@ -253,8 +253,8 @@ var (
 var AuthFlowPurposeOAuth = identity.AuthFlowPurposeOAuth
 var AuthFlowPurposePasskeyLogin = identity.AuthFlowPurposePasskeyLogin
 
-// Error sentinel re-exports: the identity domain owns these errors, so model
-// callers must compare against the same values (errors.Is uses ==).
+// Error sentinel re-exports: the identity domain owns these errors, so callers
+// here must compare against the same values (errors.Is uses ==).
 var (
 	ErrDatabase             = identity.ErrDatabase
 	ErrInvalidCredentials   = identity.ErrInvalidCredentials
@@ -269,8 +269,8 @@ var (
 )
 
 // PostConsumeUserSubscriptionDeltaFn is wired by internal/billing, which owns
-// user subscriptions. model must not import billing (billing imports model), so
-// the entry point arrives as a hook at startup.
+// user subscriptions. dbinfra must not import billing (billing imports
+// dbinfra), so the entry point arrives as a hook at startup.
 var PostConsumeUserSubscriptionDeltaFn func(userSubscriptionId int, delta int64) error
 
 // PostConsumeUserSubscriptionDelta delegates to the billing implementation.
