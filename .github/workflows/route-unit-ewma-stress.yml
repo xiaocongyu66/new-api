@@ -1063,6 +1063,35 @@ jobs:
             echo "mock ${i} (${POD}) /tmp/mock_upstream.ndjson has ${SIZE} bytes"
           done
 
+      - name: Re-login admin token for long scenarios
+        env:
+          GATEWAY_ADMIN_URL: ${{ env.GATEWAY_ADMIN_URL }}
+          ADMIN_USERNAME: ${{ env.ADMIN_USERNAME }}
+          ADMIN_PASSWORD: ${{ env.ADMIN_PASSWORD }}
+        run: |
+          # S2 (B ttft_4000) takes ~12 min, well past the cluster's admin JWT
+          # TTL. fix4 re-login before Run scenario was not enough. Re-login
+          # immediately before the python invocation so the runner gets a
+          # freshly-minted token right up to the moment the stats phase starts.
+          for i in $(seq 1 5); do
+            RESP=$(curl -fsS --max-time 10 -H 'Content-Type: application/json' \
+              -X POST -d "{\"username\":\"$ADMIN_USERNAME\",\"password\":\"$ADMIN_PASSWORD\"}" \
+              "${GATEWAY_ADMIN_URL%/}/api/user/login" 2>/dev/null || true)
+            if [ -n "$RESP" ]; then
+              TOKEN=$(echo "$RESP" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("data",{}).get("access_token",""))' 2>/dev/null || true)
+              if [ -n "$TOKEN" ]; then
+                echo "Re-login admin token before Run scenario (len=${#TOKEN})"
+                echo "::add-mask::$TOKEN"
+                echo "ADMIN_TOKEN_FINAL=$TOKEN" >> "$GITHUB_ENV"
+                exit 0
+              fi
+            fi
+            echo "Re-login attempt $i failed, retrying..."
+            sleep 2
+          done
+          echo "::error::Failed to refresh admin token before Run scenario"
+          exit 1
+
       - name: Run scenario ${{ matrix.scenario }}
         id: scenario
         env:
