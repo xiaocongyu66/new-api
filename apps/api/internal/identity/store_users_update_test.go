@@ -213,3 +213,49 @@ func TestSearchUsersSortsBeforePagination(t *testing.T) {
 	assert.Equal(t, int64(42), total)
 	assert.Equal(t, []int{21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}, collectSearchUserIDs(users))
 }
+
+func TestInsertRejectsDuplicateEmailWithoutUniqueIndex(t *testing.T) {
+	setupUserUpdateTestState(t)
+
+	require.NoError(t, dbx.DB.Create(&User{
+		Username: "existing",
+		Password: "old-password",
+		Email:    "taken@example.com",
+		Status:   common.UserStatusEnabled,
+	}).Error)
+
+	user := &User{
+		Username: "oauth-user",
+		Email:    "TAKEN@example.com",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+	}
+
+	err := user.Insert(0)
+	require.ErrorIs(t, err, ErrEmailAlreadyTaken)
+
+	var count int64
+	require.NoError(t, dbx.DB.Model(&User{}).Where("username = ?", "oauth-user").Count(&count).Error)
+	assert.Zero(t, count)
+}
+
+func TestValidateAndFillRejectsPasswordlessUser(t *testing.T) {
+	setupUserUpdateTestState(t)
+
+	require.NoError(t, dbx.DB.Create(&User{
+		Username: "passwordless-user",
+		Password: "",
+		Status:   common.UserStatusEnabled,
+	}).Error)
+
+	loginUser := User{
+		Username: "passwordless-user",
+		Password: "NewPassword123",
+	}
+	err := loginUser.ValidateAndFill()
+	require.ErrorIs(t, err, ErrInvalidCredentials)
+
+	var stored User
+	require.NoError(t, dbx.DB.Where("username = ?", "passwordless-user").First(&stored).Error)
+	assert.Empty(t, stored.Password)
+}
