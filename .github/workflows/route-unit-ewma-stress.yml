@@ -421,6 +421,172 @@ jobs:
               ;;
           esac
 
+          if command -v kubectl >/dev/null 2>&1 && [ -f ~/.kube/config ]; then
+            MOCK_IN_CLUSTER=true
+          else
+            MOCK_IN_CLUSTER=false
+          fi
+          echo "MOCK_IN_CLUSTER=${MOCK_IN_CLUSTER}" >> "$GITHUB_ENV"
+
+          if [ "$MOCK_IN_CLUSTER" = "true" ]; then
+            # Place the mocks on whichever node already runs the gateway, so both the
+            # gateway->mock hop and the runner's port-forward stay on one node.
+            MOCK_NODE=$(kubectl get pods -l app=new-api,role=worker \
+              -o jsonpath='{.items[0].spec.nodeName}')
+            if [ -z "$MOCK_NODE" ]; then
+              MOCK_NODE=$(kubectl get pods -l app=postgres -o jsonpath='{.items[0].spec.nodeName}')
+            fi
+            if [ -z "$MOCK_NODE" ]; then
+              echo "::error::cannot determine which node runs the gateway; refusing to schedule mocks blindly"
+              exit 1
+            fi
+            echo "scheduling mocks onto ${MOCK_NODE}"
+
+            # Remove any mocks a previous run left behind before recreating them. Without
+            # this a stale Deployment would keep serving the old fixture, and restarting
+            # it in place cannot work on a node with no room for a surge pod.
+            kubectl delete deployment,service -l app=route-unit-mock --ignore-not-found=true --wait=true || true
+
+            # One Deployment + Service per instance, because each carries a different
+            # MOCK_FORCE_MODE and the channels must address them individually.
+            kubectl create configmap route-unit-mock-src \
+              --from-file=mock_upstream.py=tests/route_unit_stress/fixtures/mock_upstream.py \
+              --dry-run=client -o yaml | kubectl apply -f -
+            for i in $(seq 0 $((INSTANCES - 1))); do
+              MODE="${MODES[$i]}"
+              kubectl apply -f - <<YAML
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: route-unit-mock-${i}
+            labels:
+              app: route-unit-mock
+              instance: "m${i}"
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: route-unit-mock
+                instance: "m${i}"
+            template:
+              metadata:
+                labels:
+                  app: route-unit-mock
+                  instance: "m${i}"
+              spec:
+                # Co-locate with the gateway. The cluster spans two datacenters and
+                # cross-node pod networking is broken: pods on the other node cannot
+                # resolve cluster DNS, and the API server cannot reach its kubelet, so
+                # port-forward fails with a 502 dialing the backend. Scheduling the
+                # mocks onto the gateway's node keeps both the gateway->mock path and
+                # the runner's port-forward inside the working node.
+                nodeSelector:
+                  kubernetes.io/hostname: "${MOCK_NODE}"
+                containers:
+                  - name: mock
+                    image: python:3.12-alpine
+                    command: ["python", "/mock/mock_upstream.py"]
+                    env:
+                      - name: MOCK_PORT
+                        value: "8099"
+                      - name: MOCK_NDJSON
+                        value: /tmp/mock_upstream.ndjson
+                      - name: MOCK_FORCE_MODE
+                        value: "${MODE}"
+                    ports:
+                      - containerPort: 8099
+                    readinessProbe:
+                      httpGet:
+                        path: /healthz
+                        port: 8099
+                      initialDelaySeconds: 2
+                      periodSeconds: 2
+                    volumeMounts:
+                      - name: mock-src
+                        mountPath: /mock
+                        readOnly: true
+                    resources:
+                      # Squeeze the mock down to share the control-plane node with
+                      # everything else. The control-plane node has ~1.9Gi of
+                      # requestable memory; the master, worker, postgres, redis,
+                      # ingress, and coredns together leave just enough room for
+                      # one mock at 128Mi, never two. 64Mi fits two, with headroom
+                      # for whatever else might land on the node. The mock only
+                      # serves HTTP and writes a small ndjson; 64Mi is plenty.
+                      requests:
+                        cpu: 50m
+                        memory: 64Mi
+                      limits:
+                        cpu: "1"
+                        memory: 256Mi
+                volumes:
+                  - name: mock-src
+                    configMap:
+                      name: route-unit-mock-src
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: route-unit-mock-${i}
+          spec:
+            selector:
+              app: route-unit-mock
+              instance: "m${i}"
+            ports:
+              - port: 80
+                targetPort: 8099
+          YAML
+            done
+
+            for i in $(seq 0 $((INSTANCES - 1))); do
+              # Wait on pod readiness, not the rollout. The node has room for exactly one
+              # pod per mock, while a RollingUpdate wants a surge pod, so `rollout status`
+              # only ever reports its deadline. No restart is needed either: the cleanup
+              # below deletes the previous run's mocks, so these Deployments are created
+              # fresh against the current ConfigMap.
+              for j in $(seq 1 90); do
+                READY=$(kubectl get pods -l "app=route-unit-mock,instance=m${i}" \
+                  -o jsonpath='{range .items[*]}{range @.status.conditions[?(@.type=="Ready")]}{.status}{end} {end}')
+                case "$READY" in
+                  *True*) break ;;
+                esac
+                sleep 2
+              done
+              case "${READY:-}" in
+                *True*) echo "mock ${i} pod ready" ;;
+                *) echo "::error::mock ${i} pod never became ready (last: ${READY:-<none>})"
+                   kubectl get pods -l "app=route-unit-mock,instance=m${i}" -o wide || true
+                   kubectl describe pods -l "app=route-unit-mock,instance=m${i}" 2>&1 | tail -20 || true
+                   exit 1 ;;
+              esac
+            done
+
+            # /healthz and /_ndjson are read from here; the gateway uses Service DNS.
+            # Keep the same ports the runner-local path uses so nothing downstream
+            # needs to know which mode produced them.
+            for i in $(seq 0 $((INSTANCES - 1))); do
+              PORT=$((BASE_PORT + i))
+              kubectl port-forward "service/route-unit-mock-${i}" "${PORT}:80" \
+                > "/tmp/mock-pf-${PORT}.log" 2>&1 &
+              echo "MOCK_PF_PID_${PORT}=$!" >> "$GITHUB_ENV"
+            done
+            for i in $(seq 0 $((INSTANCES - 1))); do
+              PORT=$((BASE_PORT + i))
+              for j in $(seq 1 30); do
+                curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null 2>&1 && break
+                sleep 1
+              done
+              if ! curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null 2>&1; then
+                echo "::error::port-forward to route-unit-mock-${i} never became ready"
+                cat "/tmp/mock-pf-${PORT}.log" || true
+                exit 1
+              fi
+              echo "in-cluster mock ${i} (mode=${MODES[$i]}) reachable on 127.0.0.1:${PORT}"
+            done
+            exit 0
+          fi
+
+
 
           for i in $(seq 0 $((INSTANCES - 1))); do
             PORT=$((BASE_PORT + i))
