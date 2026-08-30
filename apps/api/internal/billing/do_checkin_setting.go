@@ -1,8 +1,6 @@
 package billing
 
-import (
-	"github.com/QuantumNous/new-api/internal/settings/config"
-)
+import "github.com/QuantumNous/new-api/internal/settings"
 
 // CheckinSetting 签到功能配置
 type CheckinSetting struct {
@@ -20,7 +18,7 @@ var checkinSetting = CheckinSetting{
 
 func init() {
 	// 注册到全局配置管理器
-	config.GlobalConfig.Register("checkin_setting", &checkinSetting)
+	settings.GlobalConfig.Register("checkin_setting", &checkinSetting)
 }
 
 // GetCheckinSetting 获取签到配置

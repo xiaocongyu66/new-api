@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/billing"
 	channel "github.com/QuantumNous/new-api/internal/catalog"
 	"io"
 	"math"
@@ -17,7 +18,6 @@ import (
 	"sync"
 	"time"
 
-	tiered_pricing "github.com/QuantumNous/new-api/internal/billing/tiered_pricing"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
@@ -85,8 +85,8 @@ var pricingSyncFields = []string{
 	"audio_ratio",
 	"audio_completion_ratio",
 	"model_price",
-	tiered_pricing.BillingModeField,
-	tiered_pricing.BillingExprField,
+	billing.BillingModeField,
+	billing.BillingExprField,
 }
 
 var numericPricingSyncFields = map[string]bool{
@@ -159,7 +159,7 @@ func normalizeSyncValue(field string, value any) any {
 }
 
 func getLocalPricingSyncData() map[string]any {
-	data := tiered_pricing.GetPricingSyncData(map[string]any(ratio_setting.GetExposedData()))
+	data := billing.GetPricingSyncData(map[string]any(ratio_setting.GetExposedData()))
 	data["image_ratio"] = ratio_setting.GetImageRatioCopy()
 	data["audio_ratio"] = ratio_setting.GetAudioRatioCopy()
 	data["audio_completion_ratio"] = ratio_setting.GetAudioCompletionRatioCopy()
@@ -851,8 +851,8 @@ func FetchUpstreamRatios(c contract.Context) {
 				if item.ModelName == "" {
 					continue
 				}
-				if item.BillingMode == tiered_pricing.BillingModeTieredExpr && strings.TrimSpace(item.BillingExpr) != "" {
-					billingModeMap[item.ModelName] = tiered_pricing.BillingModeTieredExpr
+				if item.BillingMode == billing.BillingModeTieredExpr && strings.TrimSpace(item.BillingExpr) != "" {
+					billingModeMap[item.ModelName] = billing.BillingModeTieredExpr
 					billingExprMap[item.ModelName] = item.BillingExpr
 				}
 				if item.QuotaType == 1 {
@@ -919,10 +919,10 @@ func FetchUpstreamRatios(c contract.Context) {
 				converted["model_price"] = priceAny
 			}
 			if len(billingModeMap) > 0 {
-				converted[tiered_pricing.BillingModeField] = valueMap(billingModeMap)
+				converted[billing.BillingModeField] = valueMap(billingModeMap)
 			}
 			if len(billingExprMap) > 0 {
-				converted[tiered_pricing.BillingExprField] = valueMap(billingExprMap)
+				converted[billing.BillingExprField] = valueMap(billingExprMap)
 			}
 
 			ch <- upstreamResult{Name: uniqueName, Data: converted}

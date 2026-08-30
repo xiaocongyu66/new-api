@@ -12,9 +12,6 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 
-	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
-	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
-
 	"github.com/bytedance/gopkg/util/gopool"
 )
 
@@ -120,57 +117,24 @@ func logHelper(ctx context.Context, level string, msg string) {
 	}
 }
 
+// OnFormatQuota renders a quota using the operator's configured display type.
+// The billing domain owns that setting, so it registers this hook from its own
+// init(); logger must not depend on billing. Unregistered means the built-in USD
+// rendering below, which is also billing's default display type.
+var OnFormatQuota func(quota int, withUnitSuffix bool) string
+
 func LogQuota(quota int) string {
-	// 新逻辑：根据额度展示类型输出
-	q := float64(quota)
-	switch manage_subscription.GetQuotaDisplayType() {
-	case manage_subscription.QuotaDisplayTypeCNY:
-		usd := q / common.QuotaPerUnit
-		cny := usd * pay_subscription.USDExchangeRate
-		return fmt.Sprintf("¥%.6f 额度", cny)
-	case manage_subscription.QuotaDisplayTypeCustom:
-		usd := q / common.QuotaPerUnit
-		rate := manage_subscription.GetGeneralSetting().CustomCurrencyExchangeRate
-		symbol := manage_subscription.GetGeneralSetting().CustomCurrencySymbol
-		if symbol == "" {
-			symbol = "¤"
-		}
-		if rate <= 0 {
-			rate = 1
-		}
-		v := usd * rate
-		return fmt.Sprintf("%s%.6f 额度", symbol, v)
-	case manage_subscription.QuotaDisplayTypeTokens:
-		return fmt.Sprintf("%d 点额度", quota)
-	default: // USD
-		return fmt.Sprintf("＄%.6f 额度", q/common.QuotaPerUnit)
+	if OnFormatQuota != nil {
+		return OnFormatQuota(quota, true)
 	}
+	return fmt.Sprintf("＄%.6f 额度", float64(quota)/common.QuotaPerUnit)
 }
 
 func FormatQuota(quota int) string {
-	q := float64(quota)
-	switch manage_subscription.GetQuotaDisplayType() {
-	case manage_subscription.QuotaDisplayTypeCNY:
-		usd := q / common.QuotaPerUnit
-		cny := usd * pay_subscription.USDExchangeRate
-		return fmt.Sprintf("¥%.6f", cny)
-	case manage_subscription.QuotaDisplayTypeCustom:
-		usd := q / common.QuotaPerUnit
-		rate := manage_subscription.GetGeneralSetting().CustomCurrencyExchangeRate
-		symbol := manage_subscription.GetGeneralSetting().CustomCurrencySymbol
-		if symbol == "" {
-			symbol = "¤"
-		}
-		if rate <= 0 {
-			rate = 1
-		}
-		v := usd * rate
-		return fmt.Sprintf("%s%.6f", symbol, v)
-	case manage_subscription.QuotaDisplayTypeTokens:
-		return fmt.Sprintf("%d", quota)
-	default:
-		return fmt.Sprintf("＄%.6f", q/common.QuotaPerUnit)
+	if OnFormatQuota != nil {
+		return OnFormatQuota(quota, false)
 	}
+	return fmt.Sprintf("＄%.6f", float64(quota)/common.QuotaPerUnit)
 }
 
 // LogJson 仅供测试使用 only for test

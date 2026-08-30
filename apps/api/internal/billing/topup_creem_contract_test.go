@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -21,16 +20,16 @@ import (
 func TestCreemWebhookRejectsDisabledViaForbidden(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	prevSecret := pay_subscription.CreemWebhookSecret
-	prevProducts := pay_subscription.CreemProducts
-	prevTestMode := pay_subscription.CreemTestMode
-	pay_subscription.CreemWebhookSecret = ""
-	pay_subscription.CreemProducts = "[]"
-	pay_subscription.CreemTestMode = false
+	prevSecret := CreemWebhookSecret
+	prevProducts := CreemProducts
+	prevTestMode := CreemTestMode
+	CreemWebhookSecret = ""
+	CreemProducts = "[]"
+	CreemTestMode = false
 	t.Cleanup(func() {
-		pay_subscription.CreemWebhookSecret = prevSecret
-		pay_subscription.CreemProducts = prevProducts
-		pay_subscription.CreemTestMode = prevTestMode
+		CreemWebhookSecret = prevSecret
+		CreemProducts = prevProducts
+		CreemTestMode = prevTestMode
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/creem/webhook", nil)
@@ -49,27 +48,27 @@ func TestCreemWebhookAcceptsValidSignatureAndReturnsOK(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	// Setup all required settings for Creem webhook to be enabled
-	prevCompliance := pay_subscription.GetPaymentSetting().ComplianceConfirmed
-	prevTermsVersion := pay_subscription.GetPaymentSetting().ComplianceTermsVersion
-	prevApiKey := pay_subscription.CreemApiKey
-	prevProducts := pay_subscription.CreemProducts
-	prevSecret := pay_subscription.CreemWebhookSecret
-	prevTestMode := pay_subscription.CreemTestMode
+	prevCompliance := GetPaymentSetting().ComplianceConfirmed
+	prevTermsVersion := GetPaymentSetting().ComplianceTermsVersion
+	prevApiKey := CreemApiKey
+	prevProducts := CreemProducts
+	prevSecret := CreemWebhookSecret
+	prevTestMode := CreemTestMode
 	t.Cleanup(func() {
-		pay_subscription.GetPaymentSetting().ComplianceConfirmed = prevCompliance
-		pay_subscription.GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
-		pay_subscription.CreemApiKey = prevApiKey
-		pay_subscription.CreemProducts = prevProducts
-		pay_subscription.CreemWebhookSecret = prevSecret
-		pay_subscription.CreemTestMode = prevTestMode
+		GetPaymentSetting().ComplianceConfirmed = prevCompliance
+		GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
+		CreemApiKey = prevApiKey
+		CreemProducts = prevProducts
+		CreemWebhookSecret = prevSecret
+		CreemTestMode = prevTestMode
 	})
-	pay_subscription.GetPaymentSetting().ComplianceConfirmed = true
-	pay_subscription.GetPaymentSetting().ComplianceTermsVersion = pay_subscription.CurrentComplianceTermsVersion
+	GetPaymentSetting().ComplianceConfirmed = true
+	GetPaymentSetting().ComplianceTermsVersion = CurrentComplianceTermsVersion
 	secret := "creem_test_secret"
-	pay_subscription.CreemApiKey = "creem_api_key"
-	pay_subscription.CreemProducts = `[{"productId":"prod_test_123"}]`
-	pay_subscription.CreemWebhookSecret = secret
-	pay_subscription.CreemTestMode = false
+	CreemApiKey = "creem_api_key"
+	CreemProducts = `[{"productId":"prod_test_123"}]`
+	CreemWebhookSecret = secret
+	CreemTestMode = false
 
 	// Minimal checkout.completed payload matching CreemWebhookEvent
 	payload := []byte(`{
@@ -107,27 +106,27 @@ func TestCreemWebhookRejectsInvalidSignatureViaUnauthorized(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	// Setup all required settings
-	prevCompliance := pay_subscription.GetPaymentSetting().ComplianceConfirmed
-	prevTermsVersion := pay_subscription.GetPaymentSetting().ComplianceTermsVersion
-	prevApiKey := pay_subscription.CreemApiKey
-	prevProducts := pay_subscription.CreemProducts
-	prevSecret := pay_subscription.CreemWebhookSecret
-	prevTestMode := pay_subscription.CreemTestMode
+	prevCompliance := GetPaymentSetting().ComplianceConfirmed
+	prevTermsVersion := GetPaymentSetting().ComplianceTermsVersion
+	prevApiKey := CreemApiKey
+	prevProducts := CreemProducts
+	prevSecret := CreemWebhookSecret
+	prevTestMode := CreemTestMode
 	t.Cleanup(func() {
-		pay_subscription.GetPaymentSetting().ComplianceConfirmed = prevCompliance
-		pay_subscription.GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
-		pay_subscription.CreemApiKey = prevApiKey
-		pay_subscription.CreemProducts = prevProducts
-		pay_subscription.CreemWebhookSecret = prevSecret
-		pay_subscription.CreemTestMode = prevTestMode
+		GetPaymentSetting().ComplianceConfirmed = prevCompliance
+		GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
+		CreemApiKey = prevApiKey
+		CreemProducts = prevProducts
+		CreemWebhookSecret = prevSecret
+		CreemTestMode = prevTestMode
 	})
-	pay_subscription.GetPaymentSetting().ComplianceConfirmed = true
-	pay_subscription.GetPaymentSetting().ComplianceTermsVersion = pay_subscription.CurrentComplianceTermsVersion
+	GetPaymentSetting().ComplianceConfirmed = true
+	GetPaymentSetting().ComplianceTermsVersion = CurrentComplianceTermsVersion
 	secret := "creem_test_secret"
-	pay_subscription.CreemApiKey = "creem_api_key"
-	pay_subscription.CreemProducts = `[{"productId":"prod_test_123"}]`
-	pay_subscription.CreemWebhookSecret = secret
-	pay_subscription.CreemTestMode = false
+	CreemApiKey = "creem_api_key"
+	CreemProducts = `[{"productId":"prod_test_123"}]`
+	CreemWebhookSecret = secret
+	CreemTestMode = false
 
 	payload := []byte(`{"id":"evt_test","eventType":"checkout.completed"}`)
 	// Wrong signature
@@ -149,27 +148,27 @@ func TestCreemWebhookRejectsMissingSignatureViaUnauthorized(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	// Setup all required settings
-	prevCompliance := pay_subscription.GetPaymentSetting().ComplianceConfirmed
-	prevTermsVersion := pay_subscription.GetPaymentSetting().ComplianceTermsVersion
-	prevApiKey := pay_subscription.CreemApiKey
-	prevProducts := pay_subscription.CreemProducts
-	prevSecret := pay_subscription.CreemWebhookSecret
-	prevTestMode := pay_subscription.CreemTestMode
+	prevCompliance := GetPaymentSetting().ComplianceConfirmed
+	prevTermsVersion := GetPaymentSetting().ComplianceTermsVersion
+	prevApiKey := CreemApiKey
+	prevProducts := CreemProducts
+	prevSecret := CreemWebhookSecret
+	prevTestMode := CreemTestMode
 	t.Cleanup(func() {
-		pay_subscription.GetPaymentSetting().ComplianceConfirmed = prevCompliance
-		pay_subscription.GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
-		pay_subscription.CreemApiKey = prevApiKey
-		pay_subscription.CreemProducts = prevProducts
-		pay_subscription.CreemWebhookSecret = prevSecret
-		pay_subscription.CreemTestMode = prevTestMode
+		GetPaymentSetting().ComplianceConfirmed = prevCompliance
+		GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
+		CreemApiKey = prevApiKey
+		CreemProducts = prevProducts
+		CreemWebhookSecret = prevSecret
+		CreemTestMode = prevTestMode
 	})
-	pay_subscription.GetPaymentSetting().ComplianceConfirmed = true
-	pay_subscription.GetPaymentSetting().ComplianceTermsVersion = pay_subscription.CurrentComplianceTermsVersion
+	GetPaymentSetting().ComplianceConfirmed = true
+	GetPaymentSetting().ComplianceTermsVersion = CurrentComplianceTermsVersion
 	secret := "creem_test_secret"
-	pay_subscription.CreemApiKey = "creem_api_key"
-	pay_subscription.CreemProducts = `[{"productId":"prod_test_123"}]`
-	pay_subscription.CreemWebhookSecret = secret
-	pay_subscription.CreemTestMode = false
+	CreemApiKey = "creem_api_key"
+	CreemProducts = `[{"productId":"prod_test_123"}]`
+	CreemWebhookSecret = secret
+	CreemTestMode = false
 
 	payload := []byte(`{"id":"evt_test","eventType":"checkout.completed"}`)
 

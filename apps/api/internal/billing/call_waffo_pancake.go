@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/model"
 	pancake "github.com/waffo-com/waffo-pancake-sdk-go"
 )
@@ -78,8 +77,8 @@ func (e *WaffoPancakeWebhookEvent) NormalizedEventType() string {
 // yet-saved credentials.
 func newWaffoPancakeClient() (*pancake.Client, error) {
 	return pancake.New(pancake.Config{
-		MerchantID: pay_subscription.WaffoPancakeMerchantID,
-		PrivateKey: pay_subscription.WaffoPancakePrivateKey,
+		MerchantID: WaffoPancakeMerchantID,
+		PrivateKey: WaffoPancakePrivateKey,
 	})
 }
 

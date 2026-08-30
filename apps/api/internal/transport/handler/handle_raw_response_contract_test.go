@@ -11,7 +11,6 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 
-	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,16 +28,16 @@ func TestEpayNotifyRejectsDisabledWebhookWithRawFail(t *testing.T) {
 
 	// The webhook is enabled only when the 易支付 credentials are configured, so
 	// clearing them exercises the disabled-webhook rejection path.
-	previousAddress := pay_subscription.PayAddress
-	previousID := pay_subscription.EpayId
-	previousKey := pay_subscription.EpayKey
-	pay_subscription.PayAddress = ""
-	pay_subscription.EpayId = ""
-	pay_subscription.EpayKey = ""
+	previousAddress := billing.PayAddress
+	previousID := billing.EpayId
+	previousKey := billing.EpayKey
+	billing.PayAddress = ""
+	billing.EpayId = ""
+	billing.EpayKey = ""
 	t.Cleanup(func() {
-		pay_subscription.PayAddress = previousAddress
-		pay_subscription.EpayId = previousID
-		pay_subscription.EpayKey = previousKey
+		billing.PayAddress = previousAddress
+		billing.EpayId = previousID
+		billing.EpayKey = previousKey
 	})
 	c, recorder := ginadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/api/user/epay/notify", nil))
 

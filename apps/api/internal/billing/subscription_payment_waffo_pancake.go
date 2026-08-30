@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/shopspring/decimal"
@@ -45,8 +44,8 @@ func SubscriptionRequestWaffoPancakePay(c contract.Context) {
 	}
 	// Plan targets its own Pancake product, so we only require credentials
 	// here — not the gateway-level WaffoPancakeProductID.
-	if strings.TrimSpace(pay_subscription.WaffoPancakeMerchantID) == "" ||
-		strings.TrimSpace(pay_subscription.WaffoPancakePrivateKey) == "" {
+	if strings.TrimSpace(WaffoPancakeMerchantID) == "" ||
+		strings.TrimSpace(WaffoPancakePrivateKey) == "" {
 		common.CtxApiErrorMsg(c, "Waffo Pancake 未配置或密钥无效")
 		return
 	}

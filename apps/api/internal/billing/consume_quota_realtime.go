@@ -6,7 +6,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/billing/settlecore"
 	channel "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/identity"
-	"github.com/QuantumNous/new-api/internal/ops"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	usagedomain "github.com/QuantumNous/new-api/internal/usage"
 	"math"
@@ -20,7 +19,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/logger"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/types"
-	"github.com/QuantumNous/new-api/internal/usage/record_perf"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/bytedance/gopkg/util/gopool"
 
@@ -383,7 +381,7 @@ func PostAudioConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInf
 		Other:            other,
 	})
 	gopool.Go(func() {
-		record_perf.RecordRelaySample(relayInfo, true, int64(usage.CompletionTokens))
+		usagedomain.RecordRelaySample(relayInfo, true, int64(usage.CompletionTokens))
 	})
 }
 
@@ -467,7 +465,7 @@ func checkAndSendQuotaNotify(relayInfo *relaycommon.RelayInfo, quota int, preCon
 				values = []interface{}{prompt, logger.FormatQuota(relayInfo.UserQuota), topUpLink, topUpLink}
 			}
 
-			err := ops.NotifyUser(relayInfo.UserId, relayInfo.UserEmail, relayInfo.UserSetting, dto.NewNotify(dto.NotifyTypeQuotaExceed, prompt, content, values))
+			err := notifyUser(relayInfo.UserId, relayInfo.UserEmail, relayInfo.UserSetting, dto.NewNotify(dto.NotifyTypeQuotaExceed, prompt, content, values))
 			if err != nil {
 				common.SysError(fmt.Sprintf("failed to send quota notify to user %d: %s", relayInfo.UserId, err.Error()))
 			}
@@ -517,7 +515,7 @@ func checkAndSendSubscriptionQuotaNotify(relayInfo *relaycommon.RelayInfo) {
 			values = []interface{}{prompt, logger.FormatQuota(int(remaining)), topUpLink, topUpLink}
 		}
 
-		if err := ops.NotifyUser(relayInfo.UserId, relayInfo.UserEmail, relayInfo.UserSetting, dto.NewNotify(dto.NotifyTypeQuotaExceed, prompt, content, values)); err != nil {
+		if err := notifyUser(relayInfo.UserId, relayInfo.UserEmail, relayInfo.UserSetting, dto.NewNotify(dto.NotifyTypeQuotaExceed, prompt, content, values)); err != nil {
 			common.SysError(fmt.Sprintf("failed to send subscription quota notify to user %d: %s", relayInfo.UserId, err.Error()))
 		}
 	})

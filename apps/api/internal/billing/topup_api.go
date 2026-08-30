@@ -3,7 +3,6 @@ package billing
 import (
 	"errors"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
@@ -12,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
 
@@ -22,10 +20,10 @@ import (
 )
 
 func GetTopUpInfo(c contract.Context) {
-	complianceConfirmed := pay_subscription.IsPaymentComplianceConfirmed()
+	complianceConfirmed := IsPaymentComplianceConfirmed()
 
 	// 获取支付方式
-	payMethods := pay_subscription.PayMethods
+	payMethods := PayMethods
 	if !complianceConfirmed {
 		payMethods = []map[string]string{}
 	}
@@ -46,7 +44,7 @@ func GetTopUpInfo(c contract.Context) {
 				"name":      "Stripe",
 				"type":      "stripe",
 				"color":     "#635BFF",
-				"min_topup": strconv.Itoa(pay_subscription.StripeMinTopUp),
+				"min_topup": strconv.Itoa(StripeMinTopUp),
 			}
 			payMethods = append(payMethods, stripeMethod)
 		}
@@ -68,7 +66,7 @@ func GetTopUpInfo(c contract.Context) {
 				"name":      "Waffo Pancake",
 				"type":      PaymentMethodWaffoPancake,
 				"color":     "#F97316",
-				"min_topup": strconv.Itoa(pay_subscription.WaffoPancakeMinTopUp),
+				"min_topup": strconv.Itoa(WaffoPancakeMinTopUp),
 			})
 		}
 	}
@@ -89,7 +87,7 @@ func GetTopUpInfo(c contract.Context) {
 				"name":      "Waffo (Global Payment)",
 				"type":      PaymentMethodWaffo,
 				"color":     "#3B82F6",
-				"min_topup": strconv.Itoa(pay_subscription.WaffoMinTopUp),
+				"min_topup": strconv.Itoa(WaffoMinTopUp),
 			}
 			payMethods = append(payMethods, waffoMethod)
 		}
@@ -103,21 +101,21 @@ func GetTopUpInfo(c contract.Context) {
 		"enable_waffo_pancake_topup":       enableWaffoPancake,
 		"enable_redemption":                complianceConfirmed,
 		"payment_compliance_confirmed":     complianceConfirmed,
-		"payment_compliance_terms_version": pay_subscription.CurrentComplianceTermsVersion,
+		"payment_compliance_terms_version": CurrentComplianceTermsVersion,
 		"waffo_pay_methods": func() interface{} {
 			if enableWaffo {
-				return pay_subscription.GetWaffoPayMethods()
+				return GetWaffoPayMethods()
 			}
 			return nil
 		}(),
-		"creem_products":          pay_subscription.CreemProducts,
+		"creem_products":          CreemProducts,
 		"pay_methods":             payMethods,
-		"min_topup":               pay_subscription.MinTopUp,
-		"stripe_min_topup":        pay_subscription.StripeMinTopUp,
-		"waffo_min_topup":         pay_subscription.WaffoMinTopUp,
-		"waffo_pancake_min_topup": pay_subscription.WaffoPancakeMinTopUp,
-		"amount_options":          pay_subscription.GetPaymentSetting().AmountOptions,
-		"discount":                pay_subscription.GetPaymentSetting().AmountDiscount,
+		"min_topup":               MinTopUp,
+		"stripe_min_topup":        StripeMinTopUp,
+		"waffo_min_topup":         WaffoMinTopUp,
+		"waffo_pancake_min_topup": WaffoPancakeMinTopUp,
+		"amount_options":          GetPaymentSetting().AmountOptions,
+		"discount":                GetPaymentSetting().AmountDiscount,
 		"topup_link":              common.TopUpLink,
 	}
 	common.CtxApiSuccess(c, data)
@@ -133,13 +131,13 @@ type AmountRequest struct {
 }
 
 func GetEpayClient() *epay.Client {
-	if pay_subscription.PayAddress == "" || pay_subscription.EpayId == "" || pay_subscription.EpayKey == "" {
+	if PayAddress == "" || EpayId == "" || EpayKey == "" {
 		return nil
 	}
 	withUrl, err := epay.NewClient(&epay.Config{
-		PartnerID: pay_subscription.EpayId,
-		Key:       pay_subscription.EpayKey,
-	}, pay_subscription.PayAddress)
+		PartnerID: EpayId,
+		Key:       EpayKey,
+	}, PayAddress)
 	if err != nil {
 		return nil
 	}
@@ -150,7 +148,7 @@ func getPayMoney(amount int64, group string) float64 {
 	dAmount := decimal.NewFromInt(amount)
 	// 充值金额以“展示类型”为准：
 	// - USD/CNY: 前端传 amount 为金额单位；TOKENS: 前端传 tokens，需要换成 USD 金额
-	if manage_subscription.GetQuotaDisplayType() == manage_subscription.QuotaDisplayTypeTokens {
+	if GetQuotaDisplayType() == QuotaDisplayTypeTokens {
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 		dAmount = dAmount.Div(dQuotaPerUnit)
 	}
@@ -161,10 +159,10 @@ func getPayMoney(amount int64, group string) float64 {
 	}
 
 	dTopupGroupRatio := decimal.NewFromFloat(topupGroupRatio)
-	dPrice := decimal.NewFromFloat(pay_subscription.Price)
+	dPrice := decimal.NewFromFloat(Price)
 	// apply optional preset discount by the original request amount (if configured), default 1.0
 	discount := 1.0
-	if ds, ok := pay_subscription.GetPaymentSetting().AmountDiscount[int(amount)]; ok {
+	if ds, ok := GetPaymentSetting().AmountDiscount[int(amount)]; ok {
 		if ds > 0 {
 			discount = ds
 		}
@@ -177,8 +175,8 @@ func getPayMoney(amount int64, group string) float64 {
 }
 
 func getMinTopup() int64 {
-	minTopup := pay_subscription.MinTopUp
-	if manage_subscription.GetQuotaDisplayType() == manage_subscription.QuotaDisplayTypeTokens {
+	minTopup := MinTopUp
+	if GetQuotaDisplayType() == QuotaDisplayTypeTokens {
 		dMinTopup := decimal.NewFromInt(int64(minTopup))
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 		minTopup = common.QuotaFromDecimal(dMinTopup.Mul(dQuotaPerUnit))
@@ -188,7 +186,7 @@ func getMinTopup() int64 {
 
 func getTopUpQuota(amount int64) (int, error) {
 	quota := decimal.NewFromInt(amount)
-	if manage_subscription.GetQuotaDisplayType() == manage_subscription.QuotaDisplayTypeTokens {
+	if GetQuotaDisplayType() == QuotaDisplayTypeTokens {
 		quotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 		quota = decimal.NewFromInt(quota.Div(quotaPerUnit).IntPart()).Mul(quotaPerUnit)
 	} else {
@@ -205,7 +203,7 @@ func getMaxTopUpAmount() int64 {
 	maxStoredAmount := decimal.NewFromInt(common.MaxQuota - 1).
 		Div(quotaPerUnit).
 		Floor()
-	if manage_subscription.GetQuotaDisplayType() == manage_subscription.QuotaDisplayTypeTokens {
+	if GetQuotaDisplayType() == QuotaDisplayTypeTokens {
 		return maxStoredAmount.Add(decimal.NewFromInt(1)).
 			Mul(quotaPerUnit).
 			Ceil().
@@ -289,7 +287,7 @@ func RequestEpay(c contract.Context) {
 		return
 	}
 
-	if !pay_subscription.ContainsPayMethod(req.PaymentMethod) {
+	if !ContainsPayMethod(req.PaymentMethod) {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "支付方式不存在"})
 		return
 	}
@@ -319,7 +317,7 @@ func RequestEpay(c contract.Context) {
 		return
 	}
 	amount := req.Amount
-	if manage_subscription.GetQuotaDisplayType() == manage_subscription.QuotaDisplayTypeTokens {
+	if GetQuotaDisplayType() == QuotaDisplayTypeTokens {
 		dAmount := decimal.NewFromInt(int64(amount))
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 		amount = dAmount.Div(dQuotaPerUnit).IntPart()

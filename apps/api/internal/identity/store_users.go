@@ -13,7 +13,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 
-	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -557,7 +556,7 @@ func (user *User) finishInsert(inviterId int) {
 	if common.QuotaForNewUser > 0 {
 		writeSystemLog(user.Id, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
 	}
-	if inviterId != 0 && pay_subscription.IsPaymentComplianceConfirmed() {
+	if inviterId != 0 && isPaymentComplianceConfirmed() {
 		if common.QuotaForInvitee > 0 {
 			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
 			writeSystemLog(user.Id, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
@@ -614,7 +613,7 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 	if common.QuotaForNewUser > 0 {
 		writeSystemLog(user.Id, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
 	}
-	if inviterId != 0 && pay_subscription.IsPaymentComplianceConfirmed() {
+	if inviterId != 0 && isPaymentComplianceConfirmed() {
 		if common.QuotaForInvitee > 0 {
 			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
 			writeSystemLog(user.Id, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))

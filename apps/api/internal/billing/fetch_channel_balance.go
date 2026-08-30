@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -350,7 +349,7 @@ func updateChannelMoonshotBalance(channel *catalog.Channel) (float64, error) {
 		return 0, fmt.Errorf("failed to update moonshot balance, status: %v, code: %d, scode: %s", response.Status, response.Code, response.Scode)
 	}
 	availableBalanceCny := response.Data.AvailableBalance
-	availableBalanceUsd := decimal.NewFromFloat(availableBalanceCny).Div(decimal.NewFromFloat(pay_subscription.Price)).InexactFloat64()
+	availableBalanceUsd := decimal.NewFromFloat(availableBalanceCny).Div(decimal.NewFromFloat(Price)).InexactFloat64()
 	channel.UpdateBalance(availableBalanceUsd)
 	return availableBalanceUsd, nil
 }

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/Calcium-Ion/go-epay/epay"
-	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/samber/lo"
 )
@@ -43,7 +42,7 @@ func SubscriptionRequestEpay(c contract.Context) {
 		common.CtxApiErrorMsg(c, "套餐金额过低")
 		return
 	}
-	if !pay_subscription.ContainsPayMethod(req.PaymentMethod) {
+	if !ContainsPayMethod(req.PaymentMethod) {
 		common.CtxApiErrorMsg(c, "支付方式不存在")
 		return
 	}

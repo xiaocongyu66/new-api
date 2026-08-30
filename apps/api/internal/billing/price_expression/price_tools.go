@@ -3,13 +3,13 @@ package price_expression
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/settings"
 	"math"
 	"sort"
 	"strings"
 	"sync/atomic"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/settings/config"
 )
 
 // ---------------------------------------------------------------------------
@@ -51,7 +51,7 @@ func seedHardcodedToolPrices(prices map[string]float64) {
 	prices["web_search_preview:gpt-4.1-mini*"] = defaultSearchPreviewModelPrice
 }
 
-// ToolPriceSetting is managed by config.GlobalConfig.Register.
+// ToolPriceSetting is managed by settings.GlobalConfig.Register.
 // Prices holds operator overrides only; hardcoded fallbacks live in the index.
 type ToolPriceSetting struct {
 	Prices map[string]float64 `json:"prices"`
@@ -62,7 +62,7 @@ var toolPriceSetting = ToolPriceSetting{
 }
 
 func init() {
-	config.GlobalConfig.Register("tool_price_setting", &toolPriceSetting)
+	settings.GlobalConfig.Register("tool_price_setting", &toolPriceSetting)
 	RebuildToolPriceIndex()
 }
 
@@ -144,7 +144,7 @@ func LoadToolPricesFromJSONString(value string) {
 	RebuildToolPriceIndex()
 }
 
-// RebuildToolPriceIndex rebuilds the lookup index from the current config.
+// RebuildToolPriceIndex rebuilds the lookup index from the current settings.
 // Called on init and after config updates. Not on the billing hot path.
 func RebuildToolPriceIndex() {
 	merged := make(map[string]float64, 9+len(toolPriceSetting.Prices))

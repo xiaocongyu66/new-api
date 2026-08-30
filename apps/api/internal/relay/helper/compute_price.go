@@ -4,7 +4,6 @@ import (
 	"fmt"
 	billing "github.com/QuantumNous/new-api/internal/billing"
 	"github.com/QuantumNous/new-api/internal/billing/price_expression"
-	tiered_pricing "github.com/QuantumNous/new-api/internal/billing/tiered_pricing"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/identity"
@@ -74,7 +73,7 @@ func ModelPriceHelper(c contract.Context, info *relaycommon.RelayInfo, promptTok
 	groupRatioInfo := HandleGroupRatio(c, info)
 
 	// Check if this model uses tiered_expr billing
-	if tiered_pricing.GetBillingMode(info.OriginModelName) == tiered_pricing.BillingModeTieredExpr {
+	if billing.GetBillingMode(info.OriginModelName) == billing.BillingModeTieredExpr {
 		return modelPriceHelperTiered(c, info, promptTokens, meta, groupRatioInfo)
 	}
 
@@ -257,15 +256,15 @@ func HasModelBillingConfig(modelName string) bool {
 	if _, ok, _ := ratio_setting.GetModelRatio(modelName); ok {
 		return true
 	}
-	if tiered_pricing.GetBillingMode(modelName) != tiered_pricing.BillingModeTieredExpr {
+	if billing.GetBillingMode(modelName) != billing.BillingModeTieredExpr {
 		return false
 	}
-	expr, ok := tiered_pricing.GetBillingExpr(modelName)
+	expr, ok := billing.GetBillingExpr(modelName)
 	return ok && strings.TrimSpace(expr) != ""
 }
 
 func modelPriceHelperTiered(c contract.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta, groupRatioInfo hosttypes.GroupRatioInfo) (hosttypes.PriceData, error) {
-	exprStr, ok := tiered_pricing.GetBillingExpr(info.OriginModelName)
+	exprStr, ok := billing.GetBillingExpr(info.OriginModelName)
 	if !ok {
 		return hosttypes.PriceData{}, fmt.Errorf("model %s is configured as tiered_expr but has no billing expression", info.OriginModelName)
 	}
@@ -306,7 +305,7 @@ func modelPriceHelperTiered(c contract.Context, info *relaycommon.RelayInfo, pro
 
 	exprHash := price_expression.ExprHashString(exprStr)
 	snapshot := &price_expression.BillingSnapshot{
-		BillingMode:               tiered_pricing.BillingModeTieredExpr,
+		BillingMode:               billing.BillingModeTieredExpr,
 		ModelName:                 info.OriginModelName,
 		ExprString:                exprStr,
 		ExprHash:                  exprHash,

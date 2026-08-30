@@ -1,8 +1,6 @@
 package billing
 
-import (
-	"github.com/QuantumNous/new-api/internal/settings/config"
-)
+import "github.com/QuantumNous/new-api/internal/settings"
 
 type QuotaSetting struct {
 	EnableFreeModelPreConsume bool `json:"enable_free_model_pre_consume"` // 是否对免费模型启用预消耗
@@ -15,7 +13,7 @@ var quotaSetting = QuotaSetting{
 
 func init() {
 	// 注册到全局配置管理器
-	config.GlobalConfig.Register("quota_setting", &quotaSetting)
+	settings.GlobalConfig.Register("quota_setting", &quotaSetting)
 }
 
 func GetQuotaSetting() *QuotaSetting {

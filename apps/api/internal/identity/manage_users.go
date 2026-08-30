@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/authtoken"
-	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
@@ -14,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/identity/policy"
@@ -306,7 +304,7 @@ func Register(c contract.Context) {
 			UnlimitedQuota:     true,
 			ModelLimitsEnabled: false,
 		}
-		if resolve_group.DefaultUseAutoGroup {
+		if defaultUseAutoGroup() {
 			token.Group = "auto"
 		}
 		if err := token.Insert(); err != nil {
@@ -573,7 +571,7 @@ func GetUserModels(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	groups := resolve_group.GetUserUsableGroups(user.Group)
+	groups := userUsableGroups(user.Group)
 	group := c.Query("group")
 	var groupsToQuery []string
 	switch {
@@ -583,7 +581,7 @@ func GetUserModels(c contract.Context) {
 		}
 	case group == "auto":
 		if _, ok := groups[group]; ok {
-			groupsToQuery = resolve_group.GetUserAutoGroup(user.Group)
+			groupsToQuery = userAutoGroup(user.Group)
 		}
 	default:
 		if _, ok := groups[group]; ok {
@@ -1456,7 +1454,7 @@ func UpdateUserSettingHandler(c contract.Context) {
 }
 
 func TopUp(c contract.Context) {
-	if !pay_subscription.IsPaymentComplianceConfirmed() {
+	if !isPaymentComplianceConfirmed() {
 		common.CtxApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
 		return
 	}

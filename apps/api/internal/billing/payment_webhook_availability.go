@@ -2,25 +2,23 @@ package billing
 
 import (
 	"strings"
-
-	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 )
 
 func isPaymentComplianceConfirmed() bool {
-	return pay_subscription.IsPaymentComplianceConfirmed()
+	return IsPaymentComplianceConfirmed()
 }
 
 func isStripeTopUpEnabled() bool {
 	if !isPaymentComplianceConfirmed() {
 		return false
 	}
-	return strings.TrimSpace(pay_subscription.StripeApiSecret) != "" &&
-		strings.TrimSpace(pay_subscription.StripeWebhookSecret) != "" &&
-		strings.TrimSpace(pay_subscription.StripePriceId) != ""
+	return strings.TrimSpace(StripeApiSecret) != "" &&
+		strings.TrimSpace(StripeWebhookSecret) != "" &&
+		strings.TrimSpace(StripePriceId) != ""
 }
 
 func isStripeWebhookConfigured() bool {
-	return strings.TrimSpace(pay_subscription.StripeWebhookSecret) != ""
+	return strings.TrimSpace(StripeWebhookSecret) != ""
 }
 
 func isStripeWebhookEnabled() bool {
@@ -31,14 +29,14 @@ func isCreemTopUpEnabled() bool {
 	if !isPaymentComplianceConfirmed() {
 		return false
 	}
-	products := strings.TrimSpace(pay_subscription.CreemProducts)
-	return strings.TrimSpace(pay_subscription.CreemApiKey) != "" &&
+	products := strings.TrimSpace(CreemProducts)
+	return strings.TrimSpace(CreemApiKey) != "" &&
 		products != "" &&
 		products != "[]"
 }
 
 func isCreemWebhookConfigured() bool {
-	return strings.TrimSpace(pay_subscription.CreemWebhookSecret) != ""
+	return strings.TrimSpace(CreemWebhookSecret) != ""
 }
 
 func isCreemWebhookEnabled() bool {
@@ -49,7 +47,7 @@ func isWaffoTopUpEnabled() bool {
 	if !isPaymentComplianceConfirmed() {
 		return false
 	}
-	if !pay_subscription.WaffoEnabled {
+	if !WaffoEnabled {
 		return false
 	}
 
@@ -57,15 +55,15 @@ func isWaffoTopUpEnabled() bool {
 }
 
 func isWaffoWebhookConfigured() bool {
-	if pay_subscription.WaffoSandbox {
-		return strings.TrimSpace(pay_subscription.WaffoSandboxApiKey) != "" &&
-			strings.TrimSpace(pay_subscription.WaffoSandboxPrivateKey) != "" &&
-			strings.TrimSpace(pay_subscription.WaffoSandboxPublicCert) != ""
+	if WaffoSandbox {
+		return strings.TrimSpace(WaffoSandboxApiKey) != "" &&
+			strings.TrimSpace(WaffoSandboxPrivateKey) != "" &&
+			strings.TrimSpace(WaffoSandboxPublicCert) != ""
 	}
 
-	return strings.TrimSpace(pay_subscription.WaffoApiKey) != "" &&
-		strings.TrimSpace(pay_subscription.WaffoPrivateKey) != "" &&
-		strings.TrimSpace(pay_subscription.WaffoPublicCert) != ""
+	return strings.TrimSpace(WaffoApiKey) != "" &&
+		strings.TrimSpace(WaffoPrivateKey) != "" &&
+		strings.TrimSpace(WaffoPublicCert) != ""
 }
 
 func isWaffoWebhookEnabled() bool {
@@ -78,9 +76,9 @@ func isWaffoPancakeTopUpEnabled() bool {
 	}
 	// Presence-of-credentials = enabled. Webhook public keys ship inside
 	// the SDK; mode (test/prod) is read from each event.
-	return strings.TrimSpace(pay_subscription.WaffoPancakeMerchantID) != "" &&
-		strings.TrimSpace(pay_subscription.WaffoPancakePrivateKey) != "" &&
-		strings.TrimSpace(pay_subscription.WaffoPancakeProductID) != ""
+	return strings.TrimSpace(WaffoPancakeMerchantID) != "" &&
+		strings.TrimSpace(WaffoPancakePrivateKey) != "" &&
+		strings.TrimSpace(WaffoPancakeProductID) != ""
 }
 
 func isWaffoPancakeWebhookConfigured() bool {
@@ -95,13 +93,13 @@ func isEpayTopUpEnabled() bool {
 	if !isPaymentComplianceConfirmed() {
 		return false
 	}
-	return isEpayWebhookConfigured() && len(pay_subscription.PayMethods) > 0
+	return isEpayWebhookConfigured() && len(PayMethods) > 0
 }
 
 func isEpayWebhookConfigured() bool {
-	return strings.TrimSpace(pay_subscription.PayAddress) != "" &&
-		strings.TrimSpace(pay_subscription.EpayId) != "" &&
-		strings.TrimSpace(pay_subscription.EpayKey) != ""
+	return strings.TrimSpace(PayAddress) != "" &&
+		strings.TrimSpace(EpayId) != "" &&
+		strings.TrimSpace(EpayKey) != ""
 }
 
 func isEpayWebhookEnabled() bool {

@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/logger"
@@ -19,7 +18,7 @@ type PaymentComplianceRequest struct {
 }
 
 func RequirePaymentCompliance(c contract.Context) bool {
-	if !pay_subscription.IsPaymentComplianceConfirmed() {
+	if !IsPaymentComplianceConfirmed() {
 		common.CtxApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
 		return false
 	}
@@ -51,7 +50,7 @@ func ConfirmPaymentCompliance(c contract.Context) {
 
 	updates := map[string]string{
 		"payment_setting.compliance_confirmed":     "true",
-		"payment_setting.compliance_terms_version": pay_subscription.CurrentComplianceTermsVersion,
+		"payment_setting.compliance_terms_version": CurrentComplianceTermsVersion,
 		"payment_setting.compliance_confirmed_at":  strconv.FormatInt(now, 10),
 		"payment_setting.compliance_confirmed_by":  strconv.Itoa(userId),
 		"payment_setting.compliance_confirmed_ip":  clientIP,
@@ -68,13 +67,13 @@ func ConfirmPaymentCompliance(c contract.Context) {
 		"payment compliance confirmed user_id=%d ip=%s terms_version=%s confirmed_at=%d",
 		userId,
 		clientIP,
-		pay_subscription.CurrentComplianceTermsVersion,
+		CurrentComplianceTermsVersion,
 		now,
 	))
 
 	common.CtxApiSuccess(c, common.H{
 		"confirmed":     true,
-		"terms_version": pay_subscription.CurrentComplianceTermsVersion,
+		"terms_version": CurrentComplianceTermsVersion,
 		"confirmed_at":  now,
 		"confirmed_by":  userId,
 	})

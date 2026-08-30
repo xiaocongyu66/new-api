@@ -11,11 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
 
-	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/shopspring/decimal"
 	"github.com/stripe/stripe-go/v81"
 	"github.com/stripe/stripe-go/v81/checkout/session"
@@ -177,7 +175,7 @@ func StripeWebhook(c contract.Context) {
 
 	signature := c.Header("Stripe-Signature")
 	logger.LogInfo(ctx, fmt.Sprintf("Stripe webhook 收到请求 path=%q client_ip=%s signature=%q body=%q", c.RequestURI(), c.ClientIP(), signature, string(payload)))
-	event, err := webhook.ConstructEventWithOptions(payload, signature, pay_subscription.StripeWebhookSecret, webhook.ConstructEventOptions{
+	event, err := webhook.ConstructEventWithOptions(payload, signature, StripeWebhookSecret, webhook.ConstructEventOptions{
 		IgnoreAPIVersionMismatch: true,
 	})
 
@@ -355,11 +353,11 @@ func sessionExpired(ctx context.Context, event stripe.Event) {
 //
 // Returns the checkout session URL or an error if the session creation fails.
 func genStripeLink(referenceId string, customerId string, email string, amount int64, successURL string, cancelURL string) (string, error) {
-	if !strings.HasPrefix(pay_subscription.StripeApiSecret, "sk_") && !strings.HasPrefix(pay_subscription.StripeApiSecret, "rk_") {
+	if !strings.HasPrefix(StripeApiSecret, "sk_") && !strings.HasPrefix(StripeApiSecret, "rk_") {
 		return "", fmt.Errorf("无效的Stripe API密钥")
 	}
 
-	stripe.Key = pay_subscription.StripeApiSecret
+	stripe.Key = StripeApiSecret
 
 	// Use custom URLs if provided, otherwise use defaults
 	if successURL == "" {
@@ -375,12 +373,12 @@ func genStripeLink(referenceId string, customerId string, email string, amount i
 		CancelURL:         stripe.String(cancelURL),
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
 			{
-				Price:    stripe.String(pay_subscription.StripePriceId),
+				Price:    stripe.String(StripePriceId),
 				Quantity: stripe.Int64(amount),
 			},
 		},
 		Mode:                stripe.String(string(stripe.CheckoutSessionModePayment)),
-		AllowPromotionCodes: stripe.Bool(pay_subscription.StripePromotionCodesEnabled),
+		AllowPromotionCodes: stripe.Bool(StripePromotionCodesEnabled),
 	}
 
 	if "" == customerId {
@@ -422,7 +420,7 @@ func getStripeCreditedQuota(amount int64, group string) decimal.Decimal {
 
 func getStripePayMoney(amount float64, group string) float64 {
 	originalAmount := amount
-	if manage_subscription.GetQuotaDisplayType() == manage_subscription.QuotaDisplayTypeTokens {
+	if GetQuotaDisplayType() == QuotaDisplayTypeTokens {
 		amount = amount / common.QuotaPerUnit
 	}
 	// Using float64 for monetary calculations is acceptable here due to the small amounts involved
@@ -432,18 +430,18 @@ func getStripePayMoney(amount float64, group string) float64 {
 	}
 	// apply optional preset discount by the original request amount (if configured), default 1.0
 	discount := 1.0
-	if ds, ok := pay_subscription.GetPaymentSetting().AmountDiscount[int(originalAmount)]; ok {
+	if ds, ok := GetPaymentSetting().AmountDiscount[int(originalAmount)]; ok {
 		if ds > 0 {
 			discount = ds
 		}
 	}
-	payMoney := amount * pay_subscription.StripeUnitPrice * topupGroupRatio * discount
+	payMoney := amount * StripeUnitPrice * topupGroupRatio * discount
 	return payMoney
 }
 
 func getStripeMinTopup() int64 {
-	minTopup := pay_subscription.StripeMinTopUp
-	if manage_subscription.GetQuotaDisplayType() == manage_subscription.QuotaDisplayTypeTokens {
+	minTopup := StripeMinTopUp
+	if GetQuotaDisplayType() == QuotaDisplayTypeTokens {
 		minTopup = minTopup * int(common.QuotaPerUnit)
 	}
 	return int64(minTopup)

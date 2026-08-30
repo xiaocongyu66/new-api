@@ -1,13 +1,12 @@
 package billing
 
 import (
-	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
-	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
+	"github.com/QuantumNous/new-api/internal/egress"
 )
 
 func GetCallbackAddress() string {
-	if pay_subscription.CustomCallbackAddress == "" {
-		return fetch_url.ServerAddress
+	if CustomCallbackAddress == "" {
+		return egress.ServerAddress
 	}
-	return pay_subscription.CustomCallbackAddress
+	return CustomCallbackAddress
 }

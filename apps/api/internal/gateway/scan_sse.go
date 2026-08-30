@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/billing"
 	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
@@ -16,7 +17,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/logger"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 
-	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/bytedance/gopkg/util/gopool"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
@@ -168,7 +168,7 @@ func StreamScannerHandler(
 		})
 	}
 
-	generalSettings := manage_subscription.GetGeneralSetting()
+	generalSettings := billing.GetGeneralSetting()
 	pingEnabled := generalSettings.PingIntervalEnabled && !info.DisablePing
 	pingInterval := time.Duration(generalSettings.PingIntervalSeconds) * time.Second
 	if pingInterval <= 0 {

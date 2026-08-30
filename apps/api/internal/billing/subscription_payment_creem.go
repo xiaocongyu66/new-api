@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
-	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/thanhpk/randstr"
@@ -50,7 +48,7 @@ func SubscriptionRequestCreemPay(c contract.Context) {
 		common.CtxApiErrorMsg(c, "该套餐未配置 CreemProductId")
 		return
 	}
-	if pay_subscription.CreemWebhookSecret == "" && !pay_subscription.CreemTestMode {
+	if CreemWebhookSecret == "" && !CreemTestMode {
 		common.CtxApiErrorMsg(c, "Creem Webhook 未配置")
 		return
 	}
@@ -99,10 +97,10 @@ func SubscriptionRequestCreemPay(c contract.Context) {
 
 	// Reuse Creem checkout generator by building a lightweight product reference.
 	currency := "USD"
-	switch manage_subscription.GetGeneralSetting().QuotaDisplayType {
-	case manage_subscription.QuotaDisplayTypeCNY:
+	switch GetGeneralSetting().QuotaDisplayType {
+	case QuotaDisplayTypeCNY:
 		currency = "CNY"
-	case manage_subscription.QuotaDisplayTypeUSD:
+	case QuotaDisplayTypeUSD:
 		currency = "USD"
 	default:
 		currency = "USD"

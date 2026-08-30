@@ -1,9 +1,10 @@
-package billing
+package billing_test
 
 import (
 	"os"
 	"testing"
 
+	"github.com/QuantumNous/new-api/internal/billing"
 	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
@@ -18,6 +19,13 @@ import (
 // It replaces the TestMain that used to live in settle_midjourney_test.go before
 // midjourney settlement moved to internal/task; tests that never install their
 // own database (webhook contract tests) still rely on this one.
+//
+// This fixture lives in the external billing_test package, not in package
+// billing, because it migrates the ops-owned system-task tables and ops imports
+// billing (for the payment-compliance gate and the pricing-sync settings). An
+// in-package fixture would make the billing test binary import ops and close the
+// billing -> ops -> billing loop. internal/catalog/setup_test.go is external for
+// the same reason. The other billing test files stay in package billing.
 func TestMain(m *testing.M) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
@@ -44,10 +52,10 @@ func TestMain(m *testing.M) {
 		&usage.Log{},
 		&usage.QuotaData{},
 		&catalog.Channel{},
-		&TopUp{},
-		&SubscriptionPlan{},
-		&SubscriptionOrder{},
-		&UserSubscription{},
+		&billing.TopUp{},
+		&billing.SubscriptionPlan{},
+		&billing.SubscriptionOrder{},
+		&billing.UserSubscription{},
 		&ops.SystemTask{},
 		&ops.SystemTaskLock{},
 	); err != nil {

@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
-	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/thanhpk/randstr"
@@ -23,22 +21,22 @@ import (
 
 func getWaffoSDK() (*waffo.Waffo, error) {
 	env := config.Sandbox
-	apiKey := pay_subscription.WaffoSandboxApiKey
-	privateKey := pay_subscription.WaffoSandboxPrivateKey
-	publicKey := pay_subscription.WaffoSandboxPublicCert
-	if !pay_subscription.WaffoSandbox {
+	apiKey := WaffoSandboxApiKey
+	privateKey := WaffoSandboxPrivateKey
+	publicKey := WaffoSandboxPublicCert
+	if !WaffoSandbox {
 		env = config.Production
-		apiKey = pay_subscription.WaffoApiKey
-		privateKey = pay_subscription.WaffoPrivateKey
-		publicKey = pay_subscription.WaffoPublicCert
+		apiKey = WaffoApiKey
+		privateKey = WaffoPrivateKey
+		publicKey = WaffoPublicCert
 	}
 	builder := config.NewConfigBuilder().
 		APIKey(apiKey).
 		PrivateKey(privateKey).
 		WaffoPublicKey(publicKey).
 		Environment(env)
-	if pay_subscription.WaffoMerchantId != "" {
-		builder = builder.MerchantID(pay_subscription.WaffoMerchantId)
+	if WaffoMerchantId != "" {
+		builder = builder.MerchantID(WaffoMerchantId)
 	}
 	cfg, err := builder.Build()
 	if err != nil {
@@ -52,8 +50,8 @@ func getWaffoUserEmail(user *identity.User) string {
 }
 
 func getWaffoCurrency() string {
-	if pay_subscription.WaffoCurrency != "" {
-		return pay_subscription.WaffoCurrency
+	if WaffoCurrency != "" {
+		return WaffoCurrency
 	}
 	return "USD"
 }
@@ -86,7 +84,7 @@ func formatWaffoAmount(amount float64, currency string) string {
 // display types (USD/CNY/TOKENS) to the actual USD amount to charge.
 func getWaffoPayMoney(amount float64, group string) float64 {
 	originalAmount := amount
-	if manage_subscription.GetQuotaDisplayType() == manage_subscription.QuotaDisplayTypeTokens {
+	if GetQuotaDisplayType() == QuotaDisplayTypeTokens {
 		amount = amount / common.QuotaPerUnit
 	}
 	topupGroupRatio := common.GetTopupGroupRatio(group)
@@ -94,12 +92,12 @@ func getWaffoPayMoney(amount float64, group string) float64 {
 		topupGroupRatio = 1
 	}
 	discount := 1.0
-	if ds, ok := pay_subscription.GetPaymentSetting().AmountDiscount[int(originalAmount)]; ok {
+	if ds, ok := GetPaymentSetting().AmountDiscount[int(originalAmount)]; ok {
 		if ds > 0 {
 			discount = ds
 		}
 	}
-	return amount * pay_subscription.WaffoUnitPrice * topupGroupRatio * discount
+	return amount * WaffoUnitPrice * topupGroupRatio * discount
 }
 
 type WaffoPayRequest struct {
@@ -116,7 +114,7 @@ func RequestWaffoAmount(c contract.Context) {
 		return
 	}
 
-	waffoMinTopup := int64(pay_subscription.WaffoMinTopUp)
+	waffoMinTopup := int64(WaffoMinTopUp)
 	if req.Amount < waffoMinTopup {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", waffoMinTopup)})
 		return
@@ -143,7 +141,7 @@ func RequestWaffoAmount(c contract.Context) {
 
 // RequestWaffoPay 创建 Waffo 支付订单
 func RequestWaffoPay(c contract.Context) {
-	if !pay_subscription.WaffoEnabled {
+	if !WaffoEnabled {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "Waffo 支付未启用"})
 		return
 	}
@@ -153,7 +151,7 @@ func RequestWaffoPay(c contract.Context) {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "参数错误"})
 		return
 	}
-	waffoMinTopup := int64(pay_subscription.WaffoMinTopUp)
+	waffoMinTopup := int64(WaffoMinTopUp)
 	if req.Amount < waffoMinTopup {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", waffoMinTopup)})
 		return
@@ -171,7 +169,7 @@ func RequestWaffoPay(c contract.Context) {
 
 	// 从服务端配置查找支付方式，客户端只传索引或旧字段
 	var resolvedPayMethodType, resolvedPayMethodName string
-	methods := pay_subscription.GetWaffoPayMethods()
+	methods := GetWaffoPayMethods()
 	if req.PayMethodIndex != nil {
 		// 新协议：按索引查找
 		idx := *req.PayMethodIndex
@@ -214,7 +212,7 @@ func RequestWaffoPay(c contract.Context) {
 
 	// Token 模式下归一化 Amount（存等价美元/CNY 数量，避免 RechargeWaffo 双重放大）
 	amount := req.Amount
-	if manage_subscription.GetQuotaDisplayType() == manage_subscription.QuotaDisplayTypeTokens {
+	if GetQuotaDisplayType() == QuotaDisplayTypeTokens {
 		amount = int64(float64(req.Amount) / common.QuotaPerUnit)
 		if amount < 1 {
 			amount = 1
@@ -249,12 +247,12 @@ func RequestWaffoPay(c contract.Context) {
 
 	callbackAddr := GetCallbackAddress()
 	notifyUrl := callbackAddr + "/api/waffo/webhook"
-	if pay_subscription.WaffoNotifyUrl != "" {
-		notifyUrl = pay_subscription.WaffoNotifyUrl
+	if WaffoNotifyUrl != "" {
+		notifyUrl = WaffoNotifyUrl
 	}
 	returnUrl := paymentReturnPath("/wallet?show_history=true")
-	if pay_subscription.WaffoReturnUrl != "" {
-		returnUrl = pay_subscription.WaffoReturnUrl
+	if WaffoReturnUrl != "" {
+		returnUrl = WaffoReturnUrl
 	}
 
 	currency := getWaffoCurrency()
@@ -268,7 +266,7 @@ func RequestWaffoPay(c contract.Context) {
 		OrderRequestedAt: time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
 		NotifyURL:        notifyUrl,
 		MerchantInfo: &order.MerchantInfo{
-			MerchantID: pay_subscription.WaffoMerchantId,
+			MerchantID: WaffoMerchantId,
 		},
 		UserInfo: &order.UserInfo{
 			UserID:       strconv.Itoa(user.Id),
