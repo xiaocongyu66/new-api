@@ -137,11 +137,17 @@ env:
   BAD_CHANNEL_ID: ${{ inputs.bad_channel_id }}
   SHARE_WINDOW_SIZE: ${{ inputs.share_window_size }}
   REPLICA: ${{ inputs.replica }}
-  SPECIFIC_CHANNEL_ID: ${{ inputs.specific_channel_id }}
   FAULT_HOOK: ${{ inputs.fault_hook }}
   RECOVER_HOOK: ${{ inputs.recover_hook }}
   ENABLE_PPROF: ${{ inputs.enable_pprof }}
   PPROF_URL: ${{ inputs.pprof_url }}
+  # KUBE_CONFIG_B64 must live at workflow env: (not just the step's env:) so
+  # the `Configure kubectl` step's `if: env.KUBE_CONFIG_B64 != ''` gate sees
+  # it AND `Start mock upstream`'s `[ -f ~/.kube/config ]` MOCK_IN_CLUSTER
+  # detection sees the decoded kubeconfig. Without this env entry the gate is
+  # always false and the cluster mock block never runs.
+  KUBE_CONFIG_B64: ${{ inputs.kube_config || secrets.KUBE_CONFIG_B64 }}
+
   # Hardcoded test-account credentials so the runner can auto-refresh the admin
   # JWT on 401/403 (the `Resolve admin token` step does an initial login; the
   # runner reuses these to refresh during the post-run audit fetch). root/123456
