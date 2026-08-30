@@ -920,6 +920,57 @@ jobs:
             done < /tmp/replica-pods.txt
           } >> "$GITHUB_STEP_SUMMARY"
 
+
+      - name: Refresh mock port-forwards
+        if: env.MOCK_IN_CLUSTER == 'true'
+        run: |
+          set -euo pipefail
+          # Kill the port-forwards created by Start mock upstream so Run scenario
+          # opens fresh connections; the original keep-alive sockets were opened
+          # before Point stress channels / Scale gateway replicas bounced the
+          # worker pod, and the API server reset them around then. Re-opening
+          # here gives run_scenario.py a healthy mock /healthz to preflight.
+          for var in $(compgen -e MOCK_PF_PID_); do
+            pid="${!var}"
+            if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+              kill "$pid" 2>/dev/null || true
+            fi
+            unset "$var"
+          done
+          # Wait for the listeners to drop so the next port-forward can bind.
+          for i in $(seq 1 30); do
+            BUSY=0
+            for port in $(seq "${MOCK_BASE_PORT}" $((MOCK_BASE_PORT + MOCK_INSTANCES - 1))); do
+              if curl -fsS --max-time 1 "http://127.0.0.1:${port}/healthz" >/dev/null 2>&1; then
+                BUSY=1
+                break
+              fi
+            done
+            [ "$BUSY" = "0" ] && break
+            sleep 1
+          done
+          # Re-establish the port-forwards with fresh PIDs.
+          for i in $(seq 0 $((MOCK_INSTANCES - 1))); do
+            PORT=$((MOCK_BASE_PORT + i))
+            kubectl port-forward "service/route-unit-mock-${i}" "${PORT}:80" \
+              > "/tmp/mock-pf-${PORT}.log" 2>&1 &
+            echo "MOCK_PF_PID_${PORT}=$!" >> "$GITHUB_ENV"
+          done
+          # Confirm every mock is reachable again.
+          for i in $(seq 0 $((MOCK_INSTANCES - 1))); do
+            PORT=$((MOCK_BASE_PORT + i))
+            for j in $(seq 1 30); do
+              curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null 2>&1 && break
+              sleep 1
+            done
+            if ! curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null 2>&1; then
+              echo "::error::port-forward to route-unit-mock-${i} never became ready after refresh"
+              cat "/tmp/mock-pf-${PORT}.log" || true
+              exit 1
+            fi
+            echo "refreshed mock ${i} reachable on 127.0.0.1:${PORT}"
+          done
+
       - name: Run scenario ${{ matrix.scenario }}
         id: scenario
         env:
