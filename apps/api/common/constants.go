@@ -38,9 +38,9 @@ var SessionCookieSecure = false
 var SessionCookieTrustedURLs []string
 
 const (
-	DefaultUserSessionActiveLimit           = 50
-	DefaultUserSessionIssuanceLimit         = 100
-	DefaultUserSessionIssuanceWindowSeconds = 24 * 60 * 60
+	DefaultUserSessionActiveLimit           = 500
+	DefaultUserSessionIssuanceLimit         = 1000
+	DefaultUserSessionIssuanceWindowSeconds = 60 * 60
 	DefaultUserSessionRevokedRetentionDays  = 7
 	DefaultUserSessionHourlyAlertThreshold  = 5000
 )

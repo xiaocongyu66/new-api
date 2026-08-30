@@ -85,6 +85,21 @@ on:
         required: false
         type: string
         default: ''
+      admin_username:
+        description: 'Override admin login username (default: secrets.K8S_STRESS_ADMIN_USERNAME or root)'
+        required: false
+        type: string
+        default: ''
+      admin_password:
+        description: 'Override admin login password (default: secrets.K8S_STRESS_ADMIN_PASSWORD or 123456)'
+        required: false
+        type: string
+        default: ''
+      gateway_admin_url:
+        description: 'Override GATEWAY_ADMIN_URL (default: secrets.GATEWAY_ADMIN_URL). Used by Resolve admin token step to reach /api/user/login from the Actions runner.'
+        required: false
+        type: string
+        default: ''
       replica:
         description: 'S10 replica count; global share is re-aggregated from raw attempts, never averaged per pod'
         required: false
@@ -155,13 +170,13 @@ env:
   # secret. If the cluster ever uses different credentials, prefer the
   # `K8S_STRESS_ADMIN_USERNAME` / `K8S_STRESS_ADMIN_PASSWORD` repository secrets
   # and switch this back to `secrets.*`.
-  ADMIN_USERNAME: root
-  ADMIN_PASSWORD: '123456'
+  ADMIN_USERNAME: ${{ inputs.admin_username || secrets.K8S_STRESS_ADMIN_USERNAME || 'root' }}
+  ADMIN_PASSWORD: ${{ inputs.admin_password || secrets.K8S_STRESS_ADMIN_PASSWORD || '123456' }}
   # Hardcode the k3s ingress NodePort so the Resolve admin token step can reach
   # /api/user/login from the Actions runner. `api.example.com` has no public DNS,
   # so deriving the URL from TARGET_URL yields an unresolvable host and the 15
   # login retries fail. Override in dispatch only when the cluster moves.
-  GATEWAY_ADMIN_URL: http://156.254.6.210:32032
+  GATEWAY_ADMIN_URL: ${{ inputs.gateway_admin_url || secrets.GATEWAY_ADMIN_URL }}
 
 jobs:
   route-unit-ewma-smoke:
