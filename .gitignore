@@ -30,6 +30,8 @@ apps/web/dist-ssr
 .gocache-temp
 .gopath
 .test
+# go test -c output (e.g. authz.test, service.test); never belongs in the tree.
+*.test
 # go.work 定义 apps/api 与 modules/relaykit 的 workspace，必须入库。
 # go.work.sum 是本地校验和缓存，继续忽略。
 go.work.sum
