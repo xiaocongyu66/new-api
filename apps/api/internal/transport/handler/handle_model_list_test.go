@@ -2,10 +2,10 @@ package handler
 
 import (
 	"fmt"
-	channel "github.com/QuantumNous/new-api/internal/catalog"
-	channelpkg "github.com/QuantumNous/new-api/internal/catalog"
+	"github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/identity"
+	"github.com/QuantumNous/new-api/internal/settings"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
@@ -13,11 +13,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/QuantumNous/new-api/internal/catalog"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
-	"github.com/QuantumNous/new-api/internal/settings/config"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/gin-gonic/gin"
@@ -53,8 +51,8 @@ func setupModelListControllerTestDB(t *testing.T) *gorm.DB {
 	dbx.DB = db
 	dbx.LogDB = db
 
-	require.NoError(t, db.AutoMigrate(&identity.User{}, &channelpkg.Channel{}, &channelpkg.Ability{}, &channelpkg.Model{}, &channelpkg.Vendor{}, &channelpkg.GatewayConfigRevision{}, &channelpkg.GatewayConfigOutbox{}))
-	require.NoError(t, channelpkg.InitializeGatewayConfigRevision())
+	require.NoError(t, db.AutoMigrate(&identity.User{}, &channel.Channel{}, &channel.Ability{}, &channel.Model{}, &channel.Vendor{}, &channel.GatewayConfigRevision{}, &channel.GatewayConfigOutbox{}))
+	require.NoError(t, channel.InitializeGatewayConfigRevision())
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()
@@ -103,15 +101,15 @@ func withTieredBillingConfig(t *testing.T, modes map[string]string, exprs map[st
 	t.Helper()
 
 	saved := map[string]string{}
-	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+	require.NoError(t, settings.GlobalConfig.SaveToDB(func(key, value string) error {
 		if strings.HasPrefix(key, "billing_setting.") {
 			saved[key] = value
 		}
 		return nil
 	}))
 	t.Cleanup(func() {
-		require.NoError(t, config.GlobalConfig.LoadFromDB(saved))
-		channelpkg.InvalidatePricingCache()
+		require.NoError(t, settings.GlobalConfig.LoadFromDB(saved))
+		channel.InvalidatePricingCache()
 	})
 
 	modeBytes, err := common.Marshal(modes)
@@ -119,30 +117,30 @@ func withTieredBillingConfig(t *testing.T, modes map[string]string, exprs map[st
 	exprBytes, err := common.Marshal(exprs)
 	require.NoError(t, err)
 
-	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+	require.NoError(t, settings.GlobalConfig.LoadFromDB(map[string]string{
 		"billing_setting.billing_mode": string(modeBytes),
 		"billing_setting.billing_expr": string(exprBytes),
 	}))
-	channelpkg.InvalidatePricingCache()
+	channel.InvalidatePricingCache()
 }
 
 func withSelfUseModeDisabled(t *testing.T) {
 	t.Helper()
 
-	original := channelpkg.SelfUseModeEnabled
-	channelpkg.SelfUseModeEnabled = false
+	original := channel.SelfUseModeEnabled
+	channel.SelfUseModeEnabled = false
 	t.Cleanup(func() {
-		channelpkg.SelfUseModeEnabled = original
+		channel.SelfUseModeEnabled = original
 	})
 }
 
 func withSelfUseModeEnabled(t *testing.T) {
 	t.Helper()
 
-	original := channelpkg.SelfUseModeEnabled
-	channelpkg.SelfUseModeEnabled = true
+	original := channel.SelfUseModeEnabled
+	channel.SelfUseModeEnabled = true
 	t.Cleanup(func() {
-		channelpkg.SelfUseModeEnabled = original
+		channel.SelfUseModeEnabled = original
 	})
 }
 
@@ -169,7 +167,7 @@ func decodeListModelsResponse(t *testing.T, recorder *httptest.ResponseRecorder)
 }
 
 func pricingByModelName(pricings []channel.Pricing) map[string]channel.Pricing {
-	byName := make(map[string]channelpkg.Pricing, len(pricings))
+	byName := make(map[string]channel.Pricing, len(pricings))
 	for _, pricing := range pricings {
 		byName[pricing.ModelName] = pricing
 	}
@@ -195,7 +193,7 @@ func TestGetUserModelsFiltersByRequestedGroup(t *testing.T) {
 		Group:    "default",
 		Status:   common.UserStatusEnabled,
 	}).Error)
-	require.NoError(t, db.Create(&[]channelpkg.Ability{
+	require.NoError(t, db.Create(&[]channel.Ability{
 		{Group: "default", Model: "zz-default-only-model", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-disabled-model", ChannelId: 1, Enabled: false},
 	}).Error)
@@ -221,19 +219,19 @@ func TestGetUserModelsFiltersByRequestedGroup(t *testing.T) {
 }
 
 func TestGetUserModelsExpandsAutoGroupsInConfiguredOrder(t *testing.T) {
-	originalAutoGroups := resolve_group.AutoGroups2JsonString()
-	originalUsableGroups := resolve_group.UserUsableGroups2JSONString()
+	originalAutoGroups := channel.AutoGroups2JsonString()
+	originalUsableGroups := channel.UserUsableGroups2JSONString()
 	originalSpecialGroups := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.ReadAll()
 	t.Cleanup(func() {
-		require.NoError(t, resolve_group.UpdateAutoGroupsByJsonString(originalAutoGroups))
-		require.NoError(t, resolve_group.UpdateUserUsableGroupsByJSONString(originalUsableGroups))
+		require.NoError(t, channel.UpdateAutoGroupsByJsonString(originalAutoGroups))
+		require.NoError(t, channel.UpdateUserUsableGroupsByJSONString(originalUsableGroups))
 		specialGroups := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup
 		specialGroups.Clear()
 		specialGroups.AddAll(originalSpecialGroups)
 	})
 
-	require.NoError(t, resolve_group.UpdateAutoGroupsByJsonString(`["vip","default","unavailable"]`))
-	require.NoError(t, resolve_group.UpdateUserUsableGroupsByJSONString(`{"auto":"自动分组","default":"默认分组","unavailable":"不可用分组"}`))
+	require.NoError(t, channel.UpdateAutoGroupsByJsonString(`["vip","default","unavailable"]`))
+	require.NoError(t, channel.UpdateUserUsableGroupsByJSONString(`{"auto":"自动分组","default":"默认分组","unavailable":"不可用分组"}`))
 	specialGroups := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup
 	specialGroups.Clear()
 	specialGroups.Set("default", map[string]string{
@@ -249,7 +247,7 @@ func TestGetUserModelsExpandsAutoGroupsInConfiguredOrder(t *testing.T) {
 		Group:    "default",
 		Status:   common.UserStatusEnabled,
 	}).Error)
-	require.NoError(t, db.Create(&[]channelpkg.Ability{
+	require.NoError(t, db.Create(&[]channel.Ability{
 		{Group: "vip", Model: "zz-vip-model", ChannelId: 1, Enabled: true},
 		{Group: "vip", Model: "zz-shared-model", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-default-model", ChannelId: 1, Enabled: true},
@@ -289,7 +287,7 @@ func TestListModelsIncludesTieredBillingModel(t *testing.T) {
 		Group:    "default",
 		Status:   common.UserStatusEnabled,
 	}).Error)
-	require.NoError(t, db.Create(&[]channelpkg.Ability{
+	require.NoError(t, db.Create(&[]channel.Ability{
 		{Group: "default", Model: "zz-tiered-visible-model", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-tiered-empty-expr-model", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-tiered-missing-expr-model", ChannelId: 1, Enabled: true},
@@ -309,7 +307,7 @@ func TestListModelsIncludesTieredBillingModel(t *testing.T) {
 	require.NotContains(t, ids, "zz-tiered-missing-expr-model")
 	require.NotContains(t, ids, "zz-unpriced-model")
 
-	pricingByName := pricingByModelName(channelpkg.GetPricing())
+	pricingByName := pricingByModelName(channel.GetPricing())
 	visiblePricing, ok := pricingByName["zz-tiered-visible-model"]
 	require.True(t, ok)
 	require.Equal(t, "tiered_expr", visiblePricing.BillingMode)
@@ -334,7 +332,7 @@ func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T)
 	common.MemoryCacheEnabled = true
 	t.Cleanup(func() {
 		common.MemoryCacheEnabled = originalMemoryCacheEnabled
-		channelpkg.InvalidatePricingCache()
+		channel.InvalidatePricingCache()
 	})
 
 	require.NoError(t, db.Create(&identity.User{
@@ -345,7 +343,7 @@ func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T)
 		Status:   common.UserStatusEnabled,
 	}).Error)
 
-	channel := &channelpkg.Channel{
+	testChannel := &channel.Channel{
 		Id:     701,
 		Type:   constant.ChannelTypeAdvancedCustom,
 		Key:    "advanced-custom-key",
@@ -354,7 +352,7 @@ func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T)
 		Group:  "default",
 		Models: "gemini-3.5-flash",
 	}
-	channel.SetOtherSettings(dto.ChannelOtherSettings{
+	testChannel.SetOtherSettings(dto.ChannelOtherSettings{
 		AdvancedCustom: &dto.AdvancedCustomConfig{
 			Routes: []dto.AdvancedCustomRoute{
 				{
@@ -370,16 +368,16 @@ func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T)
 			},
 		},
 	})
-	require.NoError(t, db.Create(channel).Error)
-	require.NoError(t, db.Create(&channelpkg.Ability{
+	require.NoError(t, db.Create(testChannel).Error)
+	require.NoError(t, db.Create(&channel.Ability{
 		Group:     "default",
 		Model:     "gemini-3.5-flash",
 		ChannelId: 701,
 		Enabled:   true,
 	}).Error)
 
-	channelpkg.InitChannelCache()
-	channelpkg.GetPricing()
+	channel.InitChannelCache()
+	channel.GetPricing()
 
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
@@ -408,7 +406,7 @@ func TestListModelsTokenLimitIncludesTieredBillingModel(t *testing.T) {
 		"zz-token-tiered-empty-expr-model": "",
 	})
 	db := setupModelListControllerTestDB(t)
-	require.NoError(t, db.Create(&[]channelpkg.Ability{
+	require.NoError(t, db.Create(&[]channel.Ability{
 		{Group: "default", Model: "zz-token-tiered-visible-model", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-token-tiered-empty-expr-model", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-token-tiered-missing-expr-model", ChannelId: 1, Enabled: true},
@@ -438,20 +436,20 @@ func TestListModelsTokenLimitIncludesTieredBillingModel(t *testing.T) {
 
 func TestListModelsTokenLimitUsesResolvedCustomAutoGroups(t *testing.T) {
 	withSelfUseModeEnabled(t)
-	originalMax := resolve_group.GetMaxTokenAutoGroups()
-	originalUsableGroups := resolve_group.UserUsableGroups2JSONString()
+	originalMax := channel.GetMaxTokenAutoGroups()
+	originalUsableGroups := channel.UserUsableGroups2JSONString()
 	originalRatios := ratio_setting.GroupRatio2JSONString()
-	require.NoError(t, resolve_group.UpdateMaxTokenAutoGroups("5"))
-	require.NoError(t, resolve_group.UpdateUserUsableGroupsByJSONString(`{"default":"Default","vip":"VIP"}`))
+	require.NoError(t, channel.UpdateMaxTokenAutoGroups("5"))
+	require.NoError(t, channel.UpdateUserUsableGroupsByJSONString(`{"default":"Default","vip":"VIP"}`))
 	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":1}`))
 	t.Cleanup(func() {
-		require.NoError(t, resolve_group.UpdateMaxTokenAutoGroups(fmt.Sprintf("%d", originalMax)))
-		require.NoError(t, resolve_group.UpdateUserUsableGroupsByJSONString(originalUsableGroups))
+		require.NoError(t, channel.UpdateMaxTokenAutoGroups(fmt.Sprintf("%d", originalMax)))
+		require.NoError(t, channel.UpdateUserUsableGroupsByJSONString(originalUsableGroups))
 		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalRatios))
 	})
 
 	db := setupModelListControllerTestDB(t)
-	require.NoError(t, db.Create(&[]channelpkg.Ability{
+	require.NoError(t, db.Create(&[]channel.Ability{
 		{Group: "vip", Model: "zz-vip-allowed", ChannelId: 1, Enabled: true},
 		{Group: "vip", Model: "zz-vip-denied", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-default-outside-snapshot", ChannelId: 1, Enabled: true},
@@ -474,7 +472,7 @@ func TestListModelsTokenLimitUsesResolvedCustomAutoGroups(t *testing.T) {
 	ids := decodeListModelsResponse(t, recorder)
 	require.Equal(t, map[string]struct{}{"zz-vip-allowed": {}}, ids)
 
-	require.NoError(t, resolve_group.UpdateUserUsableGroupsByJSONString(`{"default":"Default"}`))
+	require.NoError(t, channel.UpdateUserUsableGroupsByJSONString(`{"default":"Default"}`))
 	emptyRecorder := httptest.NewRecorder()
 	emptyCtx, _ := gin.CreateTestContext(emptyRecorder)
 	emptyCtx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)

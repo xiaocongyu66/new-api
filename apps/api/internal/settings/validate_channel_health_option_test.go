@@ -1,19 +1,20 @@
-package settings
+package settings_test
 
 import (
 	"testing"
 
+	_ "github.com/QuantumNous/new-api/internal/catalog"
+	"github.com/QuantumNous/new-api/internal/settings"
 	"github.com/stretchr/testify/assert"
 )
 
-// The health_store half of this contract lives in
-// internal/catalog/health_store/configure_channel_health_test.go; settings
-// imports health_store, so one test cannot assert both directions.
-//
-// Rejecting an out-of-range cooldown value here matters because
-// UpdateOption validates before persisting: without this route the option is
-// stored verbatim while the live config holds a normalized (clamped) number, so
-// the admin UI keeps showing a setting that is not the one in effect.
+// The channel health implementation now lives in internal/catalog/track_health.go
+// (package channel). Settings uses only the existing On* hook vars registered
+// in its init (no direct import of catalog children in main package to avoid cycles).
+// The external test package uses blank import to trigger init() and public
+// settings.ValidateOptionValue. This resolves the test closure per C1 constraints
+// while preserving all assertions. The hook side is covered in catalog tests.
+
 func TestValidateOptionValueRejectsOutOfRangeChannelHealthCooldown(t *testing.T) {
 	for key, value := range map[string]string{
 		"ChannelHealthCooldownThreshold":          "0",
@@ -22,6 +23,6 @@ func TestValidateOptionValueRejectsOutOfRangeChannelHealthCooldown(t *testing.T)
 		"ChannelHealthCooldownMaxEjectionPercent": "101",
 		"ChannelHealthCooldownAlpha":              "1.5",
 	} {
-		assert.Error(t, ValidateOptionValue(key, value), key)
+		assert.Error(t, settings.ValidateOptionValue(key, value), key)
 	}
 }

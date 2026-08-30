@@ -82,6 +82,14 @@ func RegisterGroupModelsResolver(resolver GroupModelsResolver) {
 	resolveGroupModels = resolver
 }
 
+// HasGroupModelsResolver reports whether the catalog lookup was installed.
+// groupModels() is nil-guarded and returns an empty list when it is not, which
+// makes a missing registration look like "this user has no models" instead of a
+// wiring failure, so it is asserted directly.
+func HasGroupModelsResolver() bool {
+	return resolveGroupModels != nil
+}
+
 func groupModels(groups []string) []string {
 	if resolveGroupModels == nil {
 		return []string{}

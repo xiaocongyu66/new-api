@@ -7,23 +7,15 @@
 package settings
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
 
-	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
-	"github.com/QuantumNous/new-api/internal/billing/price_expression"
-	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
-	"github.com/QuantumNous/new-api/internal/catalog/health_store"
-	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
-	"github.com/QuantumNous/new-api/internal/catalog/resolve_group"
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"github.com/QuantumNous/new-api/internal/sensitive"
-	"github.com/QuantumNous/new-api/internal/settings/config"
 	"github.com/QuantumNous/new-api/internal/transport/middleware/rate_limit"
 	"github.com/QuantumNous/new-api/internal/transport/middleware/status_code"
-	"github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 )
 
 // RetiredThemeOptionKey is the option key of the removed classic frontend
@@ -40,6 +32,41 @@ var OnBillingSettingChanged func()
 // free of internal/usage/record_perf import (record_perf depends on model for
 // flush ops, which would cycle with the model layer).
 var OnPerformanceSettingChanged func()
+
+// OnApplyOperationSetting etc registered by catalog init() (manage_channels.go,
+// resolve_group.go, track_health.go, manage_models.go) for option apply/validate/seed without
+// settings importing catalog children (breaks test cycles while keeping option
+// behavior in catalog per plan.md). Nil-safe: return nil or default if unregistered.
+var (
+	OnApplyOperationSetting            func(key, value string) error
+	OnApplyResolveGroupSetting         func(key, value string) error
+	OnIsChannelModelHealthOptionKey    func(key string) bool
+	OnValidateChannelModelHealthOption func(key, value string) error
+	OnIsChannelHealthOptionKey         func(key string) bool
+	OnValidateChannelHealthOption      func(key, value string) error
+	OnApplyModelHealthOption           func(key, value string) error
+	OnApplyChannelHealthOption         func(key, value string) error
+	OnSeedCatalogOptions               func() map[string]string
+)
+
+// Domain-owned option hooks, registered from each domain's own init() so this
+// package never imports billing / usage / egress / catalog. Same nil-safe
+// contract as the catalog hooks above: unregistered means "no such option
+// behavior", not an error.
+var (
+	OnSeedPaymentOptions func() map[string]string
+	OnApplyPaymentOption func(key, value string) error
+	OnSeedUsageOptions   func() map[string]string
+	OnApplyUsageOption   func(key, value string) error
+	OnSeedEgressOptions  func() map[string]string
+	OnApplyEgressOption  func(key, value string) error
+	OnSeedRatioOptions   func() map[string]string
+	OnApplyRatioOption   func(key, value string) error
+
+	OnIsToolPriceOptionKey    func(key string) bool
+	OnValidateToolPriceOption func(value string) error
+	OnApplyToolPriceOption    func(value string)
+)
 
 // GatewayRoutingOptionKeys is deliberately explicit. New settings must be
 // reviewed before they become part of the gateway snapshot contract.
@@ -66,17 +93,33 @@ func GatewayRoutingOptionKeyList() []string {
 }
 
 func ValidateOptionValue(key string, value string) error {
-	if key == price_expression.ToolPriceOptionKey {
-		return price_expression.ValidateToolPricesJSON(value)
+	if OnIsToolPriceOptionKey != nil && OnIsToolPriceOptionKey(key) {
+		if OnValidateToolPriceOption != nil {
+			return OnValidateToolPriceOption(value)
+		}
+		return nil
 	}
 	if key == "MaxTokenAutoGroups" {
-		return resolve_group.ValidateMaxTokenAutoGroups(value)
+		// Validated here rather than through a domain hook: the rule is a pure
+		// string check with no catalog state, and a hook would silently accept
+		// invalid values in every binary that does not link the catalog domain
+		// (model's own tests are one). Catalog still owns applying the value.
+		if count, convErr := strconv.Atoi(value); convErr != nil || count <= 0 {
+			return fmt.Errorf("MaxTokenAutoGroups must be a positive integer")
+		}
+		return nil
 	}
-	if health_store.IsChannelModelHealthOptionKey(key) {
-		return health_store.ValidateChannelModelHealthSettingValue(key, value)
+	if OnIsChannelModelHealthOptionKey != nil && OnIsChannelModelHealthOptionKey(key) {
+		if OnValidateChannelModelHealthOption != nil {
+			return OnValidateChannelModelHealthOption(key, value)
+		}
+		return nil
 	}
-	if health_store.IsChannelHealthOptionKey(key) {
-		return health_store.ValidateChannelHealthSettingValue(key, value)
+	if OnIsChannelHealthOptionKey != nil && OnIsChannelHealthOptionKey(key) {
+		if OnValidateChannelHealthOption != nil {
+			return OnValidateChannelHealthOption(key, value)
+		}
+		return nil
 	}
 	return nil
 }
@@ -129,55 +172,11 @@ func SeedOptionMap() {
 	common.OptionMap["SystemName"] = common.SystemName
 	common.OptionMap["Logo"] = common.Logo
 	common.OptionMap["ServerAddress"] = ""
-	common.OptionMap["WorkerUrl"] = fetch_url.WorkerUrl
-	common.OptionMap["WorkerValidKey"] = fetch_url.WorkerValidKey
-	common.OptionMap["WorkerAllowHttpImageRequestEnabled"] = strconv.FormatBool(fetch_url.WorkerAllowHttpImageRequestEnabled)
 	common.OptionMap["PayAddress"] = ""
 	common.OptionMap["CustomCallbackAddress"] = ""
 	common.OptionMap["EpayId"] = ""
 	common.OptionMap["EpayKey"] = ""
-	common.OptionMap["Price"] = strconv.FormatFloat(pay_subscription.Price, 'f', -1, 64)
-	common.OptionMap["USDExchangeRate"] = strconv.FormatFloat(pay_subscription.USDExchangeRate, 'f', -1, 64)
-	common.OptionMap["MinTopUp"] = strconv.Itoa(pay_subscription.MinTopUp)
-	common.OptionMap["StripeMinTopUp"] = strconv.Itoa(pay_subscription.StripeMinTopUp)
-	common.OptionMap["StripeApiSecret"] = pay_subscription.StripeApiSecret
-	common.OptionMap["StripeWebhookSecret"] = pay_subscription.StripeWebhookSecret
-	common.OptionMap["StripePriceId"] = pay_subscription.StripePriceId
-	common.OptionMap["StripeUnitPrice"] = strconv.FormatFloat(pay_subscription.StripeUnitPrice, 'f', -1, 64)
-	common.OptionMap["StripePromotionCodesEnabled"] = strconv.FormatBool(pay_subscription.StripePromotionCodesEnabled)
-	common.OptionMap["CreemApiKey"] = pay_subscription.CreemApiKey
-	common.OptionMap["CreemProducts"] = pay_subscription.CreemProducts
-	common.OptionMap["CreemTestMode"] = strconv.FormatBool(pay_subscription.CreemTestMode)
-	common.OptionMap["CreemWebhookSecret"] = pay_subscription.CreemWebhookSecret
-	common.OptionMap["WaffoEnabled"] = strconv.FormatBool(pay_subscription.WaffoEnabled)
-	common.OptionMap["WaffoApiKey"] = pay_subscription.WaffoApiKey
-	common.OptionMap["WaffoPrivateKey"] = pay_subscription.WaffoPrivateKey
-	common.OptionMap["WaffoPublicCert"] = pay_subscription.WaffoPublicCert
-	common.OptionMap["WaffoSandboxPublicCert"] = pay_subscription.WaffoSandboxPublicCert
-	common.OptionMap["WaffoSandboxApiKey"] = pay_subscription.WaffoSandboxApiKey
-	common.OptionMap["WaffoSandboxPrivateKey"] = pay_subscription.WaffoSandboxPrivateKey
-	common.OptionMap["WaffoSandbox"] = strconv.FormatBool(pay_subscription.WaffoSandbox)
-	common.OptionMap["WaffoMerchantId"] = pay_subscription.WaffoMerchantId
-	common.OptionMap["WaffoNotifyUrl"] = pay_subscription.WaffoNotifyUrl
-	common.OptionMap["WaffoReturnUrl"] = pay_subscription.WaffoReturnUrl
-	common.OptionMap["WaffoSubscriptionReturnUrl"] = pay_subscription.WaffoSubscriptionReturnUrl
-	common.OptionMap["WaffoCurrency"] = pay_subscription.WaffoCurrency
-	common.OptionMap["WaffoUnitPrice"] = strconv.FormatFloat(pay_subscription.WaffoUnitPrice, 'f', -1, 64)
-	common.OptionMap["WaffoMinTopUp"] = strconv.Itoa(pay_subscription.WaffoMinTopUp)
-	common.OptionMap["WaffoPayMethods"] = pay_subscription.WaffoPayMethods2JsonString()
-	common.OptionMap["WaffoPancakeMerchantID"] = pay_subscription.WaffoPancakeMerchantID
-	common.OptionMap["WaffoPancakePrivateKey"] = pay_subscription.WaffoPancakePrivateKey
-	common.OptionMap["WaffoPancakeReturnURL"] = pay_subscription.WaffoPancakeReturnURL
-	common.OptionMap["WaffoPancakeUnitPrice"] = strconv.FormatFloat(pay_subscription.WaffoPancakeUnitPrice, 'f', -1, 64)
-	common.OptionMap["WaffoPancakeMinTopUp"] = strconv.Itoa(pay_subscription.WaffoPancakeMinTopUp)
-	common.OptionMap["WaffoPancakeStoreID"] = pay_subscription.WaffoPancakeStoreID
-	common.OptionMap["WaffoPancakeProductID"] = pay_subscription.WaffoPancakeProductID
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
-	common.OptionMap["Chats"] = record_perf_config.Chats2JsonString()
-	common.OptionMap["AutoGroups"] = resolve_group.AutoGroups2JsonString()
-	common.OptionMap["DefaultUseAutoGroup"] = strconv.FormatBool(resolve_group.DefaultUseAutoGroup)
-	common.OptionMap["MaxTokenAutoGroups"] = strconv.Itoa(resolve_group.GetMaxTokenAutoGroups())
-	common.OptionMap["PayMethods"] = pay_subscription.PayMethods2JsonString()
 	common.OptionMap["GitHubClientId"] = ""
 	common.OptionMap["GitHubClientSecret"] = ""
 	common.OptionMap["TelegramBotToken"] = ""
@@ -196,31 +195,13 @@ func SeedOptionMap() {
 	common.OptionMap["ModelRequestRateLimitDurationMinutes"] = strconv.Itoa(rate_limit.ModelRequestRateLimitDurationMinutes)
 	common.OptionMap["ModelRequestRateLimitSuccessCount"] = strconv.Itoa(rate_limit.ModelRequestRateLimitSuccessCount)
 	common.OptionMap["ModelRequestRateLimitGroup"] = rate_limit.ModelRequestRateLimitGroup2JSONString()
-	common.OptionMap["ModelRatio"] = ratio_setting.ModelRatio2JSONString()
-	common.OptionMap["ModelPrice"] = ratio_setting.ModelPrice2JSONString()
-	common.OptionMap["CacheRatio"] = ratio_setting.CacheRatio2JSONString()
-	common.OptionMap["CreateCacheRatio"] = ratio_setting.CreateCacheRatio2JSONString()
-	common.OptionMap["GroupRatio"] = ratio_setting.GroupRatio2JSONString()
-	common.OptionMap["GroupGroupRatio"] = ratio_setting.GroupGroupRatio2JSONString()
-	common.OptionMap["UserUsableGroups"] = resolve_group.UserUsableGroups2JSONString()
-	common.OptionMap["CompletionRatio"] = ratio_setting.CompletionRatio2JSONString()
-	common.OptionMap["ImageRatio"] = ratio_setting.ImageRatio2JSONString()
-	common.OptionMap["AudioRatio"] = ratio_setting.AudioRatio2JSONString()
-	common.OptionMap["AudioCompletionRatio"] = ratio_setting.AudioCompletionRatio2JSONString()
 	common.OptionMap["TopUpLink"] = common.TopUpLink
 	common.OptionMap["QuotaPerUnit"] = strconv.FormatFloat(common.QuotaPerUnit, 'f', -1, 64)
 	common.OptionMap["RetryTimes"] = strconv.Itoa(common.RetryTimes)
 	common.OptionMap["DataExportInterval"] = strconv.Itoa(common.DataExportInterval)
 	common.OptionMap["DataExportDefaultTime"] = common.DataExportDefaultTime
 	common.OptionMap["DefaultCollapseSidebar"] = strconv.FormatBool(common.DefaultCollapseSidebar)
-	common.OptionMap["MjNotifyEnabled"] = strconv.FormatBool(record_perf_config.MjNotifyEnabled)
-	common.OptionMap["MjAccountFilterEnabled"] = strconv.FormatBool(record_perf_config.MjAccountFilterEnabled)
-	common.OptionMap["MjModeClearEnabled"] = strconv.FormatBool(record_perf_config.MjModeClearEnabled)
-	common.OptionMap["MjForwardUrlEnabled"] = strconv.FormatBool(record_perf_config.MjForwardUrlEnabled)
-	common.OptionMap["MjActionCheckSuccessEnabled"] = strconv.FormatBool(record_perf_config.MjActionCheckSuccessEnabled)
 	common.OptionMap["CheckSensitiveEnabled"] = strconv.FormatBool(sensitive.CheckSensitiveEnabled)
-	common.OptionMap["DemoSiteEnabled"] = strconv.FormatBool(manage_channels.DemoSiteEnabled)
-	common.OptionMap["SelfUseModeEnabled"] = strconv.FormatBool(manage_channels.SelfUseModeEnabled)
 	common.OptionMap["ModelRequestRateLimitEnabled"] = strconv.FormatBool(rate_limit.ModelRequestRateLimitEnabled)
 	common.OptionMap["CheckSensitiveOnPromptEnabled"] = strconv.FormatBool(sensitive.CheckSensitiveOnPromptEnabled)
 	common.OptionMap["CheckSensitiveOnCompletionEnabled"] = strconv.FormatBool(sensitive.CheckSensitiveOnCompletionEnabled)
@@ -228,38 +209,26 @@ func SeedOptionMap() {
 	common.OptionMap["SensitiveWords"] = sensitive.SensitiveWordsToString()
 	common.OptionMap["SensitiveBlockGroups"] = sensitive.SensitiveGroupsToString()
 	common.OptionMap["StreamCacheQueueLength"] = strconv.Itoa(sensitive.StreamCacheQueueLength)
-	common.OptionMap["AutomaticDisableKeywords"] = manage_channels.AutomaticDisableKeywordsToString()
 	common.OptionMap["AutomaticDisableStatusCodes"] = status_code.AutomaticDisableStatusCodesToString()
 	common.OptionMap["AutomaticRetryStatusCodes"] = status_code.AutomaticRetryStatusCodesToString()
-	common.OptionMap["ExposeRatioEnabled"] = strconv.FormatBool(ratio_setting.IsExposeRatioEnabled())
 	common.OptionMap["proxy_config"] = ""
-
-	// Channel model health state-machine option keys, seeded from the
-	// runtime atomic config so the option-map snapshot reflects the
-	// live defaults.
-	healthCfg := health_store.GetChannelModelHealthSetting()
-	if healthCfg != nil {
-		common.OptionMap["CalmFastBase"] = strconv.Itoa(healthCfg.CalmFastBase)
-		common.OptionMap["CalmFastInterval"] = strconv.Itoa(healthCfg.CalmFastInterval)
-		common.OptionMap["CalmSlowBase"] = strconv.Itoa(healthCfg.CalmSlowBase)
-		common.OptionMap["CalmSlowInterval"] = strconv.Itoa(healthCfg.CalmSlowInterval)
-		common.OptionMap["DormantBase"] = strconv.Itoa(healthCfg.DormantBase)
-		common.OptionMap["DormantInterval"] = strconv.Itoa(healthCfg.DormantInterval)
-		common.OptionMap["DormantMaxBase"] = strconv.Itoa(healthCfg.DormantMaxBase)
-		common.OptionMap["DormantDisableThreshold"] = strconv.Itoa(healthCfg.DormantDisableThreshold)
-		common.OptionMap["LocalFailureThreshold"] = strconv.Itoa(healthCfg.LocalFailureThreshold)
-		common.OptionMap["UpstreamFailureThreshold"] = strconv.Itoa(healthCfg.UpstreamFailureThreshold)
-		common.OptionMap["CalmWeightScale"] = strconv.Itoa(healthCfg.CalmWeightScale)
-		common.OptionMap["DormantWeightScale"] = strconv.Itoa(healthCfg.DormantWeightScale)
-		common.OptionMap["EmergencyThreshold"] = strconv.Itoa(healthCfg.EmergencyThreshold)
-		common.OptionMap["WarningThreshold"] = strconv.Itoa(healthCfg.WarningThreshold)
-		common.OptionMap["AcceleratedDecayStep"] = strconv.Itoa(healthCfg.AcceleratedDecayStep)
-		common.OptionMap["NormalDecayStep"] = strconv.Itoa(healthCfg.NormalDecayStep)
-		common.OptionMap["KeyProbeEnabled"] = strconv.FormatBool(healthCfg.KeyProbeEnabled)
+	// Catalog-owned options (resolve_group, manage_channels, health, etc.) are
+	// provided by registered OnSeedCatalogOptions hook from their behavior files'
+	// init(); this avoids direct imports and cycles while keeping behavior in catalog.
+	for _, seed := range []func() map[string]string{
+		OnSeedCatalogOptions, OnSeedPaymentOptions, OnSeedUsageOptions,
+		OnSeedEgressOptions, OnSeedRatioOptions,
+	} {
+		if seed == nil {
+			continue
+		}
+		for k, v := range seed() {
+			common.OptionMap[k] = v
+		}
 	}
 
 	// 自动添加所有注册的模型配置
-	modelConfigs := config.GlobalConfig.ExportAllConfigs()
+	modelConfigs := GlobalConfig.ExportAllConfigs()
 	for k, v := range modelConfigs {
 		common.OptionMap[k] = v
 	}
@@ -270,12 +239,25 @@ func SeedOptionMap() {
 // ApplyOption dispatches one persisted option value onto its typed target and
 // records it in common.OptionMap.
 func ApplyOption(key string, value string) (err error) {
-	if health_store.IsChannelModelHealthOptionKey(key) {
+	if OnIsChannelModelHealthOptionKey != nil && OnIsChannelModelHealthOptionKey(key) {
 		// Health state-machine options are dispatched to the atomic runtime
 		// config before the OptionMap lock is taken; a parse/validation
-		// error returns without storing an invalid value.
-		if err := health_store.UpdateChannelModelHealthSettingValue(key, value); err != nil {
-			return err
+		// error returns without storing an invalid value. Model vs channel keys
+		// now route independently per C1 review (distinct hooks prevent overwrite).
+		if OnApplyModelHealthOption != nil {
+			if err = OnApplyModelHealthOption(key, value); err != nil {
+				return err
+			}
+		}
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap[key] = value
+		common.OptionMapRWMutex.Unlock()
+		return nil
+	} else if OnIsChannelHealthOptionKey != nil && OnIsChannelHealthOptionKey(key) {
+		if OnApplyChannelHealthOption != nil {
+			if err = OnApplyChannelHealthOption(key, value); err != nil {
+				return err
+			}
 		}
 		common.OptionMapRWMutex.Lock()
 		common.OptionMap[key] = value
@@ -349,8 +331,8 @@ func ApplyOption(key string, value string) (err error) {
 			if !boolValue {
 				newVal = "TOKENS"
 			}
-			if cfg := config.GlobalConfig.Get("general_setting"); cfg != nil {
-				_ = config.UpdateConfigFromMap(cfg, map[string]string{"quota_display_type": newVal})
+			if cfg := GlobalConfig.Get("general_setting"); cfg != nil {
+				_ = UpdateConfigFromMap(cfg, map[string]string{"quota_display_type": newVal})
 			}
 		case "DisplayTokenStatEnabled":
 			common.DisplayTokenStatEnabled = boolValue
@@ -362,22 +344,17 @@ func ApplyOption(key string, value string) (err error) {
 			common.DataExportEnabled = boolValue
 		case "DefaultCollapseSidebar":
 			common.DefaultCollapseSidebar = boolValue
-		case "MjNotifyEnabled":
-			record_perf_config.MjNotifyEnabled = boolValue
-		case "MjAccountFilterEnabled":
-			record_perf_config.MjAccountFilterEnabled = boolValue
-		case "MjModeClearEnabled":
-			record_perf_config.MjModeClearEnabled = boolValue
-		case "MjForwardUrlEnabled":
-			record_perf_config.MjForwardUrlEnabled = boolValue
-		case "MjActionCheckSuccessEnabled":
-			record_perf_config.MjActionCheckSuccessEnabled = boolValue
+		case "MjNotifyEnabled", "MjAccountFilterEnabled", "MjModeClearEnabled",
+			"MjForwardUrlEnabled", "MjActionCheckSuccessEnabled":
+			if OnApplyUsageOption != nil {
+				err = OnApplyUsageOption(key, value)
+			}
 		case "CheckSensitiveEnabled":
 			sensitive.CheckSensitiveEnabled = boolValue
-		case "DemoSiteEnabled":
-			manage_channels.DemoSiteEnabled = boolValue
-		case "SelfUseModeEnabled":
-			manage_channels.SelfUseModeEnabled = boolValue
+		case "DemoSiteEnabled", "SelfUseModeEnabled":
+			if OnApplyOperationSetting != nil {
+				_ = OnApplyOperationSetting(key, value)
+			}
 		case "CheckSensitiveOnPromptEnabled":
 			sensitive.CheckSensitiveOnPromptEnabled = boolValue
 		case "CheckSensitiveOnCompletionEnabled":
@@ -395,11 +372,17 @@ func ApplyOption(key string, value string) (err error) {
 		case "SMTPForceAuthLogin":
 			common.SMTPForceAuthLogin = boolValue
 		case "WorkerAllowHttpImageRequestEnabled":
-			fetch_url.WorkerAllowHttpImageRequestEnabled = boolValue
+			if OnApplyEgressOption != nil {
+				err = OnApplyEgressOption(key, value)
+			}
 		case "DefaultUseAutoGroup":
-			resolve_group.DefaultUseAutoGroup = boolValue
+			if OnApplyResolveGroupSetting != nil {
+				_ = OnApplyResolveGroupSetting(key, value)
+			}
 		case "ExposeRatioEnabled":
-			ratio_setting.SetExposeRatioEnabled(boolValue)
+			if OnApplyRatioOption != nil {
+				err = OnApplyRatioOption(key, value)
+			}
 		}
 	}
 	switch key {
@@ -416,96 +399,26 @@ func ApplyOption(key string, value string) (err error) {
 		common.SMTPFrom = value
 	case "SMTPToken":
 		common.SMTPToken = value
-	case "ServerAddress":
-		fetch_url.ServerAddress = value
-	case "WorkerUrl":
-		fetch_url.WorkerUrl = value
-	case "WorkerValidKey":
-		fetch_url.WorkerValidKey = value
+	case "ServerAddress", "WorkerUrl", "WorkerValidKey":
+		if OnApplyEgressOption != nil {
+			err = OnApplyEgressOption(key, value)
+		}
 	case "PayAddress":
-		pay_subscription.PayAddress = value
+		if OnApplyPaymentOption != nil {
+			err = OnApplyPaymentOption(key, value)
+		}
 	case "Chats":
-		err = record_perf_config.UpdateChatsByJsonString(value)
-	case "AutoGroups":
-		err = resolve_group.UpdateAutoGroupsByJsonString(value)
-	case "MaxTokenAutoGroups":
-		err = resolve_group.UpdateMaxTokenAutoGroups(value)
-	case "CustomCallbackAddress":
-		pay_subscription.CustomCallbackAddress = value
-	case "EpayId":
-		pay_subscription.EpayId = value
-	case "EpayKey":
-		pay_subscription.EpayKey = value
-	case "Price":
-		pay_subscription.Price, _ = strconv.ParseFloat(value, 64)
-	case "USDExchangeRate":
-		pay_subscription.USDExchangeRate, _ = strconv.ParseFloat(value, 64)
-	case "MinTopUp":
-		pay_subscription.MinTopUp, _ = strconv.Atoi(value)
-	case "StripeApiSecret":
-		pay_subscription.StripeApiSecret = value
-	case "StripeWebhookSecret":
-		pay_subscription.StripeWebhookSecret = value
-	case "StripePriceId":
-		pay_subscription.StripePriceId = value
-	case "StripeUnitPrice":
-		pay_subscription.StripeUnitPrice, _ = strconv.ParseFloat(value, 64)
-	case "StripeMinTopUp":
-		pay_subscription.StripeMinTopUp, _ = strconv.Atoi(value)
-	case "StripePromotionCodesEnabled":
-		pay_subscription.StripePromotionCodesEnabled = value == "true"
-	case "CreemApiKey":
-		pay_subscription.CreemApiKey = value
-	case "CreemProducts":
-		pay_subscription.CreemProducts = value
-	case "CreemTestMode":
-		pay_subscription.CreemTestMode = value == "true"
-	case "CreemWebhookSecret":
-		pay_subscription.CreemWebhookSecret = value
-	case "WaffoEnabled":
-		pay_subscription.WaffoEnabled = value == "true"
-	case "WaffoApiKey":
-		pay_subscription.WaffoApiKey = value
-	case "WaffoPrivateKey":
-		pay_subscription.WaffoPrivateKey = value
-	case "WaffoPublicCert":
-		pay_subscription.WaffoPublicCert = value
-	case "WaffoSandboxPublicCert":
-		pay_subscription.WaffoSandboxPublicCert = value
-	case "WaffoSandboxApiKey":
-		pay_subscription.WaffoSandboxApiKey = value
-	case "WaffoSandboxPrivateKey":
-		pay_subscription.WaffoSandboxPrivateKey = value
-	case "WaffoSandbox":
-		pay_subscription.WaffoSandbox = value == "true"
-	case "WaffoMerchantId":
-		pay_subscription.WaffoMerchantId = value
-	case "WaffoNotifyUrl":
-		pay_subscription.WaffoNotifyUrl = value
-	case "WaffoReturnUrl":
-		pay_subscription.WaffoReturnUrl = value
-	case "WaffoSubscriptionReturnUrl":
-		pay_subscription.WaffoSubscriptionReturnUrl = value
-	case "WaffoCurrency":
-		pay_subscription.WaffoCurrency = value
-	case "WaffoUnitPrice":
-		pay_subscription.WaffoUnitPrice, _ = strconv.ParseFloat(value, 64)
-	case "WaffoMinTopUp":
-		pay_subscription.WaffoMinTopUp, _ = strconv.Atoi(value)
-	case "WaffoPancakeMerchantID":
-		pay_subscription.WaffoPancakeMerchantID = value
-	case "WaffoPancakePrivateKey":
-		pay_subscription.WaffoPancakePrivateKey = value
-	case "WaffoPancakeReturnURL":
-		pay_subscription.WaffoPancakeReturnURL = value
-	case "WaffoPancakeStoreID":
-		pay_subscription.WaffoPancakeStoreID = value
-	case "WaffoPancakeProductID":
-		pay_subscription.WaffoPancakeProductID = value
-	case "WaffoPancakeUnitPrice":
-		pay_subscription.WaffoPancakeUnitPrice, _ = strconv.ParseFloat(value, 64)
-	case "WaffoPancakeMinTopUp":
-		pay_subscription.WaffoPancakeMinTopUp, _ = strconv.Atoi(value)
+		if OnApplyUsageOption != nil {
+			err = OnApplyUsageOption(key, value)
+		}
+	case "AutoGroups", "MaxTokenAutoGroups":
+		if OnApplyResolveGroupSetting != nil {
+			err = OnApplyResolveGroupSetting(key, value)
+		}
+	case "CustomCallbackAddress", "EpayId", "EpayKey", "Price", "USDExchangeRate", "MinTopUp", "StripeApiSecret", "StripeWebhookSecret", "StripePriceId", "StripeUnitPrice", "StripeMinTopUp", "StripePromotionCodesEnabled", "CreemApiKey", "CreemProducts", "CreemTestMode", "CreemWebhookSecret", "WaffoEnabled", "WaffoApiKey", "WaffoPrivateKey", "WaffoPublicCert", "WaffoSandboxPublicCert", "WaffoSandboxApiKey", "WaffoSandboxPrivateKey", "WaffoSandbox", "WaffoMerchantId", "WaffoNotifyUrl", "WaffoReturnUrl", "WaffoSubscriptionReturnUrl", "WaffoCurrency", "WaffoUnitPrice", "WaffoMinTopUp", "WaffoPancakeMerchantID", "WaffoPancakePrivateKey", "WaffoPancakeReturnURL", "WaffoPancakeStoreID", "WaffoPancakeProductID", "WaffoPancakeUnitPrice", "WaffoPancakeMinTopUp":
+		if OnApplyPaymentOption != nil {
+			err = OnApplyPaymentOption(key, value)
+		}
 	case "TopupGroupRatio":
 		err = common.UpdateTopupGroupRatioByJSONString(value)
 	case "GitHubClientId":
@@ -563,27 +476,49 @@ func ApplyOption(key string, value string) (err error) {
 	case "DataExportDefaultTime":
 		common.DataExportDefaultTime = value
 	case "ModelRatio":
-		err = ratio_setting.UpdateModelRatioByJSONString(value)
+		if OnApplyRatioOption != nil {
+			err = OnApplyRatioOption(key, value)
+		}
 	case "GroupRatio":
-		err = ratio_setting.UpdateGroupRatioByJSONString(value)
+		if OnApplyRatioOption != nil {
+			err = OnApplyRatioOption(key, value)
+		}
 	case "GroupGroupRatio":
-		err = ratio_setting.UpdateGroupGroupRatioByJSONString(value)
+		if OnApplyRatioOption != nil {
+			err = OnApplyRatioOption(key, value)
+		}
 	case "UserUsableGroups":
-		err = resolve_group.UpdateUserUsableGroupsByJSONString(value)
+		if OnApplyResolveGroupSetting != nil {
+			err = OnApplyResolveGroupSetting(key, value)
+		}
 	case "CompletionRatio":
-		err = ratio_setting.UpdateCompletionRatioByJSONString(value)
+		if OnApplyRatioOption != nil {
+			err = OnApplyRatioOption(key, value)
+		}
 	case "ModelPrice":
-		err = ratio_setting.UpdateModelPriceByJSONString(value)
+		if OnApplyRatioOption != nil {
+			err = OnApplyRatioOption(key, value)
+		}
 	case "CacheRatio":
-		err = ratio_setting.UpdateCacheRatioByJSONString(value)
+		if OnApplyRatioOption != nil {
+			err = OnApplyRatioOption(key, value)
+		}
 	case "CreateCacheRatio":
-		err = ratio_setting.UpdateCreateCacheRatioByJSONString(value)
+		if OnApplyRatioOption != nil {
+			err = OnApplyRatioOption(key, value)
+		}
 	case "ImageRatio":
-		err = ratio_setting.UpdateImageRatioByJSONString(value)
+		if OnApplyRatioOption != nil {
+			err = OnApplyRatioOption(key, value)
+		}
 	case "AudioRatio":
-		err = ratio_setting.UpdateAudioRatioByJSONString(value)
+		if OnApplyRatioOption != nil {
+			err = OnApplyRatioOption(key, value)
+		}
 	case "AudioCompletionRatio":
-		err = ratio_setting.UpdateAudioCompletionRatioByJSONString(value)
+		if OnApplyRatioOption != nil {
+			err = OnApplyRatioOption(key, value)
+		}
 	case "TopUpLink":
 		common.TopUpLink = value
 	case "ChannelDisableThreshold":
@@ -595,7 +530,9 @@ func ApplyOption(key string, value string) (err error) {
 	case "SensitiveBlockGroups":
 		sensitive.SensitiveGroupsFromString(value)
 	case "AutomaticDisableKeywords":
-		manage_channels.AutomaticDisableKeywordsFromString(value)
+		if OnApplyOperationSetting != nil {
+			_ = OnApplyOperationSetting(key, value)
+		}
 	case "AutomaticDisableStatusCodes":
 		err = status_code.AutomaticDisableStatusCodesFromString(value)
 	case "AutomaticRetryStatusCodes":
@@ -603,9 +540,11 @@ func ApplyOption(key string, value string) (err error) {
 	case "StreamCacheQueueLength":
 		sensitive.StreamCacheQueueLength, _ = strconv.Atoi(value)
 	case "PayMethods":
-		err = pay_subscription.UpdatePayMethodsByJsonString(value)
+		if OnApplyPaymentOption != nil {
+			err = OnApplyPaymentOption(key, value)
+		}
 	case "WaffoPayMethods":
-		// WaffoPayMethods is read directly from OptionMap via pay_subscription.GetWaffoPayMethods().
+		// WaffoPayMethods is read directly from OptionMap via billing.GetWaffoPayMethods().
 		// The value is already stored in OptionMap at the top of this function.
 		// No additional in-memory variable to update.
 	}
@@ -614,8 +553,10 @@ func ApplyOption(key string, value string) (err error) {
 
 // handleConfigUpdate 处理分层配置更新，返回是否已处理
 func handleConfigUpdate(key, value string) bool {
-	if key == price_expression.ToolPriceOptionKey {
-		price_expression.LoadToolPricesFromJSONString(value)
+	if OnIsToolPriceOptionKey != nil && OnIsToolPriceOptionKey(key) {
+		if OnApplyToolPriceOption != nil {
+			OnApplyToolPriceOption(value)
+		}
 		return true
 	}
 
@@ -628,7 +569,7 @@ func handleConfigUpdate(key, value string) bool {
 	configKey := parts[1]
 
 	// 获取配置对象
-	cfg := config.GlobalConfig.Get(configName)
+	cfg := GlobalConfig.Get(configName)
 	if cfg == nil {
 		return false // 未注册的配置
 	}
@@ -637,7 +578,7 @@ func handleConfigUpdate(key, value string) bool {
 	configMap := map[string]string{
 		configKey: value,
 	}
-	config.UpdateConfigFromMap(cfg, configMap)
+	UpdateConfigFromMap(cfg, configMap)
 
 	// 特定配置的后处理
 	if configName == "performance_setting" && OnPerformanceSettingChanged != nil {

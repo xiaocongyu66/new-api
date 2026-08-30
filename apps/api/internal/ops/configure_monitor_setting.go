@@ -1,10 +1,9 @@
 package ops
 
 import (
+	"github.com/QuantumNous/new-api/internal/settings"
 	"os"
 	"strconv"
-
-	"github.com/QuantumNous/new-api/internal/settings/config"
 )
 
 type MonitorSetting struct {
@@ -28,7 +27,7 @@ var monitorSetting = MonitorSetting{
 
 func init() {
 	// 注册到全局配置管理器
-	config.GlobalConfig.Register("monitor_setting", &monitorSetting)
+	settings.GlobalConfig.Register("monitor_setting", &monitorSetting)
 }
 
 func GetMonitorSetting() *MonitorSetting {

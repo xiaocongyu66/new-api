@@ -1,6 +1,6 @@
 package identity
 
-import "github.com/QuantumNous/new-api/internal/settings/config"
+import "github.com/QuantumNous/new-api/internal/settings"
 
 // TokenSetting 令牌相关配置
 type TokenSetting struct {
@@ -14,7 +14,7 @@ var tokenSetting = TokenSetting{
 
 func init() {
 	// 注册到全局配置管理器
-	config.GlobalConfig.Register("token_setting", &tokenSetting)
+	settings.GlobalConfig.Register("token_setting", &tokenSetting)
 }
 
 // GetTokenSetting 获取令牌配置
