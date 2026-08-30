@@ -920,6 +920,37 @@ jobs:
             done < /tmp/replica-pods.txt
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Refresh admin token
+        env:
+          GATEWAY_ADMIN_URL: ${{ env.GATEWAY_ADMIN_URL }}
+          ADMIN_USERNAME: ${{ env.ADMIN_USERNAME }}
+          ADMIN_PASSWORD: ${{ env.ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # Resolve admin token 步骤在 preflight gateway 之前拿了一次 JWT,
+          # 但 Run scenario 跑 preflight 时已经过 7-10 分钟, cluster 默认
+          # JWT TTL 短, token 已过期, fetch_options 返回 None 报
+          # ENVIRONMENT_INVALID. 这里重新 login 拿最新 JWT, 写到
+          # ADMIN_TOKEN_FINAL (Run scenario 步骤用 ${ADMIN_TOKEN_FINAL:-$ADMIN_TOKEN} 优先).
+          for i in $(seq 1 5); do
+            RESP=$(curl -fsS --max-time 10 -H 'Content-Type: application/json' \
+              -X POST -d "{\"username\":\"$ADMIN_USERNAME\",\"password\":\"$ADMIN_PASSWORD\"}" \
+              "${GATEWAY_ADMIN_URL%/}/api/user/login" 2>/dev/null || true)
+            if [ -n "$RESP" ]; then
+              TOKEN=$(echo "$RESP" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("data",{}).get("access_token",""))' 2>/dev/null || true)
+              if [ -n "$TOKEN" ]; then
+                echo "Re-login admin token (len=${#TOKEN})"
+                echo "::add-mask::$TOKEN"
+                echo "ADMIN_TOKEN_FINAL=$TOKEN" >> "$GITHUB_ENV"
+                exit 0
+              fi
+            fi
+            echo "Login attempt $i failed, retrying..."
+            sleep 2
+          done
+          echo "::error::Failed to refresh admin token from $GATEWAY_ADMIN_URL"
+          exit 1
+
 
       - name: Refresh mock port-forwards
         if: env.MOCK_IN_CLUSTER == 'true'
