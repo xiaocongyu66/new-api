@@ -1,6 +1,8 @@
-package do_checkin
+package billing
 
-import "github.com/QuantumNous/new-api/internal/settings/config"
+import (
+	"github.com/QuantumNous/new-api/internal/settings/config"
+)
 
 // CheckinSetting 签到功能配置
 type CheckinSetting struct {

@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"github.com/QuantumNous/new-api/internal/billing/do_checkin"
+	billing "github.com/QuantumNous/new-api/internal/billing"
 	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
 	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/catalog/manage_channels"
@@ -119,7 +119,7 @@ func GetStatus(c contract.Context) {
 		"setup":                       constant.Setup,
 		"user_agreement_enabled":      legalSetting.UserAgreement != "",
 		"privacy_policy_enabled":      legalSetting.PrivacyPolicy != "",
-		"checkin_enabled":             do_checkin.GetCheckinSetting().Enabled,
+		"checkin_enabled":             billing.GetCheckinSetting().Enabled,
 	}
 
 	// 根据启用状态注入可选内容

@@ -2,21 +2,19 @@ package channel
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/common/cachex"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/samber/hot"
+	"github.com/tidwall/gjson"
 	"hash/fnv"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/QuantumNous/new-api/internal/catalog/track_affinity"
-	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/common/cachex"
-	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/samber/hot"
-	"github.com/tidwall/gjson"
 )
 
 const (
@@ -80,7 +78,7 @@ type ChannelAffinityCacheStats struct {
 
 func getChannelAffinityCache() *cachex.HybridCache[int] {
 	channelAffinityCacheOnce.Do(func() {
-		setting := track_affinity.GetChannelAffinitySetting()
+		setting := GetChannelAffinitySetting()
 		capacity := setting.MaxEntries
 		if capacity <= 0 {
 			capacity = 100_000
@@ -109,7 +107,7 @@ func getChannelAffinityCache() *cachex.HybridCache[int] {
 }
 
 func GetChannelAffinityCacheStats() ChannelAffinityCacheStats {
-	setting := track_affinity.GetChannelAffinitySetting()
+	setting := GetChannelAffinitySetting()
 	if setting == nil {
 		return ChannelAffinityCacheStats{
 			Enabled:    false,
@@ -124,7 +122,7 @@ func GetChannelAffinityCacheStats() ChannelAffinityCacheStats {
 	mainAlgo, _ := cache.Algorithm()
 
 	rules := setting.Rules
-	ruleByName := make(map[string]track_affinity.ChannelAffinityRule, len(rules))
+	ruleByName := make(map[string]ChannelAffinityRule, len(rules))
 	for _, r := range rules {
 		name := strings.TrimSpace(r.Name)
 		if name == "" {
@@ -216,12 +214,12 @@ func ClearChannelAffinityCacheByRuleName(ruleName string) (int, error) {
 		return 0, fmt.Errorf("rule_name 不能为空")
 	}
 
-	setting := track_affinity.GetChannelAffinitySetting()
+	setting := GetChannelAffinitySetting()
 	if setting == nil {
 		return 0, fmt.Errorf("channel_affinity_setting 未初始化")
 	}
 
-	var matchedRule *track_affinity.ChannelAffinityRule
+	var matchedRule *ChannelAffinityRule
 	for i := range setting.Rules {
 		r := &setting.Rules[i]
 		if strings.TrimSpace(r.Name) != ruleName {
@@ -286,7 +284,7 @@ func matchAnyIncludeFold(patterns []string, s string) bool {
 	return false
 }
 
-func extractChannelAffinityValue(c contract.Context, src track_affinity.ChannelAffinityKeySource) string {
+func extractChannelAffinityValue(c contract.Context, src ChannelAffinityKeySource) string {
 	switch src.Type {
 	case "context_int":
 		if src.Key == "" {
@@ -330,7 +328,7 @@ func extractChannelAffinityValue(c contract.Context, src track_affinity.ChannelA
 	}
 }
 
-func buildChannelAffinityCacheKeySuffix(rule track_affinity.ChannelAffinityRule, modelName string, usingGroup string, affinityValue string) string {
+func buildChannelAffinityCacheKeySuffix(rule ChannelAffinityRule, modelName string, usingGroup string, affinityValue string) string {
 	parts := make([]string, 0, 4)
 	if rule.IncludeRuleName && rule.Name != "" {
 		parts = append(parts, rule.Name)
@@ -544,7 +542,7 @@ func ApplyChannelAffinityOverrideTemplate(c contract.Context, paramOverride map[
 }
 
 func GetPreferredChannelByAffinity(c contract.Context, modelName string, usingGroup string) (int, bool) {
-	setting := track_affinity.GetChannelAffinitySetting()
+	setting := GetChannelAffinitySetting()
 	if setting == nil || !setting.Enabled {
 		return 0, false
 	}
@@ -568,7 +566,7 @@ func GetPreferredChannelByAffinity(c contract.Context, modelName string, usingGr
 			continue
 		}
 		var affinityValue string
-		var usedSource track_affinity.ChannelAffinityKeySource
+		var usedSource ChannelAffinityKeySource
 		for _, src := range rule.KeySources {
 			affinityValue = extractChannelAffinityValue(c, src)
 			if affinityValue != "" {
@@ -662,7 +660,7 @@ func ClearCurrentChannelAffinityCache(c contract.Context) bool {
 }
 
 func ShouldKeepChannelAffinityOnChannelDisabled() bool {
-	setting := track_affinity.GetChannelAffinitySetting()
+	setting := GetChannelAffinitySetting()
 	if setting == nil {
 		return false
 	}
@@ -710,7 +708,7 @@ func RecordChannelAffinity(c contract.Context, channelID int) {
 	if channelID <= 0 {
 		return
 	}
-	setting := track_affinity.GetChannelAffinitySetting()
+	setting := GetChannelAffinitySetting()
 	if setting == nil || !setting.Enabled {
 		return
 	}
@@ -961,7 +959,7 @@ func usageTotalTokens(usage *dto.Usage) int {
 
 func getChannelAffinityUsageCacheStatsCache() *cachex.HybridCache[ChannelAffinityUsageCacheCounters] {
 	channelAffinityUsageCacheStatsOnce.Do(func() {
-		setting := track_affinity.GetChannelAffinitySetting()
+		setting := GetChannelAffinitySetting()
 		capacity := 100_000
 		defaultTTLSeconds := 3600
 		if setting != nil {

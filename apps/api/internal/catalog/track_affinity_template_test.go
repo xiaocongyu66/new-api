@@ -2,17 +2,15 @@ package channel
 
 import (
 	"fmt"
+	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/QuantumNous/new-api/internal/catalog/track_affinity"
-	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/stretchr/testify/require"
 )
 
 func buildChannelAffinityTemplateContextForTest(meta channelAffinityMeta) contract.Context {
@@ -181,7 +179,7 @@ func TestExtractChannelAffinityValue_RequestHeader(t *testing.T) {
 	ginadapter.ReplaceRequest(ctx, httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
 	ctx.Headers().Set("X-Affinity-Key", " tenant-123 ")
 
-	value := extractChannelAffinityValue(ctx, track_affinity.ChannelAffinityKeySource{
+	value := extractChannelAffinityValue(ctx, ChannelAffinityKeySource{
 		Type: "request_header",
 		Key:  "X-Affinity-Key",
 	})
@@ -191,11 +189,11 @@ func TestExtractChannelAffinityValue_RequestHeader(t *testing.T) {
 
 func TestGetPreferredChannelByAffinity_RequestHeaderKeySource(t *testing.T) {
 
-	rule := track_affinity.ChannelAffinityRule{
+	rule := ChannelAffinityRule{
 		Name:       "header-affinity",
 		ModelRegex: []string{"^gpt-.*$"},
 		PathRegex:  []string{"/v1/responses"},
-		KeySources: []track_affinity.ChannelAffinityKeySource{
+		KeySources: []ChannelAffinityKeySource{
 			{Type: "request_header", Key: "X-Affinity-Key"},
 		},
 		IncludeRuleName:  true,
@@ -211,9 +209,9 @@ func TestGetPreferredChannelByAffinity_RequestHeaderKeySource(t *testing.T) {
 		_, _ = cache.DeleteMany([]string{cacheKeySuffix})
 	})
 
-	setting := track_affinity.GetChannelAffinitySetting()
+	setting := GetChannelAffinitySetting()
 	originalRules := setting.Rules
-	setting.Rules = append([]track_affinity.ChannelAffinityRule{rule}, originalRules...)
+	setting.Rules = append([]ChannelAffinityRule{rule}, originalRules...)
 	t.Cleanup(func() {
 		setting.Rules = originalRules
 	})
@@ -261,10 +259,10 @@ func TestClearCurrentChannelAffinityCache(t *testing.T) {
 
 func TestChannelAffinityHitCodexTemplatePassHeadersEffective(t *testing.T) {
 
-	setting := track_affinity.GetChannelAffinitySetting()
+	setting := GetChannelAffinitySetting()
 	require.NotNil(t, setting)
 
-	var codexRule *track_affinity.ChannelAffinityRule
+	var codexRule *ChannelAffinityRule
 	for i := range setting.Rules {
 		rule := &setting.Rules[i]
 		if strings.EqualFold(strings.TrimSpace(rule.Name), "codex cli trace") {
