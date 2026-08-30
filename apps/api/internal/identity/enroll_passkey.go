@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/security/passkey"
 
 	"github.com/go-webauthn/webauthn/protocol"
 	webauthnlib "github.com/go-webauthn/webauthn/webauthn"
@@ -45,7 +44,7 @@ func parsePasskeyFinishRequest(c contract.Context) (*passkeyFinishRequest, error
 }
 
 func PasskeyRegisterBegin(c contract.Context) {
-	if !passkey.GetPasskeySettings().Enabled {
+	if !GetPasskeySettings().Enabled {
 		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": "管理员未启用 Passkey 登录",
@@ -123,7 +122,7 @@ func PasskeyRegisterBegin(c contract.Context) {
 }
 
 func PasskeyRegisterFinish(c contract.Context) {
-	if !passkey.GetPasskeySettings().Enabled {
+	if !GetPasskeySettings().Enabled {
 		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": "管理员未启用 Passkey 登录",
@@ -292,7 +291,7 @@ func PasskeyStatus(c contract.Context) {
 }
 
 func PasskeyLoginBegin(c contract.Context) {
-	if !passkey.GetPasskeySettings().Enabled {
+	if !GetPasskeySettings().Enabled {
 		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": "管理员未启用 Passkey 登录",
@@ -336,7 +335,7 @@ func PasskeyLoginBegin(c contract.Context) {
 }
 
 func PasskeyLoginFinish(c contract.Context) {
-	if !passkey.GetPasskeySettings().Enabled {
+	if !GetPasskeySettings().Enabled {
 		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": "管理员未启用 Passkey 登录",
@@ -483,7 +482,7 @@ func AdminResetPasskey(c contract.Context) {
 }
 
 func PasskeyVerifyBegin(c contract.Context) {
-	if !passkey.GetPasskeySettings().Enabled {
+	if !GetPasskeySettings().Enabled {
 		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": "管理员未启用 Passkey 登录",
@@ -560,7 +559,7 @@ func PasskeyVerifyBegin(c contract.Context) {
 }
 
 func PasskeyVerifyFinish(c contract.Context) {
-	if !passkey.GetPasskeySettings().Enabled {
+	if !GetPasskeySettings().Enabled {
 		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
 			"message": "管理员未启用 Passkey 登录",

@@ -9,15 +9,14 @@ import (
 	taskdomain "github.com/QuantumNous/new-api/internal/task"
 	taskpkg "github.com/QuantumNous/new-api/internal/task"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/usage"
 	"io"
 	"net/http"
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/dto"
-	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 )
 
 // midjourneyPollSummary is the result recorded on a midjourney_poll system task
@@ -292,9 +291,9 @@ func GetAllMidjourney(c contract.Context) {
 	items := taskpkg.GetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	total := taskpkg.CountAllTasks(queryParams)
 
-	if record_perf_config.MjForwardUrlEnabled {
+	if usage.MjForwardUrlEnabled {
 		for i, midjourney := range items {
-			midjourney.ImageUrl = fetch_url.ServerAddress + "/mj/image/" + midjourney.MjId
+			midjourney.ImageUrl = egress.ServerAddress + "/mj/image/" + midjourney.MjId
 			items[i] = midjourney
 		}
 	}
@@ -317,9 +316,9 @@ func GetUserMidjourney(c contract.Context) {
 	items := taskpkg.GetAllUserTask(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	total := taskpkg.CountAllUserTask(userId, queryParams)
 
-	if record_perf_config.MjForwardUrlEnabled {
+	if usage.MjForwardUrlEnabled {
 		for i, midjourney := range items {
-			midjourney.ImageUrl = fetch_url.ServerAddress + "/mj/image/" + midjourney.MjId
+			midjourney.ImageUrl = egress.ServerAddress + "/mj/image/" + midjourney.MjId
 			items[i] = midjourney
 		}
 	}

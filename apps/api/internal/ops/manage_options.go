@@ -2,22 +2,21 @@ package ops
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/billing"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/usage"
 	"github.com/QuantumNous/new-api/model"
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/billing/price_expression"
+	model_setting "github.com/QuantumNous/new-api/internal/catalog"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
-	model_setting "github.com/QuantumNous/new-api/internal/catalog/manage_models"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/middleware/rate_limit"
 	"github.com/QuantumNous/new-api/internal/transport/middleware/status_code"
-	console_setting "github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 )
 
 func GetOptions(c contract.Context) {
@@ -56,7 +55,7 @@ func UpdateOption(c contract.Context) {
 	}
 	switch option.Key {
 	case "QuotaForInviter", "QuotaForInvitee":
-		if settingIsPositiveOptionValue(option.Value.(string)) && !pay_subscription.IsPaymentComplianceConfirmed() {
+		if settingIsPositiveOptionValue(option.Value.(string)) && !billing.IsPaymentComplianceConfirmed() {
 			common.CtxApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
 			return
 		}
@@ -240,7 +239,7 @@ func UpdateOption(c contract.Context) {
 			return
 		}
 	case "console_setting.api_info":
-		err = console_setting.ValidateConsoleSettings(option.Value.(string), "ApiInfo")
+		err = usage.ValidateConsoleSettings(option.Value.(string), "ApiInfo")
 		if err != nil {
 			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
@@ -249,7 +248,7 @@ func UpdateOption(c contract.Context) {
 			return
 		}
 	case "console_setting.announcements":
-		err = console_setting.ValidateConsoleSettings(option.Value.(string), "Announcements")
+		err = usage.ValidateConsoleSettings(option.Value.(string), "Announcements")
 		if err != nil {
 			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
@@ -258,7 +257,7 @@ func UpdateOption(c contract.Context) {
 			return
 		}
 	case "console_setting.faq":
-		err = console_setting.ValidateConsoleSettings(option.Value.(string), "FAQ")
+		err = usage.ValidateConsoleSettings(option.Value.(string), "FAQ")
 		if err != nil {
 			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
@@ -267,7 +266,7 @@ func UpdateOption(c contract.Context) {
 			return
 		}
 	case "console_setting.uptime_kuma_groups":
-		err = console_setting.ValidateConsoleSettings(option.Value.(string), "UptimeKumaGroups")
+		err = usage.ValidateConsoleSettings(option.Value.(string), "UptimeKumaGroups")
 		if err != nil {
 			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,

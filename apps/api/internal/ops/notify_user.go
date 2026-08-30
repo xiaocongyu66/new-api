@@ -10,10 +10,14 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/QuantumNous/new-api/internal/billing"
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 )
+
+func init() {
+	billing.OnNotifyUser = NotifyUser
+}
 
 func NotifyRootUser(t string, subject string, content string) {
 	user := identity.GetRootUser().ToBaseUser()
@@ -132,11 +136,11 @@ func sendBarkNotify(barkURL string, data dto.Notify) error {
 	var resp *http.Response
 	var err error
 
-	if fetch_url.EnableWorker() {
+	if egress.EnableWorker() {
 		// 使用worker发送请求
 		workerReq := &egress.WorkerRequest{
 			URL:    finalURL,
-			Key:    fetch_url.WorkerValidKey,
+			Key:    egress.WorkerValidKey,
 			Method: http.MethodGet,
 			Headers: map[string]string{
 				"User-Agent": "OneAPI-Bark-Notify/1.0",
@@ -223,11 +227,11 @@ func sendGotifyNotify(gotifyUrl string, gotifyToken string, priority int, data d
 	var req *http.Request
 	var resp *http.Response
 
-	if fetch_url.EnableWorker() {
+	if egress.EnableWorker() {
 		// 使用worker发送请求
 		workerReq := &egress.WorkerRequest{
 			URL:    finalURL,
-			Key:    fetch_url.WorkerValidKey,
+			Key:    egress.WorkerValidKey,
 			Method: http.MethodPost,
 			Headers: map[string]string{
 				"Content-Type": "application/json; charset=utf-8",

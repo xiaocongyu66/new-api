@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/logger"
 )
@@ -55,7 +55,7 @@ func (p *DiscordProvider) ExchangeToken(ctx context.Context, code string, c cont
 	logger.LogDebug(ctx, "[OAuth-Discord] ExchangeToken: code=%s...", code[:min(len(code), 10)])
 
 	settings := security.GetDiscordSettings()
-	redirectUri := fmt.Sprintf("%s/oauth/discord", fetch_url.ServerAddress)
+	redirectUri := fmt.Sprintf("%s/oauth/discord", egress.ServerAddress)
 	values := url.Values{}
 	values.Set("client_id", settings.ClientId)
 	values.Set("client_secret", settings.ClientSecret)

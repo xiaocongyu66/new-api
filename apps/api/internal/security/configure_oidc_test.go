@@ -1,9 +1,9 @@
 package security
 
 import (
+	settingspkg "github.com/QuantumNous/new-api/internal/settings"
 	"testing"
 
-	"github.com/QuantumNous/new-api/internal/settings/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -30,7 +30,7 @@ func TestOIDCSettings_GetEffectiveDisplayName(t *testing.T) {
 
 func TestOIDCSettings_DisplayNamePersistenceRoundTrip(t *testing.T) {
 	settings := &OIDCSettings{DisplayName: "  Acme SSO  "}
-	manager := config.NewConfigManager()
+	manager := settingspkg.NewConfigManager()
 	manager.Register("oidc", settings)
 
 	saved := make(map[string]string)

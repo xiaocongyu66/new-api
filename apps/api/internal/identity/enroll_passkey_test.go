@@ -3,7 +3,6 @@ package identity
 import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
-	"github.com/QuantumNous/new-api/internal/security/passkey"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/gin-gonic/gin"
 	"net/http"
@@ -48,7 +47,7 @@ func TestPasskeyRegisterFinishRejectsMissingOrWrongProofWithoutConsumingFlow(t *
 	previousType := common.MainDatabaseType()
 	previousRedis := common.RedisEnabled
 	previousSecret := common.SessionSecret
-	settings := passkey.GetPasskeySettings()
+	settings := GetPasskeySettings()
 	previousSettings := *settings
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
@@ -58,7 +57,7 @@ func TestPasskeyRegisterFinishRejectsMissingOrWrongProofWithoutConsumingFlow(t *
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	common.SessionSecret = "passkey-register-proof-test-secret"
-	*settings = passkey.PasskeySettings{Enabled: true}
+	*settings = PasskeySettings{Enabled: true}
 	t.Cleanup(func() {
 		dbx.DB = previousDB
 		common.SetMainDatabaseType(previousType)

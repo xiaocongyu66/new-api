@@ -1,6 +1,6 @@
 package security
 
-import "github.com/QuantumNous/new-api/internal/settings/config"
+import "github.com/QuantumNous/new-api/internal/settings"
 
 type LegalSettings struct {
 	UserAgreement string `json:"user_agreement"`
@@ -13,7 +13,7 @@ var defaultLegalSettings = LegalSettings{
 }
 
 func init() {
-	config.GlobalConfig.Register("legal", &defaultLegalSettings)
+	settings.GlobalConfig.Register("legal", &defaultLegalSettings)
 }
 
 func GetLegalSettings() *LegalSettings {

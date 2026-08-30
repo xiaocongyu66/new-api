@@ -3,13 +3,30 @@ package model
 import (
 	"errors"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"strings"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	console_setting "github.com/QuantumNous/new-api/internal/usage/record_perf_config"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"gorm.io/gorm"
 )
+
+// OnValidateConsoleSettings validates a console setting payload of the given
+// type. The usage domain owns those settings and already imports this package,
+// so bootstrap registers the check in main.InitResources() rather than this
+// package importing usage: that edge would close model -> usage -> catalog ->
+// model and usage -> model in the test closure of both domains.
+//
+// It MUST be registered before MigrateRetiredFrontendOptions runs. Unregistered
+// means "no validation error", matching the neutral path of a setting type that
+// carries no constraints.
+var OnValidateConsoleSettings func(value, settingType string) error
+
+func validateConsoleSettings(value, settingType string) error {
+	if OnValidateConsoleSettings == nil {
+		return nil
+	}
+	return OnValidateConsoleSettings(value, settingType)
+}
 
 const retiredThemeOptionKey = common.RetiredThemeOptionKey
 
@@ -119,7 +136,7 @@ func transformLegacyAPIInfo(value string) (string, error) {
 		return "", err
 	}
 	result := string(encoded)
-	if err := console_setting.ValidateConsoleSettings(result, "ApiInfo"); err != nil {
+	if err := validateConsoleSettings(result, "ApiInfo"); err != nil {
 		return "", err
 	}
 	return result, nil
@@ -129,7 +146,7 @@ func transformLegacyAnnouncements(value string) (string, error) {
 	if strings.TrimSpace(value) == "" {
 		return "", errors.New("value is empty")
 	}
-	if err := console_setting.ValidateConsoleSettings(value, "Announcements"); err != nil {
+	if err := validateConsoleSettings(value, "Announcements"); err != nil {
 		return "", err
 	}
 	return value, nil
@@ -166,7 +183,7 @@ func transformLegacyFAQ(value string) (string, error) {
 		return "", err
 	}
 	result := string(encoded)
-	if err := console_setting.ValidateConsoleSettings(result, "FAQ"); err != nil {
+	if err := validateConsoleSettings(result, "FAQ"); err != nil {
 		return "", err
 	}
 	return result, nil
@@ -221,7 +238,7 @@ func migrateLegacyUptimeOptions() error {
 			return err
 		}
 		value := string(encoded)
-		if err := console_setting.ValidateConsoleSettings(value, "UptimeKumaGroups"); err != nil {
+		if err := validateConsoleSettings(value, "UptimeKumaGroups"); err != nil {
 			common.SysError(fmt.Sprintf("legacy Uptime Kuma options were not migrated: %v", err))
 			return nil
 		}

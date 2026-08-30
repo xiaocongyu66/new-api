@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	channel "github.com/QuantumNous/new-api/internal/catalog"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net"
 	"net/http"
@@ -15,7 +16,6 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
-	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
@@ -173,7 +173,7 @@ func VideoProxy(c contract.Context) {
 	if proxy == "" {
 		validateErr = validateSSRFProtectedFetchURL(videoURL)
 	} else {
-		fetchSetting := fetch_url.GetFetchSetting()
+		fetchSetting := egress.GetFetchSetting()
 		validateErr = common.ValidateURLWithFetchSetting(videoURL, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain)
 	}
 	if validateErr != nil {
@@ -531,7 +531,7 @@ func getHTTPClientWithProxy(proxyURL string) (*http.Client, error) {
 
 // validateSSRFProtectedFetchURL validates a URL against the current fetch protection settings.
 func validateSSRFProtectedFetchURL(urlStr string) error {
-	fetchSetting := fetch_url.GetFetchSetting()
+	fetchSetting := egress.GetFetchSetting()
 	if fetchSetting == nil || !fetchSetting.EnableSSRFProtection {
 		return nil
 	}

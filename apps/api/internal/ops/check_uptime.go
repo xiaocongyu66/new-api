@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/QuantumNous/new-api/internal/usage"
 	"net/http"
 	"strconv"
 	"strings"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	console_setting "github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -129,7 +129,7 @@ func fetchGroupData(ctx context.Context, client *http.Client, groupConfig map[st
 }
 
 func GetUptimeKumaStatus(c contract.Context) {
-	groups := console_setting.GetUptimeKumaGroups()
+	groups := usage.GetUptimeKumaGroups()
 	if len(groups) == 0 {
 		_ = c.JSON(http.StatusOK, common.H{"success": true, "message": "", "data": []UptimeGroupResult{}})
 		return

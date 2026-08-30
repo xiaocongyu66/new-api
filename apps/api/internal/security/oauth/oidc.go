@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/logger"
 )
@@ -57,7 +57,7 @@ func (p *OIDCProvider) ExchangeToken(ctx context.Context, code string, c contrac
 	logger.LogDebug(ctx, "[OAuth-OIDC] ExchangeToken: code=%s...", code[:min(len(code), 10)])
 
 	settings := security.GetOIDCSettings()
-	redirectUri := fmt.Sprintf("%s/oauth/oidc", fetch_url.ServerAddress)
+	redirectUri := fmt.Sprintf("%s/oauth/oidc", egress.ServerAddress)
 	values := url.Values{}
 	values.Set("client_id", settings.ClientId)
 	values.Set("client_secret", settings.ClientSecret)

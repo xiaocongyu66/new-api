@@ -1,9 +1,8 @@
 package security
 
 import (
+	"github.com/QuantumNous/new-api/internal/settings"
 	"strings"
-
-	"github.com/QuantumNous/new-api/internal/settings/config"
 )
 
 type OIDCSettings struct {
@@ -22,7 +21,7 @@ var defaultOIDCSettings = OIDCSettings{}
 
 func init() {
 	// 注册到全局配置管理器
-	config.GlobalConfig.Register("oidc", &defaultOIDCSettings)
+	settings.GlobalConfig.Register("oidc", &defaultOIDCSettings)
 }
 
 func GetOIDCSettings() *OIDCSettings {

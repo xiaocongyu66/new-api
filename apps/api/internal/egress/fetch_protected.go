@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 )
 
 type ssrfResolver interface {
@@ -35,7 +34,7 @@ type ssrfProtectedRoundTripper struct {
 }
 
 func currentFetchProtection() (*common.SSRFProtection, bool, error) {
-	fetchSetting := fetch_url.GetFetchSetting()
+	fetchSetting := GetFetchSetting()
 	if !fetchSetting.EnableSSRFProtection {
 		return nil, false, nil
 	}

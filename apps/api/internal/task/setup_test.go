@@ -8,7 +8,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/ops"
 	"github.com/QuantumNous/new-api/internal/usage"
-	"github.com/QuantumNous/new-api/internal/usage/record_perf"
 	"os"
 	"testing"
 
@@ -55,7 +54,7 @@ func TestMain(m *testing.M) {
 		&billing.SubscriptionOrder{},
 		&billing.UserSubscription{},
 		&identity.UserOAuthBinding{},
-		&record_perf.PerfMetric{},
+		&usage.PerfMetric{},
 		&ops.SystemInstance{},
 		&ops.SystemTask{},
 		&ops.SystemTaskLock{},

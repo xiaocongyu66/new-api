@@ -1,6 +1,6 @@
 package security
 
-import "github.com/QuantumNous/new-api/internal/settings/config"
+import "github.com/QuantumNous/new-api/internal/settings"
 
 type DiscordSettings struct {
 	Enabled      bool   `json:"enabled"`
@@ -13,7 +13,7 @@ var defaultDiscordSettings = DiscordSettings{}
 
 func init() {
 	// 注册到全局配置管理器
-	config.GlobalConfig.Register("discord", &defaultDiscordSettings)
+	settings.GlobalConfig.Register("discord", &defaultDiscordSettings)
 }
 
 func GetDiscordSettings() *DiscordSettings {

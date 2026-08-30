@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
-	"github.com/QuantumNous/new-api/internal/security/passkey"
 
 	"github.com/go-webauthn/webauthn/protocol"
 	webauthn "github.com/go-webauthn/webauthn/webauthn"
@@ -19,7 +17,7 @@ import (
 
 // BuildWebAuthn constructs a WebAuthn instance using the current passkey settings and request context.
 func BuildWebAuthn(r *http.Request) (*webauthn.WebAuthn, error) {
-	settings := passkey.GetPasskeySettings()
+	settings := GetPasskeySettings()
 	if settings == nil {
 		return nil, errors.New("未找到 Passkey 设置")
 	}
@@ -74,7 +72,7 @@ func BuildWebAuthn(r *http.Request) (*webauthn.WebAuthn, error) {
 	return webauthn.New(config)
 }
 
-func resolveOrigins(r *http.Request, settings *passkey.PasskeySettings) ([]string, error) {
+func resolveOrigins(r *http.Request, settings *PasskeySettings) ([]string, error) {
 	originsStr := strings.TrimSpace(settings.Origins)
 	if originsStr != "" {
 		originList := strings.Split(originsStr, ",")
@@ -105,8 +103,9 @@ autoDetect:
 	host := r.Host
 
 	// 如果无法从请求获取Host，尝试从ServerAddress获取
-	if host == "" && fetch_url.ServerAddress != "" {
-		if parsed, err := url.Parse(fetch_url.ServerAddress); err == nil && parsed.Host != "" {
+	configuredAddress := serverAddress()
+	if host == "" && configuredAddress != "" {
+		if parsed, err := url.Parse(configuredAddress); err == nil && parsed.Host != "" {
 			host = parsed.Host
 			if scheme == "" && parsed.Scheme != "" {
 				scheme = parsed.Scheme
@@ -114,7 +113,7 @@ autoDetect:
 		}
 	}
 	if host == "" {
-		return nil, fmt.Errorf("无法确定 Passkey 的 Origin，请在系统设置或 Passkey 设置中指定。当前 Host: '%s', ServerAddress: '%s'", r.Host, fetch_url.ServerAddress)
+		return nil, fmt.Errorf("无法确定 Passkey 的 Origin，请在系统设置或 Passkey 设置中指定。当前 Host: '%s', ServerAddress: '%s'", r.Host, configuredAddress)
 	}
 	if scheme == "" {
 		scheme = "https"
@@ -123,7 +122,7 @@ autoDetect:
 	return []string{origin}, nil
 }
 
-func resolveRPID(r *http.Request, settings *passkey.PasskeySettings, origins []string) (string, error) {
+func resolveRPID(r *http.Request, settings *PasskeySettings, origins []string) (string, error) {
 	rpID := strings.TrimSpace(settings.RPID)
 	if rpID != "" {
 		return hostWithoutPort(rpID), nil

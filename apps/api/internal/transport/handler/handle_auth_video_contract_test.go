@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	channel "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/egress"
 	taskdomain "github.com/QuantumNous/new-api/internal/task"
 	"github.com/QuantumNous/new-api/internal/usage"
 	"net/http"
@@ -13,7 +14,6 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
-	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
@@ -34,7 +34,7 @@ func setupAuthVideoContractTestDB(t *testing.T) {
 	previousPasswordRegister := common.PasswordRegisterEnabled
 	previousEmailVerification := common.EmailVerificationEnabled
 	previousTaskProviderFunc := taskdomain.GetTaskProviderFunc
-	previousFetchSetting := *fetch_url.GetFetchSetting()
+	previousFetchSetting := *egress.GetFetchSetting()
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
@@ -66,7 +66,7 @@ func setupAuthVideoContractTestDB(t *testing.T) {
 	}
 
 	// Disable SSRF protection for test upstream URLs (http://localhost)
-	fetch_url.GetFetchSetting().EnableSSRFProtection = false
+	egress.GetFetchSetting().EnableSSRFProtection = false
 
 	t.Cleanup(func() {
 		dbx.DB = previousDB
@@ -77,7 +77,7 @@ func setupAuthVideoContractTestDB(t *testing.T) {
 		common.PasswordRegisterEnabled = previousPasswordRegister
 		common.EmailVerificationEnabled = previousEmailVerification
 		taskdomain.GetTaskProviderFunc = previousTaskProviderFunc
-		*fetch_url.GetFetchSetting() = previousFetchSetting
+		*egress.GetFetchSetting() = previousFetchSetting
 	})
 }
 

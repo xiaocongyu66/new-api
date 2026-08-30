@@ -37,7 +37,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
-	recordperf "github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 	"github.com/QuantumNous/new-api/model"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"github.com/bytedance/gopkg/util/gopool"
@@ -324,6 +323,13 @@ func InitResources() error {
 
 	usage.InitTokenEncoders()
 
+	// model must not import usage, so bootstrap wires this one. It MUST stay
+	// above MigrateRetiredFrontendOptions and InitOptionMap below: a nil
+	// OnValidateConsoleSettings would silently skip validation during the
+	// migration. (identity.OnResolveServerAddress is registered by egress's own
+	// init(), so every binary linking egress gets it, not just this one.)
+	model.OnValidateConsoleSettings = usage.ValidateConsoleSettings
+
 	// Initialize SQL Database
 	err = model.InitDB()
 	if err != nil {
@@ -360,7 +366,7 @@ func InitResources() error {
 		return err
 	}
 
-	settings.OnPerformanceSettingChanged = recordperf.UpdateAndSync
+	settings.OnPerformanceSettingChanged = usage.UpdateAndSync
 
 	// 启动系统监控
 	common.StartSystemMonitor()
@@ -404,6 +410,12 @@ func InitResources() error {
 	// ops owns notification delivery and imports catalog, so catalog reaches
 	// root-user notifications through a hook wired here.
 	catalog.RootUserNotifier = ops.NotifyRootUser
+
+	// Wire catalog-provided functions that model and identity cannot import
+	// directly (catalog imports model; identity imports catalog). Bootstrap
+	// owns the registration to keep the dependency one-way.
+	identity.RegisterGroupModelsResolver(catalog.GetGroupsEnabledModels)
+	model.MutateGatewayRoutingFn = catalog.MutateGatewayRouting
 
 	return nil
 }

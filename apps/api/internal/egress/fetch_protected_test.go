@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"github.com/stretchr/testify/require"
 )
 
@@ -41,7 +40,7 @@ func testConn(t *testing.T) net.Conn {
 
 func configureSSRFTestFetchSetting(t *testing.T) {
 	t.Helper()
-	fetchSetting := fetch_url.GetFetchSetting()
+	fetchSetting := GetFetchSetting()
 	original := *fetchSetting
 	t.Cleanup(func() {
 		*fetchSetting = original
@@ -195,7 +194,7 @@ func TestProtectedFetchDialerSkipsResolvedIPCheckWhenDisabled(t *testing.T) {
 }
 
 func TestGetSSRFProtectedHTTPClientFallsBackToDefaultClientWhenProtectionDisabled(t *testing.T) {
-	fetchSetting := fetch_url.GetFetchSetting()
+	fetchSetting := GetFetchSetting()
 	originalFetchSetting := *fetchSetting
 	originalHTTPClient := httpClient
 	originalProtectedClient := ssrfProtectedHTTPClient

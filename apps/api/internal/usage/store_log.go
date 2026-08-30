@@ -8,7 +8,6 @@ import (
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/identity"
-	"github.com/QuantumNous/new-api/internal/usage/record_perf"
 	"github.com/samber/lo"
 	"strconv"
 	"strings"
@@ -1080,9 +1079,9 @@ func parseFlowQuotaTimeRange(c contract.Context) (int64, int64, bool) {
 	return startTimestamp, endTimestamp, true
 }
 
-func filterActiveGroups(groups []record_perf.GroupResult) []record_perf.GroupResult {
+func filterActiveGroups(groups []GroupResult) []GroupResult {
 	activeRatios := ratio_setting.GetGroupRatioCopy()
-	return lo.Filter(groups, func(g record_perf.GroupResult, _ int) bool {
+	return lo.Filter(groups, func(g GroupResult, _ int) bool {
 		_, ok := activeRatios[g.Group]
 		return ok || g.Group == "auto"
 	})

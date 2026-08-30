@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 )
 
@@ -58,11 +57,11 @@ func SendWebhookNotify(webhookURL string, secret string, data dto.Notify) error 
 	var req *http.Request
 	var resp *http.Response
 
-	if fetch_url.EnableWorker() {
+	if egress.EnableWorker() {
 		// 构建worker请求数据
 		workerReq := &egress.WorkerRequest{
 			URL:    webhookURL,
-			Key:    fetch_url.WorkerValidKey,
+			Key:    egress.WorkerValidKey,
 			Method: http.MethodPost,
 			Headers: map[string]string{
 				"Content-Type": "application/json",

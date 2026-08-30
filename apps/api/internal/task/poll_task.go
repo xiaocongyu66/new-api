@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	channel "github.com/QuantumNous/new-api/internal/catalog"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 	"sort"
@@ -15,7 +16,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	taskdto "github.com/QuantumNous/new-api/internal/dto"
-	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"github.com/QuantumNous/new-api/internal/logger"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -41,7 +41,7 @@ const (
 
 // BuildProxyURL constructs the video proxy URL using the public task ID.
 func BuildProxyURL(taskID string) string {
-	return fmt.Sprintf("%s/v1/videos/%s/content", fetch_url.ServerAddress, taskID)
+	return fmt.Sprintf("%s/v1/videos/%s/content", egress.ServerAddress, taskID)
 }
 
 // RunTaskPollingOnce performs one async-task (Suno/video) polling pass

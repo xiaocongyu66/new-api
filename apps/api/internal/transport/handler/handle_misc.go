@@ -2,19 +2,15 @@ package handler
 
 import (
 	billing "github.com/QuantumNous/new-api/internal/billing"
-	"github.com/QuantumNous/new-api/internal/billing/manage_subscription"
-	"github.com/QuantumNous/new-api/internal/billing/pay_subscription"
 	"github.com/QuantumNous/new-api/internal/catalog"
-	manage_channels "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
-	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/security/oauth"
-	"github.com/QuantumNous/new-api/internal/security/passkey"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
-	console_setting "github.com/QuantumNous/new-api/internal/usage/record_perf_config"
+	"github.com/QuantumNous/new-api/internal/usage"
 	"github.com/QuantumNous/new-api/model"
 	"net/http"
 )
@@ -40,11 +36,11 @@ func TestStatus(c contract.Context) {
 
 func GetStatus(c contract.Context) {
 
-	cs := console_setting.GetConsoleSetting()
+	cs := usage.GetConsoleSetting()
 	common.OptionMapRWMutex.RLock()
 	defer common.OptionMapRWMutex.RUnlock()
 
-	passkeySetting := passkey.GetPasskeySettings()
+	passkeySetting := security.GetPasskeySettings()
 	legalSetting := security.GetLegalSettings()
 
 	data := common.H{
@@ -66,34 +62,34 @@ func GetStatus(c contract.Context) {
 		"footer_html":                 common.Footer,
 		"wechat_qrcode":               common.WeChatAccountQRCodeImageURL,
 		"wechat_login":                common.WeChatAuthEnabled,
-		"server_address":              fetch_url.ServerAddress,
+		"server_address":              egress.ServerAddress,
 		"turnstile_check":             common.TurnstileCheckEnabled,
 		"turnstile_site_key":          common.TurnstileSiteKey,
-		"docs_link":                   manage_subscription.GetGeneralSetting().DocsLink,
+		"docs_link":                   billing.GetGeneralSetting().DocsLink,
 		"quota_per_unit":              common.QuotaPerUnit,
 		// 兼容旧前端：保留 display_in_currency，同时提供新的 quota_display_type
-		"display_in_currency":           manage_subscription.IsCurrencyDisplay(),
-		"quota_display_type":            manage_subscription.GetQuotaDisplayType(),
-		"custom_currency_symbol":        manage_subscription.GetGeneralSetting().CustomCurrencySymbol,
-		"custom_currency_exchange_rate": manage_subscription.GetGeneralSetting().CustomCurrencyExchangeRate,
+		"display_in_currency":           billing.IsCurrencyDisplay(),
+		"quota_display_type":            billing.GetQuotaDisplayType(),
+		"custom_currency_symbol":        billing.GetGeneralSetting().CustomCurrencySymbol,
+		"custom_currency_exchange_rate": billing.GetGeneralSetting().CustomCurrencyExchangeRate,
 		"enable_batch_update":           common.BatchUpdateEnabled,
 		"enable_drawing":                common.DrawingEnabled,
 		"enable_task":                   common.TaskEnabled,
 		"enable_data_export":            common.DataExportEnabled,
 		"data_export_default_time":      common.DataExportDefaultTime,
 		"default_collapse_sidebar":      common.DefaultCollapseSidebar,
-		"mj_notify_enabled":             console_setting.MjNotifyEnabled,
-		"chats":                         console_setting.Chats,
-		"demo_site_enabled":             manage_channels.DemoSiteEnabled,
-		"self_use_mode_enabled":         manage_channels.SelfUseModeEnabled,
+		"mj_notify_enabled":             usage.MjNotifyEnabled,
+		"chats":                         usage.Chats,
+		"demo_site_enabled":             channel.DemoSiteEnabled,
+		"self_use_mode_enabled":         channel.SelfUseModeEnabled,
 		"register_enabled":              common.RegisterEnabled,
 		"password_login_enabled":        common.PasswordLoginEnabled,
 		"password_register_enabled":     common.PasswordRegisterEnabled,
-		"default_use_auto_group":        resolve_group.DefaultUseAutoGroup,
+		"default_use_auto_group":        channel.DefaultUseAutoGroup,
 
-		"usd_exchange_rate": pay_subscription.USDExchangeRate,
-		"price":             pay_subscription.Price,
-		"stripe_unit_price": pay_subscription.StripeUnitPrice,
+		"usd_exchange_rate": billing.USDExchangeRate,
+		"price":             billing.Price,
+		"stripe_unit_price": billing.StripeUnitPrice,
 
 		// 面板启用开关
 		"api_info_enabled":      cs.ApiInfoEnabled,
@@ -124,13 +120,13 @@ func GetStatus(c contract.Context) {
 
 	// 根据启用状态注入可选内容
 	if cs.ApiInfoEnabled {
-		data["api_info"] = console_setting.GetApiInfo()
+		data["api_info"] = usage.GetApiInfo()
 	}
 	if cs.AnnouncementsEnabled {
-		data["announcements"] = console_setting.GetAnnouncements()
+		data["announcements"] = usage.GetAnnouncements()
 	}
 	if cs.FAQEnabled {
-		data["faq"] = console_setting.GetFAQ()
+		data["faq"] = usage.GetFAQ()
 	}
 
 	// Add enabled custom OAuth providers

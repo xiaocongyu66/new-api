@@ -18,7 +18,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/dto"
-	"github.com/QuantumNous/new-api/internal/egress/fetch_url"
 	"github.com/QuantumNous/new-api/internal/logger"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
@@ -27,7 +26,6 @@ import (
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/usage/record_perf_config"
 )
 
 func RelayMidjourneyImage(c contract.Context) {
@@ -61,7 +59,7 @@ func RelayMidjourneyImage(c contract.Context) {
 	} else {
 		// 渠道代理路径的连接由代理侧建立，无法做拨号时逐 IP 校验，
 		// 因此保留请求前的一次性 SSRF 校验。
-		fetchSetting := fetch_url.GetFetchSetting()
+		fetchSetting := egress.GetFetchSetting()
 		validateErr = common.ValidateURLWithFetchSetting(midjourneyTask.ImageUrl, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain)
 	}
 	if validateErr != nil {
@@ -153,8 +151,8 @@ func coverMidjourneyTaskDto(c contract.Context, originTask *taskdomain.Midjourne
 	midjourneyTask.StartTime = originTask.StartTime
 	midjourneyTask.FinishTime = originTask.FinishTime
 	midjourneyTask.ImageUrl = ""
-	if originTask.ImageUrl != "" && record_perf_config.MjForwardUrlEnabled {
-		midjourneyTask.ImageUrl = fetch_url.ServerAddress + "/mj/image/" + originTask.MjId
+	if originTask.ImageUrl != "" && usagedomain.MjForwardUrlEnabled {
+		midjourneyTask.ImageUrl = egress.ServerAddress + "/mj/image/" + originTask.MjId
 		if originTask.Status != "SUCCESS" {
 			midjourneyTask.ImageUrl += "?rand=" + strconv.FormatInt(time.Now().UnixNano(), 10)
 		}
@@ -478,7 +476,7 @@ func RelayMidjourneySubmit(c contract.Context, relayInfo *relaycommon.RelayInfo)
 		if originTask == nil {
 			return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "task_not_found")
 		} else { //原任务的Status=SUCCESS，则可以做放大UPSCALE、变换VARIATION等动作，此时必须使用原来的请求地址才能正确处理
-			if record_perf_config.MjActionCheckSuccessEnabled {
+			if usagedomain.MjActionCheckSuccessEnabled {
 				if originTask.Status != "SUCCESS" && relayInfo.RelayMode != relayconstant.RelayModeMidjourneyModal {
 					return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "task_status_not_success")
 				}

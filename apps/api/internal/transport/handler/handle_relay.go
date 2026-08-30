@@ -25,7 +25,6 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
 	"github.com/QuantumNous/new-api/internal/relay/helper"
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
-	"github.com/QuantumNous/new-api/internal/usage/record_perf"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
@@ -282,7 +281,7 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 	}
 	if newAPIError != nil {
 		gopool.Go(func() {
-			record_perf.RecordRelaySample(relayInfo, false, 0)
+			usage.RecordRelaySample(relayInfo, false, 0)
 		})
 	}
 }
