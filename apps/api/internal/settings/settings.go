@@ -75,6 +75,9 @@ func ValidateOptionValue(key string, value string) error {
 	if health_store.IsChannelModelHealthOptionKey(key) {
 		return health_store.ValidateChannelModelHealthSettingValue(key, value)
 	}
+	if health_store.IsChannelHealthOptionKey(key) {
+		return health_store.ValidateChannelHealthSettingValue(key, value)
+	}
 	return nil
 }
 
