@@ -1002,6 +1002,51 @@ jobs:
             echo "refreshed mock ${i} reachable on 127.0.0.1:${PORT}"
           done
 
+      - name: Verify mock upstream ndjson sync
+        if: env.MOCK_IN_CLUSTER == 'true'
+        env:
+          MOCK_INSTANCES: ${{ env.MOCK_INSTANCES }}
+          MOCK_BASE_PORT: ${{ env.MOCK_BASE_PORT }}
+        run: |
+          set -euo pipefail
+          # Reconciliation pulls /_ndjson from each mock and joins against
+          # gateway-attempts.ndjson by request_id. Mock pod writes
+          # /tmp/mock_upstream.ndjson on every request, but several previous
+          # runs returned an empty file even when the gateway clearly hit
+          # the mock (200 OK + audit rows present). Without any sync check
+          # here the runner builds upstream-received.ndjson = [] and
+          # reconcile reports missing_in_mock = N for every request.
+          # Trigger a sync by pinging each instance's /v1/chat/completions
+          # through the port-forward so the mock's record() function
+          # writes at least one line; then verify size > 0.
+          for i in $(seq 0 $((MOCK_INSTANCES - 1))); do
+            PORT=$((MOCK_BASE_PORT + i))
+            # Send a tiny warmup request to force record() to write.
+            curl -fsS --max-time 10 -X POST \
+              -H 'Content-Type: application/json' \
+              -H 'X-Mock-Mode: ok' \
+              -H 'X-Request-Id: mock-sync-probe' \
+              -d '{"model":"mock-ok","messages":[{"role":"user","content":"sync"}],"max_tokens":1,"stream":false}' \
+              "http://127.0.0.1:${PORT}/v1/chat/completions" >/dev/null 2>&1 || true
+          done
+          # Verify /_ndjson returns non-empty content.
+          for i in $(seq 0 $((MOCK_INSTANCES - 1))); do
+            PORT=$((MOCK_BASE_PORT + i))
+            SIZE=0
+            for j in $(seq 1 10); do
+              SIZE=$(curl -fsS --max-time 10 "http://127.0.0.1:${PORT}/_ndjson" 2>/dev/null | wc -c)
+              [ "$SIZE" -gt 0 ] && break
+              sleep 1
+            done
+            if [ "$SIZE" -eq 0 ]; then
+              echo "::error::mock ${i} /_ndjson returned 0 bytes after sync probe"
+              kubectl exec -n default -l app=route-unit-mock,instance=m${i} -- \
+                ls -la /tmp/mock_upstream.ndjson 2>&1 || true
+              exit 1
+            fi
+            echo "mock ${i} /_ndjson has ${SIZE} bytes"
+          done
+
       - name: Run scenario ${{ matrix.scenario }}
         id: scenario
         env:
