@@ -1,4 +1,4 @@
-package model
+package dbinfra
 
 import "github.com/QuantumNous/new-api/internal/common/dbx"
 

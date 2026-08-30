@@ -1,4 +1,4 @@
-package model
+package dbinfra
 
 import (
 	"errors"
@@ -13,8 +13,8 @@ import (
 // OnValidateConsoleSettings validates a console setting payload of the given
 // type. The usage domain owns those settings and already imports this package,
 // so bootstrap registers the check in main.InitResources() rather than this
-// package importing usage: that edge would close model -> usage -> catalog ->
-// model and usage -> model in the test closure of both domains.
+// package importing usage: that edge would close dbinfra -> usage -> catalog ->
+// dbinfra and usage -> dbinfra in the test closure of both domains.
 //
 // It MUST be registered before MigrateRetiredFrontendOptions runs. Unregistered
 // means "no validation error", matching the neutral path of a setting type that

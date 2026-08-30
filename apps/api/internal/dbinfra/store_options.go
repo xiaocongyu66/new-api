@@ -1,4 +1,4 @@
-package model
+package dbinfra
 
 import (
 	"errors"
@@ -148,8 +148,8 @@ func UpdateOptionsBulk(values map[string]string) error {
 }
 
 // MutateGatewayRoutingFn is wired by internal/catalog, which owns the gateway
-// routing revision. model must not import catalog (catalog imports model), so
-// the mutation entry point arrives as a hook at startup.
+// routing revision. dbinfra must not import catalog (catalog imports dbinfra),
+// so the mutation entry point arrives as a hook at startup.
 var MutateGatewayRoutingFn func(mutate func(tx *gorm.DB) error) (int64, error)
 
 // errGatewayRoutingMutatorUnwired fails a gateway-routing option write that
