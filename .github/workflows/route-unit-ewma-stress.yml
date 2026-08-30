@@ -589,6 +589,13 @@ jobs:
               fi
               echo "in-cluster mock ${i} (mode=${MODES[$i]}) reachable on 127.0.0.1:${PORT}"
             done
+            # Export for the next step: Configure mock URL uses MOCK_BASE_PORT
+            # and MOCK_INSTANCES under `set -u`. Without these exports the
+            # cluster block path leaves them unbound (runner-local block does
+            # the same export at the end, but cluster block `exit 0`s before
+            # reaching it).
+            echo "MOCK_INSTANCES=${INSTANCES}" >> "$GITHUB_ENV"
+            echo "MOCK_BASE_PORT=${BASE_PORT}" >> "$GITHUB_ENV"
             exit 0
           fi
 
