@@ -212,6 +212,23 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 		}
 	}
 
+	// The ability rows were rebuilt from the channel's current model list, so any
+	// isolation row for a model that is no longer declared is unreachable by the
+	// selectors and would only survive as a ghost row. Models that survived the
+	// edit keep their isolation state. EditChannelByTag reaches this through the
+	// same call, so it needs no separate wiring.
+	if err = deleteRouteHealthNotInModelsWithTx(tx, channel.Id, models_); err != nil {
+		if isNewTx {
+			tx.Rollback()
+		}
+		return err
+	}
+
+	// The ability set is the pressure denominator, so a rebuilt model list must
+	// refresh it; otherwise a model that gained or lost channels keeps stale
+	// availability and the three-tier thresholds fire on the wrong ratio.
+	pressureRecomputeTotals()
+
 	// 如果是新创建的事务，需要提交
 	if isNewTx {
 		return tx.Commit().Error

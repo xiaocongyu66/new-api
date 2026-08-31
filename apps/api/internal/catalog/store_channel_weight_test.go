@@ -121,10 +121,16 @@ func TestRoutingBaseWeightVsLegacySmoothing(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRoutingBaseWeightWithHealthScore(t *testing.T) {
-	// channel_health_test.go, same package → accessible here.
+	// Alpha=0.5, MinRequests=0 so a single observation moves the EWMA; the
+	// helpers live in track_cooldown_test.go, same package → accessible here.
+	cfg := DefaultChannelHealthSetting()
+	cfg.Alpha = 0.5
+	cfg.MinScore = 0.05
+	cfg.MinRequests = 0
+	configureCooldownTest(t, cfg, nil)
+	mgr := resetChannelHealthManagerForTest()
 
 	// Record one failure for channel ID 42 → ewmaScore becomes 0.5
-	mgr := GetChannelHealthManager()
 	id := 42
 	mgr.RecordOutcome(id, false)
 
