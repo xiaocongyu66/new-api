@@ -3,14 +3,13 @@ package compose
 import (
 	"github.com/QuantumNous/new-api/internal/billing"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+
 	"github.com/QuantumNous/new-api/internal/transport/handler"
 	"net/http"
 
 	"github.com/QuantumNous/new-api/internal/identity/policy"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
-	"github.com/gin-gonic/gin"
 )
 
 type permissionRoute struct {
@@ -20,22 +19,22 @@ type permissionRoute struct {
 	handler    contract.Handler
 }
 
-func registerChannelRoutes(apiRouter *gin.RouterGroup) {
+func registerChannelRoutes(apiRouter contract.Routes) {
 	channelRoute := apiRouter.Group("/channel")
-	channelRoute.Use(ginadapter.Middleware(security.AdminAuth()))
+	channelRoute.Use(security.AdminAuth())
 
 	channelRoute.POST("/:id/key",
-		ginadapter.Middleware(security.RootAuth()),
-		ginadapter.Middleware(middleware.CriticalRateLimit()),
-		ginadapter.Middleware(middleware.DisableCache()),
-		ginadapter.Middleware(middleware.SecureVerificationRequired()),
-		ginadapter.Handler(handler.GetChannelKey),
+		security.RootAuth(),
+		middleware.CriticalRateLimit(),
+		middleware.DisableCache(),
+		middleware.SecureVerificationRequired(),
+		handler.GetChannelKey,
 	)
 
 	for _, route := range channelPermissionRoutes {
 		channelRoute.Handle(route.method, route.path,
-			ginadapter.Middleware(security.RequirePermission(route.permission)),
-			ginadapter.Handler(route.handler),
+			security.RequirePermission(route.permission),
+			route.handler,
 		)
 	}
 }

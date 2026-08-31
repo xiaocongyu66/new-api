@@ -1,10 +1,12 @@
 package compose
 
 import (
-	"github.com/QuantumNous/new-api/internal/transport/handler"
 	"net/http"
 	"reflect"
 	"testing"
+
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/handler"
 
 	"github.com/QuantumNous/new-api/internal/identity/policy"
 	"github.com/gin-gonic/gin"
@@ -29,8 +31,7 @@ func TestChannelDeleteRoutesUseSensitiveWritePermission(t *testing.T) {
 
 func TestChannelStatusRoutesRegisterWithoutConflict(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	engine := gin.New()
-	api := engine.Group("/api")
+	api := ginadapter.WrapEngine(gin.New()).Group("/api")
 
 	require.NotPanics(t, func() {
 		registerChannelRoutes(api)

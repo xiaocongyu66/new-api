@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/gin-contrib/static"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
 // Credit: https://github.com/gin-contrib/static/issues/19
@@ -32,7 +32,7 @@ func (e *embedFileSystem) Open(name string) (http.File, error) {
 	return e.FileSystem.Open(name)
 }
 
-func EmbedFolder(fsEmbed embed.FS, targetPath string) static.ServeFileSystem {
+func EmbedFolder(fsEmbed embed.FS, targetPath string) contract.AssetFS {
 	efs, err := fs.Sub(fsEmbed, targetPath)
 	if err != nil {
 		panic(err)

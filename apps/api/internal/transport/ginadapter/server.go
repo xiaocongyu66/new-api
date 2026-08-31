@@ -18,12 +18,12 @@ func SetReleaseMode() {
 // NewEngine builds the HTTP engine with panic recovery installed. onPanic
 // receives the request context and the recovered value; returning normally
 // completes the response.
-func NewEngine(onPanic func(c contract.Context, recovered any)) *gin.Engine {
+func NewEngine(onPanic func(c contract.Context, recovered any)) contract.Engine {
 	engine := gin.New()
 	engine.Use(gin.CustomRecovery(func(c *gin.Context, recovered any) {
 		onPanic(Wrap(c), recovered)
 	}))
-	return engine
+	return WrapEngine(engine)
 }
 
 // NewSyntheticContext builds a contract context backed by an in-process

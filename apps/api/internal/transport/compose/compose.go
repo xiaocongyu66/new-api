@@ -2,24 +2,22 @@ package compose
 
 import (
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/QuantumNous/new-api/internal/transport/handler"
-	"github.com/QuantumNous/new-api/internal/transport/middleware"
 	"net/http"
 	"os"
 	"strings"
 
 	"github.com/QuantumNous/new-api/internal/common"
-
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/handler"
+	"github.com/QuantumNous/new-api/internal/transport/middleware"
 )
 
-func SetRouter(router *gin.Engine, assets WebAssets) {
+func SetRouter(router contract.Engine, assets WebAssets) {
 	SetApiRouter(router)
 	SetDashboardRouter(router)
 	SetRelayRouter(router)
 	SetVideoRouter(router)
-	router.Any("/karmada-dashboard/*path", ginadapter.Handler(handler.ProxyKarmadaDashboard))
+	router.Any("/karmada-dashboard/*path", handler.ProxyKarmadaDashboard)
 	frontendBaseUrl := os.Getenv("FRONTEND_BASE_URL")
 	if common.IsMasterNode && frontendBaseUrl != "" {
 		frontendBaseUrl = ""
@@ -29,9 +27,9 @@ func SetRouter(router *gin.Engine, assets WebAssets) {
 		SetWebRouter(router, assets)
 	} else {
 		frontendBaseUrl = strings.TrimSuffix(frontendBaseUrl, "/")
-		router.NoRoute(func(cc *gin.Context) {
+		router.NoRoute(func(cc contract.Context) {
 			cc.Set(middleware.RouteTagKey, "web")
-			cc.Redirect(http.StatusMovedPermanently, fmt.Sprintf("%s%s", frontendBaseUrl, cc.Request.RequestURI))
+			cc.Redirect(http.StatusMovedPermanently, fmt.Sprintf("%s%s", frontendBaseUrl, cc.RequestURI()))
 		})
 	}
 }

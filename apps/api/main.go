@@ -210,9 +210,9 @@ func main() {
 	}
 	// This will cause SSE not to work!!!
 	//server.Use(gzip.Gzip(gzip.DefaultCompression))
-	server.Use(ginadapter.Middleware(middleware.RequestId()))
-	server.Use(ginadapter.Middleware(middleware.Version()))
-	server.Use(ginadapter.Middleware(middleware.I18n()))
+	server.Use(middleware.RequestId())
+	server.Use(middleware.Version())
+	server.Use(middleware.I18n())
 	middleware.SetUpLogger(server)
 	InjectUmamiAnalytics()
 	InjectGoogleAnalytics()

@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,7 +23,7 @@ func TestRegisteredRoutesMatchSnapshot(t *testing.T) {
 
 	for _, tc := range []struct {
 		group    string
-		register func(*gin.Engine)
+		register func(contract.Engine)
 	}{
 		{group: "api", register: SetApiRouter},
 		{group: "dashboard", register: SetDashboardRouter},
@@ -29,7 +32,7 @@ func TestRegisteredRoutesMatchSnapshot(t *testing.T) {
 	} {
 		t.Run(tc.group, func(t *testing.T) {
 			engine := gin.New()
-			tc.register(engine)
+			tc.register(ginadapter.WrapEngine(engine))
 
 			registered := make([]string, 0, len(engine.Routes()))
 			for _, route := range engine.Routes() {
@@ -50,7 +53,7 @@ func TestRegisteredRoutesMatchSnapshot(t *testing.T) {
 func TestRelayRouterRegistersStreamingEndpoints(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
-	SetRelayRouter(engine)
+	SetRelayRouter(ginadapter.WrapEngine(engine))
 
 	registered := make(map[string]struct{}, len(engine.Routes()))
 	for _, route := range engine.Routes() {
@@ -75,7 +78,7 @@ func TestRelayRouterRegistersStreamingEndpoints(t *testing.T) {
 func TestVideoRouterRegistersTaskContentRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
-	SetVideoRouter(engine)
+	SetVideoRouter(ginadapter.WrapEngine(engine))
 
 	registered := make(map[string]struct{}, len(engine.Routes()))
 	for _, route := range engine.Routes() {

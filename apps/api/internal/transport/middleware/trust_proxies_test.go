@@ -5,6 +5,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,10 +24,10 @@ func requestClientIP(router http.Handler, remoteAddr string, forwardedFor string
 	return recorder.Body.String()
 }
 
-func newClientIPRouter() *gin.Engine {
-	router := gin.New()
-	router.GET("/client-ip", func(c *gin.Context) {
-		c.String(http.StatusOK, c.ClientIP())
+func newClientIPRouter() contract.Engine {
+	router := ginadapter.WrapEngine(gin.New())
+	router.GET("/client-ip", func(c contract.Context) {
+		_ = c.String(http.StatusOK, c.ClientIP())
 	})
 	return router
 }

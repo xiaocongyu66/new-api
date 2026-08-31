@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )
@@ -11,7 +13,7 @@ import (
 func TestRetiredFrontendAPIRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
-	SetApiRouter(engine)
+	SetApiRouter(ginadapter.WrapEngine(engine))
 
 	routes := make(map[string]struct{}, len(engine.Routes()))
 	for _, route := range engine.Routes() {

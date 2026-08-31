@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,7 +40,7 @@ func TestWebRouterFallbackDispatch(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			engine := gin.New()
-			SetWebRouter(engine, WebAssets{IndexPage: []byte(indexMarker)})
+			SetWebRouter(ginadapter.WrapEngine(engine), WebAssets{IndexPage: []byte(indexMarker)})
 
 			recorder := httptest.NewRecorder()
 			engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, tc.target, nil))

@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
 var defaultTrustedProxyCIDRs = []string{
@@ -19,14 +19,14 @@ var defaultTrustedProxyCIDRs = []string{
 	"fc00::/7",
 }
 
-func ConfigureTrustedProxies(engine *gin.Engine) error {
+func ConfigureTrustedProxies(engine contract.Engine) error {
 	rawTrustedProxies := strings.TrimSpace(os.Getenv("TRUSTED_PROXIES"))
 	if rawTrustedProxies == "" {
 		log.Print("WARNING: TRUSTED_PROXIES is unset or blank; trusting loopback, RFC 1918, and IPv6 ULA proxy addresses for compatibility. Set TRUSTED_PROXIES=none to trust no proxies, or configure explicit proxy IPs/CIDRs to replace these defaults.")
-		return engine.SetTrustedProxies(defaultTrustedProxyCIDRs)
+		return engine.TrustProxies(defaultTrustedProxyCIDRs)
 	}
 	if strings.EqualFold(rawTrustedProxies, "none") {
-		return engine.SetTrustedProxies(nil)
+		return engine.TrustProxies(nil)
 	}
 
 	parts := strings.Split(rawTrustedProxies, ",")
@@ -44,7 +44,7 @@ func ConfigureTrustedProxies(engine *gin.Engine) error {
 	if len(trustedProxies) == 0 {
 		return errors.New("TRUSTED_PROXIES does not contain an IP address or CIDR")
 	}
-	if err := engine.SetTrustedProxies(trustedProxies); err != nil {
+	if err := engine.TrustProxies(trustedProxies); err != nil {
 		return fmt.Errorf("invalid TRUSTED_PROXIES: %w", err)
 	}
 	return nil
