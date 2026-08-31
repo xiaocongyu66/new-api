@@ -83,20 +83,24 @@ func GetUserSetting(id int, fromDB bool) (dto.UserSetting, error) {
 	return dto.UserSetting{}, nil
 }
 
-// IncreaseUserQuota delegates to the identity implementation.
+// IncreaseUserQuota delegates to the identity implementation. The fallback
+// calls identity directly: unlike the cycle-bound hooks above, dbinfra already
+// imports identity, so an unwired hook must never silently skip the write —
+// swallowing a quota mutation corrupts billing.
 func IncreaseUserQuota(id int, quota int, db bool) error {
 	if IncreaseUserQuotaFn != nil {
 		return IncreaseUserQuotaFn(id, quota, db)
 	}
-	return nil
+	return identity.IncreaseUserQuota(id, quota, db)
 }
 
-// DecreaseUserQuota delegates to the identity implementation.
+// DecreaseUserQuota delegates to the identity implementation; fallback mirrors
+// IncreaseUserQuota for the same reason.
 func DecreaseUserQuota(id int, quota int, db bool) error {
 	if DecreaseUserQuotaFn != nil {
 		return DecreaseUserQuotaFn(id, quota, db)
 	}
-	return nil
+	return identity.DecreaseUserQuota(id, quota, db)
 }
 
 // RootUserExists delegates to the identity implementation.

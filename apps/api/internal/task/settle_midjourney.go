@@ -97,7 +97,7 @@ func RefundMidjourneyQuota(ctx context.Context, task *Midjourney, reason string)
 	}
 
 	billingChannelId := task.GetBillingChannelId()
-	dbinfra.UpdateUserUsedQuotaAndRequestCount(task.UserId, -quota)
+	dbinfra.UpdateUserUsedQuota(task.UserId, -quota)
 	channel.UpdateChannelUsedQuota(billingChannelId, -quota)
 	usage.RecordTaskBillingLog(usage.RecordTaskBillingLogParams{
 		UserId:    task.UserId,
