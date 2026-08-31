@@ -27,8 +27,9 @@ func newStreamTestContext(t *testing.T, upstream string) (contract.Context, *htt
 		constant.StreamingTimeout = 30
 	}
 
-	recorder := httptest.NewRecorder()
-	c, _ := ginadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+	// The recorder must be the one backing the context, otherwise every body
+	// assertion below reads an unwritten buffer.
+	c, recorder := ginadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
