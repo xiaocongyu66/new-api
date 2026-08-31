@@ -75,6 +75,10 @@ spec:
                 secretKeyRef:
                   name: new-api-secrets
                   key: crypto-secret
+            # press-test env override: 12 scenarios x 1 admin login each
+            # pushes root past the 50-session cap; init.go reads this on startup.
+            - name: USER_SESSION_ACTIVE_LIMIT
+              value: "500"
           resources:
             requests:
               cpu: "100m"
