@@ -461,5 +461,11 @@ func UpdateRouteUnitConfig(id int, weight *int, enabled *bool) error {
 	if result.RowsAffected == 0 {
 		return gorm.ErrRecordNotFound
 	}
+	// Selection reads the in-memory route index, and only InitChannelCache
+	// rebuilds it. Without this the endpoint returns 200 while traffic keeps
+	// following the old weight — and a route disabled here keeps serving until
+	// the next SyncChannelCache tick. Every sibling routing mutation invalidates
+	// explicitly for the same reason.
+	InitChannelCache()
 	return nil
 }

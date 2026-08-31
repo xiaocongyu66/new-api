@@ -135,25 +135,9 @@ func main() {
 	// Route stats TTL sweep and share-pool eviction (runs hourly). Without it the
 	// EWMA handles and share pools only ever grow: a retired route unit keeps its
 	// entry forever.
-	go func() {
-		const tick = time.Hour
-		for range time.NewTicker(tick).C {
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						common.SysError(fmt.Sprintf("route stats sweep panic: %v", r))
-					}
-				}()
-				if removed := routestats.SweepTTL(); removed > 0 {
-					common.SysLog(fmt.Sprintf("route stats sweep: removed %d stale entries", removed))
-				}
-				keep := catalog.GetActiveRouteStatsPoolKeys()
-				if removed := routestats.SweepSharePools(keep); removed > 0 {
-					common.SysLog(fmt.Sprintf("route stats sweep: removed %d orphaned share pools", removed))
-				}
-			}()
-		}
-	}()
+	sweepCtx, stopRouteStatsSweep := context.WithCancel(context.Background())
+	defer stopRouteStatsSweep()
+	go runRouteStatsSweep(sweepCtx, time.Hour)
 
 	if os.Getenv("CHANNEL_UPDATE_FREQUENCY") != "" {
 		frequency, err := strconv.Atoi(os.Getenv("CHANNEL_UPDATE_FREQUENCY"))
@@ -280,6 +264,42 @@ func main() {
 		usage.SaveQuotaDataCache()
 	}
 	common.SysLog("server exited")
+}
+
+// runRouteStatsSweep evicts stale EWMA entries and orphaned share pools on every
+// tick, and returns when ctx is cancelled.
+//
+// The ticker is held in a variable so it can be stopped. Building it inline in
+// the range clause (`for range time.NewTicker(tick).C`) leaves the *time.Ticker
+// unreachable, so its runtime timer lives for the life of the process and the
+// loop has no way to exit.
+//
+// One sweep panic must not take the process down: the recover is inside the loop
+// body so the next tick still runs.
+func runRouteStatsSweep(ctx context.Context, tick time.Duration) {
+	ticker := time.NewTicker(tick)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					common.SysError(fmt.Sprintf("route stats sweep panic: %v", r))
+				}
+			}()
+			if removed := routestats.SweepTTL(); removed > 0 {
+				common.SysLog(fmt.Sprintf("route stats sweep: removed %d stale entries", removed))
+			}
+			keep := catalog.GetActiveRouteStatsPoolKeys()
+			if removed := routestats.SweepSharePools(keep); removed > 0 {
+				common.SysLog(fmt.Sprintf("route stats sweep: removed %d orphaned share pools", removed))
+			}
+		}()
+	}
 }
 
 func InjectUmamiAnalytics() {
