@@ -34,6 +34,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/ops"
 	"github.com/QuantumNous/new-api/internal/relay"
 	"github.com/QuantumNous/new-api/internal/security/oauth"
+	"github.com/QuantumNous/new-api/internal/sensitive"
 	"github.com/QuantumNous/new-api/internal/settings"
 	compose "github.com/QuantumNous/new-api/internal/transport/compose"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
@@ -454,6 +455,9 @@ func InitResources() error {
 	// ops owns notification delivery and imports catalog, so catalog reaches
 	// root-user notifications through a hook wired here.
 	catalog.RootUserNotifier = ops.NotifyRootUser
+
+	// #409 的保留期清理：与 main 一致，在 InitLogDB 之后启动，仅主节点执行。
+	sensitive.StartSensitiveAuditCleanup()
 
 	return nil
 }
