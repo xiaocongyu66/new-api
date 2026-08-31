@@ -51,7 +51,10 @@ func setupModelListControllerTestDB(t *testing.T) *gorm.DB {
 	dbx.DB = db
 	dbx.LogDB = db
 
-	require.NoError(t, db.AutoMigrate(&identity.User{}, &channel.Channel{}, &channel.Ability{}, &channel.Model{}, &channel.Vendor{}, &channel.GatewayConfigRevision{}, &channel.GatewayConfigOutbox{}))
+	// ChannelModelRoute is part of the channel lifecycle: create/edit/delete resync
+	// the channel's route rows in the same transaction, because selection now reads
+	// route units rather than abilities.
+	require.NoError(t, db.AutoMigrate(&identity.User{}, &channel.Channel{}, &channel.Ability{}, &channel.ChannelModelRoute{}, &channel.Model{}, &channel.Vendor{}, &channel.GatewayConfigRevision{}, &channel.GatewayConfigOutbox{}))
 	require.NoError(t, channel.InitializeGatewayConfigRevision())
 
 	t.Cleanup(func() {

@@ -2,6 +2,7 @@ package channel
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -13,184 +14,254 @@ import (
 // restores the previous globals afterwards, so these tests cannot leak state into
 // the rest of the package.
 //
-// GetRandomSatisfiedChannel reads group2model2channels and channelsIDM under
-// channelSyncLock, and only takes the memory-cache path when
-// common.MemoryCacheEnabled is true (channel_cache.go:114).
-func withChannelCacheFixture(t *testing.T, channels []*Channel, group, modelName string) {
+// GetRandomSatisfiedChannel resolves a route unit through SelectRouteUnit, which
+// reads group2alias2routes and channelsIDM under channelSyncLock and only takes
+// the memory-cache path when common.MemoryCacheEnabled is true.
+//
+// routeWeights maps channel id to the static weight the selector must see. A
+// channel carries no scheduling weight of its own any more, so the fixture states
+// the weight where production reads it: on the route unit. Every channel gets one
+// single-key route whose id equals the channel id.
+func withChannelCacheFixture(t *testing.T, channels []*Channel, group, modelName string, routeWeights map[int]int) {
 	t.Helper()
 
 	prevGroups := group2model2channels
 	prevIDM := channelsIDM
+	prevAliasRoutes := group2alias2routes
 	prevMemoryCache := common.MemoryCacheEnabled
 	t.Cleanup(func() {
 		channelSyncLock.Lock()
 		group2model2channels = prevGroups
 		channelsIDM = prevIDM
+		group2alias2routes = prevAliasRoutes
 		channelSyncLock.Unlock()
 		common.MemoryCacheEnabled = prevMemoryCache
 	})
 
 	ids := make([]int, 0, len(channels))
 	idm := make(map[int]*Channel, len(channels))
+	aliasRoutes := make(map[string]map[string][]routeCandidate)
 	for _, ch := range channels {
 		ids = append(ids, ch.Id)
 		idm[ch.Id] = ch
+		if aliasRoutes[group] == nil {
+			aliasRoutes[group] = make(map[string][]routeCandidate)
+		}
+		aliasRoutes[group][modelName] = append(aliasRoutes[group][modelName], routeCandidate{
+			routeId:       ch.Id,
+			channelId:     ch.Id,
+			keyIndex:      0,
+			upstreamModel: modelName,
+			staticWeight:  routeWeights[ch.Id],
+		})
 	}
 
 	channelSyncLock.Lock()
 	group2model2channels = map[string]map[string][]int{group: {modelName: ids}}
 	channelsIDM = idm
+	group2alias2routes = aliasRoutes
 	channelSyncLock.Unlock()
 	common.MemoryCacheEnabled = true
 }
 
-func testChannel(id int, weight uint, priority int64) *Channel {
-	w, p := weight, priority
-	return &Channel{Id: id, Weight: &w, Priority: &p}
+func testChannel(id int) *Channel {
+	return &Channel{Id: id, Status: common.ChannelStatusEnabled, Key: "sk-test"}
 }
 
 // TestSingleChannelShortCircuitIgnoresWeight pins a deliberate asymmetry: with a
-// single candidate, GetRandomSatisfiedChannel returns early
-// (channel_cache.go:136 for one id, :180 for one channel at the target priority)
-// without consulting weight or health score. There is nothing to fall back to, so
-// selecting it is correct — but it means weight=0 behaves differently here than in
-// the multi-channel path, where RoutingBaseWeight maps it to 1. Locking this down
-// so a later refactor does not silently start dropping single-channel groups.
+// single candidate, selection returns it without consulting weight
+// (selectByWeight's len==1 branch). There is nothing to fall back to, so
+// selecting it is correct — but it means weight=0 behaves differently here than
+// in the multi-candidate path, where routingBaseWeight maps it to 1. Locking this
+// down so a later refactor does not silently start dropping single-route groups.
 func TestSingleChannelShortCircuitIgnoresWeight(t *testing.T) {
 	const group, modelName = "edge-group", "edge-model"
 
-	// weight=0 plus a floored health score would be the least attractive channel
-	// possible in the weighted path.
-	only := testChannel(9101, 0, 7)
-	withChannelCacheFixture(t, []*Channel{only}, group, modelName)
+	// weight=0 would be the least attractive route possible in the weighted path.
+	only := testChannel(9101)
+	withChannelCacheFixture(t, []*Channel{only}, group, modelName, map[int]int{9101: 0})
 
-	mgr := resetChannelHealthManagerForTest()
-	setTestConfigCapability(true, 0.3, 0.05, 0)
-	for range 50 {
-		mgr.RecordChannelOutcome(only.Id, OutcomeFatal)
-	}
-	require.InDelta(t, 0.05, mgr.GetScore(only.Id), 1e-9, "channel is scored at the floor")
+	ClearRouteHealthCache()
+	t.Cleanup(ClearRouteHealthCache)
 
 	got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil)
 	require.NoError(t, err)
 	require.NotNil(t, got, "a single candidate must still be selected")
-	assert.Equal(t, only.Id, got.Id)
+	assert.Equal(t, only.Id, got.ChannelId)
 }
 
 // TestSingleChannelShortCircuitRespectsExcludeSet: the short circuit must not
-// bypass request-level exclusion, otherwise a channel that just failed would be
+// bypass request-level exclusion, otherwise a route that just failed would be
 // handed back to the same request.
 func TestSingleChannelShortCircuitRespectsExcludeSet(t *testing.T) {
 	const group, modelName = "edge-group", "edge-model"
 
-	only := testChannel(9102, 10, 7)
-	withChannelCacheFixture(t, []*Channel{only}, group, modelName)
-	resetChannelHealthManagerForTest()
-	setTestConfigCapability(true, 0.3, 0.05, 0)
+	only := testChannel(9102)
+	withChannelCacheFixture(t, []*Channel{only}, group, modelName, map[int]int{9102: 10})
 
-	got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", map[int]bool{only.Id: true})
+	ClearRouteHealthCache()
+	t.Cleanup(ClearRouteHealthCache)
+
+	got, err := GetRandomSatisfiedChannel(group, modelName, 0, "",
+		map[RouteKey]bool{{ChannelId: only.Id, KeyIndex: 0, Model: modelName}: true})
 	require.NoError(t, err)
-	assert.Nil(t, got, "the only channel was excluded, so selection must yield nothing")
+	assert.Nil(t, got, "the only route was excluded, so selection must yield nothing")
 }
 
-// TestRetryDescendsPriorityTiers pins the priority semantics that retry drives.
-// sortedUniquePriorities is sorted with sort.Reverse (channel_cache.go:154), so
-// index 0 is the NUMERICALLY HIGHEST priority and retry walks downward. The clamp
-// at channel_cache.go:157 pegs an over-large retry to the lowest tier.
-func TestRetryDescendsPriorityTiers(t *testing.T) {
+// TestExcludeSetIsPerRouteUnitNotPerChannel is the exclusion granularity the
+// route-unit model turns on, and the one thing a channel-keyed exclude set could
+// not express: one multi-key channel owns several independently retryable route
+// units, so a failure on key 0 must eject exactly that unit and leave key 1
+// serving. Collapsing the two onto their shared channel id would take a healthy
+// key out of rotation on its sibling's failure, and after both keys had failed
+// the pool would look empty a retry too early.
+func TestExcludeSetIsPerRouteUnitNotPerChannel(t *testing.T) {
 	const group, modelName = "edge-group", "edge-model"
 
-	// One channel per tier so the selected tier is unambiguous.
-	channels := []*Channel{
-		testChannel(9201, 10, 100),
-		testChannel(9202, 10, 50),
-		testChannel(9203, 10, 10),
+	// One channel, two keys, therefore two route units sharing a channel id.
+	ch := &Channel{
+		Id:     9110,
+		Status: common.ChannelStatusEnabled,
+		Key:    "sk-key0\nsk-key1",
+		ChannelInfo: ChannelInfo{
+			IsMultiKey:   true,
+			MultiKeySize: 2,
+		},
 	}
-	withChannelCacheFixture(t, channels, group, modelName)
-	resetChannelHealthManagerForTest()
-	setTestConfigCapability(true, 0.3, 0.05, 0)
+	withChannelCacheFixture(t, []*Channel{ch}, group, modelName, map[int]int{9110: 100})
+	channelSyncLock.Lock()
+	group2alias2routes[group][modelName] = []routeCandidate{
+		{routeId: 1, channelId: 9110, keyIndex: 0, upstreamModel: modelName, staticWeight: 100},
+		{routeId: 2, channelId: 9110, keyIndex: 1, upstreamModel: modelName, staticWeight: 100},
+	}
+	channelSyncLock.Unlock()
 
-	cases := []struct {
-		retry         int
-		wantChannelID int
-		wantPriority  int64
-		explanation   string
-	}{
-		{0, 9201, 100, "retry 0 takes the highest priority tier"},
-		{1, 9202, 50, "retry 1 descends one tier"},
-		{2, 9203, 10, "retry 2 reaches the lowest tier"},
-		{3, 9203, 10, "retry beyond the tier count is clamped to the lowest"},
-		{99, 9203, 10, "a far larger retry is clamped identically"},
+	ClearRouteHealthCache()
+	t.Cleanup(ClearRouteHealthCache)
+
+	firstKey := RouteKey{ChannelId: 9110, KeyIndex: 0, Model: modelName}
+	secondKey := RouteKey{ChannelId: 9110, KeyIndex: 1, Model: modelName}
+
+	// Excluding one unit must leave its sibling on the same channel selectable.
+	for range 20 {
+		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", map[RouteKey]bool{firstKey: true})
+		require.NoError(t, err)
+		require.NotNil(t, got, "the sibling key on the same channel is still available")
+		assert.Equal(t, 9110, got.ChannelId)
+		assert.Equal(t, 1, got.KeyIndex, "only the excluded key index may be skipped")
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.explanation, func(t *testing.T) {
-			got, err := GetRandomSatisfiedChannel(group, modelName, tc.retry, "", nil)
-			require.NoError(t, err)
-			require.NotNil(t, got)
-			assert.Equal(t, tc.wantChannelID, got.Id)
-			assert.Equal(t, tc.wantPriority, got.GetPriority())
-		})
+	// And the mirror case, so the assertion cannot pass by always picking key 1.
+	for range 20 {
+		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", map[RouteKey]bool{secondKey: true})
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, 0, got.KeyIndex)
 	}
+
+	// Only when both units are excluded is the pool actually empty.
+	got, err := GetRandomSatisfiedChannel(group, modelName, 0, "",
+		map[RouteKey]bool{firstKey: true, secondKey: true})
+	require.NoError(t, err)
+	assert.Nil(t, got, "with every route unit excluded there is nothing left to serve")
 }
 
-// TestHealthScoreActsWithinPriorityTierOnly documents that health scoring is
-// tier-local: a degraded channel loses share to its peers at the same priority,
-// but never gets promoted or demoted across tiers. Cross-tier movement is driven
-// solely by retry.
-func TestHealthScoreActsWithinPriorityTierOnly(t *testing.T) {
+// TestWeightDecidesShareWithoutPriorityTiers pins what replaced the priority
+// walk. Retry used to descend priority tiers, so a lower-priority channel was
+// unreachable until the request had already failed once. Route units are flat:
+// every unit for a (group, alias) competes on weight in one pool, and retry no
+// longer moves between tiers. A refactor that reintroduced tiering would starve
+// the low-weight routes here at retry 0.
+func TestWeightDecidesShareWithoutPriorityTiers(t *testing.T) {
 	const group, modelName = "edge-group", "edge-model"
 
-	healthy := testChannel(9301, 10, 100)
-	degraded := testChannel(9302, 10, 100)
-	lowerTier := testChannel(9303, 10, 10)
-	withChannelCacheFixture(t, []*Channel{healthy, degraded, lowerTier}, group, modelName)
+	channels := []*Channel{testChannel(9201), testChannel(9202), testChannel(9203)}
+	withChannelCacheFixture(t, channels, group, modelName, map[int]int{
+		9201: 100,
+		9202: 10,
+		9203: 50,
+	})
 
-	mgr := resetChannelHealthManagerForTest()
-	setTestConfigCapability(true, 0.3, 0.05, 0)
-	for range 50 {
-		mgr.RecordChannelOutcome(degraded.Id, OutcomeFatal)
+	ClearRouteHealthCache()
+	t.Cleanup(ClearRouteHealthCache)
+
+	counts := map[int]int{}
+	for range 1000 {
+		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		counts[got.ChannelId]++
 	}
-	require.InDelta(t, 0.05, mgr.GetScore(degraded.Id), 1e-9)
-	require.Equal(t, 1.0, mgr.GetScore(healthy.Id))
 
-	// retry=0 stays inside the top tier, and the degraded peer should rarely win.
+	// Weight order must be reflected in share order.
+	assert.Greater(t, counts[9201], counts[9203], "weight 100 must beat weight 50")
+	assert.Greater(t, counts[9203], counts[9202], "weight 50 must beat weight 10")
+
+	// Every route stays reachable at retry 0: in the old tier model the two
+	// lower-priority channels would have been unreachable until a retry.
+	assert.Positive(t, counts[9202], "the lightest route is still in the pool at retry 0")
+	assert.Positive(t, counts[9203])
+
+	// Retry does not move the pool any more, so a retried request draws from the
+	// same candidate set rather than descending to a different tier.
+	retried := map[int]int{}
+	for range 300 {
+		got, err := GetRandomSatisfiedChannel(group, modelName, 7, "", nil)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		retried[got.ChannelId]++
+	}
+	assert.Positive(t, retried[9201], "retry must not exclude the heaviest route")
+	assert.Greater(t, retried[9201], retried[9202],
+		"weight still decides the split on a retried request")
+}
+
+// TestHealthDeratesWithinTheFlatPool documents that health scoring reduces a
+// route's share without ejecting it: an isolated route loses traffic to its peers
+// but stays selectable, because only the disabled state leaves the candidate set.
+// Cross-tier promotion no longer exists to confound this, so the derating is
+// observable directly in the one pool.
+func TestHealthDeratesWithinTheFlatPool(t *testing.T) {
+	const group, modelName = "edge-group", "edge-model"
+
+	healthy := testChannel(9301)
+	isolated := testChannel(9302)
+	withChannelCacheFixture(t, []*Channel{healthy, isolated}, group, modelName,
+		map[int]int{healthy.Id: 100, isolated.Id: 100})
+
+	withRouteHealthDB(t)
+	withHealthSetting(t, DefaultChannelModelHealthSetting())
+
+	isolatedKey := RouteKey{ChannelId: isolated.Id, KeyIndex: 0, Model: modelName}
+	// The selector reads the real clock, so the isolation window must be live.
+	require.NoError(t, RecordRetryableFailure(isolatedKey, "bad_response", FailureSourceUpstream, time.Now()))
+	require.Less(t, RouteWeightMultiplier(isolatedKey), 1.0,
+		"the fixture must actually have derated the route")
+
 	counts := map[int]int{}
 	for range 400 {
 		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil)
 		require.NoError(t, err)
 		require.NotNil(t, got)
-		counts[got.Id]++
+		counts[got.ChannelId]++
 	}
 
-	assert.Zero(t, counts[lowerTier.Id],
-		"a lower tier must never be reached while retry is 0, regardless of health")
-	assert.Greater(t, counts[healthy.Id], counts[degraded.Id],
-		"within the tier, the healthy channel must win the majority of selections")
+	assert.Greater(t, counts[healthy.Id], counts[isolated.Id],
+		"within the pool, the healthy route must win the majority of selections")
+	assert.Less(t, counts[isolated.Id], counts[healthy.Id]*3/4,
+		"the isolated route is derated, not merely tied")
+	assert.Positive(t, counts[isolated.Id],
+		"a derated route keeps a reduced share: only DisableRoute ejects")
 
-	// The degraded channel keeps a floored share rather than being locked out:
-	// effective weight is RoutingBaseWeight(10)*0.05 versus *1.0, so roughly 1 in 21.
-	assert.Less(t, counts[degraded.Id], counts[healthy.Id]/4,
-		"the degraded channel is heavily derated")
-
-	// retry=1 still descends to the lower tier even though the top tier holds a
-	// perfectly healthy channel: health never overrides the tier walk.
-	got, err := GetRandomSatisfiedChannel(group, modelName, 1, "", nil)
-	require.NoError(t, err)
-	require.NotNil(t, got)
-	assert.Equal(t, lowerTier.Id, got.Id)
-}
-
-func resetChannelHealthManagerForTest() *ChannelHealthManager {
-	return ResetChannelHealthManagerForTest()
-}
-
-// setTestConfigCapability mirrors model's setTestConfig helper.
-func setTestConfigCapability(enabled bool, alpha, minScore float64, minRequests int) {
-	SetChannelHealthSetting(&ChannelHealthSetting{
-		Enabled:     enabled,
-		Alpha:       alpha,
-		MinScore:    minScore,
-		MinRequests: minRequests,
-	})
+	// Disabling is the one state that removes it from the pool entirely.
+	require.NoError(t, DisableRoute(isolatedKey, time.Now()))
+	after := map[int]int{}
+	for range 100 {
+		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		after[got.ChannelId]++
+	}
+	assert.Zero(t, after[isolated.Id], "a disabled route must never be selected")
+	assert.Equal(t, 100, after[healthy.Id])
 }

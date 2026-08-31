@@ -171,7 +171,10 @@ func TestDeleteRouteHealthNotInModelsPreservesKeptRows(t *testing.T) {
 // call, leaving ghost rows behind after a channel is removed.
 func TestChannelDeleteWithTxCleansRouteHealth(t *testing.T) {
 	withRouteHealthDB(t)
-	require.NoError(t, dbx.DB.AutoMigrate(&Channel{}, &Ability{}))
+	// deleteWithTx also resyncs the channel's route rows, so the fixture must own
+	// that table: selection reads route units, and a delete that left them behind
+	// would keep the deleted channel selectable.
+	require.NoError(t, dbx.DB.AutoMigrate(&Channel{}, &Ability{}, &ChannelModelRoute{}))
 
 	ch := Channel{
 		Id:     8805,

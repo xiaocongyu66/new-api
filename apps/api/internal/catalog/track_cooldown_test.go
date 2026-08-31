@@ -154,6 +154,16 @@ func TestFilterCoolingChannelsHonorsEjectionCap(t *testing.T) {
 		mgr.FilterCoolingChannels([]int{9905, 9904}, 50))
 }
 
+// TestChannelCooldownSelectionSkipsEjectedTierInMemoryAndDB covers both halves of
+// the cooldown ejection contract, which now run on two different mechanisms.
+//
+// The DB path (GetChannel over abilities) still ejects by channel through
+// FilterCoolingChannels and still descends priority tiers, so its assertions are
+// unchanged. The memory-cache path went flat and route-keyed with the route-unit
+// cutover: there are no tiers to skip, and ejection is expressed per route unit
+// by the health state machine rather than by the channel-level cooldown manager.
+// Both are asserted here so the two paths cannot silently diverge on whether an
+// ejected route can still serve.
 func TestChannelCooldownSelectionSkipsEjectedTierInMemoryAndDB(t *testing.T) {
 	const group, modelName = "cooldown-group", "cooldown-model"
 	now := time.Unix(1_700_000_000, 0)
@@ -163,31 +173,53 @@ func TestChannelCooldownSelectionSkipsEjectedTierInMemoryAndDB(t *testing.T) {
 	cfg.CooldownMaxEjectionPercent = 100
 	configureCooldownTest(t, cfg, &now)
 
-	cooled := testChannel(9906, 10, 100)
-	fallback := testChannel(9907, 10, 10)
-	withChannelCacheFixture(t, []*Channel{cooled, fallback}, group, modelName)
-	mgr := resetChannelHealthManagerForTest()
-	mgr.RecordChannelOutcome(cooled.Id, OutcomeFatal)
+	cooled := testChannel(9906)
+	fallback := testChannel(9907)
+	withChannelCacheFixture(t, []*Channel{cooled, fallback}, group, modelName,
+		map[int]int{cooled.Id: 10, fallback.Id: 10})
 
+	withRouteHealthDB(t)
+	withHealthSetting(t, DefaultChannelModelHealthSetting())
+	cooledKey := RouteKey{ChannelId: cooled.Id, KeyIndex: 0, Model: modelName}
+	require.NoError(t, DisableRoute(cooledKey, time.Now()))
+
+	// The ejected route unit is gone from the pool at every retry value, because
+	// retry no longer selects a tier: the surviving route serves all of it.
+	for _, retry := range []int{0, 1, 7} {
+		counts := map[int]int{}
+		for range 50 {
+			got, err := GetRandomSatisfiedChannel(group, modelName, retry, "", nil)
+			require.NoError(t, err)
+			require.NotNil(t, got, "the healthy route must serve regardless of retry")
+			counts[got.ChannelId]++
+		}
+		assert.Zero(t, counts[cooled.Id], "a disabled route unit must never be selected")
+		assert.Equal(t, 50, counts[fallback.Id])
+	}
+
+	// Ejecting the survivor as well empties the pool, which is how selection fails
+	// fast instead of handing back an ejected route.
+	require.NoError(t, DisableRoute(RouteKey{ChannelId: fallback.Id, KeyIndex: 0, Model: modelName}, time.Now()))
 	got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil)
 	require.NoError(t, err)
-	assert.Nil(t, got, "all candidates in the selected tier are ejected")
-	got, err = GetRandomSatisfiedChannel(group, modelName, 1, "", nil)
-	require.NoError(t, err)
-	require.NotNil(t, got)
-	assert.Equal(t, fallback.Id, got.Id)
+	assert.Nil(t, got, "with every route unit ejected selection must yield nothing")
 
+	// The DB path keeps the channel-level cooldown behaviour and its tier walk.
 	withAbilityDB(t, group, modelName, []Ability{
 		ability(cooled.Id, group, modelName, 10, 100),
 		ability(fallback.Id, group, modelName, 10, 10),
 	})
-	got, err = GetChannel(group, modelName, 0, "", nil)
+	ClearRouteHealthCache()
+	mgr := resetChannelHealthManagerForTest()
+	mgr.RecordChannelOutcome(cooled.Id, OutcomeFatal)
+
+	channel, err := GetChannel(group, modelName, 0, "", nil)
 	require.NoError(t, err)
-	assert.Nil(t, got)
-	got, err = GetChannel(group, modelName, 1, "", nil)
+	assert.Nil(t, channel, "all candidates in the selected tier are ejected")
+	channel, err = GetChannel(group, modelName, 1, "", nil)
 	require.NoError(t, err)
-	require.NotNil(t, got)
-	assert.Equal(t, fallback.Id, got.Id)
+	require.NotNil(t, channel)
+	assert.Equal(t, fallback.Id, channel.Id)
 }
 
 func TestChannelCooldownDurationSlidesFromBaseTenTowardMaximum(t *testing.T) {
@@ -207,7 +239,10 @@ func TestChannelCooldownDurationSlidesFromBaseTenTowardMaximum(t *testing.T) {
 }
 
 // resetChannelHealthManagerForTest creates a fresh health-manager singleton
-// through the model test seam and restores nothing: each call re-resets.
+// through the test seam and restores nothing: each call re-resets.
+func resetChannelHealthManagerForTest() *ChannelHealthManager {
+	return ResetChannelHealthManagerForTest()
+}
 
 // upstreamError builds the kind of error the relay layer produces for an
 // upstream HTTP failure, mirroring model's test helper.

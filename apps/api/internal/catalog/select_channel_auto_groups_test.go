@@ -30,7 +30,7 @@ func setupChannelSelectAutoGroupsTest(t *testing.T) *gorm.DB {
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&Channel{}, &Ability{}))
+	require.NoError(t, db.AutoMigrate(&Channel{}, &Ability{}, &ChannelModelRoute{}))
 	dbx.DB = db
 	common.MemoryCacheEnabled = true
 	common.RetryTimes = 0
@@ -85,6 +85,18 @@ func createChannelSelectAutoGroupsChannel(t *testing.T, db *gorm.DB, id int, gro
 		Priority:  &priority,
 		Weight:    weight,
 	}).Error)
+	// Selection resolves a route unit, so the row the selector actually reads has
+	// to exist: InitChannelCache builds group2alias2routes from this table, and a
+	// channel without one is invisible to the pool no matter what its ability says.
+	require.NoError(t, db.Create(&ChannelModelRoute{
+		Group:            group,
+		PublicModelAlias: modelName,
+		ChannelId:        id,
+		KeyIndex:         0,
+		UpstreamModel:    modelName,
+		StaticWeight:     defaultRouteStaticWeight,
+		Enabled:          true,
+	}).Error)
 }
 
 func TestCacheGetRandomSatisfiedChannelUsesTokenAutoGroupsWhenGlobalAutoIsEmpty(t *testing.T) {
@@ -111,7 +123,7 @@ func TestCacheGetRandomSatisfiedChannelUsesTokenAutoGroupsWhenGlobalAutoIsEmpty(
 	first, selectedGroup, err := CacheGetRandomSatisfiedChannel(param)
 	require.NoError(t, err)
 	require.NotNil(t, first)
-	assert.Equal(t, 2101, first.Id)
+	assert.Equal(t, 2101, first.ChannelId)
 	assert.Equal(t, "vip", selectedGroup)
 	assert.Equal(t, "vip", common.GetCtxKeyString(ctx, constant.ContextKeyAutoGroup))
 	assert.Empty(t, GetAutoGroups(), "the selection must not depend on the global Auto list")
@@ -120,7 +132,7 @@ func TestCacheGetRandomSatisfiedChannelUsesTokenAutoGroupsWhenGlobalAutoIsEmpty(
 	second, selectedGroup, err := CacheGetRandomSatisfiedChannel(param)
 	require.NoError(t, err)
 	require.NotNil(t, second)
-	assert.Equal(t, 2102, second.Id)
+	assert.Equal(t, 2102, second.ChannelId)
 	assert.Equal(t, "default", selectedGroup)
 	assert.Equal(t, "default", common.GetCtxKeyString(ctx, constant.ContextKeyAutoGroup))
 }
