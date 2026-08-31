@@ -116,6 +116,10 @@ spec:
             # pushes root past the 50-session cap; init.go reads this on startup.
             - name: USER_SESSION_ACTIVE_LIMIT
               value: "500"
+            - name: USER_SESSION_ISSUANCE_LIMIT
+              value: "10000"
+            - name: USER_SESSION_ISSUANCE_WINDOW_SECONDS
+              value: "86400"
           resources:
             requests:
               cpu: "250m"
