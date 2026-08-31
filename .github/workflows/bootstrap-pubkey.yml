@@ -1,0 +1,49 @@
+name: Bootstrap agent SSH pubkey auth (one-shot)
+# 一次性 workflow：打开 control-plane sshd 的 PubkeyAuthentication。
+# ssh-copy-id 已把 OMP_AGENT_PUBLIC_KEY 写进 /root/.ssh/authorized_keys，
+# 但 sshd_config 里 PubkeyAuthentication no 拒绝一切公钥认证。
+# 跑完一次后本 workflow 可删除。
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  enable-pubkey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Install sshpass
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass jq
+
+      - name: Enable PubkeyAuthentication on all servers
+        env:
+          SERVERS_LIST_JSON: ${{ secrets.SERVERS_LIST_JSON }}
+          AGENT_PUBLIC_KEY: ${{ secrets.OMP_AGENT_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          PUBKEY_B64=$(printf '%s' "$AGENT_PUBLIC_KEY" | base64 -w0)
+          cat > /tmp/remote.sh <<'SCRIPT'
+          set -euo pipefail
+          PUBKEY=$(printf '%s' "$1" | base64 -d)
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
+          grep -qxF "$PUBKEY" ~/.ssh/authorized_keys || printf '%s\n' "$PUBKEY" >> ~/.ssh/authorized_keys
+          sed -i 's/^#\?PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+          for f in /etc/ssh/sshd_config.d/*.conf; do
+            [ -f "$f" ] || continue
+            grep -q '^#\?PubkeyAuthentication' "$f" && sed -i 's/^#\?PubkeyAuthentication.*/PubkeyAuthentication yes/' "$f"
+          done
+          sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+          sshd -t && systemctl restart sshd
+          sleep 1
+          echo "done on $(hostname): $(grep -i '^PubkeyAuthentication' /etc/ssh/sshd_config)"
+          SCRIPT
+          echo "$SERVERS_LIST_JSON" | jq -c '.[]' | while read -r s; do
+            IP=$(echo "$s" | jq -r .ip)
+            USER=$(echo "$s" | jq -r .user)
+            PASS=$(echo "$s" | jq -r .password)
+            echo "::add-mask::$PASS"
+            echo "::add-mask::$IP"
+            echo "=== $IP ==="
+            sshpass -p "$PASS" ssh -o StrictHostKeyChecking=accept-new "$USER@$IP" bash -s "$PUBKEY_B64" < /tmp/remote.sh
+          done
