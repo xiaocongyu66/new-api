@@ -485,9 +485,15 @@ jobs:
             fi
             echo "scheduling mocks onto ${MOCK_NODE}"
 
-            # Remove any mocks a previous run left behind before recreating them. Without
-            # this a stale Deployment would keep serving the old fixture, and restarting
-            # it in place cannot work on a node with no room for a surge pod.
+            # Pre-cleanup: delete by name to drop stale deployments/services
+            # left by previous parallel matrix runs. Label-selector delete misses
+            # them when their ReplicaSet/Service was already GC'd but the parent
+            # name still resolves to a partial object.
+            for n in $(kubectl get deployment,service -o name -n default 2>/dev/null \
+              | grep -E "(deployment|service)/route-unit-mock-[0-9]+" || true); do
+              kubectl delete -n default --ignore-not-found=true --wait=true "$n" || true
+            done
+            # Also drop the label-selected leftovers (idempotent).
             kubectl delete deployment,service -l app=route-unit-mock --ignore-not-found=true --wait=true || true
 
             # One Deployment + Service per instance, because each carries a different
