@@ -33,6 +33,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/internal/ops"
 	"github.com/QuantumNous/new-api/internal/relay"
+	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/security/oauth"
 	"github.com/QuantumNous/new-api/internal/sensitive"
 	"github.com/QuantumNous/new-api/internal/settings"
@@ -110,6 +111,9 @@ func main() {
 				}
 			}()
 			catalog.InitChannelCache()
+			// Restores the persisted per-model route isolation. Without it a
+			// quarantined route silently rejoins rotation on every restart.
+			catalog.InitChannelModelHealthCache()
 		}()
 
 		go catalog.SyncChannelCache(common.SyncFrequency)
@@ -158,20 +162,10 @@ func main() {
 	// all currently alive nodes in multi-instance deployments.
 	ops.StartSystemInstanceReporter()
 
-	// Wire task polling adaptor factory (breaks service -> relay import cycle).
-	// Must run before the system task runner starts: the async_task_poll handler
-	// calls task.RunTaskPollingOnce, which needs this factory set.
-	task.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) task.TaskPollingAdaptor {
-		a := relay.GetTaskAdaptor(platform)
-		if a == nil {
-			return nil
-		}
-		return a
-	}
-
-	// Wire the gateway port factory: capability-layer polling calls port.GetTaskProviderFunc
-	// instead of importing relay/channel. The binding adapts catalog.TaskAdaptor to task.TaskProviderExec.
-	// The task provider interface lives in the task domain; nothing external needs wiring.
+	// Wire the task adaptor factory and the gateway port that reads it. Both must
+	// run before the system task runner starts: the async_task_poll handler calls
+	// task.RunTaskPollingOnce, which returns immediately while the port is nil.
+	wireTaskAdaptorFactory()
 
 	// Register the periodic channel test, upstream model update, and async task
 	// polling (Midjourney / Suno / video) jobs as scheduled system tasks
@@ -265,6 +259,23 @@ func main() {
 		usage.SaveQuotaDataCache()
 	}
 	common.SysLog("server exited")
+}
+
+// wireTaskAdaptorFactory connects the async-task capability to the relay
+// adaptors. It breaks the task -> relay import cycle: task declares the factory
+// and the port, relay owns the adaptors, and bootstrap joins them.
+//
+// Order matters. GetTaskProviderFuncBinding closes over GetTaskAdaptorFunc, so
+// the factory must be assigned first; a binding built before it resolves nothing.
+func wireTaskAdaptorFactory() {
+	task.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) task.TaskPollingAdaptor {
+		a := relay.GetTaskAdaptor(platform)
+		if a == nil {
+			return nil
+		}
+		return a
+	}
+	task.GetTaskProviderFunc = task.GetTaskProviderFuncBinding()
 }
 
 // runRouteStatsSweep evicts stale EWMA entries and orphaned share pools on every
@@ -366,7 +377,10 @@ func InitResources() error {
 
 	egress.InitHttpClient()
 
-	usage.InitTokenEncoders()
+	// Warms relay/common's encoder cache — that is the package CountTextToken
+	// reads. A nil defaultTokenEncoder nil-panics on any OpenAI text model
+	// tiktoken does not recognise (e.g. gpt-5-chat).
+	relaycommon.InitTokenEncoders()
 
 	// dbinfra must not import usage, so bootstrap wires this one. It MUST stay
 	// above MigrateRetiredFrontendOptions and InitOptionMap below: a nil
@@ -413,6 +427,11 @@ func InitResources() error {
 
 	settings.OnPerformanceSettingChanged = usage.UpdateAndSync
 
+	// Starts the perf-metric flush loop. Without it hot buckets are never
+	// written to perf_metrics: the dashboard stays empty and the in-memory
+	// bucket map grows for the life of the process.
+	usage.Init()
+
 	// 启动系统监控
 	common.StartSystemMonitor()
 
@@ -456,7 +475,10 @@ func InitResources() error {
 	// root-user notifications through a hook wired here.
 	catalog.RootUserNotifier = ops.NotifyRootUser
 
-	// #409 的保留期清理：与 main 一致，在 InitLogDB 之后启动，仅主节点执行。
+	// 与 main 对齐：先启动会话/审计工件清理，再启动敏感审计日志清理。
+	// 两者都只在主节点跑，且都依赖上面已完成的 InitDB/InitLogDB。
+	identity.StartAuthArtifactCleanup()
+
 	sensitive.StartSensitiveAuditCleanup()
 
 	return nil

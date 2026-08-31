@@ -21,6 +21,12 @@ func TestBootstrapStartupCallsPresent(t *testing.T) {
 	// Each entry is "pkg.Func" as written in main.go, plus why it matters.
 	required := map[string]string{
 		"sensitive.StartSensitiveAuditCleanup": "#409 audit rows (type=8) accumulate forever and SensitiveAuditRetentionDays is dead",
+		"identity.StartAuthArtifactCleanup":    "expired dashboard sessions and one-time auth flows are never deleted",
+		"catalog.InitChannelModelHealthCache":  "persisted per-model route isolation is not restored, so a quarantined route silently returns to rotation on restart",
+		"usage.Init":                           "perf metric hot buckets are never flushed to perf_metrics, so the dashboard stays empty and memory grows",
+		"relaycommon.InitTokenEncoders":        "defaultTokenEncoder stays nil, so an unsupported OpenAI text model nil-panics inside CountTextToken",
+		"task.GetTaskProviderFuncBinding":      "task.GetTaskProviderFunc stays nil, so RunTaskPollingOnce returns immediately (no async task ever completes) and the video proxy nil-panics",
+		"relay.GetTaskAdaptor":                 "the task adaptor factory resolves nothing, so polling and video proxying reach no adaptor",
 	}
 
 	calls := parseCalls(t, "main.go")
@@ -29,9 +35,16 @@ func TestBootstrapStartupCallsPresent(t *testing.T) {
 			t.Errorf("main.go no longer calls %s() at startup: %s", call, why)
 		}
 	}
+
+	// The two task wirings above live inside wireTaskAdaptorFactory, so their
+	// presence in the file means nothing unless main() still calls it.
+	if !calls["wireTaskAdaptorFactory"] {
+		t.Error("main() no longer calls wireTaskAdaptorFactory(): the task adaptor factory and provider port are both left nil")
+	}
 }
 
-// parseCalls collects every "pkg.Func" call expression in the file.
+// parseCalls collects every call expression in the file, keyed as "pkg.Func" for
+// qualified calls and "Func" for calls to functions in this package.
 func parseCalls(t *testing.T, path string) map[string]bool {
 	t.Helper()
 	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
@@ -44,15 +57,14 @@ func parseCalls(t *testing.T, path string) map[string]bool {
 		if !ok {
 			return true
 		}
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok {
-			return true
+		switch fun := call.Fun.(type) {
+		case *ast.SelectorExpr:
+			if pkg, ok := fun.X.(*ast.Ident); ok {
+				found[pkg.Name+"."+fun.Sel.Name] = true
+			}
+		case *ast.Ident:
+			found[fun.Name] = true
 		}
-		pkg, ok := sel.X.(*ast.Ident)
-		if !ok {
-			return true
-		}
-		found[pkg.Name+"."+sel.Sel.Name] = true
 		return true
 	})
 	if len(found) == 0 {
@@ -67,14 +79,18 @@ func parseCalls(t *testing.T, path string) map[string]bool {
 
 // The import alias this test asserts on must actually exist, otherwise the
 // assertions above could pass against a package that is not the one running in
-// production.
+// production (relaycommon vs usage both export InitTokenEncoders).
 func TestBootstrapImportAliases(t *testing.T) {
 	file, err := parser.ParseFile(token.NewFileSet(), "main.go", nil, parser.ImportsOnly)
 	if err != nil {
 		t.Fatalf("parse main.go: %v", err)
 	}
 	want := map[string]string{
-		"sensitive": "github.com/QuantumNous/new-api/internal/sensitive",
+		"relaycommon": "github.com/QuantumNous/new-api/internal/relay/common",
+		"usage":       "github.com/QuantumNous/new-api/internal/usage",
+		"sensitive":   "github.com/QuantumNous/new-api/internal/sensitive",
+		"identity":    "github.com/QuantumNous/new-api/internal/identity",
+		"catalog":     "github.com/QuantumNous/new-api/internal/catalog",
 	}
 	got := map[string]string{}
 	for _, spec := range file.Imports {

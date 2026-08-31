@@ -704,40 +704,16 @@ func RelayTask(c contract.Context) {
 		return
 	}
 
-	// Build SubmitInfo from RelayInfo for capability functions
-	submitInfo := &taskdomain.SubmitInfo{
-		UserId:            relayInfo.UserId,
-		TokenId:           relayInfo.TokenId,
-		TokenGroup:        relayInfo.TokenGroup,
-		SubscriptionId:    relayInfo.SubscriptionId,
-		OriginModelName:   relayInfo.OriginModelName,
-		UpstreamModelName: relayInfo.UpstreamModelName,
-		Action:            relayInfo.Action,
-		PublicTaskID:      relayInfo.PublicTaskID,
-		OriginTaskID:      relayInfo.OriginTaskID,
-		LockedChannel:     relayInfo.LockedChannel.(*catalog.Channel),
-		ChannelId:         relayInfo.ChannelId,
-		ChannelType:       relayInfo.ChannelType,
-		ChannelBaseUrl:    relayInfo.ChannelBaseUrl,
-		ApiKey:            relayInfo.ApiKey,
-	}
-
-	if taskErr := taskcap.ResolveOriginTask(c, submitInfo); taskErr != nil {
+	// relay owns the task adaptors, so submission goes straight through it, the
+	// same way every other relay path in this file does. The task capability
+	// used to mirror this flow behind a TaskSubmitProvider port that nothing
+	// implemented, which made every submit nil-panic; that mirror is gone.
+	if taskErr := relay.ResolveOriginTask(c, relayInfo); taskErr != nil {
 		respondTaskError(c, taskErr)
 		return
 	}
 
-	// Copy back updated fields from SubmitInfo to RelayInfo for retry loop
-	relayInfo.OriginModelName = submitInfo.OriginModelName
-	relayInfo.UpstreamModelName = submitInfo.UpstreamModelName
-	relayInfo.Action = submitInfo.Action
-	relayInfo.LockedChannel = any(submitInfo.LockedChannel)
-	relayInfo.ChannelId = submitInfo.ChannelId
-	relayInfo.ChannelType = submitInfo.ChannelType
-	relayInfo.ChannelBaseUrl = submitInfo.ChannelBaseUrl
-	relayInfo.ApiKey = submitInfo.ApiKey
-
-	var result *taskdomain.TaskSubmitResult
+	var result *relay.TaskSubmitResult
 	var taskErr *taskdto.TaskError
 	defer func() {
 		if taskErr != nil && relayInfo.Billing != nil {
@@ -799,24 +775,7 @@ func RelayTask(c contract.Context) {
 		}
 		c.ResetBody(io.NopCloser(bodyStorage))
 
-		submitInfo := taskdomain.SubmitInfo{
-			UserId:            relayInfo.UserId,
-			TokenId:           relayInfo.TokenId,
-			TokenGroup:        relayInfo.TokenGroup,
-			SubscriptionId:    relayInfo.SubscriptionId,
-			OriginModelName:   relayInfo.OriginModelName,
-			UpstreamModelName: relayInfo.UpstreamModelName,
-			Action:            relayInfo.Action,
-			PublicTaskID:      relayInfo.PublicTaskID,
-			OriginTaskID:      relayInfo.OriginTaskID,
-			LockedChannel:     channel,
-			ChannelId:         channel.Id,
-			ChannelType:       channel.Type,
-			ChannelBaseUrl:    channel.GetBaseURL(),
-			ApiKey:            route.Key,
-			ForcePreConsume:   relayInfo.ForcePreConsume,
-		}
-		result, taskErr = taskcap.SubmitTask(c, submitInfo)
+		result, taskErr = relay.RelayTaskSubmit(c, relayInfo)
 		if taskErr == nil {
 			winnerID, requestSucceeded = channel.Id, true
 			break
