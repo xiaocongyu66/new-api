@@ -80,6 +80,9 @@ var channelPermissionRoutes = []permissionRoute{
 	{method: http.MethodPost, path: "/upstream_updates/apply_all", permission: policy.ChannelWrite, handler: handler.ApplyAllChannelUpstreamModelUpdates},
 	{method: http.MethodPost, path: "/upstream_updates/detect", permission: policy.ChannelOperate, handler: handler.DetectChannelUpstreamModelUpdates},
 	{method: http.MethodPost, path: "/upstream_updates/detect_all", permission: policy.ChannelOperate, handler: handler.DetectAllChannelUpstreamModelUpdates},
+	{method: http.MethodGet, path: "/route_unit/", permission: policy.ChannelRead, handler: handler.GetRouteUnitViews},
+	{method: http.MethodGet, path: "/route_unit/aliases", permission: policy.ChannelRead, handler: handler.ListRouteUnitAliases},
+	{method: http.MethodPut, path: "/route_unit/:id", permission: policy.ChannelWrite, handler: handler.UpdateRouteUnit},
 	{method: http.MethodGet, path: "/health", permission: policy.ChannelRead, handler: handler.GetChannelModelHealth},
 	{method: http.MethodPost, path: "/health/:action", permission: policy.ChannelOperate, handler: handler.UpdateChannelModelHealth},
 }

@@ -5,7 +5,55 @@ import (
 	"strconv"
 
 	"github.com/QuantumNous/new-api/internal/catalog/routestats"
+	"github.com/QuantumNous/new-api/internal/settings"
 )
+
+// This domain owns the route stats setting, so it registers its own option
+// hooks. Without this the 12 RouteStats* keys never reach
+// routestats.SetRouteStatsSetting: a persisted operator value would be stored in
+// OptionMap and silently ignored by the scheduler, which keeps running on
+// defaults.
+//
+// The seed hook is chained rather than assigned so it combines with the other
+// catalog domains instead of overwriting them (same contract as track_health.go).
+func init() {
+	settings.OnIsRouteStatsOptionKey = IsRouteStatsOptionKey
+	settings.OnValidateRouteStatsOption = ValidateRouteStatsSettingValue
+	settings.OnApplyRouteStatsOption = UpdateRouteStatsSettingValue
+
+	previousSeed := settings.OnSeedCatalogOptions
+	settings.OnSeedCatalogOptions = func() map[string]string {
+		m := map[string]string{}
+		if previousSeed != nil {
+			m = previousSeed()
+		}
+		for k, v := range seedRouteStatsOptions() {
+			m[k] = v
+		}
+		return m
+	}
+}
+
+// seedRouteStatsOptions publishes the defaults for the admin-visible keys, so an
+// operator sees the value the scheduler is actually using rather than an empty
+// field.
+func seedRouteStatsOptions() map[string]string {
+	cfg := routestats.DefaultRouteStatsSetting()
+	return map[string]string{
+		"RouteStatsEnabled":         strconv.FormatBool(cfg.Enabled),
+		"RouteStatsShareWindowSize": strconv.Itoa(cfg.ShareWindowSize),
+		"RouteStatsShareCorrMin":    strconv.FormatFloat(cfg.ShareCorrMin, 'f', -1, 64),
+		"RouteStatsShareCorrMax":    strconv.FormatFloat(cfg.ShareCorrMax, 'f', -1, 64),
+		"RouteStatsMinSamples":      strconv.Itoa(cfg.MinSamples),
+		"RouteStatsTTLSeconds":      strconv.Itoa(cfg.TTLSeconds),
+		"RouteStatsTTFTTargetMs":    strconv.Itoa(cfg.TTFTTargetMs),
+		"RouteStatsTPSTarget":       strconv.Itoa(cfg.TPSTarget),
+		"RouteStatsQualityFloor":    strconv.FormatFloat(cfg.QualityFloor, 'f', -1, 64),
+		"RouteStatsQualityCeil":     strconv.FormatFloat(cfg.QualityCeil, 'f', -1, 64),
+		"RouteStatsComponentFloor":  strconv.FormatFloat(cfg.ComponentFloor, 'f', -1, 64),
+		"RouteStatsComponentCeil":   strconv.FormatFloat(cfg.ComponentCeil, 'f', -1, 64),
+	}
+}
 
 // RouteStatsSettingOptionKeys are the option keys exposed to the admin panel.
 // These map directly to the fields in routestats.RouteStatsSetting.

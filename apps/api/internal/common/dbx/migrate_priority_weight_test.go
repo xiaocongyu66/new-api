@@ -34,8 +34,31 @@ func withRouteDB(t *testing.T) func() {
 		static_weight integer,
 		enabled numeric
 	)`).Error)
+	// abilities carries the other two retired columns. It is created here because
+	// leaving it out is what hid a real failure: Ability.Priority and
+	// Ability.Weight carried gorm `index` tags, and SQLite refuses
+	// ALTER TABLE ... DROP COLUMN while an index still references the column
+	// ("error in index idx_abilities_weight after drop column"). Without this
+	// table the migration silently had nothing to drop.
+	require.NoError(t, db.Exec("CREATE TABLE abilities (`group` text, model text, channel_id integer, enabled numeric, tag text)").Error)
 	DB = db
 	return func() { DB = previous }
+}
+
+// seedLegacyAbilityColumns re-creates the pre-cleanup abilities shape, including
+// the indexes GORM generated from the `index` tags. The indexes are the point:
+// they are what made the bare column drop fail.
+func seedLegacyAbilityColumns(t *testing.T, rows map[int]int) {
+	t.Helper()
+	require.NoError(t, DB.Exec("ALTER TABLE abilities ADD COLUMN priority integer DEFAULT 0").Error)
+	require.NoError(t, DB.Exec("ALTER TABLE abilities ADD COLUMN weight integer DEFAULT 0").Error)
+	require.NoError(t, DB.Exec("CREATE INDEX idx_abilities_priority ON abilities(priority)").Error)
+	require.NoError(t, DB.Exec("CREATE INDEX idx_abilities_weight ON abilities(weight)").Error)
+	for channelID, weight := range rows {
+		require.NoError(t, DB.Exec(
+			"INSERT INTO abilities (`group`, model, channel_id, enabled, priority, weight) VALUES (?, ?, ?, ?, ?, ?)",
+			"default", "model-a", channelID, true, 0, weight).Error)
+	}
 }
 
 // seedLegacyWeightColumn re-creates the pre-cleanup shape: the current channels
@@ -110,11 +133,52 @@ func TestDropLegacySchedulingColumnsIsIdempotent(t *testing.T) {
 	seedLegacyWeightColumn(t, map[int]int{1: 40})
 	require.True(t, columnExists("channels", "weight"), "fixture must start with the legacy column")
 
-	require.NoError(t, dropLegacySchedulingColumns())
+	require.NoError(t, DropLegacySchedulingColumns())
 	assert.False(t, columnExists("channels", "weight"), "first run drops the column")
 
-	require.NoError(t, dropLegacySchedulingColumns(), "second run must be a no-op, not an error")
+	require.NoError(t, DropLegacySchedulingColumns(), "second run must be a no-op, not an error")
 	assert.False(t, columnExists("channels", "weight"))
+}
+
+// TestDropLegacySchedulingColumnsDropsIndexedAbilityColumns is the regression for
+// the failure that a channels-only fixture could not see.
+//
+// Ability.Priority and Ability.Weight carried gorm `index` tags, so an upgrading
+// instance has idx_abilities_priority/idx_abilities_weight in its schema. SQLite
+// refuses to drop a column an index still references, failing the whole boot with
+// "error in index idx_abilities_weight after drop column: no such column: weight".
+// Dropping the index first is what makes the retirement survive a real upgrade.
+func TestDropLegacySchedulingColumnsDropsIndexedAbilityColumns(t *testing.T) {
+	cleanup := withRouteDB(t)
+	defer cleanup()
+
+	seedLegacyWeightColumn(t, map[int]int{1: 40})
+	seedLegacyAbilityColumns(t, map[int]int{1: 40})
+	require.True(t, columnExists("abilities", "weight"), "fixture must start with the legacy column")
+
+	indexNames := func() []string {
+		var names []string
+		require.NoError(t, DB.Raw(
+			"SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='abilities'").Scan(&names).Error)
+		return names
+	}
+	require.Contains(t, indexNames(), "idx_abilities_weight", "fixture must carry the generated index")
+
+	require.NoError(t, DropLegacySchedulingColumns())
+
+	assert.False(t, columnExists("abilities", "weight"))
+	assert.False(t, columnExists("abilities", "priority"))
+	assert.NotContains(t, indexNames(), "idx_abilities_weight",
+		"the index must go with the column, or the next boot fails on it")
+	assert.NotContains(t, indexNames(), "idx_abilities_priority")
+
+	// The table must still be writable afterwards: a surviving stale index would
+	// make every ability insert fail.
+	require.NoError(t, DB.Exec(
+		"INSERT INTO abilities (`group`, model, channel_id, enabled) VALUES (?, ?, ?, ?)",
+		"default", "model-b", 2, true).Error)
+
+	require.NoError(t, DropLegacySchedulingColumns(), "second run must be a clean no-op")
 }
 
 // TestCarryOverSkippedWithoutLegacyColumn covers the fresh-install path: with no
@@ -142,6 +206,6 @@ func TestCarryOverSkippedWithoutRouteTable(t *testing.T) {
 	require.False(t, tableExists("channel_model_routes"))
 
 	require.NoError(t, carryOverChannelWeightToRoutes())
-	require.NoError(t, dropLegacySchedulingColumns(), "the legacy column must still be droppable")
+	require.NoError(t, DropLegacySchedulingColumns(), "the legacy column must still be droppable")
 	assert.False(t, columnExists("channels", "weight"))
 }

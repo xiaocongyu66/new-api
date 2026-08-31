@@ -135,9 +135,16 @@ func Distribute() func(c contract.Context) {
 							route, err = catalog.SelectedRouteFromChannel(preferred, modelRequest.Model)
 							affinityUsable = err == nil
 							if affinityUsable {
+								// selectGroup must follow the affinity pick, and the
+								// affinity-used mark belongs inside the success arm:
+								// a failed route construction leaves affinityUsable
+								// false, and marking it used would set the
+								// skip-retry flag for a request that never used the
+								// affinity channel.
+								selectGroup = usingGroup
 								common.SetCtxKey(c, constant.ContextKeyRoutePath, "affinity")
+								catalog.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
 							}
-							catalog.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
 						}
 					}
 					if !affinityUsable && !catalog.ShouldKeepChannelAffinityOnChannelDisabled() {

@@ -84,6 +84,11 @@ func SetApiRouter(router *gin.Engine) {
 			performanceRoute.GET("/logs", ginadapter.Handler(usage.GetLogFiles))
 			performanceRoute.DELETE("/logs", ginadapter.Handler(usage.CleanupLogFiles))
 		}
+		routeUnitAuditRoute := apiRouter.Group("/route_unit")
+		routeUnitAuditRoute.Use(ginadapter.Middleware(security.AdminAuth()), ginadapter.Middleware(security.RequirePermission(policy.SystemSettings)))
+		{
+			routeUnitAuditRoute.GET("/audit", ginadapter.Handler(handler.GetRouteUnitAudit))
+		}
 		apiRouter.GET("/verification", ginadapter.Middleware(middleware.EmailVerificationRateLimit()), ginadapter.Middleware(middleware.TurnstileCheck()), ginadapter.Handler(identity.SendEmailVerification))
 		apiRouter.GET("/reset_password", ginadapter.Middleware(middleware.CriticalRateLimit()), ginadapter.Middleware(middleware.TurnstileCheck()), ginadapter.Handler(identity.SendPasswordResetEmail))
 		apiRouter.POST("/user/reset", ginadapter.Middleware(middleware.CriticalRateLimit()), anonymousRequestBodyLimit, ginadapter.Handler(identity.ResetPassword))

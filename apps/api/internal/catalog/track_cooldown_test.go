@@ -2,15 +2,11 @@ package channel
 
 import (
 	"errors"
-	"github.com/QuantumNous/new-api/internal/common/dbx"
-	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"testing"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
@@ -157,14 +153,13 @@ func TestFilterCoolingChannelsHonorsEjectionCap(t *testing.T) {
 // TestChannelCooldownSelectionSkipsEjectedTierInMemoryAndDB covers both halves of
 // the cooldown ejection contract, which now run on two different mechanisms.
 //
-// The DB path (GetChannel over abilities) still ejects by channel through
-// FilterCoolingChannels and still descends priority tiers, so its assertions are
-// unchanged. The memory-cache path went flat and route-keyed with the route-unit
-// cutover: there are no tiers to skip, and ejection is expressed per route unit
-// by the health state machine rather than by the channel-level cooldown manager.
-// Both are asserted here so the two paths cannot silently diverge on whether an
-// ejected route can still serve.
-func TestChannelCooldownSelectionSkipsEjectedTierInMemoryAndDB(t *testing.T) {
+// The memory-cache path went flat and route-keyed with the route-unit cutover:
+// there are no tiers to skip, and ejection is expressed per route unit by the
+// health state machine rather than by the channel-level cooldown manager. The
+// priority-tier DB path this test also used to cover is retired: nothing selects
+// by descending priority tier any more, so there is no second path to diverge
+// from.
+func TestChannelCooldownSelectionSkipsEjectedRouteUnits(t *testing.T) {
 	const group, modelName = "cooldown-group", "cooldown-model"
 	now := time.Unix(1_700_000_000, 0)
 	cfg := cooldownTestSetting()
@@ -203,23 +198,6 @@ func TestChannelCooldownSelectionSkipsEjectedTierInMemoryAndDB(t *testing.T) {
 	got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil)
 	require.NoError(t, err)
 	assert.Nil(t, got, "with every route unit ejected selection must yield nothing")
-
-	// The DB path keeps the channel-level cooldown behaviour and its tier walk.
-	withAbilityDB(t, group, modelName, []Ability{
-		ability(cooled.Id, group, modelName, 10, 100),
-		ability(fallback.Id, group, modelName, 10, 10),
-	})
-	ClearRouteHealthCache()
-	mgr := resetChannelHealthManagerForTest()
-	mgr.RecordChannelOutcome(cooled.Id, OutcomeFatal)
-
-	channel, err := GetChannel(group, modelName, 0, "", nil)
-	require.NoError(t, err)
-	assert.Nil(t, channel, "all candidates in the selected tier are ejected")
-	channel, err = GetChannel(group, modelName, 1, "", nil)
-	require.NoError(t, err)
-	require.NotNil(t, channel)
-	assert.Equal(t, fallback.Id, channel.Id)
 }
 
 func TestChannelCooldownDurationSlidesFromBaseTenTowardMaximum(t *testing.T) {
@@ -248,46 +226,4 @@ func resetChannelHealthManagerForTest() *ChannelHealthManager {
 // upstream HTTP failure, mirroring model's test helper.
 func upstreamError(code types.ErrorCode, status int) *types.NewAPIError {
 	return types.NewErrorWithStatusCode(errors.New("simulated upstream failure"), code, status)
-}
-
-// withAbilityDB installs an isolated in-memory abilities/channels database,
-// mirroring the model-package fixture used by the selection tests.
-
-// ability mirrors the model-package fixture constructor.
-func ability(channelID int, group, modelName string, weight uint, priority int64) Ability {
-	p := priority
-	return Ability{
-		Group:     group,
-		Model:     modelName,
-		ChannelId: channelID,
-		Enabled:   true,
-		Priority:  &p,
-		Weight:    weight,
-	}
-}
-
-func withAbilityDB(t *testing.T, group, modelName string, rows []Ability) {
-	t.Helper()
-
-	previousDB := dbx.DB
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&Ability{}, &Channel{}))
-	dbx.DB = db
-	// initCol() runs inside InitDB but tests bypass InitDB with a bare gorm.Open,
-	// so initialize the dialect-correct column names (commonGroupCol etc.) now.
-	dbinfra.InitDialectColumns()
-	t.Cleanup(func() { dbx.DB = previousDB })
-
-	for i := range rows {
-		require.NoError(t, dbx.DB.Create(&rows[i]).Error)
-		weight := rows[i].Weight
-		priority := rows[i].Priority
-		require.NoError(t, dbx.DB.Create(&Channel{
-			Id:       rows[i].ChannelId,
-			Weight:   &weight,
-			Priority: priority,
-			Status:   1,
-		}).Error)
-	}
 }

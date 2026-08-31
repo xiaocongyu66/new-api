@@ -195,11 +195,15 @@ func migrateDB() error {
 		return err
 	}
 	// Registered backfills first (they seed columns AutoMigrate just added), then
-	// the gateway revision seed, which the original order ran last.
+	// the gateway revision seed, which the original order ran last. The route seed
+	// registered by catalog runs here too.
 	if err := dbx.RunPostMigrations(); err != nil {
 		return err
 	}
-	return nil
+	// The legacy scheduling column retirement runs last, and is called directly
+	// rather than registered: it must follow the route seed, and dbx is imported
+	// by catalog so its init could only ever register ahead of catalog's.
+	return dbx.DropLegacySchedulingColumns()
 }
 
 func migrateDBFast() error {
@@ -229,6 +233,11 @@ func migrateDBFast() error {
 		}
 	}
 	if err := dbx.RunPostMigrations(); err != nil {
+		return err
+	}
+	// Same ordering constraint as migrateDB: the retirement must follow the route
+	// seed, which runs as a post-migration.
+	if err := dbx.DropLegacySchedulingColumns(); err != nil {
 		return err
 	}
 	common.SysLog("database migrated")

@@ -10,19 +10,18 @@ import (
 // HealthBridge carries the capability-side health store entry points.
 // Registered once by internal/catalog in its init().
 type HealthBridge struct {
-	ClassifyOutcome         func(err *types.NewAPIError, channelID int) ChannelOutcome
-	RecordChannelOutcome    func(channelID int, outcome ChannelOutcome)
-	RecordRequestAttempts   func(attempts []ChannelAttempt, winnerID int, succeeded bool)
-	RecordOutcome           func(channelID int, success bool)
-	EffectiveWeight         func(channelID int, baseWeight uint) float64
-	RoutingWeight           func(channelID int, baseWeight uint, bypassCooldown bool) float64
-	BridgeCooldownDuration  func(cfg *ChannelHealthSetting, priorActivations int) time.Duration
-	BridgeRoutingBaseWeight func(weight int) uint
-	Reset                   func()
-	GetScore                func(channelID int) float64
-	FilterCoolingChannels   func(channelIDs []int, maxEjectionPercent int) map[int]bool
-	SnapshotCooldownState   func(channelID int) (CooldownStateSnapshot, bool)
-	ResetForTest            func()
+	ClassifyOutcome        func(err *types.NewAPIError, channelID int) ChannelOutcome
+	RecordChannelOutcome   func(channelID int, outcome ChannelOutcome)
+	RecordRequestAttempts  func(attempts []ChannelAttempt, winnerID int, succeeded bool)
+	RecordOutcome          func(channelID int, success bool)
+	EffectiveWeight        func(channelID int, baseWeight uint) float64
+	RoutingWeight          func(channelID int, baseWeight uint, bypassCooldown bool) float64
+	BridgeCooldownDuration func(cfg *ChannelHealthSetting, priorActivations int) time.Duration
+	Reset                  func()
+	GetScore               func(channelID int) float64
+	FilterCoolingChannels  func(channelIDs []int, maxEjectionPercent int) map[int]bool
+	SnapshotCooldownState  func(channelID int) (CooldownStateSnapshot, bool)
+	ResetForTest           func()
 }
 
 var healthBridge *HealthBridge
@@ -290,18 +289,6 @@ func BridgeCooldownDuration(cfg *ChannelHealthSetting, priorActivations int) tim
 		return healthBridge.BridgeCooldownDuration(cfg, priorActivations)
 	}
 	return cooldownDurationCalc(cfg, priorActivations)
-}
-
-// BridgeRoutingBaseWeight converts a configured channel weight into the base weight
-// used for weighted-random routing.
-func BridgeRoutingBaseWeight(weight int) uint {
-	if healthBridge != nil && healthBridge.BridgeRoutingBaseWeight != nil {
-		return healthBridge.BridgeRoutingBaseWeight(weight)
-	}
-	if weight < 0 {
-		return 1
-	}
-	return uint(weight) + 1
 }
 
 // Reset clears all health state. Called when the kill switch is toggled off.

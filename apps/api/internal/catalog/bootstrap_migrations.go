@@ -7,13 +7,19 @@ import (
 	"gorm.io/gorm"
 )
 
-// This domain owns channel_model_health and the gateway config revision, so it
-// registers its own post-AutoMigrate steps instead of the bootstrap naming them.
-// Registration order matches the previous literal sequence in model/main.go:
-// the key-index migration, then the gateway revision seed.
+// This domain owns channel_model_health, the route table and the gateway config
+// revision, so it registers its own post-AutoMigrate steps instead of the
+// bootstrap naming them. Registration order matches the previous literal
+// sequence in model/main.go: the key-index migration, the route seed, then the
+// gateway revision seed.
+//
+// SeedChannelModelRoutes belongs here rather than in the bootstrap because it
+// reads Channel and writes ChannelModelRoute — both owned by this domain — and
+// because it must run after AutoMigrate has created channel_model_routes.
 func init() {
 	dbx.RegisterPostMigration(
 		migrateChannelModelHealthKeyIndex,
+		SeedChannelModelRoutes,
 		InitializeGatewayConfigRevision,
 	)
 }

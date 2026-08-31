@@ -24,6 +24,7 @@ import (
 
 	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
+	"github.com/QuantumNous/new-api/internal/catalog/routestats"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/dbinfra"
@@ -130,6 +131,29 @@ func main() {
 
 	// 数据看板
 	go usage.UpdateQuotaData()
+
+	// Route stats TTL sweep and share-pool eviction (runs hourly). Without it the
+	// EWMA handles and share pools only ever grow: a retired route unit keeps its
+	// entry forever.
+	go func() {
+		const tick = time.Hour
+		for range time.NewTicker(tick).C {
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						common.SysError(fmt.Sprintf("route stats sweep panic: %v", r))
+					}
+				}()
+				if removed := routestats.SweepTTL(); removed > 0 {
+					common.SysLog(fmt.Sprintf("route stats sweep: removed %d stale entries", removed))
+				}
+				keep := catalog.GetActiveRouteStatsPoolKeys()
+				if removed := routestats.SweepSharePools(keep); removed > 0 {
+					common.SysLog(fmt.Sprintf("route stats sweep: removed %d orphaned share pools", removed))
+				}
+			}()
+		}
+	}()
 
 	if os.Getenv("CHANNEL_UPDATE_FREQUENCY") != "" {
 		frequency, err := strconv.Atoi(os.Getenv("CHANNEL_UPDATE_FREQUENCY"))

@@ -36,6 +36,8 @@ GET /api/channel/models
 GET /api/channel/models_enabled
 GET /api/channel/ollama/version/:id
 GET /api/channel/ops
+GET /api/channel/route_unit/
+GET /api/channel/route_unit/aliases
 GET /api/channel/search
 GET /api/channel/tag/models
 GET /api/channel/test
@@ -96,6 +98,7 @@ GET /api/redemption/
 GET /api/redemption/:id
 GET /api/redemption/search
 GET /api/reset_password
+GET /api/route_unit/audit
 GET /api/setup
 GET /api/status
 GET /api/status/test
@@ -248,6 +251,7 @@ POST /api/verify
 POST /api/waffo-pancake/webhook/:env
 POST /api/waffo/webhook
 PUT /api/channel/
+PUT /api/channel/route_unit/:id
 PUT /api/channel/tag
 PUT /api/custom-oauth-provider/:id
 PUT /api/models/

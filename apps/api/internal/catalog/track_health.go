@@ -397,15 +397,6 @@ func finishCooldownLocked(state *ChannelHealthState) {
 	state.RampPending = true
 }
 
-// RoutingBaseWeight converts a configured channel weight into the base weight
-// used for weighted-random routing.
-func RoutingBaseWeight(weight int) uint {
-	if weight < 0 {
-		return 1
-	}
-	return uint(weight) + 1
-}
-
 // Reset clears all health state. Called when the kill switch is toggled off.
 func (h *HealthStore) Reset() {
 	h.mu.Lock()
@@ -505,19 +496,18 @@ func (h *HealthStore) SnapshotCooldownStateForTest(channelID int) (CooldownState
 // in the reverse direction.
 func init() {
 	RegisterHealthBridge(HealthBridge{
-		ClassifyOutcome:         hClassifyOutcome,
-		RecordChannelOutcome:    hRecordChannelOutcome,
-		RecordRequestAttempts:   hRecordRequestAttempts,
-		RecordOutcome:           hRecordOutcome,
-		EffectiveWeight:         hEffectiveWeight,
-		RoutingWeight:           hRoutingWeight,
-		BridgeCooldownDuration:  CooldownDuration,
-		BridgeRoutingBaseWeight: RoutingBaseWeight,
-		Reset:                   hReset,
-		GetScore:                hGetScore,
-		FilterCoolingChannels:   hFilterCoolingChannels,
-		SnapshotCooldownState:   hSnapshotCooldownState,
-		ResetForTest:            ResetHealthStoreForTest,
+		ClassifyOutcome:        hClassifyOutcome,
+		RecordChannelOutcome:   hRecordChannelOutcome,
+		RecordRequestAttempts:  hRecordRequestAttempts,
+		RecordOutcome:          hRecordOutcome,
+		EffectiveWeight:        hEffectiveWeight,
+		RoutingWeight:          hRoutingWeight,
+		BridgeCooldownDuration: CooldownDuration,
+		Reset:                  hReset,
+		GetScore:               hGetScore,
+		FilterCoolingChannels:  hFilterCoolingChannels,
+		SnapshotCooldownState:  hSnapshotCooldownState,
+		ResetForTest:           ResetHealthStoreForTest,
 	})
 	// Initialize the atomic default (recovered from original track_health init).
 	channelHealthSetting.Store(DefaultChannelHealthSetting())

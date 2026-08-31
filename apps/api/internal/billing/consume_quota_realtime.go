@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/QuantumNous/new-api/internal/catalog/routestats"
+
 	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/common"
@@ -380,6 +382,11 @@ func PostAudioConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInf
 		Group:            relayInfo.UsingGroup,
 		Other:            other,
 	})
+	// Success, TTFT and latency are charged by the relay loop per attempt; only
+	// TPS is added at settlement, where the token count is finally known.
+	if handle := relayInfo.StatsHandle; handle != nil && usage.CompletionTokens >= routestats.MinTPSTokens && useTimeSeconds > 0 {
+		handle.ObserveTPS(float64(usage.CompletionTokens) / float64(useTimeSeconds))
+	}
 	gopool.Go(func() {
 		usagedomain.RecordRelaySample(relayInfo, true, int64(usage.CompletionTokens))
 	})

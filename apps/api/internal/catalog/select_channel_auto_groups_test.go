@@ -64,26 +64,20 @@ func setupChannelSelectAutoGroupsTest(t *testing.T) *gorm.DB {
 
 func createChannelSelectAutoGroupsChannel(t *testing.T, db *gorm.DB, id int, group, modelName string) {
 	t.Helper()
-	priority := int64(0)
-	weight := uint(100)
 	require.NoError(t, db.Create(&Channel{
-		Id:       id,
-		Type:     constant.ChannelTypeOpenAI,
-		Key:      fmt.Sprintf("key-%d", id),
-		Status:   common.ChannelStatusEnabled,
-		Name:     fmt.Sprintf("channel-%d", id),
-		Weight:   &weight,
-		Models:   modelName,
-		Group:    group,
-		Priority: &priority,
+		Id:     id,
+		Type:   constant.ChannelTypeOpenAI,
+		Key:    fmt.Sprintf("key-%d", id),
+		Status: common.ChannelStatusEnabled,
+		Name:   fmt.Sprintf("channel-%d", id),
+		Models: modelName,
+		Group:  group,
 	}).Error)
 	require.NoError(t, db.Create(&Ability{
 		Group:     group,
 		Model:     modelName,
 		ChannelId: id,
 		Enabled:   true,
-		Priority:  &priority,
-		Weight:    weight,
 	}).Error)
 	// Selection resolves a route unit, so the row the selector actually reads has
 	// to exist: InitChannelCache builds group2alias2routes from this table, and a

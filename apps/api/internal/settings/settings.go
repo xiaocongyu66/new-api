@@ -46,6 +46,9 @@ var (
 	OnValidateChannelHealthOption      func(key, value string) error
 	OnApplyModelHealthOption           func(key, value string) error
 	OnApplyChannelHealthOption         func(key, value string) error
+	OnIsRouteStatsOptionKey            func(key string) bool
+	OnValidateRouteStatsOption         func(key, value string) error
+	OnApplyRouteStatsOption            func(key, value string) error
 	OnSeedCatalogOptions               func() map[string]string
 )
 
@@ -115,6 +118,12 @@ func ValidateOptionValue(key string, value string) error {
 		// (model's own tests are one). Catalog still owns applying the value.
 		if count, convErr := strconv.Atoi(value); convErr != nil || count <= 0 {
 			return fmt.Errorf("MaxTokenAutoGroups must be a positive integer")
+		}
+		return nil
+	}
+	if OnIsRouteStatsOptionKey != nil && OnIsRouteStatsOptionKey(key) {
+		if OnValidateRouteStatsOption != nil {
+			return OnValidateRouteStatsOption(key, value)
 		}
 		return nil
 	}
@@ -265,6 +274,20 @@ func ApplyOption(key string, value string) (err error) {
 	} else if OnIsChannelHealthOptionKey != nil && OnIsChannelHealthOptionKey(key) {
 		if OnApplyChannelHealthOption != nil {
 			if err = OnApplyChannelHealthOption(key, value); err != nil {
+				return err
+			}
+		}
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap[key] = value
+		common.OptionMapRWMutex.Unlock()
+		return nil
+	}
+	if OnIsRouteStatsOptionKey != nil && OnIsRouteStatsOptionKey(key) {
+		// Route stats options reach the atomic runtime setting before the
+		// OptionMap lock, same as the health options above: a parse failure must
+		// not leave an invalid value recorded as applied.
+		if OnApplyRouteStatsOption != nil {
+			if err = OnApplyRouteStatsOption(key, value); err != nil {
 				return err
 			}
 		}

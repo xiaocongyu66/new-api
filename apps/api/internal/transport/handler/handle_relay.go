@@ -16,6 +16,7 @@ import (
 	"time"
 
 	catalog "github.com/QuantumNous/new-api/internal/catalog"
+	"github.com/QuantumNous/new-api/internal/catalog/routestats"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	taskdto "github.com/QuantumNous/new-api/internal/dto"
@@ -239,6 +240,8 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 		}
 		c.ResetBody(io.NopCloser(bodyStorage))
 
+		attemptStart := time.Now()
+
 		switch relayFormat {
 		case types.RelayFormatOpenAIRealtime:
 			newAPIError = relay.WssHelper(c, relayInfo)
@@ -250,7 +253,42 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 			newAPIError = relayHandler(c, relayInfo)
 		}
 
+		attemptLatencyMs := time.Since(attemptStart).Seconds() * 1000
+		handle := relayInfo.StatsHandle
+		routeKey := catalog.RouteKey{ChannelId: route.ChannelId, KeyIndex: route.KeyIndex, Model: route.Alias}
+
+		// observeAttemptTiming feeds the latency-family EWMAs. It is deliberately
+		// NOT called for neutral outcomes: a user 4xx or a client cancel says
+		// nothing about the route, and charging its timing would let a caller's
+		// own aborted request move the route's score.
+		observeAttemptTiming := func() {
+			if handle == nil {
+				return
+			}
+			if relayInfo.IsStream && relayInfo.HasSendResponse() {
+				handle.ObserveTTFT(relayInfo.FirstResponseTime.Sub(relayInfo.StartTime).Seconds() * 1000)
+			}
+			handle.ObserveLatency(attemptLatencyMs)
+		}
+
 		if newAPIError == nil {
+			// Two independent signals are charged for one attempt, and both must
+			// fire. The soft signal (#405 EWMA) only nudges a continuous
+			// preference inside [0.5, 1.5]; the hard signal (#368 state machine)
+			// owns discrete isolation and is the only thing that can zero a route
+			// out. Recording one and not the other silently disables half the
+			// scheduler.
+			observeAttemptTiming()
+			if handle != nil {
+				handle.ObserveSuccess(routestats.SuccessObservation)
+			}
+			if healthErr := catalog.RecordSuccess(routeKey, time.Now()); healthErr != nil {
+				logger.LogError(c.Context(), fmt.Sprintf("record route success failed: %s", healthErr.Error()))
+			}
+			if handle != nil {
+				routestats.RecordAttempt(requestId, relayInfo.RetryIndex, handle.Key(), routestats.AuditOutcomeSuccess,
+					c.Header("X-Request-Id"), common.GetCtxKeyString(c, constant.ContextKeyRoutePath))
+			}
 			relayInfo.LastError = nil
 			winnerID, requestSucceeded = channel.Id, true
 			return
@@ -266,9 +304,35 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 		outcome := catalog.ClassifyChannelOutcome(newAPIError, channel.Id)
 		attempts = append(attempts, catalog.ChannelAttempt{ChannelID: channel.Id, ModelName: relayInfo.OriginModelName, Outcome: outcome})
 		if outcome.ExcludesChannel() && retryParam.ExcludeRoutes != nil {
-			retryParam.ExcludeRoutes[catalog.RouteKey{ChannelId: route.ChannelId, KeyIndex: route.KeyIndex, Model: route.Alias}] = true
+			// Exclude the exact route unit that failed, not the whole channel: a
+			// dead key on a multi-key channel must not cost its siblings, and the
+			// route unit is what selection actually picks.
+			retryParam.ExcludeRoutes[routeKey] = true
+		}
+		if common.RetryTimes > 0 && wouldRetryWithOneBudget(c, newAPIError) {
+			recordRouteIsolation(c, routeKey, newAPIError, classifyChatFailureSource(newAPIError))
 		}
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetCtxKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
+
+		// Route stats are charged per attempt, and a failed attempt still feeds the
+		// latency family so a route that fails fast cannot look like the fastest
+		// route in the pool. A 429 is derated rather than zeroed because the route
+		// is busy, not broken; a caller's own 4xx says nothing about the route and
+		// is recorded as nothing at all.
+		if handle != nil {
+			switch classifyRouteStatsOutcome(newAPIError) {
+			case routeStatsThrottled:
+				// Observe429 folds in the synthetic TTFT penalty itself, so the
+				// observed timing must not be charged a second time here.
+				handle.Observe429(0)
+			case routeStatsFatal:
+				observeAttemptTiming()
+				handle.ObserveSuccess(routestats.FatalObservation)
+			}
+			routestats.RecordAttempt(requestId, relayInfo.RetryIndex, handle.Key(),
+				routestats.AuditOutcomeFromRouteStats(int(classifyRouteStatsOutcome(newAPIError))),
+				c.Header("X-Request-Id"), common.GetCtxKeyString(c, constant.ContextKeyRoutePath))
+		}
 
 		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
 			break
@@ -366,6 +430,79 @@ func getChannel(c contract.Context, info *relaycommon.RelayInfo, retryParam *cat
 		return nil, newAPIError
 	}
 	return route, nil
+}
+
+// routeStatsOutcome tells the EWMA how much of a failure an attempt was. It
+// exists only to shape the soft signal: isolation, disabling and retry
+// eligibility are decided elsewhere by the state machine and shouldRetry.
+type routeStatsOutcome int
+
+const (
+	routeStatsNeutral routeStatsOutcome = iota
+	routeStatsThrottled
+	routeStatsFatal
+)
+
+func classifyRouteStatsOutcome(err *types.NewAPIError) routeStatsOutcome {
+	if err == nil {
+		return routeStatsNeutral
+	}
+	if types.IsChannelError(err) || err.GetErrorCode() == types.ErrorCodeBadResponseBody {
+		return routeStatsFatal
+	}
+	if err.StatusCode == http.StatusTooManyRequests {
+		return routeStatsThrottled
+	}
+	if err.StatusCode >= http.StatusInternalServerError {
+		return routeStatsFatal
+	}
+	return routeStatsNeutral
+}
+
+// classifyChatFailureSource separates a failure we caused locally (the request
+// never reached the upstream) from one the upstream returned. The state machine
+// treats them differently, because a local transport failure is not evidence
+// about the route's health.
+func classifyChatFailureSource(err *types.NewAPIError) catalog.FailureSource {
+	if err == nil {
+		return catalog.FailureSourceUpstream
+	}
+	if err.GetErrorCode() == types.ErrorCodeDoRequestFailed {
+		return catalog.FailureSourceLocal
+	}
+	return catalog.FailureSourceUpstream
+}
+
+// recordRouteIsolation charges the #368 hard signal: the state machine that can
+// calm, isolate or disable a route unit outright. It is the only path that can
+// zero a route out, so it must fire for every retry-eligible failure.
+func recordRouteIsolation(c contract.Context, routeKey catalog.RouteKey, apiErr *types.NewAPIError, source catalog.FailureSource) {
+	now := time.Now()
+	if healthErr := catalog.RecordRetryableFailure(routeKey, string(apiErr.GetErrorCode()), source, now); healthErr != nil {
+		logger.LogError(c.Context(), healthErr.Error())
+		return
+	}
+	state, level, until, ok := catalog.GetRouteIsolation(routeKey)
+	if !ok {
+		return
+	}
+	// A disabled route has no deadline, and a clock adjustment could leave an
+	// elapsed one behind; clamp so the log never reports a negative countdown.
+	remaining := int64(0)
+	if until > now.Unix() {
+		remaining = until - now.Unix()
+	}
+	logger.LogWarn(c.Context(), fmt.Sprintf("route isolation: channel #%d model %s -> %s level=%d remaining=%ds error_code=%s",
+		routeKey.ChannelId, routeKey.Model, state, level, remaining, apiErr.GetErrorCode()))
+}
+
+// wouldRetryWithOneBudget reports whether a relay error would retry if a single
+// retry were available, independent of the remaining budget. It reuses
+// shouldRetry with retryTimes=1 so the skip/channel/specific-channel/status-code
+// rules live in exactly one place. The RetryTimes>0 gate is applied at the call
+// site so RetryTimes=0 writes no state.
+func wouldRetryWithOneBudget(c contract.Context, err *types.NewAPIError) bool {
+	return shouldRetry(c, err, 1)
 }
 
 func shouldRetry(c contract.Context, openaiErr *types.NewAPIError, retryTimes int) bool {

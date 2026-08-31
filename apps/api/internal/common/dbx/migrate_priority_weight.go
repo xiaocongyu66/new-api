@@ -16,14 +16,30 @@ import (
 // Changing the catalog seed requires changing this constant with it.
 const legacyRouteSeedWeight = 100
 
-// dropLegacySchedulingColumns retires the pre-route-unit scheduling columns:
+// DropLegacySchedulingColumns retires the pre-route-unit scheduling columns:
 // channels.priority, channels.weight, abilities.priority and abilities.weight.
 //
-// It must run BEFORE AutoMigrate. The Channel and Ability structs no longer carry
-// these fields, so once AutoMigrate has run GORM cannot read the old values back —
-// the columns would linger with the operator's configured weights stranded inside
-// them. Ordering the carry-over first is what makes the cleanup non-destructive.
-func dropLegacySchedulingColumns() error {
+// It is exported and called from the bootstrap rather than self-registered
+// through RegisterPostMigration, because its position is a hard ordering
+// constraint that registration order cannot express: this package is imported BY
+// catalog, so its init always runs first and would register this step ahead of
+// the route seed it must follow.
+//
+// The required slot is after AutoMigrate and after SeedChannelModelRoutes:
+//
+//   - Reading the legacy column does not need to precede AutoMigrate. AutoMigrate
+//     only adds columns and indexes, it never drops one, so a column the structs
+//     no longer declare survives it untouched and stays readable by raw SQL —
+//     which is how this migration reads it anyway (see columnExists).
+//   - The carry-over positively REQUIRES the later slot. Its target,
+//     channel_model_routes, is created by AutoMigrate and populated by the route
+//     seed. Running earlier finds no rows to carry onto and silently drops the
+//     operator's tuned weights.
+//
+// The carry-over runs first within this step, which is what makes the cleanup
+// non-destructive: a tuned channel weight is recorded nowhere else, so it has to
+// reach the route rows before the column holding it disappears.
+func DropLegacySchedulingColumns() error {
 	if err := carryOverChannelWeightToRoutes(); err != nil {
 		return err
 	}
@@ -167,7 +183,6 @@ func tableExists(table string) bool {
 }
 
 // dropColumnIfExists removes a column on every supported database.
-// dropColumnIfExists removes a column on every supported database.
 //
 // The GORM SQLite migrator is deliberately bypassed: glebarez/sqlite implements
 // DropColumn by recreating the whole table, and that path panics on a table whose
@@ -175,9 +190,18 @@ func tableExists(table string) bool {
 // ALTER TABLE ... DROP COLUMN since 3.35 and the bundled driver is newer, so plain
 // DDL works on all three engines. The columnExists guard keeps it idempotent
 // across restarts.
+//
+// Indexes on the column are dropped first. abilities.priority and abilities.weight
+// each carried a gorm `index` tag, and SQLite refuses the drop while the index
+// survives: "error in index idx_abilities_weight after drop column: no such
+// column: weight". MySQL silently rewrites a single-column index and PostgreSQL
+// drops it, but doing it explicitly keeps all three engines on one path.
 func dropColumnIfExists(table, column string) error {
 	if !columnExists(table, column) {
 		return nil
+	}
+	if err := dropIndexesOnColumn(table, column); err != nil {
+		return err
 	}
 	quoted := "`" + column + "`"
 	quotedTable := "`" + table + "`"
@@ -189,5 +213,59 @@ func dropColumnIfExists(table, column string) error {
 		return err
 	}
 	common.SysLog(fmt.Sprintf("dropped legacy column %s.%s", table, column))
+	return nil
+}
+
+// dropIndexesOnColumn removes every index that references column, so the column
+// drop cannot fail on a surviving index. Index names are read from the live
+// schema rather than assumed: GORM's generated name (idx_abilities_weight) is
+// only the default, and an operator may have added their own.
+func dropIndexesOnColumn(table, column string) error {
+	var names []string
+	switch {
+	case common.UsingMainDatabase(common.DatabaseTypeSQLite):
+		// pragma_index_list gives the table's indexes; pragma_index_info the
+		// columns of each. Partial/expression indexes report no column name and
+		// are simply absent from the join, which is correct: they cannot be
+		// single-column indexes on this column.
+		if err := DB.Raw(`SELECT il.name FROM pragma_index_list(?) il
+			JOIN pragma_index_info(il.name) ii
+			WHERE ii.name = ?`, table, column).Scan(&names).Error; err != nil {
+			return err
+		}
+	case common.UsingMainDatabase(common.DatabaseTypeMySQL):
+		if err := DB.Raw(`SELECT DISTINCT index_name FROM information_schema.statistics
+			WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ? AND index_name <> 'PRIMARY'`,
+			table, column).Scan(&names).Error; err != nil {
+			return err
+		}
+	default:
+		if err := DB.Raw(`SELECT DISTINCT i.relname FROM pg_index x
+			JOIN pg_class i ON i.oid = x.indexrelid
+			JOIN pg_class t ON t.oid = x.indrelid
+			JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(x.indkey)
+			WHERE t.relname = ? AND a.attname = ? AND NOT x.indisprimary`,
+			table, column).Scan(&names).Error; err != nil {
+			return err
+		}
+	}
+	for _, name := range names {
+		if name == "" {
+			continue
+		}
+		quoted := "`" + name + "`"
+		if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+			quoted = `"` + name + `"`
+		}
+		stmt := "DROP INDEX " + quoted
+		if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
+			// MySQL has no bare DROP INDEX; it must name the table.
+			stmt = "ALTER TABLE `" + table + "` DROP INDEX " + quoted
+		}
+		if err := DB.Exec(stmt).Error; err != nil {
+			return fmt.Errorf("failed to drop index %s on %s.%s: %w", name, table, column, err)
+		}
+		common.SysLog(fmt.Sprintf("dropped legacy index %s on %s.%s", name, table, column))
+	}
 	return nil
 }

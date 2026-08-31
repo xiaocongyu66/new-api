@@ -30,7 +30,6 @@ type Channel struct {
 	TestModel          *string `json:"test_model"`
 	Status             int     `json:"status" gorm:"default:1"`
 	Name               string  `json:"name" gorm:"index"`
-	Weight             *uint   `json:"weight" gorm:"default:0"`
 	CreatedTime        int64   `json:"created_time" gorm:"bigint"`
 	TestTime           int64   `json:"test_time" gorm:"bigint"`
 	ResponseTime       int     `json:"response_time"` // in milliseconds
@@ -44,7 +43,6 @@ type Channel struct {
 	ModelMapping       *string `json:"model_mapping" gorm:"type:text"`
 	//MaxInputTokens     *int    `json:"max_input_tokens" gorm:"default:0"`
 	StatusCodeMapping *string `json:"status_code_mapping" gorm:"type:varchar(1024);default:''"`
-	Priority          *int64  `json:"priority" gorm:"bigint;default:0"`
 	AutoBan           *int    `json:"auto_ban" gorm:"default:1"`
 	OtherInfo         string  `json:"other_info"`
 	Tag               *string `json:"tag" gorm:"index"`
@@ -80,7 +78,6 @@ type ChannelSortOptions struct {
 var channelSortColumns = map[string]string{
 	"id":            "id",
 	"name":          "name",
-	"priority":      "priority",
 	"balance":       "balance",
 	"response_time": "response_time",
 	"test_time":     "test_time",
@@ -116,8 +113,11 @@ func (options ChannelSortOptions) Apply(query *gorm.DB) *gorm.DB {
 			Desc:   true,
 		})
 	}
+	// The default used to be `priority desc`, back when priority ordered the
+	// candidate list. Scheduling now reads route unit static weights, and the
+	// column is gone, so the admin list falls back to the newest channel first.
 	return query.Order(clause.OrderByColumn{
-		Column: clause.Column{Name: "priority"},
+		Column: clause.Column{Name: "id"},
 		Desc:   true,
 	})
 }
@@ -476,9 +476,9 @@ func BatchInsertChannels(channels []Channel) error {
 	return err
 }
 
-// batchDeleteWithTx deletes channel rows and their ability rows inside the
-// given transaction. MutateGatewayRouting owns the outer transaction so the
-// deletes and the routing revision bump commit together.
+// batchDeleteWithTx deletes channel rows and their ability, route and route
+// health rows inside the given transaction. MutateGatewayRouting owns the outer
+// transaction so the deletes and the routing revision bump commit together.
 func batchDeleteWithTx(tx *gorm.DB, ids []int) (int64, error) {
 	var deletedCount int64
 	for _, chunk := range lo.Chunk(ids, 200) {
@@ -491,6 +491,9 @@ func batchDeleteWithTx(tx *gorm.DB, ids []int) (int64, error) {
 			return 0, err
 		}
 		if err := deleteRouteHealthByChannelIDsWithTx(tx, chunk); err != nil {
+			return 0, err
+		}
+		if err := DeleteChannelModelRoutesByChannelIDsWithTx(tx, chunk); err != nil {
 			return 0, err
 		}
 	}
@@ -514,20 +517,6 @@ func BatchDeleteChannels(ids []int) (int64, error) {
 		return 0, err
 	}
 	return deletedCount, nil
-}
-
-func (channel *Channel) GetPriority() int64 {
-	if channel.Priority == nil {
-		return 0
-	}
-	return *channel.Priority
-}
-
-func (channel *Channel) GetWeight() int {
-	if channel.Weight == nil {
-		return 0
-	}
-	return int(*channel.Weight)
 }
 
 func (channel *Channel) GetBaseURL() string {
@@ -947,7 +936,7 @@ func DisableChannelByTag(tag string) error {
 // tag inside one MutateGatewayRouting revision. Channel row updates and derived
 // ability updates commit together with the routing revision bump. The caller
 // must refresh the channel cache only after this returns nil.
-func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *string, group *string, priority *int64, weight *uint, paramOverride *string, headerOverride *string) error {
+func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *string, group *string, paramOverride *string, headerOverride *string) error {
 	updateData := Channel{}
 	shouldReCreateAbilities := false
 	updatedTag := tag
@@ -965,12 +954,6 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 	if group != nil && *group != "" {
 		shouldReCreateAbilities = true
 		updateData.Group = *group
-	}
-	if priority != nil {
-		updateData.Priority = priority
-	}
-	if weight != nil {
-		updateData.Weight = weight
 	}
 	if paramOverride != nil {
 		updateData.ParamOverride = paramOverride
@@ -997,7 +980,7 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 				}
 			}
 		} else {
-			if err := updateAbilityByTagWithTx(tx, tag, newTag, priority, weight); err != nil {
+			if err := updateAbilityByTagWithTx(tx, tag, newTag); err != nil {
 				return err
 			}
 			var ids []int
@@ -1053,6 +1036,9 @@ func deleteChannelByStatusWithTx(tx *gorm.DB, status int64) (int64, error) {
 	if err := deleteRouteHealthByChannelIDsWithTx(tx, ids); err != nil {
 		return 0, err
 	}
+	if err := DeleteChannelModelRoutesByChannelIDsWithTx(tx, ids); err != nil {
+		return 0, err
+	}
 	result := tx.Where("status = ?", status).Delete(&Channel{})
 	return result.RowsAffected, result.Error
 }
@@ -1102,6 +1088,9 @@ func deleteDisabledChannelWithTx(tx *gorm.DB) (int64, error) {
 		return 0, err
 	}
 	if err := deleteRouteHealthByChannelIDsWithTx(tx, ids); err != nil {
+		return 0, err
+	}
+	if err := DeleteChannelModelRoutesByChannelIDsWithTx(tx, ids); err != nil {
 		return 0, err
 	}
 	result := tx.Where("status = ? or status = ?", common.ChannelStatusAutoDisabled, common.ChannelStatusManuallyDisabled).Delete(&Channel{})
