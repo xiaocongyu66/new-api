@@ -322,42 +322,41 @@ jobs:
       - name: Clear root user sessions (avoid AUTH_SESSION_LIMIT)
         # 12 back-to-back scenarios pile past the per-user 50-active / 100-issuance
         # caps before init.go picks up USER_SESSION_ACTIVE_LIMIT=500 / ISSUANCE_LIMIT=10000
-        # from the deployment env (manifest bumped in 6ab5ded7 + b788022c2). Use
-        # kubectl exec into the in-cluster postgres pod so the runner namespace
-        # does not need to resolve the postgres Service host. SQL_DSN secret
-        # feeds the user/host/db/port; password is parsed out for PGPASSWORD.
+        # from the deployment env (manifest bumped in 6ab5ded7 + b788022c2). Run a
+        # small Python in the runner, which shells out to kubectl exec into the
+        # in-cluster postgres pod. SQL_DSN feeds the DSN parse; password is
+        # passed via env to psql inside the pod.
         env:
           SQL_DSN: ${{ secrets.SQL_DSN }}
         run: |
-          set -euo pipefail
-          if [ -z "${SQL_DSN:-}" ]; then
-            echo "::warning::SQL_DSN secret empty, skipping root session reset"
-            exit 0
-          fi
-          if ! command -v kubectl >/dev/null 2>&1; then
-            echo "::warning::kubectl unavailable, cannot clear root sessions"
-            exit 0
-          fi
-          PG_POD=$(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-          if [ -z "$PG_POD" ]; then
-            echo "::warning::postgres pod not found, skipping root session reset"
-            exit 0
-          fi
-          # Parse user / host:port / db from DSN; DSN form e.g.
-          # postgres://user:pass@host:port/dbname?sslmode=disable
-          DSN="$SQL_DSN"
-          PGUSER=$(printf '%s' "$DSN" | sed -E 's|.*://([^:]+):.*|\1|')
-          PGHOST=$(printf '%s' "$DSN" | sed -E 's|.*@([^:/]+).*|\1|')
-          PGPORT=$(printf '%s' "$DSN" | sed -nE 's|.*:[0-9]+/.*|\1|p' | head -1)
-          PGPORT=${PGPORT:-5432}
-          PGPASSWORD=$(printf '%s' "$DSN" | sed -E 's|.*://[^:]+:([^@]+)@.*|\1|')
-          PGDATABASE=$(printf '%s' "$DSN" | sed -E 's|.*/([^?]+).*|\1|')
-          SQL="DELETE FROM user_sessions WHERE user_id = (SELECT id FROM users WHERE username = 'root');"
-          if ! kubectl exec -i "$PG_POD" -- env PGPASSWORD="$PGPASSWORD" psql -U "$PGUSER" -d "$PGDATABASE" -c "$SQL" >/dev/null 2>&1; then
-            echo "::warning::root session reset failed (non-fatal)"
-          else
-            echo "root user sessions cleared"
-          fi
+          python3 - <<'PYEOF'
+          import os, subprocess, sys, urllib.parse as U
+          dsn = U.urlparse(os.environ.get("SQL_DSN", ""))
+          if not dsn.username or not dsn.hostname:
+              print("::warning::SQL_DSN empty, skipping root session reset")
+              sys.exit(0)
+          r = subprocess.run(
+              ["kubectl", "get", "pod", "-l", "app=postgres", "-o", "jsonpath={.items[0].metadata.name}"],
+              capture_output=True, text=True,
+          )
+          pg = r.stdout.strip()
+          if not pg:
+              print("::warning::postgres pod not found, skipping root session reset")
+              sys.exit(0)
+          sql = "DELETE FROM user_sessions WHERE user_id = (SELECT id FROM users WHERE username = 'root');"
+          r2 = subprocess.run(
+              ["kubectl", "exec", "-i", pg, "--",
+               "env", f"PGPASSWORD={dsn.password or ''}",
+               "psql", "-U", dsn.username, "-d", (dsn.path or "/").lstrip("/") or "postgres",
+               "-c", sql],
+              capture_output=True, text=True,
+          )
+          if r2.returncode != 0:
+              print("::warning::root session reset failed (non-fatal)")
+          else:
+              print("root user sessions cleared")
+          sys.exit(0)
+          PYEOF
 
       - name: Resolve gateway host alias
         env:
