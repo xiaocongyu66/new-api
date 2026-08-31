@@ -265,8 +265,8 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 			if handle == nil {
 				return
 			}
-			if relayInfo.IsStream && relayInfo.HasSendResponse() {
-				handle.ObserveTTFT(relayInfo.FirstResponseTime.Sub(relayInfo.StartTime).Seconds() * 1000)
+			if ttftMs, ok := attemptTTFTMs(relayInfo, attemptStart); ok {
+				handle.ObserveTTFT(ttftMs)
 			}
 			handle.ObserveLatency(attemptLatencyMs)
 		}
@@ -393,8 +393,42 @@ func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
 	return meta
 }
 
+// attemptTTFTMs reports the time-to-first-token of THIS attempt, and whether it
+// is chargeable at all.
+//
+// StartTime is whole-request scoped, so subtracting it would bill a retry for
+// every millisecond its failed predecessors burned. attemptStart is the only
+// origin that belongs to the attempt being scored.
+//
+// The After(attemptStart) guard is the second half: isFirstResponse is armed once
+// when RelayInfo is built and cleared by the first SetFirstResponseTime, with no
+// per-attempt reset. Once any attempt has streamed a chunk the timestamp is
+// frozen, so a later attempt would otherwise re-charge a stale value — and
+// ObserveTTFT is peak-sensitive, so the worst sibling's latency would stick to
+// every route the request touched afterwards.
+func attemptTTFTMs(info *relaycommon.RelayInfo, attemptStart time.Time) (float64, bool) {
+	if info == nil || !info.IsStream || !info.HasSendResponse() {
+		return 0, false
+	}
+	if !info.FirstResponseTime.After(attemptStart) {
+		return 0, false
+	}
+	return info.FirstResponseTime.Sub(attemptStart).Seconds() * 1000, true
+}
+
 func getChannel(c contract.Context, info *relaycommon.RelayInfo, retryParam *catalog.SelectParams) (*catalog.SelectedRoute, *types.NewAPIError) {
 	if info.ChannelMeta == nil {
+		// First attempt: Distribute already resolved a route, recorded its share
+		// entry and set the serving key in context. ChannelMeta is only assigned by
+		// InitChannelMeta, which runs after this function returns, so iteration 0 of
+		// every request lands here — re-deriving the route would fold a second entry
+		// into the share window and re-draw the key, charging isolation against an
+		// index that never served the attempt.
+		if selected, ok := common.GetCtxKey(c, constant.ContextKeySelectedRoute); ok {
+			if route, cast := selected.(*catalog.SelectedRoute); cast && route != nil {
+				return route, nil
+			}
+		}
 		// Specific-channel replay: the channel identity comes from context, and the
 		// route unit it belongs to is resolved so exclusion and attribution stay
 		// keyed by RouteKey rather than collapsing every key of one channel.

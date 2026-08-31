@@ -503,6 +503,7 @@ func SetupContextForSelectedChannel(c contract.Context, route *catalog.SelectedR
 	}
 	common.SetCtxKey(c, constant.ContextKeyChannelKey, route.Key)
 	common.SetCtxKey(c, constant.ContextKeyRouteStatsHandle, route.StatsHandle)
+	common.SetCtxKey(c, constant.ContextKeySelectedRoute, route)
 	common.SetCtxKey(c, constant.ContextKeyChannelBaseUrl, channel.GetBaseURL())
 	common.SetCtxKey(c, constant.ContextKeySystemPromptOverride, false)
 	switch channel.Type {
