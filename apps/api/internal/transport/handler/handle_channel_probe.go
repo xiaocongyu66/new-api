@@ -184,7 +184,11 @@ func testChannel(ctx context.Context, channel *channelpkg.Channel, testUserID in
 	group, _ := identity.GetUserGroup(testUserID, false)
 	c.Set("group", group)
 
-	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, testModel)
+	route, routeErr := channelpkg.SelectedRouteForProbe(channel, testModel)
+	if routeErr != nil {
+		return testResult{context: c, localErr: routeErr}
+	}
+	newAPIError := middleware.SetupContextForSelectedChannel(c, route, testModel)
 	if newAPIError != nil {
 		return testResult{
 			context:     c,

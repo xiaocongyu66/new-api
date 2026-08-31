@@ -10,6 +10,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	model_setting "github.com/QuantumNous/new-api/internal/catalog"
+	"github.com/QuantumNous/new-api/internal/catalog/routestats"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
@@ -182,9 +183,18 @@ type RelayInfo struct {
 	*ResponsesUsageInfo
 	*ChannelMeta
 	*TaskRelayInfo
+
+	// StatsHandle is the routestats handle for the selected route unit.
+	// Set by getChannel after route selection; nil when no route unit owns the request.
+	StatsHandle *routestats.RouteHandle
 }
 
 func (info *RelayInfo) InitChannelMeta(c contract.Context) {
+	if h, ok := common.GetCtxKey(c, constant.ContextKeyRouteStatsHandle); ok {
+		if handle, cast := h.(*routestats.RouteHandle); cast {
+			info.StatsHandle = handle
+		}
+	}
 	channelType := common.GetContextKeyInt(c, constant.ContextKeyChannelType)
 	paramOverride := common.GetContextKeyStringMap(c, constant.ContextKeyChannelParamOverride)
 	headerOverride := common.GetContextKeyStringMap(c, constant.ContextKeyChannelHeaderOverride)

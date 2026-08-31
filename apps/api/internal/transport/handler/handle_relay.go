@@ -194,12 +194,12 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 	}()
 
 	retryParam := &catalog.SelectParams{
-		Ctx:         c,
-		TokenGroup:  relayInfo.TokenGroup,
-		ModelName:   relayInfo.OriginModelName,
-		RequestPath: c.Path(),
-		Retry:       common.GetPointer(0),
-		ExcludeSet:  make(map[int]bool),
+		Ctx:           c,
+		TokenGroup:    relayInfo.TokenGroup,
+		ModelName:     relayInfo.OriginModelName,
+		RequestPath:   c.Path(),
+		Retry:         common.GetPointer(0),
+		ExcludeRoutes: make(map[catalog.RouteKey]bool),
 	}
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
@@ -214,12 +214,13 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
 		relayInfo.RetryIndex = retryParam.GetRetry()
-		channel, channelErr := getChannel(c, relayInfo, retryParam)
+		route, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
 			logger.LogError(c.Context(), channelErr.Error())
 			newAPIError = channelErr
 			break
 		}
+		channel := route.Channel
 		addUsedChannel(c, channel.Id)
 		if billingErr := billing.PrepareTieredBillingForSelectedGroup(c, relayInfo); billingErr != nil {
 			newAPIError = billingErr
@@ -264,8 +265,8 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 		// 4xx such as 400 is the caller's problem and must not cost the channel.
 		outcome := catalog.ClassifyChannelOutcome(newAPIError, channel.Id)
 		attempts = append(attempts, catalog.ChannelAttempt{ChannelID: channel.Id, ModelName: relayInfo.OriginModelName, Outcome: outcome})
-		if outcome.ExcludesChannel() && retryParam.ExcludeSet != nil {
-			retryParam.ExcludeSet[channel.Id] = true
+		if outcome.ExcludesChannel() && retryParam.ExcludeRoutes != nil {
+			retryParam.ExcludeRoutes[catalog.RouteKey{ChannelId: route.ChannelId, KeyIndex: route.KeyIndex, Model: route.Alias}] = true
 		}
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetCtxKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
 
@@ -328,35 +329,43 @@ func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
 	return meta
 }
 
-func getChannel(c contract.Context, info *relaycommon.RelayInfo, retryParam *catalog.SelectParams) (*catalog.Channel, *types.NewAPIError) {
+func getChannel(c contract.Context, info *relaycommon.RelayInfo, retryParam *catalog.SelectParams) (*catalog.SelectedRoute, *types.NewAPIError) {
 	if info.ChannelMeta == nil {
-		autoBan := c.GetBool("auto_ban")
-		autoBanInt := 1
-		if !autoBan {
-			autoBanInt = 0
+		// Specific-channel replay: the channel identity comes from context, and the
+		// route unit it belongs to is resolved so exclusion and attribution stay
+		// keyed by RouteKey rather than collapsing every key of one channel.
+		channel, err := catalog.CacheGetChannel(c.GetInt("channel_id"))
+		if err != nil || channel == nil {
+			autoBanInt := 1
+			if !c.GetBool("auto_ban") {
+				autoBanInt = 0
+			}
+			channel = &catalog.Channel{
+				Id:      c.GetInt("channel_id"),
+				Type:    c.GetInt("channel_type"),
+				Name:    c.GetString("channel_name"),
+				AutoBan: &autoBanInt,
+			}
 		}
-		return &catalog.Channel{
-			Id:      c.GetInt("channel_id"),
-			Type:    c.GetInt("channel_type"),
-			Name:    c.GetString("channel_name"),
-			AutoBan: &autoBanInt,
-		}, nil
+		route, routeErr := catalog.SelectedRouteFromChannel(channel, info.OriginModelName)
+		if routeErr != nil {
+			return nil, types.NewError(routeErr, types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+		}
+		return route, nil
 	}
-	channel, selectGroup, err := catalog.SelectChannel(retryParam)
+	route, selectGroup, err := catalog.SelectChannel(retryParam)
 	if err != nil {
 		return nil, types.NewError(fmt.Errorf("获取分组 %s 下模型 %s 的可用渠道失败（retry）: %s", selectGroup, info.OriginModelName, err.Error()), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
-	if channel == nil {
+	if route == nil {
 		return nil, types.NewError(fmt.Errorf("分组 %s 下模型 %s 的可用渠道不存在（retry）", selectGroup, info.OriginModelName), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
-
 	info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
 
-	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName)
-	if newAPIError != nil {
+	if newAPIError := middleware.SetupContextForSelectedChannel(c, route, info.OriginModelName); newAPIError != nil {
 		return nil, newAPIError
 	}
-	return channel, nil
+	return route, nil
 }
 
 func shouldRetry(c contract.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
@@ -573,12 +582,12 @@ func RelayTask(c contract.Context) {
 	}()
 
 	retryParam := &catalog.SelectParams{
-		Ctx:         c,
-		TokenGroup:  relayInfo.TokenGroup,
-		ModelName:   relayInfo.OriginModelName,
-		RequestPath: c.Path(),
-		Retry:       common.GetPointer(0),
-		ExcludeSet:  make(map[int]bool),
+		Ctx:           c,
+		TokenGroup:    relayInfo.TokenGroup,
+		ModelName:     relayInfo.OriginModelName,
+		RequestPath:   c.Path(),
+		Retry:         common.GetPointer(0),
+		ExcludeRoutes: make(map[catalog.RouteKey]bool),
 	}
 
 	// Same deferral as Relay: only a request that exhausted its retries counts
@@ -590,26 +599,30 @@ func RelayTask(c contract.Context) {
 	}()
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
-		var channel *catalog.Channel
-
+		var route *catalog.SelectedRoute
 		if lockedCh, ok := relayInfo.LockedChannel.(*catalog.Channel); ok && lockedCh != nil {
-			channel = lockedCh
+			var err error
+			route, err = catalog.SelectedRouteFromChannel(lockedCh, relayInfo.OriginModelName)
+			if err != nil {
+				taskErr = taskdomain.TaskErrorWrapperLocal(err, "setup_locked_channel_failed", http.StatusInternalServerError)
+				break
+			}
 			if retryParam.GetRetry() > 0 {
-				if setupErr := middleware.SetupContextForSelectedChannel(c, channel, relayInfo.OriginModelName); setupErr != nil {
+				if setupErr := middleware.SetupContextForSelectedChannel(c, route, relayInfo.OriginModelName); setupErr != nil {
 					taskErr = taskdomain.TaskErrorWrapperLocal(setupErr.Err, "setup_locked_channel_failed", http.StatusInternalServerError)
 					break
 				}
 			}
 		} else {
 			var channelErr *types.NewAPIError
-			channel, channelErr = getChannel(c, relayInfo, retryParam)
+			route, channelErr = getChannel(c, relayInfo, retryParam)
 			if channelErr != nil {
 				logger.LogError(c.Context(), channelErr.Error())
 				taskErr = taskdomain.TaskErrorWrapperLocal(channelErr.Err, "get_channel_failed", http.StatusInternalServerError)
 				break
 			}
 		}
-
+		channel := route.Channel
 		addUsedChannel(c, channel.Id)
 		bodyStorage, bodyErr := common.GetBodyStorage(c)
 		if bodyErr != nil {
@@ -636,7 +649,7 @@ func RelayTask(c contract.Context) {
 			ChannelId:         channel.Id,
 			ChannelType:       channel.Type,
 			ChannelBaseUrl:    channel.GetBaseURL(),
-			ApiKey:            channel.Key,
+			ApiKey:            route.Key,
 			ForcePreConsume:   relayInfo.ForcePreConsume,
 		}
 		result, taskErr = taskcap.SubmitTask(c, submitInfo)
@@ -652,8 +665,8 @@ func RelayTask(c contract.Context) {
 			taskAPIError := types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode)
 			outcome := catalog.ClassifyChannelOutcome(taskAPIError, channel.Id)
 			attempts = append(attempts, catalog.ChannelAttempt{ChannelID: channel.Id, ModelName: relayInfo.OriginModelName, Outcome: outcome})
-			if outcome.ExcludesChannel() && retryParam.ExcludeSet != nil {
-				retryParam.ExcludeSet[channel.Id] = true
+			if outcome.ExcludesChannel() && retryParam.ExcludeRoutes != nil {
+				retryParam.ExcludeRoutes[catalog.RouteKey{ChannelId: route.ChannelId, KeyIndex: route.KeyIndex, Model: route.Alias}] = true
 			}
 			processChannelError(c,
 				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey,

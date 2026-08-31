@@ -34,7 +34,7 @@ type ModelRequest struct {
 
 func Distribute() func(c contract.Context) {
 	return func(c contract.Context) {
-		var channel *catalog.Channel
+		var route *catalog.SelectedRoute
 		channelId, ok := common.GetCtxKey(c, constant.ContextKeyTokenSpecificChannelId)
 		modelRequest, shouldSelectChannel, err := getModelRequest(c)
 		if err != nil {
@@ -47,7 +47,7 @@ func Distribute() func(c contract.Context) {
 				abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.TCtx(c, i18n.MsgDistributorInvalidChannelId))
 				return
 			}
-			channel, err = catalog.GetChannelById(id, true)
+			channel, err := catalog.GetChannelById(id, true)
 			if err != nil {
 				abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.TCtx(c, i18n.MsgDistributorInvalidChannelId))
 				return
@@ -56,6 +56,12 @@ func Distribute() func(c contract.Context) {
 				abortWithOpenAiMessage(c, http.StatusForbidden, i18n.TCtx(c, i18n.MsgDistributorChannelDisabled))
 				return
 			}
+			route, err = catalog.SelectedRouteFromChannel(channel, modelRequest.Model)
+			if err != nil {
+				abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.TCtx(c, i18n.MsgDistributorInvalidChannelId))
+				return
+			}
+			common.SetCtxKey(c, constant.ContextKeyRoutePath, "specific")
 		} else {
 			// Select a channel for the user
 			// check token model mapping
@@ -116,16 +122,21 @@ func Distribute() func(c contract.Context) {
 								if catalog.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
 									selectGroup = g
 									common.SetCtxKey(c, constant.ContextKeyAutoGroup, g)
-									channel = preferred
-									affinityUsable = true
-									catalog.MarkChannelAffinityUsed(c, g, preferred.Id)
+									route, err = catalog.SelectedRouteFromChannel(preferred, modelRequest.Model)
+									affinityUsable = err == nil
+									if affinityUsable {
+										common.SetCtxKey(c, constant.ContextKeyRoutePath, "affinity")
+										catalog.MarkChannelAffinityUsed(c, g, preferred.Id)
+									}
 									break
 								}
 							}
 						} else if catalog.IsChannelEnabledForGroupModel(usingGroup, modelRequest.Model, preferred.Id) {
-							channel = preferred
-							selectGroup = usingGroup
-							affinityUsable = true
+							route, err = catalog.SelectedRouteFromChannel(preferred, modelRequest.Model)
+							affinityUsable = err == nil
+							if affinityUsable {
+								common.SetCtxKey(c, constant.ContextKeyRoutePath, "affinity")
+							}
 							catalog.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
 						}
 					}
@@ -134,14 +145,14 @@ func Distribute() func(c contract.Context) {
 					}
 				}
 
-				if channel == nil {
-					channel, selectGroup, err = catalog.SelectChannel(&catalog.SelectParams{
-						Ctx:         c,
-						ModelName:   modelRequest.Model,
-						TokenGroup:  usingGroup,
-						RequestPath: c.Path(),
-						Retry:       common.GetPointer(0),
-						ExcludeSet:  make(map[int]bool),
+				if route == nil {
+					route, selectGroup, err = catalog.SelectChannel(&catalog.SelectParams{
+						Ctx:           c,
+						ModelName:     modelRequest.Model,
+						TokenGroup:    usingGroup,
+						RequestPath:   c.Path(),
+						Retry:         common.GetPointer(0),
+						ExcludeRoutes: make(map[catalog.RouteKey]bool),
 					})
 					if err != nil {
 						showGroup := usingGroup
@@ -157,18 +168,24 @@ func Distribute() func(c contract.Context) {
 						abortWithOpenAiMessage(c, http.StatusServiceUnavailable, message, types.ErrorCodeModelNotFound)
 						return
 					}
-					if channel == nil {
+					if route == nil {
 						abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.TCtx(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelRequest.Model}), types.ErrorCodeModelNotFound)
 						return
 					}
+					common.SetCtxKey(c, constant.ContextKeyRoutePath, "weighted")
 				}
 			}
 		}
 		common.SetCtxKey(c, constant.ContextKeyRequestStartTime, time.Now())
-		SetupContextForSelectedChannel(c, channel, modelRequest.Model)
+		if route != nil {
+			if err := SetupContextForSelectedChannel(c, route, modelRequest.Model); err != nil {
+				abortWithOpenAiMessage(c, http.StatusServiceUnavailable, err.Error())
+				return
+			}
+		}
 		c.Next()
-		if channel != nil && c.ResponseStatus() > 0 && c.ResponseStatus() < http.StatusBadRequest {
-			catalog.RecordChannelAffinity(c, channel.Id)
+		if route != nil && c.ResponseStatus() > 0 && c.ResponseStatus() < http.StatusBadRequest {
+			catalog.RecordChannelAffinity(c, route.ChannelId)
 		}
 	}
 }
@@ -418,35 +435,31 @@ func getTaskOriginModelName(c contract.Context) string {
 	if !common.GetCtxKeyBool(c, constant.ContextKeyTokenModelLimitEnabled) {
 		return ""
 	}
-
 	taskId := c.Param("task_id")
 	if taskId == "" {
-		// jimeng adapter
 		taskId = c.GetString("task_id")
 	}
 	if taskId == "" {
 		return ""
 	}
-
-	userId := c.GetInt("id")
-	if task, exist, err := taskcap.GetByTaskId(userId, taskId); err == nil && exist && task != nil {
+	if task, exist, err := taskcap.GetByTaskId(c.GetInt("id"), taskId); err == nil && exist && task != nil {
 		return task.Properties.OriginModelName
 	}
 	return ""
 }
 
-func SetupContextForSelectedChannel(c contract.Context, channel *catalog.Channel, modelName string) *types.NewAPIError {
-	c.Set("original_model", modelName) // for retry
-	if channel == nil {
-		return types.NewError(errors.New("channel is nil"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+func SetupContextForSelectedChannel(c contract.Context, route *catalog.SelectedRoute, modelName string) *types.NewAPIError {
+	c.Set("original_model", modelName)
+	if route == nil || route.Channel == nil {
+		return types.NewError(errors.New("route is nil"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
+	channel := route.Channel
 	common.SetCtxKey(c, constant.ContextKeyChannelId, channel.Id)
 	common.SetCtxKey(c, constant.ContextKeyChannelName, channel.Name)
 	common.SetCtxKey(c, constant.ContextKeyChannelType, channel.Type)
 	setting := channel.GetSetting()
 	if setting.Proxy == "" {
 		if nodes, err := egress.GetProxyNodesForChannelAndModel(channel.Id, modelName); err == nil && len(nodes) > 0 {
-			// Select the first healthy/highest health node
 			var bestNode *egress.ProxyNode
 			for _, n := range nodes {
 				if n.Enabled && (bestNode == nil || n.Health > bestNode.Health) {
@@ -464,51 +477,34 @@ func SetupContextForSelectedChannel(c contract.Context, channel *catalog.Channel
 	common.SetCtxKey(c, constant.ContextKeyChannelSetting, setting)
 	common.SetCtxKey(c, constant.ContextKeyChannelOtherSetting, channel.GetOtherSettings())
 	paramOverride := channel.GetParamOverride()
-	headerOverride := channel.GetHeaderOverride()
 	if mergedParam, applied := catalog.ApplyChannelAffinityOverrideTemplate(c, paramOverride); applied {
 		paramOverride = mergedParam
 	}
-	common.SetCtxKey(c, constant.ContextKeyChannelHeaderOverride, headerOverride)
-	if nil != channel.OpenAIOrganization && *channel.OpenAIOrganization != "" {
+	common.SetCtxKey(c, constant.ContextKeyChannelHeaderOverride, channel.GetHeaderOverride())
+	if channel.OpenAIOrganization != nil && *channel.OpenAIOrganization != "" {
 		common.SetCtxKey(c, constant.ContextKeyChannelOrganization, *channel.OpenAIOrganization)
 	}
 	common.SetCtxKey(c, constant.ContextKeyChannelAutoBan, channel.GetAutoBan())
 	common.SetCtxKey(c, constant.ContextKeyChannelModelMapping, channel.GetModelMapping())
 	common.SetCtxKey(c, constant.ContextKeyChannelStatusCodeMapping, channel.GetStatusCodeMapping())
-
-	key, index, newAPIError := channel.GetNextEnabledKey(modelName)
-	if newAPIError != nil {
-		return newAPIError
-	}
 	if channel.ChannelInfo.IsMultiKey {
 		common.SetCtxKey(c, constant.ContextKeyChannelIsMultiKey, true)
-		common.SetCtxKey(c, constant.ContextKeyChannelMultiKeyIndex, index)
+		common.SetCtxKey(c, constant.ContextKeyChannelMultiKeyIndex, route.KeyIndex)
 	} else {
-		// 必须设置为 false，否则在重试到单个 key 的时候会导致日志显示错误
 		common.SetCtxKey(c, constant.ContextKeyChannelIsMultiKey, false)
+		common.SetCtxKey(c, constant.ContextKeyChannelMultiKeyIndex, 0)
 	}
-	// c.Headers().Set("Authorization", fmt.Sprintf("Bearer %s", key))
-	common.SetCtxKey(c, constant.ContextKeyChannelKey, key)
+	common.SetCtxKey(c, constant.ContextKeyChannelKey, route.Key)
+	common.SetCtxKey(c, constant.ContextKeyRouteStatsHandle, route.StatsHandle)
 	common.SetCtxKey(c, constant.ContextKeyChannelBaseUrl, channel.GetBaseURL())
-
 	common.SetCtxKey(c, constant.ContextKeySystemPromptOverride, false)
-
-	// TODO: api_version统一
 	switch channel.Type {
-	case constant.ChannelTypeAzure:
+	case constant.ChannelTypeAzure, constant.ChannelTypeXunfei, constant.ChannelTypeGemini, constant.ChannelCloudflare, constant.ChannelTypeMokaAI:
 		c.Set("api_version", channel.Other)
 	case constant.ChannelTypeVertexAi:
 		c.Set("region", channel.Other)
-	case constant.ChannelTypeXunfei:
-		c.Set("api_version", channel.Other)
-	case constant.ChannelTypeGemini:
-		c.Set("api_version", channel.Other)
 	case constant.ChannelTypeAli:
 		c.Set("plugin", channel.Other)
-	case constant.ChannelCloudflare:
-		c.Set("api_version", channel.Other)
-	case constant.ChannelTypeMokaAI:
-		c.Set("api_version", channel.Other)
 	case constant.ChannelTypeCoze:
 		c.Set("bot_id", channel.Other)
 	}

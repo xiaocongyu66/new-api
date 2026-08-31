@@ -38,6 +38,9 @@ const (
 	ContextKeyChannelIsMultiKey        ContextKey = "channel_is_multi_key"
 	ContextKeyChannelMultiKeyIndex     ContextKey = "channel_multi_key_index"
 	ContextKeyChannelKey               ContextKey = "channel_key"
+	ContextKeyRouteStatsHandle         ContextKey = "route_stats_handle"
+	// ContextKeyRoutePath labels how a route unit was selected.
+	ContextKeyRoutePath ContextKey = "route_path"
 
 	ContextKeyAutoGroup           ContextKey = "auto_group"
 	ContextKeyAutoGroupIndex      ContextKey = "auto_group_index"
