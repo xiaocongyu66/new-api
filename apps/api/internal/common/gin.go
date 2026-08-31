@@ -64,10 +64,11 @@ func GetRequestBody(c contract.Context) (io.Seeker, error) {
 
 	contentLength := c.ContentLength()
 
-	// 使用新的存储系统。注意:这里必须读 HTTPRequest().Body 而非 c.BodyReader(),
-	// 后者在 transport 适配层会回调 GetBodyStorage 形成无限递归。
-	storage, err := CreateBodyStorageFromReader(c.HTTPRequest().Body, contentLength, maxBytes)
-	_ = c.HTTPRequest().Body.Close()
+	// BodyReader delegates here to preserve replayable-body semantics, so this is
+	// the contract implementation's bootstrap path rather than a handler escape.
+	request := c.HTTPRequest()
+	storage, err := CreateBodyStorageFromReader(request.Body, contentLength, maxBytes)
+	_ = request.Body.Close()
 
 	if err != nil {
 		if IsRequestBodyTooLargeError(err) {
@@ -110,7 +111,7 @@ func UnmarshalBodyReusable(c contract.Context, v any) error {
 	if err != nil {
 		return err
 	}
-	contentType := c.HTTPRequest().Header.Get("Content-Type")
+	contentType := c.ContentType()
 	if contentType == "" {
 		// callers that previously decoded the raw stream (DecodeJson) accepted
 		// bodies regardless of content-type; keep that behaviour for the
@@ -270,7 +271,7 @@ func ParseMultipartFormReusable(c contract.Context) (*multipart.Form, error) {
 	if saved, ok := c.Get("_original_multipart_ct"); ok {
 		contentType = saved.(string)
 	} else {
-		contentType = c.HTTPRequest().Header.Get("Content-Type")
+		contentType = c.Header("Content-Type")
 		c.Set("_original_multipart_ct", contentType)
 	}
 	boundary, err := parseBoundary(contentType)
@@ -289,6 +290,7 @@ func ParseMultipartFormReusable(c contract.Context) (*multipart.Form, error) {
 		return nil, seekErr
 	}
 	c.ResetBody(io.NopCloser(storage))
+	c.SetParsedForm(form)
 	return form, nil
 }
 
@@ -328,7 +330,7 @@ func parseMultipartFormData(c contract.Context, data []byte, v any) error {
 	if saved, ok := c.Get("_original_multipart_ct"); ok {
 		contentType = saved.(string)
 	} else {
-		contentType = c.HTTPRequest().Header.Get("Content-Type")
+		contentType = c.Header("Content-Type")
 		c.Set("_original_multipart_ct", contentType)
 	}
 	boundary, err := parseBoundary(contentType)

@@ -247,6 +247,15 @@ func handleTTSWebSocketResponse(c contract.Context, requestURL string, volcReque
 	c.SetHeader("Content-Type", contentType)
 	c.SetHeader("Transfer-Encoding", "chunked")
 
+	stream := c.ResponseStream()
+	if stream == nil {
+		return nil, types.NewErrorWithStatusCode(
+			errors.New("failed to stream audio data: no response writer"),
+			types.ErrorCodeBadResponse,
+			http.StatusInternalServerError,
+		)
+	}
+
 	for {
 		msg, recvErr := ReceiveMessage(conn)
 		if recvErr != nil {
@@ -271,16 +280,17 @@ func handleTTSWebSocketResponse(c contract.Context, requestURL string, volcReque
 			continue
 		case MsgTypeAudioOnlyServer:
 			if len(msg.Payload) > 0 {
-				if _, writeErr := c.ResponseWriter().Write(msg.Payload); writeErr != nil {
+				if _, writeErr := stream.Write(msg.Payload); writeErr != nil {
 					return nil, types.NewErrorWithStatusCode(
 						fmt.Errorf("failed to write audio data: %w", writeErr),
 						types.ErrorCodeBadResponse,
 						http.StatusInternalServerError,
 					)
 				}
-				if f, ok := c.ResponseWriter().(http.Flusher); ok {
-					f.Flush()
-				}
+				// Best-effort flush, as before: the old code asserted
+				// http.Flusher on the framework writer, which always satisfies
+				// it, and ignored the outcome.
+				_ = stream.Flush()
 			}
 
 			if msg.Sequence < 0 {

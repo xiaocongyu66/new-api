@@ -54,9 +54,9 @@ func SetupApiRequestHeader(info *common.RelayInfo, c contract.Context, req *http
 	} else if info.RelayMode == constant.RelayModeRealtime {
 		// websocket
 	} else {
-		req.Set("Content-Type", c.HTTPRequest().Header.Get("Content-Type"))
-		req.Set("Accept", c.HTTPRequest().Header.Get("Accept"))
-		if info.IsStream && c.HTTPRequest().Header.Get("Accept") == "" {
+		req.Set("Content-Type", c.Header("Content-Type"))
+		req.Set("Accept", c.Header("Accept"))
+		if info.IsStream && c.Header("Accept") == "" {
 			req.Set("Accept", "text/event-stream")
 		}
 	}
@@ -163,7 +163,7 @@ func applyHeaderOverridePlaceholders(template string, c contract.Context, apiKey
 		if c == nil || c.HTTPRequest() == nil {
 			return "", false, fmt.Errorf("missing request context for client_header placeholder")
 		}
-		clientHeaderValue := c.HTTPRequest().Header.Get(name)
+		clientHeaderValue := c.Header(name)
 		if strings.TrimSpace(clientHeaderValue) == "" {
 			return "", false, nil
 		}
@@ -236,7 +236,7 @@ func processHeaderOverride(info *common.RelayInfo, c contract.Context) (map[stri
 		if c == nil || c.HTTPRequest() == nil {
 			return nil, types.NewError(fmt.Errorf("missing request context for header passthrough"), types.ErrorCodeChannelHeaderOverrideInvalid)
 		}
-		for name := range c.HTTPRequest().Header {
+		for name := range c.Headers() {
 			if shouldSkipPassthroughHeader(name) {
 				continue
 			}
@@ -252,7 +252,7 @@ func processHeaderOverride(info *common.RelayInfo, c contract.Context) (map[stri
 					continue
 				}
 			}
-			value := strings.TrimSpace(c.HTTPRequest().Header.Get(name))
+			value := strings.TrimSpace(c.Header(name))
 			if value == "" {
 				continue
 			}
@@ -312,8 +312,8 @@ func DoApiRequest(a Adaptor, c contract.Context, info *common.RelayInfo, request
 	if err != nil {
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
-	logger.LogDebug(c.HTTPRequest().Context(), "fullRequestURL: %s", common.SanitizeURLForLog(fullRequestURL))
-	req, err := http.NewRequest(c.HTTPRequest().Method, fullRequestURL, requestBody)
+	logger.LogDebug(c.Context(), "fullRequestURL: %s", common.SanitizeURLForLog(fullRequestURL))
+	req, err := http.NewRequest(c.Method(), fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
@@ -342,14 +342,14 @@ func DoFormRequest(a Adaptor, c contract.Context, info *common.RelayInfo, reques
 	if err != nil {
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
-	logger.LogDebug(c.HTTPRequest().Context(), "fullRequestURL: %s", common.SanitizeURLForLog(fullRequestURL))
-	req, err := http.NewRequest(c.HTTPRequest().Method, fullRequestURL, requestBody)
+	logger.LogDebug(c.Context(), "fullRequestURL: %s", common.SanitizeURLForLog(fullRequestURL))
+	req, err := http.NewRequest(c.Method(), fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
 	ApplyUpstreamBodyMetadata(req, requestBody)
 	// set form data
-	req.Header.Set("Content-Type", c.HTTPRequest().Header.Get("Content-Type"))
+	req.Header.Set("Content-Type", c.Header("Content-Type"))
 	headers := req.Header
 	err = a.SetupRequestHeader(c, &headers, info)
 	if err != nil {
@@ -388,7 +388,7 @@ func DoWssRequest(a Adaptor, c contract.Context, info *common.RelayInfo, request
 	for key, value := range headerOverride {
 		targetHeader.Set(key, value)
 	}
-	targetHeader.Set("Content-Type", c.HTTPRequest().Header.Get("Content-Type"))
+	targetHeader.Set("Content-Type", c.Header("Content-Type"))
 	targetConn, _, err := websocket.DefaultDialer.Dial(fullRequestURL, targetHeader)
 	if err != nil {
 		return nil, fmt.Errorf("dial failed to %s: %w", common.SanitizeURLForLog(fullRequestURL), err)
@@ -408,9 +408,9 @@ func startPingKeepAlive(c contract.Context, pingInterval time.Duration) (context
 		defer func() {
 			// 增加panic恢复处理
 			if r := recover(); r != nil {
-				logger.LogDebug(c.HTTPRequest().Context(), "SSE ping goroutine panic recovered: %v", r)
+				logger.LogDebug(c.Context(), "SSE ping goroutine panic recovered: %v", r)
 			}
-			logger.LogDebug(c.HTTPRequest().Context(), "SSE ping goroutine stopped")
+			logger.LogDebug(c.Context(), "SSE ping goroutine stopped")
 		}()
 
 		if pingInterval <= 0 {
@@ -421,11 +421,11 @@ func startPingKeepAlive(c contract.Context, pingInterval time.Duration) (context
 		// 确保在任何情况下都清理ticker
 		defer func() {
 			ticker.Stop()
-			logger.LogDebug(c.HTTPRequest().Context(), "SSE ping ticker stopped")
+			logger.LogDebug(c.Context(), "SSE ping ticker stopped")
 		}()
 
 		var pingMutex sync.Mutex
-		logger.LogDebug(c.HTTPRequest().Context(), "SSE ping goroutine started")
+		logger.LogDebug(c.Context(), "SSE ping goroutine started")
 
 		// 增加超时控制，防止goroutine长时间运行
 		maxPingDuration := 120 * time.Minute // 最大ping持续时间
@@ -437,18 +437,18 @@ func startPingKeepAlive(c contract.Context, pingInterval time.Duration) (context
 			// 发送 ping 数据
 			case <-ticker.C:
 				if err := sendPingData(c, &pingMutex); err != nil {
-					logger.LogDebug(c.HTTPRequest().Context(), "SSE ping error, stopping goroutine: %s", err.Error())
+					logger.LogDebug(c.Context(), "SSE ping error, stopping goroutine: %s", err.Error())
 					return
 				}
 			// 收到退出信号
 			case <-pingerCtx.Done():
 				return
 			// request 结束
-			case <-c.HTTPRequest().Context().Done():
+			case <-c.Context().Done():
 				return
 			// 超时保护，防止goroutine无限运行
 			case <-pingTimeout.C:
-				logger.LogDebug(c.HTTPRequest().Context(), "SSE ping goroutine timeout, stopping")
+				logger.LogDebug(c.Context(), "SSE ping goroutine timeout, stopping")
 				return
 			}
 		}
@@ -466,11 +466,11 @@ func sendPingData(c contract.Context, mutex *sync.Mutex) error {
 	helper.ExtendWriteDeadline(c)
 	err := helper.PingData(c)
 	if err != nil {
-		logger.LogError(c.HTTPRequest().Context(), "SSE ping error: "+err.Error())
+		logger.LogError(c.Context(), "SSE ping error: "+err.Error())
 		return err
 	}
 
-	logger.LogDebug(c.HTTPRequest().Context(), "SSE ping data sent")
+	logger.LogDebug(c.Context(), "SSE ping data sent")
 	return nil
 }
 
@@ -497,7 +497,7 @@ func doRequest(c contract.Context, req *http.Request, info *common.RelayInfo) (*
 	relayClient.CheckRedirect = keepUpstreamRedirectResponse
 	if common2.DebugEnabled && req != nil && req.URL != nil {
 		policy := egress.NormalizeHTTPTransportPolicy(info.ChannelSetting)
-		logger.LogDebug(c.HTTPRequest().Context(), fmt.Sprintf(
+		logger.LogDebug(c.Context(), fmt.Sprintf(
 			"http transport select: host=%s protocol=%s shards=%d policy=%s",
 			req.URL.Host,
 			policy.Protocol,
@@ -520,7 +520,7 @@ func doRequest(c contract.Context, req *http.Request, info *common.RelayInfo) (*
 				if stopPinger != nil {
 					stopPinger()
 					<-pingerDone
-					logger.LogDebug(c.HTTPRequest().Context(), "SSE ping goroutine stopped by defer")
+					logger.LogDebug(c.Context(), "SSE ping goroutine stopped by defer")
 				}
 			}()
 		}
@@ -528,7 +528,7 @@ func doRequest(c contract.Context, req *http.Request, info *common.RelayInfo) (*
 
 	resp, err := relayClient.Do(req)
 	if err != nil {
-		logger.LogError(c.HTTPRequest().Context(), "do request failed: "+err.Error())
+		logger.LogError(c.Context(), "do request failed: "+err.Error())
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}
 	if resp == nil {
@@ -536,7 +536,7 @@ func doRequest(c contract.Context, req *http.Request, info *common.RelayInfo) (*
 	}
 	if common2.DebugEnabled {
 		policy := egress.NormalizeHTTPTransportPolicy(info.ChannelSetting)
-		logger.LogDebug(c.HTTPRequest().Context(), fmt.Sprintf(
+		logger.LogDebug(c.Context(), fmt.Sprintf(
 			"http transport negotiated: host=%s protocol=%s shards=%d policy=%s negotiated=%s",
 			req.URL.Host,
 			policy.Protocol,
@@ -560,7 +560,7 @@ func DoTaskApiRequest(a TaskAdaptor, c contract.Context, info *common.RelayInfo,
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest(c.HTTPRequest().Method, fullRequestURL, requestBody)
+	req, err := http.NewRequest(c.Method(), fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}

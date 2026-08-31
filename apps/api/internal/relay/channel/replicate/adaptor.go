@@ -283,9 +283,8 @@ func (a *Adaptor) DoResponse(c contract.Context, resp *http.Response, info *rela
 		return nil, types.NewError(fmt.Errorf("replicate adaptor: encode response failed: %w", err), types.ErrorCodeBadResponseBody)
 	}
 
-	c.ResponseWriter().Header().Set("Content-Type", "application/json")
-	c.ResponseWriter().WriteHeader(http.StatusOK)
-	_, _ = c.ResponseWriter().Write(responseBytes)
+	c.SetHeader("Content-Type", "application/json")
+	_ = c.Data(http.StatusOK, "application/json", responseBytes)
 
 	usage := &dto.Usage{}
 	return usage, nil
@@ -402,12 +401,9 @@ func uploadFileFromForm(c contract.Context, info *relaycommon.RelayInfo, fieldCa
 		return "", errors.New("replicate adaptor: relay info is nil")
 	}
 
-	mf := c.HTTPRequest().MultipartForm
-	if mf == nil {
-		if _, err := c.MultipartForm(); err != nil {
-			return "", fmt.Errorf("replicate adaptor: parse multipart form failed: %w", err)
-		}
-		mf = c.HTTPRequest().MultipartForm
+	mf, err := c.MultipartForm()
+	if err != nil {
+		return "", fmt.Errorf("replicate adaptor: parse multipart form failed: %w", err)
 	}
 	if mf == nil || len(mf.File) == 0 {
 		return "", nil

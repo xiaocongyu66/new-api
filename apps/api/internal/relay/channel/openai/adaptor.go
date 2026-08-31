@@ -10,7 +10,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
-	"net/url"
 	"path/filepath"
 	"strings"
 
@@ -387,7 +386,7 @@ func (a *Adaptor) ConvertAudioRequest(c contract.Context, info *relaycommon.Rela
 
 		writer.WriteField("model", request.Model)
 
-		formData, err2 := common.ParseMultipartFormReusable(c)
+		formData, err2 := c.MultipartForm()
 		if err2 != nil {
 			return nil, fmt.Errorf("error parsing multipart form: %w", err2)
 		}
@@ -433,7 +432,7 @@ func (a *Adaptor) ConvertAudioRequest(c contract.Context, info *relaycommon.Rela
 
 		// 关闭 multipart 编写器以设置分界线
 		writer.Close()
-		c.HTTPRequest().Header.Set("Content-Type", writer.FormDataContentType())
+		c.Headers().Set("Content-Type", writer.FormDataContentType())
 		logger.LogDebug(c.Context(), "--header 'Content-Type: %s'", writer.FormDataContentType())
 		return &requestBody, nil
 	}
@@ -450,16 +449,15 @@ func (a *Adaptor) ConvertImageRequest(c contract.Context, info *relaycommon.Rela
 		writer := multipart.NewWriter(&requestBody)
 
 		writer.WriteField("model", request.Model)
-		// 使用已解析的 multipart 表单，避免重复解析
+		// Preserve a form parsed by upstream validation; its request body may be consumed.
 		mf := c.HTTPRequest().MultipartForm
 		if mf == nil {
-			form, err := common.ParseMultipartFormReusable(c)
+			var err error
+			mf, err = c.MultipartForm()
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse multipart form: %w", err)
 			}
-			c.HTTPRequest().MultipartForm = form
-			c.HTTPRequest().PostForm = url.Values(form.Value)
-			mf = form
+			c.SetParsedForm(mf)
 		}
 
 		// 写入所有非文件字段
@@ -565,7 +563,7 @@ func (a *Adaptor) ConvertImageRequest(c contract.Context, info *relaycommon.Rela
 
 		// 关闭 multipart 编写器以设置分界线
 		writer.Close()
-		c.HTTPRequest().Header.Set("Content-Type", writer.FormDataContentType())
+		c.Headers().Set("Content-Type", writer.FormDataContentType())
 		return &requestBody, nil
 
 	default:
@@ -574,10 +572,10 @@ func (a *Adaptor) ConvertImageRequest(c contract.Context, info *relaycommon.Rela
 }
 
 func isJSONRequest(c contract.Context) bool {
-	if c == nil || c.HTTPRequest() == nil {
+	if c == nil {
 		return false
 	}
-	return strings.HasPrefix(c.HTTPRequest().Header.Get("Content-Type"), "application/json")
+	return strings.HasPrefix(c.Header("Content-Type"), "application/json")
 }
 
 // detectImageMimeType determines the MIME type based on the file extension

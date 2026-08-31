@@ -99,8 +99,7 @@ func isSensitiveURLQueryKey(key string) bool {
 }
 
 func GetAPIVersion(c contract.Context) string {
-	query := c.HTTPRequest().URL.Query()
-	apiVersion := query.Get("api-version")
+	apiVersion := c.Query("api-version")
 	if apiVersion == "" {
 		apiVersion = c.GetString("api_version")
 	}
@@ -162,7 +161,7 @@ func validateMultipartTaskRequest(c contract.Context, info *RelayInfo, action st
 		return req, err
 	}
 
-	formData := c.HTTPRequest().PostForm
+	formData := url.Values(c.PostFormValues())
 	req = TaskSubmitReq{
 		Prompt:   formData.Get("prompt"),
 		Model:    formData.Get("model"),
@@ -282,7 +281,7 @@ func isKnownTaskField(field string) bool {
 
 func ValidateBasicTaskRequest(c contract.Context, info *RelayInfo, action string) *dto.TaskError {
 	var err error
-	contentType := c.HTTPRequest().Header.Get("Content-Type")
+	contentType := c.Header("Content-Type")
 	var req TaskSubmitReq
 	if strings.HasPrefix(contentType, "multipart/form-data") {
 		req, err = validateMultipartTaskRequest(c, info, action)

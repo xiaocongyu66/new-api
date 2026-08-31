@@ -95,8 +95,12 @@ func AlphaSearchHelper(c contract.Context, info *relaycommon.RelayInfo) (newAPIE
 	if contentType := httpResp.Header.Get("Content-Type"); contentType != "" {
 		c.SetHeader("Content-Type", contentType)
 	}
-	c.ResponseWriter().WriteHeader(httpResp.StatusCode)
-	if _, err := io.Copy(c.ResponseWriter(), httpResp.Body); err != nil {
+	stream := c.ResponseStream()
+	if stream == nil {
+		return types.NewError(errors.New("no response writer"), types.ErrorCodeDoRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+	stream.WriteHeader(httpResp.StatusCode)
+	if _, err := io.Copy(stream, httpResp.Body); err != nil {
 		return types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithSkipRetry())
 	}
 

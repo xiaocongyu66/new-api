@@ -203,9 +203,8 @@ func miniMaxImageHandler(c contract.Context, resp *http.Response, info *relaycom
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
 
-	c.ResponseWriter().Header().Set("Content-Type", "application/json")
-	c.ResponseWriter().WriteHeader(resp.StatusCode)
-	if _, err := c.ResponseWriter().Write(jsonResponse); err != nil {
+	c.SetHeader("Content-Type", "application/json")
+	if err := c.Data(resp.StatusCode, "application/json", jsonResponse); err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
 

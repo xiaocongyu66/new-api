@@ -84,7 +84,7 @@ func handleGeminiFormat(c contract.Context, data string, info *relaycommon.Relay
 	}
 
 	// send gemini format response
-	func() { _ = common.CustomEvent{Data: "data: " + string(geminiResponseStr)}.Render(c.ResponseWriter()) }()
+	helper.SSERender(c, "data: "+string(geminiResponseStr))
 	_ = helper.FlushWriter(c)
 	return nil
 }
@@ -233,7 +233,7 @@ func HandleFinalResponse(c contract.Context, info *relaycommon.RelayInfo, lastSt
 		}
 
 		// 发送最终的 Gemini 响应
-		func() { _ = common.CustomEvent{Data: "data: " + string(geminiResponseStr)}.Render(c.ResponseWriter()) }()
+		helper.SSERender(c, "data: "+string(geminiResponseStr))
 		_ = helper.FlushWriter(c)
 	}
 }

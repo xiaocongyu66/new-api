@@ -29,13 +29,20 @@ func OpenaiTTSHandler(c contract.Context, resp *http.Response, info *relaycommon
 	usage := &dto.Usage{}
 	usage.PromptTokens = info.GetEstimatePromptTokens()
 	usage.TotalTokens = info.GetEstimatePromptTokens()
+	// The upstream status is committed before the body, so this goes through the
+	// stream rather than Response.Data. A missing writer used to nil-panic on
+	// ResponseWriter().Header(); nothing can be delivered without one.
+	stream := c.ResponseStream()
+	if stream == nil {
+		return usage
+	}
 	for k, v := range resp.Header {
 		if !egress.ShouldCopyUpstreamHeader(c, k, v) {
 			continue
 		}
-		c.ResponseWriter().Header().Set(k, v[0])
+		stream.SetHeader(k, v[0])
 	}
-	c.ResponseWriter().WriteHeader(resp.StatusCode)
+	stream.WriteHeader(resp.StatusCode)
 
 	if info.IsStream {
 		helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
@@ -66,7 +73,7 @@ func OpenaiTTSHandler(c contract.Context, resp *http.Response, info *relaycommon
 
 		// 写入响应到客户端
 		c.Status(http.StatusOK)
-		_, err = c.ResponseWriter().Write(bodyBytes)
+		_, err = stream.Write(bodyBytes)
 		if err != nil {
 			logger.LogError(c.Context(), fmt.Sprintf("failed to write TTS response: %v", err))
 		}

@@ -68,8 +68,7 @@ func RerankHandler(c contract.Context, resp *http.Response, info *relaycommon.Re
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil
 	}
-	c.ResponseWriter().Header().Set("Content-Type", "application/json")
-	c.ResponseWriter().WriteHeader(resp.StatusCode)
-	c.ResponseWriter().Write(jsonResponse)
+	c.SetHeader("Content-Type", "application/json")
+	c.Data(resp.StatusCode, "application/json", jsonResponse)
 	return nil, &usage
 }

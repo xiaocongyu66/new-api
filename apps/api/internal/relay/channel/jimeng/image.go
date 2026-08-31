@@ -2,6 +2,7 @@ package jimeng
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
@@ -79,10 +80,15 @@ func jimengImageHandler(c contract.Context, resp *http.Response, info *relaycomm
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
 
-	c.ResponseWriter().Header().Set("Content-Type", "application/json")
-	c.ResponseWriter().WriteHeader(resp.StatusCode)
-	_, err = c.ResponseWriter().Write(jsonResponse)
-	if err != nil {
+	// Streams rather than Response.Data because this site propagates a failed
+	// client write back to the relay, and Data cannot report one.
+	stream := c.ResponseStream()
+	if stream == nil {
+		return nil, types.NewError(errors.New("no response writer"), types.ErrorCodeBadResponseBody)
+	}
+	stream.SetHeader("Content-Type", "application/json")
+	stream.WriteHeader(resp.StatusCode)
+	if _, err = stream.Write(jsonResponse); err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
 

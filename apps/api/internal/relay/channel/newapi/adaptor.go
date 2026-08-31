@@ -44,7 +44,7 @@ func (a *Adaptor) SetupRequestHeader(c contract.Context, req *http.Header, info 
 	case types.RelayFormatClaude:
 		req.Set("x-api-key", info.ApiKey)
 		if req.Get("anthropic-version") == "" {
-			anthropicVersion := c.HTTPRequest().Header.Get("anthropic-version")
+			anthropicVersion := c.Header("anthropic-version")
 			if anthropicVersion == "" {
 				anthropicVersion = "2023-06-01"
 			}

@@ -82,7 +82,15 @@ func (a *Adaptor) ConvertEmbeddingRequest(c contract.Context, info *relaycommon.
 
 func (a *Adaptor) ConvertAudioRequest(c contract.Context, info *relaycommon.RelayInfo, request dto.AudioRequest) (io.Reader, error) {
 	// 添加文件字段
-	file, _, err := c.HTTPRequest().FormFile("file")
+	mf, err := c.MultipartForm()
+	if err != nil {
+		return nil, errors.New("file is required")
+	}
+	fileHeaders := mf.File["file"]
+	if len(fileHeaders) == 0 {
+		return nil, errors.New("file is required")
+	}
+	file, err := fileHeaders[0].Open()
 	if err != nil {
 		return nil, errors.New("file is required")
 	}

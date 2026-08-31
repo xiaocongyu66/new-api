@@ -205,7 +205,7 @@ func GeminiHelper(c contract.Context, info *relaycommon.RelayInfo) (newAPIError 
 func GeminiEmbeddingHandler(c contract.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 	info.InitChannelMeta(c)
 
-	isBatch := strings.HasSuffix(c.HTTPRequest().URL.Path, "batchEmbedContents")
+	isBatch := strings.HasSuffix(c.Path(), "batchEmbedContents")
 	info.IsGeminiBatchEmbedding = isBatch
 
 	var req dto.Request

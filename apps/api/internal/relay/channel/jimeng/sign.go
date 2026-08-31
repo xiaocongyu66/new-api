@@ -73,7 +73,7 @@ func Sign(c contract.Context, req *http.Request, apiKey string) error {
 	payloadHash := sha256.Sum256(bodyBytes)
 	hexPayloadHash := hex.EncodeToString(payloadHash[:])
 
-	method := c.HTTPRequest().Method
+	method := c.Method()
 	u := req.URL
 	keyParts := strings.Split(apiKey, "|")
 	if len(keyParts) != 2 {

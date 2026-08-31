@@ -38,7 +38,7 @@ type TaskSubmitResult struct {
 // 该函数在控制器的重试循环之前调用一次，其结果通过 info 字段和上下文持久化。
 func ResolveOriginTask(c contract.Context, info *relaycommon.RelayInfo) *dto.TaskError {
 	// 检测 remix action
-	path := c.HTTPRequest().URL.Path
+	path := c.Path()
 	if strings.Contains(path, "/v1/videos/") && strings.HasSuffix(path, "/remix") {
 		info.Action = constant.TaskActionRemix
 	}
@@ -307,8 +307,13 @@ func RelayTaskFetch(c contract.Context, relayMode int) (taskResp *dto.TaskError)
 		respBody = []byte("{\"code\":\"success\",\"data\":null}")
 	}
 
-	c.ResponseWriter().Header().Set("Content-Type", "application/json")
-	_, err := io.Copy(c.ResponseWriter(), bytes.NewBuffer(respBody))
+	stream := c.ResponseStream()
+	if stream == nil {
+		taskResp = taskcap.TaskErrorWrapper(errors.New("no response writer"), "copy_response_body_failed", http.StatusInternalServerError)
+		return
+	}
+	stream.SetHeader("Content-Type", "application/json")
+	_, err := io.Copy(stream, bytes.NewBuffer(respBody))
 	if err != nil {
 		taskResp = taskcap.TaskErrorWrapper(err, "copy_response_body_failed", http.StatusInternalServerError)
 		return
@@ -385,7 +390,7 @@ func videoFetchByIDRespBodyBuilder(c contract.Context) (respBody []byte, taskRes
 		return
 	}
 
-	isOpenAIVideoAPI := strings.HasPrefix(c.HTTPRequest().RequestURI, "/v1/videos/")
+	isOpenAIVideoAPI := strings.HasPrefix(c.RequestURI(), "/v1/videos/")
 
 	// Gemini/Vertex 支持实时查询：用户 fetch 时直接从上游拉取最新状态
 	if realtimeResp := tryRealtimeFetch(originTask, isOpenAIVideoAPI); len(realtimeResp) > 0 {

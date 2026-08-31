@@ -196,7 +196,7 @@ pollLoop:
 				common.SysLog("error marshalling stream response: " + err.Error())
 				continue
 			}
-			func() { _ = common.CustomEvent{Data: "data: " + string(jsonResponse)}.Render(c.ResponseWriter()) }()
+			helper.SSERender(c, "data: "+string(jsonResponse))
 			continue
 		case data := <-metaChan:
 			var zhipuResponse ZhipuStreamMetaResponse
@@ -212,10 +212,10 @@ pollLoop:
 				continue
 			}
 			usage = zhipuUsage
-			func() { _ = common.CustomEvent{Data: "data: " + string(jsonResponse)}.Render(c.ResponseWriter()) }()
+			helper.SSERender(c, "data: "+string(jsonResponse))
 			continue
 		case <-stopChan:
-			func() { _ = common.CustomEvent{Data: "data: [DONE]"}.Render(c.ResponseWriter()) }()
+			helper.SSERender(c, "data: [DONE]")
 			_ = helper.FlushWriter(c)
 			break pollLoop
 		}
@@ -246,8 +246,7 @@ func zhipuHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Re
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
-	c.ResponseWriter().Header().Set("Content-Type", "application/json")
-	c.ResponseWriter().WriteHeader(resp.StatusCode)
-	_, err = c.ResponseWriter().Write(jsonResponse)
+	c.SetHeader("Content-Type", "application/json")
+	c.Data(resp.StatusCode, "application/json", jsonResponse)
 	return &fullTextResponse.Usage, nil
 }

@@ -162,10 +162,10 @@ pollLoop:
 				common.SysLog("error marshalling stream response: " + err.Error())
 				continue
 			}
-			func() { _ = common.CustomEvent{Data: "data: " + string(jsonStr)}.Render(c.ResponseWriter()) }()
+			helper.SSERender(c, "data: "+string(jsonStr))
 			continue
 		case <-stopChan:
-			func() { _ = common.CustomEvent{Data: "data: [DONE]"}.Render(c.ResponseWriter()) }()
+			helper.SSERender(c, "data: [DONE]")
 			_ = helper.FlushWriter(c)
 			break pollLoop
 		}
@@ -212,9 +212,8 @@ func cohereHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.R
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
-	c.ResponseWriter().Header().Set("Content-Type", "application/json")
-	c.ResponseWriter().WriteHeader(resp.StatusCode)
-	_, _ = c.ResponseWriter().Write(jsonResponse)
+	c.SetHeader("Content-Type", "application/json")
+	_ = c.Data(resp.StatusCode, "application/json", jsonResponse)
 	return &usage, nil
 }
 
@@ -248,8 +247,7 @@ func cohereRerankHandler(c contract.Context, resp *http.Response, info *relaycom
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
-	c.ResponseWriter().Header().Set("Content-Type", "application/json")
-	c.ResponseWriter().WriteHeader(resp.StatusCode)
-	_, err = c.ResponseWriter().Write(jsonResponse)
+	c.SetHeader("Content-Type", "application/json")
+	err = c.Data(resp.StatusCode, "application/json", jsonResponse)
 	return &usage, nil
 }

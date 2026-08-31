@@ -90,9 +90,8 @@ func cozeChatHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
-	c.ResponseWriter().Header().Set("Content-Type", "application/json")
-	c.ResponseWriter().WriteHeader(resp.StatusCode)
-	_, _ = c.ResponseWriter().Write(jsonResponse)
+	c.SetHeader("Content-Type", "application/json")
+	_ = c.Data(resp.StatusCode, "application/json", jsonResponse)
 
 	return &usage, nil
 }

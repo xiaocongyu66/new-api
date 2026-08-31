@@ -77,8 +77,8 @@ func mokaEmbeddingHandler(c contract.Context, info *relaycommon.RelayInfo, resp 
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
-	c.ResponseWriter().Header().Set("Content-Type", "application/json")
-	c.ResponseWriter().WriteHeader(resp.StatusCode)
+	c.SetHeader("Content-Type", "application/json")
+	c.Status(resp.StatusCode)
 	egress.IOCopyBytesGracefully(c, resp, jsonResponse)
 	return &fullTextResponse.Usage, nil
 }

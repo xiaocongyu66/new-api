@@ -139,7 +139,7 @@ func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, erro
 // BuildRequestHeader sets required headers.
 func (a *TaskAdaptor) BuildRequestHeader(c contract.Context, req *http.Request, info *relaycommon.RelayInfo) error {
 	req.Header.Set("Authorization", "Bearer "+a.apiKey)
-	req.Header.Set("Content-Type", c.HTTPRequest().Header.Get("Content-Type"))
+	req.Header.Set("Content-Type", c.Header("Content-Type"))
 	return nil
 }
 
@@ -152,7 +152,7 @@ func (a *TaskAdaptor) BuildRequestBody(c contract.Context, info *relaycommon.Rel
 	if err != nil {
 		return nil, errors.Wrap(err, "read_body_bytes_failed")
 	}
-	contentType := c.HTTPRequest().Header.Get("Content-Type")
+	contentType := c.Header("Content-Type")
 
 	if strings.HasPrefix(contentType, "application/json") {
 		var bodyMap map[string]interface{}
@@ -166,7 +166,7 @@ func (a *TaskAdaptor) BuildRequestBody(c contract.Context, info *relaycommon.Rel
 	}
 
 	if strings.Contains(contentType, "multipart/form-data") {
-		formData, err := common.ParseMultipartFormReusable(c)
+		formData, err := c.MultipartForm()
 		if err != nil {
 			return bytes.NewReader(cachedBody), nil
 		}
@@ -212,7 +212,7 @@ func (a *TaskAdaptor) BuildRequestBody(c contract.Context, info *relaycommon.Rel
 			}
 		}
 		writer.Close()
-		c.HTTPRequest().Header.Set("Content-Type", writer.FormDataContentType())
+		c.Headers().Set("Content-Type", writer.FormDataContentType())
 		return &buf, nil
 	}
 

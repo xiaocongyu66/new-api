@@ -91,10 +91,10 @@ pollLoop:
 	for {
 		select {
 		case data := <-dataChan:
-			func() { _ = common.CustomEvent{Data: "data: " + data}.Render(c.ResponseWriter()) }()
+			helper.SSERender(c, "data: "+data)
 			continue
 		case <-stopChan:
-			func() { _ = common.CustomEvent{Data: "data: [DONE]"}.Render(c.ResponseWriter()) }()
+			helper.SSERender(c, "data: [DONE]")
 			_ = helper.FlushWriter(c)
 			break pollLoop
 		}
@@ -129,8 +129,8 @@ func palmHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Res
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
-	c.ResponseWriter().Header().Set("Content-Type", "application/json")
-	c.ResponseWriter().WriteHeader(resp.StatusCode)
+	c.SetHeader("Content-Type", "application/json")
+	c.Status(resp.StatusCode)
 	egress.IOCopyBytesGracefully(c, resp, jsonResponse)
 	return usage, nil
 }

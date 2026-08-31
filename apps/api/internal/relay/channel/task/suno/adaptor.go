@@ -71,8 +71,8 @@ func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, erro
 }
 
 func (a *TaskAdaptor) BuildRequestHeader(c contract.Context, req *http.Request, info *relaycommon.RelayInfo) error {
-	req.Header.Set("Content-Type", c.HTTPRequest().Header.Get("Content-Type"))
-	req.Header.Set("Accept", c.HTTPRequest().Header.Get("Accept"))
+	req.Header.Set("Content-Type", c.Header("Content-Type"))
+	req.Header.Set("Accept", c.Header("Accept"))
 	req.Header.Set("Authorization", "Bearer "+info.ApiKey)
 	return nil
 }

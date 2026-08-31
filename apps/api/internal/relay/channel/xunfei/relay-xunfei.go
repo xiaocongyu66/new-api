@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -148,10 +149,10 @@ pollLoop:
 				common.SysLog("error marshalling stream response: " + err.Error())
 				continue
 			}
-			func() { _ = common.CustomEvent{Data: "data: " + string(jsonResponse)}.Render(c.ResponseWriter()) }()
+			helper.SSERender(c, "data: "+string(jsonResponse))
 			continue
 		case <-stopChan:
-			func() { _ = common.CustomEvent{Data: "data: [DONE]"}.Render(c.ResponseWriter()) }()
+			helper.SSERender(c, "data: [DONE]")
 			_ = helper.FlushWriter(c)
 			break pollLoop
 		}
@@ -196,8 +197,8 @@ func xunfeiHandler(c contract.Context, textRequest dto.GeneralOpenAIRequest, app
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
-	c.ResponseWriter().Header().Set("Content-Type", "application/json")
-	_, _ = c.ResponseWriter().Write(jsonResponse)
+	c.SetHeader("Content-Type", "application/json")
+	c.Data(http.StatusOK, "application/json", jsonResponse)
 	return &usage, nil
 }
 
@@ -272,8 +273,7 @@ func getXunfeiAuthUrl(c contract.Context, apiKey string, apiSecret string, model
 }
 
 func getAPIVersion(c contract.Context, modelName string) string {
-	query := c.HTTPRequest().URL.Query()
-	apiVersion := query.Get("api-version")
+	apiVersion := c.Query("api-version")
 	if apiVersion != "" {
 		return apiVersion
 	}

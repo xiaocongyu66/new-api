@@ -157,9 +157,8 @@ func baiduHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Re
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil
 	}
-	c.ResponseWriter().Header().Set("Content-Type", "application/json")
-	c.ResponseWriter().WriteHeader(resp.StatusCode)
-	_, err = c.ResponseWriter().Write(jsonResponse)
+	c.SetHeader("Content-Type", "application/json")
+	c.Data(resp.StatusCode, "application/json", jsonResponse)
 	return nil, &fullTextResponse.Usage
 }
 
@@ -182,9 +181,8 @@ func baiduEmbeddingHandler(c contract.Context, info *relaycommon.RelayInfo, resp
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil
 	}
-	c.ResponseWriter().Header().Set("Content-Type", "application/json")
-	c.ResponseWriter().WriteHeader(resp.StatusCode)
-	_, err = c.ResponseWriter().Write(jsonResponse)
+	c.SetHeader("Content-Type", "application/json")
+	c.Data(resp.StatusCode, "application/json", jsonResponse)
 	return nil, &fullTextResponse.Usage
 }
 

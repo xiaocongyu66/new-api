@@ -247,7 +247,7 @@ func awsHandler(c contract.Context, info *relaycommon.RelayInfo, a *Adaptor) (*t
 
 	// 复制上游 Content-Type 到客户端响应头
 	if awsResp.ContentType != nil && *awsResp.ContentType != "" {
-		c.ResponseWriter().Header().Set("Content-Type", *awsResp.ContentType)
+		c.SetHeader("Content-Type", *awsResp.ContentType)
 	}
 
 	handlerErr := claude.HandleClaudeResponseData(c, info, claudeInfo, nil, awsResp.Body)

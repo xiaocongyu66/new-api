@@ -113,9 +113,8 @@ func cfHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil
 	}
-	c.ResponseWriter().Header().Set("Content-Type", "application/json")
-	c.ResponseWriter().WriteHeader(resp.StatusCode)
-	_, _ = c.ResponseWriter().Write(jsonResponse)
+	c.SetHeader("Content-Type", "application/json")
+	_ = c.Data(resp.StatusCode, "application/json", jsonResponse)
 	return nil, usage
 }
 
@@ -139,9 +138,8 @@ func cfSTTHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Re
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil
 	}
-	c.ResponseWriter().Header().Set("Content-Type", "application/json")
-	c.ResponseWriter().WriteHeader(resp.StatusCode)
-	_, _ = c.ResponseWriter().Write(jsonResponse)
+	c.SetHeader("Content-Type", "application/json")
+	_ = c.Data(resp.StatusCode, "application/json", jsonResponse)
 
 	usage := relaycommon.ResponseText2Usage(c, cfResp.Result.Text, info.UpstreamModelName, info.GetEstimatePromptTokens())
 	return nil, usage

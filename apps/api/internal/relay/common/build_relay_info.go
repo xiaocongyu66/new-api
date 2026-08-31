@@ -499,6 +499,8 @@ func genBaseRelayInfo(c contract.Context, request dto.Request) *RelayInfo {
 	isStream := false
 
 	if request != nil {
+		// relaykit's public request contract requires *http.Request; no
+		// framework-neutral equivalent exists for its endpoint-specific stream check.
 		isStream = request.IsStream(c.HTTPRequest())
 	}
 	c.Set(string(constant.ContextKeyIsStream), isStream)
@@ -529,8 +531,8 @@ func genBaseRelayInfo(c contract.Context, request dto.Request) *RelayInfo {
 		TokenGroup:     tokenGroup,
 
 		isFirstResponse: true,
-		RelayMode:       relayconstant.Path2RelayMode(c.HTTPRequest().URL.Path),
-		RequestURLPath:  c.HTTPRequest().URL.String(),
+		RelayMode:       relayconstant.Path2RelayMode(c.Path()),
+		RequestURLPath:  c.RequestURI(),
 		RequestHeaders:  cloneRequestHeaders(c),
 		IsStream:        isStream,
 
@@ -550,7 +552,7 @@ func genBaseRelayInfo(c contract.Context, request dto.Request) *RelayInfo {
 		info.RelayMode = c.GetInt("relay_mode")
 	}
 
-	if strings.HasPrefix(c.HTTPRequest().URL.Path, "/pg") {
+	if strings.HasPrefix(c.Path(), "/pg") {
 		info.IsPlayground = true
 		info.RequestURLPath = strings.TrimPrefix(info.RequestURLPath, "/pg")
 		info.RequestURLPath = "/v1" + info.RequestURLPath
@@ -565,15 +567,16 @@ func genBaseRelayInfo(c contract.Context, request dto.Request) *RelayInfo {
 }
 
 func cloneRequestHeaders(c contract.Context) map[string]string {
-	if c == nil || c.HTTPRequest() == nil {
+	if c == nil {
 		return nil
 	}
-	if len(c.HTTPRequest().Header) == 0 {
+	requestHeaders := c.Headers()
+	if len(requestHeaders) == 0 {
 		return nil
 	}
-	headers := make(map[string]string, len(c.HTTPRequest().Header))
-	for key := range c.HTTPRequest().Header {
-		value := strings.TrimSpace(c.HTTPRequest().Header.Get(key))
+	headers := make(map[string]string, len(requestHeaders))
+	for key := range requestHeaders {
+		value := strings.TrimSpace(requestHeaders.Get(key))
 		if value == "" {
 			continue
 		}

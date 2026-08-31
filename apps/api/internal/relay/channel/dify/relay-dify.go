@@ -294,8 +294,7 @@ func difyHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Res
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
-	c.ResponseWriter().Header().Set("Content-Type", "application/json")
-	c.ResponseWriter().WriteHeader(resp.StatusCode)
-	c.ResponseWriter().Write(jsonResponse)
+	c.SetHeader("Content-Type", "application/json")
+	c.Data(resp.StatusCode, "application/json", jsonResponse)
 	return &difyResponse.MetaData.Usage, nil
 }

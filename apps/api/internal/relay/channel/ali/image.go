@@ -91,12 +91,9 @@ func oaiImage2AliImageRequest(info *relaycommon.RelayInfo, request dto.ImageRequ
 	return &imageRequest, nil
 }
 func getImageBase64sFromForm(c contract.Context, fieldName string) ([]string, error) {
-	mf := c.HTTPRequest().MultipartForm
-	if mf == nil {
-		if _, err := c.MultipartForm(); err != nil {
-			return nil, fmt.Errorf("failed to parse image edit form request: %w", err)
-		}
-		mf = c.HTTPRequest().MultipartForm
+	mf, err := c.MultipartForm()
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse image edit form request: %w", err)
 	}
 
 	var imageFiles []*multipart.FileHeader

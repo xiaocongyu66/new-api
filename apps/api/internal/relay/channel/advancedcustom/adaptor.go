@@ -377,8 +377,8 @@ func (a *Adaptor) resolve(c contract.Context, info *relaycommon.RelayInfo) error
 }
 
 func incomingRequestPath(c contract.Context, info *relaycommon.RelayInfo) string {
-	if c != nil && c.HTTPRequest() != nil && c.HTTPRequest().URL != nil {
-		return c.HTTPRequest().URL.Path
+	if c != nil {
+		return c.Path()
 	}
 	if info == nil {
 		return ""
@@ -493,8 +493,8 @@ func shouldApplyClaudeHeaders(converter string, info *relaycommon.RelayInfo) boo
 
 func applyClaudeHeaders(c contract.Context, header *http.Header, info *relaycommon.RelayInfo) {
 	anthropicVersion := ""
-	if c != nil && c.HTTPRequest() != nil {
-		anthropicVersion = c.HTTPRequest().Header.Get("anthropic-version")
+	if c != nil {
+		anthropicVersion = c.Header("anthropic-version")
 	}
 	if anthropicVersion == "" {
 		anthropicVersion = "2023-06-01"
@@ -510,10 +510,10 @@ func applyAuthTemplate(template string, apiKey string) string {
 }
 
 func isJSONRequest(c contract.Context) bool {
-	if c == nil || c.HTTPRequest() == nil {
+	if c == nil {
 		return false
 	}
-	return strings.Contains(strings.ToLower(c.HTTPRequest().Header.Get("Content-Type")), "application/json")
+	return strings.Contains(strings.ToLower(c.Header("Content-Type")), "application/json")
 }
 
 func (a *Adaptor) convertOpenAICompatibleRequest(c contract.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) (any, error) {

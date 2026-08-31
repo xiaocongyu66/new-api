@@ -72,7 +72,7 @@ func shouldAppendClaudeBetaQuery(info *relaycommon.RelayInfo) bool {
 
 func CommonClaudeHeadersOperation(c contract.Context, req *http.Header, info *relaycommon.RelayInfo) {
 	// common headers operation
-	anthropicBeta := c.HTTPRequest().Header.Get("anthropic-beta")
+	anthropicBeta := c.Header("anthropic-beta")
 	if anthropicBeta != "" {
 		req.Set("anthropic-beta", anthropicBeta)
 	}
@@ -82,7 +82,7 @@ func CommonClaudeHeadersOperation(c contract.Context, req *http.Header, info *re
 func (a *Adaptor) SetupRequestHeader(c contract.Context, req *http.Header, info *relaycommon.RelayInfo) error {
 	channel.SetupApiRequestHeader(info, c, req)
 	req.Set("x-api-key", info.ApiKey)
-	anthropicVersion := c.HTTPRequest().Header.Get("anthropic-version")
+	anthropicVersion := c.Header("anthropic-version")
 	if anthropicVersion == "" {
 		anthropicVersion = "2023-06-01"
 	}
