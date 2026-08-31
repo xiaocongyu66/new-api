@@ -319,6 +319,28 @@ jobs:
           echo '${{ env.KUBE_CONFIG_B64 }}' | base64 -d > ~/.kube/config
           chmod 600 ~/.kube/config
 
+      - name: Clear root user sessions (avoid AUTH_SESSION_LIMIT)
+        # 12 back-to-back scenarios pile past the per-user active-session
+        # cap (default 50) before init.go picks up USER_SESSION_ACTIVE_LIMIT=500
+        # from the deployment env (manifest bumped in 6ab5ded7). Until the new
+        # worker image rolls out, the workflow has to drop the root sessions
+        # out of the SQL store itself. Uses the in-cluster postgres via
+        # SQL_DSN secret; runner has psql via the postgres:17-alpine image.
+        env:
+          SQL_DSN: ${{ secrets.SQL_DSN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SQL_DSN:-}" ]; then
+            echo "::warning::SQL_DSN secret empty, skipping root session reset"
+            exit 0
+          fi
+          PGURL=$(printf '%s' "$SQL_DSN" | sed -E 's|.*://[^:]+:([^@]+)@.*|\1|')
+          docker run --rm -e "PGPASSWORD=$PGURL" postgres:17-alpine \
+            psql "$SQL_DSN" -tAc \
+              "DELETE FROM user_sessions WHERE user_id = (SELECT id FROM users WHERE username = 'root')" \
+            || echo "::warning::root session reset failed (non-fatal)"
+          echo "root user sessions cleared"
+
       - name: Resolve gateway host alias
         env:
           TARGET_URL: ${{ env.TARGET_URL }}
