@@ -394,7 +394,9 @@ func DisableChannelModel(channelID int, modelName string) error {
 		if err := updateAbilityStatusByModelWithTx(tx, channelID, modelName, false); err != nil {
 			return err
 		}
-		return nil
+		// The ability row alone no longer decides candidacy, so the channel's route
+		// rows must be resynced or the disabled model keeps serving.
+		return SyncChannelModelRoutesWithTx(tx, channelID)
 	})
 	return err
 }

@@ -455,6 +455,9 @@ func batchInsertWithTx(tx *gorm.DB, channels []Channel) error {
 			if err := channel_.AddAbilities(tx); err != nil {
 				return err
 			}
+			if err := SyncChannelModelRoutesWithTx(tx, channel_.Id); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -556,7 +559,12 @@ func (channel *Channel) insertWithTx(tx *gorm.DB) error {
 	if err := tx.Create(channel).Error; err != nil {
 		return err
 	}
-	return channel.AddAbilities(tx)
+	if err := channel.AddAbilities(tx); err != nil {
+		return err
+	}
+	// Selection reads route units, not abilities, so a channel whose route rows
+	// were never written is invisible to routing until the next full seed.
+	return SyncChannelModelRoutesWithTx(tx, channel.Id)
 }
 
 func (channel *Channel) Insert() error {
@@ -607,7 +615,12 @@ func (channel *Channel) updateWithTx(tx *gorm.DB) error {
 	if err := tx.First(channel, "id = ?", channel.Id).Error; err != nil {
 		return err
 	}
-	return channel.UpdateAbilities(tx)
+	if err := channel.UpdateAbilities(tx); err != nil {
+		return err
+	}
+	// An edit that changes models, groups or key count changes the route unit set;
+	// syncing here is what keeps the selector's view of this channel current.
+	return SyncChannelModelRoutesWithTx(tx, channel.Id)
 }
 
 func (channel *Channel) Update() error {
@@ -642,6 +655,11 @@ func (channel *Channel) deleteWithTx(tx *gorm.DB) error {
 		return err
 	}
 	if err := deleteAbilitiesWithTx(tx, channel.Id); err != nil {
+		return err
+	}
+	// The channel row is already gone, so this sync deletes its route rows: a
+	// stale route unit would keep the deleted channel selectable.
+	if err := SyncChannelModelRoutesWithTx(tx, channel.Id); err != nil {
 		return err
 	}
 	return deleteRouteHealthByChannelIDsWithTx(tx, []int{channel.Id})
@@ -834,6 +852,9 @@ func legacyUpdateChannelStatus(channelId int, usingKey string, status int, reaso
 			if err := UpdateAbilityStatusWithTx(tx, channelId, enabled); err != nil {
 				return err
 			}
+			if err := SyncChannelModelRoutesWithTx(tx, channelId); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -877,7 +898,21 @@ func EnableChannelByTag(tag string) error {
 		if err := tx.Model(&Channel{}).Where("tag = ?", tag).Update("status", common.ChannelStatusEnabled).Error; err != nil {
 			return err
 		}
-		return updateAbilityStatusByTagWithTx(tx, tag, true)
+		if err := updateAbilityStatusByTagWithTx(tx, tag, true); err != nil {
+			return err
+		}
+		// Status changes are per channel, so the route rows of every channel
+		// carrying the tag have to be resynced for selection to see the change.
+		var ids []int
+		if err := tx.Model(&Channel{}).Where("tag = ?", tag).Pluck("id", &ids).Error; err != nil {
+			return err
+		}
+		for _, id := range ids {
+			if err := SyncChannelModelRoutesWithTx(tx, id); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	return err
 }
@@ -891,7 +926,19 @@ func DisableChannelByTag(tag string) error {
 		if err := tx.Model(&Channel{}).Where("tag = ?", tag).Update("status", common.ChannelStatusManuallyDisabled).Error; err != nil {
 			return err
 		}
-		return updateAbilityStatusByTagWithTx(tx, tag, false)
+		if err := updateAbilityStatusByTagWithTx(tx, tag, false); err != nil {
+			return err
+		}
+		var ids []int
+		if err := tx.Model(&Channel{}).Where("tag = ?", tag).Pluck("id", &ids).Error; err != nil {
+			return err
+		}
+		for _, id := range ids {
+			if err := SyncChannelModelRoutesWithTx(tx, id); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	return err
 }
@@ -945,10 +992,22 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 				if err := channel.UpdateAbilities(tx); err != nil {
 					return fmt.Errorf("failed to update abilities: channel_id=%d, tag=%s, error=%w", channel.Id, channel.GetTag(), err)
 				}
+				if err := SyncChannelModelRoutesWithTx(tx, channel.Id); err != nil {
+					return err
+				}
 			}
 		} else {
 			if err := updateAbilityByTagWithTx(tx, tag, newTag, priority, weight); err != nil {
 				return err
+			}
+			var ids []int
+			if err := tx.Model(&Channel{}).Where("tag = ?", updatedTag).Pluck("id", &ids).Error; err != nil {
+				return err
+			}
+			for _, id := range ids {
+				if err := SyncChannelModelRoutesWithTx(tx, id); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
@@ -1240,6 +1299,10 @@ func BatchSetChannelTag(ids []int, tag *string) error {
 	for _, channel := range channels {
 		err = channel.UpdateAbilities(tx)
 		if err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := SyncChannelModelRoutesWithTx(tx, channel.Id); err != nil {
 			tx.Rollback()
 			return err
 		}
