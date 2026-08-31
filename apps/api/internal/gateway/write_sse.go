@@ -87,14 +87,12 @@ func ClaudeChunkData(c contract.Context, resp dto.ClaudeResponse, data string) {
 		return
 	}
 
-	if blocked, label := OutputChunkBlocked(c, data); blocked {
-		TerminateOutputSSE(c)
-		common.SysLog(fmt.Sprintf("claude output blocked by sensitive filter: [%s]", label))
-		return
-	}
+	data = OutputChunkFiltered(c, data)
 
 	RenderSSE(c, fmt.Sprintf("event: %s\n", resp.Type))
-	RenderSSE(c, fmt.Sprintf("data: %s\n", data))
+	if data != "" {
+		RenderSSE(c, fmt.Sprintf("data: %s\n", data))
+	}
 	_ = FlushWriter(c)
 }
 
@@ -103,14 +101,12 @@ func ResponseChunkData(c contract.Context, resp dto.ResponsesStreamResponse, dat
 		return fmt.Errorf("request context done: %w", c.Context().Err())
 	}
 
-	if blocked, label := OutputChunkBlocked(c, data); blocked {
-		TerminateOutputSSE(c)
-		common.SysLog(fmt.Sprintf("responses output blocked by sensitive filter: [%s]", label))
-		return fmt.Errorf("output blocked by sensitive filter: %s", label)
-	}
+	data = OutputChunkFiltered(c, data)
 
 	RenderSSE(c, fmt.Sprintf("event: %s\n", resp.Type))
-	RenderSSE(c, fmt.Sprintf("data: %s", data))
+	if data != "" {
+		RenderSSE(c, fmt.Sprintf("data: %s", data))
+	}
 	return FlushWriter(c)
 }
 
@@ -123,9 +119,9 @@ func StringData(c contract.Context, str string) error {
 		return fmt.Errorf("request context done: %w", c.Context().Err())
 	}
 
-	if blocked, label := OutputChunkBlocked(c, str); blocked {
-		TerminateOutputSSE(c)
-		return fmt.Errorf("output blocked by sensitive filter: %s", label)
+	str = OutputChunkFiltered(c, str)
+	if str == "" {
+		return nil
 	}
 
 	RenderSSE(c, "data: "+str)
@@ -133,9 +129,7 @@ func StringData(c contract.Context, str string) error {
 }
 
 func PingData(c contract.Context) error {
-	println("DEBUG PingData called")
 	if c == nil {
-		println("DEBUG PingData nil ctx")
 		return errors.New("context is nil")
 	}
 
