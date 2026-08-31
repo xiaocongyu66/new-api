@@ -118,7 +118,7 @@ func SubscriptionEpayNotify(c contract.Context) {
 	if c.Method() == "POST" {
 		// POST 请求：从 POST body 解析参数
 		if err := c.ParseForm(); err != nil {
-			_, _ = c.ResponseWriter().Write([]byte("fail"))
+			_ = c.String(http.StatusOK, "fail")
 			return
 		}
 		params = lo.Reduce(lo.Keys(c.PostFormValues()), func(r map[string]string, t string, i int) map[string]string {
@@ -134,23 +134,23 @@ func SubscriptionEpayNotify(c contract.Context) {
 	}
 
 	if len(params) == 0 {
-		_, _ = c.ResponseWriter().Write([]byte("fail"))
+		_ = c.String(http.StatusOK, "fail")
 		return
 	}
 
 	client := GetEpayClient()
 	if client == nil {
-		_, _ = c.ResponseWriter().Write([]byte("fail"))
+		_ = c.String(http.StatusOK, "fail")
 		return
 	}
 	verifyInfo, err := client.Verify(params)
 	if err != nil || !verifyInfo.VerifyStatus {
-		_, _ = c.ResponseWriter().Write([]byte("fail"))
+		_ = c.String(http.StatusOK, "fail")
 		return
 	}
 
 	if verifyInfo.TradeStatus != epay.StatusTradeSuccess {
-		_, _ = c.ResponseWriter().Write([]byte("fail"))
+		_ = c.String(http.StatusOK, "fail")
 		return
 	}
 
@@ -158,11 +158,11 @@ func SubscriptionEpayNotify(c contract.Context) {
 	defer UnlockOrder(verifyInfo.ServiceTradeNo)
 
 	if err := CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), PaymentProviderEpay, verifyInfo.Type); err != nil {
-		_, _ = c.ResponseWriter().Write([]byte("fail"))
+		_ = c.String(http.StatusOK, "fail")
 		return
 	}
 
-	_, _ = c.ResponseWriter().Write([]byte("success"))
+	_ = c.String(http.StatusOK, "success")
 }
 
 // SubscriptionEpayReturn handles browser return after payment.

@@ -2063,9 +2063,8 @@ func OllamaPullModelStream(c contract.Context) {
 	}
 
 	// 设置 SSE 头部
-	c.SetHeader("Content-Type", "text/event-stream")
-	c.SetHeader("Cache-Control", "no-cache")
-	c.SetHeader("Connection", "keep-alive")
+	stream := c.EventStream()
+	stream.SetHeaders()
 	c.SetHeader("Access-Control-Allow-Origin", "*")
 
 	key := strings.Split(channel.Key, "\n")[0]
@@ -2073,8 +2072,8 @@ func OllamaPullModelStream(c contract.Context) {
 	// 创建进度回调函数
 	progressCallback := func(progress ollama.OllamaPullResponse) {
 		data, _ := json.Marshal(progress)
-		fmt.Fprintf(c.ResponseWriter(), "data: %s\n\n", string(data))
-		c.ResponseWriter().(http.Flusher).Flush()
+		_, _ = stream.WriteRaw([]byte("data: " + string(data) + "\n\n"))
+		_ = stream.Flush()
 	}
 
 	// 执行拉取
@@ -2084,17 +2083,17 @@ func OllamaPullModelStream(c contract.Context) {
 		errorData, _ := json.Marshal(common.H{
 			"error": err.Error(),
 		})
-		fmt.Fprintf(c.ResponseWriter(), "data: %s\n\n", string(errorData))
+		_, _ = stream.WriteRaw([]byte("data: " + string(errorData) + "\n\n"))
 	} else {
 		successData, _ := json.Marshal(common.H{
 			"message": fmt.Sprintf("channelpkg.Model %s pulled successfully", req.ModelName),
 		})
-		fmt.Fprintf(c.ResponseWriter(), "data: %s\n\n", string(successData))
+		_, _ = stream.WriteRaw([]byte("data: " + string(successData) + "\n\n"))
 	}
 
 	// 发送结束标志
-	fmt.Fprintf(c.ResponseWriter(), "data: [DONE]\n\n")
-	c.ResponseWriter().(http.Flusher).Flush()
+	_, _ = stream.WriteRaw([]byte("data: [DONE]\n\n"))
+	_ = stream.Flush()
 }
 
 // OllamaDeleteModel 删除 Ollama 模型

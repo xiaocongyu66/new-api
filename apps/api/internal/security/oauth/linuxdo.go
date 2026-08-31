@@ -56,10 +56,11 @@ func (p *LinuxDOProvider) ExchangeToken(ctx context.Context, code string, c cont
 
 	// Get redirect URI from request
 	scheme := "http"
-	if c.HTTPRequest().TLS != nil {
+	request := c.HTTPRequest()
+	if request.TLS != nil {
 		scheme = "https"
 	}
-	redirectURI := fmt.Sprintf("%s://%s/api/oauth/linuxdo", scheme, c.HTTPRequest().Host)
+	redirectURI := fmt.Sprintf("%s://%s/api/oauth/linuxdo", scheme, request.Host)
 
 	logger.LogDebug(ctx, "[OAuth-LinuxDO] ExchangeToken: token_endpoint=%s, redirect_uri=%s", tokenEndpoint, redirectURI)
 

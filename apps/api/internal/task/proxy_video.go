@@ -54,10 +54,11 @@ func writeVideoDataURL(c contract.Context, dataURL string) error {
 		return fmt.Errorf("decode video data url failed: %w", err)
 	}
 
-	c.ResponseWriter().Header().Set("Content-Type", mimeType)
-	c.ResponseWriter().Header().Set("Cache-Control", "public, max-age=86400")
-	c.ResponseWriter().WriteHeader(http.StatusOK)
-	_, err = c.ResponseWriter().Write(videoBytes)
+	stream := c.ResponseStream()
+	stream.SetHeader("Content-Type", mimeType)
+	stream.SetHeader("Cache-Control", "public, max-age=86400")
+	stream.WriteHeader(http.StatusOK)
+	_, err = stream.Write(videoBytes)
 	return err
 }
 
@@ -206,13 +207,14 @@ func VideoProxy(c contract.Context) {
 
 	for key, values := range resp.Header {
 		for _, value := range values {
-			c.ResponseWriter().Header().Add(key, value)
+			c.ResponseStream().AddHeader(key, value)
 		}
 	}
 
-	c.ResponseWriter().Header().Set("Cache-Control", "public, max-age=86400")
-	c.ResponseWriter().WriteHeader(resp.StatusCode)
-	if _, err = io.Copy(c.ResponseWriter(), resp.Body); err != nil {
+	stream := c.ResponseStream()
+	stream.SetHeader("Cache-Control", "public, max-age=86400")
+	stream.WriteHeader(resp.StatusCode)
+	if _, err = io.Copy(stream, resp.Body); err != nil {
 		logger.LogError(c.Context(), fmt.Sprintf("Failed to stream video content: %s", err.Error()))
 	}
 }

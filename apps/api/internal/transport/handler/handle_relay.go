@@ -583,9 +583,7 @@ func processChannelError(c contract.Context, channelError types.ChannelError, er
 		userGroup := c.GetString("group")
 		channelId := c.GetInt("channel_id")
 		other := make(map[string]interface{})
-		if c.HTTPRequest() != nil {
-			other["request_path"] = c.Path()
-		}
+		other["request_path"] = c.Path()
 		other["error_type"] = err.GetErrorType()
 		other["error_code"] = err.GetErrorCode()
 		other["status_code"] = err.StatusCode

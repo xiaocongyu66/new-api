@@ -19,12 +19,15 @@ import (
 )
 
 // DoMidjourneyHttpRequest forwards an HTTP request to the Midjourney upstream.
-// This function is bound to gin.Context and cannot be moved to the capability layer.
 func DoMidjourneyHttpRequest(c contract.Context, timeout time.Duration, fullRequestURL string) (*dto.MidjourneyResponseWithStatusCode, []byte, error) {
 	var nullBytes []byte
-	if c.HTTPRequest().Method != "GET" {
+	if c.Method() != http.MethodGet {
 		var mapResult map[string]interface{}
-		err := json.NewDecoder(c.HTTPRequest().Body).Decode(&mapResult)
+		body, err := c.RawBody()
+		if err != nil {
+			return MidjourneyErrorWithStatusCodeWrapper(constant.MjErrorUnknown, "read_request_body_failed", http.StatusInternalServerError), nullBytes, err
+		}
+		err = json.Unmarshal(body, &mapResult)
 		if err != nil {
 			return MidjourneyErrorWithStatusCodeWrapper(constant.MjErrorUnknown, "read_request_body_failed", http.StatusInternalServerError), nullBytes, err
 		}
@@ -46,17 +49,21 @@ func DoMidjourneyHttpRequest(c contract.Context, timeout time.Duration, fullRequ
 		if err != nil {
 			return MidjourneyErrorWithStatusCodeWrapper(constant.MjErrorUnknown, "marshal_request_body_failed", http.StatusInternalServerError), nullBytes, err
 		}
-		c.HTTPRequest().Body = io.NopCloser(strings.NewReader(string(reqBody)))
+		c.ReplaceBody(reqBody)
 	}
 
-	req, err := http.NewRequest(c.HTTPRequest().Method, fullRequestURL, c.HTTPRequest().Body)
+	body, err := c.BodyReader()
+	if err != nil {
+		return MidjourneyErrorWithStatusCodeWrapper(constant.MjErrorUnknown, "read_request_body_failed", http.StatusInternalServerError), nullBytes, err
+	}
+	req, err := http.NewRequest(c.Method(), fullRequestURL, body)
 	if err != nil {
 		return MidjourneyErrorWithStatusCodeWrapper(constant.MjErrorUnknown, "create_request_failed", http.StatusInternalServerError), nullBytes, err
 	}
-	ctx, cancel := context.WithTimeout(c.HTTPRequest().Context(), timeout)
+	ctx, cancel := context.WithTimeout(c.Context(), timeout)
 	req = req.WithContext(ctx)
-	req.Header.Set("Content-Type", c.HTTPRequest().Header.Get("Content-Type"))
-	req.Header.Set("Accept", c.HTTPRequest().Header.Get("Accept"))
+	req.Header.Set("Content-Type", c.Header("Content-Type"))
+	req.Header.Set("Accept", c.Header("Accept"))
 	auth := common.GetContextKeyString(c, constant.ContextKeyChannelKey)
 	if auth != "" {
 		auth = strings.TrimPrefix(auth, "Bearer ")
@@ -73,10 +80,6 @@ func DoMidjourneyHttpRequest(c contract.Context, timeout time.Duration, fullRequ
 	if err != nil {
 		return MidjourneyErrorWithStatusCodeWrapper(constant.MjErrorUnknown, "close_request_body_failed", statusCode), nullBytes, err
 	}
-	err = c.HTTPRequest().Body.Close()
-	if err != nil {
-		return MidjourneyErrorWithStatusCodeWrapper(constant.MjErrorUnknown, "close_request_body_failed", statusCode), nullBytes, err
-	}
 	var midjResponse dto.MidjourneyResponse
 	var midjourneyUploadsResponse dto.MidjourneyUploadResponse
 	responseBody, err := io.ReadAll(resp.Body)
@@ -84,7 +87,7 @@ func DoMidjourneyHttpRequest(c contract.Context, timeout time.Duration, fullRequ
 		return MidjourneyErrorWithStatusCodeWrapper(constant.MjErrorUnknown, "read_response_body_failed", statusCode), nullBytes, err
 	}
 	egress.CloseResponseBodyGracefully(resp)
-	logger.LogDebug(c.HTTPRequest().Context(), "midjourney response body: %s", responseBody)
+	logger.LogDebug(c.Context(), "midjourney response body: %s", responseBody)
 	if len(responseBody) == 0 {
 		return MidjourneyErrorWithStatusCodeWrapper(constant.MjErrorUnknown, "empty_response_body", statusCode), responseBody, nil
 	} else {

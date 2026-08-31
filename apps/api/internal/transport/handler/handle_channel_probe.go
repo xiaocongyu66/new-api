@@ -97,7 +97,6 @@ func testChannel(ctx context.Context, channel *channelpkg.Channel, testUserID in
 		}
 	}
 	var c contract.Context
-	var w *httptest.ResponseRecorder
 
 	testModel = strings.TrimSpace(testModel)
 	if testModel == "" {
@@ -163,7 +162,8 @@ func testChannel(ctx context.Context, channel *channelpkg.Channel, testUserID in
 		testModel = ratio_setting.WithCompactModelSuffix(testModel)
 	}
 
-	c, w = ginadapter.NewSyntheticContext(httptest.NewRequestWithContext(ctx, http.MethodPost, requestPath, nil))
+	c, _ = ginadapter.NewSyntheticContext(httptest.NewRequestWithContext(ctx, http.MethodPost, requestPath, nil))
+	responseCapture := c.CaptureResponse(int(^uint(0) >> 1))
 	// Relay provider adaptors are still gin-typed (migrated in a later phase),
 	// so recover the concrete context this synthetic one wraps.
 
@@ -492,8 +492,7 @@ func testChannel(ctx context.Context, channel *channelpkg.Channel, testUserID in
 			newAPIError: types.NewOpenAIError(usageErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError),
 		}
 	}
-	result := w.Result()
-	respBody, err := readTestResponseBody(result.Body, isStream)
+	respBody, err := readTestResponseBody(responseCapture.Body(), isStream)
 	if err != nil {
 		return testResult{
 			context:     c,
@@ -607,13 +606,12 @@ func coerceTestUsage(usageAny any, isStream bool, estimatePromptTokens int) (*dt
 	}
 }
 
-func readTestResponseBody(body io.ReadCloser, isStream bool) ([]byte, error) {
-	defer func() { _ = body.Close() }()
+func readTestResponseBody(body []byte, isStream bool) ([]byte, error) {
 	const maxStreamLogBytes = 8 << 10
-	if isStream {
-		return io.ReadAll(io.LimitReader(body, maxStreamLogBytes))
+	if isStream && len(body) > maxStreamLogBytes {
+		return body[:maxStreamLogBytes], nil
 	}
-	return io.ReadAll(body)
+	return body, nil
 }
 
 func detectErrorFromTestResponseBody(respBody []byte) error {
@@ -890,10 +888,7 @@ func TestChannel(c contract.Context) {
 		return
 	}
 	tik := time.Now()
-	requestCtx := context.Background()
-	if c.HTTPRequest() != nil {
-		requestCtx = c.Context()
-	}
+	requestCtx := c.Context()
 	result := testChannel(requestCtx, channel, testUserID, testModel, endpointType, isStream)
 	if result.localErr != nil {
 		resp := common.H{

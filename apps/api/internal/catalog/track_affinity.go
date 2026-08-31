@@ -301,10 +301,10 @@ func extractChannelAffinityValue(c contract.Context, src ChannelAffinityKeySourc
 		}
 		return strings.TrimSpace(c.GetString(src.Key))
 	case "request_header":
-		if c == nil || c.HTTPRequest() == nil || src.Key == "" {
+		if c == nil || src.Key == "" {
 			return ""
 		}
-		return strings.TrimSpace(c.Headers().Get(src.Key))
+		return strings.TrimSpace(c.Header(src.Key))
 	case "gjson":
 		if src.Path == "" {
 			return ""
@@ -547,11 +547,11 @@ func GetPreferredChannelByAffinity(c contract.Context, modelName string, usingGr
 		return 0, false
 	}
 	path := ""
-	if c != nil && c.HTTPRequest() != nil {
+	if c != nil {
 		path = c.Path()
 	}
 	userAgent := ""
-	if c != nil && c.HTTPRequest() != nil {
+	if c != nil {
 		userAgent = c.UserAgent()
 	}
 

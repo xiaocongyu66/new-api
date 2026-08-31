@@ -21,8 +21,11 @@ func SessionCookieOriginGuard() contract.Middleware {
 			c.Next()
 			return
 		}
-		origin, ok := requestBrowserOrigin(c.HTTPRequest())
-		if !ok || !isAllowedSessionOrigin(c.HTTPRequest(), origin) {
+		// The contract has no authority/transport-security accessor; origin checks
+		// must compare the actual Host and TLS state without trusting forwarded headers.
+		request := c.HTTPRequest()
+		origin, ok := requestBrowserOrigin(request)
+		if !ok || !isAllowedSessionOrigin(request, origin) {
 			c.AbortWithStatusJSON(http.StatusForbidden, common.H{
 				"success": false,
 				"code":    "AUTH_ORIGIN_FORBIDDEN",

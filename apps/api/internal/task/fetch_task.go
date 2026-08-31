@@ -1,7 +1,6 @@
 package task
 
 import (
-	"bytes"
 	"fmt"
 	channel "github.com/QuantumNous/new-api/internal/catalog"
 	"io"
@@ -57,7 +56,7 @@ func FetchTask(c contract.Context, relayMode int) (taskResp *dto.TaskError) {
 	}
 
 	c.SetHeader("Content-Type", "application/json")
-	_, err := io.Copy(c.ResponseWriter(), bytes.NewBuffer(respBody))
+	_, err := c.ResponseStream().Write(respBody)
 	if err != nil {
 		return &dto.TaskError{
 			Code:       "copy_response_body_failed",

@@ -387,7 +387,7 @@ func UnlockOrder(tradeNo string) {
 func EpayNotify(c contract.Context) {
 	if !isEpayWebhookEnabled() {
 		logger.LogWarn(c.Context(), fmt.Sprintf("易支付 webhook 被拒绝 reason=webhook_disabled path=%q client_ip=%s", c.RequestURI(), c.ClientIP()))
-		_, _ = c.ResponseWriter().Write([]byte("fail"))
+		_ = c.String(http.StatusOK, "fail")
 		return
 	}
 
@@ -397,7 +397,7 @@ func EpayNotify(c contract.Context) {
 		// POST 请求：从 POST body 解析参数
 		if err := c.ParseForm(); err != nil {
 			logger.LogError(c.Context(), fmt.Sprintf("易支付 webhook POST 表单解析失败 path=%q client_ip=%s error=%q", c.RequestURI(), c.ClientIP(), err.Error()))
-			_, _ = c.ResponseWriter().Write([]byte("fail"))
+			_ = c.String(http.StatusOK, "fail")
 			return
 		}
 		params = lo.Reduce(lo.Keys(c.PostFormValues()), func(r map[string]string, t string, i int) map[string]string {
@@ -415,21 +415,20 @@ func EpayNotify(c contract.Context) {
 
 	if len(params) == 0 {
 		logger.LogWarn(c.Context(), fmt.Sprintf("易支付 webhook 参数为空 path=%q client_ip=%s", c.RequestURI(), c.ClientIP()))
-		_, _ = c.ResponseWriter().Write([]byte("fail"))
+		_ = c.String(http.StatusOK, "fail")
 		return
 	}
 	client := GetEpayClient()
 	if client == nil {
 		logger.LogError(c.Context(), fmt.Sprintf("易支付 client 未初始化 path=%q client_ip=%s", c.RequestURI(), c.ClientIP()))
-		_, err := c.ResponseWriter().Write([]byte("fail"))
-		if err != nil {
+		if err := c.String(http.StatusOK, "fail"); err != nil {
 			logger.LogError(c.Context(), fmt.Sprintf("易支付 webhook 响应写入失败 path=%q client_ip=%s error=%q", c.RequestURI(), c.ClientIP(), err.Error()))
 		}
 		return
 	}
 	verifyInfo, err := client.Verify(params)
 	if err != nil || !verifyInfo.VerifyStatus {
-		if _, writeErr := c.ResponseWriter().Write([]byte("fail")); writeErr != nil {
+		if writeErr := c.String(http.StatusOK, "fail"); writeErr != nil {
 			logger.LogError(c.Context(), fmt.Sprintf("易支付 webhook 响应写入失败 path=%q client_ip=%s error=%q", c.RequestURI(), c.ClientIP(), writeErr.Error()))
 		}
 		if err != nil {
@@ -458,7 +457,7 @@ func EpayNotify(c contract.Context) {
 			default:
 				logger.LogError(c.Context(), fmt.Sprintf("易支付 充值处理失败 trade_no=%s client_ip=%s error=%q", verifyInfo.ServiceTradeNo, c.ClientIP(), err.Error()))
 			}
-			if _, writeErr := c.ResponseWriter().Write([]byte("fail")); writeErr != nil {
+			if writeErr := c.String(http.StatusOK, "fail"); writeErr != nil {
 				logger.LogError(c.Context(), fmt.Sprintf("易支付 webhook 响应写入失败 trade_no=%s client_ip=%s error=%q", verifyInfo.ServiceTradeNo, c.ClientIP(), writeErr.Error()))
 			}
 			return
@@ -471,7 +470,7 @@ func EpayNotify(c contract.Context) {
 	} else {
 		logger.LogInfo(c.Context(), fmt.Sprintf("易支付 webhook 忽略事件 trade_no=%s callback_type=%s trade_status=%s client_ip=%s verify_info=%q", verifyInfo.ServiceTradeNo, verifyInfo.Type, verifyInfo.TradeStatus, c.ClientIP(), common.GetJsonString(verifyInfo)))
 	}
-	if _, writeErr := c.ResponseWriter().Write([]byte("success")); writeErr != nil {
+	if writeErr := c.String(http.StatusOK, "success"); writeErr != nil {
 		logger.LogError(c.Context(), fmt.Sprintf("易支付 webhook 响应写入失败 trade_no=%s client_ip=%s error=%q", verifyInfo.ServiceTradeNo, c.ClientIP(), writeErr.Error()))
 	}
 }
