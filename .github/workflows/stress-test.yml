@@ -140,6 +140,7 @@ jobs:
             USER=$(echo "$s" | jq -r .user)
             PASS=$(echo "$s" | jq -r .password)
             echo "::add-mask::$PASS"
+            echo "::add-mask::$IP"
             {
               echo "## $IP"
               sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 "$USER@$IP" '

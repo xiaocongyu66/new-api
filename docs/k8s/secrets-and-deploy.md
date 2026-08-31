@@ -212,3 +212,62 @@ git tag v0.11.0 && git push --tags
 - 不要把 kubeconfig、连接串、密码提交进仓库任何文件（包括示例文件、注释、测试夹具）。
 - 不要在 workflow 里 `echo` 或 `cat` 出 Secret 值用于调试；如需排查，改用 `kubectl get secret new-api-secrets -o jsonpath=...` 在集群侧本地查看。
 - `KUBE_CONFIG_B64` 等价于集群管理员凭证，泄露即集群失守；应使用最小权限的 ServiceAccount kubeconfig 而非 admin kubeconfig（后续可在 #76 runbook 细化 RBAC）。
+
+## 7. 最小权限 kubeconfig（替换 admin KUBE_CONFIG_B64）
+
+默认的 `KUBE_CONFIG_B64`（来自 `/etc/rancher/k3s/k3s.yaml`）是集群管理员凭证，泄露即整个集群失守。CI 只需要在 `default` namespace 里 apply/rollout/exec，用受限 ServiceAccount 替代。
+
+### 7.1 生成 deployer kubeconfig
+
+在 control-plane 节点上执行：
+
+```bash
+# 1. 应用 RBAC（manifest 在仓库 deploy/k8s/deployer-rbac.yaml）
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+kubectl apply -f deployer-rbac.yaml
+
+# 2. 签发长效 token（k3s 内置的 TokenRequest 无过期；生产建议 1 年轮换）
+SA_TOKEN=$(kubectl -n default create token deployer --duration=8760h)
+
+# 3. 拼装 kubeconfig（服务端地址沿用当前集群入口）
+SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
+cat > /tmp/deployer.kubeconfig <<EOF
+apiVersion: v1
+kind: Config
+clusters:
+  - cluster: {insecure-skip-tls-verify: true, server: $SERVER}
+    name: default
+contexts:
+  - context: {cluster: default, user: deployer}
+    name: default
+current-context: default
+users:
+  - user: {token: $SA_TOKEN}
+    name: deployer
+EOF
+
+# 4. 验证受限权限：应成功
+kubectl --kubeconfig /tmp/deployer.kubeconfig get pods
+# 应被 403 拒绝（admin 才有的 namespace 级操作）
+kubectl --kubeconfig /tmp/deployer.kubeconfig get nodes
+
+# 5. base64 后更新 GitHub secret
+base64 -w0 < /tmp/deployer.kubeconfig
+# 粘贴到 Settings → Secrets → KUBE_CONFIG_B64（覆盖 admin 值）
+```
+
+注意：`insecure-skip-tls-verify: true` 与现有 workflow 的 `kubectl config set-cluster --insecure-skip-tls-verify` 一致（k3s 证书只签内网 IP，公网直连无法校验）。若后续启用真实域名 + 签名证书，改为 CA pinning。
+
+### 7.2 压测相关 Secret 的说明
+
+| Secret | 风险 | 操作 |
+|---|---|---|
+| `K8S_STRESS_TARGET_URL` | 压测目标 URL（含节点 IP），供压测 workflow 在 dispatch input 留空时使用 | 新建：`http://<control-plane-IP>:30080/v1` |
+| `GATEWAY_ADMIN_URL` | 管理端 URL，同上 | 新建：`http://<control-plane-IP>:30080`（不带 `/v1`） |
+| `K8S_STRESS_API_KEY` | 压测用 gateway token | 权限应为**普通用户 token**（`sk-` 前缀的 API token），不是 admin session |
+| `K8S_STRESS_ADMIN_TOKEN` | 压测 admin audit 端点用 | 若它是 root 的登录 JWT，泄露即管理员失守。压测 audit 只读，建议在 gateway 里建一个专用的**低权限账号**，只给 route_unit/audit 读取权限，用它的 JWT 替换 |
+| `POSTGRES_PASSWORD` / `REDIS_PASSWORD` | 数据库凭证 | 由 deploy.yml 注入集群 Secret，仅集群内可达 |
+
+### 7.3 workflow 日志脱敏状态
+
+所有从 `SERVERS_LIST_JSON`（secret）解析出的节点 IP 已在 workflow 内 `::add-mask::`，日志中显示为 `***`。压测 workflow 的 `target_url` / `gateway_admin_url` 优先取 dispatch input，留空时回落到上述 secret — 运行日志不再出现明文 IP。

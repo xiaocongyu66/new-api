@@ -1,0 +1,51 @@
+# 最小权限 CI deployer：用这个 ServiceAccount 的 kubeconfig 替换 admin 级
+# KUBE_CONFIG_B64 secret。权限按 .github/workflows 实际用到的 kubectl 动词
+# 裁剪（grep 过全部 workflow）：apply/get/create/patch/delete、rollout、
+# exec、port-forward、logs、top pods。
+#
+# 已知取舍：
+#   - secrets 不按 resourceNames 限制：kubectl create secret --dry-run=client
+#     | kubectl apply 需要完整 create 动词，按名字限制会失败。
+#   - kubectl top nodes 不可用（cluster-scoped metrics）；所有调用都有
+#     `|| true` 降级，仅丢失节点级指标输出。
+#   - 全部资源限定在 default namespace，CI 不需要碰其他 namespace。
+#
+# 应用与生成 kubeconfig 见 docs/k8s/secrets-and-deploy.md 第 7 节。
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: deployer
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: deployer
+  namespace: default
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "deletecollection"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "pods/exec", "pods/portforward", "services", "configmaps", "secrets", "persistentvolumeclaims", "events"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "deletecollection"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: deployer
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: deployer
+    namespace: default
+roleRef:
+  kind: Role
+  name: deployer
+  apiGroup: rbac.authorization.k8s.io
