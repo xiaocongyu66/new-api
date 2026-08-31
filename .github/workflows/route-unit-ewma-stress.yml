@@ -140,8 +140,8 @@ on:
         default: 'http://127.0.0.1:6060'
 
 env:
-  TARGET_URL: ${{ inputs.target_url }}
-  API_KEY: ${{ inputs.api_key }}
+  TARGET_URL: ${{ inputs.target_url || secrets.K8S_STRESS_TARGET_URL || 'http://127.0.0.1:18080/v1' }}
+  API_KEY: ${{ inputs.api_key || secrets.K8S_STRESS_API_KEY }}
   ADMIN_TOKEN: ${{ inputs.admin_token || secrets.K8S_STRESS_ADMIN_TOKEN }}
   ADMIN_USERNAME: ${{ inputs.admin_username || 'root' }}
   ADMIN_PASSWORD: ${{ inputs.admin_password || '123456' }}
@@ -149,7 +149,7 @@ env:
   # replace, no replaceAll). Calling one fails workflow parsing at dispatch
   # time with HTTP 422, so no run can ever start. Pass the raw input and strip
   # the /v1 suffix in shell at the point of use instead.
-  GATEWAY_ADMIN_URL: ${{ inputs.gateway_admin_url }}
+  GATEWAY_ADMIN_URL: ${{ inputs.gateway_admin_url || secrets.GATEWAY_ADMIN_URL }}
   MODEL: ${{ inputs.model }}
   ALIAS: ${{ inputs.alias }}
   REQUESTS: ${{ inputs.requests }}
@@ -199,9 +199,10 @@ jobs:
           fi
           IP=$(printf '%s' "$GATEWAY_ADMIN_URL" | sed -E 's#^[a-zA-Z]+://##; s#[:/].*$##')
           if ! printf '%s' "$IP" | grep -Eq '^[0-9]+(\.[0-9]+){3}$'; then
-            echo "::error::$NAME does not resolve and gateway_admin_url ('$GATEWAY_ADMIN_URL') has no IP literal to map it to"
+            echo "::error::$NAME does not resolve and gateway_admin_url has no IP literal to map it to"
             exit 1
           fi
+          echo "::add-mask::$IP"
           echo "$IP $NAME" | sudo tee -a /etc/hosts >/dev/null
           getent hosts "$NAME"
           # Requests must carry the ingress host, otherwise the ingress has no rule
@@ -632,9 +633,10 @@ jobs:
           fi
           IP=$(printf '%s' "$GATEWAY_ADMIN_URL" | sed -E 's#^[a-zA-Z]+://##; s#[:/].*$##')
           if ! printf '%s' "$IP" | grep -Eq '^[0-9]+(\.[0-9]+){3}$'; then
-            echo "::error::$NAME does not resolve and gateway_admin_url ('$GATEWAY_ADMIN_URL') has no IP literal to map it to"
+            echo "::error::$NAME does not resolve and gateway_admin_url has no IP literal to map it to"
             exit 1
           fi
+          echo "::add-mask::$IP"
           echo "$IP $NAME" | sudo tee -a /etc/hosts >/dev/null
           getent hosts "$NAME"
           # Requests must carry the ingress host, otherwise the ingress has no rule
