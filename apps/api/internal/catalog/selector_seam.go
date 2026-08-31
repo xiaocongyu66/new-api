@@ -4,21 +4,15 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
-// SelectParams is the retry-scoped input for the production selection entry
-// point below. It accumulates state across retries: Retry advances per
-// attempt and ExcludeSet grows with failed channels.
-//
-// It mirrors the fields of the legacy service.RetryParam so existing call
-// sites migrate without semantic change; the type alias in service keeps
-// them source-compatible during the migration.
+// SelectParams is the retry-scoped input for route-unit selection.
 type SelectParams struct {
-	Ctx          contract.Context
-	TokenGroup   string
-	ModelName    string
-	RequestPath  string
-	ExcludeSet   map[int]bool // request-level exclude set for failed channels
-	Retry        *int
-	resetNextTry bool
+	Ctx           contract.Context
+	TokenGroup    string
+	ModelName     string
+	RequestPath   string
+	ExcludeRoutes map[RouteKey]bool
+	Retry         *int
+	resetNextTry  bool
 }
 
 func (p *SelectParams) GetRetry() int {
@@ -47,18 +41,5 @@ func (p *SelectParams) ResetRetryNextTry() {
 	p.resetNextTry = true
 }
 
-// SelectChannel resolves an upstream channel for one attempt of a relay
-// request, returning the cached channel record so callers avoid a database
-// round-trip on the hot path. It is wired to the channel capability's
-// implementation in main.go before the router starts.
-//
-// ponytail: function seam, not the ChannelSelector interface — the interface
-// returns bare IDs and would force a DB refetch of the record today. Once
-// selection usecases live fully inside capabilities/channel and records flow
-// through ChannelSelection, collapse this into the interface.
-var SelectChannel func(p *SelectParams) (*Channel, string, error)
-
-// Channel is the channel record the selector returns. It is an alias
-// filled in by the channel capability at wiring time: naming the concrete
-// record here would make this interface package depend on the domain it
-// abstracts (catalog imports this package).
+// SelectChannel resolves one route unit for a relay attempt.
+var SelectChannel func(p *SelectParams) (*SelectedRoute, string, error)

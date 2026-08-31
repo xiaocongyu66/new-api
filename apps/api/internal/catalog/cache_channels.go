@@ -3,13 +3,10 @@ package channel
 import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
-	"math/rand/v2"
 	"sort"
 	"strings"
 	"sync"
 	"time"
-
-	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
@@ -95,6 +92,7 @@ func InitChannelCache() {
 	}
 	channelsIDM = newChannelId2channel
 	channel2advancedCustomConfig = newChannel2advancedCustomConfig
+	buildGroupAliasRoutesFromDB()
 	channelSyncLock.Unlock()
 	// Lock ordering: InvalidatePricingCache acquires updatePricingLock, and
 	// GetPricing (holding updatePricingLock) nests channelSyncLock.RLock via
@@ -112,114 +110,9 @@ func SyncChannelCache(frequency int) {
 	}
 }
 
-func GetRandomSatisfiedChannel(group string, modelName string, retry int, requestPath string, excludeSet map[int]bool) (*Channel, error) {
-	// if memory cache is disabled, get channel directly from database
-	if !common.MemoryCacheEnabled {
-		return GetChannel(group, modelName, retry, requestPath, excludeSet)
-	}
-
-	channelSyncLock.RLock()
-	defer channelSyncLock.RUnlock()
-
-	// First, try to find channels with the exact modelName name.
-	channels := filterChannelsByRequestPathAndModel(group2model2channels[group][modelName], requestPath, modelName)
-
-	// If no channels found, try to find channels with the normalized modelName name.
-	if len(channels) == 0 {
-		normalizedModel := ratio_setting.FormatMatchingModelName(modelName)
-		channels = filterChannelsByRequestPathAndModel(group2model2channels[group][normalizedModel], requestPath, modelName)
-	}
-
-	if len(channels) == 0 {
-		return nil, nil
-	}
-
-	uniquePriorities := make(map[int]bool)
-	for _, channelId := range channels {
-		if channel, ok := channelsIDM[channelId]; ok {
-			uniquePriorities[int(channel.GetPriority())] = true
-		} else {
-			return nil, fmt.Errorf("数据库一致性错误，渠道# %d 不存在，请联系管理员修复", channelId)
-		}
-	}
-	var sortedUniquePriorities []int
-	for priority := range uniquePriorities {
-		sortedUniquePriorities = append(sortedUniquePriorities, priority)
-	}
-	sort.Sort(sort.Reverse(sort.IntSlice(sortedUniquePriorities)))
-
-	if retry >= len(uniquePriorities) {
-		retry = len(uniquePriorities) - 1
-	}
-	targetPriority := int64(sortedUniquePriorities[retry])
-
-	// get the channels at the target priority level, excluding request-level excludes
-	var targetChannels []*Channel
-	for _, channelId := range channels {
-		if excludeSet != nil && excludeSet[channelId] {
-			continue // P1: skip channels that failed in this request
-		}
-		if channel, ok := channelsIDM[channelId]; ok {
-			if channel.GetPriority() == targetPriority {
-				targetChannels = append(targetChannels, channel)
-			}
-		} else {
-			return nil, fmt.Errorf("数据库一致性错误，渠道# %d 不存在，请联系管理员修复", channelId)
-		}
-	}
-
-	if len(targetChannels) == 0 {
-		return nil, nil
-	}
-
-	healthMgr := GetHealthStore()
-	maxEjectionPercent := 0
-	if cfg := GetChannelHealthSetting(); cfg != nil {
-		maxEjectionPercent = cfg.CooldownMaxEjectionPercent
-	}
-	channelIDs := make([]int, 0, len(targetChannels))
-	for _, channel := range targetChannels {
-		channelIDs = append(channelIDs, channel.Id)
-	}
-	ejected := healthMgr.FilterCoolingChannels(channelIDs, maxEjectionPercent)
-	if len(ejected) > 0 {
-		filtered := targetChannels[:0]
-		for _, channel := range targetChannels {
-			if !ejected[channel.Id] {
-				filtered = append(filtered, channel)
-			}
-		}
-		targetChannels = filtered
-	}
-	if len(targetChannels) == 0 {
-		return nil, nil
-	}
-	if len(targetChannels) == 1 {
-		return targetChannels[0], nil
-	}
-
-	var weights []float64
-	var totalWeight float64
-	for _, ch := range targetChannels {
-		// Removed channels are truly ejected; retained cooling channels are the
-		// configured availability fallback and may keep their EWMA weight.
-		effW := healthMgr.RoutingWeight(ch.Id, RoutingBaseWeight(ch.GetWeight()), true)
-		weights = append(weights, effW)
-		totalWeight += effW
-	}
-	if totalWeight <= 0 {
-		return nil, nil
-	}
-
-	randomWeight := rand.Float64() * totalWeight
-	for i, ch := range targetChannels {
-		randomWeight -= weights[i]
-		if randomWeight < 0 {
-			return ch, nil
-		}
-	}
-
-	return targetChannels[len(targetChannels)-1], nil
+// GetRandomSatisfiedChannel selects one independently retryable route unit.
+func GetRandomSatisfiedChannel(group, modelName string, retry int, requestPath string, excludeRoutes map[RouteKey]bool) (*SelectedRoute, error) {
+	return SelectRouteUnit(group, modelName, requestPath, retry, excludeRoutes, nil)
 }
 
 // filterChannelsByRequestPathAndModel restricts candidates by request path and
