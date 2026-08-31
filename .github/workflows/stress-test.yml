@@ -53,9 +53,9 @@ on:
         default: 'auto'
         type: string
       target_url:
-        description: 'K8s 压测目标 URL，默认 NodePort 入口'
-        required: true
-        default: 'http://136.0.34.25:30080/v1'
+        description: 'K8s 压测目标 URL。留空则从 K8S_STRESS_TARGET_URL secret 取，避免硬编码节点 IP。'
+        required: false
+        default: ''
         type: string
       host_header:
         description: 'Ingress Host header，可为空'
@@ -383,7 +383,7 @@ jobs:
             API_KEY="$LOCAL_API_KEY"
             HOST_HEADER=""
           else
-            TARGET_URL="${{ inputs.target_url }}"
+            TARGET_URL="${{ inputs.target_url || secrets.K8S_STRESS_TARGET_URL }}"
             API_KEY="$K8S_API_KEY"
             HOST_HEADER="${{ inputs.host_header }}"
             STATUS_URL="${TARGET_URL%/v1}/api/status"
@@ -429,7 +429,7 @@ jobs:
             API_KEY="$LOCAL_API_KEY"
             HOST_HEADER=""
           else
-            TARGET_URL="${{ inputs.target_url }}"
+            TARGET_URL="${{ inputs.target_url || secrets.K8S_STRESS_TARGET_URL }}"
             API_KEY="$K8S_API_KEY"
             HOST_HEADER="${{ inputs.host_header }}"
             STATUS_URL="${TARGET_URL%/v1}/api/status"
