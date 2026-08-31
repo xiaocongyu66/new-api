@@ -270,7 +270,15 @@ func ResetShares() {
 
 // SweepSharePools drops windows whose pool no longer receives traffic, keyed by
 // the pools still present in keep. Returns the number of pools removed.
+//
+// A nil keep is "unknown", not "empty", and sweeps nothing. The caller cannot
+// always enumerate the live pools (see catalog.GetActiveRouteStatsPoolKeys), and
+// treating that as an empty keep set would discard every pool's
+// share-correction history — the opposite of evicting the orphans.
 func SweepSharePools(keep map[PoolKey]struct{}) int {
+	if keep == nil {
+		return 0
+	}
 	shareStore.mu.Lock()
 	defer shareStore.mu.Unlock()
 	removed := 0

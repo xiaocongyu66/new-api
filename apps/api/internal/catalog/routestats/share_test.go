@@ -378,6 +378,30 @@ func TestSweepSharePoolsDropsUnknownPools(t *testing.T) {
 		"the retained pool must keep its history")
 }
 
+// TestSweepSharePoolsIgnoresUnknownKeepSet pins the nil contract: nil means the
+// caller could not enumerate the live pools, not that there are none. Treating it
+// as an empty keep set deleted every pool's share-correction history on each
+// hourly tick — the exact opposite of evicting orphans.
+func TestSweepSharePoolsIgnoresUnknownKeepSet(t *testing.T) {
+	ResetShares()
+	t.Cleanup(ResetShares)
+
+	cfg := shareTestSetting(200)
+	pool := PoolKey{Group: "g", PublicModelAlias: "m"}
+	targets := map[RouteID]float64{routeID(1): 1.0}
+	RecordSelection(pool, routeID(1), targets, cfg)
+	require.Equal(t, 1, SharePoolCount())
+
+	assert.Zero(t, SweepSharePools(nil), "an unknown keep set must evict nothing")
+	assert.Equal(t, 1, SharePoolCount())
+	assert.Equal(t, 1, Corrections(pool, targets, cfg)[routeID(1)].Opportunities,
+		"share history must survive a sweep whose keep set could not be built")
+
+	assert.Equal(t, 1, SweepSharePools(map[PoolKey]struct{}{}),
+		"an explicitly empty keep set still means no pool is live")
+	assert.Zero(t, SharePoolCount())
+}
+
 // TestShareWindowShrinkDropsExcessHistory covers a live config change: lowering
 // the window must take effect immediately rather than leaving stale entries that
 // outlive the new capacity.
