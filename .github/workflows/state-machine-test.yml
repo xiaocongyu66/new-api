@@ -10,10 +10,10 @@ on:
         default: all
         options: [all, '1', '2', '3', '4', '5', '6', '7', '8']
       target_url:
-        description: 'Gateway /v1 URL; NodePort or Ingress'
+        description: 'Gateway /v1 URL; NodePort or Ingress. Empty falls back to K8S_STRESS_TARGET_URL secret.'
         required: false
         type: string
-        default: 'http://136.0.34.25:30080/v1'
+        default: ''
       api_key:
         description: 'Optional bearer key; default is K8S_STRESS_API_KEY secret'
         required: false
@@ -53,7 +53,7 @@ jobs:
     timeout-minutes: 120
     env:
       NAMESPACE: default
-      TARGET_URL: ${{ inputs.target_url }}
+      TARGET_URL: ${{ inputs.target_url || secrets.K8S_STRESS_TARGET_URL }}
       API_KEY: ${{ inputs.api_key || secrets.K8S_STRESS_API_KEY }}
       SCENARIO: ${{ inputs.scenario }}
       MODEL_OVERRIDE: ${{ inputs.model }}
