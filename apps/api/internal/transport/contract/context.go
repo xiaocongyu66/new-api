@@ -68,6 +68,11 @@ type Request interface {
 	// BodyReader returns an independent reader positioned at the body start.
 	BodyReader() (io.ReadCloser, error)
 	MultipartForm() (*multipart.Form, error)
+	// SetParsedForm publishes an already-parsed multipart form as the request's
+	// form state, so downstream code reading form values observes it without
+	// re-parsing a body that has already been consumed. Image-edit validation
+	// parses the form to read prompt/model/n and must hand the result forward.
+	SetParsedForm(form *multipart.Form)
 	PostForm(key string) string
 
 	// HTTPRequest exposes the standard-library request for third-party
@@ -142,6 +147,19 @@ type Chain interface {
 	AbortWithStatusJSON(status int, payload any)
 }
 
+// Streaming exposes the incremental response writers. They are accessors on the
+// context rather than adapter-package constructors so business code can stream
+// without importing the adapter, which is what the escape hatches below it
+// currently force.
+type Streaming interface {
+	// EventStream returns the SSE writer for this request, or nil when the
+	// transport cannot stream it.
+	EventStream() EventStream
+	// ResponseStream returns the raw response writer for this request, or nil
+	// when the transport has no response writer to hand out.
+	ResponseStream() ResponseStream
+}
+
 // Context is the single value handlers, middleware, and relay code accept in
 // place of a framework context.
 type Context interface {
@@ -149,6 +167,7 @@ type Context interface {
 	Request
 	Response
 	Chain
+	Streaming
 }
 
 // Handler is a framework-neutral request handler.

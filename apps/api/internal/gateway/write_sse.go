@@ -3,11 +3,9 @@ package gateway
 import (
 	"errors"
 	"fmt"
-	"net/http"
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
@@ -15,11 +13,32 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// RenderSSE writes a raw SSE line through the framework-neutral response
-// writer, byte-identical to the previous gin CustomEvent render path.
+// RenderSSE writes a raw SSE line, byte-identical to the previous gin
+// CustomEvent render path.
+//
+// It deliberately does NOT go through contract.EventStream.WriteEvent. The two
+// are not byte-equivalent: callers here pass strings that already carry their
+// own `data: ` / `event: ` prefix, CustomEvent escapes CR and terminates the
+// frame only when the payload starts with "data", and it writes the streaming
+// content type per call. WriteEvent prepends its own prefix, always terminates,
+// escapes nothing, and flushes internally. Routing this through it would change
+// the wire bytes of every SSE response and re-frame partial events, which is
+// the regression class that previously fabricated a `data: [DONE]` tail onto
+// truncated streams.
+//
+// The per-call header write CustomEvent.Render performs is reproduced here
+// rather than dropped: it is what makes an SSE response carry the streaming
+// content type even when no helper installed the headers first.
 func RenderSSE(c contract.Context, data string) {
-	ev := common.CustomEvent{Data: data}
-	_ = ev.Render(c.ResponseWriter())
+	stream := c.ResponseStream()
+	if stream == nil {
+		return
+	}
+	stream.SetHeader("Content-Type", "text/event-stream")
+	if stream.Header("Cache-Control") == "" {
+		stream.SetHeader("Cache-Control", "no-cache")
+	}
+	_ = common.CustomEvent{Data: data}.RenderTo(stream)
 }
 
 // RequestContextDone checks if the request context has been cancelled.
@@ -42,23 +61,21 @@ func FlushWriter(c contract.Context) (err error) {
 		return fmt.Errorf("request context done: %w", c.Context().Err())
 	}
 
-	flusher, ok := c.ResponseWriter().(http.Flusher)
-	if !ok {
+	stream := c.ResponseStream()
+	if stream == nil || !stream.CanFlush() {
 		return errors.New("streaming error: flusher not found")
 	}
-
-	flusher.Flush()
-	return nil
+	return stream.Flush()
 }
 
 func SetEventStreamHeaders(c contract.Context) {
 	// 检查是否已经设置过头部
-	if _, exists := c.Get(ginadapter.EventStreamHeadersKey); exists {
+	if _, exists := c.Get(contract.EventStreamHeadersKey); exists {
 		return
 	}
 
 	// 设置标志，表示头部已经设置过
-	c.Set(ginadapter.EventStreamHeadersKey, true)
+	c.Set(contract.EventStreamHeadersKey, true)
 	c.SetHeader("Content-Type", "text/event-stream")
 	c.SetHeader("Cache-Control", "no-cache")
 	c.SetHeader("Connection", "keep-alive")
@@ -137,7 +154,11 @@ func PingData(c contract.Context) error {
 		return fmt.Errorf("request context done: %w", c.Context().Err())
 	}
 
-	if _, err := c.ResponseWriter().Write([]byte(": PING\n\n")); err != nil {
+	stream := c.ResponseStream()
+	if stream == nil {
+		return errors.New("write ping data failed: no response writer")
+	}
+	if _, err := stream.Write([]byte(": PING\n\n")); err != nil {
 		return fmt.Errorf("write ping data failed: %w", err)
 	}
 	return FlushWriter(c)

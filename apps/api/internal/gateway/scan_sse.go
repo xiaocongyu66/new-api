@@ -50,6 +50,10 @@ func CopyCodexSSEHeaders(c contract.Context, resp *http.Response) {
 	if c == nil || resp == nil {
 		return
 	}
+	stream := c.ResponseStream()
+	if stream == nil {
+		return
+	}
 	// codex
 	for _, name := range []string{"X-Reasoning-Included", "X-Codex-Turn-State"} {
 		values := resp.Header.Values(name)
@@ -58,7 +62,7 @@ func CopyCodexSSEHeaders(c contract.Context, resp *http.Response) {
 		}
 		for _, value := range values {
 			if value != "" {
-				c.ResponseWriter().Header().Add(name, value)
+				stream.AddHeader(name, value)
 			}
 		}
 	}
@@ -71,7 +75,9 @@ func ExtendWriteDeadline(c contract.Context) {
 	if c == nil {
 		return
 	}
-	_ = http.NewResponseController(c.ResponseWriter()).SetWriteDeadline(time.Now().Add(streamWriteTimeout))
+	if stream := c.ResponseStream(); stream != nil {
+		stream.SetWriteDeadline(time.Now().Add(streamWriteTimeout))
+	}
 }
 
 // StreamResultHandler defines the interface for stream result handling.

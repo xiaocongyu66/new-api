@@ -11,6 +11,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -153,6 +154,17 @@ func (r *requestContext) BodyReader() (io.ReadCloser, error) {
 
 func (r *requestContext) MultipartForm() (*multipart.Form, error) {
 	return common.ParseMultipartFormReusable(r)
+}
+
+// SetParsedForm publishes the parsed form onto the request, matching what
+// ParseMultipartForm would have left behind, so PostForm and PostFormValues
+// observe it without re-reading a consumed body.
+func (r *requestContext) SetParsedForm(form *multipart.Form) {
+	r.gin.Request.MultipartForm = form
+	if form == nil {
+		return
+	}
+	r.gin.Request.PostForm = url.Values(form.Value)
 }
 
 func (r *requestContext) PostForm(key string) string { return r.gin.PostForm(key) }

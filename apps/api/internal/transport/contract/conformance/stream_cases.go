@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -212,5 +213,72 @@ func runResponseStreamCases(t *testing.T, adapter Adapter) {
 
 		assert.True(t, recorder.Flushed)
 		assert.Equal(t, "partial", recorder.Body.String())
+	})
+
+	// AddHeaderKeepsRepeatedValues asserts the append accessor does not collapse
+	// onto the last value. Codex forwards X-Reasoning-Included and
+	// X-Codex-Turn-State as repeats, and an implementation that aliased
+	// AddHeader onto SetHeader would silently drop all but one.
+	t.Run("AddHeaderKeepsRepeatedValues", func(t *testing.T) {
+		adapted, recorder := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+
+		stream, err := adapter.NewResponseStream(adapted)
+		require.NoError(t, err)
+
+		stream.AddHeader("X-Codex-Turn-State", "first")
+		stream.AddHeader("X-Codex-Turn-State", "second")
+
+		assert.Equal(t, []string{"first", "second"}, recorder.Header().Values("X-Codex-Turn-State"),
+			"AddHeader must append rather than replace")
+	})
+
+	// SetHeaderReplacesAndHeaderReadsBack asserts the read accessor observes
+	// staged headers, which is what lets the SSE renderer install Cache-Control
+	// only when nothing stricter is already set.
+	t.Run("SetHeaderReplacesAndHeaderReadsBack", func(t *testing.T) {
+		adapted, recorder := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+
+		stream, err := adapter.NewResponseStream(adapted)
+		require.NoError(t, err)
+
+		assert.Empty(t, stream.Header("Cache-Control"), "an unset header must read back empty")
+
+		stream.SetHeader("Cache-Control", "no-store")
+		assert.Equal(t, "no-store", stream.Header("Cache-Control"))
+
+		stream.SetHeader("Cache-Control", "no-cache")
+		assert.Equal(t, "no-cache", stream.Header("Cache-Control"), "SetHeader must replace")
+		assert.Equal(t, []string{"no-cache"}, recorder.Header().Values("Cache-Control"))
+	})
+
+	// CanFlushAgreesWithFlushAndHasNoSideEffect asserts the capability probe is
+	// consistent with the operation it describes, and that probing does not
+	// itself commit the response. A probe implemented by attempting a flush
+	// would send the status code early on every stream.
+	t.Run("CanFlushAgreesWithFlushAndHasNoSideEffect", func(t *testing.T) {
+		adapted, recorder := adapter.NewContext(httptest.NewRequest(http.MethodGet, "/v1/videos/task-1/content", nil))
+
+		stream, err := adapter.NewResponseStream(adapted)
+		require.NoError(t, err)
+
+		require.True(t, stream.CanFlush(), "a recorder-backed stream can flush")
+		assert.False(t, recorder.Flushed, "probing the capability must not flush")
+
+		require.NoError(t, stream.Flush())
+		assert.True(t, recorder.Flushed, "CanFlush must agree with Flush")
+	})
+
+	// SetWriteDeadlineReportsSupport asserts the deadline capability answers
+	// rather than failing the request. An in-process recorder has no connection
+	// underneath, so false is the correct answer there and callers treat the
+	// bound as best-effort.
+	t.Run("SetWriteDeadlineReportsSupport", func(t *testing.T) {
+		adapted, _ := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+
+		stream, err := adapter.NewResponseStream(adapted)
+		require.NoError(t, err)
+
+		assert.False(t, stream.SetWriteDeadline(time.Now().Add(time.Minute)),
+			"a stream with no connection underneath must report the deadline as unsupported")
 	})
 }

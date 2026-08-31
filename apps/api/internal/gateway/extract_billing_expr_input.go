@@ -51,7 +51,7 @@ func BuildBillingExprRequestInputFromRequest(request dto.Request, headers map[st
 }
 
 func readIncomingBillingExprBody(c contract.Context) ([]byte, error) {
-	if c == nil || c.HTTPRequest() == nil || !isJSONContentType(c.HTTPRequest().Header.Get("Content-Type")) {
+	if c == nil || !isJSONContentType(c.Header("Content-Type")) {
 		return nil, nil
 	}
 	storage, err := common.GetBodyStorage(c)

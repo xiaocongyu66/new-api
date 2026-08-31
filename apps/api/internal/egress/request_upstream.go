@@ -42,8 +42,16 @@ func ShouldCopyUpstreamHeader(c contract.Context, k string, v []string) bool {
 	return true
 }
 
+// IOCopyBytesGracefully writes a complete (non-streaming) upstream response
+// through to the client, preserving the upstream status code and headers.
+//
+// It goes through the stream abstraction rather than Response.Data because the
+// header set has to be assembled from the upstream response and Content-Length
+// written before WriteHeader; a single body-plus-status call cannot express
+// that ordering.
 func IOCopyBytesGracefully(c contract.Context, src *http.Response, data []byte) {
-	if c.ResponseWriter() == nil {
+	stream := c.ResponseStream()
+	if stream == nil {
 		return
 	}
 
@@ -73,25 +81,24 @@ func IOCopyBytesGracefully(c contract.Context, src *http.Response, data []byte) 
 			if !ShouldCopyUpstreamHeader(c, k, v) {
 				continue
 			}
-			c.ResponseWriter().Header().Set(k, v[0])
+			stream.SetHeader(k, v[0])
 		}
 	}
 
 	// set Content-Length header manually BEFORE calling WriteHeader
-	c.ResponseWriter().Header().Set("Content-Length", fmt.Sprintf("%d", len(data)))
+	stream.SetHeader("Content-Length", fmt.Sprintf("%d", len(data)))
 
 	// Write header with status code (this sends the headers)
 	if src != nil {
-		c.ResponseWriter().WriteHeader(src.StatusCode)
+		stream.WriteHeader(src.StatusCode)
 	} else {
-		c.ResponseWriter().WriteHeader(http.StatusOK)
+		stream.WriteHeader(http.StatusOK)
 	}
 
-	_, err := io.Copy(c.ResponseWriter(), body)
-	if err != nil {
-		logger.LogError(c.HTTPRequest().Context(), fmt.Sprintf("failed to copy response body: %s", err.Error()))
+	if _, err := io.Copy(stream, body); err != nil {
+		logger.LogError(c.Context(), fmt.Sprintf("failed to copy response body: %s", err.Error()))
 	}
-	if f, ok := c.ResponseWriter().(http.Flusher); ok {
-		f.Flush()
+	if stream.CanFlush() {
+		_ = stream.Flush()
 	}
 }

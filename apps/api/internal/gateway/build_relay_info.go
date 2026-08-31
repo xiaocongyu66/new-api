@@ -162,6 +162,9 @@ func genBaseRelayInfo(c contract.Context, request dto.Request) *relaycommon.Rela
 
 	isStream := false
 	if request != nil {
+		// dto.Request.IsStream takes *http.Request because relaykit is a separate
+		// module and cannot import the app's internal contract. The escape hatch
+		// is the module boundary here, not an unmigrated call site.
 		isStream = request.IsStream(c.HTTPRequest())
 	}
 	c.Set(string(constant.ContextKeyIsStream), isStream)
@@ -189,8 +192,11 @@ func genBaseRelayInfo(c contract.Context, request dto.Request) *relaycommon.Rela
 		TokenUnlimited: common.GetContextKeyBool(c, constant.ContextKeyTokenUnlimited),
 		TokenGroup:     tokenGroup,
 
-		RelayMode:      relayconstant.Path2RelayMode(c.HTTPRequest().URL.Path),
-		RequestURLPath: c.HTTPRequest().URL.String(),
+		RelayMode: relayconstant.Path2RelayMode(c.Path()),
+		// RequestURI rather than Path+RawQuery: it is the request target as sent,
+		// so a bare trailing '?' survives into the upstream URL exactly as it
+		// arrived instead of being dropped by recomposition.
+		RequestURLPath: c.RequestURI(),
 		RequestHeaders: cloneRequestHeaders(c),
 		IsStream:       isStream,
 
@@ -208,7 +214,7 @@ func genBaseRelayInfo(c contract.Context, request dto.Request) *relaycommon.Rela
 		info.RelayMode = c.GetInt("relay_mode")
 	}
 
-	if strings.HasPrefix(c.HTTPRequest().URL.Path, "/pg") {
+	if strings.HasPrefix(c.Path(), "/pg") {
 		info.IsPlayground = true
 		info.RequestURLPath = strings.TrimPrefix(info.RequestURLPath, "/pg")
 		info.RequestURLPath = "/v1" + info.RequestURLPath
@@ -223,15 +229,16 @@ func genBaseRelayInfo(c contract.Context, request dto.Request) *relaycommon.Rela
 }
 
 func cloneRequestHeaders(c contract.Context) map[string]string {
-	if c == nil || c.HTTPRequest() == nil {
+	if c == nil {
 		return nil
 	}
-	if len(c.HTTPRequest().Header) == 0 {
+	inbound := c.Headers()
+	if len(inbound) == 0 {
 		return nil
 	}
-	headers := make(map[string]string, len(c.HTTPRequest().Header))
-	for key := range c.HTTPRequest().Header {
-		value := strings.TrimSpace(c.HTTPRequest().Header.Get(key))
+	headers := make(map[string]string, len(inbound))
+	for key := range inbound {
+		value := strings.TrimSpace(inbound.Get(key))
 		if value == "" {
 			continue
 		}

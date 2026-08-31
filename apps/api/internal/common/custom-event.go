@@ -74,6 +74,13 @@ func (r CustomEvent) Render(w http.ResponseWriter) error {
 	return encode(w, r)
 }
 
+// RenderTo writes only the event bytes, for streaming callers that install the
+// response headers themselves. It is the body half of Render, so both produce
+// identical framing.
+func (r CustomEvent) RenderTo(w io.Writer) error {
+	return encode(w, r)
+}
+
 func (r CustomEvent) WriteContentType(w http.ResponseWriter) {
 	header := w.Header()
 	header["Content-Type"] = writeContentType

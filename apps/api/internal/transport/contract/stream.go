@@ -1,6 +1,18 @@
 package contract
 
-import "io"
+import (
+	"io"
+	"time"
+)
+
+// EventStreamHeadersKey marks a request whose streaming headers were installed,
+// so nested relay helpers can request them without emitting them twice.
+//
+// It lives in the contract because two paths set it: the adapter's
+// EventStream.SetHeaders and the relay helper that installs the same headers
+// directly. Both must agree on one key or a single response gets two header
+// writes.
+const EventStreamHeadersKey = "event_stream_headers_set"
 
 // EventStream writes a Server-Sent Events response.
 //
@@ -44,5 +56,26 @@ type ResponseStream interface {
 
 	WriteHeader(status int)
 	SetHeader(key, value string)
+	// Header reads back a response header already staged for this response.
+	//
+	// The SSE renderer installs Cache-Control only when nothing else set it, so
+	// a request that already carries a stricter no-store policy keeps it. That
+	// conditional needs a read, and no other accessor provides one.
+	Header(key string) string
+	// AddHeader appends a value to key rather than replacing it, for upstream
+	// headers that legitimately repeat. Codex forwards X-Reasoning-Included and
+	// X-Codex-Turn-State this way, and collapsing repeats onto SetHeader would
+	// silently drop all but the last value.
+	AddHeader(key, value string)
 	Flush() error
+	// SetWriteDeadline bounds one blocked write to a slow client, so a reader
+	// waiting on the streaming goroutine can always finish. It reports false
+	// when the writer cannot carry a deadline (an in-process recorder), which
+	// callers treat as best-effort rather than as an error.
+	SetWriteDeadline(deadline time.Time) bool
+	// CanFlush reports whether Flush actually reaches the client. Streaming
+	// callers probe it so a writer without flush support is an observable
+	// condition rather than a stream that buffers to completion and looks like
+	// a stalled provider.
+	CanFlush() bool
 }

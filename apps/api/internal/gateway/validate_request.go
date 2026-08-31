@@ -33,15 +33,15 @@ func ExceedsMaxTokensLimit(values ...*uint) bool {
 }
 
 func GetAndValidateRequest(c contract.Context, format types.RelayFormat) (request dto.Request, err error) {
-	relayMode := relayconstant.Path2RelayMode(c.HTTPRequest().URL.Path)
+	relayMode := relayconstant.Path2RelayMode(c.Path())
 
 	switch format {
 	case types.RelayFormatOpenAI:
 		request, err = GetAndValidateTextRequest(c, relayMode)
 	case types.RelayFormatGemini:
-		if strings.Contains(c.HTTPRequest().URL.Path, ":embedContent") {
+		if strings.Contains(c.Path(), ":embedContent") {
 			request, err = GetAndValidateGeminiEmbeddingRequest(c)
-		} else if strings.Contains(c.HTTPRequest().URL.Path, ":batchEmbedContents") {
+		} else if strings.Contains(c.Path(), ":batchEmbedContents") {
 			request, err = GetAndValidateGeminiBatchEmbeddingRequest(c)
 		} else {
 			request, err = GetAndValidateGeminiRequest(c)
@@ -97,7 +97,7 @@ func GetAndValidateRerankRequest(c contract.Context) (*dto.RerankRequest, error)
 	var rerankRequest *dto.RerankRequest
 	err := common.UnmarshalBodyReusable(c, &rerankRequest)
 	if err != nil {
-		logger.LogError(c.HTTPRequest().Context(), fmt.Sprintf("getAndValidateTextRequest failed: %s", err.Error()))
+		logger.LogError(c.Context(), fmt.Sprintf("getAndValidateTextRequest failed: %s", err.Error()))
 		return nil, types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 	}
 
@@ -114,7 +114,7 @@ func GetAndValidateEmbeddingRequest(c contract.Context, relayMode int) (*dto.Emb
 	var embeddingRequest *dto.EmbeddingRequest
 	err := common.UnmarshalBodyReusable(c, &embeddingRequest)
 	if err != nil {
-		logger.LogError(c.HTTPRequest().Context(), fmt.Sprintf("getAndValidateTextRequest failed: %s", err.Error()))
+		logger.LogError(c.Context(), fmt.Sprintf("getAndValidateTextRequest failed: %s", err.Error()))
 		return nil, types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 	}
 
@@ -184,14 +184,13 @@ func GetAndValidOpenAIImageRequest(c contract.Context, relayMode int) (*dto.Imag
 
 	switch relayMode {
 	case relayconstant.RelayModeImagesEdits:
-		if strings.Contains(c.HTTPRequest().Header.Get("Content-Type"), "multipart/form-data") {
+		if strings.Contains(c.Header("Content-Type"), "multipart/form-data") {
 			form, err := common.ParseMultipartFormReusable(c)
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse image edit form request: %w", err)
 			}
 			formData := url.Values(form.Value)
-			c.HTTPRequest().MultipartForm = form
-			c.HTTPRequest().PostForm = formData
+			c.SetParsedForm(form)
 			imageRequest.Prompt = formData.Get("prompt")
 			imageRequest.Model = formData.Get("model")
 			if nValue := strings.TrimSpace(formData.Get("n")); nValue != "" {

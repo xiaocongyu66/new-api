@@ -4,19 +4,17 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 
 	"github.com/gin-gonic/gin"
 )
 
-// EventStreamHeadersKey marks a request whose streaming headers were installed,
-// so nested relay helpers can call SetHeaders without emitting them twice.
-//
-// It is exported because relay/helper.SetEventStreamHeaders sets the same flag
-// while the migration is in progress; both paths must agree on one key or the
-// headers can be written twice for a single response.
-const EventStreamHeadersKey = "event_stream_headers_set"
+// EventStreamHeadersKey is re-exported from the contract so existing adapter
+// callers keep compiling; the constant itself lives there because non-adapter
+// code sets the same flag.
+const EventStreamHeadersKey = contract.EventStreamHeadersKey
 
 // eventStream implements contract.EventStream over a gin response writer.
 type eventStream struct {
@@ -144,13 +142,80 @@ func (s *responseStream) SetHeader(key, value string) {
 	s.gin.Writer.Header().Set(key, value)
 }
 
-func (s *responseStream) Flush() error {
+func (s *responseStream) AddHeader(key, value string) {
+	s.gin.Writer.Header().Add(key, value)
+}
+
+func (s *responseStream) Header(key string) string {
+	return s.gin.Writer.Header().Get(key)
+}
+
+// Flush keeps going through the framework writer, not http.ResponseController.
+// gin's Flush calls WriteHeaderNow before forwarding, so the status and headers
+// commit ahead of the first flushed bytes; ResponseController would unwrap past
+// that and change when headers reach the client on every SSE response.
+//
+// The type assertion is not a capability check: gin's ResponseWriter declares
+// http.Flusher unconditionally and asserts the wrapped writer at call time, so
+// it panics when nothing underneath can flush. CanFlush answers that question
+// separately, and the recover here turns a writer that lies about it into an
+// error rather than a crashed request.
+func (s *responseStream) Flush() (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("streaming error: flusher not found: %v", recovered)
+		}
+	}()
+
 	flusher, ok := s.gin.Writer.(http.Flusher)
 	if !ok {
 		return errors.New("streaming error: flusher not found")
 	}
 	flusher.Flush()
 	return nil
+}
+
+// SetWriteDeadline bounds one blocked write. Writers with no connection
+// underneath (an in-process recorder) report false rather than failing the
+// request, since the deadline is a safety bound and not part of the response.
+func (s *responseStream) SetWriteDeadline(deadline time.Time) bool {
+	return http.NewResponseController(s.gin.Writer).SetWriteDeadline(deadline) == nil
+}
+
+// CanFlush walks the writer's Unwrap chain looking for a real http.Flusher,
+// which is what http.ResponseController does internally.
+//
+// It cannot be answered by asserting http.Flusher on the framework writer (gin
+// always satisfies it) and it must not be answered by attempting a flush, since
+// gin's Flush commits the status code as a side effect. Walking is the only
+// probe that is both accurate and free of observable effect.
+func (s *responseStream) CanFlush() bool {
+	var writer http.ResponseWriter = s.gin.Writer
+	for {
+		switch candidate := writer.(type) {
+		case interface{ Unwrap() http.ResponseWriter }:
+			writer = candidate.Unwrap()
+		case http.Flusher:
+			return true
+		default:
+			return false
+		}
+	}
+}
+
+// ---- contract.Streaming on requestContext ----
+
+// EventStream and ResponseStream are the seam business code streams through, so
+// it never has to import this package to get a writer.
+func (r *requestContext) EventStream() contract.EventStream {
+	return &eventStream{gin: r.gin}
+}
+
+func (r *requestContext) ResponseStream() contract.ResponseStream {
+	if r.gin.Writer == nil {
+		return nil
+	}
+	return &responseStream{gin: r.gin}
 }
 
 // assert the adapter satisfies the contract at compile time.
