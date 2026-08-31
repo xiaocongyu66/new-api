@@ -1109,7 +1109,7 @@ func GetPaginatedChannelTags(query *gorm.DB, offset int, limit int) ([]*string, 
 	return tags, err
 }
 
-func SearchTags(keyword string, group string, model string, idSort bool) ([]*string, error) {
+func SearchTags(keyword string, group string, model string) ([]*string, error) {
 	var tags []*string
 	modelsCol := "`models`"
 
@@ -1124,10 +1124,11 @@ func SearchTags(keyword string, group string, model string, idSort bool) ([]*str
 		baseURLCol = `"base_url"`
 	}
 
-	order := "priority desc"
-	if idSort {
-		order = "id desc"
-	}
+	// The subquery only feeds DISTINCT tag, so its order never reaches the caller.
+	// It used to be `priority desc`, and that column is retired; newest-first is
+	// what ChannelSortOptions.Apply now defaults to. The old idSort parameter
+	// selected between two orders that are now the same one, so it is gone.
+	const order = "id desc"
 
 	// 构造基础查询
 	baseQuery := dbx.DB.Model(&Channel{}).Omit("key")

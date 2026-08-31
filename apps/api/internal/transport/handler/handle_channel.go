@@ -286,7 +286,7 @@ func SearchChannels(c contract.Context) {
 	enableTagMode, _ := strconv.ParseBool(c.Query("tag_mode"))
 	channelData := make([]*channelpkg.Channel, 0)
 	if enableTagMode {
-		tags, err := channelpkg.SearchTags(keyword, group, modelKeyword, idSort)
+		tags, err := channelpkg.SearchTags(keyword, group, modelKeyword)
 		if err != nil {
 			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
