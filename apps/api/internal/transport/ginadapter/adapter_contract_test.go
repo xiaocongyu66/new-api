@@ -1,6 +1,7 @@
 package ginadapter
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -23,17 +24,27 @@ func TestGinAdapterSatisfiesTransportContract(t *testing.T) {
 
 	conformance.Run(t, conformance.Adapter{
 		Name:              "gin",
-		NewContext:        NewSyntheticContext,
+		NewContext:        newConformanceContext,
 		ServeRoute:        serveRoute,
 		NewEventStream:    EventStream,
 		NewResponseStream: ResponseStream,
 	})
 }
 
+// newConformanceContext wraps the production NewSyntheticContext for the suite:
+// it adapts the net/http recorder and supplies the disconnect hook. gin has no
+// disconnect notion of its own, so a gone client is the request context being
+// cancelled, which is exactly what the streaming code polls.
+func newConformanceContext(req *http.Request) (contract.Context, conformance.Recorder, func()) {
+	ctx, cancel := context.WithCancel(req.Context())
+	adapted, recorder := NewSyntheticContext(req.WithContext(ctx))
+	return adapted, conformance.NewHTTPRecorder(recorder), cancel
+}
+
 // serveRoute registers route on a real gin engine and serves req through it, so
 // the cases that need router-matched parameters and real middleware
 // continuation exercise the framework rather than a synthetic context.
-func serveRoute(t *testing.T, route conformance.Route, req *http.Request) *httptest.ResponseRecorder {
+func serveRoute(t *testing.T, route conformance.Route, req *http.Request) conformance.Recorder {
 	t.Helper()
 
 	gin.SetMode(gin.TestMode)
@@ -48,7 +59,7 @@ func serveRoute(t *testing.T, route conformance.Route, req *http.Request) *httpt
 
 	recorder := httptest.NewRecorder()
 	engine.ServeHTTP(recorder, req)
-	return recorder
+	return conformance.NewHTTPRecorder(recorder)
 }
 
 // TestUnwrapRecoversGinContext asserts the migration escape hatch returns the

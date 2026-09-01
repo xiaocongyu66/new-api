@@ -33,8 +33,8 @@ func runChainCases(t *testing.T, adapter Adapter) {
 		recorder := adapter.ServeRoute(t, route, httptest.NewRequest(http.MethodGet, "/api/user/self", nil))
 
 		assert.False(t, handlerRan, "aborted request must not reach the handler")
-		assert.Equal(t, http.StatusUnauthorized, recorder.Code)
-		assert.JSONEq(t, `{"success":false}`, recorder.Body.String())
+		assert.Equal(t, http.StatusUnauthorized, recorder.Status())
+		assert.JSONEq(t, `{"success":false}`, string(recorder.Body()))
 	})
 
 	// RunsContractHandler asserts a contract handler registered on a route
@@ -50,8 +50,8 @@ func runChainCases(t *testing.T, adapter Adapter) {
 
 		recorder := adapter.ServeRoute(t, route, httptest.NewRequest(http.MethodGet, "/api/token/31", nil))
 
-		assert.Equal(t, http.StatusOK, recorder.Code)
-		assert.JSONEq(t, `{"id":"31"}`, recorder.Body.String())
+		assert.Equal(t, http.StatusOK, recorder.Status())
+		assert.JSONEq(t, `{"id":"31"}`, string(recorder.Body()))
 	})
 
 	// NextRunsDownstreamThenReturns asserts Next is synchronous and returns
@@ -79,7 +79,7 @@ func runChainCases(t *testing.T, adapter Adapter) {
 		recorder := adapter.ServeRoute(t, route, httptest.NewRequest(http.MethodGet, "/api/log", nil))
 
 		assert.Equal(t, []string{"before", "handler", "after"}, order)
-		assert.Equal(t, http.StatusOK, recorder.Code)
+		assert.Equal(t, http.StatusOK, recorder.Status())
 	})
 
 	// ResponseStatusIsReadableAfterNext asserts post-Next middleware observes
@@ -145,7 +145,7 @@ func runChainCases(t *testing.T, adapter Adapter) {
 		recorder := adapter.ServeRoute(t, route, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 
 		assert.False(t, handlerRan)
-		assert.Equal(t, http.StatusTooManyRequests, recorder.Code)
+		assert.Equal(t, http.StatusTooManyRequests, recorder.Status())
 	})
 
 	// AbortWithStatusJSONStopsChainAndWritesBody covers the rejection path that
@@ -169,7 +169,7 @@ func runChainCases(t *testing.T, adapter Adapter) {
 		recorder := adapter.ServeRoute(t, route, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 
 		assert.False(t, handlerRan)
-		assert.Equal(t, http.StatusForbidden, recorder.Code)
-		assert.JSONEq(t, `{"success":false,"message":"no permission"}`, recorder.Body.String())
+		assert.Equal(t, http.StatusForbidden, recorder.Status())
+		assert.JSONEq(t, `{"success":false,"message":"no permission"}`, string(recorder.Body()))
 	})
 }

@@ -22,7 +22,7 @@ func runBodyCases(t *testing.T, adapter Adapter) {
 		payload := `{"model":"gpt-4","stream":true}`
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(payload))
 		req.Header.Set("Content-Type", "application/json")
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		var decoded struct {
 			Model  string `json:"model"`
@@ -52,7 +52,7 @@ func runBodyCases(t *testing.T, adapter Adapter) {
 		payload := `{"model":"gpt-4"}`
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(payload))
 		req.Header.Set("Content-Type", "application/json")
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		first, err := adapted.BodyReader()
 		require.NoError(t, err)
@@ -84,7 +84,7 @@ func runBodyCases(t *testing.T, adapter Adapter) {
 		payload := `{"model":"gpt-4","stream":false}`
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(payload))
 		req.Header.Set("Content-Type", "application/json")
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		first, err := adapted.RawBody()
 		require.NoError(t, err)
@@ -104,7 +104,7 @@ func runBodyCases(t *testing.T, adapter Adapter) {
 		replacement := `{"model":"gpt-4","max_completion_tokens":16}`
 		req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(original))
 		req.Header.Set("Content-Type", "application/json")
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		// Read first, so the replacement has to invalidate a populated buffer
 		// rather than a cold one.
@@ -141,7 +141,7 @@ func runBodyCases(t *testing.T, adapter Adapter) {
 	t.Run("ReplaceBodyIsSequential", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"step":0}`))
 		req.Header.Set("Content-Type", "application/json")
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		for step := 1; step <= 3; step++ {
 			adapted.ReplaceBody([]byte(`{"step":` + string(rune('0'+step)) + `}`))
@@ -164,7 +164,7 @@ func runBodyCases(t *testing.T, adapter Adapter) {
 		replacement := `{"model":"gpt-4","attempt":1}`
 		req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-3"}`))
 		req.Header.Set("Content-Type", "application/json")
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		adapted.ReplaceBody([]byte(replacement))
 
@@ -188,7 +188,7 @@ func runBodyCases(t *testing.T, adapter Adapter) {
 		payload := []byte(`{"model":"gpt-4"}`)
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(payload))
 		req.Header.Set("Content-Type", "application/json")
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		for attempt := 0; attempt < 3; attempt++ {
 			adapted.ResetBody(io.NopCloser(bytes.NewReader(payload)))

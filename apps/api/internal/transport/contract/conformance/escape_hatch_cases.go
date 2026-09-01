@@ -26,7 +26,7 @@ func runEscapeHatchCases(t *testing.T, adapter Adapter) {
 	// the same target, method, and host the contract accessors report.
 	t.Run("HTTPRequestPreservesRequestLine", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "https://api.test/v1/chat/completions?model=gpt-4&empty=", nil)
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		exposed := adapted.HTTPRequest()
 		require.NotNil(t, exposed, "third-party libraries require a real *http.Request")
@@ -48,7 +48,7 @@ func runEscapeHatchCases(t *testing.T, adapter Adapter) {
 		req.Header.Add("X-Forwarded-For", "203.0.113.2")
 		req.Header.Add("Accept", "application/json")
 		req.Header.Add("Accept", "text/event-stream")
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		exposed := adapted.HTTPRequest()
 
@@ -65,7 +65,7 @@ func runEscapeHatchCases(t *testing.T, adapter Adapter) {
 		req := httptest.NewRequest(http.MethodPost, "/api/user/auth/refresh", nil)
 		req.AddCookie(&http.Cookie{Name: "newapi_refresh", Value: "refresh-token"})
 		req.AddCookie(&http.Cookie{Name: "newapi_session", Value: "sid-9"})
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		exposed := adapted.HTTPRequest()
 
@@ -85,7 +85,7 @@ func runEscapeHatchCases(t *testing.T, adapter Adapter) {
 		req := httptest.NewRequest(http.MethodPost, "/api/oauth/token?state=xyz",
 			strings.NewReader("grant_type=authorization_code&code=abc123&scope=read&scope=write"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		exposed := adapted.HTTPRequest()
 		require.NoError(t, exposed.ParseForm())
@@ -115,7 +115,7 @@ func runEscapeHatchCases(t *testing.T, adapter Adapter) {
 		payload := `{"model":"gpt-4","stream":true}`
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(payload))
 		req.Header.Set("Content-Type", "application/json")
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		// Buffer through the contract first, the way middleware does.
 		raw, err := adapted.RawBody()
@@ -145,7 +145,7 @@ func runEscapeHatchCases(t *testing.T, adapter Adapter) {
 		payload := `{"model":"gpt-4","stream":true}`
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(payload))
 		req.Header.Set("Content-Type", "application/json")
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		var decoded struct {
 			Model string `json:"model"`
@@ -176,7 +176,7 @@ func runEscapeHatchCases(t *testing.T, adapter Adapter) {
 
 		req := httptest.NewRequest(http.MethodPost, "/v1/images/edits", strings.NewReader(body.String()))
 		req.Header.Set("Content-Type", writer.FormDataContentType())
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		form, err := adapted.MultipartForm()
 		require.NoError(t, err)
@@ -198,7 +198,7 @@ func runEscapeHatchCases(t *testing.T, adapter Adapter) {
 	// WebSocket upgrade write them.
 	t.Run("ResponseWriterWritesThroughToTheClient", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/v1/videos/task-1/content", nil)
-		adapted, recorder := adapter.NewContext(req)
+		adapted, recorder, _ := adapter.NewContext(req)
 
 		writer := adapted.ResponseWriter()
 		require.NotNil(t, writer, "libraries that take over the response require a real http.ResponseWriter")
@@ -211,11 +211,11 @@ func runEscapeHatchCases(t *testing.T, adapter Adapter) {
 		require.NoError(t, err)
 
 		assert.Equal(t, 3, written)
-		assert.Equal(t, http.StatusPartialContent, recorder.Code)
+		assert.Equal(t, http.StatusPartialContent, recorder.Status())
 		assert.Equal(t, "video/mp4", recorder.Header().Get("Content-Type"))
 		assert.Equal(t, []string{"provider-a", "provider-b"}, recorder.Header().Values("X-Upstream"),
 			"multi-value response headers must survive the escape hatch")
-		assert.Equal(t, []byte{0x00, 0x01, 0x02}, recorder.Body.Bytes())
+		assert.Equal(t, []byte{0x00, 0x01, 0x02}, recorder.Body())
 	})
 
 	// ResponseWriterSharesStateWithTheContract asserts the exposed writer is the
@@ -224,7 +224,7 @@ func runEscapeHatchCases(t *testing.T, adapter Adapter) {
 	// hatch, and both must land on one response.
 	t.Run("ResponseWriterSharesStateWithTheContract", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/v1/videos/task-1/content", nil)
-		adapted, recorder := adapter.NewContext(req)
+		adapted, recorder, _ := adapter.NewContext(req)
 
 		adapted.SetHeader("X-Request-Id", "req-42")
 		writer := adapted.ResponseWriter()
@@ -246,7 +246,7 @@ func runEscapeHatchCases(t *testing.T, adapter Adapter) {
 	// buffering a whole response.
 	t.Run("ResponseWriterSupportsFlush", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-		adapted, recorder := adapter.NewContext(req)
+		adapted, recorder, _ := adapter.NewContext(req)
 
 		writer := adapted.ResponseWriter()
 		flusher, ok := writer.(http.Flusher)
@@ -256,7 +256,7 @@ func runEscapeHatchCases(t *testing.T, adapter Adapter) {
 		require.NoError(t, err)
 		flusher.Flush()
 
-		assert.Equal(t, "chunk-1", recorder.Body.String())
-		assert.True(t, recorder.Flushed, "Flush must reach the underlying response")
+		assert.Equal(t, "chunk-1", string(recorder.Body()))
+		assert.True(t, recorder.Flushed(), "Flush must reach the underlying response")
 	})
 }

@@ -28,7 +28,7 @@ func runRequestCases(t *testing.T, adapter Adapter) {
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions?model=gpt-4&empty=", nil)
 		req.Header.Set("Authorization", "Bearer sk-test")
 		req.Header.Set("Content-Type", "application/json")
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		assert.Equal(t, http.MethodPost, adapted.Method())
 		assert.Equal(t, "/v1/chat/completions", adapted.Path())
@@ -46,7 +46,7 @@ func runRequestCases(t *testing.T, adapter Adapter) {
 	t.Run("RequestTargetAccessors", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions?model=gpt-4&empty=", strings.NewReader(`{}`))
 		req.Header.Set("User-Agent", "newapi-test/1.0")
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		assert.Equal(t, "/v1/chat/completions?model=gpt-4&empty=", adapted.RequestURI())
 		assert.Equal(t, "model=gpt-4&empty=", adapted.RawQuery())
@@ -62,7 +62,7 @@ func runRequestCases(t *testing.T, adapter Adapter) {
 	t.Run("HostReportsTheRequestAuthority", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "http://panel.example.com:8443/api/user/auth/refresh", nil)
 		req.Header.Set("X-Forwarded-Host", "attacker.example.com")
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		assert.Equal(t, "panel.example.com:8443", adapted.Host(),
 			"Host must report the authority the client addressed, including the port, and must not follow X-Forwarded-Host")
@@ -73,13 +73,13 @@ func runRequestCases(t *testing.T, adapter Adapter) {
 	// it, so an adapter that honoured X-Forwarded-Proto would let a client over
 	// plaintext claim an https origin and pass the same-origin comparison.
 	t.Run("IsTLSReflectsTheTransportNotForwardedHeaders", func(t *testing.T) {
-		secure, _ := adapter.NewContext(httptest.NewRequest(http.MethodGet, "https://panel.example.com/api/status", nil))
+		secure, _, _ := adapter.NewContext(httptest.NewRequest(http.MethodGet, "https://panel.example.com/api/status", nil))
 		assert.True(t, secure.IsTLS(), "a request arriving over TLS must report IsTLS")
 
 		spoofed := httptest.NewRequest(http.MethodGet, "http://panel.example.com/api/status", nil)
 		spoofed.Header.Set("X-Forwarded-Proto", "https")
 		spoofed.Header.Set("X-Forwarded-Ssl", "on")
-		plaintext, _ := adapter.NewContext(spoofed)
+		plaintext, _, _ := adapter.NewContext(spoofed)
 		assert.False(t, plaintext.IsTLS(),
 			"IsTLS must reflect the connection, never client-supplied forwarded headers")
 	})
@@ -116,7 +116,7 @@ func runRequestCases(t *testing.T, adapter Adapter) {
 		req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 		req.Header.Add("X-Forwarded-For", "203.0.113.1")
 		req.Header.Add("X-Forwarded-For", "203.0.113.2")
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		assert.Equal(t, []string{"203.0.113.1", "203.0.113.2"}, adapted.Headers().Values("X-Forwarded-For"))
 		assert.Equal(t, "203.0.113.1", adapted.Header("X-Forwarded-For"),
@@ -130,7 +130,7 @@ func runRequestCases(t *testing.T, adapter Adapter) {
 	t.Run("HeaderMutationIsObservable", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
 		req.Header.Set("x-goog-api-key", "goog-key")
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		adapted.Headers().Set("Authorization", "Bearer rewritten")
 
@@ -145,7 +145,7 @@ func runRequestCases(t *testing.T, adapter Adapter) {
 	t.Run("CookieReadsNamedCookie", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/user/auth/refresh", nil)
 		req.AddCookie(&http.Cookie{Name: "newapi_refresh", Value: "refresh-token"})
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		value, err := adapted.Cookie("newapi_refresh")
 		require.NoError(t, err)
@@ -161,7 +161,7 @@ func runRequestCases(t *testing.T, adapter Adapter) {
 		req := httptest.NewRequest(http.MethodPost, "/api/oauth/token",
 			strings.NewReader("grant_type=authorization_code&scope=read&scope=write"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		require.NoError(t, adapted.ParseForm())
 
@@ -184,7 +184,7 @@ func runRequestCases(t *testing.T, adapter Adapter) {
 
 		req := httptest.NewRequest(http.MethodPost, "/v1/images/edits", strings.NewReader(body.String()))
 		req.Header.Set("Content-Type", writer.FormDataContentType())
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		form, err := adapted.MultipartForm()
 		require.NoError(t, err)
@@ -198,7 +198,7 @@ func runRequestCases(t *testing.T, adapter Adapter) {
 	// downstream code reading through the contract.
 	t.Run("RequestRewritesAreObservable", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		adapted.SetPath("/v1/chat/completions")
 		adapted.SetMethod(http.MethodPut)
@@ -214,7 +214,7 @@ func runRequestCases(t *testing.T, adapter Adapter) {
 	// only a context.Context (provider SDKs) observes per-request state.
 	t.Run("ContextValueReachesRequestLifetime", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		adapted.SetContextValue(ctxKey("trace_id"), "trace-9")
 
@@ -227,11 +227,10 @@ func runRequestCases(t *testing.T, adapter Adapter) {
 	// context that never fires.
 	t.Run("ContextIsCancelledWithTheRequest", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-		ctx, cancel := context.WithCancel(req.Context())
-		adapted, _ := adapter.NewContext(req.WithContext(ctx))
+		adapted, _, disconnect := adapter.NewContext(req)
 
 		require.NoError(t, adapted.Context().Err())
-		cancel()
+		disconnect()
 		assert.ErrorIs(t, adapted.Context().Err(), context.Canceled)
 	})
 }

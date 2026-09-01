@@ -33,6 +33,31 @@ type Route struct {
 	Handler    contract.Handler
 }
 
+// Recorder is what an adapter's factory hands back: whatever the context wrote.
+type Recorder interface {
+	// Status is the written status code, 0 if nothing was written.
+	Status() int
+	// Header is the response header set.
+	Header() http.Header
+	// Body is the bytes written to the client.
+	Body() []byte
+	// Flushed reports whether at least one flush reached the client.
+	Flushed() bool
+}
+
+// NewHTTPRecorder adapts an httptest.ResponseRecorder to Recorder, for any
+// adapter whose engine is a net/http handler.
+func NewHTTPRecorder(rec *httptest.ResponseRecorder) Recorder { return httpRecorder{rec: rec} }
+
+// httpRecorder names its field rather than embedding, so the four accessors
+// cannot be confused with the recorder's own exported fields of the same names.
+type httpRecorder struct{ rec *httptest.ResponseRecorder }
+
+func (r httpRecorder) Status() int         { return r.rec.Code }
+func (r httpRecorder) Header() http.Header { return r.rec.Header() }
+func (r httpRecorder) Body() []byte        { return r.rec.Body.Bytes() }
+func (r httpRecorder) Flushed() bool       { return r.rec.Flushed }
+
 // Adapter is the injection point an adapter package fills in. Every field is
 // required: the suite fails fast rather than silently skipping a family, since
 // a skipped family is indistinguishable from a passing one in CI output.
@@ -40,13 +65,14 @@ type Adapter struct {
 	// Name labels the subtests, so a failure names the adapter under test.
 	Name string
 
-	// NewContext builds a context backed by an in-process recorder. The
-	// recorder must capture whatever the context writes.
-	NewContext func(req *http.Request) (contract.Context, *httptest.ResponseRecorder)
+	// NewContext builds a context backed by an in-process recorder, plus a
+	// func that simulates the client going away. gin cancels the request
+	// context; fiber closes the pipe.
+	NewContext func(req *http.Request) (contract.Context, Recorder, func())
 
 	// ServeRoute registers route on a real engine and serves req through it,
 	// returning what the engine wrote.
-	ServeRoute func(t *testing.T, route Route, req *http.Request) *httptest.ResponseRecorder
+	ServeRoute func(t *testing.T, route Route, req *http.Request) Recorder
 
 	// NewEventStream returns the adapter's SSE writer for c.
 	NewEventStream func(c contract.Context) (contract.EventStream, error)

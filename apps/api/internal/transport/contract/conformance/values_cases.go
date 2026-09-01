@@ -17,7 +17,7 @@ func runValuesCases(t *testing.T, adapter Adapter) {
 	// the typed getters business code relies on.
 	t.Run("RoundTrip", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/user/self", nil)
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		adapted.Set("id", 42)
 		adapted.Set("username", "alice")
@@ -43,7 +43,7 @@ func runValuesCases(t *testing.T, adapter Adapter) {
 	// different conversion path.
 	t.Run("CompositeGettersRoundTrip", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/user/self", nil)
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		issued := time.Date(2026, time.August, 31, 12, 0, 0, 0, time.UTC)
 		adapted.Set("token_meta", map[string]any{"id": 7, "name": "probe"})
@@ -61,7 +61,7 @@ func runValuesCases(t *testing.T, adapter Adapter) {
 	// would be a 500 on every request that skipped the producing middleware.
 	t.Run("TypedGettersReturnZeroForAbsentKeys", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/user/self", nil)
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		assert.Equal(t, "", adapted.GetString("absent"))
 		assert.Equal(t, 0, adapted.GetInt("absent"))
@@ -77,7 +77,7 @@ func runValuesCases(t *testing.T, adapter Adapter) {
 	// -wins store would forward a retry to the failed channel.
 	t.Run("OverwriteWins", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-		adapted, _ := adapter.NewContext(req)
+		adapted, _, _ := adapter.NewContext(req)
 
 		adapted.Set("channel_id", 1)
 		adapted.Set("channel_id", 2)

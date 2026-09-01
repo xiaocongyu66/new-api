@@ -1,7 +1,6 @@
 package conformance
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -19,7 +18,7 @@ func runEventStreamCases(t *testing.T, adapter Adapter) {
 	// client-visible contract, so they must not drift when the writer is
 	// replaced.
 	t.Run("FramingMatchesRelayBytes", func(t *testing.T) {
-		adapted, recorder := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+		adapted, recorder, _ := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 
 		stream, err := adapter.NewEventStream(adapted)
 		require.NoError(t, err)
@@ -36,39 +35,39 @@ func runEventStreamCases(t *testing.T, adapter Adapter) {
 
 		assert.Equal(t,
 			"data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n",
-			recorder.Body.String(),
+			string(recorder.Body()),
 		)
 	})
 
 	// NamedEventFramingMatchesClaudeData pins the named-event framing against
 	// the bytes relay/helper.ClaudeData emits.
 	t.Run("NamedEventFramingMatchesClaudeData", func(t *testing.T) {
-		adapted, recorder := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/messages", nil))
+		adapted, recorder, _ := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/messages", nil))
 
 		stream, err := adapter.NewEventStream(adapted)
 		require.NoError(t, err)
 
 		require.NoError(t, stream.WriteNamedEvent("message_start", `{"type":"message_start"}`))
 
-		assert.Equal(t, "event: message_start\ndata: {\"type\":\"message_start\"}\n\n", recorder.Body.String())
+		assert.Equal(t, "event: message_start\ndata: {\"type\":\"message_start\"}\n\n", string(recorder.Body()))
 	})
 
 	// CommentFramingMatchesPingData pins the keep-alive comment frame.
 	t.Run("CommentFramingMatchesPingData", func(t *testing.T) {
-		adapted, recorder := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+		adapted, recorder, _ := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 
 		stream, err := adapter.NewEventStream(adapted)
 		require.NoError(t, err)
 
 		require.NoError(t, stream.WriteComment("PING"))
 
-		assert.Equal(t, ": PING\n\n", recorder.Body.String())
+		assert.Equal(t, ": PING\n\n", string(recorder.Body()))
 	})
 
 	// SetHeadersIsIdempotent asserts nested relay helpers can request streaming
 	// headers repeatedly without duplicating them.
 	t.Run("SetHeadersIsIdempotent", func(t *testing.T) {
-		adapted, recorder := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+		adapted, recorder, _ := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 
 		stream, err := adapter.NewEventStream(adapted)
 		require.NoError(t, err)
@@ -83,7 +82,7 @@ func runEventStreamCases(t *testing.T, adapter Adapter) {
 	// WriteRawEmitsBytesVerbatim covers the path that forwards already-framed
 	// upstream bytes. Any added framing would corrupt the stream clients parse.
 	t.Run("WriteRawEmitsBytesVerbatim", func(t *testing.T) {
-		adapted, recorder := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+		adapted, recorder, _ := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 
 		stream, err := adapter.NewEventStream(adapted)
 		require.NoError(t, err)
@@ -93,13 +92,13 @@ func runEventStreamCases(t *testing.T, adapter Adapter) {
 		require.NoError(t, err)
 
 		assert.Equal(t, len(payload), written)
-		assert.Equal(t, string(payload), recorder.Body.String())
+		assert.Equal(t, string(payload), string(recorder.Body()))
 	})
 
 	// FlushReachesTheClient asserts frames are pushed rather than buffered until
 	// the handler returns, which is what makes the stream incremental.
 	t.Run("FlushReachesTheClient", func(t *testing.T) {
-		adapted, recorder := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+		adapted, recorder, _ := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 
 		stream, err := adapter.NewEventStream(adapted)
 		require.NoError(t, err)
@@ -107,13 +106,13 @@ func runEventStreamCases(t *testing.T, adapter Adapter) {
 		require.NoError(t, stream.WriteEvent(`{"delta":"a"}`))
 		require.NoError(t, stream.Flush())
 
-		assert.True(t, recorder.Flushed, "SSE writes must be flushed to the client")
+		assert.True(t, recorder.Flushed(), "SSE writes must be flushed to the client")
 	})
 
 	// DoneIsFalseOnALiveRequest asserts the disconnect probe does not report a
 	// live client as gone, which would truncate every stream.
 	t.Run("DoneIsFalseOnALiveRequest", func(t *testing.T) {
-		adapted, _ := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+		adapted, _, _ := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 
 		stream, err := adapter.NewEventStream(adapted)
 		require.NoError(t, err)
@@ -125,16 +124,15 @@ func runEventStreamCases(t *testing.T, adapter Adapter) {
 	// emitting frames instead of writing a partial event.
 	t.Run("RejectsWritesAfterClientDisconnect", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-		ctx, cancel := context.WithCancel(req.Context())
-		adapted, recorder := adapter.NewContext(req.WithContext(ctx))
-		cancel()
+		adapted, recorder, disconnect := adapter.NewContext(req)
+		disconnect()
 
 		stream, err := adapter.NewEventStream(adapted)
 		require.NoError(t, err)
 
 		assert.True(t, stream.Done())
 		require.Error(t, stream.WriteEvent(`{"choices":[]}`))
-		assert.Empty(t, recorder.Body.String())
+		assert.Empty(t, string(recorder.Body()))
 	})
 
 	// EveryWriteRejectsAfterDisconnect asserts the whole writer surface refuses
@@ -143,9 +141,8 @@ func runEventStreamCases(t *testing.T, adapter Adapter) {
 	// traffic nobody receives.
 	t.Run("EveryWriteRejectsAfterDisconnect", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
-		ctx, cancel := context.WithCancel(req.Context())
-		adapted, recorder := adapter.NewContext(req.WithContext(ctx))
-		cancel()
+		adapted, recorder, disconnect := adapter.NewContext(req)
+		disconnect()
 
 		stream, err := adapter.NewEventStream(adapted)
 		require.NoError(t, err)
@@ -156,7 +153,7 @@ func runEventStreamCases(t *testing.T, adapter Adapter) {
 		require.Error(t, rawErr)
 		require.Error(t, stream.Flush())
 
-		assert.Empty(t, recorder.Body.String(), "a disconnected client must receive no partial frames")
+		assert.Empty(t, string(recorder.Body()), "a disconnected client must receive no partial frames")
 	})
 }
 
@@ -166,7 +163,7 @@ func runResponseStreamCases(t *testing.T, adapter Adapter) {
 	// WritesRawUpstreamBytes asserts the raw writer used by the video and
 	// reverse-proxy endpoints preserves status, headers, and body bytes.
 	t.Run("WritesRawUpstreamBytes", func(t *testing.T) {
-		adapted, recorder := adapter.NewContext(httptest.NewRequest(http.MethodGet, "/v1/videos/task-1/content", nil))
+		adapted, recorder, _ := adapter.NewContext(httptest.NewRequest(http.MethodGet, "/v1/videos/task-1/content", nil))
 
 		stream, err := adapter.NewResponseStream(adapted)
 		require.NoError(t, err)
@@ -177,15 +174,15 @@ func runResponseStreamCases(t *testing.T, adapter Adapter) {
 		require.NoError(t, err)
 
 		assert.Equal(t, 3, written)
-		assert.Equal(t, http.StatusPartialContent, recorder.Code)
+		assert.Equal(t, http.StatusPartialContent, recorder.Status())
 		assert.Equal(t, "video/mp4", recorder.Header().Get("Content-Type"))
-		assert.Equal(t, []byte{0x00, 0x01, 0x02}, recorder.Body.Bytes())
+		assert.Equal(t, []byte{0x00, 0x01, 0x02}, recorder.Body())
 	})
 
 	// SequentialWritesConcatenate asserts a copied upstream body arrives in
 	// order and unmodified, which is what io.Copy produces against this writer.
 	t.Run("SequentialWritesConcatenate", func(t *testing.T) {
-		adapted, recorder := adapter.NewContext(httptest.NewRequest(http.MethodGet, "/v1/videos/task-1/content", nil))
+		adapted, recorder, _ := adapter.NewContext(httptest.NewRequest(http.MethodGet, "/v1/videos/task-1/content", nil))
 
 		stream, err := adapter.NewResponseStream(adapted)
 		require.NoError(t, err)
@@ -196,13 +193,13 @@ func runResponseStreamCases(t *testing.T, adapter Adapter) {
 			assert.Equal(t, len(chunk), written)
 		}
 
-		assert.Equal(t, "chunk-1chunk-2chunk-3", recorder.Body.String())
+		assert.Equal(t, "chunk-1chunk-2chunk-3", string(recorder.Body()))
 	})
 
 	// FlushReachesTheClient asserts proxied bytes are pushed incrementally
 	// rather than held until the handler returns.
 	t.Run("FlushReachesTheClient", func(t *testing.T) {
-		adapted, recorder := adapter.NewContext(httptest.NewRequest(http.MethodGet, "/v1/videos/task-1/content", nil))
+		adapted, recorder, _ := adapter.NewContext(httptest.NewRequest(http.MethodGet, "/v1/videos/task-1/content", nil))
 
 		stream, err := adapter.NewResponseStream(adapted)
 		require.NoError(t, err)
@@ -211,8 +208,8 @@ func runResponseStreamCases(t *testing.T, adapter Adapter) {
 		require.NoError(t, err)
 		require.NoError(t, stream.Flush())
 
-		assert.True(t, recorder.Flushed)
-		assert.Equal(t, "partial", recorder.Body.String())
+		assert.True(t, recorder.Flushed())
+		assert.Equal(t, "partial", string(recorder.Body()))
 	})
 
 	// AddHeaderKeepsRepeatedValues asserts the append accessor does not collapse
@@ -220,7 +217,7 @@ func runResponseStreamCases(t *testing.T, adapter Adapter) {
 	// X-Codex-Turn-State as repeats, and an implementation that aliased
 	// AddHeader onto SetHeader would silently drop all but one.
 	t.Run("AddHeaderKeepsRepeatedValues", func(t *testing.T) {
-		adapted, recorder := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+		adapted, recorder, _ := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
 
 		stream, err := adapter.NewResponseStream(adapted)
 		require.NoError(t, err)
@@ -236,7 +233,7 @@ func runResponseStreamCases(t *testing.T, adapter Adapter) {
 	// staged headers, which is what lets the SSE renderer install Cache-Control
 	// only when nothing stricter is already set.
 	t.Run("SetHeaderReplacesAndHeaderReadsBack", func(t *testing.T) {
-		adapted, recorder := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+		adapted, recorder, _ := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
 
 		stream, err := adapter.NewResponseStream(adapted)
 		require.NoError(t, err)
@@ -256,16 +253,16 @@ func runResponseStreamCases(t *testing.T, adapter Adapter) {
 	// itself commit the response. A probe implemented by attempting a flush
 	// would send the status code early on every stream.
 	t.Run("CanFlushAgreesWithFlushAndHasNoSideEffect", func(t *testing.T) {
-		adapted, recorder := adapter.NewContext(httptest.NewRequest(http.MethodGet, "/v1/videos/task-1/content", nil))
+		adapted, recorder, _ := adapter.NewContext(httptest.NewRequest(http.MethodGet, "/v1/videos/task-1/content", nil))
 
 		stream, err := adapter.NewResponseStream(adapted)
 		require.NoError(t, err)
 
 		require.True(t, stream.CanFlush(), "a recorder-backed stream can flush")
-		assert.False(t, recorder.Flushed, "probing the capability must not flush")
+		assert.False(t, recorder.Flushed(), "probing the capability must not flush")
 
 		require.NoError(t, stream.Flush())
-		assert.True(t, recorder.Flushed, "CanFlush must agree with Flush")
+		assert.True(t, recorder.Flushed(), "CanFlush must agree with Flush")
 	})
 
 	// SetWriteDeadlineReportsSupport asserts the deadline capability answers
@@ -273,7 +270,7 @@ func runResponseStreamCases(t *testing.T, adapter Adapter) {
 	// underneath, so false is the correct answer there and callers treat the
 	// bound as best-effort.
 	t.Run("SetWriteDeadlineReportsSupport", func(t *testing.T) {
-		adapted, _ := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+		adapted, _, _ := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 
 		stream, err := adapter.NewResponseStream(adapted)
 		require.NoError(t, err)

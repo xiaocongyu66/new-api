@@ -16,7 +16,7 @@ func runResponseCases(t *testing.T, adapter Adapter) {
 	// the current handlers emit.
 	t.Run("JSONMatchesEnvelope", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
-		adapted, recorder := adapter.NewContext(req)
+		adapted, recorder, _ := adapter.NewContext(req)
 
 		require.NoError(t, adapted.JSON(http.StatusOK, map[string]any{
 			"success": true,
@@ -24,9 +24,9 @@ func runResponseCases(t *testing.T, adapter Adapter) {
 			"data":    map[string]any{"id": 7},
 		}))
 
-		assert.Equal(t, http.StatusOK, recorder.Code)
+		assert.Equal(t, http.StatusOK, recorder.Status())
 		assert.Equal(t, "application/json; charset=utf-8", recorder.Header().Get("Content-Type"))
-		assert.JSONEq(t, `{"success":true,"message":"","data":{"id":7}}`, recorder.Body.String())
+		assert.JSONEq(t, `{"success":true,"message":"","data":{"id":7}}`, string(recorder.Body()))
 	})
 
 	// DataWritesVerbatimBytes covers the endpoints that return a non-JSON
@@ -34,36 +34,36 @@ func runResponseCases(t *testing.T, adapter Adapter) {
 	// unmodified under the caller's content type.
 	t.Run("DataWritesVerbatimBytes", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/image/1", nil)
-		adapted, recorder := adapter.NewContext(req)
+		adapted, recorder, _ := adapter.NewContext(req)
 
 		payload := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A}
 		require.NoError(t, adapted.Data(http.StatusOK, "image/png", payload))
 
-		assert.Equal(t, http.StatusOK, recorder.Code)
+		assert.Equal(t, http.StatusOK, recorder.Status())
 		assert.Equal(t, "image/png", recorder.Header().Get("Content-Type"))
-		assert.Equal(t, payload, recorder.Body.Bytes())
+		assert.Equal(t, payload, recorder.Body())
 	})
 
 	// StringWritesPlainBody covers the health and text endpoints.
 	t.Run("StringWritesPlainBody", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/ping", nil)
-		adapted, recorder := adapter.NewContext(req)
+		adapted, recorder, _ := adapter.NewContext(req)
 
 		require.NoError(t, adapted.String(http.StatusOK, "pong"))
 
-		assert.Equal(t, http.StatusOK, recorder.Code)
-		assert.Equal(t, "pong", recorder.Body.String())
+		assert.Equal(t, http.StatusOK, recorder.Status())
+		assert.Equal(t, "pong", string(recorder.Body()))
 	})
 
 	// RedirectSetsLocationAndStatus covers the OAuth callbacks, where a wrong
 	// status or a missing Location breaks the browser flow.
 	t.Run("RedirectSetsLocationAndStatus", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/oauth/github", nil)
-		adapted, recorder := adapter.NewContext(req)
+		adapted, recorder, _ := adapter.NewContext(req)
 
 		adapted.Redirect(http.StatusFound, "https://example.test/callback?code=1")
 
-		assert.Equal(t, http.StatusFound, recorder.Code)
+		assert.Equal(t, http.StatusFound, recorder.Status())
 		assert.Equal(t, "https://example.test/callback?code=1", recorder.Header().Get("Location"))
 	})
 
@@ -72,20 +72,20 @@ func runResponseCases(t *testing.T, adapter Adapter) {
 	// zero reading would misclassify every response.
 	t.Run("StatusAndResponseStatusAgree", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
-		adapted, recorder := adapter.NewContext(req)
+		adapted, recorder, _ := adapter.NewContext(req)
 
 		adapted.Status(http.StatusAccepted)
 
 		assert.Equal(t, http.StatusAccepted, adapted.ResponseStatus())
 		require.NoError(t, adapted.String(http.StatusAccepted, ""))
-		assert.Equal(t, http.StatusAccepted, recorder.Code)
+		assert.Equal(t, http.StatusAccepted, recorder.Status())
 	})
 
 	// SetHeaderReachesTheClient covers the headers business code adds around a
 	// response (request id, rate-limit counters).
 	t.Run("SetHeaderReachesTheClient", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
-		adapted, recorder := adapter.NewContext(req)
+		adapted, recorder, _ := adapter.NewContext(req)
 
 		adapted.SetHeader("X-Request-Id", "req-42")
 		require.NoError(t, adapted.JSON(http.StatusOK, map[string]any{"success": true}))
@@ -98,7 +98,7 @@ func runResponseCases(t *testing.T, adapter Adapter) {
 	// token to scripts or to plaintext transport.
 	t.Run("SetCookieEmitsAttributes", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/user/login", nil)
-		adapted, recorder := adapter.NewContext(req)
+		adapted, recorder, _ := adapter.NewContext(req)
 
 		adapted.SetCookie(&http.Cookie{
 			Name:     "newapi_refresh",
@@ -124,7 +124,7 @@ func runResponseCases(t *testing.T, adapter Adapter) {
 	// capture that swallowed the body would blank out every audited response.
 	t.Run("CaptureResponseMirrorsBodyWithoutConsumingIt", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/channel", nil)
-		adapted, recorder := adapter.NewContext(req)
+		adapted, recorder, _ := adapter.NewContext(req)
 
 		capture := adapted.CaptureResponse(64 * 1024)
 		require.NotNil(t, capture, "the adapter must be able to intercept the response for audit middleware")
@@ -132,7 +132,7 @@ func runResponseCases(t *testing.T, adapter Adapter) {
 		require.NoError(t, adapted.JSON(http.StatusOK, map[string]any{"success": true, "data": map[string]any{"id": 3}}))
 
 		assert.JSONEq(t, `{"success":true,"data":{"id":3}}`, string(capture.Body()))
-		assert.JSONEq(t, `{"success":true,"data":{"id":3}}`, recorder.Body.String(),
+		assert.JSONEq(t, `{"success":true,"data":{"id":3}}`, string(recorder.Body()),
 			"capturing must not consume the bytes the client receives")
 	})
 
@@ -141,7 +141,7 @@ func runResponseCases(t *testing.T, adapter Adapter) {
 	// whole body.
 	t.Run("CaptureResponseTruncatesAtLimit", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/channel", nil)
-		adapted, recorder := adapter.NewContext(req)
+		adapted, recorder, _ := adapter.NewContext(req)
 
 		capture := adapted.CaptureResponse(8)
 		require.NotNil(t, capture)
@@ -149,7 +149,7 @@ func runResponseCases(t *testing.T, adapter Adapter) {
 		require.NoError(t, adapted.String(http.StatusOK, "0123456789abcdef"))
 
 		assert.Equal(t, "01234567", string(capture.Body()), "capture must stop at the configured limit")
-		assert.Equal(t, "0123456789abcdef", recorder.Body.String(),
+		assert.Equal(t, "0123456789abcdef", string(recorder.Body()),
 			"truncating the capture must not truncate the response")
 	})
 }
