@@ -38,6 +38,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/settings"
 	compose "github.com/QuantumNous/new-api/internal/transport/compose"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
@@ -194,7 +195,7 @@ func main() {
 	}
 
 	// Initialize HTTP server
-	server := ginadapter.NewEngine(func(c contract.Context, recovered any) {
+	onPanic := func(c contract.Context, recovered any) {
 		common.SysLog(fmt.Sprintf("panic detected: %v", recovered))
 		c.JSON(http.StatusInternalServerError, common.H{
 			"error": common.H{
@@ -202,7 +203,22 @@ func main() {
 				"type":    "new_api_panic",
 			},
 		})
-	})
+	}
+	var server contract.Engine
+	switch backend := os.Getenv("HTTP_BACKEND"); backend {
+	case "", "gin":
+		server = ginadapter.NewEngine(onPanic)
+	case "fiber":
+		server = fiberadapter.NewEngine(onPanic)
+		common.SysLog("HTTP backend: fiber")
+	default:
+		// A misspelt backend must not silently start the default one: the two
+		// engines are being compared against each other, so an operator who
+		// asked for one and got the other would draw conclusions about the
+		// wrong process.
+		common.FatalLog("unknown HTTP_BACKEND " + backend + " (want gin or fiber)")
+		return
+	}
 	if err := middleware.ConfigureTrustedProxies(server); err != nil {
 		common.FatalLog("failed to configure trusted proxies: " + err.Error())
 		return
