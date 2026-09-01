@@ -8,30 +8,31 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/identity/policy"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/testutil"
 
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// TestMigratedHandlerServesThroughGinAdapter asserts a handler written against the
-// transport contract still serves a real request when registered on a gin route.
+// TestMigratedHandlerServesThroughFiberAdapter asserts a handler written against the
+// transport contract still serves a real request when registered on a Fiber route.
 //
-// Handlers are migrated off *gin.Context one package at a time, so the adapter
+// Handlers are migrated off framework-specific contexts one package at a time, so the adapter
 // seam has to work through actual route registration rather than only in unit
 // tests: a handler that compiles but produces no response would otherwise ship.
-func TestMigratedHandlerServesThroughGinAdapter(t *testing.T) {
-	gin.SetMode(gin.TestMode)
+func TestMigratedHandlerServesThroughFiberAdapter(t *testing.T) {
+	response := testutil.ServeBufferedRoute(
+		t,
+		http.MethodGet,
+		"/api/authz/catalog",
+		nil,
+		policy.GetPermissionCatalogHandler,
+		httptest.NewRequest(http.MethodGet, "/api/authz/catalog", nil),
+	)
+	defer func() { _ = response.Body.Close() }()
 
-	engine := gin.New()
-	engine.GET("/api/authz/catalog", ginadapter.Handler(policy.GetPermissionCatalogHandler))
-
-	recorder := httptest.NewRecorder()
-	engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/authz/catalog", nil))
-
-	require.Equal(t, http.StatusOK, recorder.Code)
-	assert.Contains(t, recorder.Header().Get("Content-Type"), "application/json")
+	require.Equal(t, http.StatusOK, response.StatusCode)
+	assert.Contains(t, response.Header.Get("Content-Type"), "application/json")
 
 	var body struct {
 		Success bool `json:"success"`
@@ -40,7 +41,7 @@ func TestMigratedHandlerServesThroughGinAdapter(t *testing.T) {
 			Roles     any `json:"roles"`
 		} `json:"data"`
 	}
-	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &body))
+	require.NoError(t, common.DecodeJson(response.Body, &body))
 
 	assert.True(t, body.Success)
 	assert.NotNil(t, body.Data.Resources, "permission catalog must expose resources")
@@ -55,8 +56,6 @@ func TestMigratedHandlerServesThroughGinAdapter(t *testing.T) {
 // on the adapted context instead of driving the full handler here. The service
 // path keeps its own coverage in the service package.
 func TestMigratedHandlerReadsQueryThroughContract(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	for _, tc := range []struct {
 		name     string
 		target   string
@@ -68,17 +67,20 @@ func TestMigratedHandlerReadsQueryThroughContract(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var observed string
+			response := testutil.ServeBufferedRoute(
+				t,
+				http.MethodGet,
+				"/api/rankings",
+				nil,
+				func(c contract.Context) {
+					observed = c.DefaultQuery("period", "week")
+					_ = c.JSON(http.StatusOK, map[string]any{"success": true})
+				},
+				httptest.NewRequest(http.MethodGet, tc.target, nil),
+			)
+			defer func() { _ = response.Body.Close() }()
 
-			engine := gin.New()
-			engine.GET("/api/rankings", ginadapter.Handler(func(c contract.Context) {
-				observed = c.DefaultQuery("period", "week")
-				_ = c.JSON(http.StatusOK, map[string]any{"success": true})
-			}))
-
-			recorder := httptest.NewRecorder()
-			engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, tc.target, nil))
-
-			require.Equal(t, http.StatusOK, recorder.Code)
+			require.Equal(t, http.StatusOK, response.StatusCode)
 			assert.Equal(t, tc.expected, observed)
 		})
 	}

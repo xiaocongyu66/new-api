@@ -5,11 +5,11 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/identity/policy"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/internal/transport/handler"
 
-	"github.com/QuantumNous/new-api/internal/identity/policy"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -30,8 +30,7 @@ func TestChannelDeleteRoutesUseSensitiveWritePermission(t *testing.T) {
 }
 
 func TestChannelStatusRoutesRegisterWithoutConflict(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	api := ginadapter.WrapEngine(gin.New()).Group("/api")
+	api := fiberadapter.NewEngine(func(contract.Context, any) {}).Group("/api")
 
 	require.NotPanics(t, func() {
 		registerChannelRoutes(api)

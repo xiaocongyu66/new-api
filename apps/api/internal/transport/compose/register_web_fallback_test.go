@@ -5,24 +5,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// TestWebRouterFallbackDispatch pins the SetWebRouter contract.
-//
-// SetWebRouter registers no named routes, so a method/path snapshot cannot cover
-// it. Its actual contract is the NoRoute fallback split: unmatched API-shaped
-// prefixes must return the relay not-found JSON so SDK clients get a structured
-// error, while any other unmatched path must serve the SPA index so client-side
-// routes deep-link correctly. Swapping that branch would either break API error
-// handling or serve HTML to API clients.
 func TestWebRouterFallbackDispatch(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	const indexMarker = "<!doctype html><title>spa-index</title>"
 
 	for _, tc := range []struct {
@@ -39,23 +28,21 @@ func TestWebRouterFallbackDispatch(t *testing.T) {
 		{name: "root serves index", target: "/", wantStatus: http.StatusOK, wantIndexBody: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			engine := gin.New()
-			SetWebRouter(ginadapter.WrapEngine(engine), WebAssets{IndexPage: []byte(indexMarker)})
+			engine := newRouteSnapshotEngine()
+			SetWebRouter(engine, WebAssets{IndexPage: []byte(indexMarker)})
+			require.Len(t, engine.noRoute, 1)
 
-			recorder := httptest.NewRecorder()
-			engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, tc.target, nil))
-
+			context, recorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodGet, tc.target, nil))
+			engine.noRoute[0](context)
 			require.Equal(t, tc.wantStatus, recorder.Code)
 
 			if tc.wantIndexBody {
 				assert.Equal(t, indexMarker, recorder.Body.String())
 				assert.Contains(t, recorder.Header().Get("Content-Type"), "text/html")
 				assert.Equal(t, "no-cache", recorder.Header().Get("Cache-Control"))
-				return
+			} else {
+				assert.NotContains(t, recorder.Body.String(), indexMarker, "API-shaped paths must not receive the SPA index")
 			}
-
-			assert.NotContains(t, recorder.Body.String(), indexMarker,
-				"API-shaped paths must not receive the SPA index")
 		})
 	}
 }
