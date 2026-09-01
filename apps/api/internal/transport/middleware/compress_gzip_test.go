@@ -39,7 +39,8 @@ func TestDecompressRequestMiddlewareReplacesBodyAndStripsEncoding(t *testing.T) 
 	var observedBody string
 	var observedEncoding string
 
-	engine := ginadapter.WrapEngine(gin.New())
+	ginEngine := gin.New()
+	engine := ginadapter.WrapEngine(ginEngine)
 	engine.POST("/v1/chat/completions", DecompressRequestMiddleware(), func(c contract.Context) {
 		body, readErr := io.ReadAll(c.HTTPRequest().Body)
 		require.NoError(t, readErr)
@@ -51,7 +52,7 @@ func TestDecompressRequestMiddlewareReplacesBodyAndStripsEncoding(t *testing.T) 
 	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(compressed.Bytes()))
 	request.Header.Set("Content-Encoding", "gzip")
 	recorder := httptest.NewRecorder()
-	engine.ServeHTTP(recorder, request)
+	ginEngine.ServeHTTP(recorder, request)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	assert.Equal(t, payload, observedBody, "the handler must observe the decompressed payload")
@@ -78,7 +79,8 @@ func TestDecompressRequestMiddlewareCapsDecompressedSize(t *testing.T) {
 
 	var readErr error
 
-	engine := ginadapter.WrapEngine(gin.New())
+	ginEngine := gin.New()
+	engine := ginadapter.WrapEngine(ginEngine)
 	engine.POST("/v1/chat/completions", DecompressRequestMiddleware(), func(c contract.Context) {
 		_, readErr = io.ReadAll(c.HTTPRequest().Body)
 		c.Status(http.StatusOK)
@@ -86,7 +88,7 @@ func TestDecompressRequestMiddlewareCapsDecompressedSize(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(compressed.Bytes()))
 	request.Header.Set("Content-Encoding", "gzip")
-	engine.ServeHTTP(httptest.NewRecorder(), request)
+	ginEngine.ServeHTTP(httptest.NewRecorder(), request)
 
 	require.Error(t, readErr, "reading past the cap must fail instead of returning a truncated body")
 }

@@ -1,6 +1,7 @@
 package contract
 
 import (
+	"context"
 	"net/http"
 	"time"
 )
@@ -48,10 +49,13 @@ type Routes interface {
 	UseCompression()
 }
 
-// Engine is the whole server: an http.Handler, the root route scope, and the
-// capabilities that configure the transport itself rather than a single route.
+// Engine is the whole server: the root route scope, the capabilities that
+// configure the transport itself rather than a single route, and the process
+// lifecycle. It deliberately does NOT embed http.Handler: fasthttp-backed
+// engines have no ServeHTTP, and satisfying it through an adaptor would make
+// Flush a no-op and drop Hijack, silently breaking every SSE stream and the
+// realtime upgrade.
 type Engine interface {
-	http.Handler
 	Routes
 	// NoRoute installs the fallback invoked when no registered route matches.
 	NoRoute(chain ...Chainable)
@@ -70,6 +74,14 @@ type Engine interface {
 	// with format. The caller owns the line format; the transport owns when
 	// the line is emitted and how the fields are measured.
 	UseRequestLog(format func(RequestLog) string)
+
+	// Serve listens on addr and blocks until the engine stops. A graceful
+	// Shutdown makes it return without error.
+	Serve(addr string) error
+	// Shutdown stops accepting connections and waits for in-flight requests,
+	// giving up when ctx expires. SSE streams can run for minutes, so the
+	// caller's timeout is what bounds the wait.
+	Shutdown(ctx context.Context) error
 }
 
 // AssetFS is the file system asset serving reads from: an http.FileSystem plus

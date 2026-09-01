@@ -1,6 +1,8 @@
 package ginadapter
 
 import (
+	"context"
+	"errors"
 	"net/http"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
@@ -25,9 +27,14 @@ type routes struct {
 }
 
 // engine implements contract.Engine on a gin engine.
+//
+// srv is built here rather than in Serve so Shutdown reaches the same server
+// however the value was copied: contract.Engine is held by value, and the
+// lifecycle methods have to agree on which listener they are talking about.
 type engine struct {
 	routes
 	gin *gin.Engine
+	srv *http.Server
 }
 
 // WrapEngine adapts a gin engine to the transport contract, so route
@@ -37,6 +44,10 @@ func WrapEngine(e *gin.Engine) contract.Engine {
 	return engine{
 		routes: routes{group: &e.RouterGroup, mount: e},
 		gin:    e,
+		// No timeouts, matching what the process configured before the
+		// lifecycle moved onto the contract: a WriteTimeout would cut off long
+		// SSE streams.
+		srv: &http.Server{Handler: e},
 	}
 }
 
@@ -104,10 +115,29 @@ func (r routes) UseCompression() {
 	r.mount.Use(gzip.Gzip(gzip.DefaultCompression))
 }
 
-// ServeHTTP delegates to gin's router so the wrapped engine is usable directly
-// as the http.Server handler.
+// ServeHTTP delegates to gin's router. It is no longer part of contract.Engine
+// (a fasthttp-backed engine has no equivalent), but it stays a concrete method:
+// it is how Serve's http.Server dispatches, and it lets a gin engine still sit
+// in an http.Handler chain.
 func (e engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	e.gin.ServeHTTP(w, r)
+}
+
+// Serve listens on addr and blocks. http.Server reports a graceful shutdown as
+// ErrServerClosed; the contract says a graceful stop is not an error, so that
+// one sentinel is swallowed here instead of at every caller.
+func (e engine) Serve(addr string) error {
+	e.srv.Addr = addr
+	if err := e.srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
+}
+
+// Shutdown stops accepting connections and waits for in-flight requests until
+// ctx expires.
+func (e engine) Shutdown(ctx context.Context) error {
+	return e.srv.Shutdown(ctx)
 }
 
 func (e engine) NoRoute(handlers ...contract.Chainable) {
