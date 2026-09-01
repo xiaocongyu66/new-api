@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       scenario:
-        description: 'Test scenario (smoke, S1-S13, or all)'
+        description: 'Pass a sub-variant (S4_RETRY5) for ONE job. Pass family (S4) for matrix. all = every scenario.'
         required: true
         type: choice
         default: smoke
-        options: [smoke, S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, S11, S12, S13, all]
+        options: [smoke, S1, S2, S3, S4_NORETRY, S4_RETRY5, S4_RETRY10, S5_POOL2, S5_POOL4, S5_POOL8, S6_W50, S6_W200, S6_W1000, S7_W50, S7_W200, S7_W1000, S8_3K, S8_50K, S9_A10_W0, S9_A10_W200, S9_A30_W0, S9_A30_W200, S9_A50_W0, S9_A50_W200, S9_A70_W0, S9_A70_W200, S10_RACE, S10_GLOBAL, S10_RESTART, S11_FULL, S12_RETRY, S4, S5, S6, S7, S8, S9, S10, all]
       target_url:
         description: 'Gateway /v1 URL (NodePort, Ingress, or port-forward)'
         required: true
@@ -304,7 +304,7 @@ jobs:
       fail-fast: false
       max-parallel: 1
       matrix:
-        scenario: ${{ fromJson(inputs.scenario == 'all' && '["S1","S2","S3","S4_NORETRY","S4_RETRY5","S4_RETRY10","S5_POOL2","S5_POOL4","S5_POOL8","S6_W50","S6_W200","S6_W1000","S7_W50","S7_W200","S7_W1000","S8_3K","S8_50K","S9_A10_W0","S9_A10_W200","S9_A30_W0","S9_A30_W200","S9_A50_W0","S9_A50_W200","S9_A70_W0","S9_A70_W200","S10_RACE","S10_GLOBAL","S10_RESTART","S11_FULL","S12_RETRY","S13_CASCADE"]' || inputs.scenario == 'S4' && '["S4_NORETRY","S4_RETRY5","S4_RETRY10"]' || inputs.scenario == 'S5' && '["S5_POOL2","S5_POOL4","S5_POOL8"]' || inputs.scenario == 'S6' && '["S6_W50","S6_W200","S6_W1000"]' || inputs.scenario == 'S7' && '["S7_W50","S7_W200","S7_W1000"]' || inputs.scenario == 'S8' && '["S8_3K","S8_50K"]' || inputs.scenario == 'S9' && '["S9_A10_W0","S9_A10_W200","S9_A30_W0","S9_A30_W200","S9_A50_W0","S9_A50_W200","S9_A70_W0","S9_A70_W200"]' || inputs.scenario == 'S10' && '["S10_RACE","S10_GLOBAL","S10_RESTART"]' || inputs.scenario == 'S11' && '["S11_FULL"]' || inputs.scenario == 'S12' && '["S12_RETRY"]' || inputs.scenario == 'S13' && '["S13_CASCADE"]' || format('["{0}"]', inputs.scenario)) }}
+        scenario: ${{ fromJson((contains(inputs.scenario, '_') && inputs.scenario != 'smoke' && inputs.scenario != 'all' && format('["{0}"]', inputs.scenario)) || (inputs.scenario == 'all' && '["S1","S2","S3","S4_NORETRY","S4_RETRY5","S4_RETRY10","S5_POOL2","S5_POOL4","S5_POOL8","S6_W50","S6_W200","S6_W1000","S7_W50","S7_W200","S7_W1000","S8_3K","S8_50K","S9_A10_W0","S9_A10_W200","S9_A30_W0","S9_A30_W200","S9_A50_W0","S9_A50_W200","S9_A70_W0","S9_A70_W200","S10_RACE","S10_GLOBAL","S10_RESTART","S11_FULL","S12_RETRY"]') || (inputs.scenario == 'S4' && '["S4_NORETRY","S4_RETRY5","S4_RETRY10"]') || (inputs.scenario == 'S5' && '["S5_POOL2","S5_POOL4","S5_POOL8"]') || (inputs.scenario == 'S6' && '["S6_W50","S6_W200","S6_W1000"]') || (inputs.scenario == 'S7' && '["S7_W50","S7_W200","S7_W1000"]') || (inputs.scenario == 'S8' && '["S8_3K","S8_50K"]') || (inputs.scenario == 'S9' && '["S9_A10_W0","S9_A10_W200","S9_A30_W0","S9_A30_W200","S9_A50_W0","S9_A50_W200","S9_A70_W0","S9_A70_W200"]') || (inputs.scenario == 'S10' && '["S10_RACE","S10_GLOBAL","S10_RESTART"]') || format('["{0}"]', inputs.scenario)) }}
     env:
       SCENARIO: ${{ matrix.scenario }}
       REPLICA: ${{ inputs.replica != '' && inputs.replica || (startsWith(matrix.scenario, 'S10_GLOBAL') || startsWith(matrix.scenario, 'S10_RESTART')) && '2' || '' }}
