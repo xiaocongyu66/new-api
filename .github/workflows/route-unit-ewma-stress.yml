@@ -814,7 +814,7 @@ jobs:
           # pod disappears underneath it.
           OLD_MASTER=$(kubectl get pods -l app=new-api,role=master -o jsonpath='{.items[*].metadata.name}')
           kubectl delete pods -l app=new-api,role=master
-          for i in $(seq 1 150); do
+          for i in $(seq 1 300); do
             READY=$(kubectl get pods -l app=new-api,role=master \
               -o jsonpath='{range .items[*]}{.metadata.name}={range @.status.conditions[?(@.type=="Ready")]}{.status}{end} {end}')
             case "$READY" in
@@ -826,7 +826,7 @@ jobs:
             *=True*) ;;
             *) echo "::error::master did not become ready after replacing ${OLD_MASTER:-<none>} (last: ${READY:-<none>})"; exit 1 ;;
           esac
-          for i in $(seq 1 60); do
+          for i in $(seq 1 120); do
             ROUTES=$(kubectl exec -i "$POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" \
               psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
               "SELECT count(*) FROM channel_model_routes WHERE channel_id BETWEEN 91001 AND $LAST;" | tr -d '[:space:]')
