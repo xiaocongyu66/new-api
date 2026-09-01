@@ -70,6 +70,10 @@ kubectl -n karmada-system patch deploy karmada-apiserver --type=json \
 # 证书代际: etcd 必须重启加载最新证书
 kubectl -n karmada-system delete pod etcd-0 >/dev/null 2>&1 || true
 kubectl -n karmada-system rollout status deploy karmada-apiserver --timeout=300s
+# aggregated-apiserver: hostNetwork + ClusterFirstWithHostNet + 0.0.0.0:443（karmada 平面 ClusterIP 不可路由）
+kubectl -n karmada-system patch deploy karmada-aggregated-apiserver --type=json -p '[{"op":"add","path":"/spec/template/spec/hostNetwork","value":true},{"op":"add","path":"/spec/template/spec/dnsPolicy","value":"ClusterFirstWithHostNet"},{"op":"replace","path":"/spec/template/spec/containers/0/command/22","value":"--bind-address=0.0.0.0"}]' >/dev/null 2>&1 || true
+kubectl -n karmada-system patch deploy karmada-aggregated-apiserver --type=json -p '[{"op":"add","path":"/spec/template/spec/containers/0/command/-","value":"--secure-port=443"}]' >/dev/null 2>&1 || true
+
 # NodePort svc: 若清理中删过则重建。严禁二次 init——会重新生成证书, 造成 kubeconfig/etcd 代际错乱
 kubectl -n karmada-system get svc karmada-apiserver >/dev/null 2>&1 || kubectl -n karmada-system expose deploy karmada-apiserver --port=5443 --target-port=5443 --type=NodePort --name=karmada-apiserver >/dev/null
 kubectl -n karmada-system patch svc karmada-apiserver -p '{"spec":{"ports":[{"name":"karmada-apiserver","port":5443,"targetPort":5443,"nodePort":32443}]}}' >/dev/null
@@ -136,7 +140,7 @@ spec:
     spec:
       nodeSelector: {$PIN}
       containers:
-      - name: cm
+      - name: karmada-controller-manager
         image: docker.io/karmada/karmada-controller-manager:v1.14.0
         command: ["/bin/karmada-controller-manager","--kubeconfig=/etc/karmada/kubeconfig/karmada.config","--metrics-bind-address=0.0.0.0:8080","--health-probe-bind-address=0.0.0.0:10357","--v=4"]
         livenessProbe: {httpGet: {path: /healthz, port: 10357}, initialDelaySeconds: 15, periodSeconds: 20}
@@ -361,7 +365,7 @@ spec:
       - name: api
         image: karmada/karmada-dashboard-api:latest
         command: ["/bin/karmada-dashboard-api"]
-        args: ["--karmada-kubeconfig=/etc/karmada/kubeconfig/karmada.config","--karmada-context=karmada","--kubeconfig=/etc/karmada/kubeconfig/karmada.config","--context=karmada","--insecure-bind-address=0.0.0.0"]
+        args: ["--karmada-kubeconfig=/etc/karmada/kubeconfig/karmada.config","--karmada-context=karmada-admin","--kubeconfig=/etc/karmada/kubeconfig/karmada.config","--context=karmada-admin","--insecure-bind-address=0.0.0.0"]
         ports: [{containerPort: 8000}]
         volumeMounts: [{name: cfg, mountPath: /etc/karmada/kubeconfig, readOnly: true}]
       volumes: [{name: cfg, secret: {secretName: karmada-controller-manager-config}}]
