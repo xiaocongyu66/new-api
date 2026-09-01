@@ -1,0 +1,47 @@
+name: K8s Diagnostic
+
+on:
+  workflow_dispatch:
+    inputs:
+      pod_selector:
+        description: 'kubectl label selector (e.g. app=new-api,role=master)'
+        required: false
+        type: string
+        default: 'app=new-api,role=master'
+      cmd:
+        description: 'extra shell commands to run after pod list'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG_B64 }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+          kubectl config set-cluster default --insecure-skip-tls-verify=true
+          kubectl config unset clusters.default.certificate-authority-data
+      - name: Pod list
+        env:
+          SEL: ${{ inputs.pod_selector }}
+        run: |
+          echo "### Pods for selector $SEL"
+          kubectl -n default get pods -l "$SEL" -o wide
+          echo "### All pods"
+          kubectl -n default get pods -o wide
+          echo "### Services"
+          kubectl -n default get svc -o wide
+          echo "### Ingress"
+          kubectl -n default get ingress -o wide
+      - name: Run extra commands
+        env:
+          CMD: ${{ inputs.cmd }}
+        if: env.CMD != ''
+        run: |
+          set +e
+          bash --noprofile --norc -c "$CMD" 2>&1
