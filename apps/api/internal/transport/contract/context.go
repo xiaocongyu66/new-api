@@ -77,6 +77,10 @@ type Request interface {
 	RawBody() ([]byte, error)
 	// BodyReader returns an independent reader positioned at the body start.
 	BodyReader() (io.ReadCloser, error)
+	// BodyStream returns the unbuffered inbound body. Unlike BodyReader, it
+	// does not populate the replayable-body cache, so middleware can wrap it
+	// before any reader consumes it.
+	BodyStream() io.ReadCloser
 	MultipartForm() (*multipart.Form, error)
 	// SetParsedForm publishes an already-parsed multipart form as the request's
 	// form state, so downstream code reading form values observes it without

@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/andybalholm/brotli"
@@ -23,20 +24,46 @@ func (rc *readCloser) Close() error {
 	return nil
 }
 
+// maxBytesReadCloser reports an oversized stream instead of silently truncating
+// it. The limit is probed one byte past the cap so an exact-limit body reaches
+// EOF normally.
+type maxBytesReadCloser struct {
+	io.ReadCloser
+	remaining int64
+}
+
+func (r *maxBytesReadCloser) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	if r.remaining <= 0 {
+		var probe [1]byte
+		n, err := r.ReadCloser.Read(probe[:])
+		if n > 0 {
+			return 0, common.ErrRequestBodyTooLarge
+		}
+		if err == nil {
+			err = io.EOF
+		}
+		return 0, err
+	}
+	if int64(len(p)) > r.remaining {
+		p = p[:r.remaining]
+	}
+	n, err := r.ReadCloser.Read(p)
+	r.remaining -= int64(n)
+	return n, err
+}
+
 // DecompressRequestMiddleware swaps a compressed request body for a decompressed
 // one and caps the post-decompression size.
 //
-// It reaches through the contract's standard-library escape hatches rather than
-// the buffered body accessors on purpose: the cap has to wrap the stream before
-// anything reads it, and http.MaxBytesReader needs the response writer so an
-// oversized body fails the request instead of being silently truncated.
+// The cap wraps the raw stream before anything reads it. BodyReader buffers the
+// still-compressed bytes, which would let a zip bomb expand past the cap.
 func DecompressRequestMiddleware() contract.Middleware {
 	return func(c contract.Context) {
-		// TODO(#287) B: concrete *http.Request body swap; the cap must wrap the stream
-		// before any reader touches it. fasthttp has an equivalent pre-read body limit,
-		// so this is replaced by the Fiber body-limit mechanism at the cutover.
-		request := c.HTTPRequest()
-		if request.Body == nil || c.Method() == http.MethodGet {
+		origBody := c.BodyStream()
+		if origBody == nil || c.Method() == http.MethodGet {
 			c.Next()
 			return
 		}
@@ -46,12 +73,8 @@ func DecompressRequestMiddleware() contract.Middleware {
 		}
 		maxBytes := int64(maxMB) << 20
 
-		origBody := request.Body
-		// TODO(#287) B: http.MaxBytesReader needs the response writer so an oversized
-		// body errors instead of truncating silently; fasthttp's BodyLimit/Fiber's
-		// BodyLimit config provides the equivalent, wired at the cutover.
 		wrapMaxBytes := func(body io.ReadCloser) io.ReadCloser {
-			return http.MaxBytesReader(c.ResponseWriter(), body, maxBytes)
+			return &maxBytesReadCloser{ReadCloser: body, remaining: maxBytes}
 		}
 		decompressed := false
 

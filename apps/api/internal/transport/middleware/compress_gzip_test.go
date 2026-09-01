@@ -9,11 +9,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 
+	"github.com/andybalholm/brotli"
 	"github.com/gin-gonic/gin"
+	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -91,4 +94,93 @@ func TestDecompressRequestMiddlewareCapsDecompressedSize(t *testing.T) {
 	ginEngine.ServeHTTP(httptest.NewRecorder(), request)
 
 	require.Error(t, readErr, "reading past the cap must fail instead of returning a truncated body")
+}
+
+// TestDecompressRequestMiddlewareLimitBoundaryPerEncoding pins both halves of the
+// cap's contract for every compression format, because each builds a different
+// two-layer closer chain around the limited stream: a body sitting exactly at the
+// limit must arrive byte-for-byte, and a body one byte over must fail the read.
+//
+// The oversized half is the security-relevant one. A silently truncated body
+// still parses as a legitimate request, so the read has to error rather than
+// return short.
+func TestDecompressRequestMiddlewareLimitBoundaryPerEncoding(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	const limitBytes = 1 << 20
+
+	original := constant.MaxRequestBodyMB
+	constant.MaxRequestBodyMB = 1
+	t.Cleanup(func() { constant.MaxRequestBodyMB = original })
+
+	encodings := []struct {
+		name     string
+		compress func(*testing.T, []byte) []byte
+	}{
+		{"gzip", func(t *testing.T, payload []byte) []byte {
+			var buffer bytes.Buffer
+			writer := gzip.NewWriter(&buffer)
+			_, err := writer.Write(payload)
+			require.NoError(t, err)
+			require.NoError(t, writer.Close())
+			return buffer.Bytes()
+		}},
+		{"br", func(t *testing.T, payload []byte) []byte {
+			var buffer bytes.Buffer
+			writer := brotli.NewWriter(&buffer)
+			_, err := writer.Write(payload)
+			require.NoError(t, err)
+			require.NoError(t, writer.Close())
+			return buffer.Bytes()
+		}},
+		{"zstd", func(t *testing.T, payload []byte) []byte {
+			var buffer bytes.Buffer
+			writer, err := zstd.NewWriter(&buffer)
+			require.NoError(t, err)
+			_, err = writer.Write(payload)
+			require.NoError(t, err)
+			require.NoError(t, writer.Close())
+			return buffer.Bytes()
+		}},
+	}
+
+	sizes := map[string]int{
+		"exactly at the limit": limitBytes,
+		"one byte over":        limitBytes + 1,
+	}
+
+	for _, encoding := range encodings {
+		for sizeName, size := range sizes {
+			t.Run(encoding.name+"/"+sizeName, func(t *testing.T) {
+				payload := bytes.Repeat([]byte("a"), size)
+				body := encoding.compress(t, payload)
+
+				var observed []byte
+				var readErr error
+
+				ginEngine := gin.New()
+				engine := ginadapter.WrapEngine(ginEngine)
+				engine.POST("/v1/chat/completions", DecompressRequestMiddleware(), func(c contract.Context) {
+					observed, readErr = io.ReadAll(c.HTTPRequest().Body)
+					c.Status(http.StatusOK)
+				})
+
+				request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+				request.Header.Set("Content-Encoding", encoding.name)
+				ginEngine.ServeHTTP(httptest.NewRecorder(), request)
+
+				if size > limitBytes {
+					require.Error(t, readErr, "a body past the cap must fail the read instead of arriving truncated")
+					require.True(t, common.IsRequestBodyTooLargeError(readErr),
+						"the cap must report an oversized body so handlers map it to 413, got %v", readErr)
+					assert.NotEqual(t, payload, observed, "an oversized body must not be delivered as if it were complete")
+					return
+				}
+
+				require.NoError(t, readErr, "a body exactly at the cap must read cleanly")
+				require.Len(t, observed, size)
+				assert.True(t, bytes.Equal(payload, observed), "a body at the cap must arrive byte-for-byte")
+			})
+		}
+	}
 }

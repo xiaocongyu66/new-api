@@ -162,6 +162,8 @@ func (r *requestContext) BodyReader() (io.ReadCloser, error) {
 	return storage.NewReader()
 }
 
+func (r *requestContext) BodyStream() io.ReadCloser { return r.gin.Request.Body }
+
 func (r *requestContext) MultipartForm() (*multipart.Form, error) {
 	return common.ParseMultipartFormReusable(r)
 }
