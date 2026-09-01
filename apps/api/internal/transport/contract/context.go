@@ -178,6 +178,7 @@ type Context interface {
 	Response
 	Chain
 	Streaming
+	WebSocket
 }
 
 // Handler is a framework-neutral request handler.

@@ -22,15 +22,14 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// WSConn is the websocket surface the relay actually uses. Both
-// gorilla/websocket.Conn and gofiber/contrib/websocket.Conn satisfy it with
+// WSConn is the websocket surface the relay actually uses. It is defined in the
+// transport contract, because that is where UpgradeWebSocket returns it; the
+// alias keeps every relay site naming relaycommon.WSConn unchanged.
+//
+// Both gorilla/websocket.Conn and gofiber/contrib/websocket.Conn satisfy it with
 // zero wrappers, which is what lets the server side and the upstream dial hold
 // different concrete types after the Fiber cutover.
-type WSConn interface {
-	ReadMessage() (messageType int, p []byte, err error)
-	WriteMessage(messageType int, data []byte) error
-	Close() error
-}
+type WSConn = contract.WSConn
 
 type ThinkingContentInfo struct {
 	IsFirstThinkingContent  bool
