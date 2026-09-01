@@ -743,6 +743,12 @@ jobs:
           # scenario is reported DATA_INVALID.
           POD=$(kubectl get pods -l app=postgres -o jsonpath='{.items[0].metadata.name}')
           if [ -z "$POD" ]; then
+            echo "::error::no postgres pod found; cannot provision stress channels"
+            exit 1
+          fi
+          # One channel per mock instance, id 91001..9100N, each pointing at its own
+          # Service so the scenario's per-instance MOCK_FORCE_MODE actually reaches
+          # distinct route units.
           VALUES=""
           for i in $(seq 0 $((MOCK_INSTANCES - 1))); do
             CID=$((91001 + i))
@@ -768,6 +774,13 @@ jobs:
               ;;
           esac
           LAST=$((91000 + MOCK_INSTANCES))
+          kubectl exec -i "$POD" -- env PGPASSWORD="$POSTGRES_PASSWORD" \
+            psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 <<SQL
+          DELETE FROM abilities WHERE channel_id BETWEEN 91001 AND 91099;
+          DELETE FROM channel_model_routes WHERE channel_id BETWEEN 91001 AND 91099;
+          DELETE FROM channels WHERE id BETWEEN 91001 AND 91099;
+          INSERT INTO channels (id, type, key, status, name, created_time, base_url, models, "group", auto_ban, other_info, settings, header_override)
+          VALUES $VALUES;
           INSERT INTO abilities ("group", model, channel_id, enabled)
           SELECT 'default', '${MODEL}', id, true FROM channels WHERE id BETWEEN 91001 AND $LAST;
           -- Route units are not inserted here: SeedChannelModelRoutes() derives them
