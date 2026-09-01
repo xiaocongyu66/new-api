@@ -1,9 +1,8 @@
 package billing
 
 import (
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/internal/usage"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"testing"
 
@@ -18,9 +17,7 @@ import (
 // is nested under other.admin_info.quota_saturation so it is admin-only (the
 // log formatter strips admin_info for non-admin viewers).
 func TestAttachQuotaSaturationNestsUnderAdminInfo(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ctxRaw, _ := gin.CreateTestContext(nil)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctx, _ := fiberadapter.NewSyntheticContext(nil)
 
 	relayInfo := &relaycommon.RelayInfo{
 		UserId:          7,
@@ -48,9 +45,7 @@ func TestAttachQuotaSaturationNestsUnderAdminInfo(t *testing.T) {
 // TestAttachQuotaSaturationPreservesExistingAdminInfo verifies the marker is
 // merged into a pre-existing admin_info map without clobbering it.
 func TestAttachQuotaSaturationPreservesExistingAdminInfo(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ctxRaw, _ := gin.CreateTestContext(nil)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctx, _ := fiberadapter.NewSyntheticContext(nil)
 
 	relayInfo := &relaycommon.RelayInfo{
 		QuotaClamp: &common.QuotaClamp{Op: "QuotaFromFloat", Kind: common.QuotaClampUnderflow, Clamped: common.MinQuota},
@@ -68,9 +63,7 @@ func TestAttachQuotaSaturationPreservesExistingAdminInfo(t *testing.T) {
 // TestAttachQuotaSaturationNoClampNoMarker verifies the common case (no
 // saturation) leaves the log untouched.
 func TestAttachQuotaSaturationNoClampNoMarker(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ctxRaw, _ := gin.CreateTestContext(nil)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctx, _ := fiberadapter.NewSyntheticContext(nil)
 
 	relayInfo := &relaycommon.RelayInfo{QuotaClamp: nil}
 	other := map[string]interface{}{"model_price": 0.004}
@@ -81,9 +74,7 @@ func TestAttachQuotaSaturationNoClampNoMarker(t *testing.T) {
 }
 
 func TestPreConsumeBillingRejectsSaturatedQuotaBeforeDeduction(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	cRaw, _ := gin.CreateTestContext(nil)
-	c := ginadapter.Wrap(cRaw)
+	c, _ := fiberadapter.NewSyntheticContext(nil)
 	info := &relaycommon.RelayInfo{
 		QuotaClamp: &common.QuotaClamp{
 			Op:       "QuotaFromFloat",
@@ -106,9 +97,7 @@ func TestPreConsumeBillingRejectsSaturatedQuotaBeforeDeduction(t *testing.T) {
 }
 
 func TestPreConsumeBillingRejectsNegativeQuotaBeforeDeduction(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	cRaw, _ := gin.CreateTestContext(nil)
-	c := ginadapter.Wrap(cRaw)
+	c, _ := fiberadapter.NewSyntheticContext(nil)
 	info := &relaycommon.RelayInfo{}
 
 	apiErr := PreConsumeBilling(c, -1, info)

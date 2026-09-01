@@ -10,15 +10,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/stretchr/testify/assert"
 )
 
 // TestCreemWebhookRejectsDisabledViaForbidden pins the contract when Creem
 // webhook is not configured — HTTP 403 with no body.
 func TestCreemWebhookRejectsDisabledViaForbidden(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	prevSecret := CreemWebhookSecret
 	prevProducts := CreemProducts
@@ -33,7 +31,7 @@ func TestCreemWebhookRejectsDisabledViaForbidden(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/creem/webhook", nil)
-	c, rec := ginadapter.NewSyntheticContext(req)
+	c, rec := fiberadapter.NewSyntheticContext(req)
 
 	CreemWebhook(c)
 
@@ -45,7 +43,6 @@ func TestCreemWebhookRejectsDisabledViaForbidden(t *testing.T) {
 // checkout.completed event, signs it with the test secret, and asserts
 // the handler returns 200 OK.
 func TestCreemWebhookAcceptsValidSignatureAndReturnsOK(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	// Setup all required settings for Creem webhook to be enabled
 	prevCompliance := GetPaymentSetting().ComplianceConfirmed
@@ -93,7 +90,7 @@ func TestCreemWebhookAcceptsValidSignatureAndReturnsOK(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/creem/webhook", io.NopCloser(bytes.NewReader(payload)))
 	req.Header.Set("creem-signature", sig)
 
-	c, rec := ginadapter.NewSyntheticContext(req)
+	c, rec := fiberadapter.NewSyntheticContext(req)
 
 	CreemWebhook(c)
 
@@ -103,7 +100,6 @@ func TestCreemWebhookAcceptsValidSignatureAndReturnsOK(t *testing.T) {
 // TestCreemWebhookRejectsInvalidSignatureViaUnauthorized verifies invalid
 // signatures produce 401.
 func TestCreemWebhookRejectsInvalidSignatureViaUnauthorized(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	// Setup all required settings
 	prevCompliance := GetPaymentSetting().ComplianceConfirmed
@@ -135,7 +131,7 @@ func TestCreemWebhookRejectsInvalidSignatureViaUnauthorized(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/creem/webhook", io.NopCloser(bytes.NewReader(payload)))
 	req.Header.Set("creem-signature", sig)
 
-	c, rec := ginadapter.NewSyntheticContext(req)
+	c, rec := fiberadapter.NewSyntheticContext(req)
 
 	CreemWebhook(c)
 
@@ -145,7 +141,6 @@ func TestCreemWebhookRejectsInvalidSignatureViaUnauthorized(t *testing.T) {
 // TestCreemWebhookRejectsMissingSignatureViaUnauthorized verifies missing
 // signatures produce 401.
 func TestCreemWebhookRejectsMissingSignatureViaUnauthorized(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	// Setup all required settings
 	prevCompliance := GetPaymentSetting().ComplianceConfirmed
@@ -175,7 +170,7 @@ func TestCreemWebhookRejectsMissingSignatureViaUnauthorized(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/creem/webhook", io.NopCloser(bytes.NewReader(payload)))
 	// No signature header
 
-	c, rec := ginadapter.NewSyntheticContext(req)
+	c, rec := fiberadapter.NewSyntheticContext(req)
 
 	CreemWebhook(c)
 

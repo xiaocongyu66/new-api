@@ -1,10 +1,8 @@
 package billing
 
 import (
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"math"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -23,10 +21,8 @@ import (
 )
 
 func TestCalculateTextQuotaSummaryUnifiedForClaudeSemantic(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	ctxRaw, _ := gin.CreateTestContext(w)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 
 	usage := &dto.Usage{
 		PromptTokens:     1000,
@@ -77,10 +73,8 @@ func TestCalculateTextQuotaSummaryUnifiedForClaudeSemantic(t *testing.T) {
 }
 
 func TestCalculateTextQuotaSummaryUsesSplitClaudeCacheCreationRatios(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	ctxRaw, _ := gin.CreateTestContext(w)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 
 	relayInfo := &relaycommon.RelayInfo{
 		RelayFormat:             types.RelayFormatOpenAI,
@@ -117,10 +111,8 @@ func TestCalculateTextQuotaSummaryUsesSplitClaudeCacheCreationRatios(t *testing.
 }
 
 func TestCalculateTextQuotaSummaryUsesAnthropicUsageSemanticFromUpstreamUsage(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	ctxRaw, _ := gin.CreateTestContext(w)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 
 	relayInfo := &relaycommon.RelayInfo{
 		RelayFormat:     types.RelayFormatOpenAI,
@@ -159,10 +151,8 @@ func TestCalculateTextQuotaSummaryUsesAnthropicUsageSemanticFromUpstreamUsage(t 
 }
 
 func TestCalculateTextQuotaSummaryUsesClaudeBillingUsageBeforeTopLevelUsage(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	ctxRaw, _ := gin.CreateTestContext(w)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 
 	relayInfo := &relaycommon.RelayInfo{
 		RelayFormat:     types.RelayFormatOpenAI,
@@ -209,10 +199,8 @@ func TestCalculateTextQuotaSummaryUsesClaudeBillingUsageBeforeTopLevelUsage(t *t
 }
 
 func TestCalculateTextQuotaSummaryUsesGeminiBillingUsageBeforeTopLevelUsage(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	ctxRaw, _ := gin.CreateTestContext(w)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 
 	relayInfo := &relaycommon.RelayInfo{
 		RelayFormat:     types.RelayFormatOpenAI,
@@ -252,10 +240,8 @@ func TestCalculateTextQuotaSummaryUsesGeminiBillingUsageBeforeTopLevelUsage(t *t
 }
 
 func TestCalculateTextQuotaSummaryUsesOpenAIBillingUsageBeforeTopLevelUsage(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	ctxRaw, _ := gin.CreateTestContext(w)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 
 	relayInfo := &relaycommon.RelayInfo{
 		RelayFormat:     types.RelayFormatClaude,
@@ -361,10 +347,8 @@ func TestCacheWriteTokensTotal(t *testing.T) {
 }
 
 func TestCalculateTextQuotaSummaryHandlesLegacyClaudeDerivedOpenAIUsage(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	ctxRaw, _ := gin.CreateTestContext(w)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 
 	relayInfo := &relaycommon.RelayInfo{
 		RelayFormat:     types.RelayFormatOpenAI,
@@ -397,10 +381,8 @@ func TestCalculateTextQuotaSummaryHandlesLegacyClaudeDerivedOpenAIUsage(t *testi
 }
 
 func TestCalculateTextQuotaSummaryBillsOpenAICacheWriteTokens(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	ctxRaw, _ := gin.CreateTestContext(w)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 
 	relayInfo := &relaycommon.RelayInfo{
 		RelayFormat:     types.RelayFormatOpenAI,
@@ -454,10 +436,8 @@ func TestCalculateTextQuotaSummaryBillsOpenAICacheWriteTokens(t *testing.T) {
 }
 
 func TestCalculateTextQuotaSummarySeparatesOpenRouterCacheReadFromPromptBilling(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	ctxRaw, _ := gin.CreateTestContext(w)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 
 	relayInfo := &relaycommon.RelayInfo{
 		OriginModelName: "openai/gpt-4.1",
@@ -492,10 +472,8 @@ func TestCalculateTextQuotaSummarySeparatesOpenRouterCacheReadFromPromptBilling(
 }
 
 func TestCalculateTextQuotaSummarySeparatesOpenRouterCacheCreationFromPromptBilling(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	ctxRaw, _ := gin.CreateTestContext(w)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 
 	relayInfo := &relaycommon.RelayInfo{
 		OriginModelName: "openai/gpt-4.1",
@@ -528,10 +506,8 @@ func TestCalculateTextQuotaSummarySeparatesOpenRouterCacheCreationFromPromptBill
 }
 
 func TestCalculateTextQuotaSummaryKeepsPrePRClaudeOpenRouterBilling(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	ctxRaw, _ := gin.CreateTestContext(w)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 
 	relayInfo := &relaycommon.RelayInfo{
 		FinalRequestRelayFormat: types.RelayFormatClaude,
@@ -568,10 +544,8 @@ func TestCalculateTextQuotaSummaryKeepsPrePRClaudeOpenRouterBilling(t *testing.T
 }
 
 func TestComposeTieredTextQuotaKeepsToolCallSurcharges(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	ctxRaw, _ := gin.CreateTestContext(w)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 
 	// 11 $/1K => 0.011 per completed image output, matching the prior fixed low-tier charge.
 	price_expression.SetToolPriceForTest(dto.BuildInToolImageGeneration, 11.0)
@@ -624,10 +598,8 @@ func TestComposeTieredTextQuotaKeepsToolCallSurcharges(t *testing.T) {
 }
 
 func TestComposeTieredTextQuotaFallbackKeepsToolCallSurcharges(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	ctxRaw, _ := gin.CreateTestContext(w)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 	ctx.Set("claude_web_search_requests", 2)
 
 	relayInfo := &relaycommon.RelayInfo{
@@ -659,10 +631,8 @@ func TestComposeTieredTextQuotaFallbackKeepsToolCallSurcharges(t *testing.T) {
 }
 
 func TestComposeTieredTextQuotaErrorFallbackUsesPreConsumedQuota(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	ctxRaw, _ := gin.CreateTestContext(w)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 	ctx.Set("claude_web_search_requests", 2)
 
 	relayInfo := &relaycommon.RelayInfo{
@@ -748,9 +718,8 @@ func TestTryTieredSettleNoClampInRange(t *testing.T) {
 }
 
 func TestCalculateTextQuotaSummaryFixedPriceAppliesImageCountOnceAndAllowsOverride(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 	priceData := hosttypes.PriceData{
 		ModelPrice: 0.12,
 		UsePrice:   true,
@@ -777,9 +746,8 @@ func TestCalculateTextQuotaSummaryFixedPriceAppliesImageCountOnceAndAllowsOverri
 }
 
 func TestCalculateTextToolCallSurchargeGeneralizedBuiltInTools(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 
 	price_expression.SetToolPriceForTest("my_fn", 5.0)
 	t.Cleanup(func() {
@@ -814,9 +782,8 @@ func TestCalculateTextToolCallSurchargeGeneralizedBuiltInTools(t *testing.T) {
 }
 
 func TestCalculateTextToolCallSurchargeKeepsSearchPreviewFallbackWithCustomFunctions(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 
 	price_expression.SetToolPriceForTest("my_fn", 5)
 	t.Cleanup(func() {
@@ -848,9 +815,8 @@ func TestCalculateTextToolCallSurchargeKeepsSearchPreviewFallbackWithCustomFunct
 }
 
 func TestCalculateTextToolCallSurchargeDoesNotInferSearchForResponses(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 	relayInfo := &relaycommon.RelayInfo{
 		RelayMode:       relayconstant.RelayModeResponses,
 		OriginModelName: "gpt-4o-search-preview",
@@ -870,9 +836,8 @@ func TestCalculateTextToolCallSurchargeDoesNotInferSearchForResponses(t *testing
 }
 
 func TestCalculateTextToolCallSurchargeMergesSameNameAndPrice(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 	ctx.Set("claude_web_search_requests", 3)
 
 	relayInfo := &relaycommon.RelayInfo{
@@ -911,9 +876,8 @@ func TestMergeToolSurchargeItemsSaturatesCountOverflow(t *testing.T) {
 // bill a tool-call surcharge. Regression for the TotalTokens==0 gate zeroing
 // out the surcharge quota.
 func TestCalculateTextQuotaSummaryZeroTokensStillBillsToolSurcharge(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 
 	relayInfo := &relaycommon.RelayInfo{
 		OriginModelName: "o1",
@@ -936,9 +900,8 @@ func TestCalculateTextQuotaSummaryZeroTokensStillBillsToolSurcharge(t *testing.T
 }
 
 func TestCalculateTextQuotaSummaryDoesNotApplyRequestMultipliersToToolSurcharge(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 
 	relayInfo := &relaycommon.RelayInfo{
 		OriginModelName: "o1",
@@ -963,9 +926,8 @@ func TestCalculateTextQuotaSummaryDoesNotApplyRequestMultipliersToToolSurcharge(
 }
 
 func TestCalculateTextToolCallSurchargeGeminiGoogleSearch(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 	ctx.Set("gemini_google_search_call", true)
 
 	relayInfo := &relaycommon.RelayInfo{OriginModelName: "gemini-2.5-flash"}
@@ -981,9 +943,8 @@ func TestCalculateTextToolCallSurchargeGeminiGoogleSearch(t *testing.T) {
 }
 
 func TestCalculateTextToolCallSurchargeImageGenerationDefaultPrice(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 	t.Cleanup(func() {
 		price_expression.DeleteToolPriceForTest(dto.BuildInToolImageGeneration)
 	})
@@ -1012,9 +973,8 @@ func TestCalculateTextToolCallSurchargeImageGenerationDefaultPrice(t *testing.T)
 }
 
 func TestCalculateTextToolCallSurchargeImageGenerationExplicitZeroDisables(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 	price_expression.SetToolPriceForTest(dto.BuildInToolImageGeneration, 0)
 	t.Cleanup(func() {
 		price_expression.DeleteToolPriceForTest(dto.BuildInToolImageGeneration)
@@ -1036,9 +996,8 @@ func TestCalculateTextToolCallSurchargeImageGenerationExplicitZeroDisables(t *te
 }
 
 func TestCalculateTextQuotaSummaryImageGenerationUsesStructuredSurcharge(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 	t.Cleanup(func() {
 		price_expression.DeleteToolPriceForTest(dto.BuildInToolImageGeneration)
 	})

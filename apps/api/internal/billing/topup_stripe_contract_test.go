@@ -12,22 +12,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/stretchr/testify/assert"
 )
 
 // TestStripeWebhookRejectsDisabledViaForbidden pins the contract when Stripe
 // webhook is not configured — HTTP 403 with no body.
 func TestStripeWebhookRejectsDisabledViaForbidden(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	prevSecret := StripeWebhookSecret
 	StripeWebhookSecret = ""
 	t.Cleanup(func() { StripeWebhookSecret = prevSecret })
 
 	req := httptest.NewRequest(http.MethodPost, "/api/stripe/webhook", nil)
-	c, rec := ginadapter.NewSyntheticContext(req)
+	c, rec := fiberadapter.NewSyntheticContext(req)
 
 	StripeWebhook(c)
 
@@ -39,7 +37,6 @@ func TestStripeWebhookRejectsDisabledViaForbidden(t *testing.T) {
 // checkout.session.completed event, signs it with the test secret, and asserts
 // the handler returns 200 OK.
 func TestStripeWebhookAcceptsValidSignatureAndReturnsOK(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	// Setup all required settings for Stripe webhook to be enabled
 	prevCompliance := GetPaymentSetting().ComplianceConfirmed
@@ -89,7 +86,7 @@ func TestStripeWebhookAcceptsValidSignatureAndReturnsOK(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/stripe/webhook", io.NopCloser(bytes.NewReader(payload)))
 	req.Header.Set("Stripe-Signature", header)
 
-	c, rec := ginadapter.NewSyntheticContext(req)
+	c, rec := fiberadapter.NewSyntheticContext(req)
 
 	StripeWebhook(c)
 
@@ -99,7 +96,6 @@ func TestStripeWebhookAcceptsValidSignatureAndReturnsOK(t *testing.T) {
 // TestStripeWebhookRejectsInvalidSignatureViaBadRequest verifies invalid
 // signatures produce 400.
 func TestStripeWebhookRejectsInvalidSignatureViaBadRequest(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	// Setup all required settings
 	prevCompliance := GetPaymentSetting().ComplianceConfirmed
@@ -128,7 +124,7 @@ func TestStripeWebhookRejectsInvalidSignatureViaBadRequest(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/stripe/webhook", io.NopCloser(bytes.NewReader(payload)))
 	req.Header.Set("Stripe-Signature", header)
 
-	c, rec := ginadapter.NewSyntheticContext(req)
+	c, rec := fiberadapter.NewSyntheticContext(req)
 
 	StripeWebhook(c)
 

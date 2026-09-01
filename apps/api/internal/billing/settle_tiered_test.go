@@ -3,8 +3,7 @@ package billing
 import (
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"math"
 	mathrand "math/rand"
 	"testing"
@@ -369,7 +368,6 @@ func TestPrepareTieredBillingForSelectedGroupUpdatesReservation(t *testing.T) {
 
 func TestPrepareTieredBillingForSelectedGroupStartsBillingAfterFreeGroup(t *testing.T) {
 	truncate(t)
-	gin.SetMode(gin.TestMode)
 
 	const userID = 700
 	seedUser(t, userID, 500_000)
@@ -395,8 +393,8 @@ func TestPrepareTieredBillingForSelectedGroupStartsBillingAfterFreeGroup(t *test
 			GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 0.20},
 		},
 	}
-	ctxRaw, _ := gin.CreateTestContext(nil)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
 
 	require.Nil(t, PrepareTieredBillingForSelectedGroup(ctx, relayInfo))
 	require.NotNil(t, relayInfo.Billing)
