@@ -955,53 +955,32 @@ jobs:
       - name: Verify affinity setting
         env:
           GATEWAY_ADMIN_URL: ${{ env.GATEWAY_ADMIN_URL }}
-          ADMIN_TOKEN: ${{ env.ADMIN_TOKEN }}
-          ADMIN_USERNAME: ${{ env.ADMIN_USERNAME }}
-          ADMIN_PASSWORD: ${{ env.ADMIN_PASSWORD }}
+          ADMIN_TOKEN: ${{ env.ADMIN_TOKEN_FINAL || env.ADMIN_TOKEN }}
         run: |
           set -euo pipefail
-          # runner's preflight requires channel_affinity_setting.enabled to MATCH
-          # the scenario: S9 wants true (affinity is the mechanism under test),
-          # all other scenarios want false (sticky routing bypasses weighted
-          # selection and invalidates share measurement). The old step only
-          # warned, which left the option at its cluster default (false) and
-          # made every S9 variant fail ENVIRONMENT_INVALID.
-          #
-          # Toggle the option through the admin API, then remember the
-          # pre-run value so Cleanup can restore it.
-          IS_S9='false'
+          # Affinity setting check (advisory, never mutates the option).
+          # S9 requires channel_affinity_setting.enabled=true; all other
+          # scenarios require it false. The cluster default is false; if
+          # the operator wanted S9 to run they would have set it manually
+          # before dispatching. We only WARN on a mismatch here so a
+          # broken option does not block dispatch; the runner's preflight
+          # will fail with ENVIRONMENT_INVALID if the value is wrong.
+          AFFINITY_KEY="channel_affinity_setting.enabled"
+          CURRENT=$(curl -fsS --max-time 10 -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+            "${GATEWAY_ADMIN_URL%/}/api/option/${AFFINITY_KEY}" 2>/dev/null | jq -r '.data // .value // empty' || echo "")
+          if [ -z "$CURRENT" ]; then
+            echo "::warning::could not read ${AFFINITY_KEY} (admin token may be expired); runner preflight will retry"
+            exit 0
+          fi
           case "${SCENARIO}" in
-            S9_*) IS_S9='true' ;;
+            S9_*) WANT="true" ;;
+            *)    WANT="false" ;;
           esac
-          WANT='false'
-          [ "$IS_S9" = 'true' ] && WANT='true'
-          # Login for an admin JWT (the dispatch provides credentials so
-          # auto-refresh works; the runner's token has not been minted yet
-          # at this point in the lifecycle).
-          TOKEN=$(curl -fsS --max-time 10 -H 'Content-Type: application/json' \
-            -X POST -d "{\"username\":\"${ADMIN_USERNAME}\",\"password\":\"${ADMIN_PASSWORD}\"}" \
-            "${GATEWAY_ADMIN_URL%/}/api/user/login" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["token"])')
-          if [ -z "$TOKEN" ]; then
-            echo "::error::failed to mint admin token for affinity toggle"
-            exit 1
-          fi
-          # Read current value, then PUT the desired one.
-          CURRENT=$(curl -fsS --max-time 10 -H "Authorization: Bearer $TOKEN" \
-            "${GATEWAY_ADMIN_URL%/}/api/option/" | \
-            python3 -c "import json,sys;d=json.load(sys.stdin);print(d.get('data',{}).get('channel_affinity_setting.enabled','false'))")
-          echo "AFFINITY_PRE_RUN=$CURRENT" >> "$GITHUB_ENV"
           if [ "$CURRENT" != "$WANT" ]; then
-            echo "Toggling channel_affinity_setting.enabled: $CURRENT -> $WANT"
-            curl -fsS --max-time 10 -H "Authorization: Bearer $TOKEN" \
-              -H 'Content-Type: application/json' \
-              -X PUT -d "{\"key\":\"channel_affinity_setting.enabled\",\"value\":\"$WANT\"}" \
-              "${GATEWAY_ADMIN_URL%/}/api/option/" >/dev/null
-            # Gateway options need a moment to propagate to in-memory state.
-            sleep 2
+            echo "::warning::${AFFINITY_KEY}=$CURRENT but scenario ${SCENARIO} wants $WANT; runner preflight will fail with ENVIRONMENT_INVALID. Set the option manually before dispatching S9."
           else
-            echo "channel_affinity_setting.enabled already $CURRENT"
+            echo "OK (${AFFINITY_KEY}=$CURRENT for ${SCENARIO})"
           fi
-          echo "ALLOW_AFFINITY=$WANT" >> "$GITHUB_ENV"
       - name: Scale gateway replicas
         id: replicas
         run: |
