@@ -170,7 +170,6 @@ POST /api/channel/upstream_updates/detect_all
 POST /api/creem/webhook
 POST /api/custom-oauth-provider/
 POST /api/custom-oauth-provider/discovery
-POST /api/karmada/session
 POST /api/models/
 POST /api/models/sync_upstream
 POST /api/oauth/email/bind

@@ -30,7 +30,6 @@ func SetApiRouter(router contract.Engine) {
 		apiRouter.GET("/uptime/status", ops.GetUptimeKumaStatus)
 		apiRouter.GET("/models", security.UserAuth(), handler.DashboardListModels)
 		apiRouter.GET("/status/test", security.AdminAuth(), handler.TestStatus)
-		apiRouter.POST("/karmada/session", security.RootAuth(), middleware.DisableCache(), handler.CreateKarmadaDashboardSession)
 		apiRouter.GET("/notice", handler.GetNotice)
 		apiRouter.GET("/user-agreement", handler.GetUserAgreement)
 		apiRouter.GET("/privacy-policy", handler.GetPrivacyPolicy)

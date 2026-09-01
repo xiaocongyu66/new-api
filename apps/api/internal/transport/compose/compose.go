@@ -8,7 +8,6 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/handler"
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
 )
 
@@ -17,7 +16,6 @@ func SetRouter(router contract.Engine, assets WebAssets) {
 	SetDashboardRouter(router)
 	SetRelayRouter(router)
 	SetVideoRouter(router)
-	router.Any("/karmada-dashboard/*path", handler.ProxyKarmadaDashboard)
 	frontendBaseUrl := os.Getenv("FRONTEND_BASE_URL")
 	if common.IsMasterNode && frontendBaseUrl != "" {
 		frontendBaseUrl = ""
