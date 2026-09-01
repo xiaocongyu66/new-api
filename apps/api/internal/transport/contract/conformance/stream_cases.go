@@ -1,8 +1,10 @@
 package conformance
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +14,11 @@ import (
 
 func runEventStreamCases(t *testing.T, adapter Adapter) {
 	t.Helper()
+
+	// The ordering and incremental-delivery cases run here rather than as their
+	// own family, so adding them needs no change to the Adapter contract every
+	// adapter implements.
+	runStreamOrderCases(t, adapter)
 
 	// FramingMatchesRelayBytes pins that the adapter's SSE writer produces the
 	// same frames the relay helpers produce today. These bytes are the
@@ -30,7 +37,14 @@ func runEventStreamCases(t *testing.T, adapter Adapter) {
 		assert.Equal(t, "text/event-stream", recorder.Header().Get("Content-Type"))
 		assert.Equal(t, "no-cache", recorder.Header().Get("Cache-Control"))
 		assert.Equal(t, "keep-alive", recorder.Header().Get("Connection"))
-		assert.Equal(t, "chunked", recorder.Header().Get("Transfer-Encoding"))
+		// Transfer-Encoding is deliberately not asserted. It is transport
+		// plumbing rather than contract behaviour: net/http sets it when a
+		// handler streams without a Content-Length, and fasthttp manages it
+		// itself and discards a manually set value, so a header assertion
+		// would pin one framework's bookkeeping rather than what clients
+		// observe. What clients actually depend on is that frames arrive
+		// incrementally, one push per flush, which
+		// IncrementalFramingIsOnePushPerFlush asserts directly.
 		assert.Equal(t, "no", recorder.Header().Get("X-Accel-Buffering"))
 
 		assert.Equal(t,
@@ -265,17 +279,277 @@ func runResponseStreamCases(t *testing.T, adapter Adapter) {
 		assert.True(t, recorder.Flushed(), "CanFlush must agree with Flush")
 	})
 
-	// SetWriteDeadlineReportsSupport asserts the deadline capability answers
-	// rather than failing the request. An in-process recorder has no connection
-	// underneath, so false is the correct answer there and callers treat the
-	// bound as best-effort.
-	t.Run("SetWriteDeadlineReportsSupport", func(t *testing.T) {
-		adapted, _, _ := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+	// SetWriteDeadlineReportsSupportHonestly asserts the deadline capability
+	// answers rather than failing the request, and that the answer is the one
+	// the adapter declares.
+	//
+	// The previous version of this case hardcoded false, which encoded "there is
+	// no connection under an in-process recorder" — true of net/http, but not a
+	// contract property. A stream whose writer is a real pipe can carry a
+	// deadline, and reporting false there would silently drop the hang
+	// protection the SSE scanner relies on: it sets a deadline before every
+	// write so the cleanup path's unconditional wait can always finish.
+	//
+	// The expectation is therefore taken from the adapter's own declaration
+	// rather than from a constant. An adapter that cannot carry a deadline says
+	// nothing and is held to false; one that can must implement
+	// writeDeadlineCapable and is held to true. Either way the answer is pinned,
+	// must be stable, and must not disturb the response.
+	t.Run("SetWriteDeadlineReportsSupportHonestly", func(t *testing.T) {
+		adapted, recorder, _ := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 
 		stream, err := adapter.NewResponseStream(adapted)
 		require.NoError(t, err)
 
-		assert.False(t, stream.SetWriteDeadline(time.Now().Add(time.Minute)),
-			"a stream with no connection underneath must report the deadline as unsupported")
+		expected := false
+		if capable, ok := stream.(writeDeadlineCapable); ok {
+			expected = capable.SupportsWriteDeadline()
+		}
+
+		reported := stream.SetWriteDeadline(time.Now().Add(time.Minute))
+		assert.Equal(t, expected, reported,
+			"SetWriteDeadline must report the capability the adapter declares")
+		assert.Equal(t, reported, stream.SetWriteDeadline(time.Now().Add(2*time.Minute)),
+			"the capability must not change between calls")
+
+		// Setting a deadline must not itself produce a response. The status is
+		// deliberately not asserted here: an in-process recorder reports its
+		// default status before anything is written, so "no status yet" is not
+		// observable through it. Bytes and flushes are.
+		assert.Empty(t, recorder.Body(), "setting a deadline must not write bytes")
+		assert.False(t, recorder.Flushed(), "setting a deadline must not flush")
+
+		// Whatever was reported, the stream must still work: an adapter that
+		// claimed support and then broke its own writer would be worse than one
+		// that reported false.
+		written, err := stream.Write([]byte("after-deadline"))
+		require.NoError(t, err)
+		assert.Equal(t, len("after-deadline"), written)
 	})
+}
+
+// writeDeadlineCapable is the optional declaration an adapter's response stream
+// makes when its writer sits on something that can carry a deadline.
+//
+// It is an optional interface rather than a field on Adapter because the answer
+// belongs to the stream, not to the adapter as a whole, and because a transport
+// that cannot carry a deadline should not have to say so. Not implementing it
+// means false, which is the conservative answer callers already treat as
+// best-effort.
+type writeDeadlineCapable interface {
+	SupportsWriteDeadline() bool
+}
+
+// runStreamOrderCases pins the ordering and incremental-delivery properties both
+// adapters must have. They are grouped separately from the framing cases because
+// they assert *when* bytes and headers move rather than what they contain, which
+// is where the two transports differ structurally: net/http commits headers on
+// the first write, fasthttp writes them before it starts consuming a body stream.
+//
+// Note the deliberate limit of what an in-process recorder can prove. A recorder
+// records; it cannot observe that a header reached the wire before the first body
+// byte. The cases here assert everything that is observable in-process, and the
+// wire-level ordering proof lives in the adapter's own tests against a real
+// listener, where it can actually be observed.
+func runStreamOrderCases(t *testing.T, adapter Adapter) {
+	t.Helper()
+
+	// IncrementalFramingIsOnePushPerFlush replaces the old Transfer-Encoding
+	// header assertion with the property that header actually stood for: frames
+	// reach the client as they are written rather than being held until the
+	// handler returns.
+	//
+	// It is asserted as a count rather than as a boolean because "flushed at
+	// least once" cannot distinguish a stream that pushed every frame from one
+	// that buffered everything and flushed at the end, which is the failure a
+	// transport swap most plausibly introduces.
+	t.Run("IncrementalFramingIsOnePushPerFlush", func(t *testing.T) {
+		adapted, recorder, _ := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+
+		stream, err := adapter.NewEventStream(adapted)
+		require.NoError(t, err)
+
+		stream.SetHeaders()
+
+		// Observe the body after each frame: it must grow monotonically, one
+		// frame at a time, rather than appearing all at once at the end.
+		var lengths []int
+		for _, delta := range []string{"a", "b", "c"} {
+			require.NoError(t, stream.WriteEvent(`{"delta":"`+delta+`"}`))
+			lengths = append(lengths, len(recorder.Body()))
+		}
+
+		require.Len(t, lengths, 3)
+		assert.Greater(t, lengths[0], 0, "the first frame must reach the client before the second is written")
+		assert.Greater(t, lengths[1], lengths[0], "each frame must reach the client as it is written")
+		assert.Greater(t, lengths[2], lengths[1], "each frame must reach the client as it is written")
+		assert.True(t, recorder.Flushed(), "an SSE frame must be pushed, not buffered")
+
+		assert.Equal(t,
+			"data: {\"delta\":\"a\"}\n\ndata: {\"delta\":\"b\"}\n\ndata: {\"delta\":\"c\"}\n\n",
+			string(recorder.Body()),
+			"incremental delivery must not change the bytes")
+	})
+
+	// StreamingIsIncrementalUnderBackpressure writes more frames than any
+	// plausible transport buffer holds.
+	//
+	// This is the case that fails by hanging rather than by asserting: a design
+	// that registered a body-stream writer and then streamed from the request
+	// handler would deadlock once the pipe filled, because the server only drains
+	// after the handler returns. Buffer sizes are an implementation detail, so the
+	// frame count is well past any of them and each frame is padded.
+	t.Run("StreamingIsIncrementalUnderBackpressure", func(t *testing.T) {
+		adapted, recorder, _ := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+
+		stream, err := adapter.NewEventStream(adapted)
+		require.NoError(t, err)
+
+		stream.SetHeaders()
+
+		const frames = 64
+		padding := strings.Repeat("x", 512)
+		for frame := 0; frame < frames; frame++ {
+			require.NoError(t, stream.WriteEvent(`{"padding":"`+padding+`"}`),
+				"frame %d must not block or fail", frame)
+		}
+
+		body := string(recorder.Body())
+		assert.Equal(t, frames, strings.Count(body, "data: "),
+			"every frame must reach the client")
+		assert.Equal(t, frames, strings.Count(body, "\n\n"),
+			"every frame must be terminated")
+	})
+
+	// DisconnectMidStreamStopsWritesAndCancelsContext asserts a client leaving
+	// part-way through a stream both stops the writes and cancels the request
+	// lifetime.
+	//
+	// Both halves matter and they fail independently. Writes that keep succeeding
+	// mean the relay keeps pulling billed tokens from the provider for a client
+	// that is gone; a lifetime that stays live means the code polling it never
+	// learns to stop.
+	t.Run("DisconnectMidStreamStopsWritesAndCancelsContext", func(t *testing.T) {
+		adapted, recorder, disconnect := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+
+		stream, err := adapter.NewEventStream(adapted)
+		require.NoError(t, err)
+
+		stream.SetHeaders()
+		require.NoError(t, stream.WriteEvent(`{"delta":"before"}`))
+		delivered := len(recorder.Body())
+		require.Greater(t, delivered, 0)
+		require.False(t, stream.Done(), "a live client must not report as gone")
+		require.NoError(t, adapted.Context().Err())
+
+		disconnect()
+
+		assert.True(t, stream.Done(), "a gone client must be observable")
+		assert.ErrorIs(t, adapted.Context().Err(), context.Canceled,
+			"a disconnect must cancel the request lifetime so streaming code stops")
+		require.Error(t, stream.WriteEvent(`{"delta":"after"}`),
+			"writes must fail once the client is gone")
+		assert.Equal(t, delivered, len(recorder.Body()),
+			"no bytes may be written after the client left")
+	})
+
+	// MidStreamErrorDoesNotRewriteStatus pins current behaviour: once a streaming
+	// response has begun, the status is settled and a later failure cannot change
+	// it. The client already received 200 and a partial body, so the only honest
+	// signal is a truncated stream.
+	//
+	// This pins the behaviour rather than endorsing it. Callers that need to
+	// report a mid-stream provider failure must do it in-band, as an SSE error
+	// frame, which is what the relay does today.
+	t.Run("MidStreamErrorDoesNotRewriteStatus", func(t *testing.T) {
+		adapted, recorder, disconnect := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+
+		stream, err := adapter.NewEventStream(adapted)
+		require.NoError(t, err)
+
+		adapted.Status(http.StatusOK)
+		stream.SetHeaders()
+		require.NoError(t, stream.WriteEvent(`{"delta":"partial"}`))
+
+		disconnect()
+		require.Error(t, stream.WriteEvent(`{"delta":"lost"}`))
+
+		// The failed write must not have moved the status, and an attempt to
+		// write a new one after the body started must not take effect either.
+		assert.Equal(t, http.StatusOK, adapted.ResponseStatus(),
+			"a mid-stream failure must not rewrite the status")
+		adapted.Status(http.StatusBadGateway)
+		assert.Equal(t, http.StatusOK, recorder.Status(),
+			"the status the client already received cannot be rewritten")
+	})
+
+	// ResponseStatusBeforeAnyWriteIsPinned covers the reading middleware branches
+	// on before the response exists.
+	//
+	// The contract documents 0 for a response that has not started, and the value
+	// is load-bearing: channel-affinity middleware treats "> 0 && < 400" as
+	// success, so an adapter that defaults to 200 records affinity for a request
+	// that never produced a response.
+	//
+	// The two adapters genuinely disagree here, so the expectation is taken from
+	// the adapter rather than fixed. gin's ResponseWriter initialises its status to
+	// 200 and cannot distinguish unwritten from "wrote 200", which does not satisfy
+	// the documented contract; a transport that can report the unwritten state says
+	// so by implementing unwrittenStatusReporter and is then held to 0 exactly.
+	// This pins both behaviours rather than accepting either, so neither can drift
+	// and the divergence stays visible.
+	t.Run("ResponseStatusBeforeAnyWriteIsPinned", func(t *testing.T) {
+		adapted, _, _ := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+
+		expected := http.StatusOK
+		reason := "an adapter that cannot observe the unwritten state reports the transport default"
+		if reporter, ok := adapted.(unwrittenStatusReporter); ok && reporter.ReportsUnwrittenStatusAsZero() {
+			expected = 0
+			reason = "the contract documents 0 for a response that has not started"
+		}
+
+		assert.Equal(t, expected, adapted.ResponseStatus(), reason)
+		assert.Equal(t, expected, adapted.ResponseStatus(),
+			"reading the status must not change it")
+
+		require.NoError(t, adapted.JSON(http.StatusCreated, map[string]any{"success": true}))
+		assert.Equal(t, http.StatusCreated, adapted.ResponseStatus(),
+			"the written status must be readable afterwards, whatever the unwritten reading was")
+	})
+
+	// InProcessContextSupportsCaptureAndStreamWriters asserts the shape internal
+	// callers depend on: the channel probe and the audit path run the relay
+	// pipeline with no client attached and read the whole response back
+	// afterwards, so the response must be capturable and must not require a
+	// client to be written at all.
+	//
+	// The capability question this case originally asked (does flushing reach
+	// anyone) is answered by CanFlushAgreesWithFlushAndHasNoSideEffect above,
+	// which holds both adapters to agreement between the probe and the operation.
+	// Asserting a specific answer here instead would have hardcoded one
+	// transport's recorder behaviour.
+	t.Run("InProcessContextSupportsCaptureAndStreamWriters", func(t *testing.T) {
+		adapted, recorder, _ := adapter.NewContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+
+		capture := adapted.CaptureResponse(64 * 1024)
+		require.NotNil(t, capture, "an in-process context must still be capturable for audit")
+
+		require.NoError(t, adapted.JSON(http.StatusOK, map[string]any{"success": true}))
+
+		assert.JSONEq(t, `{"success":true}`, string(capture.Body()),
+			"the capture must observe what the pipeline wrote")
+		assert.JSONEq(t, `{"success":true}`, string(recorder.Body()),
+			"capturing must not consume the response")
+	})
+}
+
+// unwrittenStatusReporter is the declaration a context makes when ResponseStatus
+// can distinguish a response that has not started from one that wrote 200.
+//
+// It is an optional interface because the two transports genuinely differ: gin's
+// writer initialises its status to 200, while a transport that stages the status
+// can report the documented 0. Not implementing it means the transport default,
+// which is what the gin adapter reports today.
+type unwrittenStatusReporter interface {
+	ReportsUnwrittenStatusAsZero() bool
 }
