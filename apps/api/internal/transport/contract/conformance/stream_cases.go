@@ -4,9 +4,12 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -540,6 +543,79 @@ func runStreamOrderCases(t *testing.T, adapter Adapter) {
 			"the capture must observe what the pipeline wrote")
 		assert.JSONEq(t, `{"success":true}`, string(recorder.Body()),
 			"capturing must not consume the response")
+	})
+
+	// RequestLifetimeSurvivesAStreamedResponse asserts a producer that gates every
+	// frame on the request lifetime can stream a whole response.
+	//
+	// This is a routed case rather than a synthetic-context one on purpose: the
+	// property belongs to the transport's dispatch path, where the response is
+	// committed while the chain is still running, and a synthetic context has no
+	// dispatcher to get it wrong.
+	//
+	// It exists because the adapters' own streaming tests cannot see this. Their
+	// writers refuse a write by consulting the disconnect flag, so a transport
+	// that cancelled the request lifetime at commit time would keep passing every
+	// framing, ordering and backpressure assertion while the production SSE
+	// writers -- which check Context().Err() before every frame
+	// (gateway.RequestContextDone) -- silently emitted only the first frame of
+	// every relay. The lifetime must stay live for exactly as long as the code
+	// using it runs, which is what gin gave callers and what they still assume.
+	t.Run("RequestLifetimeSurvivesAStreamedResponse", func(t *testing.T) {
+		const frames = 8
+
+		// gated reports how many frames a lifetime-polling producer managed to
+		// write, and the error that stopped it.
+		gated := make(chan error, 1)
+		written := make(chan int, 1)
+
+		route := Route{
+			Method:  http.MethodPost,
+			Pattern: "/v1/chat/completions",
+			Handler: func(c contract.Context) {
+				stream := c.EventStream()
+				stream.SetHeaders()
+
+				emitted := 0
+				for frame := range frames {
+					// The production gate, reproduced exactly: every writer in
+					// gateway/write_sse.go refuses to emit once the request
+					// lifetime is done.
+					if err := c.Context().Err(); err != nil {
+						written <- emitted
+						gated <- err
+						return
+					}
+					if err := stream.WriteEvent(`{"frame":` + strconv.Itoa(frame) + `}`); err != nil {
+						written <- emitted
+						gated <- err
+						return
+					}
+					emitted++
+
+					// Yield after the frame that commits the response, so a
+					// transport that cancels the lifetime at commit time has
+					// certainly done so before the next gate check reads it.
+					// Without this the producer could outrun the commit and the
+					// case would pass by luck. A transport that keeps the
+					// lifetime live only pays the wait once.
+					if frame == 0 {
+						time.Sleep(50 * time.Millisecond)
+					}
+				}
+				written <- emitted
+				gated <- nil
+			},
+		}
+
+		recorder := adapter.ServeRoute(t, route, httptest.NewRequest(route.Method, route.Pattern, nil))
+
+		assert.NoError(t, <-gated,
+			"a streaming producer must not be stopped by its own request lifetime being cancelled")
+		assert.Equal(t, frames, <-written,
+			"every frame a lifetime-polling producer writes must be emitted")
+		assert.Equal(t, frames, strings.Count(string(recorder.Body()), "data: "),
+			"every frame must reach the client")
 	})
 }
 

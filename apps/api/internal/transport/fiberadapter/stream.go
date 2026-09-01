@@ -84,6 +84,17 @@ type responseState struct {
 	// flush and close the pipe.
 	finished chan struct{}
 
+	// ---- upgrade ----
+	//
+	// upgradeCh is closed by the chain when it asks for a protocol upgrade,
+	// waking the dispatcher the same way streamCh does. The handshake has to run
+	// on the dispatcher's goroutine because fasthttp reads the registered hijack
+	// handler only after the request handler returns, so registering it from the
+	// chain's goroutine would be too late.
+	upgradeCh  chan struct{}
+	upgrading  bool
+	upgradeReq *upgradeRequest
+
 	// disconnected records that a write reported the client gone.
 	disconnected bool
 	// cancel cancels the request lifetime, which is how a disconnect observed on
@@ -98,6 +109,7 @@ func newResponseState(c *fiber.Ctx, mode dispatchMode) *responseState {
 		mode:        mode,
 		fiber:       c,
 		streamCh:    make(chan struct{}),
+		upgradeCh:   make(chan struct{}),
 		committedCh: make(chan struct{}),
 		finished:    make(chan struct{}),
 	}
@@ -128,21 +140,36 @@ func (s *responseState) isStreaming() bool {
 // server drain concurrently, which makes backpressure real and keeps one
 // contract Flush equal to one wire chunk.
 //
-// Whichever of the two outcomes comes first decides the mode, and both are
-// settled before run returns:
+// Whichever outcome comes first decides the mode, and all three are settled
+// before run returns:
 //
 //	chain finished first  -> buffered body, correct Content-Length
 //	chain wants the wire  -> body stream installed, chain still running
+//	chain wants the socket -> hijack registered, chain still running
+//
+// The request lifetime is cancelled by the chain's own goroutine rather than by
+// the dispatcher, and that is load-bearing rather than tidiness. The dispatcher
+// returns while a streaming or upgraded chain is still running, so cancelling
+// there would cancel the context mid-response -- and the production SSE writers
+// gate every frame on Context().Err() (gateway.RequestContextDone), so every
+// streamed relay would stop after its first frame while the adapter's own
+// writers, which check the disconnect flag instead, kept reporting success.
+// Cancelling when the chain returns is the same lifetime gin had: the context
+// lives exactly as long as the code using it.
 func (s *responseState) run(adapted *requestContext) error {
 	s.cancel = adapted.cancel
 
 	if s.mode != modeChain {
+		defer adapted.cancel()
 		adapted.Next()
 		return nil
 	}
 
 	done := make(chan struct{})
 	go func() {
+		// Registered first so it runs last: the lifetime must outlive both the
+		// chain and the finished signal the streaming and upgrade paths wait on.
+		defer adapted.cancel()
 		defer close(done)
 		defer close(s.finished)
 		defer func() {
@@ -165,6 +192,8 @@ func (s *responseState) run(adapted *requestContext) error {
 		return s.commitBuffered()
 	case <-s.streamCh:
 		return s.commitStream()
+	case <-s.upgradeCh:
+		return s.commitUpgrade()
 	}
 }
 

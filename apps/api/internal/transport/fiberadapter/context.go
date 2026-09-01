@@ -196,7 +196,12 @@ func Middleware(m contract.Middleware) fiber.Handler {
 func Dispatch(c *fiber.Ctx, chain []contract.Handler) error {
 	adapted := newRequestContext(c, modeChain, chain)
 	c.Locals(responseStateKey{}, adapted.resp)
-	defer adapted.cancel()
+	// The request lifetime is NOT cancelled here. Dispatch returns while a
+	// streaming or upgraded chain is still running, so cancelling on return
+	// would cancel the context that chain is still using -- and the production
+	// stream writers gate every frame on Context().Err(), so every streamed
+	// relay would stop after its first frame. run's chain goroutine owns the
+	// cancel and fires it once the chain actually finished.
 	return adapted.resp.run(adapted)
 }
 
