@@ -4,19 +4,20 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 
 	"github.com/go-webauthn/webauthn/protocol"
 	webauthn "github.com/go-webauthn/webauthn/webauthn"
 )
 
-// BuildWebAuthn constructs a WebAuthn instance using the current passkey settings and request context.
-func BuildWebAuthn(r *http.Request) (*webauthn.WebAuthn, error) {
+// BuildWebAuthn constructs a WebAuthn instance using the current passkey settings and
+// the request's transport-level authority and TLS state.
+func BuildWebAuthn(c contract.Context) (*webauthn.WebAuthn, error) {
 	settings := GetPasskeySettings()
 	if settings == nil {
 		return nil, errors.New("未找到 Passkey 设置")
@@ -27,12 +28,12 @@ func BuildWebAuthn(r *http.Request) (*webauthn.WebAuthn, error) {
 		displayName = common.SystemName
 	}
 
-	origins, err := resolveOrigins(r, settings)
+	origins, err := resolveOrigins(c.Host(), c.IsTLS(), settings)
 	if err != nil {
 		return nil, err
 	}
 
-	rpID, err := resolveRPID(r, settings, origins)
+	rpID, err := resolveRPID(settings, origins)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +73,7 @@ func BuildWebAuthn(r *http.Request) (*webauthn.WebAuthn, error) {
 	return webauthn.New(config)
 }
 
-func resolveOrigins(r *http.Request, settings *PasskeySettings) ([]string, error) {
+func resolveOrigins(host string, isTLS bool, settings *PasskeySettings) ([]string, error) {
 	originsStr := strings.TrimSpace(settings.Origins)
 	if originsStr != "" {
 		originList := strings.Split(originsStr, ",")
@@ -95,34 +96,28 @@ func resolveOrigins(r *http.Request, settings *PasskeySettings) ([]string, error
 	}
 
 autoDetect:
-	scheme := detectScheme(r)
-	if scheme == "http" && !settings.AllowInsecureOrigin && r.Host != "localhost" && r.Host != "127.0.0.1" && !strings.HasPrefix(r.Host, "127.0.0.1:") && !strings.HasPrefix(r.Host, "localhost:") {
-		return nil, fmt.Errorf("Passkey 仅支持 HTTPS，当前访问: %s://%s，请在 Passkey 设置中允许不安全 Origin 或配置 HTTPS", scheme, r.Host)
+	scheme := "http"
+	if isTLS {
+		scheme = "https"
+	}
+	if scheme == "http" && !settings.AllowInsecureOrigin && host != "localhost" && host != "127.0.0.1" && !strings.HasPrefix(host, "127.0.0.1:") && !strings.HasPrefix(host, "localhost:") {
+		return nil, fmt.Errorf("Passkey 仅支持 HTTPS，当前访问: %s://%s，请在 Passkey 设置中允许不安全 Origin 或配置 HTTPS", scheme, host)
 	}
 	// 优先使用请求的完整Host（包含端口）
-	host := r.Host
-
-	// 如果无法从请求获取Host，尝试从ServerAddress获取
 	configuredAddress := serverAddress()
 	if host == "" && configuredAddress != "" {
 		if parsed, err := url.Parse(configuredAddress); err == nil && parsed.Host != "" {
 			host = parsed.Host
-			if scheme == "" && parsed.Scheme != "" {
-				scheme = parsed.Scheme
-			}
 		}
 	}
 	if host == "" {
-		return nil, fmt.Errorf("无法确定 Passkey 的 Origin，请在系统设置或 Passkey 设置中指定。当前 Host: '%s', ServerAddress: '%s'", r.Host, configuredAddress)
-	}
-	if scheme == "" {
-		scheme = "https"
+		return nil, fmt.Errorf("无法确定 Passkey 的 Origin，请在系统设置或 Passkey 设置中指定。当前 Host: '%s', ServerAddress: '%s'", host, configuredAddress)
 	}
 	origin := fmt.Sprintf("%s://%s", scheme, host)
 	return []string{origin}, nil
 }
 
-func resolveRPID(r *http.Request, settings *PasskeySettings, origins []string) (string, error) {
+func resolveRPID(settings *PasskeySettings, origins []string) (string, error) {
 	rpID := strings.TrimSpace(settings.RPID)
 	if rpID != "" {
 		return hostWithoutPort(rpID), nil
@@ -148,24 +143,4 @@ func hostWithoutPort(host string) string {
 		}
 	}
 	return host
-}
-
-func detectScheme(r *http.Request) string {
-	if r == nil {
-		return ""
-	}
-	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
-		parts := strings.Split(proto, ",")
-		return strings.ToLower(strings.TrimSpace(parts[0]))
-	}
-	if r.TLS != nil {
-		return "https"
-	}
-	if r.URL != nil && r.URL.Scheme != "" {
-		return strings.ToLower(r.URL.Scheme)
-	}
-	if r.Header.Get("X-Forwarded-Protocol") != "" {
-		return strings.ToLower(strings.TrimSpace(r.Header.Get("X-Forwarded-Protocol")))
-	}
-	return "http"
 }

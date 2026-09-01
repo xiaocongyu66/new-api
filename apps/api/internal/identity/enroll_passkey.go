@@ -79,10 +79,7 @@ func PasskeyRegisterBegin(c contract.Context) {
 		credential = nil
 	}
 
-	// TODO(#287) A: BuildWebAuthn takes a concrete *http.Request to derive RP-ID and
-	// origin from Host/TLS; resolved at the Fiber cutover by moving BuildWebAuthn onto
-	// the contract's Host()/IsTLS() accessors.
-	wa, err := BuildWebAuthn(c.HTTPRequest())
+	wa, err := BuildWebAuthn(c)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -161,10 +158,7 @@ func PasskeyRegisterFinish(c contract.Context) {
 		return
 	}
 
-	// TODO(#287) A: BuildWebAuthn takes a concrete *http.Request to derive RP-ID and
-	// origin from Host/TLS; resolved at the Fiber cutover by moving BuildWebAuthn onto
-	// the contract's Host()/IsTLS() accessors.
-	wa, err := BuildWebAuthn(c.HTTPRequest())
+	wa, err := BuildWebAuthn(c)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -310,10 +304,7 @@ func PasskeyLoginBegin(c contract.Context) {
 		return
 	}
 
-	// TODO(#287) A: BuildWebAuthn takes a concrete *http.Request to derive RP-ID and
-	// origin from Host/TLS; resolved at the Fiber cutover by moving BuildWebAuthn onto
-	// the contract's Host()/IsTLS() accessors.
-	wa, err := BuildWebAuthn(c.HTTPRequest())
+	wa, err := BuildWebAuthn(c)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -368,10 +359,7 @@ func PasskeyLoginFinish(c contract.Context) {
 		return
 	}
 
-	// TODO(#287) A: BuildWebAuthn takes a concrete *http.Request to derive RP-ID and
-	// origin from Host/TLS; resolved at the Fiber cutover by moving BuildWebAuthn onto
-	// the contract's Host()/IsTLS() accessors.
-	wa, err := BuildWebAuthn(c.HTTPRequest())
+	wa, err := BuildWebAuthn(c)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -534,10 +522,7 @@ func PasskeyVerifyBegin(c contract.Context) {
 		return
 	}
 
-	// TODO(#287) A: BuildWebAuthn takes a concrete *http.Request to derive RP-ID and
-	// origin from Host/TLS; resolved at the Fiber cutover by moving BuildWebAuthn onto
-	// the contract's Host()/IsTLS() accessors.
-	wa, err := BuildWebAuthn(c.HTTPRequest())
+	wa, err := BuildWebAuthn(c)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -607,10 +592,7 @@ func PasskeyVerifyFinish(c contract.Context) {
 		return
 	}
 
-	// TODO(#287) A: BuildWebAuthn takes a concrete *http.Request to derive RP-ID and
-	// origin from Host/TLS; resolved at the Fiber cutover by moving BuildWebAuthn onto
-	// the contract's Host()/IsTLS() accessors.
-	wa, err := BuildWebAuthn(c.HTTPRequest())
+	wa, err := BuildWebAuthn(c)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
