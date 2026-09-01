@@ -6,11 +6,11 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
+	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/gorilla/websocket"
 )
 
 // RenderSSE writes a raw SSE line, byte-identical to the previous gin
@@ -178,7 +178,7 @@ func Done(c contract.Context) {
 	_ = StringData(c, "[DONE]")
 }
 
-func WssString(c contract.Context, ws *websocket.Conn, str string) error {
+func WssString(c contract.Context, ws relaycommon.WSConn, str string) error {
 	if ws == nil {
 		logger.LogError(c.Context(), "websocket connection is nil")
 		return errors.New("websocket connection is nil")
@@ -186,7 +186,7 @@ func WssString(c contract.Context, ws *websocket.Conn, str string) error {
 	return ws.WriteMessage(1, []byte(str))
 }
 
-func WssObject(c contract.Context, ws *websocket.Conn, object interface{}) error {
+func WssObject(c contract.Context, ws relaycommon.WSConn, object interface{}) error {
 	jsonData, err := common.Marshal(object)
 	if err != nil {
 		return fmt.Errorf("error marshalling object: %w", err)
@@ -198,7 +198,7 @@ func WssObject(c contract.Context, ws *websocket.Conn, object interface{}) error
 	return ws.WriteMessage(1, jsonData)
 }
 
-func WssError(c contract.Context, ws *websocket.Conn, openaiError types.OpenAIError) {
+func WssError(c contract.Context, ws relaycommon.WSConn, openaiError types.OpenAIError) {
 	if ws == nil {
 		return
 	}

@@ -9,7 +9,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/gorilla/websocket"
 )
 
 func WssHelper(c contract.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
@@ -31,7 +30,10 @@ func WssHelper(c contract.Context, info *relaycommon.RelayInfo) (newAPIError *ty
 	}
 
 	if resp != nil {
-		info.TargetWs = resp.(*websocket.Conn)
+		// Asserting to the interface, not to *gorilla.Conn: the upstream dial is
+		// gorilla today and the assertion keeps working unchanged once the server
+		// side upgrades to contrib's Conn.
+		info.TargetWs = resp.(relaycommon.WSConn)
 		defer info.TargetWs.Close()
 	}
 

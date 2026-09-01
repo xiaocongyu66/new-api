@@ -80,21 +80,26 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 
 	var (
 		newAPIError *types.NewAPIError
-		ws          *websocket.Conn
+		ws          relaycommon.WSConn
 	)
 
 	if relayFormat == types.RelayFormatOpenAIRealtime {
-		var err error
 		// TODO(#287) C: permanent. The only server-side WebSocket upgrade in the
 		// application, reached solely for RelayFormatOpenAIRealtime on GET /v1/realtime.
 		// gorilla/websocket hijacks a concrete http.ResponseWriter and *http.Request, so
 		// this route stays on net/http rather than migrating to the contract.
-		ws, err = upgrader.Upgrade(c.ResponseWriter(), c.HTTPRequest(), nil)
+		//
+		// The upgrade result is held in its concrete type and only widened into ws on
+		// success. Assigning a failed upgrade's nil *websocket.Conn straight into the
+		// interface would leave a non-nil interface holding a nil pointer, turning the
+		// `if ws == nil` guards in WssError/WssString into false and dereferencing nil.
+		conn, err := upgrader.Upgrade(c.ResponseWriter(), c.HTTPRequest(), nil)
 		if err != nil {
 			helper.WssError(c, ws, types.NewError(err, types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry()).ToOpenAIError())
 			return
 		}
-		defer ws.Close()
+		ws = conn
+		defer conn.Close()
 	}
 
 	defer func() {

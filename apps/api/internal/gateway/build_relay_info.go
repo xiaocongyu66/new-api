@@ -13,12 +13,11 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/gorilla/websocket"
 	"github.com/tidwall/gjson"
 )
 
 // GenRelayInfoWs creates RelayInfo for WebSocket (realtime) requests.
-func GenRelayInfoWs(c contract.Context, ws *websocket.Conn) *relaycommon.RelayInfo {
+func GenRelayInfoWs(c contract.Context, ws relaycommon.WSConn) *relaycommon.RelayInfo {
 	info := genBaseRelayInfo(c, nil)
 	info.RelayFormat = types.RelayFormatOpenAIRealtime
 	info.ClientWs = ws
@@ -252,7 +251,7 @@ func cloneRequestHeaders(c contract.Context) map[string]string {
 }
 
 // GenRelayInfo is the main entry point: builds RelayInfo for a given format.
-func GenRelayInfo(c contract.Context, relayFormat types.RelayFormat, request dto.Request, ws *websocket.Conn) (*relaycommon.RelayInfo, error) {
+func GenRelayInfo(c contract.Context, relayFormat types.RelayFormat, request dto.Request, ws relaycommon.WSConn) (*relaycommon.RelayInfo, error) {
 	var info *relaycommon.RelayInfo
 	var err error
 	switch relayFormat {

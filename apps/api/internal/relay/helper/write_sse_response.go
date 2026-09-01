@@ -2,11 +2,11 @@ package helper
 
 import (
 	"github.com/QuantumNous/new-api/internal/gateway"
+	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/gorilla/websocket"
 )
 
 // renderSSE writes a raw SSE line through the framework-neutral response
@@ -55,15 +55,15 @@ func Done(c contract.Context) {
 	gateway.Done(c)
 }
 
-func WssString(c contract.Context, ws *websocket.Conn, str string) error {
+func WssString(c contract.Context, ws relaycommon.WSConn, str string) error {
 	return gateway.WssString(c, ws, str)
 }
 
-func WssObject(c contract.Context, ws *websocket.Conn, object interface{}) error {
+func WssObject(c contract.Context, ws relaycommon.WSConn, object interface{}) error {
 	return gateway.WssObject(c, ws, object)
 }
 
-func WssError(c contract.Context, ws *websocket.Conn, openaiError types.OpenAIError) {
+func WssError(c contract.Context, ws relaycommon.WSConn, openaiError types.OpenAIError) {
 	gateway.WssError(c, ws, openaiError)
 }
 

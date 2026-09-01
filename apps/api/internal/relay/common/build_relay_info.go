@@ -19,9 +19,18 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/gorilla/websocket"
 	"github.com/tidwall/gjson"
 )
+
+// WSConn is the websocket surface the relay actually uses. Both
+// gorilla/websocket.Conn and gofiber/contrib/websocket.Conn satisfy it with
+// zero wrappers, which is what lets the server side and the upstream dial hold
+// different concrete types after the Fiber cutover.
+type WSConn interface {
+	ReadMessage() (messageType int, p []byte, err error)
+	WriteMessage(messageType int, data []byte) error
+	Close() error
+}
 
 type ThinkingContentInfo struct {
 	IsFirstThinkingContent  bool
@@ -102,8 +111,8 @@ type RelayInfo struct {
 	RequestHeaders         map[string]string
 	ShouldIncludeUsage     bool
 	DisablePing            bool // 是否禁止向下游发送自定义 Ping
-	ClientWs               *websocket.Conn
-	TargetWs               *websocket.Conn
+	ClientWs               WSConn
+	TargetWs               WSConn
 	InputAudioFormat       string
 	OutputAudioFormat      string
 	RealtimeTools          []dto.RealTimeTool
@@ -357,7 +366,7 @@ var streamSupportedChannels = map[int]bool{
 	constant.ChannelTypeTencent:        true,
 }
 
-func GenRelayInfoWs(c contract.Context, ws *websocket.Conn) *RelayInfo {
+func GenRelayInfoWs(c contract.Context, ws WSConn) *RelayInfo {
 	info := genBaseRelayInfo(c, nil)
 	info.RelayFormat = types.RelayFormatOpenAIRealtime
 	info.ClientWs = ws
@@ -590,7 +599,7 @@ func cloneRequestHeaders(c contract.Context) map[string]string {
 	return headers
 }
 
-func GenRelayInfo(c contract.Context, relayFormat types.RelayFormat, request dto.Request, ws *websocket.Conn) (*RelayInfo, error) {
+func GenRelayInfo(c contract.Context, relayFormat types.RelayFormat, request dto.Request, ws WSConn) (*RelayInfo, error) {
 	var info *RelayInfo
 	var err error
 	switch relayFormat {
