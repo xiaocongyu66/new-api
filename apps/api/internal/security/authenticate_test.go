@@ -9,8 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/testutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -91,21 +90,18 @@ func createMiddlewarePATUser(t *testing.T, username, token string) *identity.Use
 func TestUserAuthAllowsOpaqueDottedPAT(t *testing.T) {
 	setupDashboardAuthMiddlewareTest(t)
 	user := createMiddlewarePATUser(t, "dotted-pat-user", "opaque.key.with-dots")
-	router := gin.New()
-	router.GET("/protected", ginadapter.Middleware(UserAuth()), ginadapter.Handler(func(c contract.Context) {
-		_ = c.JSON(http.StatusOK, common.H{"id": c.GetInt("id")})
-	}))
 	request := httptest.NewRequest(http.MethodGet, "/protected", nil)
 	request.Header.Set("Authorization", "Bearer opaque.key.with-dots")
-	response := httptest.NewRecorder()
+	response := testutil.ServeBufferedRoute(
+		t, http.MethodGet, "/protected", []contract.Middleware{UserAuth()},
+		func(c contract.Context) { _ = c.JSON(http.StatusOK, common.H{"id": c.GetInt("id")}) }, request,
+	)
 
-	router.ServeHTTP(response, request)
-
-	assert.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, http.StatusOK, response.StatusCode)
 	var body struct {
 		ID int `json:"id"`
 	}
-	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &body))
+	require.NoError(t, common.Unmarshal(readResponseBody(t, response), &body))
 	assert.Equal(t, user.Id, body.ID)
 }
 
@@ -116,23 +112,19 @@ func TestUserAuthNeverFallsBackForRecognizedInvalidInternalJWT(t *testing.T) {
 	require.NoError(t, err)
 	tampered := tamperDashboardToken(token)
 	createMiddlewarePATUser(t, "jwt-fallback-user", tampered)
-	router := gin.New()
-	router.GET("/protected", ginadapter.Middleware(UserAuth()), ginadapter.Handler(func(c contract.Context) {
-		c.Status(http.StatusNoContent)
-	}))
 	request := httptest.NewRequest(http.MethodGet, "/protected", nil)
 	request.Header.Set("Authorization", "Bearer "+tampered)
-	response := httptest.NewRecorder()
+	response := testutil.ServeBufferedRoute(
+		t, http.MethodGet, "/protected", []contract.Middleware{UserAuth()},
+		func(c contract.Context) { c.Status(http.StatusNoContent) }, request,
+	)
 
-	router.ServeHTTP(response, request)
-
-	assert.Equal(t, http.StatusUnauthorized, response.Code)
-	assert.Contains(t, response.Body.String(), "AUTH_UNAUTHORIZED")
+	assert.Equal(t, http.StatusUnauthorized, response.StatusCode)
+	assert.Contains(t, string(readResponseBody(t, response)), "AUTH_UNAUTHORIZED")
 }
 
 func TestTryUserAuthCredentialClassification(t *testing.T) {
 	setupDashboardAuthMiddlewareTest(t)
-	gin.SetMode(gin.TestMode)
 
 	patUser := createMiddlewarePATUser(t, "optional-pat-user", "optional.pat.with-dots")
 	internalUser := createMiddlewarePATUser(t, "optional-session-user", "unrelated-pat")
@@ -166,13 +158,12 @@ func TestTryUserAuthCredentialClassification(t *testing.T) {
 	}).SignedString([]byte("external-secret"))
 	require.NoError(t, err)
 
-	router := gin.New()
-	router.GET("/optional", ginadapter.Middleware(TryUserAuth()), ginadapter.Handler(func(c contract.Context) {
+	optionalHandler := func(c contract.Context) {
 		_ = c.JSON(http.StatusOK, common.H{
 			"id":               c.GetInt("id"),
 			"use_access_token": c.GetBool("use_access_token"),
 		})
-	}))
+	}
 
 	tests := []struct {
 		name          string
@@ -198,30 +189,29 @@ func TestTryUserAuthCredentialClassification(t *testing.T) {
 			if test.token != "" {
 				request.Header.Set("Authorization", "Bearer "+test.token)
 			}
-			response := httptest.NewRecorder()
-			router.ServeHTTP(response, request)
-			assert.Equal(t, test.wantStatus, response.Code)
+			response := testutil.ServeBufferedRoute(t, http.MethodGet, "/optional", []contract.Middleware{TryUserAuth()}, optionalHandler, request)
+			assert.Equal(t, test.wantStatus, response.StatusCode)
 			if test.wantErrorCode != "" {
-				assert.Contains(t, response.Body.String(), test.wantErrorCode)
+				assert.Contains(t, string(readResponseBody(t, response)), test.wantErrorCode)
 				return
 			}
 			var body struct {
 				ID             int  `json:"id"`
 				UseAccessToken bool `json:"use_access_token"`
 			}
-			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &body))
+			require.NoError(t, common.Unmarshal(readResponseBody(t, response), &body))
 			assert.Equal(t, test.wantUserID, body.ID)
 			assert.Equal(t, test.wantPAT, body.UseAccessToken)
 		})
 	}
 
-	requiredRouter := gin.New()
-	requiredRouter.GET("/required", ginadapter.Middleware(UserAuth()), ginadapter.Handler(func(c contract.Context) { c.Status(http.StatusNoContent) }))
 	requiredRequest := httptest.NewRequest(http.MethodGet, "/required", nil)
 	requiredRequest.Header.Set("Authorization", "Bearer ordinary-unmatched-key")
-	requiredResponse := httptest.NewRecorder()
-	requiredRouter.ServeHTTP(requiredResponse, requiredRequest)
-	assert.Equal(t, http.StatusUnauthorized, requiredResponse.Code, "required dashboard authentication must not adopt optional-auth fallback semantics")
+	requiredResponse := testutil.ServeBufferedRoute(
+		t, http.MethodGet, "/required", []contract.Middleware{UserAuth()},
+		func(c contract.Context) { c.Status(http.StatusNoContent) }, requiredRequest,
+	)
+	assert.Equal(t, http.StatusUnauthorized, requiredResponse.StatusCode, "required dashboard authentication must not adopt optional-auth fallback semantics")
 
 	var patUserQueries int
 	forcedCacheError := errors.New("forced PAT user cache lookup failure")
@@ -237,19 +227,17 @@ func TestTryUserAuthCredentialClassification(t *testing.T) {
 	}))
 	cacheFailureRequest := httptest.NewRequest(http.MethodGet, "/optional", nil)
 	cacheFailureRequest.Header.Set("Authorization", "Bearer optional.pat.with-dots")
-	cacheFailureResponse := httptest.NewRecorder()
-	router.ServeHTTP(cacheFailureResponse, cacheFailureRequest)
+	cacheFailureResponse := testutil.ServeBufferedRoute(t, http.MethodGet, "/optional", []contract.Middleware{TryUserAuth()}, optionalHandler, cacheFailureRequest)
 	dbx.DB.Callback().Query().Remove(callbackName)
-	assert.Equal(t, http.StatusInternalServerError, cacheFailureResponse.Code)
-	assert.Contains(t, cacheFailureResponse.Body.String(), "AUTH_INTERNAL_ERROR")
+	assert.Equal(t, http.StatusInternalServerError, cacheFailureResponse.StatusCode)
+	assert.Contains(t, string(readResponseBody(t, cacheFailureResponse)), "AUTH_INTERNAL_ERROR")
 
 	sqlDB, err := dbx.DB.DB()
 	require.NoError(t, err)
 	require.NoError(t, sqlDB.Close())
 	databaseFailureRequest := httptest.NewRequest(http.MethodGet, "/optional", nil)
 	databaseFailureRequest.Header.Set("Authorization", "Bearer database-failure-key")
-	databaseFailureResponse := httptest.NewRecorder()
-	router.ServeHTTP(databaseFailureResponse, databaseFailureRequest)
-	assert.Equal(t, http.StatusInternalServerError, databaseFailureResponse.Code)
-	assert.Contains(t, databaseFailureResponse.Body.String(), "AUTH_INTERNAL_ERROR")
+	databaseFailureResponse := testutil.ServeBufferedRoute(t, http.MethodGet, "/optional", []contract.Middleware{TryUserAuth()}, optionalHandler, databaseFailureRequest)
+	assert.Equal(t, http.StatusInternalServerError, databaseFailureResponse.StatusCode)
+	assert.Contains(t, string(readResponseBody(t, databaseFailureResponse)), "AUTH_INTERNAL_ERROR")
 }

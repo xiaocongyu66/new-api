@@ -1,23 +1,17 @@
 package security
 
 import (
-	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/stretchr/testify/assert"
 )
 
 func runOriginGuardRequest(t *testing.T, origin, referer string) *httptest.ResponseRecorder {
 	t.Helper()
-	router := gin.New()
-	router.POST("/api/user/auth/refresh", ginadapter.Middleware(SessionCookieOriginGuard()), ginadapter.Handler(func(c contract.Context) {
-		c.Status(http.StatusNoContent)
-	}))
 	request := httptest.NewRequest(http.MethodPost, "https://panel.example.com/api/user/auth/refresh", nil)
 	request.Host = "panel.example.com"
 	request.Header.Set("Origin", origin)
@@ -27,9 +21,17 @@ func runOriginGuardRequest(t *testing.T, origin, referer string) *httptest.Respo
 	if referer != "" {
 		request.Header.Set("Referer", referer)
 	}
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, request)
-	return response
+	return runOriginGuardSynthetic(t, request)
+}
+
+func runOriginGuardSynthetic(t *testing.T, request *http.Request) *httptest.ResponseRecorder {
+	t.Helper()
+	context, recorder := fiberadapter.NewSyntheticContext(request)
+	SessionCookieOriginGuard()(context)
+	if !context.IsAborted() {
+		context.Status(http.StatusNoContent)
+	}
+	return recorder
 }
 
 func TestSessionCookieOriginGuard(t *testing.T) {
@@ -91,20 +93,16 @@ func TestSessionCookieOriginGuardDevelopmentCompatibility(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			common.SessionCookieSecure = test.secure
 
-			router := gin.New()
-			router.POST("/api/user/auth/refresh", ginadapter.Middleware(SessionCookieOriginGuard()), ginadapter.Handler(func(c contract.Context) {
-				c.Status(http.StatusNoContent)
-			}))
 			request := httptest.NewRequest(http.MethodPost, "http://localhost:3000/api/user/auth/refresh", nil)
 			request.Host = "localhost:3000"
 			if test.origin != "" {
 				request.Header.Set("Origin", test.origin)
 			}
-			response := httptest.NewRecorder()
-			router.ServeHTTP(response, request)
+			response := runOriginGuardSynthetic(t, request)
 
 			assert.Equal(t, test.expected, response.Code)
 			assert.Empty(t, response.Header().Get("Access-Control-Allow-Origin"))
+
 		})
 	}
 }
@@ -119,16 +117,11 @@ func TestSessionCookieOriginGuardDoesNotTrustForwardedProtoFromClient(t *testing
 		common.SessionCookieTrustedURLs = previousTrustedURLs
 	})
 
-	router := gin.New()
-	router.POST("/api/user/auth/refresh", ginadapter.Middleware(SessionCookieOriginGuard()), ginadapter.Handler(func(c contract.Context) {
-		c.Status(http.StatusNoContent)
-	}))
 	request := httptest.NewRequest(http.MethodPost, "http://panel.example.com/api/user/auth/refresh", nil)
 	request.Host = "panel.example.com"
 	request.Header.Set("Origin", "https://panel.example.com")
 	request.Header.Set("X-Forwarded-Proto", "https")
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, request)
+	response := runOriginGuardSynthetic(t, request)
 
 	assert.Equal(t, http.StatusForbidden, response.Code)
 }
