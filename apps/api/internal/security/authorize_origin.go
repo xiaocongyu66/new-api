@@ -21,13 +21,8 @@ func SessionCookieOriginGuard() contract.Middleware {
 			c.Next()
 			return
 		}
-		// TODO(#287) A: concrete *http.Request read for Host and TLS state; the
-		// contract exposes neither Host() nor IsTLS() — add both accessors, then
-		// this becomes contract-only. The TLS check must stay transport-derived
-		// and must never trust a client-supplied X-Forwarded-Proto.
-		request := c.HTTPRequest()
-		origin, ok := requestBrowserOrigin(request)
-		if !ok || !isAllowedSessionOrigin(request, origin) {
+		origin, ok := requestBrowserOrigin(c)
+		if !ok || !isAllowedSessionOrigin(c, origin) {
 			c.AbortWithStatusJSON(http.StatusForbidden, common.H{
 				"success": false,
 				"code":    "AUTH_ORIGIN_FORBIDDEN",
@@ -39,8 +34,9 @@ func SessionCookieOriginGuard() contract.Middleware {
 	}
 }
 
-func requestBrowserOrigin(request *http.Request) (string, bool) {
-	originValues := request.Header.Values("Origin")
+func requestBrowserOrigin(c contract.Context) (string, bool) {
+	headers := c.Headers()
+	originValues := headers.Values("Origin")
 	if len(originValues) > 1 {
 		return "", false
 	}
@@ -51,7 +47,7 @@ func requestBrowserOrigin(request *http.Request) (string, bool) {
 		origin, err := common.NormalizeOrigin(originValues[0])
 		return origin, err == nil
 	}
-	refererValues := request.Header.Values("Referer")
+	refererValues := headers.Values("Referer")
 	if len(refererValues) != 1 {
 		return "", false
 	}
@@ -63,12 +59,16 @@ func requestBrowserOrigin(request *http.Request) (string, bool) {
 	return origin, err == nil
 }
 
-func isAllowedSessionOrigin(request *http.Request, origin string) bool {
+// isAllowedSessionOrigin compares the browser-reported origin against the
+// authority the request actually arrived on. The scheme comes from the
+// transport via IsTLS, never from a forwarded header, so a client claiming
+// X-Forwarded-Proto: https over a plaintext connection is still rejected.
+func isAllowedSessionOrigin(c contract.Context, origin string) bool {
 	requestScheme := "http"
-	if request.TLS != nil {
+	if c.IsTLS() {
 		requestScheme = "https"
 	}
-	requestOrigin, err := common.NormalizeOrigin(requestScheme + "://" + request.Host)
+	requestOrigin, err := common.NormalizeOrigin(requestScheme + "://" + c.Host())
 	if err == nil && subtle.ConstantTimeCompare([]byte(origin), []byte(requestOrigin)) == 1 {
 		return true
 	}

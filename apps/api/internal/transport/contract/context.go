@@ -37,6 +37,16 @@ type Request interface {
 	Path() string
 	FullPath() string
 	ClientIP() string
+	// Host is the request authority (host and optional port) as the client
+	// addressed it. Origin checks and redirect-URI construction compare against
+	// it, so an adapter must report the authority the request arrived with
+	// rather than a configured or forwarded one.
+	Host() string
+	// IsTLS reports whether the request arrived over a TLS connection. It
+	// reflects the actual transport only: forwarded headers such as
+	// X-Forwarded-Proto are client-supplied and must never influence it, since
+	// the session-origin guard treats the result as a security decision.
+	IsTLS() bool
 	UserAgent() string
 	ContentType() string
 	ContentLength() int64

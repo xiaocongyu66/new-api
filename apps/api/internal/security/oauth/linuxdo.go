@@ -55,15 +55,11 @@ func (p *LinuxDOProvider) ExchangeToken(ctx context.Context, code string, c cont
 	basicAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(credentials))
 
 	// Get redirect URI from request
-	// TODO(#287) A: concrete *http.Request read for Host and TLS state to build the
-	// redirect URI; the contract exposes neither Host() nor IsTLS() — add both
-	// accessors, then this becomes contract-only.
 	scheme := "http"
-	request := c.HTTPRequest()
-	if request.TLS != nil {
+	if c.IsTLS() {
 		scheme = "https"
 	}
-	redirectURI := fmt.Sprintf("%s://%s/api/oauth/linuxdo", scheme, request.Host)
+	redirectURI := fmt.Sprintf("%s://%s/api/oauth/linuxdo", scheme, c.Host())
 
 	logger.LogDebug(ctx, "[OAuth-LinuxDO] ExchangeToken: token_endpoint=%s, redirect_uri=%s", tokenEndpoint, redirectURI)
 

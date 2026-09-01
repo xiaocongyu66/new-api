@@ -88,6 +88,16 @@ func (r *requestContext) FullPath() string { return r.gin.FullPath() }
 
 func (r *requestContext) ClientIP() string { return r.gin.ClientIP() }
 
+// Host reports the authority the client addressed, taken from the request line
+// or the Host header, which is where net/http records it.
+func (r *requestContext) Host() string { return r.gin.Request.Host }
+
+// IsTLS reports whether the connection itself is TLS. It reads the connection
+// state only: gin's own scheme detection consults X-Forwarded-Proto, which is
+// client-supplied, and the session-origin guard rejects a request whose
+// forwarded protocol disagrees with the transport.
+func (r *requestContext) IsTLS() bool { return r.gin.Request.TLS != nil }
+
 func (r *requestContext) UserAgent() string { return r.gin.Request.UserAgent() }
 
 func (r *requestContext) ContentType() string { return r.gin.ContentType() }

@@ -55,6 +55,35 @@ func runRequestCases(t *testing.T, adapter Adapter) {
 		assert.NotEmpty(t, adapted.ClientIP(), "client ip must be resolvable for rate limiting and abuse controls")
 	})
 
+	// HostReportsTheRequestAuthority pins the accessor the session-origin guard
+	// and the OAuth redirect-URI builder compare against. Reporting a configured
+	// or forwarded authority instead of the one the client addressed would either
+	// break same-origin checks or send users to the wrong callback.
+	t.Run("HostReportsTheRequestAuthority", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "http://panel.example.com:8443/api/user/auth/refresh", nil)
+		req.Header.Set("X-Forwarded-Host", "attacker.example.com")
+		adapted, _ := adapter.NewContext(req)
+
+		assert.Equal(t, "panel.example.com:8443", adapted.Host(),
+			"Host must report the authority the client addressed, including the port, and must not follow X-Forwarded-Host")
+	})
+
+	// IsTLSReflectsTheTransportNotForwardedHeaders is a security assertion, not a
+	// convenience one: the session-origin guard derives the request scheme from
+	// it, so an adapter that honoured X-Forwarded-Proto would let a client over
+	// plaintext claim an https origin and pass the same-origin comparison.
+	t.Run("IsTLSReflectsTheTransportNotForwardedHeaders", func(t *testing.T) {
+		secure, _ := adapter.NewContext(httptest.NewRequest(http.MethodGet, "https://panel.example.com/api/status", nil))
+		assert.True(t, secure.IsTLS(), "a request arriving over TLS must report IsTLS")
+
+		spoofed := httptest.NewRequest(http.MethodGet, "http://panel.example.com/api/status", nil)
+		spoofed.Header.Set("X-Forwarded-Proto", "https")
+		spoofed.Header.Set("X-Forwarded-Ssl", "on")
+		plaintext, _ := adapter.NewContext(spoofed)
+		assert.False(t, plaintext.IsTLS(),
+			"IsTLS must reflect the connection, never client-supplied forwarded headers")
+	})
+
 	// RouteParamsComeFromTheRouter asserts matched route parameters reach the
 	// handler. Parameters are produced by the router, not by the request, so
 	// this case must go through a real engine to mean anything.
