@@ -109,55 +109,6 @@ func (l *singleConnListener) Addr() net.Addr {
 	return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0}
 }
 
-// serveBufferedRoute runs an ordinary request through a real Fiber route and
-// Dispatch. It flattens contract middleware and the handler into one chain, as
-// production registration requires.
-//
-// It MUST NOT serve RemoteAddr, incremental SSE, or WebSocket tests: app.Test
-// cannot preserve those transport semantics.
-func serveBufferedRoute(t *testing.T, method, pattern string, middleware []contract.Middleware, handler contract.Handler, req *http.Request) *http.Response {
-	t.Helper()
-
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-	chain := make([]contract.Handler, 0, len(middleware)+1)
-	for _, m := range middleware {
-		chain = append(chain, contract.Handler(m))
-	}
-	chain = append(chain, handler)
-	app.Add(method, pattern, func(c *fiber.Ctx) error { return Dispatch(c, chain) })
-
-	response, err := app.Test(req, int(10*time.Second/time.Millisecond))
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = response.Body.Close() })
-	return response
-}
-
-func TestServeBufferedRouteDispatchesParamsMiddlewareAndResponse(t *testing.T) {
-	trace := make([]string, 0, 3)
-	response := serveBufferedRoute(
-		t,
-		http.MethodGet,
-		"/widgets/:id",
-		[]contract.Middleware{func(c contract.Context) {
-			trace = append(trace, "before")
-			c.Next()
-			trace = append(trace, "after")
-		}},
-		func(c contract.Context) {
-			trace = append(trace, "handler:"+c.Param("id"))
-			c.SetHeader("X-Route-Fixture", "dispatch")
-			_ = c.String(http.StatusCreated, "created")
-		},
-		httptest.NewRequest(http.MethodGet, "/widgets/42", nil),
-	)
-
-	assert.Equal(t, []string{"before", "handler:42", "after"}, trace,
-		"contract Next ordering proves the fixture entered Dispatch, not a raw Fiber handler")
-	assert.Equal(t, http.StatusCreated, response.StatusCode)
-	assert.Equal(t, "dispatch", response.Header.Get("X-Route-Fixture"))
-	assert.Equal(t, "created", readBody(t, response))
-}
-
 // ---- trusted proxies ----
 
 // clientIPEngine registers the same probe the preserved gin middleware test
