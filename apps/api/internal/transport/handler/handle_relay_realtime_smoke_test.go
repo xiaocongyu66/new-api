@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/internal/relay/channel/openai"
+	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
@@ -36,6 +39,117 @@ import (
 // The unreachable-upstream frame is exactly what a client sees in production when
 // no channel can serve the model, so the assertion is on real behaviour rather
 // than on a stand-in.
+// TestRealtimeCompleteSessionOnBothAdapters is the successful counterpart to
+// TestRealtimeEndToEndOnBothAdapters. It uses the relay's real duplex handler
+// with a deterministic websocket upstream rather than a database-selected
+// channel: routing and billing are orthogonal to the adapter boundary.
+func TestRealtimeCompleteSessionOnBothAdapters(t *testing.T) {
+	const clientEvent = `{"event_id":"client-1","type":"session.update","session":{"instructions":"be concise"}}`
+	const upstreamEvent = `{"event_id":"upstream-1","type":"session.updated","session":{"input_audio_format":"pcm16","output_audio_format":"pcm16"}}`
+
+	upstream, received := realtimeUpstream(t, upstreamEvent)
+	results := make(map[string]realtimeSessionResult, 2)
+
+	t.Run("gin", func(t *testing.T) {
+		gin.SetMode(gin.TestMode)
+		engine := gin.New()
+		engine.GET("/v1/realtime", ginadapter.Handler(realtimeRelay(upstream)))
+		results["gin"] = runRealtimeSession(t, listenGin(t, engine), clientEvent, upstreamEvent)
+	})
+
+	t.Run("fiber", func(t *testing.T) {
+		app := fiber.New(fiber.Config{DisableStartupMessage: true})
+		app.Add(fiber.MethodGet, "/v1/realtime", func(c *fiber.Ctx) error {
+			return fiberadapter.Dispatch(c, []contract.Handler{realtimeRelay(upstream)})
+		})
+		results["fiber"] = runRealtimeSession(t, listenFiber(t, app), clientEvent, upstreamEvent)
+	})
+
+	require.Equal(t, clientEvent, <-received)
+	require.Equal(t, clientEvent, <-received)
+	assert.Equal(t, realtimeSessionResult{Subprotocol: "realtime", MessageType: gorilla.TextMessage, Payload: upstreamEvent, CloseCode: gorilla.CloseGoingAway}, results["gin"])
+	assert.Equal(t, results["gin"], results["fiber"], "adapter choice must not change a complete realtime session")
+}
+
+type realtimeSessionResult struct {
+	Subprotocol string
+	MessageType int
+	Payload     string
+	CloseCode   int
+}
+
+func realtimeUpstream(t *testing.T, reply string) (*httptest.Server, <-chan string) {
+	t.Helper()
+	received := make(chan string, 2)
+	upgrader := gorilla.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		messageType, payload, err := conn.ReadMessage()
+		require.NoError(t, err)
+		require.Equal(t, gorilla.TextMessage, messageType)
+		received <- string(payload)
+		require.NoError(t, conn.WriteMessage(gorilla.TextMessage, []byte(reply)))
+		_, _, _ = conn.ReadMessage() // consume the relay's normal close reply.
+	}))
+	t.Cleanup(server.Close)
+	return server, received
+}
+
+func realtimeRelay(upstream *httptest.Server) contract.Handler {
+	return func(c contract.Context) {
+		client, err := c.UpgradeWebSocket("realtime")
+		if err != nil {
+			return
+		}
+		defer client.Close()
+
+		target, _, err := gorilla.DefaultDialer.Dial(strings.Replace(upstream.URL, "http://", "ws://", 1), nil)
+		if err != nil {
+			return
+		}
+		defer target.Close()
+
+		apiErr, _ := openai.OpenaiRealtimeHandler(c, &relaycommon.RelayInfo{
+			ClientWs:          client,
+			TargetWs:          target,
+			ChannelMeta:       &relaycommon.ChannelMeta{UpstreamModelName: "gpt-4o-realtime-preview"},
+			InputAudioFormat:  "pcm16",
+			OutputAudioFormat: "pcm16",
+			IsFirstRequest:    true,
+		})
+		if apiErr != nil {
+			return
+		}
+	}
+}
+
+func runRealtimeSession(t *testing.T, baseURL, clientEvent, expectedReply string) realtimeSessionResult {
+	t.Helper()
+	dialer := gorilla.Dialer{Subprotocols: []string{"realtime"}, HandshakeTimeout: 10 * time.Second}
+	conn, response, err := dialer.Dial(strings.Replace(baseURL, "http://", "ws://", 1)+"/v1/realtime", nil)
+	require.NoError(t, err)
+	defer conn.Close()
+	require.Equal(t, http.StatusSwitchingProtocols, response.StatusCode)
+	require.Equal(t, "realtime", response.Header.Get("Sec-WebSocket-Protocol"))
+
+	require.NoError(t, conn.WriteMessage(gorilla.TextMessage, []byte(clientEvent)))
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(15*time.Second)))
+	messageType, payload, err := conn.ReadMessage()
+	require.NoError(t, err)
+	require.NoError(t, conn.WriteControl(gorilla.CloseMessage, gorilla.FormatCloseMessage(gorilla.CloseGoingAway, "done"), time.Now().Add(5*time.Second)))
+	_, _, err = conn.ReadMessage()
+	var closeErr *gorilla.CloseError
+	require.True(t, errors.As(err, &closeErr), "expected the server to acknowledge a close frame: %v", err)
+	assert.Equal(t, expectedReply, string(payload))
+	assert.Equal(t, gorilla.CloseGoingAway, closeErr.Code)
+	assert.True(t, relaycommon.IsNormalWSClose(closeErr))
+
+	return realtimeSessionResult{conn.Subprotocol(), messageType, string(payload), closeErr.Code}
+}
+
 func TestRealtimeEndToEndOnBothAdapters(t *testing.T) {
 	frames := make(map[string]string, 2)
 
