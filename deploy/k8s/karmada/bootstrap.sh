@@ -69,22 +69,14 @@ kubectl -n karmada-system patch deploy karmada-apiserver --type=json \
   -p '[{"op":"add","path":"/spec/template/spec/nodeSelector","value":{"kubernetes.io/hostname":"'"$NODE"'"}}]' >/dev/null 2>&1 || true
 # 证书代际: etcd 必须重启加载最新证书
 kubectl -n karmada-system delete pod etcd-0 >/dev/null 2>&1 || true
-kubectl -n karmada-system rollout status deploy karmada-apiserver --timeout=180s >/dev/null 2>&1 || { echo "== init pass 2 =="; kubectl -n karmada-system delete deploy karmada-apiserver --ignore-not-found; run_init; kubectl -n karmada-system patch deploy karmada-apiserver --type=json -p '[{"op":"add","path":"/spec/template/spec/nodeSelector","value":{"kubernetes.io/hostname":"'"$NODE"'"}}]' >/dev/null 2>&1 || true; }
-# 删多余 apiserver RS pod（旧 nodeSelector 的残留）
-kubectl -n karmada-system delete pods -l app=karmada-apiserver --field-selector status.phase=Running >/dev/null 2>&1 || true
-kubectl -n karmada-system wait --for=condition=Ready pods -l app=karmada-apiserver --timeout=180s
-kubectl -n karmada-system delete svc karmada-apiserver --ignore-not-found >/dev/null 2>&1 || true
-/usr/local/bin/karmadactl init --kubeconfig /etc/rancher/k3s/k3s.yaml \
-  --karmada-apiserver-advertise-address "$CP_IP" --etcd-storage-mode hostPath \
-  --etcd-data /var/lib/karmada-etcd --etcd-node-selector-labels "kubernetes.io/hostname=$NODE" \
-  --namespace karmada-system --wait-component-ready-timeout 30 >/dev/null 2>&1 || true
-# 恢复 NodePort svc（init 幂等重建）
+kubectl -n karmada-system rollout status deploy karmada-apiserver --timeout=300s
+# NodePort svc: 若清理中删过则重建。严禁二次 init——会重新生成证书, 造成 kubeconfig/etcd 代际错乱
 kubectl -n karmada-system get svc karmada-apiserver >/dev/null 2>&1 || kubectl -n karmada-system expose deploy karmada-apiserver --port=5443 --target-port=5443 --type=NodePort --name=karmada-apiserver >/dev/null
 kubectl -n karmada-system patch svc karmada-apiserver -p '{"spec":{"ports":[{"name":"karmada-apiserver","port":5443,"targetPort":5443,"nodePort":32443}]}}' >/dev/null
 
 # ---------- 3. CRDs ----------
 echo "== CRDs =="
-kubectl --kubeconfig "$KK" apply -R -f /etc/karmada/crds/bases/ >/dev/null
+kubectl --kubeconfig "$KK" apply --validate=false -R -f /etc/karmada/crds/bases/ >/dev/null
 
 # ---------- 4. controller kubeconfig secret ----------
 if ! kubectl -n karmada-system get secret karmada-controller-manager-config >/dev/null 2>&1; then
