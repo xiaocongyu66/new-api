@@ -21,8 +21,10 @@ func SessionCookieOriginGuard() contract.Middleware {
 			c.Next()
 			return
 		}
-		// The contract has no authority/transport-security accessor; origin checks
-		// must compare the actual Host and TLS state without trusting forwarded headers.
+		// TODO(#287) A: concrete *http.Request read for Host and TLS state; the
+		// contract exposes neither Host() nor IsTLS() — add both accessors, then
+		// this becomes contract-only. The TLS check must stay transport-derived
+		// and must never trust a client-supplied X-Forwarded-Proto.
 		request := c.HTTPRequest()
 		origin, ok := requestBrowserOrigin(request)
 		if !ok || !isAllowedSessionOrigin(request, origin) {

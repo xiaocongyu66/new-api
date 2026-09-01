@@ -85,6 +85,10 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 
 	if relayFormat == types.RelayFormatOpenAIRealtime {
 		var err error
+		// TODO(#287) C: permanent. The only server-side WebSocket upgrade in the
+		// application, reached solely for RelayFormatOpenAIRealtime on GET /v1/realtime.
+		// gorilla/websocket hijacks a concrete http.ResponseWriter and *http.Request, so
+		// this route stays on net/http rather than migrating to the contract.
 		ws, err = upgrader.Upgrade(c.ResponseWriter(), c.HTTPRequest(), nil)
 		if err != nil {
 			helper.WssError(c, ws, types.NewError(err, types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry()).ToOpenAIError())

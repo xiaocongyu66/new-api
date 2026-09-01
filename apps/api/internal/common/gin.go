@@ -64,8 +64,10 @@ func GetRequestBody(c contract.Context) (io.Seeker, error) {
 
 	contentLength := c.ContentLength()
 
-	// BodyReader delegates here to preserve replayable-body semantics, so this is
-	// the contract implementation's bootstrap path rather than a handler escape.
+	// TODO(#287) A: concrete *http.Request read of the raw inbound body stream, which
+	// bootstraps the replayable-body cache. BodyReader delegates back here, so routing
+	// this through the contract would recurse; the Fiber-side resolution is to
+	// implement this bootstrap inside each adapter rather than in shared code.
 	request := c.HTTPRequest()
 	storage, err := CreateBodyStorageFromReader(request.Body, contentLength, maxBytes)
 	_ = request.Body.Close()

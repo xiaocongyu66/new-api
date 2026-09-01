@@ -32,6 +32,9 @@ func (rc *readCloser) Close() error {
 // oversized body fails the request instead of being silently truncated.
 func DecompressRequestMiddleware() contract.Middleware {
 	return func(c contract.Context) {
+		// TODO(#287) B: concrete *http.Request body swap; the cap must wrap the stream
+		// before any reader touches it. fasthttp has an equivalent pre-read body limit,
+		// so this is replaced by the Fiber body-limit mechanism at the cutover.
 		request := c.HTTPRequest()
 		if request.Body == nil || c.Method() == http.MethodGet {
 			c.Next()
@@ -44,6 +47,9 @@ func DecompressRequestMiddleware() contract.Middleware {
 		maxBytes := int64(maxMB) << 20
 
 		origBody := request.Body
+		// TODO(#287) B: http.MaxBytesReader needs the response writer so an oversized
+		// body errors instead of truncating silently; fasthttp's BodyLimit/Fiber's
+		// BodyLimit config provides the equivalent, wired at the cutover.
 		wrapMaxBytes := func(body io.ReadCloser) io.ReadCloser {
 			return http.MaxBytesReader(c.ResponseWriter(), body, maxBytes)
 		}

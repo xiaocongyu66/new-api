@@ -202,6 +202,9 @@ func (a *Adaptor) SetupRequestHeader(c contract.Context, header *http.Header, in
 		// OpenAI 已下线 Realtime Beta API,GA 模型收到 beta 标识会以 beta_api_shape_disabled 拒绝;
 		// 仅对遗留 preview 模型保留 beta 标识
 		legacyRealtimeBeta := strings.Contains(info.UpstreamModelName, "-realtime-preview")
+		// TODO(#287) C: permanent. Sec-WebSocket-Protocol is read off the concrete
+		// upgrade request and forwarded to the upstream dial; it is tied to Realtime,
+		// whose single server-side upgrade stays on net/http even after the cutover.
 		swp := c.HTTPRequest().Header.Get("Sec-WebSocket-Protocol")
 		if swp != "" {
 			items := []string{
@@ -450,6 +453,10 @@ func (a *Adaptor) ConvertImageRequest(c contract.Context, info *relaycommon.Rela
 
 		writer.WriteField("model", request.Model)
 		// Preserve a form parsed by upstream validation; its request body may be consumed.
+		// TODO(#287) C: permanent. Reading the already-populated MultipartForm off the
+		// concrete request is the point: the body is exhausted, so an
+		// already-parsed form must be honoured rather than reparsed. Any adapter must
+		// publish parsed forms onto the request it synthesizes.
 		mf := c.HTTPRequest().MultipartForm
 		if mf == nil {
 			var err error

@@ -160,6 +160,9 @@ func applyHeaderOverridePlaceholders(template string, c contract.Context, apiKey
 		if name == "" {
 			return "", false, fmt.Errorf("client_header placeholder name is empty: %q", template)
 		}
+		// TODO(#287) C: permanent. This is a nil guard, not a data read: it detects a
+		// synthetic context with no concrete inbound request (channel test, scheduled
+		// probe) so header templating fails loudly instead of reading empty values.
 		if c == nil || c.HTTPRequest() == nil {
 			return "", false, fmt.Errorf("missing request context for client_header placeholder")
 		}
@@ -233,6 +236,9 @@ func processHeaderOverride(info *common.RelayInfo, c contract.Context) (map[stri
 	}
 
 	if passAll || len(passthroughRegex) > 0 {
+		// TODO(#287) C: permanent. Nil guard for a missing concrete inbound request, so
+		// header passthrough on a synthetic context errors instead of forwarding an
+		// empty header set.
 		if c == nil || c.HTTPRequest() == nil {
 			return nil, types.NewError(fmt.Errorf("missing request context for header passthrough"), types.ErrorCodeChannelHeaderOverrideInvalid)
 		}
@@ -551,6 +557,9 @@ func doRequest(c contract.Context, req *http.Request, info *common.RelayInfo) (*
 	}
 
 	_ = req.Body.Close()
+	// TODO(#287) C: permanent. The contract has no body-close capability and adding one
+	// would widen it with resource-release semantics; releasing the inbound body must
+	// stay explicit here.
 	_ = c.HTTPRequest().Body.Close()
 	return resp, nil
 }

@@ -63,9 +63,15 @@ func ProxyKarmadaDashboard(c contract.Context) {
 		response.Header.Del("Content-Security-Policy-Report-Only")
 		return nil
 	}
+	// TODO(#287) B: httputil.ReverseProxy's ErrorHandler is typed on
+	// http.ResponseWriter; fasthttp has an equivalent reverse-proxy path, so this
+	// handler is reimplemented against it at the cutover.
 	proxy.ErrorHandler = func(writer http.ResponseWriter, _ *http.Request, proxyErr error) {
 		common.SysError("Karmada dashboard proxy error: " + proxyErr.Error())
 		writer.WriteHeader(http.StatusBadGateway)
 	}
+	// TODO(#287) B: httputil.ReverseProxy.ServeHTTP consumes a concrete writer and
+	// request; fasthttp's proxy client (fasthttp/fasthttpproxy) is the equivalent this
+	// is rewritten onto at the cutover.
 	proxy.ServeHTTP(c.ResponseWriter(), c.HTTPRequest())
 }

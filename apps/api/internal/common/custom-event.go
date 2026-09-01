@@ -69,6 +69,10 @@ func writeData(w stringWriter, data interface{}) error {
 	return nil
 }
 
+// TODO(#287) B: legacy http.ResponseWriter renderer. Production SSE goes through
+// gateway.RenderSSE and the only remaining caller is
+// internal/gateway/write_sse_equivalence_test.go, so the cutover deletes Render and
+// WriteContentType and keeps RenderTo, which is already writer-neutral.
 func (r CustomEvent) Render(w http.ResponseWriter) error {
 	r.WriteContentType(w)
 	return encode(w, r)
@@ -81,6 +85,9 @@ func (r CustomEvent) RenderTo(w io.Writer) error {
 	return encode(w, r)
 }
 
+// TODO(#287) B: legacy http.ResponseWriter header writer, the header half of Render;
+// deleted alongside it at the cutover since gateway.RenderSSE installs SSE headers
+// through the contract.
 func (r CustomEvent) WriteContentType(w http.ResponseWriter) {
 	header := w.Header()
 	header["Content-Type"] = writeContentType

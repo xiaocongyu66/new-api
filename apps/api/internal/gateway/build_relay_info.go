@@ -162,9 +162,10 @@ func genBaseRelayInfo(c contract.Context, request dto.Request) *relaycommon.Rela
 
 	isStream := false
 	if request != nil {
-		// dto.Request.IsStream takes *http.Request because relaykit is a separate
-		// module and cannot import the app's internal contract. The escape hatch
-		// is the module boundary here, not an unmigrated call site.
+		// TODO(#287) C: permanent. request.IsStream is relaykit public API typed on
+		// *http.Request, and relaykit is a separate module that cannot import the app's
+		// internal contract. The Fiber adapter must keep synthesizing an *http.Request
+		// for this boundary; there is nothing to migrate.
 		isStream = request.IsStream(c.HTTPRequest())
 	}
 	c.Set(string(constant.ContextKeyIsStream), isStream)

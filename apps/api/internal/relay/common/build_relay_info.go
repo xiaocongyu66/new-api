@@ -499,8 +499,10 @@ func genBaseRelayInfo(c contract.Context, request dto.Request) *RelayInfo {
 	isStream := false
 
 	if request != nil {
-		// relaykit's public request contract requires *http.Request; no
-		// framework-neutral equivalent exists for its endpoint-specific stream check.
+		// TODO(#287) C: permanent. request.IsStream is relaykit public API typed on
+		// *http.Request, and relaykit is a separate module that cannot import the app's
+		// internal contract. The Fiber adapter must keep synthesizing an *http.Request
+		// for this boundary; there is nothing to migrate.
 		isStream = request.IsStream(c.HTTPRequest())
 	}
 	c.Set(string(constant.ContextKeyIsStream), isStream)
