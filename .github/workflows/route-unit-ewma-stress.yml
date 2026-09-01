@@ -1201,6 +1201,37 @@ jobs:
           echo "::error::Failed to refresh admin token before Run scenario"
           exit 1
 
+      - name: Pull mock ndjson from pods (reconcile input)
+        if: env.MOCK_IN_CLUSTER == 'true'
+        run: |
+          set -euo pipefail
+          # run_scenario.py reads /tmp/mock_upstream.ndjson on the RUNNER to
+          # reconcile gateway attempts against mock-received requests. The
+          # mocks run in-cluster and write to their own pod filesystem, so
+          # without this copy the runner reads a nonexistent file,
+          # upstream-received.ndjson lands empty, and every scenario reports
+          # matched_pairs=0 (the exact v11–v15 signature). Cat each pod's
+          # ndjson into the runner-side file, newest last, so reconciliation
+          # sees every request the mocks received.
+          : > /tmp/mock_upstream.ndjson
+          i=0
+          while true; do
+            POD=$(kubectl get pod -l app=route-unit-mock,instance=m${i} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+            [ -z "$POD" ] && break
+            echo "-- mock ${i} (${POD}) --"
+            kubectl exec "$POD" -- cat /tmp/mock_upstream.ndjson >> /tmp/mock_upstream.ndjson 2>/dev/null \
+              || echo "::warning::mock ${i} (${POD}) ndjson unreadable"
+            i=$((i + 1))
+            [ $i -ge 16 ] && break
+          done
+          SIZE=$(wc -c < /tmp/mock_upstream.ndjson)
+          LINES=$(wc -l < /tmp/mock_upstream.ndjson)
+          echo "runner-side /tmp/mock_upstream.ndjson: ${SIZE} bytes, ${LINES} rows"
+          if [ "$SIZE" -eq 0 ]; then
+            echo "::error::pulled mock ndjson is empty; reconciliation will report matched_pairs=0"
+            exit 1
+          fi
+
       - name: Run scenario ${{ matrix.scenario }}
         id: scenario
         env:
