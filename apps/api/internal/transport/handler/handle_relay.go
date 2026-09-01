@@ -34,7 +34,6 @@ import (
 	"github.com/samber/lo"
 
 	"github.com/QuantumNous/new-api/internal/sensitive"
-	"github.com/gorilla/websocket"
 )
 
 func relayHandler(c contract.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
@@ -84,16 +83,23 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 	)
 
 	if relayFormat == types.RelayFormatOpenAIRealtime {
-		// TODO(#287) C: permanent. The only server-side WebSocket upgrade in the
-		// application, reached solely for RelayFormatOpenAIRealtime on GET /v1/realtime.
-		// gorilla/websocket hijacks a concrete http.ResponseWriter and *http.Request, so
-		// this route stays on net/http rather than migrating to the contract.
+		// The only server-side WebSocket upgrade in the application, reached
+		// solely for RelayFormatOpenAIRealtime on GET /v1/realtime. The
+		// transport performs the handshake, so this works under either adapter
+		// and the relay flow below stays straight-line code.
 		//
-		// The upgrade result is held in its concrete type and only widened into ws on
-		// success. Assigning a failed upgrade's nil *websocket.Conn straight into the
-		// interface would leave a non-nil interface holding a nil pointer, turning the
-		// `if ws == nil` guards in WssError/WssString into false and dereferencing nil.
-		conn, err := upgrader.Upgrade(c.ResponseWriter(), c.HTTPRequest(), nil)
+		// The upgrade result is held in its concrete-typed variable and only
+		// widened into ws on success. The contract guarantees a nil WSConn
+		// exactly when the error is non-nil, and this shape keeps the guarantee
+		// at the call site too: assigning a failed upgrade's result straight
+		// into the interface could leave a non-nil interface holding a nil
+		// pointer, turning the `if ws == nil` guards in WssError/WssString into
+		// false and dereferencing nil on every failed handshake.
+		//
+		// A failed handshake is already answered by the upgrader's own HTTP
+		// error response, so WssError writes nothing here: ws is nil and the
+		// guard returns early. It is called for the logging side effect only.
+		conn, err := c.UpgradeWebSocket("realtime")
 		if err != nil {
 			helper.WssError(c, ws, types.NewError(err, types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry()).ToOpenAIError())
 			return
@@ -351,13 +357,6 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 			usage.RecordRelaySample(relayInfo, false, 0)
 		})
 	}
-}
-
-var upgrader = websocket.Upgrader{
-	Subprotocols: []string{"realtime"}, // WS 握手支持的协议，如果有使用 Sec-WebSocket-Protocol，则必须在此声明对应的 Protocol TODO add other protocol
-	CheckOrigin: func(r *http.Request) bool {
-		return true // 允许跨域
-	},
 }
 
 func addUsedChannel(c contract.Context, channelId int) {

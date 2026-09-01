@@ -13,7 +13,6 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/bytedance/gopkg/util/gopool"
-	"github.com/gorilla/websocket"
 )
 
 func OpenaiRealtimeHandler(c contract.Context, info *relaycommon.RelayInfo) (*types.NewAPIError, *dto.RealtimeUsage) {
@@ -48,7 +47,7 @@ func OpenaiRealtimeHandler(c contract.Context, info *relaycommon.RelayInfo) (*ty
 			default:
 				_, message, err := clientConn.ReadMessage()
 				if err != nil {
-					if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+					if !relaycommon.IsNormalWSClose(err) {
 						errChan <- fmt.Errorf("error reading from client: %v", err)
 					}
 					close(clientClosed)
@@ -108,7 +107,7 @@ func OpenaiRealtimeHandler(c contract.Context, info *relaycommon.RelayInfo) (*ty
 			default:
 				_, message, err := targetConn.ReadMessage()
 				if err != nil {
-					if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+					if !relaycommon.IsNormalWSClose(err) {
 						errChan <- fmt.Errorf("error reading from target: %v", err)
 					}
 					close(targetClosed)
