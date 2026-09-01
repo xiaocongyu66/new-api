@@ -13,4 +13,5 @@ func init() {
 		dbx.Migration{Model: &SystemTask{}, Name: "SystemTask"},
 		dbx.Migration{Model: &SystemTaskLock{}, Name: "SystemTaskLock"},
 	)
+	dbx.RegisterPostMigration(dbinfra.RepairLegacySetups)
 }
