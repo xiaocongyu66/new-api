@@ -7,7 +7,6 @@ package common
 import (
 	"fmt"
 	"io"
-	"net/http"
 	"strings"
 )
 
@@ -36,13 +35,6 @@ func checkWriter(writer io.Writer) stringWriter {
 // W3C Working Draft 29 October 2009
 // http://www.w3.org/TR/2009/WD-eventsource-20091029/
 
-var writeContentType = []string{"text/event-stream"}
-var noCache = []string{"no-cache"}
-
-var fieldReplacer = strings.NewReplacer(
-	"\n", "\\n",
-	"\r", "\\r")
-
 var dataReplacer = strings.NewReplacer(
 	"\n", "\n",
 	"\r", "\\r")
@@ -69,30 +61,9 @@ func writeData(w stringWriter, data interface{}) error {
 	return nil
 }
 
-// TODO(#287) B: legacy http.ResponseWriter renderer. Production SSE goes through
-// gateway.RenderSSE and the only remaining caller is
-// internal/gateway/write_sse_equivalence_test.go, so the cutover deletes Render and
-// WriteContentType and keeps RenderTo, which is already writer-neutral.
-func (r CustomEvent) Render(w http.ResponseWriter) error {
-	r.WriteContentType(w)
-	return encode(w, r)
-}
-
-// RenderTo writes only the event bytes, for streaming callers that install the
-// response headers themselves. It is the body half of Render, so both produce
-// identical framing.
+// RenderTo writes only the event bytes. Callers install the response headers
+// themselves; gateway.RenderSSE writes the SSE content type through the
+// transport contract before calling this.
 func (r CustomEvent) RenderTo(w io.Writer) error {
 	return encode(w, r)
-}
-
-// TODO(#287) B: legacy http.ResponseWriter header writer, the header half of Render;
-// deleted alongside it at the cutover since gateway.RenderSSE installs SSE headers
-// through the contract.
-func (r CustomEvent) WriteContentType(w http.ResponseWriter) {
-	header := w.Header()
-	header["Content-Type"] = writeContentType
-
-	if _, exist := header["Cache-Control"]; !exist {
-		header["Cache-Control"] = noCache
-	}
 }

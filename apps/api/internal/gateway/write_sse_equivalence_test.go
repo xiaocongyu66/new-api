@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,18 +15,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRenderSSEMatchesDirectResponseWriterPath is the equivalence proof for
-// moving RenderSSE off c.ResponseWriter() and onto contract.ResponseStream.
+// TestRenderSSEMatchesCustomEventFraming is the equivalence proof for moving
+// RenderSSE off c.ResponseWriter() and onto contract.ResponseStream.
 //
 // It renders every payload shape the relay emits through both paths: the
-// pre-migration one (CustomEvent.Render straight onto the http.ResponseWriter)
-// and the migrated one, then compares the bytes and the headers. The shapes
-// matter individually because CustomEvent is not a uniform framer: it escapes
-// CR, and appends the blank-line terminator only when the payload starts with
-// "data", so `event:` prefixes and partial frames pass through unterminated.
-// Routing these through EventStream.WriteEvent instead would terminate and
-// re-prefix all of them, which is why RenderSSE stayed on this path.
-func TestRenderSSEMatchesDirectResponseWriterPath(t *testing.T) {
+// framing primitive on its own (CustomEvent.RenderTo onto a plain buffer) and
+// the migrated one through the contract, then compares the bytes and the
+// headers. The shapes matter individually because CustomEvent is not a uniform
+// framer: it escapes CR, and appends the blank-line terminator only when the
+// payload starts with "data", so `event:` prefixes and partial frames pass
+// through unterminated. Routing these through EventStream.WriteEvent instead
+// would terminate and re-prefix all of them, which is why RenderSSE stayed on
+// this path.
+//
+// The header half is asserted against the literal SSE values the deleted
+// CustomEvent.WriteContentType wrote ("text/event-stream", and "no-cache" when
+// nothing set Cache-Control); its conditional branch is pinned separately by
+// TestRenderSSEPreservesAnExistingCacheControl below.
+func TestRenderSSEMatchesCustomEventFraming(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	for _, tc := range []struct {
@@ -42,9 +49,9 @@ func TestRenderSSEMatchesDirectResponseWriterPath(t *testing.T) {
 		{name: "unprefixed payload stays unterminated", payload: "ping"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			// Pre-migration path: exactly what the code did before this change.
-			legacy := httptest.NewRecorder()
-			require.NoError(t, common.CustomEvent{Data: tc.payload}.Render(legacy))
+			// Framing reference: the writer-neutral primitive RenderSSE builds on.
+			var framed bytes.Buffer
+			require.NoError(t, common.CustomEvent{Data: tc.payload}.RenderTo(&framed))
 
 			// Migrated path, through contract.ResponseStream.
 			migrated := httptest.NewRecorder()
@@ -52,10 +59,10 @@ func TestRenderSSEMatchesDirectResponseWriterPath(t *testing.T) {
 			ginCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 			RenderSSE(ginadapter.Wrap(ginCtx), tc.payload)
 
-			assert.Equal(t, legacy.Body.String(), migrated.Body.String(),
-				"SSE bytes must be identical to the pre-migration writer path")
-			assert.Equal(t, legacy.Header().Get("Content-Type"), migrated.Header().Get("Content-Type"))
-			assert.Equal(t, legacy.Header().Get("Cache-Control"), migrated.Header().Get("Cache-Control"))
+			assert.Equal(t, framed.String(), migrated.Body.String(),
+				"SSE bytes must be identical to the CustomEvent framing primitive")
+			assert.Equal(t, "text/event-stream", migrated.Header().Get("Content-Type"))
+			assert.Equal(t, "no-cache", migrated.Header().Get("Cache-Control"))
 		})
 	}
 }
