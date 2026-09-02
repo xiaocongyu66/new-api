@@ -1,15 +1,15 @@
 package common_test
 
 import (
-	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -19,10 +19,9 @@ import (
 func newBodyRequestContext(t *testing.T, body string) (contract.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 
-	c, rec := ginadapter.NewSyntheticContext(nil)
-	ginadapter.ReplaceRequest(c, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body)))
-	c.Headers().Set("Content-Type", "application/json")
-	return c, rec
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	return fiberadapter.NewSyntheticContext(request)
 }
 
 // TestUnmarshalBodyReusableAllowsRepeatedDecode pins the multi-read contract the
@@ -88,6 +87,41 @@ func TestGetRequestBodySeeksToStartOnRepeatedAccess(t *testing.T) {
 	secondRead, err := io.ReadAll(secondReader)
 	require.NoError(t, err)
 	assert.JSONEq(t, payload, string(secondRead), "each reader starts at the payload start")
+}
+
+// TestReplayableBodyAccessorsAgreeAfterReplaceAndReset pins the rest of the
+// replayable-body surface the relay drives: RawBody materialises the payload,
+// ReplaceBody retargets it for every later read, BodyStream exposes the live
+// reader, and ResetBody reinstalls one.
+func TestReplayableBodyAccessorsAgreeAfterReplaceAndReset(t *testing.T) {
+	original := `{"model":"gpt-4"}`
+	c, _ := newBodyRequestContext(t, original)
+
+	raw, err := c.RawBody()
+	require.NoError(t, err)
+	assert.JSONEq(t, original, string(raw))
+
+	rewritten := `{"model":"gpt-4o","stream":true}`
+	c.ReplaceBody([]byte(rewritten))
+
+	raw, err = c.RawBody()
+	require.NoError(t, err)
+	assert.JSONEq(t, rewritten, string(raw), "ReplaceBody drops the cached storage")
+
+	var decoded struct {
+		Model string `json:"model"`
+	}
+	require.NoError(t, common.UnmarshalCtxBodyReusable(c, &decoded))
+	assert.Equal(t, "gpt-4o", decoded.Model)
+
+	streamed, err := io.ReadAll(c.BodyStream())
+	require.NoError(t, err)
+	assert.JSONEq(t, rewritten, string(streamed), "decoding reinstalls a readable stream")
+
+	c.ResetBody(io.NopCloser(strings.NewReader(rewritten)))
+	streamed, err = io.ReadAll(c.BodyStream())
+	require.NoError(t, err)
+	assert.JSONEq(t, rewritten, string(streamed))
 }
 
 // TestCleanupBodyStorageReleasesCachedBody asserts the per-request cleanup path

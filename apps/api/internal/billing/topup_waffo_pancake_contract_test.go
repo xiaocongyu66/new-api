@@ -7,30 +7,33 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/testutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// setupWaffoPancakeContext creates a synthetic context with the :env param set,
-// since NewSyntheticContext does not run the gin router and therefore cannot
-// populate route params.
-func setupWaffoPancakeContext(t *testing.T, method, path string, body io.Reader) (contract.Context, *gin.Context, *httptest.ResponseRecorder) {
+// serveWaffoPancakeWebhook drives the handler through a real Fiber route
+// registered on the production pattern, because the handler reads the :env
+// route param and a synthetic context has no router to populate it.
+func serveWaffoPancakeWebhook(t *testing.T, body io.Reader, signature string) (int, string) {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	ginCtx, _ := gin.CreateTestContext(recorder)
-	ginCtx.Request = httptest.NewRequest(method, path, body)
-	ginCtx.Params = gin.Params{{Key: "env", Value: "test"}}
-	return ginadapter.Wrap(ginCtx), ginCtx, recorder
+
+	request := httptest.NewRequest(http.MethodPost, "/api/waffo-pancake/webhook/test", body)
+	if signature != "" {
+		request.Header.Set("X-Waffo-Signature", signature)
+	}
+	response := testutil.ServeBufferedRoute(t, http.MethodPost, "/api/waffo-pancake/webhook/:env",
+		nil, WaffoPancakeWebhook, request)
+
+	payload, err := io.ReadAll(response.Body)
+	require.NoError(t, err)
+	require.NoError(t, response.Body.Close())
+	return response.StatusCode, string(payload)
 }
 
 // TestWaffoPancakeWebhookRejectsDisabledViaForbidden pins the contract when
 // Waffo Pancake webhook is not configured — HTTP 403 with body "webhook disabled".
 func TestWaffoPancakeWebhookRejectsDisabledViaForbidden(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	prevMerchantID := WaffoPancakeMerchantID
 	prevPrivateKey := WaffoPancakePrivateKey
 	prevProductID := WaffoPancakeProductID
@@ -43,19 +46,15 @@ func TestWaffoPancakeWebhookRejectsDisabledViaForbidden(t *testing.T) {
 		WaffoPancakeProductID = prevProductID
 	})
 
-	c, rec := ginadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/api/waffo-pancake/webhook/test", nil))
+	status, body := serveWaffoPancakeWebhook(t, nil, "")
 
-	WaffoPancakeWebhook(c)
-
-	assert.Equal(t, http.StatusForbidden, rec.Code)
-	assert.Equal(t, "webhook disabled", rec.Body.String())
+	assert.Equal(t, http.StatusForbidden, status)
+	assert.Equal(t, "webhook disabled", body)
 }
 
 // TestWaffoPancakeWebhookRejectsInvalidSignatureViaUnauthorized verifies
 // that an invalid signature produces 401 with body "invalid signature".
 func TestWaffoPancakeWebhookRejectsInvalidSignatureViaUnauthorized(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	// Setup minimal config to enable the webhook
 	prevCompliance := GetPaymentSetting().ComplianceConfirmed
 	prevTermsVersion := GetPaymentSetting().ComplianceTermsVersion
@@ -78,13 +77,10 @@ func TestWaffoPancakeWebhookRejectsInvalidSignatureViaUnauthorized(t *testing.T)
 	payload := `{"id":"evt_test","timestamp":"2026-05-13T00:00:00Z","eventType":"order.completed","eventId":"PAY_test","storeId":"STO_test","storeName":"Test","mode":"test","data":{"orderId":"ORD_test","orderMerchantExternalID":"trade_test"}}`
 	badSig := "t=1234567890000,v1=invalidsignature"
 
-	c, _, rec := setupWaffoPancakeContext(t, http.MethodPost, "/api/waffo-pancake/webhook/test", bytes.NewReader([]byte(payload)))
-	c.Headers().Set("X-Waffo-Signature", badSig)
+	status, body := serveWaffoPancakeWebhook(t, bytes.NewReader([]byte(payload)), badSig)
 
-	WaffoPancakeWebhook(c)
-
-	assert.Equal(t, http.StatusUnauthorized, rec.Code)
-	assert.Equal(t, "invalid signature", rec.Body.String())
+	assert.Equal(t, http.StatusUnauthorized, status)
+	assert.Equal(t, "invalid signature", body)
 }
 
 // TestWaffoPancakeWebhookAcceptsValidSignature_SKIPPED documents that a valid

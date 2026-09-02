@@ -1,16 +1,15 @@
 package billing
 
 import (
-	"github.com/QuantumNous/new-api/internal/common/dbx"
-	"github.com/QuantumNous/new-api/internal/identity"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/glebarez/sqlite"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
@@ -104,16 +103,13 @@ func TestRequestAmountRejectsTopUpThatCannotBeSettled(t *testing.T) {
 		GetGeneralSetting().QuotaDisplayType = oldDisplayType
 	})
 
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	rawCtx, _ := gin.CreateTestContext(recorder)
-	rawCtx.Request = httptest.NewRequest(
+	request := httptest.NewRequest(
 		http.MethodPost,
 		"/api/user/amount",
 		strings.NewReader(`{"amount":4295}`),
 	)
-	rawCtx.Request.Header.Set("Content-Type", "application/json")
-	ctx := ginadapter.Wrap(rawCtx)
+	request.Header.Set("Content-Type", "application/json")
+	ctx, recorder := fiberadapter.NewSyntheticContext(request)
 
 	RequestAmount(ctx)
 
@@ -149,16 +145,13 @@ func TestRequestAmountRejectsTopUpThatWouldOverflowWallet(t *testing.T) {
 		Status:   common.UserStatusEnabled,
 	}).Error)
 
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	rawCtx, _ := gin.CreateTestContext(recorder)
-	rawCtx.Request = httptest.NewRequest(
+	request := httptest.NewRequest(
 		http.MethodPost,
 		"/api/user/amount",
 		strings.NewReader(`{"amount":4294}`),
 	)
-	rawCtx.Request.Header.Set("Content-Type", "application/json")
-	ctx := ginadapter.Wrap(rawCtx)
+	request.Header.Set("Content-Type", "application/json")
+	ctx, recorder := fiberadapter.NewSyntheticContext(request)
 	ctx.Set("id", 42)
 
 	RequestAmount(ctx)

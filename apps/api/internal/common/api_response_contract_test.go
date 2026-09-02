@@ -2,13 +2,13 @@ package common_test
 
 import (
 	"errors"
-	common "github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	common "github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -17,9 +17,7 @@ import (
 func newAPIRecorder(t *testing.T) (contract.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 
-	c, recorder := ginadapter.NewSyntheticContext(nil)
-	ginadapter.ReplaceRequest(c, httptest.NewRequest(http.MethodGet, "/api/status", nil))
-	return c, recorder
+	return fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodGet, "/api/status", nil))
 }
 
 // TestApiSuccessEnvelope pins the success envelope every dashboard endpoint
@@ -85,8 +83,7 @@ func TestGetPageQueryParsesPaginationAliases(t *testing.T) {
 		{name: "page size clamped", query: "?p=1&page_size=9999", expectedPage: 1, expectedPageSize: 100},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			c, _ := ginadapter.NewSyntheticContext(nil)
-			ginadapter.ReplaceRequest(c, httptest.NewRequest(http.MethodGet, "/api/log/"+tc.query, nil))
+			c, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodGet, "/api/log/"+tc.query, nil))
 
 			pageInfo := common.GetPageQuery(c)
 

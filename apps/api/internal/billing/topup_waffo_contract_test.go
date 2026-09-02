@@ -13,8 +13,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -57,8 +56,6 @@ func waffoSign(t *testing.T, data, privateKeyB64 string) string {
 // TestWaffoWebhookRejectsDisabledViaForbidden pins the contract when Waffo
 // webhook is not configured — HTTP 403 with no body.
 func TestWaffoWebhookRejectsDisabledViaForbidden(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	prevEnabled := WaffoEnabled
 	prevSandbox := WaffoSandbox
 	WaffoEnabled = false
@@ -69,7 +66,7 @@ func TestWaffoWebhookRejectsDisabledViaForbidden(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/waffo/webhook", nil)
-	c, rec := ginadapter.NewSyntheticContext(req)
+	c, rec := fiberadapter.NewSyntheticContext(req)
 
 	WaffoWebhook(c)
 
@@ -80,8 +77,6 @@ func TestWaffoWebhookRejectsDisabledViaForbidden(t *testing.T) {
 // TestWaffoWebhookRejectsInvalidSignatureViaBadRequest verifies that an
 // invalid signature produces 400.
 func TestWaffoWebhookRejectsInvalidSignatureViaBadRequest(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	privateKeyB64, publicCertB64 := waffoTestKeys(t)
 
 	// Setup all required settings for Waffo webhook to be enabled
@@ -116,7 +111,7 @@ func TestWaffoWebhookRejectsInvalidSignatureViaBadRequest(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/waffo/webhook", io.NopCloser(bytes.NewReader([]byte(payload))))
 	req.Header.Set("X-SIGNATURE", badSig)
 
-	c, rec := ginadapter.NewSyntheticContext(req)
+	c, rec := fiberadapter.NewSyntheticContext(req)
 
 	WaffoWebhook(c)
 
@@ -127,8 +122,6 @@ func TestWaffoWebhookRejectsInvalidSignatureViaBadRequest(t *testing.T) {
 // payment notification with a correct RSA signature and asserts the handler
 // returns 200 OK with a signed response body.
 func TestWaffoWebhookAcceptsValidSignatureAndReturnsOK(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	privateKeyB64, publicCertB64 := waffoTestKeys(t)
 
 	// Setup all required settings
@@ -164,7 +157,7 @@ func TestWaffoWebhookAcceptsValidSignatureAndReturnsOK(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/waffo/webhook", io.NopCloser(bytes.NewReader([]byte(payload))))
 	req.Header.Set("X-SIGNATURE", sig)
 
-	c, rec := ginadapter.NewSyntheticContext(req)
+	c, rec := fiberadapter.NewSyntheticContext(req)
 
 	WaffoWebhook(c)
 
