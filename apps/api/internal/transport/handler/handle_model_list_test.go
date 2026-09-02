@@ -6,7 +6,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/settings"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,7 +18,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,7 +40,6 @@ func setupModelListControllerTestDB(t *testing.T) *gorm.DB {
 
 	initModelListColumnNames(t)
 
-	gin.SetMode(gin.TestMode)
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 
@@ -201,22 +199,20 @@ func TestGetUserModelsFiltersByRequestedGroup(t *testing.T) {
 		{Group: "default", Model: "zz-disabled-model", ChannelId: 1, Enabled: false},
 	}).Error)
 
-	defaultRecorder := httptest.NewRecorder()
-	defaultContext, _ := gin.CreateTestContext(defaultRecorder)
-	defaultContext.Request = httptest.NewRequest(http.MethodGet, "/api/user/models?group=default", nil)
+	defaultContext, defaultRecorder := fiberadapter.NewSyntheticContext(
+		httptest.NewRequest(http.MethodGet, "/api/user/models?group=default", nil))
 	defaultContext.Set("id", 1002)
 
-	identity.GetUserModels(ginadapter.Wrap(defaultContext))
+	identity.GetUserModels(defaultContext)
 
 	defaultModels := decodeUserModelsResponse(t, defaultRecorder)
 	require.ElementsMatch(t, []string{"zz-default-only-model"}, defaultModels)
 
-	vipRecorder := httptest.NewRecorder()
-	vipContext, _ := gin.CreateTestContext(vipRecorder)
-	vipContext.Request = httptest.NewRequest(http.MethodGet, "/api/user/models?group=vip", nil)
+	vipContext, vipRecorder := fiberadapter.NewSyntheticContext(
+		httptest.NewRequest(http.MethodGet, "/api/user/models?group=vip", nil))
 	vipContext.Set("id", 1002)
 
-	identity.GetUserModels(ginadapter.Wrap(vipContext))
+	identity.GetUserModels(vipContext)
 
 	require.Empty(t, decodeUserModelsResponse(t, vipRecorder))
 }
@@ -258,12 +254,11 @@ func TestGetUserModelsExpandsAutoGroupsInConfiguredOrder(t *testing.T) {
 		{Group: "unavailable", Model: "zz-unavailable-model", ChannelId: 1, Enabled: true},
 	}).Error)
 
-	recorder := httptest.NewRecorder()
-	context, _ := gin.CreateTestContext(recorder)
-	context.Request = httptest.NewRequest(http.MethodGet, "/api/user/models?group=auto", nil)
+	context, recorder := fiberadapter.NewSyntheticContext(
+		httptest.NewRequest(http.MethodGet, "/api/user/models?group=auto", nil))
 	context.Set("id", 1003)
 
-	identity.GetUserModels(ginadapter.Wrap(context))
+	identity.GetUserModels(context)
 
 	models := decodeUserModelsResponse(t, recorder)
 	require.Len(t, models, 3)
@@ -297,12 +292,10 @@ func TestListModelsIncludesTieredBillingModel(t *testing.T) {
 		{Group: "default", Model: "zz-unpriced-model", ChannelId: 1, Enabled: true},
 	}).Error)
 
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	ctx, recorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodGet, "/v1/models", nil))
 	ctx.Set("id", 1001)
 
-	ListModels(ginadapter.Wrap(ctx), constant.ChannelTypeOpenAI)
+	ListModels(ctx, constant.ChannelTypeOpenAI)
 
 	ids := decodeListModelsResponse(t, recorder)
 	require.Contains(t, ids, "zz-tiered-visible-model")
@@ -382,12 +375,10 @@ func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T)
 	channel.InitChannelCache()
 	channel.GetPricing()
 
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	ctx, recorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodGet, "/v1/models", nil))
 	ctx.Set("id", 1003)
 
-	ListModels(ginadapter.Wrap(ctx), constant.ChannelTypeOpenAI)
+	ListModels(ctx, constant.ChannelTypeOpenAI)
 
 	payload := decodeListModelsPayload(t, recorder)
 	require.Len(t, payload.Data, 1)
@@ -416,19 +407,17 @@ func TestListModelsTokenLimitIncludesTieredBillingModel(t *testing.T) {
 		{Group: "default", Model: "zz-token-unpriced-model", ChannelId: 1, Enabled: true},
 	}).Error)
 
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	common.SetContextKey(ginadapter.Wrap(ctx), constant.ContextKeyUserGroup, "default")
-	common.SetContextKey(ginadapter.Wrap(ctx), constant.ContextKeyTokenModelLimitEnabled, true)
-	common.SetContextKey(ginadapter.Wrap(ctx), constant.ContextKeyTokenModelLimit, map[string]bool{
+	ctx, recorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodGet, "/v1/models", nil))
+	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimitEnabled, true)
+	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimit, map[string]bool{
 		"zz-token-tiered-visible-model":      true,
 		"zz-token-tiered-empty-expr-model":   true,
 		"zz-token-tiered-missing-expr-model": true,
 		"zz-token-unpriced-model":            true,
 	})
 
-	ListModels(ginadapter.Wrap(ctx), constant.ChannelTypeOpenAI)
+	ListModels(ctx, constant.ChannelTypeOpenAI)
 
 	ids := decodeListModelsResponse(t, recorder)
 	require.Contains(t, ids, "zz-token-tiered-visible-model")
@@ -458,35 +447,31 @@ func TestListModelsTokenLimitUsesResolvedCustomAutoGroups(t *testing.T) {
 		{Group: "default", Model: "zz-default-outside-snapshot", ChannelId: 1, Enabled: true},
 	}).Error)
 
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	common.SetContextKey(ginadapter.Wrap(ctx), constant.ContextKeyUserGroup, "default")
-	common.SetContextKey(ginadapter.Wrap(ctx), constant.ContextKeyTokenGroup, "auto")
-	common.SetContextKey(ginadapter.Wrap(ctx), constant.ContextKeyTokenAutoGroups, []string{"vip"})
-	common.SetContextKey(ginadapter.Wrap(ctx), constant.ContextKeyTokenModelLimitEnabled, true)
-	common.SetContextKey(ginadapter.Wrap(ctx), constant.ContextKeyTokenModelLimit, map[string]bool{
+	ctx, recorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodGet, "/v1/models", nil))
+	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(ctx, constant.ContextKeyTokenGroup, "auto")
+	common.SetContextKey(ctx, constant.ContextKeyTokenAutoGroups, []string{"vip"})
+	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimitEnabled, true)
+	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimit, map[string]bool{
 		"zz-vip-allowed":              true,
 		"zz-default-outside-snapshot": true,
 		"zz-not-enabled":              true,
 	})
 
-	ListModels(ginadapter.Wrap(ctx), constant.ChannelTypeOpenAI)
+	ListModels(ctx, constant.ChannelTypeOpenAI)
 	ids := decodeListModelsResponse(t, recorder)
 	require.Equal(t, map[string]struct{}{"zz-vip-allowed": {}}, ids)
 
 	require.NoError(t, channel.UpdateUserUsableGroupsByJSONString(`{"default":"Default"}`))
-	emptyRecorder := httptest.NewRecorder()
-	emptyCtx, _ := gin.CreateTestContext(emptyRecorder)
-	emptyCtx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	common.SetContextKey(ginadapter.Wrap(emptyCtx), constant.ContextKeyUserGroup, "default")
-	common.SetContextKey(ginadapter.Wrap(emptyCtx), constant.ContextKeyTokenGroup, "auto")
-	common.SetContextKey(ginadapter.Wrap(emptyCtx), constant.ContextKeyTokenAutoGroups, []string{"vip"})
-	common.SetContextKey(ginadapter.Wrap(emptyCtx), constant.ContextKeyTokenModelLimitEnabled, true)
-	common.SetContextKey(ginadapter.Wrap(emptyCtx), constant.ContextKeyTokenModelLimit, map[string]bool{"zz-vip-allowed": true})
+	emptyCtx, emptyRecorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodGet, "/v1/models", nil))
+	common.SetContextKey(emptyCtx, constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(emptyCtx, constant.ContextKeyTokenGroup, "auto")
+	common.SetContextKey(emptyCtx, constant.ContextKeyTokenAutoGroups, []string{"vip"})
+	common.SetContextKey(emptyCtx, constant.ContextKeyTokenModelLimitEnabled, true)
+	common.SetContextKey(emptyCtx, constant.ContextKeyTokenModelLimit, map[string]bool{"zz-vip-allowed": true})
 
 	require.NotPanics(t, func() {
-		ListModels(ginadapter.Wrap(emptyCtx), constant.ChannelTypeAnthropic)
+		ListModels(emptyCtx, constant.ChannelTypeAnthropic)
 	})
 	var anthropicResponse struct {
 		Data    []dto.AnthropicModel `json:"data"`

@@ -3,8 +3,7 @@ package handler
 import (
 	"bytes"
 	channelpkg "github.com/QuantumNous/new-api/internal/catalog"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -130,17 +129,14 @@ func TestClearChannelReadOnlyFields(t *testing.T) {
 }
 
 func TestUpdateChannelRejectsStatusField(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	rawCtx, _ := gin.CreateTestContext(recorder)
-	rawCtx.Request = httptest.NewRequest(
+	ctx, recorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(
 		http.MethodPut,
 		"/api/channel/",
 		bytes.NewBufferString(`{"id":1,"status":2}`),
-	)
-	rawCtx.Request.Header.Set("Content-Type", "application/json")
+	))
+	ctx.Headers().Set("Content-Type", "application/json")
 
-	UpdateChannel(ginadapter.Wrap(rawCtx))
+	UpdateChannel(ctx)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	var response struct {

@@ -2,7 +2,8 @@ package handler
 
 import (
 	channelpkg "github.com/QuantumNous/new-api/internal/catalog"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
+	"github.com/QuantumNous/new-api/internal/transport/testutil"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,12 +38,11 @@ func TestAddChannelRejectsInvalidPayload(t *testing.T) {
 		{name: "missing key", body: `{"type":1,"name":"c1","models":"gpt-4"}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			recorder := httptest.NewRecorder()
-			c, _ := gin.CreateTestContext(recorder)
-			c.Request = httptest.NewRequest(http.MethodPost, "/api/channel/", strings.NewReader(tc.body))
-			c.Request.Header.Set("Content-Type", "application/json")
+			ctx, recorder := fiberadapter.NewSyntheticContext(
+				httptest.NewRequest(http.MethodPost, "/api/channel/", strings.NewReader(tc.body)))
+			ctx.Headers().Set("Content-Type", "application/json")
 
-			AddChannel(ginadapter.Wrap(c))
+			AddChannel(ctx)
 
 			require.Equal(t, http.StatusOK, recorder.Code,
 				"business validation failures use HTTP 200 with success:false")
@@ -61,12 +60,9 @@ func TestAddChannelRejectsInvalidPayload(t *testing.T) {
 func TestGetChannelRejectsInvalidID(t *testing.T) {
 	setupModelListControllerTestDB(t)
 
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/channel/not-a-number", nil)
-	c.Params = gin.Params{{Key: "id", Value: "not-a-number"}}
-
-	GetChannel(ginadapter.Wrap(c))
+	recorder := recordResponse(t, testutil.ServeBufferedRoute(t, http.MethodGet, "/api/channel/:id",
+		nil, GetChannel,
+		httptest.NewRequest(http.MethodGet, "/api/channel/not-a-number", nil)))
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 
@@ -87,11 +83,10 @@ func TestGetAllChannelsReturnsPaginatedEnvelope(t *testing.T) {
 		Status: common.ChannelStatusEnabled,
 	}).Error)
 
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/channel/?p=1&page_size=10", nil)
+	ctx, recorder := fiberadapter.NewSyntheticContext(
+		httptest.NewRequest(http.MethodGet, "/api/channel/?p=1&page_size=10", nil))
 
-	GetAllChannels(ginadapter.Wrap(c))
+	GetAllChannels(ctx)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 
@@ -134,11 +129,10 @@ func TestGetAllChannelsOmitsChannelKey(t *testing.T) {
 		Status: common.ChannelStatusEnabled,
 	}).Error)
 
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/channel/?p=1&page_size=10", nil)
+	ctx, recorder := fiberadapter.NewSyntheticContext(
+		httptest.NewRequest(http.MethodGet, "/api/channel/?p=1&page_size=10", nil))
 
-	GetAllChannels(ginadapter.Wrap(c))
+	GetAllChannels(ctx)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	assert.NotContains(t, recorder.Body.String(), secret,
@@ -157,12 +151,9 @@ func TestDeleteChannelRemovesRecord(t *testing.T) {
 		Status: common.ChannelStatusEnabled,
 	}).Error)
 
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodDelete, "/api/channel/4103", nil)
-	c.Params = gin.Params{{Key: "id", Value: "4103"}}
-
-	DeleteChannel(ginadapter.Wrap(c))
+	recorder := recordResponse(t, testutil.ServeBufferedRoute(t, http.MethodDelete, "/api/channel/:id",
+		nil, DeleteChannel,
+		httptest.NewRequest(http.MethodDelete, "/api/channel/4103", nil)))
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 

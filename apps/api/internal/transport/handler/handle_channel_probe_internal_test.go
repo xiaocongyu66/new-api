@@ -6,9 +6,9 @@ import (
 	channelpkg "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/egress"
 	"github.com/QuantumNous/new-api/internal/ops"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
+	"github.com/QuantumNous/new-api/internal/transport/testutil"
 	"github.com/QuantumNous/new-api/internal/usage"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -149,13 +149,9 @@ func TestCopyChannelRejectsInvalidLegacyProxySettings(t *testing.T) {
 	}
 	require.NoError(t, db.Create(origin).Error)
 
-	recorder := httptest.NewRecorder()
-	ctxRaw, _ := gin.CreateTestContext(recorder)
-	ctxRaw.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", origin.Id)}}
-	ctxRaw.Request = httptest.NewRequest(http.MethodPost, "/api/channel/copy", nil)
-	ctx := ginadapter.Wrap(ctxRaw)
-
-	CopyChannel(ctx)
+	recorder := recordResponse(t, testutil.ServeBufferedRoute(t, http.MethodPost, "/api/channel/copy/:id",
+		nil, CopyChannel,
+		httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/channel/copy/%d", origin.Id), nil)))
 
 	assert.Contains(t, recorder.Body.String(), "invalid channel settings")
 	var channelCount int64
@@ -173,13 +169,9 @@ func TestDeleteChannelResetsProxyCacheWhenPreReadFails(t *testing.T) {
 	beforeDelete, err := egress.GetHttpClientWithProxy(proxyURL)
 	require.NoError(t, err)
 
-	recorder := httptest.NewRecorder()
-	ctxRaw, _ := gin.CreateTestContext(recorder)
-	ctxRaw.Params = gin.Params{{Key: "id", Value: "999999"}}
-	ctxRaw.Request = httptest.NewRequest(http.MethodDelete, "/api/channel/999999", nil)
-	ctx := ginadapter.Wrap(ctxRaw)
-
-	DeleteChannel(ctx)
+	recorder := recordResponse(t, testutil.ServeBufferedRoute(t, http.MethodDelete, "/api/channel/:id",
+		nil, DeleteChannel,
+		httptest.NewRequest(http.MethodDelete, "/api/channel/999999", nil)))
 
 	assert.Contains(t, recorder.Body.String(), `"success":true`)
 	afterDelete, err := egress.GetHttpClientWithProxy(proxyURL)
@@ -195,12 +187,10 @@ func TestDeleteChannelBatchReportsAndAuditsActualDeletedCount(t *testing.T) {
 
 	requestBody, err := common.Marshal(ChannelBatch{Ids: []int{channel.Id, 999999}})
 	require.NoError(t, err)
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodDelete, "/api/channel/batch", bytes.NewReader(requestBody))
-	ctx.Request.Header.Set("Content-Type", "application/json")
-
-	DeleteChannelBatch(ginadapter.Wrap(ctx))
+	request := httptest.NewRequest(http.MethodPost, "/api/channel/batch", bytes.NewReader(requestBody))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := recordResponse(t, testutil.ServeBufferedRoute(t, http.MethodPost, "/api/channel/batch",
+		nil, DeleteChannelBatch, request))
 
 	var response struct {
 		Success bool  `json:"success"`
@@ -250,7 +240,7 @@ func TestSettleTestQuotaUsesTieredBilling(t *testing.T) {
 }
 
 func TestBuildTestLogOtherInjectsTieredInfo(t *testing.T) {
-	ctx, _ := ginadapter.NewSyntheticContext(nil)
+	ctx, _ := fiberadapter.NewSyntheticContext(nil)
 
 	info := &relaycommon.RelayInfo{
 		TieredBillingSnapshot: &price_expression.BillingSnapshot{
@@ -285,9 +275,7 @@ func TestBuildTestLogOtherInjectsTieredInfo(t *testing.T) {
 }
 
 func TestResolveChannelTestUserIDUsesRequestUser(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctx, _ := fiberadapter.NewSyntheticContext(nil)
 	ctx.Set("id", 2)
 
 	userID, err := resolveChannelTestUserID(ctx)
@@ -348,11 +336,9 @@ func TestTestAllChannelsRejectsExistingActiveTask(t *testing.T) {
 	existing, err := ops.CreateSystemTask(ops.SystemTaskTypeChannelTest, nil, nil)
 	require.NoError(t, err)
 
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/channel/test", nil)
-
-	TestAllChannels(ginadapter.Wrap(ctx))
+	recorder := recordResponse(t, testutil.ServeBufferedRoute(t, http.MethodGet, "/api/channel/test",
+		nil, TestAllChannels,
+		httptest.NewRequest(http.MethodGet, "/api/channel/test", nil)))
 
 	require.Equal(t, http.StatusConflict, recorder.Code)
 	require.Contains(t, recorder.Body.String(), existing.TaskID)
