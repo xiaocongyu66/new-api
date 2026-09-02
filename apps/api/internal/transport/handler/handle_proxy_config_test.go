@@ -6,8 +6,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	ops "github.com/QuantumNous/new-api/internal/ops"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -42,8 +41,7 @@ func setupProxyConfigControllerTest(t *testing.T) *gorm.DB {
 
 func proxyConfigContext(t *testing.T, method, path, body string) (contract.Context, *httptest.ResponseRecorder) {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
-	ctx, recorder := ginadapter.NewSyntheticContext(httptest.NewRequest(method, path, bytes.NewBufferString(body)))
+	ctx, recorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(method, path, bytes.NewBufferString(body)))
 	ctx.Headers().Set("Content-Type", "application/json")
 	return ctx, recorder
 }

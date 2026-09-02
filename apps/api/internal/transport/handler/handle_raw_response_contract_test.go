@@ -3,8 +3,7 @@ package handler
 import (
 	"github.com/QuantumNous/new-api/internal/billing"
 	taskdomain "github.com/QuantumNous/new-api/internal/task"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -24,8 +23,6 @@ import (
 // direct writer call, which the transport migration replaces, so the exact bytes
 // are asserted here.
 func TestEpayNotifyRejectsDisabledWebhookWithRawFail(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	// The webhook is enabled only when the 易支付 credentials are configured, so
 	// clearing them exercises the disabled-webhook rejection path.
 	previousAddress := billing.PayAddress
@@ -39,7 +36,7 @@ func TestEpayNotifyRejectsDisabledWebhookWithRawFail(t *testing.T) {
 		billing.EpayId = previousID
 		billing.EpayKey = previousKey
 	})
-	c, recorder := ginadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/api/user/epay/notify", nil))
+	c, recorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/api/user/epay/notify", nil))
 
 	billing.EpayNotify(c)
 
@@ -50,9 +47,7 @@ func TestEpayNotifyRejectsDisabledWebhookWithRawFail(t *testing.T) {
 // TestVideoProxyRequiresTaskIDWithJSONError pins the error envelope of the video
 // proxy endpoint, which otherwise streams raw upstream bytes through the writer.
 func TestVideoProxyRequiresTaskIDWithJSONError(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	c, recorder := ginadapter.NewSyntheticContext(httptest.NewRequest(http.MethodGet, "/v1/videos//content", nil))
+	c, recorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodGet, "/v1/videos//content", nil))
 
 	taskdomain.VideoProxy(c)
 

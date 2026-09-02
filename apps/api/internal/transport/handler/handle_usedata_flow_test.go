@@ -4,9 +4,8 @@ import (
 	channel "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/identity"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/internal/usage"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -68,10 +67,8 @@ func decodeFlowQuotaResponse(t *testing.T, recorder *httptest.ResponseRecorder) 
 func TestGetAllFlowQuotaDatesUsesAdminDimensions(t *testing.T) {
 	setupFlowControllerTestDB(t)
 
-	recorder := httptest.NewRecorder()
-	ctxRaw, _ := gin.CreateTestContext(recorder)
-	ctxRaw.Request = httptest.NewRequest(http.MethodGet, "/api/data/flow?start_timestamp=1000&end_timestamp=2000&username=bob", nil)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctx, recorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(
+		http.MethodGet, "/api/data/flow?start_timestamp=1000&end_timestamp=2000&username=bob", nil))
 	ctx.Set("role", common.RoleAdminUser)
 
 	GetAllFlowQuotaDates(ctx)
@@ -88,10 +85,8 @@ func TestGetAllFlowQuotaDatesUsesAdminDimensions(t *testing.T) {
 func TestGetAllFlowQuotaDatesUsesRootDimensions(t *testing.T) {
 	setupFlowControllerTestDB(t)
 
-	recorder := httptest.NewRecorder()
-	ctxRaw, _ := gin.CreateTestContext(recorder)
-	ctxRaw.Request = httptest.NewRequest(http.MethodGet, "/api/data/flow?start_timestamp=1000&end_timestamp=2000&username=alice", nil)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctx, recorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(
+		http.MethodGet, "/api/data/flow?start_timestamp=1000&end_timestamp=2000&username=alice", nil))
 	ctx.Set("role", common.RoleRootUser)
 
 	GetAllFlowQuotaDates(ctx)
@@ -108,10 +103,8 @@ func TestGetAllFlowQuotaDatesUsesRootDimensions(t *testing.T) {
 func TestGetUserFlowQuotaDatesRestrictsToAuthenticatedUser(t *testing.T) {
 	setupFlowControllerTestDB(t)
 
-	recorder := httptest.NewRecorder()
-	ctxRaw, _ := gin.CreateTestContext(recorder)
-	ctxRaw.Request = httptest.NewRequest(http.MethodGet, "/api/data/flow/self?start_timestamp=1000&end_timestamp=2000", nil)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctx, recorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(
+		http.MethodGet, "/api/data/flow/self?start_timestamp=1000&end_timestamp=2000", nil))
 	ctx.Set("id", 1)
 
 	GetUserFlowQuotaDates(ctx)
@@ -127,10 +120,8 @@ func TestGetUserFlowQuotaDatesRestrictsToAuthenticatedUser(t *testing.T) {
 func TestGetUserFlowQuotaDatesRejectsInvalidTimeRange(t *testing.T) {
 	setupFlowControllerTestDB(t)
 
-	recorder := httptest.NewRecorder()
-	ctxRaw, _ := gin.CreateTestContext(recorder)
-	ctxRaw.Request = httptest.NewRequest(http.MethodGet, "/api/data/flow/self?start_timestamp=bad&end_timestamp=2000", nil)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctx, recorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(
+		http.MethodGet, "/api/data/flow/self?start_timestamp=bad&end_timestamp=2000", nil))
 	ctx.Set("id", 1)
 
 	GetUserFlowQuotaDates(ctx)
