@@ -32,7 +32,7 @@ func GetPerfMetricsInternal(modelName string, group string, startTs int64, endTs
 	query := dbx.DB.Model(&PerfMetric{}).
 		Where("model_name = ? AND bucket_ts >= ? AND bucket_ts <= ?", modelName, startTs, endTs)
 	if group != "" {
-		query = query.Where("`group` = ?", group)
+		query = query.Where(dbx.GroupCol()+" = ?", group)
 	}
 	err := query.Order("bucket_ts ASC").Find(&metrics).Error
 	return metrics, err
@@ -40,13 +40,14 @@ func GetPerfMetricsInternal(modelName string, group string, startTs int64, endTs
 
 func GetPerfMetricsSummaryBucketsAll(startTs int64, endTs int64, groups []string) ([]PerfMetricSummaryBucket, error) {
 	var buckets []PerfMetricSummaryBucket
+	groupCol := dbx.GroupCol()
 	query := dbx.DB.Table("perf_metrics").
-		Select("model_name, `group`, sum(request_count) as request_count, sum(success_count) as success_count, sum(total_latency_ms) as total_latency_ms, sum(ttft_sum_ms) as ttft_sum_ms, sum(ttft_count) as ttft_count, sum(output_tokens) as output_tokens, sum(generation_ms) as generation_ms, bucket_ts").
+		Select("model_name, "+groupCol+", sum(request_count) as request_count, sum(success_count) as success_count, sum(total_latency_ms) as total_latency_ms, sum(ttft_sum_ms) as ttft_sum_ms, sum(ttft_count) as ttft_count, sum(output_tokens) as output_tokens, sum(generation_ms) as generation_ms, bucket_ts").
 		Where("bucket_ts >= ? AND bucket_ts <= ?", startTs, endTs)
 	if len(groups) > 0 {
-		query = query.Where("`group` IN ?", groups)
+		query = query.Where(groupCol+" IN ?", groups)
 	}
-	err := query.Group("model_name, `group`, bucket_ts").Order("bucket_ts ASC").Find(&buckets).Error
+	err := query.Group("model_name, " + groupCol + ", bucket_ts").Order("bucket_ts ASC").Find(&buckets).Error
 	return buckets, err
 }
 
