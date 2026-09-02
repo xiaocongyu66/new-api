@@ -8,8 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/constant"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 )
 
 // RelayTaskSubmit is what the /v1/video, Suno and Kling submit routes run. The
@@ -21,8 +20,6 @@ import (
 // submit entry point must resolve a real adaptor from the request's channel type
 // rather than fall through to "invalid api platform".
 func TestRelayTaskSubmitResolvesAdaptorForChannelType(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	// Suno is the one platform keyed by name; the rest key off channel type.
 	if adaptor := GetTaskAdaptor(constant.TaskPlatformSuno); adaptor == nil {
 		t.Fatal("no adaptor for the suno platform: task submission cannot reach upstream")
@@ -35,7 +32,7 @@ func TestRelayTaskSubmitResolvesAdaptorForChannelType(t *testing.T) {
 		constant.ChannelTypeVertexAi,
 	} {
 		req := httptest.NewRequest(http.MethodPost, "/v1/video/generations", nil)
-		c, _ := ginadapter.NewSyntheticContext(req)
+		c, _ := fiberadapter.NewSyntheticContext(req)
 		c.Set("channel_type", channelType)
 
 		platform := GetTaskPlatform(c)

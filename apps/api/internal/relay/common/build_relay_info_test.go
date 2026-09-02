@@ -2,14 +2,14 @@ package common
 
 import (
 	"encoding/json"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -85,7 +85,6 @@ func TestRelayInfoMetaTypedNilReceiver(t *testing.T) {
 }
 
 func TestGenRelayInfoCapturesRequestReasoningEffort(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	tests := []struct {
 		name        string
 		path        string
@@ -148,9 +147,7 @@ func TestGenRelayInfoCapturesRequestReasoningEffort(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
-			ctxRaw.Request = httptest.NewRequest("POST", tt.path, nil)
-			ctx := ginadapter.Wrap(ctxRaw)
+			ctx, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, tt.path, nil))
 
 			info, err := GenRelayInfo(ctx, tt.relayFormat, tt.request, nil)
 			require.NoError(t, err)
@@ -160,10 +157,7 @@ func TestGenRelayInfoCapturesRequestReasoningEffort(t *testing.T) {
 }
 
 func TestInitChannelMetaRestoresRequestReasoningEffortForRetry(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctxRaw.Request = httptest.NewRequest("POST", "/v1/responses", nil)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctx, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
 	request := &dto.OpenAIResponsesRequest{
 		Model:     "gpt-5.6-sol",
 		Reasoning: &dto.Reasoning{Effort: "max"},

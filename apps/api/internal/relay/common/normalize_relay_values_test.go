@@ -1,8 +1,6 @@
 package common
 
 import (
-	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,7 +8,8 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/constant"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -59,21 +58,18 @@ func TestSanitizeURLForLogKeepsURLWithoutSensitiveQuery(t *testing.T) {
 }
 
 func TestValidateMultipartDirectNormalizesImageField(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	body := strings.NewReader(`{"model":"wan2.7-i2v","prompt":"animate","image":" https://example.com/first.png "}`)
 	request := httptest.NewRequest(http.MethodPost, "/v1/video/generations", body)
 	request.Header.Set("Content-Type", "application/json")
-	recorder := httptest.NewRecorder()
-	context, _ := gin.CreateTestContext(recorder)
-	context.Request = request
+	context, _ := fiberadapter.NewSyntheticContext(request)
 	info := &RelayInfo{
 		TaskRelayInfo: &TaskRelayInfo{},
 	}
 
-	taskErr := ValidateMultipartDirect(ginadapter.Wrap(context), info)
+	taskErr := ValidateMultipartDirect(context, info)
 
 	require.Nil(t, taskErr)
-	storedReq, err := GetTaskRequest(ginadapter.Wrap(context))
+	storedReq, err := GetTaskRequest(context)
 	require.NoError(t, err)
 	require.Equal(t, []string{"https://example.com/first.png"}, storedReq.Images)
 	require.Equal(t, constant.TaskActionGenerate, info.Action)
@@ -83,14 +79,11 @@ func TestValidateMultipartDirectNormalizesImageField(t *testing.T) {
 // video duration (a quota multiplier via OtherRatio "seconds") is bounded, so
 // it can never overflow quota calculation into a negative charge.
 func TestTaskDurationBounds(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	newContext := func(t *testing.T, body string) (contract.Context, *RelayInfo) {
 		request := httptest.NewRequest(http.MethodPost, "/v1/video/generations", strings.NewReader(body))
 		request.Header.Set("Content-Type", "application/json")
-		context, _ := gin.CreateTestContext(httptest.NewRecorder())
-		context.Request = request
-		return ginadapter.Wrap(context), &RelayInfo{TaskRelayInfo: &TaskRelayInfo{}}
+		context, _ := fiberadapter.NewSyntheticContext(request)
+		return context, &RelayInfo{TaskRelayInfo: &TaskRelayInfo{}}
 	}
 
 	tests := []struct {

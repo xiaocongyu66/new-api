@@ -2,7 +2,6 @@ package sora
 
 import (
 	"bytes"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,17 +9,16 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSoraBuildRequestBodyReturnsReplayablePassThroughBody(t *testing.T) {
 	payload := []byte("opaque-sora-request-body")
-	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewReader(payload))
-	cc := ginadapter.Wrap(c)
-	c.Request.Header.Set("Content-Type", "application/octet-stream")
+	request := httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewReader(payload))
+	request.Header.Set("Content-Type", "application/octet-stream")
+	cc, _ := fiberadapter.NewSyntheticContext(request)
 	defer common.CleanupBodyStorage(cc)
 
 	info := &relaycommon.RelayInfo{}

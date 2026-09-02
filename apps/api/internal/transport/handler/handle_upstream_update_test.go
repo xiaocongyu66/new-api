@@ -5,8 +5,7 @@ import (
 	"errors"
 	catalogpkg "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/ops"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -217,11 +216,10 @@ func TestFetchModelsAdvancedCustomCreatePreview(t *testing.T) {
 	body, err := common.Marshal(req)
 	require.NoError(t, err)
 
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/channel/fetch_models", bytes.NewReader(body))
-	ctx.Request.Header.Set("Content-Type", "application/json")
-	FetchModels(ginadapter.Wrap(ctx))
+	request := httptest.NewRequest(http.MethodPost, "/api/channel/fetch_models", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	ctx, recorder := fiberadapter.NewSyntheticContext(request)
+	FetchModels(ctx)
 
 	var response struct {
 		Success bool     `json:"success"`
@@ -300,11 +298,10 @@ func TestFetchModelsAdvancedCustomEditPreviewUsesSavedKeyAndExplicitClears(t *te
 	body, err := common.Marshal(req)
 	require.NoError(t, err)
 
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/channel/fetch_models", bytes.NewReader(body))
-	ctx.Request.Header.Set("Content-Type", "application/json")
-	FetchModels(ginadapter.Wrap(ctx))
+	request := httptest.NewRequest(http.MethodPost, "/api/channel/fetch_models", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	ctx, recorder := fiberadapter.NewSyntheticContext(request)
+	FetchModels(ctx)
 
 	var response struct {
 		Success bool     `json:"success"`
@@ -376,12 +373,11 @@ func TestFetchModelsUsesSharedChannelFetchBehavior(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/channel/fetch_models", bytes.NewReader(body))
-	ctx.Request.Header.Set("Content-Type", "application/json")
+	request := httptest.NewRequest(http.MethodPost, "/api/channel/fetch_models", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	ctx, recorder := fiberadapter.NewSyntheticContext(request)
 
-	FetchModels(ginadapter.Wrap(ctx))
+	FetchModels(ctx)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.JSONEq(t, `{"success":true,"message":"","data":["claude-sonnet"]}`, recorder.Body.String())
@@ -587,11 +583,10 @@ func TestDetectAllChannelUpstreamModelUpdatesRejectsExistingActiveTask(t *testin
 	existing, err := ops.CreateSystemTask(ops.SystemTaskTypeModelUpdate, nil, nil)
 	require.NoError(t, err)
 
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/channel/upstream-models/detect-all", nil)
+	request := httptest.NewRequest(http.MethodPost, "/api/channel/upstream-models/detect-all", nil)
+	ctx, recorder := fiberadapter.NewSyntheticContext(request)
 
-	DetectAllChannelUpstreamModelUpdates(ginadapter.Wrap(ctx))
+	DetectAllChannelUpstreamModelUpdates(ctx)
 
 	require.Equal(t, http.StatusConflict, recorder.Code)
 	require.Contains(t, recorder.Body.String(), existing.TaskID)
