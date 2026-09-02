@@ -5,9 +5,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,14 +20,12 @@ import (
 // would be emitted twice for one response, so the shared key is a contract
 // rather than an implementation detail.
 func TestSetEventStreamHeadersSharesAdapterFlagKey(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	c, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 
-	SetEventStreamHeaders(ginadapter.Wrap(c))
+	SetEventStreamHeaders(c)
 
-	flag, exists := c.Get(ginadapter.EventStreamHeadersKey)
-	require.True(t, exists, "helper must record the flag under the adapter key")
+	flag, exists := c.Get(contract.EventStreamHeadersKey)
+	require.True(t, exists, "helper must record the flag under the shared contract key")
 	assert.Equal(t, true, flag)
 }
 
@@ -35,16 +33,11 @@ func TestSetEventStreamHeadersSharesAdapterFlagKey(t *testing.T) {
 // a flag set by the legacy helper, so a mixed-path response writes the streaming
 // headers exactly once.
 func TestAdapterStreamSkipsHeadersAlreadyWrittenByHelper(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	c, recorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 
-	SetEventStreamHeaders(ginadapter.Wrap(c))
+	SetEventStreamHeaders(c)
 
-	stream, err := ginadapter.EventStream(ginadapter.Wrap(c))
-	require.NoError(t, err)
-	stream.SetHeaders()
+	c.EventStream().SetHeaders()
 
 	assert.Equal(t, []string{"text/event-stream"}, recorder.Header().Values("Content-Type"))
 	assert.Equal(t, []string{"no-cache"}, recorder.Header().Values("Cache-Control"))

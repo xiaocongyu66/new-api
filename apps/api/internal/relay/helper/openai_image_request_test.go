@@ -3,7 +3,6 @@ package helper
 import (
 	"bytes"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -14,8 +13,8 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,8 +22,6 @@ import (
 // edit parsing: the stream field is parsed and validated, and the request body
 // stays replayable for the upstream request.
 func TestGetAndValidOpenAIImageRequestMultipartStream(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	newContext := func(t *testing.T, streamValue string, withImage bool) (contract.Context, string) {
 		var body bytes.Buffer
 		writer := multipart.NewWriter(&body)
@@ -40,10 +37,10 @@ func TestGetAndValidOpenAIImageRequestMultipartStream(t *testing.T) {
 		require.NoError(t, writer.Close())
 		originalBody := body.String()
 
-		c, _ := gin.CreateTestContext(httptest.NewRecorder())
-		c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits", &body)
-		c.Request.Header.Set("Content-Type", writer.FormDataContentType())
-		return ginadapter.Wrap(c), originalBody
+		request := httptest.NewRequest(http.MethodPost, "/v1/images/edits", &body)
+		request.Header.Set("Content-Type", writer.FormDataContentType())
+		c, _ := fiberadapter.NewSyntheticContext(request)
+		return c, originalBody
 	}
 
 	t.Run("valid stream value keeps body replayable", func(t *testing.T) {
@@ -53,8 +50,7 @@ func TestGetAndValidOpenAIImageRequestMultipartStream(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, req.Stream)
 		require.True(t, *req.Stream)
-		rawCtx, _ := ginadapter.Unwrap(c)
-		require.True(t, req.IsStream(rawCtx.Request))
+		require.True(t, req.IsStream(c.HTTPRequest()))
 
 		bodyAfterValidation, err := io.ReadAll(c.HTTPRequest().Body)
 		require.NoError(t, err)
@@ -79,13 +75,11 @@ func TestGetAndValidOpenAIImageRequestMultipartStream(t *testing.T) {
 // the image generation count can never reach quota calculation with a value
 // large enough to overflow int64 into a negative charge.
 func TestGetAndValidOpenAIImageRequestNBounds(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	newJSONContext := func(t *testing.T, body string) contract.Context {
-		c, _ := gin.CreateTestContext(httptest.NewRecorder())
-		c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewBufferString(body))
-		c.Request.Header.Set("Content-Type", "application/json")
-		return ginadapter.Wrap(c)
+		request := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewBufferString(body))
+		request.Header.Set("Content-Type", "application/json")
+		c, _ := fiberadapter.NewSyntheticContext(request)
+		return c
 	}
 
 	boundErr := fmt.Sprintf("n must be an integer between 1 and %d", dto.MaxImageN)
@@ -152,11 +146,11 @@ func TestGetAndValidOpenAIImageRequestNBounds(t *testing.T) {
 		require.NoError(t, writer.WriteField("n", "-22904832"))
 		require.NoError(t, writer.Close())
 
-		c, _ := gin.CreateTestContext(httptest.NewRecorder())
-		c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits", &body)
-		c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+		request := httptest.NewRequest(http.MethodPost, "/v1/images/edits", &body)
+		request.Header.Set("Content-Type", writer.FormDataContentType())
+		c, _ := fiberadapter.NewSyntheticContext(request)
 
-		_, err := GetAndValidOpenAIImageRequest(ginadapter.Wrap(c), relayconstant.RelayModeImagesEdits)
+		_, err := GetAndValidOpenAIImageRequest(c, relayconstant.RelayModeImagesEdits)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), boundErr)
 	})

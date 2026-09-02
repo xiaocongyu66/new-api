@@ -2,7 +2,6 @@ package helper
 
 import (
 	"bytes"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,29 +9,28 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
 
 func TestResolveIncomingBillingExprRequestInput(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	ctx.Request.Header.Set("Content-Type", "application/json")
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	request.Header.Set("Content-Type", "application/json")
 
 	body := []byte(`{"service_tier":"fast"}`)
-	ctx.Request.Body = io.NopCloser(bytes.NewReader(body))
+	request.Body = io.NopCloser(bytes.NewReader(body))
+
+	ctx, _ := fiberadapter.NewSyntheticContext(request)
 	ctx.Set(common.KeyRequestBody, body)
 
 	info := &relaycommon.RelayInfo{
 		RequestHeaders: map[string]string{"Content-Type": "application/json"},
 	}
 
-	input, err := ResolveIncomingBillingExprRequestInput(ginadapter.Wrap(ctx), info)
+	input, err := ResolveIncomingBillingExprRequestInput(ctx, info)
 	require.NoError(t, err)
 	require.Equal(t, body, input.Body)
 	require.Equal(t, "application/json", input.Headers["Content-Type"])

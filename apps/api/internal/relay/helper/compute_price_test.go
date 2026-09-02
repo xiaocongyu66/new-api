@@ -1,26 +1,23 @@
 package helper
 
 import (
-	"github.com/QuantumNous/new-api/internal/billing"
-	"github.com/QuantumNous/new-api/internal/settings"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/internal/billing"
 	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/common"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
+	"github.com/QuantumNous/new-api/internal/settings"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
 func TestModelPriceHelperTieredUsesPreloadedRequestInput(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	saved := map[string]string{}
 	require.NoError(t, settings.GlobalConfig.SaveToDB(func(key, value string) error {
 		saved[key] = value
@@ -35,14 +32,11 @@ func TestModelPriceHelperTieredUsesPreloadedRequestInput(t *testing.T) {
 		"billing_setting.billing_expr": `{"tiered-test-model":"param(\"stream\") == true ? tier(\"stream\", p * 3) : tier(\"base\", p * 2)"}`,
 	}))
 
-	recorder := httptest.NewRecorder()
-	ctxRaw, _ := gin.CreateTestContext(recorder)
-	ctx := ginadapter.Wrap(ctxRaw)
 	rawReq := httptest.NewRequest(http.MethodPost, "/api/channel/test/1", nil)
 	rawReq.Body = nil
 	rawReq.ContentLength = 0
 	rawReq.Header.Set("Content-Type", "application/json")
-	ctxRaw.Request = rawReq
+	ctx, _ := fiberadapter.NewSyntheticContext(rawReq)
 	ctx.Set("group", "default")
 
 	info := &relaycommon.RelayInfo{
@@ -68,8 +62,6 @@ func TestModelPriceHelperTieredUsesPreloadedRequestInput(t *testing.T) {
 }
 
 func TestModelPriceHelperTieredPreConsumeMaxTokensFallback(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	saved := map[string]string{}
 	require.NoError(t, settings.GlobalConfig.SaveToDB(func(key, value string) error {
 		saved[key] = value
@@ -120,12 +112,9 @@ func TestModelPriceHelperTieredPreConsumeMaxTokensFallback(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			recorder := httptest.NewRecorder()
-			ctxRaw, _ := gin.CreateTestContext(recorder)
-			ctx := ginadapter.Wrap(ctxRaw)
 			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 			req.Header.Set("Content-Type", "application/json")
-			ctxRaw.Request = req
+			ctx, _ := fiberadapter.NewSyntheticContext(req)
 			ctx.Set("group", tc.group)
 
 			info := &relaycommon.RelayInfo{
@@ -147,8 +136,6 @@ func TestModelPriceHelperTieredPreConsumeMaxTokensFallback(t *testing.T) {
 }
 
 func TestModelPriceHelperTieredRejectsPreConsumeOverflow(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	saved := map[string]string{}
 	require.NoError(t, settings.GlobalConfig.SaveToDB(func(key, value string) error {
 		saved[key] = value
@@ -164,10 +151,7 @@ func TestModelPriceHelperTieredRejectsPreConsumeOverflow(t *testing.T) {
 		"group_ratio_setting.group_ratio": `{"default":1}`,
 	}))
 
-	recorder := httptest.NewRecorder()
-	ctxRaw, _ := gin.CreateTestContext(recorder)
-	ctxRaw.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctx, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 	ctx.Set("group", "default")
 	info := &relaycommon.RelayInfo{
 		OriginModelName: "tiered-overflow-model",
@@ -187,7 +171,6 @@ func TestModelPriceHelperTieredRejectsPreConsumeOverflow(t *testing.T) {
 }
 
 func TestModelPriceHelperRequestBillingRatiosOnlyApplyToFixedPrice(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	savedModelPrices := ratio_setting.ModelPrice2JSONString()
 	savedModelRatios := ratio_setting.ModelRatio2JSONString()
 	t.Cleanup(func() {
@@ -230,8 +213,7 @@ func TestModelPriceHelperRequestBillingRatiosOnlyApplyToFixedPrice(t *testing.T)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
-			ctx := ginadapter.Wrap(ctxRaw)
+			ctx, _ := fiberadapter.NewSyntheticContext(nil)
 			ctx.Set("group", "default")
 			info := &relaycommon.RelayInfo{
 				OriginModelName: tt.model,
@@ -254,8 +236,7 @@ func TestModelPriceHelperRequestBillingRatiosOnlyApplyToFixedPrice(t *testing.T)
 	}
 
 	newInfo := func(model string) (contract.Context, *relaycommon.RelayInfo) {
-		ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
-		ctx := ginadapter.Wrap(ctxRaw)
+		ctx, _ := fiberadapter.NewSyntheticContext(nil)
 		ctx.Set("group", "default")
 		return ctx, &relaycommon.RelayInfo{
 			OriginModelName: model,

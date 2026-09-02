@@ -2,14 +2,13 @@ package helper
 
 import (
 	"bytes"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,13 +18,11 @@ import (
 // wrapped-negative value (e.g. 18446744073686646784 parsed into *uint) must
 // be rejected at validation instead of corrupting the pre-charge.
 func TestMaxTokensBounds(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	newJSONContext := func(t *testing.T, body string) contract.Context {
-		c, _ := gin.CreateTestContext(httptest.NewRecorder())
-		c.Request = httptest.NewRequest(http.MethodPost, "/relay", bytes.NewBufferString(body))
-		c.Request.Header.Set("Content-Type", "application/json")
-		return ginadapter.Wrap(c)
+		request := httptest.NewRequest(http.MethodPost, "/relay", bytes.NewBufferString(body))
+		request.Header.Set("Content-Type", "application/json")
+		c, _ := fiberadapter.NewSyntheticContext(request)
+		return c
 	}
 
 	const hugeN = "18446744073686646784"
