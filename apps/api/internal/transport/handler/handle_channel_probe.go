@@ -12,7 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/gateway"
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	usagedomain "github.com/QuantumNous/new-api/internal/usage"
 	"io"
 	"math"
@@ -162,10 +162,8 @@ func testChannel(ctx context.Context, channel *channelpkg.Channel, testUserID in
 		testModel = ratio_setting.WithCompactModelSuffix(testModel)
 	}
 
-	c, _ = ginadapter.NewSyntheticContext(httptest.NewRequestWithContext(ctx, http.MethodPost, requestPath, nil))
+	c, _ = fiberadapter.NewSyntheticContext(httptest.NewRequestWithContext(ctx, http.MethodPost, requestPath, nil))
 	responseCapture := c.CaptureResponse(int(^uint(0) >> 1))
-	// Relay provider adaptors are still gin-typed (migrated in a later phase),
-	// so recover the concrete context this synthetic one wraps.
 
 	cache, err := identity.GetUserCache(testUserID)
 	if err != nil {
