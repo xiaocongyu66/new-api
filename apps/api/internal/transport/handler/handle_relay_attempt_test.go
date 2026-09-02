@@ -14,7 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/constant"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -120,7 +120,7 @@ func TestGetChannelReusesRouteResolvedByDistribute(t *testing.T) {
 	require.Equal(t, 1, routestats.Corrections(pool, targets, cfg)[selected].Opportunities,
 		"fixture must start from exactly one recorded selection")
 
-	ctx, _ := ginadapter.NewSyntheticContext(
+	ctx, _ := fiberadapter.NewSyntheticContext(
 		httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 	common.SetCtxKey(ctx, constant.ContextKeySelectedRoute, servingRoute)
 	common.SetCtxKey(ctx, constant.ContextKeyChannelId, channelID)
@@ -167,7 +167,7 @@ func TestGetChannelResolvesRouteForSpecificChannelReplay(t *testing.T) {
 		KeyIndex: 0, UpstreamModel: alias, StaticWeight: 100, Enabled: true,
 	}).Error)
 
-	ctx, _ := ginadapter.NewSyntheticContext(
+	ctx, _ := fiberadapter.NewSyntheticContext(
 		httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 	common.SetCtxKey(ctx, constant.ContextKeyChannelId, channelID)
 

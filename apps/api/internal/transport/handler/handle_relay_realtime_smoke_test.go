@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -14,61 +15,49 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
-	"github.com/gin-gonic/gin"
 	"github.com/gofiber/fiber/v2"
 	gorilla "github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// TestRealtimeEndToEndOnBothAdapters is the end-to-end smoke for GET
-// /v1/realtime: it drives the real Relay entry point over a real socket on both
-// adapters and asserts the client-visible behaviour agrees.
+// TestRealtimeCompleteSessionOverFiber is the successful end-to-end smoke for GET
+// /v1/realtime. It uses the relay's real duplex handler with a deterministic
+// websocket upstream rather than a database-selected channel: routing and billing
+// are orthogonal to the transport boundary this exercises.
 //
-// It deliberately stops short of a provider. Reaching a live upstream needs a
-// configured channel and a database, so what is verified here is everything up to
-// that point, which is the part the framework swap can break: the handshake
-// completes, the "realtime" subprotocol is negotiated, and the relay's failure is
-// delivered as an SSE-style error *frame over the websocket* rather than as an
-// HTTP response — because by the time the relay fails, the response has already
-// been hijacked and an HTTP error would reach nobody.
+// Every client-visible property of a complete session is pinned here directly:
+// the 101 handshake, the negotiated "realtime" subprotocol, the client frame
+// arriving upstream byte for byte, the upstream frame arriving back byte for byte
+// as a text frame, and the close code the relay acknowledges.
 //
-// The unreachable-upstream frame is exactly what a client sees in production when
-// no channel can serve the model, so the assertion is on real behaviour rather
-// than on a stand-in.
-// TestRealtimeCompleteSessionOnBothAdapters is the successful counterpart to
-// TestRealtimeEndToEndOnBothAdapters. It uses the relay's real duplex handler
-// with a deterministic websocket upstream rather than a database-selected
-// channel: routing and billing are orthogonal to the adapter boundary.
-func TestRealtimeCompleteSessionOnBothAdapters(t *testing.T) {
+// Both RFC 6455 normal codes are driven because the relay's own classification is
+// what separates an ordinary hang-up from a failure: relaycommon.IsNormalWSClose
+// accepts 1000 and 1001 and nothing else, and a clean close misread as an error
+// would be logged and reported as a relay failure on every session that ends.
+func TestRealtimeCompleteSessionOverFiber(t *testing.T) {
 	const clientEvent = `{"event_id":"client-1","type":"session.update","session":{"instructions":"be concise"}}`
 	const upstreamEvent = `{"event_id":"upstream-1","type":"session.updated","session":{"input_audio_format":"pcm16","output_audio_format":"pcm16"}}`
 
 	upstream, received := realtimeUpstream(t, upstreamEvent)
-	results := make(map[string]realtimeSessionResult, 2)
+	baseURL := listenRealtime(t, realtimeRelay(upstream))
 
-	t.Run("gin", func(t *testing.T) {
-		gin.SetMode(gin.TestMode)
-		engine := gin.New()
-		engine.GET("/v1/realtime", ginadapter.Handler(realtimeRelay(upstream)))
-		results["gin"] = runRealtimeSession(t, listenGin(t, engine), clientEvent, upstreamEvent)
-	})
+	for _, closeCode := range []int{gorilla.CloseNormalClosure, gorilla.CloseGoingAway} {
+		t.Run(fmt.Sprintf("client closes with %d", closeCode), func(t *testing.T) {
+			result := runRealtimeSession(t, baseURL, clientEvent, upstreamEvent, closeCode)
 
-	t.Run("fiber", func(t *testing.T) {
-		app := fiber.New(fiber.Config{DisableStartupMessage: true})
-		app.Add(fiber.MethodGet, "/v1/realtime", func(c *fiber.Ctx) error {
-			return fiberadapter.Dispatch(c, []contract.Handler{realtimeRelay(upstream)})
+			assert.Equal(t, realtimeSessionResult{
+				Subprotocol: "realtime",
+				MessageType: gorilla.TextMessage,
+				Payload:     upstreamEvent,
+				CloseCode:   closeCode,
+			}, result)
+			assert.Equal(t, clientEvent, <-received,
+				"the client frame must reach the upstream byte for byte")
 		})
-		results["fiber"] = runRealtimeSession(t, listenFiber(t, app), clientEvent, upstreamEvent)
-	})
-
-	require.Equal(t, clientEvent, <-received)
-	require.Equal(t, clientEvent, <-received)
-	assert.Equal(t, realtimeSessionResult{Subprotocol: "realtime", MessageType: gorilla.TextMessage, Payload: upstreamEvent, CloseCode: gorilla.CloseGoingAway}, results["gin"])
-	assert.Equal(t, results["gin"], results["fiber"], "adapter choice must not change a complete realtime session")
+	}
 }
 
 type realtimeSessionResult struct {
@@ -126,75 +115,66 @@ func realtimeRelay(upstream *httptest.Server) contract.Handler {
 	}
 }
 
-func runRealtimeSession(t *testing.T, baseURL, clientEvent, expectedReply string) realtimeSessionResult {
+func runRealtimeSession(t *testing.T, baseURL, clientEvent, expectedReply string, closeCode int) realtimeSessionResult {
 	t.Helper()
 	dialer := gorilla.Dialer{Subprotocols: []string{"realtime"}, HandshakeTimeout: 10 * time.Second}
 	conn, response, err := dialer.Dial(strings.Replace(baseURL, "http://", "ws://", 1)+"/v1/realtime", nil)
 	require.NoError(t, err)
 	defer conn.Close()
 	require.Equal(t, http.StatusSwitchingProtocols, response.StatusCode)
-	require.Equal(t, "realtime", response.Header.Get("Sec-WebSocket-Protocol"))
+	require.Equal(t, "realtime", response.Header.Get("Sec-WebSocket-Protocol"),
+		"Sec-WebSocket-Protocol: realtime must be echoed")
 
 	require.NoError(t, conn.WriteMessage(gorilla.TextMessage, []byte(clientEvent)))
 	require.NoError(t, conn.SetReadDeadline(time.Now().Add(15*time.Second)))
 	messageType, payload, err := conn.ReadMessage()
 	require.NoError(t, err)
-	require.NoError(t, conn.WriteControl(gorilla.CloseMessage, gorilla.FormatCloseMessage(gorilla.CloseGoingAway, "done"), time.Now().Add(5*time.Second)))
+	require.NoError(t, conn.WriteControl(gorilla.CloseMessage, gorilla.FormatCloseMessage(closeCode, "done"), time.Now().Add(5*time.Second)))
 	_, _, err = conn.ReadMessage()
 	var closeErr *gorilla.CloseError
 	require.True(t, errors.As(err, &closeErr), "expected the server to acknowledge a close frame: %v", err)
 	assert.Equal(t, expectedReply, string(payload))
-	assert.Equal(t, gorilla.CloseGoingAway, closeErr.Code)
-	assert.True(t, relaycommon.IsNormalWSClose(closeErr))
+	assert.Equal(t, closeCode, closeErr.Code)
+	assert.True(t, relaycommon.IsNormalWSClose(closeErr),
+		"a %d close must be classified as an ordinary end of conversation", closeCode)
 
 	return realtimeSessionResult{conn.Subprotocol(), messageType, string(payload), closeErr.Code}
 }
 
-func TestRealtimeEndToEndOnBothAdapters(t *testing.T) {
-	frames := make(map[string]string, 2)
+// TestRealtimeEndToEndOverFiber is the failing counterpart: it drives the real
+// Relay entry point over a real socket and asserts the client-visible failure.
+//
+// It deliberately stops short of a provider. Reaching a live upstream needs a
+// configured channel and a database, so what is verified here is everything up to
+// that point, which is the part the transport can break: the handshake completes,
+// the "realtime" subprotocol is negotiated, and the relay's failure is delivered
+// as an error *frame over the websocket* rather than as an HTTP response — because
+// by the time the relay fails, the response has already been hijacked and an HTTP
+// error would reach nobody.
+//
+// The unreachable-upstream frame is exactly what a client sees in production when
+// no channel can serve the model, so the assertion is on real behaviour rather
+// than on a stand-in. The frame's shape is pinned field by field: the event id
+// embeds a per-request value, so it is asserted by prefix rather than by value.
+func TestRealtimeEndToEndOverFiber(t *testing.T) {
+	frame := realtimeErrorFrame(t, listenRealtime(t, func(c contract.Context) {
+		Relay(c, types.RelayFormatOpenAIRealtime)
+	}))
 
-	t.Run("gin", func(t *testing.T) {
-		gin.SetMode(gin.TestMode)
-		engine := gin.New()
-		engine.GET("/v1/realtime", ginadapter.Handler(func(c contract.Context) {
-			Relay(c, types.RelayFormatOpenAIRealtime)
-		}))
+	event := map[string]any{}
+	require.NoError(t, json.Unmarshal([]byte(frame), &event),
+		"a realtime frame must be a JSON event: %s", frame)
+	assert.Equal(t, "error", event["type"], "a relay failure must be reported as an error event")
 
-		listener := listenGin(t, engine)
-		frames["gin"] = realtimeErrorFrame(t, listener)
-	})
+	eventID, _ := event["event_id"].(string)
+	assert.True(t, strings.HasPrefix(eventID, "evt_"),
+		"a realtime event must carry a locally generated event id, got %q", eventID)
 
-	t.Run("fiber", func(t *testing.T) {
-		app := fiber.New(fiber.Config{DisableStartupMessage: true})
-		app.Add(fiber.MethodGet, "/v1/realtime", func(c *fiber.Ctx) error {
-			return fiberadapter.Dispatch(c, []contract.Handler{func(cc contract.Context) {
-				Relay(cc, types.RelayFormatOpenAIRealtime)
-			}})
-		})
-
-		frames["fiber"] = realtimeErrorFrame(t, listenFiber(t, app))
-	})
-
-	require.Len(t, frames, 2, "both adapters must have produced a frame")
-
-	// The frames must agree in shape. The event id embeds a per-request value, so
-	// the comparison is on the decoded structure rather than on raw bytes.
-	ginFrame := decodeRealtimeEvent(t, frames["gin"])
-	fiberFrame := decodeRealtimeEvent(t, frames["fiber"])
-
-	assert.Equal(t, "error", ginFrame["type"])
-	assert.Equal(t, ginFrame["type"], fiberFrame["type"],
-		"both adapters must report a realtime failure the same way")
-
-	ginError, ok := ginFrame["error"].(map[string]any)
-	require.True(t, ok, "the gin frame must carry an error object")
-	fiberError, ok := fiberFrame["error"].(map[string]any)
-	require.True(t, ok, "the fiber frame must carry an error object")
-
-	assert.Equal(t, ginError["type"], fiberError["type"],
-		"the error type a client observes must not depend on the transport")
-	assert.NotEmpty(t, ginError["message"])
-	assert.NotEmpty(t, fiberError["message"])
+	errorObject, ok := event["error"].(map[string]any)
+	require.True(t, ok, "the frame must carry an error object")
+	assert.Equal(t, string(types.ErrorTypeNewAPIError), errorObject["type"],
+		"the error type a client observes must stay pinned to the relay's own classification")
+	assert.NotEmpty(t, errorObject["message"], "a client must be told why the session failed")
 }
 
 // realtimeErrorFrame dials the realtime endpoint, asserts the handshake, and
@@ -224,27 +204,17 @@ func realtimeErrorFrame(t *testing.T, baseURL string) string {
 	return string(payload)
 }
 
-func decodeRealtimeEvent(t *testing.T, frame string) map[string]any {
+// listenRealtime serves handler at GET /v1/realtime on a real loopback socket and
+// returns its base URL. The listener is real rather than app.Test because a
+// websocket upgrade needs a hijackable connection, which an in-process request
+// cannot offer.
+func listenRealtime(t *testing.T, handler contract.Handler) string {
 	t.Helper()
 
-	decoded := map[string]any{}
-	require.NoError(t, json.Unmarshal([]byte(frame), &decoded),
-		"a realtime frame must be a JSON event: %s", frame)
-	return decoded
-}
-
-// listenGin starts engine on a random loopback port and returns its base URL.
-func listenGin(t *testing.T, engine *gin.Engine) string {
-	t.Helper()
-
-	server := httptest.NewServer(engine)
-	t.Cleanup(server.Close)
-	return server.URL
-}
-
-// listenFiber starts app on a random loopback port and returns its base URL.
-func listenFiber(t *testing.T, app *fiber.App) string {
-	t.Helper()
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app.Add(fiber.MethodGet, "/v1/realtime", func(c *fiber.Ctx) error {
+		return fiberadapter.Dispatch(c, []contract.Handler{handler})
+	})
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)

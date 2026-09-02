@@ -7,9 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/gateway"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
 	gorilla "github.com/gorilla/websocket"
@@ -28,54 +26,31 @@ import (
 // false, and the nil pointer is dereferenced: every failed handshake becomes a
 // panic rather than an error response.
 //
-// It runs on both adapters because the trap has a different shape in each. The
-// gin path returns gorilla's `(*Conn, error)` pair directly, so the mistake is
-// assigning before checking the error; the fiber path answers a parked chain over
-// a channel, so the mistake is populating the conn field on the failure path.
-// Neither is observable without actually failing an upgrade.
+// The trap is adapter-shaped: the fiber upgrade answers a parked chain over a
+// channel, so the mistake is populating the conn field on the failure path. It is
+// not observable without actually failing an upgrade, which is why this drives a
+// real failed upgrade rather than asserting on a constructed value.
 func TestRelayRealtimeSurvivesAFailedUpgrade(t *testing.T) {
-	for _, adapter := range []struct {
-		name    string
-		context func() contract.Context
-	}{
-		{
-			name: "gin",
-			context: func() contract.Context {
-				// A recorder is not an http.Hijacker, so the upgrade fails the
-				// way it does for a request that is not a handshake.
-				adapted, _ := ginadapter.NewSyntheticContext(
-					httptest.NewRequest(http.MethodGet, "/v1/realtime", nil))
-				return adapted
-			},
-		},
-		{
-			name: "fiber",
-			context: func() contract.Context {
-				// An in-process context has no connection to hijack, which is
-				// the fiber adapter's own failure path.
-				adapted, _ := fiberadapter.NewSyntheticContext(
-					httptest.NewRequest(http.MethodGet, "/v1/realtime", nil))
-				return adapted
-			},
-		},
-	} {
-		t.Run(adapter.name, func(t *testing.T) {
-			c := adapter.context()
+	// An in-process context has no connection to hijack, which is the fiber
+	// adapter's own failure path.
+	notUpgradable, _ := fiberadapter.NewSyntheticContext(
+		httptest.NewRequest(http.MethodGet, "/v1/realtime", nil))
 
-			// The upgrade must fail here; if it ever starts succeeding this case
-			// would stop covering the failure path silently.
-			conn, err := c.UpgradeWebSocket("realtime")
-			require.Error(t, err, "this context must not be upgradable")
-			require.True(t, conn == nil,
-				"a failed upgrade must produce a true nil interface")
+	// The upgrade must fail here; if it ever starts succeeding this test would
+	// stop covering the failure path silently.
+	conn, err := notUpgradable.UpgradeWebSocket("realtime")
+	require.Error(t, err, "this context must not be upgradable")
+	require.True(t, conn == nil,
+		"a failed upgrade must produce a true nil interface")
 
-			// The whole point: Relay's realtime branch must return an error
-			// rather than panic.
-			assert.NotPanics(t, func() {
-				Relay(adapter.context(), types.RelayFormatOpenAIRealtime)
-			}, "a failed realtime handshake must not panic")
-		})
-	}
+	// The whole point: Relay's realtime branch must return an error rather than
+	// panic, which only holds because the value above is a true nil. A fresh
+	// context is used because the one above already consumed its upgrade.
+	relayed, _ := fiberadapter.NewSyntheticContext(
+		httptest.NewRequest(http.MethodGet, "/v1/realtime", nil))
+	assert.NotPanics(t, func() {
+		Relay(relayed, types.RelayFormatOpenAIRealtime)
+	}, "a failed realtime handshake must not panic")
 }
 
 // TestWssErrorGuardsOnATrueNilOnly demonstrates the failure mode the guard cannot
@@ -86,7 +61,7 @@ func TestRelayRealtimeSurvivesAFailedUpgrade(t *testing.T) {
 // *gorilla.Conn passes `ws == nil` and panics on the write — so this pins that
 // the guard is only sound because no adapter is allowed to produce that value.
 func TestWssErrorGuardsOnATrueNilOnly(t *testing.T) {
-	c, _ := ginadapter.NewSyntheticContext(httptest.NewRequest(http.MethodGet, "/v1/realtime", nil))
+	c, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodGet, "/v1/realtime", nil))
 	openaiError := types.NewError(assert.AnError, types.ErrorCodeGetChannelFailed).ToOpenAIError()
 
 	var trueNil relaycommon.WSConn
