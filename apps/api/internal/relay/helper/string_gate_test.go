@@ -7,19 +7,14 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/sensitive"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func testCtx() (contract.Context, *httptest.ResponseRecorder) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest("GET", "/", nil)
-	return ginadapter.Wrap(c), w
+	return fiberadapter.NewSyntheticContext(httptest.NewRequest("GET", "/", nil))
 }
 
 // withOutputFilterEnv 固定输出过滤的开关与词库，避免用例间串扰。

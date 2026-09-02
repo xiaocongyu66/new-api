@@ -2,27 +2,24 @@ package helper
 
 import (
 	"context"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/sensitive"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// newSSERecorder builds a context whose writes land in a recorder so the exact
-// bytes reaching the client can be asserted.
-func newSSERecorder(t *testing.T) (*gin.Context, *httptest.ResponseRecorder) {
+// newSSERecorder builds a synthetic Fiber context whose writes land in a
+// recorder so the exact bytes reaching the client can be asserted.
+func newSSERecorder(t *testing.T) (contract.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	return c, recorder
+	return fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 }
 
 // disableCompletionSensitiveCheck removes the output filter from the write path
@@ -44,9 +41,10 @@ func TestStringDataWritesSingleSSEFrame(t *testing.T) {
 	disableCompletionSensitiveCheck(t)
 	c, recorder := newSSERecorder(t)
 
-	require.NoError(t, StringData(ginadapter.Wrap(c), `{"choices":[{"delta":{"content":"hi"}}]}`))
+	require.NoError(t, StringData(c, `{"choices":[{"delta":{"content":"hi"}}]}`))
 
 	assert.Equal(t, "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n", recorder.Body.String())
+	assert.True(t, recorder.Flushed)
 }
 
 // TestDoneWritesTerminalSentinel pins the terminal sentinel that ends an
@@ -55,9 +53,10 @@ func TestDoneWritesTerminalSentinel(t *testing.T) {
 	disableCompletionSensitiveCheck(t)
 	c, recorder := newSSERecorder(t)
 
-	Done(ginadapter.Wrap(c))
+	Done(c)
 
 	assert.Equal(t, "data: [DONE]\n\n", recorder.Body.String())
+	assert.True(t, recorder.Flushed)
 }
 
 // TestObjectDataMarshalsThroughCommonJSON asserts a struct payload reaches the
@@ -66,7 +65,7 @@ func TestObjectDataMarshalsThroughCommonJSON(t *testing.T) {
 	disableCompletionSensitiveCheck(t)
 	c, recorder := newSSERecorder(t)
 
-	require.NoError(t, ObjectData(ginadapter.Wrap(c), dto.ChatCompletionsStreamResponse{
+	require.NoError(t, ObjectData(c, dto.ChatCompletionsStreamResponse{
 		Id:     "chatcmpl-1",
 		Object: "chat.completion.chunk",
 		Model:  "gpt-4",
@@ -85,9 +84,10 @@ func TestObjectDataMarshalsThroughCommonJSON(t *testing.T) {
 func TestPingDataWritesCommentFrame(t *testing.T) {
 	c, recorder := newSSERecorder(t)
 
-	require.NoError(t, PingData(ginadapter.Wrap(c)))
+	require.NoError(t, PingData(c))
 
 	assert.Equal(t, ": PING\n\n", recorder.Body.String())
+	assert.True(t, recorder.Flushed)
 }
 
 // TestClaudeChunkDataWritesEventAndDataLines pins the Claude streaming framing,
@@ -102,7 +102,7 @@ func TestClaudeChunkDataWritesEventAndDataLines(t *testing.T) {
 	disableCompletionSensitiveCheck(t)
 	c, recorder := newSSERecorder(t)
 
-	ClaudeChunkData(ginadapter.Wrap(c), dto.ClaudeResponse{Type: "content_block_delta"}, `{"type":"content_block_delta"}`)
+	ClaudeChunkData(c, dto.ClaudeResponse{Type: "content_block_delta"}, `{"type":"content_block_delta"}`)
 
 	assert.Equal(t, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\"}\n\n\n", recorder.Body.String())
 }
@@ -113,7 +113,7 @@ func TestClaudeDataWritesEventAndMarshalledPayload(t *testing.T) {
 	disableCompletionSensitiveCheck(t)
 	c, recorder := newSSERecorder(t)
 
-	require.NoError(t, ClaudeData(ginadapter.Wrap(c), dto.ClaudeResponse{Type: "message_start"}))
+	require.NoError(t, ClaudeData(c, dto.ClaudeResponse{Type: "message_start"}))
 
 	assert.Equal(t, "event: message_start\ndata: {\"type\":\"message_start\"}\n\n", recorder.Body.String())
 }
@@ -123,26 +123,27 @@ func TestClaudeDataWritesEventAndMarshalledPayload(t *testing.T) {
 func TestSetEventStreamHeadersSetsStreamingHeaders(t *testing.T) {
 	c, recorder := newSSERecorder(t)
 
-	SetEventStreamHeaders(ginadapter.Wrap(c))
+	SetEventStreamHeaders(c)
+	SetEventStreamHeaders(c)
 
 	assert.Equal(t, "text/event-stream", recorder.Header().Get("Content-Type"))
 	assert.Equal(t, "no-cache", recorder.Header().Get("Cache-Control"))
 	assert.Equal(t, "keep-alive", recorder.Header().Get("Connection"))
 	assert.Equal(t, "chunked", recorder.Header().Get("Transfer-Encoding"))
 	assert.Equal(t, "no", recorder.Header().Get("X-Accel-Buffering"))
+	_, alreadySet := c.Get(contract.EventStreamHeadersKey)
+	assert.True(t, alreadySet)
 }
 
 // TestStringDataRejectsCancelledRequest asserts a cancelled client aborts the
 // write instead of emitting a partial frame.
 func TestStringDataRejectsCancelledRequest(t *testing.T) {
 	disableCompletionSensitiveCheck(t)
-	c, recorder := newSSERecorder(t)
-
-	ctx, cancel := context.WithCancel(c.Request.Context())
-	c.Request = c.Request.WithContext(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
+	c, recorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).WithContext(ctx))
 	cancel()
 
-	err := StringData(ginadapter.Wrap(c), `{"choices":[]}`)
+	err := StringData(c, `{"choices":[]}`)
 
 	require.Error(t, err)
 	assert.Empty(t, recorder.Body.String())
