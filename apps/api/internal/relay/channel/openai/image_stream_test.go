@@ -2,27 +2,36 @@ package openai
 
 import (
 	"context"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/internal/constant"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/stretchr/testify/require"
 )
 
-func newImageTestContext(t *testing.T, body, contentType string, isStream bool) (*gin.Context, *httptest.ResponseRecorder, *http.Response, *relaycommon.RelayInfo) {
+func newImageTestContext(t *testing.T, body, contentType string, isStream bool) (contract.Context, *httptest.ResponseRecorder, *http.Response, *relaycommon.RelayInfo) {
+	t.Helper()
+	return newImageStreamContext(t, httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil), body, contentType, isStream)
+}
+
+// newImageStreamContext is the request-taking form. The disconnect fixture below
+// needs it because NewSyntheticContext derives the request lifetime from the
+// request's own context, so a cancellable parent request is the seam a client
+// hangup is injected through.
+func newImageStreamContext(t *testing.T, req *http.Request, body, contentType string, isStream bool) (contract.Context, *httptest.ResponseRecorder, *http.Response, *relaycommon.RelayInfo) {
 	t.Helper()
 
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	c, recorder := fiberadapter.NewSyntheticContext(req)
 
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
@@ -37,9 +46,6 @@ func newImageTestContext(t *testing.T, body, contentType string, isStream bool) 
 }
 
 func TestOpenaiImageDoResponseUsesInfoIsStream(t *testing.T) {
-	oldMode := gin.Mode()
-	gin.SetMode(gin.TestMode)
-	t.Cleanup(func() { gin.SetMode(oldMode) })
 
 	body := `{"created":1710000000,"data":[{"b64_json":"image"}]}`
 
@@ -47,7 +53,7 @@ func TestOpenaiImageDoResponseUsesInfoIsStream(t *testing.T) {
 		c, recorder, resp, info := newImageTestContext(t, body, "application/json", false)
 		info.RelayMode = relayconstant.RelayModeImagesGenerations
 
-		usage, err := (&Adaptor{}).DoResponse(ginadapter.Wrap(c), resp, info)
+		usage, err := (&Adaptor{}).DoResponse(c, resp, info)
 
 		require.Nil(t, err)
 		require.NotNil(t, usage)
@@ -58,7 +64,7 @@ func TestOpenaiImageDoResponseUsesInfoIsStream(t *testing.T) {
 		c, recorder, resp, info := newImageTestContext(t, body, "application/json", true)
 		info.RelayMode = relayconstant.RelayModeImagesGenerations
 
-		usage, err := (&Adaptor{}).DoResponse(ginadapter.Wrap(c), resp, info)
+		usage, err := (&Adaptor{}).DoResponse(c, resp, info)
 
 		require.Nil(t, err)
 		require.NotNil(t, usage)
@@ -72,9 +78,6 @@ func TestOpenaiImageDoResponseUsesInfoIsStream(t *testing.T) {
 // normalized (input_tokens -> prompt_tokens with details), and [DONE] is
 // re-emitted to the client.
 func TestOpenaiImageStreamHandlerForwardsSSEAndUsage(t *testing.T) {
-	oldMode := gin.Mode()
-	gin.SetMode(gin.TestMode)
-	t.Cleanup(func() { gin.SetMode(oldMode) })
 
 	oldTimeout := constant.StreamingTimeout
 	constant.StreamingTimeout = 30
@@ -94,7 +97,7 @@ func TestOpenaiImageStreamHandlerForwardsSSEAndUsage(t *testing.T) {
 	info.PriceData.UsePrice = true
 	info.PriceData.AddOtherRatio("n", 3)
 
-	usage, err := OpenaiImageStreamHandler(ginadapter.Wrap(c), info, resp)
+	usage, err := OpenaiImageStreamHandler(c, info, resp)
 	require.Nil(t, err)
 	require.Equal(t, 3, usage.PromptTokens)
 	require.Equal(t, 4, usage.CompletionTokens)
@@ -110,9 +113,6 @@ func TestOpenaiImageStreamHandlerForwardsSSEAndUsage(t *testing.T) {
 }
 
 func TestOpenaiImageStreamHandlerUsesCompletedEventCount(t *testing.T) {
-	oldMode := gin.Mode()
-	gin.SetMode(gin.TestMode)
-	t.Cleanup(func() { gin.SetMode(oldMode) })
 
 	oldTimeout := constant.StreamingTimeout
 	constant.StreamingTimeout = 30
@@ -133,7 +133,7 @@ func TestOpenaiImageStreamHandlerUsesCompletedEventCount(t *testing.T) {
 	info.PriceData.UsePrice = true
 	info.PriceData.AddOtherRatio("n", 3)
 
-	usage, err := OpenaiImageStreamHandler(ginadapter.Wrap(c), info, resp)
+	usage, err := OpenaiImageStreamHandler(c, info, resp)
 
 	require.Nil(t, err)
 	require.Equal(t, 7, usage.TotalTokens)
@@ -174,41 +174,54 @@ func (b *blockingBody) Close() error {
 	return nil
 }
 
-// cancelAfterWriter cancels the request context right after the payload
-// containing needle has been written to the client, simulating a client that
-// disconnects after receiving that event. Cancelling from the write side (not
-// the upstream read side) makes the abort deterministic: the handler has
-// already processed and counted the event when the disconnect fires.
-type cancelAfterWriter struct {
-	gin.ResponseWriter
-	needle string
-	cancel context.CancelFunc
-	once   sync.Once
-}
-
-func (w *cancelAfterWriter) Write(p []byte) (int, error) {
-	n, err := w.ResponseWriter.Write(p)
-	if strings.Contains(string(p), w.needle) {
-		w.once.Do(w.cancel)
-	}
-	return n, err
-}
-
-func (w *cancelAfterWriter) WriteString(s string) (int, error) {
-	n, err := io.WriteString(w.ResponseWriter, s)
-	if strings.Contains(s, w.needle) {
-		w.once.Do(w.cancel)
-	}
-	return n, err
-}
-
-func newDisconnectingImageStream(t *testing.T, sseBody, disconnectAfter string) (*gin.Context, *httptest.ResponseRecorder, *http.Response, *relaycommon.RelayInfo) {
+// cancelWhenWritten cancels the request lifetime once needle has reached the
+// response body, simulating a client that disconnects after receiving that
+// event. Cancelling from the write side (not the upstream read side) is what
+// makes the abort deterministic: the handler has already processed and counted
+// the event by the time the disconnect fires.
+//
+// The gin fixture this replaces observed the write by wrapping the response
+// writer. fasthttp builds a response rather than writing through a wrappable
+// writer, so the observation point moves to CaptureResponse. Do not simplify this
+// to polling recorder.Body: the handler is still writing while this goroutine
+// reads, and bytes.Buffer is not safe for concurrent access, so that version
+// races (and is reported as such under -race). CaptureResponse reads the same
+// bytes under the adapter's response lock, which is what makes it safe here.
+// The invariant the assertions need is unchanged either way, since the needle
+// appears in the body only after that event was forwarded to the client.
+func cancelWhenWritten(t *testing.T, c contract.Context, needle string, cancel context.CancelFunc) {
 	t.Helper()
-	c, recorder, resp, info := newImageTestContext(t, "", "text/event-stream", true)
-	ctx, cancel := context.WithCancel(c.Request.Context())
+	capture := c.CaptureResponse(math.MaxInt)
+	require.NotNil(t, capture)
+
+	stopPolling := make(chan struct{})
+	t.Cleanup(func() { close(stopPolling) })
+	go func() {
+		for {
+			if strings.Contains(string(capture.Body()), needle) {
+				cancel()
+				return
+			}
+			select {
+			case <-stopPolling:
+				return
+			case <-time.After(time.Millisecond):
+			}
+		}
+	}()
+}
+
+func newDisconnectingImageStream(t *testing.T, sseBody, disconnectAfter string) (contract.Context, *httptest.ResponseRecorder, *http.Response, *relaycommon.RelayInfo) {
+	t.Helper()
+
+	// The synthetic context derives its lifetime from the request's own context,
+	// so a cancellable parent request is the seam the hangup is injected through.
+	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	c.Request = c.Request.WithContext(ctx)
-	c.Writer = &cancelAfterWriter{ResponseWriter: c.Writer, needle: disconnectAfter, cancel: cancel}
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/v1/images/generations", nil)
+
+	c, recorder, resp, info := newImageStreamContext(t, req, "", "text/event-stream", true)
+	cancelWhenWritten(t, c, disconnectAfter, cancel)
 	resp.Body = &blockingBody{
 		chunk:  []byte(sseBody),
 		closed: make(chan struct{}),
@@ -222,9 +235,6 @@ func newDisconnectingImageStream(t *testing.T, sseBody, disconnectAfter string) 
 // all requested images, so a disconnect after the first completed event keeps
 // the requested n instead of dropping it to 1.
 func TestOpenaiImageStreamHandlerClientDisconnectKeepsRequestedCount(t *testing.T) {
-	oldMode := gin.Mode()
-	gin.SetMode(gin.TestMode)
-	t.Cleanup(func() { gin.SetMode(oldMode) })
 
 	oldTimeout := constant.StreamingTimeout
 	constant.StreamingTimeout = 30
@@ -235,7 +245,7 @@ func TestOpenaiImageStreamHandlerClientDisconnectKeepsRequestedCount(t *testing.
 	info.PriceData.UsePrice = true
 	info.PriceData.AddOtherRatio("n", 3)
 
-	usage, err := OpenaiImageStreamHandler(ginadapter.Wrap(c), info, resp)
+	usage, err := OpenaiImageStreamHandler(c, info, resp)
 
 	require.Nil(t, err)
 	require.NotNil(t, usage)
@@ -253,9 +263,6 @@ func TestOpenaiImageStreamHandlerClientDisconnectKeepsRequestedCount(t *testing.
 // direction of the abort guard: when completed events already exceed the
 // recorded n, the higher actual count is billed even though the client aborted.
 func TestOpenaiImageStreamHandlerClientDisconnectRaisesCount(t *testing.T) {
-	oldMode := gin.Mode()
-	gin.SetMode(gin.TestMode)
-	t.Cleanup(func() { gin.SetMode(oldMode) })
 
 	oldTimeout := constant.StreamingTimeout
 	constant.StreamingTimeout = 30
@@ -272,7 +279,7 @@ func TestOpenaiImageStreamHandlerClientDisconnectRaisesCount(t *testing.T) {
 	info.PriceData.UsePrice = true
 	info.PriceData.AddOtherRatio("n", 1)
 
-	usage, err := OpenaiImageStreamHandler(ginadapter.Wrap(c), info, resp)
+	usage, err := OpenaiImageStreamHandler(c, info, resp)
 
 	require.Nil(t, err)
 	require.NotNil(t, usage)
@@ -286,9 +293,6 @@ func TestOpenaiImageStreamHandlerClientDisconnectRaisesCount(t *testing.T) {
 // TestOpenaiImageStreamHandlerWrapsJSONResponse covers the non-SSE fallback:
 // a JSON upstream response is wrapped into pseudo-SSE completed events.
 func TestOpenaiImageStreamHandlerWrapsJSONResponse(t *testing.T) {
-	oldMode := gin.Mode()
-	gin.SetMode(gin.TestMode)
-	t.Cleanup(func() { gin.SetMode(oldMode) })
 
 	body := `{"created":1710000000,"data":[{"b64_json":"first","revised_prompt":"draw a cat"},{"b64_json":"second"}],"usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"input_tokens_details":{"image_tokens":2,"text_tokens":1}}}`
 
@@ -296,7 +300,7 @@ func TestOpenaiImageStreamHandlerWrapsJSONResponse(t *testing.T) {
 	info.PriceData.UsePrice = true
 	info.PriceData.AddOtherRatio("n", 3)
 
-	usage, err := OpenaiImageStreamHandler(ginadapter.Wrap(c), info, resp)
+	usage, err := OpenaiImageStreamHandler(c, info, resp)
 	require.Nil(t, err)
 	require.Equal(t, 3, usage.PromptTokens)
 	require.Equal(t, 4, usage.CompletionTokens)
@@ -316,9 +320,6 @@ func TestOpenaiImageStreamHandlerWrapsJSONResponse(t *testing.T) {
 }
 
 func TestOpenaiImageHandlerUsesPositiveActualCountForFixedPrice(t *testing.T) {
-	oldMode := gin.Mode()
-	gin.SetMode(gin.TestMode)
-	t.Cleanup(func() { gin.SetMode(oldMode) })
 	longImage := strings.Repeat("a", 4096)
 
 	tests := []struct {
@@ -353,7 +354,7 @@ func TestOpenaiImageHandlerUsesPositiveActualCountForFixedPrice(t *testing.T) {
 			info.PriceData.UsePrice = tt.usePrice
 			info.PriceData.AddOtherRatio("n", 3)
 
-			_, err := OpenaiImageHandler(ginadapter.Wrap(c), info, resp)
+			_, err := OpenaiImageHandler(c, info, resp)
 
 			require.Nil(t, err)
 			require.Equal(t, tt.wantCount, info.PriceData.OtherRatios()["n"])
@@ -366,16 +367,13 @@ func TestOpenaiImageHandlerUsesPositiveActualCountForFixedPrice(t *testing.T) {
 // entry points: the non-streaming handler and the stream handler's non-SSE
 // fallback. Neither must leak the error body to the client.
 func TestOpenaiImageHandlersReturnJSONError(t *testing.T) {
-	oldMode := gin.Mode()
-	gin.SetMode(gin.TestMode)
-	t.Cleanup(func() { gin.SetMode(oldMode) })
 
 	body := `{"error":{"message":"content moderation failed","type":"upstream_error","code":"content_moderation_failed","status":502}}`
 
 	t.Run("non-streaming handler", func(t *testing.T) {
 		c, recorder, resp, info := newImageTestContext(t, body, "application/json", false)
 
-		usage, err := OpenaiImageHandler(ginadapter.Wrap(c), info, resp)
+		usage, err := OpenaiImageHandler(c, info, resp)
 		require.Nil(t, usage)
 		require.NotNil(t, err)
 		require.Equal(t, http.StatusOK, err.StatusCode)
@@ -389,7 +387,7 @@ func TestOpenaiImageHandlersReturnJSONError(t *testing.T) {
 	t.Run("stream handler JSON fallback", func(t *testing.T) {
 		c, recorder, resp, info := newImageTestContext(t, body, "application/json", true)
 
-		usage, err := OpenaiImageStreamHandler(ginadapter.Wrap(c), info, resp)
+		usage, err := OpenaiImageStreamHandler(c, info, resp)
 		require.Nil(t, usage)
 		require.NotNil(t, err)
 		require.Equal(t, http.StatusOK, err.StatusCode)
@@ -401,7 +399,7 @@ func TestOpenaiImageHandlersReturnJSONError(t *testing.T) {
 		c, recorder, resp, info := newImageTestContext(t, body, "application/json", true)
 		resp.StatusCode = http.StatusBadGateway
 
-		usage, err := OpenaiImageStreamHandler(ginadapter.Wrap(c), info, resp)
+		usage, err := OpenaiImageStreamHandler(c, info, resp)
 		require.Nil(t, usage)
 		require.NotNil(t, err)
 		require.Equal(t, http.StatusBadGateway, err.StatusCode)
@@ -415,9 +413,6 @@ func TestOpenaiImageHandlersReturnJSONError(t *testing.T) {
 // event inside the SSE stream is recorded as a soft error while the payload is
 // still forwarded to the client.
 func TestOpenaiImageStreamHandlerRecordsUpstreamErrorEvent(t *testing.T) {
-	oldMode := gin.Mode()
-	gin.SetMode(gin.TestMode)
-	t.Cleanup(func() { gin.SetMode(oldMode) })
 
 	oldTimeout := constant.StreamingTimeout
 	constant.StreamingTimeout = 30
@@ -434,7 +429,7 @@ func TestOpenaiImageStreamHandlerRecordsUpstreamErrorEvent(t *testing.T) {
 
 	c, recorder, resp, info := newImageTestContext(t, body, "text/event-stream", true)
 
-	usage, err := OpenaiImageStreamHandler(ginadapter.Wrap(c), info, resp)
+	usage, err := OpenaiImageStreamHandler(c, info, resp)
 	require.Nil(t, err)
 	require.NotNil(t, usage)
 	require.NotNil(t, info.StreamStatus)

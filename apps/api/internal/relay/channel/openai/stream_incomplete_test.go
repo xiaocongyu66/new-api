@@ -11,14 +11,14 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/stretchr/testify/require"
 )
 
-// newStreamTestContext builds the minimal gin/RelayInfo pair OaiStreamHandler
-// needs: a chat-completions stream relay against a recorder.
+// newStreamTestContext builds the minimal context/RelayInfo pair
+// OaiStreamHandler needs: a chat-completions stream relay against a recorder.
 func newStreamTestContext(t *testing.T, upstream string) (contract.Context, *httptest.ResponseRecorder, *http.Response, *relaycommon.RelayInfo) {
 	t.Helper()
 
@@ -29,7 +29,7 @@ func newStreamTestContext(t *testing.T, upstream string) (contract.Context, *htt
 
 	// The recorder must be the one backing the context, otherwise every body
 	// assertion below reads an unwritten buffer.
-	c, recorder := ginadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+	c, recorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 
 	resp := &http.Response{
 		StatusCode: http.StatusOK,

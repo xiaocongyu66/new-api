@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -33,7 +33,6 @@ import (
 // nothing set Cache-Control); its conditional branch is pinned separately by
 // TestRenderSSEPreservesAnExistingCacheControl below.
 func TestRenderSSEMatchesCustomEventFraming(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	for _, tc := range []struct {
 		name    string
@@ -53,11 +52,13 @@ func TestRenderSSEMatchesCustomEventFraming(t *testing.T) {
 			var framed bytes.Buffer
 			require.NoError(t, common.CustomEvent{Data: tc.payload}.RenderTo(&framed))
 
-			// Migrated path, through contract.ResponseStream.
-			migrated := httptest.NewRecorder()
-			ginCtx, _ := gin.CreateTestContext(migrated)
-			ginCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-			RenderSSE(ginadapter.Wrap(ginCtx), tc.payload)
+			// Migrated path, through contract.ResponseStream. A synthetic context
+			// is the right fixture: only the completed body and headers matter,
+			// and in synthetic mode writes land in the recorder as they happen
+			// while the staged header map aliases the recorder's own.
+			ctx, migrated := fiberadapter.NewSyntheticContext(
+				httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+			RenderSSE(ctx, tc.payload)
 
 			assert.Equal(t, framed.String(), migrated.Body.String(),
 				"SSE bytes must be identical to the CustomEvent framing primitive")
@@ -72,14 +73,10 @@ func TestRenderSSEMatchesCustomEventFraming(t *testing.T) {
 // a route that already applied a stricter no-store policy keeps it. Replacing
 // that read with an unconditional Set would silently downgrade those responses.
 func TestRenderSSEPreservesAnExistingCacheControl(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	const stricter = "no-store, no-cache, must-revalidate, private, max-age=0"
 
-	recorder := httptest.NewRecorder()
-	ginCtx, _ := gin.CreateTestContext(recorder)
-	ginCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	adapted := ginadapter.Wrap(ginCtx)
+	adapted, recorder := fiberadapter.NewSyntheticContext(
+		httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 	adapted.SetHeader("Cache-Control", stricter)
 
 	RenderSSE(adapted, "data: {}")
@@ -89,75 +86,94 @@ func TestRenderSSEPreservesAnExistingCacheControl(t *testing.T) {
 	assert.Equal(t, "text/event-stream", recorder.Header().Get("Content-Type"))
 }
 
-// unflushableWriter is an http.ResponseWriter with no Flush method, standing in
-// for a writer the transport cannot push through (a wrapping middleware that
-// buffers, or a recorder in a synthetic pipeline).
-type unflushableWriter struct {
-	header http.Header
-	body   []byte
-	status int
+// unflushableStream is a contract.ResponseStream that reports the flush
+// capability as absent while its Flush silently succeeds, standing in for the
+// dangerous transport: one that accepts every flush and buffers the response to
+// completion anyway (a wrapping middleware that materialises the body, or a
+// writer with no flusher underneath).
+//
+// Faking at the contract is a correction, not a workaround for fiber. The gin
+// fixture this replaces built an http.ResponseWriter with no Flush method, which
+// asserted through a layer the code under test never consults: FlushWriter and
+// IOCopyBytesGracefully branch on contract CanFlush, never on an
+// http.ResponseWriter type assertion. That fixture only worked because
+// ginadapter happened to answer CanFlush by walking the writer's Unwrap chain.
+// Under fasthttp there is no such writer to build at all — the adapter reports
+// CanFlush as a constant true because every mode it constructs can push (a chain
+// owns the pipe, a direct response writes through fiber, a synthetic one records
+// the flush on its recorder) — so the contract is both the honest and the only
+// available interception point. That a real adapter keeps Flush and CanFlush in
+// agreement is pinned separately, by the conformance suite's
+// CanFlushAgreesWithFlushAndHasNoSideEffect.
+type unflushableStream struct {
+	contract.ResponseStream
 }
 
-func (w *unflushableWriter) Header() http.Header {
-	if w.header == nil {
-		w.header = make(http.Header)
-	}
-	return w.header
+func (unflushableStream) CanFlush() bool { return false }
+
+// Flush succeeds silently, and MUST keep doing so. It is what makes this fixture
+// able to fail: FlushWriter's error can then only come from the CanFlush branch,
+// so deleting that branch fails the test (verified by mutation). Returning an
+// error here instead looks stricter but satisfies the assertion by itself, and
+// the test would then pass with the guard removed — a test that cannot fail.
+// A transport that buffers while accepting flushes is also the realistic hazard;
+// one that reports its own failure is already observable.
+func (unflushableStream) Flush() error { return nil }
+
+// transportContext aliases the contract so unflushableContext can embed it
+// without the embedded field name shadowing Context(), the request-lifetime
+// accessor the gateway's own guards read.
+type transportContext = contract.Context
+
+// unflushableContext hands out the unflushable stream while leaving every other
+// accessor on the real adapter, so RenderSSE still writes through the transport
+// it would use in production.
+type unflushableContext struct {
+	transportContext
 }
 
-func (w *unflushableWriter) Write(payload []byte) (int, error) {
-	w.body = append(w.body, payload...)
-	return len(payload), nil
+func (c unflushableContext) ResponseStream() contract.ResponseStream {
+	return unflushableStream{c.transportContext.ResponseStream()}
 }
-
-func (w *unflushableWriter) WriteHeader(status int) { w.status = status }
 
 // TestFlushFallbackStaysObservableWithoutFlushSupport is the flush-fallback
-// proof. CanFlush exists so a writer that cannot flush is a reported condition
-// rather than a stream that quietly buffers to completion and looks to an
-// operator like a stalled provider.
+// proof. CanFlush exists so a stream that cannot flush is a reported condition
+// rather than one that quietly buffers to completion and looks to an operator
+// like a stalled provider.
 //
-// It asserts three things on such a writer: the capability probe says no, the
-// flush attempt returns an error rather than panicking or silently succeeding,
-// and the payload bytes still reach the writer so the response is correct even
-// though it is not incremental.
+// It asserts three things: the capability probe says no, the relay flush helper
+// reports that rather than degrading silently, and the payload bytes still reach
+// the response so the answer is correct even though it is not incremental.
 func TestFlushFallbackStaysObservableWithoutFlushSupport(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	writer := &unflushableWriter{}
-	ginCtx, _ := gin.CreateTestContext(writer)
-	ginCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	adapted := ginadapter.Wrap(ginCtx)
+	base, recorder := fiberadapter.NewSyntheticContext(
+		httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+	adapted := unflushableContext{base}
 
 	stream := adapted.ResponseStream()
 	require.NotNil(t, stream)
 
 	assert.False(t, stream.CanFlush(),
-		"a writer with no Flush method must report that it cannot flush")
-	assert.Error(t, stream.Flush(),
-		"flushing an unflushable writer must surface an error, not succeed silently")
+		"a stream with no flush support must report that it cannot flush")
+
 	assert.Error(t, FlushWriter(adapted),
 		"the relay flush helper must report the missing flusher rather than degrade silently")
 
 	RenderSSE(adapted, "data: {}")
-	assert.Equal(t, "data: {}\n\n", string(writer.body),
-		"the frame must still be written even when the writer cannot flush")
+	assert.Equal(t, "data: {}\n\n", recorder.Body.String(),
+		"the frame must still be written even when the stream cannot flush")
+	assert.False(t, recorder.Flushed,
+		"no flush may have reached the client through a stream that reports it cannot")
 
 	assert.False(t, stream.SetWriteDeadline(time.Now().Add(time.Second)),
-		"a writer with no connection underneath must report the deadline as unsupported")
+		"a stream with no connection underneath must report the deadline as unsupported")
 }
 
-// TestFlushSupportedWriterReportsAndFlushes is the positive half: on a real
-// flushable writer the same probe says yes and the flush reaches the client, so
-// the fallback above is a genuine capability difference and not a probe that
-// always reports false.
+// TestFlushSupportedWriterReportsAndFlushes is the positive half: on the real
+// stream the same probe says yes and the flush is observed, so the fallback above
+// is a genuine capability difference and not a probe that always reports false.
 func TestFlushSupportedWriterReportsAndFlushes(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	recorder := httptest.NewRecorder()
-	ginCtx, _ := gin.CreateTestContext(recorder)
-	ginCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	adapted := ginadapter.Wrap(ginCtx)
+	adapted, recorder := fiberadapter.NewSyntheticContext(
+		httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 
 	stream := adapted.ResponseStream()
 	require.NotNil(t, stream)
@@ -165,5 +181,5 @@ func TestFlushSupportedWriterReportsAndFlushes(t *testing.T) {
 	assert.True(t, stream.CanFlush())
 	require.NoError(t, stream.Flush())
 	require.NoError(t, FlushWriter(adapted))
-	assert.True(t, recorder.Flushed, "a flushable writer must actually be flushed")
+	assert.True(t, recorder.Flushed, "a flushable stream must actually be flushed")
 }

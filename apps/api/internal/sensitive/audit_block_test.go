@@ -8,7 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -120,7 +120,7 @@ func TestRecordSensitiveBlockDisabled(t *testing.T) {
 	SensitiveAuditEnabled = false
 	t.Cleanup(func() { SensitiveAuditEnabled = previous })
 
-	c, _ := ginadapter.NewSyntheticContext(&http.Request{Method: "GET"})
+	c, _ := fiberadapter.NewSyntheticContext(&http.Request{Method: "GET"})
 	assert.NotPanics(t, func() {
 		RecordSensitiveBlock(c, "input", "target:gov.cn", "text")
 	})
