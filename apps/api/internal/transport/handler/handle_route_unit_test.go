@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -12,9 +13,9 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
+	"github.com/QuantumNous/new-api/internal/transport/testutil"
 
-	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,7 +25,6 @@ import (
 func setupRouteUnitTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
-	gin.SetMode(gin.TestMode)
 	previousDB := dbx.DB
 	previousLogDB := dbx.LogDB
 	previousRedis := common.RedisEnabled
@@ -73,15 +73,29 @@ func seedRouteUnit(t *testing.T, db *gorm.DB, id int, alias string, channelID, w
 	return route
 }
 
-// newRouteUnitRouter registers the route-unit handlers through the transport
-// adapter, which is the only way they are reachable in production: they are
-// written against contract.Context, so gin cannot call them directly.
-func newRouteUnitRouter() *gin.Engine {
-	r := gin.New()
-	r.GET("/route_unit/", ginadapter.Handler(GetRouteUnitViews))
-	r.GET("/route_unit/aliases", ginadapter.Handler(ListRouteUnitAliases))
-	r.PUT("/route_unit/:id", ginadapter.Handler(UpdateRouteUnit))
-	return r
+// serveRouteUnit registers the route-unit handlers through the transport adapter
+// and serves req, which is the only way they are reachable in production: they
+// are written against contract.Context, so no framework calls them directly.
+func serveRouteUnit(t *testing.T, req *http.Request) *httptest.ResponseRecorder {
+	t.Helper()
+	switch {
+	case req.Method == http.MethodPut:
+		return recordResponse(t, testutil.ServeBufferedRoute(
+			t, http.MethodPut, "/route_unit/:id", nil, UpdateRouteUnit, req))
+	case strings.HasSuffix(req.URL.Path, "/aliases"):
+		return recordResponse(t, testutil.ServeBufferedRoute(
+			t, http.MethodGet, "/route_unit/aliases", nil, ListRouteUnitAliases, req))
+	default:
+		return recordResponse(t, testutil.ServeBufferedRoute(
+			t, http.MethodGet, "/route_unit/", nil, GetRouteUnitViews, req))
+	}
+}
+
+// newRouteUnitUpdateRequest builds the JSON update request the handler binds.
+func newRouteUnitUpdateRequest(body string, id int) *http.Request {
+	req := httptest.NewRequest(http.MethodPut, "/route_unit/"+strconv.Itoa(id), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	return req
 }
 
 func decodeRouteUnitList(t *testing.T, recorder *httptest.ResponseRecorder) struct {
@@ -103,11 +117,8 @@ func decodeRouteUnitList(t *testing.T, recorder *httptest.ResponseRecorder) stru
 
 func TestRouteUnit_GetRouteUnitViews_MissingAlias(t *testing.T) {
 	setupRouteUnitTestDB(t)
-	router := newRouteUnitRouter()
 
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/route_unit/", nil)
-	router.ServeHTTP(rec, req)
+	rec := serveRouteUnit(t, httptest.NewRequest(http.MethodGet, "/route_unit/", nil))
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
@@ -117,10 +128,7 @@ func TestRouteUnit_GetRouteUnitViews_ReturnsItemsWithHealthScore(t *testing.T) {
 	seedRouteUnit(t, db, 1, "gpt-4", 100, 3, true)
 	seedRouteUnit(t, db, 2, "gpt-4", 101, 2, true)
 
-	router := newRouteUnitRouter()
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/route_unit/?alias=gpt-4", nil)
-	router.ServeHTTP(rec, req)
+	rec := serveRouteUnit(t, httptest.NewRequest(http.MethodGet, "/route_unit/?alias=gpt-4", nil))
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	resp := decodeRouteUnitList(t, rec)
@@ -144,10 +152,7 @@ func TestRouteUnit_ListAliases(t *testing.T) {
 	seedRouteUnit(t, db, 1, "gpt-4", 100, 3, true)
 	seedRouteUnit(t, db, 2, "claude", 101, 2, true)
 
-	router := newRouteUnitRouter()
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/route_unit/aliases", nil)
-	router.ServeHTTP(rec, req)
+	rec := serveRouteUnit(t, httptest.NewRequest(http.MethodGet, "/route_unit/aliases", nil))
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	var resp struct {
@@ -163,11 +168,7 @@ func TestRouteUnit_Update_InvalidWeight_Negative(t *testing.T) {
 	db := setupRouteUnitTestDB(t)
 	seedRouteUnit(t, db, 1, "gpt-4", 100, 3, true)
 
-	router := newRouteUnitRouter()
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPut, "/route_unit/1", strings.NewReader(`{"static_weight":-1}`))
-	req.Header.Set("Content-Type", "application/json")
-	router.ServeHTTP(rec, req)
+	rec := serveRouteUnit(t, newRouteUnitUpdateRequest(`{"static_weight":-1}`, 1))
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
@@ -176,11 +177,7 @@ func TestRouteUnit_Update_InvalidWeight_Decimal(t *testing.T) {
 	db := setupRouteUnitTestDB(t)
 	seedRouteUnit(t, db, 1, "gpt-4", 100, 3, true)
 
-	router := newRouteUnitRouter()
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPut, "/route_unit/1", strings.NewReader(`{"static_weight":1.5}`))
-	req.Header.Set("Content-Type", "application/json")
-	router.ServeHTTP(rec, req)
+	rec := serveRouteUnit(t, newRouteUnitUpdateRequest(`{"static_weight":1.5}`, 1))
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
@@ -189,11 +186,7 @@ func TestRouteUnit_Update_InvalidWeight_NaNString(t *testing.T) {
 	db := setupRouteUnitTestDB(t)
 	seedRouteUnit(t, db, 1, "gpt-4", 100, 3, true)
 
-	router := newRouteUnitRouter()
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPut, "/route_unit/1", strings.NewReader(`{"static_weight":"abc"}`))
-	req.Header.Set("Content-Type", "application/json")
-	router.ServeHTTP(rec, req)
+	rec := serveRouteUnit(t, newRouteUnitUpdateRequest(`{"static_weight":"abc"}`, 1))
 
 	// JSON decode of string into *float64 fails -> ShouldBindJSON error -> 400
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
@@ -202,11 +195,7 @@ func TestRouteUnit_Update_InvalidWeight_NaNString(t *testing.T) {
 func TestRouteUnit_Update_NotFound(t *testing.T) {
 	setupRouteUnitTestDB(t)
 
-	router := newRouteUnitRouter()
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPut, "/route_unit/9999", strings.NewReader(`{"static_weight":5}`))
-	req.Header.Set("Content-Type", "application/json")
-	router.ServeHTTP(rec, req)
+	rec := serveRouteUnit(t, newRouteUnitUpdateRequest(`{"static_weight":5}`, 9999))
 
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
@@ -215,11 +204,7 @@ func TestRouteUnit_Update_ValidWeightAndEnabled(t *testing.T) {
 	db := setupRouteUnitTestDB(t)
 	seedRouteUnit(t, db, 1, "gpt-4", 100, 3, true)
 
-	router := newRouteUnitRouter()
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPut, "/route_unit/1", strings.NewReader(`{"static_weight":7,"enabled":false}`))
-	req.Header.Set("Content-Type", "application/json")
-	router.ServeHTTP(rec, req)
+	rec := serveRouteUnit(t, newRouteUnitUpdateRequest(`{"static_weight":7,"enabled":false}`, 1))
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	var resp struct {
@@ -241,11 +226,7 @@ func TestRouteUnit_Update_WeightUpperBoundPasses(t *testing.T) {
 	db := setupRouteUnitTestDB(t)
 	seedRouteUnit(t, db, 1, "gpt-4", 100, 3, true)
 
-	router := newRouteUnitRouter()
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPut, "/route_unit/1", strings.NewReader(`{"static_weight":1000000000}`))
-	req.Header.Set("Content-Type", "application/json")
-	router.ServeHTTP(rec, req)
+	rec := serveRouteUnit(t, newRouteUnitUpdateRequest(`{"static_weight":1000000000}`, 1))
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	var resp struct {
@@ -261,11 +242,7 @@ func TestRouteUnit_Update_WeightUpperBoundExceeded(t *testing.T) {
 	db := setupRouteUnitTestDB(t)
 	seedRouteUnit(t, db, 1, "gpt-4", 100, 3, true)
 
-	router := newRouteUnitRouter()
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPut, "/route_unit/1", strings.NewReader(`{"static_weight":1000000001}`))
-	req.Header.Set("Content-Type", "application/json")
-	router.ServeHTTP(rec, req)
+	rec := serveRouteUnit(t, newRouteUnitUpdateRequest(`{"static_weight":1000000001}`, 1))
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	var resp struct {
@@ -281,12 +258,8 @@ func TestRouteUnit_Update_WeightNegativeZeroValid(t *testing.T) {
 	db := setupRouteUnitTestDB(t)
 	seedRouteUnit(t, db, 1, "gpt-4", 100, 3, true)
 
-	router := newRouteUnitRouter()
-	rec := httptest.NewRecorder()
 	// -0 is valid JSON and should be treated as 0
-	req := httptest.NewRequest(http.MethodPut, "/route_unit/1", strings.NewReader(`{"static_weight":-0}`))
-	req.Header.Set("Content-Type", "application/json")
-	router.ServeHTTP(rec, req)
+	rec := serveRouteUnit(t, newRouteUnitUpdateRequest(`{"static_weight":-0}`, 1))
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	var resp struct {
@@ -300,13 +273,13 @@ func TestRouteUnit_Update_WeightNegativeZeroValid(t *testing.T) {
 
 // TestRouteUnit_HandlersRunOnContractContext pins the transport seam for the
 // route-unit handlers: they are declared as contract.Handler, so they must be
-// callable with any contract.Context — not only one that happens to wrap gin.
+// callable with any contract.Context — not only one that happens to wrap Fiber.
 //
-// The other tests here drive them through a real gin engine, which would keep
-// passing even if a handler reached back for *gin.Context via MustUnwrap. That
-// would silently re-bind these endpoints to gin and break when the framework is
-// replaced, so the contract is asserted on a synthetic context that no router
-// ever touched.
+// The other tests here drive them through a real Fiber engine, which would keep
+// passing even if a handler reached back for a framework context via MustUnwrap.
+// That would silently re-bind these endpoints to Fiber and break when the
+// framework is replaced, so the contract is asserted on a synthetic context that
+// no router ever touched.
 func TestRouteUnit_HandlersRunOnContractContext(t *testing.T) {
 	db := setupRouteUnitTestDB(t)
 	seedRouteUnit(t, db, 1, "gpt-4", 100, 3, true)
@@ -321,7 +294,7 @@ func TestRouteUnit_HandlersRunOnContractContext(t *testing.T) {
 	}
 
 	t.Run("query is read through the contract", func(t *testing.T) {
-		ctx, rec := ginadapter.NewSyntheticContext(
+		ctx, rec := fiberadapter.NewSyntheticContext(
 			httptest.NewRequest(http.MethodGet, "/route_unit/?alias=gpt-4", nil))
 		GetRouteUnitViews(ctx)
 
@@ -333,7 +306,7 @@ func TestRouteUnit_HandlersRunOnContractContext(t *testing.T) {
 	})
 
 	t.Run("missing alias aborts through the contract", func(t *testing.T) {
-		ctx, rec := ginadapter.NewSyntheticContext(
+		ctx, rec := fiberadapter.NewSyntheticContext(
 			httptest.NewRequest(http.MethodGet, "/route_unit/", nil))
 		GetRouteUnitViews(ctx)
 
@@ -343,12 +316,8 @@ func TestRouteUnit_HandlersRunOnContractContext(t *testing.T) {
 	t.Run("body and path param are read through the contract", func(t *testing.T) {
 		// A synthetic context carries no route params, so the id has to come from
 		// the router. Registering through the adapter is what production does, and
-		// it proves Param() resolves without the handler unwrapping gin.
-		router := newRouteUnitRouter()
-		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPut, "/route_unit/1", strings.NewReader(`{"static_weight":11}`))
-		req.Header.Set("Content-Type", "application/json")
-		router.ServeHTTP(rec, req)
+		// it proves Param() resolves without the handler unwrapping Fiber.
+		rec := serveRouteUnit(t, newRouteUnitUpdateRequest(`{"static_weight":11}`, 1))
 
 		require.Equal(t, http.StatusOK, rec.Code)
 		var route channelpkg.ChannelModelRoute

@@ -5,8 +5,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/testutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -74,6 +73,21 @@ func newTokenAutoGroupsAuthenticatedContext(t *testing.T, method string, target 
 	return ctx, recorder
 }
 
+// newTokenAutoGroupsIDRouteRecorder serves GetToken through a real Fiber route,
+// so :id binds through routing and the group the handler filters on is the one
+// production middleware would have set.
+func newTokenAutoGroupsIDRouteRecorder(t *testing.T, userID, tokenID int) *httptest.ResponseRecorder {
+	t.Helper()
+	response := testutil.ServeBufferedRoute(t, http.MethodGet, "/api/token/:id",
+		[]contract.Middleware{func(c contract.Context) {
+			c.Set("id", userID)
+			common.SetCtxKey(c, constant.ContextKeyUserGroup, "default")
+			c.Next()
+		}}, identity.GetToken,
+		httptest.NewRequest(http.MethodGet, "/api/token/"+stringInt(tokenID), nil))
+	return recordResponse(t, response)
+}
+
 func TestAddTokenEmptyAutoGroupsInheritGlobalAuto(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -121,15 +135,7 @@ func TestAddTokenPersistsOrderedAutoGroupsSnapshot(t *testing.T) {
 	require.NoError(t, dbx.DB.Where("name = ?", "ordered-snapshot").First(&token).Error)
 	assert.JSONEq(t, `["vip","default"]`, token.AutoGroups)
 
-	getRecorder := httptest.NewRecorder()
-	getEngine := gin.New()
-	getEngine.Use(func(c *gin.Context) {
-		c.Set("id", user.Id)
-		c.Set(string(constant.ContextKeyUserGroup), "default")
-		c.Next()
-	})
-	getEngine.GET("/api/token/:id", ginadapter.Handler(identity.GetToken))
-	getEngine.ServeHTTP(getRecorder, httptest.NewRequest(http.MethodGet, "/api/token/"+stringInt(token.Id), nil))
+	getRecorder := newTokenAutoGroupsIDRouteRecorder(t, user.Id, token.Id)
 	getResponse := decodeAPIResponse(t, getRecorder)
 	require.True(t, getResponse.Success)
 	var data struct {
