@@ -3,7 +3,9 @@ package identity
 import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/testutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,7 +15,6 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/identity/policy"
 
-	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -48,18 +49,24 @@ func setupManageUserTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func performManageUserRequest(t *testing.T, body string) *httptest.ResponseRecorder {
+// performManageUserRequest serves ManageUser through a real Fiber route, with
+// the root-operator identity production auth middleware would have set. It
+// reports the status and body the assertions read.
+func performManageUserRequest(t *testing.T, body string) (int, string) {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/api/user/manage", strings.NewReader(body))
-	c.Request.Header.Set("Content-Type", "application/json")
-	c.Set("id", 9999)
-	c.Set("role", common.RoleRootUser)
-	c.Set("username", "root-operator")
-	ManageUser(ginadapter.Wrap(c))
-	return recorder
+	request := httptest.NewRequest(http.MethodPost, "/api/user/manage", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	response := testutil.ServeBufferedRoute(t, http.MethodPost, "/api/user/manage",
+		[]contract.Middleware{func(c contract.Context) {
+			c.Set("id", 9999)
+			c.Set("role", common.RoleRootUser)
+			c.Set("username", "root-operator")
+			c.Next()
+		}}, ManageUser, request)
+	payload, err := io.ReadAll(response.Body)
+	require.NoError(t, err)
+	require.NoError(t, response.Body.Close())
+	return response.StatusCode, string(payload)
 }
 
 func TestManageUserDisableAdvancesAuthVersionOnceAndRevokesSession(t *testing.T) {
@@ -76,9 +83,9 @@ func TestManageUserDisableAdvancesAuthVersionOnceAndRevokesSession(t *testing.T)
 		LastActiveAt: now, ExpiresAt: now + 3600,
 	}).Error)
 
-	recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"disable"}`, user.Id))
-	assert.Equal(t, http.StatusOK, recorder.Code)
-	assert.Contains(t, recorder.Body.String(), `"success":true`)
+	status, body := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"disable"}`, user.Id))
+	assert.Equal(t, http.StatusOK, status)
+	assert.Contains(t, body, `"success":true`)
 
 	var updated User
 	require.NoError(t, db.First(&updated, user.Id).Error)
@@ -117,9 +124,9 @@ func TestManageUserDemoteAdvancesAuthVersionAndRevokesSessionsOnce(t *testing.T)
 		}
 	}))
 
-	recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"demote"}`, user.Id))
-	assert.Equal(t, http.StatusOK, recorder.Code)
-	assert.Contains(t, recorder.Body.String(), `"success":true`)
+	status, body := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"demote"}`, user.Id))
+	assert.Equal(t, http.StatusOK, status)
+	assert.Contains(t, body, `"success":true`)
 
 	var updated User
 	require.NoError(t, db.First(&updated, user.Id).Error)
@@ -143,8 +150,8 @@ func TestManageUserDeleteReturnsImmediatelyAndUnknownActionFails(t *testing.T) {
 	}
 	require.NoError(t, db.Create(&deleted).Error)
 
-	recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"delete"}`, deleted.Id))
-	assert.Contains(t, recorder.Body.String(), `"success":true`)
+	_, body := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"delete"}`, deleted.Id))
+	assert.Contains(t, body, `"success":true`)
 	var deletedCount int64
 	require.NoError(t, db.Unscoped().Model(&User{}).Where("id = ? AND deleted_at IS NOT NULL", deleted.Id).Count(&deletedCount).Error)
 	assert.EqualValues(t, 1, deletedCount)
@@ -154,8 +161,8 @@ func TestManageUserDeleteReturnsImmediatelyAndUnknownActionFails(t *testing.T) {
 		Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "unknown-aff",
 	}
 	require.NoError(t, db.Create(&unchanged).Error)
-	recorder = performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"unknown"}`, unchanged.Id))
-	assert.Contains(t, recorder.Body.String(), `"success":false`)
+	_, body = performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"unknown"}`, unchanged.Id))
+	assert.Contains(t, body, `"success":false`)
 	require.NoError(t, db.First(&unchanged, unchanged.Id).Error)
 	assert.EqualValues(t, 1, unchanged.AuthVersion)
 	assert.Equal(t, common.UserStatusEnabled, unchanged.Status)
@@ -186,22 +193,18 @@ func TestSetupLoginDoesNotTouchPasswordWhenPasswordFieldOmitted(t *testing.T) {
 	}
 	require.NoError(t, db.Create(user).Error)
 
-	router := gin.New()
-	router.GET("/", func(c *gin.Context) {
+	response := testutil.ServeBufferedRoute(t, http.MethodGet, "/", nil, func(c contract.Context) {
 		SetupLogin(&User{
 			Id:       user.Id,
 			Username: user.Username,
 			Role:     user.Role,
 			Status:   user.Status,
 			Group:    user.Group,
-		}, ginadapter.Wrap(c))
-	})
+		}, c)
+	}, httptest.NewRequest(http.MethodGet, "/", nil))
+	require.NoError(t, response.Body.Close())
 
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/", nil)
-	router.ServeHTTP(recorder, request)
-
-	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, http.StatusOK, response.StatusCode)
 	var stored User
 	require.NoError(t, db.First(&stored, user.Id).Error)
 	assert.Equal(t, hashedPassword, stored.Password)

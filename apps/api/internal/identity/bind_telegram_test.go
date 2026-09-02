@@ -6,8 +6,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/testutil"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -115,10 +115,10 @@ func createTelegramBindTestFlow(t *testing.T, db *gorm.DB, name string, status i
 	return user, flowToken
 }
 
-func assertTelegramBindRedirect(t *testing.T, response *httptest.ResponseRecorder, flowToken, errorCode string) {
+func assertTelegramBindRedirect(t *testing.T, response *http.Response, flowToken, errorCode string) {
 	t.Helper()
-	require.Equal(t, http.StatusFound, response.Code)
-	location, err := url.Parse(response.Header().Get("Location"))
+	require.Equal(t, http.StatusFound, response.StatusCode)
+	location, err := url.Parse(response.Header.Get("Location"))
 	require.NoError(t, err)
 	assert.Equal(t, "/oauth/telegram", location.Path)
 	assert.Equal(t, "error", location.Query().Get("telegram_bind"))
@@ -143,17 +143,19 @@ func TestTelegramBindFailureResponseContract(t *testing.T) {
 		{name: "internal error", errorCode: telegramBindErrorInternal},
 	}
 
+	// A routed request cannot carry a raw space in its path, so the escaped form
+	// stands in: the round-trip still proves the token is query-escaped into the
+	// redirect rather than injected raw.
+	const flowToken = "flow%20token"
 	for _, failure := range failures {
 		t.Run(failure.name, func(t *testing.T) {
-			response := httptest.NewRecorder()
-			contextRaw, _ := gin.CreateTestContext(response)
-			contextRaw.Params = gin.Params{{Key: "flow_token", Value: "flow token"}}
-			contextRaw.Request = httptest.NewRequest(http.MethodGet, "/api/oauth/telegram/bind/flow-token", nil)
-			context := ginadapter.Wrap(contextRaw)
+			response := testutil.ServeBufferedRoute(
+				t, http.MethodGet, "/api/oauth/telegram/bind/:flow_token", nil,
+				func(c contract.Context) { telegramBindFailure(c, failure.errorCode) },
+				httptest.NewRequest(http.MethodGet, "/api/oauth/telegram/bind/"+flowToken, nil),
+			)
 
-			telegramBindFailure(context, failure.errorCode)
-
-			assertTelegramBindRedirect(t, response, "flow token", failure.errorCode)
+			assertTelegramBindRedirect(t, response, flowToken, failure.errorCode)
 		})
 	}
 }
@@ -206,24 +208,21 @@ func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
 	})
 	require.NoError(t, err)
 	params := signedTelegramAuthorization(common.TelegramBotToken, now)
-	router := gin.New()
-	router.GET("/api/oauth/telegram/bind/:flow_token", ginadapter.Handler(TelegramBind))
+	serve := func(target string) *http.Response {
+		t.Helper()
+		return testutil.ServeBufferedRoute(t, http.MethodGet, "/api/oauth/telegram/bind/:flow_token", nil,
+			TelegramBind, httptest.NewRequest(http.MethodGet, target, nil))
+	}
 
 	common.TelegramOAuthEnabled = false
-	request := httptest.NewRequest(http.MethodGet, "/api/oauth/telegram/bind/disabled-flow", nil)
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, request)
+	response := serve("/api/oauth/telegram/bind/disabled-flow")
 	assertTelegramBindRedirect(t, response, "disabled-flow", telegramBindErrorDisabled)
 	common.TelegramOAuthEnabled = true
 
-	request = httptest.NewRequest(http.MethodGet, "/api/oauth/telegram/bind/invalid-request", nil)
-	response = httptest.NewRecorder()
-	router.ServeHTTP(response, request)
+	response = serve("/api/oauth/telegram/bind/invalid-request")
 	assertTelegramBindRedirect(t, response, "invalid-request", telegramBindErrorInvalidRequest)
 
-	request = httptest.NewRequest(http.MethodGet, "/api/oauth/telegram/bind/missing-flow?"+params.Encode(), nil)
-	response = httptest.NewRecorder()
-	router.ServeHTTP(response, request)
+	response = serve("/api/oauth/telegram/bind/missing-flow?" + params.Encode())
 	assertTelegramBindRedirect(t, response, "missing-flow", telegramBindErrorFlowInvalid)
 
 	invalidSessionFlowToken, _, err := CreateAuthFlow(AuthFlowCreate{
@@ -231,24 +230,16 @@ func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
 		ExpiresAt: now.Add(time.Minute),
 	})
 	require.NoError(t, err)
-	request = httptest.NewRequest(
-		http.MethodGet,
-		"/api/oauth/telegram/bind/"+invalidSessionFlowToken+"?"+params.Encode(),
-		nil,
-	)
-	response = httptest.NewRecorder()
-	router.ServeHTTP(response, request)
+	response = serve("/api/oauth/telegram/bind/" + invalidSessionFlowToken + "?" + params.Encode())
 	assertTelegramBindRedirect(t, response, invalidSessionFlowToken, telegramBindErrorSessionInvalid)
 	invalidSessionFlow, err := GetAuthFlow(invalidSessionFlowToken, AuthFlowMatch{Purpose: AuthFlowPurposeTelegramBind})
 	require.NoError(t, err)
 	assert.Nil(t, invalidSessionFlow.ConsumedAt)
 
-	request = httptest.NewRequest(http.MethodGet, "/api/oauth/telegram/bind/"+flowToken+"?"+params.Encode(), nil)
-	response = httptest.NewRecorder()
-	router.ServeHTTP(response, request)
+	response = serve("/api/oauth/telegram/bind/" + flowToken + "?" + params.Encode())
 
-	assert.Equal(t, http.StatusFound, response.Code)
-	assert.Equal(t, "/oauth/telegram?telegram_bind=success&flow_token="+url.QueryEscape(flowToken), response.Header().Get("Location"))
+	assert.Equal(t, http.StatusFound, response.StatusCode)
+	assert.Equal(t, "/oauth/telegram?telegram_bind=success&flow_token="+url.QueryEscape(flowToken), response.Header.Get("Location"))
 	var storedUser User
 	require.NoError(t, db.First(&storedUser, user.Id).Error)
 	assert.Equal(t, "123456", storedUser.TelegramId)
@@ -264,9 +255,7 @@ func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
 		ExpiresAt: now.Add(time.Minute),
 	})
 	require.NoError(t, err)
-	request = httptest.NewRequest(http.MethodGet, "/api/oauth/telegram/bind/"+replayFlowToken+"?"+params.Encode(), nil)
-	response = httptest.NewRecorder()
-	router.ServeHTTP(response, request)
+	response = serve("/api/oauth/telegram/bind/" + replayFlowToken + "?" + params.Encode())
 	assertTelegramBindRedirect(t, response, replayFlowToken, telegramBindErrorInvalidRequest)
 	replayFlow, err := GetAuthFlow(replayFlowToken, AuthFlowMatch{Purpose: AuthFlowPurposeTelegramBind})
 	require.NoError(t, err)
@@ -292,13 +281,7 @@ func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
 	competingParams := signedTelegramAuthorization(common.TelegramBotToken, now)
 	competingParams.Set("first_name", "Competing")
 	signTelegramAuthorization(common.TelegramBotToken, competingParams)
-	request = httptest.NewRequest(
-		http.MethodGet,
-		"/api/oauth/telegram/bind/"+competingFlowToken+"?"+competingParams.Encode(),
-		nil,
-	)
-	response = httptest.NewRecorder()
-	router.ServeHTTP(response, request)
+	response = serve("/api/oauth/telegram/bind/" + competingFlowToken + "?" + competingParams.Encode())
 	assertTelegramBindRedirect(t, response, competingFlowToken, telegramBindErrorAlreadyBound)
 
 	require.NoError(t, db.First(competingUser, competingUser.Id).Error)
@@ -321,13 +304,7 @@ func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
 	disabledParams.Set("id", "disabled-telegram-id")
 	disabledParams.Set("first_name", "Disabled")
 	signTelegramAuthorization(common.TelegramBotToken, disabledParams)
-	request = httptest.NewRequest(
-		http.MethodGet,
-		"/api/oauth/telegram/bind/"+disabledFlowToken+"?"+disabledParams.Encode(),
-		nil,
-	)
-	response = httptest.NewRecorder()
-	router.ServeHTTP(response, request)
+	response = serve("/api/oauth/telegram/bind/" + disabledFlowToken + "?" + disabledParams.Encode())
 	assertTelegramBindRedirect(t, response, disabledFlowToken, telegramBindErrorUserDisabled)
 	var storedDisabledUser User
 	require.NoError(t, db.First(&storedDisabledUser, disabledUser.Id).Error)
@@ -351,13 +328,7 @@ func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
 	deletedParams.Set("id", "deleted-telegram-id")
 	deletedParams.Set("first_name", "Deleted")
 	signTelegramAuthorization(common.TelegramBotToken, deletedParams)
-	request = httptest.NewRequest(
-		http.MethodGet,
-		"/api/oauth/telegram/bind/"+deletedFlowToken+"?"+deletedParams.Encode(),
-		nil,
-	)
-	response = httptest.NewRecorder()
-	router.ServeHTTP(response, request)
+	response = serve("/api/oauth/telegram/bind/" + deletedFlowToken + "?" + deletedParams.Encode())
 	assertTelegramBindRedirect(t, response, deletedFlowToken, telegramBindErrorUserDeleted)
 	deletedFlow, err := GetAuthFlow(deletedFlowToken, AuthFlowMatch{Purpose: AuthFlowPurposeTelegramBind})
 	require.NoError(t, err)
@@ -387,16 +358,10 @@ func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
 			tx.AddError(forcedError)
 		}
 	}))
-	request = httptest.NewRequest(
-		http.MethodGet,
-		"/api/oauth/telegram/bind/"+internalFlowToken+"?"+internalParams.Encode(),
-		nil,
-	)
-	response = httptest.NewRecorder()
-	router.ServeHTTP(response, request)
+	response = serve("/api/oauth/telegram/bind/" + internalFlowToken + "?" + internalParams.Encode())
 	db.Callback().Query().Remove(callbackName)
 	assertTelegramBindRedirect(t, response, internalFlowToken, telegramBindErrorInternal)
-	assert.NotContains(t, response.Header().Get("Location"), forcedError.Error())
+	assert.NotContains(t, response.Header.Get("Location"), forcedError.Error())
 	internalFlow, err := GetAuthFlow(internalFlowToken, AuthFlowMatch{Purpose: AuthFlowPurposeTelegramBind})
 	require.NoError(t, err)
 	assert.Nil(t, internalFlow.ConsumedAt)

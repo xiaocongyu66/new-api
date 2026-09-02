@@ -2,7 +2,7 @@ package identity
 
 import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -41,8 +41,8 @@ func TestAuthLogoutRejectsRefreshCookieSessionMismatch(t *testing.T) {
 	sessionB, err := CreateLoginSession(user.Id, "password", "127.0.0.1", "agent-b")
 	require.NoError(t, err)
 
-	c, recorder := ginadapter.NewSyntheticContext(nil)
-	ginadapter.ReplaceRequest(c, httptest.NewRequest(http.MethodPost, "/api/user/auth/logout", nil))
+	c, recorder := fiberadapter.NewSyntheticContext(nil)
+	fiberadapter.ReplaceRequest(c, httptest.NewRequest(http.MethodPost, "/api/user/auth/logout", nil))
 	c.Headers().Set("Authorization", "Bearer "+sessionA.AccessToken)
 	c.Headers().Set("X-Auth-Session", sessionA.Session.SID)
 	c.HTTPRequest().AddCookie(&http.Cookie{Name: RefreshCookieName, Value: sessionB.RefreshToken})
@@ -87,7 +87,7 @@ func TestWriteAuthSessionErrorMapsSessionGrowthLimits(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			c, recorder := ginadapter.NewSyntheticContext(nil)
+			c, recorder := fiberadapter.NewSyntheticContext(nil)
 			writeAuthSessionError(c, test.err)
 
 			assert.Equal(t, test.expectedStatus, recorder.Code)
@@ -137,8 +137,8 @@ func TestSessionLimitDoesNotRecordRejectedLoginAsSuccessful(t *testing.T) {
 		CreatedAt: now, LastActiveAt: now, ExpiresAt: now + 3600,
 	}).Error)
 
-	c, recorder := ginadapter.NewSyntheticContext(nil)
-	ginadapter.ReplaceRequest(c, httptest.NewRequest(http.MethodPost, "/api/user/login", nil))
+	c, recorder := fiberadapter.NewSyntheticContext(nil)
+	fiberadapter.ReplaceRequest(c, httptest.NewRequest(http.MethodPost, "/api/user/login", nil))
 	SetupLogin(user, c)
 
 	assert.Equal(t, http.StatusConflict, recorder.Code)
