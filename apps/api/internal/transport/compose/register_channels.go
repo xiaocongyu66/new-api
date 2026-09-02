@@ -39,16 +39,26 @@ func registerChannelRoutes(apiRouter contract.Routes) {
 	}
 }
 
+// channelPermissionRoutes is registered in order. fiber scans its route stack in
+// registration order and stops at the first match, so a literal path that
+// overlaps an earlier parameterised one is unreachable: "/:id" would swallow
+// "/test", "/update_balance", "/health" and "/route_unit/". Every literal
+// therefore precedes the "/:id" family, and
+// TestNoRouteIsShadowedByAnEarlierParameterisedRoute pins that ordering across
+// the whole registered surface so an insertion here cannot silently
+// reintroduce the shadowing.
 var channelPermissionRoutes = []permissionRoute{
 	{method: http.MethodGet, path: "/", permission: policy.ChannelRead, handler: handler.GetAllChannels},
 	{method: http.MethodGet, path: "/search", permission: policy.ChannelRead, handler: handler.SearchChannels},
 	{method: http.MethodGet, path: "/models", permission: policy.ChannelRead, handler: handler.ChannelListModels},
 	{method: http.MethodGet, path: "/models_enabled", permission: policy.ChannelRead, handler: handler.EnabledListModels},
 	{method: http.MethodGet, path: "/ops", permission: policy.ChannelRead, handler: handler.GetChannelOps},
-	{method: http.MethodGet, path: "/:id", permission: policy.ChannelRead, handler: handler.GetChannel},
 	{method: http.MethodGet, path: "/test", permission: policy.ChannelOperate, handler: handler.TestAllChannels},
-	{method: http.MethodGet, path: "/test/:id", permission: policy.ChannelOperate, handler: handler.TestChannel},
 	{method: http.MethodGet, path: "/update_balance", permission: policy.ChannelOperate, handler: billing.UpdateAllChannelsBalance},
+	{method: http.MethodGet, path: "/health", permission: policy.ChannelRead, handler: handler.GetChannelModelHealth},
+	{method: http.MethodGet, path: "/route_unit/", permission: policy.ChannelRead, handler: handler.GetRouteUnitViews},
+	{method: http.MethodGet, path: "/:id", permission: policy.ChannelRead, handler: handler.GetChannel},
+	{method: http.MethodGet, path: "/test/:id", permission: policy.ChannelOperate, handler: handler.TestChannel},
 	{method: http.MethodGet, path: "/update_balance/:id", permission: policy.ChannelOperate, handler: billing.UpdateChannelBalance},
 	{method: http.MethodPost, path: "/", permission: policy.ChannelSensitiveWrite, handler: handler.AddChannel},
 	{method: http.MethodPut, path: "/", permission: policy.ChannelWrite, handler: handler.UpdateChannel},
@@ -79,9 +89,7 @@ var channelPermissionRoutes = []permissionRoute{
 	{method: http.MethodPost, path: "/upstream_updates/apply_all", permission: policy.ChannelWrite, handler: handler.ApplyAllChannelUpstreamModelUpdates},
 	{method: http.MethodPost, path: "/upstream_updates/detect", permission: policy.ChannelOperate, handler: handler.DetectChannelUpstreamModelUpdates},
 	{method: http.MethodPost, path: "/upstream_updates/detect_all", permission: policy.ChannelOperate, handler: handler.DetectAllChannelUpstreamModelUpdates},
-	{method: http.MethodGet, path: "/route_unit/", permission: policy.ChannelRead, handler: handler.GetRouteUnitViews},
 	{method: http.MethodGet, path: "/route_unit/aliases", permission: policy.ChannelRead, handler: handler.ListRouteUnitAliases},
 	{method: http.MethodPut, path: "/route_unit/:id", permission: policy.ChannelWrite, handler: handler.UpdateRouteUnit},
-	{method: http.MethodGet, path: "/health", permission: policy.ChannelRead, handler: handler.GetChannelModelHealth},
 	{method: http.MethodPost, path: "/health/:action", permission: policy.ChannelOperate, handler: handler.UpdateChannelModelHealth},
 }
