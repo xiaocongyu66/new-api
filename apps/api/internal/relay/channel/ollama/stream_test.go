@@ -1,7 +1,6 @@
 package ollama
 
 import (
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,16 +10,14 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestOllamaChatHandlerNonStreamToolCalls(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	tests := []struct {
 		name   string
 		raw    string
@@ -62,9 +59,7 @@ func TestOllamaChatHandlerNonStreamToolCalls(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			w := httptest.NewRecorder()
-			cRaw, _ := gin.CreateTestContext(w)
-			c := ginadapter.Wrap(cRaw)
+			c, w := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 
 			resp := &http.Response{
 				StatusCode: http.StatusOK,

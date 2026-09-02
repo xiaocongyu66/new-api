@@ -2,7 +2,6 @@ package openai
 
 import (
 	"bytes"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,14 +12,13 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestOaiResponsesHandlerCountsOutputCallsNotDeclarations(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	price_expression.SetToolPriceForTest("priced_fn", 5.0)
 	t.Cleanup(func() {
 		price_expression.DeleteToolPriceForTest("priced_fn")
@@ -41,10 +39,7 @@ func TestOaiResponsesHandlerCountsOutputCallsNotDeclarations(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	cc := ginadapter.Wrap(c)
+	cc, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
 
 	info := &relaycommon.RelayInfo{
 		OriginModelName: "gpt-5.1",
@@ -72,8 +67,6 @@ func TestOaiResponsesHandlerCountsOutputCallsNotDeclarations(t *testing.T) {
 }
 
 func TestOaiResponsesHandlerDeclaredToolsWithoutOutputCountZero(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	body, err := common.Marshal(dto.OpenAIResponsesResponse{
 		Tools: []map[string]any{
 			{"type": "web_search_preview"},
@@ -86,10 +79,7 @@ func TestOaiResponsesHandlerDeclaredToolsWithoutOutputCountZero(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	cc := ginadapter.Wrap(c)
+	cc, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
 
 	info := &relaycommon.RelayInfo{
 		OriginModelName: "gpt-5.1",
@@ -113,8 +103,6 @@ func TestOaiResponsesHandlerDeclaredToolsWithoutOutputCountZero(t *testing.T) {
 }
 
 func TestOaiResponsesHandlerCountsCompletedImageGenerationOutputs(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	body, err := common.Marshal(dto.OpenAIResponsesResponse{
 		Status: []byte(`"completed"`),
 		Output: []dto.ResponsesOutput{
@@ -141,10 +129,7 @@ func TestOaiResponsesHandlerCountsCompletedImageGenerationOutputs(t *testing.T) 
 	})
 	require.NoError(t, err)
 
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	cc := ginadapter.Wrap(c)
+	cc, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
 	info := &relaycommon.RelayInfo{OriginModelName: "gpt-5.1"}
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
@@ -156,12 +141,10 @@ func TestOaiResponsesHandlerCountsCompletedImageGenerationOutputs(t *testing.T) 
 	require.Nil(t, apiErr)
 	require.Contains(t, info.ResponsesUsageInfo.BuiltInTools, dto.BuildInToolImageGeneration)
 	assert.Equal(t, 2, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolImageGeneration].CallCount)
-	assert.False(t, c.GetBool("image_generation_call"))
+	assert.False(t, cc.GetBool("image_generation_call"))
 }
 
 func TestOaiResponsesHandlerIncompleteStatusCommitsZeroImageGeneration(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	body, err := common.Marshal(dto.OpenAIResponsesResponse{
 		Status: []byte(`"incomplete"`),
 		Output: []dto.ResponsesOutput{
@@ -176,10 +159,7 @@ func TestOaiResponsesHandlerIncompleteStatusCommitsZeroImageGeneration(t *testin
 	})
 	require.NoError(t, err)
 
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	cc := ginadapter.Wrap(c)
+	cc, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
 	info := &relaycommon.RelayInfo{
 		OriginModelName: "gpt-5.1",
 		ResponsesUsageInfo: &relaycommon.ResponsesUsageInfo{
@@ -201,7 +181,6 @@ func TestOaiResponsesHandlerIncompleteStatusCommitsZeroImageGeneration(t *testin
 
 func runResponsesImageBillingStream(t *testing.T, events ...string) *relaycommon.RelayInfo {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
 	oldTimeout := constant.StreamingTimeout
 	constant.StreamingTimeout = 30
 	t.Cleanup(func() {
@@ -216,11 +195,8 @@ func runResponsesImageBillingStream(t *testing.T, events ...string) *relaycommon
 	}
 	body.WriteString("data: [DONE]\n\n")
 
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	cc := ginadapter.Wrap(c)
-	c.Set(common.RequestIdKey, "responses-image-billing-test")
+	cc, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+	cc.Set(common.RequestIdKey, "responses-image-billing-test")
 	info := &relaycommon.RelayInfo{
 		OriginModelName: "gpt-5.1",
 		DisablePing:     true,

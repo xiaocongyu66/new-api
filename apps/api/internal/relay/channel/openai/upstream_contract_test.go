@@ -2,7 +2,6 @@ package openai
 
 import (
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,7 +15,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/sensitive"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,7 +24,6 @@ import (
 // is populated from configuration at runtime. Tests must set it or the ticker
 // panics on a non-positive interval.
 func init() {
-	gin.SetMode(gin.TestMode)
 	if constant.StreamingTimeout == 0 {
 		constant.StreamingTimeout = 30
 	}
@@ -52,11 +50,7 @@ func startMockUpstream(t *testing.T, handler http.HandlerFunc) (*httptest.Server
 func newRelayClientContext(t *testing.T, path string) (contract.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, path, nil)
-	return ginadapter.Wrap(c), recorder
+	return fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, path, nil))
 }
 
 // disableOutputSensitiveFilter removes the output filter so these tests assert
@@ -237,7 +231,7 @@ func TestNonStreamingChatRelayRejectsMalformedUpstreamJSON(t *testing.T) {
 func TestStreamingChatRelayRejectsMissingUpstreamBody(t *testing.T) {
 	clientCtx, recorder := newRelayClientContext(t, "/v1/chat/completions")
 
-	usage, relayErr := OaiStreamHandler(clientCtx, newUpstreamRelayInfo("gpt-4"), &http.Response{})
+	usage, relayErr := OaiStreamHandler(clientCtx, newUpstreamRelayInfo("gpt-4"), &http.Response{StatusCode: http.StatusOK})
 
 	require.NotNil(t, relayErr)
 	assert.Nil(t, usage)

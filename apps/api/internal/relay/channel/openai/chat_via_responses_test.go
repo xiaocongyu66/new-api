@@ -10,19 +10,17 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func newResponsesChatTestContext(t *testing.T, body string, isStream bool) (*gin.Context, *httptest.ResponseRecorder, *http.Response, *relaycommon.RelayInfo) {
+func newResponsesChatTestContext(t *testing.T, body string, isStream bool) (contract.Context, *httptest.ResponseRecorder, *http.Response, *relaycommon.RelayInfo) {
 	t.Helper()
 
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	c, recorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 	c.Set(common.RequestIdKey, "responses-test")
 
 	resp := &http.Response{
@@ -41,10 +39,6 @@ func newResponsesChatTestContext(t *testing.T, body string, isStream bool) (*gin
 }
 
 func TestOaiResponsesToChatStreamHandlerConvertsSSEOrderAndUsage(t *testing.T) {
-	oldMode := gin.Mode()
-	gin.SetMode(gin.TestMode)
-	t.Cleanup(func() { gin.SetMode(oldMode) })
-
 	oldTimeout := constant.StreamingTimeout
 	constant.StreamingTimeout = 30
 	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
@@ -61,7 +55,7 @@ func TestOaiResponsesToChatStreamHandlerConvertsSSEOrderAndUsage(t *testing.T) {
 
 	c, recorder, resp, info := newResponsesChatTestContext(t, body, true)
 
-	usage, err := OaiResponsesToChatStreamHandler(ginadapter.Wrap(c), info, resp)
+	usage, err := OaiResponsesToChatStreamHandler(c, info, resp)
 	require.Nil(t, err)
 	require.NotNil(t, usage)
 	require.Equal(t, 2, usage.PromptTokens)
@@ -89,10 +83,6 @@ func TestOaiResponsesToChatStreamHandlerConvertsSSEOrderAndUsage(t *testing.T) {
 }
 
 func TestOaiResponsesToChatStreamHandlerConvertsClaudeSSETerminalsAndUsage(t *testing.T) {
-	oldMode := gin.Mode()
-	gin.SetMode(gin.TestMode)
-	t.Cleanup(func() { gin.SetMode(oldMode) })
-
 	oldTimeout := constant.StreamingTimeout
 	constant.StreamingTimeout = 30
 	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
@@ -108,7 +98,7 @@ func TestOaiResponsesToChatStreamHandlerConvertsClaudeSSETerminalsAndUsage(t *te
 	c, recorder, resp, info := newResponsesChatTestContext(t, body, true)
 	info.RelayFormat = types.RelayFormatClaude
 
-	usage, err := OaiResponsesToChatStreamHandler(ginadapter.Wrap(c), info, resp)
+	usage, err := OaiResponsesToChatStreamHandler(c, info, resp)
 	require.Nil(t, err)
 	require.NotNil(t, usage)
 	assert.Equal(t, 2, usage.PromptTokens)
@@ -143,10 +133,6 @@ func TestOaiResponsesToChatStreamHandlerConvertsClaudeSSETerminalsAndUsage(t *te
 }
 
 func TestOaiResponsesToChatBufferedStreamHandlerReturnsJSONFromSSE(t *testing.T) {
-	oldMode := gin.Mode()
-	gin.SetMode(gin.TestMode)
-	t.Cleanup(func() { gin.SetMode(oldMode) })
-
 	body := strings.Join([]string{
 		`data: {"type":"response.output_text.delta","delta":"buffered text"}`,
 		`data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"lookup"}}`,
@@ -158,7 +144,7 @@ func TestOaiResponsesToChatBufferedStreamHandlerReturnsJSONFromSSE(t *testing.T)
 
 	c, recorder, resp, info := newResponsesChatTestContext(t, body, false)
 
-	usage, err := OaiResponsesToChatBufferedStreamHandler(ginadapter.Wrap(c), info, resp)
+	usage, err := OaiResponsesToChatBufferedStreamHandler(c, info, resp)
 	require.Nil(t, err)
 	require.NotNil(t, usage)
 	require.Equal(t, 3, usage.TotalTokens)
@@ -173,10 +159,6 @@ func TestOaiResponsesToChatBufferedStreamHandlerReturnsJSONFromSSE(t *testing.T)
 }
 
 func TestOaiChatToResponsesStreamHandlerConvertsSSEOrderAndUsage(t *testing.T) {
-	oldMode := gin.Mode()
-	gin.SetMode(gin.TestMode)
-	t.Cleanup(func() { gin.SetMode(oldMode) })
-
 	oldTimeout := constant.StreamingTimeout
 	constant.StreamingTimeout = 30
 	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
@@ -193,9 +175,9 @@ func TestOaiChatToResponsesStreamHandlerConvertsSSEOrderAndUsage(t *testing.T) {
 	}, "\n")
 
 	c, recorder, resp, info := newResponsesChatTestContext(t, body, true)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	require.True(t, fiberadapter.ReplaceRequest(c, httptest.NewRequest(http.MethodPost, "/v1/responses", nil)))
 
-	usage, err := OaiChatToResponsesStreamHandler(ginadapter.Wrap(c), info, resp)
+	usage, err := OaiChatToResponsesStreamHandler(c, info, resp)
 	require.Nil(t, err)
 	require.NotNil(t, usage)
 	require.Equal(t, 2, usage.PromptTokens)

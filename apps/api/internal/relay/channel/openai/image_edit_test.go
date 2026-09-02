@@ -2,7 +2,6 @@ package openai
 
 import (
 	"bytes"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -13,8 +12,8 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,8 +22,6 @@ import (
 // stream) and the file intact, both when the form was already parsed and when
 // it must be re-parsed from the reusable body.
 func TestConvertImageEditRequestMultipart(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	newMultipartContext := func(t *testing.T, prompt string) contract.Context {
 		var body bytes.Buffer
 		writer := multipart.NewWriter(&body)
@@ -38,10 +35,10 @@ func TestConvertImageEditRequestMultipart(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, writer.Close())
 
-		c, _ := gin.CreateTestContext(httptest.NewRecorder())
-		c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits", &body)
-		c.Request.Header.Set("Content-Type", writer.FormDataContentType())
-		return ginadapter.Wrap(c)
+		req := httptest.NewRequest(http.MethodPost, "/v1/images/edits", &body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		c, _ := fiberadapter.NewSyntheticContext(req)
+		return c
 	}
 
 	convertAndReplay := func(t *testing.T, c contract.Context, prompt string) {
