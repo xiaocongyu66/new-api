@@ -3,7 +3,7 @@ package handler
 import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/identity"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -42,8 +42,8 @@ func TestAuthLogoutRejectsRefreshCookieSessionMismatch(t *testing.T) {
 	sessionB, err := identity.CreateLoginSession(user.Id, "password", "127.0.0.1", "agent-b")
 	require.NoError(t, err)
 
-	c, recorder := ginadapter.NewSyntheticContext(nil)
-	ginadapter.ReplaceRequest(c, httptest.NewRequest(http.MethodPost, "/api/user/auth/logout", nil))
+	c, recorder := fiberadapter.NewSyntheticContext(nil)
+	fiberadapter.ReplaceRequest(c, httptest.NewRequest(http.MethodPost, "/api/user/auth/logout", nil))
 	c.Headers().Set("Authorization", "Bearer "+sessionA.AccessToken)
 	c.Headers().Set("X-Auth-Session", sessionA.Session.SID)
 	c.HTTPRequest().AddCookie(&http.Cookie{Name: identity.RefreshCookieName, Value: sessionB.RefreshToken})

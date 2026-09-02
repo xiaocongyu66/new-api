@@ -2,8 +2,7 @@ package handler
 
 import (
 	"github.com/QuantumNous/new-api/internal/security"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -43,11 +42,11 @@ func TestGetStatusReturnsEffectiveOIDCDisplayName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			settings.DisplayName = tt.displayName
-			response := httptest.NewRecorder()
-			context, _ := gin.CreateTestContext(response)
-			context.Request = httptest.NewRequest(http.MethodGet, "/api/status", nil)
+			context, response := fiberadapter.NewSyntheticContext(
+				httptest.NewRequest(http.MethodGet, "/api/status", nil),
+			)
 
-			GetStatus(ginadapter.Wrap(context))
+			GetStatus(context)
 
 			var payload struct {
 				Success bool           `json:"success"`

@@ -16,8 +16,9 @@ import (
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/identity"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
+	"github.com/QuantumNous/new-api/internal/transport/testutil"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -159,8 +160,21 @@ func assertFailure(t *testing.T, body []byte, msg common.H) common.H {
 	return msg
 }
 
+// serveVideoProxyRoute serves the video proxy through a real Fiber route so the
+// :task_id path param binds exactly as production registration does, with the
+// user id supplied the way the auth middleware supplies it.
+func serveVideoProxyRoute(t *testing.T, userID int, taskID string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	return recordResponse(t, testutil.ServeBufferedRoute(t, http.MethodGet, "/v1/videos/:task_id/content",
+		[]contract.Middleware{func(c contract.Context) {
+			c.Set("id", userID)
+			c.Next()
+		}}, taskdomain.VideoProxy,
+		httptest.NewRequest(http.MethodGet, "/v1/videos/"+taskID+"/content", nil)))
+}
+
 func TestLoginSuccessContract(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	setupAuthVideoContractTestDB(t)
 
 	user := createTestUser(t, "testuser", "correctpassword")
@@ -170,7 +184,7 @@ func TestLoginSuccessContract(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/user/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
-	c, recorder := ginadapter.NewSyntheticContext(req)
+	c, recorder := fiberadapter.NewSyntheticContext(req)
 	identity.Login(c)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
@@ -188,7 +202,6 @@ func TestLoginSuccessContract(t *testing.T) {
 }
 
 func TestLoginWrongPasswordContract(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	setupAuthVideoContractTestDB(t)
 
 	createTestUser(t, "testuser", "correctpassword")
@@ -198,7 +211,7 @@ func TestLoginWrongPasswordContract(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/user/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
-	c, recorder := ginadapter.NewSyntheticContext(req)
+	c, recorder := fiberadapter.NewSyntheticContext(req)
 	identity.Login(c)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
@@ -211,7 +224,6 @@ func TestLoginWrongPasswordContract(t *testing.T) {
 }
 
 func TestRegisterSuccessContract(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	setupAuthVideoContractTestDB(t)
 
 	reqBody := map[string]string{
@@ -223,7 +235,7 @@ func TestRegisterSuccessContract(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/user/register", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
-	c, recorder := ginadapter.NewSyntheticContext(req)
+	c, recorder := fiberadapter.NewSyntheticContext(req)
 	identity.Register(c)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
@@ -234,7 +246,6 @@ func TestRegisterSuccessContract(t *testing.T) {
 }
 
 func TestRegisterDuplicateContract(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	setupAuthVideoContractTestDB(t)
 
 	createTestUser(t, "existinguser", "password123")
@@ -248,7 +259,7 @@ func TestRegisterDuplicateContract(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/user/register", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
-	c, recorder := ginadapter.NewSyntheticContext(req)
+	c, recorder := fiberadapter.NewSyntheticContext(req)
 	identity.Register(c)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
@@ -261,7 +272,6 @@ func TestRegisterDuplicateContract(t *testing.T) {
 }
 
 func Test2FALoginRequiresOTPContract(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	setupAuthVideoContractTestDB(t)
 
 	createTestUserWith2FA(t, "2fauser", "password123")
@@ -272,7 +282,7 @@ func Test2FALoginRequiresOTPContract(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/user/login", bytes.NewReader(loginJSON))
 	req.Header.Set("Content-Type", "application/json")
 
-	c, recorder := ginadapter.NewSyntheticContext(req)
+	c, recorder := fiberadapter.NewSyntheticContext(req)
 	identity.Login(c)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
@@ -291,7 +301,7 @@ func Test2FALoginRequiresOTPContract(t *testing.T) {
 	req2 := httptest.NewRequest(http.MethodPost, "/api/user/login/2fa", bytes.NewReader(verifyJSON))
 	req2.Header.Set("Content-Type", "application/json")
 
-	c2, recorder2 := ginadapter.NewSyntheticContext(req2)
+	c2, recorder2 := fiberadapter.NewSyntheticContext(req2)
 	identity.Verify2FALogin(c2)
 
 	require.Equal(t, http.StatusOK, recorder2.Code)
@@ -303,13 +313,12 @@ func Test2FALoginRequiresOTPContract(t *testing.T) {
 }
 
 func TestPasswordResetSendAndConfirmContract(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	setupAuthVideoContractTestDB(t)
 
 	user := createTestUser(t, "resetuser", "oldpassword123")
 	// Step 1: Send password reset email
 	req := httptest.NewRequest(http.MethodGet, "/api/reset_password?email="+user.Email, nil)
-	c, recorder := ginadapter.NewSyntheticContext(req)
+	c, recorder := fiberadapter.NewSyntheticContext(req)
 	identity.SendPasswordResetEmail(c)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
@@ -326,7 +335,7 @@ func TestPasswordResetSendAndConfirmContract(t *testing.T) {
 	resetJSON, _ := json.Marshal(resetBody)
 	req2 := httptest.NewRequest(http.MethodPost, "/api/user/reset", bytes.NewReader(resetJSON))
 	req2.Header.Set("Content-Type", "application/json")
-	c2, recorder2 := ginadapter.NewSyntheticContext(req2)
+	c2, recorder2 := fiberadapter.NewSyntheticContext(req2)
 	identity.ResetPassword(c2)
 
 	require.Equal(t, http.StatusOK, recorder2.Code)
@@ -344,7 +353,7 @@ func TestPasswordResetSendAndConfirmContract(t *testing.T) {
 	req3 := httptest.NewRequest(http.MethodPost, "/api/user/login", bytes.NewReader(loginJSON))
 	req3.Header.Set("Content-Type", "application/json")
 
-	c3, recorder3 := ginadapter.NewSyntheticContext(req3)
+	c3, recorder3 := fiberadapter.NewSyntheticContext(req3)
 	identity.Login(c3)
 
 	require.Equal(t, http.StatusOK, recorder3.Code)
@@ -353,7 +362,6 @@ func TestPasswordResetSendAndConfirmContract(t *testing.T) {
 }
 
 func TestPasswordResetInvalidTokenContract(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	setupAuthVideoContractTestDB(t)
 
 	user := createTestUser(t, "resetuser2", "oldpassword123")
@@ -363,7 +371,7 @@ func TestPasswordResetInvalidTokenContract(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/user/reset", bytes.NewReader(resetJSON))
 	req.Header.Set("Content-Type", "application/json")
 
-	c, recorder := ginadapter.NewSyntheticContext(req)
+	c, recorder := fiberadapter.NewSyntheticContext(req)
 	identity.ResetPassword(c)
 	require.Equal(t, http.StatusOK, recorder.Code)
 
@@ -375,7 +383,6 @@ func TestPasswordResetInvalidTokenContract(t *testing.T) {
 }
 
 func TestVideoProxySuccessPathContract(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	setupAuthVideoContractTestDB(t)
 
 	// Create user and channel
@@ -402,15 +409,7 @@ func TestVideoProxySuccessPathContract(t *testing.T) {
 	dbx.DB.Model(channel).Update("base_url", &newBaseURL)
 
 	// Make the request through the video proxy
-	req := httptest.NewRequest(http.MethodGet, "/v1/videos/task-video-1/content", nil)
-	c, recorder := ginadapter.NewSyntheticContext(req)
-	// Manually set the user ID in context (simulating auth middleware)
-	ginCtx, _ := ginadapter.Unwrap(c)
-	ginCtx.Set("id", user.Id)
-	// Set route parameter for task_id
-	ginCtx.Params = gin.Params{{Key: "task_id", Value: "task-video-1"}}
-
-	taskdomain.VideoProxy(c)
+	recorder := serveVideoProxyRoute(t, user.Id, "task-video-1")
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	assert.Equal(t, "video/mp4", recorder.Header().Get("Content-Type"))
@@ -419,7 +418,6 @@ func TestVideoProxySuccessPathContract(t *testing.T) {
 }
 
 func TestVideoProxySuccessPathOpenAIContract(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	setupAuthVideoContractTestDB(t)
 
 	user := createTestUser(t, "openaiuser", "password123")
@@ -446,13 +444,7 @@ func TestVideoProxySuccessPathOpenAIContract(t *testing.T) {
 	newBaseURL := upstream.URL
 	dbx.DB.Model(channel).Update("base_url", &newBaseURL)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/videos/task-openai-1/content", nil)
-	c, recorder := ginadapter.NewSyntheticContext(req)
-	ginCtx, _ := ginadapter.Unwrap(c)
-	ginCtx.Set("id", user.Id)
-	ginCtx.Params = gin.Params{{Key: "task_id", Value: "task-openai-1"}}
-
-	taskdomain.VideoProxy(c)
+	recorder := serveVideoProxyRoute(t, user.Id, "task-openai-1")
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	assert.Equal(t, "openai video", recorder.Body.String())
@@ -461,7 +453,6 @@ func TestVideoProxySuccessPathOpenAIContract(t *testing.T) {
 // TestVideoProxyTransfersUpstreamHeaders verifies that response headers from upstream
 // are passed through to the client (excluding hop-by-hop headers handled by Go).
 func TestVideoProxyTransfersUpstreamHeadersContract(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	setupAuthVideoContractTestDB(t)
 
 	user := createTestUser(t, "headeruser", "password123")
@@ -480,13 +471,7 @@ func TestVideoProxyTransfersUpstreamHeadersContract(t *testing.T) {
 	newBaseURL := upstream.URL
 	dbx.DB.Model(channel).Update("base_url", &newBaseURL)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/videos/task-header-1/content", nil)
-	c, recorder := ginadapter.NewSyntheticContext(req)
-	ginCtx, _ := ginadapter.Unwrap(c)
-	ginCtx.Set("id", user.Id)
-	ginCtx.Params = gin.Params{{Key: "task_id", Value: "task-header-1"}}
-
-	taskdomain.VideoProxy(c)
+	recorder := serveVideoProxyRoute(t, user.Id, "task-header-1")
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	assert.Equal(t, "custom-value", recorder.Header().Get("X-Custom-Header"))

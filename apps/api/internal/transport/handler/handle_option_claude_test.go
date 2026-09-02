@@ -2,8 +2,7 @@ package handler
 
 import (
 	ops "github.com/QuantumNous/new-api/internal/ops"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,15 +14,13 @@ import (
 )
 
 func TestUpdateOptionRejectsNegativeClaudeDefaultMaxTokens(t *testing.T) {
-	response := httptest.NewRecorder()
-	context, _ := gin.CreateTestContext(response)
-	context.Request = httptest.NewRequest(
+	context, response := fiberadapter.NewSyntheticContext(httptest.NewRequest(
 		http.MethodPut,
 		"/api/option/",
 		strings.NewReader(`{"key":"claude.default_max_tokens","value":"{\"default\":-1}"}`),
-	)
+	))
 
-	ops.UpdateOption(ginadapter.Wrap(context))
+	ops.UpdateOption(context)
 
 	assert.Equal(t, http.StatusOK, response.Code)
 	var payload struct {

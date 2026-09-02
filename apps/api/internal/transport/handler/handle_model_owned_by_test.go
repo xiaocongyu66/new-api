@@ -2,9 +2,7 @@ package handler
 
 import (
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
-	"net/http/httptest"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/catalog"
@@ -62,9 +60,7 @@ func TestBuildOpenAIModelFallsBackToCustomForUnknownModels(t *testing.T) {
 }
 
 func TestGetModelListGroupsUsesUserGroupWhenTokenGroupIsEmpty(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctx, _ := fiberadapter.NewSyntheticContext(nil)
 	common.SetCtxKey(ctx, constant.ContextKeyUserGroup, "default")
 
 	groups, err := getModelListGroups(ctx)
@@ -76,9 +72,7 @@ func TestGetModelListGroupsUsesUserGroupWhenTokenGroupIsEmpty(t *testing.T) {
 }
 
 func TestGetModelListGroupsUsesExplicitTokenGroup(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctx, _ := fiberadapter.NewSyntheticContext(nil)
 	common.SetCtxKey(ctx, constant.ContextKeyUserGroup, "default")
 	common.SetCtxKey(ctx, constant.ContextKeyTokenGroup, "vip")
 
@@ -103,9 +97,7 @@ func TestGetModelListGroupsUsesFilteredTokenAutoGroupsSnapshot(t *testing.T) {
 		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalRatios))
 	})
 
-	gin.SetMode(gin.TestMode)
-	ctxRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctx := ginadapter.Wrap(ctxRaw)
+	ctx, _ := fiberadapter.NewSyntheticContext(nil)
 	common.SetCtxKey(ctx, constant.ContextKeyUserGroup, "default")
 	common.SetCtxKey(ctx, constant.ContextKeyTokenGroup, "auto")
 	common.SetCtxKey(ctx, constant.ContextKeyTokenAutoGroups, []string{"vip", "default"})
