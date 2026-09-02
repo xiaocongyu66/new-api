@@ -20,16 +20,14 @@ Transitive dependencies should be audited before a final external release.
 | backend     | production  | Go        | `github.com/aws/aws-sdk-go-v2/service/bedrockruntime` | `v1.50.4`                            | Apache-2.0                                         |
 | backend     | production  | Go        | `github.com/aws/smithy-go`                            | `v1.24.2`                            | Apache-2.0                                         |
 | backend     | production  | Go        | `github.com/bytedance/gopkg`                          | `v0.1.3`                             | Apache-2.0                                         |
-| backend     | production  | Go        | `github.com/gin-contrib/cors`                         | `v1.7.2`                             | MIT                                                |
-| backend     | production  | Go        | `github.com/gin-contrib/gzip`                         | `v0.0.6`                             | MIT                                                |
-| backend     | production  | Go        | `github.com/gin-contrib/static`                       | `v0.0.1`                             | MIT                                                |
-| backend     | production  | Go        | `github.com/gin-gonic/gin`                            | `v1.9.1`                             | MIT                                                |
+| backend     | production  | Go        | `github.com/fasthttp/websocket`                       | `v1.5.8`                             | BSD-3-Clause                                       |
 | backend     | production  | Go        | `github.com/glebarez/sqlite`                          | `v1.9.0`                             | MIT                                                |
 | backend     | production  | Go        | `github.com/go-audio/aiff`                            | `v1.1.0`                             | Apache-2.0                                         |
 | backend     | production  | Go        | `github.com/go-audio/wav`                             | `v1.1.0`                             | Apache-2.0                                         |
 | backend     | production  | Go        | `github.com/go-playground/validator/v10`              | `v10.20.0`                           | MIT                                                |
 | backend     | production  | Go        | `github.com/go-redis/redis/v8`                        | `v8.11.5`                            | BSD-2-Clause                                       |
 | backend     | production  | Go        | `github.com/go-webauthn/webauthn`                     | `v0.14.0`                            | BSD-3-Clause                                       |
+| backend     | production  | Go        | `github.com/gofiber/fiber/v2`                         | `v2.52.15`                           | MIT                                                |
 | backend     | production  | Go        | `github.com/golang-jwt/jwt/v5`                        | `v5.3.0`                             | MIT                                                |
 | backend     | production  | Go        | `github.com/google/uuid`                              | `v1.6.0`                             | BSD-3-Clause                                       |
 | backend     | production  | Go        | `github.com/gorilla/websocket`                        | `v1.5.0`                             | BSD-2-Clause                                       |
@@ -52,6 +50,7 @@ Transitive dependencies should be audited before a final external release.
 | backend     | production  | Go        | `github.com/tidwall/gjson`                            | `v1.18.0`                            | MIT                                                |
 | backend     | production  | Go        | `github.com/tidwall/sjson`                            | `v1.2.5`                             | MIT                                                |
 | backend     | production  | Go        | `github.com/tiktoken-go/tokenizer`                    | `v0.6.2`                             | MIT                                                |
+| backend     | production  | Go        | `github.com/valyala/fasthttp`                         | `v1.52.0`                            | MIT                                                |
 | backend     | production  | Go        | `github.com/waffo-com/waffo-go`                       | `v1.3.1`                             | MIT                                                |
 | backend     | production  | Go        | `github.com/yapingcat/gomedia`                        | `v0.0.0-20240906162731-17feea57090c` | MIT                                                |
 | backend     | production  | Go        | `golang.org/x/crypto`                                 | `v0.45.0`                            | BSD-3-Clause                                       |
