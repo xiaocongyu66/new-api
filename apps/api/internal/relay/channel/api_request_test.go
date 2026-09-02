@@ -1,25 +1,20 @@
 package channel
 
 import (
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/stretchr/testify/require"
 )
 
 func TestProcessHeaderOverride_ChannelTestSkipsPassthroughRules(t *testing.T) {
 	t.Parallel()
 
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	rawCtx, _ := gin.CreateTestContext(recorder)
-	rawCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	ctx := ginadapter.Wrap(rawCtx)
-	rawCtx.Request.Header.Set("X-Trace-Id", "trace-123")
+	ctx, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+	ctx.Headers().Set("X-Trace-Id", "trace-123")
 
 	info := &relaycommon.RelayInfo{
 		IsChannelTest: true,
@@ -38,12 +33,8 @@ func TestProcessHeaderOverride_ChannelTestSkipsPassthroughRules(t *testing.T) {
 func TestProcessHeaderOverride_ChannelTestSkipsClientHeaderPlaceholder(t *testing.T) {
 	t.Parallel()
 
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	rawCtx, _ := gin.CreateTestContext(recorder)
-	rawCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	ctx := ginadapter.Wrap(rawCtx)
-	rawCtx.Request.Header.Set("X-Trace-Id", "trace-123")
+	ctx, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+	ctx.Headers().Set("X-Trace-Id", "trace-123")
 
 	info := &relaycommon.RelayInfo{
 		IsChannelTest: true,
@@ -63,12 +54,8 @@ func TestProcessHeaderOverride_ChannelTestSkipsClientHeaderPlaceholder(t *testin
 func TestProcessHeaderOverride_NonTestKeepsClientHeaderPlaceholder(t *testing.T) {
 	t.Parallel()
 
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	rawCtx, _ := gin.CreateTestContext(recorder)
-	rawCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	ctx := ginadapter.Wrap(rawCtx)
-	rawCtx.Request.Header.Set("X-Trace-Id", "trace-123")
+	ctx, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+	ctx.Headers().Set("X-Trace-Id", "trace-123")
 
 	info := &relaycommon.RelayInfo{
 		IsChannelTest: false,
@@ -87,12 +74,7 @@ func TestProcessHeaderOverride_NonTestKeepsClientHeaderPlaceholder(t *testing.T)
 func TestProcessHeaderOverride_RuntimeOverrideIsFinalHeaderMap(t *testing.T) {
 	t.Parallel()
 
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	rawCtx, _ := gin.CreateTestContext(recorder)
-	rawCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	ctx := ginadapter.Wrap(rawCtx)
-
+	ctx, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 	info := &relaycommon.RelayInfo{
 		IsChannelTest:             false,
 		UseRuntimeHeadersOverride: true,
@@ -119,13 +101,9 @@ func TestProcessHeaderOverride_RuntimeOverrideIsFinalHeaderMap(t *testing.T) {
 func TestProcessHeaderOverride_PassthroughSkipsAcceptEncoding(t *testing.T) {
 	t.Parallel()
 
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	rawCtx, _ := gin.CreateTestContext(recorder)
-	rawCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	ctx := ginadapter.Wrap(rawCtx)
-	rawCtx.Request.Header.Set("X-Trace-Id", "trace-123")
-	rawCtx.Request.Header.Set("Accept-Encoding", "gzip")
+	ctx, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+	ctx.Headers().Set("X-Trace-Id", "trace-123")
+	ctx.Headers().Set("Accept-Encoding", "gzip")
 
 	info := &relaycommon.RelayInfo{
 		IsChannelTest: false,
@@ -147,13 +125,9 @@ func TestProcessHeaderOverride_PassthroughSkipsAcceptEncoding(t *testing.T) {
 func TestProcessHeaderOverride_PassHeadersTemplateSetsRuntimeHeaders(t *testing.T) {
 	t.Parallel()
 
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	rawCtx, _ := gin.CreateTestContext(recorder)
-	rawCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	rawCtx.Request.Header.Set("Originator", "Codex CLI")
-	rawCtx.Request.Header.Set("Session_id", "sess-123")
-	ctx := ginadapter.Wrap(rawCtx)
+	ctx, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+	ctx.Headers().Set("Originator", "Codex CLI")
+	ctx.Headers().Set("Session_id", "sess-123")
 
 	info := &relaycommon.RelayInfo{
 		IsChannelTest: false,

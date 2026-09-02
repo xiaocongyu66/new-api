@@ -5,8 +5,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/egress"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net"
 	"net/http"
@@ -16,9 +14,10 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/egress"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/http2"
@@ -220,16 +219,14 @@ func TestDoTaskApiRequest_KeepsReplayableGetBody(t *testing.T) {
 	}))
 	defer server.Close()
 
-	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/video/generations", bytes.NewReader(payload))
+	ctx, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/video/generations", bytes.NewReader(payload)))
 
 	info := &relaycommon.RelayInfo{
 		ChannelMeta: &relaycommon.ChannelMeta{},
 	}
 
 	adaptor := &stubTaskAdaptor{baseURL: server.URL}
-	resp, err := DoTaskApiRequest(adaptor, ginadapter.Wrap(ctx), info, bytes.NewReader(payload))
+	resp, err := DoTaskApiRequest(adaptor, ctx, info, bytes.NewReader(payload))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)

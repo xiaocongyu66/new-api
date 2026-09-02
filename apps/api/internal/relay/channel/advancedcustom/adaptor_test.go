@@ -2,7 +2,6 @@ package advancedcustom
 
 import (
 	"bytes"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,10 +14,10 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -112,7 +111,7 @@ func TestAdaptorSetupRequestHeaderUsesDefaultBearerAuth(t *testing.T) {
 			},
 		},
 	})
-	c := advancedCustomGinContext("/v1/chat/completions")
+	c := advancedCustomFiberContext("/v1/chat/completions")
 	header := http.Header{}
 
 	require.NoError(t, adaptor.SetupRequestHeader(c, &header, info))
@@ -135,7 +134,7 @@ func TestAdaptorSetupRequestHeaderUsesConfiguredHeaderAuth(t *testing.T) {
 			},
 		},
 	})
-	c := advancedCustomGinContext("/v1/chat/completions")
+	c := advancedCustomFiberContext("/v1/chat/completions")
 	header := http.Header{}
 
 	require.NoError(t, adaptor.SetupRequestHeader(c, &header, info))
@@ -160,7 +159,7 @@ func TestAdaptorSetupRequestHeaderAddsClaudeDefaultHeaders(t *testing.T) {
 		},
 	})
 	info.RelayFormat = types.RelayFormatClaude
-	c := advancedCustomGinContext("/v1/messages")
+	c := advancedCustomFiberContext("/v1/messages")
 	header := http.Header{}
 
 	require.NoError(t, adaptor.SetupRequestHeader(c, &header, info))
@@ -437,12 +436,8 @@ func TestAdaptorConvertsResponsesRequestToOpenAIChatUpstream(t *testing.T) {
 	})
 	info.RelayMode = relayconstant.RelayModeResponses
 	info.RequestURLPath = "/v1/responses"
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	cc := ginadapter.Wrap(c)
-	c.Request.Header.Set("Content-Type", "application/json")
+	cc, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+	cc.Headers().Set("Content-Type", "application/json")
 
 	converted, err := adaptor.ConvertOpenAIResponsesRequest(cc, info, dto.OpenAIResponsesRequest{
 		Model:        "gpt-test",
@@ -492,7 +487,7 @@ func TestAdaptorSelectsDuplicateResponsesRoutesByModel(t *testing.T) {
 	chatInfo.RequestURLPath = "/v1/responses"
 	chatInfo.OriginModelName = "gpt-test"
 	chatInfo.UpstreamModelName = "gpt-test"
-	chatConverted, err := chatAdaptor.ConvertOpenAIResponsesRequest(advancedCustomGinContext("/v1/responses"), chatInfo, dto.OpenAIResponsesRequest{
+	chatConverted, err := chatAdaptor.ConvertOpenAIResponsesRequest(advancedCustomFiberContext("/v1/responses"), chatInfo, dto.OpenAIResponsesRequest{
 		Model: "gpt-test",
 		Input: mustAdvancedCustomRawMessage(t, "hello"),
 	})
@@ -508,7 +503,7 @@ func TestAdaptorSelectsDuplicateResponsesRoutesByModel(t *testing.T) {
 	geminiInfo.OriginModelName = "gemini-test"
 	geminiInfo.UpstreamModelName = "gemini-test"
 	geminiInfo.IsStream = true
-	geminiConverted, err := geminiAdaptor.ConvertOpenAIResponsesRequest(advancedCustomGinContext("/v1/responses"), geminiInfo, dto.OpenAIResponsesRequest{
+	geminiConverted, err := geminiAdaptor.ConvertOpenAIResponsesRequest(advancedCustomFiberContext("/v1/responses"), geminiInfo, dto.OpenAIResponsesRequest{
 		Model: "gemini-test",
 		Input: mustAdvancedCustomRawMessage(t, "hello"),
 	})
@@ -541,12 +536,8 @@ func TestAdaptorResponsesToGeminiUsesResponsesBridge(t *testing.T) {
 	info.RequestURLPath = "/v1/responses"
 	info.OriginModelName = "gemini-test"
 	info.UpstreamModelName = "gemini-test"
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	cc := ginadapter.Wrap(c)
-	c.Request.Header.Set("Content-Type", "application/json")
+	cc, recorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+	cc.Headers().Set("Content-Type", "application/json")
 
 	payload := dto.GeminiChatResponse{
 		Candidates: []dto.GeminiChatCandidate{
@@ -568,8 +559,11 @@ func TestAdaptorResponsesToGeminiUsesResponsesBridge(t *testing.T) {
 	body, err := common.Marshal(payload)
 	require.NoError(t, err)
 
+	// A real upstream response always carries a status; gin's writer silently
+	// dropped WriteHeader(0) for a zero-valued fixture, the recorder rejects it.
 	usage, newAPIError := adaptor.DoResponse(cc, &http.Response{
-		Body: io.NopCloser(bytes.NewReader(body)),
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(bytes.NewReader(body)),
 	}, info)
 	require.Nil(t, newAPIError)
 	require.NotNil(t, usage)
@@ -606,7 +600,7 @@ func TestAdaptorResponsesToGeminiAddsThoughtSignatureForFunctionCallHistory(t *t
 	info.OriginModelName = "gemini-test"
 	info.UpstreamModelName = "gemini-test"
 
-	converted, err := adaptor.ConvertOpenAIResponsesRequest(advancedCustomGinContext("/v1/responses"), info, dto.OpenAIResponsesRequest{
+	converted, err := adaptor.ConvertOpenAIResponsesRequest(advancedCustomFiberContext("/v1/responses"), info, dto.OpenAIResponsesRequest{
 		Model: "gemini-test",
 		Input: mustAdvancedCustomRawMessage(t, []map[string]any{
 			{
@@ -653,7 +647,7 @@ func TestAdaptorConvertsOpenAIChatRequestToResponsesUpstream(t *testing.T) {
 			},
 		},
 	})
-	c := advancedCustomGinContext("/v1/chat/completions")
+	c := advancedCustomFiberContext("/v1/chat/completions")
 
 	converted, err := adaptor.ConvertOpenAIRequest(c, info, &dto.GeneralOpenAIRequest{
 		Model: "gpt-test",
@@ -680,7 +674,7 @@ func TestAdaptorConvertsOpenAIChatRequestToClaudeUpstream(t *testing.T) {
 			},
 		},
 	})
-	c := advancedCustomGinContext("/v1/chat/completions")
+	c := advancedCustomFiberContext("/v1/chat/completions")
 
 	converted, err := adaptor.ConvertOpenAIRequest(c, info, &dto.GeneralOpenAIRequest{
 		Model: "claude-test",
@@ -709,7 +703,7 @@ func TestAdaptorConvertsOpenAIChatRequestToGeminiUpstream(t *testing.T) {
 		},
 	})
 	info.UpstreamModelName = "gemini-2.5-flash"
-	c := advancedCustomGinContext("/v1/chat/completions")
+	c := advancedCustomFiberContext("/v1/chat/completions")
 
 	converted, err := adaptor.ConvertOpenAIRequest(c, info, &dto.GeneralOpenAIRequest{
 		Model: "gemini-2.5-flash",
@@ -738,7 +732,7 @@ func TestAdaptorConvertsClaudeRequestToOpenAIChatUpstream(t *testing.T) {
 	})
 	info.RelayFormat = types.RelayFormatClaude
 	info.RequestURLPath = "/v1/messages"
-	c := advancedCustomGinContext("/v1/messages")
+	c := advancedCustomFiberContext("/v1/messages")
 
 	converted, err := adaptor.ConvertClaudeRequest(c, info, &dto.ClaudeRequest{
 		Model: "gpt-test",
@@ -769,7 +763,7 @@ func TestAdaptorConvertsGeminiRequestToOpenAIChatUpstream(t *testing.T) {
 	info.RelayFormat = types.RelayFormatGemini
 	info.RequestURLPath = "/v1beta/models/gemini-2.5-flash:generateContent"
 	info.UpstreamModelName = "gpt-test"
-	c := advancedCustomGinContext("/v1beta/models/gemini-2.5-flash:generateContent")
+	c := advancedCustomFiberContext("/v1beta/models/gemini-2.5-flash:generateContent")
 
 	converted, err := adaptor.ConvertGeminiRequest(c, info, &dto.GeminiChatRequest{
 		Contents: []dto.GeminiChatContent{
@@ -808,11 +802,9 @@ func advancedCustomRelayInfo(config *dto.AdvancedCustomConfig) *relaycommon.Rela
 	}
 }
 
-func advancedCustomGinContext(path string) contract.Context {
-	gin.SetMode(gin.TestMode)
-	raw, _ := gin.CreateTestContext(httptest.NewRecorder())
-	raw.Request = httptest.NewRequest(http.MethodPost, path, nil)
-	return ginadapter.Wrap(raw)
+func advancedCustomFiberContext(path string) contract.Context {
+	ctx, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, path, nil))
+	return ctx
 }
 
 func mustAdvancedCustomRawMessage(t *testing.T, value any) []byte {

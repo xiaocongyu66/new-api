@@ -2,8 +2,6 @@ package channel
 
 import (
 	"bytes"
-	"github.com/QuantumNous/new-api/internal/egress"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,15 +9,15 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/QuantumNous/new-api/internal/egress"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestDoRequestReturnsUpstreamRedirectWithoutFollowing(t *testing.T) {
 	egress.InitHttpClient()
-	gin.SetMode(gin.TestMode)
 	sharedClient := egress.GetHttpClient()
 	require.NotNil(t, sharedClient)
 	require.NotNil(t, sharedClient.CheckRedirect)
@@ -60,10 +58,7 @@ func TestDoRequestReturnsUpstreamRedirectWithoutFollowing(t *testing.T) {
 			}))
 			defer source.Close()
 
-			recorder := httptest.NewRecorder()
-			ctx, _ := gin.CreateTestContext(recorder)
-			ctx.Request = httptest.NewRequest(http.MethodPost, "/relay", nil)
-			ctxW := ginadapter.Wrap(ctx)
+			ctxW, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/relay", nil))
 
 			req, err := http.NewRequest(http.MethodPost, source.URL, bytes.NewReader([]byte("request body")))
 			require.NoError(t, err)

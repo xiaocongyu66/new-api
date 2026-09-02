@@ -2,7 +2,6 @@ package ali
 
 import (
 	"encoding/json"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,8 +10,8 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/relay/constant"
 	relayhelper "github.com/QuantumNous/new-api/internal/relay/helper"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -95,8 +94,7 @@ func TestConvertOpenAIRequestPreservesExplicitZeroForMappedQwenModel(t *testing.
 		upstreamModel = "Qwen/Qwen3-235B-A22B-Thinking-2507"
 	)
 
-	cRaw, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c := ginadapter.Wrap(cRaw)
+	c, _ := fiberadapter.NewSyntheticContext(nil)
 	c.Set("model_mapping", `{"customer-model":"Qwen/Qwen3-235B-A22B-Thinking-2507"}`)
 
 	request := &dto.GeneralOpenAIRequest{
@@ -132,9 +130,7 @@ func TestConvertOpenAIRequestPreservesExplicitZeroForMappedQwenModel(t *testing.
 }
 
 func TestMappedAliImageModelUsesUpstreamProtocol(t *testing.T) {
-	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
-	cc := ginadapter.Wrap(c)
+	cc, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil))
 
 	info := &relaycommon.RelayInfo{
 		RelayMode:       constant.RelayModeImagesGenerations,
