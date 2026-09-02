@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -22,7 +22,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream/eventstreamapi"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -33,34 +32,6 @@ type awsHTTPClientFunc func(*http.Request) (*http.Response, error)
 
 func (f awsHTTPClientFunc) Do(request *http.Request) (*http.Response, error) {
 	return f(request)
-}
-
-type awsNotifyingResponseWriter struct {
-	*httptest.ResponseRecorder
-	notifyOn []byte
-	notified chan int
-	once     sync.Once
-}
-
-func newAwsNotifyingResponseWriter(notifyOn string) *awsNotifyingResponseWriter {
-	return &awsNotifyingResponseWriter{
-		ResponseRecorder: httptest.NewRecorder(),
-		notifyOn:         []byte(notifyOn),
-		notified:         make(chan int, 1),
-	}
-}
-
-func (w *awsNotifyingResponseWriter) Write(data []byte) (int, error) {
-	return w.ResponseRecorder.Write(data)
-}
-
-func (w *awsNotifyingResponseWriter) Flush() {
-	w.ResponseRecorder.Flush()
-	if bytes.Contains(w.Body.Bytes(), w.notifyOn) {
-		w.once.Do(func() {
-			w.notified <- w.Body.Len()
-		})
-	}
 }
 
 func newAwsTestClient(httpClient bedrockruntime.HTTPClient) *bedrockruntime.Client {
@@ -75,10 +46,12 @@ func newAwsTestClient(httpClient bedrockruntime.HTTPClient) *bedrockruntime.Clie
 	})
 }
 
-func newAwsTestContext(writer http.ResponseWriter, requestContext context.Context) contract.Context {
-	c, _ := gin.CreateTestContext(writer)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).WithContext(requestContext)
-	return contract.Context(ginadapter.Wrap(c))
+// newAwsTestContext builds the relay contract context these handlers stream
+// through. The request lifetime is requestContext, so cancelling it is what a
+// client hanging up looks like to the handler under test.
+func newAwsTestContext(requestContext context.Context) (contract.Context, *httptest.ResponseRecorder) {
+	return fiberadapter.NewSyntheticContext(
+		httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).WithContext(requestContext))
 }
 
 func newAwsTestRelayInfo() *relaycommon.RelayInfo {
@@ -146,11 +119,7 @@ func newAwsStreamResponse(request *http.Request, body io.ReadCloser) *http.Respo
 func TestDoAwsClientRequest_AppliesRuntimeHeaderOverrideToAnthropicBeta(t *testing.T) {
 	t.Parallel()
 
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
-	ctxC := ginadapter.Wrap(ctx)
+	ctxC, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/messages", nil))
 
 	info := &relaycommon.RelayInfo{
 		OriginModelName:           "claude-3-5-sonnet-20240620",
@@ -283,7 +252,7 @@ func TestAwsHandlersCancelSdkRequestAndSkipRetry(t *testing.T) {
 				return nil, request.Context().Err()
 			}))
 			adaptor := &Adaptor{AwsClient: client, AwsReq: test.request}
-			c := newAwsTestContext(httptest.NewRecorder(), requestContext)
+			c, _ := newAwsTestContext(requestContext)
 			info := newAwsTestRelayInfo()
 
 			type handlerResult struct {
@@ -346,8 +315,7 @@ func TestAwsStreamHandlerUsesFinalUpstreamUsage(t *testing.T) {
 		return newAwsStreamResponse(request, io.NopCloser(bytes.NewReader(body.Bytes()))), nil
 	}))
 	adaptor := &Adaptor{AwsClient: client, AwsReq: newAwsStreamInput()}
-	recorder := httptest.NewRecorder()
-	c := newAwsTestContext(recorder, context.Background())
+	c, recorder := newAwsTestContext(context.Background())
 
 	handlerErr, usage := awsStreamHandler(c, newAwsTestRelayInfo(), adaptor)
 
@@ -403,8 +371,12 @@ func TestAwsStreamHandlerStopsAtClientCancellationAndKeepsPartialBillingUsage(t 
 		return newAwsStreamResponse(request, reader), nil
 	}))
 
-	responseWriter := newAwsNotifyingResponseWriter("partial")
-	c := newAwsTestContext(responseWriter, requestContext)
+	c, recorder := newAwsTestContext(requestContext)
+	// The staged capture is the lock-protected view of what the handler has
+	// written so far, which is how the partial answer is observed while the
+	// handler goroutine is still writing. Reading the recorder buffer directly
+	// would race with it.
+	capture := c.CaptureResponse(64 << 10)
 	adaptor := &Adaptor{AwsClient: client, AwsReq: newAwsStreamInput()}
 
 	type handlerResult struct {
@@ -424,12 +396,12 @@ func TestAwsStreamHandlerStopsAtClientCancellationAndKeepsPartialBillingUsage(t 
 		t.Fatal("AWS stream request did not start")
 	}
 
-	var bodyLengthBeforeCancel int
-	select {
-	case bodyLengthBeforeCancel = <-responseWriter.notified:
-	case <-time.After(5 * time.Second):
-		t.Fatal("partial response was not written")
-	}
+	// Upstream is parked on releaseFinal once the partial answer is streamed, so
+	// the body stops growing here and its length is a stable baseline.
+	require.Eventually(t, func() bool {
+		return bytes.Contains(capture.Body(), []byte("partial"))
+	}, 5*time.Second, 5*time.Millisecond, "partial response was not written")
+	bodyLengthBeforeCancel := len(capture.Body())
 	cancelRequest()
 
 	var result handlerResult
@@ -448,8 +420,8 @@ func TestAwsStreamHandlerStopsAtClientCancellationAndKeepsPartialBillingUsage(t 
 	assert.Equal(t, dto.BillingUsageSemanticAnthropic, result.usage.BillingUsage.Semantic)
 	assert.Equal(t, 100, result.usage.BillingUsage.ClaudeUsage.InputTokens)
 	assert.Equal(t, 1, result.usage.BillingUsage.ClaudeUsage.OutputTokens)
-	assert.Equal(t, bodyLengthBeforeCancel, responseWriter.Body.Len())
-	assert.NotContains(t, responseWriter.Body.String(), "[DONE]")
+	assert.Equal(t, bodyLengthBeforeCancel, recorder.Body.Len())
+	assert.NotContains(t, recorder.Body.String(), "[DONE]")
 
 	release()
 	select {

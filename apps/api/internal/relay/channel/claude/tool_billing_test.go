@@ -1,29 +1,26 @@
 package claude
 
 import (
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestHandleClaudeResponseDataCountsToolUse(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	price_expression.SetToolPriceForTest("lookup_fn", 3.0)
 	t.Cleanup(func() {
 		price_expression.DeleteToolPriceForTest("lookup_fn")
 	})
 
-	w := httptest.NewRecorder()
-	cRaw, _ := gin.CreateTestContext(w)
-	c := ginadapter.Wrap(cRaw)
+	c, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/messages", nil))
 	info := &relaycommon.RelayInfo{
 		OriginModelName: "claude-3-7-sonnet",
 		RelayFormat:     types.RelayFormatClaude,
@@ -49,10 +46,7 @@ func TestHandleClaudeResponseDataCountsToolUse(t *testing.T) {
 }
 
 func TestCountClaudeStreamBillableToolsSetsWebSearchRequests(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	cRaw, _ := gin.CreateTestContext(w)
-	c := ginadapter.Wrap(cRaw)
+	c, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/messages", nil))
 	info := &relaycommon.RelayInfo{OriginModelName: "claude-3-7-sonnet"}
 
 	countClaudeStreamBillableTools(c, info, &dto.ClaudeResponse{

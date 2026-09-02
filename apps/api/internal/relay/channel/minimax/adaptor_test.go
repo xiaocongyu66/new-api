@@ -2,7 +2,6 @@ package minimax
 
 import (
 	"encoding/json"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,9 +10,8 @@ import (
 
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-
-	"github.com/gin-gonic/gin"
 )
 
 func TestGetRequestURLForImageGeneration(t *testing.T) {
@@ -53,7 +51,8 @@ func TestConvertImageRequest(t *testing.T) {
 		N:              uintPtr(2),
 	}
 
-	got, err := adaptor.ConvertImageRequest(ginadapter.Wrap(gin.CreateTestContextOnly(httptest.NewRecorder(), gin.New())), info, request)
+	ctx, _ := fiberadapter.NewSyntheticContext(nil)
+	got, err := adaptor.ConvertImageRequest(ctx, info, request)
 	if err != nil {
 		t.Fatalf("ConvertImageRequest returned error: %v", err)
 	}
@@ -88,10 +87,7 @@ func TestConvertImageRequest(t *testing.T) {
 func TestDoResponseForImageGeneration(t *testing.T) {
 	t.Parallel()
 
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	cRaw, _ := gin.CreateTestContext(recorder)
-	c := ginadapter.Wrap(cRaw)
+	c, recorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil))
 
 	info := &relaycommon.RelayInfo{
 		RelayMode: relayconstant.RelayModeImagesGenerations,

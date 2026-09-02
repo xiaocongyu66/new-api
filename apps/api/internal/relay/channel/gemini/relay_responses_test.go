@@ -3,7 +3,6 @@ package gemini
 import (
 	"bytes"
 	"errors"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,18 +13,15 @@ import (
 	"github.com/QuantumNous/new-api/internal/constant"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestGeminiResponsesHandlerReturnsOpenAIResponsesJSON(t *testing.T) {
-	recorder := httptest.NewRecorder()
-	gin.SetMode(gin.TestMode)
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c, recorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
 	c.Set(common.RequestIdKey, "gemini-responses-test")
 
 	info := newGeminiResponsesRelayInfo(false)
@@ -49,8 +45,9 @@ func TestGeminiResponsesHandlerReturnsOpenAIResponsesJSON(t *testing.T) {
 	body, err := common.Marshal(payload)
 	require.NoError(t, err)
 
-	usage, newAPIError := GeminiResponsesHandler(ginadapter.Wrap(c), info, &http.Response{
-		Body: io.NopCloser(bytes.NewReader(body)),
+	usage, newAPIError := GeminiResponsesHandler(c, info, &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(bytes.NewReader(body)),
 	})
 	require.Nil(t, newAPIError)
 	require.NotNil(t, usage)
@@ -69,14 +66,11 @@ func TestGeminiResponsesHandlerReturnsOpenAIResponsesJSON(t *testing.T) {
 }
 
 func TestGeminiResponsesHandlerClosesBodyOnReadError(t *testing.T) {
-	recorder := httptest.NewRecorder()
-	gin.SetMode(gin.TestMode)
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
 	c.Set(common.RequestIdKey, "gemini-responses-read-error-test")
 
 	body := &failingReadCloser{}
-	usage, newAPIError := GeminiResponsesHandler(ginadapter.Wrap(c), newGeminiResponsesRelayInfo(false), &http.Response{Body: body})
+	usage, newAPIError := GeminiResponsesHandler(c, newGeminiResponsesRelayInfo(false), &http.Response{StatusCode: http.StatusOK, Body: body})
 
 	require.Nil(t, usage)
 	require.NotNil(t, newAPIError)
@@ -84,10 +78,7 @@ func TestGeminiResponsesHandlerClosesBodyOnReadError(t *testing.T) {
 }
 
 func TestGeminiResponsesStreamHandlerReturnsOpenAIResponsesSSE(t *testing.T) {
-	recorder := httptest.NewRecorder()
-	gin.SetMode(gin.TestMode)
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c, recorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
 	c.Set(common.RequestIdKey, "gemini-responses-stream-test")
 
 	oldStreamingTimeout := constant.StreamingTimeout
@@ -142,8 +133,9 @@ func TestGeminiResponsesStreamHandlerReturnsOpenAIResponsesSSE(t *testing.T) {
 		"",
 	}, "\n")
 
-	usage, newAPIError := GeminiResponsesStreamHandler(ginadapter.Wrap(c), info, &http.Response{
-		Body: io.NopCloser(strings.NewReader(streamBody)),
+	usage, newAPIError := GeminiResponsesStreamHandler(c, info, &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(streamBody)),
 	})
 	require.Nil(t, newAPIError)
 	require.NotNil(t, usage)
