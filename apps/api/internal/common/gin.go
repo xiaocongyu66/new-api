@@ -142,7 +142,15 @@ func UnmarshalBodyReusable(c contract.Context, v any) error {
 	if err != nil {
 		return err
 	}
-	if strings.HasPrefix(contentType, "application/json") {
+	if len(requestBody) == 0 {
+		// Nothing to decode: leave v at its zero value. Bodyless requests
+		// (GET/DELETE) reach here through middleware that inspects the body for
+		// a model name, and decoding zero bytes as JSON fails with
+		// "unexpected end of JSON input", rejecting the request outright.
+		// Before the content-type coercion above was introduced, an absent
+		// Content-Type fell through to the no-op branch below; this restores
+		// that behaviour for the coerced path.
+	} else if strings.HasPrefix(contentType, "application/json") {
 		err = Unmarshal(requestBody, v)
 	} else if strings.Contains(contentType, "application/x-www-form-urlencoded") {
 		err = parseFormData(requestBody, v)

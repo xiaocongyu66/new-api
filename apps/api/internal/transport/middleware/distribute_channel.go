@@ -238,6 +238,14 @@ func getModelFromJSONBody(c contract.Context) (*ModelRequest, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(requestBody) == 0 {
+		// A bodyless request (GET /v1/files, the GET /v1/realtime upgrade, DELETE
+		// /v1/files/:id) carries no model, which is not an error: routing falls
+		// back to the path- and query-derived model below. gjson rejects zero
+		// bytes as invalid JSON, so without this the request never reaches its
+		// handler.
+		return &ModelRequest{}, nil
+	}
 	if !gjson.ValidBytes(requestBody) {
 		return nil, errors.New("invalid JSON request body")
 	}
