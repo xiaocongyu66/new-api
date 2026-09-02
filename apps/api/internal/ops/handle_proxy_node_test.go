@@ -1,19 +1,19 @@
 package ops
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/common/dbx"
-	"github.com/QuantumNous/new-api/internal/egress"
-	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/egress"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/transport/testutil"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -42,12 +42,26 @@ func setupProxyNodeControllerTest(t *testing.T) *gorm.DB {
 	})
 	return db
 }
+
+// proxyNodeContext serves handler through a real Fiber route, so `:id` binds
+// through routing exactly as production registration does. The response is
+// drained into a recorder so the assertions keep reading status and body the
+// same way.
 func proxyNodeContext(t *testing.T, method, routePattern, requestPath, body string, handler contract.Handler) *httptest.ResponseRecorder {
 	t.Helper()
+	request := httptest.NewRequest(method, requestPath, strings.NewReader(body))
+	response := testutil.ServeBufferedRoute(t, method, routePattern, nil, handler, request)
+	payload, err := io.ReadAll(response.Body)
+	require.NoError(t, err)
+	require.NoError(t, response.Body.Close())
 	recorder := httptest.NewRecorder()
-	engine := gin.New()
-	engine.Handle(method, routePattern, ginadapter.Handler(handler))
-	engine.ServeHTTP(recorder, httptest.NewRequest(method, requestPath, bytes.NewBufferString(body)))
+	recorder.Code = response.StatusCode
+	for key, values := range response.Header {
+		for _, value := range values {
+			recorder.Header().Add(key, value)
+		}
+	}
+	recorder.Body.Write(payload)
 	return recorder
 }
 
@@ -169,10 +183,7 @@ func TestGetProxyNodeReturnsEditableLinkOnlyFromDetailEndpoint(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	recorder := httptest.NewRecorder()
-	getEngine := gin.New()
-	getEngine.GET("/api/proxy/nodes/:id", ginadapter.Handler(GetProxyNode))
-	getEngine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/proxy/nodes/"+fmt.Sprint(node.ID), nil))
+	recorder := proxyNodeContext(t, http.MethodGet, "/api/proxy/nodes/:id", "/api/proxy/nodes/"+fmt.Sprint(node.ID), "", GetProxyNode)
 
 	response := decodeProxyNodeResponse(t, recorder)
 	require.True(t, response.Success, response.Message)

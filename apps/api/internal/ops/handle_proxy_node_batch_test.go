@@ -3,25 +3,19 @@ package ops
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/egress"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/egress"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBatchCreateProxyNodesKeepsValidRows(t *testing.T) {
 	db := setupProxyNodeControllerTest(t)
-	recorder := httptest.NewRecorder()
-	batchEngine := gin.New()
-	batchEngine.POST("/api/proxy/nodes/batch", ginadapter.Handler(BatchCreateProxyNodes))
-	batchEngine.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/proxy/nodes/batch", strings.NewReader(`{"name_prefix":"edge","enabled":true,"scope_type":"custom","proxy_text":"# ignored\nhttp://one.example:8080\nnot-a-proxy\nhttp://one.example:8080\nhttp://two.example:8080"}`)))
+	recorder := proxyNodeContext(t, http.MethodPost, "/api/proxy/nodes/batch", "/api/proxy/nodes/batch", `{"name_prefix":"edge","enabled":true,"scope_type":"custom","proxy_text":"# ignored\nhttp://one.example:8080\nnot-a-proxy\nhttp://one.example:8080\nhttp://two.example:8080"}`, BatchCreateProxyNodes)
 
 	response := decodeProxyNodeResponse(t, recorder)
 	require.True(t, response.Success, response.Message)
