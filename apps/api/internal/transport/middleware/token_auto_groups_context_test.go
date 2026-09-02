@@ -1,10 +1,11 @@
 package middleware
 
 import (
+	"testing"
+
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"testing"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
@@ -14,7 +15,7 @@ import (
 )
 
 func newTokenAutoGroupsContext() contract.Context {
-	ctx, _ := ginadapter.NewSyntheticContext(nil)
+	ctx, _ := fiberadapter.NewSyntheticContext(nil)
 	return ctx
 }
 

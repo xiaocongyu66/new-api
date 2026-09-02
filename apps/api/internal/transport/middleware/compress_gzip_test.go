@@ -12,10 +12,9 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/testutil"
 
 	"github.com/andybalholm/brotli"
-	"github.com/gin-gonic/gin"
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,8 +28,6 @@ import (
 // rather than the buffered body accessors, because the size cap has to wrap the
 // stream before any reader touches it. That makes it worth asserting directly.
 func TestDecompressRequestMiddlewareReplacesBodyAndStripsEncoding(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	const payload = `{"model":"gpt-4o","stream":true}`
 
 	var compressed bytes.Buffer
@@ -42,22 +39,24 @@ func TestDecompressRequestMiddlewareReplacesBodyAndStripsEncoding(t *testing.T) 
 	var observedBody string
 	var observedEncoding string
 
-	ginEngine := gin.New()
-	engine := ginadapter.WrapEngine(ginEngine)
-	engine.POST("/v1/chat/completions", DecompressRequestMiddleware(), func(c contract.Context) {
-		body, readErr := io.ReadAll(c.HTTPRequest().Body)
-		require.NoError(t, readErr)
-		observedBody = string(body)
-		observedEncoding = c.Header("Content-Encoding")
-		c.Status(http.StatusOK)
-	})
-
 	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(compressed.Bytes()))
 	request.Header.Set("Content-Encoding", "gzip")
-	recorder := httptest.NewRecorder()
-	ginEngine.ServeHTTP(recorder, request)
+	response := testutil.ServeBufferedRoute(
+		t,
+		http.MethodPost,
+		"/v1/chat/completions",
+		[]contract.Middleware{DecompressRequestMiddleware()},
+		func(c contract.Context) {
+			body, readErr := io.ReadAll(c.HTTPRequest().Body)
+			require.NoError(t, readErr)
+			observedBody = string(body)
+			observedEncoding = c.Header("Content-Encoding")
+			c.Status(http.StatusOK)
+		},
+		request,
+	)
 
-	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, http.StatusOK, response.StatusCode)
 	assert.Equal(t, payload, observedBody, "the handler must observe the decompressed payload")
 	assert.Empty(t, observedEncoding, "Content-Encoding must be stripped once the body is decompressed")
 }
@@ -67,8 +66,6 @@ func TestDecompressRequestMiddlewareReplacesBodyAndStripsEncoding(t *testing.T) 
 // the body before anything reads it: a small compressed payload can expand past
 // the limit, and the read has to fail rather than silently truncate.
 func TestDecompressRequestMiddlewareCapsDecompressedSize(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	original := constant.MaxRequestBodyMB
 	constant.MaxRequestBodyMB = 1
 	t.Cleanup(func() { constant.MaxRequestBodyMB = original })
@@ -82,16 +79,19 @@ func TestDecompressRequestMiddlewareCapsDecompressedSize(t *testing.T) {
 
 	var readErr error
 
-	ginEngine := gin.New()
-	engine := ginadapter.WrapEngine(ginEngine)
-	engine.POST("/v1/chat/completions", DecompressRequestMiddleware(), func(c contract.Context) {
-		_, readErr = io.ReadAll(c.HTTPRequest().Body)
-		c.Status(http.StatusOK)
-	})
-
 	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(compressed.Bytes()))
 	request.Header.Set("Content-Encoding", "gzip")
-	ginEngine.ServeHTTP(httptest.NewRecorder(), request)
+	testutil.ServeBufferedRoute(
+		t,
+		http.MethodPost,
+		"/v1/chat/completions",
+		[]contract.Middleware{DecompressRequestMiddleware()},
+		func(c contract.Context) {
+			_, readErr = io.ReadAll(c.HTTPRequest().Body)
+			c.Status(http.StatusOK)
+		},
+		request,
+	)
 
 	require.Error(t, readErr, "reading past the cap must fail instead of returning a truncated body")
 }
@@ -105,8 +105,6 @@ func TestDecompressRequestMiddlewareCapsDecompressedSize(t *testing.T) {
 // still parses as a legitimate request, so the read has to error rather than
 // return short.
 func TestDecompressRequestMiddlewareLimitBoundaryPerEncoding(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	const limitBytes = 1 << 20
 
 	original := constant.MaxRequestBodyMB
@@ -158,16 +156,19 @@ func TestDecompressRequestMiddlewareLimitBoundaryPerEncoding(t *testing.T) {
 				var observed []byte
 				var readErr error
 
-				ginEngine := gin.New()
-				engine := ginadapter.WrapEngine(ginEngine)
-				engine.POST("/v1/chat/completions", DecompressRequestMiddleware(), func(c contract.Context) {
-					observed, readErr = io.ReadAll(c.HTTPRequest().Body)
-					c.Status(http.StatusOK)
-				})
-
 				request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 				request.Header.Set("Content-Encoding", encoding.name)
-				ginEngine.ServeHTTP(httptest.NewRecorder(), request)
+				testutil.ServeBufferedRoute(
+					t,
+					http.MethodPost,
+					"/v1/chat/completions",
+					[]contract.Middleware{DecompressRequestMiddleware()},
+					func(c contract.Context) {
+						observed, readErr = io.ReadAll(c.HTTPRequest().Body)
+						c.Status(http.StatusOK)
+					},
+					request,
+				)
 
 				if size > limitBytes {
 					require.Error(t, readErr, "a body past the cap must fail the read instead of arriving truncated")
