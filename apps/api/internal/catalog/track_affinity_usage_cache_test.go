@@ -3,7 +3,7 @@ package channel
 import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"testing"
 	"time"
 
@@ -13,7 +13,7 @@ import (
 )
 
 func buildChannelAffinityStatsContextForTest(ruleName, usingGroup, keyFP string) contract.Context {
-	ctx, _ := ginadapter.NewSyntheticContext(nil)
+	ctx, _ := fiberadapter.NewSyntheticContext(nil)
 	setChannelAffinityContext(ctx, channelAffinityMeta{
 		CacheKey:       fmt.Sprintf("test:%s:%s:%s", ruleName, usingGroup, keyFP),
 		TTLSeconds:     600,

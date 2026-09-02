@@ -3,7 +3,7 @@ package channel
 import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"testing"
 
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
@@ -32,7 +32,7 @@ func configureRequestAutoGroupsTest(t *testing.T) {
 }
 
 func newRequestAutoGroupsContext() contract.Context {
-	ctx, _ := ginadapter.NewSyntheticContext(nil)
+	ctx, _ := fiberadapter.NewSyntheticContext(nil)
 	return ctx
 }
 

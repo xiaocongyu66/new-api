@@ -10,7 +10,7 @@ import (
 
 	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/stretchr/testify/require"
 )
 
@@ -41,8 +41,7 @@ func TestChannelAffinityHitCodexTemplatePassHeadersEffective(t *testing.T) {
 		_, _ = cache.DeleteMany([]string{cacheKeySuffix})
 	})
 
-	ctx, _ := ginadapter.NewSyntheticContext(nil)
-	ginadapter.ReplaceRequest(ctx, httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(fmt.Sprintf(`{"prompt_cache_key":"%s"}`, affinityValue))))
+	ctx, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(fmt.Sprintf(`{"prompt_cache_key":"%s"}`, affinityValue))))
 	ctx.Headers().Set("Content-Type", "application/json")
 
 	channelID, found := catalog.GetPreferredChannelByAffinity(ctx, "gpt-5", "default")

@@ -3,7 +3,7 @@ package channel
 import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
@@ -12,7 +12,7 @@ import (
 )
 
 func buildChannelAffinityTemplateContextForTest(meta channelAffinityMeta) contract.Context {
-	ctx, _ := ginadapter.NewSyntheticContext(nil)
+	ctx, _ := fiberadapter.NewSyntheticContext(nil)
 	setChannelAffinityContext(ctx, meta)
 	return ctx
 }
@@ -173,8 +173,7 @@ func TestShouldSkipRetryAfterChannelAffinityFailure(t *testing.T) {
 }
 
 func TestExtractChannelAffinityValue_RequestHeader(t *testing.T) {
-	ctx, _ := ginadapter.NewSyntheticContext(nil)
-	ginadapter.ReplaceRequest(ctx, httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+	ctx, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
 	ctx.Headers().Set("X-Affinity-Key", " tenant-123 ")
 
 	value := extractChannelAffinityValue(ctx, ChannelAffinityKeySource{
@@ -214,8 +213,7 @@ func TestGetPreferredChannelByAffinity_RequestHeaderKeySource(t *testing.T) {
 		setting.Rules = originalRules
 	})
 
-	ctx, _ := ginadapter.NewSyntheticContext(nil)
-	ginadapter.ReplaceRequest(ctx, httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+	ctx, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
 	ctx.Headers().Set("X-Affinity-Key", affinityValue)
 
 	channelID, found := GetPreferredChannelByAffinity(ctx, "gpt-5", "default")

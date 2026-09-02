@@ -3,7 +3,7 @@ package channel
 import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"strings"
 	"testing"
 
@@ -100,7 +100,7 @@ func TestCacheGetRandomSatisfiedChannelUsesTokenAutoGroupsWhenGlobalAutoIsEmpty(
 	createChannelSelectAutoGroupsChannel(t, db, 2102, "default", modelName)
 	InitChannelCache()
 
-	ctx, _ := ginadapter.NewSyntheticContext(nil)
+	ctx, _ := fiberadapter.NewSyntheticContext(nil)
 	common.SetCtxKey(ctx, constant.ContextKeyUserGroup, "default")
 	common.SetCtxKey(ctx, constant.ContextKeyTokenAutoGroups, []string{"vip", "default"})
 	common.SetCtxKey(ctx, constant.ContextKeyTokenCrossGroupRetry, true)
