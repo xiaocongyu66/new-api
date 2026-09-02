@@ -7,10 +7,11 @@ import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
+	"github.com/QuantumNous/new-api/internal/transport/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -78,7 +79,6 @@ func (legacyToken) TableName() string {
 func openTokenControllerTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
-	gin.SetMode(gin.TestMode)
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 
@@ -119,7 +119,6 @@ func setupTokenControllerTestDB(t *testing.T) *gorm.DB {
 func openTokenControllerExternalDB(t *testing.T, dialect string, dsn string) (*gorm.DB, *bool) {
 	t.Helper()
 
-	gin.SetMode(gin.TestMode)
 	common.RedisEnabled = false
 
 	var (
@@ -199,7 +198,7 @@ func newAuthenticatedContext(t *testing.T, method string, target string, body an
 		requestBody = bytes.NewReader(nil)
 	}
 
-	ctx, recorder := ginadapter.NewSyntheticContext(httptest.NewRequest(method, target, requestBody))
+	ctx, recorder := fiberadapter.NewSyntheticContext(httptest.NewRequest(method, target, requestBody))
 	if body != nil {
 		ctx.Headers().Set("Content-Type", "application/json")
 	}
@@ -575,19 +574,38 @@ func TestGetTokenKeyRequiresOwnershipAndReturnsFullKey(t *testing.T) {
 	}
 }
 
-// newTokenIDRouteContext serves target through a real gin route so :id path
+// newTokenIDRouteContext serves target through a real Fiber route so :id path
 // params bind exactly as production routing does.
 func newTokenIDRouteContext(t *testing.T, method, pattern, target string, userID int, handler contract.Handler) *httptest.ResponseRecorder {
 	t.Helper()
 
-	recorder := httptest.NewRecorder()
-	engine := gin.New()
-	engine.Use(func(c *gin.Context) {
+	response := testutil.ServeBufferedRoute(t, method, pattern, []contract.Middleware{func(c contract.Context) {
 		c.Set("id", userID)
 		c.Next()
-	})
-	engine.Handle(method, pattern, ginadapter.Handler(handler))
-	engine.ServeHTTP(recorder, httptest.NewRequest(method, target, nil))
+	}}, handler, httptest.NewRequest(method, target, nil))
+	return recordTokenRouteResponse(t, response)
+}
+
+// recordTokenRouteResponse drains response into a recorder, so the assertions
+// keep reading status, headers and body through one response shape.
+func recordTokenRouteResponse(t *testing.T, response *http.Response) *httptest.ResponseRecorder {
+	t.Helper()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("failed to read response body: %v", err)
+	}
+	if err := response.Body.Close(); err != nil {
+		t.Fatalf("failed to close response body: %v", err)
+	}
+	recorder := httptest.NewRecorder()
+	recorder.Code = response.StatusCode
+	for key, values := range response.Header {
+		for _, value := range values {
+			recorder.Header().Add(key, value)
+		}
+	}
+	recorder.Body.Write(body)
 	return recorder
 }
 

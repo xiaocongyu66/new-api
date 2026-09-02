@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -52,7 +52,7 @@ func passkeyRequestContext(target, host string, emptyHost, forceTLS bool, header
 	if forceTLS && request.TLS == nil {
 		request.TLS = &tls.ConnectionState{}
 	}
-	context, _ := ginadapter.NewSyntheticContext(request)
+	context, _ := fiberadapter.NewSyntheticContext(request)
 	return context
 }
 
@@ -316,7 +316,7 @@ func TestBuildWebAuthnRejectsTheHistoricalForwardedProtoBypass(t *testing.T) {
 	assert.Equal(t, "https", historicalDetectScheme(request), "the removed request-based logic accepted the spoofed header")
 
 	pinPasskeySettings(t, PasskeySettings{Enabled: true}, "")
-	context, _ := ginadapter.NewSyntheticContext(request)
+	context, _ := fiberadapter.NewSyntheticContext(request)
 	assert.False(t, context.IsTLS(), "the request arrived over plaintext")
 	_, err := BuildWebAuthn(context)
 	require.EqualError(t, err, "Passkey 仅支持 HTTPS，当前访问: http://example.com，请在 Passkey 设置中允许不安全 Origin 或配置 HTTPS")

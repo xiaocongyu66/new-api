@@ -3,8 +3,7 @@ package identity
 import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -25,21 +24,19 @@ type passkeyTestBody struct {
 func (*passkeyTestBody) Close() error { return nil }
 
 func TestParsePasskeyFinishRequestDoesNotRewriteRequestBody(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	bodyText := `{"flow_token":"flow-1","credential":{"id":"credential-1"}}`
 	body := &passkeyTestBody{Reader: strings.NewReader(bodyText)}
 	request := httptest.NewRequest(http.MethodPost, "/api/user/passkey/register/finish", nil)
 	request.Body = body
 	request.ContentLength = int64(len(bodyText))
-	context, _ := gin.CreateTestContext(httptest.NewRecorder())
-	context.Request = request
+	context, _ := fiberadapter.NewSyntheticContext(request)
 
-	parsed, err := parsePasskeyFinishRequest(ginadapter.Wrap(context))
+	parsed, err := parsePasskeyFinishRequest(context)
 	require.NoError(t, err)
 	assert.Equal(t, "flow-1", parsed.FlowToken)
 	assert.JSONEq(t, `{"id":"credential-1"}`, string(parsed.Credential))
-	assert.Same(t, body, context.Request.Body)
-	assert.Equal(t, int64(len(bodyText)), context.Request.ContentLength)
+	assert.Same(t, body, context.HTTPRequest().Body)
+	assert.Equal(t, int64(len(bodyText)), context.HTTPRequest().ContentLength)
 }
 
 func TestPasskeyRegisterFinishRejectsMissingOrWrongProofWithoutConsumingFlow(t *testing.T) {
@@ -103,10 +100,7 @@ func TestPasskeyRegisterFinishRejectsMissingOrWrongProofWithoutConsumingFlow(t *
 			if test.proof != "" {
 				request.Header.Set("X-Security-Proof", test.proof)
 			}
-			response := httptest.NewRecorder()
-			rawCtx, _ := gin.CreateTestContext(response)
-			rawCtx.Request = request
-			context := ginadapter.Wrap(rawCtx)
+			context, response := fiberadapter.NewSyntheticContext(request)
 			context.Set("id", identity.UserID)
 			context.Set("session_id", identity.SessionID)
 			context.Set("auth_version", identity.UserAuthVersion)
