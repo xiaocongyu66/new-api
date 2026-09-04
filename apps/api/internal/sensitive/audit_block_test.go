@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -116,14 +117,43 @@ func TestRecordSensitiveAuditEventPersists(t *testing.T) {
 
 // TestRecordSensitiveBlockDisabled 开关关闭时不入队、不启动 worker。
 func TestRecordSensitiveBlockDisabled(t *testing.T) {
+	// Option B: Verify that no audit event is enqueued/recorded when disabled,
+	// but one is recorded when enabled. Use the existing auditLogRow DB fixture
+	// (withAuditDB) for observable, side-effect-free checks.
+	
 	previous := SensitiveAuditEnabled
 	SensitiveAuditEnabled = false
 	t.Cleanup(func() { SensitiveAuditEnabled = previous })
 
 	c, _ := fiberadapter.NewSyntheticContext(&http.Request{Method: "GET"})
-	assert.NotPanics(t, func() {
-		RecordSensitiveBlock(c, "input", "target:gov.cn", "text")
-	})
+
+	// Use withAuditDB fixture to track DB writes.
+	withAuditDB(t)
+	RecordSensitiveBlock(c, "input", "target:gov.cn", "text")
+
+	// Verify that no log row was inserted (worker never started or event never enqueued).
+	db, _ := dbx.LogDB.DB()
+	rows, _ := db.Query("SELECT COUNT(*) FROM logs")
+	var count int
+	for rows.Next() {
+		rows.Scan(&count)
+	}
+	assert.Equal(t, 0, count, "No audit event should be recorded when SensitiveAuditEnabled=false")
+
+	// Now enable the guard and verify that the audit event IS recorded.
+	SensitiveAuditEnabled = true
+	RecordSensitiveBlock(c, "input", "target:gov.cn", "text")
+
+	// Allow time for the async worker to process the event.
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify that exactly one log row was inserted.
+	rows, _ = db.Query("SELECT COUNT(*) FROM logs")
+	count = 0
+	for rows.Next() {
+		rows.Scan(&count)
+	}
+	assert.Equal(t, 1, count, "One audit event should be recorded when SensitiveAuditEnabled=true")
 }
 
 // auditLogRow mirrors the log row shape this test asserts on, so the sensitive
