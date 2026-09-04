@@ -25,6 +25,17 @@ func (l *InMemoryRateLimiter) Init(expirationDuration time.Duration) {
 	}
 }
 
+
+// Reset clears the in-memory rate limiter store for test isolation.
+// This is a test-only helper and should not be used in production code.
+func (l *InMemoryRateLimiter) Reset() {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	l.store = make(map[string]*[]int64)
+}
+
+
+
 func (l *InMemoryRateLimiter) clearExpiredItems() {
 	for {
 		time.Sleep(l.expirationDuration)
@@ -41,11 +52,9 @@ func (l *InMemoryRateLimiter) clearExpiredItems() {
 	}
 }
 
+
 // Request parameter duration's unit is seconds
 func (l *InMemoryRateLimiter) Request(key string, maxRequestNum int, duration int64) bool {
-	l.mutex.Lock()
-	defer l.mutex.Unlock()
-	// [old <-- new]
 	queue, ok := l.store[key]
 	now := time.Now().Unix()
 	if ok {

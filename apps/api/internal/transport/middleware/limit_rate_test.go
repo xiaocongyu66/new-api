@@ -214,6 +214,11 @@ func TestRedisFixedWindowRepairsCounterWithoutTTL(t *testing.T) {
 }
 
 func TestRedisFailurePolicies(t *testing.T) {
+	// Reset the in-memory rate limiter to ensure test isolation when running
+	// with -count=N. The limiter is a package-level global that accumulates
+	// state across test iterations in the same process.
+	inMemoryRateLimiter.Reset()
+
 	_, redisClient := useRateLimitMiniRedis(t)
 	require.NoError(t, redisClient.Close())
 
