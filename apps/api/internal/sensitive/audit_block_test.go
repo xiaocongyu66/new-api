@@ -120,7 +120,7 @@ func TestRecordSensitiveBlockDisabled(t *testing.T) {
 	// Option B: Verify that no audit event is enqueued/recorded when disabled,
 	// but one is recorded when enabled. Use the existing auditLogRow DB fixture
 	// (withAuditDB) for observable, side-effect-free checks.
-	
+
 	previous := SensitiveAuditEnabled
 	SensitiveAuditEnabled = false
 	t.Cleanup(func() { SensitiveAuditEnabled = previous })
