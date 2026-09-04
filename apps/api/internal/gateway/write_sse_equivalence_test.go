@@ -97,7 +97,7 @@ func TestRenderSSEPreservesAnExistingCacheControl(t *testing.T) {
 // asserted through a layer the code under test never consults: FlushWriter and
 // IOCopyBytesGracefully branch on contract CanFlush, never on an
 // http.ResponseWriter type assertion. That fixture only worked because
-// ginadapter happened to answer CanFlush by walking the writer's Unwrap chain.
+// the Gin adapter answered CanFlush by walking the writer's Unwrap chain.
 // Under fasthttp there is no such writer to build at all — the adapter reports
 // CanFlush as a constant true because every mode it constructs can push (a chain
 // owns the pipe, a direct response writes through fiber, a synthetic one records
