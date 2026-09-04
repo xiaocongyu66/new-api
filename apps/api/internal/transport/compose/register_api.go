@@ -387,6 +387,7 @@ func SetApiRouter(router contract.Engine) {
 			modelsRoute.POST("/sync_upstream", handler.SyncUpstreamModels)
 			modelsRoute.GET("/missing", handler.GetMissingModels)
 			modelsRoute.GET("/meta", handler.GetAllModelsMeta)
+			modelsRoute.GET("/search", handler.SearchModelsMeta)
 			modelsRoute.GET("/:id", handler.GetModelMeta)
 			modelsRoute.POST("/", handler.CreateModelMeta)
 			modelsRoute.PUT("/", handler.UpdateModelMeta)
