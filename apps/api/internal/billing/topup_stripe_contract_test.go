@@ -1,0 +1,132 @@
+package billing
+
+import (
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
+	"github.com/stretchr/testify/assert"
+)
+
+// TestStripeWebhookRejectsDisabledViaForbidden pins the contract when Stripe
+// webhook is not configured — HTTP 403 with no body.
+func TestStripeWebhookRejectsDisabledViaForbidden(t *testing.T) {
+
+	prevSecret := StripeWebhookSecret
+	StripeWebhookSecret = ""
+	t.Cleanup(func() { StripeWebhookSecret = prevSecret })
+
+	req := httptest.NewRequest(http.MethodPost, "/api/stripe/webhook", nil)
+	c, rec := fiberadapter.NewSyntheticContext(req)
+
+	StripeWebhook(c)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+	assert.Empty(t, rec.Body.String())
+}
+
+// TestStripeWebhookAcceptsValidSignatureAndReturnsOK constructs a minimal
+// checkout.session.completed event, signs it with the test secret, and asserts
+// the handler returns 200 OK.
+func TestStripeWebhookAcceptsValidSignatureAndReturnsOK(t *testing.T) {
+
+	// Setup all required settings for Stripe webhook to be enabled
+	prevCompliance := GetPaymentSetting().ComplianceConfirmed
+	prevTermsVersion := GetPaymentSetting().ComplianceTermsVersion
+	prevApiSecret := StripeApiSecret
+	prevSecret := StripeWebhookSecret
+	prevPriceId := StripePriceId
+	t.Cleanup(func() {
+		GetPaymentSetting().ComplianceConfirmed = prevCompliance
+		GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
+		StripeApiSecret = prevApiSecret
+		StripeWebhookSecret = prevSecret
+		StripePriceId = prevPriceId
+	})
+	GetPaymentSetting().ComplianceConfirmed = true
+	GetPaymentSetting().ComplianceTermsVersion = CurrentComplianceTermsVersion
+	secret := "whsec_test_secret"
+	StripeApiSecret = "sk_test_123"
+	StripeWebhookSecret = secret
+	StripePriceId = "price_123"
+
+	// Minimal checkout.session.completed payload
+	payload := []byte(`{
+		"id": "evt_test_webhook",
+		"object": "event",
+		"type": "checkout.session.completed",
+		"data": {
+			"object": {
+				"id": "cs_test_123",
+				"object": "checkout.session",
+				"client_reference_id": "ref_test_123",
+				"customer": "cus_test_123",
+				"payment_status": "paid",
+				"status": "complete"
+			}
+		}
+	}`)
+
+	ts := time.Now().Unix()
+	sigBytes := hmac.New(sha256.New, []byte(secret))
+	sigBytes.Write([]byte(fmt.Sprintf("%d", ts)))
+	sigBytes.Write([]byte("."))
+	sigBytes.Write(payload)
+	sig := hex.EncodeToString(sigBytes.Sum(nil))
+	header := fmt.Sprintf("t=%d,v1=%s", ts, sig)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/stripe/webhook", io.NopCloser(bytes.NewReader(payload)))
+	req.Header.Set("Stripe-Signature", header)
+
+	c, rec := fiberadapter.NewSyntheticContext(req)
+
+	StripeWebhook(c)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+// TestStripeWebhookRejectsInvalidSignatureViaBadRequest verifies invalid
+// signatures produce 400.
+func TestStripeWebhookRejectsInvalidSignatureViaBadRequest(t *testing.T) {
+
+	// Setup all required settings
+	prevCompliance := GetPaymentSetting().ComplianceConfirmed
+	prevTermsVersion := GetPaymentSetting().ComplianceTermsVersion
+	prevApiSecret := StripeApiSecret
+	prevSecret := StripeWebhookSecret
+	prevPriceId := StripePriceId
+	t.Cleanup(func() {
+		GetPaymentSetting().ComplianceConfirmed = prevCompliance
+		GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
+		StripeApiSecret = prevApiSecret
+		StripeWebhookSecret = prevSecret
+		StripePriceId = prevPriceId
+	})
+	GetPaymentSetting().ComplianceConfirmed = true
+	GetPaymentSetting().ComplianceTermsVersion = CurrentComplianceTermsVersion
+	secret := "whsec_test_secret"
+	StripeApiSecret = "sk_test_123"
+	StripeWebhookSecret = secret
+	StripePriceId = "price_123"
+
+	payload := []byte(`{"id":"evt_test","type":"checkout.session.completed"}`)
+	// Wrong signature
+	header := "t=1234567890,v1=invalidsignature"
+
+	req := httptest.NewRequest(http.MethodPost, "/api/stripe/webhook", io.NopCloser(bytes.NewReader(payload)))
+	req.Header.Set("Stripe-Signature", header)
+
+	c, rec := fiberadapter.NewSyntheticContext(req)
+
+	StripeWebhook(c)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}

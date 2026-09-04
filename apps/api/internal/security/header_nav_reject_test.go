@@ -4,67 +4,66 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"fmt"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/glebarez/sqlite"
-	"github.com/golang-jwt/jwt/v5"
-	"gorm.io/gorm"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/internal/authtoken"
+	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	"github.com/QuantumNous/new-api/middleware"
-	"github.com/QuantumNous/new-api/service"
-	"github.com/gin-gonic/gin"
+	"github.com/QuantumNous/new-api/internal/transport/middleware"
+	"github.com/QuantumNous/new-api/internal/transport/testutil"
+	"github.com/glebarez/sqlite"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 // expired dashboard JWTs must not pass a public-header nav gate
 func TestHeaderNavPublicRouteRejectsExpiredInternalAccessToken(t *testing.T) {
 	setupDashboardAuthMiddlewareTest(t)
 	withHeaderNavModules(t, "")
-	gin.SetMode(gin.TestMode)
-
-	router := gin.New()
-	router.GET("/api/test", ginadapter.Middleware(middleware.HeaderNavModuleAuth("pricing")), ginadapter.Handler(func(c contract.Context) {
-		_ = c.JSON(http.StatusOK, common.H{"success": true})
-	}))
 	request := httptest.NewRequest(http.MethodGet, "/api/test", nil)
-	request.Header.Set("Authorization", "Bearer "+issueExpiredDashboardAccessToken(t, service.AuthIdentity{
+	request.Header.Set("Authorization", "Bearer "+issueExpiredDashboardAccessToken(t, authtoken.AuthIdentity{
 		UserID: 1, SessionID: "expired-header-nav-session", UserAuthVersion: 1, SessionVersion: 1,
 	}))
-	response := httptest.NewRecorder()
+	response := testutil.ServeBufferedRoute(
+		t, http.MethodGet, "/api/test", []contract.Middleware{middleware.HeaderNavModuleAuth("pricing")},
+		func(c contract.Context) { _ = c.JSON(http.StatusOK, common.H{"success": true}) }, request,
+	)
 
-	router.ServeHTTP(response, request)
-
-	require.Equal(t, http.StatusUnauthorized, response.Code)
-	require.Contains(t, response.Body.String(), "AUTH_TOKEN_EXPIRED")
+	require.Equal(t, http.StatusUnauthorized, response.StatusCode)
+	body, err := io.ReadAll(response.Body)
+	require.NoError(t, err)
+	require.NoError(t, response.Body.Close())
+	require.Contains(t, string(body), "AUTH_TOKEN_EXPIRED")
 }
 
 func setupDashboardAuthMiddlewareTest(t *testing.T) {
 	t.Helper()
-	previousDB := model.DB
+	previousDB := dbx.DB
 	previousType := common.MainDatabaseType()
 	previousRedis := common.RedisEnabled
 	previousSecret := common.SessionSecret
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}))
-	model.DB = db
+	require.NoError(t, db.AutoMigrate(&identity.User{}, &identity.UserSession{}))
+	dbx.DB = db
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	common.SessionSecret = "middleware-auth-test-secret"
 	t.Cleanup(func() {
-		model.DB = previousDB
+		dbx.DB = previousDB
 		common.SetMainDatabaseType(previousType)
 		common.RedisEnabled = previousRedis
 		common.SessionSecret = previousSecret
 	})
 }
-func issueExpiredDashboardAccessToken(t *testing.T, identity service.AuthIdentity) string {
+func issueExpiredDashboardAccessToken(t *testing.T, identity authtoken.AuthIdentity) string {
 	t.Helper()
 	claims := jwt.MapClaims{
 		"iss":       "new-api",

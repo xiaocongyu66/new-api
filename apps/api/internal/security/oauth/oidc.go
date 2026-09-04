@@ -4,16 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/identity"
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/i18n"
-	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/new-api/internal/egress"
+	"github.com/QuantumNous/new-api/internal/i18n"
+	"github.com/QuantumNous/new-api/internal/logger"
 )
 
 func init() {
@@ -41,11 +42,11 @@ type oidcUser struct {
 }
 
 func (p *OIDCProvider) GetName() string {
-	return system_setting.GetOIDCSettings().GetEffectiveDisplayName()
+	return security.GetOIDCSettings().GetEffectiveDisplayName()
 }
 
 func (p *OIDCProvider) IsEnabled() bool {
-	return system_setting.GetOIDCSettings().Enabled
+	return security.GetOIDCSettings().Enabled
 }
 
 func (p *OIDCProvider) ExchangeToken(ctx context.Context, code string, c contract.Context) (*OAuthToken, error) {
@@ -55,8 +56,8 @@ func (p *OIDCProvider) ExchangeToken(ctx context.Context, code string, c contrac
 
 	logger.LogDebug(ctx, "[OAuth-OIDC] ExchangeToken: code=%s...", code[:min(len(code), 10)])
 
-	settings := system_setting.GetOIDCSettings()
-	redirectUri := fmt.Sprintf("%s/oauth/oidc", system_setting.ServerAddress)
+	settings := security.GetOIDCSettings()
+	redirectUri := fmt.Sprintf("%s/oauth/oidc", egress.ServerAddress)
 	values := url.Values{}
 	values.Set("client_id", settings.ClientId)
 	values.Set("client_secret", settings.ClientSecret)
@@ -110,7 +111,7 @@ func (p *OIDCProvider) ExchangeToken(ctx context.Context, code string, c contrac
 }
 
 func (p *OIDCProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*OAuthUser, error) {
-	settings := system_setting.GetOIDCSettings()
+	settings := security.GetOIDCSettings()
 
 	logger.LogDebug(ctx, "[OAuth-OIDC] GetUserInfo: userinfo_endpoint=%s", settings.UserInfoEndpoint)
 
@@ -160,15 +161,15 @@ func (p *OIDCProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*OAu
 }
 
 func (p *OIDCProvider) IsUserIDTaken(providerUserID string) bool {
-	return model.IsOidcIdAlreadyTaken(providerUserID)
+	return identity.IsOidcIdAlreadyTaken(providerUserID)
 }
 
-func (p *OIDCProvider) FillUserByProviderID(user *model.User, providerUserID string) error {
+func (p *OIDCProvider) FillUserByProviderID(user *identity.User, providerUserID string) error {
 	user.OidcId = providerUserID
 	return user.FillUserByOidcId()
 }
 
-func (p *OIDCProvider) SetProviderUserID(user *model.User, providerUserID string) {
+func (p *OIDCProvider) SetProviderUserID(user *identity.User, providerUserID string) {
 	user.OidcId = providerUserID
 }
 

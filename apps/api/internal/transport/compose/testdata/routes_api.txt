@@ -31,10 +31,13 @@ GET /api/channel/:id
 GET /api/channel/:id/codex/usage
 GET /api/channel/:id/codex/usage/reset-credits
 GET /api/channel/fetch_models/:id
+GET /api/channel/health
 GET /api/channel/models
 GET /api/channel/models_enabled
 GET /api/channel/ollama/version/:id
 GET /api/channel/ops
+GET /api/channel/route_unit/
+GET /api/channel/route_unit/aliases
 GET /api/channel/search
 GET /api/channel/tag/models
 GET /api/channel/test
@@ -61,8 +64,8 @@ GET /api/log/token
 GET /api/mj/
 GET /api/mj/self
 GET /api/models
-GET /api/models/
 GET /api/models/:id
+GET /api/models/meta
 GET /api/models/missing
 GET /api/models/search
 GET /api/models/sync_upstream/preview
@@ -95,6 +98,7 @@ GET /api/redemption/
 GET /api/redemption/:id
 GET /api/redemption/search
 GET /api/reset_password
+GET /api/route_unit/audit
 GET /api/setup
 GET /api/status
 GET /api/status/test
@@ -152,6 +156,7 @@ POST /api/channel/batch/tag
 POST /api/channel/copy/:id
 POST /api/channel/fetch_models
 POST /api/channel/fix
+POST /api/channel/health/:action
 POST /api/channel/multi_key/manage
 POST /api/channel/ollama/pull
 POST /api/channel/ollama/pull/stream
@@ -165,7 +170,6 @@ POST /api/channel/upstream_updates/detect_all
 POST /api/creem/webhook
 POST /api/custom-oauth-provider/
 POST /api/custom-oauth-provider/discovery
-POST /api/karmada/session
 POST /api/models/
 POST /api/models/sync_upstream
 POST /api/oauth/email/bind
@@ -246,6 +250,7 @@ POST /api/verify
 POST /api/waffo-pancake/webhook/:env
 POST /api/waffo/webhook
 PUT /api/channel/
+PUT /api/channel/route_unit/:id
 PUT /api/channel/tag
 PUT /api/custom-oauth-provider/:id
 PUT /api/models/

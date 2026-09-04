@@ -4,16 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/identity"
+	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/i18n"
-	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/new-api/internal/egress"
+	"github.com/QuantumNous/new-api/internal/i18n"
+	"github.com/QuantumNous/new-api/internal/logger"
 )
 
 func init() {
@@ -43,7 +44,7 @@ func (p *DiscordProvider) GetName() string {
 }
 
 func (p *DiscordProvider) IsEnabled() bool {
-	return system_setting.GetDiscordSettings().Enabled
+	return security.GetDiscordSettings().Enabled
 }
 
 func (p *DiscordProvider) ExchangeToken(ctx context.Context, code string, c contract.Context) (*OAuthToken, error) {
@@ -53,8 +54,8 @@ func (p *DiscordProvider) ExchangeToken(ctx context.Context, code string, c cont
 
 	logger.LogDebug(ctx, "[OAuth-Discord] ExchangeToken: code=%s...", code[:min(len(code), 10)])
 
-	settings := system_setting.GetDiscordSettings()
-	redirectUri := fmt.Sprintf("%s/oauth/discord", system_setting.ServerAddress)
+	settings := security.GetDiscordSettings()
+	redirectUri := fmt.Sprintf("%s/oauth/discord", egress.ServerAddress)
 	values := url.Values{}
 	values.Set("client_id", settings.ClientId)
 	values.Set("client_secret", settings.ClientSecret)
@@ -155,15 +156,15 @@ func (p *DiscordProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*
 }
 
 func (p *DiscordProvider) IsUserIDTaken(providerUserID string) bool {
-	return model.IsDiscordIdAlreadyTaken(providerUserID)
+	return identity.IsDiscordIdAlreadyTaken(providerUserID)
 }
 
-func (p *DiscordProvider) FillUserByProviderID(user *model.User, providerUserID string) error {
+func (p *DiscordProvider) FillUserByProviderID(user *identity.User, providerUserID string) error {
 	user.DiscordId = providerUserID
 	return user.FillUserByDiscordId()
 }
 
-func (p *DiscordProvider) SetProviderUserID(user *model.User, providerUserID string) {
+func (p *DiscordProvider) SetProviderUserID(user *identity.User, providerUserID string) {
 	user.DiscordId = providerUserID
 }
 

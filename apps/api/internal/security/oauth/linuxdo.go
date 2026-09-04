@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"net/url"
@@ -12,10 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/i18n"
-	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/i18n"
+	"github.com/QuantumNous/new-api/internal/logger"
 )
 
 func init() {
@@ -56,10 +56,10 @@ func (p *LinuxDOProvider) ExchangeToken(ctx context.Context, code string, c cont
 
 	// Get redirect URI from request
 	scheme := "http"
-	if c.HTTPRequest().TLS != nil {
+	if c.IsTLS() {
 		scheme = "https"
 	}
-	redirectURI := fmt.Sprintf("%s://%s/api/oauth/linuxdo", scheme, c.HTTPRequest().Host)
+	redirectURI := fmt.Sprintf("%s://%s/api/oauth/linuxdo", scheme, c.Host())
 
 	logger.LogDebug(ctx, "[OAuth-LinuxDO] ExchangeToken: token_endpoint=%s, redirect_uri=%s", tokenEndpoint, redirectURI)
 
@@ -168,15 +168,15 @@ func (p *LinuxDOProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*
 }
 
 func (p *LinuxDOProvider) IsUserIDTaken(providerUserID string) bool {
-	return model.IsLinuxDOIdAlreadyTaken(providerUserID)
+	return identity.IsLinuxDOIdAlreadyTaken(providerUserID)
 }
 
-func (p *LinuxDOProvider) FillUserByProviderID(user *model.User, providerUserID string) error {
+func (p *LinuxDOProvider) FillUserByProviderID(user *identity.User, providerUserID string) error {
 	user.LinuxDOId = providerUserID
 	return user.FillUserByLinuxDOId()
 }
 
-func (p *LinuxDOProvider) SetProviderUserID(user *model.User, providerUserID string) {
+func (p *LinuxDOProvider) SetProviderUserID(user *identity.User, providerUserID string) {
 	user.LinuxDOId = providerUserID
 }
 

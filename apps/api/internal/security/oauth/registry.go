@@ -2,10 +2,10 @@ package oauth
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"sync"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/internal/common"
 )
 
 var (
@@ -97,7 +97,7 @@ func LoadCustomProviders() error {
 	mu.Unlock()
 
 	// Load all custom providers from database
-	customProviders, err := model.GetAllCustomOAuthProviders()
+	customProviders, err := identity.GetAllCustomOAuthProviders()
 	if err != nil {
 		common.SysError("Failed to load custom OAuth providers: " + err.Error())
 		return err
@@ -120,7 +120,7 @@ func ReloadCustomProviders() error {
 }
 
 // RegisterOrUpdateCustomProvider registers or updates a single custom provider
-func RegisterOrUpdateCustomProvider(config *model.CustomOAuthProvider) {
+func RegisterOrUpdateCustomProvider(config *identity.CustomOAuthProvider) {
 	provider := NewGenericOAuthProvider(config)
 	mu.Lock()
 	defer mu.Unlock()

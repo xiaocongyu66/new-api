@@ -5,20 +5,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
-	relayconstant "github.com/QuantumNous/new-api/relay/constant"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/constant"
+	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/gorilla/websocket"
 	"github.com/tidwall/gjson"
 )
 
 // GenRelayInfoWs creates RelayInfo for WebSocket (realtime) requests.
-func GenRelayInfoWs(c contract.Context, ws *websocket.Conn) *relaycommon.RelayInfo {
+func GenRelayInfoWs(c contract.Context, ws relaycommon.WSConn) *relaycommon.RelayInfo {
 	info := genBaseRelayInfo(c, nil)
 	info.RelayFormat = types.RelayFormatOpenAIRealtime
 	info.ClientWs = ws
@@ -162,6 +161,10 @@ func genBaseRelayInfo(c contract.Context, request dto.Request) *relaycommon.Rela
 
 	isStream := false
 	if request != nil {
+		// TODO(#287) C: permanent. request.IsStream is relaykit public API typed on
+		// *http.Request, and relaykit is a separate module that cannot import the app's
+		// internal contract. The Fiber adapter must keep synthesizing an *http.Request
+		// for this boundary; there is nothing to migrate.
 		isStream = request.IsStream(c.HTTPRequest())
 	}
 	c.Set(string(constant.ContextKeyIsStream), isStream)
@@ -189,10 +192,13 @@ func genBaseRelayInfo(c contract.Context, request dto.Request) *relaycommon.Rela
 		TokenUnlimited: common.GetContextKeyBool(c, constant.ContextKeyTokenUnlimited),
 		TokenGroup:     tokenGroup,
 
-		RelayMode:       relayconstant.Path2RelayMode(c.HTTPRequest().URL.Path),
-		RequestURLPath:  c.HTTPRequest().URL.String(),
-		RequestHeaders:  cloneRequestHeaders(c),
-		IsStream:        isStream,
+		RelayMode: relayconstant.Path2RelayMode(c.Path()),
+		// RequestURI rather than Path+RawQuery: it is the request target as sent,
+		// so a bare trailing '?' survives into the upstream URL exactly as it
+		// arrived instead of being dropped by recomposition.
+		RequestURLPath: c.RequestURI(),
+		RequestHeaders: cloneRequestHeaders(c),
+		IsStream:       isStream,
 
 		StartTime:         startTime,
 		FirstResponseTime: startTime.Add(-time.Second),
@@ -208,7 +214,7 @@ func genBaseRelayInfo(c contract.Context, request dto.Request) *relaycommon.Rela
 		info.RelayMode = c.GetInt("relay_mode")
 	}
 
-	if strings.HasPrefix(c.HTTPRequest().URL.Path, "/pg") {
+	if strings.HasPrefix(c.Path(), "/pg") {
 		info.IsPlayground = true
 		info.RequestURLPath = strings.TrimPrefix(info.RequestURLPath, "/pg")
 		info.RequestURLPath = "/v1" + info.RequestURLPath
@@ -223,15 +229,16 @@ func genBaseRelayInfo(c contract.Context, request dto.Request) *relaycommon.Rela
 }
 
 func cloneRequestHeaders(c contract.Context) map[string]string {
-	if c == nil || c.HTTPRequest() == nil {
+	if c == nil {
 		return nil
 	}
-	if len(c.HTTPRequest().Header) == 0 {
+	inbound := c.Headers()
+	if len(inbound) == 0 {
 		return nil
 	}
-	headers := make(map[string]string, len(c.HTTPRequest().Header))
-	for key := range c.HTTPRequest().Header {
-		value := strings.TrimSpace(c.HTTPRequest().Header.Get(key))
+	headers := make(map[string]string, len(inbound))
+	for key := range inbound {
+		value := strings.TrimSpace(inbound.Get(key))
 		if value == "" {
 			continue
 		}
@@ -244,7 +251,7 @@ func cloneRequestHeaders(c contract.Context) map[string]string {
 }
 
 // GenRelayInfo is the main entry point: builds RelayInfo for a given format.
-func GenRelayInfo(c contract.Context, relayFormat types.RelayFormat, request dto.Request, ws *websocket.Conn) (*relaycommon.RelayInfo, error) {
+func GenRelayInfo(c contract.Context, relayFormat types.RelayFormat, request dto.Request, ws relaycommon.WSConn) (*relaycommon.RelayInfo, error) {
 	var info *relaycommon.RelayInfo
 	var err error
 	switch relayFormat {

@@ -4,9 +4,14 @@ import (
 	"bytes"
 	"context"
 	"embed"
-	"errors"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/capabilities/billing"
+	"github.com/QuantumNous/new-api/internal/billing"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/egress"
+	"github.com/QuantumNous/new-api/internal/identity"
+	"github.com/QuantumNous/new-api/internal/task"
+	"github.com/QuantumNous/new-api/internal/transport/handler"
+	"github.com/QuantumNous/new-api/internal/usage"
 	"log"
 	"net/http"
 	"os"
@@ -16,29 +21,26 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/controller"
-	"github.com/QuantumNous/new-api/i18n"
-	"github.com/QuantumNous/new-api/internal/capabilities/administration"
-	channelcap "github.com/QuantumNous/new-api/internal/capabilities/channel"
-	"github.com/QuantumNous/new-api/internal/gateway/port"
+	catalog "github.com/QuantumNous/new-api/internal/catalog"
+	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
+	"github.com/QuantumNous/new-api/internal/catalog/routestats"
+	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/constant"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
+	"github.com/QuantumNous/new-api/internal/i18n"
+	"github.com/QuantumNous/new-api/internal/identity/policy"
+	"github.com/QuantumNous/new-api/internal/logger"
+	"github.com/QuantumNous/new-api/internal/ops"
+	"github.com/QuantumNous/new-api/internal/relay"
+	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/security/oauth"
+	"github.com/QuantumNous/new-api/internal/sensitive"
+	"github.com/QuantumNous/new-api/internal/settings"
 	compose "github.com/QuantumNous/new-api/internal/transport/compose"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/internal/transport/ginadapter"
-	tpmw "github.com/QuantumNous/new-api/internal/transport/middleware"
-	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/middleware"
-	"github.com/QuantumNous/new-api/model"
-	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
-	"github.com/QuantumNous/new-api/relay"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
+	"github.com/QuantumNous/new-api/internal/transport/middleware"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
-	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/service/authz"
-	_ "github.com/QuantumNous/new-api/setting/performance_setting"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
-
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/joho/godotenv"
 
@@ -60,7 +62,7 @@ func main() {
 
 	// Gateway channel selection goes through the port; the channel
 	// capability implementation is registered before the router starts.
-	port.SelectChannel = channelcap.CacheGetRandomSatisfiedChannel
+	catalog.SelectChannel = catalog.CacheGetRandomSatisfiedChannel
 
 	err := InitResources()
 	if err != nil {
@@ -69,9 +71,6 @@ func main() {
 	}
 
 	common.SysLog("New API " + common.Version + " started")
-	if os.Getenv("GIN_MODE") != "debug" {
-		ginadapter.SetReleaseMode()
-	}
 	if common.DebugEnabled {
 		common.SysLog("running in debug mode")
 	}
@@ -79,13 +78,13 @@ func main() {
 	kitutil.Debug.Store(common.DebugEnabled)
 
 	defer func() {
-		err := model.CloseDB()
+		err := dbinfra.CloseDB()
 		if err != nil {
 			common.FatalLog("failed to close database: " + err.Error())
 		}
 	}()
 	// Close the in-process sing-box dialer on shutdown (Issue #57).
-	defer service.CloseSingBoxDialer()
+	defer egress.CloseSingBoxDialer()
 
 	if common.RedisEnabled {
 		// for compatibility with old versions
@@ -101,35 +100,45 @@ func main() {
 				if r := recover(); r != nil {
 					common.SysLog(fmt.Sprintf("InitChannelCache panic: %v, retrying once", r))
 					// Retry once
-					_, _, fixErr := model.FixAbility()
+					_, _, fixErr := catalog.FixAbility()
 					if fixErr != nil {
 						common.FatalLog(fmt.Sprintf("InitChannelCache failed: %s", fixErr.Error()))
 					}
 				}
 			}()
-			channelcap.InitChannelCache()
+			catalog.InitChannelCache()
+			// Restores the persisted per-model route isolation. Without it a
+			// quarantined route silently rejoins rotation on every restart.
+			catalog.InitChannelModelHealthCache()
 		}()
 
-		go channelcap.SyncChannelCache(common.SyncFrequency)
+		go catalog.SyncChannelCache(common.SyncFrequency)
 	}
 
 	// Warm pricing after channel cache initialization so Advanced Custom
 	// endpoint inference can read cached route settings on first request.
-	model.GetPricing()
+	catalog.GetPricing()
 
 	// 热更新配置
 	outboxCtx, stopOutboxPublisher := context.WithCancel(context.Background())
 	defer stopOutboxPublisher()
-	go service.RunGatewayConfigOutboxPublisher(outboxCtx)
+	go catalog.RunGatewayConfigOutboxPublisher(outboxCtx)
 
 	// 热更新配置
-	go model.SyncOptions(common.SyncFrequency)
+	go dbinfra.SyncOptions(common.SyncFrequency)
 
 	// 周期性重载授权策略，保证多节点/多 master 部署下权限变更能传播到每个实例
-	go authz.StartPolicySync(common.SyncFrequency)
+	go policy.StartPolicySync(common.SyncFrequency)
 
 	// 数据看板
-	go model.UpdateQuotaData()
+	go usage.UpdateQuotaData()
+
+	// Route stats TTL sweep and share-pool eviction (runs hourly). Without it the
+	// EWMA handles and share pools only ever grow: a retired route unit keeps its
+	// entry forever.
+	sweepCtx, stopRouteStatsSweep := context.WithCancel(context.Background())
+	defer stopRouteStatsSweep()
+	go runRouteStatsSweep(sweepCtx, time.Hour)
 
 	if os.Getenv("CHANNEL_UPDATE_FREQUENCY") != "" {
 		frequency, err := strconv.Atoi(os.Getenv("CHANNEL_UPDATE_FREQUENCY"))
@@ -140,42 +149,32 @@ func main() {
 	}
 
 	// Codex credential auto-refresh check every 10 minutes, refresh when expires within 1 day
-	service.StartCodexCredentialAutoRefreshTask()
+	catalog.StartCodexCredentialAutoRefreshTask()
 
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	billing.StartSubscriptionQuotaResetTask()
 
 	// Report this process as a system instance so the System Info page can show
 	// all currently alive nodes in multi-instance deployments.
-	administration.StartSystemInstanceReporter()
+	ops.StartSystemInstanceReporter()
 
-	// Wire task polling adaptor factory (breaks service -> relay import cycle).
-	// Must run before the system task runner starts: the async_task_poll handler
-	// calls service.RunTaskPollingOnce, which needs this factory set.
-	service.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) service.TaskPollingAdaptor {
-		a := relay.GetTaskAdaptor(platform)
-		if a == nil {
-			return nil
-		}
-		return a
-	}
-
-	// Wire the gateway port factory: capability-layer polling calls port.GetTaskProviderFunc
-	// instead of importing relay/channel. The binding adapts channel.TaskAdaptor to port.TaskProviderExec.
-	port.GetTaskProviderFunc = service.GetTaskProviderFuncBinding()
+	// Wire the task adaptor factory and the gateway port that reads it. Both must
+	// run before the system task runner starts: the async_task_poll handler calls
+	// task.RunTaskPollingOnce, which returns immediately while the port is nil.
+	wireTaskAdaptorFactory()
 
 	// Register the periodic channel test, upstream model update, and async task
 	// polling (Midjourney / Suno / video) jobs as scheduled system tasks
 	// (DB-lease dedup across masters + run history), then start the runner that
 	// schedules and executes them. Master-only execution and the UpdateTask
 	// switch are enforced inside the runner and each handler's Enabled().
-	controller.RegisterScheduledSystemTasks()
-	administration.StartSystemTaskRunner()
+	handler.RegisterScheduledSystemTasks()
+	ops.StartSystemTaskRunner()
 
 	if os.Getenv("BATCH_UPDATE_ENABLED") == "true" {
 		common.BatchUpdateEnabled = true
 		common.SysLog("batch update enabled with interval " + strconv.Itoa(common.BatchUpdateInterval) + "s")
-		model.InitBatchUpdater()
+		dbinfra.InitBatchUpdater()
 	}
 
 	if os.Getenv("ENABLE_PPROF") == "true" {
@@ -192,7 +191,7 @@ func main() {
 	}
 
 	// Initialize HTTP server
-	server := ginadapter.NewEngine(func(c contract.Context, recovered any) {
+	onPanic := func(c contract.Context, recovered any) {
 		common.SysLog(fmt.Sprintf("panic detected: %v", recovered))
 		c.JSON(http.StatusInternalServerError, common.H{
 			"error": common.H{
@@ -200,17 +199,18 @@ func main() {
 				"type":    "new_api_panic",
 			},
 		})
-	})
-	if err := tpmw.ConfigureTrustedProxies(server); err != nil {
+	}
+	var server contract.Engine = fiberadapter.NewEngine(onPanic)
+	if err := middleware.ConfigureTrustedProxies(server); err != nil {
 		common.FatalLog("failed to configure trusted proxies: " + err.Error())
 		return
 	}
 	// This will cause SSE not to work!!!
 	//server.Use(gzip.Gzip(gzip.DefaultCompression))
-	server.Use(ginadapter.Middleware(middleware.RequestId()))
-	server.Use(ginadapter.Middleware(tpmw.Version()))
-	server.Use(ginadapter.Middleware(middleware.I18n()))
-	tpmw.SetUpLogger(server)
+	server.Use(middleware.RequestId())
+	server.Use(middleware.Version())
+	server.Use(middleware.I18n())
+	middleware.SetUpLogger(server)
 	InjectUmamiAnalytics()
 	InjectGoogleAnalytics()
 
@@ -224,13 +224,8 @@ func main() {
 		port = strconv.Itoa(*common.Port)
 	}
 
-	srv := &http.Server{
-		Addr:    ":" + port,
-		Handler: server,
-	}
-
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := server.Serve(":" + port); err != nil {
 			common.FatalLog("failed to start HTTP server: " + err.Error())
 		}
 	}()
@@ -248,14 +243,67 @@ func main() {
 	shutdownTimeout := time.Duration(common.GetEnvOrDefault("SHUTDOWN_TIMEOUT_SECONDS", 120)) * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := server.Shutdown(ctx); err != nil {
 		common.SysError(fmt.Sprintf("server forced to shutdown: %v", err))
 	}
 	// 内存中的看板数据保存入库，避免重启丢失未落库数据 (issue #5679)
 	if common.DataExportEnabled {
-		model.SaveQuotaDataCache()
+		usage.SaveQuotaDataCache()
 	}
 	common.SysLog("server exited")
+}
+
+// wireTaskAdaptorFactory connects the async-task capability to the relay
+// adaptors. It breaks the task -> relay import cycle: task declares the factory
+// and the port, relay owns the adaptors, and bootstrap joins them.
+//
+// Order matters. GetTaskProviderFuncBinding closes over GetTaskAdaptorFunc, so
+// the factory must be assigned first; a binding built before it resolves nothing.
+func wireTaskAdaptorFactory() {
+	task.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) task.TaskPollingAdaptor {
+		a := relay.GetTaskAdaptor(platform)
+		if a == nil {
+			return nil
+		}
+		return a
+	}
+	task.GetTaskProviderFunc = task.GetTaskProviderFuncBinding()
+}
+
+// runRouteStatsSweep evicts stale EWMA entries and orphaned share pools on every
+// tick, and returns when ctx is cancelled.
+//
+// The ticker is held in a variable so it can be stopped. Building it inline in
+// the range clause (`for range time.NewTicker(tick).C`) leaves the *time.Ticker
+// unreachable, so its runtime timer lives for the life of the process and the
+// loop has no way to exit.
+//
+// One sweep panic must not take the process down: the recover is inside the loop
+// body so the next tick still runs.
+func runRouteStatsSweep(ctx context.Context, tick time.Duration) {
+	ticker := time.NewTicker(tick)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					common.SysError(fmt.Sprintf("route stats sweep panic: %v", r))
+				}
+			}()
+			if removed := routestats.SweepTTL(); removed > 0 {
+				common.SysLog(fmt.Sprintf("route stats sweep: removed %d stale entries", removed))
+			}
+			keep := catalog.GetActiveRouteStatsPoolKeys()
+			if removed := routestats.SweepSharePools(keep); removed > 0 {
+				common.SysLog(fmt.Sprintf("route stats sweep: removed %d orphaned share pools", removed))
+			}
+		}()
+	}
 }
 
 func InjectUmamiAnalytics() {
@@ -319,36 +367,46 @@ func InitResources() error {
 	// Initialize model settings
 	ratio_setting.InitRatioSettings()
 
-	service.InitHttpClient()
+	egress.InitHttpClient()
 
-	service.InitTokenEncoders()
+	// Warms relay/common's encoder cache — that is the package CountTextToken
+	// reads. A nil defaultTokenEncoder nil-panics on any OpenAI text model
+	// tiktoken does not recognise (e.g. gpt-5-chat).
+	relaycommon.InitTokenEncoders()
+
+	// dbinfra must not import usage, so bootstrap wires this one. It MUST stay
+	// above MigrateRetiredFrontendOptions and InitOptionMap below: a nil
+	// OnValidateConsoleSettings would silently skip validation during the
+	// migration. (identity.OnResolveServerAddress is registered by egress's own
+	// init(), so every binary linking egress gets it, not just this one.)
+	dbinfra.OnValidateConsoleSettings = usage.ValidateConsoleSettings
 
 	// Initialize SQL Database
-	err = model.InitDB()
+	err = dbinfra.InitDB()
 	if err != nil {
 		common.FatalLog("failed to initialize database: " + err.Error())
 		return err
 	}
-	if err = authz.Init(model.DB); err != nil {
+	if err = policy.Init(dbx.DB); err != nil {
 		common.FatalLog("failed to initialize authorization: " + err.Error())
 		return err
 	}
 
-	model.CheckSetup()
+	dbinfra.CheckSetup()
 
-	// Initialize options, should after model.InitDB()
+	// Initialize options, should after dbinfra.InitDB()
 	if common.IsMasterNode {
-		if err := model.MigrateRetiredFrontendOptions(); err != nil {
+		if err := dbinfra.MigrateRetiredFrontendOptions(); err != nil {
 			common.SysError("failed to migrate retired frontend options: " + err.Error())
 		}
 	}
-	model.InitOptionMap()
+	dbinfra.InitOptionMap()
 
 	// 清理旧的磁盘缓存文件
 	common.CleanupOldCacheFiles()
 
 	// Initialize SQL Database
-	err = model.InitLogDB()
+	err = dbinfra.InitLogDB()
 	if err != nil {
 		return err
 	}
@@ -359,7 +417,12 @@ func InitResources() error {
 		return err
 	}
 
-	perfmetrics.Init()
+	settings.OnPerformanceSettingChanged = usage.UpdateAndSync
+
+	// Starts the perf-metric flush loop. Without it hot buckets are never
+	// written to perf_metrics: the dashboard stays empty and the in-memory
+	// bucket map grows for the life of the process.
+	usage.Init()
 
 	// 启动系统监控
 	common.StartSystemMonitor()
@@ -373,7 +436,7 @@ func InitResources() error {
 		common.SysLog("i18n initialized with languages: " + strings.Join(i18n.SupportedLanguages(), ", "))
 	}
 	// Register user language loader for lazy loading
-	i18n.SetUserLangLoader(model.GetUserLanguage)
+	i18n.SetUserLangLoader(identity.GetUserLanguage)
 
 	// Load custom OAuth providers from database
 	err = oauth.LoadCustomProviders()
@@ -382,7 +445,33 @@ func InitResources() error {
 		// Don't return error, custom OAuth is not critical
 	}
 
-	service.StartAuthArtifactCleanup()
+	// Wire identity-domain functions that dbinfra still calls via variables.
+	dbinfra.SetIdentityFunctions(
+		identity.UserQuery, identity.TokenQuery,
+		identity.LockUserRow, identity.ReadUserQuota,
+		identity.GetUsernameById, identity.GetUserSetting,
+		identity.IncreaseUserQuota, identity.DecreaseUserQuota,
+		identity.RootUserExists,
+	)
+	dbinfra.GetTokenByIdFn = func(id int) (*identity.Token, error) {
+		t, err := identity.GetTokenById(id)
+		if err != nil {
+			return nil, err
+		}
+		return t, nil
+	}
+	dbinfra.GetTokenByKeyWrFn = identity.GetTokenByKey
+	dbinfra.GetUserCacheWrFn = identity.GetUserCache
+
+	// ops owns notification delivery and imports catalog, so catalog reaches
+	// root-user notifications through a hook wired here.
+	catalog.RootUserNotifier = ops.NotifyRootUser
+
+	// 与 main 对齐：先启动会话/审计工件清理，再启动敏感审计日志清理。
+	// 两者都只在主节点跑，且都依赖上面已完成的 InitDB/InitLogDB。
+	identity.StartAuthArtifactCleanup()
+
+	sensitive.StartSensitiveAuditCleanup()
 
 	return nil
 }

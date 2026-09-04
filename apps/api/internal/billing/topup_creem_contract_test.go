@@ -1,0 +1,178 @@
+package billing
+
+import (
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
+	"github.com/stretchr/testify/assert"
+)
+
+// TestCreemWebhookRejectsDisabledViaForbidden pins the contract when Creem
+// webhook is not configured — HTTP 403 with no body.
+func TestCreemWebhookRejectsDisabledViaForbidden(t *testing.T) {
+
+	prevSecret := CreemWebhookSecret
+	prevProducts := CreemProducts
+	prevTestMode := CreemTestMode
+	CreemWebhookSecret = ""
+	CreemProducts = "[]"
+	CreemTestMode = false
+	t.Cleanup(func() {
+		CreemWebhookSecret = prevSecret
+		CreemProducts = prevProducts
+		CreemTestMode = prevTestMode
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/creem/webhook", nil)
+	c, rec := fiberadapter.NewSyntheticContext(req)
+
+	CreemWebhook(c)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+	assert.Empty(t, rec.Body.String())
+}
+
+// TestCreemWebhookAcceptsValidSignatureAndReturnsOK constructs a minimal
+// checkout.completed event, signs it with the test secret, and asserts
+// the handler returns 200 OK.
+func TestCreemWebhookAcceptsValidSignatureAndReturnsOK(t *testing.T) {
+
+	// Setup all required settings for Creem webhook to be enabled
+	prevCompliance := GetPaymentSetting().ComplianceConfirmed
+	prevTermsVersion := GetPaymentSetting().ComplianceTermsVersion
+	prevApiKey := CreemApiKey
+	prevProducts := CreemProducts
+	prevSecret := CreemWebhookSecret
+	prevTestMode := CreemTestMode
+	t.Cleanup(func() {
+		GetPaymentSetting().ComplianceConfirmed = prevCompliance
+		GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
+		CreemApiKey = prevApiKey
+		CreemProducts = prevProducts
+		CreemWebhookSecret = prevSecret
+		CreemTestMode = prevTestMode
+	})
+	GetPaymentSetting().ComplianceConfirmed = true
+	GetPaymentSetting().ComplianceTermsVersion = CurrentComplianceTermsVersion
+	secret := "creem_test_secret"
+	CreemApiKey = "creem_api_key"
+	CreemProducts = `[{"productId":"prod_test_123"}]`
+	CreemWebhookSecret = secret
+	CreemTestMode = false
+
+	// Minimal checkout.completed payload matching CreemWebhookEvent
+	payload := []byte(`{
+		"id": "evt_test_webhook",
+		"eventType": "checkout.completed",
+		"created_at": 1700000000,
+		"object": {
+			"request_id": "ref_test_123",
+			"order": {
+				"id": "ord_test_123",
+				"status": "paid",
+				"product_id": "prod_test_123"
+			}
+		}
+	}`)
+
+	// Generate HMAC-SHA256 signature
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(payload)
+	sig := hex.EncodeToString(mac.Sum(nil))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/creem/webhook", io.NopCloser(bytes.NewReader(payload)))
+	req.Header.Set("creem-signature", sig)
+
+	c, rec := fiberadapter.NewSyntheticContext(req)
+
+	CreemWebhook(c)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+// TestCreemWebhookRejectsInvalidSignatureViaUnauthorized verifies invalid
+// signatures produce 401.
+func TestCreemWebhookRejectsInvalidSignatureViaUnauthorized(t *testing.T) {
+
+	// Setup all required settings
+	prevCompliance := GetPaymentSetting().ComplianceConfirmed
+	prevTermsVersion := GetPaymentSetting().ComplianceTermsVersion
+	prevApiKey := CreemApiKey
+	prevProducts := CreemProducts
+	prevSecret := CreemWebhookSecret
+	prevTestMode := CreemTestMode
+	t.Cleanup(func() {
+		GetPaymentSetting().ComplianceConfirmed = prevCompliance
+		GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
+		CreemApiKey = prevApiKey
+		CreemProducts = prevProducts
+		CreemWebhookSecret = prevSecret
+		CreemTestMode = prevTestMode
+	})
+	GetPaymentSetting().ComplianceConfirmed = true
+	GetPaymentSetting().ComplianceTermsVersion = CurrentComplianceTermsVersion
+	secret := "creem_test_secret"
+	CreemApiKey = "creem_api_key"
+	CreemProducts = `[{"productId":"prod_test_123"}]`
+	CreemWebhookSecret = secret
+	CreemTestMode = false
+
+	payload := []byte(`{"id":"evt_test","eventType":"checkout.completed"}`)
+	// Wrong signature
+	sig := "invalidsignature"
+
+	req := httptest.NewRequest(http.MethodPost, "/api/creem/webhook", io.NopCloser(bytes.NewReader(payload)))
+	req.Header.Set("creem-signature", sig)
+
+	c, rec := fiberadapter.NewSyntheticContext(req)
+
+	CreemWebhook(c)
+
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+// TestCreemWebhookRejectsMissingSignatureViaUnauthorized verifies missing
+// signatures produce 401.
+func TestCreemWebhookRejectsMissingSignatureViaUnauthorized(t *testing.T) {
+
+	// Setup all required settings
+	prevCompliance := GetPaymentSetting().ComplianceConfirmed
+	prevTermsVersion := GetPaymentSetting().ComplianceTermsVersion
+	prevApiKey := CreemApiKey
+	prevProducts := CreemProducts
+	prevSecret := CreemWebhookSecret
+	prevTestMode := CreemTestMode
+	t.Cleanup(func() {
+		GetPaymentSetting().ComplianceConfirmed = prevCompliance
+		GetPaymentSetting().ComplianceTermsVersion = prevTermsVersion
+		CreemApiKey = prevApiKey
+		CreemProducts = prevProducts
+		CreemWebhookSecret = prevSecret
+		CreemTestMode = prevTestMode
+	})
+	GetPaymentSetting().ComplianceConfirmed = true
+	GetPaymentSetting().ComplianceTermsVersion = CurrentComplianceTermsVersion
+	secret := "creem_test_secret"
+	CreemApiKey = "creem_api_key"
+	CreemProducts = `[{"productId":"prod_test_123"}]`
+	CreemWebhookSecret = secret
+	CreemTestMode = false
+
+	payload := []byte(`{"id":"evt_test","eventType":"checkout.completed"}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/creem/webhook", io.NopCloser(bytes.NewReader(payload)))
+	// No signature header
+
+	c, rec := fiberadapter.NewSyntheticContext(req)
+
+	CreemWebhook(c)
+
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}

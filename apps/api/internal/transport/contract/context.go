@@ -1,6 +1,6 @@
 // Package contract defines the framework-neutral HTTP boundary used by business
 // code. Nothing in this package may import an HTTP framework: the Gin
-// implementation lives in internal/transport/ginadapter, and a future Fiber
+// implementation lives in internal/transport/fiberadapter, and Fiber is the
 // implementation replaces only that adapter.
 package contract
 
@@ -37,6 +37,16 @@ type Request interface {
 	Path() string
 	FullPath() string
 	ClientIP() string
+	// Host is the request authority (host and optional port) as the client
+	// addressed it. Origin checks and redirect-URI construction compare against
+	// it, so an adapter must report the authority the request arrived with
+	// rather than a configured or forwarded one.
+	Host() string
+	// IsTLS reports whether the request arrived over a TLS connection. It
+	// reflects the actual transport only: forwarded headers such as
+	// X-Forwarded-Proto are client-supplied and must never influence it, since
+	// the session-origin guard treats the result as a security decision.
+	IsTLS() bool
 	UserAgent() string
 	ContentType() string
 	ContentLength() int64
@@ -67,7 +77,16 @@ type Request interface {
 	RawBody() ([]byte, error)
 	// BodyReader returns an independent reader positioned at the body start.
 	BodyReader() (io.ReadCloser, error)
+	// BodyStream returns the unbuffered inbound body. Unlike BodyReader, it
+	// does not populate the replayable-body cache, so middleware can wrap it
+	// before any reader consumes it.
+	BodyStream() io.ReadCloser
 	MultipartForm() (*multipart.Form, error)
+	// SetParsedForm publishes an already-parsed multipart form as the request's
+	// form state, so downstream code reading form values observes it without
+	// re-parsing a body that has already been consumed. Image-edit validation
+	// parses the form to read prompt/model/n and must hand the result forward.
+	SetParsedForm(form *multipart.Form)
 	PostForm(key string) string
 
 	// HTTPRequest exposes the standard-library request for third-party
@@ -142,6 +161,19 @@ type Chain interface {
 	AbortWithStatusJSON(status int, payload any)
 }
 
+// Streaming exposes the incremental response writers. They are accessors on the
+// context rather than adapter-package constructors so business code can stream
+// without importing the adapter, which is what the escape hatches below it
+// currently force.
+type Streaming interface {
+	// EventStream returns the SSE writer for this request, or nil when the
+	// transport cannot stream it.
+	EventStream() EventStream
+	// ResponseStream returns the raw response writer for this request, or nil
+	// when the transport has no response writer to hand out.
+	ResponseStream() ResponseStream
+}
+
 // Context is the single value handlers, middleware, and relay code accept in
 // place of a framework context.
 type Context interface {
@@ -149,6 +181,8 @@ type Context interface {
 	Request
 	Response
 	Chain
+	Streaming
+	WebSocket
 }
 
 // Handler is a framework-neutral request handler.

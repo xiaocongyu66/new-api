@@ -2,9 +2,8 @@ package oauth
 
 import (
 	"context"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-
-	"github.com/QuantumNous/new-api/model"
 )
 
 // Provider defines the interface for OAuth providers
@@ -26,10 +25,10 @@ type Provider interface {
 	IsUserIDTaken(providerUserID string) bool
 
 	// FillUserByProviderID fills the user model by provider user ID
-	FillUserByProviderID(user *model.User, providerUserID string) error
+	FillUserByProviderID(user *identity.User, providerUserID string) error
 
 	// SetProviderUserID sets the provider user ID on the user model
-	SetProviderUserID(user *model.User, providerUserID string)
+	SetProviderUserID(user *identity.User, providerUserID string)
 
 	// GetProviderPrefix returns the prefix for auto-generated usernames (e.g., "github_")
 	GetProviderPrefix() string
