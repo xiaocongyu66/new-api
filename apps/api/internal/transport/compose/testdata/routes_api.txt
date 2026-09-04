@@ -64,7 +64,7 @@ GET /api/log/token
 GET /api/mj/
 GET /api/mj/self
 GET /api/models
-GET /api/models/
+GET /api/models/meta
 GET /api/models/:id
 GET /api/models/missing
 GET /api/models/search
