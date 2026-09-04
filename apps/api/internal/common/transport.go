@@ -11,7 +11,7 @@ import (
 
 // This file mirrors the gin-specific helpers in gin.go onto the
 // framework-neutral contract.Context. Business code uses these; only
-// internal/transport/ginadapter knows which framework is underneath.
+// the active transport adapter (fiberadapter) knows which framework is underneath.
 
 // H is the framework-neutral equivalent of gin.H.
 type H = map[string]any

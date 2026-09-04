@@ -1,6 +1,6 @@
 // Package contract defines the framework-neutral HTTP boundary used by business
 // code. Nothing in this package may import an HTTP framework: the Gin
-// implementation lives in internal/transport/ginadapter, and a future Fiber
+// implementation lives in internal/transport/fiberadapter, and Fiber is the
 // implementation replaces only that adapter.
 package contract
 

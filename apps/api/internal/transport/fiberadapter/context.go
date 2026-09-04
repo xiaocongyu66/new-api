@@ -1,8 +1,8 @@
 // Package fiberadapter implements the framework-neutral transport contract on
-// top of Fiber and fasthttp. Like ginadapter it is the only place fiber and
+// top of Fiber and fasthttp. Like the removed Gin adapter it was the only place fiber and
 // fasthttp types may appear; business code sees contract.Context only.
 //
-// Two structural decisions separate this adapter from ginadapter, and both come
+// Two structural decisions separated this adapter from the Gin adapter, and both come
 // from fasthttp rather than from taste:
 //
 //  1. The whole middleware chain runs inside the response body stream callback
@@ -176,7 +176,7 @@ func Handler(handler contract.Handler) fiber.Handler {
 }
 
 // Middleware adapts a contract middleware to a fiber handler. It exists as the
-// mirror of ginadapter.Middleware so route registration does not require
+// mirror of the Gin adapter Middleware so route registration does not require
 // business code to import fiber.
 func Middleware(m contract.Middleware) fiber.Handler {
 	return Handler(contract.Handler(m))
@@ -460,7 +460,7 @@ func (r *requestContext) Cookie(name string) (string, error) {
 
 // ---- Body ----
 //
-// The replayable-body path is shared with ginadapter through common: the storage
+// The replayable-body path was shared with the Gin adapter through common: the storage
 // object is cached in Values, so decoding for routing and forwarding upstream
 // read one buffer. common.GetRequestBody bootstraps that cache by reading
 // HTTPRequest().Body once, which is why synthesizeRequest installs a real

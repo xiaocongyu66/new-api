@@ -1,6 +1,6 @@
 // Package fiberadapter implements the transport contract on fiber/fasthttp.
 //
-// Two structural differences from ginadapter are load-bearing and deliberate.
+// Two structural differences from the Gin adapter are load-bearing and deliberate.
 //
 // First, contract middleware never enters fiber's own handler stack. Dispatch
 // commits the response and returns while the contract chain may still be
