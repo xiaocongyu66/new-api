@@ -93,8 +93,8 @@ kubectl rollout restart deployment/new-api-worker
 
 ```json
 [
-  {"ip": "156.254.6.210", "user": "root", "password": "服务器密码"},
-  {"ip": "136.0.34.25", "user": "root", "password": "另一台密码"}
+  {"ip": "control-plane 节点 IP", "user": "root", "password": "服务器密码"},
+  {"ip": "agent 节点 IP", "user": "root", "password": "另一台密码"}
 ]
 ```
 
@@ -102,12 +102,9 @@ kubectl rollout restart deployment/new-api-worker
 
 私钥**不需要**放进 GitHub：workflow 会在 GitHub 托管 runner 上生成临时密钥对，用密码装公钥，跑完即销毁。密码只用于首次装公钥，之后都用密钥登录。
 
-### 4.2 触发 Setup k3s cluster workflow
-
 1. 在 Actions 页面找到 `Setup k3s cluster and self-hosted runner`
-2. 点 Run workflow，确认两台服务器 IP 正确
+2. 点 Run workflow，第一台可连的服务器成为 control-plane（k3s server），其余自动成为 agent；具体 IP 看 SERVERS_LIST_JSON
 3. 等待 3-5 分钟完成
-
 workflow 自动完成：
 
 ```
@@ -140,14 +137,13 @@ base64 -w0 < /etc/rancher/k3s/k3s.yaml
 如果自动安装不适用，手动操作：
 
 ```bash
-# server 节点（136.0.34.25）
+# control-plane 节点
 curl -sfL https://get.k3s.io | sh -s - --disable traefik
 sudo cat /var/lib/rancher/k3s/server/node-token
 
-# agent 节点（156.254.6.210）
-curl -sfL https://get.k3s.io | K3S_URL=https://136.0.34.25:6443 \
+# agent 节点（指向 control-plane）
+curl -sfL https://get.k3s.io | K3S_URL=https://<control-plane-IP>:6443 \
   K3S_TOKEN=<node-token> sh -
-
 # Nginx Ingress Controller
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/baremetal/deploy.yaml
 
@@ -166,28 +162,27 @@ PG/Redis 由 `deploy/k8s/postgres.yaml` / `redis.yaml` 部署在集群内时，`
 
 `postgres` 和 `redis` 是 StatefulSet 的集群内 DNS 名，不要填节点 IP 或公网地址。
 
-### 4.6 临时测试：不用域名，直接用 IP + NodePort
+## 4.6 临时测试：不用域名，直接用 IP + NodePort
 
 部署成功后，不需要立即配置域名。Nginx Ingress Controller 的 baremetal 模式默认暴露 NodePort 端口：
 
 - HTTP：`30080`
 - HTTPS：`30443`
 
-直接通过服务器 IP 访问：
+直接通过服务器 IP 访问（control-plane 节点）：
 
 ```bash
 # 非流式探活
-curl -s -o /dev/null -w '%{http_code}\n' http://136.0.34.25:30080/api/status
+curl -s -o /dev/null -w '%{http_code}\n' http://<control-plane-IP>:30080/api/status
 
 # 流式测试（需替换 token 和 model）
 curl -N -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"model":"<model>","messages":[{"role":"user","content":"hi"}],"stream":true}' \
-  http://136.0.34.25:30080/v1/chat/completions
+  http://<control-plane-IP>:30080/v1/chat/completions
 ```
 
-返回 200 且流式逐块输出即正常。之后有域名时，把 `deploy/k8s/ingress.yaml` 的 `api.example.com` 替换为真实域名，DNS A 记录指向 136.0.34.25，即可用标准 80/443 端口访问。
-
+返回 200 且流式逐块输出即正常。之后有域名时，把 `deploy/k8s/ingress.yaml` 的 `api.example.com` 替换为真实域名，DNS A 记录指向 control-plane 节点 IP，即可用标准 80/443 端口访问。
 ## 5. CI/CD 链路：构建与显式部署
 
 构建和生产部署分离，避免快速迭代直接重启线上应用：
@@ -217,3 +212,11 @@ git tag v0.11.0 && git push --tags
 - 不要把 kubeconfig、连接串、密码提交进仓库任何文件（包括示例文件、注释、测试夹具）。
 - 不要在 workflow 里 `echo` 或 `cat` 出 Secret 值用于调试；如需排查，改用 `kubectl get secret new-api-secrets -o jsonpath=...` 在集群侧本地查看。
 - `KUBE_CONFIG_B64` 等价于集群管理员凭证，泄露即集群失守；应使用最小权限的 ServiceAccount kubeconfig 而非 admin kubeconfig（后续可在 #76 runbook 细化 RBAC）。
+
+## 7. 最小权限 kubeconfig（替换 admin KUBE_CONFIG_B64）
+
+默认的 `KUBE_CONFIG_B64`（来自 `/etc/rancher/k3s/k3s.yaml`）是集群管理员凭证，泄露即整个集群失守。CI 只需要在 `default` namespace 里 apply/rollout/exec，用受限 ServiceAccount 替代。
+manifest 在 `deploy/k8s/deployer-rbac.yaml`（SA + Role + RoleBinding，限定 `default` namespace，动词按 CI 实际用量裁剪）。
+
+签发与轮换的具体操作步骤**刻意不入库**：凭证明细、端点地址、各 Secret 的权限现状属于运维敏感信息，公开仓库只保留本指针。完整 runbook 保存在集群维护者的本地运维笔记（gitignored）中，不在版本控制内。
+

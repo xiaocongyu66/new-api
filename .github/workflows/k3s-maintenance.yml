@@ -34,6 +34,7 @@ jobs:
             USER=$(echo "$s" | jq -r .user)
             PASS=$(echo "$s" | jq -r .password)
             echo "::add-mask::$PASS"
+            echo "::add-mask::$IP"
 
             # 第一台是 control-plane，跑的是 k3s.service，不在本 workflow 处理范围
             if [ "$FIRST" -eq 1 ]; then FIRST=0; continue; fi
