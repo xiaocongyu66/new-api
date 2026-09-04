@@ -1,0 +1,920 @@
+package ops
+
+import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/egress"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"golang.org/x/sync/errgroup"
+	"io"
+	"net"
+	"os"
+	"os/exec"
+	"sort"
+	"strconv"
+	"strings"
+	"sync/atomic"
+	"time"
+
+	"github.com/QuantumNous/new-api/internal/common"
+)
+
+// proxyMaskedSecret is the sentinel value substituted for sensitive fields in
+// API responses. UpdateProxyConfig restores the original value when it sees
+// this sentinel so a round-trip doesn't overwrite real secrets.
+const ProxyMaskedSecret = "********"
+
+// proxyMaskedSecret is the package-local alias used by the moved handlers.
+const proxyMaskedSecret = ProxyMaskedSecret
+
+// ProxyConfigRequest is the JSON shape for saving proxy configuration.
+type ProxyConfigRequest struct {
+	Outbound       OutboundConfig `json:"outbound"`
+	GlobalProxyURL string         `json:"global_proxy_url"`
+	Enabled        bool           `json:"enabled"`
+}
+
+// OutboundConfig mirrors egress.OutboundConfig so the controller can
+// accept and marshal proxy configuration without importing service.
+type OutboundConfig struct {
+	Type           string `json:"type"`
+	Server         string `json:"server"`
+	ServerPort     int    `json:"server_port"`
+	UUID           string `json:"uuid,omitempty"`
+	Password       string `json:"password,omitempty"`
+	Flow           string `json:"flow,omitempty"`
+	Encryption     string `json:"encryption,omitempty"`
+	Method         string `json:"method,omitempty"`
+	Network        string `json:"network,omitempty"`
+	PacketEncoding string `json:"packet_encoding,omitempty"`
+	Masquerade     string `json:"masquerade,omitempty"`
+	Obfs           string `json:"obfs,omitempty"`
+	ObfsPassword   string `json:"obfs_password,omitempty"`
+	HopPorts       string `json:"hop_ports,omitempty"`
+	TLSEnabled     bool   `json:"tls_enabled,omitempty"`
+	TLSServerName  string `json:"tls_server_name,omitempty"`
+	// Flat transport fields (frontend form) mapped to the nested Transport
+	// struct on save.
+	TransportType    string                 `json:"transport_type,omitempty"`
+	TransportPath    string                 `json:"transport_path,omitempty"`
+	TransportHost    string                 `json:"transport_host,omitempty"`
+	TransportService string                 `json:"transport_service_name,omitempty"`
+	Transport        *proxyTransportOptions `json:"transport,omitempty"`
+}
+
+// proxySingBoxConfig is the complete sing-box JSON configuration structure.
+type proxySingBoxConfig struct {
+	Log       proxyLogConfig       `json:"log"`
+	Inbounds  []proxyInboundConfig `json:"inbounds"`
+	Outbounds []proxyOutboundCfg   `json:"outbounds"`
+	Route     proxyRouteConfig     `json:"route"`
+}
+
+type proxyLogConfig struct {
+	Level string `json:"level"`
+}
+
+type proxyInboundConfig struct {
+	Type               string `json:"type"`
+	Tag                string `json:"tag"`
+	proxyListenOptions `json:",inline"`
+}
+
+type proxyListenOptions struct {
+	Listen     string `json:"listen"`
+	ListenPort int    `json:"listen_port"`
+}
+
+type proxyOutboundCfg struct {
+	Type    string `json:"type"`
+	Tag     string `json:"tag"`
+	Options `json:",inline,omitempty"`
+}
+
+type Options struct {
+	Server         string                 `json:"server,omitempty"`
+	ServerPort     int                    `json:"server_port,omitempty"`
+	UUID           string                 `json:"uuid,omitempty"`
+	Password       string                 `json:"password,omitempty"`
+	Flow           string                 `json:"flow,omitempty"`
+	Encryption     string                 `json:"encryption,omitempty"`
+	Method         string                 `json:"method,omitempty"`          // Shadowsocks 专用
+	Network        string                 `json:"network,omitempty"`         // tcp/udp
+	PacketEncoding string                 `json:"packet_encoding,omitempty"` // VLESS 专用
+	Masquerade     string                 `json:"masquerade,omitempty"`      // Hysteria2 专用
+	Obfs           string                 `json:"obfs,omitempty"`            // Hysteria2 专用
+	ObfsPassword   string                 `json:"obfs_password,omitempty"`
+	HopPorts       string                 `json:"hop_ports,omitempty"` // Hysteria2 专用
+	TLS            *proxyTLSCfg           `json:"tls,omitempty"`
+	Transport      *proxyTransportOptions `json:"transport,omitempty"` // V2Ray 传输层
+}
+
+type proxyTransportOptions struct {
+	Type        string            `json:"type,omitempty"`         // ws/kcp/quic/grpc
+	Path        string            `json:"path,omitempty"`         // WebSocket path
+	Headers     map[string]string `json:"headers,omitempty"`      // WebSocket headers (Host)
+	ServiceName string            `json:"service_name,omitempty"` // gRPC service name
+	Security    string            `json:"security,omitempty"`     // quic security
+	Key         string            `json:"key,omitempty"`
+}
+
+type proxyTLSCfg struct {
+	Enabled    bool   `json:"enabled"`
+	ServerName string `json:"server_name,omitempty"`
+}
+
+type proxyRouteConfig struct {
+	Final string `json:"final"`
+}
+
+// proxyMaskSecret replaces a secret with a fixed-length mask, or returns empty
+// when the secret is already empty.
+func proxyMaskSecret(s string) string {
+	if s == "" {
+		return ""
+	}
+	return proxyMaskedSecret
+}
+
+type proxyNodeRequest struct {
+	Name       string `json:"name"`
+	Enabled    bool   `json:"enabled"`
+	Proxy      string `json:"proxy"`
+	ScopeType  string `json:"scope_type"`
+	ScopeValue string `json:"scope_value"`
+}
+
+type proxyNodeUpdateRequest struct {
+	Name       string  `json:"name"`
+	Enabled    bool    `json:"enabled"`
+	Proxy      *string `json:"proxy"`
+	ScopeType  string  `json:"scope_type"`
+	ScopeValue string  `json:"scope_value"`
+}
+
+type proxyNodeBatchRequest struct {
+	NamePrefix string   `json:"name_prefix"`
+	Enabled    bool     `json:"enabled"`
+	ProxyText  string   `json:"proxy_text"`
+	ProxyURLs  []string `json:"proxy_urls"`
+	ScopeType  string   `json:"scope_type"`
+	ScopeValue string   `json:"scope_value"`
+}
+
+type proxyNodeBatchEnabledRequest struct {
+	IDs     []uint `json:"ids"`
+	Enabled bool   `json:"enabled"`
+}
+
+type proxyNodeBatchClearErrorsRequest struct {
+	IDs []uint `json:"ids"`
+}
+
+func proxyParseNodeID(c contract.Context) (uint, error) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	return uint(id), err
+}
+
+func proxyNodeOrderClause(field, direction string) string {
+	columns := map[string]string{
+		"name": "name", "scope": "scope_type", "protocol": "protocol", "health": "health",
+	}
+	column, ok := columns[field]
+	if !ok {
+		column = "id"
+	}
+	if strings.EqualFold(direction, "desc") {
+		return column + " DESC, id DESC"
+	}
+	return column + " ASC, id ASC"
+}
+
+func proxyProbeRate(value, total int64) float64 {
+	if total <= 0 {
+		return 0
+	}
+	return float64(value) / float64(total)
+}
+
+func proxyRatioPercent(value, total int64) float64 {
+	if total <= 0 {
+		return 0
+	}
+	return float64(value) / float64(total) * 100
+}
+
+type ProxyNodeInput struct {
+	Name       string
+	Enabled    bool
+	Proxy      string
+	ScopeType  string
+	ScopeValue string
+}
+
+func DecryptProxyNodeConfig(node *egress.ProxyNode) (*egress.ProxyNodeParsed, error) {
+	if node == nil {
+		return nil, fmt.Errorf("proxy node is nil")
+	}
+	raw, err := decryptProxyNodeConfig(node.EncryptedProxyConfig)
+	if err != nil {
+		return nil, err
+	}
+	return egress.ParseProxyNodeShareLink(raw)
+}
+
+func encryptProxyNodeConfig(value string) (string, error) {
+	block, err := aes.NewCipher(proxyNodeEncryptionKey())
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", err
+	}
+	sealed := gcm.Seal(nonce, nonce, []byte(value), nil)
+	return base64.RawURLEncoding.EncodeToString(sealed), nil
+}
+
+func decryptProxyNodeConfig(value string) (string, error) {
+	encoded, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil {
+		return "", fmt.Errorf("decode proxy node configuration: %w", err)
+	}
+	block, err := aes.NewCipher(proxyNodeEncryptionKey())
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	if len(encoded) < gcm.NonceSize() {
+		return "", fmt.Errorf("proxy node configuration is truncated")
+	}
+	plain, err := gcm.Open(nil, encoded[:gcm.NonceSize()], encoded[gcm.NonceSize():], nil)
+	if err != nil {
+		return "", fmt.Errorf("decrypt proxy node configuration: %w", err)
+	}
+	return string(plain), nil
+}
+
+func proxyNodeEncryptionKey() []byte {
+	sum := sha256.Sum256([]byte("proxy-node:" + common.CryptoSecret))
+	return sum[:]
+}
+
+func EncryptProxyNodeConfigForUpdate(value string) (string, error) {
+	return encryptProxyNodeConfig(value)
+}
+
+type ProxyNodeBatchResult struct {
+	Created int                      `json:"created"`
+	Failed  int                      `json:"failed"`
+	Skipped int                      `json:"skipped"`
+	Errors  []string                 `json:"errors"`
+	Items   []egress.ProxyNodePublic `json:"items"`
+}
+
+func CreateProxyNodesBatch(input ProxyNodeInput, namePrefix, proxyText string, proxyURLs []string) (*ProxyNodeBatchResult, error) {
+	lines := append([]string{}, proxyURLs...)
+	if strings.TrimSpace(proxyText) != "" {
+		lines = append(lines, strings.Split(proxyText, "\n")...)
+	}
+	normalized, skipped, err := egress.NormalizeProxyNodeLines(strings.Join(lines, "\n"))
+	if err != nil {
+		return nil, err
+	}
+	result := &ProxyNodeBatchResult{Skipped: skipped, Errors: []string{}, Items: []egress.ProxyNodePublic{}}
+	namePrefix = strings.TrimSpace(namePrefix)
+	if namePrefix == "" {
+		namePrefix = "Proxy Node"
+	}
+	for index, proxy := range normalized {
+		node, createErr := createProxyNodeRecord(ProxyNodeInput{
+			Name: fmt.Sprintf("%s#%d", namePrefix, index+1), Enabled: input.Enabled,
+			Proxy: proxy, ScopeType: input.ScopeType, ScopeValue: input.ScopeValue,
+		})
+		if createErr != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, fmt.Sprintf("line %d: %s", index+1, createErr.Error()))
+			continue
+		}
+		result.Created++
+		result.Items = append(result.Items, node.Public())
+	}
+	return result, nil
+}
+
+func SetProxyNodesEnabled(ids []uint, enabled bool) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	result := dbx.DB.Model(&egress.ProxyNode{}).Where("id IN ?", ids).Update("enabled", enabled)
+	return result.RowsAffected, result.Error
+}
+
+func ClearProxyNodeErrors(ids []uint) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	result := dbx.DB.Model(&egress.ProxyNode{}).Where("id IN ?", ids).Updates(map[string]any{"last_error": "", "failure_count": 0, "cooldown_until": nil})
+	return result.RowsAffected, result.Error
+}
+
+func createProxyNodeRecord(input ProxyNodeInput) (*egress.ProxyNode, error) {
+	parsed, err := egress.ParseProxyNodeShareLink(input.Proxy)
+	if err != nil {
+		return nil, err
+	}
+	scopeType, scopeValue, err := egress.NormalizeProxyNodeScope(input.ScopeType, input.ScopeValue)
+	if err != nil {
+		return nil, err
+	}
+	encrypted, err := encryptProxyNodeConfig(parsed.CanonicalInput)
+	if err != nil {
+		return nil, err
+	}
+	node := &egress.ProxyNode{
+		Name:                 strings.TrimSpace(input.Name),
+		Enabled:              input.Enabled,
+		EncryptedProxyConfig: encrypted,
+		Protocol:             parsed.Protocol,
+		ScopeType:            scopeType,
+		ScopeValue:           scopeValue,
+		Health:               1,
+	}
+	if node.Name == "" {
+		return nil, fmt.Errorf("proxy node name must not be empty")
+	}
+	if err := dbx.DB.Create(node).Error; err != nil {
+		return nil, err
+	}
+	return node, nil
+}
+
+// GetProxyConfig returns the current proxy configuration and global proxy URL.
+// Sensitive fields (Password, UUID, ObfsPassword) are masked in the response.
+func GetProxyConfig(c contract.Context) {
+	jsonStr, err := LoadProxyConfigJSON()
+	if err != nil {
+		common.CtxApiSuccess(c, common.H{
+			"enabled":          false,
+			"outbound":         nil,
+			"global_proxy_url": "",
+		})
+		return
+	}
+	var cfg ProxyConfigRequest
+	if err := common.Unmarshal([]byte(jsonStr), &cfg); err != nil {
+		common.CtxApiErrorMsg(c, "invalid proxy config in database")
+		return
+	}
+	// Mask sensitive fields before returning to the API caller.
+	cfg.Outbound.Password = proxyMaskSecret(cfg.Outbound.Password)
+	cfg.Outbound.UUID = proxyMaskSecret(cfg.Outbound.UUID)
+	cfg.Outbound.ObfsPassword = proxyMaskSecret(cfg.Outbound.ObfsPassword)
+	common.CtxApiSuccess(c, cfg)
+}
+
+// UpdateProxyConfig saves the proxy configuration to the Option table.
+func UpdateProxyConfig(c contract.Context) {
+	var req ProxyConfigRequest
+	if err := c.BindJSON(&req); err != nil {
+		common.CtxApiErrorMsg(c, "invalid request body")
+		return
+	}
+	// Map flat transport fields to the nested Transport struct.
+	if t := req.Outbound.TransportType; t != "" {
+		headers := map[string]string{}
+		if req.Outbound.TransportHost != "" {
+			headers["Host"] = req.Outbound.TransportHost
+		}
+		req.Outbound.Transport = &proxyTransportOptions{
+			Type:        t,
+			Path:        req.Outbound.TransportPath,
+			Headers:     headers,
+			ServiceName: req.Outbound.TransportService,
+		}
+	}
+	// If sensitive fields arrive as the mask sentinel ("********"), restore
+	// the original values from the stored config so a round-trip
+	// GetProxyConfig → edit unrelated fields → UpdateProxyConfig doesn't
+	// overwrite real secrets with the sentinel.
+	// Sentinel value match — proxyMaskedSecret is defined at package level.
+	if req.Outbound.Password == proxyMaskedSecret || req.Outbound.UUID == proxyMaskedSecret || req.Outbound.ObfsPassword == proxyMaskedSecret {
+		if stored, loadErr := LoadProxyConfigJSON(); loadErr == nil {
+			var prev ProxyConfigRequest
+			if unmarshalErr := common.Unmarshal([]byte(stored), &prev); unmarshalErr == nil {
+				if req.Outbound.Password == proxyMaskedSecret {
+					req.Outbound.Password = prev.Outbound.Password
+				}
+				if req.Outbound.UUID == proxyMaskedSecret {
+					req.Outbound.UUID = prev.Outbound.UUID
+				}
+				if req.Outbound.ObfsPassword == proxyMaskedSecret {
+					req.Outbound.ObfsPassword = prev.Outbound.ObfsPassword
+				}
+			}
+		}
+	}
+	// Validate the outbound against an in-process sing-box build before
+	// persisting. A failed validation prevents the Option update.
+	if req.Enabled {
+		outboundJSON, err := common.Marshal(req.Outbound)
+		if err != nil {
+			common.CtxApiErrorMsg(c, "failed to marshal outbound config")
+			return
+		}
+		validationDialer, err := egress.BuildSingBoxDialer(outboundJSON)
+		if err != nil {
+			common.CtxApiErrorMsg(c, "invalid sing-box outbound configuration: "+err.Error())
+			return
+		}
+		_ = validationDialer.Close()
+	}
+
+	jsonBytes, err := common.Marshal(req)
+	if err != nil {
+		common.CtxApiErrorMsg(c, "failed to marshal config")
+		return
+	}
+	if err := SaveProxyConfigJSON(string(jsonBytes)); err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	common.CtxApiSuccess(c, nil)
+}
+
+// GenerateProxyConfig returns a complete sing-box config.json for the current
+// proxy configuration. It uses encoding/json directly (no sing-box dependency).
+func GenerateProxyConfig(c contract.Context) {
+	jsonStr, err := LoadProxyConfigJSON()
+	if err != nil {
+		common.CtxApiErrorMsg(c, "proxy not configured")
+		return
+	}
+	var cfg ProxyConfigRequest
+	if err := common.Unmarshal([]byte(jsonStr), &cfg); err != nil {
+		common.CtxApiErrorMsg(c, "invalid proxy config")
+		return
+	}
+	if !cfg.Enabled {
+		common.CtxApiErrorMsg(c, "proxy is disabled")
+		return
+	}
+
+	// Determine network (tcp/udp) and transport config.
+	net := cfg.Outbound.Network
+	if net == "" || net == "ws" || net == "kcp" || net == "quic" || net == "grpc" {
+		net = "tcp" // transport type goes into Transport.Type, not Network
+	}
+
+	tlsEnabled := cfg.Outbound.TLSEnabled
+
+	// Build transport options if transport type is set.
+	var transport *proxyTransportOptions
+	if cfg.Outbound.Transport != nil && cfg.Outbound.Transport.Type != "" {
+		transport = cfg.Outbound.Transport
+	}
+
+	// Build base options shared by most protocols.
+	baseOpts := Options{
+		Server:     cfg.Outbound.Server,
+		ServerPort: cfg.Outbound.ServerPort,
+		Network:    net,
+		Transport:  transport,
+	}
+	if tlsEnabled {
+		baseOpts.TLS = &proxyTLSCfg{
+			Enabled:    true,
+			ServerName: cfg.Outbound.TLSServerName,
+		}
+	}
+
+	var outbound proxyOutboundCfg
+	switch cfg.Outbound.Type {
+	case "vless":
+		outbound = proxyOutboundCfg{Type: "vless", Tag: "proxy", Options: Options{
+			UUID:           cfg.Outbound.UUID,
+			Flow:           cfg.Outbound.Flow,
+			PacketEncoding: cfg.Outbound.PacketEncoding,
+			Server:         baseOpts.Server,
+			ServerPort:     baseOpts.ServerPort,
+			Network:        baseOpts.Network,
+			Transport:      baseOpts.Transport,
+			TLS:            baseOpts.TLS,
+		}}
+	case "vmess":
+		outbound = proxyOutboundCfg{Type: "vmess", Tag: "proxy", Options: Options{
+			UUID:       cfg.Outbound.UUID,
+			Server:     baseOpts.Server,
+			ServerPort: baseOpts.ServerPort,
+			Network:    baseOpts.Network,
+			Transport:  baseOpts.Transport,
+			TLS:        baseOpts.TLS,
+		}}
+	case "trojan":
+		outbound = proxyOutboundCfg{Type: "trojan", Tag: "proxy", Options: Options{
+			Password:   cfg.Outbound.Password,
+			Server:     baseOpts.Server,
+			ServerPort: baseOpts.ServerPort,
+			Network:    baseOpts.Network,
+			Transport:  baseOpts.Transport,
+			TLS:        baseOpts.TLS,
+		}}
+	case "shadowsocks":
+		method := cfg.Outbound.Method
+		if method == "" {
+			method = cfg.Outbound.Encryption
+		}
+		outbound = proxyOutboundCfg{Type: "shadowsocks", Tag: "proxy", Options: Options{
+			Method:     method,
+			Password:   cfg.Outbound.Password,
+			Server:     baseOpts.Server,
+			ServerPort: baseOpts.ServerPort,
+			Transport:  baseOpts.Transport,
+		}}
+	case "hysteria2":
+		outbound = proxyOutboundCfg{Type: "hysteria2", Tag: "proxy", Options: Options{
+			Password:     cfg.Outbound.Password,
+			Masquerade:   cfg.Outbound.Masquerade,
+			Obfs:         cfg.Outbound.Obfs,
+			ObfsPassword: cfg.Outbound.ObfsPassword,
+			HopPorts:     cfg.Outbound.HopPorts,
+			Server:       baseOpts.Server,
+			ServerPort:   baseOpts.ServerPort,
+			Transport:    baseOpts.Transport,
+			TLS:          baseOpts.TLS,
+		}}
+	case "tuic":
+		outbound = proxyOutboundCfg{Type: "tuic", Tag: "proxy", Options: Options{
+			UUID:       cfg.Outbound.UUID,
+			Password:   cfg.Outbound.Password,
+			Server:     baseOpts.Server,
+			ServerPort: baseOpts.ServerPort,
+			Transport:  baseOpts.Transport,
+			TLS:        baseOpts.TLS,
+		}}
+	case "socks5", "http":
+		outbound = proxyOutboundCfg{Type: cfg.Outbound.Type, Tag: "proxy", Options: Options{
+			Server:     baseOpts.Server,
+			ServerPort: baseOpts.ServerPort,
+			Password:   cfg.Outbound.Password,
+		}}
+	default:
+		outbound = proxyOutboundCfg{Type: cfg.Outbound.Type, Tag: "proxy", Options: Options{
+			Server:     baseOpts.Server,
+			ServerPort: baseOpts.ServerPort,
+		}}
+	}
+
+	config := proxySingBoxConfig{
+		Log: proxyLogConfig{Level: "info"},
+		Inbounds: []proxyInboundConfig{{
+			Type: "socks",
+			Tag:  "socks-in",
+			proxyListenOptions: proxyListenOptions{
+				Listen:     "0.0.0.0",
+				ListenPort: 1080,
+			},
+		}},
+		Outbounds: []proxyOutboundCfg{
+			outbound,
+			{Type: "direct", Tag: "direct"},
+		},
+		Route: proxyRouteConfig{Final: "proxy"},
+	}
+
+	jsonBytes, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		common.CtxApiErrorMsg(c, "failed to generate config")
+		return
+	}
+	common.CtxApiSuccess(c, common.H{
+		"config_json": string(jsonBytes),
+	})
+}
+
+// GetProxyStatus checks whether the local proxy port (127.0.0.1:1080) is reachable.
+func GetProxyStatus(c contract.Context) {
+	conn, err := net.DialTimeout("tcp", "127.0.0.1:1080", 3*time.Second)
+	if err != nil {
+		common.CtxApiSuccess(c, common.H{
+			"running": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+	conn.Close()
+	common.CtxApiSuccess(c, common.H{
+		"running": true,
+	})
+}
+
+// ReloadProxy sends SIGHUP to the sing-box container for hot reload.
+func ReloadProxy(c contract.Context) {
+	containerName := os.Getenv("SINGBOX_CONTAINER_NAME")
+	if containerName == "" {
+		containerName = "sing-box-new-api"
+	}
+	cmd := exec.Command("docker", "kill", "-s", "HUP", containerName)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		common.CtxApiSuccess(c, common.H{
+			"success": false,
+			"message": fmt.Sprintf("热加载失败（%v），请手动执行：docker kill -s HUP %s", err, containerName),
+			"output":  string(output),
+		})
+		return
+	}
+	common.CtxApiSuccess(c, common.H{
+		"success": true,
+		"message": "热加载成功",
+	})
+}
+
+func ListProxyNodes(c contract.Context) {
+	var nodes []egress.ProxyNode
+	query := dbx.DB
+	if scopeType := c.Query("scope_type"); scopeType != "" {
+		query = query.Where("scope_type = ?", scopeType)
+	}
+	if scopeValue := c.Query("scope_value"); scopeValue != "" {
+		query = query.Where("scope_value = ?", scopeValue)
+	}
+	if protocol := c.Query("protocol"); protocol != "" {
+		query = query.Where("protocol = ?", protocol)
+	}
+	order := proxyNodeOrderClause(c.Query("sort_by"), c.Query("sort_order"))
+	if err := query.Order(order).Find(&nodes).Error; err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	items := make([]egress.ProxyNodePublic, 0, len(nodes))
+	for _, node := range nodes {
+		public := node.Public()
+		probeStats := GetProxyNodeProbeStatsFor(node.ID)
+		public.ProbeTotal = probeStats.Total
+		public.ProbeSuccess = probeStats.Success
+		items = append(items, public)
+	}
+	field := c.Query("sort_by")
+	if field == "probe_success_rate" || field == "probe_failure_rate" || field == "probe_count" {
+		descending := strings.EqualFold(c.Query("sort_order"), "desc")
+		sort.SliceStable(items, func(i, j int) bool {
+			left, right := items[i], items[j]
+			var leftValue, rightValue float64
+			switch field {
+			case "probe_count":
+				leftValue, rightValue = float64(left.ProbeTotal), float64(right.ProbeTotal)
+			case "probe_success_rate":
+				leftValue, rightValue = proxyProbeRate(left.ProbeSuccess, left.ProbeTotal), proxyProbeRate(right.ProbeSuccess, right.ProbeTotal)
+			default:
+				leftValue, rightValue = proxyProbeRate(left.ProbeTotal-left.ProbeSuccess, left.ProbeTotal), proxyProbeRate(right.ProbeTotal-right.ProbeSuccess, right.ProbeTotal)
+			}
+			if leftValue == rightValue {
+				if descending {
+					return left.ID > right.ID
+				}
+				return left.ID < right.ID
+			}
+			if descending {
+				return leftValue > rightValue
+			}
+			return leftValue < rightValue
+		})
+	}
+	common.CtxApiSuccess(c, items)
+}
+
+func BatchCreateProxyNodes(c contract.Context) {
+	var req proxyNodeBatchRequest
+	if err := c.BindJSON(&req); err != nil {
+		common.CtxApiErrorMsg(c, "invalid request body")
+		return
+	}
+	result, err := CreateProxyNodesBatch(ProxyNodeInput{
+		Enabled: req.Enabled, ScopeType: req.ScopeType, ScopeValue: req.ScopeValue,
+	}, req.NamePrefix, req.ProxyText, req.ProxyURLs)
+	if err != nil {
+		common.CtxApiErrorMsg(c, err.Error())
+		return
+	}
+	common.CtxApiSuccess(c, result)
+}
+
+func BatchSetProxyNodesEnabled(c contract.Context) {
+	var req proxyNodeBatchEnabledRequest
+	if err := c.BindJSON(&req); err != nil {
+		common.CtxApiErrorMsg(c, "invalid request body")
+		return
+	}
+	updated, err := SetProxyNodesEnabled(req.IDs, req.Enabled)
+	if err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	common.CtxApiSuccess(c, common.H{"updated": updated})
+}
+
+func BatchClearProxyNodeErrors(c contract.Context) {
+	var req proxyNodeBatchClearErrorsRequest
+	if err := c.BindJSON(&req); err != nil {
+		common.CtxApiErrorMsg(c, "invalid request body")
+		return
+	}
+	cleared, err := ClearProxyNodeErrors(req.IDs)
+	if err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	common.CtxApiSuccess(c, common.H{"cleared": cleared})
+}
+
+func GetProxyNodeReport(c contract.Context) {
+	var total, enabled, healthy int64
+	base := dbx.DB.Model(&egress.ProxyNode{})
+	if err := base.Count(&total).Error; err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	// Each metric runs on its own fresh query. Reusing one query would
+	// accumulate predicates (enabled leaking into the healthy count), same
+	// class of bug as GetProxyNodesForChannel — see proxy_node_test.go.
+	if err := dbx.DB.Model(&egress.ProxyNode{}).Where("enabled = ?", true).Count(&enabled).Error; err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	if err := dbx.DB.Model(&egress.ProxyNode{}).Where("health >= ?", ProxyNodeHealthyThreshold).Count(&healthy).Error; err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	stats := GetProxyNodeProbeStats()
+	failed := stats.Total - stats.Success
+	common.CtxApiSuccess(c, common.H{
+		"total":         total,
+		"enabled":       enabled,
+		"healthy":       healthy,
+		"probe_total":   stats.Total,
+		"probe_success": stats.Success,
+		"probe_failed":  max(int64(0), failed),
+		"probe_active":  stats.Active,
+		"success_rate":  proxyRatioPercent(stats.Success, stats.Total),
+		"failure_rate":  proxyRatioPercent(failed, stats.Total),
+	})
+}
+
+func GetProxyNode(c contract.Context) {
+	id, err := proxyParseNodeID(c)
+	if err != nil {
+		common.CtxApiErrorMsg(c, "invalid proxy node id")
+		return
+	}
+	var node egress.ProxyNode
+	if err := dbx.DB.First(&node, id).Error; err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	parsed, err := DecryptProxyNodeConfig(&node)
+	if err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	common.CtxApiSuccess(c, common.H{
+		"node":  node.Public(),
+		"proxy": parsed.CanonicalInput,
+	})
+}
+
+func UpdateProxyNode(c contract.Context) {
+	id, err := proxyParseNodeID(c)
+	if err != nil {
+		common.CtxApiErrorMsg(c, "invalid proxy node id")
+		return
+	}
+	var req proxyNodeUpdateRequest
+	if err := c.BindJSON(&req); err != nil {
+		common.CtxApiErrorMsg(c, "invalid request body")
+		return
+	}
+	var node egress.ProxyNode
+	if err := dbx.DB.First(&node, id).Error; err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	scopeType, scopeValue, err := egress.NormalizeProxyNodeScope(req.ScopeType, req.ScopeValue)
+	if err != nil {
+		common.CtxApiErrorMsg(c, err.Error())
+		return
+	}
+	node.Name, node.Enabled, node.ScopeType, node.ScopeValue = strings.TrimSpace(req.Name), req.Enabled, scopeType, scopeValue
+	if req.Proxy != nil && strings.TrimSpace(*req.Proxy) != "" {
+		parsed, parseErr := egress.ParseProxyNodeShareLink(*req.Proxy)
+		if parseErr != nil {
+			common.CtxApiErrorMsg(c, parseErr.Error())
+			return
+		}
+		encrypted, encryptErr := EncryptProxyNodeConfigForUpdate(parsed.CanonicalInput)
+		if encryptErr != nil {
+			common.CtxApiErrorMsg(c, encryptErr.Error())
+			return
+		}
+		node.Protocol = parsed.Protocol
+		node.EncryptedProxyConfig = encrypted
+	}
+	if node.Name == "" {
+		common.CtxApiErrorMsg(c, "proxy node name must not be empty")
+		return
+	}
+	if err := dbx.DB.Save(&node).Error; err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	common.CtxApiSuccess(c, node.Public())
+}
+
+func DeleteProxyNode(c contract.Context) {
+	id, err := proxyParseNodeID(c)
+	if err != nil {
+		common.CtxApiErrorMsg(c, "invalid proxy node id")
+		return
+	}
+	if err := dbx.DB.Delete(&egress.ProxyNode{}, id).Error; err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	ResetProxyNodeProbeStatsFor(id)
+	common.CtxApiSuccess(c, nil)
+}
+
+func TestProxyNode(c contract.Context) {
+	id, err := proxyParseNodeID(c)
+	if err != nil {
+		common.CtxApiErrorMsg(c, "invalid proxy node id")
+		return
+	}
+	var node egress.ProxyNode
+	if err := dbx.DB.First(&node, id).Error; err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	result, probeErr := ProbeProxyNode(c.Context(), &node)
+	if probeErr != nil {
+		common.CtxApiError(c, probeErr)
+		return
+	}
+	common.CtxApiSuccess(c, result)
+}
+
+func TestAllProxyNodes(c contract.Context) {
+	var nodes []egress.ProxyNode
+	if err := dbx.DB.Where("enabled = ?", true).Find(&nodes).Error; err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	// ponytail: bounded concurrency — 10 in flight. ProbeProxyNode has its own
+	// 15s timeout; errgroup propagates request cancellation so a disconnected
+	// client stops the remaining probes instead of draining them serially.
+	g, ctx := errgroup.WithContext(c.Context())
+	g.SetLimit(10)
+	var passedAtomic atomic.Int64
+	for index := range nodes {
+		node := &nodes[index]
+		g.Go(func() error {
+			result, err := ProbeProxyNode(ctx, node)
+			if err == nil && result.Success {
+				passedAtomic.Add(1)
+			}
+			return nil
+		})
+	}
+	_ = g.Wait()
+	passed := passedAtomic.Load()
+	common.CtxApiSuccess(c, common.H{"passed": passed, "failed": int64(len(nodes)) - passed, "total": len(nodes)})
+}
+
+func CreateProxyNode(c contract.Context) {
+	var req proxyNodeRequest
+	if err := c.BindJSON(&req); err != nil {
+		common.CtxApiErrorMsg(c, "invalid request body")
+		return
+	}
+	node, err := createProxyNodeRecord(ProxyNodeInput{
+		Name: req.Name, Enabled: req.Enabled, Proxy: req.Proxy, ScopeType: req.ScopeType, ScopeValue: req.ScopeValue,
+	})
+	if err != nil {
+		common.CtxApiErrorMsg(c, err.Error())
+		return
+	}
+	common.CtxApiSuccess(c, node.Public())
+}

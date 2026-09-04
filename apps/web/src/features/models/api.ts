@@ -46,7 +46,7 @@ import type {
 export async function getModels(
   params: GetModelsParams = {}
 ): Promise<GetModelsResponse> {
-  const res = await api.get('/api/models/', { params })
+  const res = await api.get('/api/models/meta', { params })
   return res.data
 }
 

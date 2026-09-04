@@ -2492,8 +2492,6 @@
     "Just now": "Только что",
     "JustSong": "JustSong",
     "K": "K",
-    "Karmada Dashboard": "Karmada Dashboard",
-    "Karmada Dashboard is not configured": "Karmada Dashboard не настроен",
     "Keep affinity when channel is disabled": "Сохранять привязку при отключении канала",
     "Keep enabled if you need to proxy requests for different upstream accounts.": "Оставьте включённым, если нужно проксировать запросы для разных upstream-аккаунтов.",
     "Keep enough balance before production traffic": "Поддерживайте достаточный баланс перед рабочим трафиком",

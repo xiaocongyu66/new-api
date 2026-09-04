@@ -1,0 +1,129 @@
+package policy
+
+import (
+	transportcontract "github.com/QuantumNous/new-api/internal/transport/contract"
+)
+
+// ActionDefinition describes a single action exposed by a resource. DefaultRoles
+// lists the role keys that receive this action as part of their baseline grants.
+type ActionDefinition struct {
+	Action         string   `json:"action"`
+	LabelKey       string   `json:"label_key"`
+	DescriptionKey string   `json:"description_key"`
+	DefaultRoles   []string `json:"-"`
+}
+
+// ResourceDefinition describes a resource and the actions it exposes.
+type ResourceDefinition struct {
+	Resource string             `json:"resource"`
+	LabelKey string             `json:"label_key"`
+	Actions  []ActionDefinition `json:"actions"`
+}
+
+var registry []ResourceDefinition
+
+// RegisterResource adds a resource definition to the permission registry.
+func RegisterResource(resource ResourceDefinition) {
+	registry = append(registry, resource)
+}
+
+// Catalog returns a copy of the registered resource definitions.
+func Catalog() []ResourceDefinition {
+	result := make([]ResourceDefinition, 0, len(registry))
+	for _, resource := range registry {
+		result = append(result, ResourceDefinition{
+			Resource: resource.Resource,
+			LabelKey: resource.LabelKey,
+			Actions:  append([]ActionDefinition(nil), resource.Actions...),
+		})
+	}
+	return result
+}
+
+// AllPermissions returns every registered permission.
+func AllPermissions() []Permission {
+	permissions := make([]Permission, 0)
+	for _, resource := range registry {
+		for _, action := range resource.Actions {
+			permissions = append(permissions, Permission{
+				Resource: resource.Resource,
+				Action:   action.Action,
+			})
+		}
+	}
+	return permissions
+}
+
+// PermissionsForRole returns the permissions whose DefaultRoles include roleKey.
+func PermissionsForRole(roleKey string) []Permission {
+	permissions := make([]Permission, 0)
+	for _, resource := range registry {
+		for _, action := range resource.Actions {
+			if actionHasRole(action, roleKey) {
+				permissions = append(permissions, Permission{
+					Resource: resource.Resource,
+					Action:   action.Action,
+				})
+			}
+		}
+	}
+	return permissions
+}
+
+func actionHasRole(action ActionDefinition, roleKey string) bool {
+	for _, r := range action.DefaultRoles {
+		if r == roleKey {
+			return true
+		}
+	}
+	return false
+}
+
+func isKnownResource(resource string) bool {
+	for _, known := range registry {
+		if known.Resource == resource {
+			return true
+		}
+	}
+	return false
+}
+
+func catalogActions(resource string) []ActionDefinition {
+	for _, known := range registry {
+		if known.Resource == resource {
+			return known.Actions
+		}
+	}
+	return nil
+}
+
+func isKnownPermission(permission Permission) bool {
+	for _, resource := range registry {
+		if resource.Resource != permission.Resource {
+			continue
+		}
+		for _, action := range resource.Actions {
+			if action.Action == permission.Action {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// GetPermissionCatalogHandler returns the permission schema (resources with
+// actions and display label keys, plus the roles with their baseline grant
+// matrices) used by the client permission editor. It is defined here alongside
+// Catalog and Roles so the schema lives in a single place, and takes the
+// framework-neutral transport contract so replacing the HTTP framework does
+// not touch this handler.
+func GetPermissionCatalogHandler(c transportcontract.Context) {
+	c.JSON(200, map[string]any{
+		"success": true,
+		"message": "",
+		"data": map[string]any{
+			"resources": Catalog(),
+			"roles":     Roles(),
+		},
+	})
+}

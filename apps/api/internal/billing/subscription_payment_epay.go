@@ -1,0 +1,217 @@
+package billing
+
+import (
+	"fmt"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"net/http"
+	"net/url"
+	"strconv"
+	"time"
+
+	"github.com/Calcium-Ion/go-epay/epay"
+	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/samber/lo"
+)
+
+type SubscriptionEpayPayRequest struct {
+	PlanId        int    `json:"plan_id"`
+	PaymentMethod string `json:"payment_method"`
+}
+
+func SubscriptionRequestEpay(c contract.Context) {
+	if !RequirePaymentCompliance(c) {
+		return
+	}
+
+	var req SubscriptionEpayPayRequest
+	if err := c.BindJSON(&req); err != nil || req.PlanId <= 0 {
+		common.CtxApiErrorMsg(c, "参数错误")
+		return
+	}
+
+	plan, err := GetSubscriptionPlanById(req.PlanId)
+	if err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	if !plan.Enabled {
+		common.CtxApiErrorMsg(c, "套餐未启用")
+		return
+	}
+	if plan.PriceAmount < 0.01 {
+		common.CtxApiErrorMsg(c, "套餐金额过低")
+		return
+	}
+	if !ContainsPayMethod(req.PaymentMethod) {
+		common.CtxApiErrorMsg(c, "支付方式不存在")
+		return
+	}
+
+	userId := c.GetInt("id")
+	if plan.MaxPurchasePerUser > 0 {
+		count, err := CountUserSubscriptionsByPlan(userId, plan.Id)
+		if err != nil {
+			common.CtxApiError(c, err)
+			return
+		}
+		if count >= int64(plan.MaxPurchasePerUser) {
+			common.CtxApiErrorMsg(c, "已达到该套餐购买上限")
+			return
+		}
+	}
+
+	callBackAddress := GetCallbackAddress()
+	returnUrl, err := url.Parse(callBackAddress + "/api/subscription/epay/return")
+	if err != nil {
+		common.CtxApiErrorMsg(c, "回调地址配置错误")
+		return
+	}
+	notifyUrl, err := url.Parse(callBackAddress + "/api/subscription/epay/notify")
+	if err != nil {
+		common.CtxApiErrorMsg(c, "回调地址配置错误")
+		return
+	}
+
+	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
+	tradeNo = fmt.Sprintf("SUBUSR%dNO%s", userId, tradeNo)
+
+	client := GetEpayClient()
+	if client == nil {
+		common.CtxApiErrorMsg(c, "当前管理员未配置支付信息")
+		return
+	}
+
+	order := &SubscriptionOrder{
+		UserId:          userId,
+		PlanId:          plan.Id,
+		Money:           plan.PriceAmount,
+		TradeNo:         tradeNo,
+		PaymentMethod:   req.PaymentMethod,
+		PaymentProvider: PaymentProviderEpay,
+		CreateTime:      time.Now().Unix(),
+		Status:          common.TopUpStatusPending,
+	}
+	if err := order.Insert(); err != nil {
+		common.CtxApiErrorMsg(c, "创建订单失败")
+		return
+	}
+	uri, params, err := client.Purchase(&epay.PurchaseArgs{
+		Type:           req.PaymentMethod,
+		ServiceTradeNo: tradeNo,
+		Name:           fmt.Sprintf("SUB:%s", plan.Title),
+		Money:          strconv.FormatFloat(plan.PriceAmount, 'f', 2, 64),
+		Device:         epay.PC,
+		NotifyUrl:      notifyUrl,
+		ReturnUrl:      returnUrl,
+	})
+	if err != nil {
+		_ = ExpireSubscriptionOrder(tradeNo, PaymentProviderEpay)
+		common.CtxApiErrorMsg(c, "拉起支付失败")
+		return
+	}
+	_ = c.JSON(http.StatusOK, common.H{"message": "success", "data": params, "url": uri})
+}
+
+func SubscriptionEpayNotify(c contract.Context) {
+	var params map[string]string
+
+	if c.Method() == "POST" {
+		// POST 请求：从 POST body 解析参数
+		if err := c.ParseForm(); err != nil {
+			_ = c.String(http.StatusOK, "fail")
+			return
+		}
+		params = lo.Reduce(lo.Keys(c.PostFormValues()), func(r map[string]string, t string, i int) map[string]string {
+			r[t] = c.PostForm(t)
+			return r
+		}, map[string]string{})
+	} else {
+		// GET 请求：从 URL Query 解析参数
+		params = lo.Reduce(lo.Keys(c.QueryValues()), func(r map[string]string, t string, i int) map[string]string {
+			r[t] = c.Query(t)
+			return r
+		}, map[string]string{})
+	}
+
+	if len(params) == 0 {
+		_ = c.String(http.StatusOK, "fail")
+		return
+	}
+
+	client := GetEpayClient()
+	if client == nil {
+		_ = c.String(http.StatusOK, "fail")
+		return
+	}
+	verifyInfo, err := client.Verify(params)
+	if err != nil || !verifyInfo.VerifyStatus {
+		_ = c.String(http.StatusOK, "fail")
+		return
+	}
+
+	if verifyInfo.TradeStatus != epay.StatusTradeSuccess {
+		_ = c.String(http.StatusOK, "fail")
+		return
+	}
+
+	LockOrder(verifyInfo.ServiceTradeNo)
+	defer UnlockOrder(verifyInfo.ServiceTradeNo)
+
+	if err := CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), PaymentProviderEpay, verifyInfo.Type); err != nil {
+		_ = c.String(http.StatusOK, "fail")
+		return
+	}
+
+	_ = c.String(http.StatusOK, "success")
+}
+
+// SubscriptionEpayReturn handles browser return after payment.
+// It verifies the payload and completes the order, then redirects to console.
+func SubscriptionEpayReturn(c contract.Context) {
+	var params map[string]string
+
+	if c.Method() == "POST" {
+		// POST 请求：从 POST body 解析参数
+		if err := c.ParseForm(); err != nil {
+			c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=fail"))
+			return
+		}
+		params = lo.Reduce(lo.Keys(c.PostFormValues()), func(r map[string]string, t string, i int) map[string]string {
+			r[t] = c.PostForm(t)
+			return r
+		}, map[string]string{})
+	} else {
+		// GET 请求：从 URL Query 解析参数
+		params = lo.Reduce(lo.Keys(c.QueryValues()), func(r map[string]string, t string, i int) map[string]string {
+			r[t] = c.Query(t)
+			return r
+		}, map[string]string{})
+	}
+
+	if len(params) == 0 {
+		c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=fail"))
+		return
+	}
+
+	client := GetEpayClient()
+	if client == nil {
+		c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=fail"))
+		return
+	}
+	verifyInfo, err := client.Verify(params)
+	if err != nil || !verifyInfo.VerifyStatus {
+		c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=fail"))
+		return
+	}
+	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
+		LockOrder(verifyInfo.ServiceTradeNo)
+		defer UnlockOrder(verifyInfo.ServiceTradeNo)
+		if err := CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), PaymentProviderEpay, verifyInfo.Type); err != nil {
+			c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=fail"))
+			return
+		}
+		c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=success"))
+		return
+	}
+	c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=pending"))
+}

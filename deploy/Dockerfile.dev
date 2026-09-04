@@ -23,7 +23,7 @@ COPY . .
 RUN mkdir -p apps/api/web/dist && \
     echo '<!doctype html><html><head><title>dev</title></head><body>use frontend dev server</body</html>' > apps/api/web/dist/index.html
 
-RUN cd apps/api && go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat /build/VERSION)'" -o /build/new-api
+RUN cd apps/api && go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/internal/common.Version=$(cat /build/VERSION)'" -o /build/new-api
 
 FROM debian:bookworm-slim
 

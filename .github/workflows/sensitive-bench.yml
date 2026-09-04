@@ -5,8 +5,7 @@ on:
   pull_request:
     types: [opened, synchronize]
     paths:
-      - 'apps/api/service/sensitive*.go'
-      - 'apps/api/service/testdata/sensitive_*.json*'
+      - 'apps/api/internal/sensitive/**'
       - '.github/workflows/sensitive-bench.yml'
 
 permissions:
@@ -40,7 +39,7 @@ jobs:
 
       - name: Run benchmarks (new engine normal pool)
         run: |
-          go test ./service/ -run '^$' -count=3 \
+          go test ./internal/sensitive/ -run '^$' -count=3 \
             -bench 'BenchmarkSensitiveNormal$' \
             2>&1 | tee "$RUNNER_TEMP/bench.txt"
 

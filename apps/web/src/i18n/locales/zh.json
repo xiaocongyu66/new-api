@@ -2492,8 +2492,6 @@
     "Just now": "刚刚",
     "JustSong": "JustSong",
     "K": "K",
-    "Karmada Dashboard": "Karmada Dashboard",
-    "Karmada Dashboard is not configured": "Karmada Dashboard 未配置",
     "Keep affinity when channel is disabled": "渠道禁用后保留亲和",
     "Keep enabled if you need to proxy requests for different upstream accounts.": "如果需要为不同上游账户代理请求，请保持启用。",
     "Keep enough balance before production traffic": "生产流量前保持充足余额",
