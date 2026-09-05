@@ -197,6 +197,11 @@ func migrateDB() error {
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
 	}
+	// Drop legacy unique constraint on prefill_groups if present, so AutoMigrate
+	// doesn't fail trying to drop the non-existent 'uni_prefill_groups_name'
+	if err := migratePrefillGroupConstraint(); err != nil {
+		return err
+	}
 	if err := dbx.DB.AutoMigrate(migrationModels()...); err != nil {
 		return err
 	}
@@ -218,6 +223,9 @@ func migrateDB() error {
 }
 
 func migrateDBFast() error {
+	if err := migratePrefillGroupConstraint(); err != nil {
+		return err
+	}
 	var wg sync.WaitGroup
 	migrations := dbx.Migrations()
 	// 动态计算migration数量，确保errChan缓冲区足够大
@@ -359,6 +367,20 @@ func ClickHouseCreateTableHasTTL(createTableSQL string) bool {
 
 // migrateSubscriptionPlanPriceAmount migrates price_amount column from float/double to decimal(10,6)
 // This is safe to run multiple times - it checks the column type first
+
+func migratePrefillGroupConstraint() error {
+	if !common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+		return nil
+	}
+	var exists bool
+	if err := dbx.DB.Raw("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'prefill_groups')").Scan(&exists).Error; err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	return dbx.DB.Exec("ALTER TABLE prefill_groups DROP CONSTRAINT IF EXISTS idx_prefill_groups_name").Error
+}
 
 func closeDB(db *gorm.DB) error {
 	sqlDB, err := db.DB()
