@@ -11,7 +11,7 @@ name: Deploy to Server (Docker Compose)
 #   2. 自动触发：Publish Docker image (Multi-arch) 构建成功后自动触发，tag 从上游透传
 #
 # 需要在仓库 Settings → Secrets and variables → Actions 配置的 Secrets：
-#   PROD_SERVER_HOST         生产单机服务器 IP/域名（例如 154.12.51.245）
+#   PROD_SERVER_HOST         生产单机服务器 IP/域名（例如 your-server-ip 或 your-server.example.com）
 #   PROD_SERVER_USER         SSH 用户名（例如 root）
 #   PROD_SERVER_SSH_KEY      专用的 ED25519 部署私钥
 #   PROD_SERVER_SSH_PORT     SSH 端口（可选，默认 22）

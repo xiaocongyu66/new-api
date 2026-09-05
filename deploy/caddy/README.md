@@ -1,12 +1,9 @@
-# Caddy 替换 Nginx 部署说明（针对 nailao.biz）
+# Caddy 替换 Nginx 部署说明
 
-本目录提供使用 Caddy 替代传统 Nginx 的完整配置方案。
+本目录提供使用 Caddy 替代传统 Nginx 的配置方案。
 
-## 1. 为什么需要插件（SEO 替换）？
-Nginx 使用 `sub_filter` 指令在代理 SPA 前端时动态改写 HTML 中的 `<title>` 和 SEO `<meta>` 标签，以便搜索引擎爬虫能抓取到正确的中文站点描述与标题。
-
-Caddy 原生未内置响应体正则替换功能，因此通过官方推荐的 [`caddyserver/replace-response`](https://github.com/caddyserver/replace-response) 插件实现等价的 SEO 动态注入。
-
+## 插件说明
+使用 Caddy 替代 Nginx 时，若需实现对等的响应内容改写（如 SPA 页面标题与 Meta 标签动态替换），需使用 [`caddyserver/replace-response`](https://github.com/caddyserver/replace-response) 插件。
 ---
 
 ## 2. 部署方案
@@ -16,18 +13,18 @@ Caddy 原生未内置响应体正则替换功能，因此通过官方推荐的 [
 1. **构建镜像**：
    ```bash
    cd deploy/caddy
-   docker build -t nailao-caddy:latest .
+   docker build -t new-api-caddy:latest .
    ```
 
 2. **启动容器**（使用 host 网络直通或映射 80/443）：
    ```bash
-   docker run -d --name nailao-caddy \
+   docker run -d --name new-api-caddy \
      --restart always \
      --network host \
      -v $(pwd)/Caddyfile:/etc/caddy/Caddyfile:ro \
-     -v /etc/nginx/ssl:/etc/ssl:ro \
-     -v /var/www/nailao-seo:/var/www/nailao-seo:ro \
-     nailao-caddy:latest
+     -v /etc/ssl/certs:/etc/ssl:ro \
+     -v /var/www/seo:/var/www/seo:ro \
+     new-api-caddy:latest
    ```
 
 ### 方案 B：单二进制 systemd 部署

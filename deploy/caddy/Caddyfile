@@ -6,9 +6,9 @@
     }
 }
 
-nailao.biz, www.nailao.biz {
-    # 1. 加载 Cloudflare Origin CA 长效证书
-    tls /etc/ssl/nailao.crt /etc/ssl/nailao.key
+{$SITE_DOMAIN:example.com}, {$WWW_SITE_DOMAIN:www.example.com} {
+    # 1. 加载证书（如使用 Cloudflare Origin CA 或自带证书；若由 Caddy 自动申请可直接省略 tls 行）
+    tls /etc/ssl/cert.crt /etc/ssl/cert.key
 
     # 最大请求体限制 32MB
     request_body {
@@ -16,7 +16,7 @@ nailao.biz, www.nailao.biz {
     }
 
     # 2. SEO 搜索引擎验证与静态爬虫索引（robots.txt, sitemap.xml, 站长验证文件）
-    root * /var/www/nailao-seo
+    root * /var/www/seo
     @seo_static {
         path /robots.txt /sitemap.xml
         path_regexp "^/(google[0-9a-f]{16}\.html|BingSiteAuth\.xml|[0-9a-f]{32}\.txt)$"
@@ -55,9 +55,9 @@ nailao.biz, www.nailao.biz {
         reverse_proxy 127.0.0.1:3000 {
             header_up Accept-Encoding ""
             replace {
-                re "<title>New API</title>" "<title>奶酪公益站 - 免费AI公益站｜注册即送额度，每日签到</title>"
-                re 'content="New API"' 'content="奶酪公益站 - 免费AI公益站｜注册即送额度，每日签到"'
-                re 'content="Unified AI API gateway and admin dashboard."' 'content="奶酪公益站是一个免费的 AI 公益站。注册即送额度，每日签到持续领取，零成本使用 Grok、GPT-5、DeepSeek、MiniMax 等模型的角色扮演、故事创作与陪聊能力。"'
+                re "<title>New API</title>" "<title>{$SITE_TITLE:My AI Gateway - Free AI Service}</title>"
+                re 'content="New API"' 'content="{$SITE_TITLE:My AI Gateway - Free AI Service}"'
+                re 'content="Unified AI API gateway and admin dashboard."' 'content="{$SITE_DESC:A unified AI gateway and admin dashboard.}"'
             }
         }
     }
