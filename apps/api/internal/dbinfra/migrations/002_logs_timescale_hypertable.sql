@@ -27,17 +27,39 @@ BEGIN
 		RETURN;
 	END IF;
 
+	-- Guards for manual psql runs: the app path always has the table (runner
+	-- executes after AutoMigrate), but be explicit anyway.
+	IF to_regclass('public.logs') IS NULL THEN
+		RAISE NOTICE 'logs table does not exist; skipping hypertable conversion';
+		RETURN;
+	END IF;
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_attribute
+		WHERE attrelid = 'public.logs'::regclass AND attname = 'created_at' AND NOT attisdropped
+	) THEN
+		RAISE NOTICE 'logs has no created_at column; skipping hypertable conversion';
+		RETURN;
+	END IF;
+
 	-- create_hypertable requires the partitioning column in every unique index,
 	-- so widen PRIMARY KEY (id) -> (created_at, id) before converting. The id
 	-- column keeps its own index for ORDER BY id pagination.
 	SELECT pg_get_constraintdef(oid) INTO pk_def
 	FROM pg_constraint
-	WHERE conrelid = 'logs'::regclass AND contype = 'p';
+	WHERE conrelid = 'public.logs'::regclass AND contype = 'p';
 
-	IF pk_def = 'PRIMARY KEY (id)' THEN
-		ALTER TABLE logs DROP CONSTRAINT logs_pkey;
-		ALTER TABLE logs ADD PRIMARY KEY (created_at, id);
-		CREATE INDEX IF NOT EXISTS idx_logs_id ON logs (id);
+	IF pk_def IS NOT NULL AND pk_def <> 'PRIMARY KEY (created_at, id)' THEN
+		-- A single-column (id) key is widened; any other existing shape that
+		-- already includes created_at is left untouched (the exact-string
+		-- compare is stable for pg_get_constraintdef output on b-tree PKs).
+		IF pk_def = 'PRIMARY KEY (id)' THEN
+			ALTER TABLE logs DROP CONSTRAINT IF EXISTS logs_pkey;
+			ALTER TABLE logs ADD PRIMARY KEY (created_at, id);
+			CREATE INDEX IF NOT EXISTS idx_logs_id ON logs (id);
+		ELSE
+			RAISE NOTICE 'unexpected logs primary key (%); skipping conversion', pk_def;
+			RETURN;
+		END IF;
 	ELSIF pk_def IS NULL THEN
 		ALTER TABLE logs ADD PRIMARY KEY (created_at, id);
 		CREATE INDEX IF NOT EXISTS idx_logs_id ON logs (id);
