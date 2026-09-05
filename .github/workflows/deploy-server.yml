@@ -27,9 +27,6 @@ on:
         required: true
         default: "latest"
         type: string
-  workflow_run:
-    workflows: ["Publish Docker image (Multi-arch)"]
-    types: [completed]
 
 concurrency:
   group: server-deploy
@@ -39,7 +36,6 @@ jobs:
   deploy:
     name: Deploy to Server
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     timeout-minutes: 10
 
     steps:
