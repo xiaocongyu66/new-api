@@ -206,6 +206,11 @@ func migrateDB() error {
 	if err := dbx.RunPostMigrations(); err != nil {
 		return err
 	}
+	// Versioned SQL files (dbinfra/migrations/*.sql) run after AutoMigrate has
+	// produced the current schema and before the scheduling-column retirement.
+	if err := RunSQLMigrations(dbx.DB, string(common.MainDatabaseType())); err != nil {
+		return err
+	}
 	// The legacy scheduling column retirement runs last, and is called directly
 	// rather than registered: it must follow the route seed, and dbx is imported
 	// by catalog so its init could only ever register ahead of catalog's.
@@ -241,11 +246,11 @@ func migrateDBFast() error {
 	if err := dbx.RunPostMigrations(); err != nil {
 		return err
 	}
-	// Same ordering constraint as migrateDB: the retirement must follow the route
-	// seed, which runs as a post-migration.
-	if err := dbx.DropLegacySchedulingColumns(); err != nil {
+	if err := RunSQLMigrations(dbx.DB, string(common.MainDatabaseType())); err != nil {
 		return err
 	}
+	// Same ordering constraint as migrateDB: the retirement must follow the route
+	// seed, which runs as a post-migration.
 	common.SysLog("database migrated")
 	return nil
 }
