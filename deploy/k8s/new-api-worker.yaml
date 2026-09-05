@@ -48,7 +48,7 @@ spec:
       initContainers:
         - name: wait-for-schema
           # 与 postgres.yaml 同一个 tag，节点上已有缓存，避免 Docker Hub 拉取失败
-          image: postgres:17-alpine
+          image: postgres:18-alpine
           imagePullPolicy: IfNotPresent
           env:
             - name: SQL_DSN

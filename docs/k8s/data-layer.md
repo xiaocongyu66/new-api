@@ -99,7 +99,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: pg-dump
-              image: postgres:17-alpine
+              image: postgres:18-alpine
               command: ["sh", "-c"]
               args:
                 - 'pg_dump -h postgres -U "$POSTGRES_USER" "$POSTGRES_DB" > /backup/newapi-$(date +%F).sql'
@@ -159,6 +159,33 @@ Redis 只是缓存，无需备份。`appendonly yes` 已在 `deploy/k8s/redis.ya
 | 日志分库 | 可选 `LOG_SQL_DSN` | 把日志写入独立数据库，降低主库体积与备份时长 |
 
 副本扩容时特别注意连接数：worker 从 3 扩到 10 时，数据库连接总数按比例上升，必要时下调每副本的 `SQL_MAX_OPEN_CONNS` 或提高 PG `max_connections`。
+
+### 日志超表（TimescaleDB，可选）
+
+日志表是唯一持续增长的表，且只有插入、按时间范围查询、按时间批量清理三种访问方式，
+正好是时序表的形态。把 PostgreSQL 换成 TimescaleDB 镜像（例如
+`timescale/timescaledb:2.29.2-pg18`）后，可让 `logs` 变成超表，获得分块裁剪、压缩与
+按块retention。
+
+功能默认关闭，且自带降级：未开启、日志库不是 PostgreSQL、或服务端没装扩展时，
+只打印一行提示并按普通表继续运行。SQLite、MySQL、ClickHouse 部署完全不受影响。
+
+| 环境变量 | 默认值 | 说明 |
+|---|---|---|
+| `TIMESCALEDB_ENABLED` | `false` | 总开关。仅在日志库为 PostgreSQL 且扩展可用时生效 |
+| `TIMESCALEDB_CHUNK_INTERVAL_SECONDS` | `604800`（7 天） | 分块跨度。`created_at` 是 bigint 时间戳，TimescaleDB 无法推断跨度，必须显式给整数 |
+| `TIMESCALEDB_COMPRESS_AFTER_DAYS` | `0`（关闭） | 超过该天数的分块自动压缩 |
+| `TIMESCALEDB_RETENTION_DAYS` | `0`（关闭） | 超过该天数的分块整块删除 |
+
+两点部署须知：
+
+- 开启后 `logs` 主键会从 `(id)` 扩宽为 `(created_at, id)`，因为 TimescaleDB 要求分区列
+  出现在每个唯一索引中。`id` 仍保留独立索引，按 `id` 排序的分页查询不受影响。
+  这一步只在 TimescaleDB 路径执行，其它数据库的主键保持 `(id)`。
+- `TIMESCALEDB_RETENTION_DAYS` 与后台的日志清理任务是两套机制。retention 按块删除，
+  速度快但粒度是整个分块；两者同时开启不会冲突，但没有必要。日志是计费凭据，
+  因此 retention 默认关闭，需要显式开启。
+
 
 ## 5. 部署前检查清单
 

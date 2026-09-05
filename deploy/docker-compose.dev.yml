@@ -59,7 +59,7 @@ services:
       - dev-network
 
   postgres:
-    image: postgres:15-alpine
+    image: postgres:18-alpine
     container_name: new-api-dev-pg
     restart: unless-stopped
     environment:

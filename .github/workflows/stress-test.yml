@@ -87,7 +87,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: ${{ (inputs.local_database == 'postgres' && inputs.target_env == 'local_runner') && 'postgres:16-alpine' || '' }}
+        image: ${{ (inputs.local_database == 'postgres' && inputs.target_env == 'local_runner') && 'postgres:18-alpine' || '' }}
         env:
           POSTGRES_USER: root
           POSTGRES_PASSWORD: rootpassword
