@@ -74,6 +74,26 @@
 | `PROD_SERVER_SSH_PORT` | 否 | `22` | SSH 端口，不填默认使用 `22` |
 | `PROD_DEPLOY_PATH` | 否 | `/opt/new-api/deploy` | 生产服务器上包含 `docker-compose.yml` 的绝对路径，默认 `/opt/new-api/deploy` |
 
+#### 一键安全配置命令（无明文泄露注入）
+为了防止私钥在终端控制台或历史记录中意外打印，强烈建议通过重定向管道直接注入 GitHub Secrets：
+
+```bash
+# 1. 生成专用部署密钥对（本地执行）
+ssh-keygen -t ed25519 -N "" -C "github-actions-newapi-deploy" -f ~/.ssh/newapi_deploy_key
+
+# 2. 将公钥部署到目标服务器的 authorized_keys（公钥留在服务端）
+ssh root@your-server-ip "cat >> ~/.ssh/authorized_keys" < ~/.ssh/newapi_deploy_key.pub
+
+# 3. 将私钥与主机配置安全注入 GitHub Secrets（私钥存入 GitHub KMS，屏幕零显示）
+gh secret set PROD_SERVER_SSH_KEY < ~/.ssh/newapi_deploy_key --repo <owner>/<repo>
+gh secret set PROD_SERVER_HOST -b "your-server-ip" --repo <owner>/<repo>
+gh secret set PROD_SERVER_USER -b "root" --repo <owner>/<repo>
+```
+
+> **公私钥分工铁律**：
+> - **私钥（Private Key）**：持有者是发起连接的客户端（GitHub Actions），必须存储在 `PROD_SERVER_SSH_KEY` 中，用于生成数字签名证明身份；
+> - **公钥（Public Key）**：持有者是被连接的服务端（生产服务器），必须存储在服务器的 `~/.ssh/authorized_keys` 中，用于解密验签；
+> - *切勿混淆：若误将公钥写入 Secrets，GitHub Actions 将因缺少私钥签名能力而遭遇 `Permission denied (publickey)` 拒绝。*
 ### B. K8s / 临时测试集群变量（与单机生产完全隔离）
 
 以下变量仅供 `deploy/k8s/` 和压测集群使用：
