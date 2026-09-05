@@ -1,0 +1,141 @@
+name: Deploy to Server (Docker Compose)
+
+# 服务器轻量部署 workflow：
+#   - 仅拉新镜像 + 重启 new-api 容器，不碰数据库，不碰 nginx/网络
+#   - 零硬编码密钥：所有凭证来自 GitHub Actions Secrets
+#   - 部署步骤：SSH 到服务器 → 备份当前镜像 tag → docker compose pull →
+#               docker compose up -d new-api → 健康检查（HTTP 200）→ 失败自动回滚
+#
+# 触发方式：
+#   1. 手动触发：Actions → Deploy to Server → 输入 image_tag（例如 sha-abc123 或 insight）
+#   2. 自动触发：Publish Docker image (Multi-arch) 构建成功后自动触发，tag 从上游透传
+#
+# 需要在仓库 Settings → Secrets and variables → Actions 配置的 Secrets：
+#   PROD_SERVER_HOST         生产单机服务器 IP/域名（例如 154.12.51.245）
+#   PROD_SERVER_USER         SSH 用户名（例如 root）
+#   PROD_SERVER_SSH_KEY      专用的 ED25519 部署私钥
+#   PROD_SERVER_SSH_PORT     SSH 端口（可选，默认 22）
+#   PROD_DEPLOY_PATH         compose 部署目录（可选，默认 /opt/new-api/deploy）
+#
+# 注意：不要与 K8s 集群维护所用的 SERVERS_LIST_JSON（不稳定测试节点）混淆。
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "要部署的镜像 tag（例如 sha-abc123、latest、insight）"
+        required: true
+        default: "latest"
+        type: string
+  workflow_run:
+    workflows: ["Publish Docker image (Multi-arch)"]
+    types: [completed]
+
+concurrency:
+  group: server-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Server
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    timeout-minutes: 10
+
+    steps:
+      - name: Resolve image tag
+        id: resolve_tag
+        env:
+          DISPATCH_TAG: ${{ github.event.inputs.image_tag }}
+        run: |
+          if [ -n "$DISPATCH_TAG" ]; then
+            TAG="$DISPATCH_TAG"
+          else
+            TAG="latest"
+          fi
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "Deploying tag: ${TAG}"
+
+      - name: Validate secrets
+        run: |
+          missing=()
+          [ -z "${{ secrets.PROD_SERVER_HOST }}" ] && missing+=("PROD_SERVER_HOST")
+          [ -z "${{ secrets.PROD_SERVER_USER }}" ] && missing+=("PROD_SERVER_USER")
+          [ -z "${{ secrets.PROD_SERVER_SSH_KEY }}" ] && missing+=("PROD_SERVER_SSH_KEY")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::缺少必需的 GitHub Secrets: ${missing[*]}"
+            echo "请在 Settings → Secrets and variables → Actions 中配置它们"
+            exit 1
+          fi
+
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.PROD_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.PROD_SERVER_HOST }}
+          PORT: ${{ secrets.PROD_SERVER_SSH_PORT || '22' }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Execute deployment on server
+        env:
+          HOST: ${{ secrets.PROD_SERVER_HOST }}
+          USER: ${{ secrets.PROD_SERVER_USER }}
+          PORT: ${{ secrets.PROD_SERVER_SSH_PORT || '22' }}
+          PATH_DIR: ${{ secrets.PROD_DEPLOY_PATH || '/opt/new-api/deploy' }}
+          IMAGE_TAG: ${{ steps.resolve_tag.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" bash -s <<REMOTE_SCRIPT
+            set -euo pipefail
+            cd "$PATH_DIR"
+
+            IMAGE_NAME="ghcr.io/${REPO}:${IMAGE_TAG}"
+            echo "=== 1. 拉取新镜像: \${IMAGE_NAME} ==="
+            docker pull "\${IMAGE_NAME}"
+
+            echo "=== 2. 记录当前运行的镜像（用于回滚） ==="
+            PREV_IMAGE=\$(docker inspect new-api --format '{{.Config.Image}}' 2>/dev/null || echo "")
+            echo "PREV_IMAGE=\${PREV_IMAGE}"
+
+            echo "=== 3. 更新 compose 并重启 new-api ==="
+            # 仅更新镜像 tag，不碰任何环境变量、volume 或其它服务
+            sed -i -E "s|image: ghcr.io/${REPO}:.*|image: \${IMAGE_NAME}|" docker-compose.yml
+            docker compose up -d --no-deps new-api
+
+            echo "=== 4. 健康检查（最多等 45s） ==="
+            HEALTHY=0
+            for i in \$(seq 1 15); do
+              sleep 3
+              CODE=\$(curl -sS -m 3 -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/api/status 2>/dev/null || echo "000")
+              if [ "\$CODE" = "200" ]; then
+                echo "健康检查通过（HTTP 200，第 \${i} 次尝试）"
+                HEALTHY=1
+                break
+              fi
+              echo "等待服务就绪... (\${i}/15, code=\$CODE)"
+            done
+
+            if [ "\$HEALTHY" -ne 1 ]; then
+              echo "::error::健康检查失败！正在回滚到: \${PREV_IMAGE}"
+              if [ -n "\${PREV_IMAGE}" ]; then
+                sed -i -E "s|image: ghcr.io/${REPO}:.*|image: \${PREV_IMAGE}|" docker-compose.yml
+                docker compose up -d --no-deps new-api
+              fi
+              exit 1
+            fi
+
+            echo "=== 5. 部署成功 ==="
+            docker ps --filter name=new-api --format "table {{.Names}}\t{{.Status}}\t{{.Image}}"
+          REMOTE_SCRIPT
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### 部署摘要" >> $GITHUB_STEP_SUMMARY
+          echo "- **状态**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **镜像 Tag**: ${{ steps.resolve_tag.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **触发方式**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
