@@ -1,0 +1,64 @@
+# Global options: 信任 Cloudflare IP 还原真实客户端 IP
+{
+    servers {
+        trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+        client_ip_headers CF-Connecting-IP X-Forwarded-For
+    }
+}
+
+{$SITE_DOMAIN:example.com}, {$WWW_SITE_DOMAIN:www.example.com} {
+    # 1. 加载证书（如使用 Cloudflare Origin CA 或自带证书；若由 Caddy 自动申请可直接省略 tls 行）
+    tls /etc/ssl/cert.crt /etc/ssl/cert.key
+
+    # 最大请求体限制 32MB
+    request_body {
+        max_size 32MB
+    }
+
+    # 2. SEO 搜索引擎验证与静态爬虫索引（robots.txt, sitemap.xml, 站长验证文件）
+    root * /var/www/seo
+    @seo_static {
+        path /robots.txt /sitemap.xml
+        path_regexp "^/(google[0-9a-f]{16}\.html|BingSiteAuth\.xml|[0-9a-f]{32}\.txt)$"
+    }
+    handle @seo_static {
+        header Cache-Control "public, max-age=3600"
+        file_server
+    }
+
+    # 3. 静态资源直通（保持上游压缩）
+    handle /static/* {
+        reverse_proxy 127.0.0.1:3000
+    }
+
+    # 4. API 直通（SSE 流式原生支持，关闭缓冲）
+    handle /api/* {
+        reverse_proxy 127.0.0.1:3000 {
+            flush_interval -1
+        }
+    }
+    handle /v1/* {
+        reverse_proxy 127.0.0.1:3000 {
+            flush_interval -1
+        }
+    }
+
+    # 5. grok2api 反代（自动剥离 /grok 前缀）
+    handle_path /grok/* {
+        reverse_proxy 127.0.0.1:18000 {
+            flush_interval -1
+        }
+    }
+
+    # 6. 前端 SPA 页面与 SEO 动态替换（需配合 caddyserver/replace-response 插件）
+    handle {
+        reverse_proxy 127.0.0.1:3000 {
+            header_up Accept-Encoding ""
+            replace {
+                re "<title>New API</title>" "<title>{$SITE_TITLE:My AI Gateway - Free AI Service}</title>"
+                re 'content="New API"' 'content="{$SITE_TITLE:My AI Gateway - Free AI Service}"'
+                re 'content="Unified AI API gateway and admin dashboard."' 'content="{$SITE_DESC:A unified AI gateway and admin dashboard.}"'
+            }
+        }
+    }
+}
