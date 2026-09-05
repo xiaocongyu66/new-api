@@ -150,7 +150,13 @@ func InitLogDB() (err error) {
 		dbx.LogDB = dbx.DB
 		common.SetLogDatabaseType(common.MainDatabaseType())
 		initCol()
-		return
+		// Without LOG_SQL_DSN the logs table is created by migrateDB, so
+		// migrateLOGDB never runs and the hypertable setup has to be reached
+		// from here instead.
+		if !common.IsMasterNode {
+			return nil
+		}
+		return setupTimescaleLogHypertable()
 	}
 	db, dbType, err := ChooseDB("LOG_SQL_DSN", true)
 	if err == nil {
@@ -248,7 +254,10 @@ func migrateLOGDB() error {
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		return migrateClickHouseLogDB()
 	}
-	return dbx.LogDB.AutoMigrate(logMigrationModels()...)
+	if err := dbx.LogDB.AutoMigrate(logMigrationModels()...); err != nil {
+		return err
+	}
+	return setupTimescaleLogHypertable()
 }
 
 func migrateClickHouseLogDB() error {

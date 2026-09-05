@@ -50,7 +50,7 @@ spec:
           effect: NoSchedule
       containers:
         - name: postgres
-          image: postgres:17-alpine
+          image: postgres:18-alpine
           ports:
             - name: postgres
               containerPort: 5432
