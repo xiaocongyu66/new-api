@@ -26,7 +26,8 @@ type BillingPreferenceRequest struct {
 }
 
 type SubscriptionBalancePayRequest struct {
-	PlanId int `json:"plan_id"`
+	PlanId  int    `json:"plan_id"`
+	PayWith string `json:"pay_with"`
 }
 
 // ---- User APIs ----
@@ -111,7 +112,7 @@ func SubscriptionRequestBalancePay(c contract.Context) {
 		return
 	}
 
-	if err := PurchaseSubscriptionWithBalance(userId, req.PlanId); err != nil {
+	if err := PurchaseSubscriptionWithWallet(userId, req.PlanId, req.PayWith); err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -166,7 +167,6 @@ func AdminCreateSubscriptionPlan(c contract.Context) {
 	if req.Plan.Currency == "" {
 		req.Plan.Currency = "USD"
 	}
-	req.Plan.Currency = "USD"
 	if req.Plan.AllowBalancePay == nil {
 		req.Plan.AllowBalancePay = common.GetPointer(true)
 	}
@@ -201,6 +201,11 @@ func AdminCreateSubscriptionPlan(c contract.Context) {
 			return
 		}
 	}
+	if req.Plan.SporeAmount < 0 {
+		common.CtxApiErrorMsg(c, "菌种价格不能为负数")
+		return
+	}
+	req.Plan.PayMode = NormalizePayMode(req.Plan.PayMode, req.Plan.AllowBalancePay)
 	req.Plan.QuotaResetPeriod = NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.CtxApiErrorMsg(c, "自定义重置周期需大于0秒")
@@ -246,7 +251,6 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 	if req.Plan.Currency == "" {
 		req.Plan.Currency = "USD"
 	}
-	req.Plan.Currency = "USD"
 	if req.Plan.DurationUnit == "" {
 		req.Plan.DurationUnit = SubscriptionDurationMonth
 	}
@@ -275,6 +279,11 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 			return
 		}
 	}
+	if req.Plan.SporeAmount < 0 {
+		common.CtxApiErrorMsg(c, "菌种价格不能为负数")
+		return
+	}
+	req.Plan.PayMode = NormalizePayMode(req.Plan.PayMode, req.Plan.AllowBalancePay)
 	req.Plan.QuotaResetPeriod = NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.CtxApiErrorMsg(c, "自定义重置周期需大于0秒")
@@ -302,6 +311,8 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 			"downgrade_group":            req.Plan.DowngradeGroup,
 			"quota_reset_period":         req.Plan.QuotaResetPeriod,
 			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,
+			"spore_amount":               req.Plan.SporeAmount,
+			"pay_mode":                   req.Plan.PayMode,
 			"updated_at":                 common.GetTimestamp(),
 		}
 		if req.Plan.AllowBalancePay != nil {

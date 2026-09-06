@@ -96,6 +96,7 @@ type User struct {
 	Quota            int                        `json:"quota" gorm:"type:int;default:0"`
 	UsedQuota        int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
 	RequestCount     int                        `json:"request_count" gorm:"type:int;default:0;"`               // request number
+	Spore            int64                      `json:"spore" gorm:"type:bigint;not null;default:0;column:spore"`
 	Group            string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
 	AffCode          string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
 	AffCount         int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
@@ -407,7 +408,6 @@ func GetUserIdByAffCode(affCode string) (int, error) {
 	err := dbx.DB.Select("id").First(&user, "aff_code = ?", affCode).Error
 	return user.Id, err
 }
-
 func inviteUser(inviterId int) error {
 	result := dbx.DB.Model(&User{}).Where("id = ?", inviterId).Updates(map[string]interface{}{
 		"aff_count":   gorm.Expr("aff_count + ?", 1),
@@ -421,6 +421,19 @@ func inviteUser(inviterId int) error {
 		return gorm.ErrRecordNotFound
 	}
 	return nil
+}
+
+const InviterSporeRewardUnits int64 = 1
+
+func rewardInviterSpore(inviterId int) {
+	if inviterId == 0 {
+		return
+	}
+	if err := IncreaseUserSpore(inviterId, InviterSporeRewardUnits); err != nil {
+		common.SysError(fmt.Sprintf("发放开拓奖励菌种失败: inviter=%d err=%s", inviterId, err.Error()))
+		return
+	}
+	writeSystemLog(inviterId, "开拓奖励")
 }
 
 func (user *User) TransferAffQuotaToQuota(quota int) error {
@@ -562,11 +575,11 @@ func (user *User) finishInsert(inviterId int) {
 			writeSystemLog(user.Id, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
 		if common.QuotaForInviter > 0 {
-			//_ = IncreaseUserQuota(inviterId, common.QuotaForInviter)
 			writeSystemLog(inviterId, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
 			_ = inviteUser(inviterId)
 		}
 	}
+	rewardInviterSpore(inviterId)
 }
 
 func (user *User) FinishInsert(inviterId int) {
@@ -623,6 +636,7 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 			_ = inviteUser(inviterId)
 		}
 	}
+	rewardInviterSpore(inviterId)
 }
 
 func (user *User) Update(updatePassword bool) error {
@@ -793,6 +807,12 @@ func (user *User) Delete() error {
 		if err != nil {
 			return err
 		}
+		// 软删除同样要解绑 QQ：用户走 DeleteSelf 注销后账号已不可用，
+		// 但 qq_bindings.open_id 的唯一索引仍占着这个 QQ 号，
+		// 而 QQ 机器人会继续按旧绑定给这个已注销的 user_id 发额度。
+		if err := DeleteQQBindingWithTx(tx, user.Id); err != nil {
+			return err
+		}
 		return tx.Delete(user).Error
 	}); err != nil {
 		return err
@@ -858,6 +878,9 @@ func deleteUserAuthenticationData(tx *gorm.DB, userId int) error {
 		if err := tx.Unscoped().Where("user_id = ?", userId).Delete(authenticationData).Error; err != nil {
 			return err
 		}
+	}
+	if err := DeleteQQBindingWithTx(tx, userId); err != nil {
+		return err
 	}
 	return deleteUserOAuthBindingsByUserId(tx, userId)
 }

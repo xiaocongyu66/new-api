@@ -120,9 +120,15 @@ type SubscriptionPlan struct {
 
 	AllowBalancePay *bool `json:"allow_balance_pay"`
 
-	// Allow falling back to wallet balance after subscription quota is exhausted (empty = true)
-	AllowWalletOverflow *bool `json:"allow_wallet_overflow"`
+	// SporeAmount is the spore price in tenths (1 = 0.1 spore). Independent of PriceAmount.
+	SporeAmount int64 `json:"spore_amount" gorm:"type:bigint;not null;default:0"`
 
+	// PayMode combines the two currencies. Empty historical rows are derived
+	// from AllowBalancePay in NormalizeDefaults so existing plans keep behavior.
+	PayMode string `json:"pay_mode" gorm:"type:varchar(16);not null;default:''"`
+
+	// Allow falling back to wallet balance after subscription quota is exhausted (empty = true)
+	AllowWalletOverflow   *bool  `json:"allow_wallet_overflow"`
 	StripePriceId         string `json:"stripe_price_id" gorm:"type:varchar(128);default:''"`
 	CreemProductId        string `json:"creem_product_id" gorm:"type:varchar(128);default:''"`
 	WaffoPancakeProductId string `json:"waffo_pancake_product_id" gorm:"type:varchar(128);default:''"`
@@ -166,6 +172,49 @@ func (p *SubscriptionPlan) NormalizeDefaults() {
 	if p.AllowWalletOverflow == nil {
 		p.AllowWalletOverflow = common.GetPointer(true)
 	}
+	p.PayMode = NormalizePayMode(p.PayMode, p.AllowBalancePay)
+	if p.SporeAmount < 0 {
+		p.SporeAmount = 0
+	}
+}
+
+const (
+	SubscriptionPayModeNone    = "none"
+	SubscriptionPayModeBalance = "balance"
+	SubscriptionPayModeSpore   = "spore"
+	SubscriptionPayModeBoth    = "both"
+	SubscriptionPayModeEither  = "either"
+)
+
+func NormalizePayMode(mode string, allowBalancePay *bool) string {
+	switch mode {
+	case SubscriptionPayModeNone,
+		SubscriptionPayModeBalance,
+		SubscriptionPayModeSpore,
+		SubscriptionPayModeBoth,
+		SubscriptionPayModeEither:
+		return mode
+	}
+	if allowBalancePay == nil || *allowBalancePay {
+		return SubscriptionPayModeBalance
+	}
+	return SubscriptionPayModeNone
+}
+
+func (p *SubscriptionPlan) RequiresBalance() bool {
+	switch NormalizePayMode(p.PayMode, p.AllowBalancePay) {
+	case SubscriptionPayModeBalance, SubscriptionPayModeBoth:
+		return true
+	}
+	return false
+}
+
+func (p *SubscriptionPlan) RequiresSpore() bool {
+	switch NormalizePayMode(p.PayMode, p.AllowBalancePay) {
+	case SubscriptionPayModeSpore, SubscriptionPayModeBoth:
+		return true
+	}
+	return false
 }
 
 // Subscription order (payment -> webhook -> create UserSubscription)
@@ -432,7 +481,7 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 			return nil, errors.New("已达到该套餐购买上限")
 		}
 	}
-	nowUnix := dbinfra.GetDBTimestamp()
+	nowUnix := dbinfra.GetDBTimestampTx(tx)
 	now := time.Unix(nowUnix, 0)
 	endUnix, err := calcPlanEndTime(now, plan)
 	if err != nil {
@@ -512,8 +561,11 @@ func calcSubscriptionBalanceQuota(priceAmount float64) (int, error) {
 	return common.QuotaFromDecimalStrict(quota)
 }
 
-// PurchaseSubscriptionWithBalance creates a subscription by deducting the user's wallet quota.
 func PurchaseSubscriptionWithBalance(userId int, planId int) error {
+	return PurchaseSubscriptionWithWallet(userId, planId, SubscriptionPayModeBalance)
+}
+
+func PurchaseSubscriptionWithWallet(userId int, planId int, payWith string) error {
 	if userId <= 0 || planId <= 0 {
 		return errors.New("invalid userId or planId")
 	}
@@ -521,6 +573,7 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 	var logPlanTitle string
 	var logMoney float64
 	var chargedQuota int
+	var chargedSpore int64
 	var upgradeGroup string
 	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
 		plan, err := getSubscriptionPlanByIdTx(tx, planId)
@@ -533,13 +586,45 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 		if plan.PriceAmount < 0 {
 			return errors.New("套餐价格不能为负数")
 		}
-		if plan.AllowBalancePay != nil && !*plan.AllowBalancePay {
-			return errors.New("该套餐不允许使用余额兑换")
+		if plan.SporeAmount < 0 {
+			return errors.New("套餐菌种价格不能为负数")
 		}
 
-		requiredQuota, err := calcSubscriptionBalanceQuota(plan.PriceAmount)
-		if err != nil {
-			return err
+		mode := NormalizePayMode(plan.PayMode, plan.AllowBalancePay)
+		needBalance := false
+		needSpore := false
+		switch mode {
+		case SubscriptionPayModeNone:
+		case SubscriptionPayModeBalance:
+			needBalance = true
+		case SubscriptionPayModeSpore:
+			needSpore = true
+		case SubscriptionPayModeBoth:
+			needBalance = true
+			needSpore = true
+		case SubscriptionPayModeEither:
+			switch payWith {
+			case SubscriptionPayModeSpore:
+				needSpore = true
+			case SubscriptionPayModeBalance, "":
+				needBalance = true
+			default:
+				return errors.New("不支持的支付方式")
+			}
+		default:
+			return errors.New("套餐支付方式配置错误")
+		}
+
+		requiredQuota := 0
+		if needBalance {
+			requiredQuota, err = calcSubscriptionBalanceQuota(plan.PriceAmount)
+			if err != nil {
+				return err
+			}
+		}
+		requiredSpore := int64(0)
+		if needSpore {
+			requiredSpore = plan.SporeAmount
 		}
 
 		user, err := identity.LockUserRow(tx, userId)
@@ -555,8 +640,18 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 				return err
 			}
 		}
+		if requiredSpore > 0 {
+			if err := identity.DecreaseUserSporeTx(tx, userId, requiredSpore); err != nil {
+				return err
+			}
+		}
 
-		subscription, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, PaymentMethodBalance)
+		paymentMethod := PaymentMethodBalance
+		if needSpore && !needBalance {
+			paymentMethod = PaymentMethodSpore
+		}
+
+		subscription, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, paymentMethod)
 		if err != nil {
 			return err
 		}
@@ -568,12 +663,12 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 			PlanId:          plan.Id,
 			Money:           plan.PriceAmount,
 			TradeNo:         tradeNo,
-			PaymentMethod:   PaymentMethodBalance,
+			PaymentMethod:   paymentMethod,
 			PaymentProvider: PaymentProviderBalance,
 			Status:          common.TopUpStatusSuccess,
 			CreateTime:      now,
 			CompleteTime:    now,
-			ProviderPayload: fmt.Sprintf("charged_quota=%d", requiredQuota),
+			ProviderPayload: fmt.Sprintf("charged_quota=%d charged_spore=%d pay_mode=%s", requiredQuota, requiredSpore, mode),
 		}
 		if err := tx.Create(order).Error; err != nil {
 			return err
@@ -582,6 +677,7 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 		logPlanTitle = plan.Title
 		logMoney = plan.PriceAmount
 		chargedQuota = requiredQuota
+		chargedSpore = requiredSpore
 		if subscription.PrevUserGroup != "" {
 			upgradeGroup = strings.TrimSpace(subscription.UpgradeGroup)
 		}
@@ -599,7 +695,8 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 	if upgradeGroup != "" {
 		refreshSubscriptionUserGroupCache(userId, "subscription balance purchase")
 	}
-	msg := fmt.Sprintf("使用余额购买订阅成功，套餐: %s，支付金额: %.2f，扣除额度: %d", logPlanTitle, logMoney, chargedQuota)
+	msg := fmt.Sprintf("购买订阅成功，套餐: %s，支付金额: %.2f，扣除额度: %d，扣除菌种: %s",
+		logPlanTitle, logMoney, chargedQuota, identity.FormatSpore(chargedSpore))
 	usage.RecordLog(userId, usage.LogTypeTopup, msg)
 	return nil
 }

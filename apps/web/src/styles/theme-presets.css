@@ -612,6 +612,77 @@ For commercial licensing, please contact support@quantumnous.com
   --skeleton-highlight: oklch(0.41 0.004 60);
 }
 
+/* ── Nailao (Cheese) ──────────────────────────────────────────────────── */
+/*
+ * 奶酪公益站's brand palette: a warm cream canvas with cheese gold as the one
+ * primary accent and toasted-crust orange in the secondary/chart slots.
+ *
+ * Unlike Anthropic (which ships bespoke warm-neutral surfaces and therefore
+ * opts out of the semantic bridge), this preset WANTS the primary-mix
+ * derivation: cards, muted blocks, borders and the sidebar should all read as
+ * gently cheese-tinted. So only the canvas, ink and accent anchors live here
+ * and the bridge above derives the rest.
+ *
+ * OKLCH hue 85-95 = cheese gold; hue 40-60 = toasted crust / cocoa ink.
+ */
+[data-theme-preset='nailao'] {
+  --background: oklch(0.967 0.03 95);
+  --foreground: oklch(0.245 0.04 40);
+  --primary: oklch(0.84 0.14 85);
+  --primary-foreground: oklch(0.18 0.02 40);
+  --secondary: oklch(0.925 0.07 90);
+  --secondary-foreground: var(--foreground);
+  --destructive: oklch(0.58 0.19 27);
+  --destructive-foreground: oklch(0.99 0.005 95);
+  --ring: oklch(0.84 0.14 85);
+
+  /* Chart palette walks the wedge: gold, crust, rind, cocoa. */
+  --chart-1: oklch(0.84 0.14 85);
+  --chart-2: oklch(0.75 0.15 55);
+  --chart-3: oklch(0.925 0.07 90);
+  --chart-4: oklch(0.63 0.19 35);
+  --chart-5: oklch(0.82 0.12 80);
+
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: oklch(0.84 0.14 85);
+  --sidebar-primary-foreground: oklch(0.18 0.02 40);
+  --sidebar-ring: oklch(0.84 0.14 85);
+  --skeleton-base: color-mix(in oklch, var(--primary) 10%, var(--background));
+  --skeleton-highlight: var(--background);
+
+  --radius: 0.75rem;
+}
+.dark [data-theme-preset='nailao'] {
+  /* Warm near-black rather than neutral charcoal, so the cream personality
+   * survives inversion. Gold lifts slightly to hold contrast. */
+  --background: oklch(0.18 0.03 60);
+  --foreground: oklch(0.967 0.03 95);
+  --primary: oklch(0.855 0.145 85);
+  --primary-foreground: oklch(0.18 0.03 60);
+  --secondary: oklch(0.34 0.05 70);
+  --secondary-foreground: var(--foreground);
+  --destructive: oklch(0.7 0.19 25);
+  --destructive-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.855 0.145 85);
+
+  --chart-1: oklch(0.855 0.145 85);
+  --chart-2: oklch(0.75 0.15 55);
+  --chart-3: oklch(0.925 0.07 90);
+  --chart-4: oklch(0.63 0.19 35);
+  --chart-5: oklch(0.82 0.12 80);
+
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: oklch(0.855 0.145 85);
+  --sidebar-primary-foreground: oklch(0.18 0.03 60);
+  --sidebar-ring: oklch(0.855 0.145 85);
+  --skeleton-base: color-mix(in oklch, var(--primary) 14%, var(--background));
+  --skeleton-highlight: color-mix(
+    in oklch,
+    var(--primary) 22%,
+    var(--background)
+  );
+}
+
 /* ── Font axis ────────────────────────────────────────────────────────────
  * Mirrors how `data-theme-radius` overrides a preset's default radius:
  * presets may set `--font-body` (Anthropic → serif), and the user's

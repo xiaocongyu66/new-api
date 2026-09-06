@@ -348,6 +348,40 @@ export type BillingSettings = {
   'checkin_setting.enabled': boolean
   'checkin_setting.min_quota': number
   'checkin_setting.max_quota': number
+  'qq_bot_setting.app_id': string
+  'qq_bot_setting.app_secret': string
+  'qq_bot_setting.qq_checkin_enabled': boolean
+  'qq_bot_setting.web_checkin_enabled': boolean
+  'qq_bot_setting.single_platform_only': boolean
+  'qq_bot_setting.min_quota': number
+  'qq_bot_setting.max_quota': number
+  'qq_bot_setting.checkin_disabled_groups': string
+  'qq_bot_setting.notify_template': string
+  'qq_bot_setting.auto_approve_enabled': boolean
+  'qq_bot_setting.auto_approve_keyword': string
+  'qq_bot_setting.drop_enabled': boolean
+  'qq_bot_setting.drop_groups': string
+  'qq_bot_setting.drop_min_messages': number
+  'qq_bot_setting.drop_max_messages': number
+  'qq_bot_setting.drop_min_quota': number
+  'qq_bot_setting.drop_max_quota': number
+  'qq_bot_setting.drop_daily_limit': number
+  'qq_bot_setting.drop_template': string
+  'qq_bot_setting.transfer_enabled': boolean
+  'qq_bot_setting.transfer_disabled_groups': string
+  'qq_bot_setting.transfer_daily_limit': number
+  'qq_bot_setting.transfer_min_amount': number
+  'qq_bot_setting.transfer_max_amount': number
+  'qq_bot_setting.transfer_fee_brackets': string
+  'qq_bot_setting.red_packet_enabled': boolean
+  'qq_bot_setting.red_packet_disabled_groups': string
+  'qq_bot_setting.red_packet_daily_limit': number
+  'qq_bot_setting.red_packet_min_amount': number
+  'qq_bot_setting.red_packet_max_amount': number
+  'qq_bot_setting.red_packet_default_count': number
+  'qq_bot_setting.red_packet_max_count': number
+  'qq_bot_setting.red_packet_expire_seconds': number
+  'qq_bot_setting.red_packet_allow_own_grab': boolean
 }
 
 export type OperationsSettings = {
@@ -380,6 +414,20 @@ export type OperationsSettings = {
   'perf_metrics_setting.flush_interval': number
   'perf_metrics_setting.bucket_time': 'hour' | 'minute' | '5min'
   'perf_metrics_setting.retention_days': number
+  'user_insight_setting.enabled': boolean
+  'user_insight_setting.record_in_log': boolean
+  'user_insight_setting.gender_inference_enabled': boolean
+  'user_insight_setting.jailbreak_alert_score': number
+  'user_insight_setting.sample_enabled': boolean
+  'user_insight_setting.sample_rate_percent': number
+  'user_insight_setting.sample_keep_body': boolean
+  'user_insight_setting.sample_quota_mb': number
+  'user_insight_setting.sample_retention_days': number
+  'user_insight_setting.auto_ban_enabled': boolean
+  'user_insight_setting.auto_ban_min_risk': 'suspect' | 'likely' | 'confirmed'
+  'user_insight_setting.auto_ban_code_ratio_enabled': boolean
+  'user_insight_setting.auto_ban_code_ratio_percent': number
+  'user_insight_setting.auto_ban_code_min_requests': number
 }
 
 export type SecuritySettings = {

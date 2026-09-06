@@ -281,6 +281,7 @@ const SENSITIVE_FORM_FIELDS = [
   'http_protocol',
   'http2_connection_shards',
   'pass_through_body_enabled',
+  'session_affinity_enabled',
   'system_prompt',
   'system_prompt_override',
   'allow_service_tier',
@@ -649,6 +650,7 @@ function ChannelMutateDrawerContent({
   const currentForceFormat = useWatch({ control: form.control, name: 'force_format' })
   const currentThinkingToContent = useWatch({ control: form.control, name: 'thinking_to_content' })
   const currentPassThroughBodyEnabled = useWatch({ control: form.control, name: 'pass_through_body_enabled' })
+  const currentSessionAffinityEnabled = useWatch({ control: form.control, name: 'session_affinity_enabled' })
   const currentDisableTaskPollingSleep = useWatch({ control: form.control, name: 'disable_task_polling_sleep' })
   const currentProxy = useWatch({ control: form.control, name: 'proxy' })
   const currentHttpProtocol = useWatch({ control: form.control, name: 'http_protocol' })
@@ -881,6 +883,7 @@ function ChannelMutateDrawerContent({
     currentForceFormat ||
       currentThinkingToContent ||
       currentPassThroughBodyEnabled ||
+      currentSessionAffinityEnabled ||
       currentDisableTaskPollingSleep ||
       currentProxy?.trim() ||
       currentSystemPrompt?.trim() ||
@@ -3944,6 +3947,31 @@ function ChannelMutateDrawerContent({
                                       <FormDescription>
                                         {t(
                                           'Pass request body directly to upstream'
+                                        )}
+                                      </FormDescription>
+                                    </div>
+                                    <FormControl>
+                                      <Switch
+                                        checked={field.value}
+                                        onCheckedChange={field.onChange}
+                                      />
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+
+                              <FormField
+                                control={form.control}
+                                name='session_affinity_enabled'
+                                render={({ field }) => (
+                                  <FormItem className='flex items-center justify-between px-4 py-3'>
+                                    <div className='space-y-0.5'>
+                                      <FormLabel>
+                                        {t('Session Affinity')}
+                                      </FormLabel>
+                                      <FormDescription>
+                                        {t(
+                                          'Derive a stable session key from the request body and pass it upstream (X-Session-Id) to pin the conversation to a fixed node for better prompt-cache hit rate'
                                         )}
                                       </FormDescription>
                                     </div>

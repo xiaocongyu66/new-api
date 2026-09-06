@@ -1,4 +1,4 @@
--- applies-to: postgres,mysql,sqlite
+-- applies-to: postgres,sqlite
 -- Drop six log-table indexes that pg_stat_user_indexes showed ZERO scans in
 -- eight production days (2026-08-28 .. 2026-09-05). They cost 15 MB on a
 -- 124k-row table and are pure write tax at ~12k inserts/day.

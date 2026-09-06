@@ -2,7 +2,7 @@
 name: newapi-production-upgrade
 description: >-
   Production upgrade, database migration, and web server transition manual for new-api
-  on standalone production servers (e.g. nailao.biz / 154.12.51.245). Covers safe
+  on standalone production servers (e.g. your-domain.example.com). Covers safe
   PostgreSQL 17->18 migration, TimescaleDB hypertable conversion, GORM AutoMigrate
   constraint traps, Caddy with replace-response plugin replacing Nginx, and GitHub
   Actions automated deployment secrets configuration.
@@ -17,7 +17,7 @@ This skill records the hard-won production upgrade procedures, database migratio
 ### Key Pair Roles (Client vs. Server)
 In SSH automated deployments:
 - **Client (GitHub Actions Runner)**: Initiates the connection; **MUST hold the Private Key** (`PROD_SERVER_SSH_KEY`) to generate cryptographic signatures.
-- **Server (Production Host `154.12.51.245`)**: Accepts the connection; **MUST hold the Public Key** in `~/.ssh/authorized_keys` to verify client signatures.
+- **Server (Production Host `your-server-ip`)**: Accepts the connection; **MUST hold the Public Key** in `~/.ssh/authorized_keys` to verify client signatures.
 - *Caution*: Storing the public key in GitHub Secrets will fail with `Permission denied (publickey)` because the client cannot sign the challenge without the private key.
 
 ### GitHub Secrets Specification
@@ -25,7 +25,7 @@ Configure the following secrets in the repository under `Settings -> Secrets and
 
 | Secret Name | Required | Example | Description |
 |---|---|---|---|
-| `PROD_SERVER_HOST` | **Yes** | `154.12.51.245` | Production server IP or resolvable hostname. |
+| `PROD_SERVER_HOST` | **Yes** | `your-server-ip` | Production server IP or resolvable hostname. |
 | `PROD_SERVER_USER` | **Yes** | `root` | SSH login username. |
 | `PROD_SERVER_SSH_KEY` | **Yes** | `-----BEGIN OPENSSH...` | Dedicated ED25519 private key (injected via pipe without displaying). |
 | `PROD_SERVER_SSH_PORT` | No | `22` | SSH port (defaults to `22`). |

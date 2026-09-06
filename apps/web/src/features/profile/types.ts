@@ -232,3 +232,29 @@ export interface CheckinResponse {
   /** Quota awarded for this check-in */
   quota_awarded: number
 }
+
+/**
+ * QQ binding status
+ */
+export interface QQBindStatusResponse {
+  /** Whether QQ check-in is enabled server-side */
+  qq_checkin_enabled: boolean
+  /** Whether the current user has a QQ binding */
+  bound: boolean
+  /** QQ display name, present only when bound */
+  qq_username?: string
+  /** Bind timestamp in seconds, present only when bound */
+  bound_at?: number
+}
+
+/**
+ * QQ bind verification code
+ */
+export interface QQBindCodeResponse {
+  /** Six character verification code to send in the QQ group */
+  code: string
+  /** Expiry timestamp in seconds */
+  expired_at: number
+  /** Remaining seconds before the code expires */
+  expires_in: number
+}

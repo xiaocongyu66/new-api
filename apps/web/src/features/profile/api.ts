@@ -27,6 +27,8 @@ import type {
   DeleteAccountRequest,
   CheckinStatusResponse,
   CheckinResponse,
+  QQBindStatusResponse,
+  QQBindCodeResponse,
 } from './types'
 
 // ============================================================================
@@ -222,5 +224,37 @@ export async function performCheckin(
     ? `/api/user/checkin?turnstile=${encodeURIComponent(turnstileToken)}`
     : '/api/user/checkin'
   const res = await api.post(url)
+  return res.data
+}
+
+// ============================================================================
+// QQ binding APIs
+// ============================================================================
+
+/**
+ * Get the caller's QQ binding status
+ */
+export async function getQQBindStatus(): Promise<
+  ApiResponse<QQBindStatusResponse>
+> {
+  const res = await api.get('/api/user/qq/bind')
+  return res.data
+}
+
+/**
+ * Issue a short-lived QQ bind verification code
+ */
+export async function generateQQBindCode(): Promise<
+  ApiResponse<QQBindCodeResponse>
+> {
+  const res = await api.post('/api/user/qq/bind/code')
+  return res.data
+}
+
+/**
+ * Remove the caller's QQ binding
+ */
+export async function unbindQQ(): Promise<ApiResponse> {
+  const res = await api.delete('/api/user/qq/bind')
   return res.data
 }

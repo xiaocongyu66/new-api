@@ -25,6 +25,7 @@ import { PerformanceSection } from '../maintenance/performance-section'
 import { UpdateCheckerSection } from '../maintenance/update-checker-section'
 import type { OperationsSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import { UserInsightSection } from './user-insight-section'
 
 const OPERATIONS_SECTIONS = [
   {
@@ -123,6 +124,45 @@ const OPERATIONS_SECTIONS = [
             settings['performance_setting.monitor_memory_threshold'] ?? 90,
           'performance_setting.monitor_disk_threshold':
             settings['performance_setting.monitor_disk_threshold'] ?? 95,
+        }}
+      />
+    ),
+  },
+  {
+    id: 'user-insight',
+    titleKey: 'User Insights',
+    build: (settings: OperationsSettings) => (
+      <UserInsightSection
+        defaultValues={{
+          'user_insight_setting.enabled':
+            settings['user_insight_setting.enabled'] ?? true,
+          'user_insight_setting.record_in_log':
+            settings['user_insight_setting.record_in_log'] ?? true,
+          'user_insight_setting.gender_inference_enabled':
+            settings['user_insight_setting.gender_inference_enabled'] ?? true,
+          'user_insight_setting.jailbreak_alert_score':
+            settings['user_insight_setting.jailbreak_alert_score'] ?? 70,
+          'user_insight_setting.sample_enabled':
+            settings['user_insight_setting.sample_enabled'] ?? true,
+          'user_insight_setting.sample_rate_percent':
+            settings['user_insight_setting.sample_rate_percent'] ?? 5,
+          'user_insight_setting.sample_keep_body':
+            settings['user_insight_setting.sample_keep_body'] ?? false,
+          'user_insight_setting.sample_quota_mb':
+            settings['user_insight_setting.sample_quota_mb'] ?? 1024,
+          'user_insight_setting.sample_retention_days':
+            settings['user_insight_setting.sample_retention_days'] ?? 30,
+          'user_insight_setting.auto_ban_enabled':
+            settings['user_insight_setting.auto_ban_enabled'] ?? false,
+          'user_insight_setting.auto_ban_min_risk':
+            settings['user_insight_setting.auto_ban_min_risk'] ?? 'confirmed',
+          'user_insight_setting.auto_ban_code_ratio_enabled':
+            settings['user_insight_setting.auto_ban_code_ratio_enabled'] ??
+            false,
+          'user_insight_setting.auto_ban_code_ratio_percent':
+            settings['user_insight_setting.auto_ban_code_ratio_percent'] ?? 60,
+          'user_insight_setting.auto_ban_code_min_requests':
+            settings['user_insight_setting.auto_ban_code_min_requests'] ?? 20,
         }}
       />
     ),

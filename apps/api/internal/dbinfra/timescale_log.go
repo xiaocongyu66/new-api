@@ -55,16 +55,22 @@ func setupTimescaleLogHypertable() error {
 	// SQLite/MySQL/plain-PostgreSQL keep PRIMARY KEY (id). `id` stays a serial
 	// with its own non-unique index, which is what the `ORDER BY logs.id desc`
 	// pagination queries need.
-	if err := dbx.LogDB.Exec(`
-DO $$
-BEGIN
-	IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'logs_pkey' AND conrelid = 'logs'::regclass) THEN
-		ALTER TABLE logs DROP CONSTRAINT logs_pkey;
-		ALTER TABLE logs ADD PRIMARY KEY (created_at, id);
-		CREATE INDEX IF NOT EXISTS idx_logs_id ON logs (id);
-	END IF;
-END $$`).Error; err != nil {
-		return fmt.Errorf("timescaledb: widen primary key: %w", err)
+	var pkDef string
+	if err := dbx.LogDB.Raw(
+		"SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'logs_pkey' AND conrelid = 'logs'::regclass",
+	).Scan(&pkDef).Error; err != nil {
+		return fmt.Errorf("timescaledb: read PK def: %w", err)
+	}
+	if pkDef != "" && pkDef != "PRIMARY KEY (created_at, id)" {
+		if pkDef == "PRIMARY KEY (id)" {
+			if err := dbx.LogDB.Exec(`
+				ALTER TABLE logs DROP CONSTRAINT logs_pkey;
+				ALTER TABLE logs ADD PRIMARY KEY (created_at, id);
+				CREATE INDEX IF NOT EXISTS idx_logs_id ON logs (id);
+			`).Error; err != nil {
+				return fmt.Errorf("timescaledb: widen primary key: %w", err)
+			}
+		}
 	}
 
 	chunkInterval := common.GetEnvOrDefault("TIMESCALEDB_CHUNK_INTERVAL_SECONDS", defaultChunkIntervalSeconds)

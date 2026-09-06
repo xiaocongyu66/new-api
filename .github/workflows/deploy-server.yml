@@ -8,7 +8,6 @@ name: Deploy to Server (Docker Compose)
 #
 # 触发方式：
 #   1. 手动触发：Actions → Deploy to Server → 输入 image_tag（例如 sha-abc123 或 insight）
-#   2. 自动触发：Publish Docker image (Multi-arch) 构建成功后自动触发，tag 从上游透传
 #
 # 需要在仓库 Settings → Secrets and variables → Actions 配置的 Secrets：
 #   PROD_SERVER_HOST         生产单机服务器 IP/域名（例如 your-server-ip 或 your-server.example.com）
@@ -85,40 +84,43 @@ jobs:
           IMAGE_TAG: ${{ steps.resolve_tag.outputs.tag }}
           REPO: ${{ github.repository }}
         run: |
-          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" bash -s <<REMOTE_SCRIPT
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" bash -s "$IMAGE_TAG" "$REPO" "$PATH_DIR" <<'REMOTE_SCRIPT'
             set -euo pipefail
+            IMAGE_TAG="$1"
+            REPO="$2"
+            PATH_DIR="$3"
             cd "$PATH_DIR"
 
             IMAGE_NAME="ghcr.io/${REPO}:${IMAGE_TAG}"
-            echo "=== 1. 拉取新镜像: \${IMAGE_NAME} ==="
-            docker pull "\${IMAGE_NAME}"
+            echo "=== 1. 拉取新镜像: ${IMAGE_NAME} ==="
+            docker pull "${IMAGE_NAME}"
 
             echo "=== 2. 记录当前运行的镜像（用于回滚） ==="
-            PREV_IMAGE=\$(docker inspect new-api --format '{{.Config.Image}}' 2>/dev/null || echo "")
-            echo "PREV_IMAGE=\${PREV_IMAGE}"
+            PREV_IMAGE=$(docker inspect new-api --format '{{.Image}}' 2>/dev/null || echo "")
+            echo "PREV_IMAGE=${PREV_IMAGE}"
 
             echo "=== 3. 更新 compose 并重启 new-api ==="
-            # 仅更新镜像 tag，不碰任何环境变量、volume 或其它服务
-            sed -i -E "s|image: ghcr.io/${REPO}:.*|image: \${IMAGE_NAME}|" docker-compose.yml
+            # 仅更新 new-api 服务的镜像 tag，不碰任何环境变量、volume 或其它服务
+            sed -i -E '/^  new-api:/{n;s|^    image: .*|    image: ${IMAGE_NAME}|}' docker-compose.yml
             docker compose up -d --no-deps new-api
 
             echo "=== 4. 健康检查（最多等 45s） ==="
             HEALTHY=0
-            for i in \$(seq 1 15); do
+            for i in $(seq 1 15); do
               sleep 3
-              CODE=\$(curl -sS -m 3 -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/api/status 2>/dev/null || echo "000")
-              if [ "\$CODE" = "200" ]; then
-                echo "健康检查通过（HTTP 200，第 \${i} 次尝试）"
+              CODE=$(curl -sS -m 3 -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/api/status 2>/dev/null || echo "000")
+              if [ "$CODE" = "200" ]; then
+                echo "健康检查通过（HTTP 200，第 ${i} 次尝试）"
                 HEALTHY=1
                 break
               fi
-              echo "等待服务就绪... (\${i}/15, code=\$CODE)"
+              echo "等待服务就绪... (${i}/15, code=$CODE)"
             done
 
-            if [ "\$HEALTHY" -ne 1 ]; then
-              echo "::error::健康检查失败！正在回滚到: \${PREV_IMAGE}"
-              if [ -n "\${PREV_IMAGE}" ]; then
-                sed -i -E "s|image: ghcr.io/${REPO}:.*|image: \${PREV_IMAGE}|" docker-compose.yml
+            if [ "$HEALTHY" -ne 1 ]; then
+              echo "::error::健康检查失败！正在回滚到: ${PREV_IMAGE}"
+              if [ -n "${PREV_IMAGE}" ]; then
+                sed -i -E '/^  new-api:/{n;s|^    image: .*|    image: ${PREV_IMAGE}|}' docker-compose.yml
                 docker compose up -d --no-deps new-api
               fi
               exit 1

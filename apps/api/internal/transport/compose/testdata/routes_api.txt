@@ -2,6 +2,7 @@ DELETE /api/channel/:id
 DELETE /api/channel/disabled
 DELETE /api/channel/ollama/delete
 DELETE /api/custom-oauth-provider/:id
+DELETE /api/insight-sample/user/:id
 DELETE /api/models/:id
 DELETE /api/option/channel_affinity_cache
 DELETE /api/performance/disk_cache
@@ -14,6 +15,7 @@ DELETE /api/subscription/admin/user_subscriptions/:id
 DELETE /api/system-info/instances/:node_name
 DELETE /api/system-info/stale-instances
 DELETE /api/token/:id
+DELETE /api/user-insight/:id
 DELETE /api/user/:id
 DELETE /api/user/:id/2fa
 DELETE /api/user/:id/bindings/:binding_type
@@ -21,6 +23,7 @@ DELETE /api/user/:id/oauth/bindings/:provider_id
 DELETE /api/user/:id/reset_passkey
 DELETE /api/user/oauth/bindings/:provider_id
 DELETE /api/user/passkey
+DELETE /api/user/qq/bind
 DELETE /api/user/self
 DELETE /api/user/sessions/:sid
 DELETE /api/vendors/:id
@@ -53,6 +56,9 @@ GET /api/data/self
 GET /api/data/users
 GET /api/group/
 GET /api/home_page_content
+GET /api/insight-sample
+GET /api/insight-sample-group
+GET /api/insight-sample/:id
 GET /api/log/
 GET /api/log/channel_affinity_usage_cache
 GET /api/log/search
@@ -121,6 +127,9 @@ GET /api/token/search
 GET /api/uptime/status
 GET /api/usage/token/
 GET /api/user-agreement
+GET /api/user-insight
+GET /api/user-insight/:id
+GET /api/user-insight/summary
 GET /api/user/
 GET /api/user/2fa/stats
 GET /api/user/2fa/status
@@ -133,6 +142,7 @@ GET /api/user/groups
 GET /api/user/models
 GET /api/user/oauth/bindings
 GET /api/user/passkey
+GET /api/user/qq/bind
 GET /api/user/search
 GET /api/user/self
 GET /api/user/self/groups
@@ -191,6 +201,7 @@ POST /api/proxy/nodes/batch-clear-errors
 POST /api/proxy/nodes/batch-enabled
 POST /api/proxy/nodes/test
 POST /api/proxy/reload
+POST /api/qqbot/webhook
 POST /api/ratio_sync/fetch
 POST /api/redemption/
 POST /api/setup
@@ -234,6 +245,8 @@ POST /api/user/passkey/register/finish
 POST /api/user/passkey/verify/begin
 POST /api/user/passkey/verify/finish
 POST /api/user/pay
+POST /api/user/qq/bind/code
+POST /api/user/qq/panel/sync
 POST /api/user/register
 POST /api/user/reset
 POST /api/user/sessions/revoke-others
