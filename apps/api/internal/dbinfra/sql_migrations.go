@@ -57,8 +57,11 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 func migrationAppliesTo(sql string, dbType string) (bool, error) {
 	for _, line := range strings.Split(sql, "\n") {
 		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
 		if !strings.HasPrefix(trimmed, "--") {
-			break // header comments end at the first non-comment line
+			break
 		}
 		if !strings.HasPrefix(trimmed, "-- applies-to:") {
 			continue
@@ -95,13 +98,17 @@ func RunSQLMigrations(gdb *gorm.DB, dbType string) error {
 	if err := gdb.Exec(sqlMigrationsBookkeeping).Error; err != nil {
 		return fmt.Errorf("schema_migrations bookkeeping: %w", err)
 	}
-
 	for _, m := range migrations {
 		apply, err := migrationAppliesTo(m.sql, dbType)
 		if err != nil {
 			return err
 		}
 		if !apply {
+			continue
+		}
+
+		// TimescaleDB migrations are gated on TIMESCALEDB_ENABLED.
+		if strings.Contains(m.sql, "create_hypertable") && !common.GetEnvOrDefaultBool("TIMESCALEDB_ENABLED", false) {
 			continue
 		}
 

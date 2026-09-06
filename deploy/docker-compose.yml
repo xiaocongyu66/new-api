@@ -82,7 +82,8 @@ services:
       POSTGRES_PASSWORD: 123456  # ⚠️ IMPORTANT: Change this password in production!
       POSTGRES_DB: new-api
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - pg_data:/var/lib/postgresql
+      - PGDATA=/var/lib/postgresql/data/pgdata
     networks:
       - new-api-network
 #    ports:

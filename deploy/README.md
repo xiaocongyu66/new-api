@@ -106,11 +106,10 @@ gh secret set PROD_SERVER_USER -b "root" --repo <owner>/<repo>
 
 ---
 
-## 4. 生产自动部署工作流机制（`.github/workflows/deploy-server.yml`）
+## 4. 生产部署工作流（`.github/workflows/deploy-server.yml`）
 
 ### 触发条件
-1. **自动触发**：当 `Publish Docker image (Multi-arch)` 成功构建并发布新镜像至 GHCR 后，自动下游触发。
-2. **手动触发**：在 GitHub Actions 页面选择 `Deploy to Server (Docker Compose)`，输入目标 `image_tag`（如 `latest`、`insight` 或 commit SHA）执行部署。
+1. **手动触发**：在 GitHub Actions 页面选择 `Deploy to Server (Docker Compose)`，输入目标 `image_tag`（如 `latest`、`insight` 或 commit SHA）执行部署。
 
 ### 自动化执行步骤与安全防线
 1. **轻量只读连接**：Runner 通过内存临时加载 `PROD_SERVER_SSH_KEY`，SSH 登录目标主机。
