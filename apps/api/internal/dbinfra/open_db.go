@@ -222,46 +222,7 @@ func migrateDB() error {
 	return dbx.DropLegacySchedulingColumns()
 }
 
-func migrateDBFast() error {
-	if err := migratePrefillGroupConstraint(); err != nil {
-		return err
-	}
-	var wg sync.WaitGroup
-	migrations := dbx.Migrations()
-	// 动态计算migration数量，确保errChan缓冲区足够大
-	errChan := make(chan error, len(migrations))
 
-	for _, m := range migrations {
-		wg.Add(1)
-		go func(model interface{}, name string) {
-			defer wg.Done()
-			if err := dbx.DB.AutoMigrate(model); err != nil {
-				errChan <- fmt.Errorf("failed to migrate %s: %v", name, err)
-			}
-		}(m.Model, m.Name)
-	}
-
-	// Wait for all migrations to complete
-	wg.Wait()
-	close(errChan)
-
-	// Check for any errors
-	for err := range errChan {
-		if err != nil {
-			return err
-		}
-	}
-	if err := dbx.RunPostMigrations(); err != nil {
-		return err
-	}
-	if err := RunSQLMigrations(dbx.DB, string(common.MainDatabaseType())); err != nil {
-		return err
-	}
-	// Same ordering constraint as migrateDB: the retirement must follow the route
-	// seed, which runs as a post-migration.
-	common.SysLog("database migrated")
-	return nil
-}
 
 func migrateLOGDB() error {
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
@@ -379,7 +340,10 @@ func migratePrefillGroupConstraint() error {
 	if !exists {
 		return nil
 	}
-	return dbx.DB.Exec("ALTER TABLE prefill_groups DROP CONSTRAINT IF EXISTS idx_prefill_groups_name").Error
+	// Drop the legacy unique constraint if it exists (pg_constraint entry).
+	_ = dbx.DB.Exec("ALTER TABLE prefill_groups DROP CONSTRAINT IF EXISTS idx_prefill_groups_name").Error
+	// Drop the legacy unique index if it exists (no pg_constraint entry).
+	return dbx.DB.Exec("DROP INDEX IF EXISTS idx_prefill_groups_name").Error
 }
 
 func closeDB(db *gorm.DB) error {

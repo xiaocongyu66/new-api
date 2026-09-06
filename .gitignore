@@ -45,8 +45,6 @@ __pycache__/
 **/*.pyc
 .wt/
 
-# Rust build artifacts
-/target
 .zcode
 
 # i18n sync generated reports
