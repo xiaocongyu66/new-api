@@ -166,3 +166,117 @@ docker update --restart=always newapi-postgres-v17-bak && docker start newapi-po
 cp docker-compose.yml.bak-v17 docker-compose.yml
 docker update --restart=always new-api-v17-bak && docker start new-api-v17-bak && docker rename new-api-v17-bak new-api
 ```
+
+---
+
+## 6. Real Production Migration Lessons (2026-09-07)
+
+### GORM AutoMigrate: Universal Legacy Constraint Cleaner
+During a real production migration, GORM AutoMigrate crashed on **multiple** tables
+with the same `SQLSTATE 42704` (constraint name mismatch). The affected tables were
+not just `prefill_groups` but also `qq_bindings`, `qq_bind_codes`, `authz_roles`,
+`casbin_rule`, and potentially any table whose model uses `uniqueIndex` with a
+custom name.
+
+**Root Cause Pattern**: Production databases created by older code versions use
+different constraint naming conventions (`idx_`, `uk_`, `ux_`) than GORM's current
+default (`uni_<table>_<field>`). When the model switches from `unique` to
+`uniqueIndex`, GORM tries to drop the old constraint using its default name, which
+doesn't exist → fatal crash.
+
+**Universal Fix**: Instead of whack-a-mole per table, query `pg_constraint` and
+drop ALL unique constraints that don't match GORM's `uni_` prefix before
+AutoMigrate runs. See the `migratePrefillGroupConstraint()` in
+`apps/api/internal/dbinfra/open_db.go` for the implementation.
+
+**Lesson**: If migrating a long-running production database, ALWAYS run a
+constraint-name audit first:
+```sql
+SELECT conrelid::regclass::text, conname
+FROM pg_constraint
+WHERE contype = 'u' AND connamespace = 'public'::regnamespace
+  AND conname NOT LIKE 'uni_%' AND conname NOT LIKE '%_pkey';
+```
+
+### Data Deduplication Before Unique Index Creation
+GORM AutoMigrate creates unique indexes. If the production data has duplicate
+values in those columns (because the old code didn't enforce the constraint),
+the index creation fails with `SQLSTATE 23505`.
+
+**Fix**: Before AutoMigrate, deduplicate data based on the columns that the new
+unique indexes will cover. The dedup pattern:
+```sql
+DELETE FROM <table> WHERE ctid NOT IN (
+    SELECT MIN(ctid) FROM <table> GROUP BY <unique_columns>
+);
+```
+
+**Affected tables during the nailao migration**: `auth_flows`, `casbin_rule`,
+`authz_roles`, `channel_model_routes`, `gateway_config_outboxes`.
+
+**Lesson**: After removing old constraints and before AutoMigrate, run a full
+dedup pass on all tables that the new models define `uniqueIndex` tags for.
+
+### Sequence Desync After COPY
+When bulk-loading data via `COPY` (CSV or otherwise), PostgreSQL sequences are
+NOT advanced. The next `INSERT` will fail with `SQLSTATE 23505` duplicate key.
+
+**Fix**: After bulk loading, reset all sequences:
+```sql
+DO $$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN
+    SELECT c.relname AS seq_name, t.relname AS tbl_name, a.attname AS col_name
+    FROM pg_class c
+    JOIN pg_depend d ON d.objid = c.oid AND d.classid = 'pg_class'::regclass
+    JOIN pg_class t ON t.oid = d.refobjid
+    JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = d.refobjsubid
+    WHERE c.relkind = 'S' AND t.relnamespace = 'public'::regnamespace
+  LOOP
+    EXECUTE format('SELECT setval(%L, COALESCE((SELECT max(%I) FROM %I), 0) + 1, false)', r.seq_name, r.col_name, r.tbl_name);
+  END LOOP;
+END $$;
+```
+
+### Production Server Memory Constraints (4GB RAM)
+On a 4GB RAM production server, `pg_restore -j 1` into PG18 + TimescaleDB can
+exhaust memory when restoring a large `logs` table (130k+ rows with 15 indexes).
+The TimescaleDB background workers consume additional memory during hypertable
+conversion.
+
+**Mitigation**:
+1. Always use `-j 1` (single-threaded restore) on low-memory servers.
+2. Consider using plain `postgres:18-alpine` first (without TimescaleDB), then
+   install the extension after the restore completes and the application has started.
+3. Monitor with `free -h` and `docker stats` during restore.
+
+### Docker Deployment: Never Auto-Deploy on Merge
+The `deploy-server.yml` workflow originally had a `workflow_run` trigger that
+auto-deployed on every successful Docker image build. This caused an unintended
+production deployment when PRs were merged.
+
+**Fix**: Remove the `workflow_run` trigger. Production deploys MUST be
+strictly manual (`workflow_dispatch` only). The deploy workflow must never
+automatically touch the production server.
+
+### Docker Image Version Mismatch
+When merging a feature PR to main, the GHCR image is rebuilt automatically
+(via `Publish Docker image (Multi-arch)` workflow). However, the server may
+still have a cached older `:latest` image. Always run `docker pull` before
+starting the new container to ensure you get the correct version.
+
+**Verification**: Check the built image digest matches what's on the server:
+```bash
+docker images --format "{{.ID}} {{.CreatedAt}}" | grep new-api
+```
+
+### Port Conflict During Container Rename
+`docker rename` does NOT change the container's port bindings. A renamed
+container still tries to bind its original port. If the old and new containers
+both bind `127.0.0.1:5432`, the rename+restart will fail.
+
+**Fix**: The rename-freeze-restart sequence must account for port conflicts:
+1. Stop old container (releases port)
+2. Rename old container
+3. Start new container (binds port)
