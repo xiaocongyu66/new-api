@@ -133,6 +133,13 @@ func main() {
 	// 数据看板
 	go usage.UpdateQuotaData()
 
+	// 周期性把内存中的用户画像增量合并进数据库
+	go usage.UpdateInsightProfiles()
+	usage.InitInsightSampleUsage()
+	go usage.MaintainInsightSamples()
+	// 定期把过期未领完的红包余额退回发送者
+	go billing.MaintainQQRedPackets()
+
 	// Route stats TTL sweep and share-pool eviction (runs hourly). Without it the
 	// EWMA handles and share pools only ever grow: a retired route unit keeps its
 	// entry forever.

@@ -48,9 +48,12 @@ func setupIdentityTestDB(t *testing.T) {
 		&TwoFABackupCode{},
 		&UserOAuthBinding{},
 		&CustomOAuthProvider{},
+		&QQBinding{},
+		&QQBindCode{},
 	); err != nil {
 		t.Fatalf("migrate test db: %v", err)
 	}
+
 
 	t.Cleanup(func() {
 		dbx.DB, dbx.LogDB = previousDB, previousLogDB

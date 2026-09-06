@@ -83,6 +83,7 @@ export interface ChannelSettings {
   proxy?: string
   bypass_proxy?: boolean
   pass_through_body_enabled?: boolean
+  session_affinity_enabled?: boolean
   system_prompt?: string
   system_prompt_override?: boolean
   http_protocol?: 'auto' | 'http1' | string

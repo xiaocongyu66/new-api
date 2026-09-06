@@ -80,4 +80,8 @@ const (
 
 	// ContextKeySensitiveOutputState 输出侧敏感闸的请求级滚动窗口状态。
 	ContextKeySensitiveOutputState ContextKey = "sensitive_output_state"
+
+	// ContextKeyUserInsight carries the per-request user-insight analysis the
+	// relay middleware produces, read by the consume-log writer.
+	ContextKeyUserInsight ContextKey = "user_insight"
 )

@@ -520,6 +520,7 @@ func buildSelfUserData(user *User) map[string]interface{} {
 		"quota":             user.Quota,
 		"used_quota":        user.UsedQuota,
 		"request_count":     user.RequestCount,
+		"spore":             user.Spore,
 		"aff_code":          user.AffCode,
 		"aff_count":         user.AffCount,
 		"aff_quota":         user.AffQuota,
@@ -1145,6 +1146,27 @@ func ManageUser(c contract.Context) {
 			common.CtxApiErrorI18n(c, i18n.MsgInvalidParams)
 			return
 		}
+		_ = c.JSON(http.StatusOK, common.H{
+			"success": true,
+			"message": "",
+		})
+		return
+	case "add_spore":
+		if req.Mode == "" {
+			req.Mode = "add"
+		}
+		if req.Mode != "override" && req.Value <= 0 {
+			common.CtxApiErrorI18n(c, i18n.MsgUserQuotaChangeZero)
+			return
+		}
+		if err := AdminAdjustUserSpore(user.Id, req.Mode, int64(req.Value)); err != nil {
+			common.CtxApiError(c, err)
+			return
+		}
+		writeManageAudit(c, user.Id, "user.spore_adjust", map[string]interface{}{
+			"mode":  req.Mode,
+			"units": req.Value,
+		})
 		_ = c.JSON(http.StatusOK, common.H{
 			"success": true,
 			"message": "",

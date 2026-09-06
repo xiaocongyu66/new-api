@@ -563,6 +563,73 @@ export function SubscriptionsMutateDrawer({
 
                 <FormField
                   control={form.control}
+                  name='pay_mode'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Payment Mode')}</FormLabel>
+                      <Select
+                        value={field.value || 'balance'}
+                        onValueChange={field.onChange}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent alignItemWithTrigger={false}>
+                          <SelectGroup>
+                            <SelectItem value='balance'>
+                              {t('Balance only')}
+                            </SelectItem>
+                            <SelectItem value='spore'>
+                              {t('Spore only')}
+                            </SelectItem>
+                            <SelectItem value='both'>
+                              {t('Both balance and spore')}
+                            </SelectItem>
+                            <SelectItem value='either'>
+                              {t('Either balance or spore')}
+                            </SelectItem>
+                            <SelectItem value='none'>
+                              {t('Third-party only / Free')}
+                            </SelectItem>
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='spore_amount'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Spore Price')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          step='0.1'
+                          min={0}
+                          onChange={(e) =>
+                            field.onChange(
+                              Number.parseFloat(e.target.value) || 0
+                            )
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t('Price in spore (0.1 precision)')}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
                   name='allow_wallet_overflow'
                   render={({ field }) => (
                     <FormItem className={sideDrawerSwitchItemClassName()}>

@@ -197,7 +197,16 @@ test:
     echo "Testing relaykit Go module..."
     cd modules/relaykit && GOWORK=off go test ./...
 
-# Reset local setup wizard state (postgres or sqlite)
+
+# Run E2E Playwright tests for frontend and theme features
+test-e2e:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    root="$(pwd)"
+    if [ ! -d "tests/e2e/node_modules" ] && [ ! -L "tests/e2e/node_modules" ]; then
+        ln -s "../../apps/web/node_modules" "tests/e2e/node_modules"
+    fi
+    cd tests/e2e && npx playwright test
 reset-setup:
     #!/usr/bin/env bash
     set -euo pipefail
