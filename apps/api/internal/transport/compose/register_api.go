@@ -36,6 +36,9 @@ func SetApiRouter(router contract.Engine) {
 		apiRouter.GET("/about", handler.GetAbout)
 		//apiRouter.GET("/midjourney", handler.GetMidjourney)
 		apiRouter.GET("/home_page_content", handler.GetHomePageContent)
+		// QQ open-platform webhook. Public by design; every dispatch must pass
+		// Ed25519 signature verification inside the handler.
+		apiRouter.POST("/qqbot/webhook", anonymousRequestBodyLimit, billing.QQBotWebhook)
 		apiRouter.GET("/pricing", middleware.HeaderNavModuleAuth("pricing"), handler.GetPricing)
 		// /api/log routes
 		logRoute := apiRouter.Group("/log")
@@ -172,6 +175,12 @@ func SetApiRouter(router contract.Engine) {
 				selfRoute.GET("/checkin", billing.GetCheckinStatus)
 				selfRoute.POST("/checkin", middleware.TurnstileCheck(), billing.DoCheckin)
 
+				// QQ binding routes
+				selfRoute.GET("/qq/bind", billing.GetQQBindStatus)
+				selfRoute.POST("/qq/bind/code", middleware.CriticalRateLimit(), middleware.DisableCache(), billing.GenerateQQBindCode)
+				selfRoute.DELETE("/qq/bind", middleware.CriticalRateLimit(), billing.UnbindQQ)
+				selfRoute.POST("/qq/panel/sync", security.AdminAuth(), middleware.CriticalRateLimit(), billing.SyncQQPanel)
+
 				// Custom OAuth bindings
 				selfRoute.GET("/oauth/bindings", identity.GetUserOAuthBindings)
 				selfRoute.DELETE("/oauth/bindings/:provider_id", identity.UnbindCustomOAuth)
@@ -198,6 +207,31 @@ func SetApiRouter(router contract.Engine) {
 				adminRoute.GET("/2fa/stats", identity.Admin2FAStats)
 				adminRoute.DELETE("/:id/2fa", identity.AdminDisable2FA)
 			}
+		}
+
+		// User insights (admin only): client fingerprint, usage profile,
+		// jailbreak risk. Ban actions reuse /api/user/manage.
+		insightRoute := apiRouter.Group("/user-insight")
+		insightRoute.Use(security.AdminAuth())
+		{
+			insightRoute.GET("/summary", usage.HandleGetUserInsightSummary)
+			insightRoute.GET("", usage.HandleGetUserInsights)
+			insightRoute.GET("/:id", usage.HandleGetUserInsightDetail)
+			insightRoute.DELETE("/:id", usage.HandlePurgeUserInsight)
+		}
+		// Evidence samples: hit keywords with original sentences, plus the
+		// optional full request body.
+		insightSampleRoute := apiRouter.Group("/insight-sample")
+		insightSampleRoute.Use(security.AdminAuth())
+		{
+			insightSampleRoute.GET("", usage.HandleGetInsightSamples)
+			insightSampleRoute.GET("/:id", usage.HandleGetInsightSampleDetail)
+			insightSampleRoute.DELETE("/user/:id", usage.HandleDeleteUserInsightSamples)
+		}
+		insightSampleGroupRoute := apiRouter.Group("/insight-sample-group")
+		insightSampleGroupRoute.Use(security.AdminAuth())
+		{
+			insightSampleGroupRoute.GET("", usage.HandleGetInsightSampleGroups)
 		}
 
 		// Subscription billing (plans, purchase, admin management)

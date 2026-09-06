@@ -20,6 +20,7 @@ import { parseCurrencyDisplayType } from '@/lib/currency'
 
 import { CheckinSettingsSection } from '../general/checkin-settings-section'
 import { PricingSection } from '../general/pricing-section'
+import { QQBotSettingsSection } from '../general/qqbot-settings-section'
 import { QuotaSettingsSection } from '../general/quota-settings-section'
 import { PaymentSettingsSection } from '../integrations/payment-settings-section'
 import { RatioSettingsCard } from '../models/ratio-settings-card'
@@ -197,6 +198,83 @@ const BILLING_SECTIONS = [
           enabled: settings['checkin_setting.enabled'],
           minQuota: settings['checkin_setting.min_quota'],
           maxQuota: settings['checkin_setting.max_quota'],
+        }}
+      />
+    ),
+  },
+  {
+    id: 'qqbot',
+    titleKey: 'QQ Bot',
+    build: (settings: BillingSettings) => (
+      <QQBotSettingsSection
+        defaultValues={{
+          'qq_bot_setting.app_id': settings['qq_bot_setting.app_id'] ?? '',
+          'qq_bot_setting.app_secret':
+            settings['qq_bot_setting.app_secret'] ?? '',
+          'qq_bot_setting.qq_checkin_enabled':
+            settings['qq_bot_setting.qq_checkin_enabled'] ?? false,
+          'qq_bot_setting.web_checkin_enabled':
+            settings['qq_bot_setting.web_checkin_enabled'] ?? true,
+          'qq_bot_setting.single_platform_only':
+            settings['qq_bot_setting.single_platform_only'] ?? true,
+          'qq_bot_setting.min_quota':
+            settings['qq_bot_setting.min_quota'] ?? 1000,
+          'qq_bot_setting.max_quota':
+            settings['qq_bot_setting.max_quota'] ?? 10000,
+          'qq_bot_setting.checkin_disabled_groups':
+            settings['qq_bot_setting.checkin_disabled_groups'] ?? '',
+          'qq_bot_setting.notify_template':
+            settings['qq_bot_setting.notify_template'] ?? '',
+          'qq_bot_setting.auto_approve_enabled':
+            settings['qq_bot_setting.auto_approve_enabled'] ?? false,
+          'qq_bot_setting.auto_approve_keyword':
+            settings['qq_bot_setting.auto_approve_keyword'] ?? '',
+          'qq_bot_setting.drop_enabled':
+            settings['qq_bot_setting.drop_enabled'] ?? false,
+          'qq_bot_setting.drop_groups':
+            settings['qq_bot_setting.drop_groups'] ?? '',
+          'qq_bot_setting.drop_min_messages':
+            settings['qq_bot_setting.drop_min_messages'] ?? 5,
+          'qq_bot_setting.drop_max_messages':
+            settings['qq_bot_setting.drop_max_messages'] ?? 30,
+          'qq_bot_setting.drop_min_quota':
+            settings['qq_bot_setting.drop_min_quota'] ?? 150000,
+          'qq_bot_setting.drop_max_quota':
+            settings['qq_bot_setting.drop_max_quota'] ?? 1500000,
+          'qq_bot_setting.drop_daily_limit':
+            settings['qq_bot_setting.drop_daily_limit'] ?? 3,
+          'qq_bot_setting.drop_template':
+            settings['qq_bot_setting.drop_template'] ?? '',
+          'qq_bot_setting.transfer_enabled':
+            settings['qq_bot_setting.transfer_enabled'] ?? false,
+          'qq_bot_setting.transfer_disabled_groups':
+            settings['qq_bot_setting.transfer_disabled_groups'] ?? '',
+          'qq_bot_setting.transfer_daily_limit':
+            settings['qq_bot_setting.transfer_daily_limit'] ?? 2,
+          'qq_bot_setting.transfer_min_amount':
+            settings['qq_bot_setting.transfer_min_amount'] ?? 50000,
+          'qq_bot_setting.transfer_max_amount':
+            settings['qq_bot_setting.transfer_max_amount'] ?? 50000000,
+          'qq_bot_setting.transfer_fee_brackets':
+            settings['qq_bot_setting.transfer_fee_brackets'] ?? '',
+          'qq_bot_setting.red_packet_enabled':
+            settings['qq_bot_setting.red_packet_enabled'] ?? false,
+          'qq_bot_setting.red_packet_disabled_groups':
+            settings['qq_bot_setting.red_packet_disabled_groups'] ?? '',
+          'qq_bot_setting.red_packet_daily_limit':
+            settings['qq_bot_setting.red_packet_daily_limit'] ?? 3,
+          'qq_bot_setting.red_packet_min_amount':
+            settings['qq_bot_setting.red_packet_min_amount'] ?? 500000,
+          'qq_bot_setting.red_packet_max_amount':
+            settings['qq_bot_setting.red_packet_max_amount'] ?? 100000000,
+          'qq_bot_setting.red_packet_default_count':
+            settings['qq_bot_setting.red_packet_default_count'] ?? 5,
+          'qq_bot_setting.red_packet_max_count':
+            settings['qq_bot_setting.red_packet_max_count'] ?? 50,
+          'qq_bot_setting.red_packet_expire_seconds':
+            settings['qq_bot_setting.red_packet_expire_seconds'] ?? 86400,
+          'qq_bot_setting.red_packet_allow_own_grab':
+            settings['qq_bot_setting.red_packet_allow_own_grab'] ?? false,
         }}
       />
     ),

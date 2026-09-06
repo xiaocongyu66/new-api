@@ -17,6 +17,7 @@ type ChannelSettings struct {
 	BypassProxy            bool   `json:"bypass_proxy,omitempty"`
 	Proxy                  string `json:"proxy"`
 	PassThroughBodyEnabled bool   `json:"pass_through_body_enabled,omitempty"`
+	SessionAffinityEnabled bool   `json:"session_affinity_enabled,omitempty"`
 	SystemPrompt           string `json:"system_prompt,omitempty"`
 	SystemPromptOverride   bool   `json:"system_prompt_override,omitempty"`
 	// HTTPProtocol controls outbound HTTP version negotiation for this channel.

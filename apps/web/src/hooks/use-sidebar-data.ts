@@ -28,6 +28,7 @@ import {
   MessageSquare,
   Network,
   Radio,
+  ScanSearch,
   ServerCog,
   Store,
   Ticket,
@@ -151,6 +152,11 @@ export function useSidebarData(): SidebarData {
             title: t('Users'),
             url: '/users',
             icon: Users,
+          },
+          {
+            title: t('User Insights'),
+            url: '/user-insights',
+            icon: ScanSearch,
           },
           {
             title: t('Redemption Codes'),

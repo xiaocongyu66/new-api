@@ -16,12 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Activity, BarChart3, WalletCards } from 'lucide-react'
+import { Activity, BarChart3, Sprout, WalletCards } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatQuota } from '@/lib/format'
+import { SPORE_LABEL, formatSpore } from '@/lib/spore'
 
 import type { UserWalletData } from '../types'
 
@@ -29,17 +30,18 @@ interface WalletStatsCardProps {
   user: UserWalletData | null
   loading?: boolean
 }
+const STATS_GRID_CLASS =
+  'grid grid-cols-2 divide-x divide-y rounded-lg border sm:grid-cols-4 sm:divide-y-0'
 
 export function WalletStatsCard(props: WalletStatsCardProps) {
   const { t } = useTranslation()
   if (props.loading) {
     return (
-      <div className='grid grid-cols-3 divide-x rounded-lg border'>
-        {['balance', 'usage', 'requests'].map((key) => (
+      <div className={STATS_GRID_CLASS}>
+        {['balance', 'spore', 'usage', 'requests'].map((key) => (
           <div key={key} className='min-w-0 px-2.5 py-2.5 sm:px-5 sm:py-4'>
             <Skeleton className='h-3.5 w-full' />
             <Skeleton className='mt-2 h-6 w-full sm:h-7' />
-            <Skeleton className='mt-1.5 hidden h-3.5 w-24 md:block' />
           </div>
         ))}
       </div>
@@ -61,6 +63,13 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
       tone: 'success',
     },
     {
+      label: SPORE_LABEL,
+      value: formatSpore(props.user?.spore ?? 0),
+      description: t('Granted by admins, usable on plans'),
+      icon: Sprout,
+      tone: 'chart-2',
+    },
+    {
       label: t('Total Usage'),
       value: formatQuota(props.user?.used_quota ?? 0),
       description: t('Total consumed quota'),
@@ -77,7 +86,7 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
   ]
 
   return (
-    <div className='grid grid-cols-3 divide-x rounded-lg border'>
+    <div className={STATS_GRID_CLASS}>
       {stats.map((item) => (
         <div key={item.label} className='min-w-0 px-2.5 py-2.5 sm:px-5 sm:py-4'>
           <div className='flex items-center gap-1.5 sm:gap-2.5'>

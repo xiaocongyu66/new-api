@@ -56,6 +56,20 @@ const defaultOperationsSettings: OperationsSettings = {
   'perf_metrics_setting.flush_interval': 5,
   'perf_metrics_setting.bucket_time': 'hour',
   'perf_metrics_setting.retention_days': 0,
+  'user_insight_setting.enabled': true,
+  'user_insight_setting.record_in_log': true,
+  'user_insight_setting.gender_inference_enabled': true,
+  'user_insight_setting.jailbreak_alert_score': 70,
+  'user_insight_setting.sample_enabled': true,
+  'user_insight_setting.sample_rate_percent': 5,
+  'user_insight_setting.sample_keep_body': false,
+  'user_insight_setting.sample_quota_mb': 1024,
+  'user_insight_setting.sample_retention_days': 30,
+  'user_insight_setting.auto_ban_enabled': false,
+  'user_insight_setting.auto_ban_min_risk': 'confirmed',
+  'user_insight_setting.auto_ban_code_ratio_enabled': false,
+  'user_insight_setting.auto_ban_code_ratio_percent': 60,
+  'user_insight_setting.auto_ban_code_min_requests': 20,
 }
 
 export function OperationsSettings() {
