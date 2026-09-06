@@ -329,21 +329,45 @@ func ClickHouseCreateTableHasTTL(createTableSQL string) bool {
 // migrateSubscriptionPlanPriceAmount migrates price_amount column from float/double to decimal(10,6)
 // This is safe to run multiple times - it checks the column type first
 
+// migratePrefillGroupConstraint drops legacy unique constraints that predate the
+// current uniqueIndex definitions in the GORM models. GORM's AutoMigrate detects
+// that a field is no longer a plain unique column and tries to drop the old
+// constraint using its default generated name (uni_<table>_<field>), which fails
+// on databases where the constraint was originally created with a different naming
+// scheme (e.g. idx_). Running this before AutoMigrate avoids fatal SQLSTATE 42704.
+//
+// Instead of playing whack-a-mole with individual tables, this implementation
+// queries pg_constraint for all unique constraints in the public schema and drops
+// any that don't match GORM's expected uni_<table>_<field> naming pattern, since
+// AutoMigrate will recreate them with the correct names anyway.
 func migratePrefillGroupConstraint() error {
 	if !common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
 		return nil
 	}
-	var exists bool
-	if err := dbx.DB.Raw("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'prefill_groups')").Scan(&exists).Error; err != nil {
+	// Find all unique constraints in public schema that don't match GORM's naming.
+	// GORM generates unique constraint names as uni_<table>_<field>.
+	type legacyConstraint struct {
+		Table string `gorm:"column:tbl"`
+		Name  string `gorm:"column:conname"`
+	}
+	var legacy []legacyConstraint
+	if err := dbx.DB.Raw(`
+		SELECT t.relname AS tbl, c.conname
+		FROM pg_constraint c
+		JOIN pg_class t ON t.oid = c.conrelid
+		JOIN pg_namespace n ON n.oid = t.relnamespace
+		WHERE c.contype = 'u' AND n.nspname = 'public'
+		  AND c.conname NOT LIKE 'uni_%'
+		  AND c.conname NOT LIKE '%_pkey'
+		ORDER BY t.relname
+	`).Scan(&legacy).Error; err != nil {
 		return err
 	}
-	if !exists {
-		return nil
+	for _, lc := range legacy {
+		_ = dbx.DB.Exec(fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT IF EXISTS %s", lc.Table, lc.Name)).Error
+		_ = dbx.DB.Exec(fmt.Sprintf("DROP INDEX IF EXISTS %s", lc.Name)).Error
 	}
-	// Drop the legacy unique constraint if it exists (pg_constraint entry).
-	_ = dbx.DB.Exec("ALTER TABLE prefill_groups DROP CONSTRAINT IF EXISTS idx_prefill_groups_name").Error
-	// Drop the legacy unique index if it exists (no pg_constraint entry).
-	return dbx.DB.Exec("DROP INDEX IF EXISTS idx_prefill_groups_name").Error
+	return nil
 }
 
 func closeDB(db *gorm.DB) error {
