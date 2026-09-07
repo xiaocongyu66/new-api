@@ -182,12 +182,17 @@ func extractBindCode(content string) string {
 	return ""
 }
 
-// isBindCodeToken 判断单个词是否是六位字母数字验证码
+// isBindCodeToken 判断单个词是否是 # 前缀六位字母数字验证码
+// 例如 #aB3x9K。# 前缀避免 bot 把普通英文单词误判为验证码。
 func isBindCodeToken(text string) bool {
-	if len(text) != 6 {
+	if !strings.HasPrefix(text, "#") {
 		return false
 	}
-	for _, r := range text {
+	body := text[1:]
+	if len(body) != 6 {
+		return false
+	}
+	for _, r := range body {
 		isDigit := r >= '0' && r <= '9'
 		isUpper := r >= 'A' && r <= 'Z'
 		isLower := r >= 'a' && r <= 'z'
@@ -557,8 +562,8 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 		}
 
 	case looksLikeBindCode(content):
-		// 群内发送六位验证码即完成绑定
-		code := extractBindCode(content)
+		// 群内发送 #xxxxxx 验证码即完成绑定
+		code := strings.TrimPrefix(extractBindCode(content), "#")
 		userId, err := identity.ConsumeQQBindCode(
 			code, openID, event.Author.UnionOpenID, event.Author.Username)
 		if err != nil {

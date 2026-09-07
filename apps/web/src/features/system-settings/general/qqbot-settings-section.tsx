@@ -173,47 +173,6 @@ export function QQBotSettingsSection({
 
           <FormField
             control={form.control}
-            name='qq_bot_setting.web_checkin_enabled'
-            render={({ field }) => (
-              <SettingsSwitchItem>
-                <SettingsSwitchContent>
-                  <FormLabel>{t('Enable web check-in')}</FormLabel>
-                </SettingsSwitchContent>
-                <FormControl>
-                  <Switch
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                  />
-                </FormControl>
-              </SettingsSwitchItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name='qq_bot_setting.single_platform_only'
-            render={({ field }) => (
-              <SettingsSwitchItem>
-                <SettingsSwitchContent>
-                  <FormLabel>{t('Single platform check-in only')}</FormLabel>
-                  <FormDescription>
-                    {t(
-                      'QQ and web share one daily reward: checking in on either counts for the day'
-                    )}
-                  </FormDescription>
-                </SettingsSwitchContent>
-                <FormControl>
-                  <Switch
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                  />
-                </FormControl>
-              </SettingsSwitchItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
             name='qq_bot_setting.min_quota'
             render={({ field }) => (
               <FormItem>

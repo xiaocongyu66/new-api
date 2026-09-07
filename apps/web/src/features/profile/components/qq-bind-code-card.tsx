@@ -81,7 +81,7 @@ export function QQBindCodeCard({ show, className }: QQBindCodeCardProps) {
               {t('QQ 绑定验证码')}
             </h3>
             <p className='text-muted-foreground text-xs'>
-              {t('生成验证码后在 QQ 群内发送给机器人即可完成绑定')}
+              {t('生成验证码后在 QQ 群内发送给机器人（#开头）即可完成绑定')}
             </p>
           </div>
         </div>
