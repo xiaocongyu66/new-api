@@ -78,6 +78,21 @@ type QQBotSetting struct {
 	// 计费方式与个税一致：只有超出前一档上界的部分按本档费率计。
 	// 留空则使用代码内置的默认档位。
 	TransferFeeBrackets string `json:"transfer_fee_brackets"`
+
+	// CommandCooldownSeconds 单用户两次指令间最小间隔（秒）。<=0 关闭冷却。
+	// 防止刷屏：同一用户在冷却期内再次发指令会被静默忽略并回复提示。
+	CommandCooldownSeconds int `json:"command_cooldown_seconds"`
+
+	// RecallFailedMessages 是否自动撤回失败回复（签到失败、红包已领完等）。
+	// 依赖 QQ 平台的撤回权限，默认关闭。
+	RecallFailedMessages bool `json:"recall_failed_messages"`
+
+	// RecallDelaySeconds 失败回复发出多少秒后撤回，默认 10 秒。
+	RecallDelaySeconds int `json:"recall_delay_seconds"`
+
+	// AdminOpenIDs 逗号分隔的 openid 白名单：只有名单内的用户可以调用
+	// /余额、/封禁 等管理员指令。为空则禁用所有管理员指令。
+	AdminOpenIDs string `json:"admin_open_ids"`
 }
 
 // DefaultNotifyTemplate 默认签到通知样式

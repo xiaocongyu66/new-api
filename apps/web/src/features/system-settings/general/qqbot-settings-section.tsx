@@ -70,6 +70,10 @@ const qqbotSchema = z.object({
   'qq_bot_setting.transfer_min_amount': z.coerce.number().int().min(0),
   'qq_bot_setting.transfer_max_amount': z.coerce.number().int(),
   'qq_bot_setting.transfer_fee_brackets': z.string(),
+  'qq_bot_setting.command_cooldown_seconds': z.coerce.number().int().min(0).default(0),
+  'qq_bot_setting.recall_failed_messages': z.boolean().default(false),
+  'qq_bot_setting.recall_delay_seconds': z.coerce.number().int().min(1).max(120).default(10),
+  'qq_bot_setting.admin_open_ids': z.string().optional(),
   'qq_bot_setting.red_packet_enabled': z.boolean(),
   'qq_bot_setting.red_packet_disabled_groups': z.string(),
   'qq_bot_setting.red_packet_daily_limit': z.coerce.number().int(),
@@ -642,6 +646,71 @@ export function QQBotSettingsSection({
                   />
                 </FormControl>
               </SettingsSwitchItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name='qq_bot_setting.command_cooldown_seconds'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Command cooldown (seconds)')}</FormLabel>
+                <FormControl>
+                  <Input type='number' min={0} {...field} />
+                </FormControl>
+                <FormDescription>
+                  {t('Minimum seconds between commands from the same user. 0 disables the cooldown.')}
+                </FormDescription>
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='qq_bot_setting.recall_failed_messages'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>{t('Auto-recall failed replies')}</FormLabel>
+                  <FormDescription>
+                    {t('Automatically recall failure messages after a delay. Requires QQ platform recall permission.')}
+                  </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch checked={field.value} onCheckedChange={field.onChange} />
+                </FormControl>
+              </SettingsSwitchItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='qq_bot_setting.recall_delay_seconds'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Recall delay (seconds)')}</FormLabel>
+                <FormControl>
+                  <Input type='number' min={1} max={120} {...field} />
+                </FormControl>
+                <FormDescription>
+                  {t('Seconds to wait before recalling a failed reply.')}
+                </FormDescription>
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='qq_bot_setting.admin_open_ids'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Admin QQ OpenIDs (comma-separated)')}</FormLabel>
+                <FormControl>
+                  <Input placeholder='OPENID_A,OPENID_B' {...field} />
+                </FormControl>
+                <FormDescription>
+                  {t('Only these users can invoke admin commands like /balance and /ban. Leave empty to disable admin commands.')}
+                </FormDescription>
+              </FormItem>
             )}
           />
         </SettingsForm>

@@ -495,10 +495,44 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 		return
 	}
 
+	// 命令冷却检查（防刷）
+	if err := CheckCooldown(openID); err != nil {
+		if err2 := replyGroupMarkdown(event.GroupOpenID, event.ID, "",
+			buildPlainMarkdown(openID, "**慢一点**\n\n"+err.Error()), nil, 1); err2 != nil {
+			common.SysError("回复冷却提示失败: " + err2.Error())
+		}
+		return
+	}
+
 	if isRedPacketCommand(content) {
 		reply, kb := HandleRedPacketCommand(event, openID)
 		if err := replyGroupMarkdown(event.GroupOpenID, event.ID, "", reply, kb, 1); err != nil {
 			common.SysError("回复红包指令失败: " + err.Error())
+		}
+		return
+	}
+
+	// 管理员指令：/余额、/封禁、/解封
+	switch {
+	case strings.HasPrefix(content, "/余额"):
+		if reply := HandleAdminBalance(event, openID, content); reply != "" {
+			if err := replyGroupMarkdown(event.GroupOpenID, event.ID, "", reply, nil, 1); err != nil {
+				common.SysError("回复管理员余额指令失败: " + err.Error())
+			}
+		}
+		return
+	case strings.HasPrefix(content, "/封禁"):
+		if reply := HandleAdminBan(event, openID, content, true); reply != "" {
+			if err := replyGroupMarkdown(event.GroupOpenID, event.ID, "", reply, nil, 1); err != nil {
+				common.SysError("回复管理员封禁指令失败: " + err.Error())
+			}
+		}
+		return
+	case strings.HasPrefix(content, "/解封"):
+		if reply := HandleAdminBan(event, openID, content, false); reply != "" {
+			if err := replyGroupMarkdown(event.GroupOpenID, event.ID, "", reply, nil, 1); err != nil {
+				common.SysError("回复管理员解封指令失败: " + err.Error())
+			}
 		}
 		return
 	}
