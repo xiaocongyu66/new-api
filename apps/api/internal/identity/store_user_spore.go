@@ -29,6 +29,7 @@ func (e *SporeInsufficientError) Error() string {
 }
 
 func (e *SporeInsufficientError) Unwrap() error {
+	// 省略原始码
 	return ErrSporeInsufficient
 }
 

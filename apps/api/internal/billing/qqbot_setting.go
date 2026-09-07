@@ -141,10 +141,15 @@ var qqBotSetting = QQBotSetting{
 	RedPacketMaxCount:      50,
 	RedPacketExpireSeconds: 24 * 3600,
 	RedPacketAllowOwnGrab:  false,
-
 	TransferMinAmount:   50000,
 	TransferMaxAmount:   50000000,
 	TransferFeeBrackets: "",
+
+	// New QQ bot admin fields
+	CommandCooldownSeconds: 0,
+	RecallFailedMessages:   false,
+	RecallDelaySeconds:     10,
+	AdminOpenIDs:           "",
 }
 
 func init() {

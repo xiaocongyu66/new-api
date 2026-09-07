@@ -68,8 +68,6 @@ func parseTargetUser(content string) (targetOpenID string, rest string) {
 	rest = text
 	return
 }
-
-// resolveUserIdByOpenID 通过 QQ openID 找到绑定的站内用户 ID
 func resolveUserIdByOpenID(openID string) (int, error) {
 	if openID == "" {
 		return 0, errors.New("未指定目标用户")

@@ -83,6 +83,20 @@ func GetQQBindingByOpenID(openID string) (*QQBinding, error) {
 	return &binding, nil
 }
 
+// IsQQBoundByUserId 判断 userId 是否已绑定 QQ 账号
+func IsQQBoundByUserId(userId int) (string, bool) {
+	if userId <= 0 {
+		return "", false
+	}
+	var openID string
+	err := dbx.DB.Model(&QQBinding{}).Where("user_id = ?", userId).
+		Select("open_id").Scan(&openID).Error
+	if err != nil || openID == "" {
+		return "", false
+	}
+	return openID, true
+}
+
 // IsQQBound 判断 openid 是否已绑定用户
 func IsQQBound(openID string) (int, bool) {
 	binding, err := GetQQBindingByOpenID(openID)
