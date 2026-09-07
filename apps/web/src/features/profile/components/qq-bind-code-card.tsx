@@ -68,6 +68,7 @@ export function QQBindCodeCard({ show, className }: QQBindCodeCardProps) {
   }, [codeData])
 
   if (!show) return null
+  if (status && !status.qq_checkin_enabled) return null
 
   return (
     <Card data-card-hover='false' className={`gap-0 overflow-hidden py-0 ${className ?? ''}`}>
