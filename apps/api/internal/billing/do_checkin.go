@@ -3,6 +3,7 @@ package billing
 import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/usage"
@@ -50,6 +51,19 @@ func DoCheckin(c contract.Context) {
 	}
 
 	userId := c.GetInt("id")
+
+	// 配置要求 QQ 绑定才能签到
+	if setting.RequireQQBound {
+		_, bound := identity.IsQQBoundByUserId(userId)
+		if !bound {
+			_ = c.JSON(http.StatusOK, common.H{
+				"success": false,
+				"code":    "qq_not_bound",
+				"message": "请先绑定 QQ 账号后再签到",
+			})
+			return
+		}
+	}
 
 	checkin, err := UserCheckin(userId)
 	if err != nil {

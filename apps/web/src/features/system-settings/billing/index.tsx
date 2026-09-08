@@ -140,6 +140,10 @@ const defaultBillingSettings: BillingSettings = {
   'qq_bot_setting.red_packet_max_count': 50,
   'qq_bot_setting.red_packet_expire_seconds': 86400,
   'qq_bot_setting.red_packet_allow_own_grab': false,
+  'qq_bot_setting.command_cooldown_seconds': 0,
+  'qq_bot_setting.recall_failed_messages': false,
+  'qq_bot_setting.recall_delay_seconds': 10,
+  'qq_bot_setting.admin_open_ids': '',
 }
 
 export function BillingSettings() {

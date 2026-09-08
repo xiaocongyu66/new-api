@@ -29,6 +29,7 @@ import { SampleDetailSheet } from './components/sample-detail-sheet'
 import { SamplesPanel } from './components/samples-panel'
 import { UserEvidenceSheet } from './components/user-evidence-sheet'
 import { useUserInsightSummary } from './hooks/use-user-insights'
+import { UserInsightSection } from '../system-settings/operations/user-insight-section'
 import type { UserInsight } from './types'
 
 export function UserInsights() {
@@ -49,7 +50,8 @@ export function UserInsights() {
         <Tabs defaultValue='profiles' className='flex h-full min-h-0 flex-col'>
           <TabsList className='shrink-0'>
             <TabsTrigger value='profiles'>{t('Profiles')}</TabsTrigger>
-            <TabsTrigger value='samples'>{t('Evidence samples')}</TabsTrigger>
+            <TabsTrigger value='samples'>{t('证据样本')}</TabsTrigger>
+            <TabsTrigger value='settings'>{t('画像配置')}</TabsTrigger>
           </TabsList>
 
           <TabsContent
@@ -69,6 +71,9 @@ export function UserInsights() {
 
           <TabsContent value='samples' className='min-h-0 flex-1 overflow-auto pt-3'>
             <SamplesPanel />
+          </TabsContent>
+          <TabsContent value='settings' className='min-h-0 flex-1 overflow-auto pt-3'>
+            <UserInsightSection />
           </TabsContent>
         </Tabs>
 

@@ -83,6 +83,20 @@ func GetQQBindingByOpenID(openID string) (*QQBinding, error) {
 	return &binding, nil
 }
 
+// IsQQBoundByUserId 判断 userId 是否已绑定 QQ 账号
+func IsQQBoundByUserId(userId int) (string, bool) {
+	if userId <= 0 {
+		return "", false
+	}
+	var openID string
+	err := dbx.DB.Model(&QQBinding{}).Where("user_id = ?", userId).
+		Select("open_id").Scan(&openID).Error
+	if err != nil || openID == "" {
+		return "", false
+	}
+	return openID, true
+}
+
 // IsQQBound 判断 openid 是否已绑定用户
 func IsQQBound(openID string) (int, bool) {
 	binding, err := GetQQBindingByOpenID(openID)
@@ -116,8 +130,9 @@ func CreateQQBindCode(userId int) (*QQBindCode, error) {
 		}
 		var count int64
 		// 仅与尚在有效期内且未使用的验证码比较，过期码可以复用
+		prefixed := "#" + candidate
 		dbx.DB.Model(&QQBindCode{}).
-			Where("code = ? AND used = ? AND expired_at > ?", candidate, false, now.Unix()).
+			Where("code = ? AND used = ? AND expired_at > ?", prefixed, false, now.Unix()).
 			Count(&count)
 		if count == 0 {
 			code = candidate
@@ -129,7 +144,7 @@ func CreateQQBindCode(userId int) (*QQBindCode, error) {
 	}
 
 	bindCode := &QQBindCode{
-		Code:      code,
+		Code:      "#" + code,
 		UserId:    userId,
 		ExpiredAt: now.Add(QQBindCodeTTL).Unix(),
 		Used:      false,
@@ -145,9 +160,12 @@ func CreateQQBindCode(userId int) (*QQBindCode, error) {
 // 返回绑定成功的用户 ID
 func ConsumeQQBindCode(code, openID, unionOpenID, username string) (int, error) {
 	code = strings.TrimSpace(code)
+	code = strings.TrimPrefix(code, "#")
+	code = strings.TrimSpace(code)
 	if code == "" {
 		return 0, errors.New("验证码为空")
 	}
+	code = "#" + code
 	if openID == "" {
 		return 0, errors.New("openid 为空")
 	}

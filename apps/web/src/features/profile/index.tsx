@@ -25,6 +25,7 @@ import { useStatus } from '@/hooks/use-status'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { CheckinCalendarCard } from './components/checkin-calendar-card'
+import { QQBindCodeCard } from './components/qq-bind-code-card'
 import { LanguagePreferencesCard } from './components/language-preferences-card'
 import { LoginSessionsCard } from './components/login-sessions-card'
 import { PasskeyCard } from './components/passkey-card'
@@ -46,6 +47,8 @@ export function Profile() {
   )
   const turnstileSiteKey = status?.turnstile_site_key || ''
   const canConfigureSidebar = permissions?.sidebar_settings !== false
+  // 默认展示绑定卡片（待 /api/options/checkin_setting 暴露后改为读配置）
+  const showBindCodeCard = true
 
   return (
     <Main>
@@ -72,6 +75,9 @@ export function Profile() {
               </div>
 
               <div className='space-y-4 sm:space-y-6 xl:sticky xl:top-6'>
+                {showBindCodeCard && (
+                  <QQBindCodeCard show={showBindCodeCard} />
+                )}
                 {checkinEnabled && (
                   <CheckinCalendarCard
                     checkinEnabled={checkinEnabled}

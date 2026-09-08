@@ -80,6 +80,7 @@ export function getSystemSettingsThemeNavItems(t: TFunction): NavCollapsible[] {
       activeUrls: ['/system-settings/security'],
       items: getSecuritySectionNavItems(t),
     },
+
     {
       title: t('Console Content'),
       icon: Layout,

@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { TFunction } from 'i18next'
+
 import { parseCurrencyDisplayType } from '@/lib/currency'
 
 import { CheckinSettingsSection } from '../general/checkin-settings-section'
@@ -275,6 +277,14 @@ const BILLING_SECTIONS = [
             settings['qq_bot_setting.red_packet_expire_seconds'] ?? 86400,
           'qq_bot_setting.red_packet_allow_own_grab':
             settings['qq_bot_setting.red_packet_allow_own_grab'] ?? false,
+          'qq_bot_setting.command_cooldown_seconds':
+            settings['qq_bot_setting.command_cooldown_seconds'] ?? 0,
+          'qq_bot_setting.recall_failed_messages':
+            settings['qq_bot_setting.recall_failed_messages'] ?? false,
+          'qq_bot_setting.recall_delay_seconds':
+            settings['qq_bot_setting.recall_delay_seconds'] ?? 10,
+          'qq_bot_setting.admin_open_ids':
+            settings['qq_bot_setting.admin_open_ids'] ?? '',
         }}
       />
     ),
@@ -295,6 +305,7 @@ const billingRegistry = createSectionRegistry<
 
 export const BILLING_SECTION_IDS = billingRegistry.sectionIds
 export const BILLING_DEFAULT_SECTION = billingRegistry.defaultSection
-export const getBillingSectionNavItems = billingRegistry.getSectionNavItems
+export const getBillingSectionNavItems = (t: TFunction) =>
+  billingRegistry.getSectionNavItems(t).filter((item) => !item.url.endsWith('/qqbot'))
 export const getBillingSectionContent = billingRegistry.getSectionContent
 export const getBillingSectionMeta = billingRegistry.getSectionMeta

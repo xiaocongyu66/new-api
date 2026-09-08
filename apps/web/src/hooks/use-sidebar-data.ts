@@ -180,6 +180,11 @@ export function useSidebarData(): SidebarData {
             icon: ServerCog,
             requiredRole: ROLE.SUPER_ADMIN,
           },
+          {
+            title: t('QQ Bot'),
+            url: '/system-settings/billing/qqbot',
+            icon: MessageSquare,
+          },
           ...getSystemSettingsThemeNavItems(t),
         ],
       },

@@ -382,6 +382,10 @@ export type BillingSettings = {
   'qq_bot_setting.red_packet_max_count': number
   'qq_bot_setting.red_packet_expire_seconds': number
   'qq_bot_setting.red_packet_allow_own_grab': boolean
+  'qq_bot_setting.command_cooldown_seconds': number
+  'qq_bot_setting.recall_failed_messages': boolean
+  'qq_bot_setting.recall_delay_seconds': number
+  'qq_bot_setting.admin_open_ids': string
 }
 
 export type OperationsSettings = {

@@ -17,6 +17,20 @@ const SporeUnitsPerSpore int64 = 10
 
 var ErrSporeInsufficient = errors.New("菌种余额不足")
 
+// SporeInsufficientError 携带具体的余额和所需数量，方便前端/QQ Bot 精确展示。
+type SporeInsufficientError struct {
+	Current  int64
+	Required int64
+}
+
+func (e *SporeInsufficientError) Error() string {
+	return fmt.Sprintf("菌种余额不足：当前 %s，需要 %s", FormatSpore(e.Current), FormatSpore(e.Required))
+}
+
+func (e *SporeInsufficientError) Unwrap() error {
+	return ErrSporeInsufficient
+}
+
 func FormatSpore(units int64) string {
 	negative := units < 0
 	if negative {
@@ -77,7 +91,10 @@ func DecreaseUserSporeTx(tx *gorm.DB, userId int, units int64) error {
 		return result.Error
 	}
 	if result.RowsAffected == 0 {
-		return ErrSporeInsufficient
+		var current int64
+		_ = tx.Model(&User{}).Where("id = ?", userId).
+			Select("spore").Scan(&current).Error
+		return &SporeInsufficientError{Current: current, Required: units}
 	}
 	return nil
 }
