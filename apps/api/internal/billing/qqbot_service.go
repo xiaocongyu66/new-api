@@ -182,17 +182,12 @@ func extractBindCode(content string) string {
 	return ""
 }
 
-// isBindCodeToken 判断单个词是否是 # 前缀六位字母数字验证码
-// 例如 #aB3x9K。# 前缀避免 bot 把普通英文单词误判为验证码。
+// isBindCodeToken 判断单个词是否是六位字母数字验证码
 func isBindCodeToken(text string) bool {
-	if !strings.HasPrefix(text, "#") {
+	if len(text) != 6 {
 		return false
 	}
-	body := text[1:]
-	if len(body) != 6 {
-		return false
-	}
-	for _, r := range body {
+	for _, r := range text {
 		isDigit := r >= '0' && r <= '9'
 		isUpper := r >= 'A' && r <= 'Z'
 		isLower := r >= 'a' && r <= 'z'
@@ -500,44 +495,10 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 		return
 	}
 
-	// 命令冷却检查（防刷）
-	if err := CheckCooldown(openID); err != nil {
-		if err2 := replyGroupMarkdown(event.GroupOpenID, event.ID, "",
-			buildPlainMarkdown(openID, "**慢一点**\n\n"+err.Error()), nil, 1); err2 != nil {
-			common.SysError("回复冷却提示失败: " + err2.Error())
-		}
-		return
-	}
-
 	if isRedPacketCommand(content) {
 		reply, kb := HandleRedPacketCommand(event, openID)
 		if err := replyGroupMarkdown(event.GroupOpenID, event.ID, "", reply, kb, 1); err != nil {
 			common.SysError("回复红包指令失败: " + err.Error())
-		}
-		return
-	}
-
-	// 管理员指令：/余额、/封禁、/解封
-	switch {
-	case strings.HasPrefix(content, "/余额"):
-		if reply := HandleAdminBalance(event, openID, content); reply != "" {
-			if err := replyGroupMarkdown(event.GroupOpenID, event.ID, "", reply, nil, 1); err != nil {
-				common.SysError("回复管理员余额指令失败: " + err.Error())
-			}
-		}
-		return
-	case strings.HasPrefix(content, "/封禁"):
-		if reply := HandleAdminBan(event, openID, content, true); reply != "" {
-			if err := replyGroupMarkdown(event.GroupOpenID, event.ID, "", reply, nil, 1); err != nil {
-				common.SysError("回复管理员封禁指令失败: " + err.Error())
-			}
-		}
-		return
-	case strings.HasPrefix(content, "/解封"):
-		if reply := HandleAdminBan(event, openID, content, false); reply != "" {
-			if err := replyGroupMarkdown(event.GroupOpenID, event.ID, "", reply, nil, 1); err != nil {
-				common.SysError("回复管理员解封指令失败: " + err.Error())
-			}
 		}
 		return
 	}
@@ -562,8 +523,8 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 		}
 
 	case looksLikeBindCode(content):
-		// 群内发送 #xxxxxx 验证码即完成绑定
-		code := strings.TrimPrefix(extractBindCode(content), "#")
+		// 群内发送六位验证码即完成绑定
+		code := extractBindCode(content)
 		userId, err := identity.ConsumeQQBindCode(
 			code, openID, event.Author.UnionOpenID, event.Author.Username)
 		if err != nil {

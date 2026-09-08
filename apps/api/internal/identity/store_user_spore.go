@@ -17,11 +17,10 @@ const SporeUnitsPerSpore int64 = 10
 
 var ErrSporeInsufficient = errors.New("菌种余额不足")
 
-// SporeInsufficientError carries the current balance and required amount so
-// callers (frontend, QQ bot) can show a precise message.
+// SporeInsufficientError 携带具体的余额和所需数量，方便前端/QQ Bot 精确展示。
 type SporeInsufficientError struct {
-	Current  int64
-	Required int64
+	Current   int64
+	Required  int64
 }
 
 func (e *SporeInsufficientError) Error() string {
@@ -29,7 +28,6 @@ func (e *SporeInsufficientError) Error() string {
 }
 
 func (e *SporeInsufficientError) Unwrap() error {
-	// 省略原始码
 	return ErrSporeInsufficient
 }
 
@@ -113,45 +111,23 @@ func SetUserSpore(userId int, units int64) error {
 }
 
 func AdminAdjustUserSpore(userId int, mode string, units int64) error {
-	var content string
-	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
-		var opErr error
-		switch mode {
-		case "add":
-			opErr = tx.Model(&User{}).Where("id = ?", userId).
-				Update("spore", gorm.Expr("spore + ?", units)).Error
-			content = fmt.Sprintf("管理员发放菌种 %s", FormatSpore(units))
-		case "subtract":
-			var current int64
-			if err := tx.Model(&User{}).Where("id = ?", userId).
-				Select("spore").Scan(&current).Error; err != nil {
-				return err
-			}
-			if units <= 0 {
-				return errors.New("扣减数量必须大于 0")
-			}
-			result := tx.Model(&User{}).
-				Where("id = ? AND spore >= ?", userId, units).
-				Update("spore", gorm.Expr("spore - ?", units))
-			if result.Error != nil {
-				return result.Error
-			}
-			if result.RowsAffected == 0 {
-				return &SporeInsufficientError{Current: current, Required: units}
-			}
-			content = fmt.Sprintf("管理员扣除菌种 %s", FormatSpore(units))
-		case "override":
-			if units < 0 {
-				return errors.New("菌种余额不能为负数")
-			}
-			opErr = tx.Model(&User{}).Where("id = ?", userId).
-				Update("spore", units).Error
-			content = fmt.Sprintf("管理员将菌种余额设为 %s", FormatSpore(units))
-		default:
-			return errors.New("不支持的调整模式")
-		}
-		return opErr
-	})
+	var (
+		err     error
+		content string
+	)
+	switch mode {
+	case "add":
+		err = IncreaseUserSpore(userId, units)
+		content = fmt.Sprintf("管理员发放菌种 %s", FormatSpore(units))
+	case "subtract":
+		err = DecreaseUserSpore(userId, units)
+		content = fmt.Sprintf("管理员扣除菌种 %s", FormatSpore(units))
+	case "override":
+		err = SetUserSpore(userId, units)
+		content = fmt.Sprintf("管理员将菌种余额设为 %s", FormatSpore(units))
+	default:
+		return errors.New("不支持的调整模式")
+	}
 	if err != nil {
 		return err
 	}

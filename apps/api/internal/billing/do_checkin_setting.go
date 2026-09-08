@@ -22,7 +22,7 @@ var checkinSetting = CheckinSetting{
 	MinQuota:        1000,  // 默认最小额度 1000 (约 0.002 USD)
 	MaxQuota:        10000, // 默认最大额度 10000 (约 0.02 USD)
 	RequireQQBound:  false, // 默认不要求 QQ 绑定
-	ShowBindCodeCard: true, // 默认展示绑定卡片
+	ShowBindCodeCard: true,  // 默认展示绑定卡片
 }
 
 func init() {

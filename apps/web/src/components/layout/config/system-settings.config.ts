@@ -21,7 +21,6 @@ import {
   Box,
   CreditCard,
   Layout,
-  MessageSquare,
   Settings,
   Shield,
   ShieldAlert,
@@ -31,7 +30,6 @@ import {
 import { getAuthSectionNavItems } from '@/features/system-settings/auth/section-registry.tsx'
 import { getBillingSectionNavItems } from '@/features/system-settings/billing/section-registry.tsx'
 import { getContentSectionNavItems } from '@/features/system-settings/content/section-registry.tsx'
-import { getGeneralSectionNavItems } from '@/features/system-settings/general/section-registry.tsx'
 import { getModelsSectionNavItems } from '@/features/system-settings/models/section-registry.tsx'
 import { getOperationsSectionNavItems } from '@/features/system-settings/operations/section-registry.tsx'
 import { getSecuritySectionNavItems } from '@/features/system-settings/security/section-registry.tsx'
@@ -82,12 +80,7 @@ export function getSystemSettingsThemeNavItems(t: TFunction): NavCollapsible[] {
       activeUrls: ['/system-settings/security'],
       items: getSecuritySectionNavItems(t),
     },
-    {
-      title: t('QQ Bot'),
-      icon: MessageSquare,
-      activeUrls: ['/system-settings/general/qqbot'],
-      items: getGeneralSectionNavItems(t),
-    },
+
     {
       title: t('Console Content'),
       icon: Layout,

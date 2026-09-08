@@ -143,7 +143,7 @@ func CreateQQBindCode(userId int) (*QQBindCode, error) {
 	}
 
 	bindCode := &QQBindCode{
-		Code:      "#" + code,
+		Code:      code,
 		UserId:    userId,
 		ExpiredAt: now.Add(QQBindCodeTTL).Unix(),
 		Used:      false,
