@@ -16,11 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useMemo } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useForm } from 'react-hook-form'
+import { useForm, type Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import * as z from 'zod'
-
+import { toast } from 'sonner'
 import {
   Form,
   FormControl,
@@ -39,56 +40,76 @@ import {
 } from '../components/settings-form-layout'
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
-import { useResetForm } from '../hooks/use-reset-form'
 import { useUpdateOption } from '../hooks/use-update-option'
+import { useResetForm } from '../hooks/use-reset-form'
 
 // Keys mirror QQBotSetting in apps/api/internal/billing/qqbot_setting.go.
 // Quota amounts are raw quota units, matching the backend defaults.
+//
+// The schema is NESTED on purpose: react-hook-form treats dots in field names
+// as paths (`qq_bot_setting.min_quota` writes formValues.qq_bot_setting.min_quota),
+// so a flat schema keyed by dotted strings never sees the user's edits. This section
+// unflattens incoming settings ('qq_bot_setting.x' -> {qq_bot_setting: {x}}) and
+// flattens submitted values back to the option keys for the API.
 const qqbotSchema = z.object({
-  'qq_bot_setting.app_id': z.string(),
-  'qq_bot_setting.app_secret': z.string(),
-  'qq_bot_setting.qq_checkin_enabled': z.boolean(),
-  'qq_bot_setting.web_checkin_enabled': z.boolean(),
-  'qq_bot_setting.single_platform_only': z.boolean(),
-  'qq_bot_setting.min_quota': z.coerce.number().int().min(0),
-  'qq_bot_setting.max_quota': z.coerce.number().int().min(0),
-  'qq_bot_setting.checkin_disabled_groups': z.string(),
-  'qq_bot_setting.notify_template': z.string(),
-  'qq_bot_setting.auto_approve_enabled': z.boolean(),
-  'qq_bot_setting.auto_approve_keyword': z.string(),
-  'qq_bot_setting.drop_enabled': z.boolean(),
-  'qq_bot_setting.drop_groups': z.string(),
-  'qq_bot_setting.drop_min_messages': z.coerce.number().int().min(1),
-  'qq_bot_setting.drop_max_messages': z.coerce.number().int().min(1),
-  'qq_bot_setting.drop_min_quota': z.coerce.number().int().min(0),
-  'qq_bot_setting.drop_max_quota': z.coerce.number().int().min(0),
-  'qq_bot_setting.drop_daily_limit': z.coerce.number().int(),
-  'qq_bot_setting.drop_template': z.string(),
-  'qq_bot_setting.transfer_enabled': z.boolean(),
-  'qq_bot_setting.transfer_disabled_groups': z.string(),
-  'qq_bot_setting.transfer_daily_limit': z.coerce.number().int(),
-  'qq_bot_setting.transfer_min_amount': z.coerce.number().int().min(0),
-  'qq_bot_setting.transfer_max_amount': z.coerce.number().int(),
-  'qq_bot_setting.transfer_fee_brackets': z.string(),
-  'qq_bot_setting.command_cooldown_seconds': z.coerce.number().int().min(0).default(0),
-  'qq_bot_setting.recall_failed_messages': z.boolean().default(false),
-  'qq_bot_setting.recall_delay_seconds': z.coerce.number().int().min(1).max(120).default(10),
-  'qq_bot_setting.admin_open_ids': z.string().optional(),
-  'qq_bot_setting.red_packet_enabled': z.boolean(),
-  'qq_bot_setting.red_packet_disabled_groups': z.string(),
-  'qq_bot_setting.red_packet_daily_limit': z.coerce.number().int(),
-  'qq_bot_setting.red_packet_min_amount': z.coerce.number().int().min(0),
-  'qq_bot_setting.red_packet_max_amount': z.coerce.number().int(),
-  'qq_bot_setting.red_packet_default_count': z.coerce.number().int().min(1),
-  'qq_bot_setting.red_packet_max_count': z.coerce.number().int().min(1),
-  'qq_bot_setting.red_packet_expire_seconds': z.coerce.number().int().min(1),
-  'qq_bot_setting.red_packet_allow_own_grab': z.boolean(),
+  qq_bot_setting: z.object({
+    app_id: z.string(),
+    app_secret: z.string(),
+    qq_checkin_enabled: z.boolean(),
+    web_checkin_enabled: z.boolean(),
+    single_platform_only: z.boolean(),
+    min_quota: z.coerce.number().int().min(0),
+    max_quota: z.coerce.number().int().min(0),
+    checkin_disabled_groups: z.string(),
+    notify_template: z.string(),
+    auto_approve_enabled: z.boolean(),
+    auto_approve_keyword: z.string(),
+    drop_enabled: z.boolean(),
+    drop_groups: z.string(),
+    drop_min_messages: z.coerce.number().int().min(1),
+    drop_max_messages: z.coerce.number().int().min(1),
+    drop_min_quota: z.coerce.number().int().min(0),
+    drop_max_quota: z.coerce.number().int().min(0),
+    drop_daily_limit: z.coerce.number().int(),
+    drop_template: z.string(),
+    transfer_enabled: z.boolean(),
+    transfer_disabled_groups: z.string(),
+    transfer_daily_limit: z.coerce.number().int(),
+    transfer_min_amount: z.coerce.number().int().min(0),
+    transfer_max_amount: z.coerce.number().int(),
+    transfer_fee_brackets: z.string(),
+    command_cooldown_seconds: z.coerce.number().int().min(0),
+    recall_failed_messages: z.boolean(),
+    recall_delay_seconds: z.coerce.number().int().min(1).max(120),
+    admin_open_ids: z.string(),
+    red_packet_enabled: z.boolean(),
+    red_packet_disabled_groups: z.string(),
+    red_packet_daily_limit: z.coerce.number().int(),
+    red_packet_min_amount: z.coerce.number().int().min(0),
+    red_packet_max_amount: z.coerce.number().int(),
+    red_packet_default_count: z.coerce.number().int().min(1),
+    red_packet_max_count: z.coerce.number().int().min(1),
+    red_packet_expire_seconds: z.coerce.number().int().min(1),
+    red_packet_allow_own_grab: z.boolean(),
+  }),
 })
 
 type QQBotFormValues = z.infer<typeof qqbotSchema>
 
 type QQBotSettingsSectionProps = {
-  defaultValues: QQBotFormValues
+  /** Flat option map keyed by 'qq_bot_setting.x' */
+  defaultValues: Record<`qq_bot_setting.${string}`, string | number | boolean>
+}
+
+/** 'qq_bot_setting.x' entries -> nested form shape consumed by RHF paths. */
+function unflattenDefaults(
+  flat: QQBotSettingsSectionProps['defaultValues']
+): QQBotFormValues {
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(flat)) {
+    out[key.replace('qq_bot_setting.', '')] = value
+  }
+  return { qq_bot_setting: out } as QQBotFormValues
 }
 
 export function QQBotSettingsSection({
@@ -97,20 +118,32 @@ export function QQBotSettingsSection({
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
 
-  const form = useForm({
-    resolver: zodResolver(qqbotSchema),
-    defaultValues,
+  const formDefaults = useMemo(() => unflattenDefaults(defaultValues), [defaultValues])
+
+  // z.coerce.number() makes the resolver input `unknown` while output is `number`;
+  // the cast bridges that variance without weakening the schema itself.
+  const form = useForm<QQBotFormValues>({
+    resolver: zodResolver(qqbotSchema) as unknown as Resolver<QQBotFormValues>,
+    defaultValues: formDefaults,
   })
 
-  useResetForm(form, defaultValues)
+  useResetForm(form, formDefaults)
+
+  const { isDirty } = form.formState
 
   const onSubmit = async (data: QQBotFormValues) => {
-    const updates = Object.entries(data).filter(
-      ([key, value]) => value !== defaultValues[key as keyof QQBotFormValues]
-    )
-    for (const [key, value] of updates) {
-      await updateOption.mutateAsync({ key, value })
+    const defaults = formDefaults.qq_bot_setting as Record<string, string | number | boolean>
+    const updates = Object.entries(data.qq_bot_setting)
+      .filter(([key, value]) => value !== defaults[key])
+      .map(([key, value]) => ({ key: `qq_bot_setting.${key}`, value: String(value) }))
+    if (updates.length === 0) {
+      toast.info(t('No changes to save'))
+      return
     }
+    for (const update of updates) {
+      await updateOption.mutateAsync(update)
+    }
+    toast.success(t('Setting updated successfully'))
   }
 
   return (
@@ -120,6 +153,8 @@ export function QQBotSettingsSection({
           <SettingsPageFormActions
             onSave={form.handleSubmit(onSubmit)}
             isSaving={updateOption.isPending}
+            isSaveDisabled={!isDirty}
+            saveLabel={t('Save Changes')}
           />
 
           <FormField
