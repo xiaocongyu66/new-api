@@ -101,7 +101,8 @@ jobs:
 
             echo "=== 3. 更新 compose 并重启 new-api ==="
             # 仅更新 new-api 服务的镜像 tag，不碰任何环境变量、volume 或其它服务
-            sed -i -E '/^  new-api:/{n;s|^    image: .*|    image: ${IMAGE_NAME}|}' docker-compose.yml
+            # 注意: heredoc 用 <<'REMOTE_SCRIPT' 传原文，远端 bash 展开变量，因此这里必须用双引号
+            sed -i -E "/^  new-api:/{n;s|^    image: .*|    image: ${IMAGE_NAME}|}" docker-compose.yml
             docker compose up -d --no-deps new-api
 
             echo "=== 4. 健康检查（最多等 45s） ==="
@@ -120,7 +121,7 @@ jobs:
             if [ "$HEALTHY" -ne 1 ]; then
               echo "::error::健康检查失败！正在回滚到: ${PREV_IMAGE}"
               if [ -n "${PREV_IMAGE}" ]; then
-                sed -i -E '/^  new-api:/{n;s|^    image: .*|    image: ${PREV_IMAGE}|}' docker-compose.yml
+                sed -i -E "/^  new-api:/{n;s|^    image: .*|    image: ${PREV_IMAGE}|}" docker-compose.yml
                 docker compose up -d --no-deps new-api
               fi
               exit 1
