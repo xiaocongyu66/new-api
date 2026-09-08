@@ -5835,6 +5835,14 @@
     "生成验证码失败": "生成验证码失败",
     "重新生成": "重新生成",
     "，": "，",
-    "，and ": "，并"
+    "，and ": "，并",
+    "QQ binding successful": "QQ 绑定成功",
+    "QQ AppID": "QQ AppID",
+    "Please bind your QQ account to enable QQ checkin features.": "请绑定您的 QQ 账号以启用 QQ 签到功能。",
+    "Please enter the verification code sent in your QQ group chat.": "请输入 QQ 群聊中发送的验证码。",
+    "QQ AppSecret": "QQ AppSecret",
+    "You can now use QQ checkin features.": "您现在可以使用 QQ 签到功能了。",
+    "QQ check-in minimum quota": "QQ 签到最小额度",
+    "QQ check-in maximum quota": "QQ 签到最大额度"
   }
 }

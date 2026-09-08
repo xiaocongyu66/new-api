@@ -5628,6 +5628,14 @@
     "生成验证码失败": "生成验证码失败",
     "重新生成": "重新生成",
     "，": ", ",
-    "，and ": ", and "
+    "，and ": ", and ",
+    "QQ binding successful": "QQ binding successful",
+    "QQ AppID": "QQ AppID",
+    "Please bind your QQ account to enable QQ checkin features.": "Please bind your QQ account to enable QQ checkin features.",
+    "Please enter the verification code sent in your QQ group chat.": "Please enter the verification code sent in your QQ group chat.",
+    "QQ AppSecret": "QQ AppSecret",
+    "You can now use QQ checkin features.": "You can now use QQ checkin features.",
+    "QQ check-in minimum quota": "QQ check-in minimum quota",
+    "QQ check-in maximum quota": "QQ check-in maximum quota"
   }
 }
