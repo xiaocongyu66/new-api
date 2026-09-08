@@ -18,10 +18,10 @@ type CheckinSetting struct {
 
 // 默认配置
 var checkinSetting = CheckinSetting{
-	Enabled:         false, // 默认关闭
-	MinQuota:        1000,  // 默认最小额度 1000 (约 0.002 USD)
-	MaxQuota:        10000, // 默认最大额度 10000 (约 0.02 USD)
-	RequireQQBound:  false, // 默认不要求 QQ 绑定
+	Enabled:          false, // 默认关闭
+	MinQuota:         1000,  // 默认最小额度 1000 (约 0.002 USD)
+	MaxQuota:         10000, // 默认最大额度 10000 (约 0.02 USD)
+	RequireQQBound:   false, // 默认不要求 QQ 绑定
 	ShowBindCodeCard: true,  // 默认展示绑定卡片
 }
 

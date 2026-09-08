@@ -110,9 +110,9 @@ var qqBotSetting = QQBotSetting{
 	QQCheckinEnabled: false,
 
 	CommandCooldownSeconds: 0,
-	RecallFailedMessages:    false,
-	RecallDelaySeconds:      10,
-	AdminOpenIDs:            "",
+	RecallFailedMessages:   false,
+	RecallDelaySeconds:     10,
+	AdminOpenIDs:           "",
 
 	CheckinDisabledGroups: "",
 

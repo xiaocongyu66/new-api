@@ -21,7 +21,8 @@ func TestIsMessageCountable(t *testing.T) {
 		{"单字", "嗯", false},
 		{"纯标点", "。。。", false},
 		{"空消息", "   ", false},
-		{"绑定验证码", "Ab3xYz", false},
+		{"无#前缀的6位英文", "Ab3xYz", true},
+		{"#前缀绑定验证码", "#Ab3xYz", false},
 		// QQ 表情包：应该计数
 		{"表情包", `<faceType=6,faceId="123",bigFaceId="456">`, true},
 		{"表情包带前缀空格", ` <faceType=6,faceId="789">`, true},

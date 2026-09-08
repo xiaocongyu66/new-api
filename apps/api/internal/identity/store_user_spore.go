@@ -19,8 +19,8 @@ var ErrSporeInsufficient = errors.New("菌种余额不足")
 
 // SporeInsufficientError 携带具体的余额和所需数量，方便前端/QQ Bot 精确展示。
 type SporeInsufficientError struct {
-	Current   int64
-	Required  int64
+	Current  int64
+	Required int64
 }
 
 func (e *SporeInsufficientError) Error() string {

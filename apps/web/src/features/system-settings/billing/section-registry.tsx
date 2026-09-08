@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { TFunction } from 'i18next'
+
 import { parseCurrencyDisplayType } from '@/lib/currency'
 
 import { CheckinSettingsSection } from '../general/checkin-settings-section'
@@ -303,6 +305,7 @@ const billingRegistry = createSectionRegistry<
 
 export const BILLING_SECTION_IDS = billingRegistry.sectionIds
 export const BILLING_DEFAULT_SECTION = billingRegistry.defaultSection
-export const getBillingSectionNavItems = billingRegistry.getSectionNavItems
+export const getBillingSectionNavItems = (t: TFunction) =>
+  billingRegistry.getSectionNavItems(t).filter((item) => !item.url.endsWith('/qqbot'))
 export const getBillingSectionContent = billingRegistry.getSectionContent
 export const getBillingSectionMeta = billingRegistry.getSectionMeta

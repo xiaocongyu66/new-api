@@ -182,7 +182,7 @@ export function useSidebarData(): SidebarData {
           },
           {
             title: t('QQ Bot'),
-            url: '/system-settings/general/qqbot',
+            url: '/system-settings/billing/qqbot',
             icon: MessageSquare,
           },
           ...getSystemSettingsThemeNavItems(t),
