@@ -250,7 +250,7 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 	// The ability set is the pressure denominator, so a rebuilt model list must
 	// refresh it; otherwise a model that gained or lost channels keeps stale
 	// availability and the three-tier thresholds fire on the wrong ratio.
-	pressureRecomputeTotals()
+	pressureRecomputeTotals(tx)
 
 	// 如果是新创建的事务，需要提交
 	if isNewTx {
@@ -419,6 +419,7 @@ func FixAbility() (int, int, error) {
 				failCount++
 				continue
 			}
+			successCount++
 		}
 	}
 	InitChannelCache()

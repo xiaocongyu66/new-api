@@ -1,14 +1,15 @@
 package channel
 
 import (
-	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"math"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/logger"
+	"gorm.io/gorm"
 )
 
 // PressureLevel classifies pool availability for a model's schedulable units.
@@ -125,19 +126,23 @@ func pressureOnRemove(key RouteKey) {
 // pressureRecomputeTotals rebuilds the pressure map from scratch: total =
 // distinct channels × keys per channel for each model (from enabled abilities
 // and channel info); healthy = total minus non-healthy persisted rows.
-func pressureRecomputeTotals() {
+// db is the handle to read through: callers inside a MutateGatewayRouting
+// transaction MUST pass the tx — reading through a pooled dbx.DB connection
+// while the transaction holds the SQLite write lock self-deadlocks — while
+// startup-time callers with no surrounding transaction pass dbx.DB.
+func pressureRecomputeTotals(db *gorm.DB) {
 	type abilityRow struct {
 		Model     string
 		ChannelId int
 	}
 	var abilities []abilityRow
-	if err := dbx.DB.Model(&Ability{}).Select("model, channel_id").Where("enabled = ?", true).Find(&abilities).Error; err != nil {
+	if err := db.Model(&Ability{}).Select("model, channel_id").Where("enabled = ?", true).Find(&abilities).Error; err != nil {
 		common.SysError("pressure recompute: query abilities failed: " + err.Error())
 		return
 	}
 
 	var channels []Channel
-	if err := dbx.DB.Select("id, channel_info").Find(&channels).Error; err != nil {
+	if err := db.Select("id, channel_info").Find(&channels).Error; err != nil {
 		common.SysError("pressure recompute: query channels failed: " + err.Error())
 		return
 	}
@@ -170,7 +175,7 @@ func pressureRecomputeTotals() {
 	}
 
 	var healthRows []ChannelModelHealth
-	if err := dbx.DB.Find(&healthRows).Error; err != nil {
+	if err := db.Find(&healthRows).Error; err != nil {
 		common.SysError("pressure recompute: query health rows failed: " + err.Error())
 		return
 	}

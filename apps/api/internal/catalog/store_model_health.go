@@ -253,7 +253,7 @@ func InitChannelModelHealthCache() {
 	routeHealthLock.Unlock()
 	// The pressure denominator is derived from the ability set, so it has to be
 	// rebuilt whenever the persisted isolation state is (re)hydrated.
-	pressureRecomputeTotals()
+	pressureRecomputeTotals(dbx.DB)
 	common.SysLog("channel model health cache loaded from database")
 }
 
