@@ -212,3 +212,5 @@ require (
 )
 
 replace github.com/QuantumNous/new-api/relaykit => ./modules/relaykit
+
+replace golang.org/x/net => golang.org/x/net v0.43.0
