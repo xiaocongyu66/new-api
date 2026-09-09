@@ -57,12 +57,6 @@ import { useResetForm } from '../hooks/use-reset-form'
 import { useUpdateOption } from '../hooks/use-update-option'
 import { safeNumberFieldProps } from '../utils/numeric-field'
 
-const numericString = z.string().refine((value) => {
-  const trimmed = value.trim()
-  if (!trimmed) return true
-  return !Number.isNaN(Number(trimmed)) && Number(trimmed) >= 0
-}, 'Enter a non-negative number or leave empty')
-
 const channelTestModes = [
   'scheduled_all',
   'auto_ban_only',
@@ -70,7 +64,15 @@ const channelTestModes = [
 ] as const
 type ChannelTestMode = (typeof channelTestModes)[number]
 
-const createRoutingReliabilitySchema = (t: (key: string) => string) => {
+const createRoutingReliabilitySchema = (
+  t: (key: string, options?: Record<string, unknown>) => string
+) => {
+  const numericString = z.string().refine((value) => {
+    const trimmed = value.trim()
+    if (!trimmed) return true
+    return !Number.isNaN(Number(trimmed)) && Number(trimmed) >= 0
+  }, t('Enter a non-negative number or leave empty'))
+
   const isolationSeconds = z.coerce
     .number()
     .int()
@@ -132,7 +134,7 @@ const createRoutingReliabilitySchema = (t: (key: string) => string) => {
         auto_test_channel_minutes: z.coerce
           .number()
           .int()
-          .min(1, 'Interval must be at least 1 minute'),
+          .min(1, t('Interval must be at least 1 minute')),
         channel_test_mode: z.enum(channelTestModes),
       }),
     })
@@ -144,9 +146,9 @@ const createRoutingReliabilitySchema = (t: (key: string) => string) => {
         ctx.addIssue({
           code: 'custom',
           path: ['AutomaticDisableStatusCodes'],
-          message: `Invalid status code rules: ${disableParsed.invalidTokens.join(
-            ', '
-          )}`,
+          message: t('Invalid status code rules: {{codes}}', {
+            codes: disableParsed.invalidTokens.join(', '),
+          }),
         })
       }
 
@@ -157,9 +159,9 @@ const createRoutingReliabilitySchema = (t: (key: string) => string) => {
         ctx.addIssue({
           code: 'custom',
           path: ['AutomaticRetryStatusCodes'],
-          message: `Invalid status code rules: ${retryParsed.invalidTokens.join(
-            ', '
-          )}`,
+          message: t('Invalid status code rules: {{codes}}', {
+            codes: retryParsed.invalidTokens.join(', '),
+          }),
         })
       }
     })
