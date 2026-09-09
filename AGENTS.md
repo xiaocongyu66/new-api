@@ -133,6 +133,25 @@ This is the fastest path for iterative UI development — use it whenever you on
 - PostgreSQL: `:5432` · Redis: `:6379`
 - Only one worktree dev server per port. Multiple worktrees: set `DEV_WEB_PORT` for the second.
 
+#### Multiple worktrees (shared backend/DB, memory-friendly)
+
+The docker DB containers are singletons shared by every worktree: `new-api-dev-pg`
+on the `deploy_dev_pg_data` volume, Redis via `uf-local-redis` (host :6379).
+`just dev-db` pins the compose project with `-p deploy` (`DEV_COMPOSE_PROJECT`),
+so it is idempotent from any checkout or worktree directory — run it to ensure
+the DB is up, it will not recreate the container or touch the data.
+
+Layout when running several worktrees at once:
+- Web: one HMR server per worktree — `DEV_WEB_PORT=517x just dev-web` (~300MB each)
+- Proxy target: default `http://localhost:3000`; point at a shared backend with
+  `VITE_REACT_APP_SERVER_URL=http://localhost:<api-port> just dev-web`
+  (rsbuild reads it in `apps/web/rsbuild.config.ts`)
+- Backend: keep ONE instance shared — either the docker API (`just dev-api`,
+  main's code) or a single `just start-wt` binary from the worktree whose Go
+  code is under test. Per-worktree `start-wt` only when that worktree has Go
+  changes.
+- Memory footprint: N × rsbuild + 1 × API + 1 × PostgreSQL + 1 × Redis.
+
 #### What NOT to use
 
 - `just start-api` — foreground `go run`, no DB config, no web server, no process management.

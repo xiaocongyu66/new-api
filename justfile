@@ -3,6 +3,7 @@ API_DIR := justfile_directory() + "/apps/api"
 API_EMBED_DIR := justfile_directory() + "/apps/api/web/dist"
 GO_BIN_CACHE := env_var_or_default("GO_BIN_CACHE", env_var("HOME") + "/.cache/new-api-bin")
 DEV_WEB_PORT := env_var_or_default("DEV_WEB_PORT", "5173")
+DEV_COMPOSE_PROJECT := env_var_or_default("DEV_COMPOSE_PROJECT", "deploy")
 DEV_COMPOSE_FILE := justfile_directory() + "/deploy/docker-compose.dev.yml"
 DEV_POSTGRES_SERVICE := "postgres"
 DEV_API_SERVICE := "new-api"
@@ -48,11 +49,13 @@ run-api:
 # Start only docker dev database (postgres). Redis is expected on localhost:6379
 # (either a host Redis or the docker dev redis — see dev-db-full if you need both in Docker).
 dev-db:
-    docker compose -f "{{ DEV_COMPOSE_FILE }}" up -d "{{ DEV_POSTGRES_SERVICE }}"
+    # -p deploy pins the compose project to the live container (new-api-dev-pg / deploy_dev_pg_data).
+    # Do not remove: without it, up -d runs under the cwd's project name and recreates the DB with a fresh empty volume.
+    docker compose -f "{{ DEV_COMPOSE_FILE }}" -p "{{ DEV_COMPOSE_PROJECT }}" up -d "{{ DEV_POSTGRES_SERVICE }}"
 
 # Start postgres + redis both in Docker (use if no host Redis is running on :6379)
 dev-db-full:
-    docker compose -f "{{ DEV_COMPOSE_FILE }}" up -d "{{ DEV_POSTGRES_SERVICE }}" redis
+    docker compose -f "{{ DEV_COMPOSE_FILE }}" -p "{{ DEV_COMPOSE_PROJECT }}" up -d "{{ DEV_POSTGRES_SERVICE }}" redis
 
 # Start Go API binary locally (no Docker API container). Requires dev-db running.
 # Uses branch-scoped binary cache so multiple worktrees can coexist.
@@ -95,11 +98,11 @@ dev-wt: dev-db
 
 # Rebuild and restart docker dev api service
 dev-api-rebuild:
-    docker compose -f "{{ DEV_COMPOSE_FILE }}" up -d --build "{{ DEV_API_SERVICE }}"
+    docker compose -f "{{ DEV_COMPOSE_FILE }}" -p "{{ DEV_COMPOSE_PROJECT }}" up -d --build "{{ DEV_API_SERVICE }}"
  
 # Start docker dev api services (postgres + redis + api container)
 dev-api:
-    docker compose -f "{{ DEV_COMPOSE_FILE }}" up -d
+    docker compose -f "{{ DEV_COMPOSE_FILE }}" -p "{{ DEV_COMPOSE_PROJECT }}" up -d
 
 # Start web frontend dev server
 dev-web:

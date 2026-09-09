@@ -69,7 +69,9 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - dev_pg_data:/var/lib/postgresql/data
+      # postgres:18 image guard: cluster data must live in a subdirectory of the mount,
+      # not at the mount point itself (pg_upgrade --link boundary). Default PGDATA=/var/lib/postgresql/data.
+      - dev_pg_data:/var/lib/postgresql
     networks:
       - dev-network
     healthcheck:
