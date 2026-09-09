@@ -142,7 +142,10 @@ func updateChannelStatusWithTx(_ *gorm.DB, channelId int, usingKey string, statu
 			// The selector reads route rows, not abilities: resync so a
 			// re-enabled channel becomes routable again and a disabled one
 			// stops serving. Deriving from the fresh ability rows keeps both
-			// tables in the same state after the flip.
+			// tables in the same state after the flip. Semantics note: unlike
+			// UpdateAbilities (channel edits preserve per-model isolation), a
+			// whole-channel status flip intentionally resets isolation — the
+			// health system re-isolates a model that is still failing.
 			if err := SyncChannelModelRoutesWithTx(tx, channelId); err != nil {
 				return err
 			}

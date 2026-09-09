@@ -173,6 +173,63 @@ func TestChannelStatusCycleResetsIsolationWholesale(t *testing.T) {
 		"a re-enabled channel must not leave route rows disabled behind enabled abilities")
 }
 
+func TestDisableChannelModelIsolatesMultipleModels(t *testing.T) {
+	setupIsolationTest(t)
+	channel := seedIsolationChannel(t, 9106, "model-a,model-b,model-c")
+	require.NoError(t, DisableChannelModel(9106, "model-a"))
+	require.NoError(t, DisableChannelModel(9106, "model-c"))
+
+	// An unrelated edit that keeps both isolated models in the list must not
+	// resurrect either of them.
+	channel.Models = "model-a,model-b,model-c,model-d"
+	require.NoError(t, channel.Update())
+
+	abilities := abilityEnabledByModel(t, 9106)
+	assert.False(t, abilities["model-a"])
+	assert.False(t, abilities["model-c"], "every isolated model must survive an edit")
+	assert.True(t, abilities["model-b"])
+	assert.True(t, abilities["model-d"])
+	routes := routeEnabledByAlias(t, 9106)
+	assert.False(t, routes["model-a"])
+	assert.False(t, routes["model-c"])
+	assert.True(t, routes["model-b"])
+	assert.True(t, routes["model-d"])
+}
+
+func TestTagStatusFlipDoesNotLeakAcrossChannels(t *testing.T) {
+	setupIsolationTest(t)
+
+	tag := "flip-me"
+	tagged := Channel{
+		Id: 9107, Type: 1, Name: "tagged", Key: "sk-tagged",
+		Models: "model-a,model-b", Group: "g1", Tag: &tag,
+		Status: common.ChannelStatusEnabled,
+	}
+	untagged := Channel{
+		Id: 9108, Type: 1, Name: "untagged", Key: "sk-untagged",
+		Models: "model-a,model-b", Group: "g1",
+		Status: common.ChannelStatusEnabled,
+	}
+	require.NoError(t, tagged.Insert())
+	require.NoError(t, untagged.Insert())
+	require.NoError(t, DisableChannelModel(9107, "model-a"))
+	require.NoError(t, DisableChannelModel(9108, "model-a"))
+
+	require.NoError(t, DisableChannelByTag(tag))
+	require.NoError(t, EnableChannelByTag(tag))
+
+	// The tag flip resets isolation on channels carrying the tag, and must
+	// leave channels outside the tag untouched.
+	assert.Equal(t, map[string]bool{"model-a": true, "model-b": true},
+		abilityEnabledByModel(t, 9107), "tag flip resets isolation on tagged channels")
+	assert.Equal(t, map[string]bool{"model-a": true, "model-b": true},
+		routeEnabledByAlias(t, 9107))
+	assert.Equal(t, map[string]bool{"model-a": false, "model-b": true},
+		abilityEnabledByModel(t, 9108), "untagged channel isolation must be untouched")
+	assert.Equal(t, map[string]bool{"model-a": false, "model-b": true},
+		routeEnabledByAlias(t, 9108))
+}
+
 func TestFixAbilityReseedsRoutesFromRebuiltAbilities(t *testing.T) {
 	setupIsolationTest(t)
 	seedIsolationChannel(t, 9105, "model-a,model-b")
