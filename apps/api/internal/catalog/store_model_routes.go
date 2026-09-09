@@ -194,7 +194,53 @@ func SyncChannelModelRoutesWithTx(tx *gorm.DB, channelID int) error {
 			}
 		}
 	}
+	// Route candidacy must agree with the ability table: a model disabled at
+	// ability level (e.g. DisableChannelModel after repeated cooldowns) must not
+	// keep serving through a route row that still says enabled. Deriving here
+	// covers every sync caller — channel save, tag edit, upstream model sync,
+	// status flips — without each having to remember the rule.
+	if err := deriveRouteEnabledFromAbilities(tx, channelID); err != nil {
+		return err
+	}
 	return nil
+}
+
+// deriveRouteEnabledFromAbilities sets channel_model_routes.enabled to match
+// the ability rows of the same (channel, model) pair, across all groups. A
+// model with no ability row at all (channel disabled mid-sync) is treated as
+// disabled so routes never outlive their ability source.
+func deriveRouteEnabledFromAbilities(tx *gorm.DB, channelID int) error {
+	var rows []Ability
+	if err := tx.Where("channel_id = ?", channelID).Find(&rows).Error; err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		return tx.Model(&ChannelModelRoute{}).Where("channel_id = ?", channelID).
+			Update("enabled", false).Error
+	}
+	modelEnabled := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		if row.Enabled {
+			// Any enabled ability row makes the model routable; mixed rows
+			// resolve to enabled by the same "any enabled" rule.
+			modelEnabled[row.Model] = true
+		} else if _, seen := modelEnabled[row.Model]; !seen {
+			modelEnabled[row.Model] = false
+		}
+	}
+	for model, enabled := range modelEnabled {
+		if err := tx.Model(&ChannelModelRoute{}).
+			Where("channel_id = ? AND public_model_alias = ?", channelID, model).
+			Update("enabled", enabled).Error; err != nil {
+			return err
+		}
+	}
+	// Aliases present on routes but absent from abilities have no ability
+	// source: disable them so a stale alias cannot keep serving.
+	return tx.Model(&ChannelModelRoute{}).
+		Where("channel_id = ? AND public_model_alias NOT IN (?)", channelID,
+			tx.Model(&Ability{}).Select("model").Where("channel_id = ?", channelID)).
+		Update("enabled", false).Error
 }
 
 // DeleteChannelModelRoutesByChannelIDsWithTx deletes all route rows for the given channel IDs in a transaction.
