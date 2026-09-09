@@ -160,6 +160,7 @@ export function InsightsTable({ onViewEvidence }: InsightsTableProps) {
       columns={columns}
       isLoading={insightsQuery.isLoading}
       isFetching={insightsQuery.isFetching}
+      fixedHeight={!isMobile}
       emptyTitle={t('No profiled users yet')}
       emptyDescription={t(
         'Profiles are built from relayed requests. They will appear here once traffic comes in.'

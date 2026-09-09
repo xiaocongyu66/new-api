@@ -21,6 +21,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
+import { useMediaQuery } from '@/hooks'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import { InsightSummaryCards } from './components/insight-summary-cards'
@@ -38,6 +39,9 @@ export function UserInsights() {
   const [evidenceUser, setEvidenceUser] = useState<UserInsight | null>(null)
   // 请求体原文抽屉叠在证据抽屉之上，只在管理员明确点开时才拉原文。
   const [rawBodySampleId, setRawBodySampleId] = useState<number | null>(null)
+  // 移动端放弃"固定视口 + 表格内部滚动"：统计卡片 + 工具栏会挤掉卡片列表，
+  // 改成本 Tab 自身滚动（与证据样本/画像配置 Tab 一致），桌面端保持固定表头。
+  const isMobile = useMediaQuery('(max-width: 640px)')
 
   const summaryQuery = useUserInsightSummary()
 
@@ -46,17 +50,22 @@ export function UserInsights() {
       <SectionPageLayout.Title>{t('User Insights')}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
         {/* 画像聚合与逐请求证据分开两页：前者看长期倾向，后者做人工复核。
-            列表页用 fixedContent + DataTablePage 的固定表头，与 users 页一致。 */}
+            桌面端用 fixedContent + DataTablePage 的固定表头（与 users 页一致）；
+            移动端（isMobile）画像 Tab 改为整体滚动，避免统计卡片挤占列表高度。 */}
         <Tabs defaultValue='profiles' className='flex h-full min-h-0 flex-col'>
           <TabsList className='shrink-0'>
             <TabsTrigger value='profiles'>{t('Profiles')}</TabsTrigger>
-            <TabsTrigger value='samples'>{t('证据样本')}</TabsTrigger>
-            <TabsTrigger value='settings'>{t('画像配置')}</TabsTrigger>
+            <TabsTrigger value='samples'>{t('Evidence samples')}</TabsTrigger>
+            <TabsTrigger value='settings'>{t('Profiling settings')}</TabsTrigger>
           </TabsList>
 
           <TabsContent
             value='profiles'
-            className='flex min-h-0 flex-1 flex-col gap-3 pt-3'
+            className={
+              isMobile
+                ? 'min-h-0 flex-1 space-y-3 overflow-y-auto pt-3'
+                : 'flex min-h-0 flex-1 flex-col gap-3 pt-3'
+            }
           >
             <div className='shrink-0'>
               <InsightSummaryCards
