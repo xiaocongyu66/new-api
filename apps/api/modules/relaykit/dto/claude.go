@@ -504,6 +504,14 @@ func (c *ClaudeResponse) SetIndex(i int) {
 	c.Index = &i
 }
 
+// get index
+func (c *ClaudeResponse) GetIndex() int {
+	if c.Index == nil {
+		return 0
+	}
+	return *c.Index
+}
+
 // GetClaudeError 从动态错误类型中提取ClaudeError结构
 func (c *ClaudeResponse) GetClaudeError() *types.ClaudeError {
 	if c.Error == nil {
