@@ -120,15 +120,23 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
   )
 
   // Live totals for the selected alias, computed from the rows on screen so they
-  // always agree with what is displayed.
+  // always agree with what is displayed. A route weighing 10x+ below the pool's
+  // strongest peer is almost always a stray edit: it keeps serving but its share
+  // collapses toward zero, which looks like an outage from the outside.
   const summary = useMemo(() => {
     const enabled = routeUnits.filter(u => u.enabled)
+    const poolMaxWeight = enabled.reduce((max, u) => Math.max(max, u.static_weight), 0)
     return {
       total: routeUnits.length,
       enabled: enabled.length,
       totalWeight: enabled.reduce((sum, u) => sum + u.static_weight, 0),
       degraded: routeUnits.filter(u => u.enabled && u.health_multiplier < 1).length,
       unsampled: routeUnits.filter(u => u.sample_count === 0).length,
+      lopsided: new Set(
+        enabled
+          .filter(u => poolMaxWeight > 0 && u.static_weight * 10 <= poolMaxWeight)
+          .map(u => u.id),
+      ),
     }
   }, [routeUnits])
 
@@ -341,6 +349,11 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                   {t('Awaiting samples')}: {summary.unsampled}
                 </Badge>
               )}
+              {summary.lopsided.size > 0 && (
+                <Badge variant='outline' className='text-amber-600 dark:text-amber-400'>
+                  {t('Lopsided weights')}: {summary.lopsided.size}
+                </Badge>
+              )}
             </div>
 
             <Separator />
@@ -408,14 +421,26 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                         </TableCell>
 
                         <TableCell>
-                          <NumericSpinnerInput
-                            value={unit.static_weight}
-                            onChange={value => handleWeightChange(unit.id, value)}
-                            min={0}
-                            step={1}
-                            disabled={loadingUnits || isSaving(unit.id)}
-                            className='w-[90px]'
-                          />
+                          <div className='flex items-center gap-1.5'>
+                            <NumericSpinnerInput
+                              value={unit.static_weight}
+                              onChange={value => handleWeightChange(unit.id, value)}
+                              min={0}
+                              step={1}
+                              disabled={loadingUnits || isSaving(unit.id)}
+                              className='w-[90px]'
+                            />
+                            {summary.lopsided.has(unit.id) && (
+                              <span
+                                className='text-amber-600 dark:text-amber-400'
+                                title={t(
+                                  'Weight is far below this alias pool maximum, so its traffic share is near zero.'
+                                )}
+                              >
+                                ⚠
+                              </span>
+                            )}
+                          </div>
                         </TableCell>
 
                         <TableCell>
