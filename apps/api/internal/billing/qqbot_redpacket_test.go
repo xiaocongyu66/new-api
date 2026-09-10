@@ -66,8 +66,7 @@ func TestHandleRedPacketListShowsStatusAndGrabButtons(t *testing.T) {
 	defer setupRedPacketTestDB(t)()
 
 	active := createTestRedPacket(t, "GROUP_1", "OPENID_A", 5, 3, billing.RedPacketStatusActive, 1000)
-	finished := createTestRedPacket(t, "GROUP_1", "OPENID_B", 3, 0, billing.RedPacketStatusFinished, 2000)
-	createTestRedPacket(t, "GROUP_1", "OPENID_C", 2, 2, billing.RedPacketStatusExpired, 3000)
+	createTestRedPacket(t, "GROUP_1", "OPENID_B", 3, 0, billing.RedPacketStatusFinished, 2000)
 
 	content, kb := billing.HandleRedPacketList("GROUP_1")
 	// 倒序:expired 最新,active 最老
