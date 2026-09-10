@@ -464,7 +464,6 @@ func RestoreChannelModelHealthSetting(s *ChannelModelHealthSetting) {
 	channelModelHealthSetting.Store(s)
 }
 
-
 // seedChannelModelHealthOptions returns the map for OnSeedCatalogOptions
 // chaining. It reads the live atomic config, not the struct defaults, so the
 // option-map snapshot reflects the running values.
