@@ -25,9 +25,9 @@ import (
 // and straight from abilities when it is off, and a divergence between the two is
 // exactly how an isolation bug would hide in production.
 
-// withGroupIsolationDB installs a scratch database plus the cache globals, and
+// withGroupIsolationRouteDB installs a scratch database plus the cache globals, and
 // restores everything afterwards.
-func withGroupIsolationDB(t *testing.T) *gorm.DB {
+func withGroupIsolationRouteDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
 	prevDB := dbx.DB
@@ -65,10 +65,10 @@ func withGroupIsolationDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-// seedIsolationChannel writes a channel together with the ability rows and route
+// seedGroupIsolationChannel writes a channel together with the ability rows and route
 // units that AddAbilities and ExpandChannelModelRoutes would produce for it, so
 // the fixture cannot drift from the production write path.
-func seedIsolationChannel(t *testing.T, db *gorm.DB, id int, groups []string, alias string) {
+func seedGroupIsolationChannel(t *testing.T, db *gorm.DB, id int, groups []string, alias string) {
 	t.Helper()
 
 	groupCSV := ""
@@ -123,9 +123,9 @@ func TestGroupIsolationRestrictsCandidatesToGrantedChannels(t *testing.T) {
 			name = "db-path"
 		}
 		t.Run(name, func(t *testing.T) {
-			db := withGroupIsolationDB(t)
-			seedIsolationChannel(t, db, 8101, []string{"default", "vip"}, alias)
-			seedIsolationChannel(t, db, 8102, []string{"vip"}, alias)
+			db := withGroupIsolationRouteDB(t)
+			seedGroupIsolationChannel(t, db, 8101, []string{"default", "vip"}, alias)
+			seedGroupIsolationChannel(t, db, 8102, []string{"vip"}, alias)
 
 			common.MemoryCacheEnabled = memoryCache
 			InitChannelCache()
@@ -165,8 +165,8 @@ func TestGroupIsolationRestrictsCandidatesToGrantedChannels(t *testing.T) {
 // caller, including an empty group string.
 func TestGroupIsolationFailsClosedForUnknownGroup(t *testing.T) {
 	const alias = "iso-model"
-	db := withGroupIsolationDB(t)
-	seedIsolationChannel(t, db, 8201, []string{"vip"}, alias)
+	db := withGroupIsolationRouteDB(t)
+	seedGroupIsolationChannel(t, db, 8201, []string{"vip"}, alias)
 
 	common.MemoryCacheEnabled = true
 	InitChannelCache()
@@ -191,9 +191,9 @@ func TestGroupIsolationFailsClosedForUnknownGroup(t *testing.T) {
 // disappear from selection even though its route unit row is untouched.
 func TestGroupIsolationHonoursPerModelDisable(t *testing.T) {
 	const alias = "iso-model"
-	db := withGroupIsolationDB(t)
-	seedIsolationChannel(t, db, 8301, []string{"default"}, alias)
-	seedIsolationChannel(t, db, 8302, []string{"default"}, alias)
+	db := withGroupIsolationRouteDB(t)
+	seedGroupIsolationChannel(t, db, 8301, []string{"default"}, alias)
+	seedGroupIsolationChannel(t, db, 8302, []string{"default"}, alias)
 
 	common.MemoryCacheEnabled = true
 	InitChannelCache()

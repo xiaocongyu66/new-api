@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -28,10 +28,12 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
+import { Combobox } from '@/components/ui/combobox'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
-import { Loader2 } from 'lucide-react'
+import { Loader2, RefreshCw } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
 import { SettingsSection } from '../components/settings-section'
 import { getRouteUnitAliases, getRouteUnits, updateRouteUnit, type RouteUnitAliasSummary, type RouteUnitView } from './api-route-units'
@@ -68,7 +70,10 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
     loadAliases()
   }, [t])
 
-  // Load route units when alias changes
+  // Load route units when alias changes, or when the operator asks for fresh
+  // runtime numbers. The EWMA and share figures move with live traffic, so a
+  // reload is the only way to see the effect of a weight change.
+  const [reloadToken, setReloadToken] = useState(0)
   useEffect(() => {
     if (!selectedAlias) {
       setRouteUnits([])
@@ -98,7 +103,34 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
     return () => {
       cancelled = true
     }
-  }, [selectedAlias, t])
+  }, [selectedAlias, reloadToken, t])
+
+  // Alias options for the searchable selector. With dozens of aliases a plain
+  // dropdown is unusable, so the label carries the route count and the combobox
+  // filters by typing.
+  const aliasOptions = useMemo(
+    () =>
+      aliases.map(alias => ({
+        value: alias.alias,
+        label: `${alias.alias} · ${alias.route_count} ${
+          alias.route_count === 1 ? t('route') : t('routes')
+        }`,
+      })),
+    [aliases, t]
+  )
+
+  // Live totals for the selected alias, computed from the rows on screen so they
+  // always agree with what is displayed.
+  const summary = useMemo(() => {
+    const enabled = routeUnits.filter(u => u.enabled)
+    return {
+      total: routeUnits.length,
+      enabled: enabled.length,
+      totalWeight: enabled.reduce((sum, u) => sum + u.static_weight, 0),
+      degraded: routeUnits.filter(u => u.enabled && u.health_multiplier < 1).length,
+      unsampled: routeUnits.filter(u => u.sample_count === 0).length,
+    }
+  }, [routeUnits])
 
   const handleWeightChange = async (id: number, newWeight: number) => {
     // Capture original weight for potential rollback
@@ -202,6 +234,33 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
     }
   }
 
+  // Quality is clamped to [0.5, 1.5] and sits at a neutral 1.0 until the route has
+  // enough samples, so an unsampled route must not be coloured as if it were fine.
+  const qualityClass = (unit: RouteUnitView) => {
+    if (unit.sample_count === 0) return 'text-muted-foreground'
+    if (unit.ewma_quality < 0.9) return 'text-red-600 dark:text-red-400'
+    if (unit.ewma_quality > 1.1) return 'text-green-600 dark:text-green-400'
+    return undefined
+  }
+
+  // The health multiplier comes from the isolation state machine: 1.0 healthy,
+  // derated while calm or dormant, 0 once disabled. Naming the state is what makes
+  // a low final score explainable.
+  const healthLabel = (multiplier: number) => {
+    if (multiplier <= 0) return t('Isolated')
+    if (multiplier < 0.5) return t('Dormant')
+    if (multiplier < 1) return t('Calm')
+    return t('Healthy')
+  }
+
+  const healthClass = (multiplier: number) => {
+    if (multiplier <= 0) return 'text-red-600 dark:text-red-400'
+    if (multiplier < 1) return 'text-amber-600 dark:text-amber-400'
+    return 'text-green-600 dark:text-green-400'
+  }
+
+  const formatMs = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`)
+
   if (loadingAliases) {
     return (
       <SettingsSection title={t('Route Units')}>
@@ -226,27 +285,64 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
   return (
     <SettingsSection title={t('Route Units')}>
       <div className='space-y-6'>
-        {/* Alias Selector */}
-        <div className='flex items-center gap-4'>
-          <label htmlFor='route-unit-alias' className='text-sm font-medium'>
-            {t('Public Model Alias')}
-          </label>
-          <Select value={selectedAlias} onValueChange={v => v && setSelectedAlias(v)}>
-            <SelectTrigger id='route-unit-alias' className='w-[300px]'>
-              <SelectValue placeholder={t('Select an alias')} />
-            </SelectTrigger>
-            <SelectContent>
-              {aliases.map(alias => (
-                <SelectItem key={alias.alias} value={alias.alias}>
-                  {alias.alias} ({t('Total weight')}: {alias.total_weight}, {t('Routes')}: {alias.route_count})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        {/* Alias selector: pick a public model alias, then inspect and tune the
+            scheduling models competing inside it. */}
+        <div className='flex flex-wrap items-end gap-3'>
+          <div className='flex min-w-[320px] flex-col gap-1.5'>
+            <label htmlFor='route-unit-alias' className='text-sm font-medium'>
+              {t('Public Model Alias')}
+            </label>
+            <Combobox
+              options={aliasOptions}
+              value={selectedAlias}
+              onValueChange={value => value && setSelectedAlias(value)}
+              placeholder={t('Select an alias')}
+              searchPlaceholder={t('Search model alias...')}
+              emptyText={t('No matching alias found.')}
+              openOnFocus={false}
+            />
+          </div>
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            onClick={() => setReloadToken(token => token + 1)}
+            disabled={!selectedAlias || loadingUnits}
+          >
+            <RefreshCw className={loadingUnits ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+            {t('Refresh')}
+          </Button>
         </div>
 
         {selectedAlias && (
           <>
+            <p className='text-sm text-muted-foreground'>
+              {t(
+                'Scheduling models competing inside this alias. Traffic share is weight × quality × health, so a route keeps serving at a reduced share until the state machine disables it.'
+              )}
+            </p>
+
+            {/* Summary of the pool as displayed, so the totals cannot disagree
+                with the rows below. */}
+            <div className='flex flex-wrap items-center gap-2'>
+              <Badge variant='outline'>
+                {t('Routes')}: {summary.enabled}/{summary.total}
+              </Badge>
+              <Badge variant='outline'>
+                {t('Total weight')}: {summary.totalWeight}
+              </Badge>
+              {summary.degraded > 0 && (
+                <Badge variant='outline' className='text-amber-600 dark:text-amber-400'>
+                  {t('Degraded')}: {summary.degraded}
+                </Badge>
+              )}
+              {summary.unsampled > 0 && (
+                <Badge variant='outline' className='text-muted-foreground'>
+                  {t('Awaiting samples')}: {summary.unsampled}
+                </Badge>
+              )}
+            </div>
+
             <Separator />
 
             {/* Route Units Table */}
@@ -255,28 +351,20 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                 <TableHeader>
                   <TableRow>
                     <TableHead className='w-[40px]'>{t('#')}</TableHead>
-                    <TableHead>{t('Channel')}</TableHead>
-                    <TableHead>{t('Key Index')}</TableHead>
-                    <TableHead>{t('Upstream Model')}</TableHead>
-                    <TableHead className='max-w-[200px] truncate'>{t('Base URL')}</TableHead>
-                    <TableHead className='w-[100px]'>{t('Weight')}</TableHead>
-                    <TableHead className='w-[120px]'>{t('Expected Share %')}</TableHead>
-                    <TableHead className='w-[100px]'>{t('Enabled')}</TableHead>
-                    <TableHead className='w-[80px]'>{t('Health Score')}</TableHead>
-                    <TableHead className='w-[80px]'>{t('Base Wt')}</TableHead>
-                    <TableHead className='w-[80px]'>{t('Quality')}</TableHead>
-                    <TableHead className='w-[80px]'>{t('Health Mult')}</TableHead>
-                    <TableHead className='w-[80px]'>{t('Share Correction')}</TableHead>
-                    <TableHead className='w-[80px]'>{t('Actual Share %')}</TableHead>
-                    <TableHead className='w-[80px]'>{t('Final Score')}</TableHead>
-                    <TableHead className='w-[100px]'>{t('Samples')}</TableHead>
-                    <TableHead className='w-[80px]'>{t('Status')}</TableHead>
+                    <TableHead>{t('Scheduling Model')}</TableHead>
+                    <TableHead className='w-[110px]'>{t('Weight')}</TableHead>
+                    <TableHead className='w-[90px]'>{t('Enabled')}</TableHead>
+                    <TableHead className='w-[130px]'>{t('Share (target/actual)')}</TableHead>
+                    <TableHead className='w-[90px]'>{t('Quality')}</TableHead>
+                    <TableHead className='w-[110px]'>{t('Health')}</TableHead>
+                    <TableHead className='w-[150px]'>{t('Latency / Throughput')}</TableHead>
+                    <TableHead className='w-[130px]'>{t('Final Score')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loadingUnits ? (
                     <TableRow>
-                      <TableCell colSpan={17} className='text-center py-8'>
+                      <TableCell colSpan={9} className='text-center py-8'>
                         <div className='flex items-center justify-center gap-2'>
                           <Loader2 className='h-5 w-5 animate-spin text-muted-foreground' />
                           <span>{t('Loading route units...')}</span>
@@ -285,22 +373,40 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                     </TableRow>
                   ) : routeUnits.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={17} className='text-center py-8 text-muted-foreground'>
+                      <TableCell colSpan={9} className='text-center py-8 text-muted-foreground'>
                         {t('No route units for this alias')}
                       </TableCell>
                     </TableRow>
                   ) : (
                     routeUnits.map((unit, index) => (
-                      <TableRow key={unit.id}>
+                      <TableRow key={unit.id} className={unit.enabled ? undefined : 'opacity-60'}>
                         <TableCell className='font-mono text-muted-foreground'>{index + 1}</TableCell>
-                        <TableCell className='font-medium'>{unit.channel_name}</TableCell>
-                        <TableCell className='font-mono'>{unit.key_index}</TableCell>
-                        <TableCell className='font-mono text-sm max-w-[150px] truncate' title={unit.upstream_model}>
-                          {unit.upstream_model}
+
+                        {/* Identity of the scheduling model: which channel, which
+                            key, and what it actually calls upstream. */}
+                        <TableCell>
+                          <div className='flex flex-col gap-0.5'>
+                            <div className='flex items-center gap-2'>
+                              <span className='font-medium'>{unit.channel_name}</span>
+                              {unit.key_index > 0 && (
+                                <Badge variant='secondary' className='font-mono text-[10px]'>
+                                  {t('key')} {unit.key_index}
+                                </Badge>
+                              )}
+                              <span className={`text-xs ${channelStatusClass(unit.channel_status)}`}>
+                                {channelStatusLabel(unit.channel_status)}
+                              </span>
+                            </div>
+                            <span
+                              className='truncate font-mono text-xs text-muted-foreground'
+                              title={unit.base_url ? `${unit.upstream_model} — ${unit.base_url}` : unit.upstream_model}
+                            >
+                              {unit.upstream_model}
+                              {unit.base_url ? ` · ${unit.base_url}` : ''}
+                            </span>
+                          </div>
                         </TableCell>
-                        <TableCell className='font-mono text-xs text-muted-foreground max-w-[200px] truncate' title={unit.base_url}>
-                          {unit.base_url}
-                        </TableCell>
+
                         <TableCell>
                           <NumericSpinnerInput
                             value={unit.static_weight}
@@ -311,9 +417,7 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                             className='w-[90px]'
                           />
                         </TableCell>
-                        <TableCell className='font-mono text-sm text-muted-foreground'>
-                          {(unit.expected_share * 100).toFixed(1)}%
-                        </TableCell>
+
                         <TableCell>
                           <Switch
                             checked={unit.enabled}
@@ -322,36 +426,70 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                             aria-label={t(unit.enabled ? 'Disable route unit' : 'Enable route unit')}
                           />
                         </TableCell>
+
+                        {/* Target share is the operator's configured intent; actual
+                            share is what the window measured. Divergence is what the
+                            correction is working on. */}
                         <TableCell className='font-mono text-sm'>
-                          {unit.health_score.toFixed(2)}
+                          <div className='flex flex-col gap-0.5'>
+                            <span>{(unit.expected_share * 100).toFixed(1)}%</span>
+                            <span className='text-xs text-muted-foreground'>
+                              {unit.share_opportunities > 0
+                                ? `${(unit.actual_share * 100).toFixed(1)}% · ${unit.share_selections}/${unit.share_opportunities}`
+                                : t('no traffic yet')}
+                            </span>
+                          </div>
                         </TableCell>
+
                         <TableCell className='font-mono text-sm'>
-                          {unit.base_weight.toFixed(2)}
+                          <div className='flex flex-col gap-0.5'>
+                            <span className={qualityClass(unit)}>{unit.ewma_quality.toFixed(2)}</span>
+                            <span className='text-xs text-muted-foreground'>
+                              {unit.sample_count > 0
+                                ? `${(unit.success_ewma * 100).toFixed(0)}% ok · n=${unit.sample_count}`
+                                : t('neutral')}
+                            </span>
+                          </div>
                         </TableCell>
-                        <TableCell className='font-mono text-sm'>
-                          {unit.ewma_quality.toFixed(2)}
+
+                        {/* The health multiplier is the only factor allowed to reach
+                            zero, so its state is spelled out rather than left as a
+                            bare number. */}
+                        <TableCell className='text-sm'>
+                          <div className='flex flex-col gap-0.5'>
+                            <span className={healthClass(unit.health_multiplier)}>
+                              {healthLabel(unit.health_multiplier)}
+                            </span>
+                            <span className='font-mono text-xs text-muted-foreground'>
+                              ×{unit.health_multiplier.toFixed(2)}
+                            </span>
+                          </div>
                         </TableCell>
-                        <TableCell className='font-mono text-sm'>
-                          {unit.health_multiplier.toFixed(2)}
-                        </TableCell>
-                        <TableCell className='font-mono text-sm'>
-                          {unit.share_correction.toFixed(2)}
-                        </TableCell>
-                        <TableCell className='font-mono text-sm'>
-                          {unit.share_opportunities > 0 ? (unit.actual_share * 100).toFixed(1) + '%' : '—'}
-                        </TableCell>
-                        <TableCell className='font-mono text-sm'>
-                          {unit.final_score.toFixed(2)}
-                        </TableCell>
+
                         <TableCell className='font-mono text-xs text-muted-foreground'>
-                          {unit.share_opportunities > 0
-                            ? `${unit.share_selections}/${unit.share_opportunities}`
-                            : '—'}
+                          {unit.sample_count > 0 ? (
+                            <div className='flex flex-col gap-0.5'>
+                              <span>{formatMs(unit.ttft_ewma_ms)} {t('TTFT')}</span>
+                              <span>{unit.tps_ewma.toFixed(1)} {t('tok/s')}</span>
+                            </div>
+                          ) : (
+                            '—'
+                          )}
                         </TableCell>
-                        <TableCell>
-                          <span className={channelStatusClass(unit.channel_status)}>
-                            {channelStatusLabel(unit.channel_status)}
-                          </span>
+
+                        {/* Final score with its factorisation, so the number can be
+                            checked by hand against the four terms. */}
+                        <TableCell className='font-mono text-sm'>
+                          <div className='flex flex-col gap-0.5'>
+                            <span>{unit.final_score.toFixed(2)}</span>
+                            <span
+                              className='text-xs text-muted-foreground'
+                              title={t('base weight × quality × health × share correction')}
+                            >
+                              {unit.base_weight.toFixed(0)}×{unit.ewma_quality.toFixed(2)}×
+                              {unit.health_multiplier.toFixed(2)}×{unit.share_correction.toFixed(2)}
+                            </span>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))
