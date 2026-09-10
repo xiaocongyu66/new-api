@@ -282,9 +282,10 @@ func (ac *apiClient) SendGroupMessage(groupOpenID string, req *GroupMessageReque
 		groupOpenID, status, truncateForLog(string(body), 400)))
 	return parseSendMessageID(body), nil
 }
-
 // parseSendMessageID 从发送消息响应体中提取消息 ID(用于撤回)。
 // message_id 优先;老版本接口只回 id 时兜底取 id。
+// 返回空串是刻意降级:消息已发出,只是拿不到 ID 无法自动撤回,
+// 不向上抛错以免触发被动→主动的重发路径。
 func parseSendMessageID(body []byte) string {
 	var resp sendMessageResponse
 	if err := common.Unmarshal(body, &resp); err != nil {
@@ -294,6 +295,13 @@ func parseSendMessageID(body []byte) string {
 		return resp.MessageID
 	}
 	return resp.ID
+}
+
+// apiErrorResponse 平台 HTTP 2xx 响应里携带的业务错误码
+// （见 SendGroupMessage 注释：平台有一类失败是 HTTP 200 + body 里带 code/message）
+type apiErrorResponse struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
 }
 
 // RecallGroupMessage 撤回机器人自己发送的群消息
@@ -307,6 +315,11 @@ func (ac *apiClient) RecallGroupMessage(groupOpenID, messageID string) error {
 	}
 	if status != http.StatusOK && status != http.StatusNoContent {
 		return fmt.Errorf("撤回消息失败 HTTP %d: %s", status, string(body))
+	}
+	// HTTP 2xx 也可能带业务错误码,不回 body 会让「撤回失败却显示成功」无法排查
+	var apiErr apiErrorResponse
+	if err := common.Unmarshal(body, &apiErr); err == nil && apiErr.Code != 0 {
+		return fmt.Errorf("撤回消息失败 code=%d: %s", apiErr.Code, apiErr.Message)
 	}
 	return nil
 }

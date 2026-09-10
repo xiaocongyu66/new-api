@@ -418,6 +418,8 @@ func sendRecallableMarkdown(groupOpenID, content string, keyboard *Keyboard) err
 		return nil
 	}
 	common.SysLog("失败提示将自动撤回 msg_id=" + msgID)
+	// ponytail: 一次性 timer,存活 delay 秒后自动结束,失败提示是低频消息不会累积;
+	// 若未来失败提示成为热点,再引入可取消的调度(带 context 的定时器)。
 	time.AfterFunc(time.Duration(delay)*time.Second, func() {
 		if err := client.RecallGroupMessage(groupOpenID, msgID); err != nil {
 			common.SysError("自动撤回失败 msg_id=" + msgID + " err=" + err.Error())
