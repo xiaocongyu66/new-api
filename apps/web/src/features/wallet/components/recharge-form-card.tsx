@@ -35,10 +35,10 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { formatNumber } from '@/lib/format'
+import { formatPaymentAmount } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 
 import {
-  formatCurrency,
   getDiscountLabel,
   getPaymentIcon,
   getMinTopupAmount,
@@ -142,6 +142,13 @@ export function RechargeFormCard({
     Array.isArray(waffoPayMethods) && waffoPayMethods.length > 0
   const minTopup = getMinTopupAmount(topupInfo)
   const redemptionEnabled = topupInfo?.enable_redemption !== false
+  // Payment-side amounts are labeled with the 金额名称 (falls back to the
+  // configured currency symbol when unset), independent of the 额度 display.
+  const paymentAmountOpts = {
+    digitsLarge: 2,
+    digitsSmall: 4,
+    abbreviate: false,
+  }
 
   if (loading) {
     return (
@@ -266,11 +273,15 @@ export function RechargeFormCard({
                             )}
                           </div>
                           <div className='text-muted-foreground mt-1.5 w-full text-xs sm:mt-2'>
-                            Pay {formatCurrency(actualPrice)}
+                            Pay {formatPaymentAmount(actualPrice, paymentAmountOpts)}
                             {hasDiscount && savedAmount > 0 && (
                               <span className='text-green-600'>
                                 {' '}
-                                • Save {formatCurrency(savedAmount)}
+                                • Save{' '}
+                                {formatPaymentAmount(
+                                  savedAmount,
+                                  paymentAmountOpts
+                                )}
                               </span>
                             )}
                           </div>
@@ -306,7 +317,7 @@ export function RechargeFormCard({
                       <Skeleton className='h-5 w-16' />
                     ) : (
                       <span className='text-sm font-semibold'>
-                        {formatCurrency(paymentAmount)}
+                        {formatPaymentAmount(paymentAmount, paymentAmountOpts)}
                       </span>
                     )}
                   </div>

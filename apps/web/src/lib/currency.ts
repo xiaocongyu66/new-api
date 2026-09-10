@@ -635,3 +635,74 @@ export function formatLocalCurrencyAmount(
 
   return formatCurrencyValue(amount, merged, meta)
 }
+
+/**
+ * Get the configured name for PAYMENT amounts (充值/买套餐/兑换), independent
+ * from the consumption currency symbol. Only effective when the payment unit
+ * is 'custom'. Returns '' when unset.
+ */
+function getAmountName(): string {
+  return getConfig().amountName?.trim() ?? ''
+}
+
+export type PaymentAmountUnit = 'usd' | 'cny' | 'custom'
+
+/**
+ * Get the payment amount unit — the same kind of unit selector the currency
+ * display has (美元/人民币/自定义名称). Empty or unknown stored values
+ * normalize to 'usd' so a blank config always has a defined representation.
+ */
+export function getAmountUnit(): PaymentAmountUnit {
+  const unit = getConfig().amountUnit
+  return unit === 'cny' || unit === 'custom' ? unit : 'usd'
+}
+
+/**
+ * Get the prefix used to render PAYMENT amounts: '$' for USD, '¥' for CNY,
+ * and the configured 金额名称 for the custom unit (falling back to '$' when
+ * the name is blank).
+ */
+export function getAmountSymbol(): string {
+  const unit = getAmountUnit()
+  if (unit === 'cny') return '¥'
+  if (unit === 'custom') {
+    const name = getAmountName()
+    if (name) return name
+  }
+  return '$'
+}
+
+/**
+ * Format a PAYMENT amount using the payment unit (金额单位): '$'/'¥' via
+ * currency formatting for USD/CNY, the 金额名称 as a prefix for the custom
+ * unit. Independent from the consumption currency display — it never reads
+ * the 额度 display settings.
+ */
+export function formatPaymentAmount(
+  amount: number | null | undefined,
+  options?: CurrencyFormatOptions
+): string {
+  if (amount == null || Number.isNaN(amount)) return '-'
+  const merged = mergeOptions(options)
+
+  const unit = getAmountUnit()
+  if (unit === 'custom') {
+    const name = getAmountName()
+    if (name) {
+      return formatCurrencyValue(amount, merged, {
+        kind: 'custom',
+        symbol: name,
+        exchangeRate: 1,
+      })
+    }
+    // Blank custom name falls back to USD presentation below.
+  }
+
+  const isCNY = unit === 'cny'
+  return formatCurrencyValue(amount, merged, {
+    kind: 'currency',
+    currencyCode: isCNY ? 'CNY' : 'USD',
+    symbol: isCNY ? '¥' : '$',
+    exchangeRate: 1,
+  })
+}

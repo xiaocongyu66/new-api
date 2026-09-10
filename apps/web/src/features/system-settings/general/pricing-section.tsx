@@ -71,6 +71,8 @@ const createPricingSchema = (t: (key: string) => string) =>
           .number()
           .min(0.0001, t('Exchange rate must be greater than 0'))
           .optional(),
+        amount_name: z.string().max(20, t('Amount name must be at most 20 characters')).optional(),
+        amount_unit: z.enum(['usd', 'cny', 'custom']).optional(),
       }),
     })
     .superRefine((data, ctx) => {
@@ -92,6 +94,17 @@ const createPricingSchema = (t: (key: string) => string) =>
             message: t('Exchange rate is required'),
           })
         }
+      }
+
+      if (
+        data.general_setting.amount_unit === 'custom' &&
+        !data.general_setting.amount_name?.trim()
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['general_setting', 'amount_name'],
+          message: t('Amount name is required for the custom unit'),
+        })
       }
     })
 
@@ -137,6 +150,7 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
     })
 
   const displayType = form.watch('general_setting.quota_display_type') ?? 'USD'
+  const amountUnit = form.watch('general_setting.amount_unit') ?? 'usd'
   const displayInCurrencyEnabled = form.watch('DisplayInCurrencyEnabled')
   const showTokensOnlyOption = displayType === 'TOKENS'
   const showQuotaPerUnit =
@@ -228,6 +242,78 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
                 </FormItem>
               )}
             />
+
+            <FormField
+              control={form.control}
+              name='general_setting.amount_unit'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Payment Amount Unit')}</FormLabel>
+                  <Select
+                    items={[
+                      { value: 'usd', label: t('USD ($)') },
+                      { value: 'cny', label: t('CNY (¥)') },
+                      { value: 'custom', label: t('Custom name') },
+                    ]}
+                    value={field.value ?? 'usd'}
+                    onValueChange={field.onChange}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue
+                          placeholder={t('Select payment amount unit')}
+                        />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent alignItemWithTrigger={false}>
+                      <SelectGroup>
+                        <SelectItem value='usd'>{t('USD ($)')}</SelectItem>
+                        <SelectItem value='cny'>{t('CNY (¥)')}</SelectItem>
+                        <SelectItem value='custom'>
+                          {t('Custom name')}
+                        </SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    {t(
+                      'Unit prefixed to payment amounts (top-ups, plan purchases). Separate from the consumption currency display.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {amountUnit === 'custom' && (
+              <FormField
+                control={form.control}
+                name='general_setting.amount_name'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Amount Name')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='text'
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        name={field.name}
+                        onBlur={field.onBlur}
+                        ref={field.ref}
+                        maxLength={20}
+                        placeholder={t('e.g. 稀有气体, 菌种, or USD')}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Name shown for payment amounts (top-ups, plan purchases). Separate from the consumption currency symbol.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             {displayType !== 'TOKENS' && (
               <FormField

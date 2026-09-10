@@ -72,6 +72,8 @@ func GetStatus(c contract.Context) {
 		"quota_display_type":            billing.GetQuotaDisplayType(),
 		"custom_currency_symbol":        billing.GetGeneralSetting().CustomCurrencySymbol,
 		"custom_currency_exchange_rate": billing.GetGeneralSetting().CustomCurrencyExchangeRate,
+		"amount_name":                   billing.GetGeneralSetting().AmountName,
+		"amount_unit":                   billing.GetGeneralSetting().AmountUnitEffective(),
 		"enable_batch_update":           common.BatchUpdateEnabled,
 		"enable_drawing":                common.DrawingEnabled,
 		"enable_task":                   common.TaskEnabled,

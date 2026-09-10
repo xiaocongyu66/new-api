@@ -36,6 +36,17 @@ export interface CurrencyConfig {
   customCurrencySymbol: string
   /** Exchange rate from USD to the custom currency (used when type === CUSTOM) */
   customCurrencyExchangeRate: number
+  /**
+   * Display name for PAYMENT amounts (top-ups, plan purchases, redemption),
+   * independent from the consumption currency symbol. E.g. 稀有气体 / 菌种.
+   * Only effective when amountUnit is 'custom'.
+   */
+  amountName?: string
+  /**
+   * Payment amount unit: 'usd' ($ prefix) / 'cny' (¥ prefix) /
+   * 'custom' (uses amountName). Empty historical values are treated as 'usd'.
+   */
+  amountUnit?: 'usd' | 'cny' | 'custom'
 }
 
 export interface SystemConfig {
@@ -54,6 +65,8 @@ export const DEFAULT_CURRENCY_CONFIG: CurrencyConfig = {
   usdExchangeRate: 1,
   customCurrencySymbol: '¤',
   customCurrencyExchangeRate: 1,
+  amountName: '',
+  amountUnit: 'usd',
 }
 
 interface SystemConfigState {

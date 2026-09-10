@@ -120,44 +120,6 @@ func TestAutoRecallFailedEnabled(t *testing.T) {
 	assert.Equal(t, 10, delay)
 }
 
-// ─── HandleAdminBalance ─────────────────────────────────────────────────────
-
-func TestHandleAdminBalancePermissionDenied(t *testing.T) {
-	s := GetQQBotSetting()
-	orig := s.AdminOpenIDs
-	defer func() { s.AdminOpenIDs = orig }()
-
-	s.AdminOpenIDs = "ADMIN_X"
-
-	event := &GroupAtMessageEvent{}
-	reply := HandleAdminBalance(event, "NOT_ADMIN", "/余额 @user +10")
-	assert.Contains(t, reply, "权限不足")
-}
-
-func TestHandleAdminBalanceNoTarget(t *testing.T) {
-	s := GetQQBotSetting()
-	orig := s.AdminOpenIDs
-	defer func() { s.AdminOpenIDs = orig }()
-
-	s.AdminOpenIDs = "ADMIN_X"
-
-	event := &GroupAtMessageEvent{}
-	reply := HandleAdminBalance(event, "ADMIN_X", "/余额")
-	assert.Contains(t, reply, "用法")
-}
-
-func TestHandleAdminBalanceInvalidAmount(t *testing.T) {
-	s := GetQQBotSetting()
-	orig := s.AdminOpenIDs
-	defer func() { s.AdminOpenIDs = orig }()
-
-	s.AdminOpenIDs = "ADMIN_X"
-
-	event := &GroupAtMessageEvent{}
-	reply := HandleAdminBalance(event, "ADMIN_X", "/余额 @user +abc")
-	assert.Contains(t, reply, "金额无效")
-}
-
 // ─── HandleAdminBan ─────────────────────────────────────────────────────────
 
 func TestHandleAdminBanPermissionDenied(t *testing.T) {

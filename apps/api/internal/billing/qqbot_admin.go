@@ -3,7 +3,6 @@ package billing
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -12,7 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/usage"
 )
 
-// 管理员指令：/余额 和 /封禁 /解封。
+// 管理员指令：/封禁 /解封。
 //
 // 只有 QQBotSetting.AdminOpenIDs 白名单内的用户可以调用。
 // 每条指令的 openID 通过 QQ 群 @ 消息解析（stripTags + @ 前缀去掉）。
@@ -77,68 +76,6 @@ func resolveUserIdByOpenID(openID string) (int, error) {
 		return 0, errors.New("该 QQ 尚未绑定站点账号")
 	}
 	return userId, nil
-}
-
-// HandleAdminBalance 处理 /余额 指令
-//
-// 用法：/余额 @用户 +10 或 /余额 @用户 -10 或 /余额 @用户 =10
-// add 模式给目标用户加菌种，subtract 扣减，override 直接设置。
-func HandleAdminBalance(event *GroupAtMessageEvent, senderOpenID string, content string) string {
-	if !isAdminOpenID(senderOpenID) {
-		return buildAdminDeniedReply(senderOpenID)
-	}
-
-	targetOpenID, rest := parseTargetUser(strings.TrimPrefix(content, "/余额"))
-	if targetOpenID == "" {
-		return buildPlainMarkdown(senderOpenID,
-			"**用法：**/余额 @用户 +10（或 -10 / =10）\n\n+ 加菌种  - 扣菌种  = 设定余额")
-	}
-
-	rest = strings.TrimSpace(rest)
-	if rest == "" {
-		return buildPlainMarkdown(senderOpenID, "**用法：**/余额 @用户 +10（或 -10 / =10）")
-	}
-
-	var mode string
-	var amountStr string
-	switch {
-	case strings.HasPrefix(rest, "+"):
-		mode = "add"
-		amountStr = strings.TrimPrefix(rest, "+")
-	case strings.HasPrefix(rest, "-"):
-		mode = "subtract"
-		amountStr = strings.TrimPrefix(rest, "-")
-	case strings.HasPrefix(rest, "="):
-		mode = "override"
-		amountStr = strings.TrimPrefix(rest, "=")
-	default:
-		return buildPlainMarkdown(senderOpenID,
-			"**用法：**/余额 @用户 +10（或 -10 / =10）\n\n+ 加菌种  - 扣菌种  = 设定余额")
-	}
-
-	amount, err := strconv.ParseFloat(strings.TrimSpace(amountStr), 64)
-	if err != nil || amount < 0 {
-		return buildPlainMarkdown(senderOpenID, "**金额无效**\n\n请输入正数，例如 +10")
-	}
-	units := int64(amount * float64(identity.SporeUnitsPerSpore))
-
-	targetUserId, err := resolveUserIdByOpenID(targetOpenID)
-	if err != nil {
-		return buildPlainMarkdown(senderOpenID, "**操作失败**\n\n"+err.Error())
-	}
-
-	if err := identity.AdminAdjustUserSpore(targetUserId, mode, units); err != nil {
-		return buildPlainMarkdown(senderOpenID, "**操作失败**\n\n"+err.Error())
-	}
-
-	newBalance, _ := identity.GetUserSpore(targetUserId)
-	usage.RecordLog(targetUserId, usage.LogTypeSystem,
-		fmt.Sprintf("QQ 管理员调整菌种 %s，余额 %s",
-			identity.FormatSpore(units), identity.FormatSpore(newBalance)))
-
-	return buildPlainMarkdown(senderOpenID,
-		fmt.Sprintf("**操作成功**\n\n%s 菌种余额：**%s**",
-			atUser(targetOpenID), identity.FormatSpore(newBalance)))
 }
 
 // HandleAdminBan 处理 /封禁 和 /解封 指令
