@@ -3,13 +3,14 @@ package billing
 import (
 	"bytes"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/common"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/QuantumNous/new-api/internal/common"
 )
 
 const (
@@ -252,28 +253,55 @@ type GroupMessageRequest struct {
 	MsgSeq   int              `json:"msg_seq,omitempty"`
 }
 
-// SendGroupMessage 发送群聊消息
+// sendMessageResponse 发送群消息的响应体,message_id 用于撤回
+type sendMessageResponse struct {
+	ID        string `json:"id"`
+	MessageID string `json:"message_id"`
+}
+
+// SendGroupMessage 发送群聊消息,返回平台下发的消息 ID(可能为空,用于撤回)
 //
 // 平台有一类失败是 HTTP 200 + body 里带 code/message，
 // 所以成功路径也要把响应体记下来，否则「接口成功但群里没消息」无法排查。
-func (ac *apiClient) SendGroupMessage(groupOpenID string, req *GroupMessageRequest) ([]byte, error) {
+func (ac *apiClient) SendGroupMessage(groupOpenID string, req *GroupMessageRequest) (string, error) {
 	path := fmt.Sprintf("/v2/groups/%s/messages", url.PathEscape(groupOpenID))
 	reqPreview, _ := common.Marshal(req)
 	body, status, err := ac.do(http.MethodPost, path, req)
 	if err != nil {
 		common.SysError(fmt.Sprintf("群消息请求失败 group=%s req=%s err=%v",
 			groupOpenID, truncateForLog(string(reqPreview), 600), err))
-		return nil, err
+		return "", err
 	}
 	if status != http.StatusOK && status != http.StatusCreated && status != http.StatusNoContent {
 		common.SysError(fmt.Sprintf("群消息响应异常 group=%s HTTP=%d req=%s resp=%s",
 			groupOpenID, status,
 			truncateForLog(string(reqPreview), 600), truncateForLog(string(body), 600)))
-		return body, fmt.Errorf("发送群消息失败 HTTP %d: %s", status, string(body))
+		return "", fmt.Errorf("发送群消息失败 HTTP %d: %s", status, string(body))
 	}
 	common.SysLog(fmt.Sprintf("群消息响应 group=%s HTTP=%d resp=%s",
 		groupOpenID, status, truncateForLog(string(body), 400)))
-	return body, nil
+	if err := common.Unmarshal(body, &resp); err == nil {
+		if resp.MessageID != "" {
+			return resp.MessageID, nil
+		}
+		return resp.ID, nil
+	}
+	return "", nil
+}
+
+// RecallGroupMessage 撤回机器人自己发送的群消息
+// 平台只允许撤回机器人主动发送的消息,被动回复(带 msg_id/event_id)不受支持。
+func (ac *apiClient) RecallGroupMessage(groupOpenID, messageID string) error {
+	path := fmt.Sprintf("/v2/groups/%s/messages/%s",
+		url.PathEscape(groupOpenID), url.PathEscape(messageID))
+	body, status, err := ac.do(http.MethodDelete, path, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK && status != http.StatusNoContent {
+		return fmt.Errorf("撤回消息失败 HTTP %d: %s", status, string(body))
+	}
+	return nil
 }
 
 // truncateForLog 截断过长字符串，避免日志被单条消息刷爆
