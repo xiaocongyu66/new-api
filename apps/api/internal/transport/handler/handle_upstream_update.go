@@ -514,7 +514,9 @@ func checkAndPersistChannelUpstreamModelUpdates(
 		return false, autoAdded, err
 	}
 	if modelsChanged {
-		if err = channel.UpdateAbilities(nil); err != nil {
+		// Abilities alone are not enough: the route rows the selector reads must
+		// follow the new model list in the same revision.
+		if err = channel.RebuildChannelRouting(); err != nil {
 			return true, autoAdded, err
 		}
 	}
@@ -960,7 +962,9 @@ func applyChannelUpstreamModelUpdates(
 	}
 
 	if modelsChanged {
-		if err := channel.UpdateAbilities(nil); err != nil {
+		// Same as the detection path: the route rows must follow the applied
+		// model list, not just the ability rows.
+		if err := channel.RebuildChannelRouting(); err != nil {
 			return addModels, removeModels, remainingModels, remainingRemoveModels, true, err
 		}
 	}

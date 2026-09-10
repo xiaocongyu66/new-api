@@ -1265,41 +1265,31 @@ func GetChannelsByIds(ids []int) ([]*Channel, error) {
 	return channels, err
 }
 
+// BatchSetChannelTag re-tags channels and rebuilds their ability rows under
+// one MutateGatewayRouting transaction: the ability rows carry the channel
+// tag, so the rebuild must read the freshly written tag through the same
+// transaction (a pooled read would see the pre-update tag), and the whole
+// route-visible change commits with a single gateway routing revision bump.
 func BatchSetChannelTag(ids []int, tag *string) error {
-	// 开启事务
-	tx := dbx.DB.Begin()
-	if tx.Error != nil {
-		return tx.Error
-	}
-
-	// 更新标签
-	err := tx.Model(&Channel{}).Where("id in (?)", ids).Update("tag", tag).Error
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
-
-	// update ability status
-	channels, err := GetChannelsByIds(ids)
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
-
-	for _, channel := range channels {
-		err = channel.UpdateAbilities(tx)
-		if err != nil {
-			tx.Rollback()
+	_, err := MutateGatewayRouting(func(tx *gorm.DB) error {
+		if err := tx.Model(&Channel{}).Where("id in (?)", ids).Update("tag", tag).Error; err != nil {
 			return err
 		}
-		if err := SyncChannelModelRoutesWithTx(tx, channel.Id); err != nil {
-			tx.Rollback()
+		var channels []*Channel
+		if err := tx.Where("id in (?)", ids).Find(&channels).Error; err != nil {
 			return err
 		}
-	}
-
-	// 提交事务
-	return tx.Commit().Error
+		for _, channel := range channels {
+			if err := channel.UpdateAbilities(tx); err != nil {
+				return fmt.Errorf("failed to update abilities: channel_id=%d, error=%w", channel.Id, err)
+			}
+			if err := SyncChannelModelRoutesWithTx(tx, channel.Id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return err
 }
 
 // CountAllChannels returns total channels in DB

@@ -167,6 +167,25 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 			}
 		}()
 	}
+	// Model-level isolation (DisableChannelModel) writes enabled=false rows.
+	// A rebuild triggered by any unrelated edit — channel save, upstream model
+	// sync, tag edit — must not resurrect an isolated model: remember which
+	// models were disabled before the delete and keep them off. A model dropped
+	// from the list loses its rows entirely, so removing a model, saving, then
+	// re-adding it is the explicit way to clear isolation.
+	var isolatedModels []string
+	if err := tx.Model(&Ability{}).
+		Where("channel_id = ? AND enabled = ?", channel.Id, false).
+		Distinct().Pluck("model", &isolatedModels).Error; err != nil {
+		if isNewTx {
+			tx.Rollback()
+		}
+		return err
+	}
+	isolated := make(map[string]struct{}, len(isolatedModels))
+	for _, model := range isolatedModels {
+		isolated[model] = struct{}{}
+	}
 
 	// First delete all abilities of this channel
 	err := tx.Where("channel_id = ?", channel.Id).Delete(&Ability{}).Error
@@ -189,11 +208,15 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 				continue
 			}
 			abilitySet[key] = struct{}{}
+			enabled := channel.Status == common.ChannelStatusEnabled
+			if _, wasIsolated := isolated[model]; wasIsolated {
+				enabled = false
+			}
 			ability := Ability{
 				Group:     group,
 				Model:     model,
 				ChannelId: channel.Id,
-				Enabled:   channel.Status == common.ChannelStatusEnabled,
+				Enabled:   enabled,
 				Tag:       channel.Tag,
 			}
 			abilities = append(abilities, ability)
@@ -215,8 +238,8 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 	// The ability rows were rebuilt from the channel's current model list, so any
 	// isolation row for a model that is no longer declared is unreachable by the
 	// selectors and would only survive as a ghost row. Models that survived the
-	// edit keep their isolation state. EditChannelByTag reaches this through the
-	// same call, so it needs no separate wiring.
+	// edit keep their isolation state (preserved above). EditChannelByTag reaches
+	// this through the same call, so it needs no separate wiring.
 	if err = deleteRouteHealthNotInModelsWithTx(tx, channel.Id, models_); err != nil {
 		if isNewTx {
 			tx.Rollback()
@@ -227,7 +250,7 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 	// The ability set is the pressure denominator, so a rebuilt model list must
 	// refresh it; otherwise a model that gained or lost channels keeps stale
 	// availability and the three-tier thresholds fire on the wrong ratio.
-	pressureRecomputeTotals()
+	pressureRecomputeTotals(tx)
 
 	// 如果是新创建的事务，需要提交
 	if isNewTx {
@@ -235,6 +258,22 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 	}
 
 	return nil
+}
+
+// RebuildChannelRouting rewrites one channel's ability rows and resyncs its
+// route rows under a single MutateGatewayRouting revision. Callers that changed
+// a channel's model list outside the channel CRUD path — the upstream model
+// sync is the one in tree — must use this instead of UpdateAbilities alone:
+// abilities without a route resync leave newly added models unroutable and
+// removed models still serving.
+func (channel *Channel) RebuildChannelRouting() error {
+	_, err := MutateGatewayRouting(func(tx *gorm.DB) error {
+		if err := channel.UpdateAbilities(tx); err != nil {
+			return err
+		}
+		return SyncChannelModelRoutesWithTx(tx, channel.Id)
+	})
+	return err
 }
 
 func UpdateAbilityStatus(channelId int, status bool) error {
@@ -268,9 +307,11 @@ func updateAbilityStatusByModelWithTx(tx *gorm.DB, channelID int, modelName stri
 	return tx.Model(&Ability{}).Where("channel_id = ? AND model = ?", channelID, modelName).Select("enabled").Update("enabled", status).Error
 }
 
-// DisableChannelModel flips the enabled status of every ability row matching
-// the given channel_id and model_name inside one MutateGatewayRouting revision,
-// so the ability write and the gateway routing revision bump commit atomically.
+// DisableChannelModel isolates one model on one channel: every ability row
+// matching the channel_id and model_name flips to enabled=false inside one
+// MutateGatewayRouting revision, and SyncChannelModelRoutesWithTx derives the
+// matching route rows to enabled=false in the same transaction, so the model
+// disappears from the marketplace AND stops receiving traffic together.
 // A single disabled model on an otherwise healthy channel should not cost the
 // channel its other models; this helper spans ALL groups deliberately.
 // Returns an error if modelName is empty, as there is nothing specific to disable.
@@ -344,50 +385,39 @@ func FixAbility() (int, int, error) {
 	}
 	defer fixLock.Unlock()
 
-	// truncate abilities table
-	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
-		err := dbx.DB.Exec("DELETE FROM abilities").Error
-		if err != nil {
+	// The rebuild is route-visible work, so it commits through
+	// MutateGatewayRouting like every other mutation: one transaction, one
+	// gateway routing revision bump. A failure rolls the whole repair back
+	// instead of leaving a half-rebuilt ability set behind. MySQL TRUNCATE
+	// would implicitly commit the transaction, so the clear is a plain DELETE
+	// on every dialect.
+	var successCount, failCount int
+	_, err := MutateGatewayRouting(func(tx *gorm.DB) error {
+		if err := tx.Exec("DELETE FROM abilities").Error; err != nil {
 			common.SysLog(fmt.Sprintf("Delete abilities failed: %s", err.Error()))
-			return 0, 0, err
+			return err
 		}
-	} else {
-		err := dbx.DB.Exec("TRUNCATE TABLE abilities").Error
-		if err != nil {
-			common.SysLog(fmt.Sprintf("Truncate abilities failed: %s", err.Error()))
-			return 0, 0, err
+		var channels []*Channel
+		if err := tx.Model(&Channel{}).Find(&channels).Error; err != nil {
+			return err
 		}
-	}
-	var channels []*Channel
-	// Find all channels
-	err := dbx.DB.Model(&Channel{}).Find(&channels).Error
-	if err != nil {
-		return 0, 0, err
-	}
-	if len(channels) == 0 {
-		return 0, 0, nil
-	}
-	successCount := 0
-	failCount := 0
-	for _, chunk := range lo.Chunk(channels, 50) {
-		ids := lo.Map(chunk, func(c *Channel, _ int) int { return c.Id })
-		// Delete all abilities of this channel
-		err = dbx.DB.Where("channel_id IN ?", ids).Delete(&Ability{}).Error
-		if err != nil {
-			common.SysLog(fmt.Sprintf("Delete abilities failed: %s", err.Error()))
-			failCount += len(chunk)
-			continue
-		}
-		// Then add new abilities
-		for _, channel := range chunk {
-			err = channel.AddAbilities(nil)
-			if err != nil {
+		for _, channel := range channels {
+			if err := channel.AddAbilities(tx); err != nil {
 				common.SysLog(fmt.Sprintf("Add abilities for channel %d failed: %s", channel.Id, err.Error()))
 				failCount++
-			} else {
-				successCount++
+				continue
 			}
+			if err := SyncChannelModelRoutesWithTx(tx, channel.Id); err != nil {
+				common.SysLog(fmt.Sprintf("Resync routes for channel %d failed: %s", channel.Id, err.Error()))
+				failCount++
+				continue
+			}
+			successCount++
 		}
+		return nil
+	})
+	if err != nil {
+		return 0, 0, err
 	}
 	InitChannelCache()
 	return successCount, failCount, nil

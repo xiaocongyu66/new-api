@@ -194,7 +194,70 @@ func SyncChannelModelRoutesWithTx(tx *gorm.DB, channelID int) error {
 			}
 		}
 	}
+	// Route candidacy must agree with the ability table: a model disabled at
+	// ability level (e.g. DisableChannelModel after repeated cooldowns) must not
+	// keep serving through a route row that still says enabled. Deriving here
+	// covers every sync caller — channel save, tag edit, upstream model sync,
+	// status flips — without each having to remember the rule.
+	if err := deriveRouteEnabledFromAbilities(tx, channelID); err != nil {
+		return err
+	}
 	return nil
+}
+
+// deriveRouteEnabledFromAbilities sets channel_model_routes.enabled to match
+// the ability rows of the same (channel, model) pair, across all groups: any
+// enabled ability row makes the model routable, an all-disabled model stops
+// serving, and an alias with no ability row at all stops serving too — it has
+// no source that could sell it. A channel with NO ability rows whatsoever is
+// the startup route seed on a database whose abilities have not been rebuilt
+// yet: there is nothing to derive from, so the seeded rows stand.
+//
+// Ability rows keep the raw model spelling from the channel's comma-separated
+// list while route rows carry the trimmed alias (see ExpandChannelModelRoutes),
+// so the model names are trimmed here before they are compared.
+func deriveRouteEnabledFromAbilities(tx *gorm.DB, channelID int) error {
+	var rows []Ability
+	if err := tx.Where("channel_id = ?", channelID).Find(&rows).Error; err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	modelEnabled := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		model := strings.TrimSpace(row.Model)
+		if row.Enabled {
+			modelEnabled[model] = true
+		} else if _, seen := modelEnabled[model]; !seen {
+			modelEnabled[model] = false
+		}
+	}
+	// Two statements instead of one per model: the alias sets are disjoint, so a
+	// channel carrying a hundred models still costs a constant number of writes.
+	enabledModels := make([]string, 0, len(modelEnabled))
+	for model, enabled := range modelEnabled {
+		if enabled {
+			enabledModels = append(enabledModels, model)
+		}
+	}
+	if len(enabledModels) == 0 {
+		// Nothing on this channel may serve: no enabled ability row exists.
+		return tx.Model(&ChannelModelRoute{}).
+			Where("channel_id = ?", channelID).
+			Update("enabled", false).Error
+	}
+	if err := tx.Model(&ChannelModelRoute{}).
+		Where("channel_id = ? AND public_model_alias IN ?", channelID, enabledModels).
+		Update("enabled", true).Error; err != nil {
+		return err
+	}
+	// Everything else on this channel — models whose abilities are all disabled
+	// plus aliases with no ability row left behind by an ability-only rebuild —
+	// must stop serving.
+	return tx.Model(&ChannelModelRoute{}).
+		Where("channel_id = ? AND public_model_alias NOT IN ?", channelID, enabledModels).
+		Update("enabled", false).Error
 }
 
 // DeleteChannelModelRoutesByChannelIDsWithTx deletes all route rows for the given channel IDs in a transaction.
