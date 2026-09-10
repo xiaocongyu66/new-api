@@ -369,58 +369,39 @@ func FixAbility() (int, int, error) {
 	}
 	defer fixLock.Unlock()
 
-	// truncate abilities table
-	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
-		err := dbx.DB.Exec("DELETE FROM abilities").Error
-		if err != nil {
+	// The rebuild is route-visible work, so it commits through
+	// MutateGatewayRouting like every other mutation: one transaction, one
+	// gateway routing revision bump. A failure rolls the whole repair back
+	// instead of leaving a half-rebuilt ability set behind. MySQL TRUNCATE
+	// would implicitly commit the transaction, so the clear is a plain DELETE
+	// on every dialect.
+	var successCount, failCount int
+	_, err := MutateGatewayRouting(func(tx *gorm.DB) error {
+		if err := tx.Exec("DELETE FROM abilities").Error; err != nil {
 			common.SysLog(fmt.Sprintf("Delete abilities failed: %s", err.Error()))
-			return 0, 0, err
+			return err
 		}
-	} else {
-		err := dbx.DB.Exec("TRUNCATE TABLE abilities").Error
-		if err != nil {
-			common.SysLog(fmt.Sprintf("Truncate abilities failed: %s", err.Error()))
-			return 0, 0, err
+		var channels []*Channel
+		if err := tx.Model(&Channel{}).Find(&channels).Error; err != nil {
+			return err
 		}
-	}
-	var channels []*Channel
-	// Find all channels
-	err := dbx.DB.Model(&Channel{}).Find(&channels).Error
-	if err != nil {
-		return 0, 0, err
-	}
-	if len(channels) == 0 {
-		return 0, 0, nil
-	}
-	successCount := 0
-	failCount := 0
-	for _, chunk := range lo.Chunk(channels, 50) {
-		ids := lo.Map(chunk, func(c *Channel, _ int) int { return c.Id })
-		// Delete all abilities of this channel
-		err = dbx.DB.Where("channel_id IN ?", ids).Delete(&Ability{}).Error
-		if err != nil {
-			common.SysLog(fmt.Sprintf("Delete abilities failed: %s", err.Error()))
-			failCount += len(chunk)
-			continue
-		}
-		// Then add new abilities and re-derive route rows from them: without
-		// the sync, route rows disabled by a previous model isolation stay
-		// disabled while the rebuilt abilities are enabled again, leaving the
-		// model marketplace-visible but unroutable.
-		for _, channel := range chunk {
-			err = channel.AddAbilities(nil)
-			if err != nil {
+		for _, channel := range channels {
+			if err := channel.AddAbilities(tx); err != nil {
 				common.SysLog(fmt.Sprintf("Add abilities for channel %d failed: %s", channel.Id, err.Error()))
 				failCount++
 				continue
 			}
-			if err := SyncChannelModelRoutesWithTx(dbx.DB, channel.Id); err != nil {
+			if err := SyncChannelModelRoutesWithTx(tx, channel.Id); err != nil {
 				common.SysLog(fmt.Sprintf("Resync routes for channel %d failed: %s", channel.Id, err.Error()))
 				failCount++
 				continue
 			}
 			successCount++
 		}
+		return nil
+	})
+	if err != nil {
+		return 0, 0, err
 	}
 	InitChannelCache()
 	return successCount, failCount, nil
