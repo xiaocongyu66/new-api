@@ -283,10 +283,6 @@ func IsGeminiModelSupportImagine(model string) bool {
 	return false
 }
 
-func GetQwenSettings() *QwenSettings {
-	return &qwenSettings
-}
-
 func ShouldPreserveThinkingSuffix(modelName string) bool {
 	target := strings.TrimSpace(modelName)
 	if target == "" {

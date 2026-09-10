@@ -205,10 +205,6 @@ func RefreshUserGroupCache(userId int) error {
 	return fmt.Errorf("user group changed repeatedly during cache refresh")
 }
 
-func updateUserEmailCache(userId int, email string) error {
-	return updateUserCacheField(userId, "Email", email)
-}
-
 func updateUserNameCache(userId int, username string) error {
 	return updateUserCacheField(userId, "Username", username)
 }

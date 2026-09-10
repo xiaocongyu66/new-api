@@ -63,13 +63,13 @@ func TestPurchaseSubscriptionWithWallet_Scenarios(t *testing.T) {
 
 	// Plan 1: Free (mode none)
 	planFree := &billing.SubscriptionPlan{
-		Title:        "Free Plan",
-		Enabled:      true,
-		PayMode:      billing.SubscriptionPayModeNone,
-		PriceAmount:  0,
-		SporeAmount:  0,
-		TotalAmount:  100000,
-		DurationUnit: "month",
+		Title:         "Free Plan",
+		Enabled:       true,
+		PayMode:       billing.SubscriptionPayModeNone,
+		PriceAmount:   0,
+		SporeAmount:   0,
+		TotalAmount:   100000,
+		DurationUnit:  "month",
 		DurationValue: 1,
 	}
 	require.NoError(t, dbx.DB.Create(planFree).Error)
@@ -83,13 +83,13 @@ func TestPurchaseSubscriptionWithWallet_Scenarios(t *testing.T) {
 
 	// Plan 2: Spore only (costs 1.5 spore = 15 units)
 	planSpore := &billing.SubscriptionPlan{
-		Title:        "Spore Plan",
-		Enabled:      true,
-		PayMode:      billing.SubscriptionPayModeSpore,
-		PriceAmount:  0,
-		SporeAmount:  15,
-		TotalAmount:  100000,
-		DurationUnit: "month",
+		Title:         "Spore Plan",
+		Enabled:       true,
+		PayMode:       billing.SubscriptionPayModeSpore,
+		PriceAmount:   0,
+		SporeAmount:   15,
+		TotalAmount:   100000,
+		DurationUnit:  "month",
 		DurationValue: 1,
 	}
 	require.NoError(t, dbx.DB.Create(planSpore).Error)
@@ -103,12 +103,12 @@ func TestPurchaseSubscriptionWithWallet_Scenarios(t *testing.T) {
 
 	// Plan 3: Insufficient spore fails atomically
 	planExpensiveSpore := &billing.SubscriptionPlan{
-		Title:        "Expensive Spore Plan",
-		Enabled:      true,
-		PayMode:      billing.SubscriptionPayModeSpore,
-		SporeAmount:  50, // user only has 15
-		TotalAmount:  100000,
-		DurationUnit: "month",
+		Title:         "Expensive Spore Plan",
+		Enabled:       true,
+		PayMode:       billing.SubscriptionPayModeSpore,
+		SporeAmount:   50, // user only has 15
+		TotalAmount:   100000,
+		DurationUnit:  "month",
 		DurationValue: 1,
 	}
 	require.NoError(t, dbx.DB.Create(planExpensiveSpore).Error)
@@ -117,13 +117,13 @@ func TestPurchaseSubscriptionWithWallet_Scenarios(t *testing.T) {
 
 	// Plan 4: Either balance or spore (balance = $1 = 500000 quota, spore = 1.0 = 10 units)
 	planEither := &billing.SubscriptionPlan{
-		Title:        "Either Plan",
-		Enabled:      true,
-		PayMode:      billing.SubscriptionPayModeEither,
-		PriceAmount:  1.0,
-		SporeAmount:  10,
-		TotalAmount:  100000,
-		DurationUnit: "month",
+		Title:         "Either Plan",
+		Enabled:       true,
+		PayMode:       billing.SubscriptionPayModeEither,
+		PriceAmount:   1.0,
+		SporeAmount:   10,
+		TotalAmount:   100000,
+		DurationUnit:  "month",
 		DurationValue: 1,
 	}
 	require.NoError(t, dbx.DB.Create(planEither).Error)
@@ -132,7 +132,7 @@ func TestPurchaseSubscriptionWithWallet_Scenarios(t *testing.T) {
 	require.NoError(t, billing.PurchaseSubscriptionWithWallet(user.Id, planEither.Id, billing.SubscriptionPayModeSpore))
 	refreshed, err = identity.GetUserById(user.Id, false)
 	require.NoError(t, err)
-	assert.Equal(t, int64(5), refreshed.Spore)  // 15 - 10 = 5
+	assert.Equal(t, int64(5), refreshed.Spore) // 15 - 10 = 5
 	assert.Equal(t, 1000000, refreshed.Quota)  // quota untouched
 
 	// User purchases again choosing balance payment
@@ -140,5 +140,5 @@ func TestPurchaseSubscriptionWithWallet_Scenarios(t *testing.T) {
 	refreshed, err = identity.GetUserById(user.Id, false)
 	require.NoError(t, err)
 	assert.Equal(t, int64(5), refreshed.Spore) // spore untouched
-	assert.Equal(t, 500000, refreshed.Quota)  // 1000000 - 500000 = 500000
+	assert.Equal(t, 500000, refreshed.Quota)   // 1000000 - 500000 = 500000
 }

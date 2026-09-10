@@ -217,6 +217,7 @@ func TestAdminOpenIDsParsing(t *testing.T) {
 		assert.Equal(t, tc.expected, got, fmt.Sprintf("input: %q", tc.input))
 	}
 }
+
 // ─── New tests for gap coverage ──────────────────────────────────────────────
 
 // TestNewParseTargetUserWithNestedQuotes tests XML with escaped quote inside value.

@@ -292,12 +292,3 @@ func contains(slice []string, item string) bool {
 	}
 	return false
 }
-
-func containsInt(slice []int, item int) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
-}

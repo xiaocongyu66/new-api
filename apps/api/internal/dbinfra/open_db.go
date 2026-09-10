@@ -222,8 +222,6 @@ func migrateDB() error {
 	return dbx.DropLegacySchedulingColumns()
 }
 
-
-
 func migrateLOGDB() error {
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		return migrateClickHouseLogDB()

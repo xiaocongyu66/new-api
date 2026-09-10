@@ -1,8 +1,8 @@
 package ops
 
 import (
-	"encoding/json"
 	channel "github.com/QuantumNous/new-api/internal/catalog"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/identity"
 	"sort"
@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
-	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
@@ -48,7 +47,7 @@ func enrichModels(models []*channel.Model) {
 			mm := models[idx]
 			if mm.Endpoints == "" {
 				eps := channel.GetModelSupportEndpointTypes(mm.ModelName)
-				if b, err := json.Marshal(eps); err == nil {
+				if b, err := common.Marshal(eps); err == nil {
 					mm.Endpoints = string(b)
 				}
 			}
@@ -138,7 +137,7 @@ func enrichModels(models []*channel.Model) {
 			for et := range es {
 				eps = append(eps, et)
 			}
-			if b, err := json.Marshal(eps); err == nil {
+			if b, err := common.Marshal(eps); err == nil {
 				mm.Endpoints = string(b)
 			}
 		}

@@ -1,7 +1,7 @@
 package ali
 
 import (
-	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
@@ -40,7 +40,7 @@ func RerankHandler(c contract.Context, resp *http.Response, info *relaycommon.Re
 	egress.CloseResponseBodyGracefully(resp)
 
 	var aliResponse AliRerankResponse
-	err = json.Unmarshal(responseBody, &aliResponse)
+	err = common.Unmarshal(responseBody, &aliResponse)
 	if err != nil {
 		return types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError), nil
 	}
@@ -64,7 +64,7 @@ func RerankHandler(c contract.Context, resp *http.Response, info *relaycommon.Re
 		Usage:   usage,
 	}
 
-	jsonResponse, err := json.Marshal(rerankResponse)
+	jsonResponse, err := common.Marshal(rerankResponse)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil
 	}

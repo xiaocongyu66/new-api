@@ -4,10 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common"
 	"net/http"
 	"strings"
-
-	"github.com/QuantumNous/new-api/internal/common"
 )
 
 // WorkerRequest Worker请求的数据结构

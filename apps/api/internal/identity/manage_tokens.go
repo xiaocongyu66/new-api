@@ -186,27 +186,6 @@ func GetTokenKey(c contract.Context) {
 	})
 }
 
-func GetTokenStatus(c contract.Context) {
-	tokenId := c.GetInt("token_id")
-	userId := c.GetInt("id")
-	token, err := GetTokenByIds(tokenId, userId)
-	if err != nil {
-		common.CtxApiError(c, err)
-		return
-	}
-	expiredAt := token.ExpiredTime
-	if expiredAt == -1 {
-		expiredAt = 0
-	}
-	_ = c.JSON(http.StatusOK, common.H{
-		"object":          "credit_summary",
-		"total_granted":   token.RemainQuota,
-		"total_used":      0, // not supported currently
-		"total_available": token.RemainQuota,
-		"expires_at":      expiredAt * 1000,
-	})
-}
-
 func GetTokenUsage(c contract.Context) {
 	authHeader := c.Header("Authorization")
 	if authHeader == "" {

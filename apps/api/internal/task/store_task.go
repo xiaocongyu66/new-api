@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"database/sql/driver"
 	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	commonRelay "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -68,11 +68,6 @@ type Task struct {
 	// 禁止返回给用户，内部可能包含key等隐私信息
 	PrivateData TaskPrivateData `json:"-" gorm:"column:private_data;type:json"`
 	Data        json.RawMessage `json:"data" gorm:"type:json"`
-}
-
-func (t *Task) SetData(data any) {
-	b, _ := common.Marshal(data)
-	t.Data = json.RawMessage(b)
 }
 
 func (t *Task) GetData(v any) error {

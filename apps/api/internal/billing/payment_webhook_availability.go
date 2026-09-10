@@ -17,10 +17,6 @@ func isStripeTopUpEnabled() bool {
 		strings.TrimSpace(StripePriceId) != ""
 }
 
-func isStripeWebhookConfigured() bool {
-	return strings.TrimSpace(StripeWebhookSecret) != ""
-}
-
 func isStripeWebhookEnabled() bool {
 	return isStripeTopUpEnabled()
 }
@@ -79,10 +75,6 @@ func isWaffoPancakeTopUpEnabled() bool {
 	return strings.TrimSpace(WaffoPancakeMerchantID) != "" &&
 		strings.TrimSpace(WaffoPancakePrivateKey) != "" &&
 		strings.TrimSpace(WaffoPancakeProductID) != ""
-}
-
-func isWaffoPancakeWebhookConfigured() bool {
-	return isWaffoPancakeTopUpEnabled()
 }
 
 func isWaffoPancakeWebhookEnabled() bool {

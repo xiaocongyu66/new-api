@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"strings"
 
-	"encoding/json"
 	"errors"
 	"github.com/QuantumNous/new-api/internal/billing"
 	model_setting "github.com/QuantumNous/new-api/internal/catalog"
@@ -313,7 +312,7 @@ func ModelMappedHelper(c contract.Context, info *relaycommon.RelayInfo, request 
 	modelMapping := c.GetString("model_mapping")
 	if modelMapping != "" && modelMapping != "{}" {
 		modelMap := make(map[string]string)
-		if err := json.Unmarshal([]byte(modelMapping), &modelMap); err != nil {
+		if err := common.Unmarshal([]byte(modelMapping), &modelMap); err != nil {
 			return fmt.Errorf("unmarshal_model_mapping_failed")
 		}
 		currentModel := mappingModelName

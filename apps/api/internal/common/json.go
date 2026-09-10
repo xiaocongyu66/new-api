@@ -22,6 +22,24 @@ func Marshal(v any) ([]byte, error) {
 	return json.Marshal(v)
 }
 
+// MarshalIndent is the pretty-printing counterpart of Marshal. It exists so
+// code that renders JSON for humans (config dumps, debug payloads) still routes
+// through this package instead of importing encoding/json directly.
+func MarshalIndent(v any, prefix, indent string) ([]byte, error) {
+	return json.MarshalIndent(v, prefix, indent)
+}
+
+// ValidJson reports whether data is well-formed JSON. Named to avoid colliding
+// with the validator helpers in this package.
+func ValidJson(data []byte) bool {
+	return json.Valid(data)
+}
+
+// EncodeJson writes v as JSON through a fresh encoder on w.
+func EncodeJson(w io.Writer, v any) error {
+	return json.NewEncoder(w).Encode(v)
+}
+
 func GetJsonType(data json.RawMessage) string {
 	trimmed := bytes.TrimSpace(data)
 	if len(trimmed) == 0 {

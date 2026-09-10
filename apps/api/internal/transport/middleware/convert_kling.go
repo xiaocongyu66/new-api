@@ -1,10 +1,9 @@
 package middleware
 
 import (
-	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 
-	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 )
 
@@ -29,7 +28,7 @@ func KlingRequestConvert() func(c contract.Context) {
 			"metadata": originalReq,
 		}
 
-		jsonData, err := json.Marshal(unifiedReq)
+		jsonData, err := common.Marshal(unifiedReq)
 		if err != nil {
 			c.Next()
 			return

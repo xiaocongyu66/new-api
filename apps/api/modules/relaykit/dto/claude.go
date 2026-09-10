@@ -83,11 +83,6 @@ func (c *ClaudeMediaMessage) GetStringContent() string {
 	return ""
 }
 
-func (c *ClaudeMediaMessage) GetJsonRowString() string {
-	jsonContent, _ := kitutil.Marshal(c)
-	return string(jsonContent)
-}
-
 func (c *ClaudeMediaMessage) SetContent(content any) {
 	c.Content = content
 }
@@ -583,16 +578,6 @@ func (u *ClaudeUsage) GetCacheCreation1hTokens() int {
 		return 0
 	}
 	return u.CacheCreation.Ephemeral1hInputTokens
-}
-
-func (u *ClaudeUsage) GetCacheCreationTotalTokens() int {
-	if u == nil {
-		return 0
-	}
-	if u.CacheCreationInputTokens > 0 {
-		return u.CacheCreationInputTokens
-	}
-	return u.GetCacheCreation5mTokens() + u.GetCacheCreation1hTokens()
 }
 
 type ClaudeServerToolUse struct {

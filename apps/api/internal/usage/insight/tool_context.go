@@ -115,4 +115,3 @@ func stripToolCallArguments(raw string) string {
 	}
 	return out
 }
-

@@ -3,11 +3,11 @@ package aws
 import (
 	"context"
 	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/common"
 	"io"
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 )
@@ -45,7 +45,7 @@ func formatRequest(requestBody io.Reader, requestHeader http.Header) (*AwsClaude
 		var tempArray []string
 		tempArray = strings.Split(anthropicBetaValues, ",")
 		if len(tempArray) > 0 {
-			betaJson, err := json.Marshal(tempArray)
+			betaJson, err := common.Marshal(tempArray)
 			if err != nil {
 				return nil, err
 			}

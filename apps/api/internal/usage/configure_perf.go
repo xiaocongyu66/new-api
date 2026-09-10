@@ -1,8 +1,8 @@
 package usage
 
 import (
-	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/settings"
 	"net/url"
 	"regexp"
@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 	"unicode/utf16"
-
-	"github.com/QuantumNous/new-api/internal/common"
 )
 
 var Chats = []map[string]string{
@@ -49,11 +47,11 @@ var Chats = []map[string]string{
 
 func UpdateChatsByJsonString(jsonString string) error {
 	Chats = make([]map[string]string, 0)
-	return json.Unmarshal([]byte(jsonString), &Chats)
+	return common.Unmarshal([]byte(jsonString), &Chats)
 }
 
 func Chats2JsonString() string {
-	jsonBytes, err := json.Marshal(Chats)
+	jsonBytes, err := common.Marshal(Chats)
 	if err != nil {
 		common.SysLog("error marshalling chats: " + err.Error())
 		return "[]"

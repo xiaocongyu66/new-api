@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/billing"
 	channelpkg "github.com/QuantumNous/new-api/internal/catalog"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/gateway"
 	"github.com/QuantumNous/new-api/internal/identity"
@@ -24,7 +25,6 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
-	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/ops"
 	"github.com/QuantumNous/new-api/internal/relay"

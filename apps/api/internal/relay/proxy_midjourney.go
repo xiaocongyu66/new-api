@@ -2,8 +2,8 @@ package relay
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/egress"
 	taskdomain "github.com/QuantumNous/new-api/internal/task"
 	usagedomain "github.com/QuantumNous/new-api/internal/usage"
@@ -15,7 +15,6 @@ import (
 	"time"
 
 	catalog "github.com/QuantumNous/new-api/internal/catalog"
-	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/QuantumNous/new-api/internal/dto"
@@ -131,7 +130,7 @@ func RelayMidjourneyNotify(c contract.Context) *dto.MidjourneyResponse {
 	midjourneyTask.FinishTime = midjRequest.FinishTime
 	midjourneyTask.ImageUrl = midjRequest.ImageUrl
 	midjourneyTask.VideoUrl = midjRequest.VideoUrl
-	videoUrlsStr, _ := json.Marshal(midjRequest.VideoUrls)
+	videoUrlsStr, _ := common.Marshal(midjRequest.VideoUrls)
 	midjourneyTask.VideoUrls = string(videoUrlsStr)
 	midjourneyTask.Status = midjRequest.Status
 	midjourneyTask.FailReason = midjRequest.FailReason
@@ -173,21 +172,21 @@ func coverMidjourneyTaskDto(c contract.Context, originTask *taskdomain.Midjourne
 	midjourneyTask.Prompt = originTask.Prompt
 	if originTask.Buttons != "" {
 		var buttons []dto.ActionButton
-		err := json.Unmarshal([]byte(originTask.Buttons), &buttons)
+		err := common.Unmarshal([]byte(originTask.Buttons), &buttons)
 		if err == nil {
 			midjourneyTask.Buttons = buttons
 		}
 	}
 	if originTask.VideoUrls != "" {
 		var videoUrls []dto.ImgUrls
-		err := json.Unmarshal([]byte(originTask.VideoUrls), &videoUrls)
+		err := common.Unmarshal([]byte(originTask.VideoUrls), &videoUrls)
 		if err == nil {
 			midjourneyTask.VideoUrls = videoUrls
 		}
 	}
 	if originTask.Properties != "" {
 		var properties dto.Properties
-		err := json.Unmarshal([]byte(originTask.Properties), &properties)
+		err := common.Unmarshal([]byte(originTask.Properties), &properties)
 		if err == nil {
 			midjourneyTask.Properties = &properties
 		}
@@ -297,7 +296,7 @@ func RelaySwapFace(c contract.Context, info *relaycommon.RelayInfo) *dto.Midjour
 		return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "no_response_writer")
 	}
 	stream.WriteHeader(mjResp.StatusCode)
-	respBody, err := json.Marshal(midjResponse)
+	respBody, err := common.Marshal(midjResponse)
 	if err != nil {
 		return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "unmarshal_response_body_failed")
 	}
@@ -337,7 +336,7 @@ func RelayMidjourneyTaskImageSeed(c contract.Context) *dto.MidjourneyResponse {
 		return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "no_response_writer")
 	}
 	stream.WriteHeader(midjResponseWithStatus.StatusCode)
-	respBody, err := json.Marshal(midjResponse)
+	respBody, err := common.Marshal(midjResponse)
 	if err != nil {
 		return relaycommon.MidjourneyErrorWrapper(constant.MjRequestError, "unmarshal_response_body_failed")
 	}
@@ -360,7 +359,7 @@ func RelayMidjourneyTask(c contract.Context, relayMode int) *dto.MidjourneyRespo
 			}
 		}
 		midjourneyTask := coverMidjourneyTaskDto(c, originTask)
-		respBody, err = json.Marshal(midjourneyTask)
+		respBody, err = common.Marshal(midjourneyTask)
 		if err != nil {
 			return &dto.MidjourneyResponse{
 				Code:        4,
@@ -389,7 +388,7 @@ func RelayMidjourneyTask(c contract.Context, relayMode int) *dto.MidjourneyRespo
 		if tasks == nil {
 			tasks = make([]dto.MidjourneyDto, 0)
 		}
-		respBody, err = json.Marshal(tasks)
+		respBody, err = common.Marshal(tasks)
 		if err != nil {
 			return &dto.MidjourneyResponse{
 				Code:        4,

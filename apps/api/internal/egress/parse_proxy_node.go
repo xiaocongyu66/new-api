@@ -2,7 +2,6 @@ package egress
 
 import (
 	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -289,8 +288,4 @@ func decodeBase64(value string) ([]byte, error) {
 		}
 	}
 	return nil, errors.New("invalid base64")
-}
-
-func canonicalProxyNodeKey(raw string) string {
-	return hex.EncodeToString([]byte(strings.TrimSpace(raw)))
 }

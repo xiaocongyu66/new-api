@@ -218,10 +218,6 @@ func RequirePermission(permission policy.Permission) func(c contract.Context) {
 	}
 }
 
-func WssAuth(c contract.Context) {
-
-}
-
 // TokenOrUserAuth allows either session-based user auth or API token auth.
 // Used for endpoints that need to be accessible from both the dashboard and API clients.
 func TokenOrUserAuth() func(c contract.Context) {

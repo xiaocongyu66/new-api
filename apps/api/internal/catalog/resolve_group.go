@@ -6,14 +6,13 @@ package channel
 // channel capability) can import them without import cycles.
 
 import (
-	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/common"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
-	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/settings"
@@ -41,7 +40,7 @@ func UserUsableGroups2JSONString() string {
 	userUsableGroupsMutex.RLock()
 	defer userUsableGroupsMutex.RUnlock()
 
-	jsonBytes, err := json.Marshal(userUsableGroups)
+	jsonBytes, err := common.Marshal(userUsableGroups)
 	if err != nil {
 		common.SysLog("error marshalling user groups: " + err.Error())
 	}
@@ -53,7 +52,7 @@ func UpdateUserUsableGroupsByJSONString(jsonStr string) error {
 	defer userUsableGroupsMutex.Unlock()
 
 	userUsableGroups = make(map[string]string)
-	return json.Unmarshal([]byte(jsonStr), &userUsableGroups)
+	return common.Unmarshal([]byte(jsonStr), &userUsableGroups)
 }
 
 func GetUsableGroupDescription(groupName string) string {

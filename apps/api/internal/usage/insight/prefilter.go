@@ -223,6 +223,7 @@ type prefilterScoreResult struct {
 //   - 英文闲聊：SignalScore 2-8, PunctDensity 1-3
 //   - 代码请求：SignalScore 15-80+, PunctDensity 5-30+
 //   - 角色扮演（SillyTavern）：SignalScore 4-12, PunctDensity 2-5
+//
 // 取门槛设在闲聊上限与代码下限之间
 const (
 	prefilterSignalThreshold = uint32(12) // SignalScore >= 此值才可疑
@@ -276,15 +277,14 @@ func prefilterScore(text string) prefilterScoreResult {
 		result.PunctDensity = uint16(uint32(punctCount) * 100 / uint32(asciiCount))
 	}
 
-
 	return result
 }
 
 // isSuspicious 判断文本是否需要进入第二阶段重审。
 // 三个条件任一成立即视为可疑：
-//   1. 命中至少 2 个不同信号词且总权重 >= 12
-//   2. 结构标点密度 >= 4（每 100 字符 4 个标点）
-//   3. 命中至少一个 high 权重信号（报错模板）
+//  1. 命中至少 2 个不同信号词且总权重 >= 12
+//  2. 结构标点密度 >= 4（每 100 字符 4 个标点）
+//  3. 命中至少一个 high 权重信号（报错模板）
 func isSuspicious(score prefilterScoreResult) bool {
 	if score.HasHighSignal {
 		return true

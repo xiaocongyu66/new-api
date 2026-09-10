@@ -1,7 +1,6 @@
 package common
 
 import (
-	"encoding/json"
 	"fmt"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"strconv"
@@ -36,7 +35,7 @@ func GetRandomString(length int) string {
 }
 
 func MapToJsonStr(m map[string]interface{}) string {
-	bytes, err := json.Marshal(m)
+	bytes, err := Marshal(m)
 	if err != nil {
 		return ""
 	}
@@ -54,7 +53,7 @@ func StrToMap(str string) (map[string]interface{}, error) {
 
 func IsJsonObject(str string) bool {
 	var js map[string]interface{}
-	return json.Unmarshal([]byte(str), &js) == nil
+	return Unmarshal([]byte(str), &js) == nil
 }
 
 func String2Int(str string) int {
@@ -85,7 +84,7 @@ func GetJsonString(data any) string {
 	if data == nil {
 		return ""
 	}
-	b, _ := json.Marshal(data)
+	b, _ := Marshal(data)
 	return string(b)
 }
 

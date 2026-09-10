@@ -6,8 +6,8 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/egress"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
@@ -21,8 +21,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-
-	"github.com/QuantumNous/new-api/internal/common"
 )
 
 // proxyMaskedSecret is the sentinel value substituted for sensitive fields in
@@ -595,7 +593,7 @@ func GenerateProxyConfig(c contract.Context) {
 		Route: proxyRouteConfig{Final: "proxy"},
 	}
 
-	jsonBytes, err := json.MarshalIndent(config, "", "  ")
+	jsonBytes, err := common.MarshalIndent(config, "", "  ")
 	if err != nil {
 		common.CtxApiErrorMsg(c, "failed to generate config")
 		return

@@ -2,7 +2,7 @@ package cloudflare
 
 import (
 	"bufio"
-	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
@@ -51,7 +51,7 @@ func cfStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http
 		}
 
 		var response dto.ChatCompletionsStreamResponse
-		err := json.Unmarshal([]byte(data), &response)
+		err := common.Unmarshal([]byte(data), &response)
 		if err != nil {
 			logger.LogError(c.Context(), "error_unmarshalling_stream_response: "+err.Error())
 			continue
@@ -97,7 +97,7 @@ func cfHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	}
 	egress.CloseResponseBodyGracefully(resp)
 	var response dto.TextResponse
-	err = json.Unmarshal(responseBody, &response)
+	err = common.Unmarshal(responseBody, &response)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil
 	}
@@ -109,7 +109,7 @@ func cfHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	usage := relaycommon.ResponseText2Usage(c, responseText, info.UpstreamModelName, info.GetEstimatePromptTokens())
 	response.Usage = *usage
 	response.Id = helper.GetResponseID(c)
-	jsonResponse, err := json.Marshal(response)
+	jsonResponse, err := common.Marshal(response)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil
 	}
@@ -125,7 +125,7 @@ func cfSTTHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Re
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil
 	}
 	egress.CloseResponseBodyGracefully(resp)
-	err = json.Unmarshal(responseBody, &cfResp)
+	err = common.Unmarshal(responseBody, &cfResp)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil
 	}
@@ -134,7 +134,7 @@ func cfSTTHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Re
 		Text: cfResp.Result.Text,
 	}
 
-	jsonResponse, err := json.Marshal(audioResp)
+	jsonResponse, err := common.Marshal(audioResp)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil
 	}

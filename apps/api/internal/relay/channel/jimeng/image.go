@@ -1,9 +1,9 @@
 package jimeng
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
@@ -58,7 +58,7 @@ func jimengImageHandler(c contract.Context, resp *http.Response, info *relaycomm
 	}
 	egress.CloseResponseBodyGracefully(resp)
 
-	err = json.Unmarshal(responseBody, &jimengResponse)
+	err = common.Unmarshal(responseBody, &jimengResponse)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
@@ -75,7 +75,7 @@ func jimengImageHandler(c contract.Context, resp *http.Response, info *relaycomm
 
 	// Convert Jimeng response to OpenAI format
 	fullTextResponse := responseJimeng2OpenAIImage(c, &jimengResponse, info)
-	jsonResponse, err := json.Marshal(fullTextResponse)
+	jsonResponse, err := common.Marshal(fullTextResponse)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}

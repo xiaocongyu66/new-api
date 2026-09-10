@@ -1,12 +1,11 @@
 package palm
 
 import (
-	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
 
-	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/relay/helper"
@@ -65,7 +64,7 @@ func palmStreamHandler(c contract.Context, resp *http.Response) (*types.NewAPIEr
 		}
 		egress.CloseResponseBodyGracefully(resp)
 		var palmResponse PaLMChatResponse
-		err = json.Unmarshal(responseBody, &palmResponse)
+		err = common.Unmarshal(responseBody, &palmResponse)
 		if err != nil {
 			common.SysLog("error unmarshalling stream response: " + err.Error())
 			stopChan <- true
@@ -77,7 +76,7 @@ func palmStreamHandler(c contract.Context, resp *http.Response) (*types.NewAPIEr
 		if len(palmResponse.Candidates) > 0 {
 			responseText = palmResponse.Candidates[0].Content
 		}
-		jsonResponse, err := json.Marshal(fullTextResponse)
+		jsonResponse, err := common.Marshal(fullTextResponse)
 		if err != nil {
 			common.SysLog("error marshalling stream response: " + err.Error())
 			stopChan <- true
@@ -110,7 +109,7 @@ func palmHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Res
 	}
 	egress.CloseResponseBodyGracefully(resp)
 	var palmResponse PaLMChatResponse
-	err = json.Unmarshal(responseBody, &palmResponse)
+	err = common.Unmarshal(responseBody, &palmResponse)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}

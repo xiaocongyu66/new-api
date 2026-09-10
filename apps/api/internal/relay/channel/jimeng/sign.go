@@ -5,9 +5,9 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common"
 	"io"
 	"net/http"
 	"net/url"
@@ -41,7 +41,7 @@ import (
 const HexPayloadHashKey = "HexPayloadHash"
 
 func SetPayloadHash(c contract.Context, req any) error {
-	body, err := json.Marshal(req)
+	body, err := common.Marshal(req)
 	if err != nil {
 		return err
 	}
@@ -50,9 +50,6 @@ func SetPayloadHash(c contract.Context, req any) error {
 	hexPayloadHash := hex.EncodeToString(payloadHash[:])
 	c.Set(HexPayloadHashKey, hexPayloadHash)
 	return nil
-}
-func getPayloadHash(c contract.Context) string {
-	return c.GetString(HexPayloadHashKey)
 }
 
 func Sign(c contract.Context, req *http.Request, apiKey string) error {

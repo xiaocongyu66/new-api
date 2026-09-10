@@ -17,16 +17,8 @@ const (
 	DefaultPingInterval         = gateway.DefaultPingInterval
 )
 
-func getScannerBufferSize() int {
-	return gateway.GetScannerBufferSize()
-}
-
 func NewStreamScanner(reader io.Reader) *bufio.Scanner {
 	return gateway.NewStreamScanner(reader)
-}
-
-func copyCodexSSEHeaders(c contract.Context, resp *http.Response) {
-	gateway.CopyCodexSSEHeaders(c, resp)
 }
 
 func ExtendWriteDeadline(c contract.Context) {
@@ -35,10 +27,6 @@ func ExtendWriteDeadline(c contract.Context) {
 
 // StreamResult is an alias for gateway.StreamResult for backward compatibility.
 type StreamResult = gateway.StreamResult
-
-func newStreamResult(status *relaycommon.StreamStatus) *StreamResult {
-	return gateway.NewStreamResult(status)
-}
 
 // StreamScannerHandler is the core streaming engine used by all relay channels.
 // It forwards to gateway.StreamScannerHandler.

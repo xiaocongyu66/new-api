@@ -561,10 +561,6 @@ func calcSubscriptionBalanceQuota(priceAmount float64) (int, error) {
 	return common.QuotaFromDecimalStrict(quota)
 }
 
-func PurchaseSubscriptionWithBalance(userId int, planId int) error {
-	return PurchaseSubscriptionWithWallet(userId, planId, SubscriptionPayModeBalance)
-}
-
 func PurchaseSubscriptionWithWallet(userId int, planId int, payWith string) error {
 	if userId <= 0 || planId <= 0 {
 		return errors.New("invalid userId or planId")

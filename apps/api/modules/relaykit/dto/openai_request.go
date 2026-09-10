@@ -467,17 +467,6 @@ func (m *Message) GetReasoningContent() string {
 	return *m.Reasoning
 }
 
-func (m *Message) GetPrefix() bool {
-	if m.Prefix == nil {
-		return false
-	}
-	return *m.Prefix
-}
-
-func (m *Message) SetPrefix(prefix bool) {
-	m.Prefix = &prefix
-}
-
 func (m *Message) ParseToolCalls() []ToolCallRequest {
 	if m.ToolCalls == nil {
 		return nil

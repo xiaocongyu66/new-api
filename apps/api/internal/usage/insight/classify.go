@@ -299,7 +299,6 @@ func classifyUsage(text, raw string, hasTools bool, roleplayBoost int) (result u
 		return result
 	}
 
-
 	// 第二阶段：重审。快筛标记为可疑，运行完整结构分析 + 工具上下文保护
 	toolSpans := extractToolCallSpans(stripped)
 	structure := analyzeCodeStructureWithToolContext(stripped, toolSpans)
