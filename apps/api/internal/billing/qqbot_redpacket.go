@@ -362,7 +362,6 @@ func HandleRedPacketList(groupOpenID string) (string, *Keyboard) {
 			"**本群还没有红包**\n\n用 /红包 金额 份数 发一个吧"), redPacketMenuKeyboard()
 	}
 
-
 	symbol := currencySymbolOrEmpty()
 	var sb strings.Builder
 	sb.WriteString("**本群红包列表**\n\n")
