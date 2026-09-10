@@ -13,7 +13,3 @@ import (
 func abortWithOpenAiMessage(c contract.Context, statusCode int, message string, code ...types.ErrorCode) {
 	httperr.AbortWithOpenAiMessage(c, statusCode, message, code...)
 }
-
-func abortWithMidjourneyMessage(c contract.Context, statusCode int, code int, description string) {
-	httperr.AbortWithMidjourneyMessage(c, statusCode, code, description)
-}

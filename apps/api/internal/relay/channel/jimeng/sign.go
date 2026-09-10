@@ -51,9 +51,6 @@ func SetPayloadHash(c contract.Context, req any) error {
 	c.Set(HexPayloadHashKey, hexPayloadHash)
 	return nil
 }
-func getPayloadHash(c contract.Context) string {
-	return c.GetString(HexPayloadHashKey)
-}
 
 func Sign(c contract.Context, req *http.Request, apiKey string) error {
 	header := req.Header

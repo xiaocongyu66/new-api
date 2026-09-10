@@ -391,10 +391,3 @@ func CloseSingBoxDialer() {
 		d.Close()
 	}
 }
-
-func resetSingBoxDialerForTest() {
-	globalSingBoxDialer.mu.Lock()
-	globalSingBoxDialer.fingerprint = ""
-	globalSingBoxDialer.dialer = nil
-	globalSingBoxDialer.mu.Unlock()
-}

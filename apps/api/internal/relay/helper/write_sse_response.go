@@ -19,10 +19,6 @@ func FlushWriter(c contract.Context) (err error) {
 	return gateway.FlushWriter(c)
 }
 
-func requestContextDone(c contract.Context) bool {
-	return gateway.RequestContextDone(c)
-}
-
 func SetEventStreamHeaders(c contract.Context) {
 	gateway.SetEventStreamHeaders(c)
 }

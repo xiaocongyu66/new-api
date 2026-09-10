@@ -921,14 +921,6 @@ func (user *User) FillUserById() error {
 	return nil
 }
 
-func (user *User) FillUserByEmail() error {
-	if user.Email == "" {
-		return errors.New("email 为空！")
-	}
-	dbx.DB.Where(User{Email: user.Email}).First(user)
-	return nil
-}
-
 func (user *User) FillUserByGitHubId() error {
 	if user.GitHubId == "" {
 		return errors.New("GitHub id 为空！")

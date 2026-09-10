@@ -36,10 +36,6 @@ func GetCtxKeyBool(c contract.Context, key constant.ContextKey) bool {
 	return c.GetBool(string(key))
 }
 
-func GetCtxKeyStringMap(c contract.Context, key constant.ContextKey) map[string]any {
-	return c.GetStringMap(string(key))
-}
-
 func GetCtxKeyTime(c contract.Context, key constant.ContextKey) time.Time {
 	return c.GetTime(string(key))
 }

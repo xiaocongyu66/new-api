@@ -48,17 +48,6 @@ type localHealthManager struct {
 	states map[int]*ChannelHealthState
 }
 
-func (l *localHealthManager) getState(channelID int) *ChannelHealthState {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	state, ok := l.states[channelID]
-	if !ok {
-		state = &ChannelHealthState{EwmaScore: DefaultScore}
-		l.states[channelID] = state
-	}
-	return state
-}
-
 var channelHealthOnce sync.Once
 var channelHealth *ChannelHealthManager
 

@@ -330,10 +330,6 @@ func (channel *Channel) GetTag() string {
 	return *channel.Tag
 }
 
-func (channel *Channel) SetTag(tag string) {
-	channel.Tag = &tag
-}
-
 func (channel *Channel) GetAutoBan() bool {
 	if channel.AutoBan == nil {
 		return false

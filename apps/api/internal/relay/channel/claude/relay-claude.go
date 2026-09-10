@@ -18,10 +18,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
-func stopReasonClaude2OpenAI(reason string) string {
-	return relayconvert.StopReasonClaudeToOpenAI(reason)
-}
-
 func maybeMarkClaudeRefusal(c contract.Context, stopReason string) {
 	if c == nil {
 		return

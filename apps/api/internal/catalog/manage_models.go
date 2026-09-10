@@ -283,10 +283,6 @@ func IsGeminiModelSupportImagine(model string) bool {
 	return false
 }
 
-func GetQwenSettings() *QwenSettings {
-	return &qwenSettings
-}
-
 func ShouldPreserveThinkingSuffix(modelName string) bool {
 	target := strings.TrimSpace(modelName)
 	if target == "" {
@@ -467,6 +463,7 @@ func GetChannelModelHealthSetting() *ChannelModelHealthSetting {
 func RestoreChannelModelHealthSetting(s *ChannelModelHealthSetting) {
 	channelModelHealthSetting.Store(s)
 }
+
 
 // seedChannelModelHealthOptions returns the map for OnSeedCatalogOptions
 // chaining. It reads the live atomic config, not the struct defaults, so the

@@ -1,7 +1,6 @@
 package billing
 
 import (
-	"fmt"
 	"github.com/QuantumNous/new-api/internal/settings"
 	"net/http"
 
@@ -251,35 +250,4 @@ func GetPricingSyncData(base map[string]any) map[string]any {
 		extra[BillingExprField] = exprs
 	}
 	return lo.Assign(base, extra)
-}
-
-func smokeTestExpr(exprStr string) error {
-	vectors := []price_expression.TokenParams{
-		{P: 0, C: 0, Len: 0},
-		{P: 1000, C: 1000, Len: 1000},
-		{P: 100000, C: 100000, Len: 100000},
-		{P: 1000000, C: 1000000, Len: 1000000},
-	}
-	requests := []price_expression.RequestInput{
-		{},
-		{
-			Headers: map[string]string{
-				"anthropic-beta": "fast-mode-2026-02-01",
-			},
-			Body: []byte(`{"service_tier":"fast","stream_options":{"include_usage":true},"messages":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21]}`),
-		},
-	}
-
-	for _, v := range vectors {
-		for _, request := range requests {
-			result, _, err := price_expression.RunExprWithRequest(exprStr, v, request)
-			if err != nil {
-				return fmt.Errorf("vector {p=%g, c=%g}: run failed: %w", v.P, v.C, err)
-			}
-			if result < 0 {
-				return fmt.Errorf("vector {p=%g, c=%g}: result %f < 0", v.P, v.C, result)
-			}
-		}
-	}
-	return nil
 }

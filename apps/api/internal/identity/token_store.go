@@ -288,10 +288,6 @@ func (token *Token) Delete() (err error) {
 	return dbx.DB.Delete(token).Error
 }
 
-func (token *Token) IsModelLimitsEnabled() bool {
-	return token.ModelLimitsEnabled
-}
-
 func (token *Token) GetModelLimits() []string {
 	if token.ModelLimits == "" {
 		return []string{}

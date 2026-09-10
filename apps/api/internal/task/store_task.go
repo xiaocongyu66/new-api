@@ -70,11 +70,6 @@ type Task struct {
 	Data        json.RawMessage `json:"data" gorm:"type:json"`
 }
 
-func (t *Task) SetData(data any) {
-	b, _ := common.Marshal(data)
-	t.Data = json.RawMessage(b)
-}
-
 func (t *Task) GetData(v any) error {
 	return common.Unmarshal(t.Data, &v)
 }

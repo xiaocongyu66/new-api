@@ -12,10 +12,6 @@ import (
 
 const maxTokensLimit = math.MaxInt32 / 2
 
-func exceedsMaxTokensLimit(values ...*uint) bool {
-	return gateway.ExceedsMaxTokensLimit(values...)
-}
-
 func GetAndValidateRequest(c contract.Context, format types.RelayFormat) (request dto.Request, err error) {
 	return gateway.GetAndValidateRequest(c, format)
 }

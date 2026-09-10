@@ -83,11 +83,6 @@ func (c *ClaudeMediaMessage) GetStringContent() string {
 	return ""
 }
 
-func (c *ClaudeMediaMessage) GetJsonRowString() string {
-	jsonContent, _ := kitutil.Marshal(c)
-	return string(jsonContent)
-}
-
 func (c *ClaudeMediaMessage) SetContent(content any) {
 	c.Content = content
 }
@@ -509,14 +504,6 @@ func (c *ClaudeResponse) SetIndex(i int) {
 	c.Index = &i
 }
 
-// get index
-func (c *ClaudeResponse) GetIndex() int {
-	if c.Index == nil {
-		return 0
-	}
-	return *c.Index
-}
-
 // GetClaudeError 从动态错误类型中提取ClaudeError结构
 func (c *ClaudeResponse) GetClaudeError() *types.ClaudeError {
 	if c.Error == nil {
@@ -583,16 +570,6 @@ func (u *ClaudeUsage) GetCacheCreation1hTokens() int {
 		return 0
 	}
 	return u.CacheCreation.Ephemeral1hInputTokens
-}
-
-func (u *ClaudeUsage) GetCacheCreationTotalTokens() int {
-	if u == nil {
-		return 0
-	}
-	if u.CacheCreationInputTokens > 0 {
-		return u.CacheCreationInputTokens
-	}
-	return u.GetCacheCreation5mTokens() + u.GetCacheCreation1hTokens()
 }
 
 type ClaudeServerToolUse struct {
