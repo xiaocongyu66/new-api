@@ -295,7 +295,7 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 			}
 			if handle != nil {
 				routestats.RecordAttempt(requestId, relayInfo.RetryIndex, handle.Key(), routestats.AuditOutcomeSuccess,
-					c.Header("X-Request-Id"), common.GetCtxKeyString(c, constant.ContextKeyRoutePath))
+					c.Header("X-Request-Id"), common.GetCtxKeyString(c, constant.ContextKeyRoutePath), relayInfo.UsingGroup)
 			}
 			relayInfo.LastError = nil
 			winnerID, requestSucceeded = channel.Id, true
@@ -339,7 +339,7 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 			}
 			routestats.RecordAttempt(requestId, relayInfo.RetryIndex, handle.Key(),
 				routestats.AuditOutcomeFromRouteStats(int(classifyRouteStatsOutcome(newAPIError))),
-				c.Header("X-Request-Id"), common.GetCtxKeyString(c, constant.ContextKeyRoutePath))
+				c.Header("X-Request-Id"), common.GetCtxKeyString(c, constant.ContextKeyRoutePath), relayInfo.UsingGroup)
 		}
 
 		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
@@ -446,7 +446,7 @@ func getChannel(c contract.Context, info *relaycommon.RelayInfo, retryParam *cat
 				AutoBan: &autoBanInt,
 			}
 		}
-		route, routeErr := catalog.SelectedRouteFromChannel(channel, info.OriginModelName)
+		route, routeErr := catalog.SelectedRouteFromChannel(channel, info.OriginModelName, info.UsingGroup)
 		if routeErr != nil {
 			return nil, types.NewError(routeErr, types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 		}
@@ -748,7 +748,7 @@ func RelayTask(c contract.Context) {
 		var route *catalog.SelectedRoute
 		if lockedCh, ok := relayInfo.LockedChannel.(*catalog.Channel); ok && lockedCh != nil {
 			var err error
-			route, err = catalog.SelectedRouteFromChannel(lockedCh, relayInfo.OriginModelName)
+			route, err = catalog.SelectedRouteFromChannel(lockedCh, relayInfo.OriginModelName, relayInfo.UsingGroup)
 			if err != nil {
 				taskErr = taskdomain.TaskErrorWrapperLocal(err, "setup_locked_channel_failed", http.StatusInternalServerError)
 				break

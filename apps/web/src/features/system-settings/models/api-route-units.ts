@@ -26,7 +26,6 @@ export interface RouteUnitAliasSummary {
 
 export interface RouteUnitView {
   id: number
-  group: string
   public_model_alias: string
   channel_id: number
   channel_name: string

@@ -51,7 +51,6 @@ func newFixture(t *testing.T) (*RouteHandle, *fakeClock, *RouteStatsSetting) {
 	})
 
 	h := GetOrCreateHandle(RouteKey{
-		Group:            "default",
 		PublicModelAlias: t.Name(),
 		ChannelID:        1,
 		KeyIndex:         0,
@@ -377,7 +376,7 @@ func TestV1_10NilHandleIsNoOp(t *testing.T) {
 func TestV1_10SweepEvictsIdleEntries(t *testing.T) {
 	_, clock, cfg := newFixture(t)
 
-	h := GetOrCreateHandle(RouteKey{Group: "g", PublicModelAlias: "sweep-me", ChannelID: 9, KeyIndex: 0, UpstreamModel: "u"})
+	h := GetOrCreateHandle(RouteKey{PublicModelAlias: "sweep-me", ChannelID: 9, KeyIndex: 0, UpstreamModel: "u"})
 	h.ObserveSuccess(1.0)
 	entries, _ := Stats()
 	require.GreaterOrEqual(t, entries, 1)
@@ -486,7 +485,7 @@ func TestUnobservedComponentsDoNotDrift(t *testing.T) {
 	defer restore()
 	Reset()
 
-	h := GetOrCreateHandle(RouteKey{Group: "g", PublicModelAlias: "a", ChannelID: 1, UpstreamModel: "u"})
+	h := GetOrCreateHandle(RouteKey{PublicModelAlias: "a", ChannelID: 1, UpstreamModel: "u"})
 	h.ObserveSuccess(SuccessObservation)
 
 	for _, idle := range []int{1, 60, 600, 3600} {

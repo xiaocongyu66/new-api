@@ -83,7 +83,6 @@ func createChannelSelectAutoGroupsChannel(t *testing.T, db *gorm.DB, id int, gro
 	// to exist: InitChannelCache builds group2alias2routes from this table, and a
 	// channel without one is invisible to the pool no matter what its ability says.
 	require.NoError(t, db.Create(&ChannelModelRoute{
-		Group:            group,
 		PublicModelAlias: modelName,
 		ChannelId:        id,
 		KeyIndex:         0,

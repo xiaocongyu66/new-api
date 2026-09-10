@@ -19,13 +19,13 @@ func withRouteUnitFixture(t *testing.T, channels []*Channel, group, alias string
 
 	prevGroups := group2model2channels
 	prevIDM := channelsIDM
-	prevAliasRoutes := group2alias2routes
+	prevAliasRoutes := alias2routes
 	prevMemoryCache := common.MemoryCacheEnabled
 	t.Cleanup(func() {
 		channelSyncLock.Lock()
 		group2model2channels = prevGroups
 		channelsIDM = prevIDM
-		group2alias2routes = prevAliasRoutes
+		alias2routes = prevAliasRoutes
 		channelSyncLock.Unlock()
 		common.MemoryCacheEnabled = prevMemoryCache
 	})
@@ -47,14 +47,11 @@ func withRouteUnitFixture(t *testing.T, channels []*Channel, group, alias string
 	channelsIDM = idm
 	channel2advancedCustomConfig = advancedCustomConfig
 
-	// Build group2alias2routes from provided routes
-	group2alias2routes = make(map[string]map[string][]routeCandidate)
+	// Build alias2routes from provided routes
+	alias2routes = make(map[string][]routeCandidate)
 	for _, r := range routes {
-		if _, ok := group2alias2routes[r.Group]; !ok {
-			group2alias2routes[r.Group] = make(map[string][]routeCandidate)
-		}
-		group2alias2routes[r.Group][r.PublicModelAlias] = append(
-			group2alias2routes[r.Group][r.PublicModelAlias],
+		alias2routes[r.PublicModelAlias] = append(
+			alias2routes[r.PublicModelAlias],
 			routeCandidate{
 				routeId:       r.Id,
 				channelId:     r.ChannelId,
@@ -70,7 +67,7 @@ func withRouteUnitFixture(t *testing.T, channels []*Channel, group, alias string
 		channelSyncLock.Lock()
 		group2model2channels = prevGroups
 		channelsIDM = prevIDM
-		group2alias2routes = prevAliasRoutes
+		alias2routes = prevAliasRoutes
 		channelSyncLock.Unlock()
 		common.MemoryCacheEnabled = prevMemoryCache
 	}
@@ -102,10 +99,9 @@ func testRouteChannel(id int, isMultiKey bool, keys []string, keyStatus map[int]
 	return ch
 }
 
-func testRoute(routeId, channelId, keyIndex int, group, alias, upstreamModel string, weight int) ChannelModelRoute {
+func testRoute(routeId, channelId, keyIndex int, alias, upstreamModel string, weight int) ChannelModelRoute {
 	return ChannelModelRoute{
 		Id:               routeId,
-		Group:            group,
 		PublicModelAlias: alias,
 		ChannelId:        channelId,
 		KeyIndex:         keyIndex,
@@ -120,7 +116,7 @@ func TestSelectRouteUnit_SingleCandidate(t *testing.T) {
 
 	ch := testRouteChannel(1001, false, []string{"sk-single"}, nil)
 	routes := []ChannelModelRoute{
-		testRoute(1, 1001, 0, group, alias, "upstream-model", 100),
+		testRoute(1, 1001, 0, alias, "upstream-model", 100),
 	}
 	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, routes)
 	defer cleanup()
@@ -143,9 +139,9 @@ func TestSelectRouteUnit_MultiKeyChannel(t *testing.T) {
 
 	ch := testRouteChannel(1002, true, []string{"sk-key0", "sk-key1", "sk-key2"}, nil)
 	routes := []ChannelModelRoute{
-		testRoute(1, 1002, 0, group, alias, "upstream-a", 100),
-		testRoute(2, 1002, 1, group, alias, "upstream-b", 100),
-		testRoute(3, 1002, 2, group, alias, "upstream-c", 100),
+		testRoute(1, 1002, 0, alias, "upstream-a", 100),
+		testRoute(2, 1002, 1, alias, "upstream-b", 100),
+		testRoute(3, 1002, 2, alias, "upstream-c", 100),
 	}
 	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, routes)
 	defer cleanup()
@@ -184,9 +180,9 @@ func TestSelectRouteUnit_MultiKeyDisabledKeyExcluded(t *testing.T) {
 	keyStatus := map[int]int{0: common.ChannelStatusEnabled, 1: common.ChannelStatusManuallyDisabled, 2: common.ChannelStatusEnabled}
 	ch := testRouteChannel(1003, true, []string{"sk-key0", "sk-key1", "sk-key2"}, keyStatus)
 	routes := []ChannelModelRoute{
-		testRoute(1, 1003, 0, group, alias, "upstream-a", 100),
-		testRoute(2, 1003, 1, group, alias, "upstream-b", 100),
-		testRoute(3, 1003, 2, group, alias, "upstream-c", 100),
+		testRoute(1, 1003, 0, alias, "upstream-a", 100),
+		testRoute(2, 1003, 1, alias, "upstream-b", 100),
+		testRoute(3, 1003, 2, alias, "upstream-c", 100),
 	}
 	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, routes)
 	defer cleanup()
@@ -214,8 +210,8 @@ func TestSelectRouteUnit_ExcludeRoutes(t *testing.T) {
 	ch1 := testRouteChannel(1004, false, []string{"sk-1"}, nil)
 	ch2 := testRouteChannel(1005, false, []string{"sk-2"}, nil)
 	routes := []ChannelModelRoute{
-		testRoute(1, 1004, 0, group, alias, "upstream-1", 100),
-		testRoute(2, 1005, 0, group, alias, "upstream-2", 100),
+		testRoute(1, 1004, 0, alias, "upstream-1", 100),
+		testRoute(2, 1005, 0, alias, "upstream-2", 100),
 	}
 	cleanup := withRouteUnitFixture(t, []*Channel{ch1, ch2}, group, alias, routes)
 	defer cleanup()
@@ -238,8 +234,8 @@ func TestSelectRouteUnit_DisabledRouteExcluded(t *testing.T) {
 	ch1 := testRouteChannel(1006, false, []string{"sk-1"}, nil)
 	ch2 := testRouteChannel(1007, false, []string{"sk-2"}, nil)
 	routes := []ChannelModelRoute{
-		testRoute(1, 1006, 0, group, alias, "upstream-1", 100),
-		{Id: 2, Group: group, PublicModelAlias: alias, ChannelId: 1007, KeyIndex: 0, UpstreamModel: "upstream-2", StaticWeight: 100, Enabled: false}, // disabled
+		testRoute(1, 1006, 0, alias, "upstream-1", 100),
+		{Id: 2, PublicModelAlias: alias, ChannelId: 1007, KeyIndex: 0, UpstreamModel: "upstream-2", StaticWeight: 100, Enabled: false}, // disabled
 	}
 	cleanup := withRouteUnitFixture(t, []*Channel{ch1, ch2}, group, alias, routes)
 	defer cleanup()
@@ -260,8 +256,8 @@ func TestSelectRouteUnit_CooldownEjection(t *testing.T) {
 	ch1 := testRouteChannel(1008, false, []string{"sk-1"}, nil)
 	ch2 := testRouteChannel(1009, false, []string{"sk-2"}, nil)
 	routes := []ChannelModelRoute{
-		testRoute(1, 1008, 0, group, alias, "upstream-1", 100),
-		testRoute(2, 1009, 0, group, alias, "upstream-2", 100),
+		testRoute(1, 1008, 0, alias, "upstream-1", 100),
+		testRoute(2, 1009, 0, alias, "upstream-2", 100),
 	}
 	cleanup := withRouteUnitFixture(t, []*Channel{ch1, ch2}, group, alias, routes)
 	defer cleanup()
@@ -320,8 +316,8 @@ func TestSelectRouteUnit_AdvancedCustomPathFilter(t *testing.T) {
 	ch2.OtherSettings = `{"advanced_custom":{"advanced_routes":[{"incoming_path":"/v1/embeddings","models":["test-model"]}]}}`
 
 	routes := []ChannelModelRoute{
-		testRoute(1, 1010, 0, group, alias, "upstream-1", 100),
-		testRoute(2, 1011, 0, group, alias, "upstream-2", 100),
+		testRoute(1, 1010, 0, alias, "upstream-1", 100),
+		testRoute(2, 1011, 0, alias, "upstream-2", 100),
 	}
 	cleanup := withRouteUnitFixture(t, []*Channel{ch1, ch2}, group, alias, routes)
 	defer cleanup()
@@ -354,8 +350,8 @@ func TestSelectRouteUnit_DeterministicCacheVsDB(t *testing.T) {
 	ch1 := testRouteChannel(2001, false, []string{"sk-1"}, nil)
 	ch2 := testRouteChannel(2002, false, []string{"sk-2"}, nil)
 	routes := []ChannelModelRoute{
-		testRoute(1, 2001, 0, group, alias, "upstream-1", 100),
-		testRoute(2, 2002, 0, group, alias, "upstream-2", 200), // higher weight
+		testRoute(1, 2001, 0, alias, "upstream-1", 100),
+		testRoute(2, 2002, 0, alias, "upstream-2", 200), // higher weight
 	}
 
 	// Test with MemoryCacheEnabled = true (cache path)
@@ -392,8 +388,8 @@ func TestSelectRouteUnit_WeightDistribution(t *testing.T) {
 	ch1 := testRouteChannel(3001, false, []string{"sk-1"}, nil)
 	ch2 := testRouteChannel(3002, false, []string{"sk-2"}, nil)
 	routes := []ChannelModelRoute{
-		testRoute(1, 3001, 0, group, alias, "upstream-1", 100), // weight 100
-		testRoute(2, 3002, 0, group, alias, "upstream-2", 300), // weight 300 (3x)
+		testRoute(1, 3001, 0, alias, "upstream-1", 100), // weight 100
+		testRoute(2, 3002, 0, alias, "upstream-2", 300), // weight 300 (3x)
 	}
 	cleanup := withRouteUnitFixture(t, []*Channel{ch1, ch2}, group, alias, routes)
 	defer cleanup()
@@ -425,13 +421,13 @@ func TestSelectRouteUnit_NormalizedAliasFallback(t *testing.T) {
 	// Use fixture but with normalized alias for both group2model2channels and routes
 	prevGroups := group2model2channels
 	prevIDM := channelsIDM
-	prevAliasRoutes := group2alias2routes
+	prevAliasRoutes := alias2routes
 	prevMemoryCache := common.MemoryCacheEnabled
 	t.Cleanup(func() {
 		channelSyncLock.Lock()
 		group2model2channels = prevGroups
 		channelsIDM = prevIDM
-		group2alias2routes = prevAliasRoutes
+		alias2routes = prevAliasRoutes
 		channelSyncLock.Unlock()
 		common.MemoryCacheEnabled = prevMemoryCache
 	})
@@ -439,15 +435,15 @@ func TestSelectRouteUnit_NormalizedAliasFallback(t *testing.T) {
 	ids := []int{4001}
 	idm := map[int]*Channel{4001: ch}
 	channelSyncLock.Lock()
-	group2model2channels = map[string]map[string][]int{group: {alias: ids}}
+	// Eligibility and route rows are both derived from channel.Models, so they key
+	// on the same string — the normalized alias the operator configured.
+	group2model2channels = map[string]map[string][]int{group: {normalizedAlias: ids}}
 	channelsIDM = idm
-	if group2alias2routes == nil {
-		group2alias2routes = make(map[string]map[string][]routeCandidate)
+	if alias2routes == nil {
+		alias2routes = make(map[string][]routeCandidate)
 	}
-	group2alias2routes[group] = map[string][]routeCandidate{
-		normalizedAlias: {
-			{routeId: 1, channelId: 4001, keyIndex: 0, upstreamModel: "upstream-normalized", staticWeight: 100},
-		},
+	alias2routes[normalizedAlias] = []routeCandidate{
+		{routeId: 1, channelId: 4001, keyIndex: 0, upstreamModel: "upstream-normalized", staticWeight: 100},
 	}
 	channelSyncLock.Unlock()
 	common.MemoryCacheEnabled = true
@@ -486,7 +482,7 @@ func TestSelectRouteUnitAttachesStatsHandleWithRouteIdentity(t *testing.T) {
 
 	ch := testRouteChannel(7001, false, []string{"sk-1"}, nil)
 	routes := []ChannelModelRoute{
-		testRoute(1, 7001, 0, group, alias, "upstream-actual", 100),
+		testRoute(1, 7001, 0, alias, "upstream-actual", 100),
 	}
 	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, routes)
 	defer cleanup()
@@ -500,7 +496,6 @@ func TestSelectRouteUnitAttachesStatsHandleWithRouteIdentity(t *testing.T) {
 
 	// The handle must be the very same one a lookup by route identity returns.
 	want := routestats.GetOrCreateHandle(routestats.RouteKey{
-		Group:            group,
 		PublicModelAlias: alias,
 		ChannelID:        7001,
 		KeyIndex:         0,
@@ -520,7 +515,7 @@ func TestSelectRouteUnitAttachesStatsHandleWithRouteIdentity(t *testing.T) {
 func TestSelectedRouteFromChannelHasNoStatsHandle(t *testing.T) {
 	ch := testRouteChannel(7002, false, []string{"sk-1"}, nil)
 
-	route, err := SelectedRouteFromChannel(ch, "some-alias")
+	route, err := SelectedRouteFromChannel(ch, "some-alias", "default")
 	require.NoError(t, err)
 	require.NotNil(t, route)
 
@@ -537,12 +532,12 @@ func TestSelectedRouteFromChannelAttributesRealRoute(t *testing.T) {
 
 	ch := testRouteChannel(7003, false, []string{"sk-1"}, nil)
 	routes := []ChannelModelRoute{
-		testRoute(1, 7003, 0, group, alias, "upstream-affinity", 100),
+		testRoute(1, 7003, 0, alias, "upstream-affinity", 100),
 	}
 	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, routes)
 	defer cleanup()
 
-	route, err := SelectedRouteFromChannel(ch, alias)
+	route, err := SelectedRouteFromChannel(ch, alias, group)
 	require.NoError(t, err)
 	require.NotNil(t, route)
 
@@ -552,7 +547,6 @@ func TestSelectedRouteFromChannelAttributesRealRoute(t *testing.T) {
 	require.NotNil(t, route.StatsHandle, "a channel that owns a route row must be attributable")
 
 	want := routestats.GetOrCreateHandle(routestats.RouteKey{
-		Group:            group,
 		PublicModelAlias: alias,
 		ChannelID:        7003,
 		KeyIndex:         0,
@@ -574,22 +568,22 @@ func TestSelectedRouteForProbeKeepsShareWindowClean(t *testing.T) {
 	withRouteStats(t, nil)
 	ch := testRouteChannel(7004, false, []string{"sk-1"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7004, 0, group, alias, "upstream-probe", 100),
+		testRoute(1, 7004, 0, alias, "upstream-probe", 100),
 	})
 	defer cleanup()
 
-	pool := routestats.PoolKey{Group: group, PublicModelAlias: alias}
+	pool := routestats.PoolKey{PublicModelAlias: alias}
 	id := routestats.RouteID{ChannelID: 7004, KeyIndex: 0, UpstreamModel: "upstream-probe"}
 	targets := map[routestats.RouteID]float64{id: 1.0}
 	cfg := routestats.GetRouteStatsSetting()
 
-	probe, err := SelectedRouteForProbe(ch, alias)
+	probe, err := SelectedRouteForProbe(ch, alias, group)
 	require.NoError(t, err)
 	require.NotNil(t, probe.StatsHandle, "a probe still produces EWMA signal for the route")
 	assert.Zero(t, routestats.Corrections(pool, targets, cfg)[id].Opportunities,
 		"a probe must not appear in the share window")
 
-	served, err := SelectedRouteFromChannel(ch, alias)
+	served, err := SelectedRouteFromChannel(ch, alias, group)
 	require.NoError(t, err)
 	require.NotNil(t, served.StatsHandle)
 	assert.Equal(t, 1, routestats.Corrections(pool, targets, cfg)[id].Opportunities,
@@ -621,15 +615,15 @@ func TestSelectedRouteFromChannelBuildsFullRouteForLockedReplay(t *testing.T) {
 	ch.ChannelInfo.MultiKeyMode = constant.MultiKeyModeRandom
 
 	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, []ChannelModelRoute{
-		testRoute(11, 7101, 0, group, alias, "upstream-key0", 100),
-		testRoute(12, 7101, 1, group, alias, "upstream-key1", 100),
+		testRoute(11, 7101, 0, alias, "upstream-key0", 100),
+		testRoute(12, 7101, 1, alias, "upstream-key1", 100),
 	})
 	defer cleanup()
 
 	ClearRouteHealthCache()
 	t.Cleanup(ClearRouteHealthCache)
 
-	route, err := SelectedRouteFromChannel(ch, alias)
+	route, err := SelectedRouteFromChannel(ch, alias, group)
 	require.NoError(t, err)
 	require.NotNil(t, route)
 
@@ -648,7 +642,6 @@ func TestSelectedRouteFromChannelBuildsFullRouteForLockedReplay(t *testing.T) {
 	// The handle must be the one keyed by that exact route identity, so a sample
 	// recorded through the replay lands on the unit that served it.
 	want := routestats.GetOrCreateHandle(routestats.RouteKey{
-		Group:            group,
 		PublicModelAlias: alias,
 		ChannelID:        7101,
 		KeyIndex:         1,
@@ -659,7 +652,6 @@ func TestSelectedRouteFromChannelBuildsFullRouteForLockedReplay(t *testing.T) {
 	// And it must not be the sibling key's handle, which is the mistake a
 	// channel-keyed identity would make.
 	sibling := routestats.GetOrCreateHandle(routestats.RouteKey{
-		Group:            group,
 		PublicModelAlias: alias,
 		ChannelID:        7101,
 		KeyIndex:         0,

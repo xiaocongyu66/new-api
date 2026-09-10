@@ -182,7 +182,7 @@ func testChannel(ctx context.Context, channel *channelpkg.Channel, testUserID in
 	group, _ := identity.GetUserGroup(testUserID, false)
 	c.Set("group", group)
 
-	route, routeErr := channelpkg.SelectedRouteForProbe(channel, testModel)
+	route, routeErr := channelpkg.SelectedRouteForProbe(channel, testModel, group)
 	if routeErr != nil {
 		return testResult{context: c, localErr: routeErr}
 	}

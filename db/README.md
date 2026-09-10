@@ -11,11 +11,17 @@ db/
 ├── migrations/ -> ../apps/api/internal/dbinfra/migrations/   # 核心版本化迁移脚本
 │   ├── 001_drop_unused_log_indexes.sql                      # 删除 6 个零扫描冗余索引
 │   └── 002_logs_timescale_hypertable.sql                    # 将 logs 转换为 TimescaleDB 超表
+├── route-unit-degroup/                                      # Go 启动迁移存档记录（非 .sql）
+│   └── README.md                                            # 路由单元去分组化迁移（PR #494）
 ├── archive/                                                 # 历史旧版本手动补丁归档
 │   ├── migration_v0.2-v0.3.sql
 │   └── migration_v0.3-v0.4.sql
 └── README.md
 ```
+
+> 除版本化 `.sql` 外，部分结构性迁移以 Go 代码实现（如必须在 `AutoMigrate` **之前**执行的
+> `CollapseRouteUnitGroups`，见 `db/route-unit-degroup/README.md`）。这类迁移同样幂等、
+> 事务化、失败拒启，其行为记录与等价参考 SQL 一并归档于各自目录。
 
 ---
 

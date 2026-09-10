@@ -50,7 +50,7 @@ func TestRunRouteStatsSweepStopsOnCancel(t *testing.T) {
 	// A pool with no live route unit: the sweep must evict it, which is how the
 	// test observes that a tick actually ran.
 	cfg := routestats.DefaultRouteStatsSetting()
-	orphan := routestats.PoolKey{Group: "sweep-test", PublicModelAlias: "gone"}
+	orphan := routestats.PoolKey{PublicModelAlias: "gone"}
 	selected := routestats.RouteID{ChannelID: 9901, KeyIndex: 0, UpstreamModel: "gone"}
 	routestats.RecordSelection(orphan, selected, map[routestats.RouteID]float64{selected: 1.0}, cfg)
 	require.Equal(t, 1, routestats.SharePoolCount())

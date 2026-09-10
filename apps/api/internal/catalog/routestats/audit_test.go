@@ -13,7 +13,7 @@ func TestAuditRingBufferBasic(t *testing.T) {
 	ResetAudit()
 	defer ResetAudit()
 
-	RecordAttempt("req-1", 0, RouteKey{Group: "g1", PublicModelAlias: "alias1", ChannelID: 1, KeyIndex: 0, UpstreamModel: "up1"}, AuditOutcomeSuccess, "client-1", "weighted")
+	RecordAttempt("req-1", 0, RouteKey{PublicModelAlias: "alias1", ChannelID: 1, KeyIndex: 0, UpstreamModel: "up1"}, AuditOutcomeSuccess, "client-1", "weighted", "g1")
 
 	attempts := SnapshotAttempts()
 	require.Len(t, attempts, 1)
@@ -34,7 +34,7 @@ func TestAuditClientRequestIDEmptyOmitted(t *testing.T) {
 	defer ResetAudit()
 
 	// Empty clientRequestID should be omitted from JSON (omitempty)
-	RecordAttempt("req-2", 0, RouteKey{Group: "g2", PublicModelAlias: "alias2", ChannelID: 2, KeyIndex: 1, UpstreamModel: "up2"}, AuditOutcomeSuccess, "", "")
+	RecordAttempt("req-2", 0, RouteKey{PublicModelAlias: "alias2", ChannelID: 2, KeyIndex: 1, UpstreamModel: "up2"}, AuditOutcomeSuccess, "", "", "g")
 
 	attempts := SnapshotAttempts()
 	require.Len(t, attempts, 1)
@@ -53,9 +53,9 @@ func TestAuditPathJSONContract(t *testing.T) {
 	ResetAudit()
 	defer ResetAudit()
 
-	key := RouteKey{Group: "g", PublicModelAlias: "a", ChannelID: 1, KeyIndex: 0, UpstreamModel: "u"}
-	RecordAttempt("req-unlabelled", 0, key, AuditOutcomeSuccess, "", "")
-	RecordAttempt("req-affinity", 0, key, AuditOutcomeSuccess, "", "affinity")
+	key := RouteKey{PublicModelAlias: "a", ChannelID: 1, KeyIndex: 0, UpstreamModel: "u"}
+	RecordAttempt("req-unlabelled", 0, key, AuditOutcomeSuccess, "", "", "g")
+	RecordAttempt("req-affinity", 0, key, AuditOutcomeSuccess, "", "affinity", "g")
 
 	attempts := SnapshotAttempts()
 	require.Len(t, attempts, 2)
@@ -76,7 +76,7 @@ func TestAuditRingBufferFIFO(t *testing.T) {
 
 	// Fill exactly to capacity
 	for i := 0; i < auditRingCapacity; i++ {
-		RecordAttempt(string(rune('a'+i%26)), i, RouteKey{Group: "g", PublicModelAlias: "a", ChannelID: i, KeyIndex: 0, UpstreamModel: "u"}, AuditOutcomeSuccess, "", "")
+		RecordAttempt(string(rune('a'+i%26)), i, RouteKey{PublicModelAlias: "a", ChannelID: i, KeyIndex: 0, UpstreamModel: "u"}, AuditOutcomeSuccess, "", "", "g")
 	}
 
 	attempts := SnapshotAttempts()
@@ -88,7 +88,7 @@ func TestAuditRingBufferFIFO(t *testing.T) {
 	assert.Equal(t, auditRingCapacity-1, attempts[auditRingCapacity-1].Attempt)
 
 	// Overwrite one more -> oldest (i=0) is evicted, i=capacity added
-	RecordAttempt("new", auditRingCapacity, RouteKey{Group: "g", PublicModelAlias: "a", ChannelID: 99999, KeyIndex: 0, UpstreamModel: "u"}, AuditOutcomeSuccess, "", "")
+	RecordAttempt("new", auditRingCapacity, RouteKey{PublicModelAlias: "a", ChannelID: 99999, KeyIndex: 0, UpstreamModel: "u"}, AuditOutcomeSuccess, "", "", "g")
 
 	attempts = SnapshotAttempts()
 	require.Len(t, attempts, auditRingCapacity)
@@ -111,7 +111,7 @@ func TestAuditRingBufferConcurrent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for i := 0; i < iterations; i++ {
-				RecordAttempt("req", i, RouteKey{Group: "g", PublicModelAlias: "a", ChannelID: i, KeyIndex: 0, UpstreamModel: "u"}, AuditOutcomeSuccess, "", "")
+				RecordAttempt("req", i, RouteKey{PublicModelAlias: "a", ChannelID: i, KeyIndex: 0, UpstreamModel: "u"}, AuditOutcomeSuccess, "", "", "g")
 			}
 		}()
 	}
@@ -139,7 +139,7 @@ func TestShareSnapshotStructure(t *testing.T) {
 	cfg.Enabled = true
 	SetRouteStatsSetting(cfg)
 
-	pool := PoolKey{Group: "g1", PublicModelAlias: "alias1"}
+	pool := PoolKey{PublicModelAlias: "alias1"}
 	id1 := RouteID{ChannelID: 1, KeyIndex: 0, UpstreamModel: "up1"}
 	id2 := RouteID{ChannelID: 2, KeyIndex: 0, UpstreamModel: "up2"}
 
@@ -185,8 +185,8 @@ func TestShareSnapshotMultiplePools(t *testing.T) {
 	cfg.Enabled = true
 	SetRouteStatsSetting(cfg)
 
-	pool1 := PoolKey{Group: "g1", PublicModelAlias: "a1"}
-	pool2 := PoolKey{Group: "g2", PublicModelAlias: "a2"}
+	pool1 := PoolKey{PublicModelAlias: "a1"}
+	pool2 := PoolKey{PublicModelAlias: "a2"}
 	id1 := RouteID{ChannelID: 1, KeyIndex: 0, UpstreamModel: "u1"}
 	id2 := RouteID{ChannelID: 2, KeyIndex: 0, UpstreamModel: "u2"}
 
@@ -215,7 +215,7 @@ func TestResetAudit(t *testing.T) {
 	defer ResetAudit()
 
 	for i := 0; i < 5; i++ {
-		RecordAttempt("req", i, RouteKey{Group: "g", PublicModelAlias: "a", ChannelID: i, KeyIndex: 0, UpstreamModel: "u"}, AuditOutcomeSuccess, "", "")
+		RecordAttempt("req", i, RouteKey{PublicModelAlias: "a", ChannelID: i, KeyIndex: 0, UpstreamModel: "u"}, AuditOutcomeSuccess, "", "", "g")
 	}
 	assert.Len(t, SnapshotAttempts(), 5)
 
@@ -239,7 +239,7 @@ func TestAuditRingCapacity(t *testing.T) {
 	overwrite := 100
 	total := auditRingCapacity + overwrite
 	for i := 0; i < total; i++ {
-		RecordAttempt(string(rune('a'+i%26)), i, RouteKey{Group: "g", PublicModelAlias: "a", ChannelID: i, KeyIndex: 0, UpstreamModel: "u"}, AuditOutcomeSuccess, "", "")
+		RecordAttempt(string(rune('a'+i%26)), i, RouteKey{PublicModelAlias: "a", ChannelID: i, KeyIndex: 0, UpstreamModel: "u"}, AuditOutcomeSuccess, "", "", "g")
 	}
 
 	attempts := SnapshotAttempts()

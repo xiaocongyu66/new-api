@@ -6,9 +6,14 @@ import (
 )
 
 // RouteKey uniquely identifies a route unit.
-// Matches model.ChannelModelRoute unique index: Group, PublicModelAlias, ChannelId, KeyIndex, UpstreamModel.
+// Matches ChannelModelRoute's unique index: PublicModelAlias, ChannelId, KeyIndex, UpstreamModel.
+//
+// It deliberately carries no user group. A group governs which aliases a user may
+// reach, not how traffic is split within an alias, so the same route unit must
+// accumulate one set of EWMA statistics no matter which group's request produced
+// the sample. Splitting stats per group would fragment every route's sample count
+// and keep quality pinned at the neutral 1.0 for low-traffic groups.
 type RouteKey struct {
-	Group            string
 	PublicModelAlias string
 	ChannelID        int
 	KeyIndex         int
@@ -106,7 +111,6 @@ func (rs *routeStore) getShard(key RouteKey) *shard {
 			h *= prime64
 		}
 	}
-	writeString(key.Group)
 	writeString(key.PublicModelAlias)
 	writeString(key.UpstreamModel)
 	h ^= uint64(uint32(key.ChannelID))

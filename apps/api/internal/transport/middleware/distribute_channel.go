@@ -56,7 +56,8 @@ func Distribute() func(c contract.Context) {
 				abortWithOpenAiMessage(c, http.StatusForbidden, i18n.TCtx(c, i18n.MsgDistributorChannelDisabled))
 				return
 			}
-			route, err = catalog.SelectedRouteFromChannel(channel, modelRequest.Model)
+			route, err = catalog.SelectedRouteFromChannel(channel, modelRequest.Model,
+				common.GetCtxKeyString(c, constant.ContextKeyUsingGroup))
 			if err != nil {
 				abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.TCtx(c, i18n.MsgDistributorInvalidChannelId))
 				return
@@ -122,7 +123,7 @@ func Distribute() func(c contract.Context) {
 								if catalog.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
 									selectGroup = g
 									common.SetCtxKey(c, constant.ContextKeyAutoGroup, g)
-									route, err = catalog.SelectedRouteFromChannel(preferred, modelRequest.Model)
+									route, err = catalog.SelectedRouteFromChannel(preferred, modelRequest.Model, g)
 									affinityUsable = err == nil
 									if affinityUsable {
 										common.SetCtxKey(c, constant.ContextKeyRoutePath, "affinity")
@@ -132,7 +133,7 @@ func Distribute() func(c contract.Context) {
 								}
 							}
 						} else if catalog.IsChannelEnabledForGroupModel(usingGroup, modelRequest.Model, preferred.Id) {
-							route, err = catalog.SelectedRouteFromChannel(preferred, modelRequest.Model)
+							route, err = catalog.SelectedRouteFromChannel(preferred, modelRequest.Model, usingGroup)
 							affinityUsable = err == nil
 							if affinityUsable {
 								// selectGroup must follow the affinity pick, and the

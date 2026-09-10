@@ -59,36 +59,55 @@ func makeMultiKeyChannel(id int, models, group, keys string, modelMapping *strin
 }
 
 // TestExpandDimensionSingleKey verifies expansion for a single-key channel.
-// 2 models × 2 groups → exactly 4 rows; multi-key 3 keys × 1 group × 1 model → 3 rows (KeyIndex 0/1/2).
+// Groups are NOT an expansion dimension: 2 models across 2 groups is 2 rows, not
+// 4. Multiplying by group count is what produced the indistinguishable duplicate
+// rows in the admin list.
 func TestExpandDimensionSingleKey(t *testing.T) {
 	cleanup := withRouteDB(t)
 	defer cleanup()
 
-	// Single-key: 2 models × 2 groups = 4 rows
 	mapping := `{"alias-a":"upstream-x"}`
 	ch := makeSingleKeyChannel(1, "alias-a,model-b", "group-1,group-2", &mapping)
 	require.NoError(t, dbx.DB.Create(ch).Error)
 
 	routes := ExpandChannelModelRoutes(ch)
-	require.Len(t, routes, 4)
-	// Verify each combination exists via typed struct key
+	require.Len(t, routes, 2, "two models in two groups is two scheduling units")
 	type routeKey struct {
-		Group, Alias, Upstream string
-		ChannelID, KeyIndex    int
+		Alias, Upstream     string
+		ChannelID, KeyIndex int
 	}
 	expected := map[routeKey]struct{}{
-		{Group: "group-1", Alias: "alias-a", ChannelID: 1, KeyIndex: 0, Upstream: "upstream-x"}: {},
-		{Group: "group-1", Alias: "model-b", ChannelID: 1, KeyIndex: 0, Upstream: "model-b"}:    {},
-		{Group: "group-2", Alias: "alias-a", ChannelID: 1, KeyIndex: 0, Upstream: "upstream-x"}: {},
-		{Group: "group-2", Alias: "model-b", ChannelID: 1, KeyIndex: 0, Upstream: "model-b"}:    {},
+		{Alias: "alias-a", ChannelID: 1, KeyIndex: 0, Upstream: "upstream-x"}: {},
+		{Alias: "model-b", ChannelID: 1, KeyIndex: 0, Upstream: "model-b"}:    {},
 	}
 	for _, r := range routes {
-		key := routeKey{r.Group, r.PublicModelAlias, r.UpstreamModel, r.ChannelId, r.KeyIndex}
+		key := routeKey{r.PublicModelAlias, r.UpstreamModel, r.ChannelId, r.KeyIndex}
 		_, ok := expected[key]
 		require.True(t, ok, "unexpected route: %+v", key)
 		delete(expected, key)
 	}
 	require.Empty(t, expected)
+}
+
+// TestExpandDedupesRepeatedModels pins that a duplicated entry in channels.models
+// yields one route unit, not two identical ones. The channel API accepts
+// "gpt-4,gpt-4" (validateChannel only length-checks), and without this dedupe the
+// pair would violate the unique index and roll back the whole channel edit.
+func TestExpandDedupesRepeatedModels(t *testing.T) {
+	cleanup := withRouteDB(t)
+	defer cleanup()
+
+	ch := makeSingleKeyChannel(1, "gpt-4,gpt-4", "group-1", nil)
+	require.NoError(t, dbx.DB.Create(ch).Error)
+
+	routes := ExpandChannelModelRoutes(ch)
+	require.Len(t, routes, 1, "a repeated model must not produce a duplicate route unit")
+	assert.Equal(t, "gpt-4", routes[0].PublicModelAlias)
+
+	require.NoError(t, SyncChannelModelRoutesWithTx(dbx.DB, 1))
+	var count int64
+	require.NoError(t, dbx.DB.Model(&ChannelModelRoute{}).Where("channel_id = ?", 1).Count(&count).Error)
+	assert.Equal(t, int64(1), count)
 }
 
 // TestExpandDimensionMultiKey verifies expansion for a multi-key channel.
@@ -105,7 +124,6 @@ func TestExpandDimensionMultiKey(t *testing.T) {
 
 	keyIndices := make(map[int]bool)
 	for _, r := range routes {
-		assert.Equal(t, "group-1", r.Group)
 		assert.Equal(t, "model-x", r.PublicModelAlias)
 		assert.Equal(t, "model-x", r.UpstreamModel)
 		assert.Equal(t, 2, r.ChannelId)
@@ -179,7 +197,6 @@ func TestSyncIdempotent(t *testing.T) {
 	require.NoError(t, dbx.DB.Where("channel_id = ?", 1).Find(&routes2).Error)
 	require.Equal(t, len(routes1), len(routes2))
 	for i := range routes1 {
-		assert.Equal(t, routes1[i].Group, routes2[i].Group)
 		assert.Equal(t, routes1[i].PublicModelAlias, routes2[i].PublicModelAlias)
 		assert.Equal(t, routes1[i].KeyIndex, routes2[i].KeyIndex)
 		assert.Equal(t, routes1[i].UpstreamModel, routes2[i].UpstreamModel)
@@ -195,7 +212,8 @@ func TestSyncStaleCleanup(t *testing.T) {
 	cleanup := withRouteDB(t)
 	defer cleanup()
 
-	// Seed: single-key channel with 2 models, 2 groups = 4 rows
+	// Seed: single-key channel with 2 models across 2 groups = 2 rows (groups are
+	// not a route dimension).
 	mapping := `{"alias-a":"upstream-x"}`
 	ch := makeSingleKeyChannel(1, "alias-a,model-b", "group-1,group-2", &mapping)
 	require.NoError(t, dbx.DB.Create(ch).Error)
@@ -203,7 +221,7 @@ func TestSyncStaleCleanup(t *testing.T) {
 
 	var count int64
 	require.NoError(t, dbx.DB.Model(&ChannelModelRoute{}).Where("channel_id = ?", 1).Count(&count).Error)
-	require.Equal(t, int64(4), count)
+	require.Equal(t, int64(2), count)
 
 	// Drop one model (keep alias-a only)
 	ch.Models = "alias-a"
@@ -211,7 +229,7 @@ func TestSyncStaleCleanup(t *testing.T) {
 	require.NoError(t, SyncChannelModelRoutesWithTx(dbx.DB, 1))
 
 	require.NoError(t, dbx.DB.Model(&ChannelModelRoute{}).Where("channel_id = ?", 1).Count(&count).Error)
-	require.Equal(t, int64(2), count) // alias-a × 2 groups
+	require.Equal(t, int64(1), count) // alias-a only, groups do not multiply
 
 	var remaining []ChannelModelRoute
 	require.NoError(t, dbx.DB.Where("channel_id = ?", 1).Find(&remaining).Error)
@@ -248,7 +266,9 @@ func TestSyncStaleCleanup(t *testing.T) {
 	require.Equal(t, int64(0), count)
 }
 
-// TestUniqueConstraintNoDuplicate verifies manual duplicate insert (group,alias,channel,key_index,upstream) followed by Sync does not error and produces no duplicates, and that ON CONFLICT DO NOTHING preserves manual StaticWeight edits.
+// TestUniqueConstraintNoDuplicate verifies a manual duplicate insert under the
+// unique key (alias, channel, key_index, upstream) followed by Sync does not error
+// and produces no duplicates, and that a manual StaticWeight edit survives.
 func TestUniqueConstraintNoDuplicate(t *testing.T) {
 	cleanup := withRouteDB(t)
 	defer cleanup()
@@ -259,13 +279,12 @@ func TestUniqueConstraintNoDuplicate(t *testing.T) {
 
 	// Manually edit the existing row's StaticWeight to 999 (simulates human/admin override)
 	require.NoError(t, dbx.DB.Model(&ChannelModelRoute{}).
-		Where("channel_id = ? AND "+dbx.GroupCol()+" = ? AND public_model_alias = ? AND key_index = ? AND upstream_model = ?",
-			1, "group-1", "model-a", 0, "model-a").
+		Where("channel_id = ? AND public_model_alias = ? AND key_index = ? AND upstream_model = ?",
+			1, "model-a", 0, "model-a").
 		Update("static_weight", 999).Error)
 
 	// Manually insert a duplicate row matching the unique index — should be ignored by ON CONFLICT DO NOTHING
 	dup := ChannelModelRoute{
-		Group:            "group-1",
 		PublicModelAlias: "model-a",
 		ChannelId:        1,
 		KeyIndex:         0,
@@ -292,7 +311,7 @@ func TestSeedChannelModelRoutes(t *testing.T) {
 	cleanup := withRouteDB(t)
 	defer cleanup()
 
-	// Channel 1: single-key, 2 models × 2 groups = 4 rows
+	// Channel 1: single-key, 2 models (2 groups do not multiply) = 2 rows
 	ch1 := makeSingleKeyChannel(1, "m1,m2", "g1,g2", nil)
 	require.NoError(t, dbx.DB.Create(ch1).Error)
 
@@ -305,12 +324,12 @@ func TestSeedChannelModelRoutes(t *testing.T) {
 
 	var count int64
 	require.NoError(t, dbx.DB.Model(&ChannelModelRoute{}).Count(&count).Error)
-	require.Equal(t, int64(7), count, "4 + 3 = 7 rows")
+	require.Equal(t, int64(5), count, "2 + 3 = 5 rows")
 
 	// Second seed — count unchanged
 	require.NoError(t, SeedChannelModelRoutes())
 	require.NoError(t, dbx.DB.Model(&ChannelModelRoute{}).Count(&count).Error)
-	require.Equal(t, int64(7), count)
+	require.Equal(t, int64(5), count)
 }
 
 // TestChannelLifecycleSyncsRouteRows verifies route rows stay in sync
@@ -392,7 +411,6 @@ func TestGetRouteUnitViewsByAlias(t *testing.T) {
 
 	// Verify channel 1 (weight 100, total 200 -> share 0.5)
 	assert.Equal(t, 1, v1.Id)
-	assert.Equal(t, "group-1", v1.Group)
 	assert.Equal(t, "model-a", v1.PublicModelAlias)
 	assert.Equal(t, 1, v1.ChannelId)
 	assert.Equal(t, "channel-1", v1.ChannelName)

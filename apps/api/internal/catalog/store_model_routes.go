@@ -19,15 +19,40 @@ import (
 const defaultRouteStaticWeight = 100
 
 // ChannelModelRoute represents a static weight row for a route unit under a public model alias.
+//
+// The row is deliberately NOT scoped by user group. A group only decides which
+// aliases a user may reach; it is an eligibility dimension, not a scheduling one.
+// Scheduling compares the route units inside one alias, so one (alias, channel,
+// key_index, upstream_model) tuple carries exactly one weight and one set of EWMA
+// statistics regardless of how many groups can see it. Group eligibility is
+// enforced at selection time from the channel's own group list.
 type ChannelModelRoute struct {
 	Id               int    `json:"id" gorm:"primaryKey;autoIncrement"`
-	Group            string `json:"group" gorm:"type:varchar(64);uniqueIndex:idx_route_unit,priority:1"`
-	PublicModelAlias string `json:"public_model_alias" gorm:"type:varchar(255);uniqueIndex:idx_route_unit,priority:2"`
-	ChannelId        int    `json:"channel_id" gorm:"uniqueIndex:idx_route_unit,priority:3;index:idx_route_channel"`
-	KeyIndex         int    `json:"key_index" gorm:"uniqueIndex:idx_route_unit,priority:4"`
-	UpstreamModel    string `json:"upstream_model" gorm:"type:varchar(255);uniqueIndex:idx_route_unit,priority:5"`
+	PublicModelAlias string `json:"public_model_alias" gorm:"type:varchar(255);uniqueIndex:idx_route_unit,priority:1"`
+	ChannelId        int    `json:"channel_id" gorm:"uniqueIndex:idx_route_unit,priority:2;index:idx_route_channel"`
+	KeyIndex         int    `json:"key_index" gorm:"uniqueIndex:idx_route_unit,priority:3"`
+	UpstreamModel    string `json:"upstream_model" gorm:"type:varchar(255);uniqueIndex:idx_route_unit,priority:4"`
 	StaticWeight     int    `json:"static_weight"`
 	Enabled          bool   `json:"enabled"`
+}
+
+// routeUnitKey is the identity of a route unit: the composite unique key of
+// ChannelModelRoute. It is the diff key for reconciliation and the dedupe key for
+// expansion.
+type routeUnitKey struct {
+	PublicModelAlias string
+	ChannelId        int
+	KeyIndex         int
+	UpstreamModel    string
+}
+
+func routeUnitKeyOf(r ChannelModelRoute) routeUnitKey {
+	return routeUnitKey{
+		PublicModelAlias: r.PublicModelAlias,
+		ChannelId:        r.ChannelId,
+		KeyIndex:         r.KeyIndex,
+		UpstreamModel:    r.UpstreamModel,
+	}
 }
 
 // ExpandChannelModelRoutes expands a channel into its route unit rows.
@@ -38,8 +63,10 @@ func ExpandChannelModelRoutes(channel *Channel) []ChannelModelRoute {
 	}
 
 	models := channel.GetModels()
-	groups := channel.GetGroups()
-	if len(models) == 0 || len(groups) == 0 {
+	// A channel with no group serves nobody, so it gets no route units. The group
+	// list itself is not a route dimension; it is only checked for emptiness here
+	// and enforced per request at selection time.
+	if len(models) == 0 || len(channel.GetGroups()) == 0 {
 		return nil
 	}
 
@@ -68,7 +95,12 @@ func ExpandChannelModelRoutes(channel *Channel) []ChannelModelRoute {
 		keyIndices = []int{0}
 	}
 
-	routes := make([]ChannelModelRoute, 0, len(models)*len(groups)*len(keyIndices))
+	// A duplicated entry in channels.models (e.g. "gpt-4,gpt-4", which the channel
+	// API accepts) would otherwise emit byte-identical rows and fail the unique
+	// index on insert, rolling back the whole channel edit. The abilities path
+	// dedupes the same way.
+	seen := make(map[routeUnitKey]struct{})
+	routes := make([]ChannelModelRoute, 0, len(models)*len(keyIndices))
 	for _, model := range models {
 		model = strings.TrimSpace(model)
 		if model == "" {
@@ -80,22 +112,25 @@ func ExpandChannelModelRoutes(channel *Channel) []ChannelModelRoute {
 				upstream = v
 			}
 		}
-		for _, group := range groups {
-			group = strings.TrimSpace(group)
-			if group == "" {
+		for _, keyIndex := range keyIndices {
+			key := routeUnitKey{
+				PublicModelAlias: model,
+				ChannelId:        channel.Id,
+				KeyIndex:         keyIndex,
+				UpstreamModel:    upstream,
+			}
+			if _, dup := seen[key]; dup {
 				continue
 			}
-			for _, keyIndex := range keyIndices {
-				routes = append(routes, ChannelModelRoute{
-					Group:            group,
-					PublicModelAlias: model,
-					ChannelId:        channel.Id,
-					KeyIndex:         keyIndex,
-					UpstreamModel:    upstream,
-					StaticWeight:     defaultRouteStaticWeight,
-					Enabled:          true,
-				})
-			}
+			seen[key] = struct{}{}
+			routes = append(routes, ChannelModelRoute{
+				PublicModelAlias: model,
+				ChannelId:        channel.Id,
+				KeyIndex:         keyIndex,
+				UpstreamModel:    upstream,
+				StaticWeight:     defaultRouteStaticWeight,
+				Enabled:          true,
+			})
 		}
 	}
 	return routes
@@ -128,36 +163,19 @@ func SyncChannelModelRoutesWithTx(tx *gorm.DB, channelID int) error {
 		return err
 	}
 
-	// Build sets keyed by composite unique fields for diff
-	type routeUnitKey struct {
-		Group            string
-		PublicModelAlias string
-		ChannelId        int
-		KeyIndex         int
-		UpstreamModel    string
-	}
-
 	existingSet := make(map[routeUnitKey]struct{}, len(existing))
 	for _, r := range existing {
-		existingSet[routeUnitKey{
-			Group:            r.Group,
-			PublicModelAlias: r.PublicModelAlias,
-			ChannelId:        r.ChannelId,
-			KeyIndex:         r.KeyIndex,
-			UpstreamModel:    r.UpstreamModel,
-		}] = struct{}{}
+		existingSet[routeUnitKeyOf(r)] = struct{}{}
 	}
 
-	// Build expected set and collect missing
+	// Build expected set and collect missing. ExpandChannelModelRoutes already
+	// deduped, so expectedSet doubles as the guard against inserting a row twice.
 	expectedSet := make(map[routeUnitKey]struct{}, len(expected))
 	missing := make([]ChannelModelRoute, 0, len(expected))
 	for _, r := range expected {
-		key := routeUnitKey{
-			Group:            r.Group,
-			PublicModelAlias: r.PublicModelAlias,
-			ChannelId:        r.ChannelId,
-			KeyIndex:         r.KeyIndex,
-			UpstreamModel:    r.UpstreamModel,
+		key := routeUnitKeyOf(r)
+		if _, dup := expectedSet[key]; dup {
+			continue
 		}
 		expectedSet[key] = struct{}{}
 		if _, ok := existingSet[key]; !ok {
@@ -165,19 +183,23 @@ func SyncChannelModelRoutesWithTx(tx *gorm.DB, channelID int) error {
 		}
 	}
 
-	// Delete stale rows (in existing but not in expected) — batch by primary key
-	staleIDs := make([]int, 0, len(existingSet))
+	// Delete stale rows (in existing but not in expected) — batch by primary key.
+	// A pre-existing duplicate (from the group-scoped schema, collapsed by the
+	// migration) also lands here: the second row's key is already accounted for,
+	// so keeping the first and dropping the rest converges on one row per unit.
+	staleIDs := make([]int, 0, len(existing))
+	keptKeys := make(map[routeUnitKey]struct{}, len(existing))
 	for _, r := range existing {
-		key := routeUnitKey{
-			Group:            r.Group,
-			PublicModelAlias: r.PublicModelAlias,
-			ChannelId:        r.ChannelId,
-			KeyIndex:         r.KeyIndex,
-			UpstreamModel:    r.UpstreamModel,
-		}
+		key := routeUnitKeyOf(r)
 		if _, ok := expectedSet[key]; !ok {
 			staleIDs = append(staleIDs, r.Id)
+			continue
 		}
+		if _, dup := keptKeys[key]; dup {
+			staleIDs = append(staleIDs, r.Id)
+			continue
+		}
+		keptKeys[key] = struct{}{}
 	}
 	if len(staleIDs) > 0 {
 		if err := tx.Where("id IN ?", staleIDs).Delete(&ChannelModelRoute{}).Error; err != nil {
@@ -293,7 +315,6 @@ func SeedChannelModelRoutes() error {
 // RouteUnitView is a flattened view of a route unit joined with channel info.
 type RouteUnitView struct {
 	Id               int     `json:"id"`
-	Group            string  `json:"group"`
 	PublicModelAlias string  `json:"public_model_alias"`
 	ChannelId        int     `json:"channel_id"`
 	ChannelName      string  `json:"channel_name"`
@@ -364,13 +385,11 @@ func GetRouteUnitViewsByAlias(alias string) ([]RouteUnitView, error) {
 	for _, ch := range channels {
 		channelMap[ch.Id] = ch
 	}
-	// F1: compute total weight per group. Selection draws from a single
-	// (group, alias) pool, so expected_share = static_weight / Σ(weights in the
-	// same group). Summing across groups makes a channel in both `default` and
-	// `vip` inflate the denominator and halve every route's reported share.
-	groupWeights := make(map[string]int)
+	// One alias is one pool, so the expected-share denominator is the total static
+	// weight of the alias. There is no per-group split to reconcile any more.
+	totalWeight := 0
 	for _, r := range routes {
-		groupWeights[r.Group] += r.StaticWeight
+		totalWeight += r.StaticWeight
 	}
 	// Build views
 	views := make([]RouteUnitView, 0, len(routes))
@@ -381,14 +400,13 @@ func GetRouteUnitViewsByAlias(alias string) ([]RouteUnitView, error) {
 			baseURL = *ch.BaseURL
 		}
 		share := 0.0
-		if gw := groupWeights[r.Group]; gw > 0 {
-			share = float64(r.StaticWeight) / float64(gw)
+		if totalWeight > 0 {
+			share = float64(r.StaticWeight) / float64(totalWeight)
 			// Round to 4 decimal places (preserving existing behaviour)
 			share = float64(int64(share*10000+0.5)) / 10000
 		}
 		view := RouteUnitView{
 			Id:               r.Id,
-			Group:            r.Group,
 			PublicModelAlias: r.PublicModelAlias,
 			ChannelId:        r.ChannelId,
 			ChannelName:      ch.Name,
@@ -405,7 +423,6 @@ func GetRouteUnitViewsByAlias(alias string) ([]RouteUnitView, error) {
 		// GetHandle deliberately does not create state: listing route units must
 		// not materialise entries for routes that have never served a request.
 		if h := routestats.GetHandle(routestats.RouteKey{
-			Group:            r.Group,
 			PublicModelAlias: r.PublicModelAlias,
 			ChannelID:        r.ChannelId,
 			KeyIndex:         r.KeyIndex,
@@ -420,16 +437,11 @@ func GetRouteUnitViewsByAlias(alias string) ([]RouteUnitView, error) {
 		}
 		views = append(views, view)
 	}
-	// W5.1: populate the six-factor score breakdown via scoreCandidates. Views are
-	// grouped into their (group, alias) pools first, matching how selection groups
-	// them. scoreCandidates calls routestats.Corrections which is a pure read (it
-	// takes the pool window's lock but never calls RecordSelection), so this read
-	// path cannot move any counter.
-	//
-	// The per-route lookup must stay scoped to one pool: RouteID carries no group,
-	// so a channel serving the same alias in both `default` and `vip` produces two
-	// views with identical RouteIDs. A map shared across pools would let the second
-	// pool's scores overwrite the first pool's view and report one pool twice.
+	// W5.1: populate the six-factor score breakdown via scoreCandidates.
+	// scoreCandidates calls routestats.Corrections which is a pure read (it takes
+	// the pool window's lock but never calls RecordSelection), so this read path
+	// cannot move any counter. One alias is one pool, so every view of this alias
+	// belongs to the same pool and RouteIDs are unique within it.
 	poolToViews := make(map[routestats.PoolKey][]*RouteUnitView)
 	for i := range views {
 		v := &views[i]
@@ -437,7 +449,7 @@ func GetRouteUnitViewsByAlias(alias string) ([]RouteUnitView, error) {
 		v.HealthMultiplier = v.HealthScore
 		v.ShareCorrection = 1.0
 		v.FinalScore = v.BaseWeight * v.EwmaQuality * v.HealthMultiplier
-		pool := routestats.PoolKey{Group: v.Group, PublicModelAlias: v.PublicModelAlias}
+		pool := routestats.PoolKey{PublicModelAlias: v.PublicModelAlias}
 		poolToViews[pool] = append(poolToViews[pool], v)
 	}
 	for pool, poolViews := range poolToViews {

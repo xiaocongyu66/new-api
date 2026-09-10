@@ -56,9 +56,8 @@ func observeQuality(t *testing.T, key routestats.RouteKey, successRate, ttftMs, 
 	}
 }
 
-func routeStatsKey(group, alias, upstream string, channelID int) routestats.RouteKey {
+func routeStatsKey(alias, upstream string, channelID int) routestats.RouteKey {
 	return routestats.RouteKey{
-		Group:            group,
 		PublicModelAlias: alias,
 		ChannelID:        channelID,
 		KeyIndex:         0,
@@ -94,8 +93,8 @@ func TestScoreW1StaticWeightBaseline(t *testing.T) {
 	chLight := testRouteChannel(7101, false, []string{"sk-l"}, nil)
 	chHeavy := testRouteChannel(7102, false, []string{"sk-h"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chLight, chHeavy}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7101, 0, group, alias, "up-light", 20),
-		testRoute(2, 7102, 0, group, alias, "up-heavy", 80),
+		testRoute(1, 7101, 0, alias, "up-light", 20),
+		testRoute(2, 7102, 0, alias, "up-heavy", 80),
 	})
 	defer cleanup()
 
@@ -122,8 +121,8 @@ func TestScoreW1ZeroTotalWeight(t *testing.T) {
 	chA := testRouteChannel(7111, false, []string{"sk-a"}, nil)
 	chB := testRouteChannel(7112, false, []string{"sk-b"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7111, 0, group, alias, "up-a", 0),
-		testRoute(2, 7112, 0, group, alias, "up-b", 0),
+		testRoute(1, 7111, 0, alias, "up-a", 0),
+		testRoute(2, 7112, 0, alias, "up-b", 0),
 	})
 	defer cleanup()
 
@@ -143,13 +142,13 @@ func TestScoreW1SingleCandidateShortCircuit(t *testing.T) {
 
 	ch := testRouteChannel(7121, false, []string{"sk-only"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7121, 0, group, alias, "up-only", 100),
+		testRoute(1, 7121, 0, alias, "up-only", 100),
 	})
 	defer cleanup()
 
 	// Drive it to the quality floor: every attempt failed.
-	observeQuality(t, routeStatsKey(group, alias, "up-only", 7121), 0, 120000, 0, 8)
-	require.InDelta(t, 0.5, routestats.GetOrCreateHandle(routeStatsKey(group, alias, "up-only", 7121)).Quality().Quality, 1e-9)
+	observeQuality(t, routeStatsKey(alias, "up-only", 7121), 0, 120000, 0, 8)
+	require.InDelta(t, 0.5, routestats.GetOrCreateHandle(routeStatsKey(alias, "up-only", 7121)).Quality().Quality, 1e-9)
 
 	counts := drawShares(t, group, alias, 50, 0xBEEF)
 	assert.Equal(t, 50, counts[7121], "the only candidate must always be served")
@@ -192,16 +191,16 @@ func TestScoreW2QualityDrivesShare(t *testing.T) {
 			chA := testRouteChannel(7201, false, []string{"sk-a"}, nil)
 			chB := testRouteChannel(7202, false, []string{"sk-b"}, nil)
 			cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
-				testRoute(1, 7201, 0, group, alias, "up-a", 100),
-				testRoute(2, 7202, 0, group, alias, "up-b", 100),
+				testRoute(1, 7201, 0, alias, "up-a", 100),
+				testRoute(2, 7202, 0, alias, "up-b", 100),
 			})
 			defer cleanup()
 
 			// A is exactly on target, so its quality is 1.0 and it is the reference.
-			observeQuality(t, routeStatsKey(group, alias, "up-a", 7201), 1.0, 2000, 20, 8)
-			observeQuality(t, routeStatsKey(group, alias, "up-b", 7202), tc.successRate, tc.ttftMs, tc.tps, 8)
+			observeQuality(t, routeStatsKey(alias, "up-a", 7201), 1.0, 2000, 20, 8)
+			observeQuality(t, routeStatsKey(alias, "up-b", 7202), tc.successRate, tc.ttftMs, tc.tps, 8)
 
-			gotQ := routestats.GetOrCreateHandle(routeStatsKey(group, alias, "up-b", 7202)).Quality().Quality
+			gotQ := routestats.GetOrCreateHandle(routeStatsKey(alias, "up-b", 7202)).Quality().Quality
 			require.InDelta(t, tc.wantQuality, gotQ, 0.01,
 				"fixture must reach quality %.3f before share is meaningful, got %.4f", tc.wantQuality, gotQ)
 
@@ -230,15 +229,15 @@ func TestScoreW2QualityNeverStarvesARoute(t *testing.T) {
 	chA := testRouteChannel(7211, false, []string{"sk-a"}, nil)
 	chB := testRouteChannel(7212, false, []string{"sk-b"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7211, 0, group, alias, "up-a", 100),
-		testRoute(2, 7212, 0, group, alias, "up-b", 100),
+		testRoute(1, 7211, 0, alias, "up-a", 100),
+		testRoute(2, 7212, 0, alias, "up-b", 100),
 	})
 	defer cleanup()
 
-	observeQuality(t, routeStatsKey(group, alias, "up-a", 7211), 1.0, 2000, 20, 8)
-	observeQuality(t, routeStatsKey(group, alias, "up-b", 7212), 0.0, 120000, 0, 30)
+	observeQuality(t, routeStatsKey(alias, "up-a", 7211), 1.0, 2000, 20, 8)
+	observeQuality(t, routeStatsKey(alias, "up-b", 7212), 0.0, 120000, 0, 30)
 
-	q := routestats.GetOrCreateHandle(routeStatsKey(group, alias, "up-b", 7212)).Quality().Quality
+	q := routestats.GetOrCreateHandle(routeStatsKey(alias, "up-b", 7212)).Quality().Quality
 	assert.InDelta(t, 0.5, q, 1e-9, "synthesis must clamp at the floor, not fall to zero")
 
 	counts := drawShares(t, group, alias, 3000, 0xF00D)
@@ -271,7 +270,7 @@ func TestScoreW2PoolSizeChangesTheLoss(t *testing.T) {
 			for i := range tc.poolSize {
 				id := 7300 + tc.poolSize*10 + i
 				channels = append(channels, testRouteChannel(id, false, []string{"sk"}, nil))
-				routes = append(routes, testRoute(i+1, id, 0, group, alias, "up", 100))
+				routes = append(routes, testRoute(i+1, id, 0, alias, "up", 100))
 			}
 			cleanup := withRouteUnitFixture(t, channels, group, alias, routes)
 			defer cleanup()
@@ -282,10 +281,10 @@ func TestScoreW2PoolSizeChangesTheLoss(t *testing.T) {
 			for i := range tc.poolSize {
 				id := 7300 + tc.poolSize*10 + i
 				if id == badID {
-					observeQuality(t, routeStatsKey(group, alias, "up", id), 0.0, 120000, 0, 10)
+					observeQuality(t, routeStatsKey(alias, "up", id), 0.0, 120000, 0, 10)
 					continue
 				}
-				observeQuality(t, routeStatsKey(group, alias, "up", id), 1.0, 2000, 20, 10)
+				observeQuality(t, routeStatsKey(alias, "up", id), 1.0, 2000, 20, 10)
 			}
 
 			const draws = 16000
@@ -313,14 +312,14 @@ func TestScoreW2LatencySignalIsBounded(t *testing.T) {
 		chA := testRouteChannel(7241, false, []string{"sk-a"}, nil)
 		chB := testRouteChannel(7242, false, []string{"sk-b"}, nil)
 		cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
-			testRoute(1, 7241, 0, group, alias, "up-a", 100),
-			testRoute(2, 7242, 0, group, alias, "up-b", 100),
+			testRoute(1, 7241, 0, alias, "up-a", 100),
+			testRoute(2, 7242, 0, alias, "up-b", 100),
 		})
 		defer cleanup()
 
 		// success is fully healthy on both sides: latency is the only difference.
-		observeQuality(t, routeStatsKey(group, alias, "up-a", 7241), 1.0, 2000, 20, 8)
-		observeQuality(t, routeStatsKey(group, alias, "up-b", 7242), 1.0, 2000*ttftMultiple, 20, 8)
+		observeQuality(t, routeStatsKey(alias, "up-a", 7241), 1.0, 2000, 20, 8)
+		observeQuality(t, routeStatsKey(alias, "up-b", 7242), 1.0, 2000*ttftMultiple, 20, 8)
 
 		const draws = 12000
 		counts := drawShares(t, group, alias, draws, 0x1234)
@@ -353,8 +352,8 @@ func TestScoreW3DisabledRouteScoresZero(t *testing.T) {
 	chA := testRouteChannel(7301, false, []string{"sk-a"}, nil)
 	chB := testRouteChannel(7302, false, []string{"sk-b"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7301, 0, group, alias, "up-a", 100),
-		testRoute(2, 7302, 0, group, alias, "up-b", 100),
+		testRoute(1, 7301, 0, alias, "up-a", 100),
+		testRoute(2, 7302, 0, alias, "up-b", 100),
 	})
 	defer cleanup()
 
@@ -378,8 +377,8 @@ func TestScoreW3CalmRouteKeepsReducedShare(t *testing.T) {
 	chA := testRouteChannel(7311, false, []string{"sk-a"}, nil)
 	chB := testRouteChannel(7312, false, []string{"sk-b"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7311, 0, group, alias, "up-a", 100),
-		testRoute(2, 7312, 0, group, alias, "up-b", 100),
+		testRoute(1, 7311, 0, alias, "up-a", 100),
+		testRoute(2, 7312, 0, alias, "up-b", 100),
 	})
 	defer cleanup()
 
@@ -410,12 +409,12 @@ func TestScoreW3SignalsDoNotDoublePenalise(t *testing.T) {
 
 	ch := testRouteChannel(7321, false, []string{"sk-a"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7321, 0, group, alias, "up-a", 100),
+		testRoute(1, 7321, 0, alias, "up-a", 100),
 	})
 	defer cleanup()
 
 	key := RouteKey{ChannelId: 7321, KeyIndex: 0, Model: alias}
-	statsKey := routeStatsKey(group, alias, "up-a", 7321)
+	statsKey := routeStatsKey(alias, "up-a", 7321)
 
 	// Soft signal only: 30 failed attempts.
 	observeQuality(t, statsKey, 0.0, 120000, 0, 30)
@@ -449,15 +448,15 @@ func TestScoreW3SafeDegradation(t *testing.T) {
 	chA := testRouteChannel(7331, false, []string{"sk-a"}, nil)
 	chB := testRouteChannel(7332, false, []string{"sk-b"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7331, 0, group, alias, "up-a", 100),
-		testRoute(2, 7332, 0, group, alias, "up-b", 100),
+		testRoute(1, 7331, 0, alias, "up-a", 100),
+		testRoute(2, 7332, 0, alias, "up-b", 100),
 	})
 	defer cleanup()
 
 	// A TTFT of zero drives the "lower is better" normaliser to its ceiling, which
 	// is now +Inf.
-	observeQuality(t, routeStatsKey(group, alias, "up-a", 7331), 1.0, 2000, 20, 8)
-	hB := routestats.GetOrCreateHandle(routeStatsKey(group, alias, "up-b", 7332))
+	observeQuality(t, routeStatsKey(alias, "up-a", 7331), 1.0, 2000, 20, 8)
+	hB := routestats.GetOrCreateHandle(routeStatsKey(alias, "up-b", 7332))
 	hB.ObserveTTFT(0)
 	for range 8 {
 		hB.ObserveSuccess(1.0)
@@ -484,8 +483,8 @@ func TestScoreW3AllZeroCandidatesYieldNoRoute(t *testing.T) {
 	chA := testRouteChannel(7341, false, []string{"sk-a"}, nil)
 	chB := testRouteChannel(7342, false, []string{"sk-b"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7341, 0, group, alias, "up-a", 100),
-		testRoute(2, 7342, 0, group, alias, "up-b", 100),
+		testRoute(1, 7341, 0, alias, "up-a", 100),
+		testRoute(2, 7342, 0, alias, "up-b", 100),
 	})
 	defer cleanup()
 
@@ -512,13 +511,13 @@ func TestScoreW4ColdStartIsNeutral(t *testing.T) {
 	chOld := testRouteChannel(7401, false, []string{"sk-o"}, nil)
 	chNew := testRouteChannel(7402, false, []string{"sk-n"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chOld, chNew}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7401, 0, group, alias, "up-o", 100),
-		testRoute(2, 7402, 0, group, alias, "up-n", 100),
+		testRoute(1, 7401, 0, alias, "up-o", 100),
+		testRoute(2, 7402, 0, alias, "up-n", 100),
 	})
 	defer cleanup()
 
 	// The established route is exactly on target; the new one has never served.
-	observeQuality(t, routeStatsKey(group, alias, "up-o", 7401), 1.0, 2000, 20, 8)
+	observeQuality(t, routeStatsKey(alias, "up-o", 7401), 1.0, 2000, 20, 8)
 
 	const draws = 8000
 	counts := drawShares(t, group, alias, draws, 0x77777)
@@ -536,7 +535,7 @@ func TestScoreW4BelowMinSamplesStaysNeutral(t *testing.T) {
 	cfg := routestats.GetRouteStatsSetting()
 	require.Positive(t, cfg.MinSamples)
 
-	key := routeStatsKey(group, alias, "up-b", 7412)
+	key := routeStatsKey(alias, "up-b", 7412)
 	observeQuality(t, key, 0.0, 120000, 0, cfg.MinSamples-1)
 	assert.Equal(t, 1.0, routestats.GetOrCreateHandle(key).Quality().Quality,
 		"under MinSamples the synthesis must stay neutral")
@@ -559,13 +558,13 @@ func TestScoreW4FloorQualityRouteRecovers(t *testing.T) {
 	chA := testRouteChannel(7421, false, []string{"sk-a"}, nil)
 	chB := testRouteChannel(7422, false, []string{"sk-b"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7421, 0, group, alias, "up-a", 100),
-		testRoute(2, 7422, 0, group, alias, "up-b", 100),
+		testRoute(1, 7421, 0, alias, "up-a", 100),
+		testRoute(2, 7422, 0, alias, "up-b", 100),
 	})
 	defer cleanup()
 
-	badKey := routeStatsKey(group, alias, "up-b", 7422)
-	observeQuality(t, routeStatsKey(group, alias, "up-a", 7421), 1.0, 2000, 20, 8)
+	badKey := routeStatsKey(alias, "up-b", 7422)
+	observeQuality(t, routeStatsKey(alias, "up-a", 7421), 1.0, 2000, 20, 8)
 	observeQuality(t, badKey, 0.0, 120000, 0, 20)
 	require.InDelta(t, 0.5, routestats.GetOrCreateHandle(badKey).Quality().Quality, 1e-9)
 
@@ -614,13 +613,13 @@ func TestScoreW4ComponentFloorIsWhatPreventsStarvation(t *testing.T) {
 	chA := testRouteChannel(7431, false, []string{"sk-a"}, nil)
 	chB := testRouteChannel(7432, false, []string{"sk-b"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7431, 0, group, alias, "up-a", 100),
-		testRoute(2, 7432, 0, group, alias, "up-b", 100),
+		testRoute(1, 7431, 0, alias, "up-a", 100),
+		testRoute(2, 7432, 0, alias, "up-b", 100),
 	})
 	defer cleanup()
 
-	badKey := routeStatsKey(group, alias, "up-b", 7432)
-	observeQuality(t, routeStatsKey(group, alias, "up-a", 7431), 1.0, 2000, 20, 8)
+	badKey := routeStatsKey(alias, "up-b", 7432)
+	observeQuality(t, routeStatsKey(alias, "up-a", 7431), 1.0, 2000, 20, 8)
 	// success 0 with no other observed component drives synthesis to zero. It lands
 	// a hair above exact zero because staleness regression nudges the stored rate
 	// back towards neutral between observations, which is immaterial here: the
@@ -658,17 +657,17 @@ func TestScoreW5CorrectionIsNeutralAtConvergence(t *testing.T) {
 	chA := testRouteChannel(7501, false, []string{"sk-a"}, nil)
 	chB := testRouteChannel(7502, false, []string{"sk-b"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7501, 0, group, alias, "up-a", 100),
-		testRoute(2, 7502, 0, group, alias, "up-b", 100),
+		testRoute(1, 7501, 0, alias, "up-a", 100),
+		testRoute(2, 7502, 0, alias, "up-b", 100),
 	})
 	defer cleanup()
 
-	observeQuality(t, routeStatsKey(group, alias, "up-a", 7501), 1.0, 2000, 20, 8)
-	observeQuality(t, routeStatsKey(group, alias, "up-b", 7502), 1.0, 4000, 20, 8)
+	observeQuality(t, routeStatsKey(alias, "up-a", 7501), 1.0, 2000, 20, 8)
+	observeQuality(t, routeStatsKey(alias, "up-b", 7502), 1.0, 4000, 20, 8)
 
 	drawShares(t, group, alias, 4000, 0x5150)
 
-	pool := routestats.PoolKey{Group: group, PublicModelAlias: alias}
+	pool := routestats.PoolKey{PublicModelAlias: alias}
 	candidates := getCandidatesFromCache(group, alias)
 	scores, _ := scoreCandidates(pool, candidates, alias)
 	require.Len(t, scores, 2)
@@ -696,13 +695,13 @@ func TestScoreW5WindowZeroDisablesCorrection(t *testing.T) {
 	chA := testRouteChannel(7511, false, []string{"sk-a"}, nil)
 	chB := testRouteChannel(7512, false, []string{"sk-b"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7511, 0, group, alias, "up-a", 100),
-		testRoute(2, 7512, 0, group, alias, "up-b", 100),
+		testRoute(1, 7511, 0, alias, "up-a", 100),
+		testRoute(2, 7512, 0, alias, "up-b", 100),
 	})
 	defer cleanup()
 
-	observeQuality(t, routeStatsKey(group, alias, "up-a", 7511), 1.0, 2000, 20, 8)
-	observeQuality(t, routeStatsKey(group, alias, "up-b", 7512), 1.0, 4000, 20, 8)
+	observeQuality(t, routeStatsKey(alias, "up-a", 7511), 1.0, 2000, 20, 8)
+	observeQuality(t, routeStatsKey(alias, "up-b", 7512), 1.0, 4000, 20, 8)
 
 	const draws = 12000
 	counts := drawShares(t, group, alias, draws, 0x2222)
@@ -712,23 +711,24 @@ func TestScoreW5WindowZeroDisablesCorrection(t *testing.T) {
 
 	assert.Zero(t, routestats.SharePoolCount(), "a disabled window must allocate no pool state")
 
-	pool := routestats.PoolKey{Group: group, PublicModelAlias: alias}
+	pool := routestats.PoolKey{PublicModelAlias: alias}
 	scores, _ := scoreCandidates(pool, getCandidatesFromCache(group, alias), alias)
 	for id, s := range scores {
 		assert.Equal(t, 1.0, s.Correction, "route %v must carry a neutral correction", id)
 	}
 }
 
-// TestScoreW5ExpectedShareIsScopedPerGroup is W5.2 and the regression guard for
-// F1. One channel can serve the same alias in several groups, and
-// ExpandChannelModelRoutes emits one row per group, so the alias has two rows
-// while selection still draws from a single (group, alias) pool.
+// TestRouteUnitViewIsNotMultipliedByGroups pins the contract that replaced the
+// old per-group scoping: a channel serving one alias across several groups has
+// exactly ONE route unit, not one per group.
 //
-// Two things have to hold per group, not per alias: expected_share must use the
-// group's own weight total, and the six-factor breakdown must belong to that
-// group's pool. RouteID carries no group, so both rows share an identity — a
-// lookup keyed on it across pools silently reports one pool's scores twice.
-func TestScoreW5ExpectedShareIsScopedPerGroup(t *testing.T) {
+// The previous schema keyed route units by group, so this channel produced two
+// identical-looking rows — same channel, same key index, same upstream model —
+// each with its own weight to tune and its own EWMA stream to warm up. That is
+// what made the admin list read as duplicated and let a tuning pass update five
+// of six siblings. Group governs which aliases a user may reach, not how traffic
+// is split inside an alias, so it must not appear in the route unit's identity.
+func TestRouteUnitViewIsNotMultipliedByGroups(t *testing.T) {
 	cleanupDB := withRouteDB(t)
 	defer cleanupDB()
 	withRouteStats(t, nil)
@@ -743,53 +743,32 @@ func TestScoreW5ExpectedShareIsScopedPerGroup(t *testing.T) {
 
 	views, err := GetRouteUnitViewsByAlias(alias)
 	require.NoError(t, err)
-	require.Len(t, views, 2, "one row per group")
+	require.Len(t, views, 1,
+		"a channel in two groups is still one scheduling unit; per-group rows are what made the list look duplicated")
 
-	byGroup := make(map[string]RouteUnitView, len(views))
-	for _, v := range views {
-		byGroup[v.Group] = v
-	}
-	require.Contains(t, byGroup, "default")
-	require.Contains(t, byGroup, "vip")
+	v := views[0]
+	assert.InDelta(t, 1.0, v.ExpectedShare, 0.0001,
+		"the sole route unit of the alias is entitled to all of it")
 
-	// Give the two pools different histories. Quality alone is not enough to catch
-	// a cross-pool overwrite: both views already carry their own quality from the
-	// GetHandle pass, and an overwritten view keeps a self-consistent product. The
-	// window counters are the discriminator, because they are only ever written by
-	// the pool loop — vip gets three recorded requests, default none.
-	observeQuality(t, routeStatsKey("vip", alias, alias, 1), 1.0, 4000, 20, 8)
-	vipPool := routestats.PoolKey{Group: "vip", PublicModelAlias: alias}
-	vipRoute := routestats.RouteID{ChannelID: 1, KeyIndex: 0, UpstreamModel: alias}
+	// One unit means one EWMA stream: samples from either group land on it.
+	observeQuality(t, routeStatsKey(alias, alias, 1), 1.0, 4000, 20, 8)
+	pool := routestats.PoolKey{PublicModelAlias: alias}
+	route := routestats.RouteID{ChannelID: 1, KeyIndex: 0, UpstreamModel: alias}
 	cfg := routestats.GetRouteStatsSetting()
 	for range 3 {
-		routestats.RecordSelection(vipPool, vipRoute, map[routestats.RouteID]float64{vipRoute: 1.0}, cfg)
+		routestats.RecordSelection(pool, route, map[routestats.RouteID]float64{route: 1.0}, cfg)
 	}
 
 	views, err = GetRouteUnitViewsByAlias(alias)
 	require.NoError(t, err)
-	byGroup = make(map[string]RouteUnitView, len(views))
-	for _, v := range views {
-		byGroup[v.Group] = v
-	}
+	require.Len(t, views, 1)
+	v = views[0]
 
-	for group, v := range byGroup {
-		assert.InDelta(t, 1.0, v.ExpectedShare, 0.0001,
-			"group %q holds the alias alone, so its route is entitled to all of it", group)
-		// W5.1's hand-recompute must survive the multi-group case.
-		assert.InDelta(t, v.BaseWeight*v.EwmaQuality*v.HealthMultiplier*v.ShareCorrection, v.FinalScore, 1e-9,
-			"group %q: final score must be the product of the five reported factors", group)
-	}
-
-	assert.InDelta(t, 1.0, byGroup["default"].EwmaQuality, 1e-9,
-		"the untouched group must stay neutral")
-	assert.InDelta(t, 0.875, byGroup["vip"].EwmaQuality, 0.01,
-		"the observed group must report its own quality, not the sibling group's")
-	assert.Greater(t, byGroup["default"].FinalScore, byGroup["vip"].FinalScore,
-		"a per-group breakdown must show the degraded pool scoring lower")
-	assert.Equal(t, 3, byGroup["vip"].ShareOpportunities,
-		"vip must report its own window history")
-	assert.Equal(t, 3, byGroup["vip"].ShareSelections)
-	assert.Zero(t, byGroup["default"].ShareOpportunities,
-		"default served nothing, so borrowing vip's window counters is a reporting bug")
-	assert.Zero(t, byGroup["default"].ShareSelections)
+	assert.InDelta(t, 0.875, v.EwmaQuality, 0.01,
+		"observations from any group accumulate on the single unit")
+	assert.Equal(t, 3, v.ShareOpportunities,
+		"the unit owns one window, so its history is not split per group")
+	assert.Equal(t, 3, v.ShareSelections)
+	assert.InDelta(t, v.BaseWeight*v.EwmaQuality*v.HealthMultiplier*v.ShareCorrection, v.FinalScore, 1e-9,
+		"final score must be the product of the reported factors")
 }

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"math"
 	"math/rand/v2"
-	"sync"
 
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/catalog/routestats"
@@ -36,27 +35,26 @@ type routeCandidate struct {
 	staticWeight  int
 }
 
-// group2alias2routes maps group -> alias -> route units (enabled only).
+// alias2routes maps alias -> route units (enabled only). Route units are NOT
+// group-scoped: a group decides which channels a user may reach, not how traffic
+// is split inside an alias. Group eligibility is applied per request by
+// filterCandidatesByGroup, which reads the abilities table.
 // Built and refreshed under channelSyncLock alongside channelsIDM.
-var group2alias2routes map[string]map[string][]routeCandidate
-var group2alias2routesMu sync.RWMutex // protects group2alias2routes
+var alias2routes map[string][]routeCandidate
 
-// buildGroupAliasRoutesFromDB loads enabled route units from channel_model_routes table
-// and constructs the group->alias->[]routeCandidate index.
+// buildGroupAliasRoutesFromDB loads enabled route units from channel_model_routes
+// table and constructs the alias->[]routeCandidate index.
 // Caller MUST hold channelSyncLock (write).
 func buildGroupAliasRoutesFromDB() {
-	group2alias2routes = make(map[string]map[string][]routeCandidate)
+	alias2routes = make(map[string][]routeCandidate)
 	var routes []ChannelModelRoute
 	if err := dbx.DB.Where("enabled = ?", true).Find(&routes).Error; err != nil {
 		common.SysError("failed to load channel_model_routes: " + err.Error())
 		return
 	}
 	for _, r := range routes {
-		if _, ok := group2alias2routes[r.Group]; !ok {
-			group2alias2routes[r.Group] = make(map[string][]routeCandidate)
-		}
-		group2alias2routes[r.Group][r.PublicModelAlias] = append(
-			group2alias2routes[r.Group][r.PublicModelAlias],
+		alias2routes[r.PublicModelAlias] = append(
+			alias2routes[r.PublicModelAlias],
 			routeCandidate{
 				routeId:       r.Id,
 				channelId:     r.ChannelId,
@@ -68,24 +66,21 @@ func buildGroupAliasRoutesFromDB() {
 	}
 }
 
-// getCandidatesFromCache returns candidates for the given group and alias from memory index.
+// getCandidatesFromCache returns candidates for the given alias from the memory
+// index, restricted to the channels this group may use.
 // Caller MUST hold channelSyncLock (read).
 func getCandidatesFromCache(group, alias string) []routeCandidate {
-	if group2alias2routes == nil {
+	if alias2routes == nil {
 		return nil
 	}
-	if aliasRoutes, ok := group2alias2routes[group]; ok {
-		if candidates, ok := aliasRoutes[alias]; ok {
-			return candidates
-		}
-	}
-	return nil
+	return filterCandidatesByGroup(alias2routes[alias], group, alias)
 }
 
-// getCandidatesFromDB returns candidates for the given group and alias from database.
+// getCandidatesFromDB returns candidates for the given alias from the database,
+// restricted to the channels this group may use.
 func getCandidatesFromDB(group, alias string) []routeCandidate {
 	var routes []ChannelModelRoute
-	if err := dbx.DB.Where("\"group\" = ? AND public_model_alias = ? AND enabled = ?", group, alias, true).Find(&routes).Error; err != nil {
+	if err := dbx.DB.Where("public_model_alias = ? AND enabled = ?", alias, true).Find(&routes).Error; err != nil {
 		return nil
 	}
 	candidates := make([]routeCandidate, 0, len(routes))
@@ -98,7 +93,59 @@ func getCandidatesFromDB(group, alias string) []routeCandidate {
 			staticWeight:  r.StaticWeight,
 		})
 	}
-	return candidates
+	return filterCandidatesByGroup(candidates, group, alias)
+}
+
+// filterCandidatesByGroup drops every candidate whose channel does not serve
+// (group, alias). This is the group isolation boundary: route units carry no
+// group of their own, so a request must never reach a channel its group does not
+// grant. It fails CLOSED — an unknown group, an unknown alias, or a missing
+// eligibility set yields no candidates rather than all of them.
+func filterCandidatesByGroup(candidates []routeCandidate, group, alias string) []routeCandidate {
+	if len(candidates) == 0 {
+		return nil
+	}
+	allowed := allowedChannelsForGroupAlias(group, alias)
+	if len(allowed) == 0 {
+		return nil
+	}
+	kept := make([]routeCandidate, 0, len(candidates))
+	for _, c := range candidates {
+		if _, ok := allowed[c.channelId]; ok {
+			kept = append(kept, c)
+		}
+	}
+	return kept
+}
+
+// allowedChannelsForGroupAlias returns the channel ids that may serve alias for
+// group. The abilities table is the authority: it is written from the channel's
+// own group and model lists by AddAbilities/UpdateAbilities, it is what the
+// pre-route-unit selector used for exactly this decision, and it carries the
+// per-model enabled flag that DisableChannelModel flips.
+func allowedChannelsForGroupAlias(group, alias string) map[int]struct{} {
+	allowed := make(map[int]struct{})
+	if group == "" || alias == "" {
+		return allowed
+	}
+	if common.MemoryCacheEnabled {
+		// group2model2channels is built from abilities + enabled channels by
+		// InitChannelCache. Caller holds channelSyncLock (read) on this path.
+		for _, id := range group2model2channels[group][alias] {
+			allowed[id] = struct{}{}
+		}
+		return allowed
+	}
+	var abilities []Ability
+	if err := dbx.DB.Where(dbx.GroupCol()+" = ? AND model = ? AND enabled = ?", group, alias, true).
+		Find(&abilities).Error; err != nil {
+		common.SysError("failed to load abilities for group eligibility: " + err.Error())
+		return allowed
+	}
+	for _, a := range abilities {
+		allowed[a.ChannelId] = struct{}{}
+	}
+	return allowed
 }
 
 // filterCandidatesByChannelStatusAndKey filters candidates by channel status (enabled),
@@ -213,12 +260,10 @@ func scoreCandidates(pool routestats.PoolKey, candidates []routeCandidate, alias
 		health := RouteWeightMultiplier(RouteKey{ChannelId: c.channelId, KeyIndex: c.keyIndex, Model: alias})
 		quality := 1.0
 		if cfg != nil && cfg.Enabled {
-			if h := routestats.GetHandle(routestats.RouteKey{
-				Group:            pool.Group,
-				PublicModelAlias: pool.PublicModelAlias,
-				ChannelID:        c.channelId,
-				KeyIndex:         c.keyIndex,
-				UpstreamModel:    c.upstreamModel,
+			if h := routestats.GetHandle(routestats.RouteKey{PublicModelAlias: pool.PublicModelAlias,
+				ChannelID:     c.channelId,
+				KeyIndex:      c.keyIndex,
+				UpstreamModel: c.upstreamModel,
 			}); h != nil {
 				quality = h.Quality().Quality
 			}
@@ -375,7 +420,7 @@ func SelectRouteUnit(group string, alias string, requestPath string, retry int, 
 
 	// The share window is scoped to the competing pool, which is exactly the
 	// (group, alias) pair selection draws from.
-	pool := routestats.PoolKey{Group: group, PublicModelAlias: alias}
+	pool := routestats.PoolKey{PublicModelAlias: alias}
 	selected := selectByWeight(pool, candidates, alias, rnd)
 	if selected == nil {
 		return nil, nil
@@ -399,12 +444,10 @@ func SelectRouteUnit(group string, alias string, requestPath string, retry int, 
 	// Create routestats handle for this route unit (per-attempt attribution)
 	// RouteKey uses: Group (group), PublicModelAlias (alias = requested alias),
 	// ChannelID, KeyIndex, UpstreamModel (from route row, not adapted).
-	routeKey := routestats.RouteKey{
-		Group:            group,
-		PublicModelAlias: alias,
-		ChannelID:        selected.channelId,
-		KeyIndex:         selected.keyIndex,
-		UpstreamModel:    selected.upstreamModel,
+	routeKey := routestats.RouteKey{PublicModelAlias: alias,
+		ChannelID:     selected.channelId,
+		KeyIndex:      selected.keyIndex,
+		UpstreamModel: selected.upstreamModel,
 	}
 	statsHandle := routestats.GetOrCreateHandle(routeKey)
 
@@ -456,21 +499,22 @@ func (channel *Channel) GetNextEnabledKeyForIndex(keyIndex int) (string, int, *t
 // folded into the pool's share window, because the correction is blind to skew
 // it cannot see.
 //
-// It picks one enabled key via GetNextEnabledKey() and derives Group from
-// the channel's first enabled group (via ExpandChannelModelRoutes) or empty string.
-func SelectedRouteFromChannel(channel *Channel, alias string) (*SelectedRoute, error) {
-	return selectedRouteFromChannel(channel, alias, true)
+// It picks one enabled key via GetNextEnabledKey(). group is the requesting
+// group; it does not scope the route unit (route units are group-free) but it does
+// scope the counterfactual candidate set recorded into the share window.
+func SelectedRouteFromChannel(channel *Channel, alias string, group string) (*SelectedRoute, error) {
+	return selectedRouteFromChannel(channel, alias, group, true)
 }
 
 // SelectedRouteForProbe is the same construction for administrative probes
 // (channel test, key probe). These requests are not user traffic: counting them
 // would let a single "test all channels" click move the share window and make the
 // correction chase load that no user generated.
-func SelectedRouteForProbe(channel *Channel, alias string) (*SelectedRoute, error) {
-	return selectedRouteFromChannel(channel, alias, false)
+func SelectedRouteForProbe(channel *Channel, alias string, group string) (*SelectedRoute, error) {
+	return selectedRouteFromChannel(channel, alias, group, false)
 }
 
-func selectedRouteFromChannel(channel *Channel, alias string, recordShare bool) (*SelectedRoute, error) {
+func selectedRouteFromChannel(channel *Channel, alias string, group string, recordShare bool) (*SelectedRoute, error) {
 	if channel == nil {
 		return nil, errors.New("channel is nil")
 	}
@@ -484,39 +528,31 @@ func selectedRouteFromChannel(channel *Channel, alias string, recordShare bool) 
 	// this lookup the request would either go unattributed or, worse, be charged
 	// against a key derived from the alias instead of the route's own upstream
 	// model, which is a different route unit entirely.
-	group := ""
 	upstreamModel := alias
 	routeId := 0
 	if common.MemoryCacheEnabled {
 		channelSyncLock.RLock()
-		for g, aliasMap := range group2alias2routes {
-			for _, rc := range aliasMap[alias] {
-				if rc.channelId == channel.Id && rc.keyIndex == keyIndex {
-					group, upstreamModel, routeId = g, rc.upstreamModel, rc.routeId
-					break
-				}
-			}
-			if group != "" {
+		for _, rc := range alias2routes[alias] {
+			if rc.channelId == channel.Id && rc.keyIndex == keyIndex {
+				upstreamModel, routeId = rc.upstreamModel, rc.routeId
 				break
 			}
 		}
 		channelSyncLock.RUnlock()
 	} else {
 		var row ChannelModelRoute
-		if err := dbx.DB.Where(dbx.GroupCol()+" IS NOT NULL AND public_model_alias = ? AND channel_id = ? AND key_index = ? AND enabled = ?",
+		if err := dbx.DB.Where("public_model_alias = ? AND channel_id = ? AND key_index = ? AND enabled = ?",
 			alias, channel.Id, keyIndex, true).First(&row).Error; err == nil {
-			group, upstreamModel, routeId = row.Group, row.UpstreamModel, row.Id
+			upstreamModel, routeId = row.UpstreamModel, row.Id
 		}
 	}
 
 	var statsHandle *routestats.RouteHandle
 	if routeId != 0 {
-		statsHandle = routestats.GetOrCreateHandle(routestats.RouteKey{
-			Group:            group,
-			PublicModelAlias: alias,
-			ChannelID:        channel.Id,
-			KeyIndex:         keyIndex,
-			UpstreamModel:    upstreamModel,
+		statsHandle = routestats.GetOrCreateHandle(routestats.RouteKey{PublicModelAlias: alias,
+			ChannelID:     channel.Id,
+			KeyIndex:      keyIndex,
+			UpstreamModel: upstreamModel,
 		})
 		// This path bypasses weighted random selection entirely, yet it still
 		// consumes traffic from the pool. The share window has to see it, or the
@@ -575,7 +611,7 @@ func recordBypassSelection(group, alias string, selected routestats.RouteID) {
 	if len(candidates) == 0 {
 		return
 	}
-	pool := routestats.PoolKey{Group: group, PublicModelAlias: alias}
+	pool := routestats.PoolKey{PublicModelAlias: alias}
 	_, targets := scoreCandidates(pool, candidates, alias)
 	if len(targets) == 0 {
 		// Every candidate scored zero (for example the whole pool is disabled).
