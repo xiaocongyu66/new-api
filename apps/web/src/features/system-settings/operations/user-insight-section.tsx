@@ -17,9 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useForm } from 'react-hook-form'
+import { useEffect, useRef } from 'react'
+import { useForm, type Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
-import * as z from 'zod'
 import { toast } from 'sonner'
 
 import {
@@ -47,67 +47,18 @@ import {
 } from '../components/settings-form-layout'
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
-import { useResetForm } from '../hooks/use-reset-form'
 import { useUpdateOption } from '../hooks/use-update-option'
-
-// Keys mirror UserInsightSetting in apps/api/internal/usage/user_insight_setting.go.
-const insightSchema = z.object({
-  'user_insight_setting.enabled': z.boolean(),
-  'user_insight_setting.record_in_log': z.boolean(),
-  'user_insight_setting.gender_inference_enabled': z.boolean(),
-  'user_insight_setting.jailbreak_alert_score': z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(100),
-  'user_insight_setting.sample_enabled': z.boolean(),
-  'user_insight_setting.sample_rate_percent': z.coerce
-    .number()
-    .int()
-    .min(0)
-    .max(100),
-  'user_insight_setting.sample_keep_body': z.boolean(),
-  'user_insight_setting.sample_quota_mb': z.coerce.number().int().min(1),
-  'user_insight_setting.sample_retention_days': z.coerce.number().int().min(0),
-  'user_insight_setting.auto_ban_enabled': z.boolean(),
-  'user_insight_setting.auto_ban_min_risk': z.enum([
-    'suspect',
-    'likely',
-    'confirmed',
-  ]),
-  'user_insight_setting.auto_ban_code_ratio_enabled': z.boolean(),
-  'user_insight_setting.auto_ban_code_ratio_percent': z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(100),
-  'user_insight_setting.auto_ban_code_min_requests': z.coerce
-    .number()
-    .int()
-    .min(1),
-})
-
-type InsightFormValues = z.infer<typeof insightSchema>
-
-const DEFAULT_INSIGHT_VALUES: InsightFormValues = {
-  'user_insight_setting.enabled': true,
-  'user_insight_setting.record_in_log': true,
-  'user_insight_setting.gender_inference_enabled': true,
-  'user_insight_setting.jailbreak_alert_score': 70,
-  'user_insight_setting.sample_enabled': true,
-  'user_insight_setting.sample_rate_percent': 5,
-  'user_insight_setting.sample_keep_body': false,
-  'user_insight_setting.sample_quota_mb': 1024,
-  'user_insight_setting.sample_retention_days': 30,
-  'user_insight_setting.auto_ban_enabled': false,
-  'user_insight_setting.auto_ban_min_risk': 'confirmed',
-  'user_insight_setting.auto_ban_code_ratio_enabled': false,
-  'user_insight_setting.auto_ban_code_ratio_percent': 80,
-  'user_insight_setting.auto_ban_code_min_requests': 10,
-}
+import {
+  buildInsightFormDefaults,
+  DEFAULT_INSIGHT_VALUES,
+  insightSchema,
+  normalizeInsightFormValues,
+  type InsightFlatDefaults,
+  type InsightFormValues,
+} from './user-insight-defaults'
 
 type UserInsightSectionProps = {
-  defaultValues?: InsightFormValues
+  defaultValues?: InsightFlatDefaults
 }
 
 export function UserInsightSection({
@@ -116,21 +67,50 @@ export function UserInsightSection({
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
 
-  const form = useForm({
-    resolver: zodResolver(insightSchema),
-    defaultValues,
+  const form = useForm<InsightFormValues, unknown, InsightFormValues>({
+    resolver: zodResolver(insightSchema) as Resolver<
+      InsightFormValues,
+      unknown,
+      InsightFormValues
+    >,
+    defaultValues: buildInsightFormDefaults(defaultValues),
   })
 
-  useResetForm(form, defaultValues)
+  // 服务端配置在挂载后才到达（页面的 options 查询）：只有序列化基线真正变化时
+  // 才重置表单，避免覆盖用户输入。
+  const baselineRef = useRef<InsightFlatDefaults>(defaultValues)
+  const baselineSerializedRef = useRef<string>(JSON.stringify(defaultValues))
 
-  const onSubmit = async (data: InsightFormValues) => {
+  useEffect(() => {
+    const serialized = JSON.stringify(defaultValues)
+    if (serialized === baselineSerializedRef.current) return
+    baselineRef.current = defaultValues
+    baselineSerializedRef.current = serialized
+    form.reset(buildInsightFormDefaults(defaultValues))
+  }, [defaultValues, form])
+
+  const onSubmit = async (values: InsightFormValues) => {
     try {
-      const updates = Object.entries(data).filter(
-        ([key, value]) => value !== defaultValues[key as keyof InsightFormValues]
-      )
-      for (const [key, value] of updates) {
-        await updateOption.mutateAsync({ key, value })
+      const normalized = normalizeInsightFormValues(values)
+      const changed = (
+        Object.keys(normalized) as Array<keyof InsightFlatDefaults>
+      ).filter((key) => normalized[key] !== baselineRef.current[key])
+
+      if (changed.length === 0) {
+        toast.info(t('No changes to save'))
+        return
       }
+
+      for (const key of changed) {
+        await updateOption.mutateAsync({
+          key,
+          value: normalized[key],
+        })
+      }
+
+      baselineRef.current = normalized
+      baselineSerializedRef.current = JSON.stringify(normalized)
+      form.reset(buildInsightFormDefaults(normalized))
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : t('Failed to update setting')
@@ -144,7 +124,7 @@ export function UserInsightSection({
         <SettingsForm onSubmit={form.handleSubmit(onSubmit)}>
           <SettingsPageFormActions
             onSave={form.handleSubmit(onSubmit)}
-            isSaving={updateOption.isPending}
+            isSaving={updateOption.isPending || form.formState.isSubmitting}
           />
 
           <FormField
@@ -226,7 +206,9 @@ export function UserInsightSection({
                   <Input type='number' min={1} max={100} {...field} />
                 </FormControl>
                 <FormDescription>
-                  {t('Log a warning once the jailbreak score reaches this value')}
+                  {t(
+                    'Log a warning once the jailbreak score reaches this value'
+                  )}
                 </FormDescription>
               </FormItem>
             )}
@@ -417,12 +399,16 @@ export function UserInsightSection({
             name='user_insight_setting.auto_ban_code_min_requests'
             render={({ field }) => (
               <FormItem>
-                <FormLabel>{t('Minimum requests before ratio applies')}</FormLabel>
+                <FormLabel>
+                  {t('Minimum requests before ratio applies')}
+                </FormLabel>
                 <FormControl>
                   <Input type='number' min={1} {...field} />
                 </FormControl>
                 <FormDescription>
-                  {t('A ratio over too few requests is not statistically meaningful')}
+                  {t(
+                    'A ratio over too few requests is not statistically meaningful'
+                  )}
                 </FormDescription>
               </FormItem>
             )}
