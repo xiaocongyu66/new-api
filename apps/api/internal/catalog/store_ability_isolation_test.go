@@ -254,6 +254,43 @@ func TestBatchSetChannelTagStampsNewTagAndKeepsIsolation(t *testing.T) {
 	assert.Equal(t, map[string]bool{"model-a": false, "model-b": true}, routeEnabledByAlias(t, 9109))
 }
 
+func TestRouteDeriveDisablesAliasWithoutAbilityRow(t *testing.T) {
+	setupIsolationTest(t)
+	seedIsolationChannel(t, 9110, "model-a,model-b")
+
+	// An ability-only rewrite (the shape the upstream model sync used to leave
+	// behind) drops model-b's ability rows while its route rows survive. The
+	// next sync must stop that alias serving instead of trusting the stale row.
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", 9110, "model-b").
+		Delete(&Ability{}).Error)
+	require.NoError(t, dbx.DB.Transaction(func(tx *gorm.DB) error {
+		return deriveRouteEnabledFromAbilities(tx, 9110)
+	}))
+
+	routes := routeEnabledByAlias(t, 9110)
+	assert.True(t, routes["model-a"])
+	assert.False(t, routes["model-b"],
+		"an alias with no ability row must not keep serving")
+}
+
+func TestRebuildChannelRoutingSyncsAddedAndRemovedModels(t *testing.T) {
+	setupIsolationTest(t)
+	channel := seedIsolationChannel(t, 9111, "model-a,model-b")
+
+	// The upstream model sync mutates the model list and then rebuilds; route
+	// rows must follow, or added models are unroutable and removed models keep
+	// serving.
+	channel.Models = "model-a,model-c"
+	require.NoError(t, dbx.DB.Model(&Channel{}).Where("id = ?", 9111).
+		Update("models", channel.Models).Error)
+	require.NoError(t, channel.RebuildChannelRouting())
+
+	assert.Equal(t, map[string]bool{"model-a": true, "model-c": true},
+		abilityEnabledByModel(t, 9111))
+	assert.Equal(t, map[string]bool{"model-a": true, "model-c": true},
+		routeEnabledByAlias(t, 9111), "route rows must match the rebuilt model list")
+}
+
 func TestFixAbilityReseedsRoutesFromRebuiltAbilities(t *testing.T) {
 	setupIsolationTest(t)
 	seedIsolationChannel(t, 9105, "model-a,model-b")

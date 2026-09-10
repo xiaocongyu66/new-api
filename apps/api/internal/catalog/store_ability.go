@@ -260,6 +260,22 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 	return nil
 }
 
+// RebuildChannelRouting rewrites one channel's ability rows and resyncs its
+// route rows under a single MutateGatewayRouting revision. Callers that changed
+// a channel's model list outside the channel CRUD path — the upstream model
+// sync is the one in tree — must use this instead of UpdateAbilities alone:
+// abilities without a route resync leave newly added models unroutable and
+// removed models still serving.
+func (channel *Channel) RebuildChannelRouting() error {
+	_, err := MutateGatewayRouting(func(tx *gorm.DB) error {
+		if err := channel.UpdateAbilities(tx); err != nil {
+			return err
+		}
+		return SyncChannelModelRoutesWithTx(tx, channel.Id)
+	})
+	return err
+}
+
 func UpdateAbilityStatus(channelId int, status bool) error {
 	return updateAbilityStatusWithTx(dbx.DB, channelId, status)
 }
