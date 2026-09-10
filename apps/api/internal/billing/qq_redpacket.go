@@ -106,6 +106,18 @@ func GetQQRedPacket(id int) (*QQRedPacket, error) {
 	return &packet, nil
 }
 
+// GetGroupRedPackets 读取某个群最近发出的红包（按发出时间倒序）
+func GetGroupRedPackets(groupOpenID string, limit int) ([]QQRedPacket, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 10
+	}
+	var packets []QQRedPacket
+	err := dbx.DB.Where("group_open_id = ?", groupOpenID).
+		Order("created_at DESC, id DESC").
+		Limit(limit).
+		Find(&packets).Error
+	return packets, err
+}
 // GetQQRedPacketGrabs 读取某个红包的全部抢取记录（按时间正序）
 func GetQQRedPacketGrabs(packetId int) ([]QQRedPacketGrab, error) {
 	var grabs []QQRedPacketGrab
