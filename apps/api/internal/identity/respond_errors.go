@@ -1,7 +1,5 @@
 package identity
 
-import ()
-
 func isAllowedSecurityProofScope(scope string) bool {
 	switch scope {
 	case SecurityProofScopeChannelKeyRead, SecurityProofScopePasskeyRegister, SecurityProofScopePasskeyDelete:
