@@ -1,0 +1,54 @@
+# CK-CRG-IMPACT: CRG 影响面门禁 (L2 语义层)
+# 检测: PR/diff 跨 N 个以上顶层模块改动 → 警告（建议拆分或说明耦合）
+# 模块粒度: apps/api/internal/<domain>、apps/api/modules/<mod>、apps/web/src/features/<feature>
+# 工具: code-review-graph detect-changes
+# 性能: 1-2s (CRG 索引已 build 过的情况)
+# SLA: l2 (语义层, 秒级)
+# Hook: merge (重量, 跨模块影响需要人审视)
+enabled: true
+hooks: [merge]
+sla: l2
+fail_severity: WARN
+match:
+  paths_include: ["**/*.go", "**/*.ts", "**/*.tsx"]
+  paths_exclude: ["vendor/", "node_modules/", "dist/", ".wt/"]
+mode: diff
+harness:
+  command: "sh"
+  args:
+    - "-c"
+    - |
+      ROOT=$(git rev-parse --show-toplevel)
+      BASE=$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD~ 2>/dev/null)
+      cd "$ROOT" || exit 2
+      # 把 stderr 丢到 /tmp, stdout 纯 JSON
+      exec 2>/tmp/gate-crg-impact-err.log
+      changed=$(git diff --name-only "$BASE"...HEAD 2>/dev/null | awk -F/ '
+        /^apps\/api\/internal\// { print "api/" $4; next }
+        /^apps\/api\/modules\// { print "relaykit/" $4; next }
+        /^apps\/api\/(pkg|model|controller|service|setting)\// { print "api/" $3; next }
+        /^apps\/web\/src\/features\// { print "web/" $5; next }
+      ' | sort -u | sed '/^$/d')
+      n_modules=$(printf '%s\n' "$changed" | sed '/^$/d' | wc -l | tr -d ' ')
+      THRESHOLD=4
+      if [ "$n_modules" -lt "$THRESHOLD" ]; then
+        echo '[]'
+      else
+        # 也调 CRG 拿 risk score (如有)
+        crg_score=""
+        if command -v code-review-graph >/dev/null 2>&1; then
+          crg_score=$(code-review-graph detect-changes --base "$BASE" 2>/dev/null \
+            | grep -oE 'risk_score"?[: ]+[0-9.]+' | head -1 || true)
+        fi
+        printf '%s\n' "$changed" | jq -R -s --arg threshold "$THRESHOLD" --arg score "$crg_score" '
+          split("\n") | map(select(length > 0)) as $modules
+          | [{
+              id: "CROSS-MODULE-IMPACT",
+              severity: "WARN",
+              path: ".",
+              line: 0,
+              message: ("改动跨 " + ($modules | length | tostring) + " 个模块 (" + ($modules | join(", ")) + "), 阈值 " + $threshold + (if $score != "" then ", CRG " + $score else "" end) + " — 建议拆分或 PR 描述里说明耦合理由")
+            }]' | jq -c .
+      fi
+optional: true
+timeout: 60
