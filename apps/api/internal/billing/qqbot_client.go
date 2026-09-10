@@ -282,6 +282,7 @@ func (ac *apiClient) SendGroupMessage(groupOpenID string, req *GroupMessageReque
 		groupOpenID, status, truncateForLog(string(body), 400)))
 	return parseSendMessageID(body), nil
 }
+
 // parseSendMessageID 从发送消息响应体中提取消息 ID(用于撤回)。
 // message_id 优先;老版本接口只回 id 时兜底取 id。
 // 返回空串是刻意降级:消息已发出,只是拿不到 ID 无法自动撤回,
