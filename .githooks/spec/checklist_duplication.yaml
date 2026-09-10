@@ -1,0 +1,80 @@
+# CK-DUPLICATION: 复制漂移检测 (L2 语义层)
+# 模式: 6+ 连续非空行的代码块在多个位置重复出现 (clones 类)
+# 实现: sh + awk + sort + uniq (零外部依赖)
+# 范围: 只扫本次改动涉及的 Go/TS 文件, 全量扫描交给 CI
+# SLA: l2 (语义层, 秒级)
+# Hook: merge (重量检查, 不阻塞日常提交)
+enabled: true
+hooks: [merge]
+sla: l2
+fail_severity: WARN
+match:
+  paths_include: ["**/*.go", "**/*.ts", "**/*.tsx"]
+  paths_exclude:
+    - "vendor/"
+    - "node_modules/"
+    - "dist/"
+    - ".wt/"
+    - "**/*_test.go"
+    - "**/*.test.ts"
+    - "**/*.test.tsx"
+    - "**/__tests__/**"
+    - "**/routeTree.gen.ts"
+    - "**/*.gen.go"
+mode: diff
+harness:
+  command: "sh"
+  args:
+    - "-c"
+    - |
+      ROOT=$(git rev-parse --show-toplevel)
+      BASE=$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD~ 2>/dev/null)
+      cd "$ROOT" || exit 2
+      exec 2>/tmp/gate-duplication-err.log
+
+      # 只看本次 diff 触及的源文件, 避免全仓扫描的噪声与耗时
+      files=$(git diff --name-only "$BASE"...HEAD 2>/dev/null \
+        | grep -E '\.(go|ts|tsx)$' \
+        | grep -vE '(_test\.go|\.test\.tsx?|/__tests__/|routeTree\.gen\.ts|\.gen\.go|^vendor/|/node_modules/|^\.wt/)' \
+        | while read -r f; do [ -f "$f" ] && echo "$f"; done)
+
+      if [ -z "$files" ]; then
+        echo '[]'
+        exit 0
+      fi
+
+      # 归一化: 去缩进与行尾, 6 行滑动窗口取指纹, 跨文件出现 2+ 次即报告
+      dupes=$(printf '%s\n' $files | while read -r f; do
+        awk -v F="$f" '
+          { line=$0; gsub(/^[ \t]+|[ \t]+$/, "", line) }
+          line == "" { next }
+          line ~ /^(\/\/|#|\*|\/\*)/ { next }
+          { buf[NR%6]=line; n++
+            if (n >= 6) {
+              key=""
+              for (i=NR-5; i<=NR; i++) key = key buf[i%6] "\x1f"
+              print key "\x1e" F ":" NR-5
+            }
+          }
+        ' "$f"
+      done | sort | awk -F'\x1e' '
+        { if ($1 == prev_key) { locs = locs " " $2; c++ } else { if (c > 1) print c "\x1e" locs; prev_key=$1; locs=$2; c=1 } }
+        END { if (c > 1) print c "\x1e" locs }
+      ' | sort -rn | head -5)
+
+      if [ -z "$dupes" ]; then
+        echo '[]'
+      else
+        printf '%s\n' "$dupes" | jq -R -s '
+          split("\n") | map(select(length > 0))
+          | map(split("\u001e"))
+          | map({
+              id: "DUPLICATE-CODE",
+              severity: "WARN",
+              path: ((.[1] // "") | ltrimstr(" ") | split(" ") | .[0] // "." | split(":") | .[0]),
+              line: ((.[1] // "") | ltrimstr(" ") | split(" ") | .[0] // "" | split(":") | .[1] // "0" | tonumber),
+              message: ("6+ 行代码块重复 " + .[0] + " 次:" + (.[1] // ""))
+            })' | jq -c .
+      fi
+optional: true
+timeout: 30
