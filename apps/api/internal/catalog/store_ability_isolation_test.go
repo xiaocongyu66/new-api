@@ -230,6 +230,30 @@ func TestTagStatusFlipDoesNotLeakAcrossChannels(t *testing.T) {
 		routeEnabledByAlias(t, 9108))
 }
 
+func TestBatchSetChannelTagStampsNewTagAndKeepsIsolation(t *testing.T) {
+	setupIsolationTest(t)
+	seedIsolationChannel(t, 9109, "model-a,model-b")
+	require.NoError(t, DisableChannelModel(9109, "model-a"))
+
+	newTag := "batch-tag"
+	require.NoError(t, BatchSetChannelTag([]int{9109}, &newTag))
+
+	// The ability rows are rebuilt inside the same transaction that wrote the
+	// tag, so they must carry the new tag — reading the channel back through a
+	// pooled connection used to stamp the pre-update tag.
+	rows := []Ability{}
+	require.NoError(t, dbx.DB.Where("channel_id = ?", 9109).Find(&rows).Error)
+	require.NotEmpty(t, rows)
+	for _, row := range rows {
+		require.NotNil(t, row.Tag, "rebuilt ability rows must carry the batch tag")
+		assert.Equal(t, newTag, *row.Tag)
+	}
+
+	// Re-tagging is not a reset: an isolated model stays isolated in both tables.
+	assert.Equal(t, map[string]bool{"model-a": false, "model-b": true}, abilityEnabledByModel(t, 9109))
+	assert.Equal(t, map[string]bool{"model-a": false, "model-b": true}, routeEnabledByAlias(t, 9109))
+}
+
 func TestFixAbilityReseedsRoutesFromRebuiltAbilities(t *testing.T) {
 	setupIsolationTest(t)
 	seedIsolationChannel(t, 9105, "model-a,model-b")
