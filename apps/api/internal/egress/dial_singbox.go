@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"net"
 	"sync"
@@ -16,7 +17,6 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 	singNet "github.com/sagernet/sing/common/network"
 
-	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
 )
 

@@ -54,7 +54,6 @@ func setupIdentityTestDB(t *testing.T) {
 		t.Fatalf("migrate test db: %v", err)
 	}
 
-
 	t.Cleanup(func() {
 		dbx.DB, dbx.LogDB = previousDB, previousLogDB
 		common.RedisEnabled = previousRedis

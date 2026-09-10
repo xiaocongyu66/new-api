@@ -1,14 +1,13 @@
 package billing
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common"
 	"math"
 	"strconv"
 	"strings"
 
-	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/internal/usage"
@@ -54,7 +53,7 @@ func feeBrackets() []FeeBracket {
 		return defaultFeeBrackets
 	}
 	var brackets []FeeBracket
-	if err := json.Unmarshal([]byte(raw), &brackets); err != nil || len(brackets) == 0 {
+	if err := common.Unmarshal([]byte(raw), &brackets); err != nil || len(brackets) == 0 {
 		common.SysError("转账费率表解析失败，使用默认档位: " + raw)
 		return defaultFeeBrackets
 	}

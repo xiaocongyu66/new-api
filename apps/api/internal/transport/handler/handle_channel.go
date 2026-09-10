@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/billing"
 	channelpkg "github.com/QuantumNous/new-api/internal/catalog"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/egress"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
@@ -15,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/i18n"
 	"github.com/QuantumNous/new-api/internal/identity/policy"
@@ -579,7 +579,7 @@ func getVertexArrayKeys(keys string) ([]string, error) {
 		case string:
 			keyStr = strings.TrimSpace(v)
 		default:
-			bytes, err := json.Marshal(v)
+			bytes, err := common.Marshal(v)
 			if err != nil {
 				return nil, fmt.Errorf("Vertex AI key JSON 编码失败: %w", err)
 			}
@@ -840,7 +840,7 @@ func EditTagChannels(c contract.Context) {
 	}
 	if channelTag.ParamOverride != nil {
 		trimmed := strings.TrimSpace(*channelTag.ParamOverride)
-		if trimmed != "" && !json.Valid([]byte(trimmed)) {
+		if trimmed != "" && !common.ValidJson([]byte(trimmed)) {
 			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "参数覆盖必须是合法的 JSON 格式",
@@ -851,7 +851,7 @@ func EditTagChannels(c contract.Context) {
 	}
 	if channelTag.HeaderOverride != nil {
 		trimmed := strings.TrimSpace(*channelTag.HeaderOverride)
-		if trimmed != "" && !json.Valid([]byte(trimmed)) {
+		if trimmed != "" && !common.ValidJson([]byte(trimmed)) {
 			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
 				"message": "请求头覆盖必须是合法的 JSON 格式",
@@ -1000,7 +1000,7 @@ func UpdateChannel(c contract.Context) {
 				if strings.HasPrefix(strings.TrimSpace(originChannel.Key), "[") {
 					// JSON数组格式
 					var arr []json.RawMessage
-					if err := json.Unmarshal([]byte(strings.TrimSpace(originChannel.Key)), &arr); err == nil {
+					if err := common.Unmarshal([]byte(strings.TrimSpace(originChannel.Key)), &arr); err == nil {
 						existingKeys = make([]string, len(arr))
 						for i, v := range arr {
 							existingKeys[i] = string(v)
@@ -2071,7 +2071,7 @@ func OllamaPullModelStream(c contract.Context) {
 
 	// 创建进度回调函数
 	progressCallback := func(progress ollama.OllamaPullResponse) {
-		data, _ := json.Marshal(progress)
+		data, _ := common.Marshal(progress)
 		_, _ = stream.WriteRaw([]byte("data: " + string(data) + "\n\n"))
 		_ = stream.Flush()
 	}
@@ -2080,12 +2080,12 @@ func OllamaPullModelStream(c contract.Context) {
 	err = ollama.PullOllamaModelStream(baseURL, key, req.ModelName, progressCallback)
 
 	if err != nil {
-		errorData, _ := json.Marshal(common.H{
+		errorData, _ := common.Marshal(common.H{
 			"error": err.Error(),
 		})
 		_, _ = stream.WriteRaw([]byte("data: " + string(errorData) + "\n\n"))
 	} else {
-		successData, _ := json.Marshal(common.H{
+		successData, _ := common.Marshal(common.H{
 			"message": fmt.Sprintf("channelpkg.Model %s pulled successfully", req.ModelName),
 		})
 		_, _ = stream.WriteRaw([]byte("data: " + string(successData) + "\n\n"))

@@ -3,13 +3,12 @@ package price_expression
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/settings"
 	"math"
 	"sort"
 	"strings"
 	"sync/atomic"
-
-	"github.com/QuantumNous/new-api/internal/common"
 )
 
 // ---------------------------------------------------------------------------

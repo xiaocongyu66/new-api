@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	reasoning "github.com/QuantumNous/new-api/internal/billing"
+	"github.com/QuantumNous/new-api/internal/common"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -13,7 +14,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/internal/relay/channel"
@@ -297,7 +297,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c contract.Context, info *relaycommon.Rel
 		// 没有做排除3.5Haiku等，要出问题再加吧，最佳兼容性（不是
 		if request.THINKING != nil && strings.HasPrefix(info.UpstreamModelName, "anthropic") {
 			var thinking dto.Thinking // Claude标准Thinking格式
-			if err := json.Unmarshal(request.THINKING, &thinking); err != nil {
+			if err := common.Unmarshal(request.THINKING, &thinking); err != nil {
 				return nil, fmt.Errorf("error Unmarshal thinking: %w", err)
 			}
 

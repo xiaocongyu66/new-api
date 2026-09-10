@@ -2,7 +2,6 @@ package billing
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common"
 	"io"
@@ -67,7 +66,7 @@ func (tm *tokenManager) Token() (string, error) {
 		return tm.token, nil
 	}
 
-	payload, _ := json.Marshal(map[string]string{
+	payload, _ := common.Marshal(map[string]string{
 		"appId":        tm.appID,
 		"clientSecret": tm.appSecret,
 	})
@@ -92,7 +91,7 @@ func (tm *tokenManager) Token() (string, error) {
 	}
 
 	var tr tokenResponse
-	if err := json.Unmarshal(body, &tr); err != nil {
+	if err := common.Unmarshal(body, &tr); err != nil {
 		return "", fmt.Errorf("解析 AccessToken 响应失败: %w", err)
 	}
 	if tr.AccessToken == "" {
@@ -137,7 +136,7 @@ func (ac *apiClient) do(method, path string, body any) ([]byte, int, error) {
 
 	var reader io.Reader
 	if body != nil {
-		payload, err := json.Marshal(body)
+		payload, err := common.Marshal(body)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -180,7 +179,7 @@ func (ac *apiClient) Gateway() (*GatewayInfo, error) {
 		return nil, fmt.Errorf("获取网关地址失败 HTTP %d: %s", status, string(body))
 	}
 	var info GatewayInfo
-	if err := json.Unmarshal(body, &info); err != nil {
+	if err := common.Unmarshal(body, &info); err != nil {
 		return nil, err
 	}
 	if info.URL == "" {
@@ -259,7 +258,7 @@ type GroupMessageRequest struct {
 // 所以成功路径也要把响应体记下来，否则「接口成功但群里没消息」无法排查。
 func (ac *apiClient) SendGroupMessage(groupOpenID string, req *GroupMessageRequest) ([]byte, error) {
 	path := fmt.Sprintf("/v2/groups/%s/messages", url.PathEscape(groupOpenID))
-	reqPreview, _ := json.Marshal(req)
+	reqPreview, _ := common.Marshal(req)
 	body, status, err := ac.do(http.MethodPost, path, req)
 	if err != nil {
 		common.SysError(fmt.Sprintf("群消息请求失败 group=%s req=%s err=%v",
@@ -344,7 +343,7 @@ func (ac *apiClient) ListJoinRequests(groupOpenID, cursor string, limit int) (*J
 		return nil, fmt.Errorf("拉取入群申请失败 HTTP %d: %s", status, string(body))
 	}
 	var resp JoinRequestListResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := common.Unmarshal(body, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -414,7 +413,7 @@ func (ac *apiClient) ListPanels(scope string) ([]PanelBrief, error) {
 	var resp struct {
 		List []PanelBrief `json:"list"`
 	}
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := common.Unmarshal(body, &resp); err != nil {
 		return nil, err
 	}
 	return resp.List, nil
@@ -432,7 +431,7 @@ func (ac *apiClient) CreatePanel(req *CreatePanelRequest) (string, error) {
 	var resp struct {
 		PanelID string `json:"panel_id"`
 	}
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := common.Unmarshal(body, &resp); err != nil {
 		return "", err
 	}
 	return resp.PanelID, nil

@@ -38,7 +38,6 @@ func setupManageUserTestDB(t *testing.T) *gorm.DB {
 		&QQBinding{}, &QQBindCode{},
 	))
 
-
 	t.Cleanup(func() {
 		dbx.DB, dbx.LogDB = previousDB, previousLogDB
 		common.RedisEnabled = previousRedisEnabled

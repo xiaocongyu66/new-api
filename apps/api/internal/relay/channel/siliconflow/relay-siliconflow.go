@@ -1,7 +1,7 @@
 package siliconflow
 
 import (
-	"encoding/json"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/egress"
 	"io"
 	"net/http"
@@ -20,7 +20,7 @@ func siliconflowRerankHandler(c contract.Context, info *relaycommon.RelayInfo, r
 	}
 	egress.CloseResponseBodyGracefully(resp)
 	var siliconflowResp SFRerankResponse
-	err = json.Unmarshal(responseBody, &siliconflowResp)
+	err = common.Unmarshal(responseBody, &siliconflowResp)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
@@ -34,7 +34,7 @@ func siliconflowRerankHandler(c contract.Context, info *relaycommon.RelayInfo, r
 		Usage:   *usage,
 	}
 
-	jsonResponse, err := json.Marshal(rerankResp)
+	jsonResponse, err := common.Marshal(rerankResp)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
