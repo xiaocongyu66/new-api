@@ -36,6 +36,7 @@ const (
 	MenuActionMyStats    = "nailao_menu:do_my_stats"
 	MenuActionDropStatus = "nailao_menu:do_drop_status"
 	MenuActionFeeTable   = "nailao_menu:do_fee_table"
+	MenuActionRedPacketList = "nailao_menu:do_rp_list"
 
 	// 管理员专属动作
 	MenuActionAdminStatus = "nailao_menu:admin_status"
@@ -216,6 +217,9 @@ func redPacketMenuKeyboard() *Keyboard {
 			Rows: []Row{
 				{Buttons: []Button{
 					commandBtn("发红包", "/红包 10 5"),
+				}},
+				{Buttons: []Button{
+					callbackBtn("红包列表", MenuActionRedPacketList, 0),
 				}},
 				{Buttons: []Button{
 					callbackBtn("查看余额", MenuActionBalance, 0),
@@ -439,6 +443,9 @@ func HandleMenuCallback(data, openID, groupOpenID string) (content string, keybo
 
 	case MenuActionMyStats:
 		return myStatsText(openID), walletMenuKeyboard()
+
+	case MenuActionRedPacketList:
+		return HandleRedPacketList(groupOpenID)
 
 	case MenuActionDropStatus:
 		state := "未开启"

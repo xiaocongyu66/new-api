@@ -336,3 +336,49 @@ func redPacketErrorText(err error, dailyLimit int) string {
 		return err.Error()
 	}
 }
+
+// redPacketStatusText 红包状态的中文文案
+func redPacketStatusText(p *QQRedPacket) string {
+	switch p.Status {
+	case RedPacketStatusFinished:
+		return "已抢完"
+	case RedPacketStatusExpired:
+		return "已过期"
+	default:
+		return "进行中"
+	}
+}
+
+// HandleRedPacketList 构造本群红包列表文案与抢红包按钮
+//
+// 只给仍可抢的红包挂按钮（最多 5 个），已抢完/已过期的仅展示状态。
+func HandleRedPacketList(groupOpenID string) (string, *Keyboard) {
+	packets, err := GetGroupRedPackets(groupOpenID, 10)
+	if err != nil {
+		return buildPlainMarkdown("", "**查询失败，请稍后重试**"), redPacketMenuKeyboard()
+	}
+	if len(packets) == 0 {
+		return buildPlainMarkdown("",
+			"**本群还没有红包**\n\n用 /红包 金额 份数 发一个吧"), redPacketMenuKeyboard()
+	}
+
+
+	symbol := currencySymbolOrEmpty()
+	var sb strings.Builder
+	sb.WriteString("**本群红包列表**\n\n")
+	var rows []Row
+	for i, p := range packets {
+		grabbed := p.TotalCount - p.RemainingCount
+		sb.WriteString(fmt.Sprintf("%d. %s 发 %s%s · %d/%d 份 · %s\n\n",
+			i+1, atUser(p.SenderOpenID),
+			trimFloat(quotaToUnits(p.TotalAmount)), symbol,
+			grabbed, p.TotalCount, redPacketStatusText(&p)))
+		if p.Status == RedPacketStatusActive && len(rows) < 5 {
+			rows = append(rows, Row{Buttons: []Button{callbackBtn(
+				"抢红包",
+				ButtonDataRedPacketGrab+strconv.Itoa(p.Id), 1)}})
+		}
+	}
+	rows = append(rows, menuBackRow())
+	return sb.String(), &Keyboard{Content: &KeyboardContent{Rows: rows}}
+}
