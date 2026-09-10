@@ -280,14 +280,20 @@ func (ac *apiClient) SendGroupMessage(groupOpenID string, req *GroupMessageReque
 	}
 	common.SysLog(fmt.Sprintf("群消息响应 group=%s HTTP=%d resp=%s",
 		groupOpenID, status, truncateForLog(string(body), 400)))
+	return parseSendMessageID(body), nil
+}
+
+// parseSendMessageID 从发送消息响应体中提取消息 ID(用于撤回)。
+// message_id 优先;老版本接口只回 id 时兜底取 id。
+func parseSendMessageID(body []byte) string {
 	var resp sendMessageResponse
-	if err := common.Unmarshal(body, &resp); err == nil {
-		if resp.MessageID != "" {
-			return resp.MessageID, nil
-		}
-		return resp.ID, nil
+	if err := common.Unmarshal(body, &resp); err != nil {
+		return ""
 	}
-	return "", nil
+	if resp.MessageID != "" {
+		return resp.MessageID
+	}
+	return resp.ID
 }
 
 // RecallGroupMessage 撤回机器人自己发送的群消息
