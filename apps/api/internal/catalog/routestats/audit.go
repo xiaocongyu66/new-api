@@ -64,7 +64,12 @@ func AuditRingCapacity() int {
 // is full, the oldest entry is overwritten (FIFO eviction).
 // clientRequestID is the client-sent X-Request-Id header (may be empty).
 // path is the selection path label (may be empty when unlabelled).
-func RecordAttempt(requestID string, attempt int, key RouteKey, outcome int, clientRequestID string, path string) {
+//
+// group is passed separately rather than read off key: the route unit is not
+// group-scoped, but the request that produced this attempt was, and knowing which
+// group reached which channel is what makes the audit trail useful for verifying
+// group isolation.
+func RecordAttempt(requestID string, attempt int, key RouteKey, outcome int, clientRequestID string, path string, group string) {
 	auditRing.mu.Lock()
 	defer auditRing.mu.Unlock()
 
@@ -72,7 +77,7 @@ func RecordAttempt(requestID string, attempt int, key RouteKey, outcome int, cli
 		RequestID:       requestID,
 		ClientRequestID: clientRequestID,
 		Attempt:         attempt,
-		Group:           key.Group,
+		Group:           group,
 		Alias:           key.PublicModelAlias,
 		ChannelID:       key.ChannelID,
 		KeyIndex:        key.KeyIndex,

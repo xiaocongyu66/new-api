@@ -15,7 +15,7 @@ import (
 // the rest of the package.
 //
 // GetRandomSatisfiedChannel resolves a route unit through SelectRouteUnit, which
-// reads group2alias2routes and channelsIDM under channelSyncLock and only takes
+// reads alias2routes and channelsIDM under channelSyncLock and only takes
 // the memory-cache path when common.MemoryCacheEnabled is true.
 //
 // routeWeights maps channel id to the static weight the selector must see. A
@@ -27,27 +27,26 @@ func withChannelCacheFixture(t *testing.T, channels []*Channel, group, modelName
 
 	prevGroups := group2model2channels
 	prevIDM := channelsIDM
-	prevAliasRoutes := group2alias2routes
+	prevAliasRoutes := alias2routes
 	prevMemoryCache := common.MemoryCacheEnabled
 	t.Cleanup(func() {
 		channelSyncLock.Lock()
 		group2model2channels = prevGroups
 		channelsIDM = prevIDM
-		group2alias2routes = prevAliasRoutes
+		alias2routes = prevAliasRoutes
 		channelSyncLock.Unlock()
 		common.MemoryCacheEnabled = prevMemoryCache
 	})
 
 	ids := make([]int, 0, len(channels))
 	idm := make(map[int]*Channel, len(channels))
-	aliasRoutes := make(map[string]map[string][]routeCandidate)
+	aliasRoutes := make(map[string][]routeCandidate)
 	for _, ch := range channels {
 		ids = append(ids, ch.Id)
 		idm[ch.Id] = ch
 		if aliasRoutes[group] == nil {
-			aliasRoutes[group] = make(map[string][]routeCandidate)
 		}
-		aliasRoutes[group][modelName] = append(aliasRoutes[group][modelName], routeCandidate{
+		aliasRoutes[modelName] = append(aliasRoutes[modelName], routeCandidate{
 			routeId:       ch.Id,
 			channelId:     ch.Id,
 			keyIndex:      0,
@@ -59,7 +58,7 @@ func withChannelCacheFixture(t *testing.T, channels []*Channel, group, modelName
 	channelSyncLock.Lock()
 	group2model2channels = map[string]map[string][]int{group: {modelName: ids}}
 	channelsIDM = idm
-	group2alias2routes = aliasRoutes
+	alias2routes = aliasRoutes
 	channelSyncLock.Unlock()
 	common.MemoryCacheEnabled = true
 }
@@ -130,7 +129,7 @@ func TestExcludeSetIsPerRouteUnitNotPerChannel(t *testing.T) {
 	}
 	withChannelCacheFixture(t, []*Channel{ch}, group, modelName, map[int]int{9110: 100})
 	channelSyncLock.Lock()
-	group2alias2routes[group][modelName] = []routeCandidate{
+	alias2routes[modelName] = []routeCandidate{
 		{routeId: 1, channelId: 9110, keyIndex: 0, upstreamModel: modelName, staticWeight: 100},
 		{routeId: 2, channelId: 9110, keyIndex: 1, upstreamModel: modelName, staticWeight: 100},
 	}

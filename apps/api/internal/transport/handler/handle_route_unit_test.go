@@ -61,7 +61,6 @@ func seedRouteUnit(t *testing.T, db *gorm.DB, id int, alias string, channelID, w
 	require.NoError(t, db.Create(ch).Error)
 	route := channelpkg.ChannelModelRoute{
 		Id:               id,
-		Group:            "default",
 		PublicModelAlias: alias,
 		ChannelId:        channelID,
 		KeyIndex:         0,

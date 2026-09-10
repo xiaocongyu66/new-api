@@ -3,7 +3,6 @@ package channel
 import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
-	"strings"
 	"sync"
 	"time"
 
@@ -39,28 +38,36 @@ func InitChannelCache() {
 	}
 	var abilities []*Ability
 	dbx.DB.Find(&abilities)
-	groups := make(map[string]bool)
-	for _, ability := range abilities {
-		groups[ability.Group] = true
-	}
+	// group2model2channels is the group eligibility authority: route units are not
+	// group-scoped, so this map is what decides which channels a group may reach for
+	// a model. It is therefore built from the ability ROWS, not from splitting
+	// channel.Group × channel.Models.
+	//
+	// The difference is load-bearing in two ways. An ability row carries its own
+	// enabled flag, which DisableChannelModel flips to retire a single dead model on
+	// an otherwise healthy channel; deriving the map from the channel's columns
+	// ignored that flag and kept the dead model in rotation. And a row pairs one
+	// group with one model, whereas the cross product invents pairs that no ability
+	// grants whenever the two lists disagree.
 	newGroup2model2channels := make(map[string]map[string][]int)
-	for group := range groups {
-		newGroup2model2channels[group] = make(map[string][]int)
-	}
+	enabledChannels := make(map[int]struct{}, len(channels))
 	for _, channel := range channels {
-		if channel.Status != common.ChannelStatusEnabled {
-			continue // skip disabled channels
+		if channel.Status == common.ChannelStatusEnabled {
+			enabledChannels[channel.Id] = struct{}{}
 		}
-		groups := strings.Split(channel.Group, ",")
-		for _, group := range groups {
-			models := strings.Split(channel.Models, ",")
-			for _, model := range models {
-				if _, ok := newGroup2model2channels[group][model]; !ok {
-					newGroup2model2channels[group][model] = make([]int, 0)
-				}
-				newGroup2model2channels[group][model] = append(newGroup2model2channels[group][model], channel.Id)
-			}
+	}
+	for _, ability := range abilities {
+		if _, ok := newGroup2model2channels[ability.Group]; !ok {
+			newGroup2model2channels[ability.Group] = make(map[string][]int)
 		}
+		if !ability.Enabled {
+			continue
+		}
+		if _, ok := enabledChannels[ability.ChannelId]; !ok {
+			continue // a disabled channel serves nothing
+		}
+		newGroup2model2channels[ability.Group][ability.Model] = append(
+			newGroup2model2channels[ability.Group][ability.Model], ability.ChannelId)
 	}
 
 	channelSyncLock.Lock()

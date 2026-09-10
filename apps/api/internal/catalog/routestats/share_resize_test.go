@@ -21,7 +21,7 @@ func TestShareWindowGrowthKeepsFifoOrder(t *testing.T) {
 	ResetShares()
 	t.Cleanup(ResetShares)
 
-	pool := PoolKey{Group: "g", PublicModelAlias: "m"}
+	pool := PoolKey{PublicModelAlias: "m"}
 	a, b := routeID(1), routeID(2)
 	targets := map[RouteID]float64{a: 0.5, b: 0.5}
 
@@ -67,7 +67,7 @@ func TestShareWindowResizeRoundTripStaysBounded(t *testing.T) {
 	ResetShares()
 	t.Cleanup(ResetShares)
 
-	pool := PoolKey{Group: "g", PublicModelAlias: "m"}
+	pool := PoolKey{PublicModelAlias: "m"}
 	base := map[RouteID]float64{routeID(1): 1, routeID(2): 1}
 	avail := []RouteID{routeID(1), routeID(2)}
 	rng := rand.New(rand.NewPCG(0xF1F0, 3))

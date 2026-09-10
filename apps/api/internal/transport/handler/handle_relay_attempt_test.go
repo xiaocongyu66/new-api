@@ -91,14 +91,14 @@ func TestGetChannelReusesRouteResolvedByDistribute(t *testing.T) {
 	require.NoError(t, db.Create(channel).Error)
 	for keyIndex, id := range map[int]int{0: 1, 1: 2} {
 		require.NoError(t, db.Create(&catalog.ChannelModelRoute{
-			Id: id, Group: group, PublicModelAlias: alias, ChannelId: channelID,
+			Id: id, PublicModelAlias: alias, ChannelId: channelID,
 			KeyIndex: keyIndex, UpstreamModel: alias, StaticWeight: 100, Enabled: true,
 		}).Error)
 	}
 
 	// What Distribute produced: the route for key index 1, with its share entry
 	// already recorded by selectByWeight.
-	servingRoute, err := catalog.SelectedRouteFromChannel(channel, alias)
+	servingRoute, err := catalog.SelectedRouteFromChannel(channel, alias, group)
 	require.NoError(t, err)
 	require.Equal(t, 0, servingRoute.KeyIndex,
 		"sanity: an independent draw lands on key index 0, so the fixture can tell the two apart")
@@ -106,7 +106,7 @@ func TestGetChannelReusesRouteResolvedByDistribute(t *testing.T) {
 	servingRoute.Key = "key-one"
 	servingRoute.RouteId = 2
 
-	pool := routestats.PoolKey{Group: group, PublicModelAlias: alias}
+	pool := routestats.PoolKey{PublicModelAlias: alias}
 	selected := routestats.RouteID{ChannelID: channelID, KeyIndex: 1, UpstreamModel: alias}
 	targets := map[routestats.RouteID]float64{
 		selected: 0.5,
@@ -163,7 +163,7 @@ func TestGetChannelResolvesRouteForSpecificChannelReplay(t *testing.T) {
 		Models: alias, Group: group, Status: common.ChannelStatusEnabled,
 	}).Error)
 	require.NoError(t, db.Create(&catalog.ChannelModelRoute{
-		Id: 5, Group: group, PublicModelAlias: alias, ChannelId: channelID,
+		Id: 5, PublicModelAlias: alias, ChannelId: channelID,
 		KeyIndex: 0, UpstreamModel: alias, StaticWeight: 100, Enabled: true,
 	}).Error)
 

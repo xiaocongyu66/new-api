@@ -5,11 +5,16 @@ import (
 	"sync"
 )
 
-// PoolKey identifies one competing pool of route units. Selection happens within
-// a (group, alias) pair, so the share window must be scoped the same way: two
-// groups serving the same alias are separate pools with separate expected shares.
+// PoolKey identifies one competing pool of route units: all route units under one
+// public model alias.
+//
+// The pool is not split by user group. Scheduling is an alias-internal concern, so
+// one alias is one pool and a route unit has one expected share regardless of which
+// group's request it served. Heterogeneous candidate sets across groups (a group
+// that cannot see one of the alias's channels) are handled by the window storing
+// the target shares in force at each recorded selection: a route absent from that
+// request's candidate set simply contributes no entitlement for that entry.
 type PoolKey struct {
-	Group            string
 	PublicModelAlias string
 }
 

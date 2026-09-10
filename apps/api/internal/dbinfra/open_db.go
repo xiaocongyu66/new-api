@@ -202,6 +202,13 @@ func migrateDB() error {
 	if err := migratePrefillGroupConstraint(); err != nil {
 		return err
 	}
+	// Route units are no longer group-scoped. This MUST precede AutoMigrate: the new
+	// unique index on (public_model_alias, channel_id, key_index, upstream_model)
+	// cannot be created while the table still holds one row per (unit, group), which
+	// every multi-group deployment has by construction.
+	if err := dbx.CollapseRouteUnitGroups(); err != nil {
+		return err
+	}
 	if err := dbx.DB.AutoMigrate(migrationModels()...); err != nil {
 		return err
 	}

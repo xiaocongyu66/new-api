@@ -77,7 +77,7 @@ func TestSearchTagsOnSchemaWithoutLegacyColumns(t *testing.T) {
 }
 
 // TestGetActiveRouteStatsPoolKeysWithoutMemoryCache is the regression gate for
-// the hourly sweep. group2alias2routes is only built by InitChannelCache, which
+// the hourly sweep. alias2routes is only built by InitChannelCache, which
 // early-returns when the memory cache is disabled — the default. Returning nil
 // there made SweepSharePools read "keep nothing" and delete every share pool
 // once an hour, discarding all correction history.
@@ -85,36 +85,35 @@ func TestGetActiveRouteStatsPoolKeysWithoutMemoryCache(t *testing.T) {
 	db := withRetiredColumnDB(t)
 
 	prevMemoryCache := common.MemoryCacheEnabled
-	prevAliasRoutes := group2alias2routes
+	prevAliasRoutes := alias2routes
 	common.MemoryCacheEnabled = false
 	channelSyncLock.Lock()
-	group2alias2routes = nil
+	alias2routes = nil
 	channelSyncLock.Unlock()
 	t.Cleanup(func() {
 		common.MemoryCacheEnabled = prevMemoryCache
 		channelSyncLock.Lock()
-		group2alias2routes = prevAliasRoutes
+		alias2routes = prevAliasRoutes
 		channelSyncLock.Unlock()
 	})
 
 	require.NoError(t, db.Create(&ChannelModelRoute{
-		Id: 1, Group: "default", PublicModelAlias: "gpt-4", ChannelId: 7401,
+		Id: 1, PublicModelAlias: "gpt-4", ChannelId: 7401,
 		KeyIndex: 0, UpstreamModel: "gpt-4", StaticWeight: 100, Enabled: true,
 	}).Error)
 	require.NoError(t, db.Create(&ChannelModelRoute{
-		Id: 2, Group: "vip", PublicModelAlias: "gpt-4", ChannelId: 7401,
+		Id: 2, PublicModelAlias: "gpt-4", ChannelId: 7402,
 		KeyIndex: 0, UpstreamModel: "gpt-4", StaticWeight: 100, Enabled: true,
 	}).Error)
 	require.NoError(t, db.Create(&ChannelModelRoute{
-		Id: 3, Group: "default", PublicModelAlias: "retired", ChannelId: 7401,
+		Id: 3, PublicModelAlias: "retired", ChannelId: 7401,
 		KeyIndex: 0, UpstreamModel: "retired", StaticWeight: 100, Enabled: false,
 	}).Error)
 
 	keep := GetActiveRouteStatsPoolKeys()
 	require.NotNil(t, keep, "a live route table must never read as an unknown keep set")
-	assert.Contains(t, keep, routestats.PoolKey{Group: "default", PublicModelAlias: "gpt-4"})
-	assert.Contains(t, keep, routestats.PoolKey{Group: "vip", PublicModelAlias: "gpt-4"})
-	assert.NotContains(t, keep, routestats.PoolKey{Group: "default", PublicModelAlias: "retired"},
+	assert.Contains(t, keep, routestats.PoolKey{PublicModelAlias: "gpt-4"})
+	assert.NotContains(t, keep, routestats.PoolKey{PublicModelAlias: "retired"},
 		"a disabled route unit backs no live pool")
 
 	// The consumer's half of the contract: a pool backed by a live route survives
@@ -122,8 +121,8 @@ func TestGetActiveRouteStatsPoolKeysWithoutMemoryCache(t *testing.T) {
 	routestats.ResetShares()
 	t.Cleanup(routestats.ResetShares)
 	cfg := routestats.DefaultRouteStatsSetting()
-	live := routestats.PoolKey{Group: "default", PublicModelAlias: "gpt-4"}
-	orphan := routestats.PoolKey{Group: "default", PublicModelAlias: "retired"}
+	live := routestats.PoolKey{PublicModelAlias: "gpt-4"}
+	orphan := routestats.PoolKey{PublicModelAlias: "retired"}
 	selected := routestats.RouteID{ChannelID: 7401, KeyIndex: 0, UpstreamModel: "gpt-4"}
 	targets := map[routestats.RouteID]float64{selected: 1.0}
 	routestats.RecordSelection(live, selected, targets, cfg)
@@ -138,7 +137,7 @@ func TestGetActiveRouteStatsPoolKeysWithoutMemoryCache(t *testing.T) {
 }
 
 // TestUpdateRouteUnitConfigInvalidatesSelectionIndex is the regression gate for
-// the route-unit admin write. Selection reads group2alias2routes, which only
+// the route-unit admin write. Selection reads alias2routes, which only
 // InitChannelCache rebuilds, so an update that skipped invalidation returned 200
 // while a disabled route kept serving until the next sync tick.
 func TestUpdateRouteUnitConfigInvalidatesSelectionIndex(t *testing.T) {
@@ -147,14 +146,14 @@ func TestUpdateRouteUnitConfigInvalidatesSelectionIndex(t *testing.T) {
 	prevMemoryCache := common.MemoryCacheEnabled
 	prevGroups := group2model2channels
 	prevIDM := channelsIDM
-	prevAliasRoutes := group2alias2routes
+	prevAliasRoutes := alias2routes
 	common.MemoryCacheEnabled = true
 	t.Cleanup(func() {
 		common.MemoryCacheEnabled = prevMemoryCache
 		channelSyncLock.Lock()
 		group2model2channels = prevGroups
 		channelsIDM = prevIDM
-		group2alias2routes = prevAliasRoutes
+		alias2routes = prevAliasRoutes
 		channelSyncLock.Unlock()
 	})
 
@@ -168,7 +167,7 @@ func TestUpdateRouteUnitConfigInvalidatesSelectionIndex(t *testing.T) {
 		Group: "default", Model: "gpt-4", ChannelId: 7501, Enabled: true,
 	}).Error)
 	require.NoError(t, db.Create(&ChannelModelRoute{
-		Id: 11, Group: "default", PublicModelAlias: "gpt-4", ChannelId: 7501,
+		Id: 11, PublicModelAlias: "gpt-4", ChannelId: 7501,
 		KeyIndex: 0, UpstreamModel: "gpt-4", StaticWeight: 100, Enabled: true,
 	}).Error)
 

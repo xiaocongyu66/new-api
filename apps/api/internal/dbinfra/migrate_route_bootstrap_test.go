@@ -127,7 +127,6 @@ func TestMigrateCreatesAndSeedsRouteTable(t *testing.T) {
 	aliases := map[string]bool{}
 	for _, route := range routes {
 		aliases[route.PublicModelAlias] = true
-		assert.Equal(t, "default", route.Group)
 		assert.True(t, route.Enabled)
 	}
 	assert.Equal(t, map[string]bool{"model-a": true, "model-b": true}, aliases)

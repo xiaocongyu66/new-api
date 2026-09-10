@@ -70,7 +70,7 @@ func TestShareCorrectionDisabledByZeroWindow(t *testing.T) {
 	t.Cleanup(ResetShares)
 
 	cfg := shareTestSetting(0)
-	pool := PoolKey{Group: "g", PublicModelAlias: "m"}
+	pool := PoolKey{PublicModelAlias: "m"}
 	targets := map[RouteID]float64{routeID(1): 0.5, routeID(2): 0.5}
 
 	for range 50 {
@@ -114,7 +114,7 @@ func TestShareCorrectionConvergesToBaseScoreShare(t *testing.T) {
 				t.Cleanup(ResetShares)
 
 				cfg := shareTestSetting(window)
-				pool := PoolKey{Group: "g", PublicModelAlias: "m"}
+				pool := PoolKey{PublicModelAlias: "m"}
 				a, b := routeID(1), routeID(2)
 				base := map[RouteID]float64{a: 100.0, b: 100.0 * tc.qualityB}
 				available := []RouteID{a, b}
@@ -160,7 +160,7 @@ func TestShareCorrectionPullsBackBypassedTraffic(t *testing.T) {
 		t.Cleanup(ResetShares)
 
 		cfg := shareTestSetting(window)
-		pool := PoolKey{Group: "g", PublicModelAlias: "m"}
+		pool := PoolKey{PublicModelAlias: "m"}
 		ids := []RouteID{routeID(1), routeID(2), routeID(3)}
 		base := map[RouteID]float64{ids[0]: 100, ids[1]: 100, ids[2]: 100}
 		targets := map[RouteID]float64{ids[0]: 1.0 / 3, ids[1]: 1.0 / 3, ids[2]: 1.0 / 3}
@@ -216,7 +216,7 @@ func TestShareCorrectionDoesNotSpikeOnReEntry(t *testing.T) {
 		ResetShares()
 
 		cfg := shareTestSetting(200)
-		pool := PoolKey{Group: "g", PublicModelAlias: "m"}
+		pool := PoolKey{PublicModelAlias: "m"}
 		a, b := routeID(1), routeID(2)
 		base := map[RouteID]float64{a: 100, b: 100}
 
@@ -257,7 +257,7 @@ func TestShareCorrectionClampBoundsHold(t *testing.T) {
 	t.Cleanup(ResetShares)
 
 	cfg := shareTestSetting(200)
-	pool := PoolKey{Group: "g", PublicModelAlias: "m"}
+	pool := PoolKey{PublicModelAlias: "m"}
 	a, b := routeID(1), routeID(2)
 	targets := map[RouteID]float64{a: 0.5, b: 0.5}
 
@@ -285,7 +285,7 @@ func TestShareWindowEvictsOldestBeyondCapacity(t *testing.T) {
 
 	const window = 50
 	cfg := shareTestSetting(window)
-	pool := PoolKey{Group: "g", PublicModelAlias: "m"}
+	pool := PoolKey{PublicModelAlias: "m"}
 	a, b := routeID(1), routeID(2)
 	targets := map[RouteID]float64{a: 0.5, b: 0.5}
 
@@ -313,7 +313,7 @@ func TestShareWindowPartialFillIsUnbiased(t *testing.T) {
 	t.Cleanup(ResetShares)
 
 	cfg := shareTestSetting(200)
-	pool := PoolKey{Group: "g", PublicModelAlias: "m"}
+	pool := PoolKey{PublicModelAlias: "m"}
 	light, heavy := routeID(1), routeID(2)
 	base := map[RouteID]float64{light: 20, heavy: 80}
 	ids := []RouteID{light, heavy}
@@ -332,28 +332,32 @@ func TestShareWindowPartialFillIsUnbiased(t *testing.T) {
 		"a 20/80 pool must hold its split through the partial-window phase, got %.2f%%", got)
 }
 
-// TestShareCorrectionScopedPerPool pins the pool boundary: selection draws from
-// one (group, alias) pair, so two groups serving the same alias must not share a
-// window. A leak here would let a busy group's traffic derate a quiet group's
-// routes.
+// TestShareCorrectionScopedPerPool pins the pool boundary: one alias is one pool,
+// so two aliases must not share a window. A leak here would let a busy alias's
+// traffic derate a quiet alias's routes.
+//
+// Note the boundary is the alias, not the user group: a route unit is not
+// group-scoped, so requests from every group that can see the alias accumulate in
+// the same window. That is intended — the pool is the set of units competing for
+// one alias, and which group sent the request does not change who competed.
 func TestShareCorrectionScopedPerPool(t *testing.T) {
 	ResetShares()
 	t.Cleanup(ResetShares)
 
 	cfg := shareTestSetting(200)
-	def := PoolKey{Group: "default", PublicModelAlias: "m"}
-	vip := PoolKey{Group: "vip", PublicModelAlias: "m"}
+	busy := PoolKey{PublicModelAlias: "busy-alias"}
+	quiet := PoolKey{PublicModelAlias: "quiet-alias"}
 	a, b := routeID(1), routeID(2)
 	targets := map[RouteID]float64{a: 0.5, b: 0.5}
 
 	for range 100 {
-		RecordSelection(def, a, targets, cfg)
+		RecordSelection(busy, a, targets, cfg)
 	}
 
-	assert.Less(t, Corrections(def, targets, cfg)[a].Correction, 1.0,
+	assert.Less(t, Corrections(busy, targets, cfg)[a].Correction, 1.0,
 		"the busy pool must derate its over-served route")
-	assert.Equal(t, 1.0, Corrections(vip, targets, cfg)[a].Correction,
-		"a different group must be untouched by the busy pool's history")
+	assert.Equal(t, 1.0, Corrections(quiet, targets, cfg)[a].Correction,
+		"a different alias must be untouched by the busy pool's history")
 	assert.Equal(t, 2, SharePoolCount())
 }
 
@@ -364,8 +368,8 @@ func TestSweepSharePoolsDropsUnknownPools(t *testing.T) {
 	t.Cleanup(ResetShares)
 
 	cfg := shareTestSetting(200)
-	keep := PoolKey{Group: "g", PublicModelAlias: "keep"}
-	drop := PoolKey{Group: "g", PublicModelAlias: "drop"}
+	keep := PoolKey{PublicModelAlias: "keep"}
+	drop := PoolKey{PublicModelAlias: "drop"}
 	targets := map[RouteID]float64{routeID(1): 1.0}
 	RecordSelection(keep, routeID(1), targets, cfg)
 	RecordSelection(drop, routeID(1), targets, cfg)
@@ -387,7 +391,7 @@ func TestSweepSharePoolsIgnoresUnknownKeepSet(t *testing.T) {
 	t.Cleanup(ResetShares)
 
 	cfg := shareTestSetting(200)
-	pool := PoolKey{Group: "g", PublicModelAlias: "m"}
+	pool := PoolKey{PublicModelAlias: "m"}
 	targets := map[RouteID]float64{routeID(1): 1.0}
 	RecordSelection(pool, routeID(1), targets, cfg)
 	require.Equal(t, 1, SharePoolCount())
@@ -409,7 +413,7 @@ func TestShareWindowShrinkDropsExcessHistory(t *testing.T) {
 	ResetShares()
 	t.Cleanup(ResetShares)
 
-	pool := PoolKey{Group: "g", PublicModelAlias: "m"}
+	pool := PoolKey{PublicModelAlias: "m"}
 	a, b := routeID(1), routeID(2)
 	targets := map[RouteID]float64{a: 0.5, b: 0.5}
 
