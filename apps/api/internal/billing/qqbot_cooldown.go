@@ -2,6 +2,7 @@ package billing
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -49,6 +50,16 @@ func CheckCooldown(openID string) error {
 	}
 	cooldownTracker[openID] = cooldownEntry{lastSeen: now}
 	return nil
+}
+
+// isFailureReply 判断回复文案是否为失败提示。
+// 自动撤回只针对失败类回复（签到失败、抢红包失败、没抢到等），
+// 成功、菜单、查询类文案一律不撤。
+func isFailureReply(content string) bool {
+	return strings.Contains(content, "失败") ||
+		strings.Contains(content, "没抢到") ||
+		strings.Contains(content, "红包无效") ||
+		strings.Contains(content, "红包不存在")
 }
 
 // AutoRecallFailed 检查是否应自动撤回失败回复。

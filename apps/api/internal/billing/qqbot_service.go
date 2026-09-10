@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/identity"
@@ -347,6 +348,13 @@ func nextMsgSeq(token string) int {
 // seq 参数保留兼容旧调用，实际发送时按 msg_id/event_id 自增，
 // 避免同一凭证下多条消息因 msg_seq 相同被平台丢弃。
 func replyGroupMarkdown(groupOpenID, msgID, eventID, content string, keyboard *Keyboard, seq int) error {
+	// 失败提示且开启自动撤回:改用主动消息发送,拿到 message_id 后在延迟后撤回。
+	// 被动回复(带 msg_id/event_id)无法通过撤回接口删除,只能走主动消息。
+	if isFailureReply(content) {
+		if enabled, _ := AutoRecallFailed(); enabled {
+			return sendRecallableMarkdown(groupOpenID, content, keyboard)
+		}
+	}
 	client, err := getClient()
 	if err != nil {
 		return err
@@ -383,6 +391,42 @@ func replyGroupMarkdown(groupOpenID, msgID, eventID, content string, keyboard *K
 	if _, activeErr := client.SendGroupMessage(groupOpenID, activeReq); activeErr != nil {
 		return fmt.Errorf("被动回复失败(%v)，主动消息也失败(%v)", err, activeErr)
 	}
+	return nil
+}
+
+// sendRecallableMarkdown 以主动消息发送失败提示,开启自动撤回时延迟撤回。
+//
+// 撤回接口只支持主动消息(平台下发的 message_id),被动回复(带 msg_id/event_id)
+// 无法撤回,所以这里不传 msg_id/event_id。失败提示为低频消息,不受主动消息配额影响。
+func sendRecallableMarkdown(groupOpenID, content string, keyboard *Keyboard) error {
+	client, err := getClient()
+	if err != nil {
+		return err
+	}
+	req := &GroupMessageRequest{
+		MsgType:  2,
+		Markdown: &MessageMarkdown{Content: content},
+		Keyboard: keyboard,
+		MsgSeq:   1,
+	}
+	msgID, err := client.SendGroupMessage(groupOpenID, req)
+	if err != nil {
+		return err
+	}
+	enabled, delay := AutoRecallFailed()
+	if !enabled || msgID == "" {
+		return nil
+	}
+	common.SysLog("失败提示将自动撤回 msg_id=" + msgID)
+	// ponytail: 一次性 timer,存活 delay 秒后自动结束,失败提示是低频消息不会累积;
+	// 若未来失败提示成为热点,再引入可取消的调度(带 context 的定时器)。
+	time.AfterFunc(time.Duration(delay)*time.Second, func() {
+		if err := client.RecallGroupMessage(groupOpenID, msgID); err != nil {
+			common.SysError("自动撤回失败 msg_id=" + msgID + " err=" + err.Error())
+			return
+		}
+		common.SysLog("已自动撤回失败提示 msg_id=" + msgID)
+	})
 	return nil
 }
 

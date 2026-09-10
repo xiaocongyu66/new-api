@@ -3,13 +3,14 @@ package billing
 import (
 	"bytes"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/common"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/QuantumNous/new-api/internal/common"
 )
 
 const (
@@ -252,28 +253,76 @@ type GroupMessageRequest struct {
 	MsgSeq   int              `json:"msg_seq,omitempty"`
 }
 
-// SendGroupMessage 发送群聊消息
+// sendMessageResponse 发送群消息的响应体,message_id 用于撤回
+type sendMessageResponse struct {
+	ID        string `json:"id"`
+	MessageID string `json:"message_id"`
+}
+
+// SendGroupMessage 发送群聊消息,返回平台下发的消息 ID(可能为空,用于撤回)
 //
 // 平台有一类失败是 HTTP 200 + body 里带 code/message，
 // 所以成功路径也要把响应体记下来，否则「接口成功但群里没消息」无法排查。
-func (ac *apiClient) SendGroupMessage(groupOpenID string, req *GroupMessageRequest) ([]byte, error) {
+func (ac *apiClient) SendGroupMessage(groupOpenID string, req *GroupMessageRequest) (string, error) {
 	path := fmt.Sprintf("/v2/groups/%s/messages", url.PathEscape(groupOpenID))
 	reqPreview, _ := common.Marshal(req)
 	body, status, err := ac.do(http.MethodPost, path, req)
 	if err != nil {
 		common.SysError(fmt.Sprintf("群消息请求失败 group=%s req=%s err=%v",
 			groupOpenID, truncateForLog(string(reqPreview), 600), err))
-		return nil, err
+		return "", err
 	}
 	if status != http.StatusOK && status != http.StatusCreated && status != http.StatusNoContent {
 		common.SysError(fmt.Sprintf("群消息响应异常 group=%s HTTP=%d req=%s resp=%s",
 			groupOpenID, status,
 			truncateForLog(string(reqPreview), 600), truncateForLog(string(body), 600)))
-		return body, fmt.Errorf("发送群消息失败 HTTP %d: %s", status, string(body))
+		return "", fmt.Errorf("发送群消息失败 HTTP %d: %s", status, string(body))
 	}
 	common.SysLog(fmt.Sprintf("群消息响应 group=%s HTTP=%d resp=%s",
 		groupOpenID, status, truncateForLog(string(body), 400)))
-	return body, nil
+	return parseSendMessageID(body), nil
+}
+
+// parseSendMessageID 从发送消息响应体中提取消息 ID(用于撤回)。
+// message_id 优先;老版本接口只回 id 时兜底取 id。
+// 返回空串是刻意降级:消息已发出,只是拿不到 ID 无法自动撤回,
+// 不向上抛错以免触发被动→主动的重发路径。
+func parseSendMessageID(body []byte) string {
+	var resp sendMessageResponse
+	if err := common.Unmarshal(body, &resp); err != nil {
+		return ""
+	}
+	if resp.MessageID != "" {
+		return resp.MessageID
+	}
+	return resp.ID
+}
+
+// apiErrorResponse 平台 HTTP 2xx 响应里携带的业务错误码
+// （见 SendGroupMessage 注释：平台有一类失败是 HTTP 200 + body 里带 code/message）
+type apiErrorResponse struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+// RecallGroupMessage 撤回机器人自己发送的群消息
+// 平台只允许撤回机器人主动发送的消息,被动回复(带 msg_id/event_id)不受支持。
+func (ac *apiClient) RecallGroupMessage(groupOpenID, messageID string) error {
+	path := fmt.Sprintf("/v2/groups/%s/messages/%s",
+		url.PathEscape(groupOpenID), url.PathEscape(messageID))
+	body, status, err := ac.do(http.MethodDelete, path, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK && status != http.StatusNoContent {
+		return fmt.Errorf("撤回消息失败 HTTP %d: %s", status, string(body))
+	}
+	// HTTP 2xx 也可能带业务错误码,不回 body 会让「撤回失败却显示成功」无法排查
+	var apiErr apiErrorResponse
+	if err := common.Unmarshal(body, &apiErr); err == nil && apiErr.Code != 0 {
+		return fmt.Errorf("撤回消息失败 code=%d: %s", apiErr.Code, apiErr.Message)
+	}
+	return nil
 }
 
 // truncateForLog 截断过长字符串，避免日志被单条消息刷爆
