@@ -152,6 +152,20 @@ Layout when running several worktrees at once:
   changes.
 - Memory footprint: N × rsbuild + 1 × API + 1 × PostgreSQL + 1 × Redis.
 
+#### Dev server memory cap (16GB machine with 8GB zram, no disk swap)
+
+rsbuild's bundler is Rspack (Rust): its memory is **native**, so
+`NODE_OPTIONS=--max-old-space-size=...` does NOT cap it. Long-running HMR
+servers also only grow (observed 2-4GB per server, not the ~300MB above).
+
+- Start web dev servers cgroup-capped (kills the server, never the desktop):
+  `systemd-run --user --unit=dev-web-<name> -p MemoryHigh=2500M -p MemoryMax=4G bun run dev -- --host 0.0.0.0 --port 517x`
+- Kill dev servers when done working — idle servers hold the full module graph.
+- Do NOT run a dev server and wasm/rustc release builds (`dx serve --release`,
+  `wasm-bindgen` ≈ 3GB each) at the same time. Together they exhaust RAM+zram
+  and the kernel OOM-kills the zcode renderer (Chromium marks it
+  `oom_score_adj` 200-300 = preferred victim), which freezes the IDE window.
+
 #### What NOT to use
 
 - `just start-api` — foreground `go run`, no DB config, no web server, no process management.
