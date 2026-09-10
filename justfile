@@ -110,7 +110,10 @@ dev-web:
      set -euo pipefail
      echo "Web frontend: http://localhost:{{ DEV_WEB_PORT }}"
      cd "{{ WEB_DIR }}" && bun install
-     cd "{{ WEB_DIR }}" && bun run dev -- --host 0.0.0.0 --port "{{ DEV_WEB_PORT }}"
+     # cgroup-cap the dev server (AGENTS.md "Dev server memory cap"): Rspack's memory is native,
+     # so only a cgroup bound caps it. systemd-run service defaults to $HOME, hence explicit
+     # WorkingDirectory. Stop later with: systemctl --user stop dev-web-{{ DEV_WEB_PORT }}
+     cd "{{ WEB_DIR }}" && systemd-run --user --unit="dev-web-{{ DEV_WEB_PORT }}" -p WorkingDirectory="{{ WEB_DIR }}" -p MemoryHigh=2500M -p MemoryMax=4G -- bun run dev -- --host 0.0.0.0 --port "{{ DEV_WEB_PORT }}"
  
 # Start both docker api and web dev servers (legacy: uses Docker API container)
 dev: dev-api dev-web
