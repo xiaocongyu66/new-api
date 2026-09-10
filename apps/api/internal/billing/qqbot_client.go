@@ -280,6 +280,7 @@ func (ac *apiClient) SendGroupMessage(groupOpenID string, req *GroupMessageReque
 	}
 	common.SysLog(fmt.Sprintf("群消息响应 group=%s HTTP=%d resp=%s",
 		groupOpenID, status, truncateForLog(string(body), 400)))
+	var resp sendMessageResponse
 	if err := common.Unmarshal(body, &resp); err == nil {
 		if resp.MessageID != "" {
 			return resp.MessageID, nil

@@ -3,6 +3,7 @@ package billing
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
