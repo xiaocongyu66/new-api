@@ -17,11 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import * as z from 'zod'
+
+import dayjs from '@/lib/dayjs'
 
 import {
   Form,
@@ -32,6 +35,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
+import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 
@@ -43,6 +47,11 @@ import {
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
+import {
+  getGeoipDatabaseStatus,
+  updateGeoipDatabase,
+} from '../api'
+import type { GeoipDatabaseStatus } from '../types'
 
 const geoBlockSchema = z.object({
   geo_block_setting: z.object({
@@ -113,9 +122,54 @@ const isEqual = (a: unknown, b: unknown) => {
   return a === b
 }
 
+function formatDatabaseSize(sizeBytes: number): string {
+  if (sizeBytes >= 1048576) {
+    return `${(sizeBytes / 1048576).toFixed(1)} MB`
+  }
+  return `${Math.max(1, Math.round(sizeBytes / 1024))} KB`
+}
+
 export function GeoBlockSection({ defaultValues }: GeoBlockSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
+  const queryClient = useQueryClient()
+
+  const database = useQuery({
+    queryKey: ['geoip-database'],
+    queryFn: getGeoipDatabaseStatus,
+  })
+  const dbStatus: GeoipDatabaseStatus | undefined = database.data?.data
+
+  const updateDatabase = useMutation({
+    mutationFn: updateGeoipDatabase,
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['geoip-database'] })
+      if (res.success) {
+        toast.success(t('GeoIP database updated'))
+      } else {
+        toast.error(res.message || t('Failed to update GeoIP database'))
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || t('Failed to update GeoIP database'))
+    },
+  })
+
+  const databaseStatusText = (() => {
+    if (!dbStatus) return '-'
+    if (dbStatus.externally_managed) {
+      return dbStatus.exists
+        ? t('Managed externally via GEOIP_DB_PATH')
+        : t('Managed externally via GEOIP_DB_PATH, but the file is missing')
+    }
+    if (!dbStatus.exists) return t('Not downloaded yet')
+    if (dbStatus.stale) {
+      return t('Stale (older than {{days}} days)', {
+        days: dbStatus.fresh_window_days,
+      })
+    }
+    return t('Up to date')
+  })()
   const baselineRef = useRef<NormalizedGeoBlockValues>(
     normalizeDefaults(defaultValues)
   )
@@ -184,6 +238,45 @@ export function GeoBlockSection({ defaultValues }: GeoBlockSectionProps) {
             onSave={form.handleSubmit(onSubmit)}
             isSaving={updateOption.isPending || form.formState.isSubmitting}
           />
+
+          <div className='rounded-lg border p-4 text-sm'>
+            <div className='mb-3 flex items-center justify-between gap-2'>
+              <FormLabel>{t('GeoIP database')}</FormLabel>
+              <Button
+                type='button'
+                variant='outline'
+                size='sm'
+                disabled={
+                  updateDatabase.isPending || Boolean(dbStatus?.externally_managed)
+                }
+                onClick={() => updateDatabase.mutate()}
+              >
+                {updateDatabase.isPending ? t('Updating...') : t('Update now')}
+              </Button>
+            </div>
+            <dl className='grid gap-x-6 gap-y-1.5 md:grid-cols-[10rem_1fr]'>
+              <dt className='text-muted-foreground'>{t('Status')}</dt>
+              <dd>{databaseStatusText}</dd>
+              <dt className='text-muted-foreground'>{t('Last updated')}</dt>
+              <dd>
+                {dbStatus?.updated_at
+                  ? `${dayjs(dbStatus.updated_at * 1000).format('YYYY-MM-DD HH:mm:ss')} (${dayjs(dbStatus.updated_at * 1000).fromNow()})` // backend sends Unix seconds
+                  : '-'}
+              </dd>
+              <dt className='text-muted-foreground'>{t('Size')}</dt>
+              <dd>
+                {dbStatus?.exists ? formatDatabaseSize(dbStatus.size_bytes) : '-'}
+              </dd>
+              <dt className='text-muted-foreground'>{t('File')}</dt>
+              <dd className='truncate' title={dbStatus?.path}>
+                {dbStatus?.path || '-'}
+              </dd>
+              <dt className='text-muted-foreground'>{t('Download source')}</dt>
+              <dd className='truncate' title={dbStatus?.source_url}>
+                {dbStatus?.source_url || '-'}
+              </dd>
+            </dl>
+          </div>
 
           <FormField
             control={form.control}

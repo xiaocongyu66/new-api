@@ -5503,7 +5503,7 @@
     "Updated system setting {{key}}": "Paramètre système {{key}} mis à jour",
     "Updated user {{username}} (ID: {{id}})": "Utilisateur {{username}} mis à jour (ID : {{id}})",
     "Updating all channel balances. This may take a while. Please refresh to see results.": "Mise à jour de tous les soldes des canaux. Cela peut prendre un certain temps. Veuillez actualiser pour voir les résultats.",
-    "Updating...": "Mise à jour...",
+    "Updating...": "Mise à jour…",
     "Upgrade Group": "Groupe de mise à niveau",
     "Upgrade plaintext SMTP connection with STARTTLS before authentication": "Mettre à niveau la connexion SMTP en clair avec STARTTLS avant l'authentification",
     "Upload": "Téléverser",
@@ -5929,6 +5929,17 @@
     "Blocked countries (ISO 3166-1 codes, one per line)": "Pays bloqués (codes ISO 3166-1, un par ligne)",
     "Requests whose IP resolves to one of these countries see a 404 page instead of the site. Case-insensitive.": "Les requêtes dont l'IP est attribuée à l'un de ces pays voient une page 404 au lieu du site. Les codes de pays sont insensibles à la casse.",
     "Allow administrators": "Autoriser les administrateurs",
-    "Administrators (and root) can still sign in and use the site from blocked countries, so the operator is never locked out. Visitors and regular users stay blocked.": "Les administrateurs (et root) peuvent toujours se connecter et utiliser le site depuis les pays bloqués, afin que l'opérateur ne soit jamais exclu. Les visiteurs et les utilisateurs ordinaires restent bloqués."
+    "Administrators (and root) can still sign in and use the site from blocked countries, so the operator is never locked out. Visitors and regular users stay blocked.": "Les administrateurs (et root) peuvent toujours se connecter et utiliser le site depuis les pays bloqués, afin que l'opérateur ne soit jamais exclu. Les visiteurs et les utilisateurs ordinaires restent bloqués.",
+    "GeoIP database": "Base de données GeoIP",
+    "Last updated": "Dernière mise à jour",
+    "Download source": "Source de téléchargement",
+    "Update now": "Mettre à jour",
+    "GeoIP database updated": "Base de données GeoIP mise à jour",
+    "Failed to update GeoIP database": "Échec de la mise à jour de la base GeoIP",
+    "Not downloaded yet": "Pas encore téléchargée",
+    "Up to date": "À jour",
+    "Stale (older than {{days}} days)": "Obsolète (plus de {{days}} jours)",
+    "Managed externally via GEOIP_DB_PATH": "Gérée externe­ment via GEOIP_DB_PATH",
+    "Managed externally via GEOIP_DB_PATH, but the file is missing": "Gérée externe­ment via GEOIP_DB_PATH, mais le fichier est absent"
   }
 }

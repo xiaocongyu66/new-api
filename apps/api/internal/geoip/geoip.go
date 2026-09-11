@@ -6,7 +6,6 @@ package geoip
 
 import (
 	"net"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -99,14 +98,17 @@ type syncedReader struct {
 	loaded bool // true once a path has been successfully opened
 }
 
-// DatabasePath returns the configured MMDB path from the environment.
-func DatabasePath() string {
-	return strings.TrimSpace(os.Getenv("GEOIP_DB_PATH"))
-}
+// DatabasePath is resolved in database.go: the operator's GEOIP_DB_PATH when
+// set, the managed path otherwise.
 
 // EnsureReader loads (or reloads) the database at DatabasePath() if needed.
 // Returns nil when the path is empty or the file cannot be opened; callers must
 // treat nil as "geographic blocking is not available" and pass through.
+//
+// A replaced reader is dropped without an explicit Close on purpose: lookups
+// already handed the old handle to concurrent goroutines, and closing it
+// under them would unmap the buffer mid-Lookup. The maxminddb finalizer
+// unmaps it once GC collects it, and replacements are rare.
 func EnsureReader() *maxminddb.Reader {
 	path := DatabasePath()
 	if path == "" {
@@ -118,14 +120,11 @@ func EnsureReader() *maxminddb.Reader {
 		return reader.db
 	}
 	if reader.db != nil {
-		if cerr := reader.db.Close(); cerr != nil {
-			common.SysError("geoip: failed to close old DB " + reader.path + ": " + cerr.Error())
-		}
+		reader.db = nil // old handle is finalized by GC; see comment above
 	}
 	db, err := maxminddb.Open(path)
 	if err != nil {
 		common.SysError("geoip: failed to open " + path + ": " + err.Error())
-		reader.db = nil
 		return nil
 	}
 	reader.db = db

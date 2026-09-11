@@ -4813,7 +4813,7 @@
     "Site & Branding": "站點與品牌",
     "Site Key": "站點金鑰",
     "Site URL": "網站地址",
-    "Size": "佔用",
+    "Size": "大小",
     "Size:": "大小：",
     "sk_xxx or rk_xxx": "sk_xxx 或 rk_xxx",
     "Skip async task polling delay": "跳過異步任務輪詢延遲",
@@ -5503,7 +5503,7 @@
     "Updated system setting {{key}}": "修改系統設定 {{key}}",
     "Updated user {{username}} (ID: {{id}})": "更新用戶 {{username}}（ID: {{id}}）",
     "Updating all channel balances. This may take a while. Please refresh to see results.": "正在更新所有渠道餘額。這可能需要一段時間。請重新整理以查看結果。",
-    "Updating...": "正在更新...",
+    "Updating...": "更新中…",
     "Upgrade Group": "升級分組",
     "Upgrade plaintext SMTP connection with STARTTLS before authentication": "在身份驗證前使用 STARTTLS 升級明文 SMTP 連接",
     "Upload": "上傳",
@@ -5929,6 +5929,17 @@
     "Blocked countries (ISO 3166-1 codes, one per line)": "封禁的國家/地區（ISO 3166-1 代碼，每行一個）",
     "Requests whose IP resolves to one of these countries see a 404 page instead of the site. Case-insensitive.": "IP 歸屬國命中以上列表的請求將看到 404 頁面（而不是站點內容）。國家代碼不分大小寫。",
     "Allow administrators": "允許管理員存取",
-    "Administrators (and root) can still sign in and use the site from blocked countries, so the operator is never locked out. Visitors and regular users stay blocked.": "管理員與超級管理員在被封禁國家仍可登入並使用站點，避免營運者把自己鎖在門外；訪客與一般使用者依然被封鎖。"
+    "Administrators (and root) can still sign in and use the site from blocked countries, so the operator is never locked out. Visitors and regular users stay blocked.": "管理員與超級管理員在被封禁國家仍可登入並使用站點，避免營運者把自己鎖在門外；訪客與一般使用者依然被封鎖。",
+    "GeoIP database": "GeoIP 資料庫",
+    "Last updated": "上次更新",
+    "Download source": "下載來源",
+    "Update now": "立即更新",
+    "GeoIP database updated": "GeoIP 資料庫已更新",
+    "Failed to update GeoIP database": "更新 GeoIP 資料庫失敗",
+    "Not downloaded yet": "尚未下載",
+    "Up to date": "最新",
+    "Stale (older than {{days}} days)": "已過期（超過 {{days}} 天）",
+    "Managed externally via GEOIP_DB_PATH": "由環境變數 GEOIP_DB_PATH 外部管理",
+    "Managed externally via GEOIP_DB_PATH, but the file is missing": "由環境變數 GEOIP_DB_PATH 外部管理，但檔案不存在"
   }
 }

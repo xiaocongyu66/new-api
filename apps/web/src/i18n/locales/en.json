@@ -5929,6 +5929,17 @@
     "Blocked countries (ISO 3166-1 codes, one per line)": "Blocked countries (ISO 3166-1 codes, one per line)",
     "Requests whose IP resolves to one of these countries see a 404 page instead of the site. Case-insensitive.": "Requests whose IP resolves to one of these countries are rejected with a 403. Case-insensitive.",
     "Allow administrators": "Allow administrators",
-    "Administrators (and root) can still sign in and use the site from blocked countries, so the operator is never locked out. Visitors and regular users stay blocked.": "Administrators (and root) can still sign in and use the site from blocked countries, so the operator is never locked out. Visitors and regular users stay blocked."
+    "Administrators (and root) can still sign in and use the site from blocked countries, so the operator is never locked out. Visitors and regular users stay blocked.": "Administrators (and root) can still sign in and use the site from blocked countries, so the operator is never locked out. Visitors and regular users stay blocked.",
+    "GeoIP database": "GeoIP database",
+    "Last updated": "Last updated",
+    "Download source": "Download source",
+    "Update now": "Update now",
+    "GeoIP database updated": "GeoIP database updated",
+    "Failed to update GeoIP database": "Failed to update GeoIP database",
+    "Not downloaded yet": "Not downloaded yet",
+    "Up to date": "Up to date",
+    "Stale (older than {{days}} days)": "Stale (older than {{days}} days)",
+    "Managed externally via GEOIP_DB_PATH": "Managed externally via GEOIP_DB_PATH",
+    "Managed externally via GEOIP_DB_PATH, but the file is missing": "Managed externally via GEOIP_DB_PATH, but the file is missing"
   }
 }

@@ -54,6 +54,7 @@ GET /api/data/flow
 GET /api/data/flow/self
 GET /api/data/self
 GET /api/data/users
+GET /api/geoip/database
 GET /api/group/
 GET /api/home_page_content
 GET /api/insight-sample
@@ -181,6 +182,7 @@ POST /api/channel/upstream_updates/detect_all
 POST /api/creem/webhook
 POST /api/custom-oauth-provider/
 POST /api/custom-oauth-provider/discovery
+POST /api/geoip/database/update
 POST /api/models/
 POST /api/models/sync_upstream
 POST /api/oauth/email/bind

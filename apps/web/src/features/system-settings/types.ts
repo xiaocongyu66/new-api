@@ -94,6 +94,23 @@ export type LogCleanupTask = SystemTask<
   LogCleanupTaskResult
 >
 
+export type GeoipDatabaseStatus = {
+  path: string
+  exists: boolean
+  size_bytes: number
+  updated_at: number
+  stale: boolean
+  fresh_window_days: number
+  source_url: string
+  externally_managed: boolean
+}
+
+export type GeoipDatabaseStatusResponse = {
+  success: boolean
+  message: string
+  data?: GeoipDatabaseStatus
+}
+
 export type SystemTaskResponse<TTask = SystemTask | null> = {
   success: boolean
   message: string

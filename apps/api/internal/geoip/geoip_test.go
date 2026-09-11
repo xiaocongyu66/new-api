@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // TestNormalizedBlockedCountries pins the case/dedup behavior so a lookup never
@@ -36,15 +35,16 @@ func TestAllowAdminDefaultsOn(t *testing.T) {
 }
 
 // TestLookupCountryNoDatabase verifies fail-open at the lookup level: with no
-// GEOIP_DB_PATH the resolver cannot name a country, so the gate cannot block.
+// database on disk (and none managed externally), the resolver cannot name a
+// country, so the gate cannot block.
 func TestLookupCountryNoDatabase(t *testing.T) {
-	// No database file is configured in the test environment.
-	require.Empty(t, DatabasePath())
+	assert.False(t, ExternallyManaged())
+	// The managed file does not exist in the test cwd.
 	assert.Empty(t, LookupCountry("1.2.3.4"), "missing database must fail open")
 }
 
 // TestLookupCountryInvalidIP ensures unparseable input returns empty, not panic.
 func TestLookupCountryInvalidIP(t *testing.T) {
 	assert.Empty(t, LookupCountry("not-an-ip"))
-	require.Empty(t, LookupCountry("300.1.1.1"))
+	assert.Empty(t, LookupCountry("300.1.1.1"))
 }

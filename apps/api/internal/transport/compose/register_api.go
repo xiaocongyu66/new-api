@@ -289,6 +289,12 @@ func SetApiRouter(router contract.Engine) {
 			optionRoute.POST("/waffo-pancake/subscription-product", billing.CreateWaffoPancakeSubscriptionProduct)
 			optionRoute.GET("/waffo-pancake/subscription-product-options", billing.ListWaffoPancakeSubscriptionProductOptions)
 		}
+		geoipRoute := apiRouter.Group("/geoip")
+		geoipRoute.Use(security.AdminAuth(), security.RequirePermission(policy.SystemSettings))
+		{
+			geoipRoute.GET("/database", ops.GetGeoIPDatabase)
+			geoipRoute.POST("/database/update", ops.UpdateGeoIPDatabase)
+		}
 		proxyRoute := apiRouter.Group("/proxy")
 		proxyRoute.Use(security.AdminAuth(), security.RequirePermission(policy.SystemSettings))
 		{

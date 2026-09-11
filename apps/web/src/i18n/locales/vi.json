@@ -4813,7 +4813,7 @@
     "Site & Branding": "Trang web & thương hiệu",
     "Site Key": "Khóa trang web",
     "Site URL": "URL trang web",
-    "Size": "Dung lượng",
+    "Size": "Kích thước",
     "Size:": "Kích thước:",
     "sk_xxx or rk_xxx": "sk_xxx hoặc rk_xxx",
     "Skip async task polling delay": "Bỏ qua độ trễ thăm dò tác vụ bất đồng bộ",
@@ -5503,7 +5503,7 @@
     "Updated system setting {{key}}": "Đã cập nhật cài đặt hệ thống {{key}}",
     "Updated user {{username}} (ID: {{id}})": "Đã cập nhật người dùng {{username}} (ID: {{id}})",
     "Updating all channel balances. This may take a while. Please refresh to see results.": "Đang cập nhật tất cả số dư kênh. Quá trình này có thể mất một chút thời gian. Vui lòng làm mới để xem kết quả.",
-    "Updating...": "Đang cập nhật...",
+    "Updating...": "Đang cập nhật…",
     "Upgrade Group": "Nhóm nâng cấp",
     "Upgrade plaintext SMTP connection with STARTTLS before authentication": "Nâng cấp kết nối SMTP dạng rõ bằng STARTTLS trước khi xác thực",
     "Upload": "Tải lên",
@@ -5929,6 +5929,17 @@
     "Blocked countries (ISO 3166-1 codes, one per line)": "Quốc gia bị chặn (mã ISO 3166-1, mỗi dòng một mã)",
     "Requests whose IP resolves to one of these countries see a 404 page instead of the site. Case-insensitive.": "Yêu cầu có IP thuộc một trong các quốc gia này sẽ thấy trang 404 thay vì trang web. Mã quốc gia không phân biệt hoa thường.",
     "Allow administrators": "Cho phép quản trị viên",
-    "Administrators (and root) can still sign in and use the site from blocked countries, so the operator is never locked out. Visitors and regular users stay blocked.": "Quản trị viên (và root) vẫn có thể đăng nhập và sử dụng trang web từ các quốc gia bị chặn, để người vận hành không bị khóa ngoài. Khách truy cập và người dùng thường vẫn bị chặn."
+    "Administrators (and root) can still sign in and use the site from blocked countries, so the operator is never locked out. Visitors and regular users stay blocked.": "Quản trị viên (và root) vẫn có thể đăng nhập và sử dụng trang web từ các quốc gia bị chặn, để người vận hành không bị khóa ngoài. Khách truy cập và người dùng thường vẫn bị chặn.",
+    "GeoIP database": "Cơ sở dữ liệu GeoIP",
+    "Last updated": "Cập nhật lần cuối",
+    "Download source": "Nguồn tải về",
+    "Update now": "Cập nhật ngay",
+    "GeoIP database updated": "Đã cập nhật cơ sở dữ liệu GeoIP",
+    "Failed to update GeoIP database": "Không thể cập nhật cơ sở dữ liệu GeoIP",
+    "Not downloaded yet": "Chưa tải về",
+    "Up to date": "Còn mới",
+    "Stale (older than {{days}} days)": "Đã cũ (quá {{days}} ngày)",
+    "Managed externally via GEOIP_DB_PATH": "Quản lý bên ngoài qua GEOIP_DB_PATH",
+    "Managed externally via GEOIP_DB_PATH, but the file is missing": "Quản lý bên ngoài qua GEOIP_DB_PATH nhưng tệp không tồn tại"
   }
 }

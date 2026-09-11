@@ -4813,7 +4813,7 @@
     "Site & Branding": "站点与品牌",
     "Site Key": "站点密钥",
     "Site URL": "网站地址",
-    "Size": "占用",
+    "Size": "大小",
     "Size:": "大小：",
     "sk_xxx or rk_xxx": "sk_xxx 或 rk_xxx",
     "Skip async task polling delay": "跳过异步任务轮询延迟",
@@ -5503,7 +5503,7 @@
     "Updated system setting {{key}}": "修改系统设置 {{key}}",
     "Updated user {{username}} (ID: {{id}})": "更新用户 {{username}}（ID: {{id}}）",
     "Updating all channel balances. This may take a while. Please refresh to see results.": "正在更新所有渠道余额。这可能需要一段时间。请刷新以查看结果。",
-    "Updating...": "正在更新...",
+    "Updating...": "更新中…",
     "Upgrade Group": "升级分组",
     "Upgrade plaintext SMTP connection with STARTTLS before authentication": "在身份验证前使用 STARTTLS 升级明文 SMTP 连接",
     "Upload": "上传",
@@ -5929,6 +5929,17 @@
     "Blocked countries (ISO 3166-1 codes, one per line)": "封禁的国家/地区（ISO 3166-1 代码，每行一个）",
     "Requests whose IP resolves to one of these countries see a 404 page instead of the site. Case-insensitive.": "IP 归属国命中以上列表的请求将看到 404 页面（而不是站点内容）。国家代码不区分大小写。",
     "Allow administrators": "允许管理员访问",
-    "Administrators (and root) can still sign in and use the site from blocked countries, so the operator is never locked out. Visitors and regular users stay blocked.": "管理员和超级管理员在被封禁国家仍可登录并使用站点，避免运营者把自己关在门外；访问者与普通用户依然被拦截。"
+    "Administrators (and root) can still sign in and use the site from blocked countries, so the operator is never locked out. Visitors and regular users stay blocked.": "管理员和超级管理员在被封禁国家仍可登录并使用站点，避免运营者把自己关在门外；访问者与普通用户依然被拦截。",
+    "GeoIP database": "GeoIP 数据库",
+    "Last updated": "上次更新",
+    "Download source": "下载源",
+    "Update now": "立即更新",
+    "GeoIP database updated": "GeoIP 数据库已更新",
+    "Failed to update GeoIP database": "更新 GeoIP 数据库失败",
+    "Not downloaded yet": "尚未下载",
+    "Up to date": "最新",
+    "Stale (older than {{days}} days)": "已过期（超过 {{days}} 天）",
+    "Managed externally via GEOIP_DB_PATH": "由环境变量 GEOIP_DB_PATH 外部管理",
+    "Managed externally via GEOIP_DB_PATH, but the file is missing": "由环境变量 GEOIP_DB_PATH 外部管理，但文件不存在"
   }
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/billing"
 	"github.com/QuantumNous/new-api/internal/dbinfra"
+	"github.com/QuantumNous/new-api/internal/geoip"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/usage"
 	"net/http"
@@ -66,6 +67,16 @@ func UpdateOption(c contract.Context) {
 		}
 	}
 	switch option.Key {
+	case "geo_block_setting.enabled":
+		// 启用地理封禁前保证数据库可用且新鲜：缺失或超过 7 天先自动下载，
+		// 下载失败就拒绝启用——fail-open 的请求路径绝不能给运营者
+		// "已封禁"的错觉。
+		if option.Value == "true" {
+			if err := geoip.EnsureFreshForEnable(c.Context()); err != nil {
+				common.CtxApiErrorMsg(c, "无法启用地理封禁: "+err.Error())
+				return
+			}
+		}
 	case "GitHubOAuthEnabled":
 		if option.Value == "true" && common.GitHubClientId == "" {
 			_ = c.JSON(http.StatusOK, common.H{

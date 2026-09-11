@@ -20,6 +20,7 @@ import { api } from '@/lib/api'
 
 import type {
   ConfirmPaymentComplianceResponse,
+  GeoipDatabaseStatusResponse,
   FetchUpstreamRatiosRequest,
   LogCleanupTask,
   SystemOptionsResponse,
@@ -102,6 +103,18 @@ export async function fetchUpstreamRatios(request: FetchUpstreamRatiosRequest) {
   const res = await api.post<UpstreamRatiosResponse>(
     '/api/ratio_sync/fetch',
     request
+  )
+  return res.data
+}
+
+export async function getGeoipDatabaseStatus() {
+  const res = await api.get<GeoipDatabaseStatusResponse>('/api/geoip/database')
+  return res.data
+}
+
+export async function updateGeoipDatabase() {
+  const res = await api.post<GeoipDatabaseStatusResponse>(
+    '/api/geoip/database/update'
   )
   return res.data
 }

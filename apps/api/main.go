@@ -6,6 +6,7 @@ import (
 	"embed"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/billing"
+	"github.com/QuantumNous/new-api/internal/geoip"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/egress"
 	"github.com/QuantumNous/new-api/internal/identity"
@@ -409,6 +410,9 @@ func InitResources() error {
 		}
 	}
 	dbinfra.InitOptionMap()
+
+	// 地理封禁已启用而数据库缺失/过期时，后台补一次下载（失败不影响启动）。
+	go geoip.RefreshStaleDatabaseOnStartup()
 
 	// 清理旧的磁盘缓存文件
 	common.CleanupOldCacheFiles()
