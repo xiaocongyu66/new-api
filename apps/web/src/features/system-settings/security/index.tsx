@@ -25,6 +25,8 @@ import {
 } from './section-registry.tsx'
 
 const defaultSecuritySettings: SecuritySettings = {
+  'geo_block_setting.enabled': false,
+  'geo_block_setting.blocked_countries': ['CN'],
   ModelRequestRateLimitEnabled: false,
   ModelRequestRateLimitCount: 0,
   ModelRequestRateLimitSuccessCount: 1000,

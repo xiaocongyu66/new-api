@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { GeoBlockSection } from '../request-limits/geo-block-section'
 import { RateLimitSection } from '../request-limits/rate-limit-section'
 import { SensitiveWordsSection } from '../request-limits/sensitive-words-section'
 import { SSRFSection } from '../request-limits/ssrf-section'
@@ -24,6 +25,20 @@ import type { SecuritySettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
 
 const SECURITY_SECTIONS = [
+  {
+    id: 'geo-block',
+    titleKey: 'Geographic Blocking',
+    build: (settings: SecuritySettings) => (
+      <GeoBlockSection
+        defaultValues={{
+          'geo_block_setting.enabled':
+            settings['geo_block_setting.enabled'],
+          'geo_block_setting.blocked_countries':
+            settings['geo_block_setting.blocked_countries'],
+        }}
+      />
+    ),
+  },
   {
     id: 'rate-limit',
     titleKey: 'Rate Limiting',

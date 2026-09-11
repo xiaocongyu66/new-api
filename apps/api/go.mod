@@ -207,6 +207,7 @@ require (
 	github.com/QuantumNous/new-api/relaykit v0.0.0
 	github.com/fasthttp/websocket v1.5.8
 	github.com/gofiber/fiber/v2 v2.52.15
+	github.com/oschwald/maxminddb-golang v1.13.1
 	github.com/sagernet/sing v0.7.13
 	github.com/valyala/fasthttp v1.52.0
 )

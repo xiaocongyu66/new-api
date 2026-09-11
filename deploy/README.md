@@ -37,6 +37,14 @@
 | `SESSION_COOKIE_SECURE` | 推荐 | `true` | 全站开启 HTTPS 时务必设为 `true`，启用 Secure Cookie 及严格的 OriginGuard 防护。 |
 | `SESSION_COOKIE_TRUSTED_URL` | 推荐 | `https://your-domain.example.com` | `SESSION_COOKIE_SECURE=true` 时必填的精确站点 HTTPS 域名（不支持通配符与路径）。 |
 
+### B2. 地理封禁（可选）
+
+| 环境变量 | 默认值 | 说明 |
+|---|---|---|
+| `GEOIP_DB_PATH` | 未设置 | 地理封禁使用的 MaxMind DB（`.mmdb`）文件路径。未设置或文件不可读时，地理封禁功能自动关闭（放行所有请求）。在管理后台「系统设置 → 安全 → 地理封禁」中开启开关并配置国家代码列表后，命中封禁国家的客户端 IP 将被直接 403。 |
+
+> 注意：`TRUSTED_PROXIES` 必须正确配置，否则地理封禁依据的是反向代理 IP 而非客户端真实 IP。
+
 ### C. 时序日志与 TimescaleDB 增强（可选）
 
 | 环境变量 | 默认值 | 说明 |
