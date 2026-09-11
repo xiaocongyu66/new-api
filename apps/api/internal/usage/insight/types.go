@@ -106,9 +106,19 @@ const (
 	KindAgentCLI = "agent_cli"
 	KindIDE      = "ide"
 	KindChatUI   = "chat_ui"
-	KindSDK      = "sdk"
-	KindRelay    = "relay"
-	KindUnknown  = "unknown"
+	// KindMobile 是手机端聊天 App（RikkaHub、Tavo、Kelivo 等）。
+	// 与 chat_ui 分开：封禁配置里"手机端"和"网页/桌面聊天界面"是不同的处置对象。
+	KindMobile  = "mobile"
+	KindBrowser = "browser"
+	KindSDK     = "sdk"
+	// KindHTTPTool 是通用 HTTP 客户端/脚本栈（curl、okhttp、node-fetch…）。
+	// 从 sdk 里拆出来并逐个独立：封禁这类流量的粒度必须细到单个工具。
+	KindHTTPTool = "http_tool"
+	// KindDiscovered 是从真实流量里自动发现、尚未内置规则的客户端。
+	// 它们同样可被封禁，但要在 UI 上与内置规则区分开。
+	KindDiscovered = "discovered"
+	KindRelay      = "relay"
+	KindUnknown    = "unknown"
 )
 
 // 用途类别常量。

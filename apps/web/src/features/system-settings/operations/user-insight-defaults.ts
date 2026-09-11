@@ -42,6 +42,9 @@ export const insightSchema = z.object({
     auto_ban_code_ratio_enabled: z.boolean(),
     auto_ban_code_ratio_percent: z.coerce.number().int().min(1).max(100),
     auto_ban_code_min_requests: z.coerce.number().int().min(1),
+    client_ban_enabled: z.boolean(),
+    // 勾选集合：与识别规则 ID 对应，保存时序列化成 JSON 数组字符串。
+    blocked_clients: z.array(z.string()),
   }),
 })
 
@@ -63,6 +66,9 @@ export type InsightFlatDefaults = {
   'user_insight_setting.auto_ban_code_ratio_enabled': boolean
   'user_insight_setting.auto_ban_code_ratio_percent': number
   'user_insight_setting.auto_ban_code_min_requests': number
+  'user_insight_setting.client_ban_enabled': boolean
+  // 线格式为 JSON 数组字符串（与 Go 侧 []string 的序列化一致），如 ["claude_code","cursor"]。
+  'user_insight_setting.blocked_clients': string
 }
 
 export const DEFAULT_INSIGHT_VALUES: InsightFlatDefaults = {
@@ -80,6 +86,20 @@ export const DEFAULT_INSIGHT_VALUES: InsightFlatDefaults = {
   'user_insight_setting.auto_ban_code_ratio_enabled': false,
   'user_insight_setting.auto_ban_code_ratio_percent': 80,
   'user_insight_setting.auto_ban_code_min_requests': 10,
+  'user_insight_setting.client_ban_enabled': false,
+  'user_insight_setting.blocked_clients': '[]',
+}
+
+/** 解析服务端的 JSON 数组字符串为客户端 ID 列表，解析失败回落到空数组。 */
+export function parseBlockedClients(raw: string): string[] {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((item): item is string => typeof item === 'string')
+  } catch {
+    return []
+  }
 }
 
 // Flat (server) shape -> nested (form) shape.
@@ -107,6 +127,10 @@ export const buildInsightFormDefaults = (
       defaults['user_insight_setting.auto_ban_code_ratio_percent'],
     auto_ban_code_min_requests:
       defaults['user_insight_setting.auto_ban_code_min_requests'],
+    client_ban_enabled: defaults['user_insight_setting.client_ban_enabled'],
+    blocked_clients: parseBlockedClients(
+      defaults['user_insight_setting.blocked_clients']
+    ),
   },
 })
 
@@ -141,4 +165,9 @@ export const normalizeInsightFormValues = (
     values.user_insight_setting.auto_ban_code_ratio_percent,
   'user_insight_setting.auto_ban_code_min_requests':
     values.user_insight_setting.auto_ban_code_min_requests,
+  'user_insight_setting.client_ban_enabled':
+    values.user_insight_setting.client_ban_enabled,
+  'user_insight_setting.blocked_clients': JSON.stringify(
+    values.user_insight_setting.blocked_clients ?? []
+  ),
 })

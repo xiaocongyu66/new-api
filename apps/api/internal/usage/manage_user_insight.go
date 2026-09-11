@@ -61,6 +61,11 @@ type insightProfileView struct {
 
 	Clients   []ClientUsage  `json:"clients,omitempty"`
 	Languages map[string]int `json:"languages,omitempty"`
+
+	// DisabledClients 是该用户被"单用户档"封禁的客户端 ID 列表
+	// （user_insight_client_bans），与全局封禁（user_insight_setting）区分开，
+	// 前端据此标记哪个客户端仅对这个人禁用。无记录时 omitempty 不出现。
+	DisabledClients []string `json:"disabled_clients,omitempty"`
 }
 
 // GetUserInsights 返回用户画像列表，支持按类别、风险等级、中转站来源筛选。
@@ -148,6 +153,7 @@ func HandleGetUserInsights(c contract.Context) {
 		views = matched[start:end]
 	}
 	enrichWithUserStatus(views)
+	enrichWithUserClientBans(views)
 
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
@@ -201,6 +207,7 @@ func HandleGetUserInsightDetail(c contract.Context) {
 	view := buildInsightView(profile)
 	views := []insightProfileView{view}
 	enrichWithUserStatus(views)
+	enrichWithUserClientBans(views)
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
@@ -376,6 +383,28 @@ func enrichWithUserStatus(views []insightProfileView) {
 		views[i].DisplayName = user.DisplayName
 		if views[i].Username == "" {
 			views[i].Username = user.Username
+		}
+	}
+}
+
+// enrichWithUserClientBans 批量补齐每个用户被"单用户档"封禁的客户端列表。
+// 独立于 enrichWithUserStatus：用户状态查询失败时封禁标记仍要展示，
+// 且封禁数据源是 user_insight_client_bans 表而非 users 表。
+func enrichWithUserClientBans(views []insightProfileView) {
+	if len(views) == 0 {
+		return
+	}
+	ids := make([]int, 0, len(views))
+	for _, view := range views {
+		ids = append(ids, view.UserId)
+	}
+	bans := GetUserClientBansByUsers(ids)
+	if len(bans) == 0 {
+		return
+	}
+	for i := range views {
+		if clients, ok := bans[views[i].UserId]; ok {
+			views[i].DisabledClients = clients
 		}
 	}
 }

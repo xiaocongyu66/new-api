@@ -92,7 +92,7 @@ func TestDetectClient(t *testing.T) {
 			header:     http.Header{"User-Agent": {"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36"}},
 			prompt:     "今天天气怎么样",
 			wantID:     "browser",
-			wantKind:   KindChatUI,
+			wantKind:   KindBrowser,
 			wantSource: "header",
 			wantScore:  85,
 		},

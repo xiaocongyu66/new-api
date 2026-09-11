@@ -17,11 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useForm, type Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Form,
   FormControl,
@@ -38,7 +39,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
+import { useClientCatalog } from '@/features/user-insights/hooks/use-user-insights'
+import type { ClientCatalogEntry } from '@/features/user-insights/types'
 
 import {
   SettingsForm,
@@ -413,8 +417,158 @@ export function UserInsightSection({
               </FormItem>
             )}
           />
+
+          <FormField
+            control={form.control}
+            name='user_insight_setting.client_ban_enabled'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>{t('Ban clients by request header')}</FormLabel>
+                  <FormDescription>
+                    {t(
+                      'Reject relay requests identified as banned clients by their request headers (User-Agent + tool-specific headers) with a 403, before channel distribution'
+                    )}
+                  </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+              </SettingsSwitchItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='user_insight_setting.blocked_clients'
+            render={({ field }) => (
+              // span=full：客户端目录有 40+ 项，挤在半列里会堆成长条；
+              // 桌面端跨双列、组级再自动分栏，手机端单栏换行。
+              <FormItem data-settings-form-span='full'>
+                <FormLabel>{t('Blocked clients (site-wide)')}</FormLabel>
+                <FormControl>
+                  <BlockedClientsPicker
+                    value={field.value ?? []}
+                    onChange={field.onChange}
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'Pick which request-header clients are banned for every user. Banned only while the switch above is on; single users can be treated differently from the dashboard.'
+                  )}
+                </FormDescription>
+              </FormItem>
+            )}
+          />
         </SettingsForm>
       </Form>
     </SettingsSection>
+  )
+}
+
+// 封禁勾选列表的分组顺序与措辞：运营方的心智是"编程 harness / 手机端 /
+// 网页聊天"三大类，agent_cli 与 ide 都属于编程 harness，合并展示。
+const CLIENT_KIND_GROUPS = [
+  { kinds: ['agent_cli', 'ide'], labelKey: 'Coding harness (agents & IDEs)' },
+  { kinds: ['mobile'], labelKey: 'Mobile apps' },
+  { kinds: ['chat_ui'], labelKey: 'Chat UIs' },
+  { kinds: ['browser'], labelKey: 'Web browsers' },
+  { kinds: ['sdk'], labelKey: 'SDKs' },
+  { kinds: ['http_tool'], labelKey: 'HTTP tools & scripts' },
+  // 自动发现项排在最后：数量最多、变化最快，且需要靠请求量判断该不该封。
+  { kinds: ['discovered'], labelKey: 'Seen in traffic (no built-in rule)' },
+] as const
+
+/**
+ * 全站封禁客户端的勾选选择器。
+ *
+ * 选项来自后端识别规则目录（/api/user-insight/client-catalog），
+ * 按"编程 harness / 手机端 / 聊天界面 / 浏览器 / SDK"分组勾选，
+ * 规则增删后自动跟上，不存在前端静态镜像的漂移。
+ */
+function BlockedClientsPicker({
+  value,
+  onChange,
+}: {
+  value: string[]
+  onChange: (value: string[]) => void
+}) {
+  const { t } = useTranslation()
+  const catalogQuery = useClientCatalog()
+  const catalogData = catalogQuery.data?.data
+
+  const groups = useMemo(() => {
+    const byKind = new Map<string, ClientCatalogEntry[]>()
+    for (const entry of catalogData ?? []) {
+      const list = byKind.get(entry.kind) ?? []
+      list.push(entry)
+      byKind.set(entry.kind, list)
+    }
+    return CLIENT_KIND_GROUPS.map((group) => ({
+      labelKey: group.labelKey,
+      // 组内按站内请求量降序：真正需要处置的客户端排在最前，
+      // 没见过的（0 请求）沉到末尾。
+      items: group.kinds
+        .flatMap((kind) => byKind.get(kind) ?? [])
+        .sort((a, b) => b.requests - a.requests || a.name.localeCompare(b.name)),
+    })).filter((group) => group.items.length > 0)
+  }, [catalogData])
+
+  if (catalogQuery.isLoading) {
+    return <Skeleton className='h-24 w-full' />
+  }
+
+  return (
+    // 组级自动分栏：手机单栏，sm 两栏，xl 三栏，按剩余宽度自适应。
+    // 用 CSS multi-column 而不是等宽 grid——各组条目数差异大
+    // （编程 harness 17 项、浏览器 1 项），等宽栅格会留大片空洞，
+    // 分栏则像瀑布流一样把组填满。break-inside-avoid 保证组不跨栏断开。
+    <div className='columns-1 gap-4 sm:columns-2 xl:columns-3'>
+      {groups.map((group) => (
+        <div key={group.labelKey} className='mb-4 break-inside-avoid'>
+          <div className='text-muted-foreground text-xs font-medium'>
+            {t(group.labelKey)}
+            <span className='ml-1 tabular-nums opacity-70'>
+              ({group.items.length})
+            </span>
+          </div>
+          <div className='mt-1.5 flex flex-wrap gap-1.5'>
+            {group.items.map((item) => {
+              const checked = value.includes(item.id)
+              return (
+                <label
+                  key={item.id}
+                  className='has-data-[state=checked]:bg-muted hover:bg-muted/40 flex max-w-full cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs'
+                  title={item.id}
+                >
+                  <Checkbox
+                    checked={checked}
+                    onCheckedChange={() => {
+                      onChange(
+                        checked
+                          ? value.filter((id) => id !== item.id)
+                          : [...value, item.id]
+                      )
+                    }}
+                  />
+                  <span className='truncate'>{item.name}</span>
+                  {item.requests > 0 && (
+                    <span className='text-muted-foreground hidden text-[11px] tabular-nums sm:inline'>
+                      {t('{{requests}} reqs · {{users}} users', {
+                        requests: item.requests,
+                        users: item.users,
+                      })}
+                    </span>
+                  )}
+                </label>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }

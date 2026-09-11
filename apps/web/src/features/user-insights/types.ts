@@ -60,6 +60,20 @@ export type InsightClientUsage = {
   version?: string
 }
 
+/** 封禁选择器的一个客户端选项。 */
+export type ClientCatalogEntry = {
+  id: string
+  name: string
+  /** agent_cli / ide / mobile / chat_ui / browser / sdk / http_tool / discovered */
+  kind: string
+  /** true = 内置识别规则；false = 从真实流量里自动发现。 */
+  built_in: boolean
+  /** 站内累计请求数，0 表示还没见过。 */
+  requests: number
+  /** 用过该客户端的用户数。 */
+  users: number
+}
+
 export type UserInsight = {
   user_id: number
   username: string
@@ -104,6 +118,9 @@ export type UserInsight = {
 
   clients?: InsightClientUsage[]
   languages?: Record<string, number>
+
+  /** 该用户被"单用户档"封禁的客户端 ID（仅对这个人生效，区别于全站封禁）。 */
+  disabled_clients?: string[]
 }
 
 export type UserInsightListData = {

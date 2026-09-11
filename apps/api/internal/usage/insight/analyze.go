@@ -41,7 +41,7 @@ func Analyze(header http.Header, body []byte, requestPath string, opts Options) 
 	result.Truncated = truncated
 
 	result.Client, result.ClientName, result.ClientKind, result.ClientVersion, result.ClientSource, result.ClientScore =
-		DetectClient(header, lowerAll)
+		ResolveClient(header, lowerAll)
 
 	result.IsRelay, result.RelayVendor, result.RelayScore, result.RelayReasons =
 		DetectRelay(header, result.Client, result.ClientKind)

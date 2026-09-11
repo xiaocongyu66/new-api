@@ -59,6 +59,8 @@ const RISK_OPTIONS = [
 
 type InsightsTableProps = {
   onViewEvidence: (item: UserInsight) => void
+  /** 全站封禁的客户端 ID 列表，用于客户端徽标标红。 */
+  blockedClients?: string[]
 }
 
 /**
@@ -73,10 +75,13 @@ type InsightsTableProps = {
  * 全开，列上的 filterFn 只用于 faceted filter 的取值语义，实际过滤
  * 在后端完成（派生字段用 SQL 表达会牺牲跨库兼容性）。
  */
-export function InsightsTable({ onViewEvidence }: InsightsTableProps) {
+export function InsightsTable({
+  onViewEvidence,
+  blockedClients,
+}: InsightsTableProps) {
   const { t } = useTranslation()
   const isMobile = useMediaQuery('(max-width: 640px)')
-  const columns = useInsightColumns({ onViewEvidence })
+  const columns = useInsightColumns({ onViewEvidence, blockedClients })
 
   const {
     globalFilter,

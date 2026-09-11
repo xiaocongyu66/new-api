@@ -45,6 +45,14 @@ type UserInsightSetting struct {
 	// AutoBanCodeMinRequests 是应用占比规则前所需的最小总请求数。
 	// 样本太少时占比没有统计意义，这个门槛是必需的。
 	AutoBanCodeMinRequests int `json:"auto_ban_code_min_requests"`
+	// ClientBanEnabled 控制"按请求头识别客户端并封禁"（全局 + 单用户两级）。
+	// 默认关闭：封禁直接让命中客户端的 relay 请求 403，影响面覆盖全站，
+	// 必须由运营方显式开启。
+	ClientBanEnabled bool `json:"client_ban_enabled"`
+	// BlockedClients 是全局封禁的客户端 ID 列表
+	// （与画像客户端识别规则的 ID 一致，如 claude_code / opencode / cursor）。
+	// ClientBanEnabled 开启时，请求被请求头识别为其中任一客户端即被拒绝。
+	BlockedClients []string `json:"blocked_clients"`
 }
 
 var userInsightSetting = UserInsightSetting{

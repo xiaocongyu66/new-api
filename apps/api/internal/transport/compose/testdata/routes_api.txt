@@ -129,6 +129,7 @@ GET /api/usage/token/
 GET /api/user-agreement
 GET /api/user-insight
 GET /api/user-insight/:id
+GET /api/user-insight/client-catalog
 GET /api/user-insight/summary
 GET /api/user/
 GET /api/user/2fa/stats
@@ -223,6 +224,8 @@ POST /api/token/
 POST /api/token/:id/key
 POST /api/token/batch
 POST /api/token/batch/keys
+POST /api/user-insight/:id/client-ban
+POST /api/user-insight/client-ban
 POST /api/user/
 POST /api/user/2fa/backup_codes
 POST /api/user/2fa/disable

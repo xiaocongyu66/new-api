@@ -29,7 +29,10 @@ import {
   getOptionValue,
   useSystemOptions,
 } from '../system-settings/hooks/use-system-options'
-import { DEFAULT_INSIGHT_VALUES } from '../system-settings/operations/user-insight-defaults'
+import {
+  DEFAULT_INSIGHT_VALUES,
+  parseBlockedClients,
+} from '../system-settings/operations/user-insight-defaults'
 import { UserInsightSection } from '../system-settings/operations/user-insight-section'
 import { InsightSummaryCards } from './components/insight-summary-cards'
 import { InsightsTable } from './components/insights-table'
@@ -61,6 +64,11 @@ export function UserInsights() {
   const insightDefaults = useMemo(
     () => getOptionValue(systemOptionsQuery.data?.data, DEFAULT_INSIGHT_VALUES),
     [systemOptionsQuery.data]
+  )
+  // 全站封禁的客户端列表，用于在证据抽屉里标记/操作每个客户端。
+  const blockedClients = useMemo(
+    () => parseBlockedClients(insightDefaults['user_insight_setting.blocked_clients']),
+    [insightDefaults]
   )
 
   return (
@@ -110,7 +118,10 @@ export function UserInsights() {
                 />
               </div>
               <div className='min-h-0 flex-1'>
-                <InsightsTable onViewEvidence={setEvidenceUser} />
+                <InsightsTable
+                  onViewEvidence={setEvidenceUser}
+                  blockedClients={blockedClients}
+                />
               </div>
             </TabsContent>
 
@@ -131,6 +142,8 @@ export function UserInsights() {
           <UserEvidenceSheet
             userId={evidenceUser?.user_id ?? null}
             username={evidenceUser?.display_name || evidenceUser?.username}
+            item={evidenceUser}
+            blockedClients={blockedClients}
             onClose={() => setEvidenceUser(null)}
             onOpenRawBody={setRawBodySampleId}
           />

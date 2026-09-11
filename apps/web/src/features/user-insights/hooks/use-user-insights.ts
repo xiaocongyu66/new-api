@@ -22,13 +22,16 @@ import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import {
   deleteUserInsightSamples,
+  getClientCatalog,
   getInsightSampleDetail,
   getInsightSampleGroups,
   getInsightSamples,
   getUserInsightSummary,
   getUserInsights,
   purgeUserInsight,
+  setClientBanned,
   setUserBanned,
+  setUserClientBanned,
 } from '../api'
 import type { InsightSampleFilters, UserInsightFilters } from '../types'
 
@@ -55,8 +58,7 @@ export function useUserInsights(
 }
 
 /** 站点级画像汇总查询。 */
-export function useUserInsightSummary() {
-  return useQuery({
+export function useUserInsightSummary() {  return useQuery({
     queryKey: [INSIGHTS_KEY, 'summary'],
     queryFn: getUserInsightSummary,
     staleTime: 60_000,
@@ -90,6 +92,93 @@ export function useToggleUserBan() {
       }
       toast.success(
         variables.banned ? t('User has been banned') : t('User has been unbanned')
+      )
+      queryClient.invalidateQueries({ queryKey: [INSIGHTS_KEY] })
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : t('Operation failed'))
+    },
+  })
+}
+
+/**
+ * 请求头可识别的客户端目录查询。
+ *
+ * 数据来自后端识别规则表，供画像配置的封禁勾选列表按类别分组展示。
+ * 目录随规则表变化，但规则是发布期常量，staleTime 放宽即可。
+ */
+export function useClientCatalog() {
+  return useQuery({
+    queryKey: [INSIGHTS_KEY, 'client-catalog'],
+    queryFn: getClientCatalog,
+    staleTime: 5 * 60_000,
+  })
+}
+
+/**
+ * 全站封禁 / 解封一个客户端（按请求头识别的客户端 ID）。
+ *
+ * 成功后失效画像列表（禁用标记）与系统配置缓存（封禁列表本身）。
+ */
+export function useToggleClientBan() {
+  const queryClient = useQueryClient()
+  const { t } = useTranslation()
+
+  return useMutation({
+    mutationFn: ({
+      client,
+      banned,
+    }: {
+      client: string
+      banned: boolean
+    }) => setClientBanned(client, banned),
+    onSuccess: (response, variables) => {
+      if (!response.success) {
+        toast.error(response.message || t('Operation failed'))
+        return
+      }
+      toast.success(
+        variables.banned
+          ? t('Client banned site-wide')
+          : t('Client unbanned site-wide')
+      )
+      queryClient.invalidateQueries({ queryKey: [INSIGHTS_KEY] })
+      queryClient.invalidateQueries({ queryKey: ['system-options'] })
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : t('Operation failed'))
+    },
+  })
+}
+
+/**
+ * 封禁 / 解封某用户的某个客户端（仅对该用户生效）。
+ *
+ * 成功后失效画像列表，让该行的 disabled_clients 标记立即更新。
+ */
+export function useToggleUserClientBan() {
+  const queryClient = useQueryClient()
+  const { t } = useTranslation()
+
+  return useMutation({
+    mutationFn: ({
+      userId,
+      client,
+      banned,
+    }: {
+      userId: number
+      client: string
+      banned: boolean
+    }) => setUserClientBanned(userId, client, banned),
+    onSuccess: (response, variables) => {
+      if (!response.success) {
+        toast.error(response.message || t('Operation failed'))
+        return
+      }
+      toast.success(
+        variables.banned
+          ? t('Client disabled for this user')
+          : t('Client re-enabled for this user')
       )
       queryClient.invalidateQueries({ queryKey: [INSIGHTS_KEY] })
     },

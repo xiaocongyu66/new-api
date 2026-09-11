@@ -216,8 +216,13 @@ func SetApiRouter(router contract.Engine) {
 		{
 			insightRoute.GET("/summary", usage.HandleGetUserInsightSummary)
 			insightRoute.GET("", usage.HandleGetUserInsights)
+			insightRoute.GET("/client-catalog", usage.HandleGetClientCatalog)
 			insightRoute.GET("/:id", usage.HandleGetUserInsightDetail)
 			insightRoute.DELETE("/:id", usage.HandlePurgeUserInsight)
+			// Client banning by request-header detection: global (site-wide)
+			// and per-user scopes. Enforced on relay routes by InsightClientBan.
+			insightRoute.POST("/client-ban", usage.HandleSetGlobalClientBan)
+			insightRoute.POST("/:id/client-ban", usage.HandleToggleUserClientBan)
 		}
 		// Evidence samples: hit keywords with original sentences, plus the
 		// optional full request body.

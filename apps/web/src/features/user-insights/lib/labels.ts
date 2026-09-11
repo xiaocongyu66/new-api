@@ -194,9 +194,37 @@ export function clientLabel(client: string): string {
     openai_sdk: 'OpenAI SDK',
     anthropic_sdk: 'Anthropic SDK',
     langchain: 'LangChain',
-    generic_http: 'HTTP Client',
+    pi: 'Pi',
+    oh_my_pi: 'Oh My Pi',
+    rikkahub: 'RikkaHub',
+    tavo: 'Tavo',
+    kelivo: 'Kelivo',
+    vercel_ai_sdk: 'Vercel AI SDK',
+    browser: 'Web Browser',
+    curl: 'curl',
+    python_requests: 'Python requests',
+    httpx: 'httpx',
+    aiohttp: 'aiohttp',
+    okhttp: 'OkHttp',
+    axios: 'axios',
+    node_fetch: 'node-fetch',
+    go_http: 'Go http',
+    deno: 'Deno',
+    postman: 'Postman',
+    generic_http: 'Other HTTP Client',
   }
-  return names[client] ?? client
+  if (names[client]) return names[client]
+  // 自动发现的客户端标识形如 "ua:deepseek-harness" 或
+  // "ua:myagent+x-myagent-version"，去掉前缀后本身就可读。
+  if (client.startsWith('ua:')) {
+    const token = client.slice(3)
+    const plus = token.indexOf('+')
+    if (plus > 0) {
+      return `${token.slice(0, plus)} (${token.slice(plus + 1)})`
+    }
+    return token
+  }
+  return client
 }
 
 /** 证据类别的本地化名称。 */

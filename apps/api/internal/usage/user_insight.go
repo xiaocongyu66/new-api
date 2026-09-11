@@ -509,6 +509,48 @@ func PurgeUserInsight(userId int) (*PurgeUserInsightResult, error) {
 	return result, nil
 }
 
+// ClientUsageStat 是某个客户端的站内累计观测量。
+type ClientUsageStat struct {
+	Client   string
+	Requests int64
+	Users    int
+}
+
+// AggregateClientUsage 汇总所有画像行的客户端计数，按请求量降序返回。
+//
+// 在内存里聚合而不是用 SQL 解 JSON：clients_json 是 TEXT 列（为兼容
+// SQLite / MySQL / PostgreSQL 三种数据库），JSON 函数在三者上语法各不相同。
+// 画像表一行一个用户，且沿用 maxInsightProfileScan 行数上限，可接受。
+func AggregateClientUsage() ([]ClientUsageStat, error) {
+	var profiles []*UserInsightProfile
+	err := dbx.DB.Select("clients_json").Limit(maxInsightProfileScan).Find(&profiles).Error
+	if err != nil {
+		return nil, err
+	}
+	requests := map[string]int64{}
+	users := map[string]int{}
+	for _, profile := range profiles {
+		for _, usage := range DecodeClientUsage(profile.ClientsJSON) {
+			if usage.Client == "" {
+				continue
+			}
+			requests[usage.Client] += int64(usage.Count)
+			users[usage.Client]++
+		}
+	}
+	stats := make([]ClientUsageStat, 0, len(requests))
+	for client, count := range requests {
+		stats = append(stats, ClientUsageStat{Client: client, Requests: count, Users: users[client]})
+	}
+	sort.Slice(stats, func(i, j int) bool {
+		if stats[i].Requests != stats[j].Requests {
+			return stats[i].Requests > stats[j].Requests
+		}
+		return stats[i].Client < stats[j].Client
+	})
+	return stats, nil
+}
+
 // GetInsightUsersByIds 批量读取画像所属用户的状态字段，供看板列表补齐展示信息。
 // 只 Select 需要的列，避免把密码哈希等敏感字段带出数据层。
 func GetInsightUsersByIds(ids []int) ([]*identity.User, error) {

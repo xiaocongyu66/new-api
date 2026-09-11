@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 import type {
   ApiResponse,
+  ClientCatalogEntry,
   InsightSample,
   InsightSampleFilters,
   InsightSampleGroupListData,
@@ -93,6 +94,47 @@ export async function setUserBanned(
   const res = await api.post('/api/user/manage', {
     id: userId,
     action: banned ? 'disable' : 'enable',
+  })
+  return res.data
+}
+
+/**
+ * 全站封禁 / 解封一个客户端（按请求头识别的客户端 ID）。
+ * 存到 user_insight_setting.blocked_clients，命中即 403。
+ */
+export async function setClientBanned(
+  client: string,
+  banned: boolean
+): Promise<ApiResponse<{ client: string; ban: boolean; blocked_clients: string[] }>> {
+  const res = await api.post('/api/user-insight/client-ban', {
+    client,
+    ban: banned,
+  })
+  return res.data
+}
+
+/**
+ * 拉取请求头可识别的客户端目录（按 kind 分类），供画像配置的封禁勾选列表使用。
+ */
+export async function getClientCatalog(): Promise<
+  ApiResponse<ClientCatalogEntry[]>
+> {
+  const res = await api.get('/api/user-insight/client-catalog')
+  return res.data
+}
+
+/**
+ * 封禁 / 解封某用户的某个客户端（仅对该用户生效）。
+ * 写 user_insight_client_bans 表，不影响该用户的其它客户端。
+ */
+export async function setUserClientBanned(
+  userId: number,
+  client: string,
+  banned: boolean
+): Promise<ApiResponse<{ user_id: number; client: string; ban: boolean; disabled_clients: string[] }>> {
+  const res = await api.post(`/api/user-insight/${userId}/client-ban`, {
+    client,
+    ban: banned,
   })
   return res.data
 }

@@ -70,6 +70,8 @@ function riskTone(
 
 type UseInsightColumnsOptions = {
   onViewEvidence: (item: UserInsight) => void
+  /** 全站封禁的客户端 ID 列表，命中时客户端徽标标红。 */
+  blockedClients?: string[]
 }
 
 export function useInsightColumns(
@@ -237,16 +239,31 @@ export function useInsightColumns(
         if (clients.length === 0 && item.relay_requests === 0) {
           return <span className='text-muted-foreground text-xs'>—</span>
         }
+        const blocked = new Set(options.blockedClients ?? [])
+        const disabledForUser = new Set(item.disabled_clients ?? [])
         return (
           <div className='flex max-w-[200px] flex-wrap items-center gap-1'>
-            {clients.slice(0, 3).map((client) => (
-              <StatusBadge
-                key={client.client}
-                label={`${clientLabel(client.client)}${client.version ? ` ${client.version}` : ''}`}
-                variant='neutral'
-                copyable={false}
-              />
-            ))}
+            {clients.slice(0, 3).map((client) => {
+              const banned = blocked.has(client.client)
+              const disabled = disabledForUser.has(client.client)
+              let suffix = ''
+              let variant: 'danger' | 'warning' | 'neutral' = 'neutral'
+              if (banned) {
+                suffix = ` · ${t('banned')}`
+                variant = 'danger'
+              } else if (disabled) {
+                suffix = ` · ${t('disabled')}`
+                variant = 'warning'
+              }
+              return (
+                <StatusBadge
+                  key={client.client}
+                  label={`${clientLabel(client.client)}${client.version ? ` ${client.version}` : ''}${suffix}`}
+                  variant={variant}
+                  copyable={false}
+                />
+              )
+            })}
             {item.relay_requests > 0 && (
               <Tooltip>
                 <TooltipTrigger

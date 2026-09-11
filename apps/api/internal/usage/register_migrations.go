@@ -10,6 +10,7 @@ func init() {
 		dbx.Migration{Model: &QuotaData{}, Name: "QuotaData"},
 		dbx.Migration{Model: &UserInsightProfile{}, Name: "UserInsightProfile"},
 		dbx.Migration{Model: &UserInsightSample{}, Name: "UserInsightSample"},
+		dbx.Migration{Model: &UserInsightClientBan{}, Name: "UserInsightClientBan"},
 	)
 	dbx.RegisterLogMigrations(dbx.Migration{Model: &Log{}, Name: "Log"})
 }

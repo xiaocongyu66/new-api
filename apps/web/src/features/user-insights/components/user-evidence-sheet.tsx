@@ -18,6 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { useTranslation } from 'react-i18next'
+import { useState } from 'react'
+
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -34,7 +37,11 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useUserInsightSamples } from '../hooks/use-user-insights'
+import {
+  useToggleClientBan,
+  useToggleUserClientBan,
+  useUserInsightSamples,
+} from '../hooks/use-user-insights'
 import {
   clientLabel,
   formatBytes,
@@ -42,11 +49,16 @@ import {
   riskBadgeVariant,
   riskLabel,
 } from '../lib/labels'
+import type { InsightClientUsage, UserInsight } from '../types'
 import { EvidenceList } from './evidence-list'
 
 type UserEvidenceSheetProps = {
   userId: number | null
   username?: string
+  /** 该用户的完整画像：驱动"客户端访问控制"区块（客户端列表 + 封禁/禁用状态）。 */
+  item?: UserInsight | null
+  /** 全站封禁的客户端 ID 列表（user_insight_setting.blocked_clients）。 */
+  blockedClients?: string[]
   onClose: () => void
   /** 打开完整请求体抽屉。不传则不显示该入口。 */
   onOpenRawBody?: (sampleId: number) => void
@@ -64,12 +76,15 @@ type UserEvidenceSheetProps = {
 export function UserEvidenceSheet({
   userId,
   username,
+  item,
+  blockedClients = [],
   onClose,
   onOpenRawBody,
 }: UserEvidenceSheetProps) {
   const { t } = useTranslation()
   const samplesQuery = useUserInsightSamples(userId, {})
   const samples = samplesQuery.data?.data.items ?? []
+  const clients = item?.clients ?? []
 
   return (
     <Sheet open={userId !== null} onOpenChange={(open) => !open && onClose()}>
@@ -86,6 +101,24 @@ export function UserEvidenceSheet({
             )}
           </SheetDescription>
         </SheetHeader>
+
+        {clients.length > 0 && (
+          <div className='border-b px-4 py-3'>
+            <div className='text-muted-foreground mb-2 text-xs font-medium tracking-wide'>
+              {t('Client access control')}
+            </div>
+            <div className='space-y-2'>
+              {clients.map((client) => (
+                <ClientAccessRow
+                  key={client.client}
+                  item={item as UserInsight}
+                  client={client}
+                  blockedClients={blockedClients}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
         <ScrollArea className='flex-1 px-4 pb-6'>
           {samplesQuery.isLoading && (
@@ -174,5 +207,106 @@ export function UserEvidenceSheet({
         </ScrollArea>
       </SheetContent>
     </Sheet>
+  )
+}
+
+/**
+ * 单个客户端的访问控制行：
+ *  - 全站封禁 / 解封（user_insight_setting.blocked_clients，影响所有用户）；
+ *  - 仅对该用户禁用 / 恢复（user_insight_client_bans，不影响该用户的其它客户端）。
+ * 全站封禁是面向全站的不可即时回退动作（撤销要再操作一次），故封禁走二次确认；
+ * 单用户禁用影响面小且可逆，直接执行。
+ */
+function ClientAccessRow({
+  item,
+  client,
+  blockedClients,
+}: {
+  item: UserInsight
+  client: InsightClientUsage
+  blockedClients: string[]
+}) {
+  const { t } = useTranslation()
+  const toggleClientBan = useToggleClientBan()
+  const toggleUserClientBan = useToggleUserClientBan()
+  const [banConfirmOpen, setBanConfirmOpen] = useState(false)
+
+  const globalBanned = blockedClients.includes(client.client)
+  const userDisabled = (item.disabled_clients ?? []).includes(client.client)
+
+  return (
+    <div className='flex flex-wrap items-center gap-2 rounded-md border p-2'>
+      <div className='flex min-w-0 flex-1 items-center gap-1.5'>
+        <Badge
+          variant={globalBanned ? 'destructive' : 'outline'}
+          className='text-[11px]'
+        >
+          {clientLabel(client.client)}
+          {client.version ? ` ${client.version}` : ''}
+        </Badge>
+        <span className='text-muted-foreground text-[11px] tabular-nums'>
+          {t('{{count}} requests', { count: client.count })}
+        </span>
+        {globalBanned && (
+          <Badge variant='destructive' className='text-[10px]'>
+            {t('Banned site-wide')}
+          </Badge>
+        )}
+        {userDisabled && (
+          <Badge variant='secondary' className='text-[10px]'>
+            {t('Disabled for this user')}
+          </Badge>
+        )}
+      </div>
+
+      <div className='flex shrink-0 items-center gap-1.5'>
+        <Button
+          size='sm'
+          variant={globalBanned ? 'outline' : 'destructive'}
+          disabled={toggleClientBan.isPending}
+          onClick={() => {
+            if (globalBanned) {
+              toggleClientBan.mutate({ client: client.client, banned: false })
+            } else {
+              setBanConfirmOpen(true)
+            }
+          }}
+        >
+          {globalBanned ? t('Unban site-wide') : t('Ban site-wide')}
+        </Button>
+        <Button
+          size='sm'
+          variant='outline'
+          disabled={toggleUserClientBan.isPending}
+          onClick={() =>
+            toggleUserClientBan.mutate({
+              userId: item.user_id,
+              client: client.client,
+              banned: !userDisabled,
+            })
+          }
+        >
+          {userDisabled
+            ? t('Re-enable for this user')
+            : t('Disable for this user')}
+        </Button>
+      </div>
+
+      <ConfirmDialog
+        open={banConfirmOpen}
+        onOpenChange={setBanConfirmOpen}
+        destructive
+        title={t('Ban this client site-wide?')}
+        desc={t(
+          'Every user whose requests are identified as this client by request headers will be rejected with a 403. This is reversible.'
+        )}
+        confirmText={t('Ban site-wide')}
+        isLoading={toggleClientBan.isPending}
+        handleConfirm={() => {
+          toggleClientBan.mutate({ client: client.client, banned: true })
+          setBanConfirmOpen(false)
+        }}
+      />
+    </div>
   )
 }

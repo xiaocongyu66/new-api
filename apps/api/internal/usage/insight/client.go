@@ -50,10 +50,12 @@ var clientRules = []clientRule{
 		VersionRegex: semverRe,
 	},
 	{
-		ID:           "codex_cli",
-		Name:         "Codex CLI",
-		Kind:         KindAgentCLI,
-		UASubstrings: []string{"codex_cli_rs", "codex-cli", "codex/"},
+		ID:   "codex_cli",
+		Name: "Codex CLI",
+		Kind: KindAgentCLI,
+		// "codex desktop" 是 Codex 的桌面端（生产流量里真实出现），
+		// 与 CLI 同属 Codex 家族，应归入同一内置规则而不是散落进自动发现。
+		UASubstrings: []string{"codex_cli_rs", "codex-cli", "codex/", "codex desktop"},
 		HeaderKeys:   []string{"Originator", "Session_id", "Openai-Beta"},
 		HeaderPairs:  map[string]string{"Originator": "codex_cli_rs"},
 		PromptMarkers: []string{
@@ -234,6 +236,34 @@ var clientRules = []clientRule{
 		},
 	},
 	{
+		ID:   "pi",
+		Name: "Pi",
+		Kind: KindAgentCLI,
+		// 绝不能收裸的 "pi/"："api/0.1"、"myapi/1.0" 这类自定义网关 UA
+		// 是它的超集，会把普通 HTTP 客户端误认成 Pi。限定 "pi/<版本号>"
+		// 形状与专有 token，牺牲一点覆盖率换零误报。
+		UASubstrings: []string{"pi/0.", "pi/1.", "pi-cli", "pi-mono", "pi-agent"},
+		VersionFrom:  "ua",
+		VersionRegex: semverRe,
+	},
+	{
+		ID:           "oh_my_pi",
+		Name:         "Oh My Pi",
+		Kind:         KindAgentCLI,
+		UASubstrings: []string{"oh-my-pi"},
+		VersionFrom:  "ua",
+		VersionRegex: semverRe,
+	},
+	{
+		// 通义千问的编程 CLI，生产流量里已出现（QwenCode/0.23.0）。
+		ID:           "qwen_code",
+		Name:         "QwenCode",
+		Kind:         KindAgentCLI,
+		UASubstrings: []string{"qwencode", "qwen-code", "qwen_cli"},
+		VersionFrom:  "ua",
+		VersionRegex: semverRe,
+	},
+	{
 		ID:           "sillytavern",
 		Name:         "SillyTavern",
 		Kind:         KindChatUI,
@@ -254,7 +284,7 @@ var clientRules = []clientRule{
 		// 之前没有规则导致这些请求全部落在 unknown。
 		ID:           "rikkahub",
 		Name:         "RikkaHub",
-		Kind:         KindChatUI,
+		Kind:         KindMobile,
 		UASubstrings: []string{"rikkahub"},
 		VersionFrom:  "ua",
 		VersionRegex: semverRe,
@@ -262,7 +292,7 @@ var clientRules = []clientRule{
 	{
 		ID:           "tavo",
 		Name:         "Tavo",
-		Kind:         KindChatUI,
+		Kind:         KindMobile,
 		UASubstrings: []string{"tavo/", "tavoai.dev"},
 		VersionFrom:  "ua",
 		VersionRegex: semverRe,
@@ -270,7 +300,7 @@ var clientRules = []clientRule{
 	{
 		ID:           "kelivo",
 		Name:         "Kelivo",
-		Kind:         KindChatUI,
+		Kind:         KindMobile,
 		UASubstrings: []string{"kelivo"},
 	},
 	{
@@ -357,11 +387,95 @@ var clientRules = []clientRule{
 		Kind:         KindSDK,
 		UASubstrings: []string{"langchain", "langgraph", "llamaindex"},
 	},
+	// HTTP 工具逐个独立成条：它们过去合并为 generic_http，导致封禁只能
+	// "一刀切封掉所有脚本流量"。curl 与 okhttp 的实际使用者完全不同
+	// （前者多是调试/爬取，后者是安卓 App 内置栈），必须能分别处置。
 	{
+		ID:           "curl",
+		Name:         "curl",
+		Kind:         KindHTTPTool,
+		UASubstrings: []string{"curl/"},
+		VersionFrom:  "ua",
+		VersionRegex: semverRe,
+	},
+	{
+		ID:           "python_requests",
+		Name:         "Python requests",
+		Kind:         KindHTTPTool,
+		UASubstrings: []string{"python-requests"},
+		VersionFrom:  "ua",
+		VersionRegex: semverRe,
+	},
+	{
+		ID:           "httpx",
+		Name:         "httpx",
+		Kind:         KindHTTPTool,
+		UASubstrings: []string{"python-httpx", "httpx/"},
+		VersionFrom:  "ua",
+		VersionRegex: semverRe,
+	},
+	{
+		ID:           "aiohttp",
+		Name:         "aiohttp",
+		Kind:         KindHTTPTool,
+		UASubstrings: []string{"aiohttp"},
+		VersionFrom:  "ua",
+		VersionRegex: semverRe,
+	},
+	{
+		ID:           "okhttp",
+		Name:         "OkHttp",
+		Kind:         KindHTTPTool,
+		UASubstrings: []string{"okhttp"},
+		VersionFrom:  "ua",
+		VersionRegex: semverRe,
+	},
+	{
+		ID:           "axios",
+		Name:         "axios",
+		Kind:         KindHTTPTool,
+		UASubstrings: []string{"axios"},
+		VersionFrom:  "ua",
+		VersionRegex: semverRe,
+	},
+	{
+		ID:           "node_fetch",
+		Name:         "node-fetch",
+		Kind:         KindHTTPTool,
+		UASubstrings: []string{"node-fetch", "undici"},
+		VersionFrom:  "ua",
+		VersionRegex: semverRe,
+	},
+	{
+		ID:           "go_http",
+		Name:         "Go http",
+		Kind:         KindHTTPTool,
+		UASubstrings: []string{"go-http-client"},
+		VersionFrom:  "ua",
+		VersionRegex: semverRe,
+	},
+	{
+		ID:           "deno",
+		Name:         "Deno",
+		Kind:         KindHTTPTool,
+		UASubstrings: []string{"deno/"},
+		VersionFrom:  "ua",
+		VersionRegex: semverRe,
+	},
+	{
+		ID:           "postman",
+		Name:         "Postman",
+		Kind:         KindHTTPTool,
+		UASubstrings: []string{"postman"},
+		VersionFrom:  "ua",
+		VersionRegex: semverRe,
+	},
+	{
+		// 兜底：仍然认得出是脚本/HTTP 栈但不属于上面任何一种。
 		ID:           "generic_http",
-		Name:         "Generic HTTP Client",
-		Kind:         KindSDK,
-		UASubstrings: []string{"curl/", "python-requests", "httpx", "axios", "okhttp", "go-http-client", "postman"},
+		Name:         "Other HTTP Client",
+		Kind:         KindHTTPTool,
+		UASubstrings: []string{"http-client", "libcurl", "urllib", "wget", "java/", "reqwest", "guzzle", "restsharp"},
 	},
 	{
 		// 兜底规则，必须放在最后：手机/桌面浏览器与 WebView 套壳应用。
@@ -369,9 +483,28 @@ var clientRules = []clientRule{
 		// 但因为特征宽泛（很多 App 的 UA 也带 Mozilla/5.0），只能垫底匹配。
 		ID:           "browser",
 		Name:         "Web Browser",
-		Kind:         KindChatUI,
+		Kind:         KindBrowser,
 		UASubstrings: []string{"mozilla/5.0", "safari/", "chrome/", "firefox/", "edg/", "dalvik/", "cfnetwork/"},
 	},
+}
+
+// ClientCatalogEntry 是封禁配置界面用的客户端目录项：
+// 与 clientRules 一一对应，前端按 Kind 分组展示勾选项。
+type ClientCatalogEntry struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+}
+
+// ClientCatalog 返回全部客户端识别规则的目录。
+// 封禁选择器以它为唯一数据源，规则增删后 UI 自动跟上，不再静态镜像。
+func ClientCatalog() []ClientCatalogEntry {
+	entries := make([]ClientCatalogEntry, 0, len(clientRules))
+	for i := range clientRules {
+		rule := &clientRules[i]
+		entries = append(entries, ClientCatalogEntry{ID: rule.ID, Name: rule.Name, Kind: rule.Kind})
+	}
+	return entries
 }
 
 // DetectClient 依据请求头与提示词特征识别调用方工具及版本。
