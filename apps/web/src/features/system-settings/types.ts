@@ -438,6 +438,7 @@ export type OperationsSettings = {
 
 export type SecuritySettings = {
   'geo_block_setting.enabled': boolean
+  'geo_block_setting.allow_admin': boolean
   'geo_block_setting.blocked_countries': string[]
   ModelRequestRateLimitEnabled: boolean
   ModelRequestRateLimitCount: number

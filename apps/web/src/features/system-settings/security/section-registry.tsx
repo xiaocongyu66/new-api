@@ -33,6 +33,8 @@ const SECURITY_SECTIONS = [
         defaultValues={{
           'geo_block_setting.enabled':
             settings['geo_block_setting.enabled'],
+          'geo_block_setting.allow_admin':
+            settings['geo_block_setting.allow_admin'],
           'geo_block_setting.blocked_countries':
             settings['geo_block_setting.blocked_countries'],
         }}

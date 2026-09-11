@@ -5927,6 +5927,8 @@
     "Block requests from selected countries": "Chặn yêu cầu từ các quốc gia đã chọn",
     "Matches the client IP against a local GeoIP database (MaxMind DB) and rejects requests whose country is on the blocklist. The database file path is read from the GEOIP_DB_PATH environment variable; when it is missing or unreadable the check is skipped and requests are allowed.": "So khớp IP client với cơ sở dữ liệu GeoIP cục bộ (MaxMind DB) và từ chối các yêu cầu thuộc quốc gia nằm trong danh sách chặn. Đường dẫn tệp cơ sở dữ liệu được đọc từ biến môi trường GEOIP_DB_PATH; nếu thiếu hoặc không đọc được, bước kiểm tra bị bỏ qua và yêu cầu được cho phép.",
     "Blocked countries (ISO 3166-1 codes, one per line)": "Quốc gia bị chặn (mã ISO 3166-1, mỗi dòng một mã)",
-    "Requests whose IP resolves to one of these countries are rejected with a 403. Case-insensitive.": "Yêu cầu có IP thuộc một trong các quốc gia này sẽ bị từ chối với mã 403. Mã quốc gia không phân biệt hoa thường."
+    "Requests whose IP resolves to one of these countries see a 404 page instead of the site. Case-insensitive.": "Yêu cầu có IP thuộc một trong các quốc gia này sẽ thấy trang 404 thay vì trang web. Mã quốc gia không phân biệt hoa thường.",
+    "Allow administrators": "Cho phép quản trị viên",
+    "Administrators (and root) can still sign in and use the site from blocked countries, so the operator is never locked out. Visitors and regular users stay blocked.": "Quản trị viên (và root) vẫn có thể đăng nhập và sử dụng trang web từ các quốc gia bị chặn, để người vận hành không bị khóa ngoài. Khách truy cập và người dùng thường vẫn bị chặn."
   }
 }

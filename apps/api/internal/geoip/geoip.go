@@ -22,6 +22,11 @@ type GeoBlockSetting struct {
 	// Enabled master switch. When off the middleware passes through without
 	// touching the GeoIP database at all.
 	Enabled bool `json:"enabled"`
+	// AllowAdmin keeps administrators (and root) usable from blocked regions:
+	// a request carrying an admin dashboard credential passes the gate, so the
+	// operator can still sign in and run the site while the region is blocked.
+	// Visitors and regular users are unaffected by this switch.
+	AllowAdmin bool `json:"allow_admin"`
 	// BlockedCountries is the list of ISO 3166-1 country codes (uppercase, e.g.
 	// "CN") whose client IPs are rejected. Empty list blocks nothing even when
 	// Enabled is true.
@@ -30,6 +35,7 @@ type GeoBlockSetting struct {
 
 var geoBlockSetting = GeoBlockSetting{
 	Enabled:          false,
+	AllowAdmin:       true,
 	BlockedCountries: []string{"CN"},
 }
 
@@ -178,20 +184,14 @@ func LookupCountry(ipStr string) string {
 	return country
 }
 
-// IsBlocked reports whether ipStr resolves to a configured blocked country.
-func IsBlocked(ipStr string) bool {
-	if !geoBlockSetting.Enabled {
-		return false
-	}
-	blocked := geoBlockSetting.NormalizedBlockedCountries()
-	if len(blocked) == 0 {
-		return false
-	}
-	country := LookupCountry(ipStr)
+// BlocksCountry reports whether a resolved country code is on the block list.
+// Callers own the Enabled check and the IP-to-country lookup, so the gate can
+// keep its own lookup indirection for tests.
+func (s *GeoBlockSetting) BlocksCountry(country string) bool {
 	if country == "" {
 		return false
 	}
-	for _, code := range blocked {
+	for _, code := range s.NormalizedBlockedCountries() {
 		if code == country {
 			return true
 		}

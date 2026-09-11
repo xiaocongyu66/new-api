@@ -47,6 +47,7 @@ import { useUpdateOption } from '../hooks/use-update-option'
 const geoBlockSchema = z.object({
   geo_block_setting: z.object({
     enabled: z.boolean(),
+    allow_admin: z.boolean(),
     blocked_countries: z.string(),
   }),
 })
@@ -56,12 +57,14 @@ type GeoBlockFormInput = z.input<typeof geoBlockSchema>
 
 type NormalizedGeoBlockValues = {
   'geo_block_setting.enabled': boolean
+  'geo_block_setting.allow_admin': boolean
   'geo_block_setting.blocked_countries': string[]
 }
 
 type GeoBlockSectionProps = {
   defaultValues: {
     'geo_block_setting.enabled': boolean
+    'geo_block_setting.allow_admin': boolean
     'geo_block_setting.blocked_countries': string[]
   }
 }
@@ -77,6 +80,7 @@ const buildFormDefaults = (
 ): GeoBlockFormInput => ({
   geo_block_setting: {
     enabled: defaults['geo_block_setting.enabled'],
+    allow_admin: defaults['geo_block_setting.allow_admin'],
     blocked_countries: defaults['geo_block_setting.blocked_countries'].join(
       '\n'
     ),
@@ -87,6 +91,7 @@ const normalizeDefaults = (
   defaults: GeoBlockSectionProps['defaultValues']
 ): NormalizedGeoBlockValues => ({
   'geo_block_setting.enabled': defaults['geo_block_setting.enabled'],
+  'geo_block_setting.allow_admin': defaults['geo_block_setting.allow_admin'],
   'geo_block_setting.blocked_countries':
     defaults['geo_block_setting.blocked_countries'],
 })
@@ -95,6 +100,7 @@ const normalizeFormValues = (
   values: GeoBlockFormValues
 ): NormalizedGeoBlockValues => ({
   'geo_block_setting.enabled': values.geo_block_setting.enabled,
+  'geo_block_setting.allow_admin': values.geo_block_setting.allow_admin,
   'geo_block_setting.blocked_countries': splitLines(
     values.geo_block_setting.blocked_countries
   ),
@@ -206,6 +212,29 @@ export function GeoBlockSection({ defaultValues }: GeoBlockSectionProps) {
 
           <FormField
             control={form.control}
+            name='geo_block_setting.allow_admin'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>{t('Allow administrators')}</FormLabel>
+                  <FormDescription>
+                    {t(
+                      'Administrators (and root) can still sign in and use the site from blocked countries, so the operator is never locked out. Visitors and regular users stay blocked.'
+                    )}
+                  </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+              </SettingsSwitchItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
             name='geo_block_setting.blocked_countries'
             render={({ field }) => (
               <FormItem className='flex flex-col gap-2'>
@@ -222,7 +251,7 @@ export function GeoBlockSection({ defaultValues }: GeoBlockSectionProps) {
                 </FormControl>
                 <FormDescription>
                   {t(
-                    'Requests whose IP resolves to one of these countries are rejected with a 403. Case-insensitive.'
+                    'Requests whose IP resolves to one of these countries see a 404 page instead of the site. Case-insensitive.'
                   )}
                 </FormDescription>
                 <FormMessage />

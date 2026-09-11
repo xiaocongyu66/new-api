@@ -5927,6 +5927,8 @@
     "Block requests from selected countries": "Block requests from selected countries",
     "Matches the client IP against a local GeoIP database (MaxMind DB) and rejects requests whose country is on the blocklist. The database file path is read from the GEOIP_DB_PATH environment variable; when it is missing or unreadable the check is skipped and requests are allowed.": "Matches the client IP against a local GeoIP database (MaxMind DB) and rejects requests whose country is on the blocklist. The database file path is read from the GEOIP_DB_PATH environment variable; when it is missing or unreadable the check is skipped and requests are allowed.",
     "Blocked countries (ISO 3166-1 codes, one per line)": "Blocked countries (ISO 3166-1 codes, one per line)",
-    "Requests whose IP resolves to one of these countries are rejected with a 403. Case-insensitive.": "Requests whose IP resolves to one of these countries are rejected with a 403. Case-insensitive."
+    "Requests whose IP resolves to one of these countries see a 404 page instead of the site. Case-insensitive.": "Requests whose IP resolves to one of these countries are rejected with a 403. Case-insensitive.",
+    "Allow administrators": "Allow administrators",
+    "Administrators (and root) can still sign in and use the site from blocked countries, so the operator is never locked out. Visitors and regular users stay blocked.": "Administrators (and root) can still sign in and use the site from blocked countries, so the operator is never locked out. Visitors and regular users stay blocked."
   }
 }

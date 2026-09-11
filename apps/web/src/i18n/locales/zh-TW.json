@@ -5927,6 +5927,8 @@
     "Block requests from selected countries": "封禁指定國家/地區的請求",
     "Matches the client IP against a local GeoIP database (MaxMind DB) and rejects requests whose country is on the blocklist. The database file path is read from the GEOIP_DB_PATH environment variable; when it is missing or unreadable the check is skipped and requests are allowed.": "將客戶端 IP 與本地 GeoIP 資料庫（MaxMind DB）比對，命中封禁國家/地區列表的請求將被拒絕。資料庫檔案路徑由環境變數 GEOIP_DB_PATH 指定；當路徑缺失或檔案不可讀時，跳過校驗並放行請求。",
     "Blocked countries (ISO 3166-1 codes, one per line)": "封禁的國家/地區（ISO 3166-1 代碼，每行一個）",
-    "Requests whose IP resolves to one of these countries are rejected with a 403. Case-insensitive.": "IP 歸屬國命中以上列表的請求將以 403 拒絕，國家代碼不分大小寫。"
+    "Requests whose IP resolves to one of these countries see a 404 page instead of the site. Case-insensitive.": "IP 歸屬國命中以上列表的請求將看到 404 頁面（而不是站點內容）。國家代碼不分大小寫。",
+    "Allow administrators": "允許管理員存取",
+    "Administrators (and root) can still sign in and use the site from blocked countries, so the operator is never locked out. Visitors and regular users stay blocked.": "管理員與超級管理員在被封禁國家仍可登入並使用站點，避免營運者把自己鎖在門外；訪客與一般使用者依然被封鎖。"
   }
 }

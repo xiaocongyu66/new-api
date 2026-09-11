@@ -134,6 +134,23 @@ func authenticateDashboardRequest(c contract.Context) (*identity.UserBase, autht
 	return user, authID, credentialKind == dashboardCredentialPAT, nil
 }
 
+// GeoGateRole reports the role of the account owning the request's dashboard
+// credential (access token or personal access token), or -1 when the request
+// carries no valid dashboard credential.
+//
+// The geographic gate runs before the regular auth middlewares and never needs
+// the full auth context: it only asks "is this request an administrator's?".
+// Relay API keys deliberately do not resolve here — a blocked region stays
+// blocked for relay traffic regardless of role, so a leaked admin key cannot
+// punch a hole through the region block.
+func GeoGateRole(c contract.Context) int {
+	user, _, kind, err := classifyDashboardCredential(c)
+	if err != nil || kind == dashboardCredentialUnmatched || user == nil {
+		return -1
+	}
+	return user.Role
+}
+
 func classifyDashboardCredential(c contract.Context) (*identity.UserBase, authtoken.AuthIdentity, dashboardCredentialKind, error) {
 	raw, ok := authorizationToken(c.Header("Authorization"))
 	if !ok {
