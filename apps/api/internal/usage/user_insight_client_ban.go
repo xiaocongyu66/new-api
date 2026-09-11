@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/dbinfra"
+	"github.com/QuantumNous/new-api/internal/settings"
 )
 
 // 本文件实现"客户端封禁"的存储与判定。
@@ -67,23 +68,27 @@ func GetBlockedClientList() []string {
 	return list
 }
 
-// SetGlobalClientBan 增删全局封禁列表里的一个客户端：
-// 先改内存配置让本实例立即生效，再走标准 option 写路径落库
-// （重启后仍生效，多实例经 option 同步可收敛）。
-// 写库失败时回滚内存改动，保证两个面不漂移。
+// SetGlobalClientBan 增删全局封禁列表里的一个客户端。
+// 内存更新统一走 settings.ApplyOption → OnApplyUserInsightSetting 钩子
+// （在 blockedClientsLock 内应用），与 admin 后台保存、option 周期同步共用
+// 同一条加锁写路径——否则反射直写会与 relay 热路径上的 CheckClientBan 竞争
+// （slice header 撕裂，-race 可复现）。
+// 注意：本函数不把锁保持到 UpdateOption 全程（那会让 relay 每请求的
+// CheckClientBan 为一次 DB 写阻塞），因此并发管理员互斥切换是
+// last-write-wins，多实例经 option 同步收敛——管理员操作低频，可接受。
 // 入口归一化不依赖调用方：这个函数也会被测试与非 handler 代码直接调用。
 func SetGlobalClientBan(client string, ban bool) error {
 	client, err := SanitizeClientID(client)
 	if err != nil {
 		return err
 	}
-	blockedClientsLock.Lock()
-	defer blockedClientsLock.Unlock()
+	blockedClientsLock.RLock()
+	current := userInsightSetting.BlockedClients
+	blockedClientsLock.RUnlock()
 
-	previous := userInsightSetting.BlockedClients
-	list := make([]string, 0, len(previous)+1)
-	seen := make(map[string]bool, len(previous)+1)
-	for _, existing := range previous {
+	list := make([]string, 0, len(current)+1)
+	seen := make(map[string]bool, len(current)+1)
+	for _, existing := range current {
 		if existing == client || seen[existing] {
 			continue
 		}
@@ -93,18 +98,40 @@ func SetGlobalClientBan(client string, ban bool) error {
 	if ban && len(list) < maxBlockedClients {
 		list = append(list, client)
 	}
-	userInsightSetting.BlockedClients = list
 
 	value, err := common.Marshal(list)
 	if err != nil {
-		userInsightSetting.BlockedClients = previous
 		return err
 	}
+	// 写库成功后 ApplyOption → 钩子持锁应用内存；写库失败时钩子不运行，
+	// 内存保持原状，无需回滚（比"先改内存再回滚"更不易漂移）。
 	if err := dbinfra.UpdateOption("user_insight_setting.blocked_clients", string(value)); err != nil {
-		userInsightSetting.BlockedClients = previous
 		return err
 	}
 	return nil
+}
+
+// applyUserInsightSetting 处理 settings.ApplyOption 派发的
+// user_insight_setting.<key> 分层配置。只有 blocked_clients 需要拦截：
+// 它在 relay 热路径上被 CheckClientBan 在 blockedClientsLock 下读取，
+// 通用反射写（settings.updateConfigFromMap）不持该锁，会造成数据竞争。
+// 返回 true 表示已处理；其它键返回 false 走通用反射路径。
+func applyUserInsightSetting(configKey, value string) bool {
+	if configKey != "blocked_clients" {
+		return false
+	}
+	var list []string
+	if err := common.Unmarshal([]byte(value), &list); err != nil {
+		return false // 解析失败：交给通用路径（同样会失败/跳过）
+	}
+	blockedClientsLock.Lock()
+	userInsightSetting.BlockedClients = list
+	blockedClientsLock.Unlock()
+	return true
+}
+
+func init() {
+	settings.OnApplyUserInsightSetting = applyUserInsightSetting
 }
 
 // ToggleUserClientBan 启用/撤销单用户档的客户端封禁。

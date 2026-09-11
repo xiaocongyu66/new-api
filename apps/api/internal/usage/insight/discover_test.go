@@ -103,6 +103,27 @@ func TestResolveClientIdentity(t *testing.T) {
 			wantID:   "browser",
 			wantKind: KindBrowser,
 		},
+		{
+			// 回归：pi 规则曾用 "pi/0." "pi/1." 子串，自定义网关 UA
+			// "api/0.1" 含 "pi/0." 被误认成 Pi。词边界校验后必须落到
+			// 自动发现（ua:api），而不是 Pi。
+			name:     "api-prefixed gateway ua is not pi",
+			header:   http.Header{"User-Agent": {"api/0.1"}},
+			wantID:   "ua:api",
+			wantKind: KindDiscovered,
+		},
+		{
+			name:     "myapi ua is not pi",
+			header:   http.Header{"User-Agent": {"myapi/1.0"}},
+			wantID:   "ua:myapi",
+			wantKind: KindDiscovered,
+		},
+		{
+			name:     "real pi versioned ua is pi",
+			header:   http.Header{"User-Agent": {"pi/0.3.2"}},
+			wantID:   "pi",
+			wantKind: KindAgentCLI,
+		},
 	}
 
 	for _, tc := range cases {
@@ -112,6 +133,15 @@ func TestResolveClientIdentity(t *testing.T) {
 			assert.Equal(t, tc.wantKind, kind)
 		})
 	}
+}
+
+// 回归：deny list 曾混入非 ASCII 死条目（"新api"），本网关自己的转发头
+// X-Oneapi-Request-Id 反而没被拦住，relay 链流量会被归成一个"客户端"。
+func TestGatewayRelayHeadersNeverFormIdentity(t *testing.T) {
+	assert.Empty(t, discoverVendorHeader(http.Header{"X-Oneapi-Request-Id": {"r1"}}))
+	assert.Empty(t, discoverVendorHeader(http.Header{"X-Newapi-Instance": {"i2"}}))
+	// 非空值但前缀命中的标准头同样不参与。
+	assert.Empty(t, discoverVendorHeader(http.Header{"X-Forwarded-For": {"1.2.3.4"}}))
 }
 
 // 自动发现标识进入封禁列表与数据库列，前端也要能把它还原成可读名字。

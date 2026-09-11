@@ -11,10 +11,14 @@ import (
 // PromptMarker 命中说明请求体里带着该工具特有的注入提示词，
 // 两者同时命中则置信度拉满。
 type clientRule struct {
-	ID            string
-	Name          string
-	Kind          string
-	UASubstrings  []string
+	ID           string
+	Name         string
+	Kind         string
+	UASubstrings []string
+	// UARegex 在 UASubstrings 命中后追加一次边界校验，非 nil 时必须同时命中。
+	// 解决"子串是另一标识的子串"类误报：例如 pi/ 是 api/ 的子串，
+	// 自定义网关 UA "api/0.1" 若不校验边界会被误认成 Pi。
+	UARegex       *regexp.Regexp
 	HeaderKeys    []string
 	HeaderPairs   map[string]string
 	PromptMarkers []string
@@ -241,8 +245,10 @@ var clientRules = []clientRule{
 		Kind: KindAgentCLI,
 		// 绝不能收裸的 "pi/"："api/0.1"、"myapi/1.0" 这类自定义网关 UA
 		// 是它的超集，会把普通 HTTP 客户端误认成 Pi。限定 "pi/<版本号>"
-		// 形状与专有 token，牺牲一点覆盖率换零误报。
+		// 形状与专有 token，并加词边界校验（pi 前必须是 UA 开头或
+		// 非字母数字字符），"api/0.1" 的 pi/ 前面是字母 a，不会命中。
 		UASubstrings: []string{"pi/0.", "pi/1.", "pi-cli", "pi-mono", "pi-agent"},
+		UARegex:      regexp.MustCompile(`(^|[^a-z0-9])pi/`),
 		VersionFrom:  "ua",
 		VersionRegex: semverRe,
 	},
@@ -535,7 +541,11 @@ func DetectClient(header http.Header, prompt string) (id, name, kind, version, s
 
 func ruleMatchesHeader(rule *clientRule, header http.Header, ua string) bool {
 	if ua != "" && containsAny(ua, rule.UASubstrings) {
-		return true
+		// UARegex 非空时是硬性边界约束：子串命中但边界不满足（如
+		// "api/0.1" 命中 "pi/0." 但 pi 前是字母 a）必须判为未命中。
+		if rule.UARegex == nil || rule.UARegex.MatchString(ua) {
+			return true
+		}
 	}
 	for key, want := range rule.HeaderPairs {
 		if strings.Contains(strings.ToLower(header.Get(key)), strings.ToLower(want)) {

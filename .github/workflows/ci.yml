@@ -61,6 +61,10 @@ jobs:
         working-directory: apps/api
         run: GOWORK=off go test -tags "${SINGBOX_TAGS}" ./...
 
+      - name: Race-detect client-ban + insight hot paths
+        working-directory: apps/api
+        run: GOWORK=off go test -tags "${SINGBOX_TAGS}" -race -run 'ClientBan|ResolveClient|GatewayRelayHeaders' ./internal/usage/ ./internal/transport/middleware/
+
       - name: Fresh-web sensitive eval matrix (verbose)
         if: always()
         working-directory: apps/api

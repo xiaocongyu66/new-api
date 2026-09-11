@@ -83,7 +83,11 @@ var discoveredHeaderDenyList = map[string]bool{
 	"lang":        true,
 	"locale":      true,
 	"timezone":    true,
-	"新api":        true,
+	// 本网关自己的转发标识头：relay 下来的请求会带着 X-Oneapi-Request-Id
+	// （常见于 new-api 系中继链），它来自中转站而不是调用方工具，
+	// 绝不能用来生成"客户端"标识，否则整条中继链的流量会被归成一个客户端。
+	"oneapi": true,
+	"newapi": true,
 }
 
 // ResolveClient 给出一次请求最终的客户端标识，是画像与封禁共用的入口。

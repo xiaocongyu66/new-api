@@ -78,6 +78,14 @@ var (
 	OnIsToolPriceOptionKey    func(key string) bool
 	OnValidateToolPriceOption func(value string) error
 	OnApplyToolPriceOption    func(value string)
+
+	// OnApplyUserInsightSetting applies a user_insight_setting.<key> option
+	// with domain-owned locking. blocked_clients is read on the relay hot path
+	// under usage's blockedClientsLock, so the generic reflect write in
+	// updateConfigFromMap must not touch it. Return true when the key was
+	// handled; false falls through to the generic path. Registered by the
+	// usage domain's init().
+	OnApplyUserInsightSetting func(configKey, value string) bool
 )
 
 // GatewayRoutingOptionKeys is deliberately explicit. New settings must be
@@ -604,6 +612,13 @@ func handleConfigUpdate(key, value string) bool {
 	cfg := GlobalConfig.Get(configName)
 	if cfg == nil {
 		return false // 未注册的配置
+	}
+	// user_insight_setting.blocked_clients 在 relay 热路径上被 CheckClientBan
+	// 在 usage.blockedClientsLock 下读取，通用反射写不持该锁会与之竞争
+	// （slice header 撕裂）。交给 usage 域钩子加锁应用，命中后跳过反射写。
+	if configName == "user_insight_setting" && OnApplyUserInsightSetting != nil &&
+		OnApplyUserInsightSetting(configKey, value) {
+		return true // 已由域钩子处理
 	}
 
 	// 更新配置
