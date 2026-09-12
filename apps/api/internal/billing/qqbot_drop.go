@@ -286,10 +286,14 @@ func randomDropQuota(min, max int) int {
 }
 
 // markMessageSeen 记录消息 ID，返回 true 表示此前已处理过
+// 事件按 `go handleQQBotEvent` 并发派发，去重表必须持锁访问，
+// 否则并发读写 map 会直接 panic 掉整个进程。
 func markMessageSeen(msgID string) bool {
 	if msgID == "" {
 		return false
 	}
+	dropMu.Lock()
+	defer dropMu.Unlock()
 	if _, ok := seenMsgIDs[msgID]; ok {
 		return true
 	}
