@@ -16,36 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import assert from 'node:assert/strict'
 import { afterAll, describe, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
-import { Window } from 'happy-dom'
-
-const domWindow = new Window()
-const domGlobals = [
-  'window',
-  'document',
-  'navigator',
-  'HTMLElement',
-  'HTMLButtonElement',
-  'SVGElement',
-  'Node',
-  'Element',
-  'Event',
-  'CustomEvent',
-  'MutationObserver',
-  'ResizeObserver',
-  'requestAnimationFrame',
-  'cancelAnimationFrame',
-  'getComputedStyle',
-] as const
-
-for (const key of domGlobals) {
-  Object.defineProperty(globalThis, key, {
-    configurable: true,
-    value: domWindow[key],
-  })
-}
+import { resetSharedDomWindow } from '@/test-utils/happy-dom-env'
 
 const { act } = await import('react')
 const { createRoot } = await import('react-dom/client')
@@ -70,11 +44,6 @@ await i18n.use(initReactI18next).init({
   },
 })
 
-const reactTestGlobals = globalThis as typeof globalThis & {
-  IS_REACT_ACT_ENVIRONMENT?: boolean
-}
-reactTestGlobals.IS_REACT_ACT_ENVIRONMENT = true
-
 function CellHarness(props: {
   group: string
   ratio?: number | string
@@ -96,8 +65,8 @@ function CellHarness(props: {
 }
 
 describe('API key group table cell', () => {
-  afterAll(() => {
-    domWindow.close()
+  afterAll(async () => {
+    await resetSharedDomWindow()
   })
 
   test('renders two unclipped rings and a localized Auto ratio when API data uses a nonlocalized string', async () => {

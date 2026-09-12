@@ -1,0 +1,9 @@
+# `bun test` evaluates all test files in one process. The happy-dom test
+# environment must be installed BEFORE any test module (and therefore any
+# React/axios/i18next singleton) is first evaluated, so every module that
+# branches on `window`/`document` at import time sees the same realm. Without
+# this preload, whichever file happens to load first pins shared singletons to
+# its state, which made the DOM suite order-dependent. See
+# src/test-utils/happy-dom-env.ts.
+[test]
+preload = ["./src/test-utils/happy-dom-env.ts"]

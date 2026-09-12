@@ -16,35 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import assert from 'node:assert/strict'
 import { afterAll, describe, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
-import { Window } from 'happy-dom'
-
-const domWindow = new Window()
-const domGlobals = [
-  'window',
-  'document',
-  'navigator',
-  'HTMLElement',
-  'HTMLInputElement',
-  'SVGElement',
-  'Node',
-  'Element',
-  'Event',
-  'CustomEvent',
-  'MutationObserver',
-  'requestAnimationFrame',
-  'cancelAnimationFrame',
-  'getComputedStyle',
-] as const
-
-for (const key of domGlobals) {
-  Object.defineProperty(globalThis, key, {
-    configurable: true,
-    value: domWindow[key],
-  })
-}
+import { domWindow, resetSharedDomWindow } from '@/test-utils/happy-dom-env'
 
 const { act } = await import('react')
 const { createRoot } = await import('react-dom/client')
@@ -68,11 +43,6 @@ await i18n.use(initReactI18next).init({
   },
 })
 
-const reactTestGlobals = globalThis as typeof globalThis & {
-  IS_REACT_ACT_ENVIRONMENT?: boolean
-}
-reactTestGlobals.IS_REACT_ACT_ENVIRONMENT = true
-
 function changeInputValue(input: HTMLInputElement, value: string) {
   const valueSetter = Object.getOwnPropertyDescriptor(
     domWindow.HTMLInputElement.prototype,
@@ -86,8 +56,8 @@ function changeInputValue(input: HTMLInputElement, value: string) {
 }
 
 describe('tool price validation', () => {
-  afterAll(() => {
-    domWindow.close()
+  afterAll(async () => {
+    await resetSharedDomWindow()
   })
 
   test('blocks an empty price without converting it to an explicit zero', async () => {

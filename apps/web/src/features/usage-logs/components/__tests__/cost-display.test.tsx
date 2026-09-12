@@ -16,35 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import assert from 'node:assert/strict'
 import { afterAll, describe, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
-import { Window } from 'happy-dom'
 import type React from 'react'
 
-const domWindow = new Window()
-const domGlobals = [
-  'window',
-  'document',
-  'navigator',
-  'HTMLElement',
-  'SVGElement',
-  'Node',
-  'Element',
-  'Event',
-  'CustomEvent',
-  'MutationObserver',
-  'requestAnimationFrame',
-  'cancelAnimationFrame',
-  'getComputedStyle',
-] as const
-
-for (const key of domGlobals) {
-  Object.defineProperty(globalThis, key, {
-    configurable: true,
-    value: domWindow[key],
-  })
-}
+import { resetSharedDomWindow } from '@/test-utils/happy-dom-env'
 
 const { act } = await import('react')
 const { createRoot } = await import('react-dom/client')
@@ -67,11 +44,6 @@ await i18n.use(initReactI18next).init({
 
 const { LogCostDisplay } = await import('../log-cost-display')
 const { formatLogQuota } = await import('@/lib/format')
-const reactTestGlobals = globalThis as typeof globalThis & {
-  IS_REACT_ACT_ENVIRONMENT?: boolean
-}
-reactTestGlobals.IS_REACT_ACT_ENVIRONMENT = true
-
 type RenderedCost = {
   container: HTMLDivElement
   root: ReturnType<typeof createRoot>
@@ -105,8 +77,8 @@ function normalizedText(value: string | null): string {
 }
 
 describe('log cost display', () => {
-  afterAll(() => {
-    domWindow.close()
+  afterAll(async () => {
+    await resetSharedDomWindow()
   })
 
   test('keeps the regular cost visible and adds an accessible surcharge marker', async () => {
