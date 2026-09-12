@@ -4093,7 +4093,6 @@
     "QQ command panel": "QQ 指令面板",
     "QQ maximum check-in quota": "QQ 签到最大额度",
     "QQ minimum check-in quota": "QQ 签到最小额度",
-    "QQ 绑定验证码": "QQ 绑定验证码",
     "QR Code Image URL": "二維碼圖片 URL",
     "QR code is not configured. Please contact support.": "二維碼未設定。請聯絡支援人員。",
     "Quality": "Quality",
@@ -5937,14 +5936,6 @@
     "Zero retention": "零數據保留",
     "Zhipu": "智譜",
     "Zhipu V4": "智譜 V4",
-    "Zoom": "縮放",
-    "复制": "复制",
-    "已复制到剪贴板": "已复制到剪贴板",
-    "已绑定": "已绑定",
-    "生成中…": "生成中…",
-    "生成验证码": "生成验证码",
-    "生成验证码后在 QQ 群内发送给机器人即可完成绑定": "生成验证码后在 QQ 群内发送给机器人即可完成绑定",
-    "生成验证码失败": "生成验证码失败",
-    "重新生成": "重新生成"
+    "Zoom": "縮放"
   }
 }
