@@ -39,12 +39,19 @@ const domGlobals = [
   'getComputedStyle',
 ] as const
 
-for (const key of domGlobals) {
-  Object.defineProperty(globalThis, key, {
-    configurable: true,
-    value: domWindow[key],
-  })
+// `bun test` evaluates every test file in one shared process, and each DOM
+// test file binds these globals to its own happy-dom window. Re-pin before
+// each test so a sibling file that ran in between cannot leave them pointed
+// at its window.
+function installDomGlobals() {
+  for (const key of domGlobals) {
+    Object.defineProperty(globalThis, key, {
+      configurable: true,
+      value: domWindow[key],
+    })
+  }
 }
+installDomGlobals()
 
 type BindStatus = {
   qq_checkin_enabled: boolean
@@ -70,13 +77,31 @@ mock.module('../../api', () => ({
   },
 }))
 
+// Spy on the real sonner rather than mock.module('sonner'): mock.module is
+// process-global under `bun test`, and the redemption-drawer suite imports the
+// genuine Toaster/toast to assert on rendered toasts. Replacing the module here
+// made that suite fail whenever both files ran in one process. Overwriting the
+// two methods (restored in afterAll) observes the same calls without stealing
+// the module from other files.
 const toastCalls: { level: string; message: string }[] = []
-mock.module('sonner', () => ({
-  toast: {
-    success: (message: string) => toastCalls.push({ level: 'success', message }),
-    error: (message: string) => toastCalls.push({ level: 'error', message }),
-  },
-}))
+const sonner = await import('sonner')
+const realToast = { success: sonner.toast.success, error: sonner.toast.error }
+
+function captureToasts() {
+  sonner.toast.success = ((message: string) => {
+    toastCalls.push({ level: 'success', message })
+    return ''
+  }) as typeof sonner.toast.success
+  sonner.toast.error = ((message: string) => {
+    toastCalls.push({ level: 'error', message })
+    return ''
+  }) as typeof sonner.toast.error
+}
+
+function restoreToasts() {
+  sonner.toast.success = realToast.success
+  sonner.toast.error = realToast.error
+}
 
 const { act } = await import('react')
 const { createRoot } = await import('react-dom/client')
@@ -157,6 +182,8 @@ async function renderCard() {
 
 describe('QQ bind code card unbind', () => {
   beforeEach(() => {
+    installDomGlobals()
+    captureToasts()
     bindStatus = { qq_checkin_enabled: true, bound: true }
     unbindResult = { success: true }
     unbindCalls.length = 0
@@ -164,6 +191,7 @@ describe('QQ bind code card unbind', () => {
   })
 
   afterAll(() => {
+    restoreToasts()
     domWindow.close()
   })
 
