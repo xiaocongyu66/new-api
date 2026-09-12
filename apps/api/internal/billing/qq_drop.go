@@ -58,7 +58,8 @@ func SumUserQQDropQuota(userId int) (int64, error) {
 
 // AwardQQDrop 为用户发放一次掉落奖励
 // dailyLimit <= 0 表示不限制次数。
-// 次数校验与写入放在同一事务里，避免同一用户并发消息把上限刷穿。
+// 次数校验、今日累计与写入放在同一事务里，避免同一用户并发消息把上限刷穿；
+// 余额加权与每日保底也在同一事务内读余额/累计后计算（见 computeDropAward）。
 func AwardQQDrop(userId int, openID, groupOpenID string, quota int, dailyLimit int) (*QQDrop, error) {
 	if quota <= 0 {
 		return nil, errors.New("掉落额度必须为正数")
@@ -79,51 +80,133 @@ func AwardQQDrop(userId int, openID, groupOpenID string, quota int, dailyLimit i
 	return awardQQDropWithTransaction(drop, userId, quota, dailyLimit)
 }
 
+// computeDropAward 计算本次掉落的最终发放额度。
+//
+// 余额加权（anchor > 0）：w = clamp(anchor / balance, 0.5, 2.0)，
+// amount = clamp(round(drawn * w), dropMin, dropMax)。余额低于锚点的人多拿、
+// 高于锚点的人少拿，把全员余额向锚点收敛；权重上下限保证单场放大/缩减有界。
+// balance 为 0（查询失败或用户不存在）时跳过加权，按原摇点值发放。
+//
+// 每日保底（guarantee > 0 且本次是当日最后一次可领机会，即 dailyLimit > 0
+// 且 todayCount+1 >= dailyLimit）：若 todaySum+amount < guarantee，则补足差额，
+// 使今日累计恰好拿满保底。补足后的单发不再受 dropMax 约束——保底语义优先于
+// 单发上限；dailyLimit <= 0 时不存在「最后一次」，保底不生效。
+func computeDropAward(drawn, balance, todayCount int, todaySum int64,
+	dailyLimit, anchor, guarantee, dropMin, dropMax int) int {
+	amount := drawn
+	if anchor > 0 && balance > 0 {
+		w := float64(anchor) / float64(balance)
+		if w < 0.5 {
+			w = 0.5
+		}
+		if w > 2.0 {
+			w = 2.0
+		}
+		amount = common.QuotaRound(float64(drawn) * w)
+		if dropMin > 0 && amount < dropMin {
+			amount = dropMin
+		}
+		if dropMax > 0 && amount > dropMax {
+			amount = dropMax
+		}
+	}
+	if amount < 1 {
+		amount = 1
+	}
+	if guarantee > 0 && dailyLimit > 0 && todayCount+1 >= dailyLimit {
+		// 最终值 = max(amount, guarantee - todaySum) ≤ guarantee ≤ MaxInt32，不会溢出
+		if deficit := int64(guarantee) - todaySum - int64(amount); deficit > 0 {
+			amount += int(deficit)
+		}
+	}
+	return amount
+}
+
+// queryDropDayStats 统计用户当日已领取的掉落次数与总额。
+// q 既接受事务句柄也接受 dbx.DB（SQLite 无事务路径）。
+func queryDropDayStats(q *gorm.DB, userId int, date string) (int, int64, error) {
+	var row struct {
+		Cnt   int64 `gorm:"column:cnt"`
+		Total int64 `gorm:"column:total"`
+	}
+	err := q.Model(&QQDrop{}).
+		Where("user_id = ? AND drop_date = ?", userId, date).
+		Select("COUNT(*) AS cnt, COALESCE(SUM(quota_awarded), 0) AS total").
+		Scan(&row).Error
+	return int(row.Cnt), row.Total, err
+}
+
 // awardQQDropWithTransaction MySQL / PostgreSQL 走事务
 func awardQQDropWithTransaction(drop *QQDrop, userId, quota, dailyLimit int) (*QQDrop, error) {
 	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
-		if dailyLimit > 0 {
-			var count int64
-			if err := tx.Model(&QQDrop{}).
-				Where("user_id = ? AND drop_date = ?", userId, drop.DropDate).
-				Count(&count).Error; err != nil {
+		s := GetQQBotSetting()
+		count, sum := 0, int64(0)
+		if dailyLimit > 0 || s.DropDailyGuarantee > 0 {
+			var err error
+			count, sum, err = queryDropDayStats(tx, userId, drop.DropDate)
+			if err != nil {
 				return err
 			}
-			if int(count) >= dailyLimit {
+			if dailyLimit > 0 && count >= dailyLimit {
 				return errDropLimitReached
 			}
+		}
+		if s.DropBalanceAnchor > 0 || s.DropDailyGuarantee > 0 {
+			var balance int64
+			if s.DropBalanceAnchor > 0 {
+				if err := tx.Model(&identity.User{}).Where("id = ?", userId).
+					Select("quota").Scan(&balance).Error; err != nil {
+					return err
+				}
+			}
+			drop.QuotaAwarded = computeDropAward(quota, int(balance), count, sum,
+				dailyLimit, s.DropBalanceAnchor, s.DropDailyGuarantee, s.DropMinQuota, s.DropMaxQuota)
 		}
 		if err := tx.Create(drop).Error; err != nil {
 			return err
 		}
 		return tx.Model(&identity.User{}).Where("id = ?", userId).
-			Update("quota", gorm.Expr("quota + ?", quota)).Error
+			Update("quota", gorm.Expr("quota + ?", drop.QuotaAwarded)).Error
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	go func() {
-		_ = quotacache.IncrUser(userId, int64(quota))
+		_ = quotacache.IncrUser(userId, int64(drop.QuotaAwarded))
 	}()
 	return drop, nil
 }
 
 // awardQQDropWithoutTransaction SQLite 无事务路径
 func awardQQDropWithoutTransaction(drop *QQDrop, userId, quota, dailyLimit int) (*QQDrop, error) {
-	if dailyLimit > 0 {
-		count, err := CountQQDropsToday(userId)
+	s := GetQQBotSetting()
+	count, sum := 0, int64(0)
+	if dailyLimit > 0 || s.DropDailyGuarantee > 0 {
+		var err error
+		count, sum, err = queryDropDayStats(dbx.DB, userId, drop.DropDate)
 		if err != nil {
 			return nil, err
 		}
-		if count >= dailyLimit {
+		if dailyLimit > 0 && count >= dailyLimit {
 			return nil, errDropLimitReached
 		}
+	}
+	if s.DropBalanceAnchor > 0 || s.DropDailyGuarantee > 0 {
+		var balance int64
+		if s.DropBalanceAnchor > 0 {
+			if err := dbx.DB.Model(&identity.User{}).Where("id = ?", userId).
+				Select("quota").Scan(&balance).Error; err != nil {
+				return nil, err
+			}
+		}
+		drop.QuotaAwarded = computeDropAward(quota, int(balance), count, sum,
+			dailyLimit, s.DropBalanceAnchor, s.DropDailyGuarantee, s.DropMinQuota, s.DropMaxQuota)
 	}
 	if err := dbx.DB.Create(drop).Error; err != nil {
 		return nil, err
 	}
-	if err := identity.IncreaseUserQuota(userId, quota, true); err != nil {
+	if err := identity.IncreaseUserQuota(userId, drop.QuotaAwarded, true); err != nil {
 		dbx.DB.Delete(drop)
 		return nil, err
 	}

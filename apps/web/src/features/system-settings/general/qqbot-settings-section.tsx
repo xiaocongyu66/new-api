@@ -72,6 +72,8 @@ const qqbotSchema = z.object({
     drop_max_quota: z.coerce.number().int().min(0),
     drop_daily_limit: z.coerce.number().int(),
     drop_template: z.string(),
+    drop_balance_anchor: z.coerce.number().int().min(0),
+    drop_daily_guarantee: z.coerce.number().int().min(0),
     transfer_enabled: z.boolean(),
     transfer_disabled_groups: z.string(),
     transfer_daily_limit: z.coerce.number().int(),
@@ -91,6 +93,12 @@ const qqbotSchema = z.object({
     red_packet_max_count: z.coerce.number().int().min(1),
     red_packet_expire_seconds: z.coerce.number().int().min(1),
     red_packet_allow_own_grab: z.boolean(),
+    steal_enabled: z.boolean(),
+    steal_success_rate: z.coerce.number().int().min(0).max(100),
+    steal_min_amount: z.coerce.number().min(0),
+    steal_max_amount: z.coerce.number().min(0),
+    steal_daily_limit: z.coerce.number().int(),
+    steal_recipient_grace_seconds: z.coerce.number().int().min(0),
   }),
 })
 
@@ -419,6 +427,42 @@ export function QQBotSettingsSection({
 
           <FormField
             control={form.control}
+            name='qq_bot_setting.drop_balance_anchor'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Drop balance anchor (quota)')}</FormLabel>
+                <FormControl>
+                  <Input type='number' min={0} {...field} />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'Scales each drop by clamp(anchor / balance, 0.5, 2.0), re-clamped to the per-drop range. 0 disables weighting'
+                  )}
+                </FormDescription>
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='qq_bot_setting.drop_daily_guarantee'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Drop daily guarantee (quota)')}</FormLabel>
+                <FormControl>
+                  <Input type='number' min={0} {...field} />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'Tops up the last award of the day so the daily total reaches this amount. 0 disables'
+                  )}
+                </FormDescription>
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
             name='qq_bot_setting.transfer_enabled'
             render={({ field }) => (
               <SettingsSwitchItem>
@@ -640,6 +684,104 @@ export function QQBotSettingsSection({
                   />
                 </FormControl>
               </SettingsSwitchItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='qq_bot_setting.steal_enabled'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>{t('Enable stealing cheese')}</FormLabel>
+                  <FormDescription>
+                    {t(
+                      'Group members can move a random amount of another member\'s balance to themselves with 偷奶酪 @someone'
+                    )}
+                  </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+              </SettingsSwitchItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='qq_bot_setting.steal_success_rate'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Steal success rate (percent)')}</FormLabel>
+                <FormControl>
+                  <Input type='number' min={0} max={100} {...field} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='qq_bot_setting.steal_min_amount'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Steal minimum amount (currency units)')}</FormLabel>
+                <FormControl>
+                  <Input type='number' min={0} step='0.1' {...field} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='qq_bot_setting.steal_max_amount'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Steal maximum amount (currency units)')}</FormLabel>
+                <FormControl>
+                  <Input type='number' min={0} step='0.1' {...field} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='qq_bot_setting.steal_daily_limit'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Steal daily attempts per user')}</FormLabel>
+                <FormControl>
+                  <Input type='number' {...field} />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'Failed rolls also count. 0 or below means unlimited'
+                  )}
+                </FormDescription>
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='qq_bot_setting.steal_recipient_grace_seconds'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Steal victim grace window (seconds)')}</FormLabel>
+                <FormControl>
+                  <Input type='number' min={0} {...field} />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'After a successful steal the same victim cannot be targeted again for this many seconds. 0 disables'
+                  )}
+                </FormDescription>
+              </FormItem>
             )}
           />
           <FormField

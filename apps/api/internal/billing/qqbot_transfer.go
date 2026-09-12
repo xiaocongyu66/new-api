@@ -145,15 +145,20 @@ func isTransferInfoCommand(content string) bool {
 }
 
 // parseTransferAmount 从指令文本里解析转账金额（显示货币单位）
-//
-// 去掉标签后按空白切分，取第一个能解析成正数的 token。
-// 允许用户写「1.5」「1.5🧀」「￥1.5」这类带修饰的写法。
 func parseTransferAmount(content string) (float64, error) {
 	text := stripTags(content)
 	for _, alias := range transferCommandAliases {
 		text = strings.ReplaceAll(text, alias, " ")
 	}
+	if v, ok := firstPositiveNumber(text); ok {
+		return v, nil
+	}
+	return 0, fmt.Errorf("未识别到转账金额")
+}
 
+// firstPositiveNumber 返回文本中第一个可解析为正浮点数的 token。
+// 允许用户写「1.5」「1.5🧀」「￥1.5」这类带修饰的写法。
+func firstPositiveNumber(text string) (float64, bool) {
 	for _, token := range strings.Fields(text) {
 		// 剥掉数字两侧的货币符号与标点
 		cleaned := strings.TrimFunc(token, func(r rune) bool {
@@ -166,9 +171,9 @@ func parseTransferAmount(content string) (float64, error) {
 		if err != nil || value <= 0 {
 			continue
 		}
-		return value, nil
+		return value, true
 	}
-	return 0, fmt.Errorf("未识别到转账金额")
+	return 0, false
 }
 
 // pickTransferTarget 从 mentions 里挑出收款人

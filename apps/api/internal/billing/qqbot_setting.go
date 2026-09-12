@@ -90,6 +90,39 @@ type QQBotSetting struct {
 	// RecallDelaySeconds 失败回复发出多少秒后撤回，默认 10 秒。
 	RecallDelaySeconds int `json:"recall_delay_seconds"`
 
+	// DropBalanceAnchor 余额加权锚点（内部额度，0 = 关闭加权）。
+	// 配置 >0 时，每次发放把随机摇出的额度乘以
+	// w = clamp(anchor / 当前余额, 0.5, 2.0)，再夹回 [drop_min_quota, drop_max_quota]：
+	// 余额低于锚点的人多拿、高于锚点的人少拿，把全员余额向锚点收敛，
+	// 上下限保证单场放大/缩减都有界。事务内读取余额，避免并发刷偏权重。
+	DropBalanceAnchor int `json:"drop_balance_anchor"`
+
+	// DropDailyGuarantee 每日保底（内部额度，0 = 关闭）。
+	// 当日第 drop_daily_limit 次（最后一次可领）掉落时，若今日累计
+	// 低于该值，则把最后一发补足到保底额，使今日恰好拿满。
+	// 补足后的单发不受 drop_max_quota 限制——保底语义优先于单发上限。
+	// daily_limit <= 0（不限次）时不存在「最后一次」，保底不生效。
+	DropDailyGuarantee int `json:"drop_daily_guarantee"`
+
+	// 偷奶酪：把别人的额度随机搬到指令发起人这里。
+	//
+	// 用法「偷奶酪 @某人」或「偷奶酪 <数量> @某人」（数量以显示货币为单位）。
+	// 默认关闭，开启后每次尝试（含掷骰失败）都写入 qq_steals 审计表并计入 thief 当日次数。
+	StealEnabled bool `json:"steal_enabled"`
+
+	// StealSuccessRate 掷骰成功率百分比，取值 0-100，越界按边界钳制。
+	StealSuccessRate int `json:"steal_success_rate"`
+
+	// StealMinAmount / StealMaxAmount 单次偷取数量区间，以显示货币为单位
+	// （1 单位 = QuotaPerUnit 额度），换算成内部额度后随机取值。
+	StealMinAmount float64 `json:"steal_min_amount"`
+	StealMaxAmount float64 `json:"steal_max_amount"`
+
+	// StealDailyLimit 每人每日可尝试次数（失败也计），<=0 为不限。
+	StealDailyLimit int `json:"steal_daily_limit"`
+
+	// StealRecipientGraceSeconds 得手后受害者不能再被偷的冷却窗口（秒），0 = 关闭。
+	StealRecipientGraceSeconds int `json:"steal_recipient_grace_seconds"`
 	// AdminOpenIDs 逗号分隔的 openid 白名单：只有名单内的用户可以调用
 	// /余额、/封禁 等管理员指令。为空则禁用所有管理员指令。
 	AdminOpenIDs string `json:"admin_open_ids"`
@@ -131,6 +164,17 @@ var qqBotSetting = QQBotSetting{
 	DropMaxQuota:    1500000,
 	DropDailyLimit:  3,
 	DropTemplate:    DefaultDropTemplate,
+	// 余额加权与每日保底默认关闭（0），由管理员按需开启
+	DropBalanceAnchor:  0,
+	DropDailyGuarantee: 0,
+
+	// 偷奶酪默认关闭；0.1-0.5 个货币单位（QuotaPerUnit = 500000）
+	StealEnabled:               false,
+	StealSuccessRate:           50,
+	StealMinAmount:             0.1,
+	StealMaxAmount:             0.5,
+	StealDailyLimit:            3,
+	StealRecipientGraceSeconds: 0,
 
 	TransferEnabled:        false,
 	TransferDisabledGroups: "",

@@ -386,6 +386,8 @@ export type BillingSettings = {
   'qq_bot_setting.drop_max_quota': number
   'qq_bot_setting.drop_daily_limit': number
   'qq_bot_setting.drop_template': string
+  'qq_bot_setting.drop_balance_anchor': number
+  'qq_bot_setting.drop_daily_guarantee': number
   'qq_bot_setting.transfer_enabled': boolean
   'qq_bot_setting.transfer_disabled_groups': string
   'qq_bot_setting.transfer_daily_limit': number
@@ -401,6 +403,12 @@ export type BillingSettings = {
   'qq_bot_setting.red_packet_max_count': number
   'qq_bot_setting.red_packet_expire_seconds': number
   'qq_bot_setting.red_packet_allow_own_grab': boolean
+  'qq_bot_setting.steal_enabled': boolean
+  'qq_bot_setting.steal_success_rate': number
+  'qq_bot_setting.steal_min_amount': number
+  'qq_bot_setting.steal_max_amount': number
+  'qq_bot_setting.steal_daily_limit': number
+  'qq_bot_setting.steal_recipient_grace_seconds': number
   'qq_bot_setting.command_cooldown_seconds': number
   'qq_bot_setting.recall_failed_messages': boolean
   'qq_bot_setting.recall_delay_seconds': number

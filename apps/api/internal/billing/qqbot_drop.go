@@ -223,9 +223,9 @@ func isMessageCountable(content string) (normalized string, ok bool) {
 	if looksLikeBindCode(text) {
 		return "", false
 	}
-	// 转账相关指令不计数
+	// 转账与偷奶酪指令不计数
 	if isTransferCommand(text) || isTransferInfoCommand(text) ||
-		isBalanceCommand(text) {
+		isBalanceCommand(text) || isStealCommand(text) {
 		return "", false
 	}
 	if _, ok := isTransferSwitchCommand(text); ok {
