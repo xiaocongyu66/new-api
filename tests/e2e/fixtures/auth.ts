@@ -14,8 +14,10 @@ export const test = base.extend<AuthFixtures>({
     const passField = page.locator('input[type="password"]').first();
     const submitBtn = page.locator('button[type="submit"]').first();
 
-    await userField.fill('nailaoadmin');
-    await passField.fill('NailaoAdmin123!');
+    // Overridable so the suite can run against a throwaway instance whose root
+    // account differs from the shared dev database's.
+    await userField.fill(process.env.E2E_ADMIN_USERNAME || 'nailaoadmin');
+    await passField.fill(process.env.E2E_ADMIN_PASSWORD || 'NailaoAdmin123!');
     await submitBtn.click();
 
     // Wait for redirect to dashboard

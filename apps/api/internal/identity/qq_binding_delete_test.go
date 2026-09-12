@@ -105,3 +105,40 @@ func TestDeleteQQBindingWithTxRejectsZeroId(t *testing.T) {
 
 	assert.Error(t, DeleteQQBindingWithTx(dbx.DB, 0))
 }
+
+// 管理员清除绑定走 ClearBinding，QQ 不在 users 的列上，必须落到 qq_bindings；
+// 未使用的验证码也要一起作废，否则用户拿旧码在群里发一次就绑回来了。
+func TestClearBindingQQRemovesBindingAndPendingCodes(t *testing.T) {
+	truncateTables(t)
+	migrateQQBindingTables(t)
+
+	const openID = "OPENIDADMINCLEAR"
+	user := User{Username: "qq-admin-clear", Password: "password", AffCode: "affclear1"}
+	require.NoError(t, dbx.DB.Create(&user).Error)
+	seedQQBinding(t, user.Id, openID)
+
+	require.NoError(t, user.ClearBinding("qq"))
+
+	bindings, codes := countQQRows(t, user.Id)
+	assert.Zero(t, bindings, "清除绑定后不应残留 QQ 绑定")
+	assert.Zero(t, codes, "清除绑定后不应残留未使用的绑定验证码")
+
+	// open_id 已释放，同一个 QQ 能绑到别的账号。
+	other := User{Username: "qq-admin-clear-new", Password: "password", AffCode: "affclear2"}
+	require.NoError(t, dbx.DB.Create(&other).Error)
+	assert.NoError(t, dbx.DB.Create(&QQBinding{
+		UserId: other.Id, OpenID: openID, CreatedAt: time.Now().Unix(),
+	}).Error)
+}
+
+// 未绑定 QQ 的用户被清除 QQ 绑定不应报错：绑定管理弹窗按 qq_open_id 判断是否
+// 展示解绑按钮，而这个字段只有管理端单用户接口才返回。
+func TestClearBindingQQOnUnboundUserSucceeds(t *testing.T) {
+	truncateTables(t)
+	migrateQQBindingTables(t)
+
+	user := User{Username: "qq-never-bound", Password: "password", AffCode: "affunbound"}
+	require.NoError(t, dbx.DB.Create(&user).Error)
+
+	assert.NoError(t, user.ClearBinding("qq"))
+}

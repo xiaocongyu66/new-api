@@ -111,6 +111,9 @@ type User struct {
 	LastLoginAt      int64                      `json:"last_login_at" gorm:"default:0;column:last_login_at"`
 	AuthVersion      int64                      `json:"-" gorm:"type:bigint;not null;default:1;column:auth_version"`
 	AdminPermissions map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
+	// QQBinding 住在 qq_bindings 表而不是 users 的列上，只有管理端的单用户
+	// 查询会把它读出来，列表查询不联表。
+	QQOpenID string `json:"qq_open_id,omitempty" gorm:"-:all"`
 }
 
 func (user *User) ToBaseUser() *UserBase {
@@ -744,6 +747,12 @@ func (user *User) EditWithTx(tx *gorm.DB, updatePassword bool) error {
 func (user *User) ClearBinding(bindingType string) error {
 	if user.Id == 0 {
 		return errors.New("user id is empty")
+	}
+
+	// QQ 绑定不在 users 表的列里，住在 qq_bindings/qq_bind_codes 两张表，
+	// 所以走不了下面按列清空的通路。
+	if bindingType == "qq" {
+		return DeleteQQBinding(user.Id)
 	}
 
 	bindingColumnMap := map[string]string{

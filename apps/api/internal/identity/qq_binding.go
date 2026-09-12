@@ -211,14 +211,19 @@ func ConsumeQQBindCode(code, openID, unionOpenID, username string) (int, error) 
 	return bindCode.UserId, nil
 }
 
-// DeleteQQBinding 解绑用户的 QQ
+// DeleteQQBinding 解绑用户的 QQ，供用户自助解绑与管理员清除绑定调用。
+//
+// 连未使用的验证码一起作废：解绑后那些码还能被 ConsumeQQBindCode 重新绑回来
+// （它只按 code 查，不看用户当前是否已解绑），管理员的清除绑定就白做了。
 func DeleteQQBinding(userId int) error {
-	return dbx.DB.Where("user_id = ?", userId).Delete(&QQBinding{}).Error
+	return dbx.DB.Transaction(func(tx *gorm.DB) error {
+		return DeleteQQBindingWithTx(tx, userId)
+	})
 }
 
 // DeleteQQBindingWithTx 在给定事务内解绑用户的 QQ。
 //
-// 供用户删除/注销流程调用：qq_bindings.open_id 是唯一索引，绑定行不跟着
+// 供用户删除/注销流程和 DeleteQQBinding 调用：qq_bindings.open_id 是唯一索引，绑定行不跟着
 // 用户一起清掉，这个 QQ 号就永久占位，换新账号后再也绑不上（线上已发生）。
 // 同时清掉该用户尚未使用的绑定验证码 —— ConsumeQQBindCode 只按 code 查，
 // 不校验用户是否仍然存在，留着等于给已注销账号留了个可用的绑定凭证。
