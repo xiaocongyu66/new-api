@@ -289,6 +289,8 @@ const BILLING_SECTIONS = [
             settings['qq_bot_setting.recall_failed_messages'] ?? false,
           'qq_bot_setting.recall_delay_seconds':
             settings['qq_bot_setting.recall_delay_seconds'] ?? 10,
+          'qq_bot_setting.recall_policies':
+            settings['qq_bot_setting.recall_policies'] ?? '',
           'qq_bot_setting.admin_open_ids':
             settings['qq_bot_setting.admin_open_ids'] ?? '',
         }}
