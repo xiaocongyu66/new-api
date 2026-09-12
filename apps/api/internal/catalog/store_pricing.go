@@ -2,6 +2,7 @@ package channel
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -268,6 +269,8 @@ func updatePricing() {
 		groups.Add(ability.Group)
 	}
 
+	auditGroupRatioCoverage(modelGroupsMap)
+
 	//这里使用切片而不是Set，因为一个模型可能支持多个端点类型，并且第一个端点是优先使用端点
 	modelSupportEndpointsStr := make(map[string][]string)
 	advancedCustomConfigs := loadPricingAdvancedCustomConfigs(enableAbilities)
@@ -429,4 +432,46 @@ func updatePricing() {
 // GetSupportedEndpointMap 返回全局端点到路径的映射
 func GetSupportedEndpointMap() map[string]common.EndpointInfo {
 	return supportedEndpointMap
+}
+
+// groupRatioCoverageGaps reports ability-referenced groups that have no
+// explicit entry in GroupRatio / TopupGroupRatio. Missing entries silently
+// fall back to 1.0 at billing time (GetGroupRatio / GetTopupGroupRatio), so a
+// drifted config would otherwise over/under-charge unnoticed.
+func groupRatioCoverageGaps(modelGroupsMap map[string]*types.Set[string]) (missingRatio, missingTopup []string) {
+	groups := make(map[string]struct{})
+	for _, set := range modelGroupsMap {
+		for _, g := range set.Items() {
+			groups[g] = struct{}{}
+		}
+	}
+	for g := range groups {
+		if !ratio_setting.ContainsGroupRatio(g) {
+			missingRatio = append(missingRatio, g)
+		}
+		if !common.ContainsTopupGroupRatio(g) {
+			missingTopup = append(missingTopup, g)
+		}
+	}
+	sort.Strings(missingRatio)
+	sort.Strings(missingTopup)
+	return missingRatio, missingTopup
+}
+
+var lastGroupRatioGapAudit string
+
+// auditGroupRatioCoverage logs a GroupRatio/TopupGroupRatio coverage gap once
+// per distinct missing-set, so a persistent misconfig stays visible in the
+// logs without spamming every pricing rebuild. Caller holds updatePricingLock.
+func auditGroupRatioCoverage(modelGroupsMap map[string]*types.Set[string]) {
+	missingRatio, missingTopup := groupRatioCoverageGaps(modelGroupsMap)
+	key := fmt.Sprintf("%v|%v", missingRatio, missingTopup)
+	if key == lastGroupRatioGapAudit {
+		return
+	}
+	lastGroupRatioGapAudit = key
+	if len(missingRatio) == 0 && len(missingTopup) == 0 {
+		return
+	}
+	common.SysError(fmt.Sprintf("group ratio coverage gap: GroupRatio missing %v, TopupGroupRatio missing %v (these groups silently bill/credit at ratio 1)", missingRatio, missingTopup))
 }

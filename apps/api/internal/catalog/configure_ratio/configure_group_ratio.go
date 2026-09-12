@@ -72,7 +72,14 @@ func GroupRatio2JSONString() string {
 }
 
 func UpdateGroupRatioByJSONString(jsonStr string) error {
-	return types.LoadFromJsonString(groupRatioMap, jsonStr)
+	if err := types.LoadFromJsonString(groupRatioMap, jsonStr); err != nil {
+		return err
+	}
+	// Option reloads replace the whole map; without this, the hardcoded
+	// fallback groups (default/vip/svip) disappear on the first sync and
+	// GetGroupRatio silently drifts to its 1.0 fallback for them.
+	groupRatioMap.AddAll(defaultGroupRatio)
+	return nil
 }
 
 func GetGroupRatio(name string) float64 {
