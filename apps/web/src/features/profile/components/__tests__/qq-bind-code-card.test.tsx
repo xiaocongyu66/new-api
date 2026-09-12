@@ -16,41 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import assert from 'node:assert/strict'
 import { afterAll, beforeEach, describe, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
-import { Window } from 'happy-dom'
+import {
+  installDomGlobals,
+  resetSharedDomWindow,
+} from '@/test-utils/happy-dom-env'
 
-const domWindow = new Window()
-const domGlobals = [
-  'window',
-  'document',
-  'navigator',
-  'HTMLElement',
-  'HTMLInputElement',
-  'SVGElement',
-  'Node',
-  'Element',
-  'Event',
-  'CustomEvent',
-  'MutationObserver',
-  'requestAnimationFrame',
-  'cancelAnimationFrame',
-  'getComputedStyle',
-] as const
-
-// `bun test` evaluates every test file in one shared process, and each DOM
-// test file binds these globals to its own happy-dom window. Re-pin before
-// each test so a sibling file that ran in between cannot leave them pointed
-// at its window.
-function installDomGlobals() {
-  for (const key of domGlobals) {
-    Object.defineProperty(globalThis, key, {
-      configurable: true,
-      value: domWindow[key],
-    })
-  }
-}
+// `bun test` evaluates every test file in one shared process. Re-pin the
+// shared happy-dom globals before each test so a sibling file that ran in
+// between cannot leave them pointed somewhere else.
 installDomGlobals()
 
 type BindStatus = {
@@ -105,9 +81,8 @@ function restoreToasts() {
 
 const { act } = await import('react')
 const { createRoot } = await import('react-dom/client')
-const { QueryClient, QueryClientProvider } = await import(
-  '@tanstack/react-query'
-)
+const { QueryClient, QueryClientProvider } =
+  await import('@tanstack/react-query')
 const { createInstance } = await import('i18next')
 const { I18nextProvider, initReactI18next } = await import('react-i18next')
 const { QQBindCodeCard } = await import('../qq-bind-code-card')
@@ -129,11 +104,6 @@ await i18n.use(initReactI18next).init({
     },
   },
 })
-
-const reactTestGlobals = globalThis as typeof globalThis & {
-  IS_REACT_ACT_ENVIRONMENT?: boolean
-}
-reactTestGlobals.IS_REACT_ACT_ENVIRONMENT = true
 
 function findButton(scope: ParentNode, label: string) {
   return [...scope.querySelectorAll('button')].find(
@@ -190,9 +160,9 @@ describe('QQ bind code card unbind', () => {
     toastCalls.length = 0
   })
 
-  afterAll(() => {
+  afterAll(async () => {
     restoreToasts()
-    domWindow.close()
+    await resetSharedDomWindow()
   })
 
   test('unbinds only after the confirmation is accepted', async () => {

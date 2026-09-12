@@ -16,40 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import assert from 'node:assert/strict'
 import { afterAll, describe, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
-import { Window } from 'happy-dom'
-
-const domWindow = new Window()
-const domGlobals = [
-  'window',
-  'document',
-  'navigator',
-  'HTMLElement',
-  'HTMLButtonElement',
-  'HTMLInputElement',
-  'SVGElement',
-  'Node',
-  'Element',
-  'Event',
-  'KeyboardEvent',
-  'PointerEvent',
-  'CustomEvent',
-  'MutationObserver',
-  'ResizeObserver',
-  'requestAnimationFrame',
-  'cancelAnimationFrame',
-  'getComputedStyle',
-] as const
-
-for (const key of domGlobals) {
-  Object.defineProperty(globalThis, key, {
-    configurable: true,
-    value: domWindow[key],
-  })
-}
-
+import { domWindow, resetSharedDomWindow } from '@/test-utils/happy-dom-env'
+// The shared window outlives this file, so the reduced-motion `matchMedia`
+// stub is installed here and restored in `afterAll` instead of dying with a
+// private window.
+const originalMatchMedia = domWindow.matchMedia.bind(domWindow)
 let shouldReduceMotion = false
 const reducedMotionMediaQuery = domWindow.matchMedia('(prefers-reduced-motion)')
 Object.defineProperty(reducedMotionMediaQuery, 'matches', {
@@ -87,11 +61,6 @@ await i18n.use(initReactI18next).init({
     },
   },
 })
-
-const reactTestGlobals = globalThis as typeof globalThis & {
-  IS_REACT_ACT_ENVIRONMENT?: boolean
-}
-reactTestGlobals.IS_REACT_ACT_ENVIRONMENT = true
 
 const options = [
   {
@@ -136,8 +105,12 @@ function getCommandItem(label: string): HTMLElement {
 }
 
 describe('API key group combobox Auto effect', () => {
-  afterAll(() => {
-    domWindow.close()
+  afterAll(async () => {
+    Object.defineProperty(domWindow, 'matchMedia', {
+      configurable: true,
+      value: originalMatchMedia,
+    })
+    await resetSharedDomWindow()
   })
 
   test('rings the selected Auto trigger and its localized ratio without rendering the API ratio text', async () => {

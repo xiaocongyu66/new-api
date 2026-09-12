@@ -19,47 +19,21 @@ For commercial licensing, please contact support@quantumnous.com
 import assert from 'node:assert/strict'
 import { after, describe, test } from 'node:test'
 
-import { Window } from 'happy-dom'
+import { domWindow, resetSharedDomWindow } from '@/test-utils/happy-dom-env'
 
-const domWindow = new Window()
+// KaTeX/dompurify consult `document.compatMode`; force standards mode and
+// drop the own property again in `afterAll` so the shared document keeps no
+// residue from this file.
 domWindow.document.write('<!doctype html><html><body></body></html>')
 Object.defineProperty(domWindow.document, 'compatMode', {
   configurable: true,
   value: 'CSS1Compat',
 })
-const domGlobals = [
-  'window',
-  'document',
-  'navigator',
-  'HTMLElement',
-  'HTMLDivElement',
-  'HTMLSpanElement',
-  'HTMLPreElement',
-  'Node',
-  'Element',
-  'Event',
-  'MutationObserver',
-  'requestAnimationFrame',
-  'cancelAnimationFrame',
-  'getComputedStyle',
-] as const
-
-for (const key of domGlobals) {
-  Object.defineProperty(globalThis, key, {
-    configurable: true,
-    value: domWindow[key],
-  })
-}
 
 const { act } = await import('react')
 const { createRoot } = await import('react-dom/client')
 const { Response } = await import('../response')
 const { loadKatex } = await import('../../ui/katex')
-
-const reactTestGlobals = globalThis as typeof globalThis & {
-  IS_REACT_ACT_ENVIRONMENT?: boolean
-}
-reactTestGlobals.IS_REACT_ACT_ENVIRONMENT = true
 
 async function renderResponse(content: string) {
   const container = document.createElement('div')
@@ -76,8 +50,9 @@ async function renderResponse(content: string) {
 }
 
 describe('Response math rendering', () => {
-  after(() => {
-    domWindow.close()
+  after(async () => {
+    Reflect.deleteProperty(domWindow.document, 'compatMode')
+    await resetSharedDomWindow()
   })
 
   test('renders inline, block, and math fenced formulas with KaTeX', async () => {
