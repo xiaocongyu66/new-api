@@ -5371,6 +5371,7 @@
     "top-up ratio": "充值倍率",
     "Top-up ratio": "充值倍率",
     "Tops up the last award of the day so the daily total reaches this amount. 0 disables": "当日最后一次掉落会补足到该额度，使当日累计拿满保底。0 表示关闭",
+    "Tops up the last award of the day so the recent 7-day total reaches this amount. 0 disables": "当日最后一次掉落会补足到该额度，使近 7 日累计拿满保底。0 表示关闭",
     "Topup Amount": "充值金额",
     "Total": "总计",
     "Total Allocated": "总分配",

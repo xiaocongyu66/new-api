@@ -97,11 +97,12 @@ type QQBotSetting struct {
 	// 上下限保证单场放大/缩减都有界。事务内读取余额，避免并发刷偏权重。
 	DropBalanceAnchor int `json:"drop_balance_anchor"`
 
-	// DropDailyGuarantee 每日保底（内部额度，0 = 关闭）。
-	// 当日第 drop_daily_limit 次（最后一次可领）掉落时，若今日累计
-	// 低于该值，则把最后一发补足到保底额，使今日恰好拿满。
-	// 补足后的单发不受 drop_max_quota 限制——保底语义优先于单发上限。
-	// daily_limit <= 0（不限次）时不存在「最后一次」，保底不生效。
+	// DropDailyGuarantee 7 日保底（内部额度，0 = 关闭）。
+	// 当日第 drop_daily_limit 次（最后一次可领）掉落时，若近 7 日（含当日）
+	// 累计低于该值，则把最后一发补足到保底额，使 7 日累计恰好拿满。
+	// 封顶基准是 7 日总额而非当日总额：否则「每天领 2 次不领第 3 次」
+	// 就能把保底刷成日收益。补足后的单发不受 drop_max_quota 限制——
+	// 保底语义优先于单发上限；daily_limit <= 0（不限次）时保底不生效。
 	DropDailyGuarantee int `json:"drop_daily_guarantee"`
 
 	// 偷奶酪：把别人的额度随机搬到指令发起人这里。

@@ -5371,6 +5371,7 @@
     "top-up ratio": "チャージ倍率",
     "Top-up ratio": "チャージ倍率",
     "Tops up the last award of the day so the daily total reaches this amount. 0 disables": "当日最後のドロップを保証額まで補充し、当日累計を底上げ。0 で無効",
+    "Tops up the last award of the day so the recent 7-day total reaches this amount. 0 disables": "当日最後のドロップを補充し、直近7日累計がこの額に達するようにします。0 で無効",
     "Topup Amount": "チャージ額",
     "Total": "合計",
     "Total Allocated": "総割り当て",

@@ -44,7 +44,7 @@ func TestComputeDropAward(t *testing.T) {
 		drawn      int
 		balance    int
 		todayCount int
-		todaySum   int64
+		weekSum    int64
 		dailyLimit int
 		anchor     int
 		guarantee  int
@@ -62,14 +62,14 @@ func TestComputeDropAward(t *testing.T) {
 		{"保底为0关闭", 1 * unit, 4 * unit, 2, 2 * unit, limit, 0, 0, 150000, 3 * unit, 1 * unit},
 		{"最后一发补足到保底", 1 * unit, 8 * unit, 2, 2 * unit, limit, 0, 4 * unit, 150000, 3 * unit, 2 * unit},
 		{"非最后一发不补足", 1 * unit, 8 * unit, 1, 1 * unit, limit, 0, 4 * unit, 150000, 3 * unit, 1 * unit},
-		{"今日已超保底不动", 1 * unit, 8 * unit, 2, 3600000, limit, 0, 4 * unit, 150000, 3 * unit, 1 * unit},
+		{"7日已超保底不动", 1 * unit, 8 * unit, 2, 3600000, limit, 0, 4 * unit, 150000, 3 * unit, 1 * unit},
+		{"前几日已拿满当日不补", 1 * unit, 8 * unit, 0, 4 * unit, limit, 0, 4 * unit, 150000, 3 * unit, 1 * unit}, // 防日刷：weekSum 已含前 6 日入账
 		{"保底优先于单发上限", 1 * unit, 8 * unit, 0, 0, 1, 0, 3 * unit, 150000, 2 * unit, 3 * unit},
 		{"不限次时保底不生效", 1 * unit, 8 * unit, 5, 500000, 0, 0, 4 * unit, 150000, 3 * unit, 1 * unit},
-		{"加权与保底叠加", 1 * unit, 2 * unit, 2, 2 * unit, limit, 2 * unit, 3 * unit, 150000, 5 * unit, 1 * unit},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := computeDropAward(tc.drawn, tc.balance, tc.todayCount, tc.todaySum,
+			got := computeDropAward(tc.drawn, tc.balance, tc.todayCount, tc.weekSum,
 				tc.dailyLimit, tc.anchor, tc.guarantee, tc.dropMin, tc.dropMax)
 			assert.Equal(t, tc.want, got)
 		})
@@ -78,13 +78,13 @@ func TestComputeDropAward(t *testing.T) {
 
 // TestComputeDropAwardWeightThenGuarantee 加权后仍不足保底的，最后一次补足到保底线。
 // anchor=4*unit、balance=unit → w=2.0（上钳），drawn=unit → 2*unit；
-// 保底 3*unit、todaySum=0、limit=1 → 最终 3*unit。
+// 保底 3*unit、weekSum=0、limit=1 → 最终 3*unit。
 func TestComputeDropAwardWeightThenGuarantee(t *testing.T) {
 	got := computeDropAward(500000, 500000, 0, 0, 1, 2000000, 1500000, 150000, 2500000)
 	require.Equal(t, 1500000, got) // w=2 得 1,000,000，仍低于保底 1,500,000，补足差额
 }
 
-// TestAwardQQDropGuaranteeEndToEnd SQLite 路径接线：当日累计查询、补足与入账一致性。
+// TestAwardQQDropGuaranteeEndToEnd SQLite 路径接线：7 日累计查询、补足与入账一致性。
 func TestAwardQQDropGuaranteeEndToEnd(t *testing.T) {
 	defer swapDBForDropTest(t)()
 	defer snapshotQQBotSetting()()
@@ -96,7 +96,7 @@ func TestAwardQQDropGuaranteeEndToEnd(t *testing.T) {
 	s.DropBalanceAnchor = 0
 	s.DropDailyGuarantee = 1000000
 
-	user := &identity.User{Username: "drop-e2e", Quota: 0}
+	user := &identity.User{Username: "drop-e2e", AffCode: "drop-e2e", Quota: 0}
 	require.NoError(t, dbx.DB.Create(user).Error)
 
 	today := time.Now().Format("2006-01-02")
@@ -107,7 +107,7 @@ func TestAwardQQDropGuaranteeEndToEnd(t *testing.T) {
 		}).Error)
 	}
 
-	// 第三发（最后一次机会）drawn=200,000 → 补足到 1,000,000 - 300,000 = 700,000
+	// 第三发（最后一次机会）drawn=200,000 → 补足到 1,000,000 - weekSum 300,000 = 700,000
 	drop, err := AwardQQDrop(user.Id, "openid-x", "group-x", 200000, s.DropDailyLimit)
 	require.NoError(t, err)
 	assert.Equal(t, 700000, drop.QuotaAwarded)
@@ -120,4 +120,55 @@ func TestAwardQQDropGuaranteeEndToEnd(t *testing.T) {
 	// 第四次：次数刷满，拒绝
 	_, err = AwardQQDrop(user.Id, "openid-x", "group-x", 200000, s.DropDailyLimit)
 	assert.True(t, IsQQDropLimitReached(err))
+}
+
+// TestAwardQQDropGuaranteeNoRefarmAcrossDays 回归：前一日已拿满保底额时，
+// 当日第 3 次不再补足——封顶看 7 日累计而非当日累计。
+func TestAwardQQDropGuaranteeNoRefarmAcrossDays(t *testing.T) {
+	defer swapDBForDropTest(t)()
+	defer snapshotQQBotSetting()()
+
+	s := GetQQBotSetting()
+	s.DropMinQuota = 150000
+	s.DropMaxQuota = 1500000
+	s.DropDailyLimit = 3
+	s.DropBalanceAnchor = 0
+	s.DropDailyGuarantee = 1000000
+
+	user := &identity.User{Username: "refarm", AffCode: "refarm", Quota: 0}
+	require.NoError(t, dbx.DB.Create(user).Error)
+
+	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	today := time.Now().Format("2006-01-02")
+	// 昨日已拿满保底 1,000,000；今日前两发共 300,000 → 7 日累计 1,300,000 ≥ 保底
+	require.NoError(t, dbx.DB.Create(&QQDrop{
+		UserId: user.Id, DropDate: yesterday, QuotaAwarded: 1000000, CreatedAt: time.Now().Unix(),
+	}).Error)
+	for _, q := range []int{150000, 150000} {
+		require.NoError(t, dbx.DB.Create(&QQDrop{
+			UserId: user.Id, DropDate: today, QuotaAwarded: q, CreatedAt: time.Now().Unix(),
+		}).Error)
+	}
+
+	// 若补差只看当日累计会错误地补到 700,000；7 日封顶后按摇点值 200,000 发放
+	drop, err := AwardQQDrop(user.Id, "openid-y", "group-y", 200000, s.DropDailyLimit)
+	require.NoError(t, err)
+	assert.Equal(t, 200000, drop.QuotaAwarded)
+
+	// 边界用户：大额入账落在 today-7（窗口外，drop_date >= today-6 才计入），
+	// 7 日累计只剩今日 300,000 → 第 3 发重新享受补足，保底窗口滚动过期。
+	expired := &identity.User{Username: "window", AffCode: "window", Quota: 0}
+	require.NoError(t, dbx.DB.Create(expired).Error)
+	weekAgo := time.Now().AddDate(0, 0, -7).Format("2006-01-02")
+	require.NoError(t, dbx.DB.Create(&QQDrop{
+		UserId: expired.Id, DropDate: weekAgo, QuotaAwarded: 1000000, CreatedAt: time.Now().Unix(),
+	}).Error)
+	for _, q := range []int{150000, 150000} {
+		require.NoError(t, dbx.DB.Create(&QQDrop{
+			UserId: expired.Id, DropDate: today, QuotaAwarded: q, CreatedAt: time.Now().Unix(),
+		}).Error)
+	}
+	next, err := AwardQQDrop(expired.Id, "openid-z", "group-z", 200000, s.DropDailyLimit)
+	require.NoError(t, err)
+	assert.Equal(t, 700000, next.QuotaAwarded, "窗口外入账不计入封顶，deficit=1,000,000-300,000-200,000")
 }

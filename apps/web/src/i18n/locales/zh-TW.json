@@ -5371,6 +5371,7 @@
     "top-up ratio": "儲值倍率",
     "Top-up ratio": "儲值倍率",
     "Tops up the last award of the day so the daily total reaches this amount. 0 disables": "當日最後一次掉落會補足到該額度，使當日累計拿滿保底。0 表示關閉",
+    "Tops up the last award of the day so the recent 7-day total reaches this amount. 0 disables": "當日最後一次掉落會補足到該額度，使近 7 日累計拿滿保底。0 表示關閉",
     "Topup Amount": "儲值金額",
     "Total": "總計",
     "Total Allocated": "總分配",

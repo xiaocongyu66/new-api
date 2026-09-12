@@ -454,7 +454,7 @@ export function QQBotSettingsSection({
                 </FormControl>
                 <FormDescription>
                   {t(
-                    'Tops up the last award of the day so the daily total reaches this amount. 0 disables'
+                    'Tops up the last award of the day so the recent 7-day total reaches this amount. 0 disables'
                   )}
                 </FormDescription>
               </FormItem>
