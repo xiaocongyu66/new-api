@@ -199,6 +199,7 @@ func PostWssConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo,
 		},
 		ModelName:  modelName,
 		UsePrice:   usePrice,
+		ModelPrice: modelPrice,
 		ModelRatio: modelRatio,
 		GroupRatio: groupRatio,
 	}
@@ -322,6 +323,7 @@ func PostAudioConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInf
 		},
 		ModelName:  relayInfo.OriginModelName,
 		UsePrice:   usePrice,
+		ModelPrice: modelPrice,
 		ModelRatio: modelRatio,
 		GroupRatio: groupRatio,
 	}
