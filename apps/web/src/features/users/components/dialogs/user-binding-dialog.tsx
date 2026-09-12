@@ -16,20 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import {
-  Mail,
-  Globe,
-  MessageCircle,
-  Send,
-  Link2,
-  Unlink,
-  Loader2,
-  Eye,
-  EyeOff,
-} from 'lucide-react'
+import { Link2, Unlink, Loader2, Eye, EyeOff } from 'lucide-react'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { SiGithub, SiDiscord, SiQq } from 'react-icons/si'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
@@ -55,6 +44,8 @@ import {
 } from '../../api'
 import type { User } from '../../types'
 
+import { BUILTIN_BINDINGS, type StatusInfo } from './builtin-bindings'
+
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -72,87 +63,6 @@ interface BindingItem {
   isBound: boolean
   isEnabled: boolean
 }
-
-interface StatusInfo {
-  github_oauth?: boolean
-  discord_oauth?: boolean
-  oidc_enabled?: boolean
-  wechat_login?: boolean
-  telegram_oauth?: boolean
-  linuxdo_oauth?: boolean
-  custom_oauth_providers?: Array<{
-    id: string
-    name: string
-    icon?: string
-  }>
-}
-
-// key 是 DELETE /api/user/:id/bindings/:binding_type 的路径参数，必须与后端
-// ClearBinding 认的 provider 名一致（不是 users 表的列名，那个是 field）。
-const BUILTIN_BINDINGS: ReadonlyArray<{
-  key: string
-  field: string
-  label: string
-  icon: React.ReactNode
-  statusKey: keyof StatusInfo | null
-}> = [
-  {
-    key: 'email',
-    field: 'email',
-    label: 'Email',
-    icon: <Mail className='h-4 w-4' />,
-    statusKey: null,
-  },
-  {
-    key: 'github',
-    field: 'github_id',
-    label: 'GitHub',
-    icon: <SiGithub className='h-4 w-4' />,
-    statusKey: 'github_oauth',
-  },
-  {
-    key: 'discord',
-    field: 'discord_id',
-    label: 'Discord',
-    icon: <SiDiscord className='h-4 w-4' />,
-    statusKey: 'discord_oauth',
-  },
-  {
-    key: 'wechat',
-    field: 'wechat_id',
-    label: 'WeChat',
-    icon: <MessageCircle className='h-4 w-4' />,
-    statusKey: 'wechat_login',
-  },
-  {
-    key: 'oidc',
-    field: 'oidc_id',
-    label: 'OIDC',
-    icon: <Globe className='h-4 w-4' />,
-    statusKey: 'oidc_enabled',
-  },
-  {
-    key: 'telegram',
-    field: 'telegram_id',
-    label: 'Telegram',
-    icon: <Send className='h-4 w-4' />,
-    statusKey: 'telegram_oauth',
-  },
-  {
-    key: 'linuxdo',
-    field: 'linux_do_id',
-    label: 'LinuxDO',
-    icon: <Globe className='h-4 w-4' />,
-    statusKey: 'linuxdo_oauth',
-  },
-  {
-    key: 'qq',
-    field: 'qq_open_id',
-    label: 'QQ',
-    icon: <SiQq className='h-4 w-4' />,
-    statusKey: null,
-  },
-]
 
 function CustomProviderIcon(props: { iconUrl?: string }) {
   if (!props.iconUrl) return <Link2 className='h-4 w-4' />
