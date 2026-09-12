@@ -52,6 +52,8 @@ export const userSchema = z.object({
   aff_history_quota: z.number().optional(),
   inviter_id: z.number().optional(),
   linux_do_id: z.string().optional(),
+  /** Only returned by the admin single-user endpoint; QQ bindings live in their own table */
+  qq_open_id: z.string().optional(),
   status: userStatusSchema,
   role: userRoleSchema,
   created_at: z.number().optional(),

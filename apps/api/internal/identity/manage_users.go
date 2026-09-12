@@ -386,6 +386,7 @@ func GetUser(c contract.Context) {
 		return
 	}
 	user.AdminPermissions = policy.Capabilities(user.Id, user.Role)
+	user.QQOpenID, _ = IsQQBoundByUserId(user.Id)
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
