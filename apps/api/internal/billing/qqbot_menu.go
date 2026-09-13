@@ -435,7 +435,7 @@ func HandleMenuCallback(data, openID, groupOpenID string) (content string, keybo
 		if IsCheckinDisabledGroup(groupOpenID) {
 			return checkinDisabledReply(openID), checkinMenuKeyboard()
 		}
-		reply, _ := doCheckinForOpenID(openID, groupOpenID)
+		reply, _, _ := doCheckinForOpenID(openID, groupOpenID)
 		return reply, checkinMenuKeyboard()
 
 	case MenuActionBalance:

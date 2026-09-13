@@ -83,6 +83,7 @@ const qqbotSchema = z.object({
     command_cooldown_seconds: z.coerce.number().int().min(0),
     recall_failed_messages: z.boolean(),
     recall_delay_seconds: z.coerce.number().int().min(1).max(120),
+    recall_policies: z.string(),
     admin_open_ids: z.string(),
     red_packet_enabled: z.boolean(),
     red_packet_disabled_groups: z.string(),
@@ -829,6 +830,24 @@ export function QQBotSettingsSection({
                 </FormControl>
                 <FormDescription>
                   {t('Seconds to wait before recalling a failed reply.')}
+                </FormDescription>
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='qq_bot_setting.recall_policies'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Recall policies (JSON, seconds per type)')}</FormLabel>
+                <FormControl>
+                  <Input placeholder='{"drop_award":30,"failure_notice":10}' {...field} />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'Map of reply type to seconds before auto-recall, e.g. {"drop_award":30}. Valid types: drop_award, checkin_success, checkin_fail, transfer, balance, menu, red_packet, bind_success, bind_fail, drop_command, failure_notice. 0 or a missing type keeps the message; empty falls back to recalling failed replies only (legacy switch). Recallable types are sent as proactive messages and require QQ platform recall permission.'
+                  )}
                 </FormDescription>
               </FormItem>
             )}

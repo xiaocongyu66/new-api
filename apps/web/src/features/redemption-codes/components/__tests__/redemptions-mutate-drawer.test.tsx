@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import assert from 'node:assert/strict'
 
-import { Window } from 'happy-dom'
+import { domWindow, resetSharedDomWindow } from '@/test-utils/happy-dom-env'
 
 import type { Redemption } from '../../types'
 
@@ -28,40 +28,6 @@ const { afterAll, afterEach, test } = (await import(bunTestModule)) as {
   afterAll: typeof import('node:test').after
   afterEach: typeof import('node:test').afterEach
   test: typeof import('node:test').test
-}
-
-const domWindow = new Window()
-const domGlobals = [
-  'window',
-  'document',
-  'navigator',
-  'HTMLElement',
-  'HTMLButtonElement',
-  'HTMLInputElement',
-  'HTMLFormElement',
-  'HTMLLabelElement',
-  'HTMLFieldSetElement',
-  'SVGElement',
-  'Node',
-  'Element',
-  'Event',
-  'KeyboardEvent',
-  'PointerEvent',
-  'MouseEvent',
-  'FocusEvent',
-  'CustomEvent',
-  'MutationObserver',
-  'ResizeObserver',
-  'requestAnimationFrame',
-  'cancelAnimationFrame',
-  'getComputedStyle',
-] as const
-
-for (const key of domGlobals) {
-  Object.defineProperty(globalThis, key, {
-    configurable: true,
-    value: domWindow[key],
-  })
 }
 
 const { act } = await import('react')
@@ -87,11 +53,6 @@ await i18n.use(initReactI18next).init({
     },
   },
 })
-
-const reactTestGlobals = globalThis as typeof globalThis & {
-  IS_REACT_ACT_ENVIRONMENT?: boolean
-}
-reactTestGlobals.IS_REACT_ACT_ENVIRONMENT = true
 
 type ApiMethod = (url: string, data?: unknown) => Promise<{ data: unknown }>
 type MockableApi = {
@@ -287,8 +248,8 @@ afterEach(async () => {
   document.body.replaceChildren()
 })
 
-afterAll(() => {
-  domWindow.close()
+afterAll(async () => {
+  await resetSharedDomWindow()
 })
 
 test('redemption drawer shows the reported CNY quota without floating-point noise', async () => {

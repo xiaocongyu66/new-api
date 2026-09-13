@@ -16,42 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import assert from 'node:assert/strict'
 import { afterAll, afterEach, describe, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
-import { Window } from 'happy-dom'
-
-const domWindow = new Window()
-const domGlobals = [
-  'window',
-  'document',
-  'navigator',
-  'HTMLElement',
-  'HTMLButtonElement',
-  'HTMLInputElement',
-  'HTMLFormElement',
-  'SVGElement',
-  'Node',
-  'Element',
-  'Event',
-  'KeyboardEvent',
-  'PointerEvent',
-  'MouseEvent',
-  'FocusEvent',
-  'CustomEvent',
-  'MutationObserver',
-  'ResizeObserver',
-  'requestAnimationFrame',
-  'cancelAnimationFrame',
-  'getComputedStyle',
-] as const
-
-for (const key of domGlobals) {
-  Object.defineProperty(globalThis, key, {
-    configurable: true,
-    value: domWindow[key],
-  })
-}
+import { domWindow, resetSharedDomWindow } from '@/test-utils/happy-dom-env'
 
 const { act } = await import('react')
 const { createRoot } = await import('react-dom/client')
@@ -68,11 +36,6 @@ await i18n.use(initReactI18next).init({
   lng: 'en',
   resources: { en: { translation: {} } },
 })
-
-const reactTestGlobals = globalThis as typeof globalThis & {
-  IS_REACT_ACT_ENVIRONMENT?: boolean
-}
-reactTestGlobals.IS_REACT_ACT_ENVIRONMENT = true
 
 type ApiMethod = (url: string, data?: unknown) => Promise<{ data: unknown }>
 type MockableApi = {
@@ -279,8 +242,8 @@ afterEach(async () => {
   document.body.replaceChildren()
 })
 
-afterAll(() => {
-  domWindow.close()
+afterAll(async () => {
+  await resetSharedDomWindow()
 })
 
 describe('API keys mutate drawer Auto group integration', () => {

@@ -286,10 +286,14 @@ func randomDropQuota(min, max int) int {
 }
 
 // markMessageSeen 记录消息 ID，返回 true 表示此前已处理过
+// 事件按 `go handleQQBotEvent` 并发派发，去重表必须持锁访问，
+// 否则并发读写 map 会直接 panic 掉整个进程。
 func markMessageSeen(msgID string) bool {
 	if msgID == "" {
 		return false
 	}
+	dropMu.Lock()
+	defer dropMu.Unlock()
 	if _, ok := seenMsgIDs[msgID]; ok {
 		return true
 	}
@@ -426,7 +430,7 @@ func HandleGroupChatForDrop(event *GroupAtMessageEvent) {
 		fmt.Sprintf("QQ 群聊掉落，获得额度 %s", logger.LogQuota(drop.QuotaAwarded)))
 
 	content := renderDropMessage(openID, drop.QuotaAwarded, balance)
-	if err := replyGroupMarkdown(
+	if err := replyGroupMarkdown(RecallKindDropAward,
 		event.GroupOpenID, event.ID, "", content, nil, 1); err != nil {
 		common.SysError("发送掉落消息失败: " + err.Error())
 	}

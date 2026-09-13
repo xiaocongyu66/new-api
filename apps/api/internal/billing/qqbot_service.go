@@ -345,15 +345,21 @@ func nextMsgSeq(token string) int {
 
 // replyGroupMarkdown 以被动消息形式回复群聊 markdown + 键盘
 //
+// kind 为该条回复的内容类型，用于匹配自动撤回策略（类型清单见 qqbot_recall.go），
+// 不属于任何已分类回复的传空串。命中撤回策略的消息改用主动消息发送，
+// 拿到平台下发的 message_id 后延迟撤回——被动回复(带 msg_id/event_id)
+// 无法通过撤回接口删除，只能走主动消息。
+//
 // seq 参数保留兼容旧调用，实际发送时按 msg_id/event_id 自增，
 // 避免同一凭证下多条消息因 msg_seq 相同被平台丢弃。
-func replyGroupMarkdown(groupOpenID, msgID, eventID, content string, keyboard *Keyboard, seq int) error {
-	// 失败提示且开启自动撤回:改用主动消息发送,拿到 message_id 后在延迟后撤回。
-	// 被动回复(带 msg_id/event_id)无法通过撤回接口删除,只能走主动消息。
-	if isFailureReply(content) {
-		if enabled, _ := AutoRecallFailed(); enabled {
-			return sendRecallableMarkdown(groupOpenID, content, keyboard)
-		}
+func replyGroupMarkdown(kind, groupOpenID, msgID, eventID, content string, keyboard *Keyboard, seq int) error {
+	delay := recallPolicyFor(kind)
+	if delay == 0 && isFailureReply(content) {
+		// 失败提示兜底：policies 未配置时即旧 recall_failed_messages 行为
+		delay = recallPolicyFor(RecallKindFailureNotice)
+	}
+	if delay > 0 {
+		return sendRecallableMarkdown(groupOpenID, content, keyboard, delay)
 	}
 	client, err := getClient()
 	if err != nil {
@@ -394,11 +400,12 @@ func replyGroupMarkdown(groupOpenID, msgID, eventID, content string, keyboard *K
 	return nil
 }
 
-// sendRecallableMarkdown 以主动消息发送失败提示,开启自动撤回时延迟撤回。
+// sendRecallableMarkdown 以主动消息发送 content，并在 delaySeconds 后撤回。
 //
-// 撤回接口只支持主动消息(平台下发的 message_id),被动回复(带 msg_id/event_id)
-// 无法撤回,所以这里不传 msg_id/event_id。失败提示为低频消息,不受主动消息配额影响。
-func sendRecallableMarkdown(groupOpenID, content string, keyboard *Keyboard) error {
+// 撤回接口只支持主动消息(平台下发的 message_id)，被动回复(带 msg_id/event_id)
+// 无法撤回，所以这里不传 msg_id/event_id。走此通道的类型受主动消息配额限制，
+// 建议只对低频提示开启撤回策略。
+func sendRecallableMarkdown(groupOpenID, content string, keyboard *Keyboard, delaySeconds int) error {
 	client, err := getClient()
 	if err != nil {
 		return err
@@ -413,39 +420,38 @@ func sendRecallableMarkdown(groupOpenID, content string, keyboard *Keyboard) err
 	if err != nil {
 		return err
 	}
-	enabled, delay := AutoRecallFailed()
-	if !enabled || msgID == "" {
+	if delaySeconds <= 0 || msgID == "" {
 		return nil
 	}
-	common.SysLog("失败提示将自动撤回 msg_id=" + msgID)
+	common.SysLog("消息将自动撤回 msg_id=" + msgID)
 	// ponytail: 一次性 timer,存活 delay 秒后自动结束,失败提示是低频消息不会累积;
 	// 若未来失败提示成为热点,再引入可取消的调度(带 context 的定时器)。
-	time.AfterFunc(time.Duration(delay)*time.Second, func() {
+	time.AfterFunc(time.Duration(delaySeconds)*time.Second, func() {
 		if err := client.RecallGroupMessage(groupOpenID, msgID); err != nil {
 			common.SysError("自动撤回失败 msg_id=" + msgID + " err=" + err.Error())
 			return
 		}
-		common.SysLog("已自动撤回失败提示 msg_id=" + msgID)
+		common.SysLog("已自动撤回消息 msg_id=" + msgID)
 	})
 	return nil
 }
 
 // doCheckinForOpenID 执行签到主流程
-// 返回需要回复的 markdown 文案与是否附带按钮
-func doCheckinForOpenID(openID, groupOpenID string) (content string, withKeyboard bool) {
+// 返回需要回复的 markdown 文案、是否附带按钮，以及内容类型（用于匹配撤回策略）
+func doCheckinForOpenID(openID, groupOpenID string) (content string, withKeyboard bool, kind string) {
 	setting := GetQQBotSetting()
 	if !setting.QQCheckinEnabled {
-		return buildPlainMarkdown(openID, "**签到失败！**\nQQ 签到功能当前未开启"), false
+		return buildPlainMarkdown(openID, "**签到失败！**\nQQ 签到功能当前未开启"), false, RecallKindCheckinFail
 	}
 
 	userId, bound := identity.IsQQBound(openID)
 	if !bound {
-		return buildCheckinFailMarkdown(openID), false
+		return buildCheckinFailMarkdown(openID), false, RecallKindCheckinFail
 	}
 
 	checkin, err := UserQQCheckin(userId, openID, groupOpenID)
 	if err != nil {
-		return buildPlainMarkdown(openID, "**签到失败！**\n\n"+err.Error()), true
+		return buildPlainMarkdown(openID, "**签到失败！**\n\n"+err.Error()), true, RecallKindCheckinFail
 	}
 
 	// 读取签到后的最新余额
@@ -467,7 +473,7 @@ func doCheckinForOpenID(openID, groupOpenID string) (content string, withKeyboar
 	sb.WriteString("**\n\n")
 	sb.WriteString(fmt.Sprintf("您已获得 %s！\n\n", formatQuotaText(checkin.QuotaAwarded)))
 	sb.WriteString(fmt.Sprintf("当前余额 %s", formatQuotaText(balance)))
-	return sb.String(), true
+	return sb.String(), true, RecallKindCheckinSuccess
 }
 
 // HandleGroupAtMessage 处理群 @机器人 消息
@@ -489,7 +495,7 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 
 	if cmd, ok := isDropCommand(content); ok {
 		reply := HandleDropCommand(cmd, openID, event.GroupOpenID)
-		if err := replyGroupMarkdown(event.GroupOpenID, event.ID, "", reply, nil, 1); err != nil {
+		if err := replyGroupMarkdown(RecallKindDropCommand, event.GroupOpenID, event.ID, "", reply, nil, 1); err != nil {
 			common.SysError("回复掉落指令失败: " + err.Error())
 		}
 		return
@@ -497,7 +503,7 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 
 	if cmd, ok := isCheckinSwitchCommand(content); ok {
 		reply := HandleCheckinSwitchCommand(cmd, openID, event.GroupOpenID)
-		if err := replyGroupMarkdown(event.GroupOpenID, event.ID, "", reply, nil, 1); err != nil {
+		if err := replyGroupMarkdown("", event.GroupOpenID, event.ID, "", reply, nil, 1); err != nil {
 			common.SysError("回复签到开关指令失败: " + err.Error())
 		}
 		return
@@ -505,7 +511,7 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 
 	if cmd, ok := isTransferSwitchCommand(content); ok {
 		reply := HandleTransferSwitchCommand(cmd, openID, event.GroupOpenID)
-		if err := replyGroupMarkdown(event.GroupOpenID, event.ID, "", reply, nil, 1); err != nil {
+		if err := replyGroupMarkdown("", event.GroupOpenID, event.ID, "", reply, nil, 1); err != nil {
 			common.SysError("回复转账开关指令失败: " + err.Error())
 		}
 		return
@@ -514,7 +520,7 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 	// /转账费率 必须排在 /转账 之前判断，否则会被前缀匹配吃掉
 	if isTransferInfoCommand(content) {
 		reply := HandleTransferInfo(openID)
-		if err := replyGroupMarkdown(event.GroupOpenID, event.ID, "", reply, nil, 1); err != nil {
+		if err := replyGroupMarkdown(RecallKindTransfer, event.GroupOpenID, event.ID, "", reply, nil, 1); err != nil {
 			common.SysError("回复转账费率失败: " + err.Error())
 		}
 		return
@@ -522,7 +528,7 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 
 	if isTransferCommand(content) {
 		reply := HandleTransferCommand(event, openID)
-		if err := replyGroupMarkdown(event.GroupOpenID, event.ID, "", reply, nil, 1); err != nil {
+		if err := replyGroupMarkdown(RecallKindTransfer, event.GroupOpenID, event.ID, "", reply, nil, 1); err != nil {
 			common.SysError("回复转账指令失败: " + err.Error())
 		}
 		return
@@ -530,7 +536,7 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 
 	if isBalanceCommand(content) {
 		reply := HandleMyBalance(openID)
-		if err := replyGroupMarkdown(event.GroupOpenID, event.ID, "", reply, nil, 1); err != nil {
+		if err := replyGroupMarkdown(RecallKindBalance, event.GroupOpenID, event.ID, "", reply, nil, 1); err != nil {
 			common.SysError("回复余额查询失败: " + err.Error())
 		}
 		return
@@ -538,7 +544,7 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 
 	if isMenuCommand(content) {
 		reply, kb := HandleMenuCommand(openID)
-		if err := replyGroupMarkdown(event.GroupOpenID, event.ID, "", reply, kb, 1); err != nil {
+		if err := replyGroupMarkdown(RecallKindMenu, event.GroupOpenID, event.ID, "", reply, kb, 1); err != nil {
 			common.SysError("回复菜单失败: " + err.Error())
 		}
 		return
@@ -546,7 +552,7 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 
 	if isRedPacketCommand(content) {
 		reply, kb := HandleRedPacketCommand(event, openID)
-		if err := replyGroupMarkdown(event.GroupOpenID, event.ID, "", reply, kb, 1); err != nil {
+		if err := replyGroupMarkdown(RecallKindRedPacket, event.GroupOpenID, event.ID, "", reply, kb, 1); err != nil {
 			common.SysError("回复红包指令失败: " + err.Error())
 		}
 		return
@@ -554,7 +560,7 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 
 	if isStealCommand(content) {
 		reply := HandleStealCommand(event, openID)
-		if err := replyGroupMarkdown(event.GroupOpenID, event.ID, "", reply, nil, 1); err != nil {
+		if err := replyGroupMarkdown(RecallKindStealSuccess, event.GroupOpenID, event.ID, "", reply, nil, 1); err != nil {
 			common.SysError("回复偷奶酪指令失败: " + err.Error())
 		}
 		return
@@ -564,18 +570,18 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 	case isCheckinCommand(content):
 		// 本群签到被单独关闭时直接回绝，不影响其他群与网页签到
 		if IsCheckinDisabledGroup(event.GroupOpenID) {
-			if err := replyGroupMarkdown(event.GroupOpenID, event.ID, "",
+			if err := replyGroupMarkdown("", event.GroupOpenID, event.ID, "",
 				checkinDisabledReply(openID), nil, 1); err != nil {
 				common.SysError("回复本群签到已关闭失败: " + err.Error())
 			}
 			return
 		}
-		reply, withKeyboard := doCheckinForOpenID(openID, event.GroupOpenID)
+		reply, withKeyboard, checkinKind := doCheckinForOpenID(openID, event.GroupOpenID)
 		var kb *Keyboard
 		if withKeyboard {
 			kb = checkinKeyboard()
 		}
-		if err := replyGroupMarkdown(event.GroupOpenID, event.ID, "", reply, kb, 1); err != nil {
+		if err := replyGroupMarkdown(checkinKind, event.GroupOpenID, event.ID, "", reply, kb, 1); err != nil {
 			common.SysError("回复群签到消息失败: " + err.Error())
 		}
 
@@ -586,7 +592,7 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 			code, openID, event.Author.UnionOpenID, event.Author.Username)
 		if err != nil {
 			reply := buildPlainMarkdown(openID, "**绑定失败！**\n\n"+err.Error())
-			if sendErr := replyGroupMarkdown(event.GroupOpenID, event.ID, "", reply, nil, 1); sendErr != nil {
+			if sendErr := replyGroupMarkdown(RecallKindBindFail, event.GroupOpenID, event.ID, "", reply, nil, 1); sendErr != nil {
 				common.SysError("回复绑定失败消息失败: " + sendErr.Error())
 			}
 			return
@@ -595,7 +601,7 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 		usage.RecordLog(userId, usage.LogTypeSystem, "已绑定 QQ 账号，可使用 QQ 签到")
 		reply := buildPlainMarkdown(openID,
 			"**绑定成功！**\n\n现在可以直接发送 /签到 领取每日额度")
-		if sendErr := replyGroupMarkdown(
+		if sendErr := replyGroupMarkdown(RecallKindBindSuccess,
 			event.GroupOpenID, event.ID, "", reply, checkinKeyboard(), 1); sendErr != nil {
 			common.SysError("回复绑定成功消息失败: " + sendErr.Error())
 		}
@@ -642,7 +648,7 @@ func HandleInteraction(event *InteractionEvent) {
 	// 菜单系统按钮
 	if isMenuCallback(buttonData) {
 		reply, kb := HandleMenuCallback(buttonData, openID, event.GroupOpenID)
-		if err := replyGroupMarkdown(
+		if err := replyGroupMarkdown(RecallKindMenu,
 			event.GroupOpenID, "", replyEventID, reply, kb, 1); err != nil {
 			common.SysError("回复菜单回调失败: " + err.Error())
 		}
@@ -653,7 +659,7 @@ func HandleInteraction(event *InteractionEvent) {
 	if strings.HasPrefix(buttonData, ButtonDataRedPacketGrab) {
 		packetID := strings.TrimPrefix(buttonData, ButtonDataRedPacketGrab)
 		reply := HandleRedPacketGrab(packetID, openID)
-		if err := replyGroupMarkdown(
+		if err := replyGroupMarkdown(RecallKindRedPacket,
 			event.GroupOpenID, "", replyEventID, reply, nil, 1); err != nil {
 			common.SysError("回复抢红包失败: " + err.Error())
 		}
@@ -664,7 +670,7 @@ func HandleInteraction(event *InteractionEvent) {
 	if strings.HasPrefix(buttonData, ButtonDataRedPacketDetail) {
 		packetID := strings.TrimPrefix(buttonData, ButtonDataRedPacketDetail)
 		reply := HandleRedPacketDetail(packetID, openID)
-		if err := replyGroupMarkdown(
+		if err := replyGroupMarkdown(RecallKindRedPacket,
 			event.GroupOpenID, "", replyEventID, reply, nil, 1); err != nil {
 			common.SysError("回复红包战绩失败: " + err.Error())
 		}
@@ -683,7 +689,7 @@ func HandleInteraction(event *InteractionEvent) {
 		if replyEventID == "" {
 			replyEventID = event.ID
 		}
-		if err := replyGroupMarkdown(event.GroupOpenID, "", replyEventID,
+		if err := replyGroupMarkdown("", event.GroupOpenID, "", replyEventID,
 			checkinDisabledReply(openID), nil, 1); err != nil {
 			common.SysError("回复本群签到已关闭失败: " + err.Error())
 		}
@@ -691,12 +697,12 @@ func HandleInteraction(event *InteractionEvent) {
 	}
 
 	// 无论签到成功还是失败，都要在群里回复结果
-	reply, withKeyboard := doCheckinForOpenID(openID, event.GroupOpenID)
+	reply, withKeyboard, checkinKind := doCheckinForOpenID(openID, event.GroupOpenID)
 	var kb *Keyboard
 	if withKeyboard {
 		kb = checkinKeyboard()
 	}
-	if err := replyGroupMarkdown(event.GroupOpenID, "", replyEventID, reply, kb, 1); err != nil {
+	if err := replyGroupMarkdown(checkinKind, event.GroupOpenID, "", replyEventID, reply, kb, 1); err != nil {
 		common.SysError("回复按钮签到消息失败: " + err.Error())
 		return
 	}

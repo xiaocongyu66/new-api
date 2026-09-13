@@ -19,41 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 import assert from 'node:assert/strict'
 import { after, describe, test } from 'node:test'
 
-import { Window } from 'happy-dom'
 import { act, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 
+import { resetSharedDomWindow } from '@/test-utils/happy-dom-env'
+
 import { CodeBlockEditor } from '../code-block'
-
-const domWindow = new Window()
-const domGlobals = [
-  'window',
-  'document',
-  'navigator',
-  'HTMLElement',
-  'HTMLButtonElement',
-  'Node',
-  'Element',
-  'Event',
-  'KeyboardEvent',
-  'MouseEvent',
-  'MutationObserver',
-  'requestAnimationFrame',
-  'cancelAnimationFrame',
-  'getComputedStyle',
-] as const
-
-for (const key of domGlobals) {
-  Object.defineProperty(globalThis, key, {
-    configurable: true,
-    value: domWindow[key],
-  })
-}
-
-const reactTestGlobals = globalThis as typeof globalThis & {
-  IS_REACT_ACT_ENVIRONMENT?: boolean
-}
-reactTestGlobals.IS_REACT_ACT_ENVIRONMENT = true
 
 function RerenderingEditor({
   onHandledVersion,
@@ -81,8 +52,8 @@ function RerenderingEditor({
 }
 
 describe('CodeBlockEditor component', () => {
-  after(() => {
-    domWindow.close()
+  after(async () => {
+    await resetSharedDomWindow()
   })
 
   test('keeps the CodeMirror view mounted when parent rerenders with a new keydown callback', async () => {

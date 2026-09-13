@@ -19,37 +19,18 @@ For commercial licensing, please contact support@quantumnous.com
 import assert from 'node:assert/strict'
 import { after, describe, test } from 'node:test'
 
-import { Window } from 'happy-dom'
-
-const domWindow = new Window()
-const domGlobals = [
-  'window',
-  'document',
-  'navigator',
-  'HTMLElement',
-  'HTMLTextAreaElement',
-  'Node',
-  'Element',
-  'Event',
-  'CustomEvent',
-  'MutationObserver',
-  'requestAnimationFrame',
-  'cancelAnimationFrame',
-  'getComputedStyle',
-] as const
-
-for (const key of domGlobals) {
-  Object.defineProperty(globalThis, key, {
-    configurable: true,
-    value: domWindow[key],
-  })
-}
+import { resetSharedDomWindow } from '@/test-utils/happy-dom-env'
 
 const { act } = await import('react')
 const { createRoot } = await import('react-dom/client')
-const i18next = (await import('i18next')).default
-const { initReactI18next } = await import('react-i18next')
-await i18next.use(initReactI18next).init({
+const { createInstance } = await import('i18next')
+const { I18nextProvider, initReactI18next } = await import('react-i18next')
+
+// Use a file-local i18next instance rather than the module singleton: under
+// `bun test` every file shares one process, and re-initializing the default
+// instance leaks translations (and init order) across suites.
+const i18n = createInstance()
+await i18n.use(initReactI18next).init({
   lng: 'en',
   resources: {
     en: {
@@ -64,11 +45,6 @@ await i18next.use(initReactI18next).init({
   },
 })
 const { JsonCodeEditor } = await import('../../json-code-editor')
-const reactTestGlobals = globalThis as typeof globalThis & {
-  IS_REACT_ACT_ENVIRONMENT?: boolean
-}
-reactTestGlobals.IS_REACT_ACT_ENVIRONMENT = true
-
 type RenderedEditor = {
   container: HTMLDivElement
   root: ReturnType<typeof createRoot>
@@ -82,7 +58,11 @@ async function renderEditor(
   const root = createRoot(container)
 
   await act(async () => {
-    root.render(<JsonCodeEditor {...props} />)
+    root.render(
+      <I18nextProvider i18n={i18n}>
+        <JsonCodeEditor {...props} />
+      </I18nextProvider>
+    )
   })
 
   return { container, root }
@@ -94,8 +74,8 @@ async function unmountEditor(rendered: RenderedEditor) {
 }
 
 describe('JsonCodeEditor component', () => {
-  after(() => {
-    domWindow.close()
+  after(async () => {
+    await resetSharedDomWindow()
   })
 
   test('forwards form attributes and lifecycle callbacks to the textarea', async () => {
@@ -150,10 +130,12 @@ describe('JsonCodeEditor component', () => {
 
     await act(async () => {
       rendered.root.render(
-        <JsonCodeEditor
-          value='{"count":3}'
-          onChange={(value) => changes.push(value)}
-        />
+        <I18nextProvider i18n={i18n}>
+          <JsonCodeEditor
+            value='{"count":3}'
+            onChange={(value) => changes.push(value)}
+          />
+        </I18nextProvider>
       )
     })
     assert.equal(textarea.value, '{"count":3}')
