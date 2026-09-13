@@ -1,16 +1,26 @@
-import { describe, expect, it } from 'bun:test'
+import { beforeAll, describe, expect, it } from 'bun:test'
 import {
-  SPORE_LABEL,
   SPORE_UNITS_PER_SPORE,
   formatSpore,
+  getSporeName,
   parseSporeToUnits,
   sporeUnitsToValue,
 } from './spore'
+import { DEFAULT_CURRENCY_CONFIG, useSystemConfigStore } from '@/stores/system-config-store'
 
 describe('spore currency helpers', () => {
-  it('defines 10 units per spore', () => {
+  beforeAll(() => {
+    useSystemConfigStore.getState().setConfig({
+      currency: {
+        ...DEFAULT_CURRENCY_CONFIG,
+        sporeName: '孢子',
+      },
+    })
+  })
+
+  it('defines 10 units per spore and reads the configured display name', () => {
     expect(SPORE_UNITS_PER_SPORE).toBe(10)
-    expect(SPORE_LABEL).toBe('菌种')
+    expect(getSporeName()).toBe('孢子')
   })
 
   it('formats internal integer units to 1 decimal place string', () => {

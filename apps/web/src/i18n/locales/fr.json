@@ -5952,6 +5952,13 @@
     "Zero retention": "Aucune rétention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Spore Name": "Spore Name",
+    "Inviter Spore Reward": "Inviter Spore Reward",
+    "e.g. 菌种, Spore": "e.g. 菌种, Spore",
+    "Display name of the voucher currency granted by admins and usable on plans.": "Display name of the voucher currency granted by admins and usable on plans.",
+    "{{label}} granted to the inviter for each successful invite, on top of the quota rewards. 0 disables it.": "{{label}} granted to the inviter for each successful invite, on top of the quota rewards. 0 disables it.",
+    "Spore name must be at most 20 characters": "Spore name must be at most 20 characters",
+    "Spore": "Spore"
   }
 }

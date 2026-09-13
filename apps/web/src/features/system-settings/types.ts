@@ -296,6 +296,8 @@ export type BillingSettings = {
   'general_setting.custom_currency_exchange_rate': number
   'general_setting.amount_name'?: string
   'general_setting.amount_unit'?: string
+  'general_setting.spore_name'?: string
+  SporeInviterReward?: number
   DisplayInCurrencyEnabled: boolean
   DisplayTokenStatEnabled: boolean
   ModelPrice: string

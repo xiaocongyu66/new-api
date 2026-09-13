@@ -426,17 +426,21 @@ func inviteUser(inviterId int) error {
 	return nil
 }
 
-const InviterSporeRewardUnits int64 = 1
-
+// rewardInviterSpore 按后台配置发放邀请菌种奖励（common.SporeInviterRewardTenths，
+// 0 = 关闭）。沿用旧硬编码行为：失败仅记日志，不阻塞邀请流程。
 func rewardInviterSpore(inviterId int) {
 	if inviterId == 0 {
 		return
 	}
-	if err := IncreaseUserSpore(inviterId, InviterSporeRewardUnits); err != nil {
+	tenths := common.SporeInviterRewardTenths
+	if tenths <= 0 {
+		return
+	}
+	if err := IncreaseUserSpore(inviterId, tenths); err != nil {
 		common.SysError(fmt.Sprintf("发放开拓奖励菌种失败: inviter=%d err=%s", inviterId, err.Error()))
 		return
 	}
-	writeSystemLog(inviterId, "开拓奖励")
+	writeSystemLog(inviterId, fmt.Sprintf("开拓奖励 %s", FormatSpore(tenths)))
 }
 
 func (user *User) TransferAffQuotaToQuota(quota int) error {

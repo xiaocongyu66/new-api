@@ -73,7 +73,12 @@ const createPricingSchema = (t: (key: string) => string) =>
           .optional(),
         amount_name: z.string().max(20, t('Amount name must be at most 20 characters')).optional(),
         amount_unit: z.enum(['usd', 'cny', 'custom']).optional(),
+        spore_name: z
+          .string()
+          .max(20, t('Spore name must be at most 20 characters'))
+          .optional(),
       }),
+      SporeInviterReward: z.coerce.number().min(0).optional(),
     })
     .superRefine((data, ctx) => {
       const displayType = data.general_setting.quota_display_type
@@ -314,6 +319,63 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
                 )}
               />
             )}
+
+            <FormField
+              control={form.control}
+              name='general_setting.spore_name'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Spore Name')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='text'
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                      maxLength={20}
+                      placeholder={t('e.g. 菌种, Spore')}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Display name of the voucher currency granted by admins and usable on plans.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='SporeInviterReward'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Inviter Spore Reward')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={0}
+                      step={0.1}
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      '{{label}} granted to the inviter for each successful invite, on top of the quota rewards. 0 disables it.',
+                      { label: form.watch('general_setting.spore_name') || t('Spore') }
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             {displayType !== 'TOKENS' && (
               <FormField

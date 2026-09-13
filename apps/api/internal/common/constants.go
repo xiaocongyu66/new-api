@@ -124,6 +124,8 @@ var TelegramBotName = ""
 var QuotaForNewUser = 0
 var QuotaForInviter = 0
 var QuotaForInvitee = 0
+// SporeInviterRewardTenths 邀请者的菌种奖励，内部单位（1 = 0.1 菌种）。0 = 关闭。
+var SporeInviterRewardTenths = int64(1)
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false

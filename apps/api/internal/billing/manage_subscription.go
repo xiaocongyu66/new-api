@@ -586,6 +586,8 @@ type GeneralSetting struct {
 	AmountName string `json:"amount_name"`
 	// 支付金额单位：usd($) / cny(¥) / custom(自定义名称)。空历史值按 usd 处理。
 	AmountUnit string `json:"amount_unit"`
+	// 菌种（凭证货币）显示名称，独立于金额与消费货币符号。
+	SporeName string `json:"spore_name"`
 }
 
 // 默认配置
@@ -597,6 +599,7 @@ var generalSetting = GeneralSetting{
 	CustomCurrencyExchangeRate: 1.0,
 	AmountName:                 "",
 	AmountUnit:                 "usd",
+	SporeName:                  "菌种",
 }
 
 func init() {
@@ -616,6 +619,14 @@ func (g *GeneralSetting) AmountUnitEffective() string {
 		return g.AmountUnit
 	}
 	return "usd"
+}
+
+// GetSporeName 返回菌种显示名称，空值回落到默认「菌种」。
+func GetSporeName() string {
+	if name := strings.TrimSpace(generalSetting.SporeName); name != "" {
+		return name
+	}
+	return "菌种"
 }
 
 // IsCurrencyDisplay 是否以货币形式展示（美元或人民币）

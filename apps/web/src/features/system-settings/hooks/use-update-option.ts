@@ -38,7 +38,8 @@ const STATUS_RELATED_KEYS = new Set([
   'general_setting.custom_currency_exchange_rate',
   'general_setting.amount_name',
   'general_setting.amount_unit',
-  'oidc.display_name',
+  'general_setting.spore_name',
+  'SporeInviterReward',
 ])
 
 export function useUpdateOption() {

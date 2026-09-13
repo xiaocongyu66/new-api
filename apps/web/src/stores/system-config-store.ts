@@ -47,6 +47,8 @@ export interface CurrencyConfig {
    * 'custom' (uses amountName). Empty historical values are treated as 'usd'.
    */
   amountUnit?: 'usd' | 'cny' | 'custom'
+  /** Display name of the voucher (spore) currency, from /api/status spore_name */
+  sporeName?: string
 }
 
 export interface SystemConfig {
@@ -67,6 +69,7 @@ export const DEFAULT_CURRENCY_CONFIG: CurrencyConfig = {
   customCurrencyExchangeRate: 1,
   amountName: '',
   amountUnit: 'usd',
+  sporeName: '',
 }
 
 interface SystemConfigState {

@@ -37,7 +37,7 @@ import { Separator } from '@/components/ui/separator'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { formatQuota } from '@/lib/format'
 import { getAmountSymbol } from '@/lib/currency'
-import { SPORE_LABEL, formatSpore } from '@/lib/spore'
+import { formatSpore, getSporeName } from '@/lib/spore'
 import { DEFAULT_CURRENCY_CONFIG } from '@/stores/system-config-store'
 import {
   paySubscriptionStripe,
@@ -128,9 +128,9 @@ export function SubscriptionPurchaseDialog(props: Props) {
     (props.purchaseCount || 0) >= (props.purchaseLimit || 0)
   let payButtonLabel: string = t('Pay with Balance')
   if (needSpore && !needBalance) {
-    payButtonLabel = t('Pay with {{label}}', { label: SPORE_LABEL })
+    payButtonLabel = t('Pay with {{label}}', { label: getSporeName() })
   } else if (needBalance && needSpore) {
-    payButtonLabel = t('Pay with balance and {{label}}', { label: SPORE_LABEL })
+    payButtonLabel = t('Pay with balance and {{label}}', { label: getSporeName() })
   }
   const handlePayStripe = async () => {
     setPaying(true)
@@ -357,7 +357,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
                 : [
                     needBalance ? `${getAmountSymbol()}${price}` : '',
                     needSpore
-                      ? `${formatSpore(sporeCost)} ${SPORE_LABEL}`
+                      ? `${formatSpore(sporeCost)} ${getSporeName()}`
                       : '',
                   ]
                     .filter(Boolean)
@@ -394,7 +394,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
                 )}
               {needSpore &&
                 renderCostRow(
-                  SPORE_LABEL,
+                  getSporeName(),
                   formatSpore(sporeCost),
                   formatSpore(userSpore)
                 )}
@@ -409,7 +409,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
               {needSpore && insufficientSpore && (
                 <Alert variant='destructive'>
                   <AlertDescription>
-                    {t('Insufficient {{label}}', { label: SPORE_LABEL })}
+                    {t('Insufficient {{label}}', { label: getSporeName() })}
                   </AlertDescription>
                 </Alert>
               )}
@@ -428,7 +428,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
                     onClick={() => handlePayInSite('spore')}
                     disabled={paying || limitReached || insufficientSpore}
                   >
-                    {t('Pay with {{label}}', { label: SPORE_LABEL })}
+                    {t('Pay with {{label}}', { label: getSporeName() })}
                   </Button>
                 </div>
               ) : (

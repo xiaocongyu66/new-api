@@ -74,6 +74,7 @@ func GetStatus(c contract.Context) {
 		"custom_currency_exchange_rate": billing.GetGeneralSetting().CustomCurrencyExchangeRate,
 		"amount_name":                   billing.GetGeneralSetting().AmountName,
 		"amount_unit":                   billing.GetGeneralSetting().AmountUnitEffective(),
+		"spore_name":                    billing.GetSporeName(),
 		"enable_batch_update":           common.BatchUpdateEnabled,
 		"enable_drawing":                common.DrawingEnabled,
 		"enable_task":                   common.TaskEnabled,

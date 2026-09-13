@@ -106,7 +106,9 @@ const BILLING_SECTIONS = [
               settings['general_setting.amount_unit'] === 'custom'
                 ? settings['general_setting.amount_unit']
                 : 'usd',
+            spore_name: settings['general_setting.spore_name'] ?? '菌种',
           },
+          SporeInviterReward: settings.SporeInviterReward ?? 0.1,
         }}
       />
     ),

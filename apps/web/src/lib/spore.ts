@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useSystemConfigStore } from '@/stores/system-config-store'
 
 /**
  * 菌种（spore）——由管理员发放的特殊货币，可在套餐页消费。
@@ -28,8 +29,16 @@ For commercial licensing, please contact support@quantumnous.com
 /** 1 菌种对应的内部整数单位数。最小可操作单位是 0.1 菌种。 */
 export const SPORE_UNITS_PER_SPORE = 10
 
-/** 菌种的展示名，集中在此以便将来改名时只动一处。 */
-export const SPORE_LABEL = '菌种'
+/**
+ * 菌种的展示名。后台「货币与展示」面板可配置（/api/status 的 spore_name），
+ * 空值回落到默认「菌种」。
+ */
+export function getSporeName(): string {
+  const name = useSystemConfigStore
+    .getState()
+    .config.currency.sporeName?.trim()
+  return name || '菌种'
+}
 
 /**
  * 把内部整数单位格式化为展示文本，固定一位小数。

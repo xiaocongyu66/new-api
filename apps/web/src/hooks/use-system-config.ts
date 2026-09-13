@@ -49,6 +49,7 @@ interface StatusApiResponse {
     custom_currency_exchange_rate?: number
     amount_name?: string
     amount_unit?: string
+    spore_name?: string
   }
 }
 
@@ -97,6 +98,7 @@ export function mapStatusDataToConfig(
       data.amount_unit === 'cny' || data.amount_unit === 'custom'
         ? data.amount_unit
         : 'usd',
+    sporeName: data.spore_name?.trim() ?? '',
   }
 
   return {

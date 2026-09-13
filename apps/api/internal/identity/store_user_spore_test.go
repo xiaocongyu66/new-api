@@ -3,6 +3,7 @@ package identity
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -90,6 +91,9 @@ func TestRewardInviterSpore(t *testing.T) {
 	setupUserStoreTestDB(t)
 	RegisterAuditHooks(func(int, string) {}, nil, nil, nil)
 
+	previous := common.SporeInviterRewardTenths
+	t.Cleanup(func() { common.SporeInviterRewardTenths = previous })
+
 	inviter := &User{
 		Id:       200,
 		Username: "inviter-user",
@@ -98,11 +102,19 @@ func TestRewardInviterSpore(t *testing.T) {
 	}
 	require.NoError(t, dbx.DB.Create(inviter).Error)
 
-	// Reward inviter
+	// Reward inviter: 3 tenths (0.3 spore) per configuration.
+	common.SporeInviterRewardTenths = 3
 	rewardInviterSpore(inviter.Id)
 	spore, err := GetUserSpore(inviter.Id)
 	require.NoError(t, err)
-	assert.Equal(t, InviterSporeRewardUnits, spore, "inviter must receive 0.1 spore units on successful invite")
+	assert.Equal(t, int64(3), spore, "inviter must receive the configured spore reward")
+
+	// Zero configuration disables the reward.
+	common.SporeInviterRewardTenths = 0
+	rewardInviterSpore(inviter.Id)
+	spore, err = GetUserSpore(inviter.Id)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), spore, "zero reward must not change the balance")
 
 	// Nil inviter id does nothing
 	rewardInviterSpore(0)

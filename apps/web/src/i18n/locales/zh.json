@@ -5952,6 +5952,13 @@
     "Zero retention": "零数据保留",
     "Zhipu": "智谱",
     "Zhipu V4": "智谱 V4",
-    "Zoom": "缩放"
+    "Zoom": "缩放",
+    "Spore Name": "菌种名称",
+    "Inviter Spore Reward": "邀请菌种奖励",
+    "e.g. 菌种, Spore": "例如：菌种、孢子",
+    "Display name of the voucher currency granted by admins and usable on plans.": "凭证货币的显示名称，由管理员发放、可用于购买套餐。",
+    "{{label}} granted to the inviter for each successful invite, on top of the quota rewards. 0 disables it.": "每成功邀请一位用户，额外发放给邀请人的{{label}}数量（与额度奖励并行）。0 为关闭。",
+    "Spore name must be at most 20 characters": "菌种名称最多 20 个字符",
+    "Spore": "菌种"
   }
 }

@@ -39,6 +39,8 @@ const defaultBillingSettings: BillingSettings = {
   'general_setting.custom_currency_exchange_rate': 1,
   'general_setting.amount_name': '',
   'general_setting.amount_unit': 'usd',
+  'general_setting.spore_name': '菌种',
+  SporeInviterReward: 0.1,
   DisplayInCurrencyEnabled: true,
   DisplayTokenStatEnabled: true,
   ModelPrice: '',
