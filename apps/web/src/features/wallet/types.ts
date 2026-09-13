@@ -242,6 +242,8 @@ export interface UserWalletData {
   aff_count: number
   /** User group */
   group: string
+  /** Spore balance in internal units (1 = 0.1 spore); see @/lib/spore */
+  spore: number
 }
 
 /**
