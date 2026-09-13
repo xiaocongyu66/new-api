@@ -4,7 +4,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/common/quotacache"
 	"github.com/QuantumNous/new-api/internal/identity"
@@ -73,16 +72,16 @@ func AwardQQDrop(userId int, openID, groupOpenID string, quota int, dailyLimit i
 		CreatedAt:    time.Now().Unix(),
 	}
 
-	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
-		return awardQQDropWithoutTransaction(drop, userId, quota, dailyLimit)
-	}
-	return awardQQDropWithTransaction(drop, userId, quota, dailyLimit)
-}
-
-// awardQQDropWithTransaction MySQL / PostgreSQL 走事务
-func awardQQDropWithTransaction(drop *QQDrop, userId, quota, dailyLimit int) (*QQDrop, error) {
+	// 三种数据库统一走事务。MySQL / PostgreSQL 靠用户行锁串行化同一用户的并发发放；
+	// SQLite 上 dbx.LockForUpdate 是空操作，但事务本身的读写互斥保证并发事务
+	// 只有一个能提交（见 dbx.LockForUpdate 注释），失败的这次掉落自然顺延给下一个人。
 	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
 		if dailyLimit > 0 {
+			// 先锁住这条用户行再计数：先查后插会留下竞态窗口，
+			// 两笔并发发放可能都看到 count < dailyLimit 然后双双写入。
+			if err := dbx.LockForUpdate(tx).First(&identity.User{}, userId).Error; err != nil {
+				return err
+			}
 			var count int64
 			if err := tx.Model(&QQDrop{}).
 				Where("user_id = ? AND drop_date = ?", userId, drop.DropDate).
@@ -106,27 +105,6 @@ func awardQQDropWithTransaction(drop *QQDrop, userId, quota, dailyLimit int) (*Q
 	go func() {
 		_ = quotacache.IncrUser(userId, int64(quota))
 	}()
-	return drop, nil
-}
-
-// awardQQDropWithoutTransaction SQLite 无事务路径
-func awardQQDropWithoutTransaction(drop *QQDrop, userId, quota, dailyLimit int) (*QQDrop, error) {
-	if dailyLimit > 0 {
-		count, err := CountQQDropsToday(userId)
-		if err != nil {
-			return nil, err
-		}
-		if count >= dailyLimit {
-			return nil, errDropLimitReached
-		}
-	}
-	if err := dbx.DB.Create(drop).Error; err != nil {
-		return nil, err
-	}
-	if err := identity.IncreaseUserQuota(userId, quota, true); err != nil {
-		dbx.DB.Delete(drop)
-		return nil, err
-	}
 	return drop, nil
 }
 
