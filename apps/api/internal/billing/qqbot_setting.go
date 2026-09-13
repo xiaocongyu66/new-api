@@ -90,6 +90,13 @@ type QQBotSetting struct {
 	// RecallDelaySeconds 失败回复发出多少秒后撤回，默认 10 秒。
 	RecallDelaySeconds int `json:"recall_delay_seconds"`
 
+	// RecallPolicies 按内容类型配置自动撤回秒数的 JSON 映射，形如
+	// {"drop_award":30,"checkin_fail":10}。0 或缺失的类型不撤回；
+	// 留空（或 {}）时回落到旧行为：仅失败提示受 recall_failed_messages 开关控制。
+	// 有效类型清单与对应回复点见 qqbot_recall.go。
+	// 注意：撤回只对主动消息生效，命中撤回策略的类型会改走主动消息通道发送。
+	RecallPolicies string `json:"recall_policies"`
+
 	// AdminOpenIDs 逗号分隔的 openid 白名单：只有名单内的用户可以调用
 	// /余额、/封禁 等管理员指令。为空则禁用所有管理员指令。
 	AdminOpenIDs string `json:"admin_open_ids"`
@@ -112,6 +119,7 @@ var qqBotSetting = QQBotSetting{
 	CommandCooldownSeconds: 0,
 	RecallFailedMessages:   false,
 	RecallDelaySeconds:     10,
+	RecallPolicies:         "",
 	AdminOpenIDs:           "",
 
 	CheckinDisabledGroups: "",

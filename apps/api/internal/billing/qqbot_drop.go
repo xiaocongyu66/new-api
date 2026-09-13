@@ -426,7 +426,7 @@ func HandleGroupChatForDrop(event *GroupAtMessageEvent) {
 		fmt.Sprintf("QQ 群聊掉落，获得额度 %s", logger.LogQuota(drop.QuotaAwarded)))
 
 	content := renderDropMessage(openID, drop.QuotaAwarded, balance)
-	if err := replyGroupMarkdown(
+	if err := replyGroupMarkdown(RecallKindDropAward,
 		event.GroupOpenID, event.ID, "", content, nil, 1); err != nil {
 		common.SysError("发送掉落消息失败: " + err.Error())
 	}
