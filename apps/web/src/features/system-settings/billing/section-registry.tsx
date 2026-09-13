@@ -253,6 +253,10 @@ const BILLING_SECTIONS = [
             settings['qq_bot_setting.drop_daily_limit'] ?? 3,
           'qq_bot_setting.drop_template':
             settings['qq_bot_setting.drop_template'] ?? '',
+          'qq_bot_setting.drop_balance_anchor':
+            settings['qq_bot_setting.drop_balance_anchor'] ?? 0,
+          'qq_bot_setting.drop_daily_guarantee':
+            settings['qq_bot_setting.drop_daily_guarantee'] ?? 0,
           'qq_bot_setting.transfer_enabled':
             settings['qq_bot_setting.transfer_enabled'] ?? false,
           'qq_bot_setting.transfer_disabled_groups':
@@ -283,6 +287,18 @@ const BILLING_SECTIONS = [
             settings['qq_bot_setting.red_packet_expire_seconds'] ?? 86400,
           'qq_bot_setting.red_packet_allow_own_grab':
             settings['qq_bot_setting.red_packet_allow_own_grab'] ?? false,
+          'qq_bot_setting.steal_enabled':
+            settings['qq_bot_setting.steal_enabled'] ?? false,
+          'qq_bot_setting.steal_success_rate':
+            settings['qq_bot_setting.steal_success_rate'] ?? 50,
+          'qq_bot_setting.steal_min_amount':
+            settings['qq_bot_setting.steal_min_amount'] ?? 0.1,
+          'qq_bot_setting.steal_max_amount':
+            settings['qq_bot_setting.steal_max_amount'] ?? 0.5,
+          'qq_bot_setting.steal_daily_limit':
+            settings['qq_bot_setting.steal_daily_limit'] ?? 3,
+          'qq_bot_setting.steal_recipient_grace_seconds':
+            settings['qq_bot_setting.steal_recipient_grace_seconds'] ?? 0,
           'qq_bot_setting.command_cooldown_seconds':
             settings['qq_bot_setting.command_cooldown_seconds'] ?? 0,
           'qq_bot_setting.recall_failed_messages':

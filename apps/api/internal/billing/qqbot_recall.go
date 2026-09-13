@@ -15,7 +15,7 @@ import (
 // 的主动消息，带 msg_id/event_id 的被动回复无法撤回），会占用主动消息配额，
 // 建议只对低频提示开启。
 //
-// 11 种可撤回内容类型，各自固定的回复点：
+// 12 种可撤回内容类型，各自固定的回复点：
 //
 //	RecallKindDropAward      drop_award      群聊掉落奖励文案（qqbot_drop.go HandleGroupChatForDrop）
 //	RecallKindCheckinSuccess checkin_success 签到成功文案（doCheckinForOpenID 成功分支）
@@ -27,6 +27,7 @@ import (
 //	RecallKindBindSuccess    bind_success    绑定成功提示（HandleGroupAtMessage）
 //	RecallKindBindFail       bind_fail       绑定失败提示（HandleGroupAtMessage）
 //	RecallKindDropCommand    drop_command    /开启掉落 等掉落开关指令回复（HandleGroupAtMessage）
+//	RecallKindStealSuccess   steal_success   偷奶酪成功文案（HandleStealCommand 回复，qqbot_service.go）
 //	RecallKindFailureNotice  failure_notice  isFailureReply 按内容识别的失败提示（旧行为，兜底）
 const (
 	RecallKindDropAward      = "drop_award"
@@ -39,6 +40,7 @@ const (
 	RecallKindBindSuccess    = "bind_success"
 	RecallKindBindFail       = "bind_fail"
 	RecallKindDropCommand    = "drop_command"
+	RecallKindStealSuccess   = "steal_success"
 	RecallKindFailureNotice  = "failure_notice"
 )
 

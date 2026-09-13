@@ -558,6 +558,14 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 		return
 	}
 
+	if isStealCommand(content) {
+		reply := HandleStealCommand(event, openID)
+		if err := replyGroupMarkdown(RecallKindStealSuccess, event.GroupOpenID, event.ID, "", reply, nil, 1); err != nil {
+			common.SysError("回复偷奶酪指令失败: " + err.Error())
+		}
+		return
+	}
+
 	switch {
 	case isCheckinCommand(content):
 		// 本群签到被单独关闭时直接回绝，不影响其他群与网页签到
