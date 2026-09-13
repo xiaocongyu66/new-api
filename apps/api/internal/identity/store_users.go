@@ -96,6 +96,7 @@ type User struct {
 	Quota            int                        `json:"quota" gorm:"type:int;default:0"`
 	UsedQuota        int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
 	RequestCount     int                        `json:"request_count" gorm:"type:int;default:0;"`               // request number
+	Spore            int64                      `json:"spore" gorm:"type:bigint;not null;default:0;column:spore"`
 	Group            string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
 	AffCode          string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
 	AffCount         int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
@@ -425,6 +426,19 @@ func inviteUser(inviterId int) error {
 	return nil
 }
 
+const InviterSporeRewardUnits int64 = 1
+
+func rewardInviterSpore(inviterId int) {
+	if inviterId == 0 {
+		return
+	}
+	if err := IncreaseUserSpore(inviterId, InviterSporeRewardUnits); err != nil {
+		common.SysError(fmt.Sprintf("发放开拓奖励菌种失败: inviter=%d err=%s", inviterId, err.Error()))
+		return
+	}
+	writeSystemLog(inviterId, "开拓奖励")
+}
+
 func (user *User) TransferAffQuotaToQuota(quota int) error {
 	// 检查quota是否小于最小额度
 	if float64(quota) < common.QuotaPerUnit {
@@ -568,6 +582,7 @@ func (user *User) finishInsert(inviterId int) {
 			_ = inviteUser(inviterId)
 		}
 	}
+	rewardInviterSpore(inviterId)
 }
 
 func (user *User) FinishInsert(inviterId int) {
@@ -624,6 +639,7 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 			_ = inviteUser(inviterId)
 		}
 	}
+	rewardInviterSpore(inviterId)
 }
 
 func (user *User) Update(updatePassword bool) error {
