@@ -427,7 +427,9 @@ func inviteUser(inviterId int) error {
 }
 
 // rewardInviterSpore 按后台配置发放邀请菌种奖励（common.SporeInviterRewardTenths，
-// 0 = 关闭）。沿用旧硬编码行为：失败仅记日志，不阻塞邀请流程。
+// 0 = 关闭）。沿用原实现（model/user_spore.go）的口径：每次成功邀请一条
+// 内容恰为「开拓奖励」的用户可见日志——运营靠这个固定串对账漏发，
+// 不要往里面拼数量。
 func rewardInviterSpore(inviterId int) {
 	if inviterId == 0 {
 		return
@@ -440,7 +442,7 @@ func rewardInviterSpore(inviterId int) {
 		common.SysError(fmt.Sprintf("发放开拓奖励菌种失败: inviter=%d err=%s", inviterId, err.Error()))
 		return
 	}
-	writeSystemLog(inviterId, fmt.Sprintf("开拓奖励 %s", FormatSpore(tenths)))
+	writeSystemLog(inviterId, "开拓奖励")
 }
 
 func (user *User) TransferAffQuotaToQuota(quota int) error {

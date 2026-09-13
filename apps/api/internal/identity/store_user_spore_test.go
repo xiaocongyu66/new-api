@@ -89,7 +89,12 @@ func TestUserSporeOperations(t *testing.T) {
 
 func TestRewardInviterSpore(t *testing.T) {
 	setupUserStoreTestDB(t)
-	RegisterAuditHooks(func(int, string) {}, nil, nil, nil)
+	var logContents []string
+	RegisterAuditHooks(func(userId int, content string) {
+		if userId == 200 {
+			logContents = append(logContents, content)
+		}
+	}, nil, nil, nil)
 
 	previous := common.SporeInviterRewardTenths
 	t.Cleanup(func() { common.SporeInviterRewardTenths = previous })
@@ -108,6 +113,8 @@ func TestRewardInviterSpore(t *testing.T) {
 	spore, err := GetUserSpore(inviter.Id)
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), spore, "inviter must receive the configured spore reward")
+	// 原实现契约：每次邀请恰好一条内容为「开拓奖励」的日志（运营对账串，不拼数量）。
+	assert.Equal(t, []string{"开拓奖励"}, logContents, "exactly one 开拓奖励 log per invite")
 
 	// Zero configuration disables the reward.
 	common.SporeInviterRewardTenths = 0
