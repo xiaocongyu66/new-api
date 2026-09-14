@@ -1,10 +1,30 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 /**
- * 品牌插图 — 一块奶酪切片。
+ * Brand illustration — a wedge of cheese.
  *
- * 纯内联 SVG 即可无需额外请求，并且继承当前主题（通过 Tailwind 颜色工具类，
- * 调色板的 amber 家族映射到 `styles/theme.css` 中的 cheese 系金 anchors）。
+ * Pure inline SVG so it costs no extra request and inherits the active
+ * theme through Tailwind color utilities (the palette's amber family maps
+ * onto the cheese gold anchors in `styles/theme.css`).
  *
- * 运动来自 `cheese-*` 类，它们在 `prefers-reduced-motion: reduce` 下自动关闭。
+ * Motion comes from the `cheese-*` classes in `styles/index.css`, all of
+ * which collapse to no-ops under `prefers-reduced-motion: reduce`.
  */
 export function CheeseArt(props: { className?: string }) {
   return (
@@ -17,8 +37,9 @@ export function CheeseArt(props: { className?: string }) {
       <div
         aria-hidden
         className='cheese-aurora absolute inset-0 -z-10 rounded-full opacity-60 blur-3xl dark:opacity-30'
-        style={{ 
-          background: 'radial-gradient(circle at center, rgba(251, 146, 60, 0.5), transparent 70%)'
+        style={{
+          background:
+            'radial-gradient(circle at 50% 55%, oklch(0.85 0.16 85 / 65%), transparent 70%)',
         }}
       />
       <svg
@@ -28,81 +49,170 @@ export function CheeseArt(props: { className?: string }) {
         xmlns='http://www.w3.org/2000/svg'
       >
         <defs>
-          {/* Soft rim glow. A feSpecularLighting/fePointLight pair renders the
-           * same idea, but React's SVG typings reject fePointLight as a child,
-           * and the visual difference here is negligible. */}
-          <filter id='cheeseShine' x='-20%' y='-20%' width='140%' height='140%'>
-            <feGaussianBlur in='SourceAlpha' stdDeviation='4' result='blurred' />
-            <feOffset dy='-2' in='blurred' result='lifted' />
-            <feComposite
-              in='lifted'
-              in2='SourceAlpha'
-              operator='out'
-              result='rim'
-            />
-            <feMerge>
-              <feMergeNode in='SourceGraphic' />
-              <feMergeNode in='rim' />
-            </feMerge>
-          </filter>
+          <linearGradient id='cheese-face' x1='70' y1='80' x2='280' y2='250'>
+            <stop offset='0%' stopColor='oklch(0.93 0.12 92)' />
+            <stop offset='55%' stopColor='oklch(0.86 0.16 85)' />
+            <stop offset='100%' stopColor='oklch(0.77 0.16 72)' />
+          </linearGradient>
+          <linearGradient id='cheese-top' x1='70' y1='60' x2='280' y2='120'>
+            <stop offset='0%' stopColor='oklch(0.96 0.08 95)' />
+            <stop offset='100%' stopColor='oklch(0.89 0.13 88)' />
+          </linearGradient>
         </defs>
 
         {/* Ground shadow */}
         <ellipse
           cx='180'
-          cy='290'
-          rx='140'
-          ry='12'
-          fill='rgba(0, 0, 0, 0.2)'
+          cy='276'
+          rx='128'
+          ry='13'
+          className='fill-amber-900/10 dark:fill-amber-950/40'
         />
 
         {/* Wedge: top rind plane + front face, drawn as a simple
             two-plane solid so it reads as 3D without a mesh. */}
         <path
-          d='M90,210 L270,210 L270,120 C270,90 180,20 90,120 Z'
-          fill='currentColor'
-          className='text-amber-500 dark:text-amber-400'
+          d='M60 96 L246 52 L300 92 L104 140 Z'
+          fill='url(#cheese-top)'
+          className='stroke-amber-600/60 dark:stroke-amber-700'
+          strokeWidth='5'
+          strokeLinejoin='round'
         />
-
         <path
-          d='M90,120 L180,60 L270,120'
-          fill='currentColor'
-          className='text-amber-600 dark:text-amber-500'
+          d='M60 96 L104 140 L104 236 L60 196 Z'
+          fill='url(#cheese-face)'
+          className='stroke-amber-600/60 dark:stroke-amber-700'
+          strokeWidth='5'
+          strokeLinejoin='round'
+        />
+        <path
+          d='M104 140 L300 92 L300 190 L104 236 Z'
+          fill='url(#cheese-face)'
+          className='stroke-amber-600/60 dark:stroke-amber-700'
+          strokeWidth='5'
+          strokeLinejoin='round'
         />
 
         {/* Holes on the large front face. Each is a darker well plus a
             lighter inner disc so it reads as depth, not a flat dot. */}
         <g>
-          <circle cx='120' cy='150' r='15' fill='rgba(0,0,0,0.3)' />
-          <circle cx='120' cy='150' r='6' fill='rgba(255,255,255,0.5)' />
-          <circle cx='240' cy='130' r='12' fill='rgba(0,0,0,0.25)' />
-          <circle cx='240' cy='130' r='5' fill='rgba(255,255,255,0.4)' />
+          <ellipse
+            cx='166'
+            cy='170'
+            rx='23'
+            ry='19'
+            className='fill-amber-700/30 dark:fill-amber-900/45'
+          />
+          <ellipse
+            cx='166'
+            cy='167'
+            rx='18'
+            ry='14'
+            className='fill-amber-500/40 dark:fill-amber-600/40'
+          />
+          <ellipse
+            cx='248'
+            cy='146'
+            rx='16'
+            ry='13'
+            className='fill-amber-700/30 dark:fill-amber-900/45'
+          />
+          <ellipse
+            cx='248'
+            cy='143'
+            rx='12'
+            ry='9'
+            className='fill-amber-500/40 dark:fill-amber-600/40'
+          />
+          <ellipse
+            cx='198'
+            cy='215'
+            rx='15'
+            ry='12'
+            className='fill-amber-700/30 dark:fill-amber-900/45'
+          />
+          <ellipse
+            cx='198'
+            cy='212'
+            rx='11'
+            ry='8'
+            className='fill-amber-500/40 dark:fill-amber-600/40'
+          />
+          <circle
+            cx='272'
+            cy='176'
+            r='8'
+            className='fill-amber-700/30 dark:fill-amber-900/45'
+          />
+          <circle
+            cx='272'
+            cy='174'
+            r='6'
+            className='fill-amber-500/40 dark:fill-amber-600/40'
+          />
         </g>
 
         {/* A couple of holes cut into the narrow side face. */}
         <g>
-          <path
-            d='M100,130 L95,110 L105,110 Z'
-            fill='rgba(0,0,0,0.2)'
+          <ellipse
+            cx='82'
+            cy='168'
+            rx='9'
+            ry='13'
+            className='fill-amber-700/30 dark:fill-amber-900/45'
           />
-          <path
-            d='M100,140 L95,120 L105,120 Z'
-            fill='rgba(0,0,0,0.15)'
+          <ellipse
+            cx='82'
+            cy='166'
+            rx='6'
+            ry='9'
+            className='fill-amber-500/35 dark:fill-amber-600/35'
           />
         </g>
 
         {/* Highlight along the freshly cut top edge. */}
         <path
-          d='M100,120 L200,120 L190,90 L110,90 Z'
-          fill='rgba(255,255,255,0.3)'
-          filter='url(#cheeseShine)'
+          d='M60 96 L246 52 L252 58 L66 102 Z'
+          className='fill-white/45 dark:fill-white/12'
         />
 
         {/* Sparkles — the "fresh out of the fridge" wink. */}
         <g className='fill-amber-400/80 dark:fill-amber-300/80'>
-          <path d='M150,80 L152,75 L154,80 L152,85 Z' />
-          <path d='M180,70 L182,65 L184,70 L182,75 Z' />
-          <path d='M210,75 L212,70 L214,75 L212,80 Z' />
+          <circle
+            cx='318'
+            cy='68'
+            r='5'
+            className='cheese-twinkle'
+            style={{ animationDelay: '0ms' }}
+          />
+          <circle
+            cx='338'
+            cy='104'
+            r='3.5'
+            className='cheese-twinkle'
+            style={{ animationDelay: '600ms' }}
+          />
+          <circle
+            cx='36'
+            cy='72'
+            r='4'
+            className='cheese-twinkle'
+            style={{ animationDelay: '1200ms' }}
+          />
+          <circle
+            cx='300'
+            cy='232'
+            r='3'
+            className='cheese-twinkle'
+            style={{ animationDelay: '900ms' }}
+          />
+          <circle
+            cx='44'
+            cy='224'
+            r='3'
+            className='cheese-twinkle'
+            style={{ animationDelay: '1700ms' }}
+          />
         </g>
       </svg>
     </div>
