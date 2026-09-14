@@ -36,7 +36,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { formatQuota } from '@/lib/format'
-import { getAmountSymbol } from '@/lib/currency'
+import { formatPlanPrice } from '../../lib'
 import { formatSpore, getSporeName } from '@/lib/spore'
 import { DEFAULT_CURRENCY_CONFIG } from '@/stores/system-config-store'
 import {
@@ -352,16 +352,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
           <div className='flex items-center justify-between'>
             <span className='text-sm font-medium'>{t('Amount Due')}</span>
             <span className='text-primary text-lg font-bold'>
-              {isFree
-                ? t('Free')
-                : [
-                    needBalance ? `${getAmountSymbol()}${price}` : '',
-                    needSpore
-                      ? `${formatSpore(sporeCost)} ${getSporeName()}`
-                      : '',
-                  ]
-                    .filter(Boolean)
-                    .join(isEither ? ` ${t('or')} ` : ' + ')}
+              {isFree ? t('Free') : formatPlanPrice(plan, t)}
             </span>
           </div>
         </div>

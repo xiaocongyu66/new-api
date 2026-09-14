@@ -33,7 +33,16 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { getSporeName } from '@/lib/spore'
 import { formatQuota } from '@/lib/format'
 
 import { FormDirtyIndicator } from '../components/form-dirty-indicator'
@@ -55,6 +64,8 @@ const quotaSchema = z.object({
   PreConsumedQuota: z.coerce.number().min(0),
   QuotaForInviter: z.coerce.number().min(0),
   QuotaForInvitee: z.coerce.number().min(0),
+  SporeInviterReward: z.coerce.number().min(0).optional(),
+  InviterRewardCurrency: z.enum(['quota', 'spore']),
   TopUpLink: z.string(),
   general_setting: z.object({
     docs_link: z.string(),
@@ -184,32 +195,99 @@ export function QuotaSettingsSection({
 
             <FormField
               control={form.control}
-              name='QuotaForInviter'
+              name='InviterRewardCurrency'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('Inviter Reward')}</FormLabel>
-                  <FormControl>
-                    <Input
-                      type='number'
-                      value={field.value ?? ''}
-                      onChange={handleNumberChange(field.onChange)}
-                      name={field.name}
-                      onBlur={field.onBlur}
-                      ref={field.ref}
-                    />
-                  </FormControl>
+                  <FormLabel>{t('Inviter Reward Currency')}</FormLabel>
+                  <Select
+                    items={[
+                      { value: 'quota', label: t('Balance') },
+                      { value: 'spore', label: getSporeName() },
+                    ]}
+                    value={field.value}
+                    onValueChange={field.onChange}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue
+                          placeholder={t('Select reward currency')}
+                        />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent alignItemWithTrigger={false}>
+                      <SelectGroup>
+                        <SelectItem value='quota'>{t('Balance')}</SelectItem>
+                        <SelectItem value='spore'>{getSporeName()}</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
                   <FormDescription>
-                    {t(
-                      'Quota given to users who invite others ({{formattedQuota}})',
-                      {
-                        formattedQuota: formatQuotaInputValue(field.value),
-                      }
-                    )}
+                    {t('Currency granted to the inviter for each successful invite')}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
+
+            {form.watch('InviterRewardCurrency') === 'spore' ? (
+              <FormField
+                control={form.control}
+                name='SporeInviterReward'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Inviter Reward')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={0}
+                        step={0.1}
+                        value={field.value ?? ''}
+                        onChange={handleNumberChange(field.onChange)}
+                        name={field.name}
+                        onBlur={field.onBlur}
+                        ref={field.ref}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        '{{label}} granted to the inviter for each successful invite, credited instantly. 0 disables it.',
+                        { label: getSporeName() }
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : (
+              <FormField
+                control={form.control}
+                name='QuotaForInviter'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Inviter Reward')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        value={field.value ?? ''}
+                        onChange={handleNumberChange(field.onChange)}
+                        name={field.name}
+                        onBlur={field.onBlur}
+                        ref={field.ref}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Quota given to users who invite others ({{formattedQuota}})',
+                        {
+                          formattedQuota: formatQuotaInputValue(field.value),
+                        }
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <FormField
               control={form.control}

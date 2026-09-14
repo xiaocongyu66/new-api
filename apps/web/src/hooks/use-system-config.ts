@@ -50,6 +50,9 @@ interface StatusApiResponse {
     amount_name?: string
     amount_unit?: string
     spore_name?: string
+    spore_symbol?: string
+    spore_inviter_reward?: number
+    inviter_reward_currency?: string
   }
 }
 
@@ -99,6 +102,13 @@ export function mapStatusDataToConfig(
         ? data.amount_unit
         : 'usd',
     sporeName: data.spore_name?.trim() ?? '',
+    sporeSymbol: data.spore_symbol?.trim() ?? '',
+    sporeInviterReward: toNumber(
+      data.spore_inviter_reward,
+      0
+    ),
+    inviterRewardCurrency:
+      data.inviter_reward_currency === 'spore' ? 'spore' : 'quota',
   }
 
   return {

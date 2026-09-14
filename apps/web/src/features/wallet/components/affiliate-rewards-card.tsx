@@ -19,6 +19,15 @@ For commercial licensing, please contact support@quantumnous.com
 import { Share2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import {
+  SPORE_UNITS_PER_SPORE,
+  formatSpore,
+  getSporeName,
+  getSporeSymbol,
+} from '@/lib/spore'
+import { getCurrencyDisplay } from '@/lib/currency'
+import { useSystemConfigStore } from '@/stores/system-config-store'
+
 import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -45,6 +54,21 @@ export function AffiliateRewardsCard({
   loading,
 }: AffiliateRewardsCardProps) {
   const { t } = useTranslation()
+  const { sporeInviterReward, inviterRewardCurrency } =
+    useSystemConfigStore.getState().config.currency
+  // 邀请奖励货币互斥：图标与统计单位都跟随设置的货币——
+  // 菌种模式显示菌种符号/菌种数额，余额模式显示余额自定义符号/额度数额。
+  const paysSpore = inviterRewardCurrency === 'spore'
+  // 奖励数额 > 0 时才展示「每次邀请发放」说明行，避免宣传已关闭的奖励。
+  const showSporeLine = paysSpore && (sporeInviterReward ?? 0) > 0
+  // 卡片徽标：符号未配置时回落到 Share2 图标。
+  const { meta } = getCurrencyDisplay()
+  const sporeUnit = getSporeSymbol() || getSporeName()
+  const rewardSymbol = paysSpore
+    ? getSporeSymbol()
+    : meta.kind === 'tokens'
+      ? ''
+      : meta.symbol
   if (loading) {
     return (
       <Card data-card-hover='false' className='bg-muted/20 py-0'>
@@ -67,7 +91,13 @@ export function AffiliateRewardsCard({
       <CardContent className='grid gap-3 p-3 sm:gap-4 sm:p-4 lg:grid-cols-[minmax(200px,1fr)_minmax(180px,0.65fr)_minmax(280px,1fr)] lg:items-center'>
         <div className='flex min-w-0 items-center gap-2.5'>
           <IconBadge tone='chart-3'>
-            <Share2 />
+            {rewardSymbol ? (
+              <span aria-hidden='true' className='text-base leading-none'>
+                {rewardSymbol}
+              </span>
+            ) : (
+              <Share2 />
+            )}
           </IconBadge>
           <div className='min-w-0'>
             <h3 className='truncate text-sm font-semibold'>
@@ -78,13 +108,36 @@ export function AffiliateRewardsCard({
                 'Earn rewards when users join through your referral link. Transfer accumulated rewards to your balance anytime.'
               )}
             </p>
+            {showSporeLine && (
+              <p className='text-muted-foreground line-clamp-1 text-xs'>
+                {t(
+                  'Each successful invite instantly grants {{amount}} {{label}} to your voucher balance.',
+                  {
+                    amount: formatSpore(
+                      (sporeInviterReward ?? 0) * SPORE_UNITS_PER_SPORE
+                    ),
+                    label: getSporeName(),
+                  }
+                )}
+              </p>
+            )}
           </div>
         </div>
 
         <div className='grid grid-cols-3 gap-1.5 text-center'>
           {[
-            [t('Pending'), formatQuota(user?.aff_quota ?? 0)],
-            [t('Total Earned'), formatQuota(user?.aff_history_quota ?? 0)],
+            [
+              t('Pending'),
+              paysSpore
+                ? `${sporeUnit} ${formatSpore(0)}`
+                : formatQuota(user?.aff_quota ?? 0),
+            ],
+            [
+              t('Total Earned'),
+              paysSpore
+                ? `${sporeUnit} ${formatSpore(0)}`
+                : formatQuota(user?.aff_history_quota ?? 0),
+            ],
             [t('Invites'), String(user?.aff_count ?? 0)],
           ].map(([label, value]) => (
             <div key={label}>

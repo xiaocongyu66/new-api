@@ -146,6 +146,11 @@ export function UserSporeDialog({
                 <FormItem>
                   <FormLabel>{t('Mode')}</FormLabel>
                   <Select
+                    items={[
+                      { value: 'add', label: t('Add') },
+                      { value: 'subtract', label: t('Subtract') },
+                      { value: 'override', label: t('Override') },
+                    ]}
                     value={field.value}
                     onValueChange={(val) => {
                       field.onChange(val)

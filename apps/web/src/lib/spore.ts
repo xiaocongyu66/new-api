@@ -40,6 +40,13 @@ export function getSporeName(): string {
   return name || '菌种'
 }
 
+/** 菌种的自定义符号/图标，空值表示未配置。 */
+export function getSporeSymbol(): string {
+  return useSystemConfigStore
+    .getState()
+    .config.currency.sporeSymbol?.trim() ?? ''
+}
+
 /**
  * 把内部整数单位格式化为展示文本，固定一位小数。
  */

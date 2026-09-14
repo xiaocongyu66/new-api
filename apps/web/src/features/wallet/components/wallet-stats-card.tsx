@@ -22,7 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatQuota } from '@/lib/format'
-import { formatSpore, getSporeName } from '@/lib/spore'
+import { formatSpore, getSporeName, getSporeSymbol } from '@/lib/spore'
 
 import type { UserWalletData } from '../types'
 
@@ -64,7 +64,7 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
     },
     {
       label: getSporeName(),
-      value: formatSpore(props.user?.spore ?? 0),
+      value: `${getSporeSymbol() ? `${getSporeSymbol()} ` : ''}${formatSpore(props.user?.spore ?? 0)}`,
       description: t('Granted by admins, usable on plans'),
       icon: Sprout,
       tone: 'chart-2',
