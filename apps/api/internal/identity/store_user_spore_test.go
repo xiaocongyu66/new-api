@@ -98,6 +98,8 @@ func TestRewardInviterSpore(t *testing.T) {
 
 	previous := common.SporeInviterRewardTenths
 	t.Cleanup(func() { common.SporeInviterRewardTenths = previous })
+	previousCurrency := common.InviterRewardCurrency
+	t.Cleanup(func() { common.InviterRewardCurrency = previousCurrency })
 
 	inviter := &User{
 		Id:       200,
@@ -108,6 +110,7 @@ func TestRewardInviterSpore(t *testing.T) {
 	require.NoError(t, dbx.DB.Create(inviter).Error)
 
 	// Reward inviter: 3 tenths (0.3 spore) per configuration.
+	common.InviterRewardCurrency = "spore"
 	common.SporeInviterRewardTenths = 3
 	rewardInviterSpore(inviter.Id)
 	spore, err := GetUserSpore(inviter.Id)
@@ -123,6 +126,16 @@ func TestRewardInviterSpore(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), spore, "zero reward must not change the balance")
 
+	// 互斥契约：邀请奖励货币未切到 spore 时，即使配置了数额也不发菌种
+	//（余额模式由 inviteUser 走 aff_quota，两种货币不得重复发放）。
+	common.SporeInviterRewardTenths = 3
+	common.InviterRewardCurrency = "quota"
+	rewardInviterSpore(inviter.Id)
+	spore, err = GetUserSpore(inviter.Id)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), spore, "quota currency mode must not grant spore")
+
 	// Nil inviter id does nothing
+	common.InviterRewardCurrency = "spore"
 	rewardInviterSpore(0)
 }

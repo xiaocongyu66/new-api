@@ -427,11 +427,16 @@ func inviteUser(inviterId int) error {
 }
 
 // rewardInviterSpore 按后台配置发放邀请菌种奖励（common.SporeInviterRewardTenths，
-// 0 = 关闭）。沿用原实现（model/user_spore.go）的口径：每次成功邀请一条
-// 内容恰为「开拓奖励」的用户可见日志——运营靠这个固定串对账漏发，
-// 不要往里面拼数量。
+// 0 = 关闭）。仅在管理员把邀请奖励货币切到 "spore" 时发放，与余额奖励
+// （inviteUser，合规门内）互斥。菌种是站内凭证，沿用原实现（model/user_spore.go）
+// 留在合规门外——避免运营关合规导致菌种静默漏发（线上事故回归点）。
+// 每次成功邀请一条内容恰为「开拓奖励」的用户可见日志——运营靠这个固定串
+// 对账漏发，不要往里面拼数量。
 func rewardInviterSpore(inviterId int) {
 	if inviterId == 0 {
+		return
+	}
+	if common.InviterRewardCurrency != "spore" {
 		return
 	}
 	tenths := common.SporeInviterRewardTenths
@@ -583,7 +588,7 @@ func (user *User) finishInsert(inviterId int) {
 			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
 			writeSystemLog(user.Id, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
-		if common.QuotaForInviter > 0 {
+		if common.QuotaForInviter > 0 && common.InviterRewardCurrency != "spore" {
 			writeSystemLog(inviterId, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
 			_ = inviteUser(inviterId)
 		}
@@ -640,7 +645,7 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
 			writeSystemLog(user.Id, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
-		if common.QuotaForInviter > 0 {
+		if common.QuotaForInviter > 0 && common.InviterRewardCurrency != "spore" {
 			writeSystemLog(inviterId, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
 			_ = inviteUser(inviterId)
 		}

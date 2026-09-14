@@ -126,6 +126,9 @@ var QuotaForInviter = 0
 var QuotaForInvitee = 0
 // SporeInviterRewardTenths 邀请者的菌种奖励，内部单位（1 = 0.1 菌种）。0 = 关闭。
 var SporeInviterRewardTenths = int64(1)
+// InviterRewardCurrency 邀请奖励的结算货币，二选一互斥：
+// "quota"=余额（aff_quota 暂存，合规门内发放），"spore"=菌种（即时到账，合规门外发放）。
+var InviterRewardCurrency = "quota"
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false

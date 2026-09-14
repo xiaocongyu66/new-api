@@ -170,3 +170,41 @@ func TestDecreaseUserSporeTxZeroNoop(t *testing.T) {
 	bal, _ := GetUserSpore(user.Id)
 	assert.EqualValues(t, 50, bal, "zero decrease must not change balance")
 }
+
+// TestAdminAdjustUserSporeSuccessPaths 验证 add/subtract/override 三种模式的
+// 成功路径：余额按预期变化，失败的 subtract 回滚不影响余额。
+func TestAdminAdjustUserSporeSuccessPaths(t *testing.T) {
+	setupSporeErrorTestDB(t)
+	user := &User{
+		Username: "adjust-success",
+		Password: "x",
+		Role:     1,
+		Status:   1,
+		Group:    "default",
+	}
+	require.NoError(t, dbx.DB.Create(user).Error)
+
+	// add grants
+	require.NoError(t, AdminAdjustUserSpore(user.Id, "add", 25))
+	bal, err := GetUserSpore(user.Id)
+	require.NoError(t, err)
+	assert.EqualValues(t, 25, bal)
+
+	// subtract deducts
+	require.NoError(t, AdminAdjustUserSpore(user.Id, "subtract", 10))
+	bal, err = GetUserSpore(user.Id)
+	require.NoError(t, err)
+	assert.EqualValues(t, 15, bal)
+
+	// override sets an arbitrary balance (free set like quota)
+	require.NoError(t, AdminAdjustUserSpore(user.Id, "override", 100))
+	bal, err = GetUserSpore(user.Id)
+	require.NoError(t, err)
+	assert.EqualValues(t, 100, bal)
+
+	// subtract below zero fails and leaves the balance unchanged
+	assert.ErrorIs(t, AdminAdjustUserSpore(user.Id, "subtract", 200), ErrSporeInsufficient)
+	bal, err = GetUserSpore(user.Id)
+	require.NoError(t, err)
+	assert.EqualValues(t, 100, bal)
+}

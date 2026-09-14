@@ -588,6 +588,8 @@ type GeneralSetting struct {
 	AmountUnit string `json:"amount_unit"`
 	// 菌种（凭证货币）显示名称，独立于金额与消费货币符号。
 	SporeName string `json:"spore_name"`
+	// 菌种（凭证货币）自定义符号/图标，独立于名称，空值表示不显示符号。
+	SporeSymbol string `json:"spore_symbol"`
 }
 
 // 默认配置
@@ -611,12 +613,13 @@ func GetGeneralSetting() *GeneralSetting {
 	return &generalSetting
 }
 
-// AmountUnitEffective returns the payment amount unit, normalizing empty
-// historical rows to "usd" so clients always receive a valid enum value.
+// AmountUnitEffective returns the payment amount unit. The payment side is
+// real money: USD ($) or CNY (¥) only. The legacy "custom" name (which used
+// to be misconfigured to the voucher symbol) never reaches the frontend —
+// it normalizes to "usd" so /api/status always exposes a valid enum value.
 func (g *GeneralSetting) AmountUnitEffective() string {
-	switch g.AmountUnit {
-	case "cny", "custom":
-		return g.AmountUnit
+	if g.AmountUnit == "cny" {
+		return "cny"
 	}
 	return "usd"
 }
@@ -627,6 +630,11 @@ func GetSporeName() string {
 		return name
 	}
 	return "菌种"
+}
+
+// GetSporeSymbol 返回菌种自定义符号，空值返回 ""（前端据此决定是否展示图标/符号）。
+func GetSporeSymbol() string {
+	return strings.TrimSpace(generalSetting.SporeSymbol)
 }
 
 // IsCurrencyDisplay 是否以货币形式展示（美元或人民币）

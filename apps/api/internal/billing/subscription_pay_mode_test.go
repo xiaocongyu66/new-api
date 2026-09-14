@@ -141,4 +141,41 @@ func TestPurchaseSubscriptionWithWallet_Scenarios(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(5), refreshed.Spore) // spore untouched
 	assert.Equal(t, 500000, refreshed.Quota)   // 1000000 - 500000 = 500000
+
+	// Plan 5: Both mode (balance $0.5 = 250000 quota + 3 spore units) — both deducted
+	planBoth := &billing.SubscriptionPlan{
+		Title:         "Both Plan",
+		Enabled:       true,
+		PayMode:       billing.SubscriptionPayModeBoth,
+		PriceAmount:   0.5,
+		SporeAmount:   3,
+		TotalAmount:   100000,
+		DurationUnit:  "month",
+		DurationValue: 1,
+	}
+	require.NoError(t, dbx.DB.Create(planBoth).Error)
+	require.NoError(t, billing.PurchaseSubscriptionWithWallet(user.Id, planBoth.Id, ""))
+	refreshed, err = identity.GetUserById(user.Id, false)
+	require.NoError(t, err)
+	assert.Equal(t, 250000, refreshed.Quota)  // 500000 - 250000
+	assert.Equal(t, int64(2), refreshed.Spore) // 5 - 3
+
+	// Both mode with insufficient spore fails atomically: quota rolled back too
+	planBothExpensive := &billing.SubscriptionPlan{
+		Title:         "Both Expensive Plan",
+		Enabled:       true,
+		PayMode:       billing.SubscriptionPayModeBoth,
+		PriceAmount:   0.5,
+		SporeAmount:   50, // user only has 2
+		TotalAmount:   100000,
+		DurationUnit:  "month",
+		DurationValue: 1,
+	}
+	require.NoError(t, dbx.DB.Create(planBothExpensive).Error)
+	err = billing.PurchaseSubscriptionWithWallet(user.Id, planBothExpensive.Id, "")
+	assert.ErrorIs(t, err, identity.ErrSporeInsufficient)
+	refreshed, err = identity.GetUserById(user.Id, false)
+	require.NoError(t, err)
+	assert.Equal(t, 250000, refreshed.Quota) // unchanged — single-tx settle rolls both back
+	assert.Equal(t, int64(2), refreshed.Spore)
 }

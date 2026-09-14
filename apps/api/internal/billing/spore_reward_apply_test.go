@@ -53,3 +53,26 @@ func TestApplyOptionSporeInviterReward(t *testing.T) {
 	require.NoError(t, settings.ApplyOption("SporeInviterReward", "bogus"))
 	require.Equal(t, int64(0), common.SporeInviterRewardTenths)
 }
+
+// TestApplyOptionInviterRewardCurrency verifies the invite-reward currency
+// switch only accepts "spore"; any other value (including garbage from a
+// stale client) falls back to "quota" so rewards can never be silently
+// routed into an unknown currency.
+func TestApplyOptionInviterRewardCurrency(t *testing.T) {
+	previousMap := common.OptionMap
+	common.OptionMap = map[string]string{}
+	t.Cleanup(func() { common.OptionMap = previousMap })
+
+	previous := common.InviterRewardCurrency
+	t.Cleanup(func() { common.InviterRewardCurrency = previous })
+
+	require.NoError(t, settings.ApplyOption("InviterRewardCurrency", "spore"))
+	require.Equal(t, "spore", common.InviterRewardCurrency)
+	require.Equal(t, "spore", common.OptionMap["InviterRewardCurrency"])
+
+	for _, fallback := range []string{"quota", "", "usd", "SPORE", "bogus"} {
+		require.NoError(t, settings.ApplyOption("InviterRewardCurrency", fallback))
+		require.Equal(t, "quota", common.InviterRewardCurrency,
+			"value %q must fall back to quota", fallback)
+	}
+}

@@ -217,6 +217,7 @@ func SeedOptionMap() {
 	common.OptionMap["QuotaForInviter"] = strconv.Itoa(common.QuotaForInviter)
 	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
 	common.OptionMap["SporeInviterReward"] = strconv.FormatFloat(float64(common.SporeInviterRewardTenths)/10, 'f', -1, 64)
+	common.OptionMap["InviterRewardCurrency"] = common.InviterRewardCurrency
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
 	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(rate_limit.ModelRequestRateLimitCount)
@@ -506,6 +507,13 @@ func ApplyOption(key string, value string) (err error) {
 			units = 0
 		}
 		common.SporeInviterRewardTenths = int64(math.Round(units * 10))
+	case "InviterRewardCurrency":
+		// 邀请奖励货币二选一：仅接受 "spore"，其余一律回落 "quota"，防止脏值把奖励打进无人领取的货币。
+		if value == "spore" {
+			common.InviterRewardCurrency = "spore"
+		} else {
+			common.InviterRewardCurrency = "quota"
+		}
 	case "QuotaRemindThreshold":
 		common.QuotaRemindThreshold, _ = strconv.Atoi(value)
 	case "PreConsumedQuota":
