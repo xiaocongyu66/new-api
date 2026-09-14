@@ -25,9 +25,12 @@ func setupSporeErrorTestDB(t *testing.T) {
 	dbx.DB = db
 	dbx.LogDB = db
 	common.RedisEnabled = false
-	// Stub audit hooks to avoid real LogDB insert
+	// Stub audit hooks to avoid real LogDB insert; restore the previous
+	// recorder afterwards so this stub cannot leak into later tests.
+	prevSystemLog := recordSystemLog
 	RegisterAuditHooks(func(int, string) {}, nil, nil, nil)
 	t.Cleanup(func() {
+		recordSystemLog = prevSystemLog
 		dbx.DB = previousDB
 		dbx.LogDB = previousLogDB
 		common.RedisEnabled = previousRedis

@@ -66,7 +66,7 @@ const BILLING_SECTIONS = [
           PreConsumedQuota: settings.PreConsumedQuota,
           QuotaForInviter: settings.QuotaForInviter,
           QuotaForInvitee: settings.QuotaForInvitee,
-          SporeInviterReward: settings.SporeInviterReward ?? 0.1,
+          SporeInviterReward: String(settings.SporeInviterReward ?? 0.1),
           InviterRewardCurrency:
             settings.InviterRewardCurrency === 'spore' ? 'spore' : 'quota',
           TopUpLink: settings.TopUpLink,

@@ -3,6 +3,7 @@ package billing
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -117,10 +118,12 @@ func HandleAdminBalance(event *GroupAtMessageEvent, senderOpenID string, content
 	}
 
 	amount, err := strconv.ParseFloat(strings.TrimSpace(amountStr), 64)
-	if err != nil || amount < 0 {
+	// !(amount >= 0) 同时吃掉 NaN；再加有限性检查挡住 Inf/超精度输入，
+	// 转换用 Round 与后台 SporeInviterReward 的 0.1 精度口径一致。
+	if err != nil || !(amount >= 0) || math.IsInf(amount, 0) || amount > 1e15 {
 		return buildPlainMarkdown(senderOpenID, "**金额无效**\n\n请输入正数，例如 +10")
 	}
-	units := int64(amount * float64(identity.SporeUnitsPerSpore))
+	units := int64(math.Round(amount * float64(identity.SporeUnitsPerSpore)))
 
 	targetUserId, err := resolveUserIdByOpenID(targetOpenID)
 	if err != nil {

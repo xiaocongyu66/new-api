@@ -377,27 +377,27 @@ export function SubscriptionPurchaseDialog(props: Props) {
             </Button>
           ) : (
             <>
-              {needBalance &&
+              {(needBalance || isEither) &&
                 renderCostRow(
                   t('Balance'),
                   formatQuota(balanceCost),
                   formatQuota(userQuota)
                 )}
-              {needSpore &&
+              {(needSpore || isEither) &&
                 renderCostRow(
                   getSporeName(),
                   formatSpore(sporeCost),
                   formatSpore(userSpore)
                 )}
 
-              {needBalance && insufficientBalance && (
+              {(needBalance || isEither) && insufficientBalance && (
                 <Alert variant='destructive'>
                   <AlertDescription>
                     {t('Insufficient balance')}
                   </AlertDescription>
                 </Alert>
               )}
-              {needSpore && insufficientSpore && (
+              {(needSpore || isEither) && insufficientSpore && (
                 <Alert variant='destructive'>
                   <AlertDescription>
                     {t('Insufficient {{label}}', { label: getSporeName() })}

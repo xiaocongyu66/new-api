@@ -59,21 +59,36 @@ import { SettingsSection } from '../components/settings-section'
 import { useSettingsForm } from '../hooks/use-settings-form'
 import { useUpdateOption } from '../hooks/use-update-option'
 
-const quotaSchema = z.object({
-  QuotaForNewUser: z.coerce.number().min(0),
-  PreConsumedQuota: z.coerce.number().min(0),
-  QuotaForInviter: z.coerce.number().min(0),
-  QuotaForInvitee: z.coerce.number().min(0),
-  SporeInviterReward: z.coerce.number().min(0).optional(),
-  InviterRewardCurrency: z.enum(['quota', 'spore']),
-  TopUpLink: z.string(),
-  general_setting: z.object({
-    docs_link: z.string(),
-  }),
-  quota_setting: z.object({
-    enable_free_model_pre_consume: z.boolean(),
-  }),
-})
+const createQuotaSchema = (t: (key: string) => string) =>
+  z
+    .object({
+      QuotaForNewUser: z.coerce.number().min(0),
+      PreConsumedQuota: z.coerce.number().min(0),
+      QuotaForInviter: z.coerce.number().min(0),
+      QuotaForInvitee: z.coerce.number().min(0),
+      // 字符串保存输入中间态（"0." 这类），避免 valueAsNumber 吃掉小数点。
+      SporeInviterReward: z.string().optional(),
+      InviterRewardCurrency: z.enum(['quota', 'spore']),
+      TopUpLink: z.string(),
+      general_setting: z.object({
+        docs_link: z.string(),
+      }),
+      quota_setting: z.object({
+        enable_free_model_pre_consume: z.boolean(),
+      }),
+    })
+    .superRefine((data, ctx) => {
+      const value = data.SporeInviterReward
+      if (value === undefined || value === '') return
+      const parsed = Number.parseFloat(value)
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['SporeInviterReward'],
+          message: t('Value must be at least 0'),
+        })
+      }
+    })
 
 type QuotaFormValues = z.infer<typeof quotaSchema>
 type QuotaInputValue = number | ''
@@ -102,7 +117,7 @@ export function QuotaSettingsSection({
 
   const { form, handleSubmit, isDirty, isSubmitting } =
     useSettingsForm<QuotaFormValues>({
-      resolver: zodResolver(quotaSchema) as Resolver<
+      resolver: zodResolver(createQuotaSchema(t)) as Resolver<
         QuotaFormValues,
         unknown,
         QuotaFormValues
@@ -242,7 +257,7 @@ export function QuotaSettingsSection({
                         min={0}
                         step={0.1}
                         value={field.value ?? ''}
-                        onChange={handleNumberChange(field.onChange)}
+                        onChange={field.onChange}
                         name={field.name}
                         onBlur={field.onBlur}
                         ref={field.ref}

@@ -52,6 +52,15 @@ func TestApplyOptionSporeInviterReward(t *testing.T) {
 
 	require.NoError(t, settings.ApplyOption("SporeInviterReward", "bogus"))
 	require.Equal(t, int64(0), common.SporeInviterRewardTenths)
+
+	// NaN/±Inf parse without error, so the clamp itself must reject them:
+	// the naive int64 conversion of these values is implementation-defined
+	// (INT64_MIN on amd64) and would poison /api/status and the option row.
+	for _, dirty := range []string{"NaN", "Inf", "+Inf", "-Inf", "1e19", "1e30"} {
+		require.NoError(t, settings.ApplyOption("SporeInviterReward", dirty))
+		require.Equal(t, int64(0), common.SporeInviterRewardTenths,
+			"dirty value %q must clamp to disabled", dirty)
+	}
 }
 
 // TestApplyOptionInviterRewardCurrency verifies the invite-reward currency

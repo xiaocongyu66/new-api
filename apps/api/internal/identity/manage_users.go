@@ -1157,7 +1157,7 @@ func ManageUser(c contract.Context) {
 			req.Mode = "add"
 		}
 		if req.Mode != "override" && req.Value <= 0 {
-			common.CtxApiErrorI18n(c, i18n.MsgUserQuotaChangeZero)
+			common.CtxApiErrorI18n(c, i18n.MsgUserSporeChangeZero)
 			return
 		}
 		if err := AdminAdjustUserSpore(user.Id, req.Mode, int64(req.Value)); err != nil {

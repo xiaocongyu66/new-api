@@ -58,10 +58,33 @@ import {
 import { adjustUserSpore } from '../../api'
 import type { QuotaAdjustMode, User } from '../../types'
 
-const sporeFormSchema = z.object({
-  mode: z.enum(['add', 'subtract', 'override']),
-  amount: z.number().min(0.1),
-})
+const sporeFormSchema = (t: (key: string) => string) =>
+  z
+    .object({
+      mode: z.enum(['add', 'subtract', 'override']),
+      // 字符串保存输入中间态（"1." 这类），避免受控 number 输入吃掉小数点。
+      amount: z.string(),
+    })
+    .superRefine((data, ctx) => {
+      const parsed = Number.parseFloat(data.amount)
+      if (!Number.isFinite(parsed)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['amount'],
+          message: t('Amount must be a valid number'),
+        })
+        return
+      }
+      // override 允许归零，add/subtract 至少 0.1 菌种。
+      const min = data.mode === 'override' ? 0 : 0.1
+      if (parsed < min) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['amount'],
+          message: t('Amount must be at least 0.1'),
+        })
+      }
+    })
 
 type SporeFormValues = z.infer<typeof sporeFormSchema>
 
@@ -82,10 +105,10 @@ export function UserSporeDialog({
   const [submitting, setSubmitting] = useState(false)
 
   const form = useForm<SporeFormValues>({
-    resolver: zodResolver(sporeFormSchema),
+    resolver: zodResolver(sporeFormSchema(t)),
     defaultValues: {
       mode: 'add',
-      amount: 1,
+      amount: '',
     },
   })
 
@@ -119,7 +142,14 @@ export function UserSporeDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        // 取消/遮罩关闭时清掉残留的金额与模式，避免下次打开误提交。
+        if (!o) form.reset()
+        onOpenChange(o)
+      }}
+    >
       <DialogContent className='sm:max-w-[425px]'>
         <DialogHeader>
           <DialogTitle>{t('Adjust user spore')}</DialogTitle>
@@ -154,9 +184,13 @@ export function UserSporeDialog({
                     value={field.value}
                     onValueChange={(val) => {
                       field.onChange(val)
-                      if (val === 'override') {
-                        form.setValue('amount', sporeUnitsToValue(currentSporeUnits))
-                      }
+                      // Override 回填当前余额；切走时清空，防止残留旧金额误提交。
+                      form.setValue(
+                        'amount',
+                        val === 'override'
+                          ? String(sporeUnitsToValue(currentSporeUnits))
+                          : ''
+                      )
                     }}
                   >
                     <FormControl>
@@ -185,14 +219,12 @@ export function UserSporeDialog({
                     <Input
                       type='number'
                       step='0.1'
-                      min='0.1'
                       placeholder='1.0'
                       value={field.value}
-                      onChange={(e) =>
-                        field.onChange(
-                          Number.parseFloat(e.target.value) || 0
-                        )
-                      }
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
                     />
                   </FormControl>
                   <FormDescription>

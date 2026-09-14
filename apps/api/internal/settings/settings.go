@@ -501,9 +501,11 @@ func ApplyOption(key string, value string) (err error) {
 	case "QuotaForInvitee":
 		common.QuotaForInvitee, _ = strconv.Atoi(value)
 	case "SporeInviterReward":
-		// 后台以菌种为单位配置（0.1 精度），存储为内部十分之一整数；负数按 0 处理。
+		// 后台以菌种为单位配置（0.1 精度），存储为内部十分之一整数。
+		// !(units >= 0) 同时吃掉 NaN；上界挡住 Inf 与溢出 int64 的有限值——
+		// ParseFloat 对这些输入返回 nil 错误，不能靠 ParseFloat 报错兜底。
 		units, parseErr := strconv.ParseFloat(value, 64)
-		if parseErr != nil || units < 0 {
+		if parseErr != nil || !(units >= 0) || units > 1e15 {
 			units = 0
 		}
 		common.SporeInviterRewardTenths = int64(math.Round(units * 10))
