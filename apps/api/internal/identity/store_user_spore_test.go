@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -145,9 +146,10 @@ func TestRewardInviterSpore(t *testing.T) {
 }
 
 // TestFinishInsertInviterRewardCurrencyMutualExclusion 验证 finishInsert 的
-// dispatch 级互斥门控：合规门开启且 QuotaForInviter>0 时，spore 模式不得
-// 发放余额奖励、quota 模式不得发放菌种——双发正是设计注释点名的线上
-// 事故类别，仅测 rewardInviterSpore 内部门控锁不住被删掉的条件。
+// dispatch 级货币门控：合规门开启且 QuotaForInviter>0 时，spore 模式不得
+// 发放余额奖励、quota 模式不得发放菌种（双发正是设计注释点名的线上
+// 事故类别，仅测 rewardInviterSpore 内部门控锁不住被删掉的条件）；
+// both 模式两种奖励同时发放。
 func TestFinishInsertInviterRewardCurrencyMutualExclusion(t *testing.T) {
 	setupUserStoreTestDB(t)
 
@@ -189,7 +191,8 @@ func TestFinishInsertInviterRewardCurrencyMutualExclusion(t *testing.T) {
 
 	// spore 模式：邀请人拿菌种，aff_quota 不动，无「邀请用户赠送」日志。
 	common.InviterRewardCurrency = "spore"
-	inviterA := &User{Id: 400, Username: "mutual-inviter-a", Password: "password123", Spore: 0}
+	// aff_code 有唯一索引，直接 Create 的邀请人必须带互不相同的邀请码。
+	inviterA := &User{Id: 400, Username: "mutual-inviter-a", Password: "password123", Spore: 0, AffCode: "mut-a"}
 	require.NoError(t, dbx.DB.Create(inviterA).Error)
 	inviteeA := &User{Id: 401, Username: "mutual-invitee-a", Password: "password123"}
 	require.NoError(t, inviteeA.Insert(inviterA.Id))
@@ -204,7 +207,7 @@ func TestFinishInsertInviterRewardCurrencyMutualExclusion(t *testing.T) {
 
 	// quota 模式：邀请人拿 aff_quota，菌种不动，无「开拓奖励」日志。
 	common.InviterRewardCurrency = "quota"
-	inviterB := &User{Id: 402, Username: "mutual-inviter-b", Password: "password123", Spore: 0}
+	inviterB := &User{Id: 402, Username: "mutual-inviter-b", Password: "password123", Spore: 0, AffCode: "mut-b"}
 	require.NoError(t, dbx.DB.Create(inviterB).Error)
 	inviteeB := &User{Id: 403, Username: "mutual-invitee-b", Password: "password123"}
 	require.NoError(t, inviteeB.Insert(inviterB.Id))
@@ -218,4 +221,25 @@ func TestFinishInsertInviterRewardCurrencyMutualExclusion(t *testing.T) {
 	for _, content := range inviterLogs(inviterB.Id) {
 		assert.NotEqual(t, "开拓奖励", content, "quota mode must not write the spore reward log")
 	}
+
+	// both 模式：aff_quota 与菌种同时入账，两条日志都在。
+	common.InviterRewardCurrency = "both"
+	inviterC := &User{Id: 404, Username: "mutual-inviter-c", Password: "password123", Spore: 0, AffCode: "mut-c"}
+	require.NoError(t, dbx.DB.Create(inviterC).Error)
+	inviteeC := &User{Id: 405, Username: "mutual-invitee-c", Password: "password123"}
+	require.NoError(t, inviteeC.Insert(inviterC.Id))
+
+	var affQuotaC int64
+	require.NoError(t, dbx.DB.Model(&User{}).Select("aff_quota").Where("id = ?", inviterC.Id).Scan(&affQuotaC).Error)
+	assert.EqualValues(t, 1000, affQuotaC, "both mode must accrue aff_quota")
+	sporeC, err := GetUserSpore(inviterC.Id)
+	require.NoError(t, err)
+	assert.EqualValues(t, 3, sporeC, "both mode must grant the configured spore reward")
+	logsC := inviterLogs(inviterC.Id)
+	assert.Contains(t, logsC, "开拓奖励", "both mode must write the spore reward log")
+	hasQuotaLog := false
+	for _, content := range logsC {
+		hasQuotaLog = hasQuotaLog || strings.HasPrefix(content, "邀请用户赠送")
+	}
+	assert.True(t, hasQuotaLog, "both mode must write the quota reward log")
 }

@@ -54,11 +54,12 @@ export function AffiliateRewardsCard({
   loading,
 }: AffiliateRewardsCardProps) {
   const { t } = useTranslation()
-  const { sporeInviterReward, inviterRewardCurrency } =
+  const { sporeInviterReward, quotaInviterReward, inviterRewardCurrency } =
     useSystemConfigStore.getState().config.currency
-  // 邀请奖励货币互斥：图标与统计单位都跟随设置的货币——
-  // 菌种模式显示菌种符号/菌种数额，余额模式显示余额自定义符号/额度数额。
+  // 邀请奖励货币跟随后台设置：菌种模式显示菌种符号/菌种数额，
+  // 余额模式显示余额自定义符号/额度数额，both 模式两者并列展示。
   const paysSpore = inviterRewardCurrency === 'spore'
+  const paysBoth = inviterRewardCurrency === 'both'
   // 卡片徽标：符号未配置时回落到 Share2 图标。
   const { meta } = getCurrencyDisplay()
   const sporeUnit = getSporeSymbol() || getSporeName()
@@ -102,19 +103,25 @@ export function AffiliateRewardsCard({
               {t('Referral Program')}
             </h3>
             <p className='text-muted-foreground line-clamp-1 text-xs'>
-              {paysSpore && (sporeInviterReward ?? 0) > 0
-                ? t(
-                    'Each successful invite instantly grants {{amount}} {{label}} to your voucher balance.',
-                    {
-                      amount: formatSpore(
-                        (sporeInviterReward ?? 0) * SPORE_UNITS_PER_SPORE
-                      ),
-                      label: getSporeName(),
-                    }
-                  )
-                : t(
-                    'Earn rewards when users join through your referral link. Transfer accumulated rewards to your balance anytime.'
-                  )}
+              {paysBoth && (sporeInviterReward ?? 0) > 0
+                ? t('Each successful invite grants {{reward}}.', {
+                    reward: `${formatQuota(quotaInviterReward ?? 0)} + ${sporeUnit} ${formatSpore(
+                      (sporeInviterReward ?? 0) * SPORE_UNITS_PER_SPORE
+                    )}`,
+                  })
+                : paysSpore && (sporeInviterReward ?? 0) > 0
+                  ? t(
+                      'Each successful invite instantly grants {{amount}} {{label}} to your voucher balance.',
+                      {
+                        amount: formatSpore(
+                          (sporeInviterReward ?? 0) * SPORE_UNITS_PER_SPORE
+                        ),
+                        label: getSporeName(),
+                      }
+                    )
+                  : t(
+                      'Earn rewards when users join through your referral link. Transfer accumulated rewards to your balance anytime.'
+                    )}
             </p>
           </div>
         </div>

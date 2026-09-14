@@ -53,11 +53,13 @@ export interface CurrencyConfig {
   sporeSymbol?: string
   /** Spore granted to the inviter per successful invite, from /api/status */
   sporeInviterReward?: number
+  /** Balance (raw quota units) granted to the inviter per successful invite, from /api/status */
+  quotaInviterReward?: number
   /**
-   * Currency the invite reward is paid in: 'quota' (balance, pending aff_quota)
-   * or 'spore' (voucher, credited instantly). Mutually exclusive.
+   * Currency the invite reward is paid in: 'quota' (balance, pending aff_quota),
+   * 'spore' (voucher, credited instantly) or 'both' (paid together).
    */
-  inviterRewardCurrency?: 'quota' | 'spore'
+  inviterRewardCurrency?: 'quota' | 'spore' | 'both'
 }
 
 export interface SystemConfig {

@@ -78,6 +78,7 @@ func GetStatus(c contract.Context) {
 		"spore_symbol":                  billing.GetSporeSymbol(),
 		"spore_inviter_reward":          float64(common.SporeInviterRewardTenths) / 10,
 		"inviter_reward_currency":       common.InviterRewardCurrency,
+		"quota_for_inviter":             common.QuotaForInviter,
 		"enable_batch_update":           common.BatchUpdateEnabled,
 		"enable_drawing":                common.DrawingEnabled,
 		"enable_task":                   common.TaskEnabled,

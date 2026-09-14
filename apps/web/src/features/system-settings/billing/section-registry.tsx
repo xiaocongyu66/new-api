@@ -68,7 +68,10 @@ const BILLING_SECTIONS = [
           QuotaForInvitee: settings.QuotaForInvitee,
           SporeInviterReward: String(settings.SporeInviterReward ?? 0.1),
           InviterRewardCurrency:
-            settings.InviterRewardCurrency === 'spore' ? 'spore' : 'quota',
+            settings.InviterRewardCurrency === 'spore' ||
+            settings.InviterRewardCurrency === 'both'
+              ? settings.InviterRewardCurrency
+              : 'quota',
           TopUpLink: settings.TopUpLink,
           general_setting: {
             docs_link: settings['general_setting.docs_link'],

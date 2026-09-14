@@ -53,6 +53,7 @@ interface StatusApiResponse {
     spore_symbol?: string
     spore_inviter_reward?: number
     inviter_reward_currency?: string
+    quota_for_inviter?: number
   }
 }
 
@@ -107,8 +108,12 @@ export function mapStatusDataToConfig(
       data.spore_inviter_reward,
       0
     ),
+    quotaInviterReward: toNumber(data.quota_for_inviter, 0),
     inviterRewardCurrency:
-      data.inviter_reward_currency === 'spore' ? 'spore' : 'quota',
+      data.inviter_reward_currency === 'spore' ||
+      data.inviter_reward_currency === 'both'
+        ? data.inviter_reward_currency
+        : 'quota',
   }
 
   return {

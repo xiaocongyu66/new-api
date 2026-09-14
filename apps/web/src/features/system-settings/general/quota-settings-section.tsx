@@ -68,7 +68,7 @@ const createQuotaSchema = (t: (key: string) => string) =>
       QuotaForInvitee: z.coerce.number().min(0),
       // 字符串保存输入中间态（"0." 这类），避免 valueAsNumber 吃掉小数点。
       SporeInviterReward: z.string().optional(),
-      InviterRewardCurrency: z.enum(['quota', 'spore']),
+      InviterRewardCurrency: z.enum(['quota', 'spore', 'both']),
       TopUpLink: z.string(),
       general_setting: z.object({
         docs_link: z.string(),
@@ -96,7 +96,7 @@ type QuotaFormValues = {
   QuotaForInviter: number
   QuotaForInvitee: number
   SporeInviterReward?: string
-  InviterRewardCurrency: 'quota' | 'spore'
+  InviterRewardCurrency: 'quota' | 'spore' | 'both'
   TopUpLink: string
   general_setting: {
     docs_link: string
@@ -232,6 +232,12 @@ export function QuotaSettingsSection({
                     items={[
                       { value: 'quota', label: t('Balance') },
                       { value: 'spore', label: getSporeName() },
+                      {
+                        value: 'both',
+                        label: t('Balance + {{label}}', {
+                          label: getSporeName(),
+                        }),
+                      },
                     ]}
                     value={field.value}
                     onValueChange={field.onChange}
@@ -247,6 +253,11 @@ export function QuotaSettingsSection({
                       <SelectGroup>
                         <SelectItem value='quota'>{t('Balance')}</SelectItem>
                         <SelectItem value='spore'>{getSporeName()}</SelectItem>
+                        <SelectItem value='both'>
+                          {t('Balance + {{label}}', {
+                            label: getSporeName(),
+                          })}
+                        </SelectItem>
                       </SelectGroup>
                     </SelectContent>
                   </Select>
@@ -258,36 +269,7 @@ export function QuotaSettingsSection({
               )}
             />
 
-            {form.watch('InviterRewardCurrency') === 'spore' ? (
-              <FormField
-                control={form.control}
-                name='SporeInviterReward'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Inviter Reward')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        min={0}
-                        step={0.1}
-                        value={field.value ?? ''}
-                        onChange={field.onChange}
-                        name={field.name}
-                        onBlur={field.onBlur}
-                        ref={field.ref}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t(
-                        '{{label}} granted to the inviter for each successful invite, credited instantly. 0 disables it.',
-                        { label: getSporeName() }
-                      )}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            ) : (
+            {form.watch('InviterRewardCurrency') !== 'spore' ? (
               <FormField
                 control={form.control}
                 name='QuotaForInviter'
@@ -316,7 +298,37 @@ export function QuotaSettingsSection({
                   </FormItem>
                 )}
               />
-            )}
+            ) : null}
+            {form.watch('InviterRewardCurrency') !== 'quota' ? (
+              <FormField
+                control={form.control}
+                name='SporeInviterReward'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Inviter Reward')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={0}
+                        step={0.1}
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        name={field.name}
+                        onBlur={field.onBlur}
+                        ref={field.ref}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        '{{label}} granted to the inviter for each successful invite, credited instantly. 0 disables it.',
+                        { label: getSporeName() }
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : null}
 
             <FormField
               control={form.control}

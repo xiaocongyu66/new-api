@@ -510,9 +510,9 @@ func ApplyOption(key string, value string) (err error) {
 		}
 		common.SporeInviterRewardTenths = int64(math.Round(units * 10))
 	case "InviterRewardCurrency":
-		// 邀请奖励货币二选一：仅接受 "spore"，其余一律回落 "quota"，防止脏值把奖励打进无人领取的货币。
-		if value == "spore" {
-			common.InviterRewardCurrency = "spore"
+		// 邀请奖励货币：仅接受 "spore"/"both"，其余一律回落 "quota"，防止脏值把奖励打进无人领取的货币。
+		if value == "spore" || value == "both" {
+			common.InviterRewardCurrency = value
 		} else {
 			common.InviterRewardCurrency = "quota"
 		}
