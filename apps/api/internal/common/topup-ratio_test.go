@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestUpdateTopupGroupRatioByJSONStringKeepsDefaultGroups(t *testing.T) {
+func TestUpdateTopupGroupRatioByJSONStringReplacesMapWholesale(t *testing.T) {
 	original := TopupGroupRatio2JSONString()
 	t.Cleanup(func() {
 		require.NoError(t, UpdateTopupGroupRatioByJSONString(original))
@@ -15,9 +15,12 @@ func TestUpdateTopupGroupRatioByJSONStringKeepsDefaultGroups(t *testing.T) {
 
 	require.NoError(t, UpdateTopupGroupRatioByJSONString(`{"牛奶":1}`))
 	assert.Equal(t, 1.0, GetTopupGroupRatio("牛奶"))
-	assert.True(t, ContainsTopupGroupRatio("default"))
-	assert.True(t, ContainsTopupGroupRatio("vip"))
-	assert.True(t, ContainsTopupGroupRatio("svip"))
+	// No hardcoded fallback groups: the map holds exactly what the option
+	// contains; unlisted groups fall back to 1.0 at lookup time.
+	assert.False(t, ContainsTopupGroupRatio("default"))
+	assert.False(t, ContainsTopupGroupRatio("vip"))
+	assert.False(t, ContainsTopupGroupRatio("svip"))
+	assert.Equal(t, 1.0, GetTopupGroupRatio("default"))
 }
 
 func TestUpdateTopupGroupRatioByJSONStringKeepsPreviousMapOnBadJSON(t *testing.T) {

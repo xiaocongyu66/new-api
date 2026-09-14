@@ -4,16 +4,7 @@ import (
 	"sync"
 )
 
-var defaultTopupGroupRatio = map[string]float64{
-	"default": 1,
-	"vip":     1,
-	"svip":    1,
-}
-var topupGroupRatio = map[string]float64{
-	"default": 1,
-	"vip":     1,
-	"svip":    1,
-}
+var topupGroupRatio = map[string]float64{}
 var topupGroupRatioMutex sync.RWMutex
 
 func TopupGroupRatio2JSONString() string {
@@ -30,14 +21,6 @@ func UpdateTopupGroupRatioByJSONString(jsonStr string) error {
 	loaded := map[string]float64{}
 	if err := Unmarshal([]byte(jsonStr), &loaded); err != nil {
 		return err
-	}
-	// Option reloads replace the whole map; keep the hardcoded fallback
-	// groups present so GetTopupGroupRatio never silently drifts to its 1.0
-	// fallback for them.
-	for k, v := range defaultTopupGroupRatio {
-		if _, ok := loaded[k]; !ok {
-			loaded[k] = v
-		}
 	}
 	topupGroupRatioMutex.Lock()
 	defer topupGroupRatioMutex.Unlock()

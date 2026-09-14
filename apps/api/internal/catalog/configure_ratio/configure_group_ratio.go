@@ -8,19 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/types"
 )
 
-var defaultGroupRatio = map[string]float64{
-	"default": 1,
-	"vip":     1,
-	"svip":    1,
-}
-
 var groupRatioMap = types.NewRWMap[string, float64]()
-
-var defaultGroupGroupRatio = map[string]map[string]float64{
-	"vip": {
-		"edit_this": 0.9,
-	},
-}
 
 var groupGroupRatioMap = types.NewRWMap[string, map[string]float64]()
 
@@ -37,9 +25,6 @@ var groupRatioSetting GroupRatioSetting
 func init() {
 	groupSpecialUsableGroup := types.NewRWMap[string, map[string]string]()
 	groupSpecialUsableGroup.AddAll(defaultGroupSpecialUsableGroup)
-
-	groupRatioMap.AddAll(defaultGroupRatio)
-	groupGroupRatioMap.AddAll(defaultGroupGroupRatio)
 
 	groupRatioSetting = GroupRatioSetting{
 		GroupSpecialUsableGroup: groupSpecialUsableGroup,
@@ -72,14 +57,7 @@ func GroupRatio2JSONString() string {
 }
 
 func UpdateGroupRatioByJSONString(jsonStr string) error {
-	if err := types.LoadFromJsonString(groupRatioMap, jsonStr); err != nil {
-		return err
-	}
-	// Option reloads replace the whole map; without this, the hardcoded
-	// fallback groups (default/vip/svip) disappear on the first sync and
-	// GetGroupRatio silently drifts to its 1.0 fallback for them.
-	groupRatioMap.AddAll(defaultGroupRatio)
-	return nil
+	return types.LoadFromJsonString(groupRatioMap, jsonStr)
 }
 
 func GetGroupRatio(name string) float64 {

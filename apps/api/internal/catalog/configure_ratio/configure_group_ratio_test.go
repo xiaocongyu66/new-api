@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestUpdateGroupRatioByJSONStringKeepsDefaultGroups(t *testing.T) {
+func TestUpdateGroupRatioByJSONStringReplacesMapWholesale(t *testing.T) {
 	original := GroupRatio2JSONString()
 	t.Cleanup(func() {
 		require.NoError(t, UpdateGroupRatioByJSONString(original))
@@ -15,11 +15,12 @@ func TestUpdateGroupRatioByJSONStringKeepsDefaultGroups(t *testing.T) {
 
 	require.NoError(t, UpdateGroupRatioByJSONString(`{"牛奶":1}`))
 	assert.Equal(t, 1.0, GetGroupRatio("牛奶"))
-	// Hardcoded fallback groups survive option reloads instead of silently
-	// drifting to the 1.0 lookup fallback.
-	assert.True(t, ContainsGroupRatio("default"))
-	assert.True(t, ContainsGroupRatio("vip"))
-	assert.True(t, ContainsGroupRatio("svip"))
+	// No hardcoded fallback groups: the map holds exactly what the option
+	// contains; unlisted groups fall back to 1.0 at lookup time.
+	assert.False(t, ContainsGroupRatio("default"))
+	assert.False(t, ContainsGroupRatio("vip"))
+	assert.False(t, ContainsGroupRatio("svip"))
+	assert.Equal(t, 1.0, GetGroupRatio("default"))
 }
 
 func TestUpdateGroupRatioByJSONStringKeepsPreviousMapOnBadJSON(t *testing.T) {
