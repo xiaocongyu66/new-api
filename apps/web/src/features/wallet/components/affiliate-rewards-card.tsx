@@ -102,7 +102,7 @@ export function AffiliateRewardsCard({
               {t('Referral Program')}
             </h3>
             <p className='text-muted-foreground line-clamp-1 text-xs'>
-              {paysSpore
+              {paysSpore && (sporeInviterReward ?? 0) > 0
                 ? t(
                     'Each successful invite instantly grants {{amount}} {{label}} to your voucher balance.',
                     {

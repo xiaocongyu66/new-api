@@ -90,7 +90,21 @@ const createQuotaSchema = (t: (key: string) => string) =>
       }
     })
 
-type QuotaFormValues = z.infer<typeof quotaSchema>
+type QuotaFormValues = {
+  QuotaForNewUser: number
+  PreConsumedQuota: number
+  QuotaForInviter: number
+  QuotaForInvitee: number
+  SporeInviterReward?: string
+  InviterRewardCurrency: 'quota' | 'spore'
+  TopUpLink: string
+  general_setting: {
+    docs_link: string
+  }
+  quota_setting: {
+    enable_free_model_pre_consume: boolean
+  }
+}
 type QuotaInputValue = number | ''
 
 function formatQuotaInputValue(value: QuotaInputValue): string {

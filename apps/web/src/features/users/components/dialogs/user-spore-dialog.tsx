@@ -86,7 +86,10 @@ const sporeFormSchema = (t: (key: string) => string) =>
       }
     })
 
-type SporeFormValues = z.infer<typeof sporeFormSchema>
+type SporeFormValues = {
+  mode: 'add' | 'subtract' | 'override'
+  amount: string
+}
 
 interface UserSporeDialogProps {
   open: boolean

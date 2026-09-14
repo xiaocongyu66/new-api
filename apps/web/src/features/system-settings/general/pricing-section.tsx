@@ -154,7 +154,6 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
     })
 
   const displayType = form.watch('general_setting.quota_display_type') ?? 'USD'
-  const amountUnit = form.watch('general_setting.amount_unit') ?? 'usd'
   const displayInCurrencyEnabled = form.watch('DisplayInCurrencyEnabled')
   const showTokensOnlyOption = displayType === 'TOKENS'
   const showQuotaPerUnit =
