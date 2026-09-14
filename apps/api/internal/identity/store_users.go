@@ -96,6 +96,7 @@ type User struct {
 	Quota            int                        `json:"quota" gorm:"type:int;default:0"`
 	UsedQuota        int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
 	RequestCount     int                        `json:"request_count" gorm:"type:int;default:0;"`               // request number
+	Spore            int64                      `json:"spore" gorm:"type:bigint;not null;default:0;column:spore"`
 	Group            string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
 	AffCode          string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
 	AffCount         int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
@@ -425,6 +426,30 @@ func inviteUser(inviterId int) error {
 	return nil
 }
 
+// rewardInviterSpore 按后台配置发放邀请菌种奖励（common.SporeInviterRewardTenths，
+// 0 = 关闭）。仅在管理员把邀请奖励货币切到 "spore" 时发放，与余额奖励
+// （inviteUser，合规门内）互斥。菌种是站内凭证，沿用原实现（model/user_spore.go）
+// 留在合规门外——避免运营关合规导致菌种静默漏发（线上事故回归点）。
+// 每次成功邀请一条内容恰为「开拓奖励」的用户可见日志——运营靠这个固定串
+// 对账漏发，不要往里面拼数量。
+func rewardInviterSpore(inviterId int) {
+	if inviterId == 0 {
+		return
+	}
+	if common.InviterRewardCurrency != "spore" {
+		return
+	}
+	tenths := common.SporeInviterRewardTenths
+	if tenths <= 0 {
+		return
+	}
+	if err := IncreaseUserSpore(inviterId, tenths); err != nil {
+		common.SysError(fmt.Sprintf("发放开拓奖励菌种失败: inviter=%d err=%s", inviterId, err.Error()))
+		return
+	}
+	writeSystemLog(inviterId, "开拓奖励")
+}
+
 func (user *User) TransferAffQuotaToQuota(quota int) error {
 	// 检查quota是否小于最小额度
 	if float64(quota) < common.QuotaPerUnit {
@@ -563,11 +588,12 @@ func (user *User) finishInsert(inviterId int) {
 			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
 			writeSystemLog(user.Id, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
-		if common.QuotaForInviter > 0 {
+		if common.QuotaForInviter > 0 && common.InviterRewardCurrency != "spore" {
 			writeSystemLog(inviterId, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
 			_ = inviteUser(inviterId)
 		}
 	}
+	rewardInviterSpore(inviterId)
 }
 
 func (user *User) FinishInsert(inviterId int) {
@@ -619,11 +645,12 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
 			writeSystemLog(user.Id, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
-		if common.QuotaForInviter > 0 {
+		if common.QuotaForInviter > 0 && common.InviterRewardCurrency != "spore" {
 			writeSystemLog(inviterId, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
 			_ = inviteUser(inviterId)
 		}
 	}
+	rewardInviterSpore(inviterId)
 }
 
 func (user *User) Update(updatePassword bool) error {
@@ -681,6 +708,7 @@ func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 		"aff_quota",
 		"aff_history",
 		"auth_version",
+		"spore",
 	).Updates(newUser).Error; err != nil {
 		return err
 	}

@@ -8,6 +8,7 @@ package settings
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -215,6 +216,8 @@ func SeedOptionMap() {
 	common.OptionMap["QuotaForNewUser"] = strconv.Itoa(common.QuotaForNewUser)
 	common.OptionMap["QuotaForInviter"] = strconv.Itoa(common.QuotaForInviter)
 	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
+	common.OptionMap["SporeInviterReward"] = strconv.FormatFloat(float64(common.SporeInviterRewardTenths)/10, 'f', -1, 64)
+	common.OptionMap["InviterRewardCurrency"] = common.InviterRewardCurrency
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
 	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(rate_limit.ModelRequestRateLimitCount)
@@ -497,6 +500,22 @@ func ApplyOption(key string, value string) (err error) {
 		common.QuotaForInviter, _ = strconv.Atoi(value)
 	case "QuotaForInvitee":
 		common.QuotaForInvitee, _ = strconv.Atoi(value)
+	case "SporeInviterReward":
+		// 后台以菌种为单位配置（0.1 精度），存储为内部十分之一整数。
+		// !(units >= 0) 同时吃掉 NaN；上界挡住 Inf 与溢出 int64 的有限值——
+		// ParseFloat 对这些输入返回 nil 错误，不能靠 ParseFloat 报错兜底。
+		units, parseErr := strconv.ParseFloat(value, 64)
+		if parseErr != nil || !(units >= 0) || units > 1e15 {
+			units = 0
+		}
+		common.SporeInviterRewardTenths = int64(math.Round(units * 10))
+	case "InviterRewardCurrency":
+		// 邀请奖励货币二选一：仅接受 "spore"，其余一律回落 "quota"，防止脏值把奖励打进无人领取的货币。
+		if value == "spore" {
+			common.InviterRewardCurrency = "spore"
+		} else {
+			common.InviterRewardCurrency = "quota"
+		}
 	case "QuotaRemindThreshold":
 		common.QuotaRemindThreshold, _ = strconv.Atoi(value)
 	case "PreConsumedQuota":

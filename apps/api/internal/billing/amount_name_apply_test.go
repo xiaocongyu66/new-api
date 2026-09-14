@@ -32,9 +32,9 @@ func TestApplyOptionSyncsAmountName(t *testing.T) {
 	require.Equal(t, "", GetGeneralSetting().AmountName)
 }
 
-// TestApplyOptionSyncsAmountUnit verifies the payment amount unit selector
-// (usd/cny/custom) applies to the in-memory GeneralSetting and that empty or
-// unknown stored values normalize to "usd" in what /api/status exposes.
+// TestApplyOptionSyncsAmountUnit verifies the payment amount unit selector.
+// The payment side is real money (usd/cny only); the legacy "custom" name is
+// stored as-is but never reaches /api/status — it normalizes to "usd".
 func TestApplyOptionSyncsAmountUnit(t *testing.T) {
 	previousMap := common.OptionMap
 	common.OptionMap = map[string]string{}
@@ -43,11 +43,15 @@ func TestApplyOptionSyncsAmountUnit(t *testing.T) {
 	previous := GetGeneralSetting().AmountUnit
 	t.Cleanup(func() { GetGeneralSetting().AmountUnit = previous })
 
-	for _, unit := range []string{"usd", "cny", "custom"} {
+	for _, unit := range []string{"usd", "cny"} {
 		require.NoError(t, settings.ApplyOption("general_setting.amount_unit", unit))
 		require.Equal(t, unit, GetGeneralSetting().AmountUnit)
 		require.Equal(t, unit, GetGeneralSetting().AmountUnitEffective())
 	}
+
+	// Legacy custom values stay stored but are masked as usd.
+	require.NoError(t, settings.ApplyOption("general_setting.amount_unit", "custom"))
+	require.Equal(t, "usd", GetGeneralSetting().AmountUnitEffective())
 
 	require.NoError(t, settings.ApplyOption("general_setting.amount_unit", ""))
 	require.Equal(t, "usd", GetGeneralSetting().AmountUnitEffective())

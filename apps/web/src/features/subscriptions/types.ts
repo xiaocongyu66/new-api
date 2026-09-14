@@ -36,6 +36,12 @@ export const subscriptionPlanSchema = z.object({
   enabled: z.boolean(),
   sort_order: z.number(),
   allow_balance_pay: z.boolean().optional().default(true),
+  // Spore amount in internal units (1 = 0.1 spore)
+  spore_amount: z.number().optional().default(0),
+  pay_mode: z
+    .enum(['none', 'balance', 'spore', 'both', 'either'])
+    .optional()
+    .default('balance'),
   allow_wallet_overflow: z.boolean().optional().default(true),
   max_purchase_per_user: z.number(),
   total_amount: z.number(),
@@ -92,6 +98,8 @@ export interface PlanPayload {
 export interface SubscriptionPayRequest {
   plan_id: number
   payment_method?: string
+  /** Used when the plan's pay_mode is 'either': 'balance' | 'spore' */
+  pay_with?: 'balance' | 'spore'
 }
 
 export interface SubscriptionPayResponse {

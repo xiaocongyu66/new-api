@@ -55,6 +55,22 @@ import { useSettingsForm } from '../hooks/use-settings-form'
 import { useUpdateOption } from '../hooks/use-update-option'
 import { safeNumberFieldProps } from '../utils/numeric-field'
 
+export interface PricingGeneralSettings {
+  quota_display_type: 'USD' | 'CNY' | 'TOKENS' | 'CUSTOM'
+  custom_currency_symbol?: string
+  custom_currency_exchange_rate?: number
+  amount_unit?: 'usd' | 'cny'
+  spore_symbol?: string
+}
+
+export interface PricingFormValues {
+  QuotaPerUnit: number
+  USDExchangeRate: number
+  DisplayInCurrencyEnabled: boolean
+  DisplayTokenStatEnabled: boolean
+  general_setting: PricingGeneralSettings
+}
+
 const createPricingSchema = (t: (key: string) => string) =>
   z
     .object({
@@ -71,8 +87,8 @@ const createPricingSchema = (t: (key: string) => string) =>
           .number()
           .min(0.0001, t('Exchange rate must be greater than 0'))
           .optional(),
-        amount_name: z.string().max(20, t('Amount name must be at most 20 characters')).optional(),
-        amount_unit: z.enum(['usd', 'cny', 'custom']).optional(),
+        amount_unit: z.enum(['usd', 'cny']).optional(),
+        spore_symbol: z.string().max(8).optional(),
       }),
     })
     .superRefine((data, ctx) => {
@@ -95,20 +111,8 @@ const createPricingSchema = (t: (key: string) => string) =>
           })
         }
       }
-
-      if (
-        data.general_setting.amount_unit === 'custom' &&
-        !data.general_setting.amount_name?.trim()
-      ) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['general_setting', 'amount_name'],
-          message: t('Amount name is required for the custom unit'),
-        })
-      }
     })
 
-type PricingFormValues = z.infer<ReturnType<typeof createPricingSchema>>
 
 type PricingSectionProps = {
   defaultValues: PricingFormValues
@@ -253,7 +257,6 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
                     items={[
                       { value: 'usd', label: t('USD ($)') },
                       { value: 'cny', label: t('CNY (¥)') },
-                      { value: 'custom', label: t('Custom name') },
                     ]}
                     value={field.value ?? 'usd'}
                     onValueChange={field.onChange}
@@ -269,9 +272,6 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
                       <SelectGroup>
                         <SelectItem value='usd'>{t('USD ($)')}</SelectItem>
                         <SelectItem value='cny'>{t('CNY (¥)')}</SelectItem>
-                        <SelectItem value='custom'>
-                          {t('Custom name')}
-                        </SelectItem>
                       </SelectGroup>
                     </SelectContent>
                   </Select>
@@ -285,35 +285,33 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
               )}
             />
 
-            {amountUnit === 'custom' && (
-              <FormField
-                control={form.control}
-                name='general_setting.amount_name'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Amount Name')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='text'
-                        value={field.value ?? ''}
-                        onChange={field.onChange}
-                        name={field.name}
-                        onBlur={field.onBlur}
-                        ref={field.ref}
-                        maxLength={20}
-                        placeholder={t('e.g. 稀有气体, 菌种, or USD')}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t(
-                        'Name shown for payment amounts (top-ups, plan purchases). Separate from the consumption currency symbol.'
-                      )}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
+            <FormField
+              control={form.control}
+              name='general_setting.spore_symbol'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Spore Symbol')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='text'
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                      maxLength={8}
+                      placeholder={t('e.g. 🍄 or Spore')}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Optional symbol/icon shown next to spore amounts. Leave empty to show only the name.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             {displayType !== 'TOKENS' && (
               <FormField

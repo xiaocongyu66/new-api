@@ -66,6 +66,9 @@ const BILLING_SECTIONS = [
           PreConsumedQuota: settings.PreConsumedQuota,
           QuotaForInviter: settings.QuotaForInviter,
           QuotaForInvitee: settings.QuotaForInvitee,
+          SporeInviterReward: String(settings.SporeInviterReward ?? 0.1),
+          InviterRewardCurrency:
+            settings.InviterRewardCurrency === 'spore' ? 'spore' : 'quota',
           TopUpLink: settings.TopUpLink,
           general_setting: {
             docs_link: settings['general_setting.docs_link'],
@@ -100,12 +103,10 @@ const BILLING_SECTIONS = [
               settings['general_setting.custom_currency_symbol'] ?? '¤',
             custom_currency_exchange_rate:
               settings['general_setting.custom_currency_exchange_rate'] ?? 1,
-            amount_name: settings['general_setting.amount_name'] ?? '',
-            amount_unit:
-              settings['general_setting.amount_unit'] === 'cny' ||
-              settings['general_setting.amount_unit'] === 'custom'
-                ? settings['general_setting.amount_unit']
-                : 'usd',
+            amount_unit: settings['general_setting.amount_unit'] === 'cny'
+              ? 'cny'
+              : 'usd',
+            spore_symbol: settings['general_setting.spore_symbol'] ?? '',
           },
         }}
       />

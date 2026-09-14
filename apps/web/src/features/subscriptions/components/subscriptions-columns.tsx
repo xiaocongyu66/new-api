@@ -24,7 +24,7 @@ import { BadgeCell } from '@/components/data-table'
 import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
-import { getAmountSymbol } from '@/lib/currency'
+import { formatPlanPrice } from '../lib'
 import { formatQuota } from '@/lib/format'
 
 import { formatDuration, formatResetPeriod } from '../lib'
@@ -70,11 +70,10 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         header: t('Price'),
         cell: ({ row }) => (
           <span className='font-semibold text-emerald-600'>
-            {getAmountSymbol()}
-            {Number(row.original.plan.price_amount || 0).toFixed(2)}
+            {formatPlanPrice(row.original.plan, t)}
           </span>
         ),
-        size: 100,
+        size: 140,
       },
       {
         id: 'duration',
