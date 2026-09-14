@@ -189,6 +189,18 @@ func TestFinishInsertInviterRewardCurrencyMutualExclusion(t *testing.T) {
 		return contents
 	}
 
+	// aff_count 必须每个合规邀请 +1（与货币无关）；aff_quota/aff_history 仅在
+	// 余额奖励实际发放时增长。
+	affStats := func(id int) (count, quota, history int64) {
+		var s struct {
+			AffCount   int64
+			AffQuota   int64
+			AffHistory int64
+		}
+		require.NoError(t, dbx.DB.Model(&User{}).Select("aff_count", "aff_quota", "aff_history").Where("id = ?", id).Scan(&s).Error)
+		return s.AffCount, s.AffQuota, s.AffHistory
+	}
+
 	// spore 模式：邀请人拿菌种，aff_quota 不动，无「邀请用户赠送」日志。
 	common.InviterRewardCurrency = "spore"
 	// aff_code 有唯一索引，直接 Create 的邀请人必须带互不相同的邀请码。
@@ -204,6 +216,9 @@ func TestFinishInsertInviterRewardCurrencyMutualExclusion(t *testing.T) {
 	require.NoError(t, err)
 	assert.EqualValues(t, 3, sporeA, "spore mode must grant the configured spore reward")
 	assert.Equal(t, []string{"开拓奖励"}, inviterLogs(inviterA.Id))
+	countA, _, historyA := affStats(inviterA.Id)
+	assert.EqualValues(t, 1, countA, "spore mode must still count the invite in aff_count")
+	assert.EqualValues(t, 0, historyA, "spore mode must not accrue aff_history")
 
 	// quota 模式：邀请人拿 aff_quota，菌种不动，无「开拓奖励」日志。
 	common.InviterRewardCurrency = "quota"
@@ -221,6 +236,9 @@ func TestFinishInsertInviterRewardCurrencyMutualExclusion(t *testing.T) {
 	for _, content := range inviterLogs(inviterB.Id) {
 		assert.NotEqual(t, "开拓奖励", content, "quota mode must not write the spore reward log")
 	}
+	countB, _, historyB := affStats(inviterB.Id)
+	assert.EqualValues(t, 1, countB, "quota mode must count the invite in aff_count")
+	assert.EqualValues(t, 1000, historyB, "quota mode must accrue aff_history")
 
 	// both 模式：aff_quota 与菌种同时入账，两条日志都在。
 	common.InviterRewardCurrency = "both"
@@ -242,4 +260,7 @@ func TestFinishInsertInviterRewardCurrencyMutualExclusion(t *testing.T) {
 		hasQuotaLog = hasQuotaLog || strings.HasPrefix(content, "邀请用户赠送")
 	}
 	assert.True(t, hasQuotaLog, "both mode must write the quota reward log")
+	countC, _, historyC := affStats(inviterC.Id)
+	assert.EqualValues(t, 1, countC, "both mode must count the invite in aff_count")
+	assert.EqualValues(t, 1000, historyC, "both mode must accrue aff_history")
 }

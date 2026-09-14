@@ -411,12 +411,20 @@ func GetUserIdByAffCode(affCode string) (int, error) {
 	err := dbx.DB.Select("id").First(&user, "aff_code = ?", affCode).Error
 	return user.Id, err
 }
-func inviteUser(inviterId int) error {
-	result := dbx.DB.Model(&User{}).Where("id = ?", inviterId).Updates(map[string]interface{}{
-		"aff_count":   gorm.Expr("aff_count + ?", 1),
-		"aff_quota":   gorm.Expr("aff_quota + ?", common.QuotaForInviter),
-		"aff_history": gorm.Expr("aff_history + ?", common.QuotaForInviter),
-	})
+
+// inviteUser records a successful invite: aff_count always increments, while
+// aff_quota/aff_history only grow when the quota reward is actually paid
+// (quota/both mode). In spore mode the inviter still gets the count so the
+// page-visible invite number stays correct.
+func inviteUser(inviterId int, withQuotaReward bool) error {
+	updates := map[string]interface{}{
+		"aff_count": gorm.Expr("aff_count + ?", 1),
+	}
+	if withQuotaReward {
+		updates["aff_quota"] = gorm.Expr("aff_quota + ?", common.QuotaForInviter)
+		updates["aff_history"] = gorm.Expr("aff_history + ?", common.QuotaForInviter)
+	}
+	result := dbx.DB.Model(&User{}).Where("id = ?", inviterId).Updates(updates)
 	if result.Error != nil {
 		return result.Error
 	}
@@ -589,10 +597,11 @@ func (user *User) finishInsert(inviterId int) {
 			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
 			writeSystemLog(user.Id, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
-		if common.QuotaForInviter > 0 && common.InviterRewardCurrency != "spore" {
+		quotaReward := common.QuotaForInviter > 0 && common.InviterRewardCurrency != "spore"
+		if quotaReward {
 			writeSystemLog(inviterId, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
-			_ = inviteUser(inviterId)
 		}
+		_ = inviteUser(inviterId, quotaReward)
 	}
 	rewardInviterSpore(inviterId)
 }
@@ -646,10 +655,11 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
 			writeSystemLog(user.Id, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
-		if common.QuotaForInviter > 0 && common.InviterRewardCurrency != "spore" {
+		quotaReward := common.QuotaForInviter > 0 && common.InviterRewardCurrency != "spore"
+		if quotaReward {
 			writeSystemLog(inviterId, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
-			_ = inviteUser(inviterId)
 		}
+		_ = inviteUser(inviterId, quotaReward)
 	}
 	rewardInviterSpore(inviterId)
 }
