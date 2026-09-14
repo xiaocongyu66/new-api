@@ -51,6 +51,8 @@ import {
 } from '@/components/ui/select'
 import {
   formatSpore,
+  getSporeName,
+  getSporeSymbol,
   parseSporeToUnits,
   sporeUnitsToValue,
 } from '@/lib/spore'
@@ -166,6 +168,7 @@ export function UserSporeDialog({
             {t('Current spore balance')}:
           </span>{' '}
           <span className='font-mono font-semibold'>
+            {getSporeSymbol() || getSporeName()}{' '}
             {formatSpore(currentSporeUnits)}
           </span>
         </div>

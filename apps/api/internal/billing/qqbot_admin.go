@@ -92,7 +92,7 @@ func HandleAdminBalance(event *GroupAtMessageEvent, senderOpenID string, content
 	targetOpenID, rest := parseTargetUser(strings.TrimPrefix(content, "/余额"))
 	if targetOpenID == "" {
 		return buildPlainMarkdown(senderOpenID,
-			"**用法：**/余额 @用户 +10（或 -10 / =10）\n\n+ 加菌种  - 扣菌种  = 设定余额")
+			fmt.Sprintf("**用法：**/余额 @用户 +10（或 -10 / =10）\n\n+ 加%s  - 扣%s  = 设定余额", GetSporeName(), GetSporeName()))
 	}
 
 	rest = strings.TrimSpace(rest)
@@ -114,7 +114,7 @@ func HandleAdminBalance(event *GroupAtMessageEvent, senderOpenID string, content
 		amountStr = strings.TrimPrefix(rest, "=")
 	default:
 		return buildPlainMarkdown(senderOpenID,
-			"**用法：**/余额 @用户 +10（或 -10 / =10）\n\n+ 加菌种  - 扣菌种  = 设定余额")
+			fmt.Sprintf("**用法：**/余额 @用户 +10（或 -10 / =10）\n\n+ 加%s  - 扣%s  = 设定余额", GetSporeName(), GetSporeName()))
 	}
 
 	amount, err := strconv.ParseFloat(strings.TrimSpace(amountStr), 64)
@@ -136,12 +136,12 @@ func HandleAdminBalance(event *GroupAtMessageEvent, senderOpenID string, content
 
 	newBalance, _ := identity.GetUserSpore(targetUserId)
 	usage.RecordLog(targetUserId, usage.LogTypeSystem,
-		fmt.Sprintf("QQ 管理员调整菌种 %s，余额 %s",
-			identity.FormatSpore(units), identity.FormatSpore(newBalance)))
+		fmt.Sprintf("QQ 管理员调整%s %s，余额 %s",
+			GetSporeName(), identity.FormatSpore(units), identity.FormatSpore(newBalance)))
 
 	return buildPlainMarkdown(senderOpenID,
-		fmt.Sprintf("**操作成功**\n\n%s 菌种余额：**%s**",
-			atUser(targetOpenID), identity.FormatSpore(newBalance)))
+		fmt.Sprintf("**操作成功**\n\n%s %s余额：**%s**",
+			atUser(targetOpenID), GetSporeName(), identity.FormatSpore(newBalance)))
 }
 
 // HandleAdminBan 处理 /封禁 和 /解封 指令
