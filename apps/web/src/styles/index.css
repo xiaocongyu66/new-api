@@ -570,6 +570,117 @@ For commercial licensing, please contact support@quantumnous.com
   animation: cheese-aurora-drift 18s ease-in-out infinite;
 }
 
+/* Mouse micro-motion: lazy tail sway + occasional ear twitch. Origins sit
+ * at the attachment points (tail base / ear base) via transform-box. */
+@keyframes cheese-tail-sway {
+  0%,
+  to {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(12deg);
+  }
+}
+.cheese-tail {
+  transform-box: fill-box;
+  transform-origin: 95% 5%;
+  animation: cheese-tail-sway 5s ease-in-out infinite;
+}
+
+@keyframes cheese-ear-twitch {
+  0%,
+  86%,
+  to {
+    transform: rotate(0deg);
+  }
+  90% {
+    transform: rotate(-7deg);
+  }
+  95% {
+    transform: rotate(5deg);
+  }
+}
+.cheese-ear {
+  transform-box: fill-box;
+  transform-origin: 70% 85%;
+  animation: cheese-ear-twitch 7s ease-in-out infinite;
+}
+
+/* Mouse ⇄ cheese duet: one shared 5-second timeline (the same period as
+ * the tail sway above), so the scene reads as call-and-response instead
+ * of five unrelated loops — the mouse strains toward the wedge
+ * (cheese-lean), little hearts rise in the gap (cheese-desire), and the
+ * cheese answers with a happy squash-jiggle (cheese-jiggle). */
+@keyframes cheese-lean {
+  0%,
+  4% {
+    transform: rotate(0deg);
+  }
+  10%,
+  18% {
+    transform: rotate(2.6deg);
+  }
+  13% {
+    transform: rotate(3.2deg);
+  }
+  34%,
+  to {
+    transform: rotate(0deg);
+  }
+}
+.cheese-lean {
+  transform-box: fill-box;
+  transform-origin: 35% 78%;
+  animation: cheese-lean 5s ease-in-out infinite;
+}
+
+@keyframes cheese-jiggle {
+  0%,
+  22% {
+    transform: scale(1, 1);
+  }
+  27% {
+    transform: scale(1.04, 0.95);
+  }
+  33% {
+    transform: scale(0.97, 1.03);
+  }
+  39% {
+    transform: scale(1.02, 0.99);
+  }
+  45%,
+  to {
+    transform: scale(1, 1);
+  }
+}
+.cheese-jiggle {
+  transform-box: fill-box;
+  transform-origin: 45% 95%;
+  animation: cheese-jiggle 5s ease-in-out infinite;
+}
+
+@keyframes cheese-desire {
+  0%,
+  12% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.5);
+  }
+  22% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  55%,
+  to {
+    opacity: 0;
+    transform: translateY(-22px) scale(1.05);
+  }
+}
+.cheese-desire {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: cheese-desire 5s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .landing-animate-fade-up,
   .landing-animate-fade-in,
@@ -578,7 +689,12 @@ For commercial licensing, please contact support@quantumnous.com
   .landing-animate-fade-right,
   .cheese-float,
   .cheese-twinkle,
-  .cheese-aurora {
+  .cheese-aurora,
+  .cheese-tail,
+  .cheese-ear,
+  .cheese-lean,
+  .cheese-jiggle,
+  .cheese-desire {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
