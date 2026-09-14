@@ -29,6 +29,8 @@ export const redemptionSchema = z.object({
   key: z.string(),
   status: z.number(), // 1: enabled, 2: disabled, 3: used
   quota: z.number(),
+  // Always present: the backend Redemption.AfterFind hook fills it on every read.
+  quota_display: z.number(),
   created_time: z.number(),
   redeemed_time: z.number(),
   expired_time: z.number(), // 0 for never expires
@@ -73,7 +75,7 @@ export interface SearchRedemptionsParams {
 export interface RedemptionFormData {
   id?: number
   name: string
-  quota: number
+  quota_display: number
   expired_time: number
   count?: number // Only for create
   status?: number // Only for status update

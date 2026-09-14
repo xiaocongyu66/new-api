@@ -25,7 +25,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
-import { formatQuota, parseQuotaFromDollars } from '@/lib/format'
+import { formatQuota, parseQuotaFromDollarsLegacy } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { adjustUserQuota } from '../api'
@@ -50,7 +50,7 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
   const tokensOnly = currencyMeta.kind === 'tokens'
 
   const amountValue = parseFloat(amount) || 0
-  const quotaValue = parseQuotaFromDollars(Math.abs(amountValue))
+  const quotaValue = parseQuotaFromDollarsLegacy(Math.abs(amountValue))
 
   const getPreviewText = () => {
     const current = props.currentQuota
@@ -61,7 +61,7 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
       case 'subtract':
         return `${t('Current quota')}: ${formatQuota(current)}  -${formatQuota(val)} = ${formatQuota(current - val)}`
       case 'override': {
-        const overrideQuota = parseQuotaFromDollars(amountValue)
+        const overrideQuota = parseQuotaFromDollarsLegacy(amountValue)
         return `${t('Current quota')}: ${formatQuota(current)} → ${formatQuota(overrideQuota)}`
       }
       default:
@@ -76,7 +76,7 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
     setLoading(true)
     try {
       const value =
-        mode === 'override' ? parseQuotaFromDollars(amountValue) : quotaValue
+        mode === 'override' ? parseQuotaFromDollarsLegacy(amountValue) : quotaValue
       const result = await adjustUserQuota({
         id: props.userId,
         action: 'add_quota',

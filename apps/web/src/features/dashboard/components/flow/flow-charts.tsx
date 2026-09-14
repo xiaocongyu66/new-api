@@ -84,7 +84,7 @@ import type {
   FlowOverflowMode,
   FlowRole,
 } from '@/features/dashboard/types'
-import { formatQuota } from '@/lib/format'
+import { formatQuotaLegacy } from '@/lib/format'
 import { ROLE } from '@/lib/roles'
 import { computeTimeRange } from '@/lib/time'
 import { useChartTheme } from '@/lib/use-chart-theme'
@@ -394,7 +394,9 @@ export function FlowCharts(props: FlowChartsProps) {
   const metricLabel = t(FLOW_METRIC_LABEL_KEYS[metric])
   const formatNodeMetricValue = useCallback(
     (value: number) =>
-      metric === 'quota' ? formatQuota(value) : formatFlowMetricNumber(value),
+      metric === 'quota'
+        ? formatQuotaLegacy(value)
+        : formatFlowMetricNumber(value),
     [metric]
   )
   // Explicit filters (the chips/dropdown control) narrow the rows that feed the
@@ -454,7 +456,7 @@ export function FlowCharts(props: FlowChartsProps) {
   const chartTitle = t('Flow')
   const flowSpec = useMemo(
     () =>
-      buildFlowSankeySpec(flowData.flow, chartTitle, formatQuota, {
+      buildFlowSankeySpec(flowData.flow, chartTitle, formatQuotaLegacy, {
         quota: t('Quota'),
         tokens: t('Tokens'),
         requests: t('Requests'),

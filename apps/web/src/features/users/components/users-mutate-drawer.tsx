@@ -70,7 +70,7 @@ import {
   normalizeAdminPermissions,
 } from '@/lib/admin-permissions'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
-import { formatQuota, parseQuotaFromDollars } from '@/lib/format'
+import { formatQuota, parseQuotaFromDollarsLegacy } from '@/lib/format'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -422,7 +422,7 @@ export function UsersMutateDrawer({
                           </Button>
                         </div>
                         <FormDescription>
-                          {formatQuota(parseQuotaFromDollars(field.value || 0))}
+                          {formatQuota(parseQuotaFromDollarsLegacy(field.value || 0))}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -591,7 +591,7 @@ export function UsersMutateDrawer({
           open={quotaDialogOpen}
           onOpenChange={setQuotaDialogOpen}
           userId={currentRow.id}
-          currentQuota={parseQuotaFromDollars(currentQuotaRaw || 0)}
+          currentQuota={parseQuotaFromDollarsLegacy(currentQuotaRaw || 0)}
           onSuccess={refreshUserData}
         />
       )}

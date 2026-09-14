@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import dayjs from '@/lib/dayjs'
 
 import {
+  LEGACY_QUOTA_PER_UNIT,
   formatCurrencyFromUSD,
   formatQuotaWithCurrency,
   getCurrencyDisplay,
@@ -63,15 +64,20 @@ export function formatCurrencyUSD(value: number | null | undefined): string {
 }
 
 // ============================================================================
-// Quota Formatting (500,000 units = $1)
+// Quota Formatting
+//
+// The backend owns the quota -> display-amount conversion (billing.
+// QuotaToDisplayAmount). Every raw quota field the API returns has a
+// `*_display` float sibling, and these helpers only do the formatting half:
+// locale, digits, abbreviation, currency symbol.
 // ============================================================================
 
 /**
- * Format quota into the configured display amount.
- * Quota is stored in units where `quotaPerUnit` equals 1 USD.
+ * Format a quota amount the backend already converted to the display currency.
+ * Pass the `*_display` sibling of a raw quota field, never the raw field.
  */
-export function formatQuota(quota: number): string {
-  return formatQuotaWithCurrency(quota, {
+export function formatQuota(displayAmount: number): string {
+  return formatQuotaWithCurrency(displayAmount, {
     digitsLarge: 2,
     digitsSmall: 4,
     abbreviate: true,
@@ -79,60 +85,21 @@ export function formatQuota(quota: number): string {
 }
 
 /**
- * Parse quota from the current display input back to quota units.
+ * Round a display amount to the precision an editable quota input shows, so a
+ * `*_display` value round-trips through the form without picking up stray
+ * digits. Token display amounts are always integers.
  */
-export function parseQuotaFromDollars(amount: number): number {
-  if (!Number.isFinite(amount)) return 0
+export function toEditableDisplayAmount(displayAmount: number): number {
+  if (!Number.isFinite(displayAmount)) return 0
 
-  const { config, meta } = getCurrencyDisplay()
-
-  // Tokens-only or raw quota mode
+  const { meta } = getCurrencyDisplay()
   if (meta.kind === 'tokens') {
-    return Math.round(amount)
+    return Math.round(displayAmount)
   }
 
-  const exchangeRate =
-    meta.kind === 'currency' || meta.kind === 'custom' ? meta.exchangeRate : 1
-
-  const usdAmount = exchangeRate > 0 ? amount / exchangeRate : amount
-
-  return Math.round(usdAmount * config.quotaPerUnit)
-}
-
-/**
- * Convert quota units to the configured display amount.
- * Reverse of parseQuotaFromDollars.
- */
-export function quotaUnitsToDollars(units: number): number {
-  const { config, meta } = getCurrencyDisplay()
-  return quotaUnitsToDisplayAmount(units, config.quotaPerUnit, meta)
-}
-
-function quotaUnitsToDisplayAmount(
-  units: number,
-  quotaPerUnit: number,
-  meta: ReturnType<typeof getCurrencyDisplay>['meta']
-): number {
-  if (meta.kind === 'tokens') {
-    return units
-  }
-
-  return (units / quotaPerUnit) * meta.exchangeRate
-}
-
-/**
- * Convert quota units to a plain number suitable for an editable input.
- * Uses the same precision as quota list formatting without symbols or suffixes.
- */
-export function quotaUnitsToEditableAmount(units: number): number {
-  const { config, meta } = getCurrencyDisplay()
-  const amount = quotaUnitsToDisplayAmount(units, config.quotaPerUnit, meta)
-
-  if (meta.kind === 'tokens') {
-    return Math.round(amount)
-  }
-
-  return Number(amount.toFixed(getCurrencyFractionDigits(amount)))
+  return Number(
+    displayAmount.toFixed(getCurrencyFractionDigits(displayAmount))
+  )
 }
 
 /** Return the input step matching the configured editable quota precision. */
@@ -143,6 +110,58 @@ export function getEditableQuotaStep(): number {
   }
 
   return 10 ** -getCurrencyFractionDigits(0)
+}
+
+// ----------------------------------------------------------------------------
+// Legacy: raw-quota conversion for responses with no _display sibling yet.
+// See LEGACY_QUOTA_PER_UNIT in ./currency. Delete this block when the last
+// caller has moved to a *_display field.
+// ----------------------------------------------------------------------------
+
+/**
+ * Format a RAW quota field whose response carries no `_display` sibling.
+ * TODO(quota-display): replace every caller with the field's *_display value.
+ */
+export function formatQuotaLegacy(rawQuota: number): string {
+  return formatQuotaWithCurrency(quotaUnitsToDollarsLegacy(rawQuota), {
+    digitsLarge: 2,
+    digitsSmall: 4,
+    abbreviate: true,
+  })
+}
+
+/**
+ * Convert a RAW quota field to a display amount.
+ * TODO(quota-display): replace every caller with the field's *_display value.
+ */
+export function quotaUnitsToDollarsLegacy(units: number): number {
+  const { meta } = getCurrencyDisplay()
+  if (meta.kind === 'tokens') {
+    return units
+  }
+
+  return (units / LEGACY_QUOTA_PER_UNIT) * meta.exchangeRate
+}
+
+/**
+ * Convert a display amount submitted by a form back to raw quota.
+ * TODO(quota-display): the user-manage, aff-transfer and plan endpoints still
+ * take raw quota; the redemption and token endpoints already take a display
+ * amount and must not use this.
+ */
+export function parseQuotaFromDollarsLegacy(amount: number): number {
+  if (!Number.isFinite(amount)) return 0
+
+  const { meta } = getCurrencyDisplay()
+
+  if (meta.kind === 'tokens') {
+    return Math.round(amount)
+  }
+
+  const usdAmount =
+    meta.exchangeRate > 0 ? amount / meta.exchangeRate : amount
+
+  return Math.round(usdAmount * LEGACY_QUOTA_PER_UNIT)
 }
 
 // ============================================================================
@@ -233,9 +252,13 @@ export function formatTimeStr(date: Date): string {
 /**
  * Format quota for usage logs with higher precision
  * Uses 6 decimal places to show very small costs accurately
+ *
+ * TODO(quota-display): usage-log rows expose no quota_display sibling yet, so
+ * this still converts the raw quota field. Switch to the sibling when the
+ * backend adds it.
  */
-export function formatLogQuota(quota: number): string {
-  return formatQuotaWithCurrency(quota, {
+export function formatLogQuota(rawQuota: number): string {
+  return formatQuotaWithCurrency(quotaUnitsToDollarsLegacy(rawQuota), {
     digitsLarge: 4,
     digitsSmall: 6,
     abbreviate: false,

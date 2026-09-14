@@ -51,11 +51,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
-import {
-  formatQuota,
-  getEditableQuotaStep,
-  parseQuotaFromDollars,
-} from '@/lib/format'
+import { formatQuota, getEditableQuotaStep } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 import { addTimeToDate } from '@/lib/time'
 
@@ -166,12 +162,12 @@ export function RedemptionsMutateDrawer({
       const basePayload = transformFormDataToPayload(data)
 
       if (isUpdate && currentRow && loadedRedemption) {
-        const quota = form.getFieldState('quota_dollars').isDirty
-          ? basePayload.quota
-          : loadedRedemption.quota
+        const quota_display = form.getFieldState('quota_dollars').isDirty
+          ? basePayload.quota_display
+          : loadedRedemption.quota_display
         const result = await updateRedemption({
           ...basePayload,
-          quota,
+          quota_display,
           id: currentRow.id,
         })
         if (result.success) {
@@ -204,8 +200,11 @@ export function RedemptionsMutateDrawer({
     if (!isUpdate) {
       const name = form.getValues('name')
       if (!name?.trim()) {
-        const quota = parseQuotaFromDollars(form.getValues('quota_dollars'))
-        form.setValue('name', formatQuota(quota), { shouldValidate: true })
+        form.setValue(
+          'name',
+          formatQuota(form.getValues('quota_dollars') ?? 0),
+          { shouldValidate: true }
+        )
       }
     }
 

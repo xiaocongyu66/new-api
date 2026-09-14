@@ -93,14 +93,14 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
   }[] = [
     {
       label: t('Current Balance'),
-      value: formatQuota(profile.quota),
+      value: formatQuota(profile.quota_display ?? 0),
       description: t('Remaining quota'),
       icon: WalletCards,
       tone: 'success',
     },
     {
       label: t('Total Usage'),
-      value: formatQuota(profile.used_quota),
+      value: formatQuota(profile.used_quota_display ?? 0),
       description: t('Total consumed quota'),
       icon: BarChart3,
       tone: 'info',

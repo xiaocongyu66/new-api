@@ -34,11 +34,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { useSystemConfig } from '@/hooks/use-system-config'
+import { LEGACY_QUOTA_PER_UNIT } from '@/lib/currency'
 import { formatQuota } from '@/lib/format'
 import { formatPlanPrice } from '../../lib'
 import { formatSpore, getSporeName } from '@/lib/spore'
-import { DEFAULT_CURRENCY_CONFIG } from '@/stores/system-config-store'
 import {
   paySubscriptionStripe,
   paySubscriptionCreem,
@@ -73,7 +72,6 @@ interface Props {
 
 export function SubscriptionPurchaseDialog(props: Props) {
   const { t } = useTranslation()
-  const { currency } = useSystemConfig()
   const [paying, setPaying] = useState(false)
   const [selectedEpayMethod, setSelectedEpayMethod] = useState('')
 
@@ -101,13 +99,12 @@ export function SubscriptionPurchaseDialog(props: Props) {
     selectedEpayMethod ||
     t('Select payment method')
   const totalAmount = Number(plan.total_amount || 0)
-  const quotaPerUnit =
-    currency?.quotaPerUnit && currency.quotaPerUnit > 0
-      ? currency.quotaPerUnit
-      : DEFAULT_CURRENCY_CONFIG.quotaPerUnit
+  // ponytail: USD price -> internal quota for the balance comparison. The
+  // backend owns conversion now; this literal retires when the plan endpoint
+  // exposes total_amount_display (frontendQuotaTakeover reported it missing).
   const balanceCost = Math.max(
     0,
-    Math.ceil(Number(plan.price_amount || 0) * quotaPerUnit)
+    Math.ceil(Number(plan.price_amount || 0) * LEGACY_QUOTA_PER_UNIT)
   )
   const userQuota = Math.max(0, Number(props.userQuota || 0))
   const sporeCost = Math.max(0, Number(plan.spore_amount || 0))

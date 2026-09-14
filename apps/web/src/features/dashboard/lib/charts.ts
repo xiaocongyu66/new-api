@@ -50,15 +50,14 @@ export function getDashboardChartColors(domainLength: number): string[] {
   )
 }
 
-function renderQuotaCompat(rawQuota: number, digits = 4): string {
-  const { config, meta } = getCurrencyDisplay()
-  if (meta.kind === 'tokens') return rawQuota.toLocaleString()
-  const usd = rawQuota / config.quotaPerUnit
-  const rate = 'exchangeRate' in meta ? meta.exchangeRate : 1
-  const symbol = 'symbol' in meta ? meta.symbol : '$'
-  const value = usd * rate
-  const fixed = value.toFixed(digits)
-  if (parseFloat(fixed) === 0 && rawQuota > 0 && value > 0) {
+// Receives an already-converted display amount (backend quota_display); no
+// client-side QuotaPerUnit division remains.
+function renderQuotaCompat(displayAmount: number, digits = 4): string {
+  const { meta } = getCurrencyDisplay()
+  if (meta.kind === 'tokens') return displayAmount.toLocaleString()
+  const symbol = meta.symbol
+  const fixed = displayAmount.toFixed(digits)
+  if (parseFloat(fixed) === 0 && displayAmount > 0) {
     return symbol + Math.pow(10, -digits).toFixed(digits)
   }
   return symbol + fixed
@@ -212,9 +211,9 @@ export function processChartData(
     }
   }
 
-  const { config } = getCurrencyDisplay()
-  const quotaPerUnit = config.quotaPerUnit
-
+  // Rows carry quota_display, converted server-side by the backend; the
+  // conversion is linear so summing display values equals displaying the sum.
+  // No client-side QuotaPerUnit division remains in this pipeline.
   // Aggregate all metrics by time and model
   const timeModelMap = new Map<
     string,
@@ -229,7 +228,7 @@ export function processChartData(
     const timestamp = Number(item.created_at)
     const timeKey = formatChartTime(timestamp, timeGranularity)
     const model = item.model_name || 'Unknown'
-    const quota = Number(item.quota) || 0
+    const quota = Number(item.quota_display ?? item.quota) || 0
     const count = Number(item.count) || 0
     const tokens = Number(item.token_used) || 0
 
@@ -324,15 +323,13 @@ export function processChartData(
   chartTimes.forEach((time) => {
     let timeData = sortedModels.map((model) => {
       const stats = timeModelMap.get(time)?.get(model)
+      // Aggregated values are already display amounts (quota_display sums).
       const rawQuota = Number(stats?.quota) || 0
-      const usd = rawQuota ? rawQuota / quotaPerUnit : 0
-      // Match legacy frontend getQuotaWithUnit(..., 4)
-      const usage = usd ? Number(usd.toFixed(4)) : 0
       return {
         Time: time,
         Model: model,
         rawQuota,
-        Usage: usage,
+        Usage: Number(rawQuota.toFixed(4)),
         TimeSum: 0,
       }
     })
@@ -363,9 +360,9 @@ export function processChartData(
     let timeSum = 0
     sortedModels.forEach((model) => {
       const stats = modelMap?.get(model)
+      // Aggregated values are already display amounts (quota_display sums).
       const rawQuota = Number(stats?.quota) || 0
-      const usd = rawQuota ? rawQuota / quotaPerUnit : 0
-      const usage = usd ? Number(usd.toFixed(4)) : 0
+      const usage = Number(rawQuota.toFixed(4))
       timeSum += rawQuota
       const key = topAreaModels.has(model) ? model : otherLabel
       const prev = buckets.get(key) || { rawQuota: 0, usage: 0 }
@@ -708,8 +705,6 @@ export function processUserChartData(
   limit = 10
 ): ProcessedUserChartData {
   const tt: TFunction = t ?? ((x) => x)
-  const { config } = getCurrencyDisplay()
-  const quotaPerUnit = config.quotaPerUnit
 
   const formatVal = (raw: number) => renderQuotaCompat(raw, 2)
 
@@ -754,7 +749,10 @@ export function processUserChartData(
   data.forEach((item) => {
     const username = item.username || 'unknown'
     const prev = userQuotaTotal.get(username) || 0
-    userQuotaTotal.set(username, prev + (Number(item.quota) || 0))
+    userQuotaTotal.set(
+      username,
+      prev + (Number(item.quota_display ?? item.quota) || 0)
+    )
   })
 
   const sorted = Array.from(userQuotaTotal.entries()).sort(
@@ -764,10 +762,11 @@ export function processUserChartData(
   const topUserSet = new Set(topUsers)
   const totalQuota = sorted.slice(0, limit).reduce((s, [, q]) => s + q, 0)
 
+  // Values are already display amounts (quota_display sums).
   const rankValues = sorted.slice(0, limit).map(([username, quota]) => ({
     User: username,
     rawQuota: quota,
-    Usage: Number((quota / quotaPerUnit).toFixed(4)),
+    Usage: Number(quota.toFixed(4)),
   }))
 
   const userColorMap = topUsers.reduce<Record<string, string>>(
@@ -789,7 +788,10 @@ export function processUserChartData(
     if (!topUserSet.has(user)) return
     if (!timeUserMap.has(timeKey)) timeUserMap.set(timeKey, new Map())
     const map = timeUserMap.get(timeKey)!
-    map.set(user, (map.get(user) || 0) + (Number(item.quota) || 0))
+    map.set(
+      user,
+      (map.get(user) || 0) + (Number(item.quota_display ?? item.quota) || 0)
+    )
   })
 
   const sortedTimePoints = Array.from(allTimePoints).sort()
@@ -807,7 +809,8 @@ export function processUserChartData(
         Time: time,
         User: user,
         rawQuota: q,
-        Usage: Number((q / quotaPerUnit).toFixed(4)),
+        // Already display amounts (quota_display sums).
+        Usage: Number(q.toFixed(4)),
       })
     })
   })

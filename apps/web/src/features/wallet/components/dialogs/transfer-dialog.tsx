@@ -26,13 +26,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   formatQuota,
-  parseQuotaFromDollars,
-  quotaUnitsToDollars,
+  parseQuotaFromDollarsLegacy,
+  quotaUnitsToDollarsLegacy,
 } from '@/lib/format'
-import {
-  DEFAULT_CURRENCY_CONFIG,
-  useSystemConfigStore,
-} from '@/stores/system-config-store'
+import { LEGACY_QUOTA_PER_UNIT } from '@/lib/currency'
 
 interface TransferDialogProps {
   open: boolean
@@ -50,16 +47,14 @@ export function TransferDialog({
   transferring,
 }: TransferDialogProps) {
   const { t } = useTranslation()
-  const currencyConfig = useSystemConfigStore((state) => state.config.currency)
-  const minimumQuota = Math.ceil(
-    currencyConfig.quotaPerUnit > 0
-      ? currencyConfig.quotaPerUnit
-      : DEFAULT_CURRENCY_CONFIG.quotaPerUnit
-  )
-  const minimumAmount = quotaUnitsToDollars(minimumQuota)
-  const maximumAmount = quotaUnitsToDollars(availableQuota)
+  // ponytail: the transfer floor is "one display unit". The backend owns
+  // conversion now, so this is the only remaining raw-unit literal here; it
+  // goes away when the transfer endpoint exposes a display-amount minimum.
+  const minimumQuota = LEGACY_QUOTA_PER_UNIT
+  const minimumAmount = quotaUnitsToDollarsLegacy(minimumQuota)
+  const maximumAmount = quotaUnitsToDollarsLegacy(availableQuota)
   const [amount, setAmount] = useState(minimumAmount)
-  const transferQuota = parseQuotaFromDollars(amount)
+  const transferQuota = parseQuotaFromDollarsLegacy(amount)
   const canTransfer =
     Number.isFinite(amount) &&
     transferQuota >= minimumQuota &&

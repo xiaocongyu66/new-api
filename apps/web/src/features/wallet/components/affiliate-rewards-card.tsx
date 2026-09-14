@@ -54,7 +54,7 @@ export function AffiliateRewardsCard({
   loading,
 }: AffiliateRewardsCardProps) {
   const { t } = useTranslation()
-  const { sporeInviterReward, quotaInviterReward, inviterRewardCurrency } =
+  const { sporeInviterReward, inviterRewardDisplay, inviterRewardCurrency } =
     useSystemConfigStore.getState().config.currency
   // 邀请奖励货币跟随后台设置：菌种模式显示菌种符号/菌种数额，
   // 余额模式显示余额自定义符号/额度数额，both 模式两者并列展示。
@@ -105,7 +105,7 @@ export function AffiliateRewardsCard({
             <p className='text-muted-foreground line-clamp-1 text-xs'>
               {paysBoth && (sporeInviterReward ?? 0) > 0
                 ? t('Each successful invite grants {{reward}}.', {
-                    reward: `${formatQuota(quotaInviterReward ?? 0)} + ${sporeUnit} ${formatSpore(
+                    reward: `${formatQuota(inviterRewardDisplay ?? 0)} + ${sporeUnit} ${formatSpore(
                       (sporeInviterReward ?? 0) * SPORE_UNITS_PER_SPORE
                     )}`,
                   })
@@ -132,13 +132,13 @@ export function AffiliateRewardsCard({
               t('Pending'),
               paysSpore
                 ? `${sporeUnit} ${formatSpore(0)}`
-                : formatQuota(user?.aff_quota ?? 0),
+                : formatQuota(user?.aff_quota_display ?? 0),
             ],
             [
               t('Total Earned'),
               paysSpore
                 ? `${sporeUnit} ${formatSpore(0)}`
-                : formatQuota(user?.aff_history_quota ?? 0),
+                : formatQuota(user?.aff_history_quota_display ?? 0),
             ],
             [t('Invites'), String(user?.aff_count ?? 0)],
           ].map(([label, value]) => (

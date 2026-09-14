@@ -164,7 +164,7 @@ export function RedemptionsMobileList(props: RedemptionsMobileListProps) {
             <div className='flex items-center justify-between gap-2 text-xs'>
               <span className='text-muted-foreground'>{t('Quota')}</span>
               <span className='font-medium tabular-nums'>
-                {formatQuota(redemption.quota)}
+                {formatQuota(redemption.quota_display ?? 0)}
               </span>
             </div>
           </div>
