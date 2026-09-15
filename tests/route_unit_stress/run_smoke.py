@@ -25,7 +25,7 @@ import requests
 
 # Import from sibling module
 sys.path.insert(0, str(Path(__file__).parent))
-from lib_reconcile import reconcile, ReconcileResult
+from lib_reconcile import ReconcileResult, reconcile
 
 
 @dataclass
@@ -179,7 +179,7 @@ def run_smoke(config: SmokeConfig) -> tuple[int, ReconcileResult | None]:
     # Small delay to let audit ring buffer populate
     time.sleep(0.5)
 
-    print(f"[3/5] Fetching audit from gateway (admin JWT)")
+    print("[3/5] Fetching audit from gateway (admin JWT)")
     attempts = fetch_audit(config.gateway_url, config.admin_token)
     if attempts is None:
         print("ERROR: Failed to fetch audit endpoint", file=sys.stderr)
@@ -215,7 +215,7 @@ def run_smoke(config: SmokeConfig) -> tuple[int, ReconcileResult | None]:
     write_ndjson(upstream_path, upstream_rows)
     print(f"      Got {len(upstream_rows)} rows. Written to {upstream_path}")
 
-    print(f"[5/5] Reconciling...")
+    print("[5/5] Reconciling...")
     result = reconcile(
         attempts,
         upstream_rows,

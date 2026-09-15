@@ -8,7 +8,13 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from lib_resources import sample_once, ResourceSampler, aggregate_windows, NOT_AVAILABLE, read_k8s_pod_node_info
+from lib_resources import (
+    NOT_AVAILABLE,
+    ResourceSampler,
+    aggregate_windows,
+    read_k8s_pod_node_info,
+    sample_once,
+)
 
 
 def test_sample_once_structure() -> bool:

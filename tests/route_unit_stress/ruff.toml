@@ -1,0 +1,5 @@
+# 压测 harness 的容错设计豁免（采样/上报/钩子循环遇单次失败不得崩溃）：
+# BLE001 宽 except 与 S110 except-pass 是有意为之；
+# SIM115：资源采样器的文件句柄为长生命周期，由 start()/stop() 显式管理，不适用 with。
+[lint.per-file-ignores]
+"*.py" = ["BLE001", "S110", "SIM115"]
