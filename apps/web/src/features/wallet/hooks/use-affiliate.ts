@@ -62,10 +62,12 @@ export function useAffiliate() {
   }, [affiliateLink, copyToClipboard])
 
   // Transfer affiliate quota to balance
-  const transferQuota = useCallback(async (quota: number): Promise<boolean> => {
-    try {
+  const transferQuota = useCallback(
+    async (amount: number): Promise<boolean> => {
+      try {
       setTransferring(true)
-      const response = await transferAffiliateQuota({ quota })
+      // amount is display currency; the backend converts to quota.
+      const response = await transferAffiliateQuota({ quota_display: amount })
 
       if (response.success) {
         toast.success(response.message || i18next.t('Transfer successful'))

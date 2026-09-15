@@ -390,7 +390,7 @@ function BillingBreakdown(props: {
 
   rows.push({
     label: t('Total Cost'),
-    value: formatLogQuota(log.quota),
+    value: formatLogQuota(log.quota_display ?? log.quota),
   })
 
   if (rows.length === 0) return null
@@ -846,7 +846,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
             )}
             <DetailRow
               label={t('Fee Amount')}
-              value={formatLogQuota(other.fee_quota ?? props.log.quota)}
+              value={formatLogQuota(other.fee_quota ?? props.log.quota_display ?? props.log.quota)}
               mono
             />
           </DetailSection>

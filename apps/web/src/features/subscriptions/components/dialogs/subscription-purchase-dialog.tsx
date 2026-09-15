@@ -34,11 +34,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { useSystemConfig } from '@/hooks/use-system-config'
 import { formatQuota } from '@/lib/format'
 import { formatPlanPrice } from '../../lib'
 import { formatSpore, getSporeName } from '@/lib/spore'
-import { DEFAULT_CURRENCY_CONFIG } from '@/stores/system-config-store'
 import {
   paySubscriptionStripe,
   paySubscriptionCreem,
@@ -65,6 +63,7 @@ interface Props {
   epayMethods?: PaymentMethod[]
   purchaseLimit?: number
   purchaseCount?: number
+  /** Already-converted display amount (user quota_display). */
   userQuota?: number
   /** User spore balance in internal units (1 = 0.1 spore) */
   userSpore?: number
@@ -73,7 +72,6 @@ interface Props {
 
 export function SubscriptionPurchaseDialog(props: Props) {
   const { t } = useTranslation()
-  const { currency } = useSystemConfig()
   const [paying, setPaying] = useState(false)
   const [selectedEpayMethod, setSelectedEpayMethod] = useState('')
 
@@ -100,15 +98,10 @@ export function SubscriptionPurchaseDialog(props: Props) {
       ?.name ||
     selectedEpayMethod ||
     t('Select payment method')
-  const totalAmount = Number(plan.total_amount || 0)
-  const quotaPerUnit =
-    currency?.quotaPerUnit && currency.quotaPerUnit > 0
-      ? currency.quotaPerUnit
-      : DEFAULT_CURRENCY_CONFIG.quotaPerUnit
-  const balanceCost = Math.max(
-    0,
-    Math.ceil(Number(plan.price_amount || 0) * quotaPerUnit)
-  )
+  const totalAmount = Number(plan.total_amount_display ?? plan.total_amount) || 0
+  // Backend-renders the USD price in display currency (balance_cost_display);
+  // the comparison below is display-vs-display, no quota math in the client.
+  const balanceCost = Math.max(0, Number(plan.balance_cost_display ?? 0))
   const userQuota = Math.max(0, Number(props.userQuota || 0))
   const sporeCost = Math.max(0, Number(plan.spore_amount || 0))
   const userSpore = Math.max(0, Number(props.userSpore || 0))

@@ -28,8 +28,6 @@ export interface CurrencyConfig {
   displayInCurrency: boolean
   /** Currency presentation strategy configured by the admin */
   quotaDisplayType: CurrencyDisplayType
-  /** Number of quota units that equal one USD */
-  quotaPerUnit: number
   /** Exchange rate from USD to the configured local currency */
   usdExchangeRate: number
   /** Custom currency symbol configured by the admin (used when type === CUSTOM) */
@@ -53,8 +51,8 @@ export interface CurrencyConfig {
   sporeSymbol?: string
   /** Spore granted to the inviter per successful invite, from /api/status */
   sporeInviterReward?: number
-  /** Balance (raw quota units) granted to the inviter per successful invite, from /api/status */
-  quotaInviterReward?: number
+  /** Reward granted to the inviter per successful invite, already converted to the display currency by /api/status (inviter_reward_display) */
+  inviterRewardDisplay?: number
   /**
    * Currency the invite reward is paid in: 'quota' (balance, pending aff_quota),
    * 'spore' (voucher, credited instantly) or 'both' (paid together).
@@ -74,7 +72,6 @@ export interface SystemConfig {
 export const DEFAULT_CURRENCY_CONFIG: CurrencyConfig = {
   displayInCurrency: true,
   quotaDisplayType: 'USD',
-  quotaPerUnit: 500000,
   usdExchangeRate: 1,
   customCurrencySymbol: '¤',
   customCurrencyExchangeRate: 1,

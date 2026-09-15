@@ -24,6 +24,11 @@ type QuotaData struct {
 	TokenUsed int    `json:"token_used" gorm:"default:0"`
 	Count     int    `json:"count" gorm:"default:0"`
 	Quota     int    `json:"quota" gorm:"default:0"`
+	// QuotaDisplay is the API-boundary rendering of Quota in the configured
+	// display currency. gorm:"-" so it is never a column; every dashboard
+	// query fills it (see fillQuotaDisplay in store_usedata_flow.go), so the
+	// frontend sums display values instead of dividing by QuotaPerUnit.
+	QuotaDisplay float64 `json:"quota_display" gorm:"-"`
 }
 
 type QuotaDataLogParams struct {

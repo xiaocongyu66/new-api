@@ -34,10 +34,12 @@ func GetCheckinStatus(c contract.Context) {
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"data": common.H{
-			"enabled":   setting.Enabled,
-			"min_quota": setting.MinQuota,
-			"max_quota": setting.MaxQuota,
-			"stats":     stats,
+			"enabled":           setting.Enabled,
+			"min_quota":         setting.MinQuota,
+			"min_quota_display": QuotaToDisplayAmount(setting.MinQuota),
+			"max_quota":         setting.MaxQuota,
+			"max_quota_display": QuotaToDisplayAmount(setting.MaxQuota),
+			"stats":             stats,
 		},
 	})
 }
@@ -78,7 +80,8 @@ func DoCheckin(c contract.Context) {
 		"success": true,
 		"message": "签到成功",
 		"data": common.H{
-			"quota_awarded": checkin.QuotaAwarded,
-			"checkin_date":  checkin.CheckinDate},
+			"quota_awarded":         checkin.QuotaAwarded,
+			"quota_awarded_display": QuotaToDisplayAmount(checkin.QuotaAwarded),
+		},
 	})
 }

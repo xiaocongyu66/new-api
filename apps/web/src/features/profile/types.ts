@@ -45,10 +45,12 @@ export interface UserProfile {
   email?: string
   /** User group */
   group: string
-  /** Current quota balance */
   quota: number
-  /** Total used quota */
+  /** Backend-rendered display amount for quota */
+  quota_display: number
   used_quota: number
+  /** Backend-rendered display amount for used_quota */
+  used_quota_display: number
   /** Total request count */
   request_count: number
   /** Account status (1=启用, 2=禁用, 3=待审核, 4=已删除) */
@@ -197,6 +199,8 @@ export interface CheckinRecord {
   checkin_date: string
   /** Quota awarded for this check-in */
   quota_awarded: number
+  /** Display-currency amount the backend converted from quota_awarded */
+  quota_awarded_display: number
 }
 
 /**
@@ -209,6 +213,8 @@ export interface CheckinStats {
   total_checkins: number
   /** Total quota earned from check-ins */
   total_quota: number
+  /** Display-currency amount the backend converted from total_quota */
+  total_quota_display: number
   /** Current month check-in count */
   checkin_count: number
   /** Check-in records for the queried month */
@@ -231,6 +237,8 @@ export interface CheckinStatusResponse {
 export interface CheckinResponse {
   /** Quota awarded for this check-in */
   quota_awarded: number
+  /** Display-currency amount the backend converted from quota_awarded */
+  quota_awarded_display: number
 }
 
 /**

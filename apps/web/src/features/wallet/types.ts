@@ -216,8 +216,8 @@ export interface AmountRequest {
  * Affiliate quota transfer request
  */
 export interface AffiliateTransferRequest {
-  /** Quota amount to transfer */
-  quota: number
+  /** Amount in the site's display currency; the backend converts to quota. */
+  quota_display: number
 }
 
 /**
@@ -228,16 +228,20 @@ export interface UserWalletData {
   id: number
   /** Username */
   username: string
-  /** Current quota balance */
   quota: number
-  /** Total used quota */
+  /** Backend-rendered display amount for quota */
+  quota_display: number
   used_quota: number
+  /** Backend-rendered display amount for used_quota */
+  used_quota_display: number
   /** Total request count */
   request_count: number
-  /** Affiliate quota (pending rewards) */
   aff_quota: number
-  /** Total affiliate quota earned (historical) */
+  /** Backend-rendered display amount for aff_quota */
+  aff_quota_display: number
   aff_history_quota: number
+  /** Backend-rendered display amount for aff_history_quota */
+  aff_history_quota_display: number
   /** Number of successful affiliate invites */
   aff_count: number
   /** User group */

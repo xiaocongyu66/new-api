@@ -57,7 +57,7 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
   }[] = [
     {
       label: t('Current Balance'),
-      value: formatQuota(props.user?.quota ?? 0),
+      value: formatQuota(props.user?.quota_display ?? 0),
       description: t('Remaining quota'),
       icon: WalletCards,
       tone: 'success',
@@ -71,7 +71,7 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
     },
     {
       label: t('Total Usage'),
-      value: formatQuota(props.user?.used_quota ?? 0),
+      value: formatQuota(props.user?.used_quota_display ?? 0),
       description: t('Total consumed quota'),
       icon: BarChart3,
       tone: 'info',

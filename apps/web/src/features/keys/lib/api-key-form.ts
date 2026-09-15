@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import type { TFunction } from 'i18next'
 import { z } from 'zod'
 
-import { parseQuotaFromDollars, quotaUnitsToDollars } from '@/lib/format'
+import { toEditableDisplayAmount } from '@/lib/format'
 
 import { DEFAULT_GROUP } from '../constants'
 import type { ApiKey, ApiKeyFormData } from '../types'
@@ -141,9 +141,9 @@ export function transformFormDataToPayload(
 ): ApiKeyFormData {
   return {
     name: data.name,
-    remain_quota: data.unlimited_quota
+    remain_quota_display: data.unlimited_quota
       ? 0
-      : parseQuotaFromDollars(data.remain_quota_dollars || 0),
+      : data.remain_quota_dollars || 0,
     expired_time: data.expired_time
       ? Math.floor(data.expired_time.getTime() / 1000)
       : -1,
@@ -179,7 +179,7 @@ export function transformApiKeyToFormDefaults(
     name: apiKey.name,
     remain_quota_dollars: apiKey.unlimited_quota
       ? 0
-      : quotaUnitsToDollars(apiKey.remain_quota),
+      : toEditableDisplayAmount(apiKey.remain_quota_display ?? 0),
     expired_time:
       apiKey.expired_time > 0
         ? new Date(apiKey.expired_time * 1000)

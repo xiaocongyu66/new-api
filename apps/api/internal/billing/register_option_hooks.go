@@ -2,6 +2,8 @@ package billing
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/internal/usage"
+	"math"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/internal/billing/price_expression"
@@ -144,6 +146,85 @@ func applyPaymentOption(key, value string) error {
 	return nil
 }
 
+// QuotaToDisplayAmount converts an internal quota integer to the amount in
+// the site's configured display currency. This is the single API-boundary
+// implementation of the quota -> display rule; formatQuota and every
+// `_display` JSON field go through it, so the number the frontend renders can
+// never drift from the one the log line renders.
+//
+// TOKENS returns the raw quota unchanged: the display value IS the token count.
+// USD divides by QuotaPerUnit, CNY additionally multiplies by the USD->CNY rate,
+// CUSTOM multiplies by the admin-configured custom rate (<=0 falls back to 1).
+func QuotaToDisplayAmount(quota int) float64 {
+	q := float64(quota)
+	switch GetQuotaDisplayType() {
+	case QuotaDisplayTypeCNY:
+		return q / common.QuotaPerUnit * USDExchangeRate
+	case QuotaDisplayTypeCustom:
+		rate := GetGeneralSetting().CustomCurrencyExchangeRate
+		if rate <= 0 {
+			rate = 1
+		}
+		return q / common.QuotaPerUnit * rate
+	case QuotaDisplayTypeTokens:
+		return q
+	default: // USD
+		return q / common.QuotaPerUnit
+	}
+}
+
+// QuotaFromDisplayAmount is the inverse of QuotaToDisplayAmount: it takes a
+// amount submitted in the site's display currency and returns internal quota.
+// It is what form endpoints use instead of letting the browser pre-convert.
+// Rounding goes through common.QuotaRound, so a non-finite or oversized
+// submission saturates at the int32 boundary instead of wrapping into a
+// credit; callers reject NaN/Inf input with HTTP 400 before reaching this.
+func QuotaFromDisplayAmount(displayAmount float64) int {
+	// Non-finite submissions never reach a valid quota. NaN saturates to 0 and
+	// -Inf to MinQuota (a negative charge), both violating the billing
+	// invariant; callers reject them with HTTP 400, and this guard keeps the
+	// helper safe even when a path forgets to check.
+	if math.IsNaN(displayAmount) || math.IsInf(displayAmount, 0) {
+		return 0
+	}
+	switch GetQuotaDisplayType() {
+	case QuotaDisplayTypeCNY:
+		return common.QuotaRound(displayAmount / USDExchangeRate * common.QuotaPerUnit)
+	case QuotaDisplayTypeCustom:
+		rate := GetGeneralSetting().CustomCurrencyExchangeRate
+		if rate <= 0 {
+			rate = 1
+		}
+		return common.QuotaRound(displayAmount / rate * common.QuotaPerUnit)
+	case QuotaDisplayTypeTokens:
+		return common.QuotaRound(displayAmount)
+	default: // USD
+		return common.QuotaRound(displayAmount * common.QuotaPerUnit)
+	}
+}
+
+// UsdToDisplayAmount converts a USD-scale amount (top-up order amounts, wallet
+// balances) to the site's display currency. It is the numeric core of the
+// frontend's formatCurrencyFromUSD: TOKENS multiplies back by QuotaPerUnit to
+// recover the token count, the currency modes apply the exchange rate.
+func UsdToDisplayAmount(usd float64) float64 {
+	switch GetQuotaDisplayType() {
+	case QuotaDisplayTypeTokens:
+		return usd * common.QuotaPerUnit
+	default:
+		return usd * GetUsdToCurrencyRate(USDExchangeRate)
+	}
+}
+
+// rejectNonFiniteDisplayAmount reports whether a form-submitted display amount
+// is NaN or +/-Inf. JSON cannot encode either, but a client can send an
+// exponent that overflows float64, and that must not reach QuotaRound: an
+// overflowed amount would clamp to MaxQuota and silently create a huge
+// redemption. Callers answer HTTP 400 when this fires.
+func rejectNonFiniteDisplayAmount(amount float64) bool {
+	return math.IsNaN(amount) || math.IsInf(amount, 0)
+}
+
 // formatQuota carries the display-type rendering that used to live in
 // internal/logger. logger owns no billing settings, so this domain registers it.
 func formatQuota(quota int, withUnitSuffix bool) string {
@@ -151,28 +232,23 @@ func formatQuota(quota int, withUnitSuffix bool) string {
 	if withUnitSuffix {
 		suffix = " 额度"
 	}
-	q := float64(quota)
+	amount := QuotaToDisplayAmount(quota)
 	switch GetQuotaDisplayType() {
 	case QuotaDisplayTypeCNY:
-		cny := q / common.QuotaPerUnit * USDExchangeRate
-		return fmt.Sprintf("¥%.6f%s", cny, suffix)
+		return fmt.Sprintf("¥%.6f%s", amount, suffix)
 	case QuotaDisplayTypeCustom:
-		rate := GetGeneralSetting().CustomCurrencyExchangeRate
 		symbol := GetGeneralSetting().CustomCurrencySymbol
 		if symbol == "" {
 			symbol = "¤"
 		}
-		if rate <= 0 {
-			rate = 1
-		}
-		return fmt.Sprintf("%s%.6f%s", symbol, q/common.QuotaPerUnit*rate, suffix)
+		return fmt.Sprintf("%s%.6f%s", symbol, amount, suffix)
 	case QuotaDisplayTypeTokens:
 		if withUnitSuffix {
 			return fmt.Sprintf("%d 点额度", quota)
 		}
 		return fmt.Sprintf("%d", quota)
 	default: // USD
-		return fmt.Sprintf("＄%.6f%s", q/common.QuotaPerUnit, suffix)
+		return fmt.Sprintf("＄%.6f%s", amount, suffix)
 	}
 }
 
@@ -187,7 +263,10 @@ func init() {
 	settings.OnApplyToolPriceOption = price_expression.LoadToolPricesFromJSONString
 
 	logger.OnFormatQuota = formatQuota
-
+	identity.OnQuotaToDisplayAmount = QuotaToDisplayAmount
+	identity.OnQuotaFromDisplayAmount = QuotaFromDisplayAmount
+	usage.OnQuotaToDisplayAmount = QuotaToDisplayAmount
+	catalog.OnQuotaToDisplayAmount = QuotaToDisplayAmount
 	identity.OnIsPaymentComplianceConfirmed = IsPaymentComplianceConfirmed
 
 	catalog.OnResolveTieredBilling = func(model string) (string, string, bool) {

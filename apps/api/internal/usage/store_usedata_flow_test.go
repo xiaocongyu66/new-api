@@ -108,6 +108,9 @@ func TestGetFlowQuotaDataUsesQuotaDataRoleSpecificDimensions(t *testing.T) {
 		TokenUsed:   60,
 		Count:       3,
 		Quota:       150,
+		// billing is not wired in this test, so the display hook is unregistered
+		// and falls back to the raw quota rather than panicking.
+		QuotaDisplay: 150,
 	}, *rootRows[0])
 	// A token that still exists resolves to its current name.
 	require.Equal(t, 22, rootRows[1].TokenID)

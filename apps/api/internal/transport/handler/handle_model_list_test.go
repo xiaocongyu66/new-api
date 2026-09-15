@@ -221,14 +221,19 @@ func TestGetUserModelsExpandsAutoGroupsInConfiguredOrder(t *testing.T) {
 	originalAutoGroups := channel.AutoGroups2JsonString()
 	originalUsableGroups := channel.UserUsableGroups2JSONString()
 	originalSpecialGroups := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.ReadAll()
+	originalRatios := ratio_setting.GroupRatio2JSONString()
 	t.Cleanup(func() {
 		require.NoError(t, channel.UpdateAutoGroupsByJsonString(originalAutoGroups))
 		require.NoError(t, channel.UpdateUserUsableGroupsByJSONString(originalUsableGroups))
 		specialGroups := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup
 		specialGroups.Clear()
 		specialGroups.AddAll(originalSpecialGroups)
+		// GroupRatio no longer carries hardcoded fallback groups (#54cba8950),
+		// so this test must seed it explicitly and restore it afterwards.
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalRatios))
 	})
 
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":1,"unavailable":1}`))
 	require.NoError(t, channel.UpdateAutoGroupsByJsonString(`["vip","default","unavailable"]`))
 	require.NoError(t, channel.UpdateUserUsableGroupsByJSONString(`{"auto":"自动分组","default":"默认分组","unavailable":"不可用分组"}`))
 	specialGroups := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup
