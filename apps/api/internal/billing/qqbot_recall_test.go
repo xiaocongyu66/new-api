@@ -30,6 +30,14 @@ func TestRecallPolicyFor(t *testing.T) {
 		{"policies 显式 0 不撤回", `{"drop_award":30,"checkin_fail":0}`, true, 10, RecallKindCheckinFail, 0},
 		{"policies 缺失类型为 0", `{"drop_award":30}`, true, 10, RecallKindMenu, 0},
 		{"policies 负数视为不撤回", `{"drop_award":-5}`, false, 10, RecallKindDropAward, 0},
+		// bind_fail：未配置 policies 时给默认保留时间，受总开关控制；显式配置（含 0）完全接管
+		{"bind_fail 空配置默认30秒", "", true, 10, RecallKindBindFail, DefaultBindFailRecallSeconds},
+		{"bind_fail 空配置开关关不撤回", "", false, 10, RecallKindBindFail, 0},
+		{"bind_fail 空映射默认30秒", `{}`, true, 20, RecallKindBindFail, DefaultBindFailRecallSeconds},
+		{"bind_fail 显式延迟", `{"bind_fail":45}`, true, 10, RecallKindBindFail, 45},
+		{"bind_fail 显式延迟忽略总开关", `{"bind_fail":45}`, false, 10, RecallKindBindFail, 45},
+		{"bind_fail 显式0不撤回", `{"bind_fail":0}`, true, 10, RecallKindBindFail, 0},
+		{"bind_fail policies无此键不撤回", `{"drop_award":30}`, true, 10, RecallKindBindFail, 0},
 		// failure_notice 在 policies 生效时完全接管，旧开关被忽略
 		{"policies 含 failure_notice", `{"failure_notice":7}`, true, 20, RecallKindFailureNotice, 7},
 		{"policies 生效时忽略旧开关", `{"drop_award":30}`, true, 20, RecallKindFailureNotice, 0},
@@ -56,7 +64,8 @@ func TestRecallPolicyFor(t *testing.T) {
 }
 
 // TestRecallPolicyForLegacyFailurePathUnchanged 验证未配置 policies 时，
-// isFailureReply 路径与旧行为一致：failure_notice 由旧开关决定，其余类型永不撤回。
+// isFailureReply 路径与旧行为一致：failure_notice 由旧开关决定；bind_fail 的
+// 默认保留时间由上面的表驱动用例覆盖，这里只确认其余类型不受旧开关影响。
 func TestRecallPolicyForLegacyFailurePathUnchanged(t *testing.T) {
 	s := GetQQBotSetting()
 	origPolicies := s.RecallPolicies

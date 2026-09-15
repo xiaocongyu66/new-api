@@ -172,7 +172,11 @@ func checkinStatusText(groupOpenID string) string {
 }
 
 // checkinDisabledReply 本群签到被关闭时的回复文案
+// 网页签到关闭（web_checkin_enabled=false）时不提网页路径，那个页面没有签到卡片。
 func checkinDisabledReply(openID string) string {
+	if !IsWebCheckinEnabled() {
+		return buildPlainMarkdown(openID, "**本群已关闭签到**\n\n请到其他群签到")
+	}
 	return buildPlainMarkdown(openID,
 		"**本群已关闭签到**\n\n请前往 https://nailao.biz 个人资料→每日签到 领取，或到其他群签到")
 }
