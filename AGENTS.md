@@ -175,6 +175,25 @@ servers also only grow (observed 2-4GB per server, not the ~300MB above).
 
 When starting a dev server for manual testing, create a test account on the instance and report its credentials. Test accounts MUST be super-admin (`RoleRootUser`, role 100) unless the maintainer specifies a lower role.
 
+#### Build and verify (CI-driven)
+
+**All tests, full builds, and lint MUST run in PR CI (`.github/workflows/ci.yml`). Do not run heavy commands locally.**
+
+Local light-weight checks only:
+- `gofmt -l` / `go vet` (single package)
+- `cargo check -p <crate>` (type check, single crate)
+- `grep` / `ls` / file reads
+
+**If you must run a heavy command locally** (full `go build`, `go test ./...`, `bun run build`, `bun install`, etc.), **wrap it with `cpulimit -l 65 -i --` to cap CPU at 65%**:
+
+```bash
+cpulimit -l 65 -i -- go test ./...
+cpulimit -l 65 -i -- bun run build
+cpulimit -l 65 -i -- bun install
+```
+
+Lightweight commands (`git`, `grep`, `ls`, file reads) do NOT need cpulimit.
+
 ### Common Code Quality
 
 - New code should stay direct and readable. Prefer early returns, clear branches, and well-named local variables to deep nesting or layered control flow.
