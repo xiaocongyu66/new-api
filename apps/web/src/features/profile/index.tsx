@@ -73,6 +73,7 @@ export function Profile() {
               </div>
 
               <div className='max-xl:contents max-xl:space-y-0 space-y-4 sm:space-y-6 xl:sticky xl:top-6'>
+                {/* show 恒为 true：后端 CheckinSetting.ShowBindCodeCard 尚未经 /api/status 暴露，接线后改为读配置 */}
                 <QQBindCodeCard show className='max-xl:order-first' />
                 {checkinEnabled && (
                   <CheckinCalendarCard
