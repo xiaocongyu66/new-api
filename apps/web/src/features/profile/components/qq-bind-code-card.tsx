@@ -22,6 +22,7 @@ import {
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 
 import { generateQQBindCode, getQQBindStatus, unbindQQ } from '../api'
+import type { QQBindCodeResponse, QQBindStatusResponse } from '../types'
 
 interface QQBindCodeCardProps {
   show: boolean
@@ -35,17 +36,7 @@ export function QQBindCodeCard({ show, className }: QQBindCodeCardProps) {
   const [confirmUnbind, setConfirmUnbind] = useState(false)
   const [unbinding, setUnbinding] = useState(false)
 
-  const { data: status, isLoading } = useQuery({
-    queryKey: ['qq-bind-status'],
-    queryFn: async () => {
-      const res = await getQQBindStatus()
-      if (res.success && res.data) return res.data
-      return null
-    },
-    enabled: show,
-  })
-
-  const { data: codeData, isFetching: isGenerating } = useQuery({
+  const { data: codeData, isFetching: isGenerating } = useQuery<QQBindCodeResponse | null>({
     queryKey: ['qq-bind-code'],
     queryFn: async () => {
       const res = await generateQQBindCode()
@@ -53,6 +44,18 @@ export function QQBindCodeCard({ show, className }: QQBindCodeCardProps) {
       return null
     },
     enabled: false,
+  })
+
+  const { data: status, isLoading } = useQuery<QQBindStatusResponse | null>({
+    queryKey: ['qq-bind-status'],
+    queryFn: async () => {
+      const res = await getQQBindStatus()
+      if (res.success && res.data) return res.data
+      return null
+    },
+    enabled: show,
+    // 用户把码发到 QQ 群后绑定状态不会主动推送，只能在有待用验证码且尚未绑定时轮询
+    refetchInterval: codeData ? 5000 : false,
   })
 
   const generate = useCallback(async () => {

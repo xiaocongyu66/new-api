@@ -47,8 +47,6 @@ export function Profile() {
   )
   const turnstileSiteKey = status?.turnstile_site_key || ''
   const canConfigureSidebar = permissions?.sidebar_settings !== false
-  // 默认展示绑定卡片（待 /api/options/checkin_setting 暴露后改为读配置）
-  const showBindCodeCard = true
 
   return (
     <Main>
@@ -74,10 +72,8 @@ export function Profile() {
                 <LoginSessionsCard />
               </div>
 
-              <div className='space-y-4 sm:space-y-6 xl:sticky xl:top-6'>
-                {showBindCodeCard && (
-                  <QQBindCodeCard show={showBindCodeCard} />
-                )}
+              <div className='max-xl:contents max-xl:space-y-0 space-y-4 sm:space-y-6 xl:sticky xl:top-6'>
+                <QQBindCodeCard show className='max-xl:order-first' />
                 {checkinEnabled && (
                   <CheckinCalendarCard
                     checkinEnabled={checkinEnabled}

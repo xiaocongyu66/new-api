@@ -304,7 +304,7 @@ func buildCheckinFailMarkdown(openID string) string {
 	var sb strings.Builder
 	sb.WriteString(atUser(openID))
 	sb.WriteString(" **签到失败！**\n\n")
-	sb.WriteString("请登陆后在 个人资料→每日签到→QQ签到 获取验证码进行绑定")
+	sb.WriteString("请登陆后在 个人资料 → QQ 绑定验证码 获取验证码进行绑定")
 	return sb.String()
 }
 
