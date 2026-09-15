@@ -395,6 +395,16 @@ export type BillingSettings = {
   'qq_bot_setting.transfer_daily_limit': number
   'qq_bot_setting.transfer_min_amount': number
   'qq_bot_setting.transfer_max_amount': number
+  'qq_bot_setting.min_quota_display'?: number
+  'qq_bot_setting.max_quota_display'?: number
+  'qq_bot_setting.drop_min_quota_display'?: number
+  'qq_bot_setting.drop_max_quota_display'?: number
+  'qq_bot_setting.drop_balance_anchor_display'?: number
+  'qq_bot_setting.drop_daily_guarantee_display'?: number
+  'qq_bot_setting.red_packet_min_amount_display'?: number
+  'qq_bot_setting.red_packet_max_amount_display'?: number
+  'qq_bot_setting.transfer_min_amount_display'?: number
+  'qq_bot_setting.transfer_max_amount_display'?: number
   'qq_bot_setting.transfer_fee_brackets': string
   'qq_bot_setting.red_packet_enabled': boolean
   'qq_bot_setting.red_packet_disabled_groups': string

@@ -1,12 +1,14 @@
 package ops
 
 import (
+	"strconv"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/billing"
 	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/QuantumNous/new-api/internal/geoip"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/usage"
+	"math"
 	"net/http"
 	"strings"
 
@@ -32,6 +34,26 @@ func GetOptions(c contract.Context) {
 type OptionUpdateRequest struct {
 	Key   string `json:"key"`
 	Value any    `json:"value"`
+}
+
+// settingDisplayAmountKeys lists option keys whose values are internal-quota
+// amounts that admins configure through display-currency form inputs.
+var settingDisplayAmountKeys = map[string]struct{}{
+	"qq_bot_setting.min_quota":             {},
+	"qq_bot_setting.max_quota":             {},
+	"qq_bot_setting.drop_min_quota":        {},
+	"qq_bot_setting.drop_max_quota":        {},
+	"qq_bot_setting.drop_balance_anchor":   {},
+	"qq_bot_setting.drop_daily_guarantee":  {},
+	"qq_bot_setting.red_packet_min_amount": {},
+	"qq_bot_setting.red_packet_max_amount": {},
+	"qq_bot_setting.transfer_min_amount":   {},
+	"qq_bot_setting.transfer_max_amount":   {},
+}
+
+func settingIsDisplayAmountKey(baseKey string) bool {
+	_, ok := settingDisplayAmountKeys[baseKey]
+	return ok
 }
 
 func UpdateOption(c contract.Context) {
@@ -285,6 +307,21 @@ func UpdateOption(c contract.Context) {
 			})
 			return
 		}
+	}
+	// Amount options arrive in the site's display currency via a "<base>_display"
+	// key; the server converts to internal quota and persists the BASE key, so
+	// stored options stay raw and the frontend never multiplies by QuotaPerUnit.
+	if baseKey, ok := strings.TrimSuffix(option.Key, "_display"), strings.HasSuffix(option.Key, "_display"); ok && settingIsDisplayAmountKey(baseKey) {
+		display, parseErr := strconv.ParseFloat(strings.TrimSpace(option.Value.(string)), 64)
+		if parseErr != nil || math.IsNaN(display) || math.IsInf(display, 0) {
+			_ = c.JSON(http.StatusOK, common.H{
+				"success": false,
+				"message": "无效的金额数值",
+			})
+			return
+		}
+		option.Key = baseKey
+		option.Value = strconv.Itoa(billing.QuotaFromDisplayAmount(display))
 	}
 	err = dbinfra.UpdateOption(option.Key, option.Value.(string))
 	if err != nil {
