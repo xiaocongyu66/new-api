@@ -19,6 +19,10 @@ type tokenAutoGroupsInput struct {
 }
 
 func (input *tokenAutoGroupsInput) UnmarshalJSON(data []byte) error {
+	// Presence of the key (even as JSON null) means the client addressed the
+	// field; UpdateToken branches on Set to distinguish clear/inherit from
+	// leave-untouched.
+	input.Set = true
 	if strings.TrimSpace(string(data)) == "null" {
 		input.Groups = nil
 		return nil
