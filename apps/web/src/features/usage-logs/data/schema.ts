@@ -33,6 +33,8 @@ export const usageLogSchema = z.object({
   token_name: z.string().default(''),
   model_name: z.string().default(''),
   quota: z.number().default(0),
+  // Backend-rendered display amount (quota * display rate); optional for older payloads.
+  quota_display: z.number().optional(),
   prompt_tokens: z.number().default(0),
   completion_tokens: z.number().default(0),
   use_time: z.number().default(0),

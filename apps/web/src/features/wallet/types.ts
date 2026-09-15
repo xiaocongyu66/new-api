@@ -216,8 +216,8 @@ export interface AmountRequest {
  * Affiliate quota transfer request
  */
 export interface AffiliateTransferRequest {
-  /** Quota amount to transfer */
-  quota: number
+  /** Amount in the site's display currency; the backend converts to quota. */
+  quota_display: number
 }
 
 /**

@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import type { TFunction } from 'i18next'
 import { z } from 'zod'
 
-import { parseQuotaFromDollarsLegacy, quotaUnitsToDollarsLegacy } from '@/lib/format'
 import { parseSporeToUnits, sporeUnitsToValue } from '@/lib/spore'
 
 import type { SubscriptionPlan, PlanPayload } from '../types'
@@ -101,7 +100,7 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
     pay_mode: (plan.pay_mode as PlanFormValues['pay_mode']) || 'balance',
     allow_wallet_overflow: plan.allow_wallet_overflow !== false,
     max_purchase_per_user: Number(plan.max_purchase_per_user || 0),
-    total_amount: quotaUnitsToDollarsLegacy(Number(plan.total_amount || 0)),
+    total_amount: plan.total_amount_display ?? 0,
     upgrade_group: plan.upgrade_group || '',
     downgrade_group: plan.downgrade_group || '',
     stripe_price_id: plan.stripe_price_id || '',
@@ -126,7 +125,7 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
           : 0,
       sort_order: Number(values.sort_order || 0),
       max_purchase_per_user: Number(values.max_purchase_per_user || 0),
-      total_amount: parseQuotaFromDollarsLegacy(Number(values.total_amount || 0)),
+      total_amount_display: Number(values.total_amount || 0),
       upgrade_group: values.upgrade_group || '',
       downgrade_group: values.downgrade_group || '',
     },

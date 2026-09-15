@@ -25,7 +25,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
-import { formatQuota, parseQuotaFromDollarsLegacy } from '@/lib/format'
+import { formatQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { adjustUserQuota } from '../api'
@@ -50,20 +50,19 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
   const tokensOnly = currencyMeta.kind === 'tokens'
 
   const amountValue = parseFloat(amount) || 0
-  const quotaValue = parseQuotaFromDollarsLegacy(Math.abs(amountValue))
+  // Pure display-currency arithmetic: the input IS the displayed amount; the
+  // backend converts it to internal quota on submit (value_display).
+  const amountDisplay = Math.abs(amountValue)
 
   const getPreviewText = () => {
     const current = props.currentQuota
-    const val = quotaValue
     switch (mode) {
       case 'add':
-        return `${t('Current quota')}: ${formatQuota(current)}  +${formatQuota(val)} = ${formatQuota(current + val)}`
+        return `${t('Current quota')}: ${formatQuota(current)}  +${formatQuota(amountDisplay)} = ${formatQuota(current + amountDisplay)}`
       case 'subtract':
-        return `${t('Current quota')}: ${formatQuota(current)}  -${formatQuota(val)} = ${formatQuota(current - val)}`
-      case 'override': {
-        const overrideQuota = parseQuotaFromDollarsLegacy(amountValue)
-        return `${t('Current quota')}: ${formatQuota(current)} → ${formatQuota(overrideQuota)}`
-      }
+        return `${t('Current quota')}: ${formatQuota(current)}  -${formatQuota(amountDisplay)} = ${formatQuota(current - amountDisplay)}`
+      case 'override':
+        return `${t('Current quota')}: ${formatQuota(current)} → ${formatQuota(amountValue)}`
       default:
         return ''
     }
@@ -71,17 +70,15 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
 
   const handleConfirm = async () => {
     if (!amount && mode !== 'override') return
-    if (quotaValue <= 0 && mode !== 'override') return
+    if (amountDisplay <= 0 && mode !== 'override') return
 
     setLoading(true)
     try {
-      const value =
-        mode === 'override' ? parseQuotaFromDollarsLegacy(amountValue) : quotaValue
       const result = await adjustUserQuota({
         id: props.userId,
         action: 'add_quota',
         mode,
-        value: mode === 'override' ? value : Math.abs(value),
+        value_display: mode === 'override' ? amountValue : amountDisplay,
       })
       if (result.success) {
         toast.success(t('Quota adjusted successfully'))

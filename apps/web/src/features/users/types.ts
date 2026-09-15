@@ -149,7 +149,8 @@ export interface ManageUserQuotaPayload {
   id: number
   action: 'add_quota'
   mode: QuotaAdjustMode
-  value: number
+  /** Amount in the site's display currency; the backend converts to quota. */
+  value_display: number
 }
 
 export interface ManageUserSporePayload {

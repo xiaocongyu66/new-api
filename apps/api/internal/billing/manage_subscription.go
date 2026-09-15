@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/settings"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/usage"
+	"math"
 	"strconv"
 	"strings"
 
@@ -183,6 +184,15 @@ func AdminCreateSubscriptionPlan(c contract.Context) {
 		common.CtxApiErrorMsg(c, "购买上限不能为负数")
 		return
 	}
+	// The admin form submits the total in display currency; the server owns
+	// the conversion so the frontend never multiplies by QuotaPerUnit.
+	if req.Plan.TotalAmountDisplay != 0 {
+		if math.IsNaN(req.Plan.TotalAmountDisplay) || math.IsInf(req.Plan.TotalAmountDisplay, 0) {
+			common.CtxApiErrorMsg(c, "无效的总额度数值")
+			return
+		}
+		req.Plan.TotalAmount = int64(QuotaFromDisplayAmount(req.Plan.TotalAmountDisplay))
+	}
 	if req.Plan.TotalAmount < 0 {
 		common.CtxApiErrorMsg(c, "总额度不能为负数")
 		return
@@ -260,6 +270,15 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 	if req.Plan.MaxPurchasePerUser < 0 {
 		common.CtxApiErrorMsg(c, "购买上限不能为负数")
 		return
+	}
+	// The admin form submits the total in display currency; the server owns
+	// the conversion so the frontend never multiplies by QuotaPerUnit.
+	if req.Plan.TotalAmountDisplay != 0 {
+		if math.IsNaN(req.Plan.TotalAmountDisplay) || math.IsInf(req.Plan.TotalAmountDisplay, 0) {
+			common.CtxApiErrorMsg(c, "无效的总额度数值")
+			return
+		}
+		req.Plan.TotalAmount = int64(QuotaFromDisplayAmount(req.Plan.TotalAmountDisplay))
 	}
 	if req.Plan.TotalAmount < 0 {
 		common.CtxApiErrorMsg(c, "总额度不能为负数")

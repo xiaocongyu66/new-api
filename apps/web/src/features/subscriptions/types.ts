@@ -46,6 +46,8 @@ export const subscriptionPlanSchema = z.object({
   max_purchase_per_user: z.number(),
   total_amount: z.number(),
   total_amount_display: z.number().optional(),
+  /** USD price rendered in display currency by the backend for balance compare. */
+  balance_cost_display: z.number().optional(),
   upgrade_group: z.string().optional(),
   downgrade_group: z.string().optional(),
   stripe_price_id: z.string().optional(),

@@ -155,7 +155,8 @@ function isFlowNodeKind(value: unknown): value is FlowNodeKind {
 
 function rowMetrics(row: FlowQuotaDataItem): FlowMetrics {
   return {
-    quota: numberValue(row.quota),
+    // Backend pre-converts (quota_display); raw fallback keeps older payloads finite.
+    quota: numberValue(row.quota_display ?? row.quota),
     tokens: numberValue(row.token_used),
     requests: numberValue(row.count),
   }

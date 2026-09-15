@@ -6,6 +6,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/authtoken"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -424,7 +425,11 @@ func GenerateAccessToken(c contract.Context) {
 }
 
 type TransferAffQuotaRequest struct {
-	Quota int `json:"quota" binding:"required"`
+	Quota int `json:"quota"`
+	// QuotaDisplay carries the amount in the site's display currency; when
+	// present it wins over Quota and the server converts it, so the frontend
+	// never multiplies by QuotaPerUnit.
+	QuotaDisplay float64 `json:"quota_display"`
 }
 
 // TransferAffQuota moves affiliate reward quota into spendable quota. The
@@ -442,7 +447,19 @@ func TransferAffQuota(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	err = user.TransferAffQuotaToQuota(tran.Quota)
+	amount := tran.Quota
+	if tran.QuotaDisplay != 0 {
+		if math.IsNaN(tran.QuotaDisplay) || math.IsInf(tran.QuotaDisplay, 0) {
+			common.CtxApiErrorMsg(c, "无效的转账数值")
+			return
+		}
+		amount = quotaFromDisplayAmount(tran.QuotaDisplay)
+	}
+	if amount <= 0 {
+		common.CtxApiErrorMsg(c, "转账数额必须大于 0")
+		return
+	}
+	err = user.TransferAffQuotaToQuota(amount)
 	if err != nil {
 		common.CtxApiErrorI18n(c, i18n.MsgUserTransferFailed, map[string]any{"Error": err.Error()})
 		return
@@ -1017,7 +1034,11 @@ type ManageRequest struct {
 	Id     int    `json:"id"`
 	Action string `json:"action"`
 	Value  int    `json:"value"`
-	Mode   string `json:"mode"`
+	// ValueDisplay carries the amount in the site's display currency. When
+	// present it wins over Value: the server converts it to internal quota via
+	// the billing hook, so the frontend never multiplies by QuotaPerUnit.
+	ValueDisplay float64 `json:"value_display"`
+	Mode         string  `json:"mode"`
 }
 
 // ManageUser Only admin user can do this
@@ -1112,40 +1133,48 @@ func ManageUser(c contract.Context) {
 			return
 		}
 	case "add_quota":
+		quotaValue := req.Value
+		if req.ValueDisplay != 0 {
+			if math.IsNaN(req.ValueDisplay) || math.IsInf(req.ValueDisplay, 0) {
+				common.CtxApiErrorMsg(c, "无效的额度数值")
+				return
+			}
+			quotaValue = quotaFromDisplayAmount(req.ValueDisplay)
+		}
 		switch req.Mode {
 		case "add":
-			if req.Value <= 0 {
+			if quotaValue <= 0 {
 				common.CtxApiErrorI18n(c, i18n.MsgUserQuotaChangeZero)
 				return
 			}
-			if err := IncreaseUserQuota(user.Id, req.Value, true); err != nil {
+			if err := IncreaseUserQuota(user.Id, quotaValue, true); err != nil {
 				common.CtxApiError(c, err)
 				return
 			}
 			writeManageAudit(c, user.Id, "user.quota_add", map[string]interface{}{
-				"quota": logger.LogQuota(req.Value),
+				"quota": logger.LogQuota(quotaValue),
 			})
 		case "subtract":
-			if req.Value <= 0 {
+			if quotaValue <= 0 {
 				common.CtxApiErrorI18n(c, i18n.MsgUserQuotaChangeZero)
 				return
 			}
-			if err := DecreaseUserQuota(user.Id, req.Value, true); err != nil {
+			if err := DecreaseUserQuota(user.Id, quotaValue, true); err != nil {
 				common.CtxApiError(c, err)
 				return
 			}
 			writeManageAudit(c, user.Id, "user.quota_subtract", map[string]interface{}{
-				"quota": logger.LogQuota(req.Value),
+				"quota": logger.LogQuota(quotaValue),
 			})
 		case "override":
 			oldQuota := user.Quota
-			if err := dbx.DB.Model(&User{}).Where("id = ?", user.Id).Update("quota", req.Value).Error; err != nil {
+			if err := dbx.DB.Model(&User{}).Where("id = ?", user.Id).Update("quota", quotaValue).Error; err != nil {
 				common.CtxApiError(c, err)
 				return
 			}
 			writeManageAudit(c, user.Id, "user.quota_override", map[string]interface{}{
 				"from": logger.LogQuota(oldQuota),
-				"to":   logger.LogQuota(req.Value),
+				"to":   logger.LogQuota(quotaValue),
 			})
 		default:
 			common.CtxApiErrorI18n(c, i18n.MsgInvalidParams)

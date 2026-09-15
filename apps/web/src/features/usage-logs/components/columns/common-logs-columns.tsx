@@ -140,7 +140,7 @@ function buildTypeDetailSegments(
       })
     }
     segments.push({
-      text: `${t('Fee')}: ${formatLogQuota(other?.fee_quota ?? log.quota)}`,
+      text: `${t('Fee')}: ${formatLogQuota(other?.fee_quota ?? log.quota_display ?? log.quota)}`,
       muted: true,
     })
     return segments
