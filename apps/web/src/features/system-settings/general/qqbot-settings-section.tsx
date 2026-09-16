@@ -58,8 +58,8 @@ const qqbotSchema = z.object({
     qq_checkin_enabled: z.boolean(),
     web_checkin_enabled: z.boolean(),
     single_platform_only: z.boolean(),
-    min_quota: z.coerce.number().int().min(0),
-    max_quota: z.coerce.number().int().min(0),
+    min_quota: z.coerce.number().min(0),
+    max_quota: z.coerce.number().min(0),
     checkin_disabled_groups: z.string(),
     notify_template: z.string(),
     auto_approve_enabled: z.boolean(),
@@ -68,17 +68,17 @@ const qqbotSchema = z.object({
     drop_groups: z.string(),
     drop_min_messages: z.coerce.number().int().min(1),
     drop_max_messages: z.coerce.number().int().min(1),
-    drop_min_quota: z.coerce.number().int().min(0),
-    drop_max_quota: z.coerce.number().int().min(0),
+    drop_min_quota: z.coerce.number().min(0),
+    drop_max_quota: z.coerce.number().min(0),
     drop_daily_limit: z.coerce.number().int(),
     drop_template: z.string(),
-    drop_balance_anchor: z.coerce.number().int().min(0),
-    drop_daily_guarantee: z.coerce.number().int().min(0),
+    drop_balance_anchor: z.coerce.number().min(0),
+    drop_daily_guarantee: z.coerce.number().min(0),
     transfer_enabled: z.boolean(),
     transfer_disabled_groups: z.string(),
     transfer_daily_limit: z.coerce.number().int(),
-    transfer_min_amount: z.coerce.number().int().min(0),
-    transfer_max_amount: z.coerce.number().int(),
+    transfer_min_amount: z.coerce.number().min(0),
+    transfer_max_amount: z.coerce.number(),
     transfer_fee_brackets: z.string(),
     command_cooldown_seconds: z.coerce.number().int().min(0),
     recall_failed_messages: z.boolean(),
@@ -88,8 +88,8 @@ const qqbotSchema = z.object({
     red_packet_enabled: z.boolean(),
     red_packet_disabled_groups: z.string(),
     red_packet_daily_limit: z.coerce.number().int(),
-    red_packet_min_amount: z.coerce.number().int().min(0),
-    red_packet_max_amount: z.coerce.number().int(),
+    red_packet_min_amount: z.coerce.number().min(0),
+    red_packet_max_amount: z.coerce.number(),
     red_packet_default_count: z.coerce.number().int().min(1),
     red_packet_max_count: z.coerce.number().int().min(1),
     red_packet_expire_seconds: z.coerce.number().int().min(1),
@@ -110,13 +110,36 @@ type QQBotSettingsSectionProps = {
   defaultValues: Record<`qq_bot_setting.${string}`, string | number | boolean>
 }
 
-/** 'qq_bot_setting.x' entries -> nested form shape consumed by RHF paths. */
+/** Option keys whose values are internal-quota amounts; admin forms read and
+ * write their `<key>_display` siblings (display currency) — the backend
+ * converts, so no quota arithmetic lives in the client. */
+export const QQBOT_AMOUNT_KEYS = [
+  'min_quota',
+  'max_quota',
+  'drop_min_quota',
+  'drop_max_quota',
+  'drop_balance_anchor',
+  'drop_daily_guarantee',
+  'red_packet_min_amount',
+  'red_packet_max_amount',
+  'transfer_min_amount',
+  'transfer_max_amount',
+] as const
+
+/** 'qq_bot_setting.x' entries -> nested form shape consumed by RHF paths.
+ * Amount fields seed from their *_display sibling (already display currency). */
 function unflattenDefaults(
   flat: QQBotSettingsSectionProps['defaultValues']
 ): QQBotFormValues {
   const out: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(flat)) {
-    out[key.replace('qq_bot_setting.', '')] = value
+    const short = key.replace('qq_bot_setting.', '')
+    if ((QQBOT_AMOUNT_KEYS as readonly string[]).includes(short)) continue
+    out[short] = value
+  }
+  for (const short of QQBOT_AMOUNT_KEYS) {
+    const disp = flat[`qq_bot_setting.${short}_display` as keyof typeof flat]
+    out[short] = disp ?? 0
   }
   return { qq_bot_setting: out } as QQBotFormValues
 }
@@ -142,9 +165,14 @@ export function QQBotSettingsSection({
 
   const onSubmit = async (data: QQBotFormValues) => {
     const defaults = formDefaults.qq_bot_setting as Record<string, string | number | boolean>
+    const isAmount = (k: string) => (QQBOT_AMOUNT_KEYS as readonly string[]).includes(k)
     const updates = Object.entries(data.qq_bot_setting)
       .filter(([key, value]) => value !== defaults[key])
-      .map(([key, value]) => ({ key: `qq_bot_setting.${key}`, value: String(value) }))
+      .map(([key, value]) =>
+        isAmount(key)
+          ? { key: `qq_bot_setting.${key}_display`, value: String(value) }
+          : { key: `qq_bot_setting.${key}`, value: String(value) }
+      )
     if (updates.length === 0) {
       toast.info(t('No changes to save'))
       return

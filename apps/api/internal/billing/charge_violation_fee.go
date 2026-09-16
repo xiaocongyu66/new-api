@@ -139,6 +139,7 @@ func ChargeViolationFeeIfNeeded(ctx contract.Context, relayInfo *relaycommon.Rel
 		"violation_fee":        true,
 		"violation_fee_code":   string(types.ErrorCodeViolationFeeGrokCSAM),
 		"fee_quota":            feeQuota,
+		"fee_quota_display":    QuotaToDisplayAmount(feeQuota),
 		"base_amount":          settings.ViolationDeductionAmount,
 		"group_ratio":          groupRatio,
 		"status_code":          apiErr.StatusCode,

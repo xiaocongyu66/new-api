@@ -113,6 +113,11 @@ function parseCreemProducts(data: unknown): CreemProduct[] {
         productId: typeof item.productId === 'string' ? item.productId : '',
         price: Number(item.price) || 0,
         quota: Number(item.quota) || 0,
+        // `|| undefined` would drop a legitimate 0 (a free product); only
+        // non-numeric input should become undefined.
+        quota_display: Number.isFinite(Number(item.quota_display))
+          ? Number(item.quota_display)
+          : undefined,
         currency,
       }
     })

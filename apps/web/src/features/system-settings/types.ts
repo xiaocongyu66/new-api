@@ -286,6 +286,13 @@ export type BillingSettings = {
   PreConsumedQuota: number
   QuotaForInviter: number
   QuotaForInvitee: number
+  // Display-currency siblings of the raw quota options. GET /api/option emits
+  // them server-converted; PUT accepts them back and converts to raw quota, so
+  // the admin form never multiplies by QuotaPerUnit.
+  QuotaForNewUser_display: number
+  PreConsumedQuota_display: number
+  QuotaForInviter_display: number
+  QuotaForInvitee_display: number
   TopUpLink: string
   'general_setting.docs_link': string
   'quota_setting.enable_free_model_pre_consume': boolean
@@ -395,6 +402,16 @@ export type BillingSettings = {
   'qq_bot_setting.transfer_daily_limit': number
   'qq_bot_setting.transfer_min_amount': number
   'qq_bot_setting.transfer_max_amount': number
+  'qq_bot_setting.min_quota_display'?: number
+  'qq_bot_setting.max_quota_display'?: number
+  'qq_bot_setting.drop_min_quota_display'?: number
+  'qq_bot_setting.drop_max_quota_display'?: number
+  'qq_bot_setting.drop_balance_anchor_display'?: number
+  'qq_bot_setting.drop_daily_guarantee_display'?: number
+  'qq_bot_setting.red_packet_min_amount_display'?: number
+  'qq_bot_setting.red_packet_max_amount_display'?: number
+  'qq_bot_setting.transfer_min_amount_display'?: number
+  'qq_bot_setting.transfer_max_amount_display'?: number
   'qq_bot_setting.transfer_fee_brackets': string
   'qq_bot_setting.red_packet_enabled': boolean
   'qq_bot_setting.red_packet_disabled_groups': string
@@ -422,7 +439,7 @@ export type OperationsSettings = {
   DefaultCollapseSidebar: boolean
   DemoSiteEnabled: boolean
   SelfUseModeEnabled: boolean
-  QuotaRemindThreshold: string
+  QuotaRemindThreshold_display: string
   SMTPServer: string
   SMTPPort: string
   SMTPAccount: string

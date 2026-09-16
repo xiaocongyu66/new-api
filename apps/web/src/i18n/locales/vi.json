@@ -2752,6 +2752,7 @@
     "Inviter": "Người mời",
     "Inviter Reward": "Phần thưởng người mời",
     "Inviter Reward Currency": "Đơn vị thưởng cho người mời",
+    "Inviter {{inviter}}, invitee {{invitee}}": "Người mời {{inviter}}, người được mời {{invitee}}",
     "Invites": "Mời",
     "Invoke developer-defined functions with structured arguments": "Gọi các hàm do nhà phát triển định nghĩa với đối số có cấu trúc",
     "io.net API Key": "Khóa API io.net",

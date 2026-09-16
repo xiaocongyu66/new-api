@@ -112,6 +112,15 @@ type ResolvedCurrencyFormatOptions = Omit<
   locale: Intl.LocalesArgument | undefined
 }
 
+// TODO(quota-display): the backend does not yet emit a *_display sibling for
+// every raw quota field (dashboard aggregation rows, admin user list, channel
+// list, usage logs) nor accept display amounts on every form endpoint
+// (user manage, aff transfer, plan create/update). Those residual sites keep
+// the pre-refactor client-side conversion against the system default unit;
+// each is wrapped in a *Legacy helper so the remaining surface is greppable.
+// Delete this constant when the last legacy caller is gone.
+export const LEGACY_QUOTA_PER_UNIT = 500000
+
 type DisplayMeta =
   | {
       kind: 'currency'
@@ -126,9 +135,7 @@ type DisplayMeta =
     }
   | {
       kind: 'tokens'
-      /** Number of tokens per USD */
-      quotaPerUnit: number
-    }
+  }
 
 const DEFAULT_FORMAT_OPTIONS: ResolvedCurrencyFormatOptions = {
   digitsLarge: 2,
@@ -165,10 +172,6 @@ function getConfig(): CurrencyConfig {
   return {
     ...DEFAULT_CURRENCY_CONFIG,
     ...currency,
-    quotaPerUnit:
-      currency?.quotaPerUnit && currency.quotaPerUnit > 0
-        ? currency.quotaPerUnit
-        : DEFAULT_CURRENCY_CONFIG.quotaPerUnit,
     usdExchangeRate:
       currency?.usdExchangeRate && currency.usdExchangeRate > 0
         ? currency.usdExchangeRate
@@ -186,6 +189,13 @@ function getConfig(): CurrencyConfig {
 
 function getDisplayMeta(config: CurrencyConfig): DisplayMeta {
   switch (config.quotaDisplayType) {
+    case 'TOKENS':
+      // Identity case: in this mode billing.QuotaToDisplayAmount returns the
+      // raw token count unchanged, so no symbol, rate, or fraction digits
+      // apply. USD-scale amounts (channel balances, model prices) have no
+      // server-side _display sibling, so formatCurrencyFromUSD converts them
+      // with LEGACY_QUOTA_PER_UNIT; *_display values pass through untouched.
+      return { kind: 'tokens' }
     case 'CNY':
       return {
         kind: 'currency',
@@ -198,11 +208,6 @@ function getDisplayMeta(config: CurrencyConfig): DisplayMeta {
         kind: 'custom',
         symbol: config.customCurrencySymbol,
         exchangeRate: config.customCurrencyExchangeRate,
-      }
-    case 'TOKENS':
-      return {
-        kind: 'tokens',
-        quotaPerUnit: config.quotaPerUnit,
       }
     case 'USD':
     default:
@@ -311,7 +316,7 @@ function formatCurrencyValue(
     }
     return formatNumberWithSuffix(
       value,
-      options.digitsLarge,
+      0,
       options.digitsSmall,
       options.abbreviate
     )
@@ -411,11 +416,15 @@ export function formatCurrencyFromUSD(
 ): string {
   if (amountUSD == null || Number.isNaN(amountUSD)) return '-'
 
-  const { config, meta } = getCurrencyDisplay()
+  const { meta } = getCurrencyDisplay()
   const merged = mergeOptions(options)
 
   if (meta.kind === 'tokens') {
-    const tokens = amountUSD * config.quotaPerUnit
+    // TODO(quota-display): USD-scale amounts (channel balances, model prices,
+    // billing history) have no server-side _display sibling yet, so this branch
+    // still converts with the pre-refactor default unit. formatQuotaLegacy is
+    // the single greppable name for that residual conversion.
+    const tokens = amountUSD * LEGACY_QUOTA_PER_UNIT
     if (merged.compact) {
       return new Intl.NumberFormat(merged.locale, {
         notation: 'compact',
@@ -486,42 +495,45 @@ export function formatBillingCurrencyFromUSD(
 }
 
 /**
- * Format raw quota values (token units) to display currency.
+ * Format a quota amount that the backend ALREADY converted to the display
+ * currency (a `*_display` field). The frontend no longer divides by
+ * quotaPerUnit; it only does locale formatting, digits and abbreviation.
  *
- * Converts raw quota/token amounts to USD first, then formats according
- * to display settings. Use when you have quota in token units (e.g., 5000000)
- * and need to display it as currency (e.g., "$10").
+ * TOKENS display is the identity case: the backend returns the raw token
+ * count as the display amount, so it renders as an integer.
  *
- * @param quota - Raw quota amount in token units (e.g., 5000000)
+ * @param displayAmount - A backend-provided `*_display` amount
  * @param options - Optional formatting configuration
  * @returns Formatted string with currency symbol or token count
  *
  * @example
- * // With quotaPerUnit: 500000, quotaDisplayType: 'USD'
- * formatQuotaWithCurrency(5000000) → "$10"
+ * // quotaDisplayType: 'USD', GetSelf quota_display for 5,000,000 raw quota
+ * formatQuotaWithCurrency(10) → "$10"
  *
  * @example
- * // With quotaPerUnit: 500000, quotaDisplayType: 'CNY', usdExchangeRate: 7
- * formatQuotaWithCurrency(5000000) → "¥70"
+ * // quotaDisplayType: 'CNY', usdExchangeRate: 7
+ * formatQuotaWithCurrency(70) → "¥70"
  *
  * @remarks
- * Use this function for:
- * - Raw quota values from database (stored as tokens)
- * - When you need to convert tokens → USD → display currency
+ * Use this for the `*_display` sibling of every raw quota field. For a raw
+ * quota field whose response has no sibling yet, use formatQuotaLegacy().
  *
  * DO NOT use for:
- * - Values already in USD → use formatCurrencyFromUSD()
+ * - Values stored in USD → use formatCurrencyFromUSD()
  * - Payment amounts → use formatLocalCurrencyAmount()
  */
 export function formatQuotaWithCurrency(
-  quota: number | null | undefined,
+  displayAmount: number | null | undefined,
   options?: CurrencyFormatOptions
 ): string {
-  if (quota == null || Number.isNaN(quota)) return '-'
+  if (displayAmount == null || Number.isNaN(displayAmount)) return '-'
 
-  const { config } = getCurrencyDisplay()
-  const amountUSD = quota / config.quotaPerUnit
-  return formatCurrencyFromUSD(amountUSD, options)
+  const { meta } = getCurrencyDisplay()
+  return formatCurrencyValue(
+    displayAmount,
+    mergeOptions(options),
+    meta
+  )
 }
 
 /**

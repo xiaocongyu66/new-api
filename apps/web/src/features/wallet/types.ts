@@ -33,7 +33,12 @@ export interface ApiResponse<T = unknown> {
  * Standard API response types
  */
 export type TopupInfoResponse = ApiResponse<TopupInfo>
-export type RedemptionResponse = ApiResponse<number>
+export interface TopupRedemptionData {
+  quota: number
+  quota_display: number
+}
+
+export type RedemptionResponse = ApiResponse<TopupRedemptionData>
 export type AmountResponse = ApiResponse<string>
 export type PaymentResponse = ApiResponse<Record<string, unknown>> & {
   url?: string
@@ -70,8 +75,10 @@ export interface CreemProduct {
   productId: string
   /** Product price */
   price: number
-  /** Quota amount to credit */
+  /** Quota amount to credit (raw internal quota) */
   quota: number
+  /** Backend-rendered display amount for quota */
+  quota_display?: number
   /** Currency (USD or EUR) */
   currency: 'USD' | 'EUR'
 }
@@ -216,8 +223,8 @@ export interface AmountRequest {
  * Affiliate quota transfer request
  */
 export interface AffiliateTransferRequest {
-  /** Quota amount to transfer */
-  quota: number
+  /** Amount in the site's display currency; the backend converts to quota. */
+  quota_display: number
 }
 
 /**
@@ -228,16 +235,22 @@ export interface UserWalletData {
   id: number
   /** Username */
   username: string
-  /** Current quota balance */
   quota: number
-  /** Total used quota */
+  /** Backend-rendered display amount for quota */
+  quota_display: number
   used_quota: number
+  /** Backend-rendered display amount for used_quota */
+  used_quota_display: number
   /** Total request count */
   request_count: number
-  /** Affiliate quota (pending rewards) */
   aff_quota: number
-  /** Total affiliate quota earned (historical) */
+  /** Backend-rendered display amount for aff_quota */
+  aff_quota_display: number
   aff_history_quota: number
+  /** Backend-rendered display amount for aff_history_quota */
+  aff_history_quota_display: number
+  /** Cumulative affiliate spore earnings, internal units (1 = 0.1 spore) */
+  aff_spore_history: number
   /** Number of successful affiliate invites */
   aff_count: number
   /** User group */

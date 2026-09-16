@@ -29,8 +29,9 @@ export interface QuotaDataItem {
   model_name?: string
   created_at: number
   token_used?: number
-  count?: number
   quota?: number
+  quota_display?: number
+  count?: number
 }
 
 export interface FlowQuotaDataItem {
@@ -42,10 +43,11 @@ export interface FlowQuotaDataItem {
   token_name?: string
   channel_id?: number
   channel_name?: string
+  quota?: number
+  quota_display?: number
   model_name?: string
   token_used?: number
   count?: number
-  quota?: number
 }
 
 export type FlowMetric = 'quota' | 'tokens' | 'requests'

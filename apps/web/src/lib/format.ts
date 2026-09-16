@@ -63,15 +63,20 @@ export function formatCurrencyUSD(value: number | null | undefined): string {
 }
 
 // ============================================================================
-// Quota Formatting (500,000 units = $1)
+// Quota Formatting
+//
+// The backend owns the quota -> display-amount conversion (billing.
+// QuotaToDisplayAmount). Every raw quota field the API returns has a
+// `*_display` float sibling, and these helpers only do the formatting half:
+// locale, digits, abbreviation, currency symbol.
 // ============================================================================
 
 /**
- * Format quota into the configured display amount.
- * Quota is stored in units where `quotaPerUnit` equals 1 USD.
+ * Format a quota amount the backend already converted to the display currency.
+ * Pass the `*_display` sibling of a raw quota field, never the raw field.
  */
-export function formatQuota(quota: number): string {
-  return formatQuotaWithCurrency(quota, {
+export function formatQuota(displayAmount: number): string {
+  return formatQuotaWithCurrency(displayAmount, {
     digitsLarge: 2,
     digitsSmall: 4,
     abbreviate: true,
@@ -79,60 +84,21 @@ export function formatQuota(quota: number): string {
 }
 
 /**
- * Parse quota from the current display input back to quota units.
+ * Round a display amount to the precision an editable quota input shows, so a
+ * `*_display` value round-trips through the form without picking up stray
+ * digits. Token display amounts are always integers.
  */
-export function parseQuotaFromDollars(amount: number): number {
-  if (!Number.isFinite(amount)) return 0
+export function toEditableDisplayAmount(displayAmount: number): number {
+  if (!Number.isFinite(displayAmount)) return 0
 
-  const { config, meta } = getCurrencyDisplay()
-
-  // Tokens-only or raw quota mode
+  const { meta } = getCurrencyDisplay()
   if (meta.kind === 'tokens') {
-    return Math.round(amount)
+    return Math.round(displayAmount)
   }
 
-  const exchangeRate =
-    meta.kind === 'currency' || meta.kind === 'custom' ? meta.exchangeRate : 1
-
-  const usdAmount = exchangeRate > 0 ? amount / exchangeRate : amount
-
-  return Math.round(usdAmount * config.quotaPerUnit)
-}
-
-/**
- * Convert quota units to the configured display amount.
- * Reverse of parseQuotaFromDollars.
- */
-export function quotaUnitsToDollars(units: number): number {
-  const { config, meta } = getCurrencyDisplay()
-  return quotaUnitsToDisplayAmount(units, config.quotaPerUnit, meta)
-}
-
-function quotaUnitsToDisplayAmount(
-  units: number,
-  quotaPerUnit: number,
-  meta: ReturnType<typeof getCurrencyDisplay>['meta']
-): number {
-  if (meta.kind === 'tokens') {
-    return units
-  }
-
-  return (units / quotaPerUnit) * meta.exchangeRate
-}
-
-/**
- * Convert quota units to a plain number suitable for an editable input.
- * Uses the same precision as quota list formatting without symbols or suffixes.
- */
-export function quotaUnitsToEditableAmount(units: number): number {
-  const { config, meta } = getCurrencyDisplay()
-  const amount = quotaUnitsToDisplayAmount(units, config.quotaPerUnit, meta)
-
-  if (meta.kind === 'tokens') {
-    return Math.round(amount)
-  }
-
-  return Number(amount.toFixed(getCurrencyFractionDigits(amount)))
+  return Number(
+    displayAmount.toFixed(getCurrencyFractionDigits(displayAmount))
+  )
 }
 
 /** Return the input step matching the configured editable quota precision. */
@@ -231,11 +197,11 @@ export function formatTimeStr(date: Date): string {
 }
 
 /**
- * Format quota for usage logs with higher precision
- * Uses 6 decimal places to show very small costs accurately
+ * Format a log row's pre-converted display amount with higher precision
+ * (6 decimal places to show very small costs accurately).
  */
-export function formatLogQuota(quota: number): string {
-  return formatQuotaWithCurrency(quota, {
+export function formatLogQuota(displayAmount: number): string {
+  return formatQuotaWithCurrency(displayAmount, {
     digitsLarge: 4,
     digitsSmall: 6,
     abbreviate: false,

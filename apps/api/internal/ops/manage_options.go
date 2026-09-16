@@ -7,7 +7,9 @@ import (
 	"github.com/QuantumNous/new-api/internal/geoip"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/usage"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/internal/billing/price_expression"
@@ -34,6 +36,47 @@ type OptionUpdateRequest struct {
 	Value any    `json:"value"`
 }
 
+// settingDisplayAmountKeys lists option keys whose values are internal-quota
+// amounts that admins configure through display-currency form inputs.
+var settingDisplayAmountKeys = map[string]struct{}{
+	"QuotaForNewUser":                      {},
+	"QuotaForInviter":                      {},
+	"QuotaForInvitee":                      {},
+	"PreConsumedQuota":                     {},
+	"QuotaRemindThreshold":                 {},
+	"qq_bot_setting.min_quota":             {},
+	"qq_bot_setting.max_quota":             {},
+	"qq_bot_setting.drop_min_quota":        {},
+	"qq_bot_setting.drop_max_quota":        {},
+	"qq_bot_setting.drop_balance_anchor":   {},
+	"qq_bot_setting.drop_daily_guarantee":  {},
+	"qq_bot_setting.red_packet_min_amount": {},
+	"qq_bot_setting.red_packet_max_amount": {},
+	"qq_bot_setting.transfer_min_amount":   {},
+	"qq_bot_setting.transfer_max_amount":   {},
+}
+
+func settingIsDisplayAmountKey(baseKey string) bool {
+	_, ok := settingDisplayAmountKeys[baseKey]
+	return ok
+}
+
+// inviteRewardOptionKeys 是邀请奖励相关的选项键，合规门必须拦住它们。
+// 设置页提交的是带 _display 后缀的版本（键归一发生在 UpdateOption 后段），
+// 所以 base 与 _display 两种写法都要匹配，否则管理员用 display 键即可
+// 绕过合规确认。
+var inviteRewardOptionKeys = map[string]struct{}{
+	"QuotaForInviter":         {},
+	"QuotaForInvitee":         {},
+	"QuotaForInviter_display": {},
+	"QuotaForInvitee_display": {},
+}
+
+func isInviteRewardOptionKey(key string) bool {
+	_, ok := inviteRewardOptionKeys[key]
+	return ok
+}
+
 func UpdateOption(c contract.Context) {
 	var option OptionUpdateRequest
 	err := c.BindJSON(&option)
@@ -54,17 +97,18 @@ func UpdateOption(c contract.Context) {
 	default:
 		option.Value = fmt.Sprintf("%v", option.Value)
 	}
-	switch option.Key {
-	case "QuotaForInviter", "QuotaForInvitee":
-		if settingIsPositiveOptionValue(option.Value.(string)) && !billing.IsPaymentComplianceConfirmed() {
-			common.CtxApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
-			return
-		}
-	default:
-		if strings.HasPrefix(option.Key, "payment_setting.compliance_") {
-			common.CtxApiErrorMsg(c, "合规确认字段不允许通过通用设置接口修改")
-			return
-		}
+	// 合规门必须在 _display 键归一之前匹配：设置页提交的是
+	// QuotaForInviter_display，键归一发生在下面的 TrimSuffix 分支。若这里
+	// 只认 base 键，管理员用 display 键即可绕过合规确认。
+	if isInviteRewardOptionKey(option.Key) &&
+		settingIsPositiveOptionValue(option.Value.(string)) &&
+		!billing.IsPaymentComplianceConfirmed() {
+		common.CtxApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
+		return
+	}
+	if strings.HasPrefix(option.Key, "payment_setting.compliance_") {
+		common.CtxApiErrorMsg(c, "合规确认字段不允许通过通用设置接口修改")
+		return
 	}
 	switch option.Key {
 	case "geo_block_setting.enabled":
@@ -285,6 +329,21 @@ func UpdateOption(c contract.Context) {
 			})
 			return
 		}
+	}
+	// Amount options arrive in the site's display currency via a "<base>_display"
+	// key; the server converts to internal quota and persists the BASE key, so
+	// stored options stay raw and the frontend never multiplies by QuotaPerUnit.
+	if baseKey, ok := strings.TrimSuffix(option.Key, "_display"), strings.HasSuffix(option.Key, "_display"); ok && settingIsDisplayAmountKey(baseKey) {
+		display, parseErr := strconv.ParseFloat(strings.TrimSpace(option.Value.(string)), 64)
+		if parseErr != nil || math.IsNaN(display) || math.IsInf(display, 0) {
+			_ = c.JSON(http.StatusOK, common.H{
+				"success": false,
+				"message": "无效的金额数值",
+			})
+			return
+		}
+		option.Key = baseKey
+		option.Value = strconv.Itoa(billing.QuotaFromDisplayAmount(display))
 	}
 	err = dbinfra.UpdateOption(option.Key, option.Value.(string))
 	if err != nil {

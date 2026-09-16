@@ -390,7 +390,7 @@ function BillingBreakdown(props: {
 
   rows.push({
     label: t('Total Cost'),
-    value: formatLogQuota(log.quota),
+    value: formatLogQuota(log.quota_display ?? log.quota),
   })
 
   if (rows.length === 0) return null
@@ -846,7 +846,12 @@ export function DetailsDialog(props: DetailsDialogProps) {
             )}
             <DetailRow
               label={t('Fee Amount')}
-              value={formatLogQuota(other.fee_quota ?? props.log.quota)}
+              value={formatLogQuota(
+                other.fee_quota_display ??
+                  other.fee_quota ??
+                  props.log.quota_display ??
+                  props.log.quota
+              )}
               mono
             />
           </DetailSection>
@@ -1166,7 +1171,10 @@ export function DetailsDialog(props: DetailsDialogProps) {
             {other.subscription_pre_consumed != null && (
               <DetailRow
                 label={t('Pre-consumed')}
-                value={formatLogQuota(other.subscription_pre_consumed)}
+                value={formatLogQuota(
+                  other.subscription_pre_consumed_display ??
+                    other.subscription_pre_consumed
+                )}
                 mono
               />
             )}
@@ -1174,21 +1182,27 @@ export function DetailsDialog(props: DetailsDialogProps) {
               other.subscription_post_delta !== 0 && (
                 <DetailRow
                   label={t('Post Delta')}
-                  value={formatLogQuota(other.subscription_post_delta)}
+                  value={formatLogQuota(
+                    other.subscription_post_delta_display ??
+                      other.subscription_post_delta
+                  )}
                   mono
                 />
               )}
             {other.subscription_consumed != null && (
               <DetailRow
                 label={t('Final Consumed')}
-                value={formatLogQuota(other.subscription_consumed)}
+                value={formatLogQuota(
+                  other.subscription_consumed_display ??
+                    other.subscription_consumed
+                )}
                 mono
               />
             )}
             {other.subscription_remain != null && (
               <DetailRow
                 label={t('Remaining')}
-                value={`${formatLogQuota(other.subscription_remain)}${other.subscription_total != null ? ` / ${formatLogQuota(other.subscription_total)}` : ''}`}
+                value={`${formatLogQuota(other.subscription_remain_display ?? other.subscription_remain)}${other.subscription_total != null ? ` / ${formatLogQuota(other.subscription_total_display ?? other.subscription_total)}` : ''}`}
                 mono
               />
             )}

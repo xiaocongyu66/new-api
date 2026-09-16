@@ -89,3 +89,20 @@ func TestSumUsedQuotaKeepsQuotaAfterRateQuery(t *testing.T) {
 		"the shared SumUsedQuota entry point must not lose the quota sum either")
 	assert.Equal(t, 1, stat.Rpm)
 }
+
+// TestSumUsedQuotaInternalEmitsQuotaDisplay pins the API-boundary sibling: the
+// stat card reads quota_display, and before it existed the raw summed quota
+// (millions at the default unit) reached the formatter directly.
+func TestSumUsedQuotaInternalEmitsQuotaDisplay(t *testing.T) {
+	db := setupLogStatTestDB(t)
+
+	now := time.Now().Unix()
+	seedConsumeLogs(t, db, `(2, 5000, 100, 200, ?)`, now-5)
+
+	stat, err := SumUsedQuotaInternal(2, now-60, now+60, "", "", "", 0, "")
+	require.NoError(t, err)
+
+	require.Equal(t, 5000, stat.Quota)
+	assert.Equal(t, quotaToDisplayAmount(5000), stat.QuotaDisplay,
+		"QuotaDisplay must mirror Quota so the frontend never formats raw quota")
+}

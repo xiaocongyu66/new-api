@@ -52,6 +52,7 @@ export const channelSchema = z.object({
   models: z.string().default(''),
   group: z.string().default('default'),
   used_quota: z.number().default(0),
+  used_quota_display: z.number().optional(),
   model_mapping: z.string().nullish(),
   status_code_mapping: z.string().nullish(),
   auto_ban: z.number().nullish(),

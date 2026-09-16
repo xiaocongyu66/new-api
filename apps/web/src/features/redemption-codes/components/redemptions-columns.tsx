@@ -155,13 +155,13 @@ export function useRedemptionsColumns(): ColumnDef<Redemption>[] {
       size: 320,
     },
     {
-      accessorKey: 'quota',
+      accessorKey: 'quota_display',
       header: t('Quota'),
       cell: ({ row }) => {
-        const quota = row.getValue('quota') as number
+        const quotaDisplay = row.getValue('quota_display') as number
         return (
           <StatusBadge
-            label={formatQuota(quota)}
+            label={formatQuota(quotaDisplay)}
             variant='neutral'
             copyable={false}
             className='-ml-1.5'

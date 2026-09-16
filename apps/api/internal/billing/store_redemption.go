@@ -23,12 +23,21 @@ type Redemption struct {
 	Status       int            `json:"status" gorm:"default:1"`
 	Name         string         `json:"name" gorm:"index"`
 	Quota        int            `json:"quota" gorm:"default:100"`
-	CreatedTime  int64          `json:"created_time" gorm:"bigint"`
+	QuotaDisplay float64        `json:"quota_display" gorm:"-"` // converted from Quota at the API boundary
 	RedeemedTime int64          `json:"redeemed_time" gorm:"bigint"`
-	Count        int            `json:"count" gorm:"-:all"` // only for api request
+	CreatedTime  int64          `json:"created_time" gorm:"bigint"`
 	UsedUserId   int            `json:"used_user_id"`
+	Count        int            `json:"count" gorm:"-:all"` // only for api request
 	DeletedAt    gorm.DeletedAt `gorm:"index"`
 	ExpiredTime  int64          `json:"expired_time" gorm:"bigint"` // 过期时间，0 表示不过期
+}
+
+// AfterFind fills the API-boundary display field so every redemption payload
+// (list, search, single) carries the converted amount without each handler
+// repeating the math.
+func (redemption *Redemption) AfterFind(_ *gorm.DB) error {
+	redemption.QuotaDisplay = QuotaToDisplayAmount(redemption.Quota)
+	return nil
 }
 
 func (redemption *Redemption) Insert() error {

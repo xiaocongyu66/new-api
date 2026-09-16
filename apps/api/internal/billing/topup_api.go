@@ -108,7 +108,18 @@ func GetTopUpInfo(c contract.Context) {
 			}
 			return nil
 		}(),
-		"creem_products":          CreemProducts,
+		"creem_products": func() interface{} {
+			// Admin config is a raw JSON string storing raw internal quota.
+			// Parse it, attach the _display siblings, and return structured
+			// products so the storefront never renders raw quota.
+			var products []CreemProduct
+			if err := common.Unmarshal([]byte(CreemProducts), &products); err != nil {
+				common.SysError("creem products config parse failed: " + err.Error())
+				return nil
+			}
+			PopulateCreemProductDisplay(products)
+			return products
+		}(),
 		"pay_methods":             payMethods,
 		"min_topup":               MinTopUp,
 		"stripe_min_topup":        StripeMinTopUp,

@@ -2752,6 +2752,7 @@
     "Inviter": "邀请人",
     "Inviter Reward": "邀请者奖励",
     "Inviter Reward Currency": "邀请奖励货币",
+    "Inviter {{inviter}}, invitee {{invitee}}": "邀请者 {{inviter}}，受邀者 {{invitee}}",
     "Invites": "邀请",
     "Invoke developer-defined functions with structured arguments": "使用结构化参数调用开发者定义的函数",
     "io.net API Key": "io.net API 密钥",

@@ -2752,6 +2752,7 @@
     "Inviter": "招待者",
     "Inviter Reward": "招待した側の報酬",
     "Inviter Reward Currency": "招待報酬の通貨",
+    "Inviter {{inviter}}, invitee {{invitee}}": "招待者 {{inviter}}、被招待者 {{invitee}}",
     "Invites": "招待",
     "Invoke developer-defined functions with structured arguments": "構造化された引数で開発者定義の関数を呼び出す",
     "io.net API Key": "io.net API キー",

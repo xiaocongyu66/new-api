@@ -2752,6 +2752,7 @@
     "Inviter": "Inviter",
     "Inviter Reward": "Inviter Reward",
     "Inviter Reward Currency": "Inviter Reward Currency",
+    "Inviter {{inviter}}, invitee {{invitee}}": "Inviter {{inviter}}, invitee {{invitee}}",
     "Invites": "Invites",
     "Invoke developer-defined functions with structured arguments": "Invoke developer-defined functions with structured arguments",
     "io.net API Key": "io.net API Key",

@@ -145,7 +145,6 @@ function UpstreamUpdateTags({ channel }: { channel: Channel }) {
   )
 }
 
-
 /**
  * Inline balance/used values longer than this switch to locale-aware compact
  * notation (e.g. "$28万"); the precise value stays available in the tooltip.
@@ -166,7 +165,9 @@ const BalanceCell = memo(function BalanceCell({
   const { sensitiveVisible } = useChannels()
   const isTagRow = isTagAggregateRow(channel)
   const balance = channel.balance || 0
-  const usedQuota = channel.used_quota || 0
+  // Channel.AfterFind always emits used_quota_display; falling back to the
+  // raw integer here would render it as currency (the leak this PR removes).
+  const usedQuota = channel.used_quota_display ?? 0
   const [isUpdating, setIsUpdating] = useState(false)
   const [codexUsageOpen, setCodexUsageOpen] = useState(false)
   const [codexUsageResponse, setCodexUsageResponse] =

@@ -130,7 +130,8 @@ function ApiKeysMobileList({
       {rows.map((row) => {
         const apiKey = row.original
         const statusConfig = API_KEY_STATUSES[apiKey.status]
-        const total = apiKey.used_quota + apiKey.remain_quota
+        const total =
+          (apiKey.used_quota_display ?? 0) + (apiKey.remain_quota_display ?? 0)
 
         return (
           <div
@@ -168,10 +169,10 @@ function ApiKeysMobileList({
             <div className='flex items-center justify-between gap-2 text-xs'>
               <span className='text-muted-foreground'>{t('Quota')}</span>
               {apiKey.unlimited_quota ? (
-                <UnlimitedQuotaBadge used={apiKey.used_quota} />
+                <UnlimitedQuotaBadge used={apiKey.used_quota_display ?? 0} />
               ) : (
                 <span className='font-medium tabular-nums'>
-                  {formatQuota(apiKey.remain_quota)}
+                  {formatQuota(apiKey.remain_quota_display ?? 0)}
                   <span className='text-muted-foreground font-normal'>
                     {' / '}
                     {formatQuota(total)}

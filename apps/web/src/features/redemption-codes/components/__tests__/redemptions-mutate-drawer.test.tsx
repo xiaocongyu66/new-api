@@ -75,6 +75,15 @@ const originalConsoleLog = Reflect.get(console, 'log')
 let renderedDrawer: RenderedDrawer | null = null
 
 function redemption(id: number, quota = 500001): Redemption {
+  // The backend renders quota_display with the site's configured display type,
+  // so a fixture must too: under CNY the raw quota maps to a CNY amount, not a
+  // USD one. The store config is set per-test before this factory runs.
+  const displayType =
+    useSystemConfigStore.getState().config.currency.quotaDisplayType
+  const rate =
+    displayType === 'CNY'
+      ? (useSystemConfigStore.getState().config.currency.usdExchangeRate || 1)
+      : 1
   return {
     id,
     user_id: 1,
@@ -82,6 +91,7 @@ function redemption(id: number, quota = 500001): Redemption {
     key: `key-${id}`,
     status: 1,
     quota,
+    quota_display: (quota / 500000) * rate,
     created_time: 1,
     redeemed_time: 0,
     expired_time: 0,
@@ -125,7 +135,6 @@ async function renderDrawer(
     currency: {
       displayInCurrency: true,
       quotaDisplayType: currency.quotaDisplayType,
-      quotaPerUnit: 500000,
       usdExchangeRate: currency.usdExchangeRate,
       customCurrencySymbol: '¤',
       customCurrencyExchangeRate: 1,
@@ -253,7 +262,10 @@ afterAll(async () => {
 })
 
 test('redemption drawer shows the reported CNY quota without floating-point noise', async () => {
-  const original = redemption(1, 13888889)
+  // The backend renders quota_display with the configured display type, so the
+  // fixture mirrors that: under CNY, 13888889 quota -> $27.7777... -> ¥200.
+  // The multiplication order avoids float noise (0.2 * 1000 vs 200.0000...01).
+  const original = { ...redemption(1, 13888889), quota_display: 200 }
   apiClient.get = async () => ({ data: { success: true, data: original } })
 
   await renderDrawer(original, {
@@ -328,7 +340,8 @@ test('redemption drawer keeps the original quota when another field changes', as
   )
 
   assert.equal(updates[0]?.name, 'renamed')
-  assert.equal(updates[0]?.quota, 500001)
+  // The form now submits the display amount; the backend converts to quota.
+  assert.equal(updates[0]?.quota_display, 500001 / 500000)
 })
 
 test('redemption drawer recalculates quota when the quota field changes', async () => {
@@ -349,7 +362,7 @@ test('redemption drawer recalculates quota when the quota field changes', async 
     waitForCondition(() => updates.length === 1, 'update was not submitted')
   )
 
-  assert.equal(updates[0]?.quota, 1000000)
+  assert.equal(updates[0]?.quota_display, 2)
 })
 
 test('redemption drawer ignores an older response after switching records', async () => {
@@ -396,5 +409,5 @@ test('redemption drawer ignores an older response after switching records', asyn
   )
 
   assert.equal(updates[0]?.id, 2)
-  assert.equal(updates[0]?.quota, 1000001)
+  assert.equal(updates[0]?.quota_display, 1000001 / 500000)
 })

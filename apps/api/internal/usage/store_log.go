@@ -66,25 +66,29 @@ type Log struct {
 	// not null: every write sets created_at, and TimescaleDB forces NOT NULL on a
 	// time-partitioned column. Without the tag, AutoMigrate would emit
 	// `DROP NOT NULL` on every restart, which a hypertable rejects (SQLSTATE TS101).
-	CreatedAt         int64  `json:"created_at" gorm:"bigint;not null;index:idx_created_at_id,priority:1;index:idx_created_at_type"`
-	Type              int    `json:"type" gorm:"index:idx_created_at_type"`
-	Content           string `json:"content"`
-	Username          string `json:"username" gorm:"index;index:index_username_model_name,priority:2;default:''"`
-	TokenName         string `json:"token_name" gorm:"default:''"`
-	ModelName         string `json:"model_name" gorm:"index;index:index_username_model_name,priority:1;default:''"`
-	Quota             int    `json:"quota" gorm:"default:0"`
-	PromptTokens      int    `json:"prompt_tokens" gorm:"default:0"`
-	CompletionTokens  int    `json:"completion_tokens" gorm:"default:0"`
-	UseTime           int    `json:"use_time" gorm:"default:0"`
-	IsStream          bool   `json:"is_stream"`
-	ChannelId         int    `json:"channel" gorm:"index"`
-	ChannelName       string `json:"channel_name" gorm:"->"`
-	TokenId           int    `json:"token_id" gorm:"default:0"`
-	Group             string `json:"group"`
-	Ip                string `json:"ip" gorm:"default:''"`
-	RequestId         string `json:"request_id,omitempty" gorm:"type:varchar(64);default:''"`
-	UpstreamRequestId string `json:"upstream_request_id,omitempty" gorm:"type:varchar(128);default:''"`
-	Other             string `json:"other"`
+	CreatedAt int64  `json:"created_at" gorm:"bigint;not null;index:idx_created_at_id,priority:1;index:idx_created_at_type"`
+	Type      int    `json:"type" gorm:"index:idx_created_at_type"`
+	Content   string `json:"content"`
+	Username  string `json:"username" gorm:"index;index:index_username_model_name,priority:2;default:''"`
+	TokenName string `json:"token_name" gorm:"default:''"`
+	ModelName string `json:"model_name" gorm:"index;index:index_username_model_name,priority:1;default:''"`
+	Quota     int    `json:"quota" gorm:"default:0"`
+	// QuotaDisplay is the API-boundary rendering of Quota in the site's display
+	// currency (gorm:"-", never a column); filled on every read below so the
+	// frontend never divides by QuotaPerUnit.
+	QuotaDisplay      float64 `json:"quota_display" gorm:"-"`
+	PromptTokens      int     `json:"prompt_tokens" gorm:"default:0"`
+	CompletionTokens  int     `json:"completion_tokens" gorm:"default:0"`
+	UseTime           int     `json:"use_time" gorm:"default:0"`
+	IsStream          bool    `json:"is_stream"`
+	ChannelId         int     `json:"channel" gorm:"index"`
+	ChannelName       string  `json:"channel_name" gorm:"->"`
+	TokenId           int     `json:"token_id" gorm:"default:0"`
+	Group             string  `json:"group"`
+	Ip                string  `json:"ip" gorm:"default:''"`
+	RequestId         string  `json:"request_id,omitempty" gorm:"type:varchar(64);default:''"`
+	UpstreamRequestId string  `json:"upstream_request_id,omitempty" gorm:"type:varchar(128);default:''"`
+	Other             string  `json:"other"`
 }
 
 // don't use iota, avoid change log type value
@@ -492,6 +496,14 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 }
 
+// fillLogQuotaDisplay renders the consumption amount for the API response.
+// Called from every log read so list/search/token-log payloads all carry it.
+func fillLogQuotaDisplay(logs []*Log) {
+	for _, l := range logs {
+		l.QuotaDisplay = quotaToDisplayAmount(l.Quota)
+	}
+}
+
 func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
@@ -536,6 +548,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 		order = clickHouseLogOrder("logs.")
 	}
 	err = tx.Order(order).Limit(num).Offset(startIdx).Find(&logs).Error
+	fillLogQuotaDisplay(logs)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -627,6 +640,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 		order = clickHouseLogOrder("logs.")
 	}
 	err = tx.Order(order).Limit(num).Offset(startIdx).Find(&logs).Error
+	fillLogQuotaDisplay(logs)
 	if err != nil {
 		common.SysError("failed to search user logs: " + err.Error())
 		return nil, 0, errors.New("查询日志失败")
@@ -638,8 +652,11 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 
 type Stat struct {
 	Quota int `json:"quota"`
-	Rpm   int `json:"rpm"`
-	Tpm   int `json:"tpm"`
+	// QuotaDisplay is the API-boundary rendering of Quota so the frontend's
+	// stat badge never has to convert raw quota.
+	QuotaDisplay float64 `json:"quota_display"`
+	Rpm          int     `json:"rpm"`
+	Tpm          int     `json:"tpm"`
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
@@ -702,6 +719,7 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 		return stat, errors.New("查询统计数据失败")
 	}
 	stat.Rpm, stat.Tpm = rpmTpm.Rpm, rpmTpm.Tpm
+	stat.QuotaDisplay = quotaToDisplayAmount(stat.Quota)
 
 	return stat, nil
 }
@@ -836,6 +854,7 @@ func GetLogByTokenIdInternal(tokenId int) (logs []*Log, err error) {
 		order = clickHouseLogOrder("")
 	}
 	err = dbx.LogDB.Order(order).Where("token_id = ?", tokenId).Find(&logs).Error
+	fillLogQuotaDisplay(logs)
 	return logs, err
 }
 
@@ -884,6 +903,7 @@ func GetAllLogsInternal(logType int, startTimestamp int64, endTimestamp int64, m
 		order = clickHouseLogOrder("logs.")
 	}
 	err = tx.Order(order).Limit(num).Offset(startIdx).Find(&logs).Error
+	fillLogQuotaDisplay(logs)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -974,6 +994,7 @@ func GetUserLogsInternal(userId int, logType int, startTimestamp int64, endTimes
 		order = clickHouseLogOrder("logs.")
 	}
 	err = tx.Order(order).Limit(num).Offset(startIdx).Find(&logs).Error
+	fillLogQuotaDisplay(logs)
 	if err != nil {
 		common.SysError("failed to search user logs: " + err.Error())
 		return nil, 0, errors.New("查询日志失败")
@@ -1044,6 +1065,7 @@ func SumUsedQuotaInternal(logType int, startTimestamp int64, endTimestamp int64,
 		return stat, errors.New("查询统计数据失败")
 	}
 	stat.Rpm, stat.Tpm = rpmTpm.Rpm, rpmTpm.Tpm
+	stat.QuotaDisplay = quotaToDisplayAmount(stat.Quota)
 
 	return stat, nil
 }

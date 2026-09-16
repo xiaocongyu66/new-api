@@ -3,11 +3,12 @@ package identity
 import (
 	"errors"
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/common/dbx"
-	"github.com/QuantumNous/new-api/internal/common/quotacache"
 	"strings"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/common/quotacache"
+
 	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
 )
@@ -22,15 +23,25 @@ type Token struct {
 	AccessedTime       int64          `json:"accessed_time" gorm:"bigint"`
 	ExpiredTime        int64          `json:"expired_time" gorm:"bigint;default:-1"` // -1 means never expired
 	RemainQuota        int            `json:"remain_quota" gorm:"default:0"`
+	RemainQuotaDisplay float64        `json:"remain_quota_display" gorm:"-"` // converted from RemainQuota at the API boundary
 	UnlimitedQuota     bool           `json:"unlimited_quota"`
 	ModelLimitsEnabled bool           `json:"model_limits_enabled"`
 	ModelLimits        string         `json:"model_limits" gorm:"type:text"`
 	AllowIps           *string        `json:"allow_ips" gorm:"default:''"`
 	UsedQuota          int            `json:"used_quota" gorm:"default:0"` // used quota
+	UsedQuotaDisplay   float64        `json:"used_quota_display" gorm:"-"` // converted from UsedQuota at the API boundary
 	Group              string         `json:"group" gorm:"default:''"`
 	CrossGroupRetry    bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
 	AutoGroups         string         `json:"-" gorm:"type:text"`
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
+}
+
+// AfterFind fills the API-boundary display fields so every token payload
+// carries the converted amounts without each handler repeating the math.
+func (token *Token) AfterFind(_ *gorm.DB) error {
+	token.RemainQuotaDisplay = quotaToDisplayAmount(token.RemainQuota)
+	token.UsedQuotaDisplay = quotaToDisplayAmount(token.UsedQuota)
+	return nil
 }
 
 func (token *Token) GetAutoGroups() ([]string, error) {

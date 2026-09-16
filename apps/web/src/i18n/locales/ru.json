@@ -2752,6 +2752,7 @@
     "Inviter": "Пригласивший",
     "Inviter Reward": "Награда приглашающему",
     "Inviter Reward Currency": "Валюта награды приглашающему",
+    "Inviter {{inviter}}, invitee {{invitee}}": "Приглашающий {{inviter}}, приглашённый {{invitee}}",
     "Invites": "Приглашения",
     "Invoke developer-defined functions with structured arguments": "Вызывать заданные разработчиком функции со структурированными аргументами",
     "io.net API Key": "Ключ API io.net",
