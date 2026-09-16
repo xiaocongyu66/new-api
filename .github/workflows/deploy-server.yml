@@ -106,10 +106,15 @@ jobs:
             docker compose up -d --no-deps new-api
 
             echo "=== 4. 健康检查（最多等 45s） ==="
+            # 部署目录的 compose 可能通过 PORT= 覆盖监听端口（host 网络模式），
+            # 不能假定 3000，否则健康检查必然失败并触发误回滚。
+            HEALTH_PORT=$(grep -E '^\s*-\s*PORT=' docker-compose.yml | head -1 | sed -E 's/.*PORT=([0-9]+).*/\1/')
+            HEALTH_PORT=${HEALTH_PORT:-3000}
+            echo "健康检查端口: ${HEALTH_PORT}"
             HEALTHY=0
             for i in $(seq 1 15); do
               sleep 3
-              CODE=$(curl -sS -m 3 -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/api/status 2>/dev/null || echo "000")
+              CODE=$(curl -sS -m 3 -o /dev/null -w "%{http_code}" http://127.0.0.1:${HEALTH_PORT}/api/status 2>/dev/null || echo "000")
               if [ "$CODE" = "200" ]; then
                 echo "健康检查通过（HTTP 200，第 ${i} 次尝试）"
                 HEALTHY=1
