@@ -6032,7 +6032,6 @@
   "Random sleep between removals so the veteran account looks human": "Random sleep between removals so the veteran account looks human",
   "Removed": "Removed",
   "Run cleanup": "Run cleanup",
-  "Scanned (inactive candidates": "Scanned (inactive candidates",
   "Shared by the NapCat webhook (for @ bridging) and outbound calls. Requests are rejected when left empty": "Shared by the NapCat webhook (for @ bridging) and outbound calls. Requests are rejected when left empty",
   "Starting...": "Starting...",
   "Status": "Status",
@@ -6043,5 +6042,6 @@
   "Warn cooldown (hours)": "Warn cooldown (hours)",
   "Warned": "Warned",
   "Warned at": "Warned at",
-  "Warning template": "Warning template"
+  "Warning template": "Warning template",
+  "Inactive candidates scanned": "Scanned (inactive candidates"
 }

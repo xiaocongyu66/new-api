@@ -141,7 +141,7 @@ export function CleanupPreviewPanel() {
       {activeGroup && Object.keys(stats).length > 0 && (
         <div className='flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground'>
           <span>
-            {t('Scanned (inactive candidates')}: {stats.inactive_candidate ?? 0}
+            {t('Inactive candidates scanned')}: {stats.inactive_candidate ?? 0}
           </span>
           <span>
             {t('Warned')}: {stats.warned ?? 0}

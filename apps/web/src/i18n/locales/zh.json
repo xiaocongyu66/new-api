@@ -6032,7 +6032,6 @@
   "Random sleep between removals so the veteran account looks human": "两次踢人之间随机休眠，让执行账号看起来像人工操作",
   "Removed": "已移出",
   "Run cleanup": "执行清理",
-  "Scanned (inactive candidates": "已扫描（潜水候选",
   "Shared by the NapCat webhook (for @ bridging) and outbound calls. Requests are rejected when left empty": "NapCat 上报（用于 @ 桥接）与出站调用共用此令牌，留空会拒绝所有请求",
   "Starting...": "启动中…",
   "Status": "状态",
@@ -6043,5 +6042,6 @@
   "Warn cooldown (hours)": "警告冷却（小时）",
   "Warned": "已警告",
   "Warned at": "警告时间",
-  "Warning template": "警告文案"
+  "Warning template": "警告文案",
+  "Inactive candidates scanned": "已扫描（潜水候选"
 }

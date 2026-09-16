@@ -16,12 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
-import { SettingsPageProvider } from '../../components/settings-page-context'
 import { SettingsSection } from '../../components/settings-section'
 import {
   getOptionValue,
@@ -51,48 +50,30 @@ const DEFAULT_CLEANUP_VALUES = {
 export function QQBotCleanupTab() {
   const { t } = useTranslation()
 
-  // 保存按钮 portal 容器：配置表单的按钮落在 Tab 行最右，与 TabsList 同行
-  const [actionsContainer, setActionsContainer] =
-    useState<HTMLDivElement | null>(null)
-
   const systemOptionsQuery = useSystemOptions()
   const cleanupDefaults = useMemo(
     () => getOptionValue(systemOptionsQuery.data?.data, DEFAULT_CLEANUP_VALUES),
     [systemOptionsQuery.data]
   )
 
+  // 保存按钮沿用外层 SettingsPage 的 Provider（与同 section 下其它表单一致），
+  // 这里不再嵌套 Provider，否则按钮会 portal 到本 tab 内部而非页面头部。
   return (
-    <SettingsPageProvider
-      actionsContainer={actionsContainer}
-      suppressSectionHeader={false}
-    >
-      <SettingsSection title={t('Inactive member cleanup')}>
-        {/* 名单预览与配置分开两页：踢人是高风险操作，预览页不应让管理员
-            在长表单里误触触发按钮。 */}
-        <Tabs defaultValue='preview'>
-          <div className='flex flex-wrap items-center justify-between gap-3'>
-            <TabsList>
-              <TabsTrigger value='preview'>
-                {t('Candidate preview')}
-              </TabsTrigger>
-              <TabsTrigger value='settings'>
-                {t('Cleanup settings')}
-              </TabsTrigger>
-            </TabsList>
-            {/* 空容器：仅当配置 Tab 激活时，表单保存按钮才 portal 进来 */}
-            <div
-              ref={setActionsContainer}
-              className='flex flex-wrap items-center justify-end gap-2'
-            />
-          </div>
-          <TabsContent value='preview' className='pt-4'>
-            <CleanupPreviewPanel />
-          </TabsContent>
-          <TabsContent value='settings' className='pt-4'>
-            <CleanupSettingsForm defaultValues={cleanupDefaults} />
-          </TabsContent>
-        </Tabs>
-      </SettingsSection>
-    </SettingsPageProvider>
+    <SettingsSection title={t('Inactive member cleanup')}>
+      {/* 名单预览与配置分开两页：踢人是高风险操作，预览页不应让管理员
+          在长表单里误触触发按钮。 */}
+      <Tabs defaultValue='preview'>
+        <TabsList>
+          <TabsTrigger value='preview'>{t('Candidate preview')}</TabsTrigger>
+          <TabsTrigger value='settings'>{t('Cleanup settings')}</TabsTrigger>
+        </TabsList>
+        <TabsContent value='preview' className='pt-4'>
+          <CleanupPreviewPanel />
+        </TabsContent>
+        <TabsContent value='settings' className='pt-4'>
+          <CleanupSettingsForm defaultValues={cleanupDefaults} />
+        </TabsContent>
+      </Tabs>
+    </SettingsSection>
   )
 }
