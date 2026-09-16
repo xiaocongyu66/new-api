@@ -109,7 +109,13 @@ func evaluateDailyCheckin(userId int, qqChannel bool) (int, error) {
 	}
 
 	// 计算随机额度奖励。负数与倒序区间在这里钳制，保证不发放负额度。
-	minQuota, maxQuota := setting.MinQuota, setting.MaxQuota
+	// QQ 渠道使用独立的额度区间，网页渠道使用 checkin_setting 的区间。
+	var minQuota, maxQuota int
+	if qqChannel {
+		minQuota, maxQuota = GetQQBotSetting().MinQuota, GetQQBotSetting().MaxQuota
+	} else {
+		minQuota, maxQuota = setting.MinQuota, setting.MaxQuota
+	}
 	if minQuota < 0 {
 		minQuota = 0
 	}

@@ -43,6 +43,17 @@ func withCheckinSetting(t *testing.T, enabled, singlePlatform bool, min, max int
 	t.Cleanup(func() { *s = orig })
 }
 
+// withQQBotSetting temporarily applies a QQ bot checkin quota setting,
+// restoring on cleanup.
+func withQQBotSetting(t *testing.T, min, max int) {
+	t.Helper()
+	s := GetQQBotSetting()
+	orig := *s
+	s.MinQuota = min
+	s.MaxQuota = max
+	t.Cleanup(func() { *s = orig })
+}
+
 const (
 	webUserId  = 1
 	qqChannel  = true
@@ -83,6 +94,7 @@ func TestEvaluateDailyCheckinSinglePlatformBothDirections(t *testing.T) {
 func TestEvaluateDailyCheckinMultiPlatformIsolatesChannels(t *testing.T) {
 	defer setupEvaluateTestDB(t)()
 	withCheckinSetting(t, true, false, 1000, 1000)
+	withQQBotSetting(t, 1000, 1000)
 
 	require.NoError(t, dbx.DB.Create(&Checkin{UserId: webUserId, CheckinDate: today(), QuotaAwarded: 1000, CreatedAt: now()}).Error)
 	quota, err := evaluateDailyCheckin(webUserId, qqChannel)

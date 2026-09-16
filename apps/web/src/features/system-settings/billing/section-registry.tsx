@@ -231,6 +231,16 @@ const BILLING_SECTIONS = [
             settings['qq_bot_setting.qq_checkin_enabled'] ?? false,
           'qq_bot_setting.web_checkin_enabled':
             settings['qq_bot_setting.web_checkin_enabled'] ?? true,
+          'qq_bot_setting.single_platform_only':
+            settings['qq_bot_setting.single_platform_only'] ?? true,
+          'qq_bot_setting.min_quota':
+            settings['qq_bot_setting.min_quota_display'] ??
+            settings['qq_bot_setting.min_quota'] ??
+            375000,
+          'qq_bot_setting.max_quota':
+            settings['qq_bot_setting.max_quota_display'] ??
+            settings['qq_bot_setting.max_quota'] ??
+            750000,
           'qq_bot_setting.checkin_disabled_groups':
             settings['qq_bot_setting.checkin_disabled_groups'] ?? '',
           'qq_bot_setting.notify_template':

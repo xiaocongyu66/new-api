@@ -383,6 +383,11 @@ export type BillingSettings = {
   'qq_bot_setting.app_secret': string
   'qq_bot_setting.qq_checkin_enabled': boolean
   'qq_bot_setting.web_checkin_enabled': boolean
+  'qq_bot_setting.single_platform_only': boolean
+  'qq_bot_setting.min_quota': number
+  'qq_bot_setting.max_quota': number
+  'qq_bot_setting.min_quota_display': number
+  'qq_bot_setting.max_quota_display': number
   'qq_bot_setting.checkin_disabled_groups': string
   'qq_bot_setting.notify_template': string
   'qq_bot_setting.auto_approve_enabled': boolean
