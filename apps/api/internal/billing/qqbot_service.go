@@ -353,12 +353,7 @@ func nextMsgSeq(token string) int {
 // seq 参数保留兼容旧调用，实际发送时按 msg_id/event_id 自增，
 // 避免同一凭证下多条消息因 msg_seq 相同被平台丢弃。
 func replyGroupMarkdown(kind, groupOpenID, msgID, eventID, content string, keyboard *Keyboard, seq int) error {
-	delay := recallPolicyFor(kind)
-	if delay == 0 && isFailureReply(content) {
-		// 失败提示兜底：policies 未配置时即旧 recall_failed_messages 行为
-		delay = recallPolicyFor(RecallKindFailureNotice)
-	}
-	if delay > 0 {
+	if delay := recallDelayFor(kind, content); delay > 0 {
 		return sendRecallableMarkdown(groupOpenID, content, keyboard, delay)
 	}
 	client, err := getClient()
