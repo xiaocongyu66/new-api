@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/form'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
 
 import {
   SettingsForm,
@@ -52,6 +53,7 @@ const basicAuthSchema = z.object({
   EmailDomainRestrictionEnabled: z.boolean(),
   EmailAliasRestrictionEnabled: z.boolean(),
   EmailDomainWhitelist: z.string(),
+  EmailFormatRegex: z.string(),
 })
 
 type BasicAuthFormValues = z.infer<typeof basicAuthSchema>
@@ -256,6 +258,27 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
                 <FormDescription>
                   {t(
                     'One domain per line (only used when domain restriction is enabled)'
+                  )}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name='EmailFormatRegex'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Email Format Regex')}</FormLabel>
+                <FormControl>
+                  <Input
+                    placeholder='^[0-9]+@qq\.com$'
+                    {...field}
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'Regular expression the full email must match (leave empty to disable)'
                   )}
                 </FormDescription>
                 <FormMessage />
