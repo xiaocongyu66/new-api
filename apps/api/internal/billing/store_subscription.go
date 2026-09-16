@@ -144,6 +144,15 @@ type SubscriptionPlan struct {
 
 	// Total quota (amount in quota units, 0 = unlimited)
 	TotalAmount int64 `json:"total_amount" gorm:"type:bigint;not null;default:0"`
+	// TotalAmountDisplay is the API-boundary rendering of TotalAmount in the
+	// site's display currency (gorm:"-", never a column). Plan create/update
+	// accept it and convert server-side, so the admin form never multiplies by
+	// QuotaPerUnit; list responses emit it for the form seed.
+	TotalAmountDisplay float64 `json:"total_amount_display" gorm:"-"`
+	// BalanceCostDisplay is PriceAmount rendered in display currency — what a
+	// wallet-balance purchase actually costs the user, comparable against
+	// quota_display without any client-side conversion.
+	BalanceCostDisplay float64 `json:"balance_cost_display" gorm:"-"`
 
 	// Quota reset period for plan
 	QuotaResetPeriod        string `json:"quota_reset_period" gorm:"type:varchar(16);default:'never'"`
@@ -151,6 +160,19 @@ type SubscriptionPlan struct {
 
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
+}
+
+// AfterFind fills the API-boundary display field so plan payloads (admin list,
+// public list, single) carry the converted amount without each handler
+// repeating the math.
+func (plan *SubscriptionPlan) AfterFind(_ *gorm.DB) error {
+	plan.TotalAmountDisplay = QuotaToDisplayAmount(int(plan.TotalAmount))
+	// Price is USD; internal quota = price * QuotaPerUnit, then rendered in
+	// display currency. Server-side only — the frontend compares displays.
+	plan.BalanceCostDisplay = QuotaToDisplayAmount(
+		common.QuotaFromFloat(plan.PriceAmount * common.QuotaPerUnit),
+	)
+	return nil
 }
 
 func (p *SubscriptionPlan) BeforeCreate(tx *gorm.DB) error {
@@ -253,6 +275,11 @@ type UserSubscription struct {
 
 	AmountTotal int64 `json:"amount_total" gorm:"type:bigint;not null;default:0"`
 	AmountUsed  int64 `json:"amount_used" gorm:"type:bigint;not null;default:0"`
+	// AmountTotalDisplay / AmountUsedDisplay are the API-boundary renderings of
+	// the int64 quota fields above. Populated in AfterFind so the frontend never
+	// has to convert raw quota.
+	AmountTotalDisplay float64 `json:"amount_total_display" gorm:"-"`
+	AmountUsedDisplay  float64 `json:"amount_used_display" gorm:"-"`
 
 	StartTime int64  `json:"start_time" gorm:"bigint"`
 	EndTime   int64  `json:"end_time" gorm:"bigint;index;index:idx_user_sub_active,priority:3"`
@@ -285,6 +312,12 @@ func (s *UserSubscription) BeforeCreate(tx *gorm.DB) error {
 
 func (s *UserSubscription) BeforeUpdate(tx *gorm.DB) error {
 	s.UpdatedAt = common.GetTimestamp()
+	return nil
+}
+
+func (s *UserSubscription) AfterFind(_ *gorm.DB) error {
+	s.AmountTotalDisplay = QuotaToDisplayAmount64(s.AmountTotal)
+	s.AmountUsedDisplay = QuotaToDisplayAmount64(s.AmountUsed)
 	return nil
 }
 

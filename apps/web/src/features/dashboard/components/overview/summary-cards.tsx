@@ -68,7 +68,7 @@ function buildSummarySparklines(
       end,
       SUMMARY_SPARKLINE_BUCKETS
     )
-    usage[index] += Number(item.quota) || 0
+    usage[index] += Number(item.quota_display) || 0
     requests[index] += Number(item.count) || 0
   }
 
@@ -142,8 +142,8 @@ export function SummaryCards() {
   const { status, loading } = useStatus()
 
   const summaryTimeRange = useMemo(() => computeTimeRange(1), [])
-  const remainQuota = Number(user?.quota ?? 0)
-  const usedQuota = Number(user?.used_quota ?? 0)
+  const remainQuota = Number(user?.quota_display ?? 0)
+  const usedQuota = Number(user?.used_quota_display ?? 0)
   const requestCount = Number(user?.request_count ?? 0)
 
   const usageTrendQuery = useQuery({
@@ -200,7 +200,7 @@ export function SummaryCards() {
   const recentUsage = useMemo(
     () =>
       (usageTrendQuery.data?.data ?? []).reduce(
-        (total, item) => total + (Number(item.quota) || 0),
+        (total, item) => total + (Number(item.quota_display) || 0),
         0
       ),
     [usageTrendQuery.data?.data]

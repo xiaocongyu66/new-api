@@ -61,7 +61,7 @@ const numericString = z.string().refine((value) => {
 }, 'Enter a non-negative number or leave empty')
 
 const monitoringSchema = z.object({
-  QuotaRemindThreshold: numericString,
+  QuotaRemindThreshold_display: numericString,
   perf_metrics_setting: z.object({
     enabled: z.boolean(),
     flush_interval: z.coerce.number().min(1),
@@ -74,7 +74,7 @@ type MonitoringFormInput = z.input<typeof monitoringSchema>
 type MonitoringFormValues = z.output<typeof monitoringSchema>
 
 type FlatMonitoringDefaults = {
-  QuotaRemindThreshold: string
+  QuotaRemindThreshold_display: string
   'perf_metrics_setting.enabled': boolean
   'perf_metrics_setting.flush_interval': number
   'perf_metrics_setting.bucket_time': 'minute' | '5min' | 'hour'
@@ -88,7 +88,7 @@ type MonitoringSettingsSectionProps = {
 const buildFormDefaults = (
   defaults: MonitoringSettingsSectionProps['defaultValues']
 ): MonitoringFormInput => ({
-  QuotaRemindThreshold: defaults.QuotaRemindThreshold ?? '',
+  QuotaRemindThreshold_display: defaults.QuotaRemindThreshold_display ?? '',
   perf_metrics_setting: {
     enabled: defaults['perf_metrics_setting.enabled'],
     flush_interval: defaults['perf_metrics_setting.flush_interval'],
@@ -100,7 +100,9 @@ const buildFormDefaults = (
 const normalizeDefaults = (
   defaults: MonitoringSettingsSectionProps['defaultValues']
 ): FlatMonitoringDefaults => ({
-  QuotaRemindThreshold: (defaults.QuotaRemindThreshold ?? '').trim(),
+  QuotaRemindThreshold_display: (
+    defaults.QuotaRemindThreshold_display ?? ''
+  ).trim(),
   'perf_metrics_setting.enabled': defaults['perf_metrics_setting.enabled'],
   'perf_metrics_setting.flush_interval':
     defaults['perf_metrics_setting.flush_interval'],
@@ -113,7 +115,7 @@ const normalizeDefaults = (
 const normalizeFormValues = (
   values: MonitoringFormValues
 ): FlatMonitoringDefaults => ({
-  QuotaRemindThreshold: values.QuotaRemindThreshold.trim(),
+  QuotaRemindThreshold_display: values.QuotaRemindThreshold_display.trim(),
   'perf_metrics_setting.enabled': values.perf_metrics_setting.enabled,
   'perf_metrics_setting.flush_interval':
     values.perf_metrics_setting.flush_interval,
@@ -188,7 +190,7 @@ export function MonitoringSettingsSection({
           />
           <FormField
             control={form.control}
-            name='QuotaRemindThreshold'
+            name='QuotaRemindThreshold_display'
             render={({ field }) => (
               <FormItem>
                 <FormLabel>{t('Quota reminder (tokens)')}</FormLabel>

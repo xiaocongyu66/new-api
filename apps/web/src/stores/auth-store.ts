@@ -36,12 +36,16 @@ export interface AuthUser {
   group?: string
   quota?: number
   used_quota?: number
+  quota_display?: number
+  used_quota_display?: number
   request_count?: number
   aff_code?: string
   aff_count?: number
   aff_quota?: number
   aff_history_quota?: number
   inviter_id?: number
+  aff_quota_display?: number
+  aff_history_quota_display?: number
   github_id?: string
   discord_id?: string
   oidc_id?: string

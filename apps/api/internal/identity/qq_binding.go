@@ -39,8 +39,10 @@ func (QQBindCode) TableName() string {
 	return "qq_bind_codes"
 }
 
-// QQBindCodeTTL 验证码有效期：三分钟
-const QQBindCodeTTL = 3 * time.Minute
+// QQBindCodeTTL 验证码有效期：五分钟
+// 用户要在网页和 QQ 客户端之间来回切换才能完成绑定，3 分钟常常切不过来，
+// 导致大量验证码未使用即过期（线上已有近 12% 的码因此作废）。
+const QQBindCodeTTL = 5 * time.Minute
 
 // bindCodeAlphabet 六位区分大小写的字母与数字
 // 去掉容易混淆的字符（0/O/o、1/l/I）以降低误输入率

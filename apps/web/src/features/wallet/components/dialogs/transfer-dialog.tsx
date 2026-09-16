@@ -24,15 +24,8 @@ import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  formatQuota,
-  parseQuotaFromDollars,
-  quotaUnitsToDollars,
-} from '@/lib/format'
-import {
-  DEFAULT_CURRENCY_CONFIG,
-  useSystemConfigStore,
-} from '@/stores/system-config-store'
+import { formatQuota } from '@/lib/format'
+import { getCurrencyDisplay } from '@/lib/currency'
 
 interface TransferDialogProps {
   open: boolean
@@ -50,20 +43,16 @@ export function TransferDialog({
   transferring,
 }: TransferDialogProps) {
   const { t } = useTranslation()
-  const currencyConfig = useSystemConfigStore((state) => state.config.currency)
-  const minimumQuota = Math.ceil(
-    currencyConfig.quotaPerUnit > 0
-      ? currencyConfig.quotaPerUnit
-      : DEFAULT_CURRENCY_CONFIG.quotaPerUnit
-  )
-  const minimumAmount = quotaUnitsToDollars(minimumQuota)
-  const maximumAmount = quotaUnitsToDollars(availableQuota)
+  // Everything here is display-currency arithmetic. availableQuota arrives
+  // already converted (aff_quota_display); the transfer floor is one USD
+  // equivalent expressed via the display rate — no quota constants.
+  const { meta } = getCurrencyDisplay()
+  const minimumAmount =
+    meta.kind === 'tokens' ? 1 : (meta.exchangeRate || 1)
+  const maximumAmount = availableQuota
   const [amount, setAmount] = useState(minimumAmount)
-  const transferQuota = parseQuotaFromDollars(amount)
   const canTransfer =
-    Number.isFinite(amount) &&
-    transferQuota >= minimumQuota &&
-    transferQuota <= availableQuota
+    Number.isFinite(amount) && amount >= minimumAmount && amount <= maximumAmount
 
   useEffect(() => {
     if (open) {
@@ -75,7 +64,7 @@ export function TransferDialog({
   const handleConfirm = async () => {
     if (!canTransfer) return
 
-    const success = await onConfirm(transferQuota)
+    const success = await onConfirm(amount)
     if (success) {
       onOpenChange(false)
     }
@@ -139,7 +128,7 @@ export function TransferDialog({
             className='font-mono text-lg'
           />
           <p className='text-muted-foreground text-xs'>
-            {t('Minimum:')} {formatQuota(minimumQuota)}
+            {t('Minimum:')} {formatQuota(minimumAmount)}
           </p>
         </div>
       </div>

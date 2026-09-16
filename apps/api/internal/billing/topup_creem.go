@@ -57,6 +57,18 @@ type CreemProduct struct {
 	Price     float64 `json:"price"`
 	Currency  string  `json:"currency"`
 	Quota     int64   `json:"quota"`
+	// QuotaDisplay is the API-boundary rendering of Quota (raw internal quota),
+	// filled by PopulateCreemProductDisplay so the storefront never shows raw quota.
+	QuotaDisplay float64 `json:"quota_display,omitempty"`
+}
+
+// PopulateCreemProductDisplay fills the _display sibling of Quota on every
+// configured Creem product. Admin config stores raw quota; the storefront must
+// never render it unconverted.
+func PopulateCreemProductDisplay(products []CreemProduct) {
+	for i := range products {
+		products[i].QuotaDisplay = QuotaToDisplayAmount64(products[i].Quota)
+	}
 }
 
 type CreemAdaptor struct {
@@ -81,6 +93,7 @@ func (*CreemAdaptor) RequestPay(c contract.Context, req *CreemPayRequest) {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "产品配置错误"})
 		return
 	}
+	PopulateCreemProductDisplay(products)
 
 	// 查找对应的产品
 	var selectedProduct *CreemProduct

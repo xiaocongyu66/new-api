@@ -224,6 +224,7 @@ export function Wallet(props: WalletProps) {
 
   // Handle transfer
   const handleTransfer = async (amount: number) => {
+    // amount is display currency; use-affiliate forwards it as quota_display.
     const success = await transferQuota(amount)
     if (success) {
       await fetchUser()
@@ -334,7 +335,7 @@ export function Wallet(props: WalletProps) {
               <SubscriptionPlansCard
                 topupInfo={topupInfo}
                 onAvailabilityChange={handleSubscriptionAvailabilityChange}
-                userQuota={user?.quota}
+                userQuota={user?.quota_display ?? 0}
                 userSpore={user?.spore}
                 onPurchaseSuccess={fetchUser}
               />
@@ -370,7 +371,7 @@ export function Wallet(props: WalletProps) {
         open={transferDialogOpen}
         onOpenChange={setTransferDialogOpen}
         onConfirm={handleTransfer}
-        availableQuota={user?.aff_quota ?? 0}
+        availableQuota={user?.aff_quota_display ?? 0}
         transferring={transferring}
       />
 

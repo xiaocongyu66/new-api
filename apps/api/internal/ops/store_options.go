@@ -4,6 +4,7 @@
 package ops
 
 import (
+	"github.com/QuantumNous/new-api/internal/billing"
 	"strconv"
 	"strings"
 
@@ -82,6 +83,16 @@ func ListVisibleOptions() []*dbinfra.Option {
 			Key:   k,
 			Value: value,
 		})
+		// Amount options also emit a display-currency sibling so admin forms
+		// seed in readable units; the write path converts back server-side.
+		if settingIsDisplayAmountKey(k) {
+			if raw, err := strconv.Atoi(strings.TrimSpace(value)); err == nil {
+				options = append(options, &dbinfra.Option{
+					Key:   k + "_display",
+					Value: strconv.FormatFloat(billing.QuotaToDisplayAmount(raw), 'f', -1, 64),
+				})
+			}
+		}
 		for _, optionKey := range settingCompletionRatioMetaOptionKeys {
 			if optionKey == k {
 				optionValues[k] = value

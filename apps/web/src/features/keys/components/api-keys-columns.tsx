@@ -147,11 +147,11 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
       cell: ({ row }) => {
         const apiKey = row.original
         if (apiKey.unlimited_quota) {
-          return <UnlimitedQuotaBadge used={apiKey.used_quota} />
+          return <UnlimitedQuotaBadge used={apiKey.used_quota_display ?? 0} />
         }
 
-        const used = apiKey.used_quota
-        const remaining = apiKey.remain_quota
+        const used = apiKey.used_quota_display ?? 0
+        const remaining = apiKey.remain_quota_display ?? 0
         const total = used + remaining
         const percentage = total > 0 ? (remaining / total) * 100 : 0
 

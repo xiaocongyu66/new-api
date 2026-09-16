@@ -44,6 +44,8 @@ export const userSchema = z.object({
   email: z.string().optional(),
   quota: z.number(),
   used_quota: z.number(),
+  quota_display: z.number().optional(),
+  used_quota_display: z.number().optional(),
   request_count: z.number(),
   group: z.string(),
   spore: z.number().optional().default(0),
@@ -51,6 +53,8 @@ export const userSchema = z.object({
   aff_count: z.number().optional(),
   aff_quota: z.number().optional(),
   aff_history_quota: z.number().optional(),
+  aff_quota_display: z.number().optional(),
+  aff_history_quota_display: z.number().optional(),
   inviter_id: z.number().optional(),
   linux_do_id: z.string().optional(),
   /** Only returned by the admin single-user endpoint; QQ bindings live in their own table */
@@ -145,7 +149,8 @@ export interface ManageUserQuotaPayload {
   id: number
   action: 'add_quota'
   mode: QuotaAdjustMode
-  value: number
+  /** Amount in the site's display currency; the backend converts to quota. */
+  value_display: number
 }
 
 export interface ManageUserSporePayload {

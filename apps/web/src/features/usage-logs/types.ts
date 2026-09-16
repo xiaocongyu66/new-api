@@ -229,6 +229,9 @@ export interface LogOtherData {
   violation_fee_code?: string
   violation_fee_marker?: string
   fee_quota?: number
+  // Backend-rendered display amount for fee_quota (charge_violation_fee.go),
+  // so the log row never formats raw quota.
+  fee_quota_display?: number
   // Reject / intercept reason (admin)
   reject_reason?: string
   // Task-related fields (for refund logs, type=6)
@@ -240,10 +243,15 @@ export interface LogOtherData {
   subscription_plan_title?: string
   subscription_id?: string
   subscription_pre_consumed?: number
+  subscription_pre_consumed_display?: number
   subscription_post_delta?: number
+  subscription_post_delta_display?: number
   subscription_consumed?: number
+  subscription_consumed_display?: number
   subscription_remain?: number
+  subscription_remain_display?: number
   subscription_total?: number
+  subscription_total_display?: number
 }
 
 /**
@@ -251,6 +259,7 @@ export interface LogOtherData {
  */
 export interface LogStatistics {
   quota: number
+  quota_display?: number
   rpm: number
   tpm: number
 }
@@ -408,10 +417,13 @@ export interface UserInfo {
   display_name?: string
   quota: number
   used_quota: number
+  quota_display?: number
+  used_quota_display?: number
   request_count: number
   group?: string
   aff_code?: string
   aff_count?: number
   aff_quota?: number
+  aff_quota_display?: number
   remark?: string
 }

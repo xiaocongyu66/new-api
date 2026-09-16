@@ -304,7 +304,7 @@ func buildCheckinFailMarkdown(openID string) string {
 	var sb strings.Builder
 	sb.WriteString(atUser(openID))
 	sb.WriteString(" **签到失败！**\n\n")
-	sb.WriteString("请登陆后在 个人资料→每日签到→QQ签到 获取验证码进行绑定")
+	sb.WriteString("请登陆后在 个人资料 → QQ 绑定验证码 获取验证码进行绑定")
 	return sb.String()
 }
 
@@ -353,12 +353,7 @@ func nextMsgSeq(token string) int {
 // seq 参数保留兼容旧调用，实际发送时按 msg_id/event_id 自增，
 // 避免同一凭证下多条消息因 msg_seq 相同被平台丢弃。
 func replyGroupMarkdown(kind, groupOpenID, msgID, eventID, content string, keyboard *Keyboard, seq int) error {
-	delay := recallPolicyFor(kind)
-	if delay == 0 && isFailureReply(content) {
-		// 失败提示兜底：policies 未配置时即旧 recall_failed_messages 行为
-		delay = recallPolicyFor(RecallKindFailureNotice)
-	}
-	if delay > 0 {
+	if delay := recallDelayFor(kind, content); delay > 0 {
 		return sendRecallableMarkdown(groupOpenID, content, keyboard, delay)
 	}
 	client, err := getClient()

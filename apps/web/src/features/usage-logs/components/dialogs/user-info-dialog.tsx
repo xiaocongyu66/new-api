@@ -116,11 +116,13 @@ export function UserInfoDialog({
           <div className='grid grid-cols-2 gap-4'>
             <InfoItem
               label={t('Balance')}
-              value={formatQuota(userInfo.quota)}
+              value={formatQuota(userInfo.quota_display ?? userInfo.quota)}
             />
             <InfoItem
               label={t('Used Quota')}
-              value={formatQuota(userInfo.used_quota)}
+              value={formatQuota(
+                userInfo.used_quota_display ?? userInfo.used_quota
+              )}
             />
           </div>
 
@@ -158,7 +160,9 @@ export function UserInfoDialog({
               {userInfo.aff_quota !== undefined && userInfo.aff_quota > 0 && (
                 <InfoItem
                   label={t('Invitation Quota')}
-                  value={formatQuota(userInfo.aff_quota)}
+                  value={formatQuota(
+                    userInfo.aff_quota_display ?? userInfo.aff_quota
+                  )}
                 />
               )}
             </>

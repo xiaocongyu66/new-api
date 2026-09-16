@@ -29,6 +29,10 @@ const defaultBillingSettings: BillingSettings = {
   PreConsumedQuota: 0,
   QuotaForInviter: 0,
   QuotaForInvitee: 0,
+  QuotaForNewUser_display: 0,
+  PreConsumedQuota_display: 0,
+  QuotaForInviter_display: 0,
+  QuotaForInvitee_display: 0,
   TopUpLink: '',
   'general_setting.docs_link': '',
   'quota_setting.enable_free_model_pre_consume': true,
@@ -157,6 +161,16 @@ const defaultBillingSettings: BillingSettings = {
   'qq_bot_setting.recall_delay_seconds': 10,
   'qq_bot_setting.recall_policies': '',
   'qq_bot_setting.admin_open_ids': '',
+  'qq_bot_setting.min_quota_display': undefined,
+  'qq_bot_setting.max_quota_display': undefined,
+  'qq_bot_setting.drop_min_quota_display': undefined,
+  'qq_bot_setting.drop_max_quota_display': undefined,
+  'qq_bot_setting.drop_balance_anchor_display': undefined,
+  'qq_bot_setting.drop_daily_guarantee_display': undefined,
+  'qq_bot_setting.red_packet_min_amount_display': undefined,
+  'qq_bot_setting.red_packet_max_amount_display': undefined,
+  'qq_bot_setting.transfer_min_amount_display': undefined,
+  'qq_bot_setting.transfer_max_amount_display': undefined,
 }
 
 export function BillingSettings() {

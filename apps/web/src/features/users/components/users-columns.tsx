@@ -31,6 +31,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { formatQuota, formatTimestamp } from '@/lib/format'
+import { formatSpore, getSporeName, getSporeSymbol } from '@/lib/spore'
 
 import {
   USER_STATUS,
@@ -166,11 +167,34 @@ export function useUsersColumns(): ColumnDef<User>[] {
       header: t('Quota'),
       cell: ({ row }) => {
         const user = row.original
-        return <UserQuotaCell used={user.used_quota} remaining={user.quota} />
+        return (
+          <UserQuotaCell
+            used={user.used_quota_display ?? 0}
+            remaining={user.quota_display ?? 0}
+          />
+        )
       },
       size: 300,
       minSize: 260,
       meta: { mobileOrder: 40 },
+    },
+    {
+      id: 'spore',
+      accessorKey: 'spore',
+      header: getSporeName(),
+      cell: ({ row }) => {
+        const units = Number(row.original.spore ?? 0)
+        if (units <= 0) {
+          return <span className='text-muted-foreground'>-</span>
+        }
+        return (
+          <span className='tabular-nums'>
+            {getSporeSymbol() || '🍄'} {formatSpore(units)}
+          </span>
+        )
+      },
+      size: 120,
+      meta: { mobileHidden: true },
     },
     {
       accessorKey: 'group',
@@ -224,7 +248,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
       cell: ({ row }) => {
         const user = row.original
         const affCount = user.aff_count || 0
-        const affHistoryQuota = user.aff_history_quota || 0
+        const affHistoryQuotaDisplay = user.aff_history_quota_display ?? 0
         const inviterId = user.inviter_id || 0
 
         return (
@@ -248,7 +272,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
               <TooltipTrigger
                 render={
                   <StatusBadge
-                    label={`${t('Revenue')}: ${formatQuota(affHistoryQuota)}`}
+                    label={`${t('Revenue')}: ${formatQuota(affHistoryQuotaDisplay)}`}
                     variant='neutral'
                     copyable={false}
                     className='cursor-help'

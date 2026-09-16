@@ -299,7 +299,7 @@ func HandleStealCommand(event *GroupAtMessageEvent, senderOpenID string) string 
 	thiefUserId, bound := identity.IsQQBound(senderOpenID)
 	if !bound {
 		return buildPlainMarkdown(senderOpenID,
-			"**偷奶酪失败！**\n\n请先绑定站点账号：登陆后在 个人资料→每日签到→QQ签到 获取验证码")
+			"**偷奶酪失败！**\n\n请先绑定站点账号：登陆后在 个人资料 → QQ 绑定验证码 获取验证码")
 	}
 
 	victimOpenID, victimUserId, ok := pickTransferTarget(event.Mentions, senderOpenID)

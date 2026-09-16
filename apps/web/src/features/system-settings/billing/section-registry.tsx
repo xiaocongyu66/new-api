@@ -62,10 +62,10 @@ const BILLING_SECTIONS = [
     build: (settings: BillingSettings) => (
       <QuotaSettingsSection
         defaultValues={{
-          QuotaForNewUser: settings.QuotaForNewUser,
-          PreConsumedQuota: settings.PreConsumedQuota,
-          QuotaForInviter: settings.QuotaForInviter,
-          QuotaForInvitee: settings.QuotaForInvitee,
+          QuotaForNewUser_display: settings.QuotaForNewUser_display,
+          PreConsumedQuota_display: settings.PreConsumedQuota_display,
+          QuotaForInviter_display: settings.QuotaForInviter_display,
+          QuotaForInvitee_display: settings.QuotaForInvitee_display,
           SporeInviterReward: String(settings.SporeInviterReward ?? 0.1),
           InviterRewardCurrency:
             settings.InviterRewardCurrency === 'spore' ||
@@ -106,9 +106,8 @@ const BILLING_SECTIONS = [
               settings['general_setting.custom_currency_symbol'] ?? '¤',
             custom_currency_exchange_rate:
               settings['general_setting.custom_currency_exchange_rate'] ?? 1,
-            amount_unit: settings['general_setting.amount_unit'] === 'cny'
-              ? 'cny'
-              : 'usd',
+            amount_unit:
+              settings['general_setting.amount_unit'] === 'cny' ? 'cny' : 'usd',
             spore_symbol: settings['general_setting.spore_symbol'] ?? '',
           },
         }}
@@ -334,6 +333,8 @@ const billingRegistry = createSectionRegistry<
 export const BILLING_SECTION_IDS = billingRegistry.sectionIds
 export const BILLING_DEFAULT_SECTION = billingRegistry.defaultSection
 export const getBillingSectionNavItems = (t: TFunction) =>
-  billingRegistry.getSectionNavItems(t).filter((item) => !item.url.endsWith('/qqbot'))
+  billingRegistry
+    .getSectionNavItems(t)
+    .filter((item) => !item.url.endsWith('/qqbot'))
 export const getBillingSectionContent = billingRegistry.getSectionContent
 export const getBillingSectionMeta = billingRegistry.getSectionMeta

@@ -38,7 +38,7 @@ export function safeDivide(
 export function calculateDashboardStats(data: QuotaDataItem[]) {
   return data.reduce(
     (acc, item) => ({
-      totalQuota: acc.totalQuota + (Number(item.quota) || 0),
+      totalQuota: acc.totalQuota + (Number(item.quota_display) || 0),
       totalCount: acc.totalCount + (Number(item.count) || 0),
       totalTokens: acc.totalTokens + (Number(item.token_used) || 0),
     }),

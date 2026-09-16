@@ -40,7 +40,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { DEFAULT_CURRENCY_CONFIG } from '@/stores/system-config-store'
+import { LEGACY_QUOTA_PER_UNIT } from '@/lib/currency'
 
 import { FormDirtyIndicator } from '../components/form-dirty-indicator'
 import { FormNavigationGuard } from '../components/form-navigation-guard'
@@ -156,9 +156,10 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
   const displayType = form.watch('general_setting.quota_display_type') ?? 'USD'
   const displayInCurrencyEnabled = form.watch('DisplayInCurrencyEnabled')
   const showTokensOnlyOption = displayType === 'TOKENS'
+  // The field is read-only and reflects the stored option; the store no
+  // longer carries quotaPerUnit, so compare against the fixed legacy default.
   const showQuotaPerUnit =
-    displayType === 'TOKENS' ||
-    defaultValues.QuotaPerUnit !== DEFAULT_CURRENCY_CONFIG.quotaPerUnit
+    displayType === 'TOKENS' || defaultValues.QuotaPerUnit !== LEGACY_QUOTA_PER_UNIT
   const showDisplayInCurrencyOption = displayInCurrencyEnabled === false
 
   return (

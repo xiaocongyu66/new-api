@@ -2,7 +2,7 @@ package identity
 
 import (
 	"fmt"
-	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/i18n"
+	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
 type tokenAutoGroupsInput struct {
@@ -18,6 +19,9 @@ type tokenAutoGroupsInput struct {
 }
 
 func (input *tokenAutoGroupsInput) UnmarshalJSON(data []byte) error {
+	// Presence of the key (even as JSON null) means the client addressed the
+	// field; UpdateToken branches on Set to distinguish clear/inherit from
+	// leave-untouched.
 	input.Set = true
 	if strings.TrimSpace(string(data)) == "null" {
 		input.Groups = nil
@@ -29,6 +33,9 @@ func (input *tokenAutoGroupsInput) UnmarshalJSON(data []byte) error {
 type tokenRequest struct {
 	Token
 	AutoGroups tokenAutoGroupsInput `json:"auto_groups"`
+	// RemainQuotaDisplay carries the form-submitted amount in the site's display
+	// currency. The browser no longer converts; the server owns the round-trip.
+	RemainQuotaDisplay float64 `json:"remain_quota_display"`
 }
 
 type tokenResponse struct {
@@ -235,6 +242,22 @@ func GetTokenUsage(c contract.Context) {
 	})
 }
 
+// resolveTokenQuotaFromDisplay converts the form-submitted display amount into
+// internal quota. The browser no longer multiplies by QuotaPerUnit; the server
+// owns the round-trip. Non-finite input is rejected with 400 rather than
+// saturating silently — a NaN quota would poison later billing math.
+func resolveTokenQuotaFromDisplay(c contract.Context, request *tokenRequest, token *Token) bool {
+	if token.UnlimitedQuota {
+		return true
+	}
+	if math.IsNaN(request.RemainQuotaDisplay) || math.IsInf(request.RemainQuotaDisplay, 0) {
+		common.CtxApiErrorMsg(c, "无效的额度数值")
+		return false
+	}
+	token.RemainQuota = quotaFromDisplayAmount(request.RemainQuotaDisplay)
+	return true
+}
+
 func AddToken(c contract.Context) {
 	request := tokenRequest{}
 	err := c.BindJSON(&request)
@@ -243,6 +266,9 @@ func AddToken(c contract.Context) {
 		return
 	}
 	token := request.Token
+	if !resolveTokenQuotaFromDisplay(c, &request, &token) {
+		return
+	}
 	if len(token.Name) > 50 {
 		common.CtxApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return

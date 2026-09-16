@@ -42,8 +42,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { getSporeName } from '@/lib/spore'
 import { formatQuota } from '@/lib/format'
+import { getSporeName } from '@/lib/spore'
 
 import { FormDirtyIndicator } from '../components/form-dirty-indicator'
 import { FormNavigationGuard } from '../components/form-navigation-guard'
@@ -62,10 +62,10 @@ import { useUpdateOption } from '../hooks/use-update-option'
 const createQuotaSchema = (t: (key: string) => string) =>
   z
     .object({
-      QuotaForNewUser: z.coerce.number().min(0),
-      PreConsumedQuota: z.coerce.number().min(0),
-      QuotaForInviter: z.coerce.number().min(0),
-      QuotaForInvitee: z.coerce.number().min(0),
+      QuotaForNewUser_display: z.coerce.number().min(0),
+      PreConsumedQuota_display: z.coerce.number().min(0),
+      QuotaForInviter_display: z.coerce.number().min(0),
+      QuotaForInvitee_display: z.coerce.number().min(0),
       // 字符串保存输入中间态（"0." 这类），避免 valueAsNumber 吃掉小数点。
       SporeInviterReward: z.string().optional(),
       InviterRewardCurrency: z.enum(['quota', 'spore', 'both']),
@@ -91,10 +91,10 @@ const createQuotaSchema = (t: (key: string) => string) =>
     })
 
 type QuotaFormValues = {
-  QuotaForNewUser: number
-  PreConsumedQuota: number
-  QuotaForInviter: number
-  QuotaForInvitee: number
+  QuotaForNewUser_display: number
+  PreConsumedQuota_display: number
+  QuotaForInviter_display: number
+  QuotaForInvitee_display: number
   SporeInviterReward?: string
   InviterRewardCurrency: 'quota' | 'spore' | 'both'
   TopUpLink: string
@@ -171,7 +171,7 @@ export function QuotaSettingsSection({
           <SettingsFormGrid>
             <FormField
               control={form.control}
-              name='QuotaForNewUser'
+              name='QuotaForNewUser_display'
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t('New User Quota')}</FormLabel>
@@ -200,7 +200,7 @@ export function QuotaSettingsSection({
 
             <FormField
               control={form.control}
-              name='PreConsumedQuota'
+              name='PreConsumedQuota_display'
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t('Pre-Consumed Quota')}</FormLabel>
@@ -262,7 +262,9 @@ export function QuotaSettingsSection({
                     </SelectContent>
                   </Select>
                   <FormDescription>
-                    {t('Currency granted to the inviter for each successful invite')}
+                    {t(
+                      'Currency granted to the inviter for each successful invite'
+                    )}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -272,7 +274,7 @@ export function QuotaSettingsSection({
             {form.watch('InviterRewardCurrency') !== 'spore' ? (
               <FormField
                 control={form.control}
-                name='QuotaForInviter'
+                name='QuotaForInviter_display'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>{t('Inviter Reward')}</FormLabel>
@@ -332,7 +334,7 @@ export function QuotaSettingsSection({
 
             <FormField
               control={form.control}
-              name='QuotaForInvitee'
+              name='QuotaForInvitee_display'
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t('Invitee Reward')}</FormLabel>

@@ -20,10 +20,10 @@ type Checkin struct {
 	CreatedAt    int64  `json:"created_at" gorm:"bigint"`
 }
 
-// CheckinRecord 用于API返回的签到记录（不包含敏感字段）
 type CheckinRecord struct {
-	CheckinDate  string `json:"checkin_date"`
-	QuotaAwarded int    `json:"quota_awarded"`
+	CheckinDate         string  `json:"checkin_date"`
+	QuotaAwarded        int     `json:"quota_awarded"`
+	QuotaAwardedDisplay float64 `json:"quota_awarded_display"`
 }
 
 func (Checkin) TableName() string {
@@ -156,8 +156,9 @@ func GetUserCheckinStats(userId int, month string) (map[string]interface{}, erro
 	checkinRecords := make([]CheckinRecord, len(records))
 	for i, r := range records {
 		checkinRecords[i] = CheckinRecord{
-			CheckinDate:  r.CheckinDate,
-			QuotaAwarded: r.QuotaAwarded,
+			CheckinDate:         r.CheckinDate,
+			QuotaAwarded:        r.QuotaAwarded,
+			QuotaAwardedDisplay: QuotaToDisplayAmount(r.QuotaAwarded),
 		}
 	}
 
@@ -171,10 +172,11 @@ func GetUserCheckinStats(userId int, month string) (map[string]interface{}, erro
 	dbx.DB.Model(&Checkin{}).Where("user_id = ?", userId).Select("COALESCE(SUM(quota_awarded), 0)").Scan(&totalQuota)
 
 	return map[string]interface{}{
-		"total_quota":      totalQuota,      // 所有时间累计获得的额度
-		"total_checkins":   totalCheckins,   // 所有时间累计签到次数
-		"checkin_count":    len(records),    // 本月签到次数
-		"checked_in_today": hasCheckedToday, // 今天是否已签到
-		"records":          checkinRecords,  // 本月签到记录详情（不含id和user_id）
+		"total_quota":         totalQuota,                            // 所有时间累计获得的额度
+		"total_quota_display": QuotaToDisplayAmount(int(totalQuota)), // 累计额度的展示金额
+		"total_checkins":      totalCheckins,                         // 所有时间累计签到次数
+		"checkin_count":       len(records),                          // 本月签到次数
+		"checked_in_today":    hasCheckedToday,                       // 今天是否已签到
+		"records":             checkinRecords,                        // 本月签到记录详情（不含id和user_id）
 	}, nil
 }

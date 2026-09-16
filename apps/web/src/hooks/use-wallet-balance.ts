@@ -28,6 +28,11 @@ import { useAuthStore } from '@/stores/auth-store'
  * Returns null while the user or quota is not loaded yet.
  */
 export function useWalletBalance(): string | null {
-  const quota = useAuthStore((state) => state.auth.user?.quota)
-  return useMemo(() => (quota == null ? null : formatQuota(quota)), [quota])
+  const quotaDisplay = useAuthStore(
+    (state) => state.auth.user?.quota_display
+  )
+  return useMemo(
+    () => (quotaDisplay == null ? null : formatQuota(quotaDisplay)),
+    [quotaDisplay]
+  )
 }

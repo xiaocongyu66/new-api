@@ -24,9 +24,10 @@ import { BadgeCell } from '@/components/data-table'
 import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
-import { formatPlanPrice } from '../lib'
 import { formatQuota } from '@/lib/format'
+import { formatSpore, getSporeSymbol } from '@/lib/spore'
 
+import { formatPlanPrice } from '../lib'
 import { formatDuration, formatResetPeriod } from '../lib'
 import type { PlanRecord } from '../types'
 import { DataTableRowActions } from './data-table-row-actions'
@@ -166,10 +167,18 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         header: t('Plan Quota'),
         meta: { mobileHidden: true },
         cell: ({ row }) => {
-          const total = Number(row.original.plan.total_amount || 0)
+          const total = Number(
+            row.original.plan.total_amount_display ??
+              row.original.plan.total_amount ??
+              0
+          )
+          const sporeUnits = Number(row.original.plan.spore_amount ?? 0)
           return (
             <span className='text-muted-foreground'>
               {total > 0 ? formatQuota(total) : t('Unlimited')}
+              {sporeUnits > 0
+                ? ` + ${getSporeSymbol() || '🍄'} ${formatSpore(sporeUnits)}`
+                : ''}
             </span>
           )
         },

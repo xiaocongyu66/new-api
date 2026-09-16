@@ -23,6 +23,11 @@ type FlowQuotaData struct {
 	TokenUsed   int    `json:"token_used" gorm:"column:token_used"`
 	Count       int    `json:"count" gorm:"column:count"`
 	Quota       int    `json:"quota" gorm:"column:quota"`
+	// QuotaDisplay is the API-boundary rendering of Quota in the configured
+	// display currency. gorm:"-" so it is never a column; a single filler (see
+	// fillFlowDisplay) populates it on every read path, so the frontend sums
+	// display values directly instead of dividing by QuotaPerUnit.
+	QuotaDisplay float64 `json:"quota_display" gorm:"-"`
 }
 
 func GetFlowQuotaData(startTime int64, endTime int64, username string, userID int, role int) ([]*FlowQuotaData, error) {
@@ -94,7 +99,26 @@ func GetRootFlowQuotaData(startTime int64, endTime int64, username string) ([]*F
 	return rows, fillFlowChannelNames(rows)
 }
 
+// fillFlowDisplay populates the API-boundary display field. It is called from
+// the shared name fillers so every flow response (self/admin/root) is covered
+// by one site rather than each handler repeating the conversion.
+func fillFlowDisplay(rows []*FlowQuotaData) {
+	for _, row := range rows {
+		row.QuotaDisplay = quotaToDisplayAmount(row.Quota)
+	}
+}
+
+// fillQuotaDisplay populates the API-boundary display field on dashboard
+// aggregation rows. Called from every quota_data read so the chart pipeline
+// can sum display values directly.
+func fillQuotaDisplay(rows []*QuotaData) {
+	for _, row := range rows {
+		row.QuotaDisplay = quotaToDisplayAmount(row.Quota)
+	}
+}
+
 func fillFlowTokenNames(rows []*FlowQuotaData) error {
+	fillFlowDisplay(rows)
 	tokenIDSet := make(map[int]struct{})
 	tokenIDs := make([]int, 0)
 	for _, row := range rows {
@@ -187,6 +211,7 @@ func GetQuotaDataByUsername(username string, startTime int64, endTime int64) (qu
 		Where("username = ? and created_at >= ? and created_at <= ?", username, startTime, endTime).
 		Group("user_id, username, model_name, created_at").
 		Find(&quotaDatas).Error
+	fillQuotaDisplay(quotaDatas)
 	return quotaDatas, err
 }
 
@@ -197,6 +222,7 @@ func GetQuotaDataByUserId(userId int, startTime int64, endTime int64) (quotaData
 		Where("user_id = ? and created_at >= ? and created_at <= ?", userId, startTime, endTime).
 		Group("user_id, username, model_name, created_at").
 		Find(&quotaDatas).Error
+	fillQuotaDisplay(quotaDatas)
 	return quotaDatas, err
 }
 
@@ -207,6 +233,7 @@ func GetQuotaDataGroupByUser(startTime int64, endTime int64) (quotaData []*Quota
 		Where("created_at >= ? and created_at <= ?", startTime, endTime).
 		Group("username, created_at").
 		Find(&quotaDatas).Error
+	fillQuotaDisplay(quotaDatas)
 	return quotaDatas, err
 }
 
@@ -216,5 +243,6 @@ func GetAllQuotaDatesInternal(startTime int64, endTime int64, username string) (
 	}
 	var quotaDatas []*QuotaData
 	err = dbx.DB.Table("quota_data").Select("model_name, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used, created_at").Where("created_at >= ? and created_at <= ?", startTime, endTime).Group("model_name, created_at").Find(&quotaDatas).Error
+	fillQuotaDisplay(quotaDatas)
 	return quotaDatas, err
 }

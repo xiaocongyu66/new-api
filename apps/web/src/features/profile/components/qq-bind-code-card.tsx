@@ -22,11 +22,15 @@ import {
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 
 import { generateQQBindCode, getQQBindStatus, unbindQQ } from '../api'
+import type { QQBindCodeResponse, QQBindStatusResponse } from '../types'
 
 interface QQBindCodeCardProps {
   show: boolean
   className?: string
 }
+
+// 与 system-info 的 INSTANCE_POLL_INTERVAL_MS 同类：绑定状态轮询间隔
+const BIND_STATUS_POLL_INTERVAL_MS = 5_000
 
 export function QQBindCodeCard({ show, className }: QQBindCodeCardProps) {
   const { t } = useTranslation()
@@ -35,17 +39,7 @@ export function QQBindCodeCard({ show, className }: QQBindCodeCardProps) {
   const [confirmUnbind, setConfirmUnbind] = useState(false)
   const [unbinding, setUnbinding] = useState(false)
 
-  const { data: status, isLoading } = useQuery({
-    queryKey: ['qq-bind-status'],
-    queryFn: async () => {
-      const res = await getQQBindStatus()
-      if (res.success && res.data) return res.data
-      return null
-    },
-    enabled: show,
-  })
-
-  const { data: codeData, isFetching: isGenerating } = useQuery({
+  const { data: codeData, isFetching: isGenerating } = useQuery<QQBindCodeResponse | null>({
     queryKey: ['qq-bind-code'],
     queryFn: async () => {
       const res = await generateQQBindCode()
@@ -53,6 +47,23 @@ export function QQBindCodeCard({ show, className }: QQBindCodeCardProps) {
       return null
     },
     enabled: false,
+  })
+
+  const { data: status, isLoading } = useQuery<QQBindStatusResponse | null>({
+    queryKey: ['qq-bind-status'],
+    queryFn: async () => {
+      const res = await getQQBindStatus()
+      if (res.success && res.data) return res.data
+      return null
+    },
+    enabled: show,
+    // 用户把码发到 QQ 群后绑定状态不会主动推送，只能在有待用验证码且尚未绑定时轮询；
+    // 绑定成功后 codeData 仍留在缓存里，必须再看 bound，否则会无限轮询。
+    // 用函数形式从 query.state 读最新绑定态，避免与外层 status 变量形成类型自引用
+    refetchInterval: (query) =>
+      codeData && !query.state.data?.bound
+        ? BIND_STATUS_POLL_INTERVAL_MS
+        : false,
   })
 
   const generate = useCallback(async () => {

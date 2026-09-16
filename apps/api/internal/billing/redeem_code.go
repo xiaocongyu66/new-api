@@ -43,6 +43,10 @@ func AddRedemption(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
+	if rejectNonFiniteDisplayAmount(redemption.QuotaDisplay) {
+		_ = c.JSON(http.StatusBadRequest, common.H{"success": false, "message": "invalid quota"})
+		return
+	}
 	if utf8.RuneCountInString(redemption.Name) == 0 || utf8.RuneCountInString(redemption.Name) > 20 {
 		common.CtxApiErrorI18n(c, i18n.MsgRedemptionNameLength)
 		return
@@ -66,8 +70,7 @@ func AddRedemption(c contract.Context) {
 			UserId:      c.GetInt("id"),
 			Name:        redemption.Name,
 			Key:         key,
-			CreatedTime: common.GetTimestamp(),
-			Quota:       redemption.Quota,
+			Quota:       QuotaFromDisplayAmount(redemption.QuotaDisplay),
 			ExpiredTime: redemption.ExpiredTime,
 		}
 		err = cleanRedemption.Insert()

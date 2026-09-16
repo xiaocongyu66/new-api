@@ -40,6 +40,10 @@ type Channel struct {
 	Models             string  `json:"models"`
 	Group              string  `json:"group" gorm:"type:varchar(64);default:'default'"`
 	UsedQuota          int64   `json:"used_quota" gorm:"bigint;default:0"`
+	// UsedQuotaDisplay is the API-boundary rendering of UsedQuota in the
+	// configured display currency. gorm:"-" so it is never a column; AfterFind
+	// fills it on every read, so the frontend never divides by QuotaPerUnit.
+	UsedQuotaDisplay   float64 `json:"used_quota_display" gorm:"-"`
 	ModelMapping       *string `json:"model_mapping" gorm:"type:text"`
 	//MaxInputTokens     *int    `json:"max_input_tokens" gorm:"default:0"`
 	StatusCodeMapping *string `json:"status_code_mapping" gorm:"type:varchar(1024);default:''"`
@@ -366,6 +370,15 @@ func (channel *Channel) SaveStatusStateWithTx(tx *gorm.DB) error {
 		updates["channel_info"] = channel.ChannelInfo
 	}
 	return tx.Model(&Channel{}).Where("id = ?", channel.Id).Updates(updates).Error
+}
+
+
+// AfterFind fills the API-boundary display field so every channel payload (list,
+// search, single) carries the converted amount without each handler repeating
+// the math.
+func (channel *Channel) AfterFind(_ *gorm.DB) error {
+	channel.UsedQuotaDisplay = resolveChannelUsedQuotaDisplay(channel.UsedQuota)
+	return nil
 }
 
 func GetAllChannels(startIdx int, num int, selectAll bool, idSort bool, sortOptions ...ChannelSortOptions) ([]*Channel, error) {

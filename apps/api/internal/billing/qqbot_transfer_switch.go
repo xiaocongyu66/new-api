@@ -85,7 +85,7 @@ func HandleMyBalance(openID string) string {
 	userId, bound := identity.IsQQBound(openID)
 	if !bound {
 		return buildPlainMarkdown(openID,
-			"**查询失败！**\n\n请先绑定站点账号：登陆后在 个人资料→每日签到→QQ签到 获取验证码")
+			"**查询失败！**\n\n请先绑定站点账号：登陆后在 个人资料 → QQ 绑定验证码 获取验证码")
 	}
 	balance, err := identity.GetUserQuota(userId, true)
 	if err != nil {
