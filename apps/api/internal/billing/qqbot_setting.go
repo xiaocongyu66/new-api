@@ -135,7 +135,60 @@ type QQBotSetting struct {
 	// AdminOpenIDs 逗号分隔的 openid 白名单：只有名单内的用户可以调用
 	// /余额、/封禁 等管理员指令。为空则禁用所有管理员指令。
 	AdminOpenIDs string `json:"admin_open_ids"`
+
+	// 潜水清理：官方 bot 发 @ 警告，NapCat（老号）执行踢人。
+	//
+	// 官方 API 没有踢人接口（batch_remove_members 需白名单内邀），
+	// 但能发带 @ 的公开警告；NapCat 收到同一条消息时能看到真实 QQ 号，
+	// 由此建立 member_openid ↔ 真实QQ号 的映射。清理动作只由 NapCat
+	// 侧的老号执行，官方 bot 只做合规的警告广播，两者职责分离。
+	CleanupEnabled bool `json:"cleanup_enabled"` // 总开关，默认关闭
+
+	// CleanupGroups 逗号分隔的 group_openid 白名单，只有这些群参与清理。
+	// 与 DropGroups 同样只能手工填 openid：webhook 事件里不含群名。
+	CleanupGroups string `json:"cleanup_groups"`
+
+	// NapCatOneBotHTTPAddress NapCat OneBot v11 HTTP 服务地址，形如 http://127.0.0.1:3000
+	NapCatOneBotHTTPAddress string `json:"napcat_onebot_http_address"`
+	// NapCatOneBotAccessToken NapCat HTTP 鉴权 token，留空则不带 Authorization 头
+	NapCatOneBotAccessToken string `json:"napcat_onebot_access_token"`
+
+	// CleanupInactiveDays 多少天未发言视为潜水，默认 30
+	CleanupInactiveDays int `json:"cleanup_inactive_days"`
+	// CleanupGraceDays 发出 @ 警告后给的宽限天数，期内发言即豁免，默认 7
+	CleanupGraceDays int `json:"cleanup_grace_days"`
+	// CleanupWarningTemplate 警告文案，支持占位符 {@} {天数} {宽限天数}
+	CleanupWarningTemplate string `json:"cleanup_warning_template"`
+
+	// CleanupKickMinSeconds / CleanupKickMaxSeconds 两次踢人之间的随机间隔
+	// （秒）。拉长间隔、引入随机性是为了让执行账号看起来像人工操作。
+	CleanupKickMinSeconds int `json:"cleanup_kick_min_seconds"`
+	CleanupKickMaxSeconds int `json:"cleanup_kick_max_seconds"`
+
+	// CleanupBatchSize 单次清理任务最多踢出多少人，防止一次性动作过大，<=0 为不限
+	CleanupBatchSize int `json:"cleanup_batch_size"`
+
+	// CleanupDryRun 只识别和发警告、不真正踢人。用于首次开启时观察名单是否准确
+	CleanupDryRun bool `json:"cleanup_dry_run"`
+
+	// CleanupExemptBoundUsers 已绑定站点账号的用户是否豁免。绑定用户是
+	// 付费/活跃用户的基本盘，误踢代价高，默认开启豁免。
+	CleanupExemptBoundUsers bool `json:"cleanup_exempt_bound_users"`
+
+	// CleanupWarnHours 警告发送的间隔小时数：同一用户在该时长内不重复警告，
+	// 避免每次扫描都 @ 一遍造成刷屏
+	CleanupWarnHours int `json:"cleanup_warn_hours"`
+
+	// CleanupGroupNumbers 群号映射表，JSON 形如
+	// {"2BFE0E4C3A041EA678D8C0550CBE5C78": 123456789}
+	// 官方 bot 用 group_openid 标识群，NapCat 用真实群号；执行踢人、
+	// 拉成员列表都必须换成真实群号。群的 QQ 号在手机 QQ 群资料里可见。
+	CleanupGroupNumbers string `json:"cleanup_group_numbers"`
 }
+
+// DefaultCleanupWarningTemplate 默认清理警告文案
+// QQ 群 markdown 中单个 \n 会被折叠成空格，需要换行时用 \n\n
+const DefaultCleanupWarningTemplate = "{@} 你已经 {天数} 天没有在群里说话啦\n\n如果在接下来 {宽限天数} 天内仍不发言，将被请出本群哦"
 
 // DefaultNotifyTemplate 默认签到通知样式
 const DefaultNotifyTemplate = "签到成功！获得 {货币} {金额}"
@@ -204,6 +257,22 @@ var qqBotSetting = QQBotSetting{
 	TransferMinAmount:   50000,
 	TransferMaxAmount:   50000000,
 	TransferFeeBrackets: "",
+
+	// 潜水清理默认关闭；开启前需先配好 NapCat 地址并核对名单
+	CleanupEnabled:          false,
+	CleanupGroups:           "",
+	NapCatOneBotHTTPAddress: "",
+	NapCatOneBotAccessToken: "",
+	CleanupInactiveDays:     30,
+	CleanupGraceDays:        7,
+	CleanupWarningTemplate:  DefaultCleanupWarningTemplate,
+	CleanupKickMinSeconds:   120,
+	CleanupKickMaxSeconds:   300,
+	CleanupBatchSize:        20,
+	CleanupDryRun:           true,
+	CleanupExemptBoundUsers: true,
+	CleanupWarnHours:        24,
+	CleanupGroupNumbers:     "",
 }
 
 func init() {
@@ -322,4 +391,52 @@ func GetRedPacketExpireSeconds() int {
 		return 24 * 3600
 	}
 	return qqBotSetting.RedPacketExpireSeconds
+}
+
+// IsCleanupEnabled 是否启用潜水清理
+func IsCleanupEnabled() bool {
+	return qqBotSetting.CleanupEnabled
+}
+
+// IsCleanupGroup 指定群是否参与潜水清理
+func IsCleanupGroup(groupOpenID string) bool {
+	return qqBotSetting.CleanupEnabled && containsGroup(parseGroupIDs(qqBotSetting.CleanupGroups), groupOpenID)
+}
+
+// GetCleanupWarningTemplate 获取清理警告文案，为空回落默认
+func GetCleanupWarningTemplate() string {
+	if qqBotSetting.CleanupWarningTemplate == "" {
+		return DefaultCleanupWarningTemplate
+	}
+	return qqBotSetting.CleanupWarningTemplate
+}
+
+// GetCleanupInactiveDays 获取潜水阈值天数，非法值回落 30
+func GetCleanupInactiveDays() int {
+	if qqBotSetting.CleanupInactiveDays <= 0 {
+		return 30
+	}
+	return qqBotSetting.CleanupInactiveDays
+}
+
+// GetCleanupGraceDays 获取宽限天数，非法值回落 7
+func GetCleanupGraceDays() int {
+	if qqBotSetting.CleanupGraceDays < 0 {
+		return 7
+	}
+	return qqBotSetting.CleanupGraceDays
+}
+
+// GetCleanupKickIntervalRange 获取踢人间隔的随机区间（秒）。
+// min<=0 时按 120 兜底，max<min 时以 min 为上界，保证返回 min<=max。
+func GetCleanupKickIntervalRange() (min, max int) {
+	min = qqBotSetting.CleanupKickMinSeconds
+	max = qqBotSetting.CleanupKickMaxSeconds
+	if min <= 0 {
+		min = 120
+	}
+	if max < min {
+		max = min
+	}
+	return min, max
 }

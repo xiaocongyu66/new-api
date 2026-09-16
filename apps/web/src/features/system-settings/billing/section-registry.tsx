@@ -26,6 +26,7 @@ import { QQBotSettingsSection } from '../general/qqbot-settings-section'
 import { QuotaSettingsSection } from '../general/quota-settings-section'
 import { PaymentSettingsSection } from '../integrations/payment-settings-section'
 import { RatioSettingsCard } from '../models/ratio-settings-card'
+import { QQBotCleanupTab } from './qqbot-cleanup'
 import type { BillingSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
 
@@ -338,6 +339,13 @@ const BILLING_SECTIONS = [
         }}
       />
     ),
+  },
+  {
+    // 潜水清理独立成一页：踢人是高风险操作，名单预览/配置/主表单混在一起
+    // 会让管理员在长表单里误触触发按钮。
+    id: 'qqbot-cleanup',
+    titleKey: 'Inactive member cleanup',
+    build: () => <QQBotCleanupTab />,
   },
 ] as const
 
