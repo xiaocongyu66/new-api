@@ -189,6 +189,13 @@ function getConfig(): CurrencyConfig {
 
 function getDisplayMeta(config: CurrencyConfig): DisplayMeta {
   switch (config.quotaDisplayType) {
+    case 'TOKENS':
+      // Identity case: in this mode billing.QuotaToDisplayAmount returns the
+      // raw token count unchanged, so no symbol, rate, or fraction digits
+      // apply. USD-scale amounts (channel balances, model prices) have no
+      // server-side _display sibling, so formatCurrencyFromUSD converts them
+      // with LEGACY_QUOTA_PER_UNIT; *_display values pass through untouched.
+      return { kind: 'tokens' }
     case 'CNY':
       return {
         kind: 'currency',
@@ -201,9 +208,6 @@ function getDisplayMeta(config: CurrencyConfig): DisplayMeta {
         kind: 'custom',
         symbol: config.customCurrencySymbol,
         exchangeRate: config.customCurrencyExchangeRate,
-      }
-      return {
-        kind: 'tokens',
       }
     case 'USD':
     default:
