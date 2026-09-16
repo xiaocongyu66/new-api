@@ -2,6 +2,7 @@ package common
 
 import (
 	"crypto/tls"
+	"regexp"
 	//"os"
 	//"strconv"
 	"sync"
@@ -69,8 +70,10 @@ var TelegramOAuthEnabled = false
 var TurnstileCheckEnabled = false
 var RegisterEnabled = true
 
-var EmailDomainRestrictionEnabled = false // 是否启用邮箱域名限制
-var EmailAliasRestrictionEnabled = false  // 是否启用邮箱别名限制
+var EmailDomainRestrictionEnabled = false   // 是否启用邮箱域名限制
+var EmailAliasRestrictionEnabled = false    // 是否启用邮箱别名限制
+var EmailFormatRegex = ""                   // 邮箱格式限制正则，匹配完整邮箱地址，为空不启用
+var EmailFormatRegexCompiled *regexp.Regexp // 由 settings 应用选项时编译写入
 var EmailDomainWhitelist = []string{
 	"gmail.com",
 	"163.com",
@@ -124,8 +127,10 @@ var TelegramBotName = ""
 var QuotaForNewUser = 0
 var QuotaForInviter = 0
 var QuotaForInvitee = 0
+
 // SporeInviterRewardTenths 邀请者的菌种奖励，内部单位（1 = 0.1 菌种）。0 = 关闭。
 var SporeInviterRewardTenths = int64(1)
+
 // InviterRewardCurrency 邀请奖励的结算货币：
 // "quota"=余额（aff_quota 暂存，合规门内发放），"spore"=菌种（即时到账，合规门外发放），"both"=两者同时发放。
 var InviterRewardCurrency = "quota"

@@ -61,6 +61,10 @@ func SendEmailVerification(c contract.Context) {
 			return
 		}
 	}
+	if common.EmailFormatRegexCompiled != nil && !common.EmailFormatRegexCompiled.MatchString(email) {
+		common.CtxApiErrorI18n(c, i18n.MsgUserEmailFormatRejected)
+		return
+	}
 
 	if IsEmailAlreadyTaken(email) {
 		common.CtxApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)

@@ -9,6 +9,7 @@ package settings
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -183,6 +184,7 @@ func SeedOptionMap() {
 	common.OptionMap["EmailDomainRestrictionEnabled"] = strconv.FormatBool(common.EmailDomainRestrictionEnabled)
 	common.OptionMap["EmailAliasRestrictionEnabled"] = strconv.FormatBool(common.EmailAliasRestrictionEnabled)
 	common.OptionMap["EmailDomainWhitelist"] = strings.Join(common.EmailDomainWhitelist, ",")
+	common.OptionMap["EmailFormatRegex"] = common.EmailFormatRegex
 	common.OptionMap["SMTPServer"] = ""
 	common.OptionMap["SMTPFrom"] = ""
 	common.OptionMap["SMTPPort"] = strconv.Itoa(common.SMTPPort)
@@ -431,6 +433,16 @@ func ApplyOption(key string, value string) (err error) {
 	switch key {
 	case "EmailDomainWhitelist":
 		common.EmailDomainWhitelist = strings.Split(value, ",")
+	case "EmailFormatRegex":
+		common.EmailFormatRegex = value
+		if value == "" {
+			common.EmailFormatRegexCompiled = nil
+		} else if re, err := regexp.Compile(value); err == nil {
+			common.EmailFormatRegexCompiled = re
+		} else {
+			common.EmailFormatRegexCompiled = nil
+			common.SysError("invalid EmailFormatRegex, restriction disabled: " + err.Error())
+		}
 	case "SMTPServer":
 		common.SMTPServer = value
 	case "SMTPPort":
