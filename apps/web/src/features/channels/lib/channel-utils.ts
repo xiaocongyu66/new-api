@@ -649,12 +649,15 @@ export function aggregateChannelsByTag(
       (tagRow.response_time * (childCount - 1) + channel.response_time) /
       childCount
 
-    // Aggregate group (concatenate and deduplicate)
-    if (tagRow.group === '') {
+    // Aggregate group (concatenate and deduplicate). A channel may carry no
+    // group at all (undefined), so guard both sides before splitting.
+    const tagGroups = (tagRow.group ?? '').split(',').filter(Boolean)
+    const channelGroups = (channel.group ?? '').split(',').filter(Boolean)
+    if (tagGroups.length === 0) {
       tagRow.group = channel.group
     } else {
-      const existingGroups = new Set(tagRow.group.split(',').filter(Boolean))
-      const newGroups = channel.group.split(',').filter(Boolean)
+      const existingGroups = new Set(tagGroups)
+      const newGroups = channelGroups
       newGroups.forEach((g) => {
         if (!existingGroups.has(g)) {
           tagRow.group += `,${g}`

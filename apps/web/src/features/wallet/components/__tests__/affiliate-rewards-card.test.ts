@@ -17,12 +17,34 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
+import { afterEach, describe, test } from 'node:test'
+
+import {
+  DEFAULT_CURRENCY_CONFIG,
+  useSystemConfigStore,
+} from '@/stores/system-config-store'
 
 import { buildReferralRewardLine } from '../affiliate-rewards-card'
 
+// formatQuota renders through the site currency config. Pin TOKENS (the
+// identity case, no symbol) so assertions cover the reward-line *composition*
+// — which currency parts appear — and not currency.ts's symbol formatting,
+// which has its own coverage. Restore afterwards: the store is process-global.
+function setTokensDisplay() {
+  useSystemConfigStore.getState().setConfig({
+    currency: { ...DEFAULT_CURRENCY_CONFIG, quotaDisplayType: 'TOKENS' },
+  })
+}
+
 describe('referral reward line', () => {
+  afterEach(() => {
+    useSystemConfigStore.getState().setConfig({
+      currency: { ...DEFAULT_CURRENCY_CONFIG },
+    })
+  })
+
   test('quotes both currencies when the admin pays quota + spore', () => {
+    setTokensDisplay()
     // Live config at the time of the fix: QuotaForInviter 20 (display),
     // SporeInviterReward 0.1, currency 'both'. The card must show both numbers,
     // mirroring the Quota Settings page, not just one of them.
@@ -39,6 +61,7 @@ describe('referral reward line', () => {
   })
 
   test('shows only spore when the inviter reward currency is spore', () => {
+    setTokensDisplay()
     const line = buildReferralRewardLine({
       inviterRewardDisplay: 20,
       inviteeRewardDisplay: 10,
@@ -52,6 +75,7 @@ describe('referral reward line', () => {
   })
 
   test('shows only quota when the inviter reward currency is quota', () => {
+    setTokensDisplay()
     const line = buildReferralRewardLine({
       inviterRewardDisplay: 20,
       inviteeRewardDisplay: 10,
@@ -78,6 +102,7 @@ describe('referral reward line', () => {
   })
 
   test('drops the spore part when it is zero in both mode', () => {
+    setTokensDisplay()
     const line = buildReferralRewardLine({
       inviterRewardDisplay: 20,
       inviteeRewardDisplay: 0,
