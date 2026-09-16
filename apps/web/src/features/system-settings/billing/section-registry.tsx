@@ -314,10 +314,7 @@ const BILLING_SECTIONS = [
           // Amount fields seed from their *_display siblings (display
           // currency), not the raw keys — the form's unflattenDefaults skips
           // the raw keys on purpose. Omitting these seeds every amount to 0.
-          'qq_bot_setting.min_quota_display':
-            settings['qq_bot_setting.min_quota_display'] ?? 0,
-          'qq_bot_setting.max_quota_display':
-            settings['qq_bot_setting.max_quota_display'] ?? 0,
+          // Check-in amounts seed from checkin_setting, not qq_bot_setting.
           'qq_bot_setting.drop_min_quota_display':
             settings['qq_bot_setting.drop_min_quota_display'] ?? 0,
           'qq_bot_setting.drop_max_quota_display':

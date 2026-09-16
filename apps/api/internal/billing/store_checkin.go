@@ -2,10 +2,12 @@ package billing
 
 import (
 	"errors"
+	"fmt"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/common/quotacache"
 	"github.com/QuantumNous/new-api/internal/identity"
+	"github.com/QuantumNous/new-api/internal/logger"
 	"gorm.io/gorm"
 	"math/rand"
 	"sort"
@@ -165,11 +167,15 @@ func userCheckinWithTransaction(checkin *Checkin, userId int, quotaAwarded int) 
 		// 请求会在同一用户行上串行，后到的重判能看到先到的已提交记录；
 		// 每表各自的唯一约束只能挡同渠道重复，挡不住跨渠道双发。
 		if err := lockUserForCheckin(tx, userId); err != nil {
+			logger.LogError(nil, fmt.Sprintf("checkin: lock user %d failed: %s", userId, err))
 			return errors.New("签到失败，请稍后重试")
 		}
-		if checked, err := alreadyCheckedToday(tx, userId, false); err != nil {
+		checked, err := alreadyCheckedToday(tx, userId, false)
+		if err != nil {
+			logger.LogError(nil, fmt.Sprintf("checkin: recheck user %d failed: %s", userId, err))
 			return errors.New("签到失败，请稍后重试")
-		} else if checked {
+		}
+		if checked {
 			return errors.New("今日已签到")
 		}
 

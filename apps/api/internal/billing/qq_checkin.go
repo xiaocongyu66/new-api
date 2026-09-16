@@ -2,12 +2,14 @@ package billing
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/common/quotacache"
 	"github.com/QuantumNous/new-api/internal/identity"
+	"github.com/QuantumNous/new-api/internal/logger"
 	"gorm.io/gorm"
 )
 
@@ -93,11 +95,15 @@ func qqCheckinWithTransaction(checkin *QQCheckin, userId int, quotaAwarded int) 
 		// 与网页签到同一套临界区：锁用户行后在事务内重判，跨渠道并发
 		// 会在用户行上串行，后到的重判看到先到的已提交记录。
 		if err := lockUserForCheckin(tx, userId); err != nil {
+			logger.LogError(nil, fmt.Sprintf("qq checkin: lock user %d failed: %s", userId, err))
 			return errors.New("签到失败，请稍后重试")
 		}
-		if checked, err := alreadyCheckedToday(tx, userId, true); err != nil {
+		checked, err := alreadyCheckedToday(tx, userId, true)
+		if err != nil {
+			logger.LogError(nil, fmt.Sprintf("qq checkin: recheck user %d failed: %s", userId, err))
 			return errors.New("签到失败，请稍后重试")
-		} else if checked {
+		}
+		if checked {
 			return errors.New("今日已签到")
 		}
 

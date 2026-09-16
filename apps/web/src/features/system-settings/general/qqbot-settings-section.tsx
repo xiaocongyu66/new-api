@@ -44,13 +44,15 @@ import { useUpdateOption } from '../hooks/use-update-option'
 import { useResetForm } from '../hooks/use-reset-form'
 
 // Keys mirror QQBotSetting in apps/api/internal/billing/qqbot_setting.go.
-// Quota amounts are raw quota units, matching the backend defaults.
+// Amount fields are display currency: they seed from their *_display siblings
+// and submit them back, and the backend converts to internal quota.
 //
 // The schema is NESTED on purpose: react-hook-form treats dots in field names
-// as paths (`qq_bot_setting.min_quota` writes formValues.qq_bot_setting.min_quota),
+// as paths (`qq_bot_setting.drop_min_quota` writes formValues.qq_bot_setting.drop_min_quota),
 // so a flat schema keyed by dotted strings never sees the user's edits. This section
 // unflattens incoming settings ('qq_bot_setting.x' -> {qq_bot_setting: {x}}) and
-// flattens submitted values back to the option keys for the API.
+// flattens submitted values back to the option keys for the API. Check-in
+// amounts live in checkin_setting and are configured in that section.
 const qqbotSchema = z.object({
   qq_bot_setting: z.object({
     app_id: z.string(),
