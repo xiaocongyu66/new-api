@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from lib_reconcile import reconcile, ReconcileResult
+from lib_reconcile import reconcile
 
 
 def make_audit_attempt(
