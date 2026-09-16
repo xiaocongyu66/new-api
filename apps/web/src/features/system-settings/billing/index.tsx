@@ -161,16 +161,19 @@ const defaultBillingSettings: BillingSettings = {
   'qq_bot_setting.recall_delay_seconds': 10,
   'qq_bot_setting.recall_policies': '',
   'qq_bot_setting.admin_open_ids': '',
-  'qq_bot_setting.min_quota_display': undefined,
-  'qq_bot_setting.max_quota_display': undefined,
-  'qq_bot_setting.drop_min_quota_display': undefined,
-  'qq_bot_setting.drop_max_quota_display': undefined,
-  'qq_bot_setting.drop_balance_anchor_display': undefined,
-  'qq_bot_setting.drop_daily_guarantee_display': undefined,
-  'qq_bot_setting.red_packet_min_amount_display': undefined,
-  'qq_bot_setting.red_packet_max_amount_display': undefined,
-  'qq_bot_setting.transfer_min_amount_display': undefined,
-  'qq_bot_setting.transfer_max_amount_display': undefined,
+  // Number (not undefined) so parseOptionValueSafe takes the number branch and
+  // yields a real number; an undefined default falls through to the string
+  // branch and hands the form "0.5" instead of 0.5.
+  'qq_bot_setting.min_quota_display': 0,
+  'qq_bot_setting.max_quota_display': 0,
+  'qq_bot_setting.drop_min_quota_display': 0,
+  'qq_bot_setting.drop_max_quota_display': 0,
+  'qq_bot_setting.drop_balance_anchor_display': 0,
+  'qq_bot_setting.drop_daily_guarantee_display': 0,
+  'qq_bot_setting.red_packet_min_amount_display': 0,
+  'qq_bot_setting.red_packet_max_amount_display': 0,
+  'qq_bot_setting.transfer_min_amount_display': 0,
+  'qq_bot_setting.transfer_max_amount_display': 0,
 }
 
 export function BillingSettings() {
