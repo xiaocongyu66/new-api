@@ -33,8 +33,9 @@ func setupGroupMemberTestDB(t *testing.T) func() {
 func withCleanupSetting(t *testing.T, mutate func(s *billing.QQBotSetting)) {
 	t.Helper()
 	original := *billing.GetQQBotSetting()
-	defer func() { *billing.GetQQBotSetting() = original }()
 	mutate(billing.GetQQBotSetting())
+	// 用 t.Cleanup 而非 defer：本函数在断言前返回，defer 会过早还原。
+	t.Cleanup(func() { *billing.GetQQBotSetting() = original })
 }
 
 const testGroupOpenID = "GROUP_TEST"
@@ -115,8 +116,11 @@ func TestTouchGroupMemberUpsert(t *testing.T) {
 
 	// ts<=0 时用当前时间兜底
 	require.NoError(t, billing.TouchGroupMember(testGroupOpenID, "MEMBER_C", "Carol", 0))
-	require.NoError(t, dbx.DB.Where("member_open_id = ?", "MEMBER_C").First(&m).Error)
-	assert.True(t, m.LastActiveAt > 0)
+	// 注意必须用新变量：First(&m) 会把 m 里已有的主键追加为查询条件，
+	// 复用上一轮的 m（Id=1）会多出 WHERE id=1，查不到新成员
+	var c billing.QQGroupMember
+	require.NoError(t, dbx.DB.Where("member_open_id = ?", "MEMBER_C").First(&c).Error)
+	assert.True(t, c.LastActiveAt > 0)
 }
 
 // TestTouchGroupMemberResurrect 被踢出的成员重新发言，状态必须回到 active——

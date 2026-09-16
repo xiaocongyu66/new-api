@@ -13,8 +13,10 @@ import (
 func withCleanupSetting(t *testing.T, mutate func(s *QQBotSetting)) {
 	t.Helper()
 	original := qqBotSetting
-	defer func() { qqBotSetting = original }()
 	mutate(&qqBotSetting)
+	// 必须用 t.Cleanup 而非 defer：本函数在测试断言之前就返回，
+	// defer 会立刻还原配置，断言看到的就只剩默认值。
+	t.Cleanup(func() { qqBotSetting = original })
 }
 
 // TestParseAtUserID OneBot v11 的 @ CQ 码解析。
@@ -198,10 +200,10 @@ func TestGetCleanupKickIntervalRange(t *testing.T) {
 func TestGetCleanupDayFallbacks(t *testing.T) {
 	withCleanupSetting(t, func(s *QQBotSetting) {
 		s.CleanupInactiveDays = 0
-		s.CleanupGraceDays = -1
+		// 宽限期允许为 0（警告完下一轮就踢），只有负数才回落
+		s.CleanupGraceDays = 0
 	})
 	assert.Equal(t, 30, GetCleanupInactiveDays())
-	// 宽限期允许为 0（警告完下一轮就踢），只有负数才回落
 	assert.Equal(t, 0, GetCleanupGraceDays())
 
 	withCleanupSetting(t, func(s *QQBotSetting) {

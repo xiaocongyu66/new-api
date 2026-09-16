@@ -145,6 +145,7 @@ GET /api/user/models
 GET /api/user/oauth/bindings
 GET /api/user/passkey
 GET /api/user/qq/bind
+GET /api/user/qq/cleanup/preview
 GET /api/user/search
 GET /api/user/self
 GET /api/user/self/groups
@@ -204,6 +205,7 @@ POST /api/proxy/nodes/batch-clear-errors
 POST /api/proxy/nodes/batch-enabled
 POST /api/proxy/nodes/test
 POST /api/proxy/reload
+POST /api/qqbot/napcat/webhook
 POST /api/qqbot/webhook
 POST /api/ratio_sync/fetch
 POST /api/redemption/
@@ -251,6 +253,7 @@ POST /api/user/passkey/verify/begin
 POST /api/user/passkey/verify/finish
 POST /api/user/pay
 POST /api/user/qq/bind/code
+POST /api/user/qq/cleanup/run
 POST /api/user/qq/panel/sync
 POST /api/user/register
 POST /api/user/reset
