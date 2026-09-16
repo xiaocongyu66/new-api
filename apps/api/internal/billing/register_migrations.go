@@ -18,5 +18,6 @@ func init() {
 		dbx.Migration{Model: &QQRedPacket{}, Name: "QQRedPacket"},
 		dbx.Migration{Model: &QQRedPacketGrab{}, Name: "QQRedPacketGrab"},
 		dbx.Migration{Model: &QQSteal{}, Name: "QQSteal"},
+		dbx.Migration{Model: &QQGroupMember{}, Name: "QQGroupMember"},
 	)
 }

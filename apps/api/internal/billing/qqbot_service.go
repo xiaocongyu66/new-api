@@ -488,6 +488,14 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 	}
 	content := strings.TrimSpace(event.Content)
 
+	// 潜水清理依赖「谁在说话」的累积记录：每条群消息都更新该成员的
+	// 最后发言时间。失败只记日志不影响消息处理主流程。
+	if IsCleanupGroup(event.GroupOpenID) {
+		if err := TouchGroupMember(event.GroupOpenID, openID, event.Author.Username, 0); err != nil {
+			common.SysError("记录群成员活跃失败: " + err.Error())
+		}
+	}
+
 	if cmd, ok := isDropCommand(content); ok {
 		reply := HandleDropCommand(cmd, openID, event.GroupOpenID)
 		if err := replyGroupMarkdown(RecallKindDropCommand, event.GroupOpenID, event.ID, "", reply, nil, 1); err != nil {

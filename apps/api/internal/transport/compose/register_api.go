@@ -39,6 +39,9 @@ func SetApiRouter(router contract.Engine) {
 		// QQ open-platform webhook. Public by design; every dispatch must pass
 		// Ed25519 signature verification inside the handler.
 		apiRouter.POST("/qqbot/webhook", anonymousRequestBodyLimit, billing.QQBotWebhook)
+		// NapCat OneBot v11 webhook: @ 桥接入口，把官方 bot 警告消息里的
+		// member_openid 关联到真实 QQ 号。Token 校验在 handler 内部。
+		apiRouter.POST("/qqbot/napcat/webhook", anonymousRequestBodyLimit, billing.NapCatWebhook)
 		apiRouter.GET("/pricing", middleware.HeaderNavModuleAuth("pricing"), handler.GetPricing)
 		// /api/log routes
 		logRoute := apiRouter.Group("/log")
@@ -180,6 +183,11 @@ func SetApiRouter(router contract.Engine) {
 				selfRoute.POST("/qq/bind/code", middleware.CriticalRateLimit(), middleware.DisableCache(), billing.GenerateQQBindCode)
 				selfRoute.DELETE("/qq/bind", middleware.CriticalRateLimit(), billing.UnbindQQ)
 				selfRoute.POST("/qq/panel/sync", security.AdminAuth(), middleware.CriticalRateLimit(), billing.SyncQQPanel)
+
+				// QQ group inactive-member cleanup: preview is read-only,
+				// run triggers an async job. Both are admin-only.
+				selfRoute.GET("/qq/cleanup/preview", security.AdminAuth(), billing.GetCleanupPreview)
+				selfRoute.POST("/qq/cleanup/run", security.AdminAuth(), middleware.CriticalRateLimit(), billing.RunCleanup)
 
 				// Custom OAuth bindings
 				selfRoute.GET("/oauth/bindings", identity.GetUserOAuthBindings)

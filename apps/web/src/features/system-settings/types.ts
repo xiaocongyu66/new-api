@@ -433,6 +433,20 @@ export type BillingSettings = {
   'qq_bot_setting.recall_delay_seconds': number
   'qq_bot_setting.recall_policies': string
   'qq_bot_setting.admin_open_ids': string
+  'qq_bot_setting.cleanup_enabled': boolean
+  'qq_bot_setting.cleanup_groups': string
+  'qq_bot_setting.napcat_onebot_http_address': string
+  'qq_bot_setting.napcat_onebot_access_token': string
+  'qq_bot_setting.cleanup_inactive_days': number
+  'qq_bot_setting.cleanup_grace_days': number
+  'qq_bot_setting.cleanup_warning_template': string
+  'qq_bot_setting.cleanup_kick_min_seconds': number
+  'qq_bot_setting.cleanup_kick_max_seconds': number
+  'qq_bot_setting.cleanup_batch_size': number
+  'qq_bot_setting.cleanup_dry_run': boolean
+  'qq_bot_setting.cleanup_exempt_bound_users': boolean
+  'qq_bot_setting.cleanup_warn_hours': number
+  'qq_bot_setting.cleanup_group_numbers': string
 }
 
 export type OperationsSettings = {
