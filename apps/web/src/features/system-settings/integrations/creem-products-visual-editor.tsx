@@ -24,10 +24,8 @@ import { StaticDataTable } from '@/components/data-table/static/static-data-tabl
 import { StaticRowActions } from '@/components/data-table/static/static-row-actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  formatCreemPrice,
-  formatQuotaShort,
-} from '@/features/wallet/lib/format'
+import { formatCreemPrice } from '@/features/wallet/lib/format'
+import { formatNumber } from '@/lib/format'
 
 import { safeJsonParseWithValidation } from '../utils/json-parser'
 import { isArray } from '../utils/json-validators'
@@ -212,8 +210,13 @@ export function CreemProductsVisualEditor({
                 id: 'quota',
                 header: t('Quota'),
                 cell: (product) => (
+                  // The admin config editor stores raw internal quota (the
+                  // dialog input placeholder is "e.g., 500000"), so render it
+                  // as a plain integer. Display-scale formatters like
+                  // formatQuotaShort are for *_display values; applying them
+                  // here would make raw quota read as currency (500.0K).
                   <span className='font-mono text-sm'>
-                    {formatQuotaShort(product.quota)}
+                    {formatNumber(product.quota)}
                   </span>
                 ),
               },
@@ -286,9 +289,9 @@ export function CreemProductsVisualEditor({
                     <span className='text-muted-foreground min-w-16'>
                       {t('Quota')}:
                     </span>
-                    <span className='font-mono'>
-                      {formatQuotaShort(product.quota)}
-                    </span>
+                      <span className='font-mono'>
+                        {formatNumber(product.quota)}
+                      </span>
                   </div>
                 </div>
               </div>
