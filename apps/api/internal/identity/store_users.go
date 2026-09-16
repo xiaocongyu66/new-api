@@ -99,25 +99,33 @@ type User struct {
 	// raw quota fields in the configured display currency. gorm:"-" so they are
 	// never columns; AfterFind fills them on every read (list, search, single),
 	// so the frontend never divides by QuotaPerUnit.
-	QuotaDisplay     float64                    `json:"quota_display" gorm:"-"`
-	UsedQuotaDisplay float64                    `json:"used_quota_display" gorm:"-"`
-	RequestCount     int                        `json:"request_count" gorm:"type:int;default:0;"` // request number
-	Spore            int64                      `json:"spore" gorm:"type:bigint;not null;default:0;column:spore"`
-	Group            string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
-	AffCode          string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
-	AffCount         int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
-	AffQuota         int                        `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
-	AffHistoryQuota  int                        `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
-	InviterId        int                        `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
-	DeletedAt        gorm.DeletedAt             `gorm:"index"`
-	LinuxDOId        string                     `json:"linux_do_id" gorm:"column:linux_do_id;index"`
-	Setting          string                     `json:"setting" gorm:"type:text;column:setting"`
-	Remark           string                     `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
-	StripeCustomer   string                     `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
-	CreatedAt        int64                      `json:"created_at" gorm:"autoCreateTime;column:created_at"`
-	LastLoginAt      int64                      `json:"last_login_at" gorm:"default:0;column:last_login_at"`
-	AuthVersion      int64                      `json:"-" gorm:"type:bigint;not null;default:1;column:auth_version"`
-	AdminPermissions map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
+	QuotaDisplay           float64 `json:"quota_display" gorm:"-"`
+	UsedQuotaDisplay       float64 `json:"used_quota_display" gorm:"-"`
+	AffQuotaDisplay        float64 `json:"aff_quota_display" gorm:"-"`
+	AffHistoryQuotaDisplay float64 `json:"aff_history_quota_display" gorm:"-"`
+	RequestCount           int     `json:"request_count" gorm:"type:int;default:0;"` // request number
+	Spore                  int64   `json:"spore" gorm:"type:bigint;not null;default:0;column:spore"`
+	Group                  string  `json:"group" gorm:"type:varchar(64);default:'default'"`
+	AffCode                string  `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
+	AffCount               int     `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
+	AffQuota               int     `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
+	AffHistoryQuota        int     `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
+	// 邀请菌种奖励的累计收入（内部单位，1 = 0.1 菌种）。菌种是站内凭证、发放
+	// 即到账，没有「待入账」中间态，所以只有累计一列；前端总收入展示用它。
+	AffSporeHistory int64 `json:"aff_spore_history" gorm:"type:bigint;not null;default:0;column:aff_spore_history"`
+	// AffSporeHistoryDisplay 是 AffSporeHistory 的展示边界换算（菌种数值，
+	// 已除以 10），由 AfterFind 填充，前端不再自行换算。
+	AffSporeHistoryDisplay float64                    `json:"aff_spore_history_display" gorm:"-"`
+	InviterId              int                        `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	DeletedAt              gorm.DeletedAt             `gorm:"index"`
+	LinuxDOId              string                     `json:"linux_do_id" gorm:"column:linux_do_id;index"`
+	Setting                string                     `json:"setting" gorm:"type:text;column:setting"`
+	Remark                 string                     `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
+	StripeCustomer         string                     `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
+	CreatedAt              int64                      `json:"created_at" gorm:"autoCreateTime;column:created_at"`
+	LastLoginAt            int64                      `json:"last_login_at" gorm:"default:0;column:last_login_at"`
+	AuthVersion            int64                      `json:"-" gorm:"type:bigint;not null;default:1;column:auth_version"`
+	AdminPermissions       map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
 	// QQBinding 住在 qq_bindings 表而不是 users 的列上，只有管理端的单用户
 	// 查询会把它读出来，列表查询不联表。
 	QQOpenID string `json:"qq_open_id,omitempty" gorm:"-:all"`
@@ -129,6 +137,10 @@ type User struct {
 func (user *User) AfterFind(_ *gorm.DB) error {
 	user.QuotaDisplay = quotaToDisplayAmount(user.Quota)
 	user.UsedQuotaDisplay = quotaToDisplayAmount(user.UsedQuota)
+	user.AffQuotaDisplay = quotaToDisplayAmount(user.AffQuota)
+	user.AffHistoryQuotaDisplay = quotaToDisplayAmount(user.AffHistoryQuota)
+	// 菌种是 1/10 单位，展示数值 = 内部单位 / 10（见 FormatSpore）。
+	user.AffSporeHistoryDisplay = float64(user.AffSporeHistory) / float64(SporeUnitsPerSpore)
 	return nil
 }
 
@@ -462,6 +474,12 @@ func rewardInviterSpore(inviterId int) {
 	if err := IncreaseUserSpore(inviterId, tenths); err != nil {
 		common.SysError(fmt.Sprintf("发放开拓奖励菌种失败: inviter=%d err=%s", inviterId, err.Error()))
 		return
+	}
+	// 记累计收入，供钱包推荐卡片「总收入」展示。失败只记日志：余额已入账，
+	// 不能因为统计列失败而回滚一笔已发放的奖励。
+	if err := dbx.DB.Model(&User{}).Where("id = ?", inviterId).
+		UpdateColumn("aff_spore_history", gorm.Expr("aff_spore_history + ?", tenths)).Error; err != nil {
+		common.SysError(fmt.Sprintf("累计邀请菌种收入失败: inviter=%d err=%s", inviterId, err.Error()))
 	}
 	writeSystemLog(inviterId, "开拓奖励")
 }

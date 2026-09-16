@@ -77,6 +77,7 @@ func GetStatus(c contract.Context) {
 		"spore_inviter_reward":          float64(common.SporeInviterRewardTenths) / 10,
 		"inviter_reward_currency":       common.InviterRewardCurrency,
 		"inviter_reward_display":        billing.QuotaToDisplayAmount(common.QuotaForInviter),
+		"invitee_reward_display":        billing.QuotaToDisplayAmount(common.QuotaForInvitee),
 		"enable_drawing":                common.DrawingEnabled,
 		"enable_task":                   common.TaskEnabled,
 		"enable_data_export":            common.DataExportEnabled,

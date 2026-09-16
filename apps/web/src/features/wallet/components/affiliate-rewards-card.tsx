@@ -19,22 +19,21 @@ For commercial licensing, please contact support@quantumnous.com
 import { Share2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import {
-  SPORE_UNITS_PER_SPORE,
-  formatSpore,
-  getSporeName,
-  getSporeSymbol,
-} from '@/lib/spore'
-import { getCurrencyDisplay } from '@/lib/currency'
-import { useSystemConfigStore } from '@/stores/system-config-store'
-
 import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { IconBadge } from '@/components/ui/icon-badge'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { getCurrencyDisplay } from '@/lib/currency'
 import { formatQuota } from '@/lib/format'
+import {
+  SPORE_UNITS_PER_SPORE,
+  formatSpore,
+  getSporeName,
+  getSporeSymbol,
+} from '@/lib/spore'
+import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import type { UserWalletData } from '../types'
 
@@ -46,6 +45,48 @@ interface AffiliateRewardsCardProps {
   loading?: boolean
 }
 
+/**
+ * Build the "inviter X, invitee Y" reward line shown on the referral card.
+ * The inviter reward is paid in the admin-configured currency (quota, spore, or
+ * both); the invitee reward is quota only. Returns null when no reward is
+ * configured, so the card falls back to the generic description.
+ */
+export function buildReferralRewardLine(args: {
+  inviterRewardDisplay?: number
+  inviteeRewardDisplay?: number
+  sporeInviterReward?: number
+  inviterRewardCurrency?: 'quota' | 'spore' | 'both'
+  sporeUnit: string
+}): { inviter: string; invitee: string } | null {
+  const {
+    inviterRewardDisplay,
+    inviteeRewardDisplay,
+    sporeInviterReward,
+    inviterRewardCurrency,
+    sporeUnit,
+  } = args
+  const paysSpore = inviterRewardCurrency === 'spore'
+  const paysBoth = inviterRewardCurrency === 'both'
+
+  const inviterSporeUnits = (sporeInviterReward ?? 0) * SPORE_UNITS_PER_SPORE
+  const inviterParts: string[] = []
+  if (!paysSpore && (inviterRewardDisplay ?? 0) > 0) {
+    inviterParts.push(formatQuota(inviterRewardDisplay ?? 0))
+  }
+  if ((paysSpore || paysBoth) && inviterSporeUnits > 0) {
+    inviterParts.push(`${sporeUnit} ${formatSpore(inviterSporeUnits)}`)
+  }
+
+  const inviter = inviterParts.join(' + ')
+  const invitee =
+    (inviteeRewardDisplay ?? 0) > 0
+      ? formatQuota(inviteeRewardDisplay ?? 0)
+      : ''
+
+  if (!inviter && !invitee) return null
+  return { inviter, invitee }
+}
+
 export function AffiliateRewardsCard({
   user,
   affiliateLink,
@@ -54,8 +95,12 @@ export function AffiliateRewardsCard({
   loading,
 }: AffiliateRewardsCardProps) {
   const { t } = useTranslation()
-  const { sporeInviterReward, inviterRewardDisplay, inviterRewardCurrency } =
-    useSystemConfigStore.getState().config.currency
+  const {
+    sporeInviterReward,
+    inviterRewardDisplay,
+    inviteeRewardDisplay,
+    inviterRewardCurrency,
+  } = useSystemConfigStore.getState().config.currency
   // 邀请奖励货币跟随后台设置：菌种模式显示菌种符号/菌种数额，
   // 余额模式显示余额自定义符号/额度数额，both 模式两者并列展示。
   const paysSpore = inviterRewardCurrency === 'spore'
@@ -85,6 +130,28 @@ export function AffiliateRewardsCard({
 
   const hasRewards = (user?.aff_quota ?? 0) > 0
 
+  // 邀请者奖励数额：按后台货币拼装，both 模式两种并列；受邀者奖励只有额度。
+  const rewardLine = buildReferralRewardLine({
+    inviterRewardDisplay,
+    inviteeRewardDisplay,
+    sporeInviterReward,
+    inviterRewardCurrency,
+    sporeUnit,
+  })
+
+  // 待确认/累计：两种货币都展示。奶酪走后端换算的 _display；菌种发放即到账，
+  // 没有待入账中间态，待确认展示当前余额，总收入展示后端累计的 aff_spore_history。
+  const sporePending = formatSpore(user?.spore ?? 0)
+  const sporeTotal = formatSpore(user?.aff_spore_history ?? 0)
+  const pendingValue =
+    paysSpore || paysBoth
+      ? `${formatQuota(user?.aff_quota_display ?? 0)} + ${sporeUnit} ${sporePending}`
+      : formatQuota(user?.aff_quota_display ?? 0)
+  const totalValue =
+    paysSpore || paysBoth
+      ? `${formatQuota(user?.aff_history_quota_display ?? 0)} + ${sporeUnit} ${sporeTotal}`
+      : formatQuota(user?.aff_history_quota_display ?? 0)
+
   return (
     <Card data-card-hover='false' className='bg-muted/20 py-0'>
       <CardContent className='grid gap-3 p-3 sm:gap-4 sm:p-4 lg:grid-cols-[minmax(200px,1fr)_minmax(180px,0.65fr)_minmax(280px,1fr)] lg:items-center'>
@@ -103,43 +170,22 @@ export function AffiliateRewardsCard({
               {t('Referral Program')}
             </h3>
             <p className='text-muted-foreground line-clamp-1 text-xs'>
-              {paysBoth && (sporeInviterReward ?? 0) > 0
-                ? t('Each successful invite grants {{reward}}.', {
-                    reward: `${formatQuota(inviterRewardDisplay ?? 0)} + ${sporeUnit} ${formatSpore(
-                      (sporeInviterReward ?? 0) * SPORE_UNITS_PER_SPORE
-                    )}`,
+              {rewardLine
+                ? t('Inviter {{inviter}}, invitee {{invitee}}', {
+                    inviter: rewardLine.inviter || t('None'),
+                    invitee: rewardLine.invitee || t('None'),
                   })
-                : paysSpore && (sporeInviterReward ?? 0) > 0
-                  ? t(
-                      'Each successful invite instantly grants {{amount}} {{label}} to your voucher balance.',
-                      {
-                        amount: formatSpore(
-                          (sporeInviterReward ?? 0) * SPORE_UNITS_PER_SPORE
-                        ),
-                        label: getSporeName(),
-                      }
-                    )
-                  : t(
-                      'Earn rewards when users join through your referral link. Transfer accumulated rewards to your balance anytime.'
-                    )}
+                : t(
+                    'Earn rewards when users join through your referral link. Transfer accumulated rewards to your balance anytime.'
+                  )}
             </p>
           </div>
         </div>
 
         <div className='grid grid-cols-3 gap-1.5 text-center'>
           {[
-            [
-              t('Pending'),
-              paysSpore
-                ? `${sporeUnit} ${formatSpore(0)}`
-                : formatQuota(user?.aff_quota_display ?? 0),
-            ],
-            [
-              t('Total Earned'),
-              paysSpore
-                ? `${sporeUnit} ${formatSpore(0)}`
-                : formatQuota(user?.aff_history_quota_display ?? 0),
-            ],
+            [t('Pending'), pendingValue],
+            [t('Total Earned'), totalValue],
             [t('Invites'), String(user?.aff_count ?? 0)],
           ].map(([label, value]) => (
             <div key={label}>

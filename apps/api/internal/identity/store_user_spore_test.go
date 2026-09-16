@@ -140,6 +140,19 @@ func TestRewardInviterSpore(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), spore, "quota currency mode must not grant spore")
 
+	// 累计收入契约：发放即到账的菌种同时累加 aff_spore_history，钱包推荐
+	// 卡片「总收入」读这一列展示；quota 模式不得累加。
+	history, err := GetUserAffSporeHistory(inviter.Id)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), history, "granted spore must accumulate into aff_spore_history")
+
+	common.InviterRewardCurrency = "spore"
+	common.SporeInviterRewardTenths = 3
+	rewardInviterSpore(inviter.Id)
+	history, err = GetUserAffSporeHistory(inviter.Id)
+	require.NoError(t, err)
+	assert.Equal(t, int64(6), history, "a second grant must accumulate")
+
 	// Nil inviter id does nothing
 	common.InviterRewardCurrency = "spore"
 	rewardInviterSpore(0)

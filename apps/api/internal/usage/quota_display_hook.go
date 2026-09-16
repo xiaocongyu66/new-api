@@ -1,5 +1,7 @@
 package usage
 
+import "math"
+
 // OnQuotaToDisplayAmount converts an internal quota integer to the amount in
 // the site's configured display currency. The billing domain owns the display
 // settings and already imports this package, so it registers the conversion
@@ -19,4 +21,18 @@ func quotaToDisplayAmount(quota int) float64 {
 		return float64(quota)
 	}
 	return OnQuotaToDisplayAmount(quota)
+}
+
+// quotaToDisplayAmount64 renders an int64 relay quota value. Relay settlement
+// carries quota as int64 while stored quota is int32, so the value is clamped
+// to the int32 range before conversion: an out-of-range input saturates to the
+// nearest representable display amount instead of wrapping.
+func quotaToDisplayAmount64(quota int64) float64 {
+	if quota > math.MaxInt32 {
+		return quotaToDisplayAmount(math.MaxInt32)
+	}
+	if quota < math.MinInt32 {
+		return quotaToDisplayAmount(math.MinInt32)
+	}
+	return quotaToDisplayAmount(int(quota))
 }

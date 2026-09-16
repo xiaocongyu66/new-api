@@ -547,6 +547,8 @@ func buildSelfUserData(user *User) map[string]interface{} {
 		"aff_quota_display":         quotaToDisplayAmount(user.AffQuota),
 		"aff_history_quota_display": quotaToDisplayAmount(user.AffHistoryQuota),
 		"aff_history_quota":         user.AffHistoryQuota,
+		"aff_spore_history":         user.AffSporeHistory,
+		"aff_spore_history_display": user.AffSporeHistoryDisplay,
 		"inviter_id":                user.InviterId,
 		"linux_do_id":               user.LinuxDOId,
 		"setting":                   user.Setting,
@@ -1538,6 +1540,9 @@ func TopUp(c contract.Context) {
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,
 		"message": "",
-		"data":    quota,
+		"data": common.H{
+			"quota":         quota,
+			"quota_display": quotaToDisplayAmount(quota),
+		},
 	})
 }

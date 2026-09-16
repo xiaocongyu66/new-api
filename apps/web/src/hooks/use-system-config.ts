@@ -54,6 +54,7 @@ interface StatusApiResponse {
     spore_inviter_reward?: number
     inviter_reward_currency?: string
     inviter_reward_display?: number
+    invitee_reward_display?: number
   }
 }
 
@@ -79,7 +80,8 @@ export function mapStatusDataToConfig(
     DEFAULT_CURRENCY_CONFIG.quotaDisplayType
 
   const currency: CurrencyConfig = {
-    displayInCurrency: data.display_in_currency ?? DEFAULT_CURRENCY_CONFIG.displayInCurrency,
+    displayInCurrency:
+      data.display_in_currency ?? DEFAULT_CURRENCY_CONFIG.displayInCurrency,
     quotaDisplayType,
     usdExchangeRate: toNumber(
       data.usd_exchange_rate,
@@ -101,6 +103,7 @@ export function mapStatusDataToConfig(
     sporeSymbol: data.spore_symbol?.trim() ?? '',
     sporeInviterReward: toNumber(data.spore_inviter_reward, 0),
     inviterRewardDisplay: toNumber(data.inviter_reward_display, 0),
+    inviteeRewardDisplay: toNumber(data.invitee_reward_display, 0),
     inviterRewardCurrency:
       data.inviter_reward_currency === 'spore' ||
       data.inviter_reward_currency === 'both'

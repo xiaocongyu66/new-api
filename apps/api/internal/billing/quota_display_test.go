@@ -92,6 +92,39 @@ func TestQuotaFromDisplayAmountRoundTrips(t *testing.T) {
 	}
 }
 
+// TestQuotaToDisplayAmount64Saturates guards the int64 variant used by
+// subscription amounts and Creem products. int64 quota must never overflow the
+// int32 quota-column semantics when rendered, and in-range values must match
+// the int variant exactly so a plan card and a purchase dialog can't drift.
+func TestQuotaToDisplayAmount64Saturates(t *testing.T) {
+	previousType := generalSetting.QuotaDisplayType
+	t.Cleanup(func() { generalSetting.QuotaDisplayType = previousType })
+	generalSetting.QuotaDisplayType = QuotaDisplayTypeUSD
+
+	assert.Equal(t, 20.0, QuotaToDisplayAmount64(10_000_000))
+	assert.Equal(t, QuotaToDisplayAmount(1_000_000), QuotaToDisplayAmount64(1_000_000))
+	assert.Equal(t, QuotaToDisplayAmount(math.MaxInt32), QuotaToDisplayAmount64(math.MaxInt64))
+	assert.Equal(t, QuotaToDisplayAmount(math.MinInt32), QuotaToDisplayAmount64(math.MinInt64))
+}
+
+// TestPopulateCreemProductDisplay is the storefront regression: admin Creem
+// config stores raw internal quota, and the product card must render the
+// converted amount or paying users see "Quota: 5,000,000" next to "Price: $10".
+func TestPopulateCreemProductDisplay(t *testing.T) {
+	previousType := generalSetting.QuotaDisplayType
+	t.Cleanup(func() { generalSetting.QuotaDisplayType = previousType })
+	generalSetting.QuotaDisplayType = QuotaDisplayTypeUSD
+
+	products := []CreemProduct{
+		{ProductId: "a", Quota: 5_000_000},
+		{ProductId: "b", Quota: 0},
+	}
+	PopulateCreemProductDisplay(products)
+
+	assert.Equal(t, 10.0, products[0].QuotaDisplay)
+	assert.Equal(t, 0.0, products[1].QuotaDisplay)
+}
+
 // TestQuotaToDisplayAmountMatchesFormatQuota asserts the numeric boundary and
 // the log renderer agree, so a log line and the UI can never drift.
 func TestQuotaToDisplayAmountMatchesFormatQuota(t *testing.T) {

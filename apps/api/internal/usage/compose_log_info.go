@@ -146,10 +146,12 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 		}
 		if relayInfo.SubscriptionPreConsumed > 0 {
 			other["subscription_pre_consumed"] = relayInfo.SubscriptionPreConsumed
+			other["subscription_pre_consumed_display"] = quotaToDisplayAmount64(relayInfo.SubscriptionPreConsumed)
 		}
 		// post_delta: settlement delta applied after actual usage is known (can be negative for refund)
 		if relayInfo.SubscriptionPostDelta != 0 {
 			other["subscription_post_delta"] = relayInfo.SubscriptionPostDelta
+			other["subscription_post_delta_display"] = quotaToDisplayAmount64(relayInfo.SubscriptionPostDelta)
 		}
 		if relayInfo.SubscriptionPlanId != 0 {
 			other["subscription_plan_id"] = relayInfo.SubscriptionPlanId
@@ -172,11 +174,15 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 				remain = 0
 			}
 			other["subscription_total"] = relayInfo.SubscriptionAmountTotal
+			other["subscription_total_display"] = quotaToDisplayAmount64(relayInfo.SubscriptionAmountTotal)
 			other["subscription_used"] = usedFinal
+			other["subscription_used_display"] = quotaToDisplayAmount64(usedFinal)
 			other["subscription_remain"] = remain
+			other["subscription_remain_display"] = quotaToDisplayAmount64(remain)
 		}
 		if consumed > 0 {
 			other["subscription_consumed"] = consumed
+			other["subscription_consumed_display"] = quotaToDisplayAmount64(consumed)
 		}
 		// Wallet quota is not deducted when billed from subscription.
 		other["wallet_quota_deducted"] = 0

@@ -155,8 +155,10 @@ function isFlowNodeKind(value: unknown): value is FlowNodeKind {
 
 function rowMetrics(row: FlowQuotaDataItem): FlowMetrics {
   return {
-    // Backend pre-converts (quota_display); raw fallback keeps older payloads finite.
-    quota: numberValue(row.quota_display ?? row.quota),
+    // Backend pre-converts quota_display on every read path
+    // (fillFlowDisplay), so the raw fallback would only ever render an
+    // unconverted integer as currency — the exact leak this PR removes.
+    quota: numberValue(row.quota_display),
     tokens: numberValue(row.token_used),
     requests: numberValue(row.count),
   }

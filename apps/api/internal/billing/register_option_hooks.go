@@ -173,6 +173,19 @@ func QuotaToDisplayAmount(quota int) float64 {
 	}
 }
 
+// QuotaToDisplayAmount64 is the int64 variant, saturating to the int32 range
+// before delegating so int64 subscription amounts can never overflow the
+// 32-bit quota columns when rendered.
+func QuotaToDisplayAmount64(quota int64) float64 {
+	if quota > math.MaxInt32 {
+		return QuotaToDisplayAmount(math.MaxInt32)
+	}
+	if quota < math.MinInt32 {
+		return QuotaToDisplayAmount(math.MinInt32)
+	}
+	return QuotaToDisplayAmount(int(quota))
+}
+
 // QuotaFromDisplayAmount is the inverse of QuotaToDisplayAmount: it takes a
 // amount submitted in the site's display currency and returns internal quota.
 // It is what form endpoints use instead of letting the browser pre-convert.

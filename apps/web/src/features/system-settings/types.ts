@@ -286,6 +286,13 @@ export type BillingSettings = {
   PreConsumedQuota: number
   QuotaForInviter: number
   QuotaForInvitee: number
+  // Display-currency siblings of the raw quota options. GET /api/option emits
+  // them server-converted; PUT accepts them back and converts to raw quota, so
+  // the admin form never multiplies by QuotaPerUnit.
+  QuotaForNewUser_display: number
+  PreConsumedQuota_display: number
+  QuotaForInviter_display: number
+  QuotaForInvitee_display: number
   TopUpLink: string
   'general_setting.docs_link': string
   'quota_setting.enable_free_model_pre_consume': boolean
@@ -432,7 +439,7 @@ export type OperationsSettings = {
   DefaultCollapseSidebar: boolean
   DemoSiteEnabled: boolean
   SelfUseModeEnabled: boolean
-  QuotaRemindThreshold: string
+  QuotaRemindThreshold_display: string
   SMTPServer: string
   SMTPPort: string
   SMTPAccount: string

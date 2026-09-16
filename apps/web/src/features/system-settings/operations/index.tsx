@@ -30,7 +30,7 @@ const defaultOperationsSettings: OperationsSettings = {
   DefaultCollapseSidebar: false,
   DemoSiteEnabled: false,
   SelfUseModeEnabled: false,
-  QuotaRemindThreshold: '',
+  QuotaRemindThreshold_display: '',
   SMTPServer: '',
   SMTPPort: '',
   SMTPAccount: '',

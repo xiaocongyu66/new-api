@@ -51,7 +51,11 @@ import {
   updateBillingPreference,
 } from '@/features/subscriptions/api'
 import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
-import { formatDuration, formatPlanPrice, formatResetPeriod } from '@/features/subscriptions/lib'
+import {
+  formatDuration,
+  formatPlanPrice,
+  formatResetPeriod,
+} from '@/features/subscriptions/lib'
 import type {
   PlanRecord,
   UserSubscriptionRecord,
@@ -231,8 +235,18 @@ export function SubscriptionPlansCard({
   }
 
   const getUsagePercent = (sub: UserSubscriptionRecord) => {
-    const total = Number(sub?.subscription?.amount_total || 0)
-    const used = Number(sub?.subscription?.amount_used || 0)
+    // 与展示口径一致：取后端换算好的 _display，否则进度条百分比与
+    // 显示的 已用/总额 数值会对不上。
+    const total = Number(
+      sub?.subscription?.amount_total_display ??
+        sub?.subscription?.amount_total ??
+        0
+    )
+    const used = Number(
+      sub?.subscription?.amount_used_display ??
+        sub?.subscription?.amount_used ??
+        0
+    )
     if (total <= 0) return 0
     return Math.round((used / total) * 100)
   }
@@ -401,8 +415,16 @@ export function SubscriptionPlansCard({
               <div className='max-h-64 space-y-3 overflow-y-auto pr-1'>
                 {allSubscriptions.map((sub) => {
                   const subscription = sub.subscription
-                  const totalAmount = Number(subscription?.amount_total || 0)
-                  const usedAmount = Number(subscription?.amount_used || 0)
+                  const totalAmount = Number(
+                    subscription?.amount_total_display ??
+                      subscription?.amount_total ??
+                      0
+                  )
+                  const usedAmount = Number(
+                    subscription?.amount_used_display ??
+                      subscription?.amount_used ??
+                      0
+                  )
                   const remainAmount =
                     totalAmount > 0 ? Math.max(0, totalAmount - usedAmount) : 0
                   const planTitle =
@@ -484,19 +506,10 @@ export function SubscriptionPlansCard({
                       <div className='text-muted-foreground mt-1'>
                         {t('Total Quota')}:{' '}
                         {totalAmount > 0 ? (
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={<span className='cursor-help' />}
-                            >
-                              {formatQuota(usedAmount)}/
-                              {formatQuota(totalAmount)} · {t('Remaining')}{' '}
-                              {formatQuota(remainAmount)}
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {t('Raw Quota')}: {usedAmount}/{totalAmount} ·{' '}
-                              {t('Remaining')} {remainAmount}
-                            </TooltipContent>
-                          </Tooltip>
+                          <span>
+                            {formatQuota(usedAmount)}/{formatQuota(totalAmount)}{' '}
+                            · {t('Remaining')} {formatQuota(remainAmount)}
+                          </span>
                         ) : (
                           t('Unlimited')
                         )}
@@ -529,7 +542,9 @@ export function SubscriptionPlansCard({
             {plans.map((p, index) => {
               const plan = p?.plan
               if (!plan) return null
-              const totalAmount = Number(plan.total_amount || 0)
+              const totalAmount = Number(
+                plan.total_amount_display ?? plan.total_amount ?? 0
+              )
               const price = formatPlanPrice(plan, t)
               const isPopular = index === 0 && plans.length > 1
               const limit = Number(plan.max_purchase_per_user || 0)

@@ -568,6 +568,19 @@ export function SubscriptionsMutateDrawer({
                     <FormItem>
                       <FormLabel>{t('Payment Mode')}</FormLabel>
                       <Select
+                        items={[
+                          { value: 'balance', label: t('Balance only') },
+                          { value: 'spore', label: t('Spore only') },
+                          { value: 'both', label: t('Both balance and spore') },
+                          {
+                            value: 'either',
+                            label: t('Either balance or spore'),
+                          },
+                          {
+                            value: 'none',
+                            label: t('Third-party only / Free'),
+                          },
+                        ]}
                         value={field.value || 'balance'}
                         onValueChange={field.onChange}
                       >

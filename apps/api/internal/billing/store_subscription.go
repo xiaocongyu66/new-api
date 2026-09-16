@@ -275,6 +275,11 @@ type UserSubscription struct {
 
 	AmountTotal int64 `json:"amount_total" gorm:"type:bigint;not null;default:0"`
 	AmountUsed  int64 `json:"amount_used" gorm:"type:bigint;not null;default:0"`
+	// AmountTotalDisplay / AmountUsedDisplay are the API-boundary renderings of
+	// the int64 quota fields above. Populated in AfterFind so the frontend never
+	// has to convert raw quota.
+	AmountTotalDisplay float64 `json:"amount_total_display" gorm:"-"`
+	AmountUsedDisplay  float64 `json:"amount_used_display" gorm:"-"`
 
 	StartTime int64  `json:"start_time" gorm:"bigint"`
 	EndTime   int64  `json:"end_time" gorm:"bigint;index;index:idx_user_sub_active,priority:3"`
@@ -307,6 +312,12 @@ func (s *UserSubscription) BeforeCreate(tx *gorm.DB) error {
 
 func (s *UserSubscription) BeforeUpdate(tx *gorm.DB) error {
 	s.UpdatedAt = common.GetTimestamp()
+	return nil
+}
+
+func (s *UserSubscription) AfterFind(_ *gorm.DB) error {
+	s.AmountTotalDisplay = QuotaToDisplayAmount64(s.AmountTotal)
+	s.AmountUsedDisplay = QuotaToDisplayAmount64(s.AmountUsed)
 	return nil
 }
 

@@ -56,6 +56,21 @@ func GetUserSpore(userId int) (int64, error) {
 	return spore, nil
 }
 
+// GetUserAffSporeHistory returns the cumulative referral spore earnings
+// (internal tenths) backing the wallet referral card's 总收入 stat.
+func GetUserAffSporeHistory(userId int) (int64, error) {
+	if userId <= 0 {
+		return 0, errors.New("invalid userId")
+	}
+	var history int64
+	err := dbx.DB.Model(&User{}).Where("id = ?", userId).
+		Select("aff_spore_history").Scan(&history).Error
+	if err != nil {
+		return 0, err
+	}
+	return history, nil
+}
+
 func IncreaseUserSpore(userId int, units int64) error {
 	if userId <= 0 {
 		return errors.New("invalid userId")

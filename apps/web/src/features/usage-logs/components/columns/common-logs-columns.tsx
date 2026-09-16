@@ -140,7 +140,7 @@ function buildTypeDetailSegments(
       })
     }
     segments.push({
-      text: `${t('Fee')}: ${formatLogQuota(other?.fee_quota ?? log.quota_display ?? log.quota)}`,
+      text: `${t('Fee')}: ${formatLogQuota(other?.fee_quota_display ?? other?.fee_quota ?? log.quota_display ?? log.quota)}`,
       muted: true,
     })
     return segments
@@ -696,7 +696,10 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const log = row.original
         if (!isDisplayableLogType(log.type)) return null
 
-        const quota = row.getValue('quota') as number
+        // fillLogQuotaDisplay runs on every log read path, so quota_display is
+        // always on the wire; a raw fallback would only render an unconverted
+        // integer as currency.
+        const quota = (log.quota_display ?? 0) as number
         const other = parseLogOther(log.other)
         return <LogCostDisplay quota={quota} other={other} />
       },

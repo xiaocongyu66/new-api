@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { formatCurrencyFromUSD, formatQuotaWithCurrency } from '@/lib/currency'
+import { formatCurrencyFromUSD } from '@/lib/currency'
 import { formatTimestampToDate } from '@/lib/format'
 
 import {
@@ -482,19 +482,6 @@ export function formatTimestamp(timestamp: number): string {
 }
 
 // ============================================================================
-// Quota Formatting
-// ============================================================================
-
-/** Format quota units using the global currency display configuration. */
-export function formatQuota(quota: number): string {
-  return formatQuotaWithCurrency(quota, {
-    digitsLarge: 2,
-    digitsSmall: 4,
-    abbreviate: true,
-  })
-}
-
-// ============================================================================
 // Validation Utilities
 // ============================================================================
 
@@ -625,6 +612,9 @@ export function aggregateChannelsByTag(
         status: undefined as unknown as number,
         group: '',
         used_quota: 0,
+        // The spread above copies the first child's used_quota_display; reset it
+        // so the aggregate loop below sums children instead of inheriting one.
+        used_quota_display: 0,
         response_time: 0,
         balance: 0,
         test_time: 0,
@@ -648,6 +638,11 @@ export function aggregateChannelsByTag(
 
     // Aggregate used_quota (sum)
     tagRow.used_quota += channel.used_quota
+    // Aggregate the _display sibling too. The tag row is built by spreading the
+    // first child, which would otherwise leave that child's used_quota_display
+    // in place and make the header show one channel's usage as the group total.
+    tagRow.used_quota_display =
+      (tagRow.used_quota_display ?? 0) + (channel.used_quota_display ?? 0)
 
     // Aggregate response_time (average)
     tagRow.response_time =

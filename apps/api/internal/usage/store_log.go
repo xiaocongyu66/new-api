@@ -652,8 +652,11 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 
 type Stat struct {
 	Quota int `json:"quota"`
-	Rpm   int `json:"rpm"`
-	Tpm   int `json:"tpm"`
+	// QuotaDisplay is the API-boundary rendering of Quota so the frontend's
+	// stat badge never has to convert raw quota.
+	QuotaDisplay float64 `json:"quota_display"`
+	Rpm          int     `json:"rpm"`
+	Tpm          int     `json:"tpm"`
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
@@ -716,6 +719,7 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 		return stat, errors.New("查询统计数据失败")
 	}
 	stat.Rpm, stat.Tpm = rpmTpm.Rpm, rpmTpm.Tpm
+	stat.QuotaDisplay = quotaToDisplayAmount(stat.Quota)
 
 	return stat, nil
 }
@@ -1061,6 +1065,7 @@ func SumUsedQuotaInternal(logType int, startTimestamp int64, endTimestamp int64,
 		return stat, errors.New("查询统计数据失败")
 	}
 	stat.Rpm, stat.Tpm = rpmTpm.Rpm, rpmTpm.Tpm
+	stat.QuotaDisplay = quotaToDisplayAmount(stat.Quota)
 
 	return stat, nil
 }

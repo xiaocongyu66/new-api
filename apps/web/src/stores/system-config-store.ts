@@ -53,6 +53,8 @@ export interface CurrencyConfig {
   sporeInviterReward?: number
   /** Reward granted to the inviter per successful invite, already converted to the display currency by /api/status (inviter_reward_display) */
   inviterRewardDisplay?: number
+  /** Reward granted to the invitee per successful invite, already converted to the display currency by /api/status (invitee_reward_display) */
+  inviteeRewardDisplay?: number
   /**
    * Currency the invite reward is paid in: 'quota' (balance, pending aff_quota),
    * 'spore' (voucher, credited instantly) or 'both' (paid together).

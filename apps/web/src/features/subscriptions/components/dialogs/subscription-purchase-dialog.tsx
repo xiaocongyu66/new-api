@@ -35,8 +35,8 @@ import {
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { formatQuota } from '@/lib/format'
-import { formatPlanPrice } from '../../lib'
-import { formatSpore, getSporeName } from '@/lib/spore'
+import { formatSpore, getSporeName, getSporeSymbol } from '@/lib/spore'
+
 import {
   paySubscriptionStripe,
   paySubscriptionCreem,
@@ -44,6 +44,7 @@ import {
   paySubscriptionWaffoPancake,
   paySubscriptionBalance,
 } from '../../api'
+import { formatPlanPrice } from '../../lib'
 import { formatDuration, formatResetPeriod } from '../../lib'
 import type { PlanRecord } from '../../types'
 
@@ -98,7 +99,8 @@ export function SubscriptionPurchaseDialog(props: Props) {
       ?.name ||
     selectedEpayMethod ||
     t('Select payment method')
-  const totalAmount = Number(plan.total_amount_display ?? plan.total_amount) || 0
+  const totalAmount =
+    Number(plan.total_amount_display ?? plan.total_amount) || 0
   // Backend-renders the USD price in display currency (balance_cost_display);
   // the comparison below is display-vs-display, no quota math in the client.
   const balanceCost = Math.max(0, Number(plan.balance_cost_display ?? 0))
@@ -122,7 +124,9 @@ export function SubscriptionPurchaseDialog(props: Props) {
   if (needSpore && !needBalance) {
     payButtonLabel = t('Pay with {{label}}', { label: getSporeName() })
   } else if (needBalance && needSpore) {
-    payButtonLabel = t('Pay with balance and {{label}}', { label: getSporeName() })
+    payButtonLabel = t('Pay with balance and {{label}}', {
+      label: getSporeName(),
+    })
   }
   const handlePayStripe = async () => {
     setPaying(true)
@@ -264,7 +268,11 @@ export function SubscriptionPurchaseDialog(props: Props) {
     }
   }
 
-  const renderCostRow = (label: string, required: string, available: string) => (
+  const renderCostRow = (
+    label: string,
+    required: string,
+    available: string
+  ) => (
     <div className='space-y-1'>
       <div className='flex items-center justify-between gap-2 text-xs'>
         <span className='text-muted-foreground'>
@@ -378,8 +386,8 @@ export function SubscriptionPurchaseDialog(props: Props) {
               {(needSpore || isEither) &&
                 renderCostRow(
                   getSporeName(),
-                  formatSpore(sporeCost),
-                  formatSpore(userSpore)
+                  `${getSporeSymbol() || getSporeName()} ${formatSpore(sporeCost)}`,
+                  `${getSporeSymbol() || getSporeName()} ${formatSpore(userSpore)}`
                 )}
 
               {(needBalance || isEither) && insufficientBalance && (
