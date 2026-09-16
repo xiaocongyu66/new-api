@@ -7,10 +7,6 @@ type QQBotSetting struct {
 	AppID     string `json:"app_id"`     // QQ 开放平台 AppID
 	AppSecret string `json:"app_secret"` // QQ 开放平台 AppSecret
 
-	// QQ 签到额度范围（与网页签到独立配置）
-	MinQuota int `json:"min_quota"` // QQ 签到最小额度奖励
-	MaxQuota int `json:"max_quota"` // QQ 签到最大额度奖励
-
 	QQCheckinEnabled bool `json:"qq_checkin_enabled"` // 启动 QQ 签到
 
 	// CheckinDisabledGroups 是逗号分隔的 group_openid 黑名单：
@@ -18,8 +14,7 @@ type QQBotSetting struct {
 	// /关闭签到 即可把当前群加入该名单，全局开关与网页签到不受影响。
 	CheckinDisabledGroups string `json:"checkin_disabled_groups"`
 
-	WebCheckinEnabled  bool `json:"web_checkin_enabled"`  // 启动网页签到
-	SinglePlatformOnly bool `json:"single_platform_only"` // 仅单平台签到（QQ 与网页共享每日额度）
+	WebCheckinEnabled bool `json:"web_checkin_enabled"` // 启动网页签到
 
 	// 签到通知样式，支持占位符 {货币} {金额}
 	NotifyTemplate string `json:"notify_template"`
@@ -147,8 +142,6 @@ const DefaultDropTemplate = "{@} 杰瑞在逃跑时掉落了 {金额}{货币} {�
 var qqBotSetting = QQBotSetting{
 	AppID:            "",
 	AppSecret:        "",
-	MinQuota:         1000,
-	MaxQuota:         10000,
 	QQCheckinEnabled: false,
 
 	CommandCooldownSeconds: 0,
@@ -160,7 +153,6 @@ var qqBotSetting = QQBotSetting{
 	CheckinDisabledGroups: "",
 
 	WebCheckinEnabled:  true,
-	SinglePlatformOnly: true,
 	NotifyTemplate:     DefaultNotifyTemplate,
 	AutoApproveEnabled: false,
 	AutoApproveKeyword: "",
@@ -228,16 +220,6 @@ func IsQQCheckinEnabled() bool {
 // IsWebCheckinEnabled 是否启用网页签到
 func IsWebCheckinEnabled() bool {
 	return qqBotSetting.WebCheckinEnabled
-}
-
-// IsSinglePlatformOnly 是否仅允许单平台签到
-func IsSinglePlatformOnly() bool {
-	return qqBotSetting.SinglePlatformOnly
-}
-
-// GetQQCheckinQuotaRange 获取 QQ 签到额度范围
-func GetQQCheckinQuotaRange() (min, max int) {
-	return qqBotSetting.MinQuota, qqBotSetting.MaxQuota
 }
 
 // GetNotifyTemplate 获取签到通知样式，为空时回落到默认值

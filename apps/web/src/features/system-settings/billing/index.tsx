@@ -114,13 +114,14 @@ const defaultBillingSettings: BillingSettings = {
   'checkin_setting.enabled': false,
   'checkin_setting.min_quota': 1000,
   'checkin_setting.max_quota': 10000,
+  // display siblings default to the currency equivalent of the raw defaults
+  'checkin_setting.min_quota_display': 0.002,
+  'checkin_setting.max_quota_display': 0.02,
+  'checkin_setting.single_platform_only': true,
   'qq_bot_setting.app_id': '',
   'qq_bot_setting.app_secret': '',
   'qq_bot_setting.qq_checkin_enabled': false,
   'qq_bot_setting.web_checkin_enabled': true,
-  'qq_bot_setting.single_platform_only': true,
-  'qq_bot_setting.min_quota': 1000,
-  'qq_bot_setting.max_quota': 10000,
   'qq_bot_setting.checkin_disabled_groups': '',
   'qq_bot_setting.notify_template': '',
   'qq_bot_setting.auto_approve_enabled': false,
@@ -163,9 +164,8 @@ const defaultBillingSettings: BillingSettings = {
   'qq_bot_setting.admin_open_ids': '',
   // Number (not undefined) so parseOptionValueSafe takes the number branch and
   // yields a real number; an undefined default falls through to the string
-  // branch and hands the form "0.5" instead of 0.5.
-  'qq_bot_setting.min_quota_display': 0,
-  'qq_bot_setting.max_quota_display': 0,
+  // branch and hands the form "0.5" instead of 0.5. The QQ check-in amount
+  // display keys are gone: check-in amounts moved to checkin_setting.
   'qq_bot_setting.drop_min_quota_display': 0,
   'qq_bot_setting.drop_max_quota_display': 0,
   'qq_bot_setting.drop_balance_anchor_display': 0,

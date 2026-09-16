@@ -2,7 +2,6 @@ package billing
 
 import (
 	"errors"
-	"math/rand"
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -63,41 +62,14 @@ func GetUserQQCheckinRecords(userId int, startDate, endDate string) ([]QQCheckin
 // UserQQCheckin 执行 QQ 渠道签到
 // openID / groupOpenID 仅用于留痕，便于排查问题
 func UserQQCheckin(userId int, openID, groupOpenID string) (*QQCheckin, error) {
-	setting := GetQQBotSetting()
-	if !setting.QQCheckinEnabled {
+	// QQ 渠道开关是入口自己的；签到判定与额度区间走与网页签到同一个核心
+	if !GetQQBotSetting().QQCheckinEnabled {
 		return nil, errors.New("QQ 签到功能未启用")
 	}
 
-	// 仅单平台签到：网页或 QQ 任一渠道签到过即视为今日已签到
-	if setting.SinglePlatformOnly {
-		hasChecked, err := HasCheckedInTodayAnyPlatform(userId)
-		if err != nil {
-			return nil, err
-		}
-		if hasChecked {
-			return nil, errors.New("今日已签到")
-		}
-	} else {
-		hasChecked, err := HasQQCheckedInToday(userId)
-		if err != nil {
-			return nil, err
-		}
-		if hasChecked {
-			return nil, errors.New("今日已签到")
-		}
-	}
-
-	// QQ 签到使用独立的额度区间
-	minQuota, maxQuota := setting.MinQuota, setting.MaxQuota
-	if minQuota < 0 {
-		minQuota = 0
-	}
-	if maxQuota < minQuota {
-		maxQuota = minQuota
-	}
-	quotaAwarded := minQuota
-	if maxQuota > minQuota {
-		quotaAwarded = minQuota + rand.Intn(maxQuota-minQuota+1)
+	quotaAwarded, err := evaluateDailyCheckin(userId, true)
+	if err != nil {
+		return nil, err
 	}
 
 	checkin := &QQCheckin{

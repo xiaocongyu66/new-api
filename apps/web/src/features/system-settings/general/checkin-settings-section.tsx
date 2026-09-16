@@ -43,10 +43,14 @@ import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
 
+// Amount fields are written through the `<key>_display` sibling so the backend
+// converts display currency -> internal quota. Sending the raw key a typed-in
+// currency number is what previously made check-in awards microscopic.
 const schema = z.object({
   enabled: z.boolean(),
-  minQuota: z.coerce.number().int().min(0),
-  maxQuota: z.coerce.number().int().min(0),
+  minQuota: z.coerce.number().min(0),
+  maxQuota: z.coerce.number().min(0),
+  singlePlatformOnly: z.boolean(),
 })
 
 type Values = z.infer<typeof schema>
@@ -58,6 +62,7 @@ export function CheckinSettingsSection({
     enabled: boolean
     minQuota: number
     maxQuota: number
+    singlePlatformOnly: boolean
   }
 }) {
   const { t } = useTranslation()
@@ -69,6 +74,7 @@ export function CheckinSettingsSection({
       enabled: defaultValues.enabled,
       minQuota: defaultValues.minQuota,
       maxQuota: defaultValues.maxQuota,
+      singlePlatformOnly: defaultValues.singlePlatformOnly,
     },
   })
 
@@ -87,15 +93,22 @@ export function CheckinSettingsSection({
 
     if (values.minQuota !== defaultValues.minQuota) {
       updates.push({
-        key: 'checkin_setting.min_quota',
+        key: 'checkin_setting.min_quota_display',
         value: String(values.minQuota),
       })
     }
 
     if (values.maxQuota !== defaultValues.maxQuota) {
       updates.push({
-        key: 'checkin_setting.max_quota',
+        key: 'checkin_setting.max_quota_display',
         value: String(values.maxQuota),
+      })
+    }
+
+    if (values.singlePlatformOnly !== defaultValues.singlePlatformOnly) {
+      updates.push({
+        key: 'checkin_setting.single_platform_only',
+        value: String(values.singlePlatformOnly),
       })
     }
 
@@ -146,51 +159,85 @@ export function CheckinSettingsSection({
           />
 
           {enabled && (
-            <div className='grid gap-6 sm:grid-cols-2'>
+            <>
               <FormField
                 control={form.control}
-                name='minQuota'
+                name='singlePlatformOnly'
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Minimum check-in quota')}</FormLabel>
+                  <SettingsSwitchItem>
+                    <SettingsSwitchContent>
+                      <FormLabel>
+                        {t('Single platform check-in only')}
+                      </FormLabel>
+                      <FormDescription>
+                        {t(
+                          'Once a user checks in on either the website or QQ, the other channel is blocked for the rest of the day'
+                        )}
+                      </FormDescription>
+                    </SettingsSwitchContent>
                     <FormControl>
-                      <Input
-                        type='number'
-                        min={0}
-                        placeholder={t('1000')}
-                        {...field}
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        disabled={updateOption.isPending || isSubmitting}
                       />
                     </FormControl>
-                    <FormDescription>
-                      {t('Minimum quota amount awarded for check-in')}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
+                  </SettingsSwitchItem>
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name='maxQuota'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Maximum check-in quota')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        min={0}
-                        placeholder={t('10000')}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t('Maximum quota amount awarded for check-in')}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+              <div className='grid gap-6 sm:grid-cols-2'>
+                <FormField
+                  control={form.control}
+                  name='minQuota'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Minimum check-in amount')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          type='number'
+                          min={0}
+                          step='0.001'
+                          placeholder='0.002'
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Lowest amount awarded per check-in, in the display currency'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='maxQuota'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Maximum check-in amount')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          type='number'
+                          min={0}
+                          step='0.001'
+                          placeholder='0.02'
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Highest amount awarded per check-in, in the display currency'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </>
           )}
         </SettingsForm>
       </Form>

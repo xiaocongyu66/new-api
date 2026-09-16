@@ -57,9 +57,6 @@ const qqbotSchema = z.object({
     app_secret: z.string(),
     qq_checkin_enabled: z.boolean(),
     web_checkin_enabled: z.boolean(),
-    single_platform_only: z.boolean(),
-    min_quota: z.coerce.number().min(0),
-    max_quota: z.coerce.number().min(0),
     checkin_disabled_groups: z.string(),
     notify_template: z.string(),
     auto_approve_enabled: z.boolean(),
@@ -114,8 +111,6 @@ type QQBotSettingsSectionProps = {
  * write their `<key>_display` siblings (display currency) — the backend
  * converts, so no quota arithmetic lives in the client. */
 export const QQBOT_AMOUNT_KEYS = [
-  'min_quota',
-  'max_quota',
   'drop_min_quota',
   'drop_max_quota',
   'drop_balance_anchor',
@@ -240,32 +235,6 @@ export function QQBotSettingsSection({
                   />
                 </FormControl>
               </SettingsSwitchItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name='qq_bot_setting.min_quota'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('QQ check-in minimum quota')}</FormLabel>
-                <FormControl>
-                  <Input type='number' min={0} {...field} />
-                </FormControl>
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name='qq_bot_setting.max_quota'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('QQ check-in maximum quota')}</FormLabel>
-                <FormControl>
-                  <Input type='number' min={0} {...field} />
-                </FormControl>
-              </FormItem>
             )}
           />
 

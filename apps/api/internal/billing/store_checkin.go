@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/identity"
 	"gorm.io/gorm"
 	"math/rand"
+	"sort"
 	"time"
 )
 
@@ -50,28 +51,57 @@ func HasCheckedInToday(userId int) (bool, error) {
 	return count > 0, err
 }
 
+// evaluateDailyCheckin 执行网页与 QQ 两个签到入口共用的前置判定与额度计算：
+// 启用状态、今日重复判定、额度区间钳制与随机。两侧必须走这里，否则会出现
+// 一个渠道能签、另一个渠道判定不一致的双倍领取漏洞。
+//
+// qqChannel 为 true 时表示调用方是 QQ 群签到（QQ 侧还有自己的渠道开关，
+// 由调用方在调用前检查）。返回值是本次应发放的内部 quota。
+func evaluateDailyCheckin(userId int, qqChannel bool) (int, error) {
+	setting := GetCheckinSetting()
+	if !setting.Enabled {
+		return 0, errors.New("签到功能未启用")
+	}
+
+	// 单平台模式跨两张表判定；否则只看调用方自己渠道的记录
+	var hasChecked bool
+	var err error
+	if setting.SinglePlatformOnly {
+		hasChecked, err = HasCheckedInTodayAnyPlatform(userId)
+	} else if qqChannel {
+		hasChecked, err = HasQQCheckedInToday(userId)
+	} else {
+		hasChecked, err = HasCheckedInToday(userId)
+	}
+	if err != nil {
+		return 0, err
+	}
+	if hasChecked {
+		return 0, errors.New("今日已签到")
+	}
+
+	// 计算随机额度奖励。负数与倒序区间在这里钳制，保证不发放负额度。
+	minQuota, maxQuota := setting.MinQuota, setting.MaxQuota
+	if minQuota < 0 {
+		minQuota = 0
+	}
+	if maxQuota < minQuota {
+		maxQuota = minQuota
+	}
+	quotaAwarded := minQuota
+	if maxQuota > minQuota {
+		quotaAwarded = minQuota + rand.Intn(maxQuota-minQuota+1)
+	}
+	return quotaAwarded, nil
+}
+
 // UserCheckin 执行用户签到
 // MySQL 和 PostgreSQL 使用事务保证原子性
 // SQLite 不支持嵌套事务，使用顺序操作 + 手动回滚
 func UserCheckin(userId int) (*Checkin, error) {
-	setting := GetCheckinSetting()
-	if !setting.Enabled {
-		return nil, errors.New("签到功能未启用")
-	}
-
-	// 检查今天是否已签到
-	hasChecked, err := HasCheckedInToday(userId)
+	quotaAwarded, err := evaluateDailyCheckin(userId, false)
 	if err != nil {
 		return nil, err
-	}
-	if hasChecked {
-		return nil, errors.New("今日已签到")
-	}
-
-	// 计算随机额度奖励
-	quotaAwarded := setting.MinQuota
-	if setting.MaxQuota > setting.MinQuota {
-		quotaAwarded = setting.MinQuota + rand.Intn(setting.MaxQuota-setting.MinQuota+1)
 	}
 
 	today := time.Now().Format("2006-01-02")
@@ -151,8 +181,6 @@ func GetUserCheckinStats(userId int, month string) (map[string]interface{}, erro
 	if err != nil {
 		return nil, err
 	}
-
-	// 转换为不包含敏感字段的记录
 	checkinRecords := make([]CheckinRecord, len(records))
 	for i, r := range records {
 		checkinRecords[i] = CheckinRecord{
@@ -162,8 +190,38 @@ func GetUserCheckinStats(userId int, month string) (map[string]interface{}, erro
 		}
 	}
 
-	// 检查今天是否已签到
-	hasCheckedToday, _ := HasCheckedInToday(userId)
+	// 单平台模式下，QQ 签到的记录不在 checkins 表里，但网页日历与统计必须
+	// 把它算进来，否则用户在 QQ 签到后网页仍显示"今日未签到"，与拦截逻辑
+	// （evaluateDailyCheckin 跨表判定）自相矛盾。
+	var qqTotalCheckins int64
+	var qqTotalQuota int64
+	if GetCheckinSetting().SinglePlatformOnly {
+		qqRecords, err := GetUserQQCheckinRecords(userId, startDate, endDate)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range qqRecords {
+			checkinRecords = append(checkinRecords, CheckinRecord{
+				CheckinDate:         r.CheckinDate,
+				QuotaAwarded:        r.QuotaAwarded,
+				QuotaAwardedDisplay: QuotaToDisplayAmount(r.QuotaAwarded),
+			})
+		}
+		// 按日期倒序合并（两侧各自已有序）
+		sort.Slice(checkinRecords, func(i, j int) bool {
+			return checkinRecords[i].CheckinDate > checkinRecords[j].CheckinDate
+		})
+		dbx.DB.Model(&QQCheckin{}).Where("user_id = ?", userId).Count(&qqTotalCheckins)
+		dbx.DB.Model(&QQCheckin{}).Where("user_id = ?", userId).Select("COALESCE(SUM(quota_awarded), 0)").Scan(&qqTotalQuota)
+	}
+
+	// 单平台模式下"今天是否已签到"必须跨表判定，和签到拦截用同一套规则
+	var hasCheckedToday bool
+	if GetCheckinSetting().SinglePlatformOnly {
+		hasCheckedToday, _ = HasCheckedInTodayAnyPlatform(userId)
+	} else {
+		hasCheckedToday, _ = HasCheckedInToday(userId)
+	}
 
 	// 获取用户所有时间的签到统计
 	var totalCheckins int64
@@ -172,11 +230,11 @@ func GetUserCheckinStats(userId int, month string) (map[string]interface{}, erro
 	dbx.DB.Model(&Checkin{}).Where("user_id = ?", userId).Select("COALESCE(SUM(quota_awarded), 0)").Scan(&totalQuota)
 
 	return map[string]interface{}{
-		"total_quota":         totalQuota,                            // 所有时间累计获得的额度
-		"total_quota_display": QuotaToDisplayAmount(int(totalQuota)), // 累计额度的展示金额
-		"total_checkins":      totalCheckins,                         // 所有时间累计签到次数
-		"checkin_count":       len(records),                          // 本月签到次数
-		"checked_in_today":    hasCheckedToday,                       // 今天是否已签到
-		"records":             checkinRecords,                        // 本月签到记录详情（不含id和user_id）
+		"total_quota":         totalQuota + qqTotalQuota,                            // 所有时间累计获得的额度
+		"total_quota_display": QuotaToDisplayAmount(int(totalQuota + qqTotalQuota)), // 累计额度的展示金额
+		"total_checkins":      totalCheckins + qqTotalCheckins,                      // 所有时间累计签到次数
+		"checkin_count":       len(checkinRecords),                                  // 本月签到次数
+		"checked_in_today":    hasCheckedToday,                                      // 今天是否已签到
+		"records":             checkinRecords,                                       // 本月签到记录详情（不含id和user_id）
 	}, nil
 }
