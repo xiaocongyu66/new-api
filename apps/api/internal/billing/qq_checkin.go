@@ -90,6 +90,17 @@ func UserQQCheckin(userId int, openID, groupOpenID string) (*QQCheckin, error) {
 // qqCheckinWithTransaction 使用事务执行 QQ 签到（MySQL / PostgreSQL）
 func qqCheckinWithTransaction(checkin *QQCheckin, userId int, quotaAwarded int) (*QQCheckin, error) {
 	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
+		// 与网页签到同一套临界区：锁用户行后在事务内重判，跨渠道并发
+		// 会在用户行上串行，后到的重判看到先到的已提交记录。
+		if err := lockUserForCheckin(tx, userId); err != nil {
+			return errors.New("签到失败，请稍后重试")
+		}
+		if checked, err := alreadyCheckedToday(tx, userId, true); err != nil {
+			return errors.New("签到失败，请稍后重试")
+		} else if checked {
+			return errors.New("今日已签到")
+		}
+
 		// 唯一索引 (user_id, checkin_date) 可防止并发重复签到
 		if err := tx.Create(checkin).Error; err != nil {
 			return errors.New("签到失败，请稍后重试")

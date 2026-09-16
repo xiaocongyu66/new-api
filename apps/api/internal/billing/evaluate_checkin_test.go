@@ -120,3 +120,43 @@ func TestEvaluateDailyCheckinQuotaRange(t *testing.T) {
 		})
 	}
 }
+
+// TestGetUserCheckinStatsMergesQQRecords covers the user-visible contract that
+// made the merge necessary: with single-platform mode on, a QQ check-in must
+// show up in the web calendar and count as "checked in today", otherwise the
+// page invites a check-in the API would reject.
+func TestGetUserCheckinStatsMergesQQRecords(t *testing.T) {
+	defer setupEvaluateTestDB(t)()
+	withCheckinSetting(t, true, true, 1000, 1000)
+
+	require.NoError(t, dbx.DB.Create(&QQCheckin{UserId: 7, CheckinDate: today(), QuotaAwarded: 1000, CreatedAt: now()}).Error)
+
+	stats, err := GetUserCheckinStats(7, today()[:7])
+	require.NoError(t, err)
+
+	records := stats["records"].([]CheckinRecord)
+	require.Len(t, records, 1)
+	assert.Equal(t, today(), records[0].CheckinDate)
+	assert.Equal(t, 1000, records[0].QuotaAwarded)
+	assert.Equal(t, int64(1), stats["total_checkins"])
+	assert.Equal(t, int64(1000), stats["total_quota"])
+	assert.True(t, stats["checked_in_today"].(bool))
+}
+
+// TestGetUserCheckinStatsIgnoresQQWhenMultiPlatform: with single-platform off,
+// QQ records stay out of the web calendar since the two channels are
+// independent daily rewards.
+func TestGetUserCheckinStatsIgnoresQQWhenMultiPlatform(t *testing.T) {
+	defer setupEvaluateTestDB(t)()
+	withCheckinSetting(t, true, false, 1000, 1000)
+
+	require.NoError(t, dbx.DB.Create(&QQCheckin{UserId: 8, CheckinDate: today(), QuotaAwarded: 1000, CreatedAt: now()}).Error)
+
+	stats, err := GetUserCheckinStats(8, today()[:7])
+	require.NoError(t, err)
+
+	records := stats["records"].([]CheckinRecord)
+	assert.Empty(t, records)
+	assert.Equal(t, int64(0), stats["total_checkins"])
+	assert.False(t, stats["checked_in_today"].(bool))
+}

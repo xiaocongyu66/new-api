@@ -51,28 +51,54 @@ func HasCheckedInToday(userId int) (bool, error) {
 	return count > 0, err
 }
 
+// countTodayCheckin 统计指定渠道今日的签到记录数。db 既可以是 dbx.DB（预判），
+// 也可以是事务（事务内重判），使两段判定共用同一段逻辑。
+func countTodayCheckin(db *gorm.DB, userId int, qqChannel bool) (bool, error) {
+	today := time.Now().Format("2006-01-02")
+	var model interface{}
+	if qqChannel {
+		model = &QQCheckin{}
+	} else {
+		model = &Checkin{}
+	}
+	var count int64
+	err := db.Model(model).
+		Where("user_id = ? AND checkin_date = ?", userId, today).
+		Count(&count).Error
+	return count > 0, err
+}
+
+// alreadyCheckedToday 按当前单平台策略判定用户今日是否已签到。单平台模式跨
+// 两张表，否则只看调用方所在渠道。传入事务可把判定与后续插入收进同一临界区，
+// 传入 dbx.DB 则用作打开事务前的快速预判。
+func alreadyCheckedToday(db *gorm.DB, userId int, qqChannel bool) (bool, error) {
+	if !GetCheckinSetting().SinglePlatformOnly {
+		return countTodayCheckin(db, userId, qqChannel)
+	}
+	webChecked, err := countTodayCheckin(db, userId, false)
+	if err != nil || webChecked {
+		return webChecked, err
+	}
+	return countTodayCheckin(db, userId, true)
+}
+
 // evaluateDailyCheckin 执行网页与 QQ 两个签到入口共用的前置判定与额度计算：
 // 启用状态、今日重复判定、额度区间钳制与随机。两侧必须走这里，否则会出现
 // 一个渠道能签、另一个渠道判定不一致的双倍领取漏洞。
 //
 // qqChannel 为 true 时表示调用方是 QQ 群签到（QQ 侧还有自己的渠道开关，
 // 由调用方在调用前检查）。返回值是本次应发放的内部 quota。
+//
+// 这里的"今日已签到"判定只是预判：真正的拦截在事务内锁用户行后重判（见
+// userCheckinWithTransaction），否则网页与 QQ 两个并发请求可能各自通过对方
+// 表外的检查后双发额度。额度区间在两个入口间共享，这是统一签到的设计目的。
 func evaluateDailyCheckin(userId int, qqChannel bool) (int, error) {
 	setting := GetCheckinSetting()
 	if !setting.Enabled {
 		return 0, errors.New("签到功能未启用")
 	}
 
-	// 单平台模式跨两张表判定；否则只看调用方自己渠道的记录
-	var hasChecked bool
-	var err error
-	if setting.SinglePlatformOnly {
-		hasChecked, err = HasCheckedInTodayAnyPlatform(userId)
-	} else if qqChannel {
-		hasChecked, err = HasQQCheckedInToday(userId)
-	} else {
-		hasChecked, err = HasCheckedInToday(userId)
-	}
+	hasChecked, err := alreadyCheckedToday(dbx.DB, userId, qqChannel)
 	if err != nil {
 		return 0, err
 	}
@@ -122,9 +148,31 @@ func UserCheckin(userId int) (*Checkin, error) {
 	return userCheckinWithTransaction(checkin, userId, quotaAwarded)
 }
 
+// lockUserForCheckin 锁定用户行直到事务结束。dbx.LockForUpdate 在 SQLite 上
+// 被跳过（该库单写者模型本身串行写），在 MySQL / PostgreSQL 上发出 FOR UPDATE。
+func lockUserForCheckin(tx *gorm.DB, userId int) error {
+	var user identity.User
+	return dbx.LockForUpdate(identity.UserQuery(tx)).
+		Where("id = ?", userId).
+		Select("id").
+		Take(&user).Error
+}
+
 // userCheckinWithTransaction 使用事务执行签到（适用于 MySQL 和 PostgreSQL）
 func userCheckinWithTransaction(checkin *Checkin, userId int, quotaAwarded int) (*Checkin, error) {
 	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
+		// 先锁用户行直到事务结束，再重判今日签到。网页与 QQ 两个渠道的并发
+		// 请求会在同一用户行上串行，后到的重判能看到先到的已提交记录；
+		// 每表各自的唯一约束只能挡同渠道重复，挡不住跨渠道双发。
+		if err := lockUserForCheckin(tx, userId); err != nil {
+			return errors.New("签到失败，请稍后重试")
+		}
+		if checked, err := alreadyCheckedToday(tx, userId, false); err != nil {
+			return errors.New("签到失败，请稍后重试")
+		} else if checked {
+			return errors.New("今日已签到")
+		}
+
 		// 步骤1: 创建签到记录
 		// 数据库有唯一约束 (user_id, checkin_date)，可以防止并发重复签到
 		if err := tx.Create(checkin).Error; err != nil {
@@ -193,9 +241,10 @@ func GetUserCheckinStats(userId int, month string) (map[string]interface{}, erro
 	// 单平台模式下，QQ 签到的记录不在 checkins 表里，但网页日历与统计必须
 	// 把它算进来，否则用户在 QQ 签到后网页仍显示"今日未签到"，与拦截逻辑
 	// （evaluateDailyCheckin 跨表判定）自相矛盾。
+	setting := GetCheckinSetting()
 	var qqTotalCheckins int64
 	var qqTotalQuota int64
-	if GetCheckinSetting().SinglePlatformOnly {
+	if setting.SinglePlatformOnly {
 		qqRecords, err := GetUserQQCheckinRecords(userId, startDate, endDate)
 		if err != nil {
 			return nil, err
@@ -217,7 +266,7 @@ func GetUserCheckinStats(userId int, month string) (map[string]interface{}, erro
 
 	// 单平台模式下"今天是否已签到"必须跨表判定，和签到拦截用同一套规则
 	var hasCheckedToday bool
-	if GetCheckinSetting().SinglePlatformOnly {
+	if setting.SinglePlatformOnly {
 		hasCheckedToday, _ = HasCheckedInTodayAnyPlatform(userId)
 	} else {
 		hasCheckedToday, _ = HasCheckedInToday(userId)
