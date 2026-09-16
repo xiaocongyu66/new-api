@@ -2,13 +2,14 @@ package billing
 
 import (
 	"errors"
-	"math/rand"
+	"fmt"
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/common/quotacache"
 	"github.com/QuantumNous/new-api/internal/identity"
+	"github.com/QuantumNous/new-api/internal/logger"
 	"gorm.io/gorm"
 )
 
@@ -63,41 +64,14 @@ func GetUserQQCheckinRecords(userId int, startDate, endDate string) ([]QQCheckin
 // UserQQCheckin 执行 QQ 渠道签到
 // openID / groupOpenID 仅用于留痕，便于排查问题
 func UserQQCheckin(userId int, openID, groupOpenID string) (*QQCheckin, error) {
-	setting := GetQQBotSetting()
-	if !setting.QQCheckinEnabled {
+	// QQ 渠道开关是入口自己的；签到判定与额度区间走与网页签到同一个核心
+	if !GetQQBotSetting().QQCheckinEnabled {
 		return nil, errors.New("QQ 签到功能未启用")
 	}
 
-	// 仅单平台签到：网页或 QQ 任一渠道签到过即视为今日已签到
-	if setting.SinglePlatformOnly {
-		hasChecked, err := HasCheckedInTodayAnyPlatform(userId)
-		if err != nil {
-			return nil, err
-		}
-		if hasChecked {
-			return nil, errors.New("今日已签到")
-		}
-	} else {
-		hasChecked, err := HasQQCheckedInToday(userId)
-		if err != nil {
-			return nil, err
-		}
-		if hasChecked {
-			return nil, errors.New("今日已签到")
-		}
-	}
-
-	// QQ 签到使用独立的额度区间
-	minQuota, maxQuota := setting.MinQuota, setting.MaxQuota
-	if minQuota < 0 {
-		minQuota = 0
-	}
-	if maxQuota < minQuota {
-		maxQuota = minQuota
-	}
-	quotaAwarded := minQuota
-	if maxQuota > minQuota {
-		quotaAwarded = minQuota + rand.Intn(maxQuota-minQuota+1)
+	quotaAwarded, err := evaluateDailyCheckin(userId, true)
+	if err != nil {
+		return nil, err
 	}
 
 	checkin := &QQCheckin{
@@ -118,6 +92,21 @@ func UserQQCheckin(userId int, openID, groupOpenID string) (*QQCheckin, error) {
 // qqCheckinWithTransaction 使用事务执行 QQ 签到（MySQL / PostgreSQL）
 func qqCheckinWithTransaction(checkin *QQCheckin, userId int, quotaAwarded int) (*QQCheckin, error) {
 	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
+		// 与网页签到同一套临界区：锁用户行后在事务内重判，跨渠道并发
+		// 会在用户行上串行，后到的重判看到先到的已提交记录。
+		if err := lockUserForCheckin(tx, userId); err != nil {
+			logger.LogError(nil, fmt.Sprintf("qq checkin: lock user %d failed: %s", userId, err))
+			return errors.New("签到失败，请稍后重试")
+		}
+		checked, err := alreadyCheckedToday(tx, userId, true)
+		if err != nil {
+			logger.LogError(nil, fmt.Sprintf("qq checkin: recheck user %d failed: %s", userId, err))
+			return errors.New("签到失败，请稍后重试")
+		}
+		if checked {
+			return errors.New("今日已签到")
+		}
+
 		// 唯一索引 (user_id, checkin_date) 可防止并发重复签到
 		if err := tx.Create(checkin).Error; err != nil {
 			return errors.New("签到失败，请稍后重试")

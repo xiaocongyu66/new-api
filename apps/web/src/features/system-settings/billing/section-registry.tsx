@@ -207,8 +207,13 @@ const BILLING_SECTIONS = [
       <CheckinSettingsSection
         defaultValues={{
           enabled: settings['checkin_setting.enabled'],
-          minQuota: settings['checkin_setting.min_quota'],
-          maxQuota: settings['checkin_setting.max_quota'],
+          // amount fields seed from their display-currency siblings. Never fall
+          // back to the raw key here: a raw quota (e.g. 1000) read into this
+          // currency field would be saved as 1000 currency units.
+          minQuota: settings['checkin_setting.min_quota_display'] ?? 0,
+          maxQuota: settings['checkin_setting.max_quota_display'] ?? 0,
+          singlePlatformOnly:
+            settings['checkin_setting.single_platform_only'] ?? true,
         }}
       />
     ),
@@ -226,12 +231,6 @@ const BILLING_SECTIONS = [
             settings['qq_bot_setting.qq_checkin_enabled'] ?? false,
           'qq_bot_setting.web_checkin_enabled':
             settings['qq_bot_setting.web_checkin_enabled'] ?? true,
-          'qq_bot_setting.single_platform_only':
-            settings['qq_bot_setting.single_platform_only'] ?? true,
-          'qq_bot_setting.min_quota':
-            settings['qq_bot_setting.min_quota'] ?? 1000,
-          'qq_bot_setting.max_quota':
-            settings['qq_bot_setting.max_quota'] ?? 10000,
           'qq_bot_setting.checkin_disabled_groups':
             settings['qq_bot_setting.checkin_disabled_groups'] ?? '',
           'qq_bot_setting.notify_template':
@@ -315,10 +314,7 @@ const BILLING_SECTIONS = [
           // Amount fields seed from their *_display siblings (display
           // currency), not the raw keys — the form's unflattenDefaults skips
           // the raw keys on purpose. Omitting these seeds every amount to 0.
-          'qq_bot_setting.min_quota_display':
-            settings['qq_bot_setting.min_quota_display'] ?? 0,
-          'qq_bot_setting.max_quota_display':
-            settings['qq_bot_setting.max_quota_display'] ?? 0,
+          // Check-in amounts seed from checkin_setting, not qq_bot_setting.
           'qq_bot_setting.drop_min_quota_display':
             settings['qq_bot_setting.drop_min_quota_display'] ?? 0,
           'qq_bot_setting.drop_max_quota_display':

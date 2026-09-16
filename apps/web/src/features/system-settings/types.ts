@@ -376,13 +376,13 @@ export type BillingSettings = {
   'checkin_setting.enabled': boolean
   'checkin_setting.min_quota': number
   'checkin_setting.max_quota': number
+  'checkin_setting.min_quota_display': number
+  'checkin_setting.max_quota_display': number
+  'checkin_setting.single_platform_only': boolean
   'qq_bot_setting.app_id': string
   'qq_bot_setting.app_secret': string
   'qq_bot_setting.qq_checkin_enabled': boolean
   'qq_bot_setting.web_checkin_enabled': boolean
-  'qq_bot_setting.single_platform_only': boolean
-  'qq_bot_setting.min_quota': number
-  'qq_bot_setting.max_quota': number
   'qq_bot_setting.checkin_disabled_groups': string
   'qq_bot_setting.notify_template': string
   'qq_bot_setting.auto_approve_enabled': boolean
@@ -402,8 +402,6 @@ export type BillingSettings = {
   'qq_bot_setting.transfer_daily_limit': number
   'qq_bot_setting.transfer_min_amount': number
   'qq_bot_setting.transfer_max_amount': number
-  'qq_bot_setting.min_quota_display'?: number
-  'qq_bot_setting.max_quota_display'?: number
   'qq_bot_setting.drop_min_quota_display'?: number
   'qq_bot_setting.drop_max_quota_display'?: number
   'qq_bot_setting.drop_balance_anchor_display'?: number

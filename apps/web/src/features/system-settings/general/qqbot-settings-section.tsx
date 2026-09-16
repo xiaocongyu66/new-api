@@ -44,22 +44,21 @@ import { useUpdateOption } from '../hooks/use-update-option'
 import { useResetForm } from '../hooks/use-reset-form'
 
 // Keys mirror QQBotSetting in apps/api/internal/billing/qqbot_setting.go.
-// Quota amounts are raw quota units, matching the backend defaults.
+// Amount fields are display currency: they seed from their *_display siblings
+// and submit them back, and the backend converts to internal quota.
 //
 // The schema is NESTED on purpose: react-hook-form treats dots in field names
-// as paths (`qq_bot_setting.min_quota` writes formValues.qq_bot_setting.min_quota),
+// as paths (`qq_bot_setting.drop_min_quota` writes formValues.qq_bot_setting.drop_min_quota),
 // so a flat schema keyed by dotted strings never sees the user's edits. This section
 // unflattens incoming settings ('qq_bot_setting.x' -> {qq_bot_setting: {x}}) and
-// flattens submitted values back to the option keys for the API.
+// flattens submitted values back to the option keys for the API. Check-in
+// amounts live in checkin_setting and are configured in that section.
 const qqbotSchema = z.object({
   qq_bot_setting: z.object({
     app_id: z.string(),
     app_secret: z.string(),
     qq_checkin_enabled: z.boolean(),
     web_checkin_enabled: z.boolean(),
-    single_platform_only: z.boolean(),
-    min_quota: z.coerce.number().min(0),
-    max_quota: z.coerce.number().min(0),
     checkin_disabled_groups: z.string(),
     notify_template: z.string(),
     auto_approve_enabled: z.boolean(),
@@ -114,8 +113,6 @@ type QQBotSettingsSectionProps = {
  * write their `<key>_display` siblings (display currency) — the backend
  * converts, so no quota arithmetic lives in the client. */
 export const QQBOT_AMOUNT_KEYS = [
-  'min_quota',
-  'max_quota',
   'drop_min_quota',
   'drop_max_quota',
   'drop_balance_anchor',
@@ -240,32 +237,6 @@ export function QQBotSettingsSection({
                   />
                 </FormControl>
               </SettingsSwitchItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name='qq_bot_setting.min_quota'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('QQ check-in minimum quota')}</FormLabel>
-                <FormControl>
-                  <Input type='number' min={0} {...field} />
-                </FormControl>
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name='qq_bot_setting.max_quota'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('QQ check-in maximum quota')}</FormLabel>
-                <FormControl>
-                  <Input type='number' min={0} {...field} />
-                </FormControl>
-              </FormItem>
             )}
           />
 

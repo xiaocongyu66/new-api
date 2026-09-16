@@ -33,6 +33,9 @@ func enableCheckin(t *testing.T) {
 
 // setupCheckinTestDB opens an in-memory sqlite and migrates the User + QQBinding
 // tables. Returns a cleanup func the caller should defer.
+//
+// QQCheckin is migrated because the web check-in path now consults the
+// qq_checkins table for the cross-platform "already checked in today" check.
 func setupCheckinTestDB(t *testing.T) func() {
 	t.Helper()
 	previousDB, previousLogDB, previousRedis := dbx.DB, dbx.LogDB, common.RedisEnabled
@@ -40,7 +43,7 @@ func setupCheckinTestDB(t *testing.T) func() {
 	require.NoError(t, err)
 	sqlDB, _ := db.DB()
 	sqlDB.SetMaxOpenConns(1)
-	require.NoError(t, db.AutoMigrate(&identity.User{}, &identity.QQBinding{}, &billing.Checkin{}, &billing.CheckinRecord{}))
+	require.NoError(t, db.AutoMigrate(&identity.User{}, &identity.QQBinding{}, &billing.Checkin{}, &billing.CheckinRecord{}, &billing.QQCheckin{}))
 	dbx.DB, dbx.LogDB = db, db
 	common.RedisEnabled = false
 	return func() {
