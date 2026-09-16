@@ -2,14 +2,13 @@
 """Resource sampling from Linux procfs/sysfs (stdlib only)."""
 from __future__ import annotations
 
-import os
-import time
-import threading
 import json
+import os
+import threading
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-from dataclasses import dataclass, field
-
 
 NOT_AVAILABLE = "NOT_AVAILABLE"
 
@@ -247,7 +246,7 @@ def read_go_runtime(pprof_url: str | None) -> tuple[dict[str, Any] | None, str |
     for line in body.splitlines():
         s = line.strip().lstrip("#").strip()
         for key, name in wanted.items():
-            if s.startswith(key + " ") or s.startswith(key + "="):
+            if s.startswith((key + " ", key + "=")):
                 digits = "".join(ch for ch in s[len(key):] if ch.isdigit())
                 if digits:
                     out[name] = int(digits)
@@ -433,7 +432,6 @@ class _DiffTracker:
             sectors_written = curr.get("sectors_written", 0) - prev.get("sectors_written", 0)
             ms_read = curr.get("ms_read", 0) - prev.get("ms_read", 0)
             ms_write = curr.get("ms_write", 0) - prev.get("ms_write", 0)
-            ios = curr.get("ios_in_progress", 0)
             ms_io = curr.get("ms_io", 0) - prev.get("ms_io", 0)
 
             # bytes per second (sector = 512 bytes)
@@ -721,11 +719,14 @@ class ResourceSampler:
             # Re-resolve the PID when it goes stale: S10_RESTART deliberately
             # restarts the gateway mid-run, and a sampler pinned to the dead PID
             # would report process identity as permanently unavailable.
-            if self.gateway_pid is not None and self._pid_resolver is not None:
-                if not Path(f"/proc/{self.gateway_pid}").exists():
-                    fresh = self._pid_resolver()
-                    if fresh:
-                        self.gateway_pid = fresh
+            if (
+                self.gateway_pid is not None
+                and self._pid_resolver is not None
+                and not Path(f"/proc/{self.gateway_pid}").exists()
+            ):
+                fresh = self._pid_resolver()
+                if fresh:
+                    self.gateway_pid = fresh
             sample = sample_once(pprof_url=self.pprof_url, gateway_pid=self.gateway_pid)
             self._file_handle.write(json.dumps(sample) + "\n")
             self._file_handle.flush()
@@ -759,8 +760,7 @@ def aggregate_windows(rows: list[dict], window_s: int = 10) -> list[dict]:
     for row in rows:
         ts = row.get("ts", 0)
         win_idx = int((ts - window_start) // window_s)
-        if win_idx < 0:
-            win_idx = 0
+        win_idx = max(win_idx, 0)
         win_key = window_start + win_idx * window_s
         windows.setdefault(win_key, []).append(row)
 
@@ -769,7 +769,7 @@ def aggregate_windows(rows: list[dict], window_s: int = 10) -> list[dict]:
         win_rows = windows[win_start]
         win_end = win_start + window_s
 
-        def agg(key_path: list[str], op: str = "avg") -> float | str:
+        def agg(key_path: list[str], op: str = "avg", win_rows: list[dict] = win_rows) -> float | str:
             """Aggregate a nested key across rows. Skip NOT_AVAILABLE."""
             vals = []
             for r in win_rows:

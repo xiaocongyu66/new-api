@@ -19,10 +19,10 @@ import argparse
 import json
 import os
 import sys
-import uuid
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -30,10 +30,12 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import lib_reconcile  # noqa: E402
-import lib_report  # noqa: E402
-import lib_resources  # noqa: E402
-import lib_stats  # noqa: E402
+import lib_reconcile
+import lib_report
+import lib_resources
+import lib_stats
+
+
 class AdminTokenManager:
     """Holds admin JWT and refreshes on 401/403 if credentials provided."""
 
@@ -512,7 +514,7 @@ def run_phase(
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """Run one traffic phase; stream allocation is deterministic, never random."""
     request_ids = [str(uuid.uuid4()) for _ in range(count)]
-    stream_cutoff = int(round(count * stream_ratio))
+    stream_cutoff = round(count * stream_ratio)
     rows: list[dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
         futures = [
@@ -840,7 +842,7 @@ def run_phase_s6(
                 if step_hook_cmd:
                     hook_start = time.time()
                     try:
-                        proc = subprocess.run(step_hook_cmd, shell=True, capture_output=True, text=True, timeout=30)
+                        proc = subprocess.run(step_hook_cmd, shell=True, capture_output=True, text=True, timeout=30, check=False)
                         hook_duration = time.time() - hook_start
                         step_hook_result = {
                             "cmd": step_hook_cmd,
@@ -856,7 +858,7 @@ def run_phase_s6(
                             "cmd": step_hook_cmd, "exit_code": -1, "duration_sec": hook_duration,
                             "stdout": "", "stderr": "timeout after 30s",
                         }
-                        print(f"      S6: step hook timed out after 30s")
+                        print("      S6: step hook timed out after 30s")
                     except Exception as e:
                         hook_duration = time.time() - hook_start
                         step_hook_result = {
@@ -866,7 +868,7 @@ def run_phase_s6(
                         print(f"      S6: step hook failed: {e}")
                 else:
                     step_hook_result = {"skipped": True}
-                    print(f"      S6: step hook skipped (no --step-hook provided)")
+                    print("      S6: step hook skipped (no --step-hook provided)")
 
             # Submit new requests to maintain concurrency while within deadline
             while len(futures) < concurrency and time.time() < deadline:
@@ -1015,7 +1017,7 @@ def run_phase_s7(
                 if step_hook_cmd:
                     hook_start = time.time()
                     try:
-                        proc = subprocess.run(step_hook_cmd, shell=True, capture_output=True, text=True, timeout=30)
+                        proc = subprocess.run(step_hook_cmd, shell=True, capture_output=True, text=True, timeout=30, check=False)
                         hook_duration = time.time() - hook_start
                         step_hook_result = {
                             "cmd": step_hook_cmd,
@@ -1179,11 +1181,10 @@ def run_phase_s9(
     Returns:
         stat_rows, stat_ids
     """
-    affinity_count = int(round(count * affinity_ratio))
+    affinity_count = round(count * affinity_ratio)
     pinned_key = "s9-pinned-affinity-key"
     stat_rows: list[dict[str, Any]] = []
     stat_ids: list[str] = []
-    stream = False  # S9 uses non-streaming
 
     def send_affinity_request(idx: int) -> dict[str, Any]:
         req_id = f"s9-{RUN_TAG}-{phase}-{idx}"
@@ -1235,7 +1236,7 @@ def run_phase_s9(
             row["status"] = r.status_code
             if r.status_code != 200:
                 row["error"] = r.text[:200]
-            r.content
+            _ = r.content
         except Exception as exc:
             row["error"] = str(exc)[:200]
         finally:
@@ -1326,7 +1327,7 @@ def run_phase_s11(
                 headers=headers, json=payload, timeout=60.0,
             )
             row["status"] = r.status_code
-            r.content
+            _ = r.content
             if r.status_code != 200:
                 row["error"] = r.text[:200]
         except Exception as exc:
@@ -1482,7 +1483,7 @@ def run_phase_s10_restart(
     if restart_hook:
         started = time.time()
         try:
-            proc = subprocess.run(restart_hook, shell=True, capture_output=True, text=True, timeout=180)
+            proc = subprocess.run(restart_hook, shell=True, capture_output=True, text=True, timeout=180, check=False)
             sweep_evidence["restart_hook"] = {
                 "cmd": restart_hook,
                 "exit_code": proc.returncode,
@@ -1649,7 +1650,7 @@ def run_phase_s13(
             return
         started = time.time()
         try:
-            proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
+            proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30, check=False)
             hook_results[name] = {
                 "cmd": cmd,
                 "exit_code": proc.returncode,
@@ -1676,11 +1677,10 @@ def run_phase_s13(
             if not label:
                 continue
             corr[label] = float(item.get("share_correction", 0.0) or 0.0)
-            if label == subject_label:
-                # actual_share is the gateway's own windowed share; preferred over
-                # a client-side recount because it is what the correction reacts to.
-                if item.get("actual_share") is not None:
-                    b_share = float(item["actual_share"])
+            # actual_share is the gateway's own windowed share; preferred over
+            # a client-side recount because it is what the correction reacts to.
+            if label == subject_label and item.get("actual_share") is not None:
+                b_share = float(item["actual_share"])
         return {
             "ts": time.time(),
             "phase": phase_name,
@@ -1735,10 +1735,13 @@ def run_phase_s13(
                 s = take_sample(current_phase)
                 if s:
                     samples.append(s)
-                    if current_phase == "recover" and s["b_share"] is not None:
-                        if abs(s["b_share"] - target) <= tolerance:
-                            recovered = True
-                            print(f"      S13: recovered at {now - (recover_started or now):.1f}s into recover phase")
+                    if (
+                        current_phase == "recover"
+                        and s["b_share"] is not None
+                        and abs(s["b_share"] - target) <= tolerance
+                    ):
+                        recovered = True
+                        print(f"      S13: recovered at {now - (recover_started or now):.1f}s into recover phase")
                 last_sample = now
 
             if futures and not done:
@@ -2083,8 +2086,7 @@ def main() -> int:
             continue
         # Strip trailing slash and /v1 suffix for healthz probe
         mock_base = base_url.rstrip("/")
-        if mock_base.endswith("/v1"):
-            mock_base = mock_base[:-3]
+        mock_base = mock_base.removesuffix("/v1")
         try:
             hz = requests.get(f"{mock_base}/healthz", timeout=10)
             if hz.status_code != 200:
@@ -2108,9 +2110,9 @@ def main() -> int:
     # (actual per-route skew is enforced by per-instance MOCK_FORCE_MODE, not the client header)
     unique_modes = set(injection_plan.values())
     if len(unique_modes) == 1:
-        mode = injection_plan.get(targets["subject"], list(unique_modes)[0])
+        mode = injection_plan.get(targets["subject"], next(iter(unique_modes)))
     else:
-        mode = injection_plan.get(targets["subject"], list(injection_plan.values())[0])
+        mode = injection_plan.get(targets["subject"], next(iter(injection_plan.values())))
     if len(unique_modes) > 1 and not is_s5:
         summary["injection_limitation"] = (
             f"scenario asks for per-route modes {injection_plan}, but routes may share mock endpoints. "
@@ -2818,9 +2820,7 @@ def main() -> int:
         # ENVIRONMENT_INVALID(2) > DATA_INVALID(1, reconcile fail or insufficient_windows)
         # > PRODUCT_FAIL(1, process_stability.ok False and not due to insufficient_windows)
         # > PASS(0)
-        if rec.verdict != "PASS":
-            verdict, code = "DATA_INVALID", 1
-        elif process_stability.get("insufficient_windows"):
+        if rec.verdict != "PASS" or process_stability.get("insufficient_windows"):
             verdict, code = "DATA_INVALID", 1
         elif not process_stability["ok"]:
             verdict, code = "PRODUCT_FAIL", 1
@@ -2895,9 +2895,7 @@ def main() -> int:
             )
             summary["kill_switch_evaluation"] = ks
             print(f"      S10 kill switch: {ks['reasons'] or 'ok'}")
-            if rec.verdict != "PASS":
-                verdict, code = "DATA_INVALID", 1
-            elif any("DATA_INVALID" in r for r in ks["reasons"]):
+            if rec.verdict != "PASS" or any("DATA_INVALID" in r for r in ks["reasons"]):
                 verdict, code = "DATA_INVALID", 1
             elif not ks["ok"]:
                 verdict, code = "PRODUCT_FAIL", 1
@@ -2956,9 +2954,7 @@ def main() -> int:
         print(f"      S11 paths: attempts={path_result['per_path_counts']} "
               f"probes_sent={s11_probes} probe_opportunities={probe_opportunities} "
               f"window_paths={sorted(set(window_paths))}")
-        if rec.verdict != "PASS":
-            verdict, code = "DATA_INVALID", 1
-        elif any("DATA_INVALID" in r for r in path_result["reasons"]):
+        if rec.verdict != "PASS" or any("DATA_INVALID" in r for r in path_result["reasons"]):
             verdict, code = "DATA_INVALID", 1
         elif not path_result["ok"]:
             verdict, code = "PRODUCT_FAIL", 1
@@ -3023,9 +3019,7 @@ def main() -> int:
               f"ewma_delta={retry_result['ewma_delta']:.4f} failures={b_attempt_failures} "
               f"window_slots={b_window_slots_final}/{window_total_slots} "
               f"failed_in_window_min={retry_result['failed_attempts_in_window_min']}")
-        if rec.verdict != "PASS":
-            verdict, code = "DATA_INVALID", 1
-        elif any("DATA_INVALID" in r for r in retry_result["reasons"]):
+        if rec.verdict != "PASS" or any("DATA_INVALID" in r for r in retry_result["reasons"]):
             verdict, code = "DATA_INVALID", 1
         elif not retry_result["ok"]:
             verdict, code = "PRODUCT_FAIL", 1
@@ -3041,9 +3035,7 @@ def main() -> int:
               f"seconds={recovery_result['recovery_seconds']} "
               f"corr_in_clamp={recovery_result['corr_in_clamp']} "
               f"steady={recovery_result['steady_share']} fault={recovery_result['fault_share']}")
-        if rec.verdict != "PASS":
-            verdict, code = "DATA_INVALID", 1
-        elif any("DATA_INVALID" in r for r in recovery_result["reasons"]):
+        if rec.verdict != "PASS" or any("DATA_INVALID" in r for r in recovery_result["reasons"]):
             verdict, code = "DATA_INVALID", 1
         elif not recovery_result["ok"]:
             verdict, code = "PRODUCT_FAIL", 1

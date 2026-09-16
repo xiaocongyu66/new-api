@@ -36,8 +36,8 @@ def _percentiles(values: list[float], ps: list[float]) -> dict[str, float]:
             result[key] = None
             continue
         idx = (n - 1) * p / 100.0
-        lo = int(math.floor(idx))
-        hi = int(math.ceil(idx))
+        lo = math.floor(idx)
+        hi = math.ceil(idx)
         if lo == hi:
             val = sorted_vals[lo]
         else:
@@ -104,14 +104,14 @@ def build_traffic_windows(
             continue
 
         # Arrival window by start_ts
-        arrival_window = int(math.floor(start_ts / window_s)) * window_s
+        arrival_window = math.floor(start_ts / window_s) * window_s
         if arrival_window not in arrivals_by_window:
             arrivals_by_window[arrival_window] = []
         arrivals_by_window[arrival_window].append(row)
 
         # Completion window by end_ts
         if end_ts is not None:
-            completion_window = int(math.floor(end_ts / window_s)) * window_s
+            completion_window = math.floor(end_ts / window_s) * window_s
             if completion_window not in completions_by_window:
                 completions_by_window[completion_window] = []
             completions_by_window[completion_window].append(row)
@@ -138,7 +138,6 @@ def build_traffic_windows(
     def get_phase_label(ws: int) -> str:
         if phase_marks is None:
             return "steady"
-        we = ws + window_s
         # Window overlaps with phase boundaries; label by window midpoint
         mid = ws + window_s / 2.0
         if mid < phase_marks.get("warmup_end", float("inf")):
@@ -400,7 +399,7 @@ def render_report_md(summary: dict[str, Any]) -> str:
     lines: list[str] = []
 
     # Header
-    lines.append(f"# Route-Unit EWMA Stress Scenario Report")
+    lines.append("# Route-Unit EWMA Stress Scenario Report")
     lines.append("")
     lines.append(f"**Scenario:** {summary.get('scenario', 'N/A')}")
     lines.append(f"**Verdict:** {summary.get('verdict', 'N/A')}")

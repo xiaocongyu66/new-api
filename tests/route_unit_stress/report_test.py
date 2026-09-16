@@ -13,13 +13,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from lib_report import (
-    write_shares_csv,
-    write_windows_csv,
-    write_resources_csv,
-    write_summary,
-    render_report_md,
     build_traffic_windows,
     fill_per_window_route_shares,
+    render_report_md,
+    write_resources_csv,
+    write_shares_csv,
+    write_summary,
+    write_windows_csv,
 )
 
 
@@ -256,8 +256,8 @@ def test_report_md_contains_verdict_and_ci(tmp: Path) -> bool:
     # Must contain verdict
     assert "PASS" in md, "verdict PASS not found in report.md"
     # Must contain CI numbers from shares (ci_low=0.3846, ci_high=0.5773)
-    assert "0.3846" in md or "0.385" in md, f"ci_low not found in report.md"
-    assert "0.5773" in md or "0.577" in md, f"ci_high not found in report.md"
+    assert "0.3846" in md or "0.385" in md, "ci_low not found in report.md"
+    assert "0.5773" in md or "0.577" in md, "ci_high not found in report.md"
     # Must contain scenario name
     assert "S1" in md, "scenario S1 not found in report.md"
     # Must contain share evaluation section
@@ -597,9 +597,9 @@ def test_windows_csv_backward_compat_old_dict(tmp: Path) -> bool:
     # New columns empty
     assert rows[0]["window_end"] == "", f"window_end should be empty, got {rows[0]['window_end']}"
     assert rows[0]["phase"] == "", f"phase should be empty, got {rows[0]['phase']}"
-    assert rows[0]["route_shares"] == "", f"route_shares should be empty"
-    assert rows[0]["corr_p99"] == "", f"corr_p99 should be empty"
-    assert rows[0]["ewma"] == "", f"ewma should be empty"
+    assert rows[0]["route_shares"] == "", "route_shares should be empty"
+    assert rows[0]["corr_p99"] == "", "corr_p99 should be empty"
+    assert rows[0]["ewma"] == "", "ewma should be empty"
 
     print("  OK: write_windows_csv backward compat with old dicts")
     return True

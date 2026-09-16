@@ -62,8 +62,8 @@ def percentiles(values: list[float], ps: list[float]) -> dict[str, float]:
             continue
         # Linear interpolation: index = (n - 1) * p / 100
         idx = (n - 1) * p / 100.0
-        lo = int(math.floor(idx))
-        hi = int(math.ceil(idx))
+        lo = math.floor(idx)
+        hi = math.ceil(idx)
         if lo == hi:
             val = sorted_vals[lo]
         else:
@@ -285,8 +285,7 @@ def evaluate_process_stability(
     for cp in corr_p99_vals:
         if corr_max > 0:
             headroom = (corr_max - cp) / corr_max
-            if headroom < min_headroom:
-                min_headroom = headroom
+            min_headroom = min(min_headroom, headroom)
     if min_headroom < headroom_min:
         reasons.append(
             f"corr_p99 headroom {min_headroom:.2%} < required {headroom_min:.0%} "
@@ -303,8 +302,7 @@ def evaluate_process_stability(
     for s in shares:
         if abs(s - median_share) > breach_threshold:
             current_streak += 1
-            if current_streak > max_consecutive:
-                max_consecutive = current_streak
+            max_consecutive = max(max_consecutive, current_streak)
         else:
             current_streak = 0
 
@@ -457,16 +455,15 @@ def evaluate_memory_scaling(
 
     # Check for unexplained monotonic heap growth (last > 2× first, no sweep)
     monotonic_growth = False
-    if len(heaps) >= 10:
-        if heap_peak and heap_baseline and heap_peak > 2 * heap_baseline:
-            # Check if it stabilized (last 3 samples within 10% of peak)
-            tail = heaps[-3:]
-            if tail and max(tail) > 0.9 * heap_peak:
-                monotonic_growth = True
-                reasons.append(
-                    f"unexplained heap growth: baseline={heap_baseline} peak={heap_peak} "
-                    f"(2× baseline, not swept)"
-                )
+    if len(heaps) >= 10 and heap_peak and heap_baseline and heap_peak > 2 * heap_baseline:
+        # Check if it stabilized (last 3 samples within 10% of peak)
+        tail = heaps[-3:]
+        if tail and max(tail) > 0.9 * heap_peak:
+            monotonic_growth = True
+            reasons.append(
+                f"unexplained heap growth: baseline={heap_baseline} peak={heap_peak} "
+                f"(2× baseline, not swept)"
+            )
 
     return {
         "ok": len(reasons) == 0,
@@ -496,10 +493,7 @@ def evaluate_affinity_scan(
     """
     reasons: list[str] = []
 
-    # Extract ratios and window sizes
-    ratios = sorted(set(
-        float(k.split("_")[0]) for k in share_rows
-    ))
+    # Extract window sizes
     w0_shares: dict[float, float] = {}
     w200_shares: dict[float, float] = {}
     for key, data in share_rows.items():
