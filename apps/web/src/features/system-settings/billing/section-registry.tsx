@@ -312,6 +312,29 @@ const BILLING_SECTIONS = [
             settings['qq_bot_setting.recall_policies'] ?? '',
           'qq_bot_setting.admin_open_ids':
             settings['qq_bot_setting.admin_open_ids'] ?? '',
+          // Amount fields seed from their *_display siblings (display
+          // currency), not the raw keys — the form's unflattenDefaults skips
+          // the raw keys on purpose. Omitting these seeds every amount to 0.
+          'qq_bot_setting.min_quota_display':
+            settings['qq_bot_setting.min_quota_display'] ?? 0,
+          'qq_bot_setting.max_quota_display':
+            settings['qq_bot_setting.max_quota_display'] ?? 0,
+          'qq_bot_setting.drop_min_quota_display':
+            settings['qq_bot_setting.drop_min_quota_display'] ?? 0,
+          'qq_bot_setting.drop_max_quota_display':
+            settings['qq_bot_setting.drop_max_quota_display'] ?? 0,
+          'qq_bot_setting.drop_balance_anchor_display':
+            settings['qq_bot_setting.drop_balance_anchor_display'] ?? 0,
+          'qq_bot_setting.drop_daily_guarantee_display':
+            settings['qq_bot_setting.drop_daily_guarantee_display'] ?? 0,
+          'qq_bot_setting.red_packet_min_amount_display':
+            settings['qq_bot_setting.red_packet_min_amount_display'] ?? 0,
+          'qq_bot_setting.red_packet_max_amount_display':
+            settings['qq_bot_setting.red_packet_max_amount_display'] ?? 0,
+          'qq_bot_setting.transfer_min_amount_display':
+            settings['qq_bot_setting.transfer_min_amount_display'] ?? 0,
+          'qq_bot_setting.transfer_max_amount_display':
+            settings['qq_bot_setting.transfer_max_amount_display'] ?? 0,
         }}
       />
     ),
