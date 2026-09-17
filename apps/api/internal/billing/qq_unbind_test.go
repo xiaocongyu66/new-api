@@ -19,7 +19,7 @@ import (
 func setupQQBindTestDB(t *testing.T) {
 	t.Helper()
 	cleanup := setupCheckinTestDB(t)
-	require.NoError(t, dbx.DB.AutoMigrate(&identity.QQBindCode{}))
+	require.NoError(t, dbx.DB.AutoMigrate(&identity.QQBindCode{}, &identity.QQUnbindRecord{}))
 	t.Cleanup(cleanup)
 }
 
