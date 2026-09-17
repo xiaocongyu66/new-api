@@ -50,6 +50,7 @@ func setupIdentityTestDB(t *testing.T) {
 		&CustomOAuthProvider{},
 		&QQBinding{},
 		&QQBindCode{},
+		&QQUnbindRecord{},
 	); err != nil {
 		t.Fatalf("migrate test db: %v", err)
 	}

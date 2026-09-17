@@ -432,6 +432,7 @@ export type BillingSettings = {
   'qq_bot_setting.steal_daily_limit': number
   'qq_bot_setting.steal_recipient_grace_seconds': number
   'qq_bot_setting.command_cooldown_seconds': number
+  'qq_bot_setting.rebind_cooldown_seconds': number
   'qq_bot_setting.recall_failed_messages': boolean
   'qq_bot_setting.recall_delay_seconds': number
   'qq_bot_setting.recall_policies': string

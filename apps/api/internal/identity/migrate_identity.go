@@ -24,6 +24,7 @@ func init() {
 		dbx.Migration{Model: &policy.AuthzRole{}, Name: "AuthzRole"},
 		dbx.Migration{Model: &QQBinding{}, Name: "QQBinding"},
 		dbx.Migration{Model: &QQBindCode{}, Name: "QQBindCode"},
+		dbx.Migration{Model: &QQUnbindRecord{}, Name: "QQUnbindRecord"},
 	)
 	// Backfills that a schema change alone cannot express: both seed a new column
 	// from existing rows and must run after AutoMigrate.

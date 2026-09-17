@@ -39,6 +39,37 @@ func (QQBindCode) TableName() string {
 	return "qq_bind_codes"
 }
 
+// QQUnbindRecord 记录用户最后一次解绑 QQ 的时间，用于冷却期校验。
+type QQUnbindRecord struct {
+	UserId    int64 `json:"user_id" gorm:"primaryKey"`
+	UnbindAt  int64 `json:"unbind_at" gorm:"bigint;not null"`
+	CreatedAt int64 `json:"created_at" gorm:"bigint"`
+}
+
+func (QQUnbindRecord) TableName() string {
+	return "qq_unbind_records"
+}
+
+// RecordQQUnbind 记录用户解绑时间，供后续绑定校验冷却期。
+func RecordQQUnbind(tx *gorm.DB, userId int) error {
+	now := time.Now()
+	return tx.Save(&QQUnbindRecord{
+		UserId:    int64(userId),
+		UnbindAt:  now.Unix(),
+		CreatedAt: now.Unix(),
+	}).Error
+}
+
+// GetQQUnbindRecord 查询用户最后一次解绑记录。
+func GetQQUnbindRecord(userId int) (*QQUnbindRecord, error) {
+	var record QQUnbindRecord
+	err := dbx.DB.Where("user_id = ?", userId).First(&record).Error
+	if err != nil {
+		return nil, err
+	}
+	return &record, nil
+}
+
 // QQBindCodeTTL 验证码有效期：五分钟
 // 用户要在网页和 QQ 客户端之间来回切换才能完成绑定，3 分钟常常切不过来，
 // 导致大量验证码未使用即过期（线上已有近 12% 的码因此作废）。
@@ -108,12 +139,44 @@ func IsQQBound(openID string) (int, bool) {
 	return binding.UserId, true
 }
 
+// qqRebindCooldownSeconds 由测试或启动后的配置加载流程写入；<=0 表示关闭冷却。
+var qqRebindCooldownSeconds int
+
+// SetQQRebindCooldownSeconds 仅在测试或配置加载时调用，生产代码默认由
+// qq_bot_setting.rebind_cooldown_seconds 通过 billing.GetQQBotSetting 同步。
+func SetQQRebindCooldownSeconds(seconds int) {
+	qqRebindCooldownSeconds = seconds
+}
+
+// RejectQQBindIfInCooldown 根据当前冷却配置拒绝绑定。
+// 返回剩余等待秒数，0 表示不在冷却中可直接绑定。
+func RejectQQBindIfInCooldown(userId int) (int64, error) {
+	if qqRebindCooldownSeconds <= 0 {
+		return 0, nil
+	}
+	record, err := GetQQUnbindRecord(userId)
+	if err != nil || record == nil {
+		return 0, nil
+	}
+	allowedAt := record.UnbindAt + int64(qqRebindCooldownSeconds)
+	now := time.Now().Unix()
+	if now < allowedAt {
+		return allowedAt - now, errors.New("解绑后需等待冷却时间才能重新绑定")
+	}
+	return 0, nil
+}
+
 // CreateQQBindCode 为用户生成一个新的绑定验证码
 // 同一用户重复调用会作废之前尚未使用的验证码
 func CreateQQBindCode(userId int) (*QQBindCode, error) {
 	// 已绑定的用户不再生成验证码
 	if _, err := GetQQBindingByUserId(userId); err == nil {
 		return nil, errors.New("当前账号已绑定 QQ，请先解绑")
+	}
+	if wait, err := RejectQQBindIfInCooldown(userId); err != nil {
+		return nil, err
+	} else if wait > 0 {
+		return nil, errors.New("解绑后需等待冷却时间才能重新绑定")
 	}
 
 	// 作废该用户此前未使用的验证码
@@ -195,6 +258,11 @@ func ConsumeQQBindCode(code, openID, unionOpenID, username string) (int, error) 
 	if _, err := GetQQBindingByUserId(bindCode.UserId); err == nil {
 		return 0, errors.New("该账号已绑定其他 QQ")
 	}
+	if wait, err := RejectQQBindIfInCooldown(bindCode.UserId); err != nil {
+		return 0, err
+	} else if wait > 0 {
+		return 0, errors.New("解绑后需等待冷却时间才能重新绑定")
+	}
 
 	binding := &QQBinding{
 		UserId:      bindCode.UserId,
@@ -239,7 +307,10 @@ func DeleteQQBindingWithTx(tx *gorm.DB, userId int) error {
 	if err := tx.Unscoped().Where("user_id = ?", userId).Delete(&QQBinding{}).Error; err != nil {
 		return err
 	}
-	return tx.Unscoped().Where("user_id = ?", userId).Delete(&QQBindCode{}).Error
+	if err := tx.Unscoped().Where("user_id = ?", userId).Delete(&QQBindCode{}).Error; err != nil {
+		return err
+	}
+	return RecordQQUnbind(tx, userId)
 }
 
 // CleanExpiredQQBindCodes 清理过期验证码，供定时任务调用

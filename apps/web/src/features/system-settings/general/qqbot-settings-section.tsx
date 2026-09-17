@@ -83,6 +83,7 @@ const qqbotSchema = z.object({
     transfer_max_amount: z.coerce.number(),
     transfer_fee_brackets: z.string(),
     command_cooldown_seconds: z.coerce.number().int().min(0),
+    rebind_cooldown_seconds: z.coerce.number().int().min(0),
     recall_failed_messages: z.boolean(),
     recall_delay_seconds: z.coerce.number().int().min(1).max(120),
     recall_policies: z.string(),
@@ -828,6 +829,22 @@ export function QQBotSettingsSection({
                 </FormControl>
                 <FormDescription>
                   {t('Minimum seconds between commands from the same user. 0 disables the cooldown.')}
+                </FormDescription>
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='qq_bot_setting.rebind_cooldown_seconds'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Rebind cooldown (seconds)')}</FormLabel>
+                <FormControl>
+                  <Input type='number' min={0} {...field} />
+                </FormControl>
+                <FormDescription>
+                  {t('After unbinding QQ, the user must wait this many seconds before rebinding. 0 disables the cooldown.')}
                 </FormDescription>
               </FormItem>
             )}
