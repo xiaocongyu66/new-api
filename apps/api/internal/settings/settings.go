@@ -9,6 +9,7 @@ package settings
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -183,6 +184,7 @@ func SeedOptionMap() {
 	common.OptionMap["EmailDomainRestrictionEnabled"] = strconv.FormatBool(common.EmailDomainRestrictionEnabled)
 	common.OptionMap["EmailAliasRestrictionEnabled"] = strconv.FormatBool(common.EmailAliasRestrictionEnabled)
 	common.OptionMap["EmailDomainWhitelist"] = strings.Join(common.EmailDomainWhitelist, ",")
+	common.OptionMap["EmailFormatRegex"] = common.EmailFormatRegex
 	common.OptionMap["SMTPServer"] = ""
 	common.OptionMap["SMTPFrom"] = ""
 	common.OptionMap["SMTPPort"] = strconv.Itoa(common.SMTPPort)
@@ -431,6 +433,24 @@ func ApplyOption(key string, value string) (err error) {
 	switch key {
 	case "EmailDomainWhitelist":
 		common.EmailDomainWhitelist = strings.Split(value, ",")
+	case "EmailFormatRegex":
+		common.EmailFormatRegex = strings.TrimSpace(value)
+		common.EmailFormatRegexCompiled = nil
+		if common.EmailFormatRegex != "" {
+			var compiled []*regexp.Regexp
+			for _, line := range strings.Split(common.EmailFormatRegex, "\n") {
+				rule := strings.TrimSpace(line)
+				if rule == "" {
+					continue
+				}
+				if re, err := regexp.Compile(rule); err == nil {
+					compiled = append(compiled, re)
+				} else {
+					common.SysError("invalid EmailFormatRegex line disabled: " + err.Error())
+				}
+			}
+			common.EmailFormatRegexCompiled = compiled
+		}
 	case "SMTPServer":
 		common.SMTPServer = value
 	case "SMTPPort":

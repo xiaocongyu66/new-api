@@ -52,6 +52,7 @@ const basicAuthSchema = z.object({
   EmailDomainRestrictionEnabled: z.boolean(),
   EmailAliasRestrictionEnabled: z.boolean(),
   EmailDomainWhitelist: z.string(),
+  EmailFormatRegex: z.string(),
 })
 
 type BasicAuthFormValues = z.infer<typeof basicAuthSchema>
@@ -69,6 +70,11 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
       ...defaultValues,
       EmailDomainWhitelist: defaultValues.EmailDomainWhitelist.split(',')
         .map((domain) => domain.trim())
+        .filter(Boolean)
+        .join('\n'),
+      EmailFormatRegex: (defaultValues.EmailFormatRegex || '')
+        .split('\n')
+        .map((line) => line.trim())
         .filter(Boolean)
         .join('\n'),
     }),
@@ -95,6 +101,16 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
           .join(',')
         if (domains !== defaultValues.EmailDomainWhitelist) {
           updates.push({ key, value: domains })
+        }
+      } else if (key === 'EmailFormatRegex') {
+        if (typeof value !== 'string') return
+        const normalized = value
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .join('\n')
+        if (normalized !== defaultValues.EmailFormatRegex) {
+          updates.push({ key, value: normalized })
         }
       } else if (value !== defaultValues[key as keyof typeof defaultValues]) {
         updates.push({ key, value })
@@ -256,6 +272,28 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
                 <FormDescription>
                   {t(
                     'One domain per line (only used when domain restriction is enabled)'
+                  )}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name='EmailFormatRegex'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Email Format Regex')}</FormLabel>
+                <FormControl>
+                  <Textarea
+                    placeholder={'^[0-9]+@qq\\.com$\n^[a-z]+@company\\.com$'}
+                    rows={4}
+                    {...field}
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'One regex per line; the full email must match at least one rule (leave empty to disable)'
                   )}
                 </FormDescription>
                 <FormMessage />

@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/usage"
 	"math"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -160,6 +161,23 @@ func UpdateOption(c contract.Context) {
 				"message": "无法启用邮箱域名限制，请先填入限制的邮箱域名！",
 			})
 			return
+		}
+	case "EmailFormatRegex":
+		value, _ := option.Value.(string)
+		if value != "" {
+			for i, line := range strings.Split(value, "\n") {
+				rule := strings.TrimSpace(line)
+				if rule == "" {
+					continue
+				}
+				if _, err := regexp.Compile(rule); err != nil {
+					_ = c.JSON(http.StatusOK, common.H{
+						"success": false,
+						"message": fmt.Sprintf("邮箱格式限制正则第 %d 行无效：%s", i+1, err.Error()),
+					})
+					return
+				}
+			}
 		}
 	case "WeChatAuthEnabled":
 		if option.Value == "true" && common.WeChatServerAddress == "" {
