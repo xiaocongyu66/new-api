@@ -169,8 +169,9 @@ func GetQQBindStatus(c contract.Context) {
 	bound := err == nil && binding != nil
 
 	data := common.H{
-		"qq_checkin_enabled": setting.QQCheckinEnabled,
-		"bound":              bound,
+		"qq_checkin_enabled":      setting.QQCheckinEnabled,
+		"bound":                   bound,
+		"rebind_cooldown_seconds": setting.RebindCooldownSeconds,
 	}
 	if bound {
 		data["qq_username"] = binding.Username

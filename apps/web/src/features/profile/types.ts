@@ -253,6 +253,8 @@ export interface QQBindStatusResponse {
   qq_username?: string
   /** Bind timestamp in seconds, present only when bound */
   bound_at?: number
+  /** Seconds the user must wait after unbinding before rebinding; 0 = no cooldown */
+  rebind_cooldown_seconds: number
 }
 
 /**
