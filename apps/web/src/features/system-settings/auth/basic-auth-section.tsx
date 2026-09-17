@@ -33,7 +33,6 @@ import {
 } from '@/components/ui/form'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { Input } from '@/components/ui/input'
 
 import {
   SettingsForm,
@@ -73,6 +72,11 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
         .map((domain) => domain.trim())
         .filter(Boolean)
         .join('\n'),
+      EmailFormatRegex: (defaultValues.EmailFormatRegex || '')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .join('\n'),
     }),
     [defaultValues]
   )
@@ -97,6 +101,16 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
           .join(',')
         if (domains !== defaultValues.EmailDomainWhitelist) {
           updates.push({ key, value: domains })
+        }
+      } else if (key === 'EmailFormatRegex') {
+        if (typeof value !== 'string') return
+        const normalized = value
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .join('\n')
+        if (normalized !== defaultValues.EmailFormatRegex) {
+          updates.push({ key, value: normalized })
         }
       } else if (value !== defaultValues[key as keyof typeof defaultValues]) {
         updates.push({ key, value })
@@ -271,14 +285,15 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
               <FormItem>
                 <FormLabel>{t('Email Format Regex')}</FormLabel>
                 <FormControl>
-                  <Input
-                    placeholder='^[0-9]+@qq\.com$'
+                  <Textarea
+                    placeholder={'^[0-9]+@qq\\.com$\n^[a-z]+@company\\.com$'}
+                    rows={4}
                     {...field}
                   />
                 </FormControl>
                 <FormDescription>
                   {t(
-                    'Regular expression the full email must match (leave empty to disable)'
+                    'One regex per line; the full email must match at least one rule (leave empty to disable)'
                   )}
                 </FormDescription>
                 <FormMessage />

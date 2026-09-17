@@ -70,10 +70,10 @@ var TelegramOAuthEnabled = false
 var TurnstileCheckEnabled = false
 var RegisterEnabled = true
 
-var EmailDomainRestrictionEnabled = false   // 是否启用邮箱域名限制
-var EmailAliasRestrictionEnabled = false    // 是否启用邮箱别名限制
-var EmailFormatRegex = ""                   // 邮箱格式限制正则，匹配完整邮箱地址，为空不启用
-var EmailFormatRegexCompiled *regexp.Regexp // 由 settings 应用选项时编译写入
+var EmailDomainRestrictionEnabled = false     // 是否启用邮箱域名限制
+var EmailAliasRestrictionEnabled = false      // 是否启用邮箱别名限制
+var EmailFormatRegex = ""                     // 邮箱格式限制正则（每行一条），匹配完整邮箱地址，为空不启用
+var EmailFormatRegexCompiled []*regexp.Regexp // 由 settings 应用选项时按行编译写入
 var EmailDomainWhitelist = []string{
 	"gmail.com",
 	"163.com",

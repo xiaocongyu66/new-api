@@ -165,12 +165,18 @@ func UpdateOption(c contract.Context) {
 	case "EmailFormatRegex":
 		value, _ := option.Value.(string)
 		if value != "" {
-			if _, err := regexp.Compile(value); err != nil {
-				_ = c.JSON(http.StatusOK, common.H{
-					"success": false,
-					"message": "邮箱格式限制正则无效：" + err.Error(),
-				})
-				return
+			for i, line := range strings.Split(value, "\n") {
+				rule := strings.TrimSpace(line)
+				if rule == "" {
+					continue
+				}
+				if _, err := regexp.Compile(rule); err != nil {
+					_ = c.JSON(http.StatusOK, common.H{
+						"success": false,
+						"message": fmt.Sprintf("邮箱格式限制正则第 %d 行无效：%s", i+1, err.Error()),
+					})
+					return
+				}
 			}
 		}
 	case "WeChatAuthEnabled":

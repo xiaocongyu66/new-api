@@ -434,14 +434,22 @@ func ApplyOption(key string, value string) (err error) {
 	case "EmailDomainWhitelist":
 		common.EmailDomainWhitelist = strings.Split(value, ",")
 	case "EmailFormatRegex":
-		common.EmailFormatRegex = value
-		if value == "" {
-			common.EmailFormatRegexCompiled = nil
-		} else if re, err := regexp.Compile(value); err == nil {
-			common.EmailFormatRegexCompiled = re
-		} else {
-			common.EmailFormatRegexCompiled = nil
-			common.SysError("invalid EmailFormatRegex, restriction disabled: " + err.Error())
+		common.EmailFormatRegex = strings.TrimSpace(value)
+		common.EmailFormatRegexCompiled = nil
+		if common.EmailFormatRegex != "" {
+			var compiled []*regexp.Regexp
+			for _, line := range strings.Split(common.EmailFormatRegex, "\n") {
+				rule := strings.TrimSpace(line)
+				if rule == "" {
+					continue
+				}
+				if re, err := regexp.Compile(rule); err == nil {
+					compiled = append(compiled, re)
+				} else {
+					common.SysError("invalid EmailFormatRegex line disabled: " + err.Error())
+				}
+			}
+			common.EmailFormatRegexCompiled = compiled
 		}
 	case "SMTPServer":
 		common.SMTPServer = value

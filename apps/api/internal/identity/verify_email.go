@@ -61,9 +61,18 @@ func SendEmailVerification(c contract.Context) {
 			return
 		}
 	}
-	if common.EmailFormatRegexCompiled != nil && !common.EmailFormatRegexCompiled.MatchString(email) {
-		common.CtxApiErrorI18n(c, i18n.MsgUserEmailFormatRejected)
-		return
+	if len(common.EmailFormatRegexCompiled) > 0 {
+		matched := false
+		for _, re := range common.EmailFormatRegexCompiled {
+			if re.MatchString(email) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			common.CtxApiErrorI18n(c, i18n.MsgUserEmailFormatRejected)
+			return
+		}
 	}
 
 	if IsEmailAlreadyTaken(email) {

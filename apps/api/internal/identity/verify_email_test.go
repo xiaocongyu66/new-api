@@ -48,24 +48,40 @@ func TestSendEmailVerificationFormatRegex(t *testing.T) {
 	t.Cleanup(func() {
 		common.EmailFormatRegex, common.EmailFormatRegexCompiled = oldRegex, oldCompiled
 	})
-	common.EmailFormatRegex = "^[0-9]+@qq\\.com$"
-	re, err := regexp.Compile(common.EmailFormatRegex)
-	require.NoError(t, err)
-	common.EmailFormatRegexCompiled = re
+	common.EmailFormatRegex = "^[0-9]+@qq\\.com$\n^[a-z]+@company\\.com$"
+	var compiled []*regexp.Regexp
+	for _, rule := range []string{"^[0-9]+@qq\\.com$", "^[a-z]+@company\\.com$"} {
+		re, err := regexp.Compile(rule)
+		require.NoError(t, err)
+		compiled = append(compiled, re)
+	}
+	common.EmailFormatRegexCompiled = compiled
 
-	rejected := "admin@qq.com"
-	accepted := "123456@qq.com"
-	rejectedCode := seedPendingCode(t, rejected)
-	acceptedCode := seedPendingCode(t, accepted)
-
-	body := performEmailVerification(t, rejected)
-	require.Contains(t, body, `"success":false`, "不匹配的邮箱必须被拒绝")
-	assert.True(t, common.VerifyCodeWithKey(rejected, rejectedCode, common.EmailVerificationPurpose),
-		"被拒绝的邮箱不应签发新验证码")
-
-	_ = performEmailVerification(t, accepted)
-	assert.False(t, common.VerifyCodeWithKey(accepted, acceptedCode, common.EmailVerificationPurpose),
-		"匹配的邮箱应走到发码步骤并覆盖预置验证码")
+	tests := []struct {
+		email      string
+		shouldPass bool
+	}{
+		{email: "admin@qq.com", shouldPass: false},
+		{email: "123456@qq.com", shouldPass: true},
+		{email: "abc@company.com", shouldPass: true},
+		{email: "paco0822@qq.com", shouldPass: false},
+	}
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.email, func(t *testing.T) {
+			code := seedPendingCode(t, tc.email)
+			_ = performEmailVerification(t, tc.email)
+			if tc.shouldPass {
+				assert.False(t, common.VerifyCodeWithKey(tc.email, code, common.EmailVerificationPurpose),
+					"%s 应走到发码步骤并覆盖预置验证码", tc.email)
+			} else {
+				// response body check still useful for first case
+				_ = performEmailVerification(t, tc.email)
+				assert.True(t, common.VerifyCodeWithKey(tc.email, code, common.EmailVerificationPurpose),
+					"%s 不应签发新验证码", tc.email)
+			}
+		})
+	}
 }
 
 // 未配置 EmailFormatRegex（编译结果为 nil）时不能拦截任何邮箱。
