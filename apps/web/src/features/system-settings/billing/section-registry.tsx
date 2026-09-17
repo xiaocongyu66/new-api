@@ -313,6 +313,8 @@ const BILLING_SECTIONS = [
             settings['qq_bot_setting.steal_recipient_grace_seconds'] ?? 0,
           'qq_bot_setting.command_cooldown_seconds':
             settings['qq_bot_setting.command_cooldown_seconds'] ?? 0,
+          'qq_bot_setting.rebind_cooldown_seconds':
+            settings['qq_bot_setting.rebind_cooldown_seconds'] ?? 0,
           'qq_bot_setting.recall_failed_messages':
             settings['qq_bot_setting.recall_failed_messages'] ?? false,
           'qq_bot_setting.recall_delay_seconds':
