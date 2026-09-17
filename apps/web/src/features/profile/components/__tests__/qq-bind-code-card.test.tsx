@@ -33,6 +33,7 @@ type BindStatus = {
   qq_checkin_enabled: boolean
   bound: boolean
   qq_username?: string
+  rebind_cooldown_seconds?: number
 }
 
 let bindStatus: BindStatus = { qq_checkin_enabled: true, bound: true }
@@ -100,6 +101,10 @@ await i18n.use(initReactI18next).init({
         'QQ account unbound': 'QQ account unbound',
         'Failed to unbind QQ account': 'Failed to unbind QQ account',
         'Generate code': 'Generate code',
+        'Are you sure you want to unbind your QQ account? QQ check-in will stop working until you bind again.':
+          'Are you sure you want to unbind your QQ account? QQ check-in will stop working until you bind again.',
+        'You need to wait {{seconds}} seconds before you can rebind.':
+          'You need to wait {{seconds}} seconds before you can rebind.',
       },
     },
   },
@@ -188,6 +193,28 @@ describe('QQ bind code card unbind', () => {
     assert.deepEqual(toastCalls, [
       { level: 'success', message: 'QQ account unbound' },
     ])
+
+    await cleanup()
+  })
+
+  test('tells the user the rebind cooldown in the unbind dialog when configured', async () => {
+    bindStatus = {
+      qq_checkin_enabled: true,
+      bound: true,
+      rebind_cooldown_seconds: 90,
+    }
+    const { container, cleanup } = await renderCard()
+
+    await act(async () => {
+      findButton(container, 'Unbind')?.click()
+    })
+
+    // 冷却提示必须在弹窗里以秒数出现；弹窗在 portal 中，查 document。
+    const body = document.body.textContent ?? ''
+    assert.ok(
+      body.includes('You need to wait 90 seconds before you can rebind.'),
+      '解绑确认弹窗应包含冷却秒数提示'
+    )
 
     await cleanup()
   })

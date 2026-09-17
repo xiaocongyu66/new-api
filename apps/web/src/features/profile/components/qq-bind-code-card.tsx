@@ -183,6 +183,17 @@ export function QQBindCodeCard({ show, className }: QQBindCodeCardProps) {
     )
   }
 
+  const rebindCooldown = status?.rebind_cooldown_seconds ?? 0
+  const baseUnbindDesc = t(
+    'Are you sure you want to unbind your QQ account? QQ check-in will stop working until you bind again.'
+  )
+  const unbindDesc =
+    rebindCooldown > 0
+      ? `${baseUnbindDesc} ${t('You need to wait {{seconds}} seconds before you can rebind.', {
+          seconds: rebindCooldown,
+        })}`
+      : baseUnbindDesc
+
   return (
     <Card
       data-card-hover='false'
@@ -212,9 +223,7 @@ export function QQBindCodeCard({ show, className }: QQBindCodeCardProps) {
         open={confirmUnbind}
         onOpenChange={setConfirmUnbind}
         title={t('Confirm Unbind')}
-        desc={t(
-          'Are you sure you want to unbind your QQ account? QQ check-in will stop working until you bind again.'
-        )}
+        desc={unbindDesc}
         confirmText={t('Confirm Unbind')}
         destructive
         handleConfirm={unbind}
