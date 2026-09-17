@@ -3,6 +3,7 @@ package identity
 import (
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"math/big"
 	"strings"
 	"time"
@@ -161,7 +162,7 @@ func RejectQQBindIfInCooldown(userId int) (int64, error) {
 	allowedAt := record.UnbindAt + int64(qqRebindCooldownSeconds)
 	now := time.Now().Unix()
 	if now < allowedAt {
-		return allowedAt - now, errors.New("解绑后需等待冷却时间才能重新绑定")
+		return allowedAt - now, fmt.Errorf("解绑后需等待冷却时间才能重新绑定，剩余 %d 秒", allowedAt-now)
 	}
 	return 0, nil
 }
@@ -173,10 +174,8 @@ func CreateQQBindCode(userId int) (*QQBindCode, error) {
 	if _, err := GetQQBindingByUserId(userId); err == nil {
 		return nil, errors.New("当前账号已绑定 QQ，请先解绑")
 	}
-	if wait, err := RejectQQBindIfInCooldown(userId); err != nil {
+	if _, err := RejectQQBindIfInCooldown(userId); err != nil {
 		return nil, err
-	} else if wait > 0 {
-		return nil, errors.New("解绑后需等待冷却时间才能重新绑定")
 	}
 
 	// 作废该用户此前未使用的验证码
@@ -258,10 +257,8 @@ func ConsumeQQBindCode(code, openID, unionOpenID, username string) (int, error) 
 	if _, err := GetQQBindingByUserId(bindCode.UserId); err == nil {
 		return 0, errors.New("该账号已绑定其他 QQ")
 	}
-	if wait, err := RejectQQBindIfInCooldown(bindCode.UserId); err != nil {
+	if _, err := RejectQQBindIfInCooldown(bindCode.UserId); err != nil {
 		return 0, err
-	} else if wait > 0 {
-		return 0, errors.New("解绑后需等待冷却时间才能重新绑定")
 	}
 
 	binding := &QQBinding{
