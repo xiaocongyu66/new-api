@@ -163,6 +163,7 @@ const defaultBillingSettings: BillingSettings = {
   'qq_bot_setting.steal_daily_limit': 3,
   'qq_bot_setting.steal_recipient_grace_seconds': 0,
   'qq_bot_setting.command_cooldown_seconds': 0,
+  'qq_bot_setting.rebind_cooldown_seconds': 0,
   'qq_bot_setting.recall_failed_messages': false,
   'qq_bot_setting.recall_delay_seconds': 10,
   'qq_bot_setting.recall_policies': '',

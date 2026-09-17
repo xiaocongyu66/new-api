@@ -1,6 +1,9 @@
 package billing
 
-import "github.com/QuantumNous/new-api/internal/settings"
+import (
+	"github.com/QuantumNous/new-api/internal/identity"
+	"github.com/QuantumNous/new-api/internal/settings"
+)
 
 // QQBotSetting QQ 机器人配置
 type QQBotSetting struct {
@@ -83,6 +86,9 @@ type QQBotSetting struct {
 	// 防止刷屏：同一用户在冷却期内再次发指令会被静默忽略并回复提示。
 	CommandCooldownSeconds int `json:"command_cooldown_seconds"`
 
+	// RebindCooldownSeconds QQ 解绑后多少秒内禁止重新绑定，<=0 关闭冷却。
+	RebindCooldownSeconds int `json:"rebind_cooldown_seconds"`
+
 	// RecallFailedMessages 是否自动撤回失败回复（签到失败、红包已领完等）。
 	// 依赖 QQ 平台的撤回权限，默认关闭。
 	RecallFailedMessages bool `json:"recall_failed_messages"`
@@ -153,6 +159,7 @@ var qqBotSetting = QQBotSetting{
 	QQCheckinEnabled: false,
 
 	CommandCooldownSeconds: 0,
+	RebindCooldownSeconds:  0,
 	RecallFailedMessages:   false,
 	RecallDelaySeconds:     10,
 	RecallPolicies:         "",
@@ -213,6 +220,7 @@ func init() {
 
 // GetQQBotSetting 获取 QQ 机器人配置
 func GetQQBotSetting() *QQBotSetting {
+	identity.SetQQRebindCooldownSeconds(qqBotSetting.RebindCooldownSeconds)
 	return &qqBotSetting
 }
 

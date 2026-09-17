@@ -15,10 +15,11 @@ import (
 // 避免为了一个回归用例去改动全包共享的 TestMain。AutoMigrate 幂等。
 func migrateQQBindingTables(t *testing.T) {
 	t.Helper()
-	require.NoError(t, dbx.DB.AutoMigrate(&QQBinding{}, &QQBindCode{}))
+	require.NoError(t, dbx.DB.AutoMigrate(&QQBinding{}, &QQBindCode{}, &QQUnbindRecord{}))
 	t.Cleanup(func() {
 		dbx.DB.Exec("DELETE FROM qq_bindings")
 		dbx.DB.Exec("DELETE FROM qq_bind_codes")
+		dbx.DB.Exec("DELETE FROM qq_unbind_records")
 	})
 }
 
@@ -141,4 +142,52 @@ func TestClearBindingQQOnUnboundUserSucceeds(t *testing.T) {
 	require.NoError(t, dbx.DB.Create(&user).Error)
 
 	assert.NoError(t, user.ClearBinding("qq"))
+}
+
+// 解绑冷却期：解绑后重新绑定应被阻止，直到冷却时间结束。
+func TestQQRebindCooldownBlocksImmediateRebind(t *testing.T) {
+	truncateTables(t)
+	migrateQQBindingTables(t)
+	useUserCacheMiniRedis(t)
+
+	user := User{Username: "qq-cooldown", Password: "password", AffCode: "affcooldown1"}
+	require.NoError(t, dbx.DB.Create(&user).Error)
+	seedQQBinding(t, user.Id, "OPENIDCOOLDOWN")
+
+	SetQQRebindCooldownSeconds(86400)
+	t.Cleanup(func() { SetQQRebindCooldownSeconds(0) })
+
+	require.NoError(t, DeleteQQBinding(user.Id))
+
+	_, err := CreateQQBindCode(user.Id)
+	assert.Error(t, err, "冷却期内不应允许生成绑定验证码")
+
+	_, err = ConsumeQQBindCode("OPENIDCOOLDOWN", "OPENIDCOOLDOWN2", "", "tester")
+	assert.Error(t, err, "冷却期内不应允许消费验证码完成绑定")
+}
+
+// 冷却期结束后应允许重新绑定。
+func TestQQRebindAllowedAfterCooldownExpires(t *testing.T) {
+	truncateTables(t)
+	migrateQQBindingTables(t)
+	useUserCacheMiniRedis(t)
+
+	user := User{Username: "qq-cooldown-expire", Password: "password", AffCode: "affcooldown2"}
+	require.NoError(t, dbx.DB.Create(&user).Error)
+	seedQQBinding(t, user.Id, "OPENIDCOOLDOWNEXPIRE")
+
+	SetQQRebindCooldownSeconds(1)
+	t.Cleanup(func() { SetQQRebindCooldownSeconds(0) })
+
+	require.NoError(t, DeleteQQBinding(user.Id))
+
+	time.Sleep(2 * time.Second)
+
+	bindCode, err := CreateQQBindCode(user.Id)
+	require.NoError(t, err, "冷却期结束后应允许生成绑定验证码")
+	assert.Equal(t, "#"+bindCode.Code[1:], bindCode.Code)
+
+	userId, err := ConsumeQQBindCode(bindCode.Code, "OPENIDNEW", "", "tester")
+	require.NoError(t, err, "冷却期结束后应允许完成绑定")
+	assert.Equal(t, user.Id, userId)
 }
