@@ -177,22 +177,24 @@ When starting a dev server for manual testing, create a test account on the inst
 
 #### Build and verify (CI-driven)
 
-**All tests, full builds, and lint MUST run in PR CI (`.github/workflows/ci.yml`). Do not run heavy commands locally.**
+**All tests, builds, and lint run in PR CI (`.github/workflows/ci.yml`) — NEVER on this machine. Absolute rule, no exceptions by default.**
 
-Local light-weight checks only:
-- `gofmt -l` / `go vet` (single package)
-- `cargo check -p <crate>` (type check, single crate)
-- `grep` / `ls` / file reads
-
-**If you must run a heavy command locally** (full `go build`, `go test ./...`, `bun run build`, `bun install`, etc.), **wrap it with `cpulimit -l 65 -i --` to cap CPU at 65%**:
+- Do NOT run `go build` / `go test` (ANY scope — full module, single package, even `-run` filtered), `bun run build`, `bun install`, or any compile/test/package/install command locally. The operator's desktop is shared with other live work; even one single-package compile stalls it. `cpulimit` does NOT make it acceptable — the operator has been burned by this repeatedly and hates it.
+- This binds **subagents too**: every spawned agent must be told that local compile/test is forbidden; agents verify by reading code, and CI compiles the PR.
+- Verification workflow without compiling:
+  1. Static review — read the changed code end to end, check imports/types/compile-consistency by inspection.
+  2. `gofmt -l <files>` and `grep` / file reads are the only local checks (and gofmt is a read, not a build).
+  3. Push the branch / open the PR and let CI compile and run the tests; read CI results and iterate there.
+  4. If runtime proof seems required before pushing, state that explicitly and let the operator decide — never reach for a local compile as a shortcut.
+- The legacy `cpulimit -l 65 -i --` wrapper below exists ONLY for cases the operator explicitly orders a local heavy run. It is an exception, not a license:
 
 ```bash
+# ONLY when the operator explicitly asks for a local run:
 cpulimit -l 65 -i -- go test ./...
 cpulimit -l 65 -i -- bun run build
-cpulimit -l 65 -i -- bun install
 ```
 
-Lightweight commands (`git`, `grep`, `ls`, file reads) do NOT need cpulimit.
+Lightweight commands (`git`, `grep`, `ls`, file reads, `gofmt -l`) do NOT need cpulimit.
 
 ### Common Code Quality
 
