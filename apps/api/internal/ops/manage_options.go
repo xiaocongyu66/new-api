@@ -47,6 +47,8 @@ var settingDisplayAmountKeys = map[string]struct{}{
 	"QuotaRemindThreshold":                 {},
 	"checkin_setting.min_quota":            {},
 	"checkin_setting.max_quota":            {},
+	"qq_bot_setting.min_quota":             {},
+	"qq_bot_setting.max_quota":             {},
 	"qq_bot_setting.drop_min_quota":        {},
 	"qq_bot_setting.drop_max_quota":        {},
 	"qq_bot_setting.drop_balance_anchor":   {},
