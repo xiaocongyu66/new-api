@@ -3,7 +3,8 @@ package billing
 import (
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -87,6 +88,10 @@ var (
 	ErrRedPacketDailyLimit = errors.New("今日发红包次数已用完")
 )
 
+// redPacketSQLiteMu protects the SQLite read-modify-write paths in CreateQQRedPacket/GrabQQRedPacket.
+// ponytail: 进程级互斥只护 SQLite 单机模式；QQ 红包本来就是单进程场景，PG/MySQL 已有 FOR UPDATE 行锁
+var redPacketSQLiteMu sync.Mutex
+
 // CountQQRedPacketsToday 统计用户今日发出的红包个数
 func CountQQRedPacketsToday(userId int) (int, error) {
 	today := time.Now().Format("2006-01-02")
@@ -118,6 +123,7 @@ func GetGroupRedPackets(groupOpenID string, limit int) ([]QQRedPacket, error) {
 		Find(&packets).Error
 	return packets, err
 }
+
 // GetQQRedPacketGrabs 读取某个红包的全部抢取记录（按时间正序）
 func GetQQRedPacketGrabs(packetId int) ([]QQRedPacketGrab, error) {
 	var grabs []QQRedPacketGrab
@@ -201,6 +207,8 @@ func CreateQQRedPacket(p *QQRedPacketParams) (*QQRedPacket, error) {
 	}
 
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+		redPacketSQLiteMu.Lock()
+		defer redPacketSQLiteMu.Unlock()
 		if err := create(dbx.DB); err != nil {
 			return nil, err
 		}
@@ -239,7 +247,7 @@ func splitRedPacketAmount(remainingAmount, remainingCount int) int {
 	if maxPick <= 1 {
 		return 1
 	}
-	return 1 + rand.Intn(maxPick)
+	return 1 + rand.IntN(maxPick)
 }
 
 // GrabQQRedPacket 抢红包
@@ -314,6 +322,8 @@ func GrabQQRedPacket(packetId, userId int, openID string, allowOwnGrab bool) (*Q
 	}
 
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+		redPacketSQLiteMu.Lock()
+		defer redPacketSQLiteMu.Unlock()
 		if err := work(dbx.DB); err != nil {
 			return nil, nil, err
 		}

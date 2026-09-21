@@ -113,7 +113,8 @@ type QQBotSetting struct {
 
 	// 偷奶酪：把别人的额度随机搬到指令发起人这里。
 	//
-	// 用法「偷奶酪 @某人」或「偷奶酪 <数量> @某人」（数量以显示货币为单位）。
+	// 用法「偷奶酪 @某人」。偷取额度始终由系统在 StealMinAmount-StealMaxAmount
+	// 区间内随机决定，用户输入的任何数字都会被忽略（运营方设计：偷取必须随机）。
 	// 默认关闭，开启后每次尝试（含掷骰失败）都写入 qq_steals 审计表并计入 thief 当日次数。
 	StealEnabled bool `json:"steal_enabled"`
 

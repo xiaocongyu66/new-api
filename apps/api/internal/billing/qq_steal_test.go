@@ -2,6 +2,7 @@ package billing
 
 import (
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/identity"
@@ -19,7 +20,7 @@ func setupStealTestDB(t *testing.T) func() {
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
-	require.NoError(t, db.AutoMigrate(&identity.User{}, &QQSteal{}))
+	require.NoError(t, db.AutoMigrate(&identity.User{}, &identity.QQBinding{}, &QQSteal{}))
 	dbx.DB, dbx.LogDB = db, db
 	return func() { dbx.DB, dbx.LogDB = previousDB, previousLogDB }
 }
@@ -189,16 +190,70 @@ func TestIsStealCommand(t *testing.T) {
 	}
 }
 
-// TestParseStealAmount 可选数量参数解析
-func TestParseStealAmount(t *testing.T) {
-	v, ok := parseStealAmount("偷奶酪 0.3 @x")
-	assert.True(t, ok)
-	assert.InDelta(t, 0.3, v, 1e-9)
+// TestHandleStealCommand_IgnoresExplicitAmount 用户指定的金额必须被忽略，
+// 无论输入什么数字都应返回随机区间内额度，绝不能报"最少/上限"错误。
+// 这是回归测试，确保 parseStealAmount 删除后"偷奶酪 999999 @victim" 仍正常随机。
+func TestHandleStealCommand_IgnoresExplicitAmount(t *testing.T) {
+	defer setupStealTestDB(t)()
 
-	v, ok = parseStealAmount("偷奶酪 0.3🧀 @x")
-	assert.True(t, ok)
-	assert.InDelta(t, 0.3, v, 1e-9)
+	// 局部快照恢复设置
+	s := GetQQBotSetting()
+	orig := *s
+	t.Cleanup(func() { *s = orig })
 
-	_, ok = parseStealAmount("偷奶酪 <qqbot-at-user uid=\"x\"/>")
-	assert.False(t, ok)
+	// 用极小区间让断言有判别力
+	s.StealEnabled = true
+	s.StealMinAmount = 1.0
+	s.StealMaxAmount = 2.0
+	s.StealSuccessRate = 100
+	s.StealDailyLimit = 100
+	s.StealRecipientGraceSeconds = 0
+
+	victimID := createQuotaUser(t, "victim", 5000000)
+	thiefID := createQuotaUser(t, "thief", 1000000)
+
+	require.NoError(t, dbx.DB.Create(&identity.QQBinding{
+		UserId:    thiefID,
+		OpenID:    "thief-open",
+		CreatedAt: time.Now().Unix(),
+	}).Error)
+	require.NoError(t, dbx.DB.Create(&identity.QQBinding{
+		UserId:    victimID,
+		OpenID:    "victim-open",
+		CreatedAt: time.Now().Unix(),
+	}).Error)
+
+	// ensure bindings are visible
+	thief, _ := identity.IsQQBound("thief-open")
+	require.Equal(t, thiefID, thief)
+
+	event := &GroupAtMessageEvent{
+		Content:     "偷奶酪 999999 @victim",
+		GroupOpenID: "group-open",
+		Mentions:    []Mention{{ID: "victim-open", Bot: false}},
+	}
+
+	reply := HandleStealCommand(event, "thief-open")
+	assert.NotContains(t, reply, "单次最少")
+	assert.NotContains(t, reply, "单次上限")
+	assert.Contains(t, reply, "偷奶酪成功")
+
+	var steal QQSteal
+	require.NoError(t, dbx.DB.Where("thief_user_id = ? AND success = ?", thiefID, true).
+		Order("id DESC").First(&steal).Error)
+
+	minQ := unitsToQuota(1.0)
+	maxQ := unitsToQuota(2.0)
+	if minQ < 1 {
+		minQ = 1
+	}
+	if maxQ < minQ {
+		maxQ = minQ
+	}
+	assert.GreaterOrEqual(t, steal.Amount, minQ, "amount should be in random range")
+	assert.LessOrEqual(t, steal.Amount, maxQ, "amount should be in random range")
+
+	// verify deltas
+	assert.Equal(t, 1000000+steal.Amount, userQuota(t, thiefID))
+	assert.Equal(t, 5000000-steal.Amount, userQuota(t, victimID))
 }

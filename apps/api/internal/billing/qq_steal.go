@@ -263,7 +263,7 @@ func stealWithoutTransaction(steal *QQSteal, p *QQStealParams) (*QQSteal, error)
 
 // ─── 群指令 ────────────────────────────────────────────────────────────────
 
-// 偷奶酪指令。用法：偷奶酪 @某人 或 偷奶酪 <数量> @某人（数量以显示货币为单位）。
+// 偷奶酪指令。用法：偷奶酪 @某人。
 // 裸动词形式，与签到/红包别名同款：不带斜杠前缀也能触发。
 // stealAliases 可接受写法
 var stealAliases = []string{"/偷奶酪", "偷奶酪"}
@@ -277,15 +277,6 @@ func isStealCommand(content string) bool {
 		}
 	}
 	return false
-}
-
-// parseStealAmount 解析可选的数量参数（显示货币单位）。未给出时返回 false。
-func parseStealAmount(content string) (float64, bool) {
-	text := stripTags(content)
-	for _, alias := range stealAliases {
-		text = strings.ReplaceAll(text, alias, " ")
-	}
-	return firstPositiveNumber(text)
 }
 
 // HandleStealCommand 处理偷奶酪指令，返回要回复的 markdown。
@@ -309,7 +300,7 @@ func HandleStealCommand(event *GroupAtMessageEvent, senderOpenID string) string 
 				"**偷奶酪失败！**\n\n对方还没有绑定站点账号，无从下手")
 		}
 		return buildPlainMarkdown(senderOpenID, fmt.Sprintf(
-			"**用法：**偷奶酪 @某人 或 偷奶酪 数量 @某人\n\n数量 %s-%s%s，不填则随机",
+			"**用法：**偷奶酪 @某人\n\n偷取额度由系统随机决定（%s-%s%s 区间）。",
 			trimFloat(s.StealMinAmount), trimFloat(s.StealMaxAmount), currencySymbolOrEmpty()))
 	}
 	if victimUserId == thiefUserId {
@@ -326,20 +317,6 @@ func HandleStealCommand(event *GroupAtMessageEvent, senderOpenID string) string 
 	}
 
 	amount := randomDropQuota(minQuota, maxQuota)
-	if units, has := parseStealAmount(event.Content); has {
-		amount = unitsToQuota(units)
-		// 显式指定的数量同样受区间约束：上限是防刷配置，不能静默突破
-		if amount < minQuota {
-			return buildPlainMarkdown(senderOpenID, fmt.Sprintf(
-				"**偷奶酪失败！**\n\n单次最少 %s%s",
-				trimFloat(s.StealMinAmount), currencySymbolOrEmpty()))
-		}
-		if amount > maxQuota {
-			return buildPlainMarkdown(senderOpenID, fmt.Sprintf(
-				"**偷奶酪失败！**\n\n单次上限 %s%s",
-				trimFloat(s.StealMaxAmount), currencySymbolOrEmpty()))
-		}
-	}
 
 	steal, err := DoQQSteal(&QQStealParams{
 		ThiefUserId:  thiefUserId,
