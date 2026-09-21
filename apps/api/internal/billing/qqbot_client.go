@@ -283,6 +283,34 @@ func (ac *apiClient) SendGroupMessage(groupOpenID string, req *GroupMessageReque
 	return parseSendMessageID(body), nil
 }
 
+// SendC2CMessage 发送单聊(私信) Markdown 消息;msgID 非空时作为被动回复凭证。
+// 请求体与群消息同构,失败日志路径与 SendGroupMessage 保持一致。
+func (ac *apiClient) SendC2CMessage(openID, content, msgID string) error {
+	req := &GroupMessageRequest{
+		MsgType:  2, // Markdown
+		Markdown: &MessageMarkdown{Content: content},
+		MsgID:    msgID,
+	}
+	if msgID != "" {
+		req.MsgSeq = nextMsgSeq(msgID)
+	}
+	path := fmt.Sprintf("/v2/users/%s/messages", url.PathEscape(openID))
+	reqPreview, _ := common.Marshal(req)
+	body, status, err := ac.do(http.MethodPost, path, req)
+	if err != nil {
+		common.SysError(fmt.Sprintf("单聊消息请求失败 user=%s req=%s err=%v",
+			openID, truncateForLog(string(reqPreview), 600), err))
+		return err
+	}
+	if status != http.StatusOK && status != http.StatusCreated && status != http.StatusNoContent {
+		common.SysError(fmt.Sprintf("单聊消息响应异常 user=%s HTTP=%d req=%s resp=%s",
+			openID, status,
+			truncateForLog(string(reqPreview), 600), truncateForLog(string(body), 600)))
+		return fmt.Errorf("发送单聊消息失败 HTTP %d: %s", status, string(body))
+	}
+	return nil
+}
+
 // parseSendMessageID 从发送消息响应体中提取消息 ID(用于撤回)。
 // message_id 优先;老版本接口只回 id 时兜底取 id。
 // 返回空串是刻意降级:消息已发出,只是拿不到 ID 无法自动撤回,

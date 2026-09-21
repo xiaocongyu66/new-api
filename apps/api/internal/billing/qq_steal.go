@@ -143,6 +143,13 @@ func victimInStealGrace(q *gorm.DB, victimUserId, graceSeconds int) (bool, error
 func stealWithTransaction(steal *QQSteal, p *QQStealParams) (*QQSteal, error) {
 	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
 		if p.DailyLimit > 0 {
+			// Reference pattern from store_checkin.go: lock user rows FIRST, then count.
+			if err := dbx.LockForUpdate(tx).First(&identity.User{}, p.VictimUserId).Error; err != nil {
+				return err
+			}
+			if err := dbx.LockForUpdate(tx).First(&identity.User{}, p.ThiefUserId).Error; err != nil {
+				return err
+			}
 			count, err := countStealsToday(tx, p.ThiefUserId, steal.StealDate)
 			if err != nil {
 				return err
@@ -202,55 +209,66 @@ func stealWithTransaction(steal *QQSteal, p *QQStealParams) (*QQSteal, error) {
 	return steal, nil
 }
 
-// stealWithoutTransaction SQLite 路径
-//
-// 扣减本身是单条条件更新语句，三种数据库里都原子；缺的只是跨语句事务，
-// 因此按「先扣后加」排序，中途失败把已扣的退回受害者，宁可回滚也不凭空增发。
 func stealWithoutTransaction(steal *QQSteal, p *QQStealParams) (*QQSteal, error) {
-	if p.DailyLimit > 0 {
-		count, err := countStealsToday(dbx.DB, p.ThiefUserId, steal.StealDate)
+	// SQLite 路径：整个「锁行、次数校验、掷骰、扣加额度、落记录」包进一个事务，
+	// 单写者语义使 dailyLimit 重判权威；先锁用户行再数次数，保持「先扣后加」。
+	// 两侧都用事务内裸条件更新——identity 批量原语会把小偷的加钱排到事务外，
+	// 与受害者的扣钱不再原子；缓存更新统一在提交后做一次。
+	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
+		if err := dbx.LockForUpdate(identity.UserQuery(tx)).
+			Where("id = ?", p.VictimUserId).
+			Select("id").
+			Take(&identity.User{}).Error; err != nil {
+			return err
+		}
+		if err := dbx.LockForUpdate(identity.UserQuery(tx)).
+			Where("id = ?", p.ThiefUserId).
+			Select("id").
+			Take(&identity.User{}).Error; err != nil {
+			return err
+		}
+
+		if p.DailyLimit > 0 {
+			count, err := countStealsToday(tx, p.ThiefUserId, steal.StealDate)
+			if err != nil {
+				return err
+			}
+			if count >= p.DailyLimit {
+				return ErrStealLimit
+			}
+		}
+
+		inGrace, err := victimInStealGrace(tx, p.VictimUserId, p.GraceSeconds)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		if count >= p.DailyLimit {
-			return nil, ErrStealLimit
+		switch {
+		case inGrace:
+			steal.Reason = stealFailGrace
+		case !stealRollWon(p.SuccessRate):
+			steal.Reason = stealFailLucky
+		default:
+			res := tx.Model(&identity.User{}).
+				Where("id = ? AND quota >= ?", p.VictimUserId, p.Amount).
+				Update("quota", gorm.Expr("quota - ?", p.Amount))
+			if res.Error != nil {
+				return res.Error
+			}
+			if res.RowsAffected == 0 {
+				steal.Reason = stealFailBroke
+				break
+			}
+			if err := tx.Model(&identity.User{}).Where("id = ?", p.ThiefUserId).
+				Update("quota", gorm.Expr("quota + ?", p.Amount)).Error; err != nil {
+				return err
+			}
+			steal.Success = true
+			steal.Amount = p.Amount
 		}
-	}
 
-	inGrace, err := victimInStealGrace(dbx.DB, p.VictimUserId, p.GraceSeconds)
+		return tx.Create(steal).Error
+	})
 	if err != nil {
-		return nil, err
-	}
-	switch {
-	case inGrace:
-		steal.Reason = stealFailGrace
-	case !stealRollWon(p.SuccessRate):
-		steal.Reason = stealFailLucky
-	default:
-		res := dbx.DB.Model(&identity.User{}).
-			Where("id = ? AND quota >= ?", p.VictimUserId, p.Amount).
-			Update("quota", gorm.Expr("quota - ?", p.Amount))
-		if res.Error != nil {
-			return nil, res.Error
-		}
-		if res.RowsAffected == 0 {
-			steal.Reason = stealFailBroke
-			break
-		}
-		if err := identity.IncreaseUserQuota(p.ThiefUserId, p.Amount, true); err != nil {
-			_ = identity.IncreaseUserQuota(p.VictimUserId, p.Amount, true)
-			return nil, err
-		}
-		steal.Success = true
-		steal.Amount = p.Amount
-	}
-
-	if err := dbx.DB.Create(steal).Error; err != nil {
-		// 记录写不进去就把额度还原，避免出现无凭证的额度流动
-		if steal.Success {
-			_ = identity.DecreaseUserQuota(p.ThiefUserId, p.Amount, true)
-			_ = identity.IncreaseUserQuota(p.VictimUserId, p.Amount, true)
-		}
 		return nil, err
 	}
 

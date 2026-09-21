@@ -5,8 +5,21 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"errors"
+	"strconv"
 	"strings"
+	"time"
 )
+
+const qqSigMaxAgeSeconds = 300 // Freshness window for signature verification
+
+// GetQQWebhookPath returns the webhook endpoint path, optionally with a token suffix.
+// It is intended to be used by register_api.go to wire the endpoint.
+func GetQQWebhookPath(token string) string {
+	if token == "" {
+		return "/api/qqbot/webhook"
+	}
+	return "/api/qqbot/webhook/" + strings.TrimPrefix(token, "/")
+}
 
 // deriveKey 按官方规则从 AppSecret 派生 Ed25519 密钥对
 // 规则：将 secret 重复拼接直到长度 >= ed25519.SeedSize(32)，然后截断到 32 字节作为 seed
@@ -44,6 +57,16 @@ func VerifySignature(botSecret, signatureHex, timestamp string, body []byte) err
 	}
 	if timestamp == "" {
 		return errors.New("缺少时间戳头 X-Signature-Timestamp")
+	}
+
+	// Freshness check: reject timestamps older/newer than qqSigMaxAgeSeconds
+	ts, err := strconv.ParseInt(timestamp, 10, 64)
+	if err != nil {
+		return errors.New("时间戳格式非法")
+	}
+	now := time.Now().Unix()
+	if diff := now - ts; diff < -qqSigMaxAgeSeconds || diff > qqSigMaxAgeSeconds {
+		return errors.New("签名时间戳已过期")
 	}
 
 	privateKey, err := deriveKey(botSecret)

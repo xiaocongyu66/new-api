@@ -37,8 +37,13 @@ func SetApiRouter(router contract.Engine) {
 		//apiRouter.GET("/midjourney", handler.GetMidjourney)
 		apiRouter.GET("/home_page_content", handler.GetHomePageContent)
 		// QQ open-platform webhook. Public by design; every dispatch must pass
-		// Ed25519 signature verification inside the handler.
+		// Ed25519 signature verification inside the handler. The *token wildcard
+		// serves the optional WebhookPathToken suffix (billing.GetQQWebhookPath):
+		// the handler 404s any request whose path does not match the currently
+		// configured token, so no route re-registration is needed when the token
+		// changes at runtime.
 		apiRouter.POST("/qqbot/webhook", anonymousRequestBodyLimit, billing.QQBotWebhook)
+		apiRouter.POST("/qqbot/webhook/*token", anonymousRequestBodyLimit, billing.QQBotWebhook)
 		apiRouter.GET("/pricing", middleware.HeaderNavModuleAuth("pricing"), handler.GetPricing)
 		// /api/log routes
 		logRoute := apiRouter.Group("/log")

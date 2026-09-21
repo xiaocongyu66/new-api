@@ -132,10 +132,22 @@ func DoQQTransfer(p *QQTransferParams) (*QQTransfer, error) {
 	return transferWithTransaction(transfer, p)
 }
 
-// transferWithTransaction MySQL / PostgreSQL 事务路径
 func transferWithTransaction(transfer *QQTransfer, p *QQTransferParams) (*QQTransfer, error) {
 	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
 		if p.DailyLimit > 0 {
+			// Reference pattern from store_checkin.go: lock user rows FIRST, then count.
+			if err := dbx.LockForUpdate(identity.UserQuery(tx)).
+				Where("id = ?", p.FromUserId).
+				Select("id").
+				Take(&identity.User{}).Error; err != nil {
+				return err
+			}
+			if err := dbx.LockForUpdate(identity.UserQuery(tx)).
+				Where("id = ?", p.ToUserId).
+				Select("id").
+				Take(&identity.User{}).Error; err != nil {
+				return err
+			}
 			fromCount, err := countTransfersTodayTx(tx, p.FromUserId, transfer.TransferDate)
 			if err != nil {
 				return err
@@ -182,54 +194,65 @@ func transferWithTransaction(transfer *QQTransfer, p *QQTransferParams) (*QQTran
 	return transfer, nil
 }
 
-// transferWithoutTransaction SQLite 路径
-//
-// 没有事务保护，因此按「先扣后加」排序：中途失败时把已扣的额度退回，
-// 宁可让发送方看到一次失败，也不能出现凭空增发。
 func transferWithoutTransaction(transfer *QQTransfer, p *QQTransferParams) (*QQTransfer, error) {
-	if p.DailyLimit > 0 {
-		fromCount, err := CountQQTransfersToday(p.FromUserId)
-		if err != nil {
-			return nil, err
+	// SQLite 路径：整个「锁行、计数、扣加额度、落记录」包进一个事务，
+	// 单写者语义使 dailyLimit 重判权威；先锁用户行再数次数。
+	// 两侧都用事务内裸条件更新，不用 dbx.DB 原语——否则加钱在事务外先行提交，
+	// 崩溃时发送方扣减回滚而接收方已入账，等于凭空增发。
+	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
+		if p.DailyLimit > 0 {
+			if err := dbx.LockForUpdate(identity.UserQuery(tx)).
+				Where("id = ?", p.FromUserId).
+				Select("id").
+				Take(&identity.User{}).Error; err != nil {
+				return err
+			}
+			if err := dbx.LockForUpdate(identity.UserQuery(tx)).
+				Where("id = ?", p.ToUserId).
+				Select("id").
+				Take(&identity.User{}).Error; err != nil {
+				return err
+			}
+			fromCount, err := countTransfersTodayTx(tx, p.FromUserId, transfer.TransferDate)
+			if err != nil {
+				return err
+			}
+			if fromCount >= p.DailyLimit {
+				return ErrTransferLimitSelf
+			}
+			toCount, err := countTransfersTodayTx(tx, p.ToUserId, transfer.TransferDate)
+			if err != nil {
+				return err
+			}
+			if toCount >= p.DailyLimit {
+				return ErrTransferLimitPeer
+			}
 		}
-		if fromCount >= p.DailyLimit {
-			return nil, ErrTransferLimitSelf
-		}
-		toCount, err := CountQQTransfersToday(p.ToUserId)
-		if err != nil {
-			return nil, err
-		}
-		if toCount >= p.DailyLimit {
-			return nil, ErrTransferLimitPeer
-		}
-	}
 
-	res := dbx.DB.Model(&identity.User{}).
-		Where("id = ? AND quota >= ?", p.FromUserId, p.Amount).
-		Update("quota", gorm.Expr("quota - ?", p.Amount))
-	if res.Error != nil {
-		return nil, res.Error
-	}
-	if res.RowsAffected == 0 {
-		return nil, ErrTransferInsufficient
-	}
+		res := tx.Model(&identity.User{}).
+			Where("id = ? AND quota >= ?", p.FromUserId, p.Amount).
+			Update("quota", gorm.Expr("quota - ?", p.Amount))
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return ErrTransferInsufficient
+		}
 
-	rollback := func() {
-		_ = identity.IncreaseUserQuota(p.FromUserId, p.Amount, true)
-	}
+		if err := tx.Model(&identity.User{}).Where("id = ?", p.ToUserId).
+			Update("quota", gorm.Expr("quota + ?", transfer.Received)).Error; err != nil {
+			return err
+		}
 
-	if err := identity.IncreaseUserQuota(p.ToUserId, transfer.Received, true); err != nil {
-		rollback()
+		return tx.Create(transfer).Error
+	})
+	if err != nil {
 		return nil, err
 	}
-	if err := dbx.DB.Create(transfer).Error; err != nil {
-		// 记录写不进去就把双方额度都还原，避免出现无凭证的额度流动
-		_ = identity.DecreaseUserQuota(p.ToUserId, transfer.Received, true)
-		rollback()
-		return nil, err
-	}
 
-	_ = quotacache.DecrUser(p.FromUserId, int64(p.Amount))
-	_ = quotacache.IncrUser(p.ToUserId, int64(transfer.Received))
+	go func() {
+		_ = quotacache.IncrUser(p.FromUserId, -int64(p.Amount))
+		_ = quotacache.IncrUser(p.ToUserId, int64(transfer.Received))
+	}()
 	return transfer, nil
 }

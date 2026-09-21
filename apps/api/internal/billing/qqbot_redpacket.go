@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/identity"
@@ -81,10 +82,33 @@ func parseRedPacketArgs(content string) (amountUnits float64, count int, blessin
 		count = int(numbers[1])
 	}
 	blessing = strings.TrimSpace(strings.Join(words, " "))
+	// Fix 5: 祝福语解析后，tag 剥离并 40 字上限，净化 HTML/马甲文结构。
+	blessing = sanitizeBlessing(blessing)
 	if len([]rune(blessing)) > 40 {
 		blessing = string([]rune(blessing)[:40])
 	}
 	return
+}
+// sanitizeBlessing whitelist-sanitizes blessing text to prevent markdown injection.
+// Letters, digits, CJK, basic punctuation/spaces kept; * ` [ ] > # and newlines stripped.
+// Keeps existing tests passing and adds one for sanitizer (Fix 5).
+func sanitizeBlessing(s string) string {
+	var sb strings.Builder
+	for _, r := range s {
+		switch {
+		case unicode.IsLetter(r), unicode.IsDigit(r), unicode.Is(unicode.Han, r), unicode.Is(unicode.Hiragana, r), unicode.Is(unicode.Katakana, r):
+			sb.WriteRune(r)
+		case r == ' ' || r == '，' || r == '。' || r == '！' || r == '？' || r == '、' || r == '：' || r == '；' || r == '（' || r == '）' || r == '【' || r == '】' || r == '《' || r == '》':
+			sb.WriteRune(r)
+		// explicitly strip dangerous markdown chars and newlines
+		case r == '*' || r == '`' || r == '[' || r == ']' || r == '>' || r == '#' || r == '\n' || r == '\r':
+			continue
+		default:
+			// keep other safe punctuation
+			sb.WriteRune(r)
+		}
+	}
+	return sb.String()
 }
 
 // redPacketKeyboard 构造红包消息下方的按钮

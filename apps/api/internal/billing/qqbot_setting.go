@@ -10,6 +10,10 @@ type QQBotSetting struct {
 	AppID     string `json:"app_id"`     // QQ 开放平台 AppID
 	AppSecret string `json:"app_secret"` // QQ 开放平台 AppSecret
 
+	// WebhookPathToken 可选的路径令牌：设置后 webhook 路由变为 /api/qqbot/webhook/<token>，
+	// 旧路径 /api/qqbot/webhook 将返回 404，防止未授权调用与签名预言机攻击。
+	WebhookPathToken string `json:"webhook_path_token"`
+
 	// QQ 签到额度范围（与网页签到独立配置，各自走 display currency）
 	MinQuota int `json:"min_quota"` // QQ 签到最小额度奖励
 	MaxQuota int `json:"max_quota"` // QQ 签到最大额度奖励
@@ -160,7 +164,8 @@ var qqBotSetting = QQBotSetting{
 	QQCheckinEnabled: false,
 
 	CommandCooldownSeconds: 0,
-	RebindCooldownSeconds:  0,
+	// RebindCooldownSeconds 默认 1 小时：受害者被抢绑后有一小时保护窗，运营可在面板调整。
+	RebindCooldownSeconds: 3600,
 	RecallFailedMessages:   false,
 	RecallDelaySeconds:     10,
 	RecallPolicies:         "",

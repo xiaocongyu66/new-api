@@ -1,17 +1,23 @@
 package ops
 
 import (
+	"errors"
+	"net/http"
+	"time"
+
+	"gorm.io/gorm"
+
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/QuantumNous/new-api/internal/identity"
-	"net/http"
-	"time"
 
 	"github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
+
+var errSetupAlreadyDone = errors.New("setup already done")
 
 type Setup struct {
 	Status       bool   `json:"status"`
@@ -69,9 +75,8 @@ func PostSetup(c contract.Context) {
 		return
 	}
 
-	// If root doesn't exist, validate and create admin account
+	// Validate username length: max 12 characters to align with identity.User validation
 	if !rootExists {
-		// Validate username length: max 12 characters to align with identity.User validation
 		if len(req.Username) > 12 {
 			_ = c.JSON(http.StatusOK, common.H{
 				"success": false,
@@ -95,40 +100,14 @@ func PostSetup(c contract.Context) {
 			})
 			return
 		}
-
-		// Create root user
-		hashedPassword, err := common.Password2Hash(req.Password)
-		if err != nil {
-			_ = c.JSON(http.StatusOK, common.H{
-				"success": false,
-				"message": "系统错误: " + err.Error(),
-			})
-			return
-		}
-		rootUser := identity.User{
-			Username:    req.Username,
-			Password:    hashedPassword,
-			Role:        common.RoleRootUser,
-			Status:      common.UserStatusEnabled,
-			DisplayName: "Root User",
-			AccessToken: nil,
-			Quota:       100000000,
-		}
-		err = dbx.DB.Create(&rootUser).Error
-		if err != nil {
-			_ = c.JSON(http.StatusOK, common.H{
-				"success": false,
-				"message": "创建管理员账号失败: " + err.Error(),
-			})
-			return
-		}
 	}
 
 	// Set operation modes
 	channel.SelfUseModeEnabled = req.SelfUseModeEnabled
 	channel.DemoSiteEnabled = req.DemoSiteEnabled
 
-	// Save operation modes to database for persistence
+	// Save operation modes to database for persistence (idempotent upserts,
+	// safe to run before the account transaction)
 	err = dbinfra.UpdateOption("SelfUseModeEnabled", setupBoolToString(req.SelfUseModeEnabled))
 	if err != nil {
 		_ = c.JSON(http.StatusOK, common.H{
@@ -147,21 +126,61 @@ func PostSetup(c contract.Context) {
 		return
 	}
 
-	// Update setup status
-	constant.Setup = true
-
-	setup := dbinfra.Setup{
-		Version:       common.Version,
-		InitializedAt: time.Now().Unix(),
-	}
-	err = dbx.DB.Create(&setup).Error
-	if err != nil {
+	// Complete setup inside one transaction. The fixed-ID (ID=1) setup row
+	// insert is the serialization point: a concurrent second request blocks on
+	// the primary key and fails with a duplicate-key error, rolling back its
+	// half-created root user. The row-count check covers legacy rows.
+	setupErr := dbx.DB.Transaction(func(tx *gorm.DB) error {
+		var setupCount int64
+		if err := tx.Model(&dbinfra.Setup{}).Count(&setupCount).Error; err != nil {
+			return err
+		}
+		if setupCount > 0 {
+			return errSetupAlreadyDone
+		}
+		setup := dbinfra.Setup{
+			ID:            1,
+			Version:       common.Version,
+			InitializedAt: time.Now().Unix(),
+		}
+		if err := tx.Create(&setup).Error; err != nil {
+			return err
+		}
+		if !rootExists {
+			// Create root user
+			hashedPassword, err := common.Password2Hash(req.Password)
+			if err != nil {
+				return err
+			}
+			rootUser := identity.User{
+				Username:    req.Username,
+				Password:    hashedPassword,
+				Role:        common.RoleRootUser,
+				Status:      common.UserStatusEnabled,
+				DisplayName: "Root User",
+				AccessToken: nil,
+				Quota:       100000000,
+			}
+			return tx.Create(&rootUser).Error
+		}
+		return nil
+	})
+	if errors.Is(setupErr, errSetupAlreadyDone) {
 		_ = c.JSON(http.StatusOK, common.H{
 			"success": false,
-			"message": "系统初始化失败: " + err.Error(),
+			"message": "系统已经初始化完成",
 		})
 		return
 	}
+	if setupErr != nil {
+		_ = c.JSON(http.StatusOK, common.H{
+			"success": false,
+			"message": "创建管理员账号失败: " + setupErr.Error(),
+		})
+		return
+	}
+
+	constant.Setup = true
 
 	_ = c.JSON(http.StatusOK, common.H{
 		"success": true,

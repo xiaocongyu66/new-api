@@ -130,12 +130,33 @@ func qqCheckinWithTransaction(checkin *QQCheckin, userId int, quotaAwarded int) 
 
 // qqCheckinWithoutTransaction 不使用事务执行 QQ 签到（SQLite）
 func qqCheckinWithoutTransaction(checkin *QQCheckin, userId int, quotaAwarded int) (*QQCheckin, error) {
-	if err := dbx.DB.Create(checkin).Error; err != nil {
-		return nil, errors.New("签到失败，请稍后重试")
+	// 与 userCheckinWithoutTransaction 同款：跨表重判与写入包进一个事务，
+	// 网页与 QQ 并发双入口在此串行化，双倍领取被拦截。
+	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
+		checked, err := alreadyCheckedToday(tx, userId, true)
+		if err != nil {
+			return err
+		}
+		if checked {
+			return errors.New("今日已签到")
+		}
+		// 唯一约束 (user_id, checkin_date) 兜底防并发重复
+		if err := tx.Create(checkin).Error; err != nil {
+			return errors.New("签到失败，请稍后重试")
+		}
+		if err := identity.UserQuery(tx).Where("id = ?", userId).
+			Update("quota", gorm.Expr("quota + ?", quotaAwarded)).Error; err != nil {
+			return errors.New("签到失败：更新额度出错")
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	if err := identity.IncreaseUserQuota(userId, quotaAwarded, true); err != nil {
-		dbx.DB.Delete(checkin)
-		return nil, errors.New("签到失败：更新额度出错")
-	}
+
+	go func() {
+		_ = quotacache.IncrUser(userId, int64(quotaAwarded))
+	}()
+
 	return checkin, nil
 }

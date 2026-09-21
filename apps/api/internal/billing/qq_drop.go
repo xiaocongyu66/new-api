@@ -138,22 +138,23 @@ func AwardQQDrop(userId int, openID, groupOpenID string, quota int, dailyLimit i
 		CreatedAt:    time.Now().Unix(),
 	}
 
-	// 三种数据库统一走事务。MySQL / PostgreSQL 靠用户行锁串行化同一用户的并发发放；
-	// SQLite 上 dbx.LockForUpdate 是空操作，但事务本身的读写互斥保证并发事务
-	// 只有一个能提交（见 dbx.LockForUpdate 注释），失败的这次掉落自然顺延给下一个人。
 	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
 		s := GetQQBotSetting()
+
+		if dailyLimit > 0 {
+			// Reference pattern from store_checkin.go: lock FIRST, then count inside tx.
+			// This eliminates the TOCTOU between :147 count and :157 check.
+			if err := dbx.LockForUpdate(tx).First(&identity.User{}, userId).Error; err != nil {
+				return err
+			}
+		}
+
 		// 当日次数与近 7 日累计（保底补差的封顶基准）先查好。
 		todayCount, weekSum, err := queryDropDayStats(tx, userId, drop.DropDate)
 		if err != nil {
 			return err
 		}
 		if dailyLimit > 0 {
-			// 先锁住这条用户行再判定上限：「先查后插」会留下竞态窗口，
-			// 两笔并发发放可能都看到 todayCount < dailyLimit 然后双双写入。
-			if err := dbx.LockForUpdate(tx).First(&identity.User{}, userId).Error; err != nil {
-				return err
-			}
 			if todayCount >= dailyLimit {
 				return errDropLimitReached
 			}

@@ -471,7 +471,6 @@ func doCheckinForOpenID(openID, groupOpenID string) (content string, withKeyboar
 	return sb.String(), true, RecallKindCheckinSuccess
 }
 
-// HandleGroupAtMessage 处理群 @机器人 消息
 func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 	if event == nil || event.Author.Bot {
 		return
@@ -486,6 +485,16 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 	if openID == "" {
 		openID = event.Author.ID
 	}
+
+	// Fix 4: Check cooldown before any command dispatch. Honor CommandCooldownSeconds.
+	if err := CheckCooldown(openID); err != nil {
+		if sendErr := replyGroupMarkdown("", event.GroupOpenID, event.ID, "",
+			buildPlainMarkdown(openID, err.Error()), nil, 1); sendErr != nil {
+			common.SysError("cooldown reply failed: " + sendErr.Error())
+		}
+		return
+	}
+
 	content := strings.TrimSpace(event.Content)
 
 	if cmd, ok := isDropCommand(content); ok {
@@ -595,7 +604,8 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 
 		usage.RecordLog(userId, usage.LogTypeSystem, "已绑定 QQ 账号，可使用 QQ 签到")
 		reply := buildPlainMarkdown(openID,
-			"**绑定成功！**\n\n现在可以直接发送 /签到 领取每日额度")
+			"**绑定成功！**\n\n现在可以直接发送 /签到 领取每日额度\n\n"+
+				"**注意**：群聊中发布的绑定码会被其他成员复制并抢先绑定，建议通过私信发送验证码给机器人（私信绑定支持本版本同步上线）")
 		if sendErr := replyGroupMarkdown(RecallKindBindSuccess,
 			event.GroupOpenID, event.ID, "", reply, checkinKeyboard(), 1); sendErr != nil {
 			common.SysError("回复绑定成功消息失败: " + sendErr.Error())
@@ -607,7 +617,6 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 	}
 }
 
-// HandleInteraction 处理按钮回调事件
 func HandleInteraction(event *InteractionEvent) {
 	if event == nil {
 		return
@@ -633,6 +642,19 @@ func HandleInteraction(event *InteractionEvent) {
 	buttonData := event.Data.Resolved.ButtonData
 	buttonID := event.Data.Resolved.ButtonID
 	openID := event.GroupMemberOpenID
+
+	// Fix 4: Check cooldown before any branch dispatch. Honor CommandCooldownSeconds.
+	if err := CheckCooldown(openID); err != nil {
+		replyEventID := event.PayloadEventID
+		if replyEventID == "" {
+			replyEventID = event.ID
+		}
+		if sendErr := replyGroupMarkdown("", event.GroupOpenID, "", replyEventID,
+			buildPlainMarkdown(openID, err.Error()), nil, 1); sendErr != nil {
+			common.SysError("cooldown reply failed: " + sendErr.Error())
+		}
+		return
+	}
 
 	// 被动消息回复时 event_id 取 payload 最外层 id（非 d.id）
 	replyEventID := event.PayloadEventID
@@ -680,10 +702,6 @@ func HandleInteraction(event *InteractionEvent) {
 	// 按钮走的是另一条入口，同样要受群级开关约束。
 	// 否则用户翻出历史消息点「一键签到」，仍能在已关闭的群里签到。
 	if IsCheckinDisabledGroup(event.GroupOpenID) {
-		replyEventID := event.PayloadEventID
-		if replyEventID == "" {
-			replyEventID = event.ID
-		}
 		if err := replyGroupMarkdown("", event.GroupOpenID, "", replyEventID,
 			checkinDisabledReply(openID), nil, 1); err != nil {
 			common.SysError("回复本群签到已关闭失败: " + err.Error())

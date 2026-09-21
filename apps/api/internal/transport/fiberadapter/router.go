@@ -684,7 +684,7 @@ func (e engine) UseRequestLog(format func(contract.RequestLog) string) {
 		start := time.Now()
 		path := c.Path()
 		if raw := c.RawQuery(); raw != "" {
-			path += "?" + raw
+			path += "?" + redactQueryKeys(raw)
 		}
 
 		c.Next()
@@ -700,6 +700,20 @@ func (e engine) UseRequestLog(format func(contract.RequestLog) string) {
 			Values:     Values(c),
 		}))
 	})
+}
+
+// redactQueryKeys masks credential-bearing query parameters before they reach
+// the access log. Values are replaced wholesale; names, order, and every other
+// pair pass through byte-for-byte.
+func redactQueryKeys(raw string) string {
+	pairs := strings.Split(raw, "&")
+	for i, pair := range pairs {
+		name, _, hasValue := strings.Cut(pair, "=")
+		if hasValue && (name == "key" || name == "mj-api-secret") {
+			pairs[i] = name + "=REDACTED"
+		}
+	}
+	return strings.Join(pairs, "&")
 }
 
 // serveFallback is the terminal route: the asset probe followed by the no-route

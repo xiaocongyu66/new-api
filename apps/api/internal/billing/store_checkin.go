@@ -214,19 +214,34 @@ func userCheckinWithTransaction(checkin *Checkin, userId int, quotaAwarded int) 
 
 // userCheckinWithoutTransaction 不使用事务执行签到（适用于 SQLite）
 func userCheckinWithoutTransaction(checkin *Checkin, userId int, quotaAwarded int) (*Checkin, error) {
-	// 步骤1: 创建签到记录
-	// 数据库有唯一约束 (user_id, checkin_date)，可以防止并发重复签到
-	if err := dbx.DB.Create(checkin).Error; err != nil {
-		return nil, errors.New("签到失败，请稍后重试")
+	// SQLite 单写者语义下，把跨表重判与写入包进一个事务，重判即权威：
+	// 网页与 QQ 两个并发入口在此串行化，双倍领取被拦截。
+	// 额度更新用事务内裸更新，不用 identity 批量原语——否则加钱在事务外先行提交。
+	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
+		checked, err := alreadyCheckedToday(tx, userId, false)
+		if err != nil {
+			return err
+		}
+		if checked {
+			return errors.New("今日已签到")
+		}
+		// 唯一约束 (user_id, checkin_date) 兜底防并发重复
+		if err := tx.Create(checkin).Error; err != nil {
+			return errors.New("签到失败，请稍后重试")
+		}
+		if err := identity.UserQuery(tx).Where("id = ?", userId).
+			Update("quota", gorm.Expr("quota + ?", quotaAwarded)).Error; err != nil {
+			return errors.New("签到失败：更新额度出错")
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	// 步骤2: 增加用户额度
-	// 使用 db=true 强制直接写入数据库，不使用批量更新
-	if err := identity.IncreaseUserQuota(userId, quotaAwarded, true); err != nil {
-		// 如果增加额度失败，需要回滚签到记录
-		dbx.DB.Delete(checkin)
-		return nil, errors.New("签到失败：更新额度出错")
-	}
+	go func() {
+		_ = quotacache.IncrUser(userId, int64(quotaAwarded))
+	}()
 
 	return checkin, nil
 }
