@@ -28,10 +28,11 @@ const (
 // exhaust memory on a publicly reachable endpoint.
 const webhookMaxBodySize = 1 << 20 // 1 MiB
 
-const eventDedupeTTL = 24 * time.Hour       // 24 hours TTL for event deduplication
-const eventFingerprintTTL = 2 * time.Minute // content fingerprints must expire fast:
-// a user re-sending the same command text after the window is a NEW command,
-// not a redelivery; redeliveries arrive within seconds of the original.
+const eventDedupeTTL = 24 * time.Hour       // 24 hours TTL for id-based event deduplication
+const eventFingerprintTTL = 2 * time.Second // content fingerprints only need to cover the
+// platform's immediate redelivery window (observed 0-11s, mostly <4s); the user
+// explicitly wants minimal restriction — a repeat command after the window is a
+// NEW command and must be answered normally.
 
 type webhookPayload struct {
 	ID string          `json:"id"`
@@ -102,13 +103,18 @@ func markEventSeen(key string, ttl time.Duration) bool {
 		}
 		return true // already existed
 	}
-	// In-memory fallback (process-local, bounded)
+	// In-memory fallback (process-local, bounded). TTL-aware: without Redis
+	// (production runs this way) a fingerprint entry must still expire so a
+	// repeat command after the window is answered normally.
 	eventDedupeMu.Lock()
 	defer eventDedupeMu.Unlock()
-	if _, ok := eventDedupeSeen[key]; ok {
-		return true
+	if exp, ok := eventDedupeSeen[key]; ok {
+		if time.Now().Before(exp) {
+			return true
+		}
+		delete(eventDedupeSeen, key) // expired: treat as unseen, refresh below
 	}
-	eventDedupeSeen[key] = struct{}{}
+	eventDedupeSeen[key] = time.Now().Add(ttl)
 	eventDedupeOrder = append(eventDedupeOrder, key)
 	if len(eventDedupeOrder) > eventDedupeCacheSize {
 		delete(eventDedupeSeen, eventDedupeOrder[0])
@@ -119,7 +125,7 @@ func markEventSeen(key string, ttl time.Duration) bool {
 
 var (
 	eventDedupeMu        sync.Mutex
-	eventDedupeSeen      = make(map[string]struct{})
+	eventDedupeSeen      = make(map[string]time.Time)
 	eventDedupeOrder     []string
 	eventDedupeCacheSize = 256 // per-type limit for in-memory fallback
 )
