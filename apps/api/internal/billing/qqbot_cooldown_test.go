@@ -52,6 +52,19 @@ func TestCheckCooldownScopedPerCommand(t *testing.T) {
 	assert.Equal(t, "nailao_rp_grab", commandScope("nailao_rp_grab:17"))
 }
 
+// 冷却只针对指令：普通聊天（包括会触发掉落的聊天）不进冷却闸。
+func TestIsCommandMessage(t *testing.T) {
+	assert.True(t, isCommandMessage("/签到"))
+	assert.True(t, isCommandMessage("签到"))
+	assert.True(t, isCommandMessage("<qqbot-at-user id=\"X\" /> /红包 100 5"))
+	assert.True(t, isCommandMessage("/偷奶酪"))
+	assert.True(t, isCommandMessage("菜单"))
+	assert.True(t, isCommandMessage("/关闭掉落"))
+	assert.False(t, isCommandMessage("哈哈哈哈今天天气不错"))
+	assert.False(t, isCommandMessage(""))
+	assert.False(t, isCommandMessage("<qqbot-at-user id=\"X\" /> 谢谢老板"))
+}
+
 func fillCooldownTracker(n int) {
 	cooldownMu.Lock()
 	defer cooldownMu.Unlock()

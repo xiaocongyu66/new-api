@@ -75,6 +75,25 @@ func commandScope(content string) string {
 	return ""
 }
 
+// isCommandMessage 判断是否为指令消息。冷却只针对指令——普通聊天和
+// 聊天触发掉落不属于指令，不应被冷却闸拦截（掉落有自己的每日限额）。
+// 复用各分发分支的匹配器本身，避免别名清单双份维护漂移。
+func isCommandMessage(content string) bool {
+	if _, ok := isDropCommand(content); ok {
+		return true
+	}
+	if _, ok := isCheckinSwitchCommand(content); ok {
+		return true
+	}
+	if _, ok := isTransferSwitchCommand(content); ok {
+		return true
+	}
+	return isTransferInfoCommand(content) || isTransferCommand(content) ||
+		isBalanceCommand(content) || isMenuCommand(content) ||
+		isRedPacketCommand(content) || isStealCommand(content) ||
+		isCheckinCommand(content)
+}
+
 // isFailureReply 判断回复文案是否为失败提示。
 // 自动撤回只针对失败类回复（签到失败、抢红包失败、没抢到等），
 // 成功、菜单、查询类文案一律不撤。

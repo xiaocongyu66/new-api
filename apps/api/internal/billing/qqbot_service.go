@@ -486,12 +486,14 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 		openID = event.Author.ID
 	}
 
-	// Fix 4: 冷却按指令作用域隔离——同指令连点被拦，其他指令不受影响。
-	// 冷却拒绝静默处理：不向群里发提示（重推/连点场景下每条提示都是刷屏源）。
-	scope := commandScope(event.Content)
-	if err := CheckCooldown(openID, scope); err != nil {
-		common.SysLog("指令冷却拒绝(静默) user=" + openID + " scope=" + scope + ": " + err.Error())
-		return
+	// Fix 4: 冷却只针对指令（普通聊天/聊天掉落不受限），按指令作用域隔离——
+	// 同指令连点被拦，其他指令不受影响。拒绝静默，不发群消息。
+	if isCommandMessage(event.Content) {
+		scope := commandScope(event.Content)
+		if err := CheckCooldown(openID, scope); err != nil {
+			common.SysLog("指令冷却拒绝(静默) user=" + openID + " scope=" + scope + ": " + err.Error())
+			return
+		}
 	}
 
 	content := strings.TrimSpace(event.Content)
