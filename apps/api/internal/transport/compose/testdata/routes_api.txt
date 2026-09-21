@@ -205,6 +205,7 @@ POST /api/proxy/nodes/batch-enabled
 POST /api/proxy/nodes/test
 POST /api/proxy/reload
 POST /api/qqbot/webhook
+POST /api/qqbot/webhook/*token
 POST /api/ratio_sync/fetch
 POST /api/redemption/
 POST /api/setup

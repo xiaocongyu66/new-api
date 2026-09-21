@@ -68,6 +68,14 @@ func TestUnbindQQFlipsBindStatusToUnbound(t *testing.T) {
 func TestUnbindQQAllowsGeneratingANewBindCode(t *testing.T) {
 	setupQQBindTestDB(t)
 	enableQQCheckin(t)
+	// 默认 1 小时重绑冷却会掩盖本测试的真正断言（绑定行被物理删除后
+	// CreateQQBindCode 才能成功），这里显式关掉，冷却行为由下面的
+	// TestUnbindQQCooldownBlocksImmediateRebind 单独覆盖。冷却值必须从
+	// setting 侧改：GetQQBotSetting 每次都会把它同步进 identity。
+	setting := billing.GetQQBotSetting()
+	originalCooldown := setting.RebindCooldownSeconds
+	setting.RebindCooldownSeconds = 0
+	t.Cleanup(func() { setting.RebindCooldownSeconds = originalCooldown })
 
 	user := &identity.User{Username: "qq-rebind", Password: "x", Role: 1, Status: common.UserStatusEnabled, Group: "default"}
 	require.NoError(t, dbx.DB.Create(user).Error)
@@ -89,6 +97,35 @@ func TestUnbindQQAllowsGeneratingANewBindCode(t *testing.T) {
 	billing.GenerateQQBindCode(regeneratedCtx)
 	require.Equal(t, http.StatusOK, regeneratedRec.Code)
 	assert.Contains(t, regeneratedRec.Body.String(), `"success":true`)
+}
+
+// 新默认（1 小时重绑冷却）下，解绑后立即重新生成绑定码必须被拒绝，
+// 且错误信息要带剩余秒数，前端靠它展示冷却提示。
+func TestUnbindQQCooldownBlocksImmediateRebind(t *testing.T) {
+	setupQQBindTestDB(t)
+	enableQQCheckin(t)
+	setting := billing.GetQQBotSetting()
+	originalCooldown := setting.RebindCooldownSeconds
+	setting.RebindCooldownSeconds = 3600
+	t.Cleanup(func() { setting.RebindCooldownSeconds = originalCooldown })
+
+	user := &identity.User{Username: "qq-cooldown", Password: "x", Role: 1, Status: common.UserStatusEnabled, Group: "default"}
+	require.NoError(t, dbx.DB.Create(user).Error)
+	require.NoError(t, dbx.DB.Create(&identity.QQBinding{
+		UserId: user.Id, OpenID: "OPENID_COOLDOWN", CreatedAt: time.Now().Unix(),
+	}).Error)
+
+	unbindCtx, unbindRec := fiberadapter.NewSyntheticContext(nil)
+	unbindCtx.Set("id", user.Id)
+	billing.UnbindQQ(unbindCtx)
+	require.Equal(t, http.StatusOK, unbindRec.Code)
+	require.Contains(t, unbindRec.Body.String(), `"success":true`)
+
+	blockedCtx, blockedRec := fiberadapter.NewSyntheticContext(nil)
+	blockedCtx.Set("id", user.Id)
+	billing.GenerateQQBindCode(blockedCtx)
+	assert.Contains(t, blockedRec.Body.String(), `"success":false`)
+	assert.Contains(t, blockedRec.Body.String(), "解绑后需等待冷却时间才能重新绑定")
 }
 
 // 解绑要连该用户的验证码一起清掉，和注销账号的行为保持一致。
