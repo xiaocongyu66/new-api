@@ -49,6 +49,8 @@ func TestCheckCooldownScopedPerCommand(t *testing.T) {
 	assert.Error(t, CheckCooldown(user, commandScope("nailao_rp_grab:42")))
 	// @ 提及前缀不改变作用域
 	assert.Equal(t, "/签到", commandScope("@bot /签到"))
+	// 真实消息里提及是 XML 标签：偷奶酪必须带目标提及，剥标签后作用域应为指令本身
+	assert.Equal(t, "偷奶酪", commandScope(`<qqbot-at-user id="BOT" /> 偷奶酪 <qqbot-at-user id="VICTIM" />`))
 	assert.Equal(t, "nailao_rp_grab", commandScope("nailao_rp_grab:17"))
 }
 

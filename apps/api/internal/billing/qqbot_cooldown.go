@@ -60,10 +60,12 @@ func CheckCooldown(openID, scope string) error {
 }
 
 // commandScope 从消息内容或按钮数据提取冷却作用域：
-// 取首个非 @ 提及的词，并在 ':' 处截断（去掉红包 id 等实例参数），
+// 先剥掉 <qqbot-at-user .../> 提及标签（偷奶酪等指令必然携带目标提及，
+// 不剥的话所有带@消息共享同一作用域），再取首个非 @ 提及的词，
+// 并在 ':' 处截断（去掉红包 id 等实例参数），
 // 使「同一种指令的连点」共享冷却，「不同指令」互不影响。
 func commandScope(content string) string {
-	for _, f := range strings.Fields(content) {
+	for _, f := range strings.Fields(stripTags(content)) {
 		if strings.HasPrefix(f, "@") {
 			continue
 		}
