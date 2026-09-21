@@ -377,6 +377,10 @@ func RecordConsumeLog(c contract.Context, userId int, params RecordConsumeLogPar
 	}
 	logger.LogInfo(c.Context(), fmt.Sprintf("record consume log: userId=%d, params=%s", userId, common.GetJsonString(params)))
 	username := c.GetString("username")
+	// 画像接线必须在 Other 序列化之前：attachInsight 会把画像结果写进
+	// params.Other（other.insight），同时累加用户画像聚合与复核样本。
+	// Fiber 移植（#488）时这里丢了一行调用，导致画像管道整体停摆两周。
+	attachInsight(c, userId, username, params.Other)
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	createdAt := common.GetTimestamp()
