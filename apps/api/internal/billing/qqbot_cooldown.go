@@ -21,15 +21,22 @@ var (
 	cooldownTracker = make(map[string]cooldownEntry)
 )
 
-// CheckCooldown 检查该用户是否在冷却期内。
+// CheckCooldown 检查该用户是否在 scope 指令的冷却期内。
+// scope 是指令作用域（消息取首个命令词，按钮取 button_data 首段），
+// 冷却只拦同一指令的连点/重推，不拦该用户的其他指令——
+// 防重复领取的正确性由各自的 DB 约束（唯一索引、每日限额）兜底。
 // 返回 nil 表示通过（并更新 lastSeen）；返回 error 表示仍在冷却中。
-func CheckCooldown(openID string) error {
+func CheckCooldown(openID, scope string) error {
+	if scope == "" {
+		return nil // 无作用域不冷却
+	}
 	seconds := GetQQBotSetting().CommandCooldownSeconds
 	if seconds <= 0 {
 		return nil // 冷却关闭
 	}
 
 	now := time.Now()
+	key := openID + "|" + scope
 	cooldownMu.Lock()
 	defer cooldownMu.Unlock()
 
@@ -42,14 +49,30 @@ func CheckCooldown(openID string) error {
 		}
 	}
 
-	if entry, ok := cooldownTracker[openID]; ok {
+	if entry, ok := cooldownTracker[key]; ok {
 		remaining := seconds - int(now.Sub(entry.lastSeen).Seconds())
 		if remaining > 0 {
 			return fmt.Errorf("指令冷却中，请 %d 秒后再试", remaining)
 		}
 	}
-	cooldownTracker[openID] = cooldownEntry{lastSeen: now}
+	cooldownTracker[key] = cooldownEntry{lastSeen: now}
 	return nil
+}
+
+// commandScope 从消息内容或按钮数据提取冷却作用域：
+// 取首个非 @ 提及的词，并在 ':' 处截断（去掉红包 id 等实例参数），
+// 使「同一种指令的连点」共享冷却，「不同指令」互不影响。
+func commandScope(content string) string {
+	for _, f := range strings.Fields(content) {
+		if strings.HasPrefix(f, "@") {
+			continue
+		}
+		if i := strings.IndexByte(f, ':'); i >= 0 {
+			f = f[:i]
+		}
+		return f
+	}
+	return ""
 }
 
 // isFailureReply 判断回复文案是否为失败提示。

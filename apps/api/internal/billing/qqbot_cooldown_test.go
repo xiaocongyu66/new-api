@@ -18,16 +18,38 @@ func TestCheckCooldownCleanupWhenMapLarge(t *testing.T) {
 	fillCooldownTracker(1500)
 
 	openID := "cleanup-test-user"
-	assert.NoError(t, CheckCooldown(openID))
+	assert.NoError(t, CheckCooldown(openID, "cleanup-scope"))
 
 	cooldownMu.Lock()
-	if entry, ok := cooldownTracker[openID]; ok {
+	scopedKey := openID + "|cleanup-scope"
+	if entry, ok := cooldownTracker[scopedKey]; ok {
 		entry.lastSeen = time.Now().Add(-10 * time.Second)
-		cooldownTracker[openID] = entry
+		cooldownTracker[scopedKey] = entry
 	}
 	cooldownMu.Unlock()
 
-	assert.NoError(t, CheckCooldown(openID))
+	assert.NoError(t, CheckCooldown(openID, "cleanup-scope"))
+}
+
+// 冷却按指令作用域隔离：同指令连点被拦，该用户的其他指令不受影响。
+func TestCheckCooldownScopedPerCommand(t *testing.T) {
+	s := GetQQBotSetting()
+	orig := s.CommandCooldownSeconds
+	defer func() { s.CommandCooldownSeconds = orig }()
+	s.CommandCooldownSeconds = 20
+
+	user := "scoped-user"
+	assert.NoError(t, CheckCooldown(user, "nailao_rp_grab"), "first grab passes")
+	assert.Error(t, CheckCooldown(user, "nailao_rp_grab"), "immediate re-click of same command is blocked")
+	assert.NoError(t, CheckCooldown(user, "nailao_rp_detail"), "other button unaffected")
+	assert.NoError(t, CheckCooldown(user, "/余额"), "query command unaffected")
+	assert.NoError(t, CheckCooldown(user, ""), "empty scope never blocks")
+
+	// 同一作用域内不同红包 id 共享冷却（截断自 nailao_rp_grab:<id>）
+	assert.Error(t, CheckCooldown(user, commandScope("nailao_rp_grab:42")))
+	// @ 提及前缀不改变作用域
+	assert.Equal(t, "/签到", commandScope("@bot /签到"))
+	assert.Equal(t, "nailao_rp_grab", commandScope("nailao_rp_grab:17"))
 }
 
 func fillCooldownTracker(n int) {

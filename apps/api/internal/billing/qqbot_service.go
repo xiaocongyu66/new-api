@@ -486,12 +486,11 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 		openID = event.Author.ID
 	}
 
-	// Fix 4: Check cooldown before any command dispatch. Honor CommandCooldownSeconds.
-	if err := CheckCooldown(openID); err != nil {
-		if sendErr := replyGroupMarkdown("", event.GroupOpenID, event.ID, "",
-			buildPlainMarkdown(openID, err.Error()), nil, 1); sendErr != nil {
-			common.SysError("cooldown reply failed: " + sendErr.Error())
-		}
+	// Fix 4: 冷却按指令作用域隔离——同指令连点被拦，其他指令不受影响。
+	// 冷却拒绝静默处理：不向群里发提示（重推/连点场景下每条提示都是刷屏源）。
+	scope := commandScope(event.Content)
+	if err := CheckCooldown(openID, scope); err != nil {
+		common.SysLog("指令冷却拒绝(静默) user=" + openID + " scope=" + scope + ": " + err.Error())
 		return
 	}
 
@@ -643,16 +642,11 @@ func HandleInteraction(event *InteractionEvent) {
 	buttonID := event.Data.Resolved.ButtonID
 	openID := event.GroupMemberOpenID
 
-	// Fix 4: Check cooldown before any branch dispatch. Honor CommandCooldownSeconds.
-	if err := CheckCooldown(openID); err != nil {
-		replyEventID := event.PayloadEventID
-		if replyEventID == "" {
-			replyEventID = event.ID
-		}
-		if sendErr := replyGroupMarkdown("", event.GroupOpenID, "", replyEventID,
-			buildPlainMarkdown(openID, err.Error()), nil, 1); sendErr != nil {
-			common.SysError("cooldown reply failed: " + sendErr.Error())
-		}
+	// Fix 4: 冷却按按钮作用域隔离（nailao_rp_grab:<id> → nailao_rp_grab），
+	// 同按钮连点被拦，其他按钮不受影响；拒绝时静默不发群消息。
+	btnScope := commandScope(buttonData)
+	if err := CheckCooldown(openID, btnScope); err != nil {
+		common.SysLog("指令冷却拒绝(静默) user=" + openID + " scope=" + btnScope + ": " + err.Error())
 		return
 	}
 
