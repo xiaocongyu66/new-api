@@ -2,6 +2,8 @@ package billing
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"github.com/QuantumNous/new-api/internal/common"
 	"io"
@@ -26,7 +28,10 @@ const (
 // exhaust memory on a publicly reachable endpoint.
 const webhookMaxBodySize = 1 << 20 // 1 MiB
 
-const eventDedupeTTL = 24 * time.Hour // 24 hours TTL for event deduplication
+const eventDedupeTTL = 24 * time.Hour       // 24 hours TTL for event deduplication
+const eventFingerprintTTL = 2 * time.Minute // content fingerprints must expire fast:
+// a user re-sending the same command text after the window is a NEW command,
+// not a redelivery; redeliveries arrive within seconds of the original.
 
 type webhookPayload struct {
 	ID string          `json:"id"`
@@ -47,25 +52,31 @@ type validationResponse struct {
 }
 
 // makeEventDedupeKey creates a normalized deduplication key from event type and ID.
-// For INTERACTION_CREATE, the outer payload ID (eventID) is used as it's the unique event identifier.
-// For C2C_MESSAGE_CREATE, the message ID from the payload data is used.
-// Returns empty string if no valid key can be generated (deduplication skipped).
+//
+// QQ 平台重推同一条消息时会变换 id 尾部（生产观察到同前缀不同后缀，例如
+// Om8nbpB.qMl1erhaO.GCzPtogn… / Om8nbpB.qMl1erhaO.GCzIAGd…），按 id 去重会漏，
+// 导致同一指令被处理多次、机器人重复回复并连发冷却提示。因此消息与按钮事件
+// 改用语义指纹（群+作者+内容 / 群+成员+按钮数据）：类型不进消息指纹键，因为
+// @消息可能同时以 GROUP_AT_MESSAGE_CREATE 与 GROUP_MESSAGE_CREATE 两条事件到达。
+// 指纹键使用短 TTL（eventFingerprintTTL），语义字段缺失时回退到 id 键（长 TTL）。
 func makeEventDedupeKey(eventType, eventID string, data []byte) string {
 	switch eventType {
 	case "GROUP_AT_MESSAGE_CREATE", "GROUP_MESSAGE_CREATE", "C2C_MESSAGE_CREATE":
-		// These events have an "id" field in the payload data
-		var m map[string]any
-		if err := common.Unmarshal(data, &m); err == nil {
-			if id, ok := m["id"].(string); ok && id != "" {
-				return "qq:evt:" + eventType + ":" + id
-			}
+		var ev GroupAtMessageEvent
+		if err := common.Unmarshal(data, &ev); err == nil && ev.Content != "" {
+			sum := sha1.Sum([]byte(ev.GroupOpenID + "|" + ev.Author.ID + "|" + ev.Content))
+			return "qq:evt:msg:" + hex.EncodeToString(sum[:])
 		}
-		// Fallback to outer payload ID
 		if eventID != "" {
 			return "qq:evt:" + eventType + ":" + eventID
 		}
 	case "INTERACTION_CREATE":
-		// Use outer payload ID for interactions (more reliable)
+		var ev InteractionEvent
+		if err := common.Unmarshal(data, &ev); err == nil && ev.Data.Resolved.ButtonData != "" {
+			sum := sha1.Sum([]byte(ev.GroupOpenID + "|" + ev.GroupMemberOpenID + "|" +
+				ev.UserOpenID + "|" + ev.Data.Resolved.ButtonData))
+			return "qq:evt:btn:" + hex.EncodeToString(sum[:])
+		}
 		if eventID != "" {
 			return "qq:evt:" + eventType + ":" + eventID
 		}
@@ -76,14 +87,14 @@ func makeEventDedupeKey(eventType, eventID string, data []byte) string {
 // markEventSeen records an event as processed and returns true if it was already seen.
 // Uses Redis SETNX with 24h TTL when Redis is enabled, otherwise falls back to in-memory cache.
 // ponytail: in-memory fallback is bounded at 256 entries per event type; upgrade to per-account sharding if throughput matters.
-func markEventSeen(key string) bool {
+func markEventSeen(key string, ttl time.Duration) bool {
 	if key == "" {
 		return false
 	}
 	if common.RedisEnabled && common.RDB != nil {
 		ctx := context.Background()
 		// SETNX with TTL: NX = only set if not exists, EX = expire seconds
-		ok, err := common.RDB.SetNX(ctx, key, "1", eventDedupeTTL).Result()
+		ok, err := common.RDB.SetNX(ctx, key, "1", ttl).Result()
 		if err != nil {
 			common.SysError("Redis 事件去重失败，回退内存: " + err.Error())
 		} else if ok {
@@ -107,9 +118,9 @@ func markEventSeen(key string) bool {
 }
 
 var (
-	eventDedupeMu       sync.Mutex
-	eventDedupeSeen     = make(map[string]struct{})
-	eventDedupeOrder    []string
+	eventDedupeMu        sync.Mutex
+	eventDedupeSeen      = make(map[string]struct{})
+	eventDedupeOrder     []string
 	eventDedupeCacheSize = 256 // per-type limit for in-memory fallback
 )
 
@@ -195,7 +206,11 @@ func QQBotWebhook(c contract.Context) {
 	// Event deduplication: skip already-processed events.
 	// Covers GROUP_AT_MESSAGE_CREATE, GROUP_MESSAGE_CREATE, INTERACTION_CREATE, C2C_MESSAGE_CREATE.
 	dedupeKey := makeEventDedupeKey(eventType, eventID, data)
-	if markEventSeen(dedupeKey) {
+	dedupeTTL := eventDedupeTTL
+	if strings.HasPrefix(dedupeKey, "qq:evt:msg:") || strings.HasPrefix(dedupeKey, "qq:evt:btn:") {
+		dedupeTTL = eventFingerprintTTL
+	}
+	if markEventSeen(dedupeKey, dedupeTTL) {
 		common.SysLog("QQ webhook 重复事件，已跳过 t=" + eventType + " id=" + eventID)
 		_ = c.JSON(http.StatusOK, common.H{"op": opCodeHTTPAck, "d": common.H{}})
 		return
