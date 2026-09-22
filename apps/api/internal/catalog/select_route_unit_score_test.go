@@ -162,9 +162,10 @@ func TestScoreW1SingleCandidateShortCircuit(t *testing.T) {
 // against the real selector rather than against a model of it.
 //
 // Each row drives route B's EWMA to a known quality with real observations, then
-// measures the share it wins. The expected values come from the agreed synthesis
-// weights (success 0.60, ttft 0.25, tps 0.15) with per-component clamp [0.2, 1.5]
-// and synthesis clamp [0.5, 1.5].
+// measures the share it wins. The draw is P2C in thin pools, so the marginal is
+// compressed toward even: share(B) = 1/4 + 1/2 x q/(1+q). The expected values
+// come from the agreed synthesis weights (success 0.60, ttft 0.25, tps 0.15)
+// with per-component clamp [0.2, 1.5] and synthesis clamp [0.5, 1.5].
 func TestScoreW2QualityDrivesShare(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
@@ -175,14 +176,14 @@ func TestScoreW2QualityDrivesShare(t *testing.T) {
 		wantShareB  float64
 	}{
 		{"both healthy", 1.0, 2000, 20, 1.000, 50.0},
-		{"B ttft twice target", 1.0, 4000, 20, 0.875, 46.7},
-		{"B ttft twice and tps half", 1.0, 4000, 10, 0.800, 44.4},
+		{"B ttft twice target", 1.0, 4000, 20, 0.875, 48.3},
+		{"B ttft twice and tps half", 1.0, 4000, 10, 0.800, 47.2},
 		// Sustained 429s: success decays to 0.7 and the retry backoff shows up as a
 		// 5s TTFT, with no TPS sample because nothing streamed. Weights renormalise
 		// over the two observed components: (0.60*0.7 + 0.25*0.4)/0.85 = 0.612.
-		{"B throttled by 429s", 0.7, 5000, 0, 0.612, 38.0},
-		{"B four times faster", 1.0, 500, 20, 1.125, 52.9},
-		{"B every attempt failed", 0.0, 120000, 0, 0.500, 33.3},
+		{"B throttled by 429s", 0.7, 5000, 0, 0.612, 44.0},
+		{"B four times faster", 1.0, 500, 20, 1.125, 51.5},
+		{"B every attempt failed", 0.0, 120000, 0, 0.500, 41.7},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			const group, alias = "w2-group", "w2-model"
@@ -220,8 +221,8 @@ func TestScoreW2QualityDrivesShare(t *testing.T) {
 
 // TestScoreW2QualityNeverStarvesARoute is W2.2: the synthesis floor is what keeps
 // EWMA a preference rather than an execution. A route whose every attempt failed
-// sits at quality 0.5 and still wins roughly a third of a two-route pool, because
-// eliminating a route is the state machine's job and its alone.
+// sits at quality 0.5 and still wins roughly five twelfths of a two-route pool,
+// because eliminating a route is the state machine's job and its alone.
 func TestScoreW2QualityNeverStarvesARoute(t *testing.T) {
 	const group, alias = "w2f-group", "w2f-model"
 	withRouteStats(t, nil)
@@ -245,20 +246,21 @@ func TestScoreW2QualityNeverStarvesARoute(t *testing.T) {
 	counts := drawShares(t, group, alias, 3000, 0xF00D)
 	assert.Positive(t, counts[7212], "EWMA alone must never remove a route from the pool")
 	share := 100 * float64(counts[7212]) / 3000.0
-	assert.InDelta(t, 33.3, share, 2.0, "a floor-quality route keeps ~1/3 of a two-route pool, got %.2f%%", share)
+	assert.InDelta(t, 41.7, share, 2.0, "a floor-quality route keeps ~41.7% of a two-route P2C pool, got %.2f%%", share)
 }
 
 // TestScoreW2PoolSizeChangesTheLoss is W2.3: the same bad route loses a very
 // different amount of share depending on pool size, so the two-route number is
-// not a general acceptance line. 33.3% / 14.3% / 6.67% for pools of 2 / 4 / 8.
+// not a general acceptance line. P2C marginals: 41.7% / 18.75% / 8.85% for
+// pools of 2 / 4 / 8.
 func TestScoreW2PoolSizeChangesTheLoss(t *testing.T) {
 	for _, tc := range []struct {
 		poolSize  int
 		wantShare float64
 	}{
-		{2, 33.3},
-		{4, 14.3},
-		{8, 6.67},
+		{2, 41.7},
+		{4, 18.75},
+		{8, 8.85},
 	} {
 		t.Run("pool", func(t *testing.T) {
 			group := "w2p-group"
