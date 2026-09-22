@@ -667,6 +667,16 @@ func HandleInteraction(event *InteractionEvent) {
 		return
 	}
 
+	// 一键领取：批量领取本群全部可抢红包，只回一条汇总
+	if buttonData == ButtonDataRedPacketGrabAll {
+		reply := HandleRedPacketGrabAll(event.GroupOpenID, openID)
+		if err := replyGroupMarkdown(RecallKindRedPacket,
+			event.GroupOpenID, "", replyEventID, reply, nil, 1); err != nil {
+			common.SysError("回复一键领取失败: " + err.Error())
+		}
+		return
+	}
+
 	// 抢红包按钮，data 形如 nailao_rp_grab:<id>
 	if strings.HasPrefix(buttonData, ButtonDataRedPacketGrab) {
 		packetID := strings.TrimPrefix(buttonData, ButtonDataRedPacketGrab)

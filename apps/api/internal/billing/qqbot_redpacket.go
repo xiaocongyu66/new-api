@@ -23,6 +23,10 @@ const (
 	ButtonIDRedPacketGrab   = "nailao_rp_grab"
 	ButtonDataRedPacketGrab = "nailao_rp_grab:"
 
+	// 一键领取：单按钮批量领取本群所有可抢红包，只回复一条汇总
+	ButtonIDRedPacketGrabAll   = "nailao_rp_grab_all"
+	ButtonDataRedPacketGrabAll = "nailao_rp_grab_all"
+
 	ButtonIDRedPacketDetail   = "nailao_rp_detail"
 	ButtonDataRedPacketDetail = "nailao_rp_detail:"
 )
@@ -89,6 +93,7 @@ func parseRedPacketArgs(content string) (amountUnits float64, count int, blessin
 	}
 	return
 }
+
 // sanitizeBlessing whitelist-sanitizes blessing text to prevent markdown injection.
 // Letters, digits, CJK, basic punctuation/spaces kept; * ` [ ] > # and newlines stripped.
 // Keeps existing tests passing and adds one for sanitizer (Fix 5).
@@ -290,6 +295,104 @@ func HandleRedPacketGrab(packetIDStr, openID string) string {
 	return sb.String()
 }
 
+// HandleRedPacketGrabAll 一键领取本群全部可抢红包，只回复一条汇总。
+//
+// 逐个走与单抢相同的 GrabQQRedPacket（并发安全、幂等），
+// 中途被别人抢完的按「被抢完」归类；全部结束后只查一次余额，
+// 避免批量领取在群里刷屏。
+func HandleRedPacketGrabAll(groupOpenID, openID string) string {
+	userId, bound := identity.IsQQBound(openID)
+	if !bound {
+		return buildPlainMarkdown(openID,
+			"**抢红包失败！**\n\n请先绑定站点账号才能领取")
+	}
+
+	packets, err := GetGroupRedPackets(groupOpenID, 10)
+	if err != nil {
+		return buildPlainMarkdown(openID, "**查询失败，请稍后重试**")
+	}
+
+	s := GetQQBotSetting()
+	var (
+		claimedCount  int
+		claimedQuota  int
+		alreadyCount  int
+		finishedCount int
+		ownCount      int
+		failedCount   int
+	)
+	for i := range packets {
+		p := packets[i]
+		if p.Status != RedPacketStatusActive {
+			continue
+		}
+		grab, packet, gErr := GrabQQRedPacket(
+			p.Id, userId, openID, s.RedPacketAllowOwnGrab)
+		switch {
+		case gErr == nil:
+			claimedCount++
+			claimedQuota += grab.Amount
+			usage.RecordLog(userId, usage.LogTypeSystem,
+				fmt.Sprintf("QQ 抢到红包 %s（一键领取）", logger.LogQuota(grab.Amount)))
+			// 与单抢路径保持一致：抢完时标记运气王
+			if packet.RemainingCount <= 0 {
+				if err := MarkLuckiestGrab(p.Id); err != nil {
+					common.SysError("标记红包运气王失败: " + err.Error())
+				}
+			}
+		case errors.Is(gErr, ErrRedPacketAlreadyGrabbed):
+			alreadyCount++
+		case errors.Is(gErr, ErrRedPacketFinished), errors.Is(gErr, ErrRedPacketExpired):
+			finishedCount++
+		case errors.Is(gErr, ErrRedPacketOwnGrab):
+			ownCount++
+		default:
+			failedCount++
+			common.SysError("一键领取红包失败: " + gErr.Error())
+		}
+	}
+
+	if claimedCount == 0 && alreadyCount == 0 && ownCount == 0 &&
+		finishedCount == 0 && failedCount == 0 {
+		return buildPlainMarkdown(openID, "**本群暂时没有可领取的红包**")
+	}
+
+	balance, qErr := identity.GetUserQuota(userId, true)
+	if qErr != nil {
+		common.SysError("一键领取后查询余额失败: " + qErr.Error())
+	}
+
+	symbol := currencySymbolOrEmpty()
+	var sb strings.Builder
+	sb.WriteString(atUser(openID))
+	if claimedCount > 0 {
+		sb.WriteString(fmt.Sprintf(" 一键领取 **%d** 个红包，共 **%s%s**！\n\n",
+			claimedCount, trimFloat(quotaToUnits(claimedQuota)), symbol))
+	} else {
+		sb.WriteString(" 这次没能领取到红包\n\n")
+	}
+	var skips []string
+	if alreadyCount > 0 {
+		skips = append(skips, fmt.Sprintf("已抢过 %d 个", alreadyCount))
+	}
+	if finishedCount > 0 {
+		skips = append(skips, fmt.Sprintf("被抢完 %d 个", finishedCount))
+	}
+	if ownCount > 0 {
+		skips = append(skips, fmt.Sprintf("自己发的 %d 个", ownCount))
+	}
+	if failedCount > 0 {
+		skips = append(skips, fmt.Sprintf("失败 %d 个", failedCount))
+	}
+	if len(skips) > 0 {
+		sb.WriteString(strings.Join(skips, " · "))
+		sb.WriteString("\n\n")
+	}
+	sb.WriteString(fmt.Sprintf("你的余额 %s%s",
+		trimFloat(quotaToUnits(balance)), symbol))
+	return sb.String()
+}
+
 // HandleRedPacketDetail 处理「查看战绩」按钮回调
 func HandleRedPacketDetail(packetIDStr, openID string) string {
 	packetID, err := strconv.Atoi(packetIDStr)
@@ -373,9 +476,11 @@ func redPacketStatusText(p *QQRedPacket) string {
 	}
 }
 
-// HandleRedPacketList 构造本群红包列表文案与抢红包按钮
+// HandleRedPacketList 构造本群红包列表文案与按钮。
 //
-// 只给仍可抢的红包挂按钮（最多 5 个），已抢完/已过期的仅展示状态。
+// 列表分「可领取」「已领取完」两段（已过期也归入后者，行内标明状态）。
+// 可领取段保留单抢按钮（最多 4 个，为一键领取按钮腾键盘行数），
+// 并追加一键领取按钮：一次回调批量领取全部可抢红包，只回复一条汇总。
 func HandleRedPacketList(groupOpenID string) (string, *Keyboard) {
 	packets, err := GetGroupRedPackets(groupOpenID, 10)
 	if err != nil {
@@ -386,20 +491,50 @@ func HandleRedPacketList(groupOpenID string) (string, *Keyboard) {
 			"**本群还没有红包**\n\n用 /红包 金额 份数 发一个吧"), redPacketMenuKeyboard()
 	}
 
+	var claimable, done []QQRedPacket
+	for _, p := range packets {
+		if p.Status == RedPacketStatusActive {
+			claimable = append(claimable, p)
+		} else {
+			done = append(done, p)
+		}
+	}
+
 	symbol := currencySymbolOrEmpty()
 	var sb strings.Builder
 	sb.WriteString("**本群红包列表**\n\n")
+
 	var rows []Row
-	for i, p := range packets {
-		grabbed := p.TotalCount - p.RemainingCount
-		sb.WriteString(fmt.Sprintf("%d. %s 发 %s%s · %d/%d 份 · %s\n\n",
-			i+1, atUser(p.SenderOpenID),
-			trimFloat(quotaToUnits(p.TotalAmount)), symbol,
-			grabbed, p.TotalCount, redPacketStatusText(&p)))
-		if p.Status == RedPacketStatusActive && len(rows) < 5 {
-			rows = append(rows, Row{Buttons: []Button{callbackBtn(
-				"抢红包",
-				ButtonDataRedPacketGrab+strconv.Itoa(p.Id), 1)}})
+	grabRows := 0
+	num := 0
+	if len(claimable) > 0 {
+		sb.WriteString("**可领取**\n\n")
+		for _, p := range claimable {
+			num++
+			grabbed := p.TotalCount - p.RemainingCount
+			sb.WriteString(fmt.Sprintf("%d. %s 发 %s%s · %d/%d 份\n\n",
+				num, atUser(p.SenderOpenID),
+				trimFloat(quotaToUnits(p.TotalAmount)), symbol,
+				grabbed, p.TotalCount))
+			if grabRows < 4 {
+				rows = append(rows, Row{Buttons: []Button{callbackBtn(
+					"抢红包",
+					ButtonDataRedPacketGrab+strconv.Itoa(p.Id), 1)}})
+				grabRows++
+			}
+		}
+		rows = append(rows, Row{Buttons: []Button{callbackBtn(
+			"一键领取全部", ButtonDataRedPacketGrabAll, 1)}})
+	}
+	if len(done) > 0 {
+		sb.WriteString("**已领取完**\n\n")
+		for _, p := range done {
+			num++
+			grabbed := p.TotalCount - p.RemainingCount
+			sb.WriteString(fmt.Sprintf("%d. %s 发 %s%s · %d/%d 份 · %s\n\n",
+				num, atUser(p.SenderOpenID),
+				trimFloat(quotaToUnits(p.TotalAmount)), symbol,
+				grabbed, p.TotalCount, redPacketStatusText(&p)))
 		}
 	}
 	rows = append(rows, menuBackRow())
