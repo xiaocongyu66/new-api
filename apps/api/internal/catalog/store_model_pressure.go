@@ -54,6 +54,19 @@ func modelPressureLevel(model string) PressureLevel {
 	}
 }
 
+// pressureTotalForModel returns the model's schedulable unit count from the
+// hot-path counter. Zero means the pool size is unknown; callers must treat
+// that as a full-size pool.
+func pressureTotalForModel(model string) int {
+	pressureLock.RLock()
+	defer pressureLock.RUnlock()
+	p := pressureIDM[model]
+	if p == nil {
+		return 0
+	}
+	return p.total
+}
+
 // decayStep returns the isolation_level decrement based on pool pressure:
 // warning → AcceleratedDecayStep; normal/emergency → NormalDecayStep.
 // Config values <= 0 fall back to 1 so decay never stalls at step 0.

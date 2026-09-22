@@ -88,6 +88,9 @@ const MODELS_SECTIONS = [
           WarningThreshold: settings.WarningThreshold,
           AcceleratedDecayStep: settings.AcceleratedDecayStep,
           NormalDecayStep: settings.NormalDecayStep,
+          FastWindowUnits: settings.FastWindowUnits,
+          FastWindowCapSeconds: settings.FastWindowCapSeconds,
+          LargeWindowCapSeconds: settings.LargeWindowCapSeconds,
           KeyProbeEnabled: settings.KeyProbeEnabled,
           AutomaticDisableChannelEnabled:
             settings.AutomaticDisableChannelEnabled,

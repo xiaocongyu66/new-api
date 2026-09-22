@@ -18,6 +18,29 @@ const (
 	HealthDisabled = "disabled"
 )
 
+// smallPoolUnits is the model pool size at or above which selection uses the
+// cumulative weighted draw; pools below it route by P2C, scale isolation
+// windows linearly, skip hard-disable, and recover in one success
+// (see RecordRetryableFailure and selectByWeight).
+const smallPoolUnits = 5
+
+// windowCapSeconds returns the isolation window cap for a pool of n units,
+// read from the live settings: pools of ≤ FastWindowUnits units cap at
+// FastWindowCapSeconds, larger pools at LargeWindowCapSeconds.
+func windowCapSeconds(total int) int64 {
+	cfg := GetChannelModelHealthSetting()
+	if cfg == nil {
+		if total <= 5 {
+			return 5
+		}
+		return 10
+	}
+	if total <= cfg.FastWindowUnits {
+		return int64(cfg.FastWindowCapSeconds)
+	}
+	return int64(cfg.LargeWindowCapSeconds)
+}
+
 type RouteKey struct {
 	ChannelId int
 	KeyIndex  int
@@ -375,9 +398,27 @@ func RecordRetryableFailure(key RouteKey, errorCode string, source FailureSource
 		}
 		level := row.IsolationLevel + 1
 		state, seconds := isolationDuration(level, cfg)
+		// smallPoolUnits is the unit count at or above which isolation windows
+		// run at full length. A thin pool has no sibling route to absorb
+		// traffic, so isolation there is a direct user-visible outage: shrink
+		// the window linearly with the unit count (single unit ≈ one fifth)
+		// and never hard-disable — the route keeps cycling short dormant
+		// windows so it re-probes instead of starving until manual recovery.
+		total := pressureTotalForModel(key.Model)
+		smallPool := total > 0 && total < smallPoolUnits
+		if smallPool {
+			seconds = max(seconds*int64(total)/smallPoolUnits, int64(1))
+		}
+		// Cooldown tiers: pools of ≤5 units cap at 5s (aggressive lane),
+		// larger pools at 10s.
+		if total > 0 {
+			if capSeconds := windowCapSeconds(total); seconds > capSeconds {
+				seconds = capSeconds
+			}
+		}
 		if row.State == HealthDormant && row.Until != nil && *row.Until <= now.Unix() {
 			row.DormantDisableCount++
-			if cfg.DormantDisableThreshold > 0 && row.DormantDisableCount >= cfg.DormantDisableThreshold {
+			if !smallPool && cfg.DormantDisableThreshold > 0 && row.DormantDisableCount >= cfg.DormantDisableThreshold {
 				state, seconds = HealthDisabled, 0
 			}
 		}
@@ -440,6 +481,17 @@ func RecordSuccess(key RouteKey, now time.Time) error {
 		newLevel := row.IsolationLevel - step
 		if newLevel < 0 {
 			newLevel = 0
+		}
+		// Thin pools recover in one success: with fewer than smallPoolUnits
+		// schedulable units there is no spare capacity to keep derating a
+		// route that just served a successful probe, so one success restores
+		// the full multiplier. The EWMA quality still ramps the share back
+		// gradually through the base score, so a flapping upstream cannot
+		// buy a full share with one lucky pass.
+		if newLevel > 0 {
+			if total := pressureTotalForModel(key.Model); total > 0 && total < smallPoolUnits {
+				newLevel = 0
+			}
 		}
 		newState := row.State
 		var newUntil *int64

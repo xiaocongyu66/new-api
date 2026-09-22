@@ -324,6 +324,12 @@ type ChannelModelHealthSetting struct {
 	AcceleratedDecayStep     int  `json:"accelerated_decay_step"`
 	NormalDecayStep          int  `json:"normal_decay_step"`
 	KeyProbeEnabled          bool `json:"key_probe_enabled"`
+	// Cooldown tiers by pool size: pools of ≤ FastWindowUnits units cap their
+	// isolation windows at FastWindowCapSeconds; larger pools at
+	// LargeWindowCapSeconds.
+	FastWindowUnits       int `json:"fast_window_units"`
+	FastWindowCapSeconds  int `json:"fast_window_cap_seconds"`
+	LargeWindowCapSeconds int `json:"large_window_cap_seconds"`
 }
 
 func DefaultChannelModelHealthSetting() *ChannelModelHealthSetting {
@@ -341,6 +347,9 @@ func DefaultChannelModelHealthSetting() *ChannelModelHealthSetting {
 		AcceleratedDecayStep:     2,
 		NormalDecayStep:          1,
 		KeyProbeEnabled:          true,
+		FastWindowUnits:          5,
+		FastWindowCapSeconds:     5,
+		LargeWindowCapSeconds:    10,
 	}
 }
 
@@ -364,6 +373,9 @@ var channelModelHealthKeys = map[string]struct{}{
 	"AcceleratedDecayStep":     {},
 	"NormalDecayStep":          {},
 	"KeyProbeEnabled":          {},
+	"FastWindowUnits":          {},
+	"FastWindowCapSeconds":     {},
+	"LargeWindowCapSeconds":    {},
 }
 
 func IsChannelModelHealthOptionKey(key string) bool {
@@ -387,6 +399,10 @@ func ValidateChannelModelHealthSettingValue(key, value string) error {
 		return fmt.Errorf("%s must be an integer", key)
 	}
 	if key == "LocalFailureThreshold" || key == "UpstreamFailureThreshold" {
+		if v < 1 {
+			return fmt.Errorf("%s must be a positive integer (>=1)", key)
+		}
+	} else if key == "FastWindowCapSeconds" || key == "LargeWindowCapSeconds" {
 		if v < 1 {
 			return fmt.Errorf("%s must be a positive integer (>=1)", key)
 		}
@@ -451,6 +467,12 @@ func UpdateChannelModelHealthSettingValue(key, value string) error {
 		next.NormalDecayStep = v
 	case "KeyProbeEnabled":
 		next.KeyProbeEnabled = boolVal
+	case "FastWindowUnits":
+		next.FastWindowUnits = v
+	case "FastWindowCapSeconds":
+		next.FastWindowCapSeconds = v
+	case "LargeWindowCapSeconds":
+		next.LargeWindowCapSeconds = v
 	}
 	channelModelHealthSetting.Store(&next)
 	return nil
@@ -490,6 +512,9 @@ func seedChannelModelHealthOptions() map[string]string {
 		"AcceleratedDecayStep":     strconv.Itoa(cfg.AcceleratedDecayStep),
 		"NormalDecayStep":          strconv.Itoa(cfg.NormalDecayStep),
 		"KeyProbeEnabled":          strconv.FormatBool(cfg.KeyProbeEnabled),
+		"FastWindowUnits":          strconv.Itoa(cfg.FastWindowUnits),
+		"FastWindowCapSeconds":     strconv.Itoa(cfg.FastWindowCapSeconds),
+		"LargeWindowCapSeconds":    strconv.Itoa(cfg.LargeWindowCapSeconds),
 	}
 }
 

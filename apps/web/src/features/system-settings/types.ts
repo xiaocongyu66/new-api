@@ -262,6 +262,9 @@ export type ModelSettings = {
   WarningThreshold: number
   AcceleratedDecayStep: number
   NormalDecayStep: number
+  FastWindowUnits: number
+  FastWindowCapSeconds: number
+  LargeWindowCapSeconds: number
   KeyProbeEnabled: boolean
   AutomaticDisableChannelEnabled: boolean
   AutomaticEnableChannelEnabled: boolean

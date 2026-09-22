@@ -122,6 +122,9 @@ const createRoutingReliabilitySchema = (
       WarningThreshold: availabilityThreshold,
       AcceleratedDecayStep: decayStep,
       NormalDecayStep: decayStep,
+      FastWindowUnits: isolationSeconds,
+      FastWindowCapSeconds: failureThreshold,
+      LargeWindowCapSeconds: failureThreshold,
       KeyProbeEnabled: z.boolean(),
       ChannelDisableThreshold: numericString,
       AutomaticDisableChannelEnabled: z.boolean(),
@@ -185,6 +188,9 @@ type RouteIsolationValues = {
   WarningThreshold: number
   AcceleratedDecayStep: number
   NormalDecayStep: number
+  FastWindowUnits: number
+  FastWindowCapSeconds: number
+  LargeWindowCapSeconds: number
 }
 
 const ROUTE_ISOLATION_KEYS = [
@@ -202,6 +208,9 @@ const ROUTE_ISOLATION_KEYS = [
   'WarningThreshold',
   'AcceleratedDecayStep',
   'NormalDecayStep',
+  'FastWindowUnits',
+  'FastWindowCapSeconds',
+  'LargeWindowCapSeconds',
 ] as const satisfies ReadonlyArray<keyof RouteIsolationValues>
 
 // Mirrors the backend DefaultChannelModelHealthSetting, so a form rendered before
@@ -221,6 +230,9 @@ const ROUTE_ISOLATION_DEFAULTS: RouteIsolationValues = {
   WarningThreshold: 50,
   AcceleratedDecayStep: 2,
   NormalDecayStep: 1,
+  FastWindowUnits: 5,
+  FastWindowCapSeconds: 5,
+  LargeWindowCapSeconds: 10,
 }
 
 type RoutingReliabilityFormValues = RouteIsolationValues & {
@@ -393,6 +405,9 @@ const normalizeFormValues = (
   WarningThreshold: values.WarningThreshold,
   AcceleratedDecayStep: values.AcceleratedDecayStep,
   NormalDecayStep: values.NormalDecayStep,
+  FastWindowUnits: values.FastWindowUnits,
+  FastWindowCapSeconds: values.FastWindowCapSeconds,
+  LargeWindowCapSeconds: values.LargeWindowCapSeconds,
   KeyProbeEnabled: values.KeyProbeEnabled,
   RetryTimes: values.RetryTimes,
   LocalFailureThreshold: values.LocalFailureThreshold,
@@ -919,6 +934,78 @@ export function RoutingReliabilitySection({
                     <FormDescription>
                       {t(
                         'Below this share of healthy units, no new isolation is recorded and recovery speeds up. Also the target the emergency pull-back aims for.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='FastWindowUnits'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Fast cooldown boundary (units)')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min='0'
+                        step='1'
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Pools with at most this many units cap isolation windows at the fast cooldown cap; larger pools use the large cap.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='FastWindowCapSeconds'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Fast cooldown cap (s)')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min='1'
+                        step='1'
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Pools at or below the boundary cap isolation windows at this many seconds.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='LargeWindowCapSeconds'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Large cooldown cap (s)')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min='1'
+                        step='1'
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Pools above the boundary cap isolation windows at this many seconds.'
                       )}
                     </FormDescription>
                     <FormMessage />

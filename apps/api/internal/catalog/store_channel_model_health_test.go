@@ -53,6 +53,9 @@ func withHealthSetting(t *testing.T, cfg *ChannelModelHealthSetting) {
 			"WarningThreshold":         c.WarningThreshold,
 			"AcceleratedDecayStep":     c.AcceleratedDecayStep,
 			"NormalDecayStep":          c.NormalDecayStep,
+			"FastWindowUnits":          c.FastWindowUnits,
+			"FastWindowCapSeconds":     c.FastWindowCapSeconds,
+			"LargeWindowCapSeconds":    c.LargeWindowCapSeconds,
 		} {
 			require.NoError(t, UpdateChannelModelHealthSettingValue(key, strconv.Itoa(value)))
 		}
@@ -743,4 +746,121 @@ func TestSoftDepressionKeepsCalmRouteSelectable(t *testing.T) {
 	// With CalmWeightScale=100 the calm route competes at full weight.
 	assert.InDelta(t, 1.0, RouteWeightMultiplier(key), 1e-9)
 	assert.True(t, IsRouteSelectable(key), "calm route is still a candidate")
+}
+
+// TestSmallPoolScalesWindowsAndSkipsDisable pins the thin-pool rule: with
+// fewer than smallPoolUnits schedulable units, isolation windows shrink
+// linearly (total/smallPoolUnits) and the dormant auto-disable never fires,
+// so a flaky model on a small pool keeps cycling short windows instead of
+// being bricked until manual recovery.
+func TestSmallPoolScalesWindowsAndSkipsDisable(t *testing.T) {
+	withRouteHealthDB(t)
+	withHealthSetting(t, DefaultChannelModelHealthSetting())
+	resetPressure()
+	setPressure("thin-model", 2, 2)
+	t.Cleanup(resetPressure)
+
+	key := RouteKey{ChannelId: 8801, Model: "thin-model"}
+	base := time.Unix(1_700_000_000, 0)
+
+	// Failures spaced an hour apart so every dormant window has expired when
+	// the next failure lands: each dormant re-failure counts a cycle toward
+	// DormantDisableThreshold (3 with defaults), which must never disable.
+	for i := 1; i <= 12; i++ {
+		at := base.Add(time.Duration(i) * time.Hour)
+		require.NoError(t, RecordRetryableFailure(key, "bad_response", FailureSourceUpstream, at))
+
+		var row ChannelModelHealth
+		require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row).Error)
+		require.Equal(t, i, row.IsolationLevel, "failure %d must escalate one level", i)
+		require.NotEqual(t, HealthDisabled, row.State, "small pool must never hard-disable")
+		require.NotNil(t, row.Until, "non-disabled states always carry a window")
+	}
+
+	// Level 12 rides the dormant ceiling: 90s scaled by 2/4 → 45s.
+	var row ChannelModelHealth
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", key.ChannelId, key.Model).First(&row).Error)
+	require.Equal(t, HealthDormant, row.State)
+	require.GreaterOrEqual(t, row.DormantDisableCount, 3, "the disable threshold was crossed")
+	// Level 12 rides the dormant ceiling (360s with defaults), scaled by 2/5
+	// (144s), then capped by the ≤5-unit fast lane (5s).
+	require.Equal(t, int64(5), *row.Until-base.Add(12*time.Hour).Unix())
+}
+
+// TestThinPoolSuccessInstantRecovery pins the fast-scheduling contract: in a
+// thin pool one successful probe restores the full multiplier immediately
+// (state healthy, level 0), instead of decaying one rung per success like big
+// pools. The escalation ladder still climbs on failures — only recovery is
+// shortened.
+func TestThinPoolSuccessInstantRecovery(t *testing.T) {
+	withRouteHealthDB(t)
+	withHealthSetting(t, DefaultChannelModelHealthSetting())
+	resetPressure()
+	setPressure("thin-recover", 2, 2)
+	setPressure("big-recover", 6, 6)
+	t.Cleanup(resetPressure)
+
+	thin := RouteKey{ChannelId: 8901, Model: "thin-recover"}
+	big := RouteKey{ChannelId: 8902, Model: "big-recover"}
+	base := time.Unix(1_700_000_000, 0)
+
+	// Drive both routes to dormant (7 escalations; failure thresholds are 1).
+	for i := 1; i <= 7; i++ {
+		at := base.Add(time.Duration(i) * time.Second)
+		require.NoError(t, RecordRetryableFailure(thin, "bad_response", FailureSourceUpstream, at))
+		require.NoError(t, RecordRetryableFailure(big, "bad_response", FailureSourceUpstream, at))
+	}
+
+	// One success each.
+	at := base.Add(8 * time.Second)
+	require.NoError(t, RecordSuccess(thin, at))
+	require.NoError(t, RecordSuccess(big, at))
+
+	var thinRow, bigRow ChannelModelHealth
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", thin.ChannelId, thin.Model).First(&thinRow).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", big.ChannelId, big.Model).First(&bigRow).Error)
+
+	require.Equal(t, HealthHealthy, thinRow.State, "thin pool: one success must restore full weight")
+	require.Equal(t, 0, thinRow.IsolationLevel)
+	require.Nil(t, thinRow.Until)
+
+	require.Equal(t, HealthDormant, bigRow.State, "big pool keeps the gradual one-per-success decay")
+	require.Equal(t, 6, bigRow.IsolationLevel)
+}
+
+// TestWindowCapTiersByPoolSize pins the cooldown tiers: pools of ≤5 units cap
+// every isolation window at 5s (aggressive re-probe lane); pools of ≥6 units
+// cap at 10s. With the default settings the dormant ceiling is 360s, so the
+// cap is what the selector actually sees.
+func TestWindowCapTiersByPoolSize(t *testing.T) {
+	withRouteHealthDB(t)
+	withHealthSetting(t, DefaultChannelModelHealthSetting())
+	resetPressure()
+	setPressure("cap5", 5, 5)
+	setPressure("cap10", 6, 6)
+	t.Cleanup(resetPressure)
+
+	base := time.Unix(1_700_000_000, 0)
+	drive := func(key RouteKey) {
+		// Failures 1s apart always land inside the live window, so the
+		// dormant-disable counter never advances and the ladder rides to the
+		// ceiling without tripping.
+		for i := 1; i <= 10; i++ {
+			require.NoError(t, RecordRetryableFailure(key, "bad_response", FailureSourceUpstream, base.Add(time.Duration(i)*time.Second)))
+		}
+	}
+	drive(RouteKey{ChannelId: 8951, Model: "cap5"})
+	drive(RouteKey{ChannelId: 8952, Model: "cap10"})
+
+	var five, ten ChannelModelHealth
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", 8951, "cap5").First(&five).Error)
+	require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", 8952, "cap10").First(&ten).Error)
+	require.NotEqual(t, HealthDisabled, five.State, "drive must stay inside live windows")
+	require.NotEqual(t, HealthDisabled, ten.State, "drive must stay inside live windows")
+	require.NotNil(t, five.Until)
+	require.NotNil(t, ten.Until)
+	require.Equal(t, int64(5), *five.Until-(base.Add(10*time.Second).Unix()),
+		"pools of ≤5 units cap windows at 5s")
+	require.Equal(t, int64(10), *ten.Until-(base.Add(10*time.Second).Unix()),
+		"pools of ≥6 units cap windows at 10s")
 }

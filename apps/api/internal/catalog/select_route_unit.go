@@ -357,6 +357,52 @@ func selectByWeight(pool routestats.PoolKey, candidates []routeCandidate, alias 
 		return nil
 	}
 
+	// Thin pool: power-of-two-choices (Mitzenmacher). Sample two candidates
+	// uniformly with replacement; a healthier isolation state always wins the
+	// pair, which probes a degraded route whenever both draws land on it
+	// (1/n² for one degraded unit) without a uniform draw's concentrated error
+	// exposure. Equal states fall back to the cumulative weighted draw between
+	// the pair, so static weight ratios and the poisoned-route starvation
+	// contract survive, and the share correction stays out of the decision
+	// loop: with few candidates it cannot converge against a draw it never
+	// influences.
+	if len(weighted) < smallPoolUnits {
+		pickIndex := func() int {
+			if rnd != nil {
+				return rnd.IntN(len(weighted))
+			}
+			return rand.IntN(len(weighted))
+		}
+		a := weighted[pickIndex()]
+		b := weighted[pickIndex()]
+		am := RouteWeightMultiplier(RouteKey{ChannelId: a.candidate.channelId, KeyIndex: a.candidate.keyIndex, Model: alias})
+		bm := RouteWeightMultiplier(RouteKey{ChannelId: b.candidate.channelId, KeyIndex: b.candidate.keyIndex, Model: alias})
+		winner := a
+		switch {
+		case bm > am:
+			winner = b
+		case bm < am:
+			winner = a
+		default:
+			// Weighted draw between the pair on the pre-correction base score
+			// (static weight x EWMA quality x health): the EWMA dynamic score
+			// and static weights set the probability, while the share
+			// correction stays out of the decision loop — with few candidates
+			// it cannot converge against a draw it never influences.
+			ab := scores[a.id].BaseWeight * scores[a.id].Quality * scores[a.id].Health
+			bb := scores[b.id].BaseWeight * scores[b.id].Quality * scores[b.id].Health
+			r := rand.Float64()
+			if rnd != nil {
+				r = rnd.Float64()
+			}
+			if r*(ab+bb) >= ab {
+				winner = b
+			}
+		}
+		routestats.RecordSelection(pool, winner.id, targets, routestats.GetRouteStatsSetting())
+		return &winner.candidate
+	}
+
 	r := rand.Float64()
 	if rnd != nil {
 		r = rnd.Float64()

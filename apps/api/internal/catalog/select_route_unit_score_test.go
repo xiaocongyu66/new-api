@@ -83,7 +83,8 @@ func drawShares(t *testing.T, group, alias string, n int, seed uint64) map[int]i
 // ---- W1: static weight baseline ----
 
 // TestScoreW1StaticWeightBaseline is W1.1: with equal quality and health, traffic
-// must land on the configured static-weight split and nothing else.
+// must land on the configured static-weight split and nothing else — P2C's
+// equal-state fallback is the weighted draw, so the split is unchanged.
 func TestScoreW1StaticWeightBaseline(t *testing.T) {
 	const group, alias = "w1-group", "w1-model"
 	withRouteStats(t, nil)
@@ -101,12 +102,13 @@ func TestScoreW1StaticWeightBaseline(t *testing.T) {
 	const draws = 10000
 	counts := drawShares(t, group, alias, draws, 0x5EED)
 
-	// routingBaseWeight adds one to each configured weight, so the exact expected
-	// split is 21:81 rather than 20:80.
-	wantLight := 100 * 21.0 / 102.0
+	// routingBaseWeight adds one to each configured weight (21:81). Thin pools
+	// draw P2C: the light route wins its double draws (1/4) plus its base
+	// share of the mixed pairs: 1/4 + 1/2 x 21/102 ≈ 35.3%.
+	wantLight := 100 * (0.25 + 0.5*21.0/102.0)
 	gotLight := 100 * float64(counts[7101]) / float64(draws)
 	assert.InDelta(t, wantLight, gotLight, 1.5,
-		"weight 20 vs 80 must yield ~%.1f%%, got %.2f%%", wantLight, gotLight)
+		"weight 20 vs 80 must yield ~%.1f%% under P2C, got %.2f%%", wantLight, gotLight)
 }
 
 // TestScoreW1ZeroTotalWeight is W1.2: an all-zero-weight pool must stay usable.
@@ -392,8 +394,8 @@ func TestScoreW3CalmRouteKeepsReducedShare(t *testing.T) {
 	assert.Positive(t, counts[7312], "calm must stay selectable so it can recover")
 	assert.Greater(t, counts[7311], counts[7312], "the healthy peer must take the majority")
 	share := 100 * float64(counts[7312]) / float64(draws)
-	assert.InDelta(t, 33.3, share, 2.5,
-		"a half-weight route takes ~1/3 of a two-route pool, got %.2f%%", share)
+	assert.InDelta(t, 25.0, share, 2.5,
+		"thin pools probe a half-weight route only when both P2C draws land on it: 25%%, got %.2f%%", share)
 }
 
 // TestScoreW3SignalsDoNotDoublePenalise is W3.2: one failure must move the two
@@ -600,7 +602,9 @@ func TestScoreW4FloorQualityRouteRecovers(t *testing.T) {
 // TestScoreW4ComponentFloorIsWhatPreventsStarvation separates the two floors,
 // which the issue text originally conflated. With both floors removed the score
 // collapses to zero and the route is never sampled again — that is a permanent
-// starvation, not a slow recovery.
+// starvation, not a slow recovery. Five candidates keep the pool on the
+// cumulative weighted path (thin pools of <5 route by P2C, which guarantees a
+// 1/n² probe share instead of starving — see the thin-pool P2C tests).
 func TestScoreW4ComponentFloorIsWhatPreventsStarvation(t *testing.T) {
 	const group, alias = "w4f-group", "w4f-model"
 	withRouteStats(t, func(cfg *routestats.RouteStatsSetting) {
@@ -612,9 +616,15 @@ func TestScoreW4ComponentFloorIsWhatPreventsStarvation(t *testing.T) {
 
 	chA := testRouteChannel(7431, false, []string{"sk-a"}, nil)
 	chB := testRouteChannel(7432, false, []string{"sk-b"}, nil)
-	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
+	chC := testRouteChannel(7433, false, []string{"sk-c"}, nil)
+	chD := testRouteChannel(7434, false, []string{"sk-d"}, nil)
+	chE := testRouteChannel(7435, false, []string{"sk-e"}, nil)
+	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB, chC, chD, chE}, group, alias, []ChannelModelRoute{
 		testRoute(1, 7431, 0, alias, "up-a", 100),
 		testRoute(2, 7432, 0, alias, "up-b", 100),
+		testRoute(3, 7433, 0, alias, "up-c", 100),
+		testRoute(4, 7434, 0, alias, "up-d", 100),
+		testRoute(5, 7435, 0, alias, "up-e", 100),
 	})
 	defer cleanup()
 
@@ -640,6 +650,41 @@ func TestScoreW4ComponentFloorIsWhatPreventsStarvation(t *testing.T) {
 	counts := drawShares(t, group, alias, 2000, 0xABCD)
 	assert.LessOrEqual(t, counts[7432], 2,
 		"a route at zero quality is starved out of the pool: this is why the component floor exists")
+}
+
+// TestThinPoolP2CZeroQualityStillProbed pins the thin-pool counterpart to the
+// starvation contract: with fewer than smallPoolUnits candidates, P2C serves a
+// route whenever both uniform draws land on it (1/n² = 25% in a two-route
+// pool) regardless of its score — a thin pool probes instead of starving, so a
+// recovering route can climb back without operator intervention.
+func TestThinPoolP2CZeroQualityStillProbed(t *testing.T) {
+	const group, alias = "w4t-group", "w4t-model"
+	withRouteStats(t, func(cfg *routestats.RouteStatsSetting) {
+		cfg.ComponentFloor = 0
+		cfg.QualityFloor = 0
+	})
+	ClearRouteHealthCache()
+	t.Cleanup(ClearRouteHealthCache)
+
+	chA := testRouteChannel(7441, false, []string{"sk-a"}, nil)
+	chB := testRouteChannel(7442, false, []string{"sk-b"}, nil)
+	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
+		testRoute(1, 7441, 0, alias, "up-a", 100),
+		testRoute(2, 7442, 0, alias, "up-b", 100),
+	})
+	defer cleanup()
+
+	badKey := routeStatsKey(alias, "up-b", 7442)
+	observeQuality(t, routeStatsKey(alias, "up-a", 7441), 1.0, 2000, 20, 8)
+	h := routestats.GetOrCreateHandle(badKey)
+	for range 20 {
+		h.ObserveSuccess(0.0)
+	}
+	require.Less(t, h.Quality().Quality, 1e-6, "fixture: quality must collapse")
+
+	counts := drawShares(t, group, alias, 2000, 0xABCE)
+	assert.InDelta(t, 500, counts[7442], 90,
+		"a zero-quality route in a two-route thin pool keeps the 1/n² probe share (~25%%), got %d", counts[7442])
 }
 
 // ---- W5: correction observability through selection ----

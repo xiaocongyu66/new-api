@@ -281,14 +281,11 @@ func TestSelectRouteUnit_CooldownEjection(t *testing.T) {
 		require.NotNil(t, selected)
 		counts[selected.ChannelId]++
 	}
-	// calm multiplier 0.5 pins base scores at 101:50.5 ≈ 2:1, and the share
-	// correction holds actual traffic exactly there (133:67 of 200 ≈ 66.5%,
-	// expected 66.7%). The correction suppresses the sampling jitter that used
-	// to push the healthy route strictly past 2x, so dominance is asserted as a
-	// band around the base-share split instead of strict 2x.
+	// Thin pools route by power-of-two-choices: the calm route (multiplier 0.5)
+	// loses every contest against the healthy route and is served only when
+	// both draws land on it (25%), so the healthy route takes ~150 of 200.
 	assert.Greater(t, counts[1009], counts[1008], "healthy route must dominate calm route")
-	assert.Greater(t, counts[1009], 120, "healthy route holds its base share (~2/3)")
-	assert.Less(t, counts[1009], 147, "correction keeps healthy route near base share, not monopoly")
+	assert.InDelta(t, 150, counts[1009], 25, "healthy route takes 75%% under P2C")
 
 	// Now disable the calm route - it must be excluded entirely
 	require.NoError(t, DisableRoute(RouteKey{ChannelId: 1008, KeyIndex: 0, Model: alias}, now))
@@ -406,10 +403,11 @@ func TestSelectRouteUnit_WeightDistribution(t *testing.T) {
 		counts[selected.ChannelId]++
 	}
 
-	// ch2 has 3x weight, should get ~75% of selections
-	// Allow some variance
-	assert.InDelta(t, 750, counts[3002], 100, "weight 300 should get ~75%")
-	assert.InDelta(t, 250, counts[3001], 100, "weight 100 should get ~25%")
+	// ch2 has 3x weight. Thin pools draw P2C: a candidate wins its double draws
+	// outright (1/4) and takes its base-share slice of the mixed pairs, so the
+	// split compresses toward even: P(3002) = 1/4 + 1/2 x 301/402 ≈ 62.4%.
+	assert.InDelta(t, 624, counts[3002], 60, "weight 300 compresses to ~62% under P2C")
+	assert.InDelta(t, 376, counts[3001], 60, "weight 100 correspondingly ~38%")
 }
 
 func TestSelectRouteUnit_NormalizedAliasFallback(t *testing.T) {
@@ -661,4 +659,138 @@ func TestSelectedRouteFromChannelBuildsFullRouteForLockedReplay(t *testing.T) {
 	assert.Equal(t, 1, want.Snapshot().SampleCount)
 	assert.Zero(t, sibling.Snapshot().SampleCount,
 		"the sibling route unit on the same channel must be untouched")
+}
+
+// driveToDormant escalates one route seven levels so isolationDuration lands it
+// in the dormant state (multiplier DormantWeightScale).
+func driveToDormant(t *testing.T, key RouteKey) {
+	t.Helper()
+	now := time.Now()
+	for range 7 {
+		require.NoError(t, RecordRetryableFailure(key, "bad_response", FailureSourceUpstream, now))
+	}
+	require.Equal(t, HealthDormant, getHealthState(t, key), "fixture must reach dormant")
+}
+
+func getHealthState(t *testing.T, key RouteKey) string {
+	t.Helper()
+	state, _, _, ok := GetRouteIsolation(key)
+	require.True(t, ok, "route %v must have a health row", key)
+	return state
+}
+
+// TestThinPoolP2CStateBeatsWeight pins the core P2C rule: in a thin pool a
+// healthier isolation state wins the sampled pair regardless of static weight.
+// A dormant route with 10x the healthy route's weight still loses every mixed
+// draw, so the healthy route serves ~75% (the dormant route is probed only
+// when both uniform draws land on it: 1/4).
+func TestThinPoolP2CStateBeatsWeight(t *testing.T) {
+	const group, alias = "p2c-group", "p2c-model"
+
+	light := testRouteChannel(8301, false, []string{"sk-light"}, nil)
+	heavy := testRouteChannel(8302, false, []string{"sk-heavy"}, nil)
+	cleanup := withRouteUnitFixture(t, []*Channel{light, heavy}, group, alias, []ChannelModelRoute{
+		testRoute(1, 8301, 0, alias, "up-light", 1),
+		testRoute(2, 8302, 0, alias, "up-heavy", 10),
+	})
+	defer cleanup()
+
+	withRouteHealthDB(t)
+	ClearRouteHealthCache()
+	t.Cleanup(ClearRouteHealthCache)
+
+	driveToDormant(t, RouteKey{ChannelId: 8302, KeyIndex: 0, Model: alias})
+
+	counts := drawShares(t, group, alias, 2000, 0xA2C01)
+	assert.InDelta(t, 1500, counts[8301], 120,
+		"the healthy route must win every mixed pair (~75%%), got %d", counts[8301])
+	assert.Positive(t, counts[8302], "the dormant route keeps its 1/n² probe share")
+}
+
+// TestThinPoolP2CThreeRouteProbeShare pins the 1/n² probe share: with three
+// equal-weight candidates and one dormant, the dormant route wins only the
+// double draws (1/9 ≈ 11%), while its two healthy peers split the rest evenly.
+func TestThinPoolP2CThreeRouteProbeShare(t *testing.T) {
+	const group, alias = "p2c3-group", "p2c3-model"
+
+	chA := testRouteChannel(8311, false, []string{"sk-a"}, nil)
+	chB := testRouteChannel(8312, false, []string{"sk-b"}, nil)
+	chC := testRouteChannel(8313, false, []string{"sk-c"}, nil)
+	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB, chC}, group, alias, []ChannelModelRoute{
+		testRoute(1, 8311, 0, alias, "up-a", 100),
+		testRoute(2, 8312, 0, alias, "up-b", 100),
+		testRoute(3, 8313, 0, alias, "up-c", 100),
+	})
+	defer cleanup()
+
+	withRouteHealthDB(t)
+	ClearRouteHealthCache()
+	t.Cleanup(ClearRouteHealthCache)
+
+	driveToDormant(t, RouteKey{ChannelId: 8313, KeyIndex: 0, Model: alias})
+
+	counts := drawShares(t, group, alias, 3000, 0xA2C02)
+	assert.InDelta(t, 333, counts[8313], 90,
+		"one dormant route in a three-route pool is probed ~1/9 of the time, got %d", counts[8313])
+	assert.Greater(t, counts[8311], counts[8313], "a healthy peer must dominate the dormant route")
+	assert.Greater(t, counts[8312], counts[8313], "both healthy peers must dominate the dormant route")
+}
+
+// TestThinPoolP2CDeterministicUnderSeed pins that P2C consumes randomness only
+// through the injected source: identical seeds must produce identical selection
+// sequences, so distribution tests stay reproducible.
+func TestThinPoolP2CDeterministicUnderSeed(t *testing.T) {
+	const group, alias = "p2cd-group", "p2cd-model"
+
+	chA := testRouteChannel(8321, false, []string{"sk-a"}, nil)
+	chB := testRouteChannel(8322, false, []string{"sk-b"}, nil)
+	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
+		testRoute(1, 8321, 0, alias, "up-a", 100),
+		testRoute(2, 8322, 0, alias, "up-b", 40),
+	})
+	defer cleanup()
+
+	ClearRouteHealthCache()
+	t.Cleanup(ClearRouteHealthCache)
+
+	run := func() []int {
+		rnd := rand.New(rand.NewPCG(0x51EE, 7))
+		ids := make([]int, 0, 50)
+		for range 50 {
+			selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+			require.NoError(t, err)
+			require.NotNil(t, selected)
+			ids = append(ids, selected.ChannelId)
+		}
+		return ids
+	}
+	assert.Equal(t, run(), run(), "same seed must reproduce the same P2C sequence")
+}
+
+// TestThinPoolP2CFourCandidatesUniform pins the P2C boundary: four equal
+// candidates (< smallPoolUnits=5) still route by P2C, and with equal health
+// and weight each lands on exactly 1/4 of the traffic.
+func TestThinPoolP2CFourCandidatesUniform(t *testing.T) {
+	const group, alias = "p2c4-group", "p2c4-model"
+
+	chA := testRouteChannel(8331, false, []string{"sk-a"}, nil)
+	chB := testRouteChannel(8332, false, []string{"sk-b"}, nil)
+	chC := testRouteChannel(8333, false, []string{"sk-c"}, nil)
+	chD := testRouteChannel(8334, false, []string{"sk-d"}, nil)
+	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB, chC, chD}, group, alias, []ChannelModelRoute{
+		testRoute(1, 8331, 0, alias, "up-a", 100),
+		testRoute(2, 8332, 0, alias, "up-b", 100),
+		testRoute(3, 8333, 0, alias, "up-c", 100),
+		testRoute(4, 8334, 0, alias, "up-d", 100),
+	})
+	defer cleanup()
+
+	ClearRouteHealthCache()
+	t.Cleanup(ClearRouteHealthCache)
+
+	counts := drawShares(t, group, alias, 4000, 0xA2C03)
+	for _, id := range []int{8331, 8332, 8333, 8334} {
+		assert.InDelta(t, 1000, counts[id], 120,
+			"four equal candidates must each take 1/4 under P2C, got %d for %d", counts[id], id)
+	}
 }

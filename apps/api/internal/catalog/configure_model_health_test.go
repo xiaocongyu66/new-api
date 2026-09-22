@@ -13,10 +13,29 @@ func TestDefaultChannelModelHealthSetting_FailureThresholdsAreOne(t *testing.T) 
 	require.NotNil(t, s)
 	assert.Equal(t, 1, s.LocalFailureThreshold)
 	assert.Equal(t, 1, s.UpstreamFailureThreshold)
+	assert.Equal(t, 5, s.FastWindowUnits)
+	assert.Equal(t, 5, s.FastWindowCapSeconds)
+	assert.Equal(t, 10, s.LargeWindowCapSeconds)
+}
+
+// TestWindowCapReadsLiveSettings pins that the cooldown tier caps follow the
+// running settings rather than baked-in constants: a raised boundary and
+// shifted caps must be honored by windowCapSeconds.
+func TestWindowCapReadsLiveSettings(t *testing.T) {
+	cfg := DefaultChannelModelHealthSetting()
+	cfg.FastWindowUnits = 3
+	cfg.FastWindowCapSeconds = 4
+	cfg.LargeWindowCapSeconds = 9
+	withHealthSetting(t, cfg)
+
+	assert.Equal(t, int64(4), windowCapSeconds(2), "pool below the boundary uses the fast cap")
+	assert.Equal(t, int64(4), windowCapSeconds(3), "pool at the boundary uses the fast cap")
+	assert.Equal(t, int64(9), windowCapSeconds(4), "pool above the boundary uses the large cap")
+	assert.Equal(t, int64(9), windowCapSeconds(99))
 }
 
 func TestValidateChannelModelHealthSettingValue_FailureThresholds(t *testing.T) {
-	thresholdKeys := []string{"LocalFailureThreshold", "UpstreamFailureThreshold"}
+	thresholdKeys := []string{"LocalFailureThreshold", "UpstreamFailureThreshold", "FastWindowCapSeconds", "LargeWindowCapSeconds"}
 
 	cases := []struct {
 		name    string
