@@ -143,8 +143,8 @@ func setupGrabAllTestDB(t *testing.T) func() {
 func TestHandleRedPacketGrabAllSummarizesOnce(t *testing.T) {
 	defer setupGrabAllTestDB(t)()
 
-	me := &identity.User{Username: "graball", Password: "x", Role: 1, Status: common.UserStatusEnabled, Group: "default"}
-	other := &identity.User{Username: "sender", Password: "x", Role: 1, Status: common.UserStatusEnabled, Group: "default"}
+	me := &identity.User{Username: "graball", Password: "x", Role: 1, Status: common.UserStatusEnabled, Group: "default", AffCode: "GAM1"}
+	other := &identity.User{Username: "sender", Password: "x", Role: 1, Status: common.UserStatusEnabled, Group: "default", AffCode: "GAS2"}
 	require.NoError(t, dbx.DB.Create(me).Error)
 	require.NoError(t, dbx.DB.Create(other).Error)
 	require.NoError(t, dbx.DB.Create(&identity.QQBinding{UserId: me.Id, OpenID: "OPENID_ME"}).Error)
