@@ -605,8 +605,7 @@ func HandleGroupAtMessage(event *GroupAtMessageEvent) {
 
 		usage.RecordLog(userId, usage.LogTypeSystem, "已绑定 QQ 账号，可使用 QQ 签到")
 		reply := buildPlainMarkdown(openID,
-			"**绑定成功！**\n\n现在可以直接发送 /签到 领取每日额度\n\n"+
-				"**注意**：群聊中发布的绑定码会被其他成员复制并抢先绑定，建议通过私信发送验证码给机器人（私信绑定支持本版本同步上线）")
+			"**绑定成功！**\n\n现在可以直接发送 /签到 领取每日额度")
 		if sendErr := replyGroupMarkdown(RecallKindBindSuccess,
 			event.GroupOpenID, event.ID, "", reply, checkinKeyboard(), 1); sendErr != nil {
 			common.SysError("回复绑定成功消息失败: " + sendErr.Error())
