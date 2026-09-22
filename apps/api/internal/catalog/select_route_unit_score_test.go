@@ -251,8 +251,9 @@ func TestScoreW2QualityNeverStarvesARoute(t *testing.T) {
 
 // TestScoreW2PoolSizeChangesTheLoss is W2.3: the same bad route loses a very
 // different amount of share depending on pool size, so the two-route number is
-// not a general acceptance line. P2C marginals: 41.7% / 18.75% / 8.85% for
-// pools of 2 / 4 / 8.
+// not a general acceptance line. Pools of 2 and 4 routes sit inside the P2C
+// thin-pool window (marginals 41.7% / 18.75%); an 8-route pool exceeds the
+// window and keeps the cumulative sampler's 6.67%.
 func TestScoreW2PoolSizeChangesTheLoss(t *testing.T) {
 	for _, tc := range []struct {
 		poolSize  int
@@ -260,7 +261,7 @@ func TestScoreW2PoolSizeChangesTheLoss(t *testing.T) {
 	}{
 		{2, 41.7},
 		{4, 18.75},
-		{8, 8.85},
+		{8, 6.67},
 	} {
 		t.Run("pool", func(t *testing.T) {
 			group := "w2p-group"
@@ -753,7 +754,7 @@ func TestScoreW5WindowZeroDisablesCorrection(t *testing.T) {
 	const draws = 12000
 	counts := drawShares(t, group, alias, draws, 0x2222)
 	share := 100 * float64(counts[7512]) / float64(draws)
-	assert.InDelta(t, 46.7, share, 1.5,
+	assert.InDelta(t, 48.3, share, 1.5,
 		"the no-correction arm must still track quality, got %.2f%%", share)
 
 	assert.Zero(t, routestats.SharePoolCount(), "a disabled window must allocate no pool state")
