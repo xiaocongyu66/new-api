@@ -1045,3 +1045,132 @@ func TestAppendToolSurchargeLogInfoWritesOnlyStructuredFields(t *testing.T) {
 	assert.NotContains(t, other, "image_generation_call")
 	assert.NotContains(t, other, "image_generation_call_price")
 }
+
+func perCallRelayInfo(modelPrice float64, groupRatio float64) *relaycommon.RelayInfo {
+	return &relaycommon.RelayInfo{
+		OriginModelName: "gpt-5-2",
+		RelayFormat:     types.RelayFormatOpenAI,
+		PriceData: hosttypes.PriceData{
+			ModelPrice:     modelPrice,
+			UsePrice:       true,
+			GroupRatioInfo: hosttypes.GroupRatioInfo{GroupRatio: groupRatio},
+		},
+		StartTime: time.Now(),
+	}
+}
+
+func TestCalculateTextQuotaSummaryPerCallEmptyResponseWaived(t *testing.T) {
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
+	relayInfo := perCallRelayInfo(0.38, 1)
+	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 0, TotalTokens: 14}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 0, summary.Quota, "a 200 response with no output must waive the per-call charge")
+	assert.True(t, summary.EmptyResponseWaived)
+}
+
+func TestCalculateTextQuotaSummaryPerCallWithOutputNotWaived(t *testing.T) {
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
+	relayInfo := perCallRelayInfo(0.38, 1)
+	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 92, TotalTokens: 106}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, int(0.38*float64(common.QuotaPerUnit)), summary.Quota)
+	assert.False(t, summary.EmptyResponseWaived)
+}
+
+func TestCalculateTextQuotaSummaryPerCallEmptyWithToolSurchargeNotWaived(t *testing.T) {
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
+	relayInfo := perCallRelayInfo(0.38, 1)
+	relayInfo.ResponsesUsageInfo = &relaycommon.ResponsesUsageInfo{
+		BuiltInTools: map[string]*relaycommon.BuildInToolInfo{
+			dto.BuildInToolWebSearchPreview: {CallCount: 1},
+		},
+	}
+	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 0, TotalTokens: 14}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	// A tool call is delivered work: full call price + web-search surcharge.
+	expected := decimal.NewFromFloat(0.38 + 10.0/1000).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+	require.True(t, expected.Equal(decimal.NewFromInt(int64(summary.Quota))), "got %d want %s", summary.Quota, expected)
+	assert.False(t, summary.EmptyResponseWaived)
+}
+
+func TestCalculateTextQuotaSummaryPerCallEmptyContentFilterNotWaived(t *testing.T) {
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
+	ctx.Set(string(constant.ContextKeyAdminRejectReason), "openai_finish_reason=content_filter")
+	relayInfo := perCallRelayInfo(0.38, 1)
+	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 0, TotalTokens: 14}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, int(0.38*float64(common.QuotaPerUnit)), summary.Quota, "content-filtered responses keep the prompt charge")
+	assert.False(t, summary.EmptyResponseWaived)
+}
+
+func TestCalculateTextQuotaSummaryPerCallEmptyClientGoneNotWaived(t *testing.T) {
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
+	relayInfo := perCallRelayInfo(0.38, 1)
+	relayInfo.StreamStatus = relaycommon.NewStreamStatus()
+	relayInfo.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, nil)
+	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 0, TotalTokens: 14}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, int(0.38*float64(common.QuotaPerUnit)), summary.Quota, "client-abandoned streams are not an upstream failure")
+	assert.False(t, summary.EmptyResponseWaived)
+}
+
+func TestCalculateTextQuotaSummaryTokenBilledEmptyResponseStillChargesPrompt(t *testing.T) {
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "some-token-model",
+		PriceData: hosttypes.PriceData{
+			ModelRatio:     2,
+			UsePrice:       false,
+			GroupRatioInfo: hosttypes.GroupRatioInfo{GroupRatio: 1},
+		},
+		StartTime: time.Now(),
+	}
+	usage := &dto.Usage{PromptTokens: 1000, CompletionTokens: 0, TotalTokens: 1000}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	// Token-billed models keep the prompt-token charge: refunding it would make
+	// huge free prompts farmable.
+	require.Equal(t, 2000, summary.Quota)
+	assert.False(t, summary.EmptyResponseWaived)
+}
+
+func TestCalculateTextQuotaSummaryPerCallImageModelNotWaived(t *testing.T) {
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
+	// Image models legitimately report completion_tokens=0; the deliverable is
+	// the image itself, so the per-call charge (with the n multiplier) stands.
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "dall-e-3",
+		RelayFormat:     types.RelayFormatOpenAIImage,
+		PriceData: hosttypes.PriceData{
+			ModelPrice:     0.12,
+			UsePrice:       true,
+			GroupRatioInfo: hosttypes.GroupRatioInfo{GroupRatio: 1},
+		},
+		StartTime: time.Now(),
+	}
+	relayInfo.PriceData.AddOtherRatio("n", 3)
+	usage := &dto.Usage{PromptTokens: 1, TotalTokens: 1}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 180000, summary.Quota)
+	assert.False(t, summary.EmptyResponseWaived)
+}

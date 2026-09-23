@@ -377,6 +377,15 @@ func OpenaiHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.R
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
 
+	// A 2xx chat.completion body must carry at least one choice per the OpenAI
+	// spec. Unstable resellers disguise upstream failures as 200 + empty
+	// choices; mirror the Gemini empty-candidates check and surface it as a
+	// retryable relay error so the retry loop can pick a healthy route instead
+	// of forwarding an empty answer.
+	if len(simpleResponse.Choices) == 0 {
+		return nil, types.NewOpenAIError(fmt.Errorf("upstream returned 200 with empty choices"), types.ErrorCodeEmptyResponse, http.StatusInternalServerError)
+	}
+
 	for _, choice := range simpleResponse.Choices {
 		if choice.FinishReason == constant.FinishReasonContentFilter {
 			common.SetContextKey(c, constant.ContextKeyAdminRejectReason, "openai_finish_reason=content_filter")
