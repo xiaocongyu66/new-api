@@ -401,12 +401,32 @@ func calculateTextQuotaSummary(ctx contract.Context, relayInfo *relaycommon.Rela
 	return summary
 }
 
+// isTextGenerationFormat reports whether the relay format's deliverable is
+// generated text, i.e. zero completion tokens means nothing was produced.
+// Image, audio, embedding, rerank and search formats bill through the same
+// text quota path but legitimately report completion=0, so they must never
+// be waived.
+func isTextGenerationFormat(format types.RelayFormat) bool {
+	switch format {
+	case types.RelayFormatOpenAI,
+		types.RelayFormatClaude,
+		types.RelayFormatGemini,
+		types.RelayFormatOpenAIResponses,
+		types.RelayFormatOpenAIResponsesCompaction:
+		return true
+	}
+	return false
+}
+
 // isUndeliveredPerCallResponse reports whether a 2xx response produced nothing
 // the user could consume: zero completion tokens, no billable tool calls, no
 // policy rejection, and the stream was not abandoned by the client. Only
-// meaningful for per-call pricing (UsePrice), where the usage shape does not
-// affect the charge.
+// meaningful for per-call pricing (UsePrice) on text-generation formats, where
+// the usage shape does not affect the charge.
 func isUndeliveredPerCallResponse(relayInfo *relaycommon.RelayInfo, summary textQuotaSummary, adminRejectReason string) bool {
+	if !isTextGenerationFormat(relayInfo.RelayFormat) {
+		return false
+	}
 	if summary.CompletionTokens != 0 {
 		return false
 	}

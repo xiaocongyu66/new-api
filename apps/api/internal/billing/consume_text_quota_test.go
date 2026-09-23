@@ -1049,6 +1049,7 @@ func TestAppendToolSurchargeLogInfoWritesOnlyStructuredFields(t *testing.T) {
 func perCallRelayInfo(modelPrice float64, groupRatio float64) *relaycommon.RelayInfo {
 	return &relaycommon.RelayInfo{
 		OriginModelName: "gpt-5-2",
+		RelayFormat:     types.RelayFormatOpenAI,
 		PriceData: hosttypes.PriceData{
 			ModelPrice:     modelPrice,
 			UsePrice:       true,
@@ -1104,7 +1105,7 @@ func TestCalculateTextQuotaSummaryPerCallEmptyWithToolSurchargeNotWaived(t *test
 func TestCalculateTextQuotaSummaryPerCallEmptyContentFilterNotWaived(t *testing.T) {
 	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
 	ctx := ctxRaw
-	ctx.Set(constant.ContextKeyAdminRejectReason, "openai_finish_reason=content_filter")
+	ctx.Set(string(constant.ContextKeyAdminRejectReason), "openai_finish_reason=content_filter")
 	relayInfo := perCallRelayInfo(0.38, 1)
 	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 0, TotalTokens: 14}
 
@@ -1147,5 +1148,29 @@ func TestCalculateTextQuotaSummaryTokenBilledEmptyResponseStillChargesPrompt(t *
 	// Token-billed models keep the prompt-token charge: refunding it would make
 	// huge free prompts farmable.
 	require.Equal(t, 2000, summary.Quota)
+	assert.False(t, summary.EmptyResponseWaived)
+}
+
+func TestCalculateTextQuotaSummaryPerCallImageModelNotWaived(t *testing.T) {
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
+	// Image models legitimately report completion_tokens=0; the deliverable is
+	// the image itself, so the per-call charge (with the n multiplier) stands.
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "dall-e-3",
+		RelayFormat:     types.RelayFormatOpenAIImage,
+		PriceData: hosttypes.PriceData{
+			ModelPrice:     0.12,
+			UsePrice:       true,
+			GroupRatioInfo: hosttypes.GroupRatioInfo{GroupRatio: 1},
+		},
+		StartTime: time.Now(),
+	}
+	relayInfo.PriceData.AddOtherRatio("n", 3)
+	usage := &dto.Usage{PromptTokens: 1, TotalTokens: 1}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 180000, summary.Quota)
 	assert.False(t, summary.EmptyResponseWaived)
 }
