@@ -276,3 +276,30 @@ func tail(value string, n int) string {
 	}
 	return value[len(value)-n:]
 }
+
+// TestNonStreamingChatRelayRejectsEmptyChoices asserts a 200 chat.completion
+// body with no choices is treated as a relay error instead of being forwarded.
+// Unstable resellers disguise upstream failures as 200 + empty choices; the
+// relay must fail closed so the retry loop can pick a healthy route and the
+// per-call empty-response waiver can settle the charge at zero.
+func TestNonStreamingChatRelayRejectsEmptyChoices(t *testing.T) {
+	disableOutputSensitiveFilter(t)
+
+	upstreamServer, _ := startMockUpstream(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"id":"chatcmpl-empty","object":"chat.completion","created":11,"model":"gpt-4","choices":[],"usage":{"prompt_tokens":14,"completion_tokens":0,"total_tokens":14}}`)
+	})
+
+	upstreamResponse, err := http.Post(upstreamServer.URL, "application/json", strings.NewReader(`{"model":"gpt-4","messages":[{"role":"user","content":"hi"}]}`))
+	require.NoError(t, err)
+
+	clientCtx, recorder := newRelayClientContext(t, "/v1/chat/completions")
+
+	usage, relayErr := OpenaiHandler(clientCtx, newUpstreamRelayInfo("gpt-4"), upstreamResponse)
+
+	require.NotNil(t, relayErr, "200 with empty choices must be reported as a relay error")
+	assert.Nil(t, usage)
+	assert.Equal(t, types.ErrorCodeEmptyResponse, relayErr.GetErrorCode())
+	assert.Empty(t, recorder.Body.String(), "empty-choice responses must not be forwarded to the client")
+}

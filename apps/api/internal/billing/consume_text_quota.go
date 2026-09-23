@@ -68,6 +68,7 @@ type textQuotaSummary struct {
 	AudioInputPrice        float64
 	ToolSurchargeItems     []ToolSurchargeItem
 	ToolCallSurchargeQuota decimal.Decimal
+	EmptyResponseWaived    bool
 }
 
 // hasBillableUsage reports whether this request should incur any charge.
@@ -383,7 +384,39 @@ func calculateTextQuotaSummary(ctx contract.Context, relayInfo *relaycommon.Rela
 		summary.Quota = 1
 	}
 
+	// Per-call pricing charges the full call price on any 2xx response. When an
+	// unstable upstream disguises a failure as a 200 with empty output, that
+	// would still collect the full price for nothing delivered, so waive the
+	// call charge. Tiered-expression models settle through TryTieredSettle and
+	// override this quota afterwards, so they are excluded to keep the waiver
+	// flag consistent with the charge actually settled.
+	adminRejectReason := common.GetCtxKeyString(ctx, constant.ContextKeyAdminRejectReason)
+	if relayInfo.PriceData.UsePrice && summary.Quota > 0 &&
+		relayInfo.TieredBillingSnapshot == nil &&
+		isUndeliveredPerCallResponse(relayInfo, summary, adminRejectReason) {
+		summary.Quota = 0
+		summary.EmptyResponseWaived = true
+	}
+
 	return summary
+}
+
+// isUndeliveredPerCallResponse reports whether a 2xx response produced nothing
+// the user could consume: zero completion tokens, no billable tool calls, no
+// policy rejection, and the stream was not abandoned by the client. Only
+// meaningful for per-call pricing (UsePrice), where the usage shape does not
+// affect the charge.
+func isUndeliveredPerCallResponse(relayInfo *relaycommon.RelayInfo, summary textQuotaSummary, adminRejectReason string) bool {
+	if summary.CompletionTokens != 0 {
+		return false
+	}
+	if len(summary.ToolSurchargeItems) > 0 {
+		return false
+	}
+	if adminRejectReason != "" {
+		return false
+	}
+	return relayInfo.StreamStatus.GetEndReason() != relaycommon.StreamEndReasonClientGone
 }
 
 func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) string {
@@ -437,6 +470,9 @@ func PostTextConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo
 			logger.LogQuota(common.QuotaFromDecimal(q)),
 		))
 	}
+	if summary.EmptyResponseWaived {
+		extraContent = append(extraContent, "上游返回空响应，按次费用已豁免")
+	}
 	if summary.AudioInputPrice > 0 && summary.AudioTokens > 0 {
 		q := decimal.NewFromFloat(summary.AudioInputPrice).Div(decimal.NewFromInt(1000000)).Mul(decimal.NewFromInt(int64(summary.AudioTokens))).Mul(decimal.NewFromFloat(summary.GroupRatio)).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
 		extraContent = append(extraContent, fmt.Sprintf("Audio Input 花费 %s", logger.LogQuota(common.QuotaFromDecimal(q))))
@@ -481,6 +517,9 @@ func PostTextConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo
 	appendUsageBillingPathForLog(other, common.GetCtxKeyBool(ctx, constant.ContextKeyLocalCountTokens), originUsage)
 	if adminRejectReason != "" {
 		other["reject_reason"] = adminRejectReason
+	}
+	if summary.EmptyResponseWaived {
+		other["empty_response_waived"] = true
 	}
 	if summary.ImageTokens != 0 {
 		other["image"] = true
