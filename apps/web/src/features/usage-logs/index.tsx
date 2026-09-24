@@ -141,7 +141,7 @@ function UsageLogsContent() {
         <SectionPageLayout.Content>
           <div className='flex h-full min-h-0 flex-col gap-4'>
             {showTaskSwitcher && (
-              <Tabs value={activeCategory} onValueChange={handleSectionChange}>
+              <Tabs value={activeCategory} onValueChange={handleSectionChange} className='shrink-0'>
                 <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
                   {visibleSections.map((section) => (
                     <TabsTrigger key={section} value={section}>

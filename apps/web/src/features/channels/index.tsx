@@ -107,8 +107,8 @@ function ChannelsContent() {
               ref={createScrollContainerRef}
               className={
                 pageTab === 'create'
-                  ? 'min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pt-1 pb-3 sm:px-4 sm:pt-1.5 sm:pb-4'
-                  : 'min-h-0 flex-1 overflow-hidden px-3 pt-1 pb-3 sm:px-4 sm:pt-1.5 sm:pb-4'
+                  ? 'flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-3 pt-1 pb-3 sm:px-4 sm:pt-1.5 sm:pb-4'
+                  : 'flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-1 pb-3 sm:px-4 sm:pt-1.5 sm:pb-4'
               }
               tabIndex={pageTab === 'create' ? -1 : undefined}
             >
@@ -126,7 +126,7 @@ function ChannelsContent() {
               <TabsContent
                 value='channels'
                 keepMounted
-                className='m-0 flex h-full min-h-0 flex-col gap-3 overflow-hidden data-hidden:hidden'
+                className='m-0 flex h-full min-h-0 flex-1 flex-col gap-3 overflow-hidden data-hidden:hidden'
               >
                 <div className='flex shrink-0 flex-wrap items-center justify-end gap-2 px-1 pb-3 sm:gap-x-4'>
                   <ChannelsPrimaryButtons />

@@ -108,7 +108,7 @@ export function UserInsights() {
               className={
                 isMobile
                   ? 'min-h-0 flex-1 space-y-3 overflow-y-auto pt-3'
-                  : 'flex min-h-0 flex-1 flex-col gap-3 pt-3'
+                  : 'flex h-full min-h-0 flex-1 flex-col gap-3 overflow-hidden pt-3'
               }
             >
               <div className='shrink-0'>
@@ -117,7 +117,7 @@ export function UserInsights() {
                   isLoading={summaryQuery.isLoading}
                 />
               </div>
-              <div className='min-h-0 flex-1'>
+              <div className='flex min-h-0 flex-1 flex-col'>
                 <InsightsTable
                   onViewEvidence={setEvidenceUser}
                   blockedClients={blockedClients}
