@@ -8,9 +8,9 @@ name: Deploy to Kubernetes
 #     （kubeconfig 已由 setup-k3s.yml 改写为公网地址）
 #
 # 触发方式：
-#   1. 手动：Actions 页面 → Deploy to Kubernetes → Run workflow
-#   2. 自动：docker-build.yml 成功后通过 workflow_run 事件触发本 workflow
-#      （image_tag 从 docker-build.yml 的 artifact 读取）
+#   手动：Actions 页面 → Deploy to Kubernetes → Run workflow，指定 image_tag。
+# 历史上 docker-build.yml 成功后会通过 workflow_run 自动触发；该 k3s 集群已废弃，
+# 自动触发已在 2026-09 移除，现在只保留手动触发。
 #
 # 需要在仓库 Settings → Secrets and variables → Actions 配置的 Secret：
 #   KUBE_CONFIG_B64     base64 编码的 kubeconfig（runner 访问集群用）
@@ -34,10 +34,6 @@ on:
         description: "要部署的不可变镜像 tag，如 sha-abc123 或 v0.11.0"
         required: true
         type: string
-  workflow_run:
-    workflows: ["Publish Docker image (Multi-arch)"]
-    types: [completed]
-
 
 concurrency:
   group: k8s-deploy
@@ -47,31 +43,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       actions: read
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Resolve image tag
         id: resolve_tag
         env:
-          DISPATCH_TAG: ${{ github.event.inputs.image_tag }}
-          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
-          GH_TOKEN: ${{ github.token }}
+          IMAGE_TAG: ${{ github.event.inputs.image_tag }}
         run: |
-          if [ -n "$DISPATCH_TAG" ]; then
-            IMAGE_TAG="$DISPATCH_TAG"
-          else
-            # workflow_run 触发时从 artifact 读取 tag
-            IMAGE_TAG=""
-            if [ -n "$WORKFLOW_RUN_ID" ]; then
-              gh run download "$WORKFLOW_RUN_ID" \
-                --repo "${{ github.repository }}" \
-                --name docker-tag \
-                --dir /tmp/tag-artifact || true
-              IMAGE_TAG=$(cat /tmp/tag-artifact/tag.txt 2>/dev/null || echo "")
-            fi
-            if [ -z "$IMAGE_TAG" ]; then
-              echo "::error::Cannot resolve image_tag from workflow_run artifact"
-              exit 1
-            fi
+          if [ -z "$IMAGE_TAG" ]; then
+            echo "::error::image_tag 是手动触发时的必填项"; exit 1
           fi
           echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
 
