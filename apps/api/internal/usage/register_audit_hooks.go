@@ -23,4 +23,9 @@ func init() {
 			RecordUserSecurityAudit(c, userID, action, params)
 		},
 	)
+
+	// This domain owns the auto-ban mark, so it clears the mark when an admin
+	// lifts a ban; otherwise the user is exempt from re-evaluation for the rest
+	// of the process lifetime.
+	identity.RegisterUserUnbanHook(ResetInsightAutoBanMark)
 }

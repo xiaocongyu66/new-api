@@ -162,6 +162,24 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         <TooltipContent>{t('Edit')}</TooltipContent>
       </Tooltip>
 
+      {isDisabled && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant='ghost'
+                size='icon-sm'
+                onClick={() => handleManage('enable')}
+                aria-label={t('Unban')}
+              />
+            }
+          >
+            <Power />
+          </TooltipTrigger>
+          <TooltipContent>{t('Unban')}</TooltipContent>
+        </Tooltip>
+      )}
+
       <DataTableRowActionMenu
         ariaLabel={t('Open menu')}
         contentClassName='w-48'
