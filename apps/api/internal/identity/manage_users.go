@@ -1241,6 +1241,13 @@ func ManageUser(c contract.Context) {
 			return
 		}
 	}
+	// The auto-ban mark lives in memory and is only cleared by the usage domain
+	// (or by purging the profile). Leaving it set would exempt this user from
+	// every later auto-ban until the process restarts. Runs after the write so
+	// a failed update does not hand out a free pass.
+	if req.Action == "enable" {
+		runUserUnbanHook(user.Id)
+	}
 	// Update/UpdateWithTx has already published the new user hash and revoked
 	// browser sessions exactly once. Only PAT/relay token caches still need an
 	// explicit invalidation; deleting the user hash here would discard the

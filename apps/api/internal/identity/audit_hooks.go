@@ -69,6 +69,25 @@ func writeUserSecurityAudit(c contract.Context, userID int, action string, param
 	}
 }
 
+// UserUnbanHook clears per-process state an automatic ban left behind, so a
+// user lifted by an admin is evaluated again on their next request instead of
+// staying exempt for the lifetime of the process.
+type UserUnbanHook func(userID int)
+
+var notifyUserUnban UserUnbanHook
+
+// RegisterUserUnbanHook installs the unban hook. Called once during startup by
+// the usage domain, which owns the auto-ban mark.
+func RegisterUserUnbanHook(hook UserUnbanHook) {
+	notifyUserUnban = hook
+}
+
+func runUserUnbanHook(userID int) {
+	if notifyUserUnban != nil {
+		notifyUserUnban(userID)
+	}
+}
+
 // GroupModelsResolver returns the model names enabled for the given user groups.
 //
 // Catalog data lives outside this domain and its lookup reads channel records, so
