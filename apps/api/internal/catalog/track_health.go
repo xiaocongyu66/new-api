@@ -191,9 +191,16 @@ func (h *HealthStore) recordChannelOutcome(channelID int, modelName string, outc
 	}
 
 	// The cooldown trigger is deliberately outside the MinRequests guard.
-	if (outcome == OutcomeFatal || outcome == OutcomeThrottled) && state.FailureStreak >= cfg.CooldownThreshold {
+	// Only a genuine failure (OutcomeFatal) escalates toward a permanent
+	// per-model disable. OutcomeThrottled (429) means the upstream is busy,
+	// not that the model is gone: rate-limiting must not retire a model.
+	// Escalating a 429 made repeated throttling silently remove working
+	// models from the route table, with no path back short of an admin
+	// editing the channel. Throttling still applies the cooldown below, so
+	// the route backs off temporarily and recovers on its own.
+	if state.FailureStreak >= cfg.CooldownThreshold && (outcome == OutcomeFatal || outcome == OutcomeThrottled) {
 		startCooldownLocked(state, cfg, now)
-		if modelName != "" {
+		if modelName != "" && outcome == OutcomeFatal {
 			h.escalateModelLocked(state, cfg, channelID, modelName)
 		}
 	}

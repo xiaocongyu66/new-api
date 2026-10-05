@@ -14,14 +14,22 @@ import (
 )
 
 // withRouteHealthDB gives each test its own database and a clean process cache,
-// so isolation state written by one case cannot leak into the next.
+// so isolation state written by one case cannot leak into the next. It migrates
+// the routing tables too because RecoverRoute restores the recovered model into
+// the routable set (abilities + route rows) inside one gateway revision, not
+// just the health row.
 func withRouteHealthDB(t *testing.T) {
 	t.Helper()
 	previousDB := dbx.DB
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&ChannelModelHealth{}))
+	require.NoError(t, db.AutoMigrate(
+		&ChannelModelHealth{},
+		&Channel{}, &Ability{}, &ChannelModelRoute{},
+		&GatewayConfigRevision{}, &GatewayConfigOutbox{},
+	))
 	dbx.DB = db
+	require.NoError(t, InitializeGatewayConfigRevision())
 	ClearRouteHealthCache()
 	t.Cleanup(func() {
 		dbx.DB = previousDB

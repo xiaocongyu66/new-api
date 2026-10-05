@@ -245,7 +245,10 @@ func maybeEmergencyRecover(model string, now time.Time) {
 	}
 
 	var rows []ChannelModelHealth
-	if err := dbx.DB.Where("model = ? AND state <> ?", model, HealthDisabled).
+	// Disabled rows are eligible: they were excluded, so once a model fell
+	// below EmergencyThreshold its hard-disabled routes could never come back
+	// and emergency recovery had nothing left to rescue.
+	if err := dbx.DB.Where("model = ?", model).
 		Order("isolation_level ASC, updated_at ASC").
 		Limit(want).
 		Find(&rows).Error; err != nil {

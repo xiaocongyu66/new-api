@@ -2,6 +2,8 @@ package channel
 
 import (
 	"errors"
+	"fmt"
+
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"sync"
 	"time"
@@ -98,12 +100,22 @@ func IsRouteHealthy(key RouteKey, now time.Time) bool {
 	if state == nil || state.State == HealthHealthy {
 		return true
 	}
-	if state.State == HealthDisabled {
-		return false
-	}
+	// A disabled route normally stays out until an admin recovers it, but one
+	// carrying an until deadline must expire on its own: until=nil made the
+	// auto-disable a dead end with no self-heal, so a single upstream outage
+	// could retire a model permanently.
 	if state.Until == nil || *state.Until > now.Unix() {
 		return false
 	}
+	return expireRoute(key, state, now)
+}
+
+// expireRoute flips an elapsed isolation window back to healthy, paying down
+// the ladder by one decay step so the next failure resumes from a lower level
+// instead of the full ladder. The DB write is a CAS on version; a lost race
+// re-reads and re-evaluates, so concurrent writers cannot resurrect a window
+// that another writer just extended.
+func expireRoute(key RouteKey, state *routeHealthState, now time.Time) bool {
 	step := decayStep(key.Model)
 	if step <= 0 {
 		step = 1
@@ -182,9 +194,7 @@ func GetRouteIsolation(key RouteKey) (state string, level int, until int64, ok b
 // selectable candidates but at reduced traffic share, instead of being
 // hard-excluded like disabled routes.
 func RouteWeightMultiplier(key RouteKey) float64 {
-	routeHealthLock.RLock()
-	state := routeHealthIDM[key]
-	routeHealthLock.RUnlock()
+	state := liveRouteState(key, ChannelHealthNow())
 	if state == nil {
 		return 1.0
 	}
@@ -211,13 +221,35 @@ func RouteWeightMultiplier(key RouteKey) float64 {
 // excluded). Calm and dormant routes remain selectable at a reduced weight,
 // so this replaces the old IsRouteHealthy binary filter in the selection paths.
 func IsRouteSelectable(key RouteKey) bool {
-	routeHealthLock.RLock()
-	state := routeHealthIDM[key]
-	routeHealthLock.RUnlock()
+	state := liveRouteState(key, ChannelHealthNow())
 	if state == nil {
 		return true
 	}
 	return state.State != HealthDisabled
+}
+
+// liveRouteState returns the cached state, first retiring an isolation window
+// that has already elapsed. The selection path reads the in-process snapshot
+// without a now parameter, so without this an expired disable would keep the
+// route excluded (IsRouteSelectable false) and at zero weight forever: the
+// expiry CAS would only ever run from IsRouteHealthy, which the selector no
+// longer calls. Retiring here keeps one source of truth for "is this window
+// still live", whichever accessor a caller happens to use.
+func liveRouteState(key RouteKey, now time.Time) *routeHealthState {
+	routeHealthLock.RLock()
+	state := routeHealthIDM[key]
+	routeHealthLock.RUnlock()
+	if state == nil || state.Until == nil || *state.Until > now.Unix() {
+		return state
+	}
+	if !expireRoute(key, state, now) {
+		// The CAS was lost or the refresh still shows a live window; re-read so
+		// the caller decides on the current state rather than a stale one.
+		routeHealthLock.RLock()
+		state = routeHealthIDM[key]
+		routeHealthLock.RUnlock()
+	}
+	return state
 }
 func cacheHealth(row *ChannelModelHealth) {
 	var until *int64
@@ -423,7 +455,21 @@ func RecordRetryableFailure(key RouteKey, errorCode string, source FailureSource
 			}
 		}
 		until := (*int64)(nil)
-		if state != HealthDisabled {
+		if state == HealthDisabled {
+			// A hard disable must not be permanent. IsRouteHealthy only
+			// expires states that carry an until deadline, so until=nil made
+			// this a dead end with no self-heal and no emergency-recover
+			// eligibility (that query also excludes disabled rows). Give the
+			// disabled state the same window the ceiling dormant state gets;
+			// while it is in the window the route stays excluded, and once it
+			// lapses the normal expiry path flips it back to healthy and the
+			// next success pays down the ladder.
+			until = (*int64)(nil)
+			if window := int64(cfg.DormantMaxBase); window > 0 {
+				deadline := now.Unix() + window
+				until = &deadline
+			}
+		} else {
 			deadline := now.Unix() + seconds
 			until = &deadline
 		}
@@ -538,8 +584,36 @@ func RecordSuccess(key RouteKey, now time.Time) error {
 	return errors.New("channel model health state changed concurrently")
 }
 
+// RestoreChannelModel is the inverse of DisableChannelModel: it flips every
+// ability row of the (channel, model) pair back to enabled and re-derives the
+// route rows in the same transaction, so a recovered model is routable again
+// for every group that had the ability. It deliberately does NOT filter on
+// group, mirroring DisableChannelModel, because one dead model on an otherwise
+// healthy channel was isolated across all groups and must be restored across
+// all of them.
+func RestoreChannelModel(channelID int, modelName string) error {
+	if modelName == "" {
+		return fmt.Errorf("model name must not be empty")
+	}
+	_, err := MutateGatewayRouting(func(tx *gorm.DB) error {
+		if err := updateAbilityStatusByModelWithTx(tx, channelID, modelName, true); err != nil {
+			return err
+		}
+		return SyncChannelModelRoutesWithTx(tx, channelID)
+	})
+	return err
+}
+
+// RecoverRoute clears one route's isolation AND restores its model to the
+// routable set. Recovering only the health row left abilities.enabled and
+// channel_model_routes.enabled at false, so the admin "recover" action reported
+// success while the model stayed invisible to every group — DisableChannelModel
+// had taken it out of the marketplace and the selector still refused it.
 func RecoverRoute(key RouteKey, now time.Time) error {
-	return updateRouteState(key, HealthHealthy, 0, nil, 0, now)
+	if err := updateRouteState(key, HealthHealthy, 0, nil, 0, now); err != nil {
+		return err
+	}
+	return RestoreChannelModel(key.ChannelId, key.Model)
 }
 func DisableRoute(key RouteKey, now time.Time) error {
 	return updateRouteState(key, HealthDisabled, 0, nil, 0, now)

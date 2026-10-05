@@ -133,9 +133,13 @@ func (l *localHealthManager) recordChannelOutcome(channelID int, modelName strin
 		}
 	}
 
-	if (outcome == OutcomeFatal || outcome == OutcomeThrottled) && state.FailureStreak >= cfg.CooldownThreshold {
+	// Same rule as the channel-health path: only a genuine failure escalates
+	// toward a permanent per-model disable. A 429 is a busy upstream, not a
+	// missing model, so throttling backs off through the cooldown without
+	// retiring the route.
+	if state.FailureStreak >= cfg.CooldownThreshold && (outcome == OutcomeFatal || outcome == OutcomeThrottled) {
 		l.startCooldownLocked(state, cfg, now)
-		if modelName != "" {
+		if modelName != "" && outcome == OutcomeFatal {
 			l.escalateModelLocked(state, cfg, channelID, modelName)
 		}
 	}
