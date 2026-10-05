@@ -570,12 +570,6 @@ export function SubscriptionsMutateDrawer({
                       <Select
                         items={[
                           { value: 'balance', label: t('Balance only') },
-                          { value: 'spore', label: t('Spore only') },
-                          { value: 'both', label: t('Both balance and spore') },
-                          {
-                            value: 'either',
-                            label: t('Either balance or spore'),
-                          },
                           {
                             value: 'none',
                             label: t('Third-party only / Free'),
@@ -594,48 +588,12 @@ export function SubscriptionsMutateDrawer({
                             <SelectItem value='balance'>
                               {t('Balance only')}
                             </SelectItem>
-                            <SelectItem value='spore'>
-                              {t('Spore only')}
-                            </SelectItem>
-                            <SelectItem value='both'>
-                              {t('Both balance and spore')}
-                            </SelectItem>
-                            <SelectItem value='either'>
-                              {t('Either balance or spore')}
-                            </SelectItem>
                             <SelectItem value='none'>
                               {t('Third-party only / Free')}
                             </SelectItem>
                           </SelectGroup>
                         </SelectContent>
                       </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='spore_amount'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Spore Price')}</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type='number'
-                          step='0.1'
-                          min={0}
-                          onChange={(e) =>
-                            field.onChange(
-                              Number.parseFloat(e.target.value) || 0
-                            )
-                          }
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        {t('Price in spore (0.1 precision)')}
-                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

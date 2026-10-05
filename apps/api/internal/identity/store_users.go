@@ -99,23 +99,16 @@ type User struct {
 	// raw quota fields in the configured display currency. gorm:"-" so they are
 	// never columns; AfterFind fills them on every read (list, search, single),
 	// so the frontend never divides by QuotaPerUnit.
-	QuotaDisplay           float64 `json:"quota_display" gorm:"-"`
-	UsedQuotaDisplay       float64 `json:"used_quota_display" gorm:"-"`
-	AffQuotaDisplay        float64 `json:"aff_quota_display" gorm:"-"`
-	AffHistoryQuotaDisplay float64 `json:"aff_history_quota_display" gorm:"-"`
-	RequestCount           int     `json:"request_count" gorm:"type:int;default:0;"` // request number
-	Spore                  int64   `json:"spore" gorm:"type:bigint;not null;default:0;column:spore"`
-	Group                  string  `json:"group" gorm:"type:varchar(64);default:'default'"`
-	AffCode                string  `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
-	AffCount               int     `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
-	AffQuota               int     `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
-	AffHistoryQuota        int     `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
-	// 邀请菌种奖励的累计收入（内部单位，1 = 0.1 菌种）。菌种是站内凭证、发放
-	// 即到账，没有「待入账」中间态，所以只有累计一列；前端总收入展示用它。
-	AffSporeHistory int64 `json:"aff_spore_history" gorm:"type:bigint;not null;default:0;column:aff_spore_history"`
-	// AffSporeHistoryDisplay 是 AffSporeHistory 的展示边界换算（菌种数值，
-	// 已除以 10），由 AfterFind 填充，前端不再自行换算。
-	AffSporeHistoryDisplay float64                    `json:"aff_spore_history_display" gorm:"-"`
+	QuotaDisplay           float64                    `json:"quota_display" gorm:"-"`
+	UsedQuotaDisplay       float64                    `json:"used_quota_display" gorm:"-"`
+	AffQuotaDisplay        float64                    `json:"aff_quota_display" gorm:"-"`
+	AffHistoryQuotaDisplay float64                    `json:"aff_history_quota_display" gorm:"-"`
+	RequestCount           int                        `json:"request_count" gorm:"type:int;default:0;"` // request number
+	Group                  string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
+	AffCode                string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
+	AffCount               int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
+	AffQuota               int                        `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
+	AffHistoryQuota        int                        `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
 	InviterId              int                        `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
 	DeletedAt              gorm.DeletedAt             `gorm:"index"`
 	LinuxDOId              string                     `json:"linux_do_id" gorm:"column:linux_do_id;index"`
@@ -139,8 +132,6 @@ func (user *User) AfterFind(_ *gorm.DB) error {
 	user.UsedQuotaDisplay = quotaToDisplayAmount(user.UsedQuota)
 	user.AffQuotaDisplay = quotaToDisplayAmount(user.AffQuota)
 	user.AffHistoryQuotaDisplay = quotaToDisplayAmount(user.AffHistoryQuota)
-	// 菌种是 1/10 单位，展示数值 = 内部单位 / 10（见 FormatSpore）。
-	user.AffSporeHistoryDisplay = float64(user.AffSporeHistory) / float64(SporeUnitsPerSpore)
 	return nil
 }
 
@@ -440,9 +431,7 @@ func GetUserIdByAffCode(affCode string) (int, error) {
 }
 
 // inviteUser records a successful invite: aff_count always increments, while
-// aff_quota/aff_history only grow when the quota reward is actually paid
-// (quota/both mode). In spore mode the inviter still gets the count so the
-// page-visible invite number stays correct.
+// aff_quota/aff_history only grow when the quota reward is actually paid.
 func inviteUser(inviterId int, withQuotaReward bool) error {
 	updates := map[string]interface{}{
 		"aff_count": gorm.Expr("aff_count + ?", 1),
@@ -459,37 +448,6 @@ func inviteUser(inviterId int, withQuotaReward bool) error {
 		return gorm.ErrRecordNotFound
 	}
 	return nil
-}
-
-// rewardInviterSpore 按后台配置发放邀请菌种奖励（common.SporeInviterRewardTenths，
-// 0 = 关闭）。管理员把邀请奖励货币切到 "spore" 或 "both" 时发放（"quota" 下跳过）；
-// "spore" 模式与余额奖励（inviteUser，合规门内）互斥，"both" 模式两者同发。
-// 菌种是站内凭证，沿用原实现（model/user_spore.go）
-// 留在合规门外——避免运营关合规导致菌种静默漏发（线上事故回归点）。
-// 每次成功邀请一条内容恰为「开拓奖励」的用户可见日志——运营靠这个固定串
-// 对账漏发，不要往里面拼数量。
-func rewardInviterSpore(inviterId int) {
-	if inviterId == 0 {
-		return
-	}
-	if common.InviterRewardCurrency != "spore" && common.InviterRewardCurrency != "both" {
-		return
-	}
-	tenths := common.SporeInviterRewardTenths
-	if tenths <= 0 {
-		return
-	}
-	if err := IncreaseUserSpore(inviterId, tenths); err != nil {
-		common.SysError(fmt.Sprintf("发放开拓奖励菌种失败: inviter=%d err=%s", inviterId, err.Error()))
-		return
-	}
-	// 记累计收入，供钱包推荐卡片「总收入」展示。失败只记日志：余额已入账，
-	// 不能因为统计列失败而回滚一笔已发放的奖励。
-	if err := dbx.DB.Model(&User{}).Where("id = ?", inviterId).
-		UpdateColumn("aff_spore_history", gorm.Expr("aff_spore_history + ?", tenths)).Error; err != nil {
-		common.SysError(fmt.Sprintf("累计邀请菌种收入失败: inviter=%d err=%s", inviterId, err.Error()))
-	}
-	writeSystemLog(inviterId, "开拓奖励")
 }
 
 func (user *User) TransferAffQuotaToQuota(quota int) error {
@@ -630,13 +588,12 @@ func (user *User) finishInsert(inviterId int) {
 			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
 			writeSystemLog(user.Id, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
-		quotaReward := common.QuotaForInviter > 0 && common.InviterRewardCurrency != "spore"
+		quotaReward := common.QuotaForInviter > 0
 		if quotaReward {
 			writeSystemLog(inviterId, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
 		}
 		_ = inviteUser(inviterId, quotaReward)
 	}
-	rewardInviterSpore(inviterId)
 }
 
 func (user *User) FinishInsert(inviterId int) {
@@ -688,13 +645,12 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
 			writeSystemLog(user.Id, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
-		quotaReward := common.QuotaForInviter > 0 && common.InviterRewardCurrency != "spore"
+		quotaReward := common.QuotaForInviter > 0
 		if quotaReward {
 			writeSystemLog(inviterId, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
 		}
 		_ = inviteUser(inviterId, quotaReward)
 	}
-	rewardInviterSpore(inviterId)
 }
 
 func (user *User) Update(updatePassword bool) error {
@@ -752,7 +708,6 @@ func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 		"aff_quota",
 		"aff_history",
 		"auth_version",
-		"spore",
 	).Updates(newUser).Error; err != nil {
 		return err
 	}

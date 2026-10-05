@@ -34,7 +34,6 @@ const (
 	PaymentMethodWaffo        = "waffo"
 	PaymentMethodWaffoPancake = "waffo_pancake"
 	PaymentMethodBalance      = "balance"
-	PaymentMethodSpore        = "spore"
 )
 
 const (

@@ -25,7 +25,6 @@ import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
 import { formatQuota } from '@/lib/format'
-import { formatSpore, getSporeSymbol } from '@/lib/spore'
 
 import { formatPlanPrice } from '../lib'
 import { formatDuration, formatResetPeriod } from '../lib'
@@ -71,7 +70,7 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         header: t('Price'),
         cell: ({ row }) => (
           <span className='font-semibold text-emerald-600'>
-            {formatPlanPrice(row.original.plan, t)}
+            {formatPlanPrice(row.original.plan)}
           </span>
         ),
         size: 140,
@@ -172,13 +171,9 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
               row.original.plan.total_amount ??
               0
           )
-          const sporeUnits = Number(row.original.plan.spore_amount ?? 0)
           return (
             <span className='text-muted-foreground'>
               {total > 0 ? formatQuota(total) : t('Unlimited')}
-              {sporeUnits > 0
-                ? ` + ${getSporeSymbol() || '🍄'} ${formatSpore(sporeUnits)}`
-                : ''}
             </span>
           )
         },

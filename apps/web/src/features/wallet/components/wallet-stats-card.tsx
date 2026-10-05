@@ -16,14 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Activity, BarChart3, Sprout, WalletCards } from 'lucide-react'
+import { Activity, BarChart3, WalletCards } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Card, CardContent } from '@/components/ui/card'
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatQuota } from '@/lib/format'
-import { formatSpore, getSporeName, getSporeSymbol } from '@/lib/spore'
 
 import type { UserWalletData } from '../types'
 
@@ -32,14 +31,14 @@ interface WalletStatsCardProps {
   loading?: boolean
 }
 const STATS_GRID_CLASS =
-  'grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4'
+  'grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4'
 
 export function WalletStatsCard(props: WalletStatsCardProps) {
   const { t } = useTranslation()
   if (props.loading) {
     return (
       <div className={STATS_GRID_CLASS}>
-        {['balance', 'spore', 'usage', 'requests'].map((key) => (
+        {['balance', 'usage', 'requests'].map((key) => (
           <Card key={key} className='min-w-0 gap-0 py-0'>
             <CardContent className='p-3 sm:p-5'>
               <Skeleton className='h-3.5 w-full' />
@@ -64,13 +63,6 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
       description: t('Remaining quota'),
       icon: WalletCards,
       tone: 'success',
-    },
-    {
-      label: getSporeName(),
-      value: `${getSporeSymbol() ? `${getSporeSymbol()} ` : ''}${formatSpore(props.user?.spore ?? 0)}`,
-      description: t('Granted by admins, usable on plans'),
-      icon: Sprout,
-      tone: 'chart-2',
     },
     {
       label: t('Total Usage'),

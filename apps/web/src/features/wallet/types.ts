@@ -249,14 +249,10 @@ export interface UserWalletData {
   aff_history_quota: number
   /** Backend-rendered display amount for aff_history_quota */
   aff_history_quota_display: number
-  /** Cumulative affiliate spore earnings, internal units (1 = 0.1 spore) */
-  aff_spore_history: number
   /** Number of successful affiliate invites */
   aff_count: number
   /** User group */
   group: string
-  /** Spore balance in internal units (1 = 0.1 spore); see @/lib/spore */
-  spore: number
 }
 
 /**

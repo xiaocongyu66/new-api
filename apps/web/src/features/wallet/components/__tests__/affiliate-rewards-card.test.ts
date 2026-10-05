@@ -43,49 +43,37 @@ describe('referral reward line', () => {
     })
   })
 
-  test('quotes both currencies when the admin pays quota + spore', () => {
-    setTokensDisplay()
-    // Live config at the time of the fix: QuotaForInviter 20 (display),
-    // SporeInviterReward 0.1, currency 'both'. The card must show both numbers,
-    // mirroring the Quota Settings page, not just one of them.
-    const line = buildReferralRewardLine({
-      inviterRewardDisplay: 20,
-      inviteeRewardDisplay: 10,
-      sporeInviterReward: 0.1,
-      inviterRewardCurrency: 'both',
-      sporeUnit: '🍄',
-    })
-    assert.ok(line)
-    assert.equal(line!.inviter, '20 + 🍄 0.1')
-    assert.equal(line!.invitee, '10')
-  })
-
-  test('shows only spore when the inviter reward currency is spore', () => {
+  test('quotes both rewards in balance', () => {
     setTokensDisplay()
     const line = buildReferralRewardLine({
       inviterRewardDisplay: 20,
       inviteeRewardDisplay: 10,
-      sporeInviterReward: 0.1,
-      inviterRewardCurrency: 'spore',
-      sporeUnit: '🍄',
-    })
-    assert.ok(line)
-    assert.equal(line!.inviter, '🍄 0.1')
-    assert.equal(line!.invitee, '10')
-  })
-
-  test('shows only quota when the inviter reward currency is quota', () => {
-    setTokensDisplay()
-    const line = buildReferralRewardLine({
-      inviterRewardDisplay: 20,
-      inviteeRewardDisplay: 10,
-      sporeInviterReward: 0.1,
-      inviterRewardCurrency: 'quota',
-      sporeUnit: '🍄',
     })
     assert.ok(line)
     assert.equal(line!.inviter, '20')
     assert.equal(line!.invitee, '10')
+  })
+
+  test('leaves the inviter slot empty when the inviter reward is zero', () => {
+    setTokensDisplay()
+    const line = buildReferralRewardLine({
+      inviterRewardDisplay: 0,
+      inviteeRewardDisplay: 10,
+    })
+    assert.ok(line)
+    assert.equal(line!.inviter, '')
+    assert.equal(line!.invitee, '10')
+  })
+
+  test('leaves the invitee slot empty when the invitee reward is zero', () => {
+    setTokensDisplay()
+    const line = buildReferralRewardLine({
+      inviterRewardDisplay: 20,
+      inviteeRewardDisplay: 0,
+    })
+    assert.ok(line)
+    assert.equal(line!.inviter, '20')
+    assert.equal(line!.invitee, '')
   })
 
   test('returns null when neither reward is configured', () => {
@@ -93,25 +81,12 @@ describe('referral reward line', () => {
       buildReferralRewardLine({
         inviterRewardDisplay: 0,
         inviteeRewardDisplay: 0,
-        sporeInviterReward: 0,
-        inviterRewardCurrency: 'quota',
-        sporeUnit: '🍄',
       }),
       null
     )
   })
 
-  test('drops the spore part when it is zero in both mode', () => {
-    setTokensDisplay()
-    const line = buildReferralRewardLine({
-      inviterRewardDisplay: 20,
-      inviteeRewardDisplay: 0,
-      sporeInviterReward: 0,
-      inviterRewardCurrency: 'both',
-      sporeUnit: '🍄',
-    })
-    assert.ok(line)
-    assert.equal(line!.inviter, '20')
-    assert.equal(line!.invitee, '')
+  test('treats missing rewards as zero', () => {
+    assert.equal(buildReferralRewardLine({}), null)
   })
 })

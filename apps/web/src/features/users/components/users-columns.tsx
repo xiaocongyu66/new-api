@@ -31,7 +31,6 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { formatQuota, formatTimestamp } from '@/lib/format'
-import { formatSpore, getSporeName, getSporeSymbol } from '@/lib/spore'
 
 import {
   USER_STATUS,
@@ -177,24 +176,6 @@ export function useUsersColumns(): ColumnDef<User>[] {
       size: 300,
       minSize: 260,
       meta: { mobileOrder: 40 },
-    },
-    {
-      id: 'spore',
-      accessorKey: 'spore',
-      header: getSporeName(),
-      cell: ({ row }) => {
-        const units = Number(row.original.spore ?? 0)
-        if (units <= 0) {
-          return <span className='text-muted-foreground'>-</span>
-        }
-        return (
-          <span className='tabular-nums'>
-            {getSporeSymbol() || '🍄'} {formatSpore(units)}
-          </span>
-        )
-      },
-      size: 120,
-      meta: { mobileHidden: true },
     },
     {
       accessorKey: 'group',

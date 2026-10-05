@@ -69,8 +69,6 @@ interface SubscriptionPlansCardProps {
   topupInfo: TopupInfo | null
   onAvailabilityChange?: (available: boolean) => void
   userQuota?: number
-  /** 菌种余额，内部单位（1 = 0.1 菌种）。 */
-  userSpore?: number
   onPurchaseSuccess?: () => void | Promise<void>
 }
 function getEpayMethods(payMethods: PaymentMethod[] = []): PaymentMethod[] {
@@ -101,7 +99,6 @@ export function SubscriptionPlansCard({
   topupInfo,
   onAvailabilityChange,
   userQuota,
-  userSpore,
   onPurchaseSuccess,
 }: SubscriptionPlansCardProps) {
   const { t } = useTranslation()
@@ -285,7 +282,7 @@ export function SubscriptionPlansCard({
         contentClassName='space-y-4 sm:space-y-5'
       >
         {/* My subscriptions & billing preference */}
-        <div className='bg-muted/30 rounded-lg border border-border p-3 sm:p-4'>
+        <div className='bg-muted/30 border-border rounded-lg border p-3 sm:p-4'>
           <div className='flex flex-wrap items-center justify-between gap-2.5 sm:gap-3'>
             <div className='flex min-w-0 flex-wrap items-center gap-2'>
               <span className='text-sm font-medium'>
@@ -546,7 +543,7 @@ export function SubscriptionPlansCard({
               const totalAmount = Number(
                 plan.total_amount_display ?? plan.total_amount ?? 0
               )
-              const price = formatPlanPrice(plan, t)
+              const price = formatPlanPrice(plan)
               const isPopular = index === 0 && plans.length > 1
               const limit = Number(plan.max_purchase_per_user || 0)
               const count = planPurchaseCountMap.get(plan.id) || 0
@@ -666,7 +663,6 @@ export function SubscriptionPlansCard({
         enableOnlineTopUp={enableOnlineTopUp}
         epayMethods={epayMethods}
         userQuota={userQuota}
-        userSpore={userSpore}
         onPurchaseSuccess={onPurchaseSuccess}
         purchaseLimit={
           selectedPlan?.plan?.max_purchase_per_user

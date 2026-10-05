@@ -27,8 +27,7 @@ type BillingPreferenceRequest struct {
 }
 
 type SubscriptionBalancePayRequest struct {
-	PlanId  int    `json:"plan_id"`
-	PayWith string `json:"pay_with"`
+	PlanId int `json:"plan_id"`
 }
 
 // ---- User APIs ----
@@ -113,7 +112,7 @@ func SubscriptionRequestBalancePay(c contract.Context) {
 		return
 	}
 
-	if err := PurchaseSubscriptionWithWallet(userId, req.PlanId, req.PayWith); err != nil {
+	if err := PurchaseSubscriptionWithWallet(userId, req.PlanId); err != nil {
 		common.CtxApiError(c, err)
 		return
 	}
@@ -211,10 +210,6 @@ func AdminCreateSubscriptionPlan(c contract.Context) {
 			return
 		}
 	}
-	if req.Plan.SporeAmount < 0 {
-		common.CtxApiErrorMsg(c, "菌种价格不能为负数")
-		return
-	}
 	req.Plan.PayMode = NormalizePayMode(req.Plan.PayMode, req.Plan.AllowBalancePay)
 	req.Plan.QuotaResetPeriod = NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
@@ -298,10 +293,6 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 			return
 		}
 	}
-	if req.Plan.SporeAmount < 0 {
-		common.CtxApiErrorMsg(c, "菌种价格不能为负数")
-		return
-	}
 	req.Plan.PayMode = NormalizePayMode(req.Plan.PayMode, req.Plan.AllowBalancePay)
 	req.Plan.QuotaResetPeriod = NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
@@ -330,7 +321,6 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 			"downgrade_group":            req.Plan.DowngradeGroup,
 			"quota_reset_period":         req.Plan.QuotaResetPeriod,
 			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,
-			"spore_amount":               req.Plan.SporeAmount,
 			"pay_mode":                   req.Plan.PayMode,
 			"updated_at":                 common.GetTimestamp(),
 		}
@@ -600,15 +590,11 @@ type GeneralSetting struct {
 	CustomCurrencySymbol string `json:"custom_currency_symbol"`
 	// 自定义货币与美元汇率（1 USD = X Custom）
 	CustomCurrencyExchangeRate float64 `json:"custom_currency_exchange_rate"`
-	// 支付金额名称（充值/买套餐等支付侧金额），独立于消费货币符号，例如 稀有气体/菌种。
+	// 支付金额名称（充值/买套餐等支付侧金额），独立于消费货币符号。
 	// 仅在 AmountUnit 为 "custom" 时生效。
 	AmountName string `json:"amount_name"`
 	// 支付金额单位：usd($) / cny(¥) / custom(自定义名称)。空历史值按 usd 处理。
 	AmountUnit string `json:"amount_unit"`
-	// 菌种（凭证货币）显示名称，独立于金额与消费货币符号。
-	SporeName string `json:"spore_name"`
-	// 菌种（凭证货币）自定义符号/图标，独立于名称，空值表示不显示符号。
-	SporeSymbol string `json:"spore_symbol"`
 }
 
 // 默认配置
@@ -620,7 +606,6 @@ var generalSetting = GeneralSetting{
 	CustomCurrencyExchangeRate: 1.0,
 	AmountName:                 "",
 	AmountUnit:                 "usd",
-	SporeName:                  "菌种",
 }
 
 func init() {
@@ -632,28 +617,16 @@ func GetGeneralSetting() *GeneralSetting {
 	return &generalSetting
 }
 
-// AmountUnitEffective returns the payment amount unit. The payment side is
-// real money: USD ($) or CNY (¥) only. The legacy "custom" name (which used
-// to be misconfigured to the voucher symbol) never reaches the frontend —
-// it normalizes to "usd" so /api/status always exposes a valid enum value.
+// AmountUnitEffective returns the payment amount unit: "usd", "cny", or
+// "custom". "custom" labels payment amounts with AmountName instead of a
+// currency symbol; empty and unrecognized values fall back to "usd".
 func (g *GeneralSetting) AmountUnitEffective() string {
-	if g.AmountUnit == "cny" {
-		return "cny"
+	switch g.AmountUnit {
+	case "cny", "custom":
+		return g.AmountUnit
+	default:
+		return "usd"
 	}
-	return "usd"
-}
-
-// GetSporeName 返回菌种显示名称，空值回落到默认「菌种」。
-func GetSporeName() string {
-	if name := strings.TrimSpace(generalSetting.SporeName); name != "" {
-		return name
-	}
-	return "菌种"
-}
-
-// GetSporeSymbol 返回菌种自定义符号，空值返回 ""（前端据此决定是否展示图标/符号）。
-func GetSporeSymbol() string {
-	return strings.TrimSpace(generalSetting.SporeSymbol)
 }
 
 // IsCurrencyDisplay 是否以货币形式展示（美元或人民币）

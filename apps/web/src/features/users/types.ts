@@ -48,7 +48,6 @@ export const userSchema = z.object({
   used_quota_display: z.number().optional(),
   request_count: z.number(),
   group: z.string(),
-  spore: z.number().optional().default(0),
   aff_code: z.string().optional(),
   aff_count: z.number().optional(),
   aff_quota: z.number().optional(),
@@ -142,7 +141,6 @@ export type ManageUserAction =
   | 'disable'
   | 'delete'
   | 'add_quota'
-  | 'add_spore'
 export type QuotaAdjustMode = 'add' | 'subtract' | 'override'
 
 export interface ManageUserQuotaPayload {
@@ -153,15 +151,8 @@ export interface ManageUserQuotaPayload {
   value_display: number
 }
 
-export interface ManageUserSporePayload {
-  id: number
-  action: 'add_spore'
-  mode: QuotaAdjustMode
-  value: number // in internal units: 1 = 0.1 spore
-}
-
 // ============================================================================
 // Dialog Types
 // ============================================================================
 
-export type UsersDialogType = 'create' | 'update' | 'delete' | 'spore'
+export type UsersDialogType = 'create' | 'update' | 'delete'

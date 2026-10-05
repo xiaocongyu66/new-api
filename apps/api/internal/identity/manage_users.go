@@ -540,15 +540,12 @@ func buildSelfUserData(user *User) map[string]interface{} {
 		"used_quota":                user.UsedQuota,
 		"used_quota_display":        quotaToDisplayAmount(user.UsedQuota),
 		"request_count":             user.RequestCount,
-		"spore":                     user.Spore,
 		"aff_code":                  user.AffCode,
 		"aff_count":                 user.AffCount,
 		"aff_quota":                 user.AffQuota,
 		"aff_quota_display":         quotaToDisplayAmount(user.AffQuota),
 		"aff_history_quota_display": quotaToDisplayAmount(user.AffHistoryQuota),
 		"aff_history_quota":         user.AffHistoryQuota,
-		"aff_spore_history":         user.AffSporeHistory,
-		"aff_spore_history_display": user.AffSporeHistoryDisplay,
 		"inviter_id":                user.InviterId,
 		"linux_do_id":               user.LinuxDOId,
 		"setting":                   user.Setting,
@@ -1182,27 +1179,6 @@ func ManageUser(c contract.Context) {
 			common.CtxApiErrorI18n(c, i18n.MsgInvalidParams)
 			return
 		}
-		_ = c.JSON(http.StatusOK, common.H{
-			"success": true,
-			"message": "",
-		})
-		return
-	case "add_spore":
-		if req.Mode == "" {
-			req.Mode = "add"
-		}
-		if req.Mode != "override" && req.Value <= 0 {
-			common.CtxApiErrorI18n(c, i18n.MsgUserSporeChangeZero)
-			return
-		}
-		if err := AdminAdjustUserSpore(user.Id, req.Mode, int64(req.Value)); err != nil {
-			common.CtxApiError(c, err)
-			return
-		}
-		writeManageAudit(c, user.Id, "user.spore_adjust", map[string]interface{}{
-			"mode":  req.Mode,
-			"units": req.Value,
-		})
 		_ = c.JSON(http.StatusOK, common.H{
 			"success": true,
 			"message": "",

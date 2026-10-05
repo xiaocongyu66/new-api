@@ -19,8 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import type { TFunction } from 'i18next'
 import { z } from 'zod'
 
-import { parseSporeToUnits, sporeUnitsToValue } from '@/lib/spore'
-
 import type { SubscriptionPlan, PlanPayload } from '../types'
 
 export function getPlanFormSchema(t: TFunction) {
@@ -42,11 +40,7 @@ export function getPlanFormSchema(t: TFunction) {
     enabled: z.boolean(),
     sort_order: z.coerce.number(),
     allow_balance_pay: z.boolean(),
-    // Displayed in spore units (e.g. 1.5); converted to tenths in payload
-    spore_amount: z.coerce.number().min(0).optional(),
-    pay_mode: z
-      .enum(['none', 'balance', 'spore', 'both', 'either'])
-      .optional(),
+    pay_mode: z.enum(['none', 'balance']).optional(),
     allow_wallet_overflow: z.boolean(),
     max_purchase_per_user: z.coerce.number().min(0),
     total_amount: z.coerce.number().min(0),
@@ -72,7 +66,6 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   enabled: true,
   sort_order: 0,
   allow_balance_pay: true,
-  spore_amount: 0,
   pay_mode: 'balance',
   allow_wallet_overflow: true,
   max_purchase_per_user: 0,
@@ -96,8 +89,7 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
     enabled: plan.enabled !== false,
     sort_order: Number(plan.sort_order || 0),
     allow_balance_pay: plan.allow_balance_pay !== false,
-    spore_amount: sporeUnitsToValue(plan.spore_amount ?? 0),
-    pay_mode: (plan.pay_mode as PlanFormValues['pay_mode']) || 'balance',
+    pay_mode: plan.pay_mode || 'balance',
     allow_wallet_overflow: plan.allow_wallet_overflow !== false,
     max_purchase_per_user: Number(plan.max_purchase_per_user || 0),
     total_amount: plan.total_amount_display ?? 0,
@@ -114,7 +106,6 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
     plan: {
       ...values,
       price_amount: Number(values.price_amount || 0),
-      spore_amount: parseSporeToUnits(values.spore_amount ?? 0),
       pay_mode: values.pay_mode || 'balance',
       currency: 'USD',
       duration_value: Number(values.duration_value || 0),

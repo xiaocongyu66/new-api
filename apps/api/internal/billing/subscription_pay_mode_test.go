@@ -14,168 +14,114 @@ import (
 func TestNormalizePayMode(t *testing.T) {
 	t.Parallel()
 
+	// Current modes pass through untouched.
 	assert.Equal(t, billing.SubscriptionPayModeNone, billing.NormalizePayMode(billing.SubscriptionPayModeNone, nil))
 	assert.Equal(t, billing.SubscriptionPayModeBalance, billing.NormalizePayMode(billing.SubscriptionPayModeBalance, nil))
-	assert.Equal(t, billing.SubscriptionPayModeSpore, billing.NormalizePayMode(billing.SubscriptionPayModeSpore, nil))
-	assert.Equal(t, billing.SubscriptionPayModeBoth, billing.NormalizePayMode(billing.SubscriptionPayModeBoth, nil))
-	assert.Equal(t, billing.SubscriptionPayModeEither, billing.NormalizePayMode(billing.SubscriptionPayModeEither, nil))
 
-	// Fallbacks for empty / legacy mode
+	// Rows that used to mix in a second settlement currency have no settlement
+	// path left, so they fold back onto balance instead of degrading a paid plan
+	// into a free one. Dirty values take the same route.
+	for _, legacy := range []string{"both", "either", "bogus"} {
+		assert.Equal(t, billing.SubscriptionPayModeBalance, billing.NormalizePayMode(legacy, nil), "mode %q", legacy)
+	}
+
+	// Rows predating pay_mode carry no mode at all, so AllowBalancePay decides.
 	assert.Equal(t, billing.SubscriptionPayModeBalance, billing.NormalizePayMode("", nil))
 	assert.Equal(t, billing.SubscriptionPayModeBalance, billing.NormalizePayMode("", common.GetPointer(true)))
 	assert.Equal(t, billing.SubscriptionPayModeNone, billing.NormalizePayMode("", common.GetPointer(false)))
 }
 
-func TestSubscriptionPlanRequiresCurrency(t *testing.T) {
+func TestSubscriptionPlanRequiresBalance(t *testing.T) {
 	t.Parallel()
 
 	planBalance := &billing.SubscriptionPlan{PayMode: billing.SubscriptionPayModeBalance}
 	assert.True(t, planBalance.RequiresBalance())
-	assert.False(t, planBalance.RequiresSpore())
-
-	planSpore := &billing.SubscriptionPlan{PayMode: billing.SubscriptionPayModeSpore}
-	assert.False(t, planSpore.RequiresBalance())
-	assert.True(t, planSpore.RequiresSpore())
-
-	planBoth := &billing.SubscriptionPlan{PayMode: billing.SubscriptionPayModeBoth}
-	assert.True(t, planBoth.RequiresBalance())
-	assert.True(t, planBoth.RequiresSpore())
-
-	planEither := &billing.SubscriptionPlan{PayMode: billing.SubscriptionPayModeEither}
-	assert.False(t, planEither.RequiresBalance())
-	assert.False(t, planEither.RequiresSpore())
 
 	planNone := &billing.SubscriptionPlan{PayMode: billing.SubscriptionPayModeNone}
 	assert.False(t, planNone.RequiresBalance())
-	assert.False(t, planNone.RequiresSpore())
+
+	// Legacy modes that once mixed in a second currency settle from balance.
+	assert.True(t, (&billing.SubscriptionPlan{PayMode: "both"}).RequiresBalance())
+	assert.True(t, (&billing.SubscriptionPlan{PayMode: "either"}).RequiresBalance())
 }
 
 func TestPurchaseSubscriptionWithWallet_Scenarios(t *testing.T) {
-	// Create test user: 1000000 quota ($2.00 at 500k/unit), 30 spore units (3.0 spore)
+	// Test user: 1000000 quota ($2.00 at 500k/unit)
 	user := &identity.User{
 		Username: "sub-wallet-user",
 		Password: "password123",
 		Quota:    1000000,
-		Spore:    30,
 		Group:    "default",
 	}
 	require.NoError(t, dbx.DB.Create(user).Error)
 
-	// Plan 1: Free (mode none)
+	// Plan 1: free (mode none) — purchase succeeds, quota untouched
 	planFree := &billing.SubscriptionPlan{
 		Title:         "Free Plan",
 		Enabled:       true,
 		PayMode:       billing.SubscriptionPayModeNone,
-		PriceAmount:   0,
-		SporeAmount:   0,
 		TotalAmount:   100000,
 		DurationUnit:  "month",
 		DurationValue: 1,
 	}
 	require.NoError(t, dbx.DB.Create(planFree).Error)
-	require.NoError(t, billing.PurchaseSubscriptionWithWallet(user.Id, planFree.Id, ""))
+	require.NoError(t, billing.PurchaseSubscriptionWithWallet(user.Id, planFree.Id))
 
-	// User quota and spore untouched
 	refreshed, err := identity.GetUserById(user.Id, false)
 	require.NoError(t, err)
 	assert.Equal(t, 1000000, refreshed.Quota)
-	assert.Equal(t, int64(30), refreshed.Spore)
 
-	// Plan 2: Spore only (costs 1.5 spore = 15 units)
-	planSpore := &billing.SubscriptionPlan{
-		Title:         "Spore Plan",
+	// Plan 2: balance plan costs $1 = 500000 quota
+	planBalance := &billing.SubscriptionPlan{
+		Title:         "Balance Plan",
 		Enabled:       true,
-		PayMode:       billing.SubscriptionPayModeSpore,
-		PriceAmount:   0,
-		SporeAmount:   15,
-		TotalAmount:   100000,
-		DurationUnit:  "month",
-		DurationValue: 1,
-	}
-	require.NoError(t, dbx.DB.Create(planSpore).Error)
-	require.NoError(t, billing.PurchaseSubscriptionWithWallet(user.Id, planSpore.Id, ""))
-
-	// Spore deducted by 15, quota untouched
-	refreshed, err = identity.GetUserById(user.Id, false)
-	require.NoError(t, err)
-	assert.Equal(t, int64(15), refreshed.Spore)
-	assert.Equal(t, 1000000, refreshed.Quota)
-
-	// Plan 3: Insufficient spore fails atomically
-	planExpensiveSpore := &billing.SubscriptionPlan{
-		Title:         "Expensive Spore Plan",
-		Enabled:       true,
-		PayMode:       billing.SubscriptionPayModeSpore,
-		SporeAmount:   50, // user only has 15
-		TotalAmount:   100000,
-		DurationUnit:  "month",
-		DurationValue: 1,
-	}
-	require.NoError(t, dbx.DB.Create(planExpensiveSpore).Error)
-	err = billing.PurchaseSubscriptionWithWallet(user.Id, planExpensiveSpore.Id, "")
-	assert.ErrorIs(t, err, identity.ErrSporeInsufficient)
-
-	// Plan 4: Either balance or spore (balance = $1 = 500000 quota, spore = 1.0 = 10 units)
-	planEither := &billing.SubscriptionPlan{
-		Title:         "Either Plan",
-		Enabled:       true,
-		PayMode:       billing.SubscriptionPayModeEither,
+		PayMode:       billing.SubscriptionPayModeBalance,
 		PriceAmount:   1.0,
-		SporeAmount:   10,
 		TotalAmount:   100000,
 		DurationUnit:  "month",
 		DurationValue: 1,
 	}
-	require.NoError(t, dbx.DB.Create(planEither).Error)
+	require.NoError(t, dbx.DB.Create(planBalance).Error)
+	require.NoError(t, billing.PurchaseSubscriptionWithWallet(user.Id, planBalance.Id))
 
-	// User chooses spore payment
-	require.NoError(t, billing.PurchaseSubscriptionWithWallet(user.Id, planEither.Id, billing.SubscriptionPayModeSpore))
 	refreshed, err = identity.GetUserById(user.Id, false)
 	require.NoError(t, err)
-	assert.Equal(t, int64(5), refreshed.Spore) // 15 - 10 = 5
-	assert.Equal(t, 1000000, refreshed.Quota)  // quota untouched
+	assert.Equal(t, 500000, refreshed.Quota)
 
-	// User purchases again choosing balance payment
-	require.NoError(t, billing.PurchaseSubscriptionWithWallet(user.Id, planEither.Id, billing.SubscriptionPayModeBalance))
-	refreshed, err = identity.GetUserById(user.Id, false)
-	require.NoError(t, err)
-	assert.Equal(t, int64(5), refreshed.Spore) // spore untouched
-	assert.Equal(t, 500000, refreshed.Quota)   // 1000000 - 500000 = 500000
-
-	// Plan 5: Both mode (balance $0.5 = 250000 quota + 3 spore units) — both deducted
-	planBoth := &billing.SubscriptionPlan{
-		Title:         "Both Plan",
+	// Plan 3: a legacy row that once mixed in a second currency settles from
+	// balance alone ($0.5 = 250000 quota)
+	planLegacy := &billing.SubscriptionPlan{
+		Title:         "Legacy Plan",
 		Enabled:       true,
-		PayMode:       billing.SubscriptionPayModeBoth,
+		PayMode:       "either",
 		PriceAmount:   0.5,
-		SporeAmount:   3,
 		TotalAmount:   100000,
 		DurationUnit:  "month",
 		DurationValue: 1,
 	}
-	require.NoError(t, dbx.DB.Create(planBoth).Error)
-	require.NoError(t, billing.PurchaseSubscriptionWithWallet(user.Id, planBoth.Id, ""))
-	refreshed, err = identity.GetUserById(user.Id, false)
-	require.NoError(t, err)
-	assert.Equal(t, 250000, refreshed.Quota)  // 500000 - 250000
-	assert.Equal(t, int64(2), refreshed.Spore) // 5 - 3
+	require.NoError(t, dbx.DB.Create(planLegacy).Error)
+	require.NoError(t, billing.PurchaseSubscriptionWithWallet(user.Id, planLegacy.Id))
 
-	// Both mode with insufficient spore fails atomically: quota rolled back too
-	planBothExpensive := &billing.SubscriptionPlan{
-		Title:         "Both Expensive Plan",
+	refreshed, err = identity.GetUserById(user.Id, false)
+	require.NoError(t, err)
+	assert.Equal(t, 250000, refreshed.Quota)
+
+	// Plan 4: too expensive for the remaining quota — the purchase fails and
+	// nothing is charged
+	planExpensive := &billing.SubscriptionPlan{
+		Title:         "Expensive Plan",
 		Enabled:       true,
-		PayMode:       billing.SubscriptionPayModeBoth,
-		PriceAmount:   0.5,
-		SporeAmount:   50, // user only has 2
+		PayMode:       billing.SubscriptionPayModeBalance,
+		PriceAmount:   5.0,
 		TotalAmount:   100000,
 		DurationUnit:  "month",
 		DurationValue: 1,
 	}
-	require.NoError(t, dbx.DB.Create(planBothExpensive).Error)
-	err = billing.PurchaseSubscriptionWithWallet(user.Id, planBothExpensive.Id, "")
-	assert.ErrorIs(t, err, identity.ErrSporeInsufficient)
+	require.NoError(t, dbx.DB.Create(planExpensive).Error)
+	err = billing.PurchaseSubscriptionWithWallet(user.Id, planExpensive.Id)
+	assert.Error(t, err)
+
 	refreshed, err = identity.GetUserById(user.Id, false)
 	require.NoError(t, err)
-	assert.Equal(t, 250000, refreshed.Quota) // unchanged — single-tx settle rolls both back
-	assert.Equal(t, int64(2), refreshed.Spore)
+	assert.Equal(t, 250000, refreshed.Quota)
 }

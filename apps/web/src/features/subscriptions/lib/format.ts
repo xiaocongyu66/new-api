@@ -19,9 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import type { TFunction } from 'i18next'
 
 import { getAmountSymbol } from '@/lib/currency'
-import { getSporeName, getSporeSymbol, sporeUnitsToValue } from '@/lib/spore'
-
-
 import dayjs from '@/lib/dayjs'
 
 import type { SubscriptionPlan } from '../types'
@@ -72,27 +69,8 @@ export function formatTimestamp(ts: number): string {
 }
 
 /**
- * 套餐标价展示：按支付方式组合金额（充值货币）与菌种（凭证货币）两个单位。
- *
- * - balance 套餐 → 应付金额（$ / ¥，由管理员的金额单位设置决定前缀）
- * - spore 套餐 → 菌种标价（十分之一整数换算 + 菌种名称）
- * - both/either → 两个单位并列（either 用「或」连接）
- * - 未配置支付方式的历史行回落到金额单位展示，保持旧行为。
+ * 套餐标价展示：应付金额（$ / ¥，前缀由管理员的金额单位设置决定）。
  */
-export function formatPlanPrice(
-  plan: Partial<SubscriptionPlan>,
-  t: TFunction
-): string {
-  const mode =
-    plan.pay_mode ?? (plan.allow_balance_pay === false ? 'none' : 'balance')
-  const money = `${getAmountSymbol()}${Number(plan.price_amount || 0).toFixed(2)}`
-  const sporeSymbol = getSporeSymbol()
-  const sporeUnit = sporeSymbol || getSporeName()
-  // 与余额（🧀 0）一致：单位图标在前，数值在后。
-  const spore = `${sporeUnit} ${sporeUnitsToValue(plan.spore_amount ?? 0)}`
-
-  if (mode === 'spore') return spore
-  if (mode === 'both') return `${money} + ${spore}`
-  if (mode === 'either') return `${money} ${t('or')} ${spore}`
-  return money
+export function formatPlanPrice(plan: Partial<SubscriptionPlan>): string {
+  return `${getAmountSymbol()}${Number(plan.price_amount || 0).toFixed(2)}`
 }

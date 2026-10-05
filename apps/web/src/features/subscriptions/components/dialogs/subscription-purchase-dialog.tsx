@@ -35,7 +35,6 @@ import {
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { formatQuota } from '@/lib/format'
-import { formatSpore, getSporeName, getSporeSymbol } from '@/lib/spore'
 
 import {
   paySubscriptionStripe,
@@ -66,8 +65,6 @@ interface Props {
   purchaseCount?: number
   /** Already-converted display amount (user quota_display). */
   userQuota?: number
-  /** User spore balance in internal units (1 = 0.1 spore) */
-  userSpore?: number
   onPurchaseSuccess?: () => void | Promise<void>
 }
 
@@ -105,29 +102,16 @@ export function SubscriptionPurchaseDialog(props: Props) {
   // the comparison below is display-vs-display, no quota math in the client.
   const balanceCost = Math.max(0, Number(plan.balance_cost_display ?? 0))
   const userQuota = Math.max(0, Number(props.userQuota || 0))
-  const sporeCost = Math.max(0, Number(plan.spore_amount || 0))
-  const userSpore = Math.max(0, Number(props.userSpore || 0))
 
   const payMode =
     plan.pay_mode ?? (plan.allow_balance_pay === false ? 'none' : 'balance')
-  const needBalance = payMode === 'balance' || payMode === 'both'
-  const needSpore = payMode === 'spore' || payMode === 'both'
-  const isEither = payMode === 'either'
+  const needBalance = payMode === 'balance'
   const isFree = payMode === 'none'
 
   const insufficientBalance = userQuota < balanceCost
-  const insufficientSpore = userSpore < sporeCost
   const limitReached =
     (props.purchaseLimit || 0) > 0 &&
     (props.purchaseCount || 0) >= (props.purchaseLimit || 0)
-  let payButtonLabel: string = t('Pay with Balance')
-  if (needSpore && !needBalance) {
-    payButtonLabel = t('Pay with {{label}}', { label: getSporeName() })
-  } else if (needBalance && needSpore) {
-    payButtonLabel = t('Pay with balance and {{label}}', {
-      label: getSporeName(),
-    })
-  }
   const handlePayStripe = async () => {
     setPaying(true)
     try {
@@ -243,13 +227,10 @@ export function SubscriptionPurchaseDialog(props: Props) {
     }
   }
 
-  const handlePayInSite = async (payWith?: 'balance' | 'spore') => {
+  const handlePayInSite = async () => {
     setPaying(true)
     try {
-      const res = await paySubscriptionBalance({
-        plan_id: plan.id,
-        pay_with: payWith,
-      })
+      const res = await paySubscriptionBalance({ plan_id: plan.id })
       if (res.success) {
         toast.success(t('Subscription purchased successfully'))
         void props.onPurchaseSuccess?.()
@@ -352,7 +333,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
           <div className='flex items-center justify-between'>
             <span className='text-sm font-medium'>{t('Amount Due')}</span>
             <span className='text-primary text-lg font-bold'>
-              {isFree ? t('Free') : formatPlanPrice(plan, t)}
+              {isFree ? t('Free') : formatPlanPrice(plan)}
             </span>
           </div>
         </div>
@@ -377,65 +358,30 @@ export function SubscriptionPurchaseDialog(props: Props) {
             </Button>
           ) : (
             <>
-              {(needBalance || isEither) &&
+              {needBalance &&
                 renderCostRow(
                   t('Balance'),
                   formatQuota(balanceCost),
                   formatQuota(userQuota)
                 )}
-              {(needSpore || isEither) &&
-                renderCostRow(
-                  getSporeName(),
-                  `${getSporeSymbol() || getSporeName()} ${formatSpore(sporeCost)}`,
-                  `${getSporeSymbol() || getSporeName()} ${formatSpore(userSpore)}`
-                )}
 
-              {(needBalance || isEither) && insufficientBalance && (
+              {needBalance && insufficientBalance && (
                 <Alert variant='destructive'>
                   <AlertDescription>
                     {t('Insufficient balance')}
                   </AlertDescription>
                 </Alert>
               )}
-              {(needSpore || isEither) && insufficientSpore && (
-                <Alert variant='destructive'>
-                  <AlertDescription>
-                    {t('Insufficient {{label}}', { label: getSporeName() })}
-                  </AlertDescription>
-                </Alert>
-              )}
 
-              {isEither ? (
-                <div className='grid grid-cols-1 gap-2 sm:grid-cols-2'>
-                  <Button
-                    variant='outline'
-                    onClick={() => handlePayInSite('balance')}
-                    disabled={paying || limitReached || insufficientBalance}
-                  >
-                    {t('Pay with Balance')}
-                  </Button>
-                  <Button
-                    variant='outline'
-                    onClick={() => handlePayInSite('spore')}
-                    disabled={paying || limitReached || insufficientSpore}
-                  >
-                    {t('Pay with {{label}}', { label: getSporeName() })}
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  variant='outline'
-                  onClick={() => handlePayInSite()}
-                  disabled={
-                    paying ||
-                    limitReached ||
-                    (needBalance && insufficientBalance) ||
-                    (needSpore && insufficientSpore)
-                  }
-                >
-                  {payButtonLabel}
-                </Button>
-              )}
+              <Button
+                variant='outline'
+                onClick={() => handlePayInSite()}
+                disabled={
+                  paying || limitReached || (needBalance && insufficientBalance)
+                }
+              >
+                {t('Pay with Balance')}
+              </Button>
             </>
           )}
         </div>

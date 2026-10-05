@@ -36,7 +36,7 @@ export interface CurrencyConfig {
   customCurrencyExchangeRate: number
   /**
    * Display name for PAYMENT amounts (top-ups, plan purchases, redemption),
-   * independent from the consumption currency symbol. E.g. 稀有气体 / 菌种.
+   * independent from the consumption currency symbol. E.g. 稀有气体.
    * Only effective when amountUnit is 'custom'.
    */
   amountName?: string
@@ -45,21 +45,10 @@ export interface CurrencyConfig {
    * 'custom' (uses amountName). Empty historical values are treated as 'usd'.
    */
   amountUnit?: 'usd' | 'cny' | 'custom'
-  /** Display name of the voucher (spore) currency, from /api/status spore_name */
-  sporeName?: string
-  /** Optional symbol/icon for the spore currency, from /api/status spore_symbol */
-  sporeSymbol?: string
-  /** Spore granted to the inviter per successful invite, from /api/status */
-  sporeInviterReward?: number
   /** Reward granted to the inviter per successful invite, already converted to the display currency by /api/status (inviter_reward_display) */
   inviterRewardDisplay?: number
   /** Reward granted to the invitee per successful invite, already converted to the display currency by /api/status (invitee_reward_display) */
   inviteeRewardDisplay?: number
-  /**
-   * Currency the invite reward is paid in: 'quota' (balance, pending aff_quota),
-   * 'spore' (voucher, credited instantly) or 'both' (paid together).
-   */
-  inviterRewardCurrency?: 'quota' | 'spore' | 'both'
 }
 
 export interface SystemConfig {
@@ -79,8 +68,6 @@ export const DEFAULT_CURRENCY_CONFIG: CurrencyConfig = {
   customCurrencyExchangeRate: 1,
   amountName: '',
   amountUnit: 'usd',
-  sporeName: '',
-  sporeSymbol: '',
 }
 
 interface SystemConfigState {

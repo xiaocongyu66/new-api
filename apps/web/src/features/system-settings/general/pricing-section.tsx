@@ -59,8 +59,8 @@ export interface PricingGeneralSettings {
   quota_display_type: 'USD' | 'CNY' | 'TOKENS' | 'CUSTOM'
   custom_currency_symbol?: string
   custom_currency_exchange_rate?: number
-  amount_unit?: 'usd' | 'cny'
-  spore_symbol?: string
+  amount_unit?: 'usd' | 'cny' | 'custom'
+  amount_name?: string
 }
 
 export interface PricingFormValues {
@@ -87,8 +87,11 @@ const createPricingSchema = (t: (key: string) => string) =>
           .number()
           .min(0.0001, t('Exchange rate must be greater than 0'))
           .optional(),
-        amount_unit: z.enum(['usd', 'cny']).optional(),
-        spore_symbol: z.string().max(8).optional(),
+        amount_unit: z.enum(['usd', 'cny', 'custom']).optional(),
+        amount_name: z
+          .string()
+          .max(20, 'Amount name must be at most 20 characters')
+          .optional(),
       }),
     })
     .superRefine((data, ctx) => {
@@ -111,8 +114,18 @@ const createPricingSchema = (t: (key: string) => string) =>
           })
         }
       }
-    })
 
+      if (
+        data.general_setting.amount_unit === 'custom' &&
+        !data.general_setting.amount_name?.trim()
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['general_setting', 'amount_name'],
+          message: t('Required'),
+        })
+      }
+    })
 
 type PricingSectionProps = {
   defaultValues: PricingFormValues
@@ -159,7 +172,8 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
   // The field is read-only and reflects the stored option; the store no
   // longer carries quotaPerUnit, so compare against the fixed legacy default.
   const showQuotaPerUnit =
-    displayType === 'TOKENS' || defaultValues.QuotaPerUnit !== LEGACY_QUOTA_PER_UNIT
+    displayType === 'TOKENS' ||
+    defaultValues.QuotaPerUnit !== LEGACY_QUOTA_PER_UNIT
   const showDisplayInCurrencyOption = displayInCurrencyEnabled === false
 
   return (
@@ -257,6 +271,7 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
                     items={[
                       { value: 'usd', label: t('USD ($)') },
                       { value: 'cny', label: t('CNY (¥)') },
+                      { value: 'custom', label: t('Custom name') },
                     ]}
                     value={field.value ?? 'usd'}
                     onValueChange={field.onChange}
@@ -272,6 +287,9 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
                       <SelectGroup>
                         <SelectItem value='usd'>{t('USD ($)')}</SelectItem>
                         <SelectItem value='cny'>{t('CNY (¥)')}</SelectItem>
+                        <SelectItem value='custom'>
+                          {t('Custom name')}
+                        </SelectItem>
                       </SelectGroup>
                     </SelectContent>
                   </Select>
@@ -285,33 +303,29 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
               )}
             />
 
-            <FormField
-              control={form.control}
-              name='general_setting.spore_symbol'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('Spore Symbol')}</FormLabel>
-                  <FormControl>
-                    <Input
-                      type='text'
-                      value={field.value ?? ''}
-                      onChange={field.onChange}
-                      name={field.name}
-                      onBlur={field.onBlur}
-                      ref={field.ref}
-                      maxLength={8}
-                      placeholder={t('e.g. 🍄 or Spore')}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    {t(
-                      'Optional symbol/icon shown next to spore amounts. Leave empty to show only the name.'
-                    )}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {form.watch('general_setting.amount_unit') === 'custom' && (
+              <FormField
+                control={form.control}
+                name='general_setting.amount_name'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Amount Name')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='text'
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        name={field.name}
+                        onBlur={field.onBlur}
+                        ref={field.ref}
+                        maxLength={20}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             {displayType !== 'TOKENS' && (
               <FormField
