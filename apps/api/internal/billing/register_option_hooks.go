@@ -173,6 +173,34 @@ func QuotaToDisplayAmount(quota int) float64 {
 	}
 }
 
+// QuotaToPaymentAmount converts an internal quota integer into the amount the
+// user would have to hand the payment gateway to obtain it. It is the inverse
+// of the top-up rule (topup_api.go: paying amount*Price credits
+// amount*QuotaPerUnit), so the credit's worth is
+// (quota / QuotaPerUnit) * Price — Price, NOT the 额度 exchange rate. The two
+// currencies diverge whenever USDExchangeRate and Price differ, which is the
+// normal case for a site that displays ¥ credits but charges a different
+// gateway price, so balance surfaces need both numbers side by side.
+func QuotaToPaymentAmount(quota int) float64 {
+	price := Price
+	if price <= 0 {
+		price = 1
+	}
+	return float64(quota) / common.QuotaPerUnit * price
+}
+
+// QuotaToPaymentAmount64 is the saturating int64 variant of
+// QuotaToPaymentAmount.
+func QuotaToPaymentAmount64(quota int64) float64 {
+	if quota > math.MaxInt32 {
+		return QuotaToPaymentAmount(math.MaxInt32)
+	}
+	if quota < math.MinInt32 {
+		return QuotaToPaymentAmount(math.MinInt32)
+	}
+	return QuotaToPaymentAmount(int(quota))
+}
+
 // QuotaToDisplayAmount64 is the int64 variant, saturating to the int32 range
 // before delegating so int64 subscription amounts can never overflow the
 // 32-bit quota columns when rendered.
@@ -278,6 +306,7 @@ func init() {
 	logger.OnFormatQuota = formatQuota
 	identity.OnQuotaToDisplayAmount = QuotaToDisplayAmount
 	identity.OnQuotaFromDisplayAmount = QuotaFromDisplayAmount
+	identity.OnQuotaToPaymentAmount = QuotaToPaymentAmount
 	usage.OnQuotaToDisplayAmount = QuotaToDisplayAmount
 	catalog.OnQuotaToDisplayAmount = QuotaToDisplayAmount
 	identity.OnIsPaymentComplianceConfirmed = IsPaymentComplianceConfirmed

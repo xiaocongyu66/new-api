@@ -16,12 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Activity, BarChart3, WalletCards } from 'lucide-react'
+import { Activity, BarChart3, CreditCard, WalletCards } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Card, CardContent } from '@/components/ui/card'
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { formatPaymentAmount } from '@/lib/currency'
 import { formatQuota } from '@/lib/format'
 
 import type { UserWalletData } from '../types'
@@ -31,14 +32,14 @@ interface WalletStatsCardProps {
   loading?: boolean
 }
 const STATS_GRID_CLASS =
-  'grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4'
+  'grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4'
 
 export function WalletStatsCard(props: WalletStatsCardProps) {
   const { t } = useTranslation()
   if (props.loading) {
     return (
       <div className={STATS_GRID_CLASS}>
-        {['balance', 'usage', 'requests'].map((key) => (
+        {['balance', 'payment', 'usage', 'requests'].map((key) => (
           <Card key={key} className='min-w-0 gap-0 py-0'>
             <CardContent className='p-3 sm:p-5'>
               <Skeleton className='h-3.5 w-full' />
@@ -62,6 +63,13 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
       value: formatQuota(props.user?.quota_display ?? 0),
       description: t('Remaining quota'),
       icon: WalletCards,
+      tone: 'success',
+    },
+    {
+      label: t('Payment Amount'),
+      value: formatPaymentAmount(props.user?.quota_payment_amount ?? 0),
+      description: t('What this balance is worth at the payment gateway'),
+      icon: CreditCard,
       tone: 'success',
     },
     {

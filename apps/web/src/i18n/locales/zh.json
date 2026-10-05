@@ -6053,6 +6053,8 @@
     "home.feature.routing.title": "智能路由",
     "home.feature.routing.desc": "按模型、渠道和可用性分配每一次请求。",
     "home.feature.observability.title": "全程可观测",
-    "home.feature.observability.desc": "用量、成本、延迟和日志集中管理。"
+    "home.feature.observability.desc": "用量、成本、延迟和日志集中管理。",
+    "Payment Amount": "支付金额",
+    "What this balance is worth at the payment gateway": "该余额在支付网关的价值"
   }
 }

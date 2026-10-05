@@ -6053,6 +6053,8 @@
     "home.feature.routing.title": "Routage intelligent",
     "home.feature.routing.desc": "Répartissez chaque requête selon le modèle, la santé du canal et sa disponibilité.",
     "home.feature.observability.title": "Observabilité complète",
-    "home.feature.observability.desc": "Gérez l’utilisation, les coûts, la latence et les journaux dans une console unique."
+    "home.feature.observability.desc": "Gérez l’utilisation, les coûts, la latence et les journaux dans une console unique.",
+    "Payment Amount": "Montant du paiement",
+    "What this balance is worth at the payment gateway": "Valeur de ce solde auprès de la passerelle de paiement"
   }
 }

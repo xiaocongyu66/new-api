@@ -6053,6 +6053,8 @@
     "home.feature.routing.title": "智慧路由",
     "home.feature.routing.desc": "依模型、渠道狀態與可用性分配每一次請求。",
     "home.feature.observability.title": "完整可觀測性",
-    "home.feature.observability.desc": "在同一個控制台管理用量、成本、延遲與請求日誌。"
+    "home.feature.observability.desc": "在同一個控制台管理用量、成本、延遲與請求日誌。",
+    "Payment Amount": "支付金額",
+    "What this balance is worth at the payment gateway": "該餘額在支付閘道的價值"
   }
 }

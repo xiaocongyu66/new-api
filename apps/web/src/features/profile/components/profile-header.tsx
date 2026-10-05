@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Activity, BarChart3, WalletCards } from 'lucide-react'
+import { Activity, BarChart3, CreditCard, WalletCards } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
@@ -25,6 +25,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
+import { formatPaymentAmount } from '@/lib/currency'
 import { formatCompactNumber, formatQuota } from '@/lib/format'
 import { getRoleLabel } from '@/lib/roles'
 
@@ -63,8 +64,8 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
           </div>
         </CardContent>
         <div className='border-t'>
-          <div className='divide-border/60 grid grid-cols-1 divide-y sm:grid-cols-3 sm:divide-x sm:divide-y-0'>
-            {['balance', 'usage', 'requests'].map((key) => (
+          <div className='divide-border/60 grid grid-cols-1 divide-y sm:grid-cols-4 sm:divide-x sm:divide-y-0'>
+            {['balance', 'payment', 'usage', 'requests'].map((key) => (
               <div key={key} className='px-4 py-3.5 sm:px-5 sm:py-4'>
                 <Skeleton className='h-3.5 w-20' />
                 <Skeleton className='mt-2 h-7 w-28' />
@@ -96,6 +97,13 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
       value: formatQuota(profile.quota_display ?? 0),
       description: t('Remaining quota'),
       icon: WalletCards,
+      tone: 'success',
+    },
+    {
+      label: t('Payment Amount'),
+      value: formatPaymentAmount(profile.quota_payment_amount ?? 0),
+      description: t('What this balance is worth at the payment gateway'),
+      icon: CreditCard,
       tone: 'success',
     },
     {

@@ -6053,6 +6053,8 @@
     "home.feature.routing.title": "Умная маршрутизация",
     "home.feature.routing.desc": "Распределяйте запросы по модели, состоянию канала и доступности.",
     "home.feature.observability.title": "Полная наблюдаемость",
-    "home.feature.observability.desc": "Управляйте использованием, стоимостью, задержкой и журналами в одной консоли."
+    "home.feature.observability.desc": "Управляйте использованием, стоимостью, задержкой и журналами в одной консоли.",
+    "Payment Amount": "Сумма к оплате",
+    "What this balance is worth at the payment gateway": "Стоимость этого баланса в платёжном шлюзе"
   }
 }

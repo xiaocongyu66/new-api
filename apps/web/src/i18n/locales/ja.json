@@ -6053,6 +6053,8 @@
     "home.feature.routing.title": "スマートルーティング",
     "home.feature.routing.desc": "モデル、チャネルの状態、可用性に応じてリクエストを振り分けます。",
     "home.feature.observability.title": "完全な可観測性",
-    "home.feature.observability.desc": "利用量、コスト、レイテンシ、ログを一つのコンソールで管理します。"
+    "home.feature.observability.desc": "利用量、コスト、レイテンシ、ログを一つのコンソールで管理します。",
+    "Payment Amount": "支払金額",
+    "What this balance is worth at the payment gateway": "この残高が決済ゲートウェイでの価値"
   }
 }

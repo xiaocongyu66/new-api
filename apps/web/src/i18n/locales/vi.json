@@ -6053,6 +6053,8 @@
     "home.feature.routing.title": "Định tuyến thông minh",
     "home.feature.routing.desc": "Phân phối từng yêu cầu theo mô hình, tình trạng kênh và khả dụng.",
     "home.feature.observability.title": "Khả năng quan sát đầy đủ",
-    "home.feature.observability.desc": "Quản lý mức dùng, chi phí, độ trễ và nhật ký trong một bảng điều khiển."
+    "home.feature.observability.desc": "Quản lý mức dùng, chi phí, độ trễ và nhật ký trong một bảng điều khiển.",
+    "Payment Amount": "Số tiền thanh toán",
+    "What this balance is worth at the payment gateway": "Giá trị số dư này tại cổng thanh toán"
   }
 }

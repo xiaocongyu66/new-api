@@ -6053,6 +6053,8 @@
     "home.feature.routing.title": "Smart routing",
     "home.feature.routing.desc": "Distribute every request by model, channel health, and availability.",
     "home.feature.observability.title": "Full observability",
-    "home.feature.observability.desc": "Manage usage, cost, latency, and request logs in one console."
+    "home.feature.observability.desc": "Manage usage, cost, latency, and request logs in one console.",
+    "Payment Amount": "Payment Amount",
+    "What this balance is worth at the payment gateway": "What this balance is worth at the payment gateway"
   }
 }
