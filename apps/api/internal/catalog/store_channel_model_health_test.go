@@ -711,7 +711,12 @@ func TestRouteWeightMultiplierCalmAndDormant(t *testing.T) {
 	cfg.DormantWeightScale = 10
 	withHealthSetting(t, cfg)
 
+	// The read path compares the isolation window against the package clock,
+	// so a test that seeds windows at a fixed timestamp must pin that clock too
+	// — otherwise every window reads as long expired.
 	now := time.Unix(1_700_000_000, 0)
+	withCooldownTestClock(t, &now)
+
 	healthy := RouteKey{ChannelId: 9130, KeyIndex: 0, Model: "wm-healthy"}
 	calm := RouteKey{ChannelId: 9131, KeyIndex: 0, Model: "wm-calm"}
 	dormant := RouteKey{ChannelId: 9132, KeyIndex: 0, Model: "wm-dormant"}
@@ -751,7 +756,11 @@ func TestSoftDepressionKeepsCalmRouteSelectable(t *testing.T) {
 	cfg.CalmWeightScale = 100
 	withHealthSetting(t, cfg)
 
+	// Pin the clock for the same reason as TestRouteWeightMultiplierCalmAndDormant:
+	// the seeded window must read as live, not as long expired.
 	now := time.Unix(1_700_000_000, 0)
+	withCooldownTestClock(t, &now)
+
 	key := RouteKey{ChannelId: 9140, KeyIndex: 0, Model: "soft-calm"}
 
 	// Escalate to calm (level 1).
