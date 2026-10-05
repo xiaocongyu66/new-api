@@ -154,16 +154,21 @@ func (h *HealthStore) recordChannelOutcome(channelID int, modelName string, outc
 		}
 		// A success is also evidence this model works, so it pays the
 		// escalation count back down. Without this the count is a lifetime
-		// total and three cooldowns spread over months retire a model that has
+		// total and cooldowns spread over months retire a model that has
 		// served thousands of requests since.
 		decayModelCooldown(state, modelName)
+		clearModelFailures(state, modelName)
 	case OutcomeNeutral:
 		// Neutral stays score/request-count inert but clears an accumulated
 		// failure streak: it is not evidence against the channel.
 		state.FailureStreak = 0
+		clearModelFailures(state, modelName)
 		return
 	case OutcomeFatal, OutcomeThrottled:
 		state.FailureStreak++
+		if outcome == OutcomeFatal {
+			countModelFailure(state, modelName)
+		}
 	}
 
 	// Apply the appropriate observation via the shared EWMA update.
@@ -195,7 +200,9 @@ func (h *HealthStore) recordChannelOutcome(channelID int, modelName string, outc
 		}
 	}
 
-	// The cooldown trigger is deliberately outside the MinRequests guard.
+	// The cooldown trigger is deliberately outside the MinRequests guard and
+	// stays channel-scoped: an overloaded upstream fails whichever model it is
+	// asked for, and ejecting the channel is the right response to that.
 	// Only a genuine failure (OutcomeFatal) escalates toward a permanent
 	// per-model disable. OutcomeThrottled (429) means the upstream is busy,
 	// not that the model is gone: rate-limiting must not retire a model.
@@ -205,9 +212,17 @@ func (h *HealthStore) recordChannelOutcome(channelID int, modelName string, outc
 	// the route backs off temporarily and recovers on its own.
 	if state.FailureStreak >= cfg.CooldownThreshold && (outcome == OutcomeFatal || outcome == OutcomeThrottled) {
 		startCooldownLocked(state, cfg, now)
-		if modelName != "" && outcome == OutcomeFatal {
-			h.escalateModelLocked(state, cfg, channelID, modelName)
-		}
+	}
+	// The escalation reads the model's OWN failure run, never the channel-level
+	// streak above. A healthy sibling's successes reset that streak, so a dead
+	// model sharing the channel would never accumulate enough failures to be
+	// retired; and whichever model happened to be in flight when the channel
+	// tripped took the blame.
+	if modelName != "" && outcome == OutcomeFatal && state.ModelFailures[modelName] >= cfg.CooldownThreshold {
+		// Count the episode once: without the reset every further failure would
+		// add another cooldown to the escalation count.
+		state.ModelFailures[modelName] = 0
+		h.escalateModelLocked(state, cfg, channelID, modelName)
 	}
 }
 
@@ -609,18 +624,20 @@ type ChannelHealthSetting struct {
 	CooldownMaxEjectionPercent int     `json:"cooldown_max_ejection_percent"`
 	CooldownAlpha              float64 `json:"cooldown_alpha"`
 
-	// CooldownDisableStreak is how many cooldown activations one channel+model
-	// pair may accumulate before that model is disabled on that channel.
-	// Cooldown alone never terminates: a permanently dead upstream just cycles
-	// "cool, probe once, fail, cool longer" forever, so it keeps consuming a
-	// probe every minute and never leaves the candidate set for good. Once the
-	// sliding duration has saturated and the pair still cannot serve a request,
-	// the model is what is broken, so only that model is disabled; the channel
-	// keeps serving its other models. Zero disables the escalation.
+	// CooldownDisableStreak is how many sustained failure episodes one
+	// channel+model pair may accumulate before that model is disabled on that
+	// channel. An episode is CooldownThreshold consecutive fatal outcomes
+	// attributed to that one model. Cooldown alone never terminates: a
+	// permanently dead upstream just cycles "cool, probe once, fail, cool
+	// longer" forever, so it keeps consuming a probe every minute and never
+	// leaves the candidate set for good. Once the sliding duration has
+	// saturated and the pair still cannot serve a request, the model is what is
+	// broken, so only that model is disabled; the channel keeps serving its
+	// other models. Zero disables the escalation.
 	//
 	// The count is deliberately NOT a lifetime total: every successful request
 	// through the pair pays it down by one (see decayModelCooldown), so it
-	// tracks sustained recent trouble. Without that decay, cooldowns spread
+	// tracks sustained recent trouble. Without that decay, episodes spread
 	// over months would retire a model that had served thousands of requests
 	// since — the shape of the incident where a throttling-only upstream
 	// permanently removed working models.

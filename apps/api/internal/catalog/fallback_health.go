@@ -103,11 +103,16 @@ func (l *localHealthManager) recordChannelOutcome(channelID int, modelName strin
 		// Mirrors the channel-health path: a success pays the escalation count
 		// back down so it measures sustained trouble, not lifetime history.
 		decayModelCooldown(state, modelName)
+		clearModelFailures(state, modelName)
 	case OutcomeNeutral:
 		state.FailureStreak = 0
+		clearModelFailures(state, modelName)
 		return
 	case OutcomeFatal, OutcomeThrottled:
 		state.FailureStreak++
+		if outcome == OutcomeFatal {
+			countModelFailure(state, modelName)
+		}
 	}
 
 	var observation float64
@@ -136,15 +141,20 @@ func (l *localHealthManager) recordChannelOutcome(channelID int, modelName strin
 		}
 	}
 
-	// Same rule as the channel-health path: only a genuine failure escalates
-	// toward a permanent per-model disable. A 429 is a busy upstream, not a
-	// missing model, so throttling backs off through the cooldown without
-	// retiring the route.
+	// Same split as the channel-health path: the cooldown stays channel-scoped,
+	// while the escalation reads the model's own failure run so a healthy
+	// sibling cannot mask a dead one. Only a genuine failure escalates toward a
+	// permanent per-model disable — a 429 is a busy upstream, not a missing
+	// model, so throttling backs off through the cooldown without retiring the
+	// route.
 	if state.FailureStreak >= cfg.CooldownThreshold && (outcome == OutcomeFatal || outcome == OutcomeThrottled) {
 		l.startCooldownLocked(state, cfg, now)
-		if modelName != "" && outcome == OutcomeFatal {
-			l.escalateModelLocked(state, cfg, channelID, modelName)
-		}
+	}
+	if modelName != "" && outcome == OutcomeFatal && state.ModelFailures[modelName] >= cfg.CooldownThreshold {
+		// Count the episode once: without the reset every further failure would
+		// add another cooldown to the escalation count.
+		state.ModelFailures[modelName] = 0
+		l.escalateModelLocked(state, cfg, channelID, modelName)
 	}
 }
 

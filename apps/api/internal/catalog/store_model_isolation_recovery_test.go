@@ -245,3 +245,94 @@ func TestModelCooldownCountDecaysOnSuccess(t *testing.T) {
 	}
 	assert.Equal(t, []string{"flaky"}, disabled())
 }
+
+// TestModelFailureRunIsNotMaskedBySiblingSuccess pins the attribution fix. The
+// failure run that decides a per-model disable used to be the channel-level
+// streak, so a healthy sibling's success reset it: a dead model sharing a
+// channel could never accumulate enough failures to be retired, and whichever
+// model happened to be in flight when the channel tripped took the blame.
+func TestModelFailureRunIsNotMaskedBySiblingSuccess(t *testing.T) {
+	type call struct {
+		channelID int
+		modelName string
+	}
+
+	previousStore := ChannelModelDisabler
+	var mu sync.Mutex
+	var firedFor []call
+	fired := make(chan struct{}, 8)
+	ChannelModelDisabler = func(channelID int, modelName string) error {
+		mu.Lock()
+		firedFor = append(firedFor, call{channelID, modelName})
+		mu.Unlock()
+		fired <- struct{}{}
+		return nil
+	}
+	t.Cleanup(func() { ChannelModelDisabler = previousStore })
+
+	store := &HealthStore{states: map[int]*ChannelHealthState{}}
+	cfg := DefaultChannelHealthSetting()
+	cfg.MinRequests = 0
+	cfg.CooldownThreshold = 5
+	// One completed run is enough to reach the escalation, so this test asserts
+	// on the run accounting rather than on the cooldown count.
+	cfg.CooldownDisableStreak = 1
+	previousSetting := GetChannelHealthSetting()
+	channelHealthSetting.Store(cfg)
+	t.Cleanup(func() { channelHealthSetting.Store(previousSetting) })
+
+	now := time.Unix(1_700_000_000, 0)
+	withCooldownTestClock(t, &now)
+
+	firedCalls := func() []call {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]call(nil), firedFor...)
+	}
+	failures := func(channelID int, modelName string) int {
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		return store.states[channelID].ModelFailures[modelName]
+	}
+
+	// Four failures on the dead model...
+	for range 4 {
+		store.recordChannelOutcome(1, "dead-model", OutcomeFatal)
+	}
+	// ...then a healthy sibling serves a request. That success resets the
+	// channel-level streak, which is exactly what used to hide the dead model.
+	store.recordChannelOutcome(1, "healthy-model", OutcomeSuccess)
+	// ...and the fifth failure on the dead model completes its own run.
+	store.recordChannelOutcome(1, "dead-model", OutcomeFatal)
+
+	select {
+	case <-fired:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a healthy sibling's success masked the dead model's failure run")
+	}
+	assert.Equal(t, []call{{1, "dead-model"}}, firedCalls(),
+		"only the model that actually failed may be retired")
+
+	// Control: when the success lands on the failing model itself the run really
+	// does end, so a recovering model is not retired.
+	for range 4 {
+		store.recordChannelOutcome(2, "recovering", OutcomeFatal)
+	}
+	store.recordChannelOutcome(2, "recovering", OutcomeSuccess)
+	for range 4 {
+		store.recordChannelOutcome(2, "recovering", OutcomeFatal)
+	}
+	require.Equal(t, 4, failures(2, "recovering"),
+		"the success must have ended the earlier run, or the count would be eight")
+	assert.Equal(t, []call{{1, "dead-model"}}, firedCalls(),
+		"an incomplete run must not retire a model that just recovered")
+
+	// The fifth failure completes the new run and must retire it.
+	store.recordChannelOutcome(2, "recovering", OutcomeFatal)
+	select {
+	case <-fired:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a completed failure run must still escalate")
+	}
+	assert.Equal(t, []call{{1, "dead-model"}, {2, "recovering"}}, firedCalls())
+}
