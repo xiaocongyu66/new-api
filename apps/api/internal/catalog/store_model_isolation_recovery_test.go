@@ -173,3 +173,75 @@ func TestAdminRecoverRestoresTheRoutableModel(t *testing.T) {
 	assert.Equal(t, map[string]bool{"model-a": true, "model-b": true}, routeEnabledByAlias(t, 9302),
 		"route rows must follow the restored ability, or the model still gets no traffic")
 }
+
+// TestModelCooldownCountDecaysOnSuccess pins the "down" direction of the
+// escalation counter. Only the disable itself used to clear the entry, so the
+// count was a lifetime total: cooldowns spread over months retired a model that
+// had served thousands of requests since. A served request must pay it back
+// down, which is what makes the escalation mean sustained recent trouble.
+func TestModelCooldownCountDecaysOnSuccess(t *testing.T) {
+	previousStore := ChannelModelDisabler
+	var mu sync.Mutex
+	var disabledFor []string
+	fired := make(chan struct{}, 8)
+	ChannelModelDisabler = func(channelID int, modelName string) error {
+		mu.Lock()
+		disabledFor = append(disabledFor, modelName)
+		mu.Unlock()
+		fired <- struct{}{}
+		return nil
+	}
+	t.Cleanup(func() { ChannelModelDisabler = previousStore })
+
+	store := &HealthStore{states: map[int]*ChannelHealthState{}}
+	cfg := DefaultChannelHealthSetting()
+	cfg.MinRequests = 0
+	// One cooldown per fatal outcome, so the test drives the counter directly
+	// instead of having to build a failure streak first.
+	cfg.CooldownThreshold = 1
+	cfg.CooldownDisableStreak = 3
+	previousSetting := GetChannelHealthSetting()
+	channelHealthSetting.Store(cfg)
+	t.Cleanup(func() { channelHealthSetting.Store(previousSetting) })
+
+	now := time.Unix(1_700_000_000, 0)
+	withCooldownTestClock(t, &now)
+
+	count := func() int {
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		return store.states[1].ModelCooldowns["flaky"]
+	}
+	disabled := func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), disabledFor...)
+	}
+
+	store.recordChannelOutcome(1, "flaky", OutcomeFatal)
+	require.Equal(t, 1, count(), "a cooldown activation counts up")
+
+	store.recordChannelOutcome(1, "flaky", OutcomeSuccess)
+	assert.Zero(t, count(), "a served request must pay the escalation count back down")
+
+	// Two activations now sit below the threshold, so nothing may fire.
+	store.recordChannelOutcome(1, "flaky", OutcomeFatal)
+	store.recordChannelOutcome(1, "flaky", OutcomeFatal)
+	require.Equal(t, 2, count())
+	select {
+	case <-fired:
+		t.Fatal("the model was retired while the count sat below the threshold")
+	case <-time.After(50 * time.Millisecond):
+	}
+	assert.Empty(t, disabled())
+
+	// Positive control: reaching the threshold must still retire the model, so
+	// the assertions above cannot pass on a broken escalation.
+	store.recordChannelOutcome(1, "flaky", OutcomeFatal)
+	select {
+	case <-fired:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the count reached the threshold but the disable never fired")
+	}
+	assert.Equal(t, []string{"flaky"}, disabled())
+}

@@ -218,7 +218,7 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 	var attempts []catalog.ChannelAttempt
 	winnerID, requestSucceeded := 0, false
 	defer func() {
-		catalog.GetChannelHealthManager().RecordRequestAttempts(attempts, winnerID, requestSucceeded)
+		catalog.GetChannelHealthManager().RecordRequestAttempts(attempts, winnerID, relayInfo.OriginModelName, requestSucceeded)
 	}()
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
@@ -741,7 +741,7 @@ func RelayTask(c contract.Context) {
 	var attempts []catalog.ChannelAttempt
 	winnerID, requestSucceeded := 0, false
 	defer func() {
-		catalog.GetChannelHealthManager().RecordRequestAttempts(attempts, winnerID, requestSucceeded)
+		catalog.GetChannelHealthManager().RecordRequestAttempts(attempts, winnerID, relayInfo.OriginModelName, requestSucceeded)
 	}()
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {

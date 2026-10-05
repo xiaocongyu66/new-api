@@ -12,7 +12,7 @@ import (
 type HealthBridge struct {
 	ClassifyOutcome        func(err *types.NewAPIError, channelID int) ChannelOutcome
 	RecordChannelOutcome   func(channelID int, outcome ChannelOutcome)
-	RecordRequestAttempts  func(attempts []ChannelAttempt, winnerID int, succeeded bool)
+	RecordRequestAttempts  func(attempts []ChannelAttempt, winnerID int, winnerModel string, succeeded bool)
 	RecordOutcome          func(channelID int, success bool)
 	EffectiveWeight        func(channelID int, baseWeight uint) float64
 	RoutingWeight          func(channelID int, baseWeight uint, bypassCooldown bool) float64
@@ -103,6 +103,26 @@ const (
 )
 
 type channelHealthState = ChannelHealthState
+
+// decayModelCooldown pays down one model's accumulated cooldown count after a
+// successful request through that pair. The escalation count exists to detect
+// sustained trouble, so it has to fall as well as rise: when only the disable
+// itself ever clears the entry, the count is a lifetime total and cooldowns
+// spread over months retire a model that has served fine ever since.
+func decayModelCooldown(state *ChannelHealthState, modelName string) {
+	if modelName == "" || state.ModelCooldowns == nil {
+		return
+	}
+	count, ok := state.ModelCooldowns[modelName]
+	if !ok {
+		return
+	}
+	if count <= 1 {
+		delete(state.ModelCooldowns, modelName)
+		return
+	}
+	state.ModelCooldowns[modelName] = count - 1
+}
 
 // ChannelModelDisabler disables one model on one channel once its cooldowns
 // saturate. It is a package var so tests can capture the call instead of
@@ -228,11 +248,11 @@ func (m *ChannelHealthManager) RecordChannelOutcome(channelID int, outcome Chann
 
 // RecordRequestAttempts applies health accounting once for a whole client
 // request, rather than once per failed try.
-func (m *ChannelHealthManager) RecordRequestAttempts(attempts []ChannelAttempt, winnerID int, succeeded bool) {
+func (m *ChannelHealthManager) RecordRequestAttempts(attempts []ChannelAttempt, winnerID int, winnerModel string, succeeded bool) {
 	if healthBridge != nil && healthBridge.RecordRequestAttempts != nil {
-		healthBridge.RecordRequestAttempts(attempts, winnerID, succeeded)
+		healthBridge.RecordRequestAttempts(attempts, winnerID, winnerModel, succeeded)
 	} else if m.fallback != nil {
-		m.fallback.recordRequestAttempts(attempts, winnerID, succeeded)
+		m.fallback.recordRequestAttempts(attempts, winnerID, winnerModel, succeeded)
 	}
 }
 

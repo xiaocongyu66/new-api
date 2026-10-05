@@ -152,6 +152,11 @@ func (h *HealthStore) recordChannelOutcome(channelID int, modelName string, outc
 		if state.CooldownStreak > 0 && state.CooldownUntil.IsZero() {
 			state.CooldownStreak--
 		}
+		// A success is also evidence this model works, so it pays the
+		// escalation count back down. Without this the count is a lifetime
+		// total and three cooldowns spread over months retire a model that has
+		// served thousands of requests since.
+		decayModelCooldown(state, modelName)
 	case OutcomeNeutral:
 		// Neutral stays score/request-count inert but clears an accumulated
 		// failure streak: it is not evidence against the channel.
@@ -246,12 +251,14 @@ func (h *HealthStore) escalateModelLocked(state *ChannelHealthState, cfg *Channe
 }
 
 // RecordRequestAttempts applies health accounting once for a whole client
-// request, rather than once per failed try.
-func (h *HealthStore) RecordRequestAttempts(attempts []ChannelAttempt, winnerID int, succeeded bool) {
+// request, rather than once per failed try. winnerModel is the model the
+// request was for; the success path needs it to pay down that model's
+// escalation count, and the failure path takes each model from its attempt.
+func (h *HealthStore) RecordRequestAttempts(attempts []ChannelAttempt, winnerID int, winnerModel string, succeeded bool) {
 	if succeeded {
 		// ClassifyChannelOutcome(nil, ...) also clears any in-flight 401 run,
 		// which a bare OutcomeSuccess would leave standing.
-		h.RecordChannelOutcome(winnerID, h.ClassifyChannelOutcome(nil, winnerID))
+		h.recordChannelOutcome(winnerID, winnerModel, h.ClassifyChannelOutcome(nil, winnerID))
 		return
 	}
 	for _, attempt := range attempts {
@@ -546,8 +553,8 @@ func hRecordChannelOutcome(channelID int, outcome ChannelOutcome) {
 	GetHealthStore().RecordChannelOutcome(channelID, outcome)
 }
 
-func hRecordRequestAttempts(attempts []ChannelAttempt, winnerID int, succeeded bool) {
-	GetHealthStore().RecordRequestAttempts(attempts, winnerID, succeeded)
+func hRecordRequestAttempts(attempts []ChannelAttempt, winnerID int, winnerModel string, succeeded bool) {
+	GetHealthStore().RecordRequestAttempts(attempts, winnerID, winnerModel, succeeded)
 }
 
 func hRecordOutcome(channelID int, success bool) {
@@ -610,6 +617,13 @@ type ChannelHealthSetting struct {
 	// sliding duration has saturated and the pair still cannot serve a request,
 	// the model is what is broken, so only that model is disabled; the channel
 	// keeps serving its other models. Zero disables the escalation.
+	//
+	// The count is deliberately NOT a lifetime total: every successful request
+	// through the pair pays it down by one (see decayModelCooldown), so it
+	// tracks sustained recent trouble. Without that decay, cooldowns spread
+	// over months would retire a model that had served thousands of requests
+	// since — the shape of the incident where a throttling-only upstream
+	// permanently removed working models.
 	CooldownDisableStreak int `json:"cooldown_disable_streak"`
 }
 
@@ -625,7 +639,7 @@ func DefaultChannelHealthSetting() *ChannelHealthSetting {
 		CooldownMaxSeconds:         60,
 		CooldownMaxEjectionPercent: 50,
 		CooldownAlpha:              0.3,
-		CooldownDisableStreak:      3,
+		CooldownDisableStreak:      20,
 	}
 }
 

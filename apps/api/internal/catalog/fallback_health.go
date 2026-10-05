@@ -100,6 +100,9 @@ func (l *localHealthManager) recordChannelOutcome(channelID int, modelName strin
 		if state.CooldownStreak > 0 && state.CooldownUntil.IsZero() {
 			state.CooldownStreak--
 		}
+		// Mirrors the channel-health path: a success pays the escalation count
+		// back down so it measures sustained trouble, not lifetime history.
+		decayModelCooldown(state, modelName)
 	case OutcomeNeutral:
 		state.FailureStreak = 0
 		return
@@ -180,9 +183,9 @@ func (l *localHealthManager) escalateModelLocked(state *ChannelHealthState, cfg 
 	}()
 }
 
-func (l *localHealthManager) recordRequestAttempts(attempts []ChannelAttempt, winnerID int, succeeded bool) {
+func (l *localHealthManager) recordRequestAttempts(attempts []ChannelAttempt, winnerID int, winnerModel string, succeeded bool) {
 	if succeeded {
-		l.recordChannelOutcome(winnerID, "", l.classifyChannelOutcome(nil, winnerID))
+		l.recordChannelOutcome(winnerID, winnerModel, l.classifyChannelOutcome(nil, winnerID))
 		return
 	}
 	for _, attempt := range attempts {
