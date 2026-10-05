@@ -242,13 +242,14 @@ func liveRouteState(key RouteKey, now time.Time) *routeHealthState {
 	if state == nil || state.Until == nil || *state.Until > now.Unix() {
 		return state
 	}
-	if !expireRoute(key, state, now) {
-		// The CAS was lost or the refresh still shows a live window; re-read so
-		// the caller decides on the current state rather than a stale one.
-		routeHealthLock.RLock()
-		state = routeHealthIDM[key]
-		routeHealthLock.RUnlock()
-	}
+	// expireRoute installs a NEW state object through cacheHealth, so the
+	// snapshot above is stale whether the CAS won or lost. Re-read instead of
+	// returning it: otherwise a just-retired disable still reads as disabled
+	// and the selection path keeps excluding the route.
+	expireRoute(key, state, now)
+	routeHealthLock.RLock()
+	state = routeHealthIDM[key]
+	routeHealthLock.RUnlock()
 	return state
 }
 func cacheHealth(row *ChannelModelHealth) {

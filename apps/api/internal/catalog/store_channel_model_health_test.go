@@ -203,8 +203,12 @@ func TestDormantExpiryDisableThreshold(t *testing.T) {
 		require.NoError(t, dbx.DB.Where("channel_id = ?", key.ChannelId).First(&row).Error)
 		assert.Equal(t, HealthDisabled, row.State)
 		assert.Equal(t, 1, row.DormantDisableCount)
-		assert.Nil(t, row.Until, "a disabled route has no expiry; only an admin restores it")
-		assert.False(t, IsRouteHealthy(key, now.Add(24*time.Hour)), "disabled never self-heals")
+		// The auto-disable carries a window instead of until=nil: a transient
+		// upstream outage must not retire a model permanently.
+		require.NotNil(t, row.Until, "an auto-disable must carry an expiry window")
+		assert.False(t, IsRouteHealthy(key, now), "the route stays out inside its window")
+		assert.True(t, IsRouteHealthy(key, now.Add(24*time.Hour)),
+			"an auto-disabled route must self-heal once its window lapses")
 	})
 
 	t.Run("threshold zero never disables", func(t *testing.T) {
@@ -421,8 +425,10 @@ func TestDormantMultiCycleThresholdAndSibling(t *testing.T) {
 		require.NoError(t, dbx.DB.Where("channel_id = ?", key.ChannelId).First(&row3).Error)
 		assert.Equal(t, 3, row3.DormantDisableCount)
 		assert.Equal(t, HealthDisabled, row3.State, "threshold 3 reached → disabled")
-		assert.Nil(t, row3.Until, "disabled has no expiry")
-		assert.False(t, IsRouteHealthy(key, now.Add(365*24*time.Hour)), "disabled never self-heals")
+		require.NotNil(t, row3.Until, "an auto-disable carries an expiry window, not until=nil")
+		assert.False(t, IsRouteHealthy(key, now.Add(3*time.Hour)), "the route stays out inside its window")
+		assert.True(t, IsRouteHealthy(key, now.Add(365*24*time.Hour)),
+			"an auto-disabled route self-heals once its window lapses")
 		assert.True(t, IsRouteHealthy(sibling, now), "sibling unaffected even after disable")
 	})
 
