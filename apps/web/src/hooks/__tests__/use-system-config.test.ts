@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { mapStatusDataToConfig } from './use-system-config'
+import { mapStatusDataToConfig } from '../use-system-config'
 
 // /api/status is the only place the operator's payment currency label enters
 // the frontend, so this mapping is the seam that decides whether an admin's
