@@ -656,7 +656,7 @@ func DefaultChannelHealthSetting() *ChannelHealthSetting {
 		CooldownMaxSeconds:         60,
 		CooldownMaxEjectionPercent: 50,
 		CooldownAlpha:              0.3,
-		CooldownDisableStreak:      20,
+		CooldownDisableStreak:      40,
 	}
 }
 
