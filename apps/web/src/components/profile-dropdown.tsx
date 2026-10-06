@@ -148,7 +148,7 @@ export function ProfileDropdown() {
           )}
 
           {isAdmin && !isAdminWorkspace && (
-            <DropdownMenuItem onClick={() => navigate({ to: '/admin' })}>
+            <DropdownMenuItem onClick={() => navigate({ to: '/admin/' })}>
               <ArrowUpRight className='size-4' />
               {t('Admin')}
             </DropdownMenuItem>
