@@ -44,7 +44,7 @@ import { useRedemptionsColumns } from './redemptions-columns'
 import { RedemptionsMobileList } from './redemptions-mobile-list'
 import { useRedemptions } from './redemptions-provider'
 
-const route = getRouteApi('/_authenticated/admin/redemption-codes/')
+const route = getRouteApi('/admin/redemption-codes/')
 
 function isDisabledRedemptionRow(redemption: Redemption) {
   return (
