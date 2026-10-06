@@ -35,12 +35,14 @@ describe('motion contracts', () => {
   })
 
   it('keeps stagger and card item contracts compatible with motion/react', () => {
-    expect(STAGGER_VARIANTS.animate.transition).toEqual({ staggerChildren: 0.04 })
+    const staggerAnimate = STAGGER_VARIANTS.animate as unknown as { transition?: unknown }
+    expect(staggerAnimate.transition).toEqual({ staggerChildren: 0.04 })
     expect(CARD_ITEM_VARIANTS.initial).toEqual({
       opacity: 0,
       y: 12,
       scale: 0.98,
     })
-    expect(CARD_ITEM_VARIANTS.animate.transition).toEqual(MOTION_TRANSITION.default)
+    const cardAnimate = CARD_ITEM_VARIANTS.animate as unknown as { transition?: unknown }
+    expect(cardAnimate.transition).toEqual(MOTION_TRANSITION.default)
   })
 })
