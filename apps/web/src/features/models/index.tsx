@@ -35,7 +35,7 @@ import {
   MODELS_SECTION_IDS,
 } from './section-registry'
 
-const route = getRouteApi('/_authenticated/admin/models/$section')
+const route = getRouteApi('/admin/models/$section')
 
 const SECTION_META: Record<ModelsSectionId, { titleKey: string }> = {
   metadata: {
