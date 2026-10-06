@@ -28,7 +28,7 @@ import { useUserInsights } from '../hooks/use-user-insights'
 import type { UserInsight, UserInsightFilters } from '../types'
 import { useInsightColumns } from './insight-columns'
 
-const route = getRouteApi('/admin/user-insights/')
+const route = getRouteApi('/_authenticated/admin/user-insights/')
 
 /** 排序选项。后端在内存里排序，字段与 sortInsightViews 的 case 一致。 */
 const SORT_OPTIONS: {
