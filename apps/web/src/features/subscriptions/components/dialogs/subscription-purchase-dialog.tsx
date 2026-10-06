@@ -103,10 +103,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
   const balanceCost = Math.max(0, Number(plan.balance_cost_display ?? 0))
   const userQuota = Math.max(0, Number(props.userQuota || 0))
 
-  const payMode =
-    plan.pay_mode ?? (plan.allow_balance_pay === false ? 'none' : 'balance')
-  const needBalance = payMode === 'balance'
-  const isFree = payMode === 'none'
+  const allowBalancePay = plan.allow_balance_pay !== false
 
   const insufficientBalance = userQuota < balanceCost
   const limitReached =
@@ -333,7 +330,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
           <div className='flex items-center justify-between'>
             <span className='text-sm font-medium'>{t('Amount Due')}</span>
             <span className='text-primary text-lg font-bold'>
-              {isFree ? t('Free') : formatPlanPrice(plan)}
+              {formatPlanPrice(plan)}
             </span>
           </div>
         </div>
@@ -347,44 +344,31 @@ export function SubscriptionPurchaseDialog(props: Props) {
           </Alert>
         )}
 
-        <div className='flex flex-col gap-2.5 rounded-md border p-3'>
-          {isFree ? (
+        {allowBalancePay && (
+          <div className='flex flex-col gap-2.5 rounded-md border p-3'>
+            {renderCostRow(
+              t('Balance'),
+              formatQuota(balanceCost),
+              formatQuota(userQuota)
+            )}
+
+            {insufficientBalance && (
+              <Alert variant='destructive'>
+                <AlertDescription>
+                  {t('Insufficient balance')}
+                </AlertDescription>
+              </Alert>
+            )}
+
             <Button
               variant='outline'
               onClick={() => handlePayInSite()}
-              disabled={paying || limitReached}
+              disabled={paying || limitReached || insufficientBalance}
             >
-              {t('Claim for Free')}
+              {t('Pay with Balance')}
             </Button>
-          ) : (
-            <>
-              {needBalance &&
-                renderCostRow(
-                  t('Balance'),
-                  formatQuota(balanceCost),
-                  formatQuota(userQuota)
-                )}
-
-              {needBalance && insufficientBalance && (
-                <Alert variant='destructive'>
-                  <AlertDescription>
-                    {t('Insufficient balance')}
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              <Button
-                variant='outline'
-                onClick={() => handlePayInSite()}
-                disabled={
-                  paying || limitReached || (needBalance && insufficientBalance)
-                }
-              >
-                {t('Pay with Balance')}
-              </Button>
-            </>
-          )}
-        </div>
+          </div>
+        )}
 
         {hasAnyPayment && (
           <div className='space-y-3'>

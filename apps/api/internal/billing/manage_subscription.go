@@ -210,7 +210,6 @@ func AdminCreateSubscriptionPlan(c contract.Context) {
 			return
 		}
 	}
-	req.Plan.PayMode = NormalizePayMode(req.Plan.PayMode, req.Plan.AllowBalancePay)
 	req.Plan.QuotaResetPeriod = NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.CtxApiErrorMsg(c, "自定义重置周期需大于0秒")
@@ -293,7 +292,6 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 			return
 		}
 	}
-	req.Plan.PayMode = NormalizePayMode(req.Plan.PayMode, req.Plan.AllowBalancePay)
 	req.Plan.QuotaResetPeriod = NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.CtxApiErrorMsg(c, "自定义重置周期需大于0秒")
@@ -321,7 +319,6 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 			"downgrade_group":            req.Plan.DowngradeGroup,
 			"quota_reset_period":         req.Plan.QuotaResetPeriod,
 			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,
-			"pay_mode":                   req.Plan.PayMode,
 			"updated_at":                 common.GetTimestamp(),
 		}
 		if req.Plan.AllowBalancePay != nil {

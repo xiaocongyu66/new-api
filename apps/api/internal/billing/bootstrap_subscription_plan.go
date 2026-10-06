@@ -14,6 +14,7 @@ import (
 func init() {
 	dbx.RegisterPostMigration(func() error {
 		migrateSubscriptionPlanPriceAmount()
+		dropOrphanedSubscriptionPlanPayMode()
 		if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
 			return ensureSubscriptionPlanTableSQLite()
 		}
@@ -155,6 +156,21 @@ func migrateSubscriptionPlanPriceAmount() {
 		} else {
 			common.SysLog(fmt.Sprintf("Successfully migrated %s.%s to decimal(10,6)", tableName, columnName))
 		}
+	}
+}
+
+// dropOrphanedSubscriptionPlanPayMode removes the legacy pay_mode column, which
+// the in-site settlement no longer reads (GORM AutoMigrate does not drop
+// columns). No-ops when the table or column is already absent.
+func dropOrphanedSubscriptionPlanPayMode() {
+	tableName := "subscription_plans"
+	columnName := "pay_mode"
+	migrator := dbx.DB.Migrator()
+	if !migrator.HasTable(tableName) || !migrator.HasColumn(&SubscriptionPlan{}, columnName) {
+		return
+	}
+	if err := migrator.DropColumn(&SubscriptionPlan{}, columnName).Error; err != nil {
+		common.SysLog(fmt.Sprintf("Warning: failed to drop orphaned %s.%s: %v", tableName, columnName, err))
 	}
 }
 

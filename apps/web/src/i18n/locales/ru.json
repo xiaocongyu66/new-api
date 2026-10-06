@@ -405,7 +405,6 @@
     "Amount of quota to credit to user account.": "Количество квоты для зачисления на счет пользователя.",
     "Amount options must be a JSON array": "Варианты сумм должны быть JSON-массивом",
     "Amount the user pays to purchase this plan (USD).": "Сумма, которую пользователь платит за покупку этого тарифа (USD).",
-    "Amount the user pays to purchase this plan; the actual currency depends on the payment gateway.": "Сумма, которую пользователь платит за покупку тарифа; фактическая валюта зависит от платёжного шлюза.",
     "Amount to pay:": "Сумма к оплате:",
     "An isolated route keeps a reduced share of traffic instead of leaving the pool, and pool availability decides how aggressively isolation applies.": "Изолированный маршрут сохраняет уменьшенную долю трафика вместо ухода из пула; доступность пула определяет силу изоляции.",
     "An unexpected error occurred": "Произошла непредвиденная ошибка",

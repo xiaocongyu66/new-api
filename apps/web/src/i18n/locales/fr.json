@@ -405,7 +405,6 @@
     "Amount of quota to credit to user account.": "Montant du quota à créditer sur le compte utilisateur.",
     "Amount options must be a JSON array": "Les options de montant doivent être un tableau JSON",
     "Amount the user pays to purchase this plan (USD).": "Montant que l'utilisateur paie pour acheter ce forfait (USD).",
-    "Amount the user pays to purchase this plan; the actual currency depends on the payment gateway.": "Montant que l'utilisateur paie pour acheter ce forfait ; la devise réelle dépend de la passerelle de paiement.",
     "Amount to pay:": "Montant à payer :",
     "An isolated route keeps a reduced share of traffic instead of leaving the pool, and pool availability decides how aggressively isolation applies.": "Une route isolée conserve une part réduite de trafic au lieu de quitter le pool ; la disponibilité du pool détermine l'intensité de l'isolement.",
     "An unexpected error occurred": "Une erreur inattendue est survenue",

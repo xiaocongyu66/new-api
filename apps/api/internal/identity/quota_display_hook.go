@@ -17,26 +17,11 @@ var OnQuotaToDisplayAmount func(quota int) float64
 // process still saturates rather than bare-casting.
 var OnQuotaFromDisplayAmount func(displayAmount float64) int
 
-// OnQuotaToPaymentAmount converts a quota integer to the payment-gateway
-// amount that would buy it. Same layering as OnQuotaToDisplayAmount: billing
-// owns the rule and registers it, so this package never imports billing.
-//
-// Unregistered means billing has not been wired. Falling back to the raw quota
-// keeps responses finite instead of panicking.
-var OnQuotaToPaymentAmount func(quota int) float64
-
 func quotaToDisplayAmount(quota int) float64 {
 	if OnQuotaToDisplayAmount == nil {
 		return float64(quota)
 	}
 	return OnQuotaToDisplayAmount(quota)
-}
-
-func quotaToPaymentAmount(quota int) float64 {
-	if OnQuotaToPaymentAmount == nil {
-		return float64(quota)
-	}
-	return OnQuotaToPaymentAmount(quota)
 }
 
 func quotaFromDisplayAmount(displayAmount float64) int {

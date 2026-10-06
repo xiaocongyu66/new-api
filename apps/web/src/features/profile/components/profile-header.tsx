@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Activity, BarChart3, CreditCard, WalletCards } from 'lucide-react'
+import { Activity, BarChart3, WalletCards } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
@@ -25,7 +25,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
-import { formatPaymentAmount } from '@/lib/currency'
 import { formatCompactNumber, formatQuota } from '@/lib/format'
 import { getRoleLabel } from '@/lib/roles'
 
@@ -97,13 +96,6 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
       value: formatQuota(profile.quota_display ?? 0),
       description: t('Remaining quota'),
       icon: WalletCards,
-      tone: 'success',
-    },
-    {
-      label: t('Payment Amount'),
-      value: formatPaymentAmount(profile.quota_payment_amount ?? 0),
-      description: t('What this balance is worth at the payment gateway'),
-      icon: CreditCard,
       tone: 'success',
     },
     {

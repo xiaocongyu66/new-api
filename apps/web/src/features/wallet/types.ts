@@ -238,13 +238,9 @@ export interface UserWalletData {
   quota: number
   /** Backend-rendered display amount for quota */
   quota_display: number
-  /** Backend-priced payment-gateway amount for quota (quota / QuotaPerUnit * Price) */
-  quota_payment_amount: number
   used_quota: number
   /** Backend-rendered display amount for used_quota */
   used_quota_display: number
-  /** Backend-priced payment-gateway amount for used_quota */
-  used_quota_payment_amount: number
   /** Total request count */
   request_count: number
   aff_quota: number

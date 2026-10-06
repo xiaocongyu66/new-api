@@ -119,11 +119,6 @@ type SubscriptionPlan struct {
 	SortOrder int  `json:"sort_order" gorm:"type:int;default:0"`
 
 	AllowBalancePay *bool `json:"allow_balance_pay"`
-
-	// PayMode is the in-site settlement mode. Rows written before pay_mode
-	// existed are derived from AllowBalancePay in NormalizeDefaults.
-	PayMode string `json:"pay_mode" gorm:"type:varchar(16);not null;default:''"`
-
 	// Allow falling back to wallet balance after subscription quota is exhausted (empty = true)
 	AllowWalletOverflow   *bool  `json:"allow_wallet_overflow"`
 	StripePriceId         string `json:"stripe_price_id" gorm:"type:varchar(128);default:''"`
@@ -191,39 +186,6 @@ func (p *SubscriptionPlan) NormalizeDefaults() {
 	if p.AllowWalletOverflow == nil {
 		p.AllowWalletOverflow = common.GetPointer(true)
 	}
-	p.PayMode = NormalizePayMode(p.PayMode, p.AllowBalancePay)
-}
-
-const (
-	SubscriptionPayModeNone    = "none"
-	SubscriptionPayModeBalance = "balance"
-)
-
-// NormalizePayMode maps a stored pay_mode onto the two modes that still exist:
-// "none" (free or paid by a third party) and "balance" (wallet settlement).
-// Rows predating pay_mode carry no mode, so AllowBalancePay decides for them.
-func NormalizePayMode(mode string, allowBalancePay *bool) string {
-	switch mode {
-	case SubscriptionPayModeNone:
-		return SubscriptionPayModeNone
-	case SubscriptionPayModeBalance:
-		return SubscriptionPayModeBalance
-	}
-	if mode != "" {
-		// A mode this build cannot settle — written by an older release for a
-		// currency that no longer exists, or a dirty value. Charge the balance
-		// rather than hand out a plan that was meant to be paid for.
-		return SubscriptionPayModeBalance
-	}
-	if allowBalancePay == nil || *allowBalancePay {
-		return SubscriptionPayModeBalance
-	}
-	return SubscriptionPayModeNone
-}
-
-// RequiresBalance reports whether buying the plan charges wallet quota.
-func (p *SubscriptionPlan) RequiresBalance() bool {
-	return NormalizePayMode(p.PayMode, p.AllowBalancePay) == SubscriptionPayModeBalance
 }
 
 // Subscription order (payment -> webhook -> create UserSubscription)
@@ -606,13 +568,12 @@ func PurchaseSubscriptionWithWallet(userId int, planId int) error {
 			return errors.New("套餐价格不能为负数")
 		}
 
-		mode := NormalizePayMode(plan.PayMode, plan.AllowBalancePay)
-		requiredQuota := 0
-		if mode == SubscriptionPayModeBalance {
-			requiredQuota, err = calcSubscriptionBalanceQuota(plan.PriceAmount)
-			if err != nil {
-				return err
-			}
+		if plan.AllowBalancePay != nil && !*plan.AllowBalancePay {
+			return errors.New("该套餐不允许使用余额兑换")
+		}
+		requiredQuota, err := calcSubscriptionBalanceQuota(plan.PriceAmount)
+		if err != nil {
+			return err
 		}
 
 		user, err := identity.LockUserRow(tx, userId)
@@ -646,7 +607,7 @@ func PurchaseSubscriptionWithWallet(userId int, planId int) error {
 			Status:          common.TopUpStatusSuccess,
 			CreateTime:      now,
 			CompleteTime:    now,
-			ProviderPayload: fmt.Sprintf("charged_quota=%d pay_mode=%s", requiredQuota, mode),
+			ProviderPayload: fmt.Sprintf("charged_quota=%d", requiredQuota),
 		}
 		if err := tx.Create(order).Error; err != nil {
 			return err

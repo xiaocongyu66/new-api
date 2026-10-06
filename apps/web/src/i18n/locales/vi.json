@@ -405,7 +405,6 @@
     "Amount of quota to credit to user account.": "Số lượng quota để ghi có vào tài khoản người dùng.",
     "Amount options must be a JSON array": "Tùy chọn số tiền phải là mảng JSON",
     "Amount the user pays to purchase this plan (USD).": "Số tiền người dùng trả để mua gói này (USD).",
-    "Amount the user pays to purchase this plan; the actual currency depends on the payment gateway.": "Số tiền người dùng trả để mua gói này; loại tiền tệ thực tế tùy thuộc vào cổng thanh toán.",
     "Amount to pay:": "Amount due:",
     "An isolated route keeps a reduced share of traffic instead of leaving the pool, and pool availability decides how aggressively isolation applies.": "Lộ trình bị cách ly giữ một phần lưu lượng giảm thay vì rời khỏi nhóm; độ khả dụng của nhóm quyết định mức độ áp dụng cách ly.",
     "An unexpected error occurred": "Đã xảy ra lỗi không mong muốn",

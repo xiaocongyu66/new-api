@@ -85,6 +85,9 @@ export function calculatePresetPricing(
   const actualPrice = originalPrice * discount
   const savedAmount = originalPrice - actualPrice
   const hasDiscount = discount < 1.0
+  // 添加金额 rendered in the site's display currency (upstream behaviour):
+  // the preset value scaled by the 额度 exchange rate. 支付金额 (actualPrice)
+  // is the real money handed to the payment gateway (preset × Price × discount).
   const displayValue = presetValue * usdExchangeRate
 
   return {

@@ -99,17 +99,10 @@ type User struct {
 	// raw quota fields in the configured display currency. gorm:"-" so they are
 	// never columns; AfterFind fills them on every read (list, search, single),
 	// so the frontend never divides by QuotaPerUnit.
-	QuotaDisplay           float64 `json:"quota_display" gorm:"-"`
-	UsedQuotaDisplay       float64 `json:"used_quota_display" gorm:"-"`
-	AffQuotaDisplay        float64 `json:"aff_quota_display" gorm:"-"`
-	AffHistoryQuotaDisplay float64 `json:"aff_history_quota_display" gorm:"-"`
-	// QuotaPaymentAmount / UsedQuotaPaymentAmount are the same balances priced
-	// in the payment gateway's currency (quota / QuotaPerUnit * Price). They
-	// differ from the *_Display fields whenever Price and the 额度 exchange
-	// rate differ, so balance surfaces render both: what the user holds, and
-	// what it is worth at the gateway.
-	QuotaPaymentAmount     float64                    `json:"quota_payment_amount" gorm:"-"`
-	UsedQuotaPaymentAmount float64                    `json:"used_quota_payment_amount" gorm:"-"`
+	QuotaDisplay           float64                    `json:"quota_display" gorm:"-"`
+	UsedQuotaDisplay       float64                    `json:"used_quota_display" gorm:"-"`
+	AffQuotaDisplay        float64                    `json:"aff_quota_display" gorm:"-"`
+	AffHistoryQuotaDisplay float64                    `json:"aff_history_quota_display" gorm:"-"`
 	RequestCount           int                        `json:"request_count" gorm:"type:int;default:0;"` // request number
 	Group                  string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
 	AffCode                string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
@@ -139,8 +132,6 @@ func (user *User) AfterFind(_ *gorm.DB) error {
 	user.UsedQuotaDisplay = quotaToDisplayAmount(user.UsedQuota)
 	user.AffQuotaDisplay = quotaToDisplayAmount(user.AffQuota)
 	user.AffHistoryQuotaDisplay = quotaToDisplayAmount(user.AffHistoryQuota)
-	user.QuotaPaymentAmount = quotaToPaymentAmount(user.Quota)
-	user.UsedQuotaPaymentAmount = quotaToPaymentAmount(user.UsedQuota)
 	return nil
 }
 

@@ -35,6 +35,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { formatPaymentAmount } from '@/lib/currency'
+import { formatNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import {
@@ -263,7 +264,7 @@ export function RechargeFormCard({
                         >
                           <div className='flex w-full items-center justify-between'>
                             <div className='text-base font-semibold sm:text-lg'>
-                              {formatPaymentAmount(displayValue)}
+                              {formatNumber(displayValue)}
                             </div>
                             {hasDiscount && (
                               <div className='text-xs font-medium text-green-600'>
