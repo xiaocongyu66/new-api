@@ -169,7 +169,7 @@ func dropOrphanedSubscriptionPlanPayMode() {
 	if !migrator.HasTable(tableName) || !migrator.HasColumn(&SubscriptionPlan{}, columnName) {
 		return
 	}
-	if err := migrator.DropColumn(&SubscriptionPlan{}, columnName).Error; err != nil {
+	if err := migrator.DropColumn(&SubscriptionPlan{}, columnName); err != nil {
 		common.SysLog(fmt.Sprintf("Warning: failed to drop orphaned %s.%s: %v", tableName, columnName, err))
 	}
 }
