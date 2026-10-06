@@ -44,7 +44,7 @@ import { DataTableBulkActions } from './data-table-bulk-actions'
 import { useUsersColumns } from './users-columns'
 import { useUsers } from './users-provider'
 
-const route = getRouteApi('/_authenticated/admin/users/')
+const route = getRouteApi('/admin/users/')
 
 const USER_SORTABLE_COLUMNS = new Set<UserSortBy>([
   'id',
