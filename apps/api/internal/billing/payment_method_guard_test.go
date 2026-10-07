@@ -442,6 +442,7 @@ func setupIdentityTestDB(t *testing.T) {
 		&SubscriptionPlan{},
 		&SubscriptionOrder{},
 		&UserSubscription{},
+		&SubscriptionPreConsumeRecord{},
 		&usage.Log{},
 		&usage.QuotaData{},
 	); err != nil {
