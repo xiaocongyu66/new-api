@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -103,10 +104,14 @@ func (*StripeAdaptor) RequestPay(c contract.Context, req *StripePayRequest) {
 		return
 	}
 
+	// 分组倍率与折扣必须体现在 Checkout 的 Quantity 上：Checkout 按静态 Price
+	// 单价 × Quantity 收款，倍率若只进本地入账金额，用户按基础价付款却获得放大额度。
+	payUnits := stripePayUnits(req.Amount, user.Group)
+
 	reference := fmt.Sprintf("new-api-ref-%d-%d-%s", user.Id, time.Now().UnixMilli(), randstr.String(4))
 	referenceId := "ref_" + common.Sha1([]byte(reference))
 
-	payLink, err := genStripeLink(referenceId, user.StripeCustomer, user.Email, req.Amount, req.SuccessURL, req.CancelURL)
+	payLink, err := genStripeLink(referenceId, user.StripeCustomer, user.Email, payUnits, req.SuccessURL, req.CancelURL)
 	if err != nil {
 		logger.LogError(c.Context(), fmt.Sprintf("Stripe 创建 Checkout Session 失败 user_id=%d trade_no=%s amount=%d error=%q", id, referenceId, req.Amount, err.Error()))
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "拉起支付失败"})
@@ -114,8 +119,9 @@ func (*StripeAdaptor) RequestPay(c contract.Context, req *StripePayRequest) {
 	}
 
 	topUp := &TopUp{
-		UserId:          id,
-		Amount:          req.Amount,
+		UserId: id,
+		// Amount 记录 Checkout 实际计价的单位数（含倍率与折扣），与用户实付一致。
+		Amount:          payUnits,
 		Money:           chargedMoney,
 		TradeNo:         referenceId,
 		PaymentMethod:   PaymentMethodStripe,
@@ -187,48 +193,54 @@ func StripeWebhook(c contract.Context) {
 
 	callerIp := c.ClientIP()
 	logger.LogInfo(ctx, fmt.Sprintf("Stripe webhook 验签成功 event_type=%s client_ip=%s path=%q", string(event.Type), callerIp, c.RequestURI()))
+	var fulfillErr error
 	switch event.Type {
 	case stripe.EventTypeCheckoutSessionCompleted:
-		sessionCompleted(ctx, event, callerIp)
+		fulfillErr = sessionCompleted(ctx, event, callerIp)
 	case stripe.EventTypeCheckoutSessionExpired:
 		sessionExpired(ctx, event)
 	case stripe.EventTypeCheckoutSessionAsyncPaymentSucceeded:
-		sessionAsyncPaymentSucceeded(ctx, event, callerIp)
+		fulfillErr = sessionAsyncPaymentSucceeded(ctx, event, callerIp)
 	case stripe.EventTypeCheckoutSessionAsyncPaymentFailed:
 		sessionAsyncPaymentFailed(ctx, event, callerIp)
 	default:
 		logger.LogInfo(ctx, fmt.Sprintf("Stripe webhook 忽略事件 event_type=%s client_ip=%s", string(event.Type), callerIp))
 	}
 
+	if fulfillErr != nil {
+		logger.LogError(ctx, fmt.Sprintf("Stripe webhook 履约失败，返回 5xx 等待重试 event_type=%s client_ip=%s error=%q", string(event.Type), callerIp, fulfillErr.Error()))
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
 	c.Status(http.StatusOK)
 }
 
-func sessionCompleted(ctx context.Context, event stripe.Event, callerIp string) {
+func sessionCompleted(ctx context.Context, event stripe.Event, callerIp string) error {
 	customerId := event.GetObjectValue("customer")
 	referenceId := event.GetObjectValue("client_reference_id")
 	status := event.GetObjectValue("status")
 	if "complete" != status {
 		logger.LogWarn(ctx, fmt.Sprintf("Stripe checkout.completed 状态异常，忽略处理 trade_no=%s status=%s client_ip=%s", referenceId, status, callerIp))
-		return
+		return nil
 	}
 
 	paymentStatus := event.GetObjectValue("payment_status")
 	if paymentStatus != "paid" {
 		logger.LogInfo(ctx, fmt.Sprintf("Stripe Checkout 支付未完成，等待异步结果 trade_no=%s payment_status=%s client_ip=%s", referenceId, paymentStatus, callerIp))
-		return
+		return nil
 	}
 
-	fulfillOrder(ctx, event, referenceId, customerId, callerIp)
+	return fulfillOrder(ctx, event, referenceId, customerId, callerIp)
 }
 
 // sessionAsyncPaymentSucceeded handles delayed payment methods (bank transfer, SEPA, etc.)
 // that confirm payment after the checkout session completes.
-func sessionAsyncPaymentSucceeded(ctx context.Context, event stripe.Event, callerIp string) {
+func sessionAsyncPaymentSucceeded(ctx context.Context, event stripe.Event, callerIp string) error {
 	customerId := event.GetObjectValue("customer")
 	referenceId := event.GetObjectValue("client_reference_id")
 	logger.LogInfo(ctx, fmt.Sprintf("Stripe 异步支付成功 trade_no=%s client_ip=%s", referenceId, callerIp))
 
-	fulfillOrder(ctx, event, referenceId, customerId, callerIp)
+	return fulfillOrder(ctx, event, referenceId, customerId, callerIp)
 }
 
 // sessionAsyncPaymentFailed marks orders as failed when delayed payment methods
@@ -270,10 +282,12 @@ func sessionAsyncPaymentFailed(ctx context.Context, event stripe.Event, callerIp
 }
 
 // fulfillOrder is the shared logic for crediting quota after payment is confirmed.
-func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, customerId string, callerIp string) {
+// A non-nil error means the failure is transient and Stripe should redeliver the
+// event; permanent outcomes return nil after a loud log line so Stripe stops retrying.
+func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, customerId string, callerIp string) error {
 	if len(referenceId) == 0 {
 		logger.LogWarn(ctx, fmt.Sprintf("Stripe 完成订单时缺少订单号 client_ip=%s", callerIp))
-		return
+		return nil
 	}
 
 	LockOrder(referenceId)
@@ -286,21 +300,41 @@ func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, c
 	}
 	if err := CompleteSubscriptionOrder(referenceId, common.GetJsonString(payload), PaymentProviderStripe, ""); err == nil {
 		logger.LogInfo(ctx, fmt.Sprintf("Stripe 订阅订单处理成功 trade_no=%s event_type=%s client_ip=%s", referenceId, string(event.Type), callerIp))
-		return
-	} else if err != nil && !errors.Is(err, ErrSubscriptionOrderNotFound) {
-		logger.LogError(ctx, fmt.Sprintf("Stripe 订阅订单处理失败 trade_no=%s event_type=%s client_ip=%s error=%q", referenceId, string(event.Type), callerIp, err.Error()))
-		return
+		return nil
+	} else if !errors.Is(err, ErrSubscriptionOrderNotFound) {
+		if isPermanentFulfillmentError(err) {
+			logger.LogWarn(ctx, fmt.Sprintf("Stripe 订阅订单永久失败，不再重试 trade_no=%s event_type=%s client_ip=%s error=%q", referenceId, string(event.Type), callerIp, err.Error()))
+			return nil
+		}
+		logger.LogError(ctx, fmt.Sprintf("Stripe 订阅订单处理失败，等待重试 trade_no=%s event_type=%s client_ip=%s error=%q", referenceId, string(event.Type), callerIp, err.Error()))
+		return err
 	}
 
 	err := Recharge(referenceId, customerId, callerIp)
 	if err != nil {
-		logger.LogError(ctx, fmt.Sprintf("Stripe 充值处理失败 trade_no=%s event_type=%s client_ip=%s error=%q", referenceId, string(event.Type), callerIp, err.Error()))
-		return
+		if isPermanentFulfillmentError(err) {
+			logger.LogWarn(ctx, fmt.Sprintf("Stripe 充值永久失败，不再重试 trade_no=%s event_type=%s client_ip=%s error=%q", referenceId, string(event.Type), callerIp, err.Error()))
+			return nil
+		}
+		logger.LogError(ctx, fmt.Sprintf("Stripe 充值处理失败，等待重试 trade_no=%s event_type=%s client_ip=%s error=%q", referenceId, string(event.Type), callerIp, err.Error()))
+		return err
 	}
 
 	total, _ := strconv.ParseFloat(event.GetObjectValue("amount_total"), 64)
 	currency := strings.ToUpper(event.GetObjectValue("currency"))
 	logger.LogInfo(ctx, fmt.Sprintf("Stripe 充值成功 trade_no=%s amount_total=%.2f currency=%s event_type=%s client_ip=%s", referenceId, total/100, currency, string(event.Type), callerIp))
+	return nil
+}
+
+// isPermanentFulfillmentError 判定履约错误是否重试无益：订单不存在、网关不符、
+// 状态已终结或额度不合法/超限。其余（数据库抖动、锁超时等）按可重试处理。
+func isPermanentFulfillmentError(err error) bool {
+	return errors.Is(err, ErrTopUpNotFound) ||
+		errors.Is(err, ErrTopUpStatusInvalid) ||
+		errors.Is(err, ErrPaymentMethodMismatch) ||
+		errors.Is(err, ErrInvalidTopUpQuota) ||
+		errors.Is(err, ErrTopUpQuotaLimitExceeded) ||
+		errors.Is(err, ErrSubscriptionOrderStatusInvalid)
 }
 
 func sessionExpired(ctx context.Context, event stripe.Event) {
@@ -418,11 +452,8 @@ func getStripeCreditedQuota(amount int64, group string) decimal.Decimal {
 		Mul(decimal.NewFromFloat(common.QuotaPerUnit))
 }
 
-func getStripePayMoney(amount float64, group string) float64 {
-	originalAmount := amount
-	if GetQuotaDisplayType() == QuotaDisplayTypeTokens {
-		amount = amount / common.QuotaPerUnit
-	}
+// stripeTopupRatioDiscount 返回下单单位数应乘的分组倍率与预设折扣之积。
+func stripeTopupRatioDiscount(amount int64, group string) float64 {
 	// Using float64 for monetary calculations is acceptable here due to the small amounts involved
 	topupGroupRatio := common.GetTopupGroupRatio(group)
 	if topupGroupRatio == 0 {
@@ -430,12 +461,32 @@ func getStripePayMoney(amount float64, group string) float64 {
 	}
 	// apply optional preset discount by the original request amount (if configured), default 1.0
 	discount := 1.0
-	if ds, ok := GetPaymentSetting().AmountDiscount[int(originalAmount)]; ok {
+	if ds, ok := GetPaymentSetting().AmountDiscount[int(amount)]; ok {
 		if ds > 0 {
 			discount = ds
 		}
 	}
-	payMoney := amount * StripeUnitPrice * topupGroupRatio * discount
+	return topupGroupRatio * discount
+}
+
+// stripePayUnits 计算 Checkout 实际计价的 Quantity：下单单位数 × 分组倍率 × 折扣，
+// 向上取整。Checkout 按静态 Price 单价 × Quantity 收款，倍率与折扣必须进入 Quantity，
+// 否则用户支付基础价格却按放大后的 Money 入账（少付多得）。
+func stripePayUnits(amount int64, group string) int64 {
+	units := int64(math.Ceil(float64(amount)*stripeTopupRatioDiscount(amount, group) - 1e-9))
+	if units < 1 {
+		units = 1
+	}
+	return units
+}
+
+func getStripePayMoney(amount float64, group string) float64 {
+	// 预览金额与 Checkout 实收同源：计费 Quantity × 单价。
+	units := float64(stripePayUnits(int64(amount), group))
+	if GetQuotaDisplayType() == QuotaDisplayTypeTokens {
+		units = units / common.QuotaPerUnit
+	}
+	payMoney := units * StripeUnitPrice
 	return payMoney
 }
 

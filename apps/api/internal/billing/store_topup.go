@@ -626,7 +626,7 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 	err = dbx.DB.Transaction(func(tx *gorm.DB) error {
 		err := dbx.LockForUpdate(tx).Where(refCol+" = ?", referenceId).First(topUp).Error
 		if err != nil {
-			return errors.New("充值订单不存在")
+			return ErrTopUpNotFound
 		}
 
 		if topUp.PaymentProvider != PaymentProviderStripe {
@@ -634,7 +634,7 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 		}
 
 		if topUp.Status != common.TopUpStatusPending {
-			return errors.New("充值订单状态错误")
+			return ErrTopUpStatusInvalid
 		}
 
 		topUp.CompleteTime = common.GetTimestamp()
@@ -657,7 +657,7 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 
 	if err != nil {
 		common.SysError("topup failed: " + err.Error())
-		return errors.New("充值失败，请稍后重试")
+		return err
 	}
 	quotacache.SyncCredit(topUp.UserId, quota, "stripe topup")
 
