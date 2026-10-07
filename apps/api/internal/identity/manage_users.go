@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/authtoken"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/common/quotacache"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"math"
 	"net/http"
@@ -1174,6 +1175,10 @@ func ManageUser(c contract.Context) {
 				common.CtxApiError(c, err)
 				return
 			}
+			// The cached wallet still holds the pre-override balance, and
+			// reservations authorize against it while the hash exists. Drop
+			// it so the next read rehydrates from the committed value.
+			quotacache.InvalidateUser(user.Id)
 			writeManageAudit(c, user.Id, "user.quota_override", map[string]interface{}{
 				"from": logger.LogQuota(oldQuota),
 				"to":   logger.LogQuota(quotaValue),

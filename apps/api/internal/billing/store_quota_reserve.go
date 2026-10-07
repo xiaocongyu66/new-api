@@ -12,13 +12,19 @@ import (
 )
 
 // persistUserQuotaDelta 把已在缓存侧预扣成功的增量落库；批量模式下入队，
-// 直写模式下要求行存在（用户已删除时报错，交由调用方补偿缓存）。
+// 直写模式下要求行存在（用户已删除时报错，交由调用方补偿缓存），并且扣减时
+// 要求数据库余额足够：缓存命中可能因外部直接改库（管理员覆写）而虚高，
+// 落库侧的 quota >= 0 条件保证已提交余额永远不会被扣成负数。
 func persistUserQuotaDelta(id int, delta int) error {
 	if common.BatchUpdateEnabled {
 		dbx.AddNewRecord(dbx.BatchUpdateTypeUserQuota, id, delta)
 		return nil
 	}
-	result := identity.UserQuery(dbx.DB).Where("id = ?", id).Update("quota", gorm.Expr("quota + ?", delta))
+	query := identity.UserQuery(dbx.DB).Where("id = ?", id)
+	if delta < 0 {
+		query = query.Where("quota + ? >= 0", delta)
+	}
+	result := query.Update("quota", gorm.Expr("quota + ?", delta))
 	if result.Error != nil {
 		return result.Error
 	}

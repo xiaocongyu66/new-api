@@ -223,3 +223,31 @@ func TestTokenCacheInitPreservesLiveQuotaAndFenceBlocksStaleSnapshot(t *testing.
 	require.NoError(t, err)
 	assert.Equal(t, 100, cached.RemainQuota)
 }
+
+// TestStaleCacheReserveCannotDriveDatabaseBalanceNegative covers the
+// external-override drift: the cached wallet says 100 while the committed row
+// only holds 5. The reserve must be refused and compensated, never persisted
+// as a negative committed balance.
+func TestStaleCacheReserveCannotDriveDatabaseBalanceNegative(t *testing.T) {
+	truncateTables(t)
+	resetBatchUpdateTestState(t)
+	useUserCacheMiniRedis(t)
+
+	user := createReserveTestUser(t, 5)
+	stale := user
+	stale.Quota = 100
+	require.NoError(t, identity.PopulateUserCache(stale))
+
+	reserved, err := TryReserveUserQuota(user.Id, 60)
+	assert.False(t, reserved)
+	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	assert.Equal(t, 5, getUserQuotaFromDB(t, user.Id))
+	cached, cacheErr := identity.CacheGetUserBase(user.Id)
+	require.NoError(t, cacheErr)
+	assert.Equal(t, 100, cached.Quota, "the refused reservation must be compensated back into the cache")
+
+	reserved, err = TryReserveUserQuota(user.Id, 5)
+	require.NoError(t, err)
+	assert.True(t, reserved)
+	assert.Equal(t, 0, getUserQuotaFromDB(t, user.Id))
+}

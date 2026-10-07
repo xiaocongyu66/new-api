@@ -159,6 +159,19 @@ func SyncCredit(userID int, quota int, operation string) {
 	}
 }
 
+// InvalidateUser drops the cached user hash so the next read or reservation
+// rehydrates from the committed row. Absolute quota overwrites (admin quota
+// override) cannot fold a snapshot delta into the cache without racing
+// concurrent spends, so they invalidate the entry instead.
+func InvalidateUser(userID int) {
+	if !common.RedisEnabled {
+		return
+	}
+	if err := common.RDB.Del(context.Background(), UserKey(userID)).Err(); err != nil {
+		common.SysLog(fmt.Sprintf("failed to invalidate user quota cache: %s", err.Error()))
+	}
+}
+
 // TryReserveToken deducts amount from the token's cached remaining quota,
 // refusing if it is lower than amount.
 func TryReserveToken(id int, key string, amount int64) (Result, error) {

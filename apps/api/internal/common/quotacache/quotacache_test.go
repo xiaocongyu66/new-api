@@ -1,9 +1,12 @@
 package quotacache
 
 import (
+	"context"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/alicebob/miniredis/v2"
+	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -57,4 +60,27 @@ func TestResultFromLuaTreatsErrorsAsMiss(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Equal(t, Miss, got)
+}
+
+// TestInvalidateUserDropsCachedWalletHash guards the invalidation primitive
+// behind absolute quota overwrites: after it the guarded scripts must miss, so
+// a stale pre-override balance can never authorize a reservation.
+func TestInvalidateUserDropsCachedWalletHash(t *testing.T) {
+	server := miniredis.RunT(t)
+	oldEnabled, oldRDB := common.RedisEnabled, common.RDB
+	common.RedisEnabled = true
+	common.RDB = redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() {
+		_ = common.RDB.Close()
+		common.RedisEnabled = oldEnabled
+		common.RDB = oldRDB
+	})
+
+	require.NoError(t, common.RDB.HSet(context.Background(), UserKey(7),
+		"Id", 7, "CacheSchema", UserSchemaVersion, "Quota", 500).Err())
+	require.True(t, server.Exists(UserKey(7)))
+
+	InvalidateUser(7)
+
+	assert.False(t, server.Exists(UserKey(7)))
 }

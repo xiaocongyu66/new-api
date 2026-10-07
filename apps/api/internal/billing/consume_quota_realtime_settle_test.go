@@ -34,6 +34,8 @@ func (s *recordingSettler) NeedsRefund() bool { return false }
 
 func (s *recordingSettler) GetPreConsumedQuota() int { return s.preConsumed }
 
+func (s *recordingSettler) Reserve(targetQuota int) error { return nil }
+
 // realtimeTextUsage builds a usage event whose billed text-token quota is
 // exactly 2*units at ratio 1 (quota sums text in + text out 1:1).
 func realtimeTextUsage(units int) *dto.RealtimeUsage {

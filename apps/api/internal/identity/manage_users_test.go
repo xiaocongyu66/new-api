@@ -270,3 +270,30 @@ func TestCheckUpdatePasswordRejectsHistoricalEmptyPassword(t *testing.T) {
 	assert.False(t, updatePassword)
 	assert.ErrorIs(t, err, errUserPasswordUnset)
 }
+
+// TestManageUserQuotaOverrideInvalidatesCachedWallet guards the cache side of
+// the absolute quota override: the cached wallet must not keep the
+// pre-override figure, because reservations authorize against the cached
+// balance while the hash exists.
+func TestManageUserQuotaOverrideInvalidatesCachedWallet(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	useUserCacheMiniRedis(t)
+	user := User{
+		Username: "managed-override-user", Password: "password", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, Quota: 10,
+	}
+	require.NoError(t, db.Create(&user).Error)
+	require.NoError(t, PopulateUserCache(user))
+
+	status, body := performManageUserRequest(t,
+		fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":"override","value":2500000}`, user.Id))
+	assert.Equal(t, http.StatusOK, status)
+	assert.Contains(t, body, `"success":true`)
+
+	var updated User
+	require.NoError(t, db.First(&updated, user.Id).Error)
+	assert.Equal(t, 2500000, updated.Quota)
+
+	_, cacheErr := CacheGetUserBase(user.Id)
+	assert.Error(t, cacheErr, "stale pre-override wallet must not stay reservable from the cache")
+}

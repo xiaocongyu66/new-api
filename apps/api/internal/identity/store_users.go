@@ -526,7 +526,13 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 	}
 
 	// 提交事务
-	return tx.Commit().Error
+	// 余额转入已落库，钱包缓存必须同步：预扣费在缓存存在期间以缓存余额为准，
+	// 漏同步会让这笔转入在缓存过期前不可见。
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	quotacache.SyncCredit(user.Id, quota, "affiliate transfer")
+	return nil
 }
 
 func (user *User) prepareForInsert(tx *gorm.DB) error {
