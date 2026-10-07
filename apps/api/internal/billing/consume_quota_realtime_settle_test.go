@@ -164,10 +164,12 @@ func TestRealtimePostWssPanicBisect(t *testing.T) {
 		other["reasoning_effort"] = info.ReasoningEffort
 	}
 	fmt.Println("WALK c: reasoning")
-	other["is_model_mapped"] = info.IsModelMapped
-	fmt.Println("WALK d0")
-	fmt.Printf("WALK d1 %v\n", info.UpstreamModelName)
-	fmt.Println("WALK d2")
+	mapped := info.IsModelMapped
+	fmt.Println("WALK d0: load ok", mapped)
+	other["is_model_mapped"] = mapped
+	fmt.Println("WALK d1: store ok")
+	fmt.Printf("WALK d2 %v\n", info.UpstreamModelName)
+	fmt.Println("WALK d3")
 	_ = common.GetCtxKeyBool(ctxRaw, constant.ContextKeySystemPromptOverride)
 	fmt.Println("WALK e: system prompt bool")
 	adminInfo := make(map[string]any)
