@@ -86,6 +86,8 @@ var (
 	ErrRedPacketInsufficient = errors.New("余额不足")
 	// ErrRedPacketDailyLimit 今日发红包次数已用完
 	ErrRedPacketDailyLimit = errors.New("今日发红包次数已用完")
+	// ErrRedPacketWrongGroup 抢取事件所在群组与红包归属群不一致
+	ErrRedPacketWrongGroup = errors.New("红包不属于本群")
 )
 
 // redPacketSQLiteMu protects the SQLite read-modify-write paths in CreateQQRedPacket/GrabQQRedPacket.
@@ -252,8 +254,10 @@ func splitRedPacketAmount(remainingAmount, remainingCount int) int {
 
 // GrabQQRedPacket 抢红包
 //
+// groupOpenID 必须来自触发抢取的事件所在群组；与红包归属群不一致直接拒绝，
+// 防止按钮被跨群转发或伪造互动事件后跨群领取余额。
 // 返回抢到的记录与红包最新状态。allowOwnGrab 为 false 时禁止抢自己的红包。
-func GrabQQRedPacket(packetId, userId int, openID string, allowOwnGrab bool) (*QQRedPacketGrab, *QQRedPacket, error) {
+func GrabQQRedPacket(packetId, userId int, openID, groupOpenID string, allowOwnGrab bool) (*QQRedPacketGrab, *QQRedPacket, error) {
 	var grab *QQRedPacketGrab
 	var packet *QQRedPacket
 
@@ -262,6 +266,10 @@ func GrabQQRedPacket(packetId, userId int, openID string, allowOwnGrab bool) (*Q
 		q := dbx.LockForUpdate(tx).Where("id = ?", packetId)
 		if err := q.First(&p).Error; err != nil {
 			return ErrRedPacketNotFound
+		}
+		// 严格群归属校验：群不匹配（含红包或事件群 ID 缺失）一律拒绝。
+		if p.GroupOpenID == "" || groupOpenID == "" || p.GroupOpenID != groupOpenID {
+			return ErrRedPacketWrongGroup
 		}
 
 		if !allowOwnGrab && p.SenderUserId == userId {

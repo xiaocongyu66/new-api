@@ -54,17 +54,22 @@ func TestQQSignatureRoundTrip(t *testing.T) {
 func TestQQBotWebhook_ValidationHandshake(t *testing.T) {
 	setting := billing.GetQQBotSetting()
 	origSecret := setting.AppSecret
+	origToken := setting.WebhookPathToken
 	setting.AppSecret = "mock-app-secret-32-bytes-long!!"
-	t.Cleanup(func() { setting.AppSecret = origSecret })
+	setting.WebhookPathToken = "path-token-abc"
+	t.Cleanup(func() {
+		setting.AppSecret = origSecret
+		setting.WebhookPathToken = origToken
+	})
 
 	payload := `{
 		"op": 13,
 		"d": {
-			"plain_token": "token-xyz-123",
+			"plain_token": "path-token-abc",
 			"event_ts": "1788625800"
 		}
 	}`
-	req := httptest.NewRequest(http.MethodPost, "/api/qqbot/webhook", bytes.NewReader([]byte(payload)))
+	req := httptest.NewRequest(http.MethodPost, "/api/qqbot/webhook/path-token-abc", bytes.NewReader([]byte(payload)))
 	req.Header.Set("Content-Type", "application/json")
 	ctx, rec := fiberadapter.NewSyntheticContext(req)
 
@@ -76,11 +81,55 @@ func TestQQBotWebhook_ValidationHandshake(t *testing.T) {
 		Signature  string `json:"signature"`
 	}
 	require.NoError(t, common.Unmarshal(rec.Body.Bytes(), &resp))
-	assert.Equal(t, "token-xyz-123", resp.PlainToken)
+	assert.Equal(t, "path-token-abc", resp.PlainToken)
 
-	expectedSig, err := billing.SignValidation(setting.AppSecret, "1788625800", "token-xyz-123")
+	expectedSig, err := billing.SignValidation(setting.AppSecret, "1788625800", "path-token-abc")
 	require.NoError(t, err)
 	assert.Equal(t, expectedSig, resp.Signature)
+}
+
+// TestQQBotWebhook_RejectsValidationWithoutPathToken closes the signing-oracle
+// hole: on the public default path (no WebhookPathToken) op=13 must never sign
+// attacker-chosen payloads, because the same key verifies dispatch signatures.
+func TestQQBotWebhook_RejectsValidationWithoutPathToken(t *testing.T) {
+	setting := billing.GetQQBotSetting()
+	origSecret := setting.AppSecret
+	origToken := setting.WebhookPathToken
+	setting.AppSecret = "mock-app-secret-32-bytes-long!!"
+	setting.WebhookPathToken = ""
+	t.Cleanup(func() {
+		setting.AppSecret = origSecret
+		setting.WebhookPathToken = origToken
+	})
+
+	payload := `{"op":13,"d":{"plain_token":"forged-body","event_ts":"1788625800"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/qqbot/webhook", bytes.NewReader([]byte(payload)))
+	ctx, rec := fiberadapter.NewSyntheticContext(req)
+
+	billing.QQBotWebhook(ctx)
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	assert.NotContains(t, rec.Body.String(), "signature")
+}
+
+// TestQQBotWebhook_RejectsValidationPlainTokenMismatch requires the platform's
+// plain_token to echo the configured path token even on the tokened path.
+func TestQQBotWebhook_RejectsValidationPlainTokenMismatch(t *testing.T) {
+	setting := billing.GetQQBotSetting()
+	origSecret := setting.AppSecret
+	origToken := setting.WebhookPathToken
+	setting.AppSecret = "mock-app-secret-32-bytes-long!!"
+	setting.WebhookPathToken = "path-token-abc"
+	t.Cleanup(func() {
+		setting.AppSecret = origSecret
+		setting.WebhookPathToken = origToken
+	})
+
+	payload := `{"op":13,"d":{"plain_token":"attacker-chosen","event_ts":"1788625800"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/qqbot/webhook/path-token-abc", bytes.NewReader([]byte(payload)))
+	ctx, rec := fiberadapter.NewSyntheticContext(req)
+
+	billing.QQBotWebhook(ctx)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
 func TestQQBotWebhook_RejectsUnconfigured(t *testing.T) {

@@ -244,8 +244,9 @@ func HandleRedPacketCommand(event *GroupAtMessageEvent, openID string) (content 
 	return sb.String(), redPacketKeyboard(packet.Id)
 }
 
-// HandleRedPacketGrab 处理抢红包按钮回调
-func HandleRedPacketGrab(packetIDStr, openID string) string {
+// HandleRedPacketGrab 处理抢红包按钮回调。groupOpenID 为触发事件的群组，
+// 必须与红包归属群一致，防止按钮跨群转发后跨群领取。
+func HandleRedPacketGrab(packetIDStr, openID, groupOpenID string) string {
 	packetID, err := strconv.Atoi(packetIDStr)
 	if err != nil {
 		return buildPlainMarkdown(openID, "**红包无效**")
@@ -259,7 +260,7 @@ func HandleRedPacketGrab(packetIDStr, openID string) string {
 
 	s := GetQQBotSetting()
 	grab, packet, err := GrabQQRedPacket(
-		packetID, userId, openID, s.RedPacketAllowOwnGrab)
+		packetID, userId, openID, groupOpenID, s.RedPacketAllowOwnGrab)
 	if err != nil {
 		return buildPlainMarkdown(openID,
 			"**没抢到！**\n\n"+redPacketErrorText(err, s.RedPacketDailyLimit))
@@ -327,7 +328,7 @@ func HandleRedPacketGrabAll(groupOpenID, openID string) string {
 			continue
 		}
 		grab, packet, gErr := GrabQQRedPacket(
-			p.Id, userId, openID, s.RedPacketAllowOwnGrab)
+			p.Id, userId, openID, groupOpenID, s.RedPacketAllowOwnGrab)
 		switch {
 		case gErr == nil:
 			claimedCount++
@@ -456,6 +457,8 @@ func redPacketErrorText(err error, dailyLimit int) string {
 		return "红包已过期，未领取的部分已退回发送者"
 	case errors.Is(err, ErrRedPacketOwnGrab):
 		return "不能抢自己发的红包"
+	case errors.Is(err, ErrRedPacketWrongGroup):
+		return "这个红包不属于本群"
 	case errors.Is(err, ErrRedPacketNotFound):
 		return "红包不存在"
 	default:

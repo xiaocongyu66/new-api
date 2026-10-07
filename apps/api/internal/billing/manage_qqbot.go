@@ -140,10 +140,8 @@ func QQBotWebhook(c contract.Context) {
 		return
 	}
 
-	// Enforce webhook path token: if WebhookPathToken is set, legacy path must 404.
-	// The integrator wires the route via GetQQWebhookPath(); if the request reaches
-	// here on the legacy path /api/qqbot/webhook while a token is configured,
-	// we return 404 to avoid the signing oracle and reduce attack surface.
+	// Enforce webhook path token: when WebhookPathToken is set, the route is
+	// /api/qqbot/webhook/<token> and the legacy path must 404.
 	if setting.WebhookPathToken != "" {
 		reqPath := c.HTTPRequest().URL.Path
 		expected := GetQQWebhookPath(setting.WebhookPathToken)
@@ -169,6 +167,30 @@ func QQBotWebhook(c contract.Context) {
 	if err := common.Unmarshal(body, &payload); err != nil {
 		_ = c.JSON(http.StatusBadRequest, common.H{"message": "invalid payload"})
 		return
+	}
+
+	// Signature oracle guard: op=13 signs arbitrary event_ts+plain_token with
+	// AppSecret — the same key material VerifySignature checks dispatches
+	// against (qqbot_signature.go signs timestamp+body). Without a path token
+	// the public default path would let anyone obtain a valid signature for a
+	// forged event body. Refuse op=13 there; callback validation requires
+	// configuring WebhookPathToken and registering on the tokened path.
+	if payload.Op == opCodeValidation {
+		if setting.WebhookPathToken == "" {
+			common.SysError("QQ webhook 验证请求被拒绝 reason=path_token_unset client_ip=" + c.ClientIP())
+			_ = c.JSON(http.StatusServiceUnavailable, common.H{"message": "webhook path token required"})
+			return
+		}
+		// On the tokened path the platform echoes its plain_token; require the
+		// echo to equal the configured token so a leaked URL cannot drive the signer.
+		var probe struct {
+			PlainToken string `json:"plain_token"`
+		}
+		if err := common.Unmarshal(payload.D, &probe); err != nil || probe.PlainToken != setting.WebhookPathToken {
+			common.SysError("QQ webhook 验证请求 plain_token 不匹配，已拒绝 client_ip=" + c.ClientIP())
+			_ = c.JSON(http.StatusUnauthorized, common.H{"message": "invalid validation token"})
+			return
+		}
 	}
 
 	// Callback validation signs event_ts + plain_token with a key derived from AppSecret.

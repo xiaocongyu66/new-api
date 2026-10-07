@@ -88,7 +88,7 @@ func TestGrabQQRedPacketConcurrent(t *testing.T) {
 			<-gate
 			userId := workerId + 100 // distinct user ids starting from 100
 
-			_, _, err := GrabQQRedPacket(packet.Id, userId, "worker-openid", false)
+			_, _, err := GrabQQRedPacket(packet.Id, userId, "worker-openid", "test-group", false)
 			if err != nil {
 				// Expected errors: ErrRedPacketFinished (packet exhausted), ErrRedPacketAlreadyGrabbed (if same user retries)
 				if err == ErrRedPacketFinished || err == ErrRedPacketAlreadyGrabbed {
@@ -132,6 +132,41 @@ func TestGrabQQRedPacketConcurrent(t *testing.T) {
 	var finalSender identity.User
 	require.NoError(t, dbx.DB.First(&finalSender, sender.Id).Error)
 	assert.Equal(t, sender.Quota-totalAmount, finalSender.Quota, "发送者额度应该被正确扣除")
+}
+
+// TestGrabQQRedPacketWrongGroup 红包归属群与抢取事件群不一致时必须拒绝，
+// 防止按钮跨群转发或伪造互动事件后跨群领取余额。
+func TestGrabQQRedPacketWrongGroup(t *testing.T) {
+	defer setupRedPacketConcurrencyTestDB(t)()
+
+	sender := createTestUser(t, 1, 5000)
+	grabber := createTestUser(t, 2, 0)
+
+	packet, err := CreateQQRedPacket(&QQRedPacketParams{
+		SenderUserId:  sender.Id,
+		SenderOpenID:  "sender-openid",
+		GroupOpenID:   "group-a",
+		Blessing:      "跨群测试",
+		TotalAmount:   1000,
+		TotalCount:    1,
+		ExpireSeconds: 3600,
+		DailyLimit:    -1,
+	})
+	require.NoError(t, err)
+
+	// 事件来自 group-b：必须拒绝，且不产生领取记录/余额变化
+	_, _, err = GrabQQRedPacket(packet.Id, grabber.Id, "grabber-openid", "group-b", false)
+	assert.ErrorIs(t, err, ErrRedPacketWrongGroup)
+	var mid identity.User
+	require.NoError(t, dbx.DB.First(&mid, grabber.Id).Error)
+	assert.Equal(t, 0, mid.Quota, "错误群领取不得入账")
+
+	// 同群领取正常
+	_, _, err = GrabQQRedPacket(packet.Id, grabber.Id, "grabber-openid", "group-a", false)
+	require.NoError(t, err)
+	var ok identity.User
+	require.NoError(t, dbx.DB.First(&ok, grabber.Id).Error)
+	assert.Equal(t, 1000, ok.Quota)
 }
 
 // TestCreateQQRedPacketConcurrent 并发发红包，确保每日限额和余额检查在 SQLite 下也是原子的。

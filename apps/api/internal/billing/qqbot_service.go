@@ -681,7 +681,7 @@ func HandleInteraction(event *InteractionEvent) {
 	// 抢红包按钮，data 形如 nailao_rp_grab:<id>
 	if strings.HasPrefix(buttonData, ButtonDataRedPacketGrab) {
 		packetID := strings.TrimPrefix(buttonData, ButtonDataRedPacketGrab)
-		reply := HandleRedPacketGrab(packetID, openID)
+		reply := HandleRedPacketGrab(packetID, openID, event.GroupOpenID)
 		if err := replyGroupMarkdown(RecallKindRedPacket,
 			event.GroupOpenID, "", replyEventID, reply, nil, 1); err != nil {
 			common.SysError("回复抢红包失败: " + err.Error())
