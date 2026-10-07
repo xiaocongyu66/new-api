@@ -111,6 +111,12 @@ func SubscriptionRequestStripePay(c contract.Context) {
 func genStripeSubscriptionLink(referenceId string, customerId string, email string, priceId string) (string, error) {
 	stripe.Key = StripeApiSecret
 
+	// 站内订阅权益是一次性限期套餐(EndTime 按 calcPlanEndTime 固定),没有
+	// 续费事件处理:Pancake 同为 OnetimeProduct,Creem/Epay 亦一次性。
+	// 用 ModeSubscription 绑 recurring Price 会让 Stripe 按周期自动扣款,
+	// 而站内权益到期即止 —— 付费用户被持续扣钱却拿不到第二期额度。
+	// payment 模式下 recurring Price 会在创建 Checkout 时被 Stripe 直接
+	// 拒绝,错误配置在下单即暴露,而不是制造无人履约的自动续费。
 	params := &stripe.CheckoutSessionParams{
 		ClientReferenceID: stripe.String(referenceId),
 		SuccessURL:        stripe.String(paymentReturnPath("/wallet")),
@@ -121,7 +127,7 @@ func genStripeSubscriptionLink(referenceId string, customerId string, email stri
 				Quantity: stripe.Int64(1),
 			},
 		},
-		Mode: stripe.String(string(stripe.CheckoutSessionModeSubscription)),
+		Mode: stripe.String(string(stripe.CheckoutSessionModePayment)),
 	}
 
 	if "" == customerId {
