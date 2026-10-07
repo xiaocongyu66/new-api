@@ -342,7 +342,8 @@ func CreateWaffoPancakePrimaryStore(ctx context.Context, merchantID, privateKey 
 //
 // OnetimeProduct (not SubscriptionProduct) because new-api has no renewal-
 // event handling; Pancake auto-renewing without new-api extending user
-// access would be a UX divergence. Revisit if renewal handling is added.
+// access would be a UX divergence. Switch to SubscriptionProduct together
+// with renewal-event handling.
 func CreateWaffoPancakeProductForPlan(ctx context.Context, merchantID, privateKey, storeID, name, amount, returnURL string) (string, error) {
 	storeID = strings.TrimSpace(storeID)
 	if storeID == "" {

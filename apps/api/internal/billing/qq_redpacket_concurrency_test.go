@@ -38,8 +38,10 @@ func setupRedPacketConcurrencyTestDB(t *testing.T) func() {
 func createTestUser(t *testing.T, id int, quota int) *identity.User {
 	t.Helper()
 	user := &identity.User{
-		Id:       id,
-		Username: "test-user",
+		Id: id,
+		// username and aff_code both carry unique indexes; one database
+		// holds several seeded users, so each needs a distinct value.
+		Username: fmt.Sprintf("rp-user-%d", id),
 		Password: "unused-password-hash",
 		Role:     common.RoleCommonUser,
 		Status:   common.UserStatusEnabled,
@@ -48,6 +50,7 @@ func createTestUser(t *testing.T, id int, quota int) *identity.User {
 		// several users in one database needs a distinct code per user.
 		AffCode: fmt.Sprintf("rp-aff-%d", id),
 	}
+	require.NoError(t, dbx.DB.Create(user).Error)
 	return user
 }
 
