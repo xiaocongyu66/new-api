@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/internal/dbinfra"
+	"github.com/shopspring/decimal"
 	pancake "github.com/waffo-com/waffo-pancake-sdk-go"
 )
 
@@ -158,6 +159,59 @@ func WaffoPancakeBuyerIdentityFromUserID(userID int) string {
 	return fmt.Sprintf("new-api-user-%d", userID)
 }
 
+// verifyWaffoPancakeEventStore binds a webhook event to this site's
+// configured Pancake store. Webhook signatures authenticate Pancake the
+// platform, not the receiving merchant: without the store binding, an order
+// completed on another merchant's store could satisfy a local trade_no as
+// long as its external ID and buyer identity are guessed. An empty
+// configured StoreID (legacy deployment) skips the check.
+func verifyWaffoPancakeEventStore(event *WaffoPancakeWebhookEvent, tradeNo string) error {
+	expectedStore := strings.TrimSpace(WaffoPancakeStoreID)
+	if expectedStore == "" {
+		return nil
+	}
+	if strings.TrimSpace(event.StoreID) != expectedStore {
+		return fmt.Errorf(
+			"waffo pancake store mismatch for tradeNo=%s: expected=%q actual=%q",
+			tradeNo, expectedStore, event.StoreID,
+		)
+	}
+	return nil
+}
+
+// verifyWaffoPancakeEventMoney compares the event's paid amount/currency to
+// the money recorded when the local order was created. Checkout priced the
+// order with the same two-decimal rendering (PriceSnapshot.Amount), so an
+// equal string proves the buyer paid what this order quoted. A mismatch
+// means the event belongs to a different payment and must never credit.
+func verifyWaffoPancakeEventMoney(event *WaffoPancakeWebhookEvent, expectedMoney float64, tradeNo string) error {
+	expectedAmount := formatWaffoPancakeAmount(expectedMoney)
+	actualAmount := strings.TrimSpace(event.Data.Amount)
+	if actualAmount == "" {
+		return fmt.Errorf("waffo pancake event missing amount for tradeNo=%s", tradeNo)
+	}
+	// Decimal compare: checkout quoted two-decimal strings, but an echo with
+	// different scale ("10.0") is the same payment; a different value is not.
+	expected, err := decimal.NewFromString(expectedAmount)
+	if err != nil {
+		return fmt.Errorf("waffo pancake local amount unparseable for tradeNo=%s: %s", tradeNo, expectedAmount)
+	}
+	actual, err := decimal.NewFromString(actualAmount)
+	if err != nil || !actual.Equal(expected) {
+		return fmt.Errorf(
+			"waffo pancake amount mismatch for tradeNo=%s: expected=%s actual=%s currency=%q",
+			tradeNo, expectedAmount, actualAmount, event.Data.Currency,
+		)
+	}
+	if !strings.EqualFold(strings.TrimSpace(event.Data.Currency), "USD") {
+		return fmt.Errorf(
+			"waffo pancake currency mismatch for tradeNo=%s: expected=USD actual=%q",
+			tradeNo, event.Data.Currency,
+		)
+	}
+	return nil
+}
+
 // VerifyConfiguredWaffoPancakeWebhook verifies the signature header. The SDK
 // picks the matching test / prod public key from the payload's `mode` field.
 func VerifyConfiguredWaffoPancakeWebhook(payload string, signatureHeader string) (*WaffoPancakeWebhookEvent, error) {
@@ -203,6 +257,9 @@ func ResolveWaffoPancakeTradeNo(event *WaffoPancakeWebhookEvent) (string, error)
 	if tradeNo == "" {
 		return "", fmt.Errorf("missing webhook orderMerchantExternalId")
 	}
+	if err := verifyWaffoPancakeEventStore(event, tradeNo); err != nil {
+		return "", err
+	}
 	topUp := GetTopUpByTradeNo(tradeNo)
 	if topUp == nil || topUp.PaymentProvider != PaymentProviderWaffoPancake {
 		return "", fmt.Errorf("waffo pancake order not found for tradeNo=%s", tradeNo)
@@ -217,6 +274,9 @@ func ResolveWaffoPancakeTradeNo(event *WaffoPancakeWebhookEvent) (string, error)
 			actualIdentity,
 		)
 	}
+	if err := verifyWaffoPancakeEventMoney(event, topUp.Money, tradeNo); err != nil {
+		return "", err
+	}
 	return tradeNo, nil
 }
 
@@ -229,6 +289,9 @@ func ResolveWaffoPancakeSubscriptionTradeNo(event *WaffoPancakeWebhookEvent) (st
 	tradeNo := strings.TrimSpace(event.Data.OrderMerchantExternalID)
 	if tradeNo == "" {
 		return "", fmt.Errorf("missing webhook orderMerchantExternalId")
+	}
+	if err := verifyWaffoPancakeEventStore(event, tradeNo); err != nil {
+		return "", err
 	}
 	order := GetSubscriptionOrderByTradeNo(tradeNo)
 	if order == nil || order.PaymentProvider != PaymentProviderWaffoPancake {
@@ -243,6 +306,9 @@ func ResolveWaffoPancakeSubscriptionTradeNo(event *WaffoPancakeWebhookEvent) (st
 			expectedIdentity,
 			actualIdentity,
 		)
+	}
+	if err := verifyWaffoPancakeEventMoney(event, order.Money, tradeNo); err != nil {
+		return "", err
 	}
 	return tradeNo, nil
 }
