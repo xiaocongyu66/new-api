@@ -1,9 +1,11 @@
 package billing
 
 import (
+	"fmt"
 	"runtime/debug"
 	"testing"
 
+	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
@@ -12,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	hosttypes "github.com/QuantumNous/new-api/internal/types"
+	usagedomain "github.com/QuantumNous/new-api/internal/usage"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/stretchr/testify/require"
 )
@@ -135,6 +138,29 @@ func captureInlineFrames(t *testing.T) {
 	if r := recover(); r != nil {
 		t.Fatalf("panic: %v\n%s", r, debug.Stack())
 	}
+}
+
+func TestRealtimePostWssPanicBisect(t *testing.T) {
+	setupIdentityTestDB(t)
+	const model = "realtime-test-model"
+	setupRealtimeRatioSettings(t, model)
+	seedRealtimeFixtures(t, 500_000)
+	defer captureInlineFrames(t)
+
+	fmt.Printf("BISECT dbx.DB==nil? %v BatchUpdateEnabled=%v RedisEnabled=%v\n", dbx.DB == nil, common.BatchUpdateEnabled, common.RedisEnabled)
+	identity.UpdateUserUsedQuotaAndRequestCount(91, 5)
+	fmt.Println("BISECT identity.UpdateUserUsedQuotaAndRequestCount ok")
+	catalog.UpdateChannelUsedQuota(1, 5)
+	fmt.Println("BISECT catalog.UpdateChannelUsedQuota ok")
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	fmt.Printf("BISECT ctx GetString=%q Path=%q\n", ctxRaw.GetString("token_name"), ctxRaw.Path())
+	info := realtimeRelayInfo(model)
+	other := usagedomain.GenerateWssOtherInfo(ctxRaw, info, realtimeTextUsage(10), 1, 1, 1, 1, 1, 0, 0)
+	fmt.Printf("BISECT GenerateWssOtherInfo ok keys=%d\n", len(other))
+	usagedomain.AttachQuotaSaturation(ctxRaw, info, other)
+	fmt.Println("BISECT AttachQuotaSaturation ok")
+	usagedomain.RecordConsumeLog(ctxRaw, 91, usagedomain.RecordConsumeLogParams{Quota: 5, Other: other})
+	fmt.Println("BISECT RecordConsumeLog ok")
 }
 
 // TestRealtimeTieredCheaperCumulativeRefundsBatchOvercharge pins the negative
