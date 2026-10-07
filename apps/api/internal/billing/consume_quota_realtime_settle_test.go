@@ -1,21 +1,16 @@
 package billing
 
 import (
-	"fmt"
-	"runtime/debug"
 	"testing"
 
-	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
-	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/identity"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	hosttypes "github.com/QuantumNous/new-api/internal/types"
-	usagedomain "github.com/QuantumNous/new-api/internal/usage"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/stretchr/testify/require"
 )
@@ -61,9 +56,18 @@ func realtimeRelayInfo(model string) *relaycommon.RelayInfo {
 		OriginModelName: model,
 		UsingGroup:      "default",
 		UserGroup:       "default",
+		// ChannelMeta is an embedded pointer: PostWssConsumeQuota and the
+		// log-info builders read ChannelId/IsModelMapped through it, so it
+		// must be non-nil like every production relay path leaves it.
+		ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 1},
 		// Ratio maps replace wholesale via Update*ByJSONString, so pinning the
 		// test model + default group keeps batch quotas deterministic (1:1).
-		PriceData: hosttypes.PriceData{ModelRatio: 1},
+		PriceData: hosttypes.PriceData{
+			ModelRatio: 1,
+			// PostWssConsumeQuota takes the group multiplier from PriceData
+			// (production fills it during pricing); zero would bill nothing.
+			GroupRatioInfo: hosttypes.GroupRatioInfo{GroupRatio: 1},
+		},
 		UserQuota: 1_000_000_000, // keeps the async low-quota notify inert
 	}
 }
@@ -104,7 +108,6 @@ func scanUserQuota(t *testing.T) int {
 // subtracted from the cumulative-usage settlement, so a session pays its total
 // usage exactly once instead of batches + full cumulative (~2x).
 func TestRealtimeBatchesSettleOnceAgainstCumulativeUsage(t *testing.T) {
-	defer captureInlineFrames(t)
 	setupIdentityTestDB(t)
 	const model = "realtime-test-model"
 	setupRealtimeRatioSettings(t, model)
@@ -130,79 +133,6 @@ func TestRealtimeBatchesSettleOnceAgainstCumulativeUsage(t *testing.T) {
 	require.Equal(t, []int{0}, settler.settledTo)
 	require.Equal(t, walletAfterBatches, scanUserQuota(t),
 		"settlement must not re-charge batch quota to the wallet")
-}
-
-// captureInlineFrames expands inlined frames so a panic inside the settle
-// plumbing names the real function instead of collapsing into the caller.
-func captureInlineFrames(t *testing.T) {
-	t.Helper()
-	if r := recover(); r != nil {
-		t.Fatalf("panic: %v\n%s", r, debug.Stack())
-	}
-}
-
-func TestRealtimePostWssPanicBisect(t *testing.T) {
-	setupIdentityTestDB(t)
-	const model = "realtime-test-model"
-	setupRealtimeRatioSettings(t, model)
-	seedRealtimeFixtures(t, 500_000)
-	defer captureInlineFrames(t)
-
-	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
-	info := realtimeRelayInfo(model)
-	usage := realtimeTextUsage(10)
-	fmt.Printf("WALK pointers ctx=%p info=%p usage=%p\n", &ctxRaw, info, usage)
-
-	// Statement-by-statement replica of usage.GenerateTextOtherInfo +
-	// GenerateWssOtherInfo bodies: the missing marker names the faulting line.
-	other := make(map[string]any)
-	other["model_ratio"] = 1.0
-	fmt.Println("WALK a: map writes")
-	other["frt"] = float64(info.FirstResponseTime.UnixMilli() - info.StartTime.UnixMilli())
-	fmt.Println("WALK b: frt")
-	if info.ReasoningEffort != "" {
-		other["reasoning_effort"] = info.ReasoningEffort
-	}
-	fmt.Println("WALK c: reasoning")
-	mapped := info.IsModelMapped
-	fmt.Println("WALK d0: load ok", mapped)
-	other["is_model_mapped"] = mapped
-	fmt.Println("WALK d1: store ok")
-	fmt.Printf("WALK d2 %v\n", info.UpstreamModelName)
-	fmt.Println("WALK d3")
-	_ = common.GetCtxKeyBool(ctxRaw, constant.ContextKeySystemPromptOverride)
-	fmt.Println("WALK e: system prompt bool")
-	adminInfo := make(map[string]any)
-	adminInfo["use_channel"] = ctxRaw.GetStringSlice("use_channel")
-	_ = common.GetCtxKeyBool(ctxRaw, constant.ContextKeyChannelIsMultiKey)
-	_ = common.GetCtxKeyInt(ctxRaw, constant.ContextKeyChannelMultiKeyIndex)
-	fmt.Println("WALK f: admin ctx reads")
-	catalog.AppendChannelAffinityAdminInfo(ctxRaw, adminInfo)
-	fmt.Println("WALK g: affinity")
-	other["admin_info"] = adminInfo
-	if p := ctxRaw.Path(); p != "" {
-		other["request_path"] = p
-	}
-	fmt.Println("WALK h: request path")
-	_ = info.GetFinalRequestRelayFormat()
-	fmt.Println("WALK i: final format")
-	fmt.Println("WALK j: billing src", info.BillingSource, info.UserSetting.BillingPreference)
-	fmt.Println("WALK k: chain", len(info.RequestConversionChain), "param", len(info.ParamOverrideAudit), "stream", info.IsStream, info.StreamStatus == nil)
-	other["ws"] = true
-	other["audio_input"] = usage.InputTokenDetails.AudioTokens
-	other["audio_output"] = usage.OutputTokenDetails.AudioTokens
-	other["text_input"] = usage.InputTokenDetails.TextTokens
-	other["text_output"] = usage.OutputTokenDetails.TextTokens
-	fmt.Println("WALK l: wss fields")
-
-	// Real helper, same args: if the replica walked clean but this panics,
-	// the fault is not in the statements themselves.
-	viaHelper := usagedomain.GenerateWssOtherInfo(ctxRaw, info, usage, 1, 1, 1, 1, 1, 0, 0)
-	fmt.Printf("WALK m: GenerateWssOtherInfo ok keys=%d\n", len(viaHelper))
-	usagedomain.AttachQuotaSaturation(ctxRaw, info, viaHelper)
-	fmt.Println("WALK n: AttachQuotaSaturation ok")
-	usagedomain.RecordConsumeLog(ctxRaw, 91, usagedomain.RecordConsumeLogParams{Quota: 5, Other: viaHelper})
-	fmt.Println("WALK o: RecordConsumeLog ok")
 }
 
 // TestRealtimeTieredCheaperCumulativeRefundsBatchOvercharge pins the negative

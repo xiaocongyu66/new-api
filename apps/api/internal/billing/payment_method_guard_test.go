@@ -424,6 +424,10 @@ func setupIdentityTestDB(t *testing.T) {
 	common.BatchUpdateEnabled = false
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	dbx.InitColumns()
+	// Subscription plans are cached process-wide by id and every fresh
+	// in-memory database reuses ids from 1, so the caches must be dropped
+	// whenever the backing database is swapped.
+	purgeSubscriptionCachesForTest()
 
 	if err := db.AutoMigrate(
 		&identity.User{},
@@ -453,6 +457,14 @@ func setupIdentityTestDB(t *testing.T) {
 		dbx.DB, dbx.LogDB = previousDB, previousLogDB
 		common.RedisEnabled = previousRedis
 		common.BatchUpdateEnabled = previousBatch
+		purgeSubscriptionCachesForTest()
 		_ = sqlDB.Close()
 	})
+}
+
+// purgeSubscriptionCachesForTest drops the process-wide subscription plan
+// caches; setupIdentityTestDB explains why they cannot survive a swap.
+func purgeSubscriptionCachesForTest() {
+	_ = getSubscriptionPlanCache().Purge()
+	_ = getSubscriptionPlanInfoCache().Purge()
 }

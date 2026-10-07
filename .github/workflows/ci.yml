@@ -60,12 +60,6 @@ jobs:
         working-directory: apps/api/modules/relaykit
         run: go build ./...
 
-      - name: "DIAG realtime bisect solo (temporary)"
-        if: always()
-        working-directory: apps/api
-        env:
-          GOGC: "off"
-        run: GOWORK=off go test -tags "${SINGBOX_TAGS}" -v -count=1 -gcflags='all=-N -l' -run 'TestRealtimePostWssPanicBisect' ./internal/billing/ || true
       - name: Test api module
         working-directory: apps/api
         run: GOWORK=off go test -tags "${SINGBOX_TAGS}" ./...

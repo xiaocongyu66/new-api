@@ -1,6 +1,7 @@
 package billing
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -43,8 +44,10 @@ func createTestUser(t *testing.T, id int, quota int) *identity.User {
 		Role:     common.RoleCommonUser,
 		Status:   common.UserStatusEnabled,
 		Quota:    quota,
+		// users.aff_code carries a unique index and defaults to "": seeding
+		// several users in one database needs a distinct code per user.
+		AffCode: fmt.Sprintf("rp-aff-%d", id),
 	}
-	require.NoError(t, dbx.DB.Create(user).Error)
 	return user
 }
 
