@@ -63,14 +63,15 @@ func TestPurchaseSubscriptionWithWallet_Scenarios(t *testing.T) {
 
 	// Plan 1: Free (mode none)
 	planFree := &billing.SubscriptionPlan{
-		Title:         "Free Plan",
-		Enabled:       true,
-		PayMode:       billing.SubscriptionPayModeNone,
-		PriceAmount:   0,
-		SporeAmount:   0,
-		TotalAmount:   100000,
-		DurationUnit:  "month",
-		DurationValue: 1,
+		Title:              "Free Plan",
+		Enabled:            true,
+		PayMode:            billing.SubscriptionPayModeNone,
+		PriceAmount:        0,
+		SporeAmount:        0,
+		TotalAmount:        100000,
+		DurationUnit:       "month",
+		DurationValue:      1,
+		MaxPurchasePerUser: 1,
 	}
 	require.NoError(t, dbx.DB.Create(planFree).Error)
 	require.NoError(t, billing.PurchaseSubscriptionWithWallet(user.Id, planFree.Id, ""))
@@ -80,6 +81,10 @@ func TestPurchaseSubscriptionWithWallet_Scenarios(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1000000, refreshed.Quota)
 	assert.Equal(t, int64(30), refreshed.Spore)
+
+	// The free claim is capped at MaxPurchasePerUser: a repeat claim is rejected.
+	err = billing.PurchaseSubscriptionWithWallet(user.Id, planFree.Id, "")
+	assert.ErrorContains(t, err, "购买上限")
 
 	// Plan 2: Spore only (costs 1.5 spore = 15 units)
 	planSpore := &billing.SubscriptionPlan{
@@ -157,7 +162,7 @@ func TestPurchaseSubscriptionWithWallet_Scenarios(t *testing.T) {
 	require.NoError(t, billing.PurchaseSubscriptionWithWallet(user.Id, planBoth.Id, ""))
 	refreshed, err = identity.GetUserById(user.Id, false)
 	require.NoError(t, err)
-	assert.Equal(t, 250000, refreshed.Quota)  // 500000 - 250000
+	assert.Equal(t, 250000, refreshed.Quota)   // 500000 - 250000
 	assert.Equal(t, int64(2), refreshed.Spore) // 5 - 3
 
 	// Both mode with insufficient spore fails atomically: quota rolled back too

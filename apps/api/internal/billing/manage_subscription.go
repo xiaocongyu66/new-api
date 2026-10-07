@@ -221,6 +221,10 @@ func AdminCreateSubscriptionPlan(c contract.Context) {
 		common.CtxApiErrorMsg(c, "自定义重置周期需大于0秒")
 		return
 	}
+	if err := validateFreePlanPurchaseLimit(&req.Plan); err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
 	err := dbx.DB.Create(&req.Plan).Error
 	if err != nil {
 		common.CtxApiError(c, err)
@@ -309,6 +313,10 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 		return
 	}
 
+	if err := validateFreePlanPurchaseLimit(&req.Plan); err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
 	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
 		// update plan (allow zero values updates with map)
 		updateMap := map[string]interface{}{

@@ -45,12 +45,13 @@ func TestSubscriptionGroupTransitionsPreserveAuthVersionAndSessions(t *testing.T
 	}))
 	require.NoError(t, identity.PopulateUserCache(user))
 	plan := &SubscriptionPlan{
-		Title:         "Upgraded",
-		DurationUnit:  SubscriptionDurationMonth,
-		DurationValue: 1,
-		TotalAmount:   100,
-		UpgradeGroup:  "pro",
-		Enabled:       true,
+		Title:              "Upgraded",
+		DurationUnit:       SubscriptionDurationMonth,
+		DurationValue:      1,
+		TotalAmount:        100,
+		UpgradeGroup:       "pro",
+		Enabled:            true,
+		MaxPurchasePerUser: 1,
 	}
 	require.NoError(t, dbx.DB.Create(plan).Error)
 
@@ -115,12 +116,13 @@ func TestSubscriptionGroupCacheRefreshFailureDoesNotChangeCommittedResult(t *tes
 	}
 	require.NoError(t, dbx.DB.Create(&user).Error)
 	plan := &SubscriptionPlan{
-		Title:         "Cache failure plan",
-		DurationUnit:  SubscriptionDurationMonth,
-		DurationValue: 1,
-		TotalAmount:   100,
-		UpgradeGroup:  "pro",
-		Enabled:       true,
+		Title:              "Cache failure plan",
+		DurationUnit:       SubscriptionDurationMonth,
+		DurationValue:      1,
+		TotalAmount:        100,
+		UpgradeGroup:       "pro",
+		Enabled:            true,
+		MaxPurchasePerUser: 1,
 	}
 	require.NoError(t, dbx.DB.Create(plan).Error)
 	InvalidateSubscriptionPlanCache(plan.Id)

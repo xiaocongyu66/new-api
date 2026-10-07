@@ -239,6 +239,42 @@ func (p *SubscriptionPlan) RequiresSpore() bool {
 	return false
 }
 
+// planGrantsValuableEntitlement reports whether the plan hands out anything of
+// value on fulfillment: a quota pool or a group upgrade.
+func planGrantsValuableEntitlement(plan *SubscriptionPlan) bool {
+	return plan.TotalAmount > 0 || strings.TrimSpace(plan.UpgradeGroup) != ""
+}
+
+// planSelfServeIsFree reports whether a user can take the plan through the
+// wallet endpoint without paying balance or spore on at least one payment path.
+// None is the legacy "balance purchase disabled" value: claiming is free when
+// the plan carries no price (a paid None plan is rejected at purchase instead).
+func planSelfServeIsFree(plan *SubscriptionPlan) bool {
+	switch NormalizePayMode(plan.PayMode, plan.AllowBalancePay) {
+	case SubscriptionPayModeNone, SubscriptionPayModeBoth:
+		return plan.PriceAmount <= 0 && plan.SporeAmount <= 0
+	case SubscriptionPayModeBalance:
+		return plan.PriceAmount <= 0
+	case SubscriptionPayModeSpore:
+		return plan.SporeAmount <= 0
+	case SubscriptionPayModeEither:
+		return plan.PriceAmount <= 0 || plan.SporeAmount <= 0
+	}
+	return false
+}
+
+// validateFreePlanPurchaseLimit enforces the free-claim invariant: a plan that
+// grants quota or upgrade-group entitlement for free through the wallet path
+// must carry a finite per-user purchase cap. Without MaxPurchasePerUser every
+// account can claim (and stack) unlimited full-value entitlements, which is a
+// silent grant switch rather than a pricing decision.
+func validateFreePlanPurchaseLimit(plan *SubscriptionPlan) error {
+	if plan.MaxPurchasePerUser > 0 || !planGrantsValuableEntitlement(plan) || !planSelfServeIsFree(plan) {
+		return nil
+	}
+	return errors.New("免费赠送额度或升级权益的套餐必须设置每用户购买上限")
+}
+
 // Subscription order (payment -> webhook -> create UserSubscription)
 type SubscriptionOrder struct {
 	Id     int     `json:"id"`
@@ -624,6 +660,9 @@ func PurchaseSubscriptionWithWallet(userId int, planId int, payWith string) erro
 		needSpore := false
 		switch mode {
 		case SubscriptionPayModeNone:
+			if plan.PriceAmount > 0 || plan.SporeAmount > 0 {
+				return errors.New("该套餐未开启余额或菌种购买")
+			}
 		case SubscriptionPayModeBalance:
 			needBalance = true
 		case SubscriptionPayModeSpore:
@@ -654,6 +693,9 @@ func PurchaseSubscriptionWithWallet(userId int, planId int, payWith string) erro
 		requiredSpore := int64(0)
 		if needSpore {
 			requiredSpore = plan.SporeAmount
+		}
+		if err := validateFreePlanPurchaseLimit(plan); err != nil {
+			return err
 		}
 
 		user, err := identity.LockUserRow(tx, userId)
