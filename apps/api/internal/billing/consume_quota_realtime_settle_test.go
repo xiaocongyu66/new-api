@@ -9,8 +9,8 @@ import (
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/identity"
-	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	hosttypes "github.com/QuantumNous/new-api/internal/types"
@@ -147,20 +147,59 @@ func TestRealtimePostWssPanicBisect(t *testing.T) {
 	seedRealtimeFixtures(t, 500_000)
 	defer captureInlineFrames(t)
 
-	fmt.Printf("BISECT dbx.DB==nil? %v BatchUpdateEnabled=%v RedisEnabled=%v\n", dbx.DB == nil, common.BatchUpdateEnabled, common.RedisEnabled)
-	identity.UpdateUserUsedQuotaAndRequestCount(91, 5)
-	fmt.Println("BISECT identity.UpdateUserUsedQuotaAndRequestCount ok")
-	catalog.UpdateChannelUsedQuota(1, 5)
-	fmt.Println("BISECT catalog.UpdateChannelUsedQuota ok")
 	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
-	fmt.Printf("BISECT ctx GetString=%q Path=%q\n", ctxRaw.GetString("token_name"), ctxRaw.Path())
 	info := realtimeRelayInfo(model)
-	other := usagedomain.GenerateWssOtherInfo(ctxRaw, info, realtimeTextUsage(10), 1, 1, 1, 1, 1, 0, 0)
-	fmt.Printf("BISECT GenerateWssOtherInfo ok keys=%d\n", len(other))
-	usagedomain.AttachQuotaSaturation(ctxRaw, info, other)
-	fmt.Println("BISECT AttachQuotaSaturation ok")
-	usagedomain.RecordConsumeLog(ctxRaw, 91, usagedomain.RecordConsumeLogParams{Quota: 5, Other: other})
-	fmt.Println("BISECT RecordConsumeLog ok")
+	usage := realtimeTextUsage(10)
+	fmt.Printf("WALK pointers ctx=%p info=%p usage=%p\n", &ctxRaw, info, usage)
+
+	// Statement-by-statement replica of usage.GenerateTextOtherInfo +
+	// GenerateWssOtherInfo bodies: the missing marker names the faulting line.
+	other := make(map[string]any)
+	other["model_ratio"] = 1.0
+	fmt.Println("WALK a: map writes")
+	other["frt"] = float64(info.FirstResponseTime.UnixMilli() - info.StartTime.UnixMilli())
+	fmt.Println("WALK b: frt")
+	if info.ReasoningEffort != "" {
+		other["reasoning_effort"] = info.ReasoningEffort
+	}
+	fmt.Println("WALK c: reasoning")
+	if info.IsModelMapped {
+		other["is_model_mapped"] = true
+	}
+	fmt.Println("WALK d: model mapped")
+	_ = common.GetCtxKeyBool(ctxRaw, constant.ContextKeySystemPromptOverride)
+	fmt.Println("WALK e: system prompt bool")
+	adminInfo := make(map[string]any)
+	adminInfo["use_channel"] = ctxRaw.GetStringSlice("use_channel")
+	_ = common.GetCtxKeyBool(ctxRaw, constant.ContextKeyChannelIsMultiKey)
+	_ = common.GetCtxKeyInt(ctxRaw, constant.ContextKeyChannelMultiKeyIndex)
+	fmt.Println("WALK f: admin ctx reads")
+	catalog.AppendChannelAffinityAdminInfo(ctxRaw, adminInfo)
+	fmt.Println("WALK g: affinity")
+	other["admin_info"] = adminInfo
+	if p := ctxRaw.Path(); p != "" {
+		other["request_path"] = p
+	}
+	fmt.Println("WALK h: request path")
+	_ = info.GetFinalRequestRelayFormat()
+	fmt.Println("WALK i: final format")
+	fmt.Println("WALK j: billing src", info.BillingSource, info.UserSetting.BillingPreference)
+	fmt.Println("WALK k: chain", len(info.RequestConversionChain), "param", len(info.ParamOverrideAudit), "stream", info.IsStream, info.StreamStatus == nil)
+	other["ws"] = true
+	other["audio_input"] = usage.InputTokenDetails.AudioTokens
+	other["audio_output"] = usage.OutputTokenDetails.AudioTokens
+	other["text_input"] = usage.InputTokenDetails.TextTokens
+	other["text_output"] = usage.OutputTokenDetails.TextTokens
+	fmt.Println("WALK l: wss fields")
+
+	// Real helper, same args: if the replica walked clean but this panics,
+	// the fault is not in the statements themselves.
+	viaHelper := usagedomain.GenerateWssOtherInfo(ctxRaw, info, usage, 1, 1, 1, 1, 1, 0, 0)
+	fmt.Printf("WALK m: GenerateWssOtherInfo ok keys=%d\n", len(viaHelper))
+	usagedomain.AttachQuotaSaturation(ctxRaw, info, viaHelper)
+	fmt.Println("WALK n: AttachQuotaSaturation ok")
+	usagedomain.RecordConsumeLog(ctxRaw, 91, usagedomain.RecordConsumeLogParams{Quota: 5, Other: viaHelper})
+	fmt.Println("WALK o: RecordConsumeLog ok")
 }
 
 // TestRealtimeTieredCheaperCumulativeRefundsBatchOvercharge pins the negative
