@@ -63,7 +63,9 @@ jobs:
       - name: "DIAG realtime bisect solo (temporary)"
         if: always()
         working-directory: apps/api
-        run: GOWORK=off go test -tags "${SINGBOX_TAGS}" -v -count=1 -run 'TestRealtimePostWssPanicBisect' ./internal/billing/
+        env:
+          GOGC: "off"
+        run: GOWORK=off go test -tags "${SINGBOX_TAGS}" -v -count=1 -run 'TestRealtimePostWssPanicBisect' ./internal/billing/ && GOGC=off GOWORK=off go test -tags "${SINGBOX_TAGS}" -count=1 -gcflags=all=-l -run 'TestRealtimePostWssPanicBisect' ./internal/billing/
       - name: Test api module
         working-directory: apps/api
         run: GOWORK=off go test -tags "${SINGBOX_TAGS}" ./...
