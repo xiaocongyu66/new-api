@@ -90,12 +90,19 @@ func calculateAudioQuota(info QuotaInfo) (int, *common.QuotaClamp) {
 }
 
 func PreWssConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo, usage *dto.RealtimeUsage) error {
-	if relayInfo.UsePrice {
+	if relayInfo.PriceData.UsePrice {
 		return nil
 	}
-	userQuota, err := identity.GetUserQuota(relayInfo.UserId, false)
-	if err != nil {
-		return err
+	// 订阅资金来源不占钱包额度；按钱包预校验会把订阅余额充足、
+	// 钱包为 0 的用户在会话中途误拒。
+	fromSubscription := relayInfo.BillingSource == settlecore.BillingSourceSubscription
+	var userQuota int
+	if !fromSubscription {
+		var err error
+		userQuota, err = identity.GetUserQuota(relayInfo.UserId, false)
+		if err != nil {
+			return err
+		}
 	}
 
 	token, err := identity.GetTokenByKey(strings.TrimPrefix(relayInfo.TokenKey, "sk-"), false)
@@ -134,7 +141,7 @@ func PreWssConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo, 
 			AudioTokens: audioOutTokens,
 		},
 		ModelName:  modelName,
-		UsePrice:   relayInfo.UsePrice,
+		UsePrice:   relayInfo.PriceData.UsePrice,
 		ModelRatio: modelRatio,
 		GroupRatio: actualGroupRatio,
 	}
@@ -142,7 +149,7 @@ func PreWssConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo, 
 	quota, clamp := calculateAudioQuota(quotaInfo)
 	noteQuotaClamp(relayInfo, clamp)
 
-	if userQuota < quota {
+	if !fromSubscription && userQuota < quota {
 		return fmt.Errorf("user quota is not enough, user quota: %s, need quota: %s", logger.FormatQuota(userQuota), logger.FormatQuota(quota))
 	}
 
@@ -154,6 +161,9 @@ func PreWssConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo, 
 	if err != nil {
 		return err
 	}
+	// 记账：这笔增量已从资金来源直扣。最终 PostWssConsumeQuota 对累计
+	// 用量结算时必须扣除这部分，否则同一 token 量被扣两次。
+	relayInfo.RealtimeChargedQuota += quota
 	logger.LogInfo(ctx.Context(), "realtime streaming consume quota success, quota: "+fmt.Sprintf("%d", quota))
 	return nil
 }
@@ -232,7 +242,9 @@ func PostWssConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo,
 		channel.UpdateChannelUsedQuota(relayInfo.ChannelId, quota)
 	}
 
-	if err := SettleBilling(ctx, relayInfo, quota); err != nil {
+	// 累计用量中，response.done 逐次增量已由 PreWssConsumeQuota 直扣；
+	// 结算只补差额。负值表示分层定价等事后更便宜，退回多扣部分。
+	if err := SettleBilling(ctx, relayInfo, quota-relayInfo.RealtimeChargedQuota); err != nil {
 		logger.LogError(ctx.Context(), "error settling billing: "+err.Error())
 	}
 
