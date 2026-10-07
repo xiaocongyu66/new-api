@@ -485,6 +485,36 @@ func getUserGroupByIdTx(tx *gorm.DB, userId int) (string, error) {
 	return group, nil
 }
 
+// resolveSubscriptionGroupBaselineTx unwinds the user group the subscription
+// system granted: from `group` it follows the earliest recorded purchase that
+// moved the user into the group, repeating until no subscription claims to have
+// granted it. Overlapping purchases snapshot prev_user_group only on the row
+// that actually elevated the user (duplicate buys store the empty string), so
+// snapshot cannot be trusted after several overlapping grants. A group no
+// subscription grants is the user's own baseline — typically an admin
+// assignment — and is returned unchanged.
+func resolveSubscriptionGroupBaselineTx(tx *gorm.DB, userId int, group string) (string, error) {
+	visited := make(map[string]struct{}, 8)
+	for group != "" {
+		if _, seen := visited[group]; seen {
+			return group, nil
+		}
+		visited[group] = struct{}{}
+		var grant UserSubscription
+		res := tx.Where("user_id = ? AND upgrade_group = ? AND prev_user_group <> ''", userId, group).
+			Order("id asc").Limit(1).Find(&grant)
+		if res.Error != nil {
+			return "", res.Error
+		}
+		prev := strings.TrimSpace(grant.PrevUserGroup)
+		if res.RowsAffected == 0 || prev == "" || prev == group {
+			return group, nil
+		}
+		group = prev
+	}
+	return group, nil
+}
+
 func downgradeUserGroupForSubscriptionTx(tx *gorm.DB, sub *UserSubscription, now int64) (string, error) {
 	if tx == nil || sub == nil {
 		return "", errors.New("invalid downgrade args")
@@ -509,15 +539,17 @@ func downgradeUserGroupForSubscriptionTx(tx *gorm.DB, sub *UserSubscription, now
 	if activeQuery.Error == nil && activeQuery.RowsAffected > 0 {
 		return "", nil
 	}
-	// Determine the downgrade target: an explicit downgrade group takes precedence,
-	// otherwise revert to the group held before purchase (legacy behavior).
+	// Determine the downgrade target: an explicit downgrade group takes
+	// precedence; otherwise unwind the group the subscription system granted.
+	// The per-row prev snapshot misses earlier overlapping grants (duplicates
+	// store ''), so walk the grant history instead of trusting this row only.
 	target := downgradeGroup
 	if target == "" {
-		// Legacy behavior: only revert when the subscription actually elevated the user.
-		if currentGroup != upgradeGroup {
-			return "", nil
+		baseline, err := resolveSubscriptionGroupBaselineTx(tx, sub.UserId, currentGroup)
+		if err != nil {
+			return "", err
 		}
-		target = strings.TrimSpace(sub.PrevUserGroup)
+		target = baseline
 	}
 	if target == "" || target == currentGroup {
 		return "", nil
@@ -1008,20 +1040,18 @@ func ExpireDueSubscriptions(limit int) (int, error) {
 			if err != nil {
 				return err
 			}
-			// An explicit downgrade group takes precedence; otherwise revert to the
-			// group held before purchase (legacy behavior, only when the subscription
-			// actually elevated the user).
+			// An explicit downgrade group takes precedence; otherwise unwind the
+			// group the subscription system granted. Overlapping purchases only
+			// snapshot prev_user_group on the elevating row, so walk the whole
+			// grant history from the user's current group instead of reading the
+			// latest expired row's snapshot. A group no subscription grants is a
+			// manual admin assignment and stays untouched.
 			target := strings.TrimSpace(lastExpired.DowngradeGroup)
 			if target == "" {
-				upgradeGroup := strings.TrimSpace(lastExpired.UpgradeGroup)
-				prevGroup := strings.TrimSpace(lastExpired.PrevUserGroup)
-				if upgradeGroup == "" || prevGroup == "" {
-					return nil
+				target, err = resolveSubscriptionGroupBaselineTx(tx, userId, currentGroup)
+				if err != nil {
+					return err
 				}
-				if currentGroup != upgradeGroup {
-					return nil
-				}
-				target = prevGroup
 			}
 			if target == "" || target == currentGroup {
 				return nil
