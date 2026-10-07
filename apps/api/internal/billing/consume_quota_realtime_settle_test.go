@@ -1,6 +1,7 @@
 package billing
 
 import (
+	"runtime/debug"
 	"testing"
 
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
@@ -99,6 +100,7 @@ func scanUserQuota(t *testing.T) int {
 // subtracted from the cumulative-usage settlement, so a session pays its total
 // usage exactly once instead of batches + full cumulative (~2x).
 func TestRealtimeBatchesSettleOnceAgainstCumulativeUsage(t *testing.T) {
+	defer captureInlineFrames(t)
 	setupIdentityTestDB(t)
 	const model = "realtime-test-model"
 	setupRealtimeRatioSettings(t, model)
@@ -124,6 +126,15 @@ func TestRealtimeBatchesSettleOnceAgainstCumulativeUsage(t *testing.T) {
 	require.Equal(t, []int{0}, settler.settledTo)
 	require.Equal(t, walletAfterBatches, scanUserQuota(t),
 		"settlement must not re-charge batch quota to the wallet")
+}
+
+// captureInlineFrames expands inlined frames so a panic inside the settle
+// plumbing names the real function instead of collapsing into the caller.
+func captureInlineFrames(t *testing.T) {
+	t.Helper()
+	if r := recover(); r != nil {
+		t.Fatalf("panic: %v\n%s", r, debug.Stack())
+	}
 }
 
 // TestRealtimeTieredCheaperCumulativeRefundsBatchOvercharge pins the negative
