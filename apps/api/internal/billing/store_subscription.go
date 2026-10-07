@@ -1275,6 +1275,41 @@ func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error
 		return tx.Save(&sub).Error
 	})
 }
+
+// PostConsumeUserSubscriptionDeltaCapped 消费订阅剩余额度,返回装不下的
+// 溢出部分(delta<=0 或未超限时为 0)。与严格版不同:交付完成后的结算
+// 必须入账订阅还能覆盖的部分,由调用方处置余额,而不是整笔补扣作废。
+func PostConsumeUserSubscriptionDeltaCapped(userSubscriptionId int, delta int64) (int64, error) {
+	if userSubscriptionId <= 0 {
+		return 0, errors.New("invalid userSubscriptionId")
+	}
+	if delta <= 0 {
+		return 0, errors.New("delta must be positive")
+	}
+	var overflow int64
+	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
+		var sub UserSubscription
+		if err := dbx.LockForUpdate(tx).
+			Where("id = ?", userSubscriptionId).
+			First(&sub).Error; err != nil {
+			return err
+		}
+		newUsed := sub.AmountUsed + delta
+		if sub.AmountTotal > 0 && newUsed > sub.AmountTotal {
+			overflow = newUsed - sub.AmountTotal
+			newUsed = sub.AmountTotal
+		}
+		sub.AmountUsed = newUsed
+		if err := tx.Save(&sub).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return overflow, nil
+}
 func GetSubscriptionPlanInfoByUserSubscriptionId(userSubscriptionId int) (*SubscriptionPlanInfo, error) {
 	if userSubscriptionId <= 0 {
 		return nil, errors.New("invalid userSubscriptionId")

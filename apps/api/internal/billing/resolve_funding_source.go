@@ -2,7 +2,10 @@ package billing
 
 import (
 	"errors"
+	"fmt"
+
 	"github.com/QuantumNous/new-api/internal/billing/settlecore"
+	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/identity"
 	"time"
 )
@@ -115,7 +118,25 @@ func (s *SubscriptionFunding) Settle(delta int) error {
 	if delta == 0 {
 		return nil
 	}
-	return PostConsumeUserSubscriptionDelta(s.subscriptionId, int64(delta))
+	if delta < 0 {
+		return PostConsumeUserSubscriptionDelta(s.subscriptionId, int64(delta))
+	}
+	// 交付完成后的结算补扣:订阅先吃满剩余额度,装不下的溢出部分记入
+	// 钱包欠费(余额可为负),与 WalletFunding.Settle 的欠费语义一致。
+	// 严格版整笔拒绝只属于交付前的预扣/追加预扣,否则实际用量会被
+	// 静默免单。
+	overflow, err := PostConsumeUserSubscriptionDeltaCapped(s.subscriptionId, int64(delta))
+	if err != nil {
+		return err
+	}
+	if overflow > 0 {
+		common.SysError(fmt.Sprintf(
+			"subscription settle overage charged to wallet: userId=%d subscriptionId=%d overflow=%d",
+			s.userId, s.subscriptionId, overflow,
+		))
+		return identity.DecreaseUserQuota(s.userId, int(overflow), false)
+	}
+	return nil
 }
 
 func (s *SubscriptionFunding) Refund() error {
