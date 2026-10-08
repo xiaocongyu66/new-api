@@ -140,7 +140,7 @@ function ChannelsContent() {
 
             <div
               ref={setFooterContainer}
-              className='bg-background shrink-0 border-t px-3 py-2.5 empty:hidden sm:px-4 sm:py-3'
+              className='bg-header-surface shrink-0 border-t px-3 py-2.5 empty:hidden sm:px-4 sm:py-3'
               hidden={pageTab !== 'channels'}
             />
           </Tabs>

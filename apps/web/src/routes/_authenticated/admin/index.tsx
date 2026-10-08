@@ -53,7 +53,7 @@ function AdminEntry() {
             to={item.to as never}
             params={item.params as never}
             search={item.search as never}
-            className='bg-card hover:bg-accent rounded-lg border p-4 transition-colors'
+            className='bg-card-surface backdrop-blur-card hover:bg-accent rounded-lg border p-4 transition-colors'
           >
             <span className='font-medium'>{t(item.labelKey)}</span>
           </Link>

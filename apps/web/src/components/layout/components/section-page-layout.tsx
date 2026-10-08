@@ -104,7 +104,7 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
         <div
           data-slot='section-page-header'
           className={cn(
-            'bg-background/72 shrink-0 border-b border-border/50 px-3 pt-3 pb-2.5 backdrop-blur-md transition-[max-height,opacity,transform,padding] duration-200 sm:px-4 sm:pt-5 sm:pb-3',
+            'bg-header-surface shrink-0 border-b border-border/50 px-3 pt-3 pb-2.5 backdrop-blur-md transition-[max-height,opacity,transform,padding] duration-200 sm:px-4 sm:pt-5 sm:pb-3',
             props.collapsibleHeader && headerHidden
               ? 'pointer-events-none max-h-0 -translate-y-2 overflow-hidden border-b-0 py-0 opacity-0'
               : 'max-h-32 opacity-100'
@@ -141,7 +141,7 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
         <div
           ref={setFooterContainer}
           data-slot='section-page-footer'
-          className='bg-background shrink-0 border-t px-3 py-2.5 empty:hidden sm:px-4 sm:py-3'
+          className='bg-header-surface shrink-0 border-t px-3 py-2.5 empty:hidden sm:px-4 sm:py-3'
         />
       </Main>
     </PageFooterProvider>

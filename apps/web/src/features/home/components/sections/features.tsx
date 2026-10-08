@@ -50,7 +50,7 @@ export function Features(_props: FeaturesProps) {
             return (
               <div
                 key={item.key}
-                className='group border-border/60 bg-background/60 hover:border-primary/40 flex flex-col gap-3 rounded-xl border p-5 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md'
+                className='group border-border/60 bg-card-surface backdrop-blur-card hover:border-primary/40 flex flex-col gap-3 rounded-xl border p-5 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md'
               >
                 <div
                   className={`inline-flex size-10 items-center justify-center rounded-lg border ${item.tone}`}
