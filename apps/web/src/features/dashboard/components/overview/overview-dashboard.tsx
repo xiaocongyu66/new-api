@@ -322,7 +322,7 @@ function RequestPreview(props: {
       initial={shouldReduceMotion ? false : { opacity: 0, y: 10, scale: 0.98 }}
       animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
       transition={MOTION_TRANSITION.slow}
-      className='bg-background/75 backdrop-blur-card relative overflow-hidden rounded-2xl border p-3 shadow-sm'
+      className='bg-card-surface backdrop-blur-card relative overflow-hidden rounded-2xl border p-3 shadow-sm'
     >
       {!shouldReduceMotion && (
         <motion.div
@@ -657,7 +657,7 @@ export function OverviewDashboard() {
                     </div>
                   </div>
 
-                  <ol className='bg-background/45 backdrop-blur-card rounded-2xl border p-2'>
+                  <ol className='bg-card-surface backdrop-blur-card rounded-2xl border p-2'>
                     {startSteps.map((step, index) => (
                       <StartStepItem
                         key={step.title}

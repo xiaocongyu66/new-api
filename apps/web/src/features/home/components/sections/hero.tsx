@@ -141,7 +141,7 @@ export function Hero(props: HeroProps) {
           className='landing-animate-fade-up flex w-full justify-center opacity-0 lg:col-span-6'
           style={{ animationDelay: '320ms' }}
         >
-          <div className='border-border/60 bg-card/70 backdrop-blur-card w-full max-w-[420px] rounded-2xl border p-4 shadow-lg'>
+          <div className='border-border/60 bg-card-surface backdrop-blur-card w-full max-w-[420px] rounded-2xl border p-4 shadow-lg'>
             <div className='text-muted-foreground mb-3 flex items-center justify-between text-xs'>
               <span>{displayName} / API 概览</span>
               <span className='text-success'>● 运行正常</span>

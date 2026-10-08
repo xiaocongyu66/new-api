@@ -373,7 +373,7 @@ function NodeMetric(props: {
   detail: string;
 }) {
   return (
-    <Card className="relative overflow-hidden bg-card/60">
+    <Card className="relative overflow-hidden">
       <CardHeader className="flex flex-row items-center justify-between pb-1.5 pt-3.5 px-4 space-y-0">
         <CardTitle className="text-xs font-medium text-muted-foreground">
           {props.label}

@@ -192,7 +192,7 @@ function CatalogTextValue(props: { children: React.ReactNode }) {
 
 function CatalogInfoCell(props: { label: string; children: React.ReactNode }) {
   return (
-    <div className='bg-card flex min-w-0 flex-col gap-1 px-3 py-2.5'>
+    <div className='bg-card-surface flex min-w-0 flex-col gap-1 px-3 py-2.5'>
       <span className='text-muted-foreground text-[10px] font-medium tracking-wider uppercase'>
         {props.label}
       </span>
