@@ -73,11 +73,13 @@ function SheetContent({
   side = 'right',
   showCloseButton = true,
   inline = false,
+  overlayProps,
   ...props
 }: SheetPrimitive.Popup.Props & {
   side?: 'top' | 'right' | 'bottom' | 'left'
   showCloseButton?: boolean
   inline?: boolean
+  overlayProps?: SheetPrimitive.Backdrop.Props
 }) {
   // Side-specific classes are emitted via JS conditionals (rather than
   // `data-[side=*]:` variants) so consumer-provided width overrides such as
@@ -88,7 +90,10 @@ function SheetContent({
     return (
       <div
         data-slot='sheet-content'
-        className={cn('flex min-h-0 flex-1 flex-col overflow-hidden', className)}
+        className={cn(
+          'flex min-h-0 flex-1 flex-col overflow-hidden',
+          className
+        )}
       >
         {children}
       </div>
@@ -97,7 +102,7 @@ function SheetContent({
 
   return (
     <SheetPortal>
-      <SheetOverlay />
+      <SheetOverlay {...overlayProps} />
       <SheetPrimitive.Popup
         data-slot='sheet-content'
         data-side={side}

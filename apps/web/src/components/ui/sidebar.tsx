@@ -27,6 +27,7 @@ import * as React from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { RippleContainer } from '@/components/ui/ripple'
 import { Separator } from '@/components/ui/separator'
 import {
   Sheet,
@@ -35,7 +36,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { RippleContainer } from '@/components/ui/ripple'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Tooltip,
@@ -207,16 +207,37 @@ function Sidebar({
 
   if (isMobile) {
     return (
-      <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
+      <Sheet
+        open={openMobile}
+        onOpenChange={setOpenMobile}
+        // Non-modal so the top bar and the bottom navigation bar stay
+        // fully interactive while the drawer is open. Pointer dismissal
+        // is disabled so an outside press (e.g. the header toggle button)
+        // does not close and immediately re-open the drawer; the overlay
+        // closes it explicitly instead.
+        modal={false}
+        disablePointerDismissal
+        {...props}
+      >
         <SheetContent
           dir={dir}
           data-sidebar='sidebar'
           data-slot='sidebar'
           data-mobile='true'
-          className='bg-sidebar text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden'
+          className='bg-sidebar text-sidebar-foreground w-(--sidebar-width) rounded-2xl p-0 shadow-xl [&>button]:hidden'
+          overlayProps={{
+            className:
+              'left-0 right-0 top-[var(--app-header-height,0px)] bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px))] h-auto pointer-events-auto',
+            onClick: () => setOpenMobile(false),
+          }}
           style={
             {
               '--sidebar-width': SIDEBAR_WIDTH_MOBILE,
+              // The mobile sheet lives between the fixed top bar and the
+              // bottom navigation bar instead of covering either.
+              top: 'var(--app-header-height, 0px)',
+              bottom: 'calc(3.5rem + env(safe-area-inset-bottom, 0px))',
+              height: 'auto',
             } as React.CSSProperties
           }
           side={side}
@@ -268,7 +289,7 @@ function Sidebar({
         <div
           data-sidebar='sidebar'
           data-slot='sidebar-inner'
-          className='bg-sidebar text-sidebar-foreground group-data-[variant=floating]:ring-sidebar-border flex size-full flex-col group-data-[variant=inset]:rounded-xl group-data-[variant=floating]:rounded-xl group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1'
+          className='bg-sidebar text-sidebar-foreground group-data-[variant=floating]:ring-sidebar-border flex size-full flex-col group-data-[variant=floating]:rounded-xl group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=inset]:rounded-xl'
         >
           {children}
         </div>
@@ -501,7 +522,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<'li'>) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  'peer/menu-button group/menu-button relative flex w-full items-center gap-2 overflow-hidden rounded-full p-2 text-left text-sm ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-muted hover:text-sidebar-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-open:hover:bg-muted data-open:hover:text-sidebar-foreground data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-accent-foreground data-active:hover:bg-sidebar-accent data-active:hover:text-sidebar-accent-foreground [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate',
+  'peer/menu-button group/menu-button relative flex w-full items-center gap-2 overflow-hidden rounded-full p-2 text-left text-sm ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:p-2! hover:bg-muted hover:text-sidebar-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-open:hover:bg-muted data-open:hover:text-sidebar-foreground data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-accent-foreground data-active:hover:bg-sidebar-accent data-active:hover:text-sidebar-accent-foreground [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate',
   {
     variants: {
       variant: {

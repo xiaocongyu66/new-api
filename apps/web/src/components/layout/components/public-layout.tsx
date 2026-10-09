@@ -16,7 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { SidebarProvider } from '@/components/ui/sidebar'
+import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth-store'
+
 import type { TopNavLink } from '../types'
+import { MobileBottomNav } from './mobile-bottom-nav'
 import { PublicHeader, type PublicHeaderProps } from './public-header'
 
 type PublicLayoutProps = {
@@ -34,8 +39,17 @@ type PublicLayoutProps = {
 }
 
 export function PublicLayout(props: PublicLayoutProps) {
+  const isAuthenticated = useAuthStore((s) => !!s.auth.user)
   return (
-    <div data-slot='public-layout' className='bg-background text-foreground relative z-10 min-h-svh overflow-x-clip'>
+    <div
+      data-slot='public-layout'
+      className={cn(
+        'bg-background text-foreground relative z-10 min-h-svh overflow-x-clip',
+        // Clear the fixed mobile bottom bar (3.5rem) when it is mounted.
+        isAuthenticated &&
+          'pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:pb-0'
+      )}
+    >
       <PublicHeader
         navContent={props.navContent}
         navLinks={props.navLinks}
@@ -55,6 +69,16 @@ export function PublicLayout(props: PublicLayoutProps) {
       ) : (
         props.children
       )}
+
+      {/* Keep the app's bottom navigation reachable on public pages
+          (model square, rankings, ...) for signed-in users. The bar and
+          its drawer portal to the body, so only the sidebar context has
+          to be provided here; there is no DOM footprint. */}
+      {isAuthenticated ? (
+        <SidebarProvider className='contents'>
+          <MobileBottomNav />
+        </SidebarProvider>
+      ) : null}
     </div>
   )
 }

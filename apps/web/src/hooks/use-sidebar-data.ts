@@ -121,7 +121,7 @@ export function useSidebarData(): SidebarData {
     ? [
         {
           id: 'system-settings',
-          title: t('admin.systemSettings'),
+          title: t('System'),
           icon: Settings,
           items: settingsSections.filter((section) => !isRailSection(section)),
         },
@@ -137,7 +137,13 @@ export function useSidebarData(): SidebarData {
         items: [
           {
             title: t('Chat'),
-            items: [{ title: t('Playground'), url: '/playground', icon: FlaskConical }],
+            items: [
+              {
+                title: t('Playground'),
+                url: '/playground',
+                icon: FlaskConical,
+              },
+            ],
           },
           {
             title: t('Chat'),
@@ -158,7 +164,11 @@ export function useSidebarData(): SidebarData {
                 icon: LayoutDashboard,
               },
               { title: t('API Keys'), url: '/keys', icon: Key },
-              { title: t('Usage Logs'), url: '/usage-logs/common', icon: FileText },
+              {
+                title: t('Usage Logs'),
+                url: '/usage-logs/common',
+                icon: FileText,
+              },
               {
                 title: t('Task Logs'),
                 url: '/usage-logs/task',
@@ -193,7 +203,7 @@ export function useSidebarData(): SidebarData {
       },
       {
         id: 'admin',
-        title: t('Admin'),
+        title: t('Manage'),
         icon: Shield,
         items: adminItems,
       },
