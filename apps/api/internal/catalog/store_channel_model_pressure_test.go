@@ -1,27 +1,14 @@
 package channel
 
 import (
-	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// resetPressure clears the pressure map so cases do not see counters left
-// behind by earlier tests or by the package-level init.
-func resetPressure() {
-	pressureLock.Lock()
-	pressureIDM = map[string]*modelPressure{}
-	pressureLock.Unlock()
-}
-
-// setPressure installs a known total/healthy pair for a model.
-func setPressure(model string, total, healthy int) {
-	pressureLock.Lock()
-	pressureIDM[model] = &modelPressure{total: total, healthy: healthy}
-	pressureLock.Unlock()
-}
+// resetPressure and setPressure live in health_unit_fixture_test.go (the shared
+// fixture file); the pressure cases here just call them.
 
 func TestModelPressureLevel_ThreeTierBoundaries(t *testing.T) {
 	resetPressure()
@@ -57,46 +44,40 @@ func TestModelPressureLevel_TotalZeroFallsToNormal(t *testing.T) {
 	assert.Equal(t, PressureNormal, modelPressureLevel("nonexistent"))
 }
 
-func TestDecayStep_SwitchesWithPressure(t *testing.T) {
-	resetPressure()
-	// Normal pressure → NormalDecayStep (default 1).
-	setPressure("ok", 10, 10)
-	assert.Equal(t, 1, decayStep("ok"))
-
-	// Warning pressure → AcceleratedDecayStep (default 2).
-	setPressure("warn", 10, 4) // 40% < 50%
-	assert.Equal(t, 2, decayStep("warn"))
-
-	// Emergency pressure → NormalDecayStep (not warning, so default 1).
-	setPressure("emerg", 10, 1) // 10% < 20%
-	assert.Equal(t, 1, decayStep("emerg"))
-}
-
-func TestPressureOnStateChange_CrossingBoundary(t *testing.T) {
+// TestPressureOnUnitTransition_Boundary pins the healthy-counter movement: only
+// the healthy ↔ unhealthy boundary crossings move it. Same-side transitions
+// (rung climbs inside an active cooldown, idle anneal) leave it untouched.
+func TestPressureOnUnitTransition_Boundary(t *testing.T) {
 	resetPressure()
 	setPressure("m", 10, 10)
 	key := RouteKey{ChannelId: 1, KeyIndex: 0, Model: "m"}
 
-	// healthy → calm: healthy decrements.
-	pressureOnStateChange(key, HealthHealthy, HealthCalm)
+	// healthy -> unhealthy: healthy decrements.
+	pressureOnUnitTransition(key, false, true)
 	assert.Equal(t, 9, pressureIDM["m"].healthy)
 
-	// calm → dormant: same non-healthy side, no change.
-	pressureOnStateChange(key, HealthCalm, HealthDormant)
+	// unhealthy -> unhealthy (ladder climb / still cooling): no change.
+	pressureOnUnitTransition(key, true, true)
 	assert.Equal(t, 9, pressureIDM["m"].healthy)
 
-	// dormant → healthy: healthy increments.
-	pressureOnStateChange(key, HealthDormant, HealthHealthy)
+	// unhealthy -> healthy: healthy increments.
+	pressureOnUnitTransition(key, true, false)
+	assert.Equal(t, 10, pressureIDM["m"].healthy)
+
+	// healthy -> healthy: no change.
+	pressureOnUnitTransition(key, false, false)
 	assert.Equal(t, 10, pressureIDM["m"].healthy)
 }
 
-func TestPressureOnStateChange_FloorAtZero(t *testing.T) {
+// TestPressureOnUnitTransition_FloorAtZero pins the floor: a healthy counter
+// that is already zero must not go negative.
+func TestPressureOnUnitTransition_FloorAtZero(t *testing.T) {
 	resetPressure()
 	setPressure("floor", 5, 0)
 	key := RouteKey{ChannelId: 1, KeyIndex: 0, Model: "floor"}
 
-	// healthy(0) → calm should not go negative.
-	pressureOnStateChange(key, HealthHealthy, HealthCalm)
+	// healthy(0) -> unhealthy must not underflow.
+	pressureOnUnitTransition(key, false, true)
 	pressureLock.RLock()
 	p := pressureIDM["floor"]
 	pressureLock.RUnlock()
@@ -129,76 +110,40 @@ func TestPressureOnRemove_FlooredAtZero(t *testing.T) {
 	assert.Equal(t, 0, p.healthy)
 }
 
-func TestDefaultChannelModelHealthSetting_NewFields(t *testing.T) {
-	s := DefaultChannelModelHealthSetting()
+// TestDefaultUnitHealthSetting_PressureDefaults pins the two pool-pressure
+// thresholds on the unit config (the only pressure knobs that survive the
+// rework).
+func TestDefaultUnitHealthSetting_PressureDefaults(t *testing.T) {
+	s := DefaultUnitHealthSetting()
 	require.NotNil(t, s)
 	assert.Equal(t, 20, s.EmergencyThreshold)
 	assert.Equal(t, 50, s.WarningThreshold)
-	assert.Equal(t, 2, s.AcceleratedDecayStep)
-	assert.Equal(t, 1, s.NormalDecayStep)
-	assert.True(t, s.KeyProbeEnabled)
-	assert.Equal(t, 3, s.DormantDisableThreshold) // changed from 0
 }
 
-func TestValidateChannelModelHealthSettingValue_NewKeys(t *testing.T) {
-	// EmergencyThreshold / WarningThreshold: 0–100.
+// TestValidateGatewayDispatchOption_Thresholds covers the operator-facing
+// validation of the two pressure keys: 0–100 inclusive, integers only.
+func TestValidateGatewayDispatchOption_Thresholds(t *testing.T) {
 	for _, key := range []string{"EmergencyThreshold", "WarningThreshold"} {
-		assert.NoError(t, ValidateChannelModelHealthSettingValue(key, "0"))
-		assert.NoError(t, ValidateChannelModelHealthSettingValue(key, "50"))
-		assert.NoError(t, ValidateChannelModelHealthSettingValue(key, "100"))
-		assert.Error(t, ValidateChannelModelHealthSettingValue(key, "101"))
-		assert.Error(t, ValidateChannelModelHealthSettingValue(key, "-1"))
-		assert.Error(t, ValidateChannelModelHealthSettingValue(key, "abc"))
+		assert.NoError(t, ValidateGatewayDispatchOption(key, "0"))
+		assert.NoError(t, ValidateGatewayDispatchOption(key, "50"))
+		assert.NoError(t, ValidateGatewayDispatchOption(key, "100"))
+		assert.Error(t, ValidateGatewayDispatchOption(key, "101"))
+		assert.Error(t, ValidateGatewayDispatchOption(key, "-1"))
+		assert.Error(t, ValidateGatewayDispatchOption(key, "abc"))
 	}
-
-	// AcceleratedDecayStep / NormalDecayStep: >= 1.
-	for _, key := range []string{"AcceleratedDecayStep", "NormalDecayStep"} {
-		assert.NoError(t, ValidateChannelModelHealthSettingValue(key, "1"))
-		assert.NoError(t, ValidateChannelModelHealthSettingValue(key, "5"))
-		assert.Error(t, ValidateChannelModelHealthSettingValue(key, "0"))
-		assert.Error(t, ValidateChannelModelHealthSettingValue(key, "-1"))
-		assert.Error(t, ValidateChannelModelHealthSettingValue(key, "1.5"))
-	}
-
-	// KeyProbeEnabled: only "true"/"false".
-	assert.NoError(t, ValidateChannelModelHealthSettingValue("KeyProbeEnabled", "true"))
-	assert.NoError(t, ValidateChannelModelHealthSettingValue("KeyProbeEnabled", "false"))
-	assert.Error(t, ValidateChannelModelHealthSettingValue("KeyProbeEnabled", "1"))
-	assert.Error(t, ValidateChannelModelHealthSettingValue("KeyProbeEnabled", "0"))
-	assert.Error(t, ValidateChannelModelHealthSettingValue("KeyProbeEnabled", "yes"))
 }
 
-func TestUpdateChannelModelHealthSettingValue_KeyProbeEnabled(t *testing.T) {
-	orig := GetChannelModelHealthSetting()
-	t.Cleanup(func() { RestoreChannelModelHealthSetting(orig) })
+// TestUpdateGatewayDispatchOption_Thresholds drives the hot-swap apply path: a
+// threshold change replaces the live config without touching unrelated knobs.
+func TestUpdateGatewayDispatchOption_Thresholds(t *testing.T) {
+	orig := *GetUnitHealthSetting()
+	t.Cleanup(func() { RestoreUnitHealthSetting(&orig) })
 
-	require.NoError(t, UpdateChannelModelHealthSettingValue("KeyProbeEnabled", "false"))
-	assert.False(t, GetChannelModelHealthSetting().KeyProbeEnabled)
-
-	require.NoError(t, UpdateChannelModelHealthSettingValue("KeyProbeEnabled", "true"))
-	assert.True(t, GetChannelModelHealthSetting().KeyProbeEnabled)
-
-	// Other fields unchanged.
-	updated := GetChannelModelHealthSetting()
-	assert.Equal(t, orig.EmergencyThreshold, updated.EmergencyThreshold)
-}
-
-func TestUpdateChannelModelHealthSettingValue_IntegerKeys(t *testing.T) {
-	orig := GetChannelModelHealthSetting()
-	t.Cleanup(func() { RestoreChannelModelHealthSetting(orig) })
-
-	intKeys := map[string]int{
-		"EmergencyThreshold":   15,
-		"WarningThreshold":     45,
-		"AcceleratedDecayStep": 3,
-		"NormalDecayStep":      2,
-	}
-	for key, val := range intKeys {
-		require.NoError(t, UpdateChannelModelHealthSettingValue(key, strconv.Itoa(val)))
-	}
-	updated := GetChannelModelHealthSetting()
+	require.NoError(t, UpdateGatewayDispatchOption("EmergencyThreshold", "15"))
+	require.NoError(t, UpdateGatewayDispatchOption("WarningThreshold", "45"))
+	updated := GetUnitHealthSetting()
 	assert.Equal(t, 15, updated.EmergencyThreshold)
 	assert.Equal(t, 45, updated.WarningThreshold)
-	assert.Equal(t, 3, updated.AcceleratedDecayStep)
-	assert.Equal(t, 2, updated.NormalDecayStep)
+	// An unrelated knob must be untouched.
+	assert.Equal(t, orig.CooldownBaseMs, updated.CooldownBaseMs)
 }

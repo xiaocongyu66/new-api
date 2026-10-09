@@ -251,13 +251,13 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
     return undefined
   }
 
-  // The health multiplier comes from the isolation state machine: 1.0 healthy,
-  // derated while calm or dormant, 0 once disabled. Naming the state is what makes
-  // a low final score explainable.
+  // The health multiplier comes from the unit health state machine: 1.0 for a
+  // settled route, the EWMA score times its slow-start ramp while recovering,
+  // and 0 while cooling or terminally disabled. Naming the state is what
+  // makes a low final score explainable.
   const healthLabel = (multiplier: number) => {
     if (multiplier <= 0) return t('Isolated')
-    if (multiplier < 0.5) return t('Dormant')
-    if (multiplier < 1) return t('Calm')
+    if (multiplier < 1) return t('Degraded')
     return t('Healthy')
   }
 

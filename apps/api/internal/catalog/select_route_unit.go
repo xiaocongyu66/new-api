@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 	"math/rand/v2"
+	"time"
 
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/catalog/routestats"
@@ -150,6 +151,9 @@ func allowedChannelsForGroupAlias(group, alias string) map[int]struct{} {
 
 // filterCandidatesByChannelStatusAndKey filters candidates by channel status (enabled),
 // key availability (multi-key status), and Advanced Custom path filtering.
+// Health selectability is NOT applied here: the P2C selector owns the eligible
+// set — cooling / terminal-disabled units drop out of the duel, and a fully
+// down pool takes the faint-recall path (selector_p2c.go).
 // Modifies the slice in place and returns the filtered result.
 func filterCandidatesByChannelStatusAndKey(candidates []routeCandidate, requestPath, alias string, excludeRoutes map[RouteKey]bool) []routeCandidate {
 	if len(candidates) == 0 {
@@ -176,10 +180,6 @@ func filterCandidatesByChannelStatusAndKey(candidates []routeCandidate, requestP
 			if excludeRoutes[RouteKey{ChannelId: c.channelId, KeyIndex: c.keyIndex, Model: alias}] {
 				continue
 			}
-		}
-		// Hard-signal exclusion: skip disabled routes
-		if !IsRouteSelectable(RouteKey{ChannelId: c.channelId, KeyIndex: c.keyIndex, Model: alias}) {
-			continue
 		}
 		// Advanced Custom path filtering
 		if requestPath != "" && channel.Type == constant.ChannelTypeAdvancedCustom {
@@ -213,9 +213,11 @@ func isKeyEnabled(channel *Channel, keyIndex int) bool {
 	return true // default to enabled if not specified
 }
 
-// RouteScore is the full breakdown of one candidate's final scheduling score, so
-// an admin query can be recomputed by hand: final == base * correction, where
-// base == routingBaseWeight(static) * quality * health.
+// RouteScore is the full breakdown of one candidate's scheduling score, so an
+// admin query can be recomputed by hand: final == base * correction, where
+// base == routingBaseWeight(static) * quality * health. The P2C selection
+// path no longer consumes this: the struct and scoreCandidates back the
+// admin route-unit views only.
 type RouteScore struct {
 	StaticWeight int
 	BaseWeight   float64
@@ -237,8 +239,8 @@ type RouteScore struct {
 //	base_weight  routingBaseWeight(static_weight), so weight 0 stays selectable
 //	quality      EWMA synthesis, clamped to [QualityFloor, QualityCeil]; neutral
 //	             1.0 until MinSamples observations exist
-//	health       #368 state multiplier: 1.0 healthy, calm/dormant derated,
-//	             0.0 disabled — the only term allowed to reach zero
+//	health       unit score: EWMA x slow-start factor, 0 while the unit is
+//	             cooling or terminal-disabled — the only term that reaches zero
 //	correction   share-deficit multiplier, 1.0 at convergence
 //
 // The division of labour matters: quality expresses a continuous preference and
@@ -246,9 +248,10 @@ type RouteScore struct {
 // leaves the pool. Only the state machine ejects, and it does so by returning a
 // zero health multiplier.
 //
-// The returned targets map is the base-score share of each candidate, which is
-// both the input the correction compares against and the snapshot recorded into
-// the window once a winner is chosen.
+// The returned targets map is the base-score share of each candidate. The P2C
+// selection path does not consume these values: the map and the correction
+// term back the admin route-unit views, where the share window is fed by
+// direct RecordSelection calls, not by selections.
 func scoreCandidates(pool routestats.PoolKey, candidates []routeCandidate, alias string) (map[routestats.RouteID]RouteScore, map[routestats.RouteID]float64) {
 	cfg := routestats.GetRouteStatsSetting()
 	scores := make(map[routestats.RouteID]RouteScore, len(candidates))
@@ -257,7 +260,7 @@ func scoreCandidates(pool routestats.PoolKey, candidates []routeCandidate, alias
 	var baseTotal float64
 	for _, c := range candidates {
 		id := routestats.RouteID{ChannelID: c.channelId, KeyIndex: c.keyIndex, UpstreamModel: c.upstreamModel}
-		health := RouteWeightMultiplier(RouteKey{ChannelId: c.channelId, KeyIndex: c.keyIndex, Model: alias})
+		health := UnitHealthScore(RouteKey{ChannelId: c.channelId, KeyIndex: c.keyIndex, Model: alias}, ChannelHealthNow())
 		quality := 1.0
 		if cfg != nil && cfg.Enabled {
 			if h := routestats.GetHandle(routestats.RouteKey{PublicModelAlias: pool.PublicModelAlias,
@@ -314,116 +317,9 @@ func scoreCandidates(pool routestats.PoolKey, candidates []routeCandidate, alias
 	return scores, targets
 }
 
-// selectByWeight performs weighted random selection over the final scores and
-// records the winner into the pool's share window.
-// rnd is the random source; if nil, uses global rand.
-func selectByWeight(pool routestats.PoolKey, candidates []routeCandidate, alias string, rnd *rand.Rand) *routeCandidate {
-	if len(candidates) == 0 {
-		return nil
-	}
-	// A single candidate is returned as-is: with nothing to compete against, both
-	// quality and the share correction would only scale a share that is already
-	// 100%. It is still recorded below so the window reflects served traffic.
-	if len(candidates) == 1 {
-		only := candidates[0]
-		id := routestats.RouteID{ChannelID: only.channelId, KeyIndex: only.keyIndex, UpstreamModel: only.upstreamModel}
-		if RouteWeightMultiplier(RouteKey{ChannelId: only.channelId, KeyIndex: only.keyIndex, Model: alias}) <= 0 {
-			return nil
-		}
-		routestats.RecordSelection(pool, id, map[routestats.RouteID]float64{id: 1.0}, routestats.GetRouteStatsSetting())
-		return &candidates[0]
-	}
-
-	scores, targets := scoreCandidates(pool, candidates, alias)
-
-	type weightedCandidate struct {
-		candidate routeCandidate
-		id        routestats.RouteID
-		weight    float64
-	}
-	var weighted []weightedCandidate
-	var totalWeight float64
-	for _, c := range candidates {
-		id := routestats.RouteID{ChannelID: c.channelId, KeyIndex: c.keyIndex, UpstreamModel: c.upstreamModel}
-		w := scores[id].Final
-		if w <= 0 {
-			continue
-		}
-		weighted = append(weighted, weightedCandidate{candidate: c, id: id, weight: w})
-		totalWeight += w
-	}
-
-	if totalWeight <= 0 || len(weighted) == 0 {
-		return nil
-	}
-
-	// Thin pool: power-of-two-choices (Mitzenmacher). Sample two candidates
-	// uniformly with replacement; a healthier isolation state always wins the
-	// pair, which probes a degraded route whenever both draws land on it
-	// (1/n² for one degraded unit) without a uniform draw's concentrated error
-	// exposure. Equal states fall back to the cumulative weighted draw between
-	// the pair, so static weight ratios and the poisoned-route starvation
-	// contract survive, and the share correction stays out of the decision
-	// loop: with few candidates it cannot converge against a draw it never
-	// influences.
-	if len(weighted) < smallPoolUnits {
-		pickIndex := func() int {
-			if rnd != nil {
-				return rnd.IntN(len(weighted))
-			}
-			return rand.IntN(len(weighted))
-		}
-		a := weighted[pickIndex()]
-		b := weighted[pickIndex()]
-		am := RouteWeightMultiplier(RouteKey{ChannelId: a.candidate.channelId, KeyIndex: a.candidate.keyIndex, Model: alias})
-		bm := RouteWeightMultiplier(RouteKey{ChannelId: b.candidate.channelId, KeyIndex: b.candidate.keyIndex, Model: alias})
-		winner := a
-		switch {
-		case bm > am:
-			winner = b
-		case bm < am:
-			winner = a
-		default:
-			// Weighted draw between the pair on the pre-correction base score
-			// (static weight x EWMA quality x health): the EWMA dynamic score
-			// and static weights set the probability, while the share
-			// correction stays out of the decision loop — with few candidates
-			// it cannot converge against a draw it never influences.
-			ab := scores[a.id].BaseWeight * scores[a.id].Quality * scores[a.id].Health
-			bb := scores[b.id].BaseWeight * scores[b.id].Quality * scores[b.id].Health
-			r := rand.Float64()
-			if rnd != nil {
-				r = rnd.Float64()
-			}
-			if r*(ab+bb) >= ab {
-				winner = b
-			}
-		}
-		routestats.RecordSelection(pool, winner.id, targets, routestats.GetRouteStatsSetting())
-		return &winner.candidate
-	}
-
-	r := rand.Float64()
-	if rnd != nil {
-		r = rnd.Float64()
-	}
-	randomWeight := r * totalWeight
-	cfg := routestats.GetRouteStatsSetting()
-	for i, wc := range weighted {
-		randomWeight -= wc.weight
-		if randomWeight < 0 || i == len(weighted)-1 {
-			routestats.RecordSelection(pool, wc.id, targets, cfg)
-			return &weighted[i].candidate
-		}
-	}
-	last := weighted[len(weighted)-1]
-	routestats.RecordSelection(pool, last.id, targets, cfg)
-	return &last.candidate
-}
-
 // SelectRouteUnit is the unified entry point for route unit selection.
 // It simultaneously determines channel, key, and upstream model.
-// rnd is a deterministic random source; nil uses global rand.
+// rnd is a deterministic random source; nil uses the goroutine-safe math/rand/v2 global source.
 func SelectRouteUnit(group string, alias string, requestPath string, retry int, excludeRoutes map[RouteKey]bool, rnd *rand.Rand) (*SelectedRoute, error) {
 	// The retry parameter in the old priority-tier system drove tier descent.
 	// In the new flat route-unit model, there are no priority tiers — all enabled
@@ -464,10 +360,11 @@ func SelectRouteUnit(group string, alias string, requestPath string, retry int, 
 		return nil, nil
 	}
 
-	// The share window is scoped to the competing pool, which is exactly the
-	// (group, alias) pair selection draws from.
-	pool := routestats.PoolKey{PublicModelAlias: alias}
-	selected := selectByWeight(pool, candidates, alias, rnd)
+	// P2C duel (mono selector port): sample by the effective prior (static
+	// weight × slow-start ramp), then decide by the posterior likelihood.
+	// Cooling or terminal-disabled units are not eligible; with the whole
+	// pool down, faintRecall force-recalls the shortest-remaining unit.
+	selected := selectP2C(candidates, alias, ChannelHealthNow(), rnd)
 	if selected == nil {
 		return nil, nil
 	}
@@ -510,6 +407,56 @@ func SelectRouteUnit(group string, alias string, requestPath string, retry int, 
 	}, nil
 }
 
+// MinCooldownRemainingForModel reports the shortest live cooldown window
+// (ms) among the eligible, non-excluded route units of (group, alias) —
+// mono's failover-budget "probe the shortest recovery cooldown": the value
+// decides whether the relay loop may sleep out a full cooling pool and what
+// its 504 Retry-After carries. 0 = nothing cooling (or no units at all,
+// e.g. a misconfigured model): the caller must not wait.
+//
+// The candidate pipeline mirrors SelectRouteUnit exactly — same group
+// scoping, same status/key/exclusion filter, same alias normalization — so
+// the probe measures the very pool selection will next consult.
+func MinCooldownRemainingForModel(group, alias string, exclude map[RouteKey]bool, now time.Time) int64 {
+	var candidates []routeCandidate
+	if common.MemoryCacheEnabled {
+		channelSyncLock.RLock()
+		candidates = getCandidatesFromCache(group, alias)
+		channelSyncLock.RUnlock()
+	} else {
+		candidates = getCandidatesFromDB(group, alias)
+	}
+	if len(candidates) == 0 {
+		normalizedAlias := ratio_setting.FormatMatchingModelName(alias)
+		if normalizedAlias == alias {
+			return 0
+		}
+		if common.MemoryCacheEnabled {
+			channelSyncLock.RLock()
+			candidates = getCandidatesFromCache(group, normalizedAlias)
+			channelSyncLock.RUnlock()
+		} else {
+			candidates = getCandidatesFromDB(group, normalizedAlias)
+		}
+	}
+	if len(candidates) == 0 {
+		return 0
+	}
+	candidates = filterCandidatesByChannelStatusAndKey(candidates, "", alias, exclude)
+
+	minRemaining := int64(0)
+	for i := range candidates {
+		// Health rows are keyed by the requested alias (route.Alias) even
+		// when the candidates came from the normalized index — mirror
+		// SelectRouteUnit's keying, not the lookup key.
+		remaining := CoolingRemainingMs(RouteKey{ChannelId: candidates[i].channelId, KeyIndex: candidates[i].keyIndex, Model: alias}, now)
+		if remaining > 0 && (minRemaining == 0 || remaining < minRemaining) {
+			minRemaining = remaining
+		}
+	}
+	return minRemaining
+}
+
 // GetNextEnabledKeyForIndex returns the key at the specific index if enabled.
 // Added to support route-unit selection where key_index is pre-determined.
 func (channel *Channel) GetNextEnabledKeyForIndex(keyIndex int) (string, int, *types.NewAPIError) {
@@ -540,27 +487,27 @@ func (channel *Channel) GetNextEnabledKeyForIndex(keyIndex int) (string, int, *t
 }
 
 // SelectedRouteFromChannel constructs a SelectedRoute from a specific channel
-// for paths that serve real traffic without a weighted-random draw: channel
-// affinity, specific-channel requests and locked replay. Their requests are
-// folded into the pool's share window, because the correction is blind to skew
-// it cannot see.
+// for paths that serve real traffic without a P2C draw: channel affinity,
+// specific-channel requests and locked replay. Each such request is
+// attributed to the route unit's EWMA handle (its outcomes move the unit's
+// health/latency scores like any served request), but no share-window
+// bookkeeping happens: the share-deficit correction was retired with the
+// old scorer, so there is nothing to keep informed.
 //
 // It picks one enabled key via GetNextEnabledKey(). group is the requesting
-// group; it does not scope the route unit (route units are group-free) but it does
-// scope the counterfactual candidate set recorded into the share window.
+// group; it does not scope the route unit (route units are group-free).
 func SelectedRouteFromChannel(channel *Channel, alias string, group string) (*SelectedRoute, error) {
-	return selectedRouteFromChannel(channel, alias, group, true)
+	return selectedRouteFromChannel(channel, alias, group)
 }
 
 // SelectedRouteForProbe is the same construction for administrative probes
-// (channel test, key probe). These requests are not user traffic: counting them
-// would let a single "test all channels" click move the share window and make the
-// correction chase load that no user generated.
+// (channel test, key probe). Probes use the identical attribution: outcomes
+// move the route unit's EWMA handle, and nothing else.
 func SelectedRouteForProbe(channel *Channel, alias string, group string) (*SelectedRoute, error) {
-	return selectedRouteFromChannel(channel, alias, group, false)
+	return selectedRouteFromChannel(channel, alias, group)
 }
 
-func selectedRouteFromChannel(channel *Channel, alias string, group string, recordShare bool) (*SelectedRoute, error) {
+func selectedRouteFromChannel(channel *Channel, alias string, group string) (*SelectedRoute, error) {
 	if channel == nil {
 		return nil, errors.New("channel is nil")
 	}
@@ -600,27 +547,6 @@ func selectedRouteFromChannel(channel *Channel, alias string, group string, reco
 			KeyIndex:      keyIndex,
 			UpstreamModel: upstreamModel,
 		})
-		// This path bypasses weighted random selection entirely, yet it still
-		// consumes traffic from the pool. The share window has to see it, or the
-		// correction is blind to exactly the skew it exists to fix: with 30% of a
-		// three-route pool pinned here by channel affinity, the pinned route takes
-		// 53.4% instead of 33.3%, and leaving these requests unrecorded measurably
-		// degrades the balancer back to that baseline.
-		//
-		// The recorded entitlement is the pool's full candidate set as scored right
-		// now: affinity did not run a competition, so the counterfactual share is
-		// what the other routes would have been entitled to.
-		//
-		// Probes are excluded: an administrator testing every channel would
-		// otherwise inject one entry per channel into the window and the correction
-		// would spend the next window compensating for traffic no user sent.
-		if recordShare {
-			recordBypassSelection(group, alias, routestats.RouteID{
-				ChannelID:     channel.Id,
-				KeyIndex:      keyIndex,
-				UpstreamModel: upstreamModel,
-			})
-		}
 	}
 
 	return &SelectedRoute{
@@ -634,39 +560,4 @@ func selectedRouteFromChannel(channel *Channel, alias string, group string, reco
 		UpstreamModel: upstreamModel,
 		StatsHandle:   statsHandle,
 	}, nil
-}
-
-// recordBypassSelection folds a selection made outside weighted random into the
-// pool's share window, using the pool's current base-score distribution as the
-// entitlement snapshot. Candidates are read without status/key filtering because
-// this is an accounting entry, not a selection: a route that is momentarily
-// unselectable was still entitled to its configured share of this request.
-func recordBypassSelection(group, alias string, selected routestats.RouteID) {
-	cfg := routestats.GetRouteStatsSetting()
-	if cfg == nil || !cfg.Enabled || cfg.ShareWindowSize <= 0 {
-		return
-	}
-	var candidates []routeCandidate
-	if common.MemoryCacheEnabled {
-		channelSyncLock.RLock()
-		candidates = getCandidatesFromCache(group, alias)
-		channelSyncLock.RUnlock()
-	} else {
-		candidates = getCandidatesFromDB(group, alias)
-	}
-	if len(candidates) == 0 {
-		return
-	}
-	pool := routestats.PoolKey{PublicModelAlias: alias}
-	_, targets := scoreCandidates(pool, candidates, alias)
-	if len(targets) == 0 {
-		// Every candidate scored zero (for example the whole pool is disabled).
-		// Charge the served route alone rather than dropping the request.
-		targets = map[routestats.RouteID]float64{selected: 1.0}
-	} else if _, ok := targets[selected]; !ok {
-		// The served route scored zero but was still used: it must appear in its own
-		// entry, otherwise its selection count would exceed its opportunity count.
-		targets[selected] = 0
-	}
-	routestats.RecordSelection(pool, selected, targets, cfg)
 }

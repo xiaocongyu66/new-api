@@ -1,7 +1,6 @@
 package channel
 
 import (
-	"math"
 	"math/rand/v2"
 	"testing"
 	"time"
@@ -83,13 +82,16 @@ func drawShares(t *testing.T, group, alias string, n int, seed uint64) map[int]i
 // ---- W1: static weight baseline ----
 
 // TestScoreW1StaticWeightBaseline is W1.1: with equal quality and health, traffic
-// must land on the configured static-weight split and nothing else — P2C's
-// equal-state fallback is the weighted draw, so the split is unchanged.
+// must land on the configured static-weight split and nothing else — the P2C
+// duel has no quality signal (identical likelihoods), so the first-sampled-order
+// tiebreak keeps the share exactly at the effective prior, which with equal
+// ramps is the static-weight split.
 func TestScoreW1StaticWeightBaseline(t *testing.T) {
 	const group, alias = "w1-group", "w1-model"
 	withRouteStats(t, nil)
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	withUnitHealthDB(t)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	chLight := testRouteChannel(7101, false, []string{"sk-l"}, nil)
 	chHeavy := testRouteChannel(7102, false, []string{"sk-h"}, nil)
@@ -102,23 +104,23 @@ func TestScoreW1StaticWeightBaseline(t *testing.T) {
 	const draws = 10000
 	counts := drawShares(t, group, alias, draws, 0x5EED)
 
-	// routingBaseWeight adds one to each configured weight (21:81). Thin pools
-	// draw P2C: the light route wins its double draws (1/4) plus its base
-	// share of the mixed pairs: 1/4 + 1/2 x 21/102 ≈ 35.3%.
-	wantLight := 100 * (0.25 + 0.5*21.0/102.0)
-	gotLight := 100 * float64(counts[7101]) / float64(draws)
-	assert.InDelta(t, wantLight, gotLight, 1.5,
-		"weight 20 vs 80 must yield ~%.1f%% under P2C, got %.2f%%", wantLight, gotLight)
+	// P2C priors are the raw weights: 20:80 = 20:80 (the retired scorer's
+	// routingBaseWeight +1 offset no longer applies to selection).
+	assert.InDelta(t, 2000, counts[7101], 150,
+		"weight 20 vs 80 must yield 20%% under P2C, got %.2f%%", 100*float64(counts[7101])/float64(draws))
+	assert.InDelta(t, 8000, counts[7102], 150,
+		"weight 20 vs 80 must yield 80%% under P2C, got %.2f%%", 100*float64(counts[7102])/float64(draws))
 }
 
 // TestScoreW1ZeroTotalWeight is W1.2: an all-zero-weight pool must stay usable.
-// routingBaseWeight's +1 offset is what makes this equiprobable instead of a
-// division by zero or an empty candidate set.
+// The P2C prior degrades to uniform (× ramp) over the eligible set when the
+// total weight is zero, so the pool remains equiprobable instead of collapsing.
 func TestScoreW1ZeroTotalWeight(t *testing.T) {
 	const group, alias = "w1z-group", "w1z-model"
 	withRouteStats(t, nil)
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	withUnitHealthDB(t)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	chA := testRouteChannel(7111, false, []string{"sk-a"}, nil)
 	chB := testRouteChannel(7112, false, []string{"sk-b"}, nil)
@@ -134,13 +136,14 @@ func TestScoreW1ZeroTotalWeight(t *testing.T) {
 }
 
 // TestScoreW1SingleCandidateShortCircuit is W1.3: a lone candidate is returned
-// regardless of quality. Scaling a share that is already 100% cannot change the
-// outcome, and a floor-quality sole provider must not be starved out.
+// regardless of its posterior. With nothing to compete against the duel is
+// vacuous, so a degraded or brand-new sole provider must not be starved out.
 func TestScoreW1SingleCandidateShortCircuit(t *testing.T) {
 	const group, alias = "w1s-group", "w1s-model"
 	withRouteStats(t, nil)
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	withUnitHealthDB(t)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	ch := testRouteChannel(7121, false, []string{"sk-only"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, []ChannelModelRoute{
@@ -148,211 +151,298 @@ func TestScoreW1SingleCandidateShortCircuit(t *testing.T) {
 	})
 	defer cleanup()
 
-	// Drive it to the quality floor: every attempt failed.
-	observeQuality(t, routeStatsKey(alias, "up-only", 7121), 0, 120000, 0, 8)
-	require.InDelta(t, 0.5, routestats.GetOrCreateHandle(routeStatsKey(alias, "up-only", 7121)).Quality().Quality, 1e-9)
-
 	counts := drawShares(t, group, alias, 50, 0xBEEF)
 	assert.Equal(t, 50, counts[7121], "the only candidate must always be served")
 }
 
-// ---- W2: quality wiring ----
+// ---- P2C: duel semantics ----
 
-// TestScoreW2QualityDrivesShare is W2.1: the six-row acceptance table, asserted
-// against the real selector rather than against a model of it.
-//
-// Each row drives route B's EWMA to a known quality with real observations, then
-// measures the share it wins. The draw is P2C in thin pools, so the marginal is
-// compressed toward even: share(B) = 1/4 + 1/2 x q/(1+q). The expected values
-// come from the agreed synthesis weights (success 0.60, ttft 0.25, tps 0.15)
-// with per-component clamp [0.2, 1.5] and synthesis clamp [0.5, 1.5].
-func TestScoreW2QualityDrivesShare(t *testing.T) {
-	for _, tc := range []struct {
-		name        string
-		successRate float64
-		ttftMs      float64
-		tps         float64
-		wantQuality float64
-		wantShareB  float64
-	}{
-		{"both healthy", 1.0, 2000, 20, 1.000, 50.0},
-		{"B ttft twice target", 1.0, 4000, 20, 0.875, 48.3},
-		{"B ttft twice and tps half", 1.0, 4000, 10, 0.800, 47.2},
-		// Sustained 429s: success decays to 0.7 and the retry backoff shows up as a
-		// 5s TTFT, with no TPS sample because nothing streamed. Weights renormalise
-		// over the two observed components: (0.60*0.7 + 0.25*0.4)/0.85 = 0.612.
-		{"B throttled by 429s", 0.7, 5000, 0, 0.612, 44.0},
-		{"B four times faster", 1.0, 500, 20, 1.125, 51.5},
-		{"B every attempt failed", 0.0, 120000, 0, 0.500, 41.7},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			const group, alias = "w2-group", "w2-model"
-			withRouteStats(t, nil)
-			ClearRouteHealthCache()
-			t.Cleanup(ClearRouteHealthCache)
-
-			chA := testRouteChannel(7201, false, []string{"sk-a"}, nil)
-			chB := testRouteChannel(7202, false, []string{"sk-b"}, nil)
-			cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
-				testRoute(1, 7201, 0, alias, "up-a", 100),
-				testRoute(2, 7202, 0, alias, "up-b", 100),
-			})
-			defer cleanup()
-
-			// A is exactly on target, so its quality is 1.0 and it is the reference.
-			observeQuality(t, routeStatsKey(alias, "up-a", 7201), 1.0, 2000, 20, 8)
-			observeQuality(t, routeStatsKey(alias, "up-b", 7202), tc.successRate, tc.ttftMs, tc.tps, 8)
-
-			gotQ := routestats.GetOrCreateHandle(routeStatsKey(alias, "up-b", 7202)).Quality().Quality
-			require.InDelta(t, tc.wantQuality, gotQ, 0.01,
-				"fixture must reach quality %.3f before share is meaningful, got %.4f", tc.wantQuality, gotQ)
-
-			// W2.1 demands the share land within 0.5pp of the analytic value. At
-			// p≈0.5 the sampling error is ~0.25pp/√(n/40000), so 40k draws put 2σ
-			// inside the bound rather than leaving the gate to seed luck.
-			const draws = 40000
-			counts := drawShares(t, group, alias, draws, 0xA11CE)
-			gotShare := 100 * float64(counts[7202]) / float64(draws)
-			assert.InDelta(t, tc.wantShareB, gotShare, 0.5,
-				"quality %.3f must yield %.1f%% share within 0.5pp, got %.2f%%", tc.wantQuality, tc.wantShareB, gotShare)
-		})
-	}
+// scriptedP2CSource feeds a precomputed draw sequence to a p2cSource so a duel
+// can be asserted on its exact picks instead of on a distribution.
+type scriptedP2CSource struct {
+	uniforms []float64
+	ints     []int
+	ui       int
+	ii       int
 }
 
-// TestScoreW2QualityNeverStarvesARoute is W2.2: the synthesis floor is what keeps
-// EWMA a preference rather than an execution. A route whose every attempt failed
-// sits at quality 0.5 and still wins roughly five twelfths of a two-route pool,
-// because eliminating a route is the state machine's job and its alone.
-func TestScoreW2QualityNeverStarvesARoute(t *testing.T) {
-	const group, alias = "w2f-group", "w2f-model"
-	withRouteStats(t, nil)
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+func (s *scriptedP2CSource) uniform() float64 {
+	u := s.uniforms[s.ui]
+	s.ui++
+	return u
+}
 
-	chA := testRouteChannel(7211, false, []string{"sk-a"}, nil)
-	chB := testRouteChannel(7212, false, []string{"sk-b"}, nil)
-	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7211, 0, alias, "up-a", 100),
-		testRoute(2, 7212, 0, alias, "up-b", 100),
+func (s *scriptedP2CSource) intN(n int) int {
+	v := s.ints[s.ii]
+	s.ii++
+	return v % n
+}
+
+// TestP2CTieBreakByFirstSampledOrder pins the pick-index semantics of the duel
+// with scripted draws: without a quality signal (identical likelihoods) the
+// first-sampled candidate wins, duplicates are repaired by a backfilled
+// opponent, and only the explore rate can reach a starving candidate.
+func TestP2CTieBreakByFirstSampledOrder(t *testing.T) {
+	// No quality signal: identical likelihoods, priors 10:30.
+	scored := []p2cScored{
+		{candidate: routeCandidate{channelId: 1}, prior: 0.25, likelihood: 1.0},
+		{candidate: routeCandidate{channelId: 2}, prior: 0.75, likelihood: 1.0},
+	}
+
+	// Draws: 0.2 -> idx0; 0.2 -> idx0 (duplicate) -> backfill the un-sampled
+	// positive-prior opponent (third draw). Tied likelihoods: idx0 was
+	// first-sampled, so it wins.
+	src := &scriptedP2CSource{uniforms: []float64{0.2, 0.2, 0.0}, ints: []int{0}}
+	w := compareP2C(scored, p2cChoices, 0, p2cSource{uniform: src.uniform, intN: src.intN})
+	assert.Equal(t, 1, w.candidate.channelId, "first-sampled candidate must win a tie")
+
+	// Draws: 0.9 -> idx1; 0.2 -> idx0: mixed pair, idx1 sampled first -> idx1.
+	src = &scriptedP2CSource{uniforms: []float64{0.9, 0.2}, ints: []int{0}}
+	w = compareP2C(scored, p2cChoices, 0, p2cSource{uniform: src.uniform, intN: src.intN})
+	assert.Equal(t, 2, w.candidate.channelId, "the earlier sample must win the tie")
+
+	// Draws: 0.9 -> idx1; 0.9 -> idx1 (duplicate) -> backfill idx0. Tied again,
+	// but idx1 was sampled first (the backfill carries no sampling position),
+	// so idx1 wins.
+	src = &scriptedP2CSource{uniforms: []float64{0.9, 0.9, 0.0}, ints: []int{0}}
+	w = compareP2C(scored, p2cChoices, 0, p2cSource{uniform: src.uniform, intN: src.intN})
+	assert.Equal(t, 2, w.candidate.channelId, "a backfilled opponent must lose the tie to the sampled one")
+
+	// Explore: a zero-prior, non-floored candidate (idx2) can never win the
+	// duel — only the explore draw reaches it.
+	scored = append(scored, p2cScored{candidate: routeCandidate{channelId: 3}, prior: 0, likelihood: 1.0})
+	// Draws: 0.2, 0.2 -> [idx0, idx0] -> backfill idx1 -> explore fires
+	// (0.001 < 0.005) -> uniform over the starving set {idx2}.
+	src = &scriptedP2CSource{uniforms: []float64{0.2, 0.2, 0.5, 0.001, 0.0}, ints: []int{0}}
+	w = compareP2C(scored, p2cChoices, p2cExploreRate, p2cSource{uniform: src.uniform, intN: src.intN})
+	assert.Equal(t, 3, w.candidate.channelId, "the explore rate must pick uniformly from the starving set")
+}
+
+// TestP2CPriorSharesFollowWeight pins 10:30: with no quality signal the
+// first-sampled tiebreak keeps the share exactly at the prior — 25:75, so 100
+// draws land inside a tight band around it.
+func TestP2CPriorSharesFollowWeight(t *testing.T) {
+	const group, alias = "p2cp-group", "p2cp-model"
+	withRouteStats(t, nil)
+	withUnitHealthDB(t)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
+
+	chL := testRouteChannel(7451, false, []string{"sk-l"}, nil)
+	chH := testRouteChannel(7452, false, []string{"sk-h"}, nil)
+	cleanup := withRouteUnitFixture(t, []*Channel{chL, chH}, group, alias, []ChannelModelRoute{
+		testRoute(1, 7451, 0, alias, "up-l", 10),
+		testRoute(2, 7452, 0, alias, "up-h", 30),
 	})
 	defer cleanup()
 
-	observeQuality(t, routeStatsKey(alias, "up-a", 7211), 1.0, 2000, 20, 8)
-	observeQuality(t, routeStatsKey(alias, "up-b", 7212), 0.0, 120000, 0, 30)
-
-	q := routestats.GetOrCreateHandle(routeStatsKey(alias, "up-b", 7212)).Quality().Quality
-	assert.InDelta(t, 0.5, q, 1e-9, "synthesis must clamp at the floor, not fall to zero")
-
-	counts := drawShares(t, group, alias, 3000, 0xF00D)
-	assert.Positive(t, counts[7212], "EWMA alone must never remove a route from the pool")
-	share := 100 * float64(counts[7212]) / 3000.0
-	assert.InDelta(t, 41.7, share, 2.0, "a floor-quality route keeps ~41.7% of a two-route P2C pool, got %.2f%%", share)
+	counts := drawShares(t, group, alias, 100, 0x0C0FFEE)
+	assert.InDelta(t, 25, counts[7451], 15,
+		"the 10-weight route keeps its prior share (25%%), got %d%%", counts[7451])
+	assert.InDelta(t, 75, counts[7452], 15,
+		"the 30-weight route keeps its prior share (75%%), got %d%%", counts[7452])
 }
 
-// TestScoreW2PoolSizeChangesTheLoss is W2.3: the same bad route loses a very
-// different amount of share depending on pool size, so the two-route number is
-// not a general acceptance line. Pools of 2 and 4 routes sit inside the P2C
-// thin-pool window (marginals 41.7% / 18.75%); an 8-route pool exceeds the
-// window and keeps the cumulative sampler's 6.67%.
-func TestScoreW2PoolSizeChangesTheLoss(t *testing.T) {
-	for _, tc := range []struct {
-		poolSize  int
-		wantShare float64
-	}{
-		{2, 41.7},
-		{4, 18.75},
-		{8, 6.67},
-	} {
-		t.Run("pool", func(t *testing.T) {
-			group := "w2p-group"
-			alias := "w2p-model"
-			withRouteStats(t, nil)
-			ClearRouteHealthCache()
-			t.Cleanup(ClearRouteHealthCache)
+// TestP2CSlowerUnitLosesDespiteHigherWeight pins the posterior: a 4x slower
+// unit (latency EWMA) loses the duel even though its static weight is 3x
+// higher. Its likelihood (best/400 = 0.25) is not floored, so the explore
+// rate does not rescue it either — it gets no regular traffic.
+func TestP2CSlowerUnitLosesDespiteHigherWeight(t *testing.T) {
+	const group, alias = "p2cs-group", "p2cs-model"
+	withRouteStats(t, nil)
+	withUnitHealthDB(t)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
-			channels := make([]*Channel, 0, tc.poolSize)
-			routes := make([]ChannelModelRoute, 0, tc.poolSize)
-			for i := range tc.poolSize {
-				id := 7300 + tc.poolSize*10 + i
-				channels = append(channels, testRouteChannel(id, false, []string{"sk"}, nil))
-				routes = append(routes, testRoute(i+1, id, 0, alias, "up", 100))
-			}
-			cleanup := withRouteUnitFixture(t, channels, group, alias, routes)
-			defer cleanup()
+	chFast := testRouteChannel(7461, false, []string{"sk-f"}, nil)
+	chSlow := testRouteChannel(7462, false, []string{"sk-s"}, nil)
+	cleanup := withRouteUnitFixture(t, []*Channel{chFast, chSlow}, group, alias, []ChannelModelRoute{
+		testRoute(1, 7461, 0, alias, "up-f", 30),
+		testRoute(2, 7462, 0, alias, "up-s", 10),
+	})
+	defer cleanup()
 
-			// Every route shares upstream model "up", so their stats keys differ only
-			// by channel id — which is exactly how route units are identified.
-			badID := 7300 + tc.poolSize*10 + tc.poolSize - 1
-			for i := range tc.poolSize {
-				id := 7300 + tc.poolSize*10 + i
-				if id == badID {
-					observeQuality(t, routeStatsKey(alias, "up", id), 0.0, 120000, 0, 10)
-					continue
-				}
-				observeQuality(t, routeStatsKey(alias, "up", id), 1.0, 2000, 20, 10)
-			}
+	seedUnitHealthRow(t, &ChannelModelHealth{
+		ChannelId: 7461, KeyIndex: 0, Model: alias,
+		State: "healthy", Version: 1,
+		EwmaScore: 1.0, LatencyEwmaMs: 100, RequestCount: 5, RampExited: true,
+	})
+	seedUnitHealthRow(t, &ChannelModelHealth{
+		ChannelId: 7462, KeyIndex: 0, Model: alias,
+		State: "healthy", Version: 1,
+		EwmaScore: 1.0, LatencyEwmaMs: 400, RequestCount: 5, RampExited: true,
+	})
 
-			const draws = 16000
-			counts := drawShares(t, group, alias, draws, 0xDEC0DE)
-			got := 100 * float64(counts[badID]) / float64(draws)
-			assert.InDelta(t, tc.wantShare, got, 1.5,
-				"pool of %d: floor-quality route must take ~%.2f%%, got %.2f%%", tc.poolSize, tc.wantShare, got)
-		})
-	}
+	counts := drawShares(t, group, alias, 2000, 0x510A)
+	assert.Zero(t, counts[7462], "the slower unit must not win a duel its posterior loses")
+	assert.Equal(t, 2000, counts[7461], "the faster unit must take every regular draw")
 }
 
-// TestScoreW2LatencySignalIsBounded is W2.4: pure latency differences move share
-// by a bounded amount and the ordering is strict. The per-component floor of 0.2
-// caps how much a slow route can be punished on latency alone, which is why 4x
-// and 10x are distinguishable but 10x and 60x are not.
-func TestScoreW2LatencySignalIsBounded(t *testing.T) {
-	const group, alias = "w2l-group", "w2l-model"
+// TestP2CFlooredUnitGetsExploreTraffic pins the observation contract: a unit
+// whose posterior sits at the floor (EWMA at MinScoreFloor) is in the
+// starving set, so the explore rate hands it ~0.5% of draws — enough to keep
+// its latency/health data flowing so it can self-heal.
+func TestP2CFlooredUnitGetsExploreTraffic(t *testing.T) {
+	const group, alias = "p2cf-group", "p2cf-model"
+	withRouteStats(t, nil)
+	withUnitHealthDB(t)
+	withUnitHealthSetting(t, DefaultUnitHealthSetting())
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
-	shareAt := func(t *testing.T, ttftMultiple float64) float64 {
-		t.Helper()
-		withRouteStats(t, nil)
-		ClearRouteHealthCache()
-		t.Cleanup(ClearRouteHealthCache)
+	chGood := testRouteChannel(7471, false, []string{"sk-g"}, nil)
+	chBad := testRouteChannel(7472, false, []string{"sk-b"}, nil)
+	cleanup := withRouteUnitFixture(t, []*Channel{chGood, chBad}, group, alias, []ChannelModelRoute{
+		testRoute(1, 7471, 0, alias, "up-g", 100),
+		testRoute(2, 7472, 0, alias, "up-b", 100),
+	})
+	defer cleanup()
 
-		chA := testRouteChannel(7241, false, []string{"sk-a"}, nil)
-		chB := testRouteChannel(7242, false, []string{"sk-b"}, nil)
-		cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
-			testRoute(1, 7241, 0, alias, "up-a", 100),
-			testRoute(2, 7242, 0, alias, "up-b", 100),
-		})
-		defer cleanup()
+	seedUnitHealthRow(t, &ChannelModelHealth{
+		ChannelId: 7471, KeyIndex: 0, Model: alias,
+		State: "healthy", Version: 1,
+		EwmaScore: 1.0, RequestCount: 5, RampExited: true,
+	})
+	// Seed the bad unit's score exactly at the P2C sampling floor; the fixed
+	// default setting above keeps MinScoreFloor (0.05) equal to it.
+	seedUnitHealthRow(t, &ChannelModelHealth{
+		ChannelId: 7472, KeyIndex: 0, Model: alias,
+		State: "healthy", Version: 1,
+		EwmaScore: p2cLikelihoodFloor, RequestCount: 5, RampExited: true,
+	})
 
-		// success is fully healthy on both sides: latency is the only difference.
-		observeQuality(t, routeStatsKey(alias, "up-a", 7241), 1.0, 2000, 20, 8)
-		observeQuality(t, routeStatsKey(alias, "up-b", 7242), 1.0, 2000*ttftMultiple, 20, 8)
+	const draws = 2000
+	counts := drawShares(t, group, alias, draws, 0x10E2)
+	assert.InDelta(t, draws*p2cExploreRate, counts[7472], 8,
+		"the floored unit keeps the explore-rate share, got %d", counts[7472])
+}
 
-		const draws = 12000
-		counts := drawShares(t, group, alias, draws, 0x1234)
-		return 100 * float64(counts[7242]) / float64(draws)
-	}
+// TestP2CZeroPriorUnitIsExploreOnly pins the deviation from the retired
+// scorer's +1 offset: a weight-0 route has exactly zero prior, so it is
+// excluded from regular duels (the backfill pool and the sampling weights
+// both ignore it) — and, like a floored unit, it sits in the starving set,
+// so the explore rate hands it its only traffic: an observation slice that
+// keeps its health data flowing.
+func TestP2CZeroPriorUnitIsExploreOnly(t *testing.T) {
+	const group, alias = "p2cz-group", "p2cz-model"
+	withRouteStats(t, nil)
+	withUnitHealthDB(t)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
-	var got [3]float64
-	for i, mult := range []float64{2, 4, 10} {
-		got[i] = shareAt(t, mult)
-	}
+	chA := testRouteChannel(7561, false, []string{"sk-a"}, nil)
+	chB := testRouteChannel(7562, false, []string{"sk-b"}, nil)
+	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
+		testRoute(1, 7561, 0, alias, "up-a", 100),
+		testRoute(2, 7562, 0, alias, "up-b", 0),
+	})
+	defer cleanup()
 
-	assert.Greater(t, got[0], got[1], "4x must lose more share than 2x")
-	assert.Greater(t, got[1], got[2], "10x must lose more share than 4x")
-	assert.Greater(t, got[2], 40.0,
-		"the component floor bounds the latency penalty: even 10x keeps >40%%, got %.2f%%", got[2])
+	const draws = 2000
+	counts := drawShares(t, group, alias, draws, 0x10A5)
+	assert.InDelta(t, draws*p2cExploreRate, counts[7562], 8,
+		"a zero-prior unit gets exactly the explore-rate share, got %d", counts[7562])
+	assert.InDelta(t, draws-draws*p2cExploreRate, counts[7561], 8,
+		"the positive-prior unit keeps every regular draw, got %d", counts[7561])
+}
+
+// TestP2CAllCoolingRecallsShortestRemaining pins the faint-recall fallback:
+// with the whole eligible pool in a live cooldown window, selection force-
+// recalls the unit with the shortest remaining cooldown instead of failing
+// the request.
+func TestP2CAllCoolingRecallsShortestRemaining(t *testing.T) {
+	const group, alias = "p2cr-group", "p2cr-model"
+	withRouteStats(t, nil)
+	withUnitHealthDB(t)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
+
+	base := time.Unix(0, 0)
+	prevNow := ChannelHealthNow
+	ChannelHealthNow = func() time.Time { return base }
+	t.Cleanup(func() { ChannelHealthNow = prevNow })
+
+	chA := testRouteChannel(7551, false, []string{"sk-a"}, nil)
+	chB := testRouteChannel(7552, false, []string{"sk-b"}, nil)
+	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
+		testRoute(1, 7551, 0, alias, "up-a", 100),
+		testRoute(2, 7552, 0, alias, "up-b", 100),
+	})
+	defer cleanup()
+
+	// Both units cooling with different remaining budgets: A has 5s left, B 2s.
+	seedUnitHealthRow(t, &ChannelModelHealth{
+		ChannelId: 7551, KeyIndex: 0, Model: alias,
+		State: "healthy", Version: 1, EwmaScore: 1.0,
+		CooldownUntilMs: 5000, LastCoolingOutcome: -1,
+	})
+	seedUnitHealthRow(t, &ChannelModelHealth{
+		ChannelId: 7552, KeyIndex: 0, Model: alias,
+		State: "healthy", Version: 1, EwmaScore: 1.0,
+		CooldownUntilMs: 2000, LastCoolingOutcome: -1,
+	})
+
+	selected, err := SelectRouteUnit(group, alias, "", 0, nil, nil)
+	require.NoError(t, err)
+	require.NotNil(t, selected, "an all-cooling pool must take the faint-recall path")
+	assert.Equal(t, 7552, selected.ChannelId, "the shortest-remaining unit is recalled")
+
+	// The recall is observable through the state API: B's window is closed and
+	// slow start is pending; A's window is untouched.
+	nowMs := base.UnixMilli()
+	require.False(t, UnitState(RouteKey{ChannelId: 7552, KeyIndex: 0, Model: alias}).IsCooling(nowMs),
+		"the recalled unit must have its cooldown window force-closed")
+	require.True(t, UnitState(RouteKey{ChannelId: 7552, KeyIndex: 0, Model: alias}).RampPending,
+		"a forced recall must re-enter through slow start")
+	require.True(t, UnitState(RouteKey{ChannelId: 7551, KeyIndex: 0, Model: alias}).IsCooling(nowMs),
+		"the longer-remaining unit must keep cooling")
+}
+
+// TestP2CUnobservedUnitIsNeutral replaces the W4.1 cold-start contract in P2C
+// terms: a brand-new unit with no health history has the neutral posterior
+// (EWMA default 1.0, no latency observation, no concurrency cap), so it
+// competes at its prior alongside a fully healthy observed unit.
+func TestP2CUnobservedUnitIsNeutral(t *testing.T) {
+	const group, alias = "p2cu-group", "p2cu-model"
+	withRouteStats(t, nil)
+	withUnitHealthDB(t)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
+
+	chOld := testRouteChannel(7571, false, []string{"sk-o"}, nil)
+	chNew := testRouteChannel(7572, false, []string{"sk-n"}, nil)
+	cleanup := withRouteUnitFixture(t, []*Channel{chOld, chNew}, group, alias, []ChannelModelRoute{
+		testRoute(1, 7571, 0, alias, "up-o", 100),
+		testRoute(2, 7572, 0, alias, "up-n", 100),
+	})
+	defer cleanup()
+
+	// The established route carries a fully healthy observed state; the new
+	// route has no row at all.
+	seedUnitHealthRow(t, &ChannelModelHealth{
+		ChannelId: 7571, KeyIndex: 0, Model: alias,
+		State: "healthy", Version: 1,
+		EwmaScore: 1.0, RequestCount: 5, RampExited: true,
+	})
+
+	const draws = 1000
+	counts := drawShares(t, group, alias, draws, 0x0E21)
+	assert.InDelta(t, draws/2, counts[7572], 40,
+		"an unobserved unit competes at a neutral posterior, got %d", counts[7572])
 }
 
 // ---- W3: health multiplier and correction ----
 
-// TestScoreW3DisabledRouteScoresZero is W3.3: disabled is the one state that
-// removes a route from the pool, and it does so through the health multiplier
-// rather than through quality.
+// TestScoreW3DisabledRouteScoresZero is W3.3: terminal-disabled is the one
+// state that removes a route from the pool. P2C drops it from the eligible
+// set, and the faint-recall path refuses to resurrect it: a terminal-disabled
+// unit reports no live cooldown window to force-close.
 func TestScoreW3DisabledRouteScoresZero(t *testing.T) {
 	const group, alias = "w3d-group", "w3d-model"
 	withRouteStats(t, nil)
-	withRouteHealthDB(t)
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	withUnitHealthDB(t)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	chA := testRouteChannel(7301, false, []string{"sk-a"}, nil)
 	chB := testRouteChannel(7302, false, []string{"sk-b"}, nil)
@@ -362,22 +452,23 @@ func TestScoreW3DisabledRouteScoresZero(t *testing.T) {
 	})
 	defer cleanup()
 
-	require.NoError(t, DisableRoute(RouteKey{ChannelId: 7302, KeyIndex: 0, Model: alias}, time.Now()))
+	require.NoError(t, DisableUnit(RouteKey{ChannelId: 7302, KeyIndex: 0, Model: alias}, time.Now()))
 
 	counts := drawShares(t, group, alias, 300, 0xDEAD)
 	assert.Zero(t, counts[7302], "a disabled route must never be selected")
 	assert.Equal(t, 300, counts[7301])
 }
 
-// TestScoreW3CalmRouteKeepsReducedShare is W3.3's other half: isolation is graded,
-// not binary. A calm route stays selectable at the configured scale, which is the
-// natural probe that lets it recover.
-func TestScoreW3CalmRouteKeepsReducedShare(t *testing.T) {
+// TestScoreW3CooledRouteRecoversAfterWindow pins the recovery path: a unit that
+// trips a failure cooldown is excluded while the window is open, and re-enters
+// the pool once the window closes. The clock is injected so the test is
+// deterministic without a real-time sleep.
+func TestScoreW3CooledRouteRecoversAfterWindow(t *testing.T) {
 	const group, alias = "w3c-group", "w3c-model"
 	withRouteStats(t, nil)
-	withRouteHealthDB(t)
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	withUnitHealthDB(t)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	chA := testRouteChannel(7311, false, []string{"sk-a"}, nil)
 	chB := testRouteChannel(7312, false, []string{"sk-b"}, nil)
@@ -387,30 +478,55 @@ func TestScoreW3CalmRouteKeepsReducedShare(t *testing.T) {
 	})
 	defer cleanup()
 
-	require.NoError(t, RecordRetryableFailure(
-		RouteKey{ChannelId: 7312, KeyIndex: 0, Model: alias}, "bad_response", FailureSourceUpstream, time.Now()))
-	require.InDelta(t, 0.5, RouteWeightMultiplier(RouteKey{ChannelId: 7312, KeyIndex: 0, Model: alias}), 1e-9,
-		"fixture must land the route in calm at 50%% weight")
+	cfg := DefaultUnitHealthSetting()
+	cfg.CooldownBaseMs = 100
+	withUnitHealthSetting(t, cfg)
 
-	const draws = 6000
-	counts := drawShares(t, group, alias, draws, 0xFEED)
-	assert.Positive(t, counts[7312], "calm must stay selectable so it can recover")
-	assert.Greater(t, counts[7311], counts[7312], "the healthy peer must take the majority")
-	share := 100 * float64(counts[7312]) / float64(draws)
-	assert.InDelta(t, 25.0, share, 2.5,
-		"thin pools probe a half-weight route only when both P2C draws land on it: 25%%, got %.2f%%", share)
+	// Injected clock: the selector and every reader pull now from here.
+	base := time.Unix(0, 0)
+	advanceMs := 0.0
+	prevNow := ChannelHealthNow
+	ChannelHealthNow = func() time.Time {
+		return base.Add(time.Duration(advanceMs * float64(time.Millisecond)))
+	}
+	t.Cleanup(func() { ChannelHealthNow = prevNow })
+
+	key := RouteKey{ChannelId: 7312, KeyIndex: 0, Model: alias}
+	// t=0: trip the failure cooldown (bottom rung = 100ms).
+	require.NoError(t, ReportOutcome(key, UnitFatal, 0, 0, base))
+
+	// While the window is open the unit is excluded: the healthy peer takes
+	// every draw.
+	counts := drawShares(t, group, alias, 400, 0xFEED)
+	assert.Zero(t, counts[7312], "a cooling unit is excluded until its window closes")
+	assert.Equal(t, 400, counts[7311])
+
+	// After the 100ms window the unit re-enters the pool (at its slow-start
+	// ramp prior) and both serve again.
+	advanceMs = 1000
+	counts = map[int]int{}
+	rnd := rand.New(rand.NewPCG(0xFEED, 0x9E3779B9))
+	for range 400 {
+		selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+		require.NoError(t, err)
+		require.NotNil(t, selected)
+		counts[selected.ChannelId]++
+	}
+	assert.Positive(t, counts[7312], "a recovered unit must be selectable again")
+	assert.Positive(t, counts[7311], "the healthy peer keeps serving")
 }
 
 // TestScoreW3SignalsDoNotDoublePenalise is W3.2: one failure must move the two
-// signals independently, and neither may reach into the other's range. Quality is
-// bounded below by its floor and cannot eject; health can reach zero and is the
-// only thing that may.
+// signals independently, and neither may reach into the other's range. The
+// routestats quality is bounded below by its floor and cannot eject; the unit
+// health score can reach zero and is the only thing that may exclude a unit
+// from the P2C eligible set.
 func TestScoreW3SignalsDoNotDoublePenalise(t *testing.T) {
 	const group, alias = "w3s-group", "w3s-model"
 	withRouteStats(t, nil)
-	withRouteHealthDB(t)
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	withUnitHealthDB(t)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	ch := testRouteChannel(7321, false, []string{"sk-a"}, nil)
 	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, []ChannelModelRoute{
@@ -421,69 +537,31 @@ func TestScoreW3SignalsDoNotDoublePenalise(t *testing.T) {
 	key := RouteKey{ChannelId: 7321, KeyIndex: 0, Model: alias}
 	statsKey := routeStatsKey(alias, "up-a", 7321)
 
-	// Soft signal only: 30 failed attempts.
+	// Soft signal only: 30 failed observations.
 	observeQuality(t, statsKey, 0.0, 120000, 0, 30)
 	assert.InDelta(t, 0.5, routestats.GetOrCreateHandle(statsKey).Quality().Quality, 1e-9,
 		"quality bottoms out at its floor no matter how many failures arrive")
-	assert.Equal(t, 1.0, RouteWeightMultiplier(key),
-		"EWMA observations must not move the state machine")
+	assert.Equal(t, 1.0, UnitHealthScore(key, time.Now()),
+		"routestats observations must not move the unit state machine")
 
-	// Hard signal only: one retry-eligible failure.
-	require.NoError(t, RecordRetryableFailure(key, "bad_response", FailureSourceUpstream, time.Now()))
-	assert.Less(t, RouteWeightMultiplier(key), 1.0, "the state machine derates independently")
+	// Hard signal only: one outcome trip.
+	require.NoError(t, ReportOutcome(key, UnitFatal, 0, 0, time.Now()))
+	assert.Less(t, UnitHealthScore(key, time.Now()), 1.0,
+		"the unit state machine cools independently of the quality signal")
 	assert.InDelta(t, 0.5, routestats.GetOrCreateHandle(statsKey).Quality().Quality, 1e-9,
 		"a state transition must not additionally move quality")
 }
 
-// TestScoreW3SafeDegradation is W3.4: a poisoned quality value must cost only the
-// route that carries it. A NaN reaching the cumulative pick would bias every
-// candidate after it, so the score is sanitised per candidate instead.
-func TestScoreW3SafeDegradation(t *testing.T) {
-	const group, alias = "w3n-group", "w3n-model"
-	// Component and quality ceilings of +Inf make the normalised quality
-	// unbounded, which is the cheapest way to force a non-finite score through
-	// the public config surface rather than by reaching into private state.
-	withRouteStats(t, func(cfg *routestats.RouteStatsSetting) {
-		cfg.ComponentCeil = math.Inf(1)
-		cfg.QualityCeil = math.Inf(1)
-	})
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
-
-	chA := testRouteChannel(7331, false, []string{"sk-a"}, nil)
-	chB := testRouteChannel(7332, false, []string{"sk-b"}, nil)
-	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7331, 0, alias, "up-a", 100),
-		testRoute(2, 7332, 0, alias, "up-b", 100),
-	})
-	defer cleanup()
-
-	// A TTFT of zero drives the "lower is better" normaliser to its ceiling, which
-	// is now +Inf.
-	observeQuality(t, routeStatsKey(alias, "up-a", 7331), 1.0, 2000, 20, 8)
-	hB := routestats.GetOrCreateHandle(routeStatsKey(alias, "up-b", 7332))
-	hB.ObserveTTFT(0)
-	for range 8 {
-		hB.ObserveSuccess(1.0)
-	}
-
-	// Selection must still terminate and still return a real route.
-	for range 200 {
-		selected, err := SelectRouteUnit(group, alias, "", 0, nil, rand.New(rand.NewPCG(1, 2)))
-		require.NoError(t, err)
-		require.NotNil(t, selected, "a non-finite score must not empty the pool")
-	}
-}
-
-// TestScoreW3AllZeroCandidatesYieldNoRoute pins the other degradation edge: when
-// every candidate scores zero there is nothing to serve, and selection must say so
-// rather than returning an arbitrary route.
+// TestScoreW3AllZeroCandidatesYieldNoRoute pins the other degradation edge:
+// when every candidate is terminal-disabled there is nothing to serve and no
+// live cooldown window to recall — selection must say so rather than
+// returning an arbitrary route.
 func TestScoreW3AllZeroCandidatesYieldNoRoute(t *testing.T) {
 	const group, alias = "w3z-group", "w3z-model"
 	withRouteStats(t, nil)
-	withRouteHealthDB(t)
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	withUnitHealthDB(t)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	chA := testRouteChannel(7341, false, []string{"sk-a"}, nil)
 	chB := testRouteChannel(7342, false, []string{"sk-b"}, nil)
@@ -494,277 +572,15 @@ func TestScoreW3AllZeroCandidatesYieldNoRoute(t *testing.T) {
 	defer cleanup()
 
 	now := time.Now()
-	require.NoError(t, DisableRoute(RouteKey{ChannelId: 7341, KeyIndex: 0, Model: alias}, now))
-	require.NoError(t, DisableRoute(RouteKey{ChannelId: 7342, KeyIndex: 0, Model: alias}, now))
+	require.NoError(t, DisableUnit(RouteKey{ChannelId: 7341, KeyIndex: 0, Model: alias}, now))
+	require.NoError(t, DisableUnit(RouteKey{ChannelId: 7342, KeyIndex: 0, Model: alias}, now))
 
 	selected, err := SelectRouteUnit(group, alias, "", 0, nil, rand.New(rand.NewPCG(3, 4)))
 	require.NoError(t, err)
 	assert.Nil(t, selected, "a fully disabled pool must yield no route, not a fallback pick")
 }
 
-// ---- W4: exploration and cold start ----
-
-// TestScoreW4ColdStartIsNeutral is W4.1: a route with no history must compete on
-// its configured weight alone. Treating an unmeasured route as bad would starve
-// every newly added channel; treating it as perfect would flood it.
-func TestScoreW4ColdStartIsNeutral(t *testing.T) {
-	const group, alias = "w4c-group", "w4c-model"
-	withRouteStats(t, nil)
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
-
-	chOld := testRouteChannel(7401, false, []string{"sk-o"}, nil)
-	chNew := testRouteChannel(7402, false, []string{"sk-n"}, nil)
-	cleanup := withRouteUnitFixture(t, []*Channel{chOld, chNew}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7401, 0, alias, "up-o", 100),
-		testRoute(2, 7402, 0, alias, "up-n", 100),
-	})
-	defer cleanup()
-
-	// The established route is exactly on target; the new one has never served.
-	observeQuality(t, routeStatsKey(alias, "up-o", 7401), 1.0, 2000, 20, 8)
-
-	const draws = 8000
-	counts := drawShares(t, group, alias, draws, 0x77777)
-	share := 100 * float64(counts[7402]) / float64(draws)
-	assert.InDelta(t, 50.0, share, 2.0,
-		"an unmeasured route competes at neutral quality, got %.2f%%", share)
-}
-
-// TestScoreW4BelowMinSamplesStaysNeutral is the MinSamples gate: a couple of bad
-// requests must not be enough to derate a route, or a transient blip would move
-// traffic on no evidence.
-func TestScoreW4BelowMinSamplesStaysNeutral(t *testing.T) {
-	const group, alias = "w4m-group", "w4m-model"
-	withRouteStats(t, nil)
-	cfg := routestats.GetRouteStatsSetting()
-	require.Positive(t, cfg.MinSamples)
-
-	key := routeStatsKey(alias, "up-b", 7412)
-	observeQuality(t, key, 0.0, 120000, 0, cfg.MinSamples-1)
-	assert.Equal(t, 1.0, routestats.GetOrCreateHandle(key).Quality().Quality,
-		"under MinSamples the synthesis must stay neutral")
-
-	routestats.GetOrCreateHandle(key).ObserveSuccess(0.0)
-	assert.Less(t, routestats.GetOrCreateHandle(key).Quality().Quality, 1.0,
-		"crossing MinSamples must let the real quality through")
-}
-
-// TestScoreW4FloorQualityRouteRecovers is W4.2: a route at the quality floor must
-// still be sampled often enough to climb back. The synthesis floor speeds recovery
-// up; the per-component floor is what makes recovery possible at all, since with
-// both floors at zero the score is zero and the route is never sampled again.
-func TestScoreW4FloorQualityRouteRecovers(t *testing.T) {
-	const group, alias = "w4r-group", "w4r-model"
-	withRouteStats(t, nil)
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
-
-	chA := testRouteChannel(7421, false, []string{"sk-a"}, nil)
-	chB := testRouteChannel(7422, false, []string{"sk-b"}, nil)
-	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7421, 0, alias, "up-a", 100),
-		testRoute(2, 7422, 0, alias, "up-b", 100),
-	})
-	defer cleanup()
-
-	badKey := routeStatsKey(alias, "up-b", 7422)
-	observeQuality(t, routeStatsKey(alias, "up-a", 7421), 1.0, 2000, 20, 8)
-	observeQuality(t, badKey, 0.0, 120000, 0, 20)
-	require.InDelta(t, 0.5, routestats.GetOrCreateHandle(badKey).Quality().Quality, 1e-9)
-
-	// The route now succeeds. Every time selection picks it, record a success and
-	// count how many pool requests recovery took.
-	rnd := rand.New(rand.NewPCG(0x9999, 0x1111))
-	samples, requests := 0, 0
-	for requests < 5000 {
-		selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
-		require.NoError(t, err)
-		require.NotNil(t, selected)
-		requests++
-		if selected.ChannelId != 7422 {
-			continue
-		}
-		samples++
-		h := routestats.GetOrCreateHandle(badKey)
-		h.ObserveSuccess(1.0)
-		h.ObserveTTFT(2000)
-		h.ObserveTPS(20)
-		if h.Quality().Quality > 0.9 {
-			break
-		}
-	}
-
-	q := routestats.GetOrCreateHandle(badKey).Quality().Quality
-	assert.Greater(t, q, 0.9, "a floor-quality route must be able to climb back, reached %.4f", q)
-	assert.Positive(t, samples, "recovery requires the route to keep receiving traffic")
-	assert.Less(t, requests, 1000,
-		"recovery must be prompt, took %d pool requests and %d samples", requests, samples)
-}
-
-// TestScoreW4ComponentFloorIsWhatPreventsStarvation separates the two floors,
-// which the issue text originally conflated. With both floors removed the score
-// collapses to zero and the route is never sampled again — that is a permanent
-// starvation, not a slow recovery. Five candidates keep the pool on the
-// cumulative weighted path (thin pools of <5 route by P2C, which guarantees a
-// 1/n² probe share instead of starving — see the thin-pool P2C tests).
-func TestScoreW4ComponentFloorIsWhatPreventsStarvation(t *testing.T) {
-	const group, alias = "w4f-group", "w4f-model"
-	withRouteStats(t, func(cfg *routestats.RouteStatsSetting) {
-		cfg.ComponentFloor = 0
-		cfg.QualityFloor = 0
-	})
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
-
-	chA := testRouteChannel(7431, false, []string{"sk-a"}, nil)
-	chB := testRouteChannel(7432, false, []string{"sk-b"}, nil)
-	chC := testRouteChannel(7433, false, []string{"sk-c"}, nil)
-	chD := testRouteChannel(7434, false, []string{"sk-d"}, nil)
-	chE := testRouteChannel(7435, false, []string{"sk-e"}, nil)
-	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB, chC, chD, chE}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7431, 0, alias, "up-a", 100),
-		testRoute(2, 7432, 0, alias, "up-b", 100),
-		testRoute(3, 7433, 0, alias, "up-c", 100),
-		testRoute(4, 7434, 0, alias, "up-d", 100),
-		testRoute(5, 7435, 0, alias, "up-e", 100),
-	})
-	defer cleanup()
-
-	badKey := routeStatsKey(alias, "up-b", 7432)
-	observeQuality(t, routeStatsKey(alias, "up-a", 7431), 1.0, 2000, 20, 8)
-	// success 0 with no other observed component drives synthesis to zero. It lands
-	// a hair above exact zero because staleness regression nudges the stored rate
-	// back towards neutral between observations, which is immaterial here: the
-	// resulting score is ~1e-9 of the pool and the route is never drawn again.
-	h := routestats.GetOrCreateHandle(badKey)
-	for range 20 {
-		h.ObserveSuccess(0.0)
-	}
-	require.Less(t, h.Quality().Quality, 1e-6,
-		"with both floors at zero quality collapses to effectively zero")
-
-	// The route is starved, not mathematically excluded: quality lands ~1e-9 rather
-	// than exactly 0 because staleness regression nudges the stored success rate
-	// back towards neutral between observations. A share that small can still win a
-	// draw once in a few thousand, and it does so depending on how much wall time
-	// earlier tests consumed — asserting an exact zero made this order-dependent.
-	// One hit in 2000 is starvation; the floor exists to prevent exactly this.
-	counts := drawShares(t, group, alias, 2000, 0xABCD)
-	assert.LessOrEqual(t, counts[7432], 2,
-		"a route at zero quality is starved out of the pool: this is why the component floor exists")
-}
-
-// TestThinPoolP2CZeroQualityStillProbed pins the thin-pool counterpart to the
-// starvation contract: with fewer than smallPoolUnits candidates, P2C serves a
-// route whenever both uniform draws land on it (1/n² = 25% in a two-route
-// pool) regardless of its score — a thin pool probes instead of starving, so a
-// recovering route can climb back without operator intervention.
-func TestThinPoolP2CZeroQualityStillProbed(t *testing.T) {
-	const group, alias = "w4t-group", "w4t-model"
-	withRouteStats(t, func(cfg *routestats.RouteStatsSetting) {
-		cfg.ComponentFloor = 0
-		cfg.QualityFloor = 0
-	})
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
-
-	chA := testRouteChannel(7441, false, []string{"sk-a"}, nil)
-	chB := testRouteChannel(7442, false, []string{"sk-b"}, nil)
-	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7441, 0, alias, "up-a", 100),
-		testRoute(2, 7442, 0, alias, "up-b", 100),
-	})
-	defer cleanup()
-
-	badKey := routeStatsKey(alias, "up-b", 7442)
-	observeQuality(t, routeStatsKey(alias, "up-a", 7441), 1.0, 2000, 20, 8)
-	h := routestats.GetOrCreateHandle(badKey)
-	for range 20 {
-		h.ObserveSuccess(0.0)
-	}
-	require.Less(t, h.Quality().Quality, 1e-6, "fixture: quality must collapse")
-
-	counts := drawShares(t, group, alias, 2000, 0xABCE)
-	assert.InDelta(t, 500, counts[7442], 90,
-		"a zero-quality route in a two-route thin pool keeps the 1/n² probe share (~25%%), got %d", counts[7442])
-}
-
 // ---- W5: correction observability through selection ----
-
-// TestScoreW5CorrectionIsNeutralAtConvergence is the invariant behind W5.1's
-// hand-recomputation: once traffic matches the base-score distribution the
-// correction contributes nothing, so the steady state is the base-score split and
-// not something the window invented.
-func TestScoreW5CorrectionIsNeutralAtConvergence(t *testing.T) {
-	const group, alias = "w5-group", "w5-model"
-	withRouteStats(t, nil)
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
-
-	chA := testRouteChannel(7501, false, []string{"sk-a"}, nil)
-	chB := testRouteChannel(7502, false, []string{"sk-b"}, nil)
-	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7501, 0, alias, "up-a", 100),
-		testRoute(2, 7502, 0, alias, "up-b", 100),
-	})
-	defer cleanup()
-
-	observeQuality(t, routeStatsKey(alias, "up-a", 7501), 1.0, 2000, 20, 8)
-	observeQuality(t, routeStatsKey(alias, "up-b", 7502), 1.0, 4000, 20, 8)
-
-	drawShares(t, group, alias, 4000, 0x5150)
-
-	pool := routestats.PoolKey{PublicModelAlias: alias}
-	candidates := getCandidatesFromCache(group, alias)
-	scores, _ := scoreCandidates(pool, candidates, alias)
-	require.Len(t, scores, 2)
-
-	for id, s := range scores {
-		assert.InDelta(t, 1.0, s.Correction, 0.15,
-			"route %v: correction must settle near 1.0 at convergence, got %.4f", id, s.Correction)
-		assert.InDelta(t, s.BaseWeight*s.Quality*s.Health*s.Correction, s.Final, 1e-9,
-			"route %v: final must be the product of its factors", id)
-		assert.Positive(t, s.Opportunities, "route %v must have window history", id)
-	}
-}
-
-// TestScoreW5WindowZeroDisablesCorrection pins the A/B switch end to end: with the
-// window off the selector must still work and every correction must be exactly
-// neutral, so the two load-test arms differ only in this one setting.
-func TestScoreW5WindowZeroDisablesCorrection(t *testing.T) {
-	const group, alias = "w5z-group", "w5z-model"
-	withRouteStats(t, func(cfg *routestats.RouteStatsSetting) {
-		cfg.ShareWindowSize = 0
-	})
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
-
-	chA := testRouteChannel(7511, false, []string{"sk-a"}, nil)
-	chB := testRouteChannel(7512, false, []string{"sk-b"}, nil)
-	cleanup := withRouteUnitFixture(t, []*Channel{chA, chB}, group, alias, []ChannelModelRoute{
-		testRoute(1, 7511, 0, alias, "up-a", 100),
-		testRoute(2, 7512, 0, alias, "up-b", 100),
-	})
-	defer cleanup()
-
-	observeQuality(t, routeStatsKey(alias, "up-a", 7511), 1.0, 2000, 20, 8)
-	observeQuality(t, routeStatsKey(alias, "up-b", 7512), 1.0, 4000, 20, 8)
-
-	const draws = 12000
-	counts := drawShares(t, group, alias, draws, 0x2222)
-	share := 100 * float64(counts[7512]) / float64(draws)
-	assert.InDelta(t, 48.3, share, 1.5,
-		"the no-correction arm must still track quality, got %.2f%%", share)
-
-	assert.Zero(t, routestats.SharePoolCount(), "a disabled window must allocate no pool state")
-
-	pool := routestats.PoolKey{PublicModelAlias: alias}
-	scores, _ := scoreCandidates(pool, getCandidatesFromCache(group, alias), alias)
-	for id, s := range scores {
-		assert.Equal(t, 1.0, s.Correction, "route %v must carry a neutral correction", id)
-	}
-}
 
 // TestRouteUnitViewIsNotMultipliedByGroups pins the contract that replaced the
 // old per-group scoping: a channel serving one alias across several groups has
@@ -780,8 +596,8 @@ func TestRouteUnitViewIsNotMultipliedByGroups(t *testing.T) {
 	cleanupDB := withRouteDB(t)
 	defer cleanupDB()
 	withRouteStats(t, nil)
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	const alias = "shared-model"
 	ch := makeSingleKeyChannel(1, alias, "default,vip", nil)

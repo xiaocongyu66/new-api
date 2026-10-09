@@ -28,39 +28,40 @@ func withChannelModelHealthControllerDB(t *testing.T) {
 
 	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&channelpkg.ChannelModelHealth{}))
+	// RecoverUnit restores the model into the routable set, so the routing
+	// tables and the gateway revision machinery must exist too.
+	require.NoError(t, db.AutoMigrate(
+		&channelpkg.ChannelModelHealth{},
+		&channelpkg.Channel{}, &channelpkg.Ability{}, &channelpkg.ChannelModelRoute{},
+		&channelpkg.GatewayConfigRevision{}, &channelpkg.GatewayConfigOutbox{},
+	))
 	dbx.DB = db
-	channelpkg.ClearRouteHealthCache()
+	require.NoError(t, channelpkg.InitializeGatewayConfigRevision())
+	channelpkg.ClearUnitHealthCache()
 	t.Cleanup(func() {
-		dbx.DB = previousDB
+		channelpkg.ClearUnitHealthCache()
 		common.SetMainDatabaseType(previousType)
-		channelpkg.ClearRouteHealthCache()
-		sqlDB, err := db.DB()
-		if err == nil {
-			_ = sqlDB.Close()
-		}
+		dbx.DB = previousDB
 	})
 }
 
 func TestChannelModelHealthAdminAPI(t *testing.T) {
 	withChannelModelHealthControllerDB(t)
 
-	now := time.Now().Unix()
-	until := now + 30
+	nowMs := time.Now().UnixMilli()
+	// A live cooling row: not fresh, so it survives the listing filter.
 	require.NoError(t, dbx.DB.Create(&channelpkg.ChannelModelHealth{
-		ChannelId:           71,
-		Model:               "gpt-health",
-		State:               channelpkg.HealthCalm,
-		IsolationLevel:      2,
-		Until:               &until,
-		Version:             1,
-		DormantDisableCount: 1,
-		LastErrorCode:       "bad_response",
-		LastErrorAt:         &now,
-		UpdatedAt:           now,
+		ChannelId:          71,
+		Model:              "gpt-health",
+		Version:            1,
+		EwmaScore:          0.5,
+		RequestCount:       3,
+		CooldownUntilMs:    nowMs + 30_000,
+		LastCoolingOutcome: 1, // UnitFatal
+		UpdatedAt:          nowMs,
 	}).Error)
 
-	t.Run("lists one channel's model matrix", func(t *testing.T) {
+	t.Run("lists one channel's unit matrix", func(t *testing.T) {
 		ctx, recorder := fiberadapter.NewSyntheticContext(
 			httptest.NewRequest(http.MethodGet, "/api/channel/health?channel_id=71", nil))
 
@@ -68,19 +69,19 @@ func TestChannelModelHealthAdminAPI(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, recorder.Code)
 		var response struct {
-			Success bool                    `json:"success"`
-			Data    []channelModelHealthRow `json:"data"`
+			Success bool                        `json:"success"`
+			Data    []channelpkg.UnitHealthView `json:"data"`
 		}
 		require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
 		require.True(t, response.Success)
 		require.Len(t, response.Data, 1)
 		assert.Equal(t, "gpt-health", response.Data[0].Model)
-		assert.Equal(t, channelpkg.HealthCalm, response.Data[0].State)
-		assert.Greater(t, response.Data[0].RemainingSeconds, int64(0))
-		assert.Equal(t, 1, response.Data[0].DormantDisableCount)
+		assert.Equal(t, "cooling", response.Data[0].State)
+		assert.Equal(t, "fatal", response.Data[0].LastCoolingOutcome)
+		assert.Greater(t, response.Data[0].RemainingCooldownMs, int64(0))
 	})
 
-	t.Run("disable then recover changes the persisted route", func(t *testing.T) {
+	t.Run("disable then recover changes the persisted unit", func(t *testing.T) {
 		post := func(action string) *httptest.ResponseRecorder {
 			request := httptest.NewRequest(http.MethodPost, "/api/channel/health/"+action,
 				strings.NewReader(`{"channel_id":71,"model":"gpt-health"}`))
@@ -92,14 +93,13 @@ func TestChannelModelHealthAdminAPI(t *testing.T) {
 		require.Equal(t, http.StatusOK, post("disable").Code)
 		var row channelpkg.ChannelModelHealth
 		require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", 71, "gpt-health").First(&row).Error)
-		assert.Equal(t, channelpkg.HealthDisabled, row.State)
-		assert.Nil(t, row.Until)
+		assert.Equal(t, channelpkg.UnitDisableStreakCap, row.DisableStreak, "disable trips the terminal cap")
 
 		require.Equal(t, http.StatusOK, post("recover").Code)
 		require.NoError(t, dbx.DB.Where("channel_id = ? AND model = ?", 71, "gpt-health").First(&row).Error)
-		assert.Equal(t, channelpkg.HealthHealthy, row.State)
-		assert.Zero(t, row.IsolationLevel)
-		assert.Zero(t, row.DormantDisableCount)
+		assert.Zero(t, row.DisableStreak, "recover clears the disable strikes")
+		assert.True(t, row.RampPending, "recover re-arms the slow-start ramp")
+		assert.Zero(t, row.CooldownUntilMs, "recover drops any live cooldown")
 	})
 
 	t.Run("rejects unknown action", func(t *testing.T) {

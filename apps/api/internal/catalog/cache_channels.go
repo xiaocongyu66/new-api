@@ -96,6 +96,12 @@ func InitChannelCache() {
 	// invalidating the pricing cache, otherwise the reversed order deadlocks.
 	InvalidatePricingCache()
 	common.SysLog("channels synced from database")
+	// Concurrency gate: install the live per-upstream-key limit on every
+	// key of this snapshot (no-op while the limit is 0, the unlimited
+	// default). Runs outside channelSyncLock: the gate registry has its
+	// own lock and takes no pricing-lock path, so it composes with the
+	// invalidation ordering above.
+	RegisterChannelConcurrencyLimits(channels)
 }
 
 func SyncChannelCache(frequency int) {

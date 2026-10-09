@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 )
@@ -50,6 +52,10 @@ const (
 	ErrorCodeDoRequestFailed    ErrorCode = "do_request_failed"
 	ErrorCodeGetChannelFailed   ErrorCode = "get_channel_failed"
 	ErrorCodeGenRelayInfoFailed ErrorCode = "gen_relay_info_failed"
+	// Gateway-local concurrency-slot rejection (429 we produced, not an
+	// upstream one): deliberately NOT a channel:* code, so IsChannelError
+	// and the channel-fault paths never treat it as an upstream failure.
+	ErrorCodeRateLimited ErrorCode = "rate_limited"
 
 	// channel error
 	ErrorCodeChannelNoAvailableKey        ErrorCode = "channel:no_available_key"
@@ -95,7 +101,12 @@ type NewAPIError struct {
 	errorType      ErrorType
 	errorCode      ErrorCode
 	StatusCode     int
-	Metadata       json.RawMessage
+	// RetryAfterMs carries the upstream Retry-After hint in milliseconds;
+	// 0 = no hint. Set at the place where the upstream response becomes a
+	// NewAPIError; the relay loop reads it for its failover budget and the
+	// terminal 504's wire header.
+	RetryAfterMs int64
+	Metadata     json.RawMessage
 }
 
 // Unwrap enables errors.Is / errors.As to work with NewAPIError by exposing the underlying error.
@@ -411,6 +422,38 @@ func ErrOptionWithHideErrMsg(replaceStr string) NewAPIErrorOptions {
 		}
 		e.Err = errors.New(replaceStr)
 	}
+}
+
+// ErrOptionWithRetryAfterMs stamps the upstream Retry-After hint (ms; 0
+// clears any inherited value) onto a NewAPIError.
+func ErrOptionWithRetryAfterMs(retryAfterMs int64) NewAPIErrorOptions {
+	return func(e *NewAPIError) {
+		e.RetryAfterMs = retryAfterMs
+	}
+}
+
+// ParseRetryAfterMs converts an upstream Retry-After header value to
+// milliseconds: the integer-seconds delta form, or an HTTP-date whose
+// distance from now is the hint. Anything else (absent, unparseable,
+// negative) yields 0 — "no hint", which callers must treat as such rather
+// than as an immediate retry.
+func ParseRetryAfterMs(headerValue string, now time.Time) int64 {
+	if headerValue == "" {
+		return 0
+	}
+	if secs, err := strconv.Atoi(strings.TrimSpace(headerValue)); err == nil {
+		if secs < 0 {
+			return 0
+		}
+		return int64(secs) * 1000
+	}
+	if deadline, err := http.ParseTime(headerValue); err == nil {
+		if delta := deadline.Sub(now); delta > 0 {
+			return delta.Milliseconds()
+		}
+		return 0
+	}
+	return 0
 }
 
 func IsRecordErrorLog(e *NewAPIError) bool {

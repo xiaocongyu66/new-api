@@ -12,7 +12,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// PressureLevel classifies pool availability for a model's schedulable units.
+// PressureLevel classifies pool availability for a model's schedulable
+// units.
 type PressureLevel int
 
 const (
@@ -22,9 +23,10 @@ const (
 )
 
 // modelPressure tracks per-model availability counts for the hot-path
-// pressure check. total = all schedulable units; healthy = those currently
-// in the healthy state. A cache miss counts as healthy, so healthy starts
-// equal to total and is adjusted incrementally as state transitions occur.
+// pressure check. total = all schedulable units; healthy = those neither
+// cooling nor terminal-disabled. A cache miss counts as healthy, so healthy
+// starts equal to total and is adjusted incrementally as unit transitions
+// occur.
 type modelPressure struct {
 	total   int
 	healthy int
@@ -33,8 +35,9 @@ type modelPressure struct {
 var pressureIDM = map[string]*modelPressure{}
 var pressureLock sync.RWMutex
 
-// modelPressureLevel reads the in-process counter with zero DB reads and zero
-// traversal. total == 0 or no record → PressureNormal (fail-safe direction).
+// modelPressureLevel reads the in-process counter with zero DB reads and
+// zero traversal. total == 0 or no record → PressureNormal (fail-safe
+// direction).
 func modelPressureLevel(model string) PressureLevel {
 	pressureLock.RLock()
 	p := pressureIDM[model]
@@ -43,7 +46,7 @@ func modelPressureLevel(model string) PressureLevel {
 		return PressureNormal
 	}
 	ratio := float64(p.healthy) * 100 / float64(p.total)
-	cfg := GetChannelModelHealthSetting()
+	cfg := GetUnitHealthSetting()
 	switch {
 	case ratio < float64(cfg.EmergencyThreshold):
 		return PressureEmergency
@@ -54,46 +57,12 @@ func modelPressureLevel(model string) PressureLevel {
 	}
 }
 
-// pressureTotalForModel returns the model's schedulable unit count from the
-// hot-path counter. Zero means the pool size is unknown; callers must treat
-// that as a full-size pool.
-func pressureTotalForModel(model string) int {
-	pressureLock.RLock()
-	defer pressureLock.RUnlock()
-	p := pressureIDM[model]
-	if p == nil {
-		return 0
-	}
-	return p.total
-}
-
-// decayStep returns the isolation_level decrement based on pool pressure:
-// warning → AcceleratedDecayStep; normal/emergency → NormalDecayStep.
-// Config values <= 0 fall back to 1 so decay never stalls at step 0.
-func decayStep(model string) int {
-	cfg := GetChannelModelHealthSetting()
-	step := cfg.NormalDecayStep
-	if modelPressureLevel(model) == PressureWarning {
-		step = cfg.AcceleratedDecayStep
-	}
-	if step <= 0 {
-		step = 1
-	}
-	return step
-}
-
-// isHealthyState reports whether a state string represents the healthy state.
-func isHealthyState(state string) bool {
-	return state == HealthHealthy
-}
-
-// pressureOnStateChange adjusts the healthy counter when a route crosses the
-// healthy ↔ non-healthy boundary. Same-state migrations (e.g. calm→dormant)
-// do not move the counter. healthy is floored at zero.
-func pressureOnStateChange(key RouteKey, from string, to string) {
-	fromHealthy := isHealthyState(from)
-	toHealthy := isHealthyState(to)
-	if fromHealthy == toHealthy {
+// pressureOnUnitTransition adjusts the healthy counter when a unit crosses
+// the healthy ↔ unhealthy boundary (unhealthy = cooling or terminal-
+// disabled). Same-side transitions (rung climbs inside an active cooldown,
+// idle anneal) do not move the counter. healthy is floored at zero.
+func pressureOnUnitTransition(key RouteKey, wasUnhealthy, nowUnhealthy bool) {
+	if wasUnhealthy == nowUnhealthy {
 		return
 	}
 	pressureLock.Lock()
@@ -102,7 +71,7 @@ func pressureOnStateChange(key RouteKey, from string, to string) {
 	if p == nil {
 		return
 	}
-	if fromHealthy && !toHealthy {
+	if nowUnhealthy {
 		p.healthy--
 	} else {
 		p.healthy++
@@ -112,9 +81,22 @@ func pressureOnStateChange(key RouteKey, from string, to string) {
 	}
 }
 
+// unitUnhealthySnapshot reports the mirror's unhealthy view of one unit. A
+// cache miss counts as healthy, matching the recompute convention.
+func unitUnhealthySnapshot(key RouteKey) bool {
+	unitHealthLock.RLock()
+	defer unitHealthLock.RUnlock()
+	st, ok := unitHealthIDM[key]
+	if !ok {
+		return false
+	}
+	return isUnitUnhealthy(st, ChannelHealthNow().UnixMilli())
+}
+
 // pressureOnRemove decrements total (and healthy if the unit was healthy)
 // when a schedulable unit is cleaned up. healthy is floored at zero.
 func pressureOnRemove(key RouteKey) {
+	unhealthy := unitUnhealthySnapshot(key)
 	pressureLock.Lock()
 	defer pressureLock.Unlock()
 	p := pressureIDM[key.Model]
@@ -125,10 +107,7 @@ func pressureOnRemove(key RouteKey) {
 	if p.total < 0 {
 		p.total = 0
 	}
-	// A cache miss counts as healthy, so a removed unit is assumed healthy
-	// unless the in-process state says otherwise.
-	st, _ := GetRouteHealth(key)
-	if st == "" || st == HealthHealthy {
+	if !unhealthy {
 		p.healthy--
 		if p.healthy < 0 {
 			p.healthy = 0
@@ -137,12 +116,13 @@ func pressureOnRemove(key RouteKey) {
 }
 
 // pressureRecomputeTotals rebuilds the pressure map from scratch: total =
-// distinct channels × keys per channel for each model (from enabled abilities
-// and channel info); healthy = total minus non-healthy persisted rows.
-// db is the handle to read through: callers inside a MutateGatewayRouting
-// transaction MUST pass the tx — reading through a pooled dbx.DB connection
-// while the transaction holds the SQLite write lock self-deadlocks — while
-// startup-time callers with no surrounding transaction pass dbx.DB.
+// distinct channels × keys per channel for each model (from enabled
+// abilities and channel info); healthy = total minus the units currently
+// cooling or terminal-disabled. db is the handle to read through: callers
+// inside a MutateGatewayRouting transaction MUST pass the tx — reading
+// through a pooled dbx.DB connection while the transaction holds the
+// SQLite write lock self-deadlocks — while startup-time callers with no
+// surrounding transaction pass dbx.DB.
 func pressureRecomputeTotals(db *gorm.DB) {
 	type abilityRow struct {
 		Model     string
@@ -160,22 +140,22 @@ func pressureRecomputeTotals(db *gorm.DB) {
 		return
 	}
 	multiKeySize := make(map[int]int, len(channels))
-	for _, ch := range channels {
-		size := ch.ChannelInfo.MultiKeySize
+	for i := range channels {
+		size := channels[i].ChannelInfo.MultiKeySize
 		if size <= 0 {
 			size = 1
 		}
-		multiKeySize[ch.Id] = size
+		multiKeySize[channels[i].Id] = size
 	}
 
 	modelChannels := make(map[string]map[int]struct{})
-	for _, a := range abilities {
-		set, ok := modelChannels[a.Model]
+	for i := range abilities {
+		set, ok := modelChannels[abilities[i].Model]
 		if !ok {
 			set = make(map[int]struct{})
-			modelChannels[a.Model] = set
+			modelChannels[abilities[i].Model] = set
 		}
-		set[a.ChannelId] = struct{}{}
+		set[abilities[i].ChannelId] = struct{}{}
 	}
 
 	totals := make(map[string]int, len(modelChannels))
@@ -187,26 +167,31 @@ func pressureRecomputeTotals(db *gorm.DB) {
 		totals[model] = t
 	}
 
-	var healthRows []ChannelModelHealth
-	if err := db.Find(&healthRows).Error; err != nil {
+	type unhealthyRow struct {
+		Model         string
+		CooldownUntil int64
+		DisableStreak int
+	}
+	var unhealthyRows []unhealthyRow
+	if err := db.Model(&ChannelModelHealth{}).
+		Select("model, cooldown_until_ms, disable_streak").
+		Where("cooldown_until_ms > ? OR disable_streak >= ?", time.Now().UnixMilli(), UnitDisableStreakCap).
+		Find(&unhealthyRows).Error; err != nil {
 		common.SysError("pressure recompute: query health rows failed: " + err.Error())
 		return
 	}
 
-	nonHealthy := make(map[string]int)
-	for _, row := range healthRows {
-		if row.State == HealthHealthy {
+	unhealthy := make(map[string]int)
+	for i := range unhealthyRows {
+		if _, tracked := totals[unhealthyRows[i].Model]; !tracked {
 			continue
 		}
-		if _, tracked := totals[row.Model]; !tracked {
-			continue
-		}
-		nonHealthy[row.Model]++
+		unhealthy[unhealthyRows[i].Model]++
 	}
 
 	newMap := make(map[string]*modelPressure, len(totals))
 	for model, total := range totals {
-		healthy := total - nonHealthy[model]
+		healthy := total - unhealthy[model]
 		if healthy < 0 {
 			healthy = 0
 		}
@@ -219,11 +204,14 @@ func pressureRecomputeTotals(db *gorm.DB) {
 	common.SysLog("channel model pressure recompute complete")
 }
 
-// maybeEmergencyRecover synchronously batch-recovers routes when a model's
+// maybeEmergencyRecover synchronously batch-recovers units when a model's
 // availability drops below EmergencyThreshold. It picks the least-isolated
-// non-disabled routes (by isolation_level ASC, updated_at ASC) and resets
-// their state to healthy while preserving isolation_level — so a subsequent
-// failure resumes from the original level, not from zero.
+// unhealthy units (terminal rows first: their zero deadline sorts ahead of
+// the cooling ones, and they are stuck out the longest; then by earliest
+// cooldown deadline, then oldest update) and clears their isolation — the
+// deadline is zeroed, disable strikes reset, the slow-start ramp armed — so
+// the units re-enter the pool immediately rather than waiting out full
+// windows.
 func maybeEmergencyRecover(model string, now time.Time) {
 	pressureLock.RLock()
 	p := pressureIDM[model]
@@ -232,7 +220,7 @@ func maybeEmergencyRecover(model string, now time.Time) {
 		return
 	}
 
-	cfg := GetChannelModelHealthSetting()
+	cfg := GetUnitHealthSetting()
 	ratio := float64(p.healthy) * 100 / float64(p.total)
 	if ratio >= float64(cfg.EmergencyThreshold) {
 		return
@@ -244,24 +232,51 @@ func maybeEmergencyRecover(model string, now time.Time) {
 		return
 	}
 
-	var rows []ChannelModelHealth
-	// Disabled rows are eligible: they were excluded, so once a model fell
-	// below EmergencyThreshold its hard-disabled routes could never come back
-	// and emergency recovery had nothing left to rescue.
-	if err := dbx.DB.Where("model = ?", model).
-		Order("isolation_level ASC, updated_at ASC").
+	nowMs := now.UnixMilli()
+	type recoverRow struct {
+		ChannelId int
+		KeyIndex  int
+		Model     string
+	}
+	var rows []recoverRow
+	// Terminal-disabled rows carry a zero deadline, so they order first:
+	// they are stuck out the longest and have nothing left to wait for.
+	if err := dbx.DB.Model(&ChannelModelHealth{}).
+		Select("channel_id, key_index, model").
+		Where("model = ? AND (cooldown_until_ms > ? OR disable_streak >= ?)", model, nowMs, UnitDisableStreakCap).
+		Order("cooldown_until_ms ASC, updated_at ASC").
 		Limit(want).
 		Find(&rows).Error; err != nil {
 		common.SysError("emergency recover query failed: " + err.Error())
 		return
 	}
 
-	for _, row := range rows {
+	for i := range rows {
+		row := &rows[i]
 		key := RouteKey{ChannelId: row.ChannelId, KeyIndex: row.KeyIndex, Model: row.Model}
-		if err := updateRouteState(key, HealthHealthy, row.IsolationLevel, nil, row.DormantDisableCount, now); err != nil {
-			common.SysError("emergency recover failed: channel=" + strconv.Itoa(row.ChannelId) + " key=" + strconv.Itoa(row.KeyIndex) + " model=" + row.Model + " err=" + err.Error())
+		revived := false
+		err := casApplyUnit(key, now, func(r *ChannelModelHealth) (bool, error) {
+			// Only units still unhealthy are eligible; a row recovered by
+			// a concurrent writer passes through unchanged.
+			if r.CooldownUntilMs == 0 && r.DisableStreak < UnitDisableStreakCap {
+				return false, nil
+			}
+			r.CooldownUntilMs = 0
+			r.DisableStreak = 0
+			r.RampPending = true
+			r.RequestCount = 0
+			r.AnnealSinceMs = nowMs
+			return true, nil
+		})
+		if err == nil {
+			revived = true
+		}
+		if !revived {
+			if err != nil {
+				common.SysError("emergency recover failed: channel=" + strconv.Itoa(row.ChannelId) + " key=" + strconv.Itoa(row.KeyIndex) + " model=" + row.Model + " err=" + err.Error())
+			}
 			continue
 		}
-		logger.LogWarn(nil, "emergency recover route: channel="+strconv.Itoa(row.ChannelId)+" key="+strconv.Itoa(row.KeyIndex)+" model="+row.Model+" level="+strconv.Itoa(row.IsolationLevel))
+		logger.LogWarn(nil, "emergency recover route unit: channel="+strconv.Itoa(row.ChannelId)+" key="+strconv.Itoa(row.KeyIndex)+" model="+row.Model)
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -112,6 +113,14 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 		if newAPIError != nil {
 			logger.LogError(c.Context(), fmt.Sprintf("relay error: %s", common.LocalLogPreview(newAPIError.Error())))
 			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
+			// The failover loop's terminal 504 (relayFailoverExhausted
+			// carrying RetryAfterSec) is the only response that carries a
+			// Retry-After header; a stashed switchable-4xx passthrough stays
+			// the upstream's error unmodified, without a hint of our own.
+			var exhausted relayFailoverExhausted
+			if errors.As(newAPIError.Err, &exhausted) && exhausted.RetryAfterSec > 0 {
+				c.SetHeader("Retry-After", strconv.Itoa(exhausted.RetryAfterSec))
+			}
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
 				helper.WssError(c, ws, newAPIError.ToOpenAIError())
@@ -221,16 +230,104 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 		catalog.GetChannelHealthManager().RecordRequestAttempts(attempts, winnerID, relayInfo.OriginModelName, requestSucceeded)
 	}()
 
+	// The failover loop's state (mono dispatch::retry): the tried-exclusion
+	// set is the request's ExcludeRoutes map — selection and the retry loop
+	// consult the same set — plus the attempt cap and the hot-swapped
+	// request-level time budget (failed attempt latency and cooldown waits
+	// only; a successful attempt charges nothing).
+	failover := catalog.NewFailover(failoverPolicy(), retryParam.ExcludeRoutes)
+
+	// The local 429 of the last slot-full pass; when the pool exhausts
+	// saturated it is the terminal authority instead of a failover
+	// exhausted 503/504 wrap. A real pass (dial or success) clears it.
+	var slotFullErr *types.NewAPIError
+
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
 		relayInfo.RetryIndex = retryParam.GetRetry()
 		route, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
+			// mono's "no candidate" arm: when the whole pool for this model
+			// is cooling and the shortest recovery cooldown fits the
+			// request's failover time budget, sleep it out and clear the
+			// tried set instead of terminating — the wait dials no upstream
+			// and consumes no attempt slot. Retry-suppressed requests
+			// (specific-channel replay, failed channel affinity) keep
+			// today's no-wait passthrough: the suppressions are not
+			// weakened.
+			suppressed := catalog.ShouldSkipRetryAfterChannelAffinityFailure(c)
+			if !suppressed {
+				if _, ok := c.Get("specific_channel_id"); ok {
+					suppressed = true
+				}
+			}
+			if !suppressed {
+				coolingMs := catalog.MinCooldownRemainingForModel(retryParam.TokenGroup, relayInfo.OriginModelName, retryParam.ExcludeRoutes, time.Now())
+				if coolingMs > 0 && failover.WithinWaitBudget(coolingMs) {
+					if interrupted := coolDownSleep(c, time.Duration(coolingMs)*time.Millisecond); interrupted {
+						// The client went away while we waited: report the
+						// selection failure (quota refund still applies via
+						// the defers) and stop.
+						newAPIError = channelErr
+						break
+					}
+					failover.ChargeWait(coolingMs)
+					// Waiting out a recovery re-opens the cooled units
+					// (mono's "tolerate the connection time"): without the
+					// reset the wait would be pointless, since the recovered
+					// candidates would still be excluded.
+					failover.ResetTried()
+					retryParam.ResetRetryNextTry() // this pass consumed no attempt
+					continue
+				}
+				// No wait available: the last slot-full pass's local 429
+				// wins (the pool saturated — nothing failed upstream), else a
+				// stashed switchable-4xx passes through unmodified, else 504
+				// + Retry-After while any unit is cooling, 503 when nothing
+				// is (mono's terminal split).
+				newAPIError = terminalFailoverError(slotFullErr, failover.TakeStashed(), coolingMs)
+			} else {
+				// Suppressed passes keep today's no-wait passthrough; only a
+				// pool saturation (our local gate, not an upstream failure)
+				// replaces the raw selection error with its 429.
+				if slotFullErr != nil {
+					newAPIError = slotFullErr
+				} else {
+					newAPIError = channelErr
+				}
+			}
 			logger.LogError(c.Context(), channelErr.Error())
-			newAPIError = channelErr
 			break
 		}
+		// The attempt slot is consumed only when we are about to dial the
+		// upstream (mono: next_attempt fires at select-success, not at the
+		// loop top); wait passes stay slot-free.
+		if !failover.NextAttempt() {
+			coolingMs := catalog.MinCooldownRemainingForModel(retryParam.TokenGroup, relayInfo.OriginModelName, retryParam.ExcludeRoutes, time.Now())
+			newAPIError = terminalFailoverError(slotFullErr, failover.TakeStashed(), coolingMs)
+			break
+		}
+		// Concurrency slots (mono stage_concurrency): the global pool
+		// first, then the selected upstream key's pool, both try-only.
+		// A full pool rejects this attempt with a local 429 — not an
+		// upstream failure: no health-table outcome, no route-stats
+		// charge, no channel-fault processing. The pass mirrors the
+		// cooldown-wait pass: the unit is marked tried, no attempt slot.
+		release, slotsAcquired := catalog.AcquireRelaySlots(catalog.ChannelKey{ChannelId: route.ChannelId, KeyIndex: route.KeyIndex})
+		if !slotsAcquired {
+			failover.MarkTried(catalog.RouteKey{ChannelId: route.ChannelId, KeyIndex: route.KeyIndex, Model: route.Alias})
+			failover.ClearStash()
+			slotFullErr = newConcurrencySlotFullError()
+			retryParam.ResetRetryNextTry() // this pass consumed no attempt
+			continue
+		}
+		// A real pass — success or an upstream failure — owns the terminal
+		// error from here on. The slots release via this defer on every
+		// terminal path (the success return, the terminal breaks) after
+		// the attempt's handler has consumed the upstream response; the
+		// retry path below releases them explicitly instead.
+		slotFullErr = nil
+		defer release()
 		channel := route.Channel
-		addUsedChannel(c, channel.Id)
 		if billingErr := billing.PrepareTieredBillingForSelectedGroup(c, relayInfo); billingErr != nil {
 			newAPIError = billingErr
 			break
@@ -290,8 +387,8 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 			if handle != nil {
 				handle.ObserveSuccess(routestats.SuccessObservation)
 			}
-			if healthErr := catalog.RecordSuccess(routeKey, time.Now()); healthErr != nil {
-				logger.LogError(c.Context(), fmt.Sprintf("record route success failed: %s", healthErr.Error()))
+			if healthErr := catalog.ReportOutcome(routeKey, catalog.UnitSuccess, int64(attemptLatencyMs), -1, time.Now()); healthErr != nil {
+				logger.LogError(c.Context(), fmt.Sprintf("record unit outcome failed: %s", healthErr.Error()))
 			}
 			if handle != nil {
 				routestats.RecordAttempt(requestId, relayInfo.RetryIndex, handle.Key(), routestats.AuditOutcomeSuccess,
@@ -311,14 +408,34 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 		// 4xx such as 400 is the caller's problem and must not cost the channel.
 		outcome := catalog.ClassifyChannelOutcome(newAPIError, channel.Id)
 		attempts = append(attempts, catalog.ChannelAttempt{ChannelID: channel.Id, ModelName: relayInfo.OriginModelName, Outcome: outcome})
-		if outcome.ExcludesChannel() && retryParam.ExcludeRoutes != nil {
-			// Exclude the exact route unit that failed, not the whole channel: a
-			// dead key on a multi-key channel must not cost its siblings, and the
-			// route unit is what selection actually picks.
-			retryParam.ExcludeRoutes[routeKey] = true
+		// The exclusion set follows the failover classification, not the
+		// channel-level outcome ledger (mono: Retryable, Throttled and
+		// FatalButSwitchable all mark_tried). A single upstream 401/403/404
+		// is Neutral in the channel ledger yet disqualifies exactly this
+		// route unit for the rest of the request; gating exclusion on the
+		// channel ledger let a dead-key unit be re-dialed on the next
+		// attempt. Route-UNIT granularity: a dead key never excludes its
+		// siblings on the same channel.
+		kind := classifyAttempt(newAPIError)
+		if kind == relayAttemptRetryable || kind == relayAttemptThrottled || kind == relayAttemptFatalSwitchable {
+			if retryParam.ExcludeRoutes != nil {
+				failover.MarkTried(routeKey)
+			}
 		}
-		if common.RetryTimes > 0 && wouldRetryWithOneBudget(c, newAPIError) {
-			recordRouteIsolation(c, routeKey, newAPIError, classifyChatFailureSource(newAPIError))
+		// The unit machine consumes every attempt, terminal or switchable —
+		// mono's retry loop reports the health result before deciding whether
+		// the loop continues, so a terminal failure still cools its unit.
+		// The channel-level outcome ledger below keeps its own independent
+		// classification for the fallback family.
+		// The upstream throttle hint: the parsed Retry-After in ms, -1 =
+		// no hint (the state machine's "no hint" marker).
+		retryAfterMs := int64(-1)
+		if newAPIError.RetryAfterMs > 0 {
+			retryAfterMs = newAPIError.RetryAfterMs
+		}
+		healthErr := catalog.ReportOutcome(routeKey, catalog.ClassifyUnitOutcome(newAPIError, channel.Id), 0, retryAfterMs, time.Now())
+		if healthErr != nil {
+			logger.LogError(c.Context(), fmt.Sprintf("record unit outcome failed: %s", healthErr.Error()))
 		}
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetCtxKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
 
@@ -331,8 +448,10 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 			switch classifyRouteStatsOutcome(newAPIError) {
 			case routeStatsThrottled:
 				// Observe429 folds in the synthetic TTFT penalty itself, so the
-				// observed timing must not be charged a second time here.
-				handle.Observe429(0)
+				// observed timing must not be charged a second time here. The
+				// derate clamp wants the upstream Retry-After hint in seconds;
+				// 0 = no hint (today's value).
+				handle.Observe429(int(newAPIError.RetryAfterMs / 1000))
 			case routeStatsFatal:
 				observeAttemptTiming()
 				handle.ObserveSuccess(routestats.FatalObservation)
@@ -342,7 +461,34 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 				c.Header("X-Request-Id"), common.GetCtxKeyString(c, constant.ContextKeyRoutePath), relayInfo.UsingGroup)
 		}
 
-		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
+		switch kind {
+		case relayAttemptRetryable, relayAttemptThrottled:
+			// A later generic failure supersedes the stashed channel-scoped
+			// 4xx: only the last attempt's failure decides the terminal error.
+			failover.ClearStash()
+		case relayAttemptFatalSwitchable:
+			// The last switchable-4xx wins on exhaustion: it passes through
+			// to the client instead of being disguised as a 503/504.
+			failover.StoreSwitchable(newAPIError)
+		}
+		switchable := kind == relayAttemptRetryable || kind == relayAttemptThrottled || kind == relayAttemptFatalSwitchable
+		if !switchable || !wouldRetryWithOneBudget(c, newAPIError) {
+			// Caller-side 4xx, a canceled request, or the admin's status-range
+			// gate / skip-retry rules: no candidate switch can help, so the
+			// last failure passes through exactly as today.
+			break
+		}
+		// A failed attempt's latency is the only non-wait charge to the
+		// failover time budget (mono S2: a successful attempt never charges).
+		// The attempt's slots go back now so the next candidate — usually
+		// a different upstream key — can take them; terminal paths release
+		// via the acquire-time defer, and the permit's sync.Once absorbs
+		// whichever ordering the two paths produce.
+		release()
+		failover.ChargeFailed(int64(attemptLatencyMs))
+		if failover.OverBudget() {
+			coolingMs := catalog.MinCooldownRemainingForModel(retryParam.TokenGroup, relayInfo.OriginModelName, retryParam.ExcludeRoutes, time.Now())
+			newAPIError = terminalFailoverError(slotFullErr, failover.TakeStashed(), coolingMs)
 			break
 		}
 	}
@@ -492,43 +638,6 @@ func classifyRouteStatsOutcome(err *types.NewAPIError) routeStatsOutcome {
 		return routeStatsFatal
 	}
 	return routeStatsNeutral
-}
-
-// classifyChatFailureSource separates a failure we caused locally (the request
-// never reached the upstream) from one the upstream returned. The state machine
-// treats them differently, because a local transport failure is not evidence
-// about the route's health.
-func classifyChatFailureSource(err *types.NewAPIError) catalog.FailureSource {
-	if err == nil {
-		return catalog.FailureSourceUpstream
-	}
-	if err.GetErrorCode() == types.ErrorCodeDoRequestFailed {
-		return catalog.FailureSourceLocal
-	}
-	return catalog.FailureSourceUpstream
-}
-
-// recordRouteIsolation charges the #368 hard signal: the state machine that can
-// calm, isolate or disable a route unit outright. It is the only path that can
-// zero a route out, so it must fire for every retry-eligible failure.
-func recordRouteIsolation(c contract.Context, routeKey catalog.RouteKey, apiErr *types.NewAPIError, source catalog.FailureSource) {
-	now := time.Now()
-	if healthErr := catalog.RecordRetryableFailure(routeKey, string(apiErr.GetErrorCode()), source, now); healthErr != nil {
-		logger.LogError(c.Context(), healthErr.Error())
-		return
-	}
-	state, level, until, ok := catalog.GetRouteIsolation(routeKey)
-	if !ok {
-		return
-	}
-	// A disabled route has no deadline, and a clock adjustment could leave an
-	// elapsed one behind; clamp so the log never reports a negative countdown.
-	remaining := int64(0)
-	if until > now.Unix() {
-		remaining = until - now.Unix()
-	}
-	logger.LogWarn(c.Context(), fmt.Sprintf("route isolation: channel #%d model %s -> %s level=%d remaining=%ds error_code=%s",
-		routeKey.ChannelId, routeKey.Model, state, level, remaining, apiErr.GetErrorCode()))
 }
 
 // wouldRetryWithOneBudget reports whether a relay error would retry if a single

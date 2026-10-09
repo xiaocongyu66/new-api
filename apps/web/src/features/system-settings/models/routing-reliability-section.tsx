@@ -73,21 +73,15 @@ const createRoutingReliabilitySchema = (
     return !Number.isNaN(Number(trimmed)) && Number(trimmed) >= 0
   }, t('Enter a non-negative number or leave empty'))
 
-  const isolationSeconds = z.coerce
+  const dispatchMs = z.coerce
     .number()
     .int()
-    .min(0, t('Isolation durations must be non-negative'))
+    .min(0, t('Dispatch durations must be non-negative'))
 
   const failureThreshold = z.coerce
     .number()
     .int()
     .min(1, t('Failure threshold must be at least 1'))
-
-  const weightScale = z.coerce
-    .number()
-    .int()
-    .min(0, t('Weight scale must be between 0 and 100'))
-    .max(100, t('Weight scale must be between 0 and 100'))
 
   const availabilityThreshold = z.coerce
     .number()
@@ -95,36 +89,50 @@ const createRoutingReliabilitySchema = (
     .min(0, t('Availability threshold must be between 0 and 100'))
     .max(100, t('Availability threshold must be between 0 and 100'))
 
-  const decayStep = z.coerce
+  const dispatchRampSteps = z.coerce
     .number()
     .int()
-    .min(1, t('Decay step must be at least 1'))
+    .min(1, t('Cooldown ramp steps must be at least 1'))
+
+  const healthAlpha = z.coerce
+    .number()
+    .gt(0, t('Smoothing factor must be in (0, 1]'))
+    .max(1, t('Smoothing factor must be in (0, 1]'))
+
+  const healthMinRequests = z.coerce
+    .number()
+    .int()
+    .min(0, t('Minimum requests must be non-negative'))
+
+  const scoreFloor = z.coerce
+    .number()
+    .min(0, t('Score floor must be between 0 and 1'))
+    .max(1, t('Score floor must be between 0 and 1'))
+
+  const concurrencyLimit = z.coerce
+    .number()
+    .int()
+    .min(0, t('Concurrency limits must be non-negative (0 means unlimited)'))
 
   return z
     .object({
       RetryTimes: z.coerce.number().min(0).max(10),
-      CalmFastBase: isolationSeconds,
-      CalmFastInterval: isolationSeconds,
-      CalmSlowBase: isolationSeconds,
-      CalmSlowInterval: isolationSeconds,
-      DormantBase: isolationSeconds,
-      DormantInterval: isolationSeconds,
-      DormantMaxBase: isolationSeconds,
-      DormantDisableThreshold: z.coerce
-        .number()
-        .int()
-        .min(0, t('Auto-disable threshold must be non-negative')),
+      GatewayDispatchCooldownBaseMs: dispatchMs,
+      GatewayDispatchCooldownMaxMs: dispatchMs,
+      GatewayDispatchCooldownRampSteps: dispatchRampSteps,
+      GatewayDispatchThrottleBaseMs: dispatchMs,
+      GatewayDispatchThrottleMaxMs: dispatchMs,
+      GatewayDispatchScoreDecayTauMs: dispatchMs,
+      GatewayDispatchHealthAlpha: healthAlpha,
+      GatewayDispatchHealthMinRequests: healthMinRequests,
+      GatewayDispatchHealthMinScoreFloor: scoreFloor,
+      GatewayRetryTotalBudgetMs: dispatchMs,
+      GatewayForwardMaxConcurrency: concurrencyLimit,
+      GatewayChannelMaxConcurrency: concurrencyLimit,
       LocalFailureThreshold: failureThreshold,
       UpstreamFailureThreshold: failureThreshold,
-      CalmWeightScale: weightScale,
-      DormantWeightScale: weightScale,
       EmergencyThreshold: availabilityThreshold,
       WarningThreshold: availabilityThreshold,
-      AcceleratedDecayStep: decayStep,
-      NormalDecayStep: decayStep,
-      FastWindowUnits: isolationSeconds,
-      FastWindowCapSeconds: failureThreshold,
-      LargeWindowCapSeconds: failureThreshold,
       KeyProbeEnabled: z.boolean(),
       ChannelDisableThreshold: numericString,
       AutomaticDisableChannelEnabled: z.boolean(),
@@ -170,69 +178,61 @@ const createRoutingReliabilitySchema = (
     })
 }
 
-// The isolation and adaptive-scheduling keys share one numeric shape across the
-// form input, the parsed values, and the diffed payload, so they are declared
-// once here. KeyProbeEnabled is boolean and lives outside this group.
+// The gateway-dispatch keys share one numeric shape across the form input,
+// the parsed values, and the diffed payload, so they are declared once here.
+// KeyProbeEnabled is boolean and lives outside this group.
 type RouteIsolationValues = {
-  CalmFastBase: number
-  CalmFastInterval: number
-  CalmSlowBase: number
-  CalmSlowInterval: number
-  DormantBase: number
-  DormantInterval: number
-  DormantMaxBase: number
-  DormantDisableThreshold: number
-  CalmWeightScale: number
-  DormantWeightScale: number
+  GatewayDispatchCooldownBaseMs: number
+  GatewayDispatchCooldownMaxMs: number
+  GatewayDispatchCooldownRampSteps: number
+  GatewayDispatchThrottleBaseMs: number
+  GatewayDispatchThrottleMaxMs: number
+  GatewayDispatchScoreDecayTauMs: number
+  GatewayDispatchHealthAlpha: number
+  GatewayDispatchHealthMinRequests: number
+  GatewayDispatchHealthMinScoreFloor: number
+  GatewayRetryTotalBudgetMs: number
+  GatewayForwardMaxConcurrency: number
+  GatewayChannelMaxConcurrency: number
   EmergencyThreshold: number
   WarningThreshold: number
-  AcceleratedDecayStep: number
-  NormalDecayStep: number
-  FastWindowUnits: number
-  FastWindowCapSeconds: number
-  LargeWindowCapSeconds: number
 }
 
 const ROUTE_ISOLATION_KEYS = [
-  'CalmFastBase',
-  'CalmFastInterval',
-  'CalmSlowBase',
-  'CalmSlowInterval',
-  'DormantBase',
-  'DormantInterval',
-  'DormantMaxBase',
-  'DormantDisableThreshold',
-  'CalmWeightScale',
-  'DormantWeightScale',
+  'GatewayDispatchCooldownBaseMs',
+  'GatewayDispatchCooldownMaxMs',
+  'GatewayDispatchCooldownRampSteps',
+  'GatewayDispatchThrottleBaseMs',
+  'GatewayDispatchThrottleMaxMs',
+  'GatewayDispatchScoreDecayTauMs',
+  'GatewayDispatchHealthAlpha',
+  'GatewayDispatchHealthMinRequests',
+  'GatewayDispatchHealthMinScoreFloor',
+  'GatewayRetryTotalBudgetMs',
+  'GatewayForwardMaxConcurrency',
+  'GatewayChannelMaxConcurrency',
   'EmergencyThreshold',
   'WarningThreshold',
-  'AcceleratedDecayStep',
-  'NormalDecayStep',
-  'FastWindowUnits',
-  'FastWindowCapSeconds',
-  'LargeWindowCapSeconds',
 ] as const satisfies ReadonlyArray<keyof RouteIsolationValues>
 
-// Mirrors the backend DefaultChannelModelHealthSetting, so a form rendered before
-// the options request resolves shows the durations that are actually in effect.
+// Mirrors the backend DefaultUnitHealthSetting and the zero-value
+// ConcurrencyLimitSetting (0 = unlimited), so a form rendered before the
+// options request resolves shows the values that are actually in effect.
 const ROUTE_ISOLATION_DEFAULTS: RouteIsolationValues = {
-  CalmFastBase: 3,
-  CalmFastInterval: 3,
-  CalmSlowBase: 20,
-  CalmSlowInterval: 20,
-  DormantBase: 120,
-  DormantInterval: 120,
-  DormantMaxBase: 360,
-  DormantDisableThreshold: 3,
-  CalmWeightScale: 50,
-  DormantWeightScale: 10,
+  GatewayDispatchCooldownBaseMs: 300,
+  GatewayDispatchCooldownMaxMs: 10000,
+  GatewayDispatchCooldownRampSteps: 12,
+  GatewayDispatchThrottleBaseMs: 200,
+  GatewayDispatchThrottleMaxMs: 1000,
+  GatewayDispatchScoreDecayTauMs: 900000,
+  GatewayDispatchHealthAlpha: 0.3,
+  GatewayDispatchHealthMinRequests: 5,
+  GatewayDispatchHealthMinScoreFloor: 0.05,
+  GatewayRetryTotalBudgetMs: 30000,
+  GatewayForwardMaxConcurrency: 0,
+  GatewayChannelMaxConcurrency: 0,
   EmergencyThreshold: 20,
   WarningThreshold: 50,
-  AcceleratedDecayStep: 2,
-  NormalDecayStep: 1,
-  FastWindowUnits: 5,
-  FastWindowCapSeconds: 5,
-  LargeWindowCapSeconds: 10,
 }
 
 type RoutingReliabilityFormValues = RouteIsolationValues & {
@@ -391,23 +391,21 @@ const normalizeDefaults = (
 const normalizeFormValues = (
   values: RoutingReliabilityFormValues
 ): NormalizedRoutingReliabilityValues => ({
-  CalmFastBase: values.CalmFastBase,
-  CalmFastInterval: values.CalmFastInterval,
-  CalmSlowBase: values.CalmSlowBase,
-  CalmSlowInterval: values.CalmSlowInterval,
-  DormantBase: values.DormantBase,
-  DormantInterval: values.DormantInterval,
-  DormantMaxBase: values.DormantMaxBase,
-  DormantDisableThreshold: values.DormantDisableThreshold,
-  CalmWeightScale: values.CalmWeightScale,
-  DormantWeightScale: values.DormantWeightScale,
+  GatewayDispatchCooldownBaseMs: values.GatewayDispatchCooldownBaseMs,
+  GatewayDispatchCooldownMaxMs: values.GatewayDispatchCooldownMaxMs,
+  GatewayDispatchCooldownRampSteps: values.GatewayDispatchCooldownRampSteps,
+  GatewayDispatchThrottleBaseMs: values.GatewayDispatchThrottleBaseMs,
+  GatewayDispatchThrottleMaxMs: values.GatewayDispatchThrottleMaxMs,
+  GatewayDispatchScoreDecayTauMs: values.GatewayDispatchScoreDecayTauMs,
+  GatewayDispatchHealthAlpha: values.GatewayDispatchHealthAlpha,
+  GatewayDispatchHealthMinRequests: values.GatewayDispatchHealthMinRequests,
+  GatewayDispatchHealthMinScoreFloor:
+    values.GatewayDispatchHealthMinScoreFloor,
+  GatewayRetryTotalBudgetMs: values.GatewayRetryTotalBudgetMs,
+  GatewayForwardMaxConcurrency: values.GatewayForwardMaxConcurrency,
+  GatewayChannelMaxConcurrency: values.GatewayChannelMaxConcurrency,
   EmergencyThreshold: values.EmergencyThreshold,
   WarningThreshold: values.WarningThreshold,
-  AcceleratedDecayStep: values.AcceleratedDecayStep,
-  NormalDecayStep: values.NormalDecayStep,
-  FastWindowUnits: values.FastWindowUnits,
-  FastWindowCapSeconds: values.FastWindowCapSeconds,
-  LargeWindowCapSeconds: values.LargeWindowCapSeconds,
   KeyProbeEnabled: values.KeyProbeEnabled,
   RetryTimes: values.RetryTimes,
   LocalFailureThreshold: values.LocalFailureThreshold,
@@ -593,20 +591,20 @@ export function RoutingReliabilitySection({
 
           <div className='flex min-w-0 flex-col gap-4'>
             <div className='flex flex-col gap-1'>
-              <h4 className='text-sm font-medium'>{t('Route isolation')}</h4>
+              <h4 className='text-sm font-medium'>{t('Gateway dispatch')}</h4>
               <p className='text-muted-foreground text-sm'>
                 {t(
-                  'A retry-eligible failure isolates one channel and model pair. Isolation climbs four stages, and each stage repeats three times before the next one begins.'
+                  'A failure cools a route off, repeated failures climb the cooldown ladder to its ceiling, and 429 responses run on their own ladder. A smoothed score decides how each route comes back.'
                 )}
               </p>
             </div>
             <div className='grid min-w-0 gap-6 lg:grid-cols-2'>
               <FormField
                 control={form.control}
-                name='CalmFastBase'
+                name='GatewayDispatchCooldownBaseMs'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Fast calm base (seconds)')}</FormLabel>
+                    <FormLabel>{t('Cooldown base (ms)')}</FormLabel>
                     <FormControl>
                       <Input
                         type='number'
@@ -616,7 +614,7 @@ export function RoutingReliabilitySection({
                       />
                     </FormControl>
                     <FormDescription>
-                      {t('Isolation length for the first failure of a route')}
+                      {t('Starting cooldown window after a single failed request')}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -625,120 +623,10 @@ export function RoutingReliabilitySection({
 
               <FormField
                 control={form.control}
-                name='CalmFastInterval'
+                name='GatewayDispatchCooldownMaxMs'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Fast calm step (seconds)')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        min='0'
-                        step='1'
-                        {...safeNumberFieldProps(field)}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t('Added per repeat within the fast calm stage')}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name='CalmSlowBase'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Slow calm base (seconds)')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        min='0'
-                        step='1'
-                        {...safeNumberFieldProps(field)}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t('Isolation length once the fast calm stage is exhausted')}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name='CalmSlowInterval'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Slow calm step (seconds)')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        min='0'
-                        step='1'
-                        {...safeNumberFieldProps(field)}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t('Added per repeat within the slow calm stage')}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name='DormantBase'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Dormant base (seconds)')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        min='0'
-                        step='1'
-                        {...safeNumberFieldProps(field)}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t('Isolation length once both calm stages are exhausted')}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name='DormantInterval'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Dormant step (seconds)')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        min='0'
-                        step='1'
-                        {...safeNumberFieldProps(field)}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t('Added per repeat within the dormant stage')}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name='DormantMaxBase'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Dormant ceiling (seconds)')}</FormLabel>
+                    <FormLabel>{t('Cooldown ceiling (ms)')}</FormLabel>
                     <FormControl>
                       <Input
                         type='number'
@@ -749,7 +637,7 @@ export function RoutingReliabilitySection({
                     </FormControl>
                     <FormDescription>
                       {t(
-                        'Flat isolation length used for every failure past the dormant stage'
+                        'Ceiling the cooldown ladder reaches after repeated failures'
                       )}
                     </FormDescription>
                     <FormMessage />
@@ -759,10 +647,76 @@ export function RoutingReliabilitySection({
 
               <FormField
                 control={form.control}
-                name='DormantDisableThreshold'
+                name='GatewayDispatchCooldownRampSteps'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Auto-disable after dormant recoveries')}</FormLabel>
+                    <FormLabel>{t('Cooldown ramp steps')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min='1'
+                        step='1'
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Failures the ladder climbs before it reaches the ceiling')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='GatewayDispatchThrottleBaseMs'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('429 throttle base (ms)')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min='0'
+                        step='1'
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Starting isolation window after a 429 response')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='GatewayDispatchThrottleMaxMs'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('429 throttle ceiling (ms)')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min='0'
+                        step='1'
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Ceiling of the 429 isolation ladder')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='GatewayDispatchScoreDecayTauMs'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Score aging constant (ms)')}</FormLabel>
                     <FormControl>
                       <Input
                         type='number'
@@ -773,8 +727,144 @@ export function RoutingReliabilitySection({
                     </FormControl>
                     <FormDescription>
                       {t(
-                        'How many times a route may fail again right after a dormant window before it is disabled. 0 never auto-disables.'
+                        'Time constant at which route scores age toward healthy; 0 freezes scores'
                       )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='GatewayDispatchHealthAlpha'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Score smoothing factor')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min='0'
+                        max='1'
+                        step='0.01'
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Weight of the newest result when updating a route score (0, 1]')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='GatewayDispatchHealthMinRequests'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Score trust threshold')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min='0'
+                        step='1'
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Samples a route must record before its score is trusted')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='GatewayDispatchHealthMinScoreFloor'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Score floor')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min='0'
+                        max='1'
+                        step='0.01'
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Lowest score a route keeps while re-entering slow start')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='GatewayRetryTotalBudgetMs'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Failover time budget (ms)')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min='0'
+                        step='1'
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Time a request may spend failing over between routes; the server clamps it to 1s-300s'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='GatewayForwardMaxConcurrency'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Forward concurrency limit')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min='0'
+                        step='1'
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Process-wide cap on in-flight relayed requests; 0 is unlimited')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='GatewayChannelMaxConcurrency'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Channel concurrency limit')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min='0'
+                        step='1'
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Per-key cap on in-flight requests; 0 is unlimited')}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -834,66 +924,14 @@ export function RoutingReliabilitySection({
 
           <div className='flex min-w-0 flex-col gap-4'>
             <div className='flex flex-col gap-1'>
-              <h4 className='text-sm font-medium'>
-                {t('Adaptive scheduling')}
-              </h4>
+              <h4 className='text-sm font-medium'>{t('Pool pressure')}</h4>
               <p className='text-muted-foreground text-sm'>
                 {t(
-                  'An isolated route keeps a reduced share of traffic instead of leaving the pool, and pool availability decides how aggressively isolation applies.'
+                  'When a model pool runs short of healthy units, these thresholds suppress new escalation and pull the least-isolated routes back.'
                 )}
               </p>
             </div>
             <div className='grid min-w-0 gap-6 lg:grid-cols-2'>
-              <FormField
-                control={form.control}
-                name='CalmWeightScale'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Calm weight scale (%)')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        min='0'
-                        max='100'
-                        step='1'
-                        {...safeNumberFieldProps(field)}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t(
-                        'Share of its normal traffic a calm route keeps. It stays selectable, so the next pick is a live probe.'
-                      )}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name='DormantWeightScale'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Dormant weight scale (%)')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        min='0'
-                        max='100'
-                        step='1'
-                        {...safeNumberFieldProps(field)}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t(
-                        'Share of its normal traffic a dormant route keeps. Lower than the calm scale, but never zero.'
-                      )}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
               <FormField
                 control={form.control}
                 name='EmergencyThreshold'
@@ -937,126 +975,6 @@ export function RoutingReliabilitySection({
                     <FormDescription>
                       {t(
                         'Below this share of healthy units, no new isolation is recorded and recovery speeds up. Also the target the emergency pull-back aims for.'
-                      )}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name='FastWindowUnits'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Fast cooldown boundary (units)')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        min='0'
-                        step='1'
-                        {...safeNumberFieldProps(field)}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t(
-                        'Pools with at most this many units cap isolation windows at the fast cooldown cap; larger pools use the large cap.'
-                      )}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name='FastWindowCapSeconds'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Fast cooldown cap (s)')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        min='1'
-                        step='1'
-                        {...safeNumberFieldProps(field)}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t(
-                        'Pools at or below the boundary cap isolation windows at this many seconds.'
-                      )}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name='LargeWindowCapSeconds'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Large cooldown cap (s)')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        min='1'
-                        step='1'
-                        {...safeNumberFieldProps(field)}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t(
-                        'Pools above the boundary cap isolation windows at this many seconds.'
-                      )}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name='NormalDecayStep'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Normal decay step')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        min='1'
-                        step='1'
-                        {...safeNumberFieldProps(field)}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t(
-                        'Isolation stages a successful request or an elapsed window removes at normal availability.'
-                      )}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name='AcceleratedDecayStep'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Accelerated decay step')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        min='1'
-                        step='1'
-                        {...safeNumberFieldProps(field)}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t(
-                        'Isolation stages removed per recovery while availability is in the warning band.'
                       )}
                     </FormDescription>
                     <FormMessage />

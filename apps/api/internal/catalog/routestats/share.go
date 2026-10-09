@@ -159,12 +159,12 @@ func Corrections(pool PoolKey, targets map[RouteID]float64, cfg *RouteStatsSetti
 // RecordSelection appends one selection to the pool window, evicting the oldest
 // entry once the window is full.
 //
-// Every path that serves a route unit must call this, including the ones that
-// bypass weighted random selection (channel affinity, specific channel, locked
-// replay). Those paths are the reason the window exists: the final score cannot
-// influence traffic it never sees, so unless their requests land in the window
-// the correction has nothing to correct. Leaving them out measurably degrades
-// the balancer back to the no-correction baseline.
+// The P2C selection path does not call this: the share-deficit correction it
+// backed was retired with the old weighted scorer, and the P2C duel has no
+// feedback term. The window is fed by explicit RecordSelection calls only —
+// today the routestats and handler test harnesses. An unfed window reports
+// the 1.0 no-correction baseline, which the admin route-unit views surface
+// as the expected share.
 //
 // targets must be the same map handed to Corrections for this request, so the
 // recorded entitlement matches the one the decision was made against.

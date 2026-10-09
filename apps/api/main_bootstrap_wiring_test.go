@@ -22,7 +22,7 @@ func TestBootstrapStartupCallsPresent(t *testing.T) {
 	required := map[string]string{
 		"sensitive.StartSensitiveAuditCleanup": "#409 audit rows (type=8) accumulate forever and SensitiveAuditRetentionDays is dead",
 		"identity.StartAuthArtifactCleanup":    "expired dashboard sessions and one-time auth flows are never deleted",
-		"catalog.InitChannelModelHealthCache":  "persisted per-model route isolation is not restored, so a quarantined route silently returns to rotation on restart",
+		"catalog.InitUnitHealthCache":          "persisted per-unit health state is not restored, so a cooling or terminal-disabled route unit silently returns to rotation on restart",
 		"usage.Init":                           "perf metric hot buckets are never flushed to perf_metrics, so the dashboard stays empty and memory grows",
 		"relaycommon.InitTokenEncoders":        "defaultTokenEncoder stays nil, so an unsupported OpenAI text model nil-panics inside CountTextToken",
 		"task.GetTaskProviderFuncBinding":      "task.GetTaskProviderFunc stays nil, so RunTaskPollingOnce returns immediately (no async task ever completes) and the video proxy nil-panics",

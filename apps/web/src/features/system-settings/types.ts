@@ -246,25 +246,22 @@ export type ModelSettings = {
   'group_ratio_setting.group_special_usable_group': string
   RetryTimes: number
   ChannelDisableThreshold: string
-  CalmFastBase: number
-  CalmFastInterval: number
-  CalmSlowBase: number
-  CalmSlowInterval: number
-  DormantBase: number
-  DormantInterval: number
-  DormantMaxBase: number
-  DormantDisableThreshold: number
+  GatewayDispatchCooldownBaseMs: number
+  GatewayDispatchCooldownMaxMs: number
+  GatewayDispatchCooldownRampSteps: number
+  GatewayDispatchThrottleBaseMs: number
+  GatewayDispatchThrottleMaxMs: number
+  GatewayDispatchScoreDecayTauMs: number
+  GatewayDispatchHealthAlpha: number
+  GatewayDispatchHealthMinRequests: number
+  GatewayDispatchHealthMinScoreFloor: number
+  GatewayRetryTotalBudgetMs: number
+  GatewayForwardMaxConcurrency: number
+  GatewayChannelMaxConcurrency: number
   LocalFailureThreshold: number
   UpstreamFailureThreshold: number
-  CalmWeightScale: number
-  DormantWeightScale: number
   EmergencyThreshold: number
   WarningThreshold: number
-  AcceleratedDecayStep: number
-  NormalDecayStep: number
-  FastWindowUnits: number
-  FastWindowCapSeconds: number
-  LargeWindowCapSeconds: number
   KeyProbeEnabled: boolean
   AutomaticDisableChannelEnabled: boolean
   AutomaticEnableChannelEnabled: boolean

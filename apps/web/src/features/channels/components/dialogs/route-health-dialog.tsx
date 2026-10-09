@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Loader2, RefreshCw, PowerOff, RotateCcw } from 'lucide-react'
+import { Loader2, RefreshCw, PowerOff, RotateCcw, Zap } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -38,23 +38,26 @@ type RouteHealthDialogProps = {
 }
 
 const STATE_TONE: Record<ChannelModelHealthRow['state'], StatusVariant> = {
-  healthy: 'success',
-  calm: 'warning',
-  dormant: 'warning',
-  disabled: 'danger',
+  ok: 'success',
+  cooling: 'warning',
+  slow_start: 'info',
+  terminal: 'danger',
 }
 
-// formatCountdown renders the server-provided remaining seconds. The server sends
-// the remaining time rather than only an absolute deadline, so a browser clock
-// that drifts from the server cannot invent or hide an isolation window.
-function formatCountdown(seconds: number, t: (key: string) => string) {
-  if (seconds <= 0) return '—'
-  if (seconds < 60) return `${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  const rest = seconds % 60
+// formatCountdown renders the server-provided remaining cooldown in
+// milliseconds. The server sends the remaining time rather than only an
+// absolute deadline, so a browser clock that drifts from the server cannot
+// invent or hide a cooldown window.
+function formatCountdown(ms: number) {
+  if (ms <= 0) return '—'
+  if (ms < 1000) return `${Math.ceil(ms)}ms`
+  const totalSeconds = Math.round(ms / 1000)
+  if (totalSeconds < 60) return `${totalSeconds}s`
+  const minutes = Math.floor(totalSeconds / 60)
+  const rest = totalSeconds % 60
   if (minutes < 60) return rest > 0 ? `${minutes}m ${rest}s` : `${minutes}m`
   const hours = Math.floor(minutes / 60)
-  return `${hours}h ${minutes % 60}m` || t('unknown')
+  return `${hours}h ${minutes % 60}m`
 }
 
 export function RouteHealthDialog({
@@ -93,7 +96,7 @@ export function RouteHealthDialog({
   }, [open, load])
 
   const runAction = async (
-    action: 'disable' | 'recover',
+    action: 'disable' | 'recover' | 'force_recall',
     keyIndex: number,
     model: string
   ) => {
@@ -111,7 +114,11 @@ export function RouteHealthDialog({
         throw new Error(res.message || t('Failed to update route health'))
       }
       toast.success(
-        action === 'recover' ? t('Route recovered') : t('Route disabled')
+        action === 'recover'
+          ? t('Route recovered')
+          : action === 'force_recall'
+            ? t('Route recalled')
+            : t('Route disabled')
       )
       await load()
     } catch (error: unknown) {
@@ -181,13 +188,16 @@ export function RouteHealthDialog({
                     {t('State')}
                   </th>
                   <th className='px-3 py-2 text-left font-medium'>
-                    {t('Level')}
+                    {t('Cooldowns in')}
                   </th>
                   <th className='px-3 py-2 text-left font-medium'>
-                    {t('Recovers in')}
+                    {t('Score')}
                   </th>
                   <th className='px-3 py-2 text-left font-medium'>
-                    {t('Dormant recoveries')}
+                    {t('Slow start')}
+                  </th>
+                  <th className='px-3 py-2 text-left font-medium'>
+                    {t('Last outcome')}
                   </th>
                   <th className='px-3 py-2 text-right font-medium'>
                     {t('Actions')}
@@ -204,17 +214,40 @@ export function RouteHealthDialog({
                         {row.state}
                       </StatusBadge>
                     </td>
-                    <td className='px-3 py-2'>{row.isolation_level}</td>
                     <td className='px-3 py-2'>
-                      {formatCountdown(row.remaining_seconds, t)}
+                      {formatCountdown(row.remaining_cooldown_ms)}
                     </td>
-                    <td className='px-3 py-2'>{row.dormant_disable_count}</td>
+                    <td className='px-3 py-2'>{row.ewma_score.toFixed(2)}</td>
+                    <td className='px-3 py-2'>
+                      {row.state === 'slow_start'
+                        ? `${Math.round(row.slow_start_factor * 100)}%`
+                        : '—'}
+                    </td>
+                    <td className='px-3 py-2'>{row.last_cooling_outcome || '—'}</td>
                     <td className='px-3 py-2'>
                       <div className='flex justify-end gap-2'>
+                        {row.state === 'cooling' && (
+                          <Button
+                            variant='outline'
+                            size='sm'
+                            disabled={
+                              pendingRoute === `${row.key_index}:${row.model}`
+                            }
+                            onClick={() =>
+                              runAction('force_recall', row.key_index, row.model)
+                            }
+                          >
+                            <Zap className='mr-1 size-3.5' />
+                            {t('Force recall')}
+                          </Button>
+                        )}
                         <Button
                           variant='outline'
                           size='sm'
-                          disabled={pendingRoute === `${row.key_index}:${row.model}`}
+                          disabled={
+                            pendingRoute === `${row.key_index}:${row.model}` ||
+                            row.state !== 'terminal'
+                          }
                           onClick={() =>
                             runAction('recover', row.key_index, row.model)
                           }
@@ -228,7 +261,7 @@ export function RouteHealthDialog({
                           className='text-destructive hover:text-destructive'
                           disabled={
                             pendingRoute === `${row.key_index}:${row.model}` ||
-                            row.state === 'disabled'
+                            row.state === 'terminal'
                           }
                           onClick={() =>
                             runAction('disable', row.key_index, row.model)

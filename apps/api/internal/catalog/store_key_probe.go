@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bytedance/gopkg/util/gopool"
+
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/logger"
 )
@@ -16,15 +18,15 @@ import (
 // 5xx, or a timeout leaves the key's fate to the regular state machine.
 var ProbeChannelKeyFunc func(channelID, keyIndex int) (valid bool, decisive bool)
 
-// verifyKeyAndCascade runs after a scheduling unit trips the auto-disable
-// threshold. One unit failing repeatedly can mean a dead model or a dead key, and
-// only an upstream check tells them apart. When the key is confirmed invalid,
-// every model unit behind it is disabled together with the key itself, so the
-// remaining keys of a multi-key channel keep serving. An inconclusive probe
-// changes nothing: the unit stays disabled, its siblings stay untouched.
+// verifyKeyAndCascade runs after a scheduling unit trips the
+// terminal-disabled threshold. One unit failing repeatedly can mean a dead
+// model or a dead key, and only an upstream check tells them apart. When
+// the key is confirmed invalid, every model unit behind it is disabled
+// together with the key itself, so the remaining keys of a multi-key
+// channel keep serving. An inconclusive probe changes nothing: the unit
+// stays disabled, its siblings stay untouched.
 func verifyKeyAndCascade(channelID, keyIndex int, now time.Time) {
-	cfg := GetChannelModelHealthSetting()
-	if !cfg.KeyProbeEnabled || ProbeChannelKeyFunc == nil {
+	if ProbeChannelKeyFunc == nil {
 		return
 	}
 	valid, decisive := ProbeChannelKeyFunc(channelID, keyIndex)
@@ -42,7 +44,7 @@ func verifyKeyAndCascade(channelID, keyIndex int, now time.Time) {
 		if name == "" {
 			continue
 		}
-		if err := DisableRoute(RouteKey{ChannelId: channelID, KeyIndex: keyIndex, Model: name}, now); err != nil {
+		if err := DisableUnit(RouteKey{ChannelId: channelID, KeyIndex: keyIndex, Model: name}, now); err != nil {
 			common.SysError("key verification cascade: disable route failed: " + err.Error())
 		}
 	}
@@ -60,4 +62,15 @@ func verifyKeyAndCascade(channelID, keyIndex int, now time.Time) {
 	}
 	UpdateChannelStatus(channelID, usingKey, common.ChannelStatusAutoDisabled, "key verification failed")
 	logger.LogWarn(nil, "key verification failed: channel="+strconv.Itoa(channelID)+" key="+strconv.Itoa(keyIndex)+" models="+strconv.Itoa(len(channel.GetModels())))
+}
+
+// The unit health state machine fires this hook when a unit crosses the
+// terminal-disabled cap. Async, so a slow upstream probe cannot stall the
+// reporting hot path.
+func init() {
+	UnitDisabledHook = func(key RouteKey) {
+		gopool.Go(func() {
+			verifyKeyAndCascade(key.ChannelId, key.KeyIndex, ChannelHealthNow())
+		})
+	}
 }

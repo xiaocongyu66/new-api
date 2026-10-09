@@ -65,10 +65,9 @@ func setupRelayAttemptDB(t *testing.T) *gorm.DB {
 // ChannelMeta is first assigned by InitChannelMeta, which runs after getChannel
 // returns, so iteration 0 of EVERY request takes the ChannelMeta == nil branch —
 // not just a specific-channel replay. Re-deriving the route there costs twice:
-// recordBypassSelection folds a second entry into the share window on top of the
-// one Distribute already recorded, and GetNextEnabledKey draws a key independently
-// of the one actually serving the request, so isolation and success are charged
-// against a key index that never handled the attempt.
+// the independent draw picks a key of its own, so isolation and success get
+// charged against a key index that never handled the attempt, and the
+// re-derived route unit may differ from the one actually serving the request.
 func TestGetChannelReusesRouteResolvedByDistribute(t *testing.T) {
 	db := setupRelayAttemptDB(t)
 	routestats.ResetShares()
@@ -96,8 +95,9 @@ func TestGetChannelReusesRouteResolvedByDistribute(t *testing.T) {
 		}).Error)
 	}
 
-	// What Distribute produced: the route for key index 1, with its share entry
-	// already recorded by selectByWeight.
+	// What Distribute produced: the route for key index 1. Selection paths no
+	// longer record share entries (the correction is retired), so nothing was
+	// recorded above — the fixture supplies its own baseline entry below.
 	servingRoute, err := catalog.SelectedRouteFromChannel(channel, alias, group)
 	require.NoError(t, err)
 	require.Equal(t, 0, servingRoute.KeyIndex,
@@ -113,8 +113,8 @@ func TestGetChannelReusesRouteResolvedByDistribute(t *testing.T) {
 		{ChannelID: channelID, KeyIndex: 0, UpstreamModel: alias}: 0.5,
 	}
 	cfg := routestats.GetRouteStatsSetting()
-	// The share entry Distribute's own selection recorded. SelectedRouteFromChannel
-	// above already recorded one for key 0, so reset and record exactly one.
+	// Baseline share entry: P2C selection records no opportunities, so the
+	// fixture records exactly one entry itself.
 	routestats.ResetShares()
 	routestats.RecordSelection(pool, selected, targets, cfg)
 	require.Equal(t, 1, routestats.Corrections(pool, targets, cfg)[selected].Opportunities,
@@ -142,7 +142,7 @@ func TestGetChannelReusesRouteResolvedByDistribute(t *testing.T) {
 		"health and isolation must be charged against the key that actually serves the attempt")
 
 	assert.Equal(t, 1, routestats.Corrections(pool, targets, cfg)[selected].Opportunities,
-		"one request must contribute exactly one entry to the share window")
+		"the reuse path must not add a share entry on top of the fixture's baseline")
 }
 
 // TestGetChannelResolvesRouteForSpecificChannelReplay keeps the genuine replay

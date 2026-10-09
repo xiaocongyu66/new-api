@@ -39,18 +39,18 @@ var OnPerformanceSettingChanged func()
 // settings importing catalog children (breaks test cycles while keeping option
 // behavior in catalog per plan.md). Nil-safe: return nil or default if unregistered.
 var (
-	OnApplyOperationSetting            func(key, value string) error
-	OnApplyResolveGroupSetting         func(key, value string) error
-	OnIsChannelModelHealthOptionKey    func(key string) bool
-	OnValidateChannelModelHealthOption func(key, value string) error
-	OnIsChannelHealthOptionKey         func(key string) bool
-	OnValidateChannelHealthOption      func(key, value string) error
-	OnApplyModelHealthOption           func(key, value string) error
-	OnApplyChannelHealthOption         func(key, value string) error
-	OnIsRouteStatsOptionKey            func(key string) bool
-	OnValidateRouteStatsOption         func(key, value string) error
-	OnApplyRouteStatsOption            func(key, value string) error
-	OnSeedCatalogOptions               func() map[string]string
+	OnApplyOperationSetting         func(key, value string) error
+	OnApplyResolveGroupSetting      func(key, value string) error
+	OnIsGatewayDispatchOptionKey    func(key string) bool
+	OnValidateGatewayDispatchOption func(key, value string) error
+	OnIsChannelHealthOptionKey      func(key string) bool
+	OnValidateChannelHealthOption   func(key, value string) error
+	OnApplyGatewayDispatchOption    func(key, value string) error
+	OnApplyChannelHealthOption      func(key, value string) error
+	OnIsRouteStatsOptionKey         func(key string) bool
+	OnValidateRouteStatsOption      func(key, value string) error
+	OnApplyRouteStatsOption         func(key, value string) error
+	OnSeedCatalogOptions            func() map[string]string
 )
 
 // Domain-owned option hooks, registered from each domain's own init() so this
@@ -136,9 +136,9 @@ func ValidateOptionValue(key string, value string) error {
 		}
 		return nil
 	}
-	if OnIsChannelModelHealthOptionKey != nil && OnIsChannelModelHealthOptionKey(key) {
-		if OnValidateChannelModelHealthOption != nil {
-			return OnValidateChannelModelHealthOption(key, value)
+	if OnIsGatewayDispatchOptionKey != nil && OnIsGatewayDispatchOptionKey(key) {
+		if OnValidateGatewayDispatchOption != nil {
+			return OnValidateGatewayDispatchOption(key, value)
 		}
 		return nil
 	}
@@ -267,13 +267,12 @@ func SeedOptionMap() {
 // ApplyOption dispatches one persisted option value onto its typed target and
 // records it in common.OptionMap.
 func ApplyOption(key string, value string) (err error) {
-	if OnIsChannelModelHealthOptionKey != nil && OnIsChannelModelHealthOptionKey(key) {
-		// Health state-machine options are dispatched to the atomic runtime
-		// config before the OptionMap lock is taken; a parse/validation
-		// error returns without storing an invalid value. Model vs channel keys
-		// now route independently per C1 review (distinct hooks prevent overwrite).
-		if OnApplyModelHealthOption != nil {
-			if err = OnApplyModelHealthOption(key, value); err != nil {
+	if OnIsGatewayDispatchOptionKey != nil && OnIsGatewayDispatchOptionKey(key) {
+		// Gateway dispatch state-machine options are dispatched to the atomic
+		// runtime config before the OptionMap lock is taken; a
+		// parse/validation error returns without storing an invalid value.
+		if OnApplyGatewayDispatchOption != nil {
+			if err = OnApplyGatewayDispatchOption(key, value); err != nil {
 				return err
 			}
 		}

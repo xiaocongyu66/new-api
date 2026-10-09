@@ -72,25 +72,31 @@ const MODELS_SECTIONS = [
         defaultValues={{
           RetryTimes: settings.RetryTimes,
           ChannelDisableThreshold: settings.ChannelDisableThreshold,
-          CalmFastBase: settings.CalmFastBase,
-          CalmFastInterval: settings.CalmFastInterval,
-          CalmSlowBase: settings.CalmSlowBase,
-          CalmSlowInterval: settings.CalmSlowInterval,
-          DormantBase: settings.DormantBase,
-          DormantInterval: settings.DormantInterval,
-          DormantMaxBase: settings.DormantMaxBase,
-          DormantDisableThreshold: settings.DormantDisableThreshold,
+          GatewayDispatchCooldownBaseMs:
+            settings.GatewayDispatchCooldownBaseMs,
+          GatewayDispatchCooldownMaxMs:
+            settings.GatewayDispatchCooldownMaxMs,
+          GatewayDispatchCooldownRampSteps:
+            settings.GatewayDispatchCooldownRampSteps,
+          GatewayDispatchThrottleBaseMs:
+            settings.GatewayDispatchThrottleBaseMs,
+          GatewayDispatchThrottleMaxMs: settings.GatewayDispatchThrottleMaxMs,
+          GatewayDispatchScoreDecayTauMs:
+            settings.GatewayDispatchScoreDecayTauMs,
+          GatewayDispatchHealthAlpha: settings.GatewayDispatchHealthAlpha,
+          GatewayDispatchHealthMinRequests:
+            settings.GatewayDispatchHealthMinRequests,
+          GatewayDispatchHealthMinScoreFloor:
+            settings.GatewayDispatchHealthMinScoreFloor,
+          GatewayRetryTotalBudgetMs: settings.GatewayRetryTotalBudgetMs,
+          GatewayForwardMaxConcurrency:
+            settings.GatewayForwardMaxConcurrency,
+          GatewayChannelMaxConcurrency:
+            settings.GatewayChannelMaxConcurrency,
           LocalFailureThreshold: settings.LocalFailureThreshold,
           UpstreamFailureThreshold: settings.UpstreamFailureThreshold,
-          CalmWeightScale: settings.CalmWeightScale,
-          DormantWeightScale: settings.DormantWeightScale,
           EmergencyThreshold: settings.EmergencyThreshold,
           WarningThreshold: settings.WarningThreshold,
-          AcceleratedDecayStep: settings.AcceleratedDecayStep,
-          NormalDecayStep: settings.NormalDecayStep,
-          FastWindowUnits: settings.FastWindowUnits,
-          FastWindowCapSeconds: settings.FastWindowCapSeconds,
-          LargeWindowCapSeconds: settings.LargeWindowCapSeconds,
           KeyProbeEnabled: settings.KeyProbeEnabled,
           AutomaticDisableChannelEnabled:
             settings.AutomaticDisableChannelEnabled,

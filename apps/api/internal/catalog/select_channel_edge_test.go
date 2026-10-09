@@ -68,20 +68,21 @@ func testChannel(id int) *Channel {
 }
 
 // TestSingleChannelShortCircuitIgnoresWeight pins a deliberate asymmetry: with a
-// single candidate, selection returns it without consulting weight
-// (selectByWeight's len==1 branch). There is nothing to fall back to, so
-// selecting it is correct — but it means weight=0 behaves differently here than
-// in the multi-candidate path, where routingBaseWeight maps it to 1. Locking this
-// down so a later refactor does not silently start dropping single-route groups.
+// single candidate the P2C duel is vacuous and selection returns it without
+// consulting the prior. There is nothing to fall back to, so selecting it is
+// correct — but it means weight=0 behaves differently here than in the
+// multi-candidate path, where a zero weight is a zero prior (the P2C sampler
+// has no +1 offset). Locking this down so a later refactor does not silently
+// start dropping single-route groups.
 func TestSingleChannelShortCircuitIgnoresWeight(t *testing.T) {
 	const group, modelName = "edge-group", "edge-model"
 
-	// weight=0 would be the least attractive route possible in the weighted path.
+	// weight=0 is the least attractive route possible in the multi-candidate path.
 	only := testChannel(9101)
 	withChannelCacheFixture(t, []*Channel{only}, group, modelName, map[int]int{9101: 0})
 
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil)
 	require.NoError(t, err)
@@ -98,8 +99,8 @@ func TestSingleChannelShortCircuitRespectsExcludeSet(t *testing.T) {
 	only := testChannel(9102)
 	withChannelCacheFixture(t, []*Channel{only}, group, modelName, map[int]int{9102: 10})
 
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	got, err := GetRandomSatisfiedChannel(group, modelName, 0, "",
 		map[RouteKey]bool{{ChannelId: only.Id, KeyIndex: 0, Model: modelName}: true})
@@ -135,8 +136,8 @@ func TestExcludeSetIsPerRouteUnitNotPerChannel(t *testing.T) {
 	}
 	channelSyncLock.Unlock()
 
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	firstKey := RouteKey{ChannelId: 9110, KeyIndex: 0, Model: modelName}
 	secondKey := RouteKey{ChannelId: 9110, KeyIndex: 1, Model: modelName}
@@ -181,8 +182,8 @@ func TestWeightDecidesShareWithoutPriorityTiers(t *testing.T) {
 		9203: 50,
 	})
 
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	counts := map[int]int{}
 	for range 1000 {
@@ -215,12 +216,11 @@ func TestWeightDecidesShareWithoutPriorityTiers(t *testing.T) {
 		"weight still decides the split on a retried request")
 }
 
-// TestHealthDeratesWithinTheFlatPool documents that health scoring reduces a
-// route's share without ejecting it: an isolated route loses traffic to its peers
-// but stays selectable, because only the disabled state leaves the candidate set.
-// Cross-tier promotion no longer exists to confound this, so the derating is
-// observable directly in the one pool.
-func TestHealthDeratesWithinTheFlatPool(t *testing.T) {
+// TestHealthExcludesCoolingUnitFromTheFlatPool documents the newapi unit model:
+// a cooling unit is excluded from the eligible pool outright (not derated), so
+// traffic flows to the healthy peers until its cooldown window closes. Only a
+// terminal disable keeps it out permanently.
+func TestHealthExcludesCoolingUnitFromTheFlatPool(t *testing.T) {
 	const group, modelName = "edge-group", "edge-model"
 
 	healthy := testChannel(9301)
@@ -228,32 +228,30 @@ func TestHealthDeratesWithinTheFlatPool(t *testing.T) {
 	withChannelCacheFixture(t, []*Channel{healthy, isolated}, group, modelName,
 		map[int]int{healthy.Id: 100, isolated.Id: 100})
 
-	withRouteHealthDB(t)
-	withHealthSetting(t, DefaultChannelModelHealthSetting())
+	withUnitHealthDB(t)
+	// A single fatal outcome arms the bottom rung of the ladder, so push the
+	// base past the test window and the cooling unit stays excluded throughout.
+	cfg := DefaultUnitHealthSetting()
+	cfg.CooldownBaseMs = 3_600_000
+	withUnitHealthSetting(t, cfg)
 
 	isolatedKey := RouteKey{ChannelId: isolated.Id, KeyIndex: 0, Model: modelName}
-	// The selector reads the real clock, so the isolation window must be live.
-	require.NoError(t, RecordRetryableFailure(isolatedKey, "bad_response", FailureSourceUpstream, time.Now()))
-	require.Less(t, RouteWeightMultiplier(isolatedKey), 1.0,
-		"the fixture must actually have derated the route")
+	require.NoError(t, ReportOutcome(isolatedKey, UnitFatal, 0, 0, time.Now()))
+	assert.False(t, IsUnitSelectable(isolatedKey, time.Now()),
+		"a cooling unit is excluded from the pool, not derated")
 
 	counts := map[int]int{}
-	for range 400 {
+	for range 100 {
 		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil)
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		counts[got.ChannelId]++
 	}
+	assert.Equal(t, 100, counts[healthy.Id], "the healthy peer takes every draw")
+	assert.Zero(t, counts[isolated.Id], "the cooling unit is excluded")
 
-	assert.Greater(t, counts[healthy.Id], counts[isolated.Id],
-		"within the pool, the healthy route must win the majority of selections")
-	assert.Less(t, counts[isolated.Id], counts[healthy.Id]*3/4,
-		"the isolated route is derated, not merely tied")
-	assert.Positive(t, counts[isolated.Id],
-		"a derated route keeps a reduced share: only DisableRoute ejects")
-
-	// Disabling is the one state that removes it from the pool entirely.
-	require.NoError(t, DisableRoute(isolatedKey, time.Now()))
+	// Terminal disable is the one state that removes it permanently.
+	require.NoError(t, DisableUnit(isolatedKey, time.Now()))
 	after := map[int]int{}
 	for range 100 {
 		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil)
@@ -261,6 +259,6 @@ func TestHealthDeratesWithinTheFlatPool(t *testing.T) {
 		require.NotNil(t, got)
 		after[got.ChannelId]++
 	}
-	assert.Zero(t, after[isolated.Id], "a disabled route must never be selected")
+	assert.Zero(t, after[isolated.Id], "a terminal-disabled unit must never be selected")
 	assert.Equal(t, 100, after[healthy.Id])
 }

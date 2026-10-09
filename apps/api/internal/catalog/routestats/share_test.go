@@ -22,9 +22,10 @@ func routeID(n int) RouteID {
 }
 
 // drawPool runs one weighted-random selection over base scores adjusted by the
-// share correction, mirroring exactly what selectByWeight does: normalise the
-// base scores into target shares, ask for corrections, pick by cumulative
-// weight, then record the winner with the same target snapshot.
+// share correction, simulating the retired catalog selector loop (the old
+// selectByWeight, replaced by the P2C duel): normalise the base scores into
+// target shares, ask for corrections, pick by cumulative weight, then record
+// the winner with the same target snapshot.
 //
 // available lets a test remove a route from the candidate set for a stretch of
 // requests, which is what a state-machine ejection or a retry exclusion does.
@@ -146,9 +147,9 @@ func TestShareCorrectionConvergesToBaseScoreShare(t *testing.T) {
 // Channel affinity, specific-channel requests and locked replay all serve a
 // route unit without going through weighted random selection. The final score
 // cannot influence traffic it never scores, so a pinned route runs away with far
-// more than its configured share. Recording those requests into the window is the
-// only mechanism that pulls it back — and it is also why the no-correction arm
-// cannot pass this test.
+// more than its configured share. This test simulates that traffic by recording
+// the pinned picks into the window explicitly (the production selection path no
+// longer records; only explicit RecordSelection calls feed the window).
 func TestShareCorrectionPullsBackBypassedTraffic(t *testing.T) {
 	const (
 		bypassEveryN = 10 // 30% of traffic is pinned, expressed as 3 in every 10

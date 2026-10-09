@@ -51,14 +51,13 @@ func seedMultiKeyChannel(t *testing.T, id int) *Channel {
 	return &seeded
 }
 
-// TestVerifyKeyAndCascadeDisablesEveryModelOfTheKey covers the Wave F contract:
-// a conclusive 401/403 verdict means the key itself is dead, so every model unit
-// behind that key index is disabled and the channel's key status is updated.
-// The sibling key index must stay healthy — that is the whole reason the
-// scheduling unit carries a key index.
+// TestVerifyKeyAndCascadeDisablesEveryModelOfTheKey covers the cascade contract:
+// a conclusive 401/403 verdict means the key itself is dead, so every model
+// unit behind that key index is terminal-disabled and the channel's key status
+// is updated. The sibling key index must stay selectable — that is the whole
+// reason the scheduling unit carries a key index.
 func TestVerifyKeyAndCascadeDisablesEveryModelOfTheKey(t *testing.T) {
-	withRouteHealthDB(t)
-	withHealthSetting(t, DefaultChannelModelHealthSetting())
+	withUnitHealthDB(t)
 	calls := withKeyProbe(t, false, true)
 	channel := seedMultiKeyChannel(t, 9210)
 	now := time.Now()
@@ -67,10 +66,10 @@ func TestVerifyKeyAndCascadeDisablesEveryModelOfTheKey(t *testing.T) {
 
 	assert.Equal(t, 1, *calls, "the cascade must probe exactly once")
 	for _, name := range []string{"model-x", "model-y"} {
-		state, _ := GetRouteHealth(RouteKey{ChannelId: channel.Id, KeyIndex: 0, Model: name})
-		assert.Equal(t, HealthDisabled, state, "model %s behind the dead key must be disabled", name)
+		state := UnitState(RouteKey{ChannelId: channel.Id, KeyIndex: 0, Model: name})
+		assert.True(t, state.TerminalDisabled, "model %s behind the dead key must be terminal-disabled", name)
 		sibling := RouteKey{ChannelId: channel.Id, KeyIndex: 1, Model: name}
-		assert.True(t, IsRouteHealthy(sibling, now), "model %s on the surviving key must stay healthy", name)
+		assert.True(t, IsUnitSelectable(sibling, now), "model %s on the surviving key must stay selectable", name)
 	}
 
 	var stored Channel
@@ -81,10 +80,9 @@ func TestVerifyKeyAndCascadeDisablesEveryModelOfTheKey(t *testing.T) {
 
 // TestVerifyKeyAndCascadeIgnoresInconclusiveProbe covers the 429/5xx/timeout
 // path: without a conclusive verdict the cascade must change nothing, otherwise
-// one upstream hiccup would disable a whole key's worth of models.
+// one upstream hiccup would disable a whole key's worth of model units.
 func TestVerifyKeyAndCascadeIgnoresInconclusiveProbe(t *testing.T) {
-	withRouteHealthDB(t)
-	withHealthSetting(t, DefaultChannelModelHealthSetting())
+	withUnitHealthDB(t)
 	withKeyProbe(t, false, false)
 	channel := seedMultiKeyChannel(t, 9211)
 	now := time.Now()
@@ -92,7 +90,7 @@ func TestVerifyKeyAndCascadeIgnoresInconclusiveProbe(t *testing.T) {
 	verifyKeyAndCascade(channel.Id, 0, now)
 
 	for _, name := range []string{"model-x", "model-y"} {
-		assert.True(t, IsRouteHealthy(RouteKey{ChannelId: channel.Id, KeyIndex: 0, Model: name}, now),
+		assert.True(t, IsUnitSelectable(RouteKey{ChannelId: channel.Id, KeyIndex: 0, Model: name}, now),
 			"an inconclusive probe must not disable model %s", name)
 	}
 	var stored Channel
@@ -100,17 +98,22 @@ func TestVerifyKeyAndCascadeIgnoresInconclusiveProbe(t *testing.T) {
 	assert.Equal(t, common.ChannelStatusEnabled, stored.Status, "channel status must be untouched")
 }
 
-// TestVerifyKeyAndCascadeSkipsWhenProbeDisabled proves KeyProbeEnabled is a real
-// kill switch: with probing off the upstream is never contacted at all.
-func TestVerifyKeyAndCascadeSkipsWhenProbeDisabled(t *testing.T) {
-	withRouteHealthDB(t)
-	cfg := DefaultChannelModelHealthSetting()
-	cfg.KeyProbeEnabled = false
-	withHealthSetting(t, cfg)
-	calls := withKeyProbe(t, false, true)
+// TestVerifyKeyAndCascadeNoopWhenProbeUnwired covers the guard: with no probe
+// function wired the cascade must not contact the upstream or disable anything.
+// The cascade only ever runs once a controller has installed a probe, so the
+// guard is what keeps an unset package from probing a dead key.
+func TestVerifyKeyAndCascadeNoopWhenProbeUnwired(t *testing.T) {
+	withUnitHealthDB(t)
+	previousProbe := ProbeChannelKeyFunc
+	ProbeChannelKeyFunc = nil
+	t.Cleanup(func() { ProbeChannelKeyFunc = previousProbe })
 	channel := seedMultiKeyChannel(t, 9212)
+	now := time.Now()
 
-	verifyKeyAndCascade(channel.Id, 0, time.Now())
+	verifyKeyAndCascade(channel.Id, 0, now)
 
-	assert.Zero(t, *calls, "a disabled probe must never reach upstream")
+	for _, name := range []string{"model-x", "model-y"} {
+		assert.True(t, IsUnitSelectable(RouteKey{ChannelId: channel.Id, KeyIndex: 0, Model: name}, now),
+			"an unwired probe must disable nothing")
+	}
 }

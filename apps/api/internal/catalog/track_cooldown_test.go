@@ -173,10 +173,10 @@ func TestChannelCooldownSelectionSkipsEjectedRouteUnits(t *testing.T) {
 	withChannelCacheFixture(t, []*Channel{cooled, fallback}, group, modelName,
 		map[int]int{cooled.Id: 10, fallback.Id: 10})
 
-	withRouteHealthDB(t)
-	withHealthSetting(t, DefaultChannelModelHealthSetting())
+	withUnitHealthDB(t)
+	withUnitHealthSetting(t, DefaultUnitHealthSetting())
 	cooledKey := RouteKey{ChannelId: cooled.Id, KeyIndex: 0, Model: modelName}
-	require.NoError(t, DisableRoute(cooledKey, time.Now()))
+	require.NoError(t, DisableUnit(cooledKey, time.Now()))
 
 	// The ejected route unit is gone from the pool at every retry value, because
 	// retry no longer selects a tier: the surviving route serves all of it.
@@ -194,7 +194,7 @@ func TestChannelCooldownSelectionSkipsEjectedRouteUnits(t *testing.T) {
 
 	// Ejecting the survivor as well empties the pool, which is how selection fails
 	// fast instead of handing back an ejected route.
-	require.NoError(t, DisableRoute(RouteKey{ChannelId: fallback.Id, KeyIndex: 0, Model: modelName}, time.Now()))
+	require.NoError(t, DisableUnit(RouteKey{ChannelId: fallback.Id, KeyIndex: 0, Model: modelName}, time.Now()))
 	got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil)
 	require.NoError(t, err)
 	assert.Nil(t, got, "with every route unit ejected selection must yield nothing")

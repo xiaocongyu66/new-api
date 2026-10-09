@@ -10,6 +10,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/catalog/routestats"
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 )
@@ -121,8 +122,8 @@ func TestSelectRouteUnit_SingleCandidate(t *testing.T) {
 	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, routes)
 	defer cleanup()
 
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	rnd := rand.New(rand.NewPCG(42, 0))
 	selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
@@ -146,8 +147,8 @@ func TestSelectRouteUnit_MultiKeyChannel(t *testing.T) {
 	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, routes)
 	defer cleanup()
 
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	// Run many times - all three key indices should be selected with roughly equal probability
 	rnd := rand.New(rand.NewPCG(100, 0))
@@ -187,8 +188,8 @@ func TestSelectRouteUnit_MultiKeyDisabledKeyExcluded(t *testing.T) {
 	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, routes)
 	defer cleanup()
 
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	// Run many times - key index 1 should never be selected
 	rnd := rand.New(rand.NewPCG(200, 0))
@@ -216,8 +217,8 @@ func TestSelectRouteUnit_ExcludeRoutes(t *testing.T) {
 	cleanup := withRouteUnitFixture(t, []*Channel{ch1, ch2}, group, alias, routes)
 	defer cleanup()
 
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	// Exclude route 1 (channel 1004, keyIndex 0)
 	excludeRoutes := map[RouteKey]bool{{ChannelId: 1004, KeyIndex: 0, Model: alias}: true}
@@ -231,23 +232,50 @@ func TestSelectRouteUnit_ExcludeRoutes(t *testing.T) {
 func TestSelectRouteUnit_DisabledRouteExcluded(t *testing.T) {
 	const group, alias = "test-group", "test-model"
 
+	// Production index boundary: the selector never sees disabled route rows —
+	// they are dropped when the alias->route index is built from the DB, so a
+	// disabled channel's row cannot be selected no matter what the duel draws.
+	cleanupDB := withRouteDB(t)
+	defer cleanupDB()
+
 	ch1 := testRouteChannel(1006, false, []string{"sk-1"}, nil)
 	ch2 := testRouteChannel(1007, false, []string{"sk-2"}, nil)
-	routes := []ChannelModelRoute{
-		testRoute(1, 1006, 0, alias, "upstream-1", 100),
-		{Id: 2, PublicModelAlias: alias, ChannelId: 1007, KeyIndex: 0, UpstreamModel: "upstream-2", StaticWeight: 100, Enabled: false}, // disabled
-	}
-	cleanup := withRouteUnitFixture(t, []*Channel{ch1, ch2}, group, alias, routes)
-	defer cleanup()
+	require.NoError(t, dbx.DB.Create(&ChannelModelRoute{
+		Id: 1, PublicModelAlias: alias, ChannelId: 1006, KeyIndex: 0,
+		UpstreamModel: "upstream-1", StaticWeight: 100, Enabled: true,
+	}).Error)
+	require.NoError(t, dbx.DB.Create(&ChannelModelRoute{
+		Id: 2, PublicModelAlias: alias, ChannelId: 1007, KeyIndex: 0,
+		UpstreamModel: "upstream-2", StaticWeight: 100, Enabled: false,
+	}).Error)
 
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	prevGroups := group2model2channels
+	prevIDM := channelsIDM
+	prevAliasRoutes := alias2routes
+	prevMemoryCache := common.MemoryCacheEnabled
+	channelSyncLock.Lock()
+	group2model2channels = map[string]map[string][]int{group: {alias: {1006, 1007}}}
+	channelsIDM = map[int]*Channel{1006: ch1, 1007: ch2}
+	buildGroupAliasRoutesFromDB()
+	channelSyncLock.Unlock()
+	common.MemoryCacheEnabled = true
+	t.Cleanup(func() {
+		channelSyncLock.Lock()
+		group2model2channels, channelsIDM, alias2routes = prevGroups, prevIDM, prevAliasRoutes
+		channelSyncLock.Unlock()
+		common.MemoryCacheEnabled = prevMemoryCache
+	})
+
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	rnd := rand.New(rand.NewPCG(400, 0))
-	selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
-	require.NoError(t, err)
-	require.NotNil(t, selected)
-	assert.Equal(t, 1006, selected.ChannelId, "disabled route should not be selected")
+	for range 50 {
+		selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+		require.NoError(t, err)
+		require.NotNil(t, selected)
+		assert.Equal(t, 1006, selected.ChannelId, "the enabled route is served; the disabled row never entered the index")
+	}
 }
 
 func TestSelectRouteUnit_CooldownEjection(t *testing.T) {
@@ -263,32 +291,33 @@ func TestSelectRouteUnit_CooldownEjection(t *testing.T) {
 	defer cleanup()
 
 	// The state machine persists to the DB, so install one before driving it.
-	withRouteHealthDB(t)
-	ClearRouteHealthCache()
+	withUnitHealthDB(t)
+	ClearUnitHealthCache()
+	// Keep the failure cooldown live for the whole test window.
+	cfg := DefaultUnitHealthSetting()
+	cfg.CooldownBaseMs = 3_600_000
+	withUnitHealthSetting(t, cfg)
 
-	// Push route 1008 into calm state via retryable failures
+	// One fatal outcome puts route 1008 into its (now long) cooldown: a
+	// cooling unit is excluded from the eligible pool, so 1009 takes every draw.
 	now := time.Now()
-	require.NoError(t, RecordRetryableFailure(RouteKey{ChannelId: 1008, KeyIndex: 0, Model: alias}, "bad_response", FailureSourceUpstream, now))
+	cooling := RouteKey{ChannelId: 1008, KeyIndex: 0, Model: alias}
+	require.NoError(t, ReportOutcome(cooling, UnitFatal, 0, 0, now))
+	assert.False(t, IsUnitSelectable(cooling, now), "a cooling unit is excluded")
 
-	// In the new model, a calm route stays selectable at reduced weight (0.5x),
-	// while a disabled route is excluded entirely. A disabled route is the ONLY
-	// state that leaves the candidate set.
 	rnd := rand.New(rand.NewPCG(500, 0))
 	counts := make(map[int]int)
-	for range 200 {
+	for range 100 {
 		selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
 		require.NoError(t, err)
 		require.NotNil(t, selected)
 		counts[selected.ChannelId]++
 	}
-	// Thin pools route by power-of-two-choices: the calm route (multiplier 0.5)
-	// loses every contest against the healthy route and is served only when
-	// both draws land on it (25%), so the healthy route takes ~150 of 200.
-	assert.Greater(t, counts[1009], counts[1008], "healthy route must dominate calm route")
-	assert.InDelta(t, 150, counts[1009], 25, "healthy route takes 75%% under P2C")
+	assert.Equal(t, 100, counts[1009], "the healthy route takes every draw")
+	assert.Zero(t, counts[1008], "the cooling route is excluded from the pool")
 
-	// Now disable the calm route - it must be excluded entirely
-	require.NoError(t, DisableRoute(RouteKey{ChannelId: 1008, KeyIndex: 0, Model: alias}, now))
+	// Terminal disable is the permanent exclusion: same pool result, kept out.
+	require.NoError(t, DisableUnit(cooling, now))
 	counts = make(map[int]int)
 	for range 50 {
 		selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
@@ -296,8 +325,8 @@ func TestSelectRouteUnit_CooldownEjection(t *testing.T) {
 		require.NotNil(t, selected)
 		counts[selected.ChannelId]++
 	}
-	assert.Equal(t, 0, counts[1008], "disabled route must never be selected")
-	assert.Equal(t, 50, counts[1009], "only healthy route remains")
+	assert.Zero(t, counts[1008], "a terminal-disabled route must never be selected")
+	assert.Equal(t, 50, counts[1009], "only the healthy route remains")
 }
 
 func TestSelectRouteUnit_AdvancedCustomPathFilter(t *testing.T) {
@@ -319,8 +348,8 @@ func TestSelectRouteUnit_AdvancedCustomPathFilter(t *testing.T) {
 	cleanup := withRouteUnitFixture(t, []*Channel{ch1, ch2}, group, alias, routes)
 	defer cleanup()
 
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	// Request to /v1/chat/completions should only select ch1
 	rnd := rand.New(rand.NewPCG(600, 0))
@@ -355,8 +384,8 @@ func TestSelectRouteUnit_DeterministicCacheVsDB(t *testing.T) {
 	cleanupCache := withRouteUnitFixture(t, []*Channel{ch1, ch2}, group, alias, routes)
 	defer cleanupCache()
 
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	rndCache := rand.New(rand.NewPCG(700, 0))
 	rndDB := rand.New(rand.NewPCG(700, 0)) // same seed
@@ -391,8 +420,8 @@ func TestSelectRouteUnit_WeightDistribution(t *testing.T) {
 	cleanup := withRouteUnitFixture(t, []*Channel{ch1, ch2}, group, alias, routes)
 	defer cleanup()
 
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	rnd := rand.New(rand.NewPCG(800, 0))
 	counts := make(map[int]int)
@@ -403,11 +432,11 @@ func TestSelectRouteUnit_WeightDistribution(t *testing.T) {
 		counts[selected.ChannelId]++
 	}
 
-	// ch2 has 3x weight. Thin pools draw P2C: a candidate wins its double draws
-	// outright (1/4) and takes its base-share slice of the mixed pairs, so the
-	// split compresses toward even: P(3002) = 1/4 + 1/2 x 301/402 ≈ 62.4%.
-	assert.InDelta(t, 624, counts[3002], 60, "weight 300 compresses to ~62% under P2C")
-	assert.InDelta(t, 376, counts[3001], 60, "weight 100 correspondingly ~38%")
+	// ch2 has 3x weight and no quality signal separates the pair (identical
+	// likelihoods), so the first-sampled-order tiebreak keeps the share
+	// exactly at the effective prior: P(3002) = 300/(100+300) = 75%.
+	assert.InDelta(t, 750, counts[3002], 45, "weight 300 takes its 75%% prior share under P2C")
+	assert.InDelta(t, 250, counts[3001], 45, "weight 100 correspondingly takes 25%%")
 }
 
 func TestSelectRouteUnit_NormalizedAliasFallback(t *testing.T) {
@@ -446,8 +475,8 @@ func TestSelectRouteUnit_NormalizedAliasFallback(t *testing.T) {
 	channelSyncLock.Unlock()
 	common.MemoryCacheEnabled = true
 
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	// Request with non-normalized alias should fall back to normalized
 	rnd := rand.New(rand.NewPCG(900, 0))
@@ -484,8 +513,8 @@ func TestSelectRouteUnitAttachesStatsHandleWithRouteIdentity(t *testing.T) {
 	}
 	cleanup := withRouteUnitFixture(t, []*Channel{ch}, group, alias, routes)
 	defer cleanup()
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	selected, err := SelectRouteUnit(group, alias, "", 0, nil, rand.New(rand.NewPCG(41, 41)))
 	require.NoError(t, err)
@@ -553,14 +582,15 @@ func TestSelectedRouteFromChannelAttributesRealRoute(t *testing.T) {
 	assert.Same(t, want.State(), route.StatsHandle.State())
 }
 
-// TestSelectedRouteForProbeKeepsShareWindowClean draws the line between traffic
-// and administration. Affinity and locked replay serve real requests, so they
-// belong in the share window; a channel test or key probe is the operator poking
-// the upstream, and counting it would let one "test all channels" click move the
-// window and have the correction chase load no user generated. Both variants must
-// still attribute EWMA samples, because a probe's latency and failures are real
-// signal about the route.
-func TestSelectedRouteForProbeKeepsShareWindowClean(t *testing.T) {
+// TestSelectedRouteBypassPathsSkipShareWindow pins the post-retirement
+// contract: the bypass paths (channel affinity, specific channel, locked
+// replay, administrative probes) attribute outcomes to the route unit's EWMA
+// handle — a probe's latency and failures are real signal about the route —
+// but they no longer feed the share window. The share-deficit correction was
+// retired with the old scorer, so no selection path records opportunities;
+// the window stays empty unless something explicitly RecordSelections into
+// it (the routestats package's own tests and the admin audit do).
+func TestSelectedRouteBypassPathsSkipShareWindow(t *testing.T) {
 	const group, alias = "probe-group", "probe-alias"
 
 	withRouteStats(t, nil)
@@ -584,9 +614,9 @@ func TestSelectedRouteForProbeKeepsShareWindowClean(t *testing.T) {
 	served, err := SelectedRouteFromChannel(ch, alias, group)
 	require.NoError(t, err)
 	require.NotNil(t, served.StatsHandle)
-	assert.Equal(t, 1, routestats.Corrections(pool, targets, cfg)[id].Opportunities,
-		"real traffic on the same path must be recorded")
-	assert.Equal(t, 1, routestats.Corrections(pool, targets, cfg)[id].Selections)
+	assert.Zero(t, routestats.Corrections(pool, targets, cfg)[id].Opportunities,
+		"the retired correction bookkeeping is not fed by any selection path")
+	assert.Zero(t, routestats.Corrections(pool, targets, cfg)[id].Selections)
 }
 
 // TestSelectedRouteFromChannelBuildsFullRouteForLockedReplay covers the locked-channel
@@ -618,8 +648,8 @@ func TestSelectedRouteFromChannelBuildsFullRouteForLockedReplay(t *testing.T) {
 	})
 	defer cleanup()
 
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	route, err := SelectedRouteFromChannel(ch, alias, group)
 	require.NoError(t, err)
@@ -661,29 +691,11 @@ func TestSelectedRouteFromChannelBuildsFullRouteForLockedReplay(t *testing.T) {
 		"the sibling route unit on the same channel must be untouched")
 }
 
-// driveToDormant escalates one route seven levels so isolationDuration lands it
-// in the dormant state (multiplier DormantWeightScale).
-func driveToDormant(t *testing.T, key RouteKey) {
-	t.Helper()
-	now := time.Now()
-	for range 7 {
-		require.NoError(t, RecordRetryableFailure(key, "bad_response", FailureSourceUpstream, now))
-	}
-	require.Equal(t, HealthDormant, getHealthState(t, key), "fixture must reach dormant")
-}
-
-func getHealthState(t *testing.T, key RouteKey) string {
-	t.Helper()
-	state, _, _, ok := GetRouteIsolation(key)
-	require.True(t, ok, "route %v must have a health row", key)
-	return state
-}
-
-// TestThinPoolP2CStateBeatsWeight pins the core P2C rule: in a thin pool a
-// healthier isolation state wins the sampled pair regardless of static weight.
-// A dormant route with 10x the healthy route's weight still loses every mixed
-// draw, so the healthy route serves ~75% (the dormant route is probed only
-// when both uniform draws land on it: 1/4).
+// TestThinPoolP2CStateBeatsWeight pins the P2C eligibility rule under the unit
+// model: a terminal-disabled unit is not eligible for the duel pool, and the
+// faint-recall path refuses to resurrect it (only live cooldown windows are
+// recallable). A disabled heavy route cannot beat a light one — the light
+// route serves every draw even at 1/10th of the static weight.
 func TestThinPoolP2CStateBeatsWeight(t *testing.T) {
 	const group, alias = "p2c-group", "p2c-model"
 
@@ -695,21 +707,21 @@ func TestThinPoolP2CStateBeatsWeight(t *testing.T) {
 	})
 	defer cleanup()
 
-	withRouteHealthDB(t)
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	withUnitHealthDB(t)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
-	driveToDormant(t, RouteKey{ChannelId: 8302, KeyIndex: 0, Model: alias})
+	// Terminal-disable the heavy unit: it is permanently out of the pool.
+	require.NoError(t, DisableUnit(RouteKey{ChannelId: 8302, KeyIndex: 0, Model: alias}, time.Now()))
 
 	counts := drawShares(t, group, alias, 2000, 0xA2C01)
-	assert.InDelta(t, 1500, counts[8301], 120,
-		"the healthy route must win every mixed pair (~75%%), got %d", counts[8301])
-	assert.Positive(t, counts[8302], "the dormant route keeps its 1/n² probe share")
+	assert.Equal(t, 2000, counts[8301], "the light unit takes every draw")
+	assert.Zero(t, counts[8302], "the disabled heavy unit is excluded from the pool")
 }
 
-// TestThinPoolP2CThreeRouteProbeShare pins the 1/n² probe share: with three
-// equal-weight candidates and one dormant, the dormant route wins only the
-// double draws (1/9 ≈ 11%), while its two healthy peers split the rest evenly.
+// TestThinPoolP2CThreeRouteProbeShare pins the exclusion boundary: with three
+// equal-weight candidates and one terminal-disabled, the disabled unit never
+// serves traffic and its two healthy peers split it evenly.
 func TestThinPoolP2CThreeRouteProbeShare(t *testing.T) {
 	const group, alias = "p2c3-group", "p2c3-model"
 
@@ -723,17 +735,17 @@ func TestThinPoolP2CThreeRouteProbeShare(t *testing.T) {
 	})
 	defer cleanup()
 
-	withRouteHealthDB(t)
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	withUnitHealthDB(t)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
-	driveToDormant(t, RouteKey{ChannelId: 8313, KeyIndex: 0, Model: alias})
+	// Terminal-disable chC: the two surviving peers split the traffic evenly.
+	require.NoError(t, DisableUnit(RouteKey{ChannelId: 8313, KeyIndex: 0, Model: alias}, time.Now()))
 
 	counts := drawShares(t, group, alias, 3000, 0xA2C02)
-	assert.InDelta(t, 333, counts[8313], 90,
-		"one dormant route in a three-route pool is probed ~1/9 of the time, got %d", counts[8313])
-	assert.Greater(t, counts[8311], counts[8313], "a healthy peer must dominate the dormant route")
-	assert.Greater(t, counts[8312], counts[8313], "both healthy peers must dominate the dormant route")
+	assert.Zero(t, counts[8313], "the disabled unit is excluded from the pool")
+	assert.InDelta(t, 1500, counts[8311], 150, "surviving peer A takes half, got %d", counts[8311])
+	assert.InDelta(t, 1500, counts[8312], 150, "surviving peer B takes half, got %d", counts[8312])
 }
 
 // TestThinPoolP2CDeterministicUnderSeed pins that P2C consumes randomness only
@@ -750,8 +762,9 @@ func TestThinPoolP2CDeterministicUnderSeed(t *testing.T) {
 	})
 	defer cleanup()
 
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	withUnitHealthDB(t)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	run := func() []int {
 		rnd := rand.New(rand.NewPCG(0x51EE, 7))
@@ -767,9 +780,9 @@ func TestThinPoolP2CDeterministicUnderSeed(t *testing.T) {
 	assert.Equal(t, run(), run(), "same seed must reproduce the same P2C sequence")
 }
 
-// TestThinPoolP2CFourCandidatesUniform pins the P2C boundary: four equal
-// candidates (< smallPoolUnits=5) still route by P2C, and with equal health
-// and weight each lands on exactly 1/4 of the traffic.
+// TestThinPoolP2CFourCandidatesUniform pins P2C's uniform-prior case: four
+// equal candidates with equal health draw identical likelihoods, so the
+// first-sampled-order tiebreak keeps each share at exactly 1/4.
 func TestThinPoolP2CFourCandidatesUniform(t *testing.T) {
 	const group, alias = "p2c4-group", "p2c4-model"
 
@@ -785,12 +798,13 @@ func TestThinPoolP2CFourCandidatesUniform(t *testing.T) {
 	})
 	defer cleanup()
 
-	ClearRouteHealthCache()
-	t.Cleanup(ClearRouteHealthCache)
+	withUnitHealthDB(t)
+	ClearUnitHealthCache()
+	t.Cleanup(ClearUnitHealthCache)
 
 	counts := drawShares(t, group, alias, 4000, 0xA2C03)
 	for _, id := range []int{8331, 8332, 8333, 8334} {
-		assert.InDelta(t, 1000, counts[id], 120,
+		assert.InDelta(t, 1000, counts[id], 150,
 			"four equal candidates must each take 1/4 under P2C, got %d for %d", counts[id], id)
 	}
 }

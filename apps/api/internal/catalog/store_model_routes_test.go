@@ -18,7 +18,7 @@ func withRouteDB(t *testing.T) func() {
 	previousDB := dbx.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&Channel{}, &Ability{}, &ChannelModelRoute{}))
+	require.NoError(t, db.AutoMigrate(&Channel{}, &Ability{}, &ChannelModelRoute{}, &ChannelModelHealth{}))
 	dbx.DB = db
 	return func() { dbx.DB = previousDB }
 }

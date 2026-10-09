@@ -361,13 +361,11 @@ export type ChannelModelHealthRow = {
   channel_id: number
   key_index: number
   model: string
-  state: 'healthy' | 'calm' | 'dormant' | 'disabled'
-  isolation_level: number
-  until: number | null
-  remaining_seconds: number
-  dormant_disable_count: number
-  last_error_code: string
-  last_error_at: number | null
+  state: 'terminal' | 'cooling' | 'slow_start' | 'ok'
+  remaining_cooldown_ms: number
+  last_cooling_outcome: 'fatal' | 'throttled' | ''
+  slow_start_factor: number
+  ewma_score: number
   updated_at: number
 }
 
@@ -381,7 +379,7 @@ export async function getChannelModelHealth(channelId: number): Promise<{
 }
 
 export async function updateChannelModelHealth(
-  action: 'disable' | 'recover',
+  action: 'disable' | 'recover' | 'force_recall',
   channelId: number,
   keyIndex: number,
   model: string

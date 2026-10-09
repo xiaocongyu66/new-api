@@ -10,7 +10,6 @@ import (
 	"math/rand/v2"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/logger"
@@ -43,8 +42,8 @@ type Channel struct {
 	// UsedQuotaDisplay is the API-boundary rendering of UsedQuota in the
 	// configured display currency. gorm:"-" so it is never a column; AfterFind
 	// fills it on every read, so the frontend never divides by QuotaPerUnit.
-	UsedQuotaDisplay   float64 `json:"used_quota_display" gorm:"-"`
-	ModelMapping       *string `json:"model_mapping" gorm:"type:text"`
+	UsedQuotaDisplay float64 `json:"used_quota_display" gorm:"-"`
+	ModelMapping     *string `json:"model_mapping" gorm:"type:text"`
 	//MaxInputTokens     *int    `json:"max_input_tokens" gorm:"default:0"`
 	StatusCodeMapping *string `json:"status_code_mapping" gorm:"type:varchar(1024);default:''"`
 	AutoBan           *int    `json:"auto_ban" gorm:"default:1"`
@@ -234,7 +233,7 @@ func (channel *Channel) GetNextEnabledKey(model string) (string, int, *types.New
 			continue
 		}
 		statusEnabledIdx = append(statusEnabledIdx, i)
-		if IsRouteHealthy(RouteKey{ChannelId: channel.Id, KeyIndex: i, Model: model}, time.Now()) {
+		if IsUnitSelectable(RouteKey{ChannelId: channel.Id, KeyIndex: i, Model: model}, ChannelHealthNow()) {
 			healthyIdx = append(healthyIdx, i)
 		}
 	}
@@ -372,7 +371,6 @@ func (channel *Channel) SaveStatusStateWithTx(tx *gorm.DB) error {
 	return tx.Model(&Channel{}).Where("id = ?", channel.Id).Updates(updates).Error
 }
 
-
 // AfterFind fills the API-boundary display field so every channel payload (list,
 // search, single) carries the converted amount without each handler repeating
 // the math.
@@ -499,7 +497,7 @@ func batchDeleteWithTx(tx *gorm.DB, ids []int) (int64, error) {
 		if err := deleteAbilitiesByChannelIDsWithTx(tx, chunk); err != nil {
 			return 0, err
 		}
-		if err := deleteRouteHealthByChannelIDsWithTx(tx, chunk); err != nil {
+		if err := deleteUnitHealthByChannelIDsWithTx(tx, chunk); err != nil {
 			return 0, err
 		}
 		if err := DeleteChannelModelRoutesByChannelIDsWithTx(tx, chunk); err != nil {
@@ -607,7 +605,7 @@ func (channel *Channel) updateWithTx(tx *gorm.DB) error {
 	if err := tx.Model(channel).Updates(channel).Error; err != nil {
 		return err
 	}
-	if err := deleteRouteHealthOutsideKeyRangeWithTx(tx, channel.Id, channel.ChannelInfo.MultiKeySize); err != nil {
+	if err := deleteUnitHealthOutsideKeyRangeWithTx(tx, channel.Id, channel.ChannelInfo.MultiKeySize); err != nil {
 		return err
 	}
 	if err := tx.First(channel, "id = ?", channel.Id).Error; err != nil {
@@ -660,7 +658,7 @@ func (channel *Channel) deleteWithTx(tx *gorm.DB) error {
 	if err := SyncChannelModelRoutesWithTx(tx, channel.Id); err != nil {
 		return err
 	}
-	return deleteRouteHealthByChannelIDsWithTx(tx, []int{channel.Id})
+	return deleteUnitHealthByChannelIDsWithTx(tx, []int{channel.Id})
 }
 
 func (channel *Channel) Delete() error {
@@ -1042,7 +1040,7 @@ func deleteChannelByStatusWithTx(tx *gorm.DB, status int64) (int64, error) {
 	if err := deleteAbilitiesByChannelIDsWithTx(tx, ids); err != nil {
 		return 0, err
 	}
-	if err := deleteRouteHealthByChannelIDsWithTx(tx, ids); err != nil {
+	if err := deleteUnitHealthByChannelIDsWithTx(tx, ids); err != nil {
 		return 0, err
 	}
 	if err := DeleteChannelModelRoutesByChannelIDsWithTx(tx, ids); err != nil {
@@ -1096,7 +1094,7 @@ func deleteDisabledChannelWithTx(tx *gorm.DB) (int64, error) {
 	if err := deleteAbilitiesByChannelIDsWithTx(tx, ids); err != nil {
 		return 0, err
 	}
-	if err := deleteRouteHealthByChannelIDsWithTx(tx, ids); err != nil {
+	if err := deleteUnitHealthByChannelIDsWithTx(tx, ids); err != nil {
 		return 0, err
 	}
 	if err := DeleteChannelModelRoutesByChannelIDsWithTx(tx, ids); err != nil {

@@ -232,11 +232,11 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 	}
 
 	// The ability rows were rebuilt from the channel's current model list, so any
-	// isolation row for a model that is no longer declared is unreachable by the
-	// selectors and would only survive as a ghost row. Models that survived the
-	// edit keep their isolation state (preserved above). EditChannelByTag reaches
+	// unit health row for a model that is no longer declared is unreachable by
+	// the selectors and would only survive as a ghost row. Models that survived
+	// the edit keep their unit state (preserved above). EditChannelByTag reaches
 	// this through the same call, so it needs no separate wiring.
-	if err = deleteRouteHealthNotInModelsWithTx(tx, channel.Id, models_); err != nil {
+	if err = deleteUnitHealthNotInModelsWithTx(tx, channel.Id, models_); err != nil {
 		if isNewTx {
 			tx.Rollback()
 		}

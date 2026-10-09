@@ -19,6 +19,7 @@ import (
 func init() {
 	dbx.RegisterPostMigration(
 		migrateChannelModelHealthKeyIndex,
+		seedUnitHealthColumns,
 		SeedChannelModelRoutes,
 		InitializeGatewayConfigRevision,
 	)
@@ -118,4 +119,48 @@ func migrateChannelModelHealthKeyIndex() error {
 		})
 	}
 	return fmt.Errorf("unsupported database for channel model health migration")
+}
+
+// seedUnitHealthColumns is the one-time legacy-to-unit migration of the
+// channel_model_health rows. The old ladder (state / isolation_level /
+// until / dormancy counters) is superseded by the outcome-driven columns;
+// this step maps the only legacy state that still means something and then
+// clears the legacy markers, which is what makes the step idempotent on
+// later boots:
+//
+//   - a live isolation deadline (until in the future) becomes
+//     cooldown_until_ms = until*1000 with a one-rung cooldown_streak, so
+//     the unit stays excluded for the remainder of its old window and then
+//     re-enters through the slow-start ramp;
+//   - a hard-disabled state becomes disable_streak at the cap
+//     (terminal-disabled: excluded until an admin or the emergency batch
+//     recovery clears it);
+//   - the calm/dormant ladder rungs and the dormancy/failure counters are
+//     DROPPED here: the new model has no ladder levels, and a one-time loss
+//     of "how far up the old ladder" is adjudicated acceptable (the unit
+//     restarts at the new base rung).
+func seedUnitHealthColumns() error {
+	if !dbx.DB.Migrator().HasTable(&ChannelModelHealth{}) {
+		return nil
+	}
+	// The outcome columns exist only once AutoMigrate has seen the new
+	// struct; on a pre-rework database the columns are missing, so the
+	// step is a no-op until the schema catches up.
+	if !dbx.DB.Migrator().HasColumn(&ChannelModelHealth{}, "CooldownUntilMs") {
+		return nil
+	}
+	legacyWhere := "until IS NOT NULL OR state = ? OR dormant_disable_count > 0 OR local_failure_count > 0 OR upstream_failure_count > 0"
+	updated := map[string]any{
+		"cooldown_until_ms": gorm.Expr("COALESCE(until, 0) * 1000"),
+		"cooldown_streak":   gorm.Expr("CASE WHEN until IS NOT NULL THEN 1 ELSE cooldown_streak END"),
+		"disable_streak":    gorm.Expr("CASE WHEN state = ? THEN ? ELSE disable_streak END", "disabled", 3),
+		// One-time legacy state loss: the ladder markers are consumed.
+		"state":                  "healthy",
+		"isolation_level":        0,
+		"until":                  nil,
+		"dormant_disable_count":  0,
+		"local_failure_count":    0,
+		"upstream_failure_count": 0,
+	}
+	return dbx.DB.Model(&ChannelModelHealth{}).Where(legacyWhere, "disabled").Updates(updated).Error
 }

@@ -6,9 +6,9 @@ import (
 	"embed"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/billing"
-	"github.com/QuantumNous/new-api/internal/geoip"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/egress"
+	"github.com/QuantumNous/new-api/internal/geoip"
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/task"
 	"github.com/QuantumNous/new-api/internal/transport/handler"
@@ -108,9 +108,9 @@ func main() {
 				}
 			}()
 			catalog.InitChannelCache()
-			// Restores the persisted per-model route isolation. Without it a
-			// quarantined route silently rejoins rotation on every restart.
-			catalog.InitChannelModelHealthCache()
+			// Restores the persisted per-unit health state. Without it a cooling
+			// or terminal-disabled unit silently rejoins rotation on restart.
+			catalog.InitUnitHealthCache()
 		}()
 
 		go catalog.SyncChannelCache(common.SyncFrequency)

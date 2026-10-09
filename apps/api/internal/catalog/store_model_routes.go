@@ -417,7 +417,7 @@ func GetRouteUnitViewsByAlias(alias string) ([]RouteUnitView, error) {
 			StaticWeight:     r.StaticWeight,
 			Enabled:          r.Enabled,
 			ExpectedShare:    share,
-			HealthScore:      RouteWeightMultiplier(RouteKey{ChannelId: r.ChannelId, KeyIndex: r.KeyIndex, Model: r.PublicModelAlias}),
+			HealthScore:      UnitHealthScore(RouteKey{ChannelId: r.ChannelId, KeyIndex: r.KeyIndex, Model: r.PublicModelAlias}, ChannelHealthNow()),
 			EwmaQuality:      1.0,
 		}
 		// GetHandle deliberately does not create state: listing route units must

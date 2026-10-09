@@ -38,7 +38,7 @@ func withGroupIsolationRouteDB(t *testing.T) *gorm.DB {
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&Channel{}, &Ability{}, &ChannelModelRoute{}))
+	require.NoError(t, db.AutoMigrate(&Channel{}, &Ability{}, &ChannelModelRoute{}, &ChannelModelHealth{}))
 	dbx.DB = db
 
 	prevMemoryCache := common.MemoryCacheEnabled
@@ -46,7 +46,7 @@ func withGroupIsolationRouteDB(t *testing.T) *gorm.DB {
 	prevIDM := channelsIDM
 	prevAliasRoutes := alias2routes
 
-	ClearRouteHealthCache()
+	ClearUnitHealthCache()
 	t.Cleanup(func() {
 		channelSyncLock.Lock()
 		group2model2channels = prevGroups
@@ -57,7 +57,7 @@ func withGroupIsolationRouteDB(t *testing.T) *gorm.DB {
 		dbx.DB = prevDB
 		common.SetDatabaseTypes(prevMain, prevLog)
 		dbx.InitColumns()
-		ClearRouteHealthCache()
+		ClearUnitHealthCache()
 		if sqlDB, err := db.DB(); err == nil {
 			_ = sqlDB.Close()
 		}
