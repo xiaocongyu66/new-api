@@ -48,7 +48,7 @@ func seedPaymentOptions() map[string]string {
 		"WaffoCurrency":               WaffoCurrency,
 		"WaffoUnitPrice":              strconv.FormatFloat(WaffoUnitPrice, 'f', -1, 64),
 		"WaffoMinTopUp":               strconv.Itoa(WaffoMinTopUp),
-		"WaffoPayMethods":             WaffoPayMethods2JsonString(),
+		"WaffoPayMethods":             "[]",
 		"WaffoPancakeMerchantID":      WaffoPancakeMerchantID,
 		"WaffoPancakePrivateKey":      WaffoPancakePrivateKey,
 		"WaffoPancakeReturnURL":       WaffoPancakeReturnURL,

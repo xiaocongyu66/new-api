@@ -150,11 +150,11 @@ func GetWaffoPayMethods() []constant.WaffoPayMethod {
 	common.OptionMapRWMutex.RUnlock()
 
 	if jsonStr == "" {
-		return copyDefaultWaffoPayMethods()
+		return []constant.WaffoPayMethod{}
 	}
 	var methods []constant.WaffoPayMethod
 	if err := common.UnmarshalJsonStr(jsonStr, &methods); err != nil {
-		return copyDefaultWaffoPayMethods()
+		return []constant.WaffoPayMethod{}
 	}
 	return methods
 }
@@ -169,21 +169,6 @@ func SetWaffoPayMethods(methods []constant.WaffoPayMethod) error {
 	common.OptionMap["WaffoPayMethods"] = string(jsonBytes)
 	common.OptionMapRWMutex.Unlock()
 	return nil
-}
-
-func copyDefaultWaffoPayMethods() []constant.WaffoPayMethod {
-	cp := make([]constant.WaffoPayMethod, len(constant.DefaultWaffoPayMethods))
-	copy(cp, constant.DefaultWaffoPayMethods)
-	return cp
-}
-
-// WaffoPayMethods2JsonString 将默认 WaffoPayMethods 序列化为 JSON 字符串（供 InitOptionMap 使用）
-func WaffoPayMethods2JsonString() string {
-	jsonBytes, err := common.Marshal(constant.DefaultWaffoPayMethods)
-	if err != nil {
-		return "[]"
-	}
-	return string(jsonBytes)
 }
 
 // ---------------------------------------------------------------------------
