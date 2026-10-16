@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { Plus, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -252,6 +254,18 @@ export function RuleEditorDialog(props: Props) {
       contentClassName='max-w-2xl'
       contentHeight='auto'
       bodyClassName='pr-2'
+      headerActions={
+        <Button
+          type='submit'
+          form={RULE_FORM_ID}
+          variant='ghost'
+          size='icon-sm'
+          className='md:hidden'
+          aria-label={t('Save')}
+        >
+          <HugeiconsIcon icon={FloppyDiskIcon} />
+        </Button>
+      }
       footer={
         <>
           <Button

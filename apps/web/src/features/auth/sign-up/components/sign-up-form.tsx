@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useForm } from 'react-hook-form'
@@ -401,6 +403,23 @@ export function SignUpForm({
           headerClassName='text-left'
           contentHeight='auto'
           bodyClassName='space-y-4'
+          headerActions={
+            <Button
+              type='button'
+              variant='ghost'
+              size='icon-sm'
+              className='md:hidden'
+              onClick={handleWeChatLogin}
+              disabled={
+                isWeChatSubmitting ||
+                !wechatCode.trim() ||
+                (requiresLegalConsent && !agreedToLegal)
+              }
+              aria-label={t('Confirm')}
+            >
+              <HugeiconsIcon icon={FloppyDiskIcon} />
+            </Button>
+          }
           footer={
             <>
               <Button

@@ -60,9 +60,11 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  headerActions,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
+  headerActions?: React.ReactNode
 }) {
   return (
     <DialogPortal>
@@ -76,20 +78,19 @@ function DialogContent({
         {...props}
       >
         {children}
-        {showCloseButton && (
-          <DialogPrimitive.Close
-            data-slot='dialog-close'
-            render={
-              <Button
-                variant='ghost'
-                className='absolute top-2 right-2'
-                size='icon-sm'
-              />
-            }
-          >
-            <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
-            <span className='sr-only'>Close</span>
-          </DialogPrimitive.Close>
+        {(headerActions || showCloseButton) && (
+          <div className='absolute top-2 right-2 flex items-center gap-1'>
+            {headerActions}
+            {showCloseButton && (
+              <DialogPrimitive.Close
+                data-slot='dialog-close'
+                render={<Button variant='ghost' size='icon-sm' />}
+              >
+                <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
+                <span className='sr-only'>Close</span>
+              </DialogPrimitive.Close>
+            )}
+          </div>
         )}
       </DialogPrimitive.Popup>
     </DialogPortal>

@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { ShieldCheck, KeyRound, Loader2 } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -103,6 +105,19 @@ export function SecureVerificationDialog({
       contentHeight='auto'
       bodyClassName='px-1 py-1'
       showCloseButton={!state.loading}
+      headerActions={
+        <Button
+          type='button'
+          variant='ghost'
+          size='icon-sm'
+          className='md:hidden'
+          onClick={handleVerify}
+          disabled={availableTabs.length === 0 || verifyDisabled}
+          aria-label={t('Verify')}
+        >
+          <HugeiconsIcon icon={FloppyDiskIcon} />
+        </Button>
+      }
       footerClassName='bg-muted/30 border-t px-6 py-4 sm:flex-row sm:justify-end'
       footer={
         <>

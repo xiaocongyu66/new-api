@@ -44,6 +44,7 @@ type DialogProps = React.ComponentProps<typeof DialogRoot> & {
   footerClassName?: string
   initialFocus?: boolean
   showCloseButton?: boolean
+  headerActions?: React.ReactNode
 }
 
 const dialogContentMotionClassName =
@@ -64,6 +65,7 @@ export function Dialog({
   footerClassName,
   initialFocus,
   showCloseButton,
+  headerActions,
   ...dialogProps
 }: DialogProps) {
   return (
@@ -77,6 +79,7 @@ export function Dialog({
         )}
         initialFocus={initialFocus}
         showCloseButton={showCloseButton}
+        headerActions={headerActions}
         style={
           {
             '--dialog-content-height': contentHeight,
@@ -84,7 +87,13 @@ export function Dialog({
         }
       >
         <DialogHeader
-          className={cn('flex-shrink-0 text-start', headerClassName)}
+          className={cn(
+            'flex-shrink-0 text-start',
+            // Keep the title clear of the top-right action cluster on
+            // phones, where the header buttons are visible.
+            headerActions && 'max-md:pr-16',
+            headerClassName
+          )}
         >
           <DialogTitle className={titleClassName}>{title}</DialogTitle>
           {description ? (

@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
   ChevronDown,
   ChevronUp,
@@ -1720,6 +1722,18 @@ export function ParamOverrideEditorDialog(
       footerClassName='border-t px-6 py-4'
       contentHeight='min(72vh, 720px)'
       bodyClassName='space-y-4'
+      headerActions={
+        <Button
+          type='button'
+          variant='ghost'
+          size='icon-sm'
+          className='md:hidden'
+          onClick={handleSave}
+          aria-label={t('Save')}
+        >
+          <HugeiconsIcon icon={FloppyDiskIcon} />
+        </Button>
+      }
       footer={
         <>
           <Button

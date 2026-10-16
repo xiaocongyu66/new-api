@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
@@ -198,6 +200,21 @@ export function TagBatchEditDialog({
       contentClassName='max-w-2xl'
       contentHeight='auto'
       bodyClassName='space-y-4'
+      headerActions={
+        !isLoading ? (
+          <Button
+            type='button'
+            variant='ghost'
+            size='icon-sm'
+            className='md:hidden'
+            onClick={handleSave}
+            disabled={isSaving}
+            aria-label={t('Save Changes')}
+          >
+            <HugeiconsIcon icon={FloppyDiskIcon} />
+          </Button>
+        ) : null
+      }
       footer={
         !isLoading ? (
           <>

@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
 import {
@@ -449,6 +451,19 @@ export function UpstreamConflictDialog({
       bodyClassName='flex flex-col gap-4'
       initialFocus={!isMobile}
       footerClassName='sm:justify-between'
+      headerActions={
+        <Button
+          type='button'
+          variant='ghost'
+          size='icon-sm'
+          className='md:hidden'
+          onClick={handleApplyOverwrite}
+          disabled={isSubmitting || !hasSelection}
+          aria-label={t('Apply Overwrite')}
+        >
+          <HugeiconsIcon icon={FloppyDiskIcon} />
+        </Button>
+      }
       footer={
         <div className='flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
           <div className='text-muted-foreground flex flex-1 items-start gap-2 text-xs'>
