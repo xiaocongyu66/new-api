@@ -75,9 +75,21 @@ function ChannelsContent() {
             className='flex h-full min-h-0 flex-col'
           >
             <header className='shrink-0 space-y-3 px-3 pt-3 pb-3 sm:px-4 sm:pt-5'>
-              <h1 className='text-xl font-semibold tracking-tight sm:text-2xl'>
-                {t('Channel Management')}
-              </h1>
+              {/* 列表工具栏属于页头：放进页签内容区会在窄屏留下一整条只有「⋯」的独占行 */}
+              <div className='flex flex-wrap items-center justify-between gap-x-3 gap-y-2'>
+                <h1 className='min-w-0 truncate text-xl font-semibold tracking-tight sm:text-2xl'>
+                  {t('Channel Management')}
+                </h1>
+                <div
+                  className={
+                    pageTab === 'channels'
+                      ? 'flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-x-4'
+                      : 'hidden'
+                  }
+                >
+                  <ChannelsPrimaryButtons />
+                </div>
+              </div>
               <div className='flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-3 sm:gap-y-2'>
                 <TabsList className='grid h-auto w-full grid-cols-2 sm:w-fit'>
                   <TabsTrigger
@@ -129,11 +141,8 @@ function ChannelsContent() {
               <TabsContent
                 value='channels'
                 keepMounted
-                className='m-0 flex h-full min-h-0 flex-1 flex-col gap-3 overflow-hidden data-hidden:hidden'
+                className='m-0 flex h-full min-h-0 flex-1 flex-col overflow-hidden data-hidden:hidden'
               >
-                <div className='flex shrink-0 flex-wrap items-center justify-end gap-2 px-1 pb-3 sm:gap-x-4'>
-                  <ChannelsPrimaryButtons />
-                </div>
                 <ChannelListTab />
               </TabsContent>
             </div>
