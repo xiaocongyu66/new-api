@@ -77,7 +77,7 @@ function ChatRouteComponent() {
 
   if (!preset) {
     return (
-      <Main className='min-w-0 justify-center overflow-y-auto p-3 max-md:pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] sm:p-6'>
+      <Main className='min-w-0 justify-center overflow-y-auto p-3 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:p-6'>
         <Card className='mx-auto w-full max-w-xl gap-0 py-0'>
           <CardContent className='flex min-w-0 flex-col items-center gap-4 p-5 text-center sm:p-8'>
             <div className='bg-secondary text-secondary-foreground flex size-14 items-center justify-center rounded-full'>
@@ -102,7 +102,7 @@ function ChatRouteComponent() {
 
   if (!isWebLink) {
     return (
-      <Main className='min-w-0 justify-center overflow-y-auto p-3 max-md:pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] sm:p-6'>
+      <Main className='min-w-0 justify-center overflow-y-auto p-3 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:p-6'>
         <Card className='mx-auto w-full max-w-xl gap-0 py-0'>
           <CardContent className='flex min-w-0 flex-col items-center gap-4 p-5 text-center sm:p-8'>
             <div className='bg-secondary text-secondary-foreground flex size-14 items-center justify-center rounded-full'>
@@ -128,7 +128,7 @@ function ChatRouteComponent() {
 
   if (requiresActiveKey && isPending) {
     return (
-      <Main className='min-w-0 justify-center overflow-y-auto p-3 max-md:pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] sm:p-6'>
+      <Main className='min-w-0 justify-center overflow-y-auto p-3 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:p-6'>
         <Card className='mx-auto w-full max-w-xl gap-0 py-0'>
           <CardContent className='flex flex-col items-center gap-4 p-5 text-center sm:p-8' role='status'>
             <Loader2 className='text-primary size-8 motion-safe:animate-spin' aria-hidden='true' />
@@ -147,7 +147,7 @@ function ChatRouteComponent() {
         ? error.message
         : 'Unable to generate chat link. Please check your API keys.'
     return (
-      <Main className='min-w-0 justify-center overflow-y-auto p-3 max-md:pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] sm:p-6'>
+      <Main className='min-w-0 justify-center overflow-y-auto p-3 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:p-6'>
         <Alert variant='destructive' className='mx-auto w-full max-w-xl break-words'>
           <AlertTitle>{t('Unable to open chat')}</AlertTitle>
           <AlertDescription>{message}</AlertDescription>
@@ -158,7 +158,7 @@ function ChatRouteComponent() {
 
   if (!requiresActiveKey && !iframeSrc) {
     return (
-      <Main className='min-w-0 justify-center overflow-y-auto p-3 max-md:pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] sm:p-6'>
+      <Main className='min-w-0 justify-center overflow-y-auto p-3 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:p-6'>
         <Alert variant='destructive' className='mx-auto w-full max-w-xl break-words'>
           <AlertTitle>{t('Unable to open chat')}</AlertTitle>
           <AlertDescription>
@@ -172,7 +172,7 @@ function ChatRouteComponent() {
   }
 
   return (
-    <Main className='min-w-0 p-2 sm:p-4'>
+    <Main className='min-w-0 p-2 pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] md:p-4'>
       <Card className='min-h-0 min-w-0 flex-1 gap-0 py-0'>
         <iframe
           src={iframeSrc}
