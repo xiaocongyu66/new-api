@@ -130,28 +130,39 @@ export type ThemeCustomization = {
   // Gray underlay over the background image (alpha % of a fixed dark gray);
   // written to <html> as the --app-background-scrim variable.
   backgroundScrim: number
+  // Mobile shell axes, applied as inline CSS variables on <html>: the bottom
+  // navigation dock and the left navigation sheets.
+  dockOpacity: number
+  sheetOpacity: number
 }
 
 /**
- * Default surface axes per color scheme: light runs translucent glass with
- * card blur on and a light veil so vivid photos still read; dark rests the
- * UI on near-solid (80%) panels over a heavy dark veil (76%), no card blur. Must
- * match the `:root` / `.dark` defaults of --surface-opacity, --surface-blur,
- * --app-background-scrim and the card-blur toggle in theme.css /
- * theme-presets.css.
+ * Default surface axes per color scheme: both schemes rest the UI on 80%
+ * glass — light included, because the old 50% let the background photo
+ * through far enough to wash out body copy, gray glyphs worst of all. Light
+ * keeps card blur on; dark substitutes a heavy dark veil (76%) instead. The
+ * mobile shell axes are scheme-independent: the bottom dock sits at 90% and
+ * the navigation sheets at 95%. Must match the `:root` / `.dark` defaults of
+ * --surface-opacity, --surface-blur, --app-background-scrim,
+ * --mobile-dock-opacity and --mobile-sheet-opacity plus the card-blur toggle
+ * in theme.css / theme-presets.css.
  */
 export const SURFACE_DEFAULTS = {
   light: {
     cardBlur: true,
-    surfaceOpacity: 50,
+    surfaceOpacity: 80,
     surfaceBlur: 2,
     backgroundScrim: 30,
+    dockOpacity: 90,
+    sheetOpacity: 95,
   },
   dark: {
     cardBlur: false,
     surfaceOpacity: 80,
     surfaceBlur: 2,
     backgroundScrim: 76,
+    dockOpacity: 90,
+    sheetOpacity: 95,
   },
 } as const
 
@@ -176,6 +187,10 @@ export const DEFAULT_THEME_CUSTOMIZATION: ThemeCustomization = {
 export const SURFACE_OPACITY_LIMITS = { min: 10, max: 100 } as const
 export const SURFACE_BLUR_LIMITS = { min: 0, max: 40 } as const
 export const BACKGROUND_SCRIM_LIMITS = { min: 0, max: 100 } as const
+/** Mobile dock/sheet panels are always tinted glass, so their sliders start
+ * at 50% and can never dissolve a panel into the page beneath it. */
+export const MOBILE_SURFACE_OPACITY_LIMITS = { min: 50, max: 100 } as const
+
 /** Per-scheme scrim veil: light brightens dark random photos so the light
  * UI never sits on a black field; dark deepens the photo for light glyphs.
  * The provider supplies the chosen alpha and closing parenthesis when the
@@ -186,7 +201,7 @@ export const BACKGROUND_SCRIM_COLOR_BASES = {
 } as const satisfies Record<SurfaceScheme, string>
 
 /**
- * Per-color-scheme storage slots for the four Blur-section axes. The theme
+ * Per-color-scheme storage slots for the Blur-section axes. The theme
  * drawer shows a day/night tab so each scheme's surface can be tuned
  * independently; a value equal to the scheme's default is not persisted and
  * instead follows theme.css (SURFACE_DEFAULTS / :root/.dark), including the
@@ -206,8 +221,21 @@ export const SURFACE_COOKIE_KEYS = {
     light: 'theme_bg_scrim_light',
     dark: 'theme_bg_scrim_dark',
   },
+  dockOpacity: {
+    light: 'theme_dock_opacity_light',
+    dark: 'theme_dock_opacity_dark',
+  },
+  sheetOpacity: {
+    light: 'theme_sheet_opacity_light',
+    dark: 'theme_sheet_opacity_dark',
+  },
 } as const satisfies Record<
-  'cardBlur' | 'surfaceOpacity' | 'surfaceBlur' | 'backgroundScrim',
+  | 'cardBlur'
+  | 'surfaceOpacity'
+  | 'surfaceBlur'
+  | 'backgroundScrim'
+  | 'dockOpacity'
+  | 'sheetOpacity',
   Record<SurfaceScheme, string>
 >
 
@@ -216,18 +244,23 @@ export const SURFACE_AXIS_LIST = [
   'surfaceOpacity',
   'surfaceBlur',
   'backgroundScrim',
+  'dockOpacity',
+  'sheetOpacity',
 ] as const
 export type SurfaceAxis = (typeof SURFACE_AXIS_LIST)[number]
 export type SurfaceNumberAxis = Exclude<SurfaceAxis, 'cardBlur'>
 
 /** Scheme-agnostic cookies from the pre-tab UI; read once as a fallback and
- * dropped whenever the matching per-scheme slot is written. */
-export const LEGACY_SURFACE_COOKIE_KEYS = {
+ * dropped whenever the matching per-scheme slot is written. The mobile
+ * dock/sheet axes never had a pre-tab cookie, hence the partial map. */
+export const LEGACY_SURFACE_COOKIE_KEYS: Partial<
+  Record<SurfaceAxis, string>
+> = {
   cardBlur: 'theme_card_blur',
   surfaceOpacity: 'theme_surface_opacity',
   surfaceBlur: 'theme_surface_blur',
   backgroundScrim: 'theme_bg_scrim',
-} as const satisfies Record<SurfaceAxis, string>
+}
 
 export const THEME_PRESET_VALUES = new Set(
   THEME_PRESETS.map((p) => p.value)

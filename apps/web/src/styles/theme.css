@@ -24,6 +24,12 @@ body,
   --card-surface: color-mix(in oklch, var(--card) var(--surface-opacity), transparent);
   --header-surface: color-mix(in oklch, var(--background) var(--surface-opacity), transparent);
   --page-surface: color-mix(in oklch, var(--primary) 3%, var(--background));
+  /* Mobile dock (bottom bar) and its bottom sheets, plus the left sidebar
+   * sheet. Their opacity is a first-class theme axis (theme management →
+   * blur section); the provider writes --mobile-{dock,sheet}-opacity on
+   * <html> when the user moves off the default. */
+  --mobile-dock-surface: color-mix(in oklab, var(--background) var(--mobile-dock-opacity), transparent);
+  --mobile-sidebar-surface: color-mix(in oklab, var(--sidebar) var(--mobile-sheet-opacity), transparent);
 }
 
 @theme inline {
@@ -126,10 +132,16 @@ body,
   --radius: 1rem;
   --app-header-height: 3rem;
   /* Background-aware cards stay adjustable, but need a readable color base
-   * over vivid images. Light runs true glass (50%) with card blur on; dark
+   * over vivid images. Light runs glass at 80% (the old 50% let the photo
+   * through enough to wash out body copy, gray glyphs worst of all); dark
    * uses near-solid panels (80%) on top of the heavy dark veil. The
    * provider mirrors these per-scheme defaults in JS (SURFACE_DEFAULTS). */
-  --surface-opacity: 50%;
+  --surface-opacity: 80%;
+  /* Mobile dock / sidebar sheet opacity, shared by both schemes: the dock
+   * sits at 90%, the navigation sheets at 95%. Movable in theme management;
+   * keep in sync with SURFACE_DEFAULTS in lib/theme-customization.ts. */
+  --mobile-dock-opacity: 90%;
+  --mobile-sheet-opacity: 95%;
   /* Background-image-only blur radius. The theme-management background-blur
    * slider drives this token (the provider writes an inline override on
    * <html> when it differs from the default); it must never drive card

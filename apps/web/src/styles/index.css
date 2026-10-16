@@ -146,18 +146,24 @@ body[data-app-background='true'] [data-slot='sidebar-inner'] {
 }
 
 /* The mobile sheet floats over the dimmed page instead of the wallpaper, so
- * a translucent surface lets page content bleed through. Keep the bleed at
- * the requested 95% opacity: light keeps the card tone, dark keeps its
- * deepen-toward-black veil (65% card / 35% black), both scaled to alpha
- * 0.95 so the sheet still reads as a solid ground, not a window. */
+ * a translucent surface lets page content bleed through. Its opacity is the
+ * theme-management sheet slider (--mobile-sheet-opacity): light keeps the
+ * card tone, dark keeps its deepen-toward-black veil (65% card / 35% black),
+ * both scaled by that alpha so the sheet still reads as a ground, not a
+ * window. These rules are unlayered on purpose: they must beat the utility
+ * classes the sheet carries. */
 body[data-app-background='true'] [data-slot='sidebar'][data-mobile='true'] {
-  background-color: color-mix(in oklch, var(--card) 95%, transparent);
+  background-color: color-mix(
+    in oklab,
+    var(--card) var(--mobile-sheet-opacity),
+    transparent
+  );
 }
 
 .dark body[data-app-background='true'] [data-slot='sidebar'][data-mobile='true'] {
   background-color: color-mix(
-    in oklch,
-    color-mix(in oklch, var(--card) 65%, black) 95%,
+    in oklab,
+    color-mix(in oklab, var(--card) 65%, black) var(--mobile-sheet-opacity),
     transparent
   );
 }

@@ -34,11 +34,13 @@ import {
   type ContentLayout,
   DEFAULT_THEME_CUSTOMIZATION,
   LEGACY_SURFACE_COOKIE_KEYS,
+  MOBILE_SURFACE_OPACITY_LIMITS,
   resolveThemeFont,
   SURFACE_AXIS_LIST,
   SURFACE_BLUR_LIMITS,
   SURFACE_COOKIE_KEYS,
   SURFACE_OPACITY_LIMITS,
+  type SurfaceAxis,
   surfaceDefaultsFor,
   type SurfaceNumberAxis,
   type SurfaceScheme,
@@ -109,7 +111,7 @@ function applyCssVariable(name: string, value: string | null) {
   }
 }
 
-// The four Blur-section axes live in per-color-scheme cookie slots so the
+// The Blur-section axes live in per-color-scheme cookie slots so the
 // drawer's day/night tab edits each scheme independently. The scheme-agnostic
 // pre-tab cookies stay as a read fallback until the first per-scheme write
 // drops them.
@@ -121,6 +123,9 @@ function surfaceLimitsFor(axis: SurfaceNumberAxis) {
       return SURFACE_BLUR_LIMITS
     case 'backgroundScrim':
       return BACKGROUND_SCRIM_LIMITS
+    case 'dockOpacity':
+    case 'sheetOpacity':
+      return MOBILE_SURFACE_OPACITY_LIMITS
   }
 }
 
@@ -130,7 +135,17 @@ function readSurfaceCookie(
 ): number | null {
   const { min, max } = surfaceLimitsFor(axis)
   const value = readNumberCookie(SURFACE_COOKIE_KEYS[axis][scheme], min, max)
-  return value ?? readNumberCookie(LEGACY_SURFACE_COOKIE_KEYS[axis], min, max)
+  if (value !== null) return value
+  // Only the four original axes ever shipped a pre-tab cookie.
+  const legacy = LEGACY_SURFACE_COOKIE_KEYS[axis]
+  return legacy === undefined ? null : readNumberCookie(legacy, min, max)
+}
+
+// The legacy map is partial — the mobile dock/sheet axes shipped after the
+// per-scheme split and never had a scheme-agnostic cookie.
+function removeLegacySurfaceCookie(axis: SurfaceAxis) {
+  const name = LEGACY_SURFACE_COOKIE_KEYS[axis]
+  if (name !== undefined) removeCookie(name)
 }
 
 function writeSurfaceCookie(
@@ -138,7 +153,7 @@ function writeSurfaceCookie(
   scheme: SurfaceScheme,
   value: number | null
 ) {
-  removeCookie(LEGACY_SURFACE_COOKIE_KEYS[axis])
+  removeLegacySurfaceCookie(axis)
   if (value === null) {
     removeCookie(SURFACE_COOKIE_KEYS[axis][scheme])
   } else {
@@ -156,14 +171,16 @@ function readSurfaceCardBlurCookie(scheme: SurfaceScheme): boolean | null {
     null
   )
   if (explicit !== null) return explicit
-  const legacy = readBooleanCookie(LEGACY_SURFACE_COOKIE_KEYS.cardBlur, null)
+  const legacyName = LEGACY_SURFACE_COOKIE_KEYS.cardBlur
+  const legacy =
+    legacyName === undefined ? null : readBooleanCookie(legacyName, null)
   // Card blur was split from the page-wide blur cookie long ago; keep the
   // same fallback chain for very old single-slot preferences.
   return legacy ?? readBooleanCookie(THEME_COOKIE_KEYS.blur, null)
 }
 
 function writeSurfaceCardBlurCookie(scheme: SurfaceScheme, value: boolean) {
-  removeCookie(LEGACY_SURFACE_COOKIE_KEYS.cardBlur)
+  removeLegacySurfaceCookie('cardBlur')
   setCookie(
     SURFACE_COOKIE_KEYS.cardBlur[scheme],
     String(value),
@@ -189,6 +206,10 @@ type ThemeCustomizationContextType = {
   setSurfaceBlur: (blur: number) => void
   backgroundScrim: number
   setBackgroundScrim: (scrim: number) => void
+  dockOpacity: number
+  setDockOpacity: (opacity: number) => void
+  sheetOpacity: number
+  setSheetOpacity: (opacity: number) => void
   // Color scheme whose storage slots the surface values above read from and
   // write to (the drawer's day/night tab switches it).
   surfaceScheme: SurfaceScheme
@@ -217,6 +238,10 @@ const FALLBACK_CONTEXT: ThemeCustomizationContextType = {
   setSurfaceBlur: () => {},
   backgroundScrim: DEFAULT_THEME_CUSTOMIZATION.backgroundScrim,
   setBackgroundScrim: () => {},
+  dockOpacity: DEFAULT_THEME_CUSTOMIZATION.dockOpacity,
+  setDockOpacity: () => {},
+  sheetOpacity: DEFAULT_THEME_CUSTOMIZATION.sheetOpacity,
+  setSheetOpacity: () => {},
   surfaceScheme: 'dark',
   resetCustomization: () => {},
 }
@@ -266,7 +291,7 @@ export function ThemeCustomizationProvider(props: {
     readBooleanCookie(THEME_COOKIE_KEYS.blur, DEFAULT_THEME_CUSTOMIZATION.blur)
   )
 
-  // The four Blur-section axes are stored per color scheme so the drawer's
+  // The Blur-section axes are stored per color scheme so the drawer's
   // day/night tab edits each scheme independently; a value equal to the
   // scheme's CSS default is dropped from storage and follows theme.css.
   const { resolvedTheme } = useTheme()
@@ -285,12 +310,20 @@ export function ThemeCustomizationProvider(props: {
   const [explicitBackgroundScrim, _setBackgroundScrim] = useState<
     number | null
   >(() => readSurfaceCookie('backgroundScrim', surfaceScheme))
+  const [explicitDockOpacity, _setDockOpacity] = useState<number | null>(() =>
+    readSurfaceCookie('dockOpacity', surfaceScheme)
+  )
+  const [explicitSheetOpacity, _setSheetOpacity] = useState<number | null>(
+    () => readSurfaceCookie('sheetOpacity', surfaceScheme)
+  )
   const cardBlur = explicitCardBlur ?? surfaceDefaults.cardBlur
   const surfaceOpacity =
     explicitSurfaceOpacity ?? surfaceDefaults.surfaceOpacity
   const surfaceBlur = explicitSurfaceBlur ?? surfaceDefaults.surfaceBlur
   const backgroundScrim =
     explicitBackgroundScrim ?? surfaceDefaults.backgroundScrim
+  const dockOpacity = explicitDockOpacity ?? surfaceDefaults.dockOpacity
+  const sheetOpacity = explicitSheetOpacity ?? surfaceDefaults.sheetOpacity
   // Re-read storage when the color scheme flips so sliders, inline CSS
   // variables and cookie slots always track the active tab's scheme.
   useEffect(() => {
@@ -298,6 +331,8 @@ export function ThemeCustomizationProvider(props: {
     _setSurfaceOpacity(readSurfaceCookie('surfaceOpacity', surfaceScheme))
     _setSurfaceBlur(readSurfaceCookie('surfaceBlur', surfaceScheme))
     _setBackgroundScrim(readSurfaceCookie('backgroundScrim', surfaceScheme))
+    _setDockOpacity(readSurfaceCookie('dockOpacity', surfaceScheme))
+    _setSheetOpacity(readSurfaceCookie('sheetOpacity', surfaceScheme))
   }, [surfaceScheme])
 
   // Mirror state to the <body> via data-* attributes so theme-presets.css can
@@ -375,6 +410,26 @@ export function ThemeCustomizationProvider(props: {
     )
   }, [explicitBackgroundScrim, surfaceDefaults, surfaceScheme])
 
+  useEffect(() => {
+    applyCssVariable(
+      '--mobile-dock-opacity',
+      explicitDockOpacity === null ||
+        explicitDockOpacity === surfaceDefaults.dockOpacity
+        ? null
+        : `${explicitDockOpacity}%`
+    )
+  }, [explicitDockOpacity, surfaceDefaults])
+
+  useEffect(() => {
+    applyCssVariable(
+      '--mobile-sheet-opacity',
+      explicitSheetOpacity === null ||
+        explicitSheetOpacity === surfaceDefaults.sheetOpacity
+        ? null
+        : `${explicitSheetOpacity}%`
+    )
+  }, [explicitSheetOpacity, surfaceDefaults])
+
   const setPreset = useCallback((value: ThemePreset) => {
     _setPreset(value)
     if (value === DEFAULT_THEME_CUSTOMIZATION.preset) {
@@ -434,7 +489,7 @@ export function ThemeCustomizationProvider(props: {
       _setCardBlur(value)
       const atDefault = value === surfaceDefaults.cardBlur
       if (atDefault) {
-        removeCookie(LEGACY_SURFACE_COOKIE_KEYS.cardBlur)
+        removeLegacySurfaceCookie('cardBlur')
         removeCookie(SURFACE_COOKIE_KEYS.cardBlur[surfaceScheme])
       } else {
         writeSurfaceCardBlurCookie(surfaceScheme, value)
@@ -503,6 +558,46 @@ export function ThemeCustomizationProvider(props: {
     [surfaceScheme, surfaceDefaults]
   )
 
+  const setDockOpacity = useCallback(
+    (value: number) => {
+      if (!Number.isFinite(value)) return
+      const clamped = Math.round(
+        Math.min(
+          MOBILE_SURFACE_OPACITY_LIMITS.max,
+          Math.max(MOBILE_SURFACE_OPACITY_LIMITS.min, value)
+        )
+      )
+      const atDefault = clamped === surfaceDefaults.dockOpacity
+      _setDockOpacity(atDefault ? null : clamped)
+      writeSurfaceCookie(
+        'dockOpacity',
+        surfaceScheme,
+        atDefault ? null : clamped
+      )
+    },
+    [surfaceScheme, surfaceDefaults]
+  )
+
+  const setSheetOpacity = useCallback(
+    (value: number) => {
+      if (!Number.isFinite(value)) return
+      const clamped = Math.round(
+        Math.min(
+          MOBILE_SURFACE_OPACITY_LIMITS.max,
+          Math.max(MOBILE_SURFACE_OPACITY_LIMITS.min, value)
+        )
+      )
+      const atDefault = clamped === surfaceDefaults.sheetOpacity
+      _setSheetOpacity(atDefault ? null : clamped)
+      writeSurfaceCookie(
+        'sheetOpacity',
+        surfaceScheme,
+        atDefault ? null : clamped
+      )
+    },
+    [surfaceScheme, surfaceDefaults]
+  )
+
   // Clears both color schemes' surface slots (plus the pre-tab legacy
   // cookies) so each scheme falls back to its CSS preset.
   const resetCustomization = useCallback(() => {
@@ -515,12 +610,14 @@ export function ThemeCustomizationProvider(props: {
     for (const axis of SURFACE_AXIS_LIST) {
       removeCookie(SURFACE_COOKIE_KEYS[axis].light)
       removeCookie(SURFACE_COOKIE_KEYS[axis].dark)
-      removeCookie(LEGACY_SURFACE_COOKIE_KEYS[axis])
+      removeLegacySurfaceCookie(axis)
     }
     _setCardBlur(null)
     _setSurfaceOpacity(null)
     _setSurfaceBlur(null)
     _setBackgroundScrim(null)
+    _setDockOpacity(null)
+    _setSheetOpacity(null)
   }, [setPreset, setFont, setRadius, setScale, setContentLayout, setBlur])
 
   const defaults = useMemo<ThemeCustomization>(
@@ -530,6 +627,8 @@ export function ThemeCustomizationProvider(props: {
       surfaceOpacity: surfaceDefaults.surfaceOpacity,
       surfaceBlur: surfaceDefaults.surfaceBlur,
       backgroundScrim: surfaceDefaults.backgroundScrim,
+      dockOpacity: surfaceDefaults.dockOpacity,
+      sheetOpacity: surfaceDefaults.sheetOpacity,
     }),
     [surfaceDefaults]
   )
@@ -548,6 +647,8 @@ export function ThemeCustomizationProvider(props: {
         surfaceOpacity,
         surfaceBlur,
         backgroundScrim,
+        dockOpacity,
+        sheetOpacity,
       },
       blur,
       setBlur,
@@ -559,6 +660,10 @@ export function ThemeCustomizationProvider(props: {
       setSurfaceBlur,
       backgroundScrim,
       setBackgroundScrim,
+      dockOpacity,
+      setDockOpacity,
+      sheetOpacity,
+      setSheetOpacity,
       surfaceScheme,
       setPreset,
       setFont,
@@ -578,6 +683,8 @@ export function ThemeCustomizationProvider(props: {
       surfaceOpacity,
       surfaceBlur,
       backgroundScrim,
+      dockOpacity,
+      sheetOpacity,
       surfaceScheme,
       setPreset,
       setBlur,
@@ -585,6 +692,8 @@ export function ThemeCustomizationProvider(props: {
       setSurfaceOpacity,
       setSurfaceBlur,
       setBackgroundScrim,
+      setDockOpacity,
+      setSheetOpacity,
       setFont,
       setRadius,
       setScale,

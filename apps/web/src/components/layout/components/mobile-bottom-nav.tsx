@@ -105,7 +105,7 @@ export function MobileBottomNav() {
         <nav
           data-slot='mobile-bottom-nav'
           className={cn(
-            'bg-background/95 border-border/60 pointer-events-auto fixed inset-x-0 bottom-0 z-[60]',
+            'bg-[var(--mobile-dock-surface)] border-border/60 pointer-events-auto fixed inset-x-0 bottom-0 z-[60]',
             'flex items-stretch border-t md:hidden',
             'h-[calc(3.5rem+env(safe-area-inset-bottom,0px))]',
             'pb-[env(safe-area-inset-bottom,0px)]'

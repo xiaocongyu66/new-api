@@ -224,7 +224,7 @@ function Sidebar({
           data-sidebar='sidebar'
           data-slot='sidebar'
           data-mobile='true'
-          className='bg-sidebar/95 text-sidebar-foreground w-(--sidebar-width) rounded-2xl p-0 shadow-xl [&>button]:hidden'
+          className='bg-[var(--mobile-sidebar-surface)] text-sidebar-foreground w-(--sidebar-width) rounded-2xl p-0 shadow-xl [&>button]:hidden'
           overlayProps={{
             className:
               'left-0 right-0 top-[var(--app-header-height,0px)] bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px))] h-auto pointer-events-auto',
