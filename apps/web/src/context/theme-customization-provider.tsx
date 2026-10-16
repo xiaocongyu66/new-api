@@ -38,6 +38,7 @@ import {
   SURFACE_AXIS_LIST,
   SURFACE_BLUR_LIMITS,
   SURFACE_COOKIE_KEYS,
+  SURFACE_DEFAULTS,
   SURFACE_OPACITY_LIMITS,
   SURFACE_PANEL_OPACITY_LIMITS,
   type SurfaceAxis,
@@ -142,8 +143,9 @@ function readSurfaceCookie(
   return legacy === undefined ? null : readNumberCookie(legacy, min, max)
 }
 
-// The legacy map is partial — the mobile dock/sheet axes shipped after the
-// per-scheme split and never had a scheme-agnostic cookie.
+// The legacy map is partial — the mobile dock/sheet and floating-overlay
+// axes shipped after the per-scheme split and never had a scheme-agnostic
+// cookie.
 function removeLegacySurfaceCookie(axis: SurfaceAxis) {
   const name = LEGACY_SURFACE_COOKIE_KEYS[axis]
   if (name !== undefined) removeCookie(name)
@@ -243,7 +245,7 @@ const FALLBACK_CONTEXT: ThemeCustomizationContextType = {
   setBackgroundScrim: () => {},
   dockOpacity: DEFAULT_THEME_CUSTOMIZATION.dockOpacity,
   setDockOpacity: () => {},
-  sheetOpacity: DEFAULT_THEME_CUSTOMIZATION.sheetOpacity,
+  sheetOpacity: SURFACE_DEFAULTS.dark.sheetOpacity,
   setSheetOpacity: () => {},
   floatOpacity: DEFAULT_THEME_CUSTOMIZATION.floatOpacity,
   setFloatOpacity: () => {},

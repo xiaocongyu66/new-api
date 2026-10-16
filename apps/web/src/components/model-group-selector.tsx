@@ -240,7 +240,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
         className={cn(
           isMobile
             ? 'h-full flex-1 rounded-lg border-0 bg-transparent'
-            : 'rounded-lg'
+            : 'rounded-lg bg-transparent'
         )}
         filter={() => 1}
         shouldFilter={false}
@@ -394,7 +394,7 @@ export const GroupSelector: React.FC<GroupSelectorProps> = React.memo(
         className={cn(
           isMobile
             ? 'h-full flex-1 rounded-lg border-0 bg-transparent'
-            : 'rounded-lg'
+            : 'rounded-lg bg-transparent'
         )}
         filter={(value, search) => {
           const group = groups.find((g) => g.value === value)

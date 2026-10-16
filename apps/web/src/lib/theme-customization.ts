@@ -244,16 +244,7 @@ export const SURFACE_COOKIE_KEYS = {
     light: 'theme_float_opacity_light',
     dark: 'theme_float_opacity_dark',
   },
-} as const satisfies Record<
-  | 'cardBlur'
-  | 'surfaceOpacity'
-  | 'surfaceBlur'
-  | 'backgroundScrim'
-  | 'dockOpacity'
-  | 'sheetOpacity'
-  | 'floatOpacity',
-  Record<SurfaceScheme, string>
->
+} as const satisfies Record<SurfaceAxis, Record<SurfaceScheme, string>>
 
 export const SURFACE_AXIS_LIST = [
   'cardBlur',

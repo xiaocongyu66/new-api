@@ -147,9 +147,10 @@ body,
    * keep both in sync with SURFACE_DEFAULTS in lib/theme-customization.ts. */
   --mobile-dock-opacity: 90%;
   --mobile-sheet-opacity: 90%;
-  /* Floating panels (popover/dropdown/select/command palette) sit slightly
-   * thinner than the shell: same alpha both schemes, movable in theme
-   * management. Keep in sync with SURFACE_DEFAULTS.floatOpacity. */
+  /* Floating panels (popover/dropdown/select/command palette) run slightly
+   * more opaque than the card/header shell (90% vs --surface-opacity's 80%);
+   * same alpha in both schemes, movable in theme management. Keep in sync
+   * with SURFACE_DEFAULTS.floatOpacity. */
   --float-opacity: 90%;
   /* Landing hero badge: 11px blue-on-photo copy, so it carries a whisper of
    * a shadow to hold its edge. Light lifts the glyphs with a white halo,
