@@ -48,6 +48,7 @@ const domGlobals = [
   'window',
   'document',
   'navigator',
+  'localStorage',
   'HTMLElement',
   'HTMLButtonElement',
   'HTMLInputElement',
