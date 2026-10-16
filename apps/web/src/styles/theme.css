@@ -137,11 +137,14 @@ body,
    * uses near-solid panels (80%) on top of the heavy dark veil. The
    * provider mirrors these per-scheme defaults in JS (SURFACE_DEFAULTS). */
   --surface-opacity: 80%;
-  /* Mobile dock / sidebar sheet opacity, shared by both schemes: the dock
-   * sits at 90%, the navigation sheets at 95%. Movable in theme management;
-   * keep in sync with SURFACE_DEFAULTS in lib/theme-customization.ts. */
+  /* Mobile dock / sidebar sheet opacity. The dock sits at 90% in both
+   * schemes; the navigation sheet is per-scheme, because the same value
+   * reads very differently either side of the veil — 95% stays legible over
+   * the dark ground, while light needs 90% before the sheet reads as glass
+   * rather than a plain white panel. Dark overrides the sheet value below;
+   * keep both in sync with SURFACE_DEFAULTS in lib/theme-customization.ts. */
   --mobile-dock-opacity: 90%;
-  --mobile-sheet-opacity: 95%;
+  --mobile-sheet-opacity: 90%;
   /* Background-image-only blur radius. The theme-management background-blur
    * slider drives this token (the provider writes an inline override on
    * <html> when it differs from the default); it must never drive card
@@ -354,6 +357,10 @@ body,
    * dark ground. Keep in sync with SURFACE_DEFAULTS.dark in
    * lib/theme-customization.ts. */
   --surface-opacity: 80%;
+  /* The mobile navigation sheet runs near-solid here: it floats over the
+   * dark veil, where 95% still reads as glass. See the :root comment for
+   * the light/dark split and the SURFACE_DEFAULTS sync note. */
+  --mobile-sheet-opacity: 95%;
   --app-background-scrim: oklch(0.15 0.01 260 / 76%);
   --background-scrim: oklch(0 0 0 / 45%);
   --scrim: var(--background-scrim);

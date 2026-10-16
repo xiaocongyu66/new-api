@@ -141,9 +141,11 @@ export type ThemeCustomization = {
  * glass — light included, because the old 50% let the background photo
  * through far enough to wash out body copy, gray glyphs worst of all. Light
  * keeps card blur on; dark substitutes a heavy dark veil (76%) instead. The
- * mobile shell axes are scheme-independent: the bottom dock sits at 90% and
- * the navigation sheets at 95%. Must match the `:root` / `.dark` defaults of
- * --surface-opacity, --surface-blur, --app-background-scrim,
+ * mobile dock sits at 90% in both schemes; the navigation sheet is
+ * per-scheme because the same alpha reads differently either side of the
+ * veil — 95% stays legible over the dark ground, light needs 90% to read as
+ * glass instead of a plain white panel. Must match the `:root` / `.dark`
+ * defaults of --surface-opacity, --surface-blur, --app-background-scrim,
  * --mobile-dock-opacity and --mobile-sheet-opacity plus the card-blur toggle
  * in theme.css / theme-presets.css.
  */
@@ -154,7 +156,7 @@ export const SURFACE_DEFAULTS = {
     surfaceBlur: 2,
     backgroundScrim: 30,
     dockOpacity: 90,
-    sheetOpacity: 95,
+    sheetOpacity: 90,
   },
   dark: {
     cardBlur: false,
