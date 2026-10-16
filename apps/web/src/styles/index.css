@@ -1013,16 +1013,21 @@ body[data-theme-card-blur='true'] [data-slot='card'] {
   }
 }
 
-/* Micro-interactions — Vercel-style subtle hover/active feedback */
+/* Micro-interactions — Vercel-style subtle hover/active feedback.
+ * The card lift is opt-in (`data-card-hover='true'`): applying it
+ * to every panel made dense pages feel jittery, and a hover
+ * transform shrinks the hit-box, flickering hover on/off near the
+ * card's bottom edge. Interactive cards declare the lift themselves
+ * (see TitledCard); static panels stay put. */
 @media (prefers-reduced-motion: no-preference) {
-  [data-slot='card']:not([data-card-hover='false']) {
+  [data-slot='card'][data-card-hover='true'] {
     transition:
       transform 150ms ease,
       box-shadow 150ms ease;
   }
 
   @media (min-width: 641px) {
-    [data-slot='card']:not([data-card-hover='false']):hover {
+    [data-slot='card'][data-card-hover='true']:hover {
       transform: translateY(-1px);
       box-shadow: var(--elevation-2);
     }
