@@ -137,22 +137,24 @@ export type ThemeCustomization = {
 }
 
 /**
- * Default surface axes per color scheme: both schemes rest the UI on 80%
- * glass — light included, because the old 50% let the background photo
- * through far enough to wash out body copy, gray glyphs worst of all. Light
- * keeps card blur on; dark substitutes a heavy dark veil (76%) instead. The
- * mobile dock sits at 90% in both schemes; the navigation sheet is
- * per-scheme because the same alpha reads differently either side of the
- * veil — 95% stays legible over the dark ground, light needs 90% to read as
- * glass instead of a plain white panel. Must match the `:root` / `.dark`
- * defaults of --surface-opacity, --surface-blur, --app-background-scrim,
+ * Default surface axes per color scheme: light runs glass at 90% (50% and
+ * then 80% both still let the photo texture the field under the glyphs,
+ * which reads as blurred body copy) with card blur off — the backdrop blur
+ * smears whatever sits behind a card, and that soft field is the other half
+ * of the "light scheme looks blurry" report. Dark rests on near-solid (80%)
+ * panels under a heavy dark veil (76%), also without card blur. The mobile
+ * dock sits at 90% in both schemes; the navigation sheet is per-scheme
+ * because the same alpha reads differently either side of the veil — 95%
+ * stays legible over the dark ground, light needs 90% to read as glass
+ * instead of a plain white panel. Must match the `:root` / `.dark` defaults
+ * of --surface-opacity, --surface-blur, --app-background-scrim,
  * --mobile-dock-opacity and --mobile-sheet-opacity plus the card-blur toggle
  * in theme.css / theme-presets.css.
  */
 export const SURFACE_DEFAULTS = {
   light: {
-    cardBlur: true,
-    surfaceOpacity: 80,
+    cardBlur: false,
+    surfaceOpacity: 90,
     surfaceBlur: 2,
     backgroundScrim: 30,
     dockOpacity: 90,

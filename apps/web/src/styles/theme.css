@@ -132,11 +132,12 @@ body,
   --radius: 1rem;
   --app-header-height: 3rem;
   /* Background-aware cards stay adjustable, but need a readable color base
-   * over vivid images. Light runs glass at 80% (the old 50% let the photo
-   * through enough to wash out body copy, gray glyphs worst of all); dark
-   * uses near-solid panels (80%) on top of the heavy dark veil. The
-   * provider mirrors these per-scheme defaults in JS (SURFACE_DEFAULTS). */
-  --surface-opacity: 80%;
+   * over vivid images. Light runs glass at 90% — 50% let the photo through
+   * far enough to wash out body copy and 80% still left the field under the
+   * glyphs visibly textured, which reads as blurred text; dark uses
+   * near-solid panels (80%) on top of the heavy dark veil. The provider
+   * mirrors these per-scheme defaults in JS (SURFACE_DEFAULTS). */
+  --surface-opacity: 90%;
   /* Mobile dock / sidebar sheet opacity. The dock sits at 90% in both
    * schemes; the navigation sheet is per-scheme, because the same value
    * reads very differently either side of the veil — 95% stays legible over
