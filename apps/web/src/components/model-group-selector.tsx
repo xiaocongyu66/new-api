@@ -240,7 +240,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
         className={cn(
           isMobile
             ? 'h-full flex-1 rounded-lg border-0 bg-transparent'
-            : 'rounded-lg'
+            : 'rounded-lg bg-transparent'
         )}
         filter={() => 1}
         shouldFilter={false}
@@ -350,7 +350,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
           }
         />
         <PopoverContent
-          className='bg-popover z-40 w-[90vw] max-w-[20em] rounded-lg border p-0 !shadow-none sm:w-[20em]'
+          className='bg-[var(--float-surface)] z-40 w-[90vw] max-w-[20em] rounded-lg border p-0 !shadow-none sm:w-[20em]'
           align='start'
           side='bottom'
           sideOffset={4}
@@ -394,7 +394,7 @@ export const GroupSelector: React.FC<GroupSelectorProps> = React.memo(
         className={cn(
           isMobile
             ? 'h-full flex-1 rounded-lg border-0 bg-transparent'
-            : 'rounded-lg'
+            : 'rounded-lg bg-transparent'
         )}
         filter={(value, search) => {
           const group = groups.find((g) => g.value === value)
@@ -540,7 +540,7 @@ export const GroupSelector: React.FC<GroupSelectorProps> = React.memo(
           }
         />
         <PopoverContent
-          className='bg-popover z-50 w-[90vw] max-w-[14em] rounded-lg border p-0 !shadow-none sm:w-[14em]'
+          className='bg-[var(--float-surface)] z-50 w-[90vw] max-w-[14em] rounded-lg border p-0 !shadow-none sm:w-[14em]'
           align='start'
           side='bottom'
           sideOffset={4}
@@ -838,7 +838,7 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
       <PopoverContent
         align='end'
         className={cn(
-          'bg-popover z-50 w-[34rem] max-w-[calc(100vw-2rem)] rounded-xl border p-0 shadow-lg',
+          'bg-[var(--float-surface)] z-50 w-[34rem] max-w-[calc(100vw-2rem)] rounded-xl border p-0 shadow-lg',
           modelGroupSelectorLayoutClasses.desktopPanel
         )}
         collisionPadding={8}

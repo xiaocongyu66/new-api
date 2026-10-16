@@ -64,6 +64,7 @@ import {
   type ContentLayout,
   SURFACE_BLUR_LIMITS,
   SURFACE_OPACITY_LIMITS,
+  SURFACE_PANEL_OPACITY_LIMITS,
   THEME_PRESETS,
   type ThemeFont,
   type ThemePreset,
@@ -746,13 +747,19 @@ function BlurConfig() {
     setSurfaceOpacity,
     setSurfaceBlur,
     setBackgroundScrim,
+    setDockOpacity,
+    setSheetOpacity,
+    setFloatOpacity,
     surfaceScheme,
   } = useThemeCustomization()
   const hasBlurChanges =
     customization.cardBlur !== defaults.cardBlur ||
     customization.surfaceOpacity !== defaults.surfaceOpacity ||
     customization.surfaceBlur !== defaults.surfaceBlur ||
-    customization.backgroundScrim !== defaults.backgroundScrim
+    customization.backgroundScrim !== defaults.backgroundScrim ||
+    customization.dockOpacity !== defaults.dockOpacity ||
+    customization.sheetOpacity !== defaults.sheetOpacity ||
+    customization.floatOpacity !== defaults.floatOpacity
 
   return (
     <div>
@@ -764,6 +771,9 @@ function BlurConfig() {
           setSurfaceOpacity(defaults.surfaceOpacity)
           setSurfaceBlur(defaults.surfaceBlur)
           setBackgroundScrim(defaults.backgroundScrim)
+          setDockOpacity(defaults.dockOpacity)
+          setSheetOpacity(defaults.sheetOpacity)
+          setFloatOpacity(defaults.floatOpacity)
         }}
       />
       {/* Day/night tab: flips the live theme and scopes every control below
@@ -839,6 +849,63 @@ function BlurConfig() {
               setBackgroundScrim(Array.isArray(next) ? next[0] : next)
             }
             aria-label={t('Background scrim')}
+          />
+        </div>
+        <div className='rounded-lg border p-3 text-sm'>
+          <div className='flex items-center justify-between gap-3'>
+            <span>{t('Dock opacity')}</span>
+            <span className='text-muted-foreground text-xs tabular-nums'>
+              {customization.dockOpacity}%
+            </span>
+          </div>
+          <Slider
+            className='mt-2'
+            min={SURFACE_PANEL_OPACITY_LIMITS.min}
+            max={SURFACE_PANEL_OPACITY_LIMITS.max}
+            step={1}
+            value={[customization.dockOpacity]}
+            onValueChange={(next) =>
+              setDockOpacity(Array.isArray(next) ? next[0] : next)
+            }
+            aria-label={t('Dock opacity')}
+          />
+        </div>
+        <div className='rounded-lg border p-3 text-sm'>
+          <div className='flex items-center justify-between gap-3'>
+            <span>{t('Sidebar opacity')}</span>
+            <span className='text-muted-foreground text-xs tabular-nums'>
+              {customization.sheetOpacity}%
+            </span>
+          </div>
+          <Slider
+            className='mt-2'
+            min={SURFACE_PANEL_OPACITY_LIMITS.min}
+            max={SURFACE_PANEL_OPACITY_LIMITS.max}
+            step={1}
+            value={[customization.sheetOpacity]}
+            onValueChange={(next) =>
+              setSheetOpacity(Array.isArray(next) ? next[0] : next)
+            }
+            aria-label={t('Sidebar opacity')}
+          />
+        </div>
+        <div className='rounded-lg border p-3 text-sm'>
+          <div className='flex items-center justify-between gap-3'>
+            <span>{t('Float opacity')}</span>
+            <span className='text-muted-foreground text-xs tabular-nums'>
+              {customization.floatOpacity}%
+            </span>
+          </div>
+          <Slider
+            className='mt-2'
+            min={SURFACE_PANEL_OPACITY_LIMITS.min}
+            max={SURFACE_PANEL_OPACITY_LIMITS.max}
+            step={1}
+            value={[customization.floatOpacity]}
+            onValueChange={(next) =>
+              setFloatOpacity(Array.isArray(next) ? next[0] : next)
+            }
+            aria-label={t('Float opacity')}
           />
         </div>
       </div>

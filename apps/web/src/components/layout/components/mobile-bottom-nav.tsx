@@ -77,8 +77,9 @@ type BottomTab = BottomGroupTab | BottomLinkTab
  * listing that section's pages as a two-column grid). Regular users
  * get direct tabs for the pages they actually use (overview, keys,
  * model square) plus a chat drawer. The bar floats above the drawer
- * (higher z-index) and stays fully opaque so drawer content scrolling
- * out under it never bleeds through the labels.
+ * (higher z-index); its surface sits at 90% opacity (the dock axis
+ * default, both schemes), so drawer content scrolling out under it shows
+ * only a faint hint of the rows behind.
  */
 export function MobileBottomNav() {
   const { t } = useTranslation()
@@ -105,7 +106,7 @@ export function MobileBottomNav() {
         <nav
           data-slot='mobile-bottom-nav'
           className={cn(
-            'bg-background border-border/60 pointer-events-auto fixed inset-x-0 bottom-0 z-[60]',
+            'bg-[var(--mobile-dock-surface)] border-border/60 pointer-events-auto fixed inset-x-0 bottom-0 z-[60]',
             'flex items-stretch border-t md:hidden',
             'h-[calc(3.5rem+env(safe-area-inset-bottom,0px))]',
             'pb-[env(safe-area-inset-bottom,0px)]'

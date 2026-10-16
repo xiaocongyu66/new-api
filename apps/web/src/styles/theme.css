@@ -24,6 +24,15 @@ body,
   --card-surface: color-mix(in oklch, var(--card) var(--surface-opacity), transparent);
   --header-surface: color-mix(in oklch, var(--background) var(--surface-opacity), transparent);
   --page-surface: color-mix(in oklch, var(--primary) 3%, var(--background));
+  /* Mobile dock (bottom bar) and its bottom sheets, plus the left sidebar
+   * sheet. Their opacity is a first-class theme axis (theme management →
+   * blur section); the provider writes --mobile-{dock,sheet}-opacity on
+   * <html> when the user moves off the default. */
+  --mobile-dock-surface: color-mix(in oklab, var(--background) var(--mobile-dock-opacity), transparent);
+  --mobile-sidebar-surface: color-mix(in oklab, var(--sidebar) var(--mobile-sheet-opacity), transparent);
+  /* Floating panels — popovers, dropdown menus, selects, comboboxes, the
+   * command palette: one surface driven by the float-opacity axis. */
+  --float-surface: color-mix(in oklab, var(--popover) var(--float-opacity), transparent);
 }
 
 @theme inline {
@@ -126,10 +135,28 @@ body,
   --radius: 1rem;
   --app-header-height: 3rem;
   /* Background-aware cards stay adjustable, but need a readable color base
-   * over vivid images. Light runs true glass (50%) with card blur on; dark
+   * over vivid images. Light runs true glass (80%) with card blur on; dark
    * uses near-solid panels (80%) on top of the heavy dark veil. The
    * provider mirrors these per-scheme defaults in JS (SURFACE_DEFAULTS). */
-  --surface-opacity: 50%;
+  --surface-opacity: 80%;
+  /* Mobile dock / sidebar sheet opacity. The dock sits at 90% in both
+   * schemes; the navigation sheet is per-scheme, because the same value
+   * reads very differently either side of the veil — 95% stays legible over
+   * the dark ground, while light needs 90% before the sheet reads as glass
+   * rather than a plain white panel. Dark overrides the sheet value below;
+   * keep both in sync with SURFACE_DEFAULTS in lib/theme-customization.ts. */
+  --mobile-dock-opacity: 90%;
+  --mobile-sheet-opacity: 90%;
+  /* Floating panels (popover/dropdown/select/command palette) run slightly
+   * more opaque than the card/header shell (90% vs --surface-opacity's 80%);
+   * same alpha in both schemes, movable in theme management. Keep in sync
+   * with SURFACE_DEFAULTS.floatOpacity. */
+  --float-opacity: 90%;
+  /* Landing hero badge: 11px blue-on-photo copy, so it carries a whisper of
+   * a shadow to hold its edge. Light lifts the glyphs with a white halo,
+   * dark grounds them on the dark photo. Both stay tight so the badge keeps
+   * its flat pill look. */
+  --hero-badge-text-shadow: 0 1px 2px rgb(255 255 255 / 0.5);
   /* Background-image-only blur radius. The theme-management background-blur
    * slider drives this token (the provider writes an inline override on
    * <html> when it differs from the default); it must never drive card
@@ -342,6 +369,13 @@ body,
    * dark ground. Keep in sync with SURFACE_DEFAULTS.dark in
    * lib/theme-customization.ts. */
   --surface-opacity: 80%;
+  /* The mobile navigation sheet runs near-solid here: it floats over the
+   * dark veil, where 95% still reads as glass. See the :root comment for
+   * the light/dark split and the SURFACE_DEFAULTS sync note. */
+  --mobile-sheet-opacity: 95%;
+  /* Landing hero badge over the dark side of the photo: a dark grounding
+   * shadow instead of the light scheme's white halo. */
+  --hero-badge-text-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
   --app-background-scrim: oklch(0.15 0.01 260 / 76%);
   --background-scrim: oklch(0 0 0 / 45%);
   --scrim: var(--background-scrim);

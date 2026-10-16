@@ -146,14 +146,26 @@ body[data-app-background='true'] [data-slot='sidebar-inner'] {
 }
 
 /* The mobile sheet floats over the dimmed page instead of the wallpaper, so
- * a translucent surface lets page content bleed through unreadable. Sit it
- * on a solid ground; dark scheme deepens toward black per the veil look. */
+ * a translucent surface lets page content bleed through. Its opacity is the
+ * theme-management sheet slider (--mobile-sheet-opacity): light keeps the
+ * card tone, dark keeps its deepen-toward-black veil (65% card / 35% black),
+ * both scaled by that alpha so the sheet still reads as a ground, not a
+ * window. These rules are unlayered on purpose: they must beat the utility
+ * classes the sheet carries. */
 body[data-app-background='true'] [data-slot='sidebar'][data-mobile='true'] {
-  background-color: var(--card);
+  background-color: color-mix(
+    in oklab,
+    var(--card) var(--mobile-sheet-opacity),
+    transparent
+  );
 }
 
 .dark body[data-app-background='true'] [data-slot='sidebar'][data-mobile='true'] {
-  background-color: color-mix(in oklch, var(--card) 65%, black);
+  background-color: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--card) 65%, black) var(--mobile-sheet-opacity),
+    transparent
+  );
 }
 
 body[data-app-background='true'] [data-slot='app-background'] [data-app-background-image] {
