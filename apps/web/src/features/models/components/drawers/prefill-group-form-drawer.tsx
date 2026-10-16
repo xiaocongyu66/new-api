@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -188,8 +190,31 @@ export function PrefillGroupFormDrawer({
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetContent className={sideDrawerContentClassName('sm:max-w-2xl')}>
-        <SheetHeader className={sideDrawerHeaderClassName()}>
+      <SheetContent
+        headerActions={
+          <Button
+            type='submit'
+            form='prefill-group-form'
+            variant='ghost'
+            size='icon-sm'
+            className='md:hidden'
+            disabled={isSaving}
+            aria-label={
+              isSaving
+                ? t('Saving...')
+                : isEdit
+                  ? t('Save changes')
+                  : t('Create')
+            }
+          >
+            <HugeiconsIcon icon={FloppyDiskIcon} />
+          </Button>
+        }
+        className={sideDrawerContentClassName('sm:max-w-2xl')}
+      >
+        <SheetHeader
+          className={sideDrawerHeaderClassName('max-md:pr-[4.5rem]')}
+        >
           <SheetTitle>
             {isEdit ? t('Edit Prefill Group') : t('Create Prefill Group')}
           </SheetTitle>
@@ -386,26 +411,31 @@ export function PrefillGroupFormDrawer({
                 />
               </div>
             </SideDrawerSection>
+
+            <SheetFooter className={sideDrawerFooterClassName()}>
+              <SheetClose
+                render={
+                  <Button type='button' variant='outline' disabled={isSaving} />
+                }
+              >
+                {t('Cancel')}
+              </SheetClose>
+              <Button
+                type='submit'
+                form='prefill-group-form'
+                disabled={isSaving}
+              >
+                {isSaving && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
+                {isSaving
+                  ? t('Saving...')
+                  : isEdit
+                    ? t('Save changes')
+                    : t('Create')}
+              </Button>
+            </SheetFooter>
+            <div aria-hidden className='h-[5rem] shrink-0 md:hidden' />
           </form>
         </Form>
-
-        <SheetFooter className={sideDrawerFooterClassName()}>
-          <SheetClose
-            render={
-              <Button type='button' variant='outline' disabled={isSaving} />
-            }
-          >
-            {t('Cancel')}
-          </SheetClose>
-          <Button type='submit' form='prefill-group-form' disabled={isSaving}>
-            {isSaving && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
-            {isSaving
-              ? t('Saving...')
-              : isEdit
-                ? t('Save changes')
-                : t('Create')}
-          </Button>
-        </SheetFooter>
       </SheetContent>
     </Sheet>
   )

@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -242,8 +244,25 @@ export function RedemptionsMutateDrawer({
         }
       }}
     >
-      <SheetContent className={sideDrawerContentClassName('sm:max-w-[600px]')}>
-        <SheetHeader className={sideDrawerHeaderClassName()}>
+      <SheetContent
+        headerActions={
+          <Button
+            type='submit'
+            form='redemption-form'
+            variant='ghost'
+            size='icon-sm'
+            className='md:hidden'
+            disabled={isSubmitting || !isUpdateReady}
+            aria-label={submitButtonLabel}
+          >
+            <HugeiconsIcon icon={FloppyDiskIcon} />
+          </Button>
+        }
+        className={sideDrawerContentClassName('sm:max-w-[600px]')}
+      >
+        <SheetHeader
+          className={sideDrawerHeaderClassName('max-md:pr-[4.5rem]')}
+        >
           <SheetTitle>
             {isUpdate
               ? t('Update Redemption Code')
@@ -413,20 +432,22 @@ export function RedemptionsMutateDrawer({
                 )}
               </SideDrawerSection>
             </fieldset>
+
+            <SheetFooter className={sideDrawerFooterClassName()}>
+              <SheetClose render={<Button variant='outline' />}>
+                {t('Close')}
+              </SheetClose>
+              <Button
+                form='redemption-form'
+                type='submit'
+                disabled={isSubmitting || !isUpdateReady}
+              >
+                {submitButtonLabel}
+              </Button>
+            </SheetFooter>
+            <div aria-hidden className='h-[5rem] shrink-0 md:hidden' />
           </form>
         </Form>
-        <SheetFooter className={sideDrawerFooterClassName()}>
-          <SheetClose render={<Button variant='outline' />}>
-            {t('Close')}
-          </SheetClose>
-          <Button
-            form='redemption-form'
-            type='submit'
-            disabled={isSubmitting || !isUpdateReady}
-          >
-            {submitButtonLabel}
-          </Button>
-        </SheetFooter>
       </SheetContent>
     </Sheet>
   )

@@ -36,6 +36,12 @@ export const sideDrawerHeaderClassName = (className?: string) =>
 export const sideDrawerFormClassName = (className?: string) =>
   cn(
     'flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5',
+    // The scroller's children must keep their natural height: as shrinkable
+    // flex items the sections compress to the viewport while their content
+    // still paints past the box, which leaves anything after them (the
+    // footer, the dock-height spacer) positioned at the compressed offset
+    // instead of the end of the scrolled content.
+    '[&>*]:shrink-0',
     className
   )
 

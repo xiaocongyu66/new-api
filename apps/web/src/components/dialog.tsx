@@ -90,8 +90,9 @@ export function Dialog({
           className={cn(
             'flex-shrink-0 text-start',
             // Keep the title clear of the top-right action cluster on
-            // phones, where the header buttons are visible.
-            headerActions && 'max-md:pr-16',
+            // phones: two 1.75rem icon buttons plus the 0.25rem gap,
+            // offset by right-2 (0.5rem).
+            headerActions && 'max-md:pr-[4.5rem]',
             headerClassName
           )}
         >
@@ -119,18 +120,28 @@ export function Dialog({
           >
             {children}
           </div>
-        </div>
 
-        {footer ? (
-          <DialogFooter
-            className={cn(
-              'flex-shrink-0 gap-2 sm:-mx-6 sm:-mb-6 sm:justify-end sm:p-6',
-              footerClassName
-            )}
-          >
-            {footer}
-          </DialogFooter>
-        ) : null}
+          {footer ? (
+            <DialogFooter
+              className={cn(
+                'gap-2 pt-4 sm:-mx-6 sm:-mb-6 sm:justify-end sm:p-6',
+                footerClassName
+              )}
+            >
+              {footer}
+            </DialogFooter>
+          ) : null}
+
+          {/*
+            Phones: one dock height (0.75rem inset + 3.5rem tall, z-[60]) plus a
+            gap, after the footer, so scrolling to the end brings the footer
+            buttons to rest above the floating dock instead of under it. The
+            space is part of the scrolled content, so the footer is not pinned.
+            Rem literals match the dock geometry, which ignores the theme
+            density axis.
+          */}
+          <div aria-hidden className='h-[5rem] shrink-0 md:hidden' />
+        </div>
       </DialogContent>
     </DialogRoot>
   )
