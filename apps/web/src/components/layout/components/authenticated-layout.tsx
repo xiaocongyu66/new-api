@@ -57,12 +57,6 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
               className={cn(
                 '@container/content',
                 'h-[calc(100svh-var(--app-header-height,0px))]',
-                // The floating mobile dock overlays the page instead of
-                // ending it: the surface keeps painting to the bottom edge
-                // and the dock's footprint (3.5rem panel + 0.75rem float
-                // gap + safe area) is reserved as padding, so scrolled
-                // content still clears the panel.
-                'max-md:pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))]',
                 'min-h-0 overflow-hidden',
                 'flex flex-col',
                 'peer-data-[variant=inset]:h-[calc(100svh-var(--app-header-height,0px)-(var(--spacing)*4))]'

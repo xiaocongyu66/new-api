@@ -108,7 +108,7 @@ export function UserInsights() {
               value='profiles'
               className={
                 isMobile
-                  ? 'min-h-0 flex-1 space-y-3 overflow-y-auto pt-3'
+                  ? 'min-h-0 flex-1 space-y-3 overflow-y-auto pt-3 max-md:pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))]'
                   : 'flex h-full min-h-0 flex-1 flex-col gap-3 overflow-hidden pt-3'
               }
             >
@@ -130,13 +130,13 @@ export function UserInsights() {
 
             <TabsContent
               value='samples'
-              className='min-h-0 flex-1 overflow-auto pt-3'
+              className='min-h-0 flex-1 overflow-auto pt-3 max-md:pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))]'
             >
               <SamplesPanel />
             </TabsContent>
             <TabsContent
               value='settings'
-              className='min-h-0 flex-1 overflow-auto pt-3'
+              className='min-h-0 flex-1 overflow-auto pt-3 max-md:pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))]'
             >
               <UserInsightSection defaultValues={insightDefaults} />
             </TabsContent>

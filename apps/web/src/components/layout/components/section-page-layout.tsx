@@ -130,18 +130,20 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
         <div
           className={
             props.fixedContent
-              ? 'flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-1 pb-3 sm:px-4 sm:pt-1.5 sm:pb-4'
-              : 'min-h-0 flex-1 overflow-auto px-3 pt-1 pb-3 sm:px-4 sm:pt-1.5 sm:pb-4'
+              ? 'flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-1 pb-3 max-md:pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] sm:px-4 sm:pt-1.5 sm:pb-4'
+              : 'min-h-0 flex-1 overflow-auto px-3 pt-1 pb-3 max-md:pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] sm:px-4 sm:pt-1.5 sm:pb-4'
           }
           ref={contentRef}
         >
           {content}
         </div>
 
+        {/* The floating dock overlays the page, so the footer keeps its own
+            content clear of the panel and lets the panel sit on its surface. */}
         <div
           ref={setFooterContainer}
           data-slot='section-page-footer'
-          className='bg-header-surface shrink-0 border-t px-3 py-2.5 empty:hidden sm:px-4 sm:py-3'
+          className='bg-header-surface shrink-0 border-t px-3 py-2.5 empty:hidden max-md:pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] sm:px-4 sm:py-3'
         />
       </Main>
     </PageFooterProvider>
