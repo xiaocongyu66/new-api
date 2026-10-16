@@ -130,8 +130,11 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
         <div
           className={
             props.fixedContent
-              ? 'flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-1 pb-3 max-md:pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] sm:px-4 sm:pt-1.5 sm:pb-4'
-              : 'min-h-0 flex-1 overflow-auto px-3 pt-1 pb-3 max-md:pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] sm:px-4 sm:pt-1.5 sm:pb-4'
+              ? // Fixed-content pages (tables) scroll inside their own list, so
+                // the dock clearance belongs to that list plus the footer
+                // below it — padding this box would only shorten the list.
+                'flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-1 pb-3 sm:px-4 sm:pt-1.5 sm:pb-4'
+              : 'min-h-0 flex-1 overflow-auto px-3 pt-1 pb-3 max-md:pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] sm:px-4 sm:pt-1.5 sm:pb-4'
           }
           ref={contentRef}
         >

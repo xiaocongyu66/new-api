@@ -48,7 +48,7 @@ export function PublicLayout(props: PublicLayoutProps) {
         // Clear the floating mobile bottom panel (3.5rem bar + 0.75rem
         // float gap) when it is mounted.
         isAuthenticated &&
-          'pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] md:pb-0'
+          'pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:pb-0'
       )}
     >
       <PublicHeader
