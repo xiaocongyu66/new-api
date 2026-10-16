@@ -46,9 +46,10 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
               // Dual sidebar: icon rail (4rem) + secondary panel (~13.5rem)
               '--sidebar-width': '17.5rem',
               '--sidebar-width-icon': '4rem',
-              // Mobile bottom navigation bar (excludes its safe-area pad)
+              // Mobile bottom navigation panel: the 3.5rem bar plus its
+              // 0.75rem float gap, plus the safe-area strip beneath it.
               '--mobile-bottom-nav-height':
-                'calc(3.5rem + env(safe-area-inset-bottom, 0px))',
+                'calc(4.25rem + env(safe-area-inset-bottom, 0px))',
             } as React.CSSProperties
           }
         >

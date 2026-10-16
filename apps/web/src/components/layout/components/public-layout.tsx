@@ -45,9 +45,10 @@ export function PublicLayout(props: PublicLayoutProps) {
       data-slot='public-layout'
       className={cn(
         'bg-background text-foreground relative z-10 min-h-svh overflow-x-clip',
-        // Clear the fixed mobile bottom bar (3.5rem) when it is mounted.
+        // Clear the floating mobile bottom panel (3.5rem bar + 0.75rem
+        // float gap) when it is mounted.
         isAuthenticated &&
-          'pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:pb-0'
+          'pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] md:pb-0'
       )}
     >
       <PublicHeader

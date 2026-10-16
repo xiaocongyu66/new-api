@@ -76,10 +76,13 @@ type BottomTab = BottomGroupTab | BottomLinkTab
  * Admins get one tab per sidebar section (tap raises a bottom drawer
  * listing that section's pages as a two-column grid). Regular users
  * get direct tabs for the pages they actually use (overview, keys,
- * model square) plus a chat drawer. The bar floats above the drawer
- * (higher z-index); its surface sits at 90% opacity (the dock axis
- * default, both schemes), so drawer content scrolling out under it shows
- * only a faint hint of the rows behind.
+ * model square) plus a chat drawer. The bar is a floating rounded
+ * panel: inset 0.75rem from the screen's sides and bottom (the bottom
+ * inset added to the home-indicator strip), so the page stays visible
+ * around and beneath it. It floats above the drawer (higher z-index);
+ * its surface sits at 90% opacity (the dock axis default, both
+ * schemes), so drawer content scrolling out under it shows only a
+ * faint hint of the rows behind.
  */
 export function MobileBottomNav() {
   const { t } = useTranslation()
@@ -106,10 +109,13 @@ export function MobileBottomNav() {
         <nav
           data-slot='mobile-bottom-nav'
           className={cn(
-            'bg-[var(--mobile-dock-surface)] border-border/60 pointer-events-auto fixed inset-x-0 bottom-0 z-[60]',
-            'flex items-stretch border-t md:hidden',
-            'h-[calc(3.5rem+env(safe-area-inset-bottom,0px))]',
-            'pb-[env(safe-area-inset-bottom,0px)]'
+            // Geometry is quoted in rem literals: the theme density axis
+            // redefines --spacing, so spacing-scale utilities would make the
+            // dock taller than the layouts that clear it.
+            'bg-[var(--mobile-dock-surface)] border-border/60 pointer-events-auto fixed z-[60]',
+            'left-[0.75rem] right-[0.75rem]',
+            'bottom-[calc(env(safe-area-inset-bottom,0px)+0.75rem)]',
+            'flex h-[3.5rem] items-stretch rounded-xl border shadow-lg md:hidden'
           )}
         >
           {tabs.map((tab) => {
@@ -310,8 +316,8 @@ function SectionDrawer({
             <DrawerTitle className='px-4 pt-2 pb-3 text-start text-base font-semibold'>
               {group.title}
             </DrawerTitle>
-            {/* Clear the floating bottom bar (3.5rem) so the last rows
-                of the grid are reachable. */}
+            {/* Clear the floating bottom panel (3.5rem bar + 0.75rem float
+                gap) so the last rows of the grid are reachable. */}
             <div className='min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))]'>
               <SectionGrid group={group} onNavigate={onClose} />
             </div>
