@@ -227,16 +227,17 @@ function Sidebar({
           className='bg-[var(--mobile-sidebar-surface)] text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden'
           overlayProps={{
             className:
-              'left-0 right-0 top-[var(--app-header-height,0px)] bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px))] h-auto pointer-events-auto',
+              'left-0 right-0 top-[var(--app-header-height,0px)] bottom-[calc(4.25rem+env(safe-area-inset-bottom,0px))] h-auto pointer-events-auto',
             onClick: () => setOpenMobile(false),
           }}
           style={
             {
               '--sidebar-width': SIDEBAR_WIDTH_MOBILE,
               // The mobile sheet lives between the fixed top bar and the
-              // bottom navigation bar instead of covering either.
+              // floating bottom navigation panel (3.5rem bar + 0.75rem
+              // float gap + safe area) instead of covering either.
               top: 'var(--app-header-height, 0px)',
-              bottom: 'calc(3.5rem + env(safe-area-inset-bottom, 0px))',
+              bottom: 'calc(4.25rem + env(safe-area-inset-bottom, 0px))',
               height: 'auto',
             } as React.CSSProperties
           }

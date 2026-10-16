@@ -236,7 +236,7 @@ export function Dashboard() {
   const sectionActions = modelActions ?? flowActions
 
   return (
-    <SectionPageLayout collapsibleHeader>
+    <SectionPageLayout>
       <SectionPageLayout.Title>{t(meta.titleKey)}</SectionPageLayout.Title>
       {sectionActions != null && (
         <SectionPageLayout.Actions>{sectionActions}</SectionPageLayout.Actions>

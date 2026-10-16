@@ -86,7 +86,7 @@ function Chat2LinkPage() {
   ])
 
   return (
-    <Main className='min-w-0 justify-center overflow-y-auto p-3 sm:p-6'>
+    <Main className='min-w-0 justify-center overflow-y-auto p-3 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:p-6'>
       <Card className='mx-auto w-full max-w-xl gap-0 py-0'>
         <CardContent className='flex flex-col items-center gap-4 p-5 text-center sm:p-8' role='status'>
           <Loader2 className='text-primary size-8 motion-safe:animate-spin' aria-hidden='true' />

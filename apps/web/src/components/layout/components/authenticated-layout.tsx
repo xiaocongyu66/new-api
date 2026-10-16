@@ -46,9 +46,6 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
               // Dual sidebar: icon rail (4rem) + secondary panel (~13.5rem)
               '--sidebar-width': '17.5rem',
               '--sidebar-width-icon': '4rem',
-              // Mobile bottom navigation bar (excludes its safe-area pad)
-              '--mobile-bottom-nav-height':
-                'calc(3.5rem + env(safe-area-inset-bottom, 0px))',
             } as React.CSSProperties
           }
         >
@@ -60,11 +57,9 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
               className={cn(
                 '@container/content',
                 'h-[calc(100svh-var(--app-header-height,0px))]',
-                'max-md:h-[calc(100svh-var(--app-header-height,0px)-var(--mobile-bottom-nav-height))]',
                 'min-h-0 overflow-hidden',
                 'flex flex-col',
-                'peer-data-[variant=inset]:h-[calc(100svh-var(--app-header-height,0px)-(var(--spacing)*4))]',
-                'peer-data-[variant=inset]:max-md:h-[calc(100svh-var(--app-header-height,0px)-var(--mobile-bottom-nav-height)-(var(--spacing)*4))]'
+                'peer-data-[variant=inset]:h-[calc(100svh-var(--app-header-height,0px)-(var(--spacing)*4))]'
               )}
             >
               {props.children ?? <AnimatedOutlet />}
