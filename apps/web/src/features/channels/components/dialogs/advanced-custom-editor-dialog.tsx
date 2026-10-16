@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
   ArrowDown,
   ArrowDownToLine,
@@ -516,6 +518,18 @@ export function AdvancedCustomEditorDialog({
       headerClassName='border-b px-6 py-4'
       footerClassName='border-t px-6 py-4'
       contentHeight='70vh'
+      headerActions={
+        <Button
+          type='button'
+          variant='ghost'
+          size='icon-sm'
+          className='md:hidden'
+          onClick={saveConfig}
+          aria-label={t('Save changes')}
+        >
+          <HugeiconsIcon icon={FloppyDiskIcon} />
+        </Button>
+      }
       footer={
         <>
           <Button

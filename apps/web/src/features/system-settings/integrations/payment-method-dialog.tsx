@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -168,6 +170,18 @@ export function PaymentMethodDialog({
       contentClassName='sm:max-w-[500px]'
       contentHeight='auto'
       bodyClassName='space-y-4'
+      headerActions={
+        <Button
+          type='submit'
+          form={PAYMENT_METHOD_FORM_ID}
+          variant='ghost'
+          size='icon-sm'
+          className='md:hidden'
+          aria-label={isEditMode ? t('Update') : t('Add')}
+        >
+          <HugeiconsIcon icon={FloppyDiskIcon} />
+        </Button>
+      }
       footer={
         <>
           <Button

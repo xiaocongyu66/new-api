@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { KeyRound, Loader2, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -81,6 +83,19 @@ export function AccessTokenDialog({
         contentClassName='sm:max-w-md'
         contentHeight='auto'
         bodyClassName='space-y-4'
+        headerActions={
+          <Button
+            type='button'
+            variant='ghost'
+            size='icon-sm'
+            className='md:hidden'
+            onClick={() => setConfirmOpen(true)}
+            disabled={generating}
+            aria-label={generating ? t('Generating...') : t('Regenerate')}
+          >
+            <HugeiconsIcon icon={FloppyDiskIcon} />
+          </Button>
+        }
         footer={
           <>
             <Button

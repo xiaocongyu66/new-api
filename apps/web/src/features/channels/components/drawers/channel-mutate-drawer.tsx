@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowRight,
@@ -1759,6 +1761,21 @@ function ChannelMutateDrawerContent({
       >
         <SheetContent
           inline={isInline}
+          headerActions={
+            isInline ? undefined : (
+              <Button
+                type='submit'
+                form={editorFormId}
+                variant='ghost'
+                size='icon-sm'
+                className='md:hidden'
+                disabled={isSubmitting}
+                aria-label={isEditing ? t('Update Channel') : t('Save changes')}
+              >
+                <HugeiconsIcon icon={FloppyDiskIcon} />
+              </Button>
+            )
+          }
           className={cn(
             isInline
               ? 'bg-background text-foreground flex min-h-0 flex-1 flex-col overflow-visible rounded-lg shadow-none'
@@ -1766,7 +1783,9 @@ function ChannelMutateDrawerContent({
           )}
         >
           {!isInline && (
-            <SheetHeader className={sideDrawerHeaderClassName()}>
+            <SheetHeader
+              className={sideDrawerHeaderClassName('max-md:pr-[4.5rem]')}
+            >
               <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
                 <div className='min-w-0'>
                   <SheetTitle className='flex items-center gap-3'>
@@ -4623,24 +4642,40 @@ function ChannelMutateDrawerContent({
                   </div>
                 </div>
               )}
+
+              {!isInline && (
+                <SheetFooter className={sideDrawerFooterClassName()}>
+                  <SheetClose
+                    render={
+                      <Button variant='outline' disabled={isSubmitting} />
+                    }
+                  >
+                    {t('Cancel')}
+                  </SheetClose>
+                  <Button
+                    form={editorFormId}
+                    type='submit'
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting && (
+                      <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                    )}
+                    {isEditing ? t('Update Channel') : t('Save changes')}
+                  </Button>
+                </SheetFooter>
+              )}
+              {/*
+                Phones: one dock height (0.75rem inset + 3.5rem tall, z-[60])
+                plus a gap, after the footer inside the scroller, so scrolling to
+                the end brings the footer buttons to rest above the floating
+                dock instead of under it. Rem literals match the dock geometry,
+                which ignores the theme density axis.
+              */}
+              {!isInline && (
+                <div aria-hidden className='h-[5rem] shrink-0 md:hidden' />
+              )}
             </form>
           </Form>
-
-          {!isInline && (
-            <SheetFooter className={sideDrawerFooterClassName()}>
-              <SheetClose
-                render={<Button variant='outline' disabled={isSubmitting} />}
-              >
-                {t('Cancel')}
-              </SheetClose>
-              <Button form={editorFormId} type='submit' disabled={isSubmitting}>
-                {isSubmitting && (
-                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                )}
-                {isEditing ? t('Update Channel') : t('Save changes')}
-              </Button>
-            </SheetFooter>
-          )}
         </SheetContent>
       </Sheet>
 

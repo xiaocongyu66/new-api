@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { Loader2 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -81,6 +83,19 @@ export function TransferDialog({
       footerClassName='grid grid-cols-2 gap-2 sm:flex'
       contentHeight='auto'
       bodyClassName='space-y-4'
+      headerActions={
+        <Button
+          type='button'
+          variant='ghost'
+          size='icon-sm'
+          className='md:hidden'
+          onClick={handleConfirm}
+          disabled={transferring || !canTransfer}
+          aria-label={t('Transfer')}
+        >
+          <HugeiconsIcon icon={FloppyDiskIcon} />
+        </Button>
+      }
       footer={
         <>
           <Button

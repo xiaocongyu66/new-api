@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { useQuery } from '@tanstack/react-query'
 import { Pencil } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -227,9 +229,24 @@ export function UsersMutateDrawer({
         }}
       >
         <SheetContent
+          headerActions={
+            <Button
+              type='submit'
+              form='user-form'
+              variant='ghost'
+              size='icon-sm'
+              className='md:hidden'
+              disabled={isSubmitting}
+              aria-label={isSubmitting ? t('Saving...') : t('Save changes')}
+            >
+              <HugeiconsIcon icon={FloppyDiskIcon} />
+            </Button>
+          }
           className={sideDrawerContentClassName('sm:max-w-[600px]')}
         >
-          <SheetHeader className={sideDrawerHeaderClassName()}>
+          <SheetHeader
+            className={sideDrawerHeaderClassName('max-md:pr-[4.5rem]')}
+          >
             <SheetTitle>
               {isUpdate ? t('Update') : t('Create')} {t('User')}
             </SheetTitle>
@@ -569,16 +586,18 @@ export function UsersMutateDrawer({
                   </div>
                 </SideDrawerSection>
               )}
+
+              <SheetFooter className={sideDrawerFooterClassName()}>
+                <SheetClose render={<Button variant='outline' />}>
+                  {t('Close')}
+                </SheetClose>
+                <Button form='user-form' type='submit' disabled={isSubmitting}>
+                  {isSubmitting ? t('Saving...') : t('Save changes')}
+                </Button>
+              </SheetFooter>
+              <div aria-hidden className='h-[5rem] shrink-0 md:hidden' />
             </form>
           </Form>
-          <SheetFooter className={sideDrawerFooterClassName()}>
-            <SheetClose render={<Button variant='outline' />}>
-              {t('Close')}
-            </SheetClose>
-            <Button form='user-form' type='submit' disabled={isSubmitting}>
-              {isSubmitting ? t('Saving...') : t('Save changes')}
-            </Button>
-          </SheetFooter>
         </SheetContent>
       </Sheet>
 

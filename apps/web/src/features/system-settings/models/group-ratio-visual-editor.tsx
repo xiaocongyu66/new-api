@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
   AlertTriangle,
   ChevronDown,
@@ -966,6 +968,19 @@ function GroupOverrideRules({
         )}
         contentHeight='auto'
         bodyClassName='space-y-4'
+        headerActions={
+          <Button
+            type='button'
+            variant='ghost'
+            size='icon-sm'
+            className='md:hidden'
+            onClick={handleUserGroupSave}
+            disabled={!userGroupInput}
+            aria-label={t('Add')}
+          >
+            <HugeiconsIcon icon={FloppyDiskIcon} />
+          </Button>
+        }
         footer={
           <>
             <Button
@@ -1070,6 +1085,18 @@ function GroupOverrideDialog({
       }
       contentHeight='auto'
       bodyClassName='space-y-4'
+      headerActions={
+        <Button
+          type='button'
+          variant='ghost'
+          size='icon-sm'
+          className='md:hidden'
+          onClick={handleSave}
+          aria-label={editData ? t('Update') : t('Add')}
+        >
+          <HugeiconsIcon icon={FloppyDiskIcon} />
+        </Button>
+      }
       footer={
         <>
           <Button variant='outline' onClick={() => onOpenChange(false)}>

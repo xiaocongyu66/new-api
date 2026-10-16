@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { Filter, RotateCcw, Calendar, Search } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -184,6 +186,18 @@ export function ModelsFilter(props: ModelsFilterProps) {
       contentClassName='max-sm:h-dvh max-sm:w-screen max-sm:max-w-none max-sm:rounded-none max-sm:p-4 sm:max-w-lg'
       contentHeight='min(48vh, 460px)'
       footerClassName='grid grid-cols-2 gap-2 sm:flex'
+      headerActions={
+        <Button
+          type='submit'
+          variant='ghost'
+          size='icon-sm'
+          className='md:hidden'
+          onClick={handleApply}
+          aria-label={t('Apply Filters')}
+        >
+          <HugeiconsIcon icon={FloppyDiskIcon} />
+        </Button>
+      }
       footer={
         <>
           <Button onClick={handleReset} variant='outline' type='button'>

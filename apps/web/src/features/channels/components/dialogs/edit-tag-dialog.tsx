@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -232,6 +234,19 @@ export function EditTagDialog({ open, onOpenChange }: EditTagDialogProps) {
       contentClassName='max-h-[90vh] max-w-2xl'
       contentHeight='auto'
       bodyClassName='space-y-4'
+      headerActions={
+        <Button
+          type='button'
+          variant='ghost'
+          size='icon-sm'
+          className='md:hidden'
+          onClick={handleSubmit}
+          disabled={isSubmitting}
+          aria-label={t('Save Changes')}
+        >
+          <HugeiconsIcon icon={FloppyDiskIcon} />
+        </Button>
+      }
       footer={
         <>
           <Button variant='outline' onClick={handleClose}>

@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { Plus } from 'lucide-react'
 import { type ChangeEvent, useRef, type SetStateAction, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -392,6 +394,18 @@ export function WaffoSettingsSection({
         }
         contentHeight='auto'
         bodyClassName='space-y-4'
+        headerActions={
+          <Button
+            type='button'
+            variant='ghost'
+            size='icon-sm'
+            className='md:hidden'
+            onClick={saveMethod}
+            aria-label={t('Confirm')}
+          >
+            <HugeiconsIcon icon={FloppyDiskIcon} />
+          </Button>
+        }
         footer={
           <>
             <Button

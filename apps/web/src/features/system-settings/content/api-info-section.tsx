@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { Plus, Trash2, Save } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -394,6 +396,18 @@ export function ApiInfoSection({ enabled, data }: ApiInfoSectionProps) {
         description={t('Configure API documentation links for the dashboard')}
         contentHeight='auto'
         bodyClassName='space-y-4'
+        headerActions={
+          <Button
+            type='submit'
+            form={API_INFO_FORM_ID}
+            variant='ghost'
+            size='icon-sm'
+            className='md:hidden'
+            aria-label={editingApiInfo ? t('Update') : t('Add')}
+          >
+            <HugeiconsIcon icon={FloppyDiskIcon} />
+          </Button>
+        }
         footer={
           <>
             <Button

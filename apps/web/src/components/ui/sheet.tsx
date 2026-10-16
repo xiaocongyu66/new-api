@@ -73,12 +73,14 @@ function SheetContent({
   side = 'right',
   showCloseButton = true,
   inline = false,
+  headerActions,
   overlayProps,
   ...props
 }: SheetPrimitive.Popup.Props & {
   side?: 'top' | 'right' | 'bottom' | 'left'
   showCloseButton?: boolean
   inline?: boolean
+  headerActions?: React.ReactNode
   overlayProps?: SheetPrimitive.Backdrop.Props
 }) {
   // Side-specific classes are emitted via JS conditionals (rather than
@@ -121,20 +123,19 @@ function SheetContent({
         {...props}
       >
         {children}
-        {showCloseButton && (
-          <SheetPrimitive.Close
-            data-slot='sheet-close'
-            render={
-              <Button
-                variant='ghost'
-                className='absolute top-3 right-3'
-                size='icon-sm'
-              />
-            }
-          >
-            <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
-            <span className='sr-only'>Close</span>
-          </SheetPrimitive.Close>
+        {(headerActions || showCloseButton) && (
+          <div className='absolute top-3 right-3 flex items-center gap-1'>
+            {headerActions}
+            {showCloseButton && (
+              <SheetPrimitive.Close
+                data-slot='sheet-close'
+                render={<Button variant='ghost' size='icon-sm' />}
+              >
+                <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
+                <span className='sr-only'>Close</span>
+              </SheetPrimitive.Close>
+            )}
+          </div>
         )}
       </SheetPrimitive.Popup>
     </SheetPortal>

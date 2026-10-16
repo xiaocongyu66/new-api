@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { useEffect } from 'react'
 import { type Resolver, useForm, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -200,6 +202,19 @@ export function ProviderFormDialog(props: ProviderFormDialogProps) {
       contentClassName='max-h-[85vh] overflow-y-auto sm:max-w-2xl'
       contentHeight='auto'
       bodyClassName='space-y-4'
+      headerActions={
+        <Button
+          type='submit'
+          form={PROVIDER_FORM_ID}
+          variant='ghost'
+          size='icon-sm'
+          className='md:hidden'
+          disabled={isPending}
+          aria-label={submitLabel}
+        >
+          <HugeiconsIcon icon={FloppyDiskIcon} />
+        </Button>
+      }
       footer={
         <>
           <Button

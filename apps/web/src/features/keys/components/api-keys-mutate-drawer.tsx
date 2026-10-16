@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, KeyRound, Settings2, WalletCards } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -372,9 +374,24 @@ export function ApiKeysMutateDrawer({
       }}
     >
       <SheetContent
+        headerActions={
+          <Button
+            type='button'
+            variant='ghost'
+            size='icon-sm'
+            className='md:hidden'
+            onClick={form.handleSubmit(onSubmit, onInvalid)}
+            disabled={!isFormInitialized || isSubmitting}
+            aria-label={isSubmitting ? t('Saving...') : t('Save changes')}
+          >
+            <HugeiconsIcon icon={FloppyDiskIcon} />
+          </Button>
+        }
         className={sideDrawerContentClassName('max-w-none sm:!max-w-[620px]')}
       >
-        <SheetHeader className={sideDrawerHeaderClassName()}>
+        <SheetHeader
+          className={sideDrawerHeaderClassName('max-md:pr-[4.5rem]')}
+        >
           <SheetTitle>
             {isUpdate ? t('Update API Key') : t('Create API Key')}
           </SheetTitle>
@@ -749,23 +766,27 @@ export function ApiKeysMutateDrawer({
                 </CollapsibleContent>
               </SideDrawerSection>
             </Collapsible>
+
+            <SheetFooter className={sideDrawerFooterClassName()}>
+              <SheetClose
+                render={
+                  <Button variant='outline' className='w-full sm:w-auto' />
+                }
+              >
+                {t('Close')}
+              </SheetClose>
+              <Button
+                type='button'
+                onClick={form.handleSubmit(onSubmit, onInvalid)}
+                disabled={!isFormInitialized || isSubmitting}
+                className='w-full sm:w-auto'
+              >
+                {isSubmitting ? t('Saving...') : t('Save changes')}
+              </Button>
+            </SheetFooter>
+            <div aria-hidden className='h-[5rem] shrink-0 md:hidden' />
           </form>
         </Form>
-        <SheetFooter className={sideDrawerFooterClassName()}>
-          <SheetClose
-            render={<Button variant='outline' className='w-full sm:w-auto' />}
-          >
-            {t('Close')}
-          </SheetClose>
-          <Button
-            type='button'
-            onClick={form.handleSubmit(onSubmit, onInvalid)}
-            disabled={!isFormInitialized || isSubmitting}
-            className='w-full sm:w-auto'
-          >
-            {isSubmitting ? t('Saving...') : t('Save changes')}
-          </Button>
-        </SheetFooter>
       </SheetContent>
     </Sheet>
   )

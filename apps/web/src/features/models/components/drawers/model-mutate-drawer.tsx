@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, Loader2 } from 'lucide-react'
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
@@ -745,8 +747,25 @@ export function ModelMutateDrawer({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className={sideDrawerContentClassName('sm:max-w-2xl')}>
-        <SheetHeader className={sideDrawerHeaderClassName()}>
+      <SheetContent
+        headerActions={
+          <Button
+            type='submit'
+            form='model-form'
+            variant='ghost'
+            size='icon-sm'
+            className='md:hidden'
+            disabled={isSubmitting}
+            aria-label={isEditing ? t('Update Model') : t('Save changes')}
+          >
+            <HugeiconsIcon icon={FloppyDiskIcon} />
+          </Button>
+        }
+        className={sideDrawerContentClassName('sm:max-w-2xl')}
+      >
+        <SheetHeader
+          className={sideDrawerHeaderClassName('max-md:pr-[4.5rem]')}
+        >
           <SheetTitle>
             {isEditing ? t('Edit Model') : t('Create Model')}
           </SheetTitle>
@@ -1386,20 +1405,23 @@ export function ModelMutateDrawer({
                 )}
               />
             </SideDrawerSection>
+
+            <SheetFooter className={sideDrawerFooterClassName()}>
+              <SheetClose
+                render={<Button variant='outline' disabled={isSubmitting} />}
+              >
+                {t('Cancel')}
+              </SheetClose>
+              <Button form='model-form' type='submit' disabled={isSubmitting}>
+                {isSubmitting && (
+                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                )}
+                {isEditing ? t('Update Model') : t('Save changes')}
+              </Button>
+            </SheetFooter>
+            <div aria-hidden className='h-[5rem] shrink-0 md:hidden' />
           </form>
         </Form>
-
-        <SheetFooter className={sideDrawerFooterClassName()}>
-          <SheetClose
-            render={<Button variant='outline' disabled={isSubmitting} />}
-          >
-            {t('Cancel')}
-          </SheetClose>
-          <Button form='model-form' type='submit' disabled={isSubmitting}>
-            {isSubmitting && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
-            {isEditing ? t('Update Model') : t('Save changes')}
-          </Button>
-        </SheetFooter>
       </SheetContent>
     </Sheet>
   )

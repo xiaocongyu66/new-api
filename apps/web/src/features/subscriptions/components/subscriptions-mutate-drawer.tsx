@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { CalendarClock, CreditCard, RefreshCw, Settings2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useForm, type Resolver } from 'react-hook-form'
@@ -259,8 +261,25 @@ export function SubscriptionsMutateDrawer({
         }
       }}
     >
-      <SheetContent className={sideDrawerContentClassName('sm:max-w-[600px]')}>
-        <SheetHeader className={sideDrawerHeaderClassName()}>
+      <SheetContent
+        headerActions={
+          <Button
+            type='submit'
+            form='subscription-form'
+            variant='ghost'
+            size='icon-sm'
+            className='md:hidden'
+            disabled={isSubmitting}
+            aria-label={isSubmitting ? t('Saving...') : t('Save changes')}
+          >
+            <HugeiconsIcon icon={FloppyDiskIcon} />
+          </Button>
+        }
+        className={sideDrawerContentClassName('sm:max-w-[600px]')}
+      >
+        <SheetHeader
+          className={sideDrawerHeaderClassName('max-md:pr-[4.5rem]')}
+        >
           <SheetTitle>
             {isEdit ? t('Update plan info') : t('Create new subscription plan')}
           </SheetTitle>
@@ -846,20 +865,22 @@ export function SubscriptionsMutateDrawer({
                 }}
               />
             </SideDrawerSection>
+
+            <SheetFooter className={sideDrawerFooterClassName()}>
+              <SheetClose render={<Button variant='outline' />}>
+                {t('Close')}
+              </SheetClose>
+              <Button
+                form='subscription-form'
+                type='submit'
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? t('Saving...') : t('Save changes')}
+              </Button>
+            </SheetFooter>
+            <div aria-hidden className='h-[5rem] shrink-0 md:hidden' />
           </form>
         </Form>
-        <SheetFooter className={sideDrawerFooterClassName()}>
-          <SheetClose render={<Button variant='outline' />}>
-            {t('Close')}
-          </SheetClose>
-          <Button
-            form='subscription-form'
-            type='submit'
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? t('Saving...') : t('Save changes')}
-          </Button>
-        </SheetFooter>
       </SheetContent>
     </Sheet>
   )
