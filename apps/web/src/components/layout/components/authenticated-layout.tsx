@@ -46,10 +46,6 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
               // Dual sidebar: icon rail (4rem) + secondary panel (~13.5rem)
               '--sidebar-width': '17.5rem',
               '--sidebar-width-icon': '4rem',
-              // Mobile bottom navigation panel: the 3.5rem bar plus its
-              // 0.75rem float gap, plus the safe-area strip beneath it.
-              '--mobile-bottom-nav-height':
-                'calc(4.25rem + env(safe-area-inset-bottom, 0px))',
             } as React.CSSProperties
           }
         >
@@ -61,11 +57,15 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
               className={cn(
                 '@container/content',
                 'h-[calc(100svh-var(--app-header-height,0px))]',
-                'max-md:h-[calc(100svh-var(--app-header-height,0px)-var(--mobile-bottom-nav-height))]',
+                // The floating mobile dock overlays the page instead of
+                // ending it: the surface keeps painting to the bottom edge
+                // and the dock's footprint (3.5rem panel + 0.75rem float
+                // gap + safe area) is reserved as padding, so scrolled
+                // content still clears the panel.
+                'max-md:pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))]',
                 'min-h-0 overflow-hidden',
                 'flex flex-col',
-                'peer-data-[variant=inset]:h-[calc(100svh-var(--app-header-height,0px)-(var(--spacing)*4))]',
-                'peer-data-[variant=inset]:max-md:h-[calc(100svh-var(--app-header-height,0px)-var(--mobile-bottom-nav-height)-(var(--spacing)*4))]'
+                'peer-data-[variant=inset]:h-[calc(100svh-var(--app-header-height,0px)-(var(--spacing)*4))]'
               )}
             >
               {props.children ?? <AnimatedOutlet />}
