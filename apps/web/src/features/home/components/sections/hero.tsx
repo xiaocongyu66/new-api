@@ -54,7 +54,7 @@ export function Hero(props: HeroProps) {
       <div className='mx-auto grid max-w-6xl grid-cols-1 items-center gap-12 lg:grid-cols-12 lg:gap-8'>
         <div className='flex flex-col items-start text-left lg:col-span-6'>
           <div
-            className='landing-animate-fade-up border-primary/30 bg-primary/10 text-primary mb-5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-medium shadow-xs'
+            className='landing-animate-fade-up border-primary/30 bg-primary/10 text-primary [text-shadow:var(--hero-badge-text-shadow)] mb-5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-medium shadow-xs'
             style={{ animationDelay: '0ms' }}
           >
             <Sparkles className='size-3.5' />

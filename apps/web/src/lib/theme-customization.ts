@@ -134,31 +134,36 @@ export type ThemeCustomization = {
   // navigation dock and the left navigation sheets.
   dockOpacity: number
   sheetOpacity: number
+
+  // Floating overlay glass: the search box and the notification / language /
+  // avatar dropdowns, applied as the --float-opacity variable on <html>.
+  floatOpacity: number
 }
 
 /**
- * Default surface axes per color scheme: light runs glass at 90% (50% and
- * then 80% both still let the photo texture the field under the glyphs,
- * which reads as blurred body copy) with card blur off — the backdrop blur
- * smears whatever sits behind a card, and that soft field is the other half
- * of the "light scheme looks blurry" report. Dark rests on near-solid (80%)
- * panels under a heavy dark veil (76%), also without card blur. The mobile
- * dock sits at 90% in both schemes; the navigation sheet is per-scheme
- * because the same alpha reads differently either side of the veil — 95%
- * stays legible over the dark ground, light needs 90% to read as glass
- * instead of a plain white panel. Must match the `:root` / `.dark` defaults
- * of --surface-opacity, --surface-blur, --app-background-scrim,
- * --mobile-dock-opacity and --mobile-sheet-opacity plus the card-blur toggle
- * in theme.css / theme-presets.css.
+ * Default surface axes per color scheme: light runs translucent glass with
+ * card blur on and a light veil so vivid photos still read; dark rests the
+ * UI on near-solid (80%) panels over a heavy dark veil (76%), no card blur.
+ * The mobile dock sits at 90% in both schemes; the navigation sheet is
+ * per-scheme because the same alpha reads differently either side of the
+ * veil — 95% stays legible over the dark ground, light needs 90% to read as
+ * glass instead of a plain white panel. The floating overlays (search box,
+ * notification / language / avatar dropdowns) are glass at the same 90% in
+ * both schemes — they sit above the veil, so one alpha reads the same either
+ * side of it. Must match the `:root` / `.dark` defaults of --surface-opacity,
+ * --surface-blur, --app-background-scrim, --mobile-dock-opacity,
+ * --mobile-sheet-opacity and --float-opacity plus the card-blur toggle in
+ * theme.css / theme-presets.css.
  */
 export const SURFACE_DEFAULTS = {
   light: {
-    cardBlur: false,
-    surfaceOpacity: 90,
+    cardBlur: true,
+    surfaceOpacity: 80,
     surfaceBlur: 2,
     backgroundScrim: 30,
     dockOpacity: 90,
     sheetOpacity: 90,
+    floatOpacity: 90,
   },
   dark: {
     cardBlur: false,
@@ -167,6 +172,7 @@ export const SURFACE_DEFAULTS = {
     backgroundScrim: 76,
     dockOpacity: 90,
     sheetOpacity: 95,
+    floatOpacity: 90,
   },
 } as const
 
@@ -191,9 +197,10 @@ export const DEFAULT_THEME_CUSTOMIZATION: ThemeCustomization = {
 export const SURFACE_OPACITY_LIMITS = { min: 10, max: 100 } as const
 export const SURFACE_BLUR_LIMITS = { min: 0, max: 40 } as const
 export const BACKGROUND_SCRIM_LIMITS = { min: 0, max: 100 } as const
-/** Mobile dock/sheet panels are always tinted glass, so their sliders start
- * at 50% and can never dissolve a panel into the page beneath it. */
-export const MOBILE_SURFACE_OPACITY_LIMITS = { min: 50, max: 100 } as const
+/** Panel-like surfaces — the mobile dock, the navigation sheets and the
+ * floating overlays — are always tinted glass, so their sliders start at 50%
+ * and can never dissolve a panel into the page beneath it. */
+export const SURFACE_PANEL_OPACITY_LIMITS = { min: 50, max: 100 } as const
 
 /** Per-scheme scrim veil: light brightens dark random photos so the light
  * UI never sits on a black field; dark deepens the photo for light glyphs.
@@ -233,13 +240,18 @@ export const SURFACE_COOKIE_KEYS = {
     light: 'theme_sheet_opacity_light',
     dark: 'theme_sheet_opacity_dark',
   },
+  floatOpacity: {
+    light: 'theme_float_opacity_light',
+    dark: 'theme_float_opacity_dark',
+  },
 } as const satisfies Record<
   | 'cardBlur'
   | 'surfaceOpacity'
   | 'surfaceBlur'
   | 'backgroundScrim'
   | 'dockOpacity'
-  | 'sheetOpacity',
+  | 'sheetOpacity'
+  | 'floatOpacity',
   Record<SurfaceScheme, string>
 >
 
@@ -250,13 +262,15 @@ export const SURFACE_AXIS_LIST = [
   'backgroundScrim',
   'dockOpacity',
   'sheetOpacity',
+  'floatOpacity',
 ] as const
 export type SurfaceAxis = (typeof SURFACE_AXIS_LIST)[number]
 export type SurfaceNumberAxis = Exclude<SurfaceAxis, 'cardBlur'>
 
 /** Scheme-agnostic cookies from the pre-tab UI; read once as a fallback and
- * dropped whenever the matching per-scheme slot is written. The mobile
- * dock/sheet axes never had a pre-tab cookie, hence the partial map. */
+ * dropped whenever the matching per-scheme slot is written. The dock/sheet
+ * and floating-overlay axes never had a pre-tab cookie, hence the partial
+ * map. */
 export const LEGACY_SURFACE_COOKIE_KEYS: Partial<
   Record<SurfaceAxis, string>
 > = {
