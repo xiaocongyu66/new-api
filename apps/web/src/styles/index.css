@@ -146,14 +146,20 @@ body[data-app-background='true'] [data-slot='sidebar-inner'] {
 }
 
 /* The mobile sheet floats over the dimmed page instead of the wallpaper, so
- * a translucent surface lets page content bleed through unreadable. Sit it
- * on a solid ground; dark scheme deepens toward black per the veil look. */
+ * a translucent surface lets page content bleed through. Keep the bleed at
+ * the requested 95% opacity: light keeps the card tone, dark keeps its
+ * deepen-toward-black veil (65% card / 35% black), both scaled to alpha
+ * 0.95 so the sheet still reads as a solid ground, not a window. */
 body[data-app-background='true'] [data-slot='sidebar'][data-mobile='true'] {
-  background-color: var(--card);
+  background-color: color-mix(in oklch, var(--card) 95%, transparent);
 }
 
 .dark body[data-app-background='true'] [data-slot='sidebar'][data-mobile='true'] {
-  background-color: color-mix(in oklch, var(--card) 65%, black);
+  background-color: color-mix(
+    in oklch,
+    color-mix(in oklch, var(--card) 65%, black) 95%,
+    transparent
+  );
 }
 
 body[data-app-background='true'] [data-slot='app-background'] [data-app-background-image] {
