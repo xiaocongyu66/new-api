@@ -81,8 +81,9 @@ function RailSidebar() {
     setSectionOverride(null)
   }, [routeSectionId, pathname])
 
-  const visibleGroups = useMemo(() =>
-    navGroups.filter((group) => group.items.length > 0)
+  const visibleGroups = useMemo(
+    () => navGroups.filter((group) => group.items.length > 0),
+    [navGroups]
   )
 
   const activeGroupId =
