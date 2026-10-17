@@ -24,10 +24,10 @@ body,
   --card-surface: color-mix(in oklch, var(--card) var(--surface-opacity), transparent);
   --header-surface: color-mix(in oklch, var(--background) var(--surface-opacity), transparent);
   --page-surface: color-mix(in oklch, var(--primary) 3%, var(--background));
-  /* Mobile dock (bottom bar) and its bottom sheets, plus the left sidebar
-   * sheet. Their opacity is a first-class theme axis (theme management →
-   * blur section); the provider writes --mobile-{dock,sheet}-opacity on
-   * <html> when the user moves off the default. */
+  /* Mobile bottom sheets and the left sidebar sheet. The sidebar sheet's
+   * opacity is a first-class theme axis (theme management → blur section);
+   * the provider writes --mobile-sheet-opacity on <html> when the user
+   * moves off the default. */
   --mobile-dock-surface: color-mix(in oklab, var(--background) var(--mobile-dock-opacity), transparent);
   --mobile-sidebar-surface: color-mix(in oklab, var(--sidebar) var(--mobile-sheet-opacity), transparent);
   /* Floating panels — popovers, dropdown menus, selects, comboboxes, the
@@ -139,12 +139,13 @@ body,
    * uses near-solid panels (80%) on top of the heavy dark veil. The
    * provider mirrors these per-scheme defaults in JS (SURFACE_DEFAULTS). */
   --surface-opacity: 80%;
-  /* Mobile dock / sidebar sheet opacity. The dock sits at 90% in both
-   * schemes; the navigation sheet is per-scheme, because the same value
-   * reads very differently either side of the veil — 95% stays legible over
-   * the dark ground, while light needs 90% before the sheet reads as glass
-   * rather than a plain white panel. Dark overrides the sheet value below;
-   * keep both in sync with SURFACE_DEFAULTS in lib/theme-customization.ts. */
+  /* Mobile bottom sheet / sidebar sheet opacity. Bottom sheets sit at 90%
+   * in both schemes; the navigation sheet is per-scheme, because the same
+   * value reads very differently either side of the veil — 95% stays
+   * legible over the dark ground, while light needs 90% before the sheet
+   * reads as glass rather than a plain white panel. Dark overrides the
+   * sheet value below; keep both in sync with SURFACE_DEFAULTS in
+   * lib/theme-customization.ts. */
   --mobile-dock-opacity: 90%;
   --mobile-sheet-opacity: 90%;
   /* Floating panels (popover/dropdown/select/command palette) run slightly

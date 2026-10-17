@@ -39,8 +39,8 @@ export const sideDrawerFormClassName = (className?: string) =>
     // The scroller's children must keep their natural height: as shrinkable
     // flex items the sections compress to the viewport while their content
     // still paints past the box, which leaves anything after them (the
-    // footer, the dock-height spacer) positioned at the compressed offset
-    // instead of the end of the scrolled content.
+    // footer) positioned at the compressed offset instead of the end of
+    // the scrolled content.
     '[&>*]:shrink-0',
     className
   )

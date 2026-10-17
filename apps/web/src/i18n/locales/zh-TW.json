@@ -1685,7 +1685,6 @@
     "Do not wait one second between polling async tasks for this channel": "該渠道輪詢異步任務時不等待一秒",
     "Do regex replacement in the target field": "在目標欄位裡做正則替換",
     "Do string replacement in the target field": "在目標欄位裡做字串替換",
-    "Dock opacity": "底欄不透明度",
     "Docs": "文件",
     "Documentation Link": "文件連結",
     "Documentation or external knowledge base.": "文件或外部知識庫。",

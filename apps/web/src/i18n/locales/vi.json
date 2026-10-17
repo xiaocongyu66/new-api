@@ -1685,7 +1685,6 @@
     "Do not wait one second between polling async tasks for this channel": "Không chờ một giây giữa các lần thăm dò tác vụ bất đồng bộ cho kênh này",
     "Do regex replacement in the target field": "Thực hiện thay thế regex trong trường đích",
     "Do string replacement in the target field": "Thực hiện thay thế chuỗi trong trường đích",
-    "Dock opacity": "Độ mờ thanh dưới",
     "Docs": "Tài liệu",
     "Documentation Link": "Liên kết tài liệu",
     "Documentation or external knowledge base.": "Tài liệu hoặc cơ sở tri thức bên ngoài.",

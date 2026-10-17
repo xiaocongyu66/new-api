@@ -1685,7 +1685,6 @@
     "Do not wait one second between polling async tasks for this channel": "Не ждать одну секунду между опросами асинхронных задач для этого канала",
     "Do regex replacement in the target field": "Выполнить замену по регулярному выражению в целевом поле",
     "Do string replacement in the target field": "Выполнить замену строки в целевом поле",
-    "Dock opacity": "Непрозрачность нижней панели",
     "Docs": "Документы",
     "Documentation Link": "Ссылка на документацию",
     "Documentation or external knowledge base.": "Документация или внешняя база знаний.",

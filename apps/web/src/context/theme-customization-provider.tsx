@@ -124,7 +124,6 @@ function surfaceLimitsFor(axis: SurfaceNumberAxis) {
       return SURFACE_BLUR_LIMITS
     case 'backgroundScrim':
       return BACKGROUND_SCRIM_LIMITS
-    case 'dockOpacity':
     case 'sheetOpacity':
     case 'floatOpacity':
       return SURFACE_PANEL_OPACITY_LIMITS
@@ -143,7 +142,7 @@ function readSurfaceCookie(
   return legacy === undefined ? null : readNumberCookie(legacy, min, max)
 }
 
-// The legacy map is partial — the mobile dock/sheet and floating-overlay
+// The legacy map is partial — the mobile sheet and floating-overlay
 // axes shipped after the per-scheme split and never had a scheme-agnostic
 // cookie.
 function removeLegacySurfaceCookie(axis: SurfaceAxis) {
@@ -209,8 +208,6 @@ type ThemeCustomizationContextType = {
   setSurfaceBlur: (blur: number) => void
   backgroundScrim: number
   setBackgroundScrim: (scrim: number) => void
-  dockOpacity: number
-  setDockOpacity: (opacity: number) => void
   sheetOpacity: number
   setSheetOpacity: (opacity: number) => void
   floatOpacity: number
@@ -243,8 +240,6 @@ const FALLBACK_CONTEXT: ThemeCustomizationContextType = {
   setSurfaceBlur: () => {},
   backgroundScrim: DEFAULT_THEME_CUSTOMIZATION.backgroundScrim,
   setBackgroundScrim: () => {},
-  dockOpacity: DEFAULT_THEME_CUSTOMIZATION.dockOpacity,
-  setDockOpacity: () => {},
   sheetOpacity: SURFACE_DEFAULTS.dark.sheetOpacity,
   setSheetOpacity: () => {},
   floatOpacity: DEFAULT_THEME_CUSTOMIZATION.floatOpacity,
@@ -317,9 +312,6 @@ export function ThemeCustomizationProvider(props: {
   const [explicitBackgroundScrim, _setBackgroundScrim] = useState<
     number | null
   >(() => readSurfaceCookie('backgroundScrim', surfaceScheme))
-  const [explicitDockOpacity, _setDockOpacity] = useState<number | null>(() =>
-    readSurfaceCookie('dockOpacity', surfaceScheme)
-  )
   const [explicitSheetOpacity, _setSheetOpacity] = useState<number | null>(
     () => readSurfaceCookie('sheetOpacity', surfaceScheme)
   )
@@ -332,7 +324,6 @@ export function ThemeCustomizationProvider(props: {
   const surfaceBlur = explicitSurfaceBlur ?? surfaceDefaults.surfaceBlur
   const backgroundScrim =
     explicitBackgroundScrim ?? surfaceDefaults.backgroundScrim
-  const dockOpacity = explicitDockOpacity ?? surfaceDefaults.dockOpacity
   const sheetOpacity = explicitSheetOpacity ?? surfaceDefaults.sheetOpacity
   const floatOpacity = explicitFloatOpacity ?? surfaceDefaults.floatOpacity
   // Re-read storage when the color scheme flips so sliders, inline CSS
@@ -342,7 +333,6 @@ export function ThemeCustomizationProvider(props: {
     _setSurfaceOpacity(readSurfaceCookie('surfaceOpacity', surfaceScheme))
     _setSurfaceBlur(readSurfaceCookie('surfaceBlur', surfaceScheme))
     _setBackgroundScrim(readSurfaceCookie('backgroundScrim', surfaceScheme))
-    _setDockOpacity(readSurfaceCookie('dockOpacity', surfaceScheme))
     _setSheetOpacity(readSurfaceCookie('sheetOpacity', surfaceScheme))
     _setFloatOpacity(readSurfaceCookie('floatOpacity', surfaceScheme))
   }, [surfaceScheme])
@@ -421,16 +411,6 @@ export function ThemeCustomizationProvider(props: {
         : `${BACKGROUND_SCRIM_COLOR_BASES[surfaceScheme]} / ${explicitBackgroundScrim}%)`
     )
   }, [explicitBackgroundScrim, surfaceDefaults, surfaceScheme])
-
-  useEffect(() => {
-    applyCssVariable(
-      '--mobile-dock-opacity',
-      explicitDockOpacity === null ||
-        explicitDockOpacity === surfaceDefaults.dockOpacity
-        ? null
-        : `${explicitDockOpacity}%`
-    )
-  }, [explicitDockOpacity, surfaceDefaults])
 
   useEffect(() => {
     applyCssVariable(
@@ -580,26 +560,6 @@ export function ThemeCustomizationProvider(props: {
     [surfaceScheme, surfaceDefaults]
   )
 
-  const setDockOpacity = useCallback(
-    (value: number) => {
-      if (!Number.isFinite(value)) return
-      const clamped = Math.round(
-        Math.min(
-          SURFACE_PANEL_OPACITY_LIMITS.max,
-          Math.max(SURFACE_PANEL_OPACITY_LIMITS.min, value)
-        )
-      )
-      const atDefault = clamped === surfaceDefaults.dockOpacity
-      _setDockOpacity(atDefault ? null : clamped)
-      writeSurfaceCookie(
-        'dockOpacity',
-        surfaceScheme,
-        atDefault ? null : clamped
-      )
-    },
-    [surfaceScheme, surfaceDefaults]
-  )
-
   const setSheetOpacity = useCallback(
     (value: number) => {
       if (!Number.isFinite(value)) return
@@ -658,7 +618,6 @@ export function ThemeCustomizationProvider(props: {
     _setSurfaceOpacity(null)
     _setSurfaceBlur(null)
     _setBackgroundScrim(null)
-    _setDockOpacity(null)
     _setSheetOpacity(null)
     _setFloatOpacity(null)
   }, [setPreset, setFont, setRadius, setScale, setContentLayout, setBlur])
@@ -670,7 +629,6 @@ export function ThemeCustomizationProvider(props: {
       surfaceOpacity: surfaceDefaults.surfaceOpacity,
       surfaceBlur: surfaceDefaults.surfaceBlur,
       backgroundScrim: surfaceDefaults.backgroundScrim,
-      dockOpacity: surfaceDefaults.dockOpacity,
       sheetOpacity: surfaceDefaults.sheetOpacity,
       floatOpacity: surfaceDefaults.floatOpacity,
     }),
@@ -691,7 +649,6 @@ export function ThemeCustomizationProvider(props: {
         surfaceOpacity,
         surfaceBlur,
         backgroundScrim,
-        dockOpacity,
         sheetOpacity,
         floatOpacity,
       },
@@ -705,8 +662,6 @@ export function ThemeCustomizationProvider(props: {
       setSurfaceBlur,
       backgroundScrim,
       setBackgroundScrim,
-      dockOpacity,
-      setDockOpacity,
       sheetOpacity,
       setSheetOpacity,
       floatOpacity,
@@ -730,7 +685,6 @@ export function ThemeCustomizationProvider(props: {
       surfaceOpacity,
       surfaceBlur,
       backgroundScrim,
-      dockOpacity,
       sheetOpacity,
       floatOpacity,
       surfaceScheme,
@@ -740,7 +694,6 @@ export function ThemeCustomizationProvider(props: {
       setSurfaceOpacity,
       setSurfaceBlur,
       setBackgroundScrim,
-      setDockOpacity,
       setSheetOpacity,
       setFloatOpacity,
       setFont,

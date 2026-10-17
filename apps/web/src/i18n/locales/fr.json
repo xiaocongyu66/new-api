@@ -1685,7 +1685,6 @@
     "Do not wait one second between polling async tasks for this channel": "Ne pas attendre une seconde entre les interrogations des tâches asynchrones pour ce canal",
     "Do regex replacement in the target field": "Effectuer un remplacement par expression régulière dans le champ cible",
     "Do string replacement in the target field": "Effectuer un remplacement de chaîne dans le champ cible",
-    "Dock opacity": "Opacité de la barre inférieure",
     "Docs": "Documents",
     "Documentation Link": "Lien de la documentation",
     "Documentation or external knowledge base.": "Documentation ou base de connaissances externe.",

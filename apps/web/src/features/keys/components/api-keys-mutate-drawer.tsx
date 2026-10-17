@@ -784,7 +784,6 @@ export function ApiKeysMutateDrawer({
                 {isSubmitting ? t('Saving...') : t('Save changes')}
               </Button>
             </SheetFooter>
-            <div aria-hidden className='h-[5rem] shrink-0 md:hidden' />
           </form>
         </Form>
       </SheetContent>

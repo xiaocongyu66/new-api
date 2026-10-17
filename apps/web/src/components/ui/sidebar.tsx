@@ -210,11 +210,10 @@ function Sidebar({
       <Sheet
         open={openMobile}
         onOpenChange={setOpenMobile}
-        // Non-modal so the top bar and the bottom navigation bar stay
-        // fully interactive while the drawer is open. Pointer dismissal
-        // is disabled so an outside press (e.g. the header toggle button)
-        // does not close and immediately re-open the drawer; the overlay
-        // closes it explicitly instead.
+        // Non-modal so the top bar stays fully interactive while the drawer
+        // is open. Pointer dismissal is disabled so an outside press (e.g.
+        // the header toggle button) does not close and immediately re-open
+        // the drawer; the overlay closes it explicitly instead.
         modal={false}
         disablePointerDismissal
         {...props}
@@ -227,17 +226,15 @@ function Sidebar({
           className='bg-[var(--mobile-sidebar-surface)] text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden'
           overlayProps={{
             className:
-              'left-0 right-0 top-[var(--app-header-height,0px)] bottom-[calc(4.25rem+env(safe-area-inset-bottom,0px))] h-auto pointer-events-auto',
+              'left-0 right-0 top-[var(--app-header-height,0px)] bottom-0 h-auto pointer-events-auto',
             onClick: () => setOpenMobile(false),
           }}
           style={
             {
               '--sidebar-width': SIDEBAR_WIDTH_MOBILE,
-              // The mobile sheet lives between the fixed top bar and the
-              // floating bottom navigation panel (3.5rem bar + 0.75rem
-              // float gap + safe area) instead of covering either.
+              // The mobile sheet lives below the fixed top bar.
               top: 'var(--app-header-height, 0px)',
-              bottom: 'calc(4.25rem + env(safe-area-inset-bottom, 0px))',
+              bottom: 0,
               height: 'auto',
             } as React.CSSProperties
           }

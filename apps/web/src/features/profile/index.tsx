@@ -50,7 +50,7 @@ export function Profile() {
 
   return (
     <Main>
-      <div className='min-h-0 flex-1 overflow-auto px-3 py-3 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] sm:px-4 md:py-6'>
+      <div className='min-h-0 flex-1 overflow-auto px-3 py-3 sm:px-4 md:py-6'>
         <CardStaggerContainer className='mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-6'>
           <CardStaggerItem>
             <ProfileHeader profile={profile} loading={loading} />

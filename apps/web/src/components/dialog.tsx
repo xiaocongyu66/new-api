@@ -131,16 +131,6 @@ export function Dialog({
               {footer}
             </DialogFooter>
           ) : null}
-
-          {/*
-            Phones: one dock height (0.75rem inset + 3.5rem tall, z-[60]) plus a
-            gap, after the footer, so scrolling to the end brings the footer
-            buttons to rest above the floating dock instead of under it. The
-            space is part of the scrolled content, so the footer is not pinned.
-            Rem literals match the dock geometry, which ignores the theme
-            density axis.
-          */}
-          <div aria-hidden className='h-[5rem] shrink-0 md:hidden' />
         </div>
       </DialogContent>
     </DialogRoot>

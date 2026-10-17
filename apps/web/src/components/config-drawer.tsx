@@ -747,7 +747,6 @@ function BlurConfig() {
     setSurfaceOpacity,
     setSurfaceBlur,
     setBackgroundScrim,
-    setDockOpacity,
     setSheetOpacity,
     setFloatOpacity,
     surfaceScheme,
@@ -757,7 +756,6 @@ function BlurConfig() {
     customization.surfaceOpacity !== defaults.surfaceOpacity ||
     customization.surfaceBlur !== defaults.surfaceBlur ||
     customization.backgroundScrim !== defaults.backgroundScrim ||
-    customization.dockOpacity !== defaults.dockOpacity ||
     customization.sheetOpacity !== defaults.sheetOpacity ||
     customization.floatOpacity !== defaults.floatOpacity
 
@@ -771,7 +769,6 @@ function BlurConfig() {
           setSurfaceOpacity(defaults.surfaceOpacity)
           setSurfaceBlur(defaults.surfaceBlur)
           setBackgroundScrim(defaults.backgroundScrim)
-          setDockOpacity(defaults.dockOpacity)
           setSheetOpacity(defaults.sheetOpacity)
           setFloatOpacity(defaults.floatOpacity)
         }}
@@ -849,25 +846,6 @@ function BlurConfig() {
               setBackgroundScrim(Array.isArray(next) ? next[0] : next)
             }
             aria-label={t('Background scrim')}
-          />
-        </div>
-        <div className='rounded-lg border p-3 text-sm'>
-          <div className='flex items-center justify-between gap-3'>
-            <span>{t('Dock opacity')}</span>
-            <span className='text-muted-foreground text-xs tabular-nums'>
-              {customization.dockOpacity}%
-            </span>
-          </div>
-          <Slider
-            className='mt-2'
-            min={SURFACE_PANEL_OPACITY_LIMITS.min}
-            max={SURFACE_PANEL_OPACITY_LIMITS.max}
-            step={1}
-            value={[customization.dockOpacity]}
-            onValueChange={(next) =>
-              setDockOpacity(Array.isArray(next) ? next[0] : next)
-            }
-            aria-label={t('Dock opacity')}
           />
         </div>
         <div className='rounded-lg border p-3 text-sm'>

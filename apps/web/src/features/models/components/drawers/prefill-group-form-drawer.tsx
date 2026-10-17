@@ -433,7 +433,6 @@ export function PrefillGroupFormDrawer({
                     : t('Create')}
               </Button>
             </SheetFooter>
-            <div aria-hidden className='h-[5rem] shrink-0 md:hidden' />
           </form>
         </Form>
       </SheetContent>

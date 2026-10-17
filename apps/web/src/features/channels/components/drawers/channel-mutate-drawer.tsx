@@ -4664,16 +4664,6 @@ function ChannelMutateDrawerContent({
                   </Button>
                 </SheetFooter>
               )}
-              {/*
-                Phones: one dock height (0.75rem inset + 3.5rem tall, z-[60])
-                plus a gap, after the footer inside the scroller, so scrolling to
-                the end brings the footer buttons to rest above the floating
-                dock instead of under it. Rem literals match the dock geometry,
-                which ignores the theme density axis.
-              */}
-              {!isInline && (
-                <div aria-hidden className='h-[5rem] shrink-0 md:hidden' />
-              )}
             </form>
           </Form>
         </SheetContent>

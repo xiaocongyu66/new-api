@@ -1685,7 +1685,6 @@
     "Do not wait one second between polling async tasks for this channel": "このチャネルの非同期タスクをポーリングする間に1秒待機しない",
     "Do regex replacement in the target field": "ターゲットフィールドで正規表現置換",
     "Do string replacement in the target field": "ターゲットフィールドで文字列置換",
-    "Dock opacity": "下部バーの不透明度",
     "Docs": "ドキュメント",
     "Documentation Link": "ドキュメントリンク",
     "Documentation or external knowledge base.": "ドキュメントまたは外部ナレッジベース。",

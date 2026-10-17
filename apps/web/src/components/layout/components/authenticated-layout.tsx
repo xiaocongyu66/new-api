@@ -26,7 +26,6 @@ import { cn } from '@/lib/utils'
 
 import { AppHeader } from './app-header'
 import { AppSidebar } from './app-sidebar'
-import { MobileBottomNav } from './mobile-bottom-nav'
 
 type AuthenticatedLayoutProps = {
   children?: React.ReactNode
@@ -65,7 +64,6 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
               {props.children ?? <AnimatedOutlet />}
             </SidebarInset>
           </div>
-          <MobileBottomNav />
         </SidebarProvider>
       </SearchProvider>
     </LayoutProvider>
