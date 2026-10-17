@@ -175,7 +175,7 @@ export function DataTableBulkActions<TData>({
           className={cn(
             'p-2 shadow-xl',
             'rounded-xl border',
-            'bg-[var(--float-surface)] supports-[backdrop-filter]:bg-[var(--float-surface)] backdrop-blur-lg',
+            'bg-[var(--float-surface)] backdrop-blur-lg',
             'flex items-center gap-x-2'
           )}
         >

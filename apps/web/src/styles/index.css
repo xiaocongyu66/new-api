@@ -495,7 +495,6 @@ body[data-app-background='true'] {
    * row's siblings, and Chromium leaves those out of the sticky cell's backdrop
    * — the neighbouring role/invite columns stayed legible right next to the
    * action icons at every alpha below solid. */
-  --table-pinned: var(--table-pinned-solid);
   /* The header band is a veil of the text colour rather than a thinned-out
    * near-black fill: mixed from `--background` it stayed a black bar over the
    * photo at any alpha. Reserved as a tint, it reads as frosted glass and can
@@ -512,6 +511,12 @@ body[data-app-background='true'] {
     var(--table-disabled-hover-solid) 40%,
     transparent
   );
+  --overview-veil: 40%;
+  --overview-veil-compact: 30%;
+}
+
+html.dark body[data-app-background='true'] {
+  --overview-veil: 45%;
 }
 
 /* TextShimmer: background-position sweep from right to left */

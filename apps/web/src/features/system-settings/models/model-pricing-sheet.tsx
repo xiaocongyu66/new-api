@@ -681,7 +681,7 @@ export const ModelPricingEditorPanel = forwardRef<
             </div>
           </div>
           {showActions && (
-            <div className='bg-[var(--float-surface)] shrink-0 border-t p-3 backdrop-blur'>
+            <div className='bg-background/95 supports-[backdrop-filter]:bg-[var(--float-surface)] shrink-0 border-t p-3 backdrop-blur'>
               <div className='flex flex-col-reverse gap-2 sm:flex-row sm:justify-end'>
                 {onSave && (
                   <Button

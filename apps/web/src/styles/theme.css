@@ -33,6 +33,12 @@ body,
   /* Floating panels — popovers, dropdown menus, selects, comboboxes, the
    * command palette: one surface driven by the float-opacity axis. */
   --float-surface: color-mix(in oklab, var(--popover) var(--float-opacity), transparent);
+  /* Chip fills alias their `-solid` source for the same reason: theme presets
+   * write their palette to <body>, so an alias resolved on :root would keep the
+   * base hue and the background-image scope would re-mix the wrong colour. */
+  --muted: var(--muted-solid);
+  --accent: var(--accent-solid);
+  --sidebar-accent: var(--sidebar-accent-solid);
 }
 
 @theme inline {
@@ -204,10 +210,8 @@ body,
    * `--muted` / `--accent` alias them so the background-image scope can swap
    * in a translucent mix (see index.css) without disturbing the palette. */
   --muted-solid: oklch(0.962 0 0);
-  --muted: var(--muted-solid);
   --muted-foreground: oklch(0.42 0 0);
   --accent-solid: color-mix(in oklch, var(--primary) 12%, var(--background));
-  --accent: var(--accent-solid);
   --accent-foreground: oklch(0.321 0 0);
   --destructive: oklch(0.641 0.218 28.9);
   --destructive-foreground: oklch(0.985 0 0);
@@ -235,10 +239,14 @@ body,
   --sidebar-primary: oklch(0.614 0.207 262);
   --sidebar-primary-foreground: oklch(1 0 0);
   --sidebar-accent-solid: color-mix(in oklch, var(--primary) 12%, var(--background));
-  --sidebar-accent: var(--sidebar-accent-solid);
   --sidebar-accent-foreground: oklch(0.55 0.19 262);
   --sidebar-border: oklch(0.907 0 0);
   --sidebar-ring: oklch(0.614 0.207 262);
+  /* Strength of the dashboard setup-guide veil. The background-image scope
+   * lowers it so the photo reads through; without a photo the original
+   * strengths apply. */
+  --overview-veil: 85%;
+  --overview-veil-compact: 55%;
   --skeleton-base: oklch(0.97 0 0);
   --skeleton-highlight: oklch(0.985 0 0);
   --table-row-solid: var(--background);
@@ -316,7 +324,6 @@ body,
   --secondary: color-mix(in oklch, var(--primary) 18%, var(--background));
   --secondary-foreground: var(--primary);
   --muted-solid: oklch(0.256 0 0);
-  --muted: var(--muted-solid);
   --muted-foreground: oklch(0.785 0 0);
   --accent-solid: color-mix(in oklch, var(--primary) 20%, var(--background));
   --accent: var(--accent-solid);
@@ -348,6 +355,8 @@ body,
   --sidebar-accent-foreground: oklch(0.8 0.12 262);
   --sidebar-border: oklch(1 0 0 / 14%);
   --sidebar-ring: oklch(0.72 0.148 262);
+  --overview-veil: 60%;
+  --overview-veil-compact: 60%;
   --skeleton-base: oklch(0.27 0 0);
   --skeleton-highlight: oklch(0.36 0 0);
   --table-row-solid: var(--background);

@@ -29,7 +29,7 @@ export const sideDrawerContentClassName = (className?: string) =>
 
 export const sideDrawerHeaderClassName = (className?: string) =>
   cn(
-    'border-border/70 bg-[var(--float-surface)] border-b px-4 py-3 text-start backdrop-blur sm:px-6 sm:py-4',
+    'border-border/70 bg-background/95 supports-[backdrop-filter]:bg-[var(--float-surface)] border-b px-4 py-3 text-start backdrop-blur sm:px-6 sm:py-4',
     className
   )
 
@@ -47,7 +47,7 @@ export const sideDrawerFormClassName = (className?: string) =>
 
 export const sideDrawerFooterClassName = (className?: string) =>
   cn(
-    'border-border/70 bg-[var(--float-surface)] grid grid-cols-2 gap-2 border-t px-4 py-3 backdrop-blur sm:flex sm:flex-row sm:justify-end sm:px-6 sm:py-4',
+    'border-border/70 bg-background/95 supports-[backdrop-filter]:bg-[var(--float-surface)] grid grid-cols-2 gap-2 border-t px-4 py-3 backdrop-blur sm:flex sm:flex-row sm:justify-end sm:px-6 sm:py-4',
     className
   )
 

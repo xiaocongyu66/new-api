@@ -61,7 +61,7 @@ function getPinnedColumnClassName(
   const edgeClassName =
     pinnedColumn.side === 'left'
       ? 'shadow-[8px_0_10px_-10px_hsl(var(--foreground))]'
-      : 'shadow-[-8px_0_10px_-10px_hsl(var(--foreground))]'
+      : 'shadow-[-8px_0_10px_-10px_var(--foreground)]'
 
   return cn(
     'sticky whitespace-nowrap',
@@ -74,10 +74,11 @@ function getPinnedColumnClassName(
     // icons), and a backdrop blur cannot help: a pinned cell only covers its own
     // row's siblings, which Chromium leaves out of its backdrop. So the strip
     // uses the opaque variants of both bands, hover and selected states
-    // included.
-    'backdrop-blur-md',
+    // included - opaque means no backdrop blur is needed (and none is added:
+    // `backdrop-filter` would also make the cell a containing block for any
+    // absolutely positioned descendant).
     kind === 'header'
-      ? '[background-color:var(--table-header-solid)] group-hover:[background-color:var(--table-header-hover-solid)] z-30'
+      ? '[background-color:var(--table-header-bg,var(--table-header-solid))] group-hover:[background-color:var(--table-header-hover-solid)] z-30'
       : '[background-color:var(--table-pinned)] z-10 group-hover:[background-color:color-mix(in_oklch,var(--muted-solid)_50%,var(--background))] group-data-[state=selected]:[background-color:var(--muted-solid)]',
     pinnedColumn.className,
     kind === 'header'
