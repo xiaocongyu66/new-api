@@ -103,11 +103,25 @@ export function MobileBottomNav() {
     (tab): tab is BottomGroupTab => tab.kind === 'group' && tab.id === openTabId
   )
 
+  const handleTabTap = (
+    event: React.MouseEvent<HTMLElement>,
+    tab: BottomTab
+  ) => {
+    setOpenMobile(false)
+    // A pointer tap must not leave the browser's focus on a dock icon: the
+    // dock reports its state through the accent, so a lingering focus reads as
+    // a second, unintended selection. Keyboard activation (`detail === 0`)
+    // keeps focus, so its focus ring stays visible.
+    if (event.detail > 0) event.currentTarget.blur()
+    if (tab.kind === 'group') setOpenTabId(tab.id)
+  }
+
   return (
     <>
       {createPortal(
         <nav
           data-slot='mobile-bottom-nav'
+          aria-label={t('Primary navigation')}
           className={cn(
             // Geometry is quoted in rem literals: the theme density axis
             // redefines --spacing, so spacing-scale utilities would make the
@@ -120,29 +134,52 @@ export function MobileBottomNav() {
         >
           {tabs.map((tab) => {
             const Icon = tab.icon
+            const ownsOpenDrawer = tab.kind === 'group' && tab.id === openTabId
+            // Two different things, deliberately kept apart: a link tab stays
+            // lit while its page is the current one, a drawer tab only while
+            // its own drawer is up. Letting a drawer tab follow the route made
+            // the drawer's section light up the moment a drawer closed, which
+            // read as the dock moving focus to an icon nobody had tapped.
+            const highlighted =
+              tab.kind === 'link' ? tab.isActive : ownsOpenDrawer
             const inner = (
               <span
                 className={cn(
                   'flex max-w-full min-w-0 flex-col items-center justify-center gap-1 px-1 py-1.5',
-                  (openTabId !== null ? tab.id === openTabId : tab.isActive)
+                  highlighted
                     ? 'text-primary font-medium'
                     : 'text-muted-foreground'
                 )}
               >
-                {Icon ? <Icon className='size-5 shrink-0' /> : null}
+                {Icon ? (
+                  <Icon className='size-5 shrink-0 transition-transform duration-100 ease-out motion-safe:group-active/tab:scale-90' />
+                ) : null}
                 <span className='max-w-full truncate text-[10px] leading-none'>
                   {tab.title}
                 </span>
               </span>
             )
-            const slot = 'flex min-w-0 flex-1 items-center justify-center'
+            // `group/tab` has to sit on the tab itself: the press animates the
+            // icon alone (`group-active/tab:` on the icon), because scaling the
+            // whole slot dragged the icon and its label together and read as
+            // the tab wobbling. The global
+            // `button:active { transform: scale(.98) }` is cancelled here (it
+            // is unlayered, so a plain utility cannot outrank it) so that an
+            // <a> tab and a <button> tab press identically. A tab with no icon
+            // (possible once the chat presets are disabled) has nothing to
+            // press, so it falls back to the standalone `scale` property, which
+            // the cancelled `transform` cannot interfere with.
+            const slot = cn(
+              'group/tab flex min-w-0 flex-1 items-center justify-center rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset active:transform-none!',
+              !Icon && 'motion-safe:active:scale-[0.98]'
+            )
             return tab.kind === 'link' ? (
               <Link
                 key={tab.id}
                 to={tab.url}
                 aria-current={tab.isActive ? 'page' : undefined}
                 className={slot}
-                onClick={() => setOpenMobile(false)}
+                onClick={(event) => handleTabTap(event, tab)}
               >
                 {inner}
               </Link>
@@ -151,10 +188,9 @@ export function MobileBottomNav() {
                 key={tab.id}
                 type='button'
                 aria-current={tab.isActive ? 'page' : undefined}
-                onClick={() => {
-                  setOpenMobile(false)
-                  setOpenTabId(tab.id)
-                }}
+                aria-haspopup='dialog'
+                aria-expanded={ownsOpenDrawer}
+                onClick={(event) => handleTabTap(event, tab)}
                 className={slot}
               >
                 {inner}
