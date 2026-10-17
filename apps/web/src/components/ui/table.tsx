@@ -22,7 +22,19 @@ import * as React from 'react'
 
 import { cn } from '@/lib/utils'
 
-function Table({ className, ...props }: React.ComponentProps<'table'>) {
+function Table({
+  className,
+  afterTable,
+  ...props
+}: React.ComponentProps<'table'> & {
+  /**
+   * Content rendered after the table but still inside its horizontal scroll
+   * container, so it can size against the visible width instead of the table's
+   * full (possibly overflowing) width — the table's own empty state relies on
+   * this.
+   */
+  afterTable?: React.ReactNode
+}) {
   return (
     <div
       data-slot='table-container'
@@ -36,6 +48,7 @@ function Table({ className, ...props }: React.ComponentProps<'table'>) {
         )}
         {...props}
       />
+      {afterTable}
     </div>
   )
 }

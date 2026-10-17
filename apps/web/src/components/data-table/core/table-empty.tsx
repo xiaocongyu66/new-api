@@ -26,13 +26,8 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
-import { TableRow, TableCell } from '@/components/ui/table'
 
 interface TableEmptyProps {
-  /**
-   * Number of columns to span
-   */
-  colSpan: number
   /**
    * Custom title for empty state
    * @default 'No Data'
@@ -56,10 +51,13 @@ interface TableEmptyProps {
 
 /**
  * Generic table empty state component
- * Displays a centered empty state message when table has no data
+ *
+ * Rendered as a block below the table (inside its scroll container) rather than
+ * as a full-width table cell: a cell spanning the table's own width centres its
+ * content in that width, which is off-screen as soon as the columns overflow
+ * the viewport.
  */
 export function TableEmpty({
-  colSpan,
   title,
   description,
   icon,
@@ -70,19 +68,17 @@ export function TableEmpty({
   const resolvedDescription =
     description ?? t('No records found. Try adjusting your filters.')
   return (
-    <TableRow>
-      <TableCell colSpan={colSpan} className='h-[400px] p-0'>
-        <Empty>
-          <EmptyHeader>
-            <EmptyMedia variant='icon'>
-              {icon || <Database className='size-6' />}
-            </EmptyMedia>
-            <EmptyTitle>{resolvedTitle}</EmptyTitle>
-            <EmptyDescription>{resolvedDescription}</EmptyDescription>
-          </EmptyHeader>
-          {children}
-        </Empty>
-      </TableCell>
-    </TableRow>
+    <div className='h-[400px]'>
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia variant='icon'>
+            {icon || <Database className='size-6' />}
+          </EmptyMedia>
+          <EmptyTitle>{resolvedTitle}</EmptyTitle>
+          <EmptyDescription>{resolvedDescription}</EmptyDescription>
+        </EmptyHeader>
+        {children}
+      </Empty>
+    </div>
   )
 }
