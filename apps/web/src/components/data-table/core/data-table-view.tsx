@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import type { Row, Table as TanstackTable } from '@tanstack/react-table'
 import * as React from 'react'
 
-import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
+import { Table, TableBody } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 
 import {
@@ -49,10 +49,6 @@ export { DataTableRowActionMenu } from './row-action-menu'
 
 export function DataTableView<TData>(props: DataTableViewProps<TData>) {
   const rows = props.rows ?? props.table.getRowModel().rows
-  const colSpan = React.useMemo(
-    () => props.table.getVisibleLeafColumns().length,
-    [props.table]
-  )
   const columnClassName = useResolvedColumnClassName(
     props.table,
     props.getColumnClassName,
@@ -71,14 +67,12 @@ export function DataTableView<TData>(props: DataTableViewProps<TData>) {
         <SplitHeaderTableView
           props={props}
           rows={rows}
-          colSpan={colSpan}
           getColumnClassName={columnClassName}
         />
       ) : (
         <UnifiedTableView
           props={props}
           rows={rows}
-          colSpan={colSpan}
           getColumnClassName={columnClassName}
         />
       )}
@@ -89,19 +83,21 @@ export function DataTableView<TData>(props: DataTableViewProps<TData>) {
 function UnifiedTableView<TData>({
   props,
   rows,
-  colSpan,
   getColumnClassName,
 }: {
   props: DataTableViewProps<TData>
   rows: Row<TData>[]
-  colSpan: number
   getColumnClassName: DataTableColumnClassName
 }) {
   const tableSizing = getTableSizing(props)
 
   return (
     <div className={props.tableContainerClassName}>
-      <Table className={props.tableClassName} style={tableSizing.style}>
+      <Table
+        className={props.tableClassName}
+        style={tableSizing.style}
+        afterTable={renderEmptyState(props, rows)}
+      >
         {tableSizing.colgroup}
         <DataTableHeader
           table={props.table}
@@ -110,7 +106,7 @@ function UnifiedTableView<TData>({
           rowClassName={props.tableHeaderRowClassName}
           getColumnClassName={getColumnClassName}
         />
-        {renderTableBody(props, rows, colSpan, getColumnClassName)}
+        {renderTableBody(props, rows, getColumnClassName)}
       </Table>
     </div>
   )
@@ -119,12 +115,10 @@ function UnifiedTableView<TData>({
 function SplitHeaderTableView<TData>({
   props,
   rows,
-  colSpan,
   getColumnClassName,
 }: {
   props: DataTableViewProps<TData>
   rows: Row<TData>[]
-  colSpan: number
   getColumnClassName: DataTableColumnClassName
 }) {
   const tableSizing = getTableSizing(props)
@@ -161,8 +155,9 @@ function SplitHeaderTableView<TData>({
             rowClassName={props.tableHeaderRowClassName}
             getColumnClassName={getColumnClassName}
           />
-          {renderTableBody(props, rows, colSpan, getColumnClassName)}
+          {renderTableBody(props, rows, getColumnClassName)}
         </table>
+        {renderEmptyState(props, rows)}
       </div>
     </div>
   )
@@ -248,12 +243,11 @@ function getTableSizing<TData>(props: DataTableViewProps<TData>): {
 function renderTableBody<TData>(
   props: DataTableViewProps<TData>,
   rows: Row<TData>[],
-  colSpan: number,
   getColumnClassName: DataTableColumnClassName
 ) {
   return (
     <TableBody className={props.tableBodyClassName}>
-      {renderTableBodyContent(props, rows, colSpan, getColumnClassName)}
+      {renderTableBodyContent(props, rows, getColumnClassName)}
     </TableBody>
   )
 }
@@ -261,7 +255,6 @@ function renderTableBody<TData>(
 function renderTableBodyContent<TData>(
   props: DataTableViewProps<TData>,
   rows: Row<TData>[],
-  colSpan: number,
   getColumnClassName: DataTableColumnClassName
 ) {
   if (props.isLoading) {
@@ -274,10 +267,6 @@ function renderTableBodyContent<TData>(
     )
   }
 
-  if (rows.length === 0) {
-    return renderEmptyState(props, colSpan)
-  }
-
   return rows.map((row) =>
     props.renderRow
       ? props.renderRow(row, {
@@ -288,29 +277,34 @@ function renderTableBodyContent<TData>(
   )
 }
 
+/**
+ * The empty state is laid out next to the table, not inside it: a `colSpan` cell
+ * stretches to the table's own width, and once the columns overflow the
+ * viewport that width runs past the right edge, so the centred message ends up
+ * clipped outside the visible area. `sticky left-0 w-full` instead measures
+ * against the scroll container, keeping the message centred in view while the
+ * table scrolls sideways underneath.
+ */
 function renderEmptyState<TData>(
   props: DataTableViewProps<TData>,
-  colSpan: number
+  rows: Row<TData>[]
 ) {
-  if (props.emptyContent) {
-    return (
-      <TableRow>
-        <TableCell colSpan={colSpan} className={props.emptyCellClassName}>
-          {props.emptyContent}
-        </TableCell>
-      </TableRow>
-    )
-  }
+  if (props.isLoading || rows.length > 0) return null
 
   return (
-    <TableEmpty
-      colSpan={colSpan}
-      title={props.emptyTitle}
-      description={props.emptyDescription}
-      icon={props.emptyIcon}
-    >
-      {props.emptyAction}
-    </TableEmpty>
+    <div className='sticky left-0 w-full'>
+      {props.emptyContent ? (
+        <div className={props.emptyCellClassName}>{props.emptyContent}</div>
+      ) : (
+        <TableEmpty
+          title={props.emptyTitle}
+          description={props.emptyDescription}
+          icon={props.emptyIcon}
+        >
+          {props.emptyAction}
+        </TableEmpty>
+      )}
+    </div>
   )
 }
 
