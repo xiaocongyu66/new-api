@@ -67,9 +67,18 @@ function getPinnedColumnClassName(
     'sticky whitespace-nowrap',
     pinnedColumn.side === 'left' ? 'left-0' : 'right-0',
     edgeClassName,
+    // The pinned strip exists to keep its column reachable while the rest
+    // scrolls underneath it, so it has to hide what passes behind. Both the row
+    // band and the header band are far too transparent for that job (the
+    // neighbouring role/invite columns stayed readable next to the action
+    // icons), and a backdrop blur cannot help: a pinned cell only covers its own
+    // row's siblings, which Chromium leaves out of its backdrop. So the strip
+    // uses the opaque variants of both bands, hover and selected states
+    // included.
+    'backdrop-blur-md',
     kind === 'header'
-      ? '[background-color:var(--table-header-bg,var(--table-header))] group-hover:[background-color:var(--table-header-hover)] z-30'
-      : 'bg-background z-10 group-hover:[background-color:color-mix(in_oklch,var(--muted)_50%,var(--background))] group-data-[state=selected]:bg-muted',
+      ? '[background-color:var(--table-header-solid)] group-hover:[background-color:var(--table-header-hover-solid)] z-30'
+      : '[background-color:var(--table-pinned)] z-10 group-hover:[background-color:color-mix(in_oklch,var(--muted-solid)_50%,var(--background))] group-data-[state=selected]:[background-color:var(--muted-solid)]',
     pinnedColumn.className,
     kind === 'header'
       ? pinnedColumn.headerClassName

@@ -3038,7 +3038,7 @@ function PruneObjectsEditor(pruneObjectsEditorProps: PruneObjectsEditorProps) {
                 {draft.rules.map((rule, ruleIndex) => (
                   <div
                     key={rule.id}
-                    className='bg-background rounded-md border p-2'
+                    className='bg-card-surface rounded-md border p-2'
                   >
                     <div className='mb-1 flex items-center justify-between'>
                       <Badge variant='outline' className='text-[10px]'>

@@ -582,7 +582,7 @@ function RateLimitGroupSection(props: RateLimitGroupSectionProps) {
         {statusBadge}
       </SectionHeading>
       {props.meteredFeature ? (
-        <div className='bg-background ring-border/60 inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-2 py-1 text-xs ring-1'>
+        <div className='bg-muted/40 ring-border/60 inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-2 py-1 text-xs ring-1'>
           <span className='text-muted-foreground text-[11px]'>
             metered_feature
           </span>
@@ -614,7 +614,7 @@ function InfoField(props: {
   return (
     <div
       className={cn(
-        'bg-background ring-border/60 min-w-0 rounded-lg p-3 ring-1',
+        'bg-card-surface ring-border/60 min-w-0 rounded-lg p-3 ring-1',
         props.className
       )}
     >
@@ -678,7 +678,7 @@ function ResetCreditItem(props: { credit: CodexResetCredit; index: number }) {
     normalizeResetCreditStatus(props.credit.status) === 'available'
 
   return (
-    <div className='bg-background rounded-lg border p-3'>
+    <div className='bg-card-surface rounded-lg border p-3'>
       <div className='flex flex-wrap items-start justify-between gap-3'>
         <div className='min-w-0'>
           <div className='flex flex-wrap items-center gap-2'>

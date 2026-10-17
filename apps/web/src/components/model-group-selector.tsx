@@ -116,7 +116,7 @@ const ModelTriggerButton = React.forwardRef<
       'flex h-8 items-center gap-2 border px-3 font-medium',
       'justify-center p-0 sm:w-auto sm:justify-start sm:px-3',
       'w-8',
-      'bg-background text-foreground',
+      'bg-card-surface text-foreground',
       'hover:bg-accent transition-colors',
       'focus:!ring-0 focus:!outline-none',
       'shadow-none',
@@ -152,7 +152,7 @@ const GroupTriggerButton = React.forwardRef<
       'flex h-8 items-center gap-2 border px-3 font-medium',
       'justify-center p-0 sm:w-auto sm:justify-start sm:px-3',
       'w-8',
-      'bg-background text-foreground',
+      'bg-card-surface text-foreground',
       'hover:bg-accent transition-colors',
       'focus:!ring-0 focus:!outline-none',
       'shadow-none',
@@ -490,7 +490,7 @@ export const GroupSelector: React.FC<GroupSelectorProps> = React.memo(
                     'border-border hover:bg-accent',
                     selectedGroup === group.value
                       ? 'bg-accent border-primary/20'
-                      : 'bg-background'
+                      : 'bg-card-surface'
                   )}
                 >
                   <div className='flex min-w-0 flex-1 items-center gap-3'>
@@ -663,7 +663,7 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
       aria-expanded={open}
       className={cn(
         'h-8 max-w-[15rem] justify-start gap-2 border px-2.5 font-medium shadow-none',
-        'bg-background/80 hover:bg-accent/70 text-foreground',
+        'bg-muted/70 hover:bg-accent/70 text-foreground',
         'focus:!ring-0 focus:!outline-none',
         className
       )}

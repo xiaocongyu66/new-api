@@ -67,7 +67,7 @@ export function PlaygroundEmptyState({
 
             return (
               <Button
-                className='h-auto min-h-12 justify-start gap-3 border-border bg-card px-4 py-3 text-left whitespace-normal'
+                className='h-auto min-h-12 justify-start gap-3 border-border bg-card-surface px-4 py-3 text-left whitespace-normal'
                 key={text}
                 onClick={() => onSelectPrompt(prompt)}
                 variant='outline'

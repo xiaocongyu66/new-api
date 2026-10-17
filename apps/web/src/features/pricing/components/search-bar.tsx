@@ -59,7 +59,7 @@ export function SearchBar(props: SearchBarProps) {
         placeholder={props.placeholder || t('Search models...')}
         value={props.value}
         onChange={(e) => props.onChange(e.target.value)}
-        className='bg-card h-12 pe-16 ps-10 text-sm shadow-sm'
+        className='bg-card-surface h-12 pe-16 ps-10 text-sm shadow-sm'
         aria-label={t('Search models')}
       />
       <div className='absolute top-1/2 end-2.5 flex -translate-y-1/2 items-center gap-1'>

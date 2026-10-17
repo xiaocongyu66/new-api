@@ -334,7 +334,7 @@ export function SetupWizard() {
                         ? 'border-primary ring-primary/20 ring-2'
                         : isCompleted
                           ? 'border-primary/40 bg-primary/5'
-                          : 'border-muted bg-card'
+                          : 'border-muted bg-card-surface'
                     )}
                   >
                     <div className='flex items-start gap-3'>

@@ -175,7 +175,7 @@ export function GroupPricingSection(props: {
               <div className='text-muted-foreground mb-1 text-[10px] font-medium tracking-wider uppercase'>
                 {t('Raw expression')}
               </div>
-              <code className='text-muted-foreground bg-background/80 block max-h-28 overflow-auto rounded-md border px-2 py-1.5 font-mono text-xs break-all'>
+              <code className='text-muted-foreground bg-muted/40 block max-h-28 overflow-auto rounded-md border px-2 py-1.5 font-mono text-xs break-all'>
                 {props.model.billing_expr}
               </code>
             </div>

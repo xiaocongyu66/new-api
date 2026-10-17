@@ -444,7 +444,7 @@ function ChannelEditorNav(props: {
       <div className='flex max-h-[calc(100dvh-10rem)] flex-col gap-3 overflow-y-auto overscroll-contain pr-1'>
         <div className='border-border/60 bg-muted/20 rounded-lg border p-3'>
           <div className='flex min-w-0 items-center gap-2'>
-            <span className='bg-background flex size-8 shrink-0 items-center justify-center rounded-md border'>
+            <span className='bg-muted/40 flex size-8 shrink-0 items-center justify-center rounded-md border'>
               {props.providerLogo}
             </span>
             <div className='min-w-0'>
@@ -459,7 +459,7 @@ function ChannelEditorNav(props: {
         </div>
 
         <nav
-          className='border-border/60 bg-background rounded-lg border p-1'
+          className='border-border/60 bg-muted/20 rounded-lg border p-1'
           aria-label={props.navigationLabel}
         >
           {props.items.map((item) => {
@@ -1778,7 +1778,7 @@ function ChannelMutateDrawerContent({
           }
           className={cn(
             isInline
-              ? 'bg-background text-foreground flex min-h-0 flex-1 flex-col overflow-visible rounded-lg shadow-none'
+              ? 'bg-card-surface text-foreground flex min-h-0 flex-1 flex-col overflow-visible rounded-lg shadow-none'
               : sideDrawerContentClassName('sm:max-w-5xl')
           )}
         >

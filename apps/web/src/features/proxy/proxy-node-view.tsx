@@ -598,7 +598,7 @@ function ProxyNodeRow(props: {
       {expanded && (
         <tr className="bg-muted/15 border-b" onClick={(e) => e.stopPropagation()}>
           <td colSpan={8} className="p-3.5">
-            <div className="rounded-lg border bg-background/95 p-3.5 space-y-3 shadow-xs">
+            <div className="rounded-lg border bg-card-surface p-3.5 space-y-3 shadow-xs">
               {/* 第一行：红色错误信息（若有） */}
               {node.last_error && (
                 <div className="rounded-md border border-destructive/20 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive flex items-center justify-between">

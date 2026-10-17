@@ -309,7 +309,7 @@ export function PromptInputAttachment({
         }
       >
         <div className='relative size-5 shrink-0'>
-          <div className='bg-background absolute inset-0 flex size-5 items-center justify-center overflow-hidden rounded transition-opacity group-hover:opacity-0'>
+          <div className='bg-card-surface absolute inset-0 flex size-5 items-center justify-center overflow-hidden rounded transition-opacity group-hover:opacity-0'>
             {isImage ? (
               <img
                 alt={filename || 'attachment'}

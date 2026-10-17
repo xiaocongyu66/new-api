@@ -74,7 +74,7 @@ function AudioClipCard({ clip }: { clip: AudioClip }) {
   if (!audioUrl) return null
 
   return (
-    <div className='bg-card flex gap-4 rounded-lg border p-4'>
+    <div className='bg-card-surface flex gap-4 rounded-lg border p-4'>
       {imageUrl && (
         <img
           src={imageUrl}

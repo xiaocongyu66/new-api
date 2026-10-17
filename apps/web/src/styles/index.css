@@ -86,11 +86,14 @@ html.dark body[data-app-background='true'] [data-slot='app-header'] {
  * not the inner nav: returning to the top re-widens the nav through a
  * transition, and painting the narrower inner element left the wrapper's
  * side gutters bare over the raw photo. The fade matches the nav's own
- * 700ms width transition so the band melts away as the pill forms. */
+ * 700ms width transition so the band melts away as the pill forms.
+ * The veil stays light: at 70% the band read as a flat pale strip that hid
+ * the photo completely once the surface sliders went low, and the nav's own
+ * text shadow already carries the glyph contrast. */
 body[data-app-background='true']
   [data-slot='public-header']:has(nav[data-scrolled='false']) {
-  background-color: color-mix(in oklch, var(--background) 70%, transparent);
-  backdrop-filter: blur(14px);
+  background-color: color-mix(in oklch, var(--background) 45%, transparent);
+  backdrop-filter: blur(10px);
 }
 
 body[data-app-background='true'] [data-slot='public-header'] {
@@ -456,6 +459,59 @@ body[data-theme-card-blur='true'] [data-slot='card'] {
 [data-slot='app-header'],
 [data-slot='sidebar-inner'] {
   background-color: var(--header-surface);
+}
+
+/* Neutral chip fills — icon wells, badges, combobox chips, the active
+ * navigation pill, menu focus states — come from the `muted` / `accent` /
+ * `sidebar-accent` tokens. Solid, they read as opaque patches floating over
+ * the photo once the surface or float slider drops, so the chip tokens
+ * themselves turn into a translucent mix of their palette value while the
+ * background image is up. Doing it at the token level (rather than per
+ * utility) covers every form of the fill, including the variant utilities
+ * (`aria-pressed:bg-muted`, `data-[state=on]:bg-muted`) that a `.bg-muted`
+ * selector would miss. The explicit alpha variants (`bg-muted/20`) keep
+ * working: they scale this mix down further.
+ *
+ * The table bands join them for the same reason: `--table-row` and
+ * `--table-header` are mixed from the opaque page color, so a table painted
+ * them across its full width behind its sticky header and its pinned
+ * columns, which is exactly the flat bar that survives the opacity sliders.
+ * They sit lower than the chips (40% vs 60%) because they cover whole rows and
+ * columns: at 60% a header still read as a distinctly solid band against the
+ * table body. */
+body[data-app-background='true'] {
+  --muted: color-mix(in oklab, var(--muted-solid) 60%, transparent);
+  --accent: color-mix(in oklab, var(--accent-solid) 60%, transparent);
+  --sidebar-accent: color-mix(
+    in oklab,
+    var(--sidebar-accent-solid) 60%,
+    transparent
+  );
+  --table-row: color-mix(in oklab, var(--table-row-solid) 40%, transparent);
+  /* Pinned columns stay opaque: they exist to cover the columns sliding under
+   * them, and nothing else can do that job. The sticky header gets away with a
+   * translucent band because the body it covers is painted in another subtree
+   * (its backdrop blur applies), but a pinned cell only ever covers its own
+   * row's siblings, and Chromium leaves those out of the sticky cell's backdrop
+   * — the neighbouring role/invite columns stayed legible right next to the
+   * action icons at every alpha below solid. */
+  --table-pinned: var(--table-pinned-solid);
+  /* The header band is a veil of the text colour rather than a thinned-out
+   * near-black fill: mixed from `--background` it stayed a black bar over the
+   * photo at any alpha. Reserved as a tint, it reads as frosted glass and can
+   * never go black. */
+  --table-header: color-mix(in oklab, var(--foreground) 12%, transparent);
+  --table-header-hover: color-mix(in oklab, var(--foreground) 18%, transparent);
+  --table-disabled: color-mix(
+    in oklab,
+    var(--table-disabled-solid) 40%,
+    transparent
+  );
+  --table-disabled-hover: color-mix(
+    in oklab,
+    var(--table-disabled-hover-solid) 40%,
+    transparent
+  );
 }
 
 /* TextShimmer: background-position sweep from right to left */

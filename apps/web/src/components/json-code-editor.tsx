@@ -273,7 +273,7 @@ export function JsonCodeEditor({
   return (
     <div
       className={cn(
-        'border-input bg-background focus-within:border-ring focus-within:ring-ring/50 overflow-hidden rounded-lg border transition-colors focus-within:ring-3',
+        'border-input bg-card-surface focus-within:border-ring focus-within:ring-ring/50 overflow-hidden rounded-lg border transition-colors focus-within:ring-3',
         className
       )}
       data-form-root={dataFormRoot}
@@ -325,7 +325,9 @@ export function JsonCodeEditor({
       </div>
       <div
         className={cn(
-          'bg-background relative overflow-hidden pl-2',
+          // The surface comes from the frame above; an extra fill here would
+          // stack a second opaque layer over the photo.
+          'relative overflow-hidden pl-2',
           'has-[textarea:disabled]:bg-input/30 has-[textarea:disabled]:opacity-70',
           heightClassName
         )}

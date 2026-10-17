@@ -239,7 +239,7 @@ export function RiskAcknowledgementDialog({
               <Label className='text-sm font-medium'>
                 {inputPrompt ?? t('Please type the following text to confirm:')}
               </Label>
-              <div className='bg-background border-border rounded-md border px-3 py-2 font-mono text-sm leading-6 break-words whitespace-pre-wrap'>
+              <div className='bg-muted/40 border-border rounded-md border px-3 py-2 font-mono text-sm leading-6 break-words whitespace-pre-wrap'>
                 {requiredTextToDisplay}
               </div>
               {hasSegmentedRequiredText ? (
@@ -248,7 +248,7 @@ export function RiskAcknowledgementDialog({
                     part.type === 'static' ? (
                       <span
                         key={`static-${index}`}
-                        className='text-muted-foreground bg-background/70 border-border w-fit rounded-md border px-2 py-1.5 font-mono text-sm select-none'
+                        className='text-muted-foreground bg-muted/70 border-border w-fit rounded-md border px-2 py-1.5 font-mono text-sm select-none'
                       >
                         {part.text}
                       </span>

@@ -91,7 +91,7 @@ function AutoGroupOrderItem(props: AutoGroupOrderItemProps) {
       value={props.group}
       dragListener={false}
       dragControls={dragControls}
-      className='bg-background flex items-center gap-2 rounded-lg border p-2'
+      className='bg-card-surface flex items-center gap-2 rounded-lg border p-2'
     >
       <Button
         type='button'

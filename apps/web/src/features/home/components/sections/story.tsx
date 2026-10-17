@@ -39,7 +39,7 @@ export function Story() {
           {/* Floating date medallion */}
           <div
             aria-hidden
-            className='bg-background border-primary/30 text-primary pointer-events-none absolute -top-5 left-8 flex size-11 items-center justify-center rounded-full border shadow-xs'
+            className='bg-card-surface border-primary/30 text-primary pointer-events-none absolute -top-5 left-8 flex size-11 items-center justify-center rounded-full border shadow-xs'
           >
             <CalendarCheck className='size-5' />
           </div>
@@ -63,7 +63,7 @@ export function Story() {
             {tags.map((tag) => (
               <span
                 key={tag}
-                className='border-border/60 bg-background/70 text-muted-foreground rounded-full border px-3 py-1 text-xs font-medium'
+                className='border-border/60 bg-muted/40 text-muted-foreground rounded-full border px-3 py-1 text-xs font-medium'
               >
                 {tag}
               </span>

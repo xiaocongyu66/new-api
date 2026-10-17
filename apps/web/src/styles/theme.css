@@ -200,9 +200,14 @@ body,
   --primary-foreground: oklch(1 0 0);
   --secondary: color-mix(in oklch, var(--primary) 12%, var(--background));
   --secondary-foreground: var(--primary);
-  --muted: oklch(0.962 0 0);
+  /* Chip-fill source colors. The `-solid` entries are the palette values;
+   * `--muted` / `--accent` alias them so the background-image scope can swap
+   * in a translucent mix (see index.css) without disturbing the palette. */
+  --muted-solid: oklch(0.962 0 0);
+  --muted: var(--muted-solid);
   --muted-foreground: oklch(0.42 0 0);
-  --accent: color-mix(in oklch, var(--primary) 12%, var(--background));
+  --accent-solid: color-mix(in oklch, var(--primary) 12%, var(--background));
+  --accent: var(--accent-solid);
   --accent-foreground: oklch(0.321 0 0);
   --destructive: oklch(0.641 0.218 28.9);
   --destructive-foreground: oklch(0.985 0 0);
@@ -229,35 +234,46 @@ body,
   --sidebar-foreground: oklch(0.321 0 0);
   --sidebar-primary: oklch(0.614 0.207 262);
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: color-mix(in oklch, var(--primary) 12%, var(--background));
+  --sidebar-accent-solid: color-mix(in oklch, var(--primary) 12%, var(--background));
+  --sidebar-accent: var(--sidebar-accent-solid);
   --sidebar-accent-foreground: oklch(0.55 0.19 262);
   --sidebar-border: oklch(0.907 0 0);
   --sidebar-ring: oklch(0.614 0.207 262);
   --skeleton-base: oklch(0.97 0 0);
   --skeleton-highlight: oklch(0.985 0 0);
-  --table-row: var(--background);
-  --table-header: color-mix(
+  --table-row-solid: var(--background);
+  --table-row: var(--table-row-solid);
+  /* Pinned columns scroll-proof their own strip: unlike the row band they sit
+   * above the columns sliding underneath, so they need a fill opaque enough to
+   * hide them (see index.css). */
+  --table-pinned-solid: var(--background);
+  --table-pinned: var(--table-pinned-solid);
+  --table-header-solid: color-mix(
     in oklch,
     var(--foreground) 1.5%,
     var(--background)
   );
-  --table-header-hover: color-mix(
+  --table-header: var(--table-header-solid);
+  --table-header-hover-solid: color-mix(
     in oklch,
     var(--foreground) 3%,
     var(--background)
   );
+  --table-header-hover: var(--table-header-hover-solid);
   /* Disabled rows: kept subtle so they read as "quiet", not as a colored
      alert state. */
-  --table-disabled: color-mix(
+  --table-disabled-solid: color-mix(
     in oklch,
     var(--foreground) 3%,
     var(--background)
   );
-  --table-disabled-hover: color-mix(
+  --table-disabled: var(--table-disabled-solid);
+  --table-disabled-hover-solid: color-mix(
     in oklch,
     var(--foreground) 4.5%,
     var(--background)
   );
+  --table-disabled-hover: var(--table-disabled-hover-solid);
   --table-disabled-border: color-mix(
     in oklch,
     var(--foreground) 16%,
@@ -299,9 +315,11 @@ body,
   --primary-foreground: oklch(1 0 0);
   --secondary: color-mix(in oklch, var(--primary) 18%, var(--background));
   --secondary-foreground: var(--primary);
-  --muted: oklch(0.256 0 0);
+  --muted-solid: oklch(0.256 0 0);
+  --muted: var(--muted-solid);
   --muted-foreground: oklch(0.785 0 0);
-  --accent: color-mix(in oklch, var(--primary) 20%, var(--background));
+  --accent-solid: color-mix(in oklch, var(--primary) 20%, var(--background));
+  --accent: var(--accent-solid);
   --accent-foreground: var(--foreground);
   --destructive: oklch(0.7 0.19 27);
   --destructive-foreground: oklch(0.985 0 0);
@@ -325,29 +343,41 @@ body,
   --sidebar-foreground: var(--foreground);
   --sidebar-primary: oklch(0.72 0.148 262);
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: color-mix(in oklch, var(--primary) 20%, var(--background));
+  --sidebar-accent-solid: color-mix(in oklch, var(--primary) 20%, var(--background));
+  --sidebar-accent: var(--sidebar-accent-solid);
   --sidebar-accent-foreground: oklch(0.8 0.12 262);
   --sidebar-border: oklch(1 0 0 / 14%);
   --sidebar-ring: oklch(0.72 0.148 262);
   --skeleton-base: oklch(0.27 0 0);
   --skeleton-highlight: oklch(0.36 0 0);
-  --table-row: var(--background);
-  --table-header: color-mix(in oklch, var(--foreground) 6%, var(--background));
-  --table-header-hover: color-mix(
+  --table-row-solid: var(--background);
+  --table-row: var(--table-row-solid);
+  --table-pinned-solid: var(--background);
+  --table-pinned: var(--table-pinned-solid);
+  --table-header-solid: color-mix(
+    in oklch,
+    var(--foreground) 6%,
+    var(--background)
+  );
+  --table-header: var(--table-header-solid);
+  --table-header-hover-solid: color-mix(
     in oklch,
     var(--foreground) 9%,
     var(--background)
   );
-  --table-disabled: color-mix(
+  --table-header-hover: var(--table-header-hover-solid);
+  --table-disabled-solid: color-mix(
     in oklch,
     var(--foreground) 7%,
     var(--background)
   );
-  --table-disabled-hover: color-mix(
+  --table-disabled: var(--table-disabled-solid);
+  --table-disabled-hover-solid: color-mix(
     in oklch,
     var(--foreground) 9.5%,
     var(--background)
   );
+  --table-disabled-hover: var(--table-disabled-hover-solid);
   --table-disabled-border: color-mix(
     in oklch,
     var(--foreground) 24%,

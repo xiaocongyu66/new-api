@@ -187,7 +187,7 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
                 </TooltipTrigger>
                 <TooltipContent
                   side='top'
-                  className='border-border bg-popover max-h-48 max-w-[320px] overflow-y-auto p-2'
+                  className='border-border bg-[var(--float-surface)] max-h-48 max-w-[320px] overflow-y-auto p-2'
                 >
                   <div className='flex flex-wrap gap-1'>{matchedBadges}</div>
                 </TooltipContent>

@@ -121,7 +121,7 @@ function FilterChip(props: {
           className={cn(
             'rounded-md px-1.5 py-0.5 text-[12px]',
             props.active
-              ? 'bg-background text-foreground'
+              ? 'bg-card-surface text-foreground'
               : 'bg-muted text-muted-foreground'
           )}
         >

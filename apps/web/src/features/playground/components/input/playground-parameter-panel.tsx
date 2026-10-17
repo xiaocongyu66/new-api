@@ -109,7 +109,7 @@ function PlaygroundParameterContent({
         return (
           <div
             className={cn(
-              'border-border/70 bg-background/60 grid gap-2 rounded-lg border p-3 transition-opacity',
+              'border-border/70 bg-muted/30 grid gap-2 rounded-lg border p-3 transition-opacity',
               (!enabled || disabled) && 'opacity-55'
             )}
             key={control.key}

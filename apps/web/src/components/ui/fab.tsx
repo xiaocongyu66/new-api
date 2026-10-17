@@ -32,7 +32,7 @@ const fabVariants = cva(
       variant: {
         primary: 'bg-accent text-primary',
         secondary: 'bg-secondary text-secondary-foreground',
-        surface: 'bg-card text-primary shadow-sm ring-foreground/10 ring-1',
+        surface: 'bg-[var(--float-surface)] text-primary shadow-sm ring-foreground/10 ring-1',
       },
       size: {
         sm: 'size-10 rounded-xl',

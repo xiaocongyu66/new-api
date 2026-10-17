@@ -298,7 +298,7 @@ function ModelBackendQuickStats(props: { model: PricingModel }) {
         return (
           <div
             key={stat.key}
-            className='bg-background flex min-w-0 flex-col gap-0.5 px-3 py-2.5'
+            className='bg-card-surface flex min-w-0 flex-col gap-0.5 px-3 py-2.5'
           >
             <span className='text-muted-foreground inline-flex min-w-0 items-center gap-1 text-[10px] font-medium tracking-wider uppercase'>
               <Icon className='size-3 shrink-0' />

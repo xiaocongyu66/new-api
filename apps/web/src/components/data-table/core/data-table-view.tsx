@@ -151,7 +151,13 @@ function SplitHeaderTableView<TData>({
           <DataTableHeader
             table={props.table}
             applyHeaderSize={props.applyHeaderSize}
-            className={cn('sticky top-0 z-10', props.tableHeaderClassName)}
+            className={cn(
+              // Sticky header: it covers the rows scrolling under it, so it
+              // blurs them the same way the pinned columns do — a translucent
+              // fill alone left the row text legible through the header band.
+              'sticky top-0 z-10 backdrop-blur-md',
+              props.tableHeaderClassName
+            )}
             rowClassName={props.tableHeaderRowClassName}
             getColumnClassName={getColumnClassName}
           />

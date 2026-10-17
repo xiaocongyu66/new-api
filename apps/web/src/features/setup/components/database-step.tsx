@@ -74,7 +74,7 @@ export function DatabaseStep({ status }: DatabaseStepProps) {
 
   return (
     <div className='space-y-4'>
-      <div className='bg-card flex items-center justify-between rounded-lg border p-4'>
+      <div className='bg-card-surface flex items-center justify-between rounded-lg border p-4'>
         <div className='space-y-1'>
           <p className='text-muted-foreground text-sm font-medium'>
             {t('Detected database')}

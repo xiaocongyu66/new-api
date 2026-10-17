@@ -98,7 +98,7 @@ export function TabbedPaginatedSelector({
   return (
     <div
       className={cn(
-        'flex flex-col rounded-lg border bg-background/50 overflow-hidden',
+        'flex flex-col rounded-lg border bg-card-surface overflow-hidden',
         className
       )}
     >
@@ -116,7 +116,7 @@ export function TabbedPaginatedSelector({
                 className={cn(
                   'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all',
                   isActive
-                    ? 'bg-background text-foreground shadow-2xs border border-border/80'
+                    ? 'bg-card-surface text-foreground shadow-2xs border border-border/80'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
                 )}
               >
@@ -140,7 +140,7 @@ export function TabbedPaginatedSelector({
                 type='button'
                 disabled={safePage <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className='inline-flex size-6 items-center justify-center rounded-md border border-border/60 bg-background text-muted-foreground hover:text-foreground hover:border-border disabled:opacity-30 disabled:pointer-events-none transition-colors'
+                className='inline-flex size-6 items-center justify-center rounded-md border border-border/60 bg-card-surface text-muted-foreground hover:text-foreground hover:border-border disabled:opacity-30 disabled:pointer-events-none transition-colors'
                 title={t('Previous Page')}
               >
                 <ChevronLeft className='size-3.5' />
@@ -158,7 +158,7 @@ export function TabbedPaginatedSelector({
                         'inline-flex size-6 items-center justify-center rounded-md text-xs font-medium transition-colors border',
                         isCurrent
                           ? 'border-primary bg-primary text-primary-foreground font-semibold shadow-2xs'
-                          : 'border-border/60 bg-background text-muted-foreground hover:text-foreground hover:border-border'
+                          : 'border-border/60 bg-card-surface text-muted-foreground hover:text-foreground hover:border-border'
                       )}
                     >
                       {p}
@@ -171,7 +171,7 @@ export function TabbedPaginatedSelector({
                 type='button'
                 disabled={safePage >= totalPages}
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                className='inline-flex size-6 items-center justify-center rounded-md border border-border/60 bg-background text-muted-foreground hover:text-foreground hover:border-border disabled:opacity-30 disabled:pointer-events-none transition-colors'
+                className='inline-flex size-6 items-center justify-center rounded-md border border-border/60 bg-card-surface text-muted-foreground hover:text-foreground hover:border-border disabled:opacity-30 disabled:pointer-events-none transition-colors'
                 title={t('Next Page')}
               >
                 <ChevronRight className='size-3.5' />
@@ -201,7 +201,7 @@ export function TabbedPaginatedSelector({
                     'group inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all shadow-2xs border',
                     isSelected
                       ? 'border-primary bg-primary text-primary-foreground shadow-xs ring-1 ring-primary/30'
-                      : 'border-border bg-background hover:bg-accent/60 hover:border-accent-foreground/20 text-muted-foreground hover:text-foreground'
+                      : 'border-border bg-card-surface hover:bg-accent/60 hover:border-accent-foreground/20 text-muted-foreground hover:text-foreground'
                   )}
                 >
                   {isSelected ? (
