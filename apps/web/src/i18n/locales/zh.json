@@ -4472,6 +4472,8 @@
     "Reset all model prices?": "重置所有模型价格吗？",
     "Reset all model ratios?": "重置所有模型比例吗？",
     "Reset all settings to default values": "将所有设置重置为默认值",
+    "Saved in this browser only — sign in as an administrator to share it.": "仅保存在当前浏览器中 —— 以管理员身份登录后即可共享给所有设备。",
+    "Saved to the server — the same theme applies on every device.": "已保存到服务器 —— 所有设备使用同一主题。",
     "Reset at:": "重置于：",
     "Reset balance and used quota": "重置余额和已用配额",
     "Reset completed": "重置完成",

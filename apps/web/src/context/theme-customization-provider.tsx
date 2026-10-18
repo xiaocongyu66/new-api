@@ -22,6 +22,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 
@@ -34,7 +35,6 @@ import {
   type ContentLayout,
   DEFAULT_THEME_CUSTOMIZATION,
   LEGACY_SURFACE_COOKIE_KEYS,
-  resolveThemeFont,
   SURFACE_AXIS_LIST,
   SURFACE_BLUR_LIMITS,
   SURFACE_COOKIE_KEYS,
@@ -56,8 +56,57 @@ import {
   type ThemeRadius,
   type ThemeScale,
 } from '@/lib/theme-customization'
+import {
+  clearThemeCustomization,
+  type PinnedTheme,
+  parseThemeCustomization,
+  pinnedThemeFont,
+  saveThemeCustomization,
+  serializeThemeCustomization,
+  surfaceBlockFor,
+} from '@/lib/theme-persistence'
+import { useSystemConfigStore } from '@/stores/system-config-store'
 
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365 // 1 year
+
+function applyAttribute(name: string, value: string | null) {
+  if (typeof document === 'undefined') return
+  const body = document.body
+  if (!body) return
+  if (value === null) {
+    body.removeAttribute(name)
+  } else {
+    body.setAttribute(name, value)
+  }
+}
+
+// Continuous axes override theme variables inline on <html> so they beat the
+// stylesheet defaults without adding one CSS rule per value.
+function applyCssVariable(name: string, value: string | null) {
+  if (typeof document === 'undefined') return
+  const root = document.documentElement
+  if (value === null) {
+    root.style.removeProperty(name)
+  } else {
+    root.style.setProperty(name, value)
+  }
+}
+
+// The Blur-section axes live in per-color-scheme cookie slots so the
+// drawer's day/night tab edits each scheme independently.
+function surfaceLimitsFor(axis: SurfaceNumberAxis) {
+  switch (axis) {
+    case 'surfaceOpacity':
+      return SURFACE_OPACITY_LIMITS
+    case 'surfaceBlur':
+      return SURFACE_BLUR_LIMITS
+    case 'backgroundScrim':
+      return BACKGROUND_SCRIM_LIMITS
+    case 'sheetOpacity':
+    case 'floatOpacity':
+      return SURFACE_PANEL_OPACITY_LIMITS
+  }
+}
 
 function readCookie<T extends string>(
   name: string,
@@ -77,17 +126,6 @@ function readBooleanCookie(name: string, fallback: boolean | null) {
   return fallback
 }
 
-function applyAttribute(name: string, value: string | null) {
-  if (typeof document === 'undefined') return
-  const body = document.body
-  if (!body) return
-  if (value === null) {
-    body.removeAttribute(name)
-  } else {
-    body.setAttribute(name, value)
-  }
-}
-
 function readNumberCookie(
   name: string,
   min: number,
@@ -100,34 +138,12 @@ function readNumberCookie(
   return Math.round(parsed)
 }
 
-// Continuous axes override theme variables inline on <html> so they beat the
-// stylesheet defaults without adding one CSS rule per value.
-function applyCssVariable(name: string, value: string | null) {
-  if (typeof document === 'undefined') return
-  const root = document.documentElement
-  if (value === null) {
-    root.style.removeProperty(name)
-  } else {
-    root.style.setProperty(name, value)
-  }
-}
-
-// The Blur-section axes live in per-color-scheme cookie slots so the
-// drawer's day/night tab edits each scheme independently. The scheme-agnostic
-// pre-tab cookies stay as a read fallback until the first per-scheme write
-// drops them.
-function surfaceLimitsFor(axis: SurfaceNumberAxis) {
-  switch (axis) {
-    case 'surfaceOpacity':
-      return SURFACE_OPACITY_LIMITS
-    case 'surfaceBlur':
-      return SURFACE_BLUR_LIMITS
-    case 'backgroundScrim':
-      return BACKGROUND_SCRIM_LIMITS
-    case 'sheetOpacity':
-    case 'floatOpacity':
-      return SURFACE_PANEL_OPACITY_LIMITS
-  }
+// The legacy map is partial — the mobile sheet and floating-overlay
+// axes shipped after the per-scheme split and never had a scheme-agnostic
+// cookie.
+function removeLegacySurfaceCookie(axis: SurfaceAxis) {
+  const name = LEGACY_SURFACE_COOKIE_KEYS[axis]
+  if (name !== undefined) removeCookie(name)
 }
 
 function readSurfaceCookie(
@@ -142,52 +158,119 @@ function readSurfaceCookie(
   return legacy === undefined ? null : readNumberCookie(legacy, min, max)
 }
 
-// The legacy map is partial — the mobile sheet and floating-overlay
-// axes shipped after the per-scheme split and never had a scheme-agnostic
-// cookie.
-function removeLegacySurfaceCookie(axis: SurfaceAxis) {
-  const name = LEGACY_SURFACE_COOKIE_KEYS[axis]
-  if (name !== undefined) removeCookie(name)
+function readSurfaceCardBlurCookie(scheme: SurfaceScheme): boolean | null {
+  const explicit = readBooleanCookie(SURFACE_COOKIE_KEYS.cardBlur[scheme], null)
+  if (explicit !== null) return explicit
+  const legacyName = LEGACY_SURFACE_COOKIE_KEYS.cardBlur
+  const legacy =
+    legacyName === undefined ? null : readBooleanCookie(legacyName, null)
+  return legacy
 }
 
 function writeSurfaceCookie(
   axis: SurfaceNumberAxis,
   scheme: SurfaceScheme,
-  value: number | null
+  value: number
 ) {
   removeLegacySurfaceCookie(axis)
-  if (value === null) {
-    removeCookie(SURFACE_COOKIE_KEYS[axis][scheme])
-  } else {
-    setCookie(
-      SURFACE_COOKIE_KEYS[axis][scheme],
-      String(value),
-      COOKIE_MAX_AGE
-    )
-  }
-}
-
-function readSurfaceCardBlurCookie(scheme: SurfaceScheme): boolean | null {
-  const explicit = readBooleanCookie(
-    SURFACE_COOKIE_KEYS.cardBlur[scheme],
-    null
-  )
-  if (explicit !== null) return explicit
-  const legacyName = LEGACY_SURFACE_COOKIE_KEYS.cardBlur
-  const legacy =
-    legacyName === undefined ? null : readBooleanCookie(legacyName, null)
-  // Card blur was split from the page-wide blur cookie long ago; keep the
-  // same fallback chain for very old single-slot preferences.
-  return legacy ?? readBooleanCookie(THEME_COOKIE_KEYS.blur, null)
-}
-
-function writeSurfaceCardBlurCookie(scheme: SurfaceScheme, value: boolean) {
-  removeLegacySurfaceCookie('cardBlur')
   setCookie(
-    SURFACE_COOKIE_KEYS.cardBlur[scheme],
+    SURFACE_COOKIE_KEYS[axis][scheme],
     String(value),
     COOKIE_MAX_AGE
   )
+}
+
+// Mirror the whole pinned state into per-scheme cookies so a fresh browser
+// paints the right theme before /api/status answers.
+function writePinnedCookies(pinned: PinnedTheme) {
+  setCookie(THEME_COOKIE_KEYS.preset, pinned.preset, COOKIE_MAX_AGE)
+  setCookie(THEME_COOKIE_KEYS.font, pinned.font, COOKIE_MAX_AGE)
+  setCookie(THEME_COOKIE_KEYS.radius, pinned.radius, COOKIE_MAX_AGE)
+  setCookie(THEME_COOKIE_KEYS.scale, pinned.scale, COOKIE_MAX_AGE)
+  setCookie(
+    THEME_COOKIE_KEYS.contentLayout,
+    pinned.contentLayout,
+    COOKIE_MAX_AGE
+  )
+  setCookie(THEME_COOKIE_KEYS.blur, String(pinned.blur), COOKIE_MAX_AGE)
+
+  for (const scheme of ['light', 'dark'] as const) {
+    const block = pinned[scheme]
+    setCookie(
+      SURFACE_COOKIE_KEYS.cardBlur[scheme],
+      String(block.cardBlur),
+      COOKIE_MAX_AGE
+    )
+    for (const axis of SURFACE_AXIS_LIST) {
+      if (axis === 'cardBlur') continue
+      writeSurfaceCookie(axis, scheme, block[axis])
+    }
+  }
+}
+
+function clearPinnedCookies() {
+  for (const key of Object.values(THEME_COOKIE_KEYS)) {
+    removeCookie(key)
+  }
+  for (const axis of SURFACE_AXIS_LIST) {
+    removeCookie(SURFACE_COOKIE_KEYS[axis].light)
+    removeCookie(SURFACE_COOKIE_KEYS[axis].dark)
+    removeLegacySurfaceCookie(axis)
+  }
+}
+
+function readPinnedFromCookies(): PinnedTheme {
+  const readBlock = (scheme: SurfaceScheme) => {
+    const defaults = surfaceBlockFor(scheme)
+    return {
+      cardBlur:
+        readSurfaceCardBlurCookie(scheme) ?? defaults.cardBlur,
+      surfaceOpacity:
+        readSurfaceCookie('surfaceOpacity', scheme) ?? defaults.surfaceOpacity,
+      surfaceBlur:
+        readSurfaceCookie('surfaceBlur', scheme) ?? defaults.surfaceBlur,
+      backgroundScrim:
+        readSurfaceCookie('backgroundScrim', scheme) ??
+        defaults.backgroundScrim,
+      sheetOpacity:
+        readSurfaceCookie('sheetOpacity', scheme) ?? defaults.sheetOpacity,
+      floatOpacity:
+        readSurfaceCookie('floatOpacity', scheme) ?? defaults.floatOpacity,
+    }
+  }
+  return {
+    preset: readCookie(
+      THEME_COOKIE_KEYS.preset,
+      THEME_PRESET_VALUES,
+      DEFAULT_THEME_CUSTOMIZATION.preset
+    ),
+    font: readCookie(
+      THEME_COOKIE_KEYS.font,
+      THEME_FONT_VALUES,
+      DEFAULT_THEME_CUSTOMIZATION.font
+    ),
+    radius: readCookie(
+      THEME_COOKIE_KEYS.radius,
+      THEME_RADIUS_VALUES,
+      DEFAULT_THEME_CUSTOMIZATION.radius
+    ),
+    scale: readCookie(
+      THEME_COOKIE_KEYS.scale,
+      THEME_SCALE_VALUES,
+      DEFAULT_THEME_CUSTOMIZATION.scale
+    ),
+    contentLayout: readCookie(
+      THEME_COOKIE_KEYS.contentLayout,
+      CONTENT_LAYOUT_VALUES,
+      DEFAULT_THEME_CUSTOMIZATION.contentLayout
+    ),
+    blur: readBooleanCookie(
+      THEME_COOKIE_KEYS.blur,
+      DEFAULT_THEME_CUSTOMIZATION.blur
+    ),
+    light: readBlock('light'),
+    dark: readBlock('dark'),
+  }
 }
 
 type ThemeCustomizationContextType = {
@@ -215,6 +298,8 @@ type ThemeCustomizationContextType = {
   // Color scheme whose storage slots the surface values above read from and
   // write to (the drawer's day/night tab switches it).
   surfaceScheme: SurfaceScheme
+  /** Whether the shared option row currently governs this theme. */
+  themePinnedToServer: boolean
   resetCustomization: () => void
 }
 
@@ -245,6 +330,7 @@ const FALLBACK_CONTEXT: ThemeCustomizationContextType = {
   floatOpacity: DEFAULT_THEME_CUSTOMIZATION.floatOpacity,
   setFloatOpacity: () => {},
   surfaceScheme: 'dark',
+  themePinnedToServer: false,
   resetCustomization: () => {},
 }
 
@@ -254,373 +340,260 @@ const ThemeCustomizationContext =
 export function ThemeCustomizationProvider(props: {
   children: React.ReactNode
 }) {
-  const [preset, _setPreset] = useState<ThemePreset>(() =>
-    readCookie<ThemePreset>(
-      THEME_COOKIE_KEYS.preset,
-      THEME_PRESET_VALUES,
-      DEFAULT_THEME_CUSTOMIZATION.preset
-    )
-  )
-  const [font, _setFont] = useState<ThemeFont>(() =>
-    readCookie<ThemeFont>(
-      THEME_COOKIE_KEYS.font,
-      THEME_FONT_VALUES,
-      DEFAULT_THEME_CUSTOMIZATION.font
-    )
-  )
-  const [radius, _setRadius] = useState<ThemeRadius>(() =>
-    readCookie<ThemeRadius>(
-      THEME_COOKIE_KEYS.radius,
-      THEME_RADIUS_VALUES,
-      DEFAULT_THEME_CUSTOMIZATION.radius
-    )
-  )
-  const [scale, _setScale] = useState<ThemeScale>(() =>
-    readCookie<ThemeScale>(
-      THEME_COOKIE_KEYS.scale,
-      THEME_SCALE_VALUES,
-      DEFAULT_THEME_CUSTOMIZATION.scale
-    )
-  )
-  const [contentLayout, _setContentLayout] = useState<ContentLayout>(() =>
-    readCookie<ContentLayout>(
-      THEME_COOKIE_KEYS.contentLayout,
-      CONTENT_LAYOUT_VALUES,
-      DEFAULT_THEME_CUSTOMIZATION.contentLayout
-    )
-  )
-  const [blur, _setBlur] = useState(() =>
-    readBooleanCookie(THEME_COOKIE_KEYS.blur, DEFAULT_THEME_CUSTOMIZATION.blur)
+  const [pinned, setPinned] = useState<PinnedTheme>(readPinnedFromCookies)
+  // Cookies (or the shipped defaults) paint first; the shared row replaces
+  // them once /api/status answers.
+  const [hydrated, setHydrated] = useState(false)
+  const [serverRow, setServerRow] = useState('')
+  const serverTheme = useSystemConfigStore((state) => state.serverTheme)
+  const serverThemeLoaded = useSystemConfigStore(
+    (state) => state.serverThemeLoaded
   )
 
-  // The Blur-section axes are stored per color scheme so the drawer's
-  // day/night tab edits each scheme independently; a value equal to the
-  // scheme's CSS default is dropped from storage and follows theme.css.
   const { resolvedTheme } = useTheme()
   const surfaceScheme: SurfaceScheme =
     resolvedTheme === 'light' ? 'light' : 'dark'
   const surfaceDefaults = surfaceDefaultsFor(resolvedTheme)
-  const [explicitCardBlur, _setCardBlur] = useState<boolean | null>(() =>
-    readSurfaceCardBlurCookie(surfaceScheme)
-  )
-  const [explicitSurfaceOpacity, _setSurfaceOpacity] = useState<
-    number | null
-  >(() => readSurfaceCookie('surfaceOpacity', surfaceScheme))
-  const [explicitSurfaceBlur, _setSurfaceBlur] = useState<number | null>(
-    () => readSurfaceCookie('surfaceBlur', surfaceScheme)
-  )
-  const [explicitBackgroundScrim, _setBackgroundScrim] = useState<
-    number | null
-  >(() => readSurfaceCookie('backgroundScrim', surfaceScheme))
-  const [explicitSheetOpacity, _setSheetOpacity] = useState<number | null>(
-    () => readSurfaceCookie('sheetOpacity', surfaceScheme)
-  )
-  const [explicitFloatOpacity, _setFloatOpacity] = useState<number | null>(
-    () => readSurfaceCookie('floatOpacity', surfaceScheme)
-  )
-  const cardBlur = explicitCardBlur ?? surfaceDefaults.cardBlur
-  const surfaceOpacity =
-    explicitSurfaceOpacity ?? surfaceDefaults.surfaceOpacity
-  const surfaceBlur = explicitSurfaceBlur ?? surfaceDefaults.surfaceBlur
-  const backgroundScrim =
-    explicitBackgroundScrim ?? surfaceDefaults.backgroundScrim
-  const sheetOpacity = explicitSheetOpacity ?? surfaceDefaults.sheetOpacity
-  const floatOpacity = explicitFloatOpacity ?? surfaceDefaults.floatOpacity
-  // Re-read storage when the color scheme flips so sliders, inline CSS
-  // variables and cookie slots always track the active tab's scheme.
+
+  // Adopt the shared row when it arrives. A row that is absent leaves the
+  // local state alone: browsers that never pinned one keep their own values
+  // and can promote them on the first edit.
   useEffect(() => {
-    _setCardBlur(readSurfaceCardBlurCookie(surfaceScheme))
-    _setSurfaceOpacity(readSurfaceCookie('surfaceOpacity', surfaceScheme))
-    _setSurfaceBlur(readSurfaceCookie('surfaceBlur', surfaceScheme))
-    _setBackgroundScrim(readSurfaceCookie('backgroundScrim', surfaceScheme))
-    _setSheetOpacity(readSurfaceCookie('sheetOpacity', surfaceScheme))
-    _setFloatOpacity(readSurfaceCookie('floatOpacity', surfaceScheme))
-  }, [surfaceScheme])
+    if (!serverThemeLoaded) return
+    const parsed = parseThemeCustomization(
+      serverTheme,
+      DEFAULT_THEME_CUSTOMIZATION
+    )
+    setServerRow(serverTheme)
+    setPinned(parsed ?? readPinnedFromCookies())
+    // The row already on the server is the baseline an edit is measured
+    // against, so adopting it must not count as a change worth writing.
+    persistedRowRef.current = serverTheme.trim() === '' ? null : serverTheme
+    setHydrated(true)
+  }, [serverThemeLoaded, serverTheme])
+
+  // Persist on every edit. The cookie mirror is synchronous so the next paint
+  // is right even when the write below fails (a non-admin browser keeps its
+  // own theme, as before); the shared row is what survives a new release.
+  // Nothing is written until the panel is actually edited, so a browser that
+  // only ever reads the defaults does not create a row on page load. Writes
+  // are debounced because a slider drag produces dozens of intermediate values.
+  const dirtyRef = useRef(false)
+  const persistedRowRef = useRef<string | null>(null)
+  const saveTimerRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!hydrated || !dirtyRef.current) return
+    writePinnedCookies(pinned)
+    const serialized = serializeThemeCustomization(pinned)
+    if (serialized === persistedRowRef.current) return
+
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current)
+    }
+    saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = null
+      void saveThemeCustomization(serialized).then((ok) => {
+        if (ok) persistedRowRef.current = serialized
+      })
+    }, 500)
+
+    return () => {
+      if (saveTimerRef.current !== null) {
+        window.clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = null
+      }
+    }
+  }, [pinned, hydrated])
+
+  const block = pinned[surfaceScheme]
 
   // Mirror state to the <body> via data-* attributes so theme-presets.css can
   // override CSS variables at the right cascade layer.
   useEffect(() => {
     applyAttribute(
       'data-theme-preset',
-      preset === DEFAULT_THEME_CUSTOMIZATION.preset ? null : preset
+      pinned.preset === DEFAULT_THEME_CUSTOMIZATION.preset ? null : pinned.preset
     )
-  }, [preset])
+  }, [pinned.preset])
 
-  // Font is the one axis where we resolve before writing the attribute:
-  // the persisted preference may be `default`, but CSS works in terms of
-  // the concrete `sans`/`serif` choice that should drive the cascade.
-  // Resolving here (instead of in CSS via `:not()` selectors) keeps the
-  // stylesheet to one simple `[data-theme-font='serif']` selector and lets
-  // future presets opt into typography via `PRESET_DEFAULT_FONT` alone.
   useEffect(() => {
-    applyAttribute('data-theme-font', resolveThemeFont(font, preset))
-  }, [font, preset])
+    applyAttribute('data-theme-font', pinnedThemeFont(pinned))
+  }, [pinned.font, pinned.preset])
 
   useEffect(() => {
     applyAttribute(
       'data-theme-radius',
-      radius === DEFAULT_THEME_CUSTOMIZATION.radius ? null : radius
+      pinned.radius === DEFAULT_THEME_CUSTOMIZATION.radius ? null : pinned.radius
     )
-  }, [radius])
+  }, [pinned.radius])
 
   useEffect(() => {
     applyAttribute(
       'data-theme-scale',
-      scale === DEFAULT_THEME_CUSTOMIZATION.scale ? null : scale
+      pinned.scale === DEFAULT_THEME_CUSTOMIZATION.scale ? null : pinned.scale
     )
-  }, [scale])
+  }, [pinned.scale])
 
   useEffect(() => {
-    applyAttribute('data-theme-content-layout', contentLayout)
-  }, [contentLayout])
+    applyAttribute('data-theme-content-layout', pinned.contentLayout)
+  }, [pinned.contentLayout])
 
   useEffect(() => {
-    applyAttribute('data-theme-blur', blur ? 'true' : null)
-  }, [blur])
+    applyAttribute('data-theme-blur', pinned.blur ? 'true' : null)
+  }, [pinned.blur])
 
   useEffect(() => {
-    applyAttribute('data-theme-card-blur', cardBlur ? 'true' : null)
-  }, [cardBlur])
+    applyAttribute('data-theme-card-blur', block.cardBlur ? 'true' : null)
+  }, [block.cardBlur])
+
+  // Continuous axes always arrive as numbers now — a pinned row carries every
+  // axis, so no value silently falls back to a stylesheet default that a
+  // future release may retune.
+  useEffect(() => {
+    applyCssVariable('--surface-opacity', `${block.surfaceOpacity}%`)
+  }, [block.surfaceOpacity])
 
   useEffect(() => {
-    applyCssVariable(
-      '--surface-opacity',
-      explicitSurfaceOpacity === null ||
-        explicitSurfaceOpacity === surfaceDefaults.surfaceOpacity
-        ? null
-        : `${explicitSurfaceOpacity}%`
-    )
-  }, [explicitSurfaceOpacity, surfaceDefaults])
-
-  useEffect(() => {
-    applyCssVariable(
-      '--surface-blur',
-      explicitSurfaceBlur === null ||
-        explicitSurfaceBlur === surfaceDefaults.surfaceBlur
-        ? null
-        : `${explicitSurfaceBlur}px`
-    )
-  }, [explicitSurfaceBlur, surfaceDefaults])
+    applyCssVariable('--surface-blur', `${block.surfaceBlur}px`)
+  }, [block.surfaceBlur])
 
   useEffect(() => {
     applyCssVariable(
       '--app-background-scrim',
-      explicitBackgroundScrim === null ||
-        explicitBackgroundScrim === surfaceDefaults.backgroundScrim
-        ? null
-        : `${BACKGROUND_SCRIM_COLOR_BASES[surfaceScheme]} / ${explicitBackgroundScrim}%)`
+      `${BACKGROUND_SCRIM_COLOR_BASES[surfaceScheme]} / ${block.backgroundScrim}%)`
     )
-  }, [explicitBackgroundScrim, surfaceDefaults, surfaceScheme])
+  }, [block.backgroundScrim, surfaceScheme])
 
   useEffect(() => {
-    applyCssVariable(
-      '--mobile-sheet-opacity',
-      explicitSheetOpacity === null ||
-        explicitSheetOpacity === surfaceDefaults.sheetOpacity
-        ? null
-        : `${explicitSheetOpacity}%`
-    )
-  }, [explicitSheetOpacity, surfaceDefaults])
+    applyCssVariable('--mobile-sheet-opacity', `${block.sheetOpacity}%`)
+  }, [block.sheetOpacity])
 
   useEffect(() => {
-    applyCssVariable(
-      '--float-opacity',
-      explicitFloatOpacity === null ||
-        explicitFloatOpacity === surfaceDefaults.floatOpacity
-        ? null
-        : `${explicitFloatOpacity}%`
-    )
-  }, [explicitFloatOpacity, surfaceDefaults])
+    applyCssVariable('--float-opacity', `${block.floatOpacity}%`)
+  }, [block.floatOpacity])
+
+  const updateBlock = useCallback(
+    (scheme: SurfaceScheme, patch: Partial<PinnedTheme['light']>) => {
+      setPinned((previous) =>
+        scheme === 'light'
+          ? { ...previous, light: { ...previous.light, ...patch } }
+          : { ...previous, dark: { ...previous.dark, ...patch } }
+      )
+      dirtyRef.current = true
+    },
+    []
+  )
+
+  const clampTo = (value: number, limits: { min: number; max: number }) =>
+    Math.min(limits.max, Math.max(limits.min, Math.round(value)))
 
   const setPreset = useCallback((value: ThemePreset) => {
-    _setPreset(value)
-    if (value === DEFAULT_THEME_CUSTOMIZATION.preset) {
-      removeCookie(THEME_COOKIE_KEYS.preset)
-    } else {
-      setCookie(THEME_COOKIE_KEYS.preset, value, COOKIE_MAX_AGE)
-    }
+    dirtyRef.current = true
+    setPinned((previous) => ({ ...previous, preset: value }))
   }, [])
 
   const setFont = useCallback((value: ThemeFont) => {
-    _setFont(value)
-    if (value === DEFAULT_THEME_CUSTOMIZATION.font) {
-      removeCookie(THEME_COOKIE_KEYS.font)
-    } else {
-      setCookie(THEME_COOKIE_KEYS.font, value, COOKIE_MAX_AGE)
-    }
+    dirtyRef.current = true
+    setPinned((previous) => ({ ...previous, font: value }))
   }, [])
 
   const setRadius = useCallback((value: ThemeRadius) => {
-    _setRadius(value)
-    if (value === DEFAULT_THEME_CUSTOMIZATION.radius) {
-      removeCookie(THEME_COOKIE_KEYS.radius)
-    } else {
-      setCookie(THEME_COOKIE_KEYS.radius, value, COOKIE_MAX_AGE)
-    }
+    dirtyRef.current = true
+    setPinned((previous) => ({ ...previous, radius: value }))
   }, [])
 
   const setScale = useCallback((value: ThemeScale) => {
-    _setScale(value)
-    if (value === DEFAULT_THEME_CUSTOMIZATION.scale) {
-      removeCookie(THEME_COOKIE_KEYS.scale)
-    } else {
-      setCookie(THEME_COOKIE_KEYS.scale, value, COOKIE_MAX_AGE)
-    }
+    dirtyRef.current = true
+    setPinned((previous) => ({ ...previous, scale: value }))
   }, [])
 
   const setContentLayout = useCallback((value: ContentLayout) => {
-    _setContentLayout(value)
-    if (value === DEFAULT_THEME_CUSTOMIZATION.contentLayout) {
-      removeCookie(THEME_COOKIE_KEYS.contentLayout)
-    } else {
-      setCookie(THEME_COOKIE_KEYS.contentLayout, value, COOKIE_MAX_AGE)
-    }
+    dirtyRef.current = true
+    setPinned((previous) => ({ ...previous, contentLayout: value }))
   }, [])
 
   const setBlur = useCallback((value: boolean) => {
-    _setBlur(value)
-    if (value === DEFAULT_THEME_CUSTOMIZATION.blur) {
-      removeCookie(THEME_COOKIE_KEYS.blur)
-    } else {
-      setCookie(THEME_COOKIE_KEYS.blur, String(value), COOKIE_MAX_AGE)
-    }
+    dirtyRef.current = true
+    setPinned((previous) => ({ ...previous, blur: value }))
   }, [])
 
   const setCardBlur = useCallback(
     (value: boolean) => {
-      _setCardBlur(value)
-      const atDefault = value === surfaceDefaults.cardBlur
-      if (atDefault) {
-        removeLegacySurfaceCookie('cardBlur')
-        removeCookie(SURFACE_COOKIE_KEYS.cardBlur[surfaceScheme])
-      } else {
-        writeSurfaceCardBlurCookie(surfaceScheme, value)
-      }
+      updateBlock(surfaceScheme, { cardBlur: value })
     },
-    [surfaceScheme]
+    [surfaceScheme, updateBlock]
   )
 
   const setSurfaceOpacity = useCallback(
     (value: number) => {
       if (!Number.isFinite(value)) return
-      const clamped = Math.round(
-        Math.min(
-          SURFACE_OPACITY_LIMITS.max,
-          Math.max(SURFACE_OPACITY_LIMITS.min, value)
-        )
-      )
-      const atDefault = clamped === surfaceDefaults.surfaceOpacity
-      _setSurfaceOpacity(atDefault ? null : clamped)
-      writeSurfaceCookie(
-        'surfaceOpacity',
-        surfaceScheme,
-        atDefault ? null : clamped
-      )
+      updateBlock(surfaceScheme, {
+        surfaceOpacity: clampTo(value, SURFACE_OPACITY_LIMITS),
+      })
     },
-    [surfaceScheme, surfaceDefaults]
+    [surfaceScheme, updateBlock]
   )
 
   const setSurfaceBlur = useCallback(
     (value: number) => {
       if (!Number.isFinite(value)) return
-      const clamped = Math.round(
-        Math.min(
-          SURFACE_BLUR_LIMITS.max,
-          Math.max(SURFACE_BLUR_LIMITS.min, value)
-        )
-      )
-      const atDefault = clamped === surfaceDefaults.surfaceBlur
-      _setSurfaceBlur(atDefault ? null : clamped)
-      writeSurfaceCookie(
-        'surfaceBlur',
-        surfaceScheme,
-        atDefault ? null : clamped
-      )
+      updateBlock(surfaceScheme, {
+        surfaceBlur: clampTo(value, SURFACE_BLUR_LIMITS),
+      })
     },
-    [surfaceScheme, surfaceDefaults]
+    [surfaceScheme, updateBlock]
   )
 
   const setBackgroundScrim = useCallback(
     (value: number) => {
       if (!Number.isFinite(value)) return
-      const clamped = Math.round(
-        Math.min(
-          BACKGROUND_SCRIM_LIMITS.max,
-          Math.max(BACKGROUND_SCRIM_LIMITS.min, value)
-        )
-      )
-      const atDefault = clamped === surfaceDefaults.backgroundScrim
-      _setBackgroundScrim(atDefault ? null : clamped)
-      writeSurfaceCookie(
-        'backgroundScrim',
-        surfaceScheme,
-        atDefault ? null : clamped
-      )
+      updateBlock(surfaceScheme, {
+        backgroundScrim: clampTo(value, BACKGROUND_SCRIM_LIMITS),
+      })
     },
-    [surfaceScheme, surfaceDefaults]
+    [surfaceScheme, updateBlock]
   )
 
   const setSheetOpacity = useCallback(
     (value: number) => {
       if (!Number.isFinite(value)) return
-      const clamped = Math.round(
-        Math.min(
-          SURFACE_PANEL_OPACITY_LIMITS.max,
-          Math.max(SURFACE_PANEL_OPACITY_LIMITS.min, value)
-        )
-      )
-      const atDefault = clamped === surfaceDefaults.sheetOpacity
-      _setSheetOpacity(atDefault ? null : clamped)
-      writeSurfaceCookie(
-        'sheetOpacity',
-        surfaceScheme,
-        atDefault ? null : clamped
-      )
+      updateBlock(surfaceScheme, {
+        sheetOpacity: clampTo(value, SURFACE_PANEL_OPACITY_LIMITS),
+      })
     },
-    [surfaceScheme, surfaceDefaults]
+    [surfaceScheme, updateBlock]
   )
 
   const setFloatOpacity = useCallback(
     (value: number) => {
       if (!Number.isFinite(value)) return
-      const clamped = Math.round(
-        Math.min(
-          SURFACE_PANEL_OPACITY_LIMITS.max,
-          Math.max(SURFACE_PANEL_OPACITY_LIMITS.min, value)
-        )
-      )
-      const atDefault = clamped === surfaceDefaults.floatOpacity
-      _setFloatOpacity(atDefault ? null : clamped)
-      writeSurfaceCookie(
-        'floatOpacity',
-        surfaceScheme,
-        atDefault ? null : clamped
-      )
+      updateBlock(surfaceScheme, {
+        floatOpacity: clampTo(value, SURFACE_PANEL_OPACITY_LIMITS),
+      })
     },
-    [surfaceScheme, surfaceDefaults]
+    [surfaceScheme, updateBlock]
   )
 
-  // Clears both color schemes' surface slots (plus the pre-tab legacy
-  // cookies) so each scheme falls back to its CSS preset.
+  // Reset returns the panel to the shipped defaults and clears the shared row
+  // with it, so the next release's defaults apply again for every browser.
+  // dirtyRef is cleared first so the persistence effect does not immediately
+  // re-create the row we are deleting.
   const resetCustomization = useCallback(() => {
-    setPreset(DEFAULT_THEME_CUSTOMIZATION.preset)
-    setFont(DEFAULT_THEME_CUSTOMIZATION.font)
-    setRadius(DEFAULT_THEME_CUSTOMIZATION.radius)
-    setScale(DEFAULT_THEME_CUSTOMIZATION.scale)
-    setContentLayout(DEFAULT_THEME_CUSTOMIZATION.contentLayout)
-    setBlur(DEFAULT_THEME_CUSTOMIZATION.blur)
-    for (const axis of SURFACE_AXIS_LIST) {
-      removeCookie(SURFACE_COOKIE_KEYS[axis].light)
-      removeCookie(SURFACE_COOKIE_KEYS[axis].dark)
-      removeLegacySurfaceCookie(axis)
-    }
-    _setCardBlur(null)
-    _setSurfaceOpacity(null)
-    _setSurfaceBlur(null)
-    _setBackgroundScrim(null)
-    _setSheetOpacity(null)
-    _setFloatOpacity(null)
-  }, [setPreset, setFont, setRadius, setScale, setContentLayout, setBlur])
+    dirtyRef.current = false
+    persistedRowRef.current = null
+    clearPinnedCookies()
+    setPinned({
+      preset: DEFAULT_THEME_CUSTOMIZATION.preset,
+      font: DEFAULT_THEME_CUSTOMIZATION.font,
+      radius: DEFAULT_THEME_CUSTOMIZATION.radius,
+      scale: DEFAULT_THEME_CUSTOMIZATION.scale,
+      contentLayout: DEFAULT_THEME_CUSTOMIZATION.contentLayout,
+      blur: DEFAULT_THEME_CUSTOMIZATION.blur,
+      light: surfaceBlockFor('light'),
+      dark: surfaceBlockFor('dark'),
+    })
+    void clearThemeCustomization()
+  }, [])
 
   const defaults = useMemo<ThemeCustomization>(
     () => ({
@@ -635,38 +608,53 @@ export function ThemeCustomizationProvider(props: {
     [surfaceDefaults]
   )
 
+  const customization = useMemo<ThemeCustomization>(
+    () => ({
+      preset: pinned.preset,
+      font: pinned.font,
+      radius: pinned.radius,
+      scale: pinned.scale,
+      contentLayout: pinned.contentLayout,
+      blur: pinned.blur,
+      cardBlur: block.cardBlur,
+      surfaceOpacity: block.surfaceOpacity,
+      surfaceBlur: block.surfaceBlur,
+      backgroundScrim: block.backgroundScrim,
+      sheetOpacity: block.sheetOpacity,
+      floatOpacity: block.floatOpacity,
+    }),
+    [pinned, block]
+  )
+
+  // Whether the shared row currently governs this theme. False means the
+  // panel is only live in this browser — either it has never been pinned, or
+  // the viewer cannot write the shared option.
+  const themePinnedToServer = useMemo(
+    () =>
+      parseThemeCustomization(serverRow, DEFAULT_THEME_CUSTOMIZATION) !== null,
+    [serverRow]
+  )
+
   const value = useMemo<ThemeCustomizationContextType>(
     () => ({
       defaults,
-      customization: {
-        preset,
-        font,
-        radius,
-        scale,
-        contentLayout,
-        blur,
-        cardBlur,
-        surfaceOpacity,
-        surfaceBlur,
-        backgroundScrim,
-        sheetOpacity,
-        floatOpacity,
-      },
-      blur,
+      customization,
+      blur: pinned.blur,
       setBlur,
-      cardBlur,
+      cardBlur: block.cardBlur,
       setCardBlur,
-      surfaceOpacity,
+      surfaceOpacity: block.surfaceOpacity,
       setSurfaceOpacity,
-      surfaceBlur,
+      surfaceBlur: block.surfaceBlur,
       setSurfaceBlur,
-      backgroundScrim,
+      backgroundScrim: block.backgroundScrim,
       setBackgroundScrim,
-      sheetOpacity,
+      sheetOpacity: block.sheetOpacity,
       setSheetOpacity,
-      floatOpacity,
+      floatOpacity: block.floatOpacity,
       setFloatOpacity,
       surfaceScheme,
+      themePinnedToServer,
       setPreset,
       setFont,
       setRadius,
@@ -675,20 +663,17 @@ export function ThemeCustomizationProvider(props: {
       resetCustomization,
     }),
     [
-      preset,
-      font,
-      radius,
-      scale,
-      contentLayout,
-      blur,
-      cardBlur,
-      surfaceOpacity,
-      surfaceBlur,
-      backgroundScrim,
-      sheetOpacity,
-      floatOpacity,
+      defaults,
+      customization,
+      pinned.blur,
+      block,
       surfaceScheme,
+      themePinnedToServer,
       setPreset,
+      setFont,
+      setRadius,
+      setScale,
+      setContentLayout,
       setBlur,
       setCardBlur,
       setSurfaceOpacity,
@@ -696,12 +681,7 @@ export function ThemeCustomizationProvider(props: {
       setBackgroundScrim,
       setSheetOpacity,
       setFloatOpacity,
-      setFont,
-      setRadius,
-      setScale,
-      setContentLayout,
       resetCustomization,
-      defaults,
     ]
   )
 

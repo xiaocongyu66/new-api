@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/egress"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/security/oauth"
+	"github.com/QuantumNous/new-api/internal/settings"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
 	"github.com/QuantumNous/new-api/internal/usage"
@@ -44,19 +45,22 @@ func GetStatus(c contract.Context) {
 	legalSetting := security.GetLegalSettings()
 
 	data := common.H{
-		"version":                       common.Version,
-		"start_time":                    common.StartTime,
-		"email_verification":            common.EmailVerificationEnabled,
-		"github_oauth":                  common.GitHubOAuthEnabled,
-		"github_client_id":              common.GitHubClientId,
-		"discord_oauth":                 security.GetDiscordSettings().Enabled,
-		"discord_client_id":             security.GetDiscordSettings().ClientId,
-		"linuxdo_oauth":                 common.LinuxDOOAuthEnabled,
-		"linuxdo_client_id":             common.LinuxDOClientId,
-		"linuxdo_minimum_trust_level":   common.LinuxDOMinimumTrustLevel,
-		"telegram_oauth":                common.TelegramOAuthEnabled,
-		"telegram_bot_name":             common.TelegramBotName,
-		"theme":                         "default",
+		"version":                     common.Version,
+		"start_time":                  common.StartTime,
+		"email_verification":          common.EmailVerificationEnabled,
+		"github_oauth":                common.GitHubOAuthEnabled,
+		"github_client_id":            common.GitHubClientId,
+		"discord_oauth":               security.GetDiscordSettings().Enabled,
+		"discord_client_id":           security.GetDiscordSettings().ClientId,
+		"linuxdo_oauth":               common.LinuxDOOAuthEnabled,
+		"linuxdo_client_id":           common.LinuxDOClientId,
+		"linuxdo_minimum_trust_level": common.LinuxDOMinimumTrustLevel,
+		"telegram_oauth":              common.TelegramOAuthEnabled,
+		"telegram_bot_name":           common.TelegramBotName,
+		"theme":                       "default",
+		// Pinned theme panel, written by admins through /api/option. Empty means
+		// nothing is pinned and the client keeps its own defaults.
+		"theme_customization":           common.OptionMap[settings.ThemeCustomizationOptionKey],
 		"system_name":                   common.SystemName,
 		"logo":                          common.Logo,
 		"footer_html":                   common.Footer,

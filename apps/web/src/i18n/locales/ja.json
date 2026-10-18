@@ -4472,6 +4472,8 @@
     "Reset all model prices?": "すべてのモデル価格をリセットしますか？",
     "Reset all model ratios?": "すべてのモデル比率をリセットしますか？",
     "Reset all settings to default values": "すべての設定をデフォルト値にリセット",
+    "Saved in this browser only — sign in as an administrator to share it.": "このブラウザにのみ保存されています — 共有するには管理者としてログインしてください。",
+    "Saved to the server — the same theme applies on every device.": "サーバーに保存されました — すべてのデバイスで同じテーマが適用されます。",
     "Reset at:": "リセット日時：",
     "Reset balance and used quota": "残高と使用済みクォータをリセット",
     "Reset completed": "リセット完了",

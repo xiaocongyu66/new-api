@@ -51,6 +51,8 @@ interface StatusApiResponse {
     amount_unit?: string
     inviter_reward_display?: number
     invitee_reward_display?: number
+    /** Raw pinned theme-panel row; empty when the operator has not pinned one. */
+    theme_customization?: string
   }
 }
 
@@ -109,15 +111,22 @@ export function mapStatusDataToConfig(
   }
 }
 
-// Fetch system config from API
-async function fetchSystemConfig(): Promise<Partial<SystemConfig>> {
+// Fetch system config and the pinned theme row from API
+async function fetchSystemConfig(): Promise<{
+  config: Partial<SystemConfig>
+  themeCustomization: string
+}> {
   const response = await fetch('/api/status')
   if (!response.ok) throw new Error('Failed to fetch status')
 
   const data: StatusApiResponse = await response.json()
   if (!data.success) throw new Error('API returned error')
 
-  return mapStatusDataToConfig(data.data)
+  const raw = data.data?.theme_customization
+  return {
+    config: mapStatusDataToConfig(data.data),
+    themeCustomization: typeof raw === 'string' ? raw : '',
+  }
 }
 
 // Preload image and return cleanup function
@@ -157,21 +166,24 @@ export function useSystemConfig(options: UseSystemConfigOptions = {}) {
     setConfig,
     setLoadedLogoUrl,
     setLoading,
+    setServerTheme,
   } = useSystemConfigStore()
 
   // Load config from backend
   const loadConfig = useCallback(async () => {
     try {
       setLoading(true)
-      const newConfig = await fetchSystemConfig()
+      const { config: newConfig, themeCustomization } =
+        await fetchSystemConfig()
       setConfig(newConfig)
+      setServerTheme(themeCustomization)
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to load system config:', error)
     } finally {
       setLoading(false)
     }
-  }, [setConfig, setLoading])
+  }, [setConfig, setLoading, setServerTheme])
 
   useEffect(() => {
     if (autoLoad) loadConfig()
