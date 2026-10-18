@@ -77,8 +77,13 @@ function getPinnedColumnClassName(
     // included - opaque means no backdrop blur is needed (and none is added:
     // `backdrop-filter` would also make the cell a containing block for any
     // absolutely positioned descendant).
+    //
+    // The header cell deliberately ignores the `--table-header-bg` hook that
+    // split-header tables use to thin their band: the pinned strip has to
+    // occlude, and that hook resolves to a 12% veil once the background image is
+    // up, which would leave the header columns sliding under it readable.
     kind === 'header'
-      ? '[background-color:var(--table-header-bg,var(--table-header-solid))] group-hover:[background-color:var(--table-header-hover-solid)] z-30'
+      ? '[background-color:var(--table-header-solid)] group-hover:[background-color:var(--table-header-hover-solid)] z-30'
       : '[background-color:var(--table-pinned)] z-10 group-hover:[background-color:color-mix(in_oklch,var(--muted-solid)_50%,var(--background))] group-data-[state=selected]:[background-color:var(--muted-solid)]',
     pinnedColumn.className,
     kind === 'header'
