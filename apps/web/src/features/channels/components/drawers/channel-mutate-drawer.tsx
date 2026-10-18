@@ -1777,8 +1777,14 @@ function ChannelMutateDrawerContent({
             )
           }
           className={cn(
+            // Inline presentation is the page itself, not a panel: the drawer's
+            // card surface painted a rounded box the height of the scroll
+            // viewport, while the form inside overflows past it (the inline
+            // branch keeps `overflow-visible`), so the lower half of the form
+            // landed on a different surface. The page panel already provides
+            // the surface, so this wrapper stays bare.
             isInline
-              ? 'bg-card-surface text-foreground flex min-h-0 flex-1 flex-col overflow-visible rounded-lg shadow-none'
+              ? 'text-foreground flex min-h-0 flex-1 flex-col overflow-visible'
               : sideDrawerContentClassName('sm:max-w-5xl')
           )}
         >
