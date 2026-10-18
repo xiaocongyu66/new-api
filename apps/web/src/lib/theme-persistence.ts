@@ -127,9 +127,14 @@ function readEnum<T extends string>(
     : fallback
 }
 
-function readNumber(value: unknown, min: number, max: number): number {
-  const parsed = typeof value === 'number' ? value : Number(value)
-  return clampNumber(parsed, min, max)
+function readNumber(
+  value: unknown,
+  min: number,
+  max: number
+): number | null {
+  if (typeof value !== 'number') return null
+  if (!Number.isFinite(value)) return null
+  return clampNumber(value, min, max)
 }
 
 /** Parse a stored row back into the panel shape. Returns null when the row is
@@ -151,21 +156,51 @@ export function parseThemeCustomization(
   const block = (
     suffix: string,
     fallback: SurfaceValues
-  ): SurfaceValues => ({
-    cardBlur:
-      typeof payload[`card_blur_${suffix}`] === 'boolean'
-        ? (payload[`card_blur_${suffix}`] as boolean)
-        : fallback.cardBlur,
-    surfaceOpacity: readNumber(
-      payload[`surface_opacity_${suffix}`],
-      10,
-      100
-    ),
-    surfaceBlur: readNumber(payload[`surface_blur_${suffix}`], 0, 40),
-    backgroundScrim: readNumber(payload[`background_scrim_${suffix}`], 0, 100),
-    sheetOpacity: readNumber(payload[`sheet_opacity_${suffix}`], 50, 100),
-    floatOpacity: readNumber(payload[`float_opacity_${suffix}`], 50, 100),
-  })
+  ): SurfaceValues => {
+    const numeric = (
+      key: string,
+      min: number,
+      max: number,
+      backstop: number
+    ) => readNumber(payload[key], min, max) ?? backstop
+
+    return {
+      cardBlur:
+        typeof payload[`card_blur_${suffix}`] === 'boolean'
+          ? (payload[`card_blur_${suffix}`] as boolean)
+          : fallback.cardBlur,
+      surfaceOpacity: numeric(
+        `surface_opacity_${suffix}`,
+        10,
+        100,
+        fallback.surfaceOpacity
+      ),
+      surfaceBlur: numeric(
+        `surface_blur_${suffix}`,
+        0,
+        40,
+        fallback.surfaceBlur
+      ),
+      backgroundScrim: numeric(
+        `background_scrim_${suffix}`,
+        0,
+        100,
+        fallback.backgroundScrim
+      ),
+      sheetOpacity: numeric(
+        `sheet_opacity_${suffix}`,
+        50,
+        100,
+        fallback.sheetOpacity
+      ),
+      floatOpacity: numeric(
+        `float_opacity_${suffix}`,
+        50,
+        100,
+        fallback.floatOpacity
+      ),
+    }
+  }
 
   return {
     preset: readEnum(payload.preset, THEME_PRESET_VALUES, defaults.preset),

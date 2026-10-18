@@ -298,7 +298,6 @@ type ThemeCustomizationContextType = {
   // Color scheme whose storage slots the surface values above read from and
   // write to (the drawer's day/night tab switches it).
   surfaceScheme: SurfaceScheme
-  /** Whether the live state is already persisted in the shared option row. */
   /** Whether the shared option row currently governs this theme. */
   themePinnedToServer: boolean
   resetCustomization: () => void
