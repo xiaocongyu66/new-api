@@ -148,6 +148,9 @@ func ValidateOptionValue(key string, value string) error {
 		}
 		return nil
 	}
+	if key == ThemeCustomizationOptionKey {
+		return ValidateThemeCustomizationOption(value)
+	}
 	return nil
 }
 
@@ -240,6 +243,9 @@ func SeedOptionMap() {
 	common.OptionMap["AutomaticDisableStatusCodes"] = status_code.AutomaticDisableStatusCodesToString()
 	common.OptionMap["AutomaticRetryStatusCodes"] = status_code.AutomaticRetryStatusCodesToString()
 	common.OptionMap["proxy_config"] = ""
+	// Empty means "no pinned theme"; a persisted override is loaded from the
+	// options table by loadOptionsFromDatabase on startup.
+	common.OptionMap[ThemeCustomizationOptionKey] = ""
 	// Catalog-owned options (resolve_group, manage_channels, health, etc.) are
 	// provided by registered OnSeedCatalogOptions hook from their behavior files'
 	// init(); this avoids direct imports and cycles while keeping behavior in catalog.

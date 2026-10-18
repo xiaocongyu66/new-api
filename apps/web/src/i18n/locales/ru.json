@@ -4472,6 +4472,8 @@
     "Reset all model prices?": "Сбросить все цены моделей?",
     "Reset all model ratios?": "Сбросить все соотношения моделей?",
     "Reset all settings to default values": "Сбросить все настройки до значений по умолчанию",
+    "Saved in this browser only — sign in as an administrator to share it.": "Сохранено только в этом браузере — войдите как администратор, чтобы применить для всех.",
+    "Saved to the server — the same theme applies on every device.": "Сохранено на сервере — одинаковая тема на всех устройствах.",
     "Reset at:": "Сброс в:",
     "Reset balance and used quota": "Сбросить баланс и использованную квоту",
     "Reset completed": "Сброс завершён",

@@ -74,9 +74,17 @@ interface SystemConfigState {
   config: SystemConfig
   loading: boolean
   loadedLogoUrl: string
+  /**
+   * Raw pinned-theme option row from /api/status. Kept out of `config` (and
+   * therefore out of the persisted slice) so a stale localStorage value can
+   * never outlive the server's answer.
+   */
+  serverTheme: string
+  serverThemeLoaded: boolean
   setConfig: (config: Partial<SystemConfig>) => void
   setLoadedLogoUrl: (url: string) => void
   setLoading: (loading: boolean) => void
+  setServerTheme: (value: string) => void
 }
 
 /**
@@ -93,6 +101,8 @@ export const useSystemConfigStore = create<SystemConfigState>()(
       },
       loading: true,
       loadedLogoUrl: DEFAULT_LOGO,
+      serverTheme: '',
+      serverThemeLoaded: false,
       setConfig: (newConfig) =>
         set((state) => ({
           config: {
@@ -106,6 +116,8 @@ export const useSystemConfigStore = create<SystemConfigState>()(
         })),
       setLoadedLogoUrl: (url) => set({ loadedLogoUrl: url }),
       setLoading: (loading) => set({ loading }),
+      setServerTheme: (value) =>
+        set({ serverTheme: value, serverThemeLoaded: true }),
     }),
     {
       name: 'system-config-storage',

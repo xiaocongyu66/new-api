@@ -95,7 +95,7 @@ export function ConfigDrawer({
   const hasSidebarControls = sidebar !== null && layout !== null
   const { resetDir } = useDirection()
   const { resetTheme } = useTheme()
-  const { resetCustomization } = useThemeCustomization()
+  const { resetCustomization, themePinnedToServer } = useThemeCustomization()
 
   const handleReset = () => {
     if (hasSidebarControls) {
@@ -151,6 +151,14 @@ export function ConfigDrawer({
           <DirConfig />
         </div>
         <SheetFooter className={sideDrawerFooterClassName('grid-cols-1')}>
+          <p
+            className='text-muted-foreground text-center text-xs'
+            data-testid='theme-persistence-status'
+          >
+            {themePinnedToServer
+              ? t('Saved to the server — the same theme applies on every device.')
+              : t('Saved in this browser only — sign in as an administrator to share it.')}
+          </p>
           <Button
             variant='destructive'
             onClick={handleReset}
