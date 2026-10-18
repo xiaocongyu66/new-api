@@ -78,8 +78,8 @@ function getPinnedColumnClassName(
     // `backdrop-filter` would also make the cell a containing block for any
     // absolutely positioned descendant).
     kind === 'header'
-      ? '[background-color:var(--table-header-bg,var(--table-header-solid))] group-hover:[background-color:var(--table-header-hover-solid)] z-30'
-      : '[background-color:var(--table-pinned)] z-10 group-hover:[background-color:color-mix(in_oklch,var(--muted-solid)_50%,var(--background))] group-data-[state=selected]:[background-color:var(--muted-solid)]',
+      ? '[background-color:var(--table-header-bg,var(--table-header-solid))] z-30'
+      : '[background-color:var(--table-pinned)] z-10',
     pinnedColumn.className,
     kind === 'header'
       ? pinnedColumn.headerClassName

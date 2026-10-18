@@ -1251,3 +1251,15 @@ html.dark body[data-app-background='true'] {
     display: none;
   }
 }
+
+/* Pinned cells sit above the columns sliding under them, so any state change
+ * still has to occlude: their feedback is an opaque fill, expressed here
+ * because the `group-hover:` / `group-data-[state=selected]:` variants on the
+ * cell do not override its base arbitrary background property in the generated
+ * stylesheet (measured: hover and selected rows kept the base fill). */
+[data-slot='table-row']:hover > td.sticky.right-0,
+[data-slot='table-row']:hover > td.sticky.left-0,
+[data-slot='table-row'][data-state='selected'] > td.sticky.right-0,
+[data-slot='table-row'][data-state='selected'] > td.sticky.left-0 {
+  background-color: var(--muted-solid);
+}
