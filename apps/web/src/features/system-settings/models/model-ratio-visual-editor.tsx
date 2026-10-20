@@ -20,11 +20,10 @@ import type {
   ColumnFiltersState,
   OnChangeFn,
   PaginationState,
-  RowSelectionState,
   VisibilityState,
   SortingState,
 } from '@tanstack/react-table'
-import { Copy, Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 import {
   useState,
   useMemo,
@@ -37,16 +36,13 @@ import {
 } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
-import { toast } from 'sonner'
 
 import {
-  DataTableBulkActions,
   DataTableToolbar,
   DataTablePagination,
   useDataTable,
 } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import { StatusBadge } from '@/components/status-badge'
 import {
   Dialog,
@@ -57,7 +53,10 @@ import {
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
 
 import { safeJsonParse } from '../utils/json-parser'
-import type { PricingMode } from './model-pricing-core'
+import {
+  createInitialLaneState,
+  type PricingMode,
+} from './model-pricing-core'
 import {
   ModelPricingEditorPanel,
   type ModelPricingEditorPanelHandle,
@@ -66,8 +65,6 @@ import {
 import {
   buildModelSnapshots,
   getModeLabel,
-  getPriceDetail,
-  getPriceSummary,
   getSnapshotSignature,
   isBasePricingUnset,
   type ModelRow,
@@ -149,7 +146,6 @@ const ModelRatioVisualEditorComponent = forwardRef<
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [globalFilter, setGlobalFilter] = useState('')
-  const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const editorPanelRef = useRef<ModelPricingEditorPanelHandle>(null)
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
@@ -474,14 +470,12 @@ const ModelRatioVisualEditorComponent = forwardRef<
     globalFilter,
     columnVisibility,
     pagination,
-    rowSelection,
-    enableRowSelection: true,
+    enableRowSelection: false,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onGlobalFilterChange: handleGlobalFilterChange,
     onColumnVisibilityChange: setColumnVisibility,
     onPaginationChange: setPagination,
-    onRowSelectionChange: setRowSelection,
     autoResetPageIndex: false,
     globalFilterFn: (row, _columnId, filterValue) => {
       const searchValue = String(filterValue).toLowerCase()
@@ -490,7 +484,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
   })
 
   const persistPricingData = useCallback(
-    (data: ModelRatioData, targetNames: string[] = [data.name]) => {
+    (data: ModelRatioData) => {
       const priceMap = safeJsonParse<Record<string, number>>(modelPrice, {
         fallback: {},
         silent: true,
@@ -534,59 +528,59 @@ const ModelRatioVisualEditorComponent = forwardRef<
 
       const setIfPresent = (
         target: Record<string, number>,
-        name: string,
+        key: string,
         value: string | undefined
       ) => {
         if (!value || value === '') return
         const parsed = parseFloat(value)
-        if (Number.isFinite(parsed)) target[name] = parsed
+        if (Number.isFinite(parsed)) target[key] = parsed
       }
 
-      targetNames.forEach((name) => {
-        delete priceMap[name]
-        delete ratioMap[name]
-        delete cacheMap[name]
-        delete createCacheMap[name]
-        delete completionMap[name]
-        delete imageMap[name]
-        delete audioMap[name]
-        delete audioCompletionMap[name]
-        delete billingModeMap[name]
-        delete billingExprMap[name]
+      const modelName = data.name
 
-        if (data.billingMode === 'tiered_expr') {
-          const combined = combineBillingExpr(
-            data.billingExpr || '',
-            data.requestRuleExpr || ''
-          )
-          if (combined) {
-            billingModeMap[name] = 'tiered_expr'
-            billingExprMap[name] = combined
-          }
-          // Always serialize ratio/price values for tiered_expr models so they
-          // serve as fallback during multi-instance sync delays. The backend's
-          // ModelPriceHelper checks billing_mode first, so these values are
-          // only consulted when billing_setting hasn't propagated yet.
-          setIfPresent(priceMap, name, data.price)
-          setIfPresent(ratioMap, name, data.ratio)
-          setIfPresent(cacheMap, name, data.cacheRatio)
-          setIfPresent(createCacheMap, name, data.createCacheRatio)
-          setIfPresent(completionMap, name, data.completionRatio)
-          setIfPresent(imageMap, name, data.imageRatio)
-          setIfPresent(audioMap, name, data.audioRatio)
-          setIfPresent(audioCompletionMap, name, data.audioCompletionRatio)
-        } else if (data.price && data.price !== '') {
-          setIfPresent(priceMap, name, data.price)
-        } else {
-          setIfPresent(ratioMap, name, data.ratio)
-          setIfPresent(cacheMap, name, data.cacheRatio)
-          setIfPresent(createCacheMap, name, data.createCacheRatio)
-          setIfPresent(completionMap, name, data.completionRatio)
-          setIfPresent(imageMap, name, data.imageRatio)
-          setIfPresent(audioMap, name, data.audioRatio)
-          setIfPresent(audioCompletionMap, name, data.audioCompletionRatio)
+      delete priceMap[modelName]
+      delete ratioMap[modelName]
+      delete cacheMap[modelName]
+      delete createCacheMap[modelName]
+      delete completionMap[modelName]
+      delete imageMap[modelName]
+      delete audioMap[modelName]
+      delete audioCompletionMap[modelName]
+      delete billingModeMap[modelName]
+      delete billingExprMap[modelName]
+
+      if (data.billingMode === 'tiered_expr') {
+        const combined = combineBillingExpr(
+          data.billingExpr || '',
+          data.requestRuleExpr || ''
+        )
+        if (combined) {
+          billingModeMap[modelName] = 'tiered_expr'
+          billingExprMap[modelName] = combined
         }
-      })
+        // Always serialize ratio/price values for tiered_expr models so they
+        // serve as fallback during multi-instance sync delays. The backend's
+        // ModelPriceHelper checks billing_mode first, so these values are
+        // only consulted when billing_setting hasn't propagated yet.
+        setIfPresent(priceMap, modelName, data.price)
+        setIfPresent(ratioMap, modelName, data.ratio)
+        setIfPresent(cacheMap, modelName, data.cacheRatio)
+        setIfPresent(createCacheMap, modelName, data.createCacheRatio)
+        setIfPresent(completionMap, modelName, data.completionRatio)
+        setIfPresent(imageMap, modelName, data.imageRatio)
+        setIfPresent(audioMap, modelName, data.audioRatio)
+        setIfPresent(audioCompletionMap, modelName, data.audioCompletionRatio)
+      } else if (data.price && data.price !== '') {
+        setIfPresent(priceMap, modelName, data.price)
+      } else {
+        setIfPresent(ratioMap, modelName, data.ratio)
+        setIfPresent(cacheMap, modelName, data.cacheRatio)
+        setIfPresent(createCacheMap, modelName, data.createCacheRatio)
+        setIfPresent(completionMap, modelName, data.completionRatio)
+        setIfPresent(imageMap, modelName, data.imageRatio)
+        setIfPresent(audioMap, modelName, data.audioRatio)
+        setIfPresent(audioCompletionMap, modelName, data.audioCompletionRatio)
+      }
 
       onChange('ModelPrice', JSON.stringify(priceMap, null, 2))
       onChange('ModelRatio', JSON.stringify(ratioMap, null, 2))
@@ -622,43 +616,6 @@ const ModelRatioVisualEditorComponent = forwardRef<
       onChange,
     ]
   )
-
-  const handleBatchCopy = useCallback(async () => {
-    if (!editData) {
-      toast.error(t('Open a source model first'))
-      return
-    }
-
-    let sourceData = editData
-    if (editorOpen && editorPanelRef.current) {
-      const committed = await editorPanelRef.current.commitDraft()
-      if (!committed) return
-      sourceData = committed
-      setEditData(committed)
-    }
-
-    const targetNames = table
-      .getFilteredSelectedRowModel()
-      .rows.map((row) => row.original.name)
-
-    if (targetNames.length === 0) {
-      toast.error(t('Select at least one target model'))
-      return
-    }
-
-    // Persist to the source model too, so targets never carry pricing the
-    // source itself would lose if the editor draft were abandoned.
-    persistPricingData(sourceData, [
-      ...new Set([sourceData.name, ...targetNames]),
-    ])
-    table.resetRowSelection()
-    toast.success(
-      t('Applied {{name}} pricing to {{count}} models', {
-        name: sourceData.name,
-        count: targetNames.length,
-      })
-    )
-  }, [editData, editorOpen, persistPricingData, t, table])
 
   useImperativeHandle(
     ref,
@@ -730,27 +687,97 @@ const ModelRatioVisualEditorComponent = forwardRef<
           {emptyStateText}
         </div>
       ) : (
-        <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
+        <div className='grid gap-3 sm:grid-cols-2'>
           {table.getRowModel().rows.map((row) => {
             const model = row.original
-            const isSelected = row.getIsSelected()
             const isEditing = editData?.name === model.name
+            const lanes = createInitialLaneState({
+              name: model.name,
+              price: model.price,
+              ratio: model.ratio,
+              cacheRatio: model.cacheRatio,
+              createCacheRatio: model.createCacheRatio,
+              completionRatio: model.completionRatio,
+              imageRatio: model.imageRatio,
+              audioRatio: model.audioRatio,
+              audioCompletionRatio: model.audioCompletionRatio,
+            })
+
+            const priceEntries: Array<{ label: string; value: string }> =
+              model.billingMode === 'per-request'
+                ? [
+                    {
+                      label: t('Fixed request price'),
+                      value: model.price ? `$${model.price}` : '—',
+                    },
+                  ]
+                : model.billingMode === 'tiered_expr'
+                  ? [
+                      {
+                        label: t('Expression pricing'),
+                        value: model.billingExpr || '—',
+                      },
+                    ]
+                  : [
+                      {
+                        label: t('Input price'),
+                        value: lanes.promptPrice
+                          ? `$${lanes.promptPrice}`
+                          : '—',
+                      },
+                      {
+                        label: t('Completion price'),
+                        value: lanes.prices.completion
+                          ? `$${lanes.prices.completion}`
+                          : '—',
+                      },
+                      {
+                        label: t('Cache read price'),
+                        value: lanes.prices.cache
+                          ? `$${lanes.prices.cache}`
+                          : '—',
+                      },
+                      {
+                        label: t('Cache write price'),
+                        value: lanes.prices.createCache
+                          ? `$${lanes.prices.createCache}`
+                          : '—',
+                      },
+                      {
+                        label: t('Image input price'),
+                        value: lanes.prices.image
+                          ? `$${lanes.prices.image}`
+                          : '—',
+                      },
+                      {
+                        label: t('Audio input price'),
+                        value: lanes.prices.audioInput
+                          ? `$${lanes.prices.audioInput}`
+                          : '—',
+                      },
+                      {
+                        label: t('Audio output price'),
+                        value: lanes.prices.audioOutput
+                          ? `$${lanes.prices.audioOutput}`
+                          : '—',
+                      },
+                    ]
+
             return (
               <div
                 key={row.id}
                 className={cn(
-                  'group relative flex min-h-[128px] flex-col gap-2 rounded-xl border bg-card p-3 text-left shadow-sm transition hover:border-primary/40 hover:shadow-md',
-                  isEditing && 'border-primary bg-primary/5',
-                  isSelected && 'ring-2 ring-primary/30'
+                  'group relative rounded-xl border bg-card shadow-sm transition hover:border-primary/40 hover:shadow-md',
+                  isEditing && 'border-primary bg-primary/5'
                 )}
               >
-                <div className='flex items-start justify-between gap-2'>
-                  <button
-                    type='button'
-                    className='flex min-w-0 flex-1 flex-col gap-1 text-left'
-                    onClick={() => handleEdit(model)}
-                  >
-                    <span className='flex min-w-0 items-center gap-2 font-medium'>
+                <button
+                  type='button'
+                  className='flex h-full w-full flex-col gap-2.5 p-3.5 pr-9 text-left'
+                  onClick={() => handleEdit(model)}
+                >
+                  <div className='flex min-w-0 flex-col gap-1'>
+                    <span className='flex min-w-0 items-center gap-2 text-sm leading-tight font-semibold'>
                       <span className='min-w-0 truncate'>{model.name}</span>
                       {model.billingMode === 'tiered_expr' && (
                         <StatusBadge
@@ -769,46 +796,47 @@ const ModelRatioVisualEditorComponent = forwardRef<
                         />
                       )}
                     </span>
-                    <span className='text-muted-foreground text-xs'>
+                    <span className='text-muted-foreground/70 text-[11px]'>
                       {t(getModeLabel(model.billingMode))}
                     </span>
-                  </button>
-                  <div className='flex shrink-0 items-center gap-1'>
-                    <Checkbox
-                      checked={isSelected}
-                      onCheckedChange={(value) => row.toggleSelected(!!value)}
-                      aria-label={t('Select row')}
-                      onClick={(event) => event.stopPropagation()}
-                    />
-                    {filterMode !== 'unset' && (
-                      <Button
-                        type='button'
-                        variant='ghost'
-                        size='icon-sm'
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          handleDelete(model.name)
-                        }}
-                        aria-label={t('Delete')}
-                      >
-                        <Trash2 className='h-4 w-4' />
-                      </Button>
-                    )}
                   </div>
-                </div>
 
-                <button
-                  type='button'
-                  className='flex flex-1 flex-col gap-1 text-left'
-                  onClick={() => handleEdit(model)}
-                >
-                  <span className='truncate font-medium'>
-                    {getPriceSummary(model, t)}
-                  </span>
-                  <span className='text-muted-foreground truncate text-xs'>
-                    {getPriceDetail(model, t)}
-                  </span>
+                  <div className='grid grid-cols-2 gap-x-4 gap-y-1.5'>
+                    {priceEntries.map((entry) => (
+                      <div
+                        key={entry.label}
+                        className={
+                          priceEntries.length === 1
+                            ? 'col-span-2 flex min-w-0 items-baseline justify-between gap-x-4'
+                            : 'flex min-w-0 items-baseline justify-between gap-x-4'
+                        }
+                      >
+                        <span className='text-primary/80 shrink-0 text-xs font-semibold'>
+                          {entry.label}
+                        </span>
+                        <span className='text-muted-foreground min-w-0 text-right text-xs font-light tabular-nums'>
+                          {entry.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </button>
+
+                {filterMode !== 'unset' && (
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='icon-sm'
+                    className='text-muted-foreground/50 absolute top-1.5 right-1.5 hover:text-destructive'
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      handleDelete(model.name)
+                    }}
+                    aria-label={t('Delete')}
+                  >
+                    <Trash2 className='h-4 w-4' />
+                  </Button>
+                )}
               </div>
             )
           })}
@@ -816,15 +844,6 @@ const ModelRatioVisualEditorComponent = forwardRef<
       )}
 
       {hasRows && <DataTablePagination table={table} />}
-
-      <DataTableBulkActions table={table} entityName={t('model')}>
-        <Button size='sm' disabled={!editData} onClick={handleBatchCopy}>
-          <Copy data-icon='inline-start' />
-          {editData
-            ? t('Copy {{name}} pricing', { name: editData.name })
-            : t('Open a source model first')}
-        </Button>
-      </DataTableBulkActions>
 
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
         <DialogContent className='sm:max-w-4xl w-[95vw] max-h-[90vh] overflow-hidden p-0'>
