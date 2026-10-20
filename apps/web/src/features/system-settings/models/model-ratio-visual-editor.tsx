@@ -53,6 +53,7 @@ import {
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
 
 import { safeJsonParse } from '../utils/json-parser'
+import { formatPricingNumber } from './pricing-format'
 import {
   createInitialLaneState,
   type PricingMode,
@@ -67,6 +68,8 @@ import {
   getModeLabel,
   getSnapshotSignature,
   isBasePricingUnset,
+  parseCompletionRatioMeta,
+  resolveEffectiveCompletionRatio,
   type ModelRow,
 } from './model-pricing-snapshots'
 import { buildModelRatioColumns } from './model-ratio-table-columns'
@@ -82,6 +85,8 @@ type ModelRatioVisualEditorProps = {
   savedAudioCompletionRatio: string
   savedBillingMode: string
   savedBillingExpr: string
+  // Backend-computed effective completion ratio per model (JSON). Read-only.
+  completionRatioMeta?: string
   modelPrice: string
   modelRatio: string
   cacheRatio: string
@@ -121,6 +126,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
     savedAudioCompletionRatio,
     savedBillingMode,
     savedBillingExpr,
+    completionRatioMeta,
     modelPrice,
     modelRatio,
     cacheRatio,
@@ -189,6 +195,11 @@ const ModelRatioVisualEditorComponent = forwardRef<
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(columnVisibility))
   }, [columnVisibility])
+
+  const completionRatioMetaMap = useMemo(
+    () => parseCompletionRatioMeta(completionRatioMeta),
+    [completionRatioMeta]
+  )
 
   const models = useMemo(() => {
     const savedRows = buildModelSnapshots({
@@ -299,6 +310,11 @@ const ModelRatioVisualEditorComponent = forwardRef<
       } else if (editableModel.price && editableModel.price !== '') {
         editBillingMode = 'per-request'
       }
+      const effectiveCompletionRatio = resolveEffectiveCompletionRatio(
+        editableModel.name,
+        completionRatioMetaMap,
+        editableModel.completionRatio
+      )
       setEditData({
         name: editableModel.name,
         price: editableModel.price,
@@ -312,10 +328,16 @@ const ModelRatioVisualEditorComponent = forwardRef<
         billingMode: editBillingMode,
         billingExpr: editableModel.billingExpr,
         requestRuleExpr: editableModel.requestRuleExpr,
+        completionRatioEffective:
+          effectiveCompletionRatio !== null
+            ? String(effectiveCompletionRatio)
+            : '',
+        completionRatioLocked:
+          completionRatioMetaMap[editableModel.name]?.locked ?? false,
       })
       setEditorOpen(true)
     },
-    []
+    [completionRatioMetaMap]
   )
 
   const handleAdd = useCallback(() => {
@@ -703,6 +725,21 @@ const ModelRatioVisualEditorComponent = forwardRef<
               audioCompletionRatio: model.audioCompletionRatio,
             })
 
+            // Billing charges output tokens at the effective completion
+            // ratio, which the backend resolves (DB override → hardcoded
+            // default). The DB map alone leaves most models without one.
+            const effectiveCompletionRatio = resolveEffectiveCompletionRatio(
+              model.name,
+              completionRatioMetaMap,
+              model.completionRatio
+            )
+            const effectiveOutputPrice =
+              lanes.promptPrice && effectiveCompletionRatio !== null
+                ? `$${formatPricingNumber(
+                    Number(lanes.promptPrice) * effectiveCompletionRatio
+                  )}`
+                : '—'
+
             const priceEntries: Array<{ label: string; value: string }> =
               model.billingMode === 'tiered_expr'
                 ? [
@@ -726,9 +763,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
                       value:
                         model.billingMode === 'per-request'
                           ? '—'
-                          : lanes.prices.completion
-                            ? `$${lanes.prices.completion}`
-                            : '—',
+                          : effectiveOutputPrice,
                     },
                   ]
 

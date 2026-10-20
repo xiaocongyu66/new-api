@@ -64,6 +64,8 @@ type ModelFormValues = {
 type ModelRatioFormProps = {
   form: UseFormReturn<ModelFormValues>
   savedValues: ModelFormValues
+  // Backend-computed effective completion ratio per model (JSON). Read-only.
+  completionRatioMeta?: string
   onSave: (values: ModelFormValues) => Promise<void>
   onReset: () => void
   isSaving: boolean
@@ -172,6 +174,7 @@ export const ModelRatioForm = memo(function ModelRatioForm({
   isSaving,
   isResetting,
   variant = 'default',
+  completionRatioMeta,
 }: ModelRatioFormProps) {
   const { t } = useTranslation()
   const isUnsetVariant = variant === 'unset'
@@ -270,6 +273,7 @@ export const ModelRatioForm = memo(function ModelRatioForm({
               savedCacheRatio={savedValues.CacheRatio}
               savedCreateCacheRatio={savedValues.CreateCacheRatio}
               savedCompletionRatio={savedValues.CompletionRatio}
+              completionRatioMeta={completionRatioMeta}
               savedImageRatio={savedValues.ImageRatio}
               savedAudioRatio={savedValues.AudioRatio}
               savedAudioCompletionRatio={savedValues.AudioCompletionRatio}

@@ -149,6 +149,8 @@ type RatioSettingsCardProps = {
   modelDefaults: ModelFormValues
   groupDefaults: GroupFormValues
   toolPricesDefault: string
+  // Backend-computed effective completion ratio per model (JSON). Read-only.
+  completionRatioMeta?: string
   titleKey?: string
   visibleTabs?: RatioTabId[]
 }
@@ -157,6 +159,7 @@ export function RatioSettingsCard({
   modelDefaults,
   groupDefaults,
   toolPricesDefault,
+  completionRatioMeta,
   titleKey = 'Pricing Ratios',
   visibleTabs = ['models', 'groups', 'tool-prices', 'upstream-sync'],
 }: RatioSettingsCardProps) {
@@ -425,6 +428,7 @@ export function RatioSettingsCard({
         <ModelRatioForm
           form={modelForm}
           savedValues={savedModelValues}
+          completionRatioMeta={completionRatioMeta}
           onSave={saveModelRatios}
           onReset={handleResetRatios}
           isSaving={updateOption.isPending}

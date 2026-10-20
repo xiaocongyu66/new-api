@@ -69,9 +69,11 @@ import {
   buildPreviewRows,
   createInitialLaneState,
   createModelPricingSchema,
+  deriveLanePrice,
   hasValue,
   laneConfigs,
   numericDraftRegex,
+  outputLaneConfig,
   ratioFieldByLane,
   toNumberOrNull,
   type LaneKey,
@@ -157,6 +159,13 @@ export const ModelPricingEditorPanel = forwardRef<
   const [requestRuleExpr, setRequestRuleExpr] = useState('')
   const [editorReloadToken, setEditorReloadToken] = useState(0)
   const isEditMode = !!editData
+  // The backend owns the default completion ratio; a locked one ignores the
+  // stored map, so the output price is not editable for those models.
+  const completionRatioLocked = editData?.completionRatioLocked ?? false
+  const effectiveCompletionRatio = editData?.completionRatioEffective ?? ''
+  // True once the admin typed an output price; until then the output price is
+  // derived from the effective completion ratio.
+  const [outputPriceOverridden, setOutputPriceOverridden] = useState(false)
 
   const form = useForm<ModelPricingFormValues>({
     resolver: zodResolver(createModelPricingSchema(t)),
@@ -217,6 +226,7 @@ export const ModelPricingEditorPanel = forwardRef<
     setPromptPrice(nextLaneState.promptPrice)
     setLanePrices(nextLaneState.prices)
     setLaneEnabled(nextLaneState.enabled)
+    setOutputPriceOverridden(false)
     setEditorReloadToken((token) => token + 1)
   }, [editData, form])
 
@@ -279,7 +289,31 @@ export const ModelPricingEditorPanel = forwardRef<
   const handlePromptPriceChange = (value: string) => {
     if (!numericDraftRegex.test(value)) return
     setPromptPrice(value)
-    syncLaneRatios(value, lanePrices, laneEnabled)
+
+    // The backend default is a multiplier of the input price, so a derived
+    // output price follows the input price.
+    const nextLanePrices = { ...lanePrices }
+    if (!outputPriceOverridden) {
+      nextLanePrices.completion = deriveLanePrice(
+        effectiveCompletionRatio,
+        value
+      )
+      setLanePrices(nextLanePrices)
+    }
+
+    syncLaneRatios(value, nextLanePrices, laneEnabled)
+  }
+
+  const handleOutputPriceChange = (value: string) => {
+    if (!numericDraftRegex.test(value)) return
+    const nextLanePrices = { ...lanePrices, completion: value }
+    setLanePrices(nextLanePrices)
+    setOutputPriceOverridden(true)
+    setLaneEnabled({ ...laneEnabled, completion: true })
+    setFormValue(
+      'completionRatio',
+      deriveLaneRatio('completion', value, promptPrice, nextLanePrices)
+    )
   }
 
   const handleLanePriceChange = (lane: LaneKey, value: string) => {
@@ -390,9 +424,10 @@ export const ModelPricingEditorPanel = forwardRef<
     if (
       pricingMode === 'per-token' &&
       toNumberOrNull(promptPrice) === null &&
-      laneConfigs.some(
-        ({ key }) => laneEnabled[key] && hasValue(lanePrices[key])
-      )
+      ((laneEnabled.completion && hasValue(lanePrices.completion)) ||
+        laneConfigs.some(
+          ({ key }) => laneEnabled[key] && hasValue(lanePrices[key])
+        ))
     ) {
       nextWarnings.push(
         t('Input price is required before saving dependent prices.')
@@ -414,9 +449,10 @@ export const ModelPricingEditorPanel = forwardRef<
     if (
       pricingMode === 'per-token' &&
       toNumberOrNull(promptPrice) === null &&
-      laneConfigs.some(
-        ({ key }) => laneEnabled[key] && hasValue(lanePrices[key])
-      )
+      ((laneEnabled.completion && hasValue(lanePrices.completion)) ||
+        laneConfigs.some(
+          ({ key }) => laneEnabled[key] && hasValue(lanePrices[key])
+        ))
     ) {
       form.setError('ratio', {
         message: t('Input price is required before saving dependent prices.'),
@@ -558,17 +594,34 @@ export const ModelPricingEditorPanel = forwardRef<
 
                   <TabsContent value='per-token' className='pt-0'>
                     <FieldGroup className='gap-5'>
-                      <Field>
-                        <FieldLabel>{t('Input price')}</FieldLabel>
-                        <PriceInput
-                          value={promptPrice}
-                          placeholder='3'
-                          onChange={handlePromptPriceChange}
-                        />
-                        <FieldDescription>
-                          {t('USD price per 1M input tokens.')}
-                        </FieldDescription>
-                      </Field>
+                      <div className='grid gap-4 sm:grid-cols-2'>
+                        <Field>
+                          <FieldLabel>{t('Input price')}</FieldLabel>
+                          <PriceInput
+                            value={promptPrice}
+                            placeholder='3'
+                            onChange={handlePromptPriceChange}
+                          />
+                          <FieldDescription>
+                            {t('USD price per 1M input tokens.')}
+                          </FieldDescription>
+                        </Field>
+
+                        <Field>
+                          <FieldLabel>{t('Output price')}</FieldLabel>
+                          <PriceInput
+                            value={lanePrices.completion}
+                            placeholder={outputLaneConfig.placeholder}
+                            disabled={completionRatioLocked}
+                            onChange={handleOutputPriceChange}
+                          />
+                          <FieldDescription>
+                            {completionRatioLocked
+                              ? t('Locked by the backend default.')
+                              : t('USD price per 1M output tokens.')}
+                          </FieldDescription>
+                        </Field>
+                      </div>
 
                       <div className='grid gap-3 sm:grid-cols-[repeat(auto-fit,minmax(400px,1fr))]'>
                         {laneConfigs.map((lane) => {

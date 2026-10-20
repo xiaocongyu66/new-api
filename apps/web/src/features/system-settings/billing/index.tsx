@@ -50,6 +50,7 @@ const defaultBillingSettings: BillingSettings = {
   CacheRatio: '',
   CreateCacheRatio: '',
   CompletionRatio: '',
+  CompletionRatioMeta: '',
   ImageRatio: '',
   AudioRatio: '',
   AudioCompletionRatio: '',
