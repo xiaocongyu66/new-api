@@ -140,7 +140,6 @@ type ModelFormValues = z.infer<ReturnType<typeof createModelSchema>>
 type GroupFormValues = z.infer<ReturnType<typeof createGroupSchema>>
 type RatioTabId =
   | 'models'
-  | 'unset-models'
   | 'groups'
   | 'tool-prices'
   | 'upstream-sync'
@@ -149,6 +148,8 @@ type RatioSettingsCardProps = {
   modelDefaults: ModelFormValues
   groupDefaults: GroupFormValues
   toolPricesDefault: string
+  // Backend-computed effective completion ratio per model (JSON). Read-only.
+  completionRatioMeta?: string
   titleKey?: string
   visibleTabs?: RatioTabId[]
 }
@@ -157,6 +158,7 @@ export function RatioSettingsCard({
   modelDefaults,
   groupDefaults,
   toolPricesDefault,
+  completionRatioMeta,
   titleKey = 'Pricing Ratios',
   visibleTabs = ['models', 'groups', 'tool-prices', 'upstream-sync'],
 }: RatioSettingsCardProps) {
@@ -404,7 +406,6 @@ export function RatioSettingsCard({
 
   const tabLabels: Record<RatioTabId, string> = {
     models: 'Model prices',
-    'unset-models': 'Unset price models',
     groups: 'Group ratios',
     'tool-prices': 'Tool prices',
     'upstream-sync': 'Upstream price sync',
@@ -420,16 +421,16 @@ export function RatioSettingsCard({
   const defaultTab = visibleTabs[0] ?? 'models'
 
   const renderTabContent = (tab: RatioTabId) => {
-    if (tab === 'models' || tab === 'unset-models') {
+    if (tab === 'models') {
       return (
         <ModelRatioForm
           form={modelForm}
           savedValues={savedModelValues}
+          completionRatioMeta={completionRatioMeta}
           onSave={saveModelRatios}
           onReset={handleResetRatios}
           isSaving={updateOption.isPending}
           isResetting={resetMutation.isPending}
-          variant={tab === 'unset-models' ? 'unset' : 'default'}
         />
       )
     }

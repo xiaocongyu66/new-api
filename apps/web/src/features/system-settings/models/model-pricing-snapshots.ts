@@ -32,7 +32,26 @@ export type ModelPricingSnapshotInput = {
   audioCompletionRatio: string
   billingMode: string
   billingExpr: string
+  // Backend-computed effective completion ratio per model. Mirrors the
+  // backend's own resolution (DB override → hardcoded default) so the UI can
+  // show the price billing actually charges.
+  completionRatioMeta?: string
 }
+
+export type CompletionRatioMeta = {
+  ratio: number
+  locked: boolean
+}
+
+export type CompletionRatioMetaMap = Record<string, CompletionRatioMeta>
+
+export const parseCompletionRatioMeta = (
+  raw: string | undefined
+): CompletionRatioMetaMap =>
+  safeJsonParse<CompletionRatioMetaMap>(raw ?? '', {
+    fallback: {},
+    context: 'completion ratio meta',
+  })
 
 export type ModelPricingSnapshot = {
   name: string
@@ -56,10 +75,32 @@ export type ModelRow = ModelPricingSnapshot & {
   isDraftChanged: boolean
   isDraftDeleted: boolean
   isDraftNew: boolean
+  // True while the model has no stored pricing of its own.
+  isPriceUnset: boolean
 }
 
 export const hasPricingValue = (value?: string) =>
   value !== undefined && value !== ''
+
+/**
+ * Resolves the completion ratio billing actually charges for a model.
+ * Mirrors the backend precedence: a locked hardcoded default wins over the
+ * stored map, otherwise the stored ratio wins, and the backend default is the
+ * fallback.
+ */
+export const resolveEffectiveCompletionRatio = (
+  modelName: string,
+  meta: CompletionRatioMetaMap,
+  dbCompletionRatio?: string
+): number | null => {
+  const entry = meta[modelName]
+  const fromDb = toNumberOrNull(dbCompletionRatio)
+
+  if (modelName.includes('/') && fromDb !== null) return fromDb
+  if (entry?.locked) return entry.ratio
+  if (fromDb !== null) return fromDb
+  return entry?.ratio ?? null
+}
 
 export const isBasePricingUnset = (snapshot?: ModelPricingSnapshot) =>
   !snapshot ||

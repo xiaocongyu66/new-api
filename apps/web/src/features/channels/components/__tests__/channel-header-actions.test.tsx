@@ -61,6 +61,7 @@ await i18n.use(initReactI18next).init({
         'Apply All Upstream Updates': 'Apply All Upstream Updates',
         'Repair Channel Consistency': 'Repair Channel Consistency',
         'Delete All Disabled': 'Delete All Disabled',
+        'Model Pricing': 'Model Pricing',
       },
     },
   },
@@ -73,6 +74,8 @@ type RenderedPage = {
 }
 
 let rendered: RenderedPage | null = null
+
+let sectionChanges: string[] = []
 
 async function renderChannelsPage(): Promise<HTMLDivElement> {
   const host = document.createElement('div')
@@ -87,7 +90,7 @@ async function renderChannelsPage(): Promise<HTMLDivElement> {
     root.render(
       <QueryClientProvider client={queryClient}>
         <I18nextProvider i18n={i18n}>
-          <Channels />
+          <Channels onSectionChange={(section) => sectionChanges.push(section)} />
         </I18nextProvider>
       </QueryClientProvider>
     )
@@ -114,6 +117,7 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
+  sectionChanges = []
   useAuthStore.getState().auth.reset()
   if (rendered) {
     await act(async () => rendered?.root.unmount())
@@ -156,12 +160,33 @@ describe('channel page header actions', () => {
     )
   })
 
+  test('renders the page section tabs and reports section changes', async () => {
+    const host = await renderChannelsPage()
+    const sectionTabs = [
+      ...host.querySelectorAll<HTMLButtonElement>('[data-slot="tabs-trigger"]'),
+    ]
+    const labels = sectionTabs.map((tab) => tab.textContent?.trim())
+    assert.ok(
+      labels.includes('Channels') && labels.includes('Model Pricing'),
+      'expected the page section tabs to render'
+    )
+
+    const pricingTab = sectionTabs.find(
+      (tab) => tab.textContent?.trim() === 'Model Pricing'
+    )
+    assert.ok(pricingTab, 'expected the model pricing section tab to render')
+    await act(async () => pricingTab.click())
+    assert.deepEqual(sectionChanges, ['model-pricing'])
+  })
+
   test('hides the list toolbar once the create tab takes over', async () => {
     const host = await renderChannelsPage()
     const trigger = getActionsTrigger(host)
 
+    // 页面上还有一层「渠道 / 模型定价」的分页导航，创建页签在页头里，
+    // 因此按页头作用域查找，不要抓整页第一个页签。
     const createTab = host.querySelector<HTMLButtonElement>(
-      '[data-slot="tabs-trigger"]'
+      'header [data-slot="tabs-trigger"]'
     )
     assert.ok(createTab, 'expected the create tab trigger to render')
     assert.equal(createTab.textContent?.includes('Create'), true)

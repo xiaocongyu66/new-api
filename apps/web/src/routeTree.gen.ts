@@ -60,6 +60,7 @@ import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authentic
 import { Route as AuthenticatedWalletIndexRouteImport } from './routes/_authenticated/wallet/index'
 import { Route as PricingModelIdIndexRouteImport } from './routes/pricing/$modelId/index'
 import { Route as AuthenticatedAdminChannelsIndexRouteImport } from './routes/_authenticated/admin/channels/index'
+import { Route as AuthenticatedAdminChannelsSectionRouteImport } from './routes/_authenticated/admin/channels/$section'
 import { Route as AuthenticatedAdminModelsIndexRouteImport } from './routes/_authenticated/admin/models/index'
 import { Route as AuthenticatedAdminModelsSectionRouteImport } from './routes/_authenticated/admin/models/$section'
 import { Route as AuthenticatedAdminRedemptionCodesIndexRouteImport } from './routes/_authenticated/admin/redemption-codes/index'
@@ -369,6 +370,12 @@ const AuthenticatedAdminChannelsIndexRoute =
     path: '/channels/',
     getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
+const AuthenticatedAdminChannelsSectionRoute =
+  AuthenticatedAdminChannelsSectionRouteImport.update({
+    id: '/channels/$section',
+    path: '/channels/$section',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
 const AuthenticatedAdminModelsIndexRoute =
   AuthenticatedAdminModelsIndexRouteImport.update({
     id: '/models/',
@@ -635,6 +642,7 @@ export interface FileRoutesByFullPath {
   '/users/': typeof AuthenticatedUsersIndexRoute
   '/wallet/': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId/': typeof PricingModelIdIndexRoute
+  '/admin/channels/$section': typeof AuthenticatedAdminChannelsSectionRoute
   '/admin/models/$section': typeof AuthenticatedAdminModelsSectionRoute
   '/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
   '/system-settings/billing/$section': typeof AuthenticatedSystemSettingsBillingSectionRoute
@@ -719,6 +727,7 @@ export interface FileRoutesByTo {
   '/users': typeof AuthenticatedUsersIndexRoute
   '/wallet': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId': typeof PricingModelIdIndexRoute
+  '/admin/channels/$section': typeof AuthenticatedAdminChannelsSectionRoute
   '/admin/models/$section': typeof AuthenticatedAdminModelsSectionRoute
   '/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
   '/system-settings/billing/$section': typeof AuthenticatedSystemSettingsBillingSectionRoute
@@ -809,6 +818,7 @@ export interface FileRoutesById {
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
   '/_authenticated/wallet/': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId/': typeof PricingModelIdIndexRoute
+  '/_authenticated/admin/channels/$section': typeof AuthenticatedAdminChannelsSectionRoute
   '/_authenticated/admin/models/$section': typeof AuthenticatedAdminModelsSectionRoute
   '/_authenticated/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
   '/_authenticated/system-settings/billing/$section': typeof AuthenticatedSystemSettingsBillingSectionRoute
@@ -898,6 +908,7 @@ export interface FileRouteTypes {
     | '/users/'
     | '/wallet/'
     | '/pricing/$modelId/'
+    | '/admin/channels/$section'
     | '/admin/models/$section'
     | '/system-settings/auth/$section'
     | '/system-settings/billing/$section'
@@ -982,6 +993,7 @@ export interface FileRouteTypes {
     | '/users'
     | '/wallet'
     | '/pricing/$modelId'
+    | '/admin/channels/$section'
     | '/admin/models/$section'
     | '/system-settings/auth/$section'
     | '/system-settings/billing/$section'
@@ -1071,6 +1083,7 @@ export interface FileRouteTypes {
     | '/_authenticated/users/'
     | '/_authenticated/wallet/'
     | '/pricing/$modelId/'
+    | '/_authenticated/admin/channels/$section'
     | '/_authenticated/admin/models/$section'
     | '/_authenticated/system-settings/auth/$section'
     | '/_authenticated/system-settings/billing/$section'
@@ -1488,6 +1501,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminChannelsIndexRouteImport
       parentRoute: typeof AuthenticatedAdminRouteRoute
     }
+    '/_authenticated/admin/channels/$section': {
+      id: '/_authenticated/admin/channels/$section'
+      path: '/channels/$section'
+      fullPath: '/admin/channels/$section'
+      preLoaderRoute: typeof AuthenticatedAdminChannelsSectionRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
     '/_authenticated/admin/models/': {
       id: '/_authenticated/admin/models/'
       path: '/models'
@@ -1830,6 +1850,7 @@ interface AuthenticatedAdminRouteRouteChildren {
   AuthenticatedAdminSystemSettingsRouteRoute: typeof AuthenticatedAdminSystemSettingsRouteRouteWithChildren
   AuthenticatedAdminProxyRoute: typeof AuthenticatedAdminProxyRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
+  AuthenticatedAdminChannelsSectionRoute: typeof AuthenticatedAdminChannelsSectionRoute
   AuthenticatedAdminModelsSectionRoute: typeof AuthenticatedAdminModelsSectionRoute
   AuthenticatedAdminChannelsIndexRoute: typeof AuthenticatedAdminChannelsIndexRoute
   AuthenticatedAdminModelsIndexRoute: typeof AuthenticatedAdminModelsIndexRoute
@@ -1846,6 +1867,8 @@ const AuthenticatedAdminRouteRouteChildren: AuthenticatedAdminRouteRouteChildren
       AuthenticatedAdminSystemSettingsRouteRouteWithChildren,
     AuthenticatedAdminProxyRoute: AuthenticatedAdminProxyRoute,
     AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
+    AuthenticatedAdminChannelsSectionRoute:
+      AuthenticatedAdminChannelsSectionRoute,
     AuthenticatedAdminModelsSectionRoute: AuthenticatedAdminModelsSectionRoute,
     AuthenticatedAdminChannelsIndexRoute: AuthenticatedAdminChannelsIndexRoute,
     AuthenticatedAdminModelsIndexRoute: AuthenticatedAdminModelsIndexRoute,

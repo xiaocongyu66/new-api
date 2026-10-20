@@ -20,7 +20,7 @@ import * as z from 'zod'
 
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
 
-import { formatPricingNumber } from './pricing-format'
+import { formatPricingDisplay } from './pricing-format'
 
 export const createModelPricingSchema = (t: (key: string) => string) =>
   z.object({
@@ -62,6 +62,10 @@ export type ModelRatioData = {
   billingMode?: PricingMode
   billingExpr?: string
   requestRuleExpr?: string
+  // Ratio billing actually charges for output tokens, resolved by the backend
+  // (DB override → hardcoded default). Display-only: it is never persisted.
+  completionRatioEffective?: string
+  completionRatioLocked?: boolean
 }
 
 export type PreviewRow = {
@@ -100,18 +104,24 @@ export const ratioFieldByLane: Record<LaneKey, keyof ModelPricingFormValues> = {
   audioOutput: 'audioCompletionRatio',
 }
 
+export const outputLaneConfig: {
+  key: LaneKey
+  titleKey: string
+  descriptionKey: string
+  placeholder: string
+} = {
+  key: 'completion',
+  titleKey: 'Output price',
+  descriptionKey: 'Output token price for generated tokens.',
+  placeholder: '15',
+}
+
 export const laneConfigs: Array<{
   key: LaneKey
   titleKey: string
   descriptionKey: string
   placeholder: string
 }> = [
-  {
-    key: 'completion',
-    titleKey: 'Completion price',
-    descriptionKey: 'Output token price for generated tokens.',
-    placeholder: '15',
-  },
   {
     key: 'cache',
     titleKey: 'Cache read price',
@@ -159,10 +169,10 @@ export function toNumberOrNull(value: unknown): number | null {
 function ratioToBasePrice(ratio: unknown): string {
   const num = toNumberOrNull(ratio)
   if (num === null) return ''
-  return formatPricingNumber(num * 2)
+  return formatPricingDisplay(num * 2)
 }
 
-function deriveLanePrice(
+export function deriveLanePrice(
   ratio: unknown,
   denominator: unknown,
   fallback = ''
@@ -170,7 +180,7 @@ function deriveLanePrice(
   const ratioNumber = toNumberOrNull(ratio)
   const denominatorNumber = toNumberOrNull(denominator)
   if (ratioNumber === null || denominatorNumber === null) return fallback
-  return formatPricingNumber(ratioNumber * denominatorNumber)
+  return formatPricingDisplay(ratioNumber * denominatorNumber)
 }
 
 export function createInitialLaneState(data?: ModelRatioData | null) {
@@ -184,8 +194,11 @@ export function createInitialLaneState(data?: ModelRatioData | null) {
 
   const promptPrice = ratioToBasePrice(data.ratio)
   const audioInputPrice = deriveLanePrice(data.audioRatio, promptPrice)
+  // Output price shows the ratio billing applies, so the panel matches the
+  // prices the backend charges even when the DB holds no explicit entry.
+  const completionRatio = data.completionRatioEffective || data.completionRatio
   const prices: Record<LaneKey, string> = {
-    completion: deriveLanePrice(data.completionRatio, promptPrice),
+    completion: deriveLanePrice(completionRatio, promptPrice),
     cache: deriveLanePrice(data.cacheRatio, promptPrice),
     createCache: deriveLanePrice(data.createCacheRatio, promptPrice),
     image: deriveLanePrice(data.imageRatio, promptPrice),
@@ -197,6 +210,8 @@ export function createInitialLaneState(data?: ModelRatioData | null) {
     promptPrice,
     prices,
     enabled: {
+      // Only an explicit DB entry is persisted; the backend default is
+      // inherited and must not be written back into the ratio map.
       completion: hasValue(data.completionRatio),
       cache: hasValue(data.cacheRatio),
       createCache: hasValue(data.createCacheRatio),
@@ -248,11 +263,8 @@ export function buildPreviewRows(
     },
     {
       key: 'completion',
-      label: t('Completion price'),
-      value:
-        laneEnabled.completion && lanePrices.completion
-          ? `$${lanePrices.completion}`
-          : t('Empty'),
+      label: t('Output price'),
+      value: lanePrices.completion ? `$${lanePrices.completion}` : t('Empty'),
     },
     {
       key: 'cache',

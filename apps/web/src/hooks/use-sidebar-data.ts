@@ -80,6 +80,7 @@ export function useSidebarData(): SidebarData {
   ).map((item) => ({
     title: t(item.labelKey),
     url: resolveAdminNavigationUrl(item),
+    activeUrls: item.activeUrls,
     icon: item.icon,
     requiredRole: item.requiredRole,
   }))

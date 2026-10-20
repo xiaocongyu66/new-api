@@ -311,6 +311,9 @@ export type BillingSettings = {
   CacheRatio: string
   CreateCacheRatio: string
   CompletionRatio: string
+  // Backend-computed effective completion ratio per model (model → {ratio,
+  // locked}). Read-only: it reflects hardcoded defaults the admin never set.
+  CompletionRatioMeta: string
   ImageRatio: string
   AudioRatio: string
   AudioCompletionRatio: string
