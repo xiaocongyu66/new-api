@@ -24,7 +24,7 @@ import {
   getBillingSectionMeta,
 } from './section-registry.tsx'
 
-const defaultBillingSettings: BillingSettings = {
+export const defaultBillingSettings: BillingSettings = {
   QuotaForNewUser: 0,
   PreConsumedQuota: 0,
   QuotaForInviter: 0,

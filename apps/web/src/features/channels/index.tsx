@@ -16,12 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useRef, useState } from 'react'
+import { getRouteApi, useNavigate } from '@tanstack/react-router'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Main } from '@/components/layout'
 import { PageFooterProvider } from '@/components/layout/components/page-footer'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ModelPricingSection } from '@/features/system-settings/models/model-pricing-section'
 import {
   hasPermission,
   ADMIN_PERMISSION_ACTIONS,
@@ -34,11 +36,32 @@ import { ChannelListTab } from './components/channel-list-tab'
 import { ChannelsDialogs } from './components/channels-dialogs'
 import { ChannelsPrimaryButtons } from './components/channels-primary-buttons'
 import { ChannelsProvider, useChannels } from './components/channels-provider'
+import {
+  CHANNELS_DEFAULT_SECTION,
+  CHANNELS_SECTIONS,
+  type ChannelsSectionId,
+} from './section-registry'
+
+const route = getRouteApi('/_authenticated/admin/channels/$section')
 
 function ChannelsContent() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const { pageTab, setPageTab, setCurrentRow } = useChannels()
   const currentUser = useAuthStore((state) => state.auth.user)
+  const params = route.useParams()
+  const activeSection = (params.section ??
+    CHANNELS_DEFAULT_SECTION) as ChannelsSectionId
+
+  const handleSectionChange = useCallback(
+    (section: string) => {
+      void navigate({
+        to: '/admin/channels/$section',
+        params: { section: section as ChannelsSectionId },
+      })
+    },
+    [navigate]
+  )
   const canCreateChannel = hasPermission(
     currentUser,
     ADMIN_PERMISSION_RESOURCES.CHANNEL,
@@ -65,6 +88,30 @@ function ChannelsContent() {
     <>
       <PageFooterProvider container={footerContainer}>
         <Main>
+          <div className='shrink-0 px-3 pt-3 sm:px-4 sm:pt-5'>
+            <Tabs
+              value={activeSection}
+              onValueChange={handleSectionChange}
+            >
+              <TabsList className='h-auto w-fit'>
+                {CHANNELS_SECTIONS.map((section) => (
+                  <TabsTrigger
+                    key={section.id}
+                    value={section.id}
+                    className='px-4 text-sm'
+                  >
+                    {t(section.titleKey)}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          </div>
+
+          {activeSection === 'model-pricing' ? (
+            <div className='min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pt-3 pb-4 sm:px-4 sm:pt-4'>
+              <ModelPricingSection />
+            </div>
+          ) : (
           <Tabs
             value={pageTab}
             onValueChange={(value) => {
@@ -153,6 +200,7 @@ function ChannelsContent() {
               hidden={pageTab !== 'channels'}
             />
           </Tabs>
+          )}
         </Main>
       </PageFooterProvider>
 

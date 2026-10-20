@@ -464,10 +464,11 @@ const ModelRatioVisualEditorComponent = forwardRef<
   const columns = useMemo(
     () =>
       buildModelRatioColumns({
+        onDelete: handleDelete,
         onEdit: handleEdit,
         t,
       }),
-    [handleEdit, t]
+    [handleEdit, handleDelete, t]
   )
 
   const ensurePageInRange = useCallback((pageCount: number) => {

@@ -75,6 +75,8 @@ export type ModelRow = ModelPricingSnapshot & {
   isDraftChanged: boolean
   isDraftDeleted: boolean
   isDraftNew: boolean
+  // True while the model has no stored pricing of its own.
+  isPriceUnset: boolean
 }
 
 export const hasPricingValue = (value?: string) =>

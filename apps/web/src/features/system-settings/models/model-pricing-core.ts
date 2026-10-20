@@ -20,10 +20,7 @@ import * as z from 'zod'
 
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
 
-import {
-  formatPricingDisplay,
-  formatPricingNumber,
-} from './pricing-format'
+import { formatPricingDisplay } from './pricing-format'
 
 export const createModelPricingSchema = (t: (key: string) => string) =>
   z.object({
