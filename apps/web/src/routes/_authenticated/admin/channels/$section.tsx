@@ -23,6 +23,7 @@ import { Channels } from '@/features/channels'
 import {
   CHANNELS_DEFAULT_SECTION,
   CHANNELS_SECTION_IDS,
+  type ChannelsSectionId,
 } from '@/features/channels/section-registry'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
@@ -36,6 +37,23 @@ const channelsSearchSchema = z.object({
   group: z.array(z.string()).optional().catch([]),
   model: z.string().optional().catch(''),
 })
+
+function ChannelsRoute() {
+  const { section } = Route.useParams()
+  const navigate = Route.useNavigate()
+
+  return (
+    <Channels
+      section={section as ChannelsSectionId}
+      onSectionChange={(next) => {
+        void navigate({
+          to: '/admin/channels/$section',
+          params: { section: next },
+        })
+      }}
+    />
+  )
+}
 
 export const Route = createFileRoute(
   '/_authenticated/admin/channels/$section'
@@ -57,5 +75,5 @@ export const Route = createFileRoute(
     }
   },
   validateSearch: channelsSearchSchema,
-  component: Channels,
+  component: ChannelsRoute,
 })

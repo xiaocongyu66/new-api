@@ -16,8 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { getRouteApi, useNavigate } from '@tanstack/react-router'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Main } from '@/components/layout'
@@ -42,26 +41,16 @@ import {
   type ChannelsSectionId,
 } from './section-registry'
 
-const route = getRouteApi('/_authenticated/admin/channels/$section')
+type ChannelsContentProps = {
+  section: ChannelsSectionId
+  onSectionChange?: (section: ChannelsSectionId) => void
+}
 
-function ChannelsContent() {
+function ChannelsContent({ section, onSectionChange }: ChannelsContentProps) {
   const { t } = useTranslation()
-  const navigate = useNavigate()
   const { pageTab, setPageTab, setCurrentRow } = useChannels()
   const currentUser = useAuthStore((state) => state.auth.user)
-  const params = route.useParams()
-  const activeSection = (params.section ??
-    CHANNELS_DEFAULT_SECTION) as ChannelsSectionId
-
-  const handleSectionChange = useCallback(
-    (section: string) => {
-      void navigate({
-        to: '/admin/channels/$section',
-        params: { section: section as ChannelsSectionId },
-      })
-    },
-    [navigate]
-  )
+  const activeSection = section
   const canCreateChannel = hasPermission(
     currentUser,
     ADMIN_PERMISSION_RESOURCES.CHANNEL,
@@ -91,7 +80,9 @@ function ChannelsContent() {
           <div className='shrink-0 px-3 pt-3 sm:px-4 sm:pt-5'>
             <Tabs
               value={activeSection}
-              onValueChange={handleSectionChange}
+              onValueChange={(value) =>
+                onSectionChange?.(value as ChannelsSectionId)
+              }
             >
               <TabsList className='h-auto w-fit'>
                 {CHANNELS_SECTIONS.map((section) => (
@@ -209,10 +200,20 @@ function ChannelsContent() {
   )
 }
 
-export function Channels() {
+type ChannelsProps = {
+  // Which page section to show. The route owns the router dependency and
+  // passes it down, so this component stays renderable without a router.
+  section?: ChannelsSectionId
+  onSectionChange?: (section: ChannelsSectionId) => void
+}
+
+export function Channels({
+  section = CHANNELS_DEFAULT_SECTION,
+  onSectionChange,
+}: ChannelsProps) {
   return (
     <ChannelsProvider>
-      <ChannelsContent />
+      <ChannelsContent section={section} onSectionChange={onSectionChange} />
     </ChannelsProvider>
   )
 }
