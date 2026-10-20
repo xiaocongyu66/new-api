@@ -704,64 +704,33 @@ const ModelRatioVisualEditorComponent = forwardRef<
             })
 
             const priceEntries: Array<{ label: string; value: string }> =
-              model.billingMode === 'per-request'
+              model.billingMode === 'tiered_expr'
                 ? [
+                    { label: t('Input'), value: '—' },
+                    { label: t('Output'), value: '—' },
+                  ]
+                : [
                     {
-                      label: t('Fixed request price'),
-                      value: model.price ? `$${model.price}` : '—',
+                      label: t('Input'),
+                      value:
+                        model.billingMode === 'per-request'
+                          ? model.price
+                            ? `$${model.price}`
+                            : '—'
+                          : lanes.promptPrice
+                            ? `$${lanes.promptPrice}`
+                            : '—',
+                    },
+                    {
+                      label: t('Output'),
+                      value:
+                        model.billingMode === 'per-request'
+                          ? '—'
+                          : lanes.prices.completion
+                            ? `$${lanes.prices.completion}`
+                            : '—',
                     },
                   ]
-                : model.billingMode === 'tiered_expr'
-                  ? [
-                      {
-                        label: t('Expression pricing'),
-                        value: model.billingExpr || '—',
-                      },
-                    ]
-                  : [
-                      {
-                        label: t('Input price'),
-                        value: lanes.promptPrice
-                          ? `$${lanes.promptPrice}`
-                          : '—',
-                      },
-                      {
-                        label: t('Completion price'),
-                        value: lanes.prices.completion
-                          ? `$${lanes.prices.completion}`
-                          : '—',
-                      },
-                      {
-                        label: t('Cache read price'),
-                        value: lanes.prices.cache
-                          ? `$${lanes.prices.cache}`
-                          : '—',
-                      },
-                      {
-                        label: t('Cache write price'),
-                        value: lanes.prices.createCache
-                          ? `$${lanes.prices.createCache}`
-                          : '—',
-                      },
-                      {
-                        label: t('Image input price'),
-                        value: lanes.prices.image
-                          ? `$${lanes.prices.image}`
-                          : '—',
-                      },
-                      {
-                        label: t('Audio input price'),
-                        value: lanes.prices.audioInput
-                          ? `$${lanes.prices.audioInput}`
-                          : '—',
-                      },
-                      {
-                        label: t('Audio output price'),
-                        value: lanes.prices.audioOutput
-                          ? `$${lanes.prices.audioOutput}`
-                          : '—',
-                      },
-                    ]
 
             return (
               <div
@@ -801,20 +770,16 @@ const ModelRatioVisualEditorComponent = forwardRef<
                     </span>
                   </div>
 
-                  <div className='grid grid-cols-2 gap-x-4 gap-y-1.5'>
+                  <div className='grid grid-cols-2 gap-x-4'>
                     {priceEntries.map((entry) => (
                       <div
                         key={entry.label}
-                        className={
-                          priceEntries.length === 1
-                            ? 'col-span-2 flex min-w-0 items-baseline justify-between gap-x-4'
-                            : 'flex min-w-0 items-baseline justify-between gap-x-4'
-                        }
+                        className='flex min-w-0 items-baseline justify-between gap-x-3'
                       >
-                        <span className='text-primary/80 shrink-0 text-xs font-semibold'>
+                        <span className='text-foreground shrink-0 text-xs font-normal'>
                           {entry.label}
                         </span>
-                        <span className='text-muted-foreground min-w-0 text-right text-xs font-light tabular-nums'>
+                        <span className='text-muted-foreground min-w-0 flex-1 truncate text-right text-[11px] font-light tabular-nums'>
                           {entry.value}
                         </span>
                       </div>
