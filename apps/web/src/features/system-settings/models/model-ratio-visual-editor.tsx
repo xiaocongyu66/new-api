@@ -764,8 +764,9 @@ const ModelRatioVisualEditorComponent = forwardRef<
                 key={row.id}
                 className={cn(
                   'group relative rounded-lg border bg-card shadow-sm transition hover:border-primary/40 hover:shadow-md',
-                  model.isPriceUnset &&
-                    'border-yellow-300 dark:border-yellow-800',
+                  model.isPriceUnset
+                    ? 'border-yellow-200 dark:border-yellow-800'
+                    : 'border-green-200 dark:border-green-800',
                   isEditing && 'border-primary bg-primary/5'
                 )}
               >
