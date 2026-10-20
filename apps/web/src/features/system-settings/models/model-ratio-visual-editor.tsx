@@ -847,8 +847,6 @@ const ModelRatioVisualEditorComponent = forwardRef<
   )
 })
 
-})
-
 export const ModelRatioVisualEditor = memo(
   ModelRatioVisualEditorComponent,
   // Custom equality check - only re-render if JSON props actually changed
