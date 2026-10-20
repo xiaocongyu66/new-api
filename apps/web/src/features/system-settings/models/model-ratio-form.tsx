@@ -70,7 +70,6 @@ type ModelRatioFormProps = {
   onReset: () => void
   isSaving: boolean
   isResetting: boolean
-  variant?: 'default' | 'unset'
 }
 
 type ModelJsonFieldName =
@@ -173,25 +172,20 @@ export const ModelRatioForm = memo(function ModelRatioForm({
   onReset,
   isSaving,
   isResetting,
-  variant = 'default',
   completionRatioMeta,
 }: ModelRatioFormProps) {
   const { t } = useTranslation()
-  const isUnsetVariant = variant === 'unset'
   const [editMode, setEditMode] = useState<'visual' | 'json'>('visual')
   const visualEditorRef = useRef<ModelRatioVisualEditorHandle>(null)
 
   const enabledModelsQuery = useQuery({
     queryKey: ['enabled-models'],
     queryFn: getEnabledModels,
-    enabled: isUnsetVariant,
   })
 
-  const enabledModelsError = isUnsetVariant
-    ? enabledModelsQuery.isError ||
-      (enabledModelsQuery.data !== undefined &&
-        !enabledModelsQuery.data.success)
-    : false
+  const enabledModelsError =
+    enabledModelsQuery.isError ||
+    (enabledModelsQuery.data !== undefined && !enabledModelsQuery.data.success)
   const enabledModelsErrorMessage = enabledModelsQuery.data?.message
 
   useEffect(() => {
@@ -224,44 +218,42 @@ export const ModelRatioForm = memo(function ModelRatioForm({
 
   return (
     <div className='space-y-6'>
-      {!isUnsetVariant && (
-        <div className='flex flex-wrap justify-end gap-2'>
+      <div className='flex flex-wrap justify-end gap-2'>
+        <Button
+          type='button'
+          variant='destructive'
+          size='sm'
+          onClick={onReset}
+          disabled={isResetting}
+        >
+          <RotateCcw data-icon='inline-start' />
+          {t('Reset prices')}
+        </Button>
+        {editMode === 'json' && (
           <Button
             type='button'
-            variant='destructive'
             size='sm'
-            onClick={onReset}
-            disabled={isResetting}
+            onClick={handleSave}
+            disabled={isSaving}
           >
-            <RotateCcw data-icon='inline-start' />
-            {t('Reset prices')}
+            <Save data-icon='inline-start' />
+            {isSaving ? t('Saving...') : t('Save model prices')}
           </Button>
-          {editMode === 'json' && (
-            <Button
-              type='button'
-              size='sm'
-              onClick={handleSave}
-              disabled={isSaving}
-            >
-              <Save data-icon='inline-start' />
-              {isSaving ? t('Saving...') : t('Save model prices')}
-            </Button>
+        )}
+        <Button variant='outline' size='sm' onClick={toggleEditMode}>
+          {editMode === 'visual' ? (
+            <>
+              <Code2 className='mr-2 h-4 w-4' />
+              {t('Switch to JSON')}
+            </>
+          ) : (
+            <>
+              <Eye className='mr-2 h-4 w-4' />
+              {t('Switch to Visual')}
+            </>
           )}
-          <Button variant='outline' size='sm' onClick={toggleEditMode}>
-            {editMode === 'visual' ? (
-              <>
-                <Code2 className='mr-2 h-4 w-4' />
-                {t('Switch to JSON')}
-              </>
-            ) : (
-              <>
-                <Eye className='mr-2 h-4 w-4' />
-                {t('Switch to Visual')}
-              </>
-            )}
-          </Button>
-        </div>
-      )}
+        </Button>
+      </div>
 
       <Form {...form}>
         {editMode === 'visual' ? (
@@ -289,13 +281,8 @@ export const ModelRatioForm = memo(function ModelRatioForm({
               audioCompletionRatio={form.watch('AudioCompletionRatio')}
               billingMode={form.watch('BillingMode')}
               billingExpr={form.watch('BillingExpr')}
-              candidateModelNames={
-                isUnsetVariant ? enabledModelsQuery.data?.data : undefined
-              }
-              candidateModelsLoading={
-                isUnsetVariant && enabledModelsQuery.isLoading
-              }
-              filterMode={isUnsetVariant ? 'unset' : 'all'}
+              candidateModelNames={enabledModelsQuery.data?.data}
+              candidateModelsLoading={enabledModelsQuery.isLoading}
               onSave={handleSave}
               isSaving={isSaving}
               onChange={(field, value) => {
@@ -309,30 +296,28 @@ export const ModelRatioForm = memo(function ModelRatioForm({
               }}
             />
 
-            {!isUnsetVariant && (
-              <FormField
-                control={form.control}
-                name='ExposeRatioEnabled'
-                render={({ field }) => (
-                  <SettingsSwitchItem>
-                    <SettingsSwitchContent>
-                      <FormLabel>{t('Expose ratio API')}</FormLabel>
-                      <FormDescription>
-                        {t(
-                          'Allow clients to query configured ratios via `/api/ratio`.'
-                        )}
-                      </FormDescription>
-                    </SettingsSwitchContent>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </SettingsSwitchItem>
-                )}
-              />
-            )}
+            <FormField
+              control={form.control}
+              name='ExposeRatioEnabled'
+              render={({ field }) => (
+                <SettingsSwitchItem>
+                  <SettingsSwitchContent>
+                    <FormLabel>{t('Expose ratio API')}</FormLabel>
+                    <FormDescription>
+                      {t(
+                        'Allow clients to query configured ratios via `/api/ratio`.'
+                      )}
+                    </FormDescription>
+                  </SettingsSwitchContent>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </SettingsSwitchItem>
+              )}
+            />
           </div>
         ) : (
           <SettingsForm onSubmit={form.handleSubmit(onSave)}>

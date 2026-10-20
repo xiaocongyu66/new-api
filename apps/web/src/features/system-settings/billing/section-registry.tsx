@@ -121,7 +121,7 @@ const BILLING_SECTIONS = [
         groupDefaults={getGroupDefaults(settings)}
         toolPricesDefault={settings['tool_price_setting.prices']}
         completionRatioMeta={settings.CompletionRatioMeta}
-        visibleTabs={['models', 'unset-models', 'tool-prices', 'upstream-sync']}
+        visibleTabs={['models', 'tool-prices', 'upstream-sync']}
       />
     ),
   },

@@ -166,6 +166,9 @@ export const ModelPricingEditorPanel = forwardRef<
   // True once the admin typed an output price; until then the output price is
   // derived from the effective completion ratio.
   const [outputPriceOverridden, setOutputPriceOverridden] = useState(false)
+  // True once the admin typed an input price; until then the stored ratio is
+  // left untouched, because the field only rounds it for display.
+  const [inputPriceEdited, setInputPriceEdited] = useState(false)
 
   const form = useForm<ModelPricingFormValues>({
     resolver: zodResolver(createModelPricingSchema(t)),
@@ -227,6 +230,7 @@ export const ModelPricingEditorPanel = forwardRef<
     setLanePrices(nextLaneState.prices)
     setLaneEnabled(nextLaneState.enabled)
     setOutputPriceOverridden(false)
+    setInputPriceEdited(false)
     setEditorReloadToken((token) => token + 1)
   }, [editData, form])
 
@@ -260,13 +264,19 @@ export const ModelPricingEditorPanel = forwardRef<
   const syncLaneRatios = (
     nextPromptPrice = promptPrice,
     nextLanePrices = lanePrices,
-    nextLaneEnabled = laneEnabled
+    nextLaneEnabled = laneEnabled,
+    rewriteInputRatio = inputPriceEdited
   ) => {
     const inputPrice = toNumberOrNull(nextPromptPrice)
-    setFormValue(
-      'ratio',
-      inputPrice !== null ? formatPricingNumber(inputPrice / 2) : ''
-    )
+    // The input price field is rounded for display, so only rewrite the stored
+    // ratio once the admin actually typed one; otherwise the ratio the model
+    // was saved with keeps its full precision.
+    if (rewriteInputRatio) {
+      setFormValue(
+        'ratio',
+        inputPrice !== null ? formatPricingNumber(inputPrice / 2) : ''
+      )
+    }
 
     laneConfigs.forEach(({ key }) => {
       const ratioField = ratioFieldByLane[key]
@@ -289,6 +299,7 @@ export const ModelPricingEditorPanel = forwardRef<
   const handlePromptPriceChange = (value: string) => {
     if (!numericDraftRegex.test(value)) return
     setPromptPrice(value)
+    setInputPriceEdited(true)
 
     // The backend default is a multiplier of the input price, so a derived
     // output price follows the input price.
@@ -301,7 +312,7 @@ export const ModelPricingEditorPanel = forwardRef<
       setLanePrices(nextLanePrices)
     }
 
-    syncLaneRatios(value, nextLanePrices, laneEnabled)
+    syncLaneRatios(value, nextLanePrices, laneEnabled, true)
   }
 
   const handleOutputPriceChange = (value: string) => {
@@ -594,7 +605,7 @@ export const ModelPricingEditorPanel = forwardRef<
 
                   <TabsContent value='per-token' className='pt-0'>
                     <FieldGroup className='gap-5'>
-                      <div className='grid gap-4 sm:grid-cols-2'>
+                      <div className='flex flex-col gap-4'>
                         <Field>
                           <FieldLabel>{t('Input price')}</FieldLabel>
                           <PriceInput

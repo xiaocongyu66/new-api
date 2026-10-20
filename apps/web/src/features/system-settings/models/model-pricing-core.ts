@@ -20,7 +20,10 @@ import * as z from 'zod'
 
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
 
-import { formatPricingNumber } from './pricing-format'
+import {
+  formatPricingDisplay,
+  formatPricingNumber,
+} from './pricing-format'
 
 export const createModelPricingSchema = (t: (key: string) => string) =>
   z.object({
@@ -169,7 +172,7 @@ export function toNumberOrNull(value: unknown): number | null {
 function ratioToBasePrice(ratio: unknown): string {
   const num = toNumberOrNull(ratio)
   if (num === null) return ''
-  return formatPricingNumber(num * 2)
+  return formatPricingDisplay(num * 2)
 }
 
 export function deriveLanePrice(
@@ -180,7 +183,7 @@ export function deriveLanePrice(
   const ratioNumber = toNumberOrNull(ratio)
   const denominatorNumber = toNumberOrNull(denominator)
   if (ratioNumber === null || denominatorNumber === null) return fallback
-  return formatPricingNumber(ratioNumber * denominatorNumber)
+  return formatPricingDisplay(ratioNumber * denominatorNumber)
 }
 
 export function createInitialLaneState(data?: ModelRatioData | null) {

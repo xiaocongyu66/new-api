@@ -140,7 +140,6 @@ type ModelFormValues = z.infer<ReturnType<typeof createModelSchema>>
 type GroupFormValues = z.infer<ReturnType<typeof createGroupSchema>>
 type RatioTabId =
   | 'models'
-  | 'unset-models'
   | 'groups'
   | 'tool-prices'
   | 'upstream-sync'
@@ -407,7 +406,6 @@ export function RatioSettingsCard({
 
   const tabLabels: Record<RatioTabId, string> = {
     models: 'Model prices',
-    'unset-models': 'Unset price models',
     groups: 'Group ratios',
     'tool-prices': 'Tool prices',
     'upstream-sync': 'Upstream price sync',
@@ -423,7 +421,7 @@ export function RatioSettingsCard({
   const defaultTab = visibleTabs[0] ?? 'models'
 
   const renderTabContent = (tab: RatioTabId) => {
-    if (tab === 'models' || tab === 'unset-models') {
+    if (tab === 'models') {
       return (
         <ModelRatioForm
           form={modelForm}
@@ -433,7 +431,6 @@ export function RatioSettingsCard({
           onReset={handleResetRatios}
           isSaving={updateOption.isPending}
           isResetting={resetMutation.isPending}
-          variant={tab === 'unset-models' ? 'unset' : 'default'}
         />
       )
     }

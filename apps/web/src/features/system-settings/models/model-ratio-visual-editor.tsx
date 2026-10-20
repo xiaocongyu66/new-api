@@ -53,7 +53,7 @@ import {
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
 
 import { safeJsonParse } from '../utils/json-parser'
-import { formatPricingNumber } from './pricing-format'
+import { formatPricingDisplay } from './pricing-format'
 import {
   createInitialLaneState,
   type PricingMode,
@@ -99,7 +99,6 @@ type ModelRatioVisualEditorProps = {
   billingExpr: string
   candidateModelNames?: string[]
   candidateModelsLoading?: boolean
-  filterMode?: 'all' | 'unset'
   onChange: (field: string, value: string) => void
   onSave: () => void | Promise<void>
   isSaving: boolean
@@ -139,7 +138,6 @@ const ModelRatioVisualEditorComponent = forwardRef<
     billingExpr,
     candidateModelNames,
     candidateModelsLoading,
-    filterMode = 'all',
     onChange,
     onSave,
     isSaving,
@@ -229,10 +227,11 @@ const ModelRatioVisualEditorComponent = forwardRef<
 
     const savedByName = new Map(savedRows.map((row) => [row.name, row]))
     const draftByName = new Map(draftRows.map((row) => [row.name, row]))
-    const modelNames =
-      filterMode === 'unset'
-        ? new Set(candidateModelNames ?? [])
-        : new Set([...savedByName.keys(), ...draftByName.keys()])
+    const modelNames = new Set([
+      ...savedByName.keys(),
+      ...draftByName.keys(),
+      ...(candidateModelNames ?? []),
+    ])
 
     return [...modelNames]
       .map((name) => {
@@ -250,14 +249,13 @@ const ModelRatioVisualEditorComponent = forwardRef<
           isDraftChanged: savedSignature !== draftSignature,
           isDraftDeleted: Boolean(saved && !draft),
           isDraftNew: Boolean(!saved && draft),
+          isPriceUnset: isBasePricingUnset(saved),
         }
       })
       .filter((row) => !row.isDraftDeleted)
-      .filter((row) => filterMode !== 'unset' || isBasePricingUnset(row.saved))
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [
     candidateModelNames,
-    filterMode,
     savedModelPrice,
     savedModelRatio,
     savedCacheRatio,
@@ -466,12 +464,10 @@ const ModelRatioVisualEditorComponent = forwardRef<
   const columns = useMemo(
     () =>
       buildModelRatioColumns({
-        onDelete: handleDelete,
         onEdit: handleEdit,
-        deleteDisabled: filterMode === 'unset',
         t,
       }),
-    [handleEdit, handleDelete, filterMode, t]
+    [handleEdit, t]
   )
 
   const ensurePageInRange = useCallback((pageCount: number) => {
@@ -656,13 +652,11 @@ const ModelRatioVisualEditorComponent = forwardRef<
 
   const hasRows = table.getRowModel().rows.length > 0
 
-  let emptyStateText = t('No models configured. Use Add model to get started.')
+  let emptyStateText = candidateModelsLoading
+    ? t('Loading...')
+    : t('No models configured. Use Add model to get started.')
   if (table.getState().globalFilter) {
     emptyStateText = t('No models match your search')
-  } else if (filterMode === 'unset') {
-    emptyStateText = candidateModelsLoading
-      ? t('Loading...')
-      : t('No models with unset prices')
   }
 
   return (
@@ -695,12 +689,10 @@ const ModelRatioVisualEditorComponent = forwardRef<
           },
         ]}
         preActions={
-          filterMode === 'unset' ? undefined : (
-            <Button onClick={handleAdd}>
-              <Plus data-icon='inline-start' />
-              {t('Add model')}
-            </Button>
-          )
+          <Button onClick={handleAdd}>
+            <Plus data-icon='inline-start' />
+            {t('Add model')}
+          </Button>
         }
       />
 
@@ -709,7 +701,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
           {emptyStateText}
         </div>
       ) : (
-        <div className='grid gap-3 sm:grid-cols-2'>
+        <div className='grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3'>
           {table.getRowModel().rows.map((row) => {
             const model = row.original
             const isEditing = editData?.name === model.name
@@ -735,7 +727,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
             )
             const effectiveOutputPrice =
               lanes.promptPrice && effectiveCompletionRatio !== null
-                ? `$${formatPricingNumber(
+                ? `$${formatPricingDisplay(
                     Number(lanes.promptPrice) * effectiveCompletionRatio
                   )}`
                 : '—'
@@ -771,13 +763,15 @@ const ModelRatioVisualEditorComponent = forwardRef<
               <div
                 key={row.id}
                 className={cn(
-                  'group relative rounded-xl border bg-card shadow-sm transition hover:border-primary/40 hover:shadow-md',
+                  'group relative rounded-lg border bg-card shadow-sm transition hover:border-primary/40 hover:shadow-md',
+                  model.isPriceUnset &&
+                    'border-yellow-300 dark:border-yellow-800',
                   isEditing && 'border-primary bg-primary/5'
                 )}
               >
                 <button
                   type='button'
-                  className='flex h-full w-full flex-col gap-2.5 p-3.5 pr-9 text-left'
+                  className='flex h-full w-full flex-col gap-2 p-3 pr-8 text-left'
                   onClick={() => handleEdit(model)}
                 >
                   <div className='flex min-w-0 flex-col gap-1'>
@@ -805,7 +799,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
                     </span>
                   </div>
 
-                  <div className='grid grid-cols-2 gap-x-4'>
+                  <div className='flex flex-col gap-1'>
                     {priceEntries.map((entry) => (
                       <div
                         key={entry.label}
@@ -822,7 +816,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
                   </div>
                 </button>
 
-                {filterMode !== 'unset' && (
+                {!model.isPriceUnset && (
                   <Button
                     type='button'
                     variant='ghost'
@@ -894,7 +888,6 @@ export const ModelRatioVisualEditor = memo(
       prevProps.billingExpr === nextProps.billingExpr &&
       prevProps.candidateModelNames === nextProps.candidateModelNames &&
       prevProps.candidateModelsLoading === nextProps.candidateModelsLoading &&
-      prevProps.filterMode === nextProps.filterMode &&
       prevProps.onChange === nextProps.onChange &&
       prevProps.onSave === nextProps.onSave &&
       prevProps.isSaving === nextProps.isSaving
