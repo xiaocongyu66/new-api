@@ -24,7 +24,7 @@ import type {
   VisibilityState,
   SortingState,
 } from '@tanstack/react-table'
-import { Copy, Plus } from 'lucide-react'
+import { Copy, Plus, Trash2 } from 'lucide-react'
 import {
   useState,
   useMemo,
@@ -36,30 +36,38 @@ import {
   useRef,
 } from 'react'
 import { useTranslation } from 'react-i18next'
+import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
 import {
   DataTableBulkActions,
   DataTableToolbar,
   DataTablePagination,
-  DataTableRow,
-  DataTableView,
   useDataTable,
 } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { StatusBadge } from '@/components/status-badge'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
-import { useMediaQuery } from '@/hooks'
 
 import { safeJsonParse } from '../utils/json-parser'
 import type { PricingMode } from './model-pricing-core'
 import {
   ModelPricingEditorPanel,
   type ModelPricingEditorPanelHandle,
-  ModelPricingSheet,
   type ModelRatioData,
 } from './model-pricing-sheet'
 import {
   buildModelSnapshots,
+  getModeLabel,
+  getPriceDetail,
+  getPriceSummary,
   getSnapshotSignature,
   isBasePricingUnset,
   type ModelRow,
@@ -136,8 +144,6 @@ const ModelRatioVisualEditorComponent = forwardRef<
   ref
 ) {
   const { t } = useTranslation()
-  const isMobile = useMediaQuery('(max-width: 767px)')
-  const [sheetOpen, setSheetOpen] = useState(false)
   const [editorOpen, setEditorOpen] = useState(false)
   const [editData, setEditData] = useState<ModelRatioData | null>(null)
   const [sorting, setSorting] = useState<SortingState>([])
@@ -312,16 +318,14 @@ const ModelRatioVisualEditorComponent = forwardRef<
         requestRuleExpr: editableModel.requestRuleExpr,
       })
       setEditorOpen(true)
-      if (isMobile) setSheetOpen(true)
     },
-    [isMobile]
+    []
   )
 
   const handleAdd = useCallback(() => {
     setEditData(null)
     setEditorOpen(true)
-    if (isMobile) setSheetOpen(true)
-  }, [isMobile])
+  }, [])
 
   const handleGlobalFilterChange = useCallback<OnChangeFn<string>>(
     (updater) => {
@@ -330,7 +334,6 @@ const ModelRatioVisualEditorComponent = forwardRef<
         if (next !== previous) {
           setEditData(null)
           setEditorOpen(false)
-          setSheetOpen(false)
         }
         return next
       })
@@ -415,7 +418,6 @@ const ModelRatioVisualEditorComponent = forwardRef<
       if (editData?.name === name) {
         setEditData(null)
         setEditorOpen(false)
-        setSheetOpen(false)
       }
     },
     [
@@ -433,6 +435,15 @@ const ModelRatioVisualEditorComponent = forwardRef<
       editData,
     ]
   )
+
+  const handleEditorSave = useCallback(async () => {
+    try {
+      await onSave?.()
+      setEditorOpen(false)
+    } catch {
+      // Keep the editor open if saving fails.
+    }
+  }, [onSave])
 
   const columns = useMemo(
     () =>
@@ -677,131 +688,134 @@ const ModelRatioVisualEditorComponent = forwardRef<
 
   return (
     <div className='flex flex-col gap-4'>
-      <div className='grid h-[clamp(720px,calc(100vh-12rem),900px)] min-h-0 gap-4 md:grid-cols-[minmax(300px,0.72fr)_minmax(520px,1.28fr)] xl:grid-cols-[minmax(320px,0.68fr)_minmax(640px,1.32fr)]'>
-        <div className='flex min-h-0 min-w-0 flex-col gap-3'>
-          <DataTableToolbar
-            table={table}
-            searchPlaceholder={t('Search models...')}
-            searchDebounceMs={250}
-            filters={[
+      <DataTableToolbar
+        table={table}
+        searchPlaceholder={t('Search models...')}
+        searchDebounceMs={250}
+        filters={[
+          {
+            columnId: 'billingMode',
+            title: t('Mode'),
+            options: [
               {
-                columnId: 'billingMode',
-                title: t('Mode'),
-                options: [
-                  {
-                    label: 'Per-token',
-                    value: 'per-token',
-                    count: modeCounts['per-token'],
-                  },
-                  {
-                    label: 'Per-request',
-                    value: 'per-request',
-                    count: modeCounts['per-request'],
-                  },
-                  {
-                    label: 'Expression',
-                    value: 'tiered_expr',
-                    count: modeCounts.tiered_expr,
-                  },
-                ],
+                label: 'Per-token',
+                value: 'per-token',
+                count: modeCounts['per-token'],
               },
-            ]}
-            preActions={
-              filterMode === 'unset' ? undefined : (
-                <Button onClick={handleAdd}>
-                  <Plus data-icon='inline-start' />
-                  {t('Add model')}
-                </Button>
-              )
-            }
-          />
+              {
+                label: 'Per-request',
+                value: 'per-request',
+                count: modeCounts['per-request'],
+              },
+              {
+                label: 'Expression',
+                value: 'tiered_expr',
+                count: modeCounts.tiered_expr,
+              },
+            ],
+          },
+        ]}
+        preActions={
+          filterMode === 'unset' ? undefined : (
+            <Button onClick={handleAdd}>
+              <Plus data-icon='inline-start' />
+              {t('Add model')}
+            </Button>
+          )
+        }
+      />
 
-          {!hasRows ? (
-            <div className='text-muted-foreground rounded-lg border border-dashed p-8 text-center'>
-              {emptyStateText}
-            </div>
-          ) : (
-            <DataTableView
-              table={table}
-              containerClassName='min-h-0 flex-1 rounded-md'
-              tableContainerClassName='h-full'
-              tableClassName='min-w-[852px] table-fixed'
-              tableHeaderClassName='[&_tr]:border-b-0'
-              splitHeaderScrollClassName='h-full'
-              bodyContainerClassName='[scrollbar-gutter:stable]'
-              splitHeader
-              pinnedColumns={[
-                {
-                  columnId: 'actions',
-                  side: 'right',
-                },
-              ]}
-              colgroup={
-                <colgroup>
-                  <col className='w-9' />
-                  <col className='w-[300px]' />
-                  <col className='w-[120px]' />
-                  <col className='w-[300px]' />
-                  <col className='w-auto' />
-                </colgroup>
-              }
-              renderRow={(row, { getCellClassName }) => (
-                <DataTableRow
-                  key={row.id}
-                  row={row}
-                  className={
-                    editData?.name === row.original.name
-                      ? 'bg-muted/45 hover:bg-muted/50 data-[state=selected]:bg-muted group'
-                      : 'group'
-                  }
-                  getColumnClassName={(columnId) =>
-                    columnId === 'actions' &&
-                    editData?.name === row.original.name
-                      ? getCellClassName(columnId, 'bg-muted')
-                      : getCellClassName(columnId)
-                  }
-                  onClick={(event) => {
-                    const target = event.target as HTMLElement
-                    if (target.closest('button, [role="checkbox"]')) return
-                    handleEdit(row.original)
-                  }}
-                />
-              )}
-            />
-          )}
-
-          {hasRows && <DataTablePagination table={table} />}
+      {!hasRows ? (
+        <div className='text-muted-foreground rounded-lg border border-dashed p-8 text-center'>
+          {emptyStateText}
         </div>
-
-        <div className='hidden min-h-0 min-w-0 md:block'>
-          {editorOpen ? (
-            <ModelPricingEditorPanel
-              ref={editorPanelRef}
-              editData={editData}
-              onSave={onSave}
-              isSaving={isSaving}
-              className='h-full min-h-0'
-            />
-          ) : (
-            <div className='bg-card-surface backdrop-blur-card text-muted-foreground flex h-full min-h-0 flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-6 text-center'>
-              <div className='text-foreground text-base font-medium'>
-                {t('Select a model to edit pricing')}
-              </div>
-              <p className='max-w-sm text-sm'>
-                {t(
-                  'Use the full-width table to scan prices, then select a row to edit it here.'
+      ) : (
+        <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
+          {table.getRowModel().rows.map((row) => {
+            const model = row.original
+            const isSelected = row.getIsSelected()
+            const isEditing = editData?.name === model.name
+            return (
+              <div
+                key={row.id}
+                className={cn(
+                  'group relative flex min-h-[128px] flex-col gap-2 rounded-xl border bg-card p-3 text-left shadow-sm transition hover:border-primary/40 hover:shadow-md',
+                  isEditing && 'border-primary bg-primary/5',
+                  isSelected && 'ring-2 ring-primary/30'
                 )}
-              </p>
-              {filterMode !== 'unset' && (
-                <Button variant='outline' onClick={handleAdd}>
-                  <Plus data-icon='inline-start' />
-                  {t('Add model')}
-                </Button>
-              )}
-            </div>
-          )}
+              >
+                <div className='flex items-start justify-between gap-2'>
+                  <button
+                    type='button'
+                    className='flex min-w-0 flex-1 flex-col gap-1 text-left'
+                    onClick={() => handleEdit(model)}
+                  >
+                    <span className='flex min-w-0 items-center gap-2 font-medium'>
+                      <span className='min-w-0 truncate'>{model.name}</span>
+                      {model.billingMode === 'tiered_expr' && (
+                        <StatusBadge
+                          label={t('Tiered')}
+                          variant='info'
+                          copyable={false}
+                          className='shrink-0'
+                        />
+                      )}
+                      {model.hasConflict && (
+                        <StatusBadge
+                          label={t('Conflict')}
+                          variant='danger'
+                          copyable={false}
+                          className='shrink-0'
+                        />
+                      )}
+                    </span>
+                    <span className='text-muted-foreground text-xs'>
+                      {t(getModeLabel(model.billingMode))}
+                    </span>
+                  </button>
+                  <div className='flex shrink-0 items-center gap-1'>
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={(value) => row.toggleSelected(!!value)}
+                      aria-label={t('Select row')}
+                      onClick={(event) => event.stopPropagation()}
+                    />
+                    {filterMode !== 'unset' && (
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='icon-sm'
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          handleDelete(model.name)
+                        }}
+                        aria-label={t('Delete')}
+                      >
+                        <Trash2 className='h-4 w-4' />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  type='button'
+                  className='flex flex-1 flex-col gap-1 text-left'
+                  onClick={() => handleEdit(model)}
+                >
+                  <span className='truncate font-medium'>
+                    {getPriceSummary(model, t)}
+                  </span>
+                  <span className='text-muted-foreground truncate text-xs'>
+                    {getPriceDetail(model, t)}
+                  </span>
+                </button>
+              </div>
+            )
+          })}
         </div>
-      </div>
+      )}
+
+      {hasRows && <DataTablePagination table={table} />}
 
       <DataTableBulkActions table={table} entityName={t('model')}>
         <Button size='sm' disabled={!editData} onClick={handleBatchCopy}>
@@ -812,18 +826,27 @@ const ModelRatioVisualEditorComponent = forwardRef<
         </Button>
       </DataTableBulkActions>
 
-      {isMobile && (
-        <ModelPricingSheet
-          ref={editorPanelRef}
-          open={sheetOpen}
-          onOpenChange={setSheetOpen}
-          editData={editData}
-          onSave={onSave}
-          isSaving={isSaving}
-        />
-      )}
+      <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
+        <DialogContent className='sm:max-w-4xl w-[95vw] max-h-[90vh] overflow-hidden p-0'>
+          <DialogTitle className='sr-only'>
+            {editData ? t('Edit model pricing') : t('Add model pricing')}
+          </DialogTitle>
+          <DialogDescription className='sr-only'>
+            {editData?.name || t('New model')}
+          </DialogDescription>
+          <ModelPricingEditorPanel
+            ref={editorPanelRef}
+            editData={editData}
+            onSave={handleEditorSave}
+            isSaving={isSaving}
+            className='h-[90vh] min-h-0'
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   )
+})
+
 })
 
 export const ModelRatioVisualEditor = memo(
