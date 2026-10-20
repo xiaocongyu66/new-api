@@ -162,7 +162,9 @@ describe('channel page header actions', () => {
 
   test('renders the page section tabs and reports section changes', async () => {
     const host = await renderChannelsPage()
-    const sectionTabs = [...host.querySelectorAll('[data-slot="tabs-trigger"]')]
+    const sectionTabs = [
+      ...host.querySelectorAll<HTMLButtonElement>('[data-slot="tabs-trigger"]'),
+    ]
     const labels = sectionTabs.map((tab) => tab.textContent?.trim())
     assert.ok(
       labels.includes('Channels') && labels.includes('Model Pricing'),
