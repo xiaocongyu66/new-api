@@ -25,7 +25,6 @@ import { PricingSection } from '../general/pricing-section'
 import { QQBotSettingsSection } from '../general/qqbot-settings-section'
 import { QuotaSettingsSection } from '../general/quota-settings-section'
 import { PaymentSettingsSection } from '../integrations/payment-settings-section'
-import { ModelPricingSection } from '../models/model-pricing-section'
 import { RatioSettingsCard } from '../models/ratio-settings-card'
 import type { BillingSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
@@ -111,11 +110,6 @@ const BILLING_SECTIONS = [
         }}
       />
     ),
-  },
-  {
-    id: 'model-pricing',
-    titleKey: 'Pricing',
-    build: () => <ModelPricingSection />,
   },
   {
     id: 'group-pricing',

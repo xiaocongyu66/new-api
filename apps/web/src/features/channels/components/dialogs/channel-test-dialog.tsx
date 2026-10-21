@@ -1291,9 +1291,7 @@ function FailureResultContent({
             variant='outline'
             size='sm'
             className='h-7 w-fit px-2 text-xs'
-            onClick={() =>
-              window.open('/system-settings/billing/model-pricing', '_blank')
-            }
+            onClick={() => window.open('/admin/channels', '_blank')}
           >
             <Settings className='mr-1 h-3 w-3 shrink-0' />
             {t('Go to Settings')}
