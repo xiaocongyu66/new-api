@@ -167,8 +167,14 @@ describe('channel page header actions', () => {
 
     // 页签与标题同处第一行，工具栏排在其后（第二行）。
     assert.equal(heading.parentElement?.contains(tabList), true)
+    // 工具栏在 DOM 上位于标题之后、页签之前：靠 order 让窄屏时它留在标题行
+    // 最右，sm 断点以上再落回第二行。
     assert.ok(
-      tabList.compareDocumentPosition(trigger) &
+      heading.compareDocumentPosition(trigger) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    )
+    assert.ok(
+      trigger.compareDocumentPosition(tabList) &
         Node.DOCUMENT_POSITION_FOLLOWING
     )
   })
@@ -224,10 +230,15 @@ describe('channel page header actions', () => {
     // 页签与标题处于同一个行容器，窄屏下整行 wrap，不会掉到工具栏下面。
     assert.equal(title.parentElement?.contains(tabList), true)
 
-    // 工具栏在页签之后（第二行），不再与页签抢标题那一格。
+    // 工具栏在 DOM 上排在标题之后、页签之前，所以窄屏时它停在标题行最右，
+    // 页签换到下一行；sm 断点以上 order 反过来，工具栏落回第二行。
     const trigger = getActionsTrigger(host)
     assert.ok(
-      tabList.compareDocumentPosition(trigger) &
+      title.compareDocumentPosition(trigger) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    )
+    assert.ok(
+      trigger.compareDocumentPosition(tabList) &
         Node.DOCUMENT_POSITION_FOLLOWING
     )
   })
