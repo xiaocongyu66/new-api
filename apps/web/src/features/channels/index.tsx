@@ -109,11 +109,23 @@ function ChannelsContent() {
                   {t('Channel Management')}
                 </h1>
                 {/*
+                  窄屏只有「⋯」可见，放到标题行最右；sm 以上工具栏整行落到
+                  第二行。用 order 让同一份 DOM 在两个断点落在不同位置。
+                */}
+                <div
+                  className={cn(
+                    'order-2 ml-auto flex shrink-0 items-center sm:order-3 sm:ml-0 sm:w-full',
+                    pageTab === 'channels' ? '' : 'hidden'
+                  )}
+                >
+                  <ChannelsPrimaryButtons />
+                </div>
+                {/*
                   窄屏放不下五个页签，横向滚动而不是换行：TabsList 的行高被
                   group-data-horizontal/tabs:h-8 锁死，换行后第二行会溢出叠字。
                   滚动条放在外层，避免裁掉触发器的 after 伪元素。
                 */}
-                <div className='w-full max-w-full overflow-x-auto overflow-y-hidden sm:w-fit sm:overflow-visible'>
+                <div className='order-3 w-full max-w-full overflow-x-auto overflow-y-hidden sm:order-2 sm:w-fit sm:overflow-visible'>
                   <TabsList
                     className={cn(
                       'flex w-max flex-nowrap',
@@ -152,17 +164,8 @@ function ChannelsContent() {
                   </TabsList>
                 </div>
               </div>
-              {/* 第二行：列表工具栏与创建表单的操作按钮 */}
-              <div className='flex flex-wrap items-center justify-between gap-x-3 gap-y-2'>
-                <div
-                  className={
-                    pageTab === 'channels'
-                      ? 'flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-x-4'
-                      : 'hidden'
-                  }
-                >
-                  <ChannelsPrimaryButtons />
-                </div>
+              {/* 第二行：创建表单的操作按钮 */}
+              <div className='flex flex-wrap items-center justify-end gap-x-3 gap-y-2'>
                 <div
                   ref={setCreateActionsContainer}
                   className={
