@@ -66,7 +66,9 @@ await i18n.use(initReactI18next).init({
         'Apply All Upstream Updates': 'Apply All Upstream Updates',
         'Repair Channel Consistency': 'Repair Channel Consistency',
         'Delete All Disabled': 'Delete All Disabled',
-        'Model Pricing': 'Model Pricing',
+        Pricing: 'Pricing',
+        'Tool prices': 'Tool prices',
+        'Upstream sync': 'Upstream sync',
       },
     },
   },
@@ -139,7 +141,7 @@ afterAll(async () => {
 })
 
 describe('channel page header actions', () => {
-  test('keeps the collapsed actions trigger on the title row', async () => {
+  test('keeps the collapsed actions trigger out of the tab content area', async () => {
     const host = await renderChannelsPage({
       id: 1,
       username: 'root',
@@ -154,8 +156,8 @@ describe('channel page header actions', () => {
     assert.ok(tabList, 'expected the tab bar to render')
     const trigger = getActionsTrigger(host)
 
-    // 与标题共用同一个行容器：窄屏下它留在标题行，而不是掉到页签下面自成一行。
-    assert.equal(heading.parentElement?.contains(trigger), true)
+    // 工具栏属于页头：放进页签内容区会在窄屏留下一整条只有「⋯」的独占行。
+    assert.equal(header.contains(trigger), true)
     assert.equal(trigger.closest('.hidden'), null)
 
     // 属于页头，而不是页签内容区。
@@ -163,26 +165,29 @@ describe('channel page header actions', () => {
     assert.ok(panels.length > 0, 'expected the tab panels to render')
     assert.equal(panels.some((panel) => panel.contains(trigger)), false)
 
-    // 排在页签行之前，即工具栏在页签上方。
+    // 页签与标题同处第一行，工具栏排在其后（第二行）。
+    assert.equal(heading.parentElement?.contains(tabList), true)
     assert.ok(
-      trigger.compareDocumentPosition(tabList) &
+      tabList.compareDocumentPosition(trigger) &
         Node.DOCUMENT_POSITION_FOLLOWING
     )
   })
 
-  test('renders every page tab in the single tab bar, including model pricing', async () => {
+  test('renders all five page tabs in one row beside the title', async () => {
     const host = await renderChannelsPage({
       id: 1,
       username: 'root',
       role: ROLE.SUPER_ADMIN,
     })
 
-    // 模型定价不再单独占一层分页导航，与「创建 / 渠道」并列在同一行。
+    // 定价面板内部的三个子页签上提到页面页签行，与「创建 / 渠道」并列。
     // 创建页签同时挂窄屏/宽屏两个文案，textContent 会把两者拼起来。
     assert.deepEqual(pageTabLabels(host), [
       'CreateCreate Channel',
       'Channels',
-      'Model Pricing',
+      'Pricing',
+      'Tool prices',
+      'Upstream sync',
     ])
 
     const tabTriggers = [
@@ -191,20 +196,43 @@ describe('channel page header actions', () => {
       ),
     ]
     const pricingTab = tabTriggers.find(
-      (tab) => tab.textContent?.trim() === 'Model Pricing'
+      (tab) => tab.textContent?.trim() === 'Pricing'
     )
-    assert.ok(pricingTab, 'expected the model pricing tab to render')
+    assert.ok(pricingTab, 'expected the pricing tab to render')
     assert.equal(
       pricingTab.getAttribute('aria-selected'),
       'false',
-      'model pricing is not the default tab'
+      'pricing is not the default tab'
     )
 
     await act(async () => pricingTab.click())
     assert.equal(pricingTab.getAttribute('aria-selected'), 'true')
   })
 
-  test('hides the model pricing tab without the system settings permission', async () => {
+  test('keeps the tab row beside the page title', async () => {
+    const host = await renderChannelsPage({
+      id: 1,
+      username: 'root',
+      role: ROLE.SUPER_ADMIN,
+    })
+
+    const title = host.querySelector('h1')
+    assert.ok(title, 'expected the page title to render')
+    const tabList = host.querySelector('[data-slot="tabs-list"]')
+    assert.ok(tabList, 'expected the page tab bar to render')
+
+    // 页签与标题处于同一个行容器，窄屏下整行 wrap，不会掉到工具栏下面。
+    assert.equal(title.parentElement?.contains(tabList), true)
+
+    // 工具栏在页签之后（第二行），不再与页签抢标题那一格。
+    const trigger = getActionsTrigger(host)
+    assert.ok(
+      tabList.compareDocumentPosition(trigger) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    )
+  })
+
+  test('hides the pricing tabs without the system settings permission', async () => {
     const host = await renderChannelsPage({
       id: 2,
       username: 'admin',
@@ -212,8 +240,8 @@ describe('channel page header actions', () => {
       permissions: { admin_permissions: {} },
     })
 
-    // 模型定价读写 /api/option，后端要 system.settings；没权限就不该看到入口，
-    // 也不该为第三个页签留下空格。
+    // 定价读写 /api/option，后端要 system.settings；没权限就不该看到入口，
+    // 也不该为多出来的三个页签留下空格。
     assert.deepEqual(pageTabLabels(host), ['CreateCreate Channel', 'Channels'])
   })
 

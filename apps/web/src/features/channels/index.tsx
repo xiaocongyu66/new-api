@@ -23,6 +23,7 @@ import { Main } from '@/components/layout'
 import { PageFooterProvider } from '@/components/layout/components/page-footer'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ModelPricingSection } from '@/features/system-settings/models/model-pricing-section'
+import type { RatioTabId } from '@/features/system-settings/models/ratio-settings-card'
 import {
   hasPermission,
   ADMIN_PERMISSION_ACTIONS,
@@ -40,6 +41,22 @@ import {
   useChannels,
   type ChannelsPageTab,
 } from './components/channels-provider'
+
+// 定价的三个视图在页签行里各占一格，cardTab 决定 RatioSettingsCard 只渲染
+// 哪一块内容（单页签时它自带的分页器会自动消失）。
+const PRICING_TABS: {
+  id: ChannelsPageTab
+  labelKey: string
+  cardTab: RatioTabId
+}[] = [
+  { id: 'pricing-models', labelKey: 'Pricing', cardTab: 'models' },
+  { id: 'pricing-tools', labelKey: 'Tool prices', cardTab: 'tool-prices' },
+  {
+    id: 'pricing-upstream',
+    labelKey: 'Upstream sync',
+    cardTab: 'upstream-sync',
+  },
+]
 
 function ChannelsContent() {
   const { t } = useTranslation()
@@ -86,27 +103,15 @@ function ChannelsContent() {
             className='flex h-full min-h-0 flex-col'
           >
             <header className='shrink-0 space-y-3 px-3 pt-3 pb-3 sm:px-4 sm:pt-5'>
-              {/* 列表工具栏属于页头：放进页签内容区会在窄屏留下一整条只有「⋯」的独占行 */}
-              <div className='flex flex-wrap items-center justify-between gap-x-3 gap-y-2'>
+              {/* 第一行：标题 + 页签。页签跟着标题走，窄屏整行 wrap */}
+              <div className='flex flex-wrap items-center gap-x-3 gap-y-2 sm:gap-x-4'>
                 <h1 className='min-w-0 truncate text-xl font-semibold tracking-tight sm:text-2xl'>
                   {t('Channel Management')}
                 </h1>
-                <div
-                  className={
-                    pageTab === 'channels'
-                      ? 'flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-x-4'
-                      : 'hidden'
-                  }
-                >
-                  <ChannelsPrimaryButtons />
-                </div>
-              </div>
-              <div className='flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-3 sm:gap-y-2'>
-                {/* 模型定价页签按权限出现，窄屏列数跟着页签数量走，否则会留下空格 */}
                 <TabsList
                   className={cn(
-                    'grid h-auto w-full sm:w-fit',
-                    canEditModelPricing ? 'grid-cols-3' : 'grid-cols-2'
+                    'grid h-auto w-full grid-cols-2 sm:w-fit',
+                    canEditModelPricing && 'sm:grid-cols-5'
                   )}
                 >
                   <TabsTrigger
@@ -120,12 +125,30 @@ function ChannelsContent() {
                   <TabsTrigger value='channels' className='px-4 text-sm'>
                     {t('Channels')}
                   </TabsTrigger>
-                  {canEditModelPricing ? (
-                    <TabsTrigger value='model-pricing' className='px-4 text-sm'>
-                      {t('Model Pricing')}
-                    </TabsTrigger>
-                  ) : null}
+                  {canEditModelPricing
+                    ? PRICING_TABS.map((tab) => (
+                        <TabsTrigger
+                          key={tab.id}
+                          value={tab.id}
+                          className='px-4 text-sm'
+                        >
+                          {t(tab.labelKey)}
+                        </TabsTrigger>
+                      ))
+                    : null}
                 </TabsList>
+              </div>
+              {/* 第二行：列表工具栏与创建表单的操作按钮 */}
+              <div className='flex flex-wrap items-center justify-between gap-x-3 gap-y-2'>
+                <div
+                  className={
+                    pageTab === 'channels'
+                      ? 'flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-x-4'
+                      : 'hidden'
+                  }
+                >
+                  <ChannelsPrimaryButtons />
+                </div>
                 <div
                   ref={setCreateActionsContainer}
                   className={
@@ -165,14 +188,19 @@ function ChannelsContent() {
                 <ChannelListTab />
               </TabsContent>
 
-              <TabsContent
-                value='model-pricing'
-                className='m-0 flex min-h-0 flex-1 flex-col overflow-hidden data-hidden:hidden'
-              >
-                <div className='flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-1 pt-1 pb-4 sm:px-1.5 sm:pt-1.5'>
-                  <ModelPricingSection />
-                </div>
-              </TabsContent>
+              {canEditModelPricing
+                ? PRICING_TABS.map((tab) => (
+                    <TabsContent
+                      key={tab.id}
+                      value={tab.id}
+                      className='m-0 flex min-h-0 flex-1 flex-col overflow-hidden data-hidden:hidden'
+                    >
+                      <div className='flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-1 pt-1 pb-4 sm:px-1.5 sm:pt-1.5'>
+                        <ModelPricingSection tabs={[tab.cardTab]} />
+                      </div>
+                    </TabsContent>
+                  ))
+                : null}
             </div>
 
             <div

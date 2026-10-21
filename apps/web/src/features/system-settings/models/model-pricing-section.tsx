@@ -22,7 +22,7 @@ import {
   getOptionValue,
   useSystemOptions,
 } from '../hooks/use-system-options'
-import { RatioSettingsCard } from './ratio-settings-card'
+import { RatioSettingsCard, type RatioTabId } from './ratio-settings-card'
 
 /**
  * Option keys the pricing card reads. `getOptionValue` only copies keys that
@@ -45,10 +45,18 @@ const modelPricingDefaults = {
 }
 
 /**
- * Model pricing editor, wired to the current system options. Rendered both
- * under billing settings and next to the channels that provide the models.
+ * Model pricing editor, wired to the current system options.
+ *
+ * `tabs` decides how much of the editor this instance owns: the billing settings
+ * page passes all three and keeps the card's own switcher, while the channels
+ * page owns the tab row and passes a single tab so the card renders just that
+ * view (a one-tab card drops its internal switcher).
  */
-export function ModelPricingSection() {
+export function ModelPricingSection({
+  tabs = ['models', 'tool-prices', 'upstream-sync'],
+}: {
+  tabs?: RatioTabId[]
+}) {
   const { data } = useSystemOptions()
 
   const settings = useMemo(
@@ -58,7 +66,7 @@ export function ModelPricingSection() {
 
   return (
     <RatioSettingsCard
-      titleKey='Model Pricing'
+      titleKey='Pricing'
       modelDefaults={{
         ModelPrice: settings.ModelPrice,
         ModelRatio: settings.ModelRatio,
@@ -84,7 +92,7 @@ export function ModelPricingSection() {
       }}
       toolPricesDefault={settings['tool_price_setting.prices']}
       completionRatioMeta={settings.CompletionRatioMeta}
-      visibleTabs={['models', 'tool-prices', 'upstream-sync']}
+      visibleTabs={tabs}
     />
   )
 }
