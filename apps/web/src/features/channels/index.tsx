@@ -108,35 +108,49 @@ function ChannelsContent() {
                 <h1 className='min-w-0 truncate text-xl font-semibold tracking-tight sm:text-2xl'>
                   {t('Channel Management')}
                 </h1>
-                <TabsList
-                  className={cn(
-                    'grid h-auto w-full grid-cols-2 sm:w-fit',
-                    canEditModelPricing && 'sm:grid-cols-5'
-                  )}
-                >
-                  <TabsTrigger
-                    value='create'
-                    disabled={!canCreateChannel}
-                    className='px-4 text-sm'
+                {/*
+                  窄屏放不下五个页签，横向滚动而不是换行：TabsList 的行高被
+                  group-data-horizontal/tabs:h-8 锁死，换行后第二行会溢出叠字。
+                  滚动条放在外层，避免裁掉触发器的 after 伪元素。
+                */}
+                <div className='w-full max-w-full overflow-x-auto overflow-y-hidden sm:w-fit sm:overflow-visible'>
+                  <TabsList
+                    className={cn(
+                      'flex w-max flex-nowrap',
+                      canEditModelPricing
+                        ? 'sm:grid sm:w-fit sm:grid-cols-5'
+                        : 'sm:grid sm:w-fit sm:grid-cols-2'
+                    )}
                   >
-                    <span className='sm:hidden'>{t('Create')}</span>
-                    <span className='hidden sm:inline'>{t('Create Channel')}</span>
-                  </TabsTrigger>
-                  <TabsTrigger value='channels' className='px-4 text-sm'>
-                    {t('Channels')}
-                  </TabsTrigger>
-                  {canEditModelPricing
-                    ? PRICING_TABS.map((tab) => (
-                        <TabsTrigger
-                          key={tab.id}
-                          value={tab.id}
-                          className='px-4 text-sm'
-                        >
-                          {t(tab.labelKey)}
-                        </TabsTrigger>
-                      ))
-                    : null}
-                </TabsList>
+                    <TabsTrigger
+                      value='create'
+                      disabled={!canCreateChannel}
+                      className='flex-none px-4 text-sm'
+                    >
+                      <span className='sm:hidden'>{t('Create')}</span>
+                      <span className='hidden sm:inline'>
+                        {t('Create Channel')}
+                      </span>
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value='channels'
+                      className='flex-none px-4 text-sm'
+                    >
+                      {t('Channels')}
+                    </TabsTrigger>
+                    {canEditModelPricing
+                      ? PRICING_TABS.map((tab) => (
+                          <TabsTrigger
+                            key={tab.id}
+                            value={tab.id}
+                            className='flex-none px-4 text-sm'
+                          >
+                            {t(tab.labelKey)}
+                          </TabsTrigger>
+                        ))
+                      : null}
+                  </TabsList>
+                </div>
               </div>
               {/* 第二行：列表工具栏与创建表单的操作按钮 */}
               <div className='flex flex-wrap items-center justify-between gap-x-3 gap-y-2'>
