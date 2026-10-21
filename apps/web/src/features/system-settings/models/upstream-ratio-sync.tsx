@@ -35,6 +35,7 @@ import type {
   UpstreamChannel,
   UpstreamConfig,
 } from '../types'
+import { SettingsPageActionsPortal } from '../components/settings-page-context'
 import { ChannelSelectorDialog } from './channel-selector-dialog'
 import {
   ConflictConfirmDialog,
@@ -476,25 +477,23 @@ export function UpstreamRatioSync({ modelRatios }: UpstreamRatioSyncProps) {
 
   return (
     <div className='flex h-full min-h-0 flex-col gap-4'>
-      <div className='flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
-        <div className='flex flex-col gap-2 sm:flex-row'>
-          <Button onClick={handleOpenChannelDialog} disabled={isLoading}>
-            <RefreshCcw className='mr-2 h-4 w-4' />
-            {t('Select Sync Channels')}
-          </Button>
-          <Button
-            variant='secondary'
-            onClick={handleApplySync}
-            disabled={!hasSelections || isLoading}
-          >
-            {(isSyncPending || confirmLoading) && (
-              <span className='mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent' />
-            )}
-            <CheckSquare className='mr-2 h-4 w-4' />
-            {t('Apply Sync')}
-          </Button>
-        </div>
-      </div>
+      <SettingsPageActionsPortal>
+        <Button onClick={handleOpenChannelDialog} disabled={isLoading}>
+          <RefreshCcw className='mr-2 h-4 w-4' />
+          {t('Select Sync Channels')}
+        </Button>
+        <Button
+          variant='secondary'
+          onClick={handleApplySync}
+          disabled={!hasSelections || isLoading}
+        >
+          {(isSyncPending || confirmLoading) && (
+            <span className='mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent' />
+          )}
+          <CheckSquare className='mr-2 h-4 w-4' />
+          {t('Apply Sync')}
+        </Button>
+      </SettingsPageActionsPortal>
 
       <div className='min-h-0 flex-1'>
         <UpstreamRatioSyncTable

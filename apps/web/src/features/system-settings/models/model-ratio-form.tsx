@@ -42,6 +42,7 @@ import {
   SettingsSwitchContent,
   SettingsSwitchItem,
 } from '../components/settings-form-layout'
+import { SettingsPageActionsPortal } from '../components/settings-page-context'
 import {
   ModelRatioVisualEditor,
   type ModelRatioVisualEditorHandle,
@@ -218,7 +219,11 @@ export const ModelRatioForm = memo(function ModelRatioForm({
 
   return (
     <div className='space-y-6'>
-      <div className='flex flex-wrap justify-end gap-2'>
+      {/*
+        操作按钮挂到页面的标题栏（SettingsPageActionsPortal），渠道页和
+        计费设置页都这样；没有容器时 portal 返回 null，按钮不显示。
+      */}
+      <SettingsPageActionsPortal>
         <Button
           type='button'
           variant='destructive'
@@ -253,7 +258,7 @@ export const ModelRatioForm = memo(function ModelRatioForm({
             </>
           )}
         </Button>
-      </div>
+      </SettingsPageActionsPortal>
 
       <Form {...form}>
         {editMode === 'visual' ? (
