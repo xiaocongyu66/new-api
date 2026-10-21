@@ -29,7 +29,6 @@ import {
   Users,
 } from 'lucide-react'
 
-import { CHANNELS_DEFAULT_SECTION, CHANNELS_SECTIONS } from '@/features/channels/section-registry'
 import type { AuthUser } from '@/stores/auth-store'
 import { ROLE } from '@/lib/roles'
 
@@ -39,10 +38,6 @@ export type AdminNavigationItem = {
   to: string
   params?: Record<string, string>
   search?: Record<string, unknown>
-  // Extra URLs that keep this entry highlighted. Needed for routes with
-  // sections: the link points at one section, but the entry stays active for
-  // all of them.
-  activeUrls?: string[]
   icon: React.ElementType
   requiredRole?: number
   requiredCapability?: {
@@ -53,16 +48,7 @@ export type AdminNavigationItem = {
 
 export const ADMIN_NAVIGATION: readonly AdminNavigationItem[] = [
   { id: 'overview', labelKey: 'admin.overview', to: '/admin', icon: LayoutDashboard },
-  {
-    id: 'channels',
-    labelKey: 'admin.channels',
-    to: '/admin/channels/$section',
-    params: { section: CHANNELS_DEFAULT_SECTION },
-    activeUrls: CHANNELS_SECTIONS.map(
-      (section) => `/admin/channels/${section.id}`
-    ),
-    icon: Radio,
-  },
+  { id: 'channels', labelKey: 'admin.channels', to: '/admin/channels', icon: Radio },
   { id: 'models', labelKey: 'admin.models', to: '/admin/models/$section', params: { section: 'metadata' }, icon: Box },
   { id: 'users', labelKey: 'admin.users', to: '/admin/users', icon: Users },
   { id: 'insights', labelKey: 'admin.insights', to: '/admin/user-insights', icon: ScanSearch },

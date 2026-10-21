@@ -17,16 +17,32 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute, redirect } from '@tanstack/react-router'
+import z from 'zod'
 
-import { CHANNELS_DEFAULT_SECTION } from '@/features/channels/section-registry'
+import { Channels } from '@/features/channels'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
+
+const channelsSearchSchema = z.object({
+  page: z.number().optional().catch(1),
+  pageSize: z.number().optional().catch(undefined),
+  filter: z.string().optional().catch(''),
+  status: z.array(z.string()).optional().catch([]),
+  type: z.array(z.string()).optional().catch([]),
+  group: z.array(z.string()).optional().catch([]),
+  model: z.string().optional().catch(''),
+})
 
 export const Route = createFileRoute('/_authenticated/admin/channels/')({
-  beforeLoad: ({ location }) => {
-    throw redirect({
-      to: '/admin/channels/$section',
-      params: { section: CHANNELS_DEFAULT_SECTION },
-      search: location.search,
-      hash: location.hash,
-    })
+  beforeLoad: () => {
+    const { auth } = useAuthStore.getState()
+
+    if (!auth.user || auth.user.role < ROLE.ADMIN) {
+      throw redirect({
+        to: '/403',
+      })
+    }
   },
+  validateSearch: channelsSearchSchema,
+  component: Channels,
 })

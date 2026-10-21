@@ -48,7 +48,8 @@ type DialogType =
   | null
 
 type UpstreamUpdateState = ReturnType<typeof useChannelUpstreamUpdates>
-type ChannelsPageTab = 'create' | 'channels'
+
+export type ChannelsPageTab = 'create' | 'channels' | 'model-pricing'
 
 type ChannelsContextType = {
   open: DialogType

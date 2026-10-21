@@ -28,33 +28,32 @@ import {
   ADMIN_PERMISSION_ACTIONS,
   ADMIN_PERMISSION_RESOURCES,
 } from '@/lib/admin-permissions'
+import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { ChannelCreateTab } from './components/channel-create-tab'
 import { ChannelListTab } from './components/channel-list-tab'
 import { ChannelsDialogs } from './components/channels-dialogs'
 import { ChannelsPrimaryButtons } from './components/channels-primary-buttons'
-import { ChannelsProvider, useChannels } from './components/channels-provider'
 import {
-  CHANNELS_DEFAULT_SECTION,
-  CHANNELS_SECTIONS,
-  type ChannelsSectionId,
-} from './section-registry'
+  ChannelsProvider,
+  useChannels,
+  type ChannelsPageTab,
+} from './components/channels-provider'
 
-type ChannelsContentProps = {
-  section: ChannelsSectionId
-  onSectionChange?: (section: ChannelsSectionId) => void
-}
-
-function ChannelsContent({ section, onSectionChange }: ChannelsContentProps) {
+function ChannelsContent() {
   const { t } = useTranslation()
   const { pageTab, setPageTab, setCurrentRow } = useChannels()
   const currentUser = useAuthStore((state) => state.auth.user)
-  const activeSection = section
   const canCreateChannel = hasPermission(
     currentUser,
     ADMIN_PERMISSION_RESOURCES.CHANNEL,
     ADMIN_PERMISSION_ACTIONS.SENSITIVE_WRITE
+  )
+  const canEditModelPricing = hasPermission(
+    currentUser,
+    ADMIN_PERMISSION_RESOURCES.SYSTEM,
+    ADMIN_PERMISSION_ACTIONS.SETTINGS
   )
   const [footerContainer, setFooterContainer] = useState<HTMLDivElement | null>(
     null
@@ -77,36 +76,10 @@ function ChannelsContent({ section, onSectionChange }: ChannelsContentProps) {
     <>
       <PageFooterProvider container={footerContainer}>
         <Main>
-          <div className='shrink-0 px-3 pt-3 sm:px-4 sm:pt-5'>
-            <Tabs
-              value={activeSection}
-              onValueChange={(value) =>
-                onSectionChange?.(value as ChannelsSectionId)
-              }
-            >
-              <TabsList className='h-auto w-fit'>
-                {CHANNELS_SECTIONS.map((section) => (
-                  <TabsTrigger
-                    key={section.id}
-                    value={section.id}
-                    className='px-4 text-sm'
-                  >
-                    {t(section.titleKey)}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
-          </div>
-
-          {activeSection === 'model-pricing' ? (
-            <div className='min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pt-3 pb-4 sm:px-4 sm:pt-4'>
-              <ModelPricingSection />
-            </div>
-          ) : (
           <Tabs
             value={pageTab}
             onValueChange={(value) => {
-              const next = value as 'create' | 'channels'
+              const next = value as ChannelsPageTab
               if (next === 'create') setCurrentRow(null)
               setPageTab(next)
             }}
@@ -129,7 +102,13 @@ function ChannelsContent({ section, onSectionChange }: ChannelsContentProps) {
                 </div>
               </div>
               <div className='flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-3 sm:gap-y-2'>
-                <TabsList className='grid h-auto w-full grid-cols-2 sm:w-fit'>
+                {/* 模型定价页签按权限出现，窄屏列数跟着页签数量走，否则会留下空格 */}
+                <TabsList
+                  className={cn(
+                    'grid h-auto w-full sm:w-fit',
+                    canEditModelPricing ? 'grid-cols-3' : 'grid-cols-2'
+                  )}
+                >
                   <TabsTrigger
                     value='create'
                     disabled={!canCreateChannel}
@@ -138,12 +117,14 @@ function ChannelsContent({ section, onSectionChange }: ChannelsContentProps) {
                     <span className='sm:hidden'>{t('Create')}</span>
                     <span className='hidden sm:inline'>{t('Create Channel')}</span>
                   </TabsTrigger>
-                  <TabsTrigger
-                    value='channels'
-                    className='px-4 text-sm'
-                  >
+                  <TabsTrigger value='channels' className='px-4 text-sm'>
                     {t('Channels')}
                   </TabsTrigger>
+                  {canEditModelPricing ? (
+                    <TabsTrigger value='model-pricing' className='px-4 text-sm'>
+                      {t('Model Pricing')}
+                    </TabsTrigger>
+                  ) : null}
                 </TabsList>
                 <div
                   ref={setCreateActionsContainer}
@@ -183,6 +164,15 @@ function ChannelsContent({ section, onSectionChange }: ChannelsContentProps) {
               >
                 <ChannelListTab />
               </TabsContent>
+
+              <TabsContent
+                value='model-pricing'
+                className='m-0 flex min-h-0 flex-1 flex-col overflow-hidden data-hidden:hidden'
+              >
+                <div className='flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-1 pt-1 pb-4 sm:px-1.5 sm:pt-1.5'>
+                  <ModelPricingSection />
+                </div>
+              </TabsContent>
             </div>
 
             <div
@@ -191,7 +181,6 @@ function ChannelsContent({ section, onSectionChange }: ChannelsContentProps) {
               hidden={pageTab !== 'channels'}
             />
           </Tabs>
-          )}
         </Main>
       </PageFooterProvider>
 
@@ -200,20 +189,10 @@ function ChannelsContent({ section, onSectionChange }: ChannelsContentProps) {
   )
 }
 
-type ChannelsProps = {
-  // Which page section to show. The route owns the router dependency and
-  // passes it down, so this component stays renderable without a router.
-  section?: ChannelsSectionId
-  onSectionChange?: (section: ChannelsSectionId) => void
-}
-
-export function Channels({
-  section = CHANNELS_DEFAULT_SECTION,
-  onSectionChange,
-}: ChannelsProps) {
+export function Channels() {
   return (
     <ChannelsProvider>
-      <ChannelsContent section={section} onSectionChange={onSectionChange} />
+      <ChannelsContent />
     </ChannelsProvider>
   )
 }
