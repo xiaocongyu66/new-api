@@ -114,7 +114,7 @@ const BILLING_SECTIONS = [
   },
   {
     id: 'model-pricing',
-    titleKey: 'Model Pricing',
+    titleKey: 'Pricing',
     build: () => <ModelPricingSection />,
   },
   {
