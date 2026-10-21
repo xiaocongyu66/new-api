@@ -23,43 +23,62 @@ import { Main } from '@/components/layout'
 import { PageFooterProvider } from '@/components/layout/components/page-footer'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ModelPricingSection } from '@/features/system-settings/models/model-pricing-section'
+import type { RatioTabId } from '@/features/system-settings/models/ratio-settings-card'
+import { SettingsPageProvider } from '@/features/system-settings/components/settings-page-context'
 import {
   hasPermission,
   ADMIN_PERMISSION_ACTIONS,
   ADMIN_PERMISSION_RESOURCES,
 } from '@/lib/admin-permissions'
+import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { ChannelCreateTab } from './components/channel-create-tab'
 import { ChannelListTab } from './components/channel-list-tab'
 import { ChannelsDialogs } from './components/channels-dialogs'
 import { ChannelsPrimaryButtons } from './components/channels-primary-buttons'
-import { ChannelsProvider, useChannels } from './components/channels-provider'
 import {
-  CHANNELS_DEFAULT_SECTION,
-  CHANNELS_SECTIONS,
-  type ChannelsSectionId,
-} from './section-registry'
+  ChannelsProvider,
+  useChannels,
+  type ChannelsPageTab,
+} from './components/channels-provider'
 
-type ChannelsContentProps = {
-  section: ChannelsSectionId
-  onSectionChange?: (section: ChannelsSectionId) => void
-}
+// 定价的三个视图在页签行里各占一格，cardTab 决定 RatioSettingsCard 只渲染
+// 哪一块内容（单页签时它自带的分页器会自动消失）。
+const PRICING_TABS: {
+  id: ChannelsPageTab
+  labelKey: string
+  cardTab: RatioTabId
+}[] = [
+  { id: 'pricing-models', labelKey: 'Pricing', cardTab: 'models' },
+  { id: 'pricing-tools', labelKey: 'Tool prices', cardTab: 'tool-prices' },
+  {
+    id: 'pricing-upstream',
+    labelKey: 'Upstream sync',
+    cardTab: 'upstream-sync',
+  },
+]
 
-function ChannelsContent({ section, onSectionChange }: ChannelsContentProps) {
+function ChannelsContent() {
   const { t } = useTranslation()
   const { pageTab, setPageTab, setCurrentRow } = useChannels()
   const currentUser = useAuthStore((state) => state.auth.user)
-  const activeSection = section
   const canCreateChannel = hasPermission(
     currentUser,
     ADMIN_PERMISSION_RESOURCES.CHANNEL,
     ADMIN_PERMISSION_ACTIONS.SENSITIVE_WRITE
   )
+  const canEditModelPricing = hasPermission(
+    currentUser,
+    ADMIN_PERMISSION_RESOURCES.SYSTEM,
+    ADMIN_PERMISSION_ACTIONS.SETTINGS
+  )
   const [footerContainer, setFooterContainer] = useState<HTMLDivElement | null>(
     null
   )
   const [createActionsContainer, setCreateActionsContainer] =
+    useState<HTMLDivElement | null>(null)
+  const [pricingActionsContainer, setPricingActionsContainer] =
     useState<HTMLDivElement | null>(null)
   const createScrollContainerRef = useRef<HTMLDivElement | null>(null)
 
@@ -75,145 +94,174 @@ function ChannelsContent({ section, onSectionChange }: ChannelsContentProps) {
 
   return (
     <>
-      <PageFooterProvider container={footerContainer}>
-        <Main>
-          <div className='shrink-0 px-3 pt-3 sm:px-4 sm:pt-5'>
+      {/*
+        定价面板复用系统设置的表单组件：操作按钮通过 portal 挂到标题栏，
+        面板自身的小标题由 suppressSectionHeader 隐掉（页签已经标明了是哪个视图）。
+      */}
+      <SettingsPageProvider
+        actionsContainer={pricingActionsContainer}
+        suppressSectionHeader
+      >
+        <PageFooterProvider container={footerContainer}>
+          <Main>
             <Tabs
-              value={activeSection}
-              onValueChange={(value) =>
-                onSectionChange?.(value as ChannelsSectionId)
-              }
+              value={pageTab}
+              onValueChange={(value) => {
+                const next = value as ChannelsPageTab
+                if (next === 'create') setCurrentRow(null)
+                setPageTab(next)
+              }}
+              className='flex h-full min-h-0 flex-col'
             >
-              <TabsList className='h-auto w-fit'>
-                {CHANNELS_SECTIONS.map((section) => (
-                  <TabsTrigger
-                    key={section.id}
-                    value={section.id}
-                    className='px-4 text-sm'
+              <header className='shrink-0 space-y-3 px-3 pt-3 pb-3 sm:px-4 sm:pt-5'>
+                {/* 第一行：标题 + 页签。页签跟着标题走，窄屏整行 wrap */}
+                <div className='flex flex-wrap items-center gap-x-3 gap-y-2 sm:gap-x-4'>
+                  <h1 className='min-w-0 truncate text-xl font-semibold tracking-tight sm:text-2xl'>
+                    {t('Channel Management')}
+                  </h1>
+                  {/*
+                    窄屏只有「⋯」可见，放到标题行最右；sm 以上工具栏整行落到
+                    第二行。用 order 让同一份 DOM 在两个断点落在不同位置。
+                  */}
+                  <div
+                    className={cn(
+                      'order-2 ml-auto flex shrink-0 items-center sm:order-3 sm:ml-0 sm:w-full',
+                      pageTab === 'channels' ? '' : 'hidden'
+                    )}
                   >
-                    {t(section.titleKey)}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
-          </div>
-
-          {activeSection === 'model-pricing' ? (
-            <div className='min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pt-3 pb-4 sm:px-4 sm:pt-4'>
-              <ModelPricingSection />
-            </div>
-          ) : (
-          <Tabs
-            value={pageTab}
-            onValueChange={(value) => {
-              const next = value as 'create' | 'channels'
-              if (next === 'create') setCurrentRow(null)
-              setPageTab(next)
-            }}
-            className='flex h-full min-h-0 flex-col'
-          >
-            <header className='shrink-0 space-y-3 px-3 pt-3 pb-3 sm:px-4 sm:pt-5'>
-              {/* 列表工具栏属于页头：放进页签内容区会在窄屏留下一整条只有「⋯」的独占行 */}
-              <div className='flex flex-wrap items-center justify-between gap-x-3 gap-y-2'>
-                <h1 className='min-w-0 truncate text-xl font-semibold tracking-tight sm:text-2xl'>
-                  {t('Channel Management')}
-                </h1>
-                <div
-                  className={
-                    pageTab === 'channels'
-                      ? 'flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-x-4'
-                      : 'hidden'
-                  }
-                >
-                  <ChannelsPrimaryButtons />
+                    <ChannelsPrimaryButtons />
+                  </div>
+                  {/*
+                    定价面板的操作按钮（重置价格 / 切换到 JSON）通过 portal 挂到
+                    标题栏右侧。窄屏排在页签之前（留在标题行），sm 以上排在页签
+                    之后（标题行最右）。
+                  */}
+                  <div
+                    ref={setPricingActionsContainer}
+                    className={cn(
+                      'order-2 ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2 sm:order-3',
+                      pageTab.startsWith('pricing-') ? '' : 'hidden'
+                    )}
+                  />
+                  {/*
+                    窄屏放不下五个页签，横向滚动而不是换行：TabsList 的行高被
+                    group-data-horizontal/tabs:h-8 锁死，换行后第二行会溢出叠字。
+                    滚动条放在外层，避免裁掉触发器的 after 伪元素。
+                  */}
+                  <div className='order-3 w-full max-w-full overflow-x-auto overflow-y-hidden sm:order-2 sm:w-fit sm:overflow-visible'>
+                    <TabsList
+                      className={cn(
+                        'flex w-max flex-nowrap',
+                        canEditModelPricing
+                          ? 'sm:grid sm:w-fit sm:grid-cols-5'
+                          : 'sm:grid sm:w-fit sm:grid-cols-2'
+                      )}
+                    >
+                      <TabsTrigger
+                        value='create'
+                        disabled={!canCreateChannel}
+                        className='flex-none px-4 text-sm'
+                      >
+                        <span className='sm:hidden'>{t('Create')}</span>
+                        <span className='hidden sm:inline'>
+                          {t('Create Channel')}
+                        </span>
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value='channels'
+                        className='flex-none px-4 text-sm'
+                      >
+                        {t('Channels')}
+                      </TabsTrigger>
+                      {canEditModelPricing
+                        ? PRICING_TABS.map((tab) => (
+                            <TabsTrigger
+                              key={tab.id}
+                              value={tab.id}
+                              className='flex-none px-4 text-sm'
+                            >
+                              {t(tab.labelKey)}
+                            </TabsTrigger>
+                          ))
+                        : null}
+                    </TabsList>
+                  </div>
                 </div>
-              </div>
-              <div className='flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-3 sm:gap-y-2'>
-                <TabsList className='grid h-auto w-full grid-cols-2 sm:w-fit'>
-                  <TabsTrigger
-                    value='create'
-                    disabled={!canCreateChannel}
-                    className='px-4 text-sm'
-                  >
-                    <span className='sm:hidden'>{t('Create')}</span>
-                    <span className='hidden sm:inline'>{t('Create Channel')}</span>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value='channels'
-                    className='px-4 text-sm'
-                  >
-                    {t('Channels')}
-                  </TabsTrigger>
-                </TabsList>
-                <div
-                  ref={setCreateActionsContainer}
-                  className={
-                    pageTab === 'create'
-                      ? 'flex w-full flex-wrap items-center justify-center gap-2 sm:w-auto sm:justify-end'
-                      : 'hidden'
-                  }
-                />
-              </div>
-            </header>
+                {/* 第二行：创建表单的操作按钮 */}
+                <div className='flex flex-wrap items-center justify-end gap-x-3 gap-y-2'>
+                  <div
+                    ref={setCreateActionsContainer}
+                    className={
+                      pageTab === 'create'
+                        ? 'flex w-full flex-wrap items-center justify-center gap-2 sm:w-auto sm:justify-end'
+                        : 'hidden'
+                    }
+                  />
+                </div>
+              </header>
 
-            <div
-              ref={createScrollContainerRef}
-              className={
-                pageTab === 'create'
-                  ? 'flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-3 pt-1 pb-4 sm:px-4 sm:pt-1.5 md:pb-4'
-                  : 'flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-1 pb-3 sm:px-4 sm:pt-1.5 sm:pb-4'
-              }
-              tabIndex={pageTab === 'create' ? -1 : undefined}
-            >
-              <TabsContent
-                value='create'
-                keepMounted
-                className='m-0 flex min-h-full flex-col data-hidden:hidden'
+              <div
+                ref={createScrollContainerRef}
+                className={
+                  pageTab === 'create'
+                    ? 'flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-3 pt-1 pb-4 sm:px-4 sm:pt-1.5 md:pb-4'
+                    : 'flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-1 pb-3 sm:px-4 sm:pt-1.5 sm:pb-4'
+                }
+                tabIndex={pageTab === 'create' ? -1 : undefined}
               >
-                <ChannelCreateTab
-                  actionsContainer={createActionsContainer}
-                  active={pageTab === 'create'}
-                />
-              </TabsContent>
+                <TabsContent
+                  value='create'
+                  keepMounted
+                  className='m-0 flex min-h-full flex-col data-hidden:hidden'
+                >
+                  <ChannelCreateTab
+                    actionsContainer={createActionsContainer}
+                    active={pageTab === 'create'}
+                  />
+                </TabsContent>
 
-              <TabsContent
-                value='channels'
-                keepMounted
-                className='m-0 flex h-full min-h-0 flex-1 flex-col overflow-hidden data-hidden:hidden'
-              >
-                <ChannelListTab />
-              </TabsContent>
-            </div>
+                <TabsContent
+                  value='channels'
+                  keepMounted
+                  className='m-0 flex h-full min-h-0 flex-1 flex-col overflow-hidden data-hidden:hidden'
+                >
+                  <ChannelListTab />
+                </TabsContent>
 
-            <div
-              ref={setFooterContainer}
-              className='bg-header-surface shrink-0 border-t px-3 py-2.5 empty:hidden sm:px-4 md:py-3'
-              hidden={pageTab !== 'channels'}
-            />
-          </Tabs>
-          )}
-        </Main>
-      </PageFooterProvider>
+                {canEditModelPricing
+                  ? PRICING_TABS.map((tab) => (
+                      <TabsContent
+                        key={tab.id}
+                        value={tab.id}
+                        className='m-0 flex min-h-0 flex-1 flex-col overflow-hidden data-hidden:hidden'
+                      >
+                        <div className='flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-1 pt-1 pb-4 sm:px-1.5 sm:pt-1.5'>
+                          <ModelPricingSection tabs={[tab.cardTab]} />
+                        </div>
+                      </TabsContent>
+                    ))
+                  : null}
+              </div>
+
+              <div
+                ref={setFooterContainer}
+                className='bg-header-surface shrink-0 border-t px-3 py-2.5 empty:hidden sm:px-4 md:py-3'
+                hidden={pageTab !== 'channels'}
+              />
+            </Tabs>
+          </Main>
+        </PageFooterProvider>
+      </SettingsPageProvider>
 
       <ChannelsDialogs />
     </>
   )
 }
 
-type ChannelsProps = {
-  // Which page section to show. The route owns the router dependency and
-  // passes it down, so this component stays renderable without a router.
-  section?: ChannelsSectionId
-  onSectionChange?: (section: ChannelsSectionId) => void
-}
-
-export function Channels({
-  section = CHANNELS_DEFAULT_SECTION,
-  onSectionChange,
-}: ChannelsProps) {
+export function Channels() {
   return (
     <ChannelsProvider>
-      <ChannelsContent section={section} onSectionChange={onSectionChange} />
+      <ChannelsContent />
     </ChannelsProvider>
   )
 }

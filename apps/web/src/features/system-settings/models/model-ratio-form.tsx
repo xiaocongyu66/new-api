@@ -42,6 +42,7 @@ import {
   SettingsSwitchContent,
   SettingsSwitchItem,
 } from '../components/settings-form-layout'
+import { SettingsPageActionsPortal } from '../components/settings-page-context'
 import {
   ModelRatioVisualEditor,
   type ModelRatioVisualEditorHandle,
@@ -218,7 +219,11 @@ export const ModelRatioForm = memo(function ModelRatioForm({
 
   return (
     <div className='space-y-6'>
-      <div className='flex flex-wrap justify-end gap-2'>
+      {/*
+        操作按钮挂到页面的标题栏（SettingsPageActionsPortal），渠道页和
+        计费设置页都这样；没有容器时 portal 返回 null，按钮不显示。
+      */}
+      <SettingsPageActionsPortal>
         <Button
           type='button'
           variant='destructive'
@@ -253,13 +258,35 @@ export const ModelRatioForm = memo(function ModelRatioForm({
             </>
           )}
         </Button>
-      </div>
+      </SettingsPageActionsPortal>
 
       <Form {...form}>
         {editMode === 'visual' ? (
           <div className='space-y-6'>
             <ModelRatioVisualEditor
               ref={visualEditorRef}
+              toolbarLeft={
+                <FormField
+                  control={form.control}
+                  name='ExposeRatioEnabled'
+                  render={({ field }) => (
+                    <label
+                      className='flex cursor-pointer items-center gap-2 text-sm'
+                      title={t(
+                        'Allow clients to query configured ratios via `/api/ratio`.'
+                      )}
+                    >
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormLabel>{t('Expose ratio API')}</FormLabel>
+                    </label>
+                  )}
+                />
+              }
               savedModelPrice={savedValues.ModelPrice}
               savedModelRatio={savedValues.ModelRatio}
               savedCacheRatio={savedValues.CacheRatio}
@@ -294,29 +321,6 @@ export const ModelRatioForm = memo(function ModelRatioForm({
                   fieldMap[field] || (field as keyof ModelFormValues)
                 handleFieldChange(formField, value)
               }}
-            />
-
-            <FormField
-              control={form.control}
-              name='ExposeRatioEnabled'
-              render={({ field }) => (
-                <SettingsSwitchItem>
-                  <SettingsSwitchContent>
-                    <FormLabel>{t('Expose ratio API')}</FormLabel>
-                    <FormDescription>
-                      {t(
-                        'Allow clients to query configured ratios via `/api/ratio`.'
-                      )}
-                    </FormDescription>
-                  </SettingsSwitchContent>
-                  <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
-                </SettingsSwitchItem>
-              )}
             />
           </div>
         ) : (

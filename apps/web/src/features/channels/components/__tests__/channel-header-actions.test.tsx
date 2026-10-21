@@ -16,18 +16,23 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { afterAll, afterEach, beforeEach, describe, mock, test } from 'bun:test'
+import { afterAll, afterEach, describe, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import {
   installDomGlobals,
   resetSharedDomWindow,
 } from '@/test-utils/happy-dom-env'
+import type { AuthUser } from '@/stores/auth-store'
 
 // `bun test` 全进程共用一个 happy-dom window：先钉住 DOM 全局，再加载 React 与组件。
 installDomGlobals()
 
 // 页签内容区的重组件与页头排布无关，换成空壳，单测只锁页头契约。
+// 相对路径与各组件内的 import 形式一致，mock.module 才能命中。
+mock.module('../../../system-settings/models/model-pricing-section', () => ({
+  ModelPricingSection: () => null,
+}))
 mock.module('../channel-list-tab', () => ({ ChannelListTab: () => null }))
 mock.module('../channel-create-tab', () => ({ ChannelCreateTab: () => null }))
 mock.module('../channels-dialogs', () => ({ ChannelsDialogs: () => null }))
@@ -61,7 +66,9 @@ await i18n.use(initReactI18next).init({
         'Apply All Upstream Updates': 'Apply All Upstream Updates',
         'Repair Channel Consistency': 'Repair Channel Consistency',
         'Delete All Disabled': 'Delete All Disabled',
-        'Model Pricing': 'Model Pricing',
+        Pricing: 'Pricing',
+        'Tool prices': 'Tool prices',
+        'Upstream sync': 'Upstream sync',
       },
     },
   },
@@ -75,9 +82,9 @@ type RenderedPage = {
 
 let rendered: RenderedPage | null = null
 
-let sectionChanges: string[] = []
-
-async function renderChannelsPage(): Promise<HTMLDivElement> {
+async function renderChannelsPage(
+  user: Pick<AuthUser, 'id' | 'username' | 'role' | 'permissions'>
+): Promise<HTMLDivElement> {
   const host = document.createElement('div')
   document.body.append(host)
   const root = createRoot(host)
@@ -86,17 +93,26 @@ async function renderChannelsPage(): Promise<HTMLDivElement> {
   })
   rendered = { host, queryClient, root }
 
-  await act(async () =>
+  await act(async () => {
+    useAuthStore.getState().auth.setUser(user)
     root.render(
       <QueryClientProvider client={queryClient}>
         <I18nextProvider i18n={i18n}>
-          <Channels onSectionChange={(section) => sectionChanges.push(section)} />
+          <Channels />
         </I18nextProvider>
       </QueryClientProvider>
     )
-  )
+  })
 
   return host
+}
+
+function pageTabLabels(host: HTMLElement): string[] {
+  const tabBar = host.querySelector('[data-slot="tabs-list"]')
+  assert.ok(tabBar, 'expected the page tab bar to render')
+  return [
+    ...tabBar.querySelectorAll<HTMLButtonElement>('[data-slot="tabs-trigger"]'),
+  ].map((tab) => tab.textContent?.trim() ?? '')
 }
 
 function getActionsTrigger(host: HTMLElement): HTMLElement {
@@ -107,17 +123,9 @@ function getActionsTrigger(host: HTMLElement): HTMLElement {
   return trigger
 }
 
-// 新建页签对无权限用户禁用，只有超级管理员才走得到真正的页签切换。
-beforeEach(() => {
-  useAuthStore.getState().auth.setUser({
-    id: 1,
-    username: 'root',
-    role: ROLE.SUPER_ADMIN,
-  })
-})
-
+// 每个用例在 renderChannelsPage 里显式指定登录用户；这里只保证用例之间
+// 不带上一轮的认证状态。
 afterEach(async () => {
-  sectionChanges = []
   useAuthStore.getState().auth.reset()
   if (rendered) {
     await act(async () => rendered?.root.unmount())
@@ -133,8 +141,12 @@ afterAll(async () => {
 })
 
 describe('channel page header actions', () => {
-  test('keeps the collapsed actions trigger on the title row', async () => {
-    const host = await renderChannelsPage()
+  test('keeps the collapsed actions trigger out of the tab content area', async () => {
+    const host = await renderChannelsPage({
+      id: 1,
+      username: 'root',
+      role: ROLE.SUPER_ADMIN,
+    })
 
     const header = host.querySelector('header')
     assert.ok(header, 'expected the page header to render')
@@ -144,8 +156,8 @@ describe('channel page header actions', () => {
     assert.ok(tabList, 'expected the tab bar to render')
     const trigger = getActionsTrigger(host)
 
-    // 与标题共用同一个行容器：窄屏下它留在标题行，而不是掉到页签下面自成一行。
-    assert.equal(heading.parentElement?.contains(trigger), true)
+    // 工具栏属于页头：放进页签内容区会在窄屏留下一整条只有「⋯」的独占行。
+    assert.equal(header.contains(trigger), true)
     assert.equal(trigger.closest('.hidden'), null)
 
     // 属于页头，而不是页签内容区。
@@ -153,38 +165,105 @@ describe('channel page header actions', () => {
     assert.ok(panels.length > 0, 'expected the tab panels to render')
     assert.equal(panels.some((panel) => panel.contains(trigger)), false)
 
-    // 排在页签行之前，即工具栏在页签上方。
+    // 页签与标题同处第一行，工具栏排在其后（第二行）。
+    assert.equal(heading.parentElement?.contains(tabList), true)
+    // 工具栏在 DOM 上位于标题之后、页签之前：靠 order 让窄屏时它留在标题行
+    // 最右，sm 断点以上再落回第二行。
+    assert.ok(
+      heading.compareDocumentPosition(trigger) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    )
     assert.ok(
       trigger.compareDocumentPosition(tabList) &
         Node.DOCUMENT_POSITION_FOLLOWING
     )
   })
 
-  test('renders the page section tabs and reports section changes', async () => {
-    const host = await renderChannelsPage()
-    const sectionTabs = [
-      ...host.querySelectorAll<HTMLButtonElement>('[data-slot="tabs-trigger"]'),
+  test('renders all five page tabs in one row beside the title', async () => {
+    const host = await renderChannelsPage({
+      id: 1,
+      username: 'root',
+      role: ROLE.SUPER_ADMIN,
+    })
+
+    // 定价面板内部的三个子页签上提到页面页签行，与「创建 / 渠道」并列。
+    // 创建页签同时挂窄屏/宽屏两个文案，textContent 会把两者拼起来。
+    assert.deepEqual(pageTabLabels(host), [
+      'CreateCreate Channel',
+      'Channels',
+      'Pricing',
+      'Tool prices',
+      'Upstream sync',
+    ])
+
+    const tabTriggers = [
+      ...host.querySelectorAll<HTMLButtonElement>(
+        '[data-slot="tabs-trigger"]'
+      ),
     ]
-    const labels = sectionTabs.map((tab) => tab.textContent?.trim())
-    assert.ok(
-      labels.includes('Channels') && labels.includes('Model Pricing'),
-      'expected the page section tabs to render'
+    const pricingTab = tabTriggers.find(
+      (tab) => tab.textContent?.trim() === 'Pricing'
+    )
+    assert.ok(pricingTab, 'expected the pricing tab to render')
+    assert.equal(
+      pricingTab.getAttribute('aria-selected'),
+      'false',
+      'pricing is not the default tab'
     )
 
-    const pricingTab = sectionTabs.find(
-      (tab) => tab.textContent?.trim() === 'Model Pricing'
-    )
-    assert.ok(pricingTab, 'expected the model pricing section tab to render')
     await act(async () => pricingTab.click())
-    assert.deepEqual(sectionChanges, ['model-pricing'])
+    assert.equal(pricingTab.getAttribute('aria-selected'), 'true')
+  })
+
+  test('keeps the tab row beside the page title', async () => {
+    const host = await renderChannelsPage({
+      id: 1,
+      username: 'root',
+      role: ROLE.SUPER_ADMIN,
+    })
+
+    const title = host.querySelector('h1')
+    assert.ok(title, 'expected the page title to render')
+    const tabList = host.querySelector('[data-slot="tabs-list"]')
+    assert.ok(tabList, 'expected the page tab bar to render')
+
+    // 页签与标题处于同一个行容器，窄屏下整行 wrap，不会掉到工具栏下面。
+    assert.equal(title.parentElement?.contains(tabList), true)
+
+    // 工具栏在 DOM 上排在标题之后、页签之前，所以窄屏时它停在标题行最右，
+    // 页签换到下一行；sm 断点以上 order 反过来，工具栏落回第二行。
+    const trigger = getActionsTrigger(host)
+    assert.ok(
+      title.compareDocumentPosition(trigger) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    )
+    assert.ok(
+      trigger.compareDocumentPosition(tabList) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    )
+  })
+
+  test('hides the pricing tabs without the system settings permission', async () => {
+    const host = await renderChannelsPage({
+      id: 2,
+      username: 'admin',
+      role: ROLE.ADMIN,
+      permissions: { admin_permissions: {} },
+    })
+
+    // 定价读写 /api/option，后端要 system.settings；没权限就不该看到入口，
+    // 也不该为多出来的三个页签留下空格。
+    assert.deepEqual(pageTabLabels(host), ['CreateCreate Channel', 'Channels'])
   })
 
   test('hides the list toolbar once the create tab takes over', async () => {
-    const host = await renderChannelsPage()
+    const host = await renderChannelsPage({
+      id: 1,
+      username: 'root',
+      role: ROLE.SUPER_ADMIN,
+    })
     const trigger = getActionsTrigger(host)
 
-    // 页面上还有一层「渠道 / 模型定价」的分页导航，创建页签在页头里，
-    // 因此按页头作用域查找，不要抓整页第一个页签。
     const createTab = host.querySelector<HTMLButtonElement>(
       'header [data-slot="tabs-trigger"]'
     )

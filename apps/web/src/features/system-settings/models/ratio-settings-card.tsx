@@ -138,7 +138,7 @@ const createGroupSchema = (t: Translate) =>
 
 type ModelFormValues = z.infer<ReturnType<typeof createModelSchema>>
 type GroupFormValues = z.infer<ReturnType<typeof createGroupSchema>>
-type RatioTabId =
+export type RatioTabId =
   | 'models'
   | 'groups'
   | 'tool-prices'
@@ -408,7 +408,7 @@ export function RatioSettingsCard({
     models: 'Model prices',
     groups: 'Group ratios',
     'tool-prices': 'Tool prices',
-    'upstream-sync': 'Upstream price sync',
+    'upstream-sync': 'Upstream sync',
   }
   const tabsGridClass =
     {

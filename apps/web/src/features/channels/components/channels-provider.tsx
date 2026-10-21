@@ -48,7 +48,15 @@ type DialogType =
   | null
 
 type UpstreamUpdateState = ReturnType<typeof useChannelUpstreamUpdates>
-type ChannelsPageTab = 'create' | 'channels'
+
+// The three pricing tabs render one RatioSettingsCard tab each, so the page
+// owns the whole tab row and the card never shows its own switcher.
+export type ChannelsPageTab =
+  | 'create'
+  | 'channels'
+  | 'pricing-models'
+  | 'pricing-tools'
+  | 'pricing-upstream'
 
 type ChannelsContextType = {
   open: DialogType

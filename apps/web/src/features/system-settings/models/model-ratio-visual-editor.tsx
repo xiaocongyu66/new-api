@@ -33,6 +33,7 @@ import {
   forwardRef,
   useImperativeHandle,
   useRef,
+  type ReactNode,
 } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
@@ -99,6 +100,8 @@ type ModelRatioVisualEditorProps = {
   billingExpr: string
   candidateModelNames?: string[]
   candidateModelsLoading?: boolean
+  // 工具栏左侧的附加控件（例如「暴露倍率接口」开关）。
+  toolbarLeft?: ReactNode
   onChange: (field: string, value: string) => void
   onSave: () => void | Promise<void>
   isSaving: boolean
@@ -138,6 +141,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
     billingExpr,
     candidateModelNames,
     candidateModelsLoading,
+    toolbarLeft,
     onChange,
     onSave,
     isSaving,
@@ -666,6 +670,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
         table={table}
         searchPlaceholder={t('Search models...')}
         searchDebounceMs={250}
+        leftActions={toolbarLeft}
         filters={[
           {
             columnId: 'billingMode',

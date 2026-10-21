@@ -29,6 +29,7 @@ import { Field, FieldError } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 
 import { useUpdateOption } from '../hooks/use-update-option'
+import { SettingsPageActionsPortal } from '../components/settings-page-context'
 
 const OPTION_KEY = 'tool_price_setting.prices'
 
@@ -262,30 +263,21 @@ export const ToolPriceSettings = memo(function ToolPriceSettings({
         </AlertDescription>
       </Alert>
 
-      <div className='flex flex-wrap items-center justify-between gap-2'>
-        <div className='flex flex-wrap items-center gap-2'>
-          {editMode === 'visual' ? (
-            <>
-              <Button variant='outline' size='sm' onClick={addRow}>
-                <Plus className='mr-2 h-4 w-4' />
-                {t('Add')}
-              </Button>
-              <Button variant='ghost' size='sm' onClick={resetToDefault}>
-                {t('Restore defaults')}
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button variant='ghost' size='sm' onClick={handleCopyJson}>
-                <Copy className='mr-2 h-4 w-4' />
-                {t('Copy')}
-              </Button>
-              <Button variant='ghost' size='sm' onClick={resetToDefault}>
-                {t('Restore defaults')}
-              </Button>
-            </>
-          )}
-        </div>
+      <SettingsPageActionsPortal>
+        {editMode === 'visual' ? (
+          <Button variant='outline' size='sm' onClick={addRow}>
+            <Plus className='mr-2 h-4 w-4' />
+            {t('Add')}
+          </Button>
+        ) : (
+          <Button variant='outline' size='sm' onClick={handleCopyJson}>
+            <Copy className='mr-2 h-4 w-4' />
+            {t('Copy')}
+          </Button>
+        )}
+        <Button variant='outline' size='sm' onClick={resetToDefault}>
+          {t('Restore defaults')}
+        </Button>
         <Button variant='outline' size='sm' onClick={toggleEditMode}>
           {editMode === 'visual' ? (
             <>
@@ -299,8 +291,7 @@ export const ToolPriceSettings = memo(function ToolPriceSettings({
             </>
           )}
         </Button>
-      </div>
-
+      </SettingsPageActionsPortal>
       {editMode === 'visual' ? (
         <StaticDataTable
           data={rows}
