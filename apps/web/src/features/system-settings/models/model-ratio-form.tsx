@@ -265,6 +265,28 @@ export const ModelRatioForm = memo(function ModelRatioForm({
           <div className='space-y-6'>
             <ModelRatioVisualEditor
               ref={visualEditorRef}
+              toolbarLeft={
+                <FormField
+                  control={form.control}
+                  name='ExposeRatioEnabled'
+                  render={({ field }) => (
+                    <label
+                      className='flex cursor-pointer items-center gap-2 text-sm'
+                      title={t(
+                        'Allow clients to query configured ratios via `/api/ratio`.'
+                      )}
+                    >
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormLabel>{t('Expose ratio API')}</FormLabel>
+                    </label>
+                  )}
+                />
+              }
               savedModelPrice={savedValues.ModelPrice}
               savedModelRatio={savedValues.ModelRatio}
               savedCacheRatio={savedValues.CacheRatio}
@@ -299,29 +321,6 @@ export const ModelRatioForm = memo(function ModelRatioForm({
                   fieldMap[field] || (field as keyof ModelFormValues)
                 handleFieldChange(formField, value)
               }}
-            />
-
-            <FormField
-              control={form.control}
-              name='ExposeRatioEnabled'
-              render={({ field }) => (
-                <SettingsSwitchItem>
-                  <SettingsSwitchContent>
-                    <FormLabel>{t('Expose ratio API')}</FormLabel>
-                    <FormDescription>
-                      {t(
-                        'Allow clients to query configured ratios via `/api/ratio`.'
-                      )}
-                    </FormDescription>
-                  </SettingsSwitchContent>
-                  <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
-                </SettingsSwitchItem>
-              )}
             />
           </div>
         ) : (
