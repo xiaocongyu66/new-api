@@ -69,9 +69,12 @@ function groupSendersByPriority(senders: SMTPSenderStatus[]) {
 }
 
 function getQuotaBarClass(usageRatio: number) {
-  if (usageRatio >= 1) return '[&_[data-slot=progress-indicator]]:bg-destructive'
-  if (usageRatio >= QUOTA_WARNING_RATIO)
+  if (usageRatio >= 1) {
+    return '[&_[data-slot=progress-indicator]]:bg-destructive'
+  }
+  if (usageRatio >= QUOTA_WARNING_RATIO) {
     return '[&_[data-slot=progress-indicator]]:bg-warning'
+  }
   return '[&_[data-slot=progress-indicator]]:bg-primary'
 }
 
@@ -238,7 +241,7 @@ export function MailDeliverySection() {
             <EmptyTitle>{t('No SMTP accounts configured')}</EmptyTitle>
             <EmptyDescription>
               {t(
-                'Configure an SMTP account pool to see each account\'s delivery status here.'
+                "Configure an SMTP account pool to see each account's delivery status here."
               )}
             </EmptyDescription>
           </EmptyHeader>
