@@ -483,6 +483,7 @@ func ApplyOption(key string, value string) (err error) {
 			break
 		}
 		common.SMTPAccountPool = pool
+		common.RebuildSMTPSenderPool()
 	case "ServerAddress", "WorkerUrl", "WorkerValidKey":
 		if OnApplyEgressOption != nil {
 			err = OnApplyEgressOption(key, value)

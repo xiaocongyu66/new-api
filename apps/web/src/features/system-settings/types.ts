@@ -111,6 +111,32 @@ export type GeoipDatabaseStatusResponse = {
   data?: GeoipDatabaseStatus
 }
 
+export type SMTPSenderStatus = {
+  account: string
+  server: string
+  port: number
+  from: string
+  priority: number
+  dailyLimit: number
+  usedToday: number
+  remainingToday: number
+  lastSentAt: string
+  lastError: string
+  lastErrorAt: string
+}
+
+export type SMTPPoolStatus = {
+  senders: SMTPSenderStatus[]
+  sentToday: number
+  remainingToday: number
+}
+
+export type SMTPPoolStatusResponse = {
+  success: boolean
+  message: string
+  data?: SMTPPoolStatus
+}
+
 export type SystemTaskResponse<TTask = SystemTask | null> = {
   success: boolean
   message: string

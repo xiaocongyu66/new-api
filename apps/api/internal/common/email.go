@@ -2,12 +2,10 @@ package common
 
 import (
 	"crypto/tls"
-	"encoding/base64"
 	"fmt"
 	"net/smtp"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"time"
 )
 
@@ -30,13 +28,9 @@ type SMTPAccountConfig struct {
 	Priority int `json:"priority"`
 }
 
-var (
-	// SMTPAccountPool holds every configured upstream SMTP identity. An empty
-	// pool means the deployment only set the legacy single-account options.
-	SMTPAccountPool []SMTPAccountConfig
-	// smtpSendCursor spreads consecutive sends across the pool.
-	smtpSendCursor atomic.Uint32
-)
+// SMTPAccountPool holds every configured upstream SMTP identity. An empty pool
+// means the deployment only set the legacy single-account options.
+var SMTPAccountPool []SMTPAccountConfig
 
 // ParseSMTPAccountPoolJSON decodes the SMTPAccountPool option value. An empty
 // value means "no pool configured" and is not an error.
@@ -57,6 +51,20 @@ func ParseSMTPAccountPoolJSON(value string) ([]SMTPAccountConfig, error) {
 		}
 	}
 	return pool, nil
+}
+
+// legacySMTPAccountConfig maps the pre-pool single-account settings onto the
+// same shape the pool uses, so both configuration styles share one code path.
+func legacySMTPAccountConfig() SMTPAccountConfig {
+	return SMTPAccountConfig{
+		Server:     SMTPServer,
+		Port:       SMTPPort,
+		Account:    SMTPAccount,
+		Token:      SMTPToken,
+		From:       SMTPFrom,
+		SSLEnabled: SMTPSSLEnabled,
+		StartTLS:   SMTPStartTLSEnabled,
+	}
 }
 
 func generateMessageID(from string) (string, error) {
@@ -118,97 +126,16 @@ func newSMTPClient(addr string, account SMTPAccountConfig) (*smtp.Client, error)
 	return client, nil
 }
 
+// SendEmail delivers one message. Callers stay unaware of which upstream
+// identity ends up sending it: the pool applies quota, priority and failover.
 func SendEmail(subject string, receiver string, content string) error {
-	accounts := SMTPAccountPool
-	if len(accounts) == 0 {
+	msg := OutgoingMessage{Subject: subject, Receiver: receiver, Content: content}
+
+	if len(SMTPAccountPool) == 0 {
 		if SMTPServer == "" && SMTPAccount == "" {
 			return fmt.Errorf("SMTP 服务器未配置")
 		}
-		accounts = []SMTPAccountConfig{{
-			Server:     SMTPServer,
-			Port:       SMTPPort,
-			Account:    SMTPAccount,
-			Token:      SMTPToken,
-			From:       SMTPFrom,
-			SSLEnabled: SMTPSSLEnabled,
-			StartTLS:   SMTPStartTLSEnabled,
-		}}
+		return newSMTPSender(legacySMTPAccountConfig()).Send(msg)
 	}
-
-	// Every send starts at a different account of the preferred tier so the
-	// pool spreads load, and falls through to the remaining tiers when one of
-	// them is rejected.
-	ordered := smtpSendOrder(accounts)
-	if len(ordered) == 0 {
-		return fmt.Errorf("所有 SMTP 账号均已达到当日发送额度")
-	}
-
-	var lastErr error
-	for _, account := range ordered {
-		lastErr = sendEmailThrough(account, subject, receiver, content)
-		if lastErr == nil {
-			smtpRecordQuotaUse(account)
-			return nil
-		}
-		SysError(fmt.Sprintf("failed to send email through %s: %v", account.Account, lastErr))
-	}
-	return lastErr
-}
-
-func sendEmailThrough(account SMTPAccountConfig, subject string, receiver string, content string) error {
-	// From 缺省时回落到登录账号，与旧的单账号配置行为一致。
-	from := account.From
-	if from == "" {
-		from = account.Account
-	}
-	id, err := generateMessageID(from)
-	if err != nil {
-		return err
-	}
-	encodedSubject := fmt.Sprintf("=?UTF-8?B?%s?=", base64.StdEncoding.EncodeToString([]byte(subject)))
-	mail := []byte(fmt.Sprintf("To: %s\r\n"+
-		"From: %s <%s>\r\n"+
-		"Subject: %s\r\n"+
-		"Date: %s\r\n"+
-		"Message-ID: %s\r\n"+
-		"Content-Type: text/html; charset=UTF-8\r\n\r\n%s\r\n",
-		receiver, SystemName, from, encodedSubject, time.Now().Format(time.RFC1123Z), id, content))
-	auth := getSMTPAuth(account)
-	addr := fmt.Sprintf("%s:%d", account.Server, account.Port)
-	to := strings.Split(receiver, ";")
-	client, err := newSMTPClient(addr, account)
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-	if account.Account != "" && account.Token != "" {
-		if err = client.Auth(auth); err != nil {
-			return err
-		}
-	}
-	if err = client.Mail(from); err != nil {
-		return err
-	}
-	for _, receiver := range to {
-		if err = client.Rcpt(receiver); err != nil {
-			return err
-		}
-	}
-	w, err := client.Data()
-	if err != nil {
-		return err
-	}
-	_, err = w.Write(mail)
-	if err != nil {
-		return err
-	}
-	err = w.Close()
-	if err != nil {
-		return err
-	}
-	err = client.Quit()
-	if err != nil {
-		SysError(fmt.Sprintf("failed to send email to %s: %v", receiver, err))
-	}
-	return err
+	return DefaultSenderPool().Send(msg)
 }

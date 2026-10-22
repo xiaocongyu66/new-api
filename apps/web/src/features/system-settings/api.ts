@@ -26,6 +26,7 @@ import type {
   SystemOptionsResponse,
   SystemTaskListResponse,
   SystemTaskResponse,
+  SMTPPoolStatusResponse,
   UpdateOptionRequest,
   UpdateOptionResponse,
   UpstreamChannelsResponse,
@@ -109,6 +110,13 @@ export async function fetchUpstreamRatios(request: FetchUpstreamRatiosRequest) {
 
 export async function getGeoipDatabaseStatus() {
   const res = await api.get<GeoipDatabaseStatusResponse>('/api/geoip/database')
+  return res.data
+}
+
+export async function getSMTPPoolStatus() {
+  const res = await api.get<SMTPPoolStatusResponse>(
+    '/api/option/smtp_pool_status'
+  )
   return res.data
 }
 

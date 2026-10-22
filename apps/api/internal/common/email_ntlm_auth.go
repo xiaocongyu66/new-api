@@ -20,8 +20,9 @@ func AutoSMTPAuth(username, password, server string) smtp.Auth {
 }
 
 func (a *smtpAutoAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
+	account := SMTPAccountConfig{Account: a.username, Server: a.server}
 	useLoginAuth := SMTPForceAuthLogin
-	if !useLoginAuth && shouldUseSMTPLoginAuth() {
+	if !useLoginAuth && shouldUseSMTPLoginAuth(account) {
 		useLoginAuth = !(server != nil && len(server.Auth) == 1 && smtpServerSupportsAuth(server, "NTLM"))
 	}
 	if useLoginAuth {

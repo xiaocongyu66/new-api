@@ -580,6 +580,7 @@ func TestSendEmailPoolRotatesAcrossAccounts(t *testing.T) {
 		{Server: first.host, Port: first.port, Account: "a@example.com", Token: "secret", StartTLS: true},
 		{Server: second.host, Port: second.port, Account: "b@example.com", Token: "secret", StartTLS: true},
 	}
+	RebuildSMTPSenderPool()
 	SystemName = "New API"
 
 	require.NoError(t, SendEmail("Verification", "receiver@example.com", "<p>123456</p>"))
@@ -610,6 +611,7 @@ func TestSendEmailPoolFallsBackToNextAccountWhenOneIsUnreachable(t *testing.T) {
 		{Server: working.host, Port: deadPort, Account: "dead@example.com", Token: "secret", StartTLS: true},
 		{Server: working.host, Port: working.port, Account: "alive@example.com", Token: "secret", StartTLS: true},
 	}
+	RebuildSMTPSenderPool()
 	SystemName = "New API"
 
 	require.NoError(t, SendEmail("Verification", "receiver@example.com", "<p>123456</p>"))
@@ -634,6 +636,7 @@ func TestSendEmailPoolUsesExplicitFromWhenSet(t *testing.T) {
 			From: "noreply@example.com", StartTLS: true,
 		},
 	}
+	RebuildSMTPSenderPool()
 	SystemName = "New API"
 
 	require.NoError(t, SendEmail("Verification", "receiver@example.com", "<p>123456</p>"))
@@ -654,43 +657,23 @@ func TestSendEmailPoolReportsErrorWhenEveryAccountFails(t *testing.T) {
 		{Server: "127.0.0.1", Port: deadPort, Account: "a@example.com", Token: "secret", StartTLS: true},
 		{Server: "127.0.0.1", Port: deadPort, Account: "b@example.com", Token: "secret", StartTLS: true},
 	}
+	RebuildSMTPSenderPool()
 	SystemName = "New API"
 
 	err := SendEmail("Verification", "receiver@example.com", "<p>123456</p>")
 	require.Error(t, err)
 }
 
-func TestParseSMTPAccountPoolJSONRejectsIncompleteEntries(t *testing.T) {
-	testCases := []struct {
-		name  string
-		value string
-	}{
-		{"missing server", `[{"port":587,"account":"a@example.com"}]`},
-		{"missing account", `[{"server":"smtp.example.com","port":587}]`},
-		{"non-positive port", `[{"server":"smtp.example.com","port":0,"account":"a@example.com"}]`},
-		{"not an array", `{"server":"smtp.example.com","port":587,"account":"a@example.com"}`},
-		{"malformed json", `[{"server":]}`},
-	}
+func TestSendEmailReportsUnconfiguredWhenPoolAndLegacySettingsAreEmpty(t *testing.T) {
+	withSMTPSettings(t)
+	SMTPAccountPool = nil
+	RebuildSMTPSenderPool()
+	SMTPServer = ""
+	SMTPAccount = ""
 
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			_, err := ParseSMTPAccountPoolJSON(testCase.value)
-			require.Error(t, err)
-		})
-	}
-}
-
-func TestParseSMTPAccountPoolJSONAcceptsEmptyValueAndValidPool(t *testing.T) {
-	pool, err := ParseSMTPAccountPoolJSON("   ")
-	require.NoError(t, err)
-	require.Empty(t, pool)
-
-	pool, err = ParseSMTPAccountPoolJSON(`[{"server":"smtp.qq.com","port":587,"account":"a@qq.com","token":"t","starttls":true}]`)
-	require.NoError(t, err)
-	require.Len(t, pool, 1)
-	require.Equal(t, "smtp.qq.com", pool[0].Server)
-	require.Equal(t, 587, pool[0].Port)
-	require.True(t, pool[0].StartTLS)
+	err := SendEmail("Verification", "receiver@example.com", "<p>123456</p>")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "SMTP 服务器未配置")
 }
 
 // reserveDeadTCPPort binds an ephemeral port and immediately releases it, so a
