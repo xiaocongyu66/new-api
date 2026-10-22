@@ -22,6 +22,12 @@ type SMTPAccountConfig struct {
 	From       string `json:"from"`
 	SSLEnabled bool   `json:"ssl"`
 	StartTLS   bool   `json:"starttls"`
+	// DailyLimit caps the sends one account may make per calendar day (UTC+8).
+	// Zero means unlimited.
+	DailyLimit int `json:"dailyLimit"`
+	// Priority tiers the accounts: the lowest value is used first and the
+	// higher tiers only take over once the lower ones run out of quota.
+	Priority int `json:"priority"`
 }
 
 var (
@@ -45,6 +51,9 @@ func ParseSMTPAccountPoolJSON(value string) ([]SMTPAccountConfig, error) {
 	for i, account := range pool {
 		if account.Server == "" || account.Account == "" || account.Port <= 0 {
 			return nil, fmt.Errorf("SMTPAccountPool entry %d requires server, account and a positive port", i)
+		}
+		if account.DailyLimit < 0 || account.Priority < 0 {
+			return nil, fmt.Errorf("SMTPAccountPool entry %d needs non-negative dailyLimit and priority", i)
 		}
 	}
 	return pool, nil
@@ -126,14 +135,19 @@ func SendEmail(subject string, receiver string, content string) error {
 		}}
 	}
 
-	// Every send starts at a different account so the pool spreads load, and
-	// falls through to the remaining accounts when one of them is rejected.
-	start := smtpSendCursor.Add(1) - 1
+	// Every send starts at a different account of the preferred tier so the
+	// pool spreads load, and falls through to the remaining tiers when one of
+	// them is rejected.
+	ordered := smtpSendOrder(accounts)
+	if len(ordered) == 0 {
+		return fmt.Errorf("所有 SMTP 账号均已达到当日发送额度")
+	}
+
 	var lastErr error
-	for offset := uint32(0); offset < uint32(len(accounts)); offset++ {
-		account := accounts[(start+offset)%uint32(len(accounts))]
+	for _, account := range ordered {
 		lastErr = sendEmailThrough(account, subject, receiver, content)
 		if lastErr == nil {
+			smtpRecordQuotaUse(account)
 			return nil
 		}
 		SysError(fmt.Sprintf("failed to send email through %s: %v", account.Account, lastErr))

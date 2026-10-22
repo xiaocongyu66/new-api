@@ -80,11 +80,16 @@ const createEmailSchema = (t: (key: string) => string) =>
         const account = entry as Record<string, unknown>
         const hasText = (key: string) =>
           typeof account[key] === 'string' && (account[key] as string).trim() !== ''
+        const optionalNonNegativeNumber = (key: string) =>
+          account[key] === undefined ||
+          (typeof account[key] === 'number' && account[key] >= 0)
         return (
           hasText('server') &&
           hasText('account') &&
           typeof account.port === 'number' &&
-          account.port > 0
+          account.port > 0 &&
+          optionalNonNegativeNumber('dailyLimit') &&
+          optionalNonNegativeNumber('priority')
         )
       })
     }, t('Enter a valid JSON array of SMTP accounts')),
@@ -457,7 +462,7 @@ export function EmailSettingsSection({
                 </FormControl>
                 <FormDescription>
                   {t(
-                    'Optional JSON array of SMTP accounts. When set, new-api sends through these accounts in rotation and falls back to the next account when one fails. Each entry needs "server", "port" and "account"; "token", "from", "ssl" and "starttls" are optional. Leave empty to use the single account above.'
+                    'Optional JSON array of SMTP accounts. When set, new-api sends through these accounts in rotation and falls back to the next account when one fails. Each entry needs "server", "port" and "account"; "token", "from", "ssl" and "starttls" are optional. Set "dailyLimit" to cap an account\'s sends per day (0 = unlimited) and "priority" to order the tiers (lower runs first, higher tiers take over once the lower ones run out of quota). Leave empty to use the single account above.'
                   )}
                 </FormDescription>
                 <FormMessage />
