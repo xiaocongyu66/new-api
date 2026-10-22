@@ -34,6 +34,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 
 import {
   SettingsForm,
@@ -64,6 +65,29 @@ const createEmailSchema = (t: (key: string) => string) =>
     SMTPStartTLSEnabled: z.boolean(),
     SMTPInsecureSkipVerify: z.boolean(),
     SMTPForceAuthLogin: z.boolean(),
+    SMTPAccountPool: z.string().refine((value) => {
+      const trimmed = value.trim()
+      if (!trimmed) return true
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(trimmed)
+      } catch {
+        return false
+      }
+      if (!Array.isArray(parsed)) return false
+      return parsed.every((entry) => {
+        if (typeof entry !== 'object' || entry === null) return false
+        const account = entry as Record<string, unknown>
+        const hasText = (key: string) =>
+          typeof account[key] === 'string' && (account[key] as string).trim() !== ''
+        return (
+          hasText('server') &&
+          hasText('account') &&
+          typeof account.port === 'number' &&
+          account.port > 0
+        )
+      })
+    }, t('Enter a valid JSON array of SMTP accounts')),
   })
 
 type EmailFormValues = z.infer<ReturnType<typeof createEmailSchema>>
@@ -109,6 +133,7 @@ export function EmailSettingsSection({
       SMTPStartTLSEnabled: securityMode === 'starttls',
       SMTPInsecureSkipVerify: values.SMTPInsecureSkipVerify,
       SMTPForceAuthLogin: values.SMTPForceAuthLogin,
+      SMTPAccountPool: values.SMTPAccountPool.trim(),
     }
 
     const initial = {
@@ -121,6 +146,7 @@ export function EmailSettingsSection({
       SMTPStartTLSEnabled: defaultValues.SMTPStartTLSEnabled,
       SMTPInsecureSkipVerify: defaultValues.SMTPInsecureSkipVerify,
       SMTPForceAuthLogin: defaultValues.SMTPForceAuthLogin,
+      SMTPAccountPool: defaultValues.SMTPAccountPool.trim(),
     }
 
     const updates: Array<{ key: string; value: string | boolean }> = []
@@ -171,6 +197,10 @@ export function EmailSettingsSection({
         key: 'SMTPForceAuthLogin',
         value: sanitized.SMTPForceAuthLogin,
       })
+    }
+
+    if (sanitized.SMTPAccountPool !== initial.SMTPAccountPool) {
+      updates.push({ key: 'SMTPAccountPool', value: sanitized.SMTPAccountPool })
     }
 
     for (const update of updates) {
@@ -400,6 +430,35 @@ export function EmailSettingsSection({
                 </FormControl>
                 <FormDescription>
                   {t('Leave blank to keep the existing credential')}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='SMTPAccountPool'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('SMTP account pool')}</FormLabel>
+                <FormControl>
+                  <Textarea
+                    autoComplete='off'
+                    spellCheck={false}
+                    rows={6}
+                    className='font-mono text-xs'
+                    placeholder={t(
+                      '[{"server":"smtp.qq.com","port":587,"account":"a@qq.com","token":"...","starttls":true}]'
+                    )}
+                    {...field}
+                    onChange={(event) => field.onChange(event.target.value)}
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'Optional JSON array of SMTP accounts. When set, new-api sends through these accounts in rotation and falls back to the next account when one fails. Each entry needs "server", "port" and "account"; "token", "from", "ssl" and "starttls" are optional. Leave empty to use the single account above.'
+                  )}
                 </FormDescription>
                 <FormMessage />
               </FormItem>

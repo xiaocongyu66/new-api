@@ -130,6 +130,14 @@ func ValidateOptionValue(key string, value string) error {
 		}
 		return nil
 	}
+	if key == "SMTPAccountPool" {
+		// Validated here rather than through a domain hook: the rule is a pure
+		// JSON shape check with no catalog state.
+		if _, err := common.ParseSMTPAccountPoolJSON(value); err != nil {
+			return err
+		}
+		return nil
+	}
 	if OnIsRouteStatsOptionKey != nil && OnIsRouteStatsOptionKey(key) {
 		if OnValidateRouteStatsOption != nil {
 			return OnValidateRouteStatsOption(key, value)
@@ -196,6 +204,7 @@ func SeedOptionMap() {
 	common.OptionMap["SMTPStartTLSEnabled"] = strconv.FormatBool(common.SMTPStartTLSEnabled)
 	common.OptionMap["SMTPInsecureSkipVerify"] = strconv.FormatBool(common.SMTPInsecureSkipVerify)
 	common.OptionMap["SMTPForceAuthLogin"] = strconv.FormatBool(common.SMTPForceAuthLogin)
+	common.OptionMap["SMTPAccountPool"] = ""
 	common.OptionMap["Notice"] = ""
 	common.OptionMap["About"] = ""
 	common.OptionMap["HomePageContent"] = ""
@@ -464,6 +473,16 @@ func ApplyOption(key string, value string) (err error) {
 		common.SMTPFrom = value
 	case "SMTPToken":
 		common.SMTPToken = value
+	case "SMTPAccountPool":
+		// A malformed value keeps the previous pool: option application also runs
+		// on startup without validation, and clearing a working pool on one bad
+		// row would silently stop all outbound mail.
+		pool, poolErr := common.ParseSMTPAccountPoolJSON(value)
+		if poolErr != nil {
+			err = poolErr
+			break
+		}
+		common.SMTPAccountPool = pool
 	case "ServerAddress", "WorkerUrl", "WorkerValidKey":
 		if OnApplyEgressOption != nil {
 			err = OnApplyEgressOption(key, value)

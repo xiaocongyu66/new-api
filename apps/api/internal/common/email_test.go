@@ -251,6 +251,7 @@ func withSMTPSettings(t *testing.T) {
 	originalSMTPAccount := SMTPAccount
 	originalSMTPFrom := SMTPFrom
 	originalSMTPToken := SMTPToken
+	originalSMTPAccountPool := SMTPAccountPool
 	originalSystemName := SystemName
 
 	t.Cleanup(func() {
@@ -263,6 +264,7 @@ func withSMTPSettings(t *testing.T) {
 		SMTPAccount = originalSMTPAccount
 		SMTPFrom = originalSMTPFrom
 		SMTPToken = originalSMTPToken
+		SMTPAccountPool = originalSMTPAccountPool
 		SystemName = originalSystemName
 	})
 }
@@ -369,7 +371,7 @@ func TestSMTPPlainAuthRejectsRemotePlaintextConnection(t *testing.T) {
 	client, err := smtp.NewClient(conn, SMTPServer)
 	require.NoError(t, err)
 
-	err = client.Auth(getSMTPAuth())
+	err = client.Auth(getSMTPAuth(SMTPAccountConfig{Server: SMTPServer, Account: SMTPAccount, Token: SMTPToken}))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unencrypted connection")
 
@@ -391,7 +393,9 @@ func TestNewSMTPClientHonorsExplicitStartTLSWhenPortIs465(t *testing.T) {
 	SMTPStartTLSEnabled = true
 	SMTPInsecureSkipVerify = true
 
-	client, err := newSMTPClient(fmt.Sprintf("%s:%d", server.host, server.port))
+	client, err := newSMTPClient(fmt.Sprintf("%s:%d", server.host, server.port), SMTPAccountConfig{
+		Server: SMTPServer, Port: SMTPPort, StartTLS: SMTPStartTLSEnabled,
+	})
 	require.NoError(t, err)
 	defer client.Close()
 
@@ -414,7 +418,9 @@ func TestNewSMTPClientKeepsImplicitTLSForLegacyPort465(t *testing.T) {
 	SMTPStartTLSEnabled = false
 	SMTPInsecureSkipVerify = true
 
-	client, err := newSMTPClient(fmt.Sprintf("%s:%d", server.host, server.port))
+	client, err := newSMTPClient(fmt.Sprintf("%s:%d", server.host, server.port), SMTPAccountConfig{
+		Server: SMTPServer, Port: SMTPPort, StartTLS: SMTPStartTLSEnabled,
+	})
 	require.NoError(t, err)
 	defer client.Close()
 }
@@ -560,4 +566,140 @@ func TestSendEmailExplicitStartTLSRejectsUntrustedCertificateByDefault(t *testin
 	err := SendEmail("Verification", "receiver@example.com", "<p>123456</p>")
 	require.Error(t, err)
 	require.Contains(t, fmt.Sprint(err), "certificate")
+}
+
+func TestSendEmailPoolRotatesAcrossAccounts(t *testing.T) {
+	first := newFakeSMTPServer(t)
+	defer first.close()
+	second := newFakeSMTPServer(t)
+	defer second.close()
+	withSMTPSettings(t)
+	smtpSendCursor.Store(0)
+
+	SMTPAccountPool = []SMTPAccountConfig{
+		{Server: first.host, Port: first.port, Account: "a@example.com", Token: "secret", StartTLS: true},
+		{Server: second.host, Port: second.port, Account: "b@example.com", Token: "secret", StartTLS: true},
+	}
+	SystemName = "New API"
+
+	require.NoError(t, SendEmail("Verification", "receiver@example.com", "<p>123456</p>"))
+	select {
+	case message := <-first.messages:
+		require.Contains(t, message, "From: New API <a@example.com>")
+	case <-time.After(2 * time.Second):
+		t.Fatal("first send did not reach the first pool account")
+	}
+
+	require.NoError(t, SendEmail("Verification", "receiver@example.com", "<p>123456</p>"))
+	select {
+	case message := <-second.messages:
+		require.Contains(t, message, "From: New API <b@example.com>")
+	case <-time.After(2 * time.Second):
+		t.Fatal("second send did not rotate to the second pool account")
+	}
+}
+
+func TestSendEmailPoolFallsBackToNextAccountWhenOneIsUnreachable(t *testing.T) {
+	deadPort := reserveDeadTCPPort(t)
+	working := newFakeSMTPServer(t)
+	defer working.close()
+	withSMTPSettings(t)
+	smtpSendCursor.Store(0)
+
+	SMTPAccountPool = []SMTPAccountConfig{
+		{Server: working.host, Port: deadPort, Account: "dead@example.com", Token: "secret", StartTLS: true},
+		{Server: working.host, Port: working.port, Account: "alive@example.com", Token: "secret", StartTLS: true},
+	}
+	SystemName = "New API"
+
+	require.NoError(t, SendEmail("Verification", "receiver@example.com", "<p>123456</p>"))
+	select {
+	case message := <-working.messages:
+		require.Contains(t, message, "From: New API <alive@example.com>")
+	case <-time.After(2 * time.Second):
+		t.Fatal("send did not fall back to the reachable pool account")
+	}
+}
+
+func TestSendEmailPoolUsesExplicitFromWhenSet(t *testing.T) {
+	server := newFakeSMTPServer(t)
+	defer server.close()
+	withSMTPSettings(t)
+	smtpSendCursor.Store(0)
+
+	SMTPAccountPool = []SMTPAccountConfig{
+		{
+			Server: server.host, Port: server.port,
+			Account: "login@example.com", Token: "secret",
+			From: "noreply@example.com", StartTLS: true,
+		},
+	}
+	SystemName = "New API"
+
+	require.NoError(t, SendEmail("Verification", "receiver@example.com", "<p>123456</p>"))
+	select {
+	case message := <-server.messages:
+		require.Contains(t, message, "From: New API <noreply@example.com>")
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for SMTP DATA")
+	}
+}
+
+func TestSendEmailPoolReportsErrorWhenEveryAccountFails(t *testing.T) {
+	deadPort := reserveDeadTCPPort(t)
+	withSMTPSettings(t)
+	smtpSendCursor.Store(0)
+
+	SMTPAccountPool = []SMTPAccountConfig{
+		{Server: "127.0.0.1", Port: deadPort, Account: "a@example.com", Token: "secret", StartTLS: true},
+		{Server: "127.0.0.1", Port: deadPort, Account: "b@example.com", Token: "secret", StartTLS: true},
+	}
+	SystemName = "New API"
+
+	err := SendEmail("Verification", "receiver@example.com", "<p>123456</p>")
+	require.Error(t, err)
+}
+
+func TestParseSMTPAccountPoolJSONRejectsIncompleteEntries(t *testing.T) {
+	testCases := []struct {
+		name  string
+		value string
+	}{
+		{"missing server", `[{"port":587,"account":"a@example.com"}]`},
+		{"missing account", `[{"server":"smtp.example.com","port":587}]`},
+		{"non-positive port", `[{"server":"smtp.example.com","port":0,"account":"a@example.com"}]`},
+		{"not an array", `{"server":"smtp.example.com","port":587,"account":"a@example.com"}`},
+		{"malformed json", `[{"server":]}`},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, err := ParseSMTPAccountPoolJSON(testCase.value)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestParseSMTPAccountPoolJSONAcceptsEmptyValueAndValidPool(t *testing.T) {
+	pool, err := ParseSMTPAccountPoolJSON("   ")
+	require.NoError(t, err)
+	require.Empty(t, pool)
+
+	pool, err = ParseSMTPAccountPoolJSON(`[{"server":"smtp.qq.com","port":587,"account":"a@qq.com","token":"t","starttls":true}]`)
+	require.NoError(t, err)
+	require.Len(t, pool, 1)
+	require.Equal(t, "smtp.qq.com", pool[0].Server)
+	require.Equal(t, 587, pool[0].Port)
+	require.True(t, pool[0].StartTLS)
+}
+
+// reserveDeadTCPPort binds an ephemeral port and immediately releases it, so a
+// connection to it is refused rather than timing out in CI sandboxes.
+func reserveDeadTCPPort(t *testing.T) int {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	port := listener.Addr().(*net.TCPAddr).Port
+	require.NoError(t, listener.Close())
+	return port
 }
