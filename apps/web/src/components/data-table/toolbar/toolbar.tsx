@@ -74,8 +74,8 @@ export type DataTableToolbarProps<TData> = {
    */
   customSearch?: ReactNode
   /**
-   * Extra inputs/selects displayed in the primary row alongside the
-   * search input and filter chips.
+   * Extra inputs/buttons rendered at the end of the primary row, after the
+   * search input and the filter chips.
    */
   additionalSearch?: ReactNode
   /**
@@ -346,8 +346,8 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
       <div className={cn('bg-card-surface text-card-foreground flex flex-col gap-2 rounded-lg border border-border p-3', props.className)}>
         <div className='flex flex-wrap items-center gap-2 sm:gap-3'>
           {props.customSearch !== undefined ? props.customSearch : searchInput}
-          {props.additionalSearch}
           {filterChips}
+          {props.additionalSearch}
           <div className='ms-auto flex shrink-0 items-center gap-1.5 sm:gap-2'>
             {expandToggle}
           </div>
@@ -381,8 +381,8 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
       )}
     >
       {props.customSearch !== undefined ? props.customSearch : searchInput}
-      {props.additionalSearch}
       {filterChips}
+      {props.additionalSearch}
       {expanded && hasExpandable && props.expandable}
 
       <div className='ms-auto flex shrink-0 items-center gap-1.5 sm:gap-2'>
