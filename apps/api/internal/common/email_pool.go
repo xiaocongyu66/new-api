@@ -126,7 +126,8 @@ func (p *SenderPool) ordered() []senderEntry {
 
 	tier := entries[:tierEnd]
 	if len(tier) > 1 {
-		offset := int(smtpSendCursor.Add(1)) % len(tier)
+		// 用自增前的旧值取模：cursor 为 0 的首次发送必须落在第一个账号上。
+		offset := int(smtpSendCursor.Add(1)-1) % len(tier)
 		rotated := make([]senderEntry, 0, len(tier))
 		rotated = append(rotated, tier[offset:]...)
 		rotated = append(rotated, tier[:offset]...)
