@@ -165,16 +165,13 @@ describe('channel page header actions', () => {
     assert.ok(panels.length > 0, 'expected the tab panels to render')
     assert.equal(panels.some((panel) => panel.contains(trigger)), false)
 
-    // 页签与标题同处第一行，工具栏排在其后（第二行）。
-    assert.equal(heading.parentElement?.contains(tabList), true)
-    // 工具栏在 DOM 上位于标题之后、页签之前：靠 order 让窄屏时它留在标题行
-    // 最右，sm 断点以上再落回第二行。
+    // 标题与操作用同一行：操作区挂在标题所在的行容器里，页签另起一行。
+    assert.equal(heading.parentElement?.contains(trigger), true)
+    assert.equal(heading.parentElement?.contains(tabList), false)
+    assert.equal(header.contains(tabList), true)
+    // 工具栏在 DOM 上位于标题之后。
     assert.ok(
       heading.compareDocumentPosition(trigger) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    )
-    assert.ok(
-      trigger.compareDocumentPosition(tabList) &
         Node.DOCUMENT_POSITION_FOLLOWING
     )
   })
@@ -215,7 +212,7 @@ describe('channel page header actions', () => {
     assert.equal(pricingTab.getAttribute('aria-selected'), 'true')
   })
 
-  test('keeps the tab row beside the page title', async () => {
+  test('keeps the tab row under the title row', async () => {
     const host = await renderChannelsPage({
       id: 1,
       username: 'root',
@@ -227,20 +224,13 @@ describe('channel page header actions', () => {
     const tabList = host.querySelector('[data-slot="tabs-list"]')
     assert.ok(tabList, 'expected the page tab bar to render')
 
-    // 页签与标题处于同一个行容器，窄屏下整行 wrap，不会掉到工具栏下面。
-    assert.equal(title.parentElement?.contains(tabList), true)
-
-    // 工具栏在 DOM 上排在标题之后、页签之前，所以窄屏时它停在标题行最右，
-    // 页签换到下一行；sm 断点以上 order 反过来，工具栏落回第二行。
-    const trigger = getActionsTrigger(host)
+    // 页签单独一行，排在标题行之后；标题行只放标题与当前页签的操作。
+    assert.equal(title.parentElement?.contains(tabList), false)
     assert.ok(
-      title.compareDocumentPosition(trigger) &
+      title.compareDocumentPosition(tabList) &
         Node.DOCUMENT_POSITION_FOLLOWING
     )
-    assert.ok(
-      trigger.compareDocumentPosition(tabList) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    )
+    assert.equal(tabList.parentElement?.className.includes('w-full'), true)
   })
 
   test('hides the pricing tabs without the system settings permission', async () => {

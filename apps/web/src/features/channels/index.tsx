@@ -113,90 +113,80 @@ function ChannelsContent() {
               }}
               className='flex h-full min-h-0 flex-col'
             >
-              <header className='shrink-0 space-y-3 px-3 pt-3 pb-3 sm:px-4 sm:pt-5'>
-                {/* 第一行：标题 + 页签。页签跟着标题走，窄屏整行 wrap */}
-                <div className='flex flex-wrap items-center gap-x-3 gap-y-2 sm:gap-x-4'>
+              <header className='shrink-0 space-y-2 px-3 pt-3 pb-3 sm:px-4 sm:pt-5'>
+                {/* 第一行：标题 + 当前页签的操作按钮（窄屏时按钮换行，不出现滚动条） */}
+                <div className='flex items-center gap-3'>
                   <h1 className='min-w-0 truncate text-xl font-semibold tracking-tight sm:text-2xl'>
                     {t('Channel Management')}
                   </h1>
-                  {/*
-                    窄屏只有「⋯」可见，放到标题行最右；sm 以上工具栏整行落到
-                    第二行。用 order 让同一份 DOM 在两个断点落在不同位置。
-                  */}
-                  <div
-                    className={cn(
-                      'order-2 ml-auto flex shrink-0 items-center sm:order-3 sm:ml-0 sm:w-full',
-                      pageTab === 'channels' ? '' : 'hidden'
-                    )}
-                  >
-                    <ChannelsPrimaryButtons />
-                  </div>
-                  {/*
-                    定价面板的操作按钮（重置价格 / 切换到 JSON）通过 portal 挂到
-                    标题栏右侧。窄屏排在页签之前（留在标题行），sm 以上排在页签
-                    之后（标题行最右）。
-                  */}
-                  <div
-                    ref={setPricingActionsContainer}
-                    className={cn(
-                      'order-2 ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2 sm:order-3',
-                      pageTab.startsWith('pricing-') ? '' : 'hidden'
-                    )}
-                  />
-                  {/*
-                    窄屏放不下五个页签，横向滚动而不是换行：TabsList 的行高被
-                    group-data-horizontal/tabs:h-8 锁死，换行后第二行会溢出叠字。
-                    滚动条放在外层，避免裁掉触发器的 after 伪元素。
-                  */}
-                  <div className='order-3 w-full max-w-full overflow-x-auto overflow-y-hidden sm:order-2 sm:w-fit sm:overflow-visible'>
-                    <TabsList
+                  <div className='ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2'>
+                    <div
                       className={cn(
-                        'flex w-max flex-nowrap',
-                        canEditModelPricing
-                          ? 'sm:grid sm:w-fit sm:grid-cols-5'
-                          : 'sm:grid sm:w-fit sm:grid-cols-2'
+                        'flex items-center',
+                        pageTab === 'channels' ? '' : 'hidden'
                       )}
                     >
-                      <TabsTrigger
-                        value='create'
-                        disabled={!canCreateChannel}
-                        className='flex-none px-4 text-sm'
-                      >
-                        <span className='sm:hidden'>{t('Create')}</span>
-                        <span className='hidden sm:inline'>
-                          {t('Create Channel')}
-                        </span>
-                      </TabsTrigger>
-                      <TabsTrigger
-                        value='channels'
-                        className='flex-none px-4 text-sm'
-                      >
-                        {t('Channels')}
-                      </TabsTrigger>
-                      {canEditModelPricing
-                        ? PRICING_TABS.map((tab) => (
-                            <TabsTrigger
-                              key={tab.id}
-                              value={tab.id}
-                              className='flex-none px-4 text-sm'
-                            >
-                              {t(tab.labelKey)}
-                            </TabsTrigger>
-                          ))
-                        : null}
-                    </TabsList>
+                      <ChannelsPrimaryButtons />
+                    </div>
+                    {/*
+                      定价与创建表单的操作按钮通过 portal 挂到这一行：
+                      和标题同一行，空间不足时在行内换行。
+                    */}
+                    <div
+                      ref={setPricingActionsContainer}
+                      className={cn(
+                        'flex flex-wrap items-center justify-end gap-2',
+                        pageTab.startsWith('pricing-') ? '' : 'hidden'
+                      )}
+                    />
+                    <div
+                      ref={setCreateActionsContainer}
+                      className={cn(
+                        'flex flex-wrap items-center justify-end gap-2',
+                        pageTab === 'create' ? '' : 'hidden'
+                      )}
+                    />
                   </div>
                 </div>
-                {/* 第二行：创建表单的操作按钮 */}
-                <div className='flex flex-wrap items-center justify-end gap-x-3 gap-y-2'>
-                  <div
-                    ref={setCreateActionsContainer}
-                    className={
-                      pageTab === 'create'
-                        ? 'flex w-full flex-wrap items-center justify-center gap-2 sm:w-auto sm:justify-end'
-                        : 'hidden'
-                    }
-                  />
+
+                {/* 第二行：页签 */}
+                <div className='w-full max-w-full overflow-x-auto overflow-y-hidden sm:overflow-visible'>
+                  <TabsList
+                    className={cn(
+                      'flex w-max flex-nowrap',
+                      canEditModelPricing
+                        ? 'sm:grid sm:w-fit sm:grid-cols-5'
+                        : 'sm:grid sm:w-fit sm:grid-cols-2'
+                    )}
+                  >
+                    <TabsTrigger
+                      value='create'
+                      disabled={!canCreateChannel}
+                      className='flex-none px-4 text-sm'
+                    >
+                      <span className='sm:hidden'>{t('Create')}</span>
+                      <span className='hidden sm:inline'>
+                        {t('Create Channel')}
+                      </span>
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value='channels'
+                      className='flex-none px-4 text-sm'
+                    >
+                      {t('Channels')}
+                    </TabsTrigger>
+                    {canEditModelPricing
+                      ? PRICING_TABS.map((tab) => (
+                          <TabsTrigger
+                            key={tab.id}
+                            value={tab.id}
+                            className='flex-none px-4 text-sm'
+                          >
+                            {t(tab.labelKey)}
+                          </TabsTrigger>
+                        ))
+                      : null}
+                  </TabsList>
                 </div>
               </header>
 
