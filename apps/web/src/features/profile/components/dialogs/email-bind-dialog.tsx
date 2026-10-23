@@ -24,9 +24,11 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { Dialog } from '@/components/dialog'
+import { Turnstile } from '@/components/turnstile'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
 import { useCountdown } from '@/hooks/use-countdown'
 
 import { sendEmailVerification, bindEmail } from '../../api'
@@ -53,6 +55,15 @@ export function EmailBindDialog({
   const [sendingCode, setSendingCode] = useState(false)
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
+  // The verification endpoint is behind the Turnstile check, so this dialog has
+  // to solve the challenge like the sign-in form does.
+  const {
+    isTurnstileEnabled,
+    turnstileSiteKey,
+    turnstileToken,
+    setTurnstileToken,
+    validateTurnstile,
+  } = useTurnstile()
   const {
     secondsLeft,
     isActive,
@@ -67,10 +78,11 @@ export function EmailBindDialog({
       toast.error(t('Please enter a valid email address'))
       return
     }
+    if (!validateTurnstile()) return
 
     try {
       setSendingCode(true)
-      const response = await sendEmailVerification(email)
+      const response = await sendEmailVerification(email, turnstileToken)
 
       if (response.success) {
         toast.success(t('Verification code sent! Please check your email.'))
@@ -78,7 +90,7 @@ export function EmailBindDialog({
       } else {
         toast.error(response.message || t('Failed to send verification code'))
       }
-    } catch (_error) {
+    } catch {
       toast.error(t('Failed to send verification code'))
     } finally {
       setSendingCode(false)
@@ -106,7 +118,7 @@ export function EmailBindDialog({
       } else {
         toast.error(response.message || t('Failed to bind email'))
       }
-    } catch (_error) {
+    } catch {
       toast.error(t('Failed to bind email'))
     } finally {
       setLoading(false)
@@ -123,6 +135,14 @@ export function EmailBindDialog({
         resetCountdown()
       }
     }
+  }
+
+  let sendCodeLabel = t('Send')
+  if (sendingCode) {
+    sendCodeLabel = t('Sending...')
+  }
+  if (isActive) {
+    sendCodeLabel = `${secondsLeft}s`
   }
 
   return (
@@ -204,14 +224,18 @@ export function EmailBindDialog({
               onClick={handleSendCode}
               disabled={sendingCode || isActive || !email}
             >
-              {isActive
-                ? `${secondsLeft}s`
-                : sendingCode
-                  ? t('Sending...')
-                  : t('Send')}
+              {sendCodeLabel}
             </Button>
           </div>
         </div>
+
+        {isTurnstileEnabled && (
+          <Turnstile
+            siteKey={turnstileSiteKey}
+            onVerify={setTurnstileToken}
+            onExpire={() => setTurnstileToken('')}
+          />
+        )}
       </div>
     </Dialog>
   )

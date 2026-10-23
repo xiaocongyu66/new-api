@@ -2,7 +2,6 @@ package common
 
 import (
 	"crypto/tls"
-	"encoding/base64"
 	"fmt"
 	"net/smtp"
 	"slices"
@@ -10,44 +9,97 @@ import (
 	"time"
 )
 
-func generateMessageID() (string, error) {
-	split := strings.Split(SMTPFrom, "@")
-	if len(split) < 2 {
-		return "", fmt.Errorf("invalid SMTP account")
-	}
-	domain := strings.Split(SMTPFrom, "@")[1]
-	return fmt.Sprintf("<%d.%s@%s>", time.Now().UnixNano(), GetRandomString(12), domain), nil
+// SMTPAccountConfig is one upstream SMTP identity new-api can send through.
+// Several can be configured at once so that a provider-side rate limit or a
+// single rejected account never stops outbound mail.
+type SMTPAccountConfig struct {
+	Server     string `json:"server"`
+	Port       int    `json:"port"`
+	Account    string `json:"account"`
+	Token      string `json:"token"`
+	From       string `json:"from"`
+	SSLEnabled bool   `json:"ssl"`
+	StartTLS   bool   `json:"starttls"`
+	// DailyLimit caps the sends one account may make per calendar day (UTC+8).
+	// Zero means unlimited.
+	DailyLimit int `json:"dailyLimit"`
+	// Priority tiers the accounts: the lowest value is used first and the
+	// higher tiers only take over once the lower ones run out of quota.
+	Priority int `json:"priority"`
 }
 
-func shouldUseSMTPLoginAuth() bool {
+// SMTPAccountPool holds every configured upstream SMTP identity. An empty pool
+// means the deployment only set the legacy single-account options.
+var SMTPAccountPool []SMTPAccountConfig
+
+// ParseSMTPAccountPoolJSON decodes the SMTPAccountPool option value. An empty
+// value means "no pool configured" and is not an error.
+func ParseSMTPAccountPoolJSON(value string) ([]SMTPAccountConfig, error) {
+	if strings.TrimSpace(value) == "" {
+		return nil, nil
+	}
+	var pool []SMTPAccountConfig
+	if err := UnmarshalJsonStr(value, &pool); err != nil {
+		return nil, fmt.Errorf("SMTPAccountPool must be a JSON array of accounts")
+	}
+	for i, account := range pool {
+		if account.Server == "" || account.Account == "" || account.Port <= 0 {
+			return nil, fmt.Errorf("SMTPAccountPool entry %d requires server, account and a positive port", i)
+		}
+		if account.DailyLimit < 0 || account.Priority < 0 {
+			return nil, fmt.Errorf("SMTPAccountPool entry %d needs non-negative dailyLimit and priority", i)
+		}
+	}
+	return pool, nil
+}
+
+// legacySMTPAccountConfig maps the pre-pool single-account settings onto the
+// same shape the pool uses, so both configuration styles share one code path.
+func legacySMTPAccountConfig() SMTPAccountConfig {
+	return SMTPAccountConfig{
+		Server:     SMTPServer,
+		Port:       SMTPPort,
+		Account:    SMTPAccount,
+		Token:      SMTPToken,
+		From:       SMTPFrom,
+		SSLEnabled: SMTPSSLEnabled,
+		StartTLS:   SMTPStartTLSEnabled,
+	}
+}
+
+func generateMessageID(from string) (string, error) {
+	parts := strings.Split(from, "@")
+	if len(parts) < 2 {
+		return "", fmt.Errorf("invalid SMTP account")
+	}
+	return fmt.Sprintf("<%d.%s@%s>", time.Now().UnixNano(), GetRandomString(12), parts[1]), nil
+}
+
+func shouldUseSMTPLoginAuth(account SMTPAccountConfig) bool {
 	if SMTPForceAuthLogin {
 		return true
 	}
-	return isOutlookServer(SMTPAccount) || slices.Contains(EmailLoginAuthServerList, SMTPServer)
+	return isOutlookServer(account.Account) || slices.Contains(EmailLoginAuthServerList, account.Server)
 }
 
-func getSMTPAuth() smtp.Auth {
-	return AutoSMTPAuth(SMTPAccount, SMTPToken)
+func getSMTPAuth(account SMTPAccountConfig) smtp.Auth {
+	return AutoSMTPAuth(account.Account, account.Token, account.Server)
 }
 
-func shouldAuthenticateSMTP() bool {
-	return SMTPAccount != "" && SMTPToken != ""
-}
-
-func smtpTLSConfig() *tls.Config {
+func smtpTLSConfig(server string) *tls.Config {
 	return &tls.Config{
-		ServerName:         SMTPServer,
+		ServerName:         server,
 		InsecureSkipVerify: SMTPInsecureSkipVerify, // #nosec G402 -- admin-controlled SMTP compatibility option.
 	}
 }
 
-func newSMTPClient(addr string) (*smtp.Client, error) {
-	if SMTPSSLEnabled || (SMTPPort == 465 && !SMTPStartTLSEnabled) {
-		conn, err := tls.Dial("tcp", addr, smtpTLSConfig())
+func newSMTPClient(addr string, account SMTPAccountConfig) (*smtp.Client, error) {
+	if account.SSLEnabled || (account.Port == 465 && !account.StartTLS) {
+		conn, err := tls.Dial("tcp", addr, smtpTLSConfig(account.Server))
 		if err != nil {
 			return nil, err
 		}
-		client, err := smtp.NewClient(conn, SMTPServer)
+		client, err := smtp.NewClient(conn, account.Server)
 		if err != nil {
 			_ = conn.Close()
 			return nil, err
@@ -60,14 +112,13 @@ func newSMTPClient(addr string) (*smtp.Client, error) {
 		return nil, err
 	}
 
-	if SMTPStartTLSEnabled {
+	if account.StartTLS {
 		startTLSSupported, _ := client.Extension("STARTTLS")
 		if !startTLSSupported {
 			_ = client.Close()
 			return nil, fmt.Errorf("SMTP server does not support STARTTLS")
 		}
-		if err := client.StartTLS(smtpTLSConfig()); err != nil {
-			_ = client.Close()
+		if err := client.StartTLS(smtpTLSConfig(account.Server)); err != nil {
 			return nil, err
 		}
 	}
@@ -75,62 +126,16 @@ func newSMTPClient(addr string) (*smtp.Client, error) {
 	return client, nil
 }
 
+// SendEmail delivers one message. Callers stay unaware of which upstream
+// identity ends up sending it: the pool applies quota, priority and failover.
 func SendEmail(subject string, receiver string, content string) error {
-	if SMTPFrom == "" { // for compatibility
-		SMTPFrom = SMTPAccount
-	}
-	id, err2 := generateMessageID()
-	if err2 != nil {
-		return err2
-	}
-	if SMTPServer == "" && SMTPAccount == "" {
-		return fmt.Errorf("SMTP 服务器未配置")
-	}
-	encodedSubject := fmt.Sprintf("=?UTF-8?B?%s?=", base64.StdEncoding.EncodeToString([]byte(subject)))
-	mail := []byte(fmt.Sprintf("To: %s\r\n"+
-		"From: %s <%s>\r\n"+
-		"Subject: %s\r\n"+
-		"Date: %s\r\n"+
-		"Message-ID: %s\r\n"+ // 添加 Message-ID 头
-		"Content-Type: text/html; charset=UTF-8\r\n\r\n%s\r\n",
-		receiver, SystemName, SMTPFrom, encodedSubject, time.Now().Format(time.RFC1123Z), id, content))
-	auth := getSMTPAuth()
-	addr := fmt.Sprintf("%s:%d", SMTPServer, SMTPPort)
-	to := strings.Split(receiver, ";")
-	var err error
-	client, err := newSMTPClient(addr)
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-	if shouldAuthenticateSMTP() {
-		if err = client.Auth(auth); err != nil {
-			return err
+	msg := OutgoingMessage{Subject: subject, Receiver: receiver, Content: content}
+
+	if len(SMTPAccountPool) == 0 {
+		if SMTPServer == "" && SMTPAccount == "" {
+			return fmt.Errorf("SMTP 服务器未配置")
 		}
+		return newSMTPSender(legacySMTPAccountConfig()).Send(msg)
 	}
-	if err = client.Mail(SMTPFrom); err != nil {
-		return err
-	}
-	for _, receiver := range to {
-		if err = client.Rcpt(receiver); err != nil {
-			return err
-		}
-	}
-	w, err := client.Data()
-	if err != nil {
-		return err
-	}
-	_, err = w.Write(mail)
-	if err != nil {
-		return err
-	}
-	err = w.Close()
-	if err != nil {
-		return err
-	}
-	err = client.Quit()
-	if err != nil {
-		SysError(fmt.Sprintf("failed to send email to %s: %v", receiver, err))
-	}
-	return err
+	return DefaultSenderPool().Send(msg)
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/mailer"
 	"github.com/QuantumNous/new-api/internal/settings"
 	"gorm.io/gorm"
 )
@@ -53,6 +54,9 @@ func AllOption() ([]*Option, error) {
 func InitOptionMap() {
 	settings.SeedOptionMap()
 	loadOptionsFromDatabase()
+	// The mail quota store is installed after the database handle exists:
+	// package mailer owns it but cannot be imported by package common.
+	mailer.Wire()
 }
 
 func loadOptionsFromDatabase() {

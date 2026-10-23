@@ -11,16 +11,18 @@ import (
 type smtpAutoAuth struct {
 	username string
 	password string
+	server   string
 	mech     string
 }
 
-func AutoSMTPAuth(username, password string) smtp.Auth {
-	return &smtpAutoAuth{username: username, password: password}
+func AutoSMTPAuth(username, password, server string) smtp.Auth {
+	return &smtpAutoAuth{username: username, password: password, server: server}
 }
 
 func (a *smtpAutoAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
+	account := SMTPAccountConfig{Account: a.username, Server: a.server}
 	useLoginAuth := SMTPForceAuthLogin
-	if !useLoginAuth && shouldUseSMTPLoginAuth() {
+	if !useLoginAuth && shouldUseSMTPLoginAuth(account) {
 		useLoginAuth = !(server != nil && len(server.Auth) == 1 && smtpServerSupportsAuth(server, "NTLM"))
 	}
 	if useLoginAuth {
@@ -31,7 +33,7 @@ func (a *smtpAutoAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
 	switch {
 	case smtpServerSupportsAuth(server, "PLAIN"):
 		a.mech = "PLAIN"
-		return smtp.PlainAuth("", a.username, a.password, SMTPServer).Start(server)
+		return smtp.PlainAuth("", a.username, a.password, a.server).Start(server)
 	case smtpServerSupportsAuth(server, "LOGIN"):
 		a.mech = "LOGIN"
 		return "LOGIN", []byte{}, nil
@@ -44,7 +46,7 @@ func (a *smtpAutoAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
 		return "NTLM", negotiateMessage, nil
 	default:
 		a.mech = "PLAIN"
-		return smtp.PlainAuth("", a.username, a.password, SMTPServer).Start(server)
+		return smtp.PlainAuth("", a.username, a.password, a.server).Start(server)
 	}
 }
 

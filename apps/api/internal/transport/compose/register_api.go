@@ -286,6 +286,7 @@ func SetApiRouter(router contract.Engine) {
 			optionRoute.PUT("/", ops.UpdateOption)
 			optionRoute.POST("/payment_compliance", billing.ConfirmPaymentCompliance)
 			optionRoute.GET("/channel_affinity_cache", handler.GetChannelAffinityCacheStats)
+			optionRoute.GET("/smtp_pool_status", handler.GetSMTPPoolStatus)
 			optionRoute.DELETE("/channel_affinity_cache", handler.ClearChannelAffinityCache)
 			optionRoute.POST("/rest_model_ratio", handler.ResetModelRatio)
 			optionRoute.GET("/waffo-pancake/catalog", billing.ListWaffoPancakeCatalog)
