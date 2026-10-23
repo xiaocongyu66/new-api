@@ -115,11 +115,11 @@ function ChannelsContent() {
             >
               <header className='shrink-0 space-y-2 px-3 pt-3 pb-3 sm:px-4 sm:pt-5'>
                 {/* 第一行：标题 + 当前页签的操作按钮（窄屏时按钮换行，不出现滚动条） */}
-                <div className='flex items-center gap-3'>
-                  <h1 className='min-w-0 truncate text-xl font-semibold tracking-tight sm:text-2xl'>
+                <div className='flex flex-wrap items-center gap-3'>
+                  <h1 className='shrink-0 text-xl font-semibold tracking-tight sm:text-2xl'>
                     {t('Channel Management')}
                   </h1>
-                  <div className='ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2'>
+                  <div className='ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2'>
                     <div
                       className={cn(
                         'flex items-center',
