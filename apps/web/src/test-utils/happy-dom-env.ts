@@ -89,6 +89,14 @@ export function installDomGlobals(): void {
     })
   }
 
+  // antd-style（@lobehub/icons 的依赖）在模块求值时直接调用全局 `matchMedia`，
+  // 缺了它整条模块图会在 import 阶段抛 ReferenceError；happy-dom 的实现把 window
+  // 作为 this 传进 MediaQueryList，所以必须绑定后挂载。
+  Object.defineProperty(globalThis, 'matchMedia', {
+    configurable: true,
+    value: domWindow.matchMedia.bind(domWindow),
+  })
+
   const reactTestGlobals = globalThis as typeof globalThis & {
     IS_REACT_ACT_ENVIRONMENT?: boolean
   }

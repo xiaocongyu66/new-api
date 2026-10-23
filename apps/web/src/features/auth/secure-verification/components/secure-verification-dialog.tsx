@@ -118,7 +118,6 @@ export function SecureVerificationDialog({
           <HugeiconsIcon icon={FloppyDiskIcon} />
         </Button>
       }
-      footerClassName='bg-muted/30 border-t px-6 py-4 sm:flex-row sm:justify-end'
       footer={
         <>
           <Button

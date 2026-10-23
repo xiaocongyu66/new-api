@@ -185,7 +185,6 @@ export function ModelsFilter(props: ModelsFilterProps) {
       )}
       contentClassName='max-sm:h-dvh max-sm:w-screen max-sm:max-w-none max-sm:rounded-none max-sm:p-4 sm:max-w-lg'
       contentHeight='min(48vh, 460px)'
-      footerClassName='grid grid-cols-2 gap-2 sm:flex'
       headerActions={
         <Button
           type='submit'

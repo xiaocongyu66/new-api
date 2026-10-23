@@ -17,8 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -29,7 +27,6 @@ import {
   SideDrawerSection,
   SideDrawerSectionHeader,
   sideDrawerContentClassName,
-  sideDrawerFooterClassName,
   sideDrawerFormClassName,
   sideDrawerHeaderClassName,
 } from '@/components/drawer-layout'
@@ -49,7 +46,6 @@ import {
   SheetClose,
   SheetContent,
   SheetDescription,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
@@ -245,37 +241,39 @@ export function RedemptionsMutateDrawer({
       }}
     >
       <SheetContent
-        headerActions={
-          <Button
-            type='submit'
-            form='redemption-form'
-            variant='ghost'
-            size='icon-sm'
-            className='md:hidden'
-            disabled={isSubmitting || !isUpdateReady}
-            aria-label={submitButtonLabel}
-          >
-            <HugeiconsIcon icon={FloppyDiskIcon} />
-          </Button>
-        }
+        showCloseButton={false}
         className={sideDrawerContentClassName('sm:max-w-[600px]')}
       >
-        <SheetHeader
-          className={sideDrawerHeaderClassName('max-md:pr-[4.5rem]')}
-        >
-          <SheetTitle>
-            {isUpdate
-              ? t('Update Redemption Code')
-              : t('Create Redemption Code')}
-          </SheetTitle>
-          <SheetDescription>
-            {isUpdate
-              ? t('Update the redemption code by providing necessary info.')
-              : t(
-                  'Add new redemption code(s) by providing necessary info.'
-                )}{' '}
-            {t('Click save when you&apos;re done.')}
-          </SheetDescription>
+        <SheetHeader className={sideDrawerHeaderClassName()}>
+          <div className='flex flex-row items-start justify-between gap-3'>
+            <div className='min-w-0'>
+              <SheetTitle>
+                {isUpdate
+                  ? t('Update Redemption Code')
+                  : t('Create Redemption Code')}
+              </SheetTitle>
+              <SheetDescription>
+                {isUpdate
+                  ? t('Update the redemption code by providing necessary info.')
+                  : t(
+                      'Add new redemption code(s) by providing necessary info.'
+                    )}{' '}
+                {t('Click save when you&apos;re done.')}
+              </SheetDescription>
+            </div>
+            <div className='flex shrink-0 flex-wrap items-center justify-end gap-2'>
+              <SheetClose render={<Button variant='outline' />}>
+                {t('Close')}
+              </SheetClose>
+              <Button
+                form='redemption-form'
+                type='submit'
+                disabled={isSubmitting || !isUpdateReady}
+              >
+                {submitButtonLabel}
+              </Button>
+            </div>
+          </div>
         </SheetHeader>
         <Form {...form}>
           <form
@@ -432,19 +430,6 @@ export function RedemptionsMutateDrawer({
                 )}
               </SideDrawerSection>
             </fieldset>
-
-            <SheetFooter className={sideDrawerFooterClassName()}>
-              <SheetClose render={<Button variant='outline' />}>
-                {t('Close')}
-              </SheetClose>
-              <Button
-                form='redemption-form'
-                type='submit'
-                disabled={isSubmitting || !isUpdateReady}
-              >
-                {submitButtonLabel}
-              </Button>
-            </SheetFooter>
           </form>
         </Form>
       </SheetContent>

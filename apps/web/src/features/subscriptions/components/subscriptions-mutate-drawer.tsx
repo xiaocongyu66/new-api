@@ -17,8 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
 import { CalendarClock, CreditCard, RefreshCw, Settings2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useForm, type Resolver } from 'react-hook-form'
@@ -28,7 +26,6 @@ import { toast } from 'sonner'
 import {
   SideDrawerSection,
   sideDrawerContentClassName,
-  sideDrawerFooterClassName,
   sideDrawerFormClassName,
   sideDrawerHeaderClassName,
   sideDrawerSwitchItemClassName,
@@ -58,7 +55,6 @@ import {
   SheetClose,
   SheetContent,
   SheetDescription,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
@@ -262,34 +258,36 @@ export function SubscriptionsMutateDrawer({
       }}
     >
       <SheetContent
-        headerActions={
-          <Button
-            type='submit'
-            form='subscription-form'
-            variant='ghost'
-            size='icon-sm'
-            className='md:hidden'
-            disabled={isSubmitting}
-            aria-label={isSubmitting ? t('Saving...') : t('Save changes')}
-          >
-            <HugeiconsIcon icon={FloppyDiskIcon} />
-          </Button>
-        }
+        showCloseButton={false}
         className={sideDrawerContentClassName('sm:max-w-[600px]')}
       >
-        <SheetHeader
-          className={sideDrawerHeaderClassName('max-md:pr-[4.5rem]')}
-        >
-          <SheetTitle>
-            {isEdit ? t('Update plan info') : t('Create new subscription plan')}
-          </SheetTitle>
-          <SheetDescription>
-            {isEdit
-              ? t('Modify existing subscription plan configuration')
-              : t(
-                  'Fill in the following info to create a new subscription plan'
-                )}
-          </SheetDescription>
+        <SheetHeader className={sideDrawerHeaderClassName()}>
+          <div className='flex flex-row items-start justify-between gap-3'>
+            <div className='min-w-0'>
+              <SheetTitle>
+                {isEdit ? t('Update plan info') : t('Create new subscription plan')}
+              </SheetTitle>
+              <SheetDescription>
+                {isEdit
+                  ? t('Modify existing subscription plan configuration')
+                  : t(
+                      'Fill in the following info to create a new subscription plan'
+                    )}
+              </SheetDescription>
+            </div>
+            <div className='flex shrink-0 flex-wrap items-center justify-end gap-2'>
+              <SheetClose render={<Button variant='outline' />}>
+                {t('Close')}
+              </SheetClose>
+              <Button
+                form='subscription-form'
+                type='submit'
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? t('Saving...') : t('Save changes')}
+              </Button>
+            </div>
+          </div>
         </SheetHeader>
         <Form {...form}>
           <form
@@ -865,19 +863,6 @@ export function SubscriptionsMutateDrawer({
                 }}
               />
             </SideDrawerSection>
-
-            <SheetFooter className={sideDrawerFooterClassName()}>
-              <SheetClose render={<Button variant='outline' />}>
-                {t('Close')}
-              </SheetClose>
-              <Button
-                form='subscription-form'
-                type='submit'
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? t('Saving...') : t('Save changes')}
-              </Button>
-            </SheetFooter>
           </form>
         </Form>
       </SheetContent>

@@ -80,7 +80,6 @@ export function TransferDialog({
       description={t('Move affiliate rewards to your main balance')}
       contentClassName='max-sm:w-[calc(100vw-1.5rem)] sm:max-w-md'
       titleClassName='text-xl font-semibold'
-      footerClassName='grid grid-cols-2 gap-2 sm:flex'
       contentHeight='auto'
       bodyClassName='space-y-4'
       headerActions={

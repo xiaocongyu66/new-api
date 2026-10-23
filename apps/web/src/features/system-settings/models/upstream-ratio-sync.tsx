@@ -478,19 +478,26 @@ export function UpstreamRatioSync({ modelRatios }: UpstreamRatioSyncProps) {
   return (
     <div className='flex h-full min-h-0 flex-col gap-4'>
       <SettingsPageActionsPortal>
-        <Button onClick={handleOpenChannelDialog} disabled={isLoading}>
-          <RefreshCcw className='mr-2 h-4 w-4' />
+        <Button
+          size='sm'
+          className='max-sm:px-2'
+          onClick={handleOpenChannelDialog}
+          disabled={isLoading}
+        >
+          <RefreshCcw className='mr-2 h-4 w-4 max-sm:hidden' />
           {t('Select Sync Channels')}
         </Button>
         <Button
           variant='secondary'
+          size='sm'
+          className='max-sm:px-2'
           onClick={handleApplySync}
           disabled={!hasSelections || isLoading}
         >
           {(isSyncPending || confirmLoading) && (
             <span className='mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent' />
           )}
-          <CheckSquare className='mr-2 h-4 w-4' />
+          <CheckSquare className='mr-2 h-4 w-4 max-sm:hidden' />
           {t('Apply Sync')}
         </Button>
       </SettingsPageActionsPortal>
