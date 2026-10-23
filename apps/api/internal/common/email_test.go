@@ -228,6 +228,9 @@ func newTestTLSCertificate() (tls.Certificate, error) {
 		KeyUsage:    x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		DNSNames:    []string{"aixinexchange01", "aixinexchange01.aixin-chip.com"},
+		// 池用例直接拨 127.0.0.1 上的临时端口，客户端按生产逻辑校验证书：
+		// 证书必须包含回环地址的 IP SAN，否则校验必然失败。
+		IPAddresses: []net.IP{net.ParseIP("127.0.0.1")},
 	}
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
