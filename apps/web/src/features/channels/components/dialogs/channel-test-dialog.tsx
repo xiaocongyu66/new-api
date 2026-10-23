@@ -986,11 +986,6 @@ function ChannelTestDialogContent({
         contentClassName='max-h-[90vh] overflow-hidden sm:max-w-4xl'
         contentHeight='auto'
         bodyClassName='space-y-4'
-        footer={
-          <Button variant='outline' onClick={handleClose}>
-            {t('Close')}
-          </Button>
-        }
       >
         <div className='max-h-[78vh] space-y-4 overflow-y-auto py-4 pr-1'>
           <div className='grid gap-4 md:grid-cols-2'>

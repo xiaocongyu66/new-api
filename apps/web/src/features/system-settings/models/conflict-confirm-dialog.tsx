@@ -25,7 +25,6 @@ import {
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
-  AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
@@ -56,13 +55,25 @@ export function ConflictConfirmDialog({
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className='max-w-4xl'>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{t('Confirm Billing Conflicts')}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {t(
-              'The following models have billing type conflicts (fixed price vs ratio billing). Confirm to proceed with the changes.'
-            )}
-          </AlertDialogDescription>
+        <AlertDialogHeader className='place-items-stretch text-left'>
+          <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+            <div className='min-w-0'>
+              <AlertDialogTitle>{t('Confirm Billing Conflicts')}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {t(
+                  'The following models have billing type conflicts (fixed price vs ratio billing). Confirm to proceed with the changes.'
+                )}
+              </AlertDialogDescription>
+            </div>
+            <div className='flex shrink-0 flex-wrap items-center justify-end gap-2'>
+              <AlertDialogCancel disabled={isLoading}>
+                {t('Cancel')}
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={onConfirm} disabled={isLoading}>
+                {isLoading ? t('Applying...') : t('Confirm Changes')}
+              </AlertDialogAction>
+            </div>
+          </div>
         </AlertDialogHeader>
 
         <StaticDataTable
@@ -101,15 +112,6 @@ export function ConflictConfirmDialog({
             },
           ]}
         />
-
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={isLoading}>
-            {t('Cancel')}
-          </AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm} disabled={isLoading}>
-            {isLoading ? t('Applying...') : t('Confirm Changes')}
-          </AlertDialogAction>
-        </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
   )

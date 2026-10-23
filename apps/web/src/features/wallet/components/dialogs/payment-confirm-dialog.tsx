@@ -25,7 +25,6 @@ import {
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
-  AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
@@ -74,13 +73,28 @@ export function PaymentConfirmDialog({
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className='max-sm:w-[calc(100vw-1.5rem)] sm:max-w-md'>
-        <AlertDialogHeader>
-          <AlertDialogTitle className='text-xl font-semibold'>
-            {t('Confirm Payment')}
-          </AlertDialogTitle>
-          <AlertDialogDescription>
-            {t('Review your payment details')}
-          </AlertDialogDescription>
+        <AlertDialogHeader className='place-items-stretch text-left'>
+          <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+            <div className='min-w-0'>
+              <AlertDialogTitle className='text-xl font-semibold'>
+                {t('Confirm Payment')}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t('Review your payment details')}
+              </AlertDialogDescription>
+            </div>
+            <div className='flex shrink-0 flex-wrap items-center justify-end gap-2'>
+              <AlertDialogCancel disabled={processing}>
+                {t('Cancel')}
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={onConfirm} disabled={processing}>
+                {processing && (
+                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                )}
+                {t('Confirm Payment')}
+              </AlertDialogAction>
+            </div>
+          </div>
         </AlertDialogHeader>
 
         <div className='space-y-3 py-3 sm:space-y-4 sm:py-4'>
@@ -146,15 +160,6 @@ export function PaymentConfirmDialog({
           </div>
         </div>
 
-        <AlertDialogFooter className='grid grid-cols-2 gap-2 sm:flex'>
-          <AlertDialogCancel disabled={processing}>
-            {t('Cancel')}
-          </AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm} disabled={processing}>
-            {processing && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
-            {t('Confirm Payment')}
-          </AlertDialogAction>
-        </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
   )
