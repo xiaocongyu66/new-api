@@ -577,6 +577,9 @@ func TestSendEmailPoolRotatesAcrossAccounts(t *testing.T) {
 	second := newFakeSMTPServer(t)
 	defer second.close()
 	withSMTPSettings(t)
+	// 假服务器用自签证书：池用例只验证轮转，不验证证书链（后者由
+	// TestSendEmailExplicitStartTLSRejectsUntrustedCertificateByDefault 覆盖）。
+	SMTPInsecureSkipVerify = true
 	smtpSendCursor.Store(0)
 
 	SMTPAccountPool = []SMTPAccountConfig{
@@ -608,6 +611,7 @@ func TestSendEmailPoolFallsBackToNextAccountWhenOneIsUnreachable(t *testing.T) {
 	working := newFakeSMTPServer(t)
 	defer working.close()
 	withSMTPSettings(t)
+	SMTPInsecureSkipVerify = true
 	smtpSendCursor.Store(0)
 
 	SMTPAccountPool = []SMTPAccountConfig{
@@ -630,6 +634,7 @@ func TestSendEmailPoolUsesExplicitFromWhenSet(t *testing.T) {
 	server := newFakeSMTPServer(t)
 	defer server.close()
 	withSMTPSettings(t)
+	SMTPInsecureSkipVerify = true
 	smtpSendCursor.Store(0)
 
 	SMTPAccountPool = []SMTPAccountConfig{
