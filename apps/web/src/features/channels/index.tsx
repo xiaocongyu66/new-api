@@ -150,7 +150,7 @@ function ChannelsContent() {
                 </div>
 
                 {/* 第二行：页签 */}
-                <div className='w-full max-w-full overflow-x-auto overflow-y-hidden sm:overflow-visible'>
+                <div className='no-scrollbar w-full max-w-full overflow-x-auto overflow-y-hidden sm:overflow-visible'>
                   <TabsList
                     className={cn(
                       'flex w-max flex-nowrap',
@@ -162,7 +162,7 @@ function ChannelsContent() {
                     <TabsTrigger
                       value='create'
                       disabled={!canCreateChannel}
-                      className='flex-none px-4 text-sm'
+                      className='flex-none px-4 text-sm max-sm:px-3'
                     >
                       <span className='sm:hidden'>{t('Create')}</span>
                       <span className='hidden sm:inline'>
@@ -171,7 +171,7 @@ function ChannelsContent() {
                     </TabsTrigger>
                     <TabsTrigger
                       value='channels'
-                      className='flex-none px-4 text-sm'
+                      className='flex-none px-4 text-sm max-sm:px-3'
                     >
                       {t('Channels')}
                     </TabsTrigger>
@@ -180,7 +180,7 @@ function ChannelsContent() {
                           <TabsTrigger
                             key={tab.id}
                             value={tab.id}
-                            className='flex-none px-4 text-sm'
+                            className='flex-none px-4 text-sm max-sm:px-3'
                           >
                             {t(tab.labelKey)}
                           </TabsTrigger>
