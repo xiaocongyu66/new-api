@@ -33,7 +33,6 @@ import { IconThemeDark } from '@/assets/custom/icon-theme-dark'
 import { IconThemeLight } from '@/assets/custom/icon-theme-light'
 import {
   sideDrawerContentClassName,
-  sideDrawerFooterClassName,
   sideDrawerFormClassName,
   sideDrawerHeaderClassName,
 } from '@/components/drawer-layout'
@@ -45,7 +44,6 @@ import {
   Sheet,
   SheetContent,
   SheetDescription,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
@@ -125,14 +123,36 @@ export function ConfigDrawer({
         </SheetTrigger>
       )}
       <SheetContent
+        showCloseButton={false}
         className={sideDrawerContentClassName('sm:max-w-md')}
         finalFocus={finalFocus}
       >
         <SheetHeader className={sideDrawerHeaderClassName()}>
-          <SheetTitle>{t('Theme management')}</SheetTitle>
-          <SheetDescription id={descriptionId}>
-            {t('Adjust the appearance and layout to suit your preferences.')}
-          </SheetDescription>
+          <div className='flex flex-row items-start justify-between gap-3'>
+            <div className='min-w-0'>
+              <SheetTitle>{t('Theme management')}</SheetTitle>
+              <SheetDescription id={descriptionId}>
+                {t('Adjust the appearance and layout to suit your preferences.')}
+              </SheetDescription>
+              <p
+                className='text-muted-foreground mt-1 text-xs'
+                data-testid='theme-persistence-status'
+              >
+                {themePinnedToServer
+                  ? t('Saved to the server — the same theme applies on every device.')
+                  : t('Saved in this browser only — sign in as an administrator to share it.')}
+              </p>
+            </div>
+            <div className='flex shrink-0 items-center justify-end gap-2'>
+              <Button
+                variant='destructive'
+                onClick={handleReset}
+                aria-label={t('Reset all settings to default values')}
+              >
+                {t('Reset')}
+              </Button>
+            </div>
+          </div>
         </SheetHeader>
         <div className={sideDrawerFormClassName()}>
           <ThemeConfig />
@@ -150,23 +170,6 @@ export function ConfigDrawer({
           <BlurConfig />
           <DirConfig />
         </div>
-        <SheetFooter className={sideDrawerFooterClassName('grid-cols-1')}>
-          <p
-            className='text-muted-foreground text-center text-xs'
-            data-testid='theme-persistence-status'
-          >
-            {themePinnedToServer
-              ? t('Saved to the server — the same theme applies on every device.')
-              : t('Saved in this browser only — sign in as an administrator to share it.')}
-          </p>
-          <Button
-            variant='destructive'
-            onClick={handleReset}
-            aria-label={t('Reset all settings to default values')}
-          >
-            {t('Reset')}
-          </Button>
-        </SheetFooter>
       </SheetContent>
     </Sheet>
   )

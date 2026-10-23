@@ -17,8 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -29,7 +27,6 @@ import { toast } from 'sonner'
 import {
   SideDrawerSection,
   sideDrawerContentClassName,
-  sideDrawerFooterClassName,
   sideDrawerFormClassName,
   sideDrawerHeaderClassName,
 } from '@/components/drawer-layout'
@@ -60,7 +57,6 @@ import {
   SheetClose,
   SheetContent,
   SheetDescription,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
@@ -191,38 +187,43 @@ export function PrefillGroupFormDrawer({
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent
-        headerActions={
-          <Button
-            type='submit'
-            form='prefill-group-form'
-            variant='ghost'
-            size='icon-sm'
-            className='md:hidden'
-            disabled={isSaving}
-            aria-label={
-              isSaving
-                ? t('Saving...')
-                : isEdit
-                  ? t('Save changes')
-                  : t('Create')
-            }
-          >
-            <HugeiconsIcon icon={FloppyDiskIcon} />
-          </Button>
-        }
+        showCloseButton={false}
         className={sideDrawerContentClassName('sm:max-w-2xl')}
       >
-        <SheetHeader
-          className={sideDrawerHeaderClassName('max-md:pr-[4.5rem]')}
-        >
-          <SheetTitle>
-            {isEdit ? t('Edit Prefill Group') : t('Create Prefill Group')}
-          </SheetTitle>
-          <SheetDescription>
-            {isEdit
-              ? t('Update the reusable bundle below.')
-              : t('Capture a reusable bundle of models, tags, or endpoints.')}
-          </SheetDescription>
+        <SheetHeader className={sideDrawerHeaderClassName()}>
+          <div className='flex flex-row items-start justify-between gap-3'>
+            <div className='min-w-0'>
+              <SheetTitle>
+                {isEdit ? t('Edit Prefill Group') : t('Create Prefill Group')}
+              </SheetTitle>
+              <SheetDescription>
+                {isEdit
+                  ? t('Update the reusable bundle below.')
+                  : t('Capture a reusable bundle of models, tags, or endpoints.')}
+              </SheetDescription>
+            </div>
+            <div className='flex shrink-0 flex-wrap items-center justify-end gap-2'>
+              <SheetClose
+                render={
+                  <Button type='button' variant='outline' disabled={isSaving} />
+                }
+              >
+                {t('Cancel')}
+              </SheetClose>
+              <Button
+                type='submit'
+                form='prefill-group-form'
+                disabled={isSaving}
+              >
+                {isSaving && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
+                {isSaving
+                  ? t('Saving...')
+                  : isEdit
+                    ? t('Save changes')
+                    : t('Create')}
+              </Button>
+            </div>
+          </div>
         </SheetHeader>
 
         <Form {...form}>
@@ -411,28 +412,6 @@ export function PrefillGroupFormDrawer({
                 />
               </div>
             </SideDrawerSection>
-
-            <SheetFooter className={sideDrawerFooterClassName()}>
-              <SheetClose
-                render={
-                  <Button type='button' variant='outline' disabled={isSaving} />
-                }
-              >
-                {t('Cancel')}
-              </SheetClose>
-              <Button
-                type='submit'
-                form='prefill-group-form'
-                disabled={isSaving}
-              >
-                {isSaving && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
-                {isSaving
-                  ? t('Saving...')
-                  : isEdit
-                    ? t('Save changes')
-                    : t('Create')}
-              </Button>
-            </SheetFooter>
           </form>
         </Form>
       </SheetContent>

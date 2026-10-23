@@ -17,8 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, KeyRound, Settings2, WalletCards } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -31,7 +29,6 @@ import {
   SideDrawerSection,
   SideDrawerSectionHeader,
   sideDrawerContentClassName,
-  sideDrawerFooterClassName,
   sideDrawerFormClassName,
   sideDrawerHeaderClassName,
   sideDrawerSwitchItemClassName,
@@ -57,8 +54,6 @@ import {
   Sheet,
   SheetClose,
   SheetContent,
-  SheetDescription,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
@@ -374,32 +369,29 @@ export function ApiKeysMutateDrawer({
       }}
     >
       <SheetContent
-        headerActions={
-          <Button
-            type='button'
-            variant='ghost'
-            size='icon-sm'
-            className='md:hidden'
-            onClick={form.handleSubmit(onSubmit, onInvalid)}
-            disabled={!isFormInitialized || isSubmitting}
-            aria-label={isSubmitting ? t('Saving...') : t('Save changes')}
-          >
-            <HugeiconsIcon icon={FloppyDiskIcon} />
-          </Button>
-        }
+        showCloseButton={false}
         className={sideDrawerContentClassName('max-w-none sm:!max-w-[620px]')}
       >
-        <SheetHeader
-          className={sideDrawerHeaderClassName('max-md:pr-[4.5rem]')}
-        >
-          <SheetTitle>
-            {isUpdate ? t('Update API Key') : t('Create API Key')}
-          </SheetTitle>
-          <SheetDescription>
-            {isUpdate
-              ? t('Update the API key by providing necessary info.')
-              : t('Add a new API key by providing necessary info.')}
-          </SheetDescription>
+        <SheetHeader className={sideDrawerHeaderClassName()}>
+          <div className='flex flex-row items-start justify-between gap-3'>
+            <div className='min-w-0'>
+              <SheetTitle>
+                {isUpdate ? t('Update API Key') : t('Create API Key')}
+              </SheetTitle>
+            </div>
+            <div className='flex shrink-0 flex-wrap items-center justify-end gap-2'>
+              <SheetClose render={<Button variant='outline' />}>
+                {t('Close')}
+              </SheetClose>
+              <Button
+                type='button'
+                onClick={form.handleSubmit(onSubmit, onInvalid)}
+                disabled={!isFormInitialized || isSubmitting}
+              >
+                {isSubmitting ? t('Saving...') : t('Save changes')}
+              </Button>
+            </div>
+          </div>
         </SheetHeader>
         <Form {...form}>
           <form
@@ -766,24 +758,6 @@ export function ApiKeysMutateDrawer({
                 </CollapsibleContent>
               </SideDrawerSection>
             </Collapsible>
-
-            <SheetFooter className={sideDrawerFooterClassName()}>
-              <SheetClose
-                render={
-                  <Button variant='outline' className='w-full sm:w-auto' />
-                }
-              >
-                {t('Close')}
-              </SheetClose>
-              <Button
-                type='button'
-                onClick={form.handleSubmit(onSubmit, onInvalid)}
-                disabled={!isFormInitialized || isSubmitting}
-                className='w-full sm:w-auto'
-              >
-                {isSubmitting ? t('Saving...') : t('Save changes')}
-              </Button>
-            </SheetFooter>
           </form>
         </Form>
       </SheetContent>

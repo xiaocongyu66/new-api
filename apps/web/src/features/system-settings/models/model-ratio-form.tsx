@@ -228,32 +228,39 @@ export const ModelRatioForm = memo(function ModelRatioForm({
           type='button'
           variant='destructive'
           size='sm'
+          className='max-sm:px-2'
           onClick={onReset}
           disabled={isResetting}
         >
-          <RotateCcw data-icon='inline-start' />
+          <RotateCcw data-icon='inline-start' className='max-sm:hidden' />
           {t('Reset prices')}
         </Button>
         {editMode === 'json' && (
           <Button
             type='button'
             size='sm'
+            className='max-sm:px-2'
             onClick={handleSave}
             disabled={isSaving}
           >
-            <Save data-icon='inline-start' />
+            <Save data-icon='inline-start' className='max-sm:hidden' />
             {isSaving ? t('Saving...') : t('Save model prices')}
           </Button>
         )}
-        <Button variant='outline' size='sm' onClick={toggleEditMode}>
+        <Button
+          variant='outline'
+          size='sm'
+          className='max-sm:px-2'
+          onClick={toggleEditMode}
+        >
           {editMode === 'visual' ? (
             <>
-              <Code2 className='mr-2 h-4 w-4' />
+              <Code2 className='mr-2 h-4 w-4 max-sm:hidden' />
               {t('Switch to JSON')}
             </>
           ) : (
             <>
-              <Eye className='mr-2 h-4 w-4' />
+              <Eye className='mr-2 h-4 w-4 max-sm:hidden' />
               {t('Switch to Visual')}
             </>
           )}

@@ -24,7 +24,6 @@ import {
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
-  AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
@@ -63,40 +62,44 @@ export function MissingModelsConfirmationDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={handleOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>
-            {t('Models not in list, may fail to invoke')}
-          </AlertDialogTitle>
-          <AlertDialogDescription
-            render={<div className='space-y-3 text-sm' />}
-          >
-            <div>
-              {t(
-                'The following models in the model redirect have not been added to the "Models" list and may fail during invocation due to missing available models:'
-              )}
+      <AlertDialogContent className='sm:max-w-lg'>
+        <AlertDialogHeader className='place-items-stretch text-left'>
+          <div className='flex flex-row items-start justify-between gap-3'>
+            <div className='min-w-0'>
+              <AlertDialogTitle>
+                {t('Models not in list, may fail to invoke')}
+              </AlertDialogTitle>
+              <AlertDialogDescription
+                render={<div className='space-y-3 text-sm' />}
+              >
+                <div>
+                  {t(
+                    'The following models in the model redirect have not been added to the "Models" list and may fail during invocation due to missing available models:'
+                  )}
+                </div>
+                <div className='rounded-md bg-red-50 p-2 font-mono text-xs break-all text-red-600 dark:bg-red-950/50 dark:text-red-400'>
+                  {missingModels.join(', ')}
+                </div>
+                <div>
+                  {t(
+                    'You can manually add them in "Custom Model Names", click "Fill" and then submit, or use the operations below to handle automatically.'
+                  )}
+                </div>
+              </AlertDialogDescription>
             </div>
-            <div className='rounded-md bg-red-50 p-2 font-mono text-xs break-all text-red-600 dark:bg-red-950/50 dark:text-red-400'>
-              {missingModels.join(', ')}
+            <div className='flex shrink-0 flex-wrap items-center justify-end gap-2'>
+              <AlertDialogCancel onClick={() => onConfirm('cancel')}>
+                {t('Go back and edit')}
+              </AlertDialogCancel>
+              <Button variant='secondary' onClick={() => onConfirm('submit')}>
+                {t('Submit directly')}
+              </Button>
+              <AlertDialogAction onClick={() => onConfirm('add')}>
+                {t('Add and submit')}
+              </AlertDialogAction>
             </div>
-            <div>
-              {t(
-                'You can manually add them in "Custom Model Names", click "Fill" and then submit, or use the operations below to handle automatically.'
-              )}
-            </div>
-          </AlertDialogDescription>
+          </div>
         </AlertDialogHeader>
-        <AlertDialogFooter className='flex-col gap-2 sm:flex-row'>
-          <AlertDialogCancel onClick={() => onConfirm('cancel')}>
-            {t('Go back and edit')}
-          </AlertDialogCancel>
-          <Button variant='secondary' onClick={() => onConfirm('submit')}>
-            {t('Submit directly')}
-          </Button>
-          <AlertDialogAction onClick={() => onConfirm('add')}>
-            {t('Add and submit')}
-          </AlertDialogAction>
-        </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
   )

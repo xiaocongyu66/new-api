@@ -54,7 +54,6 @@ export function CreemConfirmDialog({
       title={t('Confirm Creem Purchase')}
       description={t('Review your purchase details before proceeding.')}
       contentClassName='max-sm:w-[calc(100vw-1.5rem)] sm:max-w-[425px]'
-      footerClassName='grid grid-cols-2 gap-2 sm:flex'
       contentHeight='auto'
       bodyClassName='space-y-4'
       headerActions={

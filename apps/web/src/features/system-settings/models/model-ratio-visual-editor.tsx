@@ -23,7 +23,7 @@ import type {
   VisibilityState,
   SortingState,
 } from '@tanstack/react-table'
-import { Plus, Trash2 } from 'lucide-react'
+import { ListFilter, Plus, Trash2 } from 'lucide-react'
 import {
   useState,
   useMemo,
@@ -43,8 +43,9 @@ import {
   DataTablePagination,
   useDataTable,
 } from '@/components/data-table'
-import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/status-badge'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -154,6 +155,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [globalFilter, setGlobalFilter] = useState('')
+  const [onlyUnsetPrices, setOnlyUnsetPrices] = useState(false)
   const editorPanelRef = useRef<ModelPricingEditorPanelHandle>(null)
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
@@ -301,6 +303,16 @@ const ModelRatioVisualEditorComponent = forwardRef<
         } as Record<'per-token' | 'per-request' | 'tiered_expr', number>
       ),
     [models]
+  )
+
+  const unsetPriceCount = useMemo(
+    () => models.filter((model) => model.isPriceUnset).length,
+    [models]
+  )
+  const visibleModels = useMemo(
+    () =>
+      onlyUnsetPrices ? models.filter((model) => model.isPriceUnset) : models,
+    [models, onlyUnsetPrices]
   )
 
   const handleEdit = useCallback(
@@ -484,7 +496,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
   }, [])
 
   const { table } = useDataTable({
-    data: models,
+    data: visibleModels,
     columns,
     getRowId: (row) => row.name,
     ensurePageInRange,
@@ -656,12 +668,15 @@ const ModelRatioVisualEditorComponent = forwardRef<
   )
 
   const hasRows = table.getRowModel().rows.length > 0
+  const hasActiveColumnFilters = table.getState().columnFilters.length > 0
 
-  let emptyStateText = candidateModelsLoading
-    ? t('Loading...')
-    : t('No models configured. Use Add model to get started.')
-  if (table.getState().globalFilter) {
+  let emptyStateText = t('No models configured. Use Add model to get started.')
+  if (candidateModelsLoading) {
+    emptyStateText = t('Loading...')
+  } else if (table.getState().globalFilter || hasActiveColumnFilters) {
     emptyStateText = t('No models match your search')
+  } else if (onlyUnsetPrices) {
+    emptyStateText = t('No models with unset prices')
   }
 
   return (
@@ -671,6 +686,30 @@ const ModelRatioVisualEditorComponent = forwardRef<
         searchPlaceholder={t('Search models...')}
         searchDebounceMs={250}
         leftActions={toolbarLeft}
+        additionalSearch={
+          // 占满剩余宽度把按钮顶到搜索行行尾：筛选按钮排在「模式」之后。
+          <div className='flex flex-1 items-center justify-end'>
+            <Button
+              type='button'
+              variant={onlyUnsetPrices ? 'secondary' : 'outline'}
+              size='sm'
+              className='h-8 border-dashed'
+              aria-pressed={onlyUnsetPrices}
+              onClick={() => setOnlyUnsetPrices((previous) => !previous)}
+            >
+              <ListFilter data-icon='inline-start' />
+              {t('Unset price models')}
+              <Badge
+                variant='outline'
+                className='-mr-1 px-1.5 font-normal tabular-nums'
+              >
+                {unsetPriceCount}
+              </Badge>
+            </Button>
+          </div>
+        }
+        hasAdditionalFilters={onlyUnsetPrices}
+        onReset={() => setOnlyUnsetPrices(false)}
         filters={[
           {
             columnId: 'billingMode',

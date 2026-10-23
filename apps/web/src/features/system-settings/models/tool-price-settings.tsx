@@ -265,28 +265,48 @@ export const ToolPriceSettings = memo(function ToolPriceSettings({
 
       <SettingsPageActionsPortal>
         {editMode === 'visual' ? (
-          <Button variant='outline' size='sm' onClick={addRow}>
-            <Plus className='mr-2 h-4 w-4' />
+          <Button
+            variant='outline'
+            size='sm'
+            className='max-sm:px-2'
+            onClick={addRow}
+          >
+            <Plus className='mr-2 h-4 w-4 max-sm:hidden' />
             {t('Add')}
           </Button>
         ) : (
-          <Button variant='outline' size='sm' onClick={handleCopyJson}>
-            <Copy className='mr-2 h-4 w-4' />
+          <Button
+            variant='outline'
+            size='sm'
+            className='max-sm:px-2'
+            onClick={handleCopyJson}
+          >
+            <Copy className='mr-2 h-4 w-4 max-sm:hidden' />
             {t('Copy')}
           </Button>
         )}
-        <Button variant='outline' size='sm' onClick={resetToDefault}>
+        <Button
+          variant='outline'
+          size='sm'
+          className='max-sm:px-2'
+          onClick={resetToDefault}
+        >
           {t('Restore defaults')}
         </Button>
-        <Button variant='outline' size='sm' onClick={toggleEditMode}>
+        <Button
+          variant='outline'
+          size='sm'
+          className='max-sm:px-2'
+          onClick={toggleEditMode}
+        >
           {editMode === 'visual' ? (
             <>
-              <Code2 className='mr-2 h-4 w-4' />
+              <Code2 className='mr-2 h-4 w-4 max-sm:hidden' />
               {t('Switch to JSON')}
             </>
           ) : (
             <>
-              <Eye className='mr-2 h-4 w-4' />
+              <Eye className='mr-2 h-4 w-4 max-sm:hidden' />
               {t('Switch to Visual')}
             </>
           )}

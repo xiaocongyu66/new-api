@@ -28,7 +28,6 @@ import {
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
-  AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
@@ -320,25 +319,29 @@ export function BillingHistoryDialog({
         onOpenChange={(open) => !open && setConfirmTradeNo(null)}
       >
         <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('Complete Order')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t(
-                'Are you sure you want to manually complete this order? The user will be credited with the corresponding quota.'
-              )}
-            </AlertDialogDescription>
+          <AlertDialogHeader className='place-items-stretch text-left'>
+            <div className='flex flex-row items-start justify-between gap-3'>
+              <div className='min-w-0'>
+                <AlertDialogTitle>{t('Complete Order')}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t(
+                    'Are you sure you want to manually complete this order? The user will be credited with the corresponding quota.'
+                  )}
+                </AlertDialogDescription>
+              </div>
+              <div className='flex shrink-0 flex-wrap items-center justify-end gap-2'>
+                <AlertDialogCancel disabled={completing}>
+                  {t('Cancel')}
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleConfirmComplete}
+                  disabled={completing}
+                >
+                  {completing ? t('Processing...') : t('Confirm')}
+                </AlertDialogAction>
+              </div>
+            </div>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={completing}>
-              {t('Cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmComplete}
-              disabled={completing}
-            >
-              {completing ? t('Processing...') : t('Confirm')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </>

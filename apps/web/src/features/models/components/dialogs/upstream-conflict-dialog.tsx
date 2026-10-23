@@ -450,7 +450,6 @@ export function UpstreamConflictDialog({
       contentHeight='min(72vh, 720px)'
       bodyClassName='flex flex-col gap-4'
       initialFocus={!isMobile}
-      footerClassName='sm:justify-between'
       headerActions={
         <Button
           type='button'

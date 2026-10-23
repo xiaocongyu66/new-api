@@ -516,7 +516,6 @@ export function AdvancedCustomEditorDialog({
       description={t('Advanced Custom')}
       contentClassName='flex max-h-[90vh] flex-col gap-0 p-0 sm:max-w-5xl'
       headerClassName='border-b px-6 py-4'
-      footerClassName='border-t px-6 py-4'
       contentHeight='70vh'
       headerActions={
         <Button
