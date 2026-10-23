@@ -17,8 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowRight,
@@ -58,7 +56,6 @@ import { toast } from 'sonner'
 
 import {
   sideDrawerContentClassName,
-  sideDrawerFooterClassName,
   sideDrawerFormClassName,
   sideDrawerHeaderClassName,
 
@@ -97,7 +94,6 @@ import {
   SheetClose,
   SheetContent,
   SheetDescription,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
@@ -1761,21 +1757,7 @@ function ChannelMutateDrawerContent({
       >
         <SheetContent
           inline={isInline}
-          headerActions={
-            isInline ? undefined : (
-              <Button
-                type='submit'
-                form={editorFormId}
-                variant='ghost'
-                size='icon-sm'
-                className='md:hidden'
-                disabled={isSubmitting}
-                aria-label={isEditing ? t('Update Channel') : t('Save changes')}
-              >
-                <HugeiconsIcon icon={FloppyDiskIcon} />
-              </Button>
-            )
-          }
+          showCloseButton={false}
           className={cn(
             // Inline presentation is the page itself, not a panel: the drawer's
             // card surface painted a rounded box the height of the scroll
@@ -1789,9 +1771,7 @@ function ChannelMutateDrawerContent({
           )}
         >
           {!isInline && (
-            <SheetHeader
-              className={sideDrawerHeaderClassName('max-md:pr-[4.5rem]')}
-            >
+            <SheetHeader className={sideDrawerHeaderClassName()}>
               <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
                 <div className='min-w-0'>
                   <SheetTitle className='flex items-center gap-3'>
@@ -1815,7 +1795,26 @@ function ChannelMutateDrawerContent({
                         )}
                   </SheetDescription>
                 </div>
-                {editorActions}
+                <div className='flex shrink-0 flex-wrap items-center justify-end gap-2'>
+                  {editorActions}
+                  <SheetClose
+                    render={
+                      <Button variant='outline' disabled={isSubmitting} />
+                    }
+                  >
+                    {t('Cancel')}
+                  </SheetClose>
+                  <Button
+                    form={editorFormId}
+                    type='submit'
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting && (
+                      <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                    )}
+                    {t('Save')}
+                  </Button>
+                </div>
               </div>
             </SheetHeader>
           )}
@@ -4647,28 +4646,6 @@ function ChannelMutateDrawerContent({
                     </div>
                   </div>
                 </div>
-              )}
-
-              {!isInline && (
-                <SheetFooter className={sideDrawerFooterClassName()}>
-                  <SheetClose
-                    render={
-                      <Button variant='outline' disabled={isSubmitting} />
-                    }
-                  >
-                    {t('Cancel')}
-                  </SheetClose>
-                  <Button
-                    form={editorFormId}
-                    type='submit'
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting && (
-                      <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                    )}
-                    {isEditing ? t('Update Channel') : t('Save changes')}
-                  </Button>
-                </SheetFooter>
               )}
             </form>
           </Form>
