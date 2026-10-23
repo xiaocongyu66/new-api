@@ -83,6 +83,7 @@ GET /api/oauth/telegram/login
 GET /api/oauth/wechat
 GET /api/option/
 GET /api/option/channel_affinity_cache
+GET /api/option/smtp_pool_status
 GET /api/option/waffo-pancake/catalog
 GET /api/option/waffo-pancake/subscription-product-options
 GET /api/perf-metrics
