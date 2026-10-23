@@ -56,7 +56,7 @@ export function ConflictConfirmDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className='max-w-4xl'>
         <AlertDialogHeader className='place-items-stretch text-left'>
-          <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+          <div className='flex flex-row items-start justify-between gap-3'>
             <div className='min-w-0'>
               <AlertDialogTitle>{t('Confirm Billing Conflicts')}</AlertDialogTitle>
               <AlertDialogDescription>

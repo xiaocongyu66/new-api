@@ -74,7 +74,7 @@ export function PaymentConfirmDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className='max-sm:w-[calc(100vw-1.5rem)] sm:max-w-md'>
         <AlertDialogHeader className='place-items-stretch text-left'>
-          <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+          <div className='flex flex-row items-start justify-between gap-3'>
             <div className='min-w-0'>
               <AlertDialogTitle className='text-xl font-semibold'>
                 {t('Confirm Payment')}

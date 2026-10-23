@@ -54,7 +54,6 @@ import {
   Sheet,
   SheetClose,
   SheetContent,
-  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
@@ -374,30 +373,20 @@ export function ApiKeysMutateDrawer({
         className={sideDrawerContentClassName('max-w-none sm:!max-w-[620px]')}
       >
         <SheetHeader className={sideDrawerHeaderClassName()}>
-          <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+          <div className='flex flex-row items-start justify-between gap-3'>
             <div className='min-w-0'>
               <SheetTitle>
                 {isUpdate ? t('Update API Key') : t('Create API Key')}
               </SheetTitle>
-              <SheetDescription>
-                {isUpdate
-                  ? t('Update the API key by providing necessary info.')
-                  : t('Add a new API key by providing necessary info.')}
-              </SheetDescription>
             </div>
             <div className='flex shrink-0 flex-wrap items-center justify-end gap-2'>
-              <SheetClose
-                render={
-                  <Button variant='outline' className='w-full sm:w-auto' />
-                }
-              >
+              <SheetClose render={<Button variant='outline' />}>
                 {t('Close')}
               </SheetClose>
               <Button
                 type='button'
                 onClick={form.handleSubmit(onSubmit, onInvalid)}
                 disabled={!isFormInitialized || isSubmitting}
-                className='w-full sm:w-auto'
               >
                 {isSubmitting ? t('Saving...') : t('Save changes')}
               </Button>

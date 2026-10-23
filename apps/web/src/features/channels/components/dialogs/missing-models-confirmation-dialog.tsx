@@ -64,7 +64,7 @@ export function MissingModelsConfirmationDialog({
     <AlertDialog open={open} onOpenChange={handleOpenChange}>
       <AlertDialogContent className='sm:max-w-lg'>
         <AlertDialogHeader className='place-items-stretch text-left'>
-          <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+          <div className='flex flex-row items-start justify-between gap-3'>
             <div className='min-w-0'>
               <AlertDialogTitle>
                 {t('Models not in list, may fail to invoke')}

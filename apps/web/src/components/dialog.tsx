@@ -92,12 +92,7 @@ export function Dialog({
             headerClassName
           )}
         >
-          <div
-            className={cn(
-              'flex flex-col gap-3',
-              footer && 'sm:flex-row sm:items-start sm:justify-between'
-            )}
-          >
+          <div className='flex flex-row items-start justify-between gap-3'>
             <div className='min-w-0'>
               <DialogTitle className={titleClassName}>{title}</DialogTitle>
               {description ? (

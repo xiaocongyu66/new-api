@@ -245,7 +245,7 @@ export function RedemptionsMutateDrawer({
         className={sideDrawerContentClassName('sm:max-w-[600px]')}
       >
         <SheetHeader className={sideDrawerHeaderClassName()}>
-          <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+          <div className='flex flex-row items-start justify-between gap-3'>
             <div className='min-w-0'>
               <SheetTitle>
                 {isUpdate

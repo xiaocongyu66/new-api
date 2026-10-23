@@ -66,7 +66,6 @@ import {
   Sheet,
   SheetClose,
   SheetContent,
-  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
@@ -748,18 +747,11 @@ export function ModelMutateDrawer({
         className={sideDrawerContentClassName('sm:max-w-2xl')}
       >
         <SheetHeader className={sideDrawerHeaderClassName()}>
-          <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+          <div className='flex flex-row items-start justify-between gap-3'>
             <div className='min-w-0'>
               <SheetTitle>
                 {isEditing ? t('Edit Model') : t('Create Model')}
               </SheetTitle>
-              <SheetDescription>
-                {isEditing
-                  ? t("Update model configuration and click save when you're done.")
-                  : t(
-                      'Add a new model to the system by providing the necessary information.'
-                    )}
-              </SheetDescription>
             </div>
             <div className='flex shrink-0 flex-wrap items-center justify-end gap-2'>
               <SheetClose

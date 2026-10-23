@@ -1772,7 +1772,7 @@ function ChannelMutateDrawerContent({
         >
           {!isInline && (
             <SheetHeader className={sideDrawerHeaderClassName()}>
-              <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+              <div className='flex flex-row items-start justify-between gap-3'>
                 <div className='min-w-0'>
                   <SheetTitle className='flex items-center gap-3'>
                     <IconBadge tone='info' size='title'>
@@ -2698,7 +2698,7 @@ function ChannelMutateDrawerContent({
                                 name='advanced_custom'
                                 render={({ field }) => (
                                   <FormItem className='space-y-3 border-y py-4'>
-                                    <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+                                    <div className='flex flex-row items-start justify-between gap-3'>
                                       <div className='space-y-2'>
                                         <FormLabel>
                                           {t('Advanced Custom Routes')}
