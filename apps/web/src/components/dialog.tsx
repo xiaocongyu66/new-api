@@ -22,7 +22,6 @@ import {
   Dialog as DialogRoot,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -41,7 +40,6 @@ type DialogProps = React.ComponentProps<typeof DialogRoot> & {
   titleClassName?: string
   descriptionClassName?: string
   bodyClassName?: string
-  footerClassName?: string
   initialFocus?: boolean
   showCloseButton?: boolean
   headerActions?: React.ReactNode
@@ -62,7 +60,6 @@ export function Dialog({
   titleClassName,
   descriptionClassName,
   bodyClassName,
-  footerClassName,
   initialFocus,
   showCloseButton,
   headerActions,
@@ -78,8 +75,8 @@ export function Dialog({
           dialogContentMotionClassName
         )}
         initialFocus={initialFocus}
-        showCloseButton={showCloseButton}
-        headerActions={headerActions}
+        showCloseButton={footer ? false : showCloseButton}
+        headerActions={footer ? undefined : headerActions}
         style={
           {
             '--dialog-content-height': contentHeight,
@@ -89,19 +86,32 @@ export function Dialog({
         <DialogHeader
           className={cn(
             'flex-shrink-0 text-start',
-            // Keep the title clear of the top-right action cluster on
-            // phones: two 1.75rem icon buttons plus the 0.25rem gap,
-            // offset by right-2 (0.5rem).
-            headerActions && 'max-md:pr-[4.5rem]',
+            // Keep the title clear of the top-right icon cluster on phones
+            // when no action row replaces it.
+            !footer && headerActions && 'max-md:pr-[4.5rem]',
             headerClassName
           )}
         >
-          <DialogTitle className={titleClassName}>{title}</DialogTitle>
-          {description ? (
-            <DialogDescription className={descriptionClassName}>
-              {description}
-            </DialogDescription>
-          ) : null}
+          <div
+            className={cn(
+              'flex flex-col gap-3',
+              footer && 'sm:flex-row sm:items-start sm:justify-between'
+            )}
+          >
+            <div className='min-w-0'>
+              <DialogTitle className={titleClassName}>{title}</DialogTitle>
+              {description ? (
+                <DialogDescription className={descriptionClassName}>
+                  {description}
+                </DialogDescription>
+              ) : null}
+            </div>
+            {footer ? (
+              <div className='flex shrink-0 flex-wrap items-center justify-end gap-2'>
+                {footer}
+              </div>
+            ) : null}
+          </div>
         </DialogHeader>
 
         <div
@@ -120,17 +130,6 @@ export function Dialog({
           >
             {children}
           </div>
-
-          {footer ? (
-            <DialogFooter
-              className={cn(
-                'gap-2 pt-4 sm:-mx-6 sm:-mb-6 sm:justify-end sm:p-6',
-                footerClassName
-              )}
-            >
-              {footer}
-            </DialogFooter>
-          ) : null}
         </div>
       </DialogContent>
     </DialogRoot>

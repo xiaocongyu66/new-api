@@ -17,8 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
 import { useQuery } from '@tanstack/react-query'
 import { Pencil } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -30,7 +28,6 @@ import {
   SideDrawerSection,
   SideDrawerSectionHeader,
   sideDrawerContentClassName,
-  sideDrawerFooterClassName,
   sideDrawerFormClassName,
   sideDrawerHeaderClassName,
 } from '@/components/drawer-layout'
@@ -60,7 +57,6 @@ import {
   SheetClose,
   SheetContent,
   SheetDescription,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
@@ -229,33 +225,31 @@ export function UsersMutateDrawer({
         }}
       >
         <SheetContent
-          headerActions={
-            <Button
-              type='submit'
-              form='user-form'
-              variant='ghost'
-              size='icon-sm'
-              className='md:hidden'
-              disabled={isSubmitting}
-              aria-label={isSubmitting ? t('Saving...') : t('Save changes')}
-            >
-              <HugeiconsIcon icon={FloppyDiskIcon} />
-            </Button>
-          }
+          showCloseButton={false}
           className={sideDrawerContentClassName('sm:max-w-[600px]')}
         >
-          <SheetHeader
-            className={sideDrawerHeaderClassName('max-md:pr-[4.5rem]')}
-          >
-            <SheetTitle>
-              {isUpdate ? t('Update') : t('Create')} {t('User')}
-            </SheetTitle>
-            <SheetDescription>
-              {isUpdate
-                ? t('Update the user by providing necessary info.')
-                : t('Add a new user by providing necessary info.')}
-            </SheetDescription>
-          </SheetHeader>
+        <SheetHeader className={sideDrawerHeaderClassName()}>
+          <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+            <div className='min-w-0'>
+              <SheetTitle>
+                {isUpdate ? t('Update') : t('Create')} {t('User')}
+              </SheetTitle>
+              <SheetDescription>
+                {isUpdate
+                  ? t('Update the user by providing necessary info.')
+                  : t('Add a new user by providing necessary info.')}
+              </SheetDescription>
+            </div>
+            <div className='flex shrink-0 flex-wrap items-center justify-end gap-2'>
+              <SheetClose render={<Button variant='outline' />}>
+                {t('Close')}
+              </SheetClose>
+              <Button form='user-form' type='submit' disabled={isSubmitting}>
+                {isSubmitting ? t('Saving...') : t('Save changes')}
+              </Button>
+            </div>
+          </div>
+        </SheetHeader>
           <Form {...form}>
             <form
               id='user-form'
@@ -586,15 +580,6 @@ export function UsersMutateDrawer({
                   </div>
                 </SideDrawerSection>
               )}
-
-              <SheetFooter className={sideDrawerFooterClassName()}>
-                <SheetClose render={<Button variant='outline' />}>
-                  {t('Close')}
-                </SheetClose>
-                <Button form='user-form' type='submit' disabled={isSubmitting}>
-                  {isSubmitting ? t('Saving...') : t('Save changes')}
-                </Button>
-              </SheetFooter>
             </form>
           </Form>
         </SheetContent>

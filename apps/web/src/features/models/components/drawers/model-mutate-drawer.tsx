@@ -17,8 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, Loader2 } from 'lucide-react'
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
@@ -31,7 +29,6 @@ import {
   SideDrawerSection,
   SideDrawerSectionHeader,
   sideDrawerContentClassName,
-  sideDrawerFooterClassName,
   sideDrawerFormClassName,
   sideDrawerHeaderClassName,
   sideDrawerSwitchItemClassName,
@@ -70,7 +67,6 @@ import {
   SheetClose,
   SheetContent,
   SheetDescription,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
@@ -748,34 +744,37 @@ export function ModelMutateDrawer({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
-        headerActions={
-          <Button
-            type='submit'
-            form='model-form'
-            variant='ghost'
-            size='icon-sm'
-            className='md:hidden'
-            disabled={isSubmitting}
-            aria-label={isEditing ? t('Update Model') : t('Save changes')}
-          >
-            <HugeiconsIcon icon={FloppyDiskIcon} />
-          </Button>
-        }
+        showCloseButton={false}
         className={sideDrawerContentClassName('sm:max-w-2xl')}
       >
-        <SheetHeader
-          className={sideDrawerHeaderClassName('max-md:pr-[4.5rem]')}
-        >
-          <SheetTitle>
-            {isEditing ? t('Edit Model') : t('Create Model')}
-          </SheetTitle>
-          <SheetDescription>
-            {isEditing
-              ? t("Update model configuration and click save when you're done.")
-              : t(
-                  'Add a new model to the system by providing the necessary information.'
+        <SheetHeader className={sideDrawerHeaderClassName()}>
+          <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+            <div className='min-w-0'>
+              <SheetTitle>
+                {isEditing ? t('Edit Model') : t('Create Model')}
+              </SheetTitle>
+              <SheetDescription>
+                {isEditing
+                  ? t("Update model configuration and click save when you're done.")
+                  : t(
+                      'Add a new model to the system by providing the necessary information.'
+                    )}
+              </SheetDescription>
+            </div>
+            <div className='flex shrink-0 flex-wrap items-center justify-end gap-2'>
+              <SheetClose
+                render={<Button variant='outline' disabled={isSubmitting} />}
+              >
+                {t('Cancel')}
+              </SheetClose>
+              <Button form='model-form' type='submit' disabled={isSubmitting}>
+                {isSubmitting && (
+                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
                 )}
-          </SheetDescription>
+                {isEditing ? t('Update Model') : t('Save changes')}
+              </Button>
+            </div>
+          </div>
         </SheetHeader>
 
         <Form {...form}>
@@ -1405,20 +1404,6 @@ export function ModelMutateDrawer({
                 )}
               />
             </SideDrawerSection>
-
-            <SheetFooter className={sideDrawerFooterClassName()}>
-              <SheetClose
-                render={<Button variant='outline' disabled={isSubmitting} />}
-              >
-                {t('Cancel')}
-              </SheetClose>
-              <Button form='model-form' type='submit' disabled={isSubmitting}>
-                {isSubmitting && (
-                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                )}
-                {isEditing ? t('Update Model') : t('Save changes')}
-              </Button>
-            </SheetFooter>
           </form>
         </Form>
       </SheetContent>
