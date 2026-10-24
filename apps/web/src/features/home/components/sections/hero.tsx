@@ -118,23 +118,6 @@ export function Hero(props: HeroProps) {
             )}
           </div>
 
-          <div
-            className='landing-animate-fade-up text-muted-foreground/60 mt-9 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs opacity-0'
-            style={{ animationDelay: '240ms' }}
-          >
-            <span className='flex items-center gap-1.5'>
-              <span className='bg-primary size-1.5 rounded-full' />
-              {t('home.hero.point.free')}
-            </span>
-            <span className='flex items-center gap-1.5'>
-              <span className='bg-warning size-1.5 rounded-full' />
-              {t('home.hero.point.checkin')}
-            </span>
-            <span className='flex items-center gap-1.5'>
-              <span className='bg-chart-4 size-1.5 rounded-full' />
-              {t('home.hero.point.roleplay')}
-            </span>
-          </div>
         </div>
 
         <div

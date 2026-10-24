@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Ban, Code2, Drama, TriangleAlert } from 'lucide-react'
+import { Drama } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 /**
@@ -76,30 +76,6 @@ export function UsagePolicy() {
             </ul>
           </div>
 
-          {/* Prohibited — code generation. Stated as a rule. */}
-          <div className='border-destructive/30 bg-card-surface backdrop-blur-card flex flex-col gap-4 rounded-xl border p-6 shadow-sm'>
-            <div className='flex items-center gap-3'>
-              <span className='border-destructive/25 bg-destructive/10 text-destructive inline-flex size-10 items-center justify-center rounded-lg border'>
-                <Ban className='size-5' />
-              </span>
-              <h3 className='text-base font-semibold'>
-                {t('home.policy.forbidden.title')}
-              </h3>
-            </div>
-            <p className='text-muted-foreground/80 text-sm leading-relaxed'>
-              {t('home.policy.forbidden.body')}
-            </p>
-            <div className='border-destructive/25 bg-muted/40 flex items-start gap-2.5 rounded-lg border p-3 shadow-xs'>
-              <Code2 className='text-destructive mt-0.5 size-4 shrink-0' />
-              <p className='text-[13px] leading-relaxed'>
-                {t('home.policy.forbidden.rule')}
-              </p>
-            </div>
-            <div className='text-muted-foreground/70 flex items-start gap-2 text-xs leading-relaxed'>
-              <TriangleAlert className='mt-0.5 size-3.5 shrink-0' />
-              {t('home.policy.forbidden.consequence')}
-            </div>
-          </div>
         </div>
       </div>
     </section>
