@@ -74,6 +74,33 @@ start-wt:
     TZ=Asia/Shanghai \
     "{{ GO_BIN_CACHE }}/$bin_name"
 
+# Dev mode with credential-free login: local Go binary built with the `dev`
+# build tag, and DEV_AUTO_LOGIN=1 so the endpoint answers.
+#
+# The `dev` tag compiles in /api/user/dev/auto-login, which provisions a
+# throw-away root account and mints a real session for it. It is NOT a
+# production feature: CI and the release build never pass this tag, so the
+# route does not exist in any shipped binary. The separate "-dev" binary name
+# keeps it from overwriting the plain start-wt binary.
+#
+# To look at real login flows instead, use `just start-wt` / `just dev-wt`, or
+# open the app with ?dev-login=off while this is running.
+start-wt-dev:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    branch="$(git branch --show-current 2>/dev/null || echo 'detached')"
+    bin_name="new-api-$(echo "$branch" | tr '/' '-')-dev"
+    mkdir -p "{{ GO_BIN_CACHE }}"
+    echo "Building Go binary for branch: $branch (tag=dev, auto-login ENABLED)..."
+    cd "{{ API_DIR }}" && GOWORK=off go build -tags dev -o "{{ GO_BIN_CACHE }}/$bin_name" .
+    echo "Starting API: {{ GO_BIN_CACHE }}/$bin_name  (port 3000)"
+    SQL_DSN="postgresql://root:123456@localhost:5432/new-api" \
+    REDIS_CONN_STRING="redis://localhost:6379" \
+    SESSION_COOKIE_SECURE=false \
+    TZ=Asia/Shanghai \
+    DEV_AUTO_LOGIN=1 \
+    "{{ GO_BIN_CACHE }}/$bin_name"
+
 # Full worktree dev: docker DBs + local Go API binary + web HMR (all background)
 # This is the recommended entry point for agent-driven UI/API development.
 dev-wt: dev-db
@@ -91,6 +118,31 @@ dev-wt: dev-db
     echo "  API:  http://localhost:3000"
     echo "  Web:  http://localhost:{{ DEV_WEB_PORT }}"
     echo "  (web HMR proxies /api to API)"
+    echo ""
+    echo "Press Ctrl+C to stop both."
+    trap 'kill $API_PID $WEB_PID 2>/dev/null' EXIT INT TERM
+    wait
+
+# Full worktree dev with credential-free login: same as dev-wt, but the local
+# binary carries the `dev` build tag and answers /api/user/dev/auto-login, so
+# the browser lands logged-in. See start-wt-dev for what that tag does and does
+# not reach. Use `just dev-wt` when you want to exercise real login flows.
+dev-wt-dev: dev-db
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Starting Go API binary in background (dev tag, auto-login ENABLED)..."
+    just start-wt-dev &
+    API_PID=$!
+    sleep 1
+    echo "Starting web dev server (HMR)..."
+    just dev-web &
+    WEB_PID=$!
+    echo ""
+    echo "=== Worktree dev environment ready (auto-login ON) ==="
+    echo "  API:  http://localhost:3000"
+    echo "  Web:  http://localhost:{{ DEV_WEB_PORT }}"
+    echo "  (web HMR proxies /api to API)"
+    echo "  Disable auto-login without restarting: open with ?dev-login=off"
     echo ""
     echo "Press Ctrl+C to stop both."
     trap 'kill $API_PID $WEB_PID 2>/dev/null' EXIT INT TERM

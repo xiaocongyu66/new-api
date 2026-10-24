@@ -77,6 +77,42 @@ jobs:
         working-directory: apps/api/modules/relaykit
         run: GOWORK=off go test ./...
 
+  # `dev`-tagged code (the local dev auto-login endpoint) is never shipped, but
+  # it still has to compile — otherwise it rots unnoticed and only breaks the
+  # developer who turns it on. Compile only: no tests, and the tag never reaches
+  # a release build.
+  backend-dev-tag:
+    name: Backend build with dev tag
+    if: github.event.action != 'closed' || github.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOWORK: 'off'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: ${{ github.event_name == 'pull_request' && github.event.action != 'closed' && github.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.action != 'closed' && github.pull_request.head.sha || github.sha }}
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: apps/api/go.mod
+          cache-dependency-path: |
+            apps/api/go.sum
+            apps/api/modules/relaykit/go.sum
+
+      - name: Create frontend embed placeholder
+        run: |
+          mkdir -p apps/api/web/dist
+          touch apps/api/web/dist/index.html
+
+      - name: Build api module with dev tag
+        working-directory: apps/api
+        run: go build -tags dev ./...
+
   frontend:
     name: Frontend typecheck and test
     if: github.event.action != 'closed' || github.event.pull_request.merged == true

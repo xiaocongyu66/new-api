@@ -116,6 +116,10 @@ func loginMethodFromContext(c contract.Context) string {
 	switch c.FullPath() {
 	case "/api/user/login":
 		return "password"
+	case "/api/user/dev/auto-login":
+		// Only routed under the `dev` build tag; naming it here keeps the
+		// session and audit rows honest about how that session was created.
+		return "dev-auto-login"
 	case "/api/user/login/2fa":
 		return "2fa"
 	case "/api/user/passkey/login/finish":

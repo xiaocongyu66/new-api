@@ -160,6 +160,20 @@ Proof 同时绑定用户、登录会话、用户鉴权版本、会话版本和 s
 
 启用了 2FA 的用户注册 Passkey 时，register begin 与 finish 都必须携带有效的 `passkey.register` Proof；finish 会在消费一次性 AuthFlow 之前重新验证 Proof。未启用 2FA 的首次 Passkey 注册不要求该请求头。
 
+## 开发期免登录（dev build tag）
+
+本地开发可以省略输入账号密码这一步：用 `just dev-wt-dev`（或 `just start-wt-dev`）启动时，Go 二进制带 `-tags dev` 编译，并设置 `DEV_AUTO_LOGIN=1`，后端随即注册 `POST /api/user/dev/auto-login`。前端在 `import.meta.env.DEV` 下于路由 `beforeLoad` 检测到无有效会话时自动调用它，链路末端仍是正常的 `CreateLoginSession`，签发真实的 Access Token、Refresh Cookie 与 `user_sessions` 行，只是跳过了凭据校验这一步。
+
+该端点的账号是复用的固定名 `dev-auto-login` root 账号，已存在则按需修复角色与状态，不会每次刷新都新建账号；`session.login_method` 与登录审计日志记录为 `dev-auto-login`，因此它产生的会话永远可以从真实密码登录中区分出来。
+
+**这不是生产特性，也不会进入生产构建。**
+
+- 实现代码在 `apps/api/internal/identity/dev_autologin.go`（处理器）与 `apps/api/internal/transport/compose/register_dev_autologin.go`（路由挂载），均带 `//go:build dev`；不带该 tag 时由各自 `*_stub.go` 的空实现替代，路由根本不注册，请求落到 SPA fallback。CI 的发布路径（`go build -tags "${SINGBOX_TAGS}"`、Dockerfile、release workflow）从不传 `dev`，因此该路由在一切发布产物中都不存在。路由挂载放在 compose 而不是 identity，是因为给 identity 里的路由装 middleware 会引入回 identity 的导入环。
+- 运行时还需显式的 `DEV_AUTO_LOGIN=1` 才生效；仅编译进 tag 而忘记设变量时，端点返回 404 而不是放开登录。
+- CI 有 `Backend build with dev tag` 任务只做 `go build -tags dev ./...`，保证这段不进发布的代码仍然保持可编译，不会在无人察觉中腐坏。
+
+需要照常验证登录页、未登录态、权限拦截或真实认证链路时，用 `just dev-wt`；若已在自动登录状态，前端也可通过 `?dev-login=off` 查询参数或写入 `localStorage` 的 `new-api:dev-auto-login-disabled=1` 单独跳过，无需重启后端。
+
 ## 升级注意事项
 
 - 旧 `session` Cookie 不再使用；升级后现有面板登录会失效，用户需要重新登录。

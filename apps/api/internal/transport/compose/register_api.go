@@ -127,6 +127,9 @@ func SetApiRouter(router contract.Engine) {
 			userRoute.POST("/auth/logout", security.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), middleware.DisableCache(), identity.AuthLogout)
 			userRoute.POST("/register", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, middleware.TurnstileCheck(), identity.Register)
 			userRoute.POST("/login", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, middleware.TurnstileCheck(), identity.Login)
+			// Dev-only credential-free login. Compiled out entirely without the
+			// `dev` build tag, so a production binary serves 404 here.
+			registerDevAutoLogin(userRoute)
 			userRoute.POST("/login/2fa", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, identity.Verify2FALogin)
 			userRoute.POST("/passkey/login/begin", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, identity.PasskeyLoginBegin)
 			userRoute.POST("/passkey/login/finish", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, identity.PasskeyLoginFinish)
