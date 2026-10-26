@@ -2,7 +2,7 @@
 # Skips frontend build and uses a placeholder for //go:embed web/dist
 # （方案 A：占位产物写入 apps/api/web/dist，与正式构建的拷贝目标一致）
 
-FROM golang:1.26.1-alpine AS builder
+FROM golang:1.27.3-alpine AS builder
 
 ENV GO111MODULE=on CGO_ENABLED=0
 ARG TARGETOS
