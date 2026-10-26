@@ -8,9 +8,8 @@ import (
 	"github.com/sagernet/sing-box/protocol/wireguard"
 )
 
-func registerWireGuardOutbound(registry *outbound.Registry) {
-	wireguard.RegisterOutbound(registry)
-}
+// sing-box v1.14 removed the WireGuard outbound (WireGuard is endpoint-only now).
+func registerWireGuardOutbound(*outbound.Registry) {}
 
 func registerWireGuardEndpoint(registry *endpoint.Registry) {
 	wireguard.RegisterEndpoint(registry)

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	box "github.com/sagernet/sing-box"
+	"github.com/sagernet/sing-box/adapter/certificate"
 	"github.com/sagernet/sing-box/adapter/endpoint"
 	"github.com/sagernet/sing-box/adapter/inbound"
 	"github.com/sagernet/sing-box/adapter/outbound"
@@ -36,6 +37,7 @@ func newProxyBoxContext(ctx context.Context) context.Context {
 		newEndpointRegistry(),
 		newDNSTransportRegistry(),
 		boxservice.NewRegistry(),
+		certificate.NewRegistry(),
 	)
 }
 
