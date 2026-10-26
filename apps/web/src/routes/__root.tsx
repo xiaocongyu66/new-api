@@ -43,6 +43,7 @@ import {
   clearAuthentication,
 } from '@/lib/auth-session'
 import { subscribeAuthSessionEvents } from '@/lib/auth-session-sync'
+import { devAutoLogin } from '@/lib/dev-auto-login'
 import { resolveLegacyRoute } from '@/lib/legacy-route'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -158,7 +159,8 @@ export const Route = createRootRouteWithContext<{
     const pathname = location?.pathname || ''
     const needsSetupCheck =
       !setupStatusChecked && !pathname.startsWith('/setup')
-    const authBootstrap = bootstrapAuthentication()
+    // dev 免登录并入同一条 Promise，不额外增加一次导航前的串行等待。
+    const authBootstrap = devAutoLogin().then(() => bootstrapAuthentication())
 
     // 只检查 setup 状态（如果需要）
     if (needsSetupCheck) {
