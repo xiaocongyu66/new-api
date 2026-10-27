@@ -186,7 +186,7 @@ body,
    * lifted so the light UI never rests on a black field. The background
    * scrim slider (0-100) supplies the alpha (provider writes an inline
    * override with the matching color base). */
-  --app-background-scrim: oklch(0.93 0.006 260 / 30%);
+  --app-background-scrim: oklch(0.93 0.006 260 / 55%);
   /* Overlay scrim used by modal surfaces; keep the surface opacity separate. */
   --background-scrim: oklch(0 0 0 / 28%);
   /* Static build-channel fallback consumed when JS hasn't booted yet. */
