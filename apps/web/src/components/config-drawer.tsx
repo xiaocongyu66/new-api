@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Radio as RadioPrimitive } from '@base-ui/react/radio'
 import { RadioGroup as Radio } from '@base-ui/react/radio-group'
-import { CircleCheck, Palette, RotateCcw } from 'lucide-react'
+import { CircleCheck, Palette, RotateCcw, X } from 'lucide-react'
 import { type ComponentProps, type SVGProps, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -47,6 +47,7 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
+  SheetClose,
 } from '@/components/ui/sheet'
 import { useDirection } from '@/context/direction-provider'
 import {
@@ -127,21 +128,13 @@ export function ConfigDrawer({
         className={sideDrawerContentClassName('sm:max-w-md')}
         finalFocus={finalFocus}
       >
-        <SheetHeader className={sideDrawerHeaderClassName()}>
-          <div className='flex flex-row items-start justify-between gap-3'>
-            <div className='min-w-0'>
+        <SheetHeader className={cn(sideDrawerHeaderClassName(), 'py-2 sm:py-2.5')}>
+          <div className='flex flex-row items-center justify-between gap-3'>
+            <div className='flex items-center gap-2'>
               <SheetTitle>{t('Theme management')}</SheetTitle>
-              <SheetDescription id={descriptionId}>
+              <SheetDescription id={descriptionId} className='text-xs'>
                 {t('Adjust the appearance and layout to suit your preferences.')}
               </SheetDescription>
-              <p
-                className='text-muted-foreground mt-1 text-xs'
-                data-testid='theme-persistence-status'
-              >
-                {themePinnedToServer
-                  ? t('Saved to the server — the same theme applies on every device.')
-                  : t('Saved in this browser only — sign in as an administrator to share it.')}
-              </p>
             </div>
             <div className='flex shrink-0 items-center justify-end gap-2'>
               <Button
@@ -151,6 +144,12 @@ export function ConfigDrawer({
               >
                 {t('Reset')}
               </Button>
+              <SheetClose
+                render={<Button variant='ghost' size='icon-sm' />}
+                aria-label={t('Close')}
+              >
+                <X className='size-4' />
+              </SheetClose>
             </div>
           </div>
         </SheetHeader>
