@@ -11,6 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
+	"github.com/QuantumNous/new-api/internal/homestats"
 )
 
 // RegisterScheduledSystemTasks wires the periodic channel test, upstream model
@@ -22,6 +23,7 @@ func RegisterScheduledSystemTasks() {
 	ops.RegisterSystemTaskHandler(channelTestHandler{})
 	ops.RegisterSystemTaskHandler(modelUpdateHandler{})
 	ops.RegisterSystemTaskHandler(midjourneyPollHandler{})
+	ops.RegisterSystemTaskHandler(homeStatsDailyHandler{})
 	ops.RegisterSystemTaskHandler(asyncTaskPollHandler{})
 }
 
@@ -150,6 +152,28 @@ func (asyncTaskPollHandler) NewPayload() any { return nil }
 func (asyncTaskPollHandler) Run(ctx context.Context, task *ops.SystemTask, runnerID string) {
 	summary := taskdomain.RunTaskPollingOnce(ctx, ops.NewSystemTaskProgressReporter(task, runnerID))
 	finishSystemTaskHandler(task, runnerID, ops.SystemTaskStatusSucceeded, summary, nil)
+}
+
+// homeStatsDailyHandler runs the scheduled daily home stats computation job.
+type homeStatsDailyHandler struct{}
+
+func (homeStatsDailyHandler) Type() string { return ops.SystemTaskTypeHomeStats }
+
+func (homeStatsDailyHandler) Enabled() bool {
+	return common.GetEnvOrDefaultBool("HOME_STATS_TASK_ENABLED", true)
+}
+
+func (homeStatsDailyHandler) Interval() time.Duration { return 24 * time.Hour }
+
+func (homeStatsDailyHandler) NewPayload() any { return nil }
+
+func (homeStatsDailyHandler) Run(ctx context.Context, task *ops.SystemTask, runnerID string) {
+	_, err := homestats.ComputeAndCache(ctx)
+	if err != nil {
+		finishSystemTaskHandler(task, runnerID, ops.SystemTaskStatusFailed, nil, err)
+		return
+	}
+	finishSystemTaskHandler(task, runnerID, ops.SystemTaskStatusSucceeded, nil, nil)
 }
 
 func finishSystemTaskHandler(task *ops.SystemTask, runnerID string, status ops.SystemTaskStatus, result any, runErr error) {

@@ -27,6 +27,7 @@ func SetApiRouter(router contract.Engine) {
 		apiRouter.GET("/setup", ops.GetSetup)
 		apiRouter.POST("/setup", anonymousRequestBodyLimit, ops.PostSetup)
 		apiRouter.GET("/status", handler.GetStatus)
+		apiRouter.GET("/home_stats", handler.GetHomeStats)
 		apiRouter.GET("/uptime/status", ops.GetUptimeKumaStatus)
 		apiRouter.GET("/models", security.UserAuth(), handler.DashboardListModels)
 		apiRouter.GET("/status/test", security.AdminAuth(), handler.TestStatus)
