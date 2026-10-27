@@ -158,7 +158,7 @@ export const SURFACE_DEFAULTS = {
     cardBlur: true,
     surfaceOpacity: 80,
     surfaceBlur: 2,
-    backgroundScrim: 30,
+    backgroundScrim: 55,
     sheetOpacity: 90,
     floatOpacity: 90,
   },
