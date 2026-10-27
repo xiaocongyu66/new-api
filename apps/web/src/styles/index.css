@@ -626,33 +626,23 @@ html.dark body[data-app-background='true'] {
   @apply after:pointer-events-none after:absolute after:start-0 after:bottom-0 after:hidden after:h-32 after:w-full after:rounded-b-2xl after:bg-[linear-gradient(180deg,_transparent_10%,_var(--background)_70%)] md:after:block;
 }
 
-.CollapsibleContent {
+[data-slot='collapsible-content'] {
   overflow: hidden;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .CollapsibleContent[data-open] {
-    animation: slideDown 300ms ease-out;
-  }
-  .CollapsibleContent:not([data-open]) {
-    animation: slideUp 300ms ease-out;
-  }
+  height: var(--collapsible-panel-height);
+  transition:
+    height 250ms ease-out,
+    opacity 200ms ease-out;
 }
 
-@keyframes slideDown {
-  from {
-    height: 0;
-  }
-  to {
-    height: var(--collapsible-panel-height);
-  }
+[data-slot='collapsible-content'][data-starting-style],
+[data-slot='collapsible-content'][data-ending-style] {
+  height: 0;
+  opacity: 0;
 }
 
-@keyframes slideUp {
-  from {
-    height: var(--collapsible-panel-height);
-  }
-  to {
-    height: 0;
+@media (prefers-reduced-motion: reduce) {
+  [data-slot='collapsible-content'] {
+    transition: none;
   }
 }
 
