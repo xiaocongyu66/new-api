@@ -57,6 +57,7 @@ GET /api/data/users
 GET /api/geoip/database
 GET /api/group/
 GET /api/home_page_content
+GET /api/home_stats
 GET /api/insight-sample
 GET /api/insight-sample-group
 GET /api/insight-sample/:id

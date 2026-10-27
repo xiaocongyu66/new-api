@@ -16,12 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ArrowRight, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { useSystemConfig } from '@/hooks/use-system-config'
+import { getHomeStats, type HomeStats } from '@/lib/api'
+import { formatNumber, formatPercent } from '@/lib/format'
 
 interface HeroProps {
   className?: string
@@ -29,9 +32,23 @@ interface HeroProps {
 }
 
 export function Hero(props: HeroProps) {
-  const { t } = useTranslation()
   const { systemName } = useSystemConfig()
   const displayName = systemName || 'New API'
+  const { t } = useTranslation()
+
+  const { data: homeStats, isLoading, isError } = useQuery<HomeStats | undefined>({
+    queryKey: ['home-stats'],
+    queryFn: getHomeStats,
+    staleTime: 10 * 60_000,
+    retry: false,
+  })
+
+  const requests = homeStats?.requests ?? 0
+  const successRate = homeStats?.success_rate ?? 0
+  const failureRate = homeStats?.failure_rate ?? 0
+
+  // 无流量日后端返回 requests=0 的合法全零响应，与加载/失败态同样保持占位符。
+  const ready = !isLoading && !isError && requests > 0
 
   return (
     <section className='relative z-10 overflow-hidden px-6 pt-24 pb-16 md:pt-32 md:pb-24 lg:pt-36 lg:pb-28'>
@@ -126,16 +143,16 @@ export function Hero(props: HeroProps) {
         >
           <div className='border-border/60 bg-card-surface backdrop-blur-card w-full max-w-[420px] rounded-2xl border p-4 shadow-lg'>
             <div className='text-muted-foreground mb-3 flex items-center justify-between text-xs'>
-              <span>{displayName} / API 概览</span>
-              <span className='text-success'>● 运行正常</span>
+              <span>{displayName} / {t('API Overview')}</span>
+              <span className='text-success'>● {t('Running normally')}</span>
             </div>
             <div className='grid grid-cols-3 gap-2'>
-              <div className='bg-muted/50 rounded-lg p-3'><span className='text-muted-foreground text-[10px]'>近30天请求</span><strong className='mt-1 block text-lg'>—</strong></div>
-              <div className='bg-muted/50 rounded-lg p-3'><span className='text-muted-foreground text-[10px]'>成功率</span><strong className='text-success mt-1 block text-lg'>—</strong></div>
-              <div className='bg-muted/50 rounded-lg p-3'><span className='text-muted-foreground text-[10px]'>失败率</span><strong className='text-destructive mt-1 block text-lg'>—</strong></div>
+              <div className='bg-muted/50 rounded-lg p-3'><span className='text-muted-foreground text-[10px]'>{t("Yesterday's requests")}</span><strong className='mt-1 block text-lg'>{ready ? formatNumber(requests) : '—'}</strong></div>
+              <div className='bg-muted/50 rounded-lg p-3'><span className='text-muted-foreground text-[10px]'>{t('Success rate')}</span><strong className='text-success mt-1 block text-lg'>{ready ? formatPercent(successRate) : '—'}</strong></div>
+              <div className='bg-muted/50 rounded-lg p-3'><span className='text-muted-foreground text-[10px]'>{t('Failure Rate')}</span><strong className='text-destructive mt-1 block text-lg'>{ready ? formatPercent(failureRate) : '—'}</strong></div>
             </div>
             <div className='bg-muted/35 mt-3 h-28 rounded-lg border p-3'>
-              <div className='text-muted-foreground text-[10px]'>从请求到成本，一切清晰可见</div>
+              <div className='text-muted-foreground text-[10px]'>{t('From requests to cost, everything is clear')}</div>
               <div className='mt-8 flex items-end gap-1'>
                 {[28, 42, 35, 58, 46, 72, 63, 80, 54, 68, 76, 88].map((height, index) => <span key={index} className='bg-primary/60 block flex-1 rounded-t' style={{ height: `${height}%` }} />)}
               </div>

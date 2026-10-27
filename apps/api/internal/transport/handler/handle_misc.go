@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/QuantumNous/new-api/internal/egress"
+	"github.com/QuantumNous/new-api/internal/homestats"
 	"github.com/QuantumNous/new-api/internal/security"
 	"github.com/QuantumNous/new-api/internal/security/oauth"
 	"github.com/QuantumNous/new-api/internal/settings"
@@ -14,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/middleware"
 	"github.com/QuantumNous/new-api/internal/usage"
 	"net/http"
+	"time"
 )
 
 func TestStatus(c contract.Context) {
@@ -228,6 +230,19 @@ func GetHomePageContent(c contract.Context) {
 		"success": true,
 		"message": "",
 		"data":    common.OptionMap["HomePageContent"],
+	})
+	return
+}
+
+func GetHomeStats(c contract.Context) {
+	stats, found := homestats.Latest(c.Context())
+	if !found {
+		yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+		stats = homestats.HomeStats{StatDate: yesterday}
+	}
+	_ = c.JSON(http.StatusOK, common.H{
+		"success": true,
+		"data":    stats,
 	})
 	return
 }

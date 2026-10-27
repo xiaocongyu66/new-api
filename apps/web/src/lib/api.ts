@@ -72,6 +72,23 @@ export async function getStatus() {
   return res.data?.data as Record<string, unknown>
 }
 
+export interface HomeStats {
+  requests: number
+  success: number
+  failed: number
+  success_rate: number
+  failure_rate: number
+  stat_date: string
+  updated_at: number
+}
+
+export async function getHomeStats(): Promise<HomeStats | undefined> {
+  const res = await api.get('/api/home_stats', {
+    skipErrorHandler: true,
+  })
+  return res.data?.data
+}
+
 export async function getNotice(): Promise<{
   success: boolean
   message?: string
