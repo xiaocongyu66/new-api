@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Combobox as ComboboxPrimitive } from '@base-ui/react'
+import { Combobox as ComboboxPrimitive } from '@base-ui/react/combobox'
 import {
   ArrowDown01Icon,
   Cancel01Icon,
