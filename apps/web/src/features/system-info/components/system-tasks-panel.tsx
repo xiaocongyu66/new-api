@@ -202,6 +202,67 @@ function SystemTasksTable(props: SystemTasksTableProps) {
   )
 }
 
+// Mirrors the tasks table columns (type, status badge, progress, executor,
+// timestamps, error detail) instead of plain bars.
+function TasksTableSkeleton() {
+  const keyPrefix = 'system-task-skeleton'
+  return (
+    <div className='overflow-x-auto rounded-md border'>
+      <Table className='min-w-[900px]'>
+        <TableHeader>
+          <TableRow className='bg-muted/40 hover:bg-muted/40'>
+            <TableHead className='h-9 w-[260px] px-4 text-xs'>
+              <Skeleton className='h-3.5 w-20' />
+            </TableHead>
+            <TableHead className='h-9 w-[130px] text-xs'>
+              <Skeleton className='h-3.5 w-12' />
+            </TableHead>
+            <TableHead className='h-9 w-[180px] text-xs'>
+              <Skeleton className='h-3.5 w-16' />
+            </TableHead>
+            <TableHead className='h-9 min-w-[260px] text-xs'>
+              <Skeleton className='h-3.5 w-28' />
+            </TableHead>
+            <TableHead className='h-9 w-[190px] text-xs'>
+              <Skeleton className='h-3.5 w-20' />
+            </TableHead>
+            <TableHead className='h-9 w-[220px] pr-4 text-xs'>
+              <Skeleton className='h-3.5 w-16' />
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {Array.from({ length: 4 }, (_, i) => (
+            <TableRow key={`${keyPrefix}-${i}`}>
+              <TableCell className='px-4 py-3 align-middle'>
+                <div className='space-y-1.5'>
+                  <Skeleton className='h-4 w-32' />
+                  <Skeleton className='h-3 w-24' />
+                </div>
+              </TableCell>
+              <TableCell className='py-3 align-middle'>
+                <Skeleton className='h-5 w-16 rounded-full' />
+              </TableCell>
+              <TableCell className='py-3 align-middle'>
+                <Skeleton className='h-2 w-24 rounded-full' />
+              </TableCell>
+              <TableCell className='max-w-[280px] py-3 align-middle'>
+                <Skeleton className='h-3.5 w-32' />
+              </TableCell>
+              <TableCell className='py-3 align-middle'>
+                <Skeleton className='h-3.5 w-24' />
+              </TableCell>
+              <TableCell className='max-w-[220px] py-3 pr-4 align-middle'>
+                <Skeleton className='h-3.5 w-28' />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
 export function SystemTasksPanel() {
   const { t } = useTranslation()
   const tasksQuery = useQuery({
@@ -284,10 +345,8 @@ export function SystemTasksPanel() {
 
       <CardContent className='px-0' aria-busy={tasksQuery.isFetching}>
         {loading ? (
-          <div className='space-y-2 p-4 sm:p-5'>
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className='h-9 w-full rounded-md' />
-            ))}
+          <div className='p-4 sm:p-5'>
+            <TasksTableSkeleton />
           </div>
         ) : tasksQuery.isError ? (
           <ErrorState
