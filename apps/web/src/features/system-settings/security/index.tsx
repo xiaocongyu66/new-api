@@ -18,11 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { SettingsPage } from '../components/settings-page'
 import type { SecuritySettings } from '../types'
-import {
-  SECURITY_DEFAULT_SECTION,
-  getSecuritySectionContent,
-  getSecuritySectionMeta,
-} from './section-registry.tsx'
+import { SECURITY_DEFAULT_SECTION } from './section-registry.tsx'
+import { getSecuritySectionContent, getSecuritySectionMeta } from './sections.tsx'
 
 const defaultSecuritySettings: SecuritySettings = {
   'geo_block_setting.enabled': false,

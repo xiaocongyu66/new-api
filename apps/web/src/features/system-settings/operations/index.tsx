@@ -20,11 +20,11 @@ import { useStatus } from '@/hooks/use-status'
 
 import { SettingsPage } from '../components/settings-page'
 import type { OperationsSettings } from '../types'
+import { OPERATIONS_DEFAULT_SECTION } from './section-registry.tsx'
 import {
-  OPERATIONS_DEFAULT_SECTION,
   getOperationsSectionContent,
   getOperationsSectionMeta,
-} from './section-registry.tsx'
+} from './sections.tsx'
 
 const defaultOperationsSettings: OperationsSettings = {
   DefaultCollapseSidebar: false,

@@ -18,11 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { SettingsPage } from '../components/settings-page'
 import type { ModelSettings } from '../types'
-import {
-  MODELS_DEFAULT_SECTION,
-  getModelsSectionContent,
-  getModelsSectionMeta,
-} from './section-registry.tsx'
+import { MODELS_DEFAULT_SECTION } from './section-registry.tsx'
+import { getModelsSectionContent, getModelsSectionMeta } from './sections.tsx'
 
 const defaultModelSettings: ModelSettings = {
   'global.pass_through_request_enabled': false,
