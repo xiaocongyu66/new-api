@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import z from 'zod'
 
-import { Redemptions } from '@/features/redemption-codes'
 import { REDEMPTION_FILTER_VALUES } from '@/features/redemption-codes/constants'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
@@ -42,5 +41,4 @@ export const Route = createFileRoute('/_authenticated/admin/redemption-codes/')(
     }
   },
   validateSearch: redemptionsSearchSchema,
-  component: Redemptions,
 })
