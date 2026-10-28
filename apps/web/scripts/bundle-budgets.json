@@ -1,0 +1,10 @@
+{
+  "$comment": "Bundle size budgets for apps/web production build (apps/web/dist/static/js). Baselines measured in the CI prod build right after PR #579 (f6b265162): index 200.1, lib-react 68.8, vendor-ui-primitives 107.7, vendor-codemirror 259.8 kB gzip. Budgets add ~15% headroom so the gate passes on #579 baseline and only guards against regressions.",
+  "entries": [
+    { "glob": "index.*.js", "maxGzipKb": 230, "label": "index entry chunk" },
+    { "glob": "lib-react.*.js", "maxGzipKb": 80, "label": "react runtime (lib-react)" },
+    { "glob": "vendor-ui-primitives.*.js", "maxGzipKb": 125, "label": "base-ui/radix primitives" },
+    { "glob": "vendor-codemirror.*.js", "maxGzipKb": 300, "label": "codemirror stack (lazy-loaded)" },
+    { "globs": ["index.*.js", "lib-react.*.js", "vendor-ui-primitives.*.js"], "sum": true, "maxGzipKb": 440, "label": "initial chunks (gzip sum)" }
+  ]
+}
