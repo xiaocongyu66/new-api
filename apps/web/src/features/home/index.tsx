@@ -24,6 +24,7 @@ import { Footer } from '@/components/layout/components/footer'
 import { RichContent } from '@/components/rich-content'
 import { useTheme } from '@/context/theme-provider'
 import { isLikelyHtml } from '@/lib/content-format'
+import { HomePageSkeleton } from '@/route-skeletons/page-skeletons'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { CTA, Features, Hero, UsagePolicy } from './components'
@@ -59,13 +60,7 @@ export function Home() {
   }, [isUrl, syncIframePreferences])
 
   if (!isLoaded) {
-    return (
-      <PublicLayout showMainContainer={false}>
-        <main className='flex min-h-screen items-center justify-center'>
-          <div className='text-muted-foreground'>{t('Loading...')}</div>
-        </main>
-      </PublicLayout>
-    )
+    return <HomePageSkeleton />
   }
 
   if (content) {

@@ -69,7 +69,7 @@ export function LoadingState(props: LoadingStateProps) {
 
 /**
  * Shared skeleton-style placeholder primitive used by both `LoadingState`
- * (full-page loading) and `RouteLoadingFallback` (lazy route pending).
+ * (full-page loading) and `RouteLoadingFallback` (generic pending fallback).
  *
  * Reads `--skeleton-base`, `--skeleton-highlight`, and `--radius-md` from the
  * active theme so the placeholders match the rest of the UI automatically.
@@ -102,10 +102,9 @@ interface RouteLoadingFallbackProps {
 }
 
 /**
- * Full-viewport placeholder shown by TanStack Router when a lazy route's
- * chunk is being fetched. Mounted via `defaultPendingComponent` in
- * `apps/web/src/main.tsx`. Reads theme tokens so it blends with the
- * surrounding UI.
+ * Generic last-resort pending placeholder, rendered by
+ * `RoutePendingSkeleton` when the target path has no registered skeleton.
+ * Reads theme tokens so it blends with the surrounding UI.
  */
 export function RouteLoadingFallback(props: RouteLoadingFallbackProps) {
   return (

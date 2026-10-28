@@ -87,7 +87,6 @@ export function OperationsSettings() {
         status?.version as string | undefined,
         status?.start_time as number | null | undefined,
       ]}
-      loadingMessage='Loading maintenance settings...'
     />
   )
 }

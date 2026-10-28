@@ -87,7 +87,6 @@ export function ContentSettings() {
       defaultSection={CONTENT_DEFAULT_SECTION}
       getSectionContent={getContentSectionContent}
       getSectionMeta={getContentSectionMeta}
-      loadingMessage='Loading content settings...'
       resolveSettings={resolveContentSettings}
     />
   )

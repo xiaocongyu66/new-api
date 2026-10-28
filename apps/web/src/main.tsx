@@ -28,14 +28,13 @@ import { StrictMode } from 'react'
 import ReactDOM from 'react-dom/client'
 import { toast } from 'sonner'
 
-import { RouteLoadingFallback } from '@/components/loading-state'
 import { getStatus } from '@/lib/api'
 import { installBuildMetadata } from '@/lib/build-metadata'
-
 import { applyFaviconToDom } from '@/lib/dom-utils'
 import '@/lib/dayjs'
 import { initializeFrontendCache } from '@/lib/frontend-cache'
 import { handleServerError } from '@/lib/handle-server-error'
+import { RoutePendingSkeleton } from '@/route-skeletons/route-pending-skeleton'
 
 import { DirectionProvider } from './context/direction-provider'
 import { FontProvider } from './context/font-provider'
@@ -104,7 +103,7 @@ const router = createRouter({
   context: { queryClient },
   defaultPreload: 'intent',
   defaultPreloadStaleTime: 0,
-  defaultPendingComponent: RouteLoadingFallback,
+  defaultPendingComponent: RoutePendingSkeleton,
   defaultPendingMs: 150,
   defaultPendingMinMs: 200,
 })
