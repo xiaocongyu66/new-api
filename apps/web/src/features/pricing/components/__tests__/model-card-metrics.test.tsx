@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { describe, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { smoothLinePath } from '../model-card-metrics'
+import { smoothLinePath } from '../../lib/chart-geometry'
 
 // The chart band the spline clamps into (mirrors the component's constants:
 // CHART_H 96, PAD_T 8, PAD_B 14).

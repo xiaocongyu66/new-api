@@ -23,19 +23,18 @@ import { getSuccessRateColor } from '@/features/performance-metrics/lib/format'
 import { useCountUp } from '@/hooks/use-count-up'
 import { cn } from '@/lib/utils'
 
+import {
+  BASE_Y,
+  CHART_H,
+  CHART_W,
+  PAD_L,
+  PAD_R,
+  PAD_T,
+  PLOT_H,
+  PLOT_W,
+  smoothLinePath,
+} from '../lib/chart-geometry'
 import type { ModelPerfBadgeData } from '../types'
-
-// Fixed viewBox with uniform scaling (preserveAspectRatio defaults to meet):
-// axis text must not stretch, and card widths only vary by ~10%.
-const CHART_W = 400
-const CHART_H = 96
-const PAD_L = 40
-const PAD_R = 38
-const PAD_T = 8
-const PAD_B = 14
-const PLOT_W = CHART_W - PAD_L - PAD_R
-const PLOT_H = CHART_H - PAD_T - PAD_B
-const BASE_Y = CHART_H - PAD_B
 
 const LATENCY_COLOR = '#3b82f6' // blue-500, latency bars
 const GRID_COLOR = 'currentColor'
@@ -49,43 +48,6 @@ function formatHour(ts: number): string {
 
 function formatLatency(ms: number): string {
   return `${Math.round(ms).toLocaleString()}ms`
-}
-
-type Point = { x: number; y: number }
-
-/**
- * Cardinal-spline polyline → cubic bezier path. Noisy hourly data would
- * make straight segments look jagged at this size; control points are
- * clamped into the plot band so the curve cannot overshoot the axes.
- *
- * Exported for the geometry table test in __tests__.
- */
-export function smoothLinePath(points: Point[]): string {
-  if (points.length === 0) return ''
-  if (points.length < 3) {
-    return points
-      .map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x},${point.y}`)
-      .join(' ')
-  }
-  const clampY = (y: number) => Math.min(BASE_Y, Math.max(PAD_T, y))
-  const tension = 0.18
-  let path = `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`
-  for (let index = 0; index < points.length - 1; index++) {
-    const previous = points[index - 1] ?? points[index]
-    const current = points[index]
-    const next = points[index + 1]
-    const after = points[index + 2] ?? next
-    const firstControl = {
-      x: current.x + (next.x - previous.x) * tension,
-      y: clampY(current.y + (next.y - previous.y) * tension),
-    }
-    const secondControl = {
-      x: next.x - (after.x - current.x) * tension,
-      y: clampY(next.y - (after.y - current.y) * tension),
-    }
-    path += ` C${firstControl.x.toFixed(1)},${firstControl.y.toFixed(1)} ${secondControl.x.toFixed(1)},${secondControl.y.toFixed(1)} ${next.x.toFixed(1)},${next.y.toFixed(1)}`
-  }
-  return path
 }
 
 // Mantissa steps for axis rounding, in ascending order.
@@ -196,7 +158,6 @@ export const ModelCardMetrics = memo(function ModelCardMetrics(props: {
 
   const latency = useCountUp(perf?.avg_latency_ms ?? 0)
   const successRate = useCountUp(perf?.success_rate ?? 0)
-  const throughput = useCountUp(perf?.avg_tps ?? 0)
 
   if (!perf || !geometry) {
     return null
@@ -208,45 +169,31 @@ export const ModelCardMetrics = memo(function ModelCardMetrics(props: {
 
   return (
     <div className={cn('border-t pt-3', props.className)}>
-      {/* Headline numbers: window averages, or the hovered/clicked hour */}
-      <div className='flex items-end justify-between gap-2'>
-        <div className='flex min-w-0 items-baseline gap-1.5'>
-          <span className='text-muted-foreground/55 text-[10px] leading-4'>
-            {t('Latency short')}
-          </span>
-          <span className='text-foreground font-mono text-base leading-none font-semibold tabular-nums'>
+      {/* Headline numbers: window averages, or the hovered/clicked hour.
+          One flat row of three — latency, success rate, then the hour. */}
+      <div className='flex items-baseline gap-x-3 gap-y-1 text-[11px] leading-4 tabular-nums'>
+        <span className='flex min-w-0 items-baseline gap-1'>
+          <span className='text-muted-foreground/55'>{t('Latency short')}</span>
+          <span className='text-foreground font-mono text-sm font-semibold'>
             {activePoint
               ? formatLatency(activePoint.latency_ms)
               : formatLatency(latency)}
           </span>
-          {activePoint && (
-            <span className='bg-foreground/10 text-foreground/80 rounded px-1 text-[10px] leading-4 tabular-nums'>
-              {formatHour(activePoint.ts)}
-            </span>
-          )}
-        </div>
-        <div className='flex shrink-0 flex-col items-end gap-0.5 text-[11px] leading-4 tabular-nums'>
-          <span className='flex items-baseline gap-1'>
-            <span className='text-muted-foreground/55'>{t('Status short')}</span>
-            <span
-              className='font-mono font-semibold'
-              style={{ color: successColor }}
-            >
-              {activePoint
-                ? activePoint.success_rate.toFixed(1)
-                : successRate.toFixed(1)}
-              %
-            </span>
+        </span>
+        <span className='flex items-baseline gap-1'>
+          <span className='text-muted-foreground/55'>{t('Status short')}</span>
+          <span className='font-mono font-semibold' style={{ color: successColor }}>
+            {activePoint
+              ? activePoint.success_rate.toFixed(1)
+              : successRate.toFixed(1)}
+            %
           </span>
-          <span className='flex items-baseline gap-1'>
-            <span className='text-muted-foreground/55'>
-              {t('Throughput short')}
-            </span>
-            <span className='text-foreground/80 font-mono'>
-              {Math.round(throughput).toLocaleString()}t/s
-            </span>
+        </span>
+        {activePoint && (
+          <span className='bg-foreground/10 text-foreground/80 rounded px-1 font-mono'>
+            {formatHour(activePoint.ts)}
           </span>
-        </div>
+        )}
       </div>
 
       <svg

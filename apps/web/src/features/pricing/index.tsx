@@ -32,7 +32,7 @@ import {
   ModelCardGrid,
   ModelDetailsDrawer,
 } from './components'
-import { EXCLUDED_GROUPS, VIEW_MODES } from './constants'
+import { DEFAULT_TOKEN_UNIT, EXCLUDED_GROUPS, VIEW_MODES } from './constants'
 import { useFilters } from './hooks/use-filters'
 import { usePricingData } from './hooks/use-pricing-data'
 
@@ -64,7 +64,6 @@ export function Pricing() {
     quotaTypeFilter,
     endpointTypeFilter,
     tagFilter,
-    tokenUnit,
     viewMode,
     showRechargePrice,
     setSearchInput,
@@ -74,7 +73,6 @@ export function Pricing() {
     setQuotaTypeFilter,
     setEndpointTypeFilter,
     setTagFilter,
-    setTokenUnit,
     setViewMode,
     setShowRechargePrice,
     filteredModels,
@@ -129,7 +127,7 @@ export function Pricing() {
           onModelClick={handleModelClick}
           priceRate={priceRate}
           usdExchangeRate={usdExchangeRate}
-          tokenUnit={tokenUnit}
+          tokenUnit={DEFAULT_TOKEN_UNIT}
           showRechargePrice={showRechargePrice}
           selectedGroup={groupFilter}
         />
@@ -141,7 +139,7 @@ export function Pricing() {
         models={filteredModels}
         priceRate={priceRate}
         usdExchangeRate={usdExchangeRate}
-        tokenUnit={tokenUnit}
+        tokenUnit={DEFAULT_TOKEN_UNIT}
         showRechargePrice={showRechargePrice}
         selectedGroup={groupFilter}
         onModelClick={handleModelClick}
@@ -194,8 +192,6 @@ export function Pricing() {
               filteredCount={filteredModels.length}
               sortBy={sortBy}
               onSortChange={setSortBy}
-              tokenUnit={tokenUnit}
-              onTokenUnitChange={setTokenUnit}
               showRechargePrice={showRechargePrice}
               onRechargePriceChange={setShowRechargePrice}
               viewMode={viewMode}
@@ -246,7 +242,7 @@ export function Pricing() {
               autoGroups={autoGroups || []}
               priceRate={priceRate ?? 1}
               usdExchangeRate={usdExchangeRate ?? 1}
-              tokenUnit={tokenUnit}
+              tokenUnit={DEFAULT_TOKEN_UNIT}
               showRechargePrice={showRechargePrice}
             />
           )}

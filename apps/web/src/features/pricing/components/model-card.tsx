@@ -70,7 +70,6 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   const isDynamicPricing =
     props.model.billing_mode === 'tiered_expr' &&
     Boolean(props.model.billing_expr)
-  const hasCachedPrice = isTokenBased && props.model.cache_ratio != null
   const dynamicSummary = isDynamicPricing
     ? getDynamicPricingSummary(props.model, {
         tokenUnit,
@@ -187,44 +186,34 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         </span>
       )
     }
+  }
+
+  // Price summary above the group table. Per-token billing gets two
+  // half-width cells (输入 | 输出), each with its own unit suffix;
+  // per-request billing is a single price; dynamic expressions keep the
+  // flexible summary. Built with if/else so the JSX has no nested ternaries.
+  let priceSummaryBlock: ReactNode
+  if (dynamicSummary) {
+    priceSummaryBlock = (
+      <div className='flex flex-wrap items-baseline gap-x-3 gap-y-1 pl-1 text-sm'>
+        {priceSummary}
+      </div>
+    )
   } else if (isTokenBased) {
-    priceSummary = (
-      <>
-        <span className='text-muted-foreground whitespace-nowrap'>
-          {t('Input')}{' '}
-          <span className='text-foreground font-mono font-semibold'>
-            {formatPrice(
-              props.model,
-              'input',
-              tokenUnit,
-              showRechargePrice,
-              priceRate,
-              usdExchangeRate,
-              props.selectedGroup
-            )}
-          </span>
-        </span>
-        <span className='text-muted-foreground whitespace-nowrap'>
-          {t('Output')}{' '}
-          <span className='text-foreground font-mono font-semibold'>
-            {formatPrice(
-              props.model,
-              'output',
-              tokenUnit,
-              showRechargePrice,
-              priceRate,
-              usdExchangeRate,
-              props.selectedGroup
-            )}
-          </span>
-        </span>
-        {hasCachedPrice && (
-          <span className='text-muted-foreground whitespace-nowrap'>
-            {t('Cached')}{' '}
+    priceSummaryBlock = (
+      <div className='grid grid-cols-2 items-center gap-2 pl-1 text-sm'>
+        {(['input', 'output'] as const).map((type) => (
+          <span
+            key={type}
+            className='flex min-w-0 items-baseline gap-1 whitespace-nowrap'
+          >
+            <span className='text-muted-foreground'>
+              {type === 'input' ? t('Input') : t('Output')}
+            </span>
             <span className='text-foreground font-mono font-semibold'>
               {formatPrice(
                 props.model,
-                'cache',
+                type,
                 tokenUnit,
                 showRechargePrice,
                 priceRate,
@@ -232,13 +221,16 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
                 props.selectedGroup
               )}
             </span>
+            <span className='text-muted-foreground/70 text-xs'>
+              / {tokenUnitLabel}
+            </span>
           </span>
-        )}
-      </>
+        ))}
+      </div>
     )
   } else {
-    priceSummary = (
-      <span className='text-muted-foreground whitespace-nowrap'>
+    priceSummaryBlock = (
+      <div className='flex items-baseline gap-1 pl-1 text-sm'>
         <span className='text-foreground font-mono font-semibold'>
           {formatRequestPrice(
             props.model,
@@ -247,9 +239,11 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             usdExchangeRate,
             props.selectedGroup
           )}
-        </span>{' '}
-        / {t('request')}
-      </span>
+        </span>
+        <span className='text-muted-foreground/70 text-xs'>
+          / {t('request')}
+        </span>
+      </div>
     )
   }
 
@@ -290,7 +284,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             )}
           </span>
           <span className='flex min-w-0 flex-col'>
-            <span className='text-foreground group-hover/card:text-primary truncate font-mono text-sm leading-snug font-semibold transition-colors'>
+            <span className='text-foreground truncate font-mono text-sm leading-snug font-semibold'>
               {props.model.model_name}
             </span>
             {props.model.vendor_name && (
@@ -311,16 +305,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         </p>
       )}
 
-      {/* Price summary: full-width row above the group table, left-aligned,
-          unit without the "tokens" word (the table header carries 输入/输出). */}
-      <div className='flex flex-wrap items-baseline gap-x-3 gap-y-1 pl-1 text-sm'>
-        {priceSummary}
-        {isTokenBased && !dynamicSummary && (
-          <span className='text-muted-foreground text-xs whitespace-nowrap'>
-            / {tokenUnitLabel}
-          </span>
-        )}
-      </div>
+      {priceSummaryBlock}
 
       {/* Group price table, mirroring the details sheet: 4 columns for
           per-token billing (分组 · 倍率 · 输入 · 输出), 3 for per-request
