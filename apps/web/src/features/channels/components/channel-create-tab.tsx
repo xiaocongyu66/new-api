@@ -16,8 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ChannelMutateDrawer } from './drawers/channel-mutate-drawer'
+import { lazy, Suspense } from 'react'
+
 import { useChannels } from './channels-provider'
+
+const LazyChannelMutateDrawer = lazy(() =>
+  import('./drawers/channel-mutate-drawer').then((module) => ({
+    default: module.ChannelMutateDrawer,
+  }))
+)
 
 export function ChannelCreateTab(props: {
   actionsContainer: HTMLElement | null
@@ -27,16 +34,18 @@ export function ChannelCreateTab(props: {
 
   return (
     <div className='flex min-h-full flex-col'>
-      <ChannelMutateDrawer
-        open={props.active}
-        presentation='inline'
-        currentRow={null}
-        formId='channel-create-form'
-        actionsContainer={props.actionsContainer}
-        onOpenChange={(isOpen) => {
-          if (!isOpen) setPageTab('channels')
-        }}
-      />
+      <Suspense fallback={<div className='flex min-h-0 flex-1' />}>
+        <LazyChannelMutateDrawer
+          open={props.active}
+          presentation='inline'
+          currentRow={null}
+          formId='channel-create-form'
+          actionsContainer={props.actionsContainer}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) setPageTab('channels')
+          }}
+        />
+      </Suspense>
     </div>
   )
 }
