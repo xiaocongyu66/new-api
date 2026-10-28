@@ -16,12 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import {
-  ArrowLeft01Icon,
-  ArrowRight01Icon,
-  MoreHorizontalCircle01Icon,
-} from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { ArrowLeft, ArrowRight, CircleEllipsis } from 'lucide-react'
 import * as React from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -97,8 +92,7 @@ function PaginationPrevious({
       className={cn('pl-1.5!', className)}
       {...props}
     >
-      <HugeiconsIcon
-        icon={ArrowLeft01Icon}
+      <ArrowLeft
         strokeWidth={2}
         data-icon='inline-start'
       />
@@ -120,8 +114,7 @@ function PaginationNext({
       {...props}
     >
       <span className='hidden sm:block'>{text}</span>
-      <HugeiconsIcon
-        icon={ArrowRight01Icon}
+      <ArrowRight
         strokeWidth={2}
         data-icon='inline-end'
       />
@@ -143,7 +136,7 @@ function PaginationEllipsis({
       )}
       {...props}
     >
-      <HugeiconsIcon icon={MoreHorizontalCircle01Icon} strokeWidth={2} />
+      <CircleEllipsis strokeWidth={2} />
       <span className='sr-only'>More pages</span>
     </span>
   )

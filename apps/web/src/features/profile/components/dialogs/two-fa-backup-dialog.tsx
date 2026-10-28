@@ -16,9 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
-import { RefreshCw, Loader2 } from 'lucide-react'
+import { RefreshCw, Loader2, Save } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -119,7 +117,7 @@ export function TwoFABackupDialog({
             disabled={loading || !code}
             aria-label={loading ? t('Generating...') : t('Generate New Codes')}
           >
-            <HugeiconsIcon icon={FloppyDiskIcon} />
+            <Save />
           </Button>
         ) : null
       }

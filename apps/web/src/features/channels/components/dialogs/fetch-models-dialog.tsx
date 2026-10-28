@@ -16,10 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Loader2, Search, Info, ChevronDown } from 'lucide-react'
+import { Loader2, Search, Info, ChevronDown, Save } from 'lucide-react'
 import { useState, useEffect, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -490,7 +488,7 @@ export function FetchModelsDialog({
             disabled={isSaving}
             aria-label={t('Save Models')}
           >
-            <HugeiconsIcon icon={FloppyDiskIcon} />
+            <Save />
           </Button>
         ) : null
       }

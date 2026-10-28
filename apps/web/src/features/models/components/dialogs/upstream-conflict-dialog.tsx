@@ -16,8 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
 import {
@@ -26,6 +24,7 @@ import {
   MousePointerClick,
   ChevronLeft,
   ChevronRight,
+  Save,
 } from 'lucide-react'
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -460,7 +459,7 @@ export function UpstreamConflictDialog({
           disabled={isSubmitting || !hasSelection}
           aria-label={t('Apply Overwrite')}
         >
-          <HugeiconsIcon icon={FloppyDiskIcon} />
+          <Save />
         </Button>
       }
       footer={

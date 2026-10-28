@@ -16,8 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { LaptopIcon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { Laptop } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
@@ -42,7 +41,10 @@ export function LoginSessionItem({ session, onRevoke }: LoginSessionItemProps) {
   return (
     <div className='flex flex-col gap-3 py-4 sm:flex-row sm:items-center'>
       <div className='bg-muted flex size-10 shrink-0 items-center justify-center rounded-lg'>
-        <HugeiconsIcon icon={LaptopIcon} className='size-5' strokeWidth={2} />
+        <Laptop
+          className='size-5'
+          strokeWidth={2}
+        />
       </div>
       <div className='min-w-0 flex-1 break-words'>
         <div className='flex flex-wrap items-center gap-2'>
