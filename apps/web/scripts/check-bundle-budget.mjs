@@ -75,9 +75,9 @@ function main() {
   const entries = budgets.entries || []
   const files = []
   const walk = (dir, prefix = '') => {
-    for (const f of readdirSync(dir)) {
-      if (f.endsWith('.js')) files.push(prefix + f)
-      else walk(join(dir, f), prefix + f + '/')
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) walk(join(dir, entry.name), prefix + entry.name + '/')
+      else if (entry.name.endsWith('.js')) files.push(prefix + entry.name)
     }
   }
   walk(DIST_DIR)
