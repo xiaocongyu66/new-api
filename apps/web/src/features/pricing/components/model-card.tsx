@@ -31,7 +31,12 @@ import {
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
 import { getConfiguredGroupRatio, isTokenBasedModel } from '../lib/model-helpers'
-import { formatPrice, formatRequestPrice } from '../lib/price'
+import {
+  formatFixedPrice,
+  formatGroupPrice,
+  formatPrice,
+  formatRequestPrice,
+} from '../lib/price'
 import type { ModelPerfBadgeData, PricingModel, TokenUnit } from '../types'
 import { ModelBillingModeBadge } from './model-billing-mode-badge'
 import { ModelCardMetrics } from './model-card-metrics'
@@ -86,32 +91,42 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
     Math.max(endpoints.length - 2, 0) +
     Math.max(tags.length - 2, 0)
 
-  // Price table rows 2-3: the first two enabled groups with their ratio and
-  // the price under that ratio. Dynamic-expression models have no stable
-  // per-group number to tabulate, so they keep the summary row only.
+  // Price table rows: the first two enabled groups with their ratio and the
+  // per-group prices. Dynamic-expression models have no stable per-group
+  // numbers to tabulate, so they keep the summary row only.
   const groupRows = isDynamicPricing
     ? []
     : groups.slice(0, 2).map((group) => ({
         group,
         ratio: getConfiguredGroupRatio(props.model.group_ratio || {}, group),
-        value: isTokenBased
-          ? formatPrice(
-              props.model,
-              'input',
-              tokenUnit,
-              showRechargePrice,
-              priceRate,
-              usdExchangeRate,
-              group
-            )
-          : formatRequestPrice(
-              props.model,
-              showRechargePrice,
-              priceRate,
-              usdExchangeRate,
-              group
-            ),
-        unit: isTokenBased ? `${tokenUnitLabel} tokens` : 'request',
+        input: formatGroupPrice(
+          props.model,
+          group,
+          'input',
+          tokenUnit,
+          showRechargePrice,
+          priceRate,
+          usdExchangeRate,
+          props.model.group_ratio || {}
+        ),
+        output: formatGroupPrice(
+          props.model,
+          group,
+          'output',
+          tokenUnit,
+          showRechargePrice,
+          priceRate,
+          usdExchangeRate,
+          props.model.group_ratio || {}
+        ),
+        price: formatFixedPrice(
+          props.model,
+          group,
+          showRechargePrice,
+          priceRate,
+          usdExchangeRate,
+          props.model.group_ratio || {}
+        ),
       }))
 
   const handleCopy = (e: React.MouseEvent) => {
@@ -255,9 +270,10 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         'active:ring-primary/70 active:bg-primary/[0.06]'
       )}
     >
-      {/* Header: the name itself is the copy control, provider icon included;
-          details live on the card. The name stays on one line and truncates —
-          the full string is in the button's label and on copy. */}
+      {/* Header: the name itself is the copy control, provider icon and
+          provider name included; details live on the card. The name stays on
+          one line and truncates — the full string is in the button's label
+          and on copy. */}
       <CardHeader className='gap-1.5'>
         <button
           type='button'
@@ -273,46 +289,91 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
               </span>
             )}
           </span>
-          <span className='text-foreground group-hover/card:text-primary truncate font-mono text-sm leading-snug font-semibold transition-colors'>
-            {props.model.model_name}
+          <span className='flex min-w-0 flex-col'>
+            <span className='text-foreground group-hover/card:text-primary truncate font-mono text-sm leading-snug font-semibold transition-colors'>
+              {props.model.model_name}
+            </span>
+            {props.model.vendor_name && (
+              <span className='text-muted-foreground truncate text-[10px] leading-tight'>
+                {props.model.vendor_name}
+              </span>
+            )}
           </span>
         </button>
-        <p className='text-muted-foreground truncate text-xs'>
-          {props.model.vendor_name}
-        </p>
       </CardHeader>
 
       <CardContent className='flex flex-1 flex-col gap-4'>
-      {/* Description sits directly under the title, left-aligned */}
-      <p className='text-muted-foreground line-clamp-2 flex-1 text-sm leading-relaxed'>
-        {props.model.description || t('No description available.')}
-      </p>
+      {/* Description: only when the model has one; left edge lines up with
+          the icon inside the title button above (button p-1 = 4px inset). */}
+      {props.model.description && (
+        <p className='text-muted-foreground line-clamp-2 flex-1 pl-1 text-sm leading-relaxed'>
+          {props.model.description}
+        </p>
+      )}
 
-      {/* Price table: row 1 is the standard price, rows 2-3 break it down by
-          group (name · ratio · value/unit) with hairline dividers. */}
-      <div className='divide-border/50 border-border/50 overflow-hidden rounded-lg border divide-y'>
-        <div className='flex flex-wrap items-baseline gap-x-4 gap-y-2 px-3 py-2 text-sm'>
-          {priceSummary}
-          {(isTokenBased || dynamicSummary) && <span className='text-muted-foreground text-xs'>/ {tokenUnitLabel} tokens</span>}
-        </div>
-        {groupRows.map((row) => (
-          <div
-            key={row.group}
-            className='grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 px-3 py-1.5 text-xs'
-          >
-            <span className='truncate font-medium'>{row.group}</span>
-            <span className='text-muted-foreground tabular-nums'>
-              ×{row.ratio}
-            </span>
-            <span className='whitespace-nowrap'>
-              <span className='text-foreground font-mono font-semibold tabular-nums'>
-                {row.value}
-              </span>
-              <span className='text-muted-foreground/70'> / {row.unit}</span>
-            </span>
-          </div>
-        ))}
+      {/* Price summary: full-width row above the group table, left-aligned,
+          unit without the "tokens" word (the table header carries 输入/输出). */}
+      <div className='flex flex-wrap items-baseline gap-x-3 gap-y-1 pl-1 text-sm'>
+        {priceSummary}
+        {isTokenBased && !dynamicSummary && (
+          <span className='text-muted-foreground text-xs whitespace-nowrap'>
+            / {tokenUnitLabel}
+          </span>
+        )}
       </div>
+
+      {/* Group price table, mirroring the details sheet: 4 columns for
+          per-token billing (分组 · 倍率 · 输入 · 输出), 3 for per-request
+          (分组 · 倍率 · 价格). Equal-width columns, ratio centered. */}
+      {groupRows.length > 0 && (
+        <div className='border-border/50 overflow-hidden rounded-lg border'>
+          <div
+            className={cn(
+              'bg-muted/30 text-muted-foreground/70 grid gap-2 border-b px-2.5 py-1.5 text-[10px] font-medium',
+              isTokenBased ? 'grid-cols-4' : 'grid-cols-3'
+            )}
+          >
+            <span className='truncate'>{t('Group')}</span>
+            <span className='text-center'>{t('Ratio')}</span>
+            {isTokenBased ? (
+              <>
+                <span className='text-right'>{t('Input')}</span>
+                <span className='text-right'>{t('Output')}</span>
+              </>
+            ) : (
+              <span className='text-right'>{t('Price')}</span>
+            )}
+          </div>
+          {groupRows.map((row) => (
+            <div
+              key={row.group}
+              className={cn(
+                'grid items-center gap-2 px-2.5 py-1.5 text-xs',
+                isTokenBased ? 'grid-cols-4' : 'grid-cols-3'
+              )}
+            >
+              <span className='truncate font-medium'>{row.group}</span>
+              <span className='text-muted-foreground text-center font-mono tabular-nums'>
+                ×{row.ratio}
+              </span>
+              {isTokenBased ? (
+                <>
+                  <span className='text-foreground text-right font-mono tabular-nums'>
+                    {row.input}
+                  </span>
+                  <span className='text-foreground text-right font-mono tabular-nums'>
+                    {row.output}
+                  </span>
+                </>
+              ) : (
+                <span className='text-foreground text-right font-mono tabular-nums'>
+                  {row.price}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Middle: 24h latency/success combo chart + headline numbers */}
       <ModelCardMetrics perf={props.perf} />
