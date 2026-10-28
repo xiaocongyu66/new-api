@@ -43,6 +43,13 @@ export default defineConfig(({ envMode }) => {
           priority: 0,
           enforce: true,
         },
+        'vendor-codemirror': {
+          test: /node_modules[\\/](@codemirror|@lezer)[\\/]/,
+          name: 'vendor-codemirror',
+          chunks: 'all',
+          priority: 0,
+          enforce: true,
+        },
         'vendor-chart': {
           test: /node_modules[\\/](@visactor)[\\/]/,
           name: 'vendor-chart',
