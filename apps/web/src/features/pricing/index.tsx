@@ -28,7 +28,6 @@ import {
   EmptyState,
   SearchBar,
   PricingTable,
-  PricingSidebar,
   PricingToolbar,
   ModelCardGrid,
   ModelDetailsDrawer,
@@ -80,7 +79,6 @@ export function Pricing() {
     setShowRechargePrice,
     filteredModels,
     hasActiveFilters,
-    activeFilterCount,
     availableTags,
     clearFilters,
     clearSearch,
@@ -191,8 +189,17 @@ export function Pricing() {
             />
           </header>
 
-          <div className='grid items-start gap-5 xl:grid-cols-[280px_minmax(0,1fr)]'>
-            <PricingSidebar
+          <section aria-label={t('Models')} className='min-w-0 space-y-4'>
+            <PricingToolbar
+              filteredCount={filteredModels.length}
+              sortBy={sortBy}
+              onSortChange={setSortBy}
+              tokenUnit={tokenUnit}
+              onTokenUnitChange={setTokenUnit}
+              showRechargePrice={showRechargePrice}
+              onRechargePriceChange={setShowRechargePrice}
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
               quotaTypeFilter={quotaTypeFilter}
               endpointTypeFilter={endpointTypeFilter}
               vendorFilter={vendorFilter}
@@ -210,50 +217,16 @@ export function Pricing() {
               models={models || []}
               hasActiveFilters={hasActiveFilters}
               onClearFilters={clearFilters}
-              className='hover-scrollbar sticky top-20 hidden max-h-[calc(100dvh-6rem)] self-start overflow-y-auto xl:block'
             />
 
-            <section aria-label={t('Models')} className='min-w-0 space-y-4'>
-              <PricingToolbar
-                filteredCount={filteredModels.length}
-                totalCount={models?.length}
-                sortBy={sortBy}
-                onSortChange={setSortBy}
-                tokenUnit={tokenUnit}
-                onTokenUnitChange={setTokenUnit}
-                showRechargePrice={showRechargePrice}
-                onRechargePriceChange={setShowRechargePrice}
-                viewMode={viewMode}
-                onViewModeChange={setViewMode}
-                quotaTypeFilter={quotaTypeFilter}
-                endpointTypeFilter={endpointTypeFilter}
-                vendorFilter={vendorFilter}
-                groupFilter={groupFilter}
-                tagFilter={tagFilter}
-                onQuotaTypeChange={setQuotaTypeFilter}
-                onEndpointTypeChange={setEndpointTypeFilter}
-                onVendorChange={setVendorFilter}
-                onGroupChange={setGroupFilter}
-                onTagChange={setTagFilter}
-                vendors={vendors || []}
-                groups={availableGroups}
-                groupRatios={groupRatio}
-                tags={availableTags}
-                models={models || []}
-                hasActiveFilters={hasActiveFilters}
-                activeFilterCount={activeFilterCount}
-                onClearFilters={clearFilters}
-              />
-
-              {error ? (
-                <Card>
-                  <CardContent>
-                    <ErrorState title={t('Loading failed')} onRetry={() => void refetch()} />
-                  </CardContent>
-                </Card>
-              ) : renderPricingContent()}
-            </section>
-          </div>
+            {error ? (
+              <Card>
+                <CardContent>
+                  <ErrorState title={t('Loading failed')} onRetry={() => void refetch()} />
+                </CardContent>
+              </Card>
+            ) : renderPricingContent()}
+          </section>
 
           {selectedModel && (
             <ModelDetailsDrawer

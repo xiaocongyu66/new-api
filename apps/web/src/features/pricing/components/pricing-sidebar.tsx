@@ -253,12 +253,12 @@ export function PricingSidebar(props: PricingSidebarProps) {
     <Card size='sm' className={props.className}>
       <CardContent>
       <aside aria-label={t('Filter')}>
-      <div className='mb-2.5 flex items-center justify-between gap-2'>
-        <div>
+      <div className='mb-2.5 flex items-center justify-between gap-2 pr-10'>
+        <div className='flex items-center gap-2'>
           <h2 className='text-foreground text-sm font-bold'>{t('Filter')}</h2>
-          <p className='text-muted-foreground mt-1 text-xs'>
-            {t('Refine models by provider, group, type, and tags.')}
-          </p>
+          {props.hasActiveFilters && (
+            <Badge variant='secondary'>{t('Filters active')}</Badge>
+          )}
         </div>
         <Button
           type='button'
@@ -272,12 +272,6 @@ export function PricingSidebar(props: PricingSidebarProps) {
           {t('Reset')}
         </Button>
       </div>
-
-      {props.hasActiveFilters && (
-        <Badge variant='secondary' className='mb-3'>
-          {t('Filters active')}
-        </Badge>
-      )}
 
       <div className='space-y-1'>
         <FilterSection
