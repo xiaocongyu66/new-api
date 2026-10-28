@@ -18,8 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 'use client'
 
-import { SearchIcon, Tick02Icon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { Check, Search } from 'lucide-react'
 import { Command as CommandPrimitive } from 'cmdk'
 import * as React from 'react'
 
@@ -98,8 +97,7 @@ function CommandInput({
           {...props}
         />
         <InputGroupAddon>
-          <HugeiconsIcon
-            icon={SearchIcon}
+          <Search
             strokeWidth={2}
             className='size-4 shrink-0 opacity-50'
           />
@@ -182,8 +180,7 @@ function CommandItem({
       {...props}
     >
       {children}
-      <HugeiconsIcon
-        icon={Tick02Icon}
+      <Check
         strokeWidth={2}
         className='ml-auto opacity-0 group-has-data-[slot=command-shortcut]/command-item:hidden group-data-[checked=true]/command-item:opacity-100'
       />

@@ -16,14 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
 import {
   ChevronDown,
   ChevronUp,
   Copy,
   GripVertical,
   Plus,
+  Save,
   Search,
   Trash2,
 } from 'lucide-react'
@@ -1730,7 +1729,7 @@ export function ParamOverrideEditorDialog(
           onClick={handleSave}
           aria-label={t('Save')}
         >
-          <HugeiconsIcon icon={FloppyDiskIcon} />
+          <Save />
         </Button>
       }
       footer={

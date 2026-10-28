@@ -16,14 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import {
-  ArrowDown01Icon,
-  ArrowRight01Icon,
-  ArrowUp01Icon,
-  Cancel01Icon,
-  Drag01Icon,
-} from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { ArrowDown, ArrowRight, ArrowUp, GripVertical, X } from 'lucide-react'
 import { Reorder, useDragControls } from 'motion/react'
 import {
   useMemo,
@@ -102,7 +95,7 @@ function AutoGroupOrderItem(props: AutoGroupOrderItemProps) {
         onPointerDown={handleDragStart}
         onKeyDown={handleDragKeyDown}
       >
-        <HugeiconsIcon icon={Drag01Icon} strokeWidth={2} aria-hidden='true' />
+        <GripVertical strokeWidth={2} aria-hidden='true' />
       </Button>
       <span className='min-w-0 flex-1 truncate text-sm font-medium'>
         {props.group}
@@ -116,8 +109,7 @@ function AutoGroupOrderItem(props: AutoGroupOrderItemProps) {
           aria-label={t('Move {{group}} up', { group: props.group })}
           onClick={() => props.onMove(props.index, 'up')}
         >
-          <HugeiconsIcon
-            icon={ArrowUp01Icon}
+          <ArrowUp
             strokeWidth={2}
             aria-hidden='true'
           />
@@ -130,8 +122,7 @@ function AutoGroupOrderItem(props: AutoGroupOrderItemProps) {
           aria-label={t('Move {{group}} down', { group: props.group })}
           onClick={() => props.onMove(props.index, 'down')}
         >
-          <HugeiconsIcon
-            icon={ArrowDown01Icon}
+          <ArrowDown
             strokeWidth={2}
             aria-hidden='true'
           />
@@ -143,8 +134,7 @@ function AutoGroupOrderItem(props: AutoGroupOrderItemProps) {
           aria-label={t('Remove {{group}}', { group: props.group })}
           onClick={() => props.onRemove(props.group)}
         >
-          <HugeiconsIcon
-            icon={Cancel01Icon}
+          <X
             strokeWidth={2}
             aria-hidden='true'
           />
@@ -260,8 +250,7 @@ export function AutoGroupOrderEditor(props: AutoGroupOrderEditorProps) {
           {props.globalOptions.map((option, index) => (
             <li key={option.value} className='flex min-w-0 items-center gap-1'>
               {index > 0 && (
-                <HugeiconsIcon
-                  icon={ArrowRight01Icon}
+                <ArrowRight
                   strokeWidth={2}
                   aria-hidden='true'
                   data-slot='global-auto-order-connector'

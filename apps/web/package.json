@@ -32,8 +32,6 @@
     "@fontsource-variable/noto-sans-sc": "^5.3.0",
     "@fontsource-variable/public-sans": "^5.3.0",
     "@hookform/resolvers": "^5.9.1",
-    "@hugeicons/core-free-icons": "^4.3.5",
-    "@hugeicons/react": "^1.1.10",
     "@lezer/highlight": "^1.2.5",
     "@lobehub/icons": "^5.23.0",
     "@material/material-color-utilities": "^0.4.0",

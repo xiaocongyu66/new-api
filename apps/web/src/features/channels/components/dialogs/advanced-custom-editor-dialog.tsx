@@ -16,8 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
 import {
   ArrowDown,
   ArrowDownToLine,
@@ -26,6 +24,7 @@ import {
   Check,
   Info,
   Plus,
+  Save,
   Shuffle,
   Trash2,
   type LucideIcon,
@@ -526,7 +525,7 @@ export function AdvancedCustomEditorDialog({
           onClick={saveConfig}
           aria-label={t('Save changes')}
         >
-          <HugeiconsIcon icon={FloppyDiskIcon} />
+          <Save />
         </Button>
       }
       footer={

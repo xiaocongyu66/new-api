@@ -16,10 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Loader2, RefreshCw } from 'lucide-react'
+import { Loader2, RefreshCw, Save } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -140,7 +138,7 @@ export function SyncWizardDialog({
           disabled={isSyncing}
           aria-label={t('Sync Now')}
         >
-          <HugeiconsIcon icon={FloppyDiskIcon} />
+          <Save />
         </Button>
       }
       footer={

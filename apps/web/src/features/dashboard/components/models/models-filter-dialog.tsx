@@ -16,9 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
-import { Filter, RotateCcw, Calendar, Search } from 'lucide-react'
+import { Filter, RotateCcw, Calendar, Search, Save } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -194,7 +192,7 @@ export function ModelsFilter(props: ModelsFilterProps) {
           onClick={handleApply}
           aria-label={t('Apply Filters')}
         >
-          <HugeiconsIcon icon={FloppyDiskIcon} />
+          <Save />
         </Button>
       }
       footer={
