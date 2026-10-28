@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
-import { SystemSettings } from '@/features/system-settings'
 import { hasPermission } from '@/lib/admin-permissions'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -32,5 +31,4 @@ export const Route = createFileRoute('/_authenticated/admin/system-settings')({
       })
     }
   },
-  component: SystemSettings,
 })

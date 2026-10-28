@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
-import { Subscriptions } from '@/features/subscriptions'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -29,5 +28,4 @@ export const Route = createFileRoute('/_authenticated/admin/subscriptions/')({
       throw redirect({ to: '/403' })
     }
   },
-  component: Subscriptions,
 })

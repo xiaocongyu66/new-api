@@ -184,7 +184,9 @@ const AuthenticatedAdminRouteRoute = AuthenticatedAdminRouteRouteImport.update({
   id: '/admin',
   path: '/admin',
   getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
+} as any).lazy(() =>
+  import('./routes/_authenticated/admin/route.lazy').then((d) => d.Route),
+)
 const AuthenticatedChat2linkRoute = AuthenticatedChat2linkRouteImport.update({
   id: '/chat2link',
   path: '/chat2link',
@@ -235,18 +237,26 @@ const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AuthenticatedAdminRouteRoute,
-} as any)
+} as any).lazy(() =>
+  import('./routes/_authenticated/admin/index.lazy').then((d) => d.Route),
+)
 const AuthenticatedAdminProxyRoute = AuthenticatedAdminProxyRouteImport.update({
   id: '/proxy',
   path: '/proxy',
   getParentRoute: () => AuthenticatedAdminRouteRoute,
-} as any)
+} as any).lazy(() =>
+  import('./routes/_authenticated/admin/proxy.lazy').then((d) => d.Route),
+)
 const AuthenticatedAdminSystemSettingsRouteRoute =
   AuthenticatedAdminSystemSettingsRouteRouteImport.update({
     id: '/system-settings',
     path: '/system-settings',
     getParentRoute: () => AuthenticatedAdminRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/system-settings/route.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedChannelsIndexRoute =
   AuthenticatedChannelsIndexRouteImport.update({
     id: '/channels/',
@@ -368,55 +378,91 @@ const AuthenticatedAdminChannelsIndexRoute =
     id: '/channels/',
     path: '/channels/',
     getParentRoute: () => AuthenticatedAdminRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/channels/index.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedAdminModelsIndexRoute =
   AuthenticatedAdminModelsIndexRouteImport.update({
     id: '/models/',
     path: '/models/',
     getParentRoute: () => AuthenticatedAdminRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/models/index.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedAdminModelsSectionRoute =
   AuthenticatedAdminModelsSectionRouteImport.update({
     id: '/models/$section',
     path: '/models/$section',
     getParentRoute: () => AuthenticatedAdminRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/models/$section.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedAdminRedemptionCodesIndexRoute =
   AuthenticatedAdminRedemptionCodesIndexRouteImport.update({
     id: '/redemption-codes/',
     path: '/redemption-codes/',
     getParentRoute: () => AuthenticatedAdminRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/redemption-codes/index.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedAdminSubscriptionsIndexRoute =
   AuthenticatedAdminSubscriptionsIndexRouteImport.update({
     id: '/subscriptions/',
     path: '/subscriptions/',
     getParentRoute: () => AuthenticatedAdminRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/subscriptions/index.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedAdminSystemInfoIndexRoute =
   AuthenticatedAdminSystemInfoIndexRouteImport.update({
     id: '/system-info/',
     path: '/system-info/',
     getParentRoute: () => AuthenticatedAdminRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/system-info/index.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedAdminSystemSettingsIndexRoute =
   AuthenticatedAdminSystemSettingsIndexRouteImport.update({
     id: '/',
     path: '/',
     getParentRoute: () => AuthenticatedAdminSystemSettingsRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/system-settings/index.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedAdminUserInsightsIndexRoute =
   AuthenticatedAdminUserInsightsIndexRouteImport.update({
     id: '/user-insights/',
     path: '/user-insights/',
     getParentRoute: () => AuthenticatedAdminRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/user-insights/index.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedAdminUsersIndexRoute =
   AuthenticatedAdminUsersIndexRouteImport.update({
     id: '/users/',
     path: '/users/',
     getParentRoute: () => AuthenticatedAdminRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/users/index.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedSystemSettingsAuthIndexRoute =
   AuthenticatedSystemSettingsAuthIndexRouteImport.update({
     id: '/auth/',
@@ -506,85 +552,141 @@ const AuthenticatedAdminSystemSettingsAuthIndexRoute =
     id: '/auth/',
     path: '/auth/',
     getParentRoute: () => AuthenticatedAdminSystemSettingsRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/system-settings/auth/index.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedAdminSystemSettingsAuthSectionRoute =
   AuthenticatedAdminSystemSettingsAuthSectionRouteImport.update({
     id: '/auth/$section',
     path: '/auth/$section',
     getParentRoute: () => AuthenticatedAdminSystemSettingsRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/system-settings/auth/$section.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedAdminSystemSettingsBillingIndexRoute =
   AuthenticatedAdminSystemSettingsBillingIndexRouteImport.update({
     id: '/billing/',
     path: '/billing/',
     getParentRoute: () => AuthenticatedAdminSystemSettingsRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/system-settings/billing/index.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedAdminSystemSettingsBillingSectionRoute =
   AuthenticatedAdminSystemSettingsBillingSectionRouteImport.update({
     id: '/billing/$section',
     path: '/billing/$section',
     getParentRoute: () => AuthenticatedAdminSystemSettingsRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/system-settings/billing/$section.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedAdminSystemSettingsContentIndexRoute =
   AuthenticatedAdminSystemSettingsContentIndexRouteImport.update({
     id: '/content/',
     path: '/content/',
     getParentRoute: () => AuthenticatedAdminSystemSettingsRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/system-settings/content/index.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedAdminSystemSettingsContentSectionRoute =
   AuthenticatedAdminSystemSettingsContentSectionRouteImport.update({
     id: '/content/$section',
     path: '/content/$section',
     getParentRoute: () => AuthenticatedAdminSystemSettingsRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/system-settings/content/$section.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedAdminSystemSettingsModelsIndexRoute =
   AuthenticatedAdminSystemSettingsModelsIndexRouteImport.update({
     id: '/models/',
     path: '/models/',
     getParentRoute: () => AuthenticatedAdminSystemSettingsRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/system-settings/models/index.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedAdminSystemSettingsModelsSectionRoute =
   AuthenticatedAdminSystemSettingsModelsSectionRouteImport.update({
     id: '/models/$section',
     path: '/models/$section',
     getParentRoute: () => AuthenticatedAdminSystemSettingsRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/system-settings/models/$section.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedAdminSystemSettingsOperationsIndexRoute =
   AuthenticatedAdminSystemSettingsOperationsIndexRouteImport.update({
     id: '/operations/',
     path: '/operations/',
     getParentRoute: () => AuthenticatedAdminSystemSettingsRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/system-settings/operations/index.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedAdminSystemSettingsOperationsSectionRoute =
   AuthenticatedAdminSystemSettingsOperationsSectionRouteImport.update({
     id: '/operations/$section',
     path: '/operations/$section',
     getParentRoute: () => AuthenticatedAdminSystemSettingsRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/system-settings/operations/$section.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedAdminSystemSettingsSecurityIndexRoute =
   AuthenticatedAdminSystemSettingsSecurityIndexRouteImport.update({
     id: '/security/',
     path: '/security/',
     getParentRoute: () => AuthenticatedAdminSystemSettingsRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/system-settings/security/index.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedAdminSystemSettingsSecuritySectionRoute =
   AuthenticatedAdminSystemSettingsSecuritySectionRouteImport.update({
     id: '/security/$section',
     path: '/security/$section',
     getParentRoute: () => AuthenticatedAdminSystemSettingsRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/system-settings/security/$section.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedAdminSystemSettingsSiteIndexRoute =
   AuthenticatedAdminSystemSettingsSiteIndexRouteImport.update({
     id: '/site/',
     path: '/site/',
     getParentRoute: () => AuthenticatedAdminSystemSettingsRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/system-settings/site/index.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 const AuthenticatedAdminSystemSettingsSiteSectionRoute =
   AuthenticatedAdminSystemSettingsSiteSectionRouteImport.update({
     id: '/site/$section',
     path: '/site/$section',
     getParentRoute: () => AuthenticatedAdminSystemSettingsRouteRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/system-settings/site/$section.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute

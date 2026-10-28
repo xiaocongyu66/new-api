@@ -21,8 +21,6 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { ProxyPage } from '@/features/proxy'
-
 export const Route = createFileRoute('/_authenticated/admin/proxy')({
   beforeLoad: () => {
     const { auth } = useAuthStore.getState()
@@ -31,5 +29,4 @@ export const Route = createFileRoute('/_authenticated/admin/proxy')({
       throw redirect({ to: '/403' })
     }
   },
-  component: ProxyPage,
 })

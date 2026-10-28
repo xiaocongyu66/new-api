@@ -21,8 +21,6 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { UserInsights } from '@/features/user-insights'
-
 export const Route = createFileRoute('/_authenticated/admin/user-insights/')({
   beforeLoad: () => {
     const { auth } = useAuthStore.getState()
@@ -31,5 +29,4 @@ export const Route = createFileRoute('/_authenticated/admin/user-insights/')({
       throw redirect({ to: '/403' })
     }
   },
-  component: UserInsights,
 })
