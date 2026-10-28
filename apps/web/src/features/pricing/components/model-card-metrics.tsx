@@ -57,8 +57,10 @@ type Point = { x: number; y: number }
  * Cardinal-spline polyline → cubic bezier path. Noisy hourly data would
  * make straight segments look jagged at this size; control points are
  * clamped into the plot band so the curve cannot overshoot the axes.
+ *
+ * Exported for the geometry table test in __tests__.
  */
-function smoothLinePath(points: Point[]): string {
+export function smoothLinePath(points: Point[]): string {
   if (points.length === 0) return ''
   if (points.length < 3) {
     return points
