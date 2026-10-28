@@ -182,11 +182,31 @@ export function isPricingModuleEnabled(status: unknown): boolean {
   ).enabled
 }
 
+// Route guards re-run their beforeLoad on every navigation, so an
+// unconditional /api/status fetch per entry would pend the router (and
+// flash the route skeleton) on each top-nav switch. The header nav already
+// treats status as 5-min fresh via useStatus, so a 30s in-memory window for
+// guards is consistent; a hard reload starts with an empty cache, so the
+// initial validation always hits the network.
+const MODULE_ACCESS_CACHE_TTL_MS = 30_000
+let moduleAccessCache: {
+  at: number
+  status: Record<string, unknown> | null
+} | null = null
+
 export async function getFreshModuleAccess(
   module: HeaderNavModule
 ): Promise<ModuleAccess> {
+  const now = Date.now()
+  if (
+    moduleAccessCache &&
+    now - moduleAccessCache.at < MODULE_ACCESS_CACHE_TTL_MS
+  ) {
+    return getModuleAccessFromStatus(moduleAccessCache.status, module)
+  }
   try {
     const status = (await getStatus()) as Record<string, unknown> | null
+    moduleAccessCache = { at: now, status }
     cacheStatus(status)
     return getModuleAccessFromStatus(status, module)
   } catch {
