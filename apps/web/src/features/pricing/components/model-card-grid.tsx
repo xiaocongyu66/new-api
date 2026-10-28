@@ -25,9 +25,8 @@ import { Button } from '@/components/ui/button'
 import { getPerfMetricsSummary } from '@/features/performance-metrics/api'
 
 import { DEFAULT_PRICING_PAGE_SIZE, DEFAULT_TOKEN_UNIT } from '../constants'
-import type { PricingModel, TokenUnit } from '../types'
+import type { ModelPerfBadgeData, PricingModel, TokenUnit } from '../types'
 import { ModelCard } from './model-card'
-import type { ModelPerfBadgeData } from './model-perf-badge'
 
 export interface ModelCardGridProps {
   models: PricingModel[]
@@ -72,8 +71,13 @@ export function ModelCardGrid(props: ModelCardGridProps) {
   }
 
   return (
-    <div className='space-y-4 sm:space-y-5'>
-      <div className='grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2 2xl:grid-cols-3'>
+    <div className='@container space-y-4 sm:space-y-5'>
+      {/* Column count tracks the grid's own width, not the viewport: a
+          sidebar/icon-rail steals layout width without moving viewport
+          breakpoints, so viewport queries misjudge the available room.
+          1 (mobile) → 2 (≥640) → 3 (≥1024) → 4 (≥1440, 1080p + sidebar)
+          → 5 (≥1920, 2K+ displays). */}
+      <div className='grid grid-cols-1 gap-3 @min-[640px]:grid-cols-2 @min-[640px]:gap-4 @min-[1024px]:grid-cols-3 @min-[1440px]:grid-cols-4 @min-[1920px]:grid-cols-5'>
         {pagedModels.map((model) => (
           <ModelCard
             key={model.id ?? model.model_name}

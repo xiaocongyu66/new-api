@@ -152,7 +152,7 @@ export function Pricing() {
   if (isLoading) {
     return (
       <PublicLayout showMainContainer={false}>
-        <Main aria-busy='true' className='mx-auto w-full max-w-[1600px] px-4 pt-20 pb-10 sm:px-6 sm:pt-24 lg:px-8'>
+        <Main aria-busy='true' className='mx-auto w-full max-w-[2200px] px-4 pt-20 pb-10 sm:px-6 sm:pt-24 lg:px-8'>
           <LoadingSkeleton viewMode={viewMode} />
         </Main>
       </PublicLayout>
@@ -161,7 +161,7 @@ export function Pricing() {
 
   return (
     <PublicLayout showMainContainer={false}>
-      <Main className='mx-auto w-full max-w-[1600px] gap-6 overflow-visible px-4 pt-20 pb-10 sm:px-6 sm:pt-24 lg:px-8'>
+      <Main className='mx-auto w-full max-w-[2200px] gap-6 overflow-visible px-4 pt-20 pb-10 sm:px-6 sm:pt-24 lg:px-8'>
           <header className='flex flex-col gap-5'>
             <div className='min-w-0 pt-4 text-center'>
             <h1 className='text-4xl leading-tight font-bold tracking-tight sm:text-5xl'>

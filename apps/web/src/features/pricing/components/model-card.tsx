@@ -16,11 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Copy } from 'lucide-react'
 import { memo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { getLobeIcon } from '@/lib/lobe-icon'
@@ -32,11 +30,11 @@ import {
   getDynamicPricingSummary,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
-import { isTokenBasedModel } from '../lib/model-helpers'
+import { getConfiguredGroupRatio, isTokenBasedModel } from '../lib/model-helpers'
 import { formatPrice, formatRequestPrice } from '../lib/price'
-import type { PricingModel, TokenUnit } from '../types'
+import type { ModelPerfBadgeData, PricingModel, TokenUnit } from '../types'
 import { ModelBillingModeBadge } from './model-billing-mode-badge'
-import { ModelPerfBadge, type ModelPerfBadgeData } from './model-perf-badge'
+import { ModelCardMetrics } from './model-card-metrics'
 
 export interface ModelCardProps {
   model: PricingModel
@@ -87,6 +85,34 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
     Math.max(groups.length - 1, 0) +
     Math.max(endpoints.length - 2, 0) +
     Math.max(tags.length - 2, 0)
+
+  // Price table rows 2-3: the first two enabled groups with their ratio and
+  // the price under that ratio. Dynamic-expression models have no stable
+  // per-group number to tabulate, so they keep the summary row only.
+  const groupRows = isDynamicPricing
+    ? []
+    : groups.slice(0, 2).map((group) => ({
+        group,
+        ratio: getConfiguredGroupRatio(props.model.group_ratio || {}, group),
+        value: isTokenBased
+          ? formatPrice(
+              props.model,
+              'input',
+              tokenUnit,
+              showRechargePrice,
+              priceRate,
+              usdExchangeRate,
+              group
+            )
+          : formatRequestPrice(
+              props.model,
+              showRechargePrice,
+              priceRate,
+              usdExchangeRate,
+              group
+            ),
+        unit: isTokenBased ? `${tokenUnitLabel} tokens` : 'request',
+      }))
 
   const handleCopy = (e: React.MouseEvent) => {
     // The card itself is the details trigger, so the copy button must not
@@ -220,7 +246,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
       onClick={props.onClick}
       onKeyDown={handleCardKeyDown}
       className={cn(
-        'h-full cursor-pointer gap-3 select-none sm:gap-4',
+        '@container h-full cursor-pointer gap-3 select-none sm:gap-4',
         'transition-[box-shadow,background-color] motion-reduce:transition-none',
         // The card's visible edge is a ring, so hover/active retint that ring
         // instead of adding a border that would shift the content width.
@@ -229,45 +255,67 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         'active:ring-primary/70 active:bg-primary/[0.06]'
       )}
     >
-      {/* Header: icon + name + copy action; details now live on the card itself */}
-      <CardHeader className='flex flex-wrap items-start justify-between gap-3'>
-        <div className='flex min-w-0 items-start gap-2.5 sm:gap-3'>
-          <div className='bg-muted/40 flex size-9 shrink-0 items-center justify-center rounded-lg sm:size-10 sm:rounded-xl'>
+      {/* Header: the name itself is the copy control, provider icon included;
+          details live on the card. The name stays on one line and truncates —
+          the full string is in the button's label and on copy. */}
+      <CardHeader className='gap-1.5'>
+        <button
+          type='button'
+          onClick={handleCopy}
+          title={`${t('Copy model name')} · ${props.model.model_name}`}
+          aria-label={`${t('Copy model name')} · ${props.model.model_name}`}
+          className='group/name hover:bg-foreground/[0.06] focus-visible:bg-foreground/[0.06] focus-visible:ring-primary/50 flex min-w-0 max-w-full items-center gap-2 self-start rounded-lg bg-foreground/[0.03] p-1 pr-2.5 text-left transition-colors focus-visible:ring-1 focus-visible:outline-none sm:gap-2.5'
+        >
+          <span className='bg-muted/40 flex size-8 shrink-0 items-center justify-center rounded-md sm:size-9 sm:rounded-lg'>
             {modelIcon || (
               <span className='text-muted-foreground text-sm font-bold'>
                 {initial}
               </span>
             )}
-          </div>
-          <div className='min-w-0'>
-            <h3 className='text-foreground group-hover/card:text-primary line-clamp-2 font-mono text-sm leading-snug font-semibold break-all transition-colors'>
-              {props.model.model_name}
-            </h3>
-            <p className='text-muted-foreground mt-1 truncate text-xs'>{props.model.vendor_name}</p>
-          </div>
-        </div>
-
-        <Button
-          type='button'
-          onClick={handleCopy}
-          variant='ghost'
-          size='icon-sm'
-          className='opacity-60 group-hover/card:opacity-100 focus-visible:opacity-100'
-          aria-label={t('Copy model name')}
-        >
-          <Copy className='size-3.5' />
-        </Button>
+          </span>
+          <span className='text-foreground group-hover/card:text-primary truncate font-mono text-sm leading-snug font-semibold transition-colors'>
+            {props.model.model_name}
+          </span>
+        </button>
+        <p className='text-muted-foreground truncate text-xs'>
+          {props.model.vendor_name}
+        </p>
       </CardHeader>
 
       <CardContent className='flex flex-1 flex-col gap-4'>
-      <div className='bg-muted/40 flex flex-wrap items-baseline gap-x-4 gap-y-2 rounded-lg p-3 text-sm'>
-        {priceSummary}
-        {(isTokenBased || dynamicSummary) && <span className='text-muted-foreground text-xs'>/ {tokenUnitLabel} tokens</span>}
-      </div>
-      {/* Description */}
+      {/* Description sits directly under the title, left-aligned */}
       <p className='text-muted-foreground line-clamp-2 flex-1 text-sm leading-relaxed'>
         {props.model.description || t('No description available.')}
       </p>
+
+      {/* Price table: row 1 is the standard price, rows 2-3 break it down by
+          group (name · ratio · value/unit) with hairline dividers. */}
+      <div className='divide-border/50 border-border/50 overflow-hidden rounded-lg border divide-y'>
+        <div className='flex flex-wrap items-baseline gap-x-4 gap-y-2 px-3 py-2 text-sm'>
+          {priceSummary}
+          {(isTokenBased || dynamicSummary) && <span className='text-muted-foreground text-xs'>/ {tokenUnitLabel} tokens</span>}
+        </div>
+        {groupRows.map((row) => (
+          <div
+            key={row.group}
+            className='grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 px-3 py-1.5 text-xs'
+          >
+            <span className='truncate font-medium'>{row.group}</span>
+            <span className='text-muted-foreground tabular-nums'>
+              ×{row.ratio}
+            </span>
+            <span className='whitespace-nowrap'>
+              <span className='text-foreground font-mono font-semibold tabular-nums'>
+                {row.value}
+              </span>
+              <span className='text-muted-foreground/70'> / {row.unit}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Middle: 24h latency/success combo chart + headline numbers */}
+      <ModelCardMetrics perf={props.perf} />
 
       {/* Footer: left metadata and right performance summary share row alignment */}
       <div className='grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-2 border-t pt-3'>
@@ -279,7 +327,6 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           )}
           <ModelBillingModeBadge model={props.model} />
         </div>
-        <ModelPerfBadge perf={props.perf} className='row-span-2 self-start' />
 
         <div className='flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 sm:gap-x-3 sm:gap-y-1'>
           {bottomTags.map((item) => (

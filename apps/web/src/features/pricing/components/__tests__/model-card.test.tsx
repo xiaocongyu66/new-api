@@ -146,7 +146,7 @@ describe('Model square card as a single activation surface', () => {
     // The old header action is gone: the card itself is the only trigger.
     const cardButtons = [
       ...mounted.container.querySelectorAll<HTMLElement>(
-        '[data-slot="button"]'
+        'button'
       ),
     ]
     assert.equal(
@@ -185,7 +185,7 @@ describe('Model square card as a single activation surface', () => {
 
     clipboardWrites.length = 0
     const copyButton = mounted.container.querySelector<HTMLElement>(
-      'button[aria-label="Copy model name"]'
+      'button[aria-label^="Copy model name"]'
     )
     assert.ok(copyButton)
     await act(async () => {
@@ -241,12 +241,16 @@ describe('Model square card as a single activation surface', () => {
     const mounted = await mountCard()
 
     const copyButton = mounted.container.querySelector<HTMLElement>(
-      'button[aria-label="Copy model name"]'
+      'button[aria-label^="Copy model name"]'
     )
     assert.ok(copyButton)
-    assert.equal(copyButton.getAttribute('aria-label'), 'Copy model name')
+    // The label names the action and identifies which model it copies.
+    const copyLabel = copyButton.getAttribute('aria-label') ?? ''
+    assert.ok(copyLabel.startsWith('Copy model name'))
+    assert.ok(copyLabel.includes(MODEL_NAME))
     assert.equal(copyButton.tabIndex, 0)
-    assert.equal(copyButton.textContent?.trim(), '')
+    // The button is the card title: its text carries the model name.
+    assert.ok(copyButton.textContent?.includes(MODEL_NAME))
 
     // Copying through the keyboard must not reach the card handler either.
     await act(async () => {
