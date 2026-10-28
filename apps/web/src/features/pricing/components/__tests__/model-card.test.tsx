@@ -31,8 +31,8 @@ mock.module('@/lib/lobe-icon', () => ({
 }))
 
 // happy-dom ships a clipboard object without writeText, and no execCommand, so
-// the copy button's real write path needs a boundary stub. The model name the
-// stub records is asserted below, which keeps the test on the user-visible
+// the copy button's real write path needs a boundary fake. The model name the
+// fake records is asserted below, which keeps the test on the user-visible
 // contract ("copying does not also open details").
 const clipboardWrites: string[] = []
 const originalClipboard = Object.getOwnPropertyDescriptor(
