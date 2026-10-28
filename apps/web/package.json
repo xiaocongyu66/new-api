@@ -19,6 +19,7 @@
     "copyright": "node scripts/add-copyright.mjs",
     "i18n:sync": "node scripts/sync-i18n.mjs",
     "knip": "knip",
+    "analyze": "ANALYZE=1 rsbuild build && bunx webpack-bundle-analyzer dist/stats.json",
     "aino": "bun build ainotation-entry.ts --format=iife --minify --target=browser --outfile=public/ainotation/ainotation.iife.js"
   },
   "dependencies": {
