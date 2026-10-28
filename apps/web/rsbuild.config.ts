@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -5,8 +6,14 @@ import { defineConfig, loadEnv } from '@rsbuild/core'
 import { pluginReact } from '@rsbuild/plugin-react'
 import { pluginTailwindcss } from '@rsbuild/plugin-tailwindcss'
 import { tanstackRouter } from '@tanstack/router-plugin/rspack'
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+// webpack-bundle-analyzer ships no bundled types; require() keeps the config
+// typecheck-clean for the env-gated BundleAnalyzerPlugin used by `bun run analyze`
+// (off by default — no cost in regular builds).
+const { BundleAnalyzerPlugin } = createRequire(import.meta.url)(
+  'webpack-bundle-analyzer'
+)
 
 export default defineConfig(({ envMode }) => {
   const env = loadEnv({ mode: envMode, prefixes: ['VITE_'] })
@@ -112,6 +119,19 @@ export default defineConfig(({ envMode }) => {
             // Prod: keep route-based code splitting.
             autoCodeSplitting: isProd,
           }),
+          // Opt-in bundle analysis: `ANALYZE=1 rsbuild build` writes dist/stats.json
+          // (webpack stats JSON) so the `analyze` script can feed it to the
+          // webpack-bundle-analyzer CLI. Off by default — no overhead in regular builds.
+          ...(process.env.ANALYZE
+            ? [
+                new BundleAnalyzerPlugin({
+                  generateStatsFile: true,
+                  statsFilename: 'stats.json',
+                  statsOptions: { preset: 'detailed' },
+                  analyzerMode: 'disabled',
+                }),
+              ]
+            : []),
         ],
       },
     },
