@@ -18,11 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { SettingsPage } from '../components/settings-page'
 import type { BillingSettings } from '../types'
-import {
-  BILLING_DEFAULT_SECTION,
-  getBillingSectionContent,
-  getBillingSectionMeta,
-} from './section-registry.tsx'
+import { BILLING_DEFAULT_SECTION } from './section-registry.tsx'
+import { getBillingSectionContent, getBillingSectionMeta } from './sections.tsx'
 
 export const defaultBillingSettings: BillingSettings = {
   QuotaForNewUser: 0,
