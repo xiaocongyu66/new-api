@@ -193,17 +193,15 @@ export function PricingToolbar(props: PricingToolbarProps) {
         </div>
 
         <div className='flex flex-wrap items-center gap-2'>
-          <div className='flex flex-wrap items-center gap-2'>
-            <SegmentedControl
-              options={[
-                { value: 'standard', label: t('Standard') },
-                { value: 'recharge', label: t('Recharge') },
-              ]}
-              value={props.showRechargePrice ? 'recharge' : 'standard'}
-              onChange={handleRechargePriceChange}
-              ariaLabel={t('Price display mode')}
-            />
-          </div>
+          <SegmentedControl
+            options={[
+              { value: 'standard', label: t('Standard') },
+              { value: 'recharge', label: t('Recharge') },
+            ]}
+            value={props.showRechargePrice ? 'recharge' : 'standard'}
+            onChange={handleRechargePriceChange}
+            ariaLabel={t('Price display mode')}
+          />
 
           <DropdownMenu>
             <DropdownMenuTrigger
