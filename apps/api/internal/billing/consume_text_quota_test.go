@@ -1142,8 +1142,9 @@ func TestCalculateTextQuotaSummaryPerCallEmptyContentFilterNotWaived(t *testing.
 	relayInfo := perCallRelayInfo(0.38, 1)
 	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 0, TotalTokens: 14}
 
+	adminRejectReason := common.GetCtxKeyString(ctx, constant.ContextKeyAdminRejectReason)
 	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
-	applyEmptyResponseMultiplier(relayInfo, &summary, "")
+	applyEmptyResponseMultiplier(relayInfo, &summary, adminRejectReason)
 
 	require.Equal(t, int(0.38*float64(common.QuotaPerUnit)), summary.Quota, "content-filtered responses keep the prompt charge")
 	assert.False(t, summary.EmptyResponseWaived)
@@ -1170,6 +1171,7 @@ func TestCalculateTextQuotaSummaryTokenBilledEmptyResponseUsesMultiplier(t *test
 	ctx := ctxRaw
 	relayInfo := &relaycommon.RelayInfo{
 		OriginModelName: "some-token-model",
+		RelayFormat:     types.RelayFormatOpenAI,
 		PriceData: hosttypes.PriceData{
 			ModelRatio:     2,
 			UsePrice:       false,
