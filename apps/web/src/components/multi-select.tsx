@@ -85,6 +85,8 @@ interface MultiSelectProps {
   filterByInput?: boolean
 }
 
+const COMMA_REGEX = /[,，\n]/
+
 function splitDraft(value: string): { completed: string[]; draft: string } {
   if (!COMMA_REGEX.test(value)) {
     return { completed: [], draft: value }
