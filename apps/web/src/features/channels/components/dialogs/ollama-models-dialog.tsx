@@ -509,7 +509,7 @@ export function OllamaModelsDialog({
             </div>
 
             <div className='overflow-hidden rounded-md border'>
-              <div className='max-h-[420px] overflow-y-auto'>
+              <div className='max-h-[420px] overflow-y-auto no-scrollbar'>
                 {filteredModels.length === 0 ? (
                   <div className='text-muted-foreground p-6 text-center text-sm'>
                     {t('No models found.')}
