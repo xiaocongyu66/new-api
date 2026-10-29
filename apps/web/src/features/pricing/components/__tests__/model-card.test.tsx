@@ -197,6 +197,29 @@ describe('Model square card as a single activation surface', () => {
     await unmountCard(mounted)
   })
 
+  test('swaps the title copy icon to a check after a successful copy', async () => {
+    const mounted = await mountCard()
+    const copyButton = mounted.container.querySelector<HTMLElement>(
+      'button[aria-label^="Copy model name"]'
+    )
+    assert.ok(copyButton)
+    // The test clipboard stub succeeds, so the button should show the check
+    // icon right after the click.
+    await act(async () => {
+      copyButton.click()
+    })
+    assert.ok(copyButton.querySelector('svg.lucide-check'))
+    assert.equal(copyButton.querySelectorAll('svg.lucide-copy').length, 0)
+    // The check is temporary: the button reverts to the copy icon.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1600))
+    })
+    assert.ok(copyButton.querySelector('svg.lucide-copy'))
+    assert.equal(copyButton.querySelectorAll('svg.lucide-check').length, 0)
+
+    await unmountCard(mounted)
+  })
+
   test('activates the card from the keyboard with Enter and Space', async () => {
     const mounted = await mountCard()
     const card = getCard(mounted.container)

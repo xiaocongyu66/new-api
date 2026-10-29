@@ -16,8 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Copy } from 'lucide-react'
-import { memo, type ReactNode } from 'react'
+import { Check, Copy } from 'lucide-react'
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -129,11 +129,25 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         ),
       }))
 
-  const handleCopy = (e: React.MouseEvent) => {
+  // Copy feedback: the title button swaps its icon to a check for a moment
+  // after a successful copy, then reverts. Local to this card.
+  const [copied, setCopied] = useState(false)
+  const copyResetRef = useRef<number | undefined>(undefined)
+  useEffect(() => {
+    return () => clearTimeout(copyResetRef.current)
+  }, [])
+
+  const handleCopy = async (e: React.MouseEvent) => {
     // The card itself is the details trigger, so the copy button must not
     // also fire the click that opens the details drawer.
     e.stopPropagation()
-    copyToClipboard(props.model.model_name || '')
+    const ok = await copyToClipboard(props.model.model_name || '')
+    if (!ok) {
+      return
+    }
+    setCopied(true)
+    clearTimeout(copyResetRef.current)
+    copyResetRef.current = window.setTimeout(() => setCopied(false), 1500)
   }
 
   const handleCardKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -189,8 +203,8 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
     }
   }
 
-  // Price summary above the group table. Per-token billing gets two
-  // half-width cells (输入 | 输出), each with its own unit suffix;
+  // Price summary above the group table. Per-token billing packs the input
+  // and output prices left with a generous gap (no mid-card column start);
   // per-request billing is a single price; dynamic expressions keep the
   // flexible summary. Built with if/else so the JSX has no nested ternaries.
   let priceSummaryBlock: ReactNode
@@ -202,7 +216,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
     )
   } else if (isTokenBased) {
     priceSummaryBlock = (
-      <div className='grid grid-cols-2 items-center gap-2 pl-1 text-sm'>
+      <div className='flex flex-wrap items-center gap-x-5 gap-y-1 pl-1 text-sm'>
         {(['input', 'output'] as const).map((type) => (
           <span
             key={type}
@@ -285,18 +299,18 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             )}
           </span>
           <span className='flex min-w-0 flex-1 flex-col'>
-            <span className='text-foreground group-hover/card:text-primary truncate font-mono text-sm leading-snug font-semibold transition-colors'>
+            <span className='text-foreground group-hover/name:text-primary truncate font-mono text-sm leading-snug font-semibold transition-colors'>
               {props.model.model_name}
             </span>
-            {props.model.vendor_name && (
-              <span className='text-muted-foreground truncate text-[10px] leading-tight'>
-                {props.model.vendor_name}
-              </span>
-            )}
           </span>
           {/* Copy affordance: appears at the right edge of the title button on
-              card hover so the whole header reads as "click to copy". */}
-          <Copy className='text-muted-foreground/50 size-3 shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100' />
+              button hover so the header reads as "click to copy"; a check
+              replaces it briefly after a successful copy. */}
+          {copied ? (
+            <Check className='text-success size-3 shrink-0' />
+          ) : (
+            <Copy className='text-muted-foreground/50 size-3 shrink-0 opacity-0 transition-opacity group-hover/name:opacity-100' />
+          )}
         </button>
       </CardHeader>
 

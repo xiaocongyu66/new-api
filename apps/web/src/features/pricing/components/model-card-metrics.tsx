@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { memo, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { getSuccessRateColor } from '@/features/performance-metrics/lib/format'
 import { useCountUp } from '@/hooks/use-count-up'
 import { cn } from '@/lib/utils'
 
@@ -37,6 +36,7 @@ import {
 import type { ModelPerfBadgeData } from '../types'
 
 const LATENCY_COLOR = '#3b82f6' // blue-500, latency bars
+const SUCCESS_COLOR = '#10b981' // emerald-500, success-rate line and number
 const GRID_COLOR = 'currentColor'
 
 type TrendPoint = { ts: number; latency_ms: number; success_rate: number }
@@ -47,7 +47,7 @@ function formatHour(ts: number): string {
 }
 
 function formatLatency(ms: number): string {
-  return `${Math.round(ms).toLocaleString()}ms`
+  return Math.round(ms).toLocaleString()
 }
 
 // Mantissa steps for axis rounding, in ascending order.
@@ -165,8 +165,24 @@ export const ModelCardMetrics = memo(function ModelCardMetrics(props: {
 
   const active = pinned ?? hovered
   const activePoint = active != null ? series[active] : null
-  // Line and dots keep the health colour; the headline number is always green.
-  const successColor = getSuccessRateColor(perf.success_rate)
+
+  // The count-up changes the number's string width digit by digit, which
+  // would drag the trailing unit (ms / %) sideways. Each value renders in a
+  // reserved-width box: an invisible copy of the final string sets the
+  // width, the live value is absolutely right-aligned on top — digits grow
+  // leftward and the unit stays pinned.
+  const latencyText = activePoint
+    ? formatLatency(activePoint.latency_ms)
+    : formatLatency(latency)
+  const latencyWidth = formatLatency(
+    activePoint ? activePoint.latency_ms : perf.avg_latency_ms
+  )
+  const successText = activePoint
+    ? activePoint.success_rate.toFixed(1)
+    : successRate.toFixed(1)
+  const successWidth = (
+    activePoint ? activePoint.success_rate : perf.success_rate
+  ).toFixed(1)
 
   return (
     <div className={cn('border-t pt-3', props.className)}>
@@ -176,19 +192,22 @@ export const ModelCardMetrics = memo(function ModelCardMetrics(props: {
       <div className='grid grid-cols-3 items-baseline text-xs leading-4 tabular-nums'>
         <span className='flex min-w-0 items-baseline gap-1'>
           <span className='text-muted-foreground/55'>{t('Latency short')}</span>
-          <span className='text-foreground font-mono font-semibold'>
-            {activePoint
-              ? formatLatency(activePoint.latency_ms)
-              : formatLatency(latency)}
+          <span className='ml-auto flex items-baseline gap-0.5'>
+            <span className='text-foreground relative inline-block text-right font-mono font-semibold'>
+              <span className='invisible'>{latencyWidth}</span>
+              <span className='absolute inset-0 text-right'>{latencyText}</span>
+            </span>
+            <span className='text-muted-foreground/70 text-[10px]'>ms</span>
           </span>
         </span>
         <span className='flex min-w-0 items-baseline gap-1'>
           <span className='text-muted-foreground/55'>{t('Success rate')}</span>
-          <span className='font-mono font-semibold text-emerald-500'>
-            {activePoint
-              ? activePoint.success_rate.toFixed(1)
-              : successRate.toFixed(1)}
-            %
+          <span className='ml-auto flex items-baseline gap-0.5'>
+            <span className='text-emerald-500 relative inline-block text-right font-mono font-semibold'>
+              <span className='invisible'>{successWidth}</span>
+              <span className='absolute inset-0 text-right'>{successText}</span>
+            </span>
+            <span className='text-muted-foreground/70 text-[10px]'>%</span>
           </span>
         </span>
         <span className='flex min-w-0 items-baseline justify-end gap-1'>
@@ -291,7 +310,7 @@ export const ModelCardMetrics = memo(function ModelCardMetrics(props: {
           d={geometry.linePath}
           pathLength={1}
           fill='none'
-          stroke={successColor}
+          stroke={SUCCESS_COLOR}
           strokeWidth={2}
           strokeLinecap='round'
           strokeLinejoin='round'
@@ -304,7 +323,7 @@ export const ModelCardMetrics = memo(function ModelCardMetrics(props: {
             cx={geometry.xAt(index)}
             cy={geometry.ySuccess(point.success_rate)}
             r={active === index ? 3.2 : 2}
-            fill={successColor}
+            fill={SUCCESS_COLOR}
             stroke='white'
             strokeWidth={1}
             vectorEffect='non-scaling-stroke'
