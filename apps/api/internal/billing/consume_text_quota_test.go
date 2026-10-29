@@ -1186,6 +1186,7 @@ func TestCalculateTextQuotaSummaryTokenBilledEmptyResponseUsesMultiplier(t *test
 	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
 	applyEmptyResponseMultiplier(relayInfo, &summary, "")
 	require.Equal(t, 2000, summary.Quota)
+	assert.True(t, summary.EmptyResponseDetected)
 	assert.False(t, summary.EmptyResponseWaived)
 
 	// multiplier 0.1 scales the prompt-token charge.
@@ -1202,6 +1203,58 @@ func TestCalculateTextQuotaSummaryTokenBilledEmptyResponseUsesMultiplier(t *test
 	applyEmptyResponseMultiplier(relayInfo, &summary, "")
 	require.Equal(t, 0, summary.Quota)
 	assert.True(t, summary.EmptyResponseWaived)
+}
+
+func TestApplyEmptyResponseMultiplierTieredBillingNotExcluded(t *testing.T) {
+	setEmptyResponseMultiplier(t, 0.1)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
+	relayInfo := perCallRelayInfo(0.38, 1)
+	relayInfo.TieredBillingSnapshot = &price_expression.BillingSnapshot{}
+	usage := &dto.Usage{PromptTokens: 1000, CompletionTokens: 0, TotalTokens: 1000}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	// Simulate a tiered settlement having already set the final quota
+	// (TryTieredSettle/composeTieredTextQuota run before the multiplier).
+	summary.Quota = 5000
+	applyEmptyResponseMultiplier(relayInfo, &summary, "")
+
+	require.Equal(t, 500, summary.Quota, "tiered-billed empty responses must use the multiplier too")
+	assert.True(t, summary.EmptyResponseDetected)
+	assert.True(t, summary.EmptyResponseWaived)
+	assert.Equal(t, 0.1, summary.EmptyResponseMultiplier)
+}
+
+func TestApplyEmptyResponseMultiplierClampsConfiguredMultiplier(t *testing.T) {
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
+	relayInfo := perCallRelayInfo(0.38, 1)
+	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 0, TotalTokens: 14}
+
+	// negative multiplier -> 0 (full waiver)
+	setEmptyResponseMultiplier(t, -0.5)
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	applyEmptyResponseMultiplier(relayInfo, &summary, "")
+	require.Equal(t, 0, summary.Quota)
+	assert.True(t, summary.EmptyResponseWaived)
+	assert.Equal(t, 0.0, summary.EmptyResponseMultiplier)
+
+	// multiplier > 1 -> 1 (full price, still detected)
+	setEmptyResponseMultiplier(t, 2)
+	summary = calculateTextQuotaSummary(ctx, relayInfo, usage)
+	applyEmptyResponseMultiplier(relayInfo, &summary, "")
+	require.Equal(t, int(0.38*float64(common.QuotaPerUnit)), summary.Quota)
+	assert.True(t, summary.EmptyResponseDetected)
+	assert.False(t, summary.EmptyResponseWaived)
+	assert.Equal(t, 1.0, summary.EmptyResponseMultiplier)
+
+	// NaN -> 0 (full waiver)
+	setEmptyResponseMultiplier(t, math.NaN())
+	summary = calculateTextQuotaSummary(ctx, relayInfo, usage)
+	applyEmptyResponseMultiplier(relayInfo, &summary, "")
+	require.Equal(t, 0, summary.Quota)
+	assert.True(t, summary.EmptyResponseWaived)
+	assert.Equal(t, 0.0, summary.EmptyResponseMultiplier)
 }
 
 func TestCalculateTextQuotaSummaryPerCallImageModelNotWaived(t *testing.T) {

@@ -68,6 +68,7 @@ type textQuotaSummary struct {
 	AudioInputPrice         float64
 	ToolSurchargeItems      []ToolSurchargeItem
 	ToolCallSurchargeQuota  decimal.Decimal
+	EmptyResponseDetected   bool
 	EmptyResponseWaived     bool
 	EmptyResponseMultiplier float64
 }
@@ -438,6 +439,7 @@ func applyEmptyResponseMultiplier(relayInfo *relaycommon.RelayInfo, summary *tex
 	if !isUndeliveredTextResponse(relayInfo, *summary, adminRejectReason) {
 		return
 	}
+	summary.EmptyResponseDetected = true
 	multiplier := GetQuotaSetting().EmptyResponseMultiplier
 	if math.IsNaN(multiplier) || multiplier < 0 {
 		multiplier = 0
@@ -511,11 +513,14 @@ func PostTextConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo
 			logger.LogQuota(common.QuotaFromDecimal(q)),
 		))
 	}
-	if summary.EmptyResponseWaived {
-		if summary.EmptyResponseMultiplier > 0 {
+	if summary.EmptyResponseDetected {
+		switch {
+		case summary.EmptyResponseWaived && summary.EmptyResponseMultiplier > 0:
 			extraContent = append(extraContent, fmt.Sprintf("上游返回空响应，按 %g 倍率扣费", summary.EmptyResponseMultiplier))
-		} else {
+		case summary.EmptyResponseWaived:
 			extraContent = append(extraContent, "上游返回空响应，费用已豁免")
+		default:
+			extraContent = append(extraContent, "上游返回空响应，按原价扣费")
 		}
 	}
 	if summary.AudioInputPrice > 0 && summary.AudioTokens > 0 {
@@ -563,9 +568,11 @@ func PostTextConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo
 	if adminRejectReason != "" {
 		other["reject_reason"] = adminRejectReason
 	}
-	if summary.EmptyResponseWaived {
-		other["empty_response_waived"] = true
+	if summary.EmptyResponseDetected {
 		other["empty_response_multiplier"] = summary.EmptyResponseMultiplier
+		if summary.EmptyResponseWaived {
+			other["empty_response_waived"] = true
+		}
 	}
 	if summary.ImageTokens != 0 {
 		other["image"] = true
