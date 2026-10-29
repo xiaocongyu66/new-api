@@ -165,35 +165,41 @@ export const ModelCardMetrics = memo(function ModelCardMetrics(props: {
 
   const active = pinned ?? hovered
   const activePoint = active != null ? series[active] : null
+  // Line and dots keep the health colour; the headline number is always green.
   const successColor = getSuccessRateColor(perf.success_rate)
 
   return (
     <div className={cn('border-t pt-3', props.className)}>
       {/* Headline numbers: window averages, or the hovered/clicked hour.
-          One flat row of three — latency, success rate, then the hour. */}
-      <div className='flex items-baseline gap-x-3 gap-y-1 text-[11px] leading-4 tabular-nums'>
+          Three equal cells share the row — latency, success rate, then the
+          hour right-aligned in the last cell. */}
+      <div className='grid grid-cols-3 items-baseline text-xs leading-4 tabular-nums'>
         <span className='flex min-w-0 items-baseline gap-1'>
           <span className='text-muted-foreground/55'>{t('Latency short')}</span>
-          <span className='text-foreground font-mono text-sm font-semibold'>
+          <span className='text-foreground font-mono font-semibold'>
             {activePoint
               ? formatLatency(activePoint.latency_ms)
               : formatLatency(latency)}
           </span>
         </span>
-        <span className='flex items-baseline gap-1'>
-          <span className='text-muted-foreground/55'>{t('Status short')}</span>
-          <span className='font-mono font-semibold' style={{ color: successColor }}>
+        <span className='flex min-w-0 items-baseline gap-1'>
+          <span className='text-muted-foreground/55'>{t('Success rate')}</span>
+          <span className='font-mono font-semibold text-emerald-500'>
             {activePoint
               ? activePoint.success_rate.toFixed(1)
               : successRate.toFixed(1)}
             %
           </span>
         </span>
-        {activePoint && (
-          <span className='bg-foreground/10 text-foreground/80 rounded px-1 font-mono'>
-            {formatHour(activePoint.ts)}
-          </span>
-        )}
+        <span className='flex min-w-0 items-baseline justify-end gap-1'>
+          {activePoint ? (
+            <span className='bg-foreground/10 text-foreground/80 rounded px-1 font-mono'>
+              {formatHour(activePoint.ts)}
+            </span>
+          ) : (
+            <span className='text-muted-foreground/40 font-mono'>—</span>
+          )}
+        </span>
       </div>
 
       <svg

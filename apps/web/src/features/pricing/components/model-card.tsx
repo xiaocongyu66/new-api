@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Copy } from 'lucide-react'
 import { memo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -283,8 +284,8 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
               </span>
             )}
           </span>
-          <span className='flex min-w-0 flex-col'>
-            <span className='text-foreground truncate font-mono text-sm leading-snug font-semibold'>
+          <span className='flex min-w-0 flex-1 flex-col'>
+            <span className='text-foreground group-hover/card:text-primary truncate font-mono text-sm leading-snug font-semibold transition-colors'>
               {props.model.model_name}
             </span>
             {props.model.vendor_name && (
@@ -293,6 +294,9 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
               </span>
             )}
           </span>
+          {/* Copy affordance: appears at the right edge of the title button on
+              card hover so the whole header reads as "click to copy". */}
+          <Copy className='text-muted-foreground/50 size-3 shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100' />
         </button>
       </CardHeader>
 

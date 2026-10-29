@@ -451,32 +451,44 @@ func mergeModelBucket(modelBuckets map[string]map[int64]counters, modelName stri
 	modelBuckets[modelName][bucketTs] = current
 }
 
-// recentSeriesPoints caps the per-card trend timeline to one day of hourly
-// buckets, matching the summary query's default window. The card chart is
-// dense but only draws a polyline plus bars, so 24 points stay cheap.
+// recentSeriesPoints is how many hourly buckets the per-card trend carries.
+// The card chart draws a full day, so the series is dense: every bucket in
+// the window is present and quiet hours are filled with zero latency and a
+// 100% success rate, mirroring how the details chart reads an idle hour
+// (no failed requests, no measured latency).
 const recentSeriesPoints = 24
 
-// recentSeries downsamples a model's hourly buckets into a compact
-// latency/success timeline, oldest first. Buckets without requests are
-// skipped so gaps in traffic do not render as fake zero-latency points.
+// recentSeries renders a model's hourly buckets as a fixed-length timeline,
+// oldest first. Missing hours are filled so the x axis always spans a full
+// day even when the model only had traffic in part of it.
 func recentSeries(buckets map[int64]counters, limit int) []ModelRecentPoint {
-	if len(buckets) == 0 || limit <= 0 {
+	if limit <= 0 {
 		return nil
 	}
-	timestamps := make([]int64, 0, len(buckets))
+	newest := int64(0)
 	for ts := range buckets {
-		timestamps = append(timestamps, ts)
+		if ts > newest {
+			newest = ts
+		}
 	}
-	sort.Slice(timestamps, func(i, j int) bool {
-		return timestamps[i] < timestamps[j]
-	})
-	if len(timestamps) > limit {
-		timestamps = timestamps[len(timestamps)-limit:]
+	if newest == 0 {
+		return nil
 	}
-	points := make([]ModelRecentPoint, 0, len(timestamps))
-	for _, ts := range timestamps {
+	latest := bucketStart(time.Now().Unix())
+	if newest > latest {
+		latest = newest
+	}
+	bucketSeconds := GetBucketSeconds()
+	if bucketSeconds <= 0 {
+		bucketSeconds = 3600
+	}
+
+	points := make([]ModelRecentPoint, 0, limit)
+	for offset := int64(limit - 1); offset >= 0; offset-- {
+		ts := latest - offset*bucketSeconds
 		b := buckets[ts]
 		if b.requestCount == 0 {
+			points = append(points, ModelRecentPoint{Ts: ts, SuccessRate: 100})
 			continue
 		}
 		points = append(points, ModelRecentPoint{
