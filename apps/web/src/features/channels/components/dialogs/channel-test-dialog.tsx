@@ -987,7 +987,7 @@ function ChannelTestDialogContent({
         contentHeight='auto'
         bodyClassName='space-y-4'
       >
-        <div className='max-h-[78vh] space-y-4 overflow-y-auto py-4 pr-1'>
+        <div className='max-h-[78vh] space-y-4 overflow-y-auto no-scrollbar py-4 pr-1'>
           <div className='grid gap-4 md:grid-cols-2'>
             <div className='grid gap-2'>
               <Label htmlFor='endpoint-type'>{t('Endpoint Type')}</Label>

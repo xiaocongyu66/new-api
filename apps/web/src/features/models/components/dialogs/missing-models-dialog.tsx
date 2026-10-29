@@ -136,7 +136,7 @@ export function MissingModelsDialog({
           </p>
         </div>
       ) : (
-        <div className='flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto'>
+        <div className='flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto no-scrollbar'>
           <div className='flex flex-shrink-0 items-center justify-between gap-3'>
             <div className='text-muted-foreground text-sm whitespace-nowrap'>
               {t('Showing')} {displayStart}-{displayEnd} {t('of')} {totalItems}
