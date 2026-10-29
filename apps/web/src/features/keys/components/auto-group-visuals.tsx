@@ -127,3 +127,15 @@ export function GroupRatioBadge(props: GroupRatioBadgeProps) {
     </AutoGroupFrame>
   )
 }
+
+
+export function AutoGroupBadge(props: AutoGroupFlowBorderProps) {
+  return (
+    <AutoGroupFrame
+      effect='badge'
+      shouldReduceMotion={props.shouldReduceMotion}
+    >
+      <GroupBadge group='auto' />
+    </AutoGroupFrame>
+  )
+}

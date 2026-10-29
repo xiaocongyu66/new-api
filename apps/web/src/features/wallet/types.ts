@@ -33,6 +33,11 @@ export interface ApiResponse<T = unknown> {
  * Standard API response types
  */
 export type TopupInfoResponse = ApiResponse<TopupInfo>
+export interface TopupRedemptionData {
+  quota: number
+  quota_display: number
+}
+
 export type RedemptionResponse = ApiResponse<TopupRedemptionData>
 export type AmountResponse = ApiResponse<string>
 export type PaymentResponse = ApiResponse<Record<string, unknown>> & {

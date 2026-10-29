@@ -38,6 +38,11 @@ export type ModelPricingSnapshotInput = {
   completionRatioMeta?: string
 }
 
+export type CompletionRatioMeta = {
+  ratio: number
+  locked: boolean
+}
+
 export type CompletionRatioMetaMap = Record<string, CompletionRatioMeta>
 
 export const parseCompletionRatioMeta = (

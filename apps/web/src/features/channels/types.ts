@@ -32,6 +32,44 @@ const channelInfoSchema = z.object({
   multi_key_mode: z.enum(['random', 'polling']).default('random'),
 })
 
+export const channelSchema = z.object({
+  id: z.number(),
+  type: z.number(),
+  key: z.string(),
+  openai_organization: z.string().nullish(),
+  test_model: z.string().nullish(),
+  status: z.number(), // 1: enabled, 0: manual disabled, 2: auto disabled
+  name: z.string(),
+  created_time: z.number(),
+  test_time: z.number(),
+  response_time: z.number(), // in milliseconds
+  base_url: z.string().nullish(),
+  other: z.string().default(''),
+  balance: z.number().default(0), // in USD
+  balance_updated_time: z.number(),
+  models: z.string().default(''),
+  group: z.string().default('default'),
+  used_quota: z.number().default(0),
+  used_quota_display: z.number().optional(),
+  model_mapping: z.string().nullish(),
+  status_code_mapping: z.string().nullish(),
+  auto_ban: z.number().nullish(),
+  other_info: z.string().default(''),
+  tag: z.string().nullish(),
+  setting: z.string().nullish(),
+  param_override: z.string().nullish(),
+  header_override: z.string().nullish(),
+  remark: z.string().default(''),
+  max_input_tokens: z.number().default(0),
+  channel_info: channelInfoSchema.default({
+    is_multi_key: false,
+    multi_key_size: 0,
+    multi_key_polling_index: 0,
+    multi_key_mode: 'random',
+  }),
+  settings: z.string().default('{}'), // other_settings JSON
+})
+
 export type Channel = z.infer<typeof channelSchema>
 
 // ============================================================================

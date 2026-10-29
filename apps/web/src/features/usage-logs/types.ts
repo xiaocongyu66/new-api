@@ -36,6 +36,15 @@ export type LogCategory = 'common' | 'drawing' | 'task'
 // ============================================================================
 
 /**
+ * Common filters (shared across all log types)
+ */
+export interface CommonFilters {
+  startTime?: Date
+  endTime?: Date
+  channel?: string
+}
+
+/**
  * Common logs specific filters
  */
 export interface CommonLogFilters extends CommonFilters {
@@ -46,7 +55,6 @@ export interface CommonLogFilters extends CommonFilters {
   requestId?: string
   upstreamRequestId?: string
 }
-
 /**
  * Drawing logs specific filters
  */

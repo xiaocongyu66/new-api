@@ -25,9 +25,51 @@ import type { AdminPermissionMatrix } from '@/lib/admin-permissions'
 // ============================================================================
 
 /** User status: 1 = enabled, 2 = disabled, 3+ = other states */
-const userStatusSchema = z.number()
-/** User role: 1 = common user, 10 = admin, 100 = root */
-const userRoleSchema = z.number()
+
+
+export const userStatusSchema = z.number()
+export type UserStatus = z.infer<typeof userStatusSchema>
+
+export const userRoleSchema = z.number()
+export type UserRole = z.infer<typeof userRoleSchema>
+
+export const userSchema = z.object({
+  id: z.number(),
+  username: z.string(),
+  display_name: z.string(),
+  password: z.string().optional(),
+  github_id: z.string().optional(),
+  oidc_id: z.string().optional(),
+  wechat_id: z.string().optional(),
+  telegram_id: z.string().optional(),
+  email: z.string().optional(),
+  quota: z.number(),
+  used_quota: z.number(),
+  quota_display: z.number().optional(),
+  used_quota_display: z.number().optional(),
+  request_count: z.number(),
+  group: z.string(),
+  aff_code: z.string().optional(),
+  aff_count: z.number().optional(),
+  aff_quota: z.number().optional(),
+  aff_history_quota: z.number().optional(),
+  aff_history_quota_display: z.number().optional(),
+  inviter_id: z.number().optional(),
+  linux_do_id: z.string().optional(),
+  /** Only returned by the admin single-user endpoint; QQ bindings live in their own table */
+  qq_open_id: z.string().optional(),
+  status: userStatusSchema,
+  role: userRoleSchema,
+  created_at: z.number().optional(),
+  updated_at: z.number().optional(),
+  last_login_at: z.number().optional(),
+  DeletedAt: z.any().nullable().optional(),
+  remark: z.string().optional(),
+  admin_permissions: z
+    .record(z.string(), z.record(z.string(), z.boolean()))
+    .optional(),
+})
+
 export type User = z.infer<typeof userSchema>
 
 // ============================================================================

@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { ArrowDownIcon } from 'lucide-react'
 import { type ComponentProps, useCallback } from 'react'
-import { useTranslation } from 'react-i18next'
+
 import { StickToBottom, useStickToBottomContext } from 'use-stick-to-bottom'
 
 import { Button } from '@/components/ui/button'
