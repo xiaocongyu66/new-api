@@ -16,14 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
 import {
   AlertTriangle,
   ChevronDown,
   GripVertical,
   Info,
   Plus,
+  Save,
   Trash2,
 } from 'lucide-react'
 import {
@@ -978,7 +977,7 @@ function GroupOverrideRules({
             disabled={!userGroupInput}
             aria-label={t('Add')}
           >
-            <HugeiconsIcon icon={FloppyDiskIcon} />
+            <Save />
           </Button>
         }
         footer={
@@ -1094,7 +1093,7 @@ function GroupOverrideDialog({
           onClick={handleSave}
           aria-label={editData ? t('Update') : t('Add')}
         >
-          <HugeiconsIcon icon={FloppyDiskIcon} />
+          <Save />
         </Button>
       }
       footer={

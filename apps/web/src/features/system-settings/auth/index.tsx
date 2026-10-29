@@ -18,11 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { SettingsPage } from '../components/settings-page'
 import type { AuthSettings } from '../types'
-import {
-  AUTH_DEFAULT_SECTION,
-  getAuthSectionContent,
-  getAuthSectionMeta,
-} from './section-registry.tsx'
+import { AUTH_DEFAULT_SECTION } from './section-registry.tsx'
+import { getAuthSectionContent, getAuthSectionMeta } from './sections.tsx'
 
 const defaultAuthSettings: AuthSettings = {
   PasswordLoginEnabled: true,

@@ -16,14 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-// ----------------------------------------------------------------------------
-// Pricing Lib Exports
-// ----------------------------------------------------------------------------
+import { createLazyFileRoute } from '@tanstack/react-router'
 
-export * from './filters'
-export * from './price'
-export * from './model-helpers'
-export * from './billing-expr'
-export * from './tier-expr'
-export * from './mock-stats'
-export * from './seed'
+import { AuthSettings } from '@/features/system-settings/auth'
+
+export const Route = createLazyFileRoute('/_authenticated/admin/system-settings/auth/$section')({
+  component: AuthSettings,
+})

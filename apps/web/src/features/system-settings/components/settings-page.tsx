@@ -21,7 +21,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
-import { Card, CardContent } from '@/components/ui/card'
+import { FormCardSkeleton } from '@/route-skeletons/archetypes'
 
 import { useSystemOptions, getOptionValue } from '../hooks/use-system-options'
 import type { SystemOption } from '../types'
@@ -44,7 +44,6 @@ type SettingsPageProps<
     titleKey: string
   }
   extraArgs?: TExtraArgs
-  loadingMessage?: string
   resolveSettings?: (
     settings: TSettings,
     raw: SystemOption[] | undefined
@@ -108,7 +107,6 @@ export function SettingsPage<
   getSectionContent,
   getSectionMeta,
   extraArgs,
-  loadingMessage = 'Loading settings...',
   resolveSettings,
 }: SettingsPageProps<TSettings, TSectionId, TExtraArgs>) {
   const { t } = useTranslation()
@@ -131,16 +129,9 @@ export function SettingsPage<
   if (isLoading) {
     return (
       <SettingsPageFrame title={t(sectionMeta.titleKey)}>
-        <Card aria-busy='true'>
-          <CardContent>
-            <div
-              role='status'
-              className='text-muted-foreground flex min-h-40 items-center justify-center text-sm'
-            >
-              {t(loadingMessage)}
-            </div>
-          </CardContent>
-        </Card>
+        <div role='status' aria-live='polite'>
+          <FormCardSkeleton fields={6} />
+        </div>
       </SettingsPageFrame>
     )
   }

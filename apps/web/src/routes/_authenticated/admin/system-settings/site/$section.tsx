@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
-import { SiteSettings } from '@/features/system-settings/site'
 import {
   SITE_DEFAULT_SECTION,
   SITE_SECTION_IDS,
@@ -36,5 +35,4 @@ export const Route = createFileRoute(
       })
     }
   },
-  component: SiteSettings,
 })

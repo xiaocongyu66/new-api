@@ -489,6 +489,100 @@ function SystemInstancesList(props: SystemInstancesTableProps) {
   )
 }
 
+// Mirrors the instances table shape (status dot + name/hostname, badges,
+// resource cells, mono columns) so the polling panel's first paint is not a
+// set of plain bars.
+function InstancesTableSkeleton() {
+  return (
+    <div className='overflow-x-auto rounded-md border'>
+      <Table className='min-w-[1230px]'>
+        <TableHeader>
+          <TableRow className='bg-muted/40 hover:bg-muted/40'>
+            <TableHead className='h-9 min-w-[240px] px-4 text-xs'>
+              <Skeleton className='h-3.5 w-20' />
+            </TableHead>
+            <TableHead className='h-9 w-[110px] text-xs'>
+              <Skeleton className='h-3.5 w-10' />
+            </TableHead>
+            <TableHead className='h-9 w-[100px] text-xs'>
+              <Skeleton className='h-3.5 w-10' />
+            </TableHead>
+            <TableHead className='h-9 w-[96px] text-xs'>
+              <Skeleton className='h-3.5 w-8' />
+            </TableHead>
+            <TableHead className='h-9 w-[96px] text-xs'>
+              <Skeleton className='h-3.5 w-8' />
+            </TableHead>
+            <TableHead className='h-9 w-[96px] text-xs'>
+              <Skeleton className='h-3.5 w-8' />
+            </TableHead>
+            <TableHead className='h-9 w-[100px] text-xs'>
+              <Skeleton className='h-3.5 w-12' />
+            </TableHead>
+            <TableHead className='h-9 w-[140px] text-xs'>
+              <Skeleton className='h-3.5 w-16' />
+            </TableHead>
+            <TableHead className='h-9 w-[170px] text-xs'>
+              <Skeleton className='h-3.5 w-20' />
+            </TableHead>
+            <TableHead className='h-9 w-[170px] text-xs'>
+              <Skeleton className='h-3.5 w-20' />
+            </TableHead>
+            <TableHead className='h-9 w-[90px] pr-4 text-right text-xs'>
+              <Skeleton className='ml-auto h-3.5 w-6' />
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {INSTANCE_SKELETON_KEYS.map((key) => (
+            <TableRow key={key}>
+              <TableCell className='px-4 py-2.5 align-middle'>
+                <div className='flex min-w-0 items-center gap-2'>
+                  <Skeleton className='size-2 shrink-0 rounded-full' />
+                  <div className='min-w-0 space-y-1.5'>
+                    <Skeleton className='h-4 w-32' />
+                    <Skeleton className='h-3 w-24' />
+                  </div>
+                </div>
+              </TableCell>
+              <TableCell className='py-2.5 align-middle'>
+                <Skeleton className='h-5 w-16 rounded-full' />
+              </TableCell>
+              <TableCell className='py-2.5 align-middle'>
+                <Skeleton className='h-5 w-14 rounded-full' />
+              </TableCell>
+              <TableCell className='py-2.5 align-middle'>
+                <Skeleton className='h-4 w-10' />
+              </TableCell>
+              <TableCell className='py-2.5 align-middle'>
+                <Skeleton className='h-4 w-10' />
+              </TableCell>
+              <TableCell className='py-2.5 align-middle'>
+                <Skeleton className='h-4 w-10' />
+              </TableCell>
+              <TableCell className='py-2.5 align-middle'>
+                <Skeleton className='h-3.5 w-16' />
+              </TableCell>
+              <TableCell className='py-2.5 align-middle'>
+                <Skeleton className='h-3.5 w-20' />
+              </TableCell>
+              <TableCell className='py-2.5 align-middle'>
+                <Skeleton className='h-3.5 w-24' />
+              </TableCell>
+              <TableCell className='py-2.5 align-middle'>
+                <Skeleton className='h-3.5 w-24' />
+              </TableCell>
+              <TableCell className='py-2.5 pr-4 text-right align-middle'>
+                <Skeleton className='ml-auto h-6 w-6' />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
 export function SystemInstancesPanel() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -576,10 +670,8 @@ export function SystemInstancesPanel() {
   let instancesContent: ReactNode
   if (loading) {
     instancesContent = (
-      <div className='space-y-2 p-4 sm:p-5'>
-        {INSTANCE_SKELETON_KEYS.map((key) => (
-          <Skeleton key={key} className='h-9 w-full rounded-md' />
-        ))}
+      <div className='p-4 sm:p-5'>
+        <InstancesTableSkeleton />
       </div>
     )
   } else if (instancesQuery.isError) {

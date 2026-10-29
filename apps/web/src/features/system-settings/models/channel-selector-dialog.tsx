@@ -16,10 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
 import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
-import { Search } from 'lucide-react'
+import { Search, Save } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -337,7 +335,7 @@ export function ChannelSelectorDialog({
           onClick={handleConfirm}
           aria-label={t('Confirm Selection')}
         >
-          <HugeiconsIcon icon={FloppyDiskIcon} />
+          <Save />
         </Button>
       }
       footer={

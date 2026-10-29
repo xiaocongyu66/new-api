@@ -16,9 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
-import { ShieldCheck, KeyRound, Loader2 } from 'lucide-react'
+import { ShieldCheck, KeyRound, Loader2, Save } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -115,7 +113,7 @@ export function SecureVerificationDialog({
           disabled={availableTabs.length === 0 || verifyDisabled}
           aria-label={t('Verify')}
         >
-          <HugeiconsIcon icon={FloppyDiskIcon} />
+          <Save />
         </Button>
       }
       footer={

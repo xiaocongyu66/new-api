@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import z from 'zod'
 
-import { Channels } from '@/features/channels'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -44,5 +43,4 @@ export const Route = createFileRoute('/_authenticated/admin/channels/')({
     }
   },
   validateSearch: channelsSearchSchema,
-  component: Channels,
 })

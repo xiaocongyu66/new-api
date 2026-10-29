@@ -16,9 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { lazy, Suspense } from 'react'
+
 import { useChannels } from './channels-provider'
 import { BalanceQueryDialog } from './dialogs/balance-query-dialog'
-import { ChannelTestDialog } from './dialogs/channel-test-dialog'
 import { CopyChannelDialog } from './dialogs/copy-channel-dialog'
 import { EditTagDialog } from './dialogs/edit-tag-dialog'
 import { FetchModelsDialog } from './dialogs/fetch-models-dialog'
@@ -27,7 +28,18 @@ import { OllamaModelsDialog } from './dialogs/ollama-models-dialog'
 import { RouteHealthDialog } from './dialogs/route-health-dialog'
 import { TagBatchEditDialog } from './dialogs/tag-batch-edit-dialog'
 import { UpstreamUpdateDialog } from './dialogs/upstream-update-dialog'
-import { ChannelMutateDrawer } from './drawers/channel-mutate-drawer'
+
+const LazyChannelMutateDrawer = lazy(() =>
+  import('./drawers/channel-mutate-drawer').then((module) => ({
+    default: module.ChannelMutateDrawer,
+  }))
+)
+
+const LazyChannelTestDialog = lazy(() =>
+  import('./dialogs/channel-test-dialog').then((module) => ({
+    default: module.ChannelTestDialog,
+  }))
+)
 
 export function ChannelsDialogs() {
   const { open, setOpen, currentRow, upstream } = useChannels()
@@ -35,17 +47,21 @@ export function ChannelsDialogs() {
   return (
     <>
       {/* Channel editor drawer for existing channels */}
-      <ChannelMutateDrawer
-        open={open === 'update-channel'}
-        onOpenChange={(v) => !v && setOpen(null)}
-        currentRow={currentRow}
-      />
+      <Suspense fallback={null}>
+        <LazyChannelMutateDrawer
+          open={open === 'update-channel'}
+          onOpenChange={(v) => !v && setOpen(null)}
+          currentRow={currentRow}
+        />
+      </Suspense>
 
       {/* Test Channel Dialog */}
-      <ChannelTestDialog
-        open={open === 'test-channel'}
-        onOpenChange={(v) => !v && setOpen(null)}
-      />
+      <Suspense fallback={null}>
+        <LazyChannelTestDialog
+          open={open === 'test-channel'}
+          onOpenChange={(v) => !v && setOpen(null)}
+        />
+      </Suspense>
 
       {/* Balance Query Dialog */}
       <BalanceQueryDialog

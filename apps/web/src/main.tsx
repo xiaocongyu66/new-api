@@ -28,19 +28,18 @@ import { StrictMode } from 'react'
 import ReactDOM from 'react-dom/client'
 import { toast } from 'sonner'
 
-import { RouteLoadingFallback } from '@/components/loading-state'
 import { getStatus } from '@/lib/api'
 import { installBuildMetadata } from '@/lib/build-metadata'
-
 import { applyFaviconToDom } from '@/lib/dom-utils'
 import '@/lib/dayjs'
 import { initializeFrontendCache } from '@/lib/frontend-cache'
 import { handleServerError } from '@/lib/handle-server-error'
+import { RoutePendingSkeleton } from '@/route-skeletons/route-pending-skeleton'
 
 import { DirectionProvider } from './context/direction-provider'
 import { FontProvider } from './context/font-provider'
 import { ThemeProvider } from './context/theme-provider'
-import './i18n/config'
+import { initI18n } from './i18n/config'
 // Generated Routes
 import { routeTree } from './routeTree.gen'
 
@@ -104,7 +103,7 @@ const router = createRouter({
   context: { queryClient },
   defaultPreload: 'intent',
   defaultPreloadStaleTime: 0,
-  defaultPendingComponent: RouteLoadingFallback,
+  defaultPendingComponent: RoutePendingSkeleton,
   defaultPendingMs: 150,
   defaultPendingMinMs: 200,
 })
@@ -163,19 +162,23 @@ if (!rootElement) {
     /* empty */
   }
 })()
-if (!rootElement.innerHTML) {
-  const root = ReactDOM.createRoot(rootElement)
-  root.render(
-    <StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <FontProvider>
-            <DirectionProvider>
-              <RouterProvider router={router} />
-            </DirectionProvider>
-          </FontProvider>
-        </ThemeProvider>
-      </QueryClientProvider>
-    </StrictMode>
-  )
-}
+// Translations must exist before first paint: initI18n loads the detected
+// locale chunk (and the English fallback) before mounting.
+void initI18n().then(() => {
+  if (!rootElement.innerHTML) {
+    const root = ReactDOM.createRoot(rootElement)
+    root.render(
+      <StrictMode>
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider>
+            <FontProvider>
+              <DirectionProvider>
+                <RouterProvider router={router} />
+              </DirectionProvider>
+            </FontProvider>
+          </ThemeProvider>
+        </QueryClientProvider>
+      </StrictMode>
+    )
+  }
+})

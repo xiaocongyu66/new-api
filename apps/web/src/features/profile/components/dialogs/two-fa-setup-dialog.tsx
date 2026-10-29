@@ -16,9 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Save } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -159,7 +157,7 @@ export function TwoFASetupDialog({
             disabled={initializing || loading || !code}
             aria-label={loading ? t('Enabling...') : t('Enable 2FA')}
           >
-            <HugeiconsIcon icon={FloppyDiskIcon} />
+            <Save />
           </Button>
         ) : null
       }

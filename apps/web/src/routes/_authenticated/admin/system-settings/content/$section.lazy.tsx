@@ -16,5 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-export { useFilters } from './use-filters'
-export { usePricingData } from './use-pricing-data'
+import { createLazyFileRoute } from '@tanstack/react-router'
+
+import { ContentSettings } from '@/features/system-settings/content'
+
+export const Route = createLazyFileRoute('/_authenticated/admin/system-settings/content/$section')({
+  component: ContentSettings,
+})

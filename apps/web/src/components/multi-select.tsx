@@ -16,8 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Add01Icon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { Plus } from 'lucide-react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -77,6 +76,13 @@ interface MultiSelectProps {
    * instead of being inert. The remove (×) button keeps its own behaviour.
    */
   copyChipOnClick?: boolean
+  /**
+   * When true, dropdown items are filtered by the current input value.
+   * Reduces rendered DOM nodes for long option lists (e.g. full model catalogue).
+   * All values remain selectable; callers that read the full `options` prop
+   * directly are unaffected by dropdown filtering.
+   */
+  filterByInput?: boolean
 }
 
 const COMMA_REGEX = /[,，\n]/
@@ -157,7 +163,17 @@ export function MultiSelect(props: MultiSelectProps) {
   // UI's items list. This way Base UI filters them by the search query and the
   // user can still see the chip labels mapped correctly.
   const items = React.useMemo(() => {
-    const set = new Set<string>(props.options.map((option) => option.value))
+    // When filterByInput is enabled and the user has typed something, only
+    // expose matching options to keep the dropdown DOM small for long lists.
+    const filteredOptions =
+      props.filterByInput && trimmedInput.length > 0
+        ? props.options.filter(
+            (option) =>
+              option.value.toLocaleLowerCase().includes(trimmedInput.toLocaleLowerCase()) ||
+              option.label.toLocaleLowerCase().includes(trimmedInput.toLocaleLowerCase())
+          )
+        : props.options
+    const set = new Set<string>(filteredOptions.map((option) => option.value))
     for (const value of props.selected) {
       set.add(value)
     }
@@ -165,7 +181,7 @@ export function MultiSelect(props: MultiSelectProps) {
       set.add(trimmedInput)
     }
     return Array.from(set)
-  }, [props.options, props.selected, canCreate, trimmedInput])
+  }, [props.options, props.selected, canCreate, trimmedInput, props.filterByInput])
 
   const addValues = React.useCallback(
     (values: string[]) => {
@@ -364,8 +380,7 @@ export function MultiSelect(props: MultiSelectProps) {
                 >
                   {isCreate ? (
                     <>
-                      <HugeiconsIcon
-                        icon={Add01Icon}
+                      <Plus
                         strokeWidth={2}
                         className='text-muted-foreground'
                         aria-hidden='true'

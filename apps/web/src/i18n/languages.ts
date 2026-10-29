@@ -29,7 +29,9 @@ export const INTERFACE_LANGUAGE_OPTIONS = [
 export type InterfaceLanguageCode =
   (typeof INTERFACE_LANGUAGE_OPTIONS)[number]['code']
 
-export function normalizeInterfaceLanguage(value?: string | null): string {
+export function normalizeInterfaceLanguage(
+  value?: string | null
+): InterfaceLanguageCode {
   if (!value) return 'en'
 
   let normalized = value.trim().replaceAll('_', '-').toLowerCase()
@@ -45,9 +47,10 @@ export function normalizeInterfaceLanguage(value?: string | null): string {
     normalized = 'zhCN'
   }
 
-  return INTERFACE_LANGUAGE_OPTIONS.some((lang) => lang.code === normalized)
-    ? normalized
-    : 'en'
+  const matched = INTERFACE_LANGUAGE_OPTIONS.find(
+    (lang) => lang.code === normalized
+  )
+  return matched ? matched.code : 'en'
 }
 
 /**

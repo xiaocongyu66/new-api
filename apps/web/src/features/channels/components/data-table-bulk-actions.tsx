@@ -16,11 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { FloppyDiskIcon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { type Table } from '@tanstack/react-table'
-import { Power, PowerOff, Tag, Trash2 } from 'lucide-react'
+import { Power, PowerOff, Tag, Trash2, Save } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -236,7 +234,7 @@ export function DataTableBulkActions<TData>({
             onClick={handleSetTag}
             aria-label={t('Set Tag')}
           >
-            <HugeiconsIcon icon={FloppyDiskIcon} />
+            <Save />
           </Button>
         }
         footer={

@@ -20,45 +20,129 @@ import i18n from 'i18next'
 import LanguageDetector from 'i18next-browser-languagedetector'
 import { initReactI18next } from 'react-i18next'
 
-import { convertDetectedLanguage } from './languages'
-import en from './locales/en.json'
-import fr from './locales/fr.json'
-import ja from './locales/ja.json'
-import ru from './locales/ru.json'
-import vi from './locales/vi.json'
-import zhTW from './locales/zh-TW.json'
-import zhCN from './locales/zh.json'
+import {
+  convertDetectedLanguage,
+  normalizeInterfaceLanguage,
+  type InterfaceLanguageCode,
+} from './languages'
 
-export const resources = {
-  en,
-  zhCN,
-  fr,
-  ru,
-  ja,
-  vi,
-  zhTW,
-} as const
+// Each locale JSON is its own async chunk (Rspack splits dynamic imports), so
+// the entry bundle ships zero translation data. Only the detected language
+// and the English fallback are fetched before first render.
+type LocaleModule = { default: { translation: Record<string, unknown> } }
 
-i18n
-  .use(LanguageDetector)
-  .use(initReactI18next)
-  .init({
-    resources,
-    fallbackLng: 'en',
-    supportedLngs: ['en', 'zhCN', 'fr', 'ru', 'ja', 'vi', 'zhTW'],
-    load: 'currentOnly',
-    nsSeparator: false, // Allow literal colons in keys (e.g., URLs, labels)
-    debug: import.meta.env.DEV,
-    interpolation: {
-      escapeValue: false, // not needed for react as it escapes by default
-    },
-    detection: {
-      order: ['localStorage', 'navigator'],
-      caches: ['localStorage'],
-      // Browsers report `zh-CN`/`zh-TW`/`zh`; map them onto our `zhCN`/`zhTW`
-      // codes (non-Chinese codes pass through for normal supportedLngs matching).
-      convertDetectedLanguage,
-    },
-  })
+const localeImporters: Record<
+  InterfaceLanguageCode,
+  () => Promise<LocaleModule>
+> = {
+  en: () => import('./locales/en.json'),
+  zhCN: () => import('./locales/zh.json'),
+  zhTW: () => import('./locales/zh-TW.json'),
+  fr: () => import('./locales/fr.json'),
+  ru: () => import('./locales/ru.json'),
+  ja: () => import('./locales/ja.json'),
+  vi: () => import('./locales/vi.json'),
+}
 
-export default i18n
+const loadedLangs = new Set<InterfaceLanguageCode>()
+const pendingLangs = new Map<InterfaceLanguageCode, Promise<void>>()
+
+function importLocale(lang: InterfaceLanguageCode): Promise<void> {
+  const pending = pendingLangs.get(lang)
+  if (pending) {
+    return pending
+  }
+
+  const load = localeImporters[lang]()
+    .then((module) => {
+      i18n.addResourceBundle(
+        lang,
+        'translation',
+        module.default.translation,
+        true,
+        true
+      )
+      loadedLangs.add(lang)
+    })
+    .catch((error: unknown) => {
+      // Do not cache failures: a later switch or retry can try again.
+      pendingLangs.delete(lang)
+      throw error
+    })
+
+  pendingLangs.set(lang, load)
+  return load
+}
+
+export function ensureLocale(lang: string): Promise<void> {
+  const normalized = normalizeInterfaceLanguage(lang)
+  if (loadedLangs.has(normalized)) {
+    return Promise.resolve()
+  }
+  return importLocale(normalized)
+}
+
+let initPromise: Promise<void> | null = null
+
+export function initI18n(): Promise<void> {
+  if (!initPromise) {
+    initPromise = (async () => {
+      await i18n
+        .use(LanguageDetector)
+        .use(initReactI18next)
+        .init({
+          fallbackLng: 'en',
+          supportedLngs: [
+            'en',
+            'zhCN',
+            'fr',
+            'ru',
+            'ja',
+            'vi',
+            'zhTW',
+          ],
+          load: 'currentOnly',
+          nsSeparator: false, // Allow literal colons in keys (e.g., URLs, labels)
+          debug: import.meta.env.DEV,
+          interpolation: {
+            escapeValue: false, // not needed for react as it escapes by default
+          },
+          detection: {
+            order: ['localStorage', 'navigator'],
+            caches: ['localStorage'],
+            // Browsers report `zh-CN`/`zh-TW`/`zh`; map them onto our `zhCN`/`zhTW`
+            // codes (non-Chinese codes pass through for normal supportedLngs matching).
+            convertDetectedLanguage,
+          },
+        })
+
+      // First paint needs the detected language plus the English fallback
+      // (missing keys resolve against it). A failed fetch must never block
+      // rendering: i18next then surfaces raw keys, same as any missing bundle.
+      const initialLangs =
+        i18n.language === 'en' ? ['en'] : [i18n.language, 'en']
+      await Promise.allSettled(
+        initialLangs.map((lang) =>
+          ensureLocale(lang).catch((error: unknown) => {
+            // eslint-disable-next-line no-console
+            console.error(`[i18n] failed to load locale "${lang}"`, error)
+          })
+        )
+      )
+    })()
+  }
+  return initPromise
+}
+
+// Single loader for runtime language switches: fetch the chunk first, then
+// swap, so a failed download never leaves a half-loaded locale active.
+export async function changeInterfaceLanguage(lang: string): Promise<void> {
+  const normalized = normalizeInterfaceLanguage(lang)
+  try {
+    await ensureLocale(normalized)
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error(`[i18n] failed to load locale "${normalized}"`, error)
+  }
+  await i18n.changeLanguage(normalized)
+}

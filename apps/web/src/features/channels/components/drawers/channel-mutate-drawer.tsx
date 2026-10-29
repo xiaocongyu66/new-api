@@ -97,7 +97,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -504,7 +503,6 @@ function ChannelEditorNav(props: {
 }
 
 export function ChannelMutateDrawer(props: ChannelMutateDrawerProps) {
-  if (props.presentation !== 'inline' && !props.open) return null
   return <ChannelMutateDrawerContent {...props} />
 }
 
@@ -575,20 +573,24 @@ function ChannelMutateDrawerContent({
     queryKey: ['groups'],
     queryFn: getGroups,
     enabled: isPresented,
+    staleTime: 10 * 60 * 1000,
   })
 
-  // Fetch all available models
-  const { data: allModelsData } = useQuery({
+  // Fetch all available models (cached 10 min: re-opening the drawer within the
+  // window hits the React Query cache instead of re-requesting the full list).
+  const { data: allModelsData, isLoading: isLoadingAllModels } = useQuery({
     queryKey: ['channel_models'],
     queryFn: getAllModels,
     enabled: isPresented,
+    staleTime: 10 * 60 * 1000,
   })
 
   // Fetch prefill model groups
-  const { data: prefillGroupsData } = useQuery({
+  const { data: prefillGroupsData, isLoading: isLoadingPrefillGroups } = useQuery({
     queryKey: ['prefill_groups', 'model'],
     queryFn: () => getPrefillGroups('model'),
     enabled: isPresented,
+    staleTime: 10 * 60 * 1000,
   })
 
   const { copyToClipboard } = useCopyToClipboard()
@@ -718,6 +720,7 @@ function ChannelMutateDrawerContent({
   const isBatchMode =
     multiKeyMode === 'batch' || multiKeyMode === 'multi_to_single'
   const isChannelDetailLoading = isEditing && isChannelLoading
+  const isAnyLoading = isChannelLoading || isLoadingGroups || isLoadingAllModels || isLoadingPrefillGroups
   const supportsMultiKeyAddMode =
     currentType !== 57 && !(currentType === 41 && vertexKeyType === 'api_key')
   const addModeOptions = useMemo(
@@ -1404,6 +1407,7 @@ function ChannelMutateDrawerContent({
   // Handle successful submission
   const handleSuccess = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: channelsQueryKeys.lists() })
+    queryClient.invalidateQueries({ queryKey: ['channel_models'] })
     if (channelId) {
       queryClient.invalidateQueries({
         queryKey: channelsQueryKeys.detail(channelId),
@@ -1608,11 +1612,33 @@ function ChannelMutateDrawerContent({
   const handleEditorNavNavigate = useCallback(
     (targetId: string) => {
       setActiveEditorSectionId(targetId)
-      const targetElement = document.querySelector<HTMLElement>(`#${targetId}`)
       const scroller =
         editorScrollContainerRef.current ?? getEditorScrollContainer()
-      if (!targetElement || !scroller) return
+      if (!scroller) return
       editorScrollContainerRef.current = scroller
+
+      const targetElement = document.querySelector<HTMLElement>(`#${targetId}`)
+      if (!targetElement) {
+        // Section may be lazily mounted: poll the DOM until the target is
+        // committed, then scroll. Avoids silent scroll failure on first nav.
+        let attempts = 0
+        const retry = () => {
+          const el = document.querySelector<HTMLElement>(`#${targetId}`)
+          if (el) {
+            const scrollerTop = scroller.getBoundingClientRect().top
+            const targetTop = el.getBoundingClientRect().top
+            scroller.scrollTo({
+              top: Math.max(0, scroller.scrollTop + targetTop - scrollerTop - 16),
+              behavior: 'auto',
+            })
+            return
+          }
+          if (attempts++ > 10) return
+          requestAnimationFrame(retry)
+        }
+        requestAnimationFrame(retry)
+        return
+      }
 
       const scrollerTop = scroller.getBoundingClientRect().top
       const targetTop = targetElement.getBoundingClientRect().top
@@ -1628,8 +1654,7 @@ function ChannelMutateDrawerContent({
     const scroller = editorScrollContainerRef.current
     if (!scroller) return
 
-    const lastSectionId =
-      CHANNEL_EDITOR_MAIN_SECTION_IDS[CHANNEL_EDITOR_MAIN_SECTION_IDS.length - 1]
+    const lastSectionId = CHANNEL_EDITOR_SECTION_IDS.models
     if (
       lastSectionId &&
       scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4
@@ -1701,6 +1726,8 @@ function ChannelMutateDrawerContent({
       onOpenChange(v)
       if (!v) {
         resetEditorState()
+        setChannelKey(null)
+        setIsChannelKeyLoading(false)
       }
     },
     [onOpenChange, resetEditorState]
@@ -1844,7 +1871,7 @@ function ChannelMutateDrawerContent({
                   : sideDrawerFormClassName('gap-5')
               }
             >
-              {isChannelDetailLoading ? (
+              {isAnyLoading ? (
                 <ChannelEditorLoadingState />
               ) : (
                 <div className='grid gap-5 lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start min-h-0'>
@@ -1862,6 +1889,7 @@ function ChannelMutateDrawerContent({
                   />
                   <div className='flex min-w-0 flex-col gap-5'>
                     {/* ── Basic Information ── */}
+                    {activeEditorSectionId === CHANNEL_EDITOR_SECTION_IDS.identity && (
                     <div
                       id={CHANNEL_EDITOR_SECTION_IDS.identity}
                       className='scroll-mt-4'
@@ -2001,8 +2029,10 @@ function ChannelMutateDrawerContent({
                         )}
                       </ChannelBasicSection>
                     </div>
+                    )}
 
                     {/* ── API Access ── */}
+                    {activeEditorSectionId === CHANNEL_EDITOR_SECTION_IDS.credentials && (
                     <div
                       id={CHANNEL_EDITOR_SECTION_IDS.credentials}
                       className='scroll-mt-4'
@@ -3141,8 +3171,10 @@ function ChannelMutateDrawerContent({
                         </div>
                       </ChannelApiAccessSection>
                     </div>
+                    )}
 
                     {/* ── Models & Groups ── */}
+                    {activeEditorSectionId === CHANNEL_EDITOR_SECTION_IDS.models && (
                     <div
                       id={CHANNEL_EDITOR_SECTION_IDS.models}
                       className='scroll-mt-4'
@@ -3180,6 +3212,7 @@ function ChannelMutateDrawerContent({
                                       createLabel='Add custom model "{{value}}"'
                                       maxVisibleChips={8}
                                       copyChipOnClick
+                                      filterByInput
                                     />
                                   </FormControl>
                                   {modelMappingGuardrail.exposedTargetModels
@@ -3487,18 +3520,14 @@ function ChannelMutateDrawerContent({
                                     </FormDescription>
                                   </div>
                                   <FormControl>
-                                    {isLoadingGroups ? (
-                                      <Skeleton className='h-10 w-full' />
-                                    ) : (
-                                      <MultiSelect
-                                        options={groupOptions}
-                                        selected={field.value}
-                                        onChange={field.onChange}
-                                        placeholder={t(
-                                          FIELD_PLACEHOLDERS.GROUP
-                                        )}
-                                      />
-                                    )}
+                                    <MultiSelect
+                                      options={groupOptions}
+                                      selected={field.value}
+                                      onChange={field.onChange}
+                                      placeholder={t(
+                                        FIELD_PLACEHOLDERS.GROUP
+                                      )}
+                                    />
                                   </FormControl>
                                   <FormMessage />
                                 </FormItem>
@@ -3508,6 +3537,7 @@ function ChannelMutateDrawerContent({
                         </div>
                       </ChannelModelsSection>
                     </div>
+                    )}
 
                     <div className='flex flex-col gap-5'>
                       {/* ── Routing & Overrides ── */}

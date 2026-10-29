@@ -70,7 +70,17 @@ describe('CodeBlockEditor component', () => {
       )
     })
 
-    const editor = container.querySelector('.cm-editor')
+    // CodeMirrorCodeView is React.lazy: poll until the dynamic chunk mounts.
+    const deadline = Date.now() + 3000
+    let editor: HTMLElement | null = null
+    while (!editor && Date.now() < deadline) {
+      await act(async () => {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 10)
+        })
+      })
+      editor = container.querySelector('.cm-editor')
+    }
     const button = container.querySelector('button')
     assert.ok(editor)
     assert.ok(button)

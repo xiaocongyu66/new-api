@@ -19,8 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 'use client'
 
 import { Dialog as SheetPrimitive } from '@base-ui/react/dialog'
-import { Cancel01Icon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { X } from 'lucide-react'
 import * as React from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -109,7 +108,7 @@ function SheetContent({
         data-slot='sheet-content'
         data-side={side}
         className={cn(
-          'bg-[var(--float-surface)] text-foreground fixed z-50 flex flex-col gap-4 overflow-hidden bg-clip-padding text-sm shadow-none transition duration-200 ease-in-out data-ending-style:opacity-0 data-starting-style:opacity-0',
+          'bg-[var(--float-surface)] text-foreground fixed z-50 flex flex-col gap-4 overflow-hidden bg-clip-padding text-sm shadow-none transition duration-150 ease-in-out data-ending-style:opacity-0 data-starting-style:opacity-0',
           side === 'right' &&
             'inset-y-0 right-0 h-full w-3/4 border-l data-ending-style:translate-x-[2.5rem] data-starting-style:translate-x-[2.5rem] sm:max-w-sm',
           side === 'left' &&
@@ -131,7 +130,7 @@ function SheetContent({
                 data-slot='sheet-close'
                 render={<Button variant='ghost' size='icon-sm' />}
               >
-                <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
+                <X strokeWidth={2} />
                 <span className='sr-only'>Close</span>
               </SheetPrimitive.Close>
             )}
