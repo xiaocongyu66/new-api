@@ -23,7 +23,6 @@ import type {
   GetModelsResponse,
   GetModelResponse,
   GetVendorsResponse,
-  GetVendorResponse,
   Model,
   Vendor,
   SearchModelsParams,

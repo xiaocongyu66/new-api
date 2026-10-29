@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import dayjs from '@/lib/dayjs'
 
 import {
-  formatCurrencyFromUSD,
   formatQuotaWithCurrency,
   getCurrencyDisplay,
   getCurrencyFractionDigits,

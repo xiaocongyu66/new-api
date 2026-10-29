@@ -26,7 +26,6 @@ import type {
   InsightSampleGroupListData,
   InsightSampleListData,
   PurgeInsightResult,
-  UserInsight,
   UserInsightFilters,
   UserInsightListData,
   UserInsightSummary,

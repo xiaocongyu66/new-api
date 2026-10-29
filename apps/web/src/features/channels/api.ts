@@ -25,7 +25,6 @@ import type {
   BatchSetTagParams,
   Channel,
   ChannelBalanceResponse,
-  ChannelOpsResponse,
   ChannelTestResponse,
   CopyChannelParams,
   CopyChannelResponse,

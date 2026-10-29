@@ -44,26 +44,6 @@ function toStartOfDay(tsSec: number): number {
 }
 
 /**
- * Get start of day for a Date object
- * Returns new Date with time set to 00:00:00
- */
-function getStartOfDay(date: Date = new Date()): Date {
-  const d = new Date(date)
-  d.setHours(0, 0, 0, 0)
-  return d
-}
-
-/**
- * Get end of day for a Date object
- * Returns new Date with time set to 23:59:59.999
- */
-function getEndOfDay(date: Date = new Date()): Date {
-  const d = new Date(date)
-  d.setHours(23, 59, 59, 999)
-  return d
-}
-
-/**
  * Calculate a rolling date range ending at the current moment.
  * Example: 1 day means the last 24 hours, not yesterday 00:00 to today 23:59.
  */

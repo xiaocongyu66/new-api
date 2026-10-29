@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 /**
  * Utility functions for usage logs filters
  */
-import { LOG_CATEGORY_LABELS } from '../constants'
 import type {
   LogCategory,
   LogFilters,

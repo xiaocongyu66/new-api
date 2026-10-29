@@ -26,7 +26,6 @@ import {
   MJ_SUBMIT_RESULT_MAPPINGS,
   TASK_ACTION_MAPPINGS,
   TASK_STATUS_MAPPINGS,
-  TASK_PLATFORM_MAPPINGS,
 } from '../constants'
 import { createStatusMapper } from './status'
 

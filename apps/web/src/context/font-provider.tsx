@@ -66,12 +66,3 @@ export function FontProvider({ children }: { children: React.ReactNode }) {
     <FontContext value={{ font, setFont, resetFont }}>{children}</FontContext>
   )
 }
-
-// eslint-disable-next-line react-refresh/only-export-components
-const useFont = () => {
-  const context = useContext(FontContext)
-  if (!context) {
-    throw new Error('useFont must be used within a FontProvider')
-  }
-  return context
-}
