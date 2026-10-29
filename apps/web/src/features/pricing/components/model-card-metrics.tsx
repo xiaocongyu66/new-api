@@ -189,10 +189,10 @@ export const ModelCardMetrics = memo(function ModelCardMetrics(props: {
       {/* Headline numbers: window averages, or the hovered/clicked hour.
           Three equal cells share the row — latency, success rate, then the
           hour right-aligned in the last cell. */}
-      <div className='grid grid-cols-3 items-baseline text-xs leading-4 tabular-nums'>
-        <span className='flex min-w-0 items-baseline gap-1'>
+      <div className='grid grid-cols-3 items-center gap-x-1 text-xs leading-4 tabular-nums'>
+        <span className='flex min-w-0 items-baseline justify-center gap-1'>
           <span className='text-muted-foreground/55'>{t('Latency short')}</span>
-          <span className='ml-auto flex items-baseline gap-0.5'>
+          <span className='flex items-baseline gap-0.5'>
             <span className='text-foreground relative inline-block text-right font-mono font-semibold'>
               <span className='invisible'>{latencyWidth}</span>
               <span className='absolute inset-0 text-right'>{latencyText}</span>
@@ -200,9 +200,9 @@ export const ModelCardMetrics = memo(function ModelCardMetrics(props: {
             <span className='text-muted-foreground/70 text-[10px]'>ms</span>
           </span>
         </span>
-        <span className='flex min-w-0 items-baseline gap-1'>
+        <span className='flex min-w-0 items-baseline justify-center gap-1'>
           <span className='text-muted-foreground/55'>{t('Success rate')}</span>
-          <span className='ml-auto flex items-baseline gap-0.5'>
+          <span className='flex items-baseline gap-0.5'>
             <span className='text-emerald-500 relative inline-block text-right font-mono font-semibold'>
               <span className='invisible'>{successWidth}</span>
               <span className='absolute inset-0 text-right'>{successText}</span>

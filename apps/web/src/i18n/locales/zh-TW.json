@@ -3898,7 +3898,7 @@
     "Per-key cap on in-flight requests; 0 is unlimited": "Per-key cap on in-flight requests; 0 is unlimited",
     "Per-request": "按次",
     "Per-request (fixed price)": "按請求收費（固定價格）",
-    "Per-token": "按 Token",
+    "Per-token": "按量",
     "Per-token (ratio based)": "按令牌收費（基於比例）",
     "Per-token logit bias map": "按 token 的 logit 偏置映射",
     "Percentage:": "百分比：",

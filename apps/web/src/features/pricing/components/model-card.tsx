@@ -39,7 +39,6 @@ import {
   formatRequestPrice,
 } from '../lib/price'
 import type { ModelPerfBadgeData, PricingModel, TokenUnit } from '../types'
-import { ModelBillingModeBadge } from './model-billing-mode-badge'
 import { ModelCardMetrics } from './model-card-metrics'
 
 export interface ModelCardProps {
@@ -203,60 +202,79 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
     }
   }
 
-  // Price summary above the group table. Per-token billing packs the input
-  // and output prices left with a generous gap (no mid-card column start);
-  // per-request billing is a single price; dynamic expressions keep the
-  // flexible summary. Built with if/else so the JSX has no nested ternaries.
+  // Price row: a billing-mode chip (按量 / 按次) leads, then the prices.
+  // Per-token billing splits the remaining width into two equal halves and
+  // centres each price in its half; per-request billing centres the single
+  // price. Built with if/else so the JSX has no nested ternaries.
+  let billingModeLabel = t('Per-request')
+  if (isDynamicPricing) {
+    billingModeLabel = t('Dynamic Pricing')
+  } else if (isTokenBased) {
+    billingModeLabel = t('Per-token')
+  }
+  const billingModeChip = (
+    <span className='bg-muted/50 text-muted-foreground shrink-0 rounded px-1.5 py-0.5 text-[10px] leading-none font-medium whitespace-nowrap'>
+      {billingModeLabel}
+    </span>
+  )
+
   let priceSummaryBlock: ReactNode
   if (dynamicSummary) {
     priceSummaryBlock = (
-      <div className='flex flex-wrap items-baseline gap-x-3 gap-y-1 pl-1 text-sm'>
+      <div className='flex flex-wrap items-center gap-x-3 gap-y-1 pl-1 text-sm'>
+        {billingModeChip}
         {priceSummary}
       </div>
     )
   } else if (isTokenBased) {
     priceSummaryBlock = (
-      <div className='flex flex-wrap items-center gap-x-5 gap-y-1 pl-1 text-sm'>
-        {(['input', 'output'] as const).map((type) => (
-          <span
-            key={type}
-            className='flex min-w-0 items-baseline gap-1 whitespace-nowrap'
-          >
-            <span className='text-muted-foreground'>
-              {type === 'input' ? t('Input') : t('Output')}
+      <div className='flex items-center gap-3 pl-1 text-sm'>
+        {billingModeChip}
+        <div className='grid flex-1 grid-cols-2 items-center gap-2'>
+          {(['input', 'output'] as const).map((type) => (
+            <span
+              key={type}
+              className='flex min-w-0 items-baseline justify-center gap-1 whitespace-nowrap'
+            >
+              <span className='text-muted-foreground'>
+                {type === 'input' ? t('Input') : t('Output')}
+              </span>
+              <span className='text-foreground font-mono font-semibold'>
+                {formatPrice(
+                  props.model,
+                  type,
+                  tokenUnit,
+                  showRechargePrice,
+                  priceRate,
+                  usdExchangeRate,
+                  props.selectedGroup
+                )}
+              </span>
+              <span className='text-muted-foreground/70 text-xs'>
+                / {tokenUnitLabel}
+              </span>
             </span>
-            <span className='text-foreground font-mono font-semibold'>
-              {formatPrice(
-                props.model,
-                type,
-                tokenUnit,
-                showRechargePrice,
-                priceRate,
-                usdExchangeRate,
-                props.selectedGroup
-              )}
-            </span>
-            <span className='text-muted-foreground/70 text-xs'>
-              / {tokenUnitLabel}
-            </span>
-          </span>
-        ))}
+          ))}
+        </div>
       </div>
     )
   } else {
     priceSummaryBlock = (
-      <div className='flex items-baseline gap-1 pl-1 text-sm'>
-        <span className='text-foreground font-mono font-semibold'>
-          {formatRequestPrice(
-            props.model,
-            showRechargePrice,
-            priceRate,
-            usdExchangeRate,
-            props.selectedGroup
-          )}
-        </span>
-        <span className='text-muted-foreground/70 text-xs'>
-          / {t('request')}
+      <div className='flex items-center gap-3 pl-1 text-sm'>
+        {billingModeChip}
+        <span className='flex flex-1 items-baseline justify-center gap-1 whitespace-nowrap'>
+          <span className='text-foreground font-mono font-semibold'>
+            {formatRequestPrice(
+              props.model,
+              showRechargePrice,
+              priceRate,
+              usdExchangeRate,
+              props.selectedGroup
+            )}
+          </span>
+          <span className='text-muted-foreground/70 text-xs'>
+            / {t('request')}
+          </span>
         </span>
       </div>
     )
@@ -325,56 +343,71 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
 
       {priceSummaryBlock}
 
-      {/* Group price table, mirroring the details sheet: 4 columns for
-          per-token billing (分组 · 倍率 · 输入 · 输出), 3 for per-request
-          (分组 · 倍率 · 价格). Equal-width columns, ratio centered. */}
+      {/* Group price table. The numeric columns are `auto` tracks on one
+          grid (rows are `display: contents`), so each number column takes
+          the width of its widest value — digits get a fixed slot per column
+          and never shift between rows. */}
       {groupRows.length > 0 && (
         <div className='border-border/50 overflow-hidden rounded-lg border'>
           <div
             className={cn(
-              'bg-muted/30 text-muted-foreground/70 grid gap-2 border-b px-2.5 py-1.5 text-[10px] font-medium',
-              isTokenBased ? 'grid-cols-4' : 'grid-cols-3'
+              'grid items-center text-xs',
+              // Content-sized columns spread across the row: every number
+              // keeps a slot as wide as its widest peer, and the free space
+              // is distributed between columns instead of pooling after the
+              // group name.
+              isTokenBased
+                ? 'grid-cols-[auto_auto_auto_auto] justify-between'
+                : 'grid-cols-[auto_auto_auto] justify-between'
             )}
           >
-            <span className='truncate'>{t('Group')}</span>
-            <span className='text-center'>{t('Ratio')}</span>
-            {isTokenBased ? (
-              <>
-                <span className='text-right'>{t('Input')}</span>
-                <span className='text-right'>{t('Output')}</span>
-              </>
-            ) : (
-              <span className='text-right'>{t('Price')}</span>
-            )}
-          </div>
-          {groupRows.map((row) => (
-            <div
-              key={row.group}
-              className={cn(
-                'grid items-center gap-2 px-2.5 py-1.5 text-xs',
-                isTokenBased ? 'grid-cols-4' : 'grid-cols-3'
-              )}
-            >
-              <span className='truncate font-medium'>{row.group}</span>
-              <span className='text-muted-foreground text-center font-mono tabular-nums'>
-                ×{row.ratio}
+            <div className='contents'>
+              <span className='bg-muted/30 text-muted-foreground/70 px-2.5 py-1.5 text-[10px] font-medium'>
+                {t('Group')}
+              </span>
+              <span className='bg-muted/30 text-muted-foreground/70 px-2.5 py-1.5 text-center text-[10px] font-medium'>
+                {t('Ratio')}
               </span>
               {isTokenBased ? (
                 <>
-                  <span className='text-foreground text-right font-mono tabular-nums'>
-                    {row.input}
+                  <span className='bg-muted/30 text-muted-foreground/70 px-2.5 py-1.5 text-right text-[10px] font-medium'>
+                    {t('Input')}
                   </span>
-                  <span className='text-foreground text-right font-mono tabular-nums'>
-                    {row.output}
+                  <span className='bg-muted/30 text-muted-foreground/70 px-2.5 py-1.5 text-right text-[10px] font-medium'>
+                    {t('Output')}
                   </span>
                 </>
               ) : (
-                <span className='text-foreground text-right font-mono tabular-nums'>
-                  {row.price}
+                <span className='bg-muted/30 text-muted-foreground/70 px-2.5 py-1.5 text-right text-[10px] font-medium'>
+                  {t('Price')}
                 </span>
               )}
             </div>
-          ))}
+            {groupRows.map((row) => (
+              <div key={row.group} className='contents'>
+                <span className='border-border/50 max-w-[12rem] truncate border-t px-2.5 py-1.5 font-medium'>
+                  {row.group}
+                </span>
+                <span className='text-muted-foreground border-border/50 border-t px-2.5 py-1.5 text-center font-mono tabular-nums'>
+                  ×{row.ratio}
+                </span>
+                {isTokenBased ? (
+                  <>
+                    <span className='text-foreground border-border/50 border-t px-2.5 py-1.5 text-right font-mono tabular-nums'>
+                      {row.input}
+                    </span>
+                    <span className='text-foreground border-border/50 border-t px-2.5 py-1.5 text-right font-mono tabular-nums'>
+                      {row.output}
+                    </span>
+                  </>
+                ) : (
+                  <span className='text-foreground border-border/50 border-t px-2.5 py-1.5 text-right font-mono tabular-nums'>
+                    {row.price}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -389,7 +422,6 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
               {primaryGroup}
             </span>
           )}
-          <ModelBillingModeBadge model={props.model} />
         </div>
 
         <div className='flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 sm:gap-x-3 sm:gap-y-1'>
