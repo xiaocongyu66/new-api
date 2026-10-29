@@ -4019,6 +4019,8 @@
     "Power AI applications, manage digital assets, connect the Future": "Power AI applications, manage digital assets, connect the Future",
     "Powerful API Management Platform": "Powerful API Management Platform",
     "Pre-Consume for Free Models": "Pre-Consume for Free Models",
+    "Empty Response Multiplier": "Empty Response Multiplier",
+    "Charge ratio for empty 200 responses. 0 = free, 1 = full price.": "Charge ratio for empty 200 responses. 0 = free, 1 = full price.",
     "Pre-consumed": "Pre-consumed",
     "Pre-Consumed Quota": "Pre-Consumed Quota",
     "Preference saved as {{pref}}, but no active subscription. Wallet will be used automatically.": "Preference saved as {{pref}}, but no active subscription. Wallet will be used automatically.",
