@@ -27,7 +27,7 @@ import {
  * 随机图查询端点：`/api/?type=ua&format=text` 返回一条最终图片 URL 的纯文本。
  * 自身带 Access-Control-Allow-Origin:*，可安全用 fetch 读取。
  */
-export const RANDOM_BACKGROUND_API = 'https://img-pic-api.072168.xyz/api'
+const RANDOM_BACKGROUND_API = 'https://img-pic-api.072168.xyz/api'
 
 /**
  * 新版 Scheme 类型才包含 surface-container 系列角色，旧类型没有；
@@ -40,13 +40,13 @@ const role = (scheme: SchemeLike, key: string, fallback: string): string => {
   return hexFromArgb(typeof value === 'number' ? value : (scheme[fallback] as number))
 }
 
-export type DynamicRoles = {
+type DynamicRoles = {
   light: Record<string, string>
   dark: Record<string, string>
 }
 
 /** 把 material-color-utilities 的 Theme 映射为本项目的 shadcn 令牌角色。 */
-export function rolesFromTheme(theme: Theme): DynamicRoles {
+function rolesFromTheme(theme: Theme): DynamicRoles {
   const map = (scheme: SchemeLike): Record<string, string> => ({
     background: role(scheme, 'surface', 'surface'),
     foreground: role(scheme, 'onSurface', 'onSurface'),
@@ -82,7 +82,7 @@ export function rolesFromTheme(theme: Theme): DynamicRoles {
 }
 
 /** 把亮/暗两套角色写入作用域元素（--dyn-light-* / --dyn-dark-*）。 */
-export function applyDynamicRoles(scope: HTMLElement, roles: DynamicRoles): void {
+function applyDynamicRoles(scope: HTMLElement, roles: DynamicRoles): void {
   for (const [key, value] of Object.entries(roles.light)) {
     scope.style.setProperty(`--dyn-light-${key}`, value)
   }

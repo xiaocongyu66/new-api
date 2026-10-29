@@ -127,26 +127,6 @@ export async function getVendors(params?: {
 }
 
 /**
- * Search vendors
- */
-export async function searchVendors(params: {
-  keyword?: string
-  p?: number
-  page_size?: number
-}): Promise<GetVendorsResponse> {
-  const res = await api.get('/api/vendors/search', { params })
-  return res.data
-}
-
-/**
- * Get single vendor by ID
- */
-export async function getVendor(id: number): Promise<GetVendorResponse> {
-  const res = await api.get(`/api/vendors/${id}`)
-  return res.data
-}
-
-/**
  * Create new vendor
  */
 export async function createVendor(

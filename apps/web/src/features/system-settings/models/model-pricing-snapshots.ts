@@ -38,11 +38,6 @@ export type ModelPricingSnapshotInput = {
   completionRatioMeta?: string
 }
 
-export type CompletionRatioMeta = {
-  ratio: number
-  locked: boolean
-}
-
 export type CompletionRatioMetaMap = Record<string, CompletionRatioMeta>
 
 export const parseCompletionRatioMeta = (
@@ -79,7 +74,7 @@ export type ModelRow = ModelPricingSnapshot & {
   isPriceUnset: boolean
 }
 
-export const hasPricingValue = (value?: string) =>
+const hasPricingValue = (value?: string) =>
   value !== undefined && value !== ''
 
 /**

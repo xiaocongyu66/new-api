@@ -51,7 +51,7 @@ type AutoGroupFrameProps = {
   shouldReduceMotion: boolean
 }
 
-export function AutoGroupFrame(props: AutoGroupFrameProps) {
+function AutoGroupFrame(props: AutoGroupFrameProps) {
   return (
     <span
       data-auto-group-frame='true'
@@ -124,17 +124,6 @@ export function GroupRatioBadge(props: GroupRatioBadgeProps) {
       className='max-w-24 sm:max-w-none'
     >
       {badge}
-    </AutoGroupFrame>
-  )
-}
-
-export function AutoGroupBadge(props: AutoGroupFlowBorderProps) {
-  return (
-    <AutoGroupFrame
-      effect='badge'
-      shouldReduceMotion={props.shouldReduceMotion}
-    >
-      <GroupBadge group='auto' />
     </AutoGroupFrame>
   )
 }

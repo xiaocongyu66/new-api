@@ -55,7 +55,7 @@ import { useSettingsForm } from '../hooks/use-settings-form'
 import { useUpdateOption } from '../hooks/use-update-option'
 import { safeNumberFieldProps } from '../utils/numeric-field'
 
-export interface PricingGeneralSettings {
+interface PricingGeneralSettings {
   quota_display_type: 'USD' | 'CNY' | 'TOKENS' | 'CUSTOM'
   custom_currency_symbol?: string
   custom_currency_exchange_rate?: number

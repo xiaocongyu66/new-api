@@ -64,8 +64,3 @@ export const taskActionMapper = createStatusMapper(TASK_ACTION_MAPPINGS)
  * Task status mapper
  */
 export const taskStatusMapper = createStatusMapper(TASK_STATUS_MAPPINGS)
-
-/**
- * Task platform mapper
- */
-export const taskPlatformMapper = createStatusMapper(TASK_PLATFORM_MAPPINGS)

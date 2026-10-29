@@ -789,4 +789,3 @@ function SectionTitle(props: {
 }
 
 // Re-export so the parent can keep its own SectionTitle if it wants:
-export { Zap as ApiTabIcon }

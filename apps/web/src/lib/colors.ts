@@ -35,7 +35,7 @@ export type SemanticColor =
   | 'grey'
   | 'slate'
 
-export const colorToBgClass: Record<SemanticColor, string> = {
+const colorToBgClass: Record<SemanticColor, string> = {
   blue: 'bg-blue-500',
   green: 'bg-green-500',
   cyan: 'bg-cyan-500',
@@ -55,7 +55,7 @@ export const colorToBgClass: Record<SemanticColor, string> = {
   slate: 'bg-slate-500',
 }
 
-export const avatarColorMap: Record<SemanticColor, string> = {
+const avatarColorMap: Record<SemanticColor, string> = {
   blue: 'bg-chart-1/10 text-chart-1',
   green: 'bg-success/10 text-success',
   cyan: 'bg-chart-2/10 text-chart-2',
@@ -75,10 +75,6 @@ export const avatarColorMap: Record<SemanticColor, string> = {
   slate: 'bg-muted text-muted-foreground',
 }
 
-export function getAvatarColorClass(name: string): string {
-  return avatarColorMap[stringToColor(name)]
-}
-
 export function getBgColorClass(color?: string): string {
   if (!color) return colorToBgClass.blue
   return (
@@ -90,7 +86,7 @@ export function getBgColorClass(color?: string): string {
  * Chart color palette - Modern gradient colors compatible with light/dark themes
  * Uses HSL format for better theme adaptation
  */
-export const CHART_COLORS = [
+const CHART_COLORS = [
   'hsl(217, 91%, 60%)', // blue
   'hsl(142, 76%, 36%)', // green
   'hsl(38, 92%, 50%)', // amber
@@ -106,16 +102,9 @@ export const CHART_COLORS = [
 ] as const
 
 /**
- * Get a chart color by index (cycles through the palette)
- */
-export function getChartColor(index: number): string {
-  return CHART_COLORS[index % CHART_COLORS.length]
-}
-
-/**
  * Announcement status types
  */
-export type AnnouncementType =
+type AnnouncementType =
   | 'default'
   | 'ongoing'
   | 'success'
@@ -125,7 +114,7 @@ export type AnnouncementType =
 /**
  * Announcement status color mapping
  */
-export const ANNOUNCEMENT_TYPE_COLORS: Record<AnnouncementType, string> = {
+const ANNOUNCEMENT_TYPE_COLORS: Record<AnnouncementType, string> = {
   default: 'bg-neutral',
   ongoing: 'bg-info',
   success: 'bg-success',

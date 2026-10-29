@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-export type JsonParseResult<T> =
+type JsonParseResult<T> =
   | { success: true; data: T }
   | { success: false; error: string }
 
@@ -164,22 +164,4 @@ export function safeJsonParseWithValidation<T>(
   }
 
   return parsed
-}
-
-export function tryJsonParse<T = unknown>(
-  value: string | undefined | null
-): JsonParseResult<T> {
-  if (!value || value.trim() === '') {
-    return { success: false, error: 'Empty value' }
-  }
-
-  try {
-    const data = JSON.parse(value.trim()) as T
-    return { success: true, data }
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    }
-  }
 }

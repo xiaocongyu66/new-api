@@ -22,33 +22,6 @@ import { z } from 'zod'
 // Subscription Plan Schema & Types
 // ============================================================================
 
-export const subscriptionPlanSchema = z.object({
-  id: z.number(),
-  title: z.string(),
-  subtitle: z.string().optional(),
-  price_amount: z.number(),
-  currency: z.string().default('USD'),
-  duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
-  duration_value: z.number(),
-  custom_seconds: z.number().optional(),
-  quota_reset_period: z.enum(['never', 'daily', 'weekly', 'monthly', 'custom']),
-  quota_reset_custom_seconds: z.number().optional(),
-  enabled: z.boolean(),
-  sort_order: z.number(),
-  allow_balance_pay: z.boolean().optional().default(true),
-  allow_wallet_overflow: z.boolean().optional().default(true),
-  max_purchase_per_user: z.number(),
-  total_amount: z.number(),
-  total_amount_display: z.number().optional(),
-  /** USD price rendered in display currency by the backend for balance compare. */
-  balance_cost_display: z.number().optional(),
-  upgrade_group: z.string().optional(),
-  downgrade_group: z.string().optional(),
-  stripe_price_id: z.string().optional(),
-  creem_product_id: z.string().optional(),
-  waffo_pancake_product_id: z.string().optional(),
-})
-
 export type SubscriptionPlan = z.infer<typeof subscriptionPlanSchema>
 
 export interface PlanRecord {
@@ -59,22 +32,7 @@ export interface PlanRecord {
 // User Subscription Schema & Types
 // ============================================================================
 
-export const userSubscriptionSchema = z.object({
-  id: z.number(),
-  user_id: z.number(),
-  plan_id: z.number(),
-  status: z.string(),
-  source: z.string().optional(),
-  start_time: z.number(),
-  end_time: z.number(),
-  amount_total: z.number(),
-  amount_used: z.number(),
-  next_reset_time: z.number().optional(),
-  amount_total_display: z.number().optional(),
-  amount_used_display: z.number().optional(),
-})
-
-export type UserSubscription = z.infer<typeof userSubscriptionSchema>
+type UserSubscription = z.infer<typeof userSubscriptionSchema>
 
 export interface UserSubscriptionRecord {
   subscription: UserSubscription

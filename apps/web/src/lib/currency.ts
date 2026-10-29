@@ -150,7 +150,7 @@ const DEFAULT_FORMAT_OPTIONS: ResolvedCurrencyFormatOptions = {
 const DISPLAY_TYPE_VALUES = ['USD', 'CNY', 'TOKENS', 'CUSTOM'] as const
 type DisplayTypeLiteral = (typeof DISPLAY_TYPE_VALUES)[number]
 
-export function isCurrencyDisplayType(
+function isCurrencyDisplayType(
   value: unknown
 ): value is CurrencyDisplayType {
   return (
@@ -591,61 +591,6 @@ export function getCurrencyLabel(): string {
 export function isCurrencyDisplayEnabled(): boolean {
   const { meta } = getCurrencyDisplay()
   return meta.kind !== 'tokens'
-}
-
-/**
- * Format an amount that is ALREADY in local currency.
- *
- * ⚠️ CRITICAL: This function does NOT apply exchange rate conversion.
- * Only use this for values that have already been converted to local currency
- * via priceRatio or other means.
- *
- * @param amount - Amount already in local currency units
- * @param options - Optional formatting configuration
- * @returns Formatted string with appropriate currency symbol
- *
- * @example
- * // Payment amount already calculated: 10 USD × priceRatio(5) = 50 CNY
- * // With quotaDisplayType: 'CNY'
- * formatLocalCurrencyAmount(50) → "¥50"
- * // NOT "¥350" (which would be 50 × 7 exchangeRate)
- *
- * @example
- * // With quotaDisplayType: 'USD'
- * formatLocalCurrencyAmount(10) → "$10"
- *
- * @remarks
- * Use this function for:
- * - Payment amounts calculated via priceRatio (amount × price)
- * - Actual money charged to user's payment method
- * - Values that are already in the target currency
- *
- * DO NOT use for:
- * - USD values that need conversion → use formatCurrencyFromUSD()
- * - Raw quota values → use formatQuotaWithCurrency()
- *
- * Common mistake:
- * ```ts
- * // ❌ WRONG - Double conversion
- * const payment = usdAmount * exchangeRate
- * formatLocalCurrencyAmount(payment) // Will apply exchange rate again!
- *
- * // ✅ CORRECT - Already in local currency
- * const payment = usdAmount * priceRatio
- * formatLocalCurrencyAmount(payment) // Just formats with symbol
- * ```
- */
-export function formatLocalCurrencyAmount(
-  amount: number | null | undefined,
-  options?: CurrencyFormatOptions
-): string {
-  if (amount == null || Number.isNaN(amount)) return '-'
-
-  const { config } = getCurrencyDisplay()
-  const meta = getBillingDisplayMeta(config)
-  const merged = mergeOptions(options)
-
-  return formatCurrencyValue(amount, merged, meta)
 }
 
 /**

@@ -78,10 +78,3 @@ export function buildSearchParams(
       return baseParams
   }
 }
-
-/**
- * Get log category display name
- */
-export function getLogCategoryLabel(category: LogCategory): string {
-  return LOG_CATEGORY_LABELS[category]
-}
