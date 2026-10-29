@@ -36,6 +36,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import { sideDrawerContentClassName, sideDrawerFormClassName } from '@/components/drawer-layout'
 
 import {
   VIEW_MODES,
@@ -170,9 +171,9 @@ export function PricingToolbar(props: PricingToolbarProps) {
               <Filter className='size-3.5 mr-1.5' />
               {t('Filter')} {props.filteredCount.toLocaleString()}
             </SheetTrigger>
-            <SheetContent side='left' className='bg-popover sm:max-w-[360px] p-0'>
+            <SheetContent side='left' className={sideDrawerContentClassName('bg-popover sm:max-w-[360px] p-0')}>
               <SheetTitle className='sr-only'>{t('Filter')}</SheetTitle>
-              <div className='no-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto'>
+              <div className={sideDrawerFormClassName()}>
                 <PricingSidebar
                   className='rounded-none border-0 bg-transparent! p-0 shadow-none ring-0'
                   quotaTypeFilter={props.quotaTypeFilter}
