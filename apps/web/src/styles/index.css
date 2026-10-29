@@ -448,6 +448,34 @@ body[data-theme-card-blur='true'] [data-slot='card'] {
   backdrop-filter: var(--card-blur-state);
 }
 
+/* Floating overlays (popovers, dropdowns, selects, comboboxes, dialogs,
+ * sheets, hover cards) use the same card glass filter so they blur whatever
+ * sits behind them — a background image, another panel — consistently with
+ * the card toggle. Without this they rendered a plain translucent fill and
+ * the wallpaper stayed sharp and muddy through them. The command palette is
+ * intentionally absent: it always nests inside a popover or dialog that
+ * already owns the blur. */
+body[data-theme-card-blur='true'] {
+  --float-blur-state: var(--card-blur-filter);
+}
+
+body:not([data-theme-card-blur='true']) {
+  --float-blur-state: none;
+}
+
+body[data-theme-card-blur='true'] [data-slot='dropdown-menu-content'],
+body[data-theme-card-blur='true'] [data-slot='dropdown-menu-sub-content'],
+body[data-theme-card-blur='true'] [data-slot='popover-content'],
+body[data-theme-card-blur='true'] [data-slot='select-content'],
+body[data-theme-card-blur='true'] [data-slot='combobox-content'],
+body[data-theme-card-blur='true'] [data-slot='hover-card-content'],
+body[data-theme-card-blur='true'] [data-slot='dialog-content'],
+body[data-theme-card-blur='true'] [data-slot='alert-dialog-content'],
+body[data-theme-card-blur='true'] [data-slot='sheet-content'],
+body[data-theme-card-blur='true'] [data-slot='drawer-content'] {
+  backdrop-filter: var(--float-blur-state);
+}
+
 /* Solid surface fallback used when no background image is active. No
  * backdrop-filter here: nav, sidebar and page bands must not blur the
  * background — card glass is owned exclusively by the card-blur toggle
