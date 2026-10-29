@@ -41,34 +41,35 @@ func appendToolSurchargeLogInfo(other map[string]interface{}, items []ToolSurcha
 }
 
 type textQuotaSummary struct {
-	PromptTokens           int
-	CompletionTokens       int
-	TotalTokens            int
-	CacheTokens            int
-	CacheCreationTokens    int
-	CacheCreationTokens5m  int
-	CacheCreationTokens1h  int
-	ImageTokens            int
-	AudioTokens            int
-	ModelName              string
-	TokenName              string
-	UseTimeSeconds         int64
-	CompletionRatio        float64
-	CacheRatio             float64
-	ImageRatio             float64
-	ModelRatio             float64
-	GroupRatio             float64
-	ModelPrice             float64
-	CacheCreationRatio     float64
-	CacheCreationRatio5m   float64
-	CacheCreationRatio1h   float64
-	Quota                  int
-	IsClaudeUsageSemantic  bool
-	UsageSemantic          string
-	AudioInputPrice        float64
-	ToolSurchargeItems     []ToolSurchargeItem
-	ToolCallSurchargeQuota decimal.Decimal
-	EmptyResponseWaived    bool
+	PromptTokens            int
+	CompletionTokens        int
+	TotalTokens             int
+	CacheTokens             int
+	CacheCreationTokens     int
+	CacheCreationTokens5m   int
+	CacheCreationTokens1h   int
+	ImageTokens             int
+	AudioTokens             int
+	ModelName               string
+	TokenName               string
+	UseTimeSeconds          int64
+	CompletionRatio         float64
+	CacheRatio              float64
+	ImageRatio              float64
+	ModelRatio              float64
+	GroupRatio              float64
+	ModelPrice              float64
+	CacheCreationRatio      float64
+	CacheCreationRatio5m    float64
+	CacheCreationRatio1h    float64
+	Quota                   int
+	IsClaudeUsageSemantic   bool
+	UsageSemantic           string
+	AudioInputPrice         float64
+	ToolSurchargeItems      []ToolSurchargeItem
+	ToolCallSurchargeQuota  decimal.Decimal
+	EmptyResponseWaived     bool
+	EmptyResponseMultiplier float64
 }
 
 // hasBillableUsage reports whether this request should incur any charge.
@@ -384,20 +385,6 @@ func calculateTextQuotaSummary(ctx contract.Context, relayInfo *relaycommon.Rela
 		summary.Quota = 1
 	}
 
-	// Per-call pricing charges the full call price on any 2xx response. When an
-	// unstable upstream disguises a failure as a 200 with empty output, that
-	// would still collect the full price for nothing delivered, so waive the
-	// call charge. Tiered-expression models settle through TryTieredSettle and
-	// override this quota afterwards, so they are excluded to keep the waiver
-	// flag consistent with the charge actually settled.
-	adminRejectReason := common.GetCtxKeyString(ctx, constant.ContextKeyAdminRejectReason)
-	if relayInfo.PriceData.UsePrice && summary.Quota > 0 &&
-		relayInfo.TieredBillingSnapshot == nil &&
-		isUndeliveredPerCallResponse(relayInfo, summary, adminRejectReason) {
-		summary.Quota = 0
-		summary.EmptyResponseWaived = true
-	}
-
 	return summary
 }
 
@@ -418,12 +405,12 @@ func isTextGenerationFormat(format types.RelayFormat) bool {
 	return false
 }
 
-// isUndeliveredPerCallResponse reports whether a 2xx response produced nothing
-// the user could consume: zero completion tokens, no billable tool calls, no
-// policy rejection, and the stream was not abandoned by the client. Only
-// meaningful for per-call pricing (UsePrice) on text-generation formats, where
-// the usage shape does not affect the charge.
-func isUndeliveredPerCallResponse(relayInfo *relaycommon.RelayInfo, summary textQuotaSummary, adminRejectReason string) bool {
+// isUndeliveredTextResponse reports whether a 2xx response produced nothing the
+// user could consume: zero completion tokens, no billable tool calls, no policy
+// rejection, and the stream was not abandoned by the client. Only meaningful
+// for text-generation formats, where zero completion tokens means nothing was
+// delivered; image/audio/embedding/rerank legitimately report completion=0.
+func isUndeliveredTextResponse(relayInfo *relaycommon.RelayInfo, summary textQuotaSummary, adminRejectReason string) bool {
 	if !isTextGenerationFormat(relayInfo.RelayFormat) {
 		return false
 	}
@@ -437,6 +424,36 @@ func isUndeliveredPerCallResponse(relayInfo *relaycommon.RelayInfo, summary text
 		return false
 	}
 	return relayInfo.StreamStatus.GetEndReason() != relaycommon.StreamEndReasonClientGone
+}
+
+// applyEmptyResponseMultiplier scales the settled quota when a 2xx response
+// produced nothing the user could consume (see isUndeliveredTextResponse). The
+// configured multiplier (0-1) decides how much of the normal charge the user
+// still pays: 0 waives the charge entirely, 1 keeps the full price. It runs
+// after tiered settlement so expression-billed models get the same treatment.
+func applyEmptyResponseMultiplier(relayInfo *relaycommon.RelayInfo, summary *textQuotaSummary, adminRejectReason string) {
+	if relayInfo == nil || summary == nil {
+		return
+	}
+	if !isUndeliveredTextResponse(relayInfo, *summary, adminRejectReason) {
+		return
+	}
+	multiplier := GetQuotaSetting().EmptyResponseMultiplier
+	if math.IsNaN(multiplier) || multiplier < 0 {
+		multiplier = 0
+	}
+	if multiplier > 1 {
+		multiplier = 1
+	}
+	summary.EmptyResponseMultiplier = multiplier
+	if multiplier < 1 && summary.Quota > 0 {
+		scaled, clamp := common.QuotaFromDecimalChecked(
+			decimal.NewFromInt(int64(summary.Quota)).Mul(decimal.NewFromFloat(multiplier)),
+		)
+		noteQuotaClamp(relayInfo, clamp)
+		summary.Quota = scaled
+		summary.EmptyResponseWaived = true
+	}
 }
 
 func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) string {
@@ -477,6 +494,10 @@ func PostTextConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo
 		}
 	}
 
+	// Apply the empty-response multiplier after tiered settlement so per-call,
+	// token-billed and expression-billed models share the same policy.
+	applyEmptyResponseMultiplier(relayInfo, &summary, adminRejectReason)
+
 	for _, item := range summary.ToolSurchargeItems {
 		q := decimal.NewFromFloat(item.Price).
 			Mul(decimal.NewFromInt(int64(item.Count))).
@@ -491,7 +512,11 @@ func PostTextConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo
 		))
 	}
 	if summary.EmptyResponseWaived {
-		extraContent = append(extraContent, "上游返回空响应，按次费用已豁免")
+		if summary.EmptyResponseMultiplier > 0 {
+			extraContent = append(extraContent, fmt.Sprintf("上游返回空响应，按 %g 倍率扣费", summary.EmptyResponseMultiplier))
+		} else {
+			extraContent = append(extraContent, "上游返回空响应，费用已豁免")
+		}
 	}
 	if summary.AudioInputPrice > 0 && summary.AudioTokens > 0 {
 		q := decimal.NewFromFloat(summary.AudioInputPrice).Div(decimal.NewFromInt(1000000)).Mul(decimal.NewFromInt(int64(summary.AudioTokens))).Mul(decimal.NewFromFloat(summary.GroupRatio)).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
@@ -540,6 +565,7 @@ func PostTextConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo
 	}
 	if summary.EmptyResponseWaived {
 		other["empty_response_waived"] = true
+		other["empty_response_multiplier"] = summary.EmptyResponseMultiplier
 	}
 	if summary.ImageTokens != 0 {
 		other["image"] = true
