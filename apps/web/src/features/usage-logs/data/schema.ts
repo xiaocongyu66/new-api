@@ -22,7 +22,6 @@ For commercial licensing, please contact support@quantumnous.com
  */
 import { z } from 'zod'
 
-// Usage log schema
 export const usageLogSchema = z.object({
   id: z.number(),
   user_id: z.number(),
@@ -49,4 +48,5 @@ export const usageLogSchema = z.object({
   upstream_request_id: z.string().default(''),
 })
 
+// Usage log schema
 export type UsageLog = z.infer<typeof usageLogSchema>

@@ -42,21 +42,6 @@ export interface RegisterPayload {
   turnstile?: string
 }
 
-export interface PasswordResetPayload {
-  email: string
-  turnstile?: string
-}
-
-export interface EmailVerificationPayload {
-  email: string
-  turnstile?: string
-}
-
-export interface BindEmailPayload {
-  email: string
-  code: string
-}
-
 // ============================================================================
 // API Responses
 // ============================================================================

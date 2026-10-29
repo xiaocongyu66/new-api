@@ -22,7 +22,7 @@ import { z } from 'zod'
 // Subscription Plan Schema & Types
 // ============================================================================
 
-export const subscriptionPlanSchema = z.object({
+const subscriptionPlanSchema = z.object({
   id: z.number(),
   title: z.string(),
   subtitle: z.string().optional(),
@@ -48,7 +48,6 @@ export const subscriptionPlanSchema = z.object({
   creem_product_id: z.string().optional(),
   waffo_pancake_product_id: z.string().optional(),
 })
-
 export type SubscriptionPlan = z.infer<typeof subscriptionPlanSchema>
 
 export interface PlanRecord {
@@ -59,7 +58,7 @@ export interface PlanRecord {
 // User Subscription Schema & Types
 // ============================================================================
 
-export const userSubscriptionSchema = z.object({
+const userSubscriptionSchema = z.object({
   id: z.number(),
   user_id: z.number(),
   plan_id: z.number(),
@@ -73,8 +72,7 @@ export const userSubscriptionSchema = z.object({
   amount_total_display: z.number().optional(),
   amount_used_display: z.number().optional(),
 })
-
-export type UserSubscription = z.infer<typeof userSubscriptionSchema>
+type UserSubscription = z.infer<typeof userSubscriptionSchema>
 
 export interface UserSubscriptionRecord {
   subscription: UserSubscription

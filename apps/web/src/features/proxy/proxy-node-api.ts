@@ -38,16 +38,6 @@ export async function fetchProxyNodeReport(): Promise<ProxyNodeReport> {
   );
 }
 
-export async function createProxyNode(
-  payload: ProxyNodeRequest,
-): Promise<ProxyNode> {
-  const node = decodeProxyNode(
-    await unwrap(api.post<ApiResponse<unknown>>("/api/proxy/nodes", payload)),
-  );
-  if (!node) throw new Error("Invalid proxy node response");
-  return node;
-}
-
 export async function updateProxyNode(
   id: number,
   payload: ProxyNodeRequest,

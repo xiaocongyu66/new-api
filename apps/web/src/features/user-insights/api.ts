@@ -26,7 +26,6 @@ import type {
   InsightSampleGroupListData,
   InsightSampleListData,
   PurgeInsightResult,
-  UserInsight,
   UserInsightFilters,
   UserInsightListData,
   UserInsightSummary,
@@ -57,14 +56,6 @@ export async function getUserInsightSummary(): Promise<
   ApiResponse<UserInsightSummary>
 > {
   const res = await api.get('/api/user-insight/summary')
-  return res.data
-}
-
-/** 拉取单个用户的画像详情。 */
-export async function getUserInsightDetail(
-  userId: number
-): Promise<ApiResponse<UserInsight | null>> {
-  const res = await api.get(`/api/user-insight/${userId}`)
   return res.data
 }
 

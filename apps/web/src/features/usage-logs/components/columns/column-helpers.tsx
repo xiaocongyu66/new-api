@@ -29,7 +29,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { formatTimestampToDate, formatTokens } from '@/lib/format'
+import { formatTokens } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { formatDuration } from '../../lib/format'
@@ -68,36 +68,6 @@ export function CacheTooltip({
 // ============================================================================
 // Column Definition Factories
 // ============================================================================
-
-/**
- * Create a timestamp column - compact mono style matching common logs
- */
-export function createTimestampColumn<T>(config: {
-  accessorKey: string
-  title: string
-  unit?: 'seconds' | 'milliseconds'
-}): ColumnDef<T> {
-  const { accessorKey, title, unit = 'milliseconds' } = config
-
-  return {
-    accessorKey,
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title={title} />
-    ),
-    cell: ({ row }) => {
-      const timestamp = row.getValue(accessorKey) as number
-      if (!timestamp) {
-        return <span className='text-muted-foreground/60 text-xs'>-</span>
-      }
-      return (
-        <span className='font-mono text-xs tabular-nums'>
-          {formatTimestampToDate(timestamp, unit)}
-        </span>
-      )
-    },
-    meta: { label: title },
-  }
-}
 
 /**
  * Create a duration column - pill style matching common logs timing

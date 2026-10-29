@@ -185,7 +185,7 @@ function MobileSignInButton({ onNavigate }: MobileSignInButtonProps) {
 /**
  * Mobile drawer component props
  */
-export interface MobileDrawerProps {
+interface MobileDrawerProps {
   isOpen: boolean
   onClose: () => void
   homeUrl: string

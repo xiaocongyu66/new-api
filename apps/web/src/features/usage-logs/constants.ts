@@ -72,16 +72,6 @@ export const LOG_TYPE_ALL_VALUE = '0' as const
 // Time Range Presets
 // ============================================================================
 
-/**
- * Quick time range presets for filter dialog
- */
-export const TIME_RANGE_PRESETS = [
-  { days: 1, label: '24 Hours' },
-  { days: 7, label: '7 Days' },
-  { days: 14, label: '14 Days' },
-  { days: 30, label: '30 Days' },
-] as const
-
 // ============================================================================
 // Common Logs Configuration
 // ============================================================================
@@ -147,7 +137,7 @@ export const MJ_TASK_TYPES = {
 /**
  * MjProxy task status
  */
-export const MJ_TASK_STATUS = {
+const MJ_TASK_STATUS = {
   NOT_START: 'NOT_START', // 未启动
   SUBMITTED: 'SUBMITTED', // 队列中
   IN_PROGRESS: 'IN_PROGRESS', // 执行中
@@ -159,7 +149,7 @@ export const MJ_TASK_STATUS = {
 /**
  * MjProxy submit result codes
  */
-export const MJ_SUBMIT_RESULT_CODES = {
+const MJ_SUBMIT_RESULT_CODES = {
   NOT_SUBMITTED: 0, // 未提交
   SUBMITTED: 1, // 已提交
   WAITING: 21, // 等待中
@@ -203,7 +193,7 @@ export const TASK_STATUS = {
 /**
  * Task platforms
  */
-export const TASK_PLATFORMS = {
+const TASK_PLATFORMS = {
   SUNO: 'suno',
   KLING: 'kling',
   RUNWAY: 'runway',

@@ -21,7 +21,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 
-export type TabbedItem = {
+type TabbedItem = {
   id: string
   label: string
   sublabel?: string

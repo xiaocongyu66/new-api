@@ -89,7 +89,7 @@ export function resolveAdminNavigationUrl(item: AdminNavigationItem): string {
   )
 }
 
-export function isAdminNavigationItemVisible(
+function isAdminNavigationItemVisible(
   item: AdminNavigationItem,
   user: AuthUser | null | undefined,
   hasCapability: (user: AuthUser | null | undefined, resource: string, action: string) => boolean

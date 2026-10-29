@@ -188,19 +188,6 @@ export function useToggleUserClientBan() {
   })
 }
 
-/** 复核样本列表查询。 */
-export function useInsightSamples(
-  page: number,
-  pageSize: number,
-  filters: InsightSampleFilters
-) {
-  return useQuery({
-    queryKey: [SAMPLES_KEY, 'list', page, pageSize, filters],
-    queryFn: () => getInsightSamples(page, pageSize, filters),
-    staleTime: 15_000,
-  })
-}
-
 /**
  * 按用户聚合的样本概览查询。
  *

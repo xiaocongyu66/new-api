@@ -74,7 +74,7 @@ function importLocale(lang: InterfaceLanguageCode): Promise<void> {
   return load
 }
 
-export function ensureLocale(lang: string): Promise<void> {
+function ensureLocale(lang: string): Promise<void> {
   const normalized = normalizeInterfaceLanguage(lang)
   if (loadedLangs.has(normalized)) {
     return Promise.resolve()

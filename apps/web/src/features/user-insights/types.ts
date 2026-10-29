@@ -42,7 +42,7 @@ export type InsightRisk = 'none' | 'suspect' | 'likely' | 'confirmed'
 /** 性别推断结果。 */
 export type InsightGender = 'male' | 'female' | 'unknown'
 
-export type InsightRatios = {
+type InsightRatios = {
   code_ratio: number
   roleplay_ratio: number
   qa_ratio: number
@@ -239,7 +239,7 @@ export type InsightSampleGroupListData = {
 }
 
 /** 样本缓存库的容量水位与当前策略。 */
-export type InsightSampleQuota = {
+type InsightSampleQuota = {
   used_bytes: number
   limit_bytes: number
   keep_body: boolean

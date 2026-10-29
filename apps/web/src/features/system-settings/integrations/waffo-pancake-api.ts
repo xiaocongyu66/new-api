@@ -23,7 +23,7 @@ import { api } from '@/lib/api'
 // fall back to persisted OptionMap values, so returning admins don't
 // have to re-paste the private key (stripped from GET /api/option/).
 
-export interface CatalogProduct {
+interface CatalogProduct {
   id: string
   name: string
   status: string

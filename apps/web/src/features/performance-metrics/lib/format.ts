@@ -33,7 +33,7 @@ export function formatUptimePct(pct: number): string {
   return `${pct.toFixed(2)}%`
 }
 
-export type SuccessRateLevel =
+type SuccessRateLevel =
   | 'excellent'
   | 'good'
   | 'warning'
@@ -52,7 +52,7 @@ const SUCCESS_RATE_WARNING_MIN = 70
  * - critical: below 70%
  * - unknown: non-finite values
  */
-export function getSuccessRateLevel(rate: number): SuccessRateLevel {
+function getSuccessRateLevel(rate: number): SuccessRateLevel {
   if (!Number.isFinite(rate)) return 'unknown'
   if (rate >= SUCCESS_RATE_EXCELLENT_MIN) return 'excellent'
   if (rate >= SUCCESS_RATE_GOOD_MIN) return 'good'
