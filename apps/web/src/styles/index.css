@@ -80,6 +80,25 @@ html.dark body[data-app-background='true'] [data-slot='app-header'] {
   backdrop-filter: none;
 }
 
+/* Mobile restores the mask on that photo nav. At phone width the bar carries
+ * the brand, search and account buttons edge to edge, so the frameless
+ * treatment leaves them sitting on the raw photo with nothing to read
+ * against. Below md the bar is painted with the same card surface as the
+ * content panel below it, so bar and body read as one continuous sheet;
+ * dark needs it painted back because the frameless rule above strips it.
+ * Desktop keeps the frameless look. */
+@media (width < 48rem) {
+  body[data-app-background='true'] [data-slot='app-header'] {
+    background-color: var(--card-surface);
+    backdrop-filter: blur(12px);
+  }
+
+  html.dark body[data-app-background='true'] [data-slot='app-header'] {
+    background-color: var(--card-surface);
+    backdrop-filter: blur(12px);
+  }
+}
+
 /* Same rule for the public hero nav. Light scheme gives the top band a
  * soft ground under its dark links (random photos can be arbitrarily dark
  * behind them). The paint sits on the fixed full-width header via :has(),

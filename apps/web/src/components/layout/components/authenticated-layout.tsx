@@ -39,7 +39,7 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
       <SearchProvider>
         <SidebarProvider
           defaultOpen={defaultOpen}
-          className='relative z-10 flex-col'
+          className='relative z-10 flex-col max-md:p-0.5'
           style={
             {
               // Dual sidebar: icon rail (4rem) + secondary panel (~13.5rem)
@@ -58,6 +58,7 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
                 'h-[calc(100svh-var(--app-header-height,0px))]',
                 'min-h-0 overflow-hidden',
                 'flex flex-col',
+                'max-md:mt-0.5 max-md:h-[calc(100svh-var(--app-header-height,0px)-6px)] max-md:rounded-lg',
                 'peer-data-[variant=inset]:h-[calc(100svh-var(--app-header-height,0px)-(var(--spacing)*4))]'
               )}
             >
