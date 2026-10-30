@@ -207,6 +207,13 @@ export const BACKGROUND_SCRIM_COLOR_BASES = {
   dark: 'oklch(0.15 0.01 260',
 } as const satisfies Record<SurfaceScheme, string>
 
+/** Full CSS color for the photo veil at a given alpha — the exact value the
+ * provider writes to `--app-background-scrim`; the drawer's scrim preview
+ * reuses it so the swatch cannot drift from the real veil. */
+export function backgroundScrimColor(scheme: SurfaceScheme, scrim: number) {
+  return `${BACKGROUND_SCRIM_COLOR_BASES[scheme]} / ${scrim}%)`
+}
+
 /**
  * Per-color-scheme storage slots for the Blur-section axes. The theme
  * drawer shows a day/night tab so each scheme's surface can be tuned
