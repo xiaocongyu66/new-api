@@ -542,7 +542,7 @@ export function UpstreamConflictDialog({
               </div>
             ) : (
               <div className='flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border'>
-                <div className='flex-1 overflow-auto'>
+                <div className='flex-1 overflow-auto no-scrollbar'>
                   <DataTableView
                     table={table}
                     rows={paginatedRows}

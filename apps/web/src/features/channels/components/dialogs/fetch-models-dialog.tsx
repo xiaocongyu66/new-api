@@ -429,7 +429,7 @@ export function FetchModelsDialog({
 
           <TabsContent
             value='new'
-            className='max-h-96 space-y-2 overflow-y-auto'
+            className='max-h-96 space-y-2 overflow-y-auto no-scrollbar'
           >
             {getSortedCategoryEntries(newModelsByCategory).map(
               ([category, models]) => renderModelCategory(category, models)
@@ -438,7 +438,7 @@ export function FetchModelsDialog({
 
           <TabsContent
             value='existing'
-            className='max-h-96 space-y-2 overflow-y-auto'
+            className='max-h-96 space-y-2 overflow-y-auto no-scrollbar'
           >
             {getSortedCategoryEntries(existingModelsByCategory).map(
               ([category, models]) => renderModelCategory(category, models)
@@ -448,7 +448,7 @@ export function FetchModelsDialog({
           {removedModels.length > 0 && (
             <TabsContent
               value='removed'
-              className='max-h-96 space-y-2 overflow-y-auto'
+            className='max-h-96 space-y-2 overflow-y-auto no-scrollbar'
             >
               <p className='text-muted-foreground text-xs'>
                 {t(

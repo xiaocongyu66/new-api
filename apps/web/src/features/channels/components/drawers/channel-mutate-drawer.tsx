@@ -436,7 +436,7 @@ function ChannelEditorNav(props: {
 }) {
   return (
     <aside className='hidden self-start lg:sticky lg:top-4 lg:z-20 lg:block'>
-      <div className='flex max-h-[calc(100dvh-10rem)] flex-col gap-3 overflow-y-auto overscroll-contain pr-1'>
+      <div className='flex max-h-[calc(100dvh-10rem)] flex-col gap-3 overflow-y-auto overscroll-contain no-scrollbar pr-1'>
         <div className='border-border/60 bg-muted/20 rounded-lg border p-3'>
           <div className='flex min-w-0 items-center gap-2'>
             <span className='bg-muted/40 flex size-8 shrink-0 items-center justify-center rounded-md border'>
