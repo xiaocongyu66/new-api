@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Radio as RadioPrimitive } from '@base-ui/react/radio'
 import { RadioGroup as Radio } from '@base-ui/react/radio-group'
-import { CircleCheck, Palette, RotateCcw } from 'lucide-react'
+import { CircleCheck, Palette, RotateCcw, X } from 'lucide-react'
 import { type ComponentProps, type SVGProps, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -42,6 +42,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Sheet,
+  SheetClose,
   SheetContent,
   SheetDescription,
   SheetHeader,
@@ -58,6 +59,7 @@ import { useThemeCustomization } from '@/context/theme-customization-provider'
 import { useTheme } from '@/context/theme-provider'
 import { useThemeMode } from '@/hooks/use-theme-mode'
 import {
+  backgroundScrimColor,
   BACKGROUND_SCRIM_LIMITS,
   type ContentLayout,
   SURFACE_BLUR_LIMITS,
@@ -151,6 +153,13 @@ export function ConfigDrawer({
               >
                 {t('Reset')}
               </Button>
+              <SheetClose
+                render={
+                  <Button size='icon-sm' variant='ghost' aria-label={t('Close')} />
+                }
+              >
+                <X strokeWidth={2} />
+              </SheetClose>
             </div>
           </div>
         </SheetHeader>
@@ -748,6 +757,11 @@ function ContentLayoutPreview(props: { centered: boolean }) {
   )
 }
 
+/** Stand-in photo behind the scrim preview swatch: a mid-tone multi-hue
+ * gradient reads as "a picture" at 24px in either color scheme. */
+const SCRIM_PREVIEW_BACKDROP =
+  'linear-gradient(135deg, oklch(0.52 0.1 210), oklch(0.7 0.13 85) 55%, oklch(0.42 0.08 305))'
+
 function BlurConfig() {
   const { t } = useTranslation()
   const { setMode } = useThemeMode()
@@ -769,6 +783,15 @@ function BlurConfig() {
     customization.backgroundScrim !== defaults.backgroundScrim ||
     customization.sheetOpacity !== defaults.sheetOpacity ||
     customization.floatOpacity !== defaults.floatOpacity
+
+  // The scrim veil sits behind the page, so on mobile — where this sheet
+  // covers the whole viewport — dragging the slider gives no visible
+  // feedback. This swatch composites the same color the provider writes to
+  // `--app-background-scrim` over a photo-like gradient, inside the sheet.
+  const scrimPreviewColor = backgroundScrimColor(
+    surfaceScheme,
+    customization.backgroundScrim
+  )
 
   return (
     <div>
@@ -843,8 +866,17 @@ function BlurConfig() {
         <div className='rounded-lg border p-3 text-sm'>
           <div className='flex items-center justify-between gap-3'>
             <span>{t('Background scrim')}</span>
-            <span className='text-muted-foreground text-xs tabular-nums'>
-              {customization.backgroundScrim}%
+            <span className='flex shrink-0 items-center gap-2'>
+              <span
+                aria-hidden='true'
+                className='border-border/70 block size-6 rounded-md border'
+                style={{
+                  backgroundImage: `linear-gradient(${scrimPreviewColor}, ${scrimPreviewColor}), ${SCRIM_PREVIEW_BACKDROP}`,
+                }}
+              />
+              <span className='text-muted-foreground text-xs tabular-nums'>
+                {customization.backgroundScrim}%
+              </span>
             </span>
           </div>
           <Slider
