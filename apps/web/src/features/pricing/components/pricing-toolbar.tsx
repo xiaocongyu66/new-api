@@ -171,7 +171,7 @@ export function PricingToolbar(props: PricingToolbarProps) {
               <Filter className='size-3.5 mr-1.5' />
               {t('Filter')} {props.filteredCount.toLocaleString()}
             </SheetTrigger>
-            <SheetContent side='left' className={sideDrawerContentClassName('bg-popover sm:max-w-[360px] p-0')}>
+            <SheetContent side='left' className={sideDrawerContentClassName('bg-popover w-3/4 sm:max-w-[360px] p-0')}>
               <SheetTitle className='sr-only'>{t('Filter')}</SheetTitle>
               <div className={sideDrawerFormClassName()}>
                 <PricingSidebar
