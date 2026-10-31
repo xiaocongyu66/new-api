@@ -224,7 +224,7 @@ func TestRechargeTopUpRejectsProviderMismatch(t *testing.T) {
 	}
 	require.NoError(t, dbx.DB.Create(epayOrder).Error)
 
-	_, err := rechargeTopUp(tradeNo, PaymentProviderVmq, "", "10.00", "127.0.0.1")
+	_, err := rechargeTopUp(tradeNo, PaymentProviderVmq, "", "10.00", "", 0, "127.0.0.1")
 	assert.ErrorIs(t, err, ErrPaymentMethodMismatch)
 	assert.Equal(t, 0, getUserQuotaForPaymentGuardTest(t, user.Id))
 
