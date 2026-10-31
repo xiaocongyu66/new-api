@@ -34,6 +34,11 @@ const (
 	PaymentMethodWaffo        = "waffo"
 	PaymentMethodWaffoPancake = "waffo_pancake"
 	PaymentMethodBalance      = "balance"
+
+	PaymentMethodVmqAlipay     = "vmq_alipay"
+	PaymentMethodVmqWxpay      = "vmq_wxpay"
+	PaymentMethodCodePayAlipay = "codepay_alipay"
+	PaymentMethodCodePayWxpay  = "codepay_wxpay"
 )
 
 const (
@@ -43,6 +48,8 @@ const (
 	PaymentProviderWaffo        = "waffo"
 	PaymentProviderWaffoPancake = "waffo_pancake"
 	PaymentProviderBalance      = "balance"
+	PaymentProviderVmq          = "vmq"
+	PaymentProviderCodePay      = "codepay"
 )
 
 var (
@@ -51,6 +58,7 @@ var (
 	ErrTopUpStatusInvalid      = errors.New("topup status invalid")
 	ErrInvalidTopUpQuota       = errors.New("invalid top-up quota")
 	ErrTopUpQuotaLimitExceeded = errors.New("top-up quota limit exceeded")
+	ErrPaymentAmountMismatch   = errors.New("payment amount mismatch")
 )
 
 func (topUp *TopUp) Insert() error {
@@ -126,11 +134,12 @@ func (topUp *TopUp) Update() error {
 	return err
 }
 
-// RechargeEpay 原子完成易支付订单：订单行锁、状态校验、成功更新与用户额度增加
-// 在同一个事务内完成，因此同一订单的并发/重复回调（包括多实例部署下）最多充值一次。
-// alreadyDone=true 表示订单此前已完成，本次为幂等重复回调。
-// 进程内的 LockOrder 只是优化，正确性由本函数的数据库行锁保证。
-func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (alreadyDone bool, err error) {
+// rechargeTopUp 是 epay / vmq / codepay 支付回调的共享事务体：订单行锁、网关归属校验、
+// 幂等已完成、状态校验、回调金额与订单金额的分精度比对、额度入账与日志。
+// expectedPaymentProvider 防御跨网关回调攻击；actualPaymentMethod 更新订单实际支付方式（空则跳过）。
+// notifyPrice 为网关回调原票价（Vmq 的 price / CodePay 的 price），epay 传空不校验金额。
+// 金额不符时订单保持待支付、不入账，返回 ErrPaymentAmountMismatch。
+func rechargeTopUp(tradeNo string, expectedPaymentProvider string, actualPaymentMethod string, notifyPrice string, callerIp string) (alreadyDone bool, err error) {
 	if tradeNo == "" {
 		return false, errors.New("未提供支付单号")
 	}
@@ -146,7 +155,7 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 		if err := dbx.LockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
 			return ErrTopUpNotFound
 		}
-		if topUp.PaymentProvider != PaymentProviderEpay {
+		if topUp.PaymentProvider != expectedPaymentProvider {
 			return ErrPaymentMethodMismatch
 		}
 		if topUp.Status == common.TopUpStatusSuccess {
@@ -155,6 +164,16 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 		}
 		if topUp.Status != common.TopUpStatusPending {
 			return ErrTopUpStatusInvalid
+		}
+		if notifyPrice != "" {
+			notifyMoney, parseErr := decimal.NewFromString(notifyPrice)
+			if parseErr != nil {
+				return ErrPaymentAmountMismatch
+			}
+			orderMoney := decimal.NewFromFloat(topUp.Money).Round(2)
+			if !notifyMoney.Round(2).Equals(orderMoney) {
+				return ErrPaymentAmountMismatch
+			}
 		}
 		if actualPaymentMethod != "" && topUp.PaymentMethod != actualPaymentMethod {
 			topUp.PaymentMethod = actualPaymentMethod
@@ -174,19 +193,27 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
 	})
 	if err != nil {
-		if !errors.Is(err, ErrTopUpNotFound) && !errors.Is(err, ErrPaymentMethodMismatch) && !errors.Is(err, ErrTopUpStatusInvalid) {
-			common.SysError("epay topup failed: " + err.Error())
+		if !errors.Is(err, ErrTopUpNotFound) && !errors.Is(err, ErrPaymentMethodMismatch) && !errors.Is(err, ErrTopUpStatusInvalid) && !errors.Is(err, ErrPaymentAmountMismatch) {
+			common.SysError("topup callback failed: " + err.Error())
 		}
 		return false, err
 	}
 	if alreadyDone {
 		return true, nil
 	}
-	quotacache.SyncCredit(topUp.UserId, quotaToAdd, "epay topup")
+	quotacache.SyncCredit(topUp.UserId, quotaToAdd, expectedPaymentProvider+" topup")
 
-	common.SysLog(fmt.Sprintf("易支付充值成功 trade_no=%s user_id=%d quota_to_add=%d money=%.2f", topUp.TradeNo, topUp.UserId, quotaToAdd, topUp.Money))
-	usage.RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, PaymentProviderEpay)
+	common.SysLog(fmt.Sprintf("充值成功 trade_no=%s user_id=%d quota_to_add=%d money=%.2f provider=%s", topUp.TradeNo, topUp.UserId, quotaToAdd, topUp.Money, expectedPaymentProvider))
+	usage.RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, expectedPaymentProvider)
 	return false, nil
+}
+
+// RechargeEpay 原子完成易支付订单：订单行锁、状态校验、成功更新与用户额度增加
+// 在同一个事务内完成，因此同一订单的并发/重复回调（包括多实例部署下）最多充值一次。
+// alreadyDone=true 表示订单此前已完成，本次为幂等重复回调。
+// 进程内的 LockOrder 只是优化，正确性由本函数的数据库行锁保证。
+func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (alreadyDone bool, err error) {
+	return rechargeTopUp(tradeNo, PaymentProviderEpay, actualPaymentMethod, "", callerIp)
 }
 
 // topUpQueryWindowSeconds 限制充值记录查询的时间窗口（秒）。

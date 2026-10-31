@@ -354,13 +354,14 @@ export type BillingSettings = {
   MaxTokenAutoGroups: number
   DefaultUseAutoGroup: boolean
   'group_ratio_setting.group_special_usable_group': string
-  PayAddress: string
-  EpayId: string
-  EpayKey: string
-  Price: number
-  MinTopUp: number
-  CustomCallbackAddress: string
-  PayMethods: string
+  VmqEnabled: boolean
+  VmqAddress: string
+  VmqKey: string
+  CodePayEnabled: boolean
+  CodePayAddress: string
+  CodePayId: string
+  CodePayKey: string
+  WaffoEnabled: boolean
   'payment_setting.amount_options': string
   'payment_setting.amount_discount': string
   'payment_setting.compliance_confirmed': boolean

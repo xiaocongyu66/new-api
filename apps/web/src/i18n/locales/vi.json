@@ -6100,6 +6100,25 @@
     "Zero retention": "Không lưu dữ liệu",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Base address of your CodePay service": "Địa chỉ cơ bản của dịch vụ CodePay của bạn",
+    "Base address of your V免签 (VMQ) service": "Địa chỉ cơ bản của dịch vụ VMQ (V免签) của bạn",
+    "CodePay Gateway": "Cổng thanh toán CodePay",
+    "CodePay address": "Địa chỉ CodePay",
+    "CodePay merchant ID": "Mã thương nhân CodePay",
+    "CodePay secret key": "Khóa bí mật CodePay",
+    "Configuration for CodePay payment integration": "Cấu hình tích hợp thanh toán CodePay",
+    "Configuration for VMQ payment integration": "Cấu hình tích hợp thanh toán VMQ",
+    "Enable CodePay topup": "Bật nạp tiền CodePay",
+    "Enable VMQ topup": "Bật nạp tiền VMQ",
+    "Enable V免签 (VMQ) wallet top-up and subscription payment": "Bật nạp tiền ví và thanh toán đăng ký VMQ (V免签)",
+    "Enable 码支付 (CodePay) wallet top-up and subscription payment": "Bật nạp tiền ví và thanh toán đăng ký CodePay (码支付)",
+    "In the VMQ admin panel, upload the Alipay and WeChat收款码 and run the monitoring app. Amounts are matched by order price.": "Trong trang quản trị VMQ, hãy tải mã thanh toán Alipay và WeChat lên và chạy ứng dụng giám sát. Số tiền được khớp theo giá đơn hàng.",
+    "Notify URLs": "URL thông báo",
+    "Subscription:": "Gói đăng ký:",
+    "VMQ Gateway": "Cổng thanh toán VMQ",
+    "VMQ address": "Địa chỉ VMQ",
+    "VMQ secret key": "Khóa bí mật VMQ",
+    "Wallet top-up:": "Nạp tiền ví:"
   }
 }

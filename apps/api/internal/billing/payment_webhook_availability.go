@@ -97,3 +97,34 @@ func isEpayWebhookConfigured() bool {
 func isEpayWebhookEnabled() bool {
 	return isEpayTopUpEnabled()
 }
+
+// isVmqTopUpEnabled reports whether V免签 充值渠道可用：合规已确认、开关开启
+// 且地址与密钥均非空。
+func isVmqTopUpEnabled() bool {
+	if !isPaymentComplianceConfirmed() {
+		return false
+	}
+	return VmqEnabled &&
+		strings.TrimSpace(VmqAddress) != "" &&
+		strings.TrimSpace(VmqKey) != ""
+}
+
+func isVmqWebhookEnabled() bool {
+	return isVmqTopUpEnabled()
+}
+
+// isCodePayTopUpEnabled reports whether 码支付 充值渠道可用：合规已确认、
+// 开关开启且地址、商户号、密钥均非空。
+func isCodePayTopUpEnabled() bool {
+	if !isPaymentComplianceConfirmed() {
+		return false
+	}
+	return CodePayEnabled &&
+		strings.TrimSpace(CodePayAddress) != "" &&
+		strings.TrimSpace(CodePayId) != "" &&
+		strings.TrimSpace(CodePayKey) != ""
+}
+
+func isCodePayWebhookEnabled() bool {
+	return isCodePayTopUpEnabled()
+}

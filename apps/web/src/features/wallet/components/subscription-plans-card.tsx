@@ -20,6 +20,8 @@ import { Crown, RefreshCw, Sparkles, Check } from 'lucide-react'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { isVmqPayment, isCodePayPayment } from '../lib'
+
 
 import {
   StatusBadge,
@@ -73,9 +75,15 @@ interface SubscriptionPlansCardProps {
 }
 function getEpayMethods(payMethods: PaymentMethod[] = []): PaymentMethod[] {
   return payMethods.filter(
-    (m) => m?.type && m.type !== 'stripe' && m.type !== 'creem'
+    (m) =>
+      m?.type &&
+      m.type !== 'stripe' &&
+      m.type !== 'creem' &&
+      !isVmqPayment(m.type) &&
+      !isCodePayPayment(m.type)
   )
 }
+
 
 function getBillingPreferenceLabel(
   preference: string,
@@ -122,8 +130,21 @@ export function SubscriptionPlansCard({
   const enableCreem = !!topupInfo?.enable_creem_topup
   const enableWaffoPancake = !!topupInfo?.enable_waffo_pancake_topup
   const enableOnlineTopUp = !!topupInfo?.enable_online_topup
+  const enableVmq = !!topupInfo?.enable_vmq_topup
+  const enableCodePay = !!topupInfo?.enable_codepay_topup
   const epayMethods = useMemo(
     () => getEpayMethods(topupInfo?.pay_methods),
+    [topupInfo?.pay_methods]
+  )
+  const vmqMethods = useMemo(
+    () => (topupInfo?.pay_methods || []).filter((m) => isVmqPayment(m?.type)),
+    [topupInfo?.pay_methods]
+  )
+  const codepayMethods = useMemo(
+    () =>
+      (topupInfo?.pay_methods || []).filter((m) =>
+        isCodePayPayment(m?.type)
+      ),
     [topupInfo?.pay_methods]
   )
 
@@ -661,6 +682,10 @@ export function SubscriptionPlansCard({
         enableCreem={enableCreem}
         enableWaffoPancake={enableWaffoPancake}
         enableOnlineTopUp={enableOnlineTopUp}
+        enableVmq={enableVmq}
+        enableCodePay={enableCodePay}
+        vmqMethods={vmqMethods}
+        codepayMethods={codepayMethods}
         epayMethods={epayMethods}
         userQuota={userQuota}
         onPurchaseSuccess={onPurchaseSuccess}

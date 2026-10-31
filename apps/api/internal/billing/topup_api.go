@@ -1,13 +1,18 @@
 package billing
 
 import (
+	"crypto/md5"
+	"crypto/subtle"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -93,12 +98,67 @@ func GetTopUpInfo(c contract.Context) {
 		}
 	}
 
+	// 码支付渠道（V免签 / 码支付）
+	enableVmq := isVmqTopUpEnabled()
+	if enableVmq {
+		for _, mt := range []struct {
+			typ, name, color string
+		}{
+			{PaymentMethodVmqAlipay, "支付宝 (V免签)", "#1677FF"},
+			{PaymentMethodVmqWxpay, "微信 (V免签)", "#07C160"},
+		} {
+			has := false
+			for _, method := range payMethods {
+				if method["type"] == mt.typ {
+					has = true
+					break
+				}
+			}
+			if !has {
+				payMethods = append(payMethods, map[string]string{
+					"name":      mt.name,
+					"type":      mt.typ,
+					"color":     mt.color,
+					"min_topup": strconv.Itoa(MinTopUp),
+				})
+			}
+		}
+	}
+
+	enableCodePay := isCodePayTopUpEnabled()
+	if enableCodePay {
+		for _, mt := range []struct {
+			typ, name, color string
+		}{
+			{PaymentMethodCodePayAlipay, "支付宝 (码支付)", "#1677FF"},
+			{PaymentMethodCodePayWxpay, "微信 (码支付)", "#07C160"},
+		} {
+			has := false
+			for _, method := range payMethods {
+				if method["type"] == mt.typ {
+					has = true
+					break
+				}
+			}
+			if !has {
+				payMethods = append(payMethods, map[string]string{
+					"name":      mt.name,
+					"type":      mt.typ,
+					"color":     mt.color,
+					"min_topup": strconv.Itoa(MinTopUp),
+				})
+			}
+		}
+	}
+
 	data := common.H{
 		"enable_online_topup":              isEpayTopUpEnabled(),
 		"enable_stripe_topup":              isStripeTopUpEnabled(),
 		"enable_creem_topup":               isCreemTopUpEnabled(),
 		"enable_waffo_topup":               enableWaffo,
 		"enable_waffo_pancake_topup":       enableWaffoPancake,
+		"enable_vmq_topup":                 enableVmq,
+		"enable_codepay_topup":             enableCodePay,
 		"enable_redemption":                complianceConfirmed,
 		"payment_compliance_confirmed":     complianceConfirmed,
 		"payment_compliance_terms_version": CurrentComplianceTermsVersion,
@@ -353,6 +413,195 @@ func RequestEpay(c contract.Context) {
 	_ = c.JSON(http.StatusOK, common.H{"message": "success", "data": params, "url": uri})
 }
 
+// RequestVmqPay 发起 V免签 充值支付，返回支付网关跳转 URL。
+func RequestVmqPay(c contract.Context) {
+	if !isVmqTopUpEnabled() {
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "V免签 支付未启用"})
+		return
+	}
+	var req EpayRequest
+	err := c.BindJSON(&req)
+	if err != nil {
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "参数错误"})
+		return
+	}
+	if req.Amount < getMinTopup() {
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getMinTopup())})
+		return
+	}
+	id := c.GetInt("id")
+	if rejectInvalidTopUpQuota(c, id, req.Amount) {
+		return
+	}
+
+	group, err := identity.GetUserGroup(id, true)
+	if err != nil {
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "获取用户分组失败"})
+		return
+	}
+	payMoney := getPayMoney(req.Amount, group)
+	if payMoney < 0.01 {
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "充值金额过低"})
+		return
+	}
+
+	if req.PaymentMethod != PaymentMethodVmqAlipay && req.PaymentMethod != PaymentMethodVmqWxpay {
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "支付方式不存在"})
+		return
+	}
+
+	callBackAddress := GetCallbackAddress()
+	returnUrl := paymentReturnPath("/usage-logs")
+	notifyUrl := callBackAddress + "/api/user/vmq/notify"
+	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
+	tradeNo = fmt.Sprintf("VMQUSR%dNO%s", id, tradeNo)
+
+	// V免签 type: 1=微信, 2=支付宝
+	payType := "2"
+	if req.PaymentMethod == PaymentMethodVmqWxpay {
+		payType = "1"
+	}
+	priceStr := strconv.FormatFloat(payMoney, 'f', 2, 64)
+	sign := vmqCreateSign(tradeNo, "topup", payType, priceStr, VmqKey)
+
+	vmqUrl := strings.TrimRight(VmqAddress, "/") + "/createOrder?" +
+		"payId=" + url.QueryEscape(tradeNo) +
+		"&param=" + url.QueryEscape("topup") +
+		"&type=" + url.QueryEscape(payType) +
+		"&price=" + url.QueryEscape(priceStr) +
+		"&notifyUrl=" + url.QueryEscape(notifyUrl) +
+		"&returnUrl=" + url.QueryEscape(returnUrl) +
+		"&sign=" + url.QueryEscape(sign) +
+		"&isHtml=1"
+
+	amount := req.Amount
+	if GetQuotaDisplayType() == QuotaDisplayTypeTokens {
+		dAmount := decimal.NewFromInt(int64(amount))
+		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+		amount = dAmount.Div(dQuotaPerUnit).IntPart()
+	}
+	topUp := &TopUp{
+		UserId:          id,
+		Amount:          amount,
+		Money:           payMoney,
+		TradeNo:         tradeNo,
+		PaymentMethod:   req.PaymentMethod,
+		PaymentProvider: PaymentProviderVmq,
+		CreateTime:      time.Now().Unix(),
+		Status:          common.TopUpStatusPending,
+	}
+	err = topUp.Insert()
+	if err != nil {
+		logger.LogError(c.Context(), fmt.Sprintf("V免签 创建充值订单失败 user_id=%d trade_no=%s payment_method=%s amount=%d error=%q", id, tradeNo, req.PaymentMethod, req.Amount, err.Error()))
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "创建订单失败"})
+		return
+	}
+	logger.LogInfo(c.Context(), fmt.Sprintf("V免签 充值订单创建成功 user_id=%d trade_no=%s payment_method=%s amount=%d money=%.2f url=%q", id, tradeNo, req.PaymentMethod, req.Amount, payMoney, vmqUrl))
+	_ = c.JSON(http.StatusOK, common.H{"message": "success", "data": map[string]string{"trade_no": tradeNo}, "url": vmqUrl})
+}
+
+// RequestCodePayPay 发起 码支付 充值支付，返回支付网关跳转 URL。
+func RequestCodePayPay(c contract.Context) {
+	if !isCodePayTopUpEnabled() {
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "码支付 未启用"})
+		return
+	}
+	var req EpayRequest
+	err := c.BindJSON(&req)
+	if err != nil {
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "参数错误"})
+		return
+	}
+	if req.Amount < getMinTopup() {
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getMinTopup())})
+		return
+	}
+	id := c.GetInt("id")
+	if rejectInvalidTopUpQuota(c, id, req.Amount) {
+		return
+	}
+
+	group, err := identity.GetUserGroup(id, true)
+	if err != nil {
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "获取用户分组失败"})
+		return
+	}
+	payMoney := getPayMoney(req.Amount, group)
+	if payMoney < 0.01 {
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "充值金额过低"})
+		return
+	}
+
+	if req.PaymentMethod != PaymentMethodCodePayAlipay && req.PaymentMethod != PaymentMethodCodePayWxpay {
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "支付方式不存在"})
+		return
+	}
+
+	callBackAddress := GetCallbackAddress()
+	returnUrl := paymentReturnPath("/usage-logs")
+	notifyUrl := callBackAddress + "/api/user/codepay/notify"
+	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
+	tradeNo = fmt.Sprintf("CPUSR%dNO%s", id, tradeNo)
+
+	// 码支付 type: 1=支付宝, 3=微信
+	payType := "1"
+	if req.PaymentMethod == PaymentMethodCodePayWxpay {
+		payType = "3"
+	}
+	priceStr := strconv.FormatFloat(payMoney, 'f', 2, 64)
+	cpParams := map[string]string{
+		"id":         CodePayId,
+		"type":       payType,
+		"price":      priceStr,
+		"pay_id":     tradeNo,
+		"param":      "topup",
+		"notify_url": notifyUrl,
+		"return_url": returnUrl,
+	}
+	sign := codepaySign(cpParams, CodePayKey)
+
+	var queryParts []string
+	keys := make([]string, 0, len(cpParams))
+	for k := range cpParams {
+		if k == "sign" {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		queryParts = append(queryParts, k+"="+url.QueryEscape(cpParams[k]))
+	}
+	queryParts = append(queryParts, "sign="+url.QueryEscape(sign))
+
+	codepayUrl := strings.TrimRight(CodePayAddress, "/") + "/creat_order/?" + strings.Join(queryParts, "&")
+
+	amount := req.Amount
+	if GetQuotaDisplayType() == QuotaDisplayTypeTokens {
+		dAmount := decimal.NewFromInt(int64(amount))
+		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+		amount = dAmount.Div(dQuotaPerUnit).IntPart()
+	}
+	topUp := &TopUp{
+		UserId:          id,
+		Amount:          amount,
+		Money:           payMoney,
+		TradeNo:         tradeNo,
+		PaymentMethod:   req.PaymentMethod,
+		PaymentProvider: PaymentProviderCodePay,
+		CreateTime:      time.Now().Unix(),
+		Status:          common.TopUpStatusPending,
+	}
+	err = topUp.Insert()
+	if err != nil {
+		logger.LogError(c.Context(), fmt.Sprintf("码支付 创建充值订单失败 user_id=%d trade_no=%s payment_method=%s amount=%d error=%q", id, tradeNo, req.PaymentMethod, req.Amount, err.Error()))
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "创建订单失败"})
+		return
+	}
+	logger.LogInfo(c.Context(), fmt.Sprintf("码支付 充值订单创建成功 user_id=%d trade_no=%s payment_method=%s amount=%d money=%.2f url=%q", id, tradeNo, req.PaymentMethod, req.Amount, payMoney, codepayUrl))
+	_ = c.JSON(http.StatusOK, common.H{"message": "success", "data": map[string]string{"trade_no": tradeNo}, "url": codepayUrl})
+}
+
 // tradeNo lock
 var orderLocks sync.Map
 var createLock sync.Mutex
@@ -486,6 +735,174 @@ func EpayNotify(c contract.Context) {
 	}
 }
 
+// VmqNotify 处理 V免签 异步通知。V免签通过 GET 向 notifyUrl 发送
+// payId, param, type, price, reallyPrice, sign；签名 =
+// md5(payId+param+type+price+reallyPrice+key)。响应体必须恰好为 "success"。
+func VmqNotify(c contract.Context) {
+	if !isVmqWebhookEnabled() {
+		logger.LogWarn(c.Context(), fmt.Sprintf("V免签 webhook 被拒绝 reason=webhook_disabled path=%q client_ip=%s", c.RequestURI(), c.ClientIP()))
+		_ = c.String(http.StatusOK, "fail")
+		return
+	}
+
+	var params map[string]string
+	if c.Method() == "POST" {
+		if err := c.ParseForm(); err != nil {
+			logger.LogError(c.Context(), fmt.Sprintf("V免签 webhook POST 表单解析失败 path=%q client_ip=%s error=%q", c.RequestURI(), c.ClientIP(), err.Error()))
+			_ = c.String(http.StatusOK, "fail")
+			return
+		}
+		params = lo.Reduce(lo.Keys(c.PostFormValues()), func(r map[string]string, t string, i int) map[string]string {
+			r[t] = c.PostForm(t)
+			return r
+		}, map[string]string{})
+	} else {
+		params = lo.Reduce(lo.Keys(c.QueryValues()), func(r map[string]string, t string, i int) map[string]string {
+			r[t] = c.Query(t)
+			return r
+		}, map[string]string{})
+	}
+	logger.LogInfo(c.Context(), fmt.Sprintf("V免签 webhook 收到请求 path=%q client_ip=%s method=%s params=%q", c.RequestURI(), c.ClientIP(), c.Method(), common.GetJsonString(params)))
+
+	if len(params) == 0 {
+		logger.LogWarn(c.Context(), fmt.Sprintf("V免签 webhook 参数为空 path=%q client_ip=%s", c.RequestURI(), c.ClientIP()))
+		_ = c.String(http.StatusOK, "fail")
+		return
+	}
+
+	sign := params["sign"]
+	expected := vmqNotifySign(params["payId"], params["param"], params["type"], params["price"], params["reallyPrice"], VmqKey)
+	if !constantTimeCompare(sign, expected) {
+		logger.LogWarn(c.Context(), fmt.Sprintf("V免签 webhook 验签失败 path=%q client_ip=%s pay_id=%s", c.RequestURI(), c.ClientIP(), params["payId"]))
+		_ = c.String(http.StatusOK, "fail")
+		return
+	}
+
+	tradeNo := params["payId"]
+	if tradeNo == "" {
+		_ = c.String(http.StatusOK, "fail")
+		return
+	}
+
+	// 进程内锁只是优化；正确性由 rechargeTopUp 的数据库行锁保证。
+	LockOrder(tradeNo)
+	defer UnlockOrder(tradeNo)
+	alreadyDone, err := rechargeTopUp(tradeNo, PaymentProviderVmq, "", params["price"], c.ClientIP())
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrTopUpNotFound):
+			logger.LogWarn(c.Context(), fmt.Sprintf("V免签 回调订单不存在 trade_no=%s client_ip=%s", tradeNo, c.ClientIP()))
+		case errors.Is(err, ErrPaymentMethodMismatch):
+			logger.LogWarn(c.Context(), fmt.Sprintf("V免签 订单支付网关不匹配 trade_no=%s client_ip=%s", tradeNo, c.ClientIP()))
+		case errors.Is(err, ErrTopUpStatusInvalid):
+			logger.LogWarn(c.Context(), fmt.Sprintf("V免签 订单状态非法 trade_no=%s client_ip=%s", tradeNo, c.ClientIP()))
+		case errors.Is(err, ErrPaymentAmountMismatch):
+			logger.LogWarn(c.Context(), fmt.Sprintf("V免签 回调金额不匹配 trade_no=%s client_ip=%s", tradeNo, c.ClientIP()))
+		default:
+			logger.LogError(c.Context(), fmt.Sprintf("V免签 充值处理失败 trade_no=%s client_ip=%s error=%q", tradeNo, c.ClientIP(), err.Error()))
+		}
+		if writeErr := c.String(http.StatusOK, "fail"); writeErr != nil {
+			logger.LogError(c.Context(), fmt.Sprintf("V免签 webhook 响应写入失败 trade_no=%s client_ip=%s error=%q", tradeNo, c.ClientIP(), writeErr.Error()))
+		}
+		return
+	}
+	if alreadyDone {
+		logger.LogInfo(c.Context(), fmt.Sprintf("V免签 重复回调幂等忽略 trade_no=%s client_ip=%s", tradeNo, c.ClientIP()))
+	} else {
+		logger.LogInfo(c.Context(), fmt.Sprintf("V免签 充值成功 trade_no=%s client_ip=%s", tradeNo, c.ClientIP()))
+	}
+	if writeErr := c.String(http.StatusOK, "success"); writeErr != nil {
+		logger.LogError(c.Context(), fmt.Sprintf("V免签 webhook 响应写入失败 trade_no=%s client_ip=%s error=%q", tradeNo, c.ClientIP(), writeErr.Error()))
+	}
+}
+
+// CodePayNotify 处理 码支付 异步通知。码支付通过 POST form（亦接受 GET query）
+// 发送 pay_id, pay_no, money, price, type, param, sign；签名对全部非空参数
+// 除 sign 外按 key 排序后拼接 k=v 并以 & 连接，再 md5(joined+key)。
+// 响应体为 "success" / "fail"。
+func CodePayNotify(c contract.Context) {
+	if !isCodePayWebhookEnabled() {
+		logger.LogWarn(c.Context(), fmt.Sprintf("码支付 webhook 被拒绝 reason=webhook_disabled path=%q client_ip=%s", c.RequestURI(), c.ClientIP()))
+		_ = c.String(http.StatusOK, "fail")
+		return
+	}
+
+	var params map[string]string
+	if c.Method() == "POST" {
+		if err := c.ParseForm(); err != nil {
+			logger.LogError(c.Context(), fmt.Sprintf("码支付 webhook POST 表单解析失败 path=%q client_ip=%s error=%q", c.RequestURI(), c.ClientIP(), err.Error()))
+			_ = c.String(http.StatusOK, "fail")
+			return
+		}
+		params = lo.Reduce(lo.Keys(c.PostFormValues()), func(r map[string]string, t string, i int) map[string]string {
+			r[t] = c.PostForm(t)
+			return r
+		}, map[string]string{})
+	} else {
+		params = lo.Reduce(lo.Keys(c.QueryValues()), func(r map[string]string, t string, i int) map[string]string {
+			r[t] = c.Query(t)
+			return r
+		}, map[string]string{})
+	}
+	logger.LogInfo(c.Context(), fmt.Sprintf("码支付 webhook 收到请求 path=%q client_ip=%s method=%s params=%q", c.RequestURI(), c.ClientIP(), c.Method(), common.GetJsonString(params)))
+
+	if len(params) == 0 {
+		logger.LogWarn(c.Context(), fmt.Sprintf("码支付 webhook 参数为空 path=%q client_ip=%s", c.RequestURI(), c.ClientIP()))
+		_ = c.String(http.StatusOK, "fail")
+		return
+	}
+	if strings.TrimSpace(params["pay_no"]) == "" {
+		logger.LogWarn(c.Context(), fmt.Sprintf("码支付 webhook pay_no 为空 path=%q client_ip=%s", c.RequestURI(), c.ClientIP()))
+		_ = c.String(http.StatusOK, "fail")
+		return
+	}
+
+	sign := params["sign"]
+	expected := codepaySign(params, CodePayKey)
+	if !constantTimeCompare(sign, expected) {
+		logger.LogWarn(c.Context(), fmt.Sprintf("码支付 webhook 验签失败 path=%q client_ip=%s pay_id=%s", c.RequestURI(), c.ClientIP(), params["pay_id"]))
+		_ = c.String(http.StatusOK, "fail")
+		return
+	}
+
+	tradeNo := params["pay_id"]
+	if tradeNo == "" {
+		_ = c.String(http.StatusOK, "fail")
+		return
+	}
+
+	// 进程内锁只是优化；正确性由 rechargeTopUp 的数据库行锁保证。
+	LockOrder(tradeNo)
+	defer UnlockOrder(tradeNo)
+	alreadyDone, err := rechargeTopUp(tradeNo, PaymentProviderCodePay, "", params["price"], c.ClientIP())
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrTopUpNotFound):
+			logger.LogWarn(c.Context(), fmt.Sprintf("码支付 回调订单不存在 trade_no=%s client_ip=%s", tradeNo, c.ClientIP()))
+		case errors.Is(err, ErrPaymentMethodMismatch):
+			logger.LogWarn(c.Context(), fmt.Sprintf("码支付 订单支付网关不匹配 trade_no=%s client_ip=%s", tradeNo, c.ClientIP()))
+		case errors.Is(err, ErrTopUpStatusInvalid):
+			logger.LogWarn(c.Context(), fmt.Sprintf("码支付 订单状态非法 trade_no=%s client_ip=%s", tradeNo, c.ClientIP()))
+		case errors.Is(err, ErrPaymentAmountMismatch):
+			logger.LogWarn(c.Context(), fmt.Sprintf("码支付 回调金额不匹配 trade_no=%s client_ip=%s", tradeNo, c.ClientIP()))
+		default:
+			logger.LogError(c.Context(), fmt.Sprintf("码支付 充值处理失败 trade_no=%s client_ip=%s error=%q", tradeNo, c.ClientIP(), err.Error()))
+		}
+		if writeErr := c.String(http.StatusOK, "fail"); writeErr != nil {
+			logger.LogError(c.Context(), fmt.Sprintf("码支付 webhook 响应写入失败 trade_no=%s client_ip=%s error=%q", tradeNo, c.ClientIP(), writeErr.Error()))
+		}
+		return
+	}
+	if alreadyDone {
+		logger.LogInfo(c.Context(), fmt.Sprintf("码支付 重复回调幂等忽略 trade_no=%s client_ip=%s", tradeNo, c.ClientIP()))
+	} else {
+		logger.LogInfo(c.Context(), fmt.Sprintf("码支付 充值成功 trade_no=%s client_ip=%s", tradeNo, c.ClientIP()))
+	}
+	if writeErr := c.String(http.StatusOK, "success"); writeErr != nil {
+		logger.LogError(c.Context(), fmt.Sprintf("码支付 webhook 响应写入失败 trade_no=%s client_ip=%s error=%q", tradeNo, c.ClientIP(), writeErr.Error()))
+	}
+}
+
 func RequestAmount(c contract.Context) {
 	var req AmountRequest
 	err := c.BindJSON(&req)
@@ -586,4 +1003,43 @@ func AdminCompleteTopUp(c contract.Context) {
 		return
 	}
 	common.CtxApiSuccess(c, nil)
+}
+
+// vmqMd5 返回小写十六进制 MD5。
+func vmqMd5(s string) string {
+	h := md5.Sum([]byte(s))
+	return hex.EncodeToString(h[:])
+}
+
+// vmqCreateSign 计算 V免签 下单签名：md5(payId+param+type+price+key)。
+func vmqCreateSign(payId, param, payType, price, key string) string {
+	return vmqMd5(payId + param + payType + price + key)
+}
+
+// vmqNotifySign 计算 V免签 回调签名：md5(payId+param+type+price+reallyPrice+key)。
+func vmqNotifySign(payId, param, payType, price, reallyPrice, key string) string {
+	return vmqMd5(payId + param + payType + price + reallyPrice + key)
+}
+
+// codepaySign 计算 码支付 签名：对全部非空参数（sign 自身除外）按 key 升序排列，
+// 拼接 k=v 并以 & 连接，再 md5(joined+key)。值使用原始（未 url 编码）字符串。
+func codepaySign(params map[string]string, key string) string {
+	keys := make([]string, 0, len(params))
+	for k, v := range params {
+		if k == "sign" || v == "" {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, k+"="+params[k])
+	}
+	return vmqMd5(strings.Join(parts, "&") + key)
+}
+
+// constantTimeCompare 使用定时比较对比两个字符串，防止时序攻击。
+func constantTimeCompare(a, b string) bool {
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }

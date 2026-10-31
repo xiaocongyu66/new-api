@@ -27,15 +27,20 @@ import {
   calculateWaffoPancakeAmount,
   requestPayment,
   requestStripePayment,
+  requestVmqPayment,
+  requestCodePayPayment,
   isApiSuccess,
 } from '../api'
 import {
   isStripePayment,
   isWaffoPayment,
   isWaffoPancakePayment,
+  isVmqPayment,
+  isCodePayPayment,
   submitPaymentForm,
+  openPaymentUrl,
 } from '../lib'
-import type { AmountRequest, AmountResponse } from '../types'
+import type { AmountRequest, AmountResponse, PaymentResponse } from '../types'
 
 // ============================================================================
 // Payment Hook
@@ -112,17 +117,29 @@ export function usePayment() {
         setProcessing(true)
 
         const isStripe = isStripePayment(paymentType)
+        const isVmq = isVmqPayment(paymentType)
+        const isCodePay = isCodePayPayment(paymentType)
         const amount = Math.floor(topupAmount)
 
-        const response = isStripe
-          ? await requestStripePayment({
-              amount,
-              payment_method: 'stripe',
-            })
-          : await requestPayment({
-              amount,
-              payment_method: paymentType,
-            })
+        let response: PaymentResponse
+        if (isStripe) {
+          response = await requestStripePayment({
+            amount,
+            payment_method: 'stripe',
+          })
+        } else if (isVmq || isCodePay) {
+          response = await (isVmq
+            ? requestVmqPayment({ amount, payment_method: paymentType })
+            : requestCodePayPayment({
+                amount,
+                payment_method: paymentType,
+              }))
+        } else {
+          response = await requestPayment({
+            amount,
+            payment_method: paymentType,
+          })
+        }
 
         if (!isApiSuccess(response)) {
           toast.error(response.message || i18next.t('Payment request failed'))
@@ -136,8 +153,18 @@ export function usePayment() {
           return true
         }
 
-        // Handle non-Stripe payment
-        if (!isStripe && response.data) {
+        // Handle VMQ / CodePay payment (plain GET redirect, no form POST)
+        if ((isVmq || isCodePay) && response.data) {
+          const url = (response as unknown as { url?: string }).url
+          if (url) {
+            openPaymentUrl(url)
+            toast.success(i18next.t('Redirecting to payment page...'))
+            return true
+          }
+        }
+
+        // Handle regular (Epay) payment
+        if (!isStripe && !isVmq && !isCodePay && response.data) {
           const url = (response as unknown as { url?: string }).url
           if (url) {
             submitPaymentForm(url, response.data)

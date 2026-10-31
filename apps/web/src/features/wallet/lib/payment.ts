@@ -29,9 +29,35 @@ import type { PaymentMethod, PresetAmount, TopupInfo } from '../types'
 // ============================================================================
 
 /**
+ * Open a payment URL in a new tab, except on Safari where popup blocking
+ * makes a same-tab navigation more reliable.
+ */
+export function openPaymentUrl(url: string): void {
+  if (isSafariBrowser()) {
+    window.location.href = url
+  } else {
+    window.open(url, '_blank')
+  }
+}
+
+/**
+ * Check if payment method is VMQ (V免签)
+ */
+export function isVmqPayment(paymentType: string): boolean {
+  return paymentType.startsWith('vmq_')
+}
+
+/**
+ * Check if payment method is CodePay
+ */
+export function isCodePayPayment(paymentType: string): boolean {
+  return paymentType.startsWith('codepay_')
+}
+
+/**
  * Check if browser is Safari
  */
-function isSafariBrowser(): boolean {
+export function isSafariBrowser(): boolean {
   return (
     navigator.userAgent.includes('Safari') &&
     !navigator.userAgent.includes('Chrome')

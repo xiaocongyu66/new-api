@@ -113,10 +113,12 @@ GET /api/status
 GET /api/status/test
 GET /api/subscription/admin/plans
 GET /api/subscription/admin/users/:id/subscriptions
+GET /api/subscription/codepay/notify
 GET /api/subscription/epay/notify
 GET /api/subscription/epay/return
 GET /api/subscription/plans
 GET /api/subscription/self
+GET /api/subscription/vmq/notify
 GET /api/system-info/instances
 GET /api/system-task/:task_id
 GET /api/system-task/current
@@ -141,6 +143,7 @@ GET /api/user/:id
 GET /api/user/:id/oauth/bindings
 GET /api/user/aff
 GET /api/user/checkin
+GET /api/user/codepay/notify
 GET /api/user/epay/notify
 GET /api/user/groups
 GET /api/user/models
@@ -155,6 +158,7 @@ GET /api/user/token
 GET /api/user/topup
 GET /api/user/topup/info
 GET /api/user/topup/self
+GET /api/user/vmq/notify
 GET /api/vendors/
 GET /api/vendors/:id
 GET /api/vendors/search
@@ -219,10 +223,14 @@ POST /api/subscription/admin/user_subscriptions/:id/invalidate
 POST /api/subscription/admin/users/:id/subscriptions
 POST /api/subscription/admin/users/:id/subscriptions/reset
 POST /api/subscription/balance/pay
+POST /api/subscription/codepay/notify
+POST /api/subscription/codepay/pay
 POST /api/subscription/creem/pay
 POST /api/subscription/epay/notify
 POST /api/subscription/epay/pay
 POST /api/subscription/stripe/pay
+POST /api/subscription/vmq/notify
+POST /api/subscription/vmq/pay
 POST /api/subscription/waffo-pancake/pay
 POST /api/system-task/log-cleanup
 POST /api/token/
@@ -241,6 +249,8 @@ POST /api/user/amount
 POST /api/user/auth/logout
 POST /api/user/auth/refresh
 POST /api/user/checkin
+POST /api/user/codepay/notify
+POST /api/user/codepay/pay
 POST /api/user/creem/pay
 POST /api/user/epay/notify
 POST /api/user/login
@@ -262,6 +272,8 @@ POST /api/user/stripe/amount
 POST /api/user/stripe/pay
 POST /api/user/topup
 POST /api/user/topup/complete
+POST /api/user/vmq/notify
+POST /api/user/vmq/pay
 POST /api/user/waffo-pancake/amount
 POST /api/user/waffo-pancake/pay
 POST /api/user/waffo/amount

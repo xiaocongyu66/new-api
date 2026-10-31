@@ -6104,6 +6104,25 @@
     "Zero retention": "Zero retention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Base address of your CodePay service": "Base address of your CodePay service",
+    "Base address of your V免签 (VMQ) service": "Base address of your V免签 (VMQ) service",
+    "CodePay Gateway": "CodePay Gateway",
+    "CodePay address": "CodePay address",
+    "CodePay merchant ID": "CodePay merchant ID",
+    "CodePay secret key": "CodePay secret key",
+    "Configuration for CodePay payment integration": "Configuration for CodePay payment integration",
+    "Configuration for VMQ payment integration": "Configuration for VMQ payment integration",
+    "Enable CodePay topup": "Enable CodePay topup",
+    "Enable VMQ topup": "Enable VMQ topup",
+    "Enable V免签 (VMQ) wallet top-up and subscription payment": "Enable V免签 (VMQ) wallet top-up and subscription payment",
+    "Enable 码支付 (CodePay) wallet top-up and subscription payment": "Enable 码支付 (CodePay) wallet top-up and subscription payment",
+    "In the VMQ admin panel, upload the Alipay and WeChat收款码 and run the monitoring app. Amounts are matched by order price.": "In the VMQ admin panel, upload the Alipay and WeChat收款码 and run the monitoring app. Amounts are matched by order price.",
+    "Notify URLs": "Notify URLs",
+    "Subscription:": "Subscription:",
+    "VMQ Gateway": "VMQ Gateway",
+    "VMQ address": "VMQ address",
+    "VMQ secret key": "VMQ secret key",
+    "Wallet top-up:": "Wallet top-up:"
   }
 }

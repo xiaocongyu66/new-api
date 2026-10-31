@@ -157,6 +157,10 @@ export interface TopupInfo {
   enable_waffo_pancake_topup?: boolean
   /** Minimum topup amount for Waffo Pancake */
   waffo_pancake_min_topup?: number
+  /** Whether VMQ (V免签) topup is enabled */
+  enable_vmq_topup?: boolean
+  /** Whether CodePay topup is enabled */
+  enable_codepay_topup?: boolean
   /** Whether redemption code usage is enabled */
   enable_redemption?: boolean
   /** Whether compliance confirmation has been completed */

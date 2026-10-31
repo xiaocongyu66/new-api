@@ -329,6 +329,8 @@ export function Wallet(props: WalletProps) {
                   enableWaffoPancakeTopup={
                     topupInfo?.enable_waffo_pancake_topup
                   }
+                  enableVmqTopup={topupInfo?.enable_vmq_topup}
+                  enableCodePayTopup={topupInfo?.enable_codepay_topup}
                 />
               </div>
 

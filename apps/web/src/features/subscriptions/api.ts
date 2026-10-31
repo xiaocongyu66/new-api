@@ -201,6 +201,27 @@ export async function paySubscriptionEpay(
   }
 }
 
+export async function paySubscriptionVmq(
+  data: SubscriptionPayRequest & { payment_method: string }
+): Promise<SubscriptionPayResponse & { url?: string }> {
+  const res = await api.post('/api/subscription/vmq/pay', data)
+  return {
+    ...res.data,
+    url: res.data.url || (res as unknown as { url?: string }).url,
+  }
+}
+
+export async function paySubscriptionCodePay(
+  data: SubscriptionPayRequest & { payment_method: string }
+): Promise<SubscriptionPayResponse & { url?: string }> {
+  const res = await api.post('/api/subscription/codepay/pay', data)
+  return {
+    ...res.data,
+    url: res.data.url || (res as unknown as { url?: string }).url,
+  }
+}
+
+
 // ============================================================================
 // User Self Subscriptions
 // ============================================================================

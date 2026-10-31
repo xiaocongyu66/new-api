@@ -188,3 +188,24 @@ var (
 	WaffoPancakeStoreID    string
 	WaffoPancakeProductID  string
 )
+
+// ---------------------------------------------------------------------------
+// VMQ (V免签, github.com/szvone/Vmq)
+// ---------------------------------------------------------------------------
+
+var (
+	VmqEnabled bool
+	VmqAddress string
+	VmqKey     string
+)
+
+// ---------------------------------------------------------------------------
+// CodePay (经典码支付)
+// ---------------------------------------------------------------------------
+
+var (
+	CodePayEnabled bool
+	CodePayAddress string
+	CodePayId      string
+	CodePayKey     string
+)

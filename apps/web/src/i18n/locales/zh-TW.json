@@ -6104,6 +6104,25 @@
     "Zero retention": "零數據保留",
     "Zhipu": "智譜",
     "Zhipu V4": "智譜 V4",
-    "Zoom": "縮放"
+    "Zoom": "縮放",
+    "Base address of your CodePay service": "你的 碼支付 服務的基地址",
+    "Base address of your V免签 (VMQ) service": "你的 V免签 (VMQ) 服務的基地址",
+    "CodePay Gateway": "碼支付 (CodePay) 網關",
+    "CodePay address": "碼支付 地址",
+    "CodePay merchant ID": "碼支付 商戶 ID",
+    "CodePay secret key": "碼支付 密鑰",
+    "Configuration for CodePay payment integration": "碼支付 (CodePay) 支付集成配置",
+    "Configuration for VMQ payment integration": "V免签 (VMQ) 支付集成配置",
+    "Enable CodePay topup": "啟用 碼支付 充值",
+    "Enable VMQ topup": "啟用 VMQ 充值",
+    "Enable V免签 (VMQ) wallet top-up and subscription payment": "啟用 V免签 (VMQ) 錢包充值和訂閱支付",
+    "Enable 码支付 (CodePay) wallet top-up and subscription payment": "啟用 碼支付 (CodePay) 錢包充值和訂閱支付",
+    "In the VMQ admin panel, upload the Alipay and WeChat收款码 and run the monitoring app. Amounts are matched by order price.": "在 VMQ 管理面板中上傳支付寶和微信收款碼並運行監控應用。金額按訂單價格匹配。",
+    "Notify URLs": "通知 URL",
+    "Subscription:": "訂閱:",
+    "VMQ Gateway": "V免签 (VMQ) 網關",
+    "VMQ address": "VMQ 地址",
+    "VMQ secret key": "VMQ 密鑰",
+    "Wallet top-up:": "錢包充值:"
   }
 }

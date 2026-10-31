@@ -176,6 +176,13 @@ const paymentSchema = z.object({
   WaffoPancakeMerchantID: z.string(),
   WaffoPancakePrivateKey: z.string(),
   WaffoPancakeReturnURL: z.string(),
+  VmqEnabled: z.boolean(),
+  VmqAddress: z.string(),
+  VmqKey: z.string(),
+  CodePayEnabled: z.boolean(),
+  CodePayAddress: z.string(),
+  CodePayId: z.string(),
+  CodePayKey: z.string(),
 })
 
 type PaymentFormValues = z.infer<typeof paymentSchema>
@@ -437,6 +444,13 @@ export function PaymentSettingsSection({
       CreemWebhookSecret: values.CreemWebhookSecret.trim(),
       CreemTestMode: values.CreemTestMode,
       CreemProducts: values.CreemProducts.trim(),
+      VmqEnabled: values.VmqEnabled,
+      VmqAddress: values.VmqAddress.trim(),
+      VmqKey: values.VmqKey.trim(),
+      CodePayEnabled: values.CodePayEnabled,
+      CodePayAddress: values.CodePayAddress.trim(),
+      CodePayId: values.CodePayId.trim(),
+      CodePayKey: values.CodePayKey.trim(),
       WaffoEnabled: values.WaffoEnabled,
       WaffoSandbox: values.WaffoSandbox,
       WaffoMerchantId: values.WaffoMerchantId.trim(),
@@ -482,6 +496,13 @@ export function PaymentSettingsSection({
       CreemWebhookSecret: initialRef.current.CreemWebhookSecret.trim(),
       CreemTestMode: initialRef.current.CreemTestMode,
       CreemProducts: initialRef.current.CreemProducts.trim(),
+      VmqEnabled: initialRef.current.VmqEnabled,
+      VmqAddress: initialRef.current.VmqAddress.trim(),
+      VmqKey: initialRef.current.VmqKey.trim(),
+      CodePayEnabled: initialRef.current.CodePayEnabled,
+      CodePayAddress: initialRef.current.CodePayAddress.trim(),
+      CodePayId: initialRef.current.CodePayId.trim(),
+      CodePayKey: initialRef.current.CodePayKey.trim(),
       WaffoEnabled: initialRef.current.WaffoEnabled,
       WaffoSandbox: initialRef.current.WaffoSandbox,
       WaffoMerchantId: initialRef.current.WaffoMerchantId.trim(),
@@ -627,6 +648,27 @@ export function PaymentSettingsSection({
       normalizeJsonForComparison(initial.CreemProducts)
     ) {
       updates.push({ key: 'CreemProducts', value: sanitized.CreemProducts })
+    }
+    if (sanitized.VmqEnabled !== initial.VmqEnabled) {
+      updates.push({ key: 'VmqEnabled', value: sanitized.VmqEnabled })
+    }
+    if (sanitized.VmqAddress !== initial.VmqAddress) {
+      updates.push({ key: 'VmqAddress', value: sanitized.VmqAddress })
+    }
+    if (sanitized.VmqKey && sanitized.VmqKey !== initial.VmqKey) {
+      updates.push({ key: 'VmqKey', value: sanitized.VmqKey })
+    }
+    if (sanitized.CodePayEnabled !== initial.CodePayEnabled) {
+      updates.push({ key: 'CodePayEnabled', value: sanitized.CodePayEnabled })
+    }
+    if (sanitized.CodePayAddress !== initial.CodePayAddress) {
+      updates.push({ key: 'CodePayAddress', value: sanitized.CodePayAddress })
+    }
+    if (sanitized.CodePayId !== initial.CodePayId) {
+      updates.push({ key: 'CodePayId', value: sanitized.CodePayId })
+    }
+    if (sanitized.CodePayKey && sanitized.CodePayKey !== initial.CodePayKey) {
+      updates.push({ key: 'CodePayKey', value: sanitized.CodePayKey })
     }
 
     if (sanitized.WaffoEnabled !== initial.WaffoEnabled) {
@@ -877,11 +919,13 @@ export function PaymentSettingsSection({
           />
           <Tabs defaultValue='general' className='min-w-0'>
             <div className='overflow-x-auto pb-1'>
-              <TabsList className='grid min-w-[44rem] grid-cols-6'>
+              <TabsList className='grid min-w-[58rem] grid-cols-8'>
                 <TabsTrigger value='general'>{t('General')}</TabsTrigger>
                 <TabsTrigger value='epay'>Epay</TabsTrigger>
                 <TabsTrigger value='stripe'>{t('Stripe')}</TabsTrigger>
                 <TabsTrigger value='creem'>Creem</TabsTrigger>
+                <TabsTrigger value='vmq'>V免签 (VMQ)</TabsTrigger>
+                <TabsTrigger value='codepay'>码支付 (CodePay)</TabsTrigger>
                 <TabsTrigger value='waffo-pancake'>Waffo Pancake</TabsTrigger>
                 <TabsTrigger value='waffo'>Waffo</TabsTrigger>
               </TabsList>
@@ -1625,6 +1669,231 @@ export function PaymentSettingsSection({
                 payMethods={waffoPayMethods}
                 onPayMethodsChange={setWaffoPayMethods}
               />
+            </TabsContent>
+
+            <TabsContent value='vmq' className={paymentTabContentClassName}>
+              <div className='space-y-4'>
+                <div>
+                  <h3 className='text-lg font-medium'>{t('VMQ Gateway')}</h3>
+                  <p className='text-muted-foreground text-sm'>
+                    {t('Configuration for VMQ payment integration')}
+                  </p>
+                </div>
+
+                <div className='rounded-md bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100'>
+                  <p className='mb-2 font-medium'>{t('Notify URLs')}</p>
+                  <ul className='list-inside list-disc space-y-1'>
+                    <li>
+                      {t('Wallet top-up:')}{' '}
+                        {'{' + 'serverAddress' + '}' + '/api/user/vmq/notify'}
+                    </li>
+                    <li>
+                      {t('Subscription:')}{' '}
+                      <code className='rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900'>
+                        {'{' + 'serverAddress' + '}' + '/api/subscription/vmq/notify'}
+                      </code>
+                    </li>
+                  </ul>
+                  <p className='mt-2 text-xs'>
+                    {t(
+                      'In the VMQ admin panel, upload the Alipay and WeChat收款码 and run the monitoring app. Amounts are matched by order price.'
+                    )}
+                  </p>
+                </div>
+
+                <div className='grid gap-6 md:grid-cols-2'>
+                  <FormField
+                    control={form.control}
+                    name='VmqEnabled'
+                    render={({ field }) => (
+                      <SettingsSwitchItem>
+                        <SettingsSwitchContent>
+                          <FormLabel>{t('Enable VMQ topup')}</FormLabel>
+                          <FormDescription>
+                            {t('Enable V免签 (VMQ) wallet top-up and subscription payment')}
+                          </FormDescription>
+                        </SettingsSwitchContent>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                      </SettingsSwitchItem>
+                    )}
+                  />
+                </div>
+
+                <div className='grid gap-6 md:grid-cols-2'>
+                  <FormField
+                    control={form.control}
+                    name='VmqAddress'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('VMQ address')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder='https://vmq.example.com'
+                            autoComplete='off'
+                            {...field}
+                            onChange={(event) =>
+                              field.onChange(event.target.value)
+                            }
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t('Base address of your V免签 (VMQ) service')}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='VmqKey'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('VMQ secret key')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='password'
+                            placeholder={t('Enter new key to update')}
+                            autoComplete='new-password'
+                            {...field}
+                            onChange={(event) =>
+                              field.onChange(event.target.value)
+                            }
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t('Leave blank unless rotating the secret')}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value='codepay' className={paymentTabContentClassName}>
+              <div className='space-y-4'>
+                <div>
+                  <h3 className='text-lg font-medium'>{t('CodePay Gateway')}</h3>
+                  <p className='text-muted-foreground text-sm'>
+                    {t('Configuration for CodePay payment integration')}
+                  </p>
+                </div>
+                <div className='rounded-md bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100'>
+                  <p className='mb-2 font-medium'>{t('Notify URLs')}</p>
+                  <ul className='list-inside list-disc space-y-1'>
+                    <li>
+                      {t('Wallet top-up:')}{' '}
+                        {'{' + 'serverAddress' + '}' + '/api/user/codepay/notify'}
+                    </li>
+                    <li>
+                      {t('Subscription:')}{' '}
+                        {'{' + 'serverAddress' + '}' + '/api/subscription/codepay/notify'}
+                    </li>
+                  </ul>
+                </div>
+
+                <div className='grid gap-6 md:grid-cols-2'>
+                  <FormField
+                    control={form.control}
+                    name='CodePayEnabled'
+                    render={({ field }) => (
+                      <SettingsSwitchItem>
+                        <SettingsSwitchContent>
+                          <FormLabel>{t('Enable CodePay topup')}</FormLabel>
+                          <FormDescription>
+                            {t('Enable 码支付 (CodePay) wallet top-up and subscription payment')}
+                          </FormDescription>
+                        </SettingsSwitchContent>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                      </SettingsSwitchItem>
+                    )}
+                  />
+                </div>
+
+                <div className='grid gap-6 md:grid-cols-2'>
+                  <FormField
+                    control={form.control}
+                    name='CodePayAddress'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('CodePay address')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder='https://api.xiuxiu888.com'
+                            autoComplete='off'
+                            {...field}
+                            onChange={(event) =>
+                              field.onChange(event.target.value)
+                            }
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t('Base address of your CodePay service')}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='CodePayId'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('CodePay merchant ID')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder='10001'
+                            autoComplete='off'
+                            {...field}
+                            onChange={(event) =>
+                              field.onChange(event.target.value)
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='CodePayKey'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('CodePay secret key')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='password'
+                            placeholder={t('Enter new key to update')}
+                            autoComplete='new-password'
+                            {...field}
+                            onChange={(event) =>
+                              field.onChange(event.target.value)
+                            }
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t('Leave blank unless rotating the secret')}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
             </TabsContent>
           </Tabs>
         </SettingsForm>

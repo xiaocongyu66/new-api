@@ -41,8 +41,12 @@ import {
   paySubscriptionCreem,
   paySubscriptionEpay,
   paySubscriptionWaffoPancake,
+  paySubscriptionVmq,
+  paySubscriptionCodePay,
   paySubscriptionBalance,
 } from '../../api'
+import { openPaymentUrl } from '../../wallet/lib'
+
 import { formatPlanPrice } from '../../lib'
 import { formatDuration, formatResetPeriod } from '../../lib'
 import type { PlanRecord } from '../../types'
@@ -59,8 +63,12 @@ interface Props {
   enableStripe?: boolean
   enableCreem?: boolean
   enableWaffoPancake?: boolean
+  enableVmq?: boolean
+  enableCodePay?: boolean
   enableOnlineTopUp?: boolean
   epayMethods?: PaymentMethod[]
+  vmqMethods?: PaymentMethod[]
+  codepayMethods?: PaymentMethod[]
   purchaseLimit?: number
   purchaseCount?: number
   /** Already-converted display amount (user quota_display). */
@@ -72,6 +80,8 @@ export function SubscriptionPurchaseDialog(props: Props) {
   const { t } = useTranslation()
   const [paying, setPaying] = useState(false)
   const [selectedEpayMethod, setSelectedEpayMethod] = useState('')
+  const [selectedVmqMethod, setSelectedVmqMethod] = useState('')
+  const [selectedCodepayMethod, setSelectedCodepayMethod] = useState('')
 
   useEffect(() => {
     if (props.open && props.epayMethods && props.epayMethods.length > 0) {
@@ -80,6 +90,20 @@ export function SubscriptionPurchaseDialog(props: Props) {
       setSelectedEpayMethod('')
     }
   }, [props.open, props.epayMethods])
+  useEffect(() => {
+    if (props.open && props.vmqMethods && props.vmqMethods.length > 0) {
+      setSelectedVmqMethod(props.vmqMethods[0].type)
+    } else if (!props.open) {
+      setSelectedVmqMethod('')
+    }
+  }, [props.open, props.vmqMethods])
+  useEffect(() => {
+    if (props.open && props.codepayMethods && props.codepayMethods.length > 0) {
+      setSelectedCodepayMethod(props.codepayMethods[0].type)
+    } else if (!props.open) {
+      setSelectedCodepayMethod('')
+    }
+  }, [props.open, props.codepayMethods])
 
   const plan = props.plan?.plan
   if (!plan) return null
@@ -90,7 +114,12 @@ export function SubscriptionPurchaseDialog(props: Props) {
     props.enableWaffoPancake && !!plan.waffo_pancake_product_id
   const hasEpay =
     props.enableOnlineTopUp && (props.epayMethods || []).length > 0
-  const hasAnyPayment = hasStripe || hasCreem || hasWaffoPancake || hasEpay
+  const hasVmq =
+    props.enableVmq && (props.vmqMethods || []).length > 0
+  const hasCodePay =
+    props.enableCodePay && (props.codepayMethods || []).length > 0
+  const hasAnyPayment =
+    hasStripe || hasCreem || hasWaffoPancake || hasEpay || hasVmq || hasCodePay
   const selectedEpayMethodLabel =
     (props.epayMethods || []).find((m) => m.type === selectedEpayMethod)
       ?.name ||
@@ -209,6 +238,64 @@ export function SubscriptionPurchaseDialog(props: Props) {
         form.submit()
         document.body.removeChild(form)
         toast.success(t('Payment initiated'))
+        props.onOpenChange(false)
+      } else {
+        toast.error(
+          res.message && res.message !== 'success'
+            ? res.message
+            : t('Payment request failed')
+        )
+      }
+    } catch {
+      toast.error(t('Payment request failed'))
+    } finally {
+      setPaying(false)
+    }
+  }
+
+  const handlePayVmq = async () => {
+    if (!selectedVmqMethod) {
+      toast.error(t('Please select a payment method'))
+      return
+    }
+    setPaying(true)
+    try {
+      const res = await paySubscriptionVmq({
+        plan_id: plan.id,
+        payment_method: selectedVmqMethod,
+      })
+      if (res.message === 'success' && res.url) {
+        openPaymentUrl(res.url)
+        toast.success(t('Payment page opened'))
+        props.onOpenChange(false)
+      } else {
+        toast.error(
+          res.message && res.message !== 'success'
+            ? res.message
+            : t('Payment request failed')
+        )
+      }
+    } catch {
+      toast.error(t('Payment request failed'))
+    } finally {
+      setPaying(false)
+    }
+  }
+
+  const handlePayCodePay = async () => {
+    if (!selectedCodepayMethod) {
+      toast.error(t('Please select a payment method'))
+      return
+    }
+    setPaying(true)
+    try {
+      const res = await paySubscriptionCodePay({
+        plan_id: plan.id,
+        payment_method: selectedCodepayMethod,
+      })
+      if (res.message === 'success' && res.url) {
+        openPaymentUrl(res.url)
+        toast.success(t('Payment page opened'))
         props.onOpenChange(false)
       } else {
         toast.error(
@@ -438,6 +525,82 @@ export function SubscriptionPurchaseDialog(props: Props) {
                 <Button
                   onClick={handlePayEpay}
                   disabled={paying || !selectedEpayMethod || limitReached}
+                >
+                  {t('Pay')}
+                </Button>
+              </div>
+            )}
+            {hasVmq && (
+              <div className='grid grid-cols-[minmax(0,1fr)_auto] gap-2'>
+                <Select
+                  items={[
+                    ...(props.vmqMethods || []).map((m) => ({
+                      value: m.type,
+                      label: m.name || m.type,
+                    })),
+                  ]}
+                  value={selectedVmqMethod}
+                  onValueChange={(v) => v !== null && setSelectedVmqMethod(v)}
+                  disabled={limitReached}
+                >
+                  <SelectTrigger className='flex-1'>
+                    <SelectValue>
+                      {(props.vmqMethods || []).find(
+                        (m) => m.type === selectedVmqMethod
+                      )?.name || selectedVmqMethod || t('Select payment method')}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false}>
+                    <SelectGroup>
+                      {(props.vmqMethods || []).map((m) => (
+                        <SelectItem key={m.type} value={m.type}>
+                          {m.name || m.type}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <Button
+                  onClick={handlePayVmq}
+                  disabled={paying || !selectedVmqMethod || limitReached}
+                >
+                  {t('Pay')}
+                </Button>
+              </div>
+            )}
+            {hasCodePay && (
+              <div className='grid grid-cols-[minmax(0,1fr)_auto] gap-2'>
+                <Select
+                  items={[
+                    ...(props.codepayMethods || []).map((m) => ({
+                      value: m.type,
+                      label: m.name || m.type,
+                    })),
+                  ]}
+                  value={selectedCodepayMethod}
+                  onValueChange={(v) => v !== null && setSelectedCodepayMethod(v)}
+                  disabled={limitReached}
+                >
+                  <SelectTrigger className='flex-1'>
+                    <SelectValue>
+                      {(props.codepayMethods || []).find(
+                        (m) => m.type === selectedCodepayMethod
+                      )?.name || selectedCodepayMethod || t('Select payment method')}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false}>
+                    <SelectGroup>
+                      {(props.codepayMethods || []).map((m) => (
+                        <SelectItem key={m.type} value={m.type}>
+                          {m.name || m.type}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <Button
+                  onClick={handlePayCodePay}
+                  disabled={paying || !selectedCodepayMethod || limitReached}
                 >
                   {t('Pay')}
                 </Button>
