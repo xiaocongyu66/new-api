@@ -16,10 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useQuery } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ErrorState } from '@/components/error-state'
+import { getPerfMetricsSummary } from '@/features/performance-metrics/api'
 import { Main, PublicLayout } from '@/components/layout'
 import { Card, CardContent } from '@/components/ui/card'
 
@@ -32,7 +34,12 @@ import {
   ModelCardGrid,
   ModelDetailsDrawer,
 } from './components'
-import { DEFAULT_TOKEN_UNIT, EXCLUDED_GROUPS, VIEW_MODES } from './constants'
+import {
+  DEFAULT_TOKEN_UNIT,
+  EXCLUDED_GROUPS,
+  SORT_OPTIONS,
+  VIEW_MODES,
+} from './constants'
 import { useFilters } from './hooks/use-filters'
 import { usePricingData } from './hooks/use-pricing-data'
 
@@ -74,13 +81,40 @@ export function Pricing() {
     setEndpointTypeFilter,
     setTagFilter,
     setViewMode,
-    setShowRechargePrice,
     filteredModels,
     hasActiveFilters,
     availableTags,
     clearFilters,
     clearSearch,
   } = useFilters(models || [])
+
+  // Success-rate sorting needs the perf summary; the card grid uses the same
+  // query key, so both share one cached request.
+  const { data: perfSummary } = useQuery({
+    queryKey: ['perf-metrics-summary', 24],
+    queryFn: () => getPerfMetricsSummary(24),
+    staleTime: 60 * 1000,
+    retry: false,
+  })
+
+  const successRateByName = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const model of perfSummary?.data?.models ?? []) {
+      map.set(model.model_name, model.success_rate)
+    }
+    return map
+  }, [perfSummary])
+
+  const sortedModels = useMemo(() => {
+    if (sortBy !== SORT_OPTIONS.SUCCESS_RATE) {
+      return filteredModels
+    }
+    return [...filteredModels].sort((a, b) => {
+      const rateA = successRateByName.get(a.model_name) ?? -1
+      const rateB = successRateByName.get(b.model_name) ?? -1
+      return rateB - rateA || (a.model_name || '').localeCompare(b.model_name || '')
+    })
+  }, [filteredModels, sortBy, successRateByName])
 
   const handleModelClick = useCallback((modelName: string) => {
     setSelectedModelName(modelName)
@@ -123,7 +157,7 @@ export function Pricing() {
     if (viewMode === VIEW_MODES.CARD) {
       return (
         <ModelCardGrid
-          models={filteredModels}
+          models={sortedModels}
           onModelClick={handleModelClick}
           priceRate={priceRate}
           usdExchangeRate={usdExchangeRate}
@@ -136,7 +170,7 @@ export function Pricing() {
 
     return (
       <PricingTable
-        models={filteredModels}
+        models={sortedModels}
         priceRate={priceRate}
         usdExchangeRate={usdExchangeRate}
         tokenUnit={DEFAULT_TOKEN_UNIT}
@@ -192,8 +226,6 @@ export function Pricing() {
               filteredCount={filteredModels.length}
               sortBy={sortBy}
               onSortChange={setSortBy}
-              showRechargePrice={showRechargePrice}
-              onRechargePriceChange={setShowRechargePrice}
               viewMode={viewMode}
               onViewModeChange={setViewMode}
               quotaTypeFilter={quotaTypeFilter}

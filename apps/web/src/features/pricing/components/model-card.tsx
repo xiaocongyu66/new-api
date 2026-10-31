@@ -16,10 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Check, Copy } from 'lucide-react'
+import { Check, ChevronDown, Copy } from 'lucide-react'
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { CountUp } from '@/components/count-up'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { getLobeIcon } from '@/lib/lobe-icon'
@@ -30,7 +31,6 @@ import {
   getDynamicDisplayGroupRatio,
   getDynamicPricingSummary,
 } from '../lib/dynamic-price'
-import { parseTags } from '../lib/filters'
 import { getConfiguredGroupRatio, isTokenBasedModel } from '../lib/model-helpers'
 import {
   formatFixedPrice,
@@ -50,6 +50,8 @@ export interface ModelCardProps {
   showRechargePrice?: boolean
   selectedGroup?: string
   perf?: ModelPerfBadgeData
+  /** False until the card scrolls near the viewport; gates number count-up. */
+  visible?: boolean
 }
 
 export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
@@ -59,9 +61,9 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   const priceRate = props.priceRate ?? 1
   const usdExchangeRate = props.usdExchangeRate ?? 1
   const showRechargePrice = props.showRechargePrice ?? false
+  const inView = props.visible ?? true
   const isTokenBased = isTokenBasedModel(props.model)
   const tokenUnitLabel = tokenUnit === 'K' ? '1K' : '1M'
-  const tags = parseTags(props.model.tags)
   const groups = props.model.enable_groups || []
   const endpoints = props.model.supported_endpoint_types || []
   const modelIconKey = props.model.icon || props.model.vendor_icon
@@ -83,19 +85,12 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
       })
     : null
 
-  const primaryGroup = groups[0]
-  const bottomTags = [...endpoints.slice(0, 2), ...tags.slice(0, 2)]
-  const hiddenCount =
-    Math.max(groups.length - 1, 0) +
-    Math.max(endpoints.length - 2, 0) +
-    Math.max(tags.length - 2, 0)
-
   // Price table rows: the first two enabled groups with their ratio and the
   // per-group prices. Dynamic-expression models have no stable per-group
   // numbers to tabulate, so they keep the summary row only.
   const groupRows = isDynamicPricing
     ? []
-    : groups.slice(0, 2).map((group) => ({
+    : groups.map((group) => ({
         group,
         ratio: getConfiguredGroupRatio(props.model.group_ratio || {}, group),
         input: formatGroupPrice(
@@ -131,6 +126,9 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   // Copy feedback: the title button swaps its icon to a check for a moment
   // after a successful copy, then reverts. Local to this card.
   const [copied, setCopied] = useState(false)
+  // Group table: collapsed shows the header plus the first two groups; a
+  // click/Enter on the table expands it to every enabled group.
+  const [tableExpanded, setTableExpanded] = useState(false)
   const copyResetRef = useRef<number | undefined>(undefined)
   useEffect(() => {
     return () => clearTimeout(copyResetRef.current)
@@ -187,7 +185,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             >
               {t(entry.shortLabel)}{' '}
               <span className='text-foreground font-mono font-semibold'>
-                {entry.formatted}
+                <CountUp text={entry.formatted} active={inView} />
               </span>
             </span>
           ))}
@@ -213,7 +211,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
     billingModeLabel = t('Per-token')
   }
   const billingModeChip = (
-    <span className='bg-muted/50 text-muted-foreground shrink-0 rounded px-1.5 py-0.5 text-[10px] leading-none font-medium whitespace-nowrap'>
+    <span className='bg-muted/50 text-muted-foreground shrink-0 rounded px-1.5 py-0.5 text-xs leading-none font-medium whitespace-nowrap'>
       {billingModeLabel}
     </span>
   )
@@ -236,19 +234,22 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
               key={type}
               className='flex min-w-0 items-baseline justify-center gap-1 whitespace-nowrap'
             >
-              <span className='text-muted-foreground'>
+              <span className='text-muted-foreground text-xs'>
                 {type === 'input' ? t('Input') : t('Output')}
               </span>
               <span className='text-foreground font-mono font-semibold'>
-                {formatPrice(
-                  props.model,
-                  type,
-                  tokenUnit,
-                  showRechargePrice,
-                  priceRate,
-                  usdExchangeRate,
-                  props.selectedGroup
-                )}
+                <CountUp
+                  text={formatPrice(
+                    props.model,
+                    type,
+                    tokenUnit,
+                    showRechargePrice,
+                    priceRate,
+                    usdExchangeRate,
+                    props.selectedGroup
+                  )}
+                  active={inView}
+                />
               </span>
               <span className='text-muted-foreground/70 text-xs'>
                 / {tokenUnitLabel}
@@ -264,13 +265,16 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         {billingModeChip}
         <span className='flex flex-1 items-baseline justify-center gap-1 whitespace-nowrap'>
           <span className='text-foreground font-mono font-semibold'>
-            {formatRequestPrice(
-              props.model,
-              showRechargePrice,
-              priceRate,
-              usdExchangeRate,
-              props.selectedGroup
-            )}
+            <CountUp
+              text={formatRequestPrice(
+                props.model,
+                showRechargePrice,
+                priceRate,
+                usdExchangeRate,
+                props.selectedGroup
+              )}
+              active={inView}
+            />
           </span>
           <span className='text-muted-foreground/70 text-xs'>
             / {t('request')}
@@ -288,13 +292,15 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
       onClick={props.onClick}
       onKeyDown={handleCardKeyDown}
       className={cn(
-        '@container h-full cursor-pointer gap-3 select-none sm:gap-4',
-        'transition-[box-shadow,background-color] motion-reduce:transition-none',
-        // The card's visible edge is a ring, so hover/active retint that ring
-        // instead of adding a border that would shift the content width.
-        'hover:ring-primary/40 hover:bg-primary/[0.03]',
+        // No h-full: in the masonry columns the card is exactly as tall as its
+        // content, which is what lets cards with a description sit taller.
+        '@container cursor-pointer gap-3 select-none rounded-xl sm:gap-4',
+        'transition-[transform,box-shadow] duration-300 ease-out motion-reduce:transition-none',
+        // Hover only adds a soft shadow; the press is a small scale that
+        // eases back out. No hover transform at all.
+        'hover:shadow-lg hover:ring-border/50',
         'focus-visible:ring-primary/50',
-        'active:ring-primary/70 active:bg-primary/[0.06]'
+        'active:scale-[0.97]'
       )}
     >
       {/* Header: the name itself is the copy control, provider icon and
@@ -320,6 +326,19 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             <span className='text-foreground group-hover/name:text-primary truncate font-mono text-sm leading-snug font-semibold transition-colors'>
               {props.model.model_name}
             </span>
+            {(props.model.vendor_name || endpoints.length > 0) && (
+              <span className='text-muted-foreground flex min-w-0 items-center gap-1 text-[10px] leading-tight'>
+                {props.model.vendor_name && (
+                  <span className='truncate'>{props.model.vendor_name}</span>
+                )}
+                {props.model.vendor_name && endpoints.length > 0 && (
+                  <span className='text-muted-foreground/40 shrink-0'>·</span>
+                )}
+                {endpoints.length > 0 && (
+                  <span className='truncate'>{endpoints.join(' · ')}</span>
+                )}
+              </span>
+            )}
           </span>
           {/* Copy affordance: appears at the right edge of the title button on
               button hover so the header reads as "click to copy"; a check
@@ -332,11 +351,11 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         </button>
       </CardHeader>
 
-      <CardContent className='flex flex-1 flex-col gap-4'>
+      <CardContent className='flex flex-col gap-4'>
       {/* Description: only when the model has one; left edge lines up with
           the icon inside the title button above (button p-1 = 4px inset). */}
       {props.model.description && (
-        <p className='text-muted-foreground line-clamp-2 flex-1 pl-1 text-sm leading-relaxed'>
+        <p className='text-muted-foreground line-clamp-2 pl-1 text-sm leading-relaxed'>
           {props.model.description}
         </p>
       )}
@@ -348,7 +367,19 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           the width of its widest value — digits get a fixed slot per column
           and never shift between rows. */}
       {groupRows.length > 0 && (
-        <div className='border-border/50 overflow-hidden rounded-lg border'>
+        <div
+          aria-expanded={tableExpanded}
+          aria-label={
+            tableExpanded
+              ? t('Collapse group price table')
+              : t('Expand group price table')
+          }
+          onClick={(event) => {
+            event.stopPropagation()
+            setTableExpanded((expanded) => !expanded)
+          }}
+          className='border-border/50 cursor-pointer overflow-hidden rounded-lg border'
+        >
           <div
             className={cn(
               'grid items-center text-xs',
@@ -362,47 +393,83 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             )}
           >
             <div className='contents'>
-              <span className='bg-muted/30 text-muted-foreground/70 px-2.5 py-1.5 text-[10px] font-medium'>
+              <span className='bg-muted/30 text-muted-foreground/70 flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-medium'>
                 {t('Group')}
+                <button
+                  type='button'
+                  tabIndex={0}
+                  aria-expanded={tableExpanded}
+                  aria-label={
+                    tableExpanded
+                      ? t('Collapse group price table')
+                      : t('Expand group price table')
+                  }
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setTableExpanded((expanded) => !expanded)
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      setTableExpanded((expanded) => !expanded)
+                    }
+                  }}
+                  className='p-0 m-0 border-none bg-transparent text-current inline'
+                >
+                  <ChevronDown
+                    className={cn(
+                      'size-3 transition-transform duration-200',
+                      tableExpanded && 'rotate-180'
+                    )}
+                  />
+                </button>
               </span>
-              <span className='bg-muted/30 text-muted-foreground/70 px-2.5 py-1.5 text-center text-[10px] font-medium'>
+              <span className='bg-muted/30 text-muted-foreground/70 px-2.5 py-1.5 text-left text-[10px] font-medium'>
                 {t('Ratio')}
               </span>
               {isTokenBased ? (
                 <>
-                  <span className='bg-muted/30 text-muted-foreground/70 px-2.5 py-1.5 text-right text-[10px] font-medium'>
+                  <span className='bg-muted/30 text-muted-foreground/70 px-2.5 py-1.5 text-left text-[10px] font-medium'>
                     {t('Input')}
                   </span>
-                  <span className='bg-muted/30 text-muted-foreground/70 px-2.5 py-1.5 text-right text-[10px] font-medium'>
+                  <span className='bg-muted/30 text-muted-foreground/70 px-2.5 py-1.5 text-left text-[10px] font-medium'>
                     {t('Output')}
                   </span>
                 </>
               ) : (
-                <span className='bg-muted/30 text-muted-foreground/70 px-2.5 py-1.5 text-right text-[10px] font-medium'>
+                <span className='bg-muted/30 text-muted-foreground/70 px-2.5 py-1.5 text-left text-[10px] font-medium'>
                   {t('Price')}
                 </span>
               )}
             </div>
-            {groupRows.map((row) => (
+            {(groupRows.length > 2
+              ? tableExpanded
+                ? groupRows
+                : groupRows.slice(0, 2)
+              : tableExpanded
+                ? []
+                : groupRows
+            ).map((row) => (
               <div key={row.group} className='contents'>
                 <span className='border-border/50 max-w-[12rem] truncate border-t px-2.5 py-1.5 font-medium'>
                   {row.group}
                 </span>
-                <span className='text-muted-foreground border-border/50 border-t px-2.5 py-1.5 text-center font-mono tabular-nums'>
-                  ×{row.ratio}
+                <span className='text-muted-foreground border-border/50 border-t px-2.5 py-1.5 text-left font-mono tabular-nums'>
+                  <CountUp text={`×${row.ratio}`} active={inView} />
                 </span>
                 {isTokenBased ? (
                   <>
-                    <span className='text-foreground border-border/50 border-t px-2.5 py-1.5 text-right font-mono tabular-nums'>
-                      {row.input}
+                    <span className='text-foreground border-border/50 border-t px-2.5 py-1.5 text-left font-mono tabular-nums'>
+                      <CountUp text={row.input} active={inView} />
                     </span>
-                    <span className='text-foreground border-border/50 border-t px-2.5 py-1.5 text-right font-mono tabular-nums'>
-                      {row.output}
+                    <span className='text-foreground border-border/50 border-t px-2.5 py-1.5 text-left font-mono tabular-nums'>
+                      <CountUp text={row.output} active={inView} />
                     </span>
                   </>
                 ) : (
-                  <span className='text-foreground border-border/50 border-t px-2.5 py-1.5 text-right font-mono tabular-nums'>
-                    {row.price}
+                  <span className='text-foreground border-border/50 border-t px-2.5 py-1.5 text-left font-mono tabular-nums'>
+                    <CountUp text={row.price} active={inView} />
                   </span>
                 )}
               </div>
@@ -412,31 +479,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
       )}
 
       {/* Middle: 24h latency/success combo chart + headline numbers */}
-      <ModelCardMetrics perf={props.perf} />
-
-      {/* Footer: left metadata and right performance summary share row alignment */}
-      <div className='grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-2 border-t pt-3'>
-        <div className='flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'>
-          {primaryGroup && (
-            <span className='text-muted-foreground text-sm font-medium'>
-              {primaryGroup}
-            </span>
-          )}
-        </div>
-
-        <div className='flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 sm:gap-x-3 sm:gap-y-1'>
-          {bottomTags.map((item) => (
-            <span key={item} className='text-muted-foreground/70 text-xs'>
-              {item}
-            </span>
-          ))}
-          {hiddenCount > 0 && (
-            <span className='text-muted-foreground/40 text-xs'>
-              +{hiddenCount}
-            </span>
-          )}
-        </div>
-      </div>
+      <ModelCardMetrics perf={props.perf} visible={inView} />
       </CardContent>
     </Card>
   )

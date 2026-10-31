@@ -143,7 +143,8 @@ describe('Model square card as a single activation surface', () => {
       /^View details · gpt-4o$/
     )
 
-    // The old header action is gone: the card itself is the only trigger.
+    // The card is the details trigger; the copy button and the table
+    // collapse button are independent focusable controls inside it.
     const cardButtons = [
       ...mounted.container.querySelectorAll<HTMLElement>(
         'button'
@@ -154,7 +155,7 @@ describe('Model square card as a single activation surface', () => {
         .length,
       0
     )
-    assert.equal(cardButtons.length, 1, 'only the copy action remains')
+    assert.equal(cardButtons.length, 2, 'copy button + table collapse button')
 
     assert.equal(card.textContent?.includes(MODEL_NAME), true)
 
