@@ -139,3 +139,38 @@ gh secret set PROD_SERVER_USER -b "root" --repo <owner>/<repo>
 4. **单容器原子切换**：执行 `docker compose up -d --no-deps new-api`，**仅重启 new-api 容器，绝不触碰数据库、Redis、Nginx/Caddy 等依赖基础设施**。
 5. **健康检查轮询**：连续 15 次（每 3 秒一次，共 45 秒）探测 `http://127.0.0.1:3000/api/status` 是否返回 `HTTP 200`。
 6. **自动故障回滚**：若 45 秒内未就绪，工作流自动恢复先前的镜像 Tag 并重新拉起旧版本，向 GitHub 汇报失败，防止生产环境陷入不可用状态。
+
+### Caddy 配置重载的已知陷阱
+
+若生产服务器已由 Nginx 切换到 Caddy（见 `../.agents/skills/newapi-production-upgrade/SKILL.md` 第 4 节），
+**不要使用 `systemctl reload caddy`**，该操作在本项目的 unit 配置下必然失败。
+
+```bash
+# Caddyfile 中使用了 Cloudflare DNS-01 挑战：
+#   tls {
+#     dns cloudflare {env.CF_API_TOKEN}
+#   }
+```
+
+`caddy reload` 会自行重新解析一遍 Caddyfile 以便适配 admin API。而 unit 的
+`ExecStart` 带 `--environ`（由 systemd 以 root 读取 `EnvironmentFile` 后降权到
+`User=caddy`），`ExecReload` 却不带该参数。结果是 reload 子进程解析
+`{env.CF_API_TOKEN}` 时取到空串，provision 阶段直接报：
+
+```
+loading module 'cloudflare': ... API token '' appears invalid
+```
+
+失败的 `systemctl reload` **不会杀掉运行中的 caddy**，旧进程继续用旧配置对外服务，
+因此表面上站点仍是 200 —— 容易误判为"配置已生效"。
+
+正确做法：
+
+```bash
+systemctl restart caddy    # 走 ExecStart，能拿到 --environ 注入的 token
+```
+
+代价是 443 端口中断数秒（证书已在本地缓存，不会重新触发 DNS-01 挑战）。
+
+> 另注：unit 的 `--environ` 会把 caddy 继承到的**全部**环境变量明文 echo 到
+> journal，包括 `CF_API_TOKEN`。排查日志时注意不要复制外泄，必要时轮换该 token。

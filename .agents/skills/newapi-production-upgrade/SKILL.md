@@ -154,10 +154,20 @@ docker update --restart=no new-api-v17-bak
 docker stop new-api-v17-bak
 ```
 
+These snippets use shell variables instead of a hardcoded host, port or container name. Set them per target before running:
+```bash
+export PROD_HOST=<server-ip-or-hostname>      # e.g. 203.0.113.10 or newapi.example.com
+export PROD_USER=<ssh-user>
+export PROD_SSH_PORT=22
+export PROD_DEPLOY_PATH=/opt/new-api/deploy
+export HEALTH_PORT=<api-port>                 # PORT= in the target docker-compose.yml
+export CADDY_CONTAINER=<caddy-container-name> # `docker ps --filter ancestor=caddy --format '{{.Names}}'`
+```
+
 ### Instant Revert:
 ```bash
 # 1. Revert Web Server
-docker stop nailao-caddy && systemctl start nginx && systemctl enable nginx
+docker stop "${CADDY_CONTAINER}" && systemctl start nginx && systemctl enable nginx
 
 # 2. Revert Application & Database
 cd /opt/new-api/deploy
@@ -211,7 +221,7 @@ DELETE FROM <table> WHERE ctid NOT IN (
 );
 ```
 
-**Affected tables during the nailao migration**: `auth_flows`, `casbin_rule`,
+**Affected tables during the 2026-09-07 production migration**: `auth_flows`, `casbin_rule`,
 `authz_roles`, `channel_model_routes`, `gateway_config_outboxes`.
 
 **Lesson**: After removing old constraints and before AutoMigrate, run a full
