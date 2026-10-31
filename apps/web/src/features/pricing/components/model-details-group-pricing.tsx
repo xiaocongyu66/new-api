@@ -22,7 +22,11 @@ import { useTranslation } from 'react-i18next'
 import { StaticDataTable } from '@/components/data-table'
 import { GroupBadge } from '@/components/group-badge'
 
-import { getDynamicPriceEntries, getDynamicPricingTiers, isDynamicPricingModel } from '../lib/dynamic-price'
+import {
+  getDynamicPriceEntries,
+  getDynamicPricingTiers,
+  isDynamicPricingModel,
+} from '../lib/dynamic-price'
 import { getAvailableGroups, isTokenBasedModel } from '../lib/model-helpers'
 import { formatFixedPrice, formatGroupPrice } from '../lib/price'
 import type { PriceType, PricingModel, TokenUnit } from '../types'
@@ -162,8 +166,8 @@ export function GroupPricingSection(props: {
         <section>
           <SectionTitle>{t('Pricing by Group')}</SectionTitle>
           <AutoGroupChain model={props.model} autoGroups={props.autoGroups} />
-          <div className='rounded-lg border border-warning/30 bg-warning/10 p-3'>
-            <div className='text-sm font-medium text-foreground'>
+          <div className='border-warning/30 bg-warning/10 rounded-lg border p-3'>
+            <div className='text-foreground text-sm font-medium'>
               {t('Special billing expression')}
             </div>
             <p className='text-muted-foreground mt-1 text-xs'>
@@ -258,7 +262,9 @@ export function GroupPricingSection(props: {
             )
           })}
           <p className='text-muted-foreground/40 mt-1.5 text-[10px]'>
-            {t('Prices shown per')} {tokenUnitLabel} tokens
+            {priceFields.every((entry) => entry.variable.isPerRequest)
+              ? `${t('Prices shown per')} ${t('request')}`
+              : `${t('Prices shown per')} ${tokenUnitLabel} tokens`}
           </p>
         </div>
       </section>

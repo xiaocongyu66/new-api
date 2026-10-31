@@ -87,8 +87,8 @@ export function PriceSection(props: {
       return (
         <section>
           <SectionTitle>{t('Base Price')}</SectionTitle>
-          <div className='rounded-lg border border-warning/30 bg-warning/10 p-3'>
-            <div className='text-sm font-medium text-foreground'>
+          <div className='border-warning/30 bg-warning/10 rounded-lg border p-3'>
+            <div className='text-foreground text-sm font-medium'>
               {t('Special billing expression')}
             </div>
             <p className='text-muted-foreground mt-1 text-xs'>
@@ -123,7 +123,10 @@ export function PriceSection(props: {
                 <div className='text-foreground mt-1 font-mono text-base font-semibold tabular-nums'>
                   {entry.formatted}
                   <span className='text-muted-foreground/40 ml-1 text-xs font-normal'>
-                    / {tokenUnitLabel}
+                    /{' '}
+                    {entry.variable.isPerRequest
+                      ? t('request')
+                      : tokenUnitLabel}
                   </span>
                 </div>
               </div>

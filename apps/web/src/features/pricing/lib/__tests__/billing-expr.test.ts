@@ -20,7 +20,7 @@ import { describe, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { parseTiersFromExpr } from '../billing-expr'
-import { getTierBoundLabel } from '../dynamic-price'
+import { getDynamicPriceEntries, getTierBoundLabel } from '../dynamic-price'
 
 function prices(expr: string) {
   return parseTiersFromExpr(expr).map((tier) => [
@@ -56,6 +56,40 @@ describe('parseTiersFromExpr', () => {
     assert.deepEqual(
       tiers.map((_, index) => getTierBoundLabel(tiers, index)),
       ['≤10K', '≤100K', '>100K']
+    )
+  })
+})
+
+describe('per-request tier prices', () => {
+  // Production ladders price each context tier as a flat fee per request.
+  const ladder =
+    'len <= 10000 ? tier("t1", fixed(0.055))\n: len <= 100000 ? tier("t2", fixed(0.11))\n: tier("t3", fixed(0.42))'
+
+  test('reads fixed() as the tier price, not as token prices', () => {
+    assert.deepEqual(
+      parseTiersFromExpr(ladder).map((tier) => [
+        tier.label,
+        tier.fixedPrice,
+        tier.inputPrice,
+        tier.outputPrice,
+      ]),
+      [
+        ['t1', 0.055, 0, 0],
+        ['t2', 0.11, 0, 0],
+        ['t3', 0.42, 0, 0],
+      ]
+    )
+  })
+
+  test('shows the amount per request with the group ratio applied', () => {
+    const [tier] = parseTiersFromExpr(ladder)
+    const entries = getDynamicPriceEntries(tier, {
+      tokenUnit: 'M',
+      groupRatioMultiplier: 0.5,
+    })
+    assert.deepEqual(
+      entries.map((entry) => [entry.field, entry.value, entry.formatted]),
+      [['fixedPrice', 0.055, '$0.0275']]
     )
   })
 })

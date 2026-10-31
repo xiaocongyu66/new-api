@@ -60,7 +60,11 @@ export type DynamicPricingSummary = {
   secondaryEntries: DynamicPriceEntry[]
 }
 
-const PRIMARY_DYNAMIC_FIELDS = new Set(['inputPrice', 'outputPrice'])
+const PRIMARY_DYNAMIC_FIELDS = new Set([
+  'fixedPrice',
+  'inputPrice',
+  'outputPrice',
+])
 
 export function isDynamicPricingModel(model: PricingModel): boolean {
   return model.billing_mode === 'tiered_expr' && Boolean(model.billing_expr)
@@ -84,15 +88,18 @@ function applyRechargeRate(
 }
 
 function formatDynamicUnitPrice(
-  valuePerMillionTokens: number,
+  value: number,
+  variable: BillingVar,
   options: DynamicPriceOptions
 ): string {
   const groupRatio = options.groupRatioMultiplier ?? 1
   const priceRate = options.priceRate ?? 1
   const usdExchangeRate = options.usdExchangeRate ?? 1
-  const priceUSD =
-    (valuePerMillionTokens * groupRatio) /
-    TOKEN_UNIT_DIVISORS[options.tokenUnit]
+  // Token prices are $/1M and shown per token unit; a per-request price is
+  // already the USD amount charged for one call.
+  const priceUSD = variable.isPerRequest
+    ? value * groupRatio
+    : (value * groupRatio) / TOKEN_UNIT_DIVISORS[options.tokenUnit]
   const displayPrice = applyRechargeRate(
     priceUSD,
     options.showRechargePrice ?? false,
@@ -177,7 +184,7 @@ export function getDynamicPriceEntries(
         label: variable.label,
         shortLabel: variable.shortLabel,
         value,
-        formatted: formatDynamicUnitPrice(value, options),
+        formatted: formatDynamicUnitPrice(value, variable, options),
         variable,
       },
     ]
