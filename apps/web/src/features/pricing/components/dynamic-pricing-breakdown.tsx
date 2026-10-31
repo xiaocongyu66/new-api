@@ -325,7 +325,7 @@ export function DynamicPricingBreakdown({
                             )}
                           >
                             {value > 0
-                              ? `${symbol}${(value * rate).toFixed(4)}`
+                              ? `${symbol}${(value * rate).toFixed(4)}${v.isPerRequest ? ` / ${t('request')}` : ''}`
                               : '-'}
                           </div>
                         </div>
@@ -414,7 +414,7 @@ export function DynamicPricingBreakdown({
                   )
                   return value > 0 ? (
                     <span className={cn(!compact && 'font-semibold')}>
-                      {`${symbol}${(value * rate).toFixed(4)}`}
+                      {`${symbol}${(value * rate).toFixed(4)}${v.isPerRequest ? ` / ${t('request')}` : ''}`}
                     </span>
                   ) : (
                     '-'

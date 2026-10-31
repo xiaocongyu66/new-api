@@ -133,6 +133,7 @@ var compileEnvPrototypeV1 = map[string]interface{}{
 	"ai":         float64(0),
 	"ao":         float64(0),
 	"tier":       func(string, float64) float64 { return 0 },
+	"fixed":      func(float64) float64 { return 0 },
 	"_trace":     func(int, bool, float64) float64 { return 1 },
 	"_trace_int": func(int, bool, int) int { return 1 },
 	"header":     func(string) string { return "" },

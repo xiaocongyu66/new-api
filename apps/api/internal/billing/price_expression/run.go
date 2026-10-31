@@ -70,6 +70,12 @@ func runProgram(prog *vm.Program, requestRules []RequestRuleTrace, params TokenP
 			trace.Cost = value
 			return value
 		},
+		// fixed(amount) charges a flat amount per request. Raw cost is on the
+		// $/1M-token scale (callers divide by 1M), so the amount is scaled up
+		// to cancel that out and the request costs exactly `amount` USD.
+		"fixed": func(amount float64) float64 {
+			return amount * 1_000_000
+		},
 		requestRuleTraceFunction: func(ruleIndex int, matched bool, multiplier float64) float64 {
 			if matched && ruleIndex >= 0 && ruleIndex < len(trace.RequestRules) {
 				trace.RequestRules[ruleIndex].Matched = true

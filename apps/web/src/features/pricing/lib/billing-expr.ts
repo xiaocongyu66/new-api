@@ -40,11 +40,23 @@ export type BillingVar = {
   shortLabel: string
   side: 'input' | 'output' | 'condition'
   isBase?: boolean
+  /** Flat USD amount per request rather than a $/1M-token price. */
+  isPerRequest?: boolean
   isConditionOnly?: boolean
   group?: string
 }
 
 const BILLING_VARS: BillingVar[] = [
+  {
+    key: 'fixed',
+    field: 'fixedPrice',
+    tierField: null,
+    label: 'Per-request price',
+    shortLabel: 'Per-request',
+    side: 'input',
+    isBase: true,
+    isPerRequest: true,
+  },
   {
     key: 'p',
     field: 'inputPrice',
@@ -155,7 +167,10 @@ export const BILLING_CACHE_VAR_MAP = BILLING_EXTRA_VARS.map((v) => ({
   exprVar: v.key,
 }))
 
-const BILLING_VAR_ALTERNATION = BILLING_PRICING_VARS.map((v) => v.key)
+const BILLING_VAR_ALTERNATION = BILLING_PRICING_VARS.filter(
+  (v) => !v.isPerRequest
+)
+  .map((v) => v.key)
   .sort((a, b) => b.length - a.length)
   .join('|')
 const BILLING_NUMBER =
@@ -168,6 +183,10 @@ const BILLING_VAR_REGEX = new RegExp(
     `|\\b(${BILLING_VAR_ALTERNATION})\\s*\\*\\s*(${BILLING_NUMBER})` +
     `|(${BILLING_NUMBER})\\s*\\*\\s*\\(?\\s*(${BILLING_VAR_ALTERNATION})\\b`,
   'g'
+)
+// `fixed(0.055)`: a flat USD amount charged once per request.
+const BILLING_FIXED_REGEX = new RegExp(
+  `\\bfixed\\s*\\(\\s*(${BILLING_NUMBER})\\s*\\)`
 )
 
 // ---------------------------------------------------------------------------
@@ -273,6 +292,8 @@ function parseTierBody(bodyStr: string): Record<string, number> {
     const coeff = Number(m[2] ?? m[4] ?? m[5])
     if (!(varName in coeffs)) coeffs[varName] = coeff
   }
+  const fixedMatch = BILLING_FIXED_REGEX.exec(bodyStr)
+  if (fixedMatch) coeffs.fixed = Number(fixedMatch[1])
   const tier: Record<string, number> = {}
   for (const [varName, field] of Object.entries(BILLING_VAR_KEY_TO_FIELD)) {
     tier[field] = coeffs[varName] || 0

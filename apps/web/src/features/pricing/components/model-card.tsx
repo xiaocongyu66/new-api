@@ -130,8 +130,21 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
       }))
 
   // Dynamic pricing table: one row per group, one column per tier; each cell
-  // is that group's input and output unit price inside the tier.
+  // stacks that group's prices inside the tier. Which lines a cell has
+  // depends on what the expression prices: `fixed()` is a per-request fee,
+  // `p`/`c` are per-token input/output prices. Every row uses the same lines
+  // so the legend column lines up with all of them.
   const dynamicTiers = dynamicSummary?.tiers ?? []
+  const dynamicPriceLines = (
+    [
+      { field: 'fixedPrice', legend: 'fee' },
+      { field: 'inputPrice', legend: 'in' },
+      { field: 'outputPrice', legend: 'out' },
+    ] as const
+  ).filter((line) => dynamicTiers.some((tier) => Number(tier[line.field]) > 0))
+  const isPerRequestOnlyDynamic =
+    dynamicPriceLines.length === 1 &&
+    dynamicPriceLines[0].field === 'fixedPrice'
   const dynamicGroupRows =
     dynamicTiers.length === 0
       ? []
@@ -157,8 +170,9 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
               )
               return {
                 label: tier.label,
-                input: prices.get('inputPrice') ?? '-',
-                output: prices.get('outputPrice') ?? '-',
+                lines: dynamicPriceLines.map(
+                  (line) => prices.get(line.field) ?? '-'
+                ),
               }
             }),
           }
@@ -283,7 +297,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
                 <CountUp text={entry.formatted} active={inView} />
               </span>
               <span className='text-muted-foreground/70 text-xs'>
-                / {tokenUnitLabel}
+                / {entry.variable.isPerRequest ? t('request') : tokenUnitLabel}
               </span>
             </span>
           ))}
@@ -581,20 +595,38 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
                       key={price.label}
                       className='border-border/50 flex h-full flex-col border-t px-1.5 py-1.5 text-left font-mono leading-tight whitespace-nowrap tabular-nums @sm:px-2.5'
                     >
-                      <span className='text-foreground'>
-                        <CountUp text={price.input} active={inView} />
-                      </span>
-                      <span className='text-muted-foreground'>
-                        <CountUp text={price.output} active={inView} />
-                      </span>
+                      {price.lines.map((line, lineIndex) => (
+                        <span
+                          key={dynamicPriceLines[lineIndex].field}
+                          className={
+                            lineIndex === 0
+                              ? 'text-foreground'
+                              : 'text-muted-foreground'
+                          }
+                        >
+                          <CountUp text={line} active={inView} />
+                        </span>
+                      ))}
                     </span>
                   ))}
                   <span
                     aria-hidden
                     className='border-border/50 text-muted-foreground/50 flex h-full flex-col border-t py-1.5 pr-1.5 text-left font-mono text-xs leading-tight whitespace-nowrap @sm:pr-2.5'
                   >
-                    <span className='text-[10px] leading-[15px]'>in</span>
-                    <span className='text-[10px] leading-[15px]'>out</span>
+                    {isPerRequestOnlyDynamic ? (
+                      <span className='text-[10px] leading-[15px]'>
+                        /{t('request')}
+                      </span>
+                    ) : (
+                      dynamicPriceLines.map((line) => (
+                        <span
+                          key={line.field}
+                          className='text-[10px] leading-[15px]'
+                        >
+                          {line.legend}
+                        </span>
+                      ))
+                    )}
                   </span>
                 </div>
               ))}
