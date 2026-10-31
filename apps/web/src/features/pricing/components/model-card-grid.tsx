@@ -71,12 +71,13 @@ function MasonryItem(props: {
   // Cleanup disconnects on unmount, so detached nodes are never observed.
   useEffect(() => {
     const card = cardRef.current
-    if (!card || !props.onCardHeight) return
+    const reportHeight = props.onCardHeight
+    if (!card || !reportHeight) return
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const height = entry.contentRect.height
         if (height > 0) {
-          props.onCardHeight(props.itemKey, height)
+          reportHeight(props.itemKey, height)
         }
       }
     })
