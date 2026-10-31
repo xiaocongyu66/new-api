@@ -105,6 +105,8 @@ export interface PaymentMethod {
   color?: string
   /** Minimum topup amount for this payment method */
   min_topup?: number
+  /** Payment gateway: epay (default), vmq or codepay */
+  gateway?: 'epay' | 'vmq' | 'codepay'
   /** Optional react-icons component name or safe icon URL */
   icon?: string
 }

@@ -27,10 +27,30 @@ import (
 func GetTopUpInfo(c contract.Context) {
 	complianceConfirmed := IsPaymentComplianceConfirmed()
 
-	// 获取支付方式
+	// 获取支付方式：仅保留网关可用的配置项。没有 gateway 的条目按 Epay 处理。
 	payMethods := PayMethods
 	if !complianceConfirmed {
 		payMethods = []map[string]string{}
+	} else {
+		available := make([]map[string]string, 0, len(payMethods))
+		for _, method := range payMethods {
+			switch payMethodGateway(method) {
+			case "epay":
+				if !isEpayWebhookConfigured() {
+					continue
+				}
+			case "vmq":
+				if !isVmqGatewayConfigured() {
+					continue
+				}
+			case "codepay":
+				if !isCodePayGatewayConfigured() {
+					continue
+				}
+			}
+			available = append(available, method)
+		}
+		payMethods = available
 	}
 
 	// 如果启用了 Stripe 支付，添加到支付方法列表
@@ -98,67 +118,14 @@ func GetTopUpInfo(c contract.Context) {
 		}
 	}
 
-	// 码支付渠道（V免签 / 码支付）
-	enableVmq := isVmqTopUpEnabled()
-	if enableVmq {
-		for _, mt := range []struct {
-			typ, name, color string
-		}{
-			{PaymentMethodVmqAlipay, "支付宝 (V免签)", "#1677FF"},
-			{PaymentMethodVmqWxpay, "微信 (V免签)", "#07C160"},
-		} {
-			has := false
-			for _, method := range payMethods {
-				if method["type"] == mt.typ {
-					has = true
-					break
-				}
-			}
-			if !has {
-				payMethods = append(payMethods, map[string]string{
-					"name":      mt.name,
-					"type":      mt.typ,
-					"color":     mt.color,
-					"min_topup": strconv.Itoa(MinTopUp),
-				})
-			}
-		}
-	}
-
-	enableCodePay := isCodePayTopUpEnabled()
-	if enableCodePay {
-		for _, mt := range []struct {
-			typ, name, color string
-		}{
-			{PaymentMethodCodePayAlipay, "支付宝 (码支付)", "#1677FF"},
-			{PaymentMethodCodePayWxpay, "微信 (码支付)", "#07C160"},
-		} {
-			has := false
-			for _, method := range payMethods {
-				if method["type"] == mt.typ {
-					has = true
-					break
-				}
-			}
-			if !has {
-				payMethods = append(payMethods, map[string]string{
-					"name":      mt.name,
-					"type":      mt.typ,
-					"color":     mt.color,
-					"min_topup": strconv.Itoa(MinTopUp),
-				})
-			}
-		}
-	}
-
 	data := common.H{
 		"enable_online_topup":              isEpayTopUpEnabled(),
+		"enable_vmq_topup":                 isVmqTopUpEnabled(),
+		"enable_codepay_topup":             isCodePayTopUpEnabled(),
 		"enable_stripe_topup":              isStripeTopUpEnabled(),
 		"enable_creem_topup":               isCreemTopUpEnabled(),
 		"enable_waffo_topup":               enableWaffo,
 		"enable_waffo_pancake_topup":       enableWaffoPancake,
-		"enable_vmq_topup":                 enableVmq,
-		"enable_codepay_topup":             enableCodePay,
 		"enable_redemption":                complianceConfirmed,
 		"payment_compliance_confirmed":     complianceConfirmed,
 		"payment_compliance_terms_version": CurrentComplianceTermsVersion,
@@ -358,7 +325,7 @@ func RequestEpay(c contract.Context) {
 		return
 	}
 
-	if !ContainsPayMethod(req.PaymentMethod) {
+	if _, ok := findPayMethod(req.PaymentMethod, "epay"); !ok {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "支付方式不存在"})
 		return
 	}
@@ -413,10 +380,32 @@ func RequestEpay(c contract.Context) {
 	_ = c.JSON(http.StatusOK, common.H{"message": "success", "data": params, "url": uri})
 }
 
+// gatewayPayTypeCode maps a gateway and method type to the gateway's payment
+// type code: VMQ alipay 2 / wxpay 1, CodePay alipay 1 / wxpay 3.
+func gatewayPayTypeCode(gateway, methodType string) (string, bool) {
+	switch gateway {
+	case "vmq":
+		switch methodType {
+		case "alipay":
+			return "2", true
+		case "wxpay":
+			return "1", true
+		}
+	case "codepay":
+		switch methodType {
+		case "alipay":
+			return "1", true
+		case "wxpay":
+			return "3", true
+		}
+	}
+	return "", false
+}
+
 // RequestVmqPay 发起 V免签 充值支付，返回支付网关跳转 URL。
 func RequestVmqPay(c contract.Context) {
-	if !isVmqTopUpEnabled() {
-		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "V免签 支付未启用"})
+	if !isPaymentComplianceConfirmed() || !isVmqGatewayConfigured() {
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "当前管理员未配置支付信息"})
 		return
 	}
 	var req EpayRequest
@@ -445,8 +434,14 @@ func RequestVmqPay(c contract.Context) {
 		return
 	}
 
-	if req.PaymentMethod != PaymentMethodVmqAlipay && req.PaymentMethod != PaymentMethodVmqWxpay {
+	method, ok := findPayMethod(req.PaymentMethod, "vmq")
+	if !ok {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "支付方式不存在"})
+		return
+	}
+	typeCode, ok := gatewayPayTypeCode("vmq", method["type"])
+	if !ok {
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "不支持的支付方式"})
 		return
 	}
 
@@ -456,18 +451,13 @@ func RequestVmqPay(c contract.Context) {
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
 	tradeNo = fmt.Sprintf("VMQUSR%dNO%s", id, tradeNo)
 
-	// V免签 type: 1=微信, 2=支付宝
-	payType := "2"
-	if req.PaymentMethod == PaymentMethodVmqWxpay {
-		payType = "1"
-	}
 	priceStr := strconv.FormatFloat(payMoney, 'f', 2, 64)
-	sign := vmqCreateSign(tradeNo, "topup", payType, priceStr, VmqKey)
+	sign := vmqCreateSign(tradeNo, "topup", typeCode, priceStr, VmqKey)
 
 	vmqUrl := strings.TrimRight(VmqAddress, "/") + "/createOrder?" +
 		"payId=" + url.QueryEscape(tradeNo) +
 		"&param=" + url.QueryEscape("topup") +
-		"&type=" + url.QueryEscape(payType) +
+		"&type=" + url.QueryEscape(typeCode) +
 		"&price=" + url.QueryEscape(priceStr) +
 		"&notifyUrl=" + url.QueryEscape(notifyUrl) +
 		"&returnUrl=" + url.QueryEscape(returnUrl) +
@@ -502,8 +492,8 @@ func RequestVmqPay(c contract.Context) {
 
 // RequestCodePayPay 发起 码支付 充值支付，返回支付网关跳转 URL。
 func RequestCodePayPay(c contract.Context) {
-	if !isCodePayTopUpEnabled() {
-		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "码支付 未启用"})
+	if !isPaymentComplianceConfirmed() || !isCodePayGatewayConfigured() {
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "当前管理员未配置支付信息"})
 		return
 	}
 	var req EpayRequest
@@ -532,8 +522,14 @@ func RequestCodePayPay(c contract.Context) {
 		return
 	}
 
-	if req.PaymentMethod != PaymentMethodCodePayAlipay && req.PaymentMethod != PaymentMethodCodePayWxpay {
+	method, ok := findPayMethod(req.PaymentMethod, "codepay")
+	if !ok {
 		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "支付方式不存在"})
+		return
+	}
+	typeCode, ok := gatewayPayTypeCode("codepay", method["type"])
+	if !ok {
+		_ = c.JSON(http.StatusOK, common.H{"message": "error", "data": "不支持的支付方式"})
 		return
 	}
 
@@ -543,15 +539,11 @@ func RequestCodePayPay(c contract.Context) {
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
 	tradeNo = fmt.Sprintf("CPUSR%dNO%s", id, tradeNo)
 
-	// 码支付 type: 1=支付宝, 3=微信
-	payType := "1"
-	if req.PaymentMethod == PaymentMethodCodePayWxpay {
-		payType = "3"
-	}
 	priceStr := strconv.FormatFloat(payMoney, 'f', 2, 64)
+
 	cpParams := map[string]string{
 		"id":         CodePayId,
-		"type":       payType,
+		"type":       typeCode,
 		"price":      priceStr,
 		"pay_id":     tradeNo,
 		"param":      "topup",

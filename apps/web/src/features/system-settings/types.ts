@@ -361,10 +361,8 @@ export type BillingSettings = {
   MinTopUp: number
   CustomCallbackAddress: string
   PayMethods: string
-  VmqEnabled: boolean
   VmqAddress: string
   VmqKey: string
-  CodePayEnabled: boolean
   CodePayAddress: string
   CodePayId: string
   CodePayKey: string

@@ -216,10 +216,8 @@ func SeedOptionMap() {
 	common.OptionMap["CustomCallbackAddress"] = ""
 	common.OptionMap["EpayId"] = ""
 	common.OptionMap["EpayKey"] = ""
-	common.OptionMap["VmqEnabled"] = ""
 	common.OptionMap["VmqAddress"] = ""
 	common.OptionMap["VmqKey"] = ""
-	common.OptionMap["CodePayEnabled"] = ""
 	common.OptionMap["CodePayAddress"] = ""
 	common.OptionMap["CodePayId"] = ""
 	common.OptionMap["CodePayKey"] = ""
@@ -507,7 +505,7 @@ func ApplyOption(key string, value string) (err error) {
 		if OnApplyResolveGroupSetting != nil {
 			err = OnApplyResolveGroupSetting(key, value)
 		}
-	case "CustomCallbackAddress", "EpayId", "EpayKey", "Price", "USDExchangeRate", "MinTopUp", "StripeApiSecret", "StripeWebhookSecret", "StripePriceId", "StripeUnitPrice", "StripeMinTopUp", "StripePromotionCodesEnabled", "CreemApiKey", "CreemProducts", "CreemTestMode", "CreemWebhookSecret", "WaffoEnabled", "WaffoApiKey", "WaffoPrivateKey", "WaffoPublicCert", "WaffoSandboxPublicCert", "WaffoSandboxApiKey", "WaffoSandboxPrivateKey", "WaffoSandbox", "WaffoMerchantId", "WaffoNotifyUrl", "WaffoReturnUrl", "WaffoSubscriptionReturnUrl", "WaffoCurrency", "WaffoUnitPrice", "WaffoMinTopUp", "WaffoPancakeMerchantID", "WaffoPancakePrivateKey", "WaffoPancakeReturnURL", "WaffoPancakeStoreID", "WaffoPancakeProductID", "WaffoPancakeUnitPrice", "WaffoPancakeMinTopUp", "VmqEnabled", "VmqAddress", "VmqKey", "CodePayEnabled", "CodePayAddress", "CodePayId", "CodePayKey":
+	case "CustomCallbackAddress", "EpayId", "EpayKey", "Price", "USDExchangeRate", "MinTopUp", "StripeApiSecret", "StripeWebhookSecret", "StripePriceId", "StripeUnitPrice", "StripeMinTopUp", "StripePromotionCodesEnabled", "CreemApiKey", "CreemProducts", "CreemTestMode", "CreemWebhookSecret", "WaffoEnabled", "WaffoApiKey", "WaffoPrivateKey", "WaffoPublicCert", "WaffoSandboxPublicCert", "WaffoSandboxApiKey", "WaffoSandboxPrivateKey", "WaffoSandbox", "WaffoMerchantId", "WaffoNotifyUrl", "WaffoReturnUrl", "WaffoSubscriptionReturnUrl", "WaffoCurrency", "WaffoUnitPrice", "WaffoMinTopUp", "WaffoPancakeMerchantID", "WaffoPancakePrivateKey", "WaffoPancakeReturnURL", "WaffoPancakeStoreID", "WaffoPancakeProductID", "WaffoPancakeUnitPrice", "WaffoPancakeMinTopUp", "VmqAddress", "VmqKey", "CodePayAddress", "CodePayId", "CodePayKey":
 		if OnApplyPaymentOption != nil {
 			err = OnApplyPaymentOption(key, value)
 		}

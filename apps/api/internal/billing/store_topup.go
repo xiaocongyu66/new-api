@@ -34,11 +34,6 @@ const (
 	PaymentMethodWaffo        = "waffo"
 	PaymentMethodWaffoPancake = "waffo_pancake"
 	PaymentMethodBalance      = "balance"
-
-	PaymentMethodVmqAlipay     = "vmq_alipay"
-	PaymentMethodVmqWxpay      = "vmq_wxpay"
-	PaymentMethodCodePayAlipay = "codepay_alipay"
-	PaymentMethodCodePayWxpay  = "codepay_wxpay"
 )
 
 const (

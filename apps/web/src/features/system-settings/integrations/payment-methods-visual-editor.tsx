@@ -129,7 +129,11 @@ export function PaymentMethodsVisualEditor({
         typeof item.type === 'string' &&
         (!('icon' in item) || typeof item.icon === 'string') &&
         (!('min_topup' in item) || typeof item.min_topup === 'string') &&
-        (!('color' in item) || typeof item.color === 'string')
+        (!('color' in item) || typeof item.color === 'string') &&
+        (!('gateway' in item) ||
+          item.gateway === 'epay' ||
+          item.gateway === 'vmq' ||
+          item.gateway === 'codepay')
     )
   }, [value])
 
@@ -326,6 +330,20 @@ export function PaymentMethodsVisualEditor({
                 ),
               },
               {
+                id: 'gateway',
+                header: t('Gateway'),
+                cell: (method) =>
+                  method.gateway === 'vmq' || method.gateway === 'codepay' ? (
+                    <span className='rounded-full border px-1.5 py-0.5 text-xs'>
+                      {method.gateway === 'vmq'
+                        ? t('Gateway VMQ')
+                        : t('Gateway CodePay')}
+                    </span>
+                  ) : (
+                    <span className='text-muted-foreground text-xs'>Epay</span>
+                  ),
+              },
+              {
                 id: 'icon',
                 header: t('Icon'),
                 cell: (method) => {
@@ -387,6 +405,7 @@ export function PaymentMethodsVisualEditor({
                 method.icon,
                 method.min_topup,
                 method.color,
+                method.gateway,
               ]
                 .filter(Boolean)
                 .join('-')
@@ -453,6 +472,19 @@ export function PaymentMethodsVisualEditor({
                           {t('Min Top-up:')}
                         </span>
                         <span className='font-mono'>{method.min_topup}</span>
+                      </div>
+                    )}
+                    {(method.gateway === 'vmq' ||
+                      method.gateway === 'codepay') && (
+                      <div className='flex items-center gap-2'>
+                        <span className='text-muted-foreground min-w-20'>
+                          {t('Gateway')}
+                        </span>
+                        <span>
+                          {method.gateway === 'vmq'
+                            ? t('Gateway VMQ')
+                            : t('Gateway CodePay')}
+                        </span>
                       </div>
                     )}
                   </div>

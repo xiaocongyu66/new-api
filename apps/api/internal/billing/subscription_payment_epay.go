@@ -42,7 +42,7 @@ func SubscriptionRequestEpay(c contract.Context) {
 		common.CtxApiErrorMsg(c, "套餐金额过低")
 		return
 	}
-	if !ContainsPayMethod(req.PaymentMethod) {
+	if _, ok := findPayMethod(req.PaymentMethod, "epay"); !ok {
 		common.CtxApiErrorMsg(c, "支付方式不存在")
 		return
 	}

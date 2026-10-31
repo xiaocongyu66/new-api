@@ -25,8 +25,8 @@ func SubscriptionRequestCodePayPay(c contract.Context) {
 	if !RequirePaymentCompliance(c) {
 		return
 	}
-	if !isCodePayTopUpEnabled() {
-		common.CtxApiErrorMsg(c, "码支付 未启用")
+	if !isCodePayGatewayConfigured() {
+		common.CtxApiErrorMsg(c, "当前管理员未配置支付信息")
 		return
 	}
 
@@ -49,8 +49,15 @@ func SubscriptionRequestCodePayPay(c contract.Context) {
 		common.CtxApiErrorMsg(c, "套餐金额过低")
 		return
 	}
-	if req.PaymentMethod != PaymentMethodCodePayAlipay && req.PaymentMethod != PaymentMethodCodePayWxpay {
+
+	method, ok := findPayMethod(req.PaymentMethod, "codepay")
+	if !ok {
 		common.CtxApiErrorMsg(c, "支付方式不存在")
+		return
+	}
+	typeCode, ok := gatewayPayTypeCode("codepay", method["type"])
+	if !ok {
+		common.CtxApiErrorMsg(c, "不支持的支付方式")
 		return
 	}
 
@@ -82,15 +89,11 @@ func SubscriptionRequestCodePayPay(c contract.Context) {
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
 	tradeNo = fmt.Sprintf("SUBCPUSR%dNO%s", userId, tradeNo)
 
-	// 码支付 type: 1=支付宝, 3=微信
-	payType := "1"
-	if req.PaymentMethod == PaymentMethodCodePayWxpay {
-		payType = "3"
-	}
 	priceStr := strconv.FormatFloat(plan.PriceAmount, 'f', 2, 64)
+
 	cpParams := map[string]string{
 		"id":         CodePayId,
-		"type":       payType,
+		"type":       typeCode,
 		"price":      priceStr,
 		"pay_id":     tradeNo,
 		"param":      "sub",

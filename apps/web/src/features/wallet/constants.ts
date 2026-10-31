@@ -36,10 +36,6 @@ export const PAYMENT_TYPES = {
   CREEM: 'creem',
   WAFFO: 'waffo',
   WAFFO_PANCAKE: 'waffo_pancake',
-  VMQ_ALIPAY: 'vmq_alipay',
-  VMQ_WXPAY: 'vmq_wxpay',
-  CODEPAY_ALIPAY: 'codepay_alipay',
-  CODEPAY_WXPAY: 'codepay_wxpay',
 } as const
 
 /**
@@ -57,10 +53,6 @@ export const PAYMENT_ICON_COLORS = {
   [PAYMENT_TYPES.CREEM]: '#6366F1',
   [PAYMENT_TYPES.WAFFO]: '#2563EB',
   [PAYMENT_TYPES.WAFFO_PANCAKE]: '#F97316',
-  [PAYMENT_TYPES.VMQ_ALIPAY]: '#1677FF',
-  [PAYMENT_TYPES.VMQ_WXPAY]: '#07C160',
-  [PAYMENT_TYPES.CODEPAY_ALIPAY]: '#1677FF',
-  [PAYMENT_TYPES.CODEPAY_WXPAY]: '#07C160',
 } as const
 
 /**

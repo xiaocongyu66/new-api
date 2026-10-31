@@ -10,10 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestVmqNotifySignFormula exercises the V免签 notify signing formula documented
-// in the contract: sign = md5(payId + param + type + price + reallyPrice + key).
-// The expected value is rebuilt from the documented formula string order, and the
-// test asserts that exact ordering rather than a precomputed hash vector.
 func TestVmqNotifySignFormula(t *testing.T) {
 	payId := "T1"
 	param := "topup"
@@ -39,9 +35,6 @@ func TestVmqNotifySignFormula(t *testing.T) {
 	assert.False(t, constantTimeCompare(tamperedPrice, expected))
 }
 
-// TestCodePaySignOrderIndependence exercises the 码支付 signing rule: all
-// non-empty params except sign are sorted by key ascending and joined k=v with &.
-// The same params inserted in a different map order must yield the same sign.
 func TestCodePaySignOrderIndependence(t *testing.T) {
 	key := "secret"
 	paramsA := map[string]string{
@@ -81,8 +74,6 @@ func TestCodePaySignOrderIndependence(t *testing.T) {
 	assert.NotEqual(t, signA, codepaySign(tampered, key))
 }
 
-// TestRechargeTopUpVmqAmountMismatch verifies that a V免签 callback whose price
-// does not match the order money leaves the order pending and credits nothing.
 func TestRechargeTopUpVmqAmountMismatch(t *testing.T) {
 	truncateTables(t)
 
@@ -97,7 +88,7 @@ func TestRechargeTopUpVmqAmountMismatch(t *testing.T) {
 		Amount:          2,
 		Money:           10.00,
 		TradeNo:         tradeNo,
-		PaymentMethod:   PaymentMethodVmqAlipay,
+		PaymentMethod:   "alipay",
 		PaymentProvider: PaymentProviderVmq,
 		CreateTime:      common.GetTimestamp(),
 		Status:          common.TopUpStatusPending,
@@ -115,8 +106,6 @@ func TestRechargeTopUpVmqAmountMismatch(t *testing.T) {
 	assert.Equal(t, 0, getUserQuotaForPaymentGuardTest(t, user.Id))
 }
 
-// TestRechargeTopUpVmqCreditsExactlyOnce verifies a matching V免签 callback
-// credits the quota and is idempotent on repeat.
 func TestRechargeTopUpVmqCreditsExactlyOnce(t *testing.T) {
 	truncateTables(t)
 
@@ -131,7 +120,7 @@ func TestRechargeTopUpVmqCreditsExactlyOnce(t *testing.T) {
 		Amount:          2,
 		Money:           10.00,
 		TradeNo:         tradeNo,
-		PaymentMethod:   PaymentMethodVmqWxpay,
+		PaymentMethod:   "wxpay",
 		PaymentProvider: PaymentProviderVmq,
 		CreateTime:      common.GetTimestamp(),
 		Status:          common.TopUpStatusPending,
@@ -155,9 +144,6 @@ func TestRechargeTopUpVmqCreditsExactlyOnce(t *testing.T) {
 	assert.Equal(t, 2*500000, getUserQuotaForPaymentGuardTest(t, user.Id))
 }
 
-// TestRechargeTopUpVmqReallyPriceTolerance verifies V免签 reallyPrice is checked
-// against the order money within the ±0.10 tolerance: a much smaller reallyPrice
-// is rejected (order stays pending, no credit), while money+0.01 is accepted.
 func TestRechargeTopUpVmqReallyPriceTolerance(t *testing.T) {
 	truncateTables(t)
 
@@ -172,7 +158,7 @@ func TestRechargeTopUpVmqReallyPriceTolerance(t *testing.T) {
 		Amount:          2,
 		Money:           10.00,
 		TradeNo:         tradeNo,
-		PaymentMethod:   PaymentMethodVmqAlipay,
+		PaymentMethod:   "alipay",
 		PaymentProvider: PaymentProviderVmq,
 		CreateTime:      common.GetTimestamp(),
 		Status:          common.TopUpStatusPending,
@@ -201,8 +187,6 @@ func TestRechargeTopUpVmqReallyPriceTolerance(t *testing.T) {
 	assert.NotZero(t, reloaded.CompleteTime)
 }
 
-// TestRechargeTopUpRejectsProviderMismatch verifies an epay order hit through
-// the V免签 completion path is rejected without crediting.
 func TestRechargeTopUpRejectsProviderMismatch(t *testing.T) {
 	truncateTables(t)
 
@@ -233,60 +217,23 @@ func TestRechargeTopUpRejectsProviderMismatch(t *testing.T) {
 	assert.Equal(t, common.TopUpStatusPending, reloaded.Status)
 }
 
-// TestVmqTopUpEnabledGuard verifies the availability gate for V免签.
-func TestVmqTopUpEnabledGuard(t *testing.T) {
-	confirmPaymentComplianceForTest(t)
-
-	VmqEnabled = true
-	VmqAddress = "https://vmq.example.com"
-	VmqKey = "key"
-	t.Cleanup(func() {
-		VmqEnabled = false
-		VmqAddress = ""
-		VmqKey = ""
-	})
-
-	assert.True(t, isVmqTopUpEnabled())
-
-	VmqAddress = ""
-	assert.False(t, isVmqTopUpEnabled())
-
-	VmqAddress = "https://vmq.example.com "
-	VmqKey = ""
-	assert.False(t, isVmqTopUpEnabled())
-}
-
-// TestCodePayTopUpEnabledGuard verifies the availability gate for 码支付.
-func TestCodePayTopUpEnabledGuard(t *testing.T) {
-	confirmPaymentComplianceForTest(t)
-
-	CodePayEnabled = true
-	CodePayAddress = "https://codepay.example.com"
-	CodePayId = "mch_123"
-	CodePayKey = "key"
-	t.Cleanup(func() {
-		CodePayEnabled = false
-		CodePayAddress = ""
-		CodePayId = ""
-		CodePayKey = ""
-	})
-
-	assert.True(t, isCodePayTopUpEnabled())
-
-	CodePayId = ""
-	assert.False(t, isCodePayTopUpEnabled())
-}
-
-// TestVmqCreateSignFormula verifies the V免签 create-order signing formula:
-// sign = md5(payId + param + type + price + key).
 func TestVmqCreateSignFormula(t *testing.T) {
-	expected := vmqMd5("T1" + "topup" + "2" + "10.00" + "k")
-	assert.Equal(t, expected, vmqCreateSign("T1", "topup", "2", "10.00", "k"))
+	payId := "T1"
+	param := "topup"
+	payType := "2"
+	price := "10.00"
+	key := "k"
+
+	expected := vmqMd5(payId + param + payType + price + key)
+	got := vmqCreateSign(payId, param, payType, price, key)
+	require.Equal(t, expected, got)
 }
 
-// TestDecimalCompareAtCentLevel verifies the two-decimal amount comparison used
-// by rechargeTopUp: 10.001 matches 10.00 after rounding, 10.005 does not.
 func TestDecimalCompareAtCentLevel(t *testing.T) {
-	assert.True(t, decimal.NewFromFloat(10.001).Round(2).Equals(decimal.NewFromFloat(10.00).Round(2)))
-	assert.False(t, decimal.NewFromFloat(10.005).Round(2).Equals(decimal.NewFromFloat(10.00).Round(2)))
+	// 10.001 rounds to 10.00 → matches; 10.005 rounds half away from zero → 10.01 → mismatch.
+	match := decimal.NewFromFloat(10.001).Round(2).Equals(decimal.NewFromFloat(10.00).Round(2))
+	assert.True(t, match)
+
+	mismatch := decimal.NewFromFloat(10.005).Round(2).Equals(decimal.NewFromFloat(10.00).Round(2))
+	assert.False(t, mismatch)
 }

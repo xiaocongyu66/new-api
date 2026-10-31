@@ -176,10 +176,8 @@ const paymentSchema = z.object({
   WaffoPancakeMerchantID: z.string(),
   WaffoPancakePrivateKey: z.string(),
   WaffoPancakeReturnURL: z.string(),
-  VmqEnabled: z.boolean(),
   VmqAddress: z.string(),
   VmqKey: z.string(),
-  CodePayEnabled: z.boolean(),
   CodePayAddress: z.string(),
   CodePayId: z.string(),
   CodePayKey: z.string(),
@@ -444,10 +442,8 @@ export function PaymentSettingsSection({
       CreemWebhookSecret: values.CreemWebhookSecret.trim(),
       CreemTestMode: values.CreemTestMode,
       CreemProducts: values.CreemProducts.trim(),
-      VmqEnabled: values.VmqEnabled,
       VmqAddress: values.VmqAddress.trim(),
       VmqKey: values.VmqKey.trim(),
-      CodePayEnabled: values.CodePayEnabled,
       CodePayAddress: values.CodePayAddress.trim(),
       CodePayId: values.CodePayId.trim(),
       CodePayKey: values.CodePayKey.trim(),
@@ -496,10 +492,8 @@ export function PaymentSettingsSection({
       CreemWebhookSecret: initialRef.current.CreemWebhookSecret.trim(),
       CreemTestMode: initialRef.current.CreemTestMode,
       CreemProducts: initialRef.current.CreemProducts.trim(),
-      VmqEnabled: initialRef.current.VmqEnabled,
       VmqAddress: initialRef.current.VmqAddress.trim(),
       VmqKey: initialRef.current.VmqKey.trim(),
-      CodePayEnabled: initialRef.current.CodePayEnabled,
       CodePayAddress: initialRef.current.CodePayAddress.trim(),
       CodePayId: initialRef.current.CodePayId.trim(),
       CodePayKey: initialRef.current.CodePayKey.trim(),
@@ -649,17 +643,12 @@ export function PaymentSettingsSection({
     ) {
       updates.push({ key: 'CreemProducts', value: sanitized.CreemProducts })
     }
-    if (sanitized.VmqEnabled !== initial.VmqEnabled) {
-      updates.push({ key: 'VmqEnabled', value: sanitized.VmqEnabled })
-    }
+
     if (sanitized.VmqAddress !== initial.VmqAddress) {
       updates.push({ key: 'VmqAddress', value: sanitized.VmqAddress })
     }
     if (sanitized.VmqKey && sanitized.VmqKey !== initial.VmqKey) {
       updates.push({ key: 'VmqKey', value: sanitized.VmqKey })
-    }
-    if (sanitized.CodePayEnabled !== initial.CodePayEnabled) {
-      updates.push({ key: 'CodePayEnabled', value: sanitized.CodePayEnabled })
     }
     if (sanitized.CodePayAddress !== initial.CodePayAddress) {
       updates.push({ key: 'CodePayAddress', value: sanitized.CodePayAddress })
@@ -1046,7 +1035,7 @@ export function PaymentSettingsSection({
                       </FormControl>
                       <FormDescription>
                         {t(
-                          'Configured as PayMethods JSON. The type value decides which payment flow is used: stripe for Stripe, waffo_pancake for Waffo Pancake, and other values are sent to Epay as the type parameter.'
+                          'Configured as PayMethods JSON. stripe uses Stripe and waffo_pancake uses Waffo Pancake; other methods are paid through the gateway chosen for each method (Epay by default, or VMQ / CodePay for alipay and wxpay).'
                         )}
                       </FormDescription>
                       <FormMessage />
@@ -1676,7 +1665,7 @@ export function PaymentSettingsSection({
                 <div>
                   <h3 className='text-lg font-medium'>{t('VMQ Gateway')}</h3>
                   <p className='text-muted-foreground text-sm'>
-                    {t('Configuration for VMQ payment integration')}
+                    {t('Configuration for VMQ (V免签) payment integration')}
                   </p>
                 </div>
 
@@ -1685,12 +1674,17 @@ export function PaymentSettingsSection({
                   <ul className='list-inside list-disc space-y-1'>
                     <li>
                       {t('Wallet top-up:')}{' '}
+                      <code className='rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900'>
                         {'{' + 'serverAddress' + '}' + '/api/user/vmq/notify'}
+                      </code>
                     </li>
                     <li>
                       {t('Subscription:')}{' '}
                       <code className='rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900'>
-                        {'{' + 'serverAddress' + '}' + '/api/subscription/vmq/notify'}
+                        {'{' +
+                          'serverAddress' +
+                          '}' +
+                          '/api/subscription/vmq/notify'}
                       </code>
                     </li>
                   </ul>
@@ -1701,28 +1695,14 @@ export function PaymentSettingsSection({
                   </p>
                 </div>
 
-                <div className='grid gap-6 md:grid-cols-2'>
-                  <FormField
-                    control={form.control}
-                    name='VmqEnabled'
-                    render={({ field }) => (
-                      <SettingsSwitchItem>
-                        <SettingsSwitchContent>
-                          <FormLabel>{t('Enable VMQ topup')}</FormLabel>
-                          <FormDescription>
-                            {t('Enable V免签 (VMQ) wallet top-up and subscription payment')}
-                          </FormDescription>
-                        </SettingsSwitchContent>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                      </SettingsSwitchItem>
+                <Alert>
+                  <AlertTitle>{t('VMQ / CodePay method setup')}</AlertTitle>
+                  <AlertDescription>
+                    {t(
+                      'Add payment methods in General -> Payment methods by choosing this gateway. Only alipay and wxpay types are supported for VMQ and CodePay.'
                     )}
-                  />
-                </div>
+                  </AlertDescription>
+                </Alert>
 
                 <div className='grid gap-6 md:grid-cols-2'>
                   <FormField
@@ -1780,9 +1760,13 @@ export function PaymentSettingsSection({
             <TabsContent value='codepay' className={paymentTabContentClassName}>
               <div className='space-y-4'>
                 <div>
-                  <h3 className='text-lg font-medium'>{t('CodePay Gateway')}</h3>
+                  <h3 className='text-lg font-medium'>
+                    {t('CodePay Gateway')}
+                  </h3>
                   <p className='text-muted-foreground text-sm'>
-                    {t('Configuration for CodePay payment integration')}
+                    {t(
+                      'Configuration for CodePay (码支付) payment integration'
+                    )}
                   </p>
                 </div>
                 <div className='rounded-md bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100'>
@@ -1790,37 +1774,33 @@ export function PaymentSettingsSection({
                   <ul className='list-inside list-disc space-y-1'>
                     <li>
                       {t('Wallet top-up:')}{' '}
-                        {'{' + 'serverAddress' + '}' + '/api/user/codepay/notify'}
+                      <code className='rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900'>
+                        {'{' +
+                          'serverAddress' +
+                          '}' +
+                          '/api/user/codepay/notify'}
+                      </code>
                     </li>
                     <li>
                       {t('Subscription:')}{' '}
-                        {'{' + 'serverAddress' + '}' + '/api/subscription/codepay/notify'}
+                      <code className='rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900'>
+                        {'{' +
+                          'serverAddress' +
+                          '}' +
+                          '/api/subscription/codepay/notify'}
+                      </code>
                     </li>
                   </ul>
                 </div>
 
-                <div className='grid gap-6 md:grid-cols-2'>
-                  <FormField
-                    control={form.control}
-                    name='CodePayEnabled'
-                    render={({ field }) => (
-                      <SettingsSwitchItem>
-                        <SettingsSwitchContent>
-                          <FormLabel>{t('Enable CodePay topup')}</FormLabel>
-                          <FormDescription>
-                            {t('Enable 码支付 (CodePay) wallet top-up and subscription payment')}
-                          </FormDescription>
-                        </SettingsSwitchContent>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                      </SettingsSwitchItem>
+                <Alert>
+                  <AlertTitle>{t('VMQ / CodePay method setup')}</AlertTitle>
+                  <AlertDescription>
+                    {t(
+                      'Add payment methods in General -> Payment methods by choosing this gateway. Only alipay and wxpay types are supported for VMQ and CodePay.'
                     )}
-                  />
-                </div>
+                  </AlertDescription>
+                </Alert>
 
                 <div className='grid gap-6 md:grid-cols-2'>
                   <FormField

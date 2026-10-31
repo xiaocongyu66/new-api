@@ -35,8 +35,6 @@ import {
   isStripePayment,
   isWaffoPayment,
   isWaffoPancakePayment,
-  isVmqPayment,
-  isCodePayPayment,
   submitPaymentForm,
   openPaymentUrl,
 } from '../lib'
@@ -112,13 +110,15 @@ export function usePayment() {
 
   // Process payment
   const processPayment = useCallback(
-    async (topupAmount: number, paymentType: string) => {
+    async (
+      topupAmount: number,
+      paymentType: string,
+      gateway: string = 'epay'
+    ) => {
       try {
         setProcessing(true)
 
         const isStripe = isStripePayment(paymentType)
-        const isVmq = isVmqPayment(paymentType)
-        const isCodePay = isCodePayPayment(paymentType)
         const amount = Math.floor(topupAmount)
 
         let response: PaymentResponse
@@ -127,13 +127,16 @@ export function usePayment() {
             amount,
             payment_method: 'stripe',
           })
-        } else if (isVmq || isCodePay) {
-          response = await (isVmq
-            ? requestVmqPayment({ amount, payment_method: paymentType })
-            : requestCodePayPayment({
-                amount,
-                payment_method: paymentType,
-              }))
+        } else if (gateway === 'vmq') {
+          response = await requestVmqPayment({
+            amount,
+            payment_method: paymentType,
+          })
+        } else if (gateway === 'codepay') {
+          response = await requestCodePayPayment({
+            amount,
+            payment_method: paymentType,
+          })
         } else {
           response = await requestPayment({
             amount,
@@ -153,24 +156,20 @@ export function usePayment() {
           return true
         }
 
+        const url = response.url
+
         // Handle VMQ / CodePay payment (plain GET redirect, no form POST)
-        if ((isVmq || isCodePay) && response.data) {
-          const url = (response as unknown as { url?: string }).url
-          if (url) {
-            openPaymentUrl(url)
-            toast.success(i18next.t('Redirecting to payment page...'))
-            return true
-          }
+        if ((gateway === 'vmq' || gateway === 'codepay') && url) {
+          openPaymentUrl(url)
+          toast.success(i18next.t('Redirecting to payment page...'))
+          return true
         }
 
         // Handle regular (Epay) payment
-        if (!isStripe && !isVmq && !isCodePay && response.data) {
-          const url = (response as unknown as { url?: string }).url
-          if (url) {
-            submitPaymentForm(url, response.data)
-            toast.success(i18next.t('Redirecting to payment page...'))
-            return true
-          }
+        if (!isStripe && gateway === 'epay' && response.data && url) {
+          submitPaymentForm(url, response.data)
+          toast.success(i18next.t('Redirecting to payment page...'))
+          return true
         }
 
         return false

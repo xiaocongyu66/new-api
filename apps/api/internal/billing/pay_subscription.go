@@ -1,6 +1,9 @@
 package billing
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/settings"
@@ -89,8 +92,17 @@ var PayMethods = []map[string]string{
 }
 
 func UpdatePayMethodsByJsonString(jsonString string) error {
-	PayMethods = make([]map[string]string, 0)
-	return common.Unmarshal([]byte(jsonString), &PayMethods)
+	var methods []map[string]string
+	if err := common.Unmarshal([]byte(jsonString), &methods); err != nil {
+		return err
+	}
+	for _, method := range methods {
+		if err := validatePayMethodGateway(method); err != nil {
+			return err
+		}
+	}
+	PayMethods = methods
+	return nil
 }
 
 func PayMethods2JsonString() string {
@@ -101,13 +113,48 @@ func PayMethods2JsonString() string {
 	return string(jsonBytes)
 }
 
-func ContainsPayMethod(method string) bool {
-	for _, payMethod := range PayMethods {
-		if payMethod["type"] == method {
-			return true
-		}
+// payMethodGateway returns the effective gateway of a pay method configuration.
+// A missing or empty gateway means Epay, so existing configurations without
+// the field behave exactly as before.
+func payMethodGateway(m map[string]string) string {
+	switch m["gateway"] {
+	case "vmq", "codepay":
+		return m["gateway"]
+	default:
+		return "epay"
 	}
-	return false
+}
+
+// findPayMethod locates a configured pay method by type and gateway. It
+// reports false when no configured entry matches both.
+func findPayMethod(methodType, gateway string) (map[string]string, bool) {
+	for _, method := range PayMethods {
+		if method["type"] != methodType {
+			continue
+		}
+		if payMethodGateway(method) != gateway {
+			continue
+		}
+		return method, true
+	}
+	return nil, false
+}
+
+func validatePayMethodGateway(m map[string]string) error {
+	gateway := m["gateway"]
+	switch gateway {
+	case "", "epay":
+		return nil
+	case "vmq", "codepay":
+		switch m["type"] {
+		case "alipay", "wxpay":
+			return nil
+		default:
+			return errors.New("V免签/码支付 付款方式的类型只能是 alipay 或 wxpay")
+		}
+	default:
+		return fmt.Errorf("不支持的支付网关: %q", gateway)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -194,7 +241,6 @@ var (
 // ---------------------------------------------------------------------------
 
 var (
-	VmqEnabled bool
 	VmqAddress string
 	VmqKey     string
 )
@@ -204,7 +250,6 @@ var (
 // ---------------------------------------------------------------------------
 
 var (
-	CodePayEnabled bool
 	CodePayAddress string
 	CodePayId      string
 	CodePayKey     string

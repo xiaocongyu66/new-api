@@ -24,8 +24,8 @@ func SubscriptionRequestVmqPay(c contract.Context) {
 	if !RequirePaymentCompliance(c) {
 		return
 	}
-	if !isVmqTopUpEnabled() {
-		common.CtxApiErrorMsg(c, "V免签 支付未启用")
+	if !isVmqGatewayConfigured() {
+		common.CtxApiErrorMsg(c, "当前管理员未配置支付信息")
 		return
 	}
 
@@ -48,8 +48,15 @@ func SubscriptionRequestVmqPay(c contract.Context) {
 		common.CtxApiErrorMsg(c, "套餐金额过低")
 		return
 	}
-	if req.PaymentMethod != PaymentMethodVmqAlipay && req.PaymentMethod != PaymentMethodVmqWxpay {
+
+	method, ok := findPayMethod(req.PaymentMethod, "vmq")
+	if !ok {
 		common.CtxApiErrorMsg(c, "支付方式不存在")
+		return
+	}
+	typeCode, ok := gatewayPayTypeCode("vmq", method["type"])
+	if !ok {
+		common.CtxApiErrorMsg(c, "不支持的支付方式")
 		return
 	}
 
@@ -73,18 +80,13 @@ func SubscriptionRequestVmqPay(c contract.Context) {
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
 	tradeNo = fmt.Sprintf("SUBVMQUSR%dNO%s", userId, tradeNo)
 
-	// V免签 type: 1=微信, 2=支付宝
-	payType := "2"
-	if req.PaymentMethod == PaymentMethodVmqWxpay {
-		payType = "1"
-	}
 	priceStr := strconv.FormatFloat(plan.PriceAmount, 'f', 2, 64)
-	sign := vmqCreateSign(tradeNo, "sub", payType, priceStr, VmqKey)
+	sign := vmqCreateSign(tradeNo, "sub", typeCode, priceStr, VmqKey)
 
 	vmqUrl := strings.TrimRight(VmqAddress, "/") + "/createOrder?" +
 		"payId=" + url.QueryEscape(tradeNo) +
 		"&param=" + url.QueryEscape("sub") +
-		"&type=" + url.QueryEscape(payType) +
+		"&type=" + url.QueryEscape(typeCode) +
 		"&price=" + url.QueryEscape(priceStr) +
 		"&notifyUrl=" + url.QueryEscape(notifyUrl) +
 		"&returnUrl=" + url.QueryEscape(returnUrl) +

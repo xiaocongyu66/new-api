@@ -210,7 +210,6 @@ export async function requestCodePayPayment(
   }
 }
 
-
 /**
  * Get affiliate code
  */

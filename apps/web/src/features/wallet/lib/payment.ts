@@ -41,20 +41,6 @@ export function openPaymentUrl(url: string): void {
 }
 
 /**
- * Check if payment method is VMQ (V免签)
- */
-export function isVmqPayment(paymentType: string): boolean {
-  return paymentType.startsWith('vmq_')
-}
-
-/**
- * Check if payment method is CodePay
- */
-export function isCodePayPayment(paymentType: string): boolean {
-  return paymentType.startsWith('codepay_')
-}
-
-/**
  * Check if browser is Safari
  */
 export function isSafariBrowser(): boolean {
@@ -120,7 +106,11 @@ export function isWaffoPancakePayment(paymentType: string): boolean {
 }
 
 export interface PaymentProcessors {
-  regular: (topupAmount: number, paymentType: string) => Promise<boolean>
+  regular: (
+    topupAmount: number,
+    paymentType: string,
+    gateway?: string
+  ) => Promise<boolean>
   waffo: (topupAmount: number, payMethodIndex: number) => Promise<boolean>
   waffoPancake: (topupAmount: number) => Promise<boolean>
 }
@@ -142,7 +132,11 @@ export async function dispatchSelectedPayment(
     return processors.waffoPancake(topupAmount)
   }
 
-  return processors.regular(topupAmount, paymentMethod.type)
+  return processors.regular(
+    topupAmount,
+    paymentMethod.type,
+    paymentMethod.gateway ?? 'epay'
+  )
 }
 
 /**

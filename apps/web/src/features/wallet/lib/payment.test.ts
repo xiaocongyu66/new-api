@@ -83,4 +83,40 @@ describe('payment dispatch', () => {
     assert.equal(success, false)
     assert.equal(called, false)
   })
+
+  test('passes the method gateway to the regular processor', async () => {
+    const gateways: string[] = []
+    await dispatchSelectedPayment(
+      { name: 'VMQ Alipay', type: 'alipay', gateway: 'vmq' },
+      100,
+      null,
+      {
+        regular: async (_amount, _type, gateway) => {
+          gateways.push(gateway ?? '')
+          return false
+        },
+        waffo: async () => false,
+        waffoPancake: async () => false,
+      }
+    )
+    assert.deepEqual(gateways, ['vmq'])
+  })
+
+  test('defaults the regular processor gateway to epay', async () => {
+    const gateways: string[] = []
+    await dispatchSelectedPayment(
+      { name: 'Alipay', type: 'alipay' },
+      100,
+      null,
+      {
+        regular: async (_amount, _type, gateway) => {
+          gateways.push(gateway ?? '')
+          return false
+        },
+        waffo: async () => false,
+        waffoPancake: async () => false,
+      }
+    )
+    assert.deepEqual(gateways, ['epay'])
+  })
 })
