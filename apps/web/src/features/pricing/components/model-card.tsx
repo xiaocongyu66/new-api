@@ -479,13 +479,13 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             <div
               className={cn(
                 'grid items-center text-xs',
-                // Content-sized columns spread across the row: every number
-                // keeps a slot as wide as its widest peer, and the free space
-                // is distributed between columns instead of pooling after the
-                // group name.
+                // Content-sized columns that stretch to fill the row: every
+                // number keeps a slot at least as wide as its widest peer, and
+                // the free space widens the tracks themselves, so the header
+                // background and the row dividers run edge to edge.
                 isTokenBased
-                  ? 'grid-cols-[auto_auto_auto_auto] justify-between'
-                  : 'grid-cols-[auto_auto_auto] justify-between'
+                  ? 'grid-cols-[auto_auto_auto_auto]'
+                  : 'grid-cols-[auto_auto_auto]'
               )}
             >
               <div className='contents'>
@@ -540,7 +540,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             className='border-border/50 no-scrollbar cursor-pointer overflow-x-auto overflow-y-hidden rounded-lg border'
           >
             <div
-              className='grid min-w-max items-center justify-between text-xs'
+              className='grid min-w-max items-center text-xs'
               style={{
                 gridTemplateColumns: `repeat(${dynamicTiers.length + 1}, auto) min-content`,
               }}
