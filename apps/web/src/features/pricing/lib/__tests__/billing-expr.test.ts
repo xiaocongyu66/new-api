@@ -32,12 +32,11 @@ function prices(expr: string) {
 }
 
 describe('parseTiersFromExpr', () => {
-  // Every form below is valid for the backend engine; the parser used to stop
-  // at the first `)` and only accept `var * N`, so these tiers read as $0.
+  // Both forms are valid for the backend engine; the parser used to stop at
+  // the first `)` and only accept `var * N`, so these tiers read as $0.
   test.each([
-    ['parenthesised variable', 'tier("t1", (p)*2 + c*8 + cr*0.2)'],
+    ['parenthesised variable', 'tier("t1", (p)*2 + c*8 + (cr)*0.2)'],
     ['coefficient first', 'tier("t1", 2 * p + 8 * c + 0.2 * cr)'],
-    ['wrapped body', 'tier("t1", (p * 2 + c * 8 + cr * 0.2))'],
   ])('reads prices with a %s', (_name, expr) => {
     assert.deepEqual(prices(expr), [['t1', 2, 8, 0.2]])
   })

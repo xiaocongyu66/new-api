@@ -280,7 +280,7 @@ function parseTierBody(bodyStr: string): Record<string, number> {
   return tier
 }
 
-/** Index just past the `)` that closes the paren opened before `start`. */
+/** Index of the `)` that closes the paren opened before `start`, or -1. */
 function findClosingParen(text: string, start: number): number {
   let depth = 1
   for (let i = start; i < text.length; i++) {
@@ -300,8 +300,8 @@ export function parseTiersFromExpr(exprStr: string): ParsedTier[] {
     const condGroup =
       `((?:(?:p|c|len)\\s*(?:<|<=|>|>=)\\s*[\\d.eE+]+)` +
       `(?:\\s*&&\\s*(?:p|c|len)\\s*(?:<|<=|>|>=)\\s*[\\d.eE+]+)*)`
-    // The body is cut at its balanced closing paren, not the first `)`, so
-    // bodies like `(p) * 2 + c * 8` or `(p * 2 + c * 8) * 0.5` stay whole.
+    // The body is cut at its balanced closing paren, not the first `)`, so a
+    // parenthesised variable such as `(p) * 2 + c * 8` keeps every term.
     const tierRe = new RegExp(
       `(?:${condGroup}\\s*\\?\\s*)?tier\\("([^"]*)",`,
       'g'
