@@ -21,8 +21,6 @@ export type SystemOption = {
   value: string
 }
 
-export type SystemOptionKey = string
-
 export type SystemOptionsResponse = {
   success: boolean
   message: string
@@ -72,19 +70,19 @@ export type SystemTask<
   updated_at: number
 }
 
-export type LogCleanupTaskPayload = {
+type LogCleanupTaskPayload = {
   target_timestamp: number
   batch_size: number
 }
 
-export type LogCleanupTaskState = {
+type LogCleanupTaskState = {
   total: number
   processed: number
   progress: number
   remaining: number
 }
 
-export type LogCleanupTaskResult = {
+type LogCleanupTaskResult = {
   deleted_count: number
 }
 
@@ -323,6 +321,7 @@ export type BillingSettings = {
   TopUpLink: string
   'general_setting.docs_link': string
   'quota_setting.enable_free_model_pre_consume': boolean
+  'quota_setting.empty_response_multiplier': number
   QuotaPerUnit: number
   USDExchangeRate: number
   'general_setting.quota_display_type': string
@@ -568,7 +567,7 @@ export type RatioType =
   | 'billing_mode'
   | 'billing_expr'
 
-export type RatioDifference = {
+type RatioDifference = {
   current: number | string | null
   upstreams: Record<string, number | string | 'same'>
   confidence: Record<string, boolean>
@@ -597,7 +596,7 @@ export type FetchUpstreamRatiosRequest = {
   timeout: number
 }
 
-export type TestResult = {
+type TestResult = {
   name: string
   status: 'success' | 'error'
   error?: string

@@ -25,7 +25,6 @@ import type {
   BatchSetTagParams,
   Channel,
   ChannelBalanceResponse,
-  ChannelOpsResponse,
   ChannelTestResponse,
   CopyChannelParams,
   CopyChannelResponse,
@@ -102,14 +101,6 @@ export async function searchChannels(
  */
 export async function getChannel(id: number): Promise<GetChannelResponse> {
   const res = await api.get(`/api/channel/${id}`)
-  return res.data
-}
-
-/**
- * Get channel operations summary for administrators
- */
-export async function getChannelOps(): Promise<ChannelOpsResponse> {
-  const res = await api.get('/api/channel/ops', channelActionConfig())
   return res.data
 }
 
@@ -399,7 +390,7 @@ export async function updateChannelModelHealth(
 /**
  * Manage multi-key channel operations
  */
-export async function manageMultiKeys(
+async function manageMultiKeys(
   params: MultiKeyManageParams
 ): Promise<MultiKeyStatusResponse | { success: boolean; message?: string }> {
   const res = await api.post(
@@ -648,16 +639,6 @@ export async function getEnabledModels(): Promise<{
 // ============================================================================
 // Ollama Utilities
 // ============================================================================
-
-/**
- * Check Ollama version for a given channel
- */
-export async function getOllamaVersion(
-  channelId: number
-): Promise<{ success: boolean; message?: string; data?: { version: string } }> {
-  const res = await api.get(`/api/channel/ollama/version/${channelId}`)
-  return res.data
-}
 
 // ============================================================================
 // Group Management

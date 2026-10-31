@@ -4019,6 +4019,8 @@
     "Power AI applications, manage digital assets, connect the Future": "Vận hành ứng dụng AI, quản lý tài sản số, kết nối Tương lai",
     "Powerful API Management Platform": "Nền tảng Quản lý API mạnh mẽ",
     "Pre-Consume for Free Models": "Dùng trước các mô hình miễn phí",
+    "Empty Response Multiplier": "Hệ số phản hồi rỗng",
+    "Charge ratio for empty 200 responses. 0 = free, 1 = full price.": "Tỷ lệ tính phí khi phản hồi 200 rỗng. 0 = miễn phí, 1 = toàn bộ giá.",
     "Pre-consumed": "Khấu trừ trước",
     "Pre-Consumed Quota": "Hạn mức đã tiêu thụ trước",
     "Preference saved as {{pref}}, but no active subscription. Wallet will be used automatically.": "Tùy chọn đã lưu là {{pref}}, nhưng không có gói đăng ký đang hoạt động. Ví sẽ được sử dụng tự động.",

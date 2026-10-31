@@ -51,7 +51,7 @@ type AutoGroupFrameProps = {
   shouldReduceMotion: boolean
 }
 
-export function AutoGroupFrame(props: AutoGroupFrameProps) {
+function AutoGroupFrame(props: AutoGroupFrameProps) {
   return (
     <span
       data-auto-group-frame='true'
@@ -127,6 +127,7 @@ export function GroupRatioBadge(props: GroupRatioBadgeProps) {
     </AutoGroupFrame>
   )
 }
+
 
 export function AutoGroupBadge(props: AutoGroupFlowBorderProps) {
   return (

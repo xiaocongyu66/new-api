@@ -4019,6 +4019,8 @@
     "Power AI applications, manage digital assets, connect the Future": "AIアプリケーションを支え、デジタル資産を管理し、未来をつなぐ",
     "Powerful API Management Platform": "強力なAPI管理プラットフォーム",
     "Pre-Consume for Free Models": "無料モデルの事前消費",
+    "Empty Response Multiplier": "空レスポンス倍率",
+    "Charge ratio for empty 200 responses. 0 = free, 1 = full price.": "空の 200 レスポンスに対する課金倍率。0 は無料、1 は全額。",
     "Pre-consumed": "事前消費",
     "Pre-Consumed Quota": "事前消費クォータ",
     "Preference saved as {{pref}}, but no active subscription. Wallet will be used automatically.": "設定は{{pref}}として保存されましたが、アクティブなサブスクリプションがありません。ウォレットが自動的に使用されます。",

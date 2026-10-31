@@ -29,7 +29,7 @@ import {
 import { useTheme } from '@/context/theme-provider'
 import { getCookie, removeCookie, setCookie } from '@/lib/cookies'
 import {
-  BACKGROUND_SCRIM_COLOR_BASES,
+  backgroundScrimColor,
   BACKGROUND_SCRIM_LIMITS,
   CONTENT_LAYOUT_VALUES,
   type ContentLayout,
@@ -460,7 +460,7 @@ export function ThemeCustomizationProvider(props: {
   useEffect(() => {
     applyCssVariable(
       '--app-background-scrim',
-      `${BACKGROUND_SCRIM_COLOR_BASES[surfaceScheme]} / ${block.backgroundScrim}%)`
+      backgroundScrimColor(surfaceScheme, block.backgroundScrim)
     )
   }, [block.backgroundScrim, surfaceScheme])
 

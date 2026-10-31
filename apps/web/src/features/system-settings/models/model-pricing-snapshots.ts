@@ -79,7 +79,7 @@ export type ModelRow = ModelPricingSnapshot & {
   isPriceUnset: boolean
 }
 
-export const hasPricingValue = (value?: string) =>
+const hasPricingValue = (value?: string) =>
   value !== undefined && value !== ''
 
 /**

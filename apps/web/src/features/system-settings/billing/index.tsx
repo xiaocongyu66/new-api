@@ -21,7 +21,7 @@ import type { BillingSettings } from '../types'
 import { BILLING_DEFAULT_SECTION } from './section-registry.tsx'
 import { getBillingSectionContent, getBillingSectionMeta } from './sections.tsx'
 
-export const defaultBillingSettings: BillingSettings = {
+const defaultBillingSettings: BillingSettings = {
   QuotaForNewUser: 0,
   PreConsumedQuota: 0,
   QuotaForInviter: 0,
@@ -33,6 +33,7 @@ export const defaultBillingSettings: BillingSettings = {
   TopUpLink: '',
   'general_setting.docs_link': '',
   'quota_setting.enable_free_model_pre_consume': true,
+  'quota_setting.empty_response_multiplier': 0.1,
   QuotaPerUnit: 500000,
   USDExchangeRate: 7,
   'general_setting.quota_display_type': 'USD',

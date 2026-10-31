@@ -4019,6 +4019,8 @@
     "Power AI applications, manage digital assets, connect the Future": "Обеспечивайте AI-приложения, управляйте цифровыми активами, соединяйте Будущее",
     "Powerful API Management Platform": "Мощная платформа управления API",
     "Pre-Consume for Free Models": "Предварительное потребление для бесплатных моделей",
+    "Empty Response Multiplier": "Множитель пустого ответа",
+    "Charge ratio for empty 200 responses. 0 = free, 1 = full price.": "Доля стоимости при пустом ответе 200. 0 — бесплатно, 1 — полная цена.",
     "Pre-consumed": "Предоплата",
     "Pre-Consumed Quota": "Предварительно потребленная квота",
     "Preference saved as {{pref}}, but no active subscription. Wallet will be used automatically.": "Настройка сохранена как {{pref}}, но нет активной подписки. Кошелёк будет использоваться автоматически.",

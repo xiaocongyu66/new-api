@@ -33,13 +33,11 @@ import {
   PLOT_W,
   smoothLinePath,
 } from '../lib/chart-geometry'
-import type { ModelPerfBadgeData } from '../types'
+import type { ModelPerfBadgeData, ModelPerfTrendPoint } from './model-perf-badge'
 
 const LATENCY_COLOR = '#3b82f6' // blue-500, latency bars
 const SUCCESS_COLOR = '#10b981' // emerald-500, success-rate line and number
 const GRID_COLOR = 'currentColor'
-
-type TrendPoint = { ts: number; latency_ms: number; success_rate: number }
 
 type ChartGeometry = {
   bars: { index: number; x: number; y: number; width: number; height: number }[]
@@ -88,7 +86,7 @@ export const ModelCardMetrics = memo(function ModelCardMetrics(props: {
 }) {
   const { perf } = props
 
-  const series = useMemo<TrendPoint[]>(
+  const series = useMemo<ModelPerfTrendPoint[]>(
     () =>
       (perf?.recent_series ?? [])
         .filter(
@@ -196,7 +194,7 @@ const MetricHeadline = memo(function MetricHeadline(props: {
   latencyText: string
   successText: string
   latencyWidth: string
-  activePoint: TrendPoint | null
+  activePoint: ModelPerfTrendPoint | null
   t: (key: string) => string
 }) {
   const { latencyText, successText, latencyWidth, activePoint, t } = props
@@ -244,7 +242,7 @@ const MetricHeadline = memo(function MetricHeadline(props: {
  */
 const MetricChart = memo(function MetricChart(props: {
   geometry: ChartGeometry
-  series: TrendPoint[]
+  series: ModelPerfTrendPoint[]
   active: number | null
   onHover: (index: number) => void
   onPin: (index: number) => void
@@ -427,7 +425,7 @@ const MetricChart = memo(function MetricChart(props: {
 function MetricRows(props: {
   perf: ModelPerfBadgeData
   geometry: ChartGeometry
-  series: TrendPoint[]
+  series: ModelPerfTrendPoint[]
   visible: boolean
   className?: string
 }) {

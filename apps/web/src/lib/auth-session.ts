@@ -35,7 +35,7 @@ export type RefreshOutcome =
   | { kind: 'transient_error'; error: unknown }
   | { kind: 'out_of_sync'; code?: string }
 
-export interface AuthRefreshHTTPResponse {
+interface AuthRefreshHTTPResponse {
   status: number
   data?: unknown
   error?: unknown

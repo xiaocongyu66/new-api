@@ -71,7 +71,7 @@ export type PricingModel = {
 }
 
 /** Input/output modalities supported by a model. */
-export type Modality = 'text' | 'image' | 'audio' | 'video' | 'file'
+type Modality = 'text' | 'image' | 'audio' | 'video' | 'file'
 
 /** Functional capabilities a model exposes. */
 export type ModelCapability =
@@ -108,21 +108,3 @@ export type PriceType =
   | 'image'
   | 'audio_input'
   | 'audio_output'
-export type QuotaType = 0 | 1 // 0: token-based, 1: per-request
-
-// Relay performance summary for one model, as returned by the plaza's
-// /api/perf-metrics/summary consumer. recent_series is the downsampled
-// hourly latency/success timeline the card combo chart draws.
-export type ModelPerfTrendPoint = {
-  ts: number
-  latency_ms: number
-  success_rate: number
-}
-
-export type ModelPerfBadgeData = {
-  avg_latency_ms: number
-  success_rate: number
-  avg_tps: number
-  recent_success_rates?: number[]
-  recent_series?: ModelPerfTrendPoint[]
-}

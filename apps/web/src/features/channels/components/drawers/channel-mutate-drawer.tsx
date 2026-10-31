@@ -436,7 +436,7 @@ function ChannelEditorNav(props: {
 }) {
   return (
     <aside className='hidden self-start lg:sticky lg:top-4 lg:z-20 lg:block'>
-      <div className='flex max-h-[calc(100dvh-10rem)] flex-col gap-3 overflow-y-auto overscroll-contain pr-1'>
+      <div className='flex max-h-[calc(100dvh-10rem)] flex-col gap-3 overflow-y-auto overscroll-contain no-scrollbar pr-1'>
         <div className='border-border/60 bg-muted/20 rounded-lg border p-3'>
           <div className='flex min-w-0 items-center gap-2'>
             <span className='bg-muted/40 flex size-8 shrink-0 items-center justify-center rounded-md border'>
@@ -549,6 +549,9 @@ function ChannelMutateDrawerContent({
   >(null)
   const channelFormRef = useRef<HTMLFormElement>(null)
   const editorScrollContainerRef = useRef<HTMLElement | null>(null)
+  const editorNavClickLockRef = useRef<{ id: string; top: number } | null>(
+    null
+  )
   const [activeEditorSectionId, setActiveEditorSectionId] = useState<string>(
     CHANNEL_EDITOR_SECTION_IDS.identity
   )
@@ -619,7 +622,7 @@ function ChannelMutateDrawerContent({
   const resetEditorState = useCallback(() => {
     form.reset(CHANNEL_FORM_DEFAULT_VALUES)
     setActiveEditorSectionId(CHANNEL_EDITOR_SECTION_IDS.identity)
-
+    editorNavClickLockRef.current = null
   }, [form])
 
   // Watch form values for conditional rendering (useWatch for precise per-field subscription)
@@ -1597,7 +1600,9 @@ function ChannelMutateDrawerContent({
     const formElement = channelFormRef.current
     if (!formElement) return null
 
-    let scroller = formElement.parentElement
+    // In drawer presentation the form itself is the scroller; in inline
+    // presentation it is `overflow-visible` and the page container scrolls.
+    let scroller: HTMLElement | null = formElement
     while (scroller) {
       const { overflowY } = window.getComputedStyle(scroller)
       if (overflowY === 'auto' || overflowY === 'scroll') {
@@ -1617,35 +1622,23 @@ function ChannelMutateDrawerContent({
       if (!scroller) return
       editorScrollContainerRef.current = scroller
 
-      const targetElement = document.querySelector<HTMLElement>(`#${targetId}`)
-      if (!targetElement) {
-        // Section may be lazily mounted: poll the DOM until the target is
-        // committed, then scroll. Avoids silent scroll failure on first nav.
-        let attempts = 0
-        const retry = () => {
-          const el = document.querySelector<HTMLElement>(`#${targetId}`)
-          if (el) {
-            const scrollerTop = scroller.getBoundingClientRect().top
-            const targetTop = el.getBoundingClientRect().top
-            scroller.scrollTo({
-              top: Math.max(0, scroller.scrollTop + targetTop - scrollerTop - 16),
-              behavior: 'auto',
-            })
-            return
-          }
-          if (attempts++ > 10) return
-          requestAnimationFrame(retry)
-        }
-        requestAnimationFrame(retry)
-        return
-      }
-
+      // The inline create tab stays mounted while the edit drawer is open, so
+      // section ids exist twice in the document; scope the lookup to this
+      // editor's own form, or the hidden copy's zero-height rect wins.
+      const targetElement = channelFormRef.current?.querySelector<HTMLElement>(
+        `#${targetId}`
+      )
+      if (!targetElement) return
       const scrollerTop = scroller.getBoundingClientRect().top
       const targetTop = targetElement.getBoundingClientRect().top
       scroller.scrollTo({
         top: Math.max(0, scroller.scrollTop + targetTop - scrollerTop - 16),
         behavior: 'auto',
       })
+      // Near the end of the editor the scroll clamps, so the spy would pin a
+      // different anchor than the clicked one. Hold the click's selection
+      // until the user actually scrolls away from this offset.
+      editorNavClickLockRef.current = { id: targetId, top: scroller.scrollTop }
     },
     [getEditorScrollContainer]
   )
@@ -1654,32 +1647,42 @@ function ChannelMutateDrawerContent({
     const scroller = editorScrollContainerRef.current
     if (!scroller) return
 
-    const lastSectionId = CHANNEL_EDITOR_SECTION_IDS.models
-    if (
-      lastSectionId &&
-      scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4
-    ) {
-      setActiveEditorSectionId((current) =>
-        current === lastSectionId ? current : lastSectionId
-      )
-      return
+    const clickLock = editorNavClickLockRef.current
+    if (clickLock) {
+      if (Math.abs(scroller.scrollTop - clickLock.top) <= 2) {
+        setActiveEditorSectionId((current) =>
+          current === clickLock.id ? current : clickLock.id
+        )
+        return
+      }
+      editorNavClickLockRef.current = null
     }
 
     const scrollerTop = scroller.getBoundingClientRect().top
     let nextActiveSectionId: string = CHANNEL_EDITOR_SECTION_IDS.identity
+    let lastVisibleSectionId: string = CHANNEL_EDITOR_SECTION_IDS.identity
 
     for (const sectionId of CHANNEL_EDITOR_MAIN_SECTION_IDS) {
-      const sectionElement = document.querySelector<HTMLElement>(
+      const sectionElement = channelFormRef.current?.querySelector<HTMLElement>(
         `#${sectionId}`
       )
+      // Field passthrough and upstream model detection only render for some
+      // channel types; skip whichever section is absent.
       if (!sectionElement) continue
+      lastVisibleSectionId = sectionId
       const sectionTopInScroller =
         sectionElement.getBoundingClientRect().top - scrollerTop
       if (sectionTopInScroller <= 80) {
         nextActiveSectionId = sectionId
-      } else {
-        break
       }
+    }
+
+    // The final section can be shorter than the viewport, so its top never
+    // crosses the threshold; pin the highlight to it once scrolled to end.
+    if (
+      scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4
+    ) {
+      nextActiveSectionId = lastVisibleSectionId
     }
 
     setActiveEditorSectionId((current) =>
@@ -1889,7 +1892,6 @@ function ChannelMutateDrawerContent({
                   />
                   <div className='flex min-w-0 flex-col gap-5'>
                     {/* ── Basic Information ── */}
-                    {activeEditorSectionId === CHANNEL_EDITOR_SECTION_IDS.identity && (
                     <div
                       id={CHANNEL_EDITOR_SECTION_IDS.identity}
                       className='scroll-mt-4'
@@ -2029,10 +2031,8 @@ function ChannelMutateDrawerContent({
                         )}
                       </ChannelBasicSection>
                     </div>
-                    )}
 
                     {/* ── API Access ── */}
-                    {activeEditorSectionId === CHANNEL_EDITOR_SECTION_IDS.credentials && (
                     <div
                       id={CHANNEL_EDITOR_SECTION_IDS.credentials}
                       className='scroll-mt-4'
@@ -3171,10 +3171,8 @@ function ChannelMutateDrawerContent({
                         </div>
                       </ChannelApiAccessSection>
                     </div>
-                    )}
 
                     {/* ── Models & Groups ── */}
-                    {activeEditorSectionId === CHANNEL_EDITOR_SECTION_IDS.models && (
                     <div
                       id={CHANNEL_EDITOR_SECTION_IDS.models}
                       className='scroll-mt-4'
@@ -3537,7 +3535,6 @@ function ChannelMutateDrawerContent({
                         </div>
                       </ChannelModelsSection>
                     </div>
-                    )}
 
                     <div className='flex flex-col gap-5'>
                       {/* ── Routing & Overrides ── */}

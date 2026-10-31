@@ -80,6 +80,25 @@ html.dark body[data-app-background='true'] [data-slot='app-header'] {
   backdrop-filter: none;
 }
 
+/* Mobile restores the mask on that photo nav. At phone width the bar carries
+ * the brand, search and account buttons edge to edge, so the frameless
+ * treatment leaves them sitting on the raw photo with nothing to read
+ * against. Below md the bar is painted with the same card surface as the
+ * content panel below it, so bar and body read as one continuous sheet;
+ * dark needs it painted back because the frameless rule above strips it.
+ * Desktop keeps the frameless look. */
+@media (width < 48rem) {
+  body[data-app-background='true'] [data-slot='app-header'] {
+    background-color: var(--card-surface);
+    backdrop-filter: blur(12px);
+  }
+
+  html.dark body[data-app-background='true'] [data-slot='app-header'] {
+    background-color: var(--card-surface);
+    backdrop-filter: blur(12px);
+  }
+}
+
 /* Same rule for the public hero nav. Light scheme gives the top band a
  * soft ground under its dark links (random photos can be arbitrarily dark
  * behind them). The paint sits on the fixed full-width header via :has(),
@@ -448,6 +467,34 @@ body[data-theme-card-blur='true'] [data-slot='card'] {
   backdrop-filter: var(--card-blur-state);
 }
 
+/* Floating overlays (popovers, dropdowns, selects, comboboxes, dialogs,
+ * sheets, hover cards) use the same card glass filter so they blur whatever
+ * sits behind them — a background image, another panel — consistently with
+ * the card toggle. Without this they rendered a plain translucent fill and
+ * the wallpaper stayed sharp and muddy through them. The command palette is
+ * intentionally absent: it always nests inside a popover or dialog that
+ * already owns the blur. */
+body[data-theme-card-blur='true'] {
+  --float-blur-state: var(--card-blur-filter);
+}
+
+body:not([data-theme-card-blur='true']) {
+  --float-blur-state: none;
+}
+
+body[data-theme-card-blur='true'] [data-slot='dropdown-menu-content'],
+body[data-theme-card-blur='true'] [data-slot='dropdown-menu-sub-content'],
+body[data-theme-card-blur='true'] [data-slot='popover-content'],
+body[data-theme-card-blur='true'] [data-slot='select-content'],
+body[data-theme-card-blur='true'] [data-slot='combobox-content'],
+body[data-theme-card-blur='true'] [data-slot='hover-card-content'],
+body[data-theme-card-blur='true'] [data-slot='dialog-content'],
+body[data-theme-card-blur='true'] [data-slot='alert-dialog-content'],
+body[data-theme-card-blur='true'] [data-slot='sheet-content'],
+body[data-theme-card-blur='true'] [data-slot='drawer-content'] {
+  backdrop-filter: var(--float-blur-state);
+}
+
 /* Solid surface fallback used when no background image is active. No
  * backdrop-filter here: nav, sidebar and page bands must not blur the
  * background — card glass is owned exclusively by the card-blur toggle
@@ -568,6 +615,7 @@ html.dark body[data-app-background='true'] {
 }
 
 @utility no-scrollbar {
+  -webkit-overflow-scrolling: touch;
   /* Hide scrollbar for Chrome, Safari and Opera */
   &::-webkit-scrollbar {
     display: none;
@@ -587,39 +635,6 @@ html.dark body[data-app-background='true'] {
 [data-slot='tooltip-content']::-webkit-scrollbar,
 [data-slot='tooltip-content'] *::-webkit-scrollbar {
   display: none;
-}
-
-@utility hover-scrollbar {
-  /* Hide scrollbar by default */
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-
-  /* Show scrollbar on hover */
-  &:hover {
-    scrollbar-color: var(--border) transparent;
-  }
-
-  /* Webkit browsers (Chrome, Safari, Edge) */
-  &::-webkit-scrollbar {
-    width: 8px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background-color: transparent;
-    border-radius: 4px;
-  }
-
-  &:hover::-webkit-scrollbar-thumb {
-    background-color: var(--border);
-  }
-
-  &:hover::-webkit-scrollbar-thumb:hover {
-    background-color: color-mix(in oklch, var(--border) 60%, transparent);
-  }
 }
 
 @utility faded-bottom {

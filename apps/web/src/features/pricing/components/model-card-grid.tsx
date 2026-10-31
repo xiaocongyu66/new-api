@@ -30,7 +30,8 @@ import {
 import { getPerfMetricsSummary } from '@/features/performance-metrics/api'
 
 import { DEFAULT_PRICING_PAGE_SIZE, DEFAULT_TOKEN_UNIT } from '../constants'
-import type { ModelPerfBadgeData, PricingModel, TokenUnit } from '../types'
+import type { PricingModel, TokenUnit } from '../types'
+import type { ModelPerfBadgeData } from './model-perf-badge'
 import { ModelCard } from './model-card'
 
 // Every masonry item spans as many of these virtual grid rows as its measured

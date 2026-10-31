@@ -144,7 +144,7 @@ function getCodeBlockMaxHeight(
   return undefined
 }
 
-export const CodeBlockFrame = ({
+const CodeBlockFrame = ({
   bodyClassName,
   bodyMaxHeight,
   bodyOverlay,

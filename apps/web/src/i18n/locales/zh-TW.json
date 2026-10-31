@@ -4019,6 +4019,8 @@
     "Power AI applications, manage digital assets, connect the Future": "承載 AI 套用，管理數位資產，連接未來",
     "Powerful API Management Platform": "強大的 API 管理平台",
     "Pre-Consume for Free Models": "免費模型預消耗",
+    "Empty Response Multiplier": "空回應扣費倍率",
+    "Charge ratio for empty 200 responses. 0 = free, 1 = full price.": "上游返回空 200 回應時的扣費比例，0 表示全額豁免，1 表示按原價扣費。",
     "Pre-consumed": "預扣費",
     "Pre-Consumed Quota": "預消耗配額",
     "Preference saved as {{pref}}, but no active subscription. Wallet will be used automatically.": "已儲存偏好為{{pref}}，目前無生效訂閱，將自動使用錢包",

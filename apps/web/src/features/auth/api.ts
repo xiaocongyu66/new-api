@@ -132,11 +132,6 @@ export async function sendPasswordResetEmail(
 // ----------------------------------------------------------------------------
 
 // Start GitHub OAuth flow
-export async function githubOAuthStart(clientId: string, state: string) {
-  const url = `https://github.com/login/oauth/authorize?client_id=${clientId}&state=${state}&scope=user:email`
-  window.open(url)
-}
-
 // Get OAuth state for CSRF protection
 export async function createOAuthFlow(
   provider: string,
@@ -200,13 +195,3 @@ export async function sendEmailVerification(
 }
 
 // Bind email to OAuth account
-export async function bindEmail(
-  email: string,
-  code: string
-): Promise<ApiResponse> {
-  const res = await api.post('/api/oauth/email/bind', {
-    email,
-    code,
-  })
-  return res.data
-}

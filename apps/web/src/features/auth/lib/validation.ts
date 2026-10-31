@@ -70,11 +70,3 @@ export function cleanBackupCode(code: string): string {
 // ============================================================================
 // Email Validation
 // ============================================================================
-
-/**
- * Basic email validation
- */
-export function isValidEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  return emailRegex.test(email)
-}

@@ -174,7 +174,7 @@ GroupTriggerButton.displayName = 'GroupTriggerButton'
  * Model Selector Component
  * Styled following Scira's form-component design patterns
  */
-export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
+const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
   ({ selectedModel, models, onModelChange, className, disabled = false }) => {
     const { t } = useTranslation()
     const [open, setOpen] = useState(false)
@@ -369,7 +369,7 @@ ModelSelector.displayName = 'ModelSelector'
  * Group Selector Component
  * Styled following Scira's form-component design patterns
  */
-export const GroupSelector: React.FC<GroupSelectorProps> = React.memo(
+const GroupSelector: React.FC<GroupSelectorProps> = React.memo(
   ({ selectedGroup, groups, onGroupChange, className, disabled = false }) => {
     const { t } = useTranslation()
     const [open, setOpen] = useState(false)
@@ -478,7 +478,7 @@ export const GroupSelector: React.FC<GroupSelectorProps> = React.memo(
           <DrawerHeader className='pb-4 text-left'>
             <DrawerTitle>{t('Choose Group')}</DrawerTitle>
           </DrawerHeader>
-          <div className='max-h-[calc(80vh-100px)] overflow-y-auto px-4 pb-6'>
+          <div className='max-h-[calc(80vh-100px)] overflow-y-auto no-scrollbar px-4 pb-6'>
             <div className='space-y-2'>
               {groups.map((group) => (
                 <Button
@@ -827,7 +827,7 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
         <DrawerHeader className='pb-3 text-left'>
           <DrawerTitle>{t('Select Model')}</DrawerTitle>
         </DrawerHeader>
-        <div className='min-h-0 flex-1 overflow-y-auto px-4 pb-5'>
+        <div className='min-h-0 flex-1 overflow-y-auto no-scrollbar px-4 pb-5'>
           {renderContent()}
         </div>
       </DrawerContent>

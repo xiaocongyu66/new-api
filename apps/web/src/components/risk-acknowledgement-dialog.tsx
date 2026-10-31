@@ -199,7 +199,7 @@ export function RiskAcknowledgementDialog({
           ) : null}
         </AlertDialogHeader>
 
-        <div className='min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-4 sm:px-6'>
+        <div className='min-h-0 flex-1 space-y-4 overflow-y-auto no-scrollbar px-4 pb-4 sm:px-6'>
           {items.length > 0 ? (
             <ol className='border-border/70 bg-muted/30 text-foreground list-decimal space-y-2 rounded-lg border px-4 py-3 pl-8 text-sm leading-6 sm:px-5 sm:py-4 sm:pl-9'>
               {items.map((item) => (

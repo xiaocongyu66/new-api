@@ -319,5 +319,3 @@ export function exprUsesExtraVars(exprStr: string): boolean {
   const varNames = ESTIMATOR_VARS.map((f) => f.var).join('|')
   return new RegExp(`\\b(${varNames})\\b`).test(exprStr)
 }
-
-export const ESTIMATOR_EXTRA_FIELDS = ESTIMATOR_VARS

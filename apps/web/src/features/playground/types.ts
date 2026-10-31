@@ -17,9 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 // Message types
-export type MessageRole = 'user' | 'assistant' | 'system'
+type MessageRole = 'user' | 'assistant' | 'system'
 
-export type MessageStatus = 'loading' | 'streaming' | 'complete' | 'error'
+type MessageStatus = 'loading' | 'streaming' | 'complete' | 'error'
 
 export type PlaygroundMessageLayoutMode = 'alternating' | 'left'
 

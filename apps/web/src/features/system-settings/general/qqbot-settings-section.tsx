@@ -127,7 +127,7 @@ type QQBotSettingsSectionProps = {
 /** Option keys whose values are internal-quota amounts; admin forms read and
  * write their `<key>_display` siblings (display currency) — the backend
  * converts, so no quota arithmetic lives in the client. */
-export const QQBOT_AMOUNT_KEYS = [
+const QQBOT_AMOUNT_KEYS = [
   'min_quota',
   'max_quota',
   'drop_min_quota',

@@ -22,7 +22,6 @@ import {
   KeyRound,
   ScrollText,
   Sigma,
-  Zap,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -789,4 +788,3 @@ function SectionTitle(props: {
 }
 
 // Re-export so the parent can keep its own SectionTitle if it wants:
-export { Zap as ApiTabIcon }

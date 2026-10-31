@@ -38,7 +38,8 @@ import {
   formatPrice,
   formatRequestPrice,
 } from '../lib/price'
-import type { ModelPerfBadgeData, PricingModel, TokenUnit } from '../types'
+import type { PricingModel, TokenUnit } from '../types'
+import type { ModelPerfBadgeData } from './model-perf-badge'
 import { ModelCardMetrics } from './model-card-metrics'
 
 export interface ModelCardProps {

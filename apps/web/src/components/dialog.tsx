@@ -111,7 +111,7 @@ export function Dialog({
 
         <div
           className={cn(
-            '-mx-1 min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain',
+            '-mx-1 min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain no-scrollbar',
             'h-[var(--dialog-content-height)] max-h-[calc(100vh-14rem)]'
           )}
         >

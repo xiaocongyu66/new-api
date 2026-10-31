@@ -67,7 +67,7 @@ export interface ModelDetailsContentProps {
   tokenUnit: TokenUnit
   showRechargePrice?: boolean
 }
-
+  
 export function ModelDetailsContent(props: ModelDetailsContentProps) {
   const { t } = useTranslation()
   const showRechargePrice = props.showRechargePrice ?? false
@@ -171,7 +171,7 @@ export function ModelDetailsDrawer(props: ModelDetailsDrawerProps) {
           <SheetTitle>{props.model.model_name}</SheetTitle>
           <SheetDescription>{t('Model details')}</SheetDescription>
         </SheetHeader>
-        <div className='flex-1 overflow-y-auto px-4 pt-11 pb-5 sm:px-6 sm:pt-12 sm:pb-6'>
+        <div className='flex-1 no-scrollbar overflow-y-auto px-4 pt-11 pb-5 sm:px-6 sm:pt-12 sm:pb-6'>
           <ModelDetailsContent {...contentProps} />
         </div>
       </SheetContent>
