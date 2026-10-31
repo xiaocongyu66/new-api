@@ -123,6 +123,42 @@ function hasDynamicRequestRules(model: PricingModel): boolean {
   return Boolean(tryParseRequestRuleExpr(requestRuleExpr || '')?.length)
 }
 
+/** Compact token count for tier bounds: 200000 → "200K", 1500000 → "1.5M". */
+export function formatTokenCountHint(value: string | number): string {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n === 0) return ''
+  if (n >= 1_000_000) {
+    return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`
+  }
+  if (n >= 1000) {
+    return `${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}K`
+  }
+  return String(n)
+}
+
+const TIER_BOUND_OPS: Record<string, string> = {
+  '<': '<',
+  '<=': '≤',
+  '>': '>',
+  '>=': '≥',
+}
+
+/**
+ * Short context bound for a tier column header, e.g. "≤10K". A trailing
+ * catch-all tier has no condition of its own, so it reads as "above the
+ * previous tier's bound".
+ */
+export function getTierBoundLabel(tiers: ParsedTier[], index: number): string {
+  const condition = tiers[index]?.conditions[0]
+  if (condition) {
+    return `${TIER_BOUND_OPS[condition.op] || condition.op}${formatTokenCountHint(condition.value) || condition.value}`
+  }
+  const previous = tiers[index - 1]?.conditions[0]
+  if (!previous || (previous.op !== '<' && previous.op !== '<=')) return ''
+  const op = previous.op === '<' ? '≥' : '>'
+  return `${op}${formatTokenCountHint(previous.value) || previous.value}`
+}
+
 export function getDynamicPriceEntries(
   tier: ParsedTier | null,
   options: DynamicPriceOptions

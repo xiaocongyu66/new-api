@@ -29,9 +29,14 @@ import { cn } from '@/lib/utils'
 import { DEFAULT_TOKEN_UNIT } from '../constants'
 import {
   getDynamicDisplayGroupRatio,
+  getDynamicPriceEntries,
   getDynamicPricingSummary,
+  getTierBoundLabel,
 } from '../lib/dynamic-price'
-import { getConfiguredGroupRatio, isTokenBasedModel } from '../lib/model-helpers'
+import {
+  getConfiguredGroupRatio,
+  isTokenBasedModel,
+} from '../lib/model-helpers'
 import {
   formatFixedPrice,
   formatGroupPrice,
@@ -39,8 +44,8 @@ import {
   formatRequestPrice,
 } from '../lib/price'
 import type { PricingModel, TokenUnit } from '../types'
-import type { ModelPerfBadgeData } from './model-perf-badge'
 import { ModelCardMetrics } from './model-card-metrics'
+import type { ModelPerfBadgeData } from './model-perf-badge'
 
 export interface ModelCardProps {
   model: PricingModel
@@ -86,9 +91,9 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
       })
     : null
 
-  // Price table rows: the first two enabled groups with their ratio and the
-  // per-group prices. Dynamic-expression models have no stable per-group
-  // numbers to tabulate, so they keep the summary row only.
+  // Price table rows: every enabled group with its ratio and the per-group
+  // prices. Dynamic-expression models get their own table (tiers as columns)
+  // below, so they skip this one.
   const groupRows = isDynamicPricing
     ? []
     : groups.map((group) => ({
@@ -124,6 +129,41 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         ),
       }))
 
+  // Dynamic pricing table: one row per group, one column per tier; each cell
+  // is that group's input and output unit price inside the tier.
+  const dynamicTiers = dynamicSummary?.tiers ?? []
+  const dynamicGroupRows =
+    dynamicTiers.length === 0
+      ? []
+      : groups.map((group) => {
+          const options = {
+            tokenUnit,
+            showRechargePrice,
+            priceRate,
+            usdExchangeRate,
+            groupRatioMultiplier: getConfiguredGroupRatio(
+              props.model.group_ratio || {},
+              group
+            ),
+          }
+          return {
+            group,
+            tiers: dynamicTiers.map((tier) => {
+              const prices = new Map(
+                getDynamicPriceEntries(tier, options).map((entry) => [
+                  entry.field,
+                  entry.formatted,
+                ])
+              )
+              return {
+                label: tier.label,
+                input: prices.get('inputPrice') ?? '-',
+                output: prices.get('outputPrice') ?? '-',
+              }
+            }),
+          }
+        })
+
   // Copy feedback: the title button swaps its icon to a check for a moment
   // after a successful copy, then reverts. Local to this card.
   const [copied, setCopied] = useState(false)
@@ -134,6 +174,49 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   useEffect(() => {
     return () => clearTimeout(copyResetRef.current)
   }, [])
+
+  const tableRowCount = isDynamicPricing
+    ? dynamicGroupRows.length
+    : groupRows.length
+  let visibleRowCount = tableExpanded ? 0 : tableRowCount
+  if (tableRowCount > 2) {
+    visibleRowCount = tableExpanded ? tableRowCount : 2
+  }
+  const toggleTable = (event: React.SyntheticEvent) => {
+    event.stopPropagation()
+    setTableExpanded((expanded) => !expanded)
+  }
+  const tableToggleLabel = tableExpanded
+    ? t('Collapse group price table')
+    : t('Expand group price table')
+  const tableHeaderCellClass =
+    'bg-muted/30 text-muted-foreground/70 px-2.5 py-1.5 text-left text-[10px] font-medium'
+  const groupHeaderCell = (
+    <span className='bg-muted/30 text-muted-foreground/70 flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-medium'>
+      {t('Group')}
+      <button
+        type='button'
+        tabIndex={0}
+        aria-expanded={tableExpanded}
+        aria-label={tableToggleLabel}
+        onClick={toggleTable}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            toggleTable(event)
+          }
+        }}
+        className='m-0 inline border-none bg-transparent p-0 text-current'
+      >
+        <ChevronDown
+          className={cn(
+            'size-3 transition-transform duration-200',
+            tableExpanded && 'rotate-180'
+          )}
+        />
+      </button>
+    </span>
+  )
 
   const handleCopy = async (e: React.MouseEvent) => {
     // The card itself is the details trigger, so the copy button must not
@@ -177,20 +260,34 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         </span>
       )
     } else if (dynamicSummary.primaryEntries.length > 0) {
+      // Same layout as per-token pricing: the remaining width is split
+      // evenly and each price is centred in its slot.
       priceSummary = (
-        <>
+        <div
+          className={cn(
+            'grid flex-1 items-center gap-2',
+            dynamicSummary.primaryEntries.length > 1
+              ? 'grid-cols-2'
+              : 'grid-cols-1'
+          )}
+        >
           {dynamicSummary.primaryEntries.map((entry) => (
             <span
               key={entry.key}
-              className='text-muted-foreground whitespace-nowrap'
+              className='flex min-w-0 items-baseline justify-center gap-1 whitespace-nowrap'
             >
-              {t(entry.shortLabel)}{' '}
+              <span className='text-muted-foreground text-xs'>
+                {t(entry.shortLabel)}
+              </span>
               <span className='text-foreground font-mono font-semibold'>
                 <CountUp text={entry.formatted} active={inView} />
               </span>
+              <span className='text-muted-foreground/70 text-xs'>
+                / {tokenUnitLabel}
+              </span>
             </span>
           ))}
-        </>
+        </div>
       )
     } else {
       priceSummary = (
@@ -220,7 +317,12 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   let priceSummaryBlock: ReactNode
   if (dynamicSummary) {
     priceSummaryBlock = (
-      <div className='flex flex-wrap items-center gap-x-3 gap-y-1 pl-1 text-sm'>
+      <div
+        className={cn(
+          'flex items-center gap-3 pl-1 text-sm',
+          dynamicSummary.isSpecialExpression && 'flex-wrap gap-y-1'
+        )}
+      >
         {billingModeChip}
         {priceSummary}
       </div>
@@ -314,7 +416,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           onClick={handleCopy}
           title={`${t('Copy model name')} · ${props.model.model_name}`}
           aria-label={`${t('Copy model name')} · ${props.model.model_name}`}
-          className='group/name hover:bg-foreground/[0.06] focus-visible:bg-foreground/[0.06] focus-visible:ring-primary/50 flex min-w-0 max-w-full items-center gap-2 self-start rounded-lg bg-foreground/[0.03] p-1 pr-2.5 text-left transition-colors focus-visible:ring-1 focus-visible:outline-none sm:gap-2.5'
+          className='group/name hover:bg-foreground/[0.06] focus-visible:bg-foreground/[0.06] focus-visible:ring-primary/50 bg-foreground/[0.03] flex max-w-full min-w-0 items-center gap-2 self-start rounded-lg p-1 pr-2.5 text-left transition-colors focus-visible:ring-1 focus-visible:outline-none sm:gap-2.5'
         >
           <span className='bg-muted/40 flex size-8 shrink-0 items-center justify-center rounded-md sm:size-9 sm:rounded-lg'>
             {modelIcon || (
@@ -353,134 +455,155 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
       </CardHeader>
 
       <CardContent className='flex flex-col gap-4'>
-      {/* Description: only when the model has one; left edge lines up with
+        {/* Description: only when the model has one; left edge lines up with
           the icon inside the title button above (button p-1 = 4px inset). */}
-      {props.model.description && (
-        <p className='text-muted-foreground line-clamp-2 pl-1 text-sm leading-relaxed'>
-          {props.model.description}
-        </p>
-      )}
+        {props.model.description && (
+          <p className='text-muted-foreground line-clamp-2 pl-1 text-sm leading-relaxed'>
+            {props.model.description}
+          </p>
+        )}
 
-      {priceSummaryBlock}
+        {priceSummaryBlock}
 
-      {/* Group price table. The numeric columns are `auto` tracks on one
+        {/* Group price tables. The numeric columns are `auto` tracks on one
           grid (rows are `display: contents`), so each number column takes
           the width of its widest value — digits get a fixed slot per column
           and never shift between rows. */}
-      {groupRows.length > 0 && (
-        <div
-          aria-expanded={tableExpanded}
-          aria-label={
-            tableExpanded
-              ? t('Collapse group price table')
-              : t('Expand group price table')
-          }
-          onClick={(event) => {
-            event.stopPropagation()
-            setTableExpanded((expanded) => !expanded)
-          }}
-          className='border-border/50 cursor-pointer overflow-hidden rounded-lg border'
-        >
+        {groupRows.length > 0 && (
           <div
-            className={cn(
-              'grid items-center text-xs',
-              // Content-sized columns spread across the row: every number
-              // keeps a slot as wide as its widest peer, and the free space
-              // is distributed between columns instead of pooling after the
-              // group name.
-              isTokenBased
-                ? 'grid-cols-[auto_auto_auto_auto] justify-between'
-                : 'grid-cols-[auto_auto_auto] justify-between'
-            )}
+            aria-expanded={tableExpanded}
+            aria-label={tableToggleLabel}
+            onClick={toggleTable}
+            className='border-border/50 cursor-pointer overflow-hidden rounded-lg border'
           >
-            <div className='contents'>
-              <span className='bg-muted/30 text-muted-foreground/70 flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-medium'>
-                {t('Group')}
-                <button
-                  type='button'
-                  tabIndex={0}
-                  aria-expanded={tableExpanded}
-                  aria-label={
-                    tableExpanded
-                      ? t('Collapse group price table')
-                      : t('Expand group price table')
-                  }
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    setTableExpanded((expanded) => !expanded)
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      event.stopPropagation()
-                      setTableExpanded((expanded) => !expanded)
-                    }
-                  }}
-                  className='p-0 m-0 border-none bg-transparent text-current inline'
-                >
-                  <ChevronDown
-                    className={cn(
-                      'size-3 transition-transform duration-200',
-                      tableExpanded && 'rotate-180'
-                    )}
-                  />
-                </button>
-              </span>
-              <span className='bg-muted/30 text-muted-foreground/70 px-2.5 py-1.5 text-left text-[10px] font-medium'>
-                {t('Ratio')}
-              </span>
-              {isTokenBased ? (
-                <>
-                  <span className='bg-muted/30 text-muted-foreground/70 px-2.5 py-1.5 text-left text-[10px] font-medium'>
-                    {t('Input')}
-                  </span>
-                  <span className='bg-muted/30 text-muted-foreground/70 px-2.5 py-1.5 text-left text-[10px] font-medium'>
-                    {t('Output')}
-                  </span>
-                </>
-              ) : (
-                <span className='bg-muted/30 text-muted-foreground/70 px-2.5 py-1.5 text-left text-[10px] font-medium'>
-                  {t('Price')}
-                </span>
+            <div
+              className={cn(
+                'grid items-center text-xs',
+                // Content-sized columns that stretch to fill the row: every
+                // number keeps a slot at least as wide as its widest peer, and
+                // the free space widens the tracks themselves, so the header
+                // background and the row dividers run edge to edge.
+                isTokenBased
+                  ? 'grid-cols-[auto_auto_auto_auto]'
+                  : 'grid-cols-[auto_auto_auto]'
               )}
-            </div>
-            {(groupRows.length > 2
-              ? tableExpanded
-                ? groupRows
-                : groupRows.slice(0, 2)
-              : tableExpanded
-                ? []
-                : groupRows
-            ).map((row) => (
-              <div key={row.group} className='contents'>
-                <span className='border-border/50 max-w-[12rem] truncate border-t px-2.5 py-1.5 font-medium'>
-                  {row.group}
-                </span>
-                <span className='text-muted-foreground border-border/50 border-t px-2.5 py-1.5 text-left font-mono tabular-nums'>
-                  <CountUp text={`×${row.ratio}`} active={inView} />
-                </span>
+            >
+              <div className='contents'>
+                {groupHeaderCell}
+                <span className={tableHeaderCellClass}>{t('Ratio')}</span>
                 {isTokenBased ? (
                   <>
-                    <span className='text-foreground border-border/50 border-t px-2.5 py-1.5 text-left font-mono tabular-nums'>
-                      <CountUp text={row.input} active={inView} />
-                    </span>
-                    <span className='text-foreground border-border/50 border-t px-2.5 py-1.5 text-left font-mono tabular-nums'>
-                      <CountUp text={row.output} active={inView} />
-                    </span>
+                    <span className={tableHeaderCellClass}>{t('Input')}</span>
+                    <span className={tableHeaderCellClass}>{t('Output')}</span>
                   </>
                 ) : (
-                  <span className='text-foreground border-border/50 border-t px-2.5 py-1.5 text-left font-mono tabular-nums'>
-                    <CountUp text={row.price} active={inView} />
-                  </span>
+                  <span className={tableHeaderCellClass}>{t('Price')}</span>
                 )}
               </div>
-            ))}
+              {groupRows.slice(0, visibleRowCount).map((row) => (
+                <div key={row.group} className='contents'>
+                  <span className='border-border/50 max-w-[12rem] truncate border-t px-2.5 py-1.5 font-medium'>
+                    {row.group}
+                  </span>
+                  <span className='text-muted-foreground border-border/50 border-t px-2.5 py-1.5 text-left font-mono tabular-nums'>
+                    <CountUp text={`×${row.ratio}`} active={inView} />
+                  </span>
+                  {isTokenBased ? (
+                    <>
+                      <span className='text-foreground border-border/50 border-t px-2.5 py-1.5 text-left font-mono tabular-nums'>
+                        <CountUp text={row.input} active={inView} />
+                      </span>
+                      <span className='text-foreground border-border/50 border-t px-2.5 py-1.5 text-left font-mono tabular-nums'>
+                        <CountUp text={row.output} active={inView} />
+                      </span>
+                    </>
+                  ) : (
+                    <span className='text-foreground border-border/50 border-t px-2.5 py-1.5 text-left font-mono tabular-nums'>
+                      <CountUp text={row.price} active={inView} />
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Middle: 24h latency/success combo chart + headline numbers */}
-      <ModelCardMetrics perf={props.perf} visible={inView} />
+        {/* Dynamic pricing: tiers replace the ratio/input/output columns. Each
+          cell stacks the group's input price over its output price for that
+          tier; the header carries the tier name and its context bound, and a
+          trailing legend column names the two lines `in` / `out`. */}
+        {dynamicGroupRows.length > 0 && (
+          <div
+            aria-expanded={tableExpanded}
+            aria-label={tableToggleLabel}
+            onClick={toggleTable}
+            className='border-border/50 no-scrollbar cursor-pointer overflow-x-auto overflow-y-hidden rounded-lg border'
+          >
+            <div
+              className='grid min-w-max items-center text-xs'
+              style={{
+                gridTemplateColumns: `repeat(${dynamicTiers.length + 1}, auto) min-content`,
+              }}
+            >
+              <div className='contents'>
+                {groupHeaderCell}
+                {dynamicTiers.map((tier, index) => {
+                  const bound = getTierBoundLabel(dynamicTiers, index)
+                  return (
+                    <span
+                      key={tier.label}
+                      className={cn(
+                        tableHeaderCellClass,
+                        'flex flex-col px-1.5 whitespace-nowrap @sm:flex-row @sm:items-baseline @sm:gap-1 @sm:px-2.5'
+                      )}
+                    >
+                      {tier.label || t('Default')}
+                      {bound && (
+                        <span className='text-muted-foreground/50 font-mono'>
+                          {bound}
+                        </span>
+                      )}
+                    </span>
+                  )
+                })}
+                <span
+                  aria-hidden
+                  className={cn(tableHeaderCellClass, 'self-stretch px-0')}
+                />
+              </div>
+              {dynamicGroupRows.slice(0, visibleRowCount).map((row) => (
+                <div key={row.group} className='contents'>
+                  <span className='border-border/50 h-full max-w-[12rem] truncate border-t px-2.5 py-1.5 font-medium'>
+                    {row.group}
+                  </span>
+                  {row.tiers.map((price) => (
+                    <span
+                      key={price.label}
+                      className='border-border/50 flex h-full flex-col border-t px-1.5 py-1.5 text-left font-mono leading-tight whitespace-nowrap tabular-nums @sm:px-2.5'
+                    >
+                      <span className='text-foreground'>
+                        <CountUp text={price.input} active={inView} />
+                      </span>
+                      <span className='text-muted-foreground'>
+                        <CountUp text={price.output} active={inView} />
+                      </span>
+                    </span>
+                  ))}
+                  <span
+                    aria-hidden
+                    className='border-border/50 text-muted-foreground/50 flex h-full flex-col border-t py-1.5 pr-1.5 text-left font-mono text-xs leading-tight whitespace-nowrap @sm:pr-2.5'
+                  >
+                    <span className='text-[10px] leading-[15px]'>in</span>
+                    <span className='text-[10px] leading-[15px]'>out</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Middle: 24h latency/success combo chart + headline numbers */}
+        <ModelCardMetrics perf={props.perf} visible={inView} />
       </CardContent>
     </Card>
   )
