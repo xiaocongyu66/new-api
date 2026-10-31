@@ -161,15 +161,28 @@ func SubscriptionVmqNotify(c contract.Context) {
 		return
 	}
 
+	LockOrder(tradeNo)
+	defer UnlockOrder(tradeNo)
+
 	notifyMoney, parseErr := decimal.NewFromString(params["price"])
 	orderMoney := decimal.NewFromFloat(order.Money).Round(2)
 	if parseErr != nil || !notifyMoney.Round(2).Equals(orderMoney) {
 		_ = c.String(http.StatusOK, "fail")
 		return
 	}
+	if reallyPrice := params["reallyPrice"]; reallyPrice != "" {
+		paidMoney, perr := decimal.NewFromString(reallyPrice)
+		if perr != nil {
+			_ = c.String(http.StatusOK, "fail")
+			return
+		}
+		diff := paidMoney.Round(2).Sub(orderMoney).Abs()
+		if diff.GreaterThan(decimal.NewFromFloat(0.10)) {
+			_ = c.String(http.StatusOK, "fail")
+			return
+		}
+	}
 
-	LockOrder(tradeNo)
-	defer UnlockOrder(tradeNo)
 	if err := CompleteSubscriptionOrder(tradeNo, common.GetJsonString(params), PaymentProviderVmq, ""); err != nil {
 		_ = c.String(http.StatusOK, "fail")
 		return

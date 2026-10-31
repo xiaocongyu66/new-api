@@ -104,7 +104,7 @@ func TestRechargeTopUpVmqAmountMismatch(t *testing.T) {
 	}
 	require.NoError(t, dbx.DB.Create(topUp).Error)
 
-	alreadyDone, err := rechargeTopUp(tradeNo, PaymentProviderVmq, "", "10.01", "127.0.0.1")
+	alreadyDone, err := rechargeTopUp(tradeNo, PaymentProviderVmq, "", "10.01", "", 0, "127.0.0.1")
 	assert.ErrorIs(t, err, ErrPaymentAmountMismatch)
 	assert.False(t, alreadyDone)
 
@@ -138,7 +138,7 @@ func TestRechargeTopUpVmqCreditsExactlyOnce(t *testing.T) {
 	}
 	require.NoError(t, dbx.DB.Create(topUp).Error)
 
-	alreadyDone, err := rechargeTopUp(tradeNo, PaymentProviderVmq, "", "10.00", "127.0.0.1")
+	alreadyDone, err := rechargeTopUp(tradeNo, PaymentProviderVmq, "", "10.00", "", 0, "127.0.0.1")
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
 	assert.Equal(t, 2*500000, getUserQuotaForPaymentGuardTest(t, user.Id))
@@ -149,10 +149,56 @@ func TestRechargeTopUpVmqCreditsExactlyOnce(t *testing.T) {
 	assert.NotZero(t, reloaded.CompleteTime)
 
 	// Repeat callback is a no-op (idempotent), no double credit.
-	alreadyDone, err = rechargeTopUp(tradeNo, PaymentProviderVmq, "", "10.00", "127.0.0.1")
+	alreadyDone, err = rechargeTopUp(tradeNo, PaymentProviderVmq, "", "10.00", "", 0, "127.0.0.1")
 	require.NoError(t, err)
 	assert.True(t, alreadyDone)
 	assert.Equal(t, 2*500000, getUserQuotaForPaymentGuardTest(t, user.Id))
+}
+
+// TestRechargeTopUpVmqReallyPriceTolerance verifies V免签 reallyPrice is checked
+// against the order money within the ±0.10 tolerance: a much smaller reallyPrice
+// is rejected (order stays pending, no credit), while money+0.01 is accepted.
+func TestRechargeTopUpVmqReallyPriceTolerance(t *testing.T) {
+	truncateTables(t)
+
+	oldQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 500000
+	t.Cleanup(func() { common.QuotaPerUnit = oldQuotaPerUnit })
+
+	user := insertUserForPaymentGuardTest(t, 603, 0)
+	tradeNo := "VMQTESTREALLY"
+	topUp := &TopUp{
+		UserId:          user.Id,
+		Amount:          2,
+		Money:           10.00,
+		TradeNo:         tradeNo,
+		PaymentMethod:   PaymentMethodVmqAlipay,
+		PaymentProvider: PaymentProviderVmq,
+		CreateTime:      common.GetTimestamp(),
+		Status:          common.TopUpStatusPending,
+	}
+	require.NoError(t, dbx.DB.Create(topUp).Error)
+
+	// reallyPrice far below order money → rejected, order stays pending, no credit.
+	alreadyDone, err := rechargeTopUp(tradeNo, PaymentProviderVmq, "", "10.00", "0.01", 0.10, "127.0.0.1")
+	assert.ErrorIs(t, err, ErrPaymentAmountMismatch)
+	assert.False(t, alreadyDone)
+	reloaded := GetTopUpByTradeNo(tradeNo)
+	require.NotNil(t, reloaded)
+	assert.Equal(t, common.TopUpStatusPending, reloaded.Status)
+	assert.Zero(t, reloaded.CompleteTime)
+	assert.Equal(t, 0, getUserQuotaForPaymentGuardTest(t, user.Id))
+
+	// reallyPrice = money + 0.01 (within tolerance) → accepted and credited.
+	alreadyDone, err = rechargeTopUp(tradeNo, PaymentProviderVmq, "", "10.00", "10.01", 0.10, "127.0.0.1")
+	require.NoError(t, err)
+	assert.False(t, alreadyDone)
+	assert.Equal(t, 2*500000, getUserQuotaForPaymentGuardTest(t, user.Id))
+
+	reloaded = GetTopUpByTradeNo(tradeNo)
+	require.NotNil(t, reloaded)
+	assert.Equal(t, common.TopUpStatusSuccess, reloaded.Status)
+	assert.NotZero(t, reloaded.CompleteTime)
 }
 
 // TestRechargeTopUpRejectsProviderMismatch verifies an epay order hit through

@@ -787,7 +787,7 @@ func VmqNotify(c contract.Context) {
 	// 进程内锁只是优化；正确性由 rechargeTopUp 的数据库行锁保证。
 	LockOrder(tradeNo)
 	defer UnlockOrder(tradeNo)
-	alreadyDone, err := rechargeTopUp(tradeNo, PaymentProviderVmq, "", params["price"], c.ClientIP())
+	alreadyDone, err := rechargeTopUp(tradeNo, PaymentProviderVmq, "", params["price"], params["reallyPrice"], 0.10, c.ClientIP())
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrTopUpNotFound):
@@ -874,7 +874,7 @@ func CodePayNotify(c contract.Context) {
 	// 进程内锁只是优化；正确性由 rechargeTopUp 的数据库行锁保证。
 	LockOrder(tradeNo)
 	defer UnlockOrder(tradeNo)
-	alreadyDone, err := rechargeTopUp(tradeNo, PaymentProviderCodePay, "", params["price"], c.ClientIP())
+	alreadyDone, err := rechargeTopUp(tradeNo, PaymentProviderCodePay, "", params["price"], "", 0, c.ClientIP())
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrTopUpNotFound):

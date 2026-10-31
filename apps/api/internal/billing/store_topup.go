@@ -138,8 +138,10 @@ func (topUp *TopUp) Update() error {
 // 幂等已完成、状态校验、回调金额与订单金额的分精度比对、额度入账与日志。
 // expectedPaymentProvider 防御跨网关回调攻击；actualPaymentMethod 更新订单实际支付方式（空则跳过）。
 // notifyPrice 为网关回调原票价（Vmq 的 price / CodePay 的 price），epay 传空不校验金额。
-// 金额不符时订单保持待支付、不入账，返回 ErrPaymentAmountMismatch。
-func rechargeTopUp(tradeNo string, expectedPaymentProvider string, actualPaymentMethod string, notifyPrice string, callerIp string) (alreadyDone bool, err error) {
+// paidAmount 是网关实际到账金额（Vmq 的 reallyPrice），空则不校验；paidTolerance 是
+// 允许的与 order.Money 的最大绝对偏差（元，2 位小数）。金额不符时订单保持待支付、
+// 不入账，返回 ErrPaymentAmountMismatch。
+func rechargeTopUp(tradeNo string, expectedPaymentProvider string, actualPaymentMethod string, notifyPrice string, paidAmount string, paidTolerance float64, callerIp string) (alreadyDone bool, err error) {
 	if tradeNo == "" {
 		return false, errors.New("未提供支付单号")
 	}
@@ -172,6 +174,17 @@ func rechargeTopUp(tradeNo string, expectedPaymentProvider string, actualPayment
 			}
 			orderMoney := decimal.NewFromFloat(topUp.Money).Round(2)
 			if !notifyMoney.Round(2).Equals(orderMoney) {
+				return ErrPaymentAmountMismatch
+			}
+		}
+		if paidAmount != "" {
+			paidMoney, perr := decimal.NewFromString(paidAmount)
+			if perr != nil {
+				return ErrPaymentAmountMismatch
+			}
+			orderMoney := decimal.NewFromFloat(topUp.Money).Round(2)
+			diff := paidMoney.Round(2).Sub(orderMoney).Abs()
+			if diff.GreaterThan(decimal.NewFromFloat(paidTolerance)) {
 				return ErrPaymentAmountMismatch
 			}
 		}
@@ -213,7 +226,7 @@ func rechargeTopUp(tradeNo string, expectedPaymentProvider string, actualPayment
 // alreadyDone=true 表示订单此前已完成，本次为幂等重复回调。
 // 进程内的 LockOrder 只是优化，正确性由本函数的数据库行锁保证。
 func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (alreadyDone bool, err error) {
-	return rechargeTopUp(tradeNo, PaymentProviderEpay, actualPaymentMethod, "", callerIp)
+	return rechargeTopUp(tradeNo, PaymentProviderEpay, actualPaymentMethod, "", "", 0, callerIp)
 }
 
 // topUpQueryWindowSeconds 限制充值记录查询的时间窗口（秒）。
@@ -526,7 +539,7 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 	quotacache.SyncCredit(topUp.UserId, quotaToAdd, "waffo topup")
 
 	if quotaToAdd > 0 {
-		usage.RecordTopupLog(topUp.UserId, fmt.Sprintf("Waffo充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodWaffo)
+		usage.RecordTopupLog(topUp.UserId, fmt.Sprintf("Waffo充值成功，充值额度: %v，支付金额：%.2f", logger.FormatQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodWaffo)
 	}
 
 	return nil
