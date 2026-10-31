@@ -1256,3 +1256,63 @@ html.dark body[data-app-background='true'] {
     display: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Model-square card combo chart entrance animations.
+   The line draws itself, bars grow from the baseline, dots pop in last.
+   All three are disabled under prefers-reduced-motion.
+   --------------------------------------------------------------------------- */
+
+@keyframes card-chart-line-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes card-chart-bar-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes card-chart-dot-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.card-chart-line {
+  stroke-dasharray: 1;
+  animation: card-chart-line-draw 750ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.card-chart-bar {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: card-chart-bar-grow 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.card-chart-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: card-chart-dot-pop 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-chart-line,
+  .card-chart-bar,
+  .card-chart-dot {
+    animation: none;
+  }
+}

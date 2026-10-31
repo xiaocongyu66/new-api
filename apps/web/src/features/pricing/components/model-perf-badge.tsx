@@ -22,11 +22,20 @@ import { useTranslation } from 'react-i18next'
 import { getSuccessRateDotClass } from '@/features/performance-metrics/lib/format'
 import { cn } from '@/lib/utils'
 
+// One point of the downsampled hourly timeline the model-square card combo
+// chart draws. ts is a unix second; latency_ms is the bucket mean.
+export type ModelPerfTrendPoint = {
+  ts: number
+  latency_ms: number
+  success_rate: number
+}
+
 export type ModelPerfBadgeData = {
   avg_latency_ms: number
   success_rate: number
   avg_tps: number
   recent_success_rates?: number[]
+  recent_series?: ModelPerfTrendPoint[]
 }
 
 export interface ModelPerfBadgeProps extends React.HTMLAttributes<HTMLDivElement> {

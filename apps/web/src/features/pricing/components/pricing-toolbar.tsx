@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ArrowUpDown, Check, Filter, Grid2X2, Table2 } from 'lucide-react'
+import { ArrowUpDown, Check, Filter, Grid2X2, Table2, TrendingDown } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -39,12 +39,13 @@ import { cn } from '@/lib/utils'
 import { sideDrawerContentClassName, sideDrawerFormClassName } from '@/components/drawer-layout'
 
 import {
+  SORT_OPTIONS,
   VIEW_MODES,
   getSortLabels,
   type SortOption,
   type ViewMode,
 } from '../constants'
-import type { PricingModel, PricingVendor, TokenUnit } from '../types'
+import type { PricingModel, PricingVendor } from '../types'
 import { PricingSidebar } from './pricing-sidebar'
 
 type SegmentOption = {
@@ -58,10 +59,6 @@ export interface PricingToolbarProps {
   filteredCount: number
   sortBy: string
   onSortChange: (value: string) => void
-  tokenUnit: TokenUnit
-  onTokenUnitChange: (value: TokenUnit) => void
-  showRechargePrice: boolean
-  onRechargePriceChange: (value: boolean) => void
   viewMode: ViewMode
   onViewModeChange: (value: ViewMode) => void
   quotaTypeFilter: string
@@ -134,25 +131,16 @@ export function PricingToolbar(props: PricingToolbarProps) {
   const { t } = useTranslation()
   const sortLabels = getSortLabels(t)
   const [filtersOpen, setFiltersOpen] = useState(false)
-  const handleTokenUnitChange = useCallback(
-    (value: string) => props.onTokenUnitChange(value as TokenUnit),
-    [props]
-  )
 
   const handleViewModeChange = useCallback(
     (value: string) => props.onViewModeChange(value as ViewMode),
     [props]
   )
 
-  const handleRechargePriceChange = useCallback(
-    (value: string) => props.onRechargePriceChange(value === 'recharge'),
-    [props]
-  )
-
   return (
     <Card size='sm'>
       <CardContent className='space-y-3'>
-      <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
+      <div className='flex items-center justify-between gap-2'>
         <div className='flex items-center gap-2'>
           <div role='status' aria-live='polite' className='sr-only'>
             {t('Filter')} {props.filteredCount.toLocaleString()}
@@ -199,28 +187,7 @@ export function PricingToolbar(props: PricingToolbarProps) {
           </Sheet>
         </div>
 
-        <div className='flex flex-wrap items-center gap-2'>
-          <div className='flex flex-wrap items-center gap-2'>
-            <SegmentedControl
-              options={[
-                { value: 'standard', label: t('Standard') },
-                { value: 'recharge', label: t('Recharge') },
-              ]}
-              value={props.showRechargePrice ? 'recharge' : 'standard'}
-              onChange={handleRechargePriceChange}
-              ariaLabel={t('Price display mode')}
-            />
-            <SegmentedControl
-              options={[
-                { value: 'M', label: '/1M' },
-                { value: 'K', label: '/1K' },
-              ]}
-              value={props.tokenUnit}
-              onChange={handleTokenUnitChange}
-              ariaLabel={t('Token unit')}
-            />
-          </div>
-
+        <div className='flex items-center gap-2'>
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -229,11 +196,14 @@ export function PricingToolbar(props: PricingToolbarProps) {
                   variant='outline'
                   size='sm'
                   className='h-8 gap-1.5 px-3 text-xs'
+                  aria-label={sortLabels[props.sortBy as SortOption] || t('Sort')}
                 />
               }
             >
               <ArrowUpDown className='size-3.5' />
-              <span>{sortLabels[props.sortBy as SortOption] || t('Sort')}</span>
+              <span className='hidden sm:inline'>
+                {sortLabels[props.sortBy as SortOption] || t('Sort')}
+              </span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align='end' className='w-44'>
               {Object.entries(sortLabels).map(([value, label]) => (
@@ -253,6 +223,29 @@ export function PricingToolbar(props: PricingToolbarProps) {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <Button
+            type='button'
+            variant={
+              props.sortBy === SORT_OPTIONS.SUCCESS_RATE
+                ? 'secondary'
+                : 'outline'
+            }
+            size='sm'
+            className='h-8 gap-1.5 px-2.5 text-xs'
+            aria-label={props.sortBy === SORT_OPTIONS.SUCCESS_RATE ? t('Sort by Name') : t('Success rate: High to Low')}
+            aria-pressed={props.sortBy === SORT_OPTIONS.SUCCESS_RATE}
+            onClick={() =>
+              props.onSortChange(
+                props.sortBy === SORT_OPTIONS.SUCCESS_RATE
+                  ? SORT_OPTIONS.NAME
+                  : SORT_OPTIONS.SUCCESS_RATE
+              )
+            }
+          >
+            <TrendingDown className='size-3.5' />
+            <span className='hidden sm:inline'>{t('Success rate')}</span>
+          </Button>
 
           <SegmentedControl
             options={[
