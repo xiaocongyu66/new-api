@@ -34,6 +34,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
+import { openPaymentUrl } from '@/features/wallet/lib'
 import { formatQuota } from '@/lib/format'
 
 import {
@@ -45,8 +46,6 @@ import {
   paySubscriptionCodePay,
   paySubscriptionBalance,
 } from '../../api'
-import { openPaymentUrl } from '../../wallet/lib'
-
 import { formatPlanPrice } from '../../lib'
 import { formatDuration, formatResetPeriod } from '../../lib'
 import type { PlanRecord } from '../../types'
