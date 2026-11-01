@@ -6123,7 +6123,7 @@
     "Empty reply": "Phản hồi trống",
     "Full price": "Tính đủ phí",
     "home.policy.empty.body": "Khi mô hình trả về phản hồi trống (HTTP 200 nhưng không có nội dung), yêu cầu vẫn bị tính một phần phí để bù chi phí định tuyến và điều phối.",
-    "home.policy.empty.item.adjustable": "Ghi chú hệ số: do trang web cấu hình",
+    "home.policy.empty.item.adjustable": "Ghi chú hệ số: 0 là miễn phí, 1 là trừ phí yêu cầu này, thực tế trừ: {{multiplier}}",
     "home.policy.empty.item.rate": "Phí thông thường x {{multiplier}}",
     "home.policy.empty.item.scope": "Theo lần gọi / theo token x {{multiplier}}",
     "home.policy.empty.title": "Phí phản hồi trống",

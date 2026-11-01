@@ -6123,7 +6123,7 @@
     "Empty reply": "Пустой ответ",
     "Full price": "Полная стоимость",
     "home.policy.empty.body": "Если модель возвращает пустой ответ (HTTP 200 без содержимого), запрос всё равно тарифицируется частично — для покрытия расходов на маршрутизацию и планирование.",
-    "home.policy.empty.item.adjustable": "Примечание о множителе: настраивается сайтом",
+    "home.policy.empty.item.adjustable": "Примечание о множителе: 0 — освобождение от оплаты, 1 — списание стоимости этого запроса, фактическое списание: {{multiplier}}",
     "home.policy.empty.item.rate": "Обычная стоимость x {{multiplier}}",
     "home.policy.empty.item.scope": "За вызов / за токены x {{multiplier}}",
     "home.policy.empty.title": "Плата за пустые ответы",

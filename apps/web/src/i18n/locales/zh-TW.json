@@ -6127,7 +6127,7 @@
     "Empty reply": "空回",
     "Full price": "按原價扣費",
     "home.policy.empty.body": "當模型回傳空回應（HTTP 200 但沒有任何內容產出）時，請求仍會產生少量費用，用於覆蓋線路與調度成本。",
-    "home.policy.empty.item.adjustable": "倍率說明：由站點統一配置",
+    "home.policy.empty.item.adjustable": "倍率說明：0 代表免除費用，1 代表扣除這次請求費用，當前實際的扣除費用是 {{multiplier}}",
     "home.policy.empty.item.rate": "原本收費的費用 x {{multiplier}}",
     "home.policy.empty.item.scope": "按次/按量 x {{multiplier}}",
     "home.policy.empty.title": "空回覆扣費",
