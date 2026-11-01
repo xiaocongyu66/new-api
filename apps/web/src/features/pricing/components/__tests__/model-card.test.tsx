@@ -31,8 +31,8 @@ mock.module('@/lib/lobe-icon', () => ({
 }))
 
 // happy-dom ships a clipboard object without writeText, and no execCommand, so
-// the copy button's real write path needs a boundary stub. The model name the
-// stub records is asserted below, which keeps the test on the user-visible
+// the copy button's real write path needs a boundary fake. The model name the
+// fake records is asserted below, which keeps the test on the user-visible
 // contract ("copying does not also open details").
 const clipboardWrites: string[] = []
 const originalClipboard = Object.getOwnPropertyDescriptor(
@@ -143,10 +143,11 @@ describe('Model square card as a single activation surface', () => {
       /^View details · gpt-4o$/
     )
 
-    // The old header action is gone: the card itself is the only trigger.
+    // The card is the details trigger; the copy button and the table
+    // collapse button are independent focusable controls inside it.
     const cardButtons = [
       ...mounted.container.querySelectorAll<HTMLElement>(
-        '[data-slot="button"]'
+        'button'
       ),
     ]
     assert.equal(
@@ -154,7 +155,7 @@ describe('Model square card as a single activation surface', () => {
         .length,
       0
     )
-    assert.equal(cardButtons.length, 1, 'only the copy action remains')
+    assert.equal(cardButtons.length, 2, 'copy button + table collapse button')
 
     assert.equal(card.textContent?.includes(MODEL_NAME), true)
 
@@ -185,7 +186,7 @@ describe('Model square card as a single activation surface', () => {
 
     clipboardWrites.length = 0
     const copyButton = mounted.container.querySelector<HTMLElement>(
-      'button[aria-label="Copy model name"]'
+      'button[aria-label^="Copy model name"]'
     )
     assert.ok(copyButton)
     await act(async () => {
@@ -193,6 +194,29 @@ describe('Model square card as a single activation surface', () => {
     })
     assert.deepEqual(mounted.clicks, [MODEL_NAME, MODEL_NAME])
     assert.deepEqual(clipboardWrites, [MODEL_NAME])
+
+    await unmountCard(mounted)
+  })
+
+  test('swaps the title copy icon to a check after a successful copy', async () => {
+    const mounted = await mountCard()
+    const copyButton = mounted.container.querySelector<HTMLElement>(
+      'button[aria-label^="Copy model name"]'
+    )
+    assert.ok(copyButton)
+    // The test clipboard stub succeeds, so the button should show the check
+    // icon right after the click.
+    await act(async () => {
+      copyButton.click()
+    })
+    assert.ok(copyButton.querySelector('svg.lucide-check'))
+    assert.equal(copyButton.querySelectorAll('svg.lucide-copy').length, 0)
+    // The check is temporary: the button reverts to the copy icon.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1600))
+    })
+    assert.ok(copyButton.querySelector('svg.lucide-copy'))
+    assert.equal(copyButton.querySelectorAll('svg.lucide-check').length, 0)
 
     await unmountCard(mounted)
   })
@@ -241,12 +265,16 @@ describe('Model square card as a single activation surface', () => {
     const mounted = await mountCard()
 
     const copyButton = mounted.container.querySelector<HTMLElement>(
-      'button[aria-label="Copy model name"]'
+      'button[aria-label^="Copy model name"]'
     )
     assert.ok(copyButton)
-    assert.equal(copyButton.getAttribute('aria-label'), 'Copy model name')
+    // The label names the action and identifies which model it copies.
+    const copyLabel = copyButton.getAttribute('aria-label') ?? ''
+    assert.ok(copyLabel.startsWith('Copy model name'))
+    assert.ok(copyLabel.includes(MODEL_NAME))
     assert.equal(copyButton.tabIndex, 0)
-    assert.equal(copyButton.textContent?.trim(), '')
+    // The button is the card title: its text carries the model name.
+    assert.ok(copyButton.textContent?.includes(MODEL_NAME))
 
     // Copying through the keyboard must not reach the card handler either.
     await act(async () => {

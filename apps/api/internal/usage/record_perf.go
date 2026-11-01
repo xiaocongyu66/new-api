@@ -66,7 +66,19 @@ type ModelSummary struct {
 	SuccessRate        float64   `json:"success_rate"`
 	AvgTps             float64   `json:"avg_tps"`
 	RecentSuccessRates []float64 `json:"recent_success_rates,omitempty"`
-	RequestCount       int64     `json:"-"`
+	// RecentSeries is a downsampled latency/success timeline over the query
+	// window (last RecentSeriesPoints hourly buckets). It lets the model
+	// square draw per-card trend charts from the single summary request
+	// instead of one per-model request per visible card.
+	RecentSeries []ModelRecentPoint `json:"recent_series,omitempty"`
+	RequestCount int64              `json:"-"`
+}
+
+// ModelRecentPoint is one hourly bucket of a model's latency and success rate.
+type ModelRecentPoint struct {
+	Ts          int64   `json:"ts"`
+	LatencyMs   int64   `json:"latency_ms"`
+	SuccessRate float64 `json:"success_rate"`
 }
 
 type SummaryAllResult struct {
@@ -395,6 +407,7 @@ func QuerySummaryAll(hours int, groups []string) (SummaryAllResult, error) {
 			SuccessRate:        math.Round(successRate*100) / 100,
 			AvgTps:             math.Round(avgTps*100) / 100,
 			RecentSuccessRates: recentSuccessRates(modelBuckets[name], 3),
+			RecentSeries:       recentSeries(modelBuckets[name], recentSeriesPoints),
 			RequestCount:       total.requestCount,
 		})
 	}
@@ -436,6 +449,55 @@ func mergeModelBucket(modelBuckets map[string]map[int64]counters, modelName stri
 	current.outputTokens += value.outputTokens
 	current.generationMs += value.generationMs
 	modelBuckets[modelName][bucketTs] = current
+}
+
+// recentSeriesPoints is how many hourly buckets the per-card trend carries.
+// The card chart draws a full day, so the series is dense: every bucket in
+// the window is present and quiet hours are filled with zero latency and a
+// 100% success rate, mirroring how the details chart reads an idle hour
+// (no failed requests, no measured latency).
+const recentSeriesPoints = 24
+
+// recentSeries renders a model's hourly buckets as a fixed-length timeline,
+// oldest first. Missing hours are filled so the x axis always spans a full
+// day even when the model only had traffic in part of it.
+func recentSeries(buckets map[int64]counters, limit int) []ModelRecentPoint {
+	if limit <= 0 {
+		return nil
+	}
+	newest := int64(0)
+	for ts := range buckets {
+		if ts > newest {
+			newest = ts
+		}
+	}
+	if newest == 0 {
+		return nil
+	}
+	latest := bucketStart(time.Now().Unix())
+	if newest > latest {
+		latest = newest
+	}
+	bucketSeconds := GetBucketSeconds()
+	if bucketSeconds <= 0 {
+		bucketSeconds = 3600
+	}
+
+	points := make([]ModelRecentPoint, 0, limit)
+	for offset := int64(limit - 1); offset >= 0; offset-- {
+		ts := latest - offset*bucketSeconds
+		b := buckets[ts]
+		if b.requestCount == 0 {
+			points = append(points, ModelRecentPoint{Ts: ts, SuccessRate: 100})
+			continue
+		}
+		points = append(points, ModelRecentPoint{
+			Ts:          ts,
+			LatencyMs:   b.totalLatencyMs / b.requestCount,
+			SuccessRate: math.Round(successRate(b)*100) / 100,
+		})
+	}
+	return points
 }
 
 func recentSuccessRates(buckets map[int64]counters, limit int) []float64 {

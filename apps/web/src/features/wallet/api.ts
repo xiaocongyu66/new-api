@@ -180,6 +180,35 @@ export async function requestWaffoPancakePayment(
   } as Record<string, unknown>)
   return res.data
 }
+/**
+ * Request VMQ (V免签) payment
+ */
+export async function requestVmqPayment(
+  request: PaymentRequest
+): Promise<PaymentResponse> {
+  const res = await api.post('/api/user/vmq/pay', request, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return {
+    ...res.data,
+    url: res.data.url || (res as unknown as { url?: string }).url,
+  }
+}
+
+/**
+ * Request CodePay payment
+ */
+export async function requestCodePayPayment(
+  request: PaymentRequest
+): Promise<PaymentResponse> {
+  const res = await api.post('/api/user/codepay/pay', request, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return {
+    ...res.data,
+    url: res.data.url || (res as unknown as { url?: string }).url,
+  }
+}
 
 /**
  * Get affiliate code

@@ -45,6 +45,7 @@ import {
   type RequestRuleTrace,
   type TierCondition,
 } from '../lib/billing-expr'
+import { formatTokenCountHint } from '../lib/dynamic-price'
 
 type DynamicPricingBreakdownProps = {
   billingExpr: string | null | undefined
@@ -89,18 +90,6 @@ const TIME_FUNC_LABELS: Record<string, string> = {
   day: 'Day',
 }
 
-function formatTokenHint(value: string | number): string {
-  const n = Number(value)
-  if (!Number.isFinite(n) || n === 0) return ''
-  if (n >= 1_000_000) {
-    return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`
-  }
-  if (n >= 1000) {
-    return `${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}K`
-  }
-  return String(n)
-}
-
 function formatConditionSummary(
   conditions: TierCondition[],
   t: (key: string) => string
@@ -108,7 +97,7 @@ function formatConditionSummary(
   return conditions
     .map((c) => {
       const varLabel = t(VAR_LABELS[c.var] || c.var)
-      const hint = formatTokenHint(c.value)
+      const hint = formatTokenCountHint(c.value)
       return `${varLabel} ${OP_LABELS[c.op] || c.op} ${hint || c.value}`
     })
     .filter(Boolean)
@@ -336,7 +325,7 @@ export function DynamicPricingBreakdown({
                             )}
                           >
                             {value > 0
-                              ? `${symbol}${(value * rate).toFixed(4)}`
+                              ? `${symbol}${(value * rate).toFixed(4)}${v.isPerRequest ? ` / ${t('request')}` : ''}`
                               : '-'}
                           </div>
                         </div>
@@ -425,7 +414,7 @@ export function DynamicPricingBreakdown({
                   )
                   return value > 0 ? (
                     <span className={cn(!compact && 'font-semibold')}>
-                      {`${symbol}${(value * rate).toFixed(4)}`}
+                      {`${symbol}${(value * rate).toFixed(4)}${v.isPerRequest ? ` / ${t('request')}` : ''}`}
                     </span>
                   ) : (
                     '-'

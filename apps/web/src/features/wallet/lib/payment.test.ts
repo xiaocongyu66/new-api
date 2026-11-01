@@ -25,6 +25,7 @@ import {
   isStripePayment,
   isWaffoPayment,
   isWaffoPancakePayment,
+  paymentMethodKey,
 } from './payment'
 
 describe('payment type classification', () => {
@@ -82,5 +83,58 @@ describe('payment dispatch', () => {
 
     assert.equal(success, false)
     assert.equal(called, false)
+  })
+
+  test('passes the method gateway to the regular processor', async () => {
+    const gateways: string[] = []
+    await dispatchSelectedPayment(
+      { name: 'VMQ Alipay', type: 'alipay', gateway: 'vmq' },
+      100,
+      null,
+      {
+        regular: async (_amount, _type, gateway) => {
+          gateways.push(gateway ?? '')
+          return false
+        },
+        waffo: async () => false,
+        waffoPancake: async () => false,
+      }
+    )
+    assert.deepEqual(gateways, ['vmq'])
+  })
+
+  test('defaults the regular processor gateway to epay', async () => {
+    const gateways: string[] = []
+    await dispatchSelectedPayment(
+      { name: 'Alipay', type: 'alipay' },
+      100,
+      null,
+      {
+        regular: async (_amount, _type, gateway) => {
+          gateways.push(gateway ?? '')
+          return false
+        },
+        waffo: async () => false,
+        waffoPancake: async () => false,
+      }
+    )
+    assert.deepEqual(gateways, ['epay'])
+  })
+})
+
+describe('payment method identity', () => {
+  test('distinguishes the same type routed through different gateways', () => {
+    const viaEpay = paymentMethodKey({ name: 'Alipay', type: 'alipay' })
+    const viaVmq = paymentMethodKey({
+      name: 'Alipay',
+      type: 'alipay',
+      gateway: 'vmq',
+    })
+
+    assert.notEqual(viaEpay, viaVmq)
+    assert.equal(
+      viaEpay,
+      paymentMethodKey({ name: 'Alipay', type: 'alipay', gateway: 'epay' })
+    )
   })
 })

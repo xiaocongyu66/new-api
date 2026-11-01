@@ -46,6 +46,7 @@ import {
   getDefaultPaymentType,
   getMinTopupAmount,
   dispatchSelectedPayment,
+  paymentMethodKey,
 } from './lib'
 import type {
   UserWalletData,
@@ -173,7 +174,7 @@ export function Wallet(props: WalletProps) {
   const handlePaymentMethodSelect = async (method: PaymentMethod) => {
     setSelectedPaymentMethod(method)
     setSelectedWaffoMethodIndex(null)
-    setPaymentLoading(method.type)
+    setPaymentLoading(paymentMethodKey(method))
 
     try {
       // Validate minimum topup
@@ -329,6 +330,8 @@ export function Wallet(props: WalletProps) {
                   enableWaffoPancakeTopup={
                     topupInfo?.enable_waffo_pancake_topup
                   }
+                  enableVmqTopup={topupInfo?.enable_vmq_topup}
+                  enableCodePayTopup={topupInfo?.enable_codepay_topup}
                 />
               </div>
 

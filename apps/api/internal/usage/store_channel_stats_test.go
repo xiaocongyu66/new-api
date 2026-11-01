@@ -15,8 +15,14 @@ func setupChannelStatsDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
 	previousLogDB := dbx.LogDB
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	// ":memory:" gives every pooled connection its own empty database, so a
+	// SELECT can land on a connection that never saw the seeded rows. Pin the
+	// pool to one connection with a shared-cache in-memory DSN.
+	db, err := gorm.Open(sqlite.Open("file:channel_stats_store?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
 	require.NoError(t, db.Exec(`CREATE TABLE logs (
 		id INTEGER PRIMARY KEY,
 		type INTEGER,

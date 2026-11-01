@@ -137,6 +137,10 @@ func SetApiRouter(router contract.Engine) {
 			//userRoute.POST("/tokenlog", middleware.CriticalRateLimit(), controller.TokenLog)
 			userRoute.POST("/epay/notify", anonymousRequestBodyLimit, billing.EpayNotify)
 			userRoute.GET("/epay/notify", billing.EpayNotify)
+			userRoute.POST("/vmq/notify", anonymousRequestBodyLimit, billing.VmqNotify)
+			userRoute.GET("/vmq/notify", billing.VmqNotify)
+			userRoute.POST("/codepay/notify", anonymousRequestBodyLimit, billing.CodePayNotify)
+			userRoute.GET("/codepay/notify", billing.CodePayNotify)
 			userRoute.GET("/groups", handler.GetUserGroups)
 
 			selfRoute := userRoute.Group("/")
@@ -170,6 +174,8 @@ func SetApiRouter(router contract.Engine) {
 				selfRoute.POST("/waffo/pay", middleware.CriticalRateLimit(), billing.RequestWaffoPay)
 				selfRoute.POST("/waffo-pancake/amount", billing.RequestWaffoPancakeAmount)
 				selfRoute.POST("/waffo-pancake/pay", middleware.CriticalRateLimit(), billing.RequestWaffoPancakePay)
+				selfRoute.POST("/vmq/pay", middleware.CriticalRateLimit(), billing.RequestVmqPay)
+				selfRoute.POST("/codepay/pay", middleware.CriticalRateLimit(), billing.RequestCodePayPay)
 				selfRoute.POST("/aff_transfer", middleware.UserCriticalRateLimit("aff-transfer"), billing.RequirePaymentComplianceMiddleware, identity.TransferAffQuota)
 				selfRoute.PUT("/setting", identity.UpdateUserSettingHandler)
 
@@ -260,6 +266,8 @@ func SetApiRouter(router contract.Engine) {
 			subscriptionRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), billing.SubscriptionRequestStripePay)
 			subscriptionRoute.POST("/creem/pay", middleware.CriticalRateLimit(), billing.SubscriptionRequestCreemPay)
 			subscriptionRoute.POST("/waffo-pancake/pay", middleware.CriticalRateLimit(), billing.SubscriptionRequestWaffoPancakePay)
+			subscriptionRoute.POST("/vmq/pay", middleware.CriticalRateLimit(), billing.SubscriptionRequestVmqPay)
+			subscriptionRoute.POST("/codepay/pay", middleware.CriticalRateLimit(), billing.SubscriptionRequestCodePayPay)
 		}
 		subscriptionAdminRoute := apiRouter.Group("/subscription/admin")
 		subscriptionAdminRoute.Use(security.AdminAuth())
@@ -283,6 +291,10 @@ func SetApiRouter(router contract.Engine) {
 		apiRouter.POST("/subscription/epay/notify", anonymousRequestBodyLimit, billing.SubscriptionEpayNotify)
 		apiRouter.GET("/subscription/epay/notify", billing.SubscriptionEpayNotify)
 		apiRouter.GET("/subscription/epay/return", billing.SubscriptionEpayReturn)
+		apiRouter.POST("/subscription/vmq/notify", anonymousRequestBodyLimit, billing.SubscriptionVmqNotify)
+		apiRouter.GET("/subscription/vmq/notify", billing.SubscriptionVmqNotify)
+		apiRouter.POST("/subscription/codepay/notify", anonymousRequestBodyLimit, billing.SubscriptionCodePayNotify)
+		apiRouter.GET("/subscription/codepay/notify", billing.SubscriptionCodePayNotify)
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(security.AdminAuth(), security.RequirePermission(policy.SystemSettings))
 		{

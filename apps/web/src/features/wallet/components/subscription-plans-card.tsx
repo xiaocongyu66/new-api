@@ -73,7 +73,12 @@ interface SubscriptionPlansCardProps {
 }
 function getEpayMethods(payMethods: PaymentMethod[] = []): PaymentMethod[] {
   return payMethods.filter(
-    (m) => m?.type && m.type !== 'stripe' && m.type !== 'creem'
+    (m) =>
+      m?.type &&
+      m.type !== 'stripe' &&
+      m.type !== 'creem' &&
+      m.type !== 'waffo' &&
+      m.type !== 'waffo_pancake'
   )
 }
 
@@ -122,7 +127,9 @@ export function SubscriptionPlansCard({
   const enableCreem = !!topupInfo?.enable_creem_topup
   const enableWaffoPancake = !!topupInfo?.enable_waffo_pancake_topup
   const enableOnlineTopUp = !!topupInfo?.enable_online_topup
-  const epayMethods = useMemo(
+  const enableVmqTopUp = !!topupInfo?.enable_vmq_topup
+  const enableCodePayTopUp = !!topupInfo?.enable_codepay_topup
+  const paymentMethods = useMemo(
     () => getEpayMethods(topupInfo?.pay_methods),
     [topupInfo?.pay_methods]
   )
@@ -661,7 +668,9 @@ export function SubscriptionPlansCard({
         enableCreem={enableCreem}
         enableWaffoPancake={enableWaffoPancake}
         enableOnlineTopUp={enableOnlineTopUp}
-        epayMethods={epayMethods}
+        enableVmqTopUp={enableVmqTopUp}
+        enableCodePayTopUp={enableCodePayTopUp}
+        methods={paymentMethods}
         userQuota={userQuota}
         onPurchaseSuccess={onPurchaseSuccess}
         purchaseLimit={

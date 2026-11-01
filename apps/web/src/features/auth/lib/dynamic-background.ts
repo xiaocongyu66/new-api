@@ -24,10 +24,13 @@ import {
 } from '@material/material-color-utilities'
 
 /**
- * 随机图查询端点：`/api/?type=ua&format=text` 返回一条最终图片 URL 的纯文本。
- * 自身带 Access-Control-Allow-Origin:*，可安全用 fetch 读取。
+ * 必应每日壁纸：`format=json` 返回元数据（含 image_url_4k / image_url_1080）。
+ * 接口回显请求 Origin，图片来自 cn.bing.com 且带 Access-Control-Allow-Origin:*，
+ * 因此浏览器可以直接 fetch JSON，并在 canvas 上取色。
  */
-const RANDOM_BACKGROUND_API = 'https://img-pic-api.072168.xyz/api'
+const BING_DAILY_API = 'https://uapis.cn/api/v1/image/bing-daily'
+/** 只接受必应自家图片域名，避免接口被篡改后把页面指向任意地址。 */
+const BING_IMAGE_HOSTNAMES = new Set(['cn.bing.com', 'www.bing.com', 'bing.com'])
 
 /**
  * 新版 Scheme 类型才包含 surface-container 系列角色，旧类型没有；
@@ -166,23 +169,36 @@ function persistFreshImage(url: string, signal: AbortSignal): void {
     .catch(() => {})
 }
 
-function parseBackgroundUrl(text: string): string {
-  for (const line of text.split(/\r?\n/)) {
+/**
+ * 手机端优先 1080 宽、桌面端优先 4K：视口宽度是主判据，UA 只作兜底，
+ * 这样平板横屏不会被 UA 误判，手机也能拿到足够清晰的图。
+ */
+function prefersMobileWallpaper(): boolean {
+  if (window.matchMedia?.('(max-width: 768px)')?.matches) return true
+  return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+}
+
+function parseBingImageUrl(payload: unknown): string {
+  if (typeof payload !== 'object' || payload === null) {
+    throw new Error('Invalid background payload')
+  }
+  const record = payload as Record<string, unknown>
+  const candidates = [record.image_url_4k, record.image_url_1080, record.image_url]
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') continue
     try {
-      const url = new URL(line.trim())
+      const url = new URL(candidate)
       if (
-        url.origin === 'https://img-pic-api.072168.xyz' &&
+        url.protocol === 'https:' &&
+        BING_IMAGE_HOSTNAMES.has(url.hostname) &&
         !url.username &&
         !url.password &&
-        url.pathname.startsWith('/images/') &&
-        url.pathname.length > '/images/'.length &&
-        !url.search &&
-        !url.hash
+        url.pathname.startsWith('/th')
       ) {
         return url.href
       }
     } catch {
-      // The text endpoint can include blank lines or non-URL text.
+      // Skip malformed candidates and try the next one.
     }
   }
   throw new Error('No allowed background image URL')
@@ -238,8 +254,9 @@ function createBackgroundResource(): BackgroundResource {
     promise: (async () => {
       const timeout = window.setTimeout(() => controller.abort(), 12000)
       try {
+        const resolution = prefersMobileWallpaper() ? '1080' : '4k'
         const response = await fetch(
-          `${RANDOM_BACKGROUND_API}/?type=ua&format=text`,
+          `${BING_DAILY_API}?format=json&resolution=${resolution}`,
           {
             cache: 'no-store',
             credentials: 'omit',
@@ -249,7 +266,7 @@ function createBackgroundResource(): BackgroundResource {
           }
         )
         if (!response.ok) throw new Error('Background query unavailable')
-        const url = parseBackgroundUrl(await response.text())
+        const url = parseBingImageUrl(await response.json())
         window.clearTimeout(timeout)
         const image = await loadBackgroundImage(url, controller.signal)
         persistFreshImage(url, controller.signal)

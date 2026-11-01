@@ -553,6 +553,9 @@ function ChannelMutateDrawerContent({
   >(null)
   const channelFormRef = useRef<HTMLFormElement>(null)
   const editorScrollContainerRef = useRef<HTMLElement | null>(null)
+  const editorNavClickLockRef = useRef<{ id: string; top: number } | null>(
+    null
+  )
   const [activeEditorSectionId, setActiveEditorSectionId] = useState<string>(
     CHANNEL_EDITOR_SECTION_IDS.identity
   )
@@ -623,7 +626,7 @@ function ChannelMutateDrawerContent({
   const resetEditorState = useCallback(() => {
     form.reset(CHANNEL_FORM_DEFAULT_VALUES)
     setActiveEditorSectionId(CHANNEL_EDITOR_SECTION_IDS.identity)
-
+    editorNavClickLockRef.current = null
   }, [form])
 
   // Watch form values for conditional rendering (useWatch for precise per-field subscription)
@@ -1601,7 +1604,9 @@ function ChannelMutateDrawerContent({
     const formElement = channelFormRef.current
     if (!formElement) return null
 
-    let scroller = formElement.parentElement
+    // In drawer presentation the form itself is the scroller; in inline
+    // presentation it is `overflow-visible` and the page container scrolls.
+    let scroller: HTMLElement | null = formElement
     while (scroller) {
       const { overflowY } = window.getComputedStyle(scroller)
       if (overflowY === 'auto' || overflowY === 'scroll') {
@@ -1620,40 +1625,24 @@ function ChannelMutateDrawerContent({
         editorScrollContainerRef.current ?? getEditorScrollContainer()
       if (!scroller) return
       editorScrollContainerRef.current = scroller
-      // Scope lookups to this drawer's form: the inline create form can be
-      // mounted at the same time and carries the same section ids, so a
-      // document-wide query can resolve to the hidden copy.
-      const findSection = () =>
-        channelFormRef.current?.querySelector<HTMLElement>(`#${targetId}`) ??
-        null
-      const targetElement = findSection()
-      if (!targetElement) {
-        // Section may not be committed yet: poll the DOM for a few frames.
-        let attempts = 0
-        const retry = () => {
-          const el = findSection()
-          if (el) {
-            const scrollerTop = scroller.getBoundingClientRect().top
-            const targetTop = el.getBoundingClientRect().top
-            scroller.scrollTo({
-              top: Math.max(0, scroller.scrollTop + targetTop - scrollerTop - 16),
-              behavior: 'auto',
-            })
-            return
-          }
-          if (attempts++ > 10) return
-          requestAnimationFrame(retry)
-        }
-        requestAnimationFrame(retry)
-        return
-      }
 
+      // The inline create tab stays mounted while the edit drawer is open, so
+      // section ids exist twice in the document; scope the lookup to this
+      // editor's own form, or the hidden copy's zero-height rect wins.
+      const targetElement = channelFormRef.current?.querySelector<HTMLElement>(
+        `#${targetId}`
+      )
+      if (!targetElement) return
       const scrollerTop = scroller.getBoundingClientRect().top
       const targetTop = targetElement.getBoundingClientRect().top
       scroller.scrollTo({
         top: Math.max(0, scroller.scrollTop + targetTop - scrollerTop - 16),
         behavior: 'auto',
       })
+      // Near the end of the editor the scroll clamps, so the spy would pin a
+      // different anchor than the clicked one. Hold the click's selection
+      // until the user actually scrolls away from this offset.
+      editorNavClickLockRef.current = { id: targetId, top: scroller.scrollTop }
     },
     [getEditorScrollContainer]
   )
@@ -1662,41 +1651,42 @@ function ChannelMutateDrawerContent({
     const scroller = editorScrollContainerRef.current
     if (!scroller) return
 
-    // Same scoping rule as navigation: this drawer's own form only, since the
-    // inline create form can be mounted with the same section ids.
-    const formElement = channelFormRef.current
-    if (!formElement) return
-
-    const sections = CHANNEL_EDITOR_MAIN_SECTION_IDS.map((sectionId) =>
-      formElement.querySelector<HTMLElement>(`#${sectionId}`)
-    ).filter((element): element is HTMLElement => element !== null)
-    if (sections.length === 0) return
-
-    // The last section is too short to ever reach the 80px line, so scrolling
-    // to the bottom must select it explicitly; otherwise the highlight sticks
-    // on the previous section at the end of the form.
-    if (
-      scroller.scrollTop + scroller.clientHeight >=
-      scroller.scrollHeight - 4
-    ) {
-      const lastSectionId = sections[sections.length - 1].id
-      setActiveEditorSectionId((current) =>
-        current === lastSectionId ? current : lastSectionId
-      )
-      return
+    const clickLock = editorNavClickLockRef.current
+    if (clickLock) {
+      if (Math.abs(scroller.scrollTop - clickLock.top) <= 2) {
+        setActiveEditorSectionId((current) =>
+          current === clickLock.id ? current : clickLock.id
+        )
+        return
+      }
+      editorNavClickLockRef.current = null
     }
 
     const scrollerTop = scroller.getBoundingClientRect().top
-    let nextActiveSectionId = sections[0].id
+    let nextActiveSectionId: string = CHANNEL_EDITOR_SECTION_IDS.identity
+    let lastVisibleSectionId: string = CHANNEL_EDITOR_SECTION_IDS.identity
 
-    for (const sectionElement of sections) {
+    for (const sectionId of CHANNEL_EDITOR_MAIN_SECTION_IDS) {
+      const sectionElement = channelFormRef.current?.querySelector<HTMLElement>(
+        `#${sectionId}`
+      )
+      // Field passthrough and upstream model detection only render for some
+      // channel types; skip whichever section is absent.
+      if (!sectionElement) continue
+      lastVisibleSectionId = sectionId
       const sectionTopInScroller =
         sectionElement.getBoundingClientRect().top - scrollerTop
       if (sectionTopInScroller <= 80) {
-        nextActiveSectionId = sectionElement.id
-      } else {
-        break
+        nextActiveSectionId = sectionId
       }
+    }
+
+    // The final section can be shorter than the viewport, so its top never
+    // crosses the threshold; pin the highlight to it once scrolled to end.
+    if (
+      scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4
+    ) {
+      nextActiveSectionId = lastVisibleSectionId
     }
     setActiveEditorSectionId((current) =>
       current === nextActiveSectionId ? current : nextActiveSectionId

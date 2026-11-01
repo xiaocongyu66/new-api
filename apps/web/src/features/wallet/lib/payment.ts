@@ -29,9 +29,21 @@ import type { PaymentMethod, PresetAmount, TopupInfo } from '../types'
 // ============================================================================
 
 /**
+ * Open a payment URL in a new tab, except on Safari where popup blocking
+ * makes a same-tab navigation more reliable.
+ */
+export function openPaymentUrl(url: string): void {
+  if (isSafariBrowser()) {
+    window.location.href = url
+  } else {
+    window.open(url, '_blank')
+  }
+}
+
+/**
  * Check if browser is Safari
  */
-function isSafariBrowser(): boolean {
+export function isSafariBrowser(): boolean {
   return (
     navigator.userAgent.includes('Safari') &&
     !navigator.userAgent.includes('Chrome')
@@ -69,6 +81,14 @@ export function submitPaymentForm(
 }
 
 /**
+ * Identify a configured payment method. The same type can be configured
+ * once per gateway (e.g. alipay via Epay and alipay via VMQ).
+ */
+export function paymentMethodKey(method: PaymentMethod): string {
+  return `${method.type}:${method.gateway ?? 'epay'}`
+}
+
+/**
  * Check if payment method is Stripe
  */
 export function isStripePayment(paymentType: string): boolean {
@@ -94,7 +114,11 @@ export function isWaffoPancakePayment(paymentType: string): boolean {
 }
 
 export interface PaymentProcessors {
-  regular: (topupAmount: number, paymentType: string) => Promise<boolean>
+  regular: (
+    topupAmount: number,
+    paymentType: string,
+    gateway?: string
+  ) => Promise<boolean>
   waffo: (topupAmount: number, payMethodIndex: number) => Promise<boolean>
   waffoPancake: (topupAmount: number) => Promise<boolean>
 }
@@ -116,7 +140,11 @@ export async function dispatchSelectedPayment(
     return processors.waffoPancake(topupAmount)
   }
 
-  return processors.regular(topupAmount, paymentMethod.type)
+  return processors.regular(
+    topupAmount,
+    paymentMethod.type,
+    paymentMethod.gateway ?? 'epay'
+  )
 }
 
 /**
@@ -169,6 +197,10 @@ export function getMinTopupAmount(topupInfo: TopupInfo | null): number {
 
   if (topupInfo.enable_waffo_pancake_topup) {
     return topupInfo.waffo_pancake_min_topup || DEFAULT_MIN_TOPUP
+  }
+
+  if (topupInfo.enable_vmq_topup || topupInfo.enable_codepay_topup) {
+    return topupInfo.min_topup
   }
 
   return DEFAULT_MIN_TOPUP
