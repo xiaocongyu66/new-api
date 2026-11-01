@@ -39,6 +39,7 @@ GET /api/channel/models
 GET /api/channel/models_enabled
 GET /api/channel/ollama/version/:id
 GET /api/channel/ops
+GET /api/channel/request_stats
 GET /api/channel/route_unit/
 GET /api/channel/route_unit/aliases
 GET /api/channel/search

@@ -1,0 +1,183 @@
+package handler
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
+
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
+)
+
+func withChannelStatsLogDB(t *testing.T) *gorm.DB {
+	t.Helper()
+
+	previousLogDB := dbx.LogDB
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(`CREATE TABLE logs (
+		id INTEGER PRIMARY KEY,
+		type INTEGER,
+		channel_id INTEGER,
+		prompt_tokens INTEGER,
+		completion_tokens INTEGER,
+		use_time INTEGER,
+		quota INTEGER,
+		created_at INTEGER
+	)`).Error)
+	dbx.LogDB = db
+
+	t.Cleanup(func() {
+		dbx.LogDB = previousLogDB
+		if sqlDB, err := db.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	})
+	return db
+}
+
+func seedChannelStatsLogsHandler(t *testing.T, db *gorm.DB, now int64) {
+	t.Helper()
+	require.NoError(t, db.Exec(
+		`INSERT INTO logs (type, channel_id, prompt_tokens, completion_tokens, use_time, quota, created_at) VALUES
+		 (2, 1, 100, 50, 2, 10, ?),
+		 (2, 1, 200, 300, 4, 20, ?),
+		 (5, 1, 0, 0, 0, 5, ?),
+		 (5, 2, 0, 0, 0, 3, ?)`,
+		now-100, now-200, now-300, now-400,
+	).Error)
+}
+
+func TestGetChannelRequestStatsHandler(t *testing.T) {
+	db := withChannelStatsLogDB(t)
+	now := time.Now().Unix()
+	seedChannelStatsLogsHandler(t, db, now)
+
+	doRequest := func(query string) *httptest.ResponseRecorder {
+		ctx, rec := fiberadapter.NewSyntheticContext(
+			httptest.NewRequest(http.MethodGet, "/api/channel/request_stats?"+query, nil))
+		GetChannelRequestStats(ctx)
+		return rec
+	}
+
+	unmarshal := func(t *testing.T, rec *httptest.ResponseRecorder) (int, map[string]struct {
+		RequestCount  int64   `json:"request_count"`
+		SuccessCount  int64   `json:"success_count"`
+		ErrorCount    int64   `json:"error_count"`
+		Tokens        int64   `json:"tokens"`
+		AvgDurationMs int64   `json:"avg_duration_ms"`
+		QuotaDisplay  float64 `json:"quota_display"`
+		LastRequestAt int64   `json:"last_request_at"`
+	}) {
+		t.Helper()
+		require.Equal(t, http.StatusOK, rec.Code)
+		var response struct {
+			Success bool `json:"success"`
+			Data    struct {
+				Hours    int `json:"hours"`
+				Channels map[string]struct {
+					RequestCount  int64   `json:"request_count"`
+					SuccessCount  int64   `json:"success_count"`
+					ErrorCount    int64   `json:"error_count"`
+					Tokens        int64   `json:"tokens"`
+					AvgDurationMs int64   `json:"avg_duration_ms"`
+					QuotaDisplay  float64 `json:"quota_display"`
+					LastRequestAt int64   `json:"last_request_at"`
+				} `json:"channels"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+		assert.True(t, response.Success)
+		return response.Data.Hours, response.Data.Channels
+	}
+
+	t.Run("默认 24 小时并按渠道聚合", func(t *testing.T) {
+		rec := doRequest("hours=24&channel_ids=1,2")
+		hours, channels := unmarshal(t, rec)
+		assert.Equal(t, 24, hours)
+
+		ch1, ok := channels["1"]
+		require.True(t, ok)
+		assert.Equal(t, int64(3), ch1.RequestCount)
+		assert.Equal(t, int64(2), ch1.SuccessCount)
+		assert.Equal(t, int64(1), ch1.ErrorCount)
+		assert.Equal(t, int64(650), ch1.Tokens)
+		assert.Equal(t, int64(3000), ch1.AvgDurationMs)
+		assert.Equal(t, float64(35), ch1.QuotaDisplay)
+		assert.Equal(t, now-100, ch1.LastRequestAt)
+
+		ch2, ok := channels["2"]
+		require.True(t, ok)
+		assert.Equal(t, int64(2), ch2.RequestCount)
+		assert.Equal(t, int64(0), ch2.SuccessCount)
+		assert.Equal(t, int64(0), ch2.Tokens)
+		assert.Equal(t, int64(0), ch2.AvgDurationMs)
+
+		_, ok = channels["3"]
+		assert.False(t, ok, "未请求的渠道不应出现在结果中")
+	})
+
+	t.Run("hours 被 clamp 到 [1,168]", func(t *testing.T) {
+		rec := doRequest("hours=0&channel_ids=1")
+		hours, _ := unmarshal(t, rec)
+		assert.Equal(t, 1, hours)
+
+		rec = doRequest("hours=1000&channel_ids=1")
+		hours, _ = unmarshal(t, rec)
+		assert.Equal(t, 168, hours)
+
+		rec = doRequest("hours=notanumber&channel_ids=1")
+		hours, _ = unmarshal(t, rec)
+		assert.Equal(t, 24, hours)
+	})
+
+	t.Run("channel_ids 为空返回空 map", func(t *testing.T) {
+		rec := doRequest("hours=24")
+		require.Equal(t, http.StatusOK, rec.Code)
+		var response struct {
+			Success bool `json:"success"`
+			Data    struct {
+				Hours    int                    `json:"hours"`
+				Channels map[string]interface{} `json:"channels"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+		assert.True(t, response.Success)
+		assert.Equal(t, 24, response.Data.Hours)
+		assert.NotNil(t, response.Data.Channels)
+		assert.Empty(t, response.Data.Channels)
+
+		rec = doRequest("hours=24&channel_ids=")
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+		assert.Empty(t, response.Data.Channels)
+	})
+
+	t.Run("指定渠道过滤", func(t *testing.T) {
+		rec := doRequest("channel_ids=2")
+		_, channels := unmarshal(t, rec)
+		assert.Len(t, channels, 1)
+		ch2, ok := channels["2"]
+		require.True(t, ok)
+		assert.Equal(t, int64(2), ch2.RequestCount)
+		assert.Equal(t, int64(0), ch2.SuccessCount)
+	})
+
+	t.Run("非数字渠道 ID 拒绝", func(t *testing.T) {
+		rec := doRequest("hours=24&channel_ids=1,not-an-id,3")
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+		var response struct {
+			Success bool   `json:"success"`
+			Message string `json:"message"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+		assert.False(t, response.Success)
+		assert.NotEmpty(t, response.Message)
+	})
+}
