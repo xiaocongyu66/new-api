@@ -31,11 +31,11 @@ const (
 	MenuHelp     = "nailao_menu:help"
 
 	// 普通用户可用的动作
-	MenuActionCheckin    = "nailao_menu:do_checkin"
-	MenuActionBalance    = "nailao_menu:do_balance"
-	MenuActionMyStats    = "nailao_menu:do_my_stats"
-	MenuActionDropStatus = "nailao_menu:do_drop_status"
-	MenuActionFeeTable   = "nailao_menu:do_fee_table"
+	MenuActionCheckin       = "nailao_menu:do_checkin"
+	MenuActionBalance       = "nailao_menu:do_balance"
+	MenuActionMyStats       = "nailao_menu:do_my_stats"
+	MenuActionDropStatus    = "nailao_menu:do_drop_status"
+	MenuActionFeeTable      = "nailao_menu:do_fee_table"
 	MenuActionRedPacketList = "nailao_menu:do_rp_list"
 
 	// 管理员专属动作
@@ -135,7 +135,7 @@ func mainMenuKeyboard(isAdmin bool) *Keyboard {
 			callbackBtn("我的钱包", MenuWallet, 1),
 		}},
 		{Buttons: []Button{
-			callbackBtn("奶酪掉落", MenuDrop, 0),
+			callbackBtn("额度掉落", MenuDrop, 0),
 			callbackBtn("群红包", MenuRedPack, 0),
 		}},
 		{Buttons: []Button{
@@ -153,7 +153,7 @@ func mainMenuKeyboard(isAdmin bool) *Keyboard {
 
 // mainMenuText 主菜单文案
 func mainMenuText() string {
-	return "**奶酪公益站 · 功能菜单**\n\n" +
+	return "**站内 · 功能菜单**\n\n" +
 		"点下面的按钮选择功能\n\n" +
 		"随时发送 /菜单 可以重新打开"
 }
@@ -301,7 +301,7 @@ func helpText(isAdmin bool) string {
 	sb.WriteString("/转账 @某人 金额 — 转账给他人\n\n")
 	sb.WriteString("/转账费率 — 查看手续费档位\n\n")
 	sb.WriteString("/红包 金额 份数 — 发群红包\n\n")
-	sb.WriteString("水群会随机掉落奶酪，绑定账号后自动入账")
+	sb.WriteString("水群会随机掉落额度，绑定账号后自动入账")
 
 	if isAdmin {
 		sb.WriteString("\n\n**管理员指令**\n\n")
@@ -411,7 +411,7 @@ func HandleMenuCallback(data, openID, groupOpenID string) (content string, keybo
 		return "**我的钱包**\n\n查看余额与各项战绩", walletMenuKeyboard()
 
 	case MenuDrop:
-		return "**奶酪掉落**\n\n" + dropStatusText(), dropMenuKeyboard()
+		return "**额度掉落**\n\n" + dropStatusText(), dropMenuKeyboard()
 
 	case MenuRedPack:
 		s := GetQQBotSetting()

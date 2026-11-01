@@ -902,7 +902,7 @@ html.dark body[data-app-background='true'] {
 /* ── Home CTA aurora drift ───────────────────────────────────────────────
  * Soft gold drift behind the CTA panel. Kept here (not inline) so the
  * reduced-motion opt-out below can switch it off in one place. */
-@keyframes cheese-aurora-drift {
+@keyframes warm-aurora-drift {
   0%,
   to {
     transform: translate(0, 0) scale(1);
@@ -914,8 +914,8 @@ html.dark body[data-app-background='true'] {
     transform: translate(-3%, 3%) scale(0.96);
   }
 }
-.cheese-aurora {
-  animation: cheese-aurora-drift 18s ease-in-out infinite;
+.warm-aurora {
+  animation: warm-aurora-drift 18s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -924,7 +924,7 @@ html.dark body[data-app-background='true'] {
   .landing-animate-scale-in,
   .landing-animate-fade-left,
   .landing-animate-fade-right,
-  .cheese-aurora {
+  .warm-aurora {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;

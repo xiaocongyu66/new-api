@@ -24,7 +24,8 @@ func GetAllLogs(c contract.Context) {
 	group := c.Query("group")
 	requestId := c.Query("request_id")
 	upstreamRequestId := c.Query("upstream_request_id")
-	logs, total, err := usage.GetAllLogsInternal(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, upstreamRequestId)
+	emptyResponse := c.Query("empty_response") == "1"
+	logs, total, err := usage.GetAllLogsInternal(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, upstreamRequestId, emptyResponse)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -45,7 +46,8 @@ func GetUserLogs(c contract.Context) {
 	group := c.Query("group")
 	requestId := c.Query("request_id")
 	upstreamRequestId := c.Query("upstream_request_id")
-	logs, total, err := usage.GetUserLogsInternal(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), group, requestId, upstreamRequestId)
+	emptyResponse := c.Query("empty_response") == "1"
+	logs, total, err := usage.GetUserLogsInternal(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), group, requestId, upstreamRequestId, emptyResponse)
 	if err != nil {
 		common.CtxApiError(c, err)
 		return

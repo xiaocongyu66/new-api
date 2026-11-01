@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { ArrowLeft, Code2, HeartPulse, Info } from 'lucide-react'
 import { useMemo } from 'react'
-import { useTranslation } from 'react-i18next'
+import { Trans, useTranslation } from 'react-i18next'
 
 import { ErrorState } from '@/components/error-state'
 import { sideDrawerContentClassName } from '@/components/drawer-layout'
@@ -41,6 +41,7 @@ import { GroupPricingSection } from './model-details-group-pricing'
 import { ModelHeader } from './model-details-header'
 import { ModelDetailsPerformance } from './model-details-performance'
 import { SectionTitle } from './model-details-section-title'
+import { useStatus } from '@/hooks/use-status'
 
 const MODEL_DETAILS_SKELETON_KEYS = ['first', 'second', 'third', 'fourth']
 
@@ -71,6 +72,9 @@ export interface ModelDetailsContentProps {
 export function ModelDetailsContent(props: ModelDetailsContentProps) {
   const { t } = useTranslation()
   const showRechargePrice = props.showRechargePrice ?? false
+  const { status } = useStatus()
+  const emptyMultiplier = status?.empty_response_multiplier
+
 
   const isDynamic =
     props.model.billing_mode === 'tiered_expr' &&
@@ -125,6 +129,20 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
               tokenUnit={props.tokenUnit}
               showRechargePrice={showRechargePrice}
             />
+            {emptyMultiplier != null && (
+              <div className='flex items-start gap-2 rounded-lg border border-dashed px-3 py-2.5 text-xs text-muted-foreground'>
+                <Info className='mt-0.5 size-3.5 shrink-0' aria-hidden='true' />
+                <p>
+                  <Trans
+                    i18nKey='pricing.model.emptyResponseNote'
+                    values={{ multiplier: emptyMultiplier }}
+                    components={{
+                      0: <span className='text-amber-500' />,
+                    }}
+                  />
+                </p>
+              </div>
+            )}
             </CardContent>
           </Card>
 

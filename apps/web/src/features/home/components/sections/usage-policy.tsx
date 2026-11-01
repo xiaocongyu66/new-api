@@ -16,8 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Drama } from 'lucide-react'
+import { Drama, MessageSquareOff } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+
+import { useStatus } from '@/hooks/use-status'
 
 /**
  * Usage policy section.
@@ -29,12 +31,20 @@ import { useTranslation } from 'react-i18next'
  */
 export function UsagePolicy() {
   const { t } = useTranslation()
+  const { status } = useStatus()
+  const emptyMultiplier = status?.empty_response_multiplier
 
   const welcome = [
     t('home.policy.welcome.item.roleplay'),
     t('home.policy.welcome.item.story'),
     t('home.policy.welcome.item.chat'),
     t('home.policy.welcome.item.translate'),
+  ]
+
+  const emptyReply = [
+    t('home.policy.empty.item.rate', { multiplier: emptyMultiplier }),
+    t('home.policy.empty.item.scope', { multiplier: emptyMultiplier }),
+    t('home.policy.empty.item.adjustable'),
   ]
 
   return (
@@ -75,6 +85,35 @@ export function UsagePolicy() {
               ))}
             </ul>
           </div>
+
+          {/* Empty reply — partial charge notice. Renders only once the site
+              multiplier has loaded so the bullets never show an empty value. */}
+          {emptyMultiplier != null && (
+            <div className='border-border/60 bg-card-surface backdrop-blur-card flex flex-col gap-4 rounded-xl border p-6'>
+            <div className='flex items-center gap-3'>
+              <span className='border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-400 inline-flex size-10 items-center justify-center rounded-lg border'>
+                <MessageSquareOff className='size-5' />
+              </span>
+              <h3 className='text-base font-semibold'>
+                {t('home.policy.empty.title')}
+              </h3>
+            </div>
+            <p className='text-muted-foreground/80 text-sm leading-relaxed'>
+              {t('home.policy.empty.body')}
+            </p>
+            <ul className='mt-1 grid gap-2'>
+              {emptyReply.map((item) => (
+                <li
+                  key={item}
+                  className='text-muted-foreground flex items-start gap-2 text-[13px] leading-relaxed'
+                >
+                  <span className='bg-amber-500 mt-1.5 size-1.5 shrink-0 rounded-full' />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+          )}
 
         </div>
       </div>

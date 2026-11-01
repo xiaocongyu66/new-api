@@ -30,6 +30,7 @@ export interface SearchBarProps {
   onClear: () => void
   placeholder?: string
   className?: string
+  compact?: boolean
 }
 
 export function SearchBar(props: SearchBarProps) {
@@ -52,14 +53,22 @@ export function SearchBar(props: SearchBarProps) {
 
   return (
     <div className={cn('relative', props.className)}>
-      <Search className='text-muted-foreground/60 pointer-events-none absolute top-1/2 start-3.5 size-4 -translate-y-1/2' />
+      <Search
+        className={cn(
+          'text-muted-foreground/60 pointer-events-none absolute top-1/2 -translate-y-1/2',
+          props.compact ? 'start-2.5 size-3.5' : 'start-3.5 size-4'
+        )}
+      />
       <Input
         ref={inputRef}
         type='text'
         placeholder={props.placeholder || t('Search models...')}
         value={props.value}
         onChange={(e) => props.onChange(e.target.value)}
-        className='bg-card-surface h-12 pe-16 ps-10 text-sm shadow-sm'
+        className={cn(
+          'bg-card-surface border text-sm dark:border-white/40',
+          props.compact ? 'h-9 pe-10 ps-8' : 'h-12 pe-16 ps-10'
+        )}
         aria-label={t('Search models')}
       />
       <div className='absolute top-1/2 end-2.5 flex -translate-y-1/2 items-center gap-1'>
@@ -68,10 +77,13 @@ export function SearchBar(props: SearchBarProps) {
             variant='ghost'
             size='icon'
             onClick={props.onClear}
-            className='text-muted-foreground/60 hover:text-foreground size-7'
+            className={cn(
+              'text-muted-foreground/60 hover:text-foreground',
+              props.compact ? 'size-6' : 'size-7'
+            )}
             aria-label={t('Clear search')}
           >
-            <X className='size-4' />
+            <X className={cn('size-4', props.compact && 'size-3.5')} />
           </Button>
         ) : (
           <kbd className='bg-muted text-muted-foreground pointer-events-none hidden rounded border px-1.5 py-0.5 font-mono text-[10px] sm:inline-block'>

@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Wrench } from 'lucide-react'
+import { MessageSquareOff, Wrench } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/tooltip'
 import { formatLogQuota } from '@/lib/format'
 
-import { hasToolSurcharge } from '../lib/format'
+import { hasEmptyResponseCharge, hasToolSurcharge } from '../lib/format'
 import type { LogOtherData } from '../types'
 
 interface LogCostDisplayProps {
@@ -59,15 +59,47 @@ function ToolSurchargeMarker() {
             tabIndex={0}
             data-tool-surcharge-indicator='true'
           >
-            <Wrench
-              strokeWidth={2}
-              aria-hidden='true'
-            />
+            <Wrench strokeWidth={2} aria-hidden='true' />
             <span
               className='text-[9px] leading-none font-bold'
               aria-hidden='true'
             >
               +
+            </span>
+          </Badge>
+        }
+      />
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function EmptyResponseMarker() {
+  const { t } = useTranslation()
+  const label = t('Charged for empty response')
+  // WCAG 2.5.3 Label in Name: the accessible name must contain the visible
+  // text, so the short "Empty reply" chip leads the full sentence.
+  const accessibleName = `${t('Empty reply')} — ${label}`
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Badge
+            variant='warning'
+            className='h-5 min-w-5 cursor-help gap-1 rounded-full px-1.5'
+            role='img'
+            aria-label={accessibleName}
+            tabIndex={0}
+            data-empty-response-indicator='true'
+          >
+            <MessageSquareOff
+              className='size-3'
+              strokeWidth={2}
+              aria-hidden='true'
+            />
+            <span className='text-[9px] leading-none font-bold'>
+              {t('Empty reply')}
             </span>
           </Badge>
         }
@@ -118,8 +150,9 @@ function SubscriptionBadge(props: { quota: number }) {
 export function LogCostDisplay(props: LogCostDisplayProps) {
   const isSubscription = props.other?.billing_source === 'subscription'
   const showToolSurcharge = hasToolSurcharge(props.other)
+  const showEmptyResponse = hasEmptyResponseCharge(props.other)
 
-  if (!isSubscription && !showToolSurcharge) {
+  if (!isSubscription && !showToolSurcharge && !showEmptyResponse) {
     return (
       <div className='flex flex-col gap-0.5'>
         <QuotaBadge quota={props.quota} />
@@ -136,6 +169,7 @@ export function LogCostDisplay(props: LogCostDisplayProps) {
           <QuotaBadge quota={props.quota} />
         )}
         {showToolSurcharge ? <ToolSurchargeMarker /> : null}
+        {showEmptyResponse ? <EmptyResponseMarker /> : null}
       </div>
     </TooltipProvider>
   )

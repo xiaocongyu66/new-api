@@ -863,7 +863,7 @@ func GetLogByTokenIdInternal(tokenId int) (logs []*Log, err error) {
 }
 
 // GetAllLogsInternal mirrors GetAllLogs
-func GetAllLogsInternal(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
+func GetAllLogsInternal(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string, emptyResponse bool) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = dbx.LogDB
@@ -897,6 +897,9 @@ func GetAllLogsInternal(logType int, startTimestamp int64, endTimestamp int64, m
 	}
 	if group != "" {
 		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+	}
+	if emptyResponse {
+		tx = tx.Where("logs.other LIKE ?", "%empty_response_multiplier%")
 	}
 	err = tx.Model(&Log{}).Count(&total).Error
 	if err != nil {
@@ -959,7 +962,7 @@ func GetAllLogsInternal(logType int, startTimestamp int64, endTimestamp int64, m
 }
 
 // GetUserLogsInternal mirrors GetUserLogs
-func GetUserLogsInternal(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
+func GetUserLogsInternal(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string, emptyResponse bool) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = dbx.LogDB.Where("logs.user_id = ?", userId)
@@ -987,6 +990,9 @@ func GetUserLogsInternal(userId int, logType int, startTimestamp int64, endTimes
 	}
 	if group != "" {
 		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+	}
+	if emptyResponse {
+		tx = tx.Where("logs.other LIKE ?", "%empty_response_multiplier%")
 	}
 	err = tx.Model(&Log{}).Limit(logSearchCountLimit).Count(&total).Error
 	if err != nil {

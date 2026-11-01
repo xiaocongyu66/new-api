@@ -18,7 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
-import { useTranslation } from 'react-i18next'
+import { Trans, useTranslation } from 'react-i18next'
+import { useStatus } from '@/hooks/use-status'
 
 import { ErrorState } from '@/components/error-state'
 import { getPerfMetricsSummary } from '@/features/performance-metrics/api'
@@ -28,7 +29,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import {
   LoadingSkeleton,
   EmptyState,
-  SearchBar,
   PricingTable,
   PricingToolbar,
   ModelCardGrid,
@@ -45,6 +45,8 @@ import { usePricingData } from './hooks/use-pricing-data'
 
 export function Pricing() {
   const { t } = useTranslation()
+  const { status } = useStatus()
+  const emptyMultiplier = status?.empty_response_multiplier
   const [selectedModelName, setSelectedModelName] = useState<string | null>(
     null
   )
@@ -196,36 +198,46 @@ export function Pricing() {
   return (
     <PublicLayout showMainContainer={false}>
       <Main className='mx-auto w-full max-w-[2200px] gap-6 overflow-visible px-4 pt-20 pb-10 sm:px-6 sm:pt-24 lg:px-8'>
-          <header className='flex flex-col gap-5'>
+          <header className='relative flex flex-col gap-5'>
             <div className='min-w-0 pt-4 text-center'>
-            <h1 className='text-4xl leading-tight font-bold tracking-tight sm:text-5xl'>
-              {t('Model Square')}
-            </h1>
-            <p className='text-muted-foreground mt-3 text-sm'>
-              {t('This site currently has {{count}} models enabled', {
-                count: models?.length || 0,
-              })}
-            </p>
-            <p className='text-muted-foreground mx-auto mt-2 max-w-2xl text-sm leading-relaxed'>
-              {t(
-                'Discover curated AI models, compare pricing and capabilities, and choose the right model for every scenario.'
-              )}
-            </p>
+              <h1 className='text-4xl leading-tight font-bold tracking-tight sm:text-5xl'>
+                {t('Model Square')}
+              </h1>
+              <p className='text-muted-foreground mt-3 text-sm'>
+                {t('This site currently has {{count}} models enabled', {
+                  count: models?.length || 0,
+                })}
+              </p>
+              <p className='text-muted-foreground mx-auto mt-2 max-w-2xl text-sm leading-relaxed'>
+                {t(
+                  'Discover curated AI models, compare pricing and capabilities, and choose the right model for every scenario.'
+                )}
+              </p>
             </div>
-            <SearchBar
-              value={searchInput}
-              onChange={setSearchInput}
-              onClear={clearSearch}
-              placeholder={t(
-                'Search model name, provider, endpoint, or tag...'
-              )}
-              className='mx-auto w-full max-w-2xl'
-            />
+            {emptyMultiplier != null && (
+              <div className='absolute end-0 bottom-0 z-10 hidden w-64 xl:block'>
+                <div className='bg-card/95 rounded-lg border border-amber-500/30 px-3 py-2 text-[10px] leading-relaxed text-amber-600 shadow-lg backdrop-blur-sm dark:text-amber-300/90'>
+                  <Trans
+                    i18nKey='pricing.model.emptyResponseNote'
+                    values={{ multiplier: emptyMultiplier }}
+                    components={{
+                      0: <span className='text-amber-500' />,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </header>
 
           <section aria-label={t('Models')} className='min-w-0 space-y-4'>
             <PricingToolbar
               filteredCount={filteredModels.length}
+              searchInput={searchInput}
+              onSearchChange={setSearchInput}
+              onClearSearch={clearSearch}
+              searchPlaceholder={t(
+                'Search model name, provider, endpoint, or tag...'
+              )}
               sortBy={sortBy}
               onSortChange={setSortBy}
               viewMode={viewMode}

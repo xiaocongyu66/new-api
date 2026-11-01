@@ -154,6 +154,20 @@ export function hasToolSurcharge(other: LogOtherData | null): boolean {
 }
 
 /**
+ * Check whether a consume log was charged under the empty-response policy.
+ * The backend writes empty_response_multiplier whenever it detects an empty
+ * 200 response, regardless of whether the configured multiplier waived or
+ * reduced the charge.
+ */
+export function hasEmptyResponseCharge(other: LogOtherData | null): boolean {
+  return (
+    other != null &&
+    typeof other.empty_response_multiplier === 'number' &&
+    other.empty_response_multiplier >= 0
+  )
+}
+
+/**
  * Parse the 'other' field from JSON string to object
  */
 export function parseLogOther(other: string): LogOtherData | null {
