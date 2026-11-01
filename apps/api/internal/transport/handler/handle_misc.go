@@ -80,6 +80,7 @@ func GetStatus(c contract.Context) {
 		"amount_unit":                   billing.GetGeneralSetting().AmountUnitEffective(),
 		"inviter_reward_display":        billing.QuotaToDisplayAmount(common.QuotaForInviter),
 		"invitee_reward_display":        billing.QuotaToDisplayAmount(common.QuotaForInvitee),
+		"display_group_ratio_table":     common.DisplayGroupRatioTable,
 		"enable_drawing":                common.DrawingEnabled,
 		"enable_task":                   common.TaskEnabled,
 		"enable_data_export":            common.DataExportEnabled,

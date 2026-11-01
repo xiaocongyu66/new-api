@@ -55,6 +55,7 @@ export interface ModelCardProps {
   tokenUnit?: TokenUnit
   showRechargePrice?: boolean
   selectedGroup?: string
+  displayGroupRatioTable?: boolean
   perf?: ModelPerfBadgeData
   /** False until the card scrolls near the viewport; gates number count-up. */
   visible?: boolean
@@ -68,6 +69,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   const usdExchangeRate = props.usdExchangeRate ?? 1
   const showRechargePrice = props.showRechargePrice ?? false
   const inView = props.visible ?? true
+  const showGroupRatioTable = props.displayGroupRatioTable ?? false
   const isTokenBased = isTokenBasedModel(props.model)
   const tokenUnitLabel = tokenUnit === 'K' ? '1K' : '1M'
   const groups = props.model.enable_groups || []
@@ -483,7 +485,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           grid (rows are `display: contents`), so each number column takes
           the width of its widest value — digits get a fixed slot per column
           and never shift between rows. */}
-        {groupRows.length > 0 && (
+        {!showGroupRatioTable && groupRows.length > 0 && (
           <div
             aria-expanded={tableExpanded}
             aria-label={tableToggleLabel}
@@ -546,7 +548,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           cell stacks the group's input price over its output price for that
           tier; the header carries the tier name and its context bound, and a
           trailing legend column names the two lines `in` / `out`. */}
-        {dynamicGroupRows.length > 0 && (
+        {!showGroupRatioTable && dynamicGroupRows.length > 0 && (
           <div
             aria-expanded={tableExpanded}
             aria-label={tableToggleLabel}
@@ -630,6 +632,49 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
                   </span>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Group ratio table: when enabled by the admin, replaces the
+          per-mode price tables above. Groups run horizontally (up to four
+          columns); the single data row labels itself "Ratio" and carries
+          each group's multiplier in the remaining cells. */}
+        {showGroupRatioTable && groups.length > 0 && (
+          <div className='border-border/50 overflow-hidden rounded-lg border'>
+            <div
+              className='grid min-w-max items-center text-xs'
+              style={{
+                gridTemplateColumns: `repeat(${Math.min(groups.length, 4) + 1}, auto)`,
+              }}
+            >
+              <div className='contents'>
+                <span className={tableHeaderCellClass}>{t('Ratio')}</span>
+                {groups.slice(0, 4).map((group) => (
+                  <span key={group} className={tableHeaderCellClass}>
+                    {group}
+                  </span>
+                ))}
+              </div>
+              <div className='contents'>
+                <span className='border-border/50 px-2.5 py-1.5 font-medium'>
+                  {t('Ratio')}
+                </span>
+                {groups.slice(0, 4).map((group) => {
+                  const ratio = getConfiguredGroupRatio(
+                    props.model.group_ratio || {},
+                    group
+                  )
+                  return (
+                    <span
+                      key={group}
+                      className='text-muted-foreground border-border/50 border-t px-2.5 py-1.5 text-left font-mono tabular-nums'
+                    >
+                      <CountUp text={`×${ratio}`} active={inView} />
+                    </span>
+                  )
+                })}
+              </div>
             </div>
           </div>
         )}

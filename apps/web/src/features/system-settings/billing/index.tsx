@@ -42,6 +42,7 @@ const defaultBillingSettings: BillingSettings = {
   'general_setting.amount_unit': 'usd',
   'general_setting.amount_name': '',
   DisplayInCurrencyEnabled: true,
+  DisplayGroupRatioTable: false,
   DisplayTokenStatEnabled: true,
   ModelPrice: '',
   ModelRatio: '',
