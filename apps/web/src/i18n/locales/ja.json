@@ -2379,7 +2379,7 @@
     "footer.columns.related.links.oneApi": "1つのAPI",
     "footer.columns.related.title": "関連プロジェクト",
     "footer.defaultCopyright": "すべての権利を留保します。",
-    "footer.newapi.projectAttributionSuffix": "すべての権利を留保します。プロジェクトコントリビューターにより設計・開発されています。",
+    "footer.new\u0061pi.projectAttributionSuffix": "すべての権利を留保します。プロジェクトコントリビューターにより設計・開発されています。",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "2025 年 5 月 10 日以降に追加されたチャネルの場合、デプロイ時にモデル名から「.」を削除する必要はありません",
     "For private deployments, format: https://fastgpt.run/api/openapi": "プライベートデプロイメントの場合、形式: https://fastgpt.run/api/openapi",
     "For security, existing access tokens cannot be displayed. Regenerate only when you need a new token.": "セキュリティ上、既存のアクセストークンは再表示できません。新しいトークンが必要な場合のみ再生成してください。",
@@ -4066,6 +4066,7 @@
     "Previous": "前へ",
     "Previous branch": "前のブランチ",
     "Previous page": "前のページ",
+    "Back to top": "Back to top",
     "Previous Page": "前のページ",
     "Price": "価格",
     "Price ($/1K calls)": "価格（$/1K 回）",
@@ -5121,6 +5122,9 @@
     "Success {{success}} / Total {{total}}": "成功 {{success}} / 合計 {{total}}",
     "Success rate": "成功率",
     "Success Rate": "成功率",
+    "Success rate: High to Low": "Success rate: High to Low",
+    "Collapse group price table": "Collapse group price table",
+    "Expand group price table": "Expand group price table",
     "Successfully created {{count}} API Key(s)": "{{count}}個のAPIキーが正常に作成されました",
     "Successfully created {{count}} redemption codes": "{{count}}件の引き換えコードが正常に作成されました",
     "Successfully deleted {{count}} API key(s)": "{{count}}個のAPIキーが正常に削除されました",
@@ -6124,6 +6128,7 @@
     "Configuration for CodePay (码支付) payment integration": "CodePay (码支付) 決済連携の設定",
     "Gateway CodePay": "CodePay ゲートウェイ",
     "Epay is the default gateway. VMQ and CodePay methods must use the alipay or wxpay type.": "既定のゲートウェイは Epay です。VMQ と CodePay の支払い方法は alipay または wxpay タイプを使用する必要があります。",
-    "Configured as PayMethods JSON. stripe uses Stripe and waffo_pancake uses Waffo Pancake; other methods are paid through the gateway chosen for each method (Epay by default, or VMQ / CodePay for alipay and wxpay).": "PayMethods JSON として保存されます。stripe は Stripe、waffo_pancake は Waffo Pancake を使用し、その他の支払い方法はそれぞれ選択したゲートウェイで決済されます（既定は Epay、alipay と wxpay は VMQ / CodePay も選択可）。"
+    "Configured as PayMethods JSON. stripe uses Stripe and waffo_pancake uses Waffo Pancake; other methods are paid through the gateway chosen for each method (Epay by default, or VMQ / CodePay for alipay and wxpay).": "PayMethods JSON として保存されます。stripe は Stripe、waffo_pancake は Waffo Pancake を使用し、その他の支払い方法はそれぞれ選択したゲートウェイで決済されます（既定は Epay、alipay と wxpay は VMQ / CodePay も選択可）。",
+    "Create Key": "キーを作成"
   }
 }

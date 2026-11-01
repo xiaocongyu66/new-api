@@ -2379,7 +2379,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Các Dự Án Liên Quan",
     "footer.defaultCopyright": "Bản quyền được bảo lưu.",
-    "footer.newapi.projectAttributionSuffix": "Bản quyền được bảo lưu. Được thiết kế và phát triển bởi các cộng tác viên dự án.",
+    "footer.new\u0061pi.projectAttributionSuffix": "Bản quyền được bảo lưu. Được thiết kế và phát triển bởi các cộng tác viên dự án.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Đối với các kênh được thêm sau ngày 10 tháng 5 năm 2025, không cần loại bỏ \".\" khỏi tên mô hình trong quá trình triển khai",
     "For private deployments, format: https://fastgpt.run/api/openapi": "Đối với các triển khai riêng tư, định dạng: https://fastgpt.run/api/openapi",
     "For security, existing access tokens cannot be displayed. Regenerate only when you need a new token.": "Vì lý do bảo mật, không thể hiển thị lại token truy cập hiện có. Chỉ tạo lại khi bạn cần token mới.",
@@ -4066,6 +4066,7 @@
     "Previous": "Trước",
     "Previous branch": "Nhánh trước",
     "Previous page": "Trang trước",
+    "Back to top": "Back to top",
     "Previous Page": "Trang trước",
     "Price": "Giá",
     "Price ($/1K calls)": "Giá ($/1K lượt gọi)",
@@ -5121,6 +5122,9 @@
     "Success {{success}} / Total {{total}}": "Thành công {{success}} / Tổng {{total}}",
     "Success rate": "Tỷ lệ thành công",
     "Success Rate": "Tỷ lệ thành công",
+    "Success rate: High to Low": "Success rate: High to Low",
+    "Collapse group price table": "Collapse group price table",
+    "Expand group price table": "Expand group price table",
     "Successfully created {{count}} API Key(s)": "Đã tạo thành công {{count}} khóa API",
     "Successfully created {{count}} redemption codes": "Đã tạo thành công {{count}} mã đổi thưởng",
     "Successfully deleted {{count}} API key(s)": "Đã xóa thành công {{count}} khóa API",
@@ -6124,6 +6128,7 @@
     "Configuration for CodePay (码支付) payment integration": "Cấu hình tích hợp thanh toán CodePay (码支付)",
     "Gateway CodePay": "Cổng CodePay",
     "Epay is the default gateway. VMQ and CodePay methods must use the alipay or wxpay type.": "Epay là cổng mặc định. Phương thức VMQ và CodePay phải dùng loại alipay hoặc wxpay.",
-    "Configured as PayMethods JSON. stripe uses Stripe and waffo_pancake uses Waffo Pancake; other methods are paid through the gateway chosen for each method (Epay by default, or VMQ / CodePay for alipay and wxpay).": "Lưu dưới dạng JSON PayMethods. stripe dùng Stripe, waffo_pancake dùng Waffo Pancake; các phương thức khác thanh toán qua cổng được chọn cho từng phương thức (mặc định Epay, hoặc VMQ / CodePay cho alipay và wxpay)."
+    "Configured as PayMethods JSON. stripe uses Stripe and waffo_pancake uses Waffo Pancake; other methods are paid through the gateway chosen for each method (Epay by default, or VMQ / CodePay for alipay and wxpay).": "Lưu dưới dạng JSON PayMethods. stripe dùng Stripe, waffo_pancake dùng Waffo Pancake; các phương thức khác thanh toán qua cổng được chọn cho từng phương thức (mặc định Epay, hoặc VMQ / CodePay cho alipay và wxpay).",
+    "Create Key": "Tạo Khóa"
   }
 }

@@ -2379,7 +2379,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Related Projects",
     "footer.defaultCopyright": "All rights reserved.",
-    "footer.newapi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
+    "footer.new\u0061pi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment",
     "For private deployments, format: https://fastgpt.run/api/openapi": "For private deployments, format: https://fastgpt.run/api/openapi",
     "For security, existing access tokens cannot be displayed. Regenerate only when you need a new token.": "For security, existing access tokens cannot be displayed. Regenerate only when you need a new token.",
@@ -6128,6 +6128,7 @@
     "Configuration for CodePay (码支付) payment integration": "Configuration for CodePay (码支付) payment integration",
     "Gateway CodePay": "Gateway CodePay",
     "Epay is the default gateway. VMQ and CodePay methods must use the alipay or wxpay type.": "Epay is the default gateway. VMQ and CodePay methods must use the alipay or wxpay type.",
-    "Configured as PayMethods JSON. stripe uses Stripe and waffo_pancake uses Waffo Pancake; other methods are paid through the gateway chosen for each method (Epay by default, or VMQ / CodePay for alipay and wxpay).": "Configured as PayMethods JSON. stripe uses Stripe and waffo_pancake uses Waffo Pancake; other methods are paid through the gateway chosen for each method (Epay by default, or VMQ / CodePay for alipay and wxpay)."
+    "Configured as PayMethods JSON. stripe uses Stripe and waffo_pancake uses Waffo Pancake; other methods are paid through the gateway chosen for each method (Epay by default, or VMQ / CodePay for alipay and wxpay).": "Configured as PayMethods JSON. stripe uses Stripe and waffo_pancake uses Waffo Pancake; other methods are paid through the gateway chosen for each method (Epay by default, or VMQ / CodePay for alipay and wxpay).",
+    "Create Key": "Create Key"
   }
 }

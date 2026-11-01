@@ -2379,7 +2379,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "相关项目",
     "footer.defaultCopyright": "版权所有。",
-    "footer.newapi.projectAttributionSuffix": "版权所有，由项目贡献者设计与开发。",
+    "footer.new\u0061pi.projectAttributionSuffix": "版权所有，由项目贡献者设计与开发。",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "对于 2025 年 5 月 10 日之后添加的渠道，在部署时无需从模型名称中移除 \".\"",
     "For private deployments, format: https://fastgpt.run/api/openapi": "对于私有部署，格式为：https://fastgpt.run/api/openapi",
     "For security, existing access tokens cannot be displayed. Regenerate only when you need a new token.": "出于安全考虑，现有访问令牌无法再次显示。仅在需要新令牌时重新生成。",
@@ -6128,6 +6128,7 @@
     "Configuration for CodePay (码支付) payment integration": "码支付 支付集成配置",
     "Gateway CodePay": "码支付",
     "Epay is the default gateway. VMQ and CodePay methods must use the alipay or wxpay type.": "默认网关为易支付。V免签 和 码支付 付款方式必须使用 alipay 或 wxpay 类型。",
-    "Configured as PayMethods JSON. stripe uses Stripe and waffo_pancake uses Waffo Pancake; other methods are paid through the gateway chosen for each method (Epay by default, or VMQ / CodePay for alipay and wxpay).": "保存为 PayMethods JSON。stripe 走 Stripe，waffo_pancake 走 Waffo Pancake；其他付款方式按各自选择的网关收款（默认易支付，alipay 和 wxpay 也可选 V免签 / 码支付）。"
+    "Configured as PayMethods JSON. stripe uses Stripe and waffo_pancake uses Waffo Pancake; other methods are paid through the gateway chosen for each method (Epay by default, or VMQ / CodePay for alipay and wxpay).": "保存为 PayMethods JSON。stripe 走 Stripe，waffo_pancake 走 Waffo Pancake；其他付款方式按各自选择的网关收款（默认易支付，alipay 和 wxpay 也可选 V免签 / 码支付）。",
+    "Create Key": "创建密钥"
   }
 }

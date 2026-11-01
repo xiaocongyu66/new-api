@@ -46,17 +46,18 @@ export function ApiKeys() {
     <ApiKeysProvider>
       <SectionPageLayout fixedContent>
         <SectionPageLayout.Title>
-          <span className='flex min-w-0 flex-wrap items-center gap-2'>
-            <span className='truncate'>{t('API Keys')}</span>
+          <span className='flex min-w-0 items-center gap-2'>
+            <span className='shrink-0'>{t('Keys')}</span>
             <CopyButton
               value={serverAddress}
               trailingIcon
               size='sm'
-              className='h-auto max-w-full min-h-7 shrink justify-start gap-1.5 whitespace-normal rounded-md px-2 py-1 font-mono text-xs text-muted-foreground'
+              className='ml-auto h-auto min-h-7 min-w-0 shrink justify-start gap-1.5 rounded-md px-2 py-1 font-mono text-xs text-muted-foreground'
+              iconClassName='shrink-0'
               tooltip={t('Copy to clipboard')}
               aria-label={t('Copy to clipboard')}
             >
-              <span className='break-all'>{serverAddress}</span>
+              <span className='min-w-0 truncate'>{serverAddress}</span>
             </CopyButton>
           </span>
         </SectionPageLayout.Title>
