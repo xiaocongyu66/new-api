@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -21,10 +22,13 @@ func withChannelStatsLogDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
 	previousLogDB := dbx.LogDB
-	// ":memory:" gives every pooled connection its own empty database, so a
-	// SELECT can land on a connection that never saw the seeded rows. Pin the
-	// pool to one connection (like the usage store test does).
-	db, err := gorm.Open(sqlite.Open("file:channel_stats_handler?mode=memory&cache=shared"), &gorm.Config{})
+	// ":memory:" would give every pooled connection its own empty database, so
+	// the aggregate SELECT could land on a connection that never saw the seeded
+	// rows. A shared-cache in-memory DSN with the pool pinned to one connection
+	// fixes that; a unique DSN per call keeps another test's copy of the same
+	// table from leaking rows into this one.
+	dsn := fmt.Sprintf("file:channel_stats_%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
