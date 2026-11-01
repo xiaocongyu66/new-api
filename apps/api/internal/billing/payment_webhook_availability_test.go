@@ -165,3 +165,87 @@ func TestEpayWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 	PayMethods = nil
 	require.False(t, isEpayWebhookEnabled())
 }
+
+func TestEpayTopUpEnabledOnlyCountsEpayGatewayMethods(t *testing.T) {
+	confirmPaymentComplianceForTest(t)
+	originalPayAddress := PayAddress
+	originalEpayID := EpayId
+	originalEpayKey := EpayKey
+	originalPayMethods := PayMethods
+	t.Cleanup(func() {
+		PayAddress = originalPayAddress
+		EpayId = originalEpayID
+		EpayKey = originalEpayKey
+		PayMethods = originalPayMethods
+	})
+
+	PayAddress = "https://pay.example.com"
+	EpayId = "epay_id"
+	EpayKey = "epay_key"
+
+	// VMQ-wired methods must not make Epay top-up available.
+	PayMethods = []map[string]string{{"type": "alipay", "gateway": "vmq"}}
+	require.False(t, isEpayTopUpEnabled())
+
+	PayMethods = []map[string]string{
+		{"type": "alipay", "gateway": "vmq"},
+		{"type": "wxpay"},
+	}
+	require.True(t, isEpayTopUpEnabled())
+}
+
+func TestVmqTopUpEnabledRequiresCredentialsAndMethod(t *testing.T) {
+	confirmPaymentComplianceForTest(t)
+	originalVmqAddress := VmqAddress
+	originalVmqKey := VmqKey
+	originalPayMethods := PayMethods
+	t.Cleanup(func() {
+		VmqAddress = originalVmqAddress
+		VmqKey = originalVmqKey
+		PayMethods = originalPayMethods
+	})
+
+	VmqAddress = "  "
+	VmqKey = "key"
+	PayMethods = []map[string]string{{"type": "alipay", "gateway": "vmq"}}
+	require.False(t, isVmqTopUpEnabled())
+
+	VmqAddress = "https://vmq.example.com"
+	require.True(t, isVmqTopUpEnabled())
+
+	VmqKey = ""
+	require.False(t, isVmqTopUpEnabled())
+
+	VmqKey = "key"
+	require.True(t, isVmqTopUpEnabled())
+
+	PayMethods = []map[string]string{{"type": "alipay"}}
+	require.False(t, isVmqTopUpEnabled())
+}
+
+func TestCodePayTopUpEnabledRequiresCredentialsAndMethod(t *testing.T) {
+	confirmPaymentComplianceForTest(t)
+	originalCodePayAddress := CodePayAddress
+	originalCodePayId := CodePayId
+	originalCodePayKey := CodePayKey
+	originalPayMethods := PayMethods
+	t.Cleanup(func() {
+		CodePayAddress = originalCodePayAddress
+		CodePayId = originalCodePayId
+		CodePayKey = originalCodePayKey
+		PayMethods = originalPayMethods
+	})
+
+	CodePayAddress = "https://codepay.example.com"
+	CodePayId = "id"
+	CodePayKey = ""
+	PayMethods = []map[string]string{{"type": "alipay", "gateway": "codepay"}}
+	require.False(t, isCodePayTopUpEnabled())
+
+	CodePayKey = "key"
+	require.True(t, isCodePayTopUpEnabled())
+
+	CodePayAddress = ""
+	PayMethods = []map[string]string{{"type": "alipay", "gateway": "codepay"}}
+	require.False(t, isCodePayTopUpEnabled())
+}

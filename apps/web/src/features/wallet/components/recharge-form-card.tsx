@@ -43,6 +43,7 @@ import {
   getPaymentIcon,
   getMinTopupAmount,
   calculatePresetPricing,
+  paymentMethodKey,
 } from '../lib'
 import type {
   PaymentMethod,
@@ -81,6 +82,8 @@ interface RechargeFormCardProps {
   waffoMinTopup?: number
   onWaffoMethodSelect?: (method: WaffoPayMethod, index: number) => void
   enableWaffoPancakeTopup?: boolean
+  enableVmqTopup?: boolean
+  enableCodePayTopup?: boolean
 }
 
 export function RechargeFormCard({
@@ -111,6 +114,8 @@ export function RechargeFormCard({
   waffoMinTopup,
   onWaffoMethodSelect,
   enableWaffoPancakeTopup,
+  enableVmqTopup,
+  enableCodePayTopup,
 }: RechargeFormCardProps) {
   const { t } = useTranslation()
   const [localAmount, setLocalAmount] = useState(topupAmount.toString())
@@ -134,7 +139,9 @@ export function RechargeFormCard({
     topupInfo?.enable_online_topup ||
     topupInfo?.enable_stripe_topup ||
     enableWaffoTopup ||
-    enableWaffoPancakeTopup
+    enableWaffoPancakeTopup ||
+    enableVmqTopup ||
+    enableCodePayTopup
   const hasAnyTopup = hasConfigurableTopup || enableCreemTopup
   const hasStandardPaymentMethods =
     Array.isArray(topupInfo?.pay_methods) && topupInfo.pay_methods.length > 0
@@ -335,6 +342,7 @@ export function RechargeFormCard({
                 {hasStandardPaymentMethods ? (
                   <div className='grid grid-cols-2 gap-1.5 sm:gap-3 lg:grid-cols-3'>
                     {topupInfo?.pay_methods?.map((method) => {
+                      const methodKey = paymentMethodKey(method)
                       const minTopup = Math.max(
                         method.min_topup || 0,
                         getMinTopupAmount(topupInfo)
@@ -351,7 +359,7 @@ export function RechargeFormCard({
 
                       const button = (
                         <Button
-                          key={method.type}
+                          key={methodKey}
                           variant='outline'
                           onClick={() => onPaymentMethodSelect(method)}
                           disabled={disabled || !!paymentLoading}
@@ -363,7 +371,7 @@ export function RechargeFormCard({
                           }
                           className='min-h-14 min-w-0 justify-start gap-2 rounded-lg px-3 py-2 text-left'
                         >
-                          {paymentLoading === method.type ? (
+                          {paymentLoading === methodKey ? (
                             <Loader2 className='h-4 w-4 animate-spin' />
                           ) : (
                             getPaymentIcon(
@@ -387,7 +395,7 @@ export function RechargeFormCard({
                       )
 
                       return disabled ? (
-                        <TooltipProvider key={method.type}>
+                        <TooltipProvider key={methodKey}>
                           <Tooltip>
                             <TooltipTrigger render={button} />
                             <TooltipContent>{disabledReason}</TooltipContent>

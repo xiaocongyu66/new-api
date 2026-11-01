@@ -85,7 +85,7 @@ func isEpayTopUpEnabled() bool {
 	if !isPaymentComplianceConfirmed() {
 		return false
 	}
-	return isEpayWebhookConfigured() && len(PayMethods) > 0
+	return isEpayWebhookConfigured() && countPayMethodsByGateway("epay") > 0
 }
 
 func isEpayWebhookConfigured() bool {
@@ -96,4 +96,51 @@ func isEpayWebhookConfigured() bool {
 
 func isEpayWebhookEnabled() bool {
 	return isEpayTopUpEnabled()
+}
+
+func isVmqGatewayConfigured() bool {
+	return strings.TrimSpace(VmqAddress) != "" &&
+		strings.TrimSpace(VmqKey) != ""
+}
+
+func isCodePayGatewayConfigured() bool {
+	return strings.TrimSpace(CodePayAddress) != "" &&
+		strings.TrimSpace(CodePayId) != "" &&
+		strings.TrimSpace(CodePayKey) != ""
+}
+
+// countPayMethodsByGateway returns how many configured pay methods route to
+// the given gateway. Methods without a gateway count as Epay.
+func countPayMethodsByGateway(gateway string) int {
+	n := 0
+	for _, m := range PayMethods {
+		if payMethodGateway(m) == gateway {
+			n++
+		}
+	}
+	return n
+}
+
+func isVmqTopUpEnabled() bool {
+	if !isPaymentComplianceConfirmed() {
+		return false
+	}
+	return isVmqGatewayConfigured() && countPayMethodsByGateway("vmq") > 0
+}
+
+func isVmqWebhookEnabled() bool {
+	// Notify handlers stay gated by credentials only, not by method presence:
+	// in-flight orders must complete even if an admin removes the method.
+	return isVmqGatewayConfigured()
+}
+
+func isCodePayTopUpEnabled() bool {
+	if !isPaymentComplianceConfirmed() {
+		return false
+	}
+	return isCodePayGatewayConfigured() && countPayMethodsByGateway("codepay") > 0
+}
+
+func isCodePayWebhookEnabled() bool {
+	return isCodePayGatewayConfigured()
 }

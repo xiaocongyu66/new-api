@@ -52,11 +52,16 @@ func seedPaymentOptions() map[string]string {
 		"WaffoPancakeMerchantID":      WaffoPancakeMerchantID,
 		"WaffoPancakePrivateKey":      WaffoPancakePrivateKey,
 		"WaffoPancakeReturnURL":       WaffoPancakeReturnURL,
-		"WaffoPancakeUnitPrice":       strconv.FormatFloat(WaffoPancakeUnitPrice, 'f', -1, 64),
-		"WaffoPancakeMinTopUp":        strconv.Itoa(WaffoPancakeMinTopUp),
 		"WaffoPancakeStoreID":         WaffoPancakeStoreID,
 		"WaffoPancakeProductID":       WaffoPancakeProductID,
+		"WaffoPancakeUnitPrice":       strconv.FormatFloat(WaffoPancakeUnitPrice, 'f', -1, 64),
+		"WaffoPancakeMinTopUp":        strconv.Itoa(WaffoPancakeMinTopUp),
 		"PayMethods":                  PayMethods2JsonString(),
+		"VmqAddress":                  VmqAddress,
+		"VmqKey":                      VmqKey,
+		"CodePayAddress":              CodePayAddress,
+		"CodePayId":                   CodePayId,
+		"CodePayKey":                  CodePayKey,
 	}
 }
 
@@ -140,6 +145,16 @@ func applyPaymentOption(key, value string) error {
 		WaffoPancakeUnitPrice, _ = strconv.ParseFloat(value, 64)
 	case "WaffoPancakeMinTopUp":
 		WaffoPancakeMinTopUp, _ = strconv.Atoi(value)
+	case "VmqAddress":
+		VmqAddress = value
+	case "VmqKey":
+		VmqKey = value
+	case "CodePayAddress":
+		CodePayAddress = value
+	case "CodePayId":
+		CodePayId = value
+	case "CodePayKey":
+		CodePayKey = value
 	case "PayMethods":
 		return UpdatePayMethodsByJsonString(value)
 	}

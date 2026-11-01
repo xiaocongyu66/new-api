@@ -39,12 +39,21 @@ import {
 import { Input } from '@/components/ui/input'
 
 const createPaymentMethodDialogSchema = (t: (key: string) => string) =>
-  z.object({
-    name: z.string().min(1, t('Payment method name is required')),
-    type: z.string().min(1, t('Payment type key is required')),
-    icon: z.string().optional(),
-    min_topup: z.string().optional(),
-  })
+  z
+    .object({
+      name: z.string().min(1, t('Payment method name is required')),
+      type: z.string().min(1, t('Payment type key is required')),
+      gateway: z.enum(['epay', 'vmq', 'codepay']),
+      icon: z.string().optional(),
+      min_topup: z.string().optional(),
+    })
+    .refine(
+      (data) =>
+        data.gateway === 'epay' ||
+        data.type === 'alipay' ||
+        data.type === 'wxpay',
+      t('VMQ and CodePay payment method types must be alipay or wxpay')
+    )
 
 type PaymentMethodDialogFormValues = z.infer<
   ReturnType<typeof createPaymentMethodDialogSchema>
@@ -55,6 +64,8 @@ const PAYMENT_METHOD_FORM_ID = 'payment-method-form'
 export type PaymentMethodData = {
   name: string
   type: string
+  /** Payment gateway: epay (default), vmq or codepay */
+  gateway?: 'epay' | 'vmq' | 'codepay'
   icon?: string
   min_topup?: string
   color?: string
@@ -85,16 +96,21 @@ export function PaymentMethodDialog({
   const { t } = useTranslation()
   const isEditMode = !!editData
   const paymentMethodDialogSchema = createPaymentMethodDialogSchema(t)
+  const gatewayOptions = [
+    { label: 'Epay', value: 'epay' },
+    { label: t('Gateway VMQ'), value: 'vmq' },
+    { label: t('Gateway CodePay'), value: 'codepay' },
+  ]
   const paymentTypeOptions = [
     {
       iconName: 'SiAlipay',
-      label: `${t('Alipay')} (Epay: alipay)`,
+      label: `${t('Alipay')} (alipay)`,
       name: t('Alipay'),
       value: 'alipay',
     },
     {
       iconName: 'SiWechat',
-      label: `${t('WeChat Pay')} (Epay: wxpay)`,
+      label: `${t('WeChat Pay')} (wxpay)`,
       name: t('WeChat Pay'),
       value: 'wxpay',
     },
@@ -119,6 +135,7 @@ export function PaymentMethodDialog({
     defaultValues: {
       name: '',
       type: '',
+      gateway: 'epay',
       icon: '',
       min_topup: '',
     },
@@ -131,6 +148,7 @@ export function PaymentMethodDialog({
       form.reset({
         name: editData.name,
         type: editData.type,
+        gateway: editData.gateway ?? 'epay',
         icon: editData.icon ?? getDefaultIconName(editData.type),
         min_topup: editData.min_topup ?? '',
       })
@@ -138,6 +156,7 @@ export function PaymentMethodDialog({
       form.reset({
         name: '',
         type: '',
+        gateway: 'epay',
         icon: '',
         min_topup: '',
       })
@@ -148,6 +167,7 @@ export function PaymentMethodDialog({
     const data: PaymentMethodData = {
       name: values.name,
       type: values.type,
+      gateway: values.gateway === 'epay' ? undefined : values.gateway,
     }
     if (values.icon && values.icon.trim() !== '') {
       data.icon = values.icon.trim()
@@ -262,7 +282,39 @@ export function PaymentMethodDialog({
                 </FormControl>
                 <FormDescription className='leading-relaxed'>
                   {t(
-                    'Used to decide the payment flow. Built-in keys include stripe for Stripe and waffo_pancake for Waffo Pancake; other values are sent to Epay as the type parameter.'
+                    'Used to decide the payment flow and gateway. Epay is the default gateway; choose VMQ or CodePay to route through them (their type must be alipay or wxpay). stripe and waffo_pancake keep their dedicated flows.'
+                  )}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='gateway'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Gateway')}</FormLabel>
+                <FormControl>
+                  <Combobox
+                    options={gatewayOptions}
+                    value={field.value}
+                    onValueChange={(value: string | null) => {
+                      if (
+                        value === 'epay' ||
+                        value === 'vmq' ||
+                        value === 'codepay'
+                      ) {
+                        field.onChange(value)
+                      }
+                    }}
+                    placeholder={t('Select payment gateway')}
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'Epay is the default gateway. VMQ and CodePay methods must use the alipay or wxpay type.'
                   )}
                 </FormDescription>
                 <FormMessage />
