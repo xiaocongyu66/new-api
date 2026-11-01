@@ -464,12 +464,16 @@ function ChannelEditorNav(props: {
             return (
               <button
                 key={item.id}
-                type='button'
                 className={cn(
                   'hover:bg-muted/60 flex w-full items-start gap-2 rounded-md px-2 py-2 text-left transition-colors',
-                  isActive && 'bg-muted/70',
-                  isConfigured && !isError && 'text-primary',
-                  isError && 'text-destructive hover:bg-destructive/10'
+                  // Active wins over the "configured" tint so the following
+                  // section is unambiguous: filled row + bold primary label.
+                  isActive
+                    ? 'bg-primary/10 font-medium text-primary ring-primary/30 ring-1'
+                    : cn(
+                        isConfigured && !isError && 'text-primary',
+                        isError && 'text-destructive hover:bg-destructive/10'
+                      ),
                 )}
                 onClick={() => props.onNavigate(item.id)}
                 aria-current={isActive ? 'true' : undefined}
@@ -1684,7 +1688,6 @@ function ChannelMutateDrawerContent({
     ) {
       nextActiveSectionId = lastVisibleSectionId
     }
-
     setActiveEditorSectionId((current) =>
       current === nextActiveSectionId ? current : nextActiveSectionId
     )
@@ -3814,7 +3817,7 @@ function ChannelMutateDrawerContent({
                                 control={form.control}
                                 name='header_override'
                                 render={({ field }) => (
-                                  <FormItem className='space-y-3 border-t pt-4'>
+                                  <FormItem className='space-y-3 pt-4'>
                                     <div className='flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between'>
                                       <div className='space-y-1'>
                                         <FormLabel>

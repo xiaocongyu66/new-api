@@ -255,6 +255,43 @@ export function parseGroupsList(groups: string): string[] {
 }
 
 /**
+ * Per-channel route-unit health counts. The health endpoint only reports units
+ * that have run at least once, so a channel missing from this map has no
+ * routing history yet — not a broken route.
+ */
+export type RouteHealthSummary = {
+  total: number
+  healthy: number
+  cooling: number
+  slowStart: number
+  terminal: number
+}
+
+export function summarizeRouteHealthByChannel(
+  rows: ReadonlyArray<{ channel_id: number; state: string }>
+): Map<number, RouteHealthSummary> {
+  const summaries = new Map<number, RouteHealthSummary>()
+  for (const row of rows) {
+    let summary = summaries.get(row.channel_id)
+    if (!summary) {
+      summary = { total: 0, healthy: 0, cooling: 0, slowStart: 0, terminal: 0 }
+      summaries.set(row.channel_id, summary)
+    }
+    summary.total += 1
+    if (row.state === 'cooling') {
+      summary.cooling += 1
+    } else if (row.state === 'slow_start') {
+      summary.slowStart += 1
+    } else if (row.state === 'terminal') {
+      summary.terminal += 1
+    } else {
+      summary.healthy += 1
+    }
+  }
+  return summaries
+}
+
+/**
  * Format models array back to string
  */
 export function formatModelsString(models: string[]): string {

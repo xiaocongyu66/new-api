@@ -369,6 +369,54 @@ export async function getChannelModelHealth(channelId: number): Promise<{
   return res.data
 }
 
+/**
+ * Per-channel request aggregate over the trailing window, read from the relay
+ * logs. `success_count` counts consumed requests and `error_count` counts
+ * failed ones; `request_count` is their sum.
+ */
+export type ChannelRequestStat = {
+  request_count: number
+  success_count: number
+  error_count: number
+  tokens: number
+  avg_duration_ms: number
+  last_request_at: number
+}
+
+export type ChannelRequestStatsResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    hours: number
+    channels: Record<string, ChannelRequestStat>
+  }
+}
+
+/**
+ * Request the card view's traffic strip for a whole page of channels in one
+ * call. Cards without traffic are absent from `data.channels` instead of
+ * reporting zeros.
+ */
+export async function getChannelRequestStats(
+  channelIds: number[],
+  hours = 24
+): Promise<ChannelRequestStatsResponse> {
+  const res = await api.get(
+    `/api/channel/request_stats?hours=${hours}&channel_ids=${channelIds.join(',')}`
+  )
+  return res.data
+}
+
+/** System-wide route-unit health, summarized per card by the card view. */
+export async function getAllChannelModelHealth(): Promise<{
+  success: boolean
+  message?: string
+  data?: ChannelModelHealthRow[]
+}> {
+  const res = await api.get('/api/channel/health')
+  return res.data
+}
+
 export async function updateChannelModelHealth(
   action: 'disable' | 'recover' | 'force_recall',
   channelId: number,
