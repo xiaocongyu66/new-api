@@ -230,7 +230,7 @@ func HandleRedPacketCommand(event *GroupAtMessageEvent, openID string) (content 
 
 	symbol := currencySymbolOrEmpty()
 	if blessing == "" {
-		blessing = "大家一起来分奶酪！"
+		blessing = "大家一起来分额度！"
 	}
 
 	var sb strings.Builder

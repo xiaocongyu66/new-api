@@ -330,6 +330,7 @@ export type BillingSettings = {
   'general_setting.amount_unit'?: string
   'general_setting.amount_name'?: string
   DisplayInCurrencyEnabled: boolean
+  DisplayGroupRatioTable: boolean
   DisplayTokenStatEnabled: boolean
   ModelPrice: string
   ModelRatio: string

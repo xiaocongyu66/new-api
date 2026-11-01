@@ -54,6 +54,7 @@ export interface CommonLogFilters extends CommonFilters {
   username?: string
   requestId?: string
   upstreamRequestId?: string
+  emptyResponse?: boolean
 }
 /**
  * Drawing logs specific filters
@@ -231,6 +232,10 @@ export interface LogOtherData {
   // Backend-rendered display amount for fee_quota (charge_violation_fee.go),
   // so the log row never formats raw quota.
   fee_quota_display?: number
+  // Empty-response billing: an empty 200 response scaled by the configured
+  // multiplier (0 = waived, 1 = full price).
+  empty_response_multiplier?: number
+  empty_response_waived?: boolean
   // Reject / intercept reason (admin)
   reject_reason?: string
   // Task-related fields (for refund logs, type=6)
@@ -332,6 +337,7 @@ export interface GetLogsParams {
   group?: string
   request_id?: string
   upstream_request_id?: string
+  empty_response?: string
 }
 
 export interface GetLogsResponse {

@@ -40,7 +40,7 @@ export function CTA(props: CTAProps) {
           />
           <div
             aria-hidden
-            className='cheese-aurora pointer-events-none absolute inset-0 opacity-70 blur-2xl dark:opacity-40'
+            className='warm-aurora pointer-events-none absolute inset-0 opacity-70 blur-2xl dark:opacity-40'
             style={{
               background: [
                 'radial-gradient(ellipse 45% 55% at 30% 30%, oklch(0.88 0.14 85 / 50%) 0%, transparent 70%)',

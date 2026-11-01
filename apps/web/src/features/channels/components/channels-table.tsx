@@ -29,9 +29,11 @@ import { useState, useMemo, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
+  DATA_TABLE_VIEW_MODES,
   DISABLED_ROW_DESKTOP,
   DISABLED_ROW_MOBILE,
   DataTablePage,
+  useDataTableViewMode,
   useDebouncedColumnFilter,
   useDataTable,
 } from '@/components/data-table'
@@ -45,8 +47,16 @@ import {
 import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { getLobeIcon } from '@/lib/lobe-icon'
+import { cn } from '@/lib/utils'
 
-import { getChannels, searchChannels, getGroups } from '../api'
+import {
+  getAllChannelModelHealth,
+  getChannelRequestStats,
+  getChannels,
+  searchChannels,
+  getGroups,
+  type ChannelRequestStat,
+} from '../api'
 import {
   DEFAULT_PAGE_SIZE,
   CHANNEL_STATUS,
@@ -59,6 +69,7 @@ import {
   isTagAggregateRow,
   getChannelTypeIcon,
   getChannelTypeLabel,
+  summarizeRouteHealthByChannel,
 } from '../lib'
 import type { Channel, ChannelSortBy } from '../types'
 import { ChannelCard } from './channel-card'
@@ -80,6 +91,17 @@ const CHANNEL_SORTABLE_COLUMNS = new Set<ChannelSortBy>([
   'test_time',
 ])
 
+// The aggregate omits channels with no logs in the window; the card still
+// renders the strip so "no traffic in 24h" reads as zero instead of a gap.
+const EMPTY_REQUEST_STAT: ChannelRequestStat = {
+  request_count: 0,
+  success_count: 0,
+  error_count: 0,
+  tokens: 0,
+  avg_duration_ms: 0,
+  last_request_at: 0,
+}
+
 function isDisabledChannelRow(channel: Channel) {
   return (
     !isTagAggregateRow(channel) && channel.status !== CHANNEL_STATUS.ENABLED
@@ -96,6 +118,14 @@ export function ChannelsTable() {
     setSensitiveVisible,
   } = useChannels()
   const isMobile = useMediaQuery('(max-width: 640px)')
+
+  // The card view owns extra queries (request aggregate, route health), so the
+  // page — not the generic table wrapper — holds the mode state.
+  const [viewMode, setViewMode] = useDataTableViewMode({
+    storageKey: CHANNELS_VIEW_MODE_STORAGE_KEY,
+    defaultMode: DATA_TABLE_VIEW_MODES.CARD,
+  })
+  const cardViewActive = viewMode === DATA_TABLE_VIEW_MODES.CARD
 
   // Table state
   const [sorting, setSorting] = useState<SortingState>([])
@@ -303,6 +333,36 @@ export function ChannelsTable() {
   const totalCount = data?.data?.total || 0
   const typeCounts = data?.data?.type_counts
 
+  // Card view extras. Traffic comes from one aggregate call for the whole page
+  // (per-card queries would be N requests); route health is a single
+  // system-wide snapshot summarized per channel below. Both are gated on the
+  // card view because the table view has nowhere to show them.
+  const pageChannelIds = useMemo(
+    () => (data?.data?.items ?? []).map((channel) => channel.id),
+    [data]
+  )
+  const pageChannelIdsKey = pageChannelIds.join(',')
+
+  // eslint-disable-next-line @tanstack/query/exhaustive-deps
+  const { data: requestStatsData } = useQuery({
+    queryKey: ['channel-request-stats', pageChannelIdsKey],
+    queryFn: () => getChannelRequestStats(pageChannelIds),
+    enabled: cardViewActive && pageChannelIds.length > 0,
+    staleTime: 60_000,
+  })
+
+  const { data: channelHealthData } = useQuery({
+    queryKey: ['channel-route-health', 'all'],
+    queryFn: getAllChannelModelHealth,
+    enabled: cardViewActive,
+    staleTime: 60_000,
+  })
+
+  const routeHealthByChannel = useMemo(
+    () => summarizeRouteHealthByChannel(channelHealthData?.data ?? []),
+    [channelHealthData]
+  )
+
   // Columns configuration
   const columns = useChannelsColumns({ enableSelection: batchMode })
 
@@ -398,11 +458,14 @@ export function ChannelsTable() {
     ]
   }, [t, typeCounts, typeFilter])
 
+  // Group names are user-owned data: the all-groups entry is a translated
+  // label; each group renders verbatim (masked by the sensitive toggle).
   const groupFilterOptions = [
     { label: t('All Groups'), value: 'all' },
     ...groupOptions.map((option) => ({
       ...option,
       label: sensitiveVisible ? option.label : '••••',
+      rawLabel: true,
     })),
   ]
 
@@ -419,10 +482,29 @@ export function ChannelsTable() {
       skeletonKeyPrefix='channel-skeleton'
       enableCardView
       viewModeStorageKey={CHANNELS_VIEW_MODE_STORAGE_KEY}
-      renderCard={(row, { isSelected }) => (
-        <ChannelCard row={row} isSelected={isSelected} />
-      )}
-      cardGridClassName='grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-3'
+      viewMode={viewMode}
+      onViewModeChange={setViewMode}
+      renderCard={(row) => {
+        const channel = row.original
+        const isTagRow = isTagAggregateRow(channel)
+        return (
+          <ChannelCard
+            row={row}
+            requestStat={
+              isTagRow
+                ? undefined
+                : requestStatsData?.data
+                  ? (requestStatsData.data.channels[String(channel.id)] ??
+                    EMPTY_REQUEST_STAT)
+                  : undefined
+            }
+            routeHealth={
+              isTagRow ? undefined : routeHealthByChannel.get(channel.id)
+            }
+          />
+        )
+      }}
+      cardGridClassName='grid grid-cols-[repeat(auto-fill,minmax(290px,1fr))] gap-3 sm:gap-4'
       applyHeaderSize
       toolbarProps={{
         searchPlaceholder: t('Filter by name, ID, or key...'),
@@ -482,13 +564,17 @@ export function ChannelsTable() {
         ),
       }}
       getRowClassName={(row, { isMobile }) => {
-        if (!isDisabledChannelRow(row.original)) {
-          return undefined
+        const classes: string[] = []
+        if (cardViewActive) {
+          // The card renders its own padded sections and a full-bleed footer.
+          classes.push(
+            'p-0 overflow-hidden transition-shadow hover:shadow-md hover:border-primary/30'
+          )
         }
-        if (isMobile) {
-          return DISABLED_ROW_MOBILE
+        if (isDisabledChannelRow(row.original)) {
+          classes.push(isMobile ? DISABLED_ROW_MOBILE : DISABLED_ROW_DESKTOP)
         }
-        return DISABLED_ROW_DESKTOP
+        return classes.length > 0 ? cn(classes) : undefined
       }}
       bulkActions={batchMode ? <DataTableBulkActions table={table} /> : null}
     />

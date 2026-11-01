@@ -359,9 +359,9 @@ func dropUnitName(quota int) string {
 		return ""
 	}
 	if quotaToUnits(quota) < 1 {
-		return "奶酪碎屑"
+		return "额度碎屑"
 	}
-	return "奶酪碎片"
+	return "额度碎片"
 }
 
 // renderDropMessage 渲染掉落文案

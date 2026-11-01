@@ -187,6 +187,7 @@ func SeedOptionMap() {
 	common.OptionMap["LogConsumeEnabled"] = strconv.FormatBool(common.LogConsumeEnabled)
 	common.OptionMap["DisplayInCurrencyEnabled"] = strconv.FormatBool(common.DisplayInCurrencyEnabled)
 	common.OptionMap["DisplayTokenStatEnabled"] = strconv.FormatBool(common.DisplayTokenStatEnabled)
+	common.OptionMap["DisplayGroupRatioTable"] = strconv.FormatBool(common.DisplayGroupRatioTable)
 	common.OptionMap["DrawingEnabled"] = strconv.FormatBool(common.DrawingEnabled)
 	common.OptionMap["TaskEnabled"] = strconv.FormatBool(common.TaskEnabled)
 	common.OptionMap["DataExportEnabled"] = strconv.FormatBool(common.DataExportEnabled)
@@ -354,7 +355,7 @@ func ApplyOption(key string, value string) (err error) {
 			common.ImageDownloadPermission = intValue
 		}
 	}
-	if strings.HasSuffix(key, "Enabled") || key == "DefaultCollapseSidebar" || key == "DefaultUseAutoGroup" || key == "SMTPForceAuthLogin" || key == "SMTPInsecureSkipVerify" {
+	if strings.HasSuffix(key, "Enabled") || key == "DisplayGroupRatioTable" || key == "DefaultCollapseSidebar" || key == "DefaultUseAutoGroup" || key == "SMTPForceAuthLogin" || key == "SMTPInsecureSkipVerify" {
 		boolValue := value == "true"
 		switch key {
 		case "PasswordRegisterEnabled":
@@ -397,6 +398,8 @@ func ApplyOption(key string, value string) (err error) {
 			}
 		case "DisplayTokenStatEnabled":
 			common.DisplayTokenStatEnabled = boolValue
+		case "DisplayGroupRatioTable":
+			common.DisplayGroupRatioTable = boolValue
 		case "DrawingEnabled":
 			common.DrawingEnabled = boolValue
 		case "TaskEnabled":

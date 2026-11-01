@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQueryClient, useIsFetching } from '@tanstack/react-query'
 import { useNavigate, getRouteApi } from '@tanstack/react-router'
 import type { Table } from '@tanstack/react-table'
-import { Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff, MessageSquareOff } from 'lucide-react'
 import { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -87,6 +87,7 @@ function buildSearchSourceKey(values: {
   username?: unknown
   requestId?: unknown
   upstreamRequestId?: unknown
+  emptyResponse?: unknown
   type?: unknown
 }) {
   return [
@@ -99,6 +100,7 @@ function buildSearchSourceKey(values: {
     values.username,
     values.requestId,
     values.upstreamRequestId,
+    values.emptyResponse,
     Array.isArray(values.type) ? values.type.join(',') : values.type,
   ]
     .map((value) => String(value ?? ''))
@@ -130,8 +132,8 @@ export function CommonLogsFilterBar<TData>(
       token: searchParams.token,
       group: searchParams.group,
       username: searchParams.username,
-      requestId: searchParams.requestId,
       upstreamRequestId: searchParams.upstreamRequestId,
+      emptyResponse: searchParams.emptyResponse,
       type: searchParams.type,
     }
     const filters: CommonLogFilters = {
@@ -143,9 +145,12 @@ export function CommonLogsFilterBar<TData>(
       model: searchParams.model || undefined,
       token: searchParams.token || undefined,
       group: searchParams.group || undefined,
-      username: searchParams.username || undefined,
-      requestId: searchParams.requestId || undefined,
       upstreamRequestId: searchParams.upstreamRequestId || undefined,
+      emptyResponse:
+        searchParams.emptyResponse === '1' ||
+        searchParams.emptyResponse === 'true' ||
+        searchParams.emptyResponse === true,
+      requestId: searchParams.requestId || undefined,
     }
     return {
       sourceKey: buildSearchSourceKey(sourceValues),
@@ -160,8 +165,8 @@ export function CommonLogsFilterBar<TData>(
     searchParams.token,
     searchParams.group,
     searchParams.username,
-    searchParams.requestId,
     searchParams.upstreamRequestId,
+    searchParams.emptyResponse,
     searchParams.type,
   ])
   const [draft, setDraft] = useState<CommonLogDraft>(() => searchState)
@@ -184,6 +189,23 @@ export function CommonLogsFilterBar<TData>(
     },
     [searchState]
   )
+
+  // emptyResponse is the only boolean filter; keeping it out of handleChange's
+  // signature prevents a boolean from reaching the string-typed filter fields.
+  const toggleEmptyResponse = useCallback(() => {
+    setDraft((current) => {
+      const base =
+        current.sourceKey === searchState.sourceKey ? current : searchState
+      return {
+        sourceKey: searchState.sourceKey,
+        filters: {
+          ...base.filters,
+          emptyResponse: !base.filters.emptyResponse,
+        },
+        logType: base.logType,
+      }
+    })
+  }, [searchState])
 
   const handleApply = useCallback(() => {
     const filterParams = buildSearchParams(filters, 'common')
@@ -242,7 +264,11 @@ export function CommonLogsFilterBar<TData>(
 
   const hasTypeFilter = logType !== LOG_TYPE_ALL_VALUE
   const hasAdditionalFilters =
-    !!filters.model || !!filters.group || hasTypeFilter || hasExpandedFilters
+    !!filters.model ||
+    !!filters.group ||
+    !!filters.emptyResponse ||
+    hasTypeFilter ||
+    hasExpandedFilters
 
   const expandedFilterCount = [
     filters.token,
@@ -358,6 +384,21 @@ export function CommonLogsFilterBar<TData>(
       </Select>
     </LogsFilterField>
   )
+  const emptyResponseFilter = (
+    <LogsFilterField>
+      <Button
+        type='button'
+        variant={filters.emptyResponse ? 'secondary' : 'outline'}
+        size='sm'
+        className='h-8 w-full gap-1.5 px-3 text-xs'
+        aria-pressed={filters.emptyResponse}
+        onClick={toggleEmptyResponse}
+      >
+        <MessageSquareOff className='size-3.5' aria-hidden='true' />
+        {t('Empty reply')}
+      </Button>
+    </LogsFilterField>
+  )
   const advancedFilters = (
     <>
       <LogsFilterField>
@@ -420,6 +461,7 @@ export function CommonLogsFilterBar<TData>(
           {modelFilter}
           {groupFilter}
           {typeFilter}
+          {emptyResponseFilter}
         </>
       }
       advancedFilters={advancedFilters}
@@ -429,12 +471,13 @@ export function CommonLogsFilterBar<TData>(
           {modelFilter}
           {groupFilter}
           {typeFilter}
+          {emptyResponseFilter}
           {advancedFilters}
         </>
       }
       mobileFilterCount={
-        [filters.model, filters.group, hasTypeFilter].filter(Boolean).length +
-        expandedFilterCount
+        [filters.model, filters.group, filters.emptyResponse, hasTypeFilter]
+          .filter(Boolean).length + expandedFilterCount
       }
       hasAdvancedActiveFilters={hasExpandedFilters}
       advancedFilterCount={expandedFilterCount}

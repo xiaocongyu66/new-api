@@ -67,6 +67,7 @@ export interface PricingFormValues {
   QuotaPerUnit: number
   USDExchangeRate: number
   DisplayInCurrencyEnabled: boolean
+  DisplayGroupRatioTable: boolean
   DisplayTokenStatEnabled: boolean
   general_setting: PricingGeneralSettings
 }
@@ -79,6 +80,7 @@ const createPricingSchema = (t: (key: string) => string) =>
         .number()
         .min(0.0001, t('Exchange rate must be greater than 0')),
       DisplayInCurrencyEnabled: z.boolean(),
+      DisplayGroupRatioTable: z.boolean(),
       DisplayTokenStatEnabled: z.boolean(),
       general_setting: z.object({
         quota_display_type: z.enum(['USD', 'CNY', 'TOKENS', 'CUSTOM']),
@@ -455,6 +457,29 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
                     <FormLabel>{t('Display Token Statistics')}</FormLabel>
                     <FormDescription>
                       {t('Show token usage statistics in the UI')}
+                    </FormDescription>
+                  </SettingsSwitchContent>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </SettingsSwitchItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='DisplayGroupRatioTable'
+              render={({ field }) => (
+                <SettingsSwitchItem>
+                  <SettingsSwitchContent>
+                    <FormLabel>{t('Group Ratio Table')}</FormLabel>
+                    <FormDescription>
+                      {t(
+                        'Show a group-ratio table on model square cards instead of per-mode price tables'
+                      )}
                     </FormDescription>
                   </SettingsSwitchContent>
                   <FormControl>

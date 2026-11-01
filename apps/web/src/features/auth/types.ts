@@ -107,6 +107,7 @@ export interface SystemStatus {
     self_use_mode_enabled?: boolean
     display_in_currency?: boolean
     display_token_stat_enabled?: boolean
+    display_group_ratio_table?: boolean
     quota_per_unit?: number
     quota_display_type?: string
     usd_exchange_rate?: number
@@ -119,6 +120,7 @@ export interface SystemStatus {
     register_enabled?: boolean
     password_login_enabled?: boolean
     password_register_enabled?: boolean
+    empty_response_multiplier?: number
     custom_oauth_providers?: CustomOAuthProviderInfo[]
     [key: string]: unknown
   }
@@ -152,6 +154,7 @@ export interface SystemStatus {
   self_use_mode_enabled?: boolean
   display_in_currency?: boolean
   display_token_stat_enabled?: boolean
+  display_group_ratio_table?: boolean
   quota_per_unit?: number
   quota_display_type?: string
   usd_exchange_rate?: number

@@ -612,18 +612,18 @@ For commercial licensing, please contact support@quantumnous.com
   --skeleton-highlight: oklch(0.41 0.004 60);
 }
 
-/* ── Nailao (Cheese) ──────────────────────────────────────────────────── */
+/* ── Nailao (Warm Gold) ────────────────────────────────────────────────── */
 /*
- * 奶酪公益站's brand palette: a warm cream canvas with cheese gold as the one
+ * 收费站's brand palette: a warm cream canvas with warm gold as the one
  * primary accent and toasted-crust orange in the secondary/chart slots.
  *
  * Unlike Anthropic (which ships bespoke warm-neutral surfaces and therefore
  * opts out of the semantic bridge), this preset WANTS the primary-mix
  * derivation: cards, muted blocks, borders and the sidebar should all read as
- * gently cheese-tinted. So only the canvas, ink and accent anchors live here
+ * gently warm-tinted. So only the canvas, ink and accent anchors live here
  * and the bridge above derives the rest.
  *
- * OKLCH hue 85-95 = cheese gold; hue 40-60 = toasted crust / cocoa ink.
+ * OKLCH hue 85-95 = warm gold; hue 40-60 = toasted crust / cocoa ink.
  */
 [data-theme-preset='nailao'] {
   --background: oklch(0.967 0.03 95);

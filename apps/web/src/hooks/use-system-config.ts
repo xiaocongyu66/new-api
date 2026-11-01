@@ -41,6 +41,7 @@ interface StatusApiResponse {
     footer_html?: string
     demo_site_enabled?: boolean
     display_token_stat_enabled?: boolean
+    display_group_ratio_table?: boolean
     display_in_currency?: boolean
     quota_display_type?: CurrencyDisplayType
     quota_per_unit?: number
@@ -106,6 +107,7 @@ export function mapStatusDataToConfig(
     logo: data.logo || DEFAULT_LOGO,
     footerHtml: data.footer_html,
     demoSiteEnabled: data.demo_site_enabled,
+    displayGroupRatioTable: data.display_group_ratio_table,
     displayTokenStatEnabled: data.display_token_stat_enabled,
     currency,
   }

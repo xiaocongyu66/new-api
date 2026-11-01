@@ -55,6 +55,7 @@ function MasonryItem(props: {
   usdExchangeRate?: number
   showRechargePrice?: boolean
   selectedGroup?: string
+  displayGroupRatioTable?: boolean
   perf?: ModelPerfBadgeData
   onClick: () => void
 }) {
@@ -125,6 +126,7 @@ function MasonryItem(props: {
           usdExchangeRate={props.usdExchangeRate}
           showRechargePrice={props.showRechargePrice}
           selectedGroup={props.selectedGroup}
+          displayGroupRatioTable={props.displayGroupRatioTable}
           perf={props.perf}
           visible={visible}
           onClick={props.onClick}
@@ -142,6 +144,7 @@ export interface ModelCardGridProps {
   tokenUnit?: TokenUnit
   showRechargePrice?: boolean
   selectedGroup?: string
+  displayGroupRatioTable?: boolean
 }
 
 export function ModelCardGrid(props: ModelCardGridProps) {
@@ -312,6 +315,7 @@ export function ModelCardGrid(props: ModelCardGridProps) {
               usdExchangeRate={props.usdExchangeRate}
               showRechargePrice={props.showRechargePrice}
               selectedGroup={props.selectedGroup}
+              displayGroupRatioTable={props.displayGroupRatioTable}
               perf={perfMap.get(model.model_name || '')}
               onClick={() => props.onModelClick(model.model_name || '')}
             />
