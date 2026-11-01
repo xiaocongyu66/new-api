@@ -64,8 +64,10 @@ func seedChannelStatsLogsHandler(t *testing.T, db *gorm.DB, now int64) {
 
 func TestGetChannelRequestStatsHandler(t *testing.T) {
 	db := withChannelStatsLogDB(t)
-	now := time.Now().Unix()
-	seedChannelStatsLogsHandler(t, db, now)
+	// Seed immediately before the subtests run: the handler derives its window
+	// from its own time.Now(), so any gap between seeding and the request can
+	// push the newest rows outside the window.
+	seedChannelStatsLogsHandler(t, db, time.Now().Unix())
 
 	// Other tests in this package run first and may have registered the real
 	// display-currency hook; pin it off so quota assertions check the raw sum.
@@ -161,6 +163,23 @@ func TestGetChannelRequestStatsHandler(t *testing.T) {
 	})
 
 	t.Run("指定渠道过滤", func(t *testing.T) {
+		// Verify the fixtures are what we think before blaming the handler:
+		// channel 2 must hold exactly two error rows in a wide window.
+		type rowCount struct {
+			Type  int `gorm:"column:type"`
+			Count int `gorm:"column:count"`
+		}
+		var counts []rowCount
+		wideStart := time.Now().Unix() - 3*86400
+		wideEnd := time.Now().Unix() + 3600
+		require.NoError(t, db.Raw(
+			`SELECT type, count(*) AS count FROM logs WHERE channel_id = ? AND created_at BETWEEN ? AND ? GROUP BY type`,
+			2, wideStart, wideEnd,
+		).Scan(&counts).Error)
+		require.Len(t, counts, 1, "channel 2 should only hold error rows")
+		assert.Equal(t, 5, counts[0].Type)
+		require.Equal(t, 2, counts[0].Count, "fixture drift: error row count")
+
 		rec := doRequest("channel_ids=2")
 		_, channels := unmarshal(t, rec)
 		assert.Len(t, channels, 1)
