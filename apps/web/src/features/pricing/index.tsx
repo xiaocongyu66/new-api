@@ -61,6 +61,7 @@ export function Pricing() {
     refetch,
     priceRate,
     usdExchangeRate,
+    displayGroupRatioTable,
   } = usePricingData()
 
   const {
@@ -164,6 +165,7 @@ export function Pricing() {
           tokenUnit={DEFAULT_TOKEN_UNIT}
           showRechargePrice={showRechargePrice}
           selectedGroup={groupFilter}
+          displayGroupRatioTable={displayGroupRatioTable}
         />
       )
     }

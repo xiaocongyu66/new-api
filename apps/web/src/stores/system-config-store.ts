@@ -57,6 +57,7 @@ export interface SystemConfig {
   footerHtml?: string
   demoSiteEnabled?: boolean
   displayTokenStatEnabled?: boolean
+  displayGroupRatioTable?: boolean
   currency: CurrencyConfig
 }
 

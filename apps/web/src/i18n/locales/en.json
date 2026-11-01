@@ -1687,6 +1687,8 @@
     "Display name shown to users.": "Display name shown to users.",
     "Display Options": "Display Options",
     "Display Token Statistics": "Display Token Statistics",
+    "Group Ratio Table": "Group Ratio Table",
+    "Show a group-ratio table on model square cards instead of per-mode price tables": "Show a group-ratio table on model square cards instead of per-mode price tables",
     "Displayed in": "Displayed in",
     "Displays the mobile sidebar.": "Displays the mobile sidebar.",
     "Do not over-trust this feature. IP may be spoofed. Please use with nginx, CDN and other gateways.": "Do not over-trust this feature. IP may be spoofed. Please use with nginx, CDN and other gateways.",

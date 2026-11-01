@@ -1687,6 +1687,8 @@
     "Display name shown to users.": "Tên hiển thị cho người dùng.",
     "Display Options": "Tùy chọn hiển thị",
     "Display Token Statistics": "Hiển thị Thống kê Token",
+    "Group Ratio Table": "Bảng tỷ lệ nhóm",
+    "Show a group-ratio table on model square cards instead of per-mode price tables": "Hiển thị bảng tỷ lệ nhóm trên thẻ Model Square thay vì bảng giá theo chế độ",
     "Displayed in": "Hiển thị theo",
     "Displays the mobile sidebar.": "Hiển thị thanh bên di động.",
     "Do not over-trust this feature. IP may be spoofed. Please use with nginx, CDN and other gateways.": "Đừng tin tưởng quá mức vào tính năng này. IP có thể bị giả mạo. Hãy sử dụng cùng với nginx, CDN và các gateway khác.",

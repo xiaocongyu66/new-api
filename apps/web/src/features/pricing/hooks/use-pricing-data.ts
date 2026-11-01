@@ -42,6 +42,9 @@ export function usePricingData() {
     [status?.usd_exchange_rate, priceRate]
   )
 
+  const displayGroupRatioTable =
+    (status?.display_group_ratio_table as boolean) ?? false
+
   const models = useMemo(() => {
     if (!data?.data || !data?.vendors) return []
 
@@ -74,5 +77,6 @@ export function usePricingData() {
     refetch,
     priceRate,
     usdExchangeRate,
+    displayGroupRatioTable,
   }
 }
