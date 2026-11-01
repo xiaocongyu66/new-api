@@ -4,11 +4,11 @@ This directory contains end-to-end tests for the ported Nailao features using Pl
 
 ## Test Scope
 
-1. **Home Page**: Verifies Nailao-specific hero, story, policy, and feature sections render in Chinese.
-2. **User Insights**: Tests navigation, tab switching (Profiles / Evidence Samples), summary statistics cards, and Chinese labels.
-3. **Theme Settings**: Tests switching between the default cold-blue and the optional cheese-gold preset without label collisions.
-4. **Operations Settings**: Verifies full i18n coverage for User Insight configuration fields.
-5. **Sidebar Navigation**: Ensures correct item ordering and non-empty title/icon for User Insights.
+1. **Home Page**: Verifies hero, usage policy, and feature sections render in Chinese.
+2. **User Insights**: Tests navigation, tab switching (Profiles / Evidence Samples / Profiling settings), summary statistics cards, and Chinese labels.
+3. **Theme Settings**: Tests that the theme drawer lists the default cold-blue and the optional cheese-gold preset, and that selecting the gold preset keeps the page styled.
+4. **User Insights Settings**: Verifies full i18n coverage for User Insight configuration fields on the profiling settings tab.
+5. **Sidebar Navigation**: Ensures the Admin tab lists User Insights with a non-empty title and correct link.
 
 ## Running Tests
 
