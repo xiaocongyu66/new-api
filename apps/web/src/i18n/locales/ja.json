@@ -2833,7 +2833,6 @@
     "Jimeng": "Jimeng",
     "Jina": "Jina",
     "Join requests whose application text contains this keyword are approved": "申请信息中包含该关键词时自动同意",
-    "Join the group: 奶酪公益API站": "グループに参加：奶酪公益API站",
     "Join the official QQ group": "加入官方 QQ 群",
     "JSON": "JSON",
     "JSON array of group identifiers. When enabled below, new tokens rotate through this list.": "グループ識別子のJSON配列。以下で有効にすると、新しいトークンはこのリストをローテーションします。",
@@ -4045,7 +4044,7 @@
     "preset.forest-whisper": "フォレストウィスパー",
     "preset.lake-view": "レイクビュー",
     "preset.lavender-dream": "ラベンダードリーム",
-    "preset.nailao": "チーズ",
+    "preset.nailao": "ウォームゴールド",
     "preset.ocean-breeze": "オーシャンブリーズ",
     "preset.rose-garden": "ローズガーデン",
     "preset.simple-large": "特大フォント・シンプル",
@@ -6118,6 +6117,19 @@
     "Configuration for CodePay (码支付) payment integration": "CodePay (码支付) 決済連携の設定",
     "Gateway CodePay": "CodePay ゲートウェイ",
     "Epay is the default gateway. VMQ and CodePay methods must use the alipay or wxpay type.": "既定のゲートウェイは Epay です。VMQ と CodePay の支払い方法は alipay または wxpay タイプを使用する必要があります。",
-    "Configured as PayMethods JSON. stripe uses Stripe and waffo_pancake uses Waffo Pancake; other methods are paid through the gateway chosen for each method (Epay by default, or VMQ / CodePay for alipay and wxpay).": "PayMethods JSON として保存されます。stripe は Stripe、waffo_pancake は Waffo Pancake を使用し、その他の支払い方法はそれぞれ選択したゲートウェイで決済されます（既定は Epay、alipay と wxpay は VMQ / CodePay も選択可）。"
+    "Configured as PayMethods JSON. stripe uses Stripe and waffo_pancake uses Waffo Pancake; other methods are paid through the gateway chosen for each method (Epay by default, or VMQ / CodePay for alipay and wxpay).": "PayMethods JSON として保存されます。stripe は Stripe、waffo_pancake は Waffo Pancake を使用し、その他の支払い方法はそれぞれ選択したゲートウェイで決済されます（既定は Epay、alipay と wxpay は VMQ / CodePay も選択可）。",
+    "Charge": "課金",
+    "Charged for empty response": "空応答の課金",
+    "Empty reply": "空応答",
+    "Full price": "全額請求",
+    "home.policy.empty.body": "モデルが空の応答（HTTP 200 でコンテンツなし）を返した場合も、ルーティングとスケジューリングのコストを賄うため、通常料金の一部が請求されます。",
+    "home.policy.empty.item.adjustable": "倍率について：サイト側で設定済み",
+    "home.policy.empty.item.rate": "通常料金 x {{multiplier}}",
+    "home.policy.empty.item.scope": "従量 / トークン x {{multiplier}}",
+    "home.policy.empty.title": "空応答の課金",
+    "Join the group: 收费API站": "グループに参加：收费API站",
+    "Empty Response Charge": "空応答の課金",
+    "pricing.model.emptyResponseNote": "<0>空応答</0>の課金について：モデルが空の応答を返した場合、通常料金 × {{multiplier}} が請求されます。従量・トークン課金の両方に適用されます。",
+    "Reduced by multiplier": "倍率で減額"
   }
 }

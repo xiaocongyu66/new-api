@@ -37,6 +37,8 @@ await i18n.use(initReactI18next).init({
         Subscription: 'Subscription',
         'Deducted by subscription': 'Deducted by subscription',
         'Includes tool-call surcharge': 'Includes tool-call surcharge',
+        'Charged for empty response': 'Charged for empty response',
+        'Empty reply': 'Empty reply',
       },
     },
   },
@@ -122,6 +124,40 @@ describe('log cost display', () => {
     assert.equal(rendered.container.textContent?.includes('Subscription'), true)
     assert.ok(
       rendered.container.querySelector('[data-tool-surcharge-indicator="true"]')
+    )
+
+    await unmountCost(rendered)
+  })
+
+  test('adds an accessible empty-response marker when the charge is scaled', async () => {
+    const rendered = await renderCost({
+      quota: 1250,
+      other: {
+        empty_response_multiplier: 0.1,
+        empty_response_waived: true,
+      },
+    })
+
+    assert.equal(
+      normalizedText(rendered.container.textContent).includes(
+        normalizedText(formatLogQuota(1250))
+      ),
+      true
+    )
+    const marker = rendered.container.querySelector(
+      '[data-empty-response-indicator="true"]'
+    )
+    assert.ok(marker)
+    assert.equal(
+      marker.getAttribute('aria-label'),
+      'Empty reply — Charged for empty response'
+    )
+    assert.equal(marker.getAttribute('tabindex'), '0')
+    assert.equal(
+      normalizedText(rendered.container.textContent).includes(
+        normalizedText('Empty reply')
+      ),
+      true
     )
 
     await unmountCost(rendered)

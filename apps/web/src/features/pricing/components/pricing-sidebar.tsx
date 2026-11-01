@@ -273,6 +273,7 @@ export function PricingSidebar(props: PricingSidebarProps) {
         </Button>
       </div>
 
+
       <div className='space-y-1'>
         <FilterSection
           title={t('Groups')}

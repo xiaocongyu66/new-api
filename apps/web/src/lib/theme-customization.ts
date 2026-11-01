@@ -38,12 +38,12 @@ export const THEME_PRESETS = [
     swatches: ['oklch(0.984 0.005 95)', 'oklch(0.685 0.142 38)'],
   },
   {
-    // Nailao (奶酪公益站) brand palette: warm cream canvas with cheese-gold
+    // Warm Gold brand palette: warm cream canvas with warm-gold
     // as the single accent and toasted-crust orange in the chart slots.
     // Surfaces derive from `--primary` via the semantic bridge below, so this
     // preset only declares the canvas, ink and accent anchors.
     value: 'nailao',
-    name: 'Cheese',
+    name: 'Warm Gold',
     swatches: ['oklch(0.967 0.03 95)', 'oklch(0.84 0.14 85)'],
   },
   {

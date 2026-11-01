@@ -801,7 +801,7 @@ func SyncCommandPanel() error {
 					Desc: "领取每日额度",
 				},
 			},
-			Remark: "奶酪签到指令面板",
+			Remark: "站内签到指令面板",
 		},
 	}
 	panelID, err := client.CreatePanel(req)

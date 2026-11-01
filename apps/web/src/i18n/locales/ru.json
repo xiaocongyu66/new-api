@@ -2833,7 +2833,6 @@
     "Jimeng": "Jimeng",
     "Jina": "Jina",
     "Join requests whose application text contains this keyword are approved": "申请信息中包含该关键词时自动同意",
-    "Join the group: 奶酪公益API站": "Присоединяйтесь к группе: 奶酪公益API站",
     "Join the official QQ group": "加入官方 QQ 群",
     "JSON": "JSON",
     "JSON array of group identifiers. When enabled below, new tokens rotate through this list.": "Массив JSON идентификаторов групп. Если включено ниже, новые токены будут циклически перебираться по этому списку.",
@@ -4045,7 +4044,7 @@
     "preset.forest-whisper": "Лесной шёпот",
     "preset.lake-view": "Озёрный вид",
     "preset.lavender-dream": "Лавандовый сон",
-    "preset.nailao": "Сыр",
+    "preset.nailao": "Тёплое золото",
     "preset.ocean-breeze": "Морской бриз",
     "preset.rose-garden": "Розовый сад",
     "preset.simple-large": "Простая крупная",
@@ -6118,6 +6117,19 @@
     "Configuration for CodePay (码支付) payment integration": "Настройка интеграции оплаты CodePay (码支付)",
     "Gateway CodePay": "Шлюз CodePay",
     "Epay is the default gateway. VMQ and CodePay methods must use the alipay or wxpay type.": "По умолчанию используется шлюз Epay. Способы оплаты VMQ и CodePay должны иметь тип alipay или wxpay.",
-    "Configured as PayMethods JSON. stripe uses Stripe and waffo_pancake uses Waffo Pancake; other methods are paid through the gateway chosen for each method (Epay by default, or VMQ / CodePay for alipay and wxpay).": "Сохраняется как JSON PayMethods. stripe использует Stripe, waffo_pancake — Waffo Pancake; остальные способы оплачиваются через шлюз, выбранный для каждого способа (по умолчанию Epay, для alipay и wxpay также VMQ / CodePay)."
+    "Configured as PayMethods JSON. stripe uses Stripe and waffo_pancake uses Waffo Pancake; other methods are paid through the gateway chosen for each method (Epay by default, or VMQ / CodePay for alipay and wxpay).": "Сохраняется как JSON PayMethods. stripe использует Stripe, waffo_pancake — Waffo Pancake; остальные способы оплачиваются через шлюз, выбранный для каждого способа (по умолчанию Epay, для alipay и wxpay также VMQ / CodePay).",
+    "Charge": "Плата",
+    "Charged for empty response": "Плата за пустой ответ",
+    "Empty reply": "Пустой ответ",
+    "Full price": "Полная стоимость",
+    "home.policy.empty.body": "Если модель возвращает пустой ответ (HTTP 200 без содержимого), запрос всё равно тарифицируется частично — для покрытия расходов на маршрутизацию и планирование.",
+    "home.policy.empty.item.adjustable": "Примечание о множителе: настраивается сайтом",
+    "home.policy.empty.item.rate": "Обычная стоимость x {{multiplier}}",
+    "home.policy.empty.item.scope": "За вызов / за токены x {{multiplier}}",
+    "home.policy.empty.title": "Плата за пустые ответы",
+    "Join the group: 收费API站": "Присоединяйтесь к группе: 收费API站",
+    "Empty Response Charge": "Плата за пустой ответ",
+    "pricing.model.emptyResponseNote": "Тарификация <0>пустых ответов</0> : если модель вернула пустой ответ, списывается обычная стоимость × {{multiplier}}. Применимо к оплате за вызов и за токены.",
+    "Reduced by multiplier": "Уменьшено множителем"
   }
 }

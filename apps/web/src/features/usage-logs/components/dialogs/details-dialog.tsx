@@ -49,6 +49,7 @@ import {
   UserCog,
   Info,
   LogIn,
+  MessageSquareOff,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -1074,6 +1075,28 @@ export function DetailsDialog(props: DetailsDialogProps) {
             other={other}
             isAdmin={props.isAdmin}
           />
+        )}
+
+        {/* Empty-response charge (empty 200 response scaled by the configured multiplier) */}
+        {other?.empty_response_multiplier != null && (
+          <DetailSection
+            icon={<MessageSquareOff className='size-3.5' aria-hidden='true' />}
+            label={t('Empty Response Charge')}
+          >
+            <DetailRow
+              label={t('Multiplier')}
+              value={String(other.empty_response_multiplier)}
+              mono
+            />
+            <DetailRow
+              label={t('Charge')}
+              value={
+                (other.empty_response_multiplier ?? 1) < 1
+                  ? t('Reduced by multiplier')
+                  : t('Full price')
+              }
+            />
+          </DetailSection>
         )}
 
         {/* Tiered pricing breakdown (when billing_mode is tiered_expr) */}

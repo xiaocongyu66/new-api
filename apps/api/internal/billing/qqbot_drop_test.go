@@ -177,13 +177,13 @@ func TestRandomDropQuotaRange(t *testing.T) {
 // TestDropUnitName 小于 1 个货币单位为碎屑，否则为碎片
 func TestDropUnitName(t *testing.T) {
 	// QuotaPerUnit = 500000，汇率默认 1
-	if got := dropUnitName(150000); got != "奶酪碎屑" {
+	if got := dropUnitName(150000); got != "额度碎屑" {
 		t.Fatalf("0.3 应为碎屑，实际 %q", got)
 	}
-	if got := dropUnitName(500000); got != "奶酪碎片" {
+	if got := dropUnitName(500000); got != "额度碎片" {
 		t.Fatalf("1.0 应为碎片，实际 %q", got)
 	}
-	if got := dropUnitName(1500000); got != "奶酪碎片" {
+	if got := dropUnitName(1500000); got != "额度碎片" {
 		t.Fatalf("3.0 应为碎片，实际 %q", got)
 	}
 }
