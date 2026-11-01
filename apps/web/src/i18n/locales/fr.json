@@ -6123,7 +6123,7 @@
     "Empty reply": "Réponse vide",
     "Full price": "Plein tarif",
     "home.policy.empty.body": "Lorsque le modèle renvoie une réponse vide (HTTP 200 sans aucun contenu), la requête reste facturée à une fraction du prix normal, pour couvrir les coûts de routage et d'orchestration.",
-    "home.policy.empty.item.adjustable": "Note sur le multiplicateur : configuré par le site",
+    "home.policy.empty.item.adjustable": "Note sur le multiplicateur : 0 signifie exonéré, 1 signifie déduire les frais de cette requête, déduction réelle : {{multiplier}}",
     "home.policy.empty.item.rate": "Frais normaux x {{multiplier}}",
     "home.policy.empty.item.scope": "Par appel / par token x {{multiplier}}",
     "home.policy.empty.title": "Facturation des réponses vides",

@@ -6127,7 +6127,7 @@
     "Empty reply": "Empty reply",
     "Full price": "Full price",
     "home.policy.empty.body": "When the model returns an empty response (HTTP 200 with no content), the request still incurs a small charge to cover routing and scheduling costs.",
-    "home.policy.empty.item.adjustable": "Multiplier note: configured by the site",
+    "home.policy.empty.item.adjustable": "Multiplier note: 0 means exempt from fee, 1 means deduct this request's fee, actual deduction is {{multiplier}}",
     "home.policy.empty.item.rate": "Normal fee x {{multiplier}}",
     "home.policy.empty.item.scope": "Per-call / per-token x {{multiplier}}",
     "home.policy.empty.title": "Empty reply charge",

@@ -6123,7 +6123,7 @@
     "Empty reply": "空応答",
     "Full price": "全額請求",
     "home.policy.empty.body": "モデルが空の応答（HTTP 200 でコンテンツなし）を返した場合も、ルーティングとスケジューリングのコストを賄うため、通常料金の一部が請求されます。",
-    "home.policy.empty.item.adjustable": "倍率について：サイト側で設定済み",
+    "home.policy.empty.item.adjustable": "倍率について：0 は免除、1 はこのリクエストの費用を控除、実際の控除額は {{multiplier}}",
     "home.policy.empty.item.rate": "通常料金 x {{multiplier}}",
     "home.policy.empty.item.scope": "従量 / トークン x {{multiplier}}",
     "home.policy.empty.title": "空応答の課金",
