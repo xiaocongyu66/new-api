@@ -49,6 +49,12 @@ type DataTableFacetedFilterProps<TData, TValue> = {
     icon?: React.ComponentType<{ className?: string }>
     iconNode?: React.ReactNode
     count?: number
+    /**
+     * Labels are i18n keys by default. Set `rawLabel` for user-owned data
+     * (channel groups, model names) that must render verbatim instead of
+     * being looked up as a translation key.
+     */
+    rawLabel?: boolean
   }[]
   /** Enable single select mode (only one option can be selected at a time) */
   singleSelect?: boolean
@@ -64,6 +70,11 @@ function DataTableFacetedFilterInner<TData, TValue>({
   const facets = column?.getFacetedUniqueValues()
   const filterValue = column?.getFilterValue() as string[] | undefined
   const selectedValues = new Set(filterValue)
+
+  // Group and model names are user data, not i18n keys; status and type
+  // labels still go through the translator.
+  const optionLabel = (label: string, raw?: boolean) =>
+    raw ? label : t(label)
 
   const handleOptionSelect = (optionValue: string) => {
     const nextSelectedValues = getNextSelectedValues(
@@ -112,7 +123,7 @@ function DataTableFacetedFilterInner<TData, TValue>({
                       key={option.value}
                       className='rounded-sm px-1 font-normal'
                     >
-                      {t(option.label)}
+                      {optionLabel(option.label, option.rawLabel)}
                     </Badge>
                   ))
               )}
@@ -152,9 +163,9 @@ function DataTableFacetedFilterInner<TData, TValue>({
                     ) : null}
                     <span
                       className='min-w-0 flex-1 truncate'
-                      title={t(option.label)}
+                      title={optionLabel(option.label, option.rawLabel)}
                     >
-                      {t(option.label)}
+                      {optionLabel(option.label, option.rawLabel)}
                     </span>
                     {typeof option.count === 'number' ? (
                       <span className='text-muted-foreground ms-auto flex h-4 min-w-4 items-center justify-center font-mono text-xs'>

@@ -464,12 +464,16 @@ function ChannelEditorNav(props: {
             return (
               <button
                 key={item.id}
-                type='button'
                 className={cn(
                   'hover:bg-muted/60 flex w-full items-start gap-2 rounded-md px-2 py-2 text-left transition-colors',
-                  isActive && 'bg-muted/70',
-                  isConfigured && !isError && 'text-primary',
-                  isError && 'text-destructive hover:bg-destructive/10'
+                  // Active wins over the "configured" tint so the following
+                  // section is unambiguous: filled row + bold primary label.
+                  isActive
+                    ? 'bg-primary/10 font-medium text-primary ring-primary/30 ring-1'
+                    : cn(
+                        isConfigured && !isError && 'text-primary',
+                        isError && 'text-destructive hover:bg-destructive/10'
+                      ),
                 )}
                 onClick={() => props.onNavigate(item.id)}
                 aria-current={isActive ? 'true' : undefined}
@@ -1616,14 +1620,18 @@ function ChannelMutateDrawerContent({
         editorScrollContainerRef.current ?? getEditorScrollContainer()
       if (!scroller) return
       editorScrollContainerRef.current = scroller
-
-      const targetElement = document.querySelector<HTMLElement>(`#${targetId}`)
+      // Scope lookups to this drawer's form: the inline create form can be
+      // mounted at the same time and carries the same section ids, so a
+      // document-wide query can resolve to the hidden copy.
+      const findSection = () =>
+        channelFormRef.current?.querySelector<HTMLElement>(`#${targetId}`) ??
+        null
+      const targetElement = findSection()
       if (!targetElement) {
-        // Section may be lazily mounted: poll the DOM until the target is
-        // committed, then scroll. Avoids silent scroll failure on first nav.
+        // Section may not be committed yet: poll the DOM for a few frames.
         let attempts = 0
         const retry = () => {
-          const el = document.querySelector<HTMLElement>(`#${targetId}`)
+          const el = findSection()
           if (el) {
             const scrollerTop = scroller.getBoundingClientRect().top
             const targetTop = el.getBoundingClientRect().top
@@ -1654,11 +1662,24 @@ function ChannelMutateDrawerContent({
     const scroller = editorScrollContainerRef.current
     if (!scroller) return
 
-    const lastSectionId = CHANNEL_EDITOR_SECTION_IDS.models
+    // Same scoping rule as navigation: this drawer's own form only, since the
+    // inline create form can be mounted with the same section ids.
+    const formElement = channelFormRef.current
+    if (!formElement) return
+
+    const sections = CHANNEL_EDITOR_MAIN_SECTION_IDS.map((sectionId) =>
+      formElement.querySelector<HTMLElement>(`#${sectionId}`)
+    ).filter((element): element is HTMLElement => element !== null)
+    if (sections.length === 0) return
+
+    // The last section is too short to ever reach the 80px line, so scrolling
+    // to the bottom must select it explicitly; otherwise the highlight sticks
+    // on the previous section at the end of the form.
     if (
-      lastSectionId &&
-      scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4
+      scroller.scrollTop + scroller.clientHeight >=
+      scroller.scrollHeight - 4
     ) {
+      const lastSectionId = sections[sections.length - 1].id
       setActiveEditorSectionId((current) =>
         current === lastSectionId ? current : lastSectionId
       )
@@ -1666,22 +1687,17 @@ function ChannelMutateDrawerContent({
     }
 
     const scrollerTop = scroller.getBoundingClientRect().top
-    let nextActiveSectionId: string = CHANNEL_EDITOR_SECTION_IDS.identity
+    let nextActiveSectionId = sections[0].id
 
-    for (const sectionId of CHANNEL_EDITOR_MAIN_SECTION_IDS) {
-      const sectionElement = document.querySelector<HTMLElement>(
-        `#${sectionId}`
-      )
-      if (!sectionElement) continue
+    for (const sectionElement of sections) {
       const sectionTopInScroller =
         sectionElement.getBoundingClientRect().top - scrollerTop
       if (sectionTopInScroller <= 80) {
-        nextActiveSectionId = sectionId
+        nextActiveSectionId = sectionElement.id
       } else {
         break
       }
     }
-
     setActiveEditorSectionId((current) =>
       current === nextActiveSectionId ? current : nextActiveSectionId
     )
@@ -1889,7 +1905,6 @@ function ChannelMutateDrawerContent({
                   />
                   <div className='flex min-w-0 flex-col gap-5'>
                     {/* ── Basic Information ── */}
-                    {activeEditorSectionId === CHANNEL_EDITOR_SECTION_IDS.identity && (
                     <div
                       id={CHANNEL_EDITOR_SECTION_IDS.identity}
                       className='scroll-mt-4'
@@ -2029,10 +2044,8 @@ function ChannelMutateDrawerContent({
                         )}
                       </ChannelBasicSection>
                     </div>
-                    )}
 
                     {/* ── API Access ── */}
-                    {activeEditorSectionId === CHANNEL_EDITOR_SECTION_IDS.credentials && (
                     <div
                       id={CHANNEL_EDITOR_SECTION_IDS.credentials}
                       className='scroll-mt-4'
@@ -3171,10 +3184,8 @@ function ChannelMutateDrawerContent({
                         </div>
                       </ChannelApiAccessSection>
                     </div>
-                    )}
 
                     {/* ── Models & Groups ── */}
-                    {activeEditorSectionId === CHANNEL_EDITOR_SECTION_IDS.models && (
                     <div
                       id={CHANNEL_EDITOR_SECTION_IDS.models}
                       className='scroll-mt-4'
@@ -3537,7 +3548,6 @@ function ChannelMutateDrawerContent({
                         </div>
                       </ChannelModelsSection>
                     </div>
-                    )}
 
                     <div className='flex flex-col gap-5'>
                       {/* ── Routing & Overrides ── */}
@@ -3817,7 +3827,7 @@ function ChannelMutateDrawerContent({
                                 control={form.control}
                                 name='header_override'
                                 render={({ field }) => (
-                                  <FormItem className='space-y-3 border-t pt-4'>
+                                  <FormItem className='space-y-3 pt-4'>
                                     <div className='flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between'>
                                       <div className='space-y-1'>
                                         <FormLabel>
