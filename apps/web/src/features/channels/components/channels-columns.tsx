@@ -52,7 +52,7 @@ import {
   getCurrencyLabel,
 } from '@/lib/currency'
 import { formatTimestampToDate } from '@/lib/format'
-import { truncateText } from '@/lib/utils'
+import { cn, truncateText } from '@/lib/utils'
 
 import { getCodexUsage } from '../api'
 import { CHANNEL_STATUS_CONFIG, MODEL_FETCHABLE_TYPES } from '../constants'
@@ -301,43 +301,74 @@ const BalanceCell = memo(function BalanceCell({
 
   return (
     <TooltipProvider>
-      <div className='-ml-1.5 flex items-center gap-1'>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <StatusBadge
-                label={sensitiveVisible ? usedDisplay : SENSITIVE_MASK}
-                variant='neutral'
-                size='sm'
-                copyable={false}
-                showDot={false}
-                className='cursor-help'
-              />
-            }
-          />
-          <TooltipContent>
-            <p>{sensitiveVisible ? usedLabel : maskedUsedLabel}</p>
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <StatusBadge
-                label={remainingBadgeLabel}
-                variant={remainingBadgeVariant}
-                size='sm'
-                copyable={false}
-                showDot={false}
-                className='cursor-pointer'
-                onClick={handleClickUpdate}
-              />
-            }
-          />
-          <TooltipContent>
-            <p>{remainingTooltipLabel}</p>
-            {channel.type !== 57 && <p>{t('Click to update balance')}</p>}
-          </TooltipContent>
-        </Tooltip>
+      <div
+        className={cn(
+          'flex items-center gap-1',
+          layout === 'card'
+            ? 'grid w-full grid-cols-2 divide-x'
+            : '-ml-1.5'
+        )}
+      >
+        <div
+          className={cn(
+            'flex min-w-0 items-center gap-1.5',
+            layout === 'card' && 'pr-2'
+          )}
+        >
+          {layout === 'card' && (
+            <span className='text-muted-foreground shrink-0 text-[10px]'>
+              {t('Used:')}
+            </span>
+          )}
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <StatusBadge
+                  label={sensitiveVisible ? usedDisplay : SENSITIVE_MASK}
+                  variant='neutral'
+                  size='sm'
+                  copyable={false}
+                  showDot={false}
+                  className='cursor-help'
+                />
+              }
+            />
+            <TooltipContent>
+              <p>{sensitiveVisible ? usedLabel : maskedUsedLabel}</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+        <div
+          className={cn(
+            'flex min-w-0 items-center gap-1.5',
+            layout === 'card' && 'justify-end pl-2'
+          )}
+        >
+          {layout === 'card' && (
+            <span className='text-muted-foreground shrink-0 text-[10px]'>
+              {t('Remaining:')}
+            </span>
+          )}
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <StatusBadge
+                  label={remainingBadgeLabel}
+                  variant={remainingBadgeVariant}
+                  size='sm'
+                  copyable={false}
+                  showDot={false}
+                  className='cursor-pointer'
+                  onClick={handleClickUpdate}
+                />
+              }
+            />
+            <TooltipContent>
+              <p>{remainingTooltipLabel}</p>
+              {channel.type !== 57 && <p>{t('Click to update balance')}</p>}
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </div>
 
       <CodexUsageDialog
