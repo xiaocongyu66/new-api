@@ -34,7 +34,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { openPaymentUrl } from '@/features/wallet/lib'
+import { openPaymentUrl, paymentMethodKey } from '@/features/wallet/lib'
 import type { PaymentMethod } from '@/features/wallet/types'
 import { formatQuota } from '@/lib/format'
 
@@ -72,13 +72,13 @@ interface Props {
 export function SubscriptionPurchaseDialog(props: Props) {
   const { t } = useTranslation()
   const [paying, setPaying] = useState(false)
-  const [selectedMethodType, setSelectedMethodType] = useState('')
+  const [selectedMethodKey, setSelectedMethodKey] = useState('')
 
   useEffect(() => {
     if (props.open && props.methods.length > 0) {
-      setSelectedMethodType(props.methods[0].type)
+      setSelectedMethodKey(paymentMethodKey(props.methods[0]))
     } else if (!props.open) {
-      setSelectedMethodType('')
+      setSelectedMethodKey('')
     }
   }, [props.open, props.methods])
 
@@ -99,10 +99,11 @@ export function SubscriptionPurchaseDialog(props: Props) {
     (props.enableCodePayTopUp && hasCodePay)
   const hasAnyPayment =
     hasStripe || hasCreem || hasWaffoPancake || hasGatewayPayment
+  const selectedMethod = methods.find(
+    (m) => paymentMethodKey(m) === selectedMethodKey
+  )
   const selectedMethodLabel =
-    methods.find((m) => m.type === selectedMethodType)?.name ||
-    selectedMethodType ||
-    t('Select payment method')
+    selectedMethod?.name || selectedMethod?.type || t('Select payment method')
   const totalAmount =
     Number(plan.total_amount_display ?? plan.total_amount) || 0
   // Backend-renders the USD price in display currency (balance_cost_display);
@@ -188,33 +189,23 @@ export function SubscriptionPurchaseDialog(props: Props) {
     /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
 
   const handlePayMethod = async () => {
-    if (!selectedMethodType) {
+    const method = selectedMethod
+    if (!method) {
       toast.error(t('Please select a payment method'))
       return
     }
     setPaying(true)
     try {
-      const method = methods.find((m) => m.type === selectedMethodType)
-      if (!method) {
-        toast.error(t('Please select a payment method'))
-        return
-      }
       const gateway = method.gateway ?? 'epay'
-      const res =
-        gateway === 'vmq'
-          ? await paySubscriptionVmq({
-              plan_id: plan.id,
-              payment_method: method.type,
-            })
-          : gateway === 'codepay'
-            ? await paySubscriptionCodePay({
-                plan_id: plan.id,
-                payment_method: method.type,
-              })
-            : await paySubscriptionEpay({
-                plan_id: plan.id,
-                payment_method: method.type,
-              })
+      const request = { plan_id: plan.id, payment_method: method.type }
+      let res
+      if (gateway === 'vmq') {
+        res = await paySubscriptionVmq(request)
+      } else if (gateway === 'codepay') {
+        res = await paySubscriptionCodePay(request)
+      } else {
+        res = await paySubscriptionEpay(request)
+      }
       if (res.message === 'success' && res.url && gateway !== 'epay') {
         openPaymentUrl(res.url)
         toast.success(t('Payment page opened'))
@@ -439,11 +430,11 @@ export function SubscriptionPurchaseDialog(props: Props) {
               <div className='grid grid-cols-[minmax(0,1fr)_auto] gap-2'>
                 <Select
                   items={methods.map((m) => ({
-                    value: m.type,
+                    value: paymentMethodKey(m),
                     label: m.name || m.type,
                   }))}
-                  value={selectedMethodType}
-                  onValueChange={(v) => v !== null && setSelectedMethodType(v)}
+                  value={selectedMethodKey}
+                  onValueChange={(v) => v !== null && setSelectedMethodKey(v)}
                   disabled={limitReached}
                 >
                   <SelectTrigger className='flex-1'>
@@ -452,7 +443,10 @@ export function SubscriptionPurchaseDialog(props: Props) {
                   <SelectContent alignItemWithTrigger={false}>
                     <SelectGroup>
                       {methods.map((m) => (
-                        <SelectItem key={m.type} value={m.type}>
+                        <SelectItem
+                          key={paymentMethodKey(m)}
+                          value={paymentMethodKey(m)}
+                        >
                           {m.name || m.type}
                         </SelectItem>
                       ))}
@@ -461,7 +455,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
                 </Select>
                 <Button
                   onClick={handlePayMethod}
-                  disabled={paying || !selectedMethodType || limitReached}
+                  disabled={paying || !selectedMethod || limitReached}
                 >
                   {t('Pay')}
                 </Button>

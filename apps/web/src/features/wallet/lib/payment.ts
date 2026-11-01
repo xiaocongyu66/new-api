@@ -81,6 +81,14 @@ export function submitPaymentForm(
 }
 
 /**
+ * Identify a configured payment method. The same type can be configured
+ * once per gateway (e.g. alipay via Epay and alipay via VMQ).
+ */
+export function paymentMethodKey(method: PaymentMethod): string {
+  return `${method.type}:${method.gateway ?? 'epay'}`
+}
+
+/**
  * Check if payment method is Stripe
  */
 export function isStripePayment(paymentType: string): boolean {

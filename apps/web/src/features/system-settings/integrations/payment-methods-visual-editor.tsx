@@ -165,10 +165,16 @@ export function PaymentMethodsVisualEditor({
           'name' in item &&
           'type' in item &&
           item.name === editData.name &&
-          item.type === editData.type
+          item.type === editData.type &&
+          ('gateway' in item ? item.gateway : 'epay') ===
+            (editData.gateway ?? 'epay')
       )
       if (index !== -1) {
-        updatedArray[index] = data
+        // The dialog does not edit color; keep it instead of dropping it.
+        const previous = updatedArray[index] as PaymentMethodData
+        updatedArray[index] = previous.color
+          ? { ...data, color: previous.color }
+          : data
       } else {
         updatedArray.push(data)
       }
@@ -194,7 +200,9 @@ export function PaymentMethodsVisualEditor({
           'name' in item &&
           'type' in item &&
           item.name === method.name &&
-          item.type === method.type
+          item.type === method.type &&
+          ('gateway' in item ? item.gateway : 'epay') ===
+            (method.gateway ?? 'epay')
         )
     )
 

@@ -25,6 +25,7 @@ import {
   isStripePayment,
   isWaffoPayment,
   isWaffoPancakePayment,
+  paymentMethodKey,
 } from './payment'
 
 describe('payment type classification', () => {
@@ -118,5 +119,22 @@ describe('payment dispatch', () => {
       }
     )
     assert.deepEqual(gateways, ['epay'])
+  })
+})
+
+describe('payment method identity', () => {
+  test('distinguishes the same type routed through different gateways', () => {
+    const viaEpay = paymentMethodKey({ name: 'Alipay', type: 'alipay' })
+    const viaVmq = paymentMethodKey({
+      name: 'Alipay',
+      type: 'alipay',
+      gateway: 'vmq',
+    })
+
+    assert.notEqual(viaEpay, viaVmq)
+    assert.equal(
+      viaEpay,
+      paymentMethodKey({ name: 'Alipay', type: 'alipay', gateway: 'epay' })
+    )
   })
 })
