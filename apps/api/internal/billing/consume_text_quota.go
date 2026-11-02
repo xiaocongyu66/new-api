@@ -407,10 +407,13 @@ func isTextGenerationFormat(format types.RelayFormat) bool {
 }
 
 // isUndeliveredTextResponse reports whether a 2xx response produced nothing the
-// user could consume: zero completion tokens, no billable tool calls, no policy
-// rejection, and the stream was not abandoned by the client. Only meaningful
-// for text-generation formats, where zero completion tokens means nothing was
-// delivered; image/audio/embedding/rerank legitimately report completion=0.
+// user could consume: zero completion tokens, no billable tool calls, and no
+// policy rejection. Only meaningful for text-generation formats, where zero
+// completion tokens means nothing was delivered; image/audio/embedding/rerank
+// legitimately report completion=0. A client disconnect qualifies only when the
+// scanner never received a single upstream data line: once any line arrived the
+// user may have consumed it while usage never came back, so waiving would let a
+// partial read go free.
 func isUndeliveredTextResponse(relayInfo *relaycommon.RelayInfo, summary textQuotaSummary, adminRejectReason string) bool {
 	if !isTextGenerationFormat(relayInfo.RelayFormat) {
 		return false
@@ -424,7 +427,10 @@ func isUndeliveredTextResponse(relayInfo *relaycommon.RelayInfo, summary textQuo
 	if adminRejectReason != "" {
 		return false
 	}
-	return relayInfo.StreamStatus.GetEndReason() != relaycommon.StreamEndReasonClientGone
+	if relayInfo.StreamStatus.GetEndReason() == relaycommon.StreamEndReasonClientGone {
+		return relayInfo.ReceivedResponseCount == 0
+	}
+	return true
 }
 
 // applyEmptyResponseMultiplier scales the settled quota when a 2xx response
@@ -514,13 +520,17 @@ func PostTextConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo
 		))
 	}
 	if summary.EmptyResponseDetected {
+		reason := "上游返回空响应"
+		if relayInfo.StreamStatus.GetEndReason() == relaycommon.StreamEndReasonClientGone {
+			reason = "空回（客户端断链且零送达）"
+		}
 		switch {
 		case summary.EmptyResponseWaived && summary.EmptyResponseMultiplier > 0:
-			extraContent = append(extraContent, fmt.Sprintf("上游返回空响应，按 %g 倍率扣费", summary.EmptyResponseMultiplier))
+			extraContent = append(extraContent, fmt.Sprintf("%s，按 %g 倍率扣费", reason, summary.EmptyResponseMultiplier))
 		case summary.EmptyResponseWaived:
-			extraContent = append(extraContent, "上游返回空响应，费用已豁免")
+			extraContent = append(extraContent, reason+"，费用已豁免")
 		default:
-			extraContent = append(extraContent, "上游返回空响应，按原价扣费")
+			extraContent = append(extraContent, reason+"，按原价扣费")
 		}
 	}
 	if summary.AudioInputPrice > 0 && summary.AudioTokens > 0 {

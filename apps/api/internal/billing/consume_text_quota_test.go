@@ -1099,6 +1099,43 @@ func TestCalculateTextQuotaSummaryPerCallEmptyResponseMultiplier(t *testing.T) {
 	assert.Equal(t, 0.1, summary.EmptyResponseMultiplier)
 }
 
+func TestCalculateTextQuotaSummaryPerCallClientGoneZeroDeliveryWaived(t *testing.T) {
+	setEmptyResponseMultiplier(t, 0.3)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	relayInfo := perCallRelayInfo(0.38, 1)
+	relayInfo.StreamStatus = relaycommon.NewStreamStatus()
+	relayInfo.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, nil)
+	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 0, TotalTokens: 14}
+
+	summary := calculateTextQuotaSummary(ctxRaw, relayInfo, usage)
+	applyEmptyResponseMultiplier(relayInfo, &summary, "")
+
+	expected := common.QuotaFromDecimal(decimal.NewFromFloat(0.38).
+		Mul(decimal.NewFromFloat(float64(common.QuotaPerUnit))).
+		Mul(decimal.NewFromFloat(0.3)))
+	require.Equal(t, expected, summary.Quota, "zero-delivery client disconnect must use the configured empty-response multiplier")
+	assert.True(t, summary.EmptyResponseDetected)
+	assert.True(t, summary.EmptyResponseWaived)
+	assert.Equal(t, 0.3, summary.EmptyResponseMultiplier)
+}
+
+func TestCalculateTextQuotaSummaryPerCallClientGoneAfterDeliveryNotWaived(t *testing.T) {
+	setEmptyResponseMultiplier(t, 0)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	relayInfo := perCallRelayInfo(0.38, 1)
+	relayInfo.StreamStatus = relaycommon.NewStreamStatus()
+	relayInfo.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, nil)
+	relayInfo.ReceivedResponseCount = 1
+	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 0, TotalTokens: 14}
+
+	summary := calculateTextQuotaSummary(ctxRaw, relayInfo, usage)
+	applyEmptyResponseMultiplier(relayInfo, &summary, "")
+
+	require.Equal(t, int(0.38*float64(common.QuotaPerUnit)), summary.Quota)
+	assert.False(t, summary.EmptyResponseDetected)
+	assert.False(t, summary.EmptyResponseWaived)
+}
+
 func TestCalculateTextQuotaSummaryPerCallWithOutputNotWaived(t *testing.T) {
 	setEmptyResponseMultiplier(t, 0)
 	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
