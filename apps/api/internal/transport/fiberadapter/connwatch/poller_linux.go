@@ -11,8 +11,14 @@ import (
 // epoll-based poller. Watches EPOLLRDHUP (peer half-closed write side, i.e.
 // FIN), EPOLLHUP (both halves), and EPOLLERR (errors including RST).
 //
-// Stays level-triggered — we DEL the fd after each event so it never
-// repeats.
+// Each accepted connection is registered with EPOLLONESHOT and a fresh token
+// in the epoll data union (Fd field, low 32 bits). wait() returns the token
+// the kernel echoes back, never a raw fd: if the fd was closed and re-accepted
+// before a stale event was processed, the token lookup misses and the event is
+// dropped instead of firing the new connection's done.
+//
+// EPOLLONESHOT disarms the fd after its first event; deregister on Close is
+// what re-releases it, and re-register on the next Accept re-arms it.
 type epollPoller struct {
 	epfd   int
 	wakeup [2]int // pipe; close writer side to make EpollWait return
@@ -31,7 +37,7 @@ func newPoller() (poller, error) {
 	}
 
 	// Register the pipe read end so closing the write end wakes EpollWait via EPOLLHUP.
-	ev := unix.EpollEvent{Events: unix.EPOLLIN, Fd: int32(pipes[0])}
+	ev := unix.EpollEvent{Events: unix.EPOLLIN, Fd: 0}
 	if err := unix.EpollCtl(epfd, unix.EPOLL_CTL_ADD, pipes[0], &ev); err != nil {
 		_ = unix.Close(epfd)
 		_ = unix.Close(pipes[0])
@@ -42,15 +48,17 @@ func newPoller() (poller, error) {
 	return &epollPoller{epfd: epfd, wakeup: pipes}, nil
 }
 
-func (p *epollPoller) register(fd int) error {
+func (p *epollPoller) register(fd int, token int32) error {
+	// token is embedded in the epoll data union (Fd field, low 32 bits of
+	// data at offset 8) so the kernel echoes it back on the event.
 	ev := unix.EpollEvent{
-		Events: unix.EPOLLRDHUP | unix.EPOLLHUP | unix.EPOLLERR,
-		Fd:     int32(fd),
+		Events: unix.EPOLLONESHOT | unix.EPOLLRDHUP | unix.EPOLLHUP | unix.EPOLLERR,
+		Fd:     token,
 	}
 	return unix.EpollCtl(p.epfd, unix.EPOLL_CTL_ADD, fd, &ev)
 }
 
-func (p *epollPoller) deregister(fd int) error {
+func (p *epollPoller) deregister(fd int, token int32) error {
 	err := unix.EpollCtl(p.epfd, unix.EPOLL_CTL_DEL, fd, nil)
 	if errors.Is(err, unix.ENOENT) {
 		return nil
@@ -58,7 +66,7 @@ func (p *epollPoller) deregister(fd int) error {
 	return err
 }
 
-func (p *epollPoller) wait() ([]int, error) {
+func (p *epollPoller) wait() ([]int32, error) {
 	events := make([]unix.EpollEvent, 64)
 	for {
 		n, err := unix.EpollWait(p.epfd, events, -1)
@@ -68,18 +76,18 @@ func (p *epollPoller) wait() ([]int, error) {
 			}
 			return nil, err
 		}
-		fds := make([]int, 0, n)
+		tokens := make([]int32, 0, n)
 		for i := range n {
-			fd := int(events[i].Fd)
-			if fd == p.wakeup[0] {
+			token := events[i].Fd
+			if token == 0 {
 				return nil, errPollerClosed
 			}
-			fds = append(fds, fd)
+			tokens = append(tokens, token)
 		}
-		if len(fds) == 0 {
+		if len(tokens) == 0 {
 			continue
 		}
-		return fds, nil
+		return tokens, nil
 	}
 }
 

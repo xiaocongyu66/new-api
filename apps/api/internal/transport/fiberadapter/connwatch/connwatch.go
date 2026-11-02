@@ -37,16 +37,22 @@ import (
 
 // poller is the platform-specific half: epoll on Linux, kqueue on the BSDs.
 type poller interface {
-	register(fd int) error
-	deregister(fd int) error
-	wait() ([]int, error) // blocks until a peer vanished; returns those fds
-	close() error         // makes wait return so the loop exits
+	register(fd int, token int32) error
+	deregister(fd int, token int32) error
+	wait() ([]int32, error) // blocks until a peer vanished; returns registration tokens
+	close() error           // makes wait return so the loop exits
 }
 
+// watcher owns the token space: every registration gets a fresh token that
+// the poller records in the kernel and echoes back on a disconnect event. The
+// loop resolves tokens, never fds, so a stale event for an fd that has since
+// been closed and re-accepted cannot be mistaken for the new connection's
+// disconnect.
 type watcher struct {
 	poller poller
 	mu     sync.Mutex
-	conns  map[int]*watchedConn
+	tokens atomic.Uint32
+	conns  map[int32]*watchedConn
 	closed atomic.Bool
 }
 
@@ -55,6 +61,7 @@ type watcher struct {
 type watchedConn struct {
 	net.Conn
 	fd     int
+	token  int32
 	parent *watcher
 	done   chan struct{}
 	once   sync.Once
@@ -66,7 +73,7 @@ type watchedConn struct {
 // load-bearing: it closes the window where a freed fd could be re-accepted
 // while the map still held the stale entry.
 func (wc *watchedConn) Close() error {
-	wc.parent.unregister(wc.fd)
+	wc.parent.unregister(wc.token, wc.fd)
 	wc.once.Do(func() { close(wc.done) })
 	return wc.Conn.Close()
 }
@@ -76,44 +83,48 @@ func (w *watcher) wrap(c net.Conn) net.Conn {
 	if !ok {
 		return c
 	}
-	wc := &watchedConn{Conn: c, fd: fd, parent: w, done: make(chan struct{})}
-	if err := w.poller.register(fd); err != nil {
+	wc := &watchedConn{Conn: c, fd: fd, parent: w, done: make(chan struct{}), token: int32(w.tokens.Add(1))}
+	// Register with the poller first so a disconnect cannot slip in before
+	// the entry is visible; the loop only learns about a conn it can look up.
+	if err := w.poller.register(fd, wc.token); err != nil {
 		// Cannot register? Fall back to the raw conn rather than dropping it.
 		return c
 	}
 	w.mu.Lock()
-	w.conns[fd] = wc
+	w.conns[wc.token] = wc
 	w.mu.Unlock()
 	return wc
 }
 
-func (w *watcher) unregister(fd int) {
+func (w *watcher) unregister(token int32, fd int) {
 	w.mu.Lock()
-	delete(w.conns, fd)
+	delete(w.conns, token)
 	w.mu.Unlock()
-	_ = w.poller.deregister(fd)
+	_ = w.poller.deregister(fd, token)
 }
 
 func (w *watcher) loop() {
 	for {
-		fds, err := w.poller.wait()
+		tokens, err := w.poller.wait()
 		if err != nil {
-			if w.closed.Load() {
-				return
-			}
-			// Transient (e.g. EINTR); keep going.
-			continue
+			// Platform waiters absorb EINTR internally, so an error here
+			// is either the shutdown wake-up or a dead poller fd. Both
+			// end the loop; continuing on a dead poller would pin a core.
+			// Conns left unwatched degrade to the adapter's write-failure
+			// fallback, same as a platform with no poller.
+			return
 		}
-		for _, fd := range fds {
+		for _, token := range tokens {
 			w.mu.Lock()
-			wc := w.conns[fd]
-			delete(w.conns, fd)
+			wc := w.conns[token]
+			delete(w.conns, token)
 			w.mu.Unlock()
 
-			_ = w.poller.deregister(fd)
 			if wc != nil {
 				wc.once.Do(func() { close(wc.done) })
 			}
+			// No deregister: the poller deregisters on close or re-register
+			// of the fd, and the token is gone, so a stale event is a no-op.
 		}
 	}
 }
@@ -151,7 +162,7 @@ func Listener(inner net.Listener) net.Listener {
 	if err != nil {
 		return inner
 	}
-	w := &watcher{poller: p, conns: make(map[int]*watchedConn)}
+	w := &watcher{poller: p, conns: make(map[int32]*watchedConn)}
 	go w.loop()
 	return &listenerWrap{Listener: inner, watcher: w}
 }

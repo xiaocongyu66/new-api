@@ -134,3 +134,44 @@ func TestDoneNilForUnwatchedConn(t *testing.T) {
 	})
 	assert.Nil(t, Done(pipeClient))
 }
+
+// TestNoConnLeak pins the watcher's internal registry against growth: after
+// every accepted connection is closed, the token map must drain to empty so
+// a stream of keep-alive connections cannot accumulate tombstones.
+func TestNoConnLeak(t *testing.T) {
+	inner, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	ln := Listener(inner)
+	t.Cleanup(func() { _ = ln.Close() })
+	lw, ok := ln.(*listenerWrap)
+	require.True(t, ok, "expected a wrapped listener on this platform")
+
+	type accepted struct {
+		conn net.Conn
+		err  error
+	}
+	acceptedCh := make(chan accepted, 8)
+	go func() {
+		for {
+			c, err := ln.Accept()
+			acceptedCh <- accepted{conn: c, err: err}
+		}
+	}()
+
+	for i := 0; i < 8; i++ {
+		c, err := net.Dial("tcp", inner.Addr().String())
+		require.NoError(t, err)
+		got := <-acceptedCh
+		require.NoError(t, got.err)
+		_ = c.Close()
+		_ = got.conn.Close()
+	}
+
+	// Closing both ends lets the watcher observe the peer disconnect and drop
+	// the registration; give it a moment, then require an empty map.
+	require.Eventually(t, func() bool {
+		lw.watcher.mu.Lock()
+		defer lw.watcher.mu.Unlock()
+		return len(lw.watcher.conns) == 0
+	}, time.Second, 10*time.Millisecond)
+}
