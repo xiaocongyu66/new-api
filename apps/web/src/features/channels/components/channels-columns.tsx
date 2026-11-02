@@ -25,6 +25,7 @@ import {
   ChevronRight,
   ListOrdered,
   Shuffle,
+  ShieldAlert,
   SlidersHorizontal,
 } from 'lucide-react'
 import { memo, useState, useMemo, useContext } from 'react'
@@ -520,7 +521,9 @@ export function useChannelsColumns(
           const settings = parseChannelSettings(channel.setting)
           const isPassThrough = settings.pass_through_body_enabled === true
           const hasParamOverride = Boolean(channel.param_override?.trim())
-
+          const hasModelPrompt =
+            Object.keys(settings.system_prompt_models ?? {}).length > 0 ||
+            Boolean(settings.system_prompt_preset)
           return (
             <div className='flex max-w-full min-w-0 items-center gap-2'>
               <div className='flex max-w-full min-w-0 flex-col gap-1'>
@@ -560,7 +563,20 @@ export function useChannelsColumns(
                       </Tooltip>
                     </TooltipProvider>
                   )}
-                  <UpstreamUpdateTags channel={channel} />
+                  {hasModelPrompt && (
+                    <TooltipProvider delay={100}>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <ShieldAlert className='text-destructive h-3.5 w-3.5 flex-shrink-0' />
+                          }
+                        />
+                        <TooltipContent side='top'>
+                          {t('Model-bound system prompt is configured for this channel')}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
                 </div>
                 {channel.remark && (
                   <TooltipProvider delay={200}>
