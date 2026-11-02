@@ -9,7 +9,6 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/constant"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
-	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 
 	"github.com/stretchr/testify/assert"
@@ -23,22 +22,23 @@ func init() {
 	}
 }
 
-// setupScannerTest builds the minimal context/response/relayInfo triple the
-// scanner engine needs. Data collection needs no extra locking: cleanup() runs
-// wg.Wait() before StreamScannerHandler returns, so every shared slice is
+// setupScannerTest runs the scanner engine over body and returns the relay info
+// it populated. Reading the collected lines needs no extra locking: cleanup()
+// runs wg.Wait() before StreamScannerHandler returns, so every shared slice is
 // finalized by then.
-func setupScannerTest(t *testing.T, body string, dataHandler func(data string, sr *StreamResult)) (contract.Context, *relaycommon.RelayInfo) {
+func setupScannerTest(t *testing.T, body string, dataHandler func(data string, sr *StreamResult)) *relaycommon.RelayInfo {
 	t.Helper()
 	c, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
 	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{}}
 	resp := &http.Response{Body: io.NopCloser(strings.NewReader(body))}
 	StreamScannerHandler(c, resp, info, dataHandler)
-	return c, info
+	return info
 }
 
-// A bare "[DONE]" line must terminate the stream instead of being sliced by the
-// data-prefix strip into "]" and forwarded as a data line, which used to leave
-// soft parse errors and a missing done end reason.
+// A "[DONE]" sentinel, prefixed or bare, must terminate the stream instead of
+// being sliced into "]" and forwarded as a data line. Forwarding it overwrote
+// the last upstream chunk, so usage extraction fell back to local estimation
+// and converted formats lost their terminal events.
 func TestStreamScannerHandler_TerminatesOnDoneSentinel(t *testing.T) {
 	t.Parallel()
 
@@ -55,8 +55,8 @@ func TestStreamScannerHandler_TerminatesOnDoneSentinel(t *testing.T) {
 			wantLines: []string{"{\"id\":1}"},
 		},
 		{
-			name:      "bare done sentinel",
-			body:      "data: {\"id\":1}\n[DONE]\n",
+			name:      "bare done stops scanning before later data",
+			body:      "data: {\"id\":1}\n[DONE]\ndata: {\"id\":2}\n",
 			wantEnd:   relaycommon.StreamEndReasonDone,
 			wantLines: []string{"{\"id\":1}"},
 		},
@@ -72,18 +72,38 @@ func TestStreamScannerHandler_TerminatesOnDoneSentinel(t *testing.T) {
 			wantEnd:   relaycommon.StreamEndReasonDone,
 			wantLines: nil,
 		},
+		{
+			name:      "crlf framed bare done",
+			body:      "data: {\"id\":1}\r\n[DONE]\r\n",
+			wantEnd:   relaycommon.StreamEndReasonDone,
+			wantLines: []string{"{\"id\":1}"},
+		},
+		{
+			name:      "leading whitespace before bare done",
+			body:      "data: {\"id\":1}\n  [DONE]\n",
+			wantEnd:   relaycommon.StreamEndReasonDone,
+			wantLines: []string{"{\"id\":1}"},
+		},
+		{
+			name:      "trailing bytes after done sentinel still terminate",
+			body:      "[DONE]trailing\n",
+			wantEnd:   relaycommon.StreamEndReasonDone,
+			wantLines: nil,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var received []string
-			_, info := setupScannerTest(t, tt.body, func(data string, sr *StreamResult) {
+			info := setupScannerTest(t, tt.body, func(data string, sr *StreamResult) {
 				received = append(received, data)
 			})
 
 			require.NotNil(t, info.StreamStatus)
 			assert.Equal(t, tt.wantEnd, info.StreamStatus.GetEndReason())
 			assert.Equal(t, tt.wantLines, received)
+			// The sentinel itself must never count as a delivered response.
+			assert.Equal(t, len(tt.wantLines), info.ReceivedResponseCount)
 		})
 	}
 }

@@ -321,18 +321,16 @@ func StreamScannerHandler(
 			data := scanner.Text()
 			logger.LogDebug(c.Context(), "stream scanner data: %s", data)
 
-			if len(data) < 6 {
-				continue
-			}
-			// 裸 "[DONE]"（部分上游不带 "data:" 前缀的收尾形态）同样是终止哨兵：
-			// 走统一扫描路径会把 data[5:] 切成 "]" 推给 dataHandler，handler 解析失败
-			// 记软错误，且 done 状态丢失后 streamTruncated 对 OpenAI 格式误判截断。
-			if strings.HasPrefix(data, "[DONE]") {
+			// 裸 "[DONE]"（部分上游不带 "data:" 前缀的收尾形态）同样是终止哨兵。
+			// 若按 data 前缀切掉 5 字节，"[DONE]" 会变成 "]" 转发给 handler：
+			// 覆盖 lastStreamData 后 usage 提取失败、回落本地估算，跨格式转换的
+			// 终态事件也会被跳过。允许前导空白以兼容缩进过的上游。
+			if strings.HasPrefix(strings.TrimSpace(data), "[DONE]") {
 				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonDone, nil)
 				logger.LogDebug(c.Context(), "received [DONE], stopping scanner")
 				return
 			}
-			if data[:5] != "data:" {
+			if !strings.HasPrefix(data, "data:") {
 				continue
 			}
 			data = strings.TrimSpace(data[5:])
