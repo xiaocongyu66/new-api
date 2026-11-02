@@ -1119,23 +1119,6 @@ func TestCalculateTextQuotaSummaryPerCallClientGoneZeroDeliveryWaived(t *testing
 	assert.Equal(t, 0.3, summary.EmptyResponseMultiplier)
 }
 
-func TestCalculateTextQuotaSummaryPerCallClientGoneAfterDeliveryNotWaived(t *testing.T) {
-	setEmptyResponseMultiplier(t, 0)
-	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
-	relayInfo := perCallRelayInfo(0.38, 1)
-	relayInfo.StreamStatus = relaycommon.NewStreamStatus()
-	relayInfo.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, nil)
-	relayInfo.ReceivedResponseCount = 1
-	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 0, TotalTokens: 14}
-
-	summary := calculateTextQuotaSummary(ctxRaw, relayInfo, usage)
-	applyEmptyResponseMultiplier(relayInfo, &summary, "")
-
-	require.Equal(t, int(0.38*float64(common.QuotaPerUnit)), summary.Quota)
-	assert.False(t, summary.EmptyResponseDetected)
-	assert.False(t, summary.EmptyResponseWaived)
-}
-
 func TestCalculateTextQuotaSummaryPerCallWithOutputNotWaived(t *testing.T) {
 	setEmptyResponseMultiplier(t, 0)
 	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
@@ -1187,19 +1170,21 @@ func TestCalculateTextQuotaSummaryPerCallEmptyContentFilterNotWaived(t *testing.
 	assert.False(t, summary.EmptyResponseWaived)
 }
 
-func TestCalculateTextQuotaSummaryPerCallEmptyClientGoneNotWaived(t *testing.T) {
+func TestCalculateTextQuotaSummaryPerCallClientGoneAfterDeliveryNotWaived(t *testing.T) {
 	setEmptyResponseMultiplier(t, 0)
 	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
 	ctx := ctxRaw
 	relayInfo := perCallRelayInfo(0.38, 1)
 	relayInfo.StreamStatus = relaycommon.NewStreamStatus()
 	relayInfo.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, nil)
+	relayInfo.ReceivedResponseCount = 1
 	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 0, TotalTokens: 14}
 
 	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
 	applyEmptyResponseMultiplier(relayInfo, &summary, "")
 
-	require.Equal(t, int(0.38*float64(common.QuotaPerUnit)), summary.Quota, "client-abandoned streams are not an upstream failure")
+	require.Equal(t, int(0.38*float64(common.QuotaPerUnit)), summary.Quota, "client-abandoned streams that delivered data are not an upstream failure")
+	assert.False(t, summary.EmptyResponseDetected)
 	assert.False(t, summary.EmptyResponseWaived)
 }
 
