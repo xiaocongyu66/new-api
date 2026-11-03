@@ -50,6 +50,7 @@ import {
   Info,
   LogIn,
   MessageSquareOff,
+  Unplug,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -77,6 +78,7 @@ import {
   getResponseTimeColor,
   getReasoningEffortVariant,
   renderAuditContent,
+  getStreamEndReasonLabel,
 } from '../../lib/format'
 import {
   getLogTypeConfig,
@@ -1099,6 +1101,36 @@ export function DetailsDialog(props: DetailsDialogProps) {
           </DetailSection>
         )}
 
+        {/* Stream disconnect (upstream cut-off or client abandonment) */}
+        {other?.stream_cut && (
+          <DetailSection
+            icon={<Unplug className='size-3.5' aria-hidden='true' />}
+            label={
+              other.stream_cut === 'upstream'
+                ? t('Upstream Stream Cut')
+                : t('Client Stream Cut')
+            }
+          >
+            {other.truncated_response_multiplier != null ? (
+              <DetailRow
+                label={t('Output multiplier')}
+                value={String(other.truncated_response_multiplier)}
+                mono
+              />
+            ) : null}
+            <DetailRow
+              label={t('Charge')}
+              value={
+                other.truncated_response_multiplier != null
+                  ? t('Reduced by multiplier')
+                  : other.stream_cut === 'client'
+                    ? t('Client cut: charged at full price')
+                    : t('Full price')
+              }
+            />
+          </DetailSection>
+        )}
+
         {/* Tiered pricing breakdown (when billing_mode is tiered_expr) */}
         {isTieredBilling && other?.expr_b64 && (
           <DetailSection label={t('Dynamic Pricing')}>
@@ -1141,7 +1173,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
               label={t('Status')}
               value={
                 <StatusBadge
-                  label={other.stream_status.status || t('Error')}
+                  label={t('Error')}
                   variant='red'
                   size='sm'
                   copyable={false}
@@ -1151,7 +1183,10 @@ export function DetailsDialog(props: DetailsDialogProps) {
             {other.stream_status.end_reason && (
               <DetailRow
                 label={t('End Reason')}
-                value={other.stream_status.end_reason}
+                value={getStreamEndReasonLabel(
+                  t,
+                  other.stream_status.end_reason
+                )}
               />
             )}
             {(other.stream_status.error_count ?? 0) > 0 && (

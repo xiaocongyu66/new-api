@@ -63,6 +63,7 @@ const createQuotaSchema = () =>
     quota_setting: z.object({
       enable_free_model_pre_consume: z.boolean(),
       empty_response_multiplier: z.coerce.number().min(0).max(1),
+      truncated_response_multiplier: z.coerce.number().min(0).max(1),
     }),
   })
 
@@ -78,6 +79,7 @@ type QuotaFormValues = {
   quota_setting: {
     enable_free_model_pre_consume: boolean
     empty_response_multiplier: number
+    truncated_response_multiplier: number
   }
 }
 type QuotaInputValue = number | ''
@@ -300,6 +302,35 @@ export function QuotaSettingsSection({
                   <FormDescription>
                     {t(
                       'Charge ratio for empty 200 responses. 0 = free, 1 = full price.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='quota_setting.truncated_response_multiplier'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Truncated Response Multiplier')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      step={0.1}
+                      min={0}
+                      max={1}
+                      value={field.value ?? 0}
+                      onChange={handleNumberChange(field.onChange)}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Charge ratio for the delivered output when the upstream cuts the stream mid-answer. Prompt tokens are always charged in full. 0 = output free, 1 = full price.'
                     )}
                   </FormDescription>
                   <FormMessage />

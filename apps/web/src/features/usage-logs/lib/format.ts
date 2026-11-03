@@ -27,7 +27,9 @@ import {
 import type { UsageLog } from '../data/schema'
 import type { LogOtherData } from '../types'
 
-{ normalizeTierLabel }
+{
+  normalizeTierLabel
+}
 
 const PARAM_OVERRIDE_ACTION_MAP: Record<string, string> = {
   set: 'Set',
@@ -168,6 +170,51 @@ export function hasEmptyResponseCharge(other: LogOtherData | null): boolean {
 }
 
 /**
+ * Which side dropped a streamed response, per the backend stream_cut marker.
+ * 'upstream' means the provider cut the stream mid-answer (delivered output
+ * was charged at the truncated-response multiplier); 'client' means the user
+ * disconnected (always charged at full price).
+ */
+export function getStreamCut(
+  other: LogOtherData | null
+): 'upstream' | 'client' | null {
+  if (other?.stream_cut === 'upstream' || other?.stream_cut === 'client') {
+    return other.stream_cut
+  }
+  return null
+}
+
+/**
+ * Localized label for a stream end reason. Unknown values fall through
+ * unchanged so a new backend reason stays visible instead of disappearing.
+ */
+export function getStreamEndReasonLabel(
+  t: (key: string) => string,
+  reason?: string | null
+): string {
+  switch (reason) {
+    case 'done':
+      return t('Completed')
+    case 'timeout':
+      return t('Upstream timeout')
+    case 'client_gone':
+      return t('Client disconnected')
+    case 'scanner_error':
+      return t('Upstream stream error')
+    case 'handler_stop':
+      return t('Relay stopped')
+    case 'eof':
+      return t('Stream ended')
+    case 'panic':
+      return t('Internal error')
+    case 'ping_fail':
+      return t('Client connection lost')
+    default:
+      return reason || '-'
+  }
+}
+
+/**
  * Parse the 'other' field from JSON string to object
  */
 export function parseLogOther(other: string): LogOtherData | null {
@@ -203,9 +250,7 @@ export function getReasoningEffortVariant(
 /**
  * Get time color based on duration (in seconds)
  */
-function getTimeColor(
-  seconds: number
-): 'success' | 'warning' | 'danger' {
+function getTimeColor(seconds: number): 'success' | 'warning' | 'danger' {
   if (seconds < 10) return 'success'
   if (seconds < 30) return 'warning'
   return 'danger'
