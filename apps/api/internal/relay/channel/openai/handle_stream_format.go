@@ -307,10 +307,16 @@ func firstFinishReason(data string) string {
 func streamErrorPayload(data string) string {
 	root := gjson.Parse(data)
 	if errField := root.Get("error"); errField.Exists() && errField.Type != gjson.Null {
-		if message := errField.Get("message").String(); message != "" {
-			return message
+		if errField.IsObject() {
+			if message := errField.Get("message").String(); message != "" {
+				return message
+			}
+			return errField.Raw
 		}
-		return errField.Raw
+		if errField.Type == gjson.String {
+			return errField.String()
+		}
+		return ""
 	}
 	if root.Get("type").String() == "error" {
 		return data

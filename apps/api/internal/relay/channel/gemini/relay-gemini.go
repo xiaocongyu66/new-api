@@ -145,12 +145,14 @@ func handleFinalStream(c contract.Context, info *relaycommon.RelayInfo, resp *dt
 }
 
 func geminiStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Response, callback func(data string, geminiResponse *dto.GeminiChatResponse) bool) (*dto.Usage, *types.NewAPIError) {
+	info.ResetStreamObservation()
 	var usage = &dto.Usage{}
 	var imageCount int
 	var hasBillableUsageMetadata bool
 	responseText := strings.Builder{}
 	var sawText bool
 	var sawToolCall bool
+	var sawMedia bool
 	var finishReason string
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
@@ -174,6 +176,7 @@ func geminiStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *
 			for _, part := range candidate.Content.Parts {
 				if part.InlineData != nil && part.InlineData.MimeType != "" {
 					imageCount++
+					sawMedia = true
 				}
 				if part.Text != "" {
 					responseText.WriteString(part.Text)
@@ -203,6 +206,7 @@ func geminiStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *
 	info.StreamSawTextContent = sawText
 	info.StreamSawToolCall = sawToolCall
 	info.StreamFinishReason = finishReason
+	info.StreamSawMediaContent = sawMedia
 
 	if !hasBillableUsageMetadata {
 		if info.ReceivedResponseCount > 0 {
@@ -328,6 +332,7 @@ func GeminiChatStreamHandler(c contract.Context, info *relaycommon.RelayInfo, re
 }
 
 func GeminiChatHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
+	info.ResetStreamObservation()
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
@@ -346,6 +351,9 @@ func GeminiChatHandler(c contract.Context, info *relaycommon.RelayInfo, resp *ht
 			info.StreamFinishReason = *candidate.FinishReason
 		}
 		for _, part := range candidate.Content.Parts {
+			if part.InlineData != nil {
+				info.StreamSawMediaContent = true
+			}
 			if !part.Thought && strings.TrimSpace(part.Text) != "" {
 				info.StreamSawTextContent = true
 			}

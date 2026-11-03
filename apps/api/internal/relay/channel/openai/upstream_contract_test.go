@@ -329,3 +329,29 @@ func TestNonStreamingChatRelayRejectsWhitespaceOnlyContent(t *testing.T) {
 	assert.Equal(t, types.ErrorCodeEmptyResponse, relayErr.GetErrorCode())
 	assert.Empty(t, recorder.Body.String(), "whitespace-only responses must not be forwarded")
 }
+
+// TestNonStreamingCompletionsRelayAcceptsTextChoices guards the legacy
+// /v1/completions shape: its answer lives on choices[].text and its message
+// fields are empty, so the chat-only structural-empty check must not run.
+func TestNonStreamingCompletionsRelayAcceptsTextChoices(t *testing.T) {
+	disableOutputSensitiveFilter(t)
+
+	upstreamServer, _ := startMockUpstream(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"id":"cmpl-1","object":"text_completion","created":11,"model":"gpt-3.5-turbo-instruct","choices":[{"index":0,"text":"hello","finish_reason":"stop"}],"usage":{"prompt_tokens":14,"completion_tokens":2,"total_tokens":16}}`)
+	})
+
+	upstreamResponse, err := http.Post(upstreamServer.URL, "application/json", strings.NewReader(`{"model":"gpt-3.5-turbo-instruct","prompt":"hi"}`))
+	require.NoError(t, err)
+
+	clientCtx, recorder := newRelayClientContext(t, "/v1/completions")
+	info := newUpstreamRelayInfo("gpt-3.5-turbo-instruct")
+	info.RelayMode = relayconstant.RelayModeCompletions
+
+	usage, relayErr := OpenaiHandler(clientCtx, info, upstreamResponse)
+
+	require.Nil(t, relayErr, "legacy completions must not be treated as empty")
+	require.NotNil(t, usage)
+	assert.Contains(t, recorder.Body.String(), "hello")
+}

@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/internal/relay/channel/openrouter"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
 	"github.com/QuantumNous/new-api/internal/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
@@ -106,6 +107,7 @@ func OaiStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *htt
 		logger.LogError(c.Context(), "invalid response or response body")
 		return nil, types.NewOpenAIError(fmt.Errorf("invalid response"), types.ErrorCodeBadResponse, http.StatusInternalServerError)
 	}
+	info.ResetStreamObservation()
 
 	defer egress.CloseResponseBodyGracefully(resp)
 
@@ -126,6 +128,8 @@ func OaiStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *htt
 	// stream from an upstream that died mid-answer (#394).
 	var sawFinishReason bool
 	var sawTextContent bool
+	var lastFinishReason string
+	var streamErr *types.NewAPIError
 
 	// 检查是否为音频模型
 	isAudioModel := strings.Contains(strings.ToLower(model), "audio")
@@ -168,8 +172,13 @@ func OaiStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *htt
 		// still be retried on another route; after that, keep the partial answer
 		// and only record the soft error.
 		if payload := streamErrorPayload(data); payload != "" {
+			streamErr = types.NewOpenAIError(
+				fmt.Errorf("upstream stream error: %s", payload),
+				types.ErrorCodeBadResponse,
+				http.StatusBadGateway,
+			)
 			if !sawVisibleChunk && !sawFinishReason {
-				sr.Stop(fmt.Errorf("upstream stream error: %s", payload))
+				sr.Stop(streamErr.Err)
 				return
 			}
 			info.StreamStatus.RecordError("upstream stream error: " + payload)
@@ -179,6 +188,9 @@ func OaiStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *htt
 			secondLastStreamData = lastStreamData
 		}
 		lastStreamData = data
+		if finishReason := firstFinishReason(data); finishReason != "" {
+			lastFinishReason = finishReason
+		}
 
 		// Forward policy (#426): metadata-only preamble chunks (role/id/created
 		// with empty deltas) are held so an upstream dying before any visible
@@ -237,8 +249,11 @@ func OaiStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *htt
 		info.StreamSawTextContent = sawTextContent
 		info.StreamSawToolCall = toolCount > 0
 	}
-	if finishReason := firstFinishReason(lastStreamData); finishReason != "" {
-		info.StreamFinishReason = finishReason
+	if lastFinishReason != "" {
+		info.StreamFinishReason = lastFinishReason
+	}
+	if streamErr != nil && !sawVisibleChunk && !sawFinishReason {
+		return nil, streamErr
 	}
 
 	// 对音频模型，从倒数第二个stream data中提取usage信息
@@ -372,6 +387,7 @@ func collectStreamFunctionCallNames(data string, seen map[string]struct{}, names
 }
 
 func OpenaiHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
+	info.ResetStreamObservation()
 	defer egress.CloseResponseBodyGracefully(resp)
 
 	var simpleResponse dto.OpenAITextResponse
@@ -412,17 +428,19 @@ func OpenaiHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.R
 	if len(simpleResponse.Choices) == 0 {
 		return nil, types.NewOpenAIError(fmt.Errorf("upstream returned 200 with empty choices"), types.ErrorCodeEmptyResponse, http.StatusInternalServerError)
 	}
-	if openAIResponseStructurallyEmpty(simpleResponse) {
-		return nil, types.NewOpenAIError(fmt.Errorf("upstream returned 200 without content"), types.ErrorCodeEmptyResponse, http.StatusInternalServerError)
-	}
-	info.StreamContentObserved = true
-	info.StreamFinishReason = simpleResponse.Choices[0].FinishReason
-	for _, choice := range simpleResponse.Choices {
-		if strings.TrimSpace(choice.Message.StringContent()) != "" {
-			info.StreamSawTextContent = true
+	if info.RelayMode == relayconstant.RelayModeChatCompletions {
+		if openAIResponseStructurallyEmpty(simpleResponse) {
+			return nil, types.NewOpenAIError(fmt.Errorf("upstream returned 200 without content"), types.ErrorCodeEmptyResponse, http.StatusInternalServerError)
 		}
-		if len(choice.Message.ParseToolCalls()) > 0 {
-			info.StreamSawToolCall = true
+		info.StreamContentObserved = true
+		info.StreamFinishReason = simpleResponse.Choices[0].FinishReason
+		for _, choice := range simpleResponse.Choices {
+			if strings.TrimSpace(choice.Message.StringContent()) != "" {
+				info.StreamSawTextContent = true
+			}
+			if len(choice.Message.ParseToolCalls()) > 0 {
+				info.StreamSawToolCall = true
+			}
 		}
 	}
 
@@ -525,8 +543,12 @@ func openAIResponseStructurallyEmpty(response dto.OpenAITextResponse) bool {
 		if strings.TrimSpace(choice.Message.GetReasoningContent()) != "" {
 			return false
 		}
+		if choice.Message.Refusal != nil && strings.TrimSpace(*choice.Message.Refusal) != "" {
+			return false
+		}
 		if choice.FinishReason == constant.FinishReasonContentFilter ||
-			choice.FinishReason == constant.FinishReasonLength {
+			choice.FinishReason == constant.FinishReasonLength ||
+			choice.FinishReason == constant.FinishReasonFunctionCall {
 			return false
 		}
 	}

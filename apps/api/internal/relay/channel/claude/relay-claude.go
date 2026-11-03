@@ -102,6 +102,9 @@ func HandleStreamResponseData(c contract.Context, info *relaycommon.RelayInfo, c
 			info.StreamFinishReason = *claudeResponse.Delta.StopReason
 		}
 	}
+	if claudeResponse.ContentBlock != nil && claudeResponse.ContentBlock.Type == "image" {
+		info.StreamSawMediaContent = true
+	}
 	if claudeResponse.StopReason != "" {
 		info.StreamFinishReason = claudeResponse.StopReason
 	}
@@ -201,6 +204,7 @@ func HandleStreamFinalResponse(c contract.Context, info *relaycommon.RelayInfo, 
 }
 
 func ClaudeStreamHandler(c contract.Context, resp *http.Response, info *relaycommon.RelayInfo) (*dto.Usage, *types.NewAPIError) {
+	info.ResetStreamObservation()
 	claudeInfo := &ClaudeResponseInfo{
 		ResponseId:   helper.GetResponseID(c),
 		Created:      common.GetTimestamp(),
@@ -225,6 +229,7 @@ func ClaudeStreamHandler(c contract.Context, resp *http.Response, info *relaycom
 }
 
 func HandleClaudeResponseData(c contract.Context, info *relaycommon.RelayInfo, claudeInfo *ClaudeResponseInfo, httpResp *http.Response, data []byte) *types.NewAPIError {
+	info.ResetStreamObservation()
 	var claudeResponse dto.ClaudeResponse
 	err := common.Unmarshal(data, &claudeResponse)
 	if err != nil {
@@ -242,6 +247,9 @@ func HandleClaudeResponseData(c contract.Context, info *relaycommon.RelayInfo, c
 		}
 		if block.Type == "tool_use" {
 			info.StreamSawToolCall = true
+		}
+		if block.Type == "image" {
+			info.StreamSawMediaContent = true
 		}
 	}
 	if claudeInfo.Usage == nil {

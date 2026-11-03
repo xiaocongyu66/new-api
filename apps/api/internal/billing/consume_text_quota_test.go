@@ -1160,6 +1160,56 @@ func TestCalculateTextQuotaSummaryObservedToolCallNotWaived(t *testing.T) {
 	assert.False(t, summary.EmptyResponseWaived)
 }
 
+func TestCalculateTextQuotaSummaryObservedMediaNotWaived(t *testing.T) {
+	setEmptyResponseMultiplier(t, 0)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	relayInfo := perCallRelayInfo(0.38, 1)
+	relayInfo.StreamContentObserved = true
+	relayInfo.StreamSawMediaContent = true
+	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 0, TotalTokens: 14}
+
+	summary := calculateTextQuotaSummary(ctxRaw, relayInfo, usage)
+	applyEmptyResponseMultiplier(relayInfo, &summary, "")
+
+	require.Equal(t, int(0.38*float64(common.QuotaPerUnit)), summary.Quota, "an image-only response is delivered work")
+	assert.False(t, summary.EmptyResponseWaived)
+}
+
+func TestApplyTruncatedResponseMultiplierHandlerStopNotClassified(t *testing.T) {
+	setTruncatedResponseMultiplier(t, 0.3)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	relayInfo := perCallRelayInfo(0.38, 1)
+	relayInfo.StreamContentObserved = true
+	relayInfo.StreamSawTextContent = true
+	relayInfo.StreamStatus = relaycommon.NewStreamStatus()
+	relayInfo.StreamStatus.SetEndReason(relaycommon.StreamEndReasonHandlerStop, nil)
+	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 10, TotalTokens: 24}
+
+	summary := calculateTextQuotaSummary(ctxRaw, relayInfo, usage)
+	applyTruncatedResponseMultiplier(relayInfo, &summary, false)
+
+	require.Equal(t, int(0.38*float64(common.QuotaPerUnit)), summary.Quota, "handler_stop is ambiguous and must not discount")
+	assert.Empty(t, summary.StreamCut)
+}
+
+func TestApplyTruncatedResponseMultiplierFinishReasonSuppressesDiscount(t *testing.T) {
+	setTruncatedResponseMultiplier(t, 0.3)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	relayInfo := perCallRelayInfo(0.38, 1)
+	relayInfo.StreamContentObserved = true
+	relayInfo.StreamSawTextContent = true
+	relayInfo.StreamFinishReason = "stop"
+	relayInfo.StreamStatus = relaycommon.NewStreamStatus()
+	relayInfo.StreamStatus.SetEndReason(relaycommon.StreamEndReasonScannerErr, nil)
+	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 10, TotalTokens: 24}
+
+	summary := calculateTextQuotaSummary(ctxRaw, relayInfo, usage)
+	applyTruncatedResponseMultiplier(relayInfo, &summary, false)
+
+	require.Equal(t, int(0.38*float64(common.QuotaPerUnit)), summary.Quota, "a completed answer must not be discounted")
+	assert.Empty(t, summary.StreamCut)
+}
+
 func TestCalculateTextQuotaSummaryPerCallEmptyWithToolSurchargeNotWaived(t *testing.T) {
 	setEmptyResponseMultiplier(t, 0)
 	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)

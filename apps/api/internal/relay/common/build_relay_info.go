@@ -202,6 +202,9 @@ type RelayInfo struct {
 	StreamSawTextContent bool
 	// StreamSawToolCall records at least one tool call in the response.
 	StreamSawToolCall bool
+	// StreamSawMediaContent records delivered non-text media (inline images), so
+	// an image-only response is not mistaken for an empty answer.
+	StreamSawMediaContent bool
 	// StreamFinishReason is the last non-empty protocol finish reason.
 	StreamFinishReason string
 
@@ -1152,4 +1155,16 @@ func RemoveGeminiDisabledFields(jsonData []byte) ([]byte, error) {
 		return jsonData, nil
 	}
 	return jsonDataAfter, nil
+}
+
+// ResetStreamObservation clears the per-attempt delivery markers before a retry
+// runs the next handler, so a failed attempt cannot influence the billing
+// decision of the attempt that eventually settles.
+func (info *RelayInfo) ResetStreamObservation() {
+	info.StreamContentObserved = false
+	info.StreamSawTextContent = false
+	info.StreamSawToolCall = false
+	info.StreamSawMediaContent = false
+	info.StreamSawFinishReason = false
+	info.StreamFinishReason = ""
 }

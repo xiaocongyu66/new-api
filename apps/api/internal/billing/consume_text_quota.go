@@ -426,7 +426,7 @@ func isUndeliveredTextResponse(relayInfo *relaycommon.RelayInfo, summary textQuo
 	}
 	empty := summary.CompletionTokens == 0
 	if relayInfo.StreamContentObserved {
-		empty = !relayInfo.StreamSawTextContent && !relayInfo.StreamSawToolCall
+		empty = !relayInfo.StreamSawTextContent && !relayInfo.StreamSawToolCall && !relayInfo.StreamSawMediaContent
 	}
 	if !empty {
 		return false
@@ -490,13 +490,15 @@ func streamCutKind(relayInfo *relaycommon.RelayInfo) string {
 	}
 	switch relayInfo.StreamStatus.GetEndReason() {
 	case relaycommon.StreamEndReasonClientGone,
-		relaycommon.StreamEndReasonPingFail,
-		relaycommon.StreamEndReasonHandlerStop:
-		// Client gone, a failed ping write (client connection dead), or a
-		// handler stopped by failed client writes: the user abandoned the
-		// stream. Upstream in-band error events also use Stop, but those
-		// return an apiErr and refund before reaching settlement.
+		relaycommon.StreamEndReasonPingFail:
+		// The client closed the connection or a ping write failed: the user
+		// abandoned the request, so the charge stays at full price.
 		return streamCutClient
+	case relaycommon.StreamEndReasonHandlerStop:
+		// Stop is shared by failed client writes and upstream error events; it
+		// cannot attribute the cut, so leave it unclassified instead of
+		// mislabelling an upstream failure as a user disconnect.
+		return ""
 	case relaycommon.StreamEndReasonScannerErr, relaycommon.StreamEndReasonTimeout:
 		// A declared finish_reason means the answer was complete and only the
 		// trailing usage/metadata was lost — the deliverable is intact, so no
@@ -624,7 +626,9 @@ func PostTextConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo
 	// Record the disconnect side and, for upstream cut-offs only, discount the
 	// delivered output. Runs after the empty policy so a stream that delivered
 	// nothing keeps the single empty-response explanation.
-	applyTruncatedResponseMultiplier(relayInfo, &summary, tieredBillingApplied)
+	if adminRejectReason == "" {
+		applyTruncatedResponseMultiplier(relayInfo, &summary, tieredBillingApplied)
+	}
 
 	for _, item := range summary.ToolSurchargeItems {
 		q := decimal.NewFromFloat(item.Price).
@@ -722,9 +726,14 @@ func PostTextConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo
 		}
 	}
 	if relayInfo.StreamContentObserved {
-		other["stream_saw_text"] = relayInfo.StreamSawTextContent
-		if relayInfo.StreamSawToolCall {
-			other["stream_saw_tool_call"] = true
+		if relayInfo.IsStream {
+			other["stream_saw_text"] = relayInfo.StreamSawTextContent
+			if relayInfo.StreamSawToolCall {
+				other["stream_saw_tool_call"] = true
+			}
+			if relayInfo.StreamSawMediaContent {
+				other["stream_saw_media"] = true
+			}
 		}
 		if relayInfo.StreamFinishReason != "" {
 			other["finish_reason"] = relayInfo.StreamFinishReason
