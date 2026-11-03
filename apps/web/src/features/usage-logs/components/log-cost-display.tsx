@@ -123,8 +123,16 @@ function QuotaBadge(props: { quota: number }) {
 
 function SubscriptionBadge(props: { quota: number; walletOverflow?: number }) {
   const { t } = useTranslation()
+  // walletOverflow arrives already display-converted from the backend
+  // (wallet_quota_deducted_display); props.quota is likewise the request's
+  // display-converted total, so the two stay in the same unit for subtraction.
   const wallet = props.walletOverflow ?? 0
   const hasWallet = wallet > 0
+  // When the charge splits between the subscription and the wallet (subscription
+  // remaining quota exceeded), the subscription absorbs the remainder and the
+  // wallet covers the overflow — the two tooltip figures must sum to the total
+  // rather than both report it, and neither must mix display/raw units.
+  const subPortion = Math.max(0, props.quota - wallet)
   const quotaDisplay = splitQuotaDisplay(formatLogQuota(props.quota))
 
   return (
@@ -153,7 +161,7 @@ function SubscriptionBadge(props: { quota: number; walletOverflow?: number }) {
       />
       <TooltipContent>
         <span>
-          {t('Deducted by subscription')}: {formatLogQuota(props.quota)}
+          {t('Deducted by subscription')}: {formatLogQuota(subPortion)}
           {hasWallet && (
             <>
               {' · '}
@@ -185,7 +193,12 @@ export function LogCostDisplay(props: LogCostDisplayProps) {
         {isSubscription ? (
           <SubscriptionBadge
             quota={props.quota}
-            walletOverflow={props.other?.wallet_quota_deducted}
+            // Prefer the display-converted overflow so the badge never formats a
+            // raw relay quota as currency; fall back to the raw value if absent.
+            walletOverflow={
+              props.other?.wallet_quota_deducted_display ??
+              props.other?.wallet_quota_deducted
+            }
           />
         ) : (
           <QuotaBadge quota={props.quota} />
