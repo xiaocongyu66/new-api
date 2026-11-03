@@ -149,6 +149,9 @@ func geminiStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *
 	var imageCount int
 	var hasBillableUsageMetadata bool
 	responseText := strings.Builder{}
+	var sawText bool
+	var sawToolCall bool
+	var finishReason string
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 		var geminiResponse dto.GeminiChatResponse
@@ -165,12 +168,21 @@ func geminiStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *
 
 		// 统计图片数量
 		for _, candidate := range geminiResponse.Candidates {
+			if candidate.FinishReason != nil && *candidate.FinishReason != "" {
+				finishReason = *candidate.FinishReason
+			}
 			for _, part := range candidate.Content.Parts {
 				if part.InlineData != nil && part.InlineData.MimeType != "" {
 					imageCount++
 				}
 				if part.Text != "" {
 					responseText.WriteString(part.Text)
+					if !part.Thought && strings.TrimSpace(part.Text) != "" {
+						sawText = true
+					}
+				}
+				if part.FunctionCall != nil {
+					sawToolCall = true
 				}
 			}
 		}
@@ -186,6 +198,11 @@ func geminiStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *
 			sr.Stop(fmt.Errorf("gemini callback stopped"))
 		}
 	})
+
+	info.StreamContentObserved = true
+	info.StreamSawTextContent = sawText
+	info.StreamSawToolCall = sawToolCall
+	info.StreamFinishReason = finishReason
 
 	if !hasBillableUsageMetadata {
 		if info.ReceivedResponseCount > 0 {
@@ -323,6 +340,20 @@ func GeminiChatHandler(c contract.Context, info *relaycommon.RelayInfo, resp *ht
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 	markGeminiGoogleSearchCall(c, &geminiResponse)
+	info.StreamContentObserved = true
+	for _, candidate := range geminiResponse.Candidates {
+		if candidate.FinishReason != nil && *candidate.FinishReason != "" {
+			info.StreamFinishReason = *candidate.FinishReason
+		}
+		for _, part := range candidate.Content.Parts {
+			if !part.Thought && strings.TrimSpace(part.Text) != "" {
+				info.StreamSawTextContent = true
+			}
+			if part.FunctionCall != nil {
+				info.StreamSawToolCall = true
+			}
+		}
+	}
 	if len(geminiResponse.Candidates) == 0 {
 		usage := buildUsageFromGeminiResponse(c, info, &geminiResponse)
 

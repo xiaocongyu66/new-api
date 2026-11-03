@@ -125,6 +125,7 @@ func OaiStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *htt
 	// terminated. Combined with the scanner's end reason it separates a complete
 	// stream from an upstream that died mid-answer (#394).
 	var sawFinishReason bool
+	var sawTextContent bool
 
 	// 检查是否为音频模型
 	isAudioModel := strings.Contains(strings.ToLower(model), "audio")
@@ -161,6 +162,17 @@ func OaiStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *htt
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 		if len(data) == 0 {
 			return
+		}
+		// A 200 response that streams an error object is a disguised upstream
+		// failure. Before any visible output reaches the client the request can
+		// still be retried on another route; after that, keep the partial answer
+		// and only record the soft error.
+		if payload := streamErrorPayload(data); payload != "" {
+			if !sawVisibleChunk && !sawFinishReason {
+				sr.Stop(fmt.Errorf("upstream stream error: %s", payload))
+				return
+			}
+			info.StreamStatus.RecordError("upstream stream error: " + payload)
 		}
 		// 对音频模型，保存倒数第二个stream data
 		if isAudioModel && lastStreamData != "" {
@@ -200,6 +212,9 @@ func OaiStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *htt
 		if finished {
 			sawFinishReason = true
 		}
+		if chunkHasTextDelta(data) {
+			sawTextContent = true
+		}
 		if err != nil {
 			logger.LogError(c.Context(), "error processing stream token data: "+err.Error())
 			sr.Error(err)
@@ -208,9 +223,22 @@ func OaiStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *htt
 
 	if fastPath {
 		sawFinishReason = observer.sawFinishReason
+		sawTextContent = observer.sawTextContent
 		toolCount = observer.toolCount
 		streamFunctionCallNames = observer.toolNames
 		responseTextBuilder.WriteString(observer.responseText.String())
+	}
+	// Billing needs these after the handler returns: they separate an upstream
+	// that died after the answer completed from a mid-answer cut-off, and let
+	// the empty-response policy ignore reasoning-only output.
+	info.StreamSawFinishReason = sawFinishReason
+	if !isAudioModel {
+		info.StreamContentObserved = true
+		info.StreamSawTextContent = sawTextContent
+		info.StreamSawToolCall = toolCount > 0
+	}
+	if finishReason := firstFinishReason(lastStreamData); finishReason != "" {
+		info.StreamFinishReason = finishReason
 	}
 
 	// 对音频模型，从倒数第二个stream data中提取usage信息
@@ -379,11 +407,23 @@ func OpenaiHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.R
 
 	// A 2xx chat.completion body must carry at least one choice per the OpenAI
 	// spec. Unstable resellers disguise upstream failures as 200 + empty
-	// choices; mirror the Gemini empty-candidates check and surface it as a
-	// retryable relay error so the retry loop can pick a healthy route instead
-	// of forwarding an empty answer.
+	// choices; mirror the Gemini empty-candidates check and surface both cases
+	// as retryable relay errors so the retry loop can pick a healthy route.
 	if len(simpleResponse.Choices) == 0 {
 		return nil, types.NewOpenAIError(fmt.Errorf("upstream returned 200 with empty choices"), types.ErrorCodeEmptyResponse, http.StatusInternalServerError)
+	}
+	if openAIResponseStructurallyEmpty(simpleResponse) {
+		return nil, types.NewOpenAIError(fmt.Errorf("upstream returned 200 without content"), types.ErrorCodeEmptyResponse, http.StatusInternalServerError)
+	}
+	info.StreamContentObserved = true
+	info.StreamFinishReason = simpleResponse.Choices[0].FinishReason
+	for _, choice := range simpleResponse.Choices {
+		if strings.TrimSpace(choice.Message.StringContent()) != "" {
+			info.StreamSawTextContent = true
+		}
+		if len(choice.Message.ParseToolCalls()) > 0 {
+			info.StreamSawToolCall = true
+		}
 	}
 
 	for _, choice := range simpleResponse.Choices {
@@ -467,4 +507,28 @@ func OpenaiHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.R
 	egress.IOCopyBytesGracefully(c, resp, responseBody)
 
 	return &simpleResponse.Usage, nil
+}
+
+// openAIResponseStructurallyEmpty reports a 200 chat.completion that carries no
+// consumable content at all: every choice has empty text, no tool call, no
+// reasoning, and did not stop for length or content filtering. Such a response
+// is indistinguishable from a disguised upstream failure, so the relay retries
+// it instead of billing the user for nothing.
+func openAIResponseStructurallyEmpty(response dto.OpenAITextResponse) bool {
+	for _, choice := range response.Choices {
+		if strings.TrimSpace(choice.Message.StringContent()) != "" {
+			return false
+		}
+		if len(choice.Message.ParseToolCalls()) > 0 {
+			return false
+		}
+		if strings.TrimSpace(choice.Message.GetReasoningContent()) != "" {
+			return false
+		}
+		if choice.FinishReason == constant.FinishReasonContentFilter ||
+			choice.FinishReason == constant.FinishReasonLength {
+			return false
+		}
+	}
+	return true
 }

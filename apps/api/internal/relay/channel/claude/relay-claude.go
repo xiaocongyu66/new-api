@@ -94,6 +94,20 @@ func HandleStreamResponseData(c contract.Context, info *relaycommon.RelayInfo, c
 	if claudeResponse.Delta != nil && claudeResponse.Delta.StopReason != nil {
 		maybeMarkClaudeRefusal(c, *claudeResponse.Delta.StopReason)
 	}
+	if claudeResponse.Delta != nil {
+		if claudeResponse.Delta.Text != nil && strings.TrimSpace(*claudeResponse.Delta.Text) != "" {
+			info.StreamSawTextContent = true
+		}
+		if claudeResponse.Delta.StopReason != nil && *claudeResponse.Delta.StopReason != "" {
+			info.StreamFinishReason = *claudeResponse.Delta.StopReason
+		}
+	}
+	if claudeResponse.StopReason != "" {
+		info.StreamFinishReason = claudeResponse.StopReason
+	}
+	if claudeResponse.ContentBlock != nil && claudeResponse.ContentBlock.Type == "tool_use" {
+		info.StreamSawToolCall = true
+	}
 	if info.RelayFormat == types.RelayFormatClaude {
 		FormatClaudeResponseInfo(&claudeResponse, nil, claudeInfo)
 
@@ -194,6 +208,7 @@ func ClaudeStreamHandler(c contract.Context, resp *http.Response, info *relaycom
 		ResponseText: strings.Builder{},
 		Usage:        &dto.Usage{},
 	}
+	info.StreamContentObserved = true
 	var err *types.NewAPIError
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 		err = HandleStreamResponseData(c, info, claudeInfo, data)
@@ -219,6 +234,16 @@ func HandleClaudeResponseData(c contract.Context, info *relaycommon.RelayInfo, c
 		return types.WithClaudeError(*claudeError, http.StatusInternalServerError)
 	}
 	maybeMarkClaudeRefusal(c, claudeResponse.StopReason)
+	info.StreamContentObserved = true
+	info.StreamFinishReason = claudeResponse.StopReason
+	for _, block := range claudeResponse.Content {
+		if block.Type == "text" && block.Text != nil && strings.TrimSpace(*block.Text) != "" {
+			info.StreamSawTextContent = true
+		}
+		if block.Type == "tool_use" {
+			info.StreamSawToolCall = true
+		}
+	}
 	if claudeInfo.Usage == nil {
 		claudeInfo.Usage = &dto.Usage{}
 	}
