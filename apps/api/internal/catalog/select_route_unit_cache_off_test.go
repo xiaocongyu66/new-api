@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -51,7 +52,9 @@ func TestSelectRouteUnitCacheOffResolvesChannelFromDB(t *testing.T) {
 		map[RouteKey]bool{{ChannelId: 9101, KeyIndex: 0, Model: alias}: true}, nil)
 	require.NoError(t, vipErr)
 	assert.Nil(t, vipOnly, "excluding the only granted route must leave nothing selectable")
-	assert.Nil(t, selectForUnknownGroup(t, alias), "an ungranted group must select nothing")
+	unknown, err := SelectRouteUnit("no-such-group", alias, "", 0, nil, nil)
+	require.NoError(t, err)
+	assert.Nil(t, unknown, "an ungranted group must select nothing")
 
 	// Sanity: the vip group still reaches its own granted channel.
 	vipSelected, vipErr := SelectRouteUnit("vip", alias, "", 0, nil, nil)
@@ -60,9 +63,64 @@ func TestSelectRouteUnitCacheOffResolvesChannelFromDB(t *testing.T) {
 	assert.Equal(t, 9102, vipSelected.ChannelId)
 }
 
-func selectForUnknownGroup(t *testing.T, alias string) *SelectedRoute {
-	t.Helper()
-	route, err := SelectRouteUnit("no-such-group", alias, "", 0, nil, nil)
-	require.NoError(t, err)
-	return route
+func TestSelectRouteUnitCacheOffEnforcesChannelRestrictions(t *testing.T) {
+	const alias = "restricted-cache-off-model"
+	tests := []struct {
+		name        string
+		channel     *Channel
+		keyIndex    int
+		requestPath string
+	}{
+		{
+			name:    "disabled channel",
+			channel: &Channel{Status: common.ChannelStatusManuallyDisabled},
+		},
+		{
+			name: "disabled key",
+			channel: &Channel{
+				Status: common.ChannelStatusEnabled,
+				Key:    "[\"sk-first\",\"sk-second\"]",
+				ChannelInfo: ChannelInfo{
+					IsMultiKey:         true,
+					MultiKeyStatusList: map[int]int{0: common.ChannelStatusManuallyDisabled},
+				},
+			},
+		},
+		{
+			name: "missing key",
+			channel: &Channel{
+				Status:      common.ChannelStatusEnabled,
+				Key:         "[\"sk-first\"]",
+				ChannelInfo: ChannelInfo{IsMultiKey: true},
+			},
+			keyIndex: 1,
+		},
+		{
+			name: "unsupported request path",
+			channel: &Channel{
+				Status:        common.ChannelStatusEnabled,
+				Type:          constant.ChannelTypeAdvancedCustom,
+				OtherSettings: `{"advanced_custom":{"advanced_routes":[{"incoming_path":"/v1/chat/completions","models":["restricted-cache-off-model"]}]}}`,
+			},
+			requestPath: "/v1/embeddings",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := withGroupIsolationRouteDB(t)
+			seedGroupIsolationChannel(t, db, 9201, []string{"default"}, alias)
+			require.NoError(t, db.Model(&Channel{}).Where("id = ?", 9201).Updates(tt.channel).Error)
+			require.NoError(t, db.Model(&ChannelModelRoute{}).Where("channel_id = ?", 9201).Update("key_index", tt.keyIndex).Error)
+			common.MemoryCacheEnabled = false
+			channelSyncLock.Lock()
+			channelsIDM = nil
+			group2model2channels = nil
+			alias2routes = nil
+			channelSyncLock.Unlock()
+
+			selected, err := SelectRouteUnit("default", alias, tt.requestPath, 0, nil, nil)
+			require.NoError(t, err)
+			assert.Nil(t, selected, "an ineligible database channel must not be selected")
+		})
+	}
 }
