@@ -4,7 +4,7 @@ This directory contains Podman deployment assets for single-host production.
 
 ## Files
 
-- `../podman-compose.yml`: Podman Compose compatible stack (new-api + PostgreSQL/TimescaleDB + Redis).
+- `../podman-compose.yml`: Podman Compose compatible stack (new-api + PostgreSQL/TimescaleDB).
 - `.env.example`: runtime environment template.
 - `quadlet/new-api.container`: systemd/Quadlet unit for new-api.
 - `quadlet/newapi-postgres.container`: systemd/Quadlet unit for PostgreSQL/TimescaleDB.
