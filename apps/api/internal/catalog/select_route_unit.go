@@ -159,39 +159,75 @@ func filterCandidatesByChannelStatusAndKey(candidates []routeCandidate, requestP
 	if len(candidates) == 0 {
 		return candidates
 	}
-	channelSyncLock.RLock()
-	defer channelSyncLock.RUnlock()
 
 	filtered := make([]routeCandidate, 0, len(candidates))
-	for _, c := range candidates {
-		channel, ok := channelsIDM[c.channelId]
-		if !ok {
-			continue // channel not in cache
-		}
-		if channel.Status != common.ChannelStatusEnabled {
-			continue
-		}
-		// Check key availability
-		if !isKeyEnabled(channel, c.keyIndex) {
-			continue
-		}
-		// Exclude routes by RouteKey
-		if excludeRoutes != nil {
-			if excludeRoutes[RouteKey{ChannelId: c.channelId, KeyIndex: c.keyIndex, Model: alias}] {
+
+	if common.MemoryCacheEnabled {
+		// Cache-on path is unchanged: read the in-memory index under one read
+		// lock. channelsIDM and channel2advancedCustomConfig are built by
+		// InitChannelCache and only mutated under the write lock during sync.
+		channelSyncLock.RLock()
+		defer channelSyncLock.RUnlock()
+		for _, c := range candidates {
+			channel, ok := channelsIDM[c.channelId]
+			if !ok {
+				continue // channel not in cache
+			}
+			if !candidatePassesChannelChecks(channel, c, requestPath, alias, excludeRoutes) {
 				continue
 			}
+			filtered = append(filtered, c)
 		}
-		// Advanced Custom path filtering
-		if requestPath != "" && channel.Type == constant.ChannelTypeAdvancedCustom {
-			if config := channel2advancedCustomConfig[c.channelId]; config != nil {
-				if !config.SupportsPathForModel(requestPath, alias) {
-					continue
-				}
-			}
+		return filtered
+	}
+
+	// Cache disabled: InitChannelCache early-returns, so channelsIDM is never
+	// built (and channel2advancedCustomConfig stays empty). Resolve each
+	// candidate channel straight from the database instead of depending on the
+	// missing index — mirroring the cache-off DB reads already used by
+	// allowedChannelsForGroupAlias and CacheGetChannel/CacheGetChannelInfo.
+	for _, c := range candidates {
+		channel, err := GetChannelById(c.channelId, true)
+		if err != nil || channel == nil {
+			continue // channel gone from DB
+		}
+		if !candidatePassesChannelChecks(channel, c, requestPath, alias, excludeRoutes) {
+			continue
 		}
 		filtered = append(filtered, c)
 	}
 	return filtered
+}
+
+// candidatePassesChannelChecks applies the request-path filter for one channel:
+// enabled status, multi-key availability, excludeRoutes, and Advanced Custom
+// path support. It is the cache-agnostic core shared by both branches of
+// filterCandidatesByChannelStatusAndKey — the only difference between them is
+// how the *Channel is obtained (channelsIDM under RLock, or a DB read). The
+// caller owns all locking and channel acquisition.
+func candidatePassesChannelChecks(channel *Channel, c routeCandidate, requestPath, alias string, excludeRoutes map[RouteKey]bool) bool {
+	if channel.Status != common.ChannelStatusEnabled {
+		return false
+	}
+	// Check key availability
+	if !isKeyEnabled(channel, c.keyIndex) {
+		return false
+	}
+	// Exclude routes by RouteKey
+	if excludeRoutes != nil {
+		if excludeRoutes[RouteKey{ChannelId: c.channelId, KeyIndex: c.keyIndex, Model: alias}] {
+			return false
+		}
+	}
+	// Advanced Custom path filtering
+	if requestPath != "" && channel.Type == constant.ChannelTypeAdvancedCustom {
+		if config := channel.GetOtherSettings().AdvancedCustom; config != nil {
+			if !config.SupportsPathForModel(requestPath, alias) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // isKeyEnabled checks if a specific key index is enabled for the channel.
@@ -369,10 +405,20 @@ func SelectRouteUnit(group string, alias string, requestPath string, retry int, 
 		return nil, nil
 	}
 
-	// Resolve full channel and key
-	channelSyncLock.RLock()
-	channel := channelsIDM[selected.channelId]
-	channelSyncLock.RUnlock()
+	// Resolve full channel and key. When the memory cache is off, channelsIDM is
+	// nil (InitChannelCache early-returns), so fall back to the database — the
+	// same source the candidate filter and CacheGetChannel use in cache-off mode.
+	var channel *Channel
+	if common.MemoryCacheEnabled {
+		channelSyncLock.RLock()
+		channel = channelsIDM[selected.channelId]
+		channelSyncLock.RUnlock()
+	} else {
+		resolved, err := GetChannelById(selected.channelId, true)
+		if err == nil {
+			channel = resolved
+		}
+	}
 
 	if channel == nil {
 		return nil, nil
