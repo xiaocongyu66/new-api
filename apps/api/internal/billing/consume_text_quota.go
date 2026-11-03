@@ -501,7 +501,7 @@ func streamCutKind(relayInfo *relaycommon.RelayInfo) string {
 		// A declared finish_reason means the answer was complete and only the
 		// trailing usage/metadata was lost — the deliverable is intact, so no
 		// upstream cut is recorded.
-		if relayInfo.StreamSawFinishReason {
+		if relayInfo.StreamSawFinishReason || relayInfo.StreamFinishReason != "" {
 			return ""
 		}
 		return streamCutUpstream
@@ -517,6 +517,10 @@ func streamCutKind(relayInfo *relaycommon.RelayInfo) string {
 // TruncatedResponseMultiplier (0-1). Client disconnects are never discounted:
 // the user chose to abandon the request. It runs after the empty-response
 // policy, which owns streams that delivered nothing at all.
+//
+// OpenAI-format chat streams that die before a finish_reason are failed by
+// streamTruncated (#394) and refunded before settlement, so this discount
+// currently applies only to formats that reach settlement after a cut.
 func applyTruncatedResponseMultiplier(relayInfo *relaycommon.RelayInfo, summary *textQuotaSummary, tieredApplied bool) {
 	if relayInfo == nil || summary == nil {
 		return

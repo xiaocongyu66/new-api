@@ -38,7 +38,7 @@ func preConsumedSession() *BillingSession {
 }
 
 // TestBillingSessionSettleThenRefundIsNoOp pins the invariant the
-// unconditional-defund refund depends on: once a session is settled (the
+// unconditional-refund refund depends on: once a session is settled (the
 // success path), calling Refund must not return quota a second time.
 func TestBillingSessionSettleThenRefundIsNoOp(t *testing.T) {
 	ctx, _ := fiberadapter.NewSyntheticContext(nil)
