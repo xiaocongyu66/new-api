@@ -237,8 +237,8 @@ export interface LogOtherData {
   empty_response_multiplier?: number
   empty_response_waived?: boolean
   // Stream disconnect marker: which side dropped a streamed response.
-  // 'upstream' charged the delivered output at truncated_response_multiplier
-  // (prompt stays full); 'client' is always charged at full price.
+  // 'upstream' means the provider cut mid-answer; it is discounted only when
+  // truncated_response_multiplier is present. 'client' is always full price.
   stream_cut?: 'upstream' | 'client'
   truncated_response_multiplier?: number
   // Reject / intercept reason (admin)

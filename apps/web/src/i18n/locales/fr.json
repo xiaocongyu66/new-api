@@ -950,7 +950,7 @@
     "Character chat, storytelling, persona": "Discussion de personnages, narration, persona",
     "Charge": "Facturation",
     "Charge ratio for empty 200 responses. 0 = free, 1 = full price.": "Ratio facturé en cas de réponse 200 vide. 0 = gratuit, 1 = plein tarif.",
-    "Charge ratio for the delivered output when the upstream cuts the stream mid-answer. Prompt tokens are always charged in full. 0 = output free, 1 = full price.": "Ratio de facturation de la sortie livrée lorsque l'amont coupe le flux en cours de réponse. Les tokens de prompt sont toujours facturés en totalité. 0 = sortie gratuite, 1 = plein tarif.",
+    "Charge ratio for delivered output when the upstream cuts the stream mid-answer. Token-billed models keep prompt tokens at full price and discount only output; per-call and expression billing discount the whole charge. 0 = free, 1 = full price.": "Ratio de facturation de la sortie livrée lorsque l'amont coupe le flux. Les modèles facturés au token gardent les tokens de prompt au plein tarif et ne remisent que la sortie ; la facturation par appel et par expression remise le montant total. 0 = gratuit, 1 = plein tarif.",
     "Charge.": "Facturer.",
     "Charged for empty response": "Facturé pour réponse vide",
     "Chart Preferences": "Préférences des graphiques",

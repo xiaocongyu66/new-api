@@ -330,7 +330,7 @@ export function QuotaSettingsSection({
                   </FormControl>
                   <FormDescription>
                     {t(
-                      'Charge ratio for the delivered output when the upstream cuts the stream mid-answer. Prompt tokens are always charged in full. 0 = output free, 1 = full price.'
+                      'Charge ratio for delivered output when the upstream cuts the stream mid-answer. Token-billed models keep prompt tokens at full price and discount only output; per-call and expression billing discount the whole charge. 0 = free, 1 = full price.'
                     )}
                   </FormDescription>
                   <FormMessage />

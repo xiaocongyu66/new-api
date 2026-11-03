@@ -115,11 +115,14 @@ function EmptyResponseMarker() {
 function StreamCutMarker(props: {
   cut: 'upstream' | 'client'
   discounted: boolean
+  emptyWaived: boolean
 }) {
   const { t } = useTranslation()
   const upstream = props.cut === 'upstream'
   let label = t('Client disconnected mid-stream; charged at full price')
-  if (upstream) {
+  if (props.emptyWaived) {
+    label = t('Reduced by multiplier')
+  } else if (upstream) {
     label = props.discounted
       ? t('Upstream stream cut — output charged at truncated multiplier')
       : t('Upstream Stream Cut')
@@ -223,6 +226,7 @@ export function LogCostDisplay(props: LogCostDisplayProps) {
   const showEmptyResponse = hasEmptyResponseCharge(props.other)
   const streamCut = getStreamCut(props.other)
   const streamCutDiscounted = props.other?.truncated_response_multiplier != null
+  const streamCutEmptyWaived = props.other?.empty_response_waived === true
 
   if (
     !isSubscription &&
@@ -256,7 +260,11 @@ export function LogCostDisplay(props: LogCostDisplayProps) {
         {showToolSurcharge ? <ToolSurchargeMarker /> : null}
         {showEmptyResponse ? <EmptyResponseMarker /> : null}
         {streamCut ? (
-          <StreamCutMarker cut={streamCut} discounted={streamCutDiscounted} />
+          <StreamCutMarker
+            cut={streamCut}
+            discounted={streamCutDiscounted}
+            emptyWaived={streamCutEmptyWaived}
+          />
         ) : null}
       </div>
     </TooltipProvider>

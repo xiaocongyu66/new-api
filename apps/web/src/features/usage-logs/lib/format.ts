@@ -27,10 +27,6 @@ import {
 import type { UsageLog } from '../data/schema'
 import type { LogOtherData } from '../types'
 
-{
-  normalizeTierLabel
-}
-
 const PARAM_OVERRIDE_ACTION_MAP: Record<string, string> = {
   set: 'Set',
   delete: 'Delete',
@@ -171,9 +167,10 @@ export function hasEmptyResponseCharge(other: LogOtherData | null): boolean {
 
 /**
  * Which side dropped a streamed response, per the backend stream_cut marker.
- * 'upstream' means the provider cut the stream mid-answer (delivered output
- * was charged at the truncated-response multiplier); 'client' means the user
- * disconnected (always charged at full price).
+ * 'upstream' means the provider cut the stream mid-answer; 'client' means the
+ * user disconnected (always charged at full price). An upstream cut is only
+ * discounted when truncated_response_multiplier is present; the empty-response
+ * policy may take over and is reported by its own fields.
  */
 export function getStreamCut(
   other: LogOtherData | null

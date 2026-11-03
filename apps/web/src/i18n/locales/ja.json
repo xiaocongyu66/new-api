@@ -950,7 +950,7 @@
     "Character chat, storytelling, persona": "キャラクター会話・ストーリーテリング・ペルソナ",
     "Charge": "課金",
     "Charge ratio for empty 200 responses. 0 = free, 1 = full price.": "空の 200 レスポンスに対する課金倍率。0 は無料、1 は全額。",
-    "Charge ratio for the delivered output when the upstream cuts the stream mid-answer. Prompt tokens are always charged in full. 0 = output free, 1 = full price.": "上流が応答途中でストリームを切断した場合の、配信済み出力の課金比率。プロンプトトークンは常に全額課金されます。0 = 出力無料、1 = 通常料金。",
+    "Charge ratio for delivered output when the upstream cuts the stream mid-answer. Token-billed models keep prompt tokens at full price and discount only output; per-call and expression billing discount the whole charge. 0 = free, 1 = full price.": "上流が応答途中でストリームを切断した際の、配信済み出力の課金倍率。トークン課金モデルは prompt トークンを全額請求し、出力のみ割引します。従量課金と式課金は合計額を割引します。0 = 無料、1 = 通常料金。",
     "Charge.": "課金する。",
     "Charged for empty response": "空応答の課金",
     "Chart Preferences": "チャートの環境設定",

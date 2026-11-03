@@ -950,7 +950,7 @@
     "Character chat, storytelling, persona": "Trò chuyện nhân vật, kể chuyện, nhân cách hoá",
     "Charge": "Phí",
     "Charge ratio for empty 200 responses. 0 = free, 1 = full price.": "Tỷ lệ tính phí khi phản hồi 200 rỗng. 0 = miễn phí, 1 = toàn bộ giá.",
-    "Charge ratio for the delivered output when the upstream cuts the stream mid-answer. Prompt tokens are always charged in full. 0 = output free, 1 = full price.": "Tỷ lệ tính phí cho phần đầu ra đã truyền khi nguồn cắt luồng giữa câu trả lời. Token prompt luôn tính phí đầy đủ. 0 = miễn phí đầu ra, 1 = giá gốc.",
+    "Charge ratio for delivered output when the upstream cuts the stream mid-answer. Token-billed models keep prompt tokens at full price and discount only output; per-call and expression billing discount the whole charge. 0 = free, 1 = full price.": "Tỷ lệ tính phí cho đầu ra đã giao khi thượng nguồn cắt luồng. Mô hình tính theo token vẫn tính đủ prompt và chỉ giảm giá phần đầu ra; tính theo lần gọi và biểu thức giảm trên toàn bộ hóa đơn. 0 = miễn phí, 1 = giá gốc.",
     "Charge.": "Tính phí.",
     "Charged for empty response": "Tính phí phản hồi trống",
     "Chart Preferences": "Tùy chọn biểu đồ",

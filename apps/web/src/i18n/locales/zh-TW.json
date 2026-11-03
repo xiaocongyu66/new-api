@@ -950,7 +950,7 @@
     "Character chat, storytelling, persona": "角色對話、劇情創作、人設扮演",
     "Charge": "扣費",
     "Charge ratio for empty 200 responses. 0 = free, 1 = full price.": "上游返回空 200 回應時的扣費比例，0 表示全額豁免，1 表示按原價扣費。",
-    "Charge ratio for the delivered output when the upstream cuts the stream mid-answer. Prompt tokens are always charged in full. 0 = output free, 1 = full price.": "上游斷流時，已產出輸出部分的扣費倍率。輸入 token 始終全額扣費。0 = 輸出免費，1 = 原價。",
+    "Charge ratio for delivered output when the upstream cuts the stream mid-answer. Token-billed models keep prompt tokens at full price and discount only output; per-call and expression billing discount the whole charge. 0 = free, 1 = full price.": "上游斷流時已交付輸出的扣費倍率。按量計費模型 prompt token 仍全額計費，僅折減輸出；按次與表達式計費按整單折減。0 = 免費，1 = 原價。",
     "Charge.": "扣費。",
     "Charged for empty response": "空回覆扣費",
     "Chart Preferences": "圖表偏好設定",

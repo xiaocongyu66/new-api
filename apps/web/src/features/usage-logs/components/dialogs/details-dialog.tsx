@@ -79,6 +79,7 @@ import {
   getReasoningEffortVariant,
   renderAuditContent,
   getStreamEndReasonLabel,
+  getStreamCut,
 } from '../../lib/format'
 import {
   getLogTypeConfig,
@@ -485,10 +486,13 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const { copiedText, copyToClipboard } = useCopyToClipboard({ notify: false })
   const details = props.log.content ?? ''
   const other = parseLogOther(props.log.other)
+  const streamCut = getStreamCut(other)
   let streamCutChargeLabel = t('Full price')
-  if (other?.truncated_response_multiplier != null) {
+  if (other?.empty_response_waived) {
     streamCutChargeLabel = t('Reduced by multiplier')
-  } else if (other?.stream_cut === 'client') {
+  } else if (other?.truncated_response_multiplier != null) {
+    streamCutChargeLabel = t('Reduced by multiplier')
+  } else if (streamCut === 'client') {
     streamCutChargeLabel = t('Client cut: charged at full price')
   }
   const typeConfig = getLogTypeConfig(props.log.type)
@@ -1108,19 +1112,19 @@ export function DetailsDialog(props: DetailsDialogProps) {
         )}
 
         {/* Stream disconnect (upstream cut-off or client abandonment) */}
-        {other?.stream_cut && (
+        {streamCut && (
           <DetailSection
             icon={<Unplug className='size-3.5' aria-hidden='true' />}
             label={
-              other.stream_cut === 'upstream'
+              streamCut === 'upstream'
                 ? t('Upstream Stream Cut')
                 : t('Client Stream Cut')
             }
           >
-            {other.truncated_response_multiplier != null ? (
+            {other?.truncated_response_multiplier != null ? (
               <DetailRow
                 label={t('Output multiplier')}
-                value={String(other.truncated_response_multiplier)}
+                value={String(other?.truncated_response_multiplier)}
                 mono
               />
             ) : null}

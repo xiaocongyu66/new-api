@@ -950,7 +950,7 @@
     "Character chat, storytelling, persona": "Диалог с персонажем, сторителлинг, персона",
     "Charge": "Плата",
     "Charge ratio for empty 200 responses. 0 = free, 1 = full price.": "Доля стоимости при пустом ответе 200. 0 — бесплатно, 1 — полная цена.",
-    "Charge ratio for the delivered output when the upstream cuts the stream mid-answer. Prompt tokens are always charged in full. 0 = output free, 1 = full price.": "Доля оплаты выданного вывода при обрыве потока на стороне провайдера. Токены запроса всегда оплачиваются полностью. 0 = вывод бесплатно, 1 = полная цена.",
+    "Charge ratio for delivered output when the upstream cuts the stream mid-answer. Token-billed models keep prompt tokens at full price and discount only output; per-call and expression billing discount the whole charge. 0 = free, 1 = full price.": "Доля оплаты выданного вывода при обрыве потока провайдером. Модели с оплатой по токенам сохраняют полную цену prompt и скидку только на вывод; оплата за вызов и по выражению применяет скидку ко всей сумме. 0 — бесплатно, 1 — полная цена.",
     "Charge.": "Списание.",
     "Charged for empty response": "Плата за пустой ответ",
     "Chart Preferences": "Настройки графиков",
