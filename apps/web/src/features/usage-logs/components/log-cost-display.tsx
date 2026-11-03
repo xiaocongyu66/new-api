@@ -112,12 +112,18 @@ function EmptyResponseMarker() {
   )
 }
 
-function StreamCutMarker(props: { cut: 'upstream' | 'client' }) {
+function StreamCutMarker(props: {
+  cut: 'upstream' | 'client'
+  discounted: boolean
+}) {
   const { t } = useTranslation()
   const upstream = props.cut === 'upstream'
-  const label = upstream
-    ? t('Upstream stream cut — output charged at truncated multiplier')
-    : t('Client disconnected mid-stream; charged at full price')
+  let label = t('Client disconnected mid-stream; charged at full price')
+  if (upstream) {
+    label = props.discounted
+      ? t('Upstream stream cut — output charged at truncated multiplier')
+      : t('Upstream Stream Cut')
+  }
   // WCAG 2.5.3: the accessible name contains the visible chip text.
   const chip = upstream ? t('Upstream cut') : t('Client cut')
   const accessibleName = `${chip} — ${label}`
@@ -216,6 +222,7 @@ export function LogCostDisplay(props: LogCostDisplayProps) {
   const showToolSurcharge = hasToolSurcharge(props.other)
   const showEmptyResponse = hasEmptyResponseCharge(props.other)
   const streamCut = getStreamCut(props.other)
+  const streamCutDiscounted = props.other?.truncated_response_multiplier != null
 
   if (
     !isSubscription &&
@@ -248,7 +255,9 @@ export function LogCostDisplay(props: LogCostDisplayProps) {
         )}
         {showToolSurcharge ? <ToolSurchargeMarker /> : null}
         {showEmptyResponse ? <EmptyResponseMarker /> : null}
-        {streamCut ? <StreamCutMarker cut={streamCut} /> : null}
+        {streamCut ? (
+          <StreamCutMarker cut={streamCut} discounted={streamCutDiscounted} />
+        ) : null}
       </div>
     </TooltipProvider>
   )

@@ -485,6 +485,12 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const { copiedText, copyToClipboard } = useCopyToClipboard({ notify: false })
   const details = props.log.content ?? ''
   const other = parseLogOther(props.log.other)
+  let streamCutChargeLabel = t('Full price')
+  if (other?.truncated_response_multiplier != null) {
+    streamCutChargeLabel = t('Reduced by multiplier')
+  } else if (other?.stream_cut === 'client') {
+    streamCutChargeLabel = t('Client cut: charged at full price')
+  }
   const typeConfig = getLogTypeConfig(props.log.type)
 
   const isViolation = isViolationFeeLog(other)
@@ -1118,16 +1124,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
                 mono
               />
             ) : null}
-            <DetailRow
-              label={t('Charge')}
-              value={
-                other.truncated_response_multiplier != null
-                  ? t('Reduced by multiplier')
-                  : other.stream_cut === 'client'
-                    ? t('Client cut: charged at full price')
-                    : t('Full price')
-              }
-            />
+            <DetailRow label={t('Charge')} value={streamCutChargeLabel} />
           </DetailSection>
         )}
 
