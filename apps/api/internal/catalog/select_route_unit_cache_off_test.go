@@ -15,7 +15,7 @@ import (
 // so channelsIDM is never built; the request-path filter and the final channel
 // resolution must then read the channel from the database instead of the
 // missing index. This test pins that: with MemoryCacheEnabled=false and
-// channelsIDM left nil, the granted channel is still selectable while a
+// channelsIDM left nil, the granted channel is resolved from the DB while a
 // group-isolated (non-granted) channel is never handed out.
 func TestSelectRouteUnitCacheOffResolvesChannelFromDB(t *testing.T) {
 	const alias = "cache-off-model"
@@ -37,14 +37,32 @@ func TestSelectRouteUnitCacheOffResolvesChannelFromDB(t *testing.T) {
 	ClearUnitHealthCache()
 	t.Cleanup(ClearUnitHealthCache)
 
-	// The granted channel must be selectable despite the missing index.
-	seen := selectManyChannelIDs(t, "default", alias, 60)
-	require.NotEmpty(t, seen, "the cache-off path must still resolve a channel from the DB")
-	assert.Contains(t, seen, 9101, "the granted channel must be selectable")
-	assert.NotContains(t, seen, 9102, "a group-isolated channel must never be handed to default")
-	assert.NotContains(t, seen, 0, "the nil index must not collapse every candidate to no route")
+	// The granted channel must be selectable despite the missing index. With a
+	// single eligible route, SelectRouteUnit is deterministic for any rnd value.
+	selected, err := SelectRouteUnit("default", alias, "", 0, nil, nil)
+	require.NoError(t, err)
+	require.NotNil(t, selected, "cache-off path must resolve the granted channel from the DB")
+	assert.Equal(t, 9101, selected.ChannelId, "the granted channel must be selected")
+	assert.Equal(t, alias, selected.UpstreamModel)
 
-	// Sanity: the vip group still reaches its own channel.
-	vipSeen := selectManyChannelIDs(t, "vip", alias, 60)
-	assert.Contains(t, vipSeen, 9102, "vip must reach its granted channel")
+	// A group-isolated (vip-only) channel must never be handed to default, and
+	// an unknown group must select nothing (fail-closed isolation boundary).
+	vipOnly, vipErr := SelectRouteUnit("default", alias, "", 0,
+		map[RouteKey]bool{{ChannelId: 9101, KeyIndex: 0, Model: alias}: true}, nil)
+	require.NoError(t, vipErr)
+	assert.Nil(t, vipOnly, "excluding the only granted route must leave nothing selectable")
+	assert.Nil(t, selectForUnknownGroup(t, alias), "an ungranted group must select nothing")
+
+	// Sanity: the vip group still reaches its own granted channel.
+	vipSelected, vipErr := SelectRouteUnit("vip", alias, "", 0, nil, nil)
+	require.NoError(t, vipErr)
+	require.NotNil(t, vipSelected, "vip must reach its granted channel")
+	assert.Equal(t, 9102, vipSelected.ChannelId)
+}
+
+func selectForUnknownGroup(t *testing.T, alias string) *SelectedRoute {
+	t.Helper()
+	route, err := SelectRouteUnit("no-such-group", alias, "", 0, nil, nil)
+	require.NoError(t, err)
+	return route
 }

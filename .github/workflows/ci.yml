@@ -82,7 +82,7 @@ jobs:
         run: go build -tags "${SINGBOX_TAGS}" -o "${RUNNER_TEMP}/new-api" .
 
       - name: Upload gateway smoke executable
-        uses: actions/upload-artifact@4cec3d8aa04e39d1a68396de0c4961d61e8c17a6 # v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: gateway-smoke-linux-amd64
           path: ${{ runner.temp }}/new-api
