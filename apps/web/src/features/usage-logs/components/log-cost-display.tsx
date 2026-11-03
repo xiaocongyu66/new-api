@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { MessageSquareOff, Wrench } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { StatusBadge } from '@/components/status-badge'
 import { Badge } from '@/components/ui/badge'
 import {
   Tooltip,
@@ -122,25 +121,45 @@ function QuotaBadge(props: { quota: number }) {
   )
 }
 
-function SubscriptionBadge(props: { quota: number }) {
+function SubscriptionBadge(props: { quota: number; walletOverflow?: number }) {
   const { t } = useTranslation()
+  const wallet = props.walletOverflow ?? 0
+  const hasWallet = wallet > 0
+  const quotaDisplay = splitQuotaDisplay(formatLogQuota(props.quota))
 
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <StatusBadge
-            label={t('Subscription')}
-            variant='success'
-            size='sm'
-            copyable={false}
-            className='cursor-help'
-          />
+          <span
+            role='img'
+            aria-label={
+              hasWallet
+                ? `${t('Subscription + Wallet')}: ${formatLogQuota(props.quota)}`
+                : `${t('Subscription')}: ${formatLogQuota(props.quota)}`
+            }
+            className={`inline-flex h-6 w-fit items-center rounded-md border px-2 [font-family:var(--font-body)] text-sm leading-none font-semibold tabular-nums ${
+              hasWallet
+                ? 'border-red-500 bg-red-50 text-red-700'
+                : 'border-green-500 bg-green-50 text-green-700'
+            }`}
+          >
+            {quotaDisplay.prefix ? (
+              <span className='mr-1'>{quotaDisplay.prefix}</span>
+            ) : null}
+            <span>{quotaDisplay.amount}</span>
+          </span>
         }
       />
       <TooltipContent>
         <span>
           {t('Deducted by subscription')}: {formatLogQuota(props.quota)}
+          {hasWallet && (
+            <>
+              {' · '}
+              {t('Wallet overflow charge')}: {formatLogQuota(wallet)}
+            </>
+          )}
         </span>
       </TooltipContent>
     </Tooltip>
@@ -164,7 +183,10 @@ export function LogCostDisplay(props: LogCostDisplayProps) {
     <TooltipProvider>
       <div className='inline-flex items-center gap-1'>
         {isSubscription ? (
-          <SubscriptionBadge quota={props.quota} />
+          <SubscriptionBadge
+            quota={props.quota}
+            walletOverflow={props.other?.wallet_quota_deducted}
+          />
         ) : (
           <QuotaBadge quota={props.quota} />
         )}
