@@ -42,7 +42,7 @@ func ServeBufferedRoute(t testing.TB, method, pattern string, middleware []contr
 	chain = append(chain, handler)
 	app.Add([]string{method}, pattern, func(c fiber.Ctx) error { return fiberadapter.Dispatch(c, chain) })
 
-	response, err := app.Test(req, int(10*time.Second/time.Millisecond))
+	response, err := app.Test(req, fiber.TestConfig{Timeout: 10 * time.Second})
 	if err != nil {
 		t.Fatalf("serve buffered Fiber route: %v", err)
 	}
