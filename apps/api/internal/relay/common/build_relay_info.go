@@ -212,9 +212,10 @@ type RelayInfo struct {
 	// EOF without [DONE]. Empty means no override.
 	StreamCutOverride string
 	// SettledUpstreamFailure records that billing classified this attempt as an
-	// upstream stream cut and settled its charge. The attempt is terminal for
-	// billing and retry, but the serving channel still failed: the relay loop
-	// must charge it as a failed attempt instead of rewarding it as a success.
+	// upstream failure (cut or settled empty response) and settled its charge.
+	// The attempt is terminal for billing and retry, but the serving channel
+	// still failed: the relay loop must charge it as a failed attempt instead
+	// of rewarding it as a success.
 	SettledUpstreamFailure bool
 
 	// convOptions caches the converter settings snapshot (see ConvOptions).

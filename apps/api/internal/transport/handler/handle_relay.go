@@ -407,6 +407,9 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 					routestats.AuditOutcomeFromRouteStats(int(routeStats)),
 					c.Header("X-Request-Id"), common.GetCtxKeyString(c, constant.ContextKeyRoutePath), relayInfo.UsingGroup)
 			}
+			gopool.Go(func() {
+				usage.RecordRelaySample(relayInfo, false, 0)
+			})
 			return
 		}
 

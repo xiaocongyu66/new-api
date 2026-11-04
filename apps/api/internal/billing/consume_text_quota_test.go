@@ -1609,3 +1609,37 @@ func TestApplyTruncatedResponseMultiplierMarksSettledUpstreamFailure(t *testing.
 		})
 	}
 }
+
+func TestApplyEmptyResponseMultiplierMarksSettledUpstreamFailure(t *testing.T) {
+	setEmptyResponseMultiplier(t, 0.1)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
+	relayInfo := truncatedCutRelayInfo()
+	relayInfo.StreamContentObserved = true
+	relayInfo.StreamStatus.SetEndReason(relaycommon.StreamEndReasonDone, nil)
+	usage := &dto.Usage{PromptTokens: 1000, CompletionTokens: 0, TotalTokens: 1000}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	applyEmptyResponseMultiplier(relayInfo, &summary, "")
+
+	require.True(t, summary.EmptyResponseDetected)
+	assert.True(t, relayInfo.SettledUpstreamFailure,
+		"a settled empty 200 is an upstream failure, not a channel success")
+}
+
+func TestApplyEmptyResponseMultiplierPingFailChargesFull(t *testing.T) {
+	setEmptyResponseMultiplier(t, 0)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
+	relayInfo := truncatedCutRelayInfo()
+	relayInfo.StreamContentObserved = true
+	relayInfo.StreamStatus.SetEndReason(relaycommon.StreamEndReasonPingFail, nil)
+	usage := &dto.Usage{PromptTokens: 1000, CompletionTokens: 0, TotalTokens: 1000}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	applyEmptyResponseMultiplier(relayInfo, &summary, "")
+
+	require.False(t, summary.EmptyResponseDetected)
+	assert.False(t, relayInfo.SettledUpstreamFailure)
+	require.Equal(t, 2000, summary.Quota, "a client-side ping failure keeps the full charge")
+}
