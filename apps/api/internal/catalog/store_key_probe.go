@@ -2,7 +2,6 @@ package channel
 
 import (
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
