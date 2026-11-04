@@ -14,7 +14,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
@@ -48,7 +48,7 @@ type responseState struct {
 	// body itself in buffered mode.
 	body bytes.Buffer
 
-	fiber    *fiber.Ctx
+	fiber    fiber.Ctx
 	recorder *httptest.ResponseRecorder
 
 	// committed guards the one-shot header write.
@@ -104,7 +104,7 @@ type responseState struct {
 	mu sync.Mutex
 }
 
-func newResponseState(c *fiber.Ctx, mode dispatchMode) *responseState {
+func newResponseState(c fiber.Ctx, mode dispatchMode) *responseState {
 	state := &responseState{
 		mode:        mode,
 		fiber:       c,
@@ -803,7 +803,7 @@ func ReplaceRequest(c contract.Context, req *http.Request) bool {
 // MustUnwrap recovers the fiber context behind c, panicking when c did not
 // originate from this adapter. Like Unwrap it is only valid while the fiber
 // handler is on the stack.
-func MustUnwrap(c contract.Context) *fiber.Ctx {
+func MustUnwrap(c contract.Context) fiber.Ctx {
 	fiberCtx, ok := Unwrap(c)
 	if !ok {
 		panic("fiberadapter: context did not originate from this adapter")
