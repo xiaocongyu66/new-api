@@ -54,7 +54,8 @@ export function Pricing() {
   )
 
   const chargeNoticeItems =
-    emptyMultiplier != null && truncatedMultiplier != null
+    typeof emptyMultiplier === 'number' &&
+    typeof truncatedMultiplier === 'number'
       ? [
           { text: t('home.policy.empty.item.normal'), dot: 'bg-emerald-500' },
           {

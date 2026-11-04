@@ -34,7 +34,9 @@ export function UsagePolicy() {
   const { status } = useStatus()
   const emptyMultiplier = status?.empty_response_multiplier
   const truncatedMultiplier = status?.truncated_response_multiplier
-  const showMultiplier = emptyMultiplier != null || truncatedMultiplier != null
+  const showMultiplier =
+    typeof emptyMultiplier === 'number' ||
+    typeof truncatedMultiplier === 'number'
 
   const welcome = [
     t('home.policy.welcome.item.roleplay'),
@@ -45,13 +47,13 @@ export function UsagePolicy() {
 
   const items = [
     t('home.policy.empty.item.normal'),
-    truncatedMultiplier != null
+    typeof truncatedMultiplier === 'number'
       ? t('home.policy.empty.item.upstream-cut', {
           multiplier: truncatedMultiplier,
           refundPercent: Math.round((1 - truncatedMultiplier) * 100),
         })
       : null,
-    emptyMultiplier != null
+    typeof emptyMultiplier === 'number'
       ? t('home.policy.empty.item.empty-response', {
           multiplier: emptyMultiplier,
           refundPercent: Math.round((1 - emptyMultiplier) * 100),

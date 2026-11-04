@@ -140,30 +140,31 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
                 tokenUnit={props.tokenUnit}
                 showRechargePrice={showRechargePrice}
               />
-              {emptyMultiplier != null && truncatedMultiplier != null && (
-                <div className='text-muted-foreground flex items-start gap-2 rounded-lg border border-dashed px-3 py-2.5 text-xs'>
-                  <Info
-                    className='mt-0.5 size-3.5 shrink-0'
-                    aria-hidden='true'
-                  />
-                  <p>
-                    <Trans
-                      i18nKey='pricing.model.emptyResponseNote'
-                      values={{
-                        empty: emptyMultiplier,
-                        emptyRefund: Math.round((1 - emptyMultiplier) * 100),
-                        truncated: truncatedMultiplier,
-                        truncatedRefund: Math.round(
-                          (1 - truncatedMultiplier) * 100
-                        ),
-                      }}
-                      components={{
-                        0: <span className='text-amber-500' />,
-                      }}
+              {typeof emptyMultiplier === 'number' &&
+                typeof truncatedMultiplier === 'number' && (
+                  <div className='text-muted-foreground flex items-start gap-2 rounded-lg border border-dashed px-3 py-2.5 text-xs'>
+                    <Info
+                      className='mt-0.5 size-3.5 shrink-0'
+                      aria-hidden='true'
                     />
-                  </p>
-                </div>
-              )}
+                    <p>
+                      <Trans
+                        i18nKey='pricing.model.emptyResponseNote'
+                        values={{
+                          empty: emptyMultiplier,
+                          emptyRefund: Math.round((1 - emptyMultiplier) * 100),
+                          truncated: truncatedMultiplier,
+                          truncatedRefund: Math.round(
+                            (1 - truncatedMultiplier) * 100
+                          ),
+                        }}
+                        components={{
+                          0: <span className='text-amber-500' />,
+                        }}
+                      />
+                    </p>
+                  </div>
+                )}
             </CardContent>
           </Card>
 
