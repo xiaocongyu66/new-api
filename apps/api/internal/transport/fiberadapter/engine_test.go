@@ -279,7 +279,7 @@ func TestResolvedClientIPIsAbsentWithoutEngine(t *testing.T) {
 		return c.SendStatus(http.StatusOK)
 	})
 
-	response, err := app.Test(httptest.NewRequest(http.MethodGet, "/probe", nil), 5000)
+	response, err := app.Test(httptest.NewRequest(http.MethodGet, "/probe", nil), fiber.TestConfig{Timeout: 5 * time.Second})
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 }
@@ -832,7 +832,7 @@ func TestSkipCompressionReproducesGinsRules(t *testing.T) {
 			for name, value := range testCase.headers {
 				req.Header.Set(name, value)
 			}
-			response, err := probe.Test(req, 5000)
+			response, err := probe.Test(req, fiber.TestConfig{Timeout: 5 * time.Second})
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, response.StatusCode)
 			assert.Equal(t, testCase.skipped, observed)

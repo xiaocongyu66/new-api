@@ -67,7 +67,7 @@ func serveRoute(t *testing.T, route conformance.Route, req *http.Request) confor
 		return Dispatch(c, chain)
 	})
 
-	response, err := app.Test(req, int(10*time.Second/time.Millisecond))
+	response, err := app.Test(req, fiber.TestConfig{Timeout: 10 * time.Second})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = response.Body.Close() })
 
