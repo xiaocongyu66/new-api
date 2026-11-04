@@ -5,7 +5,7 @@
 // First, contract middleware never enters fiber's own handler stack. Dispatch
 // commits the response and returns while the contract chain may still be
 // running on another goroutine (that is what lets fasthttp drain a body stream
-// under real backpressure), and fiber recycles its *fiber.Ctx into a pool as
+// under real backpressure), and fiber recycles its Ctx into a pool as
 // soon as the handler returns. A contract middleware mounted through app.Use
 // would therefore resume after Next against a Ctx that already belongs to a
 // different request. So the chain is flattened the way gin flattens
@@ -25,6 +25,7 @@ package fiberadapter
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -39,8 +40,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/filesystem"
+	"github.com/gofiber/fiber/v3"
 	"github.com/valyala/fasthttp"
 )
 
@@ -100,7 +100,7 @@ type clientIPKey struct{}
 // The context implementation calls this rather than fiber's Ctx.IP, which
 // returns whatever ProxyHeader names without consulting the trust policy and
 // therefore hands an attacker control of the value.
-func ResolvedClientIP(c *fiber.Ctx) (string, bool) {
+func ResolvedClientIP(c fiber.Ctx) (string, bool) {
 	resolved, ok := c.Locals(clientIPKey{}).(string)
 	return resolved, ok
 }
@@ -118,8 +118,8 @@ func ResolvedClientIP(c *fiber.Ctx) (string, bool) {
 // Neither of fiber's two modes reproduces this. EnableIPValidation=false hands
 // back the raw header including its commas; EnableIPValidation=true returns the
 // leftmost entry, which is precisely the forgeable one.
-func resolveTrustedClientIP(c *fiber.Ctx, policy *proxyPolicy) string {
-	peer := c.Context().RemoteIP()
+func resolveTrustedClientIP(c fiber.Ctx, policy *proxyPolicy) string {
+	peer := c.RequestCtx().RemoteIP()
 	if peer == nil {
 		return ""
 	}
@@ -261,7 +261,7 @@ type wildcardParamKey struct{}
 //
 // It exists because fiber and gin disagree about wildcard syntax in a way that
 // cannot be resolved at the path level alone. See fiberRoutePath.
-func WildcardParam(c *fiber.Ctx) (string, bool) {
+func WildcardParam(c fiber.Ctx) (string, bool) {
 	name, ok := c.Locals(wildcardParamKey{}).(string)
 	return name, ok
 }
@@ -299,7 +299,7 @@ func fiberRoutePath(routePath string) (string, string, bool) {
 // set.
 func (r routes) register(method, routePath string, handlers []contract.Chainable) {
 	full, handler := r.mount(routePath, handlers)
-	r.app.Add(method, full, handler)
+	r.app.Add([]string{method}, full, handler)
 }
 
 // mount builds the fiber route path and the single handler that runs the whole
@@ -308,11 +308,11 @@ func (r routes) mount(routePath string, handlers []contract.Chainable) (string, 
 	chain := r.flatten(handlers)
 	full, wildcard, named := fiberRoutePath(joinRoutePath(r.prefix, routePath))
 	if !named {
-		return full, func(c *fiber.Ctx) error {
+		return full, func(c fiber.Ctx) error {
 			return Dispatch(c, chain)
 		}
 	}
-	return full, func(c *fiber.Ctx) error {
+	return full, func(c fiber.Ctx) error {
 		c.Locals(wildcardParamKey{}, wildcard)
 		return Dispatch(c, chain)
 	}
@@ -347,9 +347,7 @@ func (r routes) DELETE(routePath string, handlers ...contract.Chainable) {
 // registered set matches.
 func (r routes) Any(routePath string, handlers ...contract.Chainable) {
 	full, handler := r.mount(routePath, handlers)
-	for _, method := range r.app.Config().RequestMethods {
-		r.app.Add(method, full, handler)
-	}
+	r.app.Add(r.app.Config().RequestMethods, full, handler)
 }
 
 // corsMaxAge is gin-contrib/cors's DefaultConfig value. gin emits it; fiber's
@@ -420,7 +418,7 @@ var compressionExcludedExtensions = map[string]struct{}{
 // All four rules are gin's, evaluated before the handler runs exactly as gin
 // evaluates them: no gzip in Accept-Encoding, a Connection: Upgrade request, an
 // SSE request, and an excluded file extension.
-func skipCompression(c *fiber.Ctx) bool {
+func skipCompression(c fiber.Ctx) bool {
 	if !strings.Contains(c.Get(fiber.HeaderAcceptEncoding), "gzip") ||
 		strings.Contains(c.Get(fiber.HeaderConnection), "Upgrade") ||
 		strings.Contains(c.Get(fiber.HeaderAccept), "text/event-stream") {
@@ -464,7 +462,7 @@ func (r *routes) UseCompression() {
 		fasthttp.CompressBrotliDefaultCompression,
 		fasthttp.CompressDefaultCompression,
 	)
-	r.app.Use(prefix, func(c *fiber.Ctx) error {
+	r.app.Use(prefix, func(c fiber.Ctx) error {
 		if skipCompression(c) {
 			return c.Next()
 		}
@@ -474,7 +472,7 @@ func (r *routes) UseCompression() {
 		if Streamed(c) {
 			return nil
 		}
-		compressor(c.Context())
+		compressor(c.RequestCtx())
 		return nil
 	})
 }
@@ -652,15 +650,15 @@ func (e engine) TrustProxies(cidrs []string) error {
 // for a path fs does not hold.
 //
 // Neither fiber facility does this. app.Static takes a filesystem root as a
-// string and cannot consume an AssetFS at all. filesystem.New can, but a miss
-// there sets 404 before continuing, which would leave the fallback answering
-// with a status already written. So the probe is hand-written in the order
-// gin-contrib/static uses: ask Exists first, and on a miss continue with the
-// response untouched.
+// string and cannot consume an AssetFS at all. v3's static middleware takes an
+// fs.FS, but a miss there sets 404 before continuing, which would leave the
+// fallback answering with a status already written. So the probe is
+// hand-written: serveFallback gates on Exists, and sendAsset opens the file,
+// substitutes index.html for a directory, and serves with http.ServeContent.
 //
-// The asset probe runs inside the terminal route rather than as its own layer so
-// an asset request still passes through the engine middleware, which is what
-// happens under gin today: static.Serve is mounted on the engine, so the
+// The asset probe runs inside the terminal route rather than as its own layer
+// so an asset request still passes through the engine middleware, which is
+// what happens under gin today: static.Serve is mounted on the engine, so the
 // engine's middleware precedes it.
 func (e engine) ServeAssets(prefix string, fs contract.AssetFS) {
 	e.fallback.assets = fs
@@ -723,7 +721,7 @@ func redactQueryKeys(raw string) string {
 // it, because the fiber route is registered before the process mounts its
 // middleware and gin's allNoRoute is likewise rebuilt as the engine's middleware
 // grows.
-func (e engine) serveFallback(c *fiber.Ctx) error {
+func (e engine) serveFallback(c fiber.Ctx) error {
 	fallback := e.fallback
 	if fallback.assets != nil && fallback.assets.Exists(fallback.prefix, c.Path()) {
 		// An asset hit still runs the engine middleware, matching gin, where
@@ -738,19 +736,51 @@ func (e engine) serveFallback(c *fiber.Ctx) error {
 	return Dispatch(c, append(e.flatten(nil), fallback.chain...))
 }
 
-// sendAsset writes one asset from the engine's asset filesystem.
+// sendAsset serves one asset from fallback.assets.
 //
-// filesystem.SendFile does the content-type, Last-Modified and HEAD handling
-// fiber's own static serving would, and it takes an http.FileSystem, which
-// contract.AssetFS embeds.
+// AssetFS is an http.FileSystem, but v3's static middleware takes an fs.FS
+// and answers 404 on a miss before continuing, which would poison the
+// fall-through to the NoRoute fallback, and v2's helper for this no longer
+// exists in v3. This is hand-rolled instead: open the asset, substitute
+// index.html for a directory, and serve with http.ServeContent, which derives
+// the content type from the extension, sets Last-Modified, answers HEAD
+// without a body, and converts If-Modified-Since into a 304 -- a deliberate
+// improvement over v2, which had none of that.
 func sendAsset(c contract.Context, fallback *fallbackRef) error {
-	fiberCtx, ok := Unwrap(c)
-	if !ok {
-		return errors.New("fiberadapter: asset serving requires a fiber-backed context")
-	}
 	assetPath := strings.TrimPrefix(c.Path(), strings.TrimSuffix(fallback.prefix, "/"))
 	if assetPath == "" {
 		assetPath = "/"
 	}
-	return filesystem.SendFile(fiberCtx, fallback.assets, assetPath)
+	file, err := fallback.assets.Open(assetPath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return fiber.ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("failed to open: %w", err)
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to stat: %w", err)
+	}
+
+	if info.IsDir() {
+		indexPath := strings.TrimRight(assetPath, "/") + "/index.html"
+		indexFile, err := fallback.assets.Open(indexPath)
+		if err == nil {
+			defer indexFile.Close()
+			indexInfo, statErr := indexFile.Stat()
+			if statErr == nil && !indexInfo.IsDir() {
+				file = indexFile
+				info = indexInfo
+			}
+		}
+		if info.IsDir() {
+			return fiber.ErrForbidden
+		}
+	}
+
+	http.ServeContent(c.ResponseWriter(), c.HTTPRequest(), info.Name(), info.ModTime(), file)
+	return nil
 }

@@ -11,7 +11,7 @@
 //     registered a stream writer and then streamed from the handler itself
 //     would deadlock a few frames in.
 //
-//  2. Nothing here reads the *fiber.Ctx or the *fasthttp.RequestCtx after the
+//  2. Nothing here reads the fiber.Ctx or the *fasthttp.RequestCtx after the
 //     request accessors are built. Both are pooled and recycled the moment the
 //     fiber handler returns, which for a streaming response happens while the
 //     chain is still running. Every request fact is copied into one memoised
@@ -33,7 +33,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/fiberadapter/connwatch"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // trustedClientIP resolves the client address from the engine's trusted-proxy
@@ -46,7 +46,7 @@ import (
 // which consults ProxyHeader when the app configures one. Letting a forwarded
 // header reach ClientIP by a second path would make per-IP rate limiting
 // bypassable with a header the engine never sanctioned.
-var trustedClientIP func(*fiber.Ctx) (string, bool)
+var trustedClientIP func(fiber.Ctx) (string, bool)
 
 // requestContext adapts a fiber request to contract.Context.
 //
@@ -58,7 +58,7 @@ type requestContext struct {
 	// fiber is retained only for Unwrap and for the trusted-proxy hook, both
 	// of which are documented as valid only while the fiber handler is on the
 	// stack. No accessor on this type dereferences it.
-	fiber *fiber.Ctx
+	fiber fiber.Ctx
 
 	req      *http.Request
 	fullPath string
@@ -111,7 +111,7 @@ const (
 // chain. Streaming is unavailable on it (EventStream and ResponseStream return
 // nil, the contract's declared answer for a response the transport cannot
 // stream) because streaming needs the callback Dispatch installs.
-func Wrap(c *fiber.Ctx) contract.Context {
+func Wrap(c fiber.Ctx) contract.Context {
 	return newRequestContext(c, modeDirect, nil)
 }
 
@@ -123,7 +123,7 @@ func Wrap(c *fiber.Ctx) contract.Context {
 // happens while the chain is still running, so a caller reading it after Next
 // would observe another request's state. Contract-level state that outlives the
 // fiber handler is reachable through Values instead.
-func Unwrap(c contract.Context) (*fiber.Ctx, bool) {
+func Unwrap(c contract.Context) (fiber.Ctx, bool) {
 	adapted, ok := c.(*requestContext)
 	if !ok || adapted.fiber == nil {
 		return nil, false
@@ -157,7 +157,7 @@ func Values(c contract.Context) map[string]any {
 // so this is safe to read from a fiber layer wrapping the route handler, and it
 // answers for the raw ResponseStream endpoints (video content, the dashboard
 // proxy) that request-header heuristics cannot detect.
-func Streamed(c *fiber.Ctx) bool {
+func Streamed(c fiber.Ctx) bool {
 	state, ok := c.Locals(responseStateKey{}).(*responseState)
 	return ok && state != nil && state.isStreaming()
 }
@@ -171,7 +171,7 @@ type responseStateKey struct{}
 // one-element chain so a handler registered on its own still gets abort
 // semantics, streaming, and a committed response.
 func Handler(handler contract.Handler) fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		return Dispatch(c, []contract.Handler{handler})
 	}
 }
@@ -194,7 +194,7 @@ func Middleware(m contract.Middleware) fiber.Handler {
 //
 // Dispatch never calls c.Next(). Continuation is contract.Next on the chain
 // this owns.
-func Dispatch(c *fiber.Ctx, chain []contract.Handler) error {
+func Dispatch(c fiber.Ctx, chain []contract.Handler) error {
 	adapted := newRequestContext(c, modeChain, chain)
 	c.Locals(responseStateKey{}, adapted.resp)
 	// The request lifetime is NOT cancelled here. Dispatch returns while a
@@ -208,7 +208,7 @@ func Dispatch(c *fiber.Ctx, chain []contract.Handler) error {
 
 // newRequestContext builds the contract context and, with it, the memoised
 // request every accessor reads.
-func newRequestContext(c *fiber.Ctx, mode dispatchMode, chain []contract.Handler) *requestContext {
+func newRequestContext(c fiber.Ctx, mode dispatchMode, chain []contract.Handler) *requestContext {
 	adapted := &requestContext{
 		fiber:  c,
 		values: make(map[string]any),
@@ -237,7 +237,7 @@ func newRequestContext(c *fiber.Ctx, mode dispatchMode, chain []contract.Handler
 	// disconnect that races the chain's end is harmless. On a platform or
 	// listener without the watch, Done reports nil and nothing is attached:
 	// write-failure detection remains the only signal, as before.
-	if done := connwatch.Done(c.Context().Conn()); done != nil {
+	if done := connwatch.Done(c.RequestCtx().Conn()); done != nil {
 		go func() {
 			select {
 			case <-done:
@@ -260,8 +260,8 @@ func newRequestContext(c *fiber.Ctx, mode dispatchMode, chain []contract.Handler
 // replayable-body cache would be reset under the relay pipeline; and it flattens
 // repeated headers onto Header.Set, dropping every value but the last of a
 // multi-value header.
-func synthesizeRequest(c *fiber.Ctx) *http.Request {
-	fctx := c.Context()
+func synthesizeRequest(c fiber.Ctx) *http.Request {
+	fctx := c.RequestCtx()
 
 	// string(...) on each field copies: fasthttp reuses these buffers for the
 	// next request on the connection, and this request outlives the handler.
@@ -315,7 +315,7 @@ func synthesizeRequest(c *fiber.Ctx) *http.Request {
 // an ordinal ("*" becomes "*1"), so a route registered as "/v1/models/*path"
 // exposes its remainder under "*1"; the pattern's own names are recovered from
 // Route().Params, which is what AllParams iterates.
-func routeMatch(c *fiber.Ctx) (string, map[string]string) {
+func routeMatch(c fiber.Ctx) (string, map[string]string) {
 	route := c.Route()
 	if route == nil {
 		return "", map[string]string{}
@@ -330,13 +330,13 @@ func routeMatch(c *fiber.Ctx) (string, map[string]string) {
 
 // contextClientIP asks the engine's trusted-proxy middleware first and falls
 // back to the peer address.
-func contextClientIP(c *fiber.Ctx) string {
+func contextClientIP(c fiber.Ctx) string {
 	if trustedClientIP != nil {
 		if ip, ok := trustedClientIP(c); ok && ip != "" {
 			return ip
 		}
 	}
-	if ip := c.Context().RemoteIP(); ip != nil {
+	if ip := c.RequestCtx().RemoteIP(); ip != nil {
 		return ip.String()
 	}
 	return ""

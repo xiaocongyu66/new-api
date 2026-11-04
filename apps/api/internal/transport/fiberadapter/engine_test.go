@@ -19,7 +19,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -272,8 +272,8 @@ func TestTrustProxiesFallsBackToRealIPHeader(t *testing.T) {
 // fiber app never resolves an address, so the context falls back to the peer
 // rather than to a forwarded header.
 func TestResolvedClientIPIsAbsentWithoutEngine(t *testing.T) {
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-	app.Get("/probe", func(c *fiber.Ctx) error {
+	app := fiber.New(fiber.Config{})
+	app.Get("/probe", func(c fiber.Ctx) error {
 		_, ok := ResolvedClientIP(c)
 		assert.False(t, ok)
 		return c.SendStatus(http.StatusOK)
@@ -405,7 +405,7 @@ func TestRoutesWildcardMatchesAColonSuffixedPath(t *testing.T) {
 		"the original wildcard name must reach the context layer")
 }
 
-func mustUnwrapForTest(t *testing.T, c contract.Context) *fiber.Ctx {
+func mustUnwrapForTest(t *testing.T, c contract.Context) fiber.Ctx {
 	t.Helper()
 	fiberCtx, ok := Unwrap(c)
 	require.True(t, ok)
@@ -821,9 +821,9 @@ func TestSkipCompressionReproducesGinsRules(t *testing.T) {
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			probe := fiber.New(fiber.Config{DisableStartupMessage: true})
+			probe := fiber.New(fiber.Config{})
 			observed := false
-			probe.Add(http.MethodGet, "/+", func(c *fiber.Ctx) error {
+			probe.Add([]string{http.MethodGet}, "/+", func(c fiber.Ctx) error {
 				observed = skipCompression(c)
 				return c.SendStatus(http.StatusOK)
 			})
