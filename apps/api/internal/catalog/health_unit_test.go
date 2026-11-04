@@ -328,8 +328,8 @@ func TestFinishCooldown_ArmsRampZeroesCountKeepsStreaks(t *testing.T) {
 	st.ThrottleStreak = 1
 	st.AnnealSinceMs = nowMs - 1000
 
-	// A read-path settlement: ramp armed, streaks preserved, no recovery probe
-	// question opened (that only happens after an expired cooldown).
+	// A force-recall settlement: ramp armed, streaks preserved, and the
+	// recovery-probe question opened — the recalled unit is on probation.
 	finishUnitCooldown(st, nowMs)
 	assert.Equal(t, int64(0), st.CooldownUntilMs, "deadline cleared")
 	assert.Equal(t, 0, st.RequestCount, "request count zeroed")
@@ -338,7 +338,7 @@ func TestFinishCooldown_ArmsRampZeroesCountKeepsStreaks(t *testing.T) {
 	assert.Equal(t, nowMs, st.AnnealSinceMs, "idle decay re-anchored")
 	assert.Equal(t, 2, st.CooldownStreak, "fatal streak preserved")
 	assert.Equal(t, 1, st.ThrottleStreak, "throttle streak preserved")
-	assert.False(t, st.ProbePending)
+	assert.True(t, st.ProbePending, "a force recall puts the unit on probation")
 }
 
 // TestFinishCooldown_OpensRecoveryProbe pins the probe ledger: a naturally
@@ -516,4 +516,6 @@ func TestClientCancel_NeverDisablesUnit(t *testing.T) {
 	assert.False(t, st.TerminalDisabled, "a healthy unit survives repeated client cancels")
 	assert.Equal(t, 0, st.RequestCount, "neutral outcomes are a no-op")
 	assert.Equal(t, DefaultUnitScore, st.EwmaScore, "the score is untouched")
+	assert.True(t, st.ProbePending, "a neutral outcome leaves the probe question open")
+	assert.Equal(t, 2, st.ProbeFailStreak, "a neutral outcome never advances the probe ledger")
 }

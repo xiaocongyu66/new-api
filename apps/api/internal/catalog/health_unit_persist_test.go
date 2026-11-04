@@ -79,7 +79,7 @@ func TestForceRecallUnit_ClearsCooldownKeepsStreaks(t *testing.T) {
 	assert.Equal(t, int64(0), row.CooldownUntilMs, "recall clears the live deadline")
 	assert.True(t, row.RampPending, "recall re-arms the slow-start ramp")
 	assert.Equal(t, 1, row.CooldownStreak, "recall keeps the cooldown ledger")
-	assert.False(t, row.ProbePending, "recall (no strike) never opens the probe question")
+	assert.True(t, row.ProbePending, "a force recall puts the unit on recovery probation")
 }
 
 // TestRecoverUnit_ClearsTerminalArmsRamp pins the admin revive: a
