@@ -198,6 +198,7 @@ func filterCandidatesByChannelStatusAndKey(candidates []routeCandidate, requestP
 	}
 	channels, err := GetChannelsByIds(channelIDs)
 	if err != nil {
+		common.SysError("failed to load channels for route selection: " + err.Error())
 		return filtered
 	}
 	// Parse each channel's Advanced Custom config exactly once; this is the

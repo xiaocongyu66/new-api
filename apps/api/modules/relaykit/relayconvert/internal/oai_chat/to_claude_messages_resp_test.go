@@ -443,3 +443,22 @@ func TestStreamResponseOpenAI2ClaudeFinishWithUsageSameChunk(t *testing.T) {
 	assert.Equal(t, 1, messageStops)
 	assert.True(t, info.ClaudeConvertInfo.Done)
 }
+
+// TestFinalizeStreamResponseOpenAI2ClaudeEmptyStreamEmitsNothing covers the
+// empty/role-only upstream: when no content block was ever opened, the
+// finalizer must not synthesize a bare message_delta/message_stop pair
+// without a matching content_block_start.
+func TestFinalizeStreamResponseOpenAI2ClaudeEmptyStreamEmitsNothing(t *testing.T) {
+	info := &convmeta.Values{
+		ClaudeConvertInfo: &convmeta.ClaudeConvertInfo{LastMessagesType: convmeta.LastMessageTypeNone},
+	}
+	info.SendResponseCount = 1
+	StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
+		Id:      "chatcmpl_empty",
+		Model:   "gpt-test",
+		Choices: []dto.ChatCompletionsStreamResponseChoice{{Delta: dto.ChatCompletionsStreamResponseChoiceDelta{Role: "assistant"}}},
+	}, info)
+
+	final := FinalizeStreamResponseOpenAI2Claude(info)
+	require.Empty(t, final, "empty stream must not synthesize terminal events")
+}

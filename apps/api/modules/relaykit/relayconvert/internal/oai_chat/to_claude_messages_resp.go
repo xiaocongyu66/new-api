@@ -443,7 +443,12 @@ func FinalizeStreamResponseOpenAI2Claude(info convmeta.Meta) []*dto.ClaudeRespon
 	if state.Done {
 		return nil
 	}
-
+	// No content block was ever opened (empty/role-only stream): emitting a
+	// bare message_delta + message_stop without a content_block_start is not a
+	// valid Anthropic stream, so leave it unterminated.
+	if state.LastMessagesType == convmeta.LastMessageTypeNone {
+		return nil
+	}
 	stopReason := stopReasonOpenAI2Claude(state.FinishReason)
 	if stopReason == "" {
 		stopReason = "end_turn"

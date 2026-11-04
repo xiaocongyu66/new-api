@@ -26,6 +26,10 @@ func TestSelectRouteUnitCacheOffResolvesChannelFromDB(t *testing.T) {
 	seedGroupIsolationChannel(t, db, 9101, []string{"default"}, alias)
 	seedGroupIsolationChannel(t, db, 9102, []string{"vip"}, alias)
 
+	prevMemoryCache := common.MemoryCacheEnabled
+	prevGroups := group2model2channels
+	prevIDM := channelsIDM
+	prevAliasRoutes := alias2routes
 	common.MemoryCacheEnabled = false
 	// Leave the memory index unbuilt: this is the real cache-off state
 	// InitChannelCache produces (it early-returns before assigning channelsIDM).
@@ -34,6 +38,14 @@ func TestSelectRouteUnitCacheOffResolvesChannelFromDB(t *testing.T) {
 	group2model2channels = nil
 	alias2routes = nil
 	channelSyncLock.Unlock()
+	t.Cleanup(func() {
+		channelSyncLock.Lock()
+		group2model2channels = prevGroups
+		channelsIDM = prevIDM
+		alias2routes = prevAliasRoutes
+		channelSyncLock.Unlock()
+		common.MemoryCacheEnabled = prevMemoryCache
+	})
 
 	ClearUnitHealthCache()
 	t.Cleanup(ClearUnitHealthCache)
@@ -111,12 +123,24 @@ func TestSelectRouteUnitCacheOffEnforcesChannelRestrictions(t *testing.T) {
 			seedGroupIsolationChannel(t, db, 9201, []string{"default"}, alias)
 			require.NoError(t, db.Model(&Channel{}).Where("id = ?", 9201).Updates(tt.channel).Error)
 			require.NoError(t, db.Model(&ChannelModelRoute{}).Where("channel_id = ?", 9201).Update("key_index", tt.keyIndex).Error)
+			prevMemoryCache := common.MemoryCacheEnabled
+			prevGroups := group2model2channels
+			prevIDM := channelsIDM
+			prevAliasRoutes := alias2routes
 			common.MemoryCacheEnabled = false
 			channelSyncLock.Lock()
 			channelsIDM = nil
 			group2model2channels = nil
 			alias2routes = nil
 			channelSyncLock.Unlock()
+			t.Cleanup(func() {
+				channelSyncLock.Lock()
+				group2model2channels = prevGroups
+				channelsIDM = prevIDM
+				alias2routes = prevAliasRoutes
+				channelSyncLock.Unlock()
+				common.MemoryCacheEnabled = prevMemoryCache
+			})
 
 			selected, err := SelectRouteUnit("default", alias, tt.requestPath, 0, nil, nil)
 			require.NoError(t, err)
