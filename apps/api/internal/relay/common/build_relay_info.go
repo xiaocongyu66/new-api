@@ -185,15 +185,6 @@ type RelayInfo struct {
 	RequestConversionChain []types.RelayFormat
 	// 最终请求到上游的格式。可由 adaptor 显式设置；
 	// 若为空，调用 GetFinalRequestRelayFormat 会回退到 RequestConversionChain 的最后一项或 RelayFormat。
-	FinalRequestRelayFormat types.RelayFormat
-
-	// StreamSawFinishReason records whether the upstream stream declared the
-	// completion terminated via a non-empty finish_reason chunk. HandleFinalResponse
-	// uses it, together with StreamStatus, to decide whether a converted (Claude)
-	// stream may be finalized: only a clean [DONE]/EOF that also saw a finish_reason
-	// (or an empty-body EOF after one) is complete. It is set once at the end of
-	// OaiStreamHandler from the local sawFinishReason signal.
-	StreamSawFinishReason bool
 
 	StreamStatus *StreamStatus
 	// StreamSawFinishReason records that an OpenAI-format stream carried a chunk

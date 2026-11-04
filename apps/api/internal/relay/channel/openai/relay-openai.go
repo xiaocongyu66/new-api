@@ -256,14 +256,6 @@ func OaiStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *htt
 		return nil, streamErr
 	}
 
-	// Surface the upstream finish_reason signal for HandleFinalResponse, which
-	// finalizes converted (Claude) streams only when the stream actually
-	// completed: a clean [DONE]/EOF plus a finish_reason chunk, or an empty-body
-	// EOF after a finish_reason. Re-running the finalizer on a client_gone /
-	// scanner_error / panic / timeout / handler_stop / ping_fail end would
-	// re-emit terminal events for an already-aborted stream.
-	info.StreamSawFinishReason = sawFinishReason
-
 	// 对音频模型，从倒数第二个stream data中提取usage信息
 	if isAudioModel && secondLastStreamData != "" {
 		var streamResp struct {
