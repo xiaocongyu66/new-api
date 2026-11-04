@@ -1533,3 +1533,79 @@ func TestApplyTruncatedResponseMultiplierForcedUpstreamCut(t *testing.T) {
 	require.Equal(t, expected, summary.Quota, "an OpenAI EOF cut must settle at the truncated multiplier")
 	assert.Equal(t, "upstream", summary.StreamCut)
 }
+
+// TestApplyTruncatedResponseMultiplierMarksSettledUpstreamFailure is the
+// health-signal half of the settlement split: once billing decides an upstream
+// cut is the provider's fault and settles the charge, the relay loop must still
+// see a channel failure. A client disconnect or a clean stream must not mark
+// the attempt, because neither says anything about the channel.
+func TestApplyTruncatedResponseMultiplierMarksSettledUpstreamFailure(t *testing.T) {
+	setTruncatedResponseMultiplier(t, 0.3)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
+
+	cases := []struct {
+		name     string
+		prepare  func(*relaycommon.RelayInfo)
+		wantCut  string
+		wantMark bool
+	}{
+		{
+			name: "upstream scanner error marks the attempt",
+			prepare: func(info *relaycommon.RelayInfo) {
+				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonScannerErr, nil)
+			},
+			wantCut:  "upstream",
+			wantMark: true,
+		},
+		{
+			name: "handler-attributed cut at plain EOF marks the attempt",
+			prepare: func(info *relaycommon.RelayInfo) {
+				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonEOF, nil)
+				info.StreamCutOverride = "upstream"
+			},
+			wantCut:  "upstream",
+			wantMark: true,
+		},
+		{
+			name: "client disconnect does not mark the attempt",
+			prepare: func(info *relaycommon.RelayInfo) {
+				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, nil)
+			},
+			wantCut: "client",
+		},
+		{
+			name: "ping failure does not mark the attempt",
+			prepare: func(info *relaycommon.RelayInfo) {
+				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonPingFail, nil)
+			},
+			wantCut: "client",
+		},
+		{
+			name: "clean stream does not mark the attempt",
+			prepare: func(info *relaycommon.RelayInfo) {
+				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonDone, nil)
+			},
+		},
+		{
+			name: "scanner error after finish_reason does not mark the attempt",
+			prepare: func(info *relaycommon.RelayInfo) {
+				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonScannerErr, nil)
+				info.StreamSawFinishReason = true
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			relayInfo := truncatedCutRelayInfo()
+			tc.prepare(relayInfo)
+			usage := &dto.Usage{PromptTokens: 1000, CompletionTokens: 100, TotalTokens: 1100}
+
+			summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+			applyTruncatedResponseMultiplier(relayInfo, &summary, false)
+
+			assert.Equal(t, tc.wantCut, summary.StreamCut)
+			assert.Equal(t, tc.wantMark, relayInfo.SettledUpstreamFailure)
+		})
+	}
+}

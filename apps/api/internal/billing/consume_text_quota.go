@@ -538,6 +538,9 @@ func applyTruncatedResponseMultiplier(relayInfo *relaycommon.RelayInfo, summary 
 	if kind != streamCutUpstream {
 		return
 	}
+	// The charge is settled from here on, so the relay loop cannot retry or
+	// refund; it still needs to know the attempt was the channel's failure.
+	relayInfo.SettledUpstreamFailure = true
 	if summary.EmptyResponseDetected {
 		return
 	}
