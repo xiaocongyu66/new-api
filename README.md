@@ -118,6 +118,17 @@ podman run --name new-api -d --restart always \
 
 ---
 
+### Local Development
+
+```bash
+just dev-wt-dev   # containerized PostgreSQL + local Go API (dev tag, auto-login) + web HMR
+```
+
+- Default engine is Podman; start its socket first: `systemctl --user enable --now podman.socket`.
+- Switch to Docker without changing anything else: `DEV_CONTAINER_ENGINE=docker just dev-wt-dev`.
+- Dev compose files: `deploy/podman-dev/compose.yml` and `deploy/docker-dev/compose.yml`.
+- Other recipes: `just dev-db`, `just dev-web`, `just dev-api`; details in `AGENTS.md`.
+
 ## 📚 Documentation
 
 <div align="center">

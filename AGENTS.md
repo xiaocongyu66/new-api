@@ -46,7 +46,7 @@ apps/web/       — Frontend (React 19, Rsbuild, Base UI, Tailwind)
   src/i18n/    — Frontend internationalization (i18next, en/zh/zh-TW/fr/ru/ja/vi)
   web/dist/      — Frontend build output copied here for go:embed (gitignored)
 db/            — Database migration assets
-deploy/        — grouped by engine/env: *-dev dev stacks, *-prod production assets (see deploy/README.md)
+deploy/        — docker-dev/ podman-dev/ dev-image/ image-prod/ podman-prod/ caddy-prod/ k8s-prod/ baremetal-prod/ (see deploy/README.md)
   k8s/         — Kubernetes manifests (master/worker split, PG/Redis, Ingress)
 scripts/       — Engineering helper scripts
 docs/          — Documentation, including docs/k8s/
