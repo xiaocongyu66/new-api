@@ -34,8 +34,9 @@ export function PriceInput(props: {
   value: string
   placeholder?: string
   disabled?: boolean
-  /** Cost unit rendered after the amount; per-request prices are not per-1M. */
-  suffix?: string
+  /** Cost unit rendered after the amount; null hides it (the table header
+   * already carries the unit, so the addon only steals input width). */
+  suffix?: string | null
   onChange: (value: string) => void
 }) {
   return (
@@ -48,7 +49,11 @@ export function PriceInput(props: {
         disabled={props.disabled}
         onChange={(event) => props.onChange(event.target.value)}
       />
-      <InputGroupAddon align='inline-end'>{props.suffix ?? '$/1M'}</InputGroupAddon>
+      {props.suffix === null ? null : (
+        <InputGroupAddon align='inline-end'>
+          {props.suffix ?? '$/1M'}
+        </InputGroupAddon>
+      )}
     </InputGroup>
   )
 }

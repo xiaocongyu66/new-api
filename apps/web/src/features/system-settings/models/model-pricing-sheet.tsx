@@ -426,6 +426,7 @@ export const ModelPricingEditorPanel = forwardRef<
         {
           key: 'active-method',
           label: t('Active billing method'),
+          multiline: true,
           value:
             activeMethod === pricingMode
               ? t(getModeLabel(activeMethod))
@@ -750,19 +751,36 @@ export const ModelPricingEditorPanel = forwardRef<
                     onValueChange={handleModeChange}
                     className='gap-4'
                   >
-                    <TabsList className='grid w-full grid-cols-5'>
-                      <TabsTrigger value='per-token'>{t('Per-token')}</TabsTrigger>
-                      <TabsTrigger value='per-request'>
+                    <TabsList className='no-scrollbar flex w-full justify-start overflow-x-auto sm:grid sm:grid-cols-5'>
+                      <TabsTrigger
+                        value='per-token'
+                        className='shrink-0 text-xs whitespace-nowrap sm:text-sm'
+                      >
+                        {t('Per-token')}
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value='per-request'
+                        className='shrink-0 text-xs whitespace-nowrap sm:text-sm'
+                      >
                         {t('Per-request')}
                       </TabsTrigger>
-                      <TabsTrigger value='tiered_expr'>
+                      <TabsTrigger
+                        value='tiered_expr'
+                        className='shrink-0 text-xs whitespace-nowrap sm:text-sm'
+                      >
                         {t('Expression')}
                       </TabsTrigger>
-                      <TabsTrigger value='context_tier'>
-                        {t('Per-token context tiers')}
+                      <TabsTrigger
+                        value='context_tier'
+                        className='shrink-0 text-xs whitespace-nowrap sm:text-sm'
+                      >
+                        {t('Per-token tiers')}
                       </TabsTrigger>
-                      <TabsTrigger value='context_tier_per_call'>
-                        {t('Per-call context tiers')}
+                      <TabsTrigger
+                        value='context_tier_per_call'
+                        className='shrink-0 text-xs whitespace-nowrap sm:text-sm'
+                      >
+                        {t('Per-call tiers')}
                       </TabsTrigger>
                     </TabsList>
 

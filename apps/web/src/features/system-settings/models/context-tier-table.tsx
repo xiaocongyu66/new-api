@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Plus, Trash2 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -241,9 +241,12 @@ export function ContextTierTable({ kind, value, onChange }: ContextTierTableProp
     commit(next)
   }
 
+  // Desktop: one row per interval. Mobile: the bound takes the full width,
+  // prices pair up two per line with inline labels (the header row is hidden),
+  // so nothing overflows a phone-width sheet.
   const gridClass = isPerCall
-    ? 'grid grid-cols-[minmax(0,1.5fr)_minmax(0,1.1fr)_auto] gap-x-2 gap-y-2.5'
-    : 'grid grid-cols-[minmax(0,1.1fr)_repeat(4,minmax(0,1fr))_auto] gap-x-2 gap-y-2.5'
+    ? 'grid grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1.1fr)_auto] sm:items-center sm:gap-x-2'
+    : 'grid grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1.1fr)_repeat(4,minmax(0,1fr))_auto] sm:items-center sm:gap-x-2'
 
   const boundInput = (row: ContextTierRow, index: number) => (
     <InputGroup className='h-9 min-w-0'>
@@ -251,7 +254,7 @@ export function ContextTierTable({ kind, value, onChange }: ContextTierTableProp
         inputMode='text'
         autoComplete='off'
         className='text-sm'
-        placeholder={t('Above last bound')}
+        placeholder={t('Above')}
         aria-label={t('Context upper bound')}
         value={row.maxContext}
         onChange={(event) => {
@@ -261,10 +264,46 @@ export function ContextTierTable({ kind, value, onChange }: ContextTierTableProp
           updateRow(index, { maxContext: raw })
         }}
       />
-      <InputGroupAddon align='inline-end' className='text-muted-foreground text-xs'>
+      <InputGroupAddon
+        align='inline-end'
+        className='text-muted-foreground text-xs'
+      >
         {t('tokens')}
       </InputGroupAddon>
     </InputGroup>
+  )
+
+  const labelledCell = (labelKey: string, control: ReactNode) => (
+    <label className='flex min-w-0 flex-col gap-1 sm:gap-0'>
+      <span className='text-muted-foreground text-xs sm:hidden'>
+        {t(labelKey)}
+      </span>
+      {control}
+    </label>
+  )
+
+  const boundCell = (row: ContextTierRow, index: number) => (
+    <div className='col-span-2 flex min-w-0 flex-col gap-1 sm:col-span-1 sm:gap-0'>
+      <span className='text-muted-foreground text-xs sm:hidden'>
+        {t('Context up to (tokens)')}
+      </span>
+      {boundInput(row, index)}
+    </div>
+  )
+
+  const deleteCell = (index: number) => (
+    <div className='col-span-2 flex justify-end sm:col-span-1 sm:justify-center'>
+      <Button
+        type='button'
+        variant='ghost'
+        size='icon'
+        className='size-8'
+        aria-label={t('Remove interval')}
+        onClick={() => removeRow(index)}
+      >
+        <Trash2 data-icon='inline-start' />
+      </Button>
+    </div>
   )
 
   return (
@@ -281,7 +320,7 @@ export function ContextTierTable({ kind, value, onChange }: ContextTierTableProp
       ) : null}
       <div className='min-w-0'>
         <div
-          className={`${gridClass} text-muted-foreground items-center pb-1 text-xs`}
+          className={`${gridClass} text-muted-foreground hidden items-center pb-1 text-xs sm:grid`}
         >
           <span>{t('Context up to (tokens)')}</span>
           {isPerCall ? (
@@ -296,49 +335,68 @@ export function ContextTierTable({ kind, value, onChange }: ContextTierTableProp
           )}
           <span aria-hidden />
         </div>
-        {rows.map((row, index) => (
-          <div key={index} className={`${gridClass} items-center`}>
-            {boundInput(row, index)}
-            {isPerCall ? (
-              <PriceInput
-                value={row.price}
-                suffix={t('per request')}
-                onChange={(price) => updateRow(index, { price })}
-              />
-            ) : (
-              <>
-                <PriceInput
-                  value={row.inputPrice}
-                  onChange={(inputPrice) => updateRow(index, { inputPrice })}
-                />
-                <PriceInput
-                  value={row.outputPrice}
-                  onChange={(outputPrice) => updateRow(index, { outputPrice })}
-                />
-                <PriceInput
-                  value={row.cachePrice}
-                  onChange={(cachePrice) => updateRow(index, { cachePrice })}
-                />
-                <PriceInput
-                  value={row.cacheWritePrice}
-                  onChange={(cacheWritePrice) =>
-                    updateRow(index, { cacheWritePrice })
-                  }
-                />
-              </>
-            )}
-            <Button
-              type='button'
-              variant='ghost'
-              size='icon'
-              className='size-8'
-              aria-label={t('Remove interval')}
-              onClick={() => removeRow(index)}
+        <div className='flex flex-col gap-2 sm:gap-1'>
+          {rows.map((row, index) => (
+            <div
+              key={index}
+              className={`${gridClass} rounded-md border p-2 sm:rounded-none sm:border-0 sm:p-0`}
             >
-              <Trash2 data-icon='inline-start' />
-            </Button>
-          </div>
-        ))}
+              {boundCell(row, index)}
+              {isPerCall
+                ? labelledCell(
+                    'Price per request ($)',
+                    <PriceInput
+                      value={row.price}
+                      suffix={null}
+                      onChange={(price) => updateRow(index, { price })}
+                    />
+                  )
+                : [
+                    labelledCell(
+                      'Input $ / 1M',
+                      <PriceInput
+                        value={row.inputPrice}
+                        suffix={null}
+                        onChange={(inputPrice) =>
+                          updateRow(index, { inputPrice })
+                        }
+                      />
+                    ),
+                    labelledCell(
+                      'Output $ / 1M',
+                      <PriceInput
+                        value={row.outputPrice}
+                        suffix={null}
+                        onChange={(outputPrice) =>
+                          updateRow(index, { outputPrice })
+                        }
+                      />
+                    ),
+                    labelledCell(
+                      'Cache read $ / 1M',
+                      <PriceInput
+                        value={row.cachePrice}
+                        suffix={null}
+                        onChange={(cachePrice) =>
+                          updateRow(index, { cachePrice })
+                        }
+                      />
+                    ),
+                    labelledCell(
+                      'Cache write $ / 1M',
+                      <PriceInput
+                        value={row.cacheWritePrice}
+                        suffix={null}
+                        onChange={(cacheWritePrice) =>
+                          updateRow(index, { cacheWritePrice })
+                        }
+                      />
+                    ),
+                  ]}
+              {deleteCell(index)}
+            </div>
+          ))}
+        </div>
         <Button
           type='button'
           variant='outline'

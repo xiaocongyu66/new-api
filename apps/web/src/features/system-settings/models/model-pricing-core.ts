@@ -555,10 +555,13 @@ function buildContextTierPreviewRows(
       }
     }
     void index
+    // One price per line: a single joined line truncates in the narrow
+    // preview panel and hides later lanes.
     return {
       key: `tier-${index}`,
       label,
-      value: parts.join(' · '),
+      value: parts.join('\n'),
+      multiline: true,
     }
   })
 }

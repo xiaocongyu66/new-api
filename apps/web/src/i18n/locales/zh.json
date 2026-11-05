@@ -6206,6 +6206,9 @@
     "Cache write $ / 1M": "缓存写 $/1M",
     "cache_write_price must be a number >= 0": "缓存写价必须 ≥ 0",
     "Cache write prices must increase from top to bottom.": "缓存写价必须从上到下递增。",
-    "Editing {{edited}}; requests bill with {{active}}.": "正在编辑「{{edited}}」；请求实际按「{{active}}」扣费。"
+    "Editing {{edited}}; requests bill with {{active}}.": "正在编辑「{{edited}}」；请求实际按「{{active}}」扣费。",
+    "Per-token tiers": "按量区间",
+    "Per-call tiers": "按次区间",
+    "Above": "以上"
   }
 }
