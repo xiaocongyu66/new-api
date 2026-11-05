@@ -74,6 +74,21 @@ func TestReadOnlyCacheSkipsNonOK(t *testing.T) {
 	assert.Equal(t, 2, calls, "an error response must not be cached")
 }
 
+// Two spellings of one logical request must share an entry: the key drops a
+// trailing slash and sorts the query, so the handler runs once for both.
+func TestReadOnlyCacheKeyIsCanonical(t *testing.T) {
+	calls := 0
+	handler := countHandler(&calls, http.StatusOK, `{"ok":true}`)
+	cache := ReadOnlyCache(ReadOnlyCacheConfig{Namespace: uniqueNamespace("test_ro_key"), TTL: CacheTTLLong})
+
+	testutil.ServeBufferedRoute(t, http.MethodGet, "/canon/", []contract.Middleware{cache}, handler,
+		httptest.NewRequest(http.MethodGet, "/canon/?b=2&a=1", nil))
+	testutil.ServeBufferedRoute(t, http.MethodGet, "/canon", []contract.Middleware{cache}, handler,
+		httptest.NewRequest(http.MethodGet, "/canon?a=1&b=2", nil))
+
+	assert.Equal(t, 1, calls, "a trailing slash and query order must not split the entry")
+}
+
 // uniqueNamespace keeps a cached entry from leaking between runs of the same
 // test, which would make -count=N see a hit on its first request.
 func uniqueNamespace(base string) string {

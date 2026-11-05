@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"net/http"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +26,11 @@ const (
 // readonlyCacheMaxBody bounds what may be stored. A larger response is served
 // but never cached, so one runaway payload cannot evict the rest.
 const readonlyCacheMaxBody = 2 << 20
+
+// readonlyCacheMaxKey bounds the key. A key over this size is served but not
+// cached, which keeps a caller that varies query parameters from growing the
+// key space without limit.
+const readonlyCacheMaxKey = 512
 
 // readonlyCacheEntry is the replayable form of a cached response.
 type readonlyCacheEntry struct {
@@ -73,9 +80,29 @@ func getReadonlyResponseCache() *cachex.HybridCache[readonlyCacheEntry] {
 // mounted here. Only GET is served from or stored into the cache; every other
 // method passes through untouched, and only a 200 response is stored.
 //
+// Entries replay JSON: the stored content type is "application/json;
+// charset=utf-8", which every mount point returns through c.JSON.
+//
 // Streamed responses are never cached. Server-Sent Events and raw response
 // streams have no buffered body, so CaptureResponse reports empty and the entry
 // is skipped. This middleware must not be mounted on a relay or streamed route.
+// cacheKeyURI canonicalizes the request target so two spellings of one logical
+// request share an entry: the query is sorted by name and the trailing slash is
+// dropped. Without it "/api/data" and "/api/data/" (both routed, both served)
+// occupy two entries and halve the hit rate.
+func cacheKeyURI(requestURI string) string {
+	path, rawQuery, _ := strings.Cut(requestURI, "?")
+	if len(path) > 1 {
+		path = strings.TrimSuffix(path, "/")
+	}
+	if rawQuery == "" {
+		return path
+	}
+	pairs := strings.Split(rawQuery, "&")
+	sort.Strings(pairs)
+	return path + "?" + strings.Join(pairs, "&")
+}
+
 func ReadOnlyCache(cfg ReadOnlyCacheConfig) contract.Middleware {
 	if cfg.TTL <= 0 {
 		cfg.TTL = CacheTTLMedium
@@ -86,7 +113,15 @@ func ReadOnlyCache(cfg ReadOnlyCacheConfig) contract.Middleware {
 			return
 		}
 
-		key := cfg.Namespace + ":" + c.RequestURI()
+		// "\x1f" cannot occur in a namespace or a request target, so a
+		// namespace cannot be crafted to collide with another's key.
+		key := cfg.Namespace + "\x1f" + cacheKeyURI(c.RequestURI())
+		if len(key) > readonlyCacheMaxKey {
+			// An oversized key (a caller varying parameters) is served but not
+			// cached: it would otherwise be an unbounded key-space attacker.
+			c.Next()
+			return
+		}
 		cache := getReadonlyResponseCache()
 		if entry, found, err := cache.Get(key); err == nil && found {
 			// Abort before writing: the chain loop keeps advancing after a
@@ -103,7 +138,10 @@ func ReadOnlyCache(cfg ReadOnlyCacheConfig) contract.Middleware {
 			return
 		}
 		body := capture.Body()
-		if len(body) == 0 || len(body) > readonlyCacheMaxBody {
+		// CaptureResponse truncates at the limit, so a body that filled the
+		// buffer cannot be told apart from an oversized one. Skip both: storing
+		// the truncated prefix would replay invalid JSON.
+		if len(body) == 0 || len(body) >= readonlyCacheMaxBody {
 			return
 		}
 		_ = cache.SetWithTTL(key, readonlyCacheEntry{

@@ -66,7 +66,7 @@ func SetApiRouter(router contract.Engine) {
 		dataRoute.GET("/", security.AdminAuth(), middleware.ReadOnlyCache(middleware.ReadOnlyCacheConfig{Namespace: "api_data", TTL: middleware.CacheTTLLong}), handler.GetAllQuotaDates)
 		dataRoute.GET("/users", security.AdminAuth(), middleware.ReadOnlyCache(middleware.ReadOnlyCacheConfig{Namespace: "api_data_users", TTL: middleware.CacheTTLLong}), handler.GetQuotaDatesByUser)
 		dataRoute.GET("/self", security.UserAuth(), handler.GetUserQuotaDates)
-		dataRoute.GET("/flow", security.AdminAuth(), middleware.ReadOnlyCache(middleware.ReadOnlyCacheConfig{Namespace: "api_data_flow", TTL: middleware.CacheTTLLong}), handler.GetAllFlowQuotaDates)
+		dataRoute.GET("/flow", security.AdminAuth(), handler.GetAllFlowQuotaDates)
 		dataRoute.GET("/flow/self", security.UserAuth(), handler.GetUserFlowQuotaDates)
 
 		// /api/rankings route
