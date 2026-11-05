@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -186,15 +187,21 @@ func TestReadOnlyCacheAllowlist(t *testing.T) {
 // must fall through and run their own handler, not write nothing.
 func TestReadOnlyCacheLeaderFailureFollowersRunHandler(t *testing.T) {
 	const n = 5
-	calls := 0
+	var calls atomic.Int64
 
 	started := make(chan struct{}, n)
 	leaderReady := make(chan struct{}, 1)
 	release := make(chan struct{})
 
 	handler := func(c contract.Context) {
-		calls++
-		leaderReady <- struct{}{}
+		calls.Add(1)
+		// Non-blocking: every follower runs this handler too once the leader
+		// produced nothing cacheable, and a second blocking send would park
+		// them until the app.Test timeout.
+		select {
+		case leaderReady <- struct{}{}:
+		default:
+		}
 		<-release
 		_ = c.Data(http.StatusBadRequest, "application/json; charset=utf-8", []byte(`{"error":"nope"}`))
 	}
@@ -220,9 +227,10 @@ func TestReadOnlyCacheLeaderFailureFollowersRunHandler(t *testing.T) {
 
 	wg.Wait()
 
-	assert.Equal(t, n, calls, "when the leader produces nothing cacheable every follower must run its own handler")
+	assert.Equal(t, int64(n), calls.Load(), "when the leader produces nothing cacheable every follower must run its own handler")
 	for i, resp := range resps {
-		require.Equal(t, http.StatusBadRequest, resp.StatusCode, "request %d must be served", i)
+		require.NotNil(t, resp, "request %d must produce a response", i)
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode, "request %d must be served", i)
 	}
 }
 
