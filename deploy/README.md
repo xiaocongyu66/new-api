@@ -33,7 +33,7 @@ deploy/
 
 ## 2. 生产单机环境变量参考（`deploy/podman-prod/compose.yml`）
 
-生产环境部署 `new-api` 容器时，需在 `deploy/podman-prod/compose.yml`（或 `deploy/podman-prod/.env`）中配置以下生产环境变量：
+生产环境部署 `new-api` 容器时，需在 `deploy/podman-prod/compose.yml` 及其同目录的 `.env` 中配置以下生产环境变量（模板见 `deploy/podman-prod/.env.example`）：
 
 ### A. 数据库与存储核心变量
 
@@ -255,7 +255,7 @@ systemctl enable --now new-api newapi-postgres
 
 说明：
 
-1. PostgreSQL 使用命名卷 `newapi-pg-data` 持久化，不依赖容器生命周期。
+1. Quadlet 单元使用命名卷 `newapi-pg-data`；Compose 使用带项目前缀的 `pg_data`（在服务器上为 `deploy_pg_data`）。两者都不依赖容器生命周期。
 2. 生产环境优先使用 `deploy/podman-prod/quadlet/` 下的 Quadlet 单元，避免重启后服务丢失。
 3. Caddy 通过 `systemctl restart caddy` 完成反代切换。
 4. 生产服务器不依赖 Docker 守护进程；镜像仍由 CI 在 runner 上用 Docker Buildx 构建并推送到 GHCR，Podman 直接 `pull` 运行。
