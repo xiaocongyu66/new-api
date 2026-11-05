@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -79,7 +80,7 @@ func TestReadOnlyCacheSkipsNonOK(t *testing.T) {
 func TestReadOnlyCacheKeyIsCanonical(t *testing.T) {
 	calls := 0
 	handler := countHandler(&calls, http.StatusOK, `{"ok":true}`)
-	cache := ReadOnlyCache(ReadOnlyCacheConfig{Namespace: uniqueNamespace("test_ro_key"), TTL: CacheTTLLong})
+	cache := ReadOnlyCache(ReadOnlyCacheConfig{Namespace: uniqueNamespace("test_ro_key"), TTL: CacheTTLLong, Params: []string{"a", "b"}})
 
 	testutil.ServeBufferedRoute(t, http.MethodGet, "/canon/", []contract.Middleware{cache}, handler,
 		httptest.NewRequest(http.MethodGet, "/canon/?b=2&a=1", nil))
@@ -87,6 +88,142 @@ func TestReadOnlyCacheKeyIsCanonical(t *testing.T) {
 		httptest.NewRequest(http.MethodGet, "/canon?a=1&b=2", nil))
 
 	assert.Equal(t, 1, calls, "a trailing slash and query order must not split the entry")
+}
+
+// Concurrent cache misses for the same key must run the handler exactly once
+// and every caller must replay the same body. The handler blocks on a channel
+// until every goroutine is in flight, so the test is deterministic rather than
+// timing-based.
+func TestReadOnlyCacheSingleflightConcurrentMissesRunHandlerOnce(t *testing.T) {
+	const n = 10
+	calls := 0
+
+	started := make(chan struct{}, n)
+	leaderReady := make(chan struct{}, 1)
+	release := make(chan struct{})
+
+	handler := func(c contract.Context) {
+		calls++
+		leaderReady <- struct{}{} // leader is about to block on release
+		<-release
+		_ = c.Data(http.StatusOK, "application/json; charset=utf-8", []byte(`{"ok":true}`))
+	}
+	cache := ReadOnlyCache(ReadOnlyCacheConfig{Namespace: uniqueNamespace("test_ro_singleflight"), TTL: CacheTTLLong})
+
+	var wg sync.WaitGroup
+	resps := make([]*http.Response, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			started <- struct{}{}
+			resps[i] = testutil.ServeBufferedRoute(t, http.MethodGet, "/sf", []contract.Middleware{cache}, handler,
+				httptest.NewRequest(http.MethodGet, "/sf", nil))
+		}(i)
+	}
+
+	// Wait until every goroutine is in flight inside the route and the leader
+	// is blocked inside the handler, then release them all at once.
+	for range n {
+		<-started
+	}
+	<-leaderReady
+	close(release)
+
+	wg.Wait()
+
+	assert.Equal(t, 1, calls, "concurrent misses for the same key must run the handler once")
+	require.Len(t, resps, n)
+	for i, resp := range resps {
+		require.Equal(t, http.StatusOK, resp.StatusCode, "request %d must be served", i)
+		assert.Equal(t, `{"ok":true}`, readBody(t, resp), "every caller must replay the leader's body")
+	}
+}
+
+// Query allowlist: requests carrying an unlisted parameter are served but never
+// cached (always reach the handler). Requests with only allowlisted parameters
+// are cached. An empty Params means the endpoint takes no query parameters,
+// so any query string is served but not cached.
+func TestReadOnlyCacheAllowlist(t *testing.T) {
+	calls := 0
+	handler := countHandler(&calls, http.StatusOK, `{"ok":true}`)
+
+	// Endpoint allows only "a".
+	cache := ReadOnlyCache(ReadOnlyCacheConfig{Namespace: uniqueNamespace("test_ro_allow"), TTL: CacheTTLLong, Params: []string{"a"}})
+
+	// Unlisted param "z": served, never cached -> handler runs every time.
+	testutil.ServeBufferedRoute(t, http.MethodGet, "/x", []contract.Middleware{cache}, handler,
+		httptest.NewRequest(http.MethodGet, "/x?a=1&z=2", nil))
+	testutil.ServeBufferedRoute(t, http.MethodGet, "/x", []contract.Middleware{cache}, handler,
+		httptest.NewRequest(http.MethodGet, "/x?a=1&z=2", nil))
+	assert.Equal(t, 2, calls, "an unlisted parameter must not be cached")
+
+	// Allowlisted param only: cached -> handler runs once.
+	testutil.ServeBufferedRoute(t, http.MethodGet, "/x", []contract.Middleware{cache}, handler,
+		httptest.NewRequest(http.MethodGet, "/x?a=1", nil))
+	testutil.ServeBufferedRoute(t, http.MethodGet, "/x", []contract.Middleware{cache}, handler,
+		httptest.NewRequest(http.MethodGet, "/x?a=1", nil))
+	assert.Equal(t, 3, calls, "allowlisted parameters must be cached")
+
+	// Empty Params means the endpoint takes no query parameters: any query is
+	// served but not cached.
+	noParam := ReadOnlyCache(ReadOnlyCacheConfig{Namespace: uniqueNamespace("test_ro_noparams"), TTL: CacheTTLLong})
+	testutil.ServeBufferedRoute(t, http.MethodGet, "/m", []contract.Middleware{noParam}, handler,
+		httptest.NewRequest(http.MethodGet, "/m?foo=1", nil))
+	testutil.ServeBufferedRoute(t, http.MethodGet, "/m", []contract.Middleware{noParam}, handler,
+		httptest.NewRequest(http.MethodGet, "/m?foo=1", nil))
+	assert.Equal(t, 5, calls, "empty Params with any query must not be cached")
+
+	// Empty Params with no query: cached.
+	testutil.ServeBufferedRoute(t, http.MethodGet, "/m", []contract.Middleware{noParam}, handler,
+		httptest.NewRequest(http.MethodGet, "/m", nil))
+	testutil.ServeBufferedRoute(t, http.MethodGet, "/m", []contract.Middleware{noParam}, handler,
+		httptest.NewRequest(http.MethodGet, "/m", nil))
+	assert.Equal(t, 6, calls, "empty Params with no query must be cached")
+}
+
+// When the leader's handler produces nothing cacheable (non-200), followers
+// must fall through and run their own handler, not write nothing.
+func TestReadOnlyCacheLeaderFailureFollowersRunHandler(t *testing.T) {
+	const n = 5
+	calls := 0
+
+	started := make(chan struct{}, n)
+	leaderReady := make(chan struct{}, 1)
+	release := make(chan struct{})
+
+	handler := func(c contract.Context) {
+		calls++
+		leaderReady <- struct{}{}
+		<-release
+		_ = c.Data(http.StatusBadRequest, "application/json; charset=utf-8", []byte(`{"error":"nope"}`))
+	}
+	cache := ReadOnlyCache(ReadOnlyCacheConfig{Namespace: uniqueNamespace("test_ro_leaderfail"), TTL: CacheTTLLong})
+
+	var wg sync.WaitGroup
+	resps := make([]*http.Response, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			started <- struct{}{}
+			resps[i] = testutil.ServeBufferedRoute(t, http.MethodGet, "/lf", []contract.Middleware{cache}, handler,
+				httptest.NewRequest(http.MethodGet, "/lf", nil))
+		}(i)
+	}
+
+	for range n {
+		<-started
+	}
+	<-leaderReady
+	close(release)
+
+	wg.Wait()
+
+	assert.Equal(t, n, calls, "when the leader produces nothing cacheable every follower must run its own handler")
+	for i, resp := range resps {
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode, "request %d must be served", i)
+	}
 }
 
 // uniqueNamespace keeps a cached entry from leaking between runs of the same
