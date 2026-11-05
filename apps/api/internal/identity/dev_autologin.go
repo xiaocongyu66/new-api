@@ -46,6 +46,16 @@ func DevAutoLogin(c contract.Context) {
 		return
 	}
 
+	// Every page load without a live session mints a new session, so repeated
+	// dev reloads/browsers accumulate active sessions until the per-user limit
+	// rejects auto-login with AUTH_SESSION_LIMIT and the browser silently falls
+	// back to the sign-in page. The dev account is a throwaway; replace its old
+	// sessions instead of piling them up.
+	if _, err := RevokeAllUserSessions(user.Id, "dev-auto-login-refresh"); err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+
 	// loginMethodFromContext resolves the method from the request path, so the
 	// session row and audit log record "dev-auto-login" rather than a real
 	// password login.
