@@ -851,8 +851,8 @@ func FetchUpstreamRatios(c contract.Context) {
 				if item.ModelName == "" {
 					continue
 				}
-				if item.BillingMode == billing.BillingModeTieredExpr && strings.TrimSpace(item.BillingExpr) != "" {
-					billingModeMap[item.ModelName] = billing.BillingModeTieredExpr
+				if billing.IsTieredBillingMode(item.BillingMode) && strings.TrimSpace(item.BillingExpr) != "" {
+					billingModeMap[item.ModelName] = item.BillingMode
 					billingExprMap[item.ModelName] = item.BillingExpr
 				}
 				if item.QuotaType == 1 {

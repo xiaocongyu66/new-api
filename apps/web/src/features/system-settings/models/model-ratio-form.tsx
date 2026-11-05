@@ -60,6 +60,8 @@ type ModelFormValues = {
   ExposeRatioEnabled: boolean
   BillingMode: string
   BillingExpr: string
+  BillingContextTier?: string
+  BillingContextTierPerCall?: string
 }
 
 type ModelRatioFormProps = {
@@ -305,6 +307,8 @@ export const ModelRatioForm = memo(function ModelRatioForm({
               savedAudioCompletionRatio={savedValues.AudioCompletionRatio}
               savedBillingMode={savedValues.BillingMode}
               savedBillingExpr={savedValues.BillingExpr}
+              savedBillingContextTier={savedValues.BillingContextTier}
+              savedBillingContextTierPerCall={savedValues.BillingContextTierPerCall}
               modelPrice={form.watch('ModelPrice')}
               modelRatio={form.watch('ModelRatio')}
               cacheRatio={form.watch('CacheRatio')}
@@ -315,6 +319,8 @@ export const ModelRatioForm = memo(function ModelRatioForm({
               audioCompletionRatio={form.watch('AudioCompletionRatio')}
               billingMode={form.watch('BillingMode')}
               billingExpr={form.watch('BillingExpr')}
+              billingContextTier={form.watch('BillingContextTier')}
+              billingContextTierPerCall={form.watch('BillingContextTierPerCall')}
               candidateModelNames={enabledModelsQuery.data?.data}
               candidateModelsLoading={enabledModelsQuery.isLoading}
               onSave={handleSave}
@@ -323,6 +329,8 @@ export const ModelRatioForm = memo(function ModelRatioForm({
                 const fieldMap: Record<string, keyof ModelFormValues> = {
                   'billing_setting.billing_mode': 'BillingMode',
                   'billing_setting.billing_expr': 'BillingExpr',
+                  'billing_setting.billing_context_tier': 'BillingContextTier',
+                  'billing_setting.billing_context_tier_per_call': 'BillingContextTierPerCall',
                 }
                 const formField =
                   fieldMap[field] || (field as keyof ModelFormValues)

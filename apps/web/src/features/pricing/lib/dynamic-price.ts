@@ -67,7 +67,12 @@ const PRIMARY_DYNAMIC_FIELDS = new Set([
 ])
 
 export function isDynamicPricingModel(model: PricingModel): boolean {
-  return model.billing_mode === 'tiered_expr' && Boolean(model.billing_expr)
+  return (
+    (model.billing_mode === 'tiered_expr' ||
+      model.billing_mode === 'context_tier' ||
+      model.billing_mode === 'context_tier_per_call') &&
+    Boolean(model.billing_expr)
+  )
 }
 
 export function getDynamicDisplayGroupRatio(

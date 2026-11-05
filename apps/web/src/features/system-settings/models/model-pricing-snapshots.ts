@@ -32,6 +32,8 @@ export type ModelPricingSnapshotInput = {
   audioCompletionRatio: string
   billingMode: string
   billingExpr: string
+  billingContextTier?: string
+  billingContextTierPerCall?: string
   // Backend-computed effective completion ratio per model. Mirrors the
   // backend's own resolution (DB override → hardcoded default) so the UI can
   // show the price billing actually charges.
@@ -65,6 +67,8 @@ export type ModelPricingSnapshot = {
   audioCompletionRatio?: string
   billingMode?: string
   billingExpr?: string
+  billingContextTier?: string
+  billingContextTierPerCall?: string
   requestRuleExpr?: string
   hasConflict: boolean
 }
@@ -215,6 +219,8 @@ export const buildModelSnapshots = ({
   audioCompletionRatio,
   billingMode,
   billingExpr,
+  billingContextTier,
+  billingContextTierPerCall,
 }: ModelPricingSnapshotInput): ModelPricingSnapshot[] => {
   const priceMap = safeJsonParse<Record<string, number>>(modelPrice, {
     fallback: {},
@@ -256,6 +262,14 @@ export const buildModelSnapshots = ({
     fallback: {},
     context: 'billing expression',
   })
+  const billingContextTierMap = safeJsonParse<Record<string, string>>(billingContextTier, {
+    fallback: {},
+    context: 'billing context tier',
+  })
+  const billingContextTierPerCallMap = safeJsonParse<Record<string, string>>(
+    billingContextTierPerCall,
+    { fallback: {}, context: 'billing context tier (per call)' }
+  )
 
   const modelNames = new Set([
     ...Object.keys(priceMap),
@@ -268,6 +282,8 @@ export const buildModelSnapshots = ({
     ...Object.keys(audioCompletionMap),
     ...Object.keys(billingModeMap),
     ...Object.keys(billingExprMap),
+    ...Object.keys(billingContextTierMap),
+    ...Object.keys(billingContextTierPerCallMap),
   ])
 
   return Array.from(modelNames).map((name) => {
@@ -301,6 +317,42 @@ export const buildModelSnapshots = ({
         hasConflict: false,
       }
     }
+    if (modeForModel === 'context_tier') {
+      return {
+        name,
+        billingMode: 'context_tier',
+        billingExpr: '',
+        billingContextTier: billingContextTierMap[name] || '',
+        requestRuleExpr: '',
+        price,
+        ratio,
+        cacheRatio: cache,
+        createCacheRatio: createCache,
+        completionRatio: completion,
+        imageRatio: image,
+        audioRatio: audio,
+        audioCompletionRatio: audioCompletion,
+        hasConflict: false,
+      }
+    }
+    if (modeForModel === 'context_tier_per_call') {
+      return {
+        name,
+        billingMode: 'context_tier_per_call',
+        billingExpr: '',
+        billingContextTierPerCall: billingContextTierPerCallMap[name] || '',
+        requestRuleExpr: '',
+        price,
+        ratio,
+        cacheRatio: cache,
+        createCacheRatio: createCache,
+        completionRatio: completion,
+        imageRatio: image,
+        audioRatio: audio,
+        audioCompletionRatio: audioCompletion,
+        hasConflict: false,
+      }
+    }
 
     return {
       name,
@@ -312,7 +364,11 @@ export const buildModelSnapshots = ({
       imageRatio: image,
       audioRatio: audio,
       audioCompletionRatio: audioCompletion,
+      // Method data persists independently of the active method, so a
+      // per-token/per-request model may still carry stored tier prices.
       billingMode: price !== '' ? 'per-request' : 'per-token',
+      billingContextTier: billingContextTierMap[name] || '',
+      billingContextTierPerCall: billingContextTierPerCallMap[name] || '',
       hasConflict:
         price !== '' &&
         (ratio !== '' ||
@@ -339,6 +395,8 @@ export const getSnapshotSignature = (snapshot?: ModelPricingSnapshot) => {
     audioCompletionRatio: snapshot.audioCompletionRatio || '',
     billingMode: snapshot.billingMode || 'per-token',
     billingExpr: snapshot.billingExpr || '',
+    billingContextTier: snapshot.billingContextTier || '',
+    billingContextTierPerCall: snapshot.billingContextTierPerCall || '',
     requestRuleExpr: snapshot.requestRuleExpr || '',
   })
 }

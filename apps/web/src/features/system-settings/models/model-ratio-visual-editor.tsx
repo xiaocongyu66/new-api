@@ -87,6 +87,8 @@ type ModelRatioVisualEditorProps = {
   savedAudioCompletionRatio: string
   savedBillingMode: string
   savedBillingExpr: string
+  savedBillingContextTier?: string
+  savedBillingContextTierPerCall?: string
   // Backend-computed effective completion ratio per model (JSON). Read-only.
   completionRatioMeta?: string
   modelPrice: string
@@ -99,6 +101,8 @@ type ModelRatioVisualEditorProps = {
   audioCompletionRatio: string
   billingMode: string
   billingExpr: string
+  billingContextTier?: string
+  billingContextTierPerCall?: string
   candidateModelNames?: string[]
   candidateModelsLoading?: boolean
   // 工具栏左侧的附加控件（例如「暴露倍率接口」开关）。
@@ -129,6 +133,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
     savedAudioCompletionRatio,
     savedBillingMode,
     savedBillingExpr,
+    savedBillingContextTier,
+    savedBillingContextTierPerCall,
     completionRatioMeta,
     modelPrice,
     modelRatio,
@@ -140,6 +146,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
     audioCompletionRatio,
     billingMode,
     billingExpr,
+    billingContextTier,
+    billingContextTierPerCall,
     candidateModelNames,
     candidateModelsLoading,
     toolbarLeft,
@@ -217,6 +225,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
       audioCompletionRatio: savedAudioCompletionRatio,
       billingMode: savedBillingMode,
       billingExpr: savedBillingExpr,
+      billingContextTier: savedBillingContextTier,
+      billingContextTierPerCall: savedBillingContextTierPerCall,
     })
     const draftRows = buildModelSnapshots({
       modelPrice,
@@ -229,6 +239,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
       audioCompletionRatio,
       billingMode,
       billingExpr,
+      billingContextTier,
+      billingContextTierPerCall,
     })
 
     const savedByName = new Map(savedRows.map((row) => [row.name, row]))
@@ -282,6 +294,10 @@ const ModelRatioVisualEditorComponent = forwardRef<
     audioCompletionRatio,
     billingMode,
     billingExpr,
+    savedBillingContextTier,
+    savedBillingContextTierPerCall,
+    billingContextTier,
+    billingContextTierPerCall,
   ])
 
   const modeCounts = useMemo(
@@ -321,6 +337,10 @@ const ModelRatioVisualEditorComponent = forwardRef<
       let editBillingMode: PricingMode = 'per-token'
       if (editableModel.billingMode === 'tiered_expr') {
         editBillingMode = 'tiered_expr'
+      } else if (editableModel.billingMode === 'context_tier') {
+        editBillingMode = 'context_tier'
+      } else if (editableModel.billingMode === 'context_tier_per_call') {
+        editBillingMode = 'context_tier_per_call'
       } else if (editableModel.price && editableModel.price !== '') {
         editBillingMode = 'per-request'
       }
@@ -341,6 +361,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
         audioCompletionRatio: editableModel.audioCompletionRatio,
         billingMode: editBillingMode,
         billingExpr: editableModel.billingExpr,
+        billingContextTier: editableModel.billingContextTier,
+        billingContextTierPerCall: editableModel.billingContextTierPerCall,
         requestRuleExpr: editableModel.requestRuleExpr,
         completionRatioEffective:
           effectiveCompletionRatio !== null
@@ -415,6 +437,14 @@ const ModelRatioVisualEditorComponent = forwardRef<
         billingExpr,
         { fallback: {}, silent: true }
       )
+      const billingContextTierMap = safeJsonParse<Record<string, string>>(
+        billingContextTier,
+        { fallback: {}, silent: true }
+      )
+      const billingContextTierPerCallMap = safeJsonParse<Record<string, string>>(
+        billingContextTierPerCall,
+        { fallback: {}, silent: true }
+      )
 
       delete priceMap[name]
       delete ratioMap[name]
@@ -426,6 +456,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
       delete audioCompletionMap[name]
       delete billingModeMap[name]
       delete billingExprMap[name]
+      delete billingContextTierMap[name]
+      delete billingContextTierPerCallMap[name]
 
       onChange('ModelPrice', JSON.stringify(priceMap, null, 2))
       onChange('ModelRatio', JSON.stringify(ratioMap, null, 2))
@@ -446,6 +478,14 @@ const ModelRatioVisualEditorComponent = forwardRef<
         'billing_setting.billing_expr',
         JSON.stringify(billingExprMap, null, 2)
       )
+      onChange(
+        'billing_setting.billing_context_tier',
+        JSON.stringify(billingContextTierMap, null, 2)
+      )
+      onChange(
+        'billing_setting.billing_context_tier_per_call',
+        JSON.stringify(billingContextTierPerCallMap, null, 2)
+      )
 
       if (editData?.name === name) {
         setEditData(null)
@@ -463,19 +503,12 @@ const ModelRatioVisualEditorComponent = forwardRef<
       audioCompletionRatio,
       billingMode,
       billingExpr,
+      billingContextTier,
+      billingContextTierPerCall,
       onChange,
       editData,
     ]
   )
-
-  const handleEditorSave = useCallback(async () => {
-    try {
-      await onSave?.()
-      setEditorOpen(false)
-    } catch {
-      // Keep the editor open if saving fails.
-    }
-  }, [onSave])
 
   const columns = useMemo(
     () =>
@@ -560,6 +593,14 @@ const ModelRatioVisualEditorComponent = forwardRef<
         billingExpr,
         { fallback: {}, silent: true }
       )
+      const billingContextTierMap = safeJsonParse<Record<string, string>>(
+        billingContextTier,
+        { fallback: {}, silent: true }
+      )
+      const billingContextTierPerCallMap = safeJsonParse<Record<string, string>>(
+        billingContextTierPerCall,
+        { fallback: {}, silent: true }
+      )
 
       const setIfPresent = (
         target: Record<string, number>,
@@ -583,39 +624,44 @@ const ModelRatioVisualEditorComponent = forwardRef<
       delete audioCompletionMap[modelName]
       delete billingModeMap[modelName]
       delete billingExprMap[modelName]
+      delete billingContextTierMap[modelName]
+      delete billingContextTierPerCallMap[modelName]
 
-      if (data.billingMode === 'tiered_expr') {
-        const combined = combineBillingExpr(
-          data.billingExpr || '',
-          data.requestRuleExpr || ''
-        )
-        if (combined) {
-          billingModeMap[modelName] = 'tiered_expr'
-          billingExprMap[modelName] = combined
-        }
-        // Always serialize ratio/price values for tiered_expr models so they
-        // serve as fallback during multi-instance sync delays. The backend's
-        // ModelPriceHelper checks billing_mode first, so these values are
-        // only consulted when billing_setting hasn't propagated yet.
-        setIfPresent(priceMap, modelName, data.price)
-        setIfPresent(ratioMap, modelName, data.ratio)
-        setIfPresent(cacheMap, modelName, data.cacheRatio)
-        setIfPresent(createCacheMap, modelName, data.createCacheRatio)
-        setIfPresent(completionMap, modelName, data.completionRatio)
-        setIfPresent(imageMap, modelName, data.imageRatio)
-        setIfPresent(audioMap, modelName, data.audioRatio)
-        setIfPresent(audioCompletionMap, modelName, data.audioCompletionRatio)
-      } else if (data.price && data.price !== '') {
-        setIfPresent(priceMap, modelName, data.price)
+      // billingMode is the ACTIVE method (what requests bill with); every
+      // method's stored prices persist independently, so the admin can keep
+      // several configured and switch the active one at any time. An empty
+      // editor state clears that method's entry.
+      const combined = combineBillingExpr(
+        data.billingExpr || '',
+        data.requestRuleExpr || ''
+      )
+      if (combined) {
+        billingExprMap[modelName] = combined
       } else {
-        setIfPresent(ratioMap, modelName, data.ratio)
-        setIfPresent(cacheMap, modelName, data.cacheRatio)
-        setIfPresent(createCacheMap, modelName, data.createCacheRatio)
-        setIfPresent(completionMap, modelName, data.completionRatio)
-        setIfPresent(imageMap, modelName, data.imageRatio)
-        setIfPresent(audioMap, modelName, data.audioRatio)
-        setIfPresent(audioCompletionMap, modelName, data.audioCompletionRatio)
+        delete billingExprMap[modelName]
       }
+      if (data.billingContextTier) {
+        billingContextTierMap[modelName] = data.billingContextTier
+      } else {
+        delete billingContextTierMap[modelName]
+      }
+      if (data.billingContextTierPerCall) {
+        billingContextTierPerCallMap[modelName] = data.billingContextTierPerCall
+      } else {
+        delete billingContextTierPerCallMap[modelName]
+      }
+      billingModeMap[modelName] = data.billingMode ?? 'per-token'
+      // Serialize ratio/price values so the backend has a fallback base when
+      // the active method points at prices that don't exist (it then bills
+      // plain per-token ratios), and during multi-instance sync delays.
+      setIfPresent(priceMap, modelName, data.price)
+      setIfPresent(ratioMap, modelName, data.ratio)
+      setIfPresent(cacheMap, modelName, data.cacheRatio)
+      setIfPresent(createCacheMap, modelName, data.createCacheRatio)
+      setIfPresent(completionMap, modelName, data.completionRatio)
+      setIfPresent(imageMap, modelName, data.imageRatio)
+      setIfPresent(audioMap, modelName, data.audioRatio)
+      setIfPresent(audioCompletionMap, modelName, data.audioCompletionRatio)
 
       onChange('ModelPrice', JSON.stringify(priceMap, null, 2))
       onChange('ModelRatio', JSON.stringify(ratioMap, null, 2))
@@ -636,6 +682,14 @@ const ModelRatioVisualEditorComponent = forwardRef<
         'billing_setting.billing_expr',
         JSON.stringify(billingExprMap, null, 2)
       )
+      onChange(
+        'billing_setting.billing_context_tier',
+        JSON.stringify(billingContextTierMap, null, 2)
+      )
+      onChange(
+        'billing_setting.billing_context_tier_per_call',
+        JSON.stringify(billingContextTierPerCallMap, null, 2)
+      )
     },
     [
       modelPrice,
@@ -648,6 +702,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
       audioCompletionRatio,
       billingMode,
       billingExpr,
+      billingContextTier,
+      billingContextTierPerCall,
       onChange,
     ]
   )
@@ -666,6 +722,24 @@ const ModelRatioVisualEditorComponent = forwardRef<
     }),
     [editorOpen, persistPricingData]
   )
+
+  // Sheet footer save must commit the draft first: commitDraft runs form +
+  // pricing validation (including context-tier JSON) and returns null on
+  // failure, in which case the editor stays open with the error shown.
+  const handleEditorSave = useCallback(async () => {
+    try {
+      if (editorOpen && editorPanelRef.current) {
+        const data = await editorPanelRef.current.commitDraft()
+        if (!data) return
+        persistPricingData(data)
+        setEditData(data)
+      }
+      await onSave?.()
+      setEditorOpen(false)
+    } catch {
+      // Keep the editor open if saving fails.
+    }
+  }, [editorOpen, onSave, persistPricingData])
 
   const hasRows = table.getRowModel().rows.length > 0
   const hasActiveColumnFilters = table.getState().columnFilters.length > 0

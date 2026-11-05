@@ -41,6 +41,8 @@ const modelPricingDefaults = {
   ExposeRatioEnabled: false,
   'billing_setting.billing_mode': '',
   'billing_setting.billing_expr': '',
+  'billing_setting.billing_context_tier': '{}',
+  'billing_setting.billing_context_tier_per_call': '{}',
   'tool_price_setting.prices': '',
 }
 
@@ -79,6 +81,9 @@ export function ModelPricingSection({
         ExposeRatioEnabled: settings.ExposeRatioEnabled,
         BillingMode: settings['billing_setting.billing_mode'],
         BillingExpr: settings['billing_setting.billing_expr'],
+        BillingContextTier: settings['billing_setting.billing_context_tier'] ?? '{}',
+        BillingContextTierPerCall:
+          settings['billing_setting.billing_context_tier_per_call'] ?? '{}',
       }}
       groupDefaults={{
         TopupGroupRatio: '',

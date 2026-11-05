@@ -79,6 +79,8 @@ type UpstreamRatioSyncProps = {
     AudioCompletionRatio: string
     'billing_setting.billing_mode': string
     'billing_setting.billing_expr': string
+    'billing_setting.billing_context_tier'?: string
+    'billing_setting.billing_context_tier_per_call'?: string
   }
 }
 

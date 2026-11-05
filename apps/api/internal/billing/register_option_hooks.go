@@ -299,10 +299,22 @@ func init() {
 
 	catalog.OnResolveTieredBilling = func(model string) (string, string, bool) {
 		mode := GetBillingMode(model)
-		if mode != BillingModeTieredExpr {
+		if !IsTieredBillingMode(mode) {
 			return "", "", false
 		}
-		expr, ok := GetBillingExpr(model)
+		expr, ok := GetBillingExprForModel(model)
 		return mode, expr, ok
+	}
+	catalog.OnResolveContextTier = func(model string) (string, bool) {
+		if GetBillingMode(model) != BillingModeContextTier {
+			return "", false
+		}
+		return GetBillingContextTier(model)
+	}
+	catalog.OnResolveContextTierPerCall = func(model string) (string, bool) {
+		if GetBillingMode(model) != BillingModeContextTierPerCall {
+			return "", false
+		}
+		return GetBillingContextTierPerCall(model)
 	}
 }

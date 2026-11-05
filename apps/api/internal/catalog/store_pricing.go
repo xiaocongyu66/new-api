@@ -21,28 +21,32 @@ import (
 // billing. Unregistered means no tiered expression, the same result the
 // non-tiered branch produced before.
 var OnResolveTieredBilling func(model string) (mode string, expr string, ok bool)
+var OnResolveContextTier func(model string) (string, bool)
+var OnResolveContextTierPerCall func(model string) (string, bool)
 
 type Pricing struct {
-	ModelName              string                  `json:"model_name"`
-	Description            string                  `json:"description,omitempty"`
-	Icon                   string                  `json:"icon,omitempty"`
-	Tags                   string                  `json:"tags,omitempty"`
-	VendorID               int                     `json:"vendor_id,omitempty"`
-	QuotaType              int                     `json:"quota_type"`
-	ModelRatio             float64                 `json:"model_ratio"`
-	ModelPrice             float64                 `json:"model_price"`
-	OwnerBy                string                  `json:"owner_by"`
-	CompletionRatio        float64                 `json:"completion_ratio"`
-	CacheRatio             *float64                `json:"cache_ratio,omitempty"`
-	CreateCacheRatio       *float64                `json:"create_cache_ratio,omitempty"`
-	ImageRatio             *float64                `json:"image_ratio,omitempty"`
-	AudioRatio             *float64                `json:"audio_ratio,omitempty"`
-	AudioCompletionRatio   *float64                `json:"audio_completion_ratio,omitempty"`
-	EnableGroup            []string                `json:"enable_groups"`
-	SupportedEndpointTypes []constant.EndpointType `json:"supported_endpoint_types"`
-	BillingMode            string                  `json:"billing_mode,omitempty"`
-	BillingExpr            string                  `json:"billing_expr,omitempty"`
-	PricingVersion         string                  `json:"pricing_version,omitempty"`
+	ModelName                 string                  `json:"model_name"`
+	Description               string                  `json:"description,omitempty"`
+	Icon                      string                  `json:"icon,omitempty"`
+	Tags                      string                  `json:"tags,omitempty"`
+	VendorID                  int                     `json:"vendor_id,omitempty"`
+	QuotaType                 int                     `json:"quota_type"`
+	ModelRatio                float64                 `json:"model_ratio"`
+	ModelPrice                float64                 `json:"model_price"`
+	OwnerBy                   string                  `json:"owner_by"`
+	CompletionRatio           float64                 `json:"completion_ratio"`
+	CacheRatio                *float64                `json:"cache_ratio,omitempty"`
+	CreateCacheRatio          *float64                `json:"create_cache_ratio,omitempty"`
+	ImageRatio                *float64                `json:"image_ratio,omitempty"`
+	AudioRatio                *float64                `json:"audio_ratio,omitempty"`
+	AudioCompletionRatio      *float64                `json:"audio_completion_ratio,omitempty"`
+	EnableGroup               []string                `json:"enable_groups"`
+	SupportedEndpointTypes    []constant.EndpointType `json:"supported_endpoint_types"`
+	BillingMode               string                  `json:"billing_mode,omitempty"`
+	BillingExpr               string                  `json:"billing_expr,omitempty"`
+	BillingContextTier        string                  `json:"billing_context_tier,omitempty"`
+	BillingContextTierPerCall string                  `json:"billing_context_tier_per_call,omitempty"`
+	PricingVersion            string                  `json:"pricing_version,omitempty"`
 }
 
 type PricingVendor struct {
@@ -406,6 +410,16 @@ func updatePricing() {
 			if mode, expr, ok := OnResolveTieredBilling(model); ok && strings.TrimSpace(expr) != "" {
 				pricing.BillingMode = mode
 				pricing.BillingExpr = expr
+			}
+			if OnResolveContextTier != nil {
+				if tiers, ok := OnResolveContextTier(model); ok {
+					pricing.BillingContextTier = tiers
+				}
+			}
+			if OnResolveContextTierPerCall != nil {
+				if tiers, ok := OnResolveContextTierPerCall(model); ok {
+					pricing.BillingContextTierPerCall = tiers
+				}
 			}
 		}
 		pricingMap = append(pricingMap, pricing)
