@@ -107,10 +107,6 @@ The main checkout stays on `main`; feature branches live in `.wt/`.
 
 ###### Starting a dev server
 
-开发栈默认走 Podman（`deploy/compose.dev.yml`，同一份定义 Docker 也能用）。需要 Docker 时：
-`DEV_CONTAINER_ENGINE=docker just dev-db`（或用 `export DEV_CONTAINER_ENGINE=docker` 让整组 dev 命令生效）。
-Podman 路径需要 rootless socket：`systemctl --user enable --now podman.socket`。
-
 **`just dev-wt-dev` (recommended for agent/worktree development, auto-login ON):**
 1. `just dev-db` — starts the dev PostgreSQL container only (Redis expected on `localhost:6379`; host Redis or `uf-local-redis` container already provides this)
 2. Builds and runs Go API binary from the current worktree's `apps/api/` (branch-scoped cache in `~/.cache/new-api-bin/new-api-<branch>-dev`)
