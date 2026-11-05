@@ -1,8 +1,8 @@
 // Package fiberadapter implements the framework-neutral transport contract on
-// top of Fiber and fasthttp. Like the removed Gin adapter it was the only place fiber and
-// fasthttp types may appear; business code sees contract.Context only.
+// top of Fiber and fasthttp. It is the only place fiber and fasthttp types
+// may appear; business code sees contract.Context only.
 //
-// Two structural decisions separated this adapter from the Gin adapter, and both come
+// Two structural decisions separate this adapter's design, and both come
 // from fasthttp rather than from taste:
 //
 //  1. The whole middleware chain runs inside the response body stream callback
@@ -177,7 +177,7 @@ func Handler(handler contract.Handler) fiber.Handler {
 }
 
 // Middleware adapts a contract middleware to a fiber handler. It exists as the
-// mirror of the Gin adapter Middleware so route registration does not require
+// mirror of the previous adapter's Middleware so route registration does not require
 // business code to import fiber.
 func Middleware(m contract.Middleware) fiber.Handler {
 	return Handler(contract.Handler(m))
@@ -412,9 +412,8 @@ func (r *requestContext) IsTLS() bool { return r.req.TLS != nil }
 
 func (r *requestContext) UserAgent() string { return r.req.UserAgent() }
 
-// ContentType reports the media type without parameters, matching what gin's
-// ContentType returns, so a JSON body with a charset still compares equal to
-// "application/json".
+// ContentType reports the media type without parameters, so a JSON body with a
+// charset still compares equal to "application/json".
 func (r *requestContext) ContentType() string {
 	contentType := r.req.Header.Get("Content-Type")
 	if index := strings.IndexByte(contentType, ';'); index != -1 {
@@ -465,8 +464,8 @@ func (r *requestContext) Header(key string) string { return r.req.Header.Get(key
 // forward the original credentials while looking like it had been rewritten.
 func (r *requestContext) Headers() http.Header { return r.req.Header }
 
-// Cookie reports http.ErrNoCookie for an absent cookie, matching gin, so
-// callers can tell absent from present-but-empty.
+// Cookie reports http.ErrNoCookie for an absent cookie, so callers can tell
+// absent from present-but-empty.
 func (r *requestContext) Cookie(name string) (string, error) {
 	cookie, err := r.req.Cookie(name)
 	if err != nil {
@@ -481,9 +480,9 @@ func (r *requestContext) Cookie(name string) (string, error) {
 
 // ---- Body ----
 //
-// The replayable-body path was shared with the Gin adapter through common: the storage
-// object is cached in Values, so decoding for routing and forwarding upstream
-// read one buffer. common.GetRequestBody bootstraps that cache by reading
+// The replayable-body path is shared through common: the storage object is
+// cached in Values, so decoding for routing and forwarding upstream read one
+// buffer. common.GetRequestBody bootstraps that cache by reading
 // HTTPRequest().Body once, which is why synthesizeRequest installs a real
 // reader over the buffered payload rather than leaving Body nil.
 
@@ -524,8 +523,8 @@ func (r *requestContext) SetParsedForm(form *multipart.Form) {
 	r.req.PostForm = url.Values(form.Value)
 }
 
-// PostForm parses the body on demand, matching gin, so a caller that never
-// called ParseForm still reads a urlencoded field.
+// PostForm parses the body on demand, so a caller that never called ParseForm
+// still reads a urlencoded field.
 func (r *requestContext) PostForm(key string) string {
 	if r.req.PostForm == nil {
 		_ = r.req.ParseMultipartForm(defaultMultipartMemory)
@@ -533,8 +532,9 @@ func (r *requestContext) PostForm(key string) string {
 	return r.req.PostFormValue(key)
 }
 
-// defaultMultipartMemory matches gin's, so a form small enough to stay in memory
-// under gin does not start spilling to disk under fiber.
+// defaultMultipartMemory is 32 MiB, the same in-memory cap the previous
+// transport applied, so a form that stayed in memory before does not start
+// spilling to disk under fiber.
 const defaultMultipartMemory = 32 << 20
 
 func (r *requestContext) HTTPRequest() *http.Request { return r.req }
@@ -589,7 +589,7 @@ func (r *requestContext) JSON(status int, payload any) error {
 	if err != nil {
 		return err
 	}
-	// The charset matches gin's JSON content type verbatim; clients and the
+	// The charset matches the JSON content type verbatim; clients and the
 	// conformance suite both compare the whole value.
 	return r.Data(status, "application/json; charset=utf-8", encoded)
 }
@@ -627,7 +627,7 @@ func (r *requestContext) SetCookie(cookie *http.Cookie) {
 //
 // The contract specifies 0 for an unstarted response and this adapter can report
 // it honestly, because the staged status starts unset rather than defaulting to
-// 200 the way both gin's writer and fasthttp's StatusCode() do. Middleware
+// 200 the way fasthttp's StatusCode() does. Middleware
 // branches on "> 0 && < 400", so a default 200 would record channel affinity for
 // a request that never produced a response.
 func (r *requestContext) ResponseStatus() int { return r.resp.status }
@@ -638,7 +638,7 @@ func (r *requestContext) ResponseStatus() int { return r.resp.status }
 //
 // This adapter can answer honestly because the status is staged rather than
 // initialised: fasthttp's own StatusCode() would report 200 for an unset status,
-// as gin's writer does, and middleware branching on "> 0 && < 400" would then
+// as fasthttp's own StatusCode() does, and middleware branching on "> 0 && < 400" would then
 // record channel affinity for a request that never produced a response.
 func (r *requestContext) ReportsUnwrittenStatusAsZero() bool { return true }
 
@@ -648,7 +648,7 @@ func (r *requestContext) ReportsUnwrittenStatusAsZero() bool { return true }
 // there is nothing to wrap: the capture reads the staged body when asked, and
 // truncates at maxBytes. Both callers read strictly after the chain (audit
 // middleware after Next, the channel probe after the pipeline), so the
-// interception point exists, it is simply later than gin's.
+// interception point exists, it is simply later than it was before.
 //
 // It deliberately does not interact with the header commit: the capture reads the
 // body buffer, which is complete once the writing handler returned, while the

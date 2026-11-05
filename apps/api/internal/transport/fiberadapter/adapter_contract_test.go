@@ -20,8 +20,8 @@ import (
 )
 
 // TestFiberAdapterSatisfiesTransportContract runs the adapter-agnostic
-// conformance suite against this adapter, so equivalence with the gin adapter is
-// proven by shared assertions rather than by copied test bodies.
+// conformance suite against this adapter, so equivalence is proven by shared
+// assertions rather than by copied test bodies.
 func TestFiberAdapterSatisfiesTransportContract(t *testing.T) {
 	conformance.Run(t, conformance.Adapter{
 		Name:              "fiber",
@@ -449,7 +449,7 @@ func TestNonStreamingResponseKeepsContentLength(t *testing.T) {
 // TestDisconnectMidStreamCancelsContextOverTheWire asserts a real client hanging up
 // mid-stream stops the writes and cancels the request lifetime.
 //
-// The detection timing is a deliberate, accepted behaviour change from gin. fasthttp
+// The detection timing is a deliberate, accepted behaviour change from the previous adapter. fasthttp
 // offers no read-side disconnect notification at all: RequestCtx.Done is closed only
 // on server shutdown, and the sole signal is a write to the response pipe failing
 // once the server closed its end. Detection therefore moves from "the read side saw
@@ -610,8 +610,9 @@ func TestUnwrapRecoversFiberContext(t *testing.T) {
 	assert.Nil(t, foreign)
 }
 
-// foreignContext stands in for a non-fiber contract implementation, the way a gin
-// context arrives here. It is only ever passed to Unwrap, so the embedded methods
+// foreignContext stands in for a non-fiber contract implementation, the way a
+// contract context from another implementation arrives here. It is only ever
+// passed to Unwrap, so the embedded methods
 // are never called.
 //
 // The embedding goes through an alias because embedding contract.Context directly

@@ -46,9 +46,8 @@ func NewEngine(onPanic func(c contract.Context, recovered any)) contract.Engine 
 		c.Locals(clientIPKey{}, resolveTrustedClientIP(c, policy.policy))
 		return c.Next()
 	})
-
-	// Recovery is the first contract handler in every chain, as gin's
-	// CustomRecovery is. It cannot be a fiber layer: Dispatch may run the chain
+	// Recovery is the first contract handler in every chain, as the recovery
+	// middleware was before. It cannot be a fiber layer: Dispatch may run the chain
 	// on another goroutine, where a fiber-level recover would not catch the
 	// panic and the process would die.
 	root.pending = []contract.Handler{recoverPanics(onPanic)}

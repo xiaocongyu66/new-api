@@ -41,7 +41,7 @@ type upgradeResult struct {
 // business code. The chain parks, the dispatcher registers the hijack while it
 // is still on fiber's stack, and the hijack goroutine hands the connection back
 // to the parked chain and then waits for it. So the caller keeps writing
-// straight-line code with its own defers, exactly as it did under gin.
+// straight-line code with its own defers, exactly as before.
 //
 // The response belongs to the upgrader from here on: on success fasthttp writes
 // the 101 and the upgrade headers it staged, and on failure the upgrader has

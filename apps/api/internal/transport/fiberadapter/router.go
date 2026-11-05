@@ -1,6 +1,6 @@
 // Package fiberadapter implements the transport contract on fiber/fasthttp.
 //
-// Two structural differences from the Gin adapter are load-bearing and deliberate.
+// Two structural differences are load-bearing and deliberate.
 //
 // First, contract middleware never enters fiber's own handler stack. Dispatch
 // commits the response and returns while the contract chain may still be
@@ -8,8 +8,8 @@
 // under real backpressure), and fiber recycles its Ctx into a pool as
 // soon as the handler returns. A contract middleware mounted through app.Use
 // would therefore resume after Next against a Ctx that already belongs to a
-// different request. So the chain is flattened the way gin flattens
-// RouterGroup.combineHandlers: routes accumulates the pending handlers, and
+// different request. So the chain is flattened the way the previous transport
+// flattened group handlers: routes accumulates the pending handlers, and
 // every concrete route becomes exactly one fiber handler holding the whole
 // chain. Registration order is preserved by construction, which is what
 // contract.Routes requires anyway.
@@ -52,11 +52,8 @@ import (
 // listener exists, but the engine is copied by value into every closure that
 // holds it and there is no reason to make the read racy.
 type proxyPolicy struct {
-	// exact holds the bare addresses in their parsed form. gin promotes a bare
-	// address to a /32 or /128 CIDR rather than comparing strings, which is why
-	// a non-canonical IPv6 spelling still matches; fiber's own implementation
-	// keys a map on the literal string and misses. Keeping net.IP values here
-	// reproduces gin.
+	// exact holds the bare addresses in their parsed form. The previous transport promoted a bare address to a /32 or /128 CIDR rather than comparing strings, which is why
+	// a non-canonical IPv6 spelling still matches; fiber's own implementation keys a map on the literal string and misses. Keeping net.IP values here reproduces that.
 	exact  []net.IP
 	ranges []*net.IPNet
 }
@@ -83,7 +80,7 @@ func (p *proxyPolicy) trusted(ip net.IP) bool {
 	return false
 }
 
-// forwardedIPHeaders is gin's RemoteIPHeaders default, in order. fiber's
+// forwardedIPHeaders is the RemoteIPHeaders default, in order. Fiber's
 // ProxyHeader config holds a single header name and has no fallback, so the
 // list is walked here instead.
 var forwardedIPHeaders = [...]string{fiber.HeaderXForwardedFor, "X-Real-IP"}
@@ -105,8 +102,8 @@ func ResolvedClientIP(c fiber.Ctx) (string, bool) {
 	return resolved, ok
 }
 
-// resolveTrustedClientIP reproduces gin's Context.ClientIP against a fiber
-// request.
+// resolveTrustedClientIP reproduces the previous transport's client-IP
+// resolution against a fiber request.
 //
 // The peer address is authoritative unless it is a trusted proxy, in which case
 // the forwarded chain is walked right to left and the first entry that is
@@ -136,9 +133,9 @@ func resolveTrustedClientIP(c fiber.Ctx, policy *proxyPolicy) string {
 
 // walkForwardedChain returns the client address a forwarded header attests to.
 //
-// It matches gin's validateHeader, including the detail that an unparseable
-// entry abandons the whole header rather than being skipped: a malformed hop
-// means the chain cannot be reasoned about past that point.
+// It matches the previous header validation, including the detail that an
+// unparseable entry abandons the whole header rather than being skipped: a
+// malformed hop means the chain cannot be reasoned about past that point.
 func walkForwardedChain(header string, policy *proxyPolicy) (string, bool) {
 	if header == "" {
 		return "", false
@@ -187,7 +184,7 @@ func parseProxyPolicy(cidrs []string) (*proxyPolicy, error) {
 	return policy, nil
 }
 
-// joinRoutePath is gin's joinPaths.
+// joinRoutePath is the route-path joiner, replacing the previous transport's joinPaths.
 //
 // fiber's own getGroupPath trims the parent's trailing slash and concatenates,
 // which neither collapses a doubled separator nor preserves a trailing slash
@@ -208,7 +205,7 @@ func joinRoutePath(base, relative string) string {
 // reference to a framework group.
 //
 // pending is the middleware mounted on this scope so far. It is copied on Group
-// and replaced on Use, which reproduces gin's two ordering rules exactly:
+// and replaced on Use, which reproduces the two ordering rules exactly:
 // middleware applies to the routes registered after it, and a child group
 // inherits whatever its parent held when the child was created. pending is never
 // appended to in place, because that would let a later Use on a parent write
@@ -259,22 +256,23 @@ type wildcardParamKey struct{}
 // WildcardParam returns the name the matched route's trailing wildcard was
 // registered under, when it had one.
 //
-// It exists because fiber and gin disagree about wildcard syntax in a way that
-// cannot be resolved at the path level alone. See fiberRoutePath.
+// It exists because fiber and the previous transport disagree about wildcard
+// syntax in a way that cannot be resolved at the path level alone. See fiberRoutePath.
 func WildcardParam(c fiber.Ctx) (string, bool) {
 	name, ok := c.Locals(wildcardParamKey{}).(string)
 	return name, ok
 }
 
-// fiberRoutePath translates a gin route pattern into fiber's syntax and reports
-// the name of a trailing named wildcard, when there is one.
+// fiberRoutePath translates a route pattern from the previous transport's
+// syntax into fiber's syntax and reports the name of a trailing named wildcard,
+// when there is one.
 //
-// gin spells a catch-all "/*name". fiber spells it "/*" and names the captured
-// value positionally ("*1"), and it does not ignore what follows the star: it
-// parses "/models/*path" as a wildcard followed by the literal text "path", so
-// POST /v1beta/models/gemini-pro:generateContent does not match that route at
-// all. Registering it verbatim would 404 every Gemini request rather than merely
-// break Param("path").
+// The previous transport spells a catch-all "/*name". fiber spells it "/*"
+// and names the captured value positionally ("*1"), and it does not ignore
+// what follows the star: it parses "/models/*path" as a wildcard followed by
+// the literal text "path", so POST /v1beta/models/gemini-pro:generateContent
+// does not match that route at all. Registering it verbatim would 404 every
+// Gemini request rather than merely break Param("path").
 //
 // So the star is registered bare and the original name is carried separately.
 // Only a trailing wildcard is translated, which is the only shape this
@@ -342,17 +340,17 @@ func (r routes) DELETE(routePath string, handlers ...contract.Chainable) {
 	r.register(fiber.MethodDelete, routePath, handlers)
 }
 
-// Any registers the route for every method the transport routes. gin's
-// anyMethods and fiber's DefaultMethods name the same nine verbs, so the
-// registered set matches.
+// Any registers the route for every method the transport routes. The previous
+// transport's method list and fiber's DefaultMethods name the same nine verbs,
+// so the registered set matches.
 func (r routes) Any(routePath string, handlers ...contract.Chainable) {
 	full, handler := r.mount(routePath, handlers)
 	r.app.Add(r.app.Config().RequestMethods, full, handler)
 }
 
-// corsMaxAge is gin-contrib/cors's DefaultConfig value. gin emits it; fiber's
-// own middleware omits MaxAge by default, which would make browsers re-preflight
-// every request.
+// corsMaxAge is the Max-Age the previous CORS middleware emitted by default.
+// Fiber's own middleware omits MaxAge by default, which would make browsers
+// re-preflight every request.
 const corsMaxAge = 12 * time.Hour
 
 // corsAllowMethods are the five verbs the dashboard and the relay API issue.
@@ -365,14 +363,15 @@ var corsAllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
 // It is hand-written rather than delegated to fiber's cors middleware because
 // fiber panics at construction on a wildcard origin together with
 // AllowCredentials, refusing the policy this service has always served. Three
-// further behaviours diverge silently and are reproduced here: gin sends the
-// literal "Access-Control-Allow-Headers: *" where fiber echoes the requested
-// headers back; gin emits no CORS header at all when the request has no Origin
-// or an Origin equal to its own host, where fiber has no such branch; and gin
-// emits Access-Control-Max-Age where fiber omits it.
+// further behaviours diverge silently and are reproduced here: the previous
+// CORS middleware sent the literal "Access-Control-Allow-Headers: *" where
+// fiber echoes the requested headers back; it emitted no CORS header at all
+// when the request had no Origin or an Origin equal to its own host, where
+// fiber has no such branch; and it emitted Access-Control-Max-Age where fiber
+// omits it.
 //
 // Mounting it in the contract chain rather than as an app.Use layer preserves
-// gin's per-group scoping. Two API groups enable CORS while the rest of /api
+// the previous transport's per-group scoping. Two API groups enable CORS while the rest of /api
 // does not, which a prefix-matched fiber layer could only approximate.
 func (r *routes) UseCORS() {
 	r.Use(func(c contract.Context) {
@@ -385,7 +384,7 @@ func (r *routes) UseCORS() {
 		host := c.Host()
 		if origin == "http://"+host || origin == "https://"+host {
 			// Same origin. A fetch call still sends Origin, but no CORS
-			// response header is needed and gin emits none.
+			// response header is needed and the previous transport emitted none.
 			c.Next()
 			return
 		}
@@ -397,7 +396,7 @@ func (r *routes) UseCORS() {
 			c.SetHeader("Access-Control-Allow-Methods", strings.Join(corsAllowMethods, ","))
 			c.SetHeader("Access-Control-Allow-Headers", "*")
 			c.SetHeader("Access-Control-Max-Age", strconv.FormatInt(int64(corsMaxAge/time.Second), 10))
-			// gin answers the preflight itself and aborts with 204.
+			// The previous transport answered the preflight itself and aborted with 204.
 			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}
@@ -405,7 +404,7 @@ func (r *routes) UseCORS() {
 	})
 }
 
-// compressionExcludedExtensions is gin-contrib/gzip's default exclusion set.
+// compressionExcludedExtensions is the gzip middleware's default exclusion set.
 var compressionExcludedExtensions = map[string]struct{}{
 	".png":  {},
 	".gif":  {},
@@ -413,11 +412,11 @@ var compressionExcludedExtensions = map[string]struct{}{
 	".jpg":  {},
 }
 
-// skipCompression reproduces gin-contrib/gzip's shouldCompress.
+// skipCompression reproduces the gzip middleware's shouldCompress.
 //
-// All four rules are gin's, evaluated before the handler runs exactly as gin
-// evaluates them: no gzip in Accept-Encoding, a Connection: Upgrade request, an
-// SSE request, and an excluded file extension.
+// All four rules come from that middleware, evaluated before the handler runs:
+// no gzip in Accept-Encoding, a Connection: Upgrade request, an SSE request,
+// and an excluded file extension.
 func skipCompression(c fiber.Ctx) bool {
 	if !strings.Contains(c.Get(fiber.HeaderAcceptEncoding), "gzip") ||
 		strings.Contains(c.Get(fiber.HeaderConnection), "Upgrade") ||
@@ -436,16 +435,15 @@ func skipCompression(c fiber.Ctx) bool {
 // fiber's compress middleware cannot be used directly. Its Next predicate is
 // evaluated before the handler runs, but the decision that matters most here --
 // whether the response was committed as a body stream -- is only knowable after
-// it. gin never needed the check: it wrapped the response writer, so a streaming
+// it. The previous transport never needed the check: it wrapped the response writer, so a streaming
 // handler compressed incrementally, whereas fiber materialises the body, which
 // for a stream means draining the pipe the chain is still writing into and
-// truncating it. So the gate is applied on both sides of the handler: gin's four
-// request rules before, and the stream check after. Streamed is the transport's
-// own answer, and it covers the raw ResponseStream endpoints (video content, the
-// dashboard proxy) that no request header identifies.
+// truncating it. So the gate is applied on both sides of the handler: the four
+// Streamed is the transport's own answer, and it covers the raw ResponseStream endpoints (video content, the dashboard proxy) that no request header identifies.
 //
-// It therefore does not scope the way the other capabilities do. gin mounted gzip
-// per group; here it is registered for the prefix of the scope that asked for it.
+// It therefore does not scope the way the other capabilities do. The previous
+// transport mounted gzip per group; here it is registered for the prefix of the
+// scope that asked for it.
 // For the three callers (/api, and / twice) the effective coverage is the same,
 // because the two root-scope callers already cover every path.
 func (r *routes) UseCompression() {
@@ -486,8 +484,8 @@ func (r *routes) UseCompression() {
 // unusable for a second reason -- it never hands the recovered value to a
 // renderer, so the JSON error body this service returns could not be produced.
 //
-// The broken-pipe branch and the redacted header dump are gin's
-// CustomRecoveryWithWriter behaviour, reproduced because fiber has neither: a
+// The broken-pipe branch and the redacted header dump reproduce the previous
+// recovery middleware's behaviour because fiber has neither: a
 // dead connection cannot be written to, so calling the renderer would only
 // produce a second failure, and the log line has to survive without leaking the
 // caller's credentials.
@@ -519,7 +517,7 @@ func recoverPanics(onPanic func(c contract.Context, recovered any)) contract.Han
 }
 
 // isBrokenPipe reports whether a recovered value is a dead client connection
-// rather than a defect, matching gin's check.
+// rather than a defect, matching the previous check.
 func isBrokenPipe(recovered any) bool {
 	opErr, ok := recovered.(*net.OpError)
 	if !ok {
@@ -535,7 +533,7 @@ func isBrokenPipe(recovered any) bool {
 }
 
 // redactedRequestDump renders the request headers for a panic log with the
-// Authorization value replaced, as gin does.
+// Authorization value replaced, as the previous transport did.
 func redactedRequestDump(c contract.Context) string {
 	dumped, err := httputil.DumpRequest(c.HTTPRequest(), false)
 	if err != nil {
@@ -572,7 +570,7 @@ type proxyPolicyRef struct {
 
 // fallbackRef holds what the terminal route serves, so NoRoute and ServeAssets
 // can be called in either order and NoRoute can be called more than once with
-// the last call winning, as gin's does.
+// the last call winning, as the previous transport's does.
 //
 // registered guards the fiber route itself. fiber scans its stack in
 // registration order and stops at the first match, so a prefix route registered
@@ -588,27 +586,28 @@ type fallbackRef struct {
 
 // NoRoute installs the fallback for a request no route matched.
 //
-// gin has an explicit no-route chain. fiber has no equivalent: an unmatched
+// The previous transport had an explicit no-route chain. fiber has no equivalent: an unmatched
 // request becomes an error value from app.next that reaches the ErrorHandler,
 // where a genuine 404 written by a business handler is indistinguishable from a
-// routing miss. So the fallback is a terminal route, reached the same way gin's
-// is: by nothing else matching first.
+// routing miss. So the fallback is a terminal route, reached the same way the
+// previous transport's was: by nothing else matching first.
 //
 // This makes the registration order in compose.SetRouter load-bearing.
 // SetWebRouter is called last there, and it has to stay last: the terminal route
 // matches every path, so any route registered after it would be unreachable.
 //
-// The terminal route also restores gin's method behaviour. gin runs with
-// HandleMethodNotAllowed false, so a request to an existing path with the wrong
-// method falls into the no-route chain and is answered with the SPA index rather
-// than a 405. Registering the terminal route for every method means app.next
+// The terminal route also restores the previous method behaviour. The previous
+// transport ran with HandleMethodNotAllowed false, so a request to an existing
+// path with the wrong method falls into the no-route chain and is answered with
+// the SPA index rather than a 405.
 // always finds a match and never reaches the branch that raises
 // ErrMethodNotAllowed, so the 405 divergence does not ship.
 //
-// The engine's own middleware is not captured here. gin rebuilds allNoRoute from
-// the engine's middleware whenever either that middleware or the no-route chain
-// changes, so the fallback runs whatever the engine accumulated by the time the
-// request arrives; the terminal handler reads it per request for the same reason.
+// The engine's own middleware is not captured here. The previous transport
+// rebuilt allNoRoute from the engine's middleware whenever either that middleware
+// or the no-route chain changed, so the fallback ran whatever the engine
+// accumulated by the time the request arrived; the terminal handler reads it per
+// request for the same reason.
 func (e engine) NoRoute(handlers ...contract.Chainable) {
 	chain := make([]contract.Handler, 0, len(handlers))
 	for _, handler := range handlers {
@@ -658,8 +657,8 @@ func (e engine) TrustProxies(cidrs []string) error {
 //
 // The asset probe runs inside the terminal route rather than as its own layer
 // so an asset request still passes through the engine middleware, which is
-// what happens under gin today: static.Serve is mounted on the engine, so the
-// engine's middleware precedes it.
+// what the previous transport did: static.Serve was mounted on the engine, so
+// the engine's middleware preceded it.
 func (e engine) ServeAssets(prefix string, fs contract.AssetFS) {
 	e.fallback.assets = fs
 	e.fallback.prefix = prefix
@@ -675,8 +674,8 @@ func (e engine) ServeAssets(prefix string, fs contract.AssetFS) {
 // It is a contract handler rather than an app.Use layer for the reason the whole
 // chain is flattened: a fiber layer resumes when Dispatch returns, which for a
 // streamed response is before the stream finished, so the latency it measured
-// would be the time to commit the response instead of the time to serve it. gin
-// measured the whole stream and this does too.
+// would be the time to commit the response instead of the time to serve it. The
+// previous transport measured the whole stream and this does too.
 func (e engine) UseRequestLog(format func(contract.RequestLog) string) {
 	e.Use(func(c contract.Context) {
 		start := time.Now()
@@ -719,12 +718,12 @@ func redactQueryKeys(raw string) string {
 //
 // It reads the engine's pending middleware per request rather than closing over
 // it, because the fiber route is registered before the process mounts its
-// middleware and gin's allNoRoute is likewise rebuilt as the engine's middleware
-// grows.
+// middleware and the previous transport's allNoRoute is likewise rebuilt as the
+// engine's middleware grows.
 func (e engine) serveFallback(c fiber.Ctx) error {
 	fallback := e.fallback
 	if fallback.assets != nil && fallback.assets.Exists(fallback.prefix, c.Path()) {
-		// An asset hit still runs the engine middleware, matching gin, where
+		// An asset hit still runs the engine middleware, matching the previous transport, where
 		// static.Serve is mounted on the engine after it.
 		chain := append(e.flatten(nil), func(cc contract.Context) {
 			if err := sendAsset(cc, fallback); err != nil {
