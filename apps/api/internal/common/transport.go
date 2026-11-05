@@ -9,11 +9,11 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 )
 
-// This file mirrors the gin-specific helpers in gin.go onto the
-// framework-neutral contract.Context. Business code uses these; only
-// the active transport adapter (fiberadapter) knows which framework is underneath.
+// Framework-neutral transport helpers: every business call site goes through
+// contract.Context; only the active transport adapter (fiberadapter) knows
+// which framework is underneath.
 
-// H is the framework-neutral equivalent of gin.H.
+// H is the framework-neutral equivalent of a JSON object map.
 type H = map[string]any
 
 func SetCtxKey(c contract.Context, key constant.ContextKey, value any) {
