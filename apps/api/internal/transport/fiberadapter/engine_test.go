@@ -907,7 +907,7 @@ func TestETagSendsWeakValidatorAndHonorsIfNoneMatch(t *testing.T) {
 	require.Equal(t, http.StatusOK, response.StatusCode)
 	etag := response.Header.Get("ETag")
 	require.NotEmpty(t, etag, "the first response must carry an ETag")
-	assert.HasPrefix(t, etag, "W/", "content-coding changes the body, so the validator is weak")
+	assert.True(t, strings.HasPrefix(etag, "W/"), "content-coding changes the body, so the validator is weak")
 
 	req = httptest.NewRequest(http.MethodGet, "/etag", nil)
 	req.Header.Set("If-None-Match", etag)
