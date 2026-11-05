@@ -113,6 +113,11 @@ func ReadOnlyCache(cfg ReadOnlyCacheConfig) contract.Middleware {
 			return
 		}
 
+		// The staleness window is decided here, not by a browser or an
+		// intermediary: without this, a client is free to heuristically cache a
+		// 200 and extend the entry past the TTL this middleware chose.
+		c.SetHeader("Cache-Control", "no-store")
+
 		// "\x1f" cannot occur in a namespace or a request target, so a
 		// namespace cannot be crafted to collide with another's key.
 		key := cfg.Namespace + "\x1f" + cacheKeyURI(c.RequestURI())
