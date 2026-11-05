@@ -144,7 +144,11 @@ type RelayInfo struct {
 	// SubscriptionPreConsumed is the amount pre-consumed on subscription item (quota units or 1)
 	SubscriptionPreConsumed int64
 	// SubscriptionPostDelta is the post-consume delta applied to amount_used (quota units; can be negative).
+	// Only counts the portion the subscription absorbed; wallet overflow is separate.
 	SubscriptionPostDelta int64
+	// SubscriptionWalletOverflow is the portion of the settlement delta that exceeded the
+	// subscription's remaining quota and was charged to the user's wallet (0 when none).
+	SubscriptionWalletOverflow int64
 	// SubscriptionPlanId / SubscriptionPlanTitle are used for logging/UI display.
 	SubscriptionPlanId    int
 	SubscriptionPlanTitle string
@@ -184,6 +188,35 @@ type RelayInfo struct {
 	FinalRequestRelayFormat types.RelayFormat
 
 	StreamStatus *StreamStatus
+	// StreamSawFinishReason records that an OpenAI-format stream carried a chunk
+	// with a non-empty finish_reason. Billing uses it to distinguish an upstream
+	// that died after the answer was complete (no discount) from a genuine
+	// mid-answer cut-off.
+	StreamSawFinishReason bool
+	// StreamContentObserved records that the handler inspected the delivered
+	// content, so billing can decide emptiness from the flags below instead of
+	// completion_tokens (which also counts reasoning-only output).
+	StreamContentObserved bool
+	// StreamSawTextContent records a non-empty visible text delta. Reasoning
+	// and tool-call deltas do not count.
+	StreamSawTextContent bool
+	// StreamSawToolCall records at least one tool call in the response.
+	StreamSawToolCall bool
+	// StreamSawMediaContent records delivered non-text media (inline images), so
+	// an image-only response is not mistaken for an empty answer.
+	StreamSawMediaContent bool
+	// StreamFinishReason is the last non-empty protocol finish reason.
+	StreamFinishReason string
+	// StreamCutOverride lets a handler attribute a cut that the generic
+	// end-reason classifier cannot infer, such as an OpenAI stream closed at
+	// EOF without [DONE]. Empty means no override.
+	StreamCutOverride string
+	// SettledUpstreamFailure records that billing classified this attempt as an
+	// upstream failure (cut or settled empty response) and settled its charge.
+	// The attempt is terminal for billing and retry, but the serving channel
+	// still failed: the relay loop must charge it as a failed attempt instead
+	// of rewarding it as a success.
+	SettledUpstreamFailure bool
 
 	// convOptions caches the converter settings snapshot (see ConvOptions).
 	convOptions *convmeta.Options
@@ -1132,4 +1165,18 @@ func RemoveGeminiDisabledFields(jsonData []byte) ([]byte, error) {
 		return jsonData, nil
 	}
 	return jsonDataAfter, nil
+}
+
+// ResetStreamObservation clears the per-attempt delivery markers before a retry
+// runs the next handler, so a failed attempt cannot influence the billing
+// decision of the attempt that eventually settles.
+func (info *RelayInfo) ResetStreamObservation() {
+	info.StreamContentObserved = false
+	info.StreamSawTextContent = false
+	info.StreamSawToolCall = false
+	info.StreamSawMediaContent = false
+	info.StreamSawFinishReason = false
+	info.SettledUpstreamFailure = false
+	info.StreamFinishReason = ""
+	info.StreamCutOverride = ""
 }

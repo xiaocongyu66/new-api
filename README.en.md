@@ -58,36 +58,36 @@
 
 ## 🚀 Quick Start
 
-### Using Docker Compose (Recommended)
+### Using Podman Compose (Recommended)
 
 ```bash
 # Clone the project
 git clone https://github.com/QuantumNous/new-api.git
 cd new-api
 
-# Edit deploy/docker-compose.yml configuration
-nano deploy/docker-compose.yml
+# Edit deploy/podman-prod/compose.yml configuration
+nano deploy/podman-prod/compose.yml
 
 # Start the service
-docker compose -f deploy/docker-compose.yml up -d
+podman compose -f deploy/podman-prod/compose.yml up -d
 ```
 
 <details>
-<summary><strong>Using Docker Commands</strong></summary>
+<summary><strong>Using Podman Commands</strong></summary>
 
 ```bash
 # Pull the latest image
-docker pull calciumion/new-api:latest
+podman pull calciumion/new-api:latest
 
 # Using SQLite (default)
-docker run --name new-api -d --restart always \
+podman run --name new-api -d --restart always \
   -p 3000:3000 \
   -e TZ=Asia/Shanghai \
   -v ./data:/data \
   calciumion/new-api:latest
 
 # Using MySQL
-docker run --name new-api -d --restart always \
+podman run --name new-api -d --restart always \
   -p 3000:3000 \
   -e SQL_DSN="root:123456@tcp(localhost:3306)/oneapi" \
   -e TZ=Asia/Shanghai \
@@ -95,7 +95,7 @@ docker run --name new-api -d --restart always \
   calciumion/new-api:latest
 
 # Using PostgreSQL
-docker run --name new-api -d --restart always \
+podman run --name new-api -d --restart always \
   -p 3000:3000 \
   -e SQL_DSN="postgres://root:123456@localhost:5432/oneapi" \
   -e TZ=Asia/Shanghai \
@@ -117,6 +117,17 @@ docker run --name new-api -d --restart always \
 📖 For more deployment methods, please refer to [Deployment Guide](https://docs.newapi.pro/en/docs/installation)
 
 ---
+
+### Local Development
+
+```bash
+just dev-wt-dev   # containerized PostgreSQL + local Go API (dev tag, auto-login) + web HMR
+```
+
+- Default engine is Podman; start its socket first: `systemctl --user enable --now podman.socket`.
+- Switch to Docker without changing anything else: `DEV_CONTAINER_ENGINE=docker just dev-wt-dev`.
+- Dev compose files: `deploy/podman-dev/compose.yml` and `deploy/docker-dev/compose.yml`.
+- Other recipes: `just dev-db`, `just dev-web`, `just dev-api`; details in `AGENTS.md`.
 
 ## 📚 Documentation
 
@@ -285,9 +296,10 @@ docker run --name new-api -d --restart always \
 | `SQL_DSN` | Database connection string | - |
 | `REDIS_CONN_STRING` | Redis connection string | - |
 | `RELAY_IDLE_CONN_TIMEOUT` | Idle keep-alive timeout for relay HTTP clients, seconds. Defaults to Go standard library behavior; set `0` to disable | `90` |
+| `RELAY_TIMEOUT` | Whole relay request timeout, seconds. `0` = no limit; set it to bound non-stream requests | `0` |
 | `STREAMING_TIMEOUT` | Streaming timeout (seconds) | `300` |
-| `STREAM_SCANNER_MAX_BUFFER_MB` | Max per-line buffer (MB) for the stream scanner; increase when upstream sends huge image/base64 payloads | `64` |
-| `MAX_REQUEST_BODY_MB` | Max request body size (MB, counted **after decompression**; prevents huge requests/zip bombs from exhausting memory). Exceeding it returns `413` | `32` |
+| `STREAM_SCANNER_MAX_BUFFER_MB` | Max per-line buffer (MB) for the stream scanner; increase when upstream sends huge image/base64 payloads | `128` |
+| `MAX_REQUEST_BODY_MB` | Max request body size (MB, counted **after decompression**; prevents huge requests/zip bombs from exhausting memory). Exceeding it returns `413` | `128` |
 | `AZURE_DEFAULT_API_VERSION` | Azure API version | `2025-04-01-preview` |
 | `ERROR_LOG_ENABLED` | Error log switch | `false` |
 | `PYROSCOPE_URL` | Pyroscope server address | - |
@@ -313,10 +325,10 @@ git clone https://github.com/QuantumNous/new-api.git
 cd new-api
 
 # Edit configuration
-nano deploy/docker-compose.yml
+nano deploy/podman-prod/compose.yml
 
 # Start service
-docker compose -f deploy/docker-compose.yml up -d
+podman compose -f deploy/podman-prod/compose.yml up -d
 ```
 
 </details>
@@ -391,8 +403,8 @@ See [User authentication and login sessions](./docs/authentication.md) for the t
 **Retry configuration:** `Settings → Operation Settings → General Settings → Failure Retry Count`
 
 **Cache configuration:**
-- `REDIS_CONN_STRING`: Redis cache (recommended)
-- `MEMORY_CACHE_ENABLED`: Memory cache
+- `REDIS_CONN_STRING`: Redis cache (recommended, not required for a single-node deployment). Enabling Redis also enables the in-process channel cache.
+- `MEMORY_CACHE_ENABLED`: Set to `true` to enable the in-process channel cache without Redis. With both caches disabled, routing resolves channels from the database and still enforces group, status, key and request-path restrictions.
 
 ---
 

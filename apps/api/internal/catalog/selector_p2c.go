@@ -24,6 +24,10 @@ package channel
 //
 // 全池不可选（典型：全体冷却中）时走 faintRecall 的紧急召回：
 // 强制回收剩余冷却最短的单元（mono's recall_fainted）。
+//
+// Health kill switch (ChannelHealthEnabled=false): settledUnitState returns a
+// neutral view, so no cooldown filters or slow-start derates a candidate; only
+// the explicit hard-disable remains an exclusion (operator state, not health).
 
 import (
 	"math"
@@ -49,6 +53,16 @@ const p2cExploreRate = 0.005
 // keeps slivers of traffic via p2cExploreRate, so a single bad episode cannot
 // permanently starve it of state observations (self-heal path).
 const p2cLikelihoodFloor = 0.05
+
+// p2cLikelihoodTieEpsilon is the relative width under which two likelihoods
+// are treated as a tie and fall through to the sampling-order tie-break.
+// With a strict > comparison, a unit whose EWMA score is even 0.1% below a
+// peer loses every duel; because its score only moves after MinRequests
+// observations, it then receives zero traffic and can never recover. The
+// epsilon makes near-equal health/latency indistinguishable, which is also
+// the physically honest reading: the score is an estimate, not a ranking
+// oracle.
+const p2cLikelihoodTieEpsilon = 0.01
 
 // p2cScored is one candidate's duel inputs.
 type p2cScored struct {
@@ -108,7 +122,7 @@ func selectP2C(candidates []routeCandidate, alias string, now time.Time, rnd *ra
 
 	if len(eligible) == 0 {
 		// Whole pool down: emergency recall of the shortest-remaining unit.
-		// -1 when no unit is actually cooling (all terminal-disabled, or an
+		// -1 when no unit is actually cooling (all hard-disabled, or an
 		// empty pool): that is the caller's terminal no-candidate path.
 		if i := faintRecall(candidates, states, alias, now); i >= 0 {
 			return &candidates[i]
@@ -124,10 +138,10 @@ func selectP2C(candidates []routeCandidate, alias string, now time.Time, rnd *ra
 // so find the candidate with the shortest remaining cooldown and force-end
 // that cooldown, returning the unit for the current request.
 //
-// Only live cooling windows qualify: a terminal-disabled unit reports zero
-// remaining, and recalling it would hand back a unit the state machine
-// permanently excluded (restoration is the operator's RecoverUnit, not the
-// selector's job). Ties keep the first candidate in pool order — the pool
+// Only live cooling windows qualify: a hard-disabled unit reports zero
+// remaining, and recalling it would hand back a unit the operator (or a
+// conclusive key probe) explicitly excluded (restoration is RecoverUnit, not
+// the selector's job). Ties keep the first candidate in pool order — the pool
 // order is stable, so the result is deterministic.
 //
 // The force recall is best-effort: it settles the unit without a strike
@@ -155,6 +169,7 @@ func faintRecall(candidates []routeCandidate, states []UnitHealthState, alias st
 	if best == -1 {
 		return -1
 	}
+
 	if err := ForceRecallUnit(routeHealthKey(candidates[best], alias), now); err != nil {
 		common.SysError("unit force recall failed: " + err.Error())
 	}
@@ -337,18 +352,32 @@ func compareP2C(scored []p2cScored, choices int, exploreRate float64, src p2cSou
 		return scored[starving[src.intN(len(starving))]]
 	}
 
-	// The duel: higher likelihood wins; ties go to the earlier sample
-	// (sampling order). Scanning pool order with that comparator yields
-	// the same winner as mono's max_by, which is order-independent on a
-	// total order.
+	// The duel: higher likelihood wins; near-equal likelihoods and exact
+	// ties go to the earlier sample (sampling order). The epsilon matters:
+	// with a strict > a unit 0.1% below a peer wins nothing, and because its
+	// score only moves after MinRequests observations it can never recover.
+	// Scanning pool order with that comparator yields the same winner as
+	// mono's max_by, which is order-independent on a total order.
 	best := pool[0]
 	for _, idx := range pool[1:] {
-		if scored[idx].likelihood > scored[best].likelihood ||
-			(scored[idx].likelihood == scored[best].likelihood && firstSeen[idx] < firstSeen[best]) {
+		a, b := scored[idx].likelihood, scored[best].likelihood
+		if likelihoodsTied(a, b) {
+			if firstSeen[idx] < firstSeen[best] {
+				best = idx
+			}
+			continue
+		}
+		if a > b {
 			best = idx
 		}
 	}
 	return scored[best]
+}
+
+// likelihoodsTied reports whether two likelihoods are within the relative
+// tie epsilon. Both inputs are non-negative and at least p2cLikelihoodFloor.
+func likelihoodsTied(a, b float64) bool {
+	return math.Abs(a-b) <= math.Max(a, b)*p2cLikelihoodTieEpsilon
 }
 
 // pickWeightedIndex draws one index by cumulative weighted sampling over

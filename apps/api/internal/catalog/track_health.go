@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -10,7 +11,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/settings"
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
@@ -73,6 +73,15 @@ func classifyChannelOutcomeUnlocked(state *ChannelHealthState, err *types.NewAPI
 	if err == nil {
 		state.UnauthorizedRun = 0
 		return OutcomeSuccess
+	}
+
+	// A client-canceled request says nothing about the channel: the transport
+	// failure rides a 500 wrapper, so it must not derate the ledger. Unlike
+	// the other neutral branches this does NOT reset the 401 run — a cancel
+	// is not evidence of recovery, and resetting would let a canceling client
+	// mask a dead credential. Mirrors ClassifyUnitOutcome's cancel rule.
+	if errors.Is(err, context.Canceled) {
+		return OutcomeNeutral
 	}
 
 	// Channel errors or bad response body are always fatal.
@@ -230,39 +239,12 @@ func (h *HealthStore) recordChannelOutcome(channelID int, modelName string, outc
 // model on the channel once the count reaches CooldownDisableStreak. Caller
 // must hold h.mu.
 func (h *HealthStore) escalateModelLocked(state *ChannelHealthState, cfg *ChannelHealthSetting, channelID int, modelName string) {
-	if cfg.CooldownDisableStreak <= 0 {
-		return
-	}
-	if state.ModelCooldowns == nil {
-		state.ModelCooldowns = make(map[string]int, 1)
-	}
-	state.ModelCooldowns[modelName]++
-	if state.ModelCooldowns[modelName] < cfg.CooldownDisableStreak {
-		return
-	}
-	reached := state.ModelCooldowns[modelName]
-	delete(state.ModelCooldowns, modelName)
-	disable := ChannelModelDisabler
-	go func() {
-		if err := disable(channelID, modelName); err != nil {
-			common.SysError(fmt.Sprintf("failed to disable model %q on channel %d after repeated cooldowns: %s",
-				modelName, channelID, err.Error()))
-			// Put the count back so the next cooldown retries the disable.
-			h.mu.Lock()
-			defer h.mu.Unlock()
-			if current, ok := h.states[channelID]; ok {
-				if current.ModelCooldowns == nil {
-					current.ModelCooldowns = make(map[string]int, 1)
-				}
-				if current.ModelCooldowns[modelName] < reached {
-					current.ModelCooldowns[modelName] = reached
-				}
-			}
-			return
-		}
-		common.SysLog(fmt.Sprintf("model %q disabled on channel %d: cooldown repeated %d times without recovery",
-			modelName, channelID, reached))
-	}()
+	// Auto-disabling models on repeated cooldowns is disabled: health
+	// exclusion is the live cooldown window only, so a model recovers
+	// automatically when its cooldown expires (ferrite semantics).
+	// CooldownDisableStreak is retained for config compatibility but no
+	// longer drives a disable.
+	return
 }
 
 // RecordRequestAttempts applies health accounting once for a whole client
@@ -656,7 +638,7 @@ func DefaultChannelHealthSetting() *ChannelHealthSetting {
 		CooldownMaxSeconds:         60,
 		CooldownMaxEjectionPercent: 50,
 		CooldownAlpha:              0.3,
-		CooldownDisableStreak:      40,
+		CooldownDisableStreak:      0,
 	}
 }
 

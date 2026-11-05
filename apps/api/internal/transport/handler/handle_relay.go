@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/billing"
@@ -201,12 +202,16 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 	}
 
 	defer func() {
-		// Only return quota if downstream failed and quota was actually pre-consumed
+		// Refund unconditionally whenever a session was pre-consumed: a panic
+		// in any downstream helper still runs this defer with newAPIError==nil,
+		// so gating on newAPIError would strand the pre-consumed quota. BillingSession.Refund
+		// is a no-op once settled (success path) and idempotent, so calling it here is safe;
+		// the FreeModel path leaves relayInfo.Billing nil and is guarded by the != nil check.
+		if relayInfo.Billing != nil {
+			relayInfo.Billing.Refund(c)
+		}
 		if newAPIError != nil {
 			newAPIError = billing.NormalizeViolationFeeError(newAPIError)
-			if relayInfo.Billing != nil {
-				relayInfo.Billing.Refund(c)
-			}
 			billing.ChargeViolationFeeIfNeeded(c, relayInfo, newAPIError)
 		}
 	}()
@@ -376,6 +381,38 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 			handle.ObserveLatency(attemptLatencyMs)
 		}
 
+		if newAPIError == nil && relayInfo.SettledUpstreamFailure {
+			// Billing already settled the charge for this upstream stream cut,
+			// so the attempt is terminal: retrying would append a second answer
+			// after content the client already received, and refunding would
+			// undo the settlement. The upstream still cut the stream, so both
+			// health ledgers must see a failed attempt instead of the success
+			// newAPIError == nil suggests.
+			settledErr := settledUpstreamFailureError()
+			attempts = append(attempts, catalog.ChannelAttempt{
+				ChannelID: channel.Id,
+				ModelName: relayInfo.OriginModelName,
+				Outcome:   catalog.OutcomeFatal,
+			})
+			if healthErr := catalog.ReportOutcome(routeKey, catalog.ClassifyUnitOutcome(settledErr, channel.Id), 0, -1, time.Now()); healthErr != nil {
+				logger.LogError(c.Context(), fmt.Sprintf("record unit outcome failed: %s", healthErr.Error()))
+			}
+			routeStats := classifyRouteStatsOutcome(settledErr)
+			if handle != nil {
+				if routeStats == routeStatsFatal {
+					observeAttemptTiming()
+					handle.ObserveSuccess(routestats.FatalObservation)
+				}
+				routestats.RecordAttempt(requestId, relayInfo.RetryIndex, handle.Key(),
+					routestats.AuditOutcomeFromRouteStats(int(routeStats)),
+					c.Header("X-Request-Id"), common.GetCtxKeyString(c, constant.ContextKeyRoutePath), relayInfo.UsingGroup)
+			}
+			gopool.Go(func() {
+				usage.RecordRelaySample(relayInfo, false, 0)
+			})
+			return
+		}
+
 		if newAPIError == nil {
 			// Two independent signals are charged for one attempt, and both must
 			// fire. The soft signal (#405 EWMA) only nudges a continuous
@@ -505,6 +542,17 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 	}
 }
 
+// settledUpstreamFailureError synthesizes the 502 that classifies an already
+// settled upstream cut for the unit state machine and the route-stats EWMA.
+// Billing settled the charge before the relay loop saw the attempt, so this
+// error is never returned to the client, retried, or refunded; it exists only
+// so the standard 5xx failure classification applies unchanged.
+func settledUpstreamFailureError() *types.NewAPIError {
+	return types.NewOpenAIError(
+		errors.New("upstream stream closed before the answer was complete"),
+		types.ErrorCodeBadResponse, http.StatusBadGateway)
+}
+
 func addUsedChannel(c contract.Context, channelId int) {
 	useChannel := c.GetStringSlice("use_channel")
 	useChannel = append(useChannel, fmt.Sprintf("%d", channelId))
@@ -626,6 +674,11 @@ const (
 
 func classifyRouteStatsOutcome(err *types.NewAPIError) routeStatsOutcome {
 	if err == nil {
+		return routeStatsNeutral
+	}
+	// A client cancel is not route evidence: the caller abandoned the request,
+	// so its 500 wrapper must not derate the soft EWMA.
+	if errors.Is(err, context.Canceled) {
 		return routeStatsNeutral
 	}
 	if types.IsChannelError(err) || err.GetErrorCode() == types.ErrorCodeBadResponseBody {
@@ -831,7 +884,11 @@ func RelayTask(c contract.Context) {
 	var result *relay.TaskSubmitResult
 	var taskErr *taskdto.TaskError
 	defer func() {
-		if taskErr != nil && relayInfo.Billing != nil {
+		// Refund unconditionally whenever a session was pre-consumed: a panic
+		// on the async task path must not strand the pre-consumed quota. BillingSession.Refund
+		// is a no-op once settled (success path) and idempotent, so calling it here is safe;
+		// the FreeModel path leaves relayInfo.Billing nil and is guarded by the != nil check.
+		if relayInfo.Billing != nil {
 			relayInfo.Billing.Refund(c)
 		}
 	}()
@@ -967,6 +1024,11 @@ func respondTaskError(c contract.Context, taskErr *taskdto.TaskError) {
 
 func shouldRetryTaskRelay(c contract.Context, channelId int, taskErr *taskdto.TaskError, retryTimes int) bool {
 	if taskErr == nil {
+		return false
+	}
+	// The client is gone: re-dialing upstream repeats a request nobody is
+	// waiting for. Mirrors classifyAttempt's cancel rule for the sync loop.
+	if errors.Is(taskErr.Error, context.Canceled) {
 		return false
 	}
 	if catalog.ShouldSkipRetryAfterChannelAffinityFailure(c) {

@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"math"
 	"sync"
 	"testing"
 	"time"
@@ -34,6 +35,54 @@ func TestReportOutcome_PersistsAndBumpsVersion(t *testing.T) {
 	assert.Equal(t, 2, row.Version, "an accepted CAS transition bumps the version by one")
 	assert.Equal(t, 1, row.CooldownStreak, "one fatal climbs the ledger one rung")
 	assert.Greater(t, row.CooldownUntilMs, int64(0), "the fatal arms a live cooldown")
+}
+
+// TestSettledUnitStateAgesStarvedScore pins the read-side EWMA decay: a unit
+// whose score was last updated one decay constant ago must drift back toward
+// 1.0 even though it receives no outcomes. Without this a starved unit keeps
+// its degraded score forever and loses every P2C duel.
+func TestSettledUnitStateAgesStarvedScore(t *testing.T) {
+	withUnitHealthDB(t)
+	cfg := freshUnitConfig()
+	withUnitHealthSetting(t, cfg)
+	const nowMs = int64(50_000_000)
+	anchor := nowMs - cfg.ScoreDecayTauMs
+	key := RouteKey{ChannelId: 9510, KeyIndex: 0, Model: "aging-model"}
+	seedUnitHealthRow(t, &ChannelModelHealth{
+		ChannelId: key.ChannelId, KeyIndex: key.KeyIndex, Model: key.Model, Version: 1,
+		EwmaScore: 0.6, ScoreUpdatedAtMs: anchor,
+	})
+
+	st := settledUnitState(key, nowMs)
+	want := 1 - (1-0.6)*math.Exp(-1)
+	assert.InDelta(t, want, st.EwmaScore, 1e-9, "one tau of idle time must age the penalty")
+	assert.Equal(t, nowMs, st.ScoreUpdatedAtMs, "the aging anchor advances with the read")
+}
+
+// TestAutoRecoverDisabledUnitHealthRevivesOnlyAutoMarked pins the startup
+// recovery contract: a ratchet-era row (HardDisabled + AutoDisabled) is
+// revived, while an operator hard-disable (HardDisabled without the auto
+// marker) survives untouched.
+func TestAutoRecoverDisabledUnitHealthRevivesOnlyAutoMarked(t *testing.T) {
+	withUnitHealthDB(t)
+	autoKey := RouteKey{ChannelId: 9520, KeyIndex: 0, Model: "auto-recovered"}
+	manualKey := RouteKey{ChannelId: 9521, KeyIndex: 0, Model: "manual-kept"}
+	seedUnitHealthRow(t, &ChannelModelHealth{
+		ChannelId: autoKey.ChannelId, KeyIndex: autoKey.KeyIndex, Model: autoKey.Model, Version: 1,
+		HardDisabled: true, AutoDisabled: true,
+	})
+	seedUnitHealthRow(t, &ChannelModelHealth{
+		ChannelId: manualKey.ChannelId, KeyIndex: manualKey.KeyIndex, Model: manualKey.Model, Version: 1,
+		HardDisabled: true,
+	})
+
+	AutoRecoverDisabledUnitHealth()
+
+	autoRow := readUnitRow(t, autoKey)
+	assert.False(t, autoRow.HardDisabled, "an auto-marked hard-disable must be revived")
+	assert.False(t, autoRow.AutoDisabled, "recovery clears the auto marker")
+	manualRow := readUnitRow(t, manualKey)
+	assert.True(t, manualRow.HardDisabled, "an operator hard-disable must survive")
 }
 
 // TestReportOutcome_CasContentionNoLostUpdate is the multi-replica safety net:
@@ -79,13 +128,12 @@ func TestForceRecallUnit_ClearsCooldownKeepsStreaks(t *testing.T) {
 	assert.Equal(t, int64(0), row.CooldownUntilMs, "recall clears the live deadline")
 	assert.True(t, row.RampPending, "recall re-arms the slow-start ramp")
 	assert.Equal(t, 1, row.CooldownStreak, "recall keeps the cooldown ledger")
-	assert.Equal(t, 0, row.DisableStreak, "recall (strike=false) never adds a disable strike")
+	assert.True(t, row.ProbePending, "a force recall puts the unit on recovery probation")
 }
 
 // TestRecoverUnit_ClearsTerminalArmsRamp pins the admin revive: a
-// terminal-disabled unit clears the strikes, drops any cooldown, and re-enters
-// through the ramp. The EWMA history is preserved, not reset. Terminal is
-// derived from the strike cap, so the test asserts on DisableStreak.
+// hard-disabled unit clears the hard-disable flag, drops any cooldown, and
+// re-enters through the ramp. The EWMA history is preserved, not reset.
 func TestRecoverUnit_ClearsTerminalArmsRamp(t *testing.T) {
 	withUnitHealthDB(t)
 	key := RouteKey{ChannelId: 9504, KeyIndex: 0, Model: "recover-model"}
@@ -94,13 +142,13 @@ func TestRecoverUnit_ClearsTerminalArmsRamp(t *testing.T) {
 		EwmaScore: 0.6,
 	}).Error)
 	require.NoError(t, DisableUnit(key, time.Now()))
-	assert.Equal(t, UnitDisableStreakCap, readUnitRow(t, key).DisableStreak,
-		"disable parks the unit at the strike cap (terminal)")
+	assert.True(t, readUnitRow(t, key).HardDisabled,
+		"disable persists the hard-disable flag (terminal)")
 
 	require.NoError(t, RecoverUnit(key, time.Now()))
 
 	row := readUnitRow(t, key)
-	assert.Equal(t, 0, row.DisableStreak, "recover clears the terminal strikes")
+	assert.False(t, row.HardDisabled, "recover clears the hard-disable flag")
 	assert.Equal(t, int64(0), row.CooldownUntilMs, "recover drops any live cooldown")
 	assert.True(t, row.RampPending, "recover re-arms the slow-start ramp")
 	assert.InDelta(t, 0.6, row.EwmaScore, 1e-9, "recover keeps the EWMA history")

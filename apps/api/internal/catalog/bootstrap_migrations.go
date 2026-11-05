@@ -132,9 +132,17 @@ func migrateChannelModelHealthKeyIndex() error {
 //     cooldown_until_ms = until*1000 with a one-rung cooldown_streak, so
 //     the unit stays excluded for the remainder of its old window and then
 //     re-enters through the slow-start ramp;
-//   - a hard-disabled state becomes disable_streak at the cap
-//     (terminal-disabled: excluded until an admin or the emergency batch
-//     recovery clears it);
+//   - the legacy "disabled" state becomes hard_disabled without the auto
+//     marker: those rows were taken out by an explicit operator action or a
+//     conclusive key probe, so they are NOT silently revived by the recovery
+//     rework — an operator clears them through RecoverUnit;
+//   - a row the retired disable-strike ratchet parked at the cap
+//     (disable_streak >= UnitProbeFailCap) becomes hard_disabled AND
+//     auto_disabled: the ratchet was automation, not an operator decision,
+//     so startup auto-recovery (AutoRecoverDisabledUnitHealth) revives it
+//     back into rotation once its channel/key is routable. The dead
+//     disable_streak column is zeroed so a later read can never resurrect
+//     the ratchet;
 //   - the calm/dormant ladder rungs and the dormancy/failure counters are
 //     DROPPED here: the new model has no ladder levels, and a one-time loss
 //     of "how far up the old ladder" is adjudicated acceptable (the unit
@@ -153,7 +161,7 @@ func seedUnitHealthColumns() error {
 	updated := map[string]any{
 		"cooldown_until_ms": gorm.Expr("COALESCE(until, 0) * 1000"),
 		"cooldown_streak":   gorm.Expr("CASE WHEN until IS NOT NULL THEN 1 ELSE cooldown_streak END"),
-		"disable_streak":    gorm.Expr("CASE WHEN state = ? THEN ? ELSE disable_streak END", "disabled", 3),
+		"hard_disabled":     gorm.Expr("CASE WHEN state = ? THEN ? ELSE hard_disabled END", "disabled", true),
 		// One-time legacy state loss: the ladder markers are consumed.
 		"state":                  "healthy",
 		"isolation_level":        0,
@@ -162,5 +170,18 @@ func seedUnitHealthColumns() error {
 		"local_failure_count":    0,
 		"upstream_failure_count": 0,
 	}
-	return dbx.DB.Model(&ChannelModelHealth{}).Where(legacyWhere, "disabled").Updates(updated).Error
+	if err := dbx.DB.Model(&ChannelModelHealth{}).Where(legacyWhere, "disabled").Updates(updated).Error; err != nil {
+		return err
+	}
+	if !dbx.DB.Migrator().HasColumn(&ChannelModelHealth{}, "disable_streak") {
+		return nil
+	}
+	if err := dbx.DB.Model(&ChannelModelHealth{}).
+		Where("disable_streak >= ?", UnitProbeFailCap).
+		Updates(map[string]any{"hard_disabled": true, "auto_disabled": true}).Error; err != nil {
+		return err
+	}
+	return dbx.DB.Model(&ChannelModelHealth{}).
+		Where("disable_streak <> 0").
+		Update("disable_streak", 0).Error
 }

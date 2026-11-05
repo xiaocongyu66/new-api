@@ -112,9 +112,11 @@ func main() {
 			// or terminal-disabled unit silently rejoins rotation on restart.
 			catalog.InitUnitHealthCache()
 		}()
-
 		go catalog.SyncChannelCache(common.SyncFrequency)
 	}
+
+	catalog.AutoRecoverDisabledUnitHealth()
+	catalog.AutoRecoverAutoDisabledModels()
 
 	// Warm pricing after channel cache initialization so Advanced Custom
 	// endpoint inference can read cached route settings on first request.
@@ -407,6 +409,11 @@ func InitResources() error {
 	if common.IsMasterNode {
 		if err := dbinfra.MigrateRetiredFrontendOptions(); err != nil {
 			common.SysError("failed to migrate retired frontend options: " + err.Error())
+		}
+		// Runs before InitOptionMap so the migrated rows are loaded into the
+		// option map and the flattened billing_setting config in one pass.
+		if err := dbinfra.MigrateLegacyBillingOptions(); err != nil {
+			common.SysError("failed to migrate legacy billing options: " + err.Error())
 		}
 	}
 	dbinfra.InitOptionMap()

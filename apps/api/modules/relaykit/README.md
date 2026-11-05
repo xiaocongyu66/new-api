@@ -11,7 +11,7 @@ RelayKit 是从 [new-api](https://github.com/QuantumNous/new-api) 中拆分出�
 - 自动根据 DTO 类型识别源协议，并选择内置的直接或多跳转换路径
 - 返回转换器 ID、质量等级、实际转换步骤和统一 usage，方便审计与调试
 - 支持常用的文本、多模态内容、工具调用、推理内容和 usage 映射
-- 作为独立 Go module 构建，不依赖 new-api 主模块、Gin、数据库或全局设置
+- 作为独立 Go module 构建，不依赖 new-api 主模块、数据库或全局设置
 
 ## 支持矩阵
 
@@ -172,6 +172,8 @@ usage := state.Usage()
 ```
 
 RelayKit 不负责 SSE 的读取和写入。宿主需要将每个 SSE 事件解析为对应 DTO，并将转换结果重新编码后发送给下游。不要省略 `FinalizeStreamResponse`，部分转换器会在该阶段补发终止事件或最终 usage。
+
+OpenAI Chat 转 Claude 时，携带 `finish_reason` 的最后一帧也可能包含文本或工具增量，转换器会保留这些内容。未随结束帧提供 usage 时，结束事件可延后到后续 usage 或正常结束后的 finalizer；宿主不能把最后一帧再次送入 chunk converter。使用兼容入口 `ConvertStreamResponse` 的宿主可以调用 `FinalizeStreamResponseOpenAI2Claude(meta)` 发出尚未发送的终止事件，该调用幂等。宿主须自行区分正常结束和取消、超时、读取失败，异常结束不能据此伪造 `message_stop`。
 
 ## 转换上下文
 

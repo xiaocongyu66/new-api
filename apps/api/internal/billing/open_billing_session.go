@@ -54,6 +54,13 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	// 1) 调整资金来源（仅在尚未提交时执行，防止重复调用）
 	if !s.fundingSettled {
 		if err := s.funding.Settle(delta); err != nil {
+			// SubscriptionFunding may have committed the subscription leg and
+			// failed only on the wallet-overflow leg. Marking the funding as
+			// settled keeps the unconditional deferred Refund from returning an
+			// already-committed charge, which would produce a credit.
+			if sub, ok := s.funding.(*SubscriptionFunding); ok && sub.WalletOverflow > 0 {
+				s.fundingSettled = true
+			}
 			return err
 		}
 		s.fundingSettled = true
@@ -72,9 +79,11 @@ func (s *BillingSession) Settle(actualQuota int) error {
 				s.relayInfo.UserId, s.relayInfo.TokenId, delta, tokenErr.Error()))
 		}
 	}
-	// 3) 更新 relayInfo 上的订阅 PostDelta（用于日志）
-	if s.funding.Source() == settlecore.BillingSourceSubscription {
-		s.relayInfo.SubscriptionPostDelta += int64(delta)
+	// 3) 更新 relayInfo 上的订阅 PostDelta（用于日志）。
+	// 交付后结算超出订阅剩余额度的部分已记入钱包欠费，不应再算进订阅消耗。
+	if sub, ok := s.funding.(*SubscriptionFunding); ok {
+		s.relayInfo.SubscriptionPostDelta += int64(delta) - sub.WalletOverflow
+		s.relayInfo.SubscriptionWalletOverflow += sub.WalletOverflow
 	}
 	s.settled = true
 	return tokenErr
@@ -340,6 +349,7 @@ func (s *BillingSession) syncRelayInfo() {
 		info.SubscriptionId = sub.subscriptionId
 		info.SubscriptionPreConsumed = sub.preConsumed + int64(s.extraReserved)
 		info.SubscriptionPostDelta = 0
+		info.SubscriptionWalletOverflow = 0
 		info.SubscriptionAmountTotal = sub.AmountTotal
 		info.SubscriptionAmountUsedAfterPreConsume = sub.AmountUsedAfter + int64(s.extraReserved)
 		info.SubscriptionPlanId = sub.PlanId
@@ -347,6 +357,7 @@ func (s *BillingSession) syncRelayInfo() {
 	} else {
 		info.SubscriptionId = 0
 		info.SubscriptionPreConsumed = 0
+		info.SubscriptionWalletOverflow = 0
 	}
 }
 

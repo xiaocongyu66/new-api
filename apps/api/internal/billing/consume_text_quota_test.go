@@ -1113,6 +1113,107 @@ func TestCalculateTextQuotaSummaryPerCallWithOutputNotWaived(t *testing.T) {
 	assert.False(t, summary.EmptyResponseWaived)
 }
 
+func TestCalculateTextQuotaSummaryObservedReasoningOnlyChargedAsUpstreamTruncated(t *testing.T) {
+	setEmptyResponseMultiplier(t, 0.3)
+	setTruncatedResponseMultiplier(t, 0.3)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	relayInfo := perCallRelayInfo(0.38, 1)
+	relayInfo.StreamContentObserved = true
+	relayInfo.StreamStatus = relaycommon.NewStreamStatus()
+	relayInfo.StreamStatus.SetEndReason(relaycommon.StreamEndReasonDone, nil)
+	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 15, TotalTokens: 29}
+
+	summary := calculateTextQuotaSummary(ctxRaw, relayInfo, usage)
+	applyEmptyResponseMultiplier(relayInfo, &summary, "")
+	applyTruncatedResponseMultiplier(relayInfo, &summary, false)
+
+	expected := int(decimal.NewFromFloat(0.38).Mul(decimal.NewFromFloat(float64(common.QuotaPerUnit))).Mul(decimal.NewFromFloat(0.3)).IntPart())
+	require.Equal(t, expected, summary.Quota, "reasoning-only output is an incomplete upstream delivery")
+	assert.False(t, summary.EmptyResponseDetected)
+	assert.True(t, summary.TruncatedResponseApplied)
+	assert.Equal(t, "upstream", summary.StreamCut)
+}
+
+func TestCalculateTextQuotaSummaryObservedTextNotWaived(t *testing.T) {
+	setEmptyResponseMultiplier(t, 0)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	relayInfo := perCallRelayInfo(0.38, 1)
+	relayInfo.StreamContentObserved = true
+	relayInfo.StreamSawTextContent = true
+	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 0, TotalTokens: 14}
+
+	summary := calculateTextQuotaSummary(ctxRaw, relayInfo, usage)
+	applyEmptyResponseMultiplier(relayInfo, &summary, "")
+
+	require.Equal(t, int(0.38*float64(common.QuotaPerUnit)), summary.Quota, "delivered text keeps the full charge even without upstream usage")
+	assert.False(t, summary.EmptyResponseWaived)
+}
+
+func TestCalculateTextQuotaSummaryObservedToolCallNotWaived(t *testing.T) {
+	setEmptyResponseMultiplier(t, 0)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	relayInfo := perCallRelayInfo(0.38, 1)
+	relayInfo.StreamContentObserved = true
+	relayInfo.StreamSawToolCall = true
+	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 0, TotalTokens: 14}
+
+	summary := calculateTextQuotaSummary(ctxRaw, relayInfo, usage)
+	applyEmptyResponseMultiplier(relayInfo, &summary, "")
+
+	require.Equal(t, int(0.38*float64(common.QuotaPerUnit)), summary.Quota, "a tool-call-only response is delivered work")
+	assert.False(t, summary.EmptyResponseWaived)
+}
+
+func TestCalculateTextQuotaSummaryObservedMediaNotWaived(t *testing.T) {
+	setEmptyResponseMultiplier(t, 0)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	relayInfo := perCallRelayInfo(0.38, 1)
+	relayInfo.StreamContentObserved = true
+	relayInfo.StreamSawMediaContent = true
+	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 0, TotalTokens: 14}
+
+	summary := calculateTextQuotaSummary(ctxRaw, relayInfo, usage)
+	applyEmptyResponseMultiplier(relayInfo, &summary, "")
+
+	require.Equal(t, int(0.38*float64(common.QuotaPerUnit)), summary.Quota, "an image-only response is delivered work")
+	assert.False(t, summary.EmptyResponseWaived)
+}
+
+func TestApplyTruncatedResponseMultiplierHandlerStopNotClassified(t *testing.T) {
+	setTruncatedResponseMultiplier(t, 0.3)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	relayInfo := perCallRelayInfo(0.38, 1)
+	relayInfo.StreamContentObserved = true
+	relayInfo.StreamSawTextContent = true
+	relayInfo.StreamStatus = relaycommon.NewStreamStatus()
+	relayInfo.StreamStatus.SetEndReason(relaycommon.StreamEndReasonHandlerStop, nil)
+	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 10, TotalTokens: 24}
+
+	summary := calculateTextQuotaSummary(ctxRaw, relayInfo, usage)
+	applyTruncatedResponseMultiplier(relayInfo, &summary, false)
+
+	require.Equal(t, int(0.38*float64(common.QuotaPerUnit)), summary.Quota, "handler_stop is ambiguous and must not discount")
+	assert.Empty(t, summary.StreamCut)
+}
+
+func TestApplyTruncatedResponseMultiplierFinishReasonSuppressesDiscount(t *testing.T) {
+	setTruncatedResponseMultiplier(t, 0.3)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	relayInfo := perCallRelayInfo(0.38, 1)
+	relayInfo.StreamContentObserved = true
+	relayInfo.StreamSawTextContent = true
+	relayInfo.StreamFinishReason = "stop"
+	relayInfo.StreamStatus = relaycommon.NewStreamStatus()
+	relayInfo.StreamStatus.SetEndReason(relaycommon.StreamEndReasonScannerErr, nil)
+	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 10, TotalTokens: 24}
+
+	summary := calculateTextQuotaSummary(ctxRaw, relayInfo, usage)
+	applyTruncatedResponseMultiplier(relayInfo, &summary, false)
+
+	require.Equal(t, int(0.38*float64(common.QuotaPerUnit)), summary.Quota, "a completed answer must not be discounted")
+	assert.Empty(t, summary.StreamCut)
+}
+
 func TestCalculateTextQuotaSummaryPerCallEmptyWithToolSurchargeNotWaived(t *testing.T) {
 	setEmptyResponseMultiplier(t, 0)
 	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
@@ -1281,4 +1382,268 @@ func TestCalculateTextQuotaSummaryPerCallImageModelNotWaived(t *testing.T) {
 
 	require.Equal(t, 180000, summary.Quota)
 	assert.False(t, summary.EmptyResponseWaived)
+}
+
+func setTruncatedResponseMultiplier(t *testing.T, multiplier float64) {
+	t.Helper()
+	old := quotaSetting.TruncatedResponseMultiplier
+	quotaSetting.TruncatedResponseMultiplier = multiplier
+	t.Cleanup(func() { quotaSetting.TruncatedResponseMultiplier = old })
+}
+
+func truncatedCutRelayInfo() *relaycommon.RelayInfo {
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "some-token-model",
+		RelayFormat:     types.RelayFormatOpenAI,
+		PriceData: hosttypes.PriceData{
+			ModelRatio:      2,
+			CompletionRatio: 3,
+			UsePrice:        false,
+			GroupRatioInfo:  hosttypes.GroupRatioInfo{GroupRatio: 1},
+		},
+		StartTime: time.Now(),
+	}
+	relayInfo.StreamStatus = relaycommon.NewStreamStatus()
+	return relayInfo
+}
+
+// prompt 1000 + completion 100 at model ratio 2, completion ratio 3:
+// full quota = (1000 + 100*3) * 2 = 2600; completion side = 600.
+// A 0.3 cut multiplier discounts the completion side by 0.7 -> 2600-420.
+func TestApplyTruncatedResponseMultiplierTokenBilledDiscountsCompletionOnly(t *testing.T) {
+	setTruncatedResponseMultiplier(t, 0.3)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
+	relayInfo := truncatedCutRelayInfo()
+	relayInfo.StreamStatus.SetEndReason(relaycommon.StreamEndReasonScannerErr, nil)
+	usage := &dto.Usage{PromptTokens: 1000, CompletionTokens: 100, TotalTokens: 1100}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	require.Equal(t, 2600, summary.Quota)
+	applyTruncatedResponseMultiplier(relayInfo, &summary, false)
+
+	require.Equal(t, 2180, summary.Quota, "prompt stays full price, completion side scales by 0.3")
+	assert.Equal(t, "upstream", summary.StreamCut)
+	assert.True(t, summary.TruncatedResponseApplied)
+	assert.Equal(t, 0.3, summary.TruncatedResponseMultiplier)
+}
+
+func TestApplyTruncatedResponseMultiplierClientGoneChargesFullPrice(t *testing.T) {
+	setTruncatedResponseMultiplier(t, 0.3)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
+	relayInfo := truncatedCutRelayInfo()
+	relayInfo.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, nil)
+	usage := &dto.Usage{PromptTokens: 1000, CompletionTokens: 100, TotalTokens: 1100}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	applyTruncatedResponseMultiplier(relayInfo, &summary, false)
+
+	require.Equal(t, 2600, summary.Quota, "user disconnects are charged at full price")
+	assert.Equal(t, "client", summary.StreamCut)
+	assert.False(t, summary.TruncatedResponseApplied)
+}
+
+func TestApplyTruncatedResponseMultiplierNoCutCases(t *testing.T) {
+	setTruncatedResponseMultiplier(t, 0.3)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
+	cases := []struct {
+		name      string
+		endReason relaycommon.StreamEndReason
+		sawFinish bool
+		format    types.RelayFormat
+	}{
+		{"clean done", relaycommon.StreamEndReasonDone, false, types.RelayFormatOpenAI},
+		{"plain eof", relaycommon.StreamEndReasonEOF, false, types.RelayFormatClaude},
+		{"scanner error after finish_reason", relaycommon.StreamEndReasonScannerErr, true, types.RelayFormatOpenAI},
+		{"non-stream none", relaycommon.StreamEndReasonNone, false, types.RelayFormatOpenAI},
+		{"image format scanner error", relaycommon.StreamEndReasonScannerErr, false, types.RelayFormatOpenAIImage},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			relayInfo := truncatedCutRelayInfo()
+			relayInfo.RelayFormat = tc.format
+			relayInfo.StreamStatus.SetEndReason(tc.endReason, nil)
+			relayInfo.StreamSawFinishReason = tc.sawFinish
+			usage := &dto.Usage{PromptTokens: 1000, CompletionTokens: 100, TotalTokens: 1100}
+
+			summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+			applyTruncatedResponseMultiplier(relayInfo, &summary, false)
+
+			require.Equal(t, 2600, summary.Quota)
+			assert.Empty(t, summary.StreamCut)
+			assert.False(t, summary.TruncatedResponseApplied)
+		})
+	}
+}
+
+func TestApplyTruncatedResponseMultiplierPerCallFoldsTotal(t *testing.T) {
+	setTruncatedResponseMultiplier(t, 0.3)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
+	relayInfo := perCallRelayInfo(0.38, 1)
+	relayInfo.StreamStatus = relaycommon.NewStreamStatus()
+	relayInfo.StreamStatus.SetEndReason(relaycommon.StreamEndReasonScannerErr, nil)
+	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 50, TotalTokens: 64}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	require.Equal(t, int(0.38*float64(common.QuotaPerUnit)), summary.Quota)
+	applyTruncatedResponseMultiplier(relayInfo, &summary, false)
+
+	require.Equal(t, int(0.38*float64(common.QuotaPerUnit)*0.3), summary.Quota,
+		"per-call billing has no output split, the total folds by the multiplier")
+	assert.Equal(t, "upstream", summary.StreamCut)
+	assert.True(t, summary.TruncatedResponseApplied)
+}
+
+// completion=0 with an upstream scanner error is owned by the empty-response
+// policy: the cut badge still marks the log, but only one discount applies.
+func TestApplyTruncatedResponseMultiplierEmptyPolicyTakesPrecedence(t *testing.T) {
+	setEmptyResponseMultiplier(t, 0.1)
+	setTruncatedResponseMultiplier(t, 0.3)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
+	relayInfo := truncatedCutRelayInfo()
+	relayInfo.StreamStatus.SetEndReason(relaycommon.StreamEndReasonScannerErr, nil)
+	usage := &dto.Usage{PromptTokens: 1000, CompletionTokens: 0, TotalTokens: 1000}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	applyEmptyResponseMultiplier(relayInfo, &summary, "")
+	applyTruncatedResponseMultiplier(relayInfo, &summary, false)
+
+	require.Equal(t, 200, summary.Quota, "only the empty-response multiplier folds the charge")
+	assert.True(t, summary.EmptyResponseDetected)
+	assert.Equal(t, "upstream", summary.StreamCut)
+	assert.False(t, summary.TruncatedResponseApplied)
+}
+
+func TestApplyTruncatedResponseMultiplierForcedUpstreamCut(t *testing.T) {
+	setTruncatedResponseMultiplier(t, 0.3)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
+	relayInfo := perCallRelayInfo(0.38, 1)
+	relayInfo.StreamContentObserved = true
+	relayInfo.StreamSawTextContent = true
+	relayInfo.StreamCutOverride = "upstream"
+	relayInfo.StreamStatus = relaycommon.NewStreamStatus()
+	relayInfo.StreamStatus.SetEndReason(relaycommon.StreamEndReasonEOF, nil)
+	usage := &dto.Usage{PromptTokens: 14, CompletionTokens: 10, TotalTokens: 24}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	applyTruncatedResponseMultiplier(relayInfo, &summary, false)
+
+	expected := int(decimal.NewFromFloat(0.38).Mul(decimal.NewFromFloat(float64(common.QuotaPerUnit))).Mul(decimal.NewFromFloat(0.3)).IntPart())
+	require.Equal(t, expected, summary.Quota, "an OpenAI EOF cut must settle at the truncated multiplier")
+	assert.Equal(t, "upstream", summary.StreamCut)
+}
+
+// TestApplyTruncatedResponseMultiplierMarksSettledUpstreamFailure is the
+// health-signal half of the settlement split: once billing decides an upstream
+// cut is the provider's fault and settles the charge, the relay loop must still
+// see a channel failure. A client disconnect or a clean stream must not mark
+// the attempt, because neither says anything about the channel.
+func TestApplyTruncatedResponseMultiplierMarksSettledUpstreamFailure(t *testing.T) {
+	setTruncatedResponseMultiplier(t, 0.3)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
+
+	cases := []struct {
+		name     string
+		prepare  func(*relaycommon.RelayInfo)
+		wantCut  string
+		wantMark bool
+	}{
+		{
+			name: "upstream scanner error marks the attempt",
+			prepare: func(info *relaycommon.RelayInfo) {
+				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonScannerErr, nil)
+			},
+			wantCut:  "upstream",
+			wantMark: true,
+		},
+		{
+			name: "handler-attributed cut at plain EOF marks the attempt",
+			prepare: func(info *relaycommon.RelayInfo) {
+				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonEOF, nil)
+				info.StreamCutOverride = "upstream"
+			},
+			wantCut:  "upstream",
+			wantMark: true,
+		},
+		{
+			name: "client disconnect does not mark the attempt",
+			prepare: func(info *relaycommon.RelayInfo) {
+				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, nil)
+			},
+			wantCut: "client",
+		},
+		{
+			name: "ping failure does not mark the attempt",
+			prepare: func(info *relaycommon.RelayInfo) {
+				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonPingFail, nil)
+			},
+			wantCut: "client",
+		},
+		{
+			name: "clean stream does not mark the attempt",
+			prepare: func(info *relaycommon.RelayInfo) {
+				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonDone, nil)
+			},
+		},
+		{
+			name: "scanner error after finish_reason does not mark the attempt",
+			prepare: func(info *relaycommon.RelayInfo) {
+				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonScannerErr, nil)
+				info.StreamSawFinishReason = true
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			relayInfo := truncatedCutRelayInfo()
+			tc.prepare(relayInfo)
+			usage := &dto.Usage{PromptTokens: 1000, CompletionTokens: 100, TotalTokens: 1100}
+
+			summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+			applyTruncatedResponseMultiplier(relayInfo, &summary, false)
+
+			assert.Equal(t, tc.wantCut, summary.StreamCut)
+			assert.Equal(t, tc.wantMark, relayInfo.SettledUpstreamFailure)
+		})
+	}
+}
+
+func TestApplyEmptyResponseMultiplierMarksSettledUpstreamFailure(t *testing.T) {
+	setEmptyResponseMultiplier(t, 0.1)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
+	relayInfo := truncatedCutRelayInfo()
+	relayInfo.StreamContentObserved = true
+	relayInfo.StreamStatus.SetEndReason(relaycommon.StreamEndReasonDone, nil)
+	usage := &dto.Usage{PromptTokens: 1000, CompletionTokens: 0, TotalTokens: 1000}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	applyEmptyResponseMultiplier(relayInfo, &summary, "")
+
+	require.True(t, summary.EmptyResponseDetected)
+	assert.True(t, relayInfo.SettledUpstreamFailure,
+		"a settled empty 200 is an upstream failure, not a channel success")
+}
+
+func TestApplyEmptyResponseMultiplierPingFailChargesFull(t *testing.T) {
+	setEmptyResponseMultiplier(t, 0)
+	ctxRaw, _ := fiberadapter.NewSyntheticContext(nil)
+	ctx := ctxRaw
+	relayInfo := truncatedCutRelayInfo()
+	relayInfo.StreamContentObserved = true
+	relayInfo.StreamStatus.SetEndReason(relaycommon.StreamEndReasonPingFail, nil)
+	usage := &dto.Usage{PromptTokens: 1000, CompletionTokens: 0, TotalTokens: 1000}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	applyEmptyResponseMultiplier(relayInfo, &summary, "")
+
+	require.False(t, summary.EmptyResponseDetected)
+	assert.False(t, relayInfo.SettledUpstreamFailure)
+	require.Equal(t, 2000, summary.Quota, "a client-side ping failure keeps the full charge")
 }
