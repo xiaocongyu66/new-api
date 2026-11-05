@@ -65,11 +65,11 @@
 git clone https://github.com/QuantumNous/new-api.git
 cd new-api
 
-# Edit deploy/podman-compose.yml configuration
-nano deploy/podman-compose.yml
+# Edit deploy/podman-prod/compose.yml configuration
+nano deploy/podman-prod/compose.yml
 
 # Start the service
-podman compose -f deploy/podman-compose.yml up -d
+podman compose -f deploy/podman-prod/compose.yml up -d
 ```
 
 <details>
@@ -314,10 +314,10 @@ git clone https://github.com/QuantumNous/new-api.git
 cd new-api
 
 # Edit configuration
-nano deploy/podman-compose.yml
+nano deploy/podman-prod/compose.yml
 
 # Start service
-podman compose -f deploy/podman-compose.yml up -d
+podman compose -f deploy/podman-prod/compose.yml up -d
 ```
 
 </details>
