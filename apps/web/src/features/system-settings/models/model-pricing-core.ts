@@ -251,6 +251,11 @@ const ContextTierSchema = z.object({
     .finite()
     .min(0, 'cache_price must be a number >= 0')
     .optional(),
+  cache_write_price: z
+    .number()
+    .finite()
+    .min(0, 'cache_write_price must be a number >= 0')
+    .optional(),
 })
 
 const ContextTierListSchema = z
@@ -337,6 +342,8 @@ function checkTierRowOrder(
           input_price: 'Input prices must increase from top to bottom.',
           output_price: 'Output prices must increase from top to bottom.',
           cache_price: 'Cache read prices must increase from top to bottom.',
+          cache_write_price:
+            'Cache write prices must increase from top to bottom.',
           price: 'Per-request prices must increase from top to bottom.',
         }
         return { kind: 'plain', messageKey: laneKeys[key] ?? key }
@@ -390,7 +397,12 @@ export function validateContextTiersStructured(
     return firstTierIssue(asPayload.error)
   }
 
-  return checkTierRowOrder(tiers, ['input_price', 'output_price', 'cache_price'])
+  return checkTierRowOrder(tiers, [
+    'input_price',
+    'output_price',
+    'cache_price',
+    'cache_write_price',
+  ])
 }
 
 const ContextCallTierSchema = z.object({
@@ -470,7 +482,14 @@ export function formatTierValidationError(
   return t(error.messageKey)
 }
 
-type PreviewTierRow = { max_context: number; input_price?: number; output_price?: number; cache_price?: number; price?: number }
+type PreviewTierRow = {
+  max_context: number
+  input_price?: number
+  output_price?: number
+  cache_price?: number
+  cache_write_price?: number
+  price?: number
+}
 
 function parsePreviewTiers(raw: string): PreviewTierRow[] {
   const text = (raw ?? '').trim()
@@ -530,6 +549,9 @@ function buildContextTierPreviewRows(
       parts.push(`${t('Output price')} $${tier.output_price ?? 0}`)
       if (tier.cache_price) {
         parts.push(`${t('Cache read price')} $${tier.cache_price}`)
+      }
+      if (tier.cache_write_price) {
+        parts.push(`${t('Cache write price')} $${tier.cache_write_price}`)
       }
     }
     void index

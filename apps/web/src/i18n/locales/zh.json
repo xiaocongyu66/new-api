@@ -6202,6 +6202,10 @@
     "Active billing method": "生效计费方式",
     "This method is what requests actually bill with. Every method below keeps its own stored prices; picking one without prices falls back to per-token ratios.": "请求实际按此处所选方式扣费。下方每种方式各自独立保存价格；所选方式未配置价格时按按量倍率扣费。",
     "Active method has no stored tier prices; requests will fall back to per-token ratios.": "生效方式未配置区间价格；请求将按按量倍率扣费。",
-    "Active method has no stored per-call prices; requests will fall back to per-token ratios.": "生效方式未配置按次价格；请求将按按量倍率扣费。"
+    "Active method has no stored per-call prices; requests will fall back to per-token ratios.": "生效方式未配置按次价格；请求将按按量倍率扣费。",
+    "Cache write $ / 1M": "缓存写 $/1M",
+    "cache_write_price must be a number >= 0": "缓存写价必须 ≥ 0",
+    "Cache write prices must increase from top to bottom.": "缓存写价必须从上到下递增。",
+    "Editing {{edited}}; requests bill with {{active}}.": "正在编辑「{{edited}}」；请求实际按「{{active}}」扣费。"
   }
 }

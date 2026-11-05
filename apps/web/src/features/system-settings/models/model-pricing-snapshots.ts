@@ -128,6 +128,8 @@ const ratioToPrice = (ratio?: string, denominator?: string) => {
 export const getModeLabel = (mode?: string) => {
   if (mode === 'per-request') return 'Per-request'
   if (mode === 'tiered_expr') return 'Expression'
+  if (mode === 'context_tier') return 'Per-token context tiers'
+  if (mode === 'context_tier_per_call') return 'Per-call context tiers'
   return 'Per-token'
 }
 

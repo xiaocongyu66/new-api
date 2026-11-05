@@ -45,6 +45,7 @@ type ContextTierRow = {
   inputPrice: string
   outputPrice: string
   cachePrice: string
+  cacheWritePrice: string
   price: string
 }
 
@@ -53,6 +54,7 @@ const emptyRow = (): ContextTierRow => ({
   inputPrice: '',
   outputPrice: '',
   cachePrice: '',
+  cacheWritePrice: '',
   price: '',
 })
 
@@ -115,6 +117,10 @@ function parseTiersValue(raw: string): {
           typeof t.output_price === 'number' ? String(t.output_price) : '',
         cachePrice:
           typeof t.cache_price === 'number' ? String(t.cache_price) : '',
+        cacheWritePrice:
+          typeof t.cache_write_price === 'number'
+            ? String(t.cache_write_price)
+            : '',
         price: typeof t.price === 'number' ? String(t.price) : '',
       }
     })
@@ -131,9 +137,12 @@ function serializeRows(rows: ContextTierRow[], kind: 'per_token' | 'per_call') {
       const priceFilled =
         kind === 'per_call'
           ? row.price.trim() !== ''
-          : [row.inputPrice, row.outputPrice, row.cachePrice].some(
-              (price) => price.trim() !== ''
-            )
+          : [
+              row.inputPrice,
+              row.outputPrice,
+              row.cachePrice,
+              row.cacheWritePrice,
+            ].some((price) => price.trim() !== '')
       return boundFilled || priceFilled
     })
     .map((row) => {
@@ -147,6 +156,9 @@ function serializeRows(rows: ContextTierRow[], kind: 'per_token' | 'per_call') {
         output_price: Number(row.outputPrice) || 0,
         ...(Number(row.cachePrice)
           ? { cache_price: Number(row.cachePrice) }
+          : {}),
+        ...(Number(row.cacheWritePrice)
+          ? { cache_write_price: Number(row.cacheWritePrice) }
           : {}),
       }
     })
@@ -230,8 +242,8 @@ export function ContextTierTable({ kind, value, onChange }: ContextTierTableProp
   }
 
   const gridClass = isPerCall
-    ? 'grid grid-cols-[minmax(0,1.7fr)_minmax(0,1.3fr)_auto] gap-x-2 gap-y-2.5'
-    : 'grid grid-cols-[minmax(0,1.2fr)_repeat(3,minmax(0,1fr))_auto] gap-x-2 gap-y-2.5'
+    ? 'grid grid-cols-[minmax(0,1.5fr)_minmax(0,1.1fr)_auto] gap-x-2 gap-y-2.5'
+    : 'grid grid-cols-[minmax(0,1.1fr)_repeat(4,minmax(0,1fr))_auto] gap-x-2 gap-y-2.5'
 
   const boundInput = (row: ContextTierRow, index: number) => (
     <InputGroup className='h-9 min-w-0'>
@@ -279,6 +291,7 @@ export function ContextTierTable({ kind, value, onChange }: ContextTierTableProp
               <span>{t('Input $ / 1M')}</span>
               <span>{t('Output $ / 1M')}</span>
               <span>{t('Cache read $ / 1M')}</span>
+              <span>{t('Cache write $ / 1M')}</span>
             </>
           )}
           <span aria-hidden />
@@ -289,25 +302,28 @@ export function ContextTierTable({ kind, value, onChange }: ContextTierTableProp
             {isPerCall ? (
               <PriceInput
                 value={row.price}
-                placeholder='0.01'
+                suffix={t('per request')}
                 onChange={(price) => updateRow(index, { price })}
               />
             ) : (
               <>
                 <PriceInput
                   value={row.inputPrice}
-                  placeholder='2.5'
                   onChange={(inputPrice) => updateRow(index, { inputPrice })}
                 />
                 <PriceInput
                   value={row.outputPrice}
-                  placeholder='10'
                   onChange={(outputPrice) => updateRow(index, { outputPrice })}
                 />
                 <PriceInput
                   value={row.cachePrice}
-                  placeholder='0.25'
                   onChange={(cachePrice) => updateRow(index, { cachePrice })}
+                />
+                <PriceInput
+                  value={row.cacheWritePrice}
+                  onChange={(cacheWritePrice) =>
+                    updateRow(index, { cacheWritePrice })
+                  }
                 />
               </>
             )}

@@ -93,6 +93,7 @@ import {
   type ModelRatioData,
   type PricingMode,
 } from './model-pricing-core'
+import { getModeLabel } from './model-pricing-snapshots'
 import { ContextTierTable } from './context-tier-table'
 import { PriceInput, PriceLane } from './model-pricing-inputs'
 import { formatPricingNumber } from './pricing-format'
@@ -134,7 +135,7 @@ export const ModelPricingSheet = forwardRef<
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side='right'
-        className={sideDrawerContentClassName('sm:max-w-2xl')}
+        className={sideDrawerContentClassName('sm:max-w-4xl')}
       >
         <SheetHeader className='sr-only'>
           <SheetTitle>{title}</SheetTitle>
@@ -421,18 +422,34 @@ export const ModelPricingEditorPanel = forwardRef<
   const watchedValues = form.watch()
   const previewRows = useMemo(
     () =>
-      buildPreviewRows(
-        watchedValues,
-        activeMethod,
-        billingExpr,
-        requestRuleExpr,
-        promptPrice,
-        lanePrices,
-        laneEnabled,
-        contextTiers,
-        contextCallTiers,
-        t
-      ),
+      [
+        {
+          key: 'active-method',
+          label: t('Active billing method'),
+          value:
+            activeMethod === pricingMode
+              ? t(getModeLabel(activeMethod))
+              : t(
+                  'Editing {{edited}}; requests bill with {{active}}.',
+                  {
+                    edited: t(getModeLabel(pricingMode)),
+                    active: t(getModeLabel(activeMethod)),
+                  }
+                ),
+        },
+        ...buildPreviewRows(
+          watchedValues,
+          pricingMode,
+          billingExpr,
+          requestRuleExpr,
+          promptPrice,
+          lanePrices,
+          laneEnabled,
+          contextTiers,
+          contextCallTiers,
+          t
+        ),
+      ],
     [
       activeMethod,
       billingExpr,

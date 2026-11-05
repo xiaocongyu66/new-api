@@ -34,6 +34,8 @@ export function PriceInput(props: {
   value: string
   placeholder?: string
   disabled?: boolean
+  /** Cost unit rendered after the amount; per-request prices are not per-1M. */
+  suffix?: string
   onChange: (value: string) => void
 }) {
   return (
@@ -46,7 +48,7 @@ export function PriceInput(props: {
         disabled={props.disabled}
         onChange={(event) => props.onChange(event.target.value)}
       />
-      <InputGroupAddon align='inline-end'>$/1M</InputGroupAddon>
+      <InputGroupAddon align='inline-end'>{props.suffix ?? '$/1M'}</InputGroupAddon>
     </InputGroup>
   )
 }

@@ -23,11 +23,12 @@ const BillingModeContextTierPerCall = "context_tier_per_call"
 
 // ContextTier describes one context interval.
 type ContextTier struct {
-	Name        string  `json:"name"`
-	MaxContext  int64   `json:"max_context"` // 0 means "no upper bound" (catch-all, must be last)
-	InputPrice  float64 `json:"input_price"`
-	OutputPrice float64 `json:"output_price"`
-	CachePrice  float64 `json:"cache_price,omitempty"`
+	Name            string  `json:"name"`
+	MaxContext      int64   `json:"max_context"` // 0 means "no upper bound" (catch-all, must be last)
+	InputPrice      float64 `json:"input_price"`
+	OutputPrice     float64 `json:"output_price"`
+	CachePrice      float64 `json:"cache_price,omitempty"`
+	CacheWritePrice float64 `json:"cache_write_price,omitempty"`
 }
 
 // ContextTierConfig is the persisted shape (model -> JSON).
@@ -161,6 +162,9 @@ func ContextTiersToExpr(raw string) (string, error) {
 		}
 		if t.CachePrice != 0 {
 			terms = append(terms, fmt.Sprintf("cr * %g", t.CachePrice))
+		}
+		if t.CacheWritePrice != 0 {
+			terms = append(terms, fmt.Sprintf("cc * %g", t.CacheWritePrice))
 		}
 		if len(terms) == 0 {
 			terms = append(terms, "0")
