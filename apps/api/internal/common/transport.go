@@ -99,7 +99,7 @@ var TranslateCtxMessage func(c contract.Context, key string, args ...map[string]
 
 func init() {
 	// Default until i18n installs the real implementation. Mirrors the header
-	// marker the gin variant sets so a missing init stays observable.
+	// marker set so a missing init stays observable.
 	TranslateCtxMessage = func(c contract.Context, key string, args ...map[string]any) string {
 		c.SetHeader("X-Translate-id", "d5e7afdfc7f03414b941f9c1e7096be9966510e7")
 		return key
@@ -118,7 +118,7 @@ func ParseCtxMultipartForm(c contract.Context) (*multipart.Form, error) {
 	return c.MultipartForm()
 }
 
-// MIME types business code matches on, mirroring the gin constants.
+// MIME types business code matches on.
 const (
 	MIMEPOSTForm          = "application/x-www-form-urlencoded"
 	MIMEMultipartPOSTForm = "multipart/form-data"
