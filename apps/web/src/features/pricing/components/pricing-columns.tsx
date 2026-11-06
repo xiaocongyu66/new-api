@@ -33,6 +33,10 @@ import { DEFAULT_TOKEN_UNIT } from '../constants'
 import {
   getDynamicDisplayGroupRatio,
   getDynamicPricingSummary,
+  getDynamicPricingTiers,
+  getDynamicPriceEntries,
+  getTierBoundLabel,
+  PRIMARY_DYNAMIC_FIELDS,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
 import { isTokenBasedModel } from '../lib/model-helpers'
@@ -162,6 +166,31 @@ export function usePricingColumns(
             )
           }
 
+          // Per-tier ladder: bound + the primary prices for that tier, so the
+          // table shows the full interval structure, not just tier #1.
+          const tierLadder = getDynamicPricingTiers(model)
+            .slice(0, 3)
+            .map((tier, index) => {
+              const bound = getTierBoundLabel(
+                getDynamicPricingTiers(model),
+                index
+              )
+              const entries = getDynamicPriceEntries(tier, {
+                tokenUnit,
+                showRechargePrice,
+                priceRate,
+                usdExchangeRate,
+                groupRatioMultiplier: getDynamicDisplayGroupRatio(
+                  model,
+                  selectedGroup
+                ),
+              })
+                .filter((entry) => PRIMARY_DYNAMIC_FIELDS.has(entry.field))
+                .map((entry) => stripTrailingZeros(entry.formatted))
+              return { bound, entries, index }
+            })
+            .filter((tier) => tier.entries.length > 0)
+
           return (
             <div className='max-w-full min-w-0'>
               <span className='font-mono text-sm tabular-nums'>
@@ -184,6 +213,18 @@ export function usePricingColumns(
                     count: dynamicSummary.tierCount,
                   })}`}
               </div>
+              {tierLadder.length > 1 && (
+                <div className='text-muted-foreground/60 mt-0.5 flex flex-col font-mono text-[10px] leading-4'>
+                  {tierLadder.map((tier) => (
+                    <span key={tier.index} className='truncate'>
+                      <span className='text-muted-foreground/80'>
+                        {tier.bound || t('Default')}
+                      </span>{' '}
+                      {tier.entries.join(' / ')}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )
         }
@@ -248,6 +289,45 @@ export function usePricingColumns(
         )
       },
       size: 180,
+      enableSorting: false,
+    },
+
+    // Ratio column: the model multiplier for token-based pricing, so the
+    // table shows both the price and the underlying rate; tiered/per-request
+    // models carry no flat ratio and render a dash.
+    {
+      id: 'model_ratio',
+      meta: { label: t('Ratio') },
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title={t('Ratio')} />
+      ),
+      cell: ({ row }) => {
+        const model = row.original
+        if (
+          model.billing_mode === 'tiered_expr' ||
+          model.billing_mode === 'context_tier' ||
+          model.billing_mode === 'context_tier_per_call'
+        ) {
+          return (
+            <span className='text-muted-foreground font-mono text-xs'>—</span>
+          )
+        }
+        if (!isTokenBasedModel(model)) {
+          return (
+            <span className='text-muted-foreground font-mono text-xs'>—</span>
+          )
+        }
+        const ratio = stripTrailingZeros(String(model.model_ratio ?? 0))
+        return (
+          <div className='max-w-full min-w-0'>
+            <span className='font-mono text-sm tabular-nums'>×{ratio}</span>
+            <div className='text-muted-foreground/50 text-[10px]'>
+              {t('Model ratio')}
+            </div>
+          </div>
+        )
+      },
+      size: 110,
       enableSorting: false,
     },
 

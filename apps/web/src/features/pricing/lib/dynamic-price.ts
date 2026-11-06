@@ -60,7 +60,7 @@ export type DynamicPricingSummary = {
   secondaryEntries: DynamicPriceEntry[]
 }
 
-const PRIMARY_DYNAMIC_FIELDS = new Set([
+export const PRIMARY_DYNAMIC_FIELDS = new Set([
   'fixedPrice',
   'inputPrice',
   'outputPrice',

@@ -53,7 +53,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
-import { isTieredBillingMode } from '@/features/pricing/lib/dynamic-price'
+import {
+  formatTokenCountHint,
+  isTieredBillingMode,
+} from '@/features/pricing/lib/dynamic-price'
 
 import { safeJsonParse } from '../utils/json-parser'
 import { formatPricingDisplay } from './pricing-format'
@@ -70,6 +73,7 @@ import {
   buildModelSnapshots,
   formatTierPriceRange,
   getModeLabel,
+  hasPricingValue,
   parseTierSummary,
   getSnapshotSignature,
   isBasePricingUnset,
@@ -954,26 +958,45 @@ const ModelRatioVisualEditorComponent = forwardRef<
                         />
                       )}
                     </span>
-                    <span className='text-muted-foreground/70 text-[11px]'>
-                      {t(getModeLabel(model.billingMode))}
+                    <span className='text-muted-foreground/70 flex min-w-0 flex-wrap items-center gap-x-1.5 text-[11px]'>
+                      <span>{t(getModeLabel(model.billingMode))}</span>
+                      {tierSummary ? (
+                        <span className='text-muted-foreground/50'>
+                          · {tierSummary.count} {t('tiers')}
+                          {tierSummary.maxBound !== null
+                            ? ` · ≤${formatTokenCountHint(tierSummary.maxBound)}`
+                            : ''}
+                        </span>
+                      ) : model.billingMode === 'per-token' &&
+                        hasPricingValue(model.ratio) ? (
+                        <span className='text-muted-foreground/50'>
+                          · ×{formatPricingDisplay(model.ratio)}
+                        </span>
+                      ) : null}
                     </span>
                   </div>
 
-                  <div className='flex flex-col gap-1'>
-                    {priceEntries.map((entry) => (
-                      <div
-                        key={entry.label}
-                        className='flex min-w-0 items-baseline justify-between gap-x-3'
-                      >
-                        <span className='text-foreground shrink-0 text-xs font-normal'>
-                          {entry.label}
-                        </span>
-                        <span className='text-muted-foreground min-w-0 flex-1 truncate text-right text-[11px] font-light tabular-nums'>
-                          {entry.value}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                  {model.isPriceUnset ? (
+                    <span className='text-muted-foreground/60 text-[11px]'>
+                      {t('Unset price')}
+                    </span>
+                  ) : (
+                    <div className='flex flex-col gap-1'>
+                      {priceEntries.map((entry) => (
+                        <div
+                          key={entry.label}
+                          className='flex min-w-0 items-baseline justify-between gap-x-3'
+                        >
+                          <span className='text-foreground shrink-0 text-xs font-normal'>
+                            {entry.label}
+                          </span>
+                          <span className='text-muted-foreground min-w-0 flex-1 truncate text-right text-[11px] font-light tabular-nums'>
+                            {entry.value}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </button>
 
                 {!model.isPriceUnset && (
