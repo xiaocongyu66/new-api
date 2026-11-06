@@ -32,6 +32,7 @@ import {
   getDynamicPriceEntries,
   getDynamicPricingSummary,
   getTierBoundLabel,
+  isDynamicPricingModel,
 } from '../lib/dynamic-price'
 import {
   getConfiguredGroupRatio,
@@ -77,9 +78,10 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   const modelIconKey = props.model.icon || props.model.vendor_icon
   const modelIcon = modelIconKey ? getLobeIcon(modelIconKey, 28) : null
   const initial = props.model.model_name?.charAt(0).toUpperCase() || '?'
-  const isDynamicPricing =
-    props.model.billing_mode === 'tiered_expr' &&
-    Boolean(props.model.billing_expr)
+  // Shared predicate: tiered_expr and both context-interval modes render as
+  // tier columns; a hardcoded tiered_expr check would price context-tier
+  // models off their (empty) ratio instead.
+  const isDynamicPricing = isDynamicPricingModel(props.model)
   const dynamicSummary = isDynamicPricing
     ? getDynamicPricingSummary(props.model, {
         tokenUnit,
