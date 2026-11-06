@@ -53,6 +53,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
+import { isTieredBillingMode } from '@/features/pricing/lib/dynamic-price'
 
 import { safeJsonParse } from '../utils/json-parser'
 import { formatPricingDisplay } from './pricing-format'
@@ -67,7 +68,9 @@ import {
 } from './model-pricing-sheet'
 import {
   buildModelSnapshots,
+  formatTierPriceRange,
   getModeLabel,
+  parseTierSummary,
   getSnapshotSignature,
   isBasePricingUnset,
   parseCompletionRatioMeta,
@@ -851,32 +854,69 @@ const ModelRatioVisualEditorComponent = forwardRef<
                   )}`
                 : '—'
 
+            const tierSummary =
+              model.billingMode === 'context_tier'
+                ? parseTierSummary(model.billingContextTier)
+                : model.billingMode === 'context_tier_per_call'
+                  ? parseTierSummary(model.billingContextTierPerCall)
+                  : null
             const priceEntries: Array<{ label: string; value: string }> =
               model.billingMode === 'tiered_expr'
                 ? [
                     { label: t('Input'), value: '—' },
                     { label: t('Output'), value: '—' },
                   ]
-                : [
-                    {
-                      label: t('Input'),
-                      value:
-                        model.billingMode === 'per-request'
-                          ? model.price
-                            ? `$${model.price}`
-                            : '—'
-                          : lanes.promptPrice
-                            ? `$${lanes.promptPrice}`
-                            : '—',
-                    },
-                    {
-                      label: t('Output'),
-                      value:
-                        model.billingMode === 'per-request'
-                          ? '—'
-                          : effectiveOutputPrice,
-                    },
-                  ]
+                : tierSummary
+                  ? model.billingMode === 'context_tier_per_call'
+                    ? [
+                        {
+                          label: t('Price'),
+                          value: formatTierPriceRange(
+                            tierSummary.priceMin,
+                            tierSummary.priceMax
+                          ),
+                        },
+                        {
+                          label: t('tiers'),
+                          value: String(tierSummary.count),
+                        },
+                      ]
+                    : [
+                        {
+                          label: t('Input'),
+                          value: formatTierPriceRange(
+                            tierSummary.inputMin,
+                            tierSummary.inputMax
+                          ),
+                        },
+                        {
+                          label: t('Output'),
+                          value: formatTierPriceRange(
+                            tierSummary.outputMin,
+                            tierSummary.outputMax
+                          ),
+                        },
+                      ]
+                  : [
+                      {
+                        label: t('Input'),
+                        value:
+                          model.billingMode === 'per-request'
+                            ? model.price
+                              ? `$${model.price}`
+                              : '—'
+                            : lanes.promptPrice
+                              ? `$${lanes.promptPrice}`
+                              : '—',
+                      },
+                      {
+                        label: t('Output'),
+                        value:
+                          model.billingMode === 'per-request'
+                            ? '—'
+                            : effectiveOutputPrice,
+                      },
+                    ]
 
             return (
               <div
@@ -897,7 +937,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
                   <div className='flex min-w-0 flex-col gap-1'>
                     <span className='flex min-w-0 items-center gap-2 text-sm leading-tight font-semibold'>
                       <span className='min-w-0 truncate'>{model.name}</span>
-                      {model.billingMode === 'tiered_expr' && (
+                      {isTieredBillingMode(model.billingMode) && (
                         <StatusBadge
                           label={t('Tiered')}
                           variant='info'

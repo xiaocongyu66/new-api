@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { splitBillingExprAndRequestRules } from '@/features/pricing/lib/billing-expr'
+import { formatTokenCountHint } from '@/features/pricing/lib/dynamic-price'
 
 import { safeJsonParse } from '../utils/json-parser'
 import { formatPricingNumber } from './pricing-format'
@@ -106,11 +107,19 @@ export const resolveEffectiveCompletionRatio = (
   return entry?.ratio ?? null
 }
 
-export const isBasePricingUnset = (snapshot?: ModelPricingSnapshot) =>
-  !snapshot ||
-  (snapshot.billingMode !== 'tiered_expr' &&
-    !hasPricingValue(snapshot.price) &&
-    !hasPricingValue(snapshot.ratio))
+export const isBasePricingUnset = (snapshot?: ModelPricingSnapshot) => {
+  if (!snapshot) return true
+  if (snapshot.billingMode === 'tiered_expr') return false
+  if (snapshot.billingMode === 'context_tier') {
+    return !hasTierData(snapshot.billingContextTier)
+  }
+  if (snapshot.billingMode === 'context_tier_per_call') {
+    return !hasTierData(snapshot.billingContextTierPerCall)
+  }
+  return (
+    !hasPricingValue(snapshot.price) && !hasPricingValue(snapshot.ratio)
+  )
+}
 
 const toNumberOrNull = (value?: string) => {
   if (!hasPricingValue(value)) return null
@@ -125,6 +134,81 @@ const ratioToPrice = (ratio?: string, denominator?: string) => {
   return formatPricingNumber(ratioNumber * denominatorNumber)
 }
 
+
+/** Lenient tier summary for list/card display; invalid JSON yields null. */
+export type TierSummary = {
+  count: number
+  inputMin: number | null
+  inputMax: number | null
+  outputMin: number | null
+  outputMax: number | null
+  priceMin: number | null
+  priceMax: number | null
+  maxBound: number | null
+}
+
+const rangeOf = (values: number[]): [number | null, number | null] =>
+  values.length === 0
+    ? [null, null]
+    : [Math.min(...values), Math.max(...values)]
+
+export const parseTierSummary = (raw?: string): TierSummary | null => {
+  const text = (raw ?? '').trim()
+  if (!text) return null
+  let list: unknown
+  try {
+    const parsed: unknown = JSON.parse(text)
+    if (Array.isArray(parsed)) {
+      list = parsed
+    } else if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      'tiers' in parsed &&
+      Array.isArray(parsed.tiers)
+    ) {
+      list = parsed.tiers
+    }
+  } catch {
+    return null
+  }
+  if (!Array.isArray(list) || list.length === 0) return null
+  const rows = list.filter(
+    (item): item is Record<string, unknown> =>
+      typeof item === 'object' && item !== null
+  )
+  if (rows.length === 0) return null
+  const numbers = (key: string) =>
+    rows
+      .map((row) => row[key])
+      .filter((value): value is number => typeof value === 'number')
+  const [inputMin, inputMax] = rangeOf(numbers('input_price'))
+  const [outputMin, outputMax] = rangeOf(numbers('output_price'))
+  const [priceMin, priceMax] = rangeOf(numbers('price'))
+  const bounds = numbers('max_context').filter((bound) => bound > 0)
+  return {
+    count: rows.length,
+    inputMin,
+    inputMax,
+    outputMin,
+    outputMax,
+    priceMin,
+    priceMax,
+    maxBound: bounds.length > 0 ? Math.max(...bounds) : null,
+  }
+}
+
+/** `$1` for a single value, `$1–$2` for a range, `—` when unset. */
+export const formatTierPriceRange = (
+  min: number | null,
+  max: number | null
+) => {
+  if (min === null) return '—'
+  if (max === null || min === max) return `$${min}`
+  return `$${min}–$${max}`
+}
+
+const hasTierData = (raw?: string) => parseTierSummary(raw) !== null
+
 export const getModeLabel = (mode?: string) => {
   if (mode === 'per-request') return 'Per-request'
   if (mode === 'tiered_expr') return 'Expression'
@@ -137,7 +221,9 @@ export const getModeVariant = (
   mode?: string
 ): 'warning' | 'info' | 'success' => {
   if (mode === 'per-request') return 'warning'
+  if (mode === 'context_tier_per_call') return 'warning'
   if (mode === 'tiered_expr') return 'info'
+  if (mode === 'context_tier') return 'info'
   return 'success'
 }
 
@@ -158,6 +244,16 @@ export const getPriceSummary = (
 ) => {
   if (row.billingMode === 'tiered_expr') {
     return getExpressionSummary(row, t)
+  }
+  if (row.billingMode === 'context_tier') {
+    const tiers = parseTierSummary(row.billingContextTier)
+    if (!tiers) return t('Unset price')
+    return `${t('Input')} ${formatTierPriceRange(tiers.inputMin, tiers.inputMax)} · ${t('Output')} ${formatTierPriceRange(tiers.outputMin, tiers.outputMax)}`
+  }
+  if (row.billingMode === 'context_tier_per_call') {
+    const tiers = parseTierSummary(row.billingContextTierPerCall)
+    if (!tiers) return t('Unset price')
+    return `${formatTierPriceRange(tiers.priceMin, tiers.priceMax)} / ${t('request')}`
   }
   if (row.billingMode === 'per-request') {
     return row.price ? `$${row.price} / ${t('request')}` : t('Unset price')
@@ -188,6 +284,22 @@ export const getPriceDetail = (
     return row.requestRuleExpr
       ? t('Includes request rules')
       : t('Expression based')
+  }
+  if (
+    row.billingMode === 'context_tier' ||
+    row.billingMode === 'context_tier_per_call'
+  ) {
+    const tiers = parseTierSummary(
+      row.billingMode === 'context_tier'
+        ? row.billingContextTier
+        : row.billingContextTierPerCall
+    )
+    if (!tiers) return t('No base input price')
+    const bound =
+      tiers.maxBound !== null
+        ? ` · ≤${formatTokenCountHint(tiers.maxBound)}`
+        : ''
+    return `${tiers.count} ${t('tiers')}${bound}`
   }
   if (row.billingMode === 'per-request') {
     return t('Fixed request price')
