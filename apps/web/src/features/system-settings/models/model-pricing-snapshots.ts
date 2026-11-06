@@ -107,6 +107,84 @@ export const resolveEffectiveCompletionRatio = (
   return entry?.ratio ?? null
 }
 
+export type TierPriceRow = {
+  key: string
+  /** Interval label: `≤100K`, `>100K`, or `*` for a flat price. */
+  boundLabel: string
+  inputPrice?: number
+  outputPrice?: number
+  cachePrice?: number
+  cacheWritePrice?: number
+  price?: number
+}
+
+/**
+ * Flattens stored tiers into display rows (ascending bound, catch-all last)
+ * with a human-readable interval label. Returns [] for missing/invalid data.
+ */
+export const parseTierRows = (raw?: string): TierPriceRow[] => {
+  const text = (raw ?? '').trim()
+  if (!text) return []
+  let list: unknown
+  try {
+    const parsed: unknown = JSON.parse(text)
+    if (Array.isArray(parsed)) {
+      list = parsed
+    } else if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      'tiers' in parsed &&
+      Array.isArray(parsed.tiers)
+    ) {
+      list = parsed.tiers
+    }
+  } catch {
+    return []
+  }
+  if (!Array.isArray(list) || list.length === 0) return []
+  const tiers = list
+    .filter(
+      (item): item is Record<string, unknown> =>
+        typeof item === 'object' && item !== null
+    )
+    .map((item) => ({
+      maxContext:
+        typeof item.max_context === 'number' ? item.max_context : 0,
+      inputPrice: item.input_price,
+      outputPrice: item.output_price,
+      cachePrice: item.cache_price,
+      cacheWritePrice: item.cache_write_price,
+      price: item.price,
+    }))
+    .sort((a, b) => {
+      const av = a.maxContext === 0 ? Number.POSITIVE_INFINITY : a.maxContext
+      const bv = b.maxContext === 0 ? Number.POSITIVE_INFINITY : b.maxContext
+      return av - bv
+    })
+  const num = (value: unknown) =>
+    typeof value === 'number' && Number.isFinite(value) ? value : undefined
+  let prevBound: number | null = null
+  return tiers.map((tier, index) => {
+    let boundLabel: string
+    if (tier.maxContext > 0) {
+      boundLabel = `≤${formatTokenCountHint(tier.maxContext)}`
+      prevBound = tier.maxContext
+    } else {
+      boundLabel =
+        prevBound !== null ? `>${formatTokenCountHint(prevBound)}` : '*'
+    }
+    return {
+      key: `tier-${index}`,
+      boundLabel,
+      inputPrice: num(tier.inputPrice),
+      outputPrice: num(tier.outputPrice),
+      cachePrice: num(tier.cachePrice),
+      cacheWritePrice: num(tier.cacheWritePrice),
+      price: num(tier.price),
+    }
+  })
+}
+
 export const isBasePricingUnset = (snapshot?: ModelPricingSnapshot) => {
   if (!snapshot) return true
   if (snapshot.billingMode === 'tiered_expr') return false

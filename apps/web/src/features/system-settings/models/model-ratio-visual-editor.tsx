@@ -52,6 +52,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { PriceMatrixTable, type PriceMatrixRow } from '@/features/pricing/components/price-matrix-table'
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
 import {
   formatTokenCountHint,
@@ -74,6 +75,7 @@ import {
   formatTierPriceRange,
   getModeLabel,
   hasPricingValue,
+  parseTierRows,
   parseTierSummary,
   getSnapshotSignature,
   isBasePricingUnset,
@@ -851,12 +853,12 @@ const ModelRatioVisualEditorComponent = forwardRef<
               completionRatioMetaMap,
               model.completionRatio
             )
-            const effectiveOutputPrice =
-              lanes.promptPrice && effectiveCompletionRatio !== null
-                ? `$${formatPricingDisplay(
-                    Number(lanes.promptPrice) * effectiveCompletionRatio
-                  )}`
-                : '—'
+            const tierRows =
+              model.billingMode === 'context_tier'
+                ? parseTierRows(model.billingContextTier)
+                : model.billingMode === 'context_tier_per_call'
+                  ? parseTierRows(model.billingContextTierPerCall)
+                  : []
 
             const tierSummary =
               model.billingMode === 'context_tier'
@@ -864,63 +866,88 @@ const ModelRatioVisualEditorComponent = forwardRef<
                 : model.billingMode === 'context_tier_per_call'
                   ? parseTierSummary(model.billingContextTierPerCall)
                   : null
-            const priceEntries: Array<{ label: string; value: string }> =
-              model.billingMode === 'tiered_expr'
-                ? [
-                    { label: t('Input'), value: '—' },
-                    { label: t('Output'), value: '—' },
-                  ]
-                : tierSummary
-                  ? model.billingMode === 'context_tier_per_call'
-                    ? [
-                        {
-                          label: t('Price'),
-                          value: formatTierPriceRange(
-                            tierSummary.priceMin,
-                            tierSummary.priceMax
-                          ),
-                        },
-                        {
-                          label: t('tiers'),
-                          value: String(tierSummary.count),
-                        },
-                      ]
+
+            // Matrix orientation: columns are price lanes, rows are context
+            // intervals. Modes without intervals render a single `*` row.
+            const isPerCallMode =
+              model.billingMode === 'per-request' ||
+              model.billingMode === 'context_tier_per_call'
+            const hasCacheRead = tierRows.some(
+              (tier) => (tier.cachePrice ?? 0) > 0
+            )
+            const hasCacheWrite = tierRows.some(
+              (tier) => (tier.cacheWritePrice ?? 0) > 0
+            )
+            const laneColumns: string[] = isPerCallMode
+              ? [t('request')]
+              : [
+                  t('Input'),
+                  t('Output'),
+                  ...(hasCacheRead || lanes.enabled.cache
+                    ? [t('Cache')]
+                    : []),
+                  ...(hasCacheWrite || lanes.enabled.createCache
+                    ? [t('Cache write')]
+                    : []),
+                ]
+            const formatCell = (value?: number | string) => {
+              const numberValue = Number(value)
+              if (!Number.isFinite(numberValue) || value === '') return '—'
+              return `$${formatPricingDisplay(numberValue)}`
+            }
+            const matrixRows: PriceMatrixRow[] = tierRows.length
+              ? tierRows.map((tier) => ({
+                  key: tier.key,
+                  header: tier.boundLabel,
+                  cells: isPerCallMode
+                    ? [{ lines: [formatCell(tier.price)] }]
                     : [
-                        {
-                          label: t('Input'),
-                          value: formatTierPriceRange(
-                            tierSummary.inputMin,
-                            tierSummary.inputMax
-                          ),
-                        },
-                        {
-                          label: t('Output'),
-                          value: formatTierPriceRange(
-                            tierSummary.outputMin,
-                            tierSummary.outputMax
-                          ),
-                        },
-                      ]
-                  : [
-                      {
-                        label: t('Input'),
-                        value:
-                          model.billingMode === 'per-request'
-                            ? model.price
-                              ? `$${model.price}`
-                              : '—'
-                            : lanes.promptPrice
-                              ? `$${lanes.promptPrice}`
-                              : '—',
-                      },
-                      {
-                        label: t('Output'),
-                        value:
-                          model.billingMode === 'per-request'
-                            ? '—'
-                            : effectiveOutputPrice,
-                      },
-                    ]
+                        { lines: [formatCell(tier.inputPrice)] },
+                        { lines: [formatCell(tier.outputPrice)] },
+                        ...(hasCacheRead || lanes.enabled.cache
+                          ? [{ lines: [formatCell(tier.cachePrice)] }]
+                          : []),
+                        ...(hasCacheWrite || lanes.enabled.createCache
+                          ? [{ lines: [formatCell(tier.cacheWritePrice)] }]
+                          : []),
+                      ],
+                }))
+              : model.isPriceUnset
+                ? []
+                : [
+                    {
+                      key: 'flat',
+                      header: '*',
+                      cells: isPerCallMode
+                        ? [{ lines: [formatCell(model.price)] }]
+                        : [
+                            { lines: [formatCell(lanes.promptPrice)] },
+                            {
+                              lines: [
+                                formatCell(
+                                  effectiveCompletionRatio !== null &&
+                                    lanes.promptPrice
+                                    ? Number(lanes.promptPrice) *
+                                        effectiveCompletionRatio
+                                    : undefined
+                                ),
+                              ],
+                            },
+                            ...(lanes.enabled.cache
+                              ? [{ lines: [formatCell(lanes.prices.cache)] }]
+                              : []),
+                            ...(lanes.enabled.createCache
+                              ? [
+                                  {
+                                    lines: [
+                                      formatCell(lanes.prices.createCache),
+                                    ],
+                                  },
+                                ]
+                              : []),
+                          ],
+                    },
+                  ]
 
             return (
               <div
@@ -981,21 +1008,11 @@ const ModelRatioVisualEditorComponent = forwardRef<
                       {t('Unset price')}
                     </span>
                   ) : (
-                    <div className='flex flex-col gap-1'>
-                      {priceEntries.map((entry) => (
-                        <div
-                          key={entry.label}
-                          className='flex min-w-0 items-baseline justify-between gap-x-3'
-                        >
-                          <span className='text-foreground shrink-0 text-xs font-normal'>
-                            {entry.label}
-                          </span>
-                          <span className='text-muted-foreground min-w-0 flex-1 truncate text-right text-[11px] font-light tabular-nums'>
-                            {entry.value}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                    <PriceMatrixTable
+                      corner={t('Interval')}
+                      columns={laneColumns}
+                      rows={matrixRows}
+                    />
                   )}
                 </button>
 

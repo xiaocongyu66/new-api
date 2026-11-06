@@ -6209,6 +6209,7 @@
     "Editing {{edited}}; requests bill with {{active}}.": "正在编辑「{{edited}}」；请求实际按「{{active}}」扣费。",
     "Per-token tiers": "按量区间",
     "Per-call tiers": "按次区间",
-    "Above": "以上"
+    "Above": "以上",
+    "Interval": "区间"
   }
 }
