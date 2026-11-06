@@ -299,65 +299,16 @@ export const buildModelSnapshots = ({
     const audioCompletion = audioCompletionMap[name]?.toString() || ''
 
     const modeForModel = billingModeMap[name]
-    if (modeForModel === 'tiered_expr') {
-      const fullExpr = billingExprMap[name] || ''
-      const { billingExpr: pureExpr, requestRuleExpr } =
-        splitBillingExprAndRequestRules(fullExpr)
-      return {
-        name,
-        billingMode: 'tiered_expr',
-        billingExpr: pureExpr,
-        requestRuleExpr,
-        price,
-        ratio,
-        cacheRatio: cache,
-        createCacheRatio: createCache,
-        completionRatio: completion,
-        imageRatio: image,
-        audioRatio: audio,
-        audioCompletionRatio: audioCompletion,
-        hasConflict: false,
-      }
-    }
-    if (modeForModel === 'context_tier') {
-      return {
-        name,
-        billingMode: 'context_tier',
-        billingExpr: '',
-        billingContextTier: billingContextTierMap[name] || '',
-        requestRuleExpr: '',
-        price,
-        ratio,
-        cacheRatio: cache,
-        createCacheRatio: createCache,
-        completionRatio: completion,
-        imageRatio: image,
-        audioRatio: audio,
-        audioCompletionRatio: audioCompletion,
-        hasConflict: false,
-      }
-    }
-    if (modeForModel === 'context_tier_per_call') {
-      return {
-        name,
-        billingMode: 'context_tier_per_call',
-        billingExpr: '',
-        billingContextTierPerCall: billingContextTierPerCallMap[name] || '',
-        requestRuleExpr: '',
-        price,
-        ratio,
-        cacheRatio: cache,
-        createCacheRatio: createCache,
-        completionRatio: completion,
-        imageRatio: image,
-        audioRatio: audio,
-        audioCompletionRatio: audioCompletion,
-        hasConflict: false,
-      }
-    }
-
-    return {
-      name,
+    // Every method's data persists independently of which one is active, so
+    // each row carries ALL stored method payloads; otherwise opening a model
+    // whose active method differs from a configured one and saving would
+    // overwrite/delete the other methods' config.
+    const storedExpr = billingExprMap[name] || ''
+    const { billingExpr: pureExpr, requestRuleExpr } =
+      splitBillingExprAndRequestRules(storedExpr)
+    const storedTiers = billingContextTierMap[name] || ''
+    const storedCallTiers = billingContextTierPerCallMap[name] || ''
+    const shared = {
       price,
       ratio,
       cacheRatio: cache,
@@ -366,11 +317,26 @@ export const buildModelSnapshots = ({
       imageRatio: image,
       audioRatio: audio,
       audioCompletionRatio: audioCompletion,
-      // Method data persists independently of the active method, so a
-      // per-token/per-request model may still carry stored tier prices.
+      billingExpr: pureExpr,
+      requestRuleExpr,
+      billingContextTier: storedTiers,
+      billingContextTierPerCall: storedCallTiers,
+      hasConflict: false,
+    }
+    if (modeForModel === 'tiered_expr') {
+      return { name, billingMode: 'tiered_expr', ...shared }
+    }
+    if (modeForModel === 'context_tier') {
+      return { name, billingMode: 'context_tier', ...shared }
+    }
+    if (modeForModel === 'context_tier_per_call') {
+      return { name, billingMode: 'context_tier_per_call', ...shared }
+    }
+
+    return {
+      name,
+      ...shared,
       billingMode: price !== '' ? 'per-request' : 'per-token',
-      billingContextTier: billingContextTierMap[name] || '',
-      billingContextTierPerCall: billingContextTierPerCallMap[name] || '',
       hasConflict:
         price !== '' &&
         (ratio !== '' ||

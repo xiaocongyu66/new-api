@@ -259,8 +259,12 @@ export function ContextTierTable({ kind, value, onChange }: ContextTierTableProp
         value={row.maxContext}
         onChange={(event) => {
           const raw = event.target.value
-          // Allow digits, one dot, optional k/M suffix and spaces around it.
-          if (raw.trim() !== '' && !/^\d*\.?\d*\s*[kKmM]?$/.test(raw)) return
+          const trimmed = raw.trim()
+          // Allow digits with at most one dot plus an optional k/M suffix; a
+          // lone dot would parse to NaN and silently become the catch-all.
+          if (trimmed !== '' && (!/^\d*\.?\d*\s*[kKmM]?$/.test(raw) || trimmed === '.')) {
+            return
+          }
           updateRow(index, { maxContext: raw })
         }}
       />

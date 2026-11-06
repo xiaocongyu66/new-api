@@ -227,6 +227,8 @@ func init() {
 // ---------------------------------------------------------------------------
 
 func GetBillingMode(model string) string {
+	settings.GlobalConfig.ReadLock()
+	defer settings.GlobalConfig.ReadUnlock()
 	if mode, ok := billingSetting.BillingMode[model]; ok {
 		return mode
 	}
@@ -234,15 +236,21 @@ func GetBillingMode(model string) string {
 }
 
 func GetBillingExpr(model string) (string, bool) {
+	settings.GlobalConfig.ReadLock()
+	defer settings.GlobalConfig.ReadUnlock()
 	expr, ok := billingSetting.BillingExpr[model]
 	return expr, ok
 }
 
 func GetBillingModeCopy() map[string]string {
+	settings.GlobalConfig.ReadLock()
+	defer settings.GlobalConfig.ReadUnlock()
 	return lo.Assign(billingSetting.BillingMode)
 }
 
 func GetBillingExprCopy() map[string]string {
+	settings.GlobalConfig.ReadLock()
+	defer settings.GlobalConfig.ReadUnlock()
 	return lo.Assign(billingSetting.BillingExpr)
 }
 

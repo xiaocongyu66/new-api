@@ -66,13 +66,21 @@ const PRIMARY_DYNAMIC_FIELDS = new Set([
   'outputPrice',
 ])
 
-export function isDynamicPricingModel(model: PricingModel): boolean {
+/**
+ * Modes that bill through the tiered expression engine. Log payloads carry the
+ * concrete mode (tiered_expr / context_tier / context_tier_per_call), so checks
+ * must not compare against the literal `tiered_expr` alone.
+ */
+export function isTieredBillingMode(mode?: string): boolean {
   return (
-    (model.billing_mode === 'tiered_expr' ||
-      model.billing_mode === 'context_tier' ||
-      model.billing_mode === 'context_tier_per_call') &&
-    Boolean(model.billing_expr)
+    mode === 'tiered_expr' ||
+    mode === 'context_tier' ||
+    mode === 'context_tier_per_call'
   )
+}
+
+export function isDynamicPricingModel(model: PricingModel): boolean {
+  return isTieredBillingMode(model.billing_mode) && Boolean(model.billing_expr)
 }
 
 export function getDynamicDisplayGroupRatio(

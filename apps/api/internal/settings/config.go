@@ -29,6 +29,17 @@ func (cm *ConfigManager) Register(name string, config interface{}) {
 	cm.configs[name] = config
 }
 
+// ReadLock guards reading the mutable config structs (their maps/slices are
+// replaced by LoadFromDB under the write lock). Callers must not nest another
+// ReadLock: a waiting writer would block the second acquisition.
+func (cm *ConfigManager) ReadLock() {
+	cm.mutex.RLock()
+}
+
+func (cm *ConfigManager) ReadUnlock() {
+	cm.mutex.RUnlock()
+}
+
 // Get 获取指定配置模块
 func (cm *ConfigManager) Get(name string) interface{} {
 	cm.mutex.RLock()
@@ -277,6 +288,11 @@ func ConfigToMap(config interface{}) (map[string]string, error) {
 
 // UpdateConfigFromMap 从map更新配置对象（导出函数）
 func UpdateConfigFromMap(config interface{}, configMap map[string]string) error {
+	// Serialize against readers: they hold ReadLock while reading the maps
+	// updateConfigFromMap replaces. LoadFromDB already holds the write lock and
+	// calls the unexported helper directly, so this never nests.
+	GlobalConfig.mutex.Lock()
+	defer GlobalConfig.mutex.Unlock()
 	return updateConfigFromMap(config, configMap)
 }
 

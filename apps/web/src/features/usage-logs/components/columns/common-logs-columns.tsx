@@ -62,6 +62,7 @@ import { LogCostDisplay } from '../log-cost-display'
 import { ModelBadge } from '../model-badge'
 import { TimingMetricsCell, StreamTpsCell } from '../timing-metrics-cell'
 import { useUsageLogsContext } from '../usage-logs-provider'
+import { isTieredBillingMode } from '@/features/pricing/lib/dynamic-price'
 
 interface DetailSegment {
   text: string
@@ -159,7 +160,7 @@ function buildTypeDetailSegments(
     const text = prices.join(' / ')
     return showUnit ? `${text}/M` : text
   }
-  const isTieredExpr = other.billing_mode === 'tiered_expr'
+  const isTieredExpr = isTieredBillingMode(other.billing_mode)
   const tieredSummary = getTieredBillingSummary(other)
   if (isTieredExpr) {
     if (tieredSummary) {

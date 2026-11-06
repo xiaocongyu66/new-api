@@ -510,10 +510,11 @@ export const ModelPricingEditorPanel = forwardRef<
     }
 
     // Active-method fallback warning: picking a method with no stored prices
-    // bills plain per-token ratios instead.
+    // bills plain per-token ratios instead. The validators return null when a
+    // config is valid, so warn on a non-null result.
     if (
       activeMethod === 'context_tier' &&
-      !validateContextTiersStructured(contextTiers)
+      validateContextTiersStructured(contextTiers) !== null
     ) {
       nextWarnings.push(
         t(
@@ -523,7 +524,7 @@ export const ModelPricingEditorPanel = forwardRef<
     }
     if (
       activeMethod === 'context_tier_per_call' &&
-      !validateContextCallTiersStructured(contextCallTiers)
+      validateContextCallTiersStructured(contextCallTiers) !== null
     ) {
       nextWarnings.push(
         t(

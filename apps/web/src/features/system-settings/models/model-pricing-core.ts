@@ -529,7 +529,15 @@ function buildContextTierPreviewRows(
 ): PreviewRow[] {
   const tiers = parsePreviewTiers(raw)
   if (tiers.length === 0) {
-    return [{ key: 'tiers', label: t('Per-token context tiers'), value: t('Empty') }]
+    return [
+      {
+        key: 'tiers',
+        label: t(
+          kind === 'per_call' ? 'Per-call context tiers' : 'Per-token context tiers'
+        ),
+        value: t('Empty'),
+      },
+    ]
   }
   let prevBound: number | null = null
   return tiers.map((tier, index) => {

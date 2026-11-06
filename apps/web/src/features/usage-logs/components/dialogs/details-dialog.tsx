@@ -87,6 +87,7 @@ import {
   isTimingLogType,
 } from '../../lib/utils'
 import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
+import { isTieredBillingMode } from '@/features/pricing/lib/dynamic-price'
 
 // Maps a channel-update changed-field token (as recorded by the backend audit)
 // to its i18n label key for display in the audit details.
@@ -229,7 +230,7 @@ function BillingBreakdown(props: {
   const { log, other, isAdmin } = props
   const isPerCall = isPerCallBilling(other.model_price)
   const isClaude = other.claude === true
-  const isTieredExpr = other.billing_mode === 'tiered_expr'
+  const isTieredExpr = isTieredBillingMode(other.billing_mode)
   const tieredSummary = getTieredBillingSummary(other)
 
   const rows: Array<{ label: string; value: string }> = []
@@ -506,7 +507,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const isTieredBilling =
     isConsume &&
     !isViolation &&
-    other?.billing_mode === 'tiered_expr' &&
+    isTieredBillingMode(other?.billing_mode) &&
     !!other?.expr_b64
   const hasAudioTokens = other?.ws || other?.audio
   const showTiming = isTimingLogType(props.log.type)

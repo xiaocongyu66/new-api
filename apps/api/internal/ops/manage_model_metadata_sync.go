@@ -846,14 +846,31 @@ func FetchUpstreamRatios(c contract.Context) {
 			modelPriceMap := make(map[string]float64)
 			billingModeMap := make(map[string]string)
 			billingExprMap := make(map[string]string)
+			billingContextTierMap := make(map[string]string)
+			billingContextTierPerCallMap := make(map[string]string)
 
 			for _, item := range pricingItems {
 				if item.ModelName == "" {
 					continue
 				}
-				if billing.IsTieredBillingMode(item.BillingMode) && strings.TrimSpace(item.BillingExpr) != "" {
+				// Context-interval modes store structured tiers instead of an
+				// expression (the expression is derived at runtime), so admit
+				// them on either payload.
+				hasExpr := strings.TrimSpace(item.BillingExpr) != ""
+				hasTier := strings.TrimSpace(item.BillingContextTier) != ""
+				hasCallTier := strings.TrimSpace(item.BillingContextTierPerCall) != ""
+				if billing.IsTieredBillingMode(item.BillingMode) &&
+					(hasExpr || hasTier || hasCallTier) {
 					billingModeMap[item.ModelName] = item.BillingMode
-					billingExprMap[item.ModelName] = item.BillingExpr
+					if hasExpr {
+						billingExprMap[item.ModelName] = item.BillingExpr
+					}
+					if hasTier {
+						billingContextTierMap[item.ModelName] = item.BillingContextTier
+					}
+					if hasCallTier {
+						billingContextTierPerCallMap[item.ModelName] = item.BillingContextTierPerCall
+					}
 				}
 				if item.QuotaType == 1 {
 					modelPriceMap[item.ModelName] = item.ModelPrice
@@ -923,6 +940,12 @@ func FetchUpstreamRatios(c contract.Context) {
 			}
 			if len(billingExprMap) > 0 {
 				converted[billing.BillingExprField] = valueMap(billingExprMap)
+			}
+			if len(billingContextTierMap) > 0 {
+				converted["billing_context_tier"] = valueMap(billingContextTierMap)
+			}
+			if len(billingContextTierPerCallMap) > 0 {
+				converted["billing_context_tier_per_call"] = valueMap(billingContextTierPerCallMap)
 			}
 
 			ch <- upstreamResult{Name: uniqueName, Data: converted}

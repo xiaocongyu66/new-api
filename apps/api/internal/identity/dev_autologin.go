@@ -5,6 +5,7 @@ package identity
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
@@ -49,11 +50,15 @@ func DevAutoLogin(c contract.Context) {
 	// Every page load without a live session mints a new session, so repeated
 	// dev reloads/browsers accumulate active sessions until the per-user limit
 	// rejects auto-login with AUTH_SESSION_LIMIT and the browser silently falls
-	// back to the sign-in page. The dev account is a throwaway; replace its old
-	// sessions instead of piling them up.
-	if _, err := RevokeAllUserSessions(user.Id, "dev-auto-login-refresh"); err != nil {
-		common.CtxApiError(c, err)
-		return
+	// back to the sign-in page. The dev account is a throwaway, so reclaim its
+	// sessions — but only when the limit is imminent: revoking unconditionally
+	// would kick other open dev tabs on every login.
+	if active, err := CountActiveUserSessions(user.Id, time.Now().Unix()); err == nil &&
+		active >= int64(common.UserSessionActiveLimit)-1 {
+		if _, err := RevokeAllUserSessions(user.Id, "dev-auto-login-limit"); err != nil {
+			common.CtxApiError(c, err)
+			return
+		}
 	}
 
 	// loginMethodFromContext resolves the method from the request path, so the

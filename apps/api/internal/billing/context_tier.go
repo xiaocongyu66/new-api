@@ -3,9 +3,11 @@ package billing
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
+	"github.com/QuantumNous/new-api/internal/settings"
 	"github.com/samber/lo"
 )
 
@@ -60,6 +62,8 @@ func IsTieredBillingMode(mode string) bool {
 
 // GetBillingContextTier returns the stored tier JSON for a model.
 func GetBillingContextTier(model string) (string, bool) {
+	settings.GlobalConfig.ReadLock()
+	defer settings.GlobalConfig.ReadUnlock()
 	if tiers, ok := billingSetting.BillingContextTier[model]; ok {
 		return tiers, true
 	}
@@ -68,17 +72,23 @@ func GetBillingContextTier(model string) (string, bool) {
 
 // GetBillingContextTierCopy returns a copy of the stored tier map.
 func GetBillingContextTierCopy() map[string]string {
+	settings.GlobalConfig.ReadLock()
+	defer settings.GlobalConfig.ReadUnlock()
 	return lo.Assign(billingSetting.BillingContextTier)
 }
 
 // GetBillingContextTierPerCall returns the stored per-call tier JSON for a model.
 func GetBillingContextTierPerCall(model string) (string, bool) {
+	settings.GlobalConfig.ReadLock()
+	defer settings.GlobalConfig.ReadUnlock()
 	tiers, ok := billingSetting.BillingContextTierPerCall[model]
 	return tiers, ok
 }
 
 // GetBillingContextTierPerCallCopy returns a copy of the stored per-call map.
 func GetBillingContextTierPerCallCopy() map[string]string {
+	settings.GlobalConfig.ReadLock()
+	defer settings.GlobalConfig.ReadUnlock()
 	return lo.Assign(billingSetting.BillingContextTierPerCall)
 }
 
@@ -114,6 +124,40 @@ func GetBillingExprForModel(model string) (string, bool) {
 	return "", false
 }
 
+// validateTierBounds rejects configs that would generate an invalid or
+// abusive expression: negative bounds/prices, duplicate bounds, multiple
+// catch-alls, or non-finite prices. Callers pass the sorted slice, so equal
+// positive bounds are adjacent and a negative bound cannot hide behind the
+// sort. Invalid config returns an error, which makes GetBillingExprForModel
+// report ok=false and billing fall back to plain ratios instead of charging
+// a negative/NaN amount.
+func validateTierBounds(tiers []int64, prices [][]float64) error {
+	catchAlls := 0
+	var prev int64 = -1
+	for i, bound := range tiers {
+		if bound < 0 {
+			return fmt.Errorf("tier %d: max_context must be >= 0", i+1)
+		}
+		if bound == 0 {
+			catchAlls++
+			if catchAlls > 1 {
+				return fmt.Errorf("only one catch-all tier (max_context 0) is allowed")
+			}
+		} else {
+			if bound <= prev {
+				return fmt.Errorf("tier %d: max_context must strictly increase", i+1)
+			}
+			prev = bound
+		}
+		for _, price := range prices[i] {
+			if math.IsNaN(price) || math.IsInf(price, 0) || price < 0 {
+				return fmt.Errorf("tier %d: prices must be finite and non-negative", i+1)
+			}
+		}
+	}
+	return nil
+}
+
 // ContextTiersToExpr converts stored context tiers into a tiered_expr expression.
 func ContextTiersToExpr(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
@@ -144,6 +188,15 @@ func ContextTiersToExpr(raw string) (string, error) {
 		}
 		return ai < aj
 	})
+	bounds := make([]int64, len(tiers))
+	prices := make([][]float64, len(tiers))
+	for i, t := range tiers {
+		bounds[i] = t.MaxContext
+		prices[i] = []float64{t.InputPrice, t.OutputPrice, t.CachePrice, t.CacheWritePrice}
+	}
+	if err := validateTierBounds(bounds, prices); err != nil {
+		return "", err
+	}
 
 	var b strings.Builder
 	writeContextTernaryChain(&b, tiers, func(t ContextTier) (string, string) {
@@ -188,13 +241,18 @@ func writeContextTernaryChain[T any](
 ) {
 	for i, t := range tiers {
 		name, body := bodyFor(t)
+		maxContext, catchAll := boundFor(t)
+		isLast := i == len(tiers)-1
+		// The expression grammar is `cond ? a : b`; the condition must lead.
+		// The catch-all/last tier is the final `else` branch, never conditioned.
+		if !catchAll && !isLast {
+			b.WriteString(fmt.Sprintf("len <= %d ? ", maxContext))
+		}
 		b.WriteString(fmt.Sprintf("tier(%q, %s)", name, body))
-		_, catchAll := boundFor(t)
-		if catchAll || i == len(tiers)-1 {
+		if catchAll || isLast {
 			return
 		}
-		maxContext, _ := boundFor(t)
-		b.WriteString(fmt.Sprintf(" : len <= %d ? ", maxContext))
+		b.WriteString(" : ")
 	}
 }
 
@@ -234,6 +292,15 @@ func ContextCallTiersToExpr(raw string) (string, error) {
 		}
 		return ai < aj
 	})
+	bounds := make([]int64, len(tiers))
+	prices := make([][]float64, len(tiers))
+	for i, t := range tiers {
+		bounds[i] = t.MaxContext
+		prices[i] = []float64{t.Price}
+	}
+	if err := validateTierBounds(bounds, prices); err != nil {
+		return "", err
+	}
 
 	var b strings.Builder
 	writeContextTernaryChain(&b, tiers, func(t ContextCallTier) (string, string) {
