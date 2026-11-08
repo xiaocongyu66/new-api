@@ -45,7 +45,7 @@ export function ComboboxInput({
   options,
   value = '',
   onValueChange,
-  placeholder = 'Select or type...',
+  placeholder,
   emptyText = 'No option found.',
   className,
   id,
@@ -169,7 +169,7 @@ export function ComboboxInput({
         aria-haspopup='listbox'
         aria-autocomplete='list'
         autoComplete='off'
-        placeholder={placeholder}
+        placeholder={placeholder ?? t('Select or type...')}
         value={displayValue}
         onChange={(e) => {
           const nextValue = e.target.value

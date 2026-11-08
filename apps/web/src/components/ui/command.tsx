@@ -21,6 +21,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { Check, Search } from 'lucide-react'
 import { Command as CommandPrimitive } from 'cmdk'
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 
 import {
   Dialog,
@@ -49,8 +50,8 @@ function Command({
 }
 
 function CommandDialog({
-  title = 'Command Palette',
-  description = 'Search for a command to run...',
+  title,
+  description,
   children,
   className,
   showCloseButton = false,
@@ -62,11 +63,15 @@ function CommandDialog({
   showCloseButton?: boolean
   children: React.ReactNode
 }) {
+  const { t } = useTranslation()
+
   return (
     <Dialog {...props}>
       <DialogHeader className='sr-only'>
-        <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>{description}</DialogDescription>
+        <DialogTitle>{title ?? t('Command Palette')}</DialogTitle>
+        <DialogDescription>
+          {description ?? t('Search for a command to run...')}
+        </DialogDescription>
       </DialogHeader>
       <DialogContent
         className={cn(
