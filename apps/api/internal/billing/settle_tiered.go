@@ -3,6 +3,7 @@ package billing
 import (
 	"github.com/QuantumNous/new-api/internal/settings"
 	"net/http"
+	"strings"
 
 	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
@@ -222,6 +223,13 @@ func init() {
 // ---------------------------------------------------------------------------
 
 func GetBillingMode(model string) string {
+	// A persisted non-blank billing expression is authoritative for whether a
+	// model is expression-billed. This keeps billing, pricing resolution and UI
+	// reads aligned even when the billing_mode map drifted or never carried
+	// the model's entry.
+	if expr, ok := billingSetting.BillingExpr[model]; ok && strings.TrimSpace(expr) != "" {
+		return BillingModeTieredExpr
+	}
 	if mode, ok := billingSetting.BillingMode[model]; ok {
 		return mode
 	}

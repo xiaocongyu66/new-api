@@ -5,6 +5,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/usage"
 	"math"
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	catalog "github.com/QuantumNous/new-api/internal/catalog"
@@ -303,6 +304,9 @@ func init() {
 			return "", "", false
 		}
 		expr, ok := GetBillingExpr(model)
-		return mode, expr, ok
+		if !ok || strings.TrimSpace(expr) == "" {
+			return "", "", false
+		}
+		return mode, expr, true
 	}
 }

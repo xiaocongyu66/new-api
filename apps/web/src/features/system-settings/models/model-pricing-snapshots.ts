@@ -281,8 +281,14 @@ export const buildModelSnapshots = ({
     const audioCompletion = audioCompletionMap[name]?.toString() || ''
 
     const modeForModel = billingModeMap[name]
-    if (modeForModel === 'tiered_expr') {
-      const fullExpr = billingExprMap[name] || ''
+    const exprForModel = billingExprMap[name] || ''
+    // A persisted billing expression is authoritative for read/display purposes:
+    // even when the billing_mode map drifted (or never carried the entry),
+    // an expression means this model is expression-billed. This keeps an
+    // already-configured expression visible in the editor instead of falling
+    // back to per-token/per-request pricing.
+    if (modeForModel === 'tiered_expr' || exprForModel.trim() !== '') {
+      const fullExpr = exprForModel
       const { billingExpr: pureExpr, requestRuleExpr } =
         splitBillingExprAndRequestRules(fullExpr)
       return {
