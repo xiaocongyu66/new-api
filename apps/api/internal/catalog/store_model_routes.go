@@ -566,7 +566,80 @@ func ListRouteUnitAliases() ([]RouteUnitAliasSummary, error) {
 	return summaries, nil
 }
 
-// UpdateRouteUnitConfig updates a single route unit by ID.
+// GetModelAliasDispatchPolicy loads the dispatch policy row for alias.
+// Returns gorm.ErrRecordNotFound when no policy exists for the alias.
+func GetModelAliasDispatchPolicy(alias string) (*ModelAliasDispatchPolicy, error) {
+	if alias == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	var policy ModelAliasDispatchPolicy
+	if err := dbx.DB.Where("alias = ?", alias).First(&policy).Error; err != nil {
+		return nil, err
+	}
+	return &policy, nil
+}
+
+// ListModelAliasContextRoutes returns all context-window routes configured under alias.
+func ListModelAliasContextRoutes(alias string) ([]ModelAliasContextRoute, error) {
+	var routes []ModelAliasContextRoute
+	if err := dbx.DB.Where("alias = ?", alias).Order("sort_order ASC, id ASC").Find(&routes).Error; err != nil {
+		return nil, err
+	}
+	return routes, nil
+}
+
+// UpsertModelAliasDispatchPolicy creates or updates the dispatch policy row for alias.
+func UpsertModelAliasDispatchPolicy(alias string, mode string, fallbackAlias *string) error {
+	if alias == "" {
+		return errors.New("alias is required")
+	}
+	now := time.Now()
+	return dbx.DB.Transaction(func(tx *gorm.DB) error {
+		var existing ModelAliasDispatchPolicy
+		err := tx.Where("alias = ?", alias).First(&existing).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return tx.Create(&ModelAliasDispatchPolicy{
+				Alias:         alias,
+				Mode:          mode,
+				FallbackAlias: fallbackAlias,
+				UpdatedAt:     now,
+			}).Error
+		}
+		return tx.Model(&ModelAliasDispatchPolicy{}).
+			Where("alias = ?", alias).
+			Updates(map[string]any{
+				"mode":           mode,
+				"fallback_alias": fallbackAlias,
+				"updated_at":     now,
+			}).Error
+	})
+}
+
+// ReplaceModelAliasContextRoutes atomically replaces all context-window routes for alias.
+func ReplaceModelAliasContextRoutes(alias string, routes []ModelAliasContextRoute) error {
+	if alias == "" {
+		return errors.New("alias is required")
+	}
+	return dbx.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("alias = ?", alias).Delete(&ModelAliasContextRoute{}).Error; err != nil {
+			return err
+		}
+		if len(routes) == 0 {
+			return nil
+		}
+		prepared := make([]ModelAliasContextRoute, len(routes))
+		copy(prepared, routes)
+		for i := range prepared {
+			prepared[i].Alias = alias
+			prepared[i].Id = 0
+		}
+		return tx.Create(&prepared).Error
+	})
+}
+
 // weight and enabled are optional (nil = no change). Returns gorm.ErrRecordNotFound if row does not exist.
 func UpdateRouteUnitConfig(id int, weight *int, enabled *bool) error {
 	if weight == nil && enabled == nil {

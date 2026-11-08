@@ -178,3 +178,229 @@ func UpdateRouteUnit(c contract.Context) {
 	}
 	common.ApiSuccess(c, updated)
 }
+
+// GetModelAliasDispatchPolicy returns the dispatch policy for an alias.
+// When no policy row exists, a default weighted_pool policy with no fallback is returned.
+func GetModelAliasDispatchPolicy(c contract.Context) {
+	alias := c.Query("alias")
+	if alias == "" {
+		c.JSON(http.StatusBadRequest, common.H{
+			"success": false,
+			"message": "alias参数不能为空",
+		})
+		return
+	}
+
+	policy, err := channelpkg.GetModelAliasDispatchPolicy(alias)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			common.ApiSuccess(c, channelpkg.ModelAliasDispatchPolicy{
+				Alias: alias,
+				Mode:  "weighted_pool",
+			})
+			return
+		}
+		common.ApiError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, policy)
+}
+
+// updateModelAliasDispatchPolicyRequest is the request body for policy upsert.
+type updateModelAliasDispatchPolicyRequest struct {
+	Alias         string  `json:"alias"`
+	Mode          string  `json:"mode"`
+	FallbackAlias *string `json:"fallback_alias"`
+}
+
+// UpdateModelAliasDispatchPolicy upserts the dispatch policy for an alias.
+func UpdateModelAliasDispatchPolicy(c contract.Context) {
+	var req updateModelAliasDispatchPolicyRequest
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, common.H{
+			"success": false,
+			"message": "请求参数格式错误",
+		})
+		return
+	}
+
+	if req.Alias == "" {
+		c.JSON(http.StatusBadRequest, common.H{
+			"success": false,
+			"message": "alias参数不能为空",
+		})
+		return
+	}
+
+	switch req.Mode {
+	case "weighted_pool", "context_range", "delegate":
+	default:
+		c.JSON(http.StatusBadRequest, common.H{
+			"success": false,
+			"message": "mode 必须为 weighted_pool、context_range 或 delegate",
+		})
+		return
+	}
+
+	if err := channelpkg.UpsertModelAliasDispatchPolicy(req.Alias, req.Mode, req.FallbackAlias); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	channelpkg.InitChannelCache()
+
+	policy, err := channelpkg.GetModelAliasDispatchPolicy(req.Alias)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			common.ApiSuccess(c, channelpkg.ModelAliasDispatchPolicy{
+				Alias:         req.Alias,
+				Mode:          req.Mode,
+				FallbackAlias: req.FallbackAlias,
+			})
+			return
+		}
+		common.ApiError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, policy)
+}
+
+// ListModelAliasContextRoutes returns all context routes for an alias.
+func ListModelAliasContextRoutes(c contract.Context) {
+	alias := c.Query("alias")
+	if alias == "" {
+		c.JSON(http.StatusBadRequest, common.H{
+			"success": false,
+			"message": "alias参数不能为空",
+		})
+		return
+	}
+
+	routes, err := channelpkg.ListModelAliasContextRoutes(alias)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if routes == nil {
+		routes = []channelpkg.ModelAliasContextRoute{}
+	}
+
+	common.ApiSuccess(c, common.H{
+		"items": routes,
+	})
+}
+
+// replaceModelAliasContextRoutesRequest is the request body for replacing context routes.
+type replaceModelAliasContextRoutesRequest struct {
+	Alias string                              `json:"alias"`
+	Items []channelpkg.ModelAliasContextRoute `json:"items"`
+}
+
+// ReplaceModelAliasContextRoutes validates and replaces context routes for an alias.
+func ReplaceModelAliasContextRoutes(c contract.Context) {
+	var req replaceModelAliasContextRoutesRequest
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, common.H{
+			"success": false,
+			"message": "请求参数格式错误",
+		})
+		return
+	}
+
+	if req.Alias == "" {
+		c.JSON(http.StatusBadRequest, common.H{
+			"success": false,
+			"message": "alias参数不能为空",
+		})
+		return
+	}
+
+	for _, item := range req.Items {
+		if item.ContextMin < 0 {
+			c.JSON(http.StatusBadRequest, common.H{
+				"success": false,
+				"message": "context_min 必须大于等于 0",
+			})
+			return
+		}
+		if item.ContextMax != 0 && item.ContextMax < item.ContextMin {
+			c.JSON(http.StatusBadRequest, common.H{
+				"success": false,
+				"message": "context_max 必须为 0 或大于等于 context_min",
+			})
+			return
+		}
+		if item.StaticWeight < 0 {
+			c.JSON(http.StatusBadRequest, common.H{
+				"success": false,
+				"message": "static_weight 必须大于等于 0",
+			})
+			return
+		}
+	}
+
+	// Validate no overlapping intervals among enabled items.
+	enabled := make([]channelpkg.ModelAliasContextRoute, 0)
+	for _, item := range req.Items {
+		if item.Enabled {
+			enabled = append(enabled, item)
+		}
+	}
+	for i := 0; i < len(enabled); i++ {
+		for j := i + 1; j < len(enabled); j++ {
+			a := enabled[i]
+			b := enabled[j]
+			if intervalsOverlap(a.ContextMin, a.ContextMax, b.ContextMin, b.ContextMax) {
+				c.JSON(http.StatusBadRequest, common.H{
+					"success": false,
+					"message": "启用的上下文区间不能重叠",
+				})
+				return
+			}
+		}
+	}
+
+	routes := make([]channelpkg.ModelAliasContextRoute, len(req.Items))
+	copy(routes, req.Items)
+	for i := range routes {
+		routes[i].Alias = req.Alias
+		routes[i].Id = 0
+	}
+
+	if err := channelpkg.ReplaceModelAliasContextRoutes(req.Alias, routes); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	channelpkg.InitChannelCache()
+
+	updated, err := channelpkg.ListModelAliasContextRoutes(req.Alias)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if updated == nil {
+		updated = []channelpkg.ModelAliasContextRoute{}
+	}
+
+	common.ApiSuccess(c, common.H{
+		"items": updated,
+	})
+}
+
+// intervalsOverlap reports whether two context intervals overlap.
+// A ContextMax of 0 means unbounded (infinity).
+func intervalsOverlap(minA, maxA, minB, maxB int) bool {
+	aUnbounded := maxA == 0
+	bUnbounded := maxB == 0
+	// If neither contains the other start...
+	if !aUnbounded && maxA < minB {
+		return false
+	}
+	if !bUnbounded && maxB < minA {
+		return false
+	}
+	return true
+}

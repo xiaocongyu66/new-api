@@ -388,13 +388,115 @@ func scoreCandidates(pool routestats.PoolKey, candidates []routeCandidate, alias
 // It simultaneously determines channel, key, and upstream model.
 // rnd is a deterministic random source; nil uses the goroutine-safe math/rand/v2 global source.
 func SelectRouteUnit(group string, alias string, requestPath string, retry int, excludeRoutes map[RouteKey]bool, inputTokens int, rnd *rand.Rand) (*SelectedRoute, error) {
-	// The retry parameter in the old priority-tier system drove tier descent.
-	// In the new flat route-unit model, there are no priority tiers — all enabled
-	// route units for the (group, alias) compete directly. The retry parameter
-	// is retained for API compatibility but has no effect on selection.
-	_ = retry
-	_ = inputTokens
+	return selectRouteUnitWithPolicy(group, alias, requestPath, retry, excludeRoutes, inputTokens, rnd, make(map[string]struct{}))
+}
 
+// selectRouteUnitWithPolicy is the recursive implementation of SelectRouteUnit.
+// visited tracks aliases already on the resolution path to prevent infinite
+// recursion via fallback aliases.
+func selectRouteUnitWithPolicy(group string, alias string, requestPath string, retry int, excludeRoutes map[RouteKey]bool, inputTokens int, rnd *rand.Rand, visited map[string]struct{}) (*SelectedRoute, error) {
+	_ = retry
+	if _, ok := visited[alias]; ok {
+		return nil, nil
+	}
+	visited[alias] = struct{}{}
+
+	// Load per-alias dispatch policy. Missing/unknown -> weighted_pool.
+	policy, _ := GetModelAliasDispatchPolicy(alias)
+	mode := "weighted_pool"
+	var fallbackAlias *string
+	if policy != nil {
+		if policy.Mode != "" {
+			mode = policy.Mode
+		}
+		fallbackAlias = policy.FallbackAlias
+	}
+	switch mode {
+	case "weighted_pool", "context_range", "delegate":
+	default:
+		mode = "weighted_pool"
+	}
+
+	// context_range: pick candidates by matching input-token intervals.
+	if mode == "context_range" {
+		routes, err := ListModelAliasContextRoutes(alias)
+
+		// Select enabled context routes whose interval contains inputTokens.
+		var matching []ModelAliasContextRoute
+		if err == nil {
+			for _, r := range routes {
+				if !r.Enabled {
+					continue
+				}
+				if r.ContextMin <= inputTokens && (r.ContextMax == 0 || inputTokens <= r.ContextMax) {
+					matching = append(matching, r)
+				}
+			}
+		}
+
+		// Group eligibility: reuse allowedChannelsForGroupAlias; candidates must be
+		// nil when group or alias is empty (as in weighted_pool path).
+		var candidates []routeCandidate
+		if group != "" && alias != "" {
+			allowed := allowedChannelsForGroupAlias(group, alias)
+			if len(allowed) > 0 {
+				for _, cr := range matching {
+					if _, ok := allowed[cr.ChannelId]; !ok {
+						continue
+					}
+					candidates = append(candidates, routeCandidate{
+						routeId:       cr.Id,
+						channelId:     cr.ChannelId,
+						keyIndex:      cr.KeyIndex,
+						upstreamModel: cr.UpstreamModel,
+						staticWeight:  cr.StaticWeight,
+					})
+				}
+			}
+		}
+
+		if len(candidates) > 0 {
+			candidates = filterCandidatesByChannelStatusAndKey(candidates, requestPath, alias, excludeRoutes)
+		}
+
+		if len(candidates) == 0 {
+			// Default interval (0,0) already considered among matching; only
+			// fall back when no such default exists.
+			hasDefault := false
+			if err == nil {
+				for _, r := range routes {
+					if r.Enabled && r.ContextMin == 0 && r.ContextMax == 0 {
+						hasDefault = true
+						break
+					}
+				}
+			}
+			if !hasDefault && fallbackAlias != nil && *fallbackAlias != "" {
+				if _, ok := visited[*fallbackAlias]; !ok {
+					return selectRouteUnitWithPolicy(group, *fallbackAlias, requestPath, retry, excludeRoutes, inputTokens, rnd, visited)
+				}
+			}
+			return nil, nil
+		}
+
+		selected := selectP2C(candidates, alias, ChannelHealthNow(), rnd)
+		if selected == nil {
+			return nil, nil
+		}
+		return resolveSelectedRouteUnit(group, alias, selected)
+	}
+
+	// delegate: resolve via fallback alias, otherwise weighted_pool of this alias.
+	if mode == "delegate" {
+		if fallbackAlias != nil && *fallbackAlias != "" {
+			if _, ok := visited[*fallbackAlias]; !ok {
+				return selectRouteUnitWithPolicy(group, *fallbackAlias, requestPath, retry, excludeRoutes, inputTokens, rnd, visited)
+			}
+		}
+		mode = "weighted_pool"
+	}
+
+	// weighted_pool: current candidate loading/filtering/P2C exactly as before.
 	var candidates []routeCandidate
 	if common.MemoryCacheEnabled {
 		channelSyncLock.RLock()
@@ -428,18 +530,17 @@ func SelectRouteUnit(group string, alias string, requestPath string, retry int, 
 		return nil, nil
 	}
 
-	// P2C duel (mono selector port): sample by the effective prior (static
-	// weight × slow-start ramp), then decide by the posterior likelihood.
-	// Cooling or hard-disabled units are not eligible; with the whole
-	// pool down, faintRecall force-recalls the shortest-remaining unit.
+	// P2C duel
 	selected := selectP2C(candidates, alias, ChannelHealthNow(), rnd)
 	if selected == nil {
 		return nil, nil
 	}
 
-	// Resolve full channel and key. When the memory cache is off, channelsIDM is
-	// nil (InitChannelCache early-returns), so fall back to the database — the
-	// same source the candidate filter and CacheGetChannel use in cache-off mode.
+	return resolveSelectedRouteUnit(group, alias, selected)
+}
+
+// resolveSelectedRouteUnit resolves the final SelectedRoute from a P2C winner.
+func resolveSelectedRouteUnit(group, alias string, selected *routeCandidate) (*SelectedRoute, error) {
 	var channel *Channel
 	if common.MemoryCacheEnabled {
 		channelSyncLock.RLock()
@@ -463,8 +564,6 @@ func SelectRouteUnit(group string, alias string, requestPath string, retry int, 
 	}
 
 	// Create routestats handle for this route unit (per-attempt attribution)
-	// RouteKey uses: Group (group), PublicModelAlias (alias = requested alias),
-	// ChannelID, KeyIndex, UpstreamModel (from route row, not adapted).
 	routeKey := routestats.RouteKey{PublicModelAlias: alias,
 		ChannelID:     selected.channelId,
 		KeyIndex:      selected.keyIndex,
