@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   Box,
   CreditCard,
-  LayoutDashboard,
   Network,
   Radio,
   ScanSearch,
@@ -47,7 +46,6 @@ export type AdminNavigationItem = {
 }
 
 export const ADMIN_NAVIGATION: readonly AdminNavigationItem[] = [
-  { id: 'overview', labelKey: 'admin.overview', to: '/admin', icon: LayoutDashboard },
   { id: 'channels', labelKey: 'admin.channels', to: '/admin/channels', icon: Radio },
   { id: 'models', labelKey: 'admin.models', to: '/admin/models/$section', params: { section: 'metadata' }, icon: Box },
   { id: 'users', labelKey: 'admin.users', to: '/admin/users', icon: Users },
