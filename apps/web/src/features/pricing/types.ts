@@ -54,6 +54,10 @@ export type PricingModel = {
   billing_mode?: string
   /** Raw expression describing dynamic / tiered billing */
   billing_expr?: string
+  /** Stored context-tier fees (JSON) for context_tier billing mode */
+  billing_context_tier?: string
+  /** Stored per-call context-tier fees (JSON) for context_tier_per_call mode */
+  billing_context_tier_per_call?: string
   /** Pricing version returned by backend, useful for cache busting */
   pricing_version?: string
   /**

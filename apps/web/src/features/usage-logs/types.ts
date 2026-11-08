@@ -189,10 +189,11 @@ export interface LogOtherData {
   audio_completion_ratio?: number
   frt?: number
   duration_ms?: number
-  // Tiered (expression-based) billing fields, set by backend when
-  // billing_mode === 'tiered_expr'. expr_b64 is the base64-encoded billing
-  // expression; the matched tier and request-rule traces come from the actual
-  // settlement run.
+  // Tiered (expression-based) billing fields, set by the backend when the
+  // active method is any tiered-family mode (tiered_expr / context_tier /
+  // context_tier_per_call). expr_b64 is the base64-encoded billing expression;
+  // the matched tier and request-rule traces come from the actual settlement
+  // run.
   billing_mode?: string
   expr_b64?: string
   matched_tier?: string

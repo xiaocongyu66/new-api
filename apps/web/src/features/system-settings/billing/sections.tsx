@@ -41,6 +41,9 @@ const getModelDefaults = (settings: BillingSettings) => ({
   ExposeRatioEnabled: settings.ExposeRatioEnabled,
   BillingMode: settings['billing_setting.billing_mode'],
   BillingExpr: settings['billing_setting.billing_expr'],
+  BillingContextTier: settings['billing_setting.billing_context_tier'] ?? '{}',
+  BillingContextTierPerCall:
+    settings['billing_setting.billing_context_tier_per_call'] ?? '{}',
 })
 
 const getGroupDefaults = (settings: BillingSettings) => ({
