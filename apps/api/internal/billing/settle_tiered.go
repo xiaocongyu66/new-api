@@ -228,18 +228,17 @@ func init() {
 // ---------------------------------------------------------------------------
 
 func GetBillingMode(model string) string {
-	// A persisted non-blank billing expression is authoritative for whether a
-	// model is expression-billed. This keeps billing, pricing resolution and UI
-	// reads aligned even when the billing_mode map drifted or never carried
-	// the model's entry. Both map reads stay under the config read lock: the
-	// periodic settings sync rewrites them concurrently with request paths.
+	// billing_mode is authoritative when it carries an entry: a model on a
+	// context-interval mode keeps that mode even though a stale expression is
+	// still stored alongside it. The expression check is the fallback for a
+	// drifted or missing mode entry only.
 	settings.GlobalConfig.ReadLock()
 	defer settings.GlobalConfig.ReadUnlock()
-	if expr, ok := billingSetting.BillingExpr[model]; ok && strings.TrimSpace(expr) != "" {
-		return BillingModeTieredExpr
-	}
 	if mode, ok := billingSetting.BillingMode[model]; ok {
 		return mode
+	}
+	if expr, ok := billingSetting.BillingExpr[model]; ok && strings.TrimSpace(expr) != "" {
+		return BillingModeTieredExpr
 	}
 	return BillingModeRatio
 }

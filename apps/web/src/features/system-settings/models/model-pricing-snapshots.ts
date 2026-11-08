@@ -491,10 +491,10 @@ export const buildModelSnapshots = ({
     // Every method's data persists independently of which one is active, so
     // each row carries ALL stored method payloads; otherwise opening a model
     // whose active method differs from a configured one and saving would
-    // overwrite/delete the other methods' config. A persisted expression is
-    // authoritative for display: even when the billing_mode map drifted (or
-    // never carried the entry), an expression means this model is
-    // expression-billed.
+    // overwrite/delete the other methods' config. A persisted expression only
+    // stands in when billing_mode drifted or never carried the entry: a model
+    // already on a context-interval mode keeps that mode even though a stale
+    // expression is still stored.
     const storedExpr = billingExprMap[name] || ''
     const { billingExpr: pureExpr, requestRuleExpr } =
       splitBillingExprAndRequestRules(storedExpr)
@@ -515,14 +515,16 @@ export const buildModelSnapshots = ({
       billingContextTierPerCall: storedCallTiers,
       hasConflict: false,
     }
-    if (modeForModel === 'tiered_expr' || storedExpr.trim() !== '') {
-      return { name, billingMode: 'tiered_expr', ...shared }
-    }
     if (modeForModel === 'context_tier') {
       return { name, billingMode: 'context_tier', ...shared }
     }
     if (modeForModel === 'context_tier_per_call') {
       return { name, billingMode: 'context_tier_per_call', ...shared }
+    }
+    // Expression-authoritative fallback: with no usable mode entry, a persisted
+    // expression still means this model is expression-billed.
+    if (modeForModel === 'tiered_expr' || storedExpr.trim() !== '') {
+      return { name, billingMode: 'tiered_expr', ...shared }
     }
 
     return {
