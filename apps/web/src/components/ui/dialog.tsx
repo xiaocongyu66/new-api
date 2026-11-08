@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog'
 import { X } from 'lucide-react'
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -65,6 +66,8 @@ function DialogContent({
   showCloseButton?: boolean
   headerActions?: React.ReactNode
 }) {
+  const { t } = useTranslation()
+
   return (
     <DialogPortal>
       <DialogOverlay />
@@ -86,7 +89,7 @@ function DialogContent({
                 render={<Button variant='ghost' size='icon-sm' />}
               >
                 <X strokeWidth={2} />
-                <span className='sr-only'>Close</span>
+                <span className='sr-only'>{t('Close')}</span>
               </DialogPrimitive.Close>
             )}
           </div>
