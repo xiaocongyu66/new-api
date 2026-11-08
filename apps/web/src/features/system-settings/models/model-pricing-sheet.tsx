@@ -718,7 +718,9 @@ export const ModelPricingEditorPanel = forwardRef<
                       }}
                     >
                       <SelectTrigger className='w-full'>
-                        <SelectValue />
+                        <SelectValue>
+                          {(value: string) => t(getModeLabel(value))}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>

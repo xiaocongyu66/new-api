@@ -23,7 +23,7 @@ import type {
   VisibilityState,
   SortingState,
 } from '@tanstack/react-table'
-import { ListFilter, Plus, Trash2 } from 'lucide-react'
+import { ListFilter, Plus } from 'lucide-react'
 import {
   useState,
   useMemo,
@@ -36,7 +36,6 @@ import {
   type ReactNode,
 } from 'react'
 import { useTranslation } from 'react-i18next'
-import { cn } from '@/lib/utils'
 
 import {
   DataTableToolbar,
@@ -52,19 +51,16 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { PriceMatrixTable, type PriceMatrixRow } from '@/features/pricing/components/price-matrix-table'
-import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
 import {
-  formatTokenCountHint,
-  isTieredBillingMode,
-} from '@/features/pricing/lib/dynamic-price'
+  PriceMatrixTable,
+  type PriceMatrixRow,
+} from '@/features/pricing/components/price-matrix-table'
+import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
+import { isTieredBillingMode } from '@/features/pricing/lib/dynamic-price'
+import { cn } from '@/lib/utils'
 
 import { safeJsonParse } from '../utils/json-parser'
-import { formatPricingDisplay } from './pricing-format'
-import {
-  createInitialLaneState,
-  type PricingMode,
-} from './model-pricing-core'
+import { createInitialLaneState, type PricingMode } from './model-pricing-core'
 import {
   ModelPricingEditorPanel,
   type ModelPricingEditorPanelHandle,
@@ -76,7 +72,6 @@ import {
   getModeLabel,
   hasPricingValue,
   parseTierRows,
-  parseTierSummary,
   getSnapshotSignature,
   isBasePricingUnset,
   parseCompletionRatioMeta,
@@ -84,6 +79,7 @@ import {
   type ModelRow,
 } from './model-pricing-snapshots'
 import { buildModelRatioColumns } from './model-ratio-table-columns'
+import { formatPricingDisplay } from './pricing-format'
 
 type ModelRatioVisualEditorProps = {
   savedModelPrice: string
@@ -450,10 +446,9 @@ const ModelRatioVisualEditorComponent = forwardRef<
         billingContextTier,
         { fallback: {}, silent: true }
       )
-      const billingContextTierPerCallMap = safeJsonParse<Record<string, string>>(
-        billingContextTierPerCall,
-        { fallback: {}, silent: true }
-      )
+      const billingContextTierPerCallMap = safeJsonParse<
+        Record<string, string>
+      >(billingContextTierPerCall, { fallback: {}, silent: true })
 
       delete priceMap[name]
       delete ratioMap[name]
@@ -606,10 +601,9 @@ const ModelRatioVisualEditorComponent = forwardRef<
         billingContextTier,
         { fallback: {}, silent: true }
       )
-      const billingContextTierPerCallMap = safeJsonParse<Record<string, string>>(
-        billingContextTierPerCall,
-        { fallback: {}, silent: true }
-      )
+      const billingContextTierPerCallMap = safeJsonParse<
+        Record<string, string>
+      >(billingContextTierPerCall, { fallback: {}, silent: true })
 
       const setIfPresent = (
         target: Record<string, number>,
@@ -860,15 +854,9 @@ const ModelRatioVisualEditorComponent = forwardRef<
                   ? parseTierRows(model.billingContextTierPerCall)
                   : []
 
-            const tierSummary =
-              model.billingMode === 'context_tier'
-                ? parseTierSummary(model.billingContextTier)
-                : model.billingMode === 'context_tier_per_call'
-                  ? parseTierSummary(model.billingContextTierPerCall)
-                  : null
-
-            // Matrix orientation: columns are price lanes, rows are context
-            // intervals. Modes without intervals render a single `*` row.
+            // Matrix orientation: the axis with more entries takes the
+            // horizontal slots, so wide tables stay short instead of tall.
+            // Equal counts keep the price lanes on the horizontal axis.
             const isPerCallMode =
               model.billingMode === 'per-request' ||
               model.billingMode === 'context_tier_per_call'
@@ -878,14 +866,12 @@ const ModelRatioVisualEditorComponent = forwardRef<
             const hasCacheWrite = tierRows.some(
               (tier) => (tier.cacheWritePrice ?? 0) > 0
             )
-            const laneColumns: string[] = isPerCallMode
+            const laneLabels: string[] = isPerCallMode
               ? [t('request')]
               : [
                   t('Input'),
                   t('Output'),
-                  ...(hasCacheRead || lanes.enabled.cache
-                    ? [t('Cache')]
-                    : []),
+                  ...(hasCacheRead || lanes.enabled.cache ? [t('Cache')] : []),
                   ...(hasCacheWrite || lanes.enabled.createCache
                     ? [t('Cache write')]
                     : []),
@@ -895,20 +881,27 @@ const ModelRatioVisualEditorComponent = forwardRef<
               if (!Number.isFinite(numberValue) || value === '') return '—'
               return `$${formatPricingDisplay(numberValue)}`
             }
-            const matrixRows: PriceMatrixRow[] = tierRows.length
+            // One entry per rendered price row: every context interval when
+            // present, otherwise a single `*` flat row. `values` stays in
+            // lane order so the table can pivot either way.
+            const tierSeries: {
+              key: string
+              header: string
+              values: string[]
+            }[] = tierRows.length
               ? tierRows.map((tier) => ({
                   key: tier.key,
                   header: tier.boundLabel,
-                  cells: isPerCallMode
-                    ? [{ lines: [formatCell(tier.price)] }]
+                  values: isPerCallMode
+                    ? [formatCell(tier.price)]
                     : [
-                        { lines: [formatCell(tier.inputPrice)] },
-                        { lines: [formatCell(tier.outputPrice)] },
+                        formatCell(tier.inputPrice),
+                        formatCell(tier.outputPrice),
                         ...(hasCacheRead || lanes.enabled.cache
-                          ? [{ lines: [formatCell(tier.cachePrice)] }]
+                          ? [formatCell(tier.cachePrice)]
                           : []),
                         ...(hasCacheWrite || lanes.enabled.createCache
-                          ? [{ lines: [formatCell(tier.cacheWritePrice)] }]
+                          ? [formatCell(tier.cacheWritePrice)]
                           : []),
                       ],
                 }))
@@ -918,90 +911,83 @@ const ModelRatioVisualEditorComponent = forwardRef<
                     {
                       key: 'flat',
                       header: '*',
-                      cells: isPerCallMode
-                        ? [{ lines: [formatCell(model.price)] }]
+                      values: isPerCallMode
+                        ? [formatCell(model.price)]
                         : [
-                            { lines: [formatCell(lanes.promptPrice)] },
-                            {
-                              lines: [
-                                formatCell(
-                                  effectiveCompletionRatio !== null &&
-                                    lanes.promptPrice
-                                    ? Number(lanes.promptPrice) *
-                                        effectiveCompletionRatio
-                                    : undefined
-                                ),
-                              ],
-                            },
+                            formatCell(lanes.promptPrice),
+                            formatCell(
+                              effectiveCompletionRatio !== null &&
+                                lanes.promptPrice
+                                ? Number(lanes.promptPrice) *
+                                    effectiveCompletionRatio
+                                : undefined
+                            ),
                             ...(lanes.enabled.cache
-                              ? [{ lines: [formatCell(lanes.prices.cache)] }]
+                              ? [formatCell(lanes.prices.cache)]
                               : []),
                             ...(lanes.enabled.createCache
-                              ? [
-                                  {
-                                    lines: [
-                                      formatCell(lanes.prices.createCache),
-                                    ],
-                                  },
-                                ]
+                              ? [formatCell(lanes.prices.createCache)]
                               : []),
                           ],
                     },
                   ]
+            const transpose = tierSeries.length > laneLabels.length
+            const matrixColumns = transpose
+              ? tierSeries.map((tier) => tier.header)
+              : laneLabels
+            const matrixRows: PriceMatrixRow[] = transpose
+              ? laneLabels.map((label, laneIndex) => ({
+                  key: `lane-${laneIndex}`,
+                  header: label,
+                  cells: tierSeries.map((tier) => ({
+                    lines: [tier.values[laneIndex] ?? '—'],
+                  })),
+                }))
+              : tierSeries.map((tier) => ({
+                  key: tier.key,
+                  header: tier.header,
+                  cells: tier.values.map((value) => ({ lines: [value] })),
+                }))
 
             return (
               <div
                 key={row.id}
                 className={cn(
-                  'group relative rounded-lg border bg-card shadow-sm transition hover:border-primary/40 hover:shadow-md',
+                  'group relative rounded-lg border bg-card-surface backdrop-blur-card shadow-sm transition hover:border-primary/40 hover:shadow-md',
                   model.isPriceUnset
                     ? 'border-yellow-200 dark:border-yellow-800'
                     : 'border-green-200 dark:border-green-800',
-                  isEditing && 'border-primary bg-primary/5'
+                  isEditing &&
+                    'border-primary ring-1 ring-primary/40 bg-primary/10'
                 )}
               >
                 <button
                   type='button'
-                  className='flex h-full w-full flex-col gap-2 p-3 pr-8 text-left'
+                  className='flex h-full w-full flex-col gap-2 p-3 text-left'
                   onClick={() => handleEdit(model)}
                 >
-                  <div className='flex min-w-0 flex-col gap-1'>
-                    <span className='flex min-w-0 items-center gap-2 text-sm leading-tight font-semibold'>
-                      <span className='min-w-0 truncate'>{model.name}</span>
-                      {isTieredBillingMode(model.billingMode) && (
-                        <StatusBadge
-                          label={t('Tiered')}
-                          variant='info'
-                          copyable={false}
-                          className='shrink-0'
-                        />
-                      )}
-                      {model.hasConflict && (
-                        <StatusBadge
-                          label={t('Conflict')}
-                          variant='danger'
-                          copyable={false}
-                          className='shrink-0'
-                        />
-                      )}
+                  <span className='flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-sm leading-tight font-semibold'>
+                    <span className='min-w-0 truncate'>{model.name}</span>
+                    {isTieredBillingMode(model.billingMode) && (
+                      <StatusBadge
+                        label={t('Tiered')}
+                        variant='info'
+                        copyable={false}
+                        className='shrink-0'
+                      />
+                    )}
+                    {model.hasConflict && (
+                      <StatusBadge
+                        label={t('Conflict')}
+                        variant='danger'
+                        copyable={false}
+                        className='shrink-0'
+                      />
+                    )}
+                    <span className='text-muted-foreground/70 text-[11px] font-normal'>
+                      {t(getModeLabel(model.billingMode))}
                     </span>
-                    <span className='text-muted-foreground/70 flex min-w-0 flex-wrap items-center gap-x-1.5 text-[11px]'>
-                      <span>{t(getModeLabel(model.billingMode))}</span>
-                      {tierSummary ? (
-                        <span className='text-muted-foreground/50'>
-                          · {tierSummary.count} {t('tiers')}
-                          {tierSummary.maxBound !== null
-                            ? ` · ≤${formatTokenCountHint(tierSummary.maxBound)}`
-                            : ''}
-                        </span>
-                      ) : model.billingMode === 'per-token' &&
-                        hasPricingValue(model.ratio) ? (
-                        <span className='text-muted-foreground/50'>
-                          · ×{formatPricingDisplay(model.ratio)}
-                        </span>
-                      ) : null}
-                    </span>
-                  </div>
+                  </span>
 
                   {model.isPriceUnset ? (
                     <span className='text-muted-foreground/60 text-[11px]'>
@@ -1009,28 +995,12 @@ const ModelRatioVisualEditorComponent = forwardRef<
                     </span>
                   ) : (
                     <PriceMatrixTable
-                      corner={t('Interval')}
-                      columns={laneColumns}
+                      corner={transpose ? t('Price') : t('Interval')}
+                      columns={matrixColumns}
                       rows={matrixRows}
                     />
                   )}
                 </button>
-
-                {!model.isPriceUnset && (
-                  <Button
-                    type='button'
-                    variant='ghost'
-                    size='icon-sm'
-                    className='text-muted-foreground/50 absolute top-1.5 right-1.5 hover:text-destructive'
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      handleDelete(model.name)
-                    }}
-                    aria-label={t('Delete')}
-                  >
-                    <Trash2 className='h-4 w-4' />
-                  </Button>
-                )}
               </div>
             )
           })}
@@ -1040,7 +1010,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       {hasRows && <DataTablePagination table={table} />}
 
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
-        <DialogContent className='sm:max-w-4xl w-[95vw] max-h-[90vh] overflow-hidden p-0'>
+        <DialogContent className='max-h-[90vh] w-[95vw] overflow-hidden p-0 sm:max-w-4xl'>
           <DialogTitle className='sr-only'>
             {editData ? t('Edit model pricing') : t('Add model pricing')}
           </DialogTitle>
