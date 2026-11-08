@@ -237,9 +237,7 @@ const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AuthenticatedAdminRouteRoute,
-} as any).lazy(() =>
-  import('./routes/_authenticated/admin/index.lazy').then((d) => d.Route),
-)
+} as any)
 const AuthenticatedAdminProxyRoute = AuthenticatedAdminProxyRouteImport.update({
   id: '/proxy',
   path: '/proxy',
