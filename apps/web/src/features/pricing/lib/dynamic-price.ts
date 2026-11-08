@@ -80,7 +80,11 @@ export function isTieredBillingMode(mode?: string): boolean {
 }
 
 export function isDynamicPricingModel(model: PricingModel): boolean {
-  return isTieredBillingMode(model.billing_mode) && Boolean(model.billing_expr)
+  // An expression is the authoritative signal for expression billing. Treating a
+  // non-empty billing_expr as dynamic even when billing_mode drifted (or is
+  // missing) keeps configured pricing visible instead of falling back to the
+  // static price display.
+  return Boolean(model.billing_expr && model.billing_expr.trim())
 }
 
 export function getDynamicDisplayGroupRatio(

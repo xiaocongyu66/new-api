@@ -5,6 +5,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/usage"
 	"math"
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/internal/billing/price_expression"
 	catalog "github.com/QuantumNous/new-api/internal/catalog"
@@ -302,8 +303,14 @@ func init() {
 		if !IsTieredBillingMode(mode) {
 			return "", "", false
 		}
+		// Region-aware resolution handles both persisted expressions and
+		// context-interval configs; a blank expression is not billable even when
+		// billing_mode still points at a tiered family mode.
 		expr, ok := GetBillingExprForModel(model)
-		return mode, expr, ok
+		if !ok || strings.TrimSpace(expr) == "" {
+			return "", "", false
+		}
+		return mode, expr, true
 	}
 	catalog.OnResolveContextTier = func(model string) (string, bool) {
 		if GetBillingMode(model) != BillingModeContextTier {

@@ -57,11 +57,18 @@ type PricingVendor struct {
 }
 
 var (
+	// pricingMap, vendorsList, supportedEndpointMap and lastGetPricingTime are
+	// the pricing cache. Every read and write MUST hold updatePricingLock
+	// (RLock for reads, Lock for writes): the writers replace the slice headers
+	// wholesale (InvalidatePricingCache on every channel sync, updatePricing on
+	// rebuild), so an unsynchronized reader can observe a torn header - a new
+	// backing-array pointer spliced with a stale length - and panic with a nil
+	// dereference or out-of-range read, surfacing as an intermittent HTTP 500.
 	pricingMap           []Pricing
 	vendorsList          []PricingVendor
 	supportedEndpointMap map[string]common.EndpointInfo
 	lastGetPricingTime   time.Time
-	updatePricingLock    sync.Mutex
+	updatePricingLock    sync.RWMutex
 
 	// 缓存映射：模型名 -> 启用分组 / 计费类型
 	modelEnableGroups     = make(map[string][]string)
@@ -74,16 +81,26 @@ var (
 	modelSupportEndpointsLock = sync.RWMutex{}
 )
 
+// pricingSnapshot copies the pricing cache under a read lock and reports
+// whether the snapshot is fresh (rebuilt within the last minute and non-empty).
+func pricingSnapshot() (pricing []Pricing, vendors []PricingVendor, fresh bool) {
+	updatePricingLock.RLock()
+	defer updatePricingLock.RUnlock()
+	fresh = time.Since(lastGetPricingTime) <= time.Minute*1 && len(pricingMap) > 0
+	return pricingMap, vendorsList, fresh
+}
+
 func GetPricing() []Pricing {
+	if pricing, _, fresh := pricingSnapshot(); fresh {
+		return pricing
+	}
+	updatePricingLock.Lock()
+	defer updatePricingLock.Unlock()
+	// Double check after acquiring the lock
 	if time.Since(lastGetPricingTime) > time.Minute*1 || len(pricingMap) == 0 {
-		updatePricingLock.Lock()
-		defer updatePricingLock.Unlock()
-		// Double check after acquiring the lock
-		if time.Since(lastGetPricingTime) > time.Minute*1 || len(pricingMap) == 0 {
-			modelSupportEndpointsLock.Lock()
-			defer modelSupportEndpointsLock.Unlock()
-			updatePricing()
-		}
+		modelSupportEndpointsLock.Lock()
+		defer modelSupportEndpointsLock.Unlock()
+		updatePricing()
 	}
 	return pricingMap
 }
@@ -99,11 +116,13 @@ func InvalidatePricingCache() {
 
 // GetVendors 返回当前定价接口使用到的供应商信息
 func GetVendors() []PricingVendor {
-	if time.Since(lastGetPricingTime) > time.Minute*1 || len(pricingMap) == 0 {
+	_, vendors, fresh := pricingSnapshot()
+	if !fresh {
 		// 保证先刷新一次
 		GetPricing()
+		_, vendors, _ = pricingSnapshot()
 	}
-	return vendorsList
+	return vendors
 }
 
 func GetModelSupportEndpointTypes(model string) []constant.EndpointType {
@@ -443,8 +462,11 @@ func updatePricing() {
 	lastGetPricingTime = time.Now()
 }
 
-// GetSupportedEndpointMap 返回全局端点到路径的映射
+// GetSupportedEndpointMap 返回全局端点到路径的映射。
+// 返回的 map 在 updatePricing 中整体替换，调用方拿到的是某一时刻的完整快照。
 func GetSupportedEndpointMap() map[string]common.EndpointInfo {
+	updatePricingLock.RLock()
+	defer updatePricingLock.RUnlock()
 	return supportedEndpointMap
 }
 

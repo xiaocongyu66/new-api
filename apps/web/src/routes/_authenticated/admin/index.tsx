@@ -22,11 +22,19 @@ import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 export const Route = createFileRoute('/_authenticated/admin/')({
-  beforeLoad: () => {
+  beforeLoad: ({ location }) => {
     const { auth } = useAuthStore.getState()
 
     if (!auth.user || auth.user.role < ROLE.ADMIN) {
       throw redirect({ to: '/403' })
     }
+
+    // The overview dashboard was removed; land admins on the first
+    // workspace page instead so old /admin bookmarks keep working.
+    throw redirect({
+      to: '/admin/channels',
+      search: location.search,
+      hash: location.hash,
+    })
   },
 })

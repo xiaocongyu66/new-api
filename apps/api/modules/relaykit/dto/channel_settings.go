@@ -15,13 +15,16 @@ type ChannelSettings struct {
 	ForceFormat       bool `json:"force_format,omitempty"`
 	ThinkingToContent bool `json:"thinking_to_content,omitempty"`
 	// BypassProxy bypasses the global proxy and connects directly.
-	BypassProxy            bool              `json:"bypass_proxy,omitempty"`
-	Proxy                  string            `json:"proxy"`
-	PassThroughBodyEnabled bool              `json:"pass_through_body_enabled,omitempty"`
-	SessionAffinityEnabled bool              `json:"session_affinity_enabled,omitempty"`
-	SystemPrompt           string            `json:"system_prompt,omitempty"`
-	SystemPromptOverride   bool              `json:"system_prompt_override,omitempty"`
-	SystemPromptModels     map[string]string `json:"system_prompt_models,omitempty"`
+	BypassProxy            bool   `json:"bypass_proxy,omitempty"`
+	Proxy                  string `json:"proxy"`
+	PassThroughBodyEnabled bool   `json:"pass_through_body_enabled,omitempty"`
+	SessionAffinityEnabled bool   `json:"session_affinity_enabled,omitempty"`
+	SystemPrompt           string `json:"system_prompt,omitempty"`
+	// UserSystemPromptOverride replaces the caller's own system prompt with the
+	// resolved channel system prompt. The default (false) prepends the channel
+	// prompt in front of the caller's system prompt instead of replacing it.
+	UserSystemPromptOverride bool              `json:"user_system_prompt_override,omitempty"`
+	SystemPromptModels       map[string]string `json:"system_prompt_models,omitempty"`
 	// SystemPromptPreset selects a built-in system prompt preset embedded in
 	// the binary. Accepted values: "", "silly_tavern", "tavern_card". When set,
 	// it takes priority over SystemPrompt but is overridden by
@@ -105,6 +108,8 @@ type ChannelOtherSettings struct {
 	AllowInferenceGeo                     bool                  `json:"allow_inference_geo,omitempty"`        // 是否允许 inference_geo 透传（仅 Claude，默认过滤以满足数据驻留合规
 	AllowSpeed                            bool                  `json:"allow_speed,omitempty"`                // 是否允许 speed 透传（仅 Claude，默认过滤以避免意外切换推理速度模式）
 	AllowSafetyIdentifier                 bool                  `json:"allow_safety_identifier,omitempty"`    // 是否允许 safety_identifier 透传（默认过滤以保护用户隐私）
+	AutoPromptCacheControl                bool                  `json:"auto_prompt_cache_control,omitempty"`  // 仅 Claude Messages 非透传请求：客户端未打断点时自动注入 ephemeral 缓存断点（默认关闭，缓存写入有加价）
+	AutoPromptCacheKey                    bool                  `json:"auto_prompt_cache_key,omitempty"`      // 仅 OpenAI Chat 非透传请求：客户端未传 prompt_cache_key 时注入服务端派生的稳定前缀键（默认关闭）
 	DisableStore                          bool                  `json:"disable_store,omitempty"`              // 是否禁用 store 透传（默认允许透传，禁用后可能导致 Codex 无法使用）
 	AllowIncludeObfuscation               bool                  `json:"allow_include_obfuscation,omitempty"`  // 是否允许 stream_options.include_obfuscation 透传（默认过滤以避免关闭流混淆保护）
 	DisableTaskPollingSleep               bool                  `json:"disable_task_polling_sleep,omitempty"` // 是否跳过异步任务轮询间隔

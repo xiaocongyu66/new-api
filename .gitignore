@@ -52,5 +52,3 @@ apps/web/src/i18n/locales/_reports/
 runtime/
 deploy-amount-checklist.md
 
-# ainotation dev bridge grant (local-only secrets)
-apps/web/public/ainotation/connection.json

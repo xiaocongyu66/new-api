@@ -492,13 +492,33 @@ export const buildModelSnapshots = ({
     // Every method's data persists independently of which one is active, so
     // each row carries ALL stored method payloads; otherwise opening a model
     // whose active method differs from a configured one and saving would
-    // overwrite/delete the other methods' config.
+    // overwrite/delete the other methods' config. A persisted expression is
+    // authoritative for display: even when the billing_mode map drifted (or
+    // never carried the entry), an expression means this model is
+    // expression-billed.
     const storedExpr = billingExprMap[name] || ''
     const { billingExpr: pureExpr, requestRuleExpr } =
       splitBillingExprAndRequestRules(storedExpr)
     const storedTiers = billingContextTierMap[name] || ''
     const storedCallTiers = billingContextTierPerCallMap[name] || ''
     const shared = {
+      price,
+      ratio,
+      cacheRatio: cache,
+      createCacheRatio: createCache,
+      completionRatio: completion,
+      imageRatio: image,
+      audioRatio: audio,
+      audioCompletionRatio: audioCompletion,
+      billingExpr: pureExpr,
+      requestRuleExpr,
+      billingContextTier: storedTiers,
+      billingContextTierPerCall: storedCallTiers,
+      hasConflict: false,
+    }
+    if (modeForModel === 'tiered_expr' || storedExpr.trim() !== '') {
+      return { name, billingMode: 'tiered_expr', ...shared }
+    }
       price,
       ratio,
       cacheRatio: cache,

@@ -27,6 +27,9 @@ func SetApiRouter(router contract.Engine) {
 		apiRouter.GET("/setup", ops.GetSetup)
 		apiRouter.POST("/setup", anonymousRequestBodyLimit, ops.PostSetup)
 		apiRouter.GET("/status", handler.GetStatus)
+		// 壁纸代理：后端定时抓取微雨壁纸并缓存，前端同源请求，无 CORS 问题，
+		// 且经过 api 路由组的 UseCompression 中间件 gzip 压缩。
+		apiRouter.GET("/wallpaper", handler.GetWallpaper)
 		apiRouter.GET("/home_stats", handler.GetHomeStats)
 		apiRouter.GET("/uptime/status", ops.GetUptimeKumaStatus)
 		apiRouter.GET("/models", security.UserAuth(), middleware.ReadOnlyCache(middleware.ReadOnlyCacheConfig{Namespace: "api_models", TTL: middleware.CacheTTLShort, Params: []string{}}), handler.DashboardListModels)
