@@ -66,7 +66,7 @@ jobs:
 
       - name: Race-detect client-ban + insight hot paths
         working-directory: apps/api
-        run: GOWORK=off go test -tags "${SINGBOX_TAGS}" -race -run 'ClientBan|ResolveClient|GatewayRelayHeaders' ./internal/usage/ ./internal/transport/middleware/
+        run: GOWORK=off go test -tags "${SINGBOX_TAGS}" -race -run 'ClientBan|ResolveClient|GatewayRelayHeaders|TestPricingCache' ./internal/usage/ ./internal/transport/middleware/ ./internal/catalog/
 
       - name: Fresh-web sensitive eval matrix (verbose)
         if: always()
