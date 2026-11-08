@@ -36,6 +36,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	"github.com/QuantumNous/new-api/internal/security/oauth"
 	"github.com/QuantumNous/new-api/internal/sensitive"
+	"github.com/QuantumNous/new-api/internal/service"
 	"github.com/QuantumNous/new-api/internal/settings"
 	compose "github.com/QuantumNous/new-api/internal/transport/compose"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
@@ -163,6 +164,9 @@ func main() {
 
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	billing.StartSubscriptionQuotaResetTask()
+
+	// 壁纸定时抓取任务：后端代抓微雨壁纸并缓存，前端同源请求
+	service.StartWallpaperFetchTask()
 
 	// Report this process as a system instance so the System Info page can show
 	// all currently alive nodes in multi-instance deployments.
