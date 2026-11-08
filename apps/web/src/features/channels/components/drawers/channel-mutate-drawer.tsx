@@ -704,7 +704,11 @@ function ChannelMutateDrawerContent({
       bucket.push({ value: preset.name, label })
       grouped.set(family, bucket)
     })
-    const ordered = SYSTEM_PROMPT_PRESET_FAMILY_ORDER.filter((family) =>
+    const ordered: {
+      family: string
+      label: string
+      items: { value: string; label: string }[]
+    }[] = SYSTEM_PROMPT_PRESET_FAMILY_ORDER.filter((family) =>
       grouped.has(family)
     ).map((family) => ({
       family,
@@ -4378,7 +4382,7 @@ function ChannelMutateDrawerContent({
                                             // switch back on restores it instead
                                             // of resetting the operator's pick.
                                             lastJailbreakPresetRef.current =
-                                              field.value
+                                              field.value || ''
                                             field.onChange('')
                                           }
                                         }}
@@ -4392,8 +4396,9 @@ function ChannelMutateDrawerContent({
                                         field.value || SYSTEM_PROMPT_PRESET_AUTO
                                       }
                                       onValueChange={(value) => {
-                                        lastJailbreakPresetRef.current = value
-                                        field.onChange(value)
+                                        const next = value ?? ''
+                                        lastJailbreakPresetRef.current = next
+                                        field.onChange(next)
                                       }}
                                     >
                                       <FormControl>
