@@ -20,13 +20,6 @@ import { Plus, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import {
-  formatTierValidationError,
-  validateContextCallTiersStructured,
-  validateContextTiersStructured,
-  type TierValidationError,
-} from './model-pricing-core'
-
 import { Button } from '@/components/ui/button'
 import {
   InputGroup,
@@ -34,6 +27,12 @@ import {
   InputGroupInput,
 } from '@/components/ui/input-group'
 
+import {
+  formatTierValidationError,
+  validateContextCallTiersStructured,
+  validateContextTiersStructured,
+  type TierValidationError,
+} from './model-pricing-core'
 import { PriceInput } from './model-pricing-inputs'
 
 /**
@@ -41,6 +40,10 @@ import { PriceInput } from './model-pricing-inputs'
  * (stored as max_context 0). Prices are draft strings; blank means 0.
  */
 type ContextTierRow = {
+  /** Stable identity: rows are inserted/removed by position, and controlled
+   * inputs need a key that survives list edits to keep focus and value
+   * attached to the same row. */
+  id: string
   maxContext: string
   inputPrice: string
   outputPrice: string
@@ -49,7 +52,11 @@ type ContextTierRow = {
   price: string
 }
 
+let rowSeq = 0
+const nextRowId = () => `tier-${++rowSeq}`
+
 const emptyRow = (): ContextTierRow => ({
+  id: nextRowId(),
   maxContext: '',
   inputPrice: '',
   outputPrice: '',
@@ -69,7 +76,8 @@ export function parseTokenBound(input: string): number | null {
   if (!match) return null
   const base = Number(match[1])
   if (!Number.isFinite(base)) return null
-  const scaled = base * (match[2] === 'k' ? 1_000 : match[2] === 'm' ? 1_000_000 : 1)
+  const scaled =
+    base * (match[2] === 'k' ? 1_000 : match[2] === 'm' ? 1_000_000 : 1)
   const tokens = Math.trunc(scaled)
   return tokens >= 0 ? tokens : null
 }
@@ -106,6 +114,7 @@ function parseTiersValue(raw: string): {
       const t = (item ?? {}) as Record<string, unknown>
       const bound = t.max_context
       return {
+        id: nextRowId(),
         // 0 is the catch-all; display it as an empty bound field.
         maxContext:
           typeof bound === 'number' && bound > 0
@@ -181,14 +190,20 @@ type ContextTierTableProps = {
  * always sorts last. The grid uses minmax(0, ·) columns so narrow sheets
  * shrink inputs instead of overflowing horizontally.
  */
-export function ContextTierTable({ kind, value, onChange }: ContextTierTableProps) {
+export function ContextTierTable({
+  kind,
+  value,
+  onChange,
+}: ContextTierTableProps) {
   const { t } = useTranslation()
   const isPerCall = kind === 'per_call'
   // Rows are the editing source of truth; the parent holds the serialized
   // JSON. The prop is re-parsed only when it changes from outside (e.g. the
   // sheet loaded another model), otherwise fully-blank rows would collapse
   // ("add interval" on an empty table serializes to '' and back).
-  const [rows, setRows] = useState<ContextTierRow[]>(() => parseTiersValue(value).rows)
+  const [rows, setRows] = useState<ContextTierRow[]>(
+    () => parseTiersValue(value).rows
+  )
   const [parseError, setParseError] = useState(
     () => parseTiersValue(value).parseError
   )
@@ -221,7 +236,9 @@ export function ContextTierTable({ kind, value, onChange }: ContextTierTableProp
   }
 
   const updateRow = (index: number, patch: Partial<ContextTierRow>) => {
-    const next = rows.map((row, i) => (i === index ? { ...row, ...patch } : row))
+    const next = rows.map((row, i) =>
+      i === index ? { ...row, ...patch } : row
+    )
     commit(next)
   }
 
@@ -236,7 +253,8 @@ export function ContextTierTable({ kind, value, onChange }: ContextTierTableProp
     const next = [...rows]
     const fresh = emptyRow()
     const last = next[next.length - 1]
-    if (last && last.maxContext.trim() === '') next.splice(next.length - 1, 0, fresh)
+    if (last && last.maxContext.trim() === '')
+      next.splice(next.length - 1, 0, fresh)
     else next.push(fresh)
     commit(next)
   }
@@ -262,7 +280,10 @@ export function ContextTierTable({ kind, value, onChange }: ContextTierTableProp
           const trimmed = raw.trim()
           // Allow digits with at most one dot plus an optional k/M suffix; a
           // lone dot would parse to NaN and silently become the catch-all.
-          if (trimmed !== '' && (!/^\d*\.?\d*\s*[kKmM]?$/.test(raw) || trimmed === '.')) {
+          if (
+            trimmed !== '' &&
+            (!/^\d*\.?\d*\s*[kKmM]?$/.test(raw) || trimmed === '.')
+          ) {
             return
           }
           updateRow(index, { maxContext: raw })
@@ -342,7 +363,7 @@ export function ContextTierTable({ kind, value, onChange }: ContextTierTableProp
         <div className='flex flex-col gap-2 sm:gap-1'>
           {rows.map((row, index) => (
             <div
-              key={index}
+              key={row.id}
               className={`${gridClass} rounded-md border p-2 sm:rounded-none sm:border-0 sm:p-0`}
             >
               {boundCell(row, index)}

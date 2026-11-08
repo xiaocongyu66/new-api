@@ -148,8 +148,7 @@ export const parseTierRows = (raw?: string): TierPriceRow[] => {
         typeof item === 'object' && item !== null
     )
     .map((item) => ({
-      maxContext:
-        typeof item.max_context === 'number' ? item.max_context : 0,
+      maxContext: typeof item.max_context === 'number' ? item.max_context : 0,
       inputPrice: item.input_price,
       outputPrice: item.output_price,
       cachePrice: item.cache_price,
@@ -194,9 +193,7 @@ export const isBasePricingUnset = (snapshot?: ModelPricingSnapshot) => {
   if (snapshot.billingMode === 'context_tier_per_call') {
     return !hasTierData(snapshot.billingContextTierPerCall)
   }
-  return (
-    !hasPricingValue(snapshot.price) && !hasPricingValue(snapshot.ratio)
-  )
+  return !hasPricingValue(snapshot.price) && !hasPricingValue(snapshot.ratio)
 }
 
 const toNumberOrNull = (value?: string) => {
@@ -211,7 +208,6 @@ const ratioToPrice = (ratio?: string, denominator?: string) => {
   if (ratioNumber === null || denominatorNumber === null) return ''
   return formatPricingNumber(ratioNumber * denominatorNumber)
 }
-
 
 /** Lenient tier summary for list/card display; invalid JSON yields null. */
 export type TierSummary = {
@@ -454,10 +450,13 @@ export const buildModelSnapshots = ({
     fallback: {},
     context: 'billing expression',
   })
-  const billingContextTierMap = safeJsonParse<Record<string, string>>(billingContextTier, {
-    fallback: {},
-    context: 'billing context tier',
-  })
+  const billingContextTierMap = safeJsonParse<Record<string, string>>(
+    billingContextTier,
+    {
+      fallback: {},
+      context: 'billing context tier',
+    }
+  )
   const billingContextTierPerCallMap = safeJsonParse<Record<string, string>>(
     billingContextTierPerCall,
     { fallback: {}, context: 'billing context tier (per call)' }
@@ -517,23 +516,6 @@ export const buildModelSnapshots = ({
       hasConflict: false,
     }
     if (modeForModel === 'tiered_expr' || storedExpr.trim() !== '') {
-      return { name, billingMode: 'tiered_expr', ...shared }
-    }
-      price,
-      ratio,
-      cacheRatio: cache,
-      createCacheRatio: createCache,
-      completionRatio: completion,
-      imageRatio: image,
-      audioRatio: audio,
-      audioCompletionRatio: audioCompletion,
-      billingExpr: pureExpr,
-      requestRuleExpr,
-      billingContextTier: storedTiers,
-      billingContextTierPerCall: storedCallTiers,
-      hasConflict: false,
-    }
-    if (modeForModel === 'tiered_expr') {
       return { name, billingMode: 'tiered_expr', ...shared }
     }
     if (modeForModel === 'context_tier') {

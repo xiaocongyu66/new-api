@@ -47,6 +47,22 @@ export type PricingMode =
   | 'context_tier'
   | 'context_tier_per_call'
 
+const PRICING_MODES: readonly PricingMode[] = [
+  'per-token',
+  'per-request',
+  'tiered_expr',
+  'context_tier',
+  'context_tier_per_call',
+]
+
+/**
+ * Runtime guard for values crossing in from Base UI select/tab payloads: an
+ * unknown string must not reach the mode state, or `Tabs value` stops matching
+ * any content and the editor renders blank.
+ */
+export const isPricingMode = (value: string): value is PricingMode =>
+  (PRICING_MODES as readonly string[]).includes(value)
+
 export type LaneKey =
   | 'completion'
   | 'cache'
@@ -270,11 +286,10 @@ export type TierValidationError =
   | { kind: 'tier'; index: number; messageKey: string }
 
 /** zod v4 paths are PropertyKey[]; tier positions are the numeric entries. */
-function firstTierIssue(
-  error: z.ZodError
-): TierValidationError {
+function firstTierIssue(error: z.ZodError): TierValidationError {
   const issue = error.issues[0]
-  if (!issue) return { kind: 'plain', messageKey: 'Invalid tier configuration.' }
+  if (!issue)
+    return { kind: 'plain', messageKey: 'Invalid tier configuration.' }
   const tierIndex = issue.path.filter(
     (part): part is number => typeof part === 'number'
   )[0]
@@ -322,7 +337,8 @@ function checkTierRowOrder(
     if (prevBound !== null && tier.max_context <= prevBound) {
       return {
         kind: 'plain',
-        messageKey: 'Interval bounds must strictly increase from top to bottom.',
+        messageKey:
+          'Interval bounds must strictly increase from top to bottom.',
       }
     }
     prevBound = tier.max_context
@@ -378,7 +394,10 @@ export function validateContextTiersStructured(
   try {
     parsed = JSON.parse(text)
   } catch {
-    return { kind: 'plain', messageKey: 'Invalid JSON: tiers must be valid JSON.' }
+    return {
+      kind: 'plain',
+      messageKey: 'Invalid JSON: tiers must be valid JSON.',
+    }
   }
 
   const asPayload = ContextTierPayloadSchema.safeParse(parsed)
@@ -411,10 +430,7 @@ const ContextCallTierSchema = z.object({
     .number()
     .int('max_context must be an integer token count')
     .min(0, 'max_context must be a number >= 0 (0 = catch-all)'),
-  price: z
-    .number()
-    .finite()
-    .min(0, 'price must be a number >= 0'),
+  price: z.number().finite().min(0, 'price must be a number >= 0'),
 })
 
 const ContextCallTierListSchema = z
@@ -446,7 +462,10 @@ export function validateContextCallTiersStructured(
   try {
     parsed = JSON.parse(text)
   } catch {
-    return { kind: 'plain', messageKey: 'Invalid JSON: tiers must be valid JSON.' }
+    return {
+      kind: 'plain',
+      messageKey: 'Invalid JSON: tiers must be valid JSON.',
+    }
   }
 
   const asPayload = ContextCallTierPayloadSchema.safeParse(parsed)
@@ -514,7 +533,11 @@ function parsePreviewTiers(raw: string): PreviewTierRow[] {
         )
       })
       .sort((a, b) =>
-        a.max_context === 0 ? 1 : b.max_context === 0 ? -1 : a.max_context - b.max_context
+        a.max_context === 0
+          ? 1
+          : b.max_context === 0
+            ? -1
+            : a.max_context - b.max_context
       )
   } catch {
     return []
@@ -533,7 +556,9 @@ function buildContextTierPreviewRows(
       {
         key: 'tiers',
         label: t(
-          kind === 'per_call' ? 'Per-call context tiers' : 'Per-token context tiers'
+          kind === 'per_call'
+            ? 'Per-call context tiers'
+            : 'Per-token context tiers'
         ),
         value: t('Empty'),
       },

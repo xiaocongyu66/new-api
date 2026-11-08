@@ -793,17 +793,17 @@ const ModelRatioVisualEditorComponent = forwardRef<
             title: t('Mode'),
             options: [
               {
-                label: 'Per-token',
+                label: t('Per-token'),
                 value: 'per-token',
                 count: modeCounts['per-token'],
               },
               {
-                label: 'Per-request',
+                label: t('Per-request'),
                 value: 'per-request',
                 count: modeCounts['per-request'],
               },
               {
-                label: 'Expression',
+                label: t('Expression'),
                 value: 'tiered_expr',
                 count: modeCounts.tiered_expr,
               },
@@ -1046,6 +1046,9 @@ export const ModelRatioVisualEditor = memo(
         nextProps.savedAudioCompletionRatio &&
       prevProps.savedBillingMode === nextProps.savedBillingMode &&
       prevProps.savedBillingExpr === nextProps.savedBillingExpr &&
+      prevProps.savedBillingContextTier === nextProps.savedBillingContextTier &&
+      prevProps.savedBillingContextTierPerCall ===
+        nextProps.savedBillingContextTierPerCall &&
       prevProps.modelPrice === nextProps.modelPrice &&
       prevProps.modelRatio === nextProps.modelRatio &&
       prevProps.cacheRatio === nextProps.cacheRatio &&
@@ -1058,6 +1061,8 @@ export const ModelRatioVisualEditor = memo(
       prevProps.billingExpr === nextProps.billingExpr &&
       prevProps.candidateModelNames === nextProps.candidateModelNames &&
       prevProps.candidateModelsLoading === nextProps.candidateModelsLoading &&
+      prevProps.completionRatioMeta === nextProps.completionRatioMeta &&
+      prevProps.toolbarLeft === nextProps.toolbarLeft &&
       prevProps.onChange === nextProps.onChange &&
       prevProps.onSave === nextProps.onSave &&
       prevProps.isSaving === nextProps.isSaving
