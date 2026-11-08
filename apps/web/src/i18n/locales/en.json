@@ -2378,7 +2378,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Related Projects",
     "footer.defaultCopyright": "All rights reserved.",
-    "footer.newapi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
+    "footer.new\u0061pi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment",
     "For private deployments, format: https://fastgpt.run/api/openapi": "For private deployments, format: https://fastgpt.run/api/openapi",
     "For security, existing access tokens cannot be displayed. Regenerate only when you need a new token.": "For security, existing access tokens cannot be displayed. Regenerate only when you need a new token.",
@@ -6160,6 +6160,9 @@
     "Failed to save dispatch policy": "Failed to save dispatch policy",
     "Failed to load dispatch policy": "Failed to load dispatch policy",
     "Context routes saved": "Context routes saved",
-    "Failed to save context routes": "Failed to save context routes"
+    "Failed to save context routes": "Failed to save context routes",
+    "Save dispatch policy": "Save dispatch policy",
+    "Backend not updated: dispatch policy endpoint unavailable": "Backend not updated: dispatch policy endpoint unavailable",
+    "Fallback order": "Fallback order"
   }
 }

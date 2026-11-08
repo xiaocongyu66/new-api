@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -32,7 +32,7 @@ import { Badge } from "@/components/ui/badge";
 import { Combobox } from "@/components/ui/combobox";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -72,6 +72,7 @@ interface ContextIntervalDraft {
   max: number;
   enabled: boolean;
   selectedUnitIds: number[];
+  fallbackOrder: number[];
 }
 
 export function RouteUnitsSection({}: RouteUnitsSectionProps) {
@@ -90,8 +91,11 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
   const [contextRoutes, setContextRoutes] = useState<ContextRoute[]>([]);
   const [contextLoading, setContextLoading] = useState(false);
   const [savingPolicy, setSavingPolicy] = useState(false);
-  const [savingContext, setSavingContext] = useState(false);
   const [drafts, setDrafts] = useState<ContextIntervalDraft[]>([]);
+  const [draggingFallback, setDraggingFallback] = useState<{
+    interval: number;
+    unitId: number;
+  } | null>(null);
   // Load aliases on mount
   useEffect(() => {
     const loadAliases = async () => {
@@ -172,7 +176,19 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
         setContextRoutes(routesResp?.items ?? []);
       } catch (error) {
         if (!cancelled) {
-          toast.error(t("Failed to load dispatch policy"));
+          const status = (error as { response?: { status?: number } })?.response
+            ?.status;
+          if (status === 404) {
+            toast.error(
+              t("Backend not updated: dispatch policy endpoint unavailable"),
+            );
+            setDispatchMode("weighted_pool");
+            setFallbackAlias("");
+            setContextRoutes([]);
+            setDrafts([]);
+          } else {
+            toast.error(t("Failed to load dispatch policy"));
+          }
           console.error(error);
         }
       } finally {
@@ -198,6 +214,7 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
         allEnabled: boolean;
         anyEnabled: boolean;
         ids: Set<number>;
+        routes: ContextRoute[];
       }
     >();
     for (const r of contextRoutes) {
@@ -209,6 +226,7 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
           allEnabled: true,
           anyEnabled: false,
           ids: new Set<number>(),
+          routes: [],
         });
       }
       const g = groups.get(key)!;
@@ -221,14 +239,42 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
       if (unit) g.ids.add(unit.id);
       if (!r.enabled) g.allEnabled = false;
       if (r.enabled) g.anyEnabled = true;
+      g.routes.push(r);
     }
     const nextDrafts: ContextIntervalDraft[] = Array.from(groups.values()).map(
-      (g) => ({
-        min: g.min,
-        max: g.max,
-        enabled: g.ids.size === 0 ? g.anyEnabled : g.allEnabled,
-        selectedUnitIds: Array.from(g.ids),
-      }),
+      (g) => {
+        const orderedIds = g.routes
+          .slice()
+          .sort((a, b) => a.sort_order - b.sort_order)
+          .map(
+            (r) =>
+              routeUnits.find(
+                (u) =>
+                  u.channel_id === r.channel_id &&
+                  u.key_index === r.key_index &&
+                  u.upstream_model === r.upstream_model,
+              )?.id,
+          )
+          .filter((id): id is number => id !== undefined);
+        // Only enabled route units remain in the fallback order.
+        const enabledOrdered = orderedIds.filter(
+          (id) => routeUnits.find((u) => u.id === id)?.enabled,
+        );
+        const selectedEnabled = Array.from(g.ids).filter(
+          (id) => routeUnits.find((u) => u.id === id)?.enabled,
+        );
+        const fallbackOrder = [...new Set(enabledOrdered)];
+        for (const id of selectedEnabled) {
+          if (!fallbackOrder.includes(id)) fallbackOrder.push(id);
+        }
+        return {
+          min: g.min,
+          max: g.max,
+          enabled: g.ids.size === 0 ? g.anyEnabled : g.allEnabled,
+          selectedUnitIds: Array.from(g.ids),
+          fallbackOrder,
+        };
+      },
     );
     setDrafts(nextDrafts);
   }, [contextRoutes, routeUnits]);
@@ -358,7 +404,7 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
     };
   }, []);
 
-  const handleSavePolicy = async () => {
+  const handleSaveDispatchPolicy = async () => {
     if (!selectedAlias) return;
     setSavingPolicy(true);
     try {
@@ -366,53 +412,69 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
       const data = await updateDispatchPolicy(selectedAlias, dispatchMode, fb);
       setDispatchMode((data.mode as DispatchMode) || dispatchMode);
       setFallbackAlias(data.fallback_alias ?? "");
+      if (dispatchMode === "context_range") {
+        const items: ContextRoute[] = [];
+        drafts.forEach((draft) => {
+          const orderedIds = [...draft.fallbackOrder];
+          // Filter disabled route units and ensure selected units are present.
+          const enabledSelected = draft.selectedUnitIds.filter(
+            (id) => routeUnits.find((u) => u.id === id)?.enabled,
+          );
+          for (const id of enabledSelected) {
+            if (!orderedIds.includes(id)) orderedIds.push(id);
+          }
+          const filtered = orderedIds.filter(
+            (id) => routeUnits.find((u) => u.id === id)?.enabled,
+          );
+          filtered.forEach((unitId, unitIdx) => {
+            const unit = routeUnits.find((u) => u.id === unitId);
+            if (!unit) return;
+            items.push({
+              id: 0,
+              alias: selectedAlias,
+              context_min: Number.isFinite(draft.min) ? draft.min : 0,
+              context_max: Number.isFinite(draft.max) ? draft.max : 0,
+              channel_id: unit.channel_id,
+              key_index: unit.key_index,
+              upstream_model: unit.upstream_model,
+              static_weight: unit.static_weight,
+              enabled: draft.enabled,
+              sort_order: unitIdx,
+            });
+          });
+        });
+        items.sort(
+          (a, b) =>
+            a.context_min - b.context_min || a.sort_order - b.sort_order,
+        );
+        const ctxData = await replaceContextRoutes(selectedAlias, items);
+        setContextRoutes(ctxData?.items ?? items);
+      }
       toast.success(t("Dispatch policy saved"));
     } catch (error) {
-      toast.error(t("Failed to save dispatch policy"));
+      const status = (error as { response?: { status?: number } })?.response
+        ?.status;
+      if (status === 404) {
+        toast.error(
+          t("Backend not updated: dispatch policy endpoint unavailable"),
+        );
+        setDispatchMode("weighted_pool");
+        setFallbackAlias("");
+        setContextRoutes([]);
+        setDrafts([]);
+      } else {
+        toast.error(t("Failed to save dispatch policy"));
+      }
       console.error(error);
     } finally {
       setSavingPolicy(false);
     }
   };
 
-  const handleSaveContext = async () => {
-    if (!selectedAlias) return;
-    setSavingContext(true);
-    try {
-      const items: ContextRoute[] = [];
-      drafts.forEach((draft, intervalIdx) => {
-        draft.selectedUnitIds.forEach((unitId, unitIdx) => {
-          const unit = routeUnits.find((u) => u.id === unitId);
-          if (!unit) return;
-          items.push({
-            id: 0,
-            alias: selectedAlias,
-            context_min: Number.isFinite(draft.min) ? draft.min : 0,
-            context_max: Number.isFinite(draft.max) ? draft.max : 0,
-            channel_id: unit.channel_id,
-            key_index: unit.key_index,
-            upstream_model: unit.upstream_model,
-            static_weight: unit.static_weight,
-            enabled: draft.enabled,
-            sort_order: intervalIdx * 100 + unitIdx,
-          });
-        });
-      });
-      const data = await replaceContextRoutes(selectedAlias, items);
-      setContextRoutes(data?.items ?? items);
-      toast.success(t("Context routes saved"));
-    } catch (error) {
-      toast.error(t("Failed to save context routes"));
-      console.error(error);
-    } finally {
-      setSavingContext(false);
-    }
-  };
-
   const addInterval = () => {
     setDrafts((prev) => [
       ...prev,
-      { min: 0, max: 0, enabled: true, selectedUnitIds: [] },
+      { min: 0, max: 0, enabled: true, selectedUnitIds: [], fallbackOrder: [] },
     ]);
   };
 
@@ -427,19 +489,66 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
   };
 
   const toggleUnit = (index: number, unitId: number) => {
+    const unit = routeUnits.find((u) => u.id === unitId);
+    if (!unit?.enabled) return;
     setDrafts((prev) =>
       prev.map((d, i) => {
         if (i !== index) return d;
         const selected = d.selectedUnitIds.includes(unitId);
+        if (selected) {
+          return {
+            ...d,
+            selectedUnitIds: d.selectedUnitIds.filter((id) => id !== unitId),
+            fallbackOrder: d.fallbackOrder.filter((id) => id !== unitId),
+          };
+        }
         return {
           ...d,
-          selectedUnitIds: selected
-            ? d.selectedUnitIds.filter((id) => id !== unitId)
-            : [...d.selectedUnitIds, unitId],
+          selectedUnitIds: [...d.selectedUnitIds, unitId],
+          fallbackOrder: d.fallbackOrder.includes(unitId)
+            ? d.fallbackOrder
+            : [...d.fallbackOrder, unitId],
         };
       }),
     );
   };
+
+  const handleFallbackDragStart =
+    (interval: number, unitId: number) =>
+    (e: React.DragEvent<HTMLDivElement>) => {
+      setDraggingFallback({ interval, unitId });
+      e.dataTransfer.effectAllowed = "move";
+    };
+
+  const handleFallbackDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleFallbackDrop =
+    (interval: number, targetUnitId: number) =>
+    (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      if (!draggingFallback || draggingFallback.interval !== interval) return;
+      const draggedId = draggingFallback.unitId;
+      if (draggedId === targetUnitId) {
+        setDraggingFallback(null);
+        return;
+      }
+      setDrafts((prev) =>
+        prev.map((d, i) => {
+          if (i !== interval) return d;
+          const order = [...d.fallbackOrder];
+          const fromIdx = order.indexOf(draggedId);
+          const toIdx = order.indexOf(targetUnitId);
+          if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return d;
+          order.splice(fromIdx, 1);
+          order.splice(toIdx, 0, draggedId);
+          return { ...d, fallbackOrder: order };
+        }),
+      );
+      setDraggingFallback(null);
+    };
 
   const isSaving = (id: number) => savingIds.has(id);
 
@@ -584,13 +693,13 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
               <Button
                 type="button"
                 size="sm"
-                onClick={handleSavePolicy}
+                onClick={handleSaveDispatchPolicy}
                 disabled={savingPolicy || !selectedAlias}
               >
                 {savingPolicy && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
-                {t("Save policy")}
+                {t("Save dispatch policy")}
               </Button>
             </div>
 
@@ -884,17 +993,6 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                   >
                     {t("Add interval")}
                   </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={handleSaveContext}
-                    disabled={savingContext || contextLoading}
-                  >
-                    {savingContext && (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    )}
-                    {t("Save intervals")}
-                  </Button>
                 </div>
 
                 {contextLoading && (
@@ -976,11 +1074,16 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                                 checked={draft.selectedUnitIds.includes(
                                   unit.id,
                                 )}
+                                disabled={!unit.enabled}
                                 onCheckedChange={() =>
                                   toggleUnit(index, unit.id)
                                 }
                               />
-                              <span>
+                              <span
+                                className={
+                                  unit.enabled ? undefined : "opacity-50"
+                                }
+                              >
                                 {unit.channel_name} · {unit.upstream_model}
                               </span>
                             </label>
@@ -988,6 +1091,41 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                         </div>
                       )}
                     </div>
+
+                    {draft.fallbackOrder.filter(
+                      (id) => routeUnits.find((u) => u.id === id)?.enabled,
+                    ).length > 0 && (
+                      <div className="space-y-1.5">
+                        <Label>{t("Fallback order")}</Label>
+                        <div className="space-y-1">
+                          {draft.fallbackOrder.map((unitId) => {
+                            const unit = routeUnits.find(
+                              (u) => u.id === unitId,
+                            );
+                            if (!unit || !unit.enabled) return null;
+                            return (
+                              <div
+                                key={unitId}
+                                draggable
+                                onDragStart={handleFallbackDragStart(
+                                  index,
+                                  unitId,
+                                )}
+                                onDragOver={handleFallbackDragOver}
+                                onDrop={handleFallbackDrop(index, unitId)}
+                                onDragEnd={() => setDraggingFallback(null)}
+                                className="flex cursor-move items-center gap-2 rounded border px-2 py-1 text-sm"
+                              >
+                                <GripVertical className="h-4 w-4 text-muted-foreground" />
+                                <span>
+                                  {unit.channel_name} · {unit.upstream_model}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
