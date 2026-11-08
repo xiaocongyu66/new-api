@@ -1,4 +1,4 @@
-package main
+package bootstrap
 
 import (
 	"context"
@@ -58,7 +58,7 @@ func TestRunRouteStatsSweepStopsOnCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		runRouteStatsSweep(ctx, time.Millisecond)
+		RunRouteStatsSweep(ctx, time.Millisecond)
 		close(done)
 	}()
 

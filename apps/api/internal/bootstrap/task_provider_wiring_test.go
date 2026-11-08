@@ -1,4 +1,4 @@
-package main
+package bootstrap
 
 import (
 	"testing"
@@ -25,7 +25,7 @@ func TestTaskProviderBindingResolvesAdaptor(t *testing.T) {
 
 	// main.go wires GetTaskAdaptorFunc first; the binding closes over it, so a
 	// binding built before that assignment would resolve nothing.
-	wireTaskAdaptorFactory()
+	WireTaskAdaptorFactory()
 	task.GetTaskProviderFunc = task.GetTaskProviderFuncBinding()
 
 	if task.GetTaskProviderFunc == nil {

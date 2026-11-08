@@ -1,4 +1,4 @@
-package main
+package bootstrap
 
 import (
 	"go/ast"
@@ -20,26 +20,25 @@ import (
 func TestBootstrapStartupCallsPresent(t *testing.T) {
 	// Each entry is "pkg.Func" as written in main.go, plus why it matters.
 	required := map[string]string{
+		"bootstrap.WireTaskAdaptorFactory":     "the task adaptor factory and provider port are left nil, so polling and video proxying reach no adaptor",
 		"sensitive.StartSensitiveAuditCleanup": "#409 audit rows (type=8) accumulate forever and SensitiveAuditRetentionDays is dead",
 		"identity.StartAuthArtifactCleanup":    "expired dashboard sessions and one-time auth flows are never deleted",
 		"catalog.InitUnitHealthCache":          "persisted per-unit health state is not restored, so a cooling or terminal-disabled route unit silently returns to rotation on restart",
 		"usage.Init":                           "perf metric hot buckets are never flushed to perf_metrics, so the dashboard stays empty and memory grows",
 		"relaycommon.InitTokenEncoders":        "defaultTokenEncoder stays nil, so an unsupported OpenAI text model nil-panics inside CountTextToken",
-		"task.GetTaskProviderFuncBinding":      "task.GetTaskProviderFunc stays nil, so RunTaskPollingOnce returns immediately (no async task ever completes) and the video proxy nil-panics",
-		"relay.GetTaskAdaptor":                 "the task adaptor factory resolves nothing, so polling and video proxying reach no adaptor",
 	}
 
-	calls := parseCalls(t, "main.go")
+	calls := parseCalls(t, "../../main.go")
 	for call, why := range required {
 		if !calls[call] {
 			t.Errorf("main.go no longer calls %s() at startup: %s", call, why)
 		}
 	}
 
-	// The two task wirings above live inside wireTaskAdaptorFactory, so their
+	// The task wirings live inside bootstrap.WireTaskAdaptorFactory, so their
 	// presence in the file means nothing unless main() still calls it.
-	if !calls["wireTaskAdaptorFactory"] {
-		t.Error("main() no longer calls wireTaskAdaptorFactory(): the task adaptor factory and provider port are both left nil")
+	if !calls["bootstrap.WireTaskAdaptorFactory"] {
+		t.Error("main() no longer calls bootstrap.WireTaskAdaptorFactory(): the task adaptor factory and provider port are both left nil")
 	}
 }
 
@@ -81,11 +80,12 @@ func parseCalls(t *testing.T, path string) map[string]bool {
 // assertions above could pass against a package that is not the one running in
 // production (relaycommon vs usage both export InitTokenEncoders).
 func TestBootstrapImportAliases(t *testing.T) {
-	file, err := parser.ParseFile(token.NewFileSet(), "main.go", nil, parser.ImportsOnly)
+	file, err := parser.ParseFile(token.NewFileSet(), "../../main.go", nil, parser.ImportsOnly)
 	if err != nil {
-		t.Fatalf("parse main.go: %v", err)
+		t.Fatalf("parse ../../main.go: %v", err)
 	}
 	want := map[string]string{
+		"bootstrap":   "github.com/QuantumNous/new-api/internal/bootstrap",
 		"relaycommon": "github.com/QuantumNous/new-api/internal/relay/common",
 		"usage":       "github.com/QuantumNous/new-api/internal/usage",
 		"sensitive":   "github.com/QuantumNous/new-api/internal/sensitive",
