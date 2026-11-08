@@ -101,7 +101,7 @@ func selectManyChannelIDs(t *testing.T, group, alias string, draws int) map[int]
 	rnd := rand.New(rand.NewPCG(20260910, 7))
 	seen := make(map[int]int)
 	for range draws {
-		route, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+		route, err := SelectRouteUnit(group, alias, "", 0, nil, 0, rnd)
 		require.NoError(t, err)
 		if route == nil {
 			seen[0]++
@@ -172,14 +172,14 @@ func TestGroupIsolationFailsClosedForUnknownGroup(t *testing.T) {
 	InitChannelCache()
 
 	for _, group := range []string{"no-such-group", ""} {
-		route, err := SelectRouteUnit(group, alias, "", 0, nil, rand.New(rand.NewPCG(1, 2)))
+		route, err := SelectRouteUnit(group, alias, "", 0, nil, 0, rand.New(rand.NewPCG(1, 2)))
 		require.NoError(t, err)
 		assert.Nil(t, route, "group %q was never granted this alias, so it must select nothing", group)
 	}
 
 	// Sanity: the granted group still works, so the assertions above are not
 	// passing merely because the fixture is broken.
-	route, err := SelectRouteUnit("vip", alias, "", 0, nil, rand.New(rand.NewPCG(1, 2)))
+	route, err := SelectRouteUnit("vip", alias, "", 0, nil, 0, rand.New(rand.NewPCG(1, 2)))
 	require.NoError(t, err)
 	require.NotNil(t, route)
 	assert.Equal(t, 8201, route.ChannelId)

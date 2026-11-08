@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/internal/catalog/routestats"
 	"github.com/QuantumNous/new-api/internal/common"
@@ -34,6 +35,30 @@ type ChannelModelRoute struct {
 	UpstreamModel    string `json:"upstream_model" gorm:"type:varchar(255);uniqueIndex:idx_route_unit,priority:4"`
 	StaticWeight     int    `json:"static_weight"`
 	Enabled          bool   `json:"enabled"`
+}
+
+// ModelAliasDispatchPolicy controls how a public model alias resolves a channel
+// (weighted pool vs context-range routing). Phase 1 only seeds weighted_pool.
+type ModelAliasDispatchPolicy struct {
+	Alias         string    `json:"alias" gorm:"primaryKey;type:varchar(255)"`
+	Mode          string    `json:"mode" gorm:"type:varchar(64);not null;default:weighted_pool"`
+	FallbackAlias *string   `json:"fallback_alias" gorm:"type:varchar(255)"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// ModelAliasContextRoute is a single context-window-based route override under
+// an alias. Phase 1 only introduces the table; selection is unchanged.
+type ModelAliasContextRoute struct {
+	Id            int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	Alias         string `json:"alias" gorm:"type:varchar(255);index:idx_context_route_alias"`
+	ContextMin    int    `json:"context_min"`
+	ContextMax    int    `json:"context_max"`
+	ChannelId     int    `json:"channel_id" gorm:"index:idx_context_route_channel"`
+	KeyIndex      int    `json:"key_index"`
+	UpstreamModel string `json:"upstream_model" gorm:"type:varchar(255)"`
+	StaticWeight  int    `json:"static_weight"`
+	Enabled       bool   `json:"enabled"`
+	SortOrder     int    `json:"sort_order"`
 }
 
 // routeUnitKey is the identity of a route unit: the composite unique key of
@@ -305,6 +330,34 @@ func SeedChannelModelRoutes() error {
 		}
 		for _, ch := range channels {
 			if err := SyncChannelModelRoutesWithTx(tx, ch.Id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// SeedModelAliasDispatchPolicies seeds a weighted_pool dispatch policy for every
+// public model alias that already has route rows. Idempotent: existing rows are
+// preserved untouched (mode is not overwritten).
+func SeedModelAliasDispatchPolicies() error {
+	return dbx.DB.Transaction(func(tx *gorm.DB) error {
+		if !tx.Migrator().HasTable(&ModelAliasDispatchPolicy{}) {
+			return nil
+		}
+		if !tx.Migrator().HasTable(&ChannelModelRoute{}) {
+			return nil
+		}
+		var aliases []string
+		if err := tx.Model(&ChannelModelRoute{}).Distinct("public_model_alias").Pluck("public_model_alias", &aliases).Error; err != nil {
+			return err
+		}
+		for _, alias := range aliases {
+			if alias == "" {
+				continue
+			}
+			policy := ModelAliasDispatchPolicy{Alias: alias, Mode: "weighted_pool", UpdatedAt: time.Now()}
+			if err := tx.Where("alias = ?", alias).FirstOrCreate(&policy).Error; err != nil {
 				return err
 			}
 		}

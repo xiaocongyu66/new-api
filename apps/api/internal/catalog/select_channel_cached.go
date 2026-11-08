@@ -51,6 +51,8 @@ func CacheGetRandomSatisfiedChannel(param *SelectParams) (*SelectedRoute, string
 	userGroup := common.GetCtxKeyString(param.Ctx, constant.ContextKeyUserGroup)
 	crossGroupRetry := common.GetCtxKeyBool(param.Ctx, constant.ContextKeyTokenCrossGroupRetry)
 
+	common.SetCtxKey(param.Ctx, constant.ContextKeyRequestInputTokens, param.InputTokens)
+
 	if param.TokenGroup == "auto" {
 		autoGroups := GetRequestAutoGroups(param.Ctx, userGroup)
 		if len(autoGroups) == 0 {

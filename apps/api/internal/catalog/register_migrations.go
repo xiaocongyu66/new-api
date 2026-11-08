@@ -11,6 +11,8 @@ func init() {
 		dbx.Migration{Model: &Channel{}, Name: "Channel"},
 		dbx.Migration{Model: &ChannelModelHealth{}, Name: "ChannelModelHealth"},
 		dbx.Migration{Model: &ChannelModelRoute{}, Name: "ChannelModelRoute"},
+		dbx.Migration{Model: &ModelAliasDispatchPolicy{}, Name: "ModelAliasDispatchPolicy"},
+		dbx.Migration{Model: &ModelAliasContextRoute{}, Name: "ModelAliasContextRoute"},
 		dbx.Migration{Model: &GatewayConfigOutbox{}, Name: "GatewayConfigOutbox"},
 		dbx.Migration{Model: &GatewayConfigRevision{}, Name: "GatewayConfigRevision"},
 		dbx.Migration{Model: &Model{}, Name: "Model"},

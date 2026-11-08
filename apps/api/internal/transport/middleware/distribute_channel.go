@@ -161,6 +161,7 @@ func Distribute() func(c contract.Context) {
 						RequestPath:   c.Path(),
 						Retry:         common.GetPointer(0),
 						ExcludeRoutes: make(map[catalog.RouteKey]bool),
+						InputTokens:   common.GetCtxKeyInt(c, constant.ContextKeyEstimatedTokens),
 					})
 					if err != nil {
 						showGroup := usingGroup

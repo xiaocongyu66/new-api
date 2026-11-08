@@ -126,7 +126,7 @@ func TestSelectRouteUnit_SingleCandidate(t *testing.T) {
 	t.Cleanup(ClearUnitHealthCache)
 
 	rnd := rand.New(rand.NewPCG(42, 0))
-	selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+	selected, err := SelectRouteUnit(group, alias, "", 0, nil, 0, rnd)
 	require.NoError(t, err)
 	require.NotNil(t, selected)
 	assert.Equal(t, 1, selected.RouteId)
@@ -155,7 +155,7 @@ func TestSelectRouteUnit_MultiKeyChannel(t *testing.T) {
 	counts := make(map[int]int)
 	keyMap := make(map[int]string)
 	for range 300 {
-		selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+		selected, err := SelectRouteUnit(group, alias, "", 0, nil, 0, rnd)
 		require.NoError(t, err)
 		require.NotNil(t, selected)
 		counts[selected.KeyIndex]++
@@ -195,7 +195,7 @@ func TestSelectRouteUnit_MultiKeyDisabledKeyExcluded(t *testing.T) {
 	rnd := rand.New(rand.NewPCG(200, 0))
 	counts := make(map[int]int)
 	for range 100 {
-		selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+		selected, err := SelectRouteUnit(group, alias, "", 0, nil, 0, rnd)
 		require.NoError(t, err)
 		require.NotNil(t, selected)
 		counts[selected.KeyIndex]++
@@ -223,7 +223,7 @@ func TestSelectRouteUnit_ExcludeRoutes(t *testing.T) {
 	// Exclude route 1 (channel 1004, keyIndex 0)
 	excludeRoutes := map[RouteKey]bool{{ChannelId: 1004, KeyIndex: 0, Model: alias}: true}
 	rnd := rand.New(rand.NewPCG(300, 0))
-	selected, err := SelectRouteUnit(group, alias, "", 0, excludeRoutes, rnd)
+	selected, err := SelectRouteUnit(group, alias, "", 0, excludeRoutes, 0, rnd)
 	require.NoError(t, err)
 	require.NotNil(t, selected)
 	assert.Equal(t, 1005, selected.ChannelId, "excluded route should not be selected")
@@ -271,7 +271,7 @@ func TestSelectRouteUnit_DisabledRouteExcluded(t *testing.T) {
 
 	rnd := rand.New(rand.NewPCG(400, 0))
 	for range 50 {
-		selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+		selected, err := SelectRouteUnit(group, alias, "", 0, nil, 0, rnd)
 		require.NoError(t, err)
 		require.NotNil(t, selected)
 		assert.Equal(t, 1006, selected.ChannelId, "the enabled route is served; the disabled row never entered the index")
@@ -308,7 +308,7 @@ func TestSelectRouteUnit_CooldownEjection(t *testing.T) {
 	rnd := rand.New(rand.NewPCG(500, 0))
 	counts := make(map[int]int)
 	for range 100 {
-		selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+		selected, err := SelectRouteUnit(group, alias, "", 0, nil, 0, rnd)
 		require.NoError(t, err)
 		require.NotNil(t, selected)
 		counts[selected.ChannelId]++
@@ -320,7 +320,7 @@ func TestSelectRouteUnit_CooldownEjection(t *testing.T) {
 	require.NoError(t, DisableUnit(cooling, now))
 	counts = make(map[int]int)
 	for range 50 {
-		selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+		selected, err := SelectRouteUnit(group, alias, "", 0, nil, 0, rnd)
 		require.NoError(t, err)
 		require.NotNil(t, selected)
 		counts[selected.ChannelId]++
@@ -353,19 +353,19 @@ func TestSelectRouteUnit_AdvancedCustomPathFilter(t *testing.T) {
 
 	// Request to /v1/chat/completions should only select ch1
 	rnd := rand.New(rand.NewPCG(600, 0))
-	selected, err := SelectRouteUnit(group, alias, "/v1/chat/completions", 0, nil, rnd)
+	selected, err := SelectRouteUnit(group, alias, "/v1/chat/completions", 0, nil, 0, rnd)
 	require.NoError(t, err)
 	require.NotNil(t, selected)
 	assert.Equal(t, 1010, selected.ChannelId)
 
 	// Request to /v1/embeddings should only select ch2
-	selected, err = SelectRouteUnit(group, alias, "/v1/embeddings", 0, nil, rnd)
+	selected, err = SelectRouteUnit(group, alias, "/v1/embeddings", 0, nil, 0, rnd)
 	require.NoError(t, err)
 	require.NotNil(t, selected)
 	assert.Equal(t, 1011, selected.ChannelId)
 
 	// Request to unknown path should select none
-	selected, err = SelectRouteUnit(group, alias, "/v1/unknown", 0, nil, rnd)
+	selected, err = SelectRouteUnit(group, alias, "/v1/unknown", 0, nil, 0, rnd)
 	require.NoError(t, err)
 	assert.Nil(t, selected)
 }
@@ -392,13 +392,13 @@ func TestSelectRouteUnit_DeterministicCacheVsDB(t *testing.T) {
 
 	// Cache path
 	common.MemoryCacheEnabled = true
-	selectedCache, err := SelectRouteUnit(group, alias, "", 0, nil, rndCache)
+	selectedCache, err := SelectRouteUnit(group, alias, "", 0, nil, 0, rndCache)
 	require.NoError(t, err)
 	require.NotNil(t, selectedCache)
 
 	// DB path (no routes in DB, should return nil)
 	common.MemoryCacheEnabled = false
-	selectedDB, err := SelectRouteUnit(group, alias, "", 0, nil, rndDB)
+	selectedDB, err := SelectRouteUnit(group, alias, "", 0, nil, 0, rndDB)
 	require.NoError(t, err)
 	// DB path returns nil because no routes in test DB
 	// This is expected - the test verifies both paths don't crash
@@ -426,7 +426,7 @@ func TestSelectRouteUnit_WeightDistribution(t *testing.T) {
 	rnd := rand.New(rand.NewPCG(800, 0))
 	counts := make(map[int]int)
 	for range 1000 {
-		selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+		selected, err := SelectRouteUnit(group, alias, "", 0, nil, 0, rnd)
 		require.NoError(t, err)
 		require.NotNil(t, selected)
 		counts[selected.ChannelId]++
@@ -480,7 +480,7 @@ func TestSelectRouteUnit_NormalizedAliasFallback(t *testing.T) {
 
 	// Request with non-normalized alias should fall back to normalized
 	rnd := rand.New(rand.NewPCG(900, 0))
-	selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+	selected, err := SelectRouteUnit(group, alias, "", 0, nil, 0, rnd)
 	require.NoError(t, err)
 	require.NotNil(t, selected)
 	assert.Equal(t, alias, selected.Alias) // SelectedRoute.Alias carries the requested model name
@@ -494,7 +494,7 @@ func TestSelectRouteUnit_EmptyResult(t *testing.T) {
 	defer cleanup()
 
 	rnd := rand.New(rand.NewPCG(1000, 0))
-	selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+	selected, err := SelectRouteUnit(group, alias, "", 0, nil, 0, rnd)
 	require.NoError(t, err)
 	assert.Nil(t, selected)
 }
@@ -516,7 +516,7 @@ func TestSelectRouteUnitAttachesStatsHandleWithRouteIdentity(t *testing.T) {
 	ClearUnitHealthCache()
 	t.Cleanup(ClearUnitHealthCache)
 
-	selected, err := SelectRouteUnit(group, alias, "", 0, nil, rand.New(rand.NewPCG(41, 41)))
+	selected, err := SelectRouteUnit(group, alias, "", 0, nil, 0, rand.New(rand.NewPCG(41, 41)))
 	require.NoError(t, err)
 	require.NotNil(t, selected)
 	require.NotNil(t, selected.StatsHandle, "a selected route must carry a stats handle")
@@ -770,7 +770,7 @@ func TestThinPoolP2CDeterministicUnderSeed(t *testing.T) {
 		rnd := rand.New(rand.NewPCG(0x51EE, 7))
 		ids := make([]int, 0, 50)
 		for range 50 {
-			selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+			selected, err := SelectRouteUnit(group, alias, "", 0, nil, 0, rnd)
 			require.NoError(t, err)
 			require.NotNil(t, selected)
 			ids = append(ids, selected.ChannelId)

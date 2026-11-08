@@ -387,12 +387,13 @@ func scoreCandidates(pool routestats.PoolKey, candidates []routeCandidate, alias
 // SelectRouteUnit is the unified entry point for route unit selection.
 // It simultaneously determines channel, key, and upstream model.
 // rnd is a deterministic random source; nil uses the goroutine-safe math/rand/v2 global source.
-func SelectRouteUnit(group string, alias string, requestPath string, retry int, excludeRoutes map[RouteKey]bool, rnd *rand.Rand) (*SelectedRoute, error) {
+func SelectRouteUnit(group string, alias string, requestPath string, retry int, excludeRoutes map[RouteKey]bool, inputTokens int, rnd *rand.Rand) (*SelectedRoute, error) {
 	// The retry parameter in the old priority-tier system drove tier descent.
 	// In the new flat route-unit model, there are no priority tiers — all enabled
 	// route units for the (group, alias) compete directly. The retry parameter
 	// is retained for API compatibility but has no effect on selection.
 	_ = retry
+	_ = inputTokens
 
 	var candidates []routeCandidate
 	if common.MemoryCacheEnabled {
