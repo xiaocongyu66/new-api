@@ -32,7 +32,7 @@ import { Badge } from "@/components/ui/badge";
 import { Combobox } from "@/components/ui/combobox";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, RefreshCw, GripVertical } from "lucide-react";
+import { Loader2, RefreshCw, GripVertical, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -511,6 +511,21 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
         };
       }),
     );
+  };
+
+  // One list per interval: enabled units first in fallback order, then disabled
+  // ones (which stay visible but cannot be dragged or ranked).
+  const orderedFallbackUnits = (draft: ContextIntervalDraft) => {
+    const byId = new Map(routeUnits.map((u) => [u.id, u]));
+    const enabled: { unit: RouteUnitView; rank: number }[] = [];
+    for (const id of draft.fallbackOrder) {
+      const unit = byId.get(id);
+      if (unit?.enabled) enabled.push({ unit, rank: enabled.length + 1 });
+    }
+    const disabled = routeUnits
+      .filter((u) => !u.enabled)
+      .map((unit) => ({ unit, rank: 0 }));
+    return [...enabled, ...disabled];
   };
 
   const handleFallbackDragStart =
@@ -1008,10 +1023,17 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                 )}
 
                 {drafts.map((draft, index) => (
-                  <div key={index} className="space-y-3 rounded-lg border p-4">
-                    <div className="flex flex-wrap items-end gap-3">
-                      <div className="flex flex-col gap-1.5">
-                        <Label>{t("Min tokens")}</Label>
+                  <div
+                    key={index}
+                    className={`space-y-3 rounded-lg border p-4 ${
+                      draft.enabled ? undefined : "opacity-70"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted font-mono text-xs font-medium">
+                        {index + 1}
+                      </span>
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
                         <Input
                           type="number"
                           min={0}
@@ -1021,11 +1043,12 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                               min: Number(e.target.value) || 0,
                             })
                           }
-                          className="w-[140px]"
+                          className="w-[120px]"
+                          aria-label={t("Min tokens")}
                         />
-                      </div>
-                      <div className="flex flex-col gap-1.5">
-                        <Label>{t("Max tokens (0 = unbounded)")}</Label>
+                        <span className="shrink-0 text-muted-foreground">
+                          –
+                        </span>
                         <Input
                           type="number"
                           min={0}
@@ -1035,41 +1058,72 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                               max: Number(e.target.value) || 0,
                             })
                           }
-                          className="w-[180px]"
+                          className="w-[120px]"
+                          aria-label={t("Max tokens (0 = unbounded)")}
                         />
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {t("tokens (0 = unbounded)")}
+                        </span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Switch
-                          checked={draft.enabled}
-                          onCheckedChange={(checked) =>
-                            updateDraft(index, { enabled: checked })
-                          }
-                        />
-                        <span className="text-sm">{t("Enabled")}</span>
-                      </div>
+                      <Switch
+                        checked={draft.enabled}
+                        onCheckedChange={(checked) =>
+                          updateDraft(index, { enabled: checked })
+                        }
+                        aria-label={t("Enabled")}
+                      />
                       <Button
                         type="button"
                         variant="ghost"
-                        size="sm"
+                        size="icon-sm"
                         onClick={() => removeInterval(index)}
+                        aria-label={t("Remove interval")}
                       >
-                        {t("Remove")}
+                        <Trash2 className="h-4 w-4 text-muted-foreground" />
                       </Button>
                     </div>
 
                     <div className="space-y-1.5">
                       <Label>{t("Included route units")}</Label>
+                      <p className="text-xs text-muted-foreground">
+                        {t(
+                          "Drag to set the fallback order. Disabled units are excluded.",
+                        )}
+                      </p>
                       {routeUnits.length === 0 ? (
                         <div className="text-sm text-muted-foreground">
                           {t("No route units for this alias")}
                         </div>
                       ) : (
-                        <div className="space-y-1.5">
-                          {routeUnits.map((unit) => (
-                            <label
+                        <div className="space-y-1">
+                          {orderedFallbackUnits(draft).map(({ unit, rank }) => (
+                            <div
                               key={unit.id}
-                              className="flex items-center gap-2 text-sm"
+                              draggable={unit.enabled}
+                              onDragStart={handleFallbackDragStart(
+                                index,
+                                unit.id,
+                              )}
+                              onDragOver={handleFallbackDragOver}
+                              onDrop={handleFallbackDrop(index, unit.id)}
+                              onDragEnd={() => setDraggingFallback(null)}
+                              className={`flex items-center gap-2 rounded border px-2 py-1.5 text-sm ${
+                                unit.enabled
+                                  ? "cursor-move bg-background"
+                                  : "opacity-50"
+                              }`}
                             >
+                              {unit.enabled ? (
+                                <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" />
+                              ) : (
+                                <span className="w-4 shrink-0" />
+                              )}
+                              <span className="w-5 shrink-0 text-center font-mono text-xs text-muted-foreground">
+                                {unit.enabled ? rank : "—"}
+                              </span>
+                              <span className="min-w-0 flex-1 truncate">
+                                {unit.channel_name} · {unit.upstream_model}
+                              </span>
                               <Checkbox
                                 checked={draft.selectedUnitIds.includes(
                                   unit.id,
@@ -1078,54 +1132,13 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                                 onCheckedChange={() =>
                                   toggleUnit(index, unit.id)
                                 }
+                                aria-label={t("Included route units")}
                               />
-                              <span
-                                className={
-                                  unit.enabled ? undefined : "opacity-50"
-                                }
-                              >
-                                {unit.channel_name} · {unit.upstream_model}
-                              </span>
-                            </label>
+                            </div>
                           ))}
                         </div>
                       )}
                     </div>
-
-                    {draft.fallbackOrder.filter(
-                      (id) => routeUnits.find((u) => u.id === id)?.enabled,
-                    ).length > 0 && (
-                      <div className="space-y-1.5">
-                        <Label>{t("Fallback order")}</Label>
-                        <div className="space-y-1">
-                          {draft.fallbackOrder.map((unitId) => {
-                            const unit = routeUnits.find(
-                              (u) => u.id === unitId,
-                            );
-                            if (!unit || !unit.enabled) return null;
-                            return (
-                              <div
-                                key={unitId}
-                                draggable
-                                onDragStart={handleFallbackDragStart(
-                                  index,
-                                  unitId,
-                                )}
-                                onDragOver={handleFallbackDragOver}
-                                onDrop={handleFallbackDrop(index, unitId)}
-                                onDragEnd={() => setDraggingFallback(null)}
-                                className="flex cursor-move items-center gap-2 rounded border px-2 py-1 text-sm"
-                              >
-                                <GripVertical className="h-4 w-4 text-muted-foreground" />
-                                <span>
-                                  {unit.channel_name} · {unit.upstream_model}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 ))}
               </div>
