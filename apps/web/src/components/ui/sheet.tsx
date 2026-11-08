@@ -21,6 +21,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { Dialog as SheetPrimitive } from '@base-ui/react/dialog'
 import { X } from 'lucide-react'
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -82,6 +83,8 @@ function SheetContent({
   headerActions?: React.ReactNode
   overlayProps?: SheetPrimitive.Backdrop.Props
 }) {
+  const { t } = useTranslation()
+
   // Side-specific classes are emitted via JS conditionals (rather than
   // `data-[side=*]:` variants) so consumer-provided width overrides such as
   // `sm:max-w-2xl` can be correctly merged by `tailwind-merge` and the CSS
@@ -131,7 +134,7 @@ function SheetContent({
                 render={<Button variant='ghost' size='icon-sm' />}
               >
                 <X strokeWidth={2} />
-                <span className='sr-only'>Close</span>
+                <span className='sr-only'>{t('Close')}</span>
               </SheetPrimitive.Close>
             )}
           </div>
