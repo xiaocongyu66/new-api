@@ -26,8 +26,11 @@ type ChannelSettings struct {
 	UserSystemPromptOverride bool              `json:"user_system_prompt_override,omitempty"`
 	SystemPromptModels       map[string]string `json:"system_prompt_models,omitempty"`
 	// SystemPromptPreset selects a built-in system prompt preset embedded in
-	// the binary. Accepted values: "", "silly_tavern", "tavern_card". When set,
-	// it takes priority over SystemPrompt but is overridden by
+	// the binary. An empty value disables the preset. The special value "auto"
+	// resolves the preset from the request model name, so one channel can
+	// serve several model families with a purpose-built prompt each. Any other
+	// value is a preset name; see the promptpresets package for the catalogue.
+	// When set, it takes priority over SystemPrompt but is overridden by
 	// SystemPromptModels for specific models.
 	SystemPromptPreset string `json:"system_prompt_preset,omitempty"`
 	// HTTPProtocol controls outbound HTTP version negotiation for this channel.
@@ -52,7 +55,11 @@ func (s *ChannelSettings) ResolveSystemPrompt(modelName string) string {
 		}
 	}
 	if s.SystemPromptPreset != "" {
-		if p := promptpresets.Get(s.SystemPromptPreset); p != "" {
+		if s.SystemPromptPreset == promptpresets.PresetAuto {
+			if p := promptpresets.ResolveAuto(modelName); p != "" {
+				return p
+			}
+		} else if p := promptpresets.Get(s.SystemPromptPreset); p != "" {
 			return p
 		}
 	}

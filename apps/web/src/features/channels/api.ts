@@ -36,6 +36,7 @@ import type {
   MultiKeyStatusResponse,
   SearchChannelsParams,
   SearchChannelsResponse,
+  SystemPromptPresetResponse,
   TagOperationParams,
 } from './types'
 
@@ -83,6 +84,14 @@ export async function getChannels(
   params: GetChannelsParams = {}
 ): Promise<GetChannelsResponse> {
   const res = await api.get('/api/channel', { params })
+  return res.data
+}
+
+/**
+ * Get the built-in jailbreak preset catalogue
+ */
+export async function getSystemPromptPresets(): Promise<SystemPromptPresetResponse> {
+  const res = await api.get('/api/channel/system_prompt_presets')
   return res.data
 }
 
