@@ -164,6 +164,7 @@ GET /api/vendors/
 GET /api/vendors/:id
 GET /api/vendors/search
 GET /api/verification
+GET /api/wallpaper
 PATCH /api/subscription/admin/plans/:id
 POST /api/channel/
 POST /api/channel/:id/codex/refresh
