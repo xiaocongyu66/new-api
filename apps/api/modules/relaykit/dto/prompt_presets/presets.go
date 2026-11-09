@@ -233,5 +233,5 @@ func ResolveAuto(modelName string) string {
 		}
 	}
 
-	return Get(PresetFallback)
+	return PresetFallback
 }
