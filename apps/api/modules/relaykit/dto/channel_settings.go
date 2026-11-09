@@ -64,8 +64,12 @@ func (s *ChannelSettings) ResolveSystemPromptDetail(modelName string) SystemProm
 	}
 	if s.SystemPromptPreset != "" {
 		if s.SystemPromptPreset == promptpresets.PresetAuto {
-			if p := promptpresets.ResolveAuto(modelName); p != "" {
-				return SystemPromptResolution{Prompt: p, Preset: promptpresets.PresetAuto, AutoResolved: true}
+			if name := promptpresets.ResolveAuto(modelName); name != "" {
+				return SystemPromptResolution{
+					Prompt:       promptpresets.Get(name),
+					Preset:       name,
+					AutoResolved: true,
+				}
 			}
 		} else if p := promptpresets.Get(s.SystemPromptPreset); p != "" {
 			return SystemPromptResolution{Prompt: p, Preset: s.SystemPromptPreset}
