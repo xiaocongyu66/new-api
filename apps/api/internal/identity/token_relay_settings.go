@@ -6,7 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/relaykit/dto/prompt_presets"
+	promptpresets "github.com/QuantumNous/new-api/relaykit/dto/prompt_presets"
 )
 
 // NormalizeTokenSetting validates the relay settings JSON submitted with a

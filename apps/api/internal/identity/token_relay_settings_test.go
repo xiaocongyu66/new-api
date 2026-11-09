@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/relaykit/dto/prompt_presets"
+	promptpresets "github.com/QuantumNous/new-api/relaykit/dto/prompt_presets"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

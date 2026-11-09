@@ -5,7 +5,7 @@ import (
 
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
-	"github.com/QuantumNous/new-api/relaykit/dto/prompt_presets"
+	prompt_presets "github.com/QuantumNous/new-api/relaykit/dto/prompt_presets"
 )
 
 // SystemPromptPresetItem is the operator-facing description of one built-in
