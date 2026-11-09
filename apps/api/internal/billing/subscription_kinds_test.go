@@ -149,9 +149,10 @@ func TestExpireDueSubscriptionsExpiresExhaustedQuotaKind(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, expired)
 
-	var reloaded UserSubscription
-	require.NoError(t, dbx.DB.First(&reloaded, exhausted.Id).Error)
-	assert.Equal(t, "expired", reloaded.Status)
-	require.NoError(t, dbx.DB.First(&reloaded, remaining.Id).Error)
-	assert.Equal(t, "active", reloaded.Status)
+	var reloadedExhausted UserSubscription
+	require.NoError(t, dbx.DB.First(&reloadedExhausted, exhausted.Id).Error)
+	assert.Equal(t, "expired", reloadedExhausted.Status)
+	var reloadedRemaining UserSubscription
+	require.NoError(t, dbx.DB.First(&reloadedRemaining, remaining.Id).Error)
+	assert.Equal(t, "active", reloadedRemaining.Status)
 }
