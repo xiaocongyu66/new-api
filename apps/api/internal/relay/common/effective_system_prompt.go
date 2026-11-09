@@ -56,13 +56,21 @@ func ResolveEffectiveSystemPrompt(c contract.Context, info *RelayInfo) Effective
 			}
 		}
 	}
-	resolution := info.ChannelSetting.ResolveSystemPromptDetail(modelName)
+	// Channel settings live in context from the distribute middleware and are
+	// mirrored onto ChannelMeta by InitChannelMeta. The pre-consume estimate
+	// runs before InitChannelMeta, so fall back to the context copy when the
+	// meta is not built yet (e.g. realtime infos, which never build it).
+	channelSettings, ok := common.GetContextKeyType[dto.ChannelSettings](c, constant.ContextKeyChannelSetting)
+	if !ok && info.ChannelMeta != nil {
+		channelSettings = info.ChannelSetting
+	}
+	resolution := channelSettings.ResolveSystemPromptDetail(modelName)
 	if resolution.Prompt == "" {
 		return EffectiveSystemPrompt{}
 	}
 	return EffectiveSystemPrompt{
 		Prompt:       resolution.Prompt,
-		Override:     info.ChannelSetting.UserSystemPromptOverride,
+		Override:     channelSettings.UserSystemPromptOverride,
 		Source:       SystemPromptSourceChannel,
 		Preset:       resolution.Preset,
 		AutoResolved: resolution.AutoResolved,

@@ -144,6 +144,28 @@ func TestSystemPromptTokenDeltaTokenOverrideSubtractsCallerPrompt(t *testing.T) 
 	assert.Equal(t, relaycommon.CountTextToken("TOKEN-PROMPT", model)-relaycommon.CountTextToken(userSystem, model), delta)
 }
 
+func TestSystemPromptTokenDeltaNilChannelMetaUsesContextSetting(t *testing.T) {
+	// The pre-consume estimate runs before InitChannelMeta, so RelayInfo has a
+	// nil ChannelMeta here; the resolver must fall back to the context copy
+	// instead of dereferencing the nil meta.
+	const model = "gpt-4o"
+	const channelPrompt = "CHANNEL"
+	cc, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+	common.SetCtxKey(cc, constant.ContextKeyChannelSetting, dto.ChannelSettings{
+		SystemPrompt: channelPrompt,
+	})
+	common.SetCtxKey(cc, constant.ContextKeyOriginalModel, model)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: model,
+		RelayMode:       relayconstant.RelayModeChatCompletions,
+		Request: &dto.GeneralOpenAIRequest{
+			Messages: []dto.Message{{Role: "user", Content: "hi"}},
+		},
+	}
+
+	assert.Equal(t, relaycommon.CountTextToken(channelPrompt, model)+3, systemPromptTokenDelta(cc, info))
+}
+
 func TestChannelSystemPromptTokenDeltaCountsJailbreakPreset(t *testing.T) {
 	preset := promptpresets.Get(promptpresets.PresetTavernCard)
 	require.NotEmpty(t, preset)

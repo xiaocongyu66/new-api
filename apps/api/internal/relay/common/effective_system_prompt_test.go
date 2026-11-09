@@ -90,6 +90,21 @@ func TestResolveEffectiveSystemPromptEmptyEverywhere(t *testing.T) {
 	assert.Empty(t, effective.Source)
 }
 
+func TestResolveEffectiveSystemPromptNilMetaFallsBackToContextSetting(t *testing.T) {
+	// Mirrors the pre-consume estimate: RelayInfo has no ChannelMeta yet, the
+	// channel setting is only in context.
+	channelPrompt := promptpresets.Get(promptpresets.PresetTavernCard)
+	require.NotEmpty(t, channelPrompt)
+
+	cc := newResolverContext(nil)
+	common.SetCtxKey(cc, constant.ContextKeyChannelSetting, dto.ChannelSettings{SystemPrompt: channelPrompt})
+	info := &RelayInfo{OriginModelName: "gpt-4o"}
+
+	effective := ResolveEffectiveSystemPrompt(cc, info)
+	assert.Equal(t, channelPrompt, effective.Prompt)
+	assert.Equal(t, SystemPromptSourceChannel, effective.Source)
+}
+
 func TestResolveEffectiveSystemPromptNilInfo(t *testing.T) {
 	assert.Equal(t, EffectiveSystemPrompt{}, ResolveEffectiveSystemPrompt(nil, nil))
 }

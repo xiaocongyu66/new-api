@@ -60,6 +60,9 @@ func TestGenerateTextOtherInfoSystemPromptAudit(t *testing.T) {
 			relayInfo := &relaycommon.RelayInfo{
 				StartTime:         time.Now(),
 				FirstResponseTime: time.Now(),
+				// GenerateTextOtherInfo reads promoted ChannelMeta fields
+				// (UpstreamModelName), so the meta pointer must be set.
+				ChannelMeta:       &relaycommon.ChannelMeta{},
 				SystemPromptAudit: tt.audit,
 			}
 			other := GenerateTextOtherInfo(cc, relayInfo, 1, 1, 1, 0, 1, 0, 1)
