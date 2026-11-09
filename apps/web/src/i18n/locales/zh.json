@@ -6165,6 +6165,7 @@
     "Delegate mode forwards routing to the configured fallback alias.": "委托模式将路由转发到配置的后备别名。",
     "Remove interval": "移除区间",
     "Drag to set the fallback order. Disabled units are excluded.": "拖拽调整后备顺序，未启用的单元不参与。",
-    "tokens (0 = unbounded)": "token（0 = 不限）"
+    "tokens (0 = unbounded)": "token（0 = 不限）",
+    "Unit: tokens; max 0 means unbounded": "单位：Token，最大填 0 表示不限"
   }
 }

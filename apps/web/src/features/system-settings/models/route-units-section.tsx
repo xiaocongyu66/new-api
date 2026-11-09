@@ -39,6 +39,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -579,6 +580,15 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
       setDraggingFallback(null);
     };
 
+  const dispatchModeItems = useMemo(
+    () => [
+      { value: "weighted_pool", label: t("Weighted pool") },
+      { value: "context_range", label: t("Context range") },
+      { value: "delegate", label: t("Delegate") },
+    ],
+    [t],
+  );
+
   const isSaving = (id: number) => savingIds.has(id);
 
   const channelStatusLabel = (status: number) => {
@@ -696,6 +706,7 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
               <div className="flex min-w-[220px] flex-col gap-1.5">
                 <Label htmlFor="dispatch-mode">{t("Dispatch mode")}</Label>
                 <Select
+                  items={dispatchModeItems}
                   value={dispatchMode}
                   onValueChange={(value) => {
                     if (value === null) return;
@@ -706,13 +717,13 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                     <SelectValue placeholder={t("Select dispatch mode")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="weighted_pool">
-                      {t("Weighted pool")}
-                    </SelectItem>
-                    <SelectItem value="context_range">
-                      {t("Context range")}
-                    </SelectItem>
-                    <SelectItem value="delegate">{t("Delegate")}</SelectItem>
+                    <SelectGroup>
+                      {dispatchModeItems.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
               </div>
@@ -1022,6 +1033,9 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                   >
                     {t("Add interval")}
                   </Button>
+                  <p className="text-xs text-muted-foreground">
+                    {t("Unit: tokens; max 0 means unbounded")}
+                  </p>
                 </div>
 
                 {contextLoading && (
@@ -1043,58 +1057,55 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                       draft.enabled ? undefined : "opacity-70"
                     }`}
                   >
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted font-mono text-xs font-medium">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-mono text-xs font-medium ${
+                          draft.enabled
+                            ? "bg-muted"
+                            : "bg-muted/50 text-muted-foreground"
+                        }`}
+                      >
                         {index + 1}
                       </span>
-                      <div className="flex flex-col gap-1">
-                        <Label className="text-xs text-muted-foreground">
-                          {t("Min tokens")}
-                        </Label>
-                        <Input
-                          type="number"
-                          min={0}
-                          value={draft.min}
-                          onChange={(e) =>
-                            updateDraft(index, {
-                              min: Number(e.target.value) || 0,
-                            })
-                          }
-                          className="w-32"
-                          aria-label={t("Min tokens")}
-                        />
-                      </div>
-                      <span className="pb-2 shrink-0 text-muted-foreground">
-                        –
+                      <Input
+                        type="number"
+                        min={0}
+                        value={draft.min}
+                        onChange={(e) =>
+                          updateDraft(index, {
+                            min: Number(e.target.value) || 0,
+                          })
+                        }
+                        className="h-8 w-16 shrink-0 [appearance:textfield] sm:w-20 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                        aria-label={t("Min tokens")}
+                        title={t("Min tokens")}
+                      />
+                      <span className="shrink-0 text-muted-foreground">–</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={draft.max}
+                        onChange={(e) =>
+                          updateDraft(index, {
+                            max: Number(e.target.value) || 0,
+                          })
+                        }
+                        className="h-8 w-16 shrink-0 [appearance:textfield] sm:w-20 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                        aria-label={t("Max tokens (0 = unbounded)")}
+                        title={t("Max tokens (0 = unbounded)")}
+                      />
+                      <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
+                        {t("tokens")}
                       </span>
-                      <div className="flex flex-col gap-1">
-                        <Label className="text-xs text-muted-foreground">
-                          {t("Max tokens (0 = unbounded)")}
-                        </Label>
-                        <Input
-                          type="number"
-                          min={0}
-                          value={draft.max}
-                          onChange={(e) =>
-                            updateDraft(index, {
-                              max: Number(e.target.value) || 0,
-                            })
+                      <div className="ml-auto flex shrink-0 items-center gap-2">
+                        <Switch
+                          checked={draft.enabled}
+                          onCheckedChange={(checked) =>
+                            updateDraft(index, { enabled: checked })
                           }
-                          className="w-32"
-                          aria-label={t("Max tokens (0 = unbounded)")}
+                          aria-label={t("Enabled")}
+                          title={t("Enabled")}
                         />
-                      </div>
-                      <div className="ml-auto flex items-center gap-3">
-                        <div className="flex items-center gap-2">
-                          <Switch
-                            checked={draft.enabled}
-                            onCheckedChange={(checked) =>
-                              updateDraft(index, { enabled: checked })
-                            }
-                            aria-label={t("Enabled")}
-                          />
-                          <span className="text-sm">{t("Enabled")}</span>
-                        </div>
                         <Button
                           type="button"
                           variant="ghost"

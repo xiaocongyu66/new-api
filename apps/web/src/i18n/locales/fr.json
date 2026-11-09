@@ -6165,6 +6165,7 @@
     "Delegate mode forwards routing to the configured fallback alias.": "Le mode délégué transfère le routage vers l'alias de repli configuré.",
     "Remove interval": "Retirer l'intervalle",
     "Drag to set the fallback order. Disabled units are excluded.": "Glissez pour définir l'ordre de repli. Les unités désactivées sont exclues.",
-    "tokens (0 = unbounded)": "tokens (0 = illimité)"
+    "tokens (0 = unbounded)": "tokens (0 = illimité)",
+    "Unit: tokens; max 0 means unbounded": "Unité : tokens ; max 0 = illimité"
   }
 }

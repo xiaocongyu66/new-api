@@ -6165,6 +6165,7 @@
     "Delegate mode forwards routing to the configured fallback alias.": "委任モードは設定されたフォールバック別名へルーティングを転送します。",
     "Remove interval": "区間を削除",
     "Drag to set the fallback order. Disabled units are excluded.": "ドラッグでフォールバック順序を変更。無効なユニットは対象外。",
-    "tokens (0 = unbounded)": "トークン（0 = 無制限）"
+    "tokens (0 = unbounded)": "トークン（0 = 無制限）",
+    "Unit: tokens; max 0 means unbounded": "単位：トークン、最大 0 で無制限"
   }
 }

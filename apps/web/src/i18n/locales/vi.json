@@ -6165,6 +6165,7 @@
     "Delegate mode forwards routing to the configured fallback alias.": "Chế độ ủy quyền chuyển định tuyến đến bí danh dự phòng đã cấu hình.",
     "Remove interval": "Xóa khoảng",
     "Drag to set the fallback order. Disabled units are excluded.": "Kéo để sắp xếp thứ tự dự phòng. Đơn vị bị tắt không tham gia.",
-    "tokens (0 = unbounded)": "token (0 = không giới hạn)"
+    "tokens (0 = unbounded)": "token (0 = không giới hạn)",
+    "Unit: tokens; max 0 means unbounded": "Đơn vị: token; tối đa 0 = không giới hạn"
   }
 }

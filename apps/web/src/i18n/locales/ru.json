@@ -6165,6 +6165,7 @@
     "Delegate mode forwards routing to the configured fallback alias.": "Режим делегирования перенаправляет маршрутизацию на настроенный резервный псевдоним.",
     "Remove interval": "Удалить интервал",
     "Drag to set the fallback order. Disabled units are excluded.": "Перетащите, чтобы задать порядок резерва. Отключённые единицы исключаются.",
-    "tokens (0 = unbounded)": "токенов (0 = без ограничений)"
+    "tokens (0 = unbounded)": "токенов (0 = без ограничений)",
+    "Unit: tokens; max 0 means unbounded": "Единица: токены; макс. 0 = без ограничений"
   }
 }
