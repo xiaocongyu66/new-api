@@ -73,6 +73,18 @@ jobs:
             cd "$PATH_DIR"
 
             IMAGE_NAME="ghcr.io/${REPO}:${IMAGE_TAG}"
+
+            echo "=== 0. 探测 compose 命令 ==="
+            if podman compose version >/dev/null 2>&1; then
+              COMPOSE_CMD=(podman compose)
+            elif command -v podman-compose >/dev/null 2>&1; then
+              COMPOSE_CMD=(podman-compose)
+            else
+              echo "::error::服务器既无 'podman compose'（podman>=4）也无 podman-compose，无法执行部署"
+              exit 1
+            fi
+            echo "使用 compose 命令: ${COMPOSE_CMD[*]}"
+
             echo "=== 1. 拉取新镜像: ${IMAGE_NAME} ==="
             podman pull "${IMAGE_NAME}"
 
@@ -82,7 +94,7 @@ jobs:
 
             echo "=== 3. 更新 compose 并重启 new-api ==="
             sed -i -E "/^  new-api:/{n;s|^    image: .*|    image: ${IMAGE_NAME}|}" podman-compose.yml
-            podman compose -f podman-compose.yml up -d --no-deps new-api
+            "${COMPOSE_CMD[@]}" -f podman-compose.yml up -d --no-deps new-api
 
             echo "=== 4. 健康检查（最多等 45s） ==="
             HEALTH_PORT=$(grep -E '^\s*-\s*PORT=' podman-compose.yml | head -1 | sed -E 's/.*PORT=([0-9]+).*/\1/')
@@ -104,7 +116,7 @@ jobs:
               echo "::error::健康检查失败！正在回滚到: ${PREV_IMAGE}"
               if [ -n "${PREV_IMAGE}" ]; then
                 sed -i -E "/^  new-api:/{n;s|^    image: .*|    image: ${PREV_IMAGE}|}" podman-compose.yml
-                podman compose -f podman-compose.yml up -d --no-deps new-api
+                "${COMPOSE_CMD[@]}" -f podman-compose.yml up -d --no-deps new-api
               fi
               exit 1
             fi
