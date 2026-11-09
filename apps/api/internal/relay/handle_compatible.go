@@ -91,7 +91,7 @@ func TextHelper(c contract.Context, info *relaycommon.RelayInfo) (newAPIError *t
 	// non-passthrough, non-responses-routed path is eligible, and it must be
 	// read before the passthrough branch below since cached bodies are only
 	// produced for the converted (non-passthrough) request shape.
-	if responseCacheEligible(info, request) {
+	if responseCacheEligible(c, info, request) {
 		key, err := responseCacheBuildKey(info, request)
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
@@ -122,7 +122,9 @@ func TextHelper(c contract.Context, info *relaycommon.RelayInfo) (newAPIError *t
 		!passThroughGlobal &&
 		!info.ChannelSetting.PassThroughBodyEnabled &&
 		relaycommon.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, info.OriginModelName) {
-		if systemPrompt := info.ChannelSetting.ResolveSystemPrompt(info.OriginModelName); systemPrompt != "" {
+		// The helper re-resolves (idempotently); this guard just skips the
+		// call when neither the token nor the channel binding resolves.
+		if relaycommon.ResolveEffectiveSystemPrompt(c, info).Prompt != "" {
 			applySystemPromptIfNeeded(c, info, request)
 		}
 		// The affinity key is derived from the raw client body (client-declared

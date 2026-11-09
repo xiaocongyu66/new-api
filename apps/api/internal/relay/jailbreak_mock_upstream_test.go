@@ -14,7 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/relaykit/dto/prompt_presets"
+	promptpresets "github.com/QuantumNous/new-api/relaykit/dto/prompt_presets"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -133,7 +133,8 @@ func TestJailbreakPayloadReachesMockUpstream(t *testing.T) {
 
 	responsesContext := newContext("/v1/responses")
 	responsesRequest := &dto.OpenAIResponsesRequest{Instructions: json.RawMessage(`"USER-SYSTEM"`)}
-	require.NoError(t, applyResponsesSystemPrompt(responsesContext, newInfo(setting), responsesRequest, preset))
+	require.NoError(t, applyResponsesSystemPrompt(responsesContext, newInfo(setting), responsesRequest,
+		relaycommon.EffectiveSystemPrompt{Prompt: preset}))
 	responsesBody, err := common.Marshal(responsesRequest)
 	require.NoError(t, err)
 	responsesWireBody := postToMock(responsesBody)

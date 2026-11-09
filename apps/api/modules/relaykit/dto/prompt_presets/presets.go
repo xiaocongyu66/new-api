@@ -188,12 +188,28 @@ func List() []Preset {
 	return out
 }
 
-// ResolveAuto picks the preset for a model name. A preset that lists the model
-// explicitly wins; otherwise a preset whose model family prefixes the model
-// name wins ("gemini-3.6-flash-preview" lands on the Gemini preset, while
-// "geminix-1" does not). Anything else — including a blank model name, which
-// cannot be attributed to a family — resolves to "" so the caller falls
-// through to the channel-level SystemPrompt.
+// IsSelectable reports whether name is a preset an operator (or a token
+// binding) may pin: any catalogue entry, or the automatic resolver.
+func IsSelectable(name string) bool {
+	return IsValid(name)
+}
+
+// Names lists every preset name in catalogue order.
+func Names() []string {
+	out := make([]string, 0, len(presets))
+	for _, preset := range presets {
+		out = append(out, preset.Name)
+	}
+	return out
+}
+
+// ResolveAuto picks the preset name for a model name. A preset that lists the
+// model explicitly wins; otherwise a preset whose model family prefixes the
+// model name wins ("gemini-3.6-flash-preview" lands on the Gemini preset,
+// while "geminix-1" does not). Anything else — including a blank model name,
+// which cannot be attributed to a family — resolves to "" so the caller falls
+// through to the channel-level SystemPrompt. Callers turn the name into text
+// with Get(name); returning the name keeps the audit trail expressible.
 func ResolveAuto(modelName string) string {
 	model := strings.ToLower(strings.TrimSpace(modelName))
 	if model == "" {
@@ -203,7 +219,7 @@ func ResolveAuto(modelName string) string {
 	for _, preset := range presets {
 		for _, target := range preset.Models {
 			if strings.ToLower(target) == model {
-				return preset.Prompt
+				return preset.Name
 			}
 		}
 	}
@@ -213,9 +229,9 @@ func ResolveAuto(modelName string) string {
 			continue
 		}
 		if strings.HasPrefix(model, preset.ModelFamily+"-") {
-			return preset.Prompt
+			return preset.Name
 		}
 	}
 
-	return Get(PresetFallback)
+	return PresetFallback
 }

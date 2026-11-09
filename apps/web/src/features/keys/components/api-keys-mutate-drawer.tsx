@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, KeyRound, Settings2, WalletCards } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm, type SubmitErrorHandler } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -51,6 +51,15 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Sheet,
   SheetClose,
   SheetContent,
@@ -60,7 +69,15 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useStatus } from '@/hooks/use-status'
+import { getSystemPromptPresets } from '@/features/channels/api'
+import {
+  FALLBACK_SYSTEM_PROMPT_PRESETS,
+  SYSTEM_PROMPT_PRESET_AUTO,
+  SYSTEM_PROMPT_PRESET_LABELS,
+} from '@/features/channels/constants'
 import { getUserModels, getUserGroups } from '@/lib/api'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 
@@ -152,6 +169,22 @@ export function ApiKeysMutateDrawer({
     staleTime: 0,
   })
 
+  // Fetch the built-in jailbreak preset catalogue for the preset dropdown.
+  // The catalogue endpoint is admin-only (/api/channel), so non-admin token
+  // owners skip the request; an admin whose request fails falls back to the
+  // same static list instead of an empty dropdown.
+  const currentUser = useAuthStore((s) => s.auth.user)
+  const canQueryPresets = Boolean(currentUser && currentUser.role >= ROLE.ADMIN)
+  const {
+    data: systemPromptPresetsData,
+    isFetched: systemPromptPresetsFetched,
+  } = useQuery({
+    queryKey: ['system_prompt_presets'],
+    queryFn: getSystemPromptPresets,
+    enabled: open && canQueryPresets,
+    staleTime: 10 * 60 * 1000,
+  })
+
   const models = modelsData?.data || []
   const groups = useMemo<ApiKeyGroupOption[]>(
     () =>
@@ -181,6 +214,16 @@ export function ApiKeysMutateDrawer({
       return option ? [option] : []
     })
   }, [globalAutoGroups, groups])
+  const systemPromptPresetOptions = useMemo(() => {
+    const presets: { name: string }[] =
+      systemPromptPresetsData?.data ??
+      FALLBACK_SYSTEM_PROMPT_PRESETS.map((name) => ({ name }))
+    return presets.map((preset) => ({
+      value: preset.name,
+      label: t(SYSTEM_PROMPT_PRESET_LABELS[preset.name] ?? preset.name),
+      auto: preset.name === SYSTEM_PROMPT_PRESET_AUTO,
+    }))
+  }, [systemPromptPresetsData, t])
   const maxAutoGroups =
     Number.isInteger(autoGroupsData?.data?.max_count) &&
     Number(autoGroupsData?.data?.max_count) > 0
@@ -195,6 +238,11 @@ export function ApiKeysMutateDrawer({
     resolver: zodResolver(schema),
     defaultValues: getApiKeyFormDefaultValues(defaultUseAutoGroup),
   })
+
+  const jailbreakPreset = form.watch('system_prompt_preset')
+  const jailbreakEnabled = Boolean(jailbreakPreset)
+  const jailbreakPresetRef = useRef<string>(jailbreakPreset || '')
+  const jailbreakPresetLoaded = systemPromptPresetsFetched || !canQueryPresets
 
   // Load existing data when updating
   useEffect(() => {
@@ -754,6 +802,157 @@ export function ApiKeysMutateDrawer({
                         </FormItem>
                       )}
                     />
+
+                    <FormField
+                      control={form.control}
+                      name='system_prompt_preset'
+                      render={({ field }) => (
+                        <FormItem>
+                          <div className='flex items-center justify-between'>
+                            <div className='space-y-0.5'>
+                              <FormLabel>
+                                {t('Token Jailbreak Binding')}
+                              </FormLabel>
+                              <FormDescription>
+                                {t(
+                                  'Bind a jailbreak preset to this API key so routing changes no longer alter the injected system prompt (counts toward context and input tokens)'
+                                )}
+                              </FormDescription>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={jailbreakEnabled}
+                                onCheckedChange={(v) => {
+                                  if (v) {
+                                    field.onChange(
+                                      jailbreakPresetRef.current ||
+                                        SYSTEM_PROMPT_PRESET_AUTO
+                                    )
+                                  } else {
+                                    // Keep the last choice so toggling the
+                                    // switch back on restores the pick.
+                                    jailbreakPresetRef.current =
+                                      field.value || ''
+                                    field.onChange('')
+                                  }
+                                }}
+                              />
+                            </FormControl>
+                          </div>
+                          {jailbreakEnabled && jailbreakPresetLoaded ? (
+                            <Select
+                              items={systemPromptPresetOptions}
+                              value={jailbreakPreset}
+                              onValueChange={(value) => {
+                                const next = value ?? SYSTEM_PROMPT_PRESET_AUTO
+                                jailbreakPresetRef.current = next
+                                field.onChange(next)
+                              }}
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent alignItemWithTrigger={false}>
+                                <SelectGroup>
+                                  <SelectLabel>
+                                    {t('System automatic selection')}
+                                  </SelectLabel>
+                                  {systemPromptPresetOptions
+                                    .filter((option) => option.auto)
+                                    .map((option) => (
+                                      <SelectItem
+                                        key={option.value}
+                                        value={option.value}
+                                      >
+                                        {option.label}
+                                      </SelectItem>
+                                    ))}
+                                </SelectGroup>
+                                <SelectGroup>
+                                  <SelectLabel>{t('Universal')}</SelectLabel>
+                                  {systemPromptPresetOptions
+                                    .filter((option) => !option.auto)
+                                    .map((option) => (
+                                      <SelectItem
+                                        key={option.value}
+                                        value={option.value}
+                                      >
+                                        {option.label}
+                                      </SelectItem>
+                                    ))}
+                                </SelectGroup>
+                              </SelectContent>
+                            </Select>
+                          ) : null}
+                          <FormDescription>
+                            {t(
+                              'Automatic selection picks the preset matching the request model; pick a fixed preset to use it for every model.'
+                            )}
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {jailbreakEnabled && (
+                      <FormField
+                        control={form.control}
+                        name='system_prompt'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>
+                              {t('Token System Prompt Fallback')}
+                            </FormLabel>
+                            <FormControl>
+                              <Textarea
+                                {...field}
+                                placeholder={t(
+                                  'Applies when the preset binding is empty'
+                                )}
+                                rows={3}
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              {t(
+                                'Token prompt replaces the channel prompt entirely when non-empty; the preset binding takes priority over this text'
+                              )}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+
+                    {jailbreakEnabled && (
+                      <FormField
+                        control={form.control}
+                        name='user_system_prompt_override'
+                        render={({ field }) => (
+                          <FormItem
+                            className={sideDrawerSwitchItemClassName()}
+                          >
+                            <div className='flex flex-col gap-0.5'>
+                              <FormLabel className='text-sm'>
+                                {t('Override User System Prompt')}
+                              </FormLabel>
+                              <FormDescription className='text-xs'>
+                                {t(
+                                  'Replace the user system prompt with the token system prompt (the token prompt still counts toward the context window and input tokens)'
+                                )}
+                              </FormDescription>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    )}
                   </div>
                 </CollapsibleContent>
               </SideDrawerSection>
