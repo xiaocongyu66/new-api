@@ -1,4 +1,4 @@
-package relaycommon
+package common
 
 import (
 	"net/http"

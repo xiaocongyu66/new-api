@@ -1,4 +1,4 @@
-package relaycommon
+package common
 
 import (
 	"github.com/QuantumNous/new-api/internal/common"
