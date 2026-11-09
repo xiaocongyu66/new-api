@@ -223,6 +223,15 @@ type RelayInfo struct {
 	// still failed: the relay loop must charge it as a failed attempt instead
 	// of rewarding it as a success.
 	SettledUpstreamFailure bool
+	// RequestCountWaived marks a request that was successfully settled but must
+	// not consume a request-kind subscription's counter (empty response, short
+	// upstream cut, policy rejection). BillingSession.Settle returns the
+	// reservation through RequestCountFunding when it is set.
+	RequestCountWaived bool
+	// RequestCountBilling marks a request funded by a request-kind subscription.
+	// Its counters are request counts, not quota units, so quota notifications
+	// must not treat them as remaining quota.
+	RequestCountBilling bool
 
 	// convOptions caches the converter settings snapshot (see ConvOptions).
 	convOptions *convmeta.Options

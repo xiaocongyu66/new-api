@@ -1,6 +1,7 @@
 package billing
 
 import (
+	"errors"
 	"fmt"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/identity"
@@ -11,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	channel "github.com/QuantumNous/new-api/internal/catalog"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/common"
 	"gorm.io/gorm"
@@ -141,6 +143,96 @@ type AdminUpsertSubscriptionPlanRequest struct {
 	Plan SubscriptionPlan `json:"plan"`
 }
 
+// applyPlanUpgradeGroups normalizes the multi-group snapshot, validates every
+// group against the configured ratios and mirrors the first one into the
+// legacy UpgradeGroup column. Empty input stays empty (unrestricted).
+func applyPlanUpgradeGroups(plan *SubscriptionPlan) error {
+	groups := normalizeStringList(plan.UpgradeGroups)
+	if len(groups) == 0 && strings.TrimSpace(plan.UpgradeGroupsJSON) != "" {
+		parsed, err := parseStringListJSON(plan.UpgradeGroupsJSON)
+		if err != nil {
+			return errors.New("升级分组格式错误")
+		}
+		groups = normalizeStringList(parsed)
+	}
+	if len(groups) == 0 && strings.TrimSpace(plan.UpgradeGroup) != "" {
+		groups = normalizeStringList([]string{plan.UpgradeGroup})
+	}
+	groupRatios := ratio_setting.GetGroupRatioCopy()
+	for _, group := range groups {
+		if _, ok := groupRatios[group]; !ok {
+			return fmt.Errorf("升级分组不存在: %s", group)
+		}
+	}
+	plan.UpgradeGroups = groups
+	plan.UpgradeGroupsJSON = marshalStringListJSON(groups)
+	plan.UpgradeGroup = ""
+	if len(groups) > 0 {
+		plan.UpgradeGroup = groups[0]
+	}
+	return nil
+}
+
+// applyPlanRequestRules validates and serializes request rules for request-kind
+// plans. Other kinds drop any stale rules so they cannot grant an entitlement.
+func applyPlanRequestRules(plan *SubscriptionPlan) error {
+	if plan.Kind != SubscriptionKindRequest {
+		plan.RequestRules = nil
+		plan.RequestRulesJSON = ""
+		return nil
+	}
+	rules := plan.RequestRules
+	if len(rules) == 0 && strings.TrimSpace(plan.RequestRulesJSON) != "" {
+		parsed, err := parseRequestRulesJSON(plan.RequestRulesJSON)
+		if err != nil {
+			return errors.New("请求规则格式错误")
+		}
+		rules = parsed
+	}
+	if len(rules) == 0 {
+		return errors.New("请求次数订阅至少需要一条请求规则")
+	}
+	groupRatios := ratio_setting.GetGroupRatioCopy()
+	normalized := make([]SubscriptionRequestRule, 0, len(rules))
+	for _, rule := range rules {
+		group := strings.TrimSpace(rule.Group)
+		if _, ok := groupRatios[group]; !ok {
+			return fmt.Errorf("请求规则分组不存在: %s", group)
+		}
+		models := normalizeStringList(rule.Models)
+		if len(models) == 0 {
+			return errors.New("请求规则模型不能为空")
+		}
+		if rule.Count <= 0 {
+			return errors.New("请求规则次数必须大于0")
+		}
+		normalized = append(normalized, SubscriptionRequestRule{
+			Group:  group,
+			Models: models,
+			Count:  rule.Count,
+		})
+	}
+	plan.RequestRules = normalized
+	plan.RequestRulesJSON = marshalRequestRulesJSON(normalized)
+	return nil
+}
+
+// applySubscriptionKindConstraints enforces the kind-specific field contract.
+func applySubscriptionKindConstraints(plan *SubscriptionPlan) error {
+	switch plan.Kind {
+	case SubscriptionKindQuota:
+		if plan.TotalAmount <= 0 {
+			return errors.New("额度订阅的总额度必须大于0")
+		}
+		plan.QuotaResetPeriod = SubscriptionResetNever
+	case SubscriptionKindRequest:
+		// Request-kind plans sell counts, not a quota pool or a term.
+		plan.TotalAmount = 0
+		plan.QuotaResetPeriod = SubscriptionResetNever
+	}
+	return nil
+}
+
 func AdminCreateSubscriptionPlan(c contract.Context) {
 	if !RequirePaymentCompliance(c) {
 		return
@@ -156,6 +248,12 @@ func AdminCreateSubscriptionPlan(c contract.Context) {
 		common.CtxApiErrorMsg(c, "套餐标题不能为空")
 		return
 	}
+	requestedKind := normalizeSubscriptionKind(req.Plan.Kind)
+	if strings.TrimSpace(req.Plan.Kind) != "" && requestedKind != strings.TrimSpace(req.Plan.Kind) {
+		common.CtxApiErrorMsg(c, "无效的订阅种类")
+		return
+	}
+	req.Plan.Kind = requestedKind
 	if req.Plan.PriceAmount < 0 {
 		common.CtxApiErrorMsg(c, "价格不能为负数")
 		return
@@ -197,12 +295,6 @@ func AdminCreateSubscriptionPlan(c contract.Context) {
 		return
 	}
 	req.Plan.UpgradeGroup = strings.TrimSpace(req.Plan.UpgradeGroup)
-	if req.Plan.UpgradeGroup != "" {
-		if _, ok := ratio_setting.GetGroupRatioCopy()[req.Plan.UpgradeGroup]; !ok {
-			common.CtxApiErrorMsg(c, "升级分组不存在")
-			return
-		}
-	}
 	req.Plan.DowngradeGroup = strings.TrimSpace(req.Plan.DowngradeGroup)
 	if req.Plan.DowngradeGroup != "" {
 		if _, ok := ratio_setting.GetGroupRatioCopy()[req.Plan.DowngradeGroup]; !ok {
@@ -210,9 +302,21 @@ func AdminCreateSubscriptionPlan(c contract.Context) {
 			return
 		}
 	}
+	if err := applySubscriptionKindConstraints(&req.Plan); err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
 	req.Plan.QuotaResetPeriod = NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.CtxApiErrorMsg(c, "自定义重置周期需大于0秒")
+		return
+	}
+	if err := applyPlanUpgradeGroups(&req.Plan); err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	if err := applyPlanRequestRules(&req.Plan); err != nil {
+		common.CtxApiError(c, err)
 		return
 	}
 	if err := validateFreePlanPurchaseLimit(&req.Plan); err != nil {
@@ -243,9 +347,24 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 		common.CtxApiErrorMsg(c, "参数错误")
 		return
 	}
+	var existing SubscriptionPlan
+	if err := dbx.DB.Where("id = ?", id).First(&existing).Error; err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
 	if strings.TrimSpace(req.Plan.Title) == "" {
 		common.CtxApiErrorMsg(c, "套餐标题不能为空")
 		return
+	}
+	if strings.TrimSpace(req.Plan.Kind) == "" {
+		req.Plan.Kind = normalizeSubscriptionKind(existing.Kind)
+	} else {
+		requestedKind := normalizeSubscriptionKind(req.Plan.Kind)
+		if requestedKind != strings.TrimSpace(req.Plan.Kind) {
+			common.CtxApiErrorMsg(c, "无效的订阅种类")
+			return
+		}
+		req.Plan.Kind = requestedKind
 	}
 	if req.Plan.PriceAmount < 0 {
 		common.CtxApiErrorMsg(c, "价格不能为负数")
@@ -282,13 +401,19 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 		common.CtxApiErrorMsg(c, "总额度不能为负数")
 		return
 	}
-	req.Plan.UpgradeGroup = strings.TrimSpace(req.Plan.UpgradeGroup)
-	if req.Plan.UpgradeGroup != "" {
-		if _, ok := ratio_setting.GetGroupRatioCopy()[req.Plan.UpgradeGroup]; !ok {
-			common.CtxApiErrorMsg(c, "升级分组不存在")
-			return
+	// Omitted upgrade_groups / request_rules mean "keep the current values"; an
+	// explicitly empty array clears them.
+	if req.Plan.UpgradeGroups == nil && strings.TrimSpace(req.Plan.UpgradeGroupsJSON) == "" {
+		if len(existing.UpgradeGroups) > 0 {
+			req.Plan.UpgradeGroups = existing.UpgradeGroups
+		} else if strings.TrimSpace(req.Plan.UpgradeGroup) == "" {
+			req.Plan.UpgradeGroup = existing.UpgradeGroup
 		}
 	}
+	if req.Plan.RequestRules == nil && strings.TrimSpace(req.Plan.RequestRulesJSON) == "" {
+		req.Plan.RequestRules = existing.RequestRules
+	}
+	req.Plan.UpgradeGroup = strings.TrimSpace(req.Plan.UpgradeGroup)
 	req.Plan.DowngradeGroup = strings.TrimSpace(req.Plan.DowngradeGroup)
 	if req.Plan.DowngradeGroup != "" {
 		if _, ok := ratio_setting.GetGroupRatioCopy()[req.Plan.DowngradeGroup]; !ok {
@@ -296,9 +421,21 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 			return
 		}
 	}
+	if err := applySubscriptionKindConstraints(&req.Plan); err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
 	req.Plan.QuotaResetPeriod = NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.CtxApiErrorMsg(c, "自定义重置周期需大于0秒")
+		return
+	}
+	if err := applyPlanUpgradeGroups(&req.Plan); err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	if err := applyPlanRequestRules(&req.Plan); err != nil {
+		common.CtxApiError(c, err)
 		return
 	}
 
@@ -311,6 +448,7 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 		updateMap := map[string]interface{}{
 			"title":                      req.Plan.Title,
 			"subtitle":                   req.Plan.Subtitle,
+			"kind":                       req.Plan.Kind,
 			"price_amount":               req.Plan.PriceAmount,
 			"currency":                   req.Plan.Currency,
 			"duration_unit":              req.Plan.DurationUnit,
@@ -324,6 +462,8 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
 			"total_amount":               req.Plan.TotalAmount,
 			"upgrade_group":              req.Plan.UpgradeGroup,
+			"upgrade_groups":             req.Plan.UpgradeGroupsJSON,
+			"request_rules":              req.Plan.RequestRulesJSON,
 			"downgrade_group":            req.Plan.DowngradeGroup,
 			"quota_reset_period":         req.Plan.QuotaResetPeriod,
 			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,
@@ -350,6 +490,21 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 
 type AdminUpdateSubscriptionPlanStatusRequest struct {
 	Enabled *bool `json:"enabled"`
+}
+
+// AdminListGroupModels returns the models enabled for a group, feeding the
+// request-rule model picker.
+func AdminListGroupModels(c contract.Context) {
+	group := strings.TrimSpace(c.Query("group"))
+	if group == "" {
+		common.CtxApiErrorMsg(c, "分组不能为空")
+		return
+	}
+	if _, ok := ratio_setting.GetGroupRatioCopy()[group]; !ok {
+		common.CtxApiErrorMsg(c, "分组不存在")
+		return
+	}
+	common.CtxApiSuccess(c, channel.GetGroupsEnabledModels([]string{group}))
 }
 
 func AdminUpdateSubscriptionPlanStatus(c contract.Context) {

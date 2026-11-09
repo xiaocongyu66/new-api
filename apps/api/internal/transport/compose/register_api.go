@@ -275,6 +275,7 @@ func SetApiRouter(router contract.Engine) {
 		subscriptionAdminRoute := apiRouter.Group("/subscription/admin")
 		subscriptionAdminRoute.Use(security.AdminAuth())
 		{
+			subscriptionAdminRoute.GET("/group-models", billing.AdminListGroupModels)
 			subscriptionAdminRoute.GET("/plans", billing.AdminListSubscriptionPlans)
 			subscriptionAdminRoute.POST("/plans", billing.AdminCreateSubscriptionPlan)
 			subscriptionAdminRoute.PUT("/plans/:id", billing.AdminUpdateSubscriptionPlan)

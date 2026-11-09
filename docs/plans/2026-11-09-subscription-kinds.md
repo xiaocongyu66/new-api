@@ -25,7 +25,7 @@
    - 请求命中时扣 1 次；
    - 计数判定统一重构为可复用能力：
      - 空回不扣；
-     - 上游断流且输出超过 1000 字才扣，少于 1000 不扣；
+     - 上游断流且已交付输出超过 1000（completion tokens）才扣，少于等于 1000 不扣；
      - 用户断流（客户端主动断开）扣；
      - 正常完成扣。
 4. 前端：
@@ -157,7 +157,7 @@ const (
     RequestOutcomeFailed          RequestOutcome = "failed"
 )
 
-const RequestCountMinOutputChars = 1000
+const RequestCountMinOutputTokens = 1000
 
 // ClassifyRequestOutcome 复用 consume_text_quota.go 的既有信号：
 // isUndeliveredTextResponse、streamCutKind、StreamStatus。
@@ -173,14 +173,13 @@ func (o RequestOutcome) CountsAsRequest() bool
 | --- | --- |
 | 正常完成 | 是 |
 | 用户断流（客户端断开 / ping 失败） | 是 |
-| 上游断流且输出字数 > 1000 | 是 |
-| 上游断流且输出字数 <= 1000 | 否 |
+| 上游断流且输出 tokens > 1000 | 是 |
+| 上游断流且输出 tokens <= 1000 | 否 |
 | 空回（无可见输出、无工具调用、无媒体） | 否 |
 | 请求失败（错误 / 退款） | 否 |
 
-输出字数：在 `RelayInfo` 增加 `StreamOutputChars int`，在 OpenAI / Claude / Gemini 的流式
-文本增量处累加实际文本长度；非流式响应按返回文本长度累加。判定优先使用该字段，
-缺失时回退为 `completion_tokens`。
+输出规模：以 `completion_tokens` 计量（与现有上游断流折扣分档 `truncatedResponseMultiplierForTokens`
+的口径一致），阈值 `RequestCountMinOutputTokens = 1000`。
 
 现有 `isUndeliveredTextResponse` / `streamCutKind` 改为复用该分类器的中间信号，避免两套判定漂移。
 
@@ -225,7 +224,7 @@ func (o RequestOutcome) CountsAsRequest() bool
 
 1. **后端模型与套餐 API**：字段、JSON 快照、校验、DDL、计数表与迁移。
 2. **后端计费与计数**：FundingSource 扩展、预扣/结算/退款、计数表原子操作、
-   统一结果分类器、`StreamOutputChars` 采集、过期扫描扩展。
+   统一结果分类器、`completion_tokens` 阈值判定、过期扫描扩展。
 3. **前端**：种类下拉、多分组、规则编辑器、计数横条、i18n。
 4. **测试**：分类器表驱动测试、分组限制与计数预扣/退款测试、过期语义测试。
 
@@ -236,5 +235,5 @@ func (o RequestOutcome) CountsAsRequest() bool
 - 手工验收（由维护者在开发环境执行）：
   1. 创建三种 kind 的套餐，确认创建页下拉与字段联动；
   2. 购买 request 套餐，调用命中模型与未命中模型，确认计数增减；
-  3. 模拟空回 / 上游断流（>1000 与 <1000 字）/ 用户断流，确认计数结果；
+  3. 模拟空回 / 上游断流（>1000 与 <=1000 tokens）/ 用户断流，确认计数结果；
   4. 用非升级分组调用，确认订阅额度不被消费。

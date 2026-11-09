@@ -83,6 +83,7 @@ func (w *WalletFunding) Refund() error {
 type SubscriptionFunding struct {
 	requestId      string
 	userId         int
+	usingGroup     string
 	modelName      string
 	amount         int64 // 预扣的订阅额度（subConsume）
 	subscriptionId int
@@ -100,7 +101,7 @@ func (s *SubscriptionFunding) Source() string { return settlecore.BillingSourceS
 
 func (s *SubscriptionFunding) PreConsume(_ int) error {
 	// amount 参数被忽略，使用内部 s.amount（已在构造时根据 preConsumedQuota 计算）
-	res, err := PreConsumeUserSubscription(s.requestId, s.userId, s.modelName, 0, s.amount)
+	res, err := PreConsumeUserSubscription(s.requestId, s.userId, s.usingGroup, s.modelName, 0, s.amount)
 	if err != nil {
 		return err
 	}
@@ -148,6 +149,62 @@ func (s *SubscriptionFunding) Refund() error {
 	}
 	return refundWithRetry(func() error {
 		return RefundSubscriptionPreConsume(s.requestId)
+	})
+}
+
+// ---------------------------------------------------------------------------
+// RequestCountFunding — 请求次数型订阅资金来源实现
+// ---------------------------------------------------------------------------
+
+// RequestCountFunding charges one request from a request-kind subscription.
+// Counting already happens in PreConsume, so Settle is a no-op; the request is
+// returned to the counter when the outcome should not count or the request fails.
+type RequestCountFunding struct {
+	requestId      string
+	userId         int
+	usingGroup     string
+	modelName      string
+	subscriptionId int
+	counterId      int
+	preConsumed    int64
+	// 以下字段在 PreConsume 成功后填充，供 RelayInfo 同步使用
+	AmountTotal     int64
+	AmountUsedAfter int64
+	PlanId          int
+	PlanTitle       string
+}
+
+func (f *RequestCountFunding) Source() string { return settlecore.BillingSourceSubscription }
+
+func (f *RequestCountFunding) PreConsume(_ int) error {
+	res, err := PreConsumeSubscriptionRequest(f.requestId, f.userId, f.usingGroup, f.modelName)
+	if err != nil {
+		return err
+	}
+	f.subscriptionId = res.UserSubscriptionId
+	f.counterId = res.RequestCounterId
+	f.preConsumed = res.PreConsumed
+	f.AmountTotal = res.AmountTotal
+	f.AmountUsedAfter = res.AmountUsedAfter
+	if planInfo, err := GetSubscriptionPlanInfoByUserSubscriptionId(res.UserSubscriptionId); err == nil && planInfo != nil {
+		f.PlanId = planInfo.PlanId
+		f.PlanTitle = planInfo.PlanTitle
+	}
+	return nil
+}
+
+func (f *RequestCountFunding) Settle(_ int) error {
+	// The counter was already reserved by PreConsume; finalization happens in
+	// BillingSession.Settle where the request outcome is known.
+	return nil
+}
+
+func (f *RequestCountFunding) Refund() error {
+	if f.preConsumed <= 0 {
+		return nil
+	}
+	return refundWithRetry(func() error {
+		return RefundSubscriptionRequestConsume(f.requestId)
 	})
 }
 

@@ -668,6 +668,9 @@ func PostTextConsumeQuota(ctx contract.Context, relayInfo *relaycommon.RelayInfo
 		applyTruncatedResponseMultiplier(relayInfo, &summary, tieredBillingApplied)
 	}
 
+	outcome := ClassifyRequestOutcome(relayInfo, summary.CompletionTokens, len(summary.ToolSurchargeItems) > 0, adminRejectReason)
+	relayInfo.RequestCountWaived = !outcome.CountsAsRequest()
+
 	for _, item := range summary.ToolSurchargeItems {
 		q := decimal.NewFromFloat(item.Price).
 			Mul(decimal.NewFromInt(int64(item.Count))).

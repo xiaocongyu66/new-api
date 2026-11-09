@@ -113,6 +113,7 @@ GET /api/route_unit/audit
 GET /api/setup
 GET /api/status
 GET /api/status/test
+GET /api/subscription/admin/group-models
 GET /api/subscription/admin/plans
 GET /api/subscription/admin/users/:id/subscriptions
 GET /api/subscription/codepay/notify

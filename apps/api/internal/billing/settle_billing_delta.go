@@ -72,7 +72,7 @@ func SettleBilling(ctx contract.Context, relayInfo *relaycommon.RelayInfo, actua
 		}
 
 		// 发送额度通知（订阅计费使用订阅剩余额度）
-		if actualQuota != 0 {
+		if actualQuota != 0 && !relayInfo.RequestCountBilling {
 			if relayInfo.BillingSource == settlecore.BillingSourceSubscription {
 				checkAndSendSubscriptionQuotaNotify(relayInfo)
 			} else {

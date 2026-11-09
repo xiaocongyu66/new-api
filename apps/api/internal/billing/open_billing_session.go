@@ -46,6 +46,14 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	if s.settled {
 		return nil
 	}
+	// A request-count reservation is committed or returned here, before the
+	// delta short-circuit: a zero delta is the normal case for request billing.
+	if requestFunding, ok := s.funding.(*RequestCountFunding); ok {
+		if err := FinalizeSubscriptionRequestConsume(requestFunding.requestId, !s.relayInfo.RequestCountWaived); err != nil {
+			return err
+		}
+		s.fundingSettled = true
+	}
 	delta := actualQuota - s.preConsumedQuota
 	if delta == 0 {
 		s.settled = true
@@ -120,8 +128,10 @@ func (s *BillingSession) Refund(c contract.Context) {
 			common.SysLog("error refunding billing source: " + err.Error())
 		}
 		if extraReserved > 0 && funding.Source() == settlecore.BillingSourceSubscription && subscriptionId > 0 {
-			if err := PostConsumeUserSubscriptionDelta(subscriptionId, -int64(extraReserved)); err != nil {
-				common.SysLog("error refunding subscription extra reserved quota: " + err.Error())
+			if _, isAmountFunding := funding.(*SubscriptionFunding); isAmountFunding {
+				if err := PostConsumeUserSubscriptionDelta(subscriptionId, -int64(extraReserved)); err != nil {
+					common.SysLog("error refunding subscription extra reserved quota: " + err.Error())
+				}
 			}
 		}
 		// 2) 退还令牌额度
@@ -150,6 +160,9 @@ func (s *BillingSession) needsRefundLocked() bool {
 	}
 	// 订阅可能在 tokenConsumed=0 时仍预扣了额度
 	if sub, ok := s.funding.(*SubscriptionFunding); ok && sub.preConsumed > 0 {
+		return true
+	}
+	if requestFunding, ok := s.funding.(*RequestCountFunding); ok && requestFunding.preConsumed > 0 {
 		return true
 	}
 	return false
@@ -273,6 +286,10 @@ func (s *BillingSession) reserveFunding(delta int) error {
 			)
 		}
 		return nil
+	case *RequestCountFunding:
+		// request-kind subscriptions count requests instead of quota; a mid-request
+		// reserve only extends the per-token limit and has nothing to fund here.
+		return nil
 	default:
 		return types.NewError(fmt.Errorf("unsupported funding source: %s", s.funding.Source()), types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 	}
@@ -290,6 +307,8 @@ func (s *BillingSession) rollbackFundingReserve(delta int) {
 		if err := PostConsumeUserSubscriptionDelta(funding.subscriptionId, -int64(delta)); err != nil {
 			common.SysLog("error rolling back subscription funding reserve: " + err.Error())
 		}
+	case *RequestCountFunding:
+		// Nothing was reserved on the subscription; only the token leg needs rollback.
 	}
 }
 
@@ -346,6 +365,7 @@ func (s *BillingSession) syncRelayInfo() {
 	info.BillingSource = s.funding.Source()
 
 	if sub, ok := s.funding.(*SubscriptionFunding); ok {
+		info.RequestCountBilling = false
 		info.SubscriptionId = sub.subscriptionId
 		info.SubscriptionPreConsumed = sub.preConsumed + int64(s.extraReserved)
 		info.SubscriptionPostDelta = 0
@@ -354,7 +374,18 @@ func (s *BillingSession) syncRelayInfo() {
 		info.SubscriptionAmountUsedAfterPreConsume = sub.AmountUsedAfter + int64(s.extraReserved)
 		info.SubscriptionPlanId = sub.PlanId
 		info.SubscriptionPlanTitle = sub.PlanTitle
+	} else if requestFunding, ok := s.funding.(*RequestCountFunding); ok {
+		info.RequestCountBilling = true
+		info.SubscriptionId = requestFunding.subscriptionId
+		info.SubscriptionPreConsumed = requestFunding.preConsumed + int64(s.extraReserved)
+		info.SubscriptionPostDelta = 0
+		info.SubscriptionWalletOverflow = 0
+		info.SubscriptionAmountTotal = requestFunding.AmountTotal
+		info.SubscriptionAmountUsedAfterPreConsume = requestFunding.AmountUsedAfter
+		info.SubscriptionPlanId = requestFunding.PlanId
+		info.SubscriptionPlanTitle = requestFunding.PlanTitle
 	} else {
+		info.RequestCountBilling = false
 		info.SubscriptionId = 0
 		info.SubscriptionPreConsumed = 0
 		info.SubscriptionWalletOverflow = 0
@@ -408,14 +439,36 @@ func NewBillingSession(c contract.Context, relayInfo *relaycommon.RelayInfo, pre
 		if subConsume <= 0 {
 			subConsume = 1
 		}
+		allowRequestCount := isTextGenerationFormat(relayInfo.RelayFormat)
+		hasRequestCount := false
+		if allowRequestCount {
+			var err error
+			hasRequestCount, err = HasUsableRequestCountSubscription(
+				relayInfo.UserId, relayInfo.UsingGroup, relayInfo.OriginModelName)
+			if err != nil {
+				return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+			}
+		}
+		var funding FundingSource
+		if hasRequestCount {
+			funding = &RequestCountFunding{
+				requestId:  relayInfo.RequestId,
+				userId:     relayInfo.UserId,
+				usingGroup: relayInfo.UsingGroup,
+				modelName:  relayInfo.OriginModelName,
+			}
+		} else {
+			funding = &SubscriptionFunding{
+				requestId:  relayInfo.RequestId,
+				userId:     relayInfo.UserId,
+				usingGroup: relayInfo.UsingGroup,
+				modelName:  relayInfo.OriginModelName,
+				amount:     subConsume,
+			}
+		}
 		session := &BillingSession{
 			relayInfo: relayInfo,
-			funding: &SubscriptionFunding{
-				requestId: relayInfo.RequestId,
-				userId:    relayInfo.UserId,
-				modelName: relayInfo.OriginModelName,
-				amount:    subConsume,
-			},
+			funding:   funding,
 		}
 		// 必须传 subConsume 而非 preConsumedQuota，保证 SubscriptionFunding.amount、
 		// preConsume 参数和 FinalPreConsumedQuota 三者一致，避免订阅多扣费。
@@ -427,6 +480,16 @@ func NewBillingSession(c contract.Context, relayInfo *relaycommon.RelayInfo, pre
 
 	switch pref {
 	case "subscription_only":
+		usable, checkErr := HasUsableUserSubscription(relayInfo.UserId, relayInfo.UsingGroup, relayInfo.OriginModelName, isTextGenerationFormat(relayInfo.RelayFormat))
+		if checkErr != nil {
+			return nil, types.NewError(checkErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+		}
+		if !usable {
+			return nil, types.NewErrorWithStatusCode(
+				fmt.Errorf("订阅额度不足或未配置订阅: no active subscription"),
+				types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
+				types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+		}
 		return trySubscription()
 	case "wallet_only":
 		return tryWallet()
@@ -442,18 +505,18 @@ func NewBillingSession(c contract.Context, relayInfo *relaycommon.RelayInfo, pre
 	case "subscription_first":
 		fallthrough
 	default:
-		hasSub, subCheckErr := HasActiveUserSubscription(relayInfo.UserId)
+		usable, subCheckErr := HasUsableUserSubscription(relayInfo.UserId, relayInfo.UsingGroup, relayInfo.OriginModelName, isTextGenerationFormat(relayInfo.RelayFormat))
 		if subCheckErr != nil {
 			return nil, types.NewError(subCheckErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 		}
-		if !hasSub {
+		if !usable {
 			return tryWallet()
 		}
 		session, apiErr := trySubscription()
 		if apiErr != nil {
 			if apiErr.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
 				// 仅当用户的活跃订阅允许钱包回退时才回退到钱包，否则返回订阅额度不足错误
-				allowOverflow, overflowErr := UserActiveSubscriptionsAllowWalletOverflow(relayInfo.UserId)
+				allowOverflow, overflowErr := UserActiveSubscriptionsAllowWalletOverflow(relayInfo.UserId, relayInfo.UsingGroup)
 				if overflowErr != nil {
 					return nil, types.NewError(overflowErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 				}
