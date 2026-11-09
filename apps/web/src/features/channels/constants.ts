@@ -234,6 +234,7 @@ export const ERROR_MESSAGES = {
     'HTTP/2 connection shards must be between 1 and 8',
   INVALID_HTTP1_WITH_SHARDS:
     'HTTP/2 connection shards must be 1 when HTTP/1.1 is selected',
+  INVALID_SYSTEM_PROMPT_PRESET: 'Invalid system prompt preset',
   CREATE_FAILED: 'Failed to create channel',
   UPDATE_FAILED: 'Failed to update channel',
   DELETE_FAILED: 'Failed to delete channel',
@@ -362,3 +363,55 @@ export const CHANNEL_TYPE_WARNINGS: Record<number, string> = {
   8: 'If connecting to upstream One API or New API relay projects, use OpenAI type instead unless you know what you are doing',
   37: 'Dify channels only support chatflow and agent, and agent does not support images',
 }
+
+// ============================================================================
+// Jailbreak Preset Catalogue
+// ============================================================================
+
+/**
+ * The preset value that resolves the jailbreak prompt from the request model
+ * name instead of pinning one template. Mirrors the backend `auto` preset.
+ */
+export const SYSTEM_PROMPT_PRESET_AUTO = 'auto'
+
+/**
+ * Display labels for the built-in jailbreak presets. Labels are i18n keys;
+ * use t(value) when displaying them.
+ */
+export const SYSTEM_PROMPT_PRESET_LABELS: Record<string, string> = {
+  auto: 'System automatic selection',
+  tavern_card: 'Tavern Card (universal)',
+  silly_tavern: 'SillyTavern (universal)',
+  coldcoffee_claude: 'ColdCoffee · Claude',
+  coldcoffee_grok: 'ColdCoffee · Grok',
+  coldcoffee_gemini: 'ColdCoffee · Gemini',
+  coldcoffee_deepseek: 'ColdCoffee · DeepSeek',
+  coldcoffee_glm53: 'ColdCoffee · GLM',
+}
+
+/**
+ * Section labels for the preset dropdown groups. Labels are i18n keys; use
+ * t(value) when displaying them.
+ */
+export const SYSTEM_PROMPT_PRESET_FAMILY_LABELS: Record<string, string> = {
+  auto: 'Automatic selection',
+  generic: 'Universal',
+  claude: 'Claude',
+  gemini: 'Gemini',
+  grok: 'Grok',
+  deepseek: 'DeepSeek',
+  glm: 'GLM',
+}
+
+/**
+ * Model families that get their own dropdown section. Presets outside this
+ * list are grouped under a generic section.
+ */
+export const SYSTEM_PROMPT_PRESET_FAMILY_ORDER = [
+  'generic',
+  'claude',
+  'gemini',
+  'grok',
+  'deepseek',
+  'glm',
+] as const
