@@ -89,6 +89,7 @@ func InitChannelCache() {
 	channelsIDM = newChannelId2channel
 	channel2advancedCustomConfig = newChannel2advancedCustomConfig
 	buildGroupAliasRoutesFromDB()
+	buildDispatchCachesFromDB()
 	channelSyncLock.Unlock()
 	// Lock ordering: InvalidatePricingCache acquires updatePricingLock, and
 	// GetPricing (holding updatePricingLock) nests channelSyncLock.RLock via

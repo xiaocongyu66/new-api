@@ -52,9 +52,8 @@ import {
   getRouteUnits,
   updateRouteUnit,
   getDispatchPolicy,
-  updateDispatchPolicy,
   getContextRoutes,
-  replaceContextRoutes,
+  saveModelAliasDispatch,
   type RouteUnitAliasSummary,
   type RouteUnitView,
   type DispatchMode,
@@ -422,11 +421,11 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
     setSavingPolicy(true);
     try {
       const fb = fallbackAlias.trim() === "" ? null : fallbackAlias.trim();
-      const data = await updateDispatchPolicy(selectedAlias, dispatchMode, fb);
-      setDispatchMode((data.mode as DispatchMode) || dispatchMode);
-      setFallbackAlias(data.fallback_alias ?? "");
+      // Atomic save: policy and context rows land in one transaction, so a
+      // failed second call can never leave the alias in context_range mode
+      // with zero routes (which would take the model offline).
+      const items: Omit<ContextRoute, "id" | "alias">[] = [];
       if (dispatchMode === "context_range") {
-        const items: ContextRoute[] = [];
         drafts.forEach((draft) => {
           const orderedIds = [...draft.fallbackOrder];
           // Filter disabled route units and ensure selected units are present.
@@ -443,8 +442,6 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
             const unit = routeUnits.find((u) => u.id === unitId);
             if (!unit) return;
             items.push({
-              id: 0,
-              alias: selectedAlias,
               context_min: Number.isFinite(draft.min) ? draft.min : 0,
               context_max: Number.isFinite(draft.max) ? draft.max : 0,
               channel_id: unit.channel_id,
@@ -460,9 +457,16 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
           (a, b) =>
             a.context_min - b.context_min || a.sort_order - b.sort_order,
         );
-        const ctxData = await replaceContextRoutes(selectedAlias, items);
-        setContextRoutes(ctxData?.items ?? items);
       }
+      const data = await saveModelAliasDispatch(
+        selectedAlias,
+        dispatchMode,
+        fb,
+        items,
+      );
+      setDispatchMode(dispatchMode);
+      setFallbackAlias(fb ?? "");
+      setContextRoutes(data?.items ?? []);
       toast.success(t("Dispatch policy saved"));
     } catch (error) {
       const status = (error as { response?: { status?: number } })?.response

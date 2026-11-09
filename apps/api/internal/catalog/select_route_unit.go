@@ -44,6 +44,59 @@ type routeCandidate struct {
 // Built and refreshed under channelSyncLock alongside channelsIDM.
 var alias2routes map[string][]routeCandidate
 
+// dispatchPolicies maps alias -> its dispatch policy row. Built and refreshed
+// under channelSyncLock alongside alias2routes so context_range/delegate
+// selection never touches the database on the hot path.
+var dispatchPolicies map[string]*ModelAliasDispatchPolicy
+
+// contextRoutesByAlias maps alias -> enabled context-route rows, sorted by
+// (sort_order, id). Built and refreshed under channelSyncLock.
+var contextRoutesByAlias map[string][]ModelAliasContextRoute
+
+// buildDispatchCachesFromDB loads dispatch policies and enabled context routes.
+// Caller MUST hold channelSyncLock (write).
+func buildDispatchCachesFromDB() {
+	dispatchPolicies = make(map[string]*ModelAliasDispatchPolicy)
+	var policies []ModelAliasDispatchPolicy
+	if err := dbx.DB.Find(&policies).Error; err != nil {
+		common.SysError("failed to load model_alias_dispatch_policy: " + err.Error())
+		dispatchPolicies = nil
+	} else {
+		for i := range policies {
+			dispatchPolicies[policies[i].Alias] = &policies[i]
+		}
+	}
+
+	contextRoutesByAlias = make(map[string][]ModelAliasContextRoute)
+	var ctxRoutes []ModelAliasContextRoute
+	if err := dbx.DB.Where("enabled = ?", true).Order("sort_order ASC, id ASC").Find(&ctxRoutes).Error; err != nil {
+		common.SysError("failed to load model_alias_context_routes: " + err.Error())
+		contextRoutesByAlias = nil
+	} else {
+		for _, r := range ctxRoutes {
+			contextRoutesByAlias[r.Alias] = append(contextRoutesByAlias[r.Alias], r)
+		}
+	}
+}
+
+// getCachedDispatchPolicy returns the policy for alias from the in-memory
+// snapshot. Caller MUST hold channelSyncLock (read). Missing alias -> nil.
+func getCachedDispatchPolicy(alias string) *ModelAliasDispatchPolicy {
+	if dispatchPolicies == nil {
+		return nil
+	}
+	return dispatchPolicies[alias]
+}
+
+// getCachedContextRoutes returns the enabled context routes for alias from the
+// in-memory snapshot. Caller MUST hold channelSyncLock (read).
+func getCachedContextRoutes(alias string) []ModelAliasContextRoute {
+	if contextRoutesByAlias == nil {
+		return nil
+	}
+	return contextRoutesByAlias[alias]
+}
+
 // buildGroupAliasRoutesFromDB loads enabled route units from channel_model_routes
 // table and constructs the alias->[]routeCandidate index.
 // Caller MUST hold channelSyncLock (write).
@@ -402,7 +455,16 @@ func selectRouteUnitWithPolicy(group string, alias string, requestPath string, r
 	visited[alias] = struct{}{}
 
 	// Load per-alias dispatch policy. Missing/unknown -> weighted_pool.
-	policy, _ := GetModelAliasDispatchPolicy(alias)
+	// Memory cache serves it from the snapshot built by InitChannelCache;
+	// cache-off mode queries the database per request as before.
+	var policy *ModelAliasDispatchPolicy
+	if common.MemoryCacheEnabled {
+		channelSyncLock.RLock()
+		policy = getCachedDispatchPolicy(alias)
+		channelSyncLock.RUnlock()
+	} else {
+		policy, _ = GetModelAliasDispatchPolicy(alias)
+	}
 	mode := "weighted_pool"
 	var fallbackAlias *string
 	if policy != nil {
@@ -419,11 +481,22 @@ func selectRouteUnitWithPolicy(group string, alias string, requestPath string, r
 
 	// context_range: pick candidates by matching input-token intervals.
 	if mode == "context_range" {
-		routes, err := ListModelAliasContextRoutes(alias)
+		var routes []ModelAliasContextRoute
+		var loadErr error
+		if common.MemoryCacheEnabled {
+			channelSyncLock.RLock()
+			routes = getCachedContextRoutes(alias)
+			channelSyncLock.RUnlock()
+		} else {
+			routes, loadErr = ListModelAliasContextRoutes(alias)
+			if loadErr != nil {
+				common.SysError("failed to load context routes for " + alias + ": " + loadErr.Error())
+			}
+		}
 
 		// Select enabled context routes whose interval contains inputTokens.
 		var matching []ModelAliasContextRoute
-		if err == nil {
+		if loadErr == nil {
 			for _, r := range routes {
 				if !r.Enabled {
 					continue
@@ -473,7 +546,7 @@ func selectRouteUnitWithPolicy(group string, alias string, requestPath string, r
 			// Default interval (0,0) already considered among matching; only
 			// fall back when no such default exists.
 			hasDefault := false
-			if err == nil {
+			if loadErr == nil {
 				for _, r := range routes {
 					if r.Enabled && r.ContextMin == 0 && r.ContextMax == 0 {
 						hasDefault = true

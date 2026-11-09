@@ -590,32 +590,67 @@ func ListModelAliasContextRoutes(alias string) ([]ModelAliasContextRoute, error)
 
 // UpsertModelAliasDispatchPolicy creates or updates the dispatch policy row for alias.
 func UpsertModelAliasDispatchPolicy(alias string, mode string, fallbackAlias *string) error {
+	return dbx.DB.Transaction(func(tx *gorm.DB) error {
+		return upsertModelAliasDispatchPolicyWithTx(tx, alias, mode, fallbackAlias)
+	})
+}
+
+// SaveModelAliasDispatch atomically persists the policy and (for context_range)
+// the interval rows in one transaction: either both land or neither does, so a
+// failed save can never leave an alias in context_range mode with zero routes.
+func SaveModelAliasDispatch(alias string, mode string, fallbackAlias *string, routes []ModelAliasContextRoute) error {
 	if alias == "" {
 		return errors.New("alias is required")
 	}
-	now := time.Now()
+	switch mode {
+	case "weighted_pool", "context_range", "delegate":
+	default:
+		return errors.New("mode must be weighted_pool, context_range or delegate")
+	}
 	return dbx.DB.Transaction(func(tx *gorm.DB) error {
-		var existing ModelAliasDispatchPolicy
-		err := tx.Where("alias = ?", alias).First(&existing).Error
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		if err := upsertModelAliasDispatchPolicyWithTx(tx, alias, mode, fallbackAlias); err != nil {
 			return err
 		}
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return tx.Create(&ModelAliasDispatchPolicy{
-				Alias:         alias,
-				Mode:          mode,
-				FallbackAlias: fallbackAlias,
-				UpdatedAt:     now,
-			}).Error
+		if err := tx.Where("alias = ?", alias).Delete(&ModelAliasContextRoute{}).Error; err != nil {
+			return err
 		}
-		return tx.Model(&ModelAliasDispatchPolicy{}).
-			Where("alias = ?", alias).
-			Updates(map[string]any{
-				"mode":           mode,
-				"fallback_alias": fallbackAlias,
-				"updated_at":     now,
-			}).Error
+		if len(routes) == 0 {
+			return nil
+		}
+		prepared := make([]ModelAliasContextRoute, len(routes))
+		copy(prepared, routes)
+		for i := range prepared {
+			prepared[i].Alias = alias
+			prepared[i].Id = 0
+		}
+		return tx.Create(&prepared).Error
 	})
+}
+
+// upsertModelAliasDispatchPolicyWithTx is the transaction-scoped variant of
+// UpsertModelAliasDispatchPolicy, shared by the standalone and combined saves.
+func upsertModelAliasDispatchPolicyWithTx(tx *gorm.DB, alias string, mode string, fallbackAlias *string) error {
+	now := time.Now()
+	var existing ModelAliasDispatchPolicy
+	err := tx.Where("alias = ?", alias).First(&existing).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return tx.Create(&ModelAliasDispatchPolicy{
+			Alias:         alias,
+			Mode:          mode,
+			FallbackAlias: fallbackAlias,
+			UpdatedAt:     now,
+		}).Error
+	}
+	return tx.Model(&ModelAliasDispatchPolicy{}).
+		Where("alias = ?", alias).
+		Updates(map[string]any{
+			"mode":           mode,
+			"fallback_alias": fallbackAlias,
+			"updated_at":     now,
+		}).Error
 }
 
 // ReplaceModelAliasContextRoutes atomically replaces all context-window routes for alias.

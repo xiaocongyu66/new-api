@@ -292,6 +292,121 @@ func ListModelAliasContextRoutes(c contract.Context) {
 	})
 }
 
+// saveModelAliasDispatchRequest carries the whole alias dispatch config in one
+// atomic request: policy fields plus the context-route rows.
+type saveModelAliasDispatchRequest struct {
+	Alias         string                              `json:"alias"`
+	Mode          string                              `json:"mode"`
+	FallbackAlias *string                             `json:"fallback_alias"`
+	Items         []channelpkg.ModelAliasContextRoute `json:"items"`
+}
+
+// SaveModelAliasDispatch persists policy + context routes in one transaction.
+// Validation mirrors UpdateModelAliasDispatchPolicy and
+// ReplaceModelAliasContextRoutes: mode enum, interval bounds, weight bounds and
+// no overlap among enabled intervals. The policy is never flipped without the
+// rows landing, so a failed save cannot take the model offline.
+func SaveModelAliasDispatch(c contract.Context) {
+	var req saveModelAliasDispatchRequest
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, common.H{
+			"success": false,
+			"message": "请求参数格式错误",
+		})
+		return
+	}
+
+	if req.Alias == "" {
+		c.JSON(http.StatusBadRequest, common.H{
+			"success": false,
+			"message": "alias参数不能为空",
+		})
+		return
+	}
+
+	switch req.Mode {
+	case "weighted_pool", "context_range", "delegate":
+	default:
+		c.JSON(http.StatusBadRequest, common.H{
+			"success": false,
+			"message": "mode 必须为 weighted_pool、context_range 或 delegate",
+		})
+		return
+	}
+
+	for _, item := range req.Items {
+		if item.ContextMin < 0 {
+			c.JSON(http.StatusBadRequest, common.H{
+				"success": false,
+				"message": "context_min 必须大于等于 0",
+			})
+			return
+		}
+		if item.ContextMax != 0 && item.ContextMax < item.ContextMin {
+			c.JSON(http.StatusBadRequest, common.H{
+				"success": false,
+				"message": "context_max 必须为 0 或大于等于 context_min",
+			})
+			return
+		}
+		if item.StaticWeight < 0 || item.StaticWeight > 1000000000 {
+			c.JSON(http.StatusBadRequest, common.H{
+				"success": false,
+				"message": "static_weight 超出允许范围 (0-1000000000)",
+			})
+			return
+		}
+	}
+
+	enabled := make([]channelpkg.ModelAliasContextRoute, 0)
+	for _, item := range req.Items {
+		if item.Enabled {
+			enabled = append(enabled, item)
+		}
+	}
+	for i := 0; i < len(enabled); i++ {
+		for j := i + 1; j < len(enabled); j++ {
+			if intervalsOverlap(
+				enabled[i].ContextMin, enabled[i].ContextMax,
+				enabled[j].ContextMin, enabled[j].ContextMax,
+			) {
+				c.JSON(http.StatusBadRequest, common.H{
+					"success": false,
+					"message": "启用的上下文区间不能重叠",
+				})
+				return
+			}
+		}
+	}
+
+	routes := make([]channelpkg.ModelAliasContextRoute, len(req.Items))
+	copy(routes, req.Items)
+	for i := range routes {
+		routes[i].Alias = req.Alias
+		routes[i].Id = 0
+	}
+
+	if err := channelpkg.SaveModelAliasDispatch(req.Alias, req.Mode, req.FallbackAlias, routes); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	channelpkg.InitChannelCache()
+
+	updated, err := channelpkg.ListModelAliasContextRoutes(req.Alias)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if updated == nil {
+		updated = []channelpkg.ModelAliasContextRoute{}
+	}
+
+	common.ApiSuccess(c, common.H{
+		"items": updated,
+	})
+}
+
 // replaceModelAliasContextRoutesRequest is the request body for replacing context routes.
 type replaceModelAliasContextRoutesRequest struct {
 	Alias string                              `json:"alias"`
