@@ -132,35 +132,11 @@ export async function saveModelAliasDispatch(
   return res.data.data;
 }
 
-export async function updateDispatchPolicy(
-  alias: string,
-  mode: DispatchMode,
-  fallbackAlias: string | null,
-): Promise<DispatchPolicy> {
-  const res = await api.put("/api/channel/route_unit/dispatch_policy", {
-    alias,
-    mode,
-    fallback_alias: fallbackAlias,
-  });
-  return res.data.data;
-}
-
 export async function getContextRoutes(
   alias: string,
 ): Promise<GetContextRoutesResponse> {
   const res = await api.get("/api/channel/route_unit/context", {
     params: { alias },
-  });
-  return res.data.data;
-}
-
-export async function replaceContextRoutes(
-  alias: string,
-  items: ContextRoute[],
-): Promise<GetContextRoutesResponse> {
-  const res = await api.put("/api/channel/route_unit/context", {
-    alias,
-    items,
   });
   return res.data.data;
 }

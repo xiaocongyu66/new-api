@@ -444,6 +444,24 @@ func SelectRouteUnit(group string, alias string, requestPath string, retry int, 
 	return selectRouteUnitWithPolicy(group, alias, requestPath, retry, excludeRoutes, inputTokens, rnd, make(map[string]struct{}))
 }
 
+// rewriteExcludeRoutesForAlias retargets retry exclusions to a fallback alias:
+// RouteKey.Model carries the alias the row was excluded under, so keys built
+// for the original alias would never match the fallback alias's rows and a
+// retry could immediately re-pick the channel/key that just failed.
+func rewriteExcludeRoutesForAlias(excludeRoutes map[RouteKey]bool, alias string) map[RouteKey]bool {
+	if len(excludeRoutes) == 0 {
+		return excludeRoutes
+	}
+	rewritten := make(map[RouteKey]bool, len(excludeRoutes))
+	for k, v := range excludeRoutes {
+		if k.Model != alias {
+			k.Model = alias
+		}
+		rewritten[k] = v
+	}
+	return rewritten
+}
+
 // selectRouteUnitWithPolicy is the recursive implementation of SelectRouteUnit.
 // visited tracks aliases already on the resolution path to prevent infinite
 // recursion via fallback aliases.
@@ -556,7 +574,7 @@ func selectRouteUnitWithPolicy(group string, alias string, requestPath string, r
 			}
 			if !hasDefault && fallbackAlias != nil && *fallbackAlias != "" {
 				if _, ok := visited[*fallbackAlias]; !ok {
-					return selectRouteUnitWithPolicy(group, *fallbackAlias, requestPath, retry, excludeRoutes, inputTokens, rnd, visited)
+					return selectRouteUnitWithPolicy(group, *fallbackAlias, requestPath, retry, rewriteExcludeRoutesForAlias(excludeRoutes, *fallbackAlias), inputTokens, rnd, visited)
 				}
 			}
 			return nil, nil
@@ -571,7 +589,7 @@ func selectRouteUnitWithPolicy(group string, alias string, requestPath string, r
 		// failing the model. The visited set still guards the recursion.
 		if fallbackAlias != nil && *fallbackAlias != "" {
 			if _, ok := visited[*fallbackAlias]; !ok {
-				return selectRouteUnitWithPolicy(group, *fallbackAlias, requestPath, retry, excludeRoutes, inputTokens, rnd, visited)
+				return selectRouteUnitWithPolicy(group, *fallbackAlias, requestPath, retry, rewriteExcludeRoutesForAlias(excludeRoutes, *fallbackAlias), inputTokens, rnd, visited)
 			}
 		}
 		return nil, nil
@@ -581,7 +599,7 @@ func selectRouteUnitWithPolicy(group string, alias string, requestPath string, r
 	if mode == "delegate" {
 		if fallbackAlias != nil && *fallbackAlias != "" {
 			if _, ok := visited[*fallbackAlias]; !ok {
-				return selectRouteUnitWithPolicy(group, *fallbackAlias, requestPath, retry, excludeRoutes, inputTokens, rnd, visited)
+				return selectRouteUnitWithPolicy(group, *fallbackAlias, requestPath, retry, rewriteExcludeRoutesForAlias(excludeRoutes, *fallbackAlias), inputTokens, rnd, visited)
 			}
 		}
 		mode = "weighted_pool"

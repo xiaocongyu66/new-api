@@ -5350,6 +5350,172 @@
           }
         ]
       }
+    },
+    "/api/channel/route_unit/dispatch_policy": {
+      "get": {
+        "summary": "查询别名调度策略",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）。返回指定 public model alias 的调度策略：weighted_pool / context_range / delegate，及 fallback 别名。无策略时返回默认 weighted_pool。",
+        "tags": [
+          "渠道管理"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          },
+          "401": {
+            "description": "未登录"
+          }
+        },
+        "security": [
+          {
+            "superkey": []
+          }
+        ]
+      },
+      "put": {
+        "summary": "更新别名调度策略",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）。upsert 指定别名的调度策略。",
+        "tags": [
+          "渠道管理"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          },
+          "401": {
+            "description": "未登录"
+          }
+        },
+        "security": [
+          {
+            "superkey": []
+          }
+        ]
+      }
+    },
+    "/api/channel/route_unit/context": {
+      "get": {
+        "summary": "查询别名上下文区间路由",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）。返回指定别名的全部上下文区间路由（区间、渠道、key、上游模型、权重、排序）。",
+        "tags": [
+          "渠道管理"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          },
+          "401": {
+            "description": "未登录"
+          }
+        },
+        "security": [
+          {
+            "superkey": []
+          }
+        ]
+      },
+      "put": {
+        "summary": "整体替换别名上下文区间",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）。事务内整体替换该别名的上下文区间路由。校验区间合法性与启用区间不重叠。",
+        "tags": [
+          "渠道管理"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          },
+          "401": {
+            "description": "未登录"
+          }
+        },
+        "security": [
+          {
+            "superkey": []
+          }
+        ]
+      }
+    },
+    "/api/channel/route_unit/dispatch": {
+      "put": {
+        "summary": "原子保存别名调度配置",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）。单事务内同时保存调度策略与上下文区间路由；任一失败则整体回滚，避免别名停留在无区间的 context_range 状态。",
+        "tags": [
+          "渠道管理"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          },
+          "401": {
+            "description": "未登录"
+          }
+        },
+        "security": [
+          {
+            "superkey": []
+          }
+        ]
+      }
     }
   },
   "components": {

@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/samber/lo"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // defaultRouteStaticWeight is the weight a freshly expanded route unit starts at.
@@ -352,16 +353,24 @@ func SeedModelAliasDispatchPolicies() error {
 		if err := tx.Model(&ChannelModelRoute{}).Distinct("public_model_alias").Pluck("public_model_alias", &aliases).Error; err != nil {
 			return err
 		}
+		// One bulk insert for the aliases missing a policy row; rows that already
+		// exist keep their operator-tuned mode. ON CONFLICT DO NOTHING keeps the
+		// pass idempotent without a per-alias round trip.
+		var missing []ModelAliasDispatchPolicy
 		for _, alias := range aliases {
 			if alias == "" {
 				continue
 			}
-			policy := ModelAliasDispatchPolicy{Alias: alias, Mode: "weighted_pool", UpdatedAt: time.Now()}
-			if err := tx.Where("alias = ?", alias).FirstOrCreate(&policy).Error; err != nil {
-				return err
-			}
+			missing = append(missing, ModelAliasDispatchPolicy{
+				Alias:     alias,
+				Mode:      "weighted_pool",
+				UpdatedAt: time.Now(),
+			})
 		}
-		return nil
+		if len(missing) == 0 {
+			return nil
+		}
+		return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&missing).Error
 	})
 }
 
@@ -632,7 +641,7 @@ func SaveModelAliasDispatch(alias string, mode string, fallbackAlias *string, ro
 func upsertModelAliasDispatchPolicyWithTx(tx *gorm.DB, alias string, mode string, fallbackAlias *string) error {
 	now := time.Now()
 	var existing ModelAliasDispatchPolicy
-	err := tx.Where("alias = ?", alias).First(&existing).Error
+	err := dbx.LockForUpdate(tx.Where("alias = ?", alias)).First(&existing).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
