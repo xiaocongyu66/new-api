@@ -84,7 +84,7 @@ func TestSingleChannelShortCircuitIgnoresWeight(t *testing.T) {
 	ClearUnitHealthCache()
 	t.Cleanup(ClearUnitHealthCache)
 
-	got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil)
+	got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil, 0)
 	require.NoError(t, err)
 	require.NotNil(t, got, "a single candidate must still be selected")
 	assert.Equal(t, only.Id, got.ChannelId)
@@ -103,7 +103,7 @@ func TestSingleChannelShortCircuitRespectsExcludeSet(t *testing.T) {
 	t.Cleanup(ClearUnitHealthCache)
 
 	got, err := GetRandomSatisfiedChannel(group, modelName, 0, "",
-		map[RouteKey]bool{{ChannelId: only.Id, KeyIndex: 0, Model: modelName}: true})
+		map[RouteKey]bool{{ChannelId: only.Id, KeyIndex: 0, Model: modelName}: true}, 0)
 	require.NoError(t, err)
 	assert.Nil(t, got, "the only route was excluded, so selection must yield nothing")
 }
@@ -144,7 +144,7 @@ func TestExcludeSetIsPerRouteUnitNotPerChannel(t *testing.T) {
 
 	// Excluding one unit must leave its sibling on the same channel selectable.
 	for range 20 {
-		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", map[RouteKey]bool{firstKey: true})
+		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", map[RouteKey]bool{firstKey: true}, 0)
 		require.NoError(t, err)
 		require.NotNil(t, got, "the sibling key on the same channel is still available")
 		assert.Equal(t, 9110, got.ChannelId)
@@ -153,7 +153,7 @@ func TestExcludeSetIsPerRouteUnitNotPerChannel(t *testing.T) {
 
 	// And the mirror case, so the assertion cannot pass by always picking key 1.
 	for range 20 {
-		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", map[RouteKey]bool{secondKey: true})
+		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", map[RouteKey]bool{secondKey: true}, 0)
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		assert.Equal(t, 0, got.KeyIndex)
@@ -161,7 +161,7 @@ func TestExcludeSetIsPerRouteUnitNotPerChannel(t *testing.T) {
 
 	// Only when both units are excluded is the pool actually empty.
 	got, err := GetRandomSatisfiedChannel(group, modelName, 0, "",
-		map[RouteKey]bool{firstKey: true, secondKey: true})
+		map[RouteKey]bool{firstKey: true, secondKey: true}, 0)
 	require.NoError(t, err)
 	assert.Nil(t, got, "with every route unit excluded there is nothing left to serve")
 }
@@ -187,7 +187,7 @@ func TestWeightDecidesShareWithoutPriorityTiers(t *testing.T) {
 
 	counts := map[int]int{}
 	for range 1000 {
-		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil)
+		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil, 0)
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		counts[got.ChannelId]++
@@ -206,7 +206,7 @@ func TestWeightDecidesShareWithoutPriorityTiers(t *testing.T) {
 	// same candidate set rather than descending to a different tier.
 	retried := map[int]int{}
 	for range 300 {
-		got, err := GetRandomSatisfiedChannel(group, modelName, 7, "", nil)
+		got, err := GetRandomSatisfiedChannel(group, modelName, 7, "", nil, 0)
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		retried[got.ChannelId]++
@@ -242,7 +242,7 @@ func TestHealthExcludesCoolingUnitFromTheFlatPool(t *testing.T) {
 
 	counts := map[int]int{}
 	for range 100 {
-		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil)
+		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil, 0)
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		counts[got.ChannelId]++
@@ -254,7 +254,7 @@ func TestHealthExcludesCoolingUnitFromTheFlatPool(t *testing.T) {
 	require.NoError(t, DisableUnit(isolatedKey, time.Now()))
 	after := map[int]int{}
 	for range 100 {
-		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil)
+		got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil, 0)
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		after[got.ChannelId]++

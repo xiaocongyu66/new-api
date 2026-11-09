@@ -51,8 +51,6 @@ func CacheGetRandomSatisfiedChannel(param *SelectParams) (*SelectedRoute, string
 	userGroup := common.GetCtxKeyString(param.Ctx, constant.ContextKeyUserGroup)
 	crossGroupRetry := common.GetCtxKeyBool(param.Ctx, constant.ContextKeyTokenCrossGroupRetry)
 
-	common.SetCtxKey(param.Ctx, constant.ContextKeyRequestInputTokens, param.InputTokens)
-
 	if param.TokenGroup == "auto" {
 		autoGroups := GetRequestAutoGroups(param.Ctx, userGroup)
 		if len(autoGroups) == 0 {
@@ -66,7 +64,7 @@ func CacheGetRandomSatisfiedChannel(param *SelectParams) (*SelectedRoute, string
 				priorityRetry = 0
 			}
 			logger.LogDebug(param.Ctx.Context(), "Auto selecting group: %s, priorityRetry: %d", autoGroup, priorityRetry)
-			route, err = GetRandomSatisfiedChannel(autoGroup, param.ModelName, priorityRetry, param.RequestPath, param.ExcludeRoutes)
+			route, err = GetRandomSatisfiedChannel(autoGroup, param.ModelName, priorityRetry, param.RequestPath, param.ExcludeRoutes, param.InputTokens)
 			if err != nil {
 				return nil, autoGroup, err
 			}
@@ -88,7 +86,7 @@ func CacheGetRandomSatisfiedChannel(param *SelectParams) (*SelectedRoute, string
 			break
 		}
 	} else {
-		route, err = GetRandomSatisfiedChannel(param.TokenGroup, param.ModelName, param.GetRetry(), param.RequestPath, param.ExcludeRoutes)
+		route, err = GetRandomSatisfiedChannel(param.TokenGroup, param.ModelName, param.GetRetry(), param.RequestPath, param.ExcludeRoutes, param.InputTokens)
 		if err != nil {
 			return nil, param.TokenGroup, err
 		}

@@ -356,6 +356,9 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
   };
 
   const handleEnabledChange = async (id: number, newEnabled: boolean) => {
+    // Capture original for rollback before the optimistic update lands.
+    const unit = routeUnits.find((u) => u.id === id);
+    const originalEnabled = unit?.enabled ?? !newEnabled;
     // Optimistic update
     setRouteUnits((prev) =>
       prev.map((u) => (u.id === id ? { ...u, enabled: newEnabled } : u)),
@@ -368,9 +371,9 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
       await updateRouteUnit(id, { enabled: newEnabled });
       toast.success(t("Status updated successfully"));
     } catch (error) {
-      // Rollback only the affected row
+      // Rollback only the affected row using the captured original value.
       setRouteUnits((prev) =>
-        prev.map((u) => (u.id === id ? { ...u, enabled: u.enabled } : u)),
+        prev.map((u) => (u.id === id ? { ...u, enabled: originalEnabled } : u)),
       );
       toast.error(t("Failed to update status"));
       console.error(error);

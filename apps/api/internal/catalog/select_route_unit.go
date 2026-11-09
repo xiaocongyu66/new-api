@@ -436,9 +436,19 @@ func selectRouteUnitWithPolicy(group string, alias string, requestPath string, r
 
 		// Group eligibility: reuse allowedChannelsForGroupAlias; candidates must be
 		// nil when group or alias is empty (as in weighted_pool path).
+		// The cache-on branch reads group2model2channels, which is rebuilt and
+		// mutated under channelSyncLock — same read-lock contract as the
+		// weighted-pool path via filterCandidatesByGroup.
 		var candidates []routeCandidate
 		if group != "" && alias != "" {
-			allowed := allowedChannelsForGroupAlias(group, alias)
+			var allowed map[int]struct{}
+			if common.MemoryCacheEnabled {
+				channelSyncLock.RLock()
+				allowed = allowedChannelsForGroupAlias(group, alias)
+				channelSyncLock.RUnlock()
+			} else {
+				allowed = allowedChannelsForGroupAlias(group, alias)
+			}
 			if len(allowed) > 0 {
 				for _, cr := range matching {
 					if _, ok := allowed[cr.ChannelId]; !ok {
@@ -480,10 +490,18 @@ func selectRouteUnitWithPolicy(group string, alias string, requestPath string, r
 		}
 
 		selected := selectP2C(candidates, alias, ChannelHealthNow(), rnd)
-		if selected == nil {
-			return nil, nil
+		if selected != nil {
+			return resolveSelectedRouteUnit(group, alias, selected)
 		}
-		return resolveSelectedRouteUnit(group, alias, selected)
+		// Interval matched but every channel in it is cooling/down (or excluded
+		// by earlier retries): degrade to the fallback alias instead of hard-
+		// failing the model. The visited set still guards the recursion.
+		if fallbackAlias != nil && *fallbackAlias != "" {
+			if _, ok := visited[*fallbackAlias]; !ok {
+				return selectRouteUnitWithPolicy(group, *fallbackAlias, requestPath, retry, excludeRoutes, inputTokens, rnd, visited)
+			}
+		}
+		return nil, nil
 	}
 
 	// delegate: resolve via fallback alias, otherwise weighted_pool of this alias.
