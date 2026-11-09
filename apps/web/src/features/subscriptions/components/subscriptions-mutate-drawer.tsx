@@ -17,9 +17,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { CalendarClock, CreditCard, RefreshCw, Settings2 } from 'lucide-react'
+import {
+  CalendarClock,
+  CreditCard,
+  ListChecks,
+  Plus,
+  RefreshCw,
+  Settings2,
+  Trash2,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { useForm, type Resolver } from 'react-hook-form'
+import { useFieldArray, useForm, type Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -30,6 +38,7 @@ import {
   sideDrawerHeaderClassName,
   sideDrawerSwitchItemClassName,
 } from '@/components/drawer-layout'
+import { MultiSelect } from '@/components/multi-select'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -65,10 +74,15 @@ import {
   createPlan,
   updatePlan,
   getGroups,
+  getGroupModels,
   createWaffoPancakeSubscriptionProduct,
   listWaffoPancakeSubscriptionProductOptions,
 } from '../api'
-import { getDurationUnitOptions, getResetPeriodOptions } from '../constants'
+import {
+  getDurationUnitOptions,
+  getResetPeriodOptions,
+  getSubscriptionKindOptions,
+} from '../constants'
 import {
   getPlanFormSchema,
   PLAN_FORM_DEFAULTS,
@@ -98,6 +112,7 @@ export function SubscriptionsMutateDrawer({
   const currencyLabel = getCurrencyLabel()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [groupOptions, setGroupOptions] = useState<string[]>([])
+  const [groupModels, setGroupModels] = useState<Record<string, string[]>>({})
   const [creatingPancakeProduct, setCreatingPancakeProduct] = useState(false)
   const [pancakeProducts, setPancakeProducts] = useState<
     { id: string; name: string; status: string }[]
@@ -108,6 +123,26 @@ export function SubscriptionsMutateDrawer({
     resolver: zodResolver(schema) as unknown as Resolver<PlanFormValues>,
     defaultValues: PLAN_FORM_DEFAULTS,
   })
+  const {
+    fields: requestRuleFields,
+    append: appendRequestRule,
+    remove: removeRequestRule,
+    update: updateRequestRule,
+  } = useFieldArray({
+    control: form.control,
+    name: 'request_rules',
+  })
+
+  const loadGroupModels = (group: string) => {
+    if (!group || groupModels[group]) return
+    getGroupModels(group)
+      .then((res) => {
+        if (res.success) {
+          setGroupModels((prev) => ({ ...prev, [group]: res.data || [] }))
+        }
+      })
+      .catch(() => {})
+  }
 
   useEffect(() => {
     if (open) {
@@ -121,6 +156,23 @@ export function SubscriptionsMutateDrawer({
           if (res.success) setGroupOptions(res.data || [])
         })
         .catch(() => {})
+      const ruleGroups = new Set(
+        (currentRow?.plan?.request_rules || [])
+          .map((rule) => rule.group)
+          .filter(Boolean)
+      )
+      ruleGroups.forEach((group) => {
+        getGroupModels(group)
+          .then((res) => {
+            if (res.success) {
+              setGroupModels((prev) => ({
+                ...prev,
+                [group]: res.data || [],
+              }))
+            }
+          })
+          .catch(() => {})
+      })
       // Best-effort — empty list still lets the operator use "+ Create".
       listWaffoPancakeSubscriptionProductOptions()
         .then((res) => {
@@ -143,6 +195,25 @@ export function SubscriptionsMutateDrawer({
 
   const durationUnit = form.watch('duration_unit')
   const resetPeriod = form.watch('quota_reset_period')
+  const kind = form.watch('kind')
+
+  useEffect(() => {
+    if (kind === 'time') return
+    form.setValue('quota_reset_period', 'never', {
+      shouldDirty: false,
+      shouldValidate: false,
+    })
+    form.setValue('quota_reset_custom_seconds', 0, {
+      shouldDirty: false,
+      shouldValidate: false,
+    })
+    if (kind === 'request') {
+      form.setValue('total_amount', 0, {
+        shouldDirty: false,
+        shouldValidate: false,
+      })
+    }
+  }, [kind, form])
   // Gate "+ Create on Pancake" on the same checks the mint handler runs.
   const watchedTitle = form.watch('title')
   const watchedPrice = form.watch('price_amount')
@@ -203,7 +274,10 @@ export function SubscriptionsMutateDrawer({
         typeof res.data === 'object' &&
         res.data
       ) {
-        const created = res.data as { product_id: string; product_name: string }
+        const created = res.data as {
+          product_id: string
+          product_name: string
+        }
         form.setValue('waffo_pancake_product_id', created.product_id, {
           shouldDirty: true,
         })
@@ -246,6 +320,11 @@ export function SubscriptionsMutateDrawer({
 
   const durationUnitOpts = getDurationUnitOptions(t)
   const resetPeriodOpts = getResetPeriodOptions(t)
+  const kindOpts = getSubscriptionKindOptions(t)
+  const upgradeGroupOptions = groupOptions.map((group) => ({
+    value: group,
+    label: group,
+  }))
 
   return (
     <Sheet
@@ -265,7 +344,9 @@ export function SubscriptionsMutateDrawer({
           <div className='flex flex-row items-start justify-between gap-3'>
             <div className='min-w-0'>
               <SheetTitle>
-                {isEdit ? t('Update plan info') : t('Create new subscription plan')}
+                {isEdit
+                  ? t('Update plan info')
+                  : t('Create new subscription plan')}
               </SheetTitle>
               <SheetDescription>
                 {isEdit
@@ -295,6 +376,40 @@ export function SubscriptionsMutateDrawer({
             onSubmit={form.handleSubmit(onSubmit)}
             className={sideDrawerFormClassName('gap-4 sm:gap-6')}
           >
+            {/* Subscription Kind */}
+            <SideDrawerSection>
+              <FormField
+                control={form.control}
+                name='kind'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Subscription Kind')}</FormLabel>
+                    <Select
+                      items={kindOpts}
+                      onValueChange={(v) => v !== null && field.onChange(v)}
+                      value={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger className='w-full'>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent alignItemWithTrigger={false}>
+                        <SelectGroup>
+                          {kindOpts.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </SideDrawerSection>
+
             {/* Basic Info */}
             <SideDrawerSection>
               <h3 className='flex items-center gap-2 text-sm font-medium'>
@@ -367,80 +482,69 @@ export function SubscriptionsMutateDrawer({
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name='total_amount'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        {t('Quota ({{currency}})', { currency: currencyLabel })}
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type='number'
-                          min={0}
-                          step={tokensOnly ? 1 : 0.01}
-                          placeholder={
-                            tokensOnly
-                              ? t('Enter quota in tokens')
-                              : t('Enter quota in {{currency}}', {
-                                  currency: currencyLabel,
-                                })
-                          }
-                          onChange={(e) =>
-                            field.onChange(
-                              Number.parseFloat(e.target.value) || 0
-                            )
-                          }
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        {t(
-                          'Total quota included in the plan, usable per billing period. 0 means unlimited.'
-                        )}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {kind !== 'request' && (
+                  <FormField
+                    control={form.control}
+                    name='total_amount'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          {t('Quota ({{currency}})', {
+                            currency: currencyLabel,
+                          })}
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type='number'
+                            min={0}
+                            step={tokensOnly ? 1 : 0.01}
+                            placeholder={
+                              tokensOnly
+                                ? t('Enter quota in tokens')
+                                : t('Enter quota in {{currency}}', {
+                                    currency: currencyLabel,
+                                  })
+                            }
+                            onChange={(e) =>
+                              field.onChange(
+                                Number.parseFloat(e.target.value) || 0
+                              )
+                            }
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'Total quota included in the plan, usable per billing period. 0 means unlimited.'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
               </div>
 
               <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
                 <FormField
                   control={form.control}
-                  name='upgrade_group'
+                  name='upgrade_groups'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{t('Upgrade Group')}</FormLabel>
-                      <Select
-                        items={[
-                          { value: '__none__', label: t('No Upgrade') },
-                          ...groupOptions.map((g) => ({ value: g, label: g })),
-                        ]}
-                        onValueChange={(v) =>
-                          field.onChange(v === '__none__' ? '' : v)
-                        }
-                        value={field.value || ''}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder={t('No Upgrade')} />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent alignItemWithTrigger={false}>
-                          <SelectGroup>
-                            <SelectItem value='__none__'>
-                              {t('No Upgrade')}
-                            </SelectItem>
-                            {groupOptions.map((g) => (
-                              <SelectItem key={g} value={g}>
-                                {g}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
+                      <FormLabel>{t('Upgrade Groups')}</FormLabel>
+                      <FormControl>
+                        <MultiSelect
+                          options={upgradeGroupOptions}
+                          selected={field.value || []}
+                          onChange={field.onChange}
+                          placeholder={t('No Upgrade')}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Subscription quota can only be used in the selected groups'
+                        )}
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -602,53 +706,149 @@ export function SubscriptionsMutateDrawer({
             </SideDrawerSection>
 
             {/* Duration Settings */}
-            <SideDrawerSection>
-              <h3 className='flex items-center gap-2 text-sm font-medium'>
-                <IconBadge tone='chart-4' size='xs'>
-                  <CalendarClock />
-                </IconBadge>
-                {t('Duration Settings')}
-              </h3>
+            {kind === 'time' && (
+              <SideDrawerSection>
+                <h3 className='flex items-center gap-2 text-sm font-medium'>
+                  <IconBadge tone='chart-4' size='xs'>
+                    <CalendarClock />
+                  </IconBadge>
+                  {t('Duration Settings')}
+                </h3>
 
-              <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
-                <FormField
-                  control={form.control}
-                  name='duration_unit'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Duration Unit')}</FormLabel>
-                      <Select
-                        items={durationUnitOpts.map((o) => ({
-                          value: o.value,
-                          label: o.label,
-                        }))}
-                        onValueChange={field.onChange}
-                        value={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent alignItemWithTrigger={false}>
-                          <SelectGroup>
-                            {durationUnitOpts.map((o) => (
-                              <SelectItem key={o.value} value={o.value}>
-                                {o.label}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {durationUnit === 'custom' ? (
+                <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
                   <FormField
                     control={form.control}
-                    name='custom_seconds'
+                    name='duration_unit'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Duration Unit')}</FormLabel>
+                        <Select
+                          items={durationUnitOpts.map((o) => ({
+                            value: o.value,
+                            label: o.label,
+                          }))}
+                          onValueChange={field.onChange}
+                          value={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent alignItemWithTrigger={false}>
+                            <SelectGroup>
+                              {durationUnitOpts.map((o) => (
+                                <SelectItem key={o.value} value={o.value}>
+                                  {o.label}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {durationUnit === 'custom' ? (
+                    <FormField
+                      control={form.control}
+                      name='custom_seconds'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Custom Seconds')}</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              type='number'
+                              min={1}
+                              onChange={(e) =>
+                                field.onChange(
+                                  Number.parseInt(e.target.value, 10) || 0
+                                )
+                              }
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  ) : (
+                    <FormField
+                      control={form.control}
+                      name='duration_value'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Duration Value')}</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              type='number'
+                              min={1}
+                              onChange={(e) =>
+                                field.onChange(
+                                  Number.parseInt(e.target.value, 10) || 0
+                                )
+                              }
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+                </div>
+              </SideDrawerSection>
+            )}
+
+            {/* Quota Reset */}
+            {kind === 'time' && (
+              <SideDrawerSection>
+                <h3 className='flex items-center gap-2 text-sm font-medium'>
+                  <IconBadge tone='success' size='xs'>
+                    <RefreshCw />
+                  </IconBadge>
+                  {t('Quota Reset')}
+                </h3>
+
+                <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                  <FormField
+                    control={form.control}
+                    name='quota_reset_period'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Reset Cycle')}</FormLabel>
+                        <Select
+                          items={resetPeriodOpts.map((o) => ({
+                            value: o.value,
+                            label: o.label,
+                          }))}
+                          onValueChange={field.onChange}
+                          value={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent alignItemWithTrigger={false}>
+                            <SelectGroup>
+                              {resetPeriodOpts.map((o) => (
+                                <SelectItem key={o.value} value={o.value}>
+                                  {o.label}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='quota_reset_custom_seconds'
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>{t('Custom Seconds')}</FormLabel>
@@ -656,7 +856,8 @@ export function SubscriptionsMutateDrawer({
                           <Input
                             {...field}
                             type='number'
-                            min={1}
+                            min={0}
+                            disabled={resetPeriod !== 'custom'}
                             onChange={(e) =>
                               field.onChange(
                                 Number.parseInt(e.target.value, 10) || 0
@@ -668,102 +869,139 @@ export function SubscriptionsMutateDrawer({
                       </FormItem>
                     )}
                   />
-                ) : (
-                  <FormField
-                    control={form.control}
-                    name='duration_value'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Duration Value')}</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type='number'
-                            min={1}
-                            onChange={(e) =>
-                              field.onChange(
-                                Number.parseInt(e.target.value, 10) || 0
-                              )
-                            }
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
-              </div>
-            </SideDrawerSection>
+                </div>
+              </SideDrawerSection>
+            )}
 
-            {/* Quota Reset */}
-            <SideDrawerSection>
-              <h3 className='flex items-center gap-2 text-sm font-medium'>
-                <IconBadge tone='success' size='xs'>
-                  <RefreshCw />
-                </IconBadge>
-                {t('Quota Reset')}
-              </h3>
+            {/* Request Limits */}
+            {kind === 'request' && (
+              <SideDrawerSection>
+                <h3 className='flex items-center gap-2 text-sm font-medium'>
+                  <IconBadge tone='info' size='xs'>
+                    <ListChecks />
+                  </IconBadge>
+                  {t('Request Limits')}
+                </h3>
 
-              <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
-                <FormField
-                  control={form.control}
-                  name='quota_reset_period'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Reset Cycle')}</FormLabel>
-                      <Select
-                        items={resetPeriodOpts.map((o) => ({
-                          value: o.value,
-                          label: o.label,
-                        }))}
-                        onValueChange={field.onChange}
-                        value={field.value}
+                <div className='flex flex-col gap-3'>
+                  {requestRuleFields.map((rule, index) => (
+                    <div
+                      key={rule.id}
+                      className='grid grid-cols-1 gap-3 rounded-md border p-3 sm:grid-cols-12 sm:items-end'
+                    >
+                      <FormField
+                        control={form.control}
+                        name={`request_rules.${index}.group`}
+                        render={({ field }) => (
+                          <FormItem className='sm:col-span-3'>
+                            <FormLabel>{t('Group')}</FormLabel>
+                            <Select
+                              items={upgradeGroupOptions}
+                              onValueChange={(v) => {
+                                if (v === null) return
+                                updateRequestRule(index, {
+                                  group: v,
+                                  models: [],
+                                  count: rule.count,
+                                })
+                                loadGroupModels(v)
+                              }}
+                              value={field.value}
+                            >
+                              <FormControl>
+                                <SelectTrigger className='w-full'>
+                                  <SelectValue placeholder={t('Group')} />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent alignItemWithTrigger={false}>
+                                <SelectGroup>
+                                  {groupOptions.map((group) => (
+                                    <SelectItem key={group} value={group}>
+                                      {group}
+                                    </SelectItem>
+                                  ))}
+                                </SelectGroup>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name={`request_rules.${index}.models`}
+                        render={({ field }) => (
+                          <FormItem className='sm:col-span-6'>
+                            <FormLabel>{t('Models')}</FormLabel>
+                            <FormControl>
+                              <MultiSelect
+                                options={(groupModels[rule.group] || []).map(
+                                  (model) => ({ value: model, label: model })
+                                )}
+                                selected={field.value || []}
+                                onChange={field.onChange}
+                                placeholder={t('Select models')}
+                                allowCreate
+                                filterByInput
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name={`request_rules.${index}.count`}
+                        render={({ field }) => (
+                          <FormItem className='sm:col-span-2'>
+                            <FormLabel>{t('Count')}</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                type='number'
+                                min={1}
+                                onChange={(e) =>
+                                  field.onChange(
+                                    Number.parseInt(e.target.value, 10) || 1
+                                  )
+                                }
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <Button
+                        type='button'
+                        variant='outline'
+                        size='sm'
+                        className='sm:col-span-1'
+                        onClick={() => removeRequestRule(index)}
+                        aria-label={t('Remove')}
                       >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent alignItemWithTrigger={false}>
-                          <SelectGroup>
-                            {resetPeriodOpts.map((o) => (
-                              <SelectItem key={o.value} value={o.value}>
-                                {o.label}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                        <Trash2 className='h-4 w-4' />
+                      </Button>
+                    </div>
+                  ))}
 
-                <FormField
-                  control={form.control}
-                  name='quota_reset_custom_seconds'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Custom Seconds')}</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type='number'
-                          min={0}
-                          disabled={resetPeriod !== 'custom'}
-                          onChange={(e) =>
-                            field.onChange(
-                              Number.parseInt(e.target.value, 10) || 0
-                            )
-                          }
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-            </SideDrawerSection>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    className='w-fit'
+                    onClick={() =>
+                      appendRequestRule({ group: '', models: [], count: 1 })
+                    }
+                  >
+                    <Plus className='mr-1 h-4 w-4' />
+                    {t('Add rule')}
+                  </Button>
+                </div>
+              </SideDrawerSection>
+            )}
 
             {/* Payment Config */}
             <SideDrawerSection>

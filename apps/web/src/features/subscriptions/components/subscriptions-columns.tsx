@@ -26,6 +26,7 @@ import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
 import { formatQuota } from '@/lib/format'
 
+import { getSubscriptionKindLabel } from '../constants'
 import { formatPlanPrice } from '../lib'
 import { formatDuration, formatResetPeriod } from '../lib'
 import type { PlanRecord } from '../types'
@@ -63,6 +64,17 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
           )
         },
         size: 200,
+      },
+      {
+        accessorFn: (row) => row.plan.kind || 'time',
+        id: 'kind',
+        header: t('Subscription Kind'),
+        cell: ({ row }) => (
+          <span className='text-muted-foreground'>
+            {getSubscriptionKindLabel(row.original.plan.kind, t)}
+          </span>
+        ),
+        size: 120,
       },
       {
         accessorFn: (row) => row.plan.price_amount,
@@ -181,22 +193,30 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
       },
       {
         id: 'upgrade_group',
-        header: t('Upgrade Group'),
+        header: t('Upgrade Groups'),
         meta: { mobileHidden: true },
         cell: ({ row }) => {
-          const group = row.original.plan.upgrade_group
-          if (!group) {
+          const plan = row.original.plan
+          const groups =
+            plan.upgrade_groups && plan.upgrade_groups.length > 0
+              ? plan.upgrade_groups
+              : plan.upgrade_group
+                ? [plan.upgrade_group]
+                : []
+          if (groups.length === 0) {
             return (
               <span className='text-muted-foreground'>{t('No Upgrade')}</span>
             )
           }
           return (
             <BadgeCell>
-              <GroupBadge group={group} />
+              {groups.map((group) => (
+                <GroupBadge key={group} group={group} />
+              ))}
             </BadgeCell>
           )
         },
-        size: 120,
+        size: 140,
       },
       {
         id: 'actions',
