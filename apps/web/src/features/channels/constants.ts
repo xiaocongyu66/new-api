@@ -381,5 +381,3 @@ export const FALLBACK_SYSTEM_PROMPT_PRESETS = [
   'coldcoffee_deepseek',
   'coldcoffee_glm53',
 ] as const
-
-] as const
