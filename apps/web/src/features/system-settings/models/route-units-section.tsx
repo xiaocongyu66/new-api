@@ -92,10 +92,6 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
   const [contextLoading, setContextLoading] = useState(false);
   const [savingPolicy, setSavingPolicy] = useState(false);
   const [drafts, setDrafts] = useState<ContextIntervalDraft[]>([]);
-  const [draggingFallback, setDraggingFallback] = useState<{
-    interval: number;
-    unitId: number;
-  } | null>(null);
   // Load aliases on mount
   useEffect(() => {
     const loadAliases = async () => {
@@ -547,7 +543,7 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
   const handleFallbackDragStart =
     (interval: number, unitId: number) =>
     (e: React.DragEvent<HTMLDivElement>) => {
-      setDraggingFallback({ interval, unitId });
+      e.dataTransfer.setData("text/plain", `${interval}:${unitId}`);
       e.dataTransfer.effectAllowed = "move";
     };
 
@@ -560,28 +556,22 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
     (interval: number, targetUnitId: number) =>
     (e: React.DragEvent<HTMLDivElement>) => {
       e.preventDefault();
-      if (!draggingFallback || draggingFallback.interval !== interval) return;
-      const draggedId = draggingFallback.unitId;
-      if (draggedId === targetUnitId) {
-        setDraggingFallback(null);
-        return;
-      }
+      const raw = e.dataTransfer.getData("text/plain");
+      const [dragInterval, draggedRaw] = raw.split(":");
+      if (Number(dragInterval) !== interval) return;
+      const draggedId = Number(draggedRaw);
+      if (!Number.isFinite(draggedId) || draggedId === targetUnitId) return;
       setDrafts((prev) =>
         prev.map((d, i) => {
           if (i !== interval) return d;
           const order = [...d.fallbackOrder];
           const fromIdx = order.indexOf(draggedId);
-          let toIdx = order.indexOf(targetUnitId);
-          // Dropping onto a not-yet-included row appends the dragged unit at
-          // the end of the ordered group; both become one ordered sequence.
-          if (toIdx < 0) toIdx = order.length;
-          if (fromIdx < 0) {
-            order.splice(toIdx, 0, draggedId);
-          } else {
-            if (fromIdx === toIdx) return d;
-            order.splice(fromIdx, 1);
-            order.splice(toIdx, 0, draggedId);
-          }
+          const toIdx = order.indexOf(targetUnitId);
+          // Reordering only: both endpoints must already be included. Dropping
+          // onto an unchecked row is a no-op — inclusion happens via checkbox.
+          if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return d;
+          order.splice(fromIdx, 1);
+          order.splice(toIdx, 0, draggedId);
           return {
             ...d,
             fallbackOrder: order,
@@ -591,7 +581,6 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
           };
         }),
       );
-      setDraggingFallback(null);
     };
 
   const dispatchModeItems = useMemo(
@@ -684,8 +673,8 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
       <div className="space-y-6 rounded-xl bg-card-surface p-4 backdrop-blur-card">
         {/* Alias selector: pick a public model alias, then inspect and tune the
             scheduling models competing inside it. */}
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex min-w-[320px] flex-col gap-1.5">
+        <div className="flex items-end gap-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
             <label htmlFor="route-unit-alias" className="text-sm font-medium">
               {t("Public Model Alias")}
             </label>
@@ -1134,7 +1123,6 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                               )}
                               onDragOver={handleFallbackDragOver}
                               onDrop={handleFallbackDrop(index, unit.id)}
-                              onDragEnd={() => setDraggingFallback(null)}
                               className="flex select-none cursor-move items-center gap-2 rounded-md border bg-background px-2 py-2 text-sm transition-colors hover:border-primary/40 hover:bg-muted/40"
                             >
                               <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" />
