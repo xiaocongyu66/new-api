@@ -1,11 +1,14 @@
 package relay
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
 	relaycommon "github.com/QuantumNous/new-api/internal/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
+	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/stretchr/testify/assert"
@@ -91,7 +94,8 @@ func TestResponseCacheEligible(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, responseCacheEligible(tc.info, tc.req))
+			cc, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+			assert.Equal(t, tc.want, responseCacheEligible(cc, tc.info, tc.req))
 		})
 	}
 }
@@ -101,7 +105,7 @@ func TestResponseCacheEligibleRequiresSwitch(t *testing.T) {
 	common.ResponseCacheEnabled = false
 	t.Cleanup(func() { common.ResponseCacheEnabled = previous })
 
-	assert.False(t, responseCacheEligible(openAIChatInfo(), &dto.GeneralOpenAIRequest{}),
+	assert.False(t, responseCacheEligible(nil, openAIChatInfo(), &dto.GeneralOpenAIRequest{}),
 		"the cache must stay inert while the option switch is off")
 }
 

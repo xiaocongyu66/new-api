@@ -269,6 +269,12 @@ func AddToken(c contract.Context) {
 	if !resolveTokenQuotaFromDisplay(c, &request, &token) {
 		return
 	}
+	setting, err := NormalizeTokenSetting(token.Setting)
+	if err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	token.Setting = setting
 	if len(token.Name) > 50 {
 		common.CtxApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
@@ -317,6 +323,7 @@ func AddToken(c contract.Context) {
 		UserId:             c.GetInt("id"),
 		Name:               token.Name,
 		Key:                key,
+		Setting:            token.Setting,
 		CreatedTime:        common.GetTimestamp(),
 		AccessedTime:       common.GetTimestamp(),
 		ExpiredTime:        token.ExpiredTime,
@@ -368,6 +375,11 @@ func UpdateToken(c contract.Context) {
 		common.CtxApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
 	}
+	setting, err := NormalizeTokenSetting(token.Setting)
+	if err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
 	if !token.UnlimitedQuota {
 		if token.RemainQuota < 0 {
 			common.CtxApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
@@ -407,6 +419,7 @@ func UpdateToken(c contract.Context) {
 		cleanToken.AllowIps = token.AllowIps
 		cleanToken.Group = token.Group
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
+		cleanToken.Setting = setting
 		if token.Group != "auto" {
 			cleanToken.CrossGroupRetry = false
 			_ = cleanToken.SetAutoGroups(nil)

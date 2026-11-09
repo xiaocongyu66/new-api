@@ -15,7 +15,7 @@ import (
 )
 
 func TestRegisteredRoutesMatchSnapshot(t *testing.T) {
-	assert.Equal(t, 394, totalSnapshotRoutes(t), "route snapshot count after route_unit dispatch endpoint")
+	assert.Equal(t, 395, totalSnapshotRoutes(t), "route snapshot count after route_unit dispatch endpoints + jailbreak routes")
 	for _, tc := range []struct {
 		group    string
 		register func(contract.Engine)

@@ -26,8 +26,11 @@ type ChannelSettings struct {
 	UserSystemPromptOverride bool              `json:"user_system_prompt_override,omitempty"`
 	SystemPromptModels       map[string]string `json:"system_prompt_models,omitempty"`
 	// SystemPromptPreset selects a built-in system prompt preset embedded in
-	// the binary. Accepted values: "", "silly_tavern", "tavern_card". When set,
-	// it takes priority over SystemPrompt but is overridden by
+	// the binary. An empty value disables the preset. The special value "auto"
+	// resolves the preset from the request model name, so one channel can
+	// serve several model families with a purpose-built prompt each. Any other
+	// value is a preset name; see the promptpresets package for the catalogue.
+	// When set, it takes priority over SystemPrompt but is overridden by
 	// SystemPromptModels for specific models.
 	SystemPromptPreset string `json:"system_prompt_preset,omitempty"`
 	// HTTPProtocol controls outbound HTTP version negotiation for this channel.
@@ -43,20 +46,36 @@ type ChannelSettings struct {
 // SystemPromptPreset, then the channel-level SystemPrompt. A nil receiver
 // resolves to "".
 func (s *ChannelSettings) ResolveSystemPrompt(modelName string) string {
+	return s.ResolveSystemPromptDetail(modelName).Prompt
+}
+
+// ResolveSystemPromptDetail resolves like ResolveSystemPrompt but also reports
+// which preset produced the prompt and whether a per-model SystemPromptModels
+// entry won, so callers can audit the prompt source without re-running the
+// priority chain.
+func (s *ChannelSettings) ResolveSystemPromptDetail(modelName string) SystemPromptResolution {
 	if s == nil {
-		return ""
+		return SystemPromptResolution{}
 	}
 	if s.SystemPromptModels != nil {
 		if p, ok := s.SystemPromptModels[modelName]; ok && p != "" {
-			return p
+			return SystemPromptResolution{Prompt: p, PerModel: true}
 		}
 	}
 	if s.SystemPromptPreset != "" {
-		if p := promptpresets.Get(s.SystemPromptPreset); p != "" {
-			return p
+		if s.SystemPromptPreset == promptpresets.PresetAuto {
+			if name := promptpresets.ResolveAuto(modelName); name != "" {
+				return SystemPromptResolution{
+					Prompt:       promptpresets.Get(name),
+					Preset:       name,
+					AutoResolved: true,
+				}
+			}
+		} else if p := promptpresets.Get(s.SystemPromptPreset); p != "" {
+			return SystemPromptResolution{Prompt: p, Preset: s.SystemPromptPreset}
 		}
 	}
-	return s.SystemPrompt
+	return SystemPromptResolution{Prompt: s.SystemPrompt}
 }
 
 const (
@@ -81,6 +100,18 @@ func (s *ChannelSettings) ValidateHTTPTransport() error {
 	}
 	if protocol == HTTPProtocolHTTP1 && s.HTTP2ConnectionShards > 1 {
 		return fmt.Errorf("http2_connection_shards must be 1 when http_protocol is http1")
+	}
+	return nil
+}
+
+// ValidatePreset rejects unknown preset names at save time so a typo cannot
+// silently disable the jailbreak prompt the operator configured.
+func (s *ChannelSettings) ValidatePreset() error {
+	if s == nil || s.SystemPromptPreset == "" {
+		return nil
+	}
+	if !promptpresets.IsValid(s.SystemPromptPreset) {
+		return fmt.Errorf("invalid system_prompt_preset: %s", s.SystemPromptPreset)
 	}
 	return nil
 }

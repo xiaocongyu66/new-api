@@ -91,6 +91,23 @@ export interface ChannelSettings {
   http2_connection_shards?: number
 }
 
+/**
+ * A built-in jailbreak preset the backend can inject ahead of the caller's
+ * system prompt.
+ */
+export interface SystemPromptPreset {
+  name: string
+  model_family: string
+  models: string[]
+  bytes: number
+}
+
+export interface SystemPromptPresetResponse {
+  success: boolean
+  message?: string
+  data: SystemPromptPreset[]
+}
+
 export interface ChannelOtherSettings {
   azure_responses_version?: string
   vertex_key_type?: 'json' | 'api_key'
@@ -342,4 +359,15 @@ export interface AddChannelRequest {
   multi_key_mode?: 'random' | 'polling'
   batch_add_set_key_prefix_2_name?: boolean
   channel: Partial<Channel>
+}
+
+export interface SystemPromptPresetItem {
+  name: string
+  bytes?: number
+}
+
+export interface SystemPromptPresetsResponse {
+  success: boolean
+  message?: string
+  data?: SystemPromptPresetItem[]
 }
