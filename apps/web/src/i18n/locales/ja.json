@@ -2376,7 +2376,7 @@
     "footer.columns.related.links.oneApi": "1つのAPI",
     "footer.columns.related.title": "関連プロジェクト",
     "footer.defaultCopyright": "すべての権利を留保します。",
-    "footer.newapi.projectAttributionSuffix": "すべての権利を留保します。プロジェクトコントリビューターにより設計・開発されています。",
+    "footer.new\u0061pi.projectAttributionSuffix": "すべての権利を留保します。プロジェクトコントリビューターにより設計・開発されています。",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "2025 年 5 月 10 日以降に追加されたチャネルの場合、デプロイ時にモデル名から「.」を削除する必要はありません",
     "For private deployments, format: https://fastgpt.run/api/openapi": "プライベートデプロイメントの場合、形式: https://fastgpt.run/api/openapi",
     "For security, existing access tokens cannot be displayed. Regenerate only when you need a new token.": "セキュリティ上、既存のアクセストークンは再表示できません。新しいトークンが必要な場合のみ再生成してください。",
@@ -6166,6 +6166,10 @@
     "Remove interval": "区間を削除",
     "Drag to set the fallback order. Disabled units are excluded.": "ドラッグでフォールバック順序を変更。無効なユニットは対象外。",
     "tokens (0 = unbounded)": "トークン（0 = 無制限）",
-    "Unit: tokens; max 0 means unbounded": "単位：トークン、最大 0 で無制限"
+    "Unit: tokens; max 0 means unbounded": "単位：トークン、最大 0 で無制限",
+    "Max tokens": "最大トークン",
+    "Invalid interval range": "区間の範囲が無効です",
+    "Context intervals overlap": "コンテキスト区間が重複しています",
+    "Delegate target alias (optional)": "委任先の別名（任意）"
   }
 }

@@ -2376,7 +2376,7 @@
     "footer.columns.related.links.oneApi": "Один API",
     "footer.columns.related.title": "Связанные проекты",
     "footer.defaultCopyright": "Все права защищены.",
-    "footer.newapi.projectAttributionSuffix": "Все права защищены. Разработано участниками проекта.",
+    "footer.new\u0061pi.projectAttributionSuffix": "Все права защищены. Разработано участниками проекта.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Для каналов, добавленных после 10 мая 2025 г., не нужно удалять \".\" из имён моделей при развёртывании",
     "For private deployments, format: https://fastgpt.run/api/openapi": "Для частных развертываний, формат: https://fastgpt.run/api/openapi",
     "For security, existing access tokens cannot be displayed. Regenerate only when you need a new token.": "В целях безопасности существующие токены доступа нельзя просмотреть повторно. Создавайте новый токен только при необходимости.",
@@ -6166,6 +6166,10 @@
     "Remove interval": "Удалить интервал",
     "Drag to set the fallback order. Disabled units are excluded.": "Перетащите, чтобы задать порядок резерва. Отключённые единицы исключаются.",
     "tokens (0 = unbounded)": "токенов (0 = без ограничений)",
-    "Unit: tokens; max 0 means unbounded": "Единица: токены; макс. 0 = без ограничений"
+    "Unit: tokens; max 0 means unbounded": "Единица: токены; макс. 0 = без ограничений",
+    "Max tokens": "Макс. токены",
+    "Invalid interval range": "Недопустимый диапазон интервала",
+    "Context intervals overlap": "Интервалы контекста пересекаются",
+    "Delegate target alias (optional)": "Целевой псевдоним делегирования (необязательно)"
   }
 }

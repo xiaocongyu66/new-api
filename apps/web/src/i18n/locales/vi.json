@@ -2376,7 +2376,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Các Dự Án Liên Quan",
     "footer.defaultCopyright": "Bản quyền được bảo lưu.",
-    "footer.newapi.projectAttributionSuffix": "Bản quyền được bảo lưu. Được thiết kế và phát triển bởi các cộng tác viên dự án.",
+    "footer.new\u0061pi.projectAttributionSuffix": "Bản quyền được bảo lưu. Được thiết kế và phát triển bởi các cộng tác viên dự án.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Đối với các kênh được thêm sau ngày 10 tháng 5 năm 2025, không cần loại bỏ \".\" khỏi tên mô hình trong quá trình triển khai",
     "For private deployments, format: https://fastgpt.run/api/openapi": "Đối với các triển khai riêng tư, định dạng: https://fastgpt.run/api/openapi",
     "For security, existing access tokens cannot be displayed. Regenerate only when you need a new token.": "Vì lý do bảo mật, không thể hiển thị lại token truy cập hiện có. Chỉ tạo lại khi bạn cần token mới.",
@@ -6166,6 +6166,10 @@
     "Remove interval": "Xóa khoảng",
     "Drag to set the fallback order. Disabled units are excluded.": "Kéo để sắp xếp thứ tự dự phòng. Đơn vị bị tắt không tham gia.",
     "tokens (0 = unbounded)": "token (0 = không giới hạn)",
-    "Unit: tokens; max 0 means unbounded": "Đơn vị: token; tối đa 0 = không giới hạn"
+    "Unit: tokens; max 0 means unbounded": "Đơn vị: token; tối đa 0 = không giới hạn",
+    "Max tokens": "Token tối đa",
+    "Invalid interval range": "Khoảng phạm vi không hợp lệ",
+    "Context intervals overlap": "Các khoảng ngữ cảnh bị chồng lấp",
+    "Delegate target alias (optional)": "Bí danh đích ủy quyền (tùy chọn)"
   }
 }

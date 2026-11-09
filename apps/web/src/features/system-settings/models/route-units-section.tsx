@@ -71,7 +71,6 @@ interface RouteUnitsSectionProps {
 interface ContextIntervalDraft {
   min: number;
   max: number;
-  enabled: boolean;
   selectedUnitIds: number[];
   fallbackOrder: number[];
 }
@@ -212,8 +211,6 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
       {
         min: number;
         max: number;
-        allEnabled: boolean;
-        anyEnabled: boolean;
         ids: Set<number>;
         routes: ContextRoute[];
       }
@@ -224,8 +221,6 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
         groups.set(key, {
           min: r.context_min,
           max: r.context_max,
-          allEnabled: true,
-          anyEnabled: false,
           ids: new Set<number>(),
           routes: [],
         });
@@ -238,8 +233,6 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
           u.upstream_model === r.upstream_model,
       );
       if (unit) g.ids.add(unit.id);
-      if (!r.enabled) g.allEnabled = false;
-      if (r.enabled) g.anyEnabled = true;
       g.routes.push(r);
     }
     const nextDrafts: ContextIntervalDraft[] = Array.from(groups.values()).map(
@@ -271,7 +264,6 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
         return {
           min: g.min,
           max: g.max,
-          enabled: g.ids.size === 0 ? g.anyEnabled : g.allEnabled,
           selectedUnitIds: Array.from(g.ids),
           fallbackOrder,
         };
@@ -407,6 +399,28 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
 
   const handleSaveDispatchPolicy = async () => {
     if (!selectedAlias) return;
+    if (dispatchMode === "context_range") {
+      // Client-side guard mirroring the backend rules: each interval must be
+      // well-formed, and no two intervals may overlap. Block before any request.
+      for (const d of drafts) {
+        if (d.max !== 0 && d.max < d.min) {
+          toast.error(t("Invalid interval range"));
+          return;
+        }
+      }
+      for (let i = 0; i < drafts.length; i++) {
+        for (let j = i + 1; j < drafts.length; j++) {
+          const a = drafts[i];
+          const b = drafts[j];
+          const aMax = a.max === 0 ? Number.POSITIVE_INFINITY : a.max;
+          const bMax = b.max === 0 ? Number.POSITIVE_INFINITY : b.max;
+          if (a.min <= bMax && b.min <= aMax) {
+            toast.error(t("Context intervals overlap"));
+            return;
+          }
+        }
+      }
+    }
     setSavingPolicy(true);
     try {
       const fb = fallbackAlias.trim() === "" ? null : fallbackAlias.trim();
@@ -439,7 +453,7 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
               key_index: unit.key_index,
               upstream_model: unit.upstream_model,
               static_weight: unit.static_weight,
-              enabled: draft.enabled,
+              enabled: true,
               sort_order: unitIdx,
             });
           });
@@ -475,7 +489,7 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
   const addInterval = () => {
     setDrafts((prev) => [
       ...prev,
-      { min: 0, max: 0, enabled: true, selectedUnitIds: [], fallbackOrder: [] },
+      { min: 0, max: 0, selectedUnitIds: [], fallbackOrder: [] },
     ]);
   };
 
@@ -743,14 +757,16 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
               </Button>
             </div>
 
-            {dispatchMode !== "weighted_pool" && (
+            {dispatchMode === "delegate" && (
               <div className="space-y-2">
-                <Label htmlFor="fallback-alias">{t("Fallback alias")}</Label>
+                <Label htmlFor="fallback-alias">
+                  {t("Delegate target alias (optional)")}
+                </Label>
                 <Input
                   id="fallback-alias"
                   value={fallbackAlias}
                   onChange={(e) => setFallbackAlias(e.target.value)}
-                  placeholder={t("Fallback alias (optional)")}
+                  placeholder={t("Delegate target alias (optional)")}
                 />
               </div>
             )}
@@ -1051,71 +1067,48 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                 )}
 
                 {drafts.map((draft, index) => (
-                  <div
-                    key={index}
-                    className={`space-y-4 rounded-lg border p-4 ${
-                      draft.enabled ? undefined : "opacity-70"
-                    }`}
-                  >
+                  <div key={index} className="space-y-4 rounded-lg border p-4">
                     <div className="flex items-center gap-2">
-                      <span
-                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-mono text-xs font-medium ${
-                          draft.enabled
-                            ? "bg-muted"
-                            : "bg-muted/50 text-muted-foreground"
-                        }`}
-                      >
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted font-mono text-xs font-medium">
                         {index + 1}
                       </span>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={draft.min}
-                        onChange={(e) =>
-                          updateDraft(index, {
-                            min: Number(e.target.value) || 0,
-                          })
-                        }
-                        className="h-8 w-16 shrink-0 [appearance:textfield] sm:w-20 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                        aria-label={t("Min tokens")}
-                        title={t("Min tokens")}
-                      />
-                      <span className="shrink-0 text-muted-foreground">–</span>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={draft.max}
-                        onChange={(e) =>
-                          updateDraft(index, {
-                            max: Number(e.target.value) || 0,
-                          })
-                        }
-                        className="h-8 w-16 shrink-0 [appearance:textfield] sm:w-20 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                        aria-label={t("Max tokens (0 = unbounded)")}
-                        title={t("Max tokens (0 = unbounded)")}
-                      />
-                      <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
-                        {t("tokens")}
-                      </span>
-                      <div className="ml-auto flex shrink-0 items-center gap-2">
-                        <Switch
-                          checked={draft.enabled}
-                          onCheckedChange={(checked) =>
-                            updateDraft(index, { enabled: checked })
+                      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                        <Input
+                          type="number"
+                          min={0}
+                          value={draft.min === 0 ? "" : draft.min}
+                          placeholder={t("Min tokens")}
+                          onChange={(e) =>
+                            updateDraft(index, {
+                              min: Number(e.target.value) || 0,
+                            })
                           }
-                          aria-label={t("Enabled")}
-                          title={t("Enabled")}
+                          className="h-8 w-full [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                          aria-label={t("Min tokens")}
                         />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={() => removeInterval(index)}
-                          aria-label={t("Remove interval")}
-                        >
-                          <Trash2 className="h-4 w-4 text-muted-foreground" />
-                        </Button>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={draft.max === 0 ? "" : draft.max}
+                          placeholder={t("Max tokens")}
+                          onChange={(e) =>
+                            updateDraft(index, {
+                              max: Number(e.target.value) || 0,
+                            })
+                          }
+                          className="h-8 w-full [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                          aria-label={t("Max tokens (0 = unbounded)")}
+                        />
                       </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => removeInterval(index)}
+                        aria-label={t("Remove interval")}
+                      >
+                        <Trash2 className="h-4 w-4 text-muted-foreground" />
+                      </Button>
                     </div>
 
                     <div className="space-y-1.5">
@@ -1145,9 +1138,11 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                               className="flex select-none cursor-move items-center gap-2 rounded-md border bg-background px-2 py-2 text-sm transition-colors hover:border-primary/40 hover:bg-muted/40"
                             >
                               <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" />
-                              <span className="w-6 shrink-0 text-center font-mono text-xs tabular-nums text-muted-foreground">
-                                {rank > 0 ? rank : "—"}
-                              </span>
+                              {rank > 0 && (
+                                <span className="w-5 shrink-0 text-center font-mono text-xs tabular-nums text-muted-foreground">
+                                  {rank}
+                                </span>
+                              )}
                               <span className="min-w-0 flex-1 truncate">
                                 {unit.channel_name} · {unit.upstream_model}
                               </span>

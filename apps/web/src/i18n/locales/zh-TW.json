@@ -2376,7 +2376,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "相關項目",
     "footer.defaultCopyright": "版權所有。",
-    "footer.newapi.projectAttributionSuffix": "版權所有，由項目貢獻者設計與開發。",
+    "footer.new\u0061pi.projectAttributionSuffix": "版權所有，由項目貢獻者設計與開發。",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "對於 2025 年 5 月 10 日之後新增的渠道，在部署時無需從模型名稱中移除 \".\"",
     "For private deployments, format: https://fastgpt.run/api/openapi": "對於私有部署，格式為：https://fastgpt.run/api/openapi",
     "For security, existing access tokens cannot be displayed. Regenerate only when you need a new token.": "基於安全考量，現有存取令牌無法再次顯示。僅在需要新令牌時重新生成。",
@@ -6166,6 +6166,10 @@
     "Remove interval": "移除區間",
     "Drag to set the fallback order. Disabled units are excluded.": "拖曳調整後備順序，未啟用的單元不參與。",
     "tokens (0 = unbounded)": "token（0 = 不限）",
-    "Unit: tokens; max 0 means unbounded": "單位：Token，最大填 0 表示不限"
+    "Unit: tokens; max 0 means unbounded": "單位：Token，最大填 0 表示不限",
+    "Max tokens": "最大 Token",
+    "Invalid interval range": "上下文區間範圍無效",
+    "Context intervals overlap": "上下文區間相互重疊",
+    "Delegate target alias (optional)": "委託目標別名（可選）"
   }
 }
