@@ -224,6 +224,16 @@ export function SubscriptionsMutateDrawer({
     Number(watchedPrice ?? 0) > 0
 
   const onSubmit = async (values: PlanFormValues) => {
+    if (
+      values.kind === 'request' &&
+      (values.request_rules.length === 0 ||
+        values.request_rules.some(
+          (rule) => !rule.group || rule.models.length === 0 || rule.count <= 0
+        ))
+    ) {
+      toast.error(t('Request limits need a group, models and a positive count'))
+      return
+    }
     setIsSubmitting(true)
     try {
       const payload = formValuesToPlanPayload(values)
