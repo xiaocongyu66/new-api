@@ -673,7 +673,7 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
       <div className="space-y-6 rounded-xl bg-card-surface p-4 backdrop-blur-card">
         {/* Alias selector: pick a public model alias, then inspect and tune the
             scheduling models competing inside it. */}
-        <div className="flex items-end gap-3">
+        <div className="flex items-center gap-3">
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
             <label htmlFor="route-unit-alias" className="text-sm font-medium">
               {t("Public Model Alias")}
@@ -688,26 +688,32 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
               openOnFocus={false}
             />
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setReloadToken((token) => token + 1)}
-            disabled={!selectedAlias || loadingUnits}
-          >
-            <RefreshCw
-              className={loadingUnits ? "h-4 w-4 animate-spin" : "h-4 w-4"}
-            />
-            {t("Refresh")}
-          </Button>
+          <div className="h-8 shrink-0" />
+          <div className="flex shrink-0 flex-col">
+            <div className="h-5" />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setReloadToken((token) => token + 1)}
+              disabled={!selectedAlias || loadingUnits}
+            >
+              <RefreshCw
+                className={loadingUnits ? "h-4 w-4 animate-spin" : "h-4 w-4"}
+              />
+              {t("Refresh")}
+            </Button>
+          </div>
         </div>
 
         {selectedAlias && (
           <>
             {/* Dispatch strategy selector */}
-            <div className="flex flex-wrap items-end gap-4">
-              <div className="flex min-w-[220px] flex-col gap-1.5">
-                <Label htmlFor="dispatch-mode">{t("Dispatch mode")}</Label>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="dispatch-mode" className="shrink-0">
+                  {t("Dispatch mode")}
+                </Label>
                 <Select
                   items={dispatchModeItems}
                   value={dispatchMode}
@@ -742,7 +748,7 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                 {savingPolicy && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
-                {t("Save dispatch policy")}
+                {t("Save policy")}
               </Button>
             </div>
 
@@ -1029,7 +1035,7 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
 
             {dispatchMode === "context_range" && (
               <div className="space-y-4">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <Button
                     type="button"
                     size="sm"
@@ -1038,7 +1044,7 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                   >
                     {t("Add interval")}
                   </Button>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-muted-foreground text-xs">
                     {t("Unit: tokens; max 0 means unbounded")}
                   </p>
                 </div>
