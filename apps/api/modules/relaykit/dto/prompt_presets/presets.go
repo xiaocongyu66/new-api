@@ -188,6 +188,21 @@ func List() []Preset {
 	return out
 }
 
+// IsSelectable reports whether name is a preset an operator (or a token
+// binding) may pin: any catalogue entry, or the automatic resolver.
+func IsSelectable(name string) bool {
+	return IsValid(name)
+}
+
+// Names lists every preset name in catalogue order.
+func Names() []string {
+	out := make([]string, 0, len(presets))
+	for _, preset := range presets {
+		out = append(out, preset.Name)
+	}
+	return out
+}
+
 // ResolveAuto picks the preset for a model name. A preset that lists the model
 // explicitly wins; otherwise a preset whose model family prefixes the model
 // name wins ("gemini-3.6-flash-preview" lands on the Gemini preset, while

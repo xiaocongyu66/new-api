@@ -133,7 +133,8 @@ func TestJailbreakPayloadReachesMockUpstream(t *testing.T) {
 
 	responsesContext := newContext("/v1/responses")
 	responsesRequest := &dto.OpenAIResponsesRequest{Instructions: json.RawMessage(`"USER-SYSTEM"`)}
-	require.NoError(t, applyResponsesSystemPrompt(responsesContext, newInfo(setting), responsesRequest, preset))
+	require.NoError(t, applyResponsesSystemPrompt(responsesContext, newInfo(setting), responsesRequest,
+		relaycommon.EffectiveSystemPrompt{Prompt: preset}))
 	responsesBody, err := common.Marshal(responsesRequest)
 	require.NoError(t, err)
 	responsesWireBody := postToMock(responsesBody)

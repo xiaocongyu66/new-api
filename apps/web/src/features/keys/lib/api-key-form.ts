@@ -44,6 +44,9 @@ export function getApiKeyFormSchema(t: TFunction, maxAutoGroups = 5) {
       auto_groups_mode: z.enum(['inherit', 'custom']),
       auto_groups: z.array(z.string()),
       cross_group_retry: z.boolean().optional(),
+      system_prompt_preset: z.string().optional(),
+      system_prompt: z.string().optional(),
+      user_system_prompt_override: z.boolean().optional(),
       tokenCount: z.number().min(1).optional(),
     })
     .superRefine((data, ctx) => {
@@ -114,6 +117,9 @@ export const API_KEY_FORM_DEFAULT_VALUES: ApiKeyFormValues = {
   auto_groups_mode: 'inherit',
   auto_groups: [],
   cross_group_retry: true,
+  system_prompt_preset: '',
+  system_prompt: '',
+  user_system_prompt_override: false,
   tokenCount: 1,
 }
 
@@ -132,6 +138,22 @@ export function getApiKeyFormDefaultValues(
 // ============================================================================
 // Form Data Transformation
 // ============================================================================
+
+/**
+ * Build the token-level relay settings JSON. Like the channel setting, an
+ * untouched binding serializes to '' so unchanged keys keep equivalent JSON.
+ */
+function buildTokenSettingJSON(data: ApiKeyFormValues): string {
+  const preset = data.system_prompt_preset || ''
+  const prompt = data.system_prompt || ''
+  const override = !!data.user_system_prompt_override
+  if (!preset && !prompt && !override) return ''
+  return JSON.stringify({
+    system_prompt_preset: preset,
+    system_prompt: prompt,
+    user_system_prompt_override: override,
+  })
+}
 
 /**
  * Transform form data to API payload
@@ -157,12 +179,45 @@ export function transformFormDataToPayload(
         ? data.auto_groups
         : [],
     cross_group_retry: data.group === 'auto' ? !!data.cross_group_retry : false,
+    setting: buildTokenSettingJSON(data),
   }
 }
 
 /**
- * Transform API key data to form defaults
+ * Parse the token setting JSON into its form fields. Malformed JSON degrades
+ * to the defaults rather than failing drawer init, mirroring the backend's
+ * tolerance for corrupted rows.
  */
+function parseTokenSetting(
+  raw: string | null | undefined
+): Pick<ApiKeyFormValues, 'system_prompt_preset' | 'system_prompt' | 'user_system_prompt_override'> {
+  const defaults = {
+    system_prompt_preset: '',
+    system_prompt: '',
+    user_system_prompt_override: false,
+  }
+  if (!raw) return defaults
+  try {
+    const parsed = JSON.parse(raw) as Partial<{
+      system_prompt_preset: string
+      system_prompt: string
+      user_system_prompt_override: boolean
+    }>
+    return {
+      system_prompt_preset:
+        typeof parsed.system_prompt_preset === 'string'
+          ? parsed.system_prompt_preset
+          : '',
+      system_prompt:
+        typeof parsed.system_prompt === 'string' ? parsed.system_prompt : '',
+      user_system_prompt_override:
+        parsed.user_system_prompt_override === true,
+    }
+  } catch {
+    return defaults
+  }
+}
+
 export function transformApiKeyToFormDefaults(
   apiKey: ApiKey,
   availableAutoGroups: string[] = [],
@@ -174,6 +229,7 @@ export function transformApiKeyToFormDefaults(
     .filter((group) => availableSet.has(group))
     .slice(0, Math.max(0, maxAutoGroups))
   const autoGroupsMode = storedAutoGroups.length > 0 ? 'custom' : 'inherit'
+  const tokenSetting = parseTokenSetting(apiKey.setting)
 
   return {
     name: apiKey.name,
@@ -193,6 +249,9 @@ export function transformApiKeyToFormDefaults(
     auto_groups_mode: autoGroupsMode,
     auto_groups: autoGroups,
     cross_group_retry: !!apiKey.cross_group_retry,
+    system_prompt_preset: tokenSetting.system_prompt_preset,
+    system_prompt: tokenSetting.system_prompt,
+    user_system_prompt_override: tokenSetting.user_system_prompt_override,
     tokenCount: 1,
   }
 }

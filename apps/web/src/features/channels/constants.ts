@@ -364,54 +364,22 @@ export const CHANNEL_TYPE_WARNINGS: Record<number, string> = {
   37: 'Dify channels only support chatflow and agent, and agent does not support images',
 }
 
-// ============================================================================
-// Jailbreak Preset Catalogue
-// ============================================================================
+// 
 
 /**
- * The preset value that resolves the jailbreak prompt from the request model
- * name instead of pinning one template. Mirrors the backend `auto` preset.
+ * Static preset list used when the catalogue endpoint is unreachable (e.g. a
+ * non-admin token owner, since /api/channel is admin-only). Must stay in
+ * sync with the backend promptpresets registry.
  */
-export const SYSTEM_PROMPT_PRESET_AUTO = 'auto'
+export const FALLBACK_SYSTEM_PROMPT_PRESETS = [
+  SYSTEM_PROMPT_PRESET_AUTO,
+  'silly_tavern',
+  'tavern_card',
+  'coldcoffee_claude',
+  'coldcoffee_grok',
+  'coldcoffee_gemini',
+  'coldcoffee_deepseek',
+  'coldcoffee_glm53',
+] as const
 
-/**
- * Display labels for the built-in jailbreak presets. Labels are i18n keys;
- * use t(value) when displaying them.
- */
-export const SYSTEM_PROMPT_PRESET_LABELS: Record<string, string> = {
-  auto: 'System automatic selection',
-  tavern_card: 'Tavern Card (universal)',
-  silly_tavern: 'SillyTavern (universal)',
-  coldcoffee_claude: 'ColdCoffee · Claude',
-  coldcoffee_grok: 'ColdCoffee · Grok',
-  coldcoffee_gemini: 'ColdCoffee · Gemini',
-  coldcoffee_deepseek: 'ColdCoffee · DeepSeek',
-  coldcoffee_glm53: 'ColdCoffee · GLM',
-}
-
-/**
- * Section labels for the preset dropdown groups. Labels are i18n keys; use
- * t(value) when displaying them.
- */
-export const SYSTEM_PROMPT_PRESET_FAMILY_LABELS: Record<string, string> = {
-  auto: 'Automatic selection',
-  generic: 'Universal',
-  claude: 'Claude',
-  gemini: 'Gemini',
-  grok: 'Grok',
-  deepseek: 'DeepSeek',
-  glm: 'GLM',
-}
-
-/**
- * Model families that get their own dropdown section. Presets outside this
- * list are grouped under a generic section.
- */
-export const SYSTEM_PROMPT_PRESET_FAMILY_ORDER = [
-  'generic',
-  'claude',
-  'gemini',
-  'grok',
-  'deepseek',
-  'glm',
 ] as const

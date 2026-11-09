@@ -46,24 +46,31 @@ type ChannelSettings struct {
 // SystemPromptPreset, then the channel-level SystemPrompt. A nil receiver
 // resolves to "".
 func (s *ChannelSettings) ResolveSystemPrompt(modelName string) string {
+	return s.ResolveSystemPromptDetail(modelName).Prompt
+}
+
+// ResolveSystemPromptDetail resolves like ResolveSystemPrompt but also reports
+// which preset produced the prompt, so callers can audit the prompt source
+// without re-running the priority chain.
+func (s *ChannelSettings) ResolveSystemPromptDetail(modelName string) SystemPromptResolution {
 	if s == nil {
-		return ""
+		return SystemPromptResolution{}
 	}
 	if s.SystemPromptModels != nil {
 		if p, ok := s.SystemPromptModels[modelName]; ok && p != "" {
-			return p
+			return SystemPromptResolution{Prompt: p}
 		}
 	}
 	if s.SystemPromptPreset != "" {
 		if s.SystemPromptPreset == promptpresets.PresetAuto {
 			if p := promptpresets.ResolveAuto(modelName); p != "" {
-				return p
+				return SystemPromptResolution{Prompt: p, Preset: promptpresets.PresetAuto, AutoResolved: true}
 			}
 		} else if p := promptpresets.Get(s.SystemPromptPreset); p != "" {
-			return p
+			return SystemPromptResolution{Prompt: p, Preset: s.SystemPromptPreset}
 		}
 	}
-	return s.SystemPrompt
+	return SystemPromptResolution{Prompt: s.SystemPrompt}
 }
 
 const (

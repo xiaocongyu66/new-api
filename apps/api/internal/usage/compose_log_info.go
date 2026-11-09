@@ -87,6 +87,16 @@ func GenerateTextOtherInfo(ctx contract.Context, relayInfo *relaycommon.RelayInf
 
 	catalog.AppendChannelAffinityAdminInfo(ctx, adminInfo)
 
+	if relayInfo.SystemPromptAudit != nil {
+		// Which layer actually supplied the injected prompt. Nested under
+		// admin_info so it stays admin-only like the rest of the block.
+		adminInfo["system_prompt"] = map[string]interface{}{
+			"source":        relayInfo.SystemPromptAudit.Source,
+			"preset":        relayInfo.SystemPromptAudit.Preset,
+			"auto_resolved": relayInfo.SystemPromptAudit.AutoResolved,
+		}
+	}
+
 	other["admin_info"] = adminInfo
 	appendRequestPath(ctx, relayInfo, other)
 	appendRequestConversionChain(relayInfo, other)

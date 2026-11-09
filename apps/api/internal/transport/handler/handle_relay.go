@@ -187,7 +187,7 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 	// travels upstream and must be part of the reserved quota, the tier context
 	// length and the local-count fallback. Reserve it here, before pre-consume.
 	basePromptTokens := tokens
-	tokens += channelSystemPromptTokenDelta(c, relayInfo)
+	tokens += systemPromptTokenDelta(c, relayInfo)
 	relayInfo.SetEstimatePromptTokens(tokens)
 
 	priceData, err := helper.ModelPriceHelper(c, relayInfo, tokens, meta)
@@ -341,7 +341,7 @@ func Relay(c contract.Context, relayFormat types.RelayFormat) {
 		channel := route.Channel
 		// Each attempt may land on a channel with a different system prompt, so
 		// the fallback estimate follows the channel that is actually dialed.
-		relayInfo.SetEstimatePromptTokens(basePromptTokens + channelSystemPromptTokenDelta(c, relayInfo))
+		relayInfo.SetEstimatePromptTokens(basePromptTokens + systemPromptTokenDelta(c, relayInfo))
 		if billingErr := billing.PrepareTieredBillingForSelectedGroup(c, relayInfo); billingErr != nil {
 			newAPIError = billingErr
 			break
@@ -568,23 +568,25 @@ func addUsedChannel(c contract.Context, channelId int) {
 	c.Set("use_channel", useChannel)
 }
 
-// channelSystemPromptTokenDelta returns how many input tokens the channel-level
-// system prompt will add to the request actually sent upstream. The injection
-// helpers run after pre-consume, so without this delta the reserved quota, the
-// tier context length and the local-count fallback would all bill the request
-// as if the channel prompt did not exist.
-func channelSystemPromptTokenDelta(c contract.Context, info *relaycommon.RelayInfo) int {
+// systemPromptTokenDelta returns how many input tokens the effective system
+// prompt (token binding first, channel settings second) will add to the
+// request actually sent upstream. The injection helpers run after pre-consume,
+// so without this delta the reserved quota, the tier context length and the
+// local-count fallback would all bill the request as if the prompt did not
+// exist.
+func systemPromptTokenDelta(c contract.Context, info *relaycommon.RelayInfo) int {
 	if info == nil || catalog.GetGlobalSettings().PassThroughRequestEnabled {
 		return 0
 	}
 	setting, ok := common.GetContextKeyType[dto.ChannelSettings](c, constant.ContextKeyChannelSetting)
-	if !ok || setting.PassThroughBodyEnabled {
+	if ok && setting.PassThroughBodyEnabled {
 		return 0
 	}
-	systemPrompt := setting.ResolveSystemPrompt(info.OriginModelName)
-	if systemPrompt == "" || !carriesChannelSystemPrompt(info.Request) {
+	effective := relaycommon.ResolveEffectiveSystemPrompt(c, info)
+	if effective.Prompt == "" || !carriesChannelSystemPrompt(info.Request) {
 		return 0
 	}
+	systemPrompt := effective.Prompt
 	model := common.GetCtxKeyString(c, constant.ContextKeyOriginalModel)
 	delta := relaycommon.CountTextToken(systemPrompt, model)
 	if _, ok := info.Request.(*dto.GeneralOpenAIRequest); ok {
@@ -597,7 +599,7 @@ func channelSystemPromptTokenDelta(c contract.Context, info *relaycommon.RelayIn
 		// charges three formatting tokens per message, so reserve that here too.
 		delta += 3
 	}
-	if setting.UserSystemPromptOverride {
+	if effective.Override {
 		// Override drops the caller's own system prompt, so its tokens do not
 		// travel upstream and must not stay in the reserved count.
 		delta -= userSystemPromptTokens(info.Request, model)
