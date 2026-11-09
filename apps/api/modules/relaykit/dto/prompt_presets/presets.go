@@ -154,7 +154,7 @@ func Get(name string) string {
 	}
 	for _, preset := range presets {
 		if preset.Name == name {
-			return preset.Name
+			return preset.Prompt
 		}
 	}
 	return ""
