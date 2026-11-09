@@ -62,3 +62,21 @@ func TestResolveSystemPromptUnknownPresetFallsBackToChannelPrompt(t *testing.T) 
 	}
 	assert.Equal(t, "CHANNEL", setting.ResolveSystemPrompt("gemini-3.6-flash"))
 }
+
+func TestValidatePresetAcceptsEmptyAutoAndKnownPresets(t *testing.T) {
+	assert.NoError(t, (&ChannelSettings{}).ValidatePreset())
+	assert.NoError(t, (&ChannelSettings{SystemPromptPreset: ""}).ValidatePreset())
+	assert.NoError(t, (&ChannelSettings{SystemPromptPreset: promptpresets.PresetAuto}).ValidatePreset())
+	assert.NoError(t, (&ChannelSettings{SystemPromptPreset: promptpresets.PresetTavernCard}).ValidatePreset())
+	assert.NoError(t, (&ChannelSettings{SystemPromptPreset: promptpresets.PresetColdCoffeeClaude}).ValidatePreset())
+}
+
+func TestValidatePresetRejectsUnknownPreset(t *testing.T) {
+	var nilSetting *ChannelSettings
+	assert.NoError(t, nilSetting.ValidatePreset())
+
+	err := (&ChannelSettings{SystemPromptPreset: "not-a-preset"}).ValidatePreset()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid system_prompt_preset")
+	assert.Contains(t, err.Error(), "not-a-preset")
+}

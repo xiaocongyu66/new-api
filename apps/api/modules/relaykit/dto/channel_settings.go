@@ -92,6 +92,18 @@ func (s *ChannelSettings) ValidateHTTPTransport() error {
 	return nil
 }
 
+// ValidatePreset rejects unknown preset names at save time so a typo cannot
+// silently disable the jailbreak prompt the operator configured.
+func (s *ChannelSettings) ValidatePreset() error {
+	if s == nil || s.SystemPromptPreset == "" {
+		return nil
+	}
+	if !promptpresets.IsValid(s.SystemPromptPreset) {
+		return fmt.Errorf("invalid system_prompt_preset: %s", s.SystemPromptPreset)
+	}
+	return nil
+}
+
 type VertexKeyType string
 
 const (

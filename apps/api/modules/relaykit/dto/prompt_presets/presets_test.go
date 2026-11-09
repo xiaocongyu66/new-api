@@ -94,3 +94,57 @@ func TestModelSpecificPresetsDeclareTargetModels(t *testing.T) {
 		assert.NotEmpty(t, preset.Models, "preset %s declares a family but no models", preset.Name)
 	}
 }
+
+func TestListReturnsIndependentModelSlices(t *testing.T) {
+	first := List()
+	var claude *Preset
+	for i := range first {
+		if first[i].Name == PresetColdCoffeeClaude {
+			claude = &first[i]
+		}
+	}
+	require.NotNil(t, claude)
+	require.NotEmpty(t, claude.Models)
+	claude.Models[0] = "mutated-model"
+	second := List()
+	for _, p := range second {
+		if p.Name == PresetColdCoffeeClaude {
+			assert.NotContains(t, p.Models, "mutated-model",
+				"mutating a returned List() must not corrupt the package catalogue")
+		}
+	}
+}
+
+func TestResolveAutoFamilyBoundary(t *testing.T) {
+	assert.Equal(t, Get(PresetFallback), ResolveAuto("geminix-1"))
+	assert.Equal(t, Get(PresetColdCoffeeGemini), ResolveAuto("gemini-3.6-flash-preview"))
+}
+
+func TestCatalogueAnchors(t *testing.T) {
+	// The automatic resolver routes by these names; dropping one from a
+	// catalogue silently reroutes live traffic to the generic fallback.
+	type anchor struct {
+		presetName string
+		model      string
+	}
+	anchors := []anchor{
+		{PresetColdCoffeeGemini, "gemini-3.6-flash"},
+		{PresetColdCoffeeGemini, "gemini-3.1-pro"},
+		{PresetColdCoffeeClaude, "claude-opus-4-6"},
+		{PresetColdCoffeeClaude, "claude-sonnet-4-6"},
+		{PresetColdCoffeeDeepSeek, "deepseek-v4.1-flash"},
+	}
+	modelsByPreset := make(map[string]map[string]bool)
+	for _, preset := range List() {
+		set := make(map[string]bool, len(preset.Models))
+		for _, model := range preset.Models {
+			set[model] = true
+		}
+		modelsByPreset[preset.Name] = set
+	}
+	for _, a := range anchors {
+		assert.True(t, modelsByPreset[a.presetName][a.model],
+			"preset %s must list model %s", a.presetName, a.model)
+	}
+	assert.Equal(t, PresetTavernCard, PresetFallback)
+}

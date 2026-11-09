@@ -190,9 +190,10 @@ func List() []Preset {
 
 // ResolveAuto picks the preset for a model name. A preset that lists the model
 // explicitly wins; otherwise a preset whose model family prefixes the model
-// name wins, so "gemini-3.6-flash-preview" still lands on the Gemini preset.
-// When nothing matches, the generic fallback preset is returned so an
-// automatic channel still injects a jailbreak prompt.
+// name wins ("gemini-3.6-flash-preview" lands on the Gemini preset, while
+// "geminix-1" does not). Anything else — including a blank model name, which
+// cannot be attributed to a family — resolves to "" so the caller falls
+// through to the channel-level SystemPrompt.
 func ResolveAuto(modelName string) string {
 	model := strings.ToLower(strings.TrimSpace(modelName))
 	if model == "" {
@@ -216,10 +217,5 @@ func ResolveAuto(modelName string) string {
 		}
 	}
 
-	for _, preset := range presets {
-		if preset.Name == PresetFallback {
-			return preset.Prompt
-		}
-	}
-	return ""
+	return Get(PresetFallback)
 }

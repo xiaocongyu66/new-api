@@ -1,3 +1,4 @@
+<!-- Source: adapted from mizaawa/ZakoProxyCLI profiles/coldcoffee (see upstream NOTICE), ported for new-api preset catalogue -->
 # ZakoAI · 冷咖啡 API 内联适配
 
 以下席位、工作链和路由技能正文由代理直接随本次请求提供。读取这些正文即可，
