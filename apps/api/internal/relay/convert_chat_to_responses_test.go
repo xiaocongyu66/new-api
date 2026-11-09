@@ -13,7 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/internal/types"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/relaykit/dto/prompt_presets"
+	promptpresets "github.com/QuantumNous/new-api/relaykit/dto/prompt_presets"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -123,7 +123,8 @@ func TestApplyResponsesSystemPromptMergesAndOverrides(t *testing.T) {
 				request.Instructions = json.RawMessage(tt.instructions)
 			}
 
-			require.NoError(t, applyResponsesSystemPrompt(cc, info, request, "CHANNEL"))
+			require.NoError(t, applyResponsesSystemPrompt(cc, info, request,
+				relaycommon.EffectiveSystemPrompt{Prompt: "CHANNEL", Override: tt.setting.UserSystemPromptOverride}))
 
 			assert.Equal(t, tt.want, string(request.Instructions))
 			assert.Equal(t, tt.wantOverridden, common.GetCtxKeyBool(cc, constant.ContextKeyUserSystemPromptOverridden))
@@ -212,7 +213,8 @@ func TestResponsesJailbreakPresetReachesWireShape(t *testing.T) {
 	}
 	request := &dto.OpenAIResponsesRequest{Instructions: json.RawMessage(`"USER-SYSTEM"`)}
 
-	require.NoError(t, applyResponsesSystemPrompt(cc, info, request, preset))
+	require.NoError(t, applyResponsesSystemPrompt(cc, info, request,
+		relaycommon.EffectiveSystemPrompt{Prompt: preset}))
 
 	var got string
 	require.NoError(t, json.Unmarshal(request.Instructions, &got))

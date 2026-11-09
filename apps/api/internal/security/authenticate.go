@@ -494,6 +494,9 @@ func SetupContextForToken(c contract.Context, token *identity.Token, parts ...st
 	}
 	common.SetCtxKey(c, constant.ContextKeyTokenGroup, token.Group)
 	common.SetCtxKey(c, constant.ContextKeyTokenCrossGroupRetry, token.CrossGroupRetry)
+	// Token-level relay settings ride the same context-key pattern as the
+	// channel setting; the relay resolver reads them from here.
+	common.SetCtxKey(c, constant.ContextKeyTokenSetting, token.GetTokenSettings())
 	if token.AutoGroups != "" {
 		autoGroups, err := token.GetAutoGroups()
 		if err != nil {

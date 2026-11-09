@@ -85,6 +85,7 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -131,6 +132,7 @@ import {
   getChannelKey,
   getGroups,
   getPrefillGroups,
+  getSystemPromptPresets,
   refreshCodexCredential,
 } from '../../api'
 import {
@@ -142,6 +144,10 @@ import {
   FIELD_DESCRIPTIONS,
   FIELD_PLACEHOLDERS,
   MODEL_FETCHABLE_TYPES,
+  SYSTEM_PROMPT_PRESET_AUTO,
+  SYSTEM_PROMPT_PRESET_FAMILY_LABELS,
+  SYSTEM_PROMPT_PRESET_FAMILY_ORDER,
+  SYSTEM_PROMPT_PRESET_LABELS,
 } from '../../constants'
 import { useChannelMutateForm } from '../../hooks/use-channel-mutate-form'
 import {
@@ -602,6 +608,14 @@ function ChannelMutateDrawerContent({
     staleTime: 10 * 60 * 1000,
   })
 
+  // Fetch the built-in jailbreak preset catalogue for the preset dropdown.
+  const { data: systemPromptPresetsData, isLoading: presetsLoading } = useQuery({
+    queryKey: ['system_prompt_presets'],
+    queryFn: getSystemPromptPresets,
+    enabled: isPresented,
+    staleTime: 10 * 60 * 1000,
+  })
+
   const { copyToClipboard } = useCopyToClipboard()
 
   const {
@@ -665,6 +679,78 @@ function ChannelMutateDrawerContent({
   const currentHttpProtocol = useWatch({ control: form.control, name: 'http_protocol' })
   const currentHttp2ConnectionShards = useWatch({ control: form.control, name: 'http2_connection_shards' })
   const currentSystemPrompt = useWatch({ control: form.control, name: 'system_prompt' })
+  const currentSystemPromptPreset = useWatch({
+    control: form.control,
+    name: 'system_prompt_preset',
+  })
+  // The switch drives the same field as the dropdown, so it reads the
+  // current value rather than mirroring it in separate state.
+  const jailbreakEnabled = Boolean(currentSystemPromptPreset)
+  const lastJailbreakPresetRef = useRef<string>(
+    currentSystemPromptPreset || ''
+  )
+  const systemPromptPresetGroups = useMemo(() => {
+    const presets = systemPromptPresetsData?.data ?? []
+    const grouped = new Map<string, { value: string; label: string }[]>()
+    let autoItem: { value: string; label: string } | null = null
+    presets.forEach((preset) => {
+      let label = t(SYSTEM_PROMPT_PRESET_LABELS[preset.name] ?? preset.name)
+      if (preset.name === SYSTEM_PROMPT_PRESET_AUTO) {
+        autoItem = { value: preset.name, label }
+        return
+      }
+      // The byte size hints at the token cost; auto resolves at runtime and
+      // has no fixed body, so only fixed presets carry a size suffix.
+      if (preset.bytes > 0) {
+        label = `${label} · ${Math.round(preset.bytes / 1024)} KB`
+      }
+      const family = preset.model_family || 'generic'
+      const bucket = grouped.get(family) ?? []
+      bucket.push({ value: preset.name, label })
+      grouped.set(family, bucket)
+    })
+    const ordered: {
+      family: string
+      label: string
+      items: { value: string; label: string }[]
+    }[] = SYSTEM_PROMPT_PRESET_FAMILY_ORDER.filter((family) =>
+      grouped.has(family)
+    ).map((family) => ({
+      family,
+      label: t(
+        SYSTEM_PROMPT_PRESET_FAMILY_LABELS[family] ??
+          SYSTEM_PROMPT_PRESET_LABELS[family] ??
+          family
+      ),
+      items: grouped.get(family) ?? [],
+    }))
+    const knownFamilies: readonly string[] = SYSTEM_PROMPT_PRESET_FAMILY_ORDER
+    const remaining = [...grouped.keys()].filter(
+      (family) => !knownFamilies.includes(family)
+    )
+    remaining.forEach((family) => {
+      ordered.push({
+        family,
+        label: family,
+        items: grouped.get(family) ?? [],
+      })
+    })
+    if (!autoItem) return ordered
+    // Automatic selection is a resolver rather than a template, so it heads
+    // the dropdown in its own section instead of sharing the universal one.
+    return [
+      {
+        family: SYSTEM_PROMPT_PRESET_AUTO,
+        label: t(SYSTEM_PROMPT_PRESET_FAMILY_LABELS.auto),
+        items: [autoItem],
+      },
+      ...ordered,
+    ]
+  }, [systemPromptPresetsData, t])
+  const systemPromptPresetItems = useMemo(
+    () => systemPromptPresetGroups.flatMap((group) => group.items),
+    [systemPromptPresetGroups]
+  )
   const currentUserSystemPromptOverride = useWatch({ control: form.control, name: 'user_system_prompt_override' })
   const currentSystemPromptModels = useWatch({
     control: form.control,
@@ -1131,6 +1217,7 @@ function ChannelMutateDrawerContent({
       initialModelMappingRef.current = channelData.data.model_mapping || ''
       initialStatusCodeMappingRef.current =
         channelData.data.status_code_mapping || ''
+      lastJailbreakPresetRef.current = defaults.system_prompt_preset || ''
     } else if (!isEditing && !isInline) {
       form.reset(CHANNEL_FORM_DEFAULT_VALUES)
       setActiveEditorSectionId(CHANNEL_EDITOR_SECTION_IDS.identity)
@@ -1138,6 +1225,7 @@ function ChannelMutateDrawerContent({
       initialModelsRef.current = []
       initialModelMappingRef.current = ''
       initialStatusCodeMappingRef.current = ''
+      lastJailbreakPresetRef.current = ''
     }
   }, [channelData, form, isEditing, isInline, isPresented, channelId])
 
@@ -4277,21 +4365,83 @@ function ChannelMutateDrawerContent({
                               control={form.control}
                               name='system_prompt_preset'
                               render={({ field }) => (
-                                <FormItem className='flex items-center justify-between'>
-                                  <div className='space-y-0.5'>
-                                    <FormLabel>{t('Jailbreak')}</FormLabel>
-                                    <FormDescription>
-                                      {t('Prepend the jailbreak preset to the system prompt (counts toward context and input tokens)')}
-                                    </FormDescription>
+                                <FormItem>
+                                  <div className='flex items-center justify-between'>
+                                    <div className='space-y-0.5'>
+                                      <FormLabel>{t('Jailbreak')}</FormLabel>
+                                      <FormDescription>
+                                        {t('Prepend the jailbreak preset to the system prompt (counts toward context and input tokens)')}
+                                      </FormDescription>
+                                    </div>
+                                    <FormControl>
+                                      <Switch
+                                        checked={jailbreakEnabled}
+                                        onCheckedChange={(v) => {
+                                          if (v) {
+                                            field.onChange(
+                                              lastJailbreakPresetRef.current ||
+                                                SYSTEM_PROMPT_PRESET_AUTO
+                                            )
+                                          } else {
+                                            // Keep the last choice so toggling the
+                                            // switch back on restores it instead
+                                            // of resetting the operator's pick.
+                                            lastJailbreakPresetRef.current =
+                                              field.value || ''
+                                            field.onChange('')
+                                          }
+                                        }}
+                                      />
+                                    </FormControl>
                                   </div>
-                                  <FormControl>
-                                    <Switch
-                                      checked={field.value === 'tavern_card'}
-                                      onCheckedChange={(v) =>
-                                        field.onChange(v ? 'tavern_card' : '')
+                                  {field.value ? (
+                                    <Select
+                                      items={systemPromptPresetItems}
+                                      value={
+                                        field.value || SYSTEM_PROMPT_PRESET_AUTO
                                       }
-                                    />
-                                  </FormControl>
+                                      onValueChange={(value) => {
+                                        const next = value ?? ''
+                                        lastJailbreakPresetRef.current = next
+                                        field.onChange(next)
+                                      }}
+                                    >
+                                      <FormControl>
+                                        <SelectTrigger
+                                          disabled={presetsLoading}
+                                        >
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                      </FormControl>
+                                      <SelectContent
+                                        alignItemWithTrigger={false}
+                                      >
+                                        {systemPromptPresetGroups.map(
+                                          (group) => (
+                                            <SelectGroup key={group.family}>
+                                              <SelectLabel>
+                                                {group.label}
+                                              </SelectLabel>
+                                              {group.items.map((item) => (
+                                                <SelectItem
+                                                  key={item.value}
+                                                  value={item.value}
+                                                >
+                                                  {item.label}
+                                                </SelectItem>
+                                              ))}
+                                            </SelectGroup>
+                                          )
+                                        )}
+                                      </SelectContent>
+                                    </Select>
+                                  ) : null}
+                                  <FormDescription>
+                                    {t(
+                                      'Automatic selection picks the preset matching the request model; pick a fixed preset to use it for every model.'
+                                    )}
+                                  </FormDescription>
+                                  <FormMessage />
                                 </FormItem>
                               )}
                             />

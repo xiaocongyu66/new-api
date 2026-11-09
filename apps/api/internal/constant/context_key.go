@@ -20,6 +20,10 @@ const (
 	ContextKeyTokenModelLimit        ContextKey = "token_model_limit"
 	ContextKeyTokenCrossGroupRetry   ContextKey = "token_cross_group_retry"
 	ContextKeyTokenAutoGroups        ContextKey = "token_auto_groups"
+	// ContextKeyTokenSetting carries the parsed dto.TokenSettings bound to the
+	// authenticated token, injected by SetupContextForToken like the channel
+	// setting is injected by the distribute middleware.
+	ContextKeyTokenSetting ContextKey = "token_setting"
 
 	/* channel related keys */
 	ContextKeyChannelId                ContextKey = "channel_id"

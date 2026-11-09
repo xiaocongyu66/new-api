@@ -170,6 +170,11 @@ type RelayInfo struct {
 	RuntimeHeadersOverride                map[string]interface{}
 	UseRuntimeHeadersOverride             bool
 	ParamOverrideAudit                    []string
+	// SystemPromptAudit records the system prompt actually injected into this
+	// request, for the consume-log admin audit. Nil when nothing was
+	// injected; re-applies (retry resend, prompt-cache fallback) overwrite it
+	// with the latest attempt's resolution.
+	SystemPromptAudit *EffectiveSystemPrompt
 
 	PriceData hosttypes.PriceData
 

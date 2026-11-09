@@ -11,7 +11,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/internal/relay/constant"
 	"github.com/QuantumNous/new-api/internal/transport/fiberadapter"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/relaykit/dto/prompt_presets"
+	promptpresets "github.com/QuantumNous/new-api/relaykit/dto/prompt_presets"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -72,9 +72,98 @@ func TestChannelSystemPromptTokenDelta(t *testing.T) {
 				Request:         tt.request,
 			}
 
-			assert.Equal(t, tt.want, channelSystemPromptTokenDelta(cc, info))
+			assert.Equal(t, tt.want, systemPromptTokenDelta(cc, info))
 		})
 	}
+}
+
+func TestSystemPromptTokenDeltaPrefersTokenBinding(t *testing.T) {
+	preset := promptpresets.Get(promptpresets.PresetTavernCard)
+	require.NotEmpty(t, preset)
+
+	const model = "gpt-4o"
+	cc, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+	common.SetCtxKey(cc, constant.ContextKeyChannelSetting, dto.ChannelSettings{
+		SystemPrompt: "CHANNEL",
+	})
+	common.SetCtxKey(cc, constant.ContextKeyTokenSetting, dto.TokenSettings{
+		SystemPromptPreset: promptpresets.PresetTavernCard,
+	})
+	common.SetCtxKey(cc, constant.ContextKeyOriginalModel, model)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: model,
+		RelayMode:       relayconstant.RelayModeChatCompletions,
+		Request: &dto.GeneralOpenAIRequest{
+			Messages: []dto.Message{{Role: "user", Content: "hi"}},
+		},
+	}
+
+	delta := systemPromptTokenDelta(cc, info)
+	assert.Equal(t, relaycommon.CountTextToken(preset, model)+3, delta,
+		"the token binding must replace the channel prompt in the reserved count")
+}
+
+func TestSystemPromptTokenDeltaFallsBackToChannelWhenTokenEmpty(t *testing.T) {
+	const model = "gpt-4o"
+	const channelPrompt = "CHANNEL"
+	cc, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+	common.SetCtxKey(cc, constant.ContextKeyChannelSetting, dto.ChannelSettings{
+		SystemPrompt: channelPrompt,
+	})
+	common.SetCtxKey(cc, constant.ContextKeyTokenSetting, dto.TokenSettings{})
+	common.SetCtxKey(cc, constant.ContextKeyOriginalModel, model)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: model,
+		RelayMode:       relayconstant.RelayModeChatCompletions,
+		Request: &dto.GeneralOpenAIRequest{
+			Messages: []dto.Message{{Role: "user", Content: "hi"}},
+		},
+	}
+
+	assert.Equal(t, relaycommon.CountTextToken(channelPrompt, model)+3, systemPromptTokenDelta(cc, info))
+}
+
+func TestSystemPromptTokenDeltaTokenOverrideSubtractsCallerPrompt(t *testing.T) {
+	const model = "gpt-4o"
+	const userSystem = "USER"
+	cc, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+	common.SetCtxKey(cc, constant.ContextKeyTokenSetting, dto.TokenSettings{
+		SystemPrompt:             "TOKEN-PROMPT",
+		UserSystemPromptOverride: true,
+	})
+	common.SetCtxKey(cc, constant.ContextKeyOriginalModel, model)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: model,
+		RelayMode:       relayconstant.RelayModeChatCompletions,
+		Request: &dto.GeneralOpenAIRequest{
+			Messages: []dto.Message{{Role: "system", Content: userSystem}, {Role: "user", Content: "hi"}},
+		},
+	}
+
+	delta := systemPromptTokenDelta(cc, info)
+	assert.Equal(t, relaycommon.CountTextToken("TOKEN-PROMPT", model)-relaycommon.CountTextToken(userSystem, model), delta)
+}
+
+func TestSystemPromptTokenDeltaNilChannelMetaUsesContextSetting(t *testing.T) {
+	// The pre-consume estimate runs before InitChannelMeta, so RelayInfo has a
+	// nil ChannelMeta here; the resolver must fall back to the context copy
+	// instead of dereferencing the nil meta.
+	const model = "gpt-4o"
+	const channelPrompt = "CHANNEL"
+	cc, _ := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+	common.SetCtxKey(cc, constant.ContextKeyChannelSetting, dto.ChannelSettings{
+		SystemPrompt: channelPrompt,
+	})
+	common.SetCtxKey(cc, constant.ContextKeyOriginalModel, model)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: model,
+		RelayMode:       relayconstant.RelayModeChatCompletions,
+		Request: &dto.GeneralOpenAIRequest{
+			Messages: []dto.Message{{Role: "user", Content: "hi"}},
+		},
+	}
+
+	assert.Equal(t, relaycommon.CountTextToken(channelPrompt, model)+3, systemPromptTokenDelta(cc, info))
 }
 
 func TestChannelSystemPromptTokenDeltaCountsJailbreakPreset(t *testing.T) {
@@ -96,7 +185,7 @@ func TestChannelSystemPromptTokenDeltaCountsJailbreakPreset(t *testing.T) {
 		},
 	}
 
-	delta := channelSystemPromptTokenDelta(cc, info)
+	delta := systemPromptTokenDelta(cc, info)
 	assert.Equal(t, relaycommon.CountTextToken(preset, model)+3, delta)
 	assert.Greater(t, delta, 1000, "the ~51KB jailbreak preset must materially enter the reserved token count")
 }
