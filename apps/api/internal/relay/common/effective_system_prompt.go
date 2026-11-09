@@ -58,9 +58,14 @@ func ResolveEffectiveSystemPrompt(c contract.Context, info *RelayInfo) Effective
 	}
 	// Channel settings live in context from the distribute middleware and are
 	// mirrored onto ChannelMeta by InitChannelMeta. The pre-consume estimate
-	// runs before InitChannelMeta, so fall back to the context copy when the
-	// meta is not built yet (e.g. realtime infos, which never build it).
-	channelSettings, ok := common.GetContextKeyType[dto.ChannelSettings](c, constant.ContextKeyChannelSetting)
+	// runs before InitChannelMeta, so fall back to the meta copy when the
+	// context does not carry one yet (e.g. realtime infos, which never build
+	// the meta, and synthetic test infos that set the meta directly).
+	var channelSettings dto.ChannelSettings
+	var ok bool
+	if c != nil {
+		channelSettings, ok = common.GetContextKeyType[dto.ChannelSettings](c, constant.ContextKeyChannelSetting)
+	}
 	if !ok && info.ChannelMeta != nil {
 		channelSettings = info.ChannelSetting
 	}
