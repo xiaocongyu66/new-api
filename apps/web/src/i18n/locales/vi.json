@@ -2818,6 +2818,7 @@
     "Invalid rules JSON format": "Định dạng JSON quy tắc không hợp lệ",
     "Invalid status code mapping entries: {{entries}}": "Mục ánh xạ mã trạng thái không hợp lệ: {{entries}}",
     "Invalid status code rules: {{codes}}": "Quy tắc mã trạng thái không hợp lệ: {{codes}}",
+    "Invalid system prompt preset": "Preset prompt hệ thống không hợp lệ",
     "Invalidate": "Vô hiệu hóa",
     "Invalidated": "Đã vô hiệu",
     "Invert match": "Đảo điều kiện khớp",

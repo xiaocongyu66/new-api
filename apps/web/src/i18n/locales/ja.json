@@ -2818,6 +2818,7 @@
     "Invalid rules JSON format": "ルール JSON の形式が不正です",
     "Invalid status code mapping entries: {{entries}}": "無効なステータスコードマッピング：{{entries}}",
     "Invalid status code rules: {{codes}}": "無効なステータスコードルール：{{codes}}",
+    "Invalid system prompt preset": "システムプロンプトプリセットが無効です",
     "Invalidate": "無効化",
     "Invalidated": "無効化済み",
     "Invert match": "一致を反転",

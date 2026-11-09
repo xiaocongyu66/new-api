@@ -609,7 +609,7 @@ function ChannelMutateDrawerContent({
   })
 
   // Fetch the built-in jailbreak preset catalogue for the preset dropdown.
-  const { data: systemPromptPresetsData } = useQuery({
+  const { data: systemPromptPresetsData, isLoading: presetsLoading } = useQuery({
     queryKey: ['system_prompt_presets'],
     queryFn: getSystemPromptPresets,
     enabled: isPresented,
@@ -694,10 +694,15 @@ function ChannelMutateDrawerContent({
     const grouped = new Map<string, { value: string; label: string }[]>()
     let autoItem: { value: string; label: string } | null = null
     presets.forEach((preset) => {
-      const label = t(SYSTEM_PROMPT_PRESET_LABELS[preset.name] ?? preset.name)
+      let label = t(SYSTEM_PROMPT_PRESET_LABELS[preset.name] ?? preset.name)
       if (preset.name === SYSTEM_PROMPT_PRESET_AUTO) {
         autoItem = { value: preset.name, label }
         return
+      }
+      // The byte size hints at the token cost; auto resolves at runtime and
+      // has no fixed body, so only fixed presets carry a size suffix.
+      if (preset.bytes > 0) {
+        label = `${label} · ${Math.round(preset.bytes / 1024)} KB`
       }
       const family = preset.model_family || 'generic'
       const bucket = grouped.get(family) ?? []
@@ -4402,7 +4407,9 @@ function ChannelMutateDrawerContent({
                                       }}
                                     >
                                       <FormControl>
-                                        <SelectTrigger>
+                                        <SelectTrigger
+                                          disabled={presetsLoading}
+                                        >
                                           <SelectValue />
                                         </SelectTrigger>
                                       </FormControl>

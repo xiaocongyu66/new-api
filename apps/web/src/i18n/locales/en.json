@@ -2818,6 +2818,7 @@
     "Invalid rules JSON format": "Invalid rules JSON format",
     "Invalid status code mapping entries: {{entries}}": "Invalid status code mapping entries: {{entries}}",
     "Invalid status code rules: {{codes}}": "Invalid status code rules: {{codes}}",
+    "Invalid system prompt preset": "Invalid system prompt preset",
     "Invalidate": "Invalidate",
     "Invalidated": "Invalidated",
     "Invert match": "Invert match",

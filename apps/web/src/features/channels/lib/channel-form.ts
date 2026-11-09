@@ -23,6 +23,7 @@ import {
   CHANNEL_STATUS,
   ERROR_MESSAGES,
   MODEL_FETCHABLE_TYPES,
+  SYSTEM_PROMPT_PRESET_LABELS,
 } from '../constants'
 import type { Channel } from '../types'
 import {
@@ -44,6 +45,19 @@ const SUPPORTED_PROXY_PROTOCOLS = new Set([
   'socks5:',
   'socks5h:',
 ])
+
+// A saved preset name outside the catalogue (renamed or removed upstream)
+// must not brick channel editing: normalize it to '' on load, and the schema
+// rejects it again on submit so the operator picks a valid value.
+const SYSTEM_PROMPT_PRESET_NAMES = new Set(
+  Object.keys(SYSTEM_PROMPT_PRESET_LABELS)
+)
+
+function normalizeSystemPromptPreset(value: unknown): string {
+  return typeof value === 'string' && SYSTEM_PROMPT_PRESET_NAMES.has(value)
+    ? value
+    : ''
+}
 
 function isOptionalProxyURL(value: string | undefined): boolean {
   const trimmedValue = value?.trim() || ''
@@ -262,7 +276,13 @@ export const channelFormSchema = z
     system_prompt: z.string().optional(),
     user_system_prompt_override: z.boolean().optional(),
     system_prompt_models: z.record(z.string(), z.string()).optional(),
-    system_prompt_preset: z.string().optional(),
+    system_prompt_preset: z
+      .string()
+      .optional()
+      .refine(
+        (value) => !value || SYSTEM_PROMPT_PRESET_NAMES.has(value),
+        ERROR_MESSAGES.INVALID_SYSTEM_PROMPT_PRESET
+      ),
     // Type-specific settings (stored in settings JSON)
     is_enterprise_account: z.boolean().optional(), // OpenRouter specific
     vertex_key_type: z.enum(['json', 'api_key']).optional(), // Vertex AI specific
@@ -503,7 +523,9 @@ export function transformChannelToFormDefaults(
         system_prompt: parsed.system_prompt || '',
         user_system_prompt_override: parsed.user_system_prompt_override || false,
         system_prompt_models: parsed.system_prompt_models || {},
-        system_prompt_preset: parsed.system_prompt_preset || '',
+        system_prompt_preset: normalizeSystemPromptPreset(
+          parsed.system_prompt_preset
+        ),
       }
     } catch (error) {
       // eslint-disable-next-line no-console

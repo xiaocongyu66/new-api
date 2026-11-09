@@ -2818,6 +2818,7 @@
     "Invalid rules JSON format": "規則 JSON 格式不正確",
     "Invalid status code mapping entries: {{entries}}": "無效的狀態碼映射條目：{{entries}}",
     "Invalid status code rules: {{codes}}": "無效的狀態碼規則：{{codes}}",
+    "Invalid system prompt preset": "系統破甲預設無效",
     "Invalidate": "作廢",
     "Invalidated": "已作廢",
     "Invert match": "反向匹配",

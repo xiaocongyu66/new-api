@@ -2818,6 +2818,7 @@
     "Invalid rules JSON format": "Неверный формат JSON правил",
     "Invalid status code mapping entries: {{entries}}": "Недопустимые записи маппинга кодов состояния: {{entries}}",
     "Invalid status code rules: {{codes}}": "Недействительные правила кодов состояния: {{codes}}",
+    "Invalid system prompt preset": "Недопустимый пресет системного промпта",
     "Invalidate": "Аннулировать",
     "Invalidated": "Аннулирована",
     "Invert match": "Инвертировать совпадение",

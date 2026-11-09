@@ -2818,6 +2818,7 @@
     "Invalid rules JSON format": "Format JSON des règles invalide",
     "Invalid status code mapping entries: {{entries}}": "Entrées de mappage de code d'état invalides : {{entries}}",
     "Invalid status code rules: {{codes}}": "Règles de codes de statut invalides : {{codes}}",
+    "Invalid system prompt preset": "Préréglage de prompt système invalide",
     "Invalidate": "Invalider",
     "Invalidated": "Invalidé",
     "Invert match": "Inverser la correspondance",
