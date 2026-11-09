@@ -116,7 +116,7 @@ func TestListReturnsIndependentModelSlices(t *testing.T) {
 }
 
 func TestResolveAutoFamilyBoundary(t *testing.T) {
-	assert.Equal(t, Get(PresetFallback), ResolveAuto("geminix-1"))
+	assert.Equal(t, PresetFallback, ResolveAuto("geminix-1"))
 	assert.Equal(t, PresetColdCoffeeGemini, ResolveAuto("gemini-3.6-flash-preview"))
 }
 
