@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import type { TFunction } from 'i18next'
 import { z } from 'zod'
 
+import { FALLBACK_SYSTEM_PROMPT_PRESETS } from '@/features/channels/constants'
 import { toEditableDisplayAmount } from '@/lib/format'
 
 import { DEFAULT_GROUP } from '../constants'
@@ -183,10 +184,19 @@ export function transformFormDataToPayload(
   }
 }
 
+// Presets this binary still ships. A stored preset removed by an upgrade
+// normalizes away on parse so the drawer stays editable; on save the cleared
+// value persists and never trips the backend's unknown-preset 400.
+const knownSystemPromptPresets: ReadonlySet<string> = new Set(
+  FALLBACK_SYSTEM_PROMPT_PRESETS
+)
+
 /**
  * Parse the token setting JSON into its form fields. Malformed JSON degrades
  * to the defaults rather than failing drawer init, mirroring the backend's
- * tolerance for corrupted rows.
+ * tolerance for corrupted rows. A preset name the current binary no longer
+ * ships degrades to '' for the same reason: keeping it would make the unknown
+ * preset the only field the backend refuses to save.
  */
 function parseTokenSetting(
   raw: string | null | undefined
@@ -205,7 +215,8 @@ function parseTokenSetting(
     }>
     return {
       system_prompt_preset:
-        typeof parsed.system_prompt_preset === 'string'
+        typeof parsed.system_prompt_preset === 'string' &&
+        knownSystemPromptPresets.has(parsed.system_prompt_preset)
           ? parsed.system_prompt_preset
           : '',
       system_prompt:

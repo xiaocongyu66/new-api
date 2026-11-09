@@ -171,7 +171,8 @@ export function ApiKeysMutateDrawer({
 
   // Fetch the built-in jailbreak preset catalogue for the preset dropdown.
   // The catalogue endpoint is admin-only (/api/channel), so non-admin token
-  // owners skip the request and fall back to the static preset list.
+  // owners skip the request; an admin whose request fails falls back to the
+  // same static list instead of an empty dropdown.
   const currentUser = useAuthStore((s) => s.auth.user)
   const canQueryPresets = Boolean(currentUser && currentUser.role >= ROLE.ADMIN)
   const {

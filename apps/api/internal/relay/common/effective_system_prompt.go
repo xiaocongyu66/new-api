@@ -30,6 +30,10 @@ type EffectiveSystemPrompt struct {
 	Preset string
 	// AutoResolved marks preset names picked by the auto resolver.
 	AutoResolved bool
+	// PerModel marks channel prompts served from the per-model override table
+	// (SystemPromptModels) for the request model. Always false for the token
+	// source, which has no per-model table.
+	PerModel bool
 }
 
 // ResolveEffectiveSystemPrompt resolves the system prompt for a request with
@@ -79,5 +83,6 @@ func ResolveEffectiveSystemPrompt(c contract.Context, info *RelayInfo) Effective
 		Source:       SystemPromptSourceChannel,
 		Preset:       resolution.Preset,
 		AutoResolved: resolution.AutoResolved,
+		PerModel:     resolution.PerModel,
 	}
 }

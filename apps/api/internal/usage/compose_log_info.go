@@ -94,6 +94,7 @@ func GenerateTextOtherInfo(ctx contract.Context, relayInfo *relaycommon.RelayInf
 			"source":        relayInfo.SystemPromptAudit.Source,
 			"preset":        relayInfo.SystemPromptAudit.Preset,
 			"auto_resolved": relayInfo.SystemPromptAudit.AutoResolved,
+			"per_model":     relayInfo.SystemPromptAudit.PerModel,
 		}
 	}
 

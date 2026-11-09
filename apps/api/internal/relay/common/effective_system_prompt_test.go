@@ -81,6 +81,38 @@ func TestResolveEffectiveSystemPromptTokenAutoResolvesByModel(t *testing.T) {
 	assert.Equal(t, SystemPromptSourceToken, effective.Source)
 }
 
+func TestResolveEffectiveSystemPromptChannelPerModelFlag(t *testing.T) {
+	// Channel per-model hit: the audit must report the finer-grained source so
+	// operators can tell a SystemPromptModels entry from preset/plain text.
+	cc := newResolverContext(nil)
+	info := &RelayInfo{
+		OriginModelName: "gpt-4o",
+		ChannelMeta: &ChannelMeta{ChannelSetting: dto.ChannelSettings{
+			SystemPromptModels: map[string]string{"gpt-4o": "per-model text"},
+			SystemPrompt:       "plain text",
+		}},
+	}
+
+	effective := ResolveEffectiveSystemPrompt(cc, info)
+	assert.Equal(t, "per-model text", effective.Prompt)
+	assert.Equal(t, SystemPromptSourceChannel, effective.Source)
+	assert.True(t, effective.PerModel)
+	assert.False(t, effective.AutoResolved)
+
+	// A preset winning on the same settings is not a per-model hit, and the
+	// token layer never reports one because it has no per-model table.
+	info.ChannelMeta.ChannelSetting.SystemPromptModels = nil
+	info.ChannelMeta.ChannelSetting.SystemPromptPreset = promptpresets.PresetTavernCard
+	effective = ResolveEffectiveSystemPrompt(cc, info)
+	assert.False(t, effective.PerModel)
+
+	cc = newResolverContext(&dto.TokenSettings{SystemPromptPreset: promptpresets.PresetSillyTavern})
+	info.ChannelMeta.ChannelSetting.SystemPromptModels = map[string]string{"gpt-4o": "per-model text"}
+	effective = ResolveEffectiveSystemPrompt(cc, info)
+	assert.Equal(t, SystemPromptSourceToken, effective.Source)
+	assert.False(t, effective.PerModel)
+}
+
 func TestResolveEffectiveSystemPromptEmptyEverywhere(t *testing.T) {
 	cc := newResolverContext(nil)
 	info := &RelayInfo{OriginModelName: "gpt-4o", ChannelMeta: &ChannelMeta{}}

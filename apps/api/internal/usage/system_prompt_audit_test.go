@@ -15,16 +15,18 @@ import (
 
 // TestGenerateTextOtherInfoSystemPromptAudit pins the admin_info.system_prompt
 // audit shape: which layer supplied the injected prompt, the preset name that
-// produced it, and whether auto matching picked it. Nesting under admin_info
-// keeps the record admin-only because non-admin log views strip that object.
+// produced it, whether auto matching picked it, and whether a channel per-model
+// entry won. Nesting under admin_info keeps the record admin-only because
+// non-admin log views strip that object.
 func TestGenerateTextOtherInfoSystemPromptAudit(t *testing.T) {
 	tests := []struct {
-		name        string
-		audit       *relaycommon.EffectiveSystemPrompt
-		wantSource  string
-		wantPreset  string
-		wantAuto    bool
-		wantPresent bool
+		name         string
+		audit        *relaycommon.EffectiveSystemPrompt
+		wantSource   string
+		wantPreset   string
+		wantAuto     bool
+		wantPerModel bool
+		wantPresent  bool
 	}{
 		{
 			name:        "token fixed preset",
@@ -46,6 +48,13 @@ func TestGenerateTextOtherInfoSystemPromptAudit(t *testing.T) {
 			audit:       &relaycommon.EffectiveSystemPrompt{Prompt: "p", Source: relaycommon.SystemPromptSourceChannel},
 			wantSource:  "channel",
 			wantPresent: true,
+		},
+		{
+			name:         "channel per-model entry",
+			audit:        &relaycommon.EffectiveSystemPrompt{Prompt: "p", Source: relaycommon.SystemPromptSourceChannel, PerModel: true},
+			wantSource:   "channel",
+			wantPerModel: true,
+			wantPresent:  true,
 		},
 		{
 			name:        "no injection records nothing",
@@ -79,6 +88,7 @@ func TestGenerateTextOtherInfoSystemPromptAudit(t *testing.T) {
 			assert.Equal(t, tt.wantSource, fields["source"])
 			assert.Equal(t, tt.wantPreset, fields["preset"])
 			assert.Equal(t, tt.wantAuto, fields["auto_resolved"])
+			assert.Equal(t, tt.wantPerModel, fields["per_model"])
 		})
 	}
 }

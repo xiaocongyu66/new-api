@@ -39,6 +39,11 @@ type SystemPromptResolution struct {
 	Prompt       string
 	Preset       string
 	AutoResolved bool
+	// PerModel marks prompts served from ChannelSettings.SystemPromptModels,
+	// the per-model override table, rather than a preset or plain text.
+	// Token-level resolution never sets it: TokenSettings has no per-model
+	// table.
+	PerModel bool
 }
 
 // ResolveSystemPrompt resolves the token-level system prompt for modelName by

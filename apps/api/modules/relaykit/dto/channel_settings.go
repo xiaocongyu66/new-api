@@ -50,15 +50,16 @@ func (s *ChannelSettings) ResolveSystemPrompt(modelName string) string {
 }
 
 // ResolveSystemPromptDetail resolves like ResolveSystemPrompt but also reports
-// which preset produced the prompt, so callers can audit the prompt source
-// without re-running the priority chain.
+// which preset produced the prompt and whether a per-model SystemPromptModels
+// entry won, so callers can audit the prompt source without re-running the
+// priority chain.
 func (s *ChannelSettings) ResolveSystemPromptDetail(modelName string) SystemPromptResolution {
 	if s == nil {
 		return SystemPromptResolution{}
 	}
 	if s.SystemPromptModels != nil {
 		if p, ok := s.SystemPromptModels[modelName]; ok && p != "" {
-			return SystemPromptResolution{Prompt: p}
+			return SystemPromptResolution{Prompt: p, PerModel: true}
 		}
 	}
 	if s.SystemPromptPreset != "" {
