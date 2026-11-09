@@ -610,7 +610,6 @@
     "Auto-refreshing every {{seconds}}s": "Автообновление каждые {{seconds}} с",
     "Auto-retry status codes": "Коды авто-повтора",
     "Automatic selection": "Автоматический выбор",
-    "Automatic selection picks the preset matching the request model; pick a fixed preset to use it for every model.": "Автоматический выбор подбирает пресет под модель запроса; выберите фиксированный пресет, чтобы применять его ко всем моделям.",
     "Automatic selection picks the preset matching the request model; pick a fixed preset to use it for every model.": "Автоматический выбор подбирает пресет по модели запроса; фиксированный пресет применяется ко всем моделям.",
     "Automatically disable channel on repeated failures": "Автоматически отключать канал при повторных неудачах",
     "Automatically disable channels exceeding this response time": "Автоматически отключать каналы, превышающие это время ответа",

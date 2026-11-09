@@ -610,7 +610,6 @@
     "Auto-refreshing every {{seconds}}s": "每 {{seconds}} 秒自動重新整理",
     "Auto-retry status codes": "自動重試狀態碼",
     "Automatic selection": "自動選擇",
-    "Automatic selection picks the preset matching the request model; pick a fixed preset to use it for every model.": "自動選擇會依請求模型匹配對應破甲範本；指定固定範本則對所有模型使用同一份。",
     "Automatic selection picks the preset matching the request model; pick a fixed preset to use it for every model.": "自動選擇會依請求模型配對對應破甲範本；指定固定範本則對所有模型使用同一份。",
     "Automatically disable channel on repeated failures": "重複失敗時自動停用渠道",
     "Automatically disable channels exceeding this response time": "自動停用超出此回應時間的渠道",

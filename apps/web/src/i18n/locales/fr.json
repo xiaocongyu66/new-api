@@ -610,7 +610,6 @@
     "Auto-refreshing every {{seconds}}s": "Actualisation automatique toutes les {{seconds}} s",
     "Auto-retry status codes": "Codes de statut de nouvelle tentative auto",
     "Automatic selection": "Sélection automatique",
-    "Automatic selection picks the preset matching the request model; pick a fixed preset to use it for every model.": "La sélection automatique choisit le préréglage correspondant au modèle de la requête ; choisissez un préréglage fixe pour l’appliquer à tous les modèles.",
     "Automatic selection picks the preset matching the request model; pick a fixed preset to use it for every model.": "La sélection automatique choisit le preset correspondant au modèle de la requête ; choisissez un preset fixe pour l’appliquer à tous les modèles.",
     "Automatically disable channel on repeated failures": "Désactiver automatiquement le canal en cas d'échecs répétés",
     "Automatically disable channels exceeding this response time": "Désactiver automatiquement les canaux dépassant ce temps de réponse",
