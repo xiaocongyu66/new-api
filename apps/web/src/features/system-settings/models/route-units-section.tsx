@@ -513,19 +513,20 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
     );
   };
 
-  // One list per interval: enabled units first in fallback order, then disabled
-  // ones (which stay visible but cannot be dragged or ranked).
+  // Single list per interval: checked units first in fallback order (ranked),
+  // then channel-enabled units not yet included (rank "—", draggable into
+  // place). Channel-disabled units are filtered out entirely.
   const orderedFallbackUnits = (draft: ContextIntervalDraft) => {
     const byId = new Map(routeUnits.map((u) => [u.id, u]));
-    const enabled: { unit: RouteUnitView; rank: number }[] = [];
+    const ordered: { unit: RouteUnitView; rank: number }[] = [];
     for (const id of draft.fallbackOrder) {
       const unit = byId.get(id);
-      if (unit?.enabled) enabled.push({ unit, rank: enabled.length + 1 });
+      if (unit?.enabled) ordered.push({ unit, rank: ordered.length + 1 });
     }
-    const disabled = routeUnits
-      .filter((u) => !u.enabled)
+    const unordered = routeUnits
+      .filter((u) => u.enabled && !draft.fallbackOrder.includes(u.id))
       .map((unit) => ({ unit, rank: 0 }));
-    return [...enabled, ...disabled];
+    return [...ordered, ...unordered];
   };
 
   const handleFallbackDragStart =
@@ -555,11 +556,24 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
           if (i !== interval) return d;
           const order = [...d.fallbackOrder];
           const fromIdx = order.indexOf(draggedId);
-          const toIdx = order.indexOf(targetUnitId);
-          if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return d;
-          order.splice(fromIdx, 1);
-          order.splice(toIdx, 0, draggedId);
-          return { ...d, fallbackOrder: order };
+          let toIdx = order.indexOf(targetUnitId);
+          // Dropping onto a not-yet-included row appends the dragged unit at
+          // the end of the ordered group; both become one ordered sequence.
+          if (toIdx < 0) toIdx = order.length;
+          if (fromIdx < 0) {
+            order.splice(toIdx, 0, draggedId);
+          } else {
+            if (fromIdx === toIdx) return d;
+            order.splice(fromIdx, 1);
+            order.splice(toIdx, 0, draggedId);
+          }
+          return {
+            ...d,
+            fallbackOrder: order,
+            selectedUnitIds: order.filter(
+              (id) => routeUnits.find((u) => u.id === id)?.enabled,
+            ),
+          };
         }),
       );
       setDraggingFallback(null);
@@ -777,7 +791,7 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[40px]">{t("#")}</TableHead>
+                        <TableHead className="w-[40px]">#</TableHead>
                         <TableHead>{t("Scheduling Model")}</TableHead>
                         <TableHead className="w-[110px]">
                           {t("Weight")}
@@ -1025,15 +1039,18 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                 {drafts.map((draft, index) => (
                   <div
                     key={index}
-                    className={`space-y-3 rounded-lg border p-4 ${
+                    className={`space-y-4 rounded-lg border p-4 ${
                       draft.enabled ? undefined : "opacity-70"
                     }`}
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted font-mono text-xs font-medium">
                         {index + 1}
                       </span>
-                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <div className="flex flex-col gap-1">
+                        <Label className="text-xs text-muted-foreground">
+                          {t("Min tokens")}
+                        </Label>
                         <Input
                           type="number"
                           min={0}
@@ -1043,12 +1060,17 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                               min: Number(e.target.value) || 0,
                             })
                           }
-                          className="w-[120px]"
+                          className="w-32"
                           aria-label={t("Min tokens")}
                         />
-                        <span className="shrink-0 text-muted-foreground">
-                          –
-                        </span>
+                      </div>
+                      <span className="pb-2 shrink-0 text-muted-foreground">
+                        –
+                      </span>
+                      <div className="flex flex-col gap-1">
+                        <Label className="text-xs text-muted-foreground">
+                          {t("Max tokens (0 = unbounded)")}
+                        </Label>
                         <Input
                           type="number"
                           min={0}
@@ -1058,29 +1080,31 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                               max: Number(e.target.value) || 0,
                             })
                           }
-                          className="w-[120px]"
+                          className="w-32"
                           aria-label={t("Max tokens (0 = unbounded)")}
                         />
-                        <span className="shrink-0 text-xs text-muted-foreground">
-                          {t("tokens (0 = unbounded)")}
-                        </span>
                       </div>
-                      <Switch
-                        checked={draft.enabled}
-                        onCheckedChange={(checked) =>
-                          updateDraft(index, { enabled: checked })
-                        }
-                        aria-label={t("Enabled")}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => removeInterval(index)}
-                        aria-label={t("Remove interval")}
-                      >
-                        <Trash2 className="h-4 w-4 text-muted-foreground" />
-                      </Button>
+                      <div className="ml-auto flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={draft.enabled}
+                            onCheckedChange={(checked) =>
+                              updateDraft(index, { enabled: checked })
+                            }
+                            aria-label={t("Enabled")}
+                          />
+                          <span className="text-sm">{t("Enabled")}</span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => removeInterval(index)}
+                          aria-label={t("Remove interval")}
+                        >
+                          <Trash2 className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                      </div>
                     </div>
 
                     <div className="space-y-1.5">
@@ -1090,7 +1114,7 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                           "Drag to set the fallback order. Disabled units are excluded.",
                         )}
                       </p>
-                      {routeUnits.length === 0 ? (
+                      {orderedFallbackUnits(draft).length === 0 ? (
                         <div className="text-sm text-muted-foreground">
                           {t("No route units for this alias")}
                         </div>
@@ -1099,7 +1123,7 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                           {orderedFallbackUnits(draft).map(({ unit, rank }) => (
                             <div
                               key={unit.id}
-                              draggable={unit.enabled}
+                              draggable
                               onDragStart={handleFallbackDragStart(
                                 index,
                                 unit.id,
@@ -1107,19 +1131,11 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                               onDragOver={handleFallbackDragOver}
                               onDrop={handleFallbackDrop(index, unit.id)}
                               onDragEnd={() => setDraggingFallback(null)}
-                              className={`flex items-center gap-2 rounded border px-2 py-1.5 text-sm ${
-                                unit.enabled
-                                  ? "cursor-move bg-background"
-                                  : "opacity-50"
-                              }`}
+                              className="flex select-none cursor-move items-center gap-2 rounded-md border bg-background px-2 py-2 text-sm transition-colors hover:border-primary/40 hover:bg-muted/40"
                             >
-                              {unit.enabled ? (
-                                <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" />
-                              ) : (
-                                <span className="w-4 shrink-0" />
-                              )}
-                              <span className="w-5 shrink-0 text-center font-mono text-xs text-muted-foreground">
-                                {unit.enabled ? rank : "—"}
+                              <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" />
+                              <span className="w-6 shrink-0 text-center font-mono text-xs tabular-nums text-muted-foreground">
+                                {rank > 0 ? rank : "—"}
                               </span>
                               <span className="min-w-0 flex-1 truncate">
                                 {unit.channel_name} · {unit.upstream_model}
@@ -1128,7 +1144,6 @@ export function RouteUnitsSection({}: RouteUnitsSectionProps) {
                                 checked={draft.selectedUnitIds.includes(
                                   unit.id,
                                 )}
-                                disabled={!unit.enabled}
                                 onCheckedChange={() =>
                                   toggleUnit(index, unit.id)
                                 }

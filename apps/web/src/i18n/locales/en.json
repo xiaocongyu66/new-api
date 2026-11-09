@@ -1,5 +1,4 @@
 {
-  "Batch Add": "Batch Add",
   "translation": {
     "360": "360",
     "1000": "1000",
@@ -88,7 +87,6 @@
     "@lobehub/icons key name": "@lobehub/icons key name",
     "/status/": "/status/",
     "/your/endpoint": "/your/endpoint",
-    "#": "#",
     "#1 App": "#1 App",
     "#1 by usage": "#1 by usage",
     "#1 Model": "#1 Model",
@@ -2378,7 +2376,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Related Projects",
     "footer.defaultCopyright": "All rights reserved.",
-    "footer.new\u0061pi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
+    "footer.newapi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment",
     "For private deployments, format: https://fastgpt.run/api/openapi": "For private deployments, format: https://fastgpt.run/api/openapi",
     "For security, existing access tokens cannot be displayed. Regenerate only when you need a new token.": "For security, existing access tokens cannot be displayed. Regenerate only when you need a new token.",
@@ -6163,6 +6161,10 @@
     "Failed to save context routes": "Failed to save context routes",
     "Save dispatch policy": "Save dispatch policy",
     "Backend not updated: dispatch policy endpoint unavailable": "Backend not updated: dispatch policy endpoint unavailable",
-    "Fallback order": "Fallback order"
+    "Fallback order": "Fallback order",
+    "Delegate mode forwards routing to the configured fallback alias.": "Le mode délégué transfère le routage vers l'alias de repli configuré.",
+    "Remove interval": "Retirer l'intervalle",
+    "Drag to set the fallback order. Disabled units are excluded.": "Glissez pour définir l'ordre de repli. Les unités désactivées sont exclues.",
+    "tokens (0 = unbounded)": "tokens (0 = illimité)"
   }
 }
