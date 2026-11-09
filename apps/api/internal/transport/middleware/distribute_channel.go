@@ -407,6 +407,7 @@ func getModelRequest(c contract.Context) (*ModelRequest, bool, error) {
 			return nil, false, err
 		}
 		modelRequest.Model = req.Model
+		modelRequest.InputTokens = req.InputTokens
 	}
 	if strings.HasPrefix(c.Path(), "/v1/realtime") {
 		//wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01
@@ -531,7 +532,19 @@ func SetupContextForSelectedChannel(c contract.Context, route *catalog.SelectedR
 		common.SetCtxKey(c, constant.ContextKeyChannelOrganization, *channel.OpenAIOrganization)
 	}
 	common.SetCtxKey(c, constant.ContextKeyChannelAutoBan, channel.GetAutoBan())
-	common.SetCtxKey(c, constant.ContextKeyChannelModelMapping, channel.GetModelMapping())
+	modelMapping := strings.TrimSpace(channel.GetModelMapping())
+	// Context-range route rows may pin a different upstream model per interval.
+	// The relay only reads channel.model_mapping, so translate the selected
+	// route's upstream into a per-request mapping unless the channel already
+	// maps this alias explicitly (operator intent wins; "{}" counts as unmapped).
+	if modelMapping == "{}" {
+		modelMapping = ""
+	}
+	if route.UpstreamModel != "" && route.UpstreamModel != modelName && modelMapping == "" {
+		mapped, _ := common.Marshal(map[string]string{modelName: route.UpstreamModel})
+		modelMapping = string(mapped)
+	}
+	common.SetCtxKey(c, constant.ContextKeyChannelModelMapping, modelMapping)
 	common.SetCtxKey(c, constant.ContextKeyChannelStatusCodeMapping, channel.GetStatusCodeMapping())
 	if channel.ChannelInfo.IsMultiKey {
 		common.SetCtxKey(c, constant.ContextKeyChannelIsMultiKey, true)
