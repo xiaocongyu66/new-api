@@ -335,3 +335,52 @@ func TestModelScopedQuotaRowsAreIndependent(t *testing.T) {
 	_, err = PreConsumeUserSubscription("model-quota-2", 9323, "vip", "gpt-4o", 0, 30)
 	require.NoError(t, err)
 }
+
+// Quota-measured scopes are money pools: they must stay usable for non-text
+// relay formats, which gate request counts off via allowRequestCount=false.
+func TestQuotaScopedSubscriptionUsableForNonTextFormats(t *testing.T) {
+	setupIdentityTestDB(t)
+	plan := seedSubscriptionKindPlan(t, 9331, SubscriptionKindTime, []string{"vip"}, nil, 0)
+	require.NoError(t, dbx.DB.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).
+		Updates(map[string]interface{}{
+			"scope":   SubscriptionScopeGroup,
+			"measure": SubscriptionMeasureQuota,
+		}).Error)
+	plan.Scope = SubscriptionScopeGroup
+	plan.Measure = SubscriptionMeasureQuota
+	sub := activeSubscriptionForKindTest(t, 9331, plan)
+	stampSubscriptionAxes(t, sub.Id, SubscriptionScopeGroup, SubscriptionMeasureQuota)
+	require.NoError(t, dbx.DB.Create(&SubscriptionRequestCounter{
+		UserSubscriptionId: sub.Id,
+		GroupName:          "vip",
+		ModelName:          "",
+		Measure:            SubscriptionMeasureQuota,
+		Total:              100,
+	}).Error)
+
+	usable, err := HasUsableUserSubscription(9331, "vip", "gpt-image-1", false)
+	require.NoError(t, err)
+	assert.True(t, usable, "quota-measured scopes must serve non-text formats")
+
+	// Count-measured scopes stay text-only.
+	countPlan := seedSubscriptionKindPlan(t, 9332, SubscriptionKindRequest, []string{"vip"}, nil, 0)
+	require.NoError(t, dbx.DB.Model(&SubscriptionPlan{}).Where("id = ?", countPlan.Id).
+		Updates(map[string]interface{}{
+			"scope":   SubscriptionScopeGroup,
+			"measure": SubscriptionMeasureCount,
+		}).Error)
+	countPlan.Scope = SubscriptionScopeGroup
+	countPlan.Measure = SubscriptionMeasureCount
+	countSub := activeSubscriptionForKindTest(t, 9332, countPlan)
+	stampSubscriptionAxes(t, countSub.Id, SubscriptionScopeGroup, SubscriptionMeasureCount)
+	require.NoError(t, dbx.DB.Create(&SubscriptionRequestCounter{
+		UserSubscriptionId: countSub.Id,
+		GroupName:          "vip",
+		ModelName:          "",
+		Measure:            SubscriptionMeasureCount,
+		Total:              5,
+	}).Error)
+	usable, err = HasUsableUserSubscription(9332, "vip", "gpt-image-1", false)
+	require.NoError(t, err)
+	assert.False(t, usable, "count-measured scopes keep the text-only contract")
+}

@@ -1250,9 +1250,12 @@ func HasUsableUserSubscription(userId int, usingGroup string, modelName string, 
 		if !subscriptionAllowsGroup(&subs[i], usingGroup) {
 			continue
 		}
-		scope, _ := subscriptionLimitAxes(&subs[i])
+		scope, measure := subscriptionLimitAxes(&subs[i])
 		if scope != SubscriptionScopeAll {
-			if !allowRequestCount {
+			// Count-measured plans are text-generation only (the legacy
+			// request-kind contract); quota-measured rows are money pools and
+			// serve every relay format.
+			if measure == SubscriptionMeasureCount && !allowRequestCount {
 				continue
 			}
 			requestSubIds = append(requestSubIds, subs[i].Id)
