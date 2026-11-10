@@ -37,6 +37,8 @@ const subscriptionRequestCounterSchema = z.object({
   model_name: z.string(),
   total: z.number(),
   used: z.number(),
+  quota_total: z.number().optional(),
+  quota_used: z.number().optional(),
 })
 export type SubscriptionRequestCounter = z.infer<
   typeof subscriptionRequestCounterSchema

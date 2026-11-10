@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/cachex"
 	"github.com/samber/hot"
@@ -345,8 +346,14 @@ type SubscriptionRequestCounter struct {
 	ModelName          string `json:"model_name" gorm:"type:varchar(128);uniqueIndex:idx_sub_request_counter,priority:3"`
 	Total              int64  `json:"total" gorm:"type:bigint;not null;default:0"`
 	Used               int64  `json:"used" gorm:"type:bigint;not null;default:0"`
-	CreatedAt          int64  `json:"created_at" gorm:"bigint"`
-	UpdatedAt          int64  `json:"updated_at" gorm:"bigint"`
+	// QuotaTotal / QuotaUsed snapshot the per-counter budget converted from
+	// model price x group ratio at purchase time, and the quota actually
+	// settled against this counter. They are attribution/bookkeeping columns:
+	// the billing truth stays in the subscription's amount_total/amount_used.
+	QuotaTotal int64 `json:"quota_total" gorm:"type:bigint;not null;default:0"`
+	QuotaUsed  int64 `json:"quota_used" gorm:"type:bigint;not null;default:0"`
+	CreatedAt  int64 `json:"created_at" gorm:"bigint"`
+	UpdatedAt  int64 `json:"updated_at" gorm:"bigint"`
 }
 
 func (c *SubscriptionRequestCounter) BeforeCreate(tx *gorm.DB) error {
@@ -812,12 +819,33 @@ func createSubscriptionRequestCountersTx(tx *gorm.DB, userSubscriptionId int, ru
 			totals[key] += rule.Count
 		}
 	}
+	groupRatios := ratio_setting.GetGroupRatioCopy()
+	quotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 	for _, key := range order {
 		counter := &SubscriptionRequestCounter{
 			UserSubscriptionId: userSubscriptionId,
 			GroupName:          key.group,
 			ModelName:          key.model,
 			Total:              totals[key],
+		}
+		// Snapshot the indicative budget: count x model price x group ratio.
+		// Request-time settlement always uses the CURRENT price, so this column
+		// seeds display and admin expectations only; per-call models without a
+		// configured price leave it 0 (count-only, budget tracked nowhere).
+		if groupRatio := groupRatios[key.group]; groupRatio > 0 {
+			if modelPrice, ok := ratio_setting.GetModelPrice(key.model, false); ok && modelPrice > 0 {
+				budget := decimal.NewFromInt(totals[key]).
+					Mul(decimal.NewFromFloat(modelPrice)).
+					Mul(decimal.NewFromFloat(groupRatio)).
+					Mul(quotaPerUnit)
+				quota, clamp := common.QuotaFromDecimalChecked(budget)
+				if clamp != nil {
+					common.SysError(fmt.Sprintf(
+						"request-counter budget clamped for subscription %d model %s: %s",
+						userSubscriptionId, key.model, clamp.Error()))
+				}
+				counter.QuotaTotal = int64(quota)
+			}
 		}
 		if err := tx.Create(counter).Error; err != nil {
 			return err
@@ -1604,6 +1632,7 @@ func RefundSubscriptionPreConsume(requestId string) error {
 		if err := postConsumeUserSubscriptionDeltaTx(tx, record.UserSubscriptionId, -record.PreConsumed); err != nil {
 			return err
 		}
+		attributeSubscriptionCounterQuotaTx(tx, record.RequestCounterId, -record.PreConsumed)
 		record.Status = "refunded"
 		return tx.Save(&record).Error
 	})
@@ -1630,6 +1659,30 @@ func WaiveSubscriptionRequestConsume(requestId string) error {
 		record.RequestCounterId = 0
 		return tx.Save(&record).Error
 	})
+}
+
+// attributeSubscriptionCounterQuotaTx moves settled quota onto the counter's
+// attribution column. delta may be negative (refunds). Best-effort: a missing
+// row is tolerated because the amount legs carry the billing truth.
+func attributeSubscriptionCounterQuotaTx(tx *gorm.DB, counterId int, delta int64) {
+	if counterId <= 0 || delta == 0 {
+		return
+	}
+	var counter SubscriptionRequestCounter
+	if err := dbx.LockForUpdate(tx).Where("id = ?", counterId).First(&counter).Error; err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			common.SysError(fmt.Sprintf("failed to load request counter %d for quota attribution: %s", counterId, err.Error()))
+		}
+		return
+	}
+	newUsed := counter.QuotaUsed + delta
+	if newUsed < 0 {
+		newUsed = 0
+	}
+	counter.QuotaUsed = newUsed
+	if err := tx.Save(&counter).Error; err != nil {
+		common.SysError(fmt.Sprintf("failed to save request counter %d quota attribution: %s", counterId, err.Error()))
+	}
 }
 
 // releaseSubscriptionRequestCounterTx decrements a request counter for a
@@ -1716,6 +1769,26 @@ func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error
 	}
 	return dbx.DB.Transaction(func(tx *gorm.DB) error {
 		return postConsumeUserSubscriptionDeltaTx(tx, userSubscriptionId, delta)
+	})
+}
+
+// AttributeSubscriptionCounterQuota mirrors a settled (or refunded) quota delta
+// onto the request counter this requestId reserved. delta may be negative.
+// Best-effort: rows without a counter (amount-kind records) are a no-op.
+func AttributeSubscriptionCounterQuota(requestId string, delta int64) error {
+	if delta == 0 || strings.TrimSpace(requestId) == "" {
+		return nil
+	}
+	return dbx.DB.Transaction(func(tx *gorm.DB) error {
+		var record SubscriptionPreConsumeRecord
+		if err := tx.Where("request_id = ?", requestId).First(&record).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil
+			}
+			return err
+		}
+		attributeSubscriptionCounterQuotaTx(tx, record.RequestCounterId, delta)
+		return nil
 	})
 }
 

@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useTranslation } from 'react-i18next'
 
 import { Progress } from '@/components/ui/progress'
+import { formatQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import type { SubscriptionRequestCounter } from '../types'
@@ -54,6 +55,8 @@ export function RequestCountBars({
         const percent =
           total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0
         const exhausted = total > 0 && used >= total
+        const quotaTotal = Number(counter.quota_total || 0)
+        const quotaUsed = Number(counter.quota_used || 0)
         return (
           <div key={counter.id} className='space-y-1'>
             <Progress value={percent} className='h-1.5' />
@@ -70,6 +73,12 @@ export function RequestCountBars({
                 {used}/{total}
               </span>
             </div>
+            {quotaTotal > 0 && (
+              <div className='text-muted-foreground text-[10px] tabular-nums'>
+                {t('Budget')}: {formatQuota(quotaUsed)}/
+                {formatQuota(quotaTotal)}
+              </div>
+            )}
           </div>
         )
       })}
