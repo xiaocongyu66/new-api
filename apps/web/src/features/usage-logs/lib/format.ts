@@ -26,6 +26,7 @@ import {
 
 import type { UsageLog } from '../data/schema'
 import type { LogOtherData } from '../types'
+import { isTieredBillingMode } from '@/features/pricing/lib/dynamic-price'
 
 const PARAM_OVERRIDE_ACTION_MAP: Record<string, string> = {
   set: 'Set',
@@ -389,7 +390,7 @@ export function hasAnyCacheTokens(
 export function getTieredBillingSummary(
   other: LogOtherData | null
 ): TieredBillingSummary | null {
-  if (!other || other.billing_mode !== 'tiered_expr') return null
+  if (!other || !isTieredBillingMode(other.billing_mode)) return null
   const exprStr = decodeBillingExprB64(other.expr_b64)
   if (!exprStr) return null
   const tiers = parseTiersFromExpr(exprStr)

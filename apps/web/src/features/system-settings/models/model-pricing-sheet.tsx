@@ -54,6 +54,14 @@ import {
   InputGroupInput,
 } from '@/components/ui/input-group'
 import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -63,6 +71,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 
+import { ContextTierTable } from './context-tier-table'
 import {
   EMPTY_LANE_ENABLED,
   EMPTY_LANE_PRICES,
@@ -76,12 +85,18 @@ import {
   outputLaneConfig,
   ratioFieldByLane,
   toNumberOrNull,
+  formatTierValidationError,
+  validateContextCallTiersStructured,
+  validateContextTiersStructured,
+  type TierValidationError,
   type LaneKey,
   type ModelPricingFormValues,
   type ModelRatioData,
   type PricingMode,
+  isPricingMode,
 } from './model-pricing-core'
 import { PriceInput, PriceLane } from './model-pricing-inputs'
+import { getModeLabel } from './model-pricing-snapshots'
 import { formatPricingNumber } from './pricing-format'
 import { TieredPricingEditor } from './tiered-pricing-editor'
 
@@ -121,7 +136,7 @@ export const ModelPricingSheet = forwardRef<
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side='right'
-        className={sideDrawerContentClassName('sm:max-w-2xl')}
+        className={sideDrawerContentClassName('sm:max-w-4xl')}
       >
         <SheetHeader className='sr-only'>
           <SheetTitle>{title}</SheetTitle>
@@ -148,6 +163,9 @@ export const ModelPricingEditorPanel = forwardRef<
 ) {
   const { t } = useTranslation()
   const [pricingMode, setPricingMode] = useState<PricingMode>('per-token')
+  // Which stored method actually bills this model (independent of the tab
+  // being edited); persisted into billing_setting.billing_mode.
+  const [activeMethod, setActiveMethod] = useState<PricingMode>('per-token')
   const [promptPrice, setPromptPrice] = useState('')
   const [lanePrices, setLanePrices] = useState<Record<LaneKey, string>>({
     ...EMPTY_LANE_PRICES,
@@ -157,6 +175,12 @@ export const ModelPricingEditorPanel = forwardRef<
   })
   const [billingExpr, setBillingExpr] = useState('')
   const [requestRuleExpr, setRequestRuleExpr] = useState('')
+  const [contextTiers, setContextTiers] = useState('')
+  const [contextTiersError, setContextTiersError] =
+    useState<TierValidationError | null>(null)
+  const [contextCallTiers, setContextCallTiers] = useState('')
+  const [contextCallTiersError, setContextCallTiersError] =
+    useState<TierValidationError | null>(null)
   const [editorReloadToken, setEditorReloadToken] = useState(0)
   const isEditMode = !!editData
   // The backend owns the default completion ratio; a locked one ignores the
@@ -200,15 +224,23 @@ export const ModelPricingEditorPanel = forwardRef<
         audioRatio: editData.audioRatio || '',
         audioCompletionRatio: editData.audioCompletionRatio || '',
       })
-      setPricingMode(
+      const storedMode: PricingMode =
         editData.billingMode === 'tiered_expr'
           ? 'tiered_expr'
-          : editData.price
-            ? 'per-request'
-            : 'per-token'
-      )
+          : editData.billingMode === 'context_tier'
+            ? 'context_tier'
+            : editData.billingMode === 'context_tier_per_call'
+              ? 'context_tier_per_call'
+              : editData.price
+                ? 'per-request'
+                : 'per-token'
+      // billingMode stores which method actually bills; the editor opens on it.
+      setActiveMethod(storedMode)
+      setPricingMode(storedMode)
       setBillingExpr(editData.billingExpr || '')
       setRequestRuleExpr(editData.requestRuleExpr || '')
+      setContextTiers(editData.billingContextTier || '')
+      setContextCallTiers(editData.billingContextTierPerCall || '')
     } else {
       form.reset({
         name: '',
@@ -222,9 +254,14 @@ export const ModelPricingEditorPanel = forwardRef<
         audioCompletionRatio: '',
       })
       setPricingMode('per-token')
+      setActiveMethod('per-token')
       setBillingExpr('')
       setRequestRuleExpr('')
+      setContextTiers('')
+      setContextCallTiers('')
     }
+    setContextTiersError(null)
+    setContextCallTiersError(null)
 
     setPromptPrice(nextLaneState.promptPrice)
     setLanePrices(nextLaneState.prices)
@@ -378,7 +415,8 @@ export const ModelPricingEditorPanel = forwardRef<
   }
 
   const handleModeChange = (value: string) => {
-    const nextMode = value as PricingMode
+    if (!isPricingMode(value)) return
+    const nextMode = value
     setPricingMode(nextMode)
     if (nextMode === 'tiered_expr' && !billingExpr) {
       setBillingExpr('tier("base", p * 0 + c * 0)')
@@ -387,8 +425,20 @@ export const ModelPricingEditorPanel = forwardRef<
 
   const watchedValues = form.watch()
   const previewRows = useMemo(
-    () =>
-      buildPreviewRows(
+    () => [
+      {
+        key: 'active-method',
+        label: t('Active billing method'),
+        multiline: true,
+        value:
+          activeMethod === pricingMode
+            ? t(getModeLabel(activeMethod))
+            : t('Editing {{edited}}; requests bill with {{active}}.', {
+                edited: t(getModeLabel(pricingMode)),
+                active: t(getModeLabel(activeMethod)),
+              }),
+      },
+      ...buildPreviewRows(
         watchedValues,
         pricingMode,
         billingExpr,
@@ -396,10 +446,16 @@ export const ModelPricingEditorPanel = forwardRef<
         promptPrice,
         lanePrices,
         laneEnabled,
+        contextTiers,
+        contextCallTiers,
         t
       ),
+    ],
     [
+      activeMethod,
       billingExpr,
+      contextCallTiers,
+      contextTiers,
       laneEnabled,
       lanePrices,
       pricingMode,
@@ -453,8 +509,42 @@ export const ModelPricingEditorPanel = forwardRef<
       nextWarnings.push(t('Audio output price requires an audio input price.'))
     }
 
+    // Active-method fallback warning: picking a method with no stored prices
+    // bills plain per-token ratios instead. The validators return null when a
+    // config is valid, so warn on a non-null result.
+    if (
+      activeMethod === 'context_tier' &&
+      validateContextTiersStructured(contextTiers) !== null
+    ) {
+      nextWarnings.push(
+        t(
+          'Active method has no stored tier prices; requests will fall back to per-token ratios.'
+        )
+      )
+    }
+    if (
+      activeMethod === 'context_tier_per_call' &&
+      validateContextCallTiersStructured(contextCallTiers) !== null
+    ) {
+      nextWarnings.push(
+        t(
+          'Active method has no stored per-call prices; requests will fall back to per-token ratios.'
+        )
+      )
+    }
+
     return nextWarnings
-  }, [editData, laneEnabled, lanePrices, pricingMode, promptPrice, t])
+  }, [
+    activeMethod,
+    contextCallTiers,
+    contextTiers,
+    editData,
+    laneEnabled,
+    lanePrices,
+    pricingMode,
+    promptPrice,
+    t,
+  ])
 
   const validatePricingValues = useCallback(() => {
     if (
@@ -482,14 +572,38 @@ export const ModelPricingEditorPanel = forwardRef<
       return false
     }
 
+    if (pricingMode === 'context_tier') {
+      const tiersError = validateContextTiersStructured(contextTiers)
+      setContextTiersError(tiersError)
+      if (tiersError) return false
+    }
+
+    if (pricingMode === 'context_tier_per_call') {
+      const callTiersError =
+        validateContextCallTiersStructured(contextCallTiers)
+      setContextCallTiersError(callTiersError)
+      if (callTiersError) return false
+    }
+
     return true
-  }, [form, laneEnabled, lanePrices, pricingMode, promptPrice, t])
+  }, [
+    form,
+    laneEnabled,
+    lanePrices,
+    pricingMode,
+    promptPrice,
+    t,
+    contextTiers,
+    contextCallTiers,
+  ])
 
   const buildSubmitData = useCallback(
     (values: ModelPricingFormValues) => {
       const data: ModelRatioData = {
         name: values.name.trim(),
-        billingMode: pricingMode,
+        // billingMode is the ACTIVE method (what requests bill with), not the
+        // tab being edited; every method keeps its own stored prices.
+        billingMode: activeMethod,
         price: values.price || '',
         ratio: values.ratio || '',
         cacheRatio: values.cacheRatio || '',
@@ -498,16 +612,17 @@ export const ModelPricingEditorPanel = forwardRef<
         imageRatio: values.imageRatio || '',
         audioRatio: values.audioRatio || '',
         audioCompletionRatio: values.audioCompletionRatio || '',
-      }
-
-      if (pricingMode === 'tiered_expr') {
-        data.billingExpr = billingExpr
-        data.requestRuleExpr = requestRuleExpr
+        // Always ship every method's current editor state; an empty value
+        // means "this method has no stored prices" and clears its entry.
+        billingExpr: billingExpr,
+        requestRuleExpr: requestRuleExpr,
+        billingContextTier: contextTiers,
+        billingContextTierPerCall: contextCallTiers,
       }
 
       return data
     },
-    [billingExpr, pricingMode, requestRuleExpr]
+    [activeMethod, billingExpr, requestRuleExpr, contextTiers, contextCallTiers]
   )
 
   useImperativeHandle(
@@ -547,7 +662,7 @@ export const ModelPricingEditorPanel = forwardRef<
           className='flex min-h-0 flex-1 flex-col'
           autoComplete='off'
         >
-          <div className='min-h-0 flex-1 overflow-y-auto no-scrollbar p-4 pb-6'>
+          <div className='no-scrollbar min-h-0 flex-1 overflow-y-auto p-4 pb-6'>
             <div className='grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(220px,260px)]'>
               <FieldGroup>
                 {warnings.length > 0 && (
@@ -586,136 +701,248 @@ export const ModelPricingEditorPanel = forwardRef<
                   )}
                 />
 
-                <Tabs
-                  value={pricingMode}
-                  onValueChange={handleModeChange}
-                  className='gap-4'
-                >
-                  <TabsList className='grid w-full grid-cols-3'>
-                    <TabsTrigger value='per-token'>
-                      {t('Per-token')}
-                    </TabsTrigger>
-                    <TabsTrigger value='per-request'>
-                      {t('Per-request')}
-                    </TabsTrigger>
-                    <TabsTrigger value='tiered_expr'>
-                      {t('Expression')}
-                    </TabsTrigger>
-                  </TabsList>
+                <div className='flex flex-col gap-4'>
+                  <Field>
+                    <FieldLabel>{t('Active billing method')}</FieldLabel>
+                    <Select
+                      value={activeMethod}
+                      onValueChange={(v) => {
+                        if (typeof v === 'string' && isPricingMode(v)) {
+                          setActiveMethod(v)
+                        }
+                      }}
+                    >
+                      <SelectTrigger className='w-full'>
+                        <SelectValue>
+                          {(value: string) => t(getModeLabel(value))}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value='per-token'>
+                            {t('Per-token')}
+                          </SelectItem>
+                          <SelectItem value='per-request'>
+                            {t('Per-request')}
+                          </SelectItem>
+                          <SelectItem value='tiered_expr'>
+                            {t('Expression')}
+                          </SelectItem>
+                          <SelectItem value='context_tier'>
+                            {t('Per-token context tiers')}
+                          </SelectItem>
+                          <SelectItem value='context_tier_per_call'>
+                            {t('Per-call context tiers')}
+                          </SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    <FieldDescription>
+                      {t(
+                        'This method is what requests actually bill with. Every method below keeps its own stored prices; picking one without prices falls back to per-token ratios.'
+                      )}
+                    </FieldDescription>
+                  </Field>
 
-                  <TabsContent value='per-token' className='pt-0'>
-                    <FieldGroup className='gap-5'>
-                      <div className='flex flex-col gap-4'>
-                        <Field>
-                          <FieldLabel>{t('Input price')}</FieldLabel>
-                          <PriceInput
-                            value={promptPrice}
-                            placeholder='3'
-                            onChange={handlePromptPriceChange}
-                          />
-                          <FieldDescription>
-                            {t('USD price per 1M input tokens.')}
-                          </FieldDescription>
-                        </Field>
+                  <Tabs
+                    value={pricingMode}
+                    onValueChange={handleModeChange}
+                    className='gap-4'
+                  >
+                    <TabsList className='no-scrollbar flex w-full justify-start overflow-x-auto sm:grid sm:grid-cols-5'>
+                      <TabsTrigger
+                        value='per-token'
+                        className='shrink-0 text-xs whitespace-nowrap sm:text-sm'
+                      >
+                        {t('Per-token')}
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value='per-request'
+                        className='shrink-0 text-xs whitespace-nowrap sm:text-sm'
+                      >
+                        {t('Per-request')}
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value='tiered_expr'
+                        className='shrink-0 text-xs whitespace-nowrap sm:text-sm'
+                      >
+                        {t('Expression')}
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value='context_tier'
+                        className='shrink-0 text-xs whitespace-nowrap sm:text-sm'
+                      >
+                        {t('Per-token tiers')}
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value='context_tier_per_call'
+                        className='shrink-0 text-xs whitespace-nowrap sm:text-sm'
+                      >
+                        {t('Per-call tiers')}
+                      </TabsTrigger>
+                    </TabsList>
 
-                        <Field>
-                          <FieldLabel>{t('Output price')}</FieldLabel>
-                          <PriceInput
-                            value={lanePrices.completion}
-                            placeholder={outputLaneConfig.placeholder}
-                            disabled={completionRatioLocked}
-                            onChange={handleOutputPriceChange}
-                          />
-                          <FieldDescription>
-                            {completionRatioLocked
-                              ? t('Locked by the backend default.')
-                              : t('USD price per 1M output tokens.')}
-                          </FieldDescription>
-                        </Field>
-                      </div>
-
-                      <div className='grid gap-3 sm:grid-cols-[repeat(auto-fit,minmax(400px,1fr))]'>
-                        {laneConfigs.map((lane) => {
-                          const disabled =
-                            lane.key === 'audioOutput' &&
-                            (!laneEnabled.audioInput ||
-                              !hasValue(lanePrices.audioInput))
-                          return (
-                            <PriceLane
-                              key={lane.key}
-                              title={t(lane.titleKey)}
-                              description={t(lane.descriptionKey)}
-                              placeholder={lane.placeholder}
-                              value={lanePrices[lane.key]}
-                              enabled={laneEnabled[lane.key]}
-                              disabled={disabled}
-                              onEnabledChange={(checked) =>
-                                handleLaneToggle(lane.key, checked)
-                              }
-                              onChange={(value) =>
-                                handleLanePriceChange(lane.key, value)
-                              }
+                    <TabsContent value='per-token' className='pt-0'>
+                      <FieldGroup className='gap-5'>
+                        <div className='flex flex-col gap-4'>
+                          <Field>
+                            <FieldLabel>{t('Input price')}</FieldLabel>
+                            <PriceInput
+                              value={promptPrice}
+                              placeholder='3'
+                              onChange={handlePromptPriceChange}
                             />
-                          )
-                        })}
-                      </div>
-                    </FieldGroup>
-                  </TabsContent>
+                            <FieldDescription>
+                              {t('USD price per 1M input tokens.')}
+                            </FieldDescription>
+                          </Field>
 
-                  <TabsContent value='per-request' className='pt-0'>
-                    <FieldGroup className='gap-5'>
-                      <FormField
-                        control={form.control}
-                        name='price'
-                        render={({ field }) => (
-                          <FormItem className='contents'>
-                            <Field>
-                              <FieldLabel>{t('Fixed price')}</FieldLabel>
-                              <FormControl>
-                                <InputGroup>
-                                  <InputGroupAddon>$</InputGroupAddon>
-                                  <InputGroupInput
-                                    inputMode='decimal'
-                                    placeholder='0.01'
-                                    {...field}
-                                    onChange={(event) => {
-                                      const value = event.target.value
-                                      if (numericDraftRegex.test(value)) {
-                                        field.onChange(value)
-                                      }
-                                    }}
-                                  />
-                                  <InputGroupAddon align='inline-end'>
-                                    {t('per request')}
-                                  </InputGroupAddon>
-                                </InputGroup>
-                              </FormControl>
-                              <FieldDescription>
-                                {t(
-                                  'Cost in USD per request, regardless of tokens used.'
-                                )}
-                              </FieldDescription>
-                              <FormMessage />
-                            </Field>
-                          </FormItem>
-                        )}
-                      />
-                    </FieldGroup>
-                  </TabsContent>
+                          <Field>
+                            <FieldLabel>{t('Output price')}</FieldLabel>
+                            <PriceInput
+                              value={lanePrices.completion}
+                              placeholder={outputLaneConfig.placeholder}
+                              disabled={completionRatioLocked}
+                              onChange={handleOutputPriceChange}
+                            />
+                            <FieldDescription>
+                              {completionRatioLocked
+                                ? t('Locked by the backend default.')
+                                : t('USD price per 1M output tokens.')}
+                            </FieldDescription>
+                          </Field>
+                        </div>
 
-                  <TabsContent value='tiered_expr' className='pt-0'>
-                    <FieldGroup className='gap-5'>
-                      <TieredPricingEditor
-                        key={editorReloadToken}
-                        modelName={watchedValues.name}
-                        billingExpr={billingExpr}
-                        requestRuleExpr={requestRuleExpr}
-                        onBillingExprChange={setBillingExpr}
-                        onRequestRuleExprChange={setRequestRuleExpr}
-                      />
-                    </FieldGroup>
-                  </TabsContent>
-                </Tabs>
+                        <div className='grid gap-3 sm:grid-cols-[repeat(auto-fit,minmax(400px,1fr))]'>
+                          {laneConfigs.map((lane) => {
+                            const disabled =
+                              lane.key === 'audioOutput' &&
+                              (!laneEnabled.audioInput ||
+                                !hasValue(lanePrices.audioInput))
+                            return (
+                              <PriceLane
+                                key={lane.key}
+                                title={t(lane.titleKey)}
+                                description={t(lane.descriptionKey)}
+                                placeholder={lane.placeholder}
+                                value={lanePrices[lane.key]}
+                                enabled={laneEnabled[lane.key]}
+                                disabled={disabled}
+                                onEnabledChange={(checked) =>
+                                  handleLaneToggle(lane.key, checked)
+                                }
+                                onChange={(value) =>
+                                  handleLanePriceChange(lane.key, value)
+                                }
+                              />
+                            )
+                          })}
+                        </div>
+                      </FieldGroup>
+                    </TabsContent>
+
+                    <TabsContent value='per-request' className='pt-0'>
+                      <FieldGroup className='gap-5'>
+                        <FormField
+                          control={form.control}
+                          name='price'
+                          render={({ field }) => (
+                            <FormItem className='contents'>
+                              <Field>
+                                <FieldLabel>{t('Fixed price')}</FieldLabel>
+                                <FormControl>
+                                  <InputGroup>
+                                    <InputGroupAddon>$</InputGroupAddon>
+                                    <InputGroupInput
+                                      inputMode='decimal'
+                                      placeholder='0.01'
+                                      {...field}
+                                      onChange={(event) => {
+                                        const value = event.target.value
+                                        if (numericDraftRegex.test(value)) {
+                                          field.onChange(value)
+                                        }
+                                      }}
+                                    />
+                                    <InputGroupAddon align='inline-end'>
+                                      {t('per request')}
+                                    </InputGroupAddon>
+                                  </InputGroup>
+                                </FormControl>
+                                <FieldDescription>
+                                  {t(
+                                    'Cost in USD per request, regardless of tokens used.'
+                                  )}
+                                </FieldDescription>
+                                <FormMessage />
+                              </Field>
+                            </FormItem>
+                          )}
+                        />
+                      </FieldGroup>
+                    </TabsContent>
+
+                    <TabsContent value='tiered_expr' className='pt-0'>
+                      <FieldGroup className='gap-5'>
+                        <TieredPricingEditor
+                          key={editorReloadToken}
+                          modelName={watchedValues.name}
+                          billingExpr={billingExpr}
+                          requestRuleExpr={requestRuleExpr}
+                          onBillingExprChange={setBillingExpr}
+                          onRequestRuleExprChange={setRequestRuleExpr}
+                        />
+                      </FieldGroup>
+                    </TabsContent>
+                    <TabsContent value='context_tier' className='pt-0'>
+                      <FieldGroup className='gap-4'>
+                        <p className='text-muted-foreground text-sm'>
+                          {t(
+                            'Each row prices requests whose input length is at or below its bound; the blank-bound row covers everything above the last bound. Bounds and every price column must increase from top to bottom.'
+                          )}
+                        </p>
+                        <ContextTierTable
+                          kind='per_token'
+                          value={contextTiers}
+                          onChange={(tiers) => {
+                            setContextTiers(tiers)
+                            setContextTiersError(null)
+                          }}
+                        />
+                        {contextTiersError ? (
+                          <p className='text-destructive text-sm'>
+                            {formatTierValidationError(contextTiersError, t)}
+                          </p>
+                        ) : null}
+                      </FieldGroup>
+                    </TabsContent>
+                    <TabsContent value='context_tier_per_call' className='pt-0'>
+                      <FieldGroup className='gap-4'>
+                        <p className='text-muted-foreground text-sm'>
+                          {t(
+                            'Each row charges one fixed price per request whose input length is at or below its bound; the blank-bound row covers everything above the last bound. Bounds and prices must increase from top to bottom.'
+                          )}
+                        </p>
+                        <ContextTierTable
+                          kind='per_call'
+                          value={contextCallTiers}
+                          onChange={(tiers) => {
+                            setContextCallTiers(tiers)
+                            setContextCallTiersError(null)
+                          }}
+                        />
+                        {contextCallTiersError ? (
+                          <p className='text-destructive text-sm'>
+                            {formatTierValidationError(
+                              contextCallTiersError,
+                              t
+                            )}
+                          </p>
+                        ) : null}
+                      </FieldGroup>
+                    </TabsContent>
+                  </Tabs>
+                </div>
               </FieldGroup>
 
               <aside className='bg-muted/20 sticky top-0 rounded-lg border'>
@@ -745,7 +972,7 @@ export const ModelPricingEditorPanel = forwardRef<
             </div>
           </div>
           {showActions && (
-            <div className='bg-background/95 supports-[backdrop-filter]:bg-[var(--float-surface)] shrink-0 border-t p-3 backdrop-blur'>
+            <div className='bg-background/95 shrink-0 border-t p-3 backdrop-blur supports-[backdrop-filter]:bg-[var(--float-surface)]'>
               <div className='flex flex-col-reverse gap-2 sm:flex-row sm:justify-end'>
                 {onSave && (
                   <Button

@@ -102,7 +102,7 @@ func refreshTieredBillingGroup(relayInfo *relaycommon.RelayInfo) (*price_express
 		return nil, nil
 	}
 	snap := relayInfo.TieredBillingSnapshot
-	if snap == nil || snap.BillingMode != "tiered_expr" {
+	if snap == nil || !IsTieredBillingMode(snap.BillingMode) {
 		return nil, nil
 	}
 
@@ -165,7 +165,7 @@ func PrepareTieredBillingForSelectedGroup(c contract.Context, relayInfo *relayco
 //   - ok=false, 0, nil        when it doesn't (caller should fall through to existing logic)
 func TryTieredSettle(relayInfo *relaycommon.RelayInfo, params price_expression.TokenParams) (ok bool, quota int, result *price_expression.TieredResult) {
 	snap := relayInfo.TieredBillingSnapshot
-	if snap == nil || snap.BillingMode != "tiered_expr" {
+	if snap == nil || !IsTieredBillingMode(snap.BillingMode) {
 		return false, 0, nil
 	}
 
@@ -203,15 +203,20 @@ const (
 )
 
 // BillingSetting is managed by settings.GlobalConfig.Register.
-// DB keys: billing_setting.billing_mode, billing_setting.billing_expr
+// DB keys: billing_setting.billing_mode, billing_setting.billing_expr,
+// billing_setting.billing_context_tier, billing_setting.billing_context_tier_per_call
 type BillingSetting struct {
-	BillingMode map[string]string `json:"billing_mode"`
-	BillingExpr map[string]string `json:"billing_expr"`
+	BillingMode               map[string]string `json:"billing_mode"`
+	BillingExpr               map[string]string `json:"billing_expr"`
+	BillingContextTier        map[string]string `json:"billing_context_tier"`
+	BillingContextTierPerCall map[string]string `json:"billing_context_tier_per_call"`
 }
 
 var billingSetting = BillingSetting{
-	BillingMode: make(map[string]string),
-	BillingExpr: make(map[string]string),
+	BillingMode:               make(map[string]string),
+	BillingExpr:               make(map[string]string),
+	BillingContextTier:        make(map[string]string),
+	BillingContextTierPerCall: make(map[string]string),
 }
 
 func init() {
@@ -223,39 +228,53 @@ func init() {
 // ---------------------------------------------------------------------------
 
 func GetBillingMode(model string) string {
-	// A persisted non-blank billing expression is authoritative for whether a
-	// model is expression-billed. This keeps billing, pricing resolution and UI
-	// reads aligned even when the billing_mode map drifted or never carried
-	// the model's entry.
-	if expr, ok := billingSetting.BillingExpr[model]; ok && strings.TrimSpace(expr) != "" {
-		return BillingModeTieredExpr
-	}
+	// billing_mode is authoritative when it carries an entry: a model on a
+	// context-interval mode keeps that mode even though a stale expression is
+	// still stored alongside it. The expression check is the fallback for a
+	// drifted or missing mode entry only.
+	settings.GlobalConfig.ReadLock()
+	defer settings.GlobalConfig.ReadUnlock()
 	if mode, ok := billingSetting.BillingMode[model]; ok {
 		return mode
+	}
+	if expr, ok := billingSetting.BillingExpr[model]; ok && strings.TrimSpace(expr) != "" {
+		return BillingModeTieredExpr
 	}
 	return BillingModeRatio
 }
 
 func GetBillingExpr(model string) (string, bool) {
+	settings.GlobalConfig.ReadLock()
+	defer settings.GlobalConfig.ReadUnlock()
 	expr, ok := billingSetting.BillingExpr[model]
 	return expr, ok
 }
 
 func GetBillingModeCopy() map[string]string {
+	settings.GlobalConfig.ReadLock()
+	defer settings.GlobalConfig.ReadUnlock()
 	return lo.Assign(billingSetting.BillingMode)
 }
 
 func GetBillingExprCopy() map[string]string {
+	settings.GlobalConfig.ReadLock()
+	defer settings.GlobalConfig.ReadUnlock()
 	return lo.Assign(billingSetting.BillingExpr)
 }
 
 func GetPricingSyncData(base map[string]any) map[string]any {
-	extra := make(map[string]any, 2)
+	extra := make(map[string]any, 3)
 	if modes := GetBillingModeCopy(); len(modes) > 0 {
 		extra[BillingModeField] = modes
 	}
 	if exprs := GetBillingExprCopy(); len(exprs) > 0 {
 		extra[BillingExprField] = exprs
+	}
+	if tiers := GetBillingContextTierCopy(); len(tiers) > 0 {
+		extra["billing_context_tier"] = tiers
+	}
+	if tiers := GetBillingContextTierPerCallCopy(); len(tiers) > 0 {
+		extra["billing_context_tier_per_call"] = tiers
 	}
 	return lo.Assign(base, extra)
 }
