@@ -68,9 +68,7 @@ import {
 } from './model-pricing-sheet'
 import {
   buildModelSnapshots,
-  formatTierPriceRange,
   getModeLabel,
-  hasPricingValue,
   parseTierRows,
   getSnapshotSignature,
   isBasePricingUnset,

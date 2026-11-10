@@ -117,8 +117,8 @@ const createModelSchema = (t: Translate) =>
     ExposeRatioEnabled: z.boolean(),
     BillingMode: createJsonStringField(t),
     BillingExpr: createJsonStringField(t),
-    BillingContextTier: createJsonStringField(t),
-    BillingContextTierPerCall: createJsonStringField(t),
+    BillingContextTier: createJsonStringField(t).optional(),
+    BillingContextTierPerCall: createJsonStringField(t).optional(),
   })
 
 const createGroupSchema = (t: Translate) =>
@@ -140,11 +140,7 @@ const createGroupSchema = (t: Translate) =>
 
 type ModelFormValues = z.infer<ReturnType<typeof createModelSchema>>
 type GroupFormValues = z.infer<ReturnType<typeof createGroupSchema>>
-export type RatioTabId =
-  | 'models'
-  | 'groups'
-  | 'tool-prices'
-  | 'upstream-sync'
+export type RatioTabId = 'models' | 'groups' | 'tool-prices' | 'upstream-sync'
 
 type RatioSettingsCardProps = {
   modelDefaults: ModelFormValues
@@ -199,7 +195,9 @@ export function RatioSettingsCard({
     ExposeRatioEnabled: modelDefaults.ExposeRatioEnabled,
     BillingMode: normalizeJsonString(modelDefaults.BillingMode),
     BillingExpr: normalizeJsonString(modelDefaults.BillingExpr),
-    BillingContextTier: normalizeJsonString(modelDefaults.BillingContextTier ?? ''),
+    BillingContextTier: normalizeJsonString(
+      modelDefaults.BillingContextTier ?? ''
+    ),
     BillingContextTierPerCall: normalizeJsonString(
       modelDefaults.BillingContextTierPerCall ?? ''
     ),
@@ -240,7 +238,9 @@ export function RatioSettingsCard({
       ),
       BillingMode: formatJsonForTextarea(modelDefaults.BillingMode),
       BillingExpr: formatJsonForTextarea(modelDefaults.BillingExpr),
-      BillingContextTier: formatJsonForTextarea(modelDefaults.BillingContextTier ?? ''),
+      BillingContextTier: formatJsonForTextarea(
+        modelDefaults.BillingContextTier ?? ''
+      ),
       BillingContextTierPerCall: formatJsonForTextarea(
         modelDefaults.BillingContextTierPerCall ?? ''
       ),
@@ -301,7 +301,9 @@ export function RatioSettingsCard({
       ),
       BillingMode: formatJsonForTextarea(modelDefaults.BillingMode),
       BillingExpr: formatJsonForTextarea(modelDefaults.BillingExpr),
-      BillingContextTier: formatJsonForTextarea(modelDefaults.BillingContextTier ?? ''),
+      BillingContextTier: formatJsonForTextarea(
+        modelDefaults.BillingContextTier ?? ''
+      ),
       BillingContextTierPerCall: formatJsonForTextarea(
         modelDefaults.BillingContextTierPerCall ?? ''
       ),
@@ -349,7 +351,9 @@ export function RatioSettingsCard({
         ExposeRatioEnabled: values.ExposeRatioEnabled,
         BillingMode: normalizeJsonString(values.BillingMode),
         BillingExpr: normalizeJsonString(values.BillingExpr),
-        BillingContextTier: normalizeJsonString(values.BillingContextTier ?? ''),
+        BillingContextTier: normalizeJsonString(
+          values.BillingContextTier ?? ''
+        ),
         BillingContextTierPerCall: normalizeJsonString(
           values.BillingContextTierPerCall ?? ''
         ),
@@ -359,7 +363,8 @@ export function RatioSettingsCard({
         BillingMode: 'billing_setting.billing_mode',
         BillingExpr: 'billing_setting.billing_expr',
         BillingContextTier: 'billing_setting.billing_context_tier',
-        BillingContextTierPerCall: 'billing_setting.billing_context_tier_per_call',
+        BillingContextTierPerCall:
+          'billing_setting.billing_context_tier_per_call',
       }
 
       const updates = (
@@ -485,7 +490,8 @@ export function RatioSettingsCard({
           AudioCompletionRatio: modelDefaults.AudioCompletionRatio,
           'billing_setting.billing_mode': modelDefaults.BillingMode,
           'billing_setting.billing_expr': modelDefaults.BillingExpr,
-          'billing_setting.billing_context_tier': modelDefaults.BillingContextTier,
+          'billing_setting.billing_context_tier':
+            modelDefaults.BillingContextTier,
           'billing_setting.billing_context_tier_per_call':
             modelDefaults.BillingContextTierPerCall,
         }}
