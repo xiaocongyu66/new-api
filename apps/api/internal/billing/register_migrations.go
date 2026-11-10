@@ -12,6 +12,7 @@ func init() {
 		dbx.Migration{Model: &SubscriptionOrder{}, Name: "SubscriptionOrder"},
 		dbx.Migration{Model: &UserSubscription{}, Name: "UserSubscription"},
 		dbx.Migration{Model: &SubscriptionPreConsumeRecord{}, Name: "SubscriptionPreConsumeRecord"},
+		dbx.Migration{Model: &SubscriptionRequestCounter{}, Name: "SubscriptionRequestCounter"},
 		dbx.Migration{Model: &QQCheckin{}, Name: "QQCheckin"},
 		dbx.Migration{Model: &QQDrop{}, Name: "QQDrop"},
 		dbx.Migration{Model: &QQTransfer{}, Name: "QQTransfer"},

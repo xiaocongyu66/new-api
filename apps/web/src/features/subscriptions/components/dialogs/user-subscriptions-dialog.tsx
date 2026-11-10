@@ -67,6 +67,7 @@ import {
 } from '../../api'
 import { formatTimestamp } from '../../lib'
 import type { PlanRecord, UserSubscriptionRecord } from '../../types'
+import { RequestCountBars } from '../request-count-bars'
 
 interface Props {
   open: boolean
@@ -332,7 +333,10 @@ export function UserSubscriptionsDialog(props: Props) {
                           {t('Start')}: {formatTimestamp(sub.start_time)}
                         </div>
                         <div>
-                          {t('End')}: {formatTimestamp(sub.end_time)}
+                          {t('End')}:{' '}
+                          {sub.end_time > 0
+                            ? formatTimestamp(sub.end_time)
+                            : t('No time limit')}
                         </div>
                       </div>
                     )
@@ -343,6 +347,14 @@ export function UserSubscriptionsDialog(props: Props) {
                   header: t('Total Quota'),
                   cell: (record) => {
                     const sub = record.subscription
+                    if (sub.kind === 'request') {
+                      return (
+                        <RequestCountBars
+                          counters={sub.request_counters}
+                          className='min-w-48'
+                        />
+                      )
+                    }
                     const total = Number(
                       sub.amount_total_display ?? sub.amount_total ?? 0
                     )

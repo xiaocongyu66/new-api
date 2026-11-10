@@ -81,6 +81,7 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	}
 	// 3) 更新 relayInfo 上的订阅 PostDelta（用于日志）。
 	// 交付后结算超出订阅剩余额度的部分已记入钱包欠费，不应再算进订阅消耗。
+	// request 型订阅的计数在预扣时已落库；空回/短断流的退回只发生在退款路径。
 	if sub, ok := s.funding.(*SubscriptionFunding); ok {
 		s.relayInfo.SubscriptionPostDelta += int64(delta) - sub.WalletOverflow
 		s.relayInfo.SubscriptionWalletOverflow += sub.WalletOverflow
@@ -346,6 +347,7 @@ func (s *BillingSession) syncRelayInfo() {
 	info.BillingSource = s.funding.Source()
 
 	if sub, ok := s.funding.(*SubscriptionFunding); ok {
+		info.RequestCountBilling = sub.requestKind
 		info.SubscriptionId = sub.subscriptionId
 		info.SubscriptionPreConsumed = sub.preConsumed + int64(s.extraReserved)
 		info.SubscriptionPostDelta = 0
@@ -355,6 +357,7 @@ func (s *BillingSession) syncRelayInfo() {
 		info.SubscriptionPlanId = sub.PlanId
 		info.SubscriptionPlanTitle = sub.PlanTitle
 	} else {
+		info.RequestCountBilling = false
 		info.SubscriptionId = 0
 		info.SubscriptionPreConsumed = 0
 		info.SubscriptionWalletOverflow = 0
@@ -408,14 +411,16 @@ func NewBillingSession(c contract.Context, relayInfo *relaycommon.RelayInfo, pre
 		if subConsume <= 0 {
 			subConsume = 1
 		}
+		funding := &SubscriptionFunding{
+			requestId:  relayInfo.RequestId,
+			userId:     relayInfo.UserId,
+			usingGroup: relayInfo.UsingGroup,
+			modelName:  relayInfo.OriginModelName,
+			amount:     subConsume,
+		}
 		session := &BillingSession{
 			relayInfo: relayInfo,
-			funding: &SubscriptionFunding{
-				requestId: relayInfo.RequestId,
-				userId:    relayInfo.UserId,
-				modelName: relayInfo.OriginModelName,
-				amount:    subConsume,
-			},
+			funding:   funding,
 		}
 		// 必须传 subConsume 而非 preConsumedQuota，保证 SubscriptionFunding.amount、
 		// preConsume 参数和 FinalPreConsumedQuota 三者一致，避免订阅多扣费。
@@ -427,6 +432,16 @@ func NewBillingSession(c contract.Context, relayInfo *relaycommon.RelayInfo, pre
 
 	switch pref {
 	case "subscription_only":
+		usable, checkErr := HasUsableUserSubscription(relayInfo.UserId, relayInfo.UsingGroup, relayInfo.OriginModelName, isTextGenerationFormat(relayInfo.RelayFormat))
+		if checkErr != nil {
+			return nil, types.NewError(checkErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+		}
+		if !usable {
+			return nil, types.NewErrorWithStatusCode(
+				fmt.Errorf("订阅额度不足或未配置订阅: no active subscription"),
+				types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
+				types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+		}
 		return trySubscription()
 	case "wallet_only":
 		return tryWallet()
@@ -442,18 +457,18 @@ func NewBillingSession(c contract.Context, relayInfo *relaycommon.RelayInfo, pre
 	case "subscription_first":
 		fallthrough
 	default:
-		hasSub, subCheckErr := HasActiveUserSubscription(relayInfo.UserId)
+		usable, subCheckErr := HasUsableUserSubscription(relayInfo.UserId, relayInfo.UsingGroup, relayInfo.OriginModelName, isTextGenerationFormat(relayInfo.RelayFormat))
 		if subCheckErr != nil {
 			return nil, types.NewError(subCheckErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 		}
-		if !hasSub {
+		if !usable {
 			return tryWallet()
 		}
 		session, apiErr := trySubscription()
 		if apiErr != nil {
 			if apiErr.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
 				// 仅当用户的活跃订阅允许钱包回退时才回退到钱包，否则返回订阅额度不足错误
-				allowOverflow, overflowErr := UserActiveSubscriptionsAllowWalletOverflow(relayInfo.UserId)
+				allowOverflow, overflowErr := UserActiveSubscriptionsAllowWalletOverflow(relayInfo.UserId, relayInfo.UsingGroup)
 				if overflowErr != nil {
 					return nil, types.NewError(overflowErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 				}

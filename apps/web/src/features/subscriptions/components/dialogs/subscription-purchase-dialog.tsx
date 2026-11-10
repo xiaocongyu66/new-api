@@ -48,7 +48,11 @@ import {
   paySubscriptionBalance,
 } from '../../api'
 import { formatPlanPrice } from '../../lib'
-import { formatDuration, formatResetPeriod } from '../../lib'
+import {
+  formatDuration,
+  formatResetPeriod,
+  getPlanUpgradeGroups,
+} from '../../lib'
 import type { PlanRecord } from '../../types'
 
 interface Props {
@@ -311,38 +315,62 @@ export function SubscriptionPurchaseDialog(props: Props) {
               {plan.title}
             </span>
           </div>
-          <div className='flex items-center justify-between'>
-            <span className='text-muted-foreground text-sm'>
-              {t('Validity Period')}
-            </span>
-            <span className='flex items-center gap-1 text-sm'>
-              <CalendarClock className='h-3.5 w-3.5' />
-              {formatDuration(plan, t)}
-            </span>
-          </div>
-          {formatResetPeriod(plan, t) !== t('No Reset') && (
-            <div className='flex justify-between'>
-              <span className='text-muted-foreground text-sm'>
-                {t('Reset Period')}
-              </span>
-              <span className='text-sm'>{formatResetPeriod(plan, t)}</span>
-            </div>
+          {plan.kind === 'time' && (
+            <>
+              <div className='flex items-center justify-between'>
+                <span className='text-muted-foreground text-sm'>
+                  {t('Validity Period')}
+                </span>
+                <span className='flex items-center gap-1 text-sm'>
+                  <CalendarClock className='h-3.5 w-3.5' />
+                  {formatDuration(plan, t)}
+                </span>
+              </div>
+              {formatResetPeriod(plan, t) !== t('No Reset') && (
+                <div className='flex justify-between'>
+                  <span className='text-muted-foreground text-sm'>
+                    {t('Reset Period')}
+                  </span>
+                  <span className='text-sm'>{formatResetPeriod(plan, t)}</span>
+                </div>
+              )}
+            </>
           )}
-          <div className='flex items-center justify-between'>
-            <span className='text-muted-foreground text-sm'>
-              {t('Plan Quota')}
-            </span>
-            <span className='flex items-center gap-1 text-sm'>
-              <Package className='h-3.5 w-3.5' />
-              {totalAmount > 0 ? formatQuota(totalAmount) : t('Unlimited')}
-            </span>
-          </div>
-          {plan.upgrade_group && (
+          {plan.kind !== 'request' && (
             <div className='flex items-center justify-between'>
               <span className='text-muted-foreground text-sm'>
-                {t('Upgrade Group')}
+                {t('Plan Quota')}
               </span>
-              <GroupBadge group={plan.upgrade_group} />
+              <span className='flex items-center gap-1 text-sm'>
+                <Package className='h-3.5 w-3.5' />
+                {totalAmount > 0 ? formatQuota(totalAmount) : t('Unlimited')}
+              </span>
+            </div>
+          )}
+          {plan.kind === 'request' &&
+            (plan.request_rules || []).map((rule) => (
+              <div
+                key={`${rule.group}-${rule.models.join(',')}`}
+                className='flex items-start justify-between gap-3'
+              >
+                <span className='text-muted-foreground text-sm'>
+                  {t('Request Limits')}
+                </span>
+                <span className='text-right text-sm'>
+                  {rule.group} · {rule.models.join(', ')} × {rule.count}
+                </span>
+              </div>
+            ))}
+          {getPlanUpgradeGroups(plan).length > 0 && (
+            <div className='flex items-center justify-between gap-3'>
+              <span className='text-muted-foreground text-sm'>
+                {t('Upgrade Groups')}
+              </span>
+              <span className='flex flex-wrap justify-end gap-1'>
+                {getPlanUpgradeGroups(plan).map((group) => (
+                  <GroupBadge key={group} group={group} />
+                ))}
+              </span>
             </div>
           )}
           <Separator />

@@ -22,6 +22,28 @@ import { z } from 'zod'
 // Subscription Plan Schema & Types
 // ============================================================================
 
+const subscriptionRequestRuleSchema = z.object({
+  group: z.string(),
+  models: z.array(z.string()),
+  count: z.number(),
+})
+export type SubscriptionRequestRule = z.infer<
+  typeof subscriptionRequestRuleSchema
+>
+
+const subscriptionRequestCounterSchema = z.object({
+  id: z.number(),
+  group_name: z.string(),
+  model_name: z.string(),
+  total: z.number(),
+  used: z.number(),
+  quota_total: z.number().optional(),
+  quota_used: z.number().optional(),
+})
+export type SubscriptionRequestCounter = z.infer<
+  typeof subscriptionRequestCounterSchema
+>
+
 const subscriptionPlanSchema = z.object({
   id: z.number(),
   title: z.string(),
@@ -40,6 +62,9 @@ const subscriptionPlanSchema = z.object({
   max_purchase_per_user: z.number(),
   total_amount: z.number(),
   total_amount_display: z.number().optional(),
+  kind: z.enum(['time', 'quota', 'request']).default('time'),
+  upgrade_groups: z.array(z.string()).optional(),
+  request_rules: z.array(subscriptionRequestRuleSchema).optional(),
   /** USD price rendered in display currency by the backend for balance compare. */
   balance_cost_display: z.number().optional(),
   upgrade_group: z.string().optional(),
@@ -71,6 +96,9 @@ const userSubscriptionSchema = z.object({
   next_reset_time: z.number().optional(),
   amount_total_display: z.number().optional(),
   amount_used_display: z.number().optional(),
+  kind: z.enum(['time', 'quota', 'request']).default('time'),
+  upgrade_groups: z.array(z.string()).optional(),
+  request_counters: z.array(subscriptionRequestCounterSchema).optional(),
 })
 type UserSubscription = z.infer<typeof userSubscriptionSchema>
 

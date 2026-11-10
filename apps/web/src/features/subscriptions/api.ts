@@ -250,3 +250,12 @@ export async function getGroups(): Promise<ApiResponse<string[]>> {
   const res = await api.get('/api/group')
   return res.data
 }
+
+export async function getGroupModels(
+  group: string
+): Promise<ApiResponse<string[]>> {
+  const res = await api.get('/api/subscription/admin/group-models', {
+    params: { group },
+  })
+  return res.data
+}

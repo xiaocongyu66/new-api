@@ -51,10 +51,13 @@ import {
   updateBillingPreference,
 } from '@/features/subscriptions/api'
 import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
+import { RequestCountBars } from '@/features/subscriptions/components/request-count-bars'
+import { getSubscriptionKindLabel } from '@/features/subscriptions/constants'
 import {
   formatDuration,
   formatPlanPrice,
   formatResetPeriod,
+  getPlanUpgradeGroups,
 } from '@/features/subscriptions/lib'
 import type {
   PlanRecord,
@@ -437,7 +440,8 @@ export function SubscriptionPlansCard({
                   const remainDays = getRemainingDays(sub)
                   const usagePercent = getUsagePercent(sub)
                   const now = Date.now() / 1000
-                  const isExpired = (subscription?.end_time || 0) < now
+                  const endTime = subscription?.end_time || 0
+                  const isExpired = endTime > 0 && endTime < now
                   const isCancelled = subscription?.status === 'cancelled'
                   const isActive =
                     subscription?.status === 'active' && !isExpired
@@ -488,19 +492,28 @@ export function SubscriptionPlansCard({
                           </span>
                           {statusBadge}
                         </div>
-                        {isActive && (
-                          <span className='text-muted-foreground'>
-                            {t('{{count}} days remaining', {
-                              count: remainDays,
-                            })}
-                          </span>
-                        )}
+                        {isActive &&
+                          (endTime > 0 ? (
+                            <span className='text-muted-foreground'>
+                              {t('{{count}} days remaining', {
+                                count: remainDays,
+                              })}
+                            </span>
+                          ) : (
+                            <span className='text-muted-foreground'>
+                              {t('No time limit')}
+                            </span>
+                          ))}
                       </div>
                       <div className='text-muted-foreground mt-1.5'>
-                        {endTimeLabel}{' '}
-                        {new Date(
-                          (subscription?.end_time || 0) * 1000
-                        ).toLocaleString()}
+                        {endTime > 0 ? (
+                          <>
+                            {endTimeLabel}{' '}
+                            {new Date(endTime * 1000).toLocaleString()}
+                          </>
+                        ) : (
+                          t('No time limit')
+                        )}
                       </div>
                       {isActive && nextResetTime > 0 && (
                         <div className='text-muted-foreground mt-1'>
@@ -508,24 +521,37 @@ export function SubscriptionPlansCard({
                           {new Date(nextResetTime * 1000).toLocaleString()}
                         </div>
                       )}
-                      <div className='text-muted-foreground mt-1'>
-                        {t('Total Quota')}:{' '}
-                        {totalAmount > 0 ? (
-                          <span>
-                            {formatQuota(usedAmount)}/{formatQuota(totalAmount)}{' '}
-                            · {t('Remaining')} {formatQuota(remainAmount)}
-                          </span>
-                        ) : (
-                          t('Unlimited')
-                        )}
-                        {totalAmount > 0 && (
-                          <span className='ml-2'>
-                            {t('Used')} {usagePercent}%
-                          </span>
-                        )}
-                      </div>
-                      {totalAmount > 0 && isActive && (
-                        <Progress value={usagePercent} className='mt-2 h-1.5' />
+                      {subscription?.kind === 'request' ? (
+                        <RequestCountBars
+                          counters={subscription?.request_counters}
+                          className='mt-2'
+                        />
+                      ) : (
+                        <>
+                          <div className='text-muted-foreground mt-1'>
+                            {t('Total Quota')}:{' '}
+                            {totalAmount > 0 ? (
+                              <span>
+                                {formatQuota(usedAmount)}/
+                                {formatQuota(totalAmount)} · {t('Remaining')}{' '}
+                                {formatQuota(remainAmount)}
+                              </span>
+                            ) : (
+                              t('Unlimited')
+                            )}
+                            {totalAmount > 0 && (
+                              <span className='ml-2'>
+                                {t('Used')} {usagePercent}%
+                              </span>
+                            )}
+                          </div>
+                          {totalAmount > 0 && isActive && (
+                            <Progress
+                              value={usagePercent}
+                              className='mt-2 h-1.5'
+                            />
+                          )}
+                        </>
                       )}
                     </div>
                   )
@@ -556,17 +582,30 @@ export function SubscriptionPlansCard({
               const count = planPurchaseCountMap.get(plan.id) || 0
               const reached = limit > 0 && count >= limit
 
+              const upgradeGroups = getPlanUpgradeGroups(plan)
               const benefits = [
-                `${t('Validity Period')}: ${formatDuration(plan, t)}`,
+                `${t('Subscription Kind')}: ${getSubscriptionKindLabel(plan.kind, t)}`,
+                plan.kind === 'time'
+                  ? `${t('Validity Period')}: ${formatDuration(plan, t)}`
+                  : null,
+                plan.kind === 'time' &&
                 formatResetPeriod(plan, t) !== t('No Reset')
                   ? `${t('Quota Reset')}: ${formatResetPeriod(plan, t)}`
                   : null,
-                totalAmount > 0
-                  ? `${t('Total Quota')}: ${formatQuota(totalAmount)}`
-                  : `${t('Total Quota')}: ${t('Unlimited')}`,
+                plan.kind !== 'request'
+                  ? totalAmount > 0
+                    ? `${t('Total Quota')}: ${formatQuota(totalAmount)}`
+                    : `${t('Total Quota')}: ${t('Unlimited')}`
+                  : null,
+                ...(plan.kind === 'request'
+                  ? (plan.request_rules || []).map(
+                      (rule) =>
+                        `${t('Request Limits')}: ${rule.group} · ${rule.models.join(', ')} × ${rule.count}`
+                    )
+                  : []),
                 limit > 0 ? `${t('Purchase Limit')}: ${limit}` : null,
-                plan.upgrade_group
-                  ? `${t('Upgrade Group')}: ${plan.upgrade_group}`
+                upgradeGroups.length > 0
+                  ? `${t('Upgrade Groups')}: ${upgradeGroups.join(', ')}`
                   : null,
               ].filter(Boolean) as string[]
 

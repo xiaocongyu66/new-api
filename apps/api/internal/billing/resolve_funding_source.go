@@ -83,6 +83,7 @@ func (w *WalletFunding) Refund() error {
 type SubscriptionFunding struct {
 	requestId      string
 	userId         int
+	usingGroup     string
 	modelName      string
 	amount         int64 // 预扣的订阅额度（subConsume）
 	subscriptionId int
@@ -94,13 +95,18 @@ type SubscriptionFunding struct {
 	PlanTitle       string
 	// WalletOverflow 记录交付后结算时超出订阅剩余额度、被记入钱包欠费的部分。
 	WalletOverflow int64
+	// requestCounterUsedBefore 非 0 表示该请求由 request 型订阅服务并已预留
+	// 一次计数（计数是准入与展示账本，扣费走标准额度腿）。
+	requestCounterUsedBefore int64
+	// requestKind 标记本次请求由 request 型订阅服务（计数腿已预留）。
+	requestKind bool
 }
 
 func (s *SubscriptionFunding) Source() string { return settlecore.BillingSourceSubscription }
 
 func (s *SubscriptionFunding) PreConsume(_ int) error {
 	// amount 参数被忽略，使用内部 s.amount（已在构造时根据 preConsumedQuota 计算）
-	res, err := PreConsumeUserSubscription(s.requestId, s.userId, s.modelName, 0, s.amount)
+	res, err := PreConsumeUserSubscription(s.requestId, s.userId, s.usingGroup, s.modelName, 0, s.amount)
 	if err != nil {
 		return err
 	}
@@ -108,6 +114,13 @@ func (s *SubscriptionFunding) PreConsume(_ int) error {
 	s.preConsumed = res.PreConsumed
 	s.AmountTotal = res.AmountTotal
 	s.AmountUsedAfter = res.AmountUsedAfter
+	s.requestCounterUsedBefore = res.RequestCounterUsedBefore
+	s.requestKind = res.RequestKind
+	if s.requestKind {
+		if err := AttributeSubscriptionCounterQuota(s.requestId, res.PreConsumed); err != nil {
+			common.SysLog(fmt.Sprintf("request counter pre-consume attribution failed (requestId=%s): %s", s.requestId, err.Error()))
+		}
+	}
 	// 获取订阅计划信息
 	if planInfo, err := GetSubscriptionPlanInfoByUserSubscriptionId(res.UserSubscriptionId); err == nil && planInfo != nil {
 		s.PlanId = planInfo.PlanId
@@ -121,7 +134,12 @@ func (s *SubscriptionFunding) Settle(delta int) error {
 		return nil
 	}
 	if delta < 0 {
-		return PostConsumeUserSubscriptionDelta(s.subscriptionId, int64(delta))
+		if err := PostConsumeUserSubscriptionDelta(s.subscriptionId, int64(delta)); err != nil {
+			return err
+		}
+		// Settlement returned quota to the pool; un-attribute it from the
+		// request counter this request reserved (request-kind rows only).
+		return AttributeSubscriptionCounterQuota(s.requestId, int64(delta))
 	}
 	// 交付完成后的结算补扣:订阅先吃满剩余额度,装不下的溢出部分记入
 	// 钱包欠费(余额可为负),与 WalletFunding.Settle 的欠费语义一致。
@@ -130,6 +148,13 @@ func (s *SubscriptionFunding) Settle(delta int) error {
 	overflow, err := PostConsumeUserSubscriptionDeltaCapped(s.subscriptionId, int64(delta))
 	if err != nil {
 		return err
+	}
+	// The portion the subscription absorbed is attributed to this request's
+	// counter (request-kind rows only; amount-kind records are a no-op).
+	if absorbed := int64(delta) - overflow; absorbed > 0 {
+		if err := AttributeSubscriptionCounterQuota(s.requestId, absorbed); err != nil {
+			common.SysLog(fmt.Sprintf("request counter quota attribution failed (requestId=%s): %s", s.requestId, err.Error()))
+		}
 	}
 	s.WalletOverflow = overflow
 	if overflow > 0 {

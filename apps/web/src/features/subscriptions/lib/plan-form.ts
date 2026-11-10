@@ -22,33 +22,51 @@ import { z } from 'zod'
 import type { SubscriptionPlan, PlanPayload } from '../types'
 
 export function getPlanFormSchema(t: TFunction) {
-  return z.object({
-    title: z.string().min(1, t('Please enter plan title')),
-    subtitle: z.string().optional(),
-    price_amount: z.coerce.number().min(0, t('Please enter amount')),
-    duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
-    duration_value: z.coerce.number().min(1),
-    custom_seconds: z.coerce.number().min(0).optional(),
-    quota_reset_period: z.enum([
-      'never',
-      'daily',
-      'weekly',
-      'monthly',
-      'custom',
-    ]),
-    quota_reset_custom_seconds: z.coerce.number().min(0).optional(),
-    enabled: z.boolean(),
-    sort_order: z.coerce.number(),
-    allow_balance_pay: z.boolean(),
-    allow_wallet_overflow: z.boolean(),
-    max_purchase_per_user: z.coerce.number().min(0),
-    total_amount: z.coerce.number().min(0),
-    upgrade_group: z.string().optional(),
-    downgrade_group: z.string().optional(),
-    stripe_price_id: z.string().optional(),
-    creem_product_id: z.string().optional(),
-    waffo_pancake_product_id: z.string().optional(),
-  })
+  return z
+    .object({
+      title: z.string().min(1, t('Please enter plan title')),
+      subtitle: z.string().optional(),
+      price_amount: z.coerce.number().min(0, t('Please enter amount')),
+      kind: z.enum(['time', 'quota', 'request']),
+      duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
+      duration_value: z.coerce.number().min(1),
+      custom_seconds: z.coerce.number().min(0).optional(),
+      quota_reset_period: z.enum([
+        'never',
+        'daily',
+        'weekly',
+        'monthly',
+        'custom',
+      ]),
+      quota_reset_custom_seconds: z.coerce.number().min(0).optional(),
+      enabled: z.boolean(),
+      sort_order: z.coerce.number(),
+      allow_balance_pay: z.boolean(),
+      allow_wallet_overflow: z.boolean(),
+      max_purchase_per_user: z.coerce.number().min(0),
+      total_amount: z.coerce.number().min(0),
+      upgrade_groups: z.array(z.string()),
+      downgrade_group: z.string().optional(),
+      request_rules: z.array(
+        z.object({
+          group: z.string(),
+          models: z.array(z.string()),
+          count: z.coerce.number().min(1),
+        })
+      ),
+      stripe_price_id: z.string().optional(),
+      creem_product_id: z.string().optional(),
+      waffo_pancake_product_id: z.string().optional(),
+    })
+    .superRefine((values, ctx) => {
+      if (values.kind === 'quota' && values.total_amount <= 0) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['total_amount'],
+          message: t('Quota-exhausted plans require a positive total quota'),
+        })
+      }
+    })
 }
 
 export type PlanFormValues = z.infer<ReturnType<typeof getPlanFormSchema>>
@@ -57,6 +75,7 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   title: '',
   subtitle: '',
   price_amount: 0,
+  kind: 'time',
   duration_unit: 'month',
   duration_value: 1,
   custom_seconds: 0,
@@ -68,10 +87,21 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   allow_wallet_overflow: true,
   max_purchase_per_user: 0,
   total_amount: 0,
+  upgrade_groups: [],
   downgrade_group: '',
+  request_rules: [],
   stripe_price_id: '',
   creem_product_id: '',
   waffo_pancake_product_id: '',
+}
+
+export function getPlanUpgradeGroups(
+  plan: Partial<Pick<SubscriptionPlan, 'upgrade_groups' | 'upgrade_group'>>
+): string[] {
+  if (plan.upgrade_groups && plan.upgrade_groups.length > 0) {
+    return plan.upgrade_groups
+  }
+  return plan.upgrade_group ? [plan.upgrade_group] : []
 }
 
 export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
@@ -79,6 +109,7 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
     title: plan.title || '',
     subtitle: plan.subtitle || '',
     price_amount: Number(plan.price_amount || 0),
+    kind: plan.kind || 'time',
     duration_unit: plan.duration_unit || 'month',
     duration_value: Number(plan.duration_value || 1),
     custom_seconds: Number(plan.custom_seconds || 0),
@@ -90,8 +121,13 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
     allow_wallet_overflow: plan.allow_wallet_overflow !== false,
     max_purchase_per_user: Number(plan.max_purchase_per_user || 0),
     total_amount: plan.total_amount_display ?? 0,
-    upgrade_group: plan.upgrade_group || '',
+    upgrade_groups: getPlanUpgradeGroups(plan),
     downgrade_group: plan.downgrade_group || '',
+    request_rules: (plan.request_rules || []).map((rule) => ({
+      group: rule.group || '',
+      models: rule.models || [],
+      count: Number(rule.count || 1),
+    })),
     stripe_price_id: plan.stripe_price_id || '',
     creem_product_id: plan.creem_product_id || '',
     waffo_pancake_product_id: plan.waffo_pancake_product_id || '',
@@ -105,15 +141,16 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
       price_amount: Number(values.price_amount || 0),
       currency: 'USD',
       duration_value: Number(values.duration_value || 0),
-      quota_reset_period: values.quota_reset_period || 'never',
+      quota_reset_period:
+        values.kind === 'time' ? values.quota_reset_period || 'never' : 'never',
       quota_reset_custom_seconds:
-        values.quota_reset_period === 'custom'
+        values.kind === 'time' && values.quota_reset_period === 'custom'
           ? Number(values.quota_reset_custom_seconds || 0)
           : 0,
       sort_order: Number(values.sort_order || 0),
       max_purchase_per_user: Number(values.max_purchase_per_user || 0),
       total_amount_display: Number(values.total_amount || 0),
-      upgrade_group: values.upgrade_group || '',
+      upgrade_group: values.upgrade_groups[0] || '',
       downgrade_group: values.downgrade_group || '',
     },
   }

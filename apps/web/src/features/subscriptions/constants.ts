@@ -19,6 +19,34 @@ For commercial licensing, please contact support@quantumnous.com
 import { type TFunction } from 'i18next'
 
 // ============================================================================
+// Subscription Kinds
+// ============================================================================
+
+export const SUBSCRIPTION_KINDS = [
+  { value: 'time', labelKey: 'Time-based' },
+  { value: 'quota', labelKey: 'Quota-exhausted' },
+  { value: 'request', labelKey: 'Request-count' },
+] as const
+
+export type SubscriptionKind = (typeof SUBSCRIPTION_KINDS)[number]['value']
+
+export function getSubscriptionKindOptions(t: TFunction) {
+  return SUBSCRIPTION_KINDS.map((k) => ({
+    value: k.value,
+    label: t(k.labelKey),
+  }))
+}
+
+export function getSubscriptionKindLabel(
+  kind: string | undefined,
+  t: TFunction
+): string {
+  if (kind === 'quota') return t('Quota-exhausted')
+  if (kind === 'request') return t('Request-count')
+  return t('Time-based')
+}
+
+// ============================================================================
 // Duration Unit Options
 // ============================================================================
 
