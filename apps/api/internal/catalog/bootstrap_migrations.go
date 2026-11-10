@@ -21,6 +21,7 @@ func init() {
 		migrateChannelModelHealthKeyIndex,
 		seedUnitHealthColumns,
 		SeedChannelModelRoutes,
+		SeedModelAliasDispatchPolicies,
 		InitializeGatewayConfigRevision,
 	)
 }

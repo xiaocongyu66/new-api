@@ -4,12 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/internal/catalog/routestats"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/samber/lo"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // defaultRouteStaticWeight is the weight a freshly expanded route unit starts at.
@@ -34,6 +36,30 @@ type ChannelModelRoute struct {
 	UpstreamModel    string `json:"upstream_model" gorm:"type:varchar(255);uniqueIndex:idx_route_unit,priority:4"`
 	StaticWeight     int    `json:"static_weight"`
 	Enabled          bool   `json:"enabled"`
+}
+
+// ModelAliasDispatchPolicy controls how a public model alias resolves a channel
+// (weighted pool vs context-range routing). Phase 1 only seeds weighted_pool.
+type ModelAliasDispatchPolicy struct {
+	Alias         string    `json:"alias" gorm:"primaryKey;type:varchar(255)"`
+	Mode          string    `json:"mode" gorm:"type:varchar(64);not null;default:weighted_pool"`
+	FallbackAlias *string   `json:"fallback_alias" gorm:"type:varchar(255)"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// ModelAliasContextRoute is a single context-window-based route override under
+// an alias. Phase 1 only introduces the table; selection is unchanged.
+type ModelAliasContextRoute struct {
+	Id            int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	Alias         string `json:"alias" gorm:"type:varchar(255);index:idx_context_route_alias"`
+	ContextMin    int    `json:"context_min"`
+	ContextMax    int    `json:"context_max"`
+	ChannelId     int    `json:"channel_id" gorm:"index:idx_context_route_channel"`
+	KeyIndex      int    `json:"key_index"`
+	UpstreamModel string `json:"upstream_model" gorm:"type:varchar(255)"`
+	StaticWeight  int    `json:"static_weight"`
+	Enabled       bool   `json:"enabled"`
+	SortOrder     int    `json:"sort_order"`
 }
 
 // routeUnitKey is the identity of a route unit: the composite unique key of
@@ -312,6 +338,42 @@ func SeedChannelModelRoutes() error {
 	})
 }
 
+// SeedModelAliasDispatchPolicies seeds a weighted_pool dispatch policy for every
+// public model alias that already has route rows. Idempotent: existing rows are
+// preserved untouched (mode is not overwritten).
+func SeedModelAliasDispatchPolicies() error {
+	return dbx.DB.Transaction(func(tx *gorm.DB) error {
+		if !tx.Migrator().HasTable(&ModelAliasDispatchPolicy{}) {
+			return nil
+		}
+		if !tx.Migrator().HasTable(&ChannelModelRoute{}) {
+			return nil
+		}
+		var aliases []string
+		if err := tx.Model(&ChannelModelRoute{}).Distinct("public_model_alias").Pluck("public_model_alias", &aliases).Error; err != nil {
+			return err
+		}
+		// One bulk insert for the aliases missing a policy row; rows that already
+		// exist keep their operator-tuned mode. ON CONFLICT DO NOTHING keeps the
+		// pass idempotent without a per-alias round trip.
+		var missing []ModelAliasDispatchPolicy
+		for _, alias := range aliases {
+			if alias == "" {
+				continue
+			}
+			missing = append(missing, ModelAliasDispatchPolicy{
+				Alias:     alias,
+				Mode:      "weighted_pool",
+				UpdatedAt: time.Now(),
+			})
+		}
+		if len(missing) == 0 {
+			return nil
+		}
+		return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&missing).Error
+	})
+}
+
 // RouteUnitView is a flattened view of a route unit joined with channel info.
 type RouteUnitView struct {
 	Id               int     `json:"id"`
@@ -513,7 +575,115 @@ func ListRouteUnitAliases() ([]RouteUnitAliasSummary, error) {
 	return summaries, nil
 }
 
-// UpdateRouteUnitConfig updates a single route unit by ID.
+// GetModelAliasDispatchPolicy loads the dispatch policy row for alias.
+// Returns gorm.ErrRecordNotFound when no policy exists for the alias.
+func GetModelAliasDispatchPolicy(alias string) (*ModelAliasDispatchPolicy, error) {
+	if alias == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	var policy ModelAliasDispatchPolicy
+	if err := dbx.DB.Where("alias = ?", alias).First(&policy).Error; err != nil {
+		return nil, err
+	}
+	return &policy, nil
+}
+
+// ListModelAliasContextRoutes returns all context-window routes configured under alias.
+func ListModelAliasContextRoutes(alias string) ([]ModelAliasContextRoute, error) {
+	var routes []ModelAliasContextRoute
+	if err := dbx.DB.Where("alias = ?", alias).Order("sort_order ASC, id ASC").Find(&routes).Error; err != nil {
+		return nil, err
+	}
+	return routes, nil
+}
+
+// UpsertModelAliasDispatchPolicy creates or updates the dispatch policy row for alias.
+func UpsertModelAliasDispatchPolicy(alias string, mode string, fallbackAlias *string) error {
+	return dbx.DB.Transaction(func(tx *gorm.DB) error {
+		return upsertModelAliasDispatchPolicyWithTx(tx, alias, mode, fallbackAlias)
+	})
+}
+
+// SaveModelAliasDispatch atomically persists the policy and (for context_range)
+// the interval rows in one transaction: either both land or neither does, so a
+// failed save can never leave an alias in context_range mode with zero routes.
+func SaveModelAliasDispatch(alias string, mode string, fallbackAlias *string, routes []ModelAliasContextRoute) error {
+	if alias == "" {
+		return errors.New("alias is required")
+	}
+	switch mode {
+	case "weighted_pool", "context_range", "delegate":
+	default:
+		return errors.New("mode must be weighted_pool, context_range or delegate")
+	}
+	return dbx.DB.Transaction(func(tx *gorm.DB) error {
+		if err := upsertModelAliasDispatchPolicyWithTx(tx, alias, mode, fallbackAlias); err != nil {
+			return err
+		}
+		if err := tx.Where("alias = ?", alias).Delete(&ModelAliasContextRoute{}).Error; err != nil {
+			return err
+		}
+		if len(routes) == 0 {
+			return nil
+		}
+		prepared := make([]ModelAliasContextRoute, len(routes))
+		copy(prepared, routes)
+		for i := range prepared {
+			prepared[i].Alias = alias
+			prepared[i].Id = 0
+		}
+		return tx.Create(&prepared).Error
+	})
+}
+
+// upsertModelAliasDispatchPolicyWithTx is the transaction-scoped variant of
+// UpsertModelAliasDispatchPolicy, shared by the standalone and combined saves.
+func upsertModelAliasDispatchPolicyWithTx(tx *gorm.DB, alias string, mode string, fallbackAlias *string) error {
+	now := time.Now()
+	var existing ModelAliasDispatchPolicy
+	err := dbx.LockForUpdate(tx.Where("alias = ?", alias)).First(&existing).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return tx.Create(&ModelAliasDispatchPolicy{
+			Alias:         alias,
+			Mode:          mode,
+			FallbackAlias: fallbackAlias,
+			UpdatedAt:     now,
+		}).Error
+	}
+	return tx.Model(&ModelAliasDispatchPolicy{}).
+		Where("alias = ?", alias).
+		Updates(map[string]any{
+			"mode":           mode,
+			"fallback_alias": fallbackAlias,
+			"updated_at":     now,
+		}).Error
+}
+
+// ReplaceModelAliasContextRoutes atomically replaces all context-window routes for alias.
+func ReplaceModelAliasContextRoutes(alias string, routes []ModelAliasContextRoute) error {
+	if alias == "" {
+		return errors.New("alias is required")
+	}
+	return dbx.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("alias = ?", alias).Delete(&ModelAliasContextRoute{}).Error; err != nil {
+			return err
+		}
+		if len(routes) == 0 {
+			return nil
+		}
+		prepared := make([]ModelAliasContextRoute, len(routes))
+		copy(prepared, routes)
+		for i := range prepared {
+			prepared[i].Alias = alias
+			prepared[i].Id = 0
+		}
+		return tx.Create(&prepared).Error
+	})
+}
+
 // weight and enabled are optional (nil = no change). Returns gorm.ErrRecordNotFound if row does not exist.
 func UpdateRouteUnitConfig(id int, weight *int, enabled *bool) error {
 	if weight == nil && enabled == nil {

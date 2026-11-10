@@ -52,7 +52,7 @@ func TestSelectRouteUnitCacheOffResolvesChannelFromDB(t *testing.T) {
 
 	// The granted channel must be selectable despite the missing index. With a
 	// single eligible route, SelectRouteUnit is deterministic for any rnd value.
-	selected, err := SelectRouteUnit("default", alias, "", 0, nil, nil)
+	selected, err := SelectRouteUnit("default", alias, "", 0, nil, 0, nil)
 	require.NoError(t, err)
 	require.NotNil(t, selected, "cache-off path must resolve the granted channel from the DB")
 	assert.Equal(t, 9101, selected.ChannelId, "the granted channel must be selected")
@@ -61,15 +61,15 @@ func TestSelectRouteUnitCacheOffResolvesChannelFromDB(t *testing.T) {
 	// A group-isolated (vip-only) channel must never be handed to default, and
 	// an unknown group must select nothing (fail-closed isolation boundary).
 	vipOnly, vipErr := SelectRouteUnit("default", alias, "", 0,
-		map[RouteKey]bool{{ChannelId: 9101, KeyIndex: 0, Model: alias}: true}, nil)
+		map[RouteKey]bool{{ChannelId: 9101, KeyIndex: 0, Model: alias}: true}, 0, nil)
 	require.NoError(t, vipErr)
 	assert.Nil(t, vipOnly, "excluding the only granted route must leave nothing selectable")
-	unknown, err := SelectRouteUnit("no-such-group", alias, "", 0, nil, nil)
+	unknown, err := SelectRouteUnit("no-such-group", alias, "", 0, nil, 0, nil)
 	require.NoError(t, err)
 	assert.Nil(t, unknown, "an ungranted group must select nothing")
 
 	// Sanity: the vip group still reaches its own granted channel.
-	vipSelected, vipErr := SelectRouteUnit("vip", alias, "", 0, nil, nil)
+	vipSelected, vipErr := SelectRouteUnit("vip", alias, "", 0, nil, 0, nil)
 	require.NoError(t, vipErr)
 	require.NotNil(t, vipSelected, "vip must reach its granted channel")
 	assert.Equal(t, 9102, vipSelected.ChannelId)
@@ -142,7 +142,7 @@ func TestSelectRouteUnitCacheOffEnforcesChannelRestrictions(t *testing.T) {
 				common.MemoryCacheEnabled = prevMemoryCache
 			})
 
-			selected, err := SelectRouteUnit("default", alias, tt.requestPath, 0, nil, nil)
+			selected, err := SelectRouteUnit("default", alias, tt.requestPath, 0, nil, 0, nil)
 			require.NoError(t, err)
 			assert.Nil(t, selected, "an ineligible database channel must not be selected")
 		})

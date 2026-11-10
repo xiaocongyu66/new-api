@@ -42,6 +42,8 @@ GET /api/channel/ops
 GET /api/channel/request_stats
 GET /api/channel/route_unit/
 GET /api/channel/route_unit/aliases
+GET /api/channel/route_unit/context
+GET /api/channel/route_unit/dispatch_policy
 GET /api/channel/search
 GET /api/channel/system_prompt_presets
 GET /api/channel/tag/models
@@ -287,6 +289,9 @@ POST /api/waffo-pancake/webhook/:env
 POST /api/waffo/webhook
 PUT /api/channel/
 PUT /api/channel/route_unit/:id
+PUT /api/channel/route_unit/context
+PUT /api/channel/route_unit/dispatch
+PUT /api/channel/route_unit/dispatch_policy
 PUT /api/channel/tag
 PUT /api/custom-oauth-provider/:id
 PUT /api/models/

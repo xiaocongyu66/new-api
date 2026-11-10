@@ -89,6 +89,7 @@ func InitChannelCache() {
 	channelsIDM = newChannelId2channel
 	channel2advancedCustomConfig = newChannel2advancedCustomConfig
 	buildGroupAliasRoutesFromDB()
+	buildDispatchCachesFromDB()
 	channelSyncLock.Unlock()
 	// Lock ordering: InvalidatePricingCache acquires updatePricingLock, and
 	// GetPricing (holding updatePricingLock) nests channelSyncLock.RLock via
@@ -113,8 +114,10 @@ func SyncChannelCache(frequency int) {
 }
 
 // GetRandomSatisfiedChannel selects one independently retryable route unit.
-func GetRandomSatisfiedChannel(group, modelName string, retry int, requestPath string, excludeRoutes map[RouteKey]bool) (*SelectedRoute, error) {
-	return SelectRouteUnit(group, modelName, requestPath, retry, excludeRoutes, nil)
+// inputTokens feeds context-range dispatch; 0 means unknown and only matches
+// intervals whose minimum is 0.
+func GetRandomSatisfiedChannel(group, modelName string, retry int, requestPath string, excludeRoutes map[RouteKey]bool, inputTokens int) (*SelectedRoute, error) {
+	return SelectRouteUnit(group, modelName, requestPath, retry, excludeRoutes, inputTokens, nil)
 }
 
 // filterChannelsByRequestPathAndModel restricts candidates by request path and
