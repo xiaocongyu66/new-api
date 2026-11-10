@@ -16,126 +16,117 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import {
   createRootRouteWithContext,
   Outlet,
   redirect,
   useNavigate,
-} from '@tanstack/react-router'
-import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
-import { useEffect } from 'react'
+} from "@tanstack/react-router";
+import { useEffect } from "react";
 
-import { AppBackground } from '@/components/app-background'
-import { NavigationProgress } from '@/components/navigation-progress'
-import { Toaster } from '@/components/ui/sonner'
-import { ThemeCustomizationProvider } from '@/context/theme-customization-provider'
-import { saveAffiliateCode } from '@/features/auth/lib/storage'
-import { GeneralError } from '@/features/errors/general-error'
-import { NotFoundError } from '@/features/errors/not-found-error'
-import { getSetupStatus } from '@/features/setup/api'
-import { useSystemConfig } from '@/hooks/use-system-config'
-import { useMediaQuery } from '@/hooks'
+import { AppBackground } from "@/components/app-background";
+import { NavigationProgress } from "@/components/navigation-progress";
+import { Toaster } from "@/components/ui/sonner";
+import { ThemeCustomizationProvider } from "@/context/theme-customization-provider";
+import { saveAffiliateCode } from "@/features/auth/lib/storage";
+import { GeneralError } from "@/features/errors/general-error";
+import { NotFoundError } from "@/features/errors/not-found-error";
+import { getSetupStatus } from "@/features/setup/api";
+import { useSystemConfig } from "@/hooks/use-system-config";
+
 import {
   bootstrapAuthentication,
   clearAuthenticatedClientState,
   clearAuthentication,
-} from '@/lib/auth-session'
-import { subscribeAuthSessionEvents } from '@/lib/auth-session-sync'
-import { devAutoLogin } from '@/lib/dev-auto-login'
-import { resolveLegacyRoute } from '@/lib/legacy-route'
-import { useAuthStore } from '@/stores/auth-store'
+} from "@/lib/auth-session";
+import { subscribeAuthSessionEvents } from "@/lib/auth-session-sync";
+import { devAutoLogin } from "@/lib/dev-auto-login";
+import { resolveLegacyRoute } from "@/lib/legacy-route";
+import { useAuthStore } from "@/stores/auth-store";
 
 function RootComponent() {
-  const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const isMobileViewport = useMediaQuery('(max-width: 640px)')
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   // Load system configuration (logo, system name, etc.) from backend
-  useSystemConfig({ autoLoad: true })
+  useSystemConfig({ autoLoad: true });
 
   useEffect(() => {
-    const aff = new URLSearchParams(window.location.search).get('aff')?.trim()
+    const aff = new URLSearchParams(window.location.search).get("aff")?.trim();
     if (aff) {
-      saveAffiliateCode(aff)
+      saveAffiliateCode(aff);
     }
-  }, [])
+  }, []);
 
   useEffect(
     () =>
       useAuthStore.subscribe((state, previousState) => {
-        const sid = state.auth.session?.sid
-        const previousSID = previousState.auth.session?.sid
+        const sid = state.auth.session?.sid;
+        const previousSID = previousState.auth.session?.sid;
         if (sid !== previousSID) {
-          queryClient.clear()
+          queryClient.clear();
         }
       }),
-    [queryClient]
-  )
+    [queryClient],
+  );
 
   useEffect(
     () =>
       subscribeAuthSessionEvents((event) => {
-        const currentSID = useAuthStore.getState().auth.session?.sid
+        const currentSID = useAuthStore.getState().auth.session?.sid;
 
-        if (event.kind === 'authenticated') {
-          if (event.sid === currentSID) return
+        if (event.kind === "authenticated") {
+          if (event.sid === currentSID) return;
           if (currentSID) {
-            clearAuthentication(false)
+            clearAuthentication(false);
           }
-          window.location.reload()
-          return
+          window.location.reload();
+          return;
         }
 
         if (currentSID && event.sid === currentSID) {
-          clearAuthenticatedClientState(queryClient, false)
-          void navigate({ to: '/sign-in', replace: true })
+          clearAuthenticatedClientState(queryClient, false);
+          void navigate({ to: "/sign-in", replace: true });
         }
       }),
-    [navigate, queryClient]
-  )
+    [navigate, queryClient],
+  );
 
   return (
     <ThemeCustomizationProvider>
       <AppBackground />
       <NavigationProgress />
-      <div data-slot='app-content' className='relative z-10 min-h-svh'>
+      <div data-slot="app-content" className="relative z-10 min-h-svh">
         <Outlet />
       </div>
-      <Toaster closeButton duration={5000} position='top-center' richColors />
-      {import.meta.env.MODE === 'development' && !isMobileViewport && (
-        <>
-          <ReactQueryDevtools buttonPosition='bottom-left' />
-          <TanStackRouterDevtools position='bottom-right' />
-        </>
-      )}
+      <Toaster closeButton duration={5000} position="top-center" richColors />
     </ThemeCustomizationProvider>
-  )
+  );
 }
 
 // 缓存 setup 状态检查结果，避免每次导航都重复调用 API
 // 使用 localStorage 持久化，避免页面刷新后重复检查
-const SETUP_CHECKED_KEY = 'setup_status_checked'
+const SETUP_CHECKED_KEY = "setup_status_checked";
 
 function getSetupStatusFromCache(): boolean {
   try {
-    if (typeof window !== 'undefined') {
-      return window.localStorage.getItem(SETUP_CHECKED_KEY) === 'true'
+    if (typeof window !== "undefined") {
+      return window.localStorage.getItem(SETUP_CHECKED_KEY) === "true";
     }
   } catch {
     /* empty */
   }
-  return false
+  return false;
 }
 
 function setSetupStatusCache(value: boolean): void {
   try {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       if (value) {
-        window.localStorage.setItem(SETUP_CHECKED_KEY, 'true')
+        window.localStorage.setItem(SETUP_CHECKED_KEY, "true");
       } else {
-        window.localStorage.removeItem(SETUP_CHECKED_KEY)
+        window.localStorage.removeItem(SETUP_CHECKED_KEY);
       }
     }
   } catch {
@@ -144,23 +135,23 @@ function setSetupStatusCache(value: boolean): void {
 }
 
 // 内存中的标记，避免同一会话中重复检查
-let setupStatusChecked = getSetupStatusFromCache()
+let setupStatusChecked = getSetupStatusFromCache();
 
 export const Route = createRootRouteWithContext<{
-  queryClient: QueryClient
+  queryClient: QueryClient;
 }>()({
   // 应用初始化与路由解析前统一校验会话
   beforeLoad: async ({ location }) => {
-    const legacyTarget = resolveLegacyRoute(location.href)
+    const legacyTarget = resolveLegacyRoute(location.href);
     if (legacyTarget) {
-      throw redirect({ href: legacyTarget, replace: true })
+      throw redirect({ href: legacyTarget, replace: true });
     }
 
-    const pathname = location?.pathname || ''
+    const pathname = location?.pathname || "";
     const needsSetupCheck =
-      !setupStatusChecked && !pathname.startsWith('/setup')
+      !setupStatusChecked && !pathname.startsWith("/setup");
     // dev 免登录并入同一条 Promise，不额外增加一次导航前的串行等待。
-    const authBootstrap = devAutoLogin().then(() => bootstrapAuthentication())
+    const authBootstrap = devAutoLogin().then(() => bootstrapAuthentication());
 
     // 只检查 setup 状态（如果需要）
     if (needsSetupCheck) {
@@ -168,23 +159,23 @@ export const Route = createRootRouteWithContext<{
         getSetupStatus().catch((error) => {
           if (import.meta.env.DEV) {
             // eslint-disable-next-line no-console
-            console.warn('[root.beforeLoad] setup status check failed', error)
+            console.warn("[root.beforeLoad] setup status check failed", error);
           }
-          return null
+          return null;
         }),
         authBootstrap,
-      ])
+      ]);
 
       if (status?.success && status.data && !status.data.status) {
-        throw redirect({ to: '/setup' })
+        throw redirect({ to: "/setup" });
       }
-      setupStatusChecked = true
-      setSetupStatusCache(true)
+      setupStatusChecked = true;
+      setSetupStatusCache(true);
     } else {
-      await authBootstrap
+      await authBootstrap;
     }
   },
   component: RootComponent,
   notFoundComponent: NotFoundError,
   errorComponent: GeneralError,
-})
+});

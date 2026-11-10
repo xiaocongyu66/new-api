@@ -71,7 +71,7 @@ func drawShares(t *testing.T, group, alias string, n int, seed uint64) map[int]i
 	rnd := rand.New(rand.NewPCG(seed, 0x9E3779B9))
 	counts := map[int]int{}
 	for range n {
-		selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+		selected, err := SelectRouteUnit(group, alias, "", 0, nil, 0, rnd)
 		require.NoError(t, err)
 		require.NotNil(t, selected)
 		counts[selected.ChannelId]++
@@ -406,7 +406,7 @@ func TestP2CAllCoolingRecallsShortestRemaining(t *testing.T) {
 		CooldownUntilMs: 2000, LastCoolingOutcome: -1,
 	})
 
-	selected, err := SelectRouteUnit(group, alias, "", 0, nil, nil)
+	selected, err := SelectRouteUnit(group, alias, "", 0, nil, 0, nil)
 	require.NoError(t, err)
 	require.NotNil(t, selected, "an all-cooling pool must take the faint-recall path")
 	assert.Equal(t, 7552, selected.ChannelId, "the shortest-remaining unit is recalled")
@@ -531,7 +531,7 @@ func TestScoreW3CooledRouteRecoversAfterWindow(t *testing.T) {
 	counts = map[int]int{}
 	rnd := rand.New(rand.NewPCG(0xFEED, 0x9E3779B9))
 	for range 400 {
-		selected, err := SelectRouteUnit(group, alias, "", 0, nil, rnd)
+		selected, err := SelectRouteUnit(group, alias, "", 0, nil, 0, rnd)
 		require.NoError(t, err)
 		require.NotNil(t, selected)
 		counts[selected.ChannelId]++
@@ -599,7 +599,7 @@ func TestScoreW3AllZeroCandidatesYieldNoRoute(t *testing.T) {
 	require.NoError(t, DisableUnit(RouteKey{ChannelId: 7341, KeyIndex: 0, Model: alias}, now))
 	require.NoError(t, DisableUnit(RouteKey{ChannelId: 7342, KeyIndex: 0, Model: alias}, now))
 
-	selected, err := SelectRouteUnit(group, alias, "", 0, nil, rand.New(rand.NewPCG(3, 4)))
+	selected, err := SelectRouteUnit(group, alias, "", 0, nil, 0, rand.New(rand.NewPCG(3, 4)))
 	require.NoError(t, err)
 	assert.Nil(t, selected, "a fully disabled pool must yield no route, not a fallback pick")
 }

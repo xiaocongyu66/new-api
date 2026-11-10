@@ -60,8 +60,8 @@ type ModelFormValues = {
   ExposeRatioEnabled: boolean
   BillingMode: string
   BillingExpr: string
-  BillingContextTier?: string
-  BillingContextTierPerCall?: string
+  BillingContextTier: string
+  BillingContextTierPerCall: string
 }
 
 type ModelRatioFormProps = {

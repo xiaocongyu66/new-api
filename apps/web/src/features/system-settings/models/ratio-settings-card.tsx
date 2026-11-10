@@ -117,8 +117,8 @@ const createModelSchema = (t: Translate) =>
     ExposeRatioEnabled: z.boolean(),
     BillingMode: createJsonStringField(t),
     BillingExpr: createJsonStringField(t),
-    BillingContextTier: createJsonStringField(t).optional(),
-    BillingContextTierPerCall: createJsonStringField(t).optional(),
+    BillingContextTier: createJsonStringField(t),
+    BillingContextTierPerCall: createJsonStringField(t),
   })
 
 const createGroupSchema = (t: Translate) =>

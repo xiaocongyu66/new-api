@@ -183,7 +183,7 @@ func TestChannelCooldownSelectionSkipsEjectedRouteUnits(t *testing.T) {
 	for _, retry := range []int{0, 1, 7} {
 		counts := map[int]int{}
 		for range 50 {
-			got, err := GetRandomSatisfiedChannel(group, modelName, retry, "", nil)
+			got, err := GetRandomSatisfiedChannel(group, modelName, retry, "", nil, 0)
 			require.NoError(t, err)
 			require.NotNil(t, got, "the healthy route must serve regardless of retry")
 			counts[got.ChannelId]++
@@ -195,7 +195,7 @@ func TestChannelCooldownSelectionSkipsEjectedRouteUnits(t *testing.T) {
 	// Ejecting the survivor as well empties the pool, which is how selection fails
 	// fast instead of handing back an ejected route.
 	require.NoError(t, DisableUnit(RouteKey{ChannelId: fallback.Id, KeyIndex: 0, Model: modelName}, time.Now()))
-	got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil)
+	got, err := GetRandomSatisfiedChannel(group, modelName, 0, "", nil, 0)
 	require.NoError(t, err)
 	assert.Nil(t, got, "with every route unit ejected selection must yield nothing")
 }

@@ -12,6 +12,7 @@ type SelectParams struct {
 	RequestPath   string
 	ExcludeRoutes map[RouteKey]bool
 	Retry         *int
+	InputTokens   int
 	resetNextTry  bool
 }
 

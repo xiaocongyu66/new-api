@@ -16,63 +16,127 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { api } from '@/lib/api'
+import { api } from "@/lib/api";
 
 export interface RouteUnitAliasSummary {
-  alias: string
-  route_count: number
-  total_weight: number
+  alias: string;
+  route_count: number;
+  total_weight: number;
 }
 
 export interface RouteUnitView {
-  id: number
-  public_model_alias: string
-  channel_id: number
-  channel_name: string
-  channel_status: number
-  base_url: string
-  key_index: number
-  upstream_model: string
-  static_weight: number
-  enabled: boolean
-  expected_share: number
-  health_score: number
-  ewma_quality: number
-  success_ewma: number
-  ttft_ewma_ms: number
-  tps_ewma: number
-  sample_count: number
+  id: number;
+  public_model_alias: string;
+  channel_id: number;
+  channel_name: string;
+  channel_status: number;
+  base_url: string;
+  key_index: number;
+  upstream_model: string;
+  static_weight: number;
+  enabled: boolean;
+  expected_share: number;
+  health_score: number;
+  ewma_quality: number;
+  success_ewma: number;
+  ttft_ewma_ms: number;
+  tps_ewma: number;
+  sample_count: number;
   // W5.1: six-factor score breakdown
-  base_weight: number
-  health_multiplier: number
-  share_correction: number
-  actual_share: number
-  final_score: number
-  share_opportunities: number
-  share_selections: number
+  base_weight: number;
+  health_multiplier: number;
+  share_correction: number;
+  actual_share: number;
+  final_score: number;
+  share_opportunities: number;
+  share_selections: number;
 }
 
 export interface GetRouteUnitsResponse {
-  items: RouteUnitView[]
+  items: RouteUnitView[];
 }
 
 export interface UpdateRouteUnitRequest {
-  static_weight?: number
-  enabled?: boolean
+  static_weight?: number;
+  enabled?: boolean;
 }
 
 export async function getRouteUnitAliases(): Promise<RouteUnitAliasSummary[]> {
-  const res = await api.get('/api/channel/route_unit/aliases')
-  return res.data.data
+  const res = await api.get("/api/channel/route_unit/aliases");
+  return res.data.data;
 }
 
-export async function getRouteUnits(alias: string): Promise<GetRouteUnitsResponse> {
-  const res = await api.get('/api/channel/route_unit/', {
+export async function getRouteUnits(
+  alias: string,
+): Promise<GetRouteUnitsResponse> {
+  const res = await api.get("/api/channel/route_unit/", {
     params: { alias },
-  })
-  return res.data.data
+  });
+  return res.data.data;
 }
 
-export async function updateRouteUnit(id: number, data: UpdateRouteUnitRequest): Promise<void> {
-  await api.put(`/api/channel/route_unit/${id}`, data)
+export async function updateRouteUnit(
+  id: number,
+  data: UpdateRouteUnitRequest,
+): Promise<void> {
+  await api.put(`/api/channel/route_unit/${id}`, data);
+}
+
+export type DispatchMode = "weighted_pool" | "context_range" | "delegate";
+
+export interface DispatchPolicy {
+  alias: string;
+  mode: DispatchMode | string;
+  fallback_alias: string | null;
+  updated_at: string;
+}
+
+export interface ContextRoute {
+  id: number;
+  alias: string;
+  context_min: number;
+  context_max: number;
+  channel_id: number;
+  key_index: number;
+  upstream_model: string;
+  static_weight: number;
+  enabled: boolean;
+  sort_order: number;
+}
+
+export interface GetContextRoutesResponse {
+  items: ContextRoute[];
+}
+
+export async function getDispatchPolicy(
+  alias: string,
+): Promise<DispatchPolicy> {
+  const res = await api.get("/api/channel/route_unit/dispatch_policy", {
+    params: { alias },
+  });
+  return res.data.data;
+}
+
+export async function saveModelAliasDispatch(
+  alias: string,
+  mode: DispatchMode,
+  fallbackAlias: string | null,
+  items: Omit<ContextRoute, "id" | "alias">[],
+): Promise<GetContextRoutesResponse> {
+  const res = await api.put("/api/channel/route_unit/dispatch", {
+    alias,
+    mode,
+    fallback_alias: fallbackAlias,
+    items,
+  });
+  return res.data.data;
+}
+
+export async function getContextRoutes(
+  alias: string,
+): Promise<GetContextRoutesResponse> {
+  const res = await api.get("/api/channel/route_unit/context", {
+    params: { alias },
+  });
+  return res.data.data;
 }

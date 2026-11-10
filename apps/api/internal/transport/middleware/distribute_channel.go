@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	catalog "github.com/QuantumNous/new-api/internal/catalog"
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
@@ -30,6 +31,9 @@ import (
 type ModelRequest struct {
 	Model string `json:"model"`
 	Group string `json:"group,omitempty"`
+	// InputTokens is a coarse pre-relay estimate used only for context-range
+	// dispatch bucketing; billing counts precisely later in the relay handler.
+	InputTokens int `json:"-"`
 }
 
 func Distribute() func(c contract.Context) {
@@ -161,6 +165,7 @@ func Distribute() func(c contract.Context) {
 						RequestPath:   c.Path(),
 						Retry:         common.GetPointer(0),
 						ExcludeRoutes: make(map[catalog.RouteKey]bool),
+						InputTokens:   modelRequest.InputTokens,
 					})
 					if err != nil {
 						showGroup := usingGroup
@@ -262,9 +267,34 @@ func getModelFromJSONBody(c contract.Context) (*ModelRequest, error) {
 	}
 
 	return &ModelRequest{
-		Model: model,
-		Group: group,
+		Model:       model,
+		Group:       group,
+		InputTokens: estimateInputTokens(requestBody),
 	}, nil
+}
+
+// estimateInputTokens gives a coarse input-size estimate for context-range
+// routing before the relay parses the request: utf8 rune count over the
+// text-bearing fields plus the tools block. It deliberately over-approximates
+// structure overhead the same way the relay counter does (~3 tokens/message);
+// precision comes from EstimateRequestToken later, which remains the billing
+// source of truth.
+func estimateInputTokens(requestBody []byte) int {
+	if len(requestBody) == 0 {
+		return 0
+	}
+	values := gjson.GetManyBytes(requestBody, "messages", "prompt", "contents", "input", "tools")
+	total := 0
+	for _, v := range values {
+		if !v.Exists() {
+			continue
+		}
+		total += utf8.RuneCountInString(v.Raw)
+	}
+	// ~4 runes per token is the mixed-language average; rounded up so requests
+	// near an interval boundary land in the larger bucket rather than failing
+	// a too-small-context channel.
+	return (total + 3) / 4
 }
 
 func getJSONStringValue(result gjson.Result, field string) (string, error) {
@@ -377,6 +407,7 @@ func getModelRequest(c contract.Context) (*ModelRequest, bool, error) {
 			return nil, false, err
 		}
 		modelRequest.Model = req.Model
+		modelRequest.InputTokens = req.InputTokens
 	}
 	if strings.HasPrefix(c.Path(), "/v1/realtime") {
 		//wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01
@@ -501,7 +532,19 @@ func SetupContextForSelectedChannel(c contract.Context, route *catalog.SelectedR
 		common.SetCtxKey(c, constant.ContextKeyChannelOrganization, *channel.OpenAIOrganization)
 	}
 	common.SetCtxKey(c, constant.ContextKeyChannelAutoBan, channel.GetAutoBan())
-	common.SetCtxKey(c, constant.ContextKeyChannelModelMapping, channel.GetModelMapping())
+	modelMapping := strings.TrimSpace(channel.GetModelMapping())
+	// Context-range route rows may pin a different upstream model per interval.
+	// The relay only reads channel.model_mapping, so translate the selected
+	// route's upstream into a per-request mapping unless the channel already
+	// maps this alias explicitly (operator intent wins; "{}" counts as unmapped).
+	if modelMapping == "{}" {
+		modelMapping = ""
+	}
+	if route.UpstreamModel != "" && route.UpstreamModel != modelName && modelMapping == "" {
+		mapped, _ := common.Marshal(map[string]string{modelName: route.UpstreamModel})
+		modelMapping = string(mapped)
+	}
+	common.SetCtxKey(c, constant.ContextKeyChannelModelMapping, modelMapping)
 	common.SetCtxKey(c, constant.ContextKeyChannelStatusCodeMapping, channel.GetStatusCodeMapping())
 	if channel.ChannelInfo.IsMultiKey {
 		common.SetCtxKey(c, constant.ContextKeyChannelIsMultiKey, true)
