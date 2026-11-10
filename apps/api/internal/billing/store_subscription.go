@@ -1708,7 +1708,13 @@ func PreConsumeUserSubscription(requestId string, userId int, usingGroup string,
 			returnValue.AmountUsedBefore = sub.AmountUsed
 			returnValue.AmountUsedAfter = sub.AmountUsed
 			returnValue.RequestCounterUsedBefore = int64(existing.RequestCounterId)
-			returnValue.RequestKind = existing.RequestCounterId > 0
+			returnValue.RequestCounterId = existing.RequestCounterId
+			if existing.RequestCounterId > 0 {
+				var replayCounter SubscriptionRequestCounter
+				if err := tx.Where("id = ?", existing.RequestCounterId).First(&replayCounter).Error; err == nil {
+					returnValue.RequestKind = replayCounter.Measure == SubscriptionMeasureCount
+				}
+			}
 			return nil
 		}
 
