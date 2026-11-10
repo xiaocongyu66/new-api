@@ -3,10 +3,13 @@ package billing
 import (
 	"testing"
 
+	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
+
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func seedSubscriptionKindPlan(t *testing.T, id int, kind string, groups []string, rules []SubscriptionRequestRule, total int64) *SubscriptionPlan {
@@ -140,6 +143,107 @@ func TestPreConsumeUserSubscriptionRequestKindCountingAndRefund(t *testing.T) {
 	_, err = PreConsumeUserSubscription("req-count-4", 9302, "vip", "gpt-4o", 0, 10)
 	require.Error(t, err)
 	assert.Equal(t, int64(2), reloadSubscriptionCounter(t, counter.Id).Used)
+}
+
+// Purchase-time budget snapshot: count x model price x group ratio.
+func TestCreateSubscriptionRequestCountersSnapshotsQuotaBudget(t *testing.T) {
+	setupIdentityTestDB(t)
+	plan := seedSubscriptionKindPlan(t, 9305, SubscriptionKindRequest,
+		[]string{"vip"},
+		[]SubscriptionRequestRule{{Group: "vip", Models: []string{"gpt-4o"}, Count: 10}},
+		0)
+	modelPrice, priced := ratio_setting.GetModelPrice("gpt-4o", false)
+	groupRatio := ratio_setting.GetGroupRatio("vip")
+	require.True(t, priced && modelPrice > 0 && groupRatio > 0, "test fixture needs a priced model in group vip")
+
+	require.NoError(t, dbx.DB.Transaction(func(tx *gorm.DB) error {
+		_, err := CreateUserSubscriptionFromPlanTx(tx, 9305, plan, "test")
+		return err
+	}))
+	var counters []SubscriptionRequestCounter
+	require.NoError(t, dbx.DB.Where("user_subscription_id = (SELECT max(id) FROM user_subscriptions)").Find(&counters).Error)
+	require.Len(t, counters, 1)
+
+	want := int64(common.QuotaFromFloat(10 * modelPrice * groupRatio * common.QuotaPerUnit))
+	assert.Equal(t, want, counters[0].QuotaTotal)
+	assert.Equal(t, int64(0), counters[0].QuotaUsed)
+}
+
+// Waving an empty/short-cut release must release the counter idempotently.
+func TestWaiveSubscriptionRequestConsumeReleasesCounterIdempotently(t *testing.T) {
+	setupIdentityTestDB(t)
+	plan := seedSubscriptionKindPlan(t, 9306, SubscriptionKindRequest,
+		[]string{"vip"},
+		[]SubscriptionRequestRule{{Group: "vip", Models: []string{"gpt-4o"}, Count: 2}},
+		0)
+	sub := activeSubscriptionForKindTest(t, 9306, plan)
+	require.NoError(t, dbx.DB.Create(&SubscriptionRequestCounter{
+		UserSubscriptionId: sub.Id,
+		GroupName:          "vip",
+		ModelName:          "gpt-4o",
+		Total:              2,
+	}).Error)
+	var counter SubscriptionRequestCounter
+	require.NoError(t, dbx.DB.Where("user_subscription_id = ?", sub.Id).First(&counter).Error)
+
+	_, err := PreConsumeUserSubscription("req-waive", 9306, "vip", "gpt-4o", 0, 50)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), reloadSubscriptionCounter(t, counter.Id).Used)
+
+	require.NoError(t, WaiveSubscriptionRequestConsume("req-waive"))
+	assert.Equal(t, int64(0), reloadSubscriptionCounter(t, counter.Id).Used)
+	// Replay must not release a second time (idempotent).
+	require.NoError(t, WaiveSubscriptionRequestConsume("req-waive"))
+	assert.Equal(t, int64(0), reloadSubscriptionCounter(t, counter.Id).Used)
+
+	// Refund after a counted request releases the counter and quota once.
+	_, err = PreConsumeUserSubscription("req-waive-retry", 9306, "vip", "gpt-4o", 0, 50)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), reloadSubscriptionCounter(t, counter.Id).Used)
+	require.NoError(t, RefundSubscriptionPreConsume("req-waive-retry"))
+	assert.Equal(t, int64(0), reloadSubscriptionCounter(t, counter.Id).Used)
+	var afterRefund UserSubscription
+	require.NoError(t, dbx.DB.First(&afterRefund, sub.Id).Error)
+	assert.Equal(t, int64(0), afterRefund.AmountUsed)
+}
+
+// Settlement attribution: settled quota mirrors onto counter.quota_used, and
+// a negative delta (waived settlement) removes it again.
+func TestAttributeSubscriptionCounterQuotaMirrorIsIdempotent(t *testing.T) {
+	setupIdentityTestDB(t)
+	plan := seedSubscriptionKindPlan(t, 9307, SubscriptionKindRequest,
+		[]string{"vip"},
+		[]SubscriptionRequestRule{{Group: "vip", Models: []string{"gpt-4o"}, Count: 2}},
+		0)
+	sub := activeSubscriptionForKindTest(t, 9307, plan)
+	require.NoError(t, dbx.DB.Create(&SubscriptionRequestCounter{
+		UserSubscriptionId: sub.Id,
+		GroupName:          "vip",
+		ModelName:          "gpt-4o",
+		Total:              2,
+	}).Error)
+	var counter SubscriptionRequestCounter
+	require.NoError(t, dbx.DB.Where("user_subscription_id = ?", sub.Id).First(&counter).Error)
+
+	_, err := PreConsumeUserSubscription("req-attr", 9307, "vip", "gpt-4o", 0, 100)
+	require.NoError(t, err)
+	require.NoError(t, AttributeSubscriptionCounterQuota("req-attr", 100))
+	assert.Equal(t, int64(100), reloadSubscriptionCounter(t, counter.Id).QuotaUsed)
+
+	// Over-settle (e.g. a usage-corrected delta) accumulates rather than
+	// replaces, mirroring the subscription's amount_used semantics.
+	require.NoError(t, AttributeSubscriptionCounterQuota("req-attr", 50))
+	assert.Equal(t, int64(150), reloadSubscriptionCounter(t, counter.Id).QuotaUsed)
+
+	// Refund/waive un-attributes back to zero and never below.
+	require.NoError(t, AttributeSubscriptionCounterQuota("req-attr", -150))
+	assert.Equal(t, int64(0), reloadSubscriptionCounter(t, counter.Id).QuotaUsed)
+	require.NoError(t, AttributeSubscriptionCounterQuota("req-attr", -10))
+	assert.Equal(t, int64(0), reloadSubscriptionCounter(t, counter.Id).QuotaUsed)
+
+	// Unknown request ids are silent no-ops.
+	require.NoError(t, AttributeSubscriptionCounterQuota("req-does-not-exist", 5))
+	assert.Equal(t, int64(0), reloadSubscriptionCounter(t, counter.Id).QuotaUsed)
 }
 
 // A quota-kind subscription expires when its pool is spent even though it has
