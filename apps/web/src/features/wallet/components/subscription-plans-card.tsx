@@ -52,7 +52,11 @@ import {
 } from '@/features/subscriptions/api'
 import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
 import { RequestCountBars } from '@/features/subscriptions/components/request-count-bars'
-import { getSubscriptionKindLabel } from '@/features/subscriptions/constants'
+import {
+  getSubscriptionModeLabel,
+  planExpireMode,
+  planLimitMode,
+} from '@/features/subscriptions/constants'
 import {
   formatDuration,
   formatPlanPrice,
@@ -584,20 +588,20 @@ export function SubscriptionPlansCard({
 
               const upgradeGroups = getPlanUpgradeGroups(plan)
               const benefits = [
-                `${t('Subscription Kind')}: ${getSubscriptionKindLabel(plan.kind, t)}`,
-                plan.kind === 'time'
+                `${t('Expiry / Limit')}: ${getSubscriptionModeLabel(plan, t)}`,
+                planExpireMode(plan) === 'time'
                   ? `${t('Validity Period')}: ${formatDuration(plan, t)}`
                   : null,
-                plan.kind === 'time' &&
+                planExpireMode(plan) === 'time' &&
                 formatResetPeriod(plan, t) !== t('No Reset')
                   ? `${t('Quota Reset')}: ${formatResetPeriod(plan, t)}`
                   : null,
-                plan.kind !== 'request'
+                planLimitMode(plan) === 'group'
                   ? totalAmount > 0
                     ? `${t('Total Quota')}: ${formatQuota(totalAmount)}`
                     : `${t('Total Quota')}: ${t('Unlimited')}`
                   : null,
-                ...(plan.kind === 'request'
+                ...(planLimitMode(plan) === 'request'
                   ? (plan.request_rules || []).map(
                       (rule) =>
                         `${t('Request Limits')}: ${rule.group} · ${rule.models.join(', ')} × ${rule.count}`

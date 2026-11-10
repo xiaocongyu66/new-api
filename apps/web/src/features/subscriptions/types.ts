@@ -63,6 +63,8 @@ const subscriptionPlanSchema = z.object({
   total_amount: z.number(),
   total_amount_display: z.number().optional(),
   kind: z.enum(['time', 'quota', 'request']).default('time'),
+  expire_mode: z.string().optional(),
+  limit_mode: z.string().optional(),
   upgrade_groups: z.array(z.string()).optional(),
   request_rules: z.array(subscriptionRequestRuleSchema).optional(),
   /** USD price rendered in display currency by the backend for balance compare. */

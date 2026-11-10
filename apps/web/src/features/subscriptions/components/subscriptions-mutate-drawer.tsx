@@ -80,8 +80,9 @@ import {
 } from '../api'
 import {
   getDurationUnitOptions,
+  getPlanExpireModeOptions,
+  getPlanLimitModeOptions,
   getResetPeriodOptions,
-  getSubscriptionKindOptions,
 } from '../constants'
 import {
   getPlanFormSchema,
@@ -195,10 +196,13 @@ export function SubscriptionsMutateDrawer({
 
   const durationUnit = form.watch('duration_unit')
   const resetPeriod = form.watch('quota_reset_period')
-  const kind = form.watch('kind')
+  const expireMode = form.watch('expire_mode')
+  const limitMode = form.watch('limit_mode')
+  // Only the group-limit + time-expiry combination carries a reset cycle.
+  const hasResetCycle = limitMode === 'group' && expireMode === 'time'
 
   useEffect(() => {
-    if (kind === 'time') return
+    if (hasResetCycle) return
     form.setValue('quota_reset_period', 'never', {
       shouldDirty: false,
       shouldValidate: false,
@@ -207,13 +211,13 @@ export function SubscriptionsMutateDrawer({
       shouldDirty: false,
       shouldValidate: false,
     })
-    if (kind === 'request') {
+    if (limitMode === 'request') {
       form.setValue('total_amount', 0, {
         shouldDirty: false,
         shouldValidate: false,
       })
     }
-  }, [kind, form])
+  }, [hasResetCycle, limitMode, form])
   // Gate "+ Create on Pancake" on the same checks the mint handler runs.
   const watchedTitle = form.watch('title')
   const watchedPrice = form.watch('price_amount')
@@ -224,15 +228,31 @@ export function SubscriptionsMutateDrawer({
     Number(watchedPrice ?? 0) > 0
 
   const onSubmit = async (values: PlanFormValues) => {
-    if (
-      values.kind === 'request' &&
-      (values.request_rules.length === 0 ||
+    if (values.limit_mode === 'request') {
+      const incomplete =
+        values.request_rules.length === 0 ||
         values.request_rules.some(
           (rule) => !rule.group || rule.models.length === 0 || rule.count <= 0
-        ))
-    ) {
-      toast.error(t('Request limits need a group, models and a positive count'))
-      return
+        )
+      if (incomplete) {
+        toast.error(
+          t('Request limits need a group, models and a positive count')
+        )
+        return
+      }
+      const seen = new Set<string>()
+      const duplicated = values.request_rules.some((rule) =>
+        rule.models.some((model) => {
+          const key = `${rule.group}\u0000${model}`
+          if (seen.has(key)) return true
+          seen.add(key)
+          return false
+        })
+      )
+      if (duplicated) {
+        toast.error(t('Each model can only be limited once per group'))
+        return
+      }
     }
     setIsSubmitting(true)
     try {
@@ -330,11 +350,29 @@ export function SubscriptionsMutateDrawer({
 
   const durationUnitOpts = getDurationUnitOptions(t)
   const resetPeriodOpts = getResetPeriodOptions(t)
-  const kindOpts = getSubscriptionKindOptions(t)
+  const expireModeOpts = getPlanExpireModeOptions(t)
+  const limitModeOpts = getPlanLimitModeOptions(t)
   const upgradeGroupOptions = groupOptions.map((group) => ({
     value: group,
     label: group,
   }))
+
+  // The (group, model) pair is the counter key, so the editor hides models
+  // another rule already covers in the same group instead of letting the
+  // operator build a duplicate the backend will reject.
+  const modelOptionsForRule = (index: number) => {
+    const rules = form.getValues('request_rules')
+    const group = rules[index]?.group || ''
+    const taken = new Set<string>()
+    rules.forEach((rule, ruleIndex) => {
+      if (ruleIndex !== index && rule.group === group) {
+        rule.models.forEach((model) => taken.add(model))
+      }
+    })
+    return (groupModels[group] || [])
+      .filter((model) => !taken.has(model))
+      .map((model) => ({ value: model, label: model }))
+  }
 
   return (
     <Sheet
@@ -386,34 +424,67 @@ export function SubscriptionsMutateDrawer({
             onSubmit={form.handleSubmit(onSubmit)}
             className={sideDrawerFormClassName('gap-4 sm:gap-6')}
           >
-            {/* Subscription Kind */}
-            <SideDrawerSection>
+            {/* Expiry & Limit Modes */}
+            <SideDrawerSection className='gap-4'>
               <FormField
                 control={form.control}
-                name='kind'
+                name='expire_mode'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Subscription Kind')}</FormLabel>
-                    <Select
-                      items={kindOpts}
-                      onValueChange={(v) => v !== null && field.onChange(v)}
-                      value={field.value}
-                    >
-                      <FormControl>
-                        <SelectTrigger className='w-full'>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent alignItemWithTrigger={false}>
-                        <SelectGroup>
-                          {kindOpts.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
+                    <FormLabel>{t('Expiry Method')}</FormLabel>
+                    <FormControl>
+                      <div className='bg-muted/40 inline-flex w-full rounded-md border p-0.5'>
+                        {expireModeOpts.map((option) => (
+                          <Button
+                            key={option.value}
+                            type='button'
+                            variant={field.value === option.value ? 'secondary' : 'ghost'}
+                            size='sm'
+                            className='flex-1 shadow-none'
+                            onClick={() => field.onChange(option.value)}
+                          >
+                            {option.label}
+                          </Button>
+                        ))}
+                      </div>
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Expires by time ends the subscription at the end of its term; expires by quota ends it once the granted quota or request counts are spent'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='limit_mode'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Limit Method')}</FormLabel>
+                    <FormControl>
+                      <div className='bg-muted/40 inline-flex w-full rounded-md border p-0.5'>
+                        {limitModeOpts.map((option) => (
+                          <Button
+                            key={option.value}
+                            type='button'
+                            variant={field.value === option.value ? 'secondary' : 'ghost'}
+                            size='sm'
+                            className='flex-1 shadow-none'
+                            onClick={() => field.onChange(option.value)}
+                          >
+                            {option.label}
+                          </Button>
+                        ))}
+                      </div>
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Group limit grants a quota pool usable only in the selected groups; request limit grants per-model request counts'
+                      )}
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -492,7 +563,7 @@ export function SubscriptionsMutateDrawer({
                   )}
                 />
 
-                {kind !== 'request' && (
+                {limitMode === 'group' && (
                   <FormField
                     control={form.control}
                     name='total_amount'
@@ -716,7 +787,7 @@ export function SubscriptionsMutateDrawer({
             </SideDrawerSection>
 
             {/* Duration Settings */}
-            {kind === 'time' && (
+            {expireMode === 'time' && (
               <SideDrawerSection>
                 <h3 className='flex items-center gap-2 text-sm font-medium'>
                   <IconBadge tone='chart-4' size='xs'>
@@ -812,7 +883,7 @@ export function SubscriptionsMutateDrawer({
             )}
 
             {/* Quota Reset */}
-            {kind === 'time' && (
+            {hasResetCycle && (
               <SideDrawerSection>
                 <h3 className='flex items-center gap-2 text-sm font-medium'>
                   <IconBadge tone='success' size='xs'>
@@ -884,7 +955,7 @@ export function SubscriptionsMutateDrawer({
             )}
 
             {/* Request Limits */}
-            {kind === 'request' && (
+            {limitMode === 'request' && (
               <SideDrawerSection>
                 <h3 className='flex items-center gap-2 text-sm font-medium'>
                   <IconBadge tone='info' size='xs'>
@@ -946,9 +1017,7 @@ export function SubscriptionsMutateDrawer({
                             <FormLabel>{t('Models')}</FormLabel>
                             <FormControl>
                               <MultiSelect
-                                options={(groupModels[rule.group] || []).map(
-                                  (model) => ({ value: model, label: model })
-                                )}
+                                options={modelOptionsForRule(index)}
                                 selected={field.value || []}
                                 onChange={field.onChange}
                                 placeholder={t('Select models')}

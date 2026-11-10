@@ -26,7 +26,7 @@ import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
 import { formatQuota } from '@/lib/format'
 
-import { getSubscriptionKindLabel } from '../constants'
+import { getSubscriptionModeLabel, planExpireMode } from '../constants'
 import { formatPlanPrice } from '../lib'
 import { formatDuration, formatResetPeriod } from '../lib'
 import type { PlanRecord } from '../types'
@@ -66,15 +66,15 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         size: 200,
       },
       {
-        accessorFn: (row) => row.plan.kind || 'time',
-        id: 'kind',
-        header: t('Subscription Kind'),
+        accessorFn: (row) => row.plan.expire_mode || row.plan.kind || '',
+        id: 'modes',
+        header: t('Expiry / Limit'),
         cell: ({ row }) => (
           <span className='text-muted-foreground'>
-            {getSubscriptionKindLabel(row.original.plan.kind, t)}
+            {getSubscriptionModeLabel(row.original.plan, t)}
           </span>
         ),
-        size: 120,
+        size: 160,
       },
       {
         accessorFn: (row) => row.plan.price_amount,
@@ -92,7 +92,9 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         header: t('Validity'),
         cell: ({ row }) => (
           <span className='text-muted-foreground'>
-            {formatDuration(row.original.plan, t)}
+            {planExpireMode(row.original.plan) === 'time'
+              ? formatDuration(row.original.plan, t)
+              : '-'}
           </span>
         ),
         size: 100,

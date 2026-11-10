@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import type { TFunction } from 'i18next'
 import { z } from 'zod'
 
+import { planExpireMode, planLimitMode } from '../constants'
 import type { SubscriptionPlan, PlanPayload } from '../types'
 
 export function getPlanFormSchema(t: TFunction) {
@@ -27,7 +28,8 @@ export function getPlanFormSchema(t: TFunction) {
       title: z.string().min(1, t('Please enter plan title')),
       subtitle: z.string().optional(),
       price_amount: z.coerce.number().min(0, t('Please enter amount')),
-      kind: z.enum(['time', 'quota', 'request']),
+      expire_mode: z.enum(['time', 'quota']),
+      limit_mode: z.enum(['group', 'request']),
       duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
       duration_value: z.coerce.number().min(1),
       custom_seconds: z.coerce.number().min(0).optional(),
@@ -59,12 +61,47 @@ export function getPlanFormSchema(t: TFunction) {
       waffo_pancake_product_id: z.string().optional(),
     })
     .superRefine((values, ctx) => {
-      if (values.kind === 'quota' && values.total_amount <= 0) {
+      if (
+        values.expire_mode === 'quota' &&
+        values.limit_mode === 'group' &&
+        values.total_amount <= 0
+      ) {
         ctx.addIssue({
           code: 'custom',
           path: ['total_amount'],
           message: t('Quota-exhausted plans require a positive total quota'),
         })
+      }
+      if (values.limit_mode === 'request') {
+        const incomplete = values.request_rules.some(
+          (rule) => !rule.group || rule.models.length === 0 || rule.count <= 0
+        )
+        if (values.request_rules.length === 0 || incomplete) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['request_rules'],
+            message: t(
+              'Request limits need a group, models and a positive count'
+            ),
+          })
+        }
+        // The backend keys counters on (group, model); a repeat would
+        // silently grant the sum under a single bar.
+        const seen = new Set<string>()
+        for (const rule of values.request_rules) {
+          for (const model of rule.models) {
+            const key = `${rule.group}\u0000${model}`
+            if (seen.has(key)) {
+              ctx.addIssue({
+                code: 'custom',
+                path: ['request_rules'],
+                message: t('Each model can only be limited once per group'),
+              })
+            } else {
+              seen.add(key)
+            }
+          }
+        }
       }
     })
 }
@@ -75,7 +112,8 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   title: '',
   subtitle: '',
   price_amount: 0,
-  kind: 'time',
+  expire_mode: 'time',
+  limit_mode: 'group',
   duration_unit: 'month',
   duration_value: 1,
   custom_seconds: 0,
@@ -109,7 +147,8 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
     title: plan.title || '',
     subtitle: plan.subtitle || '',
     price_amount: Number(plan.price_amount || 0),
-    kind: plan.kind || 'time',
+    expire_mode: planExpireMode(plan),
+    limit_mode: planLimitMode(plan),
     duration_unit: plan.duration_unit || 'month',
     duration_value: Number(plan.duration_value || 1),
     custom_seconds: Number(plan.custom_seconds || 0),
@@ -142,9 +181,13 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
       currency: 'USD',
       duration_value: Number(values.duration_value || 0),
       quota_reset_period:
-        values.kind === 'time' ? values.quota_reset_period || 'never' : 'never',
+        values.limit_mode === 'group' && values.expire_mode === 'time'
+          ? values.quota_reset_period || 'never'
+          : 'never',
       quota_reset_custom_seconds:
-        values.kind === 'time' && values.quota_reset_period === 'custom'
+        values.limit_mode === 'group' &&
+        values.expire_mode === 'time' &&
+        values.quota_reset_period === 'custom'
           ? Number(values.quota_reset_custom_seconds || 0)
           : 0,
       sort_order: Number(values.sort_order || 0),
