@@ -87,9 +87,9 @@ func TestPreConsumeUserSubscriptionRejectsGroupMismatch(t *testing.T) {
 	assert.Equal(t, int64(100), reloaded.AmountUsed)
 }
 
-// Request counters are reserved per request id and released idempotently on
-// refund; exhausting a counter must reject further requests.
-func TestPreConsumeSubscriptionRequestCountingAndRefund(t *testing.T) {
+// Request-kind subscriptions reserve one request from the matching counter and
+// then consume standard subscription quota; refunds release both legs.
+func TestPreConsumeUserSubscriptionRequestKindCountingAndRefund(t *testing.T) {
 	setupIdentityTestDB(t)
 	plan := seedSubscriptionKindPlan(t, 9302, SubscriptionKindRequest,
 		[]string{"vip"},
@@ -105,29 +105,39 @@ func TestPreConsumeSubscriptionRequestCountingAndRefund(t *testing.T) {
 	var counter SubscriptionRequestCounter
 	require.NoError(t, dbx.DB.Where("user_subscription_id = ?", sub.Id).First(&counter).Error)
 
-	res, err := PreConsumeSubscriptionRequest("req-count-1", 9302, "vip", "gpt-4o")
+	res, err := PreConsumeUserSubscription("req-count-1", 9302, "vip", "gpt-4o", 0, 100)
 	require.NoError(t, err)
 	require.NotNil(t, res)
-	assert.Equal(t, int64(1), res.PreConsumed)
-	assert.Equal(t, counter.Id, res.RequestCounterId)
+	assert.Equal(t, int64(100), res.PreConsumed)
+	assert.Equal(t, int64(0), res.RequestCounterUsedBefore)
 	assert.Equal(t, int64(1), reloadSubscriptionCounter(t, counter.Id).Used)
 
-	// Same request id reuses the existing reservation instead of counting twice.
-	replay, err := PreConsumeSubscriptionRequest("req-count-1", 9302, "vip", "gpt-4o")
+	// Same request id replays without counting or charging twice.
+	replay, err := PreConsumeUserSubscription("req-count-1", 9302, "vip", "gpt-4o", 0, 100)
 	require.NoError(t, err)
 	require.NotNil(t, replay)
+	assert.Equal(t, int64(100), replay.PreConsumed)
 	assert.Equal(t, int64(1), reloadSubscriptionCounter(t, counter.Id).Used)
 
-	require.NoError(t, RefundSubscriptionRequestConsume("req-count-1"))
-	assert.Equal(t, int64(0), reloadSubscriptionCounter(t, counter.Id).Used)
-	require.NoError(t, RefundSubscriptionRequestConsume("req-count-1"))
-	assert.Equal(t, int64(0), reloadSubscriptionCounter(t, counter.Id).Used)
+	var usedAfterPre UserSubscription
+	require.NoError(t, dbx.DB.First(&usedAfterPre, sub.Id).Error)
+	assert.Equal(t, int64(100), usedAfterPre.AmountUsed)
 
-	_, err = PreConsumeSubscriptionRequest("req-count-2", 9302, "vip", "gpt-4o")
+	// Refund releases both the counter and the reserved quota.
+	require.NoError(t, RefundSubscriptionPreConsume("req-count-1"))
+	assert.Equal(t, int64(0), reloadSubscriptionCounter(t, counter.Id).Used)
+	require.NoError(t, RefundSubscriptionPreConsume("req-count-1"))
+	assert.Equal(t, int64(0), reloadSubscriptionCounter(t, counter.Id).Used)
+	var usedAfterRefund UserSubscription
+	require.NoError(t, dbx.DB.First(&usedAfterRefund, sub.Id).Error)
+	assert.Equal(t, int64(0), usedAfterRefund.AmountUsed)
+
+	// Exhaustion gates further requests even though the quota pool is unlimited.
+	_, err = PreConsumeUserSubscription("req-count-2", 9302, "vip", "gpt-4o", 0, 10)
 	require.NoError(t, err)
-	_, err = PreConsumeSubscriptionRequest("req-count-3", 9302, "vip", "gpt-4o")
+	_, err = PreConsumeUserSubscription("req-count-3", 9302, "vip", "gpt-4o", 0, 10)
 	require.NoError(t, err)
-	_, err = PreConsumeSubscriptionRequest("req-count-4", 9302, "vip", "gpt-4o")
+	_, err = PreConsumeUserSubscription("req-count-4", 9302, "vip", "gpt-4o", 0, 10)
 	require.Error(t, err)
 	assert.Equal(t, int64(2), reloadSubscriptionCounter(t, counter.Id).Used)
 }

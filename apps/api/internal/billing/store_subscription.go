@@ -1050,44 +1050,6 @@ func HasUsableUserSubscription(userId int, usingGroup string, modelName string, 
 	return count > 0, nil
 }
 
-// HasUsableRequestCountSubscription is the lightweight request-kind probe used
-// before deciding which funding source to build.
-func HasUsableRequestCountSubscription(userId int, usingGroup string, modelName string) (bool, error) {
-	if userId <= 0 {
-		return false, errors.New("invalid userId")
-	}
-	usingGroup = strings.TrimSpace(usingGroup)
-	modelName = strings.TrimSpace(modelName)
-	if usingGroup == "" || modelName == "" {
-		return false, nil
-	}
-	now := common.GetTimestamp()
-	var subs []UserSubscription
-	if err := dbx.DB.
-		Where("user_id = ? AND status = ? AND kind = ? AND (end_time = 0 OR end_time > ?)",
-			userId, "active", SubscriptionKindRequest, now).
-		Find(&subs).Error; err != nil {
-		return false, err
-	}
-	requestSubIds := make([]int, 0, len(subs))
-	for i := range subs {
-		if subscriptionAllowsGroup(&subs[i], usingGroup) {
-			requestSubIds = append(requestSubIds, subs[i].Id)
-		}
-	}
-	if len(requestSubIds) == 0 {
-		return false, nil
-	}
-	var count int64
-	if err := dbx.DB.Model(&SubscriptionRequestCounter{}).
-		Where("user_subscription_id IN ? AND group_name = ? AND model_name = ? AND used < total",
-			requestSubIds, usingGroup, modelName).
-		Count(&count).Error; err != nil {
-		return false, err
-	}
-	return count > 0, nil
-}
-
 // GetAllUserSubscriptions returns all subscriptions (active and expired) for a user.
 func GetAllUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 	if userId <= 0 {
@@ -1226,11 +1188,17 @@ func deleteUserSubscriptionRecord(userSubscriptionId int) (string, error) {
 
 type SubscriptionPreConsumeResult struct {
 	UserSubscriptionId int
-	RequestCounterId   int
 	PreConsumed        int64
 	AmountTotal        int64
 	AmountUsedBefore   int64
 	AmountUsedAfter    int64
+	// RequestCounterUsedBefore is the counter's used value before the request
+	// was reserved (0 for amount-kind records). SubscriptionFunding syncs it
+	// onto RelayInfo so the settlement path can attribute per-request counters.
+	RequestCounterUsedBefore int64
+	// RequestKind marks that this pre-consume served a request-kind
+	// subscription and reserved one request counter entry.
+	RequestKind bool
 }
 
 // ExpireDueSubscriptions marks expired subscriptions and handles group downgrade.
@@ -1400,7 +1368,9 @@ type SubscriptionPreConsumeRecord struct {
 	// pre-consume (request). Rows created before this field default to amount.
 	Kind string `json:"kind" gorm:"type:varchar(16);default:'amount'"`
 	// RequestCounterId points at the request counter row a request-kind
-	// pre-consume incremented, so refunds can decrement the same row.
+	// pre-consume incremented. The count is enforced at pre-consume and the
+	// outcome classifier; settlement always flows through the standard amount
+	// legs, so this stays informational (replays, audits, refunds by row).
 	RequestCounterId int    `json:"request_counter_id" gorm:"default:0"`
 	PreConsumed      int64  `json:"pre_consumed" gorm:"type:bigint;not null;default:0"`
 	Status           string `json:"status" gorm:"type:varchar(32);index"` // consumed/refunded
@@ -1456,9 +1426,9 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 	return tx.Save(sub).Error
 }
 
-// PreConsumeUserSubscription pre-consumes from any active subscription total quota.
-// request-kind subscriptions are excluded: they consume request counters through
-// PreConsumeSubscriptionRequest instead.
+// PreConsumeUserSubscription pre-consumes from any active subscription total
+// quota. Request-kind subscriptions join the same quota legs and additionally
+// reserve one request from the matching counter inside this transaction.
 func PreConsumeUserSubscription(requestId string, userId int, usingGroup string, modelName string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")
@@ -1492,6 +1462,8 @@ func PreConsumeUserSubscription(requestId string, userId int, usingGroup string,
 			returnValue.AmountTotal = sub.AmountTotal
 			returnValue.AmountUsedBefore = sub.AmountUsed
 			returnValue.AmountUsedAfter = sub.AmountUsed
+			returnValue.RequestCounterUsedBefore = int64(existing.RequestCounterId)
+			returnValue.RequestKind = existing.RequestCounterId > 0
 			return nil
 		}
 
@@ -1507,13 +1479,10 @@ func PreConsumeUserSubscription(requestId string, userId int, usingGroup string,
 		}
 		candidates := make([]UserSubscription, 0, len(subs))
 		for _, candidate := range subs {
-			if candidate.Kind == SubscriptionKindRequest {
-				continue
-			}
 			if !subscriptionAllowsGroup(&candidate, usingGroup) {
 				continue
 			}
-			if candidate.Kind == SubscriptionKindQuota && candidate.AmountTotal > 0 && candidate.AmountUsed >= candidate.AmountTotal {
+			if candidate.AmountTotal > 0 && candidate.AmountUsed >= candidate.AmountTotal {
 				continue
 			}
 			candidates = append(candidates, candidate)
@@ -1530,6 +1499,32 @@ func PreConsumeUserSubscription(requestId string, userId int, usingGroup string,
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
 				return err
 			}
+			// Request-kind candidates additionally reserve one request from the
+			// matching (group, model) counter inside this same transaction. The
+			// count is the entitlement gate; the quota legs below stay standard
+			// so pre-consume / settle / refund need no request-specific branch.
+			requestCounterUsedBefore := int64(0)
+			var requestCounterId int
+			if sub.Kind == SubscriptionKindRequest {
+				var counter SubscriptionRequestCounter
+				if err := dbx.LockForUpdate(tx).
+					Where("user_subscription_id = ? AND group_name = ? AND model_name = ?", sub.Id, usingGroup, modelName).
+					First(&counter).Error; err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						continue
+					}
+					return err
+				}
+				if counter.Used >= counter.Total {
+					continue
+				}
+				counter.Used++
+				if err := tx.Save(&counter).Error; err != nil {
+					return err
+				}
+				requestCounterId = counter.Id
+				requestCounterUsedBefore = counter.Used - 1
+			}
 			usedBefore := sub.AmountUsed
 			if sub.AmountTotal > 0 {
 				remain := sub.AmountTotal - usedBefore
@@ -1542,6 +1537,7 @@ func PreConsumeUserSubscription(requestId string, userId int, usingGroup string,
 				UserId:             userId,
 				UserSubscriptionId: sub.Id,
 				Kind:               "amount",
+				RequestCounterId:   requestCounterId,
 				PreConsumed:        amount,
 				Status:             "consumed",
 			}
@@ -1569,6 +1565,8 @@ func PreConsumeUserSubscription(requestId string, userId int, usingGroup string,
 			returnValue.AmountTotal = sub.AmountTotal
 			returnValue.AmountUsedBefore = usedBefore
 			returnValue.AmountUsedAfter = sub.AmountUsed
+			returnValue.RequestCounterUsedBefore = requestCounterUsedBefore
+			returnValue.RequestKind = sub.Kind == SubscriptionKindRequest
 			return nil
 		}
 		return fmt.Errorf("subscription quota insufficient, need=%d", amount)
@@ -1579,8 +1577,10 @@ func PreConsumeUserSubscription(requestId string, userId int, usingGroup string,
 	return returnValue, nil
 }
 
-// RefundSubscriptionPreConsume is idempotent and refunds pre-consumed subscription quota by requestId.
-// request-kind records release the counter they incremented instead of amount_used.
+// RefundSubscriptionPreConsume is idempotent and refunds pre-consumed
+// subscription quota by requestId. Request-kind records additionally release
+// the counter they reserved; a release failure is logged instead of failing
+// the refund, so the quota refund (the billing-critical leg) always lands.
 func RefundSubscriptionPreConsume(requestId string) error {
 	if strings.TrimSpace(requestId) == "" {
 		return errors.New("requestId is empty")
@@ -1594,8 +1594,8 @@ func RefundSubscriptionPreConsume(requestId string) error {
 		if record.Status == "refunded" {
 			return nil
 		}
-		if record.Kind == SubscriptionKindRequest {
-			return refundSubscriptionRequestConsumeTx(tx, &record)
+		if record.RequestCounterId > 0 {
+			releaseSubscriptionRequestCounterTx(tx, record.RequestCounterId)
 		}
 		if record.PreConsumed <= 0 {
 			record.Status = "refunded"
@@ -1609,124 +1609,11 @@ func RefundSubscriptionPreConsume(requestId string) error {
 	})
 }
 
-// PreConsumeSubscriptionRequest reserves one request from the first usable
-// request-kind subscription, locking the matching counter row. The operation is
-// idempotent per requestId.
-func PreConsumeSubscriptionRequest(requestId string, userId int, usingGroup string, modelName string) (*SubscriptionPreConsumeResult, error) {
-	if userId <= 0 {
-		return nil, errors.New("invalid userId")
-	}
-	if strings.TrimSpace(requestId) == "" {
-		return nil, errors.New("requestId is empty")
-	}
-	usingGroup = strings.TrimSpace(usingGroup)
-	modelName = strings.TrimSpace(modelName)
-	if usingGroup == "" || modelName == "" {
-		return nil, errors.New("subscription request quota insufficient")
-	}
-	now := dbinfra.GetDBTimestamp()
-	returnValue := &SubscriptionPreConsumeResult{}
-
-	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
-		var existing SubscriptionPreConsumeRecord
-		query := tx.Where("request_id = ?", requestId).Limit(1).Find(&existing)
-		if query.Error != nil {
-			return query.Error
-		}
-		if query.RowsAffected > 0 {
-			if existing.Status == "refunded" {
-				return errors.New("subscription pre-consume already refunded")
-			}
-			returnValue.UserSubscriptionId = existing.UserSubscriptionId
-			returnValue.RequestCounterId = existing.RequestCounterId
-			returnValue.PreConsumed = existing.PreConsumed
-			if existing.RequestCounterId > 0 {
-				var counter SubscriptionRequestCounter
-				if err := tx.Where("id = ?", existing.RequestCounterId).First(&counter).Error; err == nil {
-					returnValue.AmountTotal = counter.Total
-					returnValue.AmountUsedBefore = counter.Used
-					returnValue.AmountUsedAfter = counter.Used
-				}
-			}
-			return nil
-		}
-
-		var subs []UserSubscription
-		if err := dbx.LockForUpdate(tx).
-			Where("user_id = ? AND status = ? AND kind = ? AND (end_time = 0 OR end_time > ?)",
-				userId, "active", SubscriptionKindRequest, now).
-			Order("id asc").
-			Find(&subs).Error; err != nil {
-			return err
-		}
-		for _, sub := range subs {
-			if !subscriptionAllowsGroup(&sub, usingGroup) {
-				continue
-			}
-			var counter SubscriptionRequestCounter
-			if err := dbx.LockForUpdate(tx).
-				Where("user_subscription_id = ? AND group_name = ? AND model_name = ?", sub.Id, usingGroup, modelName).
-				First(&counter).Error; err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					continue
-				}
-				return err
-			}
-			if counter.Used >= counter.Total {
-				continue
-			}
-			record := &SubscriptionPreConsumeRecord{
-				RequestId:          requestId,
-				UserId:             userId,
-				UserSubscriptionId: sub.Id,
-				Kind:               SubscriptionKindRequest,
-				RequestCounterId:   counter.Id,
-				PreConsumed:        1,
-				Status:             "consumed",
-			}
-			if err := tx.Create(record).Error; err != nil {
-				var dup SubscriptionPreConsumeRecord
-				if err2 := tx.Where("request_id = ?", requestId).First(&dup).Error; err2 == nil {
-					if dup.Status == "refunded" {
-						return errors.New("subscription pre-consume already refunded")
-					}
-					returnValue.UserSubscriptionId = dup.UserSubscriptionId
-					returnValue.RequestCounterId = dup.RequestCounterId
-					returnValue.PreConsumed = dup.PreConsumed
-					var winner SubscriptionRequestCounter
-					if err3 := tx.Where("id = ?", dup.RequestCounterId).First(&winner).Error; err3 == nil {
-						returnValue.AmountTotal = winner.Total
-						returnValue.AmountUsedBefore = winner.Used
-						returnValue.AmountUsedAfter = winner.Used
-					}
-					return nil
-				}
-				return err
-			}
-			usedBefore := counter.Used
-			counter.Used++
-			if err := tx.Save(&counter).Error; err != nil {
-				return err
-			}
-			returnValue.UserSubscriptionId = sub.Id
-			returnValue.RequestCounterId = counter.Id
-			returnValue.PreConsumed = 1
-			returnValue.AmountTotal = counter.Total
-			returnValue.AmountUsedBefore = usedBefore
-			returnValue.AmountUsedAfter = counter.Used
-			return nil
-		}
-		return errors.New("subscription request quota insufficient")
-	})
-	if err != nil {
-		return nil, err
-	}
-	return returnValue, nil
-}
-
-// RefundSubscriptionRequestConsume releases the request a pre-consume reserved.
-// It is idempotent and only acts on request-kind records.
-func RefundSubscriptionRequestConsume(requestId string) error {
+// WaiveSubscriptionRequestConsume releases the counter a request-kind
+// subscription reserved for requestId when the settled outcome should not
+// count (empty response, short upstream cut, policy rejection). Idempotent:
+// it only acts on records whose counter was already released.
+func WaiveSubscriptionRequestConsume(requestId string) error {
 	if strings.TrimSpace(requestId) == "" {
 		return errors.New("requestId is empty")
 	}
@@ -1736,44 +1623,32 @@ func RefundSubscriptionRequestConsume(requestId string) error {
 			Where("request_id = ?", requestId).First(&record).Error; err != nil {
 			return err
 		}
-		if record.Kind != SubscriptionKindRequest {
+		if record.RequestCounterId == 0 {
 			return nil
 		}
-		if record.Status == "refunded" {
-			return nil
-		}
-		return refundSubscriptionRequestConsumeTx(tx, &record)
+		releaseSubscriptionRequestCounterTx(tx, record.RequestCounterId)
+		record.RequestCounterId = 0
+		return tx.Save(&record).Error
 	})
 }
 
-func refundSubscriptionRequestConsumeTx(tx *gorm.DB, record *SubscriptionPreConsumeRecord) error {
-	if record == nil {
-		return errors.New("invalid pre-consume record")
+// releaseSubscriptionRequestCounterTx decrements a request counter for a
+// refunded reservation. Best-effort: missing rows and floors below zero are
+// tolerated because the standard amount legs carry the billing truth.
+func releaseSubscriptionRequestCounterTx(tx *gorm.DB, counterId int) {
+	var counter SubscriptionRequestCounter
+	if err := dbx.LockForUpdate(tx).Where("id = ?", counterId).First(&counter).Error; err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			common.SysError(fmt.Sprintf("failed to load request counter %d for refund: %s", counterId, err.Error()))
+		}
+		return
 	}
-	if record.RequestCounterId > 0 {
-		var counter SubscriptionRequestCounter
-		if err := dbx.LockForUpdate(tx).Where("id = ?", record.RequestCounterId).First(&counter).Error; err != nil {
-			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				return err
-			}
-		} else if counter.Used > 0 {
-			counter.Used--
-			if err := tx.Save(&counter).Error; err != nil {
-				return err
-			}
+	if counter.Used > 0 {
+		counter.Used--
+		if err := tx.Save(&counter).Error; err != nil {
+			common.SysError(fmt.Sprintf("failed to release request counter %d: %s", counterId, err.Error()))
 		}
 	}
-	record.Status = "refunded"
-	return tx.Save(record).Error
-}
-
-// FinalizeSubscriptionRequestConsume commits a request-count pre-consume. When
-// counted is false the reserved request is returned to the counter.
-func FinalizeSubscriptionRequestConsume(requestId string, counted bool) error {
-	if counted {
-		return nil
-	}
-	return RefundSubscriptionRequestConsume(requestId)
 }
 
 // ResetDueSubscriptions resets subscriptions whose next_reset_time has passed.

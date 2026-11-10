@@ -46,14 +46,6 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	if s.settled {
 		return nil
 	}
-	// A request-count reservation is committed or returned here, before the
-	// delta short-circuit: a zero delta is the normal case for request billing.
-	if requestFunding, ok := s.funding.(*RequestCountFunding); ok {
-		if err := FinalizeSubscriptionRequestConsume(requestFunding.requestId, !s.relayInfo.RequestCountWaived); err != nil {
-			return err
-		}
-		s.fundingSettled = true
-	}
 	delta := actualQuota - s.preConsumedQuota
 	if delta == 0 {
 		s.settled = true
@@ -89,6 +81,7 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	}
 	// 3) 更新 relayInfo 上的订阅 PostDelta（用于日志）。
 	// 交付后结算超出订阅剩余额度的部分已记入钱包欠费，不应再算进订阅消耗。
+	// request 型订阅的计数在预扣时已落库；空回/短断流的退回只发生在退款路径。
 	if sub, ok := s.funding.(*SubscriptionFunding); ok {
 		s.relayInfo.SubscriptionPostDelta += int64(delta) - sub.WalletOverflow
 		s.relayInfo.SubscriptionWalletOverflow += sub.WalletOverflow
@@ -128,10 +121,8 @@ func (s *BillingSession) Refund(c contract.Context) {
 			common.SysLog("error refunding billing source: " + err.Error())
 		}
 		if extraReserved > 0 && funding.Source() == settlecore.BillingSourceSubscription && subscriptionId > 0 {
-			if _, isAmountFunding := funding.(*SubscriptionFunding); isAmountFunding {
-				if err := PostConsumeUserSubscriptionDelta(subscriptionId, -int64(extraReserved)); err != nil {
-					common.SysLog("error refunding subscription extra reserved quota: " + err.Error())
-				}
+			if err := PostConsumeUserSubscriptionDelta(subscriptionId, -int64(extraReserved)); err != nil {
+				common.SysLog("error refunding subscription extra reserved quota: " + err.Error())
 			}
 		}
 		// 2) 退还令牌额度
@@ -160,9 +151,6 @@ func (s *BillingSession) needsRefundLocked() bool {
 	}
 	// 订阅可能在 tokenConsumed=0 时仍预扣了额度
 	if sub, ok := s.funding.(*SubscriptionFunding); ok && sub.preConsumed > 0 {
-		return true
-	}
-	if requestFunding, ok := s.funding.(*RequestCountFunding); ok && requestFunding.preConsumed > 0 {
 		return true
 	}
 	return false
@@ -286,10 +274,6 @@ func (s *BillingSession) reserveFunding(delta int) error {
 			)
 		}
 		return nil
-	case *RequestCountFunding:
-		// request-kind subscriptions count requests instead of quota; a mid-request
-		// reserve only extends the per-token limit and has nothing to fund here.
-		return nil
 	default:
 		return types.NewError(fmt.Errorf("unsupported funding source: %s", s.funding.Source()), types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 	}
@@ -307,8 +291,6 @@ func (s *BillingSession) rollbackFundingReserve(delta int) {
 		if err := PostConsumeUserSubscriptionDelta(funding.subscriptionId, -int64(delta)); err != nil {
 			common.SysLog("error rolling back subscription funding reserve: " + err.Error())
 		}
-	case *RequestCountFunding:
-		// Nothing was reserved on the subscription; only the token leg needs rollback.
 	}
 }
 
@@ -365,7 +347,7 @@ func (s *BillingSession) syncRelayInfo() {
 	info.BillingSource = s.funding.Source()
 
 	if sub, ok := s.funding.(*SubscriptionFunding); ok {
-		info.RequestCountBilling = false
+		info.RequestCountBilling = sub.requestKind
 		info.SubscriptionId = sub.subscriptionId
 		info.SubscriptionPreConsumed = sub.preConsumed + int64(s.extraReserved)
 		info.SubscriptionPostDelta = 0
@@ -374,16 +356,6 @@ func (s *BillingSession) syncRelayInfo() {
 		info.SubscriptionAmountUsedAfterPreConsume = sub.AmountUsedAfter + int64(s.extraReserved)
 		info.SubscriptionPlanId = sub.PlanId
 		info.SubscriptionPlanTitle = sub.PlanTitle
-	} else if requestFunding, ok := s.funding.(*RequestCountFunding); ok {
-		info.RequestCountBilling = true
-		info.SubscriptionId = requestFunding.subscriptionId
-		info.SubscriptionPreConsumed = requestFunding.preConsumed + int64(s.extraReserved)
-		info.SubscriptionPostDelta = 0
-		info.SubscriptionWalletOverflow = 0
-		info.SubscriptionAmountTotal = requestFunding.AmountTotal
-		info.SubscriptionAmountUsedAfterPreConsume = requestFunding.AmountUsedAfter
-		info.SubscriptionPlanId = requestFunding.PlanId
-		info.SubscriptionPlanTitle = requestFunding.PlanTitle
 	} else {
 		info.RequestCountBilling = false
 		info.SubscriptionId = 0
@@ -439,32 +411,12 @@ func NewBillingSession(c contract.Context, relayInfo *relaycommon.RelayInfo, pre
 		if subConsume <= 0 {
 			subConsume = 1
 		}
-		allowRequestCount := isTextGenerationFormat(relayInfo.RelayFormat)
-		hasRequestCount := false
-		if allowRequestCount {
-			var err error
-			hasRequestCount, err = HasUsableRequestCountSubscription(
-				relayInfo.UserId, relayInfo.UsingGroup, relayInfo.OriginModelName)
-			if err != nil {
-				return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
-			}
-		}
-		var funding FundingSource
-		if hasRequestCount {
-			funding = &RequestCountFunding{
-				requestId:  relayInfo.RequestId,
-				userId:     relayInfo.UserId,
-				usingGroup: relayInfo.UsingGroup,
-				modelName:  relayInfo.OriginModelName,
-			}
-		} else {
-			funding = &SubscriptionFunding{
-				requestId:  relayInfo.RequestId,
-				userId:     relayInfo.UserId,
-				usingGroup: relayInfo.UsingGroup,
-				modelName:  relayInfo.OriginModelName,
-				amount:     subConsume,
-			}
+		funding := &SubscriptionFunding{
+			requestId:  relayInfo.RequestId,
+			userId:     relayInfo.UserId,
+			usingGroup: relayInfo.UsingGroup,
+			modelName:  relayInfo.OriginModelName,
+			amount:     subConsume,
 		}
 		session := &BillingSession{
 			relayInfo: relayInfo,

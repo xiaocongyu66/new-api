@@ -223,10 +223,9 @@ type RelayInfo struct {
 	// still failed: the relay loop must charge it as a failed attempt instead
 	// of rewarding it as a success.
 	SettledUpstreamFailure bool
-	// RequestCountWaived marks a request that was successfully settled but must
-	// not consume a request-kind subscription's counter (empty response, short
-	// upstream cut, policy rejection). BillingSession.Settle returns the
-	// reservation through RequestCountFunding when it is set.
+	// RequestCountWaived marks a settled text request that must not consume a
+	// request-kind subscription's counter (empty response, short upstream cut,
+	// policy rejection). The refund path releases the counter it reserved.
 	RequestCountWaived bool
 	// RequestCountBilling marks a request funded by a request-kind subscription.
 	// Its counters are request counts, not quota units, so quota notifications
