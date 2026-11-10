@@ -28,6 +28,7 @@ import {
   getPlanUpgradeGroups,
   PLAN_FORM_DEFAULTS,
   planToFormValues,
+  type PlanFormValues,
 } from '../plan-form'
 import { planExpireMode, planLimitMode } from '../../constants'
 
@@ -125,10 +126,11 @@ describe('formValuesToPlanPayload', () => {
   })
 
   test('quota expiry and request limit force the reset period to never', () => {
-    for (const values of [
+    const axisCases: PlanFormValues[] = [
       { ...PLAN_FORM_DEFAULTS, expire_mode: 'quota', total_amount: 10 },
       { ...PLAN_FORM_DEFAULTS, limit_mode: 'request' },
-    ]) {
+    ]
+    for (const values of axisCases) {
       const payload = formValuesToPlanPayload({
         ...values,
         quota_reset_period: 'daily',

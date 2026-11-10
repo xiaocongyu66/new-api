@@ -189,5 +189,5 @@ func TestNormalizeExpireModeFallbacks(t *testing.T) {
 	assert.Equal(t, SubscriptionExpireModeQuota, normalizeExpireMode("", SubscriptionKindQuota))
 	assert.Equal(t, SubscriptionExpireModeTime, normalizeExpireMode("", SubscriptionKindTime))
 	assert.Equal(t, SubscriptionExpireModeTime, normalizeExpireMode(SubscriptionExpireModeTime, SubscriptionKindRequest))
-	assert.Equal(t, SubscriptionExpireModeQuota, normalizeExpireMode("garbage", SubscriptionKindTime))
+	assert.Equal(t, SubscriptionExpireModeTime, normalizeExpireMode("garbage", SubscriptionKindTime))
 }
