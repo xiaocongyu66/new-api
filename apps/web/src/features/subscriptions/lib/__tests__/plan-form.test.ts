@@ -328,4 +328,22 @@ describe('getPlanFormSchema axis validation', () => {
       )
     }
   })
+
+  test('counts in groups the plan no longer upgrades are flagged', () => {
+    const result = schema.safeParse({
+      ...baseValues,
+      expire_mode: 'time',
+      limit_mode: 'request',
+      upgrade_groups: ['vip'],
+      request_rows: [{ model: 'gpt-4o', counts: { vip: 5, removed: 3 } }],
+    })
+    assert.equal(result.success, false)
+    if (!result.success) {
+      const message = result.error.issues.map((issue) => issue.message).join('; ')
+      assert.ok(
+        message.includes('gpt-4o (removed)'),
+        `expected the orphaned-group warning naming gpt-4o (removed), got: ${message}`
+      )
+    }
+  })
 })

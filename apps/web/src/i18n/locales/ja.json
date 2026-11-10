@@ -1810,6 +1810,7 @@
     "Each matrix cell is one rule: users of this row group pay this ratio when billed as this column group. In JSON the row is the outer key and the column is the inner key.": "マトリクスの各セルが1つのルールです。行グループのユーザーが列グループとして課金されるとき、この倍率を支払います。JSONでは行が外側のキー、列が内側のキーです。",
     "Each message beyond the threshold adds this many percent points to the spam penalty. 0 means a fixed penalty without stacking": "Each message beyond the threshold adds this many percent points to the spam penalty. 0 means a fixed penalty without stacking",
     "Each model can only be added once": "各モデルは一度しか追加できません",
+    "These models are limited in groups the plan no longer upgrades": "これらのモデルはアップグレード対象外のグループで制限されたままです",
     "Each row charges one fixed price per request whose input length is at or below its bound; the blank-bound row covers everything above the last bound. Bounds and prices must increase from top to bottom.": "每行对输入长度「≤ 上限」的请求收取一次固定价格；上限留空的行覆盖「> 上一档上限」的全部请求。区间上限与价格都必须从上到下递增。",
     "Each row is one distinct hit pattern, deduplicated across requests. Verify these before banning.": "各行は1つの独立したヒットパターンを表し、リクエスト間で重複排除済みです。BAN する前に確認してください。",
     "Each row prices requests whose input length is at or below its bound; the blank-bound row covers everything above the last bound. Bounds and every price column must increase from top to bottom.": "每行对输入长度「≤ 上限」的请求按该档计价；上限留空的行覆盖「> 上一档上限」的全部请求。区间上限与每一列价格都必须从上到下递增。",

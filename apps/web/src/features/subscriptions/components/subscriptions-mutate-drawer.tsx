@@ -67,6 +67,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 
@@ -661,66 +662,6 @@ export function SubscriptionsMutateDrawer({
                   </FormItem>
                 )}
               />
-
-              <div className='flex flex-col gap-3'>
-                <FormField
-                  control={form.control}
-                  name='enabled'
-                  render={({ field }) => (
-                    <FormItem className={sideDrawerSwitchItemClassName()}>
-                      <FormLabel className='!mt-0'>
-                        {t('Enabled Status')}
-                      </FormLabel>
-                      <FormControl>
-                        <Switch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='allow_balance_pay'
-                  render={({ field }) => (
-                    <FormItem className={sideDrawerSwitchItemClassName()}>
-                      <FormLabel className='!mt-0'>
-                        {t('Allow balance redemption')}
-                      </FormLabel>
-                      <FormControl>
-                        <Switch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-
-                {/* Wallet fallback only covers the "pool exhausted before the
-                    term ends" window; a quota-expiry plan has no such window. */}
-                {expireMode === 'time' && (
-                  <FormField
-                    control={form.control}
-                    name='allow_wallet_overflow'
-                    render={({ field }) => (
-                      <FormItem className={sideDrawerSwitchItemClassName()}>
-                        <FormLabel className='!mt-0'>
-                          {t('Allow wallet balance after quota used up')}
-                        </FormLabel>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                )}
-              </div>
             </SideDrawerSection>
             {/* Expiry & Limit Modes */}
             <SideDrawerSection className='gap-4'>
@@ -756,6 +697,8 @@ export function SubscriptionsMutateDrawer({
                 )}
               />
 
+              <Separator />
+
               <FormField
                 control={form.control}
                 name='limit_mode'
@@ -787,6 +730,8 @@ export function SubscriptionsMutateDrawer({
                   </FormItem>
                 )}
               />
+
+              <Separator />
             </SideDrawerSection>
 
             {/* Duration Settings */}
@@ -1070,6 +1015,69 @@ export function SubscriptionsMutateDrawer({
                 </div>
               </SideDrawerSection>
             )}
+
+            {/* Status & Redemption */}
+            <SideDrawerSection>
+              <div className='flex flex-col gap-3'>
+                <FormField
+                  control={form.control}
+                  name='enabled'
+                  render={({ field }) => (
+                    <FormItem className={sideDrawerSwitchItemClassName()}>
+                      <FormLabel className='!mt-0'>
+                        {t('Enabled Status')}
+                      </FormLabel>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='allow_balance_pay'
+                  render={({ field }) => (
+                    <FormItem className={sideDrawerSwitchItemClassName()}>
+                      <FormLabel className='!mt-0'>
+                        {t('Allow balance redemption')}
+                      </FormLabel>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+
+                {/* Wallet fallback only covers the "pool exhausted before the
+                    term ends" window; a quota-expiry plan has no such window. */}
+                {expireMode === 'time' && (
+                  <FormField
+                    control={form.control}
+                    name='allow_wallet_overflow'
+                    render={({ field }) => (
+                      <FormItem className={sideDrawerSwitchItemClassName()}>
+                        <FormLabel className='!mt-0'>
+                          {t('Allow wallet balance after quota used up')}
+                        </FormLabel>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                )}
+              </div>
+            </SideDrawerSection>
 
             {/* Payment Config */}
             <SideDrawerSection>

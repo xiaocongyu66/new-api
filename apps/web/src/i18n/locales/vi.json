@@ -1810,6 +1810,7 @@
     "Each matrix cell is one rule: users of this row group pay this ratio when billed as this column group. In JSON the row is the outer key and the column is the inner key.": "Mỗi ô ma trận là một quy tắc: người dùng của nhóm hàng trả hệ số này khi được tính phí theo nhóm cột. Trong JSON, hàng là khóa ngoài và cột là khóa trong.",
     "Each message beyond the threshold adds this many percent points to the spam penalty. 0 means a fixed penalty without stacking": "Each message beyond the threshold adds this many percent points to the spam penalty. 0 means a fixed penalty without stacking",
     "Each model can only be added once": "Mỗi mô hình chỉ được thêm một lần",
+    "These models are limited in groups the plan no longer upgrades": "Các mô hình này vẫn bị giới hạn trong nhóm không còn được nâng cấp",
     "Each row charges one fixed price per request whose input length is at or below its bound; the blank-bound row covers everything above the last bound. Bounds and prices must increase from top to bottom.": "每行对输入长度「≤ 上限」的请求收取一次固定价格；上限留空的行覆盖「> 上一档上限」的全部请求。区间上限与价格都必须从上到下递增。",
     "Each row is one distinct hit pattern, deduplicated across requests. Verify these before banning.": "Mỗi dòng là một mẫu khớp riêng biệt, đã khử trùng lặp giữa các yêu cầu. Hãy kiểm tra trước khi cấm.",
     "Each row prices requests whose input length is at or below its bound; the blank-bound row covers everything above the last bound. Bounds and every price column must increase from top to bottom.": "每行对输入长度「≤ 上限」的请求按该档计价；上限留空的行覆盖「> 上一档上限」的全部请求。区间上限与每一列价格都必须从上到下递增。",

@@ -108,6 +108,26 @@ export function getPlanFormSchema(t: TFunction) {
             seen.add(row.model)
           }
         }
+        // Counts for groups the plan no longer upgrades are invisible in the
+        // table (its columns are the upgrade groups) but still configured.
+        const upgradeSet = new Set(values.upgrade_groups)
+        const orphaned: string[] = []
+        for (const row of values.request_rows) {
+          for (const [group, count] of Object.entries(row.counts)) {
+            if (count > 0 && !upgradeSet.has(group)) {
+              orphaned.push(`${row.model} (${group})`)
+            }
+          }
+        }
+        if (orphaned.length > 0) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['request_rows'],
+            message: `${t(
+              'These models are limited in groups the plan no longer upgrades'
+            )}: ${orphaned.join(', ')}`,
+          })
+        }
       }
     })
 }
