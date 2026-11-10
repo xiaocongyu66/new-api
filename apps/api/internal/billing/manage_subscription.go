@@ -173,6 +173,18 @@ func applyPlanUpgradeGroups(plan *SubscriptionPlan) error {
 	return nil
 }
 
+// ruleLabel names the colliding key in a duplicate-rule error so the operator
+// sees which model (or group) is configured twice.
+func ruleLabel(rule SubscriptionRequestRule, measure string) string {
+	if len(rule.Models) > 0 {
+		return strings.Join(normalizeStringList(rule.Models), ", ")
+	}
+	if measure == SubscriptionMeasureQuota {
+		return "金额"
+	}
+	return "次数"
+}
+
 // applyPlanRequestRules validates and serializes request rules for request-kind
 // plans. Other kinds drop any stale rules so they cannot grant an entitlement.
 func applyPlanRequestRules(plan *SubscriptionPlan) error {
@@ -237,7 +249,7 @@ func applyPlanRequestRules(plan *SubscriptionPlan) error {
 		for _, model := range keys {
 			key := group + "\x00" + model
 			if _, dup := seenKeys[key]; dup {
-				return fmt.Errorf("请求规则中分组 %s 下的同一限制不能重复设置", group)
+				return fmt.Errorf("请求规则中分组 %s 下的同一限制不能重复设置: %v", group, ruleLabel(rule, measure))
 			}
 			seenKeys[key] = struct{}{}
 		}

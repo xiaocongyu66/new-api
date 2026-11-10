@@ -215,6 +215,17 @@ func TestQuotaExpiryPlansForciblyDropWalletOverflow(t *testing.T) {
 	assert.True(t, *timePlan.AllowWalletOverflow)
 }
 
+// stampSubscriptionAxes writes the scope/measure snapshot onto a seeded
+// subscription; the shared helper predates the columns.
+func stampSubscriptionAxes(t *testing.T, subId int, scope string, measure string) {
+	t.Helper()
+	require.NoError(t, dbx.DB.Model(&UserSubscription{}).Where("id = ?", subId).
+		Updates(map[string]interface{}{
+			"scope":   scope,
+			"measure": measure,
+		}).Error)
+}
+
 // A group-scoped quota plan creates one entitlement row per group (empty model
 // name) and gates requests by that row's remaining quota.
 func TestGroupScopedQuotaGatesAndSettles(t *testing.T) {
@@ -231,6 +242,7 @@ func TestGroupScopedQuotaGatesAndSettles(t *testing.T) {
 	plan.ExpireMode = SubscriptionExpireModeTime
 
 	sub := activeSubscriptionForKindTest(t, 9321, plan)
+	stampSubscriptionAxes(t, sub.Id, SubscriptionScopeGroup, SubscriptionMeasureQuota)
 	require.NoError(t, dbx.DB.Create(&SubscriptionRequestCounter{
 		UserSubscriptionId: sub.Id,
 		GroupName:          "vip",
@@ -271,6 +283,7 @@ func TestGroupScopedCountIgnoresModel(t *testing.T) {
 	plan.Measure = SubscriptionMeasureCount
 
 	sub := activeSubscriptionForKindTest(t, 9322, plan)
+	stampSubscriptionAxes(t, sub.Id, SubscriptionScopeGroup, SubscriptionMeasureCount)
 	require.NoError(t, dbx.DB.Create(&SubscriptionRequestCounter{
 		UserSubscriptionId: sub.Id,
 		GroupName:          "vip",
@@ -305,6 +318,7 @@ func TestModelScopedQuotaRowsAreIndependent(t *testing.T) {
 	plan.Measure = SubscriptionMeasureQuota
 
 	sub := activeSubscriptionForKindTest(t, 9323, plan)
+	stampSubscriptionAxes(t, sub.Id, SubscriptionScopeModel, SubscriptionMeasureQuota)
 	for model, total := range map[string]int64{"gpt-4o": 50, "claude": 10} {
 		require.NoError(t, dbx.DB.Create(&SubscriptionRequestCounter{
 			UserSubscriptionId: sub.Id,
