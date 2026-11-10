@@ -27,8 +27,9 @@ import {
   getPlanFormSchema,
   getPlanUpgradeGroups,
   PLAN_FORM_DEFAULTS,
+  planRequestRows,
   planToFormValues,
-  type PlanFormValues,
+  requestRowsToRules,
 } from '../plan-form'
 import { planExpireMode, planLimitMode } from '../../constants'
 
@@ -76,7 +77,7 @@ describe('planToFormValues', () => {
     assert.equal(values.expire_mode, 'time')
     assert.equal(values.limit_mode, 'group')
     assert.deepEqual(values.upgrade_groups, [])
-    assert.deepEqual(values.request_rules, [])
+    assert.deepEqual(values.request_rows, [])
   })
 
   test('derives request-limit plans from the stored kind', () => {
@@ -91,9 +92,6 @@ describe('planToFormValues', () => {
     // Legacy request plans never carried a term, so they stay quota-expired.
     assert.equal(values.expire_mode, 'quota')
     assert.deepEqual(values.upgrade_groups, ['vip', 'svip'])
-    assert.deepEqual(values.request_rules, [
-      { group: 'vip', models: ['gpt-4o'], count: 3 },
-    ])
   })
 
   test('keeps an explicit time term on request-limit plans', () => {
@@ -106,53 +104,6 @@ describe('planToFormValues', () => {
     const values = planToFormValues(plan)
     assert.equal(values.limit_mode, 'request')
     assert.equal(values.expire_mode, 'time')
-  })
-})
-
-describe('formValuesToPlanPayload', () => {
-  test('group limit with time expiry keeps the chosen reset period', () => {
-    const payload = formValuesToPlanPayload({
-      ...PLAN_FORM_DEFAULTS,
-      quota_reset_period: 'custom',
-      quota_reset_custom_seconds: 90,
-      upgrade_groups: ['vip', 'svip'],
-    })
-    assert.equal(payload.plan.quota_reset_period, 'custom')
-    assert.equal(payload.plan.quota_reset_custom_seconds, 90)
-    assert.equal(payload.plan.upgrade_group, 'vip')
-    assert.equal(payload.plan.expire_mode, 'time')
-    assert.equal(payload.plan.limit_mode, 'group')
-    assert.equal('kind' in payload.plan, false)
-  })
-
-  test('quota expiry and request limit force the reset period to never', () => {
-    const axisCases: PlanFormValues[] = [
-      { ...PLAN_FORM_DEFAULTS, expire_mode: 'quota', total_amount: 10 },
-      { ...PLAN_FORM_DEFAULTS, limit_mode: 'request' },
-    ]
-    for (const values of axisCases) {
-      const payload = formValuesToPlanPayload({
-        ...values,
-        quota_reset_period: 'daily',
-        quota_reset_custom_seconds: 90,
-      })
-      assert.equal(payload.plan.quota_reset_period, 'never')
-      assert.equal(payload.plan.quota_reset_custom_seconds, 0)
-    }
-  })
-
-  test('request rules and upgrade groups ride through to the payload', () => {
-    const payload = formValuesToPlanPayload({
-      ...PLAN_FORM_DEFAULTS,
-      limit_mode: 'request',
-      upgrade_groups: ['vip'],
-      request_rules: [{ group: 'vip', models: ['gpt-4o', 'claude'], count: 2 }],
-    })
-    assert.deepEqual(payload.plan.request_rules, [
-      { group: 'vip', models: ['gpt-4o', 'claude'], count: 2 },
-    ])
-    assert.deepEqual(payload.plan.upgrade_groups, ['vip'])
-    assert.equal(payload.plan.upgrade_group, 'vip')
   })
 })
 
@@ -171,6 +122,106 @@ describe('planExpireMode / planLimitMode derive the axes from kind', () => {
     assert.equal(planLimitMode({ kind: 'request' }), 'request')
     assert.equal(planExpireMode({ kind: 'request' }), 'quota')
     assert.equal(planExpireMode({ kind: 'request', expire_mode: 'time' }), 'time')
+  })
+})
+
+describe('planRequestRows', () => {
+  test('transposes per-group rules into one row per model', () => {
+    const plan = {
+      ...basePlan,
+      request_rules: [
+        { group: 'vip', models: ['gpt-4o', 'claude'], count: 5 },
+        { group: 'svip', models: ['gpt-4o'], count: 10 },
+      ],
+    } as unknown as SubscriptionPlan
+    assert.deepEqual(planRequestRows(plan), [
+      { model: 'gpt-4o', counts: { vip: 5, svip: 10 } },
+      { model: 'claude', counts: { vip: 5 } },
+    ])
+  })
+
+  test('survives rules without models', () => {
+    const plan = {
+      ...basePlan,
+      request_rules: [{ group: 'vip', models: [], count: 5 }],
+    } as unknown as SubscriptionPlan
+    assert.deepEqual(planRequestRows(plan), [])
+  })
+})
+
+describe('requestRowsToRules', () => {
+  test('merges models sharing a count into one rule per group', () => {
+    const rows = [
+      { model: 'gpt-4o', counts: { vip: 5, svip: 10 } },
+      { model: 'claude', counts: { vip: 5 } },
+    ]
+    assert.deepEqual(requestRowsToRules(rows, ['vip', 'svip']), [
+      { group: 'vip', models: ['gpt-4o', 'claude'], count: 5 },
+      { group: 'svip', models: ['gpt-4o'], count: 10 },
+    ])
+  })
+
+  test('drops counts for groups the plan no longer upgrades', () => {
+    const rows = [{ model: 'gpt-4o', counts: { vip: 5, stale: 99 } }]
+    assert.deepEqual(requestRowsToRules(rows, ['vip']), [
+      { group: 'vip', models: ['gpt-4o'], count: 5 },
+    ])
+  })
+
+  test('zeros and empty cells grant nothing', () => {
+    const rows = [{ model: 'gpt-4o', counts: { vip: 0 } }]
+    assert.deepEqual(requestRowsToRules(rows, ['vip']), [])
+  })
+})
+
+describe('formValuesToPlanPayload', () => {
+  test('group limit with time expiry keeps the chosen reset period', () => {
+    const payload = formValuesToPlanPayload({
+      ...PLAN_FORM_DEFAULTS,
+      quota_reset_period: 'custom',
+      quota_reset_custom_seconds: 90,
+      upgrade_groups: ['vip', 'svip'],
+    })
+    assert.equal(payload.plan.quota_reset_period, 'custom')
+    assert.equal(payload.plan.quota_reset_custom_seconds, 90)
+    assert.equal(payload.plan.upgrade_group, 'vip')
+    assert.equal(payload.plan.expire_mode, 'time')
+    assert.equal(payload.plan.limit_mode, 'group')
+    assert.equal('kind' in payload.plan, false)
+    assert.equal('request_rows' in payload.plan, false)
+  })
+
+  test('quota expiry and request limit force the reset period to never', () => {
+    for (const values of [
+      { ...PLAN_FORM_DEFAULTS, expire_mode: 'quota', total_amount: 10 },
+      { ...PLAN_FORM_DEFAULTS, limit_mode: 'request' },
+    ]) {
+      const payload = formValuesToPlanPayload({
+        ...values,
+        quota_reset_period: 'daily',
+        quota_reset_custom_seconds: 90,
+      })
+      assert.equal(payload.plan.quota_reset_period, 'never')
+      assert.equal(payload.plan.quota_reset_custom_seconds, 0)
+    }
+  })
+
+  test('the matrix collapses into rules and upgrade groups ride through', () => {
+    const payload = formValuesToPlanPayload({
+      ...PLAN_FORM_DEFAULTS,
+      limit_mode: 'request',
+      upgrade_groups: ['vip', 'svip'],
+      request_rows: [
+        { model: 'gpt-4o', counts: { vip: 5 } },
+        { model: 'claude', counts: { svip: 7 } },
+      ],
+    })
+    assert.deepEqual(payload.plan.request_rules, [
+      { group: 'vip', models: ['gpt-4o'], count: 5 },
+      { group: 'svip', models: ['claude'], count: 7 },
+    ])
+    assert.deepEqual(payload.plan.upgrade_groups, ['vip', 'svip'])
+    assert.equal(payload.plan.upgrade_group, 'vip')
   })
 })
 
@@ -210,53 +261,36 @@ describe('getPlanFormSchema axis validation', () => {
     assert.equal(result.success, true)
   })
 
-  test('request limit needs at least one complete rule', () => {
-    const incomplete = schema.safeParse({
-      ...baseValues,
-      expire_mode: 'time',
-      limit_mode: 'request',
-      request_rules: [{ group: 'vip', models: [], count: 1 }],
-    })
-    assert.equal(incomplete.success, false)
-
+  test('request limit needs at least one model with a positive count', () => {
     const empty = schema.safeParse({
       ...baseValues,
       expire_mode: 'time',
       limit_mode: 'request',
-      request_rules: [],
+      request_rows: [],
     })
     assert.equal(empty.success, false)
-  })
 
-  test('request limit accepts a complete rule', () => {
-    const result = schema.safeParse({
+    const allZero = schema.safeParse({
       ...baseValues,
       expire_mode: 'time',
       limit_mode: 'request',
-      request_rules: [{ group: 'vip', models: ['gpt-4o'], count: 5 }],
+      request_rows: [{ model: 'gpt-4o', counts: { vip: 0 } }],
     })
-    assert.equal(result.success, true)
+    assert.equal(allZero.success, false)
   })
 
-  test('request limit rejects the same model limited twice in one group', () => {
+  test('request limit accepts a filled matrix', () => {
     const result = schema.safeParse({
       ...baseValues,
       expire_mode: 'time',
       limit_mode: 'request',
-      request_rules: [
-        { group: 'vip', models: ['gpt-4o', 'claude'], count: 5 },
-        { group: 'vip', models: ['gpt-4o'], count: 3 },
-        { group: 'svip', models: ['gpt-4o'], count: 3 },
+      upgrade_groups: ['vip', 'svip'],
+      request_rows: [
+        { model: 'gpt-4o', counts: { vip: 5 } },
+        { model: 'claude', counts: { svip: 3, vip: 5 } },
       ],
     })
-    assert.equal(result.success, false)
-    if (!result.success) {
-      const messages = result.error.issues.map((issue) => issue.message)
-      assert.ok(
-        messages.includes('Each model can only be limited once per group'),
-        `expected the duplicate-rule issue, got ${messages}`
-      )
-    }
+    assert.equal(result.success, true)
   })
 
   test('the same model in different groups is not a duplicate', () => {
@@ -264,11 +298,31 @@ describe('getPlanFormSchema axis validation', () => {
       ...baseValues,
       expire_mode: 'time',
       limit_mode: 'request',
-      request_rules: [
-        { group: 'vip', models: ['gpt-4o'], count: 5 },
-        { group: 'svip', models: ['gpt-4o'], count: 3 },
+      upgrade_groups: ['vip', 'svip'],
+      request_rows: [
+        { model: 'gpt-4o', counts: { vip: 5, svip: 3 } },
       ],
     })
     assert.equal(result.success, true)
+  })
+
+  test('a second row for the same model is rejected', () => {
+    const result = schema.safeParse({
+      ...baseValues,
+      expire_mode: 'time',
+      limit_mode: 'request',
+      request_rows: [
+        { model: 'gpt-4o', counts: { vip: 5 } },
+        { model: 'gpt-4o', counts: { svip: 3 } },
+      ],
+    })
+    assert.equal(result.success, false)
+    if (!result.success) {
+      const messages = result.error.issues.map((issue) => issue.message)
+      assert.ok(
+        messages.includes('Each model can only be added once'),
+        `expected the duplicate-row issue, got ${messages}`
+      )
+    }
   })
 })

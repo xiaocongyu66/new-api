@@ -229,6 +229,13 @@ func applyPlanRequestRules(plan *SubscriptionPlan) error {
 
 // applySubscriptionKindConstraints enforces the kind-specific field contract.
 func applySubscriptionKindConstraints(plan *SubscriptionPlan) error {
+	// Quota-expiry plans end exactly when their pool or counters are spent, so
+	// there is no "after the quota runs out" window to cover from the wallet.
+	// Wallet fallback is a term-scoped add-on: force it off there so the
+	// snapshot cannot promise something the product never does.
+	if normalizeExpireMode(plan.ExpireMode, plan.Kind) == SubscriptionExpireModeQuota {
+		plan.AllowWalletOverflow = common.GetPointer(false)
+	}
 	switch plan.Kind {
 	case SubscriptionKindQuota:
 		if plan.TotalAmount <= 0 {

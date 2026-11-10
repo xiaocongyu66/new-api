@@ -191,3 +191,26 @@ func TestNormalizeExpireModeFallbacks(t *testing.T) {
 	assert.Equal(t, SubscriptionExpireModeTime, normalizeExpireMode(SubscriptionExpireModeTime, SubscriptionKindRequest))
 	assert.Equal(t, SubscriptionExpireModeTime, normalizeExpireMode("garbage", SubscriptionKindTime))
 }
+
+// Wallet fallback is a term-scoped add-on: a quota-expiry plan ends exactly
+// when its pool is spent, so it must not carry an overflow promise.
+func TestQuotaExpiryPlansForciblyDropWalletOverflow(t *testing.T) {
+	plan := &SubscriptionPlan{
+		Kind:                SubscriptionKindQuota,
+		ExpireMode:          SubscriptionExpireModeQuota,
+		TotalAmount:         10,
+		AllowWalletOverflow: common.GetPointer(true),
+	}
+	require.NoError(t, applySubscriptionKindConstraints(plan))
+	require.NotNil(t, plan.AllowWalletOverflow)
+	assert.False(t, *plan.AllowWalletOverflow)
+
+	timePlan := &SubscriptionPlan{
+		Kind:                SubscriptionKindTime,
+		ExpireMode:          SubscriptionExpireModeTime,
+		AllowWalletOverflow: common.GetPointer(true),
+	}
+	require.NoError(t, applySubscriptionKindConstraints(timePlan))
+	require.NotNil(t, timePlan.AllowWalletOverflow)
+	assert.True(t, *timePlan.AllowWalletOverflow)
+}

@@ -22,6 +22,14 @@ import { z } from 'zod'
 import { planExpireMode, planLimitMode } from '../constants'
 import type { SubscriptionPlan, PlanPayload } from '../types'
 
+// One row per model in the request-limits matrix; counts maps each upgrade
+// group to the request count it grants. A group missing from the map (or
+// carrying 0) does not limit that model.
+export interface RequestMatrixRow {
+  model: string
+  counts: Record<string, number>
+}
+
 export function getPlanFormSchema(t: TFunction) {
   return z
     .object({
@@ -49,11 +57,12 @@ export function getPlanFormSchema(t: TFunction) {
       total_amount: z.coerce.number().min(0),
       upgrade_groups: z.array(z.string()),
       downgrade_group: z.string().optional(),
-      request_rules: z.array(
+      // The editor edits a (model x group) count matrix; the payload
+      // collapses it back into per-group rules.
+      request_rows: z.array(
         z.object({
-          group: z.string(),
-          models: z.array(z.string()),
-          count: z.coerce.number().min(1),
+          model: z.string().min(1),
+          counts: z.record(z.string(), z.coerce.number().min(0)),
         })
       ),
       stripe_price_id: z.string().optional(),
@@ -73,33 +82,30 @@ export function getPlanFormSchema(t: TFunction) {
         })
       }
       if (values.limit_mode === 'request') {
-        const incomplete = values.request_rules.some(
-          (rule) => !rule.group || rule.models.length === 0 || rule.count <= 0
+        const hasCount = values.request_rows.some((row) =>
+          Object.values(row.counts).some((count) => count > 0)
         )
-        if (values.request_rules.length === 0 || incomplete) {
+        if (!hasCount) {
           ctx.addIssue({
             code: 'custom',
-            path: ['request_rules'],
+            path: ['request_rows'],
             message: t(
-              'Request limits need a group, models and a positive count'
+              'Request limits need at least one model with a positive count'
             ),
           })
         }
-        // The backend keys counters on (group, model); a repeat would
-        // silently grant the sum under a single bar.
+        // The matrix keys on the model itself; a second row for the same
+        // model would be invisible data the backend rejects.
         const seen = new Set<string>()
-        for (const rule of values.request_rules) {
-          for (const model of rule.models) {
-            const key = `${rule.group}\u0000${model}`
-            if (seen.has(key)) {
-              ctx.addIssue({
-                code: 'custom',
-                path: ['request_rules'],
-                message: t('Each model can only be limited once per group'),
-              })
-            } else {
-              seen.add(key)
-            }
+        for (const row of values.request_rows) {
+          if (seen.has(row.model)) {
+            ctx.addIssue({
+              code: 'custom',
+              path: ['request_rows'],
+              message: t('Each model can only be added once'),
+            })
+          } else {
+            seen.add(row.model)
           }
         }
       }
@@ -127,7 +133,7 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   total_amount: 0,
   upgrade_groups: [],
   downgrade_group: '',
-  request_rules: [],
+  request_rows: [],
   stripe_price_id: '',
   creem_product_id: '',
   waffo_pancake_product_id: '',
@@ -140,6 +146,52 @@ export function getPlanUpgradeGroups(
     return plan.upgrade_groups
   }
   return plan.upgrade_group ? [plan.upgrade_group] : []
+}
+
+// planRequestRows transposes the plan's per-group rules into the matrix the
+// editor renders: one row per model, keyed by group.
+export function planRequestRows(plan: SubscriptionPlan): RequestMatrixRow[] {
+  const order: string[] = []
+  const counts: Record<string, Record<string, number>> = {}
+  for (const rule of plan.request_rules || []) {
+    for (const model of rule.models || []) {
+      if (!counts[model]) {
+        counts[model] = {}
+        order.push(model)
+      }
+      counts[model][rule.group] = Number(rule.count || 0)
+    }
+  }
+  return order.map((model) => ({ model, counts: counts[model] }))
+}
+
+// requestRowsToRules collapses the matrix back into the per-group rules the
+// backend stores: models sharing a count ride in one rule, and counts for
+// groups the plan no longer upgrades are dropped.
+export function requestRowsToRules(
+  rows: RequestMatrixRow[],
+  groups: string[]
+): NonNullable<SubscriptionPlan['request_rules']> {
+  const upgradeGroups = new Set(groups)
+  // group -> count -> models
+  const buckets: Record<string, Map<number, string[]>> = {}
+  for (const row of rows) {
+    for (const [group, count] of Object.entries(row.counts)) {
+      if (count > 0 && upgradeGroups.has(group)) {
+        const byCount = (buckets[group] ??= new Map())
+        const models = byCount.get(count) ?? []
+        models.push(row.model)
+        byCount.set(count, models)
+      }
+    }
+  }
+  const rules: NonNullable<SubscriptionPlan['request_rules']> = []
+  for (const [group, byCount] of Object.entries(buckets)) {
+    for (const [count, models] of byCount) {
+      rules.push({ group, models, count })
+    }
+  }
+  return rules
 }
 
 export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
@@ -162,11 +214,7 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
     total_amount: plan.total_amount_display ?? 0,
     upgrade_groups: getPlanUpgradeGroups(plan),
     downgrade_group: plan.downgrade_group || '',
-    request_rules: (plan.request_rules || []).map((rule) => ({
-      group: rule.group || '',
-      models: rule.models || [],
-      count: Number(rule.count || 1),
-    })),
+    request_rows: planRequestRows(plan),
     stripe_price_id: plan.stripe_price_id || '',
     creem_product_id: plan.creem_product_id || '',
     waffo_pancake_product_id: plan.waffo_pancake_product_id || '',
@@ -174,9 +222,12 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
 }
 
 export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
+  // The matrix is an editor-only view; the payload carries the rules it
+  // collapses into.
+  const { request_rows, ...rest } = values
   return {
     plan: {
-      ...values,
+      ...rest,
       price_amount: Number(values.price_amount || 0),
       currency: 'USD',
       duration_value: Number(values.duration_value || 0),
@@ -195,6 +246,7 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
       total_amount_display: Number(values.total_amount || 0),
       upgrade_group: values.upgrade_groups[0] || '',
       downgrade_group: values.downgrade_group || '',
+      request_rules: requestRowsToRules(request_rows, values.upgrade_groups),
     },
   }
 }
