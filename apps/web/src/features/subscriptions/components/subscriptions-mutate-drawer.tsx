@@ -87,7 +87,7 @@ import {
 import {
   getPlanFormSchema,
   PLAN_FORM_DEFAULTS,
-  getPlanUpgradeGroups,
+
   planToFormValues,
   formValuesToPlanPayload,
   type PlanFormValues,
@@ -148,23 +148,7 @@ export function SubscriptionsMutateDrawer({
           if (res.success) setGroupOptions(res.data || [])
         })
         .catch(() => {})
-      // The matrix columns are the plan's upgrade groups; their model lists
-      // feed the model picker.
-      const matrixGroups = new Set(
-        getPlanUpgradeGroups(currentRow?.plan ?? {})
-      )
-      matrixGroups.forEach((group) => {
-        getGroupModels(group)
-          .then((res) => {
-            if (res.success) {
-              setGroupModels((prev) => ({
-                ...prev,
-                [group]: res.data || [],
-              }))
-            }
-          })
-          .catch(() => {})
-      })
+
       // Best-effort — empty list still lets the operator use "+ Create".
       listWaffoPancakeSubscriptionProductOptions()
         .then((res) => {
@@ -215,7 +199,6 @@ export function SubscriptionsMutateDrawer({
       })
     }
   }, [hasResetCycle, limitMode, expireMode, form])
-  // Gate "+ Create on Pancake" on the same checks the mint handler runs.
   const watchedTitle = form.watch('title')
   const watchedPrice = form.watch('price_amount')
   const allowBalancePay = form.watch('allow_balance_pay')
@@ -365,6 +348,25 @@ export function SubscriptionsMutateDrawer({
       if (!taken.has(model)) appendRequestRow({ model, counts: {} })
     })
   }
+
+  // The matrix columns are the upgrade groups; keep each selected group's
+  // model list loaded so the picker offers real channel models — both when
+  // an existing plan opens and whenever the selection changes.
+  useEffect(() => {
+    upgradeGroups.forEach((group) => {
+      if (group && !groupModels[group]) {
+        getGroupModels(group)
+          .then((res) => {
+            if (res.success) {
+              setGroupModels((prev) => ({ ...prev, [group]: res.data || [] }))
+            }
+          })
+          .catch(() => {})
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [upgradeGroups.join(','), groupModels])
+  // Gate "+ Create on Pancake" on the same checks the mint handler runs.
 
   return (
     <Sheet
