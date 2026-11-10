@@ -1282,6 +1282,7 @@ func HasUsableUserSubscription(userId int, usingGroup string, modelName string, 
 			return true, nil
 		}
 	}
+	return false, nil
 }
 
 // GetAllUserSubscriptions returns all subscriptions (active and expired) for a user.
@@ -1430,6 +1431,9 @@ type SubscriptionPreConsumeResult struct {
 	// was reserved (0 for amount-kind records). SubscriptionFunding syncs it
 	// onto RelayInfo so the settlement path can attribute per-request counters.
 	RequestCounterUsedBefore int64
+	// RequestCounterId is the entitlement row this request reserved (scoped
+	// subscriptions only; 0 for the shared pool).
+	RequestCounterId int
 	// RequestKind marks that this pre-consume served a request-kind
 	// subscription and reserved one request counter entry.
 	RequestKind bool
@@ -1818,6 +1822,7 @@ func PreConsumeUserSubscription(requestId string, userId int, usingGroup string,
 			returnValue.AmountUsedBefore = usedBefore
 			returnValue.AmountUsedAfter = sub.AmountUsed
 			returnValue.RequestCounterUsedBefore = requestCounterUsedBefore
+			returnValue.RequestCounterId = requestCounterId
 			returnValue.RequestKind = scoped && measure == SubscriptionMeasureCount
 			return nil
 		}
