@@ -88,10 +88,13 @@ export async function getChannels(
 }
 
 /**
- * Get the built-in jailbreak preset catalogue
+ * Get the built-in jailbreak preset catalogue. The prompt text itself never
+ * leaves the server; skipErrorHandler keeps drawer fallbacks in control.
  */
 export async function getSystemPromptPresets(): Promise<SystemPromptPresetResponse> {
-  const res = await api.get('/api/channel/system_prompt_presets')
+  const res = await api.get('/api/channel/system_prompt_presets', {
+    skipErrorHandler: true,
+  })
   return res.data
 }
 

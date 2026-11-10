@@ -300,13 +300,28 @@ func init() {
 
 	catalog.OnResolveTieredBilling = func(model string) (string, string, bool) {
 		mode := GetBillingMode(model)
-		if mode != BillingModeTieredExpr {
+		if !IsTieredBillingMode(mode) {
 			return "", "", false
 		}
-		expr, ok := GetBillingExpr(model)
+		// Region-aware resolution handles both persisted expressions and
+		// context-interval configs; a blank expression is not billable even when
+		// billing_mode still points at a tiered family mode.
+		expr, ok := GetBillingExprForModel(model)
 		if !ok || strings.TrimSpace(expr) == "" {
 			return "", "", false
 		}
 		return mode, expr, true
+	}
+	catalog.OnResolveContextTier = func(model string) (string, bool) {
+		if GetBillingMode(model) != BillingModeContextTier {
+			return "", false
+		}
+		return GetBillingContextTier(model)
+	}
+	catalog.OnResolveContextTierPerCall = func(model string) (string, bool) {
+		if GetBillingMode(model) != BillingModeContextTierPerCall {
+			return "", false
+		}
+		return GetBillingContextTierPerCall(model)
 	}
 }

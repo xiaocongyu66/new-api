@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/QuantumNous/new-api/relaykit/dto/prompt_presets"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -577,4 +578,33 @@ func TestChannelSettingsValidateHTTPTransport(t *testing.T) {
 	err = (&ChannelSettings{HTTPProtocol: "http1", HTTP2ConnectionShards: 2}).ValidateHTTPTransport()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "http2_connection_shards")
+}
+
+func TestChannelSettingsResolveSystemPromptDetailReportsPerModel(t *testing.T) {
+	// Per-model hit: PerModel is set and Preset stays empty because the
+	// priority chain stopped before the preset tier.
+	s := &ChannelSettings{
+		SystemPromptModels: map[string]string{"gpt-4o": "per-model text"},
+		SystemPromptPreset: promptpresets.PresetTavernCard,
+		SystemPrompt:       "plain text",
+	}
+	resolution := s.ResolveSystemPromptDetail("gpt-4o")
+	assert.Equal(t, "per-model text", resolution.Prompt)
+	assert.True(t, resolution.PerModel)
+	assert.Empty(t, resolution.Preset)
+
+	// Preset and plain-text wins are not per-model hits.
+	resolution = s.ResolveSystemPromptDetail("claude-3")
+	assert.Equal(t, promptpresets.Get(promptpresets.PresetTavernCard), resolution.Prompt)
+	assert.False(t, resolution.PerModel)
+	assert.Equal(t, promptpresets.PresetTavernCard, resolution.Preset)
+
+	s.SystemPromptPreset = ""
+	resolution = s.ResolveSystemPromptDetail("claude-3")
+	assert.Equal(t, "plain text", resolution.Prompt)
+	assert.False(t, resolution.PerModel)
+
+	// A nil receiver resolves to the zero resolution, PerModel included.
+	var nilSettings *ChannelSettings
+	assert.Equal(t, SystemPromptResolution{}, nilSettings.ResolveSystemPromptDetail("gpt-4o"))
 }

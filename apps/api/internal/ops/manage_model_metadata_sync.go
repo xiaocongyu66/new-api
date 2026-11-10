@@ -817,18 +817,20 @@ func FetchUpstreamRatios(c contract.Context) {
 			}
 
 			var pricingItems []struct {
-				ModelName            string   `json:"model_name"`
-				QuotaType            int      `json:"quota_type"`
-				ModelRatio           float64  `json:"model_ratio"`
-				ModelPrice           float64  `json:"model_price"`
-				CompletionRatio      float64  `json:"completion_ratio"`
-				CacheRatio           *float64 `json:"cache_ratio"`
-				CreateCacheRatio     *float64 `json:"create_cache_ratio"`
-				ImageRatio           *float64 `json:"image_ratio"`
-				AudioRatio           *float64 `json:"audio_ratio"`
-				AudioCompletionRatio *float64 `json:"audio_completion_ratio"`
-				BillingMode          string   `json:"billing_mode"`
-				BillingExpr          string   `json:"billing_expr"`
+				ModelName                 string   `json:"model_name"`
+				QuotaType                 int      `json:"quota_type"`
+				ModelRatio                float64  `json:"model_ratio"`
+				ModelPrice                float64  `json:"model_price"`
+				CompletionRatio           float64  `json:"completion_ratio"`
+				CacheRatio                *float64 `json:"cache_ratio"`
+				CreateCacheRatio          *float64 `json:"create_cache_ratio"`
+				ImageRatio                *float64 `json:"image_ratio"`
+				AudioRatio                *float64 `json:"audio_ratio"`
+				AudioCompletionRatio      *float64 `json:"audio_completion_ratio"`
+				BillingMode               string   `json:"billing_mode"`
+				BillingExpr               string   `json:"billing_expr"`
+				BillingContextTier        string   `json:"billing_context_tier"`
+				BillingContextTierPerCall string   `json:"billing_context_tier_per_call"`
 			}
 			if err := common.Unmarshal(body.Data, &pricingItems); err != nil {
 				logger.LogWarn(c.Context(), "unrecognized data format from "+chItem.Name+": "+err.Error())
@@ -846,14 +848,31 @@ func FetchUpstreamRatios(c contract.Context) {
 			modelPriceMap := make(map[string]float64)
 			billingModeMap := make(map[string]string)
 			billingExprMap := make(map[string]string)
+			billingContextTierMap := make(map[string]string)
+			billingContextTierPerCallMap := make(map[string]string)
 
 			for _, item := range pricingItems {
 				if item.ModelName == "" {
 					continue
 				}
-				if item.BillingMode == billing.BillingModeTieredExpr && strings.TrimSpace(item.BillingExpr) != "" {
-					billingModeMap[item.ModelName] = billing.BillingModeTieredExpr
-					billingExprMap[item.ModelName] = item.BillingExpr
+				// Context-interval modes store structured tiers instead of an
+				// expression (the expression is derived at runtime), so admit
+				// them on either payload.
+				hasExpr := strings.TrimSpace(item.BillingExpr) != ""
+				hasTier := strings.TrimSpace(item.BillingContextTier) != ""
+				hasCallTier := strings.TrimSpace(item.BillingContextTierPerCall) != ""
+				if billing.IsTieredBillingMode(item.BillingMode) &&
+					(hasExpr || hasTier || hasCallTier) {
+					billingModeMap[item.ModelName] = item.BillingMode
+					if hasExpr {
+						billingExprMap[item.ModelName] = item.BillingExpr
+					}
+					if hasTier {
+						billingContextTierMap[item.ModelName] = item.BillingContextTier
+					}
+					if hasCallTier {
+						billingContextTierPerCallMap[item.ModelName] = item.BillingContextTierPerCall
+					}
 				}
 				if item.QuotaType == 1 {
 					modelPriceMap[item.ModelName] = item.ModelPrice
@@ -923,6 +942,12 @@ func FetchUpstreamRatios(c contract.Context) {
 			}
 			if len(billingExprMap) > 0 {
 				converted[billing.BillingExprField] = valueMap(billingExprMap)
+			}
+			if len(billingContextTierMap) > 0 {
+				converted["billing_context_tier"] = valueMap(billingContextTierMap)
+			}
+			if len(billingContextTierPerCallMap) > 0 {
+				converted["billing_context_tier_per_call"] = valueMap(billingContextTierPerCallMap)
 			}
 
 			ch <- upstreamResult{Name: uniqueName, Data: converted}

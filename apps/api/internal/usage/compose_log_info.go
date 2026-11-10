@@ -87,6 +87,17 @@ func GenerateTextOtherInfo(ctx contract.Context, relayInfo *relaycommon.RelayInf
 
 	catalog.AppendChannelAffinityAdminInfo(ctx, adminInfo)
 
+	if relayInfo.SystemPromptAudit != nil {
+		// Which layer actually supplied the injected prompt. Nested under
+		// admin_info so it stays admin-only like the rest of the block.
+		adminInfo["system_prompt"] = map[string]interface{}{
+			"source":        relayInfo.SystemPromptAudit.Source,
+			"preset":        relayInfo.SystemPromptAudit.Preset,
+			"auto_resolved": relayInfo.SystemPromptAudit.AutoResolved,
+			"per_model":     relayInfo.SystemPromptAudit.PerModel,
+		}
+	}
+
 	other["admin_info"] = adminInfo
 	appendRequestPath(ctx, relayInfo, other)
 	appendRequestConversionChain(relayInfo, other)
@@ -306,7 +317,7 @@ func InjectTieredBillingInfo(other map[string]interface{}, relayInfo *relaycommo
 	if snap == nil {
 		return
 	}
-	other["billing_mode"] = "tiered_expr"
+	other["billing_mode"] = snap.BillingMode
 	other["expr_b64"] = base64.StdEncoding.EncodeToString([]byte(snap.ExprString))
 	if result != nil {
 		other["matched_tier"] = result.MatchedTier

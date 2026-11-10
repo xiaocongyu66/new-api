@@ -60,11 +60,24 @@ export type DynamicPricingSummary = {
   secondaryEntries: DynamicPriceEntry[]
 }
 
-const PRIMARY_DYNAMIC_FIELDS = new Set([
+export const PRIMARY_DYNAMIC_FIELDS = new Set([
   'fixedPrice',
   'inputPrice',
   'outputPrice',
 ])
+
+/**
+ * Modes that bill through the tiered expression engine. Log payloads carry the
+ * concrete mode (tiered_expr / context_tier / context_tier_per_call), so checks
+ * must not compare against the literal `tiered_expr` alone.
+ */
+export function isTieredBillingMode(mode?: string): boolean {
+  return (
+    mode === 'tiered_expr' ||
+    mode === 'context_tier' ||
+    mode === 'context_tier_per_call'
+  )
+}
 
 export function isDynamicPricingModel(model: PricingModel): boolean {
   // An expression is the authoritative signal for expression billing. Treating a

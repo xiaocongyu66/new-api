@@ -23,16 +23,18 @@ func applyClaudeSystemPrompt(c contract.Context, info *relaycommon.RelayInfo, re
 	if info == nil || request == nil {
 		return
 	}
-	systemPrompt := info.ChannelSetting.ResolveSystemPrompt(info.OriginModelName)
-	if systemPrompt == "" {
+	effective := relaycommon.ResolveEffectiveSystemPrompt(c, info)
+	if effective.Prompt == "" {
 		return
 	}
+	systemPrompt := effective.Prompt
+	info.SystemPromptAudit = &effective
 
 	switch {
 	case request.System == nil:
 		request.SetStringSystem(systemPrompt)
-	case info.ChannelSetting.UserSystemPromptOverride:
-		// 覆盖模式：丢弃用户自带的 system prompt，只保留通道提示词。
+	case effective.Override:
+		// 覆盖模式：丢弃用户自带的 system prompt，只保留生效层提示词。
 		common.SetContextKey(c, constant.ContextKeyUserSystemPromptOverridden, true)
 		request.SetStringSystem(systemPrompt)
 	default:

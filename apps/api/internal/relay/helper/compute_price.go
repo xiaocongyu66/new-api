@@ -72,9 +72,13 @@ func ModelPriceHelper(c contract.Context, info *relaycommon.RelayInfo, promptTok
 
 	groupRatioInfo := HandleGroupRatio(c, info)
 
-	// Check if this model uses tiered_expr billing
-	if billing.GetBillingMode(info.OriginModelName) == billing.BillingModeTieredExpr {
-		return modelPriceHelperTiered(c, info, promptTokens, meta, groupRatioInfo)
+	// A tiered-family active method with no stored prices (admin switched the
+	// active method before configuring it) falls back to plain per-token
+	// ratios instead of failing the request.
+	if billing.IsTieredBillingMode(billing.GetBillingMode(info.OriginModelName)) {
+		if _, ok := billing.GetBillingExprForModel(info.OriginModelName); ok {
+			return modelPriceHelperTiered(c, info, promptTokens, meta, groupRatioInfo)
+		}
 	}
 
 	var preConsumedQuota int
@@ -256,15 +260,16 @@ func HasModelBillingConfig(modelName string) bool {
 	if _, ok, _ := ratio_setting.GetModelRatio(modelName); ok {
 		return true
 	}
-	if billing.GetBillingMode(modelName) != billing.BillingModeTieredExpr {
+	mode := billing.GetBillingMode(modelName)
+	if !billing.IsTieredBillingMode(mode) {
 		return false
 	}
-	expr, ok := billing.GetBillingExpr(modelName)
+	expr, ok := billing.GetBillingExprForModel(modelName)
 	return ok && strings.TrimSpace(expr) != ""
 }
 
 func modelPriceHelperTiered(c contract.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta, groupRatioInfo hosttypes.GroupRatioInfo) (hosttypes.PriceData, error) {
-	exprStr, ok := billing.GetBillingExpr(info.OriginModelName)
+	exprStr, ok := billing.GetBillingExprForModel(info.OriginModelName)
 	if !ok {
 		return hosttypes.PriceData{}, fmt.Errorf("model %s is configured as tiered_expr but has no billing expression", info.OriginModelName)
 	}
@@ -305,7 +310,7 @@ func modelPriceHelperTiered(c contract.Context, info *relaycommon.RelayInfo, pro
 
 	exprHash := price_expression.ExprHashString(exprStr)
 	snapshot := &price_expression.BillingSnapshot{
-		BillingMode:               billing.BillingModeTieredExpr,
+		BillingMode:               billing.GetBillingMode(info.OriginModelName),
 		ModelName:                 info.OriginModelName,
 		ExprString:                exprStr,
 		ExprHash:                  exprHash,

@@ -38,7 +38,7 @@ func responseCacheConfigSnapshot() responsecache.Config {
 // stored into) the response cache. Conservative by default: only the OpenAI
 // chat-completions relay with a deterministic, non-streaming, non-passthrough
 // request.
-func responseCacheEligible(info *relaycommon.RelayInfo, req *dto.GeneralOpenAIRequest) bool {
+func responseCacheEligible(c contract.Context, info *relaycommon.RelayInfo, req *dto.GeneralOpenAIRequest) bool {
 	if info.RelayMode != relayconstant.RelayModeChatCompletions {
 		return false
 	}
@@ -61,7 +61,10 @@ func responseCacheEligible(info *relaycommon.RelayInfo, req *dto.GeneralOpenAIRe
 	// cache key, which covers only the raw client body plus upstream model.
 	// Caching such channels would cross-serve content (e.g. channel A's
 	// system prompt replayed to channel B). Exclude them for safety.
-	if info.ChannelSetting.ResolveSystemPrompt(info.OriginModelName) != "" || len(info.ParamOverride) > 0 {
+	// Token-level prompt bindings mutate the body the same way channel
+	// prompts do, so the effective (token-or-channel) prompt gates caching,
+	// not just the channel chain.
+	if relaycommon.ResolveEffectiveSystemPrompt(c, info).Prompt != "" || len(info.ParamOverride) > 0 {
 		return false
 	}
 	// ChannelOtherSettings influences RemoveDisabledFields (which deletes

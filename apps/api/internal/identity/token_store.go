@@ -8,32 +8,38 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/common/quotacache"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
 )
 
 type Token struct {
-	Id                 int            `json:"id"`
-	UserId             int            `json:"user_id" gorm:"index"`
-	Key                string         `json:"key" gorm:"type:varchar(128);uniqueIndex"`
-	Status             int            `json:"status" gorm:"default:1"`
-	Name               string         `json:"name" gorm:"index" `
-	CreatedTime        int64          `json:"created_time" gorm:"bigint"`
-	AccessedTime       int64          `json:"accessed_time" gorm:"bigint"`
-	ExpiredTime        int64          `json:"expired_time" gorm:"bigint;default:-1"` // -1 means never expired
-	RemainQuota        int            `json:"remain_quota" gorm:"default:0"`
-	RemainQuotaDisplay float64        `json:"remain_quota_display" gorm:"-"` // converted from RemainQuota at the API boundary
-	UnlimitedQuota     bool           `json:"unlimited_quota"`
-	ModelLimitsEnabled bool           `json:"model_limits_enabled"`
-	ModelLimits        string         `json:"model_limits" gorm:"type:text"`
-	AllowIps           *string        `json:"allow_ips" gorm:"default:''"`
-	UsedQuota          int            `json:"used_quota" gorm:"default:0"` // used quota
-	UsedQuotaDisplay   float64        `json:"used_quota_display" gorm:"-"` // converted from UsedQuota at the API boundary
-	Group              string         `json:"group" gorm:"default:''"`
-	CrossGroupRetry    bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
-	AutoGroups         string         `json:"-" gorm:"type:text"`
-	DeletedAt          gorm.DeletedAt `gorm:"index"`
+	Id                 int     `json:"id"`
+	UserId             int     `json:"user_id" gorm:"index"`
+	Key                string  `json:"key" gorm:"type:varchar(128);uniqueIndex"`
+	Status             int     `json:"status" gorm:"default:1"`
+	Name               string  `json:"name" gorm:"index" `
+	CreatedTime        int64   `json:"created_time" gorm:"bigint"`
+	AccessedTime       int64   `json:"accessed_time" gorm:"bigint"`
+	ExpiredTime        int64   `json:"expired_time" gorm:"bigint;default:-1"` // -1 means never expired
+	RemainQuota        int     `json:"remain_quota" gorm:"default:0"`
+	RemainQuotaDisplay float64 `json:"remain_quota_display" gorm:"-"` // converted from RemainQuota at the API boundary
+	UnlimitedQuota     bool    `json:"unlimited_quota"`
+	ModelLimitsEnabled bool    `json:"model_limits_enabled"`
+	ModelLimits        string  `json:"model_limits" gorm:"type:text"`
+	AllowIps           *string `json:"allow_ips" gorm:"default:''"`
+	UsedQuota          int     `json:"used_quota" gorm:"default:0"` // used quota
+	UsedQuotaDisplay   float64 `json:"used_quota_display" gorm:"-"` // converted from UsedQuota at the API boundary
+	Group              string  `json:"group" gorm:"default:''"`
+	CrossGroupRetry    bool    `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
+	AutoGroups         string  `json:"-" gorm:"type:text"`
+	// Setting holds the token-level relay settings (dto.TokenSettings) as
+	// JSON, mirroring the channel table's setting column. A single TEXT
+	// column avoids per-feature migrations; AutoMigrate adds it on SQLite,
+	// MySQL and PostgreSQL alike.
+	Setting   string         `json:"setting" gorm:"type:text"`
+	DeletedAt gorm.DeletedAt `gorm:"index"`
 }
 
 // AfterFind fills the API-boundary display fields so every token payload
@@ -66,6 +72,13 @@ func (token *Token) SetAutoGroups(groups []string) error {
 	}
 	token.AutoGroups = string(data)
 	return nil
+}
+
+// GetTokenSettings parses the relay settings JSON stored in the setting
+// column. Malformed JSON degrades to the zero settings instead of failing the
+// request, matching the channel GetSetting tolerance for corrupted rows.
+func (token *Token) GetTokenSettings() dto.TokenSettings {
+	return dto.TokenSettingsFromRaw(token.Setting)
 }
 
 func (token *Token) Clean() {
@@ -281,7 +294,8 @@ func (token *Token) Update() (err error) {
 		common.SysLog("failed to invalidate token cache before update: " + cacheErr.Error())
 	}
 	return dbx.DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
-		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry", "auto_groups").Updates(token).Error
+		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry", "auto_groups",
+		"setting").Updates(token).Error
 }
 
 func (token *Token) SelectUpdate() (err error) {

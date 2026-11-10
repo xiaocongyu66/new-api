@@ -360,3 +360,14 @@ export interface AddChannelRequest {
   batch_add_set_key_prefix_2_name?: boolean
   channel: Partial<Channel>
 }
+
+export interface SystemPromptPresetItem {
+  name: string
+  bytes?: number
+}
+
+export interface SystemPromptPresetsResponse {
+  success: boolean
+  message?: string
+  data?: SystemPromptPresetItem[]
+}

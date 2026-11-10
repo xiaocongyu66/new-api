@@ -19,12 +19,18 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
-// applyResponsesSystemPrompt merges the channel system prompt into a Responses
-// request's `instructions`. The default prepends the channel prompt in front of
-// the caller's instructions; UserSystemPromptOverride replaces the caller's
-// instructions with the channel prompt.
-func applyResponsesSystemPrompt(c contract.Context, info *relaycommon.RelayInfo, request *dto.OpenAIResponsesRequest, systemPrompt string) error {
-	if info.ChannelSetting.UserSystemPromptOverride {
+// applyResponsesSystemPrompt merges the effective system prompt into a
+// Responses request's `instructions`. The default prepends the prompt in front
+// of the caller's instructions; Override (the winning layer's
+// UserSystemPromptOverride) replaces the caller's instructions with the
+// prompt. The caller resolves the effective prompt through
+// relaycommon.ResolveEffectiveSystemPrompt so token bindings win the same way
+// as in the chat/claude/gemini helpers, and the resolution doubles as the
+// consume-log audit record.
+func applyResponsesSystemPrompt(c contract.Context, info *relaycommon.RelayInfo, request *dto.OpenAIResponsesRequest, effective relaycommon.EffectiveSystemPrompt) error {
+	info.SystemPromptAudit = &effective
+	systemPrompt := effective.Prompt
+	if effective.Override {
 		common.SetContextKey(c, constant.ContextKeyUserSystemPromptOverridden, true)
 		b, err := common.Marshal(systemPrompt)
 		if err != nil {
@@ -129,8 +135,8 @@ func ResponsesHelper(c contract.Context, info *relaycommon.RelayInfo) (newAPIErr
 		}
 		requestBody = common.NewReplayableBodyReader(storage)
 	} else {
-		if systemPrompt := info.ChannelSetting.ResolveSystemPrompt(info.OriginModelName); systemPrompt != "" {
-			if err := applyResponsesSystemPrompt(c, info, request, systemPrompt); err != nil {
+		if effective := relaycommon.ResolveEffectiveSystemPrompt(c, info); effective.Prompt != "" {
+			if err := applyResponsesSystemPrompt(c, info, request, effective); err != nil {
 				return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 			}
 		}

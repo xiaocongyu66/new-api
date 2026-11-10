@@ -51,6 +51,7 @@ import { GroupPricingSection } from './model-details-group-pricing'
 import { ModelHeader } from './model-details-header'
 import { ModelDetailsPerformance } from './model-details-performance'
 import { SectionTitle } from './model-details-section-title'
+import { isDynamicPricingModel } from '../lib/dynamic-price'
 
 const MODEL_DETAILS_SKELETON_KEYS = ['first', 'second', 'third', 'fourth']
 
@@ -84,9 +85,8 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
   const emptyMultiplier = status?.empty_response_multiplier
   const showRechargePrice = props.showRechargePrice ?? false
 
-  const isDynamic =
-    props.model.billing_mode === 'tiered_expr' &&
-    Boolean(props.model.billing_expr)
+  // Shared predicate so context-interval modes also render tier columns.
+  const isDynamic = isDynamicPricingModel(props.model)
 
   return (
     <div className='@container/details space-y-4'>

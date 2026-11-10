@@ -13,11 +13,11 @@ func TestResolveAutoPicksPresetByExactModel(t *testing.T) {
 		want    string
 		wantNot string
 	}{
-		{model: "gemini-3.6-flash", want: Get(PresetColdCoffeeGemini)},
-		{model: "claude-opus-4-6", want: Get(PresetColdCoffeeClaude)},
-		{model: "grok-4.7", want: Get(PresetColdCoffeeGrok)},
-		{model: "deepseek-v4.1-flash", want: Get(PresetColdCoffeeDeepSeek)},
-		{model: "glm-5.3", want: Get(PresetColdCoffeeGLM53)},
+		{model: "gemini-3.6-flash", want: PresetColdCoffeeGemini},
+		{model: "claude-opus-4-6", want: PresetColdCoffeeClaude},
+		{model: "grok-4.7", want: PresetColdCoffeeGrok},
+		{model: "deepseek-v4.1-flash", want: PresetColdCoffeeDeepSeek},
+		{model: "glm-5.3", want: PresetColdCoffeeGLM53},
 	}
 	for _, tt := range tests {
 		t.Run(tt.model, func(t *testing.T) {
@@ -33,23 +33,23 @@ func TestResolveAutoFallsBackToModelFamily(t *testing.T) {
 	// instead of the generic fallback.
 	got := ResolveAuto("gemini-3.6-flash-preview")
 	require.NotEmpty(t, got)
-	assert.Equal(t, Get(PresetColdCoffeeGemini), got)
+	assert.Equal(t, PresetColdCoffeeGemini, got)
 
 	got = ResolveAuto("claude-sonnet-5-5-thinking")
 	require.NotEmpty(t, got)
-	assert.Equal(t, Get(PresetColdCoffeeClaude), got)
+	assert.Equal(t, PresetColdCoffeeClaude, got)
 }
 
 func TestResolveAutoFallsBackToGenericPresetForUnknownModel(t *testing.T) {
 	got := ResolveAuto("some-unlisted-model")
 	require.NotEmpty(t, got)
-	assert.Equal(t, Get(PresetFallback), got)
+	assert.Equal(t, PresetFallback, got)
 }
 
 func TestResolveAutoIsCaseInsensitive(t *testing.T) {
 	got := ResolveAuto("GEMINI-3.6-FLASH")
 	require.NotEmpty(t, got)
-	assert.Equal(t, Get(PresetColdCoffeeGemini), got)
+	assert.Equal(t, PresetColdCoffeeGemini, got)
 }
 
 func TestResolveAutoReturnsEmptyForEmptyModel(t *testing.T) {
@@ -116,8 +116,8 @@ func TestListReturnsIndependentModelSlices(t *testing.T) {
 }
 
 func TestResolveAutoFamilyBoundary(t *testing.T) {
-	assert.Equal(t, Get(PresetFallback), ResolveAuto("geminix-1"))
-	assert.Equal(t, Get(PresetColdCoffeeGemini), ResolveAuto("gemini-3.6-flash-preview"))
+	assert.Equal(t, PresetFallback, ResolveAuto("geminix-1"))
+	assert.Equal(t, PresetColdCoffeeGemini, ResolveAuto("gemini-3.6-flash-preview"))
 }
 
 func TestCatalogueAnchors(t *testing.T) {

@@ -415,3 +415,20 @@ export const SYSTEM_PROMPT_PRESET_FAMILY_ORDER = [
   'deepseek',
   'glm',
 ] as const
+
+
+/**
+ * Static preset list used when the catalogue endpoint is unreachable (e.g. a
+ * non-admin token owner, since /api/channel is admin-only). Must stay in
+ * sync with the backend promptpresets registry.
+ */
+export const FALLBACK_SYSTEM_PROMPT_PRESETS = [
+  SYSTEM_PROMPT_PRESET_AUTO,
+  'silly_tavern',
+  'tavern_card',
+  'coldcoffee_claude',
+  'coldcoffee_grok',
+  'coldcoffee_gemini',
+  'coldcoffee_deepseek',
+  'coldcoffee_glm53',
+] as const

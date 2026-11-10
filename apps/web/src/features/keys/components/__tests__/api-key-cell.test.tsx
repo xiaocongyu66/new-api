@@ -113,6 +113,7 @@ const apiKey: ApiKey = {
   used_quota: 0,
   unlimited_quota: true,
   expired_time: -1,
+  setting: '',
   created_time: 0,
   accessed_time: 0,
   group: 'default',

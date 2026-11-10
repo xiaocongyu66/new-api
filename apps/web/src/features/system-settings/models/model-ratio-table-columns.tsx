@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import type { ColumnDef } from '@tanstack/react-table'
 
 import { DataTableColumnHeader } from '@/components/data-table/core/column-header'
+import { isTieredBillingMode } from '@/features/pricing/lib/dynamic-price'
 import { StaticRowActions } from '@/components/data-table/static/static-row-actions'
 import { StatusBadge } from '@/components/status-badge'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -82,7 +83,7 @@ export function buildModelRatioColumns({
       cell: ({ row }) => (
         <div className='flex min-w-0 items-center gap-2 font-medium'>
           <span className='min-w-0 truncate'>{row.getValue('name')}</span>
-          {row.original.billingMode === 'tiered_expr' && (
+          {isTieredBillingMode(row.original.billingMode) && (
             <StatusBadge
               label={t('Tiered')}
               variant='info'

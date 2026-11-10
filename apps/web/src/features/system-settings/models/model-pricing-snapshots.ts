@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { splitBillingExprAndRequestRules } from '@/features/pricing/lib/billing-expr'
+import { formatTokenCountHint } from '@/features/pricing/lib/dynamic-price'
 
 import { safeJsonParse } from '../utils/json-parser'
 import { formatPricingNumber } from './pricing-format'
@@ -32,6 +33,8 @@ export type ModelPricingSnapshotInput = {
   audioCompletionRatio: string
   billingMode: string
   billingExpr: string
+  billingContextTier?: string
+  billingContextTierPerCall?: string
   // Backend-computed effective completion ratio per model. Mirrors the
   // backend's own resolution (DB override → hardcoded default) so the UI can
   // show the price billing actually charges.
@@ -65,6 +68,8 @@ export type ModelPricingSnapshot = {
   audioCompletionRatio?: string
   billingMode?: string
   billingExpr?: string
+  billingContextTier?: string
+  billingContextTierPerCall?: string
   requestRuleExpr?: string
   hasConflict: boolean
 }
@@ -79,7 +84,7 @@ export type ModelRow = ModelPricingSnapshot & {
   isPriceUnset: boolean
 }
 
-const hasPricingValue = (value?: string) =>
+export const hasPricingValue = (value?: string) =>
   value !== undefined && value !== ''
 
 /**
@@ -102,11 +107,94 @@ export const resolveEffectiveCompletionRatio = (
   return entry?.ratio ?? null
 }
 
-export const isBasePricingUnset = (snapshot?: ModelPricingSnapshot) =>
-  !snapshot ||
-  (snapshot.billingMode !== 'tiered_expr' &&
-    !hasPricingValue(snapshot.price) &&
-    !hasPricingValue(snapshot.ratio))
+export type TierPriceRow = {
+  key: string
+  /** Interval label: `≤100K`, `>100K`, or `*` for a flat price. */
+  boundLabel: string
+  inputPrice?: number
+  outputPrice?: number
+  cachePrice?: number
+  cacheWritePrice?: number
+  price?: number
+}
+
+/**
+ * Flattens stored tiers into display rows (ascending bound, catch-all last)
+ * with a human-readable interval label. Returns [] for missing/invalid data.
+ */
+export const parseTierRows = (raw?: string): TierPriceRow[] => {
+  const text = (raw ?? '').trim()
+  if (!text) return []
+  let list: unknown
+  try {
+    const parsed: unknown = JSON.parse(text)
+    if (Array.isArray(parsed)) {
+      list = parsed
+    } else if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      'tiers' in parsed &&
+      Array.isArray(parsed.tiers)
+    ) {
+      list = parsed.tiers
+    }
+  } catch {
+    return []
+  }
+  if (!Array.isArray(list) || list.length === 0) return []
+  const tiers = list
+    .filter(
+      (item): item is Record<string, unknown> =>
+        typeof item === 'object' && item !== null
+    )
+    .map((item) => ({
+      maxContext: typeof item.max_context === 'number' ? item.max_context : 0,
+      inputPrice: item.input_price,
+      outputPrice: item.output_price,
+      cachePrice: item.cache_price,
+      cacheWritePrice: item.cache_write_price,
+      price: item.price,
+    }))
+    .sort((a, b) => {
+      const av = a.maxContext === 0 ? Number.POSITIVE_INFINITY : a.maxContext
+      const bv = b.maxContext === 0 ? Number.POSITIVE_INFINITY : b.maxContext
+      return av - bv
+    })
+  const num = (value: unknown) =>
+    typeof value === 'number' && Number.isFinite(value) ? value : undefined
+  let prevBound: number | null = null
+  return tiers.map((tier, index) => {
+    let boundLabel: string
+    if (tier.maxContext > 0) {
+      boundLabel = `≤${formatTokenCountHint(tier.maxContext)}`
+      prevBound = tier.maxContext
+    } else {
+      boundLabel =
+        prevBound !== null ? `>${formatTokenCountHint(prevBound)}` : '*'
+    }
+    return {
+      key: `tier-${index}`,
+      boundLabel,
+      inputPrice: num(tier.inputPrice),
+      outputPrice: num(tier.outputPrice),
+      cachePrice: num(tier.cachePrice),
+      cacheWritePrice: num(tier.cacheWritePrice),
+      price: num(tier.price),
+    }
+  })
+}
+
+export const isBasePricingUnset = (snapshot?: ModelPricingSnapshot) => {
+  if (!snapshot) return true
+  if (snapshot.billingMode === 'tiered_expr') return false
+  if (snapshot.billingMode === 'context_tier') {
+    return !hasTierData(snapshot.billingContextTier)
+  }
+  if (snapshot.billingMode === 'context_tier_per_call') {
+    return !hasTierData(snapshot.billingContextTierPerCall)
+  }
+  return !hasPricingValue(snapshot.price) && !hasPricingValue(snapshot.ratio)
+}
 
 const toNumberOrNull = (value?: string) => {
   if (!hasPricingValue(value)) return null
@@ -121,9 +209,85 @@ const ratioToPrice = (ratio?: string, denominator?: string) => {
   return formatPricingNumber(ratioNumber * denominatorNumber)
 }
 
+/** Lenient tier summary for list/card display; invalid JSON yields null. */
+export type TierSummary = {
+  count: number
+  inputMin: number | null
+  inputMax: number | null
+  outputMin: number | null
+  outputMax: number | null
+  priceMin: number | null
+  priceMax: number | null
+  maxBound: number | null
+}
+
+const rangeOf = (values: number[]): [number | null, number | null] =>
+  values.length === 0
+    ? [null, null]
+    : [Math.min(...values), Math.max(...values)]
+
+export const parseTierSummary = (raw?: string): TierSummary | null => {
+  const text = (raw ?? '').trim()
+  if (!text) return null
+  let list: unknown
+  try {
+    const parsed: unknown = JSON.parse(text)
+    if (Array.isArray(parsed)) {
+      list = parsed
+    } else if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      'tiers' in parsed &&
+      Array.isArray(parsed.tiers)
+    ) {
+      list = parsed.tiers
+    }
+  } catch {
+    return null
+  }
+  if (!Array.isArray(list) || list.length === 0) return null
+  const rows = list.filter(
+    (item): item is Record<string, unknown> =>
+      typeof item === 'object' && item !== null
+  )
+  if (rows.length === 0) return null
+  const numbers = (key: string) =>
+    rows
+      .map((row) => row[key])
+      .filter((value): value is number => typeof value === 'number')
+  const [inputMin, inputMax] = rangeOf(numbers('input_price'))
+  const [outputMin, outputMax] = rangeOf(numbers('output_price'))
+  const [priceMin, priceMax] = rangeOf(numbers('price'))
+  const bounds = numbers('max_context').filter((bound) => bound > 0)
+  return {
+    count: rows.length,
+    inputMin,
+    inputMax,
+    outputMin,
+    outputMax,
+    priceMin,
+    priceMax,
+    maxBound: bounds.length > 0 ? Math.max(...bounds) : null,
+  }
+}
+
+/** `$1` for a single value, `$1–$2` for a range, `—` when unset. */
+export const formatTierPriceRange = (
+  min: number | null,
+  max: number | null
+) => {
+  if (min === null) return '—'
+  if (max === null || min === max) return `$${min}`
+  return `$${min}–$${max}`
+}
+
+const hasTierData = (raw?: string) => parseTierSummary(raw) !== null
+
 export const getModeLabel = (mode?: string) => {
   if (mode === 'per-request') return 'Per-request'
   if (mode === 'tiered_expr') return 'Expression'
+  if (mode === 'context_tier') return 'Per-token context tiers'
+  if (mode === 'context_tier_per_call') return 'Per-call context tiers'
   return 'Per-token'
 }
 
@@ -131,7 +295,9 @@ export const getModeVariant = (
   mode?: string
 ): 'warning' | 'info' | 'success' => {
   if (mode === 'per-request') return 'warning'
+  if (mode === 'context_tier_per_call') return 'warning'
   if (mode === 'tiered_expr') return 'info'
+  if (mode === 'context_tier') return 'info'
   return 'success'
 }
 
@@ -152,6 +318,16 @@ export const getPriceSummary = (
 ) => {
   if (row.billingMode === 'tiered_expr') {
     return getExpressionSummary(row, t)
+  }
+  if (row.billingMode === 'context_tier') {
+    const tiers = parseTierSummary(row.billingContextTier)
+    if (!tiers) return t('Unset price')
+    return `${t('Input')} ${formatTierPriceRange(tiers.inputMin, tiers.inputMax)} · ${t('Output')} ${formatTierPriceRange(tiers.outputMin, tiers.outputMax)}`
+  }
+  if (row.billingMode === 'context_tier_per_call') {
+    const tiers = parseTierSummary(row.billingContextTierPerCall)
+    if (!tiers) return t('Unset price')
+    return `${formatTierPriceRange(tiers.priceMin, tiers.priceMax)} / ${t('request')}`
   }
   if (row.billingMode === 'per-request') {
     return row.price ? `$${row.price} / ${t('request')}` : t('Unset price')
@@ -182,6 +358,22 @@ export const getPriceDetail = (
     return row.requestRuleExpr
       ? t('Includes request rules')
       : t('Expression based')
+  }
+  if (
+    row.billingMode === 'context_tier' ||
+    row.billingMode === 'context_tier_per_call'
+  ) {
+    const tiers = parseTierSummary(
+      row.billingMode === 'context_tier'
+        ? row.billingContextTier
+        : row.billingContextTierPerCall
+    )
+    if (!tiers) return t('No base input price')
+    const bound =
+      tiers.maxBound !== null
+        ? ` · ≤${formatTokenCountHint(tiers.maxBound)}`
+        : ''
+    return `${tiers.count} ${t('tiers')}${bound}`
   }
   if (row.billingMode === 'per-request') {
     return t('Fixed request price')
@@ -215,6 +407,8 @@ export const buildModelSnapshots = ({
   audioCompletionRatio,
   billingMode,
   billingExpr,
+  billingContextTier,
+  billingContextTierPerCall,
 }: ModelPricingSnapshotInput): ModelPricingSnapshot[] => {
   const priceMap = safeJsonParse<Record<string, number>>(modelPrice, {
     fallback: {},
@@ -256,6 +450,17 @@ export const buildModelSnapshots = ({
     fallback: {},
     context: 'billing expression',
   })
+  const billingContextTierMap = safeJsonParse<Record<string, string>>(
+    billingContextTier,
+    {
+      fallback: {},
+      context: 'billing context tier',
+    }
+  )
+  const billingContextTierPerCallMap = safeJsonParse<Record<string, string>>(
+    billingContextTierPerCall,
+    { fallback: {}, context: 'billing context tier (per call)' }
+  )
 
   const modelNames = new Set([
     ...Object.keys(priceMap),
@@ -268,6 +473,8 @@ export const buildModelSnapshots = ({
     ...Object.keys(audioCompletionMap),
     ...Object.keys(billingModeMap),
     ...Object.keys(billingExprMap),
+    ...Object.keys(billingContextTierMap),
+    ...Object.keys(billingContextTierPerCallMap),
   ])
 
   return Array.from(modelNames).map((name) => {
@@ -281,35 +488,19 @@ export const buildModelSnapshots = ({
     const audioCompletion = audioCompletionMap[name]?.toString() || ''
 
     const modeForModel = billingModeMap[name]
-    const exprForModel = billingExprMap[name] || ''
-    // A persisted billing expression is authoritative for read/display purposes:
-    // even when the billing_mode map drifted (or never carried the entry),
-    // an expression means this model is expression-billed. This keeps an
-    // already-configured expression visible in the editor instead of falling
-    // back to per-token/per-request pricing.
-    if (modeForModel === 'tiered_expr' || exprForModel.trim() !== '') {
-      const fullExpr = exprForModel
-      const { billingExpr: pureExpr, requestRuleExpr } =
-        splitBillingExprAndRequestRules(fullExpr)
-      return {
-        name,
-        billingMode: 'tiered_expr',
-        billingExpr: pureExpr,
-        requestRuleExpr,
-        price,
-        ratio,
-        cacheRatio: cache,
-        createCacheRatio: createCache,
-        completionRatio: completion,
-        imageRatio: image,
-        audioRatio: audio,
-        audioCompletionRatio: audioCompletion,
-        hasConflict: false,
-      }
-    }
-
-    return {
-      name,
+    // Every method's data persists independently of which one is active, so
+    // each row carries ALL stored method payloads; otherwise opening a model
+    // whose active method differs from a configured one and saving would
+    // overwrite/delete the other methods' config. A persisted expression only
+    // stands in when billing_mode drifted or never carried the entry: a model
+    // already on a context-interval mode keeps that mode even though a stale
+    // expression is still stored.
+    const storedExpr = billingExprMap[name] || ''
+    const { billingExpr: pureExpr, requestRuleExpr } =
+      splitBillingExprAndRequestRules(storedExpr)
+    const storedTiers = billingContextTierMap[name] || ''
+    const storedCallTiers = billingContextTierPerCallMap[name] || ''
+    const shared = {
       price,
       ratio,
       cacheRatio: cache,
@@ -318,6 +509,27 @@ export const buildModelSnapshots = ({
       imageRatio: image,
       audioRatio: audio,
       audioCompletionRatio: audioCompletion,
+      billingExpr: pureExpr,
+      requestRuleExpr,
+      billingContextTier: storedTiers,
+      billingContextTierPerCall: storedCallTiers,
+      hasConflict: false,
+    }
+    if (modeForModel === 'context_tier') {
+      return { name, billingMode: 'context_tier', ...shared }
+    }
+    if (modeForModel === 'context_tier_per_call') {
+      return { name, billingMode: 'context_tier_per_call', ...shared }
+    }
+    // Expression-authoritative fallback: with no usable mode entry, a persisted
+    // expression still means this model is expression-billed.
+    if (modeForModel === 'tiered_expr' || storedExpr.trim() !== '') {
+      return { name, billingMode: 'tiered_expr', ...shared }
+    }
+
+    return {
+      name,
+      ...shared,
       billingMode: price !== '' ? 'per-request' : 'per-token',
       hasConflict:
         price !== '' &&
@@ -345,6 +557,8 @@ export const getSnapshotSignature = (snapshot?: ModelPricingSnapshot) => {
     audioCompletionRatio: snapshot.audioCompletionRatio || '',
     billingMode: snapshot.billingMode || 'per-token',
     billingExpr: snapshot.billingExpr || '',
+    billingContextTier: snapshot.billingContextTier || '',
+    billingContextTierPerCall: snapshot.billingContextTierPerCall || '',
     requestRuleExpr: snapshot.requestRuleExpr || '',
   })
 }
