@@ -24,12 +24,12 @@ import type { TFunction } from 'i18next'
 import type { SubscriptionPlan } from '../../types'
 import {
   formValuesToPlanPayload,
-  getPlanFormSchema,
-  getPlanUpgradeGroups,
   PLAN_FORM_DEFAULTS,
   planRequestRows,
   planToFormValues,
   requestRowsToRules,
+  type PlanFormValues,
+  type RequestMatrixRow,
 } from '../plan-form'
 import { planExpireMode, planLimitMode } from '../../constants'
 
@@ -151,7 +151,7 @@ describe('planRequestRows', () => {
 
 describe('requestRowsToRules', () => {
   test('merges models sharing a count into one rule per group', () => {
-    const rows = [
+    const rows: RequestMatrixRow[] = [
       { model: 'gpt-4o', counts: { vip: 5, svip: 10 } },
       { model: 'claude', counts: { vip: 5 } },
     ]
@@ -162,14 +162,14 @@ describe('requestRowsToRules', () => {
   })
 
   test('drops counts for groups the plan no longer upgrades', () => {
-    const rows = [{ model: 'gpt-4o', counts: { vip: 5, stale: 99 } }]
+    const rows: RequestMatrixRow[] = [{ model: 'gpt-4o', counts: { vip: 5, stale: 99 } }]
     assert.deepEqual(requestRowsToRules(rows, ['vip']), [
       { group: 'vip', models: ['gpt-4o'], count: 5 },
     ])
   })
 
   test('zeros and empty cells grant nothing', () => {
-    const rows = [{ model: 'gpt-4o', counts: { vip: 0 } }]
+    const rows: RequestMatrixRow[] = [{ model: 'gpt-4o', counts: { vip: 0 } }]
     assert.deepEqual(requestRowsToRules(rows, ['vip']), [])
   })
 })
@@ -192,10 +192,11 @@ describe('formValuesToPlanPayload', () => {
   })
 
   test('quota expiry and request limit force the reset period to never', () => {
-    for (const values of [
+    const axisCases: PlanFormValues[] = [
       { ...PLAN_FORM_DEFAULTS, expire_mode: 'quota', total_amount: 10 },
       { ...PLAN_FORM_DEFAULTS, limit_mode: 'request' },
-    ]) {
+    ]
+    for (const values of axisCases) {
       const payload = formValuesToPlanPayload({
         ...values,
         quota_reset_period: 'daily',

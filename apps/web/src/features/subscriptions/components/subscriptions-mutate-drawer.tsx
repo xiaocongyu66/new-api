@@ -150,7 +150,9 @@ export function SubscriptionsMutateDrawer({
         .catch(() => {})
       // The matrix columns are the plan's upgrade groups; their model lists
       // feed the model picker.
-      const matrixGroups = new Set(getPlanUpgradeGroups(currentRow?.plan))
+      const matrixGroups = new Set(
+        getPlanUpgradeGroups(currentRow?.plan ?? {})
+      )
       matrixGroups.forEach((group) => {
         getGroupModels(group)
           .then((res) => {
