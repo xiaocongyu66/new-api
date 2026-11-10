@@ -26,6 +26,9 @@ const subscriptionRequestRuleSchema = z.object({
   group: z.string(),
   models: z.array(z.string()),
   count: z.number(),
+  measure: z.string().optional(),
+  amount: z.number().optional(),
+  amount_display: z.number().optional(),
 })
 export type SubscriptionRequestRule = z.infer<
   typeof subscriptionRequestRuleSchema
@@ -64,6 +67,8 @@ const subscriptionPlanSchema = z.object({
   total_amount_display: z.number().optional(),
   kind: z.enum(['time', 'quota', 'request']).default('time'),
   expire_mode: z.string().optional(),
+  scope: z.string().optional(),
+  measure: z.string().optional(),
   limit_mode: z.string().optional(),
   upgrade_groups: z.array(z.string()).optional(),
   request_rules: z.array(subscriptionRequestRuleSchema).optional(),

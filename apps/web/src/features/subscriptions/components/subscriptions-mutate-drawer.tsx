@@ -82,7 +82,8 @@ import {
 import {
   getDurationUnitOptions,
   getPlanExpireModeOptions,
-  getPlanLimitModeOptions,
+  getPlanMeasureOptions,
+  getPlanScopeOptions,
   getResetPeriodOptions,
 } from '../constants'
 import {
@@ -173,9 +174,10 @@ export function SubscriptionsMutateDrawer({
   const durationUnit = form.watch('duration_unit')
   const resetPeriod = form.watch('quota_reset_period')
   const expireMode = form.watch('expire_mode')
-  const limitMode = form.watch('limit_mode')
-  // Only the group-limit + time-expiry combination carries a reset cycle.
-  const hasResetCycle = limitMode === 'group' && expireMode === 'time'
+  const scope = form.watch('scope')
+  const measure = form.watch('measure')
+  // Only shared-pool plans with time expiry carry a reset cycle.
+  const hasResetCycle = scope === 'all' && expireMode === 'time'
 
   useEffect(() => {
     if (hasResetCycle) return
@@ -187,7 +189,7 @@ export function SubscriptionsMutateDrawer({
       shouldDirty: false,
       shouldValidate: false,
     })
-    if (limitMode === 'request') {
+    if (scope !== 'all') {
       form.setValue('total_amount', 0, {
         shouldDirty: false,
         shouldValidate: false,
@@ -199,7 +201,7 @@ export function SubscriptionsMutateDrawer({
         shouldValidate: false,
       })
     }
-  }, [hasResetCycle, limitMode, expireMode, form])
+  }, [hasResetCycle, scope, expireMode, form])
   const watchedTitle = form.watch('title')
   const watchedPrice = form.watch('price_amount')
   const allowBalancePay = form.watch('allow_balance_pay')
@@ -209,9 +211,18 @@ export function SubscriptionsMutateDrawer({
     Number(watchedPrice ?? 0) > 0
 
   const onSubmit = async (values: PlanFormValues) => {
-    if (values.limit_mode === 'request') {
+    if (values.scope === 'group') {
+      const hasGrant = Object.values(values.group_values).some(
+        (value) => value > 0
+      )
+      if (!hasGrant) {
+        toast.error(t('Group limits need at least one group with a positive amount'))
+        return
+      }
+    }
+    if (values.scope === 'model') {
       const hasCount = values.request_rows.some((row) =>
-        Object.values(row.counts).some((count) => count > 0)
+        Object.values(row.counts).some((value) => value > 0)
       )
       if (!hasCount) {
         toast.error(
@@ -325,13 +336,15 @@ export function SubscriptionsMutateDrawer({
   const durationUnitOpts = getDurationUnitOptions(t)
   const resetPeriodOpts = getResetPeriodOptions(t)
   const expireModeOpts = getPlanExpireModeOptions(t)
-  const limitModeOpts = getPlanLimitModeOptions(t)
+  const scopeOpts = getPlanScopeOptions(t)
+  const measureOpts = getPlanMeasureOptions(t)
   const upgradeGroupOptions = groupOptions.map((group) => ({
     value: group,
     label: group,
   }))
 
   const upgradeGroups = form.watch('upgrade_groups') || []
+  const groupValues = form.watch('group_values') || {}
 
   // The matrix offers every model of the selected upgrade groups that does
   // not already have a row, so the same model cannot be configured twice.
@@ -491,7 +504,7 @@ export function SubscriptionsMutateDrawer({
                   )}
                 />
 
-                {limitMode === 'group' && (
+                {scope === 'all' && (
                   <FormField
                     control={form.control}
                     name='total_amount'
@@ -550,13 +563,11 @@ export function SubscriptionsMutateDrawer({
                         />
                       </FormControl>
                       <FormDescription>
-                        {limitMode === 'request'
+                        {scope === 'all'
                           ? t(
-                              'These groups become the request-limit table columns'
-                            )
-                          : t(
                               'Subscription quota can only be used in the selected groups'
-                            )}
+                            )
+                          : t('These groups become the limit table rows')}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -701,17 +712,21 @@ export function SubscriptionsMutateDrawer({
 
               <FormField
                 control={form.control}
-                name='limit_mode'
+                name='scope'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Limit Method')}</FormLabel>
+                    <FormLabel>{t('Limit Scope')}</FormLabel>
                     <FormControl>
                       <div className='bg-muted/40 inline-flex w-full rounded-md border p-0.5'>
-                        {limitModeOpts.map((option) => (
+                        {scopeOpts.map((option) => (
                           <Button
                             key={option.value}
                             type='button'
-                            variant={field.value === option.value ? 'secondary' : 'ghost'}
+                            variant={
+                              field.value === option.value
+                                ? 'secondary'
+                                : 'ghost'
+                            }
                             size='sm'
                             className='flex-1 shadow-none'
                             onClick={() => field.onChange(option.value)}
@@ -723,13 +738,51 @@ export function SubscriptionsMutateDrawer({
                     </FormControl>
                     <FormDescription>
                       {t(
-                        'Group limit grants a quota pool usable only in the selected groups; request limit grants per-model request counts'
+                        'Shared quota is one pool for every group; group and model limits grant their own rows'
                       )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
+              {scope !== 'all' && (
+                <FormField
+                  control={form.control}
+                  name='measure'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Measure Unit')}</FormLabel>
+                      <FormControl>
+                        <div className='bg-muted/40 inline-flex w-full rounded-md border p-0.5'>
+                          {measureOpts.map((option) => (
+                            <Button
+                              key={option.value}
+                              type='button'
+                              variant={
+                                field.value === option.value
+                                  ? 'secondary'
+                                  : 'ghost'
+                              }
+                              size='sm'
+                              className='flex-1 shadow-none'
+                              onClick={() => field.onChange(option.value)}
+                            >
+                              {option.label}
+                            </Button>
+                          ))}
+                        </div>
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Quota measures spend in money; request count measures spend one unit per request'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <Separator />
             </SideDrawerSection>
@@ -903,13 +956,97 @@ export function SubscriptionsMutateDrawer({
             )}
 
             {/* Request Limits */}
-            {limitMode === 'request' && (
+            {scope === 'group' && (
               <SideDrawerSection>
                 <h3 className='flex items-center gap-2 text-sm font-medium'>
                   <IconBadge tone='info' size='xs'>
                     <ListChecks />
                   </IconBadge>
-                  {t('Request Limits')}
+                  {t('Group Limits')}
+                </h3>
+
+                <FormField
+                  control={form.control}
+                  name='group_values'
+                  render={() => (
+                    <FormItem>
+                      {upgradeGroups.length === 0 ? (
+                        <p className='text-muted-foreground text-xs'>
+                          {t(
+                            'Select the upgrade groups in Basic Info first; they become the table rows'
+                          )}
+                        </p>
+                      ) : (
+                        <div className='overflow-x-auto'>
+                          <table className='w-full border-collapse text-sm'>
+                            <thead>
+                              <tr className='border-b'>
+                                <th className='py-2 pr-3 text-left font-medium'>
+                                  {t('Group')}
+                                </th>
+                                <th className='px-2 py-2 text-left font-medium'>
+                                  {measure === 'quota'
+                                    ? t('Quota ({{currency}})', {
+                                        currency: currencyLabel,
+                                      })
+                                    : t('Count')}
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {upgradeGroups.map((group) => (
+                                <tr key={group} className='border-b last:border-0'>
+                                  <td className='py-2 pr-3 font-mono text-xs'>
+                                    {group}
+                                  </td>
+                                  <td className='px-2 py-2'>
+                                    <Input
+                                      type='number'
+                                      min={0}
+                                      step={measure === 'quota' ? 0.01 : 1}
+                                      value={groupValues[group] ?? ''}
+                                      placeholder='0'
+                                      onChange={(e) =>
+                                        form.setValue(
+                                          'group_values',
+                                          {
+                                            ...groupValues,
+                                            [group]:
+                                              Number.parseFloat(
+                                                e.target.value
+                                              ) || 0,
+                                          },
+                                          { shouldDirty: true }
+                                        )
+                                      }
+                                      className='w-32'
+                                      aria-label={`${group} ${
+                                        measure === 'quota'
+                                          ? t('Quota')
+                                          : t('Count')
+                                      }`}
+                                    />
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </SideDrawerSection>
+            )}
+
+            {scope === 'model' && (
+              <SideDrawerSection>
+                <h3 className='flex items-center gap-2 text-sm font-medium'>
+                  <IconBadge tone='info' size='xs'>
+                    <ListChecks />
+                  </IconBadge>
+                  {t('Model Limits')}
                 </h3>
 
                 <FormField
@@ -956,6 +1093,7 @@ export function SubscriptionsMutateDrawer({
                                       <Input
                                         type='number'
                                         min={0}
+                                        step={measure === 'quota' ? 0.01 : 1}
                                         value={row.counts[group] ?? ''}
                                         placeholder='0'
                                         onChange={(e) =>
@@ -964,9 +1102,8 @@ export function SubscriptionsMutateDrawer({
                                             counts: {
                                               ...row.counts,
                                               [group]:
-                                                Number.parseInt(
-                                                  e.target.value,
-                                                  10
+                                                Number.parseFloat(
+                                                  e.target.value
                                                 ) || 0,
                                             },
                                           })

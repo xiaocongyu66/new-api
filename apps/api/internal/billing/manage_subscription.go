@@ -176,7 +176,8 @@ func applyPlanUpgradeGroups(plan *SubscriptionPlan) error {
 // applyPlanRequestRules validates and serializes request rules for request-kind
 // plans. Other kinds drop any stale rules so they cannot grant an entitlement.
 func applyPlanRequestRules(plan *SubscriptionPlan) error {
-	if plan.Kind != SubscriptionKindRequest {
+	scope, measure := planLimitAxes(plan)
+	if scope == SubscriptionScopeAll {
 		plan.RequestRules = nil
 		plan.RequestRulesJSON = ""
 		return nil
@@ -190,37 +191,57 @@ func applyPlanRequestRules(plan *SubscriptionPlan) error {
 		rules = parsed
 	}
 	if len(rules) == 0 {
-		return errors.New("请求次数订阅至少需要一条请求规则")
+		return errors.New("限制规则至少需要一条")
 	}
 	groupRatios := ratio_setting.GetGroupRatioCopy()
 	normalized := make([]SubscriptionRequestRule, 0, len(rules))
-	// The (group, model) pair is the counter key, so configuring it twice would
-	// silently grant the sum of both counts under a single bar.
+	// The (group, model) pair is the entitlement key, so configuring it twice
+	// would silently grant the sum of both amounts under a single row.
 	seenKeys := make(map[string]struct{}, len(rules)*2)
 	for _, rule := range rules {
 		group := strings.TrimSpace(rule.Group)
 		if _, ok := groupRatios[group]; !ok {
 			return fmt.Errorf("请求规则分组不存在: %s", group)
 		}
-		models := normalizeStringList(rule.Models)
-		if len(models) == 0 {
-			return errors.New("请求规则模型不能为空")
+		var models []string
+		if scope == SubscriptionScopeModel {
+			models = normalizeStringList(rule.Models)
+			if len(models) == 0 {
+				return errors.New("请求规则模型不能为空")
+			}
 		}
-		if rule.Count <= 0 {
-			return errors.New("请求规则次数必须大于0")
+		normalizedRule := SubscriptionRequestRule{Group: group, Models: models, Measure: measure}
+		if measure == SubscriptionMeasureQuota {
+			amount := rule.Amount
+			if rule.AmountDisplay != 0 {
+				converted := int64(QuotaFromDisplayAmount(rule.AmountDisplay))
+				if converted <= 0 {
+					return errors.New("限制额度必须大于0")
+				}
+				amount = converted
+			}
+			if amount <= 0 {
+				return errors.New("限制额度必须大于0")
+			}
+			normalizedRule.Amount = amount
+		} else {
+			if rule.Count <= 0 {
+				return errors.New("请求规则次数必须大于0")
+			}
+			normalizedRule.Count = rule.Count
 		}
-		for _, model := range models {
+		keys := models
+		if scope == SubscriptionScopeGroup {
+			keys = []string{""}
+		}
+		for _, model := range keys {
 			key := group + "\x00" + model
 			if _, dup := seenKeys[key]; dup {
-				return fmt.Errorf("请求规则中分组 %s 下的模型 %s 不能重复设置", group, model)
+				return fmt.Errorf("请求规则中分组 %s 下的同一限制不能重复设置", group)
 			}
 			seenKeys[key] = struct{}{}
 		}
-		normalized = append(normalized, SubscriptionRequestRule{
-			Group:  group,
-			Models: models,
-			Count:  rule.Count,
-		})
+		normalized = append(normalized, normalizedRule)
 	}
 	plan.RequestRules = normalized
 	plan.RequestRulesJSON = marshalRequestRulesJSON(normalized)
@@ -236,6 +257,12 @@ func applySubscriptionKindConstraints(plan *SubscriptionPlan) error {
 	if normalizeExpireMode(plan.ExpireMode, plan.Kind) == SubscriptionExpireModeQuota {
 		plan.AllowWalletOverflow = common.GetPointer(false)
 	}
+	if scope, _ := planLimitAxes(plan); scope != SubscriptionScopeAll {
+		// Scoped plans sell entitlement rows, not a shared pool.
+		plan.TotalAmount = 0
+		plan.QuotaResetPeriod = SubscriptionResetNever
+		return nil
+	}
 	switch plan.Kind {
 	case SubscriptionKindQuota:
 		if plan.TotalAmount <= 0 {
@@ -250,18 +277,35 @@ func applySubscriptionKindConstraints(plan *SubscriptionPlan) error {
 	return nil
 }
 
-// resolvePlanModes collapses the admin form's expire/limit axes into the stored
-// kind and rejects terms that purchase could not compute. Payloads that only
-// carry the legacy kind keep its meaning.
+// resolvePlanModes collapses the admin form's axes into the stored kind and
+// rejects terms that purchase could not compute. Payloads that only carry the
+// legacy kind keep its meaning.
 func resolvePlanModes(plan *SubscriptionPlan) error {
 	if strings.TrimSpace(plan.Kind) != "" && normalizeSubscriptionKind(plan.Kind) != strings.TrimSpace(plan.Kind) {
 		return errors.New("无效的订阅种类")
 	}
 	limitMode := normalizeLimitMode(plan.LimitMode, plan.Kind)
 	expireMode := normalizeExpireMode(plan.ExpireMode, plan.Kind)
-	plan.LimitMode = limitMode
+	scope := normalizeScope(plan.Scope)
+	measure := normalizeMeasure(plan.Measure)
+	if scope == "" {
+		// Legacy payload: limit_mode carries the only scope signal it had.
+		if limitMode == SubscriptionLimitModeRequest {
+			scope, measure = SubscriptionScopeModel, SubscriptionMeasureCount
+		} else {
+			scope, measure = SubscriptionScopeAll, SubscriptionMeasureQuota
+		}
+	} else if measure == "" {
+		measure = SubscriptionMeasureCount
+	}
+	plan.Scope = scope
+	plan.Measure = measure
 	plan.ExpireMode = expireMode
-	plan.Kind = deriveSubscriptionKind(limitMode, expireMode)
+	plan.LimitMode = limitMode
+	// The stored kind stays the legacy discriminator the runtime and the
+	// existing rows understand: request means per-model counts, everything
+	// else follows the expiry axis.
+	plan.Kind = deriveSubscriptionKind(scope, measure, expireMode)
 	if expireMode == SubscriptionExpireModeTime && plan.DurationUnit == SubscriptionDurationCustom && plan.CustomSeconds <= 0 {
 		return errors.New("自定义时长需大于0秒")
 	}
@@ -485,6 +529,8 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 			"subtitle":                   req.Plan.Subtitle,
 			"kind":                       req.Plan.Kind,
 			"expire_mode":                req.Plan.ExpireMode,
+			"scope":                      req.Plan.Scope,
+			"measure":                    req.Plan.Measure,
 			"price_amount":               req.Plan.PriceAmount,
 			"currency":                   req.Plan.Currency,
 			"duration_unit":              req.Plan.DurationUnit,

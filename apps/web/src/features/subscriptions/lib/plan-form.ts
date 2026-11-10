@@ -19,12 +19,17 @@ For commercial licensing, please contact support@quantumnous.com
 import type { TFunction } from 'i18next'
 import { z } from 'zod'
 
-import { planExpireMode, planLimitMode } from '../constants'
+import {
+  planExpireMode,
+  planMeasure,
+  planScope,
+  type PlanMeasure,
+} from '../constants'
 import type { SubscriptionPlan, PlanPayload } from '../types'
 
 // One row per model in the request-limits matrix; counts maps each upgrade
-// group to the request count it grants. A group missing from the map (or
-// carrying 0) does not limit that model.
+// group to the amount it grants (request counts or quota units, per the plan's
+// measure). A group missing from the map (or carrying 0) grants nothing.
 export interface RequestMatrixRow {
   model: string
   counts: Record<string, number>
@@ -37,7 +42,8 @@ export function getPlanFormSchema(t: TFunction) {
       subtitle: z.string().optional(),
       price_amount: z.coerce.number().min(0, t('Please enter amount')),
       expire_mode: z.enum(['time', 'quota']),
-      limit_mode: z.enum(['group', 'request']),
+      scope: z.enum(['all', 'group', 'model']),
+      measure: z.enum(['quota', 'count']),
       duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
       duration_value: z.coerce.number().min(1),
       custom_seconds: z.coerce.number().min(0).optional(),
@@ -57,7 +63,7 @@ export function getPlanFormSchema(t: TFunction) {
       total_amount: z.coerce.number().min(0),
       upgrade_groups: z.array(z.string()),
       downgrade_group: z.string().optional(),
-      // The editor edits a (model x group) count matrix; the payload
+      // The model matrix: the editor edits (model x group) values; the payload
       // collapses it back into per-group rules.
       request_rows: z.array(
         z.object({
@@ -65,27 +71,41 @@ export function getPlanFormSchema(t: TFunction) {
           counts: z.record(z.string(), z.coerce.number().min(0)),
         })
       ),
+      // The group table: one value per upgrade group for group-scoped plans.
+      group_values: z.record(z.string(), z.coerce.number().min(0)),
       stripe_price_id: z.string().optional(),
       creem_product_id: z.string().optional(),
       waffo_pancake_product_id: z.string().optional(),
     })
     .superRefine((values, ctx) => {
-      if (
-        values.expire_mode === 'quota' &&
-        values.limit_mode === 'group' &&
-        values.total_amount <= 0
-      ) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['total_amount'],
-          message: t('Quota-exhausted plans require a positive total quota'),
-        })
+      if (values.expire_mode === 'quota' && values.scope === 'all') {
+        if (values.total_amount <= 0) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['total_amount'],
+            message: t('Quota-exhausted plans require a positive total quota'),
+          })
+        }
       }
-      if (values.limit_mode === 'request') {
-        const hasCount = values.request_rows.some((row) =>
-          Object.values(row.counts).some((count) => count > 0)
+      if (values.scope === 'group') {
+        const hasGrant = Object.values(values.group_values).some(
+          (value) => value > 0
         )
-        if (!hasCount) {
+        if (!hasGrant) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['group_values'],
+            message: t(
+              'Group limits need at least one group with a positive amount'
+            ),
+          })
+        }
+      }
+      if (values.scope === 'model') {
+        const hasGrant = values.request_rows.some((row) =>
+          Object.values(row.counts).some((value) => value > 0)
+        )
+        if (!hasGrant) {
           ctx.addIssue({
             code: 'custom',
             path: ['request_rows'],
@@ -96,25 +116,25 @@ export function getPlanFormSchema(t: TFunction) {
         }
         // The matrix keys on the model itself; a second row for the same
         // model would be invisible data the backend rejects.
-        const seen = new Set<string>()
+        const seenModels = new Set<string>()
         for (const row of values.request_rows) {
-          if (seen.has(row.model)) {
+          if (seenModels.has(row.model)) {
             ctx.addIssue({
               code: 'custom',
               path: ['request_rows'],
               message: t('Each model can only be added once'),
             })
           } else {
-            seen.add(row.model)
+            seenModels.add(row.model)
           }
         }
-        // Counts for groups the plan no longer upgrades are invisible in the
+        // Values for groups the plan no longer upgrades are invisible in the
         // table (its columns are the upgrade groups) but still configured.
         const upgradeSet = new Set(values.upgrade_groups)
         const orphaned: string[] = []
         for (const row of values.request_rows) {
-          for (const [group, count] of Object.entries(row.counts)) {
-            if (count > 0 && !upgradeSet.has(group)) {
+          for (const [group, value] of Object.entries(row.counts)) {
+            if (value > 0 && !upgradeSet.has(group)) {
               orphaned.push(`${row.model} (${group})`)
             }
           }
@@ -139,7 +159,8 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   subtitle: '',
   price_amount: 0,
   expire_mode: 'time',
-  limit_mode: 'group',
+  scope: 'all',
+  measure: 'quota',
   duration_unit: 'month',
   duration_value: 1,
   custom_seconds: 0,
@@ -154,6 +175,7 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   upgrade_groups: [],
   downgrade_group: '',
   request_rows: [],
+  group_values: {},
   stripe_price_id: '',
   creem_product_id: '',
   waffo_pancake_product_id: '',
@@ -169,49 +191,37 @@ export function getPlanUpgradeGroups(
 }
 
 // planRequestRows transposes the plan's per-group rules into the matrix the
-// editor renders: one row per model, keyed by group.
+// editor renders: one row per model, keyed by group. The cell value is the
+// rule's count or quota amount per the plan's measure.
 export function planRequestRows(plan: SubscriptionPlan): RequestMatrixRow[] {
   const order: string[] = []
   const counts: Record<string, Record<string, number>> = {}
+  const quota = planMeasure(plan) === 'quota'
   for (const rule of plan.request_rules || []) {
+    const value = quota
+      ? Number(rule.amount_display || 0)
+      : Number(rule.count || 0)
     for (const model of rule.models || []) {
       if (!counts[model]) {
         counts[model] = {}
         order.push(model)
       }
-      counts[model][rule.group] = Number(rule.count || 0)
+      counts[model][rule.group] = value
     }
   }
   return order.map((model) => ({ model, counts: counts[model] }))
 }
 
-// requestRowsToRules collapses the matrix back into the per-group rules the
-// backend stores: models sharing a count ride in one rule, and counts for
-// groups the plan no longer upgrades are dropped.
-export function requestRowsToRules(
-  rows: RequestMatrixRow[],
-  groups: string[]
-): NonNullable<SubscriptionPlan['request_rules']> {
-  const upgradeGroups = new Set(groups)
-  // group -> count -> models
-  const buckets: Record<string, Map<number, string[]>> = {}
-  for (const row of rows) {
-    for (const [group, count] of Object.entries(row.counts)) {
-      if (count > 0 && upgradeGroups.has(group)) {
-        const byCount = (buckets[group] ??= new Map())
-        const models = byCount.get(count) ?? []
-        models.push(row.model)
-        byCount.set(count, models)
-      }
-    }
+// planGroupValues transposes group-scoped rules into the per-group table.
+export function planGroupValues(plan: SubscriptionPlan): Record<string, number> {
+  const values: Record<string, number> = {}
+  const quota = planMeasure(plan) === 'quota'
+  for (const rule of plan.request_rules || []) {
+    values[rule.group] = quota
+      ? Number(rule.amount_display || 0)
+      : Number(rule.count || 0)
   }
-  const rules: NonNullable<SubscriptionPlan['request_rules']> = []
-  for (const [group, byCount] of Object.entries(buckets)) {
-    for (const [count, models] of byCount) {
-      rules.push({ group, models, count })
-    }
-  }
-  return rules
+  return values
 }
 
 export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
@@ -220,7 +230,8 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
     subtitle: plan.subtitle || '',
     price_amount: Number(plan.price_amount || 0),
     expire_mode: planExpireMode(plan),
-    limit_mode: planLimitMode(plan),
+    scope: planScope(plan),
+    measure: planMeasure(plan),
     duration_unit: plan.duration_unit || 'month',
     duration_value: Number(plan.duration_value || 1),
     custom_seconds: Number(plan.custom_seconds || 0),
@@ -235,16 +246,76 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
     upgrade_groups: getPlanUpgradeGroups(plan),
     downgrade_group: plan.downgrade_group || '',
     request_rows: planRequestRows(plan),
+    group_values: planGroupValues(plan),
     stripe_price_id: plan.stripe_price_id || '',
     creem_product_id: plan.creem_product_id || '',
     waffo_pancake_product_id: plan.waffo_pancake_product_id || '',
   }
 }
 
+type RuleDraft = NonNullable<SubscriptionPlan['request_rules']>[number]
+
+// requestRowsToRules collapses the matrix back into the per-group rules the
+// backend stores: models sharing a value ride in one rule, and values for
+// groups the plan no longer upgrades are dropped.
+export function requestRowsToRules(
+  rows: RequestMatrixRow[],
+  groups: string[],
+  measure: PlanMeasure
+): RuleDraft[] {
+  const upgradeGroups = new Set(groups)
+  // group -> value -> models
+  const buckets: Record<string, Map<number, string[]>> = {}
+  for (const row of rows) {
+    for (const [group, value] of Object.entries(row.counts)) {
+      if (value > 0 && upgradeGroups.has(group)) {
+        const byValue = (buckets[group] ??= new Map())
+        const models = byValue.get(value) ?? []
+        models.push(row.model)
+        byValue.set(value, models)
+      }
+    }
+  }
+  const rules: RuleDraft[] = []
+  for (const [group, byValue] of Object.entries(buckets)) {
+    for (const [value, models] of byValue) {
+      rules.push({
+        group,
+        models,
+        count: measure === 'count' ? value : 0,
+        amount_display: measure === 'quota' ? value : 0,
+      })
+    }
+  }
+  return rules
+}
+
+// groupValuesToRules builds the group-scoped rules from the per-group table.
+export function groupValuesToRules(
+  values: Record<string, number>,
+  groups: string[],
+  measure: PlanMeasure
+): RuleDraft[] {
+  const upgradeGroups = new Set(groups)
+  const rules: RuleDraft[] = []
+  for (const [group, value] of Object.entries(values)) {
+    if (value > 0 && upgradeGroups.has(group)) {
+      rules.push({
+        group,
+        models: [],
+        count: measure === 'count' ? value : 0,
+        amount_display: measure === 'quota' ? value : 0,
+      })
+    }
+  }
+  return rules
+}
+
 export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
-  // The matrix is an editor-only view; the payload carries the rules it
-  // collapses into.
-  const { request_rows, ...rest } = values
+  // The matrix and the group table are editor-only views; the payload carries
+  // the rules they collapse into.
+  const { request_rows, group_values, ...rest } = values
+  const scoped = values.scope !== 'all'
   return {
     plan: {
       ...rest,
@@ -252,21 +323,29 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
       currency: 'USD',
       duration_value: Number(values.duration_value || 0),
       quota_reset_period:
-        values.limit_mode === 'group' && values.expire_mode === 'time'
+        values.expire_mode === 'time'
           ? values.quota_reset_period || 'never'
           : 'never',
       quota_reset_custom_seconds:
-        values.limit_mode === 'group' &&
         values.expire_mode === 'time' &&
         values.quota_reset_period === 'custom'
           ? Number(values.quota_reset_custom_seconds || 0)
           : 0,
       sort_order: Number(values.sort_order || 0),
       max_purchase_per_user: Number(values.max_purchase_per_user || 0),
-      total_amount_display: Number(values.total_amount || 0),
+      total_amount_display: scoped ? 0 : Number(values.total_amount || 0),
       upgrade_group: values.upgrade_groups[0] || '',
       downgrade_group: values.downgrade_group || '',
-      request_rules: requestRowsToRules(request_rows, values.upgrade_groups),
+      request_rules:
+        values.scope === 'group'
+          ? groupValuesToRules(group_values, values.upgrade_groups, values.measure)
+          : values.scope === 'model'
+            ? requestRowsToRules(
+                request_rows,
+                values.upgrade_groups,
+                values.measure
+              )
+            : [],
     },
   }
 }

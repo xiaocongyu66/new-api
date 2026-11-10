@@ -27,7 +27,6 @@ import { type TFunction } from 'i18next'
 // them into the stored kind; these helpers derive the axes back for any plan
 // payload, including legacy ones that only carry kind.
 export type PlanExpireMode = 'time' | 'quota'
-export type PlanLimitMode = 'group' | 'request'
 
 export function planExpireMode(plan: {
   kind?: string
@@ -39,24 +38,34 @@ export function planExpireMode(plan: {
   return plan.kind === 'quota' || plan.kind === 'request' ? 'quota' : 'time'
 }
 
-export function planLimitMode(plan: {
+// planScope/planMeasure resolve the limit axes of a plan payload, falling back
+// to the legacy kind for rows saved before the axes existed.
+export type PlanScope = 'all' | 'group' | 'model'
+export type PlanMeasure = 'quota' | 'count'
+
+export function planScope(plan: {
   kind?: string
-  limit_mode?: string
-}): PlanLimitMode {
-  if (plan.limit_mode === 'group' || plan.limit_mode === 'request') {
-    return plan.limit_mode
+  scope?: string
+}): PlanScope {
+  if (plan.scope === 'all' || plan.scope === 'group' || plan.scope === 'model') {
+    return plan.scope
   }
-  return plan.kind === 'request' ? 'request' : 'group'
+  return plan.kind === 'request' ? 'model' : 'all'
+}
+
+export function planMeasure(plan: {
+  kind?: string
+  measure?: string
+}): PlanMeasure {
+  if (plan.measure === 'quota' || plan.measure === 'count') {
+    return plan.measure
+  }
+  return plan.kind === 'request' ? 'count' : 'quota'
 }
 
 export const SUBSCRIPTION_EXPIRE_MODES = [
   { value: 'time', labelKey: 'Expires by time' },
   { value: 'quota', labelKey: 'Expires by quota' },
-] as const
-
-export const SUBSCRIPTION_LIMIT_MODES = [
-  { value: 'group', labelKey: 'Group limit' },
-  { value: 'request', labelKey: 'Request limit' },
 ] as const
 
 export function getPlanExpireModeOptions(t: TFunction) {
@@ -66,22 +75,61 @@ export function getPlanExpireModeOptions(t: TFunction) {
   }))
 }
 
-export function getPlanLimitModeOptions(t: TFunction) {
-  return SUBSCRIPTION_LIMIT_MODES.map((mode) => ({
-    value: mode.value,
-    label: t(mode.labelKey),
+// The limit axes the editor exposes as small tab rows: what the granted amount
+// applies to (scope) and how it is counted (measure).
+export const SUBSCRIPTION_SCOPES = [
+  { value: 'all', labelKey: 'Shared quota' },
+  { value: 'group', labelKey: 'Per group' },
+  { value: 'model', labelKey: 'Per model' },
+] as const
+
+export const SUBSCRIPTION_MEASURES = [
+  { value: 'quota', labelKey: 'Quota' },
+  { value: 'count', labelKey: 'Request count' },
+] as const
+
+export function getPlanScopeOptions(t: TFunction) {
+  return SUBSCRIPTION_SCOPES.map((scope) => ({
+    value: scope.value,
+    label: t(scope.labelKey),
+  }))
+}
+
+export function getPlanMeasureOptions(t: TFunction) {
+  return SUBSCRIPTION_MEASURES.map((measure) => ({
+    value: measure.value,
+    label: t(measure.labelKey),
   }))
 }
 
 export function getSubscriptionModeLabel(
-  plan: { kind?: string; expire_mode?: string; limit_mode?: string },
+  plan: { kind?: string; expire_mode?: string; scope?: string; measure?: string },
   t: TFunction
 ): string {
   const expire =
     planExpireMode(plan) === 'quota' ? 'Expires by quota' : 'Expires by time'
-  const limit =
-    planLimitMode(plan) === 'request' ? 'Request limit' : 'Group limit'
-  return `${t(expire)} · ${t(limit)}`
+  const scopeValue =
+    plan.scope === 'group' || plan.scope === 'model'
+      ? plan.scope
+      : plan.kind === 'request'
+        ? 'model'
+        : 'all'
+  const scopeLabel =
+    scopeValue === 'group'
+      ? 'Per group'
+      : scopeValue === 'model'
+        ? 'Per model'
+        : 'Shared quota'
+  const measureValue =
+    plan.measure === 'quota' || plan.measure === 'count'
+      ? plan.measure
+      : plan.kind === 'request'
+        ? 'count'
+        : 'quota'
+  if (scopeValue === 'all') {
+    return `${t(expire)} · ${t(scopeLabel)}`
+  }
+  return `${t(expire)} · ${t(scopeLabel)} · ${t(measureValue === 'quota' ? 'Quota' : 'Request count')}`
 }
 
 // ============================================================================

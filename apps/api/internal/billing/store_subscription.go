@@ -159,17 +159,89 @@ func normalizeLimitMode(raw string, kind string) string {
 	return SubscriptionLimitModeGroup
 }
 
-// deriveSubscriptionKind collapses the two admin-form axes into the single
-// kind the runtime reads: request counts, or a quota pool whose expiry is
-// time-based or exhaustion-based.
-func deriveSubscriptionKind(limitMode string, expireMode string) string {
-	if limitMode == SubscriptionLimitModeRequest {
+// deriveSubscriptionKind collapses the limit axes into the single kind the
+// runtime and the legacy rows understand: request means per-model counts,
+// everything else follows the expiry axis.
+func deriveSubscriptionKind(scope string, measure string, expireMode string) string {
+	if scope == SubscriptionScopeModel && measure == SubscriptionMeasureCount {
 		return SubscriptionKindRequest
 	}
 	if expireMode == SubscriptionExpireModeQuota {
 		return SubscriptionKindQuota
 	}
 	return SubscriptionKindTime
+}
+
+// The entitlement scopes: a shared pool (legacy pool kinds), one row per
+// group, or one row per (group, model).
+const (
+	SubscriptionScopeAll   = "all"
+	SubscriptionScopeGroup = "group"
+	SubscriptionScopeModel = "model"
+)
+
+// The entitlement measures: flat request counts or quota units.
+const (
+	SubscriptionMeasureQuota = "quota"
+	SubscriptionMeasureCount = "count"
+)
+
+func normalizeScope(raw string) string {
+	switch strings.TrimSpace(raw) {
+	case SubscriptionScopeAll, SubscriptionScopeGroup, SubscriptionScopeModel:
+		return strings.TrimSpace(raw)
+	}
+	return ""
+}
+
+func normalizeMeasure(raw string) string {
+	switch strings.TrimSpace(raw) {
+	case SubscriptionMeasureQuota, SubscriptionMeasureCount:
+		return strings.TrimSpace(raw)
+	}
+	return ""
+}
+
+// planLimitAxes resolves the limit axes of a plan: (scope, measure). Legacy
+// rows predate the columns: request plans count per model, the pool kinds
+// grant a shared quota. The empty scope marks the legacy shared-pool path so
+// the runtime can untouched keep its behaviour.
+func planLimitAxes(plan *SubscriptionPlan) (scope string, measure string) {
+	if s := normalizeScope(plan.Scope); s != "" {
+		return s, normalizeMeasureWithDefault(plan.Measure)
+	}
+	if normalizeSubscriptionKind(plan.Kind) == SubscriptionKindRequest {
+		return SubscriptionScopeModel, SubscriptionMeasureCount
+	}
+	return SubscriptionScopeAll, SubscriptionMeasureQuota
+}
+
+// subscriptionLimitAxes is the purchase-time snapshot equivalent of
+// planLimitAxes.
+func subscriptionLimitAxes(sub *UserSubscription) (scope string, measure string) {
+	if s := normalizeScope(sub.Scope); s != "" {
+		return s, normalizeMeasureWithDefault(sub.Measure)
+	}
+	if normalizeSubscriptionKind(sub.Kind) == SubscriptionKindRequest {
+		return SubscriptionScopeModel, SubscriptionMeasureCount
+	}
+	return SubscriptionScopeAll, SubscriptionMeasureQuota
+}
+
+// subscriptionCounterKey is the row key a request's entitlement lives under:
+// (group, model) for model scope, (group, "") for group scope.
+func subscriptionCounterKey(scope string, usingGroup string, modelName string) (string, string) {
+	if scope == SubscriptionScopeGroup {
+		return strings.TrimSpace(usingGroup), ""
+	}
+	return strings.TrimSpace(usingGroup), strings.TrimSpace(modelName)
+}
+
+func normalizeMeasureWithDefault(raw string) string {
+	if m := normalizeMeasure(raw); m != "" {
+		return m
+	}
+	return SubscriptionMeasureCount
 }
 
 func parseStringListJSON(raw string) ([]string, error) {
@@ -285,6 +357,13 @@ type SubscriptionPlan struct {
 	// Derived from Kind on read; never stored.
 	LimitMode string `json:"limit_mode" gorm:"-"`
 
+	// Scope and Measure are the limit axes the admin form picks: the scope
+	// decides what each granted amount applies to (a whole group or one
+	// model inside it) and the measure how it is counted (flat requests or
+	// quota units). Legacy rows store '' and fall back to Kind.
+	Scope   string `json:"scope" gorm:"type:varchar(8);not null;default:''"`
+	Measure string `json:"measure" gorm:"type:varchar(8);not null;default:''"`
+
 	// Display money amount (follow existing code style: float64 for money)
 	PriceAmount float64 `json:"price_amount" gorm:"type:decimal(10,6);not null;default:0"`
 	Currency    string  `json:"currency" gorm:"type:varchar(8);not null;default:'USD'"`
@@ -364,6 +443,9 @@ func (plan *SubscriptionPlan) AfterFind(_ *gorm.DB) error {
 	// same shape as plans saved through the new form.
 	plan.ExpireMode = normalizeExpireMode(plan.ExpireMode, plan.Kind)
 	plan.LimitMode = normalizeLimitMode(plan.LimitMode, plan.Kind)
+	// Scope/measure answer the same shape for legacy rows: they describe how
+	// the granted amount is scoped and counted.
+	plan.Scope, plan.Measure = planLimitAxes(plan)
 	return nil
 }
 
@@ -391,6 +473,7 @@ func (p *SubscriptionPlan) NormalizeDefaults() {
 	}
 	p.ExpireMode = normalizeExpireMode(p.ExpireMode, p.Kind)
 	p.LimitMode = normalizeLimitMode(p.LimitMode, p.Kind)
+	p.Scope, p.Measure = planLimitAxes(p)
 }
 
 // planGrantsValuableEntitlement reports whether the plan hands out anything of
@@ -399,12 +482,19 @@ func planGrantsValuableEntitlement(plan *SubscriptionPlan) bool {
 	return plan.TotalAmount > 0 || len(plan.RequestRules) > 0 || strings.TrimSpace(plan.UpgradeGroup) != ""
 }
 
-// SubscriptionRequestRule grants Count requests for every model in Models when
-// the request is served through Group.
+// SubscriptionRequestRule grants the rule's amount under Group. Models is
+// only used by model-scoped plans: group-scoped plans leave it empty and the
+// rule applies to every request served through the group.
 type SubscriptionRequestRule struct {
 	Group  string   `json:"group"`
 	Models []string `json:"models"`
 	Count  int64    `json:"count"`
+	// Measure is copied from the plan so every rule carries how it is counted.
+	Measure string `json:"measure"`
+	// Amount is the quota-unit budget of quota-measured rules; the admin form
+	// submits AmountDisplay and the server owns the conversion.
+	Amount        int64   `json:"amount"`
+	AmountDisplay float64 `json:"amount_display"`
 }
 
 // SubscriptionRequestCounter is the per-group, per-model request counter of a
@@ -415,8 +505,11 @@ type SubscriptionRequestCounter struct {
 	UserSubscriptionId int    `json:"user_subscription_id" gorm:"index;uniqueIndex:idx_sub_request_counter,priority:1"`
 	GroupName          string `json:"group_name" gorm:"type:varchar(64);uniqueIndex:idx_sub_request_counter,priority:2"`
 	ModelName          string `json:"model_name" gorm:"type:varchar(128);uniqueIndex:idx_sub_request_counter,priority:3"`
-	Total              int64  `json:"total" gorm:"type:bigint;not null;default:0"`
-	Used               int64  `json:"used" gorm:"type:bigint;not null;default:0"`
+	// Measure tells quota-counted rows (Total/Used in quota units) apart from
+	// flat request counts. Group-scoped rows keep ModelName empty.
+	Measure string `json:"measure" gorm:"type:varchar(8);not null;default:'count'"`
+	Total   int64  `json:"total" gorm:"type:bigint;not null;default:0"`
+	Used    int64  `json:"used" gorm:"type:bigint;not null;default:0"`
 	// QuotaTotal / QuotaUsed snapshot the per-counter budget converted from
 	// model price x group ratio at purchase time, and the quota actually
 	// settled against this counter. They are attribution/bookkeeping columns:
@@ -496,8 +589,12 @@ type UserSubscription struct {
 	UserId int `json:"user_id" gorm:"index;index:idx_user_sub_active,priority:1"`
 	PlanId int `json:"plan_id" gorm:"index"`
 
-	// Kind is snapshotted from the plan at purchase time.
-	Kind string `json:"kind" gorm:"type:varchar(16);not null;default:'time'"`
+	// Kind is snapshotted from the plan at purchase time. Scope/Measure
+	// snapshot the plan's limit axes; legacy rows keep them empty and
+	// subscriptionAxes derives them from Kind.
+	Kind    string `json:"kind" gorm:"type:varchar(16);not null;default:'time'"`
+	Scope   string `json:"scope" gorm:"type:varchar(8);not null;default:''"`
+	Measure string `json:"measure" gorm:"type:varchar(8);not null;default:''"`
 
 	AmountTotal int64 `json:"amount_total" gorm:"type:bigint;not null;default:0"`
 	AmountUsed  int64 `json:"amount_used" gorm:"type:bigint;not null;default:0"`
@@ -839,10 +936,17 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	if kind == SubscriptionKindRequest {
 		amountTotal = 0
 	}
+	scope, measure := planLimitAxes(plan)
+	if scope != SubscriptionScopeAll {
+		// Scoped plans sell entitlement rows, not a shared pool.
+		amountTotal = 0
+	}
 	sub := &UserSubscription{
 		UserId:              userId,
 		PlanId:              plan.Id,
 		Kind:                kind,
+		Scope:               scope,
+		Measure:             measure,
 		AmountTotal:         amountTotal,
 		AmountUsed:          0,
 		StartTime:           now.Unix(),
@@ -863,18 +967,20 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	if err := tx.Create(sub).Error; err != nil {
 		return nil, err
 	}
-	if kind == SubscriptionKindRequest {
-		if err := createSubscriptionRequestCountersTx(tx, sub.Id, plan.RequestRules); err != nil {
+	if scope != SubscriptionScopeAll {
+		if err := createSubscriptionRequestCountersTx(tx, sub.Id, scope, measure, plan.RequestRules); err != nil {
 			return nil, err
 		}
 	}
 	return sub, nil
 }
 
-// createSubscriptionRequestCountersTx expands plan rules into one counter row
-// per (group, model) key. Plan validation rejects duplicate keys, so the merge
-// below only guards rows written before that check existed.
-func createSubscriptionRequestCountersTx(tx *gorm.DB, userSubscriptionId int, rules []SubscriptionRequestRule) error {
+// createSubscriptionRequestCountersTx expands plan rules into entitlement
+// rows: one per (group, model) for model scope, one per group (empty model)
+// for group scope. Total carries counts or quota units per the measure.
+// Plan validation rejects duplicate keys, so the merge below only guards rows
+// written before that check existed.
+func createSubscriptionRequestCountersTx(tx *gorm.DB, userSubscriptionId int, scope string, measure string, rules []SubscriptionRequestRule) error {
 	type counterKey struct {
 		group string
 		model string
@@ -883,12 +989,24 @@ func createSubscriptionRequestCountersTx(tx *gorm.DB, userSubscriptionId int, ru
 	totals := make(map[counterKey]int64, len(rules))
 	for _, rule := range rules {
 		group := strings.TrimSpace(rule.Group)
+		grant := rule.Count
+		if measure == SubscriptionMeasureQuota {
+			grant = rule.Amount
+		}
+		if scope == SubscriptionScopeGroup {
+			key := counterKey{group: group}
+			if _, ok := totals[key]; !ok {
+				order = append(order, key)
+			}
+			totals[key] += grant
+			continue
+		}
 		for _, model := range normalizeStringList(rule.Models) {
 			key := counterKey{group: group, model: model}
 			if _, ok := totals[key]; !ok {
 				order = append(order, key)
 			}
-			totals[key] += rule.Count
+			totals[key] += grant
 		}
 	}
 	groupRatios := ratio_setting.GetGroupRatioCopy()
@@ -898,25 +1016,29 @@ func createSubscriptionRequestCountersTx(tx *gorm.DB, userSubscriptionId int, ru
 			UserSubscriptionId: userSubscriptionId,
 			GroupName:          key.group,
 			ModelName:          key.model,
+			Measure:            measure,
 			Total:              totals[key],
 		}
-		// Snapshot the indicative budget: count x model price x group ratio.
-		// Request-time settlement always uses the CURRENT price, so this column
-		// seeds display and admin expectations only; per-call models without a
-		// configured price leave it 0 (count-only, budget tracked nowhere).
-		if groupRatio := groupRatios[key.group]; groupRatio > 0 {
-			if modelPrice, ok := ratio_setting.GetModelPrice(key.model, false); ok && modelPrice > 0 {
-				budget := decimal.NewFromInt(totals[key]).
-					Mul(decimal.NewFromFloat(modelPrice)).
-					Mul(decimal.NewFromFloat(groupRatio)).
-					Mul(quotaPerUnit)
-				quota, clamp := common.QuotaFromDecimalChecked(budget)
-				if clamp != nil {
-					common.SysError(fmt.Sprintf(
-						"request-counter budget clamped for subscription %d model %s: %s",
-						userSubscriptionId, key.model, clamp.Error()))
+		// Snapshot the indicative budget of a count budget: count x model price
+		// x group ratio. Request-time settlement always uses the CURRENT price,
+		// so this column seeds display and admin expectations only; unpriced
+		// models leave it 0 (count-only, budget tracked nowhere). Quota-measured
+		// rows carry the pool itself in Total, so no second budget column.
+		if measure == SubscriptionMeasureCount {
+			if groupRatio := groupRatios[key.group]; groupRatio > 0 {
+				if modelPrice, ok := ratio_setting.GetModelPrice(key.model, false); ok && modelPrice > 0 {
+					budget := decimal.NewFromInt(totals[key]).
+						Mul(decimal.NewFromFloat(modelPrice)).
+						Mul(decimal.NewFromFloat(groupRatio)).
+						Mul(quotaPerUnit)
+					quota, clamp := common.QuotaFromDecimalChecked(budget)
+					if clamp != nil {
+						common.SysError(fmt.Sprintf(
+							"request-counter budget clamped for subscription %d model %s: %s",
+							userSubscriptionId, key.model, clamp.Error()))
+					}
+					counter.QuotaTotal = int64(quota)
 				}
-				counter.QuotaTotal = int64(quota)
 			}
 		}
 		if err := tx.Create(counter).Error; err != nil {
@@ -1123,14 +1245,19 @@ func HasUsableUserSubscription(userId int, usingGroup string, modelName string, 
 		return false, err
 	}
 	requestSubIds := make([]int, 0, len(subs))
+	scopedKeys := make(map[int][2]string, len(subs))
 	for i := range subs {
 		if !subscriptionAllowsGroup(&subs[i], usingGroup) {
 			continue
 		}
-		if subs[i].Kind == SubscriptionKindRequest {
-			if allowRequestCount {
-				requestSubIds = append(requestSubIds, subs[i].Id)
+		scope, _ := subscriptionLimitAxes(&subs[i])
+		if scope != SubscriptionScopeAll {
+			if !allowRequestCount {
+				continue
 			}
+			requestSubIds = append(requestSubIds, subs[i].Id)
+			rowGroup, rowModel := subscriptionCounterKey(scope, usingGroup, modelName)
+			scopedKeys[subs[i].Id] = [2]string{rowGroup, rowModel}
 			continue
 		}
 		if subs[i].AmountTotal == 0 || subs[i].AmountUsed < subs[i].AmountTotal {
@@ -1140,14 +1267,21 @@ func HasUsableUserSubscription(userId int, usingGroup string, modelName string, 
 	if len(requestSubIds) == 0 || usingGroup == "" || modelName == "" {
 		return false, nil
 	}
-	var count int64
-	if err := dbx.DB.Model(&SubscriptionRequestCounter{}).
-		Where("user_subscription_id IN ? AND group_name = ? AND model_name = ? AND used < total",
-			requestSubIds, usingGroup, modelName).
-		Count(&count).Error; err != nil {
-		return false, err
+	// Each scoped subscription matches its own (group, model) row key, so the
+	// scan is per subscription rather than one IN clause.
+	for _, subId := range requestSubIds {
+		key := scopedKeys[subId]
+		var count int64
+		if err := dbx.DB.Model(&SubscriptionRequestCounter{}).
+			Where("user_subscription_id = ? AND group_name = ? AND model_name = ? AND used < total",
+				subId, key[0], key[1]).
+			Count(&count).Error; err != nil {
+			return false, err
+		}
+		if count > 0 {
+			return true, nil
+		}
 	}
-	return count > 0, nil
 }
 
 // GetAllUserSubscriptions returns all subscriptions (active and expired) for a user.
@@ -1171,7 +1305,7 @@ func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 	}
 	requestSubIds := make([]int, 0, len(subs))
 	for i := range subs {
-		if subs[i].Kind == SubscriptionKindRequest {
+		if scope, _ := subscriptionLimitAxes(&subs[i]); scope != SubscriptionScopeAll {
 			requestSubIds = append(requestSubIds, subs[i].Id)
 		}
 	}
@@ -1192,7 +1326,7 @@ func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 	result := make([]SubscriptionSummary, 0, len(subs))
 	for _, sub := range subs {
 		subCopy := sub
-		if sub.Kind == SubscriptionKindRequest {
+		if _, scopedScope := subscriptionLimitAxes(&sub); scopedScope != SubscriptionScopeAll {
 			subCopy.RequestCounters = countersBySubscription[sub.Id]
 		}
 		result = append(result, SubscriptionSummary{Subscription: &subCopy})
@@ -1392,11 +1526,14 @@ func subscriptionReachedEndTx(tx *gorm.DB, sub *UserSubscription, now int64) (bo
 	if sub.EndTime > 0 && sub.EndTime <= now {
 		return true, nil
 	}
+	// Scoped subscriptions (per-group or per-model entitlements) end when every
+	// entitlement row is spent, whatever the stored kind says.
+	if scope, _ := subscriptionLimitAxes(sub); scope != SubscriptionScopeAll {
+		return requestSubscriptionExhaustedTx(tx, sub.Id)
+	}
 	switch normalizeSubscriptionKind(sub.Kind) {
 	case SubscriptionKindQuota:
 		return sub.AmountTotal > 0 && sub.AmountUsed >= sub.AmountTotal, nil
-	case SubscriptionKindRequest:
-		return requestSubscriptionExhaustedTx(tx, sub.Id)
 	default:
 		return false, nil
 	}
@@ -1420,7 +1557,8 @@ func requestSubscriptionExhaustedTx(tx *gorm.DB, userSubscriptionId int) (bool, 
 
 func findExhaustedRequestSubscriptions(limit int) ([]UserSubscription, error) {
 	var subs []UserSubscription
-	if err := dbx.DB.Where("status = ? AND kind = ?", "active", SubscriptionKindRequest).
+	if err := dbx.DB.Where("status = ? AND (kind = ? OR scope IN ?)",
+		"active", SubscriptionKindRequest, []string{SubscriptionScopeGroup, SubscriptionScopeModel}).
 		Order("id asc").
 		Limit(limit).
 		Find(&subs).Error; err != nil {
@@ -1599,31 +1737,45 @@ func PreConsumeUserSubscription(requestId string, userId int, usingGroup string,
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
 				return err
 			}
-			// Request-kind candidates additionally reserve one request from the
-			// matching (group, model) counter inside this same transaction. The
-			// count is the entitlement gate; the quota legs below stay standard
-			// so pre-consume / settle / refund need no request-specific branch.
+			// Scoped candidates additionally reserve their entitlement inside
+			// this same transaction: one request for count measures, the
+			// requested amount for quota measures. The entitlement row is the
+			// gate for scoped plans; the amount legs below stay standard so
+			// pre-consume / settle / refund share one code path.
 			requestCounterUsedBefore := int64(0)
 			var requestCounterId int
-			if sub.Kind == SubscriptionKindRequest {
+			scoped := false
+			scope, measure := subscriptionLimitAxes(&sub)
+			if scope != SubscriptionScopeAll {
+				scoped = true
+				rowGroup, rowModel := subscriptionCounterKey(scope, usingGroup, modelName)
+
 				var counter SubscriptionRequestCounter
 				if err := dbx.LockForUpdate(tx).
-					Where("user_subscription_id = ? AND group_name = ? AND model_name = ?", sub.Id, usingGroup, modelName).
+					Where("user_subscription_id = ? AND group_name = ? AND model_name = ?", sub.Id, rowGroup, rowModel).
 					First(&counter).Error; err != nil {
 					if errors.Is(err, gorm.ErrRecordNotFound) {
 						continue
 					}
 					return err
 				}
-				if counter.Used >= counter.Total {
-					continue
+				rowUsedBefore := counter.Used
+				if measure == SubscriptionMeasureQuota {
+					if counter.Total > 0 && counter.Used+amount > counter.Total {
+						continue
+					}
+					counter.Used += amount
+				} else {
+					if counter.Used >= counter.Total {
+						continue
+					}
+					counter.Used++
 				}
-				counter.Used++
 				if err := tx.Save(&counter).Error; err != nil {
 					return err
 				}
 				requestCounterId = counter.Id
-				requestCounterUsedBefore = counter.Used - 1
+				requestCounterUsedBefore = rowUsedBefore
 			}
 			usedBefore := sub.AmountUsed
 			if sub.AmountTotal > 0 {
@@ -1666,7 +1818,7 @@ func PreConsumeUserSubscription(requestId string, userId int, usingGroup string,
 			returnValue.AmountUsedBefore = usedBefore
 			returnValue.AmountUsedAfter = sub.AmountUsed
 			returnValue.RequestCounterUsedBefore = requestCounterUsedBefore
-			returnValue.RequestKind = sub.Kind == SubscriptionKindRequest
+			returnValue.RequestKind = scoped && measure == SubscriptionMeasureCount
 			return nil
 		}
 		return fmt.Errorf("subscription quota insufficient, need=%d", amount)
@@ -1695,7 +1847,7 @@ func RefundSubscriptionPreConsume(requestId string) error {
 			return nil
 		}
 		if record.RequestCounterId > 0 {
-			releaseSubscriptionRequestCounterTx(tx, record.RequestCounterId)
+			releaseSubscriptionRequestCounterTx(tx, record.RequestCounterId, record.PreConsumed)
 		}
 		if record.PreConsumed <= 0 {
 			record.Status = "refunded"
@@ -1727,7 +1879,7 @@ func WaiveSubscriptionRequestConsume(requestId string) error {
 		if record.RequestCounterId == 0 {
 			return nil
 		}
-		releaseSubscriptionRequestCounterTx(tx, record.RequestCounterId)
+		releaseSubscriptionRequestCounterTx(tx, record.RequestCounterId, record.PreConsumed)
 		record.RequestCounterId = 0
 		return tx.Save(&record).Error
 	})
@@ -1757,10 +1909,11 @@ func attributeSubscriptionCounterQuotaTx(tx *gorm.DB, counterId int, delta int64
 	}
 }
 
-// releaseSubscriptionRequestCounterTx decrements a request counter for a
-// refunded reservation. Best-effort: missing rows and floors below zero are
+// releaseSubscriptionRequestCounterTx decrements an entitlement row for a
+// refunded/waived reservation: one count, or the pre-consumed quota units for
+// quota-measured rows. Best-effort: missing rows and floors below zero are
 // tolerated because the standard amount legs carry the billing truth.
-func releaseSubscriptionRequestCounterTx(tx *gorm.DB, counterId int) {
+func releaseSubscriptionRequestCounterTx(tx *gorm.DB, counterId int, release int64) {
 	var counter SubscriptionRequestCounter
 	if err := dbx.LockForUpdate(tx).Where("id = ?", counterId).First(&counter).Error; err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -1768,8 +1921,15 @@ func releaseSubscriptionRequestCounterTx(tx *gorm.DB, counterId int) {
 		}
 		return
 	}
-	if counter.Used > 0 {
-		counter.Used--
+	if counter.Measure == SubscriptionMeasureQuota {
+		if release > counter.Used {
+			release = counter.Used
+		}
+	} else {
+		release = 1
+	}
+	if release > 0 && counter.Used >= release {
+		counter.Used -= release
 		if err := tx.Save(&counter).Error; err != nil {
 			common.SysError(fmt.Sprintf("failed to release request counter %d: %s", counterId, err.Error()))
 		}
@@ -2033,7 +2193,7 @@ func resetUserSubscriptionTx(tx *gorm.DB, sub *UserSubscription, plan *Subscript
 	if tx == nil || sub == nil || plan == nil {
 		return errors.New("invalid reset args")
 	}
-	if sub.Kind == SubscriptionKindRequest {
+	if scope, _ := subscriptionLimitAxes(sub); scope != SubscriptionScopeAll {
 		if err := tx.Model(&SubscriptionRequestCounter{}).
 			Where("user_subscription_id = ?", sub.Id).
 			Update("used", 0).Error; err != nil {

@@ -177,10 +177,10 @@ func TestCalcPlanEndTimeFallsBackToKindForLegacyRows(t *testing.T) {
 
 // The two admin-form axes collapse into the single stored kind.
 func TestDeriveSubscriptionKind(t *testing.T) {
-	assert.Equal(t, SubscriptionKindTime, deriveSubscriptionKind(SubscriptionLimitModeGroup, SubscriptionExpireModeTime))
-	assert.Equal(t, SubscriptionKindQuota, deriveSubscriptionKind(SubscriptionLimitModeGroup, SubscriptionExpireModeQuota))
-	assert.Equal(t, SubscriptionKindRequest, deriveSubscriptionKind(SubscriptionLimitModeRequest, SubscriptionExpireModeTime))
-	assert.Equal(t, SubscriptionKindRequest, deriveSubscriptionKind(SubscriptionLimitModeRequest, SubscriptionExpireModeQuota))
+	assert.Equal(t, SubscriptionKindTime, deriveSubscriptionKind(SubscriptionScopeAll, SubscriptionMeasureQuota, SubscriptionExpireModeTime))
+	assert.Equal(t, SubscriptionKindQuota, deriveSubscriptionKind(SubscriptionScopeAll, SubscriptionMeasureQuota, SubscriptionExpireModeQuota))
+	assert.Equal(t, SubscriptionKindRequest, deriveSubscriptionKind(SubscriptionScopeModel, SubscriptionMeasureCount, SubscriptionExpireModeTime))
+	assert.Equal(t, SubscriptionKindRequest, deriveSubscriptionKind(SubscriptionScopeModel, SubscriptionMeasureCount, SubscriptionExpireModeQuota))
 }
 
 // normalizeExpireMode keeps stored values and falls back per kind.
@@ -213,4 +213,111 @@ func TestQuotaExpiryPlansForciblyDropWalletOverflow(t *testing.T) {
 	require.NoError(t, applySubscriptionKindConstraints(timePlan))
 	require.NotNil(t, timePlan.AllowWalletOverflow)
 	assert.True(t, *timePlan.AllowWalletOverflow)
+}
+
+// A group-scoped quota plan creates one entitlement row per group (empty model
+// name) and gates requests by that row's remaining quota.
+func TestGroupScopedQuotaGatesAndSettles(t *testing.T) {
+	setupIdentityTestDB(t)
+	plan := seedSubscriptionKindPlan(t, 9321, SubscriptionKindTime, []string{"vip"}, nil, 0)
+	require.NoError(t, dbx.DB.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).
+		Updates(map[string]interface{}{
+			"scope":       SubscriptionScopeGroup,
+			"measure":     SubscriptionMeasureQuota,
+			"expire_mode": SubscriptionExpireModeTime,
+		}).Error)
+	plan.Scope = SubscriptionScopeGroup
+	plan.Measure = SubscriptionMeasureQuota
+	plan.ExpireMode = SubscriptionExpireModeTime
+
+	sub := activeSubscriptionForKindTest(t, 9321, plan)
+	require.NoError(t, dbx.DB.Create(&SubscriptionRequestCounter{
+		UserSubscriptionId: sub.Id,
+		GroupName:          "vip",
+		ModelName:          "",
+		Measure:            SubscriptionMeasureQuota,
+		Total:              100,
+	}).Error)
+	var counter SubscriptionRequestCounter
+	require.NoError(t, dbx.DB.Where("user_subscription_id = ?", sub.Id).First(&counter).Error)
+
+	// First request reserves 40 of the 100-unit group budget.
+	res, err := PreConsumeUserSubscription("scope-quota-1", 9321, "vip", "gpt-4o", 0, 40)
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.Equal(t, int64(40), reloadSubscriptionCounter(t, counter.Id).Used)
+	assert.False(t, res.RequestKind, "quota-measured rows are not count-billed")
+
+	// A request costlier than what is left must not match this subscription.
+	_, err = PreConsumeUserSubscription("scope-quota-2", 9321, "vip", "gpt-4o", 0, 80)
+	require.Error(t, err)
+	assert.Equal(t, int64(40), reloadSubscriptionCounter(t, counter.Id).Used)
+
+	// Refund releases exactly the reserved amount.
+	require.NoError(t, RefundSubscriptionPreConsume("scope-quota-1"))
+	assert.Equal(t, int64(0), reloadSubscriptionCounter(t, counter.Id).Used)
+}
+
+// A group-scoped count plan counts one unit per request regardless of model.
+func TestGroupScopedCountIgnoresModel(t *testing.T) {
+	setupIdentityTestDB(t)
+	plan := seedSubscriptionKindPlan(t, 9322, SubscriptionKindRequest, []string{"vip"}, nil, 0)
+	require.NoError(t, dbx.DB.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).
+		Updates(map[string]interface{}{
+			"scope":   SubscriptionScopeGroup,
+			"measure": SubscriptionMeasureCount,
+		}).Error)
+	plan.Scope = SubscriptionScopeGroup
+	plan.Measure = SubscriptionMeasureCount
+
+	sub := activeSubscriptionForKindTest(t, 9322, plan)
+	require.NoError(t, dbx.DB.Create(&SubscriptionRequestCounter{
+		UserSubscriptionId: sub.Id,
+		GroupName:          "vip",
+		ModelName:          "",
+		Measure:            SubscriptionMeasureCount,
+		Total:              2,
+	}).Error)
+	var counter SubscriptionRequestCounter
+	require.NoError(t, dbx.DB.Where("user_subscription_id = ?", sub.Id).First(&counter).Error)
+
+	for _, model := range []string{"gpt-4o", "claude"} {
+		_, err := PreConsumeUserSubscription("scope-count-"+model, 9322, "vip", model, 0, 10)
+		require.NoError(t, err)
+	}
+	assert.Equal(t, int64(2), reloadSubscriptionCounter(t, counter.Id).Used)
+
+	// Exhausted: a third request of any model is rejected.
+	_, err := PreConsumeUserSubscription("scope-count-3", 9322, "vip", "gpt-4o", 0, 10)
+	require.Error(t, err)
+}
+
+// use a model-scoped quota plan: each (group, model) row is its own money pool.
+func TestModelScopedQuotaRowsAreIndependent(t *testing.T) {
+	setupIdentityTestDB(t)
+	plan := seedSubscriptionKindPlan(t, 9323, SubscriptionKindTime, []string{"vip"}, nil, 0)
+	require.NoError(t, dbx.DB.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).
+		Updates(map[string]interface{}{
+			"scope":   SubscriptionScopeModel,
+			"measure": SubscriptionMeasureQuota,
+		}).Error)
+	plan.Scope = SubscriptionScopeModel
+	plan.Measure = SubscriptionMeasureQuota
+
+	sub := activeSubscriptionForKindTest(t, 9323, plan)
+	for model, total := range map[string]int64{"gpt-4o": 50, "claude": 10} {
+		require.NoError(t, dbx.DB.Create(&SubscriptionRequestCounter{
+			UserSubscriptionId: sub.Id,
+			GroupName:          "vip",
+			ModelName:          model,
+			Measure:            SubscriptionMeasureQuota,
+			Total:              total,
+		}).Error)
+	}
+
+	_, err := PreConsumeUserSubscription("model-quota-1", 9323, "vip", "claude", 0, 30)
+	require.Error(t, err, "claude only has 10 units")
+
+	_, err = PreConsumeUserSubscription("model-quota-2", 9323, "vip", "gpt-4o", 0, 30)
+	require.NoError(t, err)
 }

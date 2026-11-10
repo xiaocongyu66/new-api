@@ -53,7 +53,7 @@ import {
   formatResetPeriod,
   getPlanUpgradeGroups,
 } from '../../lib'
-import { planExpireMode, planLimitMode } from '../../constants'
+import { planExpireMode, planMeasure, planScope } from '../../constants'
 import type { PlanRecord } from '../../types'
 
 interface Props {
@@ -337,18 +337,24 @@ export function SubscriptionPurchaseDialog(props: Props) {
               )}
             </>
           )}
-          {planLimitMode(plan) === 'group' && (
+          {planScope(plan) === 'all' && (
             <div className='flex items-center justify-between'>
               <span className='text-muted-foreground text-sm'>
-                {t('Plan Quota')}
+                {planMeasure(plan) === 'count'
+                  ? t('Request Limits')
+                  : t('Plan Quota')}
               </span>
               <span className='flex items-center gap-1 text-sm'>
                 <Package className='h-3.5 w-3.5' />
-                {totalAmount > 0 ? formatQuota(totalAmount) : t('Unlimited')}
+                {planMeasure(plan) === 'count'
+                  ? (plan.request_rules || []).length
+                  : totalAmount > 0
+                    ? formatQuota(totalAmount)
+                    : t('Unlimited')}
               </span>
             </div>
           )}
-          {planLimitMode(plan) === 'request' &&
+          {planScope(plan) !== 'all' &&
             (plan.request_rules || []).map((rule) => (
               <div
                 key={`${rule.group}-${rule.models.join(',')}`}
