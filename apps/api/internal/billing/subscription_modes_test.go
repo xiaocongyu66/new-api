@@ -384,3 +384,79 @@ func TestQuotaScopedSubscriptionUsableForNonTextFormats(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, usable, "count-measured scopes keep the text-only contract")
 }
+
+// A waived quota-scoped request must release its reservation exactly once: the
+// settle delta after waive must not touch the row again.
+func TestQuotaScopeWaiveThenSettleReleasesOnce(t *testing.T) {
+	setupIdentityTestDB(t)
+	plan := seedSubscriptionKindPlan(t, 9341, SubscriptionKindTime, []string{"vip"}, nil, 0)
+	require.NoError(t, dbx.DB.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).
+		Updates(map[string]interface{}{
+			"scope":   SubscriptionScopeGroup,
+			"measure": SubscriptionMeasureQuota,
+		}).Error)
+	plan.Scope = SubscriptionScopeGroup
+	plan.Measure = SubscriptionMeasureQuota
+	sub := activeSubscriptionForKindTest(t, 9341, plan)
+	stampSubscriptionAxes(t, sub.Id, SubscriptionScopeGroup, SubscriptionMeasureQuota)
+	require.NoError(t, dbx.DB.Create(&SubscriptionRequestCounter{
+		UserSubscriptionId: sub.Id,
+		GroupName:          "vip",
+		ModelName:          "",
+		Measure:            SubscriptionMeasureQuota,
+		Total:              100,
+	}).Error)
+	var counter SubscriptionRequestCounter
+	require.NoError(t, dbx.DB.Where("user_subscription_id = ?", sub.Id).First(&counter).Error)
+
+	// Consume 40 legitimately first so a double release is visible.
+	_, err := PreConsumeUserSubscription("waive-keep", 9341, "vip", "m", 0, 40)
+	require.NoError(t, err)
+	assert.Equal(t, int64(40), reloadSubscriptionCounter(t, counter.Id).Used)
+
+	// Reserve 10, waive it (releases 10), then settle with actual 0.
+	_, err = PreConsumeUserSubscription("waive-empty", 9341, "vip", "m", 0, 10)
+	require.NoError(t, err)
+	assert.Equal(t, int64(50), reloadSubscriptionCounter(t, counter.Id).Used)
+	require.NoError(t, WaiveSubscriptionRequestConsume("waive-empty"))
+	assert.Equal(t, int64(40), reloadSubscriptionCounter(t, counter.Id).Used)
+
+	funding := &SubscriptionFunding{requestId: "waive-empty", userId: 9341, subscriptionId: sub.Id, counterId: counter.Id}
+	require.NoError(t, funding.Settle(-10))
+	assert.Equal(t, int64(40), reloadSubscriptionCounter(t, counter.Id).Used,
+		"settle after waive must not release the reservation twice")
+}
+
+// A replayed pre-consume keeps the entitlement row id so settlement still
+// reconciles the row.
+func TestReplayKeepsCounterId(t *testing.T) {
+	setupIdentityTestDB(t)
+	plan := seedSubscriptionKindPlan(t, 9342, SubscriptionKindTime, []string{"vip"}, nil, 0)
+	require.NoError(t, dbx.DB.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).
+		Updates(map[string]interface{}{
+			"scope":   SubscriptionScopeGroup,
+			"measure": SubscriptionMeasureQuota,
+		}).Error)
+	plan.Scope = SubscriptionScopeGroup
+	plan.Measure = SubscriptionMeasureQuota
+	sub := activeSubscriptionForKindTest(t, 9342, plan)
+	stampSubscriptionAxes(t, sub.Id, SubscriptionScopeGroup, SubscriptionMeasureQuota)
+	require.NoError(t, dbx.DB.Create(&SubscriptionRequestCounter{
+		UserSubscriptionId: sub.Id,
+		GroupName:          "vip",
+		ModelName:          "",
+		Measure:            SubscriptionMeasureQuota,
+		Total:              100,
+	}).Error)
+	var counter SubscriptionRequestCounter
+	require.NoError(t, dbx.DB.Where("user_subscription_id = ?", sub.Id).First(&counter).Error)
+
+	first, err := PreConsumeUserSubscription("replay-1", 9342, "vip", "m", 0, 20)
+	require.NoError(t, err)
+	require.Equal(t, counter.Id, first.RequestCounterId)
+
+	replay, err := PreConsumeUserSubscription("replay-1", 9342, "vip", "m", 0, 20)
+	require.NoError(t, err)
+	assert.Equal(t, counter.Id, replay.RequestCounterId, "replay must restore the row id")
+	assert.Equal(t, int64(20), reloadSubscriptionCounter(t, counter.Id).Used, "replay must not reserve twice")
+}

@@ -1811,6 +1811,13 @@ func PreConsumeUserSubscription(requestId string, userId int, usingGroup string,
 					returnValue.AmountTotal = sub.AmountTotal
 					returnValue.AmountUsedBefore = sub.AmountUsed
 					returnValue.AmountUsedAfter = sub.AmountUsed
+					returnValue.RequestCounterId = dup.RequestCounterId
+					if dup.RequestCounterId > 0 {
+						var replayCounter SubscriptionRequestCounter
+						if err := tx.Where("id = ?", dup.RequestCounterId).First(&replayCounter).Error; err == nil {
+							returnValue.RequestKind = replayCounter.Measure == SubscriptionMeasureCount
+						}
+					}
 					return nil
 				}
 				return err
@@ -1854,8 +1861,11 @@ func RefundSubscriptionPreConsume(requestId string) error {
 		if record.Status == "refunded" {
 			return nil
 		}
-		if record.RequestCounterId > 0 {
-			releaseSubscriptionRequestCounterTx(tx, record.RequestCounterId, record.PreConsumed)
+		reservedCounterId := record.RequestCounterId
+		if reservedCounterId > 0 {
+			releaseSubscriptionRequestCounterTx(tx, reservedCounterId, record.PreConsumed)
+			// Zero the marker so a later waive/settle cannot release twice.
+			record.RequestCounterId = 0
 		}
 		if record.PreConsumed <= 0 {
 			record.Status = "refunded"
@@ -1864,7 +1874,7 @@ func RefundSubscriptionPreConsume(requestId string) error {
 		if err := postConsumeUserSubscriptionDeltaTx(tx, record.UserSubscriptionId, -record.PreConsumed); err != nil {
 			return err
 		}
-		attributeSubscriptionCounterQuotaTx(tx, record.RequestCounterId, -record.PreConsumed)
+		attributeSubscriptionCounterQuotaTx(tx, reservedCounterId, -record.PreConsumed)
 		record.Status = "refunded"
 		return tx.Save(&record).Error
 	})

@@ -453,6 +453,14 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 	if strings.TrimSpace(req.Plan.ExpireMode) == "" && strings.TrimSpace(existing.ExpireMode) != "" {
 		req.Plan.ExpireMode = existing.ExpireMode
 	}
+	// Omitted limit axes keep the stored ones: a partial update (price, copy)
+	// must not silently widen a group-scoped plan into an all-scope plan.
+	if strings.TrimSpace(req.Plan.Scope) == "" {
+		req.Plan.Scope = existing.Scope
+	}
+	if strings.TrimSpace(req.Plan.Measure) == "" {
+		req.Plan.Measure = existing.Measure
+	}
 	if err := resolvePlanModes(&req.Plan); err != nil {
 		common.CtxApiError(c, err)
 		return
@@ -491,6 +499,13 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 	if req.Plan.TotalAmount < 0 {
 		common.CtxApiErrorMsg(c, "总额度不能为负数")
 		return
+	}
+	// A payload that carries neither amount field keeps the stored pool: zero
+	// means unlimited, so writing it on a partial update would silently drop
+	// the plan's quota.
+	if req.Plan.TotalAmount == 0 && req.Plan.TotalAmountDisplay == 0 {
+		req.Plan.TotalAmount = existing.TotalAmount
+		req.Plan.TotalAmountDisplay = existing.TotalAmountDisplay
 	}
 	// Omitted upgrade_groups / request_rules mean "keep the current values"; an
 	// explicitly empty array clears them.

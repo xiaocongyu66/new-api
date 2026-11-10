@@ -264,7 +264,10 @@ func (s *BillingSession) reserveFunding(delta int) error {
 		funding.consumed += delta
 		return nil
 	case *SubscriptionFunding:
-		if err := PostConsumeUserSubscriptionDelta(funding.subscriptionId, int64(delta)); err != nil {
+		// Scoped plans carry their budget on the entitlement row, not on the
+		// subscription amount legs, so a reserve must extend the same row the
+		// request already reserved from.
+		if err := funding.ReserveExtra(delta); err != nil {
 			return types.NewErrorWithStatusCode(
 				fmt.Errorf("订阅额度不足或未配置订阅: %s", err.Error()),
 				types.ErrorCodeInsufficientUserQuota,
@@ -288,7 +291,7 @@ func (s *BillingSession) rollbackFundingReserve(delta int) {
 			funding.consumed -= delta
 		}
 	case *SubscriptionFunding:
-		if err := PostConsumeUserSubscriptionDelta(funding.subscriptionId, -int64(delta)); err != nil {
+		if err := funding.ReleaseExtra(delta); err != nil {
 			common.SysLog("error rolling back subscription funding reserve: " + err.Error())
 		}
 	}
