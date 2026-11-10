@@ -70,6 +70,21 @@ func reloadSubscriptionCounter(t *testing.T, id int) SubscriptionRequestCounter 
 	return counter
 }
 
+// seedKindTestRatios installs a priced gpt-4o and a vip group ratio for the
+// duration of one test. The billing test binary never runs InitRatioSettings,
+// so the ratio maps start empty and GetModelPrice("gpt-4o") would be unpriced.
+func seedKindTestRatios(t *testing.T) {
+	t.Helper()
+	savedModelPrices := ratio_setting.ModelPrice2JSONString()
+	savedGroupRatios := ratio_setting.GroupRatio2JSONString()
+	t.Cleanup(func() {
+		_ = ratio_setting.UpdateModelPriceByJSONString(savedModelPrices)
+		_ = ratio_setting.UpdateGroupRatioByJSONString(savedGroupRatios)
+	})
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"gpt-4o":0.01}`))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"vip":1.5}`))
+}
+
 // A subscription scoped to an upgraded group must not pay for requests served
 // through another group.
 func TestPreConsumeUserSubscriptionRejectsGroupMismatch(t *testing.T) {
@@ -148,6 +163,7 @@ func TestPreConsumeUserSubscriptionRequestKindCountingAndRefund(t *testing.T) {
 // Purchase-time budget snapshot: count x model price x group ratio.
 func TestCreateSubscriptionRequestCountersSnapshotsQuotaBudget(t *testing.T) {
 	setupIdentityTestDB(t)
+	seedKindTestRatios(t)
 	plan := seedSubscriptionKindPlan(t, 9305, SubscriptionKindRequest,
 		[]string{"vip"},
 		[]SubscriptionRequestRule{{Group: "vip", Models: []string{"gpt-4o"}, Count: 10}},
@@ -195,7 +211,13 @@ func TestWaiveSubscriptionRequestConsumeReleasesCounterIdempotently(t *testing.T
 	// Replay must not release a second time (idempotent).
 	require.NoError(t, WaiveSubscriptionRequestConsume("req-waive"))
 	assert.Equal(t, int64(0), reloadSubscriptionCounter(t, counter.Id).Used)
-
+	// The waived request's pre-consumed quota is returned by the settle leg
+	// (SettleBilling with zero actual usage), not by the waive call itself:
+	// waive only releases the counter, the amount legs stay standard.
+	require.NoError(t, PostConsumeUserSubscriptionDelta(sub.Id, -50))
+	var afterWaiveSettle UserSubscription
+	require.NoError(t, dbx.DB.First(&afterWaiveSettle, sub.Id).Error)
+	assert.Equal(t, int64(0), afterWaiveSettle.AmountUsed)
 	// Refund after a counted request releases the counter and quota once.
 	_, err = PreConsumeUserSubscription("req-waive-retry", 9306, "vip", "gpt-4o", 0, 50)
 	require.NoError(t, err)
