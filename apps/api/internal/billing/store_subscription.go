@@ -46,6 +46,19 @@ const (
 	SubscriptionKindRequest = "request"
 )
 
+// The admin form exposes two orthogonal axes instead of the kind dropdown:
+// the limit mode picks what the plan grants (a group-scoped quota pool or
+// per-(group, model) request counts) and is stored as Kind; the expiry mode
+// picks how it ends (at end_time or when the granted resource runs out) and is
+// stored as ExpireMode.
+const (
+	SubscriptionExpireModeTime  = "time"
+	SubscriptionExpireModeQuota = "quota"
+
+	SubscriptionLimitModeGroup   = "group"
+	SubscriptionLimitModeRequest = "request"
+)
+
 var (
 	ErrSubscriptionOrderNotFound      = errors.New("subscription order not found")
 	ErrSubscriptionOrderStatusInvalid = errors.New("subscription order status invalid")
@@ -115,6 +128,48 @@ func normalizeSubscriptionKind(kind string) string {
 	default:
 		return SubscriptionKindTime
 	}
+}
+
+// normalizeExpireMode resolves the stored expiry axis. A stored value wins;
+// rows written before the column existed fall back to the kind's historical
+// behaviour so nothing already sold changes meaning.
+func normalizeExpireMode(raw string, kind string) string {
+	switch strings.TrimSpace(raw) {
+	case SubscriptionExpireModeTime, SubscriptionExpireModeQuota:
+		return strings.TrimSpace(raw)
+	}
+	switch normalizeSubscriptionKind(kind) {
+	case SubscriptionKindQuota, SubscriptionKindRequest:
+		return SubscriptionExpireModeQuota
+	default:
+		return SubscriptionExpireModeTime
+	}
+}
+
+// normalizeLimitMode resolves the limit axis the payload asked for. An empty
+// payload (e.g. a legacy caller that only sends kind) keeps its old meaning.
+func normalizeLimitMode(raw string, kind string) string {
+	switch strings.TrimSpace(raw) {
+	case SubscriptionLimitModeGroup, SubscriptionLimitModeRequest:
+		return strings.TrimSpace(raw)
+	}
+	if normalizeSubscriptionKind(kind) == SubscriptionKindRequest {
+		return SubscriptionLimitModeRequest
+	}
+	return SubscriptionLimitModeGroup
+}
+
+// deriveSubscriptionKind collapses the two admin-form axes into the single
+// kind the runtime reads: request counts, or a quota pool whose expiry is
+// time-based or exhaustion-based.
+func deriveSubscriptionKind(limitMode string, expireMode string) string {
+	if limitMode == SubscriptionLimitModeRequest {
+		return SubscriptionKindRequest
+	}
+	if expireMode == SubscriptionExpireModeQuota {
+		return SubscriptionKindQuota
+	}
+	return SubscriptionKindTime
 }
 
 func parseStringListJSON(raw string) ([]string, error) {
@@ -216,9 +271,19 @@ type SubscriptionPlan struct {
 	Title    string `json:"title" gorm:"type:varchar(128);not null"`
 	Subtitle string `json:"subtitle" gorm:"type:varchar(255);default:''"`
 
-	// Kind is time (expires at end_time), quota (expires when the pool is
-	// spent) or request (expires when every request counter is spent).
+	// Kind is the limit axis stored for the runtime: request (per-(group,
+	// model) request counts) or a quota pool with time-based (time) or
+	// exhaustion-based (quota) expiry.
 	Kind string `json:"kind" gorm:"type:varchar(16);not null;default:'time'"`
+
+	// ExpireMode is the expiry axis: time (ends at end_time) or quota (ends
+	// when the granted pool or request counters run out). Legacy rows store
+	// '' and fall back to the kind default in AfterFind.
+	ExpireMode string `json:"expire_mode" gorm:"column:expire_mode;type:varchar(16);not null;default:''"`
+
+	// LimitMode is the limit axis as the admin form submits it (group/request).
+	// Derived from Kind on read; never stored.
+	LimitMode string `json:"limit_mode" gorm:"-"`
 
 	// Display money amount (follow existing code style: float64 for money)
 	PriceAmount float64 `json:"price_amount" gorm:"type:decimal(10,6);not null;default:0"`
@@ -295,6 +360,10 @@ func (plan *SubscriptionPlan) AfterFind(_ *gorm.DB) error {
 	if rules, err := parseRequestRulesJSON(plan.RequestRulesJSON); err == nil {
 		plan.RequestRules = rules
 	}
+	// The two admin-form axes are derived on read so legacy rows answer the
+	// same shape as plans saved through the new form.
+	plan.ExpireMode = normalizeExpireMode(plan.ExpireMode, plan.Kind)
+	plan.LimitMode = normalizeLimitMode(plan.LimitMode, plan.Kind)
 	return nil
 }
 
@@ -320,6 +389,8 @@ func (p *SubscriptionPlan) NormalizeDefaults() {
 	if strings.TrimSpace(p.Kind) == "" {
 		p.Kind = SubscriptionKindTime
 	}
+	p.ExpireMode = normalizeExpireMode(p.ExpireMode, p.Kind)
+	p.LimitMode = normalizeLimitMode(p.LimitMode, p.Kind)
 }
 
 // planGrantsValuableEntitlement reports whether the plan hands out anything of
@@ -506,10 +577,9 @@ func calcPlanEndTime(start time.Time, plan *SubscriptionPlan) (int64, error) {
 	if plan == nil {
 		return 0, errors.New("plan is nil")
 	}
-	// quota and request kinds have no fixed term: they end when their quota or
-	// counters are exhausted, so a zero end_time means "no time limit".
-	switch normalizeSubscriptionKind(plan.Kind) {
-	case SubscriptionKindQuota, SubscriptionKindRequest:
+	// Only time-expiry plans carry a fixed term. Quota-expiry plans end when
+	// their pool or request counters run out, so end_time stays 0 = no limit.
+	if normalizeExpireMode(plan.ExpireMode, plan.Kind) != SubscriptionExpireModeTime {
 		return 0, nil
 	}
 	if plan.DurationValue <= 0 && plan.DurationUnit != SubscriptionDurationCustom {
@@ -732,7 +802,9 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	if nextReset > 0 {
 		lastReset = now.Unix()
 	}
-	if kind == SubscriptionKindQuota || kind == SubscriptionKindRequest {
+	// Request-count plans whose expiry axis is time keep the term computed
+	// above; every plan that expires by exhaustion has no end_time/reset.
+	if normalizeExpireMode(plan.ExpireMode, kind) != SubscriptionExpireModeTime {
 		endUnix = 0
 		nextReset = 0
 		lastReset = 0
@@ -800,8 +872,8 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 }
 
 // createSubscriptionRequestCountersTx expands plan rules into one counter row
-// per model. Duplicate (group, model) entries are merged so the unique index
-// cannot reject a plan that lists the same model twice.
+// per (group, model) key. Plan validation rejects duplicate keys, so the merge
+// below only guards rows written before that check existed.
 func createSubscriptionRequestCountersTx(tx *gorm.DB, userSubscriptionId int, rules []SubscriptionRequestRule) error {
 	type counterKey struct {
 		group string

@@ -194,6 +194,9 @@ func applyPlanRequestRules(plan *SubscriptionPlan) error {
 	}
 	groupRatios := ratio_setting.GetGroupRatioCopy()
 	normalized := make([]SubscriptionRequestRule, 0, len(rules))
+	// The (group, model) pair is the counter key, so configuring it twice would
+	// silently grant the sum of both counts under a single bar.
+	seenKeys := make(map[string]struct{}, len(rules)*2)
 	for _, rule := range rules {
 		group := strings.TrimSpace(rule.Group)
 		if _, ok := groupRatios[group]; !ok {
@@ -205,6 +208,13 @@ func applyPlanRequestRules(plan *SubscriptionPlan) error {
 		}
 		if rule.Count <= 0 {
 			return errors.New("请求规则次数必须大于0")
+		}
+		for _, model := range models {
+			key := group + "\x00" + model
+			if _, dup := seenKeys[key]; dup {
+				return fmt.Errorf("请求规则中分组 %s 下的模型 %s 不能重复设置", group, model)
+			}
+			seenKeys[key] = struct{}{}
 		}
 		normalized = append(normalized, SubscriptionRequestRule{
 			Group:  group,
@@ -233,6 +243,24 @@ func applySubscriptionKindConstraints(plan *SubscriptionPlan) error {
 	return nil
 }
 
+// resolvePlanModes collapses the admin form's expire/limit axes into the stored
+// kind and rejects terms that purchase could not compute. Payloads that only
+// carry the legacy kind keep its meaning.
+func resolvePlanModes(plan *SubscriptionPlan) error {
+	if strings.TrimSpace(plan.Kind) != "" && normalizeSubscriptionKind(plan.Kind) != strings.TrimSpace(plan.Kind) {
+		return errors.New("无效的订阅种类")
+	}
+	limitMode := normalizeLimitMode(plan.LimitMode, plan.Kind)
+	expireMode := normalizeExpireMode(plan.ExpireMode, plan.Kind)
+	plan.LimitMode = limitMode
+	plan.ExpireMode = expireMode
+	plan.Kind = deriveSubscriptionKind(limitMode, expireMode)
+	if expireMode == SubscriptionExpireModeTime && plan.DurationUnit == SubscriptionDurationCustom && plan.CustomSeconds <= 0 {
+		return errors.New("自定义时长需大于0秒")
+	}
+	return nil
+}
+
 func AdminCreateSubscriptionPlan(c contract.Context) {
 	if !RequirePaymentCompliance(c) {
 		return
@@ -248,12 +276,10 @@ func AdminCreateSubscriptionPlan(c contract.Context) {
 		common.CtxApiErrorMsg(c, "套餐标题不能为空")
 		return
 	}
-	requestedKind := normalizeSubscriptionKind(req.Plan.Kind)
-	if strings.TrimSpace(req.Plan.Kind) != "" && requestedKind != strings.TrimSpace(req.Plan.Kind) {
-		common.CtxApiErrorMsg(c, "无效的订阅种类")
+	if err := resolvePlanModes(&req.Plan); err != nil {
+		common.CtxApiError(c, err)
 		return
 	}
-	req.Plan.Kind = requestedKind
 	if req.Plan.PriceAmount < 0 {
 		common.CtxApiErrorMsg(c, "价格不能为负数")
 		return
@@ -358,13 +384,15 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 	}
 	if strings.TrimSpace(req.Plan.Kind) == "" {
 		req.Plan.Kind = normalizeSubscriptionKind(existing.Kind)
-	} else {
-		requestedKind := normalizeSubscriptionKind(req.Plan.Kind)
-		if requestedKind != strings.TrimSpace(req.Plan.Kind) {
-			common.CtxApiErrorMsg(c, "无效的订阅种类")
-			return
-		}
-		req.Plan.Kind = requestedKind
+	}
+	// Omitted expire_mode keeps the stored term; an explicit empty clears it
+	// back to the kind default.
+	if strings.TrimSpace(req.Plan.ExpireMode) == "" && strings.TrimSpace(existing.ExpireMode) != "" {
+		req.Plan.ExpireMode = existing.ExpireMode
+	}
+	if err := resolvePlanModes(&req.Plan); err != nil {
+		common.CtxApiError(c, err)
+		return
 	}
 	if req.Plan.PriceAmount < 0 {
 		common.CtxApiErrorMsg(c, "价格不能为负数")
@@ -449,6 +477,7 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 			"title":                      req.Plan.Title,
 			"subtitle":                   req.Plan.Subtitle,
 			"kind":                       req.Plan.Kind,
+			"expire_mode":                req.Plan.ExpireMode,
 			"price_amount":               req.Plan.PriceAmount,
 			"currency":                   req.Plan.Currency,
 			"duration_unit":              req.Plan.DurationUnit,
