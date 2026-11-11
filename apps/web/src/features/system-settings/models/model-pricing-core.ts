@@ -18,8 +18,15 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import * as z from 'zod'
 
-import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
-import { formatTokenCountHint } from '@/features/pricing/lib/dynamic-price'
+import {
+  combineBillingExpr,
+  parseTiersFromExpr,
+  splitBillingExprAndRequestRules,
+} from '@/features/pricing/lib/billing-expr'
+import {
+  formatTokenCountHint,
+  getTierBoundLabel,
+} from '@/features/pricing/lib/dynamic-price'
 
 import { formatPricingDisplay } from './pricing-format'
 
@@ -544,6 +551,55 @@ function parsePreviewTiers(raw: string): PreviewTierRow[] {
   }
 }
 
+/**
+ * One preview row per tier parsed from a billing expression, mirroring the
+ * card matrix so the dialog and the card show the same ladder. Expressions
+ * without parseable tiers fall back to the raw text.
+ */
+function buildExpressionTierPreviewRows(
+  expr: string,
+  t: (key: string) => string
+): PreviewRow[] {
+  const tiers = parseTiersFromExpr(
+    splitBillingExprAndRequestRules(expr).billingExpr
+  )
+  if (tiers.length === 0) {
+    return [
+      {
+        key: 'expr',
+        label: t('Expression'),
+        value: expr || t('Empty'),
+        multiline: true,
+      },
+    ]
+  }
+  return tiers.map((tier, index) => {
+    const bound = getTierBoundLabel(tiers, index)
+    const parts: string[] = []
+    if (Number(tier.fixedPrice) > 0) {
+      parts.push(
+        `$${formatPricingDisplay(Number(tier.fixedPrice))} ${t('per request')}`
+      )
+    }
+    if (Number(tier.inputPrice) > 0) {
+      parts.push(
+        `${t('Input price')} $${formatPricingDisplay(Number(tier.inputPrice))}`
+      )
+    }
+    if (Number(tier.outputPrice) > 0) {
+      parts.push(
+        `${t('Output price')} $${formatPricingDisplay(Number(tier.outputPrice))}`
+      )
+    }
+    return {
+      key: `tier-${index}`,
+      label: bound || tier.label || t('Default'),
+      value: parts.join('\n'),
+      multiline: true,
+    }
+  })
+}
+
 /** One preview row per interval: bound label plus the lane prices it charges. */
 function buildContextTierPreviewRows(
   raw: string,
@@ -615,12 +671,7 @@ export function buildPreviewRows(
     const effectiveExpr = combineBillingExpr(billingExpr, requestRuleExpr)
     return [
       { key: 'mode', label: 'BillingMode', value: 'tiered_expr' },
-      {
-        key: 'expr',
-        label: t('Expression'),
-        value: effectiveExpr || t('Empty'),
-        multiline: true,
-      },
+      ...buildExpressionTierPreviewRows(effectiveExpr, t),
     ]
   }
 

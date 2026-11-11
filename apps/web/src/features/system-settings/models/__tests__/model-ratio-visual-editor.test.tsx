@@ -148,4 +148,24 @@ describe('model ratio visual editor', () => {
 
     await unmountEditor(rendered)
   })
+
+  test('renders the parsed tiers of a tiered expression on the pricing card', async () => {
+    const rendered = await renderEditor({
+      savedBillingMode: '{"expr-model":"tiered_expr"}',
+      savedBillingExpr:
+        '{"expr-model":"len <= 10000 ? tier(\\"t1\\", fixed(0.0140)) : tier(\\"t4\\", fixed(0.0800))"}',
+      billingMode: '{"expr-model":"tiered_expr"}',
+      billingExpr:
+        '{"expr-model":"len <= 10000 ? tier(\\"t1\\", fixed(0.0140)) : tier(\\"t4\\", fixed(0.0800))"}',
+    })
+
+    const text = rendered.container.textContent ?? ''
+    assert.equal(text.includes('expr-model'), true)
+    // The first tier bound and its fixed price must replace the old flat
+    // `Input/Output * — —` fallback on the card matrix.
+    assert.equal(text.includes('≤10K'), true)
+    assert.equal(text.includes('$0.014'), true)
+
+    await unmountEditor(rendered)
+  })
 })

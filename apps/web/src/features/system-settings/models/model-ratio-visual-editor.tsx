@@ -55,8 +55,15 @@ import {
   PriceMatrixTable,
   type PriceMatrixRow,
 } from '@/features/pricing/components/price-matrix-table'
-import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
-import { isTieredBillingMode } from '@/features/pricing/lib/dynamic-price'
+import {
+  combineBillingExpr,
+  parseTiersFromExpr,
+  splitBillingExprAndRequestRules,
+} from '@/features/pricing/lib/billing-expr'
+import {
+  getTierBoundLabel,
+  isTieredBillingMode,
+} from '@/features/pricing/lib/dynamic-price'
 import { cn } from '@/lib/utils'
 
 import { safeJsonParse } from '../utils/json-parser'
@@ -845,19 +852,56 @@ const ModelRatioVisualEditorComponent = forwardRef<
               completionRatioMetaMap,
               model.completionRatio
             )
+            // tiered_expr models price off the stored expression, so the
+            // matrix must parse its tiers just like the context-tier modes;
+            // a `fixed()`-only ladder bills per request like the per-call
+            // modes, p/c lanes bill per token.
+            const exprTiers =
+              model.billingMode === 'tiered_expr' && model.billingExpr
+                ? parseTiersFromExpr(
+                    splitBillingExprAndRequestRules(model.billingExpr)
+                      .billingExpr
+                  )
+                : []
+            const nonzeroPrice = (value: unknown) =>
+              typeof value === 'number' && value > 0 ? value : undefined
+            const exprHasFixed = exprTiers.some(
+              (tier) => Number(tier.fixedPrice) > 0
+            )
+            const exprFixedOnly =
+              exprTiers.length > 0 &&
+              exprHasFixed &&
+              exprTiers.every(
+                (tier) =>
+                  Number(tier.inputPrice) <= 0 && Number(tier.outputPrice) <= 0
+              )
             const tierRows =
               model.billingMode === 'context_tier'
                 ? parseTierRows(model.billingContextTier)
                 : model.billingMode === 'context_tier_per_call'
                   ? parseTierRows(model.billingContextTierPerCall)
-                  : []
+                  : model.billingMode === 'tiered_expr'
+                    ? exprTiers.map((tier, index) => ({
+                        key: tier.label || `expr-${index}`,
+                        boundLabel:
+                          getTierBoundLabel(exprTiers, index) ||
+                          tier.label ||
+                          '*',
+                        price: nonzeroPrice(tier.fixedPrice),
+                        inputPrice: nonzeroPrice(tier.inputPrice),
+                        outputPrice: nonzeroPrice(tier.outputPrice),
+                        cachePrice: nonzeroPrice(tier.cacheReadPrice),
+                        cacheWritePrice: nonzeroPrice(tier.cacheCreatePrice),
+                      }))
+                    : []
 
             // Matrix orientation: the axis with more entries takes the
             // horizontal slots, so wide tables stay short instead of tall.
             // Equal counts keep the price lanes on the horizontal axis.
             const isPerCallMode =
               model.billingMode === 'per-request' ||
-              model.billingMode === 'context_tier_per_call'
+              model.billingMode === 'context_tier_per_call' ||
+              exprFixedOnly
             const hasCacheRead = tierRows.some(
               (tier) => (tier.cachePrice ?? 0) > 0
             )
@@ -867,6 +911,9 @@ const ModelRatioVisualEditorComponent = forwardRef<
             const laneLabels: string[] = isPerCallMode
               ? [t('request')]
               : [
+                  ...(model.billingMode === 'tiered_expr' && exprHasFixed
+                    ? [t('request')]
+                    : []),
                   t('Input'),
                   t('Output'),
                   ...(hasCacheRead || lanes.enabled.cache ? [t('Cache')] : []),
@@ -893,6 +940,9 @@ const ModelRatioVisualEditorComponent = forwardRef<
                   values: isPerCallMode
                     ? [formatCell(tier.price)]
                     : [
+                        ...(model.billingMode === 'tiered_expr' && exprHasFixed
+                          ? [formatCell(tier.price)]
+                          : []),
                         formatCell(tier.inputPrice),
                         formatCell(tier.outputPrice),
                         ...(hasCacheRead || lanes.enabled.cache
