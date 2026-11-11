@@ -1639,7 +1639,13 @@ export const TieredPricingEditor = memo(function TieredPricingEditor({
   onRequestRuleExprChange,
 }: TieredPricingEditorProps) {
   const { t } = useTranslation()
-  const [editorMode, setEditorMode] = useState<EditorMode>('visual')
+  // An expression the visual editor cannot represent (for example a `len`
+  // ladder with `fixed()` prices) must start in raw mode, otherwise the
+  // first render emits the empty default expression and the propagation
+  // effect overwrites the stored expression before initialization finishes.
+  const [editorMode, setEditorMode] = useState<EditorMode>(() =>
+    currentExpr && !tryParseVisualConfig(currentExpr) ? 'raw' : 'visual'
+  )
   const [visualConfig, setVisualConfig] = useState<VisualConfig | null>(() =>
     tryParseVisualConfig(currentExpr)
   )
