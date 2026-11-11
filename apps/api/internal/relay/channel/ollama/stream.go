@@ -119,10 +119,31 @@ func ollamaStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *
 		if line == "" {
 			continue
 		}
+
+		// Ollama speaks JSONL: every non-empty line is a JSON chunk, and the
+		// stream ends when a chunk carries "done": true. Some Ollama-compatible
+		// proxies frame the body as SSE (lines prefixed with "data:") and/or
+		// terminate it with a "[DONE]" sentinel. Those sentinel lines are not
+		// JSON — strip the framing and treat "[DONE]" as a normal end of stream
+		// here instead of failing with HTTP 500. Any other non-JSON line is a
+		// genuine protocol error and still fails the request.
+		payload := line
+		if strings.HasPrefix(line, "data:") {
+			payload = strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		}
+
 		var chunk ollamaChatStreamChunk
-		if err := common.Unmarshal([]byte(line), &chunk); err != nil {
+		isDoneSentinel := false
+		if payload == "[DONE]" {
+			isDoneSentinel = true
+		} else if err := common.Unmarshal([]byte(payload), &chunk); err != nil {
 			logger.LogError(c.Context(), "ollama stream json decode error: "+err.Error()+" line="+line)
 			return usage, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		}
+		if isDoneSentinel {
+			// [DONE] is a sentinel, not a chunk: finalize like a done chunk.
+			chunk.Done = true
+			chunk.DoneReason = "stop"
 		}
 		if chunk.Model != "" {
 			model = chunk.Model

@@ -170,6 +170,11 @@ func zhipuStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *h
 					continue
 				}
 				if line[:5] == "data:" {
+					// [DONE] is the stream terminator: skip it instead of
+					// flowing into streamResponseZhipu2OpenAI as content.
+					if strings.TrimSpace(line[5:]) == "[DONE]" {
+						continue
+					}
 					dataChan <- line[5:]
 					if i != len(lines)-1 {
 						dataChan <- "\n"

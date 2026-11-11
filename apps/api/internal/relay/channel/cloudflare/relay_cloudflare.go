@@ -39,13 +39,10 @@ func cfStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http
 	isFirst := true
 
 	for scanner.Scan() {
-		data := scanner.Text()
-		if len(data) < len("data: ") {
+		data := normalizeStreamLine(scanner.Text())
+		if data == "" {
 			continue
 		}
-		data = strings.TrimPrefix(data, "data: ")
-		data = strings.TrimSuffix(data, "\r")
-
 		if data == "[DONE]" {
 			break
 		}
@@ -88,6 +85,17 @@ func cfStreamHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http
 	egress.CloseResponseBodyGracefully(resp)
 
 	return nil, usage
+}
+
+// normalizeStreamLine strips SSE "data:" framing from a scanner line so the
+// payload can be compared with the [DONE] sentinel or parsed as JSON.
+// Upstream may send "data: payload", "data:payload", or a bare line, with
+// arbitrary surrounding whitespace; all forms are normalized to the payload.
+// The well-formed "data: payload" form round-trips unchanged in substance.
+func normalizeStreamLine(line string) string {
+	line = strings.TrimSpace(line)
+	line = strings.TrimPrefix(line, "data:")
+	return strings.TrimSpace(line)
 }
 
 func cfHandler(c contract.Context, info *relaycommon.RelayInfo, resp *http.Response) (*types.NewAPIError, *dto.Usage) {

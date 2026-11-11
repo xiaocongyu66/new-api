@@ -94,3 +94,52 @@ func TestOllamaChatHandlerNonStreamToolCalls(t *testing.T) {
 		})
 	}
 }
+func TestOllamaStreamHandlerDoneSentinel(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		wantErr  bool
+		wantCode int
+	}{
+		{
+			name:    "data done sentinel terminates stream instead of 500",
+			body:    `data: [DONE]`,
+			wantErr: false,
+		},
+		{
+			name: "json chunk then data done sentinel terminates",
+			body: `{"model":"llama3.1","created_at":"2026-05-27T12:00:00Z","message":{"role":"assistant","content":"hi"},"done":false}
+data: [DONE]`,
+			wantErr: false,
+		},
+		{
+			name:     "garbage non-json line still errors 500",
+			body:     `this is not json`,
+			wantErr:  true,
+			wantCode: http.StatusInternalServerError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, w := fiberadapter.NewSyntheticContext(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(tt.body)),
+			}
+
+			usage, apiErr := ollamaStreamHandler(c, &relaycommon.RelayInfo{
+				ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "fallback-model"},
+			}, resp)
+			if tt.wantErr {
+				require.NotNil(t, apiErr)
+				assert.Equal(t, tt.wantCode, apiErr.StatusCode)
+				return
+			}
+			require.Nil(t, apiErr)
+			require.NotNil(t, usage)
+			assert.Contains(t, w.Body.String(), `data: [DONE]`)
+		})
+	}
+}
