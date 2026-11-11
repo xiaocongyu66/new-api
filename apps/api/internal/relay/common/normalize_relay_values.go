@@ -23,18 +23,23 @@ type HasImage interface {
 	HasImage() bool
 }
 
+// GetFullRequestURL joins the configured base URL and request path without duplicating /v1.
 func GetFullRequestURL(baseURL string, requestURL string, channelType int) string {
-	fullRequestURL := fmt.Sprintf("%s%s", baseURL, requestURL)
-
 	if strings.HasPrefix(baseURL, "https://gateway.ai.cloudflare.com") {
 		switch channelType {
 		case constant.ChannelTypeOpenAI:
-			fullRequestURL = fmt.Sprintf("%s%s", baseURL, strings.TrimPrefix(requestURL, "/v1"))
+			return fmt.Sprintf("%s%s", baseURL, strings.TrimPrefix(requestURL, "/v1"))
 		case constant.ChannelTypeAzure:
-			fullRequestURL = fmt.Sprintf("%s%s", baseURL, strings.TrimPrefix(requestURL, "/openai/deployments"))
+			return fmt.Sprintf("%s%s", baseURL, strings.TrimPrefix(requestURL, "/openai/deployments"))
 		}
 	}
-	return fullRequestURL
+
+	trimmedBaseURL := strings.TrimRight(baseURL, "/")
+	if strings.HasSuffix(trimmedBaseURL, "/v1") &&
+		(strings.HasPrefix(requestURL, "/v1/") || requestURL == "/v1") {
+		return trimmedBaseURL + strings.TrimPrefix(requestURL, "/v1")
+	}
+	return fmt.Sprintf("%s%s", baseURL, requestURL)
 }
 
 func SanitizeURLForLog(rawURL string) string {
