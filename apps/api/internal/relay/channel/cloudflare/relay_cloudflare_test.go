@@ -25,7 +25,7 @@ func TestNormalizeStreamLine(t *testing.T) {
 		{name: "data space done", line: `data: [DONE]`, want: `[DONE]`},
 		{name: "data no space json", line: `data:{"x":1,"y":2}`, want: `{"x":1,"y":2}`},
 		{name: "leading and trailing whitespace", line: `  data: [DONE]  `, want: `[DONE]`},
-		{name: "carriage return", line: `data: [DONE]\r`, want: `[DONE]`},
+		{name: "carriage return", line: "data: [DONE]\r", want: "[DONE]"},
 		{name: "bare done sentinel", line: `[DONE]`, want: `[DONE]`},
 		{name: "bare payload", line: `hello`, want: `hello`},
 		{name: "empty line", line: ``, want: ``},
