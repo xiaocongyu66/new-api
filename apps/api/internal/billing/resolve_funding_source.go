@@ -225,7 +225,15 @@ func (s *SubscriptionFunding) settleQuotaCounter(delta int) (bool, error) {
 		}
 		absorbed := int64(delta)
 		if row.Total > 0 {
-			if remain := row.Total - row.Used; absorbed > remain {
+			remain := row.Total - row.Used
+			if remain < 0 {
+				// Defensive: a row over its total (admin/database edit) must not
+				// inflate the wallet overflow with a negative absorbable amount.
+				common.SysError(fmt.Sprintf(
+					"quota-counter row over total: counter=%d used=%d total=%d", row.Id, row.Used, row.Total))
+				remain = 0
+			}
+			if absorbed > remain {
 				absorbed = remain
 			}
 		}

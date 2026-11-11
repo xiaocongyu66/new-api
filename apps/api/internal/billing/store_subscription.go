@@ -1707,12 +1707,23 @@ func PreConsumeUserSubscription(requestId string, userId int, usingGroup string,
 			returnValue.AmountTotal = sub.AmountTotal
 			returnValue.AmountUsedBefore = sub.AmountUsed
 			returnValue.AmountUsedAfter = sub.AmountUsed
-			returnValue.RequestCounterUsedBefore = int64(existing.RequestCounterId)
 			returnValue.RequestCounterId = existing.RequestCounterId
 			if existing.RequestCounterId > 0 {
 				var replayCounter SubscriptionRequestCounter
 				if err := tx.Where("id = ?", existing.RequestCounterId).First(&replayCounter).Error; err == nil {
 					returnValue.RequestKind = replayCounter.Measure == SubscriptionMeasureCount
+					// The row already holds this request's reservation; report
+					// what was used before it rather than the row id.
+					usedBefore := replayCounter.Used
+					if replayCounter.Measure == SubscriptionMeasureQuota {
+						usedBefore -= existing.PreConsumed
+					} else if usedBefore > 0 {
+						usedBefore--
+					}
+					if usedBefore < 0 {
+						usedBefore = 0
+					}
+					returnValue.RequestCounterUsedBefore = usedBefore
 				}
 			}
 			return nil
@@ -1749,6 +1760,15 @@ func PreConsumeUserSubscription(requestId string, userId int, usingGroup string,
 			}
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
 				return err
+			}
+			// Gate the shared pool before touching the scoped row, so a
+			// skipped candidate cannot leave a phantom reservation behind.
+			usedBefore := sub.AmountUsed
+			if sub.AmountTotal > 0 {
+				remain := sub.AmountTotal - usedBefore
+				if remain < amount {
+					continue
+				}
 			}
 			// Scoped candidates additionally reserve their entitlement inside
 			// this same transaction: one request for count measures, the
@@ -1789,13 +1809,6 @@ func PreConsumeUserSubscription(requestId string, userId int, usingGroup string,
 				}
 				requestCounterId = counter.Id
 				requestCounterUsedBefore = rowUsedBefore
-			}
-			usedBefore := sub.AmountUsed
-			if sub.AmountTotal > 0 {
-				remain := sub.AmountTotal - usedBefore
-				if remain < amount {
-					continue
-				}
 			}
 			record := &SubscriptionPreConsumeRecord{
 				RequestId:          requestId,
