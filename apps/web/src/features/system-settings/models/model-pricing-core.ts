@@ -594,7 +594,7 @@ function buildExpressionTierPreviewRows(
     return {
       key: `tier-${index}`,
       label: bound || tier.label || t('Default'),
-      value: parts.join('\n'),
+      value: parts.join('\n') || t('Empty'),
       multiline: true,
     }
   })
