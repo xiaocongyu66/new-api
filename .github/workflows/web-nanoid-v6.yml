@@ -39,8 +39,28 @@ jobs:
       - name: Run focused nanoid call-site test
         run: bun test src/features/playground/lib/message/message-utils.test.ts
 
+      # Workaround for #588: tsgo (@typescript/native-preview 7.0.0-dev) can emit
+      # impossible errors (TS2304 for module-scope symbols, TS6133 for symbols
+      # used elsewhere, TS7016 for typed deps) on 2-core CI runners due to
+      # compiler state corruption. The same commit passes on main CI and locally.
+      # Retries only absorb this known compiler flake; real type errors fail every
+      # attempt, so the step still fails loudly with the attempt number.
       - name: Typecheck
-        run: bun run typecheck
+        run: |
+          for attempt in 1 2 3; do
+            # A crashed tsgo run can leave a partial build-info cache behind;
+            # clear it so the retry rechecks from a clean state.
+            rm -f node_modules/.tmp/tsconfig.app.tsbuildinfo node_modules/.tmp/tsconfig.node.tsbuildinfo
+            if bun run typecheck; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Typecheck attempt $attempt failed; retrying in 2s..."
+              sleep 2
+            fi
+          done
+          echo "Typecheck failed after 3 attempts" >&2
+          exit 1
 
       - name: Build
         run: bun run build
