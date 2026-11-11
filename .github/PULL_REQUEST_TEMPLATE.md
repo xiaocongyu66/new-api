@@ -2,7 +2,7 @@
 填写规范：
 - PR 标题必须使用 Conventional Commits 格式：`<type>(<scope>): <description>`，例如 `fix(web): correct token refresh flow`。类型与 GitHub 类型/区域 label 对应：`feat`、`fix`、`chore`、`refactor`、`docs`、`test`、`perf`。该标题会作为 squash merge 的 commit message。
 - PR 正文结构使用英文 heading，正文内容使用中文。
-- 一个 PR 对应一个主要 Issue；使用 `Fixes #N` 关闭主 Issue，使用 `Related #N` 或 `Part of #N` 关联更大的工作。
+- PR 不要求关联 Issue；如有对应 Issue，用 `Fixes #N` 关闭它（可选）。
 - 不要直接推送或合并到 `main`。
 - diff 必须聚焦，所有变更路径都必须能由主 Issue 解释。
 - 不要包含密钥、真实配置、生产环境信息、生成垃圾或无关格式化。
@@ -21,7 +21,7 @@
 
 ## Issue
 
-<!-- 主 Issue：使用 `Fixes #N`，合并后自动关闭。正文请用中文填写。 -->
+<!-- 可选：有关联 Issue 时写 `Fixes #N`（合并后自动关闭）；没有可留空。 -->
 Fixes #
 
 <!-- 可选：关联或父 Issue。 -->
@@ -50,11 +50,10 @@ Related #
 
 ## Checklist
 
-- [ ] 已使用 `Fixes #N` 关联一个主 Issue。
 - [ ] 已使用正确的英文类型 label：`bug`、`enhancement` 或 `chore`。
 - [ ] 已添加适用的英文区域 label：`backend`、`frontend`、`relay`、`database`、`ci` 或 `documentation`。
 - [ ] 没有包含密钥、真实配置、生成垃圾或无关变更。
-- [ ] diff 只服务于关联的主 Issue。
+- [ ] diff 只服务于本 PR 声明的目的。
 - [ ] 已执行上面列出的测试或手动验证；如果不适用，已说明原因。
 - [ ] Go 改动已覆盖主 module 和 relaykit module 的相关验证。
 - [ ] web 改动已覆盖对应前端构建或浏览器工作流。

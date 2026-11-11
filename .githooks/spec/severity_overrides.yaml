@@ -56,8 +56,6 @@
 #   CL-02: FAIL — checklist 格式错误
 #   CL-03: WARN — checklist 缺少必要项
 #
-# 示例: 把 PR-05 改成 INFO，不再阻塞无 Fixes # 的 PR
-# severity_overrides:
-#   PR-05: "INFO"
-
-severity_overrides: {}
+# PR 不强制关联 Issue：缺少 Fixes # 只记录，不告警、不阻塞
+severity_overrides:
+  PR-05: "INFO"
