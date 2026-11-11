@@ -240,3 +240,53 @@ func (o RequestOutcome) CountsAsRequest() bool
   2. 购买 request 套餐，调用命中模型与未命中模型，确认计数增减；
   3. 模拟空回 / 上游断流（>1000 与 <=1000 tokens）/ 用户断流，确认计数结果；
   4. 用非升级分组调用，确认订阅额度不被消费。
+
+## 后续改造：过期 × 限制双轴（替代订阅种类下拉）
+
+种类（kind）把「怎么结束」和「授予什么」绑在一个下拉里，运营心智负担重且组合不全：
+`request` 种类买回来始终没有 `end_time`（购买时被强制清零），无法表达「3 个月内每月 100 次」
+这类商品。双轴改造把单一 `kind` 拆成两个互相独立的单选：
+
+| 轴 | 取值 | 含义 |
+ | --- | --- | --- |
+| 过期方式 `expire_mode` | `time` / `quota` | `time`：到 `end_time` 过期；`quota`：额度池或计数耗尽即过期 |
+| 限制方式 `limit_mode` | `group` / `request` | `group`：分组内可用的额度池；`request`：按「分组 × 模型」的请求次数 |
+
+存储上只新增 `subscription_plans.expire_mode`（`varchar(16) NOT NULL DEFAULT ''`，
+SQLite 走既有 `ensureSubscriptionPlanTableSQLite` 补列，MySQL/PostgreSQL 走 AutoMigrate）。
+`kind` 仍按限制轴派生（`deriveSubscriptionKind`）：`request` 限制存 `request`，分组限制按
+过期轴存 `time`/`quota`，运行时所有预扣、退款、过期扫描逻辑不感知 `expire_mode`，只在
+购买时决定 `end_time` 是否计算（`calcPlanEndTime` / `CreateUserSubscriptionFromPlanTx`）。
+旧数据 `expire_mode = ''` 时按历史 kind 回退：`quota`/`request` 视为额度耗尽过期，
+`time` 视为时间过期，已售订阅语义零变化。
+
+接口：套餐 create/update 接受 `expire_mode` + `limit_mode`，服务端权威派生 `kind`；
+只传旧 `kind` 的调用方继续工作（回退到该 kind 的历史含义）。update 时省略 `expire_mode`
+表示保留已存值。
+
+请求规则缺口修复：`(分组, 模型)` 才是计数键，旧逻辑允许同一分组下同一模型出现在多条
+规则里，购买时被静默求和（两条各 ×1 的规则实际授权 ×2），与所有展示面（管理表格、
+购买弹窗、用户计数横条）不一致。现在 `applyPlanRequestRules` 拒绝重复键，前端表单
+schema 同步拒绝，规则编辑器还把同组其他规则已选的模型从多选中隐藏。
+
+i18n 新增 10 个 key（7 种语言），移除仅剩种类下拉使用的 3 个旧 key
+（`Subscription Kind` / `Quota-exhausted` / `Request-count`）。
+因本机禁止运行 bun，key 由脚本口径手工对位插入，`bun run i18n:sync` 在 CI 环境再跑一次即可对齐。
+
+### 后续微调（同一轮迭代）
+
+- **钱包兜底归属**：`allow_wallet_overflow` 只在「时间过期」下出现并生效。查过运行时路径：
+  额度耗尽时 `HasUsableUserSubscription` 已经返回 false，计费会直接走钱包，
+  `UserActiveSubscriptionsAllowWalletOverflow` 只在「预扣失败但订阅看似可用」的窗口被咨询；
+  对「额度过期」的套餐来说「额度用尽」就是商品终点，兜底既无窗口又与到期语义冲突。
+  因此后端 `applySubscriptionKindConstraints` 在 `expire_mode=quota` 时强制
+  `allow_wallet_overflow=false`，编辑器在额度过期下隐藏该开关。注意「额度彻底耗尽 →
+  直接用钱包」这条路径忽略该开关是既有的时间过期行为，不在本次修改范围内。
+- **请求限制矩阵化**：规则编辑器从「分组下拉 + 模型多选 + 次数」的自由行改为
+  「模型 × 分组」表格：行是模型（从所选升级分组的模型清单里添加），列是基本信息里的
+  升级分组，单元格填该分组下的次数，空/0 表示不限制。`(分组, 模型)` 重复由结构上杜绝，
+  后端去重校验保留为最后防线。表单内部用 `request_rows`（每模型一行的 counts 映射），
+  提交时 `requestRowsToRules` 合并同计数模型为一条规则；保存时清掉不属于当前升级分组
+  的计数。
+- **编辑器布局**：双轴 single-select 移到「基本信息」下方；「限购」的
+  `0 表示不限` 提示挪到标签同行。

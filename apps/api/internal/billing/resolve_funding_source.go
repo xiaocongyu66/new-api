@@ -3,11 +3,13 @@ package billing
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/QuantumNous/new-api/internal/billing/settlecore"
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/identity"
-	"time"
+	"gorm.io/gorm"
 )
 
 // ---------------------------------------------------------------------------
@@ -98,6 +100,8 @@ type SubscriptionFunding struct {
 	// requestCounterUsedBefore 非 0 表示该请求由 request 型订阅服务并已预留
 	// 一次计数（计数是准入与展示账本，扣费走标准额度腿）。
 	requestCounterUsedBefore int64
+	// counterId 是预扣命中的权益行（scoped 订阅），0 = 走共享额度池。
+	counterId int
 	// requestKind 标记本次请求由 request 型订阅服务（计数腿已预留）。
 	requestKind bool
 }
@@ -115,6 +119,7 @@ func (s *SubscriptionFunding) PreConsume(_ int) error {
 	s.AmountTotal = res.AmountTotal
 	s.AmountUsedAfter = res.AmountUsedAfter
 	s.requestCounterUsedBefore = res.RequestCounterUsedBefore
+	s.counterId = res.RequestCounterId
 	s.requestKind = res.RequestKind
 	if s.requestKind {
 		if err := AttributeSubscriptionCounterQuota(s.requestId, res.PreConsumed); err != nil {
@@ -131,6 +136,13 @@ func (s *SubscriptionFunding) PreConsume(_ int) error {
 
 func (s *SubscriptionFunding) Settle(delta int) error {
 	if delta == 0 {
+		return nil
+	}
+	// Quota-measured entitlement rows are the pool themselves: settle against
+	// the row before touching the shared legs.
+	if handled, err := s.settleQuotaCounter(delta); err != nil {
+		return err
+	} else if handled {
 		return nil
 	}
 	if delta < 0 {
@@ -165,6 +177,142 @@ func (s *SubscriptionFunding) Settle(delta int) error {
 		return identity.DecreaseUserQuota(s.userId, int(overflow), false)
 	}
 	return nil
+}
+
+// settleQuotaCounter settles against a quota-measured entitlement row, which
+// is the pool for quota-scoped plans: the delta lands on the row capped by
+// what it has left, and only the overflow reaches the wallet. Count rows keep
+// the standard amount legs, so the helper reports handled=false for them.
+func (s *SubscriptionFunding) settleQuotaCounter(delta int) (bool, error) {
+	if s.counterId <= 0 {
+		return false, nil
+	}
+	// The pre-consume record holds the release marker: waive/refund zero the
+	// counter id, so a settled delta must not touch the row a second time.
+	var record SubscriptionPreConsumeRecord
+	if err := dbx.DB.Where("request_id = ?", s.requestId).First(&record).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	if record.RequestCounterId == 0 {
+		return true, nil
+	}
+	var probe SubscriptionRequestCounter
+	if err := dbx.DB.Where("id = ?", s.counterId).First(&probe).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	if probe.Measure != SubscriptionMeasureQuota {
+		return false, nil
+	}
+	var overflow int64
+	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
+		var row SubscriptionRequestCounter
+		if err := dbx.LockForUpdate(tx).Where("id = ?", s.counterId).First(&row).Error; err != nil {
+			return err
+		}
+		if delta < 0 {
+			release := -int64(delta)
+			if release > row.Used {
+				release = row.Used
+			}
+			row.Used -= release
+			return tx.Save(&row).Error
+		}
+		absorbed := int64(delta)
+		if row.Total > 0 {
+			remain := row.Total - row.Used
+			if remain < 0 {
+				// Defensive: a row over its total (admin/database edit) must not
+				// inflate the wallet overflow with a negative absorbable amount.
+				common.SysError(fmt.Sprintf(
+					"quota-counter row over total: counter=%d used=%d total=%d", row.Id, row.Used, row.Total))
+				remain = 0
+			}
+			if absorbed > remain {
+				absorbed = remain
+			}
+		}
+		row.Used += absorbed
+		if err := tx.Save(&row).Error; err != nil {
+			return err
+		}
+		overflow = int64(delta) - absorbed
+		return nil
+	})
+	if err != nil {
+		return true, err
+	}
+	s.WalletOverflow = overflow
+	if overflow > 0 {
+		// Charge outside the row transaction: a second connection writing while
+		// this transaction holds the row lock deadlocks on SQLite.
+		common.SysError(fmt.Sprintf(
+			"quota-counter settle overage charged to wallet: userId=%d subscriptionId=%d counter=%d overflow=%d",
+			s.userId, s.subscriptionId, s.counterId, overflow,
+		))
+		if err := identity.DecreaseUserQuota(s.userId, int(overflow), false); err != nil {
+			return true, err
+		}
+	}
+	return true, nil
+}
+
+// ReserveExtra extends a funding reservation for an already-open request
+// (tiered paid-group switch). Scoped plans reserve on their entitlement row so
+// settlement sees the same budget; shared-pool plans keep the amount legs.
+func (s *SubscriptionFunding) ReserveExtra(delta int) error {
+	if delta <= 0 {
+		return nil
+	}
+	if s.counterId > 0 {
+		var probe SubscriptionRequestCounter
+		if err := dbx.DB.Where("id = ?", s.counterId).First(&probe).Error; err == nil &&
+			probe.Measure == SubscriptionMeasureQuota {
+			return dbx.DB.Transaction(func(tx *gorm.DB) error {
+				var row SubscriptionRequestCounter
+				if err := dbx.LockForUpdate(tx).Where("id = ?", s.counterId).First(&row).Error; err != nil {
+					return err
+				}
+				if row.Total > 0 && row.Used+int64(delta) > row.Total {
+					return fmt.Errorf("entitlement row has %d left, need %d", row.Total-row.Used, delta)
+				}
+				row.Used += int64(delta)
+				return tx.Save(&row).Error
+			})
+		}
+	}
+	return PostConsumeUserSubscriptionDelta(s.subscriptionId, int64(delta))
+}
+
+// ReleaseExtra undoes ReserveExtra when the reserve is rolled back.
+func (s *SubscriptionFunding) ReleaseExtra(delta int) error {
+	if delta <= 0 {
+		return nil
+	}
+	if s.counterId > 0 {
+		var probe SubscriptionRequestCounter
+		if err := dbx.DB.Where("id = ?", s.counterId).First(&probe).Error; err == nil &&
+			probe.Measure == SubscriptionMeasureQuota {
+			return dbx.DB.Transaction(func(tx *gorm.DB) error {
+				var row SubscriptionRequestCounter
+				if err := dbx.LockForUpdate(tx).Where("id = ?", s.counterId).First(&row).Error; err != nil {
+					return err
+				}
+				release := int64(delta)
+				if release > row.Used {
+					release = row.Used
+				}
+				row.Used -= release
+				return tx.Save(&row).Error
+			})
+		}
+	}
+	return PostConsumeUserSubscriptionDelta(s.subscriptionId, -int64(delta))
 }
 
 func (s *SubscriptionFunding) Refund() error {

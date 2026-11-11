@@ -58,7 +58,7 @@ async function renderWithI18n(element: React.ReactElement) {
 }
 
 describe('RequestCountBars', () => {
-  test('renders one two-row entry per counter with used/total numbers', async () => {
+  test('renders one entry per counter with the model row above a remaining bar', async () => {
     const { RequestCountBars } = await import('../request-count-bars')
     const container = await renderWithI18n(
       <RequestCountBars
@@ -75,6 +75,14 @@ describe('RequestCountBars', () => {
     assert.ok(
       container.querySelector('[class*="text-red-500"]'),
       'exhausted counter should be red'
+    )
+    assert.ok(
+      container.querySelector('[class*="bg-emerald-500"]'),
+      'the counter with requests left should show a green remaining bar'
+    )
+    assert.ok(
+      container.querySelector('[class*="bg-red-500"]'),
+      'the exhausted counter should turn its bar red'
     )
   })
 

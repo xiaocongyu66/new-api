@@ -30,9 +30,10 @@ interface RequestCountBarsProps {
 }
 
 /**
- * Renders one two-row entry per request counter: a coloured progress bar on the
- * first row and the used/total numbers on the second. Shared by the wallet card
- * and the admin user-subscription dialog.
+ * Renders one entry per request counter: the group/model row with its
+ * used/total numbers on top, and a green bar below whose length is the
+ * remaining request count — every consumed request shortens it from the
+ * right. Shared by the wallet card and the admin user-subscription dialog.
  */
 export function RequestCountBars({
   counters,
@@ -52,14 +53,14 @@ export function RequestCountBars({
       {list.map((counter) => {
         const total = Number(counter.total || 0)
         const used = Number(counter.used || 0)
-        const percent =
-          total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0
+        const remaining = Math.max(0, total - used)
+        const remainingPercent =
+          total > 0 ? Math.min(100, Math.round((remaining / total) * 100)) : 0
         const exhausted = total > 0 && used >= total
         const quotaTotal = Number(counter.quota_total || 0)
         const quotaUsed = Number(counter.quota_used || 0)
         return (
           <div key={counter.id} className='space-y-1'>
-            <Progress value={percent} className='h-1.5' />
             <div className='flex items-center justify-between gap-2 text-xs'>
               <span className='text-muted-foreground truncate'>
                 {counter.group_name} · {counter.model_name}
@@ -73,6 +74,16 @@ export function RequestCountBars({
                 {used}/{total}
               </span>
             </div>
+            {/* The green bar shows how many requests are left to spend: every
+                consumed request shortens it from the right. */}
+            <Progress
+              value={remainingPercent}
+              indicatorClassName={cn(
+                'h-full transition-all',
+                exhausted ? 'bg-red-500' : 'bg-emerald-500'
+              )}
+              className='h-1.5'
+            />
             {quotaTotal > 0 && (
               <div className='text-muted-foreground text-[10px] tabular-nums'>
                 {t('Budget')}: {formatQuota(quotaUsed)}/

@@ -19,31 +19,117 @@ For commercial licensing, please contact support@quantumnous.com
 import { type TFunction } from 'i18next'
 
 // ============================================================================
-// Subscription Kinds
+// Subscription Expiry / Limit Modes
 // ============================================================================
 
-export const SUBSCRIPTION_KINDS = [
-  { value: 'time', labelKey: 'Time-based' },
-  { value: 'quota', labelKey: 'Quota-exhausted' },
-  { value: 'request', labelKey: 'Request-count' },
+// The plan editor exposes two orthogonal single-select axes: how the
+// subscription ends (expiry) and what it grants (limit). The backend collapses
+// them into the stored kind; these helpers derive the axes back for any plan
+// payload, including legacy ones that only carry kind.
+export type PlanExpireMode = 'time' | 'quota'
+
+export function planExpireMode(plan: {
+  kind?: string
+  expire_mode?: string
+}): PlanExpireMode {
+  if (plan.expire_mode === 'time' || plan.expire_mode === 'quota') {
+    return plan.expire_mode
+  }
+  return plan.kind === 'quota' || plan.kind === 'request' ? 'quota' : 'time'
+}
+
+// planScope/planMeasure resolve the limit axes of a plan payload, falling back
+// to the legacy kind for rows saved before the axes existed.
+export type PlanScope = 'all' | 'group' | 'model'
+export type PlanMeasure = 'quota' | 'count'
+
+export function planScope(plan: {
+  kind?: string
+  scope?: string
+}): PlanScope {
+  if (plan.scope === 'all' || plan.scope === 'group' || plan.scope === 'model') {
+    return plan.scope
+  }
+  return plan.kind === 'request' ? 'model' : 'all'
+}
+
+export function planMeasure(plan: {
+  kind?: string
+  measure?: string
+}): PlanMeasure {
+  if (plan.measure === 'quota' || plan.measure === 'count') {
+    return plan.measure
+  }
+  return plan.kind === 'request' ? 'count' : 'quota'
+}
+
+export const SUBSCRIPTION_EXPIRE_MODES = [
+  { value: 'time', labelKey: 'Expires by time' },
+  { value: 'quota', labelKey: 'Expires by quota' },
 ] as const
 
-export type SubscriptionKind = (typeof SUBSCRIPTION_KINDS)[number]['value']
-
-export function getSubscriptionKindOptions(t: TFunction) {
-  return SUBSCRIPTION_KINDS.map((k) => ({
-    value: k.value,
-    label: t(k.labelKey),
+export function getPlanExpireModeOptions(t: TFunction) {
+  return SUBSCRIPTION_EXPIRE_MODES.map((mode) => ({
+    value: mode.value,
+    label: t(mode.labelKey),
   }))
 }
 
-export function getSubscriptionKindLabel(
-  kind: string | undefined,
+// The limit axes the editor exposes as small tab rows: what the granted amount
+// applies to (scope) and how it is counted (measure).
+export const SUBSCRIPTION_SCOPES = [
+  { value: 'all', labelKey: 'Shared quota' },
+  { value: 'group', labelKey: 'Per group' },
+  { value: 'model', labelKey: 'Per model' },
+] as const
+
+export const SUBSCRIPTION_MEASURES = [
+  { value: 'quota', labelKey: 'Quota' },
+  { value: 'count', labelKey: 'Request count' },
+] as const
+
+export function getPlanScopeOptions(t: TFunction) {
+  return SUBSCRIPTION_SCOPES.map((scope) => ({
+    value: scope.value,
+    label: t(scope.labelKey),
+  }))
+}
+
+export function getPlanMeasureOptions(t: TFunction) {
+  return SUBSCRIPTION_MEASURES.map((measure) => ({
+    value: measure.value,
+    label: t(measure.labelKey),
+  }))
+}
+
+export function getSubscriptionModeLabel(
+  plan: { kind?: string; expire_mode?: string; scope?: string; measure?: string },
   t: TFunction
 ): string {
-  if (kind === 'quota') return t('Quota-exhausted')
-  if (kind === 'request') return t('Request-count')
-  return t('Time-based')
+  const expire =
+    planExpireMode(plan) === 'quota' ? 'Expires by quota' : 'Expires by time'
+  const scopeValue =
+    plan.scope === 'group' || plan.scope === 'model'
+      ? plan.scope
+      : plan.kind === 'request'
+        ? 'model'
+        : 'all'
+  const scopeLabel =
+    scopeValue === 'group'
+      ? 'Per group'
+      : scopeValue === 'model'
+        ? 'Per model'
+        : 'Shared quota'
+  const measureValue =
+    plan.measure === 'quota' || plan.measure === 'count'
+      ? plan.measure
+      : plan.kind === 'request'
+        ? 'count'
+        : 'quota'
+  if (scopeValue === 'all') {
+    return `${t(expire)} · ${t(scopeLabel)}`
+  }
+  return `${t(expire)} · ${t(scopeLabel)} · ${t(measureValue === 'quota' ? 'Quota' : 'Request count')}`
 }
 
 // ============================================================================
