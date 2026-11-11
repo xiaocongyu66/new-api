@@ -135,3 +135,57 @@ func TestTaskDurationBounds(t *testing.T) {
 		})
 	}
 }
+
+func TestGetFullRequestURLHandlesOpenAICompatibleV1Base(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		baseURL     string
+		requestPath string
+		channelType int
+		want        string
+	}{
+		{
+			name:        "adds request version when base URL has none",
+			baseURL:     "https://api.example.com",
+			requestPath: "/v1/chat/completions",
+			channelType: constant.ChannelTypeOpenAI,
+			want:        "https://api.example.com/v1/chat/completions",
+		},
+		{
+			name:        "does not duplicate version in base URL",
+			baseURL:     "https://api.example.com/v1",
+			requestPath: "/v1/chat/completions",
+			channelType: constant.ChannelTypeOpenAI,
+			want:        "https://api.example.com/v1/chat/completions",
+		},
+		{
+			name:        "trims trailing slash before joining versioned path",
+			baseURL:     "https://api.example.com/v1/",
+			requestPath: "/v1/chat/completions",
+			channelType: constant.ChannelTypeOpenAI,
+			want:        "https://api.example.com/v1/chat/completions",
+		},
+		{
+			name:        "preserves non-versioned endpoint below versioned base URL",
+			baseURL:     "https://api.example.com/v1",
+			requestPath: "/models",
+			channelType: constant.ChannelTypeOpenAI,
+			want:        "https://api.example.com/v1/models",
+		},
+		{
+			name:        "preserves Cloudflare gateway path handling",
+			baseURL:     "https://gateway.ai.cloudflare.com/account/gateway/openai",
+			requestPath: "/v1/chat/completions",
+			channelType: constant.ChannelTypeOpenAI,
+			want:        "https://gateway.ai.cloudflare.com/account/gateway/openai/chat/completions",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			require.Equal(t, test.want, GetFullRequestURL(test.baseURL, test.requestPath, test.channelType))
+		})
+	}
+}
