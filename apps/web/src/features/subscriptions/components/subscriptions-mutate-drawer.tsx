@@ -17,16 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import {
-  CalendarClock,
-  CreditCard,
-  ListChecks,
-
-  RefreshCw,
-  Settings2,
-  Trash2,
-} from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { CreditCard, ListChecks, Settings2, Trash2 } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useFieldArray, useForm, type Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -67,7 +59,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 
@@ -89,13 +80,99 @@ import {
 import {
   getPlanFormSchema,
   PLAN_FORM_DEFAULTS,
-
   planToFormValues,
   formValuesToPlanPayload,
   type PlanFormValues,
 } from '../lib'
 import type { PlanRecord } from '../types'
 import { useSubscriptions } from './subscriptions-provider'
+
+interface SegmentedOption<T extends string> {
+  value: T
+  label: string
+}
+
+// SegmentedTabs renders the single-select axis picker: one row of buttons.
+// Every axis section uses it, so the tab row and its content always share the
+// same layout and spacing.
+function SegmentedTabs<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: readonly SegmentedOption<T>[]
+  value: T
+  onChange: (value: T) => void
+}) {
+  const move = (delta: number) => {
+    const index = options.findIndex((option) => option.value === value)
+    if (index < 0) return
+    const next = options[(index + delta + options.length) % options.length]
+    if (next) onChange(next.value)
+  }
+
+  return (
+    <div
+      role='group'
+      className='bg-muted/40 inline-flex w-full rounded-md border p-0.5'
+      onKeyDown={(event) => {
+        if (event.key === 'ArrowLeft') {
+          event.preventDefault()
+          move(-1)
+        } else if (event.key === 'ArrowRight') {
+          event.preventDefault()
+          move(1)
+        }
+      }}
+    >
+      {options.map((option) => (
+        <Button
+          key={option.value}
+          type='button'
+          variant={value === option.value ? 'secondary' : 'ghost'}
+          size='xs'
+          className='flex-1 shadow-none'
+          aria-pressed={value === option.value}
+          onClick={() => onChange(option.value)}
+        >
+          {option.label}
+        </Button>
+      ))}
+    </div>
+  )
+}
+
+// AxisSection owns one axis of the plan: its tab row, the explanation and the
+// fields that belong to the selected tab. The section draws the single block
+// divider; nothing inside it draws another line.
+function AxisSection({
+  title,
+  tabs,
+  description,
+  children,
+}: {
+  title: string
+  tabs?: ReactNode
+  description?: string
+  children?: ReactNode
+}) {
+  return (
+    <SideDrawerSection className='gap-4'>
+      <div className='flex flex-col gap-2'>
+        <div className='flex flex-wrap items-center justify-between gap-x-4 gap-y-2'>
+          <h3 className='shrink-0 text-sm font-medium'>{title}</h3>
+          {tabs ? (
+            <div className='min-w-0 flex-1 sm:max-w-xs'>{tabs}</div>
+          ) : null}
+        </div>
+        {description ? (
+          <p className='text-muted-foreground text-xs'>{description}</p>
+        ) : null}
+      </div>
+      {children}
+    </SideDrawerSection>
+  )
+}
 
 interface Props {
   open: boolean
@@ -136,7 +213,6 @@ export function SubscriptionsMutateDrawer({
     control: form.control,
     name: 'request_rows',
   })
-
 
   useEffect(() => {
     if (open) {
@@ -216,7 +292,9 @@ export function SubscriptionsMutateDrawer({
         (value) => value > 0
       )
       if (!hasGrant) {
-        toast.error(t('Group limits need at least one group with a positive amount'))
+        toast.error(
+          t('Group limits need at least one group with a positive amount')
+        )
         return
       }
     }
@@ -475,6 +553,117 @@ export function SubscriptionsMutateDrawer({
               <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
                 <FormField
                   control={form.control}
+                  name='max_purchase_per_user'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        {t('Purchase Limit')}{' '}
+                        <span className='text-muted-foreground font-normal'>
+                          ({t('0 means unlimited')})
+                        </span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          min={0}
+                          onChange={(e) =>
+                            field.onChange(
+                              Number.parseInt(e.target.value, 10) || 0
+                            )
+                          }
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name='sort_order'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Sort Order')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          onChange={(e) =>
+                            field.onChange(
+                              Number.parseInt(e.target.value, 10) || 0
+                            )
+                          }
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                <FormField
+                  control={form.control}
+                  name='enabled'
+                  render={({ field }) => (
+                    <FormItem
+                      className={sideDrawerSwitchItemClassName('border-y-0')}
+                    >
+                      <FormLabel className='!mt-0'>
+                        {t('Enabled Status')}
+                      </FormLabel>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name='allow_balance_pay'
+                  render={({ field }) => (
+                    <FormItem
+                      className={sideDrawerSwitchItemClassName('border-y-0')}
+                    >
+                      <FormLabel className='!mt-0'>
+                        {t('Allow balance redemption')}
+                      </FormLabel>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </SideDrawerSection>
+            {/* Limit Scope */}
+            <AxisSection
+              title={t('Limit Scope')}
+              tabs={
+                <SegmentedTabs
+                  options={scopeOpts}
+                  value={scope}
+                  onChange={(value) =>
+                    form.setValue('scope', value, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
+                />
+              }
+              description={t(
+                'Shared quota is one pool for every group; group and model limits grant their own rows'
+              )}
+            >
+              <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                <FormField
+                  control={form.control}
                   name='price_amount'
                   render={({ field }) => (
                     <FormItem>
@@ -622,599 +811,433 @@ export function SubscriptionsMutateDrawer({
                     </FormItem>
                   )}
                 />
+              </div>
+            </AxisSection>
 
+            {/* Measure Unit */}
+            {scope !== 'all' && (
+              <AxisSection
+                title={t('Measure Unit')}
+                tabs={
+                  <SegmentedTabs
+                    options={measureOpts}
+                    value={measure}
+                    onChange={(value) =>
+                      form.setValue('measure', value, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      })
+                    }
+                  />
+                }
+                description={t(
+                  'Quota measures spend in money; request count measures spend one unit per request'
+                )}
+              >
+                {/* Request Limits */}
+                {scope === 'group' && (
+                  <div className='flex flex-col gap-4'>
+                    <h3 className='flex items-center gap-2 text-sm font-medium'>
+                      <IconBadge tone='info' size='xs'>
+                        <ListChecks />
+                      </IconBadge>
+                      {t('Group Limits')}
+                    </h3>
+
+                    <FormField
+                      control={form.control}
+                      name='group_values'
+                      render={() => (
+                        <FormItem>
+                          {upgradeGroups.length === 0 ? (
+                            <p className='text-muted-foreground text-xs'>
+                              {t(
+                                'Select the upgrade groups in Basic Info first; they become the table rows'
+                              )}
+                            </p>
+                          ) : (
+                            <div className='overflow-x-auto rounded-md border px-3'>
+                              <table className='w-full border-collapse text-sm'>
+                                <thead>
+                                  <tr className='border-b'>
+                                    <th className='py-2 pr-3 text-left font-medium'>
+                                      {t('Group')}
+                                    </th>
+                                    <th className='px-2 py-2 text-left font-medium'>
+                                      {measure === 'quota'
+                                        ? t('Quota ({{currency}})', {
+                                            currency: currencyLabel,
+                                          })
+                                        : t('Count')}
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {upgradeGroups.map((group) => (
+                                    <tr
+                                      key={group}
+                                      className='border-b last:border-0'
+                                    >
+                                      <td className='py-2 pr-3 font-mono text-xs'>
+                                        {group}
+                                      </td>
+                                      <td className='px-2 py-2'>
+                                        <Input
+                                          type='number'
+                                          min={0}
+                                          step={measure === 'quota' ? 0.01 : 1}
+                                          value={groupValues[group] ?? ''}
+                                          placeholder='0'
+                                          onChange={(e) =>
+                                            form.setValue(
+                                              'group_values',
+                                              {
+                                                ...groupValues,
+                                                [group]:
+                                                  Number.parseFloat(
+                                                    e.target.value
+                                                  ) || 0,
+                                              },
+                                              { shouldDirty: true }
+                                            )
+                                          }
+                                          className='w-32'
+                                          aria-label={`${group} ${
+                                            measure === 'quota'
+                                              ? t('Quota')
+                                              : t('Count')
+                                          }`}
+                                        />
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                )}
+
+                {scope === 'model' && (
+                  <div className='flex flex-col gap-4'>
+                    <h3 className='flex items-center gap-2 text-sm font-medium'>
+                      <IconBadge tone='info' size='xs'>
+                        <ListChecks />
+                      </IconBadge>
+                      {t('Model Limits')}
+                    </h3>
+
+                    <FormField
+                      control={form.control}
+                      name='request_rows'
+                      render={() => (
+                        <FormItem>
+                          {upgradeGroups.length === 0 ? (
+                            <p className='text-muted-foreground text-xs'>
+                              {t(
+                                'Select the upgrade groups in Basic Info first; they become the table columns'
+                              )}
+                            </p>
+                          ) : (
+                            <div className='overflow-x-auto rounded-md border px-3'>
+                              <table className='w-full border-collapse text-sm'>
+                                <thead>
+                                  <tr className='border-b'>
+                                    <th className='py-2 pr-3 text-left font-medium'>
+                                      {t('Model')}
+                                    </th>
+                                    {upgradeGroups.map((group) => (
+                                      <th
+                                        key={group}
+                                        className='px-2 py-2 text-left font-medium whitespace-nowrap'
+                                      >
+                                        {group}
+                                      </th>
+                                    ))}
+                                    <th aria-label={t('Remove')} />
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {requestRowFields.map((row, index) => (
+                                    <tr
+                                      key={row.id}
+                                      className='border-b last:border-0'
+                                    >
+                                      <td className='max-w-[180px] truncate py-2 pr-3 font-mono text-xs'>
+                                        {row.model}
+                                      </td>
+                                      {upgradeGroups.map((group) => (
+                                        <td key={group} className='px-2 py-2'>
+                                          <Input
+                                            type='number'
+                                            min={0}
+                                            step={
+                                              measure === 'quota' ? 0.01 : 1
+                                            }
+                                            value={row.counts[group] ?? ''}
+                                            placeholder='0'
+                                            onChange={(e) =>
+                                              updateRequestRow(index, {
+                                                model: row.model,
+                                                counts: {
+                                                  ...row.counts,
+                                                  [group]:
+                                                    Number.parseFloat(
+                                                      e.target.value
+                                                    ) || 0,
+                                                },
+                                              })
+                                            }
+                                            className='w-24'
+                                            aria-label={`${row.model} · ${group}`}
+                                          />
+                                        </td>
+                                      ))}
+                                      <td className='py-2 pl-2'>
+                                        <Button
+                                          type='button'
+                                          variant='ghost'
+                                          size='icon'
+                                          className='h-7 w-7'
+                                          onClick={() =>
+                                            removeRequestRow(index)
+                                          }
+                                          aria-label={t('Remove')}
+                                        >
+                                          <Trash2 className='h-3.5 w-3.5' />
+                                        </Button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <div>
+                      <FormLabel className='mb-1.5 block'>
+                        {t('Add models')}
+                      </FormLabel>
+                      <MultiSelect
+                        options={availableModelOptions}
+                        selected={[]}
+                        onChange={(models) => appendRequestRows(models)}
+                        placeholder={t('Select models')}
+                        allowCreate
+                        filterByInput
+                        disabled={upgradeGroups.length === 0}
+                      />
+                    </div>
+                  </div>
+                )}
+              </AxisSection>
+            )}
+
+            {/* Expiry Method */}
+            <AxisSection
+              title={t('Expiry Method')}
+              tabs={
+                <SegmentedTabs
+                  options={expireModeOpts}
+                  value={expireMode}
+                  onChange={(value) =>
+                    form.setValue('expire_mode', value, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
+                />
+              }
+              description={t(
+                'Expires by time ends the subscription at the end of its term; expires by quota ends it once the granted quota or request counts are spent'
+              )}
+            >
+              {expireMode === 'time' && (
+                <>
+                  <FormLabel>{t('Validity Period')}</FormLabel>
+                  <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                    <FormField
+                      control={form.control}
+                      name='duration_unit'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Duration Unit')}</FormLabel>
+                          <Select
+                            items={durationUnitOpts.map((o) => ({
+                              value: o.value,
+                              label: o.label,
+                            }))}
+                            onValueChange={field.onChange}
+                            value={field.value}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent alignItemWithTrigger={false}>
+                              <SelectGroup>
+                                {durationUnitOpts.map((o) => (
+                                  <SelectItem key={o.value} value={o.value}>
+                                    {o.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {durationUnit === 'custom' ? (
+                      <FormField
+                        control={form.control}
+                        name='custom_seconds'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Custom Seconds')}</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                type='number'
+                                min={1}
+                                onChange={(e) =>
+                                  field.onChange(
+                                    Number.parseInt(e.target.value, 10) || 0
+                                  )
+                                }
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    ) : (
+                      <FormField
+                        control={form.control}
+                        name='duration_value'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Duration Value')}</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                type='number'
+                                min={1}
+                                onChange={(e) =>
+                                  field.onChange(
+                                    Number.parseInt(e.target.value, 10) || 0
+                                  )
+                                }
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+                  </div>
+
+                  {hasResetCycle && (
+                    <>
+                      <FormLabel>{t('Quota Reset')}</FormLabel>
+                      <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                        <FormField
+                          control={form.control}
+                          name='quota_reset_period'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>{t('Reset Cycle')}</FormLabel>
+                              <Select
+                                items={resetPeriodOpts.map((o) => ({
+                                  value: o.value,
+                                  label: o.label,
+                                }))}
+                                onValueChange={field.onChange}
+                                value={field.value}
+                              >
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent alignItemWithTrigger={false}>
+                                  <SelectGroup>
+                                    {resetPeriodOpts.map((o) => (
+                                      <SelectItem key={o.value} value={o.value}>
+                                        {o.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectGroup>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name='quota_reset_custom_seconds'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>{t('Custom Seconds')}</FormLabel>
+                              <FormControl>
+                                <Input
+                                  {...field}
+                                  type='number'
+                                  min={0}
+                                  disabled={resetPeriod !== 'custom'}
+                                  onChange={(e) =>
+                                    field.onChange(
+                                      Number.parseInt(e.target.value, 10) || 0
+                                    )
+                                  }
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+
+              {/* Wallet fallback only covers the "pool exhausted before the
+                  term ends" window; a quota-expiry plan has no such window. */}
+              {expireMode === 'time' && (
                 <FormField
                   control={form.control}
-                  name='max_purchase_per_user'
+                  name='allow_wallet_overflow'
                   render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                      {t('Purchase Limit')}{' '}
-                      <span className='text-muted-foreground font-normal'>
-                        ({t('0 means unlimited')})
-                      </span>
-                    </FormLabel>
+                    <FormItem
+                      className={sideDrawerSwitchItemClassName('border-y-0')}
+                    >
+                      <FormLabel className='!mt-0'>
+                        {t('Allow wallet balance after quota used up')}
+                      </FormLabel>
                       <FormControl>
-                        <Input
-                          {...field}
-                          type='number'
-                          min={0}
-                          onChange={(e) =>
-                            field.onChange(
-                              Number.parseInt(e.target.value, 10) || 0
-                            )
-                          }
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
                         />
                       </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <FormField
-                control={form.control}
-                name='sort_order'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Sort Order')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        type='number'
-                        onChange={(e) =>
-                          field.onChange(
-                            Number.parseInt(e.target.value, 10) || 0
-                          )
-                        }
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </SideDrawerSection>
-            {/* Expiry & Limit Modes */}
-            <SideDrawerSection className='gap-4'>
-              <FormField
-                control={form.control}
-                name='expire_mode'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Expiry Method')}</FormLabel>
-                    <FormControl>
-                      <div className='bg-muted/40 inline-flex w-full rounded-md border p-0.5'>
-                        {expireModeOpts.map((option) => (
-                          <Button
-                            key={option.value}
-                            type='button'
-                            variant={field.value === option.value ? 'secondary' : 'ghost'}
-                            size='sm'
-                            className='flex-1 shadow-none'
-                            onClick={() => field.onChange(option.value)}
-                          >
-                            {option.label}
-                          </Button>
-                        ))}
-                      </div>
-                    </FormControl>
-                    <FormDescription>
-                      {t(
-                        'Expires by time ends the subscription at the end of its term; expires by quota ends it once the granted quota or request counts are spent'
-                      )}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <Separator />
-
-              <FormField
-                control={form.control}
-                name='scope'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Limit Scope')}</FormLabel>
-                    <FormControl>
-                      <div className='bg-muted/40 inline-flex w-full rounded-md border p-0.5'>
-                        {scopeOpts.map((option) => (
-                          <Button
-                            key={option.value}
-                            type='button'
-                            variant={
-                              field.value === option.value
-                                ? 'secondary'
-                                : 'ghost'
-                            }
-                            size='sm'
-                            className='flex-1 shadow-none'
-                            onClick={() => field.onChange(option.value)}
-                          >
-                            {option.label}
-                          </Button>
-                        ))}
-                      </div>
-                    </FormControl>
-                    <FormDescription>
-                      {t(
-                        'Shared quota is one pool for every group; group and model limits grant their own rows'
-                      )}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {scope !== 'all' && (
-                <FormField
-                  control={form.control}
-                  name='measure'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Measure Unit')}</FormLabel>
-                      <FormControl>
-                        <div className='bg-muted/40 inline-flex w-full rounded-md border p-0.5'>
-                          {measureOpts.map((option) => (
-                            <Button
-                              key={option.value}
-                              type='button'
-                              variant={
-                                field.value === option.value
-                                  ? 'secondary'
-                                  : 'ghost'
-                              }
-                              size='sm'
-                              className='flex-1 shadow-none'
-                              onClick={() => field.onChange(option.value)}
-                            >
-                              {option.label}
-                            </Button>
-                          ))}
-                        </div>
-                      </FormControl>
-                      <FormDescription>
-                        {t(
-                          'Quota measures spend in money; request count measures spend one unit per request'
-                        )}
-                      </FormDescription>
-                      <FormMessage />
                     </FormItem>
                   )}
                 />
               )}
-
-              <Separator />
-            </SideDrawerSection>
-
-            {/* Duration Settings */}
-            {expireMode === 'time' && (
-              <SideDrawerSection>
-                <h3 className='flex items-center gap-2 text-sm font-medium'>
-                  <IconBadge tone='chart-4' size='xs'>
-                    <CalendarClock />
-                  </IconBadge>
-                  {t('Duration Settings')}
-                </h3>
-
-                <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
-                  <FormField
-                    control={form.control}
-                    name='duration_unit'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Duration Unit')}</FormLabel>
-                        <Select
-                          items={durationUnitOpts.map((o) => ({
-                            value: o.value,
-                            label: o.label,
-                          }))}
-                          onValueChange={field.onChange}
-                          value={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent alignItemWithTrigger={false}>
-                            <SelectGroup>
-                              {durationUnitOpts.map((o) => (
-                                <SelectItem key={o.value} value={o.value}>
-                                  {o.label}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {durationUnit === 'custom' ? (
-                    <FormField
-                      control={form.control}
-                      name='custom_seconds'
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{t('Custom Seconds')}</FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              type='number'
-                              min={1}
-                              onChange={(e) =>
-                                field.onChange(
-                                  Number.parseInt(e.target.value, 10) || 0
-                                )
-                              }
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  ) : (
-                    <FormField
-                      control={form.control}
-                      name='duration_value'
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{t('Duration Value')}</FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              type='number'
-                              min={1}
-                              onChange={(e) =>
-                                field.onChange(
-                                  Number.parseInt(e.target.value, 10) || 0
-                                )
-                              }
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  )}
-                </div>
-              </SideDrawerSection>
-            )}
-
-            {/* Quota Reset */}
-            {hasResetCycle && (
-              <SideDrawerSection>
-                <h3 className='flex items-center gap-2 text-sm font-medium'>
-                  <IconBadge tone='success' size='xs'>
-                    <RefreshCw />
-                  </IconBadge>
-                  {t('Quota Reset')}
-                </h3>
-
-                <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
-                  <FormField
-                    control={form.control}
-                    name='quota_reset_period'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Reset Cycle')}</FormLabel>
-                        <Select
-                          items={resetPeriodOpts.map((o) => ({
-                            value: o.value,
-                            label: o.label,
-                          }))}
-                          onValueChange={field.onChange}
-                          value={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent alignItemWithTrigger={false}>
-                            <SelectGroup>
-                              {resetPeriodOpts.map((o) => (
-                                <SelectItem key={o.value} value={o.value}>
-                                  {o.label}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name='quota_reset_custom_seconds'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Custom Seconds')}</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type='number'
-                            min={0}
-                            disabled={resetPeriod !== 'custom'}
-                            onChange={(e) =>
-                              field.onChange(
-                                Number.parseInt(e.target.value, 10) || 0
-                              )
-                            }
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </SideDrawerSection>
-            )}
-
-            {/* Request Limits */}
-            {scope === 'group' && (
-              <SideDrawerSection>
-                <h3 className='flex items-center gap-2 text-sm font-medium'>
-                  <IconBadge tone='info' size='xs'>
-                    <ListChecks />
-                  </IconBadge>
-                  {t('Group Limits')}
-                </h3>
-
-                <FormField
-                  control={form.control}
-                  name='group_values'
-                  render={() => (
-                    <FormItem>
-                      {upgradeGroups.length === 0 ? (
-                        <p className='text-muted-foreground text-xs'>
-                          {t(
-                            'Select the upgrade groups in Basic Info first; they become the table rows'
-                          )}
-                        </p>
-                      ) : (
-                        <div className='overflow-x-auto'>
-                          <table className='w-full border-collapse text-sm'>
-                            <thead>
-                              <tr className='border-b'>
-                                <th className='py-2 pr-3 text-left font-medium'>
-                                  {t('Group')}
-                                </th>
-                                <th className='px-2 py-2 text-left font-medium'>
-                                  {measure === 'quota'
-                                    ? t('Quota ({{currency}})', {
-                                        currency: currencyLabel,
-                                      })
-                                    : t('Count')}
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {upgradeGroups.map((group) => (
-                                <tr key={group} className='border-b last:border-0'>
-                                  <td className='py-2 pr-3 font-mono text-xs'>
-                                    {group}
-                                  </td>
-                                  <td className='px-2 py-2'>
-                                    <Input
-                                      type='number'
-                                      min={0}
-                                      step={measure === 'quota' ? 0.01 : 1}
-                                      value={groupValues[group] ?? ''}
-                                      placeholder='0'
-                                      onChange={(e) =>
-                                        form.setValue(
-                                          'group_values',
-                                          {
-                                            ...groupValues,
-                                            [group]:
-                                              Number.parseFloat(
-                                                e.target.value
-                                              ) || 0,
-                                          },
-                                          { shouldDirty: true }
-                                        )
-                                      }
-                                      className='w-32'
-                                      aria-label={`${group} ${
-                                        measure === 'quota'
-                                          ? t('Quota')
-                                          : t('Count')
-                                      }`}
-                                    />
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </SideDrawerSection>
-            )}
-
-            {scope === 'model' && (
-              <SideDrawerSection>
-                <h3 className='flex items-center gap-2 text-sm font-medium'>
-                  <IconBadge tone='info' size='xs'>
-                    <ListChecks />
-                  </IconBadge>
-                  {t('Model Limits')}
-                </h3>
-
-                <FormField
-                  control={form.control}
-                  name='request_rows'
-                  render={() => (
-                    <FormItem>
-                      {upgradeGroups.length === 0 ? (
-                        <p className='text-muted-foreground text-xs'>
-                          {t(
-                            'Select the upgrade groups in Basic Info first; they become the table columns'
-                          )}
-                        </p>
-                      ) : (
-                        <div className='overflow-x-auto'>
-                          <table className='w-full border-collapse text-sm'>
-                            <thead>
-                              <tr className='border-b'>
-                                <th className='py-2 pr-3 text-left font-medium'>
-                                  {t('Model')}
-                                </th>
-                                {upgradeGroups.map((group) => (
-                                  <th
-                                    key={group}
-                                    className='px-2 py-2 text-left font-medium whitespace-nowrap'
-                                  >
-                                    {group}
-                                  </th>
-                                ))}
-                                <th aria-label={t('Remove')} />
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {requestRowFields.map((row, index) => (
-                                <tr
-                                  key={row.id}
-                                  className='border-b last:border-0'
-                                >
-                                  <td className='max-w-[180px] truncate py-2 pr-3 font-mono text-xs'>
-                                    {row.model}
-                                  </td>
-                                  {upgradeGroups.map((group) => (
-                                    <td key={group} className='px-2 py-2'>
-                                      <Input
-                                        type='number'
-                                        min={0}
-                                        step={measure === 'quota' ? 0.01 : 1}
-                                        value={row.counts[group] ?? ''}
-                                        placeholder='0'
-                                        onChange={(e) =>
-                                          updateRequestRow(index, {
-                                            model: row.model,
-                                            counts: {
-                                              ...row.counts,
-                                              [group]:
-                                                Number.parseFloat(
-                                                  e.target.value
-                                                ) || 0,
-                                            },
-                                          })
-                                        }
-                                        className='w-24'
-                                        aria-label={`${row.model} · ${group}`}
-                                      />
-                                    </td>
-                                  ))}
-                                  <td className='py-2 pl-2'>
-                                    <Button
-                                      type='button'
-                                      variant='ghost'
-                                      size='icon'
-                                      className='h-7 w-7'
-                                      onClick={() => removeRequestRow(index)}
-                                      aria-label={t('Remove')}
-                                    >
-                                      <Trash2 className='h-3.5 w-3.5' />
-                                    </Button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div>
-                  <FormLabel className='mb-1.5 block'>
-                    {t('Add models')}
-                  </FormLabel>
-                  <MultiSelect
-                    options={availableModelOptions}
-                    selected={[]}
-                    onChange={(models) => appendRequestRows(models)}
-                    placeholder={t('Select models')}
-                    allowCreate
-                    filterByInput
-                    disabled={upgradeGroups.length === 0}
-                  />
-                </div>
-              </SideDrawerSection>
-            )}
-
-            {/* Status & Redemption */}
-            <SideDrawerSection>
-              <div className='flex flex-col gap-3'>
-                <FormField
-                  control={form.control}
-                  name='enabled'
-                  render={({ field }) => (
-                    <FormItem className={sideDrawerSwitchItemClassName()}>
-                      <FormLabel className='!mt-0'>
-                        {t('Enabled Status')}
-                      </FormLabel>
-                      <FormControl>
-                        <Switch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='allow_balance_pay'
-                  render={({ field }) => (
-                    <FormItem className={sideDrawerSwitchItemClassName()}>
-                      <FormLabel className='!mt-0'>
-                        {t('Allow balance redemption')}
-                      </FormLabel>
-                      <FormControl>
-                        <Switch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-
-                {/* Wallet fallback only covers the "pool exhausted before the
-                    term ends" window; a quota-expiry plan has no such window. */}
-                {expireMode === 'time' && (
-                  <FormField
-                    control={form.control}
-                    name='allow_wallet_overflow'
-                    render={({ field }) => (
-                      <FormItem className={sideDrawerSwitchItemClassName()}>
-                        <FormLabel className='!mt-0'>
-                          {t('Allow wallet balance after quota used up')}
-                        </FormLabel>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                )}
-              </div>
-            </SideDrawerSection>
+            </AxisSection>
 
             {/* Payment Config */}
             <SideDrawerSection>
@@ -1230,7 +1253,7 @@ export function SubscriptionsMutateDrawer({
                 name='stripe_price_id'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Stripe Price ID</FormLabel>
+                    <FormLabel>{t('Stripe Price ID')}</FormLabel>
                     <FormControl>
                       <Input {...field} placeholder='price_...' />
                     </FormControl>
@@ -1244,7 +1267,7 @@ export function SubscriptionsMutateDrawer({
                 name='creem_product_id'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Creem Product ID</FormLabel>
+                    <FormLabel>{t('Creem Product ID')}</FormLabel>
                     <FormControl>
                       <Input {...field} placeholder='prod_...' />
                     </FormControl>
@@ -1270,7 +1293,7 @@ export function SubscriptionsMutateDrawer({
                   }
                   return (
                     <FormItem>
-                      <FormLabel>Waffo Pancake Product ID</FormLabel>
+                      <FormLabel>{t('Waffo Pancake Product ID')}</FormLabel>
                       <div className='flex gap-2'>
                         <Select
                           items={items}
