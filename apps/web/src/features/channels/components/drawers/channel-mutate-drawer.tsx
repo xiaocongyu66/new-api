@@ -4365,14 +4365,17 @@ function ChannelMutateDrawerContent({
                                             field.onChange(next)
                                           }}
                                         >
-                                          <FormControl>
-                                            <SelectTrigger
-                                              disabled={presetsLoading}
-                                              className='min-w-0 max-w-full'
-                                            >
-                                              <SelectValue />
-                                            </SelectTrigger>
-                                          </FormControl>
+                                          {/* Not wrapped in FormControl on
+                                              purpose: the Switch below owns the
+                                              field id, and a second owner would
+                                              make the label point at this
+                                              trigger instead of the switch. */}
+                                          <SelectTrigger
+                                            disabled={presetsLoading}
+                                            className='min-w-0 max-w-full'
+                                          >
+                                            <SelectValue />
+                                          </SelectTrigger>
                                           {/* The panel paints a solid popover
                                               colour — the translucent float
                                               surface let the busy form bleed
