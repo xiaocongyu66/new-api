@@ -299,7 +299,7 @@ just dev-wt-dev   # containerized PostgreSQL + local Go API (dev tag, auto-login
 | `RELAY_TIMEOUT` | Whole relay request timeout, seconds. `0` = no limit; set it to bound non-stream requests | `0` |
 | `STREAMING_TIMEOUT` | Streaming timeout (seconds) | `300` |
 | `STREAM_SCANNER_MAX_BUFFER_MB` | Max per-line buffer (MB) for the stream scanner; increase when upstream sends huge image/base64 payloads | `128` |
-| `MAX_REQUEST_BODY_MB` | Max request body size (MB, counted **after decompression**; prevents huge requests/zip bombs from exhausting memory). Exceeding it returns `413` | `128` |
+| `MAX_REQUEST_BODY_MB` | Max request body size (MB). Enforced twice: as the HTTP layer's request-body ceiling and again on the **decompressed** stream, so a compressed body cannot expand past it (zip-bomb guard). Exceeding it returns `413` | `10` |
 | `AZURE_DEFAULT_API_VERSION` | Azure API version | `2025-04-01-preview` |
 | `ERROR_LOG_ENABLED` | Error log switch | `false` |
 | `PYROSCOPE_URL` | Pyroscope server address | - |

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/QuantumNous/new-api/internal/constant"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/transport/fiberadapter/connwatch"
 
@@ -23,6 +24,15 @@ import (
 // copy Shutdown is called on.
 func NewEngine(onPanic func(c contract.Context, recovered any)) contract.Engine {
 	app := fiber.New(fiber.Config{
+		// BodyLimit is the HTTP layer's ceiling on the request body. Left unset,
+		// fiber applies its own 4 MiB default, which no deployment variable
+		// could raise: a relay request carrying a few images or a long context
+		// was rejected with 413 before any relay code ran, so the access log
+		// showed a bare 404 and no consume/error row was ever written. It
+		// follows MAX_REQUEST_BODY_MB so the documented knob is the real limit;
+		// the same value caps the post-decompression stream, so the two layers
+		// agree.
+		BodyLimit: constant.MaxRequestBodyMB << 20,
 		// TrustProxy keeps fiber from consulting ProxyHeader on its own: this
 		// adapter never calls c.IP(), running its own forwarded-header walk in
 		// router.go instead.
