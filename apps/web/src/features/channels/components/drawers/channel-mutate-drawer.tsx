@@ -4347,12 +4347,63 @@ function ChannelMutateDrawerContent({
                               name='system_prompt_preset'
                               render={({ field }) => (
                                 <FormItem>
-                                  <div className='flex items-center justify-between'>
-                                    <div className='space-y-0.5'>
-                                      <FormLabel>{t('Jailbreak')}</FormLabel>
-                                      <FormDescription>
-                                        {t('Prepend the jailbreak preset to the system prompt (counts toward context and input tokens)')}
-                                      </FormDescription>
+                                  <div className='flex items-center justify-between gap-3'>
+                                    <div className='flex min-w-0 flex-1 items-center gap-3'>
+                                      <FormLabel className='shrink-0'>
+                                        {t('Jailbreak')}
+                                      </FormLabel>
+                                      {field.value ? (
+                                        <Select
+                                          items={systemPromptPresetItems}
+                                          value={
+                                            field.value ||
+                                            SYSTEM_PROMPT_PRESET_AUTO
+                                          }
+                                          onValueChange={(value) => {
+                                            const next = value ?? ''
+                                            lastJailbreakPresetRef.current = next
+                                            field.onChange(next)
+                                          }}
+                                        >
+                                          <FormControl>
+                                            <SelectTrigger
+                                              disabled={presetsLoading}
+                                              className='min-w-0 max-w-full'
+                                            >
+                                              <SelectValue />
+                                            </SelectTrigger>
+                                          </FormControl>
+                                          {/* The panel paints a solid popover
+                                              colour — the translucent float
+                                              surface let the busy form bleed
+                                              through — and sizes to its widest
+                                              preset instead of inheriting the
+                                              trigger width, which cut the long
+                                              labels. */}
+                                          <SelectContent
+                                            alignItemWithTrigger={false}
+                                            className='w-max min-w-[var(--anchor-width)] max-w-[calc(100vw-2rem)] [--float-surface:var(--popover)]'
+                                          >
+                                            {systemPromptPresetGroups.map(
+                                              (group) => (
+                                                <SelectGroup key={group.family}>
+                                                  <SelectLabel>
+                                                    {group.label}
+                                                  </SelectLabel>
+                                                  {group.items.map((item) => (
+                                                    <SelectItem
+                                                      key={item.value}
+                                                      value={item.value}
+                                                    >
+                                                      {item.label}
+                                                    </SelectItem>
+                                                  ))}
+                                                </SelectGroup>
+                                              )
+                                            )}
+                                          </SelectContent>
+                                        </Select>
+                                      ) : null}
                                     </div>
                                     <FormControl>
                                       <Switch
@@ -4375,53 +4426,16 @@ function ChannelMutateDrawerContent({
                                       />
                                     </FormControl>
                                   </div>
-                                  {field.value ? (
-                                    <Select
-                                      items={systemPromptPresetItems}
-                                      value={
-                                        field.value || SYSTEM_PROMPT_PRESET_AUTO
-                                      }
-                                      onValueChange={(value) => {
-                                        const next = value ?? ''
-                                        lastJailbreakPresetRef.current = next
-                                        field.onChange(next)
-                                      }}
-                                    >
-                                      <FormControl>
-                                        <SelectTrigger
-                                          disabled={presetsLoading}
-                                        >
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                      </FormControl>
-                                      <SelectContent
-                                        alignItemWithTrigger={false}
-                                      >
-                                        {systemPromptPresetGroups.map(
-                                          (group) => (
-                                            <SelectGroup key={group.family}>
-                                              <SelectLabel>
-                                                {group.label}
-                                              </SelectLabel>
-                                              {group.items.map((item) => (
-                                                <SelectItem
-                                                  key={item.value}
-                                                  value={item.value}
-                                                >
-                                                  {item.label}
-                                                </SelectItem>
-                                              ))}
-                                            </SelectGroup>
-                                          )
-                                        )}
-                                      </SelectContent>
-                                    </Select>
-                                  ) : null}
                                   <FormDescription>
-                                    {t(
-                                      'Automatic selection picks the preset matching the request model; pick a fixed preset to use it for every model.'
-                                    )}
+                                    {t('Prepend the jailbreak preset to the system prompt (counts toward context and input tokens)')}
                                   </FormDescription>
+                                  {field.value ? (
+                                    <FormDescription>
+                                      {t(
+                                        'Automatic selection picks the preset matching the request model; pick a fixed preset to use it for every model.'
+                                      )}
+                                    </FormDescription>
+                                  ) : null}
                                   <FormMessage />
                                 </FormItem>
                               )}
