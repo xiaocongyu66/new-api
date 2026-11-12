@@ -85,8 +85,25 @@ describe('AuthedShellSkeleton', () => {
     )
     expect(hasSecondaryPanel).toBe(false)
 
-    const main = host.querySelector('main')
-    expect(main?.getAttribute('role')).toBe('status')
+    const status = host.querySelector('[role=status]')
+    expect(status?.tagName).toBe('DIV')
+    // The mounted layout already provides the main landmark.
+    expect(host.querySelector('main')).toBeNull()
+    expect(host.querySelector('[data-testid=skeleton-content]')).not.toBeNull()
+  })
+
+  it('keeps the content-only branch through intermediate elements', async () => {
+    const { host } = await renderSkeleton(
+      <RouteShellMountedProvider>
+        <div>
+          <AuthedShellSkeleton>
+            <div data-testid='skeleton-content' />
+          </AuthedShellSkeleton>
+        </div>
+      </RouteShellMountedProvider>
+    )
+
+    expect(host.querySelector('header')).toBeNull()
     expect(host.querySelector('[data-testid=skeleton-content]')).not.toBeNull()
   })
 })

@@ -62,16 +62,17 @@ export function AuthedShellSkeleton({ children }: { children: ReactNode }) {
 
   // A child route's pending window opens inside the mounted layout. Drawing
   // the header/rail/panel again would show a second sidebar next to the real
-  // one, so only the content area is replaced.
+  // one, so only the content area is replaced. A div rather than main: the
+  // layout already supplies the page's main landmark.
   if (shellMounted) {
     return (
-      <main
+      <div
         role='status'
         aria-live='polite'
         className='bg-page-surface flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
       >
         {children}
-      </main>
+      </div>
     )
   }
 
