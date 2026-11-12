@@ -16,10 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { ReactNode } from 'react'
+import { useContext, type ReactNode } from 'react'
 
 import { SkeletonBlock } from '@/components/loading-state'
 import { cn } from '@/lib/utils'
+
+import { RouteShellMountedContext } from './shell-context'
 
 /**
  * Layout shells and content archetypes for route-level pending skeletons.
@@ -56,6 +58,23 @@ export function PublicShellSkeleton({ children }: { children: ReactNode }) {
 }
 
 export function AuthedShellSkeleton({ children }: { children: ReactNode }) {
+  const shellMounted = useContext(RouteShellMountedContext)
+
+  // A child route's pending window opens inside the mounted layout. Drawing
+  // the header/rail/panel again would show a second sidebar next to the real
+  // one, so only the content area is replaced.
+  if (shellMounted) {
+    return (
+      <main
+        role='status'
+        aria-live='polite'
+        className='bg-page-surface flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
+      >
+        {children}
+      </main>
+    )
+  }
+
   return (
     <div role='status' aria-live='polite' className='flex min-h-svh flex-col'>
       <header className='flex h-14 shrink-0 items-center gap-3 border-b px-4'>
