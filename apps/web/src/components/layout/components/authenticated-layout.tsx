@@ -23,6 +23,7 @@ import { LayoutProvider } from '@/context/layout-provider'
 import { SearchProvider } from '@/context/search-provider'
 import { getCookie } from '@/lib/cookies'
 import { cn } from '@/lib/utils'
+import { RouteShellMountedProvider } from '@/route-skeletons/shell-mounted-provider'
 
 import { AppHeader } from './app-header'
 import { AppSidebar } from './app-sidebar'
@@ -63,7 +64,9 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
                 'peer-data-[variant=inset]:h-[calc(100svh-var(--app-header-height,0px)-(var(--spacing)*4))]'
               )}
             >
-              {props.children ?? <AnimatedOutlet />}
+              <RouteShellMountedProvider>
+                {props.children ?? <AnimatedOutlet />}
+              </RouteShellMountedProvider>
             </SidebarInset>
           </div>
         </SidebarProvider>
