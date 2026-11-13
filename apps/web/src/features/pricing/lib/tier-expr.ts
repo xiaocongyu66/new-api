@@ -293,6 +293,9 @@ export function evalExprLocally(
       c: completionTokens,
       len,
       tier: tierFn,
+      // Match backend fixed(usd): return on the same $/1M-token scale used by
+      // token terms so the estimator can display the expression's raw cost.
+      fixed: (amount: number) => amount * 1_000_000,
       max: Math.max,
       min: Math.min,
       abs: Math.abs,

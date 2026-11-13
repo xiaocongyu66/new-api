@@ -42,52 +42,27 @@ const baseApiKey: ApiKey = {
   allow_ips: '',
 }
 
-describe('API key token setting parsing', () => {
-  test('normalizes a preset the binary no longer ships to empty on edit', () => {
+describe('API key form mapping', () => {
+  test('loads stored model limits without restoring token prompt settings', () => {
     const defaults = transformApiKeyToFormDefaults({
       ...baseApiKey,
+      model_limits: 'model-a,model-b',
       setting: JSON.stringify({
-        system_prompt_preset: 'removed_by_upgrade',
+        system_prompt_preset: 'silly_tavern',
         system_prompt: 'keep me',
         user_system_prompt_override: true,
       }),
     })
 
-    assert.equal(defaults.system_prompt_preset, '')
-    assert.equal(defaults.system_prompt, 'keep me')
-    assert.equal(defaults.user_system_prompt_override, true)
+    assert.deepEqual(defaults.model_limits, ['model-a', 'model-b'])
+    assert.equal('system_prompt_preset' in defaults, false)
+    assert.equal('system_prompt' in defaults, false)
+    assert.equal('user_system_prompt_override' in defaults, false)
   })
 
-  test('keeps a preset the binary still ships and drops malformed JSON', () => {
-    const live = transformApiKeyToFormDefaults({
-      ...baseApiKey,
-      setting: JSON.stringify({ system_prompt_preset: 'silly_tavern' }),
-    })
-    assert.equal(live.system_prompt_preset, 'silly_tavern')
+  test('clears token prompt settings when saving', () => {
+    const defaults = transformApiKeyToFormDefaults(baseApiKey)
 
-    const corrupted = transformApiKeyToFormDefaults({
-      ...baseApiKey,
-      setting: '{not json',
-    })
-    assert.equal(corrupted.system_prompt_preset, '')
-    assert.equal(corrupted.system_prompt, '')
-    assert.equal(corrupted.user_system_prompt_override, false)
-  })
-
-  test('saving a normalized token clears only the stale preset', () => {
-    const defaults = transformApiKeyToFormDefaults({
-      ...baseApiKey,
-      setting: JSON.stringify({
-        system_prompt_preset: 'removed_by_upgrade',
-        system_prompt: 'keep me',
-        user_system_prompt_override: true,
-      }),
-    })
-
-    assert.deepEqual(JSON.parse(transformFormDataToPayload(defaults).setting), {
-      system_prompt_preset: '',
-      system_prompt: 'keep me',
-      user_system_prompt_override: true,
-    })
+    assert.equal(transformFormDataToPayload(defaults).setting, '')
   })
 })

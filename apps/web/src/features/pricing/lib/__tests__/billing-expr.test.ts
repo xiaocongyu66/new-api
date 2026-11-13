@@ -21,6 +21,45 @@ import assert from 'node:assert/strict'
 
 import { parseTiersFromExpr } from '../billing-expr'
 import { getDynamicPriceEntries, getTierBoundLabel } from '../dynamic-price'
+import { evalExprLocally, type ExtraTokenValues } from '../tier-expr'
+
+const emptyExtraTokens: ExtraTokenValues = {
+  cacheReadTokens: 0,
+  cacheCreateTokens: 0,
+  cacheCreate1hTokens: 0,
+  imageTokens: 0,
+  imageOutputTokens: 0,
+  audioInputTokens: 0,
+  audioOutputTokens: 0,
+}
+
+describe('evalExprLocally fixed prices', () => {
+  test('evaluates a fixed-price context ladder and records the matched tier', () => {
+    const result = evalExprLocally(
+      'len <= 100000 ? tier("100K", fixed(0.21)) : tier("default", fixed(0.5376))',
+      50000,
+      0,
+      emptyExtraTokens
+    )
+
+    assert.equal(result.error, null)
+    assert.equal(result.cost, 210000)
+    assert.equal(result.matchedTier, '100K')
+  })
+
+  test('adds a fixed per-request fee to token pricing', () => {
+    const result = evalExprLocally(
+      'tier("base", fixed(0.01) + p * 2 + c * 8)',
+      1000,
+      100,
+      emptyExtraTokens
+    )
+
+    assert.equal(result.error, null)
+    assert.equal(result.cost, 12800)
+    assert.equal(result.matchedTier, 'base')
+  })
+})
 
 function prices(expr: string) {
   return parseTiersFromExpr(expr).map((tier) => [
