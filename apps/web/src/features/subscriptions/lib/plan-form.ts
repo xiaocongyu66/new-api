@@ -42,6 +42,8 @@ export function getPlanFormSchema(t: TFunction) {
       subtitle: z.string().optional(),
       price_amount: z.coerce.number().min(0, t('Please enter amount')),
       expire_mode: z.enum(['time', 'quota']),
+      // 'all' stays accepted so a plan the conversion has not rewritten yet
+      // can still be opened and saved; the drawer only offers it in edit mode.
       scope: z.enum(['all', 'group', 'model']),
       measure: z.enum(['quota', 'count']),
       duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
@@ -159,7 +161,7 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   subtitle: '',
   price_amount: 0,
   expire_mode: 'time',
-  scope: 'all',
+  scope: 'group',
   measure: 'quota',
   duration_unit: 'month',
   duration_value: 1,

@@ -34,7 +34,12 @@ import {
   type PlanFormValues,
   type RequestMatrixRow,
 } from '../plan-form'
-import { planExpireMode, planMeasure, planScope } from '../../constants'
+import {
+  getPlanScopeOptions,
+  planExpireMode,
+  planMeasure,
+  planScope,
+} from '../../constants'
 
 const t = ((key: string) => key) as unknown as TFunction
 
@@ -194,9 +199,10 @@ describe('formValuesToPlanPayload', () => {
     title: 'plan',
   }
 
-  test('shared pool keeps the reset period and no rules', () => {
+  test('legacy shared pool keeps the reset period and no rules', () => {
     const payload = formValuesToPlanPayload({
       ...base,
+      scope: 'all',
       quota_reset_period: 'custom',
       quota_reset_custom_seconds: 90,
       total_amount: 12,
@@ -210,6 +216,12 @@ describe('formValuesToPlanPayload', () => {
     assert.equal(payload.plan.measure, 'quota')
     assert.equal('request_rows' in payload.plan, false)
     assert.equal('group_values' in payload.plan, false)
+  })
+
+  test('new plans default to per-group scope and hide the shared quota option', () => {
+    assert.equal(PLAN_FORM_DEFAULTS.scope, 'group')
+    const values = getPlanScopeOptions(t).map((option) => option.value)
+    assert.deepEqual(values, ['group', 'model'])
   })
 
   test('scoped plans drop the shared pool and force reset to never', () => {

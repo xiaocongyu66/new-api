@@ -361,10 +361,14 @@ export function SubscriptionPurchaseDialog(props: Props) {
                 className='flex items-start justify-between gap-3'
               >
                 <span className='text-muted-foreground text-sm'>
-                  {t('Request Limits')}
+                  {planMeasure(plan) === 'quota'
+                    ? t('Group Limits')
+                    : t('Request Limits')}
                 </span>
                 <span className='text-right text-sm'>
-                  {rule.group} · {rule.models.join(', ')} × {rule.count}
+                  {planMeasure(plan) === 'quota'
+                    ? `${rule.group} · ${formatQuota(Number(rule.amount_display || 0))}`
+                    : `${rule.group} · ${rule.models.join(', ')} × ${rule.count}`}
                 </span>
               </div>
             ))}

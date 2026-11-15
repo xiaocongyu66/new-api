@@ -76,12 +76,21 @@ export function getPlanExpireModeOptions(t: TFunction) {
 }
 
 // The limit axes the editor exposes as small tab rows: what the granted amount
-// applies to (scope) and how it is counted (measure).
+// applies to (scope) and how it is counted (measure). Shared quota is retired:
+// it stays readable for rows awaiting the one-time conversion, but it is not a
+// selectable scope anymore.
 export const SUBSCRIPTION_SCOPES = [
-  { value: 'all', labelKey: 'Shared quota' },
   { value: 'group', labelKey: 'Per group' },
   { value: 'model', labelKey: 'Per model' },
 ] as const
+
+// LEGACY_SHARED_SCOPE_LABEL is only shown while editing a plan the conversion
+// has not rewritten yet; the option is appended by the drawer in edit mode.
+export const LEGACY_SHARED_SCOPE_LABEL = 'Shared quota (legacy)'
+
+export function getLegacyPlanScopeOption(t: TFunction) {
+  return { value: 'all' as const, label: t(LEGACY_SHARED_SCOPE_LABEL) }
+}
 
 export const SUBSCRIPTION_MEASURES = [
   { value: 'quota', labelKey: 'Quota' },

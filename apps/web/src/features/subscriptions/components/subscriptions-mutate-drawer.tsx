@@ -72,10 +72,13 @@ import {
 } from '../api'
 import {
   getDurationUnitOptions,
+  getLegacyPlanScopeOption,
   getPlanExpireModeOptions,
   getPlanMeasureOptions,
   getPlanScopeOptions,
   getResetPeriodOptions,
+  planScope,
+  type PlanScope,
 } from '../constants'
 import {
   getPlanFormSchema,
@@ -252,6 +255,10 @@ export function SubscriptionsMutateDrawer({
   const expireMode = form.watch('expire_mode')
   const scope = form.watch('scope')
   const measure = form.watch('measure')
+  // The retired shared quota is not selectable; it only stays reachable while
+  // editing a plan the one-time conversion has not rewritten yet.
+  const isLegacySharedPlan =
+    isEdit && !!currentRow?.plan && planScope(currentRow.plan) === 'all'
   // Only shared-pool plans with time expiry carry a reset cycle.
   const hasResetCycle = scope === 'all' && expireMode === 'time'
 
@@ -287,6 +294,12 @@ export function SubscriptionsMutateDrawer({
     Number(watchedPrice ?? 0) > 0
 
   const onSubmit = async (values: PlanFormValues) => {
+    if (values.scope === 'all' && !isLegacySharedPlan) {
+      toast.error(
+        t('Shared quota is retired; choose per-group or per-model limits')
+      )
+      return
+    }
     if (values.scope === 'group') {
       const hasGrant = Object.values(values.group_values).some(
         (value) => value > 0
@@ -414,7 +427,9 @@ export function SubscriptionsMutateDrawer({
   const durationUnitOpts = getDurationUnitOptions(t)
   const resetPeriodOpts = getResetPeriodOptions(t)
   const expireModeOpts = getPlanExpireModeOptions(t)
-  const scopeOpts = getPlanScopeOptions(t)
+  const scopeOpts: SegmentedOption<PlanScope>[] = isLegacySharedPlan
+    ? [getLegacyPlanScopeOption(t), ...getPlanScopeOptions(t)]
+    : getPlanScopeOptions(t)
   const measureOpts = getPlanMeasureOptions(t)
   const upgradeGroupOptions = groupOptions.map((group) => ({
     value: group,
@@ -657,9 +672,15 @@ export function SubscriptionsMutateDrawer({
                   }
                 />
               }
-              description={t(
-                'Shared quota is one pool for every group; group and model limits grant their own rows'
-              )}
+              description={
+                scope === 'all'
+                  ? t(
+                      'This plan still uses the retired shared quota. Run the one-time conversion before changing its scope; new plans must use per-group or per-model limits.'
+                    )
+                  : t(
+                      'Per-group and per-model limits grant their own quota rows inside the selected groups.'
+                    )
+              }
             >
               <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
                 <FormField

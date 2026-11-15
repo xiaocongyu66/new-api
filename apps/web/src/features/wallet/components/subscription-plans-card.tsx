@@ -55,6 +55,7 @@ import { RequestCountBars } from '@/features/subscriptions/components/request-co
 import {
   getSubscriptionModeLabel,
   planExpireMode,
+  planMeasure,
   planScope,
 } from '@/features/subscriptions/constants'
 import {
@@ -525,7 +526,7 @@ export function SubscriptionPlansCard({
                           {new Date(nextResetTime * 1000).toLocaleString()}
                         </div>
                       )}
-                      {subscription?.kind === 'request' ? (
+                      {(subscription?.request_counters?.length || 0) > 0 ? (
                         <RequestCountBars
                           counters={subscription?.request_counters}
                           className='mt-2'
@@ -602,9 +603,10 @@ export function SubscriptionPlansCard({
                     : `${t('Total Quota')}: ${t('Unlimited')}`
                   : null,
                 ...(planScope(plan) !== 'all'
-                  ? (plan.request_rules || []).map(
-                      (rule) =>
-                        `${t('Request Limits')}: ${rule.group} · ${rule.models.join(', ')} × ${rule.count}`
+                  ? (plan.request_rules || []).map((rule) =>
+                      planMeasure(plan) === 'quota'
+                        ? `${t('Group Limits')}: ${rule.group} · ${formatQuota(Number(rule.amount_display || 0))}`
+                        : `${t('Request Limits')}: ${rule.group} · ${rule.models.join(', ')} × ${rule.count}`
                     )
                   : []),
                 limit > 0 ? `${t('Purchase Limit')}: ${limit}` : null,
