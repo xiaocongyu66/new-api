@@ -26,6 +26,7 @@ func seedConversionUser(t *testing.T, id int, group string) {
 	require.NoError(t, dbx.DB.Create(&identity.User{
 		Id:       id,
 		Username: fmt.Sprintf("conv_user_%d", id),
+		AffCode:  fmt.Sprintf("conv_aff_%d", id),
 		Quota:    1_000_000,
 		Status:   common.UserStatusEnabled,
 		Group:    group,
