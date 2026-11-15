@@ -439,6 +439,15 @@ func (plan *SubscriptionPlan) AfterFind(_ *gorm.DB) error {
 	if rules, err := parseRequestRulesJSON(plan.RequestRulesJSON); err == nil {
 		plan.RequestRules = rules
 	}
+	// Older quota rules stored only the internal amount. Fill the display
+	// value on read so the admin table, purchase dialog and wallet card never
+	// render a group quota as zero.
+	for i := range plan.RequestRules {
+		rule := &plan.RequestRules[i]
+		if rule.Amount > 0 && rule.AmountDisplay == 0 {
+			rule.AmountDisplay = QuotaToDisplayAmount64(rule.Amount)
+		}
+	}
 	// The two admin-form axes are derived on read so legacy rows answer the
 	// same shape as plans saved through the new form.
 	plan.ExpireMode = normalizeExpireMode(plan.ExpireMode, plan.Kind)

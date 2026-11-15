@@ -223,6 +223,7 @@ POST /api/redemption/
 POST /api/setup
 POST /api/stripe/webhook
 POST /api/subscription/admin/bind
+POST /api/subscription/admin/convert-shared-scope
 POST /api/subscription/admin/plans
 POST /api/subscription/admin/plans/:id/subscriptions/reset
 POST /api/subscription/admin/user_subscriptions/:id/invalidate
