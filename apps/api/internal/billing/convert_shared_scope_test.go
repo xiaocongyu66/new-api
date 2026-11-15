@@ -125,6 +125,7 @@ func TestConvertLegacySharedScopesRewritesPlansAndSubscriptions(t *testing.T) {
 	require.Len(t, vipPlan.RequestRules, 1)
 	assert.Equal(t, "vip", vipPlan.RequestRules[0].Group)
 	assert.Equal(t, int64(5_500_000), vipPlan.RequestRules[0].Amount)
+	assert.Greater(t, vipPlan.RequestRules[0].AmountDisplay, 0.0)
 
 	var unlimited SubscriptionPlan
 	require.NoError(t, dbx.DB.First(&unlimited, 3).Error)
@@ -302,4 +303,20 @@ func TestConvertedGroupScopeExpiryHonorsTimeAxis(t *testing.T) {
 	expired, err = subscriptionReachedEndTx(dbx.DB, unlimited, now)
 	require.NoError(t, err)
 	assert.False(t, expired)
+}
+
+func TestApplyPlanRequestRulesStoresDisplayAmount(t *testing.T) {
+	seedConversionRatios(t)
+	plan := &SubscriptionPlan{
+		Scope:   SubscriptionScopeGroup,
+		Measure: SubscriptionMeasureQuota,
+		Kind:    SubscriptionKindTime,
+		RequestRules: []SubscriptionRequestRule{
+			{Group: "vip", AmountDisplay: 12},
+		},
+	}
+	require.NoError(t, applyPlanRequestRules(plan))
+	require.Len(t, plan.RequestRules, 1)
+	assert.Equal(t, int64(QuotaFromDisplayAmount(12)), plan.RequestRules[0].Amount)
+	assert.Equal(t, 12.0, plan.RequestRules[0].AmountDisplay)
 }
