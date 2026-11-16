@@ -49,3 +49,15 @@ func TestApplyQuotaCompensationRejectsInvalidInput(t *testing.T) {
 	_, err = ApplyQuotaCompensation(1, 100, "  ", "")
 	assert.Error(t, err)
 }
+
+// A mistyped id must not leave a credit row behind for a user that does not
+// exist: the wallet update would silently affect zero rows.
+func TestApplyQuotaCompensationRejectsUnknownUser(t *testing.T) {
+	_, err := ApplyQuotaCompensation(999999, 100, "x", "comp-unknown-user")
+	assert.Error(t, err)
+
+	var count int64
+	require.NoError(t, dbx.LogDB.Model(&usage.Log{}).
+		Where("request_id = ?", "comp-unknown-user").Count(&count).Error)
+	assert.Zero(t, count)
+}

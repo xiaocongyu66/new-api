@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/logger"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
 	"github.com/QuantumNous/new-api/internal/usage"
+	"gorm.io/gorm"
 )
 
 // QuotaCompensationRequest credits a user's wallet for an amount an admin
@@ -60,6 +61,15 @@ func ApplyQuotaCompensation(userId int, quota int, reason string, requestId stri
 
 	quotaCompensationMu.Lock()
 	defer quotaCompensationMu.Unlock()
+
+	// IncreaseUserQuota updates zero rows for an unknown id without erroring,
+	// so the credit would otherwise leave a log row for a ghost user.
+	if _, err := identity.GetUserById(userId, false); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("用户不存在")
+		}
+		return nil, err
+	}
 
 	result := &QuotaCompensationResult{UserId: userId, Quota: quota, RequestId: requestId}
 	if requestId != "" {
