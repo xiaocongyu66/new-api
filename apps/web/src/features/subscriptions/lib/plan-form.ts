@@ -89,7 +89,7 @@ export function getPlanFormSchema(t: TFunction) {
         }
         return
       }
-      if (values.scope === 'group') {
+      if (values.grant_mode === 'quota') {
         const hasGrant = Object.values(values.group_values).some(
           (value) => value > 0
         )
@@ -104,7 +104,7 @@ export function getPlanFormSchema(t: TFunction) {
         }
         return
       }
-      if (values.scope === 'model') {
+      if (values.grant_mode === 'count') {
         const hasGrant = values.request_rows.some((row) =>
           Object.values(row.counts).some((value) => value > 0)
         )
@@ -313,7 +313,8 @@ export function groupValuesToRules(
 }
 
 export function formValuesToPlanPayload(
-  values: PlanFormValues
+  values: PlanFormValues,
+  scope: 'group' | 'model' = 'group'
 ): PlanPayload {
   // The matrix and the group table are editor-only views; the payload carries
   // the rules they collapse into. grant_mode is a UI mode and maps back to
@@ -321,11 +322,11 @@ export function formValuesToPlanPayload(
   const { request_rows, group_values, grant_mode, ...rest } = values
   const scoped = grant_mode !== 'total'
   const measure: PlanMeasure = grant_mode === 'count' ? 'count' : 'quota'
-  const scope = grant_mode === 'total' ? 'all' : values.scope
+  const storedScope = grant_mode === 'total' ? 'all' : scope
   return {
     plan: {
       ...rest,
-      scope,
+      scope: storedScope,
       measure,
       price_amount: Number(values.price_amount || 0),
       currency: 'USD',

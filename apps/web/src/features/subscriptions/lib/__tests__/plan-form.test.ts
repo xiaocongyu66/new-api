@@ -110,8 +110,6 @@ describe('planToFormValues', () => {
     const values = planToFormValues(basePlan)
     assert.equal(values.expire_mode, 'time')
     assert.equal(values.grant_mode, 'total')
-    assert.equal(values.scope, 'all')
-    assert.equal(values.measure, 'quota')
     assert.deepEqual(values.request_rows, [])
     assert.deepEqual(values.group_values, {})
   })
@@ -127,8 +125,6 @@ describe('planToFormValues', () => {
       ],
     } as unknown as SubscriptionPlan
     const values = planToFormValues(plan)
-    assert.equal(values.scope, 'model')
-    assert.equal(values.measure, 'count')
     assert.equal(values.grant_mode, 'count')
     assert.deepEqual(values.request_rows, [
       { model: 'gpt-4o', counts: { vip: 5, svip: 10 } },
@@ -150,7 +146,6 @@ describe('planToFormValues', () => {
       ],
     } as unknown as SubscriptionPlan
     const values = planToFormValues(plan)
-    assert.equal(values.scope, 'group')
     assert.equal(values.grant_mode, 'quota')
     assert.deepEqual(values.group_values, { vip: 10, svip: 25 })
     assert.deepEqual(values.request_rows, [])
@@ -247,7 +242,6 @@ describe('formValuesToPlanPayload', () => {
     const payload = formValuesToPlanPayload({
       ...base,
       grant_mode: 'quota',
-      scope: 'group',
       upgrade_groups: ['vip'],
       group_values: { vip: 10 },
     })
@@ -263,7 +257,6 @@ describe('formValuesToPlanPayload', () => {
     const payload = formValuesToPlanPayload({
       ...base,
       grant_mode: 'count',
-      scope: 'model',
       upgrade_groups: ['vip', 'svip'],
       request_rows: [
         { model: 'gpt-4o', counts: { vip: 5 } },
@@ -308,7 +301,6 @@ describe('getPlanFormSchema validation', () => {
     const empty = schema.safeParse({
       ...base,
       grant_mode: 'quota',
-      scope: 'group',
       upgrade_groups: ['vip'],
       group_values: {},
     })
@@ -316,7 +308,6 @@ describe('getPlanFormSchema validation', () => {
     const zero = schema.safeParse({
       ...base,
       grant_mode: 'quota',
-      scope: 'group',
       upgrade_groups: ['vip'],
       group_values: { vip: 0 },
     })
@@ -324,7 +315,6 @@ describe('getPlanFormSchema validation', () => {
     const ok = schema.safeParse({
       ...base,
       grant_mode: 'quota',
-      scope: 'group',
       upgrade_groups: ['vip'],
       group_values: { vip: 5 },
     })
@@ -335,7 +325,6 @@ describe('getPlanFormSchema validation', () => {
     const empty = schema.safeParse({
       ...base,
       grant_mode: 'count',
-      scope: 'model',
       upgrade_groups: ['vip'],
       request_rows: [],
     })
@@ -343,14 +332,13 @@ describe('getPlanFormSchema validation', () => {
     const ok = schema.safeParse({
       ...base,
       grant_mode: 'count',
-      scope: 'model',
       upgrade_groups: ['vip'],
       request_rows: [{ model: 'gpt-4o', counts: { vip: 3 } }],
     })
     assert.equal(ok.success, true)
     const dup = schema.safeParse({
       ...base,
-      scope: 'model',
+      grant_mode: 'count',
       upgrade_groups: ['vip'],
       request_rows: [
         { model: 'gpt-4o', counts: { vip: 3 } },
@@ -363,7 +351,7 @@ describe('getPlanFormSchema validation', () => {
   test('orphaned group values in the matrix are flagged', () => {
     const result = schema.safeParse({
       ...base,
-      scope: 'model',
+      grant_mode: 'count',
       upgrade_groups: ['vip'],
       request_rows: [{ model: 'gpt-4o', counts: { removed: 3 } }],
     })

@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { CreditCard, ListChecks, Settings2, Trash2 } from 'lucide-react'
+import { CreditCard, Settings2, Trash2 } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useFieldArray, useForm, type Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -76,6 +76,7 @@ import {
   getPlanGrantModeOptions,
   getPlanScopeOptions,
   getResetPeriodOptions,
+  planScope,
   type PlanGrantMode,
   type PlanScope,
 } from '../constants'
@@ -200,6 +201,11 @@ export function SubscriptionsMutateDrawer({
   const [pancakeProducts, setPancakeProducts] = useState<
     { id: string; name: string; status: string }[]
   >([])
+  // The per-entitlement scope (group vs model) is drawer-local state: it only
+  // exists while a single quota/request mode is selected.
+  const [entitlementScope, setEntitlementScope] = useState<'group' | 'model'>(
+    'group'
+  )
 
   const schema = getPlanFormSchema(t)
   const form = useForm<PlanFormValues>({
@@ -220,8 +226,12 @@ export function SubscriptionsMutateDrawer({
     if (open) {
       if (currentRow?.plan) {
         form.reset(planToFormValues(currentRow.plan))
+        setEntitlementScope(
+          planScope(currentRow.plan) === 'model' ? 'model' : 'group'
+        )
       } else {
         form.reset(PLAN_FORM_DEFAULTS)
+        setEntitlementScope('group')
       }
       getGroups()
         .then((res) => {
@@ -253,7 +263,6 @@ export function SubscriptionsMutateDrawer({
   const resetPeriod = form.watch('quota_reset_period')
   const expireMode = form.watch('expire_mode')
   const grantMode = form.watch('grant_mode')
-  const scope = form.watch('scope')
   // Only the total pool with time expiry carries a reset cycle.
   const hasResetCycle = grantMode === 'total' && expireMode === 'time'
 
@@ -321,7 +330,7 @@ export function SubscriptionsMutateDrawer({
     }
     setIsSubmitting(true)
     try {
-      const payload = formValuesToPlanPayload(values)
+      const payload = formValuesToPlanPayload(values, entitlementScope)
       if (isEdit && currentRow?.plan?.id) {
         const res = await updatePlan(currentRow.plan.id, payload)
         if (res.success) {
@@ -817,36 +826,24 @@ export function SubscriptionsMutateDrawer({
                   </div>
 
                   <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
-                    <FormField
-                      control={form.control}
-                      name='scope'
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{t('Limit Scope')}</FormLabel>
-                          <FormControl>
-                            <SegmentedTabs
-                              options={scopeOpts}
-                              value={field.value}
-                              onChange={(value) =>
-                                form.setValue('scope', value, {
-                                  shouldDirty: true,
-                                  shouldValidate: true,
-                                })
-                              }
-                            />
-                          </FormControl>
-                          <FormDescription>
-                            {t(
-                              'Per-group and per-model limits grant their own quota rows inside the selected groups.'
-                            )}
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                    <FormItem>
+                      <FormLabel>{t('Limit Scope')}</FormLabel>
+                      <FormControl>
+                        <SegmentedTabs
+                          options={scopeOpts}
+                          value={entitlementScope}
+                          onChange={(value) => setEntitlementScope(value)}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Per-group and per-model limits grant their own quota rows inside the selected groups.'
+                        )}
+                      </FormDescription>
+                    </FormItem>
                   </div>
 
-                  {scope === 'group' && (
+                  {entitlementScope === 'group' && (
                     <FormField
                       control={form.control}
                       name='group_values'
@@ -924,7 +921,7 @@ export function SubscriptionsMutateDrawer({
                     />
                   )}
 
-                  {scope === 'model' && (
+                  {entitlementScope === 'model' && (
                     <>
                       <FormField
                         control={form.control}
