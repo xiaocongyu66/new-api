@@ -832,7 +832,11 @@ export function SubscriptionsMutateDrawer({
                         <SegmentedTabs
                           options={scopeOpts}
                           value={entitlementScope}
-                          onChange={(value) => setEntitlementScope(value)}
+                          onChange={(value) =>
+                            setEntitlementScope(
+                              value === 'model' ? 'model' : 'group'
+                            )
+                          }
                         />
                       </FormControl>
                       <FormDescription>
