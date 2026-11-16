@@ -29,8 +29,8 @@ import { formatQuota } from '@/lib/format'
 import {
   getSubscriptionModeLabel,
   planExpireMode,
+  planGrantMode,
   planMeasure,
-  planScope,
 } from '../constants'
 import { formatPlanPrice } from '../lib'
 import { formatDuration, formatResetPeriod } from '../lib'
@@ -188,7 +188,7 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
           const plan = row.original.plan
           const quota = planMeasure(plan) === 'quota'
           const total =
-            planScope(plan) === 'all'
+            planGrantMode(plan) === 'total'
               ? Number(plan.total_amount_display ?? plan.total_amount ?? 0)
               : (plan.request_rules || []).reduce(
                   (sum, rule) =>

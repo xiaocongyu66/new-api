@@ -72,12 +72,11 @@ import {
 } from '../api'
 import {
   getDurationUnitOptions,
-  getLegacyPlanScopeOption,
   getPlanExpireModeOptions,
-  getPlanMeasureOptions,
+  getPlanGrantModeOptions,
   getPlanScopeOptions,
   getResetPeriodOptions,
-  planScope,
+  type PlanGrantMode,
   type PlanScope,
 } from '../constants'
 import {
@@ -253,14 +252,10 @@ export function SubscriptionsMutateDrawer({
   const durationUnit = form.watch('duration_unit')
   const resetPeriod = form.watch('quota_reset_period')
   const expireMode = form.watch('expire_mode')
+  const grantMode = form.watch('grant_mode')
   const scope = form.watch('scope')
-  const measure = form.watch('measure')
-  // The retired shared quota is not selectable; it only stays reachable while
-  // editing a plan the one-time conversion has not rewritten yet.
-  const isLegacySharedPlan =
-    isEdit && !!currentRow?.plan && planScope(currentRow.plan) === 'all'
-  // Only shared-pool plans with time expiry carry a reset cycle.
-  const hasResetCycle = scope === 'all' && expireMode === 'time'
+  // Only the total pool with time expiry carries a reset cycle.
+  const hasResetCycle = grantMode === 'total' && expireMode === 'time'
 
   useEffect(() => {
     if (hasResetCycle) return
@@ -272,7 +267,7 @@ export function SubscriptionsMutateDrawer({
       shouldDirty: false,
       shouldValidate: false,
     })
-    if (scope !== 'all') {
+    if (grantMode !== 'total') {
       form.setValue('total_amount', 0, {
         shouldDirty: false,
         shouldValidate: false,
@@ -284,7 +279,7 @@ export function SubscriptionsMutateDrawer({
         shouldValidate: false,
       })
     }
-  }, [hasResetCycle, scope, expireMode, form])
+  }, [hasResetCycle, grantMode, expireMode, form])
   const watchedTitle = form.watch('title')
   const watchedPrice = form.watch('price_amount')
   const allowBalancePay = form.watch('allow_balance_pay')
@@ -294,13 +289,7 @@ export function SubscriptionsMutateDrawer({
     Number(watchedPrice ?? 0) > 0
 
   const onSubmit = async (values: PlanFormValues) => {
-    if (values.scope === 'all' && !isLegacySharedPlan) {
-      toast.error(
-        t('Shared quota is retired; choose per-group or per-model limits')
-      )
-      return
-    }
-    if (values.scope === 'group') {
+    if (values.grant_mode === 'quota') {
       const hasGrant = Object.values(values.group_values).some(
         (value) => value > 0
       )
@@ -311,7 +300,7 @@ export function SubscriptionsMutateDrawer({
         return
       }
     }
-    if (values.scope === 'model') {
+    if (values.grant_mode === 'count') {
       const hasCount = values.request_rows.some((row) =>
         Object.values(row.counts).some((value) => value > 0)
       )
@@ -427,10 +416,9 @@ export function SubscriptionsMutateDrawer({
   const durationUnitOpts = getDurationUnitOptions(t)
   const resetPeriodOpts = getResetPeriodOptions(t)
   const expireModeOpts = getPlanExpireModeOptions(t)
-  const scopeOpts: SegmentedOption<PlanScope>[] = isLegacySharedPlan
-    ? [getLegacyPlanScopeOption(t), ...getPlanScopeOptions(t)]
-    : getPlanScopeOptions(t)
-  const measureOpts = getPlanMeasureOptions(t)
+  const scopeOpts: SegmentedOption<PlanScope>[] = getPlanScopeOptions(t)
+  const grantModeOpts: SegmentedOption<PlanGrantMode>[] =
+    getPlanGrantModeOptions(t)
   const upgradeGroupOptions = groupOptions.map((group) => ({
     value: group,
     label: group,
@@ -568,6 +556,36 @@ export function SubscriptionsMutateDrawer({
               <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
                 <FormField
                   control={form.control}
+                  name='price_amount'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Plan Price')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          step='0.01'
+                          min={0}
+                          onChange={(e) =>
+                            field.onChange(
+                              Number.parseFloat(e.target.value) || 0
+                            )
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          allowBalancePay
+                            ? "Settled from the user's balance at this price."
+                            : 'Paid via the linked payment gateway; the currency is set by that gateway.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
                   name='max_purchase_per_user'
                   render={({ field }) => (
                     <FormItem>
@@ -657,44 +675,49 @@ export function SubscriptionsMutateDrawer({
                 />
               </div>
             </SideDrawerSection>
-            {/* Limit Scope */}
+            {/* Measure Unit */}
             <AxisSection
-              title={t('Limit Scope')}
+              title={t('Measure Unit')}
               tabs={
                 <SegmentedTabs
-                  options={scopeOpts}
-                  value={scope}
+                  options={grantModeOpts}
+                  value={grantMode}
                   onChange={(value) =>
-                    form.setValue('scope', value, {
+                    form.setValue('grant_mode', value, {
                       shouldDirty: true,
                       shouldValidate: true,
                     })
                   }
                 />
               }
-              description={
-                scope === 'all'
-                  ? t(
-                      'This plan still uses the retired shared quota. Run the one-time conversion before changing its scope; new plans must use per-group or per-model limits.'
-                    )
-                  : t(
-                      'Per-group and per-model limits grant their own quota rows inside the selected groups.'
-                    )
-              }
+              description={t(
+                'Total quota is one shared pool; single quota and single request grant their own rows inside the selected groups.'
+              )}
             >
-              <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+              {grantMode === 'total' && (
                 <FormField
                   control={form.control}
-                  name='price_amount'
+                  name='total_amount'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{t('Plan Price')}</FormLabel>
+                      <FormLabel>
+                        {t('Quota ({{currency}})', {
+                          currency: currencyLabel,
+                        })}
+                      </FormLabel>
                       <FormControl>
                         <Input
                           {...field}
                           type='number'
-                          step='0.01'
                           min={0}
+                          step={tokensOnly ? 1 : 0.01}
+                          placeholder={
+                            tokensOnly
+                              ? t('Enter quota in tokens')
+                              : t('Enter quota in {{currency}}', {
+                                  currency: currencyLabel,
+                                })
+                          }
                           onChange={(e) =>
                             field.onChange(
                               Number.parseFloat(e.target.value) || 0
@@ -704,167 +727,126 @@ export function SubscriptionsMutateDrawer({
                       </FormControl>
                       <FormDescription>
                         {t(
-                          allowBalancePay
-                            ? "Settled from the user's balance at this price."
-                            : 'Paid via the linked payment gateway; the currency is set by that gateway.'
+                          'Total quota included in the plan, usable per billing period. 0 means unlimited.'
                         )}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+              )}
 
-                {scope === 'all' && (
-                  <FormField
-                    control={form.control}
-                    name='total_amount'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>
-                          {t('Quota ({{currency}})', {
-                            currency: currencyLabel,
-                          })}
-                        </FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type='number'
-                            min={0}
-                            step={tokensOnly ? 1 : 0.01}
-                            placeholder={
-                              tokensOnly
-                                ? t('Enter quota in tokens')
-                                : t('Enter quota in {{currency}}', {
-                                    currency: currencyLabel,
-                                  })
-                            }
-                            onChange={(e) =>
-                              field.onChange(
-                                Number.parseFloat(e.target.value) || 0
-                              )
-                            }
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          {t(
-                            'Total quota included in the plan, usable per billing period. 0 means unlimited.'
-                          )}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
-              </div>
-
-              <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
-                <FormField
-                  control={form.control}
-                  name='upgrade_groups'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Upgrade Groups')}</FormLabel>
-                      <FormControl>
-                        <MultiSelect
-                          options={upgradeGroupOptions}
-                          selected={field.value || []}
-                          onChange={field.onChange}
-                          placeholder={t('No Upgrade')}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        {scope === 'all'
-                          ? t(
-                              'Subscription quota can only be used in the selected groups'
-                            )
-                          : t('These groups become the limit table rows')}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='downgrade_group'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Downgrade Group')}</FormLabel>
-                      <Select
-                        items={[
-                          {
-                            value: '__none__',
-                            label: t('Downgrade to pre-purchase group'),
-                          },
-                          ...groupOptions.map((g) => ({ value: g, label: g })),
-                        ]}
-                        onValueChange={(v) =>
-                          field.onChange(v === '__none__' ? '' : v)
-                        }
-                        value={field.value || ''}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue
-                              placeholder={t('Downgrade to pre-purchase group')}
+              {grantMode !== 'total' && (
+                <>
+                  <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                    <FormField
+                      control={form.control}
+                      name='upgrade_groups'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Upgrade Groups')}</FormLabel>
+                          <FormControl>
+                            <MultiSelect
+                              options={upgradeGroupOptions}
+                              selected={field.value || []}
+                              onChange={field.onChange}
+                              placeholder={t('No Upgrade')}
                             />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent alignItemWithTrigger={false}>
-                          <SelectGroup>
-                            <SelectItem value='__none__'>
-                              {t('Downgrade to pre-purchase group')}
-                            </SelectItem>
-                            {groupOptions.map((g) => (
-                              <SelectItem key={g} value={g}>
-                                {g}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                      <FormDescription>
-                        {t(
-                          'Downgrade to this group after the subscription expires'
-                        )}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-            </AxisSection>
+                          </FormControl>
+                          <FormDescription>
+                            {t('These groups become the limit table rows')}
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-            {/* Measure Unit */}
-            {scope !== 'all' && (
-              <AxisSection
-                title={t('Measure Unit')}
-                tabs={
-                  <SegmentedTabs
-                    options={measureOpts}
-                    value={measure}
-                    onChange={(value) =>
-                      form.setValue('measure', value, {
-                        shouldDirty: true,
-                        shouldValidate: true,
-                      })
-                    }
-                  />
-                }
-                description={t(
-                  'Quota measures spend in money; request count measures spend one unit per request'
-                )}
-              >
-                {/* Request Limits */}
-                {scope === 'group' && (
-                  <div className='flex flex-col gap-4'>
-                    <h3 className='flex items-center gap-2 text-sm font-medium'>
-                      <IconBadge tone='info' size='xs'>
-                        <ListChecks />
-                      </IconBadge>
-                      {t('Group Limits')}
-                    </h3>
+                    <FormField
+                      control={form.control}
+                      name='downgrade_group'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Downgrade Group')}</FormLabel>
+                          <Select
+                            items={[
+                              {
+                                value: '__none__',
+                                label: t('Downgrade to pre-purchase group'),
+                              },
+                              ...groupOptions.map((g) => ({
+                                value: g,
+                                label: g,
+                              })),
+                            ]}
+                            onValueChange={(v) =>
+                              field.onChange(v === '__none__' ? '' : v)
+                            }
+                            value={field.value || ''}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue
+                                  placeholder={t(
+                                    'Downgrade to pre-purchase group'
+                                  )}
+                                />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent alignItemWithTrigger={false}>
+                              <SelectGroup>
+                                <SelectItem value='__none__'>
+                                  {t('Downgrade to pre-purchase group')}
+                                </SelectItem>
+                                {groupOptions.map((g) => (
+                                  <SelectItem key={g} value={g}>
+                                    {g}
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>
+                            {t(
+                              'Downgrade to this group after the subscription expires'
+                            )}
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
 
+                  <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                    <FormField
+                      control={form.control}
+                      name='scope'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Limit Scope')}</FormLabel>
+                          <FormControl>
+                            <SegmentedTabs
+                              options={scopeOpts}
+                              value={field.value}
+                              onChange={(value) =>
+                                form.setValue('scope', value, {
+                                  shouldDirty: true,
+                                  shouldValidate: true,
+                                })
+                              }
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            {t(
+                              'Per-group and per-model limits grant their own quota rows inside the selected groups.'
+                            )}
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  {scope === 'group' && (
                     <FormField
                       control={form.control}
                       name='group_values'
@@ -885,7 +867,7 @@ export function SubscriptionsMutateDrawer({
                                       {t('Group')}
                                     </th>
                                     <th className='px-2 py-2 text-left font-medium'>
-                                      {measure === 'quota'
+                                      {grantMode === 'quota'
                                         ? t('Quota ({{currency}})', {
                                             currency: currencyLabel,
                                           })
@@ -906,7 +888,7 @@ export function SubscriptionsMutateDrawer({
                                         <Input
                                           type='number'
                                           min={0}
-                                          step={measure === 'quota' ? 0.01 : 1}
+                                          step={grantMode === 'quota' ? 0.01 : 1}
                                           value={groupValues[group] ?? ''}
                                           placeholder='0'
                                           onChange={(e) =>
@@ -924,7 +906,7 @@ export function SubscriptionsMutateDrawer({
                                           }
                                           className='w-32'
                                           aria-label={`${group} ${
-                                            measure === 'quota'
+                                            grantMode === 'quota'
                                               ? t('Quota')
                                               : t('Count')
                                           }`}
@@ -940,127 +922,122 @@ export function SubscriptionsMutateDrawer({
                         </FormItem>
                       )}
                     />
-                  </div>
-                )}
+                  )}
 
-                {scope === 'model' && (
-                  <div className='flex flex-col gap-4'>
-                    <h3 className='flex items-center gap-2 text-sm font-medium'>
-                      <IconBadge tone='info' size='xs'>
-                        <ListChecks />
-                      </IconBadge>
-                      {t('Model Limits')}
-                    </h3>
-
-                    <FormField
-                      control={form.control}
-                      name='request_rows'
-                      render={() => (
-                        <FormItem>
-                          {upgradeGroups.length === 0 ? (
-                            <p className='text-muted-foreground text-xs'>
-                              {t(
-                                'Select the upgrade groups in Basic Info first; they become the table columns'
-                              )}
-                            </p>
-                          ) : (
-                            <div className='overflow-x-auto rounded-md border px-3'>
-                              <table className='w-full border-collapse text-sm'>
-                                <thead>
-                                  <tr className='border-b'>
-                                    <th className='py-2 pr-3 text-left font-medium'>
-                                      {t('Model')}
-                                    </th>
-                                    {upgradeGroups.map((group) => (
-                                      <th
-                                        key={group}
-                                        className='px-2 py-2 text-left font-medium whitespace-nowrap'
-                                      >
-                                        {group}
+                  {scope === 'model' && (
+                    <>
+                      <FormField
+                        control={form.control}
+                        name='request_rows'
+                        render={() => (
+                          <FormItem>
+                            {upgradeGroups.length === 0 ? (
+                              <p className='text-muted-foreground text-xs'>
+                                {t(
+                                  'Select the upgrade groups in Basic Info first; they become the table columns'
+                                )}
+                              </p>
+                            ) : (
+                              <div className='overflow-x-auto rounded-md border px-3'>
+                                <table className='w-full border-collapse text-sm'>
+                                  <thead>
+                                    <tr className='border-b'>
+                                      <th className='py-2 pr-3 text-left font-medium'>
+                                        {t('Model')}
                                       </th>
-                                    ))}
-                                    <th aria-label={t('Remove')} />
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {requestRowFields.map((row, index) => (
-                                    <tr
-                                      key={row.id}
-                                      className='border-b last:border-0'
-                                    >
-                                      <td className='max-w-[180px] truncate py-2 pr-3 font-mono text-xs'>
-                                        {row.model}
-                                      </td>
                                       {upgradeGroups.map((group) => (
-                                        <td key={group} className='px-2 py-2'>
-                                          <Input
-                                            type='number'
-                                            min={0}
-                                            step={
-                                              measure === 'quota' ? 0.01 : 1
-                                            }
-                                            value={row.counts[group] ?? ''}
-                                            placeholder='0'
-                                            onChange={(e) =>
-                                              updateRequestRow(index, {
-                                                model: row.model,
-                                                counts: {
-                                                  ...row.counts,
-                                                  [group]:
-                                                    Number.parseFloat(
-                                                      e.target.value
-                                                    ) || 0,
-                                                },
-                                              })
-                                            }
-                                            className='w-24'
-                                            aria-label={`${row.model} · ${group}`}
-                                          />
-                                        </td>
-                                      ))}
-                                      <td className='py-2 pl-2'>
-                                        <Button
-                                          type='button'
-                                          variant='ghost'
-                                          size='icon'
-                                          className='h-7 w-7'
-                                          onClick={() =>
-                                            removeRequestRow(index)
-                                          }
-                                          aria-label={t('Remove')}
+                                        <th
+                                          key={group}
+                                          className='px-2 py-2 text-left font-medium whitespace-nowrap'
                                         >
-                                          <Trash2 className='h-3.5 w-3.5' />
-                                        </Button>
-                                      </td>
+                                          {group}
+                                        </th>
+                                      ))}
+                                      <th aria-label={t('Remove')} />
                                     </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          )}
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <div>
-                      <FormLabel className='mb-1.5 block'>
-                        {t('Add models')}
-                      </FormLabel>
-                      <MultiSelect
-                        options={availableModelOptions}
-                        selected={[]}
-                        onChange={(models) => appendRequestRows(models)}
-                        placeholder={t('Select models')}
-                        allowCreate
-                        filterByInput
-                        disabled={upgradeGroups.length === 0}
+                                  </thead>
+                                  <tbody>
+                                    {requestRowFields.map((row, index) => (
+                                      <tr
+                                        key={row.id}
+                                        className='border-b last:border-0'
+                                      >
+                                        <td className='max-w-[180px] truncate py-2 pr-3 font-mono text-xs'>
+                                          {row.model}
+                                        </td>
+                                        {upgradeGroups.map((group) => (
+                                          <td key={group} className='px-2 py-2'>
+                                            <Input
+                                              type='number'
+                                              min={0}
+                                              step={
+                                                grantMode === 'quota'
+                                                  ? 0.01
+                                                  : 1
+                                              }
+                                              value={row.counts[group] ?? ''}
+                                              placeholder='0'
+                                              onChange={(e) =>
+                                                updateRequestRow(index, {
+                                                  model: row.model,
+                                                  counts: {
+                                                    ...row.counts,
+                                                    [group]:
+                                                      Number.parseFloat(
+                                                        e.target.value
+                                                      ) || 0,
+                                                  },
+                                                })
+                                              }
+                                              className='w-24'
+                                              aria-label={`${row.model} · ${group}`}
+                                            />
+                                          </td>
+                                        ))}
+                                        <td className='py-2 pl-2'>
+                                          <Button
+                                            type='button'
+                                            variant='ghost'
+                                            size='icon'
+                                            className='h-7 w-7'
+                                            onClick={() =>
+                                              removeRequestRow(index)
+                                            }
+                                            aria-label={t('Remove')}
+                                          >
+                                            <Trash2 className='h-3.5 w-3.5' />
+                                          </Button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                            <FormMessage />
+                          </FormItem>
+                        )}
                       />
-                    </div>
-                  </div>
-                )}
-              </AxisSection>
-            )}
+
+                      <div>
+                        <FormLabel className='mb-1.5 block'>
+                          {t('Add models')}
+                        </FormLabel>
+                        <MultiSelect
+                          options={availableModelOptions}
+                          selected={[]}
+                          onChange={(models) => appendRequestRows(models)}
+                          placeholder={t('Select models')}
+                          allowCreate
+                          filterByInput
+                          disabled={upgradeGroups.length === 0}
+                        />
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+            </AxisSection>
 
             {/* Expiry Method */}
             <AxisSection

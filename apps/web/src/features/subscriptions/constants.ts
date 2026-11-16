@@ -38,15 +38,13 @@ export function planExpireMode(plan: {
   return plan.kind === 'quota' || plan.kind === 'request' ? 'quota' : 'time'
 }
 
-// planScope/planMeasure resolve the limit axes of a plan payload, falling back
-// to the legacy kind for rows saved before the axes existed.
+// Stored backend axes remain scope + measure. The form presents their three
+// product modes as total pool, per-entitlement quota, and per-request count.
 export type PlanScope = 'all' | 'group' | 'model'
 export type PlanMeasure = 'quota' | 'count'
+export type PlanGrantMode = 'total' | 'quota' | 'count'
 
-export function planScope(plan: {
-  kind?: string
-  scope?: string
-}): PlanScope {
+export function planScope(plan: { kind?: string; scope?: string }): PlanScope {
   if (plan.scope === 'all' || plan.scope === 'group' || plan.scope === 'model') {
     return plan.scope
   }
@@ -63,6 +61,15 @@ export function planMeasure(plan: {
   return plan.kind === 'request' ? 'count' : 'quota'
 }
 
+export function planGrantMode(plan: {
+  kind?: string
+  scope?: string
+  measure?: string
+}): PlanGrantMode {
+  if (planScope(plan) === 'all') return 'total'
+  return planMeasure(plan) === 'count' ? 'count' : 'quota'
+}
+
 export const SUBSCRIPTION_EXPIRE_MODES = [
   { value: 'time', labelKey: 'Expires by time' },
   { value: 'quota', labelKey: 'Expires by quota' },
@@ -75,26 +82,15 @@ export function getPlanExpireModeOptions(t: TFunction) {
   }))
 }
 
-// The limit axes the editor exposes as small tab rows: what the granted amount
-// applies to (scope) and how it is counted (measure). Shared quota is retired:
-// it stays readable for rows awaiting the one-time conversion, but it is not a
-// selectable scope anymore.
 export const SUBSCRIPTION_SCOPES = [
   { value: 'group', labelKey: 'Per group' },
   { value: 'model', labelKey: 'Per model' },
 ] as const
 
-// LEGACY_SHARED_SCOPE_LABEL is only shown while editing a plan the conversion
-// has not rewritten yet; the option is appended by the drawer in edit mode.
-export const LEGACY_SHARED_SCOPE_LABEL = 'Shared quota (legacy)'
-
-export function getLegacyPlanScopeOption(t: TFunction) {
-  return { value: 'all' as const, label: t(LEGACY_SHARED_SCOPE_LABEL) }
-}
-
-export const SUBSCRIPTION_MEASURES = [
-  { value: 'quota', labelKey: 'Quota' },
-  { value: 'count', labelKey: 'Request count' },
+export const SUBSCRIPTION_GRANT_MODES = [
+  { value: 'total', labelKey: 'Total quota' },
+  { value: 'quota', labelKey: 'Single quota' },
+  { value: 'count', labelKey: 'Single request' },
 ] as const
 
 export function getPlanScopeOptions(t: TFunction) {
@@ -104,10 +100,10 @@ export function getPlanScopeOptions(t: TFunction) {
   }))
 }
 
-export function getPlanMeasureOptions(t: TFunction) {
-  return SUBSCRIPTION_MEASURES.map((measure) => ({
-    value: measure.value,
-    label: t(measure.labelKey),
+export function getPlanGrantModeOptions(t: TFunction) {
+  return SUBSCRIPTION_GRANT_MODES.map((mode) => ({
+    value: mode.value,
+    label: t(mode.labelKey),
   }))
 }
 
@@ -117,28 +113,16 @@ export function getSubscriptionModeLabel(
 ): string {
   const expire =
     planExpireMode(plan) === 'quota' ? 'Expires by quota' : 'Expires by time'
-  const scopeValue =
-    plan.scope === 'group' || plan.scope === 'model'
-      ? plan.scope
-      : plan.kind === 'request'
-        ? 'model'
-        : 'all'
-  const scopeLabel =
-    scopeValue === 'group'
-      ? 'Per group'
-      : scopeValue === 'model'
-        ? 'Per model'
-        : 'Shared quota'
-  const measureValue =
-    plan.measure === 'quota' || plan.measure === 'count'
-      ? plan.measure
-      : plan.kind === 'request'
-        ? 'count'
-        : 'quota'
-  if (scopeValue === 'all') {
-    return `${t(expire)} · ${t(scopeLabel)}`
-  }
-  return `${t(expire)} · ${t(scopeLabel)} · ${t(measureValue === 'quota' ? 'Quota' : 'Request count')}`
+  const mode = planGrantMode(plan)
+  const modeLabel =
+    mode === 'total'
+      ? 'Total quota'
+      : mode === 'quota'
+        ? 'Single quota'
+        : 'Single request'
+  if (mode === 'total') return `${t(expire)} · ${t(modeLabel)}`
+  const scopeLabel = planScope(plan) === 'group' ? 'Per group' : 'Per model'
+  return `${t(expire)} · ${t(scopeLabel)} · ${t(modeLabel)}`
 }
 
 // ============================================================================

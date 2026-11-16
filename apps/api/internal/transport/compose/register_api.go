@@ -279,7 +279,6 @@ func SetApiRouter(router contract.Engine) {
 			subscriptionAdminRoute.GET("/plans", billing.AdminListSubscriptionPlans)
 			subscriptionAdminRoute.POST("/plans", billing.AdminCreateSubscriptionPlan)
 			subscriptionAdminRoute.PUT("/plans/:id", billing.AdminUpdateSubscriptionPlan)
-			subscriptionAdminRoute.POST("/convert-shared-scope", billing.AdminConvertLegacySharedScope)
 			subscriptionAdminRoute.PATCH("/plans/:id", billing.AdminUpdateSubscriptionPlanStatus)
 			subscriptionAdminRoute.POST("/bind", billing.AdminBindSubscription)
 			subscriptionAdminRoute.POST("/plans/:id/subscriptions/reset", billing.AdminResetPlanSubscriptions)

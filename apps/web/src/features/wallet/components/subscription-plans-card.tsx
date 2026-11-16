@@ -55,8 +55,8 @@ import { RequestCountBars } from '@/features/subscriptions/components/request-co
 import {
   getSubscriptionModeLabel,
   planExpireMode,
+  planGrantMode,
   planMeasure,
-  planScope,
 } from '@/features/subscriptions/constants'
 import {
   formatDuration,
@@ -597,12 +597,12 @@ export function SubscriptionPlansCard({
                 formatResetPeriod(plan, t) !== t('No Reset')
                   ? `${t('Quota Reset')}: ${formatResetPeriod(plan, t)}`
                   : null,
-                planScope(plan) === 'all'
+                planGrantMode(plan) === 'total'
                   ? totalAmount > 0
                     ? `${t('Total Quota')}: ${formatQuota(totalAmount)}`
                     : `${t('Total Quota')}: ${t('Unlimited')}`
                   : null,
-                ...(planScope(plan) !== 'all'
+                ...(planGrantMode(plan) !== 'total'
                   ? (plan.request_rules || []).map((rule) =>
                       planMeasure(plan) === 'quota'
                         ? `${t('Group Limits')}: ${rule.group} · ${formatQuota(Number(rule.amount_display || 0))}`

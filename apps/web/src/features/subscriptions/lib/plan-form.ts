@@ -21,8 +21,8 @@ import { z } from 'zod'
 
 import {
   planExpireMode,
+  planGrantMode,
   planMeasure,
-  planScope,
   type PlanMeasure,
 } from '../constants'
 import type { SubscriptionPlan, PlanPayload } from '../types'
@@ -42,10 +42,9 @@ export function getPlanFormSchema(t: TFunction) {
       subtitle: z.string().optional(),
       price_amount: z.coerce.number().min(0, t('Please enter amount')),
       expire_mode: z.enum(['time', 'quota']),
-      // 'all' stays accepted so a plan the conversion has not rewritten yet
-      // can still be opened and saved; the drawer only offers it in edit mode.
-      scope: z.enum(['all', 'group', 'model']),
-      measure: z.enum(['quota', 'count']),
+      // grant_mode is the UI mode; the payload maps it back to the stored
+      // scope + measure axes: total = shared pool, quota/count = per rows.
+      grant_mode: z.enum(['total', 'quota', 'count']),
       duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
       duration_value: z.coerce.number().min(1),
       custom_seconds: z.coerce.number().min(0).optional(),
@@ -80,14 +79,15 @@ export function getPlanFormSchema(t: TFunction) {
       waffo_pancake_product_id: z.string().optional(),
     })
     .superRefine((values, ctx) => {
-      if (values.expire_mode === 'quota' && values.scope === 'all') {
-        if (values.total_amount <= 0) {
+      if (values.grant_mode === 'total') {
+        if (values.expire_mode === 'quota' && values.total_amount <= 0) {
           ctx.addIssue({
             code: 'custom',
             path: ['total_amount'],
             message: t('Quota-exhausted plans require a positive total quota'),
           })
         }
+        return
       }
       if (values.scope === 'group') {
         const hasGrant = Object.values(values.group_values).some(
@@ -102,6 +102,7 @@ export function getPlanFormSchema(t: TFunction) {
             ),
           })
         }
+        return
       }
       if (values.scope === 'model') {
         const hasGrant = values.request_rows.some((row) =>
@@ -161,19 +162,18 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   subtitle: '',
   price_amount: 0,
   expire_mode: 'time',
-  scope: 'group',
-  measure: 'quota',
+  grant_mode: 'quota',
   duration_unit: 'month',
   duration_value: 1,
   custom_seconds: 0,
-  quota_reset_period: 'never',
-  quota_reset_custom_seconds: 0,
   enabled: true,
   sort_order: 0,
   allow_balance_pay: true,
   allow_wallet_overflow: true,
   max_purchase_per_user: 0,
   total_amount: 0,
+  quota_reset_period: 'never',
+  quota_reset_custom_seconds: 0,
   upgrade_groups: [],
   downgrade_group: '',
   request_rows: [],
@@ -232,8 +232,7 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
     subtitle: plan.subtitle || '',
     price_amount: Number(plan.price_amount || 0),
     expire_mode: planExpireMode(plan),
-    scope: planScope(plan),
-    measure: planMeasure(plan),
+    grant_mode: planGrantMode(plan),
     duration_unit: plan.duration_unit || 'month',
     duration_value: Number(plan.duration_value || 1),
     custom_seconds: Number(plan.custom_seconds || 0),
@@ -313,14 +312,21 @@ export function groupValuesToRules(
   return rules
 }
 
-export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
+export function formValuesToPlanPayload(
+  values: PlanFormValues
+): PlanPayload {
   // The matrix and the group table are editor-only views; the payload carries
-  // the rules they collapse into.
-  const { request_rows, group_values, ...rest } = values
-  const scoped = values.scope !== 'all'
+  // the rules they collapse into. grant_mode is a UI mode and maps back to
+  // stored scope + measure: total = shared pool, quota/count = per-row rules.
+  const { request_rows, group_values, grant_mode, ...rest } = values
+  const scoped = grant_mode !== 'total'
+  const measure: PlanMeasure = grant_mode === 'count' ? 'count' : 'quota'
+  const scope = grant_mode === 'total' ? 'all' : values.scope
   return {
     plan: {
       ...rest,
+      scope,
+      measure,
       price_amount: Number(values.price_amount || 0),
       currency: 'USD',
       duration_value: Number(values.duration_value || 0),
@@ -339,13 +345,13 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
       upgrade_group: values.upgrade_groups[0] || '',
       downgrade_group: values.downgrade_group || '',
       request_rules:
-        values.scope === 'group'
-          ? groupValuesToRules(group_values, values.upgrade_groups, values.measure)
-          : values.scope === 'model'
+        grant_mode === 'quota'
+          ? groupValuesToRules(group_values, values.upgrade_groups, measure)
+          : grant_mode === 'count'
             ? requestRowsToRules(
                 request_rows,
                 values.upgrade_groups,
-                values.measure
+                measure
               )
             : [],
     },

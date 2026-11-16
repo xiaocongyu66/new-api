@@ -344,10 +344,6 @@ func AdminCreateSubscriptionPlan(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
-	if req.Plan.Scope == SubscriptionScopeAll {
-		common.CtxApiErrorMsg(c, "共享额度已停用，请使用按分组或按模型")
-		return
-	}
 	if req.Plan.PriceAmount < 0 {
 		common.CtxApiErrorMsg(c, "价格不能为负数")
 		return
@@ -468,10 +464,6 @@ func AdminUpdateSubscriptionPlan(c contract.Context) {
 	}
 	if err := resolvePlanModes(&req.Plan); err != nil {
 		common.CtxApiError(c, err)
-		return
-	}
-	if req.Plan.Scope == SubscriptionScopeAll && normalizeScope(existing.Scope) != SubscriptionScopeAll {
-		common.CtxApiErrorMsg(c, "共享额度已停用，请使用按分组或按模型")
 		return
 	}
 	if req.Plan.PriceAmount < 0 {
