@@ -21,6 +21,14 @@ import assert from 'node:assert/strict'
 
 import type { TFunction } from 'i18next'
 
+import {
+  getPlanGrantModeOptions,
+  getPlanScopeOptions,
+  planExpireMode,
+  planGrantMode,
+  planMeasure,
+  planScope,
+} from '../../constants'
 import type { SubscriptionPlan } from '../../types'
 import {
   formValuesToPlanPayload,
@@ -34,7 +42,6 @@ import {
   type PlanFormValues,
   type RequestMatrixRow,
 } from '../plan-form'
-import { planExpireMode, planMeasure, planScope } from '../../constants'
 
 const t = ((key: string) => key) as unknown as TFunction
 
@@ -75,25 +82,43 @@ describe('plan axes fall back to the legacy kind', () => {
     assert.equal(planExpireMode({ kind: 'time' }), 'time')
     assert.equal(planScope({ kind: 'time' }), 'all')
     assert.equal(planMeasure({ kind: 'time' }), 'quota')
+    assert.equal(planGrantMode({ kind: 'time' }), 'total')
   })
 
   test('request kind is per-model request counts', () => {
     assert.equal(planScope({ kind: 'request' }), 'model')
     assert.equal(planMeasure({ kind: 'request' }), 'count')
+    assert.equal(planGrantMode({ kind: 'request' }), 'count')
   })
 
   test('explicit axes win over the kind', () => {
     assert.equal(planScope({ kind: 'time', scope: 'group' }), 'group')
     assert.equal(planMeasure({ kind: 'time', measure: 'count' }), 'count')
+    assert.equal(
+      planGrantMode({ kind: 'time', scope: 'group', measure: 'count' }),
+      'count'
+    )
+    assert.equal(
+      planGrantMode({ kind: 'time', scope: 'group', measure: 'quota' }),
+      'quota'
+    )
+    assert.equal(
+      planGrantMode({ kind: 'time', scope: 'all', measure: 'quota' }),
+      'total'
+    )
+  })
+
+  test('grant mode options expose the three product modes', () => {
+    const values = getPlanGrantModeOptions(t).map((option) => option.value)
+    assert.deepEqual(values, ['total', 'quota', 'count'])
   })
 })
 
 describe('planToFormValues', () => {
-  test('backfills legacy plans to the shared pool', () => {
+  test('backfills legacy plans to the total pool mode', () => {
     const values = planToFormValues(basePlan)
     assert.equal(values.expire_mode, 'time')
-    assert.equal(values.scope, 'all')
-    assert.equal(values.measure, 'quota')
+    assert.equal(values.grant_mode, 'total')
     assert.deepEqual(values.request_rows, [])
     assert.deepEqual(values.group_values, {})
   })
@@ -109,8 +134,7 @@ describe('planToFormValues', () => {
       ],
     } as unknown as SubscriptionPlan
     const values = planToFormValues(plan)
-    assert.equal(values.scope, 'model')
-    assert.equal(values.measure, 'count')
+    assert.equal(values.grant_mode, 'count')
     assert.deepEqual(values.request_rows, [
       { model: 'gpt-4o', counts: { vip: 5, svip: 10 } },
       { model: 'claude', counts: { vip: 5 } },
@@ -131,7 +155,7 @@ describe('planToFormValues', () => {
       ],
     } as unknown as SubscriptionPlan
     const values = planToFormValues(plan)
-    assert.equal(values.scope, 'group')
+    assert.equal(values.grant_mode, 'quota')
     assert.deepEqual(values.group_values, { vip: 10, svip: 25 })
     assert.deepEqual(values.request_rows, [])
   })
@@ -144,7 +168,12 @@ describe('requestRowsToRules / groupValuesToRules', () => {
       { model: 'claude', counts: { vip: 5 } },
     ]
     assert.deepEqual(requestRowsToRules(rows, ['vip', 'svip'], 'count'), [
-      { group: 'vip', models: ['gpt-4o', 'claude'], count: 5, amount_display: 0 },
+      {
+        group: 'vip',
+        models: ['gpt-4o', 'claude'],
+        count: 5,
+        amount_display: 0,
+      },
       { group: 'svip', models: ['gpt-4o'], count: 10, amount_display: 0 },
     ])
   })
@@ -167,7 +196,11 @@ describe('requestRowsToRules / groupValuesToRules', () => {
 
   test('group table emits one rule per positive group', () => {
     assert.deepEqual(
-      groupValuesToRules({ vip: 10, svip: 0, stale: 5 }, ['vip', 'svip'], 'quota'),
+      groupValuesToRules(
+        { vip: 10, svip: 0, stale: 5 },
+        ['vip', 'svip'],
+        'quota'
+      ),
       [{ group: 'vip', models: [], count: 0, amount_display: 10 }]
     )
   })
@@ -194,9 +227,10 @@ describe('formValuesToPlanPayload', () => {
     title: 'plan',
   }
 
-  test('shared pool keeps the reset period and no rules', () => {
+  test('total mode keeps the reset period and no rules', () => {
     const payload = formValuesToPlanPayload({
       ...base,
+      grant_mode: 'total',
       quota_reset_period: 'custom',
       quota_reset_custom_seconds: 90,
       total_amount: 12,
@@ -212,29 +246,34 @@ describe('formValuesToPlanPayload', () => {
     assert.equal('group_values' in payload.plan, false)
   })
 
-  test('scoped plans drop the shared pool and force reset to never', () => {
+  test('new plans default to per-group quota and expose the three modes', () => {
+    assert.equal(PLAN_FORM_DEFAULTS.grant_mode, 'quota')
+    const grantValues = getPlanGrantModeOptions(t).map((option) => option.value)
+    assert.deepEqual(grantValues, ['total', 'quota', 'count'])
+    const scopeValues = getPlanScopeOptions(t).map((option) => option.value)
+    assert.deepEqual(scopeValues, ['group', 'model'])
+  })
+
+  test('single quota mode maps to group-scoped quota rows', () => {
     const payload = formValuesToPlanPayload({
       ...base,
-      expire_mode: 'quota',
-      scope: 'group',
-      measure: 'quota',
-      total_amount: 99,
-      quota_reset_period: 'daily',
+      grant_mode: 'quota',
       upgrade_groups: ['vip'],
       group_values: { vip: 10 },
     })
     assert.equal(payload.plan.total_amount_display, 0)
-    assert.equal(payload.plan.quota_reset_period, 'never')
+    assert.equal(payload.plan.scope, 'group')
+    assert.equal(payload.plan.measure, 'quota')
     assert.deepEqual(payload.plan.request_rules, [
       { group: 'vip', models: [], count: 0, amount_display: 10 },
     ])
   })
 
-  test('model scope collapses the matrix into rules', () => {
+  test('single request mode maps to model-scoped count rows', () => {
     const payload = formValuesToPlanPayload({
       ...base,
+      grant_mode: 'count',
       scope: 'model',
-      measure: 'count',
       upgrade_groups: ['vip', 'svip'],
       request_rows: [
         { model: 'gpt-4o', counts: { vip: 5 } },
@@ -246,6 +285,38 @@ describe('formValuesToPlanPayload', () => {
       { group: 'svip', models: ['claude'], count: 7, amount_display: 0 },
     ])
   })
+
+  test('quota mode with model scope submits the matrix rows, not the group table', () => {
+    const payload = formValuesToPlanPayload({
+      ...base,
+      grant_mode: 'quota',
+      scope: 'model',
+      upgrade_groups: ['vip'],
+      group_values: { vip: 99 },
+      request_rows: [{ model: 'gpt-4o', counts: { vip: 7 } }],
+    })
+    assert.equal(payload.plan.scope, 'model')
+    assert.equal(payload.plan.measure, 'quota')
+    assert.deepEqual(payload.plan.request_rules, [
+      { group: 'vip', models: ['gpt-4o'], count: 0, amount_display: 7 },
+    ])
+  })
+
+  test('count mode with group scope submits the group table, not the matrix', () => {
+    const payload = formValuesToPlanPayload({
+      ...base,
+      grant_mode: 'count',
+      scope: 'group',
+      upgrade_groups: ['vip'],
+      group_values: { vip: 4 },
+      request_rows: [{ model: 'gpt-4o', counts: { vip: 99 } }],
+    })
+    assert.equal(payload.plan.scope, 'group')
+    assert.equal(payload.plan.measure, 'count')
+    assert.deepEqual(payload.plan.request_rules, [
+      { group: 'vip', models: [], count: 4, amount_display: 0 },
+    ])
+  })
 })
 
 describe('getPlanFormSchema validation', () => {
@@ -255,21 +326,21 @@ describe('getPlanFormSchema validation', () => {
     title: 'plan',
   }
 
-  test('shared quota with quota expiry needs a positive pool', () => {
+  test('total mode with quota expiry needs a positive pool', () => {
     const bad = schema.safeParse({
       ...base,
+      grant_mode: 'total',
       expire_mode: 'quota',
-      scope: 'all',
       total_amount: 0,
     })
     assert.equal(bad.success, false)
   })
 
-  test('shared pool with time expiry allows zero (unlimited)', () => {
+  test('total mode with time expiry allows zero (unlimited)', () => {
     const ok = schema.safeParse({
       ...base,
+      grant_mode: 'total',
       expire_mode: 'time',
-      scope: 'all',
       total_amount: 0,
     })
     assert.equal(ok.success, true)
@@ -278,21 +349,21 @@ describe('getPlanFormSchema validation', () => {
   test('group scope needs at least one positive group', () => {
     const empty = schema.safeParse({
       ...base,
-      scope: 'group',
+      grant_mode: 'quota',
       upgrade_groups: ['vip'],
       group_values: {},
     })
     assert.equal(empty.success, false)
     const zero = schema.safeParse({
       ...base,
-      scope: 'group',
+      grant_mode: 'quota',
       upgrade_groups: ['vip'],
       group_values: { vip: 0 },
     })
     assert.equal(zero.success, false)
     const ok = schema.safeParse({
       ...base,
-      scope: 'group',
+      grant_mode: 'quota',
       upgrade_groups: ['vip'],
       group_values: { vip: 5 },
     })
@@ -302,6 +373,7 @@ describe('getPlanFormSchema validation', () => {
   test('model scope needs a filled matrix without duplicate rows', () => {
     const empty = schema.safeParse({
       ...base,
+      grant_mode: 'count',
       scope: 'model',
       upgrade_groups: ['vip'],
       request_rows: [],
@@ -309,13 +381,15 @@ describe('getPlanFormSchema validation', () => {
     assert.equal(empty.success, false)
     const ok = schema.safeParse({
       ...base,
-      scope: 'model',
+      grant_mode: 'count',
       upgrade_groups: ['vip'],
+      scope: 'model',
       request_rows: [{ model: 'gpt-4o', counts: { vip: 3 } }],
     })
     assert.equal(ok.success, true)
     const dup = schema.safeParse({
       ...base,
+      grant_mode: 'count',
       scope: 'model',
       upgrade_groups: ['vip'],
       request_rows: [
@@ -329,17 +403,58 @@ describe('getPlanFormSchema validation', () => {
   test('orphaned group values in the matrix are flagged', () => {
     const result = schema.safeParse({
       ...base,
-      scope: 'model',
+      grant_mode: 'count',
       upgrade_groups: ['vip'],
       request_rows: [{ model: 'gpt-4o', counts: { removed: 3 } }],
+      scope: 'model',
     })
     assert.equal(result.success, false)
     if (!result.success) {
-      const message = result.error.issues.map((issue) => issue.message).join('; ')
+      const message = result.error.issues
+        .map((issue) => issue.message)
+        .join('; ')
       assert.ok(
         message.includes('gpt-4o (removed)'),
         `expected the orphaned-group warning, got: ${message}`
       )
     }
+  })
+
+  test('count mode rejects fractional request counts', () => {
+    const badGroup = schema.safeParse({
+      ...base,
+      grant_mode: 'count',
+      scope: 'group',
+      upgrade_groups: ['vip'],
+      group_values: { vip: 2.5 },
+    })
+    assert.equal(badGroup.success, false)
+    const badModel = schema.safeParse({
+      ...base,
+      grant_mode: 'count',
+      scope: 'model',
+      upgrade_groups: ['vip'],
+      request_rows: [{ model: 'gpt-4o', counts: { vip: 2.5 } }],
+    })
+    assert.equal(badModel.success, false)
+    const ok = schema.safeParse({
+      ...base,
+      grant_mode: 'count',
+      scope: 'model',
+      upgrade_groups: ['vip'],
+      request_rows: [{ model: 'gpt-4o', counts: { vip: 3 } }],
+    })
+    assert.equal(ok.success, true)
+  })
+
+  test('quota mode allows fractional amounts', () => {
+    const ok = schema.safeParse({
+      ...base,
+      grant_mode: 'quota',
+      scope: 'group',
+      upgrade_groups: ['vip'],
+      group_values: { vip: 2.5 },
+    })
+    assert.equal(ok.success, true)
   })
 })

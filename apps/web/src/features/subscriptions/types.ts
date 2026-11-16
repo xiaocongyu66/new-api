@@ -38,6 +38,7 @@ const subscriptionRequestCounterSchema = z.object({
   id: z.number(),
   group_name: z.string(),
   model_name: z.string(),
+  measure: z.enum(['quota', 'count']).optional(),
   total: z.number(),
   used: z.number(),
   quota_total: z.number().optional(),

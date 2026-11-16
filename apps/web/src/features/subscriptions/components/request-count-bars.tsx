@@ -30,10 +30,11 @@ interface RequestCountBarsProps {
 }
 
 /**
- * Renders one entry per request counter: the group/model row with its
+ * Renders one entry per entitlement row: the group/model row with its
  * used/total numbers on top, and a green bar below whose length is the
- * remaining request count — every consumed request shortens it from the
- * right. Shared by the wallet card and the admin user-subscription dialog.
+ * remaining amount — every consumed unit shortens it from the right. Quota
+ * rows format their numbers in display currency; count rows stay flat
+ * integers. Shared by the wallet card and the admin user-subscription dialog.
  */
 export function RequestCountBars({
   counters,
@@ -51,31 +52,41 @@ export function RequestCountBars({
   return (
     <div className={cn('space-y-2', className)}>
       {list.map((counter) => {
+        const quota = counter.measure === 'quota'
         const total = Number(counter.total || 0)
         const used = Number(counter.used || 0)
-        const remaining = Math.max(0, total - used)
-        const remainingPercent =
-          total > 0 ? Math.min(100, Math.round((remaining / total) * 100)) : 0
-        const exhausted = total > 0 && used >= total
+        const unlimited = quota && total <= 0
+        const remaining = unlimited ? 0 : Math.max(0, total - used)
+        const remainingPercent = unlimited
+          ? 100
+          : total > 0
+            ? Math.min(100, Math.round((remaining / total) * 100))
+            : 0
+        const exhausted = !unlimited && total > 0 && used >= total
         const quotaTotal = Number(counter.quota_total || 0)
         const quotaUsed = Number(counter.quota_used || 0)
+        const name = counter.model_name
+          ? `${counter.group_name} · ${counter.model_name}`
+          : counter.group_name
         return (
           <div key={counter.id} className='space-y-1'>
             <div className='flex items-center justify-between gap-2 text-xs'>
-              <span className='text-muted-foreground truncate'>
-                {counter.group_name} · {counter.model_name}
-              </span>
+              <span className='text-muted-foreground truncate'>{name}</span>
               <span
                 className={cn(
                   'shrink-0 tabular-nums',
                   exhausted ? 'text-red-500' : 'text-muted-foreground'
                 )}
               >
-                {used}/{total}
+                {unlimited
+                  ? t('Unlimited')
+                  : quota
+                    ? `${formatQuota(used)}/${formatQuota(total)}`
+                    : `${used}/${total}`}
               </span>
             </div>
-            {/* The green bar shows how many requests are left to spend: every
-                consumed request shortens it from the right. */}
+            {/* The green bar shows how much is left to spend: every consumed
+                unit shortens it from the right. */}
             <Progress
               value={remainingPercent}
               indicatorClassName={cn(

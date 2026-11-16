@@ -55,7 +55,8 @@ import { RequestCountBars } from '@/features/subscriptions/components/request-co
 import {
   getSubscriptionModeLabel,
   planExpireMode,
-  planScope,
+  planGrantMode,
+  planMeasure,
 } from '@/features/subscriptions/constants'
 import {
   formatDuration,
@@ -525,7 +526,7 @@ export function SubscriptionPlansCard({
                           {new Date(nextResetTime * 1000).toLocaleString()}
                         </div>
                       )}
-                      {subscription?.kind === 'request' ? (
+                      {(subscription?.request_counters?.length || 0) > 0 ? (
                         <RequestCountBars
                           counters={subscription?.request_counters}
                           className='mt-2'
@@ -596,15 +597,16 @@ export function SubscriptionPlansCard({
                 formatResetPeriod(plan, t) !== t('No Reset')
                   ? `${t('Quota Reset')}: ${formatResetPeriod(plan, t)}`
                   : null,
-                planScope(plan) === 'all'
+                planGrantMode(plan) === 'total'
                   ? totalAmount > 0
                     ? `${t('Total Quota')}: ${formatQuota(totalAmount)}`
                     : `${t('Total Quota')}: ${t('Unlimited')}`
                   : null,
-                ...(planScope(plan) !== 'all'
-                  ? (plan.request_rules || []).map(
-                      (rule) =>
-                        `${t('Request Limits')}: ${rule.group} · ${rule.models.join(', ')} × ${rule.count}`
+                ...(planGrantMode(plan) !== 'total'
+                  ? (plan.request_rules || []).map((rule) =>
+                      planMeasure(plan) === 'quota'
+                        ? `${t('Group Limits')}: ${rule.group} · ${formatQuota(Number(rule.amount_display || 0))}`
+                        : `${t('Request Limits')}: ${rule.group} · ${rule.models.join(', ')} × ${rule.count}`
                     )
                   : []),
                 limit > 0 ? `${t('Purchase Limit')}: ${limit}` : null,
