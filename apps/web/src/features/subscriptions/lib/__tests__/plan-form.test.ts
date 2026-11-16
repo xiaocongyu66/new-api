@@ -21,6 +21,14 @@ import assert from 'node:assert/strict'
 
 import type { TFunction } from 'i18next'
 
+import {
+  getPlanGrantModeOptions,
+  getPlanScopeOptions,
+  planExpireMode,
+  planGrantMode,
+  planMeasure,
+  planScope,
+} from '../../constants'
 import type { SubscriptionPlan } from '../../types'
 import {
   formValuesToPlanPayload,
@@ -34,14 +42,6 @@ import {
   type PlanFormValues,
   type RequestMatrixRow,
 } from '../plan-form'
-import {
-  getPlanGrantModeOptions,
-  getPlanScopeOptions,
-  planExpireMode,
-  planGrantMode,
-  planMeasure,
-  planScope,
-} from '../../constants'
 
 const t = ((key: string) => key) as unknown as TFunction
 
@@ -94,9 +94,18 @@ describe('plan axes fall back to the legacy kind', () => {
   test('explicit axes win over the kind', () => {
     assert.equal(planScope({ kind: 'time', scope: 'group' }), 'group')
     assert.equal(planMeasure({ kind: 'time', measure: 'count' }), 'count')
-    assert.equal(planGrantMode({ kind: 'time', scope: 'group', measure: 'count' }), 'count')
-    assert.equal(planGrantMode({ kind: 'time', scope: 'group', measure: 'quota' }), 'quota')
-    assert.equal(planGrantMode({ kind: 'time', scope: 'all', measure: 'quota' }), 'total')
+    assert.equal(
+      planGrantMode({ kind: 'time', scope: 'group', measure: 'count' }),
+      'count'
+    )
+    assert.equal(
+      planGrantMode({ kind: 'time', scope: 'group', measure: 'quota' }),
+      'quota'
+    )
+    assert.equal(
+      planGrantMode({ kind: 'time', scope: 'all', measure: 'quota' }),
+      'total'
+    )
   })
 
   test('grant mode options expose the three product modes', () => {
@@ -159,7 +168,12 @@ describe('requestRowsToRules / groupValuesToRules', () => {
       { model: 'claude', counts: { vip: 5 } },
     ]
     assert.deepEqual(requestRowsToRules(rows, ['vip', 'svip'], 'count'), [
-      { group: 'vip', models: ['gpt-4o', 'claude'], count: 5, amount_display: 0 },
+      {
+        group: 'vip',
+        models: ['gpt-4o', 'claude'],
+        count: 5,
+        amount_display: 0,
+      },
       { group: 'svip', models: ['gpt-4o'], count: 10, amount_display: 0 },
     ])
   })
@@ -182,7 +196,11 @@ describe('requestRowsToRules / groupValuesToRules', () => {
 
   test('group table emits one rule per positive group', () => {
     assert.deepEqual(
-      groupValuesToRules({ vip: 10, svip: 0, stale: 5 }, ['vip', 'svip'], 'quota'),
+      groupValuesToRules(
+        { vip: 10, svip: 0, stale: 5 },
+        ['vip', 'svip'],
+        'quota'
+      ),
       [{ group: 'vip', models: [], count: 0, amount_display: 10 }]
     )
   })
@@ -230,9 +248,7 @@ describe('formValuesToPlanPayload', () => {
 
   test('new plans default to per-group quota and expose the three modes', () => {
     assert.equal(PLAN_FORM_DEFAULTS.grant_mode, 'quota')
-    const grantValues = getPlanGrantModeOptions(t).map(
-      (option) => option.value
-    )
+    const grantValues = getPlanGrantModeOptions(t).map((option) => option.value)
     assert.deepEqual(grantValues, ['total', 'quota', 'count'])
     const scopeValues = getPlanScopeOptions(t).map((option) => option.value)
     assert.deepEqual(scopeValues, ['group', 'model'])
@@ -257,6 +273,7 @@ describe('formValuesToPlanPayload', () => {
     const payload = formValuesToPlanPayload({
       ...base,
       grant_mode: 'count',
+      scope: 'model',
       upgrade_groups: ['vip', 'svip'],
       request_rows: [
         { model: 'gpt-4o', counts: { vip: 5 } },
@@ -266,6 +283,38 @@ describe('formValuesToPlanPayload', () => {
     assert.deepEqual(payload.plan.request_rules, [
       { group: 'vip', models: ['gpt-4o'], count: 5, amount_display: 0 },
       { group: 'svip', models: ['claude'], count: 7, amount_display: 0 },
+    ])
+  })
+
+  test('quota mode with model scope submits the matrix rows, not the group table', () => {
+    const payload = formValuesToPlanPayload({
+      ...base,
+      grant_mode: 'quota',
+      scope: 'model',
+      upgrade_groups: ['vip'],
+      group_values: { vip: 99 },
+      request_rows: [{ model: 'gpt-4o', counts: { vip: 7 } }],
+    })
+    assert.equal(payload.plan.scope, 'model')
+    assert.equal(payload.plan.measure, 'quota')
+    assert.deepEqual(payload.plan.request_rules, [
+      { group: 'vip', models: ['gpt-4o'], count: 0, amount_display: 7 },
+    ])
+  })
+
+  test('count mode with group scope submits the group table, not the matrix', () => {
+    const payload = formValuesToPlanPayload({
+      ...base,
+      grant_mode: 'count',
+      scope: 'group',
+      upgrade_groups: ['vip'],
+      group_values: { vip: 4 },
+      request_rows: [{ model: 'gpt-4o', counts: { vip: 99 } }],
+    })
+    assert.equal(payload.plan.scope, 'group')
+    assert.equal(payload.plan.measure, 'count')
+    assert.deepEqual(payload.plan.request_rules, [
+      { group: 'vip', models: [], count: 4, amount_display: 0 },
     ])
   })
 })
@@ -325,6 +374,7 @@ describe('getPlanFormSchema validation', () => {
     const empty = schema.safeParse({
       ...base,
       grant_mode: 'count',
+      scope: 'model',
       upgrade_groups: ['vip'],
       request_rows: [],
     })
@@ -333,12 +383,14 @@ describe('getPlanFormSchema validation', () => {
       ...base,
       grant_mode: 'count',
       upgrade_groups: ['vip'],
+      scope: 'model',
       request_rows: [{ model: 'gpt-4o', counts: { vip: 3 } }],
     })
     assert.equal(ok.success, true)
     const dup = schema.safeParse({
       ...base,
       grant_mode: 'count',
+      scope: 'model',
       upgrade_groups: ['vip'],
       request_rows: [
         { model: 'gpt-4o', counts: { vip: 3 } },
@@ -354,14 +406,55 @@ describe('getPlanFormSchema validation', () => {
       grant_mode: 'count',
       upgrade_groups: ['vip'],
       request_rows: [{ model: 'gpt-4o', counts: { removed: 3 } }],
+      scope: 'model',
     })
     assert.equal(result.success, false)
     if (!result.success) {
-      const message = result.error.issues.map((issue) => issue.message).join('; ')
+      const message = result.error.issues
+        .map((issue) => issue.message)
+        .join('; ')
       assert.ok(
         message.includes('gpt-4o (removed)'),
         `expected the orphaned-group warning, got: ${message}`
       )
     }
+  })
+
+  test('count mode rejects fractional request counts', () => {
+    const badGroup = schema.safeParse({
+      ...base,
+      grant_mode: 'count',
+      scope: 'group',
+      upgrade_groups: ['vip'],
+      group_values: { vip: 2.5 },
+    })
+    assert.equal(badGroup.success, false)
+    const badModel = schema.safeParse({
+      ...base,
+      grant_mode: 'count',
+      scope: 'model',
+      upgrade_groups: ['vip'],
+      request_rows: [{ model: 'gpt-4o', counts: { vip: 2.5 } }],
+    })
+    assert.equal(badModel.success, false)
+    const ok = schema.safeParse({
+      ...base,
+      grant_mode: 'count',
+      scope: 'model',
+      upgrade_groups: ['vip'],
+      request_rows: [{ model: 'gpt-4o', counts: { vip: 3 } }],
+    })
+    assert.equal(ok.success, true)
+  })
+
+  test('quota mode allows fractional amounts', () => {
+    const ok = schema.safeParse({
+      ...base,
+      grant_mode: 'quota',
+      scope: 'group',
+      upgrade_groups: ['vip'],
+      group_values: { vip: 2.5 },
+    })
+    assert.equal(ok.success, true)
   })
 })

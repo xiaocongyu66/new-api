@@ -76,7 +76,6 @@ import {
   getPlanGrantModeOptions,
   getPlanScopeOptions,
   getResetPeriodOptions,
-  planScope,
   type PlanGrantMode,
   type PlanScope,
 } from '../constants'
@@ -201,11 +200,6 @@ export function SubscriptionsMutateDrawer({
   const [pancakeProducts, setPancakeProducts] = useState<
     { id: string; name: string; status: string }[]
   >([])
-  // The per-entitlement scope (group vs model) is drawer-local state: it only
-  // exists while a single quota/request mode is selected.
-  const [entitlementScope, setEntitlementScope] = useState<'group' | 'model'>(
-    'group'
-  )
 
   const schema = getPlanFormSchema(t)
   const form = useForm<PlanFormValues>({
@@ -221,17 +215,14 @@ export function SubscriptionsMutateDrawer({
     control: form.control,
     name: 'request_rows',
   })
+  const entitlementScope = form.watch('scope')
 
   useEffect(() => {
     if (open) {
       if (currentRow?.plan) {
         form.reset(planToFormValues(currentRow.plan))
-        setEntitlementScope(
-          planScope(currentRow.plan) === 'model' ? 'model' : 'group'
-        )
       } else {
         form.reset(PLAN_FORM_DEFAULTS)
-        setEntitlementScope('group')
       }
       getGroups()
         .then((res) => {
@@ -298,39 +289,11 @@ export function SubscriptionsMutateDrawer({
     Number(watchedPrice ?? 0) > 0
 
   const onSubmit = async (values: PlanFormValues) => {
-    if (values.grant_mode === 'quota') {
-      const hasGrant = Object.values(values.group_values).some(
-        (value) => value > 0
-      )
-      if (!hasGrant) {
-        toast.error(
-          t('Group limits need at least one group with a positive amount')
-        )
-        return
-      }
-    }
-    if (values.grant_mode === 'count') {
-      const hasCount = values.request_rows.some((row) =>
-        Object.values(row.counts).some((value) => value > 0)
-      )
-      if (!hasCount) {
-        toast.error(
-          t('Request limits need at least one model with a positive count')
-        )
-        return
-      }
-      const seen = new Set<string>()
-      const duplicated = values.request_rows.some((row) =>
-        seen.has(row.model) ? true : (seen.add(row.model), false)
-      )
-      if (duplicated) {
-        toast.error(t('Each model can only be added once'))
-        return
-      }
-    }
+    // Validation lives in the form schema's superRefine; handleSubmit runs it
+    // before this callback, so no duplicate checks are needed here.
     setIsSubmitting(true)
     try {
-      const payload = formValuesToPlanPayload(values, entitlementScope)
+      const payload = formValuesToPlanPayload(values)
       if (isEdit && currentRow?.plan?.id) {
         const res = await updatePlan(currentRow.plan.id, payload)
         if (res.success) {
@@ -843,8 +806,12 @@ export function SubscriptionsMutateDrawer({
                             options={scopeOpts}
                             value={entitlementScope}
                             onChange={(value) =>
-                              setEntitlementScope(
-                                value === 'model' ? 'model' : 'group'
+                              form.setValue(
+                                'scope',
+                                value === 'model' ? 'model' : 'group',
+                                {
+                                  shouldDirty: true,
+                                }
                               )
                             }
                           />
