@@ -170,7 +170,7 @@ export function InvitationRewardSettingsSection(
                     {t(
                       'Quota given to users who invite others ({{formattedQuota}})',
                       {
-                        formattedQuota: formatQuota(field.value === '' ? 0 : field.value),
+                        formattedQuota: formatQuota(Number(field.value) || 0),
                       }
                     )}
                   </FormDescription>
@@ -197,7 +197,7 @@ export function InvitationRewardSettingsSection(
                   </FormControl>
                   <FormDescription>
                     {t('Quota given to invited users ({{formattedQuota}})', {
-                      formattedQuota: formatQuota(field.value === '' ? 0 : field.value),
+                      formattedQuota: formatQuota(Number(field.value) || 0),
                     })}
                   </FormDescription>
                   <FormMessage />
