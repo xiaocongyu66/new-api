@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
+	channelpkg "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 )
@@ -17,7 +18,7 @@ func withProbeDB(t *testing.T) {
 	previousDB := dbx.DB
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&ChannelProbeResult{}))
+	require.NoError(t, db.AutoMigrate(&channelpkg.Channel{}, &ChannelProbeResult{}))
 	dbx.DB = db
 	t.Cleanup(func() { dbx.DB = previousDB })
 }
@@ -68,7 +69,7 @@ func TestLoadProbeStats24h(t *testing.T) {
 	require.NotNil(t, gpt4o.Availability)
 	require.InDelta(t, 66.66666666666667, *gpt4o.Availability, 1e-9)
 	require.Equal(t, int64(now-500), gpt4o.LastProbeAt)
-	require.Equal(t, "", gpt4o.LastErrorCode)
+	require.Equal(t, "upstream_error", gpt4o.LastErrorCode)
 
 	mini, ok := byModel["gpt-4o-mini"]
 	require.True(t, ok)
