@@ -99,17 +99,20 @@ type User struct {
 	// raw quota fields in the configured display currency. gorm:"-" so they are
 	// never columns; AfterFind fills them on every read (list, search, single),
 	// so the frontend never divides by QuotaPerUnit.
-	QuotaDisplay           float64                    `json:"quota_display" gorm:"-"`
-	UsedQuotaDisplay       float64                    `json:"used_quota_display" gorm:"-"`
-	AffQuotaDisplay        float64                    `json:"aff_quota_display" gorm:"-"`
-	AffHistoryQuotaDisplay float64                    `json:"aff_history_quota_display" gorm:"-"`
-	RequestCount           int                        `json:"request_count" gorm:"type:int;default:0;"` // request number
-	Group                  string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
-	AffCode                string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
-	AffCount               int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
-	AffQuota               int                        `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
-	AffHistoryQuota        int                        `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
-	InviterId              int                        `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	QuotaDisplay           float64 `json:"quota_display" gorm:"-"`
+	UsedQuotaDisplay       float64 `json:"used_quota_display" gorm:"-"`
+	AffQuotaDisplay        float64 `json:"aff_quota_display" gorm:"-"`
+	AffHistoryQuotaDisplay float64 `json:"aff_history_quota_display" gorm:"-"`
+	RequestCount           int     `json:"request_count" gorm:"type:int;default:0;"` // request number
+	Group                  string  `json:"group" gorm:"type:varchar(64);default:'default'"`
+	AffCode                string  `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
+	AffCount               int     `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
+	AffQuota               int     `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
+	AffHistoryQuota        int     `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
+	InviterId              int     `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	// Marks that the inviter reward was already paid at registration, so a
+	// later switch to recharge mode cannot pay the same invite twice.
+	InviteRewardDirectPaid bool                       `json:"-" gorm:"column:invite_reward_direct_paid"`
 	DeletedAt              gorm.DeletedAt             `gorm:"index"`
 	LinuxDOId              string                     `json:"linux_do_id" gorm:"column:linux_do_id;index"`
 	Setting                string                     `json:"setting" gorm:"type:text;column:setting"`
@@ -467,10 +470,14 @@ func (user *User) applyInviteRewards(inviterId int) {
 		writeSystemLog(user.Id, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 	}
 	if common.InviteRewardInviterMode == common.InviteRewardModeDirect {
-		if common.QuotaForInviter > 0 {
-			writeSystemLog(inviterId, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
+		reward := common.QuotaForInviter
+		if reward > 0 {
+			writeSystemLog(inviterId, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(reward)))
 		}
-		_ = inviteUser(inviterId, common.QuotaForInviter)
+		if err := inviteUser(inviterId, reward); err == nil && reward > 0 {
+			_ = dbx.DB.Model(&User{}).Where("id = ?", user.Id).
+				Update("invite_reward_direct_paid", true).Error
+		}
 	} else {
 		_ = inviteUser(inviterId, 0)
 	}
