@@ -77,10 +77,10 @@ func TestProbeThresholdFlipAndDedupPerModel(t *testing.T) {
 
 	insert := func(channelId int, model string, successCount, failCount int) {
 		for i := 0; i < successCount; i++ {
-			probeResultRow(channelId, model, true, "", now-int64(i))
+			probeResultRow(t, channelId, model, true, "", now-int64(i))
 		}
 		for i := 0; i < failCount; i++ {
-			probeResultRow(channelId, model, false, "upstream_error", now-int64(100+i))
+			probeResultRow(t, channelId, model, false, "upstream_error", now-int64(100+i))
 		}
 	}
 	insert(1, "gpt-4o", 8, 2) // 80% → above
@@ -170,10 +170,10 @@ func TestProbeAutoDisableAndRestoreWithPolicy(t *testing.T) {
 	insertRows := func(successCount, failCount int) {
 		require.NoError(t, dbx.DB.Where("channel_id = ?", 3).Delete(&ChannelProbeResult{}).Error)
 		for i := 0; i < successCount; i++ {
-			probeResultRow(3, "m1", true, "", now-int64(i))
+			probeResultRow(t, 3, "m1", true, "", now-int64(i))
 		}
 		for i := 0; i < failCount; i++ {
-			probeResultRow(3, "m1", false, "upstream_error", now-int64(100+i))
+			probeResultRow(t, 3, "m1", false, "upstream_error", now-int64(100+i))
 		}
 	}
 

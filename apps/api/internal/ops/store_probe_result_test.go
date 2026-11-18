@@ -22,7 +22,7 @@ func withProbeDB(t *testing.T) {
 	t.Cleanup(func() { dbx.DB = previousDB })
 }
 
-func probeResultRow(channelId int, model string, success bool, errorCode string, createdAt int64) {
+func probeResultRow(t *testing.T, channelId int, model string, success bool, errorCode string, createdAt int64) {
 	require.NoError(t, dbx.DB.Create(&ChannelProbeResult{
 		ChannelId: channelId,
 		Model:     model,
@@ -44,14 +44,14 @@ func TestLoadProbeStats24h(t *testing.T) {
 		if !success {
 			errorCode = "upstream_error"
 		}
-		probeResultRow(1, "gpt-4o", success, errorCode, now-int64(1600-i*100))
+		probeResultRow(t, 1, "gpt-4o", success, errorCode, now-int64(1600-i*100))
 	}
 	// channel 1 / gpt-4o-mini：2 次，1 成功 1 失败，最近一次失败
-	probeResultRow(1, "gpt-4o-mini", true, "", now-200)
-	probeResultRow(1, "gpt-4o-mini", false, "fail-x", now-100)
+	probeResultRow(t, 1, "gpt-4o-mini", true, "", now-200)
+	probeResultRow(t, 1, "gpt-4o-mini", false, "fail-x", now-100)
 
 	// channel 2 / claude：唯一一条已超 24h 窗口，应被剔除
-	probeResultRow(2, "claude", true, "", now-90000)
+	probeResultRow(t, 2, "claude", true, "", now-90000)
 
 	stats, err := LoadProbeStats24h(context.Background(), 1)
 	require.NoError(t, err)
