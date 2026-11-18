@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { parseCurrencyDisplayType } from '@/lib/currency'
 
 import { CheckinSettingsSection } from '../general/checkin-settings-section'
+import { InvitationRewardSettingsSection } from '../general/invitation-reward-settings-section'
 import { PricingSection } from '../general/pricing-section'
 import { QQBotSettingsSection } from '../general/qqbot-settings-section'
 import { QuotaSettingsSection } from '../general/quota-settings-section'
@@ -67,8 +68,6 @@ const BILLING_SECTIONS = [
         defaultValues={{
           QuotaForNewUser_display: settings.QuotaForNewUser_display,
           PreConsumedQuota_display: settings.PreConsumedQuota_display,
-          QuotaForInviter_display: settings.QuotaForInviter_display,
-          QuotaForInvitee_display: settings.QuotaForInvitee_display,
           TopUpLink: settings.TopUpLink,
           general_setting: {
             docs_link: settings['general_setting.docs_link'],
@@ -361,6 +360,30 @@ const BILLING_SECTIONS = [
           'qq_bot_setting.transfer_max_amount_display':
             settings['qq_bot_setting.transfer_max_amount_display'] ?? 0,
         }}
+      />
+    ),
+  },
+  {
+    id: 'invitation-reward',
+    titleKey: 'Invitation Rewards',
+    build: (settings: BillingSettings) => (
+      <InvitationRewardSettingsSection
+        defaultValues={{
+          QuotaForInviter_display: settings.QuotaForInviter_display,
+          QuotaForInvitee_display: settings.QuotaForInvitee_display,
+          invite_reward: {
+            inviter_mode: settings['invite_reward.inviter_mode'],
+            rebate_multiplier: settings['invite_reward.rebate_multiplier'],
+            rebate_trigger: settings['invite_reward.rebate_trigger'],
+            transfer_min_quota_display: settings[
+              'invite_reward.transfer_min_quota_display'
+            ],
+          },
+        }}
+        complianceConfirmed={
+          (settings['payment_setting.compliance_confirmed'] ?? false) &&
+          settings['payment_setting.compliance_terms_version'] === 'v1'
+        }
       />
     ),
   },
