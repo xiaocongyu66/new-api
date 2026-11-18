@@ -49,6 +49,8 @@ type MappingRow = {
   to: string
 }
 
+const DUPLICATE_MAPPING_SENTINEL = '{ "duplicate_source_models": '
+
 
 
 function getDuplicateSources(rows: MappingRow[]): string[] {
