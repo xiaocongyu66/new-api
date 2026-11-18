@@ -46,7 +46,7 @@ type Channel struct {
 	ModelMapping     *string `json:"model_mapping" gorm:"type:text"`
 	//MaxInputTokens     *int    `json:"max_input_tokens" gorm:"default:0"`
 	StatusCodeMapping *string `json:"status_code_mapping" gorm:"type:varchar(1024);default:''"`
-	AutoBan           *int    `json:"auto_ban" gorm:"default:1"`
+	AutoBan           *int    `json:"auto_ban" gorm:"default:0"`
 	OtherInfo         string  `json:"other_info"`
 	Tag               *string `json:"tag" gorm:"index"`
 	Setting           *string `json:"setting" gorm:"type:text"` // 渠道额外设置
@@ -376,6 +376,14 @@ func (channel *Channel) SaveStatusStateWithTx(tx *gorm.DB) error {
 // the math.
 func (channel *Channel) AfterFind(_ *gorm.DB) error {
 	channel.UsedQuotaDisplay = resolveChannelUsedQuotaDisplay(channel.UsedQuota)
+	return nil
+}
+
+func (channel *Channel) BeforeCreate(_ *gorm.DB) error {
+	if channel.AutoBan == nil {
+		autoBan := 0
+		channel.AutoBan = &autoBan
+	}
 	return nil
 }
 

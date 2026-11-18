@@ -603,6 +603,11 @@ func AddChannel(c contract.Context) {
 		return
 	}
 
+	if addChannelRequest.Channel != nil && addChannelRequest.Channel.AutoBan == nil {
+		autoBan := 0
+		addChannelRequest.Channel.AutoBan = &autoBan
+	}
+
 	// 使用统一的校验函数
 	if err := validateChannel(addChannelRequest.Channel, true); err != nil {
 		_ = c.JSON(http.StatusOK, common.H{
@@ -616,7 +621,6 @@ func AddChannel(c contract.Context) {
 	keys := make([]string, 0)
 	switch addChannelRequest.Mode {
 	case "multi_to_single":
-		addChannelRequest.Channel.ChannelInfo.IsMultiKey = true
 		addChannelRequest.Channel.ChannelInfo.MultiKeyMode = addChannelRequest.MultiKeyMode
 		if addChannelRequest.Channel.Type == constant.ChannelTypeVertexAi && addChannelRequest.Channel.GetOtherSettings().VertexKeyType != dto.VertexKeyTypeAPIKey {
 			array, err := getVertexArrayKeys(addChannelRequest.Channel.Key)
@@ -628,6 +632,8 @@ func AddChannel(c contract.Context) {
 				return
 			}
 			addChannelRequest.Channel.ChannelInfo.MultiKeySize = len(array)
+			addChannelRequest.Channel.ChannelInfo.IsMultiKey =
+				addChannelRequest.Channel.ChannelInfo.MultiKeySize > 1
 			addChannelRequest.Channel.Key = strings.Join(array, "\n")
 		} else {
 			cleanKeys := make([]string, 0)
@@ -639,6 +645,8 @@ func AddChannel(c contract.Context) {
 				cleanKeys = append(cleanKeys, key)
 			}
 			addChannelRequest.Channel.ChannelInfo.MultiKeySize = len(cleanKeys)
+			addChannelRequest.Channel.ChannelInfo.IsMultiKey =
+				addChannelRequest.Channel.ChannelInfo.MultiKeySize > 1
 			addChannelRequest.Channel.Key = strings.Join(cleanKeys, "\n")
 		}
 		keys = []string{addChannelRequest.Channel.Key}

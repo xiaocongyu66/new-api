@@ -430,7 +430,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   group: ['default'],
   model_mapping: '',
   test_model: '',
-  auto_ban: 1,
+  auto_ban: 0,
   status: CHANNEL_STATUS.ENABLED,
   status_code_mapping: '',
   tag: '',
@@ -440,7 +440,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   header_override: '',
   settings: '{}',
   other: '',
-  multi_key_mode: 'single',
+  multi_key_mode: 'multi_to_single',
   multi_key_type: 'random',
   batch_add_set_key_prefix_2_name: false,
   key_mode: 'append',
@@ -584,6 +584,8 @@ export function transformChannelToFormDefaults(
     }
   }
 
+  const forceSingleKeyMode =
+    channel.type === 57 || (channel.type === 41 && vertexKeyType === 'api_key')
   return {
     name: channel.name || '',
     type: channel.type,
@@ -594,7 +596,7 @@ export function transformChannelToFormDefaults(
     group: parseGroups(channel.group || 'default'),
     model_mapping: channel.model_mapping || '',
     test_model: channel.test_model || '',
-    auto_ban: channel.auto_ban ?? 1,
+    auto_ban: channel.auto_ban ?? 0,
     status: channel.status,
     status_code_mapping: channel.status_code_mapping || '',
     tag: channel.tag || '',
@@ -604,7 +606,7 @@ export function transformChannelToFormDefaults(
     header_override: channel.header_override || '',
     settings: channel.settings || '{}',
     other: channel.other || '',
-    multi_key_mode: 'single',
+    multi_key_mode: forceSingleKeyMode ? 'single' : 'multi_to_single',
     multi_key_type: channel.channel_info.multi_key_mode || 'random',
     batch_add_set_key_prefix_2_name: false,
     key_mode: 'append', // Default to append mode for editing multi-key channels
@@ -810,7 +812,7 @@ export function transformFormDataToCreatePayload(formData: ChannelFormValues): {
   batch_add_set_key_prefix_2_name?: boolean
   channel: Partial<Channel>
 } {
-  const mode = formData.multi_key_mode || 'single'
+  const mode = formData.multi_key_mode || 'multi_to_single'
 
   const channel: Partial<Channel> = {
     name: formData.name,
@@ -822,7 +824,7 @@ export function transformFormDataToCreatePayload(formData: ChannelFormValues): {
     group: formatGroups(formData.group),
     model_mapping: formData.model_mapping || null,
     test_model: formData.test_model || null,
-    auto_ban: formData.auto_ban ?? 1,
+    auto_ban: formData.auto_ban ?? 0,
     status: formData.status,
     status_code_mapping: formData.status_code_mapping || null,
     tag: formData.tag || null,
@@ -868,7 +870,7 @@ export function transformFormDataToUpdatePayload(
     group: formatGroups(formData.group),
     model_mapping: formData.model_mapping || null,
     test_model: formData.test_model || null,
-    auto_ban: formData.auto_ban ?? 1,
+    auto_ban: formData.auto_ban ?? 0,
     status_code_mapping: formData.status_code_mapping || null,
     tag: formData.tag || null,
     remark: formData.remark || '',
