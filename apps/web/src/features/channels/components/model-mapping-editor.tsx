@@ -16,22 +16,31 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Code, Plus, Table, Trash2 } from 'lucide-react'
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { Code, PencilLine, Plus, Table, Trash2 } from 'lucide-react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { JsonCodeEditor } from '@/components/json-code-editor'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { PlazaModelEditorDialog } from './dialogs/plaza-model-alias-dialog'
 
 type ModelMappingEditorProps = {
   value: string
   onChange: (value: string) => void
   disabled?: boolean
-  sourceModelOptions?: string[]
-  targetModelOptions?: string[]
+  header?: ReactNode
+  plazaModelOptions?: string[]
+  upstreamModelOptions?: string[]
 }
 
 type MappingRow = {
@@ -40,7 +49,7 @@ type MappingRow = {
   to: string
 }
 
-const DUPLICATE_MAPPING_SENTINEL = '{ "duplicate_source_models": '
+
 
 function getDuplicateSources(rows: MappingRow[]): string[] {
   const seen = new Set<string>()
@@ -59,16 +68,39 @@ function getDuplicateSources(rows: MappingRow[]): string[] {
   return Array.from(duplicates)
 }
 
+
+
 export function ModelMappingEditor(props: ModelMappingEditorProps) {
   const { t } = useTranslation()
-  const sourceListId = useId()
-  const targetListId = useId()
   const [mode, setMode] = useState<'visual' | 'json'>('visual')
   const [rows, setRows] = useState<MappingRow[]>([])
   const [jsonValue, setJsonValue] = useState(props.value)
   const [jsonError, setJsonError] = useState<string | null>(null)
+  const [plazaModels, setPlazaModels] = useState<string[]>([])
+  const [aliasDialogOpen, setAliasDialogOpen] = useState(false)
   const nextRowIdRef = useRef(0)
   const duplicateSources = useMemo(() => getDuplicateSources(rows), [rows])
+  const plazaOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...(props.plazaModelOptions ?? []),
+          ...rows.map((row) => row.from.trim()).filter(Boolean),
+          ...plazaModels,
+        ])
+      ),
+    [props.plazaModelOptions, rows, plazaModels]
+  )
+  const upstreamOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...(props.upstreamModelOptions ?? []),
+          ...rows.map((row) => row.to.trim()).filter(Boolean),
+        ])
+      ),
+    [props.upstreamModelOptions, rows]
+  )
 
   const createRowId = () => {
     nextRowIdRef.current += 1
@@ -134,7 +166,8 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
   }, [props.value])
 
   const convertRowsToJson = (updatedRows: MappingRow[]): string => {
-    if (updatedRows.length === 0) {
+    // Blank rows are UI state only; emitting "{}" would make the value effect wipe them.
+    if (!updatedRows.some((row) => row.from.trim())) {
       return ''
     }
     const obj: Record<string, string> = {}
@@ -186,6 +219,7 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
     syncRows(updatedRows)
   }
 
+
   const handleJsonChange = (newJson: string) => {
     setJsonValue(newJson)
     props.onChange(newJson)
@@ -222,14 +256,15 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
   return (
     <div className='space-y-2'>
       <Tabs value={mode} onValueChange={handleModeChange} className='space-y-2'>
-        <div className='flex items-center justify-between gap-3'>
+        <div className='flex flex-wrap items-center gap-x-2 gap-y-1'>
+          {props.header}
           <TabsList>
-            <TabsTrigger value='visual'>
-              <Table className='h-4 w-4' aria-hidden='true' />
+            <TabsTrigger value='visual' className='text-xs'>
+              <Table className='h-3 w-3' aria-hidden='true' />
               {t('Visual')}
             </TabsTrigger>
-            <TabsTrigger value='json'>
-              <Code className='h-4 w-4' aria-hidden='true' />
+            <TabsTrigger value='json' className='text-xs'>
+              <Code className='h-3 w-3' aria-hidden='true' />
               {t('JSON')}
             </TabsTrigger>
           </TabsList>
@@ -237,7 +272,7 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
             type='button'
             variant='link'
             size='sm'
-            className='h-auto p-0'
+            className='ml-auto h-auto p-0'
             onClick={handleFillTemplate}
             disabled={props.disabled}
           >
@@ -264,44 +299,83 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
         <TabsContent value='visual' className='space-y-2'>
           {rows.length > 0 ? (
             <div className='space-y-2'>
-              <div className='grid grid-cols-[1fr_1fr_auto] gap-2 text-sm font-medium'>
-                <div>{t('Original Model')}</div>
-                <div>{t('Replacement Model')}</div>
-                <div className='w-10'></div>
+              <div className='flex flex-wrap items-center gap-2 text-xs font-medium'>
+                <span className='min-w-[8rem]'>{t('Plaza Model')}</span>
+                <span className='min-w-[8rem]'>{t('Upstream Model')}</span>
               </div>
               {rows.map((row) => (
                 <div
                   key={row.id}
-                  className='grid grid-cols-[1fr_1fr_auto] gap-2'
+                  className='flex flex-wrap items-center gap-2 transition-all duration-200'
                 >
-                  <Input
+                  <Select
                     value={row.from}
-                    onChange={(e) =>
-                      handleRowChange(row.id, 'from', e.target.value)
+                    onValueChange={(value) =>
+                      handleRowChange(row.id, 'from', value ?? '')
                     }
-                    placeholder='gpt-3.5-turbo'
                     disabled={props.disabled}
-                    list={sourceListId}
-                  />
-                  <Input
+                  >
+                    <SelectTrigger
+                      size='sm'
+                      className='max-w-full min-w-[8rem] text-xs transition-all duration-200'
+                      aria-label={t('Plaza Model')}
+                    >
+                      <SelectValue placeholder={t('Select Model')} />
+                    </SelectTrigger>
+                    <SelectContent
+                      alignItemWithTrigger={false}
+                      className='min-w-[14rem] max-w-[min(22rem,90vw)] transition-all duration-150'
+                    >
+                      <SelectGroup>
+                        {plazaOptions.map((model) => (
+                          <SelectItem key={model} value={model}>
+                            <span className='block max-w-[18rem] truncate'>
+                              {model}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <Select
                     value={row.to}
-                    onChange={(e) =>
-                      handleRowChange(row.id, 'to', e.target.value)
+                    onValueChange={(value) =>
+                      handleRowChange(row.id, 'to', value ?? '')
                     }
-                    placeholder='gpt-3.5-turbo-0125'
                     disabled={props.disabled}
-                    list={targetListId}
-                  />
+                  >
+                    <SelectTrigger
+                      size='sm'
+                      className='max-w-full min-w-[8rem] text-xs transition-all duration-200'
+                      aria-label={t('Upstream Model')}
+                    >
+                      <SelectValue placeholder={t('Select Model')} />
+                    </SelectTrigger>
+                    <SelectContent
+                      alignItemWithTrigger={false}
+                      className='min-w-[14rem] max-w-[min(22rem,90vw)] transition-all duration-150'
+                    >
+                      <SelectGroup>
+                        {upstreamOptions.map((model) => (
+                          <SelectItem key={model} value={model}>
+                            <span className='block max-w-[18rem] truncate'>
+                              {model}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
                   <Button
                     type='button'
                     variant='ghost'
                     size='icon'
                     onClick={() => handleDeleteRow(row.id)}
                     disabled={props.disabled}
-                    className='h-10 w-10'
+                    className='h-6 w-6 shrink-0 transition-colors duration-150'
                     aria-label={t('Delete mapping')}
                   >
-                    <Trash2 className='h-4 w-4' aria-hidden='true' />
+                    <Trash2 className='h-3 w-3' aria-hidden='true' />
                   </Button>
                 </div>
               ))}
@@ -319,10 +393,21 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
             size='sm'
             onClick={handleAddRow}
             disabled={props.disabled}
-            className='w-full'
+            className='w-full transition-colors duration-150'
           >
             <Plus className='mr-2 h-4 w-4' />
             {t('Add Mapping')}
+          </Button>
+          <Button
+            type='button'
+            variant='ghost'
+            size='sm'
+            onClick={() => setAliasDialogOpen(true)}
+            disabled={props.disabled}
+            className='w-full justify-start transition-colors duration-150'
+          >
+            <PencilLine className='mr-2 h-3.5 w-3.5' />
+            {t('Edit Plaza Models')}
           </Button>
         </TabsContent>
         <TabsContent value='json'>
@@ -338,19 +423,13 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
         </TabsContent>
       </Tabs>
 
-      {props.sourceModelOptions && props.sourceModelOptions.length > 0 && (
-        <datalist id={sourceListId}>
-          {props.sourceModelOptions.map((model) => (
-            <option key={model} value={model} />
-          ))}
-        </datalist>
-      )}
-      {props.targetModelOptions && props.targetModelOptions.length > 0 && (
-        <datalist id={targetListId}>
-          {props.targetModelOptions.map((model) => (
-            <option key={model} value={model} />
-          ))}
-        </datalist>
+      {aliasDialogOpen && (
+        <PlazaModelEditorDialog
+          open
+          onOpenChange={setAliasDialogOpen}
+          models={plazaOptions}
+          onSave={setPlazaModels}
+        />
       )}
     </div>
   )
