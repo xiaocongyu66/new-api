@@ -28,7 +28,7 @@ func applyInviteRechargeRewards(tx *gorm.DB, inviteeID int, creditedQuota int) e
 	// single-writer transactions still serialize the competing write.
 	var invitee identity.User
 	if err := dbx.LockForUpdate(tx).Model(&identity.User{}).
-		Select("inviter_id").
+		Select("inviter_id, created_at").
 		Where("id = ?", inviteeID).
 		First(&invitee).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -40,14 +40,15 @@ func applyInviteRechargeRewards(tx *gorm.DB, inviteeID int, creditedQuota int) e
 		return nil
 	}
 
-	// The current order is already marked successful inside the transaction,
-	// so a count above one means the invitee has recharged before. Subscription
-	// purchases also create TopUp rows but carry no payment provider; they are
-	// not wallet top-ups and must not consume the first-recharge slot.
+	// The current order is already marked successful inside the transaction.
+	// Count only wallet top-ups created at or after the invite registration;
+	// a count above one means the invitee already recharged after signing up.
+	// Subscription purchases carry no payment provider and never count.
 	if common.InviteRewardRebateTrigger == common.InviteRewardTriggerFirst {
 		var count int64
 		if err := tx.Model(&TopUp{}).
-			Where("user_id = ? AND status = ? AND payment_provider <> ?", inviteeID, common.TopUpStatusSuccess, "").
+			Where("user_id = ? AND status = ? AND payment_provider <> ? AND create_time >= ?",
+				inviteeID, common.TopUpStatusSuccess, "", invitee.CreatedAt).
 			Count(&count).Error; err != nil {
 			return err
 		}
