@@ -228,6 +228,7 @@ POST /api/stripe/webhook
 POST /api/subscription/admin/bind
 POST /api/subscription/admin/plans
 POST /api/subscription/admin/plans/:id/subscriptions/reset
+POST /api/subscription/admin/quota-compensate
 POST /api/subscription/admin/user_subscriptions/:id/invalidate
 POST /api/subscription/admin/users/:id/subscriptions
 POST /api/subscription/admin/users/:id/subscriptions/reset
@@ -292,8 +293,8 @@ POST /api/verify
 POST /api/waffo-pancake/webhook/:env
 POST /api/waffo/webhook
 PUT /api/channel/
-PUT /api/channel/probe/settings
 PUT /api/channel/probe/policy
+PUT /api/channel/probe/settings
 PUT /api/channel/route_unit/:id
 PUT /api/channel/route_unit/context
 PUT /api/channel/route_unit/dispatch
