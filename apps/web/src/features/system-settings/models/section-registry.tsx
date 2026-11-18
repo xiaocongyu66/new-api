@@ -40,7 +40,8 @@ export type ModelSectionId =
   | typeof STANDALONE_ROUTING_SECTION
 export const MODELS_DEFAULT_SECTION: ModelSectionId = 'global'
 export const MODELS_SECTION_IDS: [ModelSectionId, ...ModelSectionId[]] = [
-  ...MODELS_SECTION_NAV.map((section) => section.id),
+  MODELS_SECTION_NAV[0].id,
+  ...MODELS_SECTION_NAV.slice(1).map((section) => section.id),
   STANDALONE_ROUTING_SECTION,
 ]
 
