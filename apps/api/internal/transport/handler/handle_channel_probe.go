@@ -76,21 +76,29 @@ func resolveChannelTestUserID(c contract.Context) (int, error) {
 	return rootUser.Id, nil
 }
 
+// unsupportedTestChannelTypes 列出 testChannel 无法探测的渠道类型
+// （异步/任务型渠道没有同步探测入口）。探测任务与手动测试共用该判断，
+// 避免把"不支持探测"记成"探测失败"污染可用率。
+var unsupportedTestChannelTypes = []int{
+	constant.ChannelTypeMidjourney,
+	constant.ChannelTypeMidjourneyPlus,
+	constant.ChannelTypeSunoAPI,
+	constant.ChannelTypeKling,
+	constant.ChannelTypeJimeng,
+	constant.ChannelTypeDoubaoVideo,
+	constant.ChannelTypeVidu,
+}
+
+func isChannelTypeTestUnsupported(channelType int) bool {
+	return lo.Contains(unsupportedTestChannelTypes, channelType)
+}
+
 func testChannel(ctx context.Context, channel *channelpkg.Channel, testUserID int, testModel string, endpointType string, isStream bool) testResult {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	tik := time.Now()
-	var unsupportedTestChannelTypes = []int{
-		constant.ChannelTypeMidjourney,
-		constant.ChannelTypeMidjourneyPlus,
-		constant.ChannelTypeSunoAPI,
-		constant.ChannelTypeKling,
-		constant.ChannelTypeJimeng,
-		constant.ChannelTypeDoubaoVideo,
-		constant.ChannelTypeVidu,
-	}
-	if lo.Contains(unsupportedTestChannelTypes, channel.Type) {
+	if isChannelTypeTestUnsupported(channel.Type) {
 		channelTypeName := constant.GetChannelTypeName(channel.Type)
 		return testResult{
 			localErr: fmt.Errorf("%s channel test is not supported", channelTypeName),

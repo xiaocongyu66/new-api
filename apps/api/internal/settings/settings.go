@@ -49,6 +49,9 @@ var (
 	OnApplyGatewayDispatchOption    func(key, value string) error
 	OnApplyChannelHealthOption      func(key, value string) error
 	OnIsRouteStatsOptionKey         func(key string) bool
+	OnIsProbeSettingOptionKey       func(key string) bool
+	OnValidateProbeSettingOption    func(key, value string) error
+	OnApplyProbeSettingOption       func(key, value string) error
 	OnValidateRouteStatsOption      func(key, value string) error
 	OnApplyRouteStatsOption         func(key, value string) error
 	OnSeedCatalogOptions            func() map[string]string
@@ -159,6 +162,12 @@ func ValidateOptionValue(key string, value string) error {
 	if OnIsRouteStatsOptionKey != nil && OnIsRouteStatsOptionKey(key) {
 		if OnValidateRouteStatsOption != nil {
 			return OnValidateRouteStatsOption(key, value)
+		}
+		return nil
+	}
+	if OnIsProbeSettingOptionKey != nil && OnIsProbeSettingOptionKey(key) {
+		if OnValidateProbeSettingOption != nil {
+			return OnValidateProbeSettingOption(key, value)
 		}
 		return nil
 	}
@@ -340,6 +349,17 @@ func ApplyOption(key string, value string) (err error) {
 		// not leave an invalid value recorded as applied.
 		if OnApplyRouteStatsOption != nil {
 			if err = OnApplyRouteStatsOption(key, value); err != nil {
+				return err
+			}
+		}
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap[key] = value
+		common.OptionMapRWMutex.Unlock()
+		return nil
+	}
+	if OnIsProbeSettingOptionKey != nil && OnIsProbeSettingOptionKey(key) {
+		if OnApplyProbeSettingOption != nil {
+			if err = OnApplyProbeSettingOption(key, value); err != nil {
 				return err
 			}
 		}

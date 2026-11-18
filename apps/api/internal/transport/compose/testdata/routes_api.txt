@@ -39,6 +39,7 @@ GET /api/channel/models
 GET /api/channel/models_enabled
 GET /api/channel/ollama/version/:id
 GET /api/channel/ops
+GET /api/channel/probe/overview
 GET /api/channel/request_stats
 GET /api/channel/route_unit/
 GET /api/channel/route_unit/aliases
@@ -184,6 +185,8 @@ POST /api/channel/health/:action
 POST /api/channel/multi_key/manage
 POST /api/channel/ollama/pull
 POST /api/channel/ollama/pull/stream
+POST /api/channel/probe/run
+POST /api/channel/probe/webhook_test
 POST /api/channel/status/batch
 POST /api/channel/tag/disabled
 POST /api/channel/tag/enabled
@@ -289,6 +292,8 @@ POST /api/verify
 POST /api/waffo-pancake/webhook/:env
 POST /api/waffo/webhook
 PUT /api/channel/
+PUT /api/channel/probe/settings
+PUT /api/channel/probe/policy
 PUT /api/channel/route_unit/:id
 PUT /api/channel/route_unit/context
 PUT /api/channel/route_unit/dispatch
