@@ -4400,6 +4400,7 @@
     "Reasoning Effort": "Reasoning Effort",
     "Rebate Multiplier": "Rebate Multiplier",
     "Rebate Trigger": "Rebate Trigger",
+    "Rebates apply only to wallet top-ups; subscription purchases are not included.": "Rebates apply only to wallet top-ups; subscription purchases are not included.",
     "Rebind cooldown (seconds)": "Rebind cooldown (seconds)",
     "Recall delay (seconds)": "Recall delay (seconds)",
     "Recall policies (JSON, seconds per type)": "Recall policies (JSON, seconds per type)",

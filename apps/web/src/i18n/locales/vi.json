@@ -4400,6 +4400,7 @@
     "Reasoning Effort": "Cường độ suy luận",
     "Rebate Multiplier": "Hệ số hoàn tiền",
     "Rebate Trigger": "Thời điểm hoàn tiền",
+    "Rebates apply only to wallet top-ups; subscription purchases are not included.": "Hoàn tiền chỉ áp dụng cho nạp tiền ví; không bao gồm mua gói đăng ký.",
     "Rebind cooldown (seconds)": "Chờ liên kết lại (giây)",
     "Recall delay (seconds)": "Trễ thu hồi (giây)",
     "Recall policies (JSON, seconds per type)": "Chính sách thu hồi (JSON, số giây theo loại)",

@@ -4400,6 +4400,7 @@
     "Reasoning Effort": "推論強度",
     "Rebate Multiplier": "還元倍率",
     "Rebate Trigger": "還元タイミング",
+    "Rebates apply only to wallet top-ups; subscription purchases are not included.": "返利はウォレットへのチャージのみに適用されます。サブスクリプション購入は対象外です。",
     "Rebind cooldown (seconds)": "再紐付クールダウン（秒）",
     "Recall delay (seconds)": "取り消し遅延（秒）",
     "Recall policies (JSON, seconds per type)": "自動取消しポリシー（JSON、タイプ別秒数）",

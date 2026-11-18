@@ -140,6 +140,14 @@ export function InvitationRewardSettingsSection(
         </Alert>
       ) : null}
 
+      <Alert>
+        <AlertDescription>
+          {t(
+            'Rebates apply only to wallet top-ups; subscription purchases are not included.'
+          )}
+        </AlertDescription>
+      </Alert>
+
       <Form {...form}>
         <SettingsForm onSubmit={handleSubmit}>
           <SettingsPageFormActions

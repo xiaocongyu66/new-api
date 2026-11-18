@@ -4400,6 +4400,7 @@
     "Reasoning Effort": "Effort de raisonnement",
     "Rebate Multiplier": "Multiplicateur de remboursement",
     "Rebate Trigger": "Déclencheur de remboursement",
+    "Rebates apply only to wallet top-ups; subscription purchases are not included.": "Les remboursements s'appliquent uniquement aux recharges de portefeuille ; les achats d'abonnement ne sont pas inclus.",
     "Rebind cooldown (seconds)": "Délai de réassociation (secondes)",
     "Recall delay (seconds)": "Délai de rappel (secondes)",
     "Recall policies (JSON, seconds per type)": "Règles de rappel (JSON, secondes par type)",
