@@ -166,6 +166,9 @@ func TestProbeAutoDisableAndRestoreWithPolicy(t *testing.T) {
 		OtherSettings: string(settings),
 		CreatedTime:   now,
 	}).Error)
+	require.NoError(t, dbx.DB.Create(&channelpkg.Ability{
+		Group: "default", Model: "m1", ChannelId: 3, Enabled: true,
+	}).Error)
 
 	insertRows := func(successCount, failCount int) {
 		require.NoError(t, dbx.DB.Where("channel_id = ?", 3).Delete(&ChannelProbeResult{}).Error)
