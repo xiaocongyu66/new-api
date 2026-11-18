@@ -328,6 +328,39 @@ func DisableChannelModel(channelID int, modelName string) error {
 	return setChannelModelEnabled(channelID, modelName, false, false)
 }
 
+// ChannelModelAbilityState 是某渠道下单个模型的 ability 状态快照。
+type ChannelModelAbilityState struct {
+	Model        string
+	Enabled      bool
+	AutoDisabled bool
+}
+
+// LoadChannelModelAbilityStates 一次查询返回该渠道所有模型的 ability 状态，
+// 供探测策略判定"当前是否已自动禁用/是否可恢复"。
+func LoadChannelModelAbilityStates(channelID int) (map[string]ChannelModelAbilityState, error) {
+	var rows []Ability
+	if err := dbx.DB.Select("model", "enabled", "auto_disabled").
+		Where("channel_id = ?", channelID).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[string]ChannelModelAbilityState, len(rows))
+	for _, row := range rows {
+		// 同模型多分组会有多行；只要有一行 enabled 即视为该模型仍可路由。
+		prev, seen := out[row.Model]
+		state := ChannelModelAbilityState{
+			Model:        row.Model,
+			Enabled:      row.Enabled,
+			AutoDisabled: row.AutoDisabled,
+		}
+		if seen {
+			state.Enabled = prev.Enabled || row.Enabled
+			state.AutoDisabled = prev.AutoDisabled && row.AutoDisabled
+		}
+		out[row.Model] = state
+	}
+	return out, nil
+}
+
 // AutoDisableChannelModel is the automatic counterpart of DisableChannelModel:
 // it marks the rows auto_disabled=true so startup recovery can revive them
 // after the health episode passes. No health path calls it today (health

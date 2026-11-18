@@ -23,9 +23,11 @@ import {
   type Theme,
 } from "@material/material-color-utilities";
 
+import { api } from "@/lib/api";
+
 /**
- * 壁纸代理接口：前端同源请求 `/api/wallpaper`，后端定时从微雨
- * `https://api.weirain.com/pc` 抓取并缓存，返回图片经过 gzip 压缩。
+ * 壁纸代理接口：前端同源请求 `/api/wallpaper`，后端定时从 Wallhaven 代理接口
+ * 抓取一张随机可爱卡通壁纸并缓存，返回图片经过 gzip 压缩。
  * 同源请求无 CORS 问题，且可按需开启 gzip，减少传输体积与加载延迟。
  */
 const WALLPAPER_API = "/api/wallpaper";
@@ -111,47 +113,71 @@ type BackgroundResource = {
 // Root effect replay shares the pending request; successful loads survive navigation.
 let backgroundResource: BackgroundResource | undefined;
 
-// The image API returns a fresh random image per call, so the browser HTTP cache
-// never reuses a previous background. Persist the last successful image as a
-// data URL: the next load paints it instantly and the network fetch degrades
-// to a background refresh that may fail without blanking the page.
-const CACHED_BACKGROUND_KEY = "app-background-image";
-// The upstream serves pre-scaled ~300KB images; base64 is ~0.4MB, so the cap
-// leaves the shared ~5MB origin localStorage quota effectively untouched.
-const CACHED_BACKGROUND_MAX_LENGTH = 3_500_000;
+// 背景图片 LRU：保留最近 3 张成功的图片（data URL），
+// 网络不可用时随机回退一张；内存也持有，localStorage 只是跨刷新持久化。
+const CACHED_BACKGROUND_KEY = "app-background-image-lru";
+const CACHED_BACKGROUND_MAX_LENGTH = 1_500_000; // 单张上限，3 张约 4.5MB
+const CACHED_BACKGROUND_LIMIT = 3;
 
-type CachedBackground = {
-  url: string;
-  dataUrl: string;
-};
+/** 后台「刷新背景」通过此事件通知已订阅的背景组件原地换图，不重载页面。 */
+const WALLPAPER_REFRESH_EVENT = 'new-api:wallpaper-refresh';
 
-function readCachedBackground(): CachedBackground | undefined {
-  try {
-    const raw = window.localStorage.getItem(CACHED_BACKGROUND_KEY);
-    if (!raw) return undefined;
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      typeof (parsed as CachedBackground).url === "string" &&
-      typeof (parsed as CachedBackground).dataUrl === "string" &&
-      (parsed as CachedBackground).dataUrl.startsWith("data:image/")
-    ) {
-      return parsed as CachedBackground;
-    }
-  } catch {
-    // Corrupt entry or unavailable storage: fall back to network-only loads.
-  }
-  return undefined;
+type CachedBackground = { url: string; dataUrl: string };
+
+let memoryCache: CachedBackground[] | undefined;
+
+function isValidEntry(value: unknown): value is CachedBackground {
+  return (
+    typeof value === "object" && value !== null &&
+    typeof (value as CachedBackground).url === "string" &&
+    typeof (value as CachedBackground).dataUrl === "string" &&
+    (value as CachedBackground).dataUrl.startsWith("data:image/")
+  );
 }
 
-function writeCachedBackground(entry: CachedBackground): void {
-  if (entry.dataUrl.length > CACHED_BACKGROUND_MAX_LENGTH) return;
+function readCachedBackgrounds(): CachedBackground[] {
+  if (memoryCache) return memoryCache;
+  let entries: CachedBackground[] = [];
   try {
-    window.localStorage.setItem(CACHED_BACKGROUND_KEY, JSON.stringify(entry));
-  } catch {
-    // Quota exceeded or storage disabled: the in-memory path still works.
+    const raw = window.localStorage.getItem(CACHED_BACKGROUND_KEY);
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) entries = parsed.filter(isValidEntry);
+    }
+  } catch { /* corrupt or unavailable storage: network-only */ }
+  // 兼容旧版单张缓存（key = app-background-image）
+  if (entries.length === 0) {
+    try {
+      const old = window.localStorage.getItem("app-background-image");
+      if (old) {
+        const parsed: unknown = JSON.parse(old);
+        if (isValidEntry(parsed)) entries = [parsed];
+      }
+    } catch { /* ignore */ }
   }
+  memoryCache = entries.slice(0, CACHED_BACKGROUND_LIMIT);
+  return memoryCache;
+}
+
+function writeCachedBackgrounds(entries: CachedBackground[]): void {
+  memoryCache = entries.slice(0, CACHED_BACKGROUND_LIMIT);
+  try {
+    window.localStorage.setItem(CACHED_BACKGROUND_KEY, JSON.stringify(memoryCache));
+  } catch { /* quota disabled: memory path still works */ }
+}
+
+/** 加入 LRU 头部并去重，超过 3 张淘汰最旧一张。 */
+function pushCachedBackground(entry: CachedBackground): void {
+  if (entry.dataUrl.length > CACHED_BACKGROUND_MAX_LENGTH) return;
+  const entries = readCachedBackgrounds().filter((e) => e.dataUrl !== entry.dataUrl);
+  writeCachedBackgrounds([entry, ...entries]);
+}
+
+/** 从 LRU 里随机取一张（fallback 用）。 */
+function randomCachedBackground(): CachedBackground | undefined {
+  const entries = readCachedBackgrounds();
+  if (entries.length === 0) return undefined;
+  return entries[Math.floor(Math.random() * entries.length)];
 }
 
 /** 把响应体的 blob 转 dataUrl 并落盘缓存，供下次加载即时展示。 */
@@ -159,12 +185,33 @@ function persistFreshImageFromBlob(blob: Blob): void {
   void new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () =>
-      reject(new Error("Failed to persist background image"));
+    reader.onerror = () => reject(new Error("Failed to persist background image"));
     reader.readAsDataURL(blob);
   })
-    .then((dataUrl) => writeCachedBackground({ url: WALLPAPER_API, dataUrl }))
+    .then((dataUrl) => pushCachedBackground({ url: WALLPAPER_API, dataUrl }))
     .catch(() => {});
+}
+
+/** 后台刷新背景时清除旧图缓存，确保下一次加载用服务端刚抓到的新图。 */
+export function clearCachedBackground(): void {
+  memoryCache = [];
+  try {
+    window.localStorage.removeItem(CACHED_BACKGROUND_KEY);
+    window.localStorage.removeItem("app-background-image");
+  } catch { /* Storage disabled: the in-memory path still works. */ }
+}
+
+/**
+ * 后台触发的强制刷新：清掉旧图缓存、重新从服务端取图，并通知已订阅的组件
+ * 原地替换背景。不重载页面，避免真实登录态被重置。
+ */
+export async function refreshWallpaperBackground(): Promise<void> {
+  clearCachedBackground();
+  backgroundResource?.controller.abort();
+  const resource = createBackgroundResource(true);
+  backgroundResource = resource;
+  window.dispatchEvent(new Event(WALLPAPER_REFRESH_EVENT));
+  await resource.promise.catch(() => {});
 }
 
 function loadBackgroundImage(
@@ -224,10 +271,13 @@ async function sleepAbortable(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 /**
- * 从同源壁纸代理接口获取壁纸响应。遇到 429（同一 IP 每秒最多 20 次，
- * 下一秒恢复）时等待 1 秒后重试一次。
+ * 从同源壁纸代理接口获取壁纸响应。偶发 503（上游暂不可用）时等待 1 秒后重试一次。
  */
-async function fetchWallpaper(signal: AbortSignal): Promise<Response> {
+async function fetchWallpaper(signal: AbortSignal, forceRefresh = false): Promise<Response> {
+  if (forceRefresh) {
+    // 强制刷新走管理员接口，公开壁纸接口不接受匿名触发刷新。
+    await api.post(`${WALLPAPER_API}/refresh`);
+  }
   const response = await fetch(WALLPAPER_API, {
     cache: "no-store",
     credentials: "omit",
@@ -236,7 +286,7 @@ async function fetchWallpaper(signal: AbortSignal): Promise<Response> {
     signal,
   });
   if (response.ok) return response;
-  if (response.status === 429) {
+  if (response.status === 503) {
     await sleepAbortable(1000, signal);
     const retry = await fetch(WALLPAPER_API, {
       cache: "no-store",
@@ -250,9 +300,9 @@ async function fetchWallpaper(signal: AbortSignal): Promise<Response> {
   throw new Error("Background query unavailable");
 }
 
-function createBackgroundResource(): BackgroundResource {
+function createBackgroundResource(forceRefresh = false): BackgroundResource {
   const controller = new AbortController();
-  const cached = readCachedBackground();
+  const cached = randomCachedBackground();
   const resource: BackgroundResource = {
     controller,
     cachedUrl: cached?.url,
@@ -264,7 +314,7 @@ function createBackgroundResource(): BackgroundResource {
     promise: (async () => {
       const timeout = window.setTimeout(() => controller.abort(), 12000);
       try {
-        const response = await fetchWallpaper(controller.signal);
+        const response = await fetchWallpaper(controller.signal, forceRefresh);
         window.clearTimeout(timeout);
         // Response body 只能读一次：先拿 blob，既用于展示图片，也用于落盘缓存。
         const blob = await response.blob();
@@ -282,6 +332,11 @@ function createBackgroundResource(): BackgroundResource {
         window.clearTimeout(timeout);
         if (controller.signal.aborted)
           throw new Error("Background load cancelled");
+        // 网络/服务端失败：回退到 LRU 里随机一张本地缓存，绝不空白。
+        const fallback = randomCachedBackground();
+        if (fallback) {
+          return await loadBackgroundImage(fallback.dataUrl, controller.signal);
+        }
         throw error;
       } finally {
         window.clearTimeout(timeout);
@@ -352,6 +407,17 @@ export function loadRandomBackground(
     }
   };
 
+  // 后台刷新时用新的 resource 原地换图，不触发整页重载。
+  const handleRefresh = () => {
+    const next = backgroundResource;
+    if (!next) return;
+    void next.promise.then(
+      (image) => deliver(image.currentSrc || image.src, image),
+      () => {},
+    );
+  };
+  window.addEventListener(WALLPAPER_REFRESH_EVENT, handleRefresh);
+
   if (resource.cachedImagePromise) {
     void resource.cachedImagePromise.then(
       (image) => deliver(resource.cachedUrl ?? image.src, image),
@@ -372,6 +438,7 @@ export function loadRandomBackground(
   }
 
   return () => {
+    window.removeEventListener(WALLPAPER_REFRESH_EVENT, handleRefresh);
     if (cancelled) return;
     cancelled = true;
     resource.subscribers -= 1;

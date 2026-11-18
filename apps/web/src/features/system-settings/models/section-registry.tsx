@@ -25,18 +25,25 @@ import type { TFunction } from 'i18next'
  */
 const MODELS_SECTION_NAV = [
   { id: 'global', titleKey: 'Global Model Configuration' },
-  { id: 'routing', titleKey: 'Routing' },
   { id: 'gemini', titleKey: 'Gemini' },
   { id: 'claude', titleKey: 'Claude' },
   { id: 'grok', titleKey: 'Grok' },
   { id: 'channel-affinity', titleKey: 'Channel Affinity' },
 ] as const
 
-export type ModelSectionId = (typeof MODELS_SECTION_NAV)[number]['id']
+// routing 已提升为侧栏独立页面（「路由」），但仍由本域的 SettingsPage 渲染，
+// 因此保留在合法 section 集合里（URL 不变：/admin/system-settings/models/routing）。
+export const STANDALONE_ROUTING_SECTION = 'routing'
+
+export type ModelSectionId =
+  | (typeof MODELS_SECTION_NAV)[number]['id']
+  | typeof STANDALONE_ROUTING_SECTION
 export const MODELS_DEFAULT_SECTION: ModelSectionId = 'global'
-export const MODELS_SECTION_IDS = MODELS_SECTION_NAV.map(
-  (section) => section.id
-) as [ModelSectionId, ...ModelSectionId[]]
+export const MODELS_SECTION_IDS: [ModelSectionId, ...ModelSectionId[]] = [
+  MODELS_SECTION_NAV[0].id,
+  ...MODELS_SECTION_NAV.slice(1).map((section) => section.id),
+  STANDALONE_ROUTING_SECTION,
+]
 
 export const getModelsSectionNavItems = (t: TFunction) =>
   MODELS_SECTION_NAV.map((section) => ({

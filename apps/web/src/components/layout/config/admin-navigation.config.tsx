@@ -48,6 +48,14 @@ export type AdminNavigationItem = {
 export const ADMIN_NAVIGATION: readonly AdminNavigationItem[] = [
   { id: 'channels', labelKey: 'admin.channels', to: '/admin/channels', icon: Radio },
   { id: 'models', labelKey: 'admin.models', to: '/admin/models/$section', params: { section: 'metadata' }, icon: Box },
+  // 路由页从「模型配置」拆出，作为「管理」组入口；页面仍由 models 域渲染。
+  {
+    id: 'routing',
+    labelKey: 'admin.routing',
+    to: '/admin/system-settings/models/routing',
+    icon: Network,
+    requiredCapability: { resource: 'system', action: 'settings' },
+  },
   { id: 'users', labelKey: 'admin.users', to: '/admin/users', icon: Users },
   { id: 'insights', labelKey: 'admin.insights', to: '/admin/user-insights', icon: ScanSearch },
   { id: 'redemptions', labelKey: 'admin.redemptions', to: '/admin/redemption-codes', icon: Ticket },

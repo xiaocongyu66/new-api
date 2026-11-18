@@ -144,8 +144,18 @@ func formatUserLogs(logs []*Log, startIdx int) {
 }
 
 func RecordLog(userId int, logType int, content string) {
+	if err := RecordLogWithRequestId(userId, logType, "", content); err != nil {
+		common.SysLog("failed to record log: " + err.Error())
+	}
+}
+
+// RecordLogWithRequestId writes the same user-owned row as RecordLog but keeps
+// an explicit request id. Admin credits use it as the idempotency key: the row
+// is the proof the credit was recorded, so a retry can find it before paying
+// out a second time.
+func RecordLogWithRequestId(userId int, logType int, requestId string, content string) error {
 	if logType == LogTypeConsume && !common.LogConsumeEnabled {
-		return
+		return nil
 	}
 	username, _ := identity.GetUsernameById(userId, false)
 	log := &Log{
@@ -154,11 +164,25 @@ func RecordLog(userId int, logType int, content string) {
 		CreatedAt: common.GetTimestamp(),
 		Type:      logType,
 		Content:   content,
+		RequestId: strings.TrimSpace(requestId),
 	}
-	err := createLog(log)
-	if err != nil {
-		common.SysLog("failed to record log: " + err.Error())
+	return createLog(log)
+}
+
+// LogRequestIdExists reports whether a row with the given request id and type
+// is already recorded.
+func LogRequestIdExists(logType int, requestId string) (bool, error) {
+	requestId = strings.TrimSpace(requestId)
+	if requestId == "" || dbx.LogDB == nil {
+		return false, nil
 	}
+	var count int64
+	if err := dbx.LogDB.Model(&Log{}).
+		Where("type = ? AND request_id = ?", logType, requestId).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // RecordLogWithAdminInfo 记录操作日志，并将管理员相关信息存入 Other.admin_info，

@@ -49,6 +49,9 @@ var (
 	OnApplyGatewayDispatchOption    func(key, value string) error
 	OnApplyChannelHealthOption      func(key, value string) error
 	OnIsRouteStatsOptionKey         func(key string) bool
+	OnIsProbeSettingOptionKey       func(key string) bool
+	OnValidateProbeSettingOption    func(key, value string) error
+	OnApplyProbeSettingOption       func(key, value string) error
 	OnValidateRouteStatsOption      func(key, value string) error
 	OnApplyRouteStatsOption         func(key, value string) error
 	OnSeedCatalogOptions            func() map[string]string
@@ -187,6 +190,12 @@ func ValidateOptionValue(key string, value string) error {
 		}
 		return nil
 	}
+	if OnIsProbeSettingOptionKey != nil && OnIsProbeSettingOptionKey(key) {
+		if OnValidateProbeSettingOption != nil {
+			return OnValidateProbeSettingOption(key, value)
+		}
+		return nil
+	}
 	if OnIsGatewayDispatchOptionKey != nil && OnIsGatewayDispatchOptionKey(key) {
 		if OnValidateGatewayDispatchOption != nil {
 			return OnValidateGatewayDispatchOption(key, value)
@@ -250,6 +259,12 @@ func SeedOptionMap() {
 	common.OptionMap["SMTPForceAuthLogin"] = strconv.FormatBool(common.SMTPForceAuthLogin)
 	common.OptionMap["SMTPAccountPool"] = ""
 	common.OptionMap["Notice"] = ""
+	common.OptionMap["wallpaper.image_url"] = ""
+	common.OptionMap["wallpaper.api_url"] = "https://hub.saintic.com/openservice/wallhavenpic"
+	common.OptionMap["wallpaper.keywords"] = "chiikawa, cinnamoroll, kuromi, my melody, pompompurin, pochacco, keroppi, tuxedosam, chococat, pikachu, eevee, rilakkuma"
+	common.OptionMap["wallpaper.category"] = "anime"
+	common.OptionMap["wallpaper.refresh_interval"] = "60"
+	common.OptionMap["wallpaper.source_priority"] = "url"
 	common.OptionMap["About"] = ""
 	common.OptionMap["HomePageContent"] = ""
 	common.OptionMap["Footer"] = common.Footer
@@ -369,6 +384,17 @@ func ApplyOption(key string, value string) (err error) {
 		// not leave an invalid value recorded as applied.
 		if OnApplyRouteStatsOption != nil {
 			if err = OnApplyRouteStatsOption(key, value); err != nil {
+				return err
+			}
+		}
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap[key] = value
+		common.OptionMapRWMutex.Unlock()
+		return nil
+	}
+	if OnIsProbeSettingOptionKey != nil && OnIsProbeSettingOptionKey(key) {
+		if OnApplyProbeSettingOption != nil {
+			if err = OnApplyProbeSettingOption(key, value); err != nil {
 				return err
 			}
 		}

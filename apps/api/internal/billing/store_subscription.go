@@ -336,6 +336,20 @@ func subscriptionAllowsGroup(sub *UserSubscription, usingGroup string) bool {
 	return false
 }
 
+// subscriptionCoversGroup reports whether a subscription may serve a request
+// in usingGroup. A shared pool (scope=all) is one pool for every group, so its
+// group snapshot must not gate spending; only scoped entitlement rows do.
+// Legacy rows predate the scope column and resolve to a shared pool.
+func subscriptionCoversGroup(sub *UserSubscription, usingGroup string) bool {
+	if sub == nil {
+		return false
+	}
+	if scope, _ := subscriptionLimitAxes(sub); scope == SubscriptionScopeAll {
+		return true
+	}
+	return subscriptionAllowsGroup(sub, usingGroup)
+}
+
 // Subscription plan
 type SubscriptionPlan struct {
 	Id int `json:"id"`
@@ -1230,7 +1244,7 @@ func UserActiveSubscriptionsAllowWalletOverflow(userId int, usingGroup string) (
 		return false, err
 	}
 	for i := range subs {
-		if subscriptionAllowsGroup(&subs[i], usingGroup) {
+		if subscriptionCoversGroup(&subs[i], usingGroup) {
 			return false, nil
 		}
 	}
@@ -1256,7 +1270,7 @@ func HasUsableUserSubscription(userId int, usingGroup string, modelName string, 
 	requestSubIds := make([]int, 0, len(subs))
 	scopedKeys := make(map[int][2]string, len(subs))
 	for i := range subs {
-		if !subscriptionAllowsGroup(&subs[i], usingGroup) {
+		if !subscriptionCoversGroup(&subs[i], usingGroup) {
 			continue
 		}
 		scope, measure := subscriptionLimitAxes(&subs[i])
@@ -1768,7 +1782,7 @@ func PreConsumeUserSubscription(requestId string, userId int, usingGroup string,
 		}
 		candidates := make([]UserSubscription, 0, len(subs))
 		for _, candidate := range subs {
-			if !subscriptionAllowsGroup(&candidate, usingGroup) {
+			if !subscriptionCoversGroup(&candidate, usingGroup) {
 				continue
 			}
 			if candidate.AmountTotal > 0 && candidate.AmountUsed >= candidate.AmountTotal {
