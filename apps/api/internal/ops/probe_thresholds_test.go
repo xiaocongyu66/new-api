@@ -206,11 +206,15 @@ func TestProbeAutoDisableAndRestoreWithPolicy(t *testing.T) {
 	prevDisable, prevRestore := autoDisableModel, autoRestoreModel
 	autoDisableModel = func(channelID int, model string) error {
 		disabled = append(disabled, model)
-		return nil
+		return dbx.DB.Model(&channelpkg.Ability{}).
+			Where("channel_id = ? AND model = ?", channelID, model).
+			Updates(map[string]interface{}{"enabled": false, "auto_disabled": true}).Error
 	}
 	autoRestoreModel = func(channelID int, model string) error {
 		restored = append(restored, model)
-		return nil
+		return dbx.DB.Model(&channelpkg.Ability{}).
+			Where("channel_id = ? AND model = ?", channelID, model).
+			Updates(map[string]interface{}{"enabled": true, "auto_disabled": false}).Error
 	}
 	t.Cleanup(func() { autoDisableModel, autoRestoreModel = prevDisable, prevRestore })
 	resetProbeZoneState()
