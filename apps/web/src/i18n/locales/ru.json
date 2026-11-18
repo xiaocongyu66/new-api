@@ -4400,6 +4400,7 @@
     "Reasoning Effort": "Интенсивность рассуждения",
     "Rebate Multiplier": "Множитель возврата",
     "Rebate Trigger": "Условие начисления возврата",
+    "Rebates apply only to wallet top-ups; subscription purchases are not included.": "Возврат применяется только к пополнениям кошелька; покупки подписки не учитываются.",
     "Rebind cooldown (seconds)": "Ожидание повторной привязки (секунды)",
     "Recall delay (seconds)": "Задержка отзыва (секунды)",
     "Recall policies (JSON, seconds per type)": "Политики отмены (JSON, секунд на тип)",

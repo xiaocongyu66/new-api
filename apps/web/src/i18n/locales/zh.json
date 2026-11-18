@@ -4400,6 +4400,7 @@
     "Reasoning Effort": "推理强度",
     "Rebate Multiplier": "返利倍率",
     "Rebate Trigger": "返利触发时机",
+    "Rebates apply only to wallet top-ups; subscription purchases are not included.": "返利仅适用于钱包充值；订阅购买不包含在内。",
     "Rebind cooldown (seconds)": "换绑冷却（秒）",
     "Recall delay (seconds)": "撤回延迟（秒）",
     "Recall policies (JSON, seconds per type)": "撤回策略（JSON，按类型秒数）",

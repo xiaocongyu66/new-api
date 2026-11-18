@@ -41,11 +41,13 @@ func applyInviteRechargeRewards(tx *gorm.DB, inviteeID int, creditedQuota int) e
 	}
 
 	// The current order is already marked successful inside the transaction,
-	// so a count above one means the invitee has recharged before.
+	// so a count above one means the invitee has recharged before. Subscription
+	// purchases also create TopUp rows but carry no payment provider; they are
+	// not wallet top-ups and must not consume the first-recharge slot.
 	if common.InviteRewardRebateTrigger == common.InviteRewardTriggerFirst {
 		var count int64
 		if err := tx.Model(&TopUp{}).
-			Where("user_id = ? AND status = ?", inviteeID, common.TopUpStatusSuccess).
+			Where("user_id = ? AND status = ? AND payment_provider <> ?", inviteeID, common.TopUpStatusSuccess, "").
 			Count(&count).Error; err != nil {
 			return err
 		}
