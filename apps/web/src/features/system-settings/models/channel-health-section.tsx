@@ -36,7 +36,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { StatusBadge } from '@/components/status-badge'
+import { StatusBadge, type StatusVariant } from '@/components/status-badge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -147,7 +147,6 @@ export function ChannelHealthSection() {
   const { t } = useTranslation()
   const [settings, setSettings] = useState<ProbeSettings | null>(null)
   const [draft, setDraft] = useState<ProbeSettings | null>(null)
-  const [draftDirty, setDraftDirty] = useState(false)
   const [channels, setChannels] = useState<ProbeChannelStat[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -237,8 +236,6 @@ export function ChannelHealthSection() {
   )
 
   const editDraft = (patch: Partial<ProbeSettings>) => {
-    draftDirtyRef.current = true
-    setDraftDirty(true)
     setDraft((prev) => (prev === null ? prev : { ...prev, ...patch }))
   }
 
@@ -372,8 +369,6 @@ export function ChannelHealthSection() {
         throw new Error(res.message || t('Failed to save probe settings'))
       }
       toast.success(t('Probe settings saved'))
-      draftDirtyRef.current = false
-      setDraftDirty(false)
       setReloadToken((token) => token + 1)
     } catch (error: unknown) {
       toast.error(

@@ -20,7 +20,6 @@ import { Check, ChevronsUpDown } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Command,
@@ -48,7 +47,7 @@ export type ApiKeyGroupOption = {
   value: string
   label: string
   desc?: string
-  modelCount?: number
+  ratio?: number | string
 }
 
 type ApiKeyGroupComboboxProps = {
@@ -130,17 +129,12 @@ export function ApiKeyGroupCombobox({
               </span>
             )}
           </span>
-          <span className='flex items-center gap-2'>
-            <Badge variant='secondary'>
-              {selectedOption?.modelCount ?? 0} {t('models')}
-            </Badge>
-            <span className='hidden sm:block'>
-              <GroupRatioBadge
-                ratio={selectedOption?.ratio}
-                isAuto={isAutoSelected}
-                shouldReduceMotion={shouldReduceMotion}
-              />
-            </span>
+          <span className='hidden sm:block'>
+            <GroupRatioBadge
+              ratio={selectedOption?.ratio}
+              isAuto={isAutoSelected}
+              shouldReduceMotion={shouldReduceMotion}
+            />
           </span>
         </span>
         <ChevronsUpDown
@@ -203,16 +197,11 @@ export function ApiKeyGroupCombobox({
                         </span>
                       )}
                     </span>
-                    <span className='flex items-center gap-2'>
-                      <Badge variant='outline'>
-                        {option.modelCount ?? 0} {t('models')}
-                      </Badge>
-                      <GroupRatioBadge
-                        ratio={option.ratio}
-                        isAuto={isAutoOption}
-                        shouldReduceMotion={shouldReduceMotion}
-                      />
-                    </span>
+                    <GroupRatioBadge
+                      ratio={option.ratio}
+                      isAuto={isAutoOption}
+                      shouldReduceMotion={shouldReduceMotion}
+                    />
                   </CommandItem>
                 )
               })}

@@ -39,10 +39,10 @@ export type ModelSectionId =
   | (typeof MODELS_SECTION_NAV)[number]['id']
   | typeof STANDALONE_ROUTING_SECTION
 export const MODELS_DEFAULT_SECTION: ModelSectionId = 'global'
-export const MODELS_SECTION_IDS = [
+export const MODELS_SECTION_IDS: [ModelSectionId, ...ModelSectionId[]] = [
   ...MODELS_SECTION_NAV.map((section) => section.id),
   STANDALONE_ROUTING_SECTION,
-] as [ModelSectionId, ...ModelSectionId[]]
+]
 
 export const getModelsSectionNavItems = (t: TFunction) =>
   MODELS_SECTION_NAV.map((section) => ({
