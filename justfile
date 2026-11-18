@@ -3,6 +3,7 @@ API_DIR := justfile_directory() + "/apps/api"
 API_EMBED_DIR := justfile_directory() + "/apps/api/web/dist"
 GO_BIN_CACHE := env_var_or_default("GO_BIN_CACHE", env_var("HOME") + "/.cache/new-api-bin")
 DEV_WEB_PORT := env_var_or_default("DEV_WEB_PORT", "5173")
+DEV_API_PORT := env_var_or_default("DEV_API_PORT", "3000")
 DEV_COMPOSE_PROJECT := env_var_or_default("DEV_COMPOSE_PROJECT", "deploy")
 DEV_CONTAINER_ENGINE := env_var_or_default("DEV_CONTAINER_ENGINE", "podman")
 DEV_COMPOSE := if DEV_CONTAINER_ENGINE == "docker" { "docker compose" } else { "podman compose" }
@@ -70,11 +71,12 @@ start-wt:
     mkdir -p "{{ GO_BIN_CACHE }}"
     echo "Building Go binary for branch: $branch..."
     cd "{{ API_DIR }}" && GOWORK=off go build -o "{{ GO_BIN_CACHE }}/$bin_name" .
-    echo "Starting API: {{ GO_BIN_CACHE }}/$bin_name  (port 3000)"
+    echo "Starting API: {{ GO_BIN_CACHE }}/$bin_name  (port {{ DEV_API_PORT }})"
     SQL_DSN="postgresql://root:123456@localhost:5432/new-api" \
     REDIS_CONN_STRING="redis://localhost:6379" \
     SESSION_COOKIE_SECURE=false \
     TZ=Asia/Shanghai \
+    PORT="{{ DEV_API_PORT }}" \
     "{{ GO_BIN_CACHE }}/$bin_name"
 
 # Dev mode with credential-free login: local Go binary built with the `dev`
@@ -96,11 +98,12 @@ start-wt-dev:
     mkdir -p "{{ GO_BIN_CACHE }}"
     echo "Building Go binary for branch: $branch (tag=dev, auto-login ENABLED)..."
     cd "{{ API_DIR }}" && GOWORK=off go build -tags dev -o "{{ GO_BIN_CACHE }}/$bin_name" .
-    echo "Starting API: {{ GO_BIN_CACHE }}/$bin_name  (port 3000)"
+    echo "Starting API: {{ GO_BIN_CACHE }}/$bin_name  (port {{ DEV_API_PORT }})"
     SQL_DSN="postgresql://root:123456@localhost:5432/new-api" \
     REDIS_CONN_STRING="redis://localhost:6379" \
     SESSION_COOKIE_SECURE=false \
     TZ=Asia/Shanghai \
+    PORT="{{ DEV_API_PORT }}" \
     DEV_AUTO_LOGIN=1 \
     "{{ GO_BIN_CACHE }}/$bin_name"
 
@@ -118,7 +121,7 @@ dev-wt: dev-db
     WEB_PID=$!
     echo ""
     echo "=== Worktree dev environment ready ==="
-    echo "  API:  http://localhost:3000"
+    echo "  API:  http://localhost:{{ DEV_API_PORT }}"
     echo "  Web:  http://localhost:{{ DEV_WEB_PORT }}"
     echo "  (web HMR proxies /api to API)"
     echo ""
@@ -141,7 +144,7 @@ dev-wt-dev: dev-db
     WEB_PID=$!
     echo ""
     echo "=== Worktree dev environment ready (auto-login ON) ==="
-    echo "  API:  http://localhost:3000"
+    echo "  API:  http://localhost:{{ DEV_API_PORT }}"
     echo "  Web:  http://localhost:{{ DEV_WEB_PORT }}"
     echo "  (web HMR proxies /api to API)"
     echo "  Disable auto-login without restarting: open with ?dev-login=off"
@@ -169,7 +172,7 @@ dev-web:
      # WorkingDirectory. OOMScoreAdjust=400 makes this re-runnable dev server the kernel-OOM
      # preferred victim (zcode's Chromium renderers set 200/300), so total exhaustion kills
      # this instead of freezing the IDE. Stop later with: systemctl --user stop dev-web-{{ DEV_WEB_PORT }}
-     cd "{{ WEB_DIR }}" && systemd-run --user --unit="dev-web-{{ DEV_WEB_PORT }}" -p WorkingDirectory="{{ WEB_DIR }}" -p MemoryHigh=2500M -p MemoryMax=4G -p OOMScoreAdjust=400 -- bun run dev -- --host 0.0.0.0 --port "{{ DEV_WEB_PORT }}"
+     cd "{{ WEB_DIR }}" && systemd-run --user --unit="dev-web-{{ DEV_WEB_PORT }}" -p WorkingDirectory="{{ WEB_DIR }}" -p MemoryHigh=2500M -p MemoryMax=4G -p OOMScoreAdjust=400 --setenv=VITE_REACT_APP_SERVER_URL=http://localhost:{{ DEV_API_PORT }} -- bun run dev -- --host 0.0.0.0 --port "{{ DEV_WEB_PORT }}"
  
 # Start both dev API containers and web dev servers (legacy: uses the API container)
 dev: dev-api dev-web

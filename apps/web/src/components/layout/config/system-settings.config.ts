@@ -69,7 +69,7 @@ export function getSystemSettingsThemeNavItems(t: TFunction): NavCollapsible[] {
       items: getBillingSectionNavItems(t),
     },
     {
-      title: t('Models & Routing'),
+      title: t('Model Configuration'),
       icon: Box,
       activeUrls: ['/system-settings/models'],
       items: getModelsSectionNavItems(t),

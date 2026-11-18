@@ -23,9 +23,10 @@ import { cn } from '@/lib/utils'
 
 import { RouteUnitsSection } from './route-units-section'
 import { RoutingReliabilitySection } from './routing-reliability-section'
+import { ChannelHealthSection } from './channel-health-section'
 import type { RoutingReliabilitySectionProps } from './routing-reliability-section'
 
-type RoutingTabId = 'reliability' | 'units'
+type RoutingTabId = 'reliability' | 'units' | 'health'
 
 type RoutingTabContextValue = {
   tab: RoutingTabId
@@ -77,6 +78,15 @@ export function RoutingTabs() {
       >
         {t('Route Units')}
       </button>
+      <button
+        type='button'
+        role='tab'
+        aria-selected={tab === 'health'}
+        onClick={() => setTab('health')}
+        className={cnTab(tab === 'health')}
+      >
+        {t('Upstream Status')}
+      </button>
     </div>
   )
 }
@@ -93,6 +103,8 @@ export function RoutingContent({
     <div>
       {tab === 'reliability' ? (
         <RoutingReliabilitySection defaultValues={defaultValues} />
+      ) : tab === 'health' ? (
+        <ChannelHealthSection />
       ) : (
         <RouteUnitsSection />
       )}
