@@ -109,6 +109,7 @@ type SettingsPageFormActionsProps = {
   savingLabel?: string
   resetLabel?: string
   resetVariant?: ComponentProps<typeof Button>['variant']
+  beforeActions?: ReactNode
   saveButtonRef?: RefObject<HTMLButtonElement | null>
 }
 
@@ -120,6 +121,7 @@ export function SettingsPageFormActions(props: SettingsPageFormActionsProps) {
 
   return (
     <SettingsPageActionsPortal>
+      {props.beforeActions}
       {props.onReset && (
         <Button
           type='button'

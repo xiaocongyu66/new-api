@@ -28,6 +28,7 @@ const SITE_SECTION_NAV = [
   { id: 'notice', titleKey: 'System Notice' },
   { id: 'header-navigation', titleKey: 'Header navigation' },
   { id: 'sidebar-modules', titleKey: 'Sidebar modules' },
+  { id: 'background', titleKey: 'Background settings' },
 ] as const
 
 export type SiteSectionId = (typeof SITE_SECTION_NAV)[number]['id']

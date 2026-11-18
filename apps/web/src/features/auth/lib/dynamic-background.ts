@@ -23,9 +23,11 @@ import {
   type Theme,
 } from "@material/material-color-utilities";
 
+import { api } from "@/lib/api";
+
 /**
- * 壁纸代理接口：前端同源请求 `/api/wallpaper`，后端定时从微雨
- * `https://api.weirain.com/pc` 抓取并缓存，返回图片经过 gzip 压缩。
+ * 壁纸代理接口：前端同源请求 `/api/wallpaper`，后端定时从 Wallhaven 代理接口
+ * 抓取一张随机可爱卡通壁纸并缓存，返回图片经过 gzip 压缩。
  * 同源请求无 CORS 问题，且可按需开启 gzip，减少传输体积与加载延迟。
  */
 const WALLPAPER_API = "/api/wallpaper";
@@ -120,6 +122,9 @@ const CACHED_BACKGROUND_KEY = "app-background-image";
 // leaves the shared ~5MB origin localStorage quota effectively untouched.
 const CACHED_BACKGROUND_MAX_LENGTH = 3_500_000;
 
+/** 后台「刷新背景」通过此事件通知已订阅的背景组件原地换图，不重载页面。 */
+const WALLPAPER_REFRESH_EVENT = 'new-api:wallpaper-refresh';
+
 type CachedBackground = {
   url: string;
   dataUrl: string;
@@ -165,6 +170,28 @@ function persistFreshImageFromBlob(blob: Blob): void {
   })
     .then((dataUrl) => writeCachedBackground({ url: WALLPAPER_API, dataUrl }))
     .catch(() => {});
+}
+
+/** 后台刷新背景时清除旧图缓存，确保下一次加载用服务端刚抓到的新图。 */
+export function clearCachedBackground(): void {
+  try {
+    window.localStorage.removeItem(CACHED_BACKGROUND_KEY);
+  } catch {
+    // Storage disabled: the in-memory path still works.
+  }
+}
+
+/**
+ * 后台触发的强制刷新：清掉旧图缓存、重新从服务端取图，并通知已订阅的组件
+ * 原地替换背景。不重载页面，避免真实登录态被重置。
+ */
+export async function refreshWallpaperBackground(): Promise<void> {
+  clearCachedBackground();
+  backgroundResource?.controller.abort();
+  const resource = createBackgroundResource(true);
+  backgroundResource = resource;
+  window.dispatchEvent(new Event(WALLPAPER_REFRESH_EVENT));
+  await resource.promise.catch(() => {});
 }
 
 function loadBackgroundImage(
@@ -224,10 +251,13 @@ async function sleepAbortable(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 /**
- * 从同源壁纸代理接口获取壁纸响应。遇到 429（同一 IP 每秒最多 20 次，
- * 下一秒恢复）时等待 1 秒后重试一次。
+ * 从同源壁纸代理接口获取壁纸响应。偶发 503（上游暂不可用）时等待 1 秒后重试一次。
  */
-async function fetchWallpaper(signal: AbortSignal): Promise<Response> {
+async function fetchWallpaper(signal: AbortSignal, forceRefresh = false): Promise<Response> {
+  if (forceRefresh) {
+    // 强制刷新走管理员接口，公开壁纸接口不接受匿名触发刷新。
+    await api.post(`${WALLPAPER_API}/refresh`);
+  }
   const response = await fetch(WALLPAPER_API, {
     cache: "no-store",
     credentials: "omit",
@@ -236,7 +266,7 @@ async function fetchWallpaper(signal: AbortSignal): Promise<Response> {
     signal,
   });
   if (response.ok) return response;
-  if (response.status === 429) {
+  if (response.status === 503) {
     await sleepAbortable(1000, signal);
     const retry = await fetch(WALLPAPER_API, {
       cache: "no-store",
@@ -250,7 +280,7 @@ async function fetchWallpaper(signal: AbortSignal): Promise<Response> {
   throw new Error("Background query unavailable");
 }
 
-function createBackgroundResource(): BackgroundResource {
+function createBackgroundResource(forceRefresh = false): BackgroundResource {
   const controller = new AbortController();
   const cached = readCachedBackground();
   const resource: BackgroundResource = {
@@ -264,7 +294,7 @@ function createBackgroundResource(): BackgroundResource {
     promise: (async () => {
       const timeout = window.setTimeout(() => controller.abort(), 12000);
       try {
-        const response = await fetchWallpaper(controller.signal);
+        const response = await fetchWallpaper(controller.signal, forceRefresh);
         window.clearTimeout(timeout);
         // Response body 只能读一次：先拿 blob，既用于展示图片，也用于落盘缓存。
         const blob = await response.blob();
@@ -352,6 +382,17 @@ export function loadRandomBackground(
     }
   };
 
+  // 后台刷新时用新的 resource 原地换图，不触发整页重载。
+  const handleRefresh = () => {
+    const next = backgroundResource;
+    if (!next) return;
+    void next.promise.then(
+      (image) => deliver(image.currentSrc || image.src, image),
+      () => {},
+    );
+  };
+  window.addEventListener(WALLPAPER_REFRESH_EVENT, handleRefresh);
+
   if (resource.cachedImagePromise) {
     void resource.cachedImagePromise.then(
       (image) => deliver(resource.cachedUrl ?? image.src, image),
@@ -372,6 +413,7 @@ export function loadRandomBackground(
   }
 
   return () => {
+    window.removeEventListener(WALLPAPER_REFRESH_EVENT, handleRefresh);
     if (cancelled) return;
     cancelled = true;
     resource.subscribers -= 1;

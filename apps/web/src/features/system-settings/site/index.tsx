@@ -33,6 +33,11 @@ const defaultSiteSettings: SiteSettings = {
   'legal.privacy_policy': '',
   HeaderNavModules: '',
   SidebarModulesAdmin: '',
+  'wallpaper.image_url': '',
+  'wallpaper.api_url': 'https://hub.saintic.com/openservice/wallhavenpic',
+  'wallpaper.keywords': 'chiikawa, cinnamoroll, kuromi, my melody, pompompurin, pochacco, keroppi, tuxedosam, chococat, pikachu, eevee, rilakkuma',
+  'wallpaper.category': 'anime',
+  'wallpaper.refresh_interval': '60',
 }
 
 export function SiteSettings() {

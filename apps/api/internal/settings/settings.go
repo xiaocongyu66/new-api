@@ -225,6 +225,11 @@ func SeedOptionMap() {
 	common.OptionMap["SMTPForceAuthLogin"] = strconv.FormatBool(common.SMTPForceAuthLogin)
 	common.OptionMap["SMTPAccountPool"] = ""
 	common.OptionMap["Notice"] = ""
+	common.OptionMap["wallpaper.image_url"] = ""
+	common.OptionMap["wallpaper.api_url"] = "https://hub.saintic.com/openservice/wallhavenpic"
+	common.OptionMap["wallpaper.keywords"] = "chiikawa, cinnamoroll, kuromi, my melody, pompompurin, pochacco, keroppi, tuxedosam, chococat, pikachu, eevee, rilakkuma"
+	common.OptionMap["wallpaper.category"] = "anime"
+	common.OptionMap["wallpaper.refresh_interval"] = "60"
 	common.OptionMap["About"] = ""
 	common.OptionMap["HomePageContent"] = ""
 	common.OptionMap["Footer"] = common.Footer

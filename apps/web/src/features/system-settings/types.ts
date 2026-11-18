@@ -159,6 +159,11 @@ export type SiteSettings = {
   'legal.privacy_policy': string
   HeaderNavModules: string
   SidebarModulesAdmin: string
+  'wallpaper.image_url': string
+  'wallpaper.api_url': string
+  'wallpaper.keywords': string
+  'wallpaper.category': string
+  'wallpaper.refresh_interval': string
 }
 
 export type AuthSettings = {

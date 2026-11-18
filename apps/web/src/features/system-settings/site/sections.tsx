@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { SystemInfoSection } from '../general/system-info-section'
+import { BackgroundSection } from './background-section'
 import {
   parseHeaderNavModules,
   parseSidebarModulesAdmin,
@@ -87,6 +88,19 @@ const SITE_SECTIONS = [
         />
       )
     },
+  },
+  {
+    id: 'background',
+    titleKey: 'Background settings',
+    build: (settings: SiteSettings) => (
+      <BackgroundSection
+        defaultImageUrl={settings['wallpaper.image_url']}
+        defaultApiUrl={settings['wallpaper.api_url']}
+        defaultKeywords={settings['wallpaper.keywords']}
+        defaultCategory={settings['wallpaper.category']}
+        defaultRefreshInterval={settings['wallpaper.refresh_interval']}
+      />
+    ),
   },
 ] as const
 
