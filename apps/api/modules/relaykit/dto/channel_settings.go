@@ -152,6 +152,52 @@ type ChannelOtherSettings struct {
 	UpstreamModelUpdateLastRemovedModels  []string              `json:"upstream_model_update_last_removed_models,omitempty"`  // 上次检测到的可删除模型
 	UpstreamModelUpdateIgnoredModels      []string              `json:"upstream_model_update_ignored_models,omitempty"`       // 手动忽略的模型
 	AdvancedCustom                        *AdvancedCustomConfig `json:"advanced_custom,omitempty"`
+	// ProbePolicy 是该渠道的路由健康探测策略：基于模型级 24h 探测可用率
+	// 自动禁用/恢复模型路由，并驱动 webhook 通知。nil 表示未配置（不自动控制）。
+	ProbePolicy *ChannelProbePolicy `json:"probe_policy,omitempty"`
+}
+
+// ChannelProbePolicy 是渠道级探测策略。迟滞带 [DisableBelow, EnableAbove)
+// 内不动作也不通知，只有穿越边界才产生事件，避免抖动与重复告警。
+type ChannelProbePolicy struct {
+	// AutoControlEnabled 开启后，模型可用率跌破 DisableBelow 时自动禁用该
+	// 模型路由（ability.auto_disabled=true，可被自动恢复），回升到
+	// EnableAbove 及以上时自动恢复。
+	AutoControlEnabled bool `json:"auto_control_enabled"`
+	// DisableBelow 自动禁用阈值（百分比 0-100）。
+	DisableBelow float64 `json:"disable_below"`
+	// EnableAbove 自动恢复阈值（百分比 0-100），必须大于 DisableBelow。
+	EnableAbove float64 `json:"enable_above"`
+}
+
+// 默认阈值与不变量。
+const (
+	DefaultProbeDisableBelow = 30
+	DefaultProbeEnableAbove  = 70
+)
+
+// Normalize 填充默认值；返回值不做合法性校验（校验见 Validate）。
+func (p *ChannelProbePolicy) Normalize() {
+	if p.DisableBelow <= 0 {
+		p.DisableBelow = DefaultProbeDisableBelow
+	}
+	if p.EnableAbove <= 0 {
+		p.EnableAbove = DefaultProbeEnableAbove
+	}
+}
+
+// Validate 校验阈值范围与迟滞带顺序。
+func (p *ChannelProbePolicy) Validate() error {
+	if p.DisableBelow < 0 || p.DisableBelow > 100 {
+		return fmt.Errorf("probe policy disable_below must be in [0, 100]")
+	}
+	if p.EnableAbove < 0 || p.EnableAbove > 100 {
+		return fmt.Errorf("probe policy enable_above must be in [0, 100]")
+	}
+	if p.DisableBelow >= p.EnableAbove {
+		return fmt.Errorf("probe policy requires disable_below < enable_above")
+	}
+	return nil
 }
 
 func (s *ChannelOtherSettings) IsOpenRouterEnterprise() bool {

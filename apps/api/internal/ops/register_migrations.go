@@ -12,6 +12,7 @@ func init() {
 		dbx.Migration{Model: &SystemInstance{}, Name: "SystemInstance"},
 		dbx.Migration{Model: &SystemTask{}, Name: "SystemTask"},
 		dbx.Migration{Model: &SystemTaskLock{}, Name: "SystemTaskLock"},
+		dbx.Migration{Model: &ChannelProbeResult{}, Name: "ChannelProbeResult"},
 	)
 	dbx.RegisterPostMigration(dbinfra.RepairLegacySetups)
 }
