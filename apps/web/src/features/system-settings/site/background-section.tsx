@@ -62,21 +62,30 @@ const DEFAULT_KEYWORDS = [
 ]
 
 const backgroundSchema = z.object({
-  imageUrl: z.string(),
-  apiUrl: z.string(),
+  // 多地址有序回退：按顺序尝试，第一个返回真实图片的生效。
+  imageUrls: z.array(z.string()),
   keywords: z.array(z.string()),
   category: z.string(),
   refreshInterval: z.string(),
+  sourcePriority: z.enum(['url', 'local']),
 })
 
 type BackgroundFormValues = z.infer<typeof backgroundSchema>
 
 type BackgroundSectionProps = {
   defaultImageUrl: string
-  defaultApiUrl: string
   defaultKeywords: string
   defaultCategory: string
   defaultRefreshInterval: string
+  defaultSourcePriority: string
+}
+
+function parseImageUrls(raw: string | undefined): string[] {
+  const parts = (raw ?? '')
+    .split(/[\n,;]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+  return parts.length > 0 ? parts : ['']
 }
 
 function parseKeywords(raw: string | undefined): string[] {
@@ -89,21 +98,21 @@ function parseKeywords(raw: string | undefined): string[] {
 
 export function BackgroundSection({
   defaultImageUrl,
-  defaultApiUrl,
   defaultKeywords,
   defaultCategory,
   defaultRefreshInterval,
+  defaultSourcePriority,
 }: BackgroundSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
   const [isRefreshing, setIsRefreshing] = useState(false)
 
   const defaults: BackgroundFormValues = {
-    imageUrl: defaultImageUrl ?? '',
-    apiUrl: defaultApiUrl ?? '',
+    imageUrls: parseImageUrls(defaultImageUrl),
     keywords: parseKeywords(defaultKeywords),
     category: defaultCategory ?? '',
     refreshInterval: defaultRefreshInterval ?? '60',
+    sourcePriority: defaultSourcePriority === 'local' ? 'local' : 'url',
   }
 
   const form = useForm<BackgroundFormValues>({
@@ -113,15 +122,15 @@ export function BackgroundSection({
 
   useEffect(() => {
     form.reset({
-      imageUrl: defaultImageUrl ?? '',
-      apiUrl: defaultApiUrl ?? '',
+      imageUrls: parseImageUrls(defaultImageUrl),
       keywords: parseKeywords(defaultKeywords),
       category: defaultCategory ?? '',
       refreshInterval: defaultRefreshInterval ?? '60',
+      sourcePriority: defaultSourcePriority === 'local' ? 'local' : 'url',
     })
     // 依赖是稳定的字符串 props，避免父组件重渲染时用新对象打断输入。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defaultImageUrl, defaultApiUrl, defaultKeywords, defaultCategory, defaultRefreshInterval, form])
+  }, [defaultImageUrl, defaultKeywords, defaultCategory, defaultRefreshInterval, defaultSourcePriority, form])
 
   const onRefresh = async () => {
     setIsRefreshing(true)
@@ -136,11 +145,18 @@ export function BackgroundSection({
   const onSubmit = async (values: BackgroundFormValues) => {
     const keywords = values.keywords.join(', ')
     const updates = [
-      { key: 'wallpaper.image_url', value: values.imageUrl.trim(), previous: defaultImageUrl },
-      { key: 'wallpaper.api_url', value: values.apiUrl.trim(), previous: defaultApiUrl },
+      {
+        key: 'wallpaper.image_url',
+        value: values.imageUrls
+          .map((url) => url.trim())
+          .filter(Boolean)
+          .join('\n'),
+        previous: defaultImageUrl,
+      },
       { key: 'wallpaper.keywords', value: keywords, previous: defaultKeywords },
       { key: 'wallpaper.category', value: values.category.trim(), previous: defaultCategory },
       { key: 'wallpaper.refresh_interval', value: values.refreshInterval.trim(), previous: defaultRefreshInterval },
+      { key: 'wallpaper.source_priority', value: values.sourcePriority, previous: defaultSourcePriority },
     ]
     for (const entry of updates) {
       if (entry.value === (entry.previous ?? '')) continue
@@ -157,19 +173,38 @@ export function BackgroundSection({
         >
           <SettingsPageFormActions
             beforeActions={
-              <Button
-                type='button'
-                size='sm'
-                variant='outline'
-                onClick={onRefresh}
-                disabled={isRefreshing}
-              >
-                <RefreshCw
-                  data-icon='inline-start'
-                  className={isRefreshing ? 'animate-spin' : undefined}
-                />
-                <span>{t('Refresh background')}</span>
-              </Button>
+              <>
+                {/* 来源优先级状态按钮：URL 优先 / 本地缓存优先 */}
+                <Button
+                  type='button'
+                  size='sm'
+                  variant={form.watch('sourcePriority') === 'local' ? 'default' : 'outline'}
+                  title={t('Background source priority help')}
+                  aria-pressed={form.watch('sourcePriority') === 'local'}
+                  onClick={() =>
+                    form.setValue('sourcePriority',
+                      form.watch('sourcePriority') === 'local' ? 'url' : 'local',
+                      { shouldDirty: true })
+                  }
+                >
+                  {form.watch('sourcePriority') === 'local'
+                    ? t('Source: Local cache')
+                    : t('Source: Online API')}
+                </Button>
+                <Button
+                  type='button'
+                  size='sm'
+                  variant='outline'
+                  onClick={onRefresh}
+                  disabled={isRefreshing}
+                >
+                  <RefreshCw
+                    data-icon='inline-start'
+                    className={isRefreshing ? 'animate-spin' : undefined}
+                  />
+                  <span>{t('Refresh background')}</span>
+                </Button>
+              </>
             }
             onSave={form.handleSubmit(onSubmit)}
             isSaving={updateOption.isPending}
@@ -179,32 +214,54 @@ export function BackgroundSection({
             <SettingsFormGridItem span='full'>
               <FormField
                 control={form.control}
-                name='imageUrl'
+                name='imageUrls'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Custom image URL')}</FormLabel>
+                    <FormLabel>{t('Wallpaper API URLs')}</FormLabel>
                     <FormControl>
-                      <Input placeholder='https://example.com/wallpaper.jpg' {...field} />
+                      <div className='space-y-2'>
+                        {field.value.map((url, index) => (
+                          <div key={index} className='flex items-center gap-2'>
+                            <span className='text-muted-foreground w-6 shrink-0 text-right text-xs tabular-nums'>
+                              {index + 1}
+                            </span>
+                            <Input
+                              value={url}
+                              placeholder='https://hub.saintic.com/openservice/wallhavenpic'
+                              onChange={(event) => {
+                                const next = [...field.value]
+                                next[index] = event.target.value
+                                field.onChange(next)
+                              }}
+                              onBlur={field.onBlur}
+                            />
+                            <Button
+                              type='button'
+                              variant='outline'
+                              size='sm'
+                              disabled={field.value.length <= 1}
+                              onClick={() =>
+                                field.onChange(
+                                  field.value.filter((_, i) => i !== index)
+                                )
+                              }
+                            >
+                              aria-label={`${t('Remove')} ${index + 1}`}
+                              {t('Remove')}
+                            </Button>
+                          </div>
+                        ))}
+                        <Button
+                          type='button'
+                          variant='outline'
+                          size='sm'
+                          onClick={() => field.onChange([...field.value, ''])}
+                        >
+                          {t('Add URL')}
+                        </Button>
+                      </div>
                     </FormControl>
-                    <FormDescription>
-                      {field.value ? t('Fixed image URL hint') : t('Custom image URL help')}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </SettingsFormGridItem>
-            <SettingsFormGridItem span='full'>
-              <FormField
-                control={form.control}
-                name='apiUrl'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Random image API URL')}</FormLabel>
-                    <FormControl>
-                      <Input placeholder='https://hub.saintic.com/openservice/wallhavenpic' {...field} />
-                    </FormControl>
-                    <FormDescription>{t('Random image API URL help')}</FormDescription>
+                    <FormDescription>{t('Wallpaper API URLs help')}</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

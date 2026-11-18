@@ -76,7 +76,9 @@ func TestFetchWallpaperFileURLMergesExistingQuery(t *testing.T) {
 		"wallpaper.api_url":  server.URL + "/?existing=1",
 		"wallpaper.category": "anime",
 	})
-	fileURL, err := fetchWallpaperFileURL("chiikawa")
+	// 用带占位符的查询模板调用：existing=1 保留，q/category 由占位符替换注入。
+	fileURL, err := fetchWallpaperFileURL("chiikawa",
+		server.URL+"/search?existing=1&q={keyword}&category={category}")
 	require.NoError(t, err)
 	assert.Equal(t, "https://example.com/a.jpg", fileURL)
 }

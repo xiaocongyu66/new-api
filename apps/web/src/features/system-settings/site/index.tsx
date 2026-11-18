@@ -38,6 +38,7 @@ const defaultSiteSettings: SiteSettings = {
   'wallpaper.keywords': 'chiikawa, cinnamoroll, kuromi, my melody, pompompurin, pochacco, keroppi, tuxedosam, chococat, pikachu, eevee, rilakkuma',
   'wallpaper.category': 'anime',
   'wallpaper.refresh_interval': '60',
+  'wallpaper.source_priority': 'url',
 }
 
 export function SiteSettings() {

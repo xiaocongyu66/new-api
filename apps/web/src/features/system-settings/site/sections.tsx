@@ -95,10 +95,10 @@ const SITE_SECTIONS = [
     build: (settings: SiteSettings) => (
       <BackgroundSection
         defaultImageUrl={settings['wallpaper.image_url']}
-        defaultApiUrl={settings['wallpaper.api_url']}
         defaultKeywords={settings['wallpaper.keywords']}
         defaultCategory={settings['wallpaper.category']}
         defaultRefreshInterval={settings['wallpaper.refresh_interval']}
+        defaultSourcePriority={settings['wallpaper.source_priority']}
       />
     ),
   },

@@ -164,6 +164,7 @@ export type SiteSettings = {
   'wallpaper.keywords': string
   'wallpaper.category': string
   'wallpaper.refresh_interval': string
+  'wallpaper.source_priority': string
 }
 
 export type AuthSettings = {

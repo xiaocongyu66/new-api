@@ -113,50 +113,71 @@ type BackgroundResource = {
 // Root effect replay shares the pending request; successful loads survive navigation.
 let backgroundResource: BackgroundResource | undefined;
 
-// The image API returns a fresh random image per call, so the browser HTTP cache
-// never reuses a previous background. Persist the last successful image as a
-// data URL: the next load paints it instantly and the network fetch degrades
-// to a background refresh that may fail without blanking the page.
-const CACHED_BACKGROUND_KEY = "app-background-image";
-// The upstream serves pre-scaled ~300KB images; base64 is ~0.4MB, so the cap
-// leaves the shared ~5MB origin localStorage quota effectively untouched.
-const CACHED_BACKGROUND_MAX_LENGTH = 3_500_000;
+// 背景图片 LRU：保留最近 3 张成功的图片（data URL），
+// 网络不可用时随机回退一张；内存也持有，localStorage 只是跨刷新持久化。
+const CACHED_BACKGROUND_KEY = "app-background-image-lru";
+const CACHED_BACKGROUND_MAX_LENGTH = 1_500_000; // 单张上限，3 张约 4.5MB
+const CACHED_BACKGROUND_LIMIT = 3;
 
 /** 后台「刷新背景」通过此事件通知已订阅的背景组件原地换图，不重载页面。 */
 const WALLPAPER_REFRESH_EVENT = 'new-api:wallpaper-refresh';
 
-type CachedBackground = {
-  url: string;
-  dataUrl: string;
-};
+type CachedBackground = { url: string; dataUrl: string };
 
-function readCachedBackground(): CachedBackground | undefined {
-  try {
-    const raw = window.localStorage.getItem(CACHED_BACKGROUND_KEY);
-    if (!raw) return undefined;
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      typeof (parsed as CachedBackground).url === "string" &&
-      typeof (parsed as CachedBackground).dataUrl === "string" &&
-      (parsed as CachedBackground).dataUrl.startsWith("data:image/")
-    ) {
-      return parsed as CachedBackground;
-    }
-  } catch {
-    // Corrupt entry or unavailable storage: fall back to network-only loads.
-  }
-  return undefined;
+let memoryCache: CachedBackground[] | undefined;
+
+function isValidEntry(value: unknown): value is CachedBackground {
+  return (
+    typeof value === "object" && value !== null &&
+    typeof (value as CachedBackground).url === "string" &&
+    typeof (value as CachedBackground).dataUrl === "string" &&
+    (value as CachedBackground).dataUrl.startsWith("data:image/")
+  );
 }
 
-function writeCachedBackground(entry: CachedBackground): void {
-  if (entry.dataUrl.length > CACHED_BACKGROUND_MAX_LENGTH) return;
+function readCachedBackgrounds(): CachedBackground[] {
+  if (memoryCache) return memoryCache;
+  let entries: CachedBackground[] = [];
   try {
-    window.localStorage.setItem(CACHED_BACKGROUND_KEY, JSON.stringify(entry));
-  } catch {
-    // Quota exceeded or storage disabled: the in-memory path still works.
+    const raw = window.localStorage.getItem(CACHED_BACKGROUND_KEY);
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) entries = parsed.filter(isValidEntry);
+    }
+  } catch { /* corrupt or unavailable storage: network-only */ }
+  // 兼容旧版单张缓存（key = app-background-image）
+  if (entries.length === 0) {
+    try {
+      const old = window.localStorage.getItem("app-background-image");
+      if (old) {
+        const parsed: unknown = JSON.parse(old);
+        if (isValidEntry(parsed)) entries = [parsed];
+      }
+    } catch { /* ignore */ }
   }
+  memoryCache = entries.slice(0, CACHED_BACKGROUND_LIMIT);
+  return memoryCache;
+}
+
+function writeCachedBackgrounds(entries: CachedBackground[]): void {
+  memoryCache = entries.slice(0, CACHED_BACKGROUND_LIMIT);
+  try {
+    window.localStorage.setItem(CACHED_BACKGROUND_KEY, JSON.stringify(memoryCache));
+  } catch { /* quota disabled: memory path still works */ }
+}
+
+/** 加入 LRU 头部并去重，超过 3 张淘汰最旧一张。 */
+function pushCachedBackground(entry: CachedBackground): void {
+  if (entry.dataUrl.length > CACHED_BACKGROUND_MAX_LENGTH) return;
+  const entries = readCachedBackgrounds().filter((e) => e.dataUrl !== entry.dataUrl);
+  writeCachedBackgrounds([entry, ...entries]);
+}
+
+/** 从 LRU 里随机取一张（fallback 用）。 */
+function randomCachedBackground(): CachedBackground | undefined {
+  const entries = readCachedBackgrounds();
+  if (entries.length === 0) return undefined;
+  return entries[Math.floor(Math.random() * entries.length)];
 }
 
 /** 把响应体的 blob 转 dataUrl 并落盘缓存，供下次加载即时展示。 */
@@ -164,21 +185,20 @@ function persistFreshImageFromBlob(blob: Blob): void {
   void new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () =>
-      reject(new Error("Failed to persist background image"));
+    reader.onerror = () => reject(new Error("Failed to persist background image"));
     reader.readAsDataURL(blob);
   })
-    .then((dataUrl) => writeCachedBackground({ url: WALLPAPER_API, dataUrl }))
+    .then((dataUrl) => pushCachedBackground({ url: WALLPAPER_API, dataUrl }))
     .catch(() => {});
 }
 
 /** 后台刷新背景时清除旧图缓存，确保下一次加载用服务端刚抓到的新图。 */
 export function clearCachedBackground(): void {
+  memoryCache = [];
   try {
     window.localStorage.removeItem(CACHED_BACKGROUND_KEY);
-  } catch {
-    // Storage disabled: the in-memory path still works.
-  }
+    window.localStorage.removeItem("app-background-image");
+  } catch { /* Storage disabled: the in-memory path still works. */ }
 }
 
 /**
@@ -282,7 +302,7 @@ async function fetchWallpaper(signal: AbortSignal, forceRefresh = false): Promis
 
 function createBackgroundResource(forceRefresh = false): BackgroundResource {
   const controller = new AbortController();
-  const cached = readCachedBackground();
+  const cached = randomCachedBackground();
   const resource: BackgroundResource = {
     controller,
     cachedUrl: cached?.url,
@@ -312,6 +332,11 @@ function createBackgroundResource(forceRefresh = false): BackgroundResource {
         window.clearTimeout(timeout);
         if (controller.signal.aborted)
           throw new Error("Background load cancelled");
+        // 网络/服务端失败：回退到 LRU 里随机一张本地缓存，绝不空白。
+        const fallback = randomCachedBackground();
+        if (fallback) {
+          return await loadBackgroundImage(fallback.dataUrl, controller.signal);
+        }
         throw error;
       } finally {
         window.clearTimeout(timeout);

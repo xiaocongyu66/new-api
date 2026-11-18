@@ -239,6 +239,7 @@ func SeedOptionMap() {
 	common.OptionMap["wallpaper.keywords"] = "chiikawa, cinnamoroll, kuromi, my melody, pompompurin, pochacco, keroppi, tuxedosam, chococat, pikachu, eevee, rilakkuma"
 	common.OptionMap["wallpaper.category"] = "anime"
 	common.OptionMap["wallpaper.refresh_interval"] = "60"
+	common.OptionMap["wallpaper.source_priority"] = "url"
 	common.OptionMap["About"] = ""
 	common.OptionMap["HomePageContent"] = ""
 	common.OptionMap["Footer"] = common.Footer
