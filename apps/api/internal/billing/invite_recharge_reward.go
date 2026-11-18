@@ -28,7 +28,7 @@ func applyInviteRechargeRewards(tx *gorm.DB, inviteeID int, creditedQuota int) e
 	// single-writer transactions still serialize the competing write.
 	var invitee identity.User
 	if err := dbx.LockForUpdate(tx).Model(&identity.User{}).
-		Select("inviter_id, created_at").
+		Select("inviter_id, created_at, invite_reward_direct_paid").
 		Where("id = ?", inviteeID).
 		First(&invitee).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -37,6 +37,12 @@ func applyInviteRechargeRewards(tx *gorm.DB, inviteeID int, creditedQuota int) e
 		return err
 	}
 	if invitee.InviterId == 0 {
+		return nil
+	}
+
+	// A reward already paid at registration must not be paid again if the
+	// admin later switches the mode to recharge.
+	if invitee.InviteRewardDirectPaid {
 		return nil
 	}
 

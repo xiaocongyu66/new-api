@@ -167,6 +167,7 @@ export function InvitationRewardSettingsSection(
                   <FormControl>
                     <Input
                       type='number'
+                      min={0}
                       value={field.value ?? ''}
                       onChange={handleNumberChange(field.onChange)}
                       name={field.name}
@@ -178,7 +179,7 @@ export function InvitationRewardSettingsSection(
                     {t(
                       'Quota given to users who invite others ({{formattedQuota}})',
                       {
-                        formattedQuota: formatQuota(Number(field.value) || 0),
+                        formattedQuota: formatQuota(Math.max(0, Number(field.value) || 0)),
                       }
                     )}
                   </FormDescription>
@@ -196,6 +197,7 @@ export function InvitationRewardSettingsSection(
                   <FormControl>
                     <Input
                       type='number'
+                      min={0}
                       value={field.value ?? ''}
                       onChange={handleNumberChange(field.onChange)}
                       name={field.name}
@@ -205,7 +207,7 @@ export function InvitationRewardSettingsSection(
                   </FormControl>
                   <FormDescription>
                     {t('Quota given to invited users ({{formattedQuota}})', {
-                      formattedQuota: formatQuota(Number(field.value) || 0),
+                      formattedQuota: formatQuota(Math.max(0, Number(field.value) || 0)),
                     })}
                   </FormDescription>
                   <FormMessage />
@@ -269,6 +271,9 @@ export function InvitationRewardSettingsSection(
                       ref={field.ref}
                     />
                   </FormControl>
+                  <FormDescription>
+                    {t('A multiplier of 0 means no rebate; set it above 0 to enable recharge rebates.')}
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -305,6 +310,9 @@ export function InvitationRewardSettingsSection(
                       </SelectContent>
                     </Select>
                   </FormControl>
+                  <FormDescription>
+                    {t('First Recharge Only counts the first wallet top-up after invite registration; subscription purchases are excluded.')}
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
