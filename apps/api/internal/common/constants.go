@@ -138,8 +138,8 @@ var QuotaForInviter = 0
 var QuotaForInvitee = 0
 
 // Invite reward configuration: option keys live under invite_reward.*.
-// Defaults preserve the previous hard-coded behavior (direct/direct, 1x,
-// first-trigger, zero threshold).
+// Defaults grant the inviter reward directly at registration with no rebate:
+// multiplier 0, first-recharge trigger, zero transfer threshold.
 const (
 	InviteRewardModeDirect   = "direct"
 	InviteRewardModeRecharge = "recharge"
