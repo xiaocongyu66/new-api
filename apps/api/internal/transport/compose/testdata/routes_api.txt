@@ -293,8 +293,8 @@ POST /api/waffo-pancake/webhook/:env
 POST /api/waffo/webhook
 POST /api/wallpaper/refresh
 PUT /api/channel/
-PUT /api/channel/probe/settings
 PUT /api/channel/probe/policy
+PUT /api/channel/probe/settings
 PUT /api/channel/route_unit/:id
 PUT /api/channel/route_unit/context
 PUT /api/channel/route_unit/dispatch
