@@ -45,6 +45,7 @@ import {
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
+import { RECOMMENDED_WALLPAPER_APIS } from './wallpaper-defaults'
 
 const DEFAULT_KEYWORDS = [
   'chiikawa',
@@ -204,6 +205,16 @@ export function BackgroundSection({
                   />
                   <span>{t('Refresh background')}</span>
                 </Button>
+                <Button
+                  type='button'
+                  size='sm'
+                  variant='outline'
+                  onClick={() =>
+                    form.setValue('imageUrls', [...RECOMMENDED_WALLPAPER_APIS], { shouldDirty: true })
+                  }
+                >
+                  {t('Use recommended wallpaper APIs')}
+                </Button>
               </>
             }
             onSave={form.handleSubmit(onSubmit)}
@@ -227,7 +238,7 @@ export function BackgroundSection({
                             </span>
                             <Input
                               value={url}
-                              placeholder='https://hub.saintic.com/openservice/wallhavenpic'
+                              placeholder='gelbooru|https://...tags={keyword}'
                               onChange={(event) => {
                                 const next = [...field.value]
                                 next[index] = event.target.value

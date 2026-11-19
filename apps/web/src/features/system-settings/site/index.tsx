@@ -20,6 +20,7 @@ import { SettingsPage } from '../components/settings-page'
 import type { SiteSettings } from '../types'
 import { SITE_DEFAULT_SECTION } from './section-registry.tsx'
 import { getSiteSectionContent, getSiteSectionMeta } from './sections.tsx'
+import { RECOMMENDED_WALLPAPER_API_TEXT, RECOMMENDED_WALLPAPER_APIS } from './wallpaper-defaults'
 
 const defaultSiteSettings: SiteSettings = {
   Notice: '',
@@ -33,8 +34,8 @@ const defaultSiteSettings: SiteSettings = {
   'legal.privacy_policy': '',
   HeaderNavModules: '',
   SidebarModulesAdmin: '',
-  'wallpaper.image_url': '',
-  'wallpaper.api_url': 'https://hub.saintic.com/openservice/wallhavenpic',
+  'wallpaper.image_url': RECOMMENDED_WALLPAPER_API_TEXT,
+  'wallpaper.api_url': RECOMMENDED_WALLPAPER_APIS[0],
   'wallpaper.keywords': 'chiikawa, cinnamoroll, kuromi, my melody, pompompurin, pochacco, keroppi, tuxedosam, chococat, pikachu, eevee, rilakkuma',
   'wallpaper.category': 'anime',
   'wallpaper.refresh_interval': '60',
