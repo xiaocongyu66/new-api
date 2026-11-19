@@ -109,6 +109,9 @@ func TestProbeThresholdFlipAndDedupPerModel(t *testing.T) {
 		WebhookUrl:           "http://127.0.0.1:9/probe",
 	}
 	resetProbeZoneState()
+	// 预置相反区间，让首轮评估产生一次穿越通知（重启后进程内状态丢失时同理）。
+	probeZoneState.m[probeUnitKey{ChannelID: 1, Model: "gpt-4o"}] = probeZoneBelow
+	probeZoneState.m[probeUnitKey{ChannelID: 2, Model: "claude"}] = probeZoneAbove
 
 	// 首次：两个模型各穿越一次（一恢复一告警）
 	EvaluateAndNotifyProbeThresholds(context.Background())
@@ -166,6 +169,9 @@ func TestProbeAutoDisableAndRestoreWithPolicy(t *testing.T) {
 		OtherSettings: string(settings),
 		CreatedTime:   now,
 	}).Error)
+	require.NoError(t, dbx.DB.Create(&channelpkg.Ability{
+		Group: "default", Model: "m1", ChannelId: 3, Enabled: true,
+	}).Error)
 
 	insertRows := func(successCount, failCount int) {
 		require.NoError(t, dbx.DB.Where("channel_id = ?", 3).Delete(&ChannelProbeResult{}).Error)
@@ -203,14 +209,19 @@ func TestProbeAutoDisableAndRestoreWithPolicy(t *testing.T) {
 	prevDisable, prevRestore := autoDisableModel, autoRestoreModel
 	autoDisableModel = func(channelID int, model string) error {
 		disabled = append(disabled, model)
-		return nil
+		return dbx.DB.Model(&channelpkg.Ability{}).
+			Where("channel_id = ? AND model = ?", channelID, model).
+			Updates(map[string]any{"enabled": false, "auto_disabled": true}).Error
 	}
 	autoRestoreModel = func(channelID int, model string) error {
 		restored = append(restored, model)
-		return nil
+		return dbx.DB.Model(&channelpkg.Ability{}).
+			Where("channel_id = ? AND model = ?", channelID, model).
+			Updates(map[string]any{"enabled": true, "auto_disabled": false}).Error
 	}
 	t.Cleanup(func() { autoDisableModel, autoRestoreModel = prevDisable, prevRestore })
 	resetProbeZoneState()
+	probeZoneState.m[probeUnitKey{ChannelID: 3, Model: "m1"}] = probeZoneAbove
 
 	// 20% → 跌破 50%：自动禁用一次
 	insertRows(2, 8)
