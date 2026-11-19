@@ -18,7 +18,7 @@ func withProbeDB(t *testing.T) {
 	previousDB := dbx.DB
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&ChannelProbeResult{}, &channelpkg.Channel{}))
+	require.NoError(t, db.AutoMigrate(&ChannelProbeResult{}, &channelpkg.Channel{}, &channelpkg.Ability{}))
 	dbx.DB = db
 	t.Cleanup(func() { dbx.DB = previousDB })
 }
