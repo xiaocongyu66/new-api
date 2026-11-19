@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
+	channelpkg "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 )
@@ -17,12 +18,12 @@ func withProbeDB(t *testing.T) {
 	previousDB := dbx.DB
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&ChannelProbeResult{}))
+	require.NoError(t, db.AutoMigrate(&channelpkg.Ability{}, &channelpkg.Channel{}, &ChannelProbeResult{}))
 	dbx.DB = db
 	t.Cleanup(func() { dbx.DB = previousDB })
 }
 
-func probeResultRow(channelId int, model string, success bool, errorCode string, createdAt int64) {
+func probeResultRow(t *testing.T, channelId int, model string, success bool, errorCode string, createdAt int64) {
 	require.NoError(t, dbx.DB.Create(&ChannelProbeResult{
 		ChannelId: channelId,
 		Model:     model,
@@ -44,14 +45,14 @@ func TestLoadProbeStats24h(t *testing.T) {
 		if !success {
 			errorCode = "upstream_error"
 		}
-		probeResultRow(1, "gpt-4o", success, errorCode, now-int64(1600-i*100))
+		probeResultRow(t, 1, "gpt-4o", success, errorCode, now-int64(1600-i*100))
 	}
 	// channel 1 / gpt-4o-mini：2 次，1 成功 1 失败，最近一次失败
-	probeResultRow(1, "gpt-4o-mini", true, "", now-200)
-	probeResultRow(1, "gpt-4o-mini", false, "fail-x", now-100)
+	probeResultRow(t, 1, "gpt-4o-mini", true, "", now-200)
+	probeResultRow(t, 1, "gpt-4o-mini", false, "fail-x", now-100)
 
 	// channel 2 / claude：唯一一条已超 24h 窗口，应被剔除
-	probeResultRow(2, "claude", true, "", now-90000)
+	probeResultRow(t, 2, "claude", true, "", now-90000)
 
 	stats, err := LoadProbeStats24h(context.Background(), 1)
 	require.NoError(t, err)
@@ -68,7 +69,7 @@ func TestLoadProbeStats24h(t *testing.T) {
 	require.NotNil(t, gpt4o.Availability)
 	require.InDelta(t, 66.66666666666667, *gpt4o.Availability, 1e-9)
 	require.Equal(t, int64(now-500), gpt4o.LastProbeAt)
-	require.Equal(t, "", gpt4o.LastErrorCode)
+	require.Equal(t, "upstream_error", gpt4o.LastErrorCode)
 
 	mini, ok := byModel["gpt-4o-mini"]
 	require.True(t, ok)

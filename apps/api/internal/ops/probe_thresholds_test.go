@@ -6,6 +6,7 @@ import (
 
 	channelpkg "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -76,10 +77,10 @@ func TestProbeThresholdFlipAndDedupPerModel(t *testing.T) {
 
 	insert := func(channelId int, model string, successCount, failCount int) {
 		for i := 0; i < successCount; i++ {
-			probeResultRow(channelId, model, true, "", now-int64(i))
+			probeResultRow(t, channelId, model, true, "", now-int64(i))
 		}
 		for i := 0; i < failCount; i++ {
-			probeResultRow(channelId, model, false, "upstream_error", now-int64(100+i))
+			probeResultRow(t, channelId, model, false, "upstream_error", now-int64(100+i))
 		}
 	}
 	insert(1, "gpt-4o", 8, 2) // 80% → above
@@ -110,26 +111,26 @@ func TestProbeThresholdFlipAndDedupPerModel(t *testing.T) {
 	resetProbeZoneState()
 
 	// 首次：两个模型各穿越一次（一恢复一告警）
-	require.NoError(t, EvaluateAndNotifyProbeThresholds(context.Background()))
+	EvaluateAndNotifyProbeThresholds(context.Background())
 	require.Len(t, calls, 2)
 	assert.Equal(t, 1, countTitle(calls, "路由健康探测恢复"))
 	assert.Equal(t, 1, countTitle(calls, "路由健康探测告警"))
 
 	// 再次：区间未变，不重发（方向性：不是"贴阈值就通知"）
-	require.NoError(t, EvaluateAndNotifyProbeThresholds(context.Background()))
+	EvaluateAndNotifyProbeThresholds(context.Background())
 	require.Len(t, calls, 2)
 
 	// 渠道 2 的模型恢复：below → above
 	require.NoError(t, dbx.DB.Model(&ChannelProbeResult{}).Where("channel_id = ?", 2).
 		Updates(map[string]interface{}{"success": true, "error_code": ""}).Error)
-	require.NoError(t, EvaluateAndNotifyProbeThresholds(context.Background()))
+	EvaluateAndNotifyProbeThresholds(context.Background())
 	require.Len(t, calls, 3)
 	assert.Equal(t, 2, countTitle(calls, "路由健康探测恢复"))
 
 	// 渠道 1 的模型跌落：above → below
 	require.NoError(t, dbx.DB.Model(&ChannelProbeResult{}).Where("channel_id = ?", 1).
 		Updates(map[string]interface{}{"success": false, "error_code": "probe-down"}).Error)
-	require.NoError(t, EvaluateAndNotifyProbeThresholds(context.Background()))
+	EvaluateAndNotifyProbeThresholds(context.Background())
 	require.Len(t, calls, 4)
 	assert.Equal(t, 2, countTitle(calls, "路由健康探测告警"))
 
@@ -144,7 +145,7 @@ func TestProbeThresholdFlipAndDedupPerModel(t *testing.T) {
 	}
 	require.NoError(t, dbx.DB.Model(&ChannelProbeResult{}).Where("channel_id = ?", 1).
 		Updates(map[string]interface{}{"success": true, "error_code": ""}).Error)
-	require.NoError(t, EvaluateAndNotifyProbeThresholds(context.Background()))
+	EvaluateAndNotifyProbeThresholds(context.Background())
 	require.Len(t, calls, 4)
 }
 
@@ -165,14 +166,17 @@ func TestProbeAutoDisableAndRestoreWithPolicy(t *testing.T) {
 		OtherSettings: string(settings),
 		CreatedTime:   now,
 	}).Error)
+	require.NoError(t, dbx.DB.Create(&channelpkg.Ability{
+		Group: "default", Model: "m1", ChannelId: 3, Enabled: true,
+	}).Error)
 
 	insertRows := func(successCount, failCount int) {
 		require.NoError(t, dbx.DB.Where("channel_id = ?", 3).Delete(&ChannelProbeResult{}).Error)
 		for i := 0; i < successCount; i++ {
-			probeResultRow(3, "m1", true, "", now-int64(i))
+			probeResultRow(t, 3, "m1", true, "", now-int64(i))
 		}
 		for i := 0; i < failCount; i++ {
-			probeResultRow(3, "m1", false, "upstream_error", now-int64(100+i))
+			probeResultRow(t, 3, "m1", false, "upstream_error", now-int64(100+i))
 		}
 	}
 
@@ -202,38 +206,42 @@ func TestProbeAutoDisableAndRestoreWithPolicy(t *testing.T) {
 	prevDisable, prevRestore := autoDisableModel, autoRestoreModel
 	autoDisableModel = func(channelID int, model string) error {
 		disabled = append(disabled, model)
-		return nil
+		return dbx.DB.Model(&channelpkg.Ability{}).
+			Where("channel_id = ? AND model = ?", channelID, model).
+			Updates(map[string]interface{}{"enabled": false, "auto_disabled": true}).Error
 	}
 	autoRestoreModel = func(channelID int, model string) error {
 		restored = append(restored, model)
-		return nil
+		return dbx.DB.Model(&channelpkg.Ability{}).
+			Where("channel_id = ? AND model = ?", channelID, model).
+			Updates(map[string]interface{}{"enabled": true, "auto_disabled": false}).Error
 	}
 	t.Cleanup(func() { autoDisableModel, autoRestoreModel = prevDisable, prevRestore })
 	resetProbeZoneState()
 
 	// 20% → 跌破 50%：自动禁用一次
 	insertRows(2, 8)
-	require.NoError(t, EvaluateAndNotifyProbeThresholds(context.Background()))
+	EvaluateAndNotifyProbeThresholds(context.Background())
 	require.Len(t, disabled, 1)
 	assert.Equal(t, "m1", disabled[0])
 	require.Len(t, calls, 1)
 	assert.Contains(t, calls[0].Content, "已自动禁用")
 
 	// 再次评估：区间未变，不重复禁用/通知
-	require.NoError(t, EvaluateAndNotifyProbeThresholds(context.Background()))
+	EvaluateAndNotifyProbeThresholds(context.Background())
 	require.Len(t, disabled, 1)
 	require.Len(t, calls, 1)
 
 	// 90% → 高于 70%：自动恢复一次
 	insertRows(9, 1)
-	require.NoError(t, EvaluateAndNotifyProbeThresholds(context.Background()))
+	EvaluateAndNotifyProbeThresholds(context.Background())
 	require.Len(t, restored, 1)
 	require.Len(t, calls, 2)
 	assert.Contains(t, calls[1].Content, "已自动恢复")
 
 	// 迟滞带内（60%）不动作不通知
 	insertRows(6, 4)
-	require.NoError(t, EvaluateAndNotifyProbeThresholds(context.Background()))
+	EvaluateAndNotifyProbeThresholds(context.Background())
 	require.Len(t, disabled, 1)
 	require.Len(t, restored, 1)
 	require.Len(t, calls, 2)

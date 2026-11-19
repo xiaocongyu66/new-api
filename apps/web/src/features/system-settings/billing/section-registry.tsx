@@ -31,6 +31,7 @@ const BILLING_SECTION_NAV = [
   { id: 'group-pricing', titleKey: 'Group Pricing' },
   { id: 'payment', titleKey: 'Payment Gateway' },
   { id: 'checkin', titleKey: 'Check-in Rewards' },
+  { id: 'invitation-reward', titleKey: 'Invitation Rewards' },
   { id: 'qqbot', titleKey: 'QQ Bot' },
 ] as const
 

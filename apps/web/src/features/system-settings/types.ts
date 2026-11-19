@@ -319,13 +319,18 @@ export type BillingSettings = {
   PreConsumedQuota: number
   QuotaForInviter: number
   QuotaForInvitee: number
+  QuotaForNewUser_display: number
   // Display-currency siblings of the raw quota options. GET /api/option emits
   // them server-converted; PUT accepts them back and converts to raw quota, so
   // the admin form never multiplies by QuotaPerUnit.
-  QuotaForNewUser_display: number
-  PreConsumedQuota_display: number
   QuotaForInviter_display: number
   QuotaForInvitee_display: number
+  PreConsumedQuota_display: number
+  'invite_reward.inviter_mode': 'direct' | 'recharge'
+  'invite_reward.rebate_multiplier': number
+  'invite_reward.rebate_trigger': 'first' | 'every'
+  'invite_reward.transfer_min_quota': number
+  'invite_reward.transfer_min_quota_display': number
   TopUpLink: string
   'general_setting.docs_link': string
   'quota_setting.enable_free_model_pre_consume': boolean

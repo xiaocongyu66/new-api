@@ -204,26 +204,20 @@ func EvaluateAndNotifyProbeThresholds(ctx context.Context) {
 				state.Enabled = false
 				state.AutoDisabled = true
 				states[action.stat.Model] = state
-				if action.seen {
-					ev := probeEvent(action.channel, action.stat, action.availability,
-						probeTitleForZone(action.zone),
-						"低于 "+fmtThr(action.disableBelow)+"% 阈值，已自动禁用该模型路由")
-					event = &ev
-				}
+				ev := probeEvent(action.channel, action.stat, action.availability,
+					probeTitleForZone(action.zone),
+					"低于 "+fmtThr(action.disableBelow)+"% 阈值，已自动禁用该模型路由")
+				event = &ev
 			case action.autoControl:
-				if action.seen {
-					ev := probeEvent(action.channel, action.stat, action.availability,
-						probeTitleForZone(action.zone),
-						"低于 "+fmtThr(action.disableBelow)+"% 阈值（模型已被禁用，未重复操作）")
-					event = &ev
-				}
+				ev := probeEvent(action.channel, action.stat, action.availability,
+					probeTitleForZone(action.zone),
+					"低于 "+fmtThr(action.disableBelow)+"% 阈值（模型已被禁用，未重复操作）")
+				event = &ev
 			default:
-				if action.seen {
-					ev := probeEvent(action.channel, action.stat, action.availability,
-						probeTitleForZone(action.zone),
-						"低于 "+fmtThr(action.disableBelow)+"% 阈值（自动禁用未开启，仅告警）")
-					event = &ev
-				}
+				ev := probeEvent(action.channel, action.stat, action.availability,
+					probeTitleForZone(action.zone),
+					"低于 "+fmtThr(action.disableBelow)+"% 阈值（自动禁用未开启，仅告警）")
+				event = &ev
 			}
 		case probeZoneAbove:
 			switch {
@@ -236,26 +230,20 @@ func EvaluateAndNotifyProbeThresholds(ctx context.Context) {
 				state.Enabled = true
 				state.AutoDisabled = false
 				states[action.stat.Model] = state
-				if action.seen {
-					ev := probeEvent(action.channel, action.stat, action.availability,
-						probeTitleForZone(action.zone),
-						"回升至 "+fmtThr(action.enableAbove)+"% 阈值以上，已自动恢复该模型路由")
-					event = &ev
-				}
+				ev := probeEvent(action.channel, action.stat, action.availability,
+					probeTitleForZone(action.zone),
+					"回升至 "+fmtThr(action.enableAbove)+"% 阈值以上，已自动恢复该模型路由")
+				event = &ev
 			case !state.Enabled && !state.AutoDisabled:
-				if action.seen {
-					ev := probeEvent(action.channel, action.stat, action.availability,
-						probeTitleForZone(action.zone),
-						"回升至 "+fmtThr(action.enableAbove)+"% 阈值以上（该模型为手动禁用，未自动恢复）")
-					event = &ev
-				}
+				ev := probeEvent(action.channel, action.stat, action.availability,
+					probeTitleForZone(action.zone),
+					"回升至 "+fmtThr(action.enableAbove)+"% 阈值以上（该模型为手动禁用，未自动恢复）")
+				event = &ev
 			default:
-				if action.seen {
-					ev := probeEvent(action.channel, action.stat, action.availability,
-						probeTitleForZone(action.zone),
-						"回升至 "+fmtThr(action.enableAbove)+"% 阈值以上")
-					event = &ev
-				}
+				ev := probeEvent(action.channel, action.stat, action.availability,
+					probeTitleForZone(action.zone),
+					"回升至 "+fmtThr(action.enableAbove)+"% 阈值以上")
+				event = &ev
 			}
 		}
 

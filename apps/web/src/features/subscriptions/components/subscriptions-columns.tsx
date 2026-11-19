@@ -26,7 +26,12 @@ import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
 import { formatQuota } from '@/lib/format'
 
-import { getSubscriptionModeLabel, planExpireMode } from '../constants'
+import {
+  getSubscriptionModeLabel,
+  planExpireMode,
+  planGrantMode,
+  planMeasure,
+} from '../constants'
 import { formatPlanPrice } from '../lib'
 import { formatDuration, formatResetPeriod } from '../lib'
 import type { PlanRecord } from '../types'
@@ -180,14 +185,24 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         header: t('Plan Quota'),
         meta: { mobileHidden: true },
         cell: ({ row }) => {
-          const total = Number(
-            row.original.plan.total_amount_display ??
-              row.original.plan.total_amount ??
-              0
-          )
+          const plan = row.original.plan
+          const quota = planMeasure(plan) === 'quota'
+          const total =
+            planGrantMode(plan) === 'total'
+              ? Number(plan.total_amount_display ?? plan.total_amount ?? 0)
+              : (plan.request_rules || []).reduce(
+                  (sum, rule) =>
+                    sum +
+                    Number(quota ? rule.amount_display || 0 : rule.count || 0),
+                  0
+                )
           return (
             <span className='text-muted-foreground'>
-              {total > 0 ? formatQuota(total) : t('Unlimited')}
+              {total > 0
+                ? quota
+                  ? formatQuota(total)
+                  : String(total)
+                : t('Unlimited')}
             </span>
           )
         },

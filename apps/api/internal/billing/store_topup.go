@@ -147,7 +147,7 @@ func rechargeTopUp(tradeNo string, expectedPaymentProvider string, actualPayment
 	}
 
 	var quotaToAdd int
-	topUp := &TopUp{}
+	var topUp = &TopUp{}
 	err = dbx.DB.Transaction(func(tx *gorm.DB) error {
 		if err := dbx.LockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
 			return ErrTopUpNotFound
@@ -198,7 +198,13 @@ func rechargeTopUp(tradeNo string, expectedPaymentProvider string, actualPayment
 		if err := tx.Save(topUp).Error; err != nil {
 			return err
 		}
-		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
+		if err := creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil); err != nil {
+			return err
+		}
+		if err := applyInviteRechargeRewards(tx, topUp.UserId, quotaToAdd); err != nil {
+			return err
+		}
+		return nil
 	})
 	if err != nil {
 		if !errors.Is(err, ErrTopUpNotFound) && !errors.Is(err, ErrPaymentMethodMismatch) && !errors.Is(err, ErrTopUpStatusInvalid) && !errors.Is(err, ErrPaymentAmountMismatch) {
@@ -405,6 +411,9 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 		if err := creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil); err != nil {
 			return err
 		}
+		if err := applyInviteRechargeRewards(tx, topUp.UserId, quotaToAdd); err != nil {
+			return err
+		}
 
 		userId = topUp.UserId
 		payMoney = topUp.Money
@@ -465,7 +474,13 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 			return err
 		}
 
-		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
+		if err := creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil); err != nil {
+			return err
+		}
+		if err := applyInviteRechargeRewards(tx, topUp.UserId, quotaToAdd); err != nil {
+			return err
+		}
+		return nil
 	})
 
 	if err != nil {
@@ -524,7 +539,13 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 			return err
 		}
 
-		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
+		if err := creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil); err != nil {
+			return err
+		}
+		if err := applyInviteRechargeRewards(tx, topUp.UserId, quotaToAdd); err != nil {
+			return err
+		}
+		return nil
 	})
 
 	if err != nil {
@@ -596,7 +617,13 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 			}
 		}
 
-		return creditTopUpQuota(tx, topUp.UserId, quota, updateFields)
+		if err := creditTopUpQuota(tx, topUp.UserId, quota, updateFields); err != nil {
+			return err
+		}
+		if err := applyInviteRechargeRewards(tx, topUp.UserId, quota); err != nil {
+			return err
+		}
+		return nil
 	})
 
 	if err != nil {
@@ -684,9 +711,15 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 		if err != nil || quota <= 0 {
 			return ErrInvalidTopUpQuota
 		}
-		return creditTopUpQuota(tx, topUp.UserId, quota, map[string]interface{}{
+		if err := creditTopUpQuota(tx, topUp.UserId, quota, map[string]interface{}{
 			"stripe_customer": customerId,
-		})
+		}); err != nil {
+			return err
+		}
+		if err := applyInviteRechargeRewards(tx, topUp.UserId, quota); err != nil {
+			return err
+		}
+		return nil
 	})
 
 	if err != nil {

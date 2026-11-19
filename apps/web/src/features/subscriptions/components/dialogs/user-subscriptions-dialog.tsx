@@ -347,7 +347,7 @@ export function UserSubscriptionsDialog(props: Props) {
                   header: t('Total Quota'),
                   cell: (record) => {
                     const sub = record.subscription
-                    if (sub.kind === 'request') {
+                    if ((sub.request_counters?.length || 0) > 0) {
                       return (
                         <RequestCountBars
                           counters={sub.request_counters}

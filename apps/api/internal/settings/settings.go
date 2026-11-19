@@ -142,6 +142,31 @@ func ValidateOptionValue(key string, value string) error {
 		}
 		return nil
 	}
+	if strings.HasPrefix(key, "invite_reward.") {
+		switch key {
+		case "invite_reward.inviter_mode":
+			if value != common.InviteRewardModeDirect && value != common.InviteRewardModeRecharge {
+				return fmt.Errorf("%s must be %s or %s", key, common.InviteRewardModeDirect, common.InviteRewardModeRecharge)
+			}
+			return nil
+		case "invite_reward.rebate_multiplier":
+			multiplier, convErr := strconv.ParseFloat(value, 64)
+			if convErr != nil || math.IsNaN(multiplier) || math.IsInf(multiplier, 0) || multiplier < 0 {
+				return fmt.Errorf("%s must be a finite number >= 0", key)
+			}
+			return nil
+		case "invite_reward.rebate_trigger":
+			if value != common.InviteRewardTriggerFirst && value != common.InviteRewardTriggerEvery {
+				return fmt.Errorf("%s must be %s or %s", key, common.InviteRewardTriggerFirst, common.InviteRewardTriggerEvery)
+			}
+			return nil
+		case "invite_reward.transfer_min_quota":
+			if n, convErr := strconv.Atoi(value); convErr != nil || n < 0 {
+				return fmt.Errorf("%s must be a non-negative integer", key)
+			}
+			return nil
+		}
+	}
 	if key == "ResponseCacheTtlSeconds" || key == "ResponseCacheMaxEntries" || key == "ResponseCacheMaxBodySize" {
 		// Pure numeric check, no domain state: 0 is accepted for TTL/size
 		// (resets to defaults in responsecache.SetConfig), but negative values
@@ -234,8 +259,11 @@ func SeedOptionMap() {
 	common.OptionMap["SMTPForceAuthLogin"] = strconv.FormatBool(common.SMTPForceAuthLogin)
 	common.OptionMap["SMTPAccountPool"] = ""
 	common.OptionMap["Notice"] = ""
-	common.OptionMap["wallpaper.image_url"] = ""
-	common.OptionMap["wallpaper.api_url"] = "https://hub.saintic.com/openservice/wallhavenpic"
+	common.OptionMap["wallpaper.image_url"] = `gelbooru|https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1&tags={keyword}+rating:general+-1girl+-1boy+-multiple_girls+-multiple_boys+-human+-cosplay+-person&limit=5
+e926|https://e926.net/posts.json?tags={keyword}+-1girl+-1boy+-multiple_girls+-multiple_boys+-human+-cosplay+-person&limit=5
+gelbooru|https://tbib.org/index.php?page=dapi&s=post&q=index&json=1&tags={keyword}+rating:general+-1girl+-1boy+-multiple_girls+-multiple_boys+-human+-cosplay+-person&limit=5
+wallhaven|https://wallhaven.clbug.com/api/v1/search?q={keyword}&categories=010&purity=100&sorting=random`
+	common.OptionMap["wallpaper.api_url"] = "gelbooru|https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1&tags={keyword}+rating:general+-1girl+-1boy+-multiple_girls+-multiple_boys+-human+-cosplay+-person&limit=5"
 	common.OptionMap["wallpaper.keywords"] = "chiikawa, cinnamoroll, kuromi, my melody, pompompurin, pochacco, keroppi, tuxedosam, chococat, pikachu, eevee, rilakkuma"
 	common.OptionMap["wallpaper.category"] = "anime"
 	common.OptionMap["wallpaper.refresh_interval"] = "60"
@@ -268,6 +296,10 @@ func SeedOptionMap() {
 	common.OptionMap["QuotaForNewUser"] = strconv.Itoa(common.QuotaForNewUser)
 	common.OptionMap["QuotaForInviter"] = strconv.Itoa(common.QuotaForInviter)
 	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
+	common.OptionMap["invite_reward.inviter_mode"] = common.InviteRewardInviterMode
+	common.OptionMap["invite_reward.rebate_multiplier"] = strconv.FormatFloat(common.InviteRewardRebateMultiplier, 'f', -1, 64)
+	common.OptionMap["invite_reward.rebate_trigger"] = common.InviteRewardRebateTrigger
+	common.OptionMap["invite_reward.transfer_min_quota"] = strconv.Itoa(common.InviteRewardTransferMinQuota)
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
 	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(rate_limit.ModelRequestRateLimitCount)
@@ -609,6 +641,32 @@ func ApplyOption(key string, value string) (err error) {
 		common.QuotaForInviter, _ = strconv.Atoi(value)
 	case "QuotaForInvitee":
 		common.QuotaForInvitee, _ = strconv.Atoi(value)
+	case "invite_reward.inviter_mode":
+		if value != common.InviteRewardModeDirect && value != common.InviteRewardModeRecharge {
+			err = fmt.Errorf("%s must be %s or %s", key, common.InviteRewardModeDirect, common.InviteRewardModeRecharge)
+			break
+		}
+		common.InviteRewardInviterMode = value
+	case "invite_reward.rebate_multiplier":
+		multiplier, convErr := strconv.ParseFloat(value, 64)
+		if convErr != nil || math.IsNaN(multiplier) || math.IsInf(multiplier, 0) || multiplier < 0 {
+			err = fmt.Errorf("%s must be a finite number >= 0", key)
+			break
+		}
+		common.InviteRewardRebateMultiplier = multiplier
+	case "invite_reward.rebate_trigger":
+		if value != common.InviteRewardTriggerFirst && value != common.InviteRewardTriggerEvery {
+			err = fmt.Errorf("%s must be %s or %s", key, common.InviteRewardTriggerFirst, common.InviteRewardTriggerEvery)
+			break
+		}
+		common.InviteRewardRebateTrigger = value
+	case "invite_reward.transfer_min_quota":
+		n, convErr := strconv.Atoi(value)
+		if convErr != nil || n < 0 {
+			err = fmt.Errorf("%s must be a non-negative integer", key)
+			break
+		}
+		common.InviteRewardTransferMinQuota = n
 	case "QuotaRemindThreshold":
 		common.QuotaRemindThreshold, _ = strconv.Atoi(value)
 	case "PreConsumedQuota":

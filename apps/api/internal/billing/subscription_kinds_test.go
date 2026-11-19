@@ -85,24 +85,44 @@ func seedKindTestRatios(t *testing.T) {
 	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"vip":1.5}`))
 }
 
-// A subscription scoped to an upgraded group must not pay for requests served
-// through another group.
-func TestPreConsumeUserSubscriptionRejectsGroupMismatch(t *testing.T) {
+// A shared pool is one pool for every group, so a plan's group snapshot does
+// not gate it; a group-scoped plan only pays for its own group.
+func TestPreConsumeUserSubscriptionGroupScope(t *testing.T) {
 	setupIdentityTestDB(t)
-	plan := seedSubscriptionKindPlan(t, 9301, SubscriptionKindTime, []string{"vip"}, nil, 1000)
-	sub := activeSubscriptionForKindTest(t, 9301, plan)
+	sharedPlan := seedSubscriptionKindPlan(t, 9301, SubscriptionKindTime, []string{"vip"}, nil, 1000)
+	sharedSub := activeSubscriptionForKindTest(t, 9301, sharedPlan)
 
-	_, err := PreConsumeUserSubscription("req-group-mismatch", 9301, "default", "gpt-4o", 0, 100)
-	require.Error(t, err)
-	var reloaded UserSubscription
-	require.NoError(t, dbx.DB.First(&reloaded, sub.Id).Error)
-	assert.Equal(t, int64(0), reloaded.AmountUsed)
-
-	res, err := PreConsumeUserSubscription("req-group-match", 9301, "vip", "gpt-4o", 0, 100)
+	res, err := PreConsumeUserSubscription("req-shared-any-group", 9301, "default", "gpt-4o", 0, 100)
 	require.NoError(t, err)
 	require.NotNil(t, res)
-	require.NoError(t, dbx.DB.First(&reloaded, sub.Id).Error)
+	var reloaded UserSubscription
+	require.NoError(t, dbx.DB.First(&reloaded, sharedSub.Id).Error)
 	assert.Equal(t, int64(100), reloaded.AmountUsed)
+
+	scopedPlan := seedSubscriptionKindPlan(t, 9303, SubscriptionKindTime, []string{"vip"}, nil, 1000)
+	scopedSub := activeSubscriptionForKindTest(t, 9303, scopedPlan)
+	require.NoError(t, dbx.DB.Model(&SubscriptionPlan{}).Where("id = ?", scopedPlan.Id).
+		Update("scope", SubscriptionScopeGroup).Error)
+	require.NoError(t, dbx.DB.Model(&UserSubscription{}).Where("id = ?", scopedSub.Id).
+		Update("scope", SubscriptionScopeGroup).Error)
+	require.NoError(t, dbx.DB.Create(&SubscriptionRequestCounter{
+		UserSubscriptionId: scopedSub.Id,
+		GroupName:          "vip",
+		Total:              1000,
+	}).Error)
+
+	_, err = PreConsumeUserSubscription("req-scoped-mismatch", 9303, "default", "gpt-4o", 0, 100)
+	require.Error(t, err)
+	var scopedReload UserSubscription
+	require.NoError(t, dbx.DB.First(&scopedReload, scopedSub.Id).Error)
+	assert.Equal(t, int64(0), scopedReload.AmountUsed)
+
+	res, err = PreConsumeUserSubscription("req-scoped-match", 9303, "vip", "gpt-4o", 0, 100)
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	scopedReload = UserSubscription{}
+	require.NoError(t, dbx.DB.First(&scopedReload, scopedSub.Id).Error)
+	assert.Equal(t, int64(100), scopedReload.AmountUsed)
 }
 
 // Request-kind subscriptions reserve one request from the matching counter and

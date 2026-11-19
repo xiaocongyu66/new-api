@@ -99,17 +99,20 @@ type User struct {
 	// raw quota fields in the configured display currency. gorm:"-" so they are
 	// never columns; AfterFind fills them on every read (list, search, single),
 	// so the frontend never divides by QuotaPerUnit.
-	QuotaDisplay           float64                    `json:"quota_display" gorm:"-"`
-	UsedQuotaDisplay       float64                    `json:"used_quota_display" gorm:"-"`
-	AffQuotaDisplay        float64                    `json:"aff_quota_display" gorm:"-"`
-	AffHistoryQuotaDisplay float64                    `json:"aff_history_quota_display" gorm:"-"`
-	RequestCount           int                        `json:"request_count" gorm:"type:int;default:0;"` // request number
-	Group                  string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
-	AffCode                string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
-	AffCount               int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
-	AffQuota               int                        `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
-	AffHistoryQuota        int                        `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
-	InviterId              int                        `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	QuotaDisplay           float64 `json:"quota_display" gorm:"-"`
+	UsedQuotaDisplay       float64 `json:"used_quota_display" gorm:"-"`
+	AffQuotaDisplay        float64 `json:"aff_quota_display" gorm:"-"`
+	AffHistoryQuotaDisplay float64 `json:"aff_history_quota_display" gorm:"-"`
+	RequestCount           int     `json:"request_count" gorm:"type:int;default:0;"` // request number
+	Group                  string  `json:"group" gorm:"type:varchar(64);default:'default'"`
+	AffCode                string  `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
+	AffCount               int     `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
+	AffQuota               int     `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
+	AffHistoryQuota        int     `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
+	InviterId              int     `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	// Marks that the inviter reward was already paid at registration, so a
+	// later switch to recharge mode cannot pay the same invite twice.
+	InviteRewardDirectPaid bool                       `json:"-" gorm:"column:invite_reward_direct_paid"`
 	DeletedAt              gorm.DeletedAt             `gorm:"index"`
 	LinuxDOId              string                     `json:"linux_do_id" gorm:"column:linux_do_id;index"`
 	Setting                string                     `json:"setting" gorm:"type:text;column:setting"`
@@ -432,13 +435,15 @@ func GetUserIdByAffCode(affCode string) (int, error) {
 
 // inviteUser records a successful invite: aff_count always increments, while
 // aff_quota/aff_history only grow when the quota reward is actually paid.
-func inviteUser(inviterId int, withQuotaReward bool) error {
+// rewardQuota > 0 triggers aff_quota/aff_history accrual; rewardQuota <= 0
+// still records aff_count (inviter was involved) without paying quota.
+func inviteUser(inviterId int, rewardQuota int) error {
 	updates := map[string]interface{}{
 		"aff_count": gorm.Expr("aff_count + ?", 1),
 	}
-	if withQuotaReward {
-		updates["aff_quota"] = gorm.Expr("aff_quota + ?", common.QuotaForInviter)
-		updates["aff_history"] = gorm.Expr("aff_history + ?", common.QuotaForInviter)
+	if rewardQuota > 0 {
+		updates["aff_quota"] = gorm.Expr("aff_quota + ?", rewardQuota)
+		updates["aff_history"] = gorm.Expr("aff_history + ?", rewardQuota)
 	}
 	result := dbx.DB.Model(&User{}).Where("id = ?", inviterId).Updates(updates)
 	if result.Error != nil {
@@ -450,10 +455,38 @@ func inviteUser(inviterId int, withQuotaReward bool) error {
 	return nil
 }
 
+func (user *User) applyInviteRewards(inviterId int) {
+	// Invite rewards are gated on payment compliance. The invitee's
+	// QuotaForInvitee is granted unconditionally at registration, matching the
+	// original behavior; the recharge-mode rebate for invitees is removed.
+	// The inviter still splits by InviteRewardInviterMode: direct pays
+	// QuotaForInviter now, recharge pays nothing until the invitee tops up
+	// (settled by applyInviteRechargeRewards).
+	if inviterId == 0 || !isPaymentComplianceConfirmed() {
+		return
+	}
+	if common.QuotaForInvitee > 0 {
+		IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
+		writeSystemLog(user.Id, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
+	}
+	if common.InviteRewardInviterMode == common.InviteRewardModeDirect {
+		reward := common.QuotaForInviter
+		if reward > 0 {
+			writeSystemLog(inviterId, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(reward)))
+		}
+		if err := inviteUser(inviterId, reward); err == nil && reward > 0 {
+			_ = dbx.DB.Model(&User{}).Where("id = ?", user.Id).
+				Update("invite_reward_direct_paid", true).Error
+		}
+	} else {
+		_ = inviteUser(inviterId, 0)
+	}
+}
+
 func (user *User) TransferAffQuotaToQuota(quota int) error {
 	// 检查quota是否小于最小额度
-	if float64(quota) < common.QuotaPerUnit {
-		return fmt.Errorf("转移额度最小为%s！", logger.LogQuota(common.QuotaFromFloat(common.QuotaPerUnit)))
+	if quota < common.InviteRewardTransferMinQuota {
+		return fmt.Errorf("转移额度最小为%s！", logger.LogQuota(common.InviteRewardTransferMinQuota))
 	}
 
 	// 开始数据库事务
@@ -589,17 +622,7 @@ func (user *User) finishInsert(inviterId int) {
 	if common.QuotaForNewUser > 0 {
 		writeSystemLog(user.Id, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
 	}
-	if inviterId != 0 && isPaymentComplianceConfirmed() {
-		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
-			writeSystemLog(user.Id, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
-		}
-		quotaReward := common.QuotaForInviter > 0
-		if quotaReward {
-			writeSystemLog(inviterId, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
-		}
-		_ = inviteUser(inviterId, quotaReward)
-	}
+	user.applyInviteRewards(inviterId)
 }
 
 func (user *User) FinishInsert(inviterId int) {
@@ -646,17 +669,7 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 	if common.QuotaForNewUser > 0 {
 		writeSystemLog(user.Id, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
 	}
-	if inviterId != 0 && isPaymentComplianceConfirmed() {
-		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
-			writeSystemLog(user.Id, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
-		}
-		quotaReward := common.QuotaForInviter > 0
-		if quotaReward {
-			writeSystemLog(inviterId, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
-		}
-		_ = inviteUser(inviterId, quotaReward)
-	}
+	user.applyInviteRewards(inviterId)
 }
 
 func (user *User) Update(updatePassword bool) error {

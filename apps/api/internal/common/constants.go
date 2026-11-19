@@ -136,6 +136,23 @@ var TelegramBotName = ""
 var QuotaForNewUser = 0
 var QuotaForInviter = 0
 var QuotaForInvitee = 0
+
+// Invite reward configuration: option keys live under invite_reward.*.
+// Defaults grant the inviter reward directly at registration with no rebate:
+// multiplier 0, first-recharge trigger, zero transfer threshold.
+const (
+	InviteRewardModeDirect   = "direct"
+	InviteRewardModeRecharge = "recharge"
+	InviteRewardTriggerFirst = "first"
+	InviteRewardTriggerEvery = "every"
+)
+
+var (
+	InviteRewardInviterMode      = InviteRewardModeDirect   // how the inviter reward is granted
+	InviteRewardRebateMultiplier = 0.0                      // multiplier applied to the recharge quota for the inviter rebate
+	InviteRewardRebateTrigger    = InviteRewardTriggerFirst // first or every successful recharge
+	InviteRewardTransferMinQuota = 0                        // minimum affiliate quota transferable to balance
+)
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false
